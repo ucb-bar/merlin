@@ -72,3 +72,7 @@ tmp/*
 samples/models/*.mlir
 *.vmfb
 
+# quantize test models and export
+quantize_test_export
+pretrained_models
+
