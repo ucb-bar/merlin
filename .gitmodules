@@ -23,3 +23,9 @@
 [submodule "third_party/saturn-vectors"]
 	path = third_party/saturn-vectors
 	url = https://github.com/ucb-bar/saturn-vectors.git
+[submodule "third_party/shark_ai"]
+	path = third_party/shark_ai
+	url = https://github.com/nod-ai/amd-shark-ai/tree/bb82cc932f945ba69ec8ebbf7b3fc8f7370e2b5c
+[submodule "third_party/llama.cpp"]
+	path = third_party/llama.cpp
+	url = https://github.com/ggml-org/llama.cpp/tree/03792ad93609fc67e41041c6347d9aa14e5e0d74
