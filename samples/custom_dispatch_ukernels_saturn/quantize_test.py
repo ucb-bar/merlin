@@ -6,8 +6,120 @@ import copy
 import traceback
 from contextlib import suppress
 from custom_models.vitfly_models_july import ConvNet, LSTMNet, LSTMNetVIT, ViT, UNetConvLSTMNet
+from export_models_torch import print_separator
+from torch.nn.utils.spectral_norm import remove_spectral_norm, SpectralNorm
 
-def get_sample_inputs(model_name: str):
+# --- MLIR and Turbine Imports ---
+try:
+    from torch_mlir.fx import export_and_import as torch_mlir_export
+    from torch_mlir import ir
+    from torch_mlir.dialects.torch import register_dialect as register_torch_dialect
+    print("Successfully imported torch-mlir.")
+except ImportError:
+    print("Warning: torch-mlir is not installed. 'torch-mlir' export path will be unavailable.")
+    torch_mlir_export = None
+
+try:
+    import iree.turbine.aot as turbine_aot
+    print("Successfully imported iree-turbine.")
+except ImportError:
+    print("Warning: iree-turbine is not installed. 'turbine_cpu' backend and 'iree-turbine' export path will be unavailable.")
+    turbine_aot = None
+
+# --- New Export Path Imports ---
+try:
+    import torch.export as torch_export
+    print("Successfully imported torch.export.")
+except ImportError:
+    print("Warning: torch.export is not available. 'torch.export' path will be unavailable.")
+    torch_export = None
+
+try:
+    import torch.onnx as torch_onnx
+    print("Successfully imported torch.onnx.")
+except ImportError:
+    print("Warning: torch.onnx is not available. 'torch.onnx' path will be unavailable.")
+    torch_onnx = None
+
+# --- torch.ao.quantization (FX) Imports ---
+try:
+    from torch.ao.quantization import get_default_qconfig_mapping
+    from torch.ao.quantization.quantize_fx import prepare_fx, convert_fx
+    from torch.ao.quantization.qconfig_mapping import QConfigMapping
+    import torch.ao.quantization
+    print("Successfully imported torch.ao.quantization (FX).")
+except ImportError:
+    print("Warning: torch.ao.quantization is not installed. FX Quantization paths will be unavailable.")
+    torch.ao.quantization = None # Set to None to allow checks
+
+# --- torchao (AO) Quantization Import ---
+try:
+    import torchao.quantization as torchao_quant
+    from torchao.quantization import Int8DynamicActivationInt8WeightConfig
+    print("Successfully imported torchao.quantization.")
+except ImportError:
+    print("Warning: torchao.quantization is not installed. 'torchao' Quantization path will be unavailable.")
+    torchao_quant = None
+
+def try_torchao_quantize(model_fp32, results_list): # for other reference: https://docs.pytorch.org/ao/main/eager_tutorials/first_quantization_example.html
+    """Attempts to apply torchao INT8 dynamic quantization."""
+    name = "torchao.quantization (Int8DynamicActivationInt8Weight)"
+    print_separator(f"Attempting: {name}")
+
+    if torchao_quant is None:
+        print("FAILED: torchao.quantization is not installed.")
+        results_list.append({'name': name, 'status': 'FAILED', 'error': 'torchao.quantization not installed'})
+        return None
+
+    try:
+        config = torchao_quant.Int8DynamicActivationInt8WeightConfig()
+        model_to_quant = copy.deepcopy(model_fp32).eval()
+        
+        print("Applying torchao quantization inplace...")
+        torchao_quant.quantize_(model_to_quant, config)
+        
+        print("torchao quantization successful.")
+        results_list.append({'name': name, 'status': 'SUCCEEDED', 'error': None})
+        return model_to_quant
+    except Exception:
+        error_msg = traceback.format_exc()
+        print(f"FAILED:\n{error_msg}")
+        results_list.append({'name': name, 'status': 'FAILED', 'error': error_msg})
+        return None
+
+def try_turbine_aot_export(model, example_inputs, model_name, model_type, model_output_dir, results_list):
+    """Exports the model to MLIR using the IREE Turbine AOT exporter."""
+    name = f"iree.turbine.aot.export ({model_type})"
+    print_separator(f"Attempting: {name}")
+    
+    output_path = os.path.join(model_output_dir, f"{model_name}_{model_type}_turbine_aot.mlir")
+
+    if turbine_aot is None:
+        print("FAILED: iree-turbine is not installed.")
+        results_list.append({'name': name, 'status': 'FAILED', 'error': 'iree-turbine not installed'})
+        return
+
+    try:
+        model.eval()
+        # Allow torch.typename in the graph so spectral_norm's setattr's typename doesn't cause Dynamo to raise.
+        # If downstream iree fails on the resulting graph then i need to strip spectral norm or something
+        # did not work :skull: torch._dynamo.exc.Unsupported: torch.* op returned non-Tensor Explanation: torch.* ops that return a non-Tensor cannot be traced into the Dynamo FX graph output
+        torch.compiler.allow_in_graph(torch.typename)
+
+        print(f"Exporting model to {output_path}...")
+        exported_module = turbine_aot.export(model, *example_inputs)
+        mlir_str = str(exported_module.mlir_module)
+
+        with open(output_path, "w") as f:
+            f.write(mlir_str)
+        print(f"Successfully exported to {output_path}")
+        results_list.append({'name': name, 'status': 'SUCCEEDED', 'error': None})
+    except Exception:
+        error_msg = traceback.format_exc()
+        print(f"FAILED:\n{error_msg}")
+        results_list.append({'name': name, 'status': 'FAILED', 'error': error_msg})
+
+def get_sample_inputs(model_name):
     batch = 5
     image = torch.randn(batch, 1, 60, 90)
     velocity = torch.randn(batch, 1)
@@ -21,12 +133,12 @@ def get_sample_inputs(model_name: str):
     return (image, velocity, quaternion)
 
 
-def get_forward_args_for_export(model_name: str, sample_inputs):
+def get_forward_args_for_export(model_name, sample_inputs):
     if model_name == "LSTMNetVIT":
         return sample_inputs  # the LSTMNetVIT requires (self, image, velocity, quaternion, h_in, c_in)
     return (sample_inputs,) # the others use (self, X)
 
-def get_model(model_name: str, checkpoint_path=None):
+def get_model(model_name, checkpoint_path=None):
     """Loads a pretrained model based on the provided name."""
     print(f"--- Loading model: {model_name} ---")
     try:
@@ -78,11 +190,13 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     if args.checkpoint_path is None:
         args.checkpoint_path = os.path.normpath(os.path.join(script_dir, "..", "pretrained_models", "LSTMnet_model.pth"))
-    default_output_dir = os.path.normpath(os.path.join(script_dir, "..", "pretrained_models", args.output_dir))
+    model_output_dir = os.path.normpath(os.path.join(script_dir, "..", "pretrained_models", args.output_dir))
 
     print(f"Torch version: {torch.__version__}")
-    os.makedirs(default_output_dir, exist_ok=True)
-    print(f"Saving model artifacts to: {default_output_dir}")
+    os.makedirs(model_output_dir, exist_ok=True)
+    print(f"Saving model artifacts to: {model_output_dir}") 
+    results = [] # List to store dicts of {'name':, 'status':, 'error':}
+
 
     # --- Step 1: Load Model ---
     # model_fp32 = get_model(args.model, args.checkpoint_path)
@@ -103,14 +217,16 @@ def main():
     print("Forward pass OK (inputs match vitfly_models.forward).")
 
     # # --- Step 2: Run all export paths on FP32 model ---
-    # Use export(model_fp32, *forward_args) so LSTMNetVIT gets 5 args, others get 1 arg (X tuple).
-    # try_torch_mlir_export(model_fp32, forward_args, args.model, model_type_str, model_output_dir, results)
+    print_separator(f"STARTING FP32 EXPORT TESTS FOR: {args.model}")
+    model_type_str="fp32"
+    try_turbine_aot_export(model_fp32, forward_args, args.model, model_type_str, model_output_dir, results)
 
     # # --- Step 3: Apply Quantization (All Paths) ---
-    # model_quant_ao_dynamic = try_torch_ao_dynamic_quantize(model_fp32, sample_inputs, results)
+    model_int8 = try_torchao_quantize(model_fp32, results)
+    # model_fp8
 
     # # --- Step 4: Run all export paths on Quantized models ---
-    # try_torch_mlir_export(model_fp32, sample_inputs, args.model, model_type_str, model_output_dir, results)
+    try_turbine_aot_export(model_int8, forward_args, args.model, model_type_str, model_output_dir, results)
 
     # # --- Step 5: Print Final Report ---
 
