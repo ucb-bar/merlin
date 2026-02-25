@@ -104,9 +104,10 @@ def try_turbine_aot_export(model, example_inputs, model_name, model_type, model_
         # Allow torch.typename in the graph so spectral_norm's setattr's typename doesn't cause Dynamo to raise.
         # If downstream iree fails on the resulting graph then i need to strip spectral norm or something
         # did not work :skull: torch._dynamo.exc.Unsupported: torch.* op returned non-Tensor Explanation: torch.* ops that return a non-Tensor cannot be traced into the Dynamo FX graph output
-        torch.compiler.allow_in_graph(torch.typename)
+        # torch.compiler.allow_in_graph(torch.typename)
 
         print(f"Exporting model to {output_path}...")
+        turbine_aot.externalize_module_parameters(model)
         exported_module = turbine_aot.export(model, *example_inputs)
         mlir_str = str(exported_module.mlir_module)
 
