@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 import torchvision.models as models
 import argparse
 import os
@@ -88,6 +89,43 @@ def try_torchao_quantize(model_fp32, results_list): # for other reference: https
         results_list.append({'name': name, 'status': 'FAILED', 'error': error_msg})
         return None
 
+def strip_spectral_norm(model):
+    """Strips spectral norm from the model."""
+    for module in model.modules():
+        for hook in module._forward_pre_hooks.values():
+            if isinstance(hook, SpectralNorm):
+                try:
+                    remove_spectral_norm(module, hook.name)
+                except Exception:
+                    pass
+    return model
+
+def try_torchao_quantize_weights_only(model_fp32, results_list):
+    """Attempts to apply torchao INT8 weights only quantization."""
+    name = "torchao.quantization (Int8WeightOnlyConfig)"
+    print_separator(f"Attempting: {name}")
+
+    if torchao_quant is None:
+        print("FAILED: torchao.quantization is not installed.")
+        results_list.append({'name': name, 'status': 'FAILED', 'error': 'torchao.quantization not installed'})
+        return None
+
+    try:
+        config = torchao_quant.Int8WeightOnlyConfig()
+        model_to_quant = copy.deepcopy(model_fp32).eval()
+        
+        print("Applying torchao quantization inplace...")
+        torchao_quant.quantize_(model_to_quant, config)
+        
+        print("torchao quantization successful.")
+        results_list.append({'name': name, 'status': 'SUCCEEDED', 'error': None})
+        return model_to_quant
+    except Exception:
+        error_msg = traceback.format_exc()
+        print(f"FAILED:\n{error_msg}")
+        results_list.append({'name': name, 'status': 'FAILED', 'error': error_msg})
+        return None
+
 def try_torch_onnx_export(model, example_inputs, model_name, model_type, model_output_dir, results_list):
     """Attempts to export model to ONNX"""
     name = f"torch.onnx.export to ONNX ({model_type})"
@@ -143,16 +181,16 @@ def try_turbine_aot_export(model, example_inputs, model_name, model_type, model_
 
         print(f"Exporting model to {output_path}...")
 
-        with torch.no_grad():
-            exported = export(
-                model,
-                example_inputs,
-                strict=False
-            )
+        # with torch.no_grad():
+        #     exported = export( # might have to do exported: ExportedProgram = export(model, example_inputs, strict=False)
+        #         model,
+        #         example_inputs,
+        #         strict=False
+        #     )
     
-        # exported_module = turbine_aot.export(model, *example_inputs)
-        exported_module = turbine_aot.export(exported)
-        # mlir_str = str(exported_module.mlir_module)
+        exported_module = turbine_aot.export(model, *example_inputs)
+        # exported_module = turbine_aot.export(exported)
+        mlir_str = str(exported_module.mlir_module)
         
         with open(output_path, "w") as f:
             f.write(mlir_str)
@@ -229,6 +267,13 @@ def main():
         "--output_dir", type=str, default="quantize_test_export",
         help="Directory to save the exported files and report."
     )
+    parser.add_argument(
+        "--quant",
+        type=str,
+        default="torchao_dynamic_int8",
+        choices=["none", "torchao_dynamic_int8", "torchao_int8_weight_only"],
+        help="Quantization mode to apply before export.",
+    )
     args = parser.parse_args()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -252,6 +297,7 @@ def main():
     if model_fp32 is None:
         return
 
+    model_fp32 = strip_spectral_norm(model_fp32)
     sample_inputs = get_sample_inputs(args.model)
     forward_args = get_forward_args_for_export(args.model, sample_inputs)
     with torch.no_grad():
@@ -264,11 +310,16 @@ def main():
     try_turbine_aot_export(model_fp32, forward_args, args.model, model_type_str, model_output_dir, results)
 
     # # --- Step 3: Apply Quantization (All Paths) ---
-    model_int8 = try_torchao_quantize(model_fp32, results)
+    model_int8 = None
+    if args.quant == "torchao_dynamic_int8":
+        model_int8 = try_torchao_quantize(model_fp32, results)
+    elif args.quant == "torchao_int8_weight_only":
+        model_int8 = try_torchao_quantize_weights_only(model_fp32, results)
 
     # # --- Step 4: Run all export paths on Quantized models ---
-    model_type_str="int8"
-    try_turbine_aot_export(model_int8, forward_args, args.model, model_type_str, model_output_dir, results)
+    if model_int8 is not None:
+        model_type_str = "int8"
+        try_turbine_aot_export(model_int8, forward_args, args.model, model_type_str, model_output_dir, results)
     # try_torch_onnx_export(model_int8, forward_args, args.model, model_type_str, model_output_dir, results)
 
     # # --- Step 5: Print Final Report ---
