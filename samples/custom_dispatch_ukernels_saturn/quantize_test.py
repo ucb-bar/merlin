@@ -8,6 +8,7 @@ from contextlib import suppress
 from custom_models.vitfly_models_july import ConvNet, LSTMNet, LSTMNetVIT, ViT, UNetConvLSTMNet
 from export_models_torch import print_separator
 from torch.nn.utils.spectral_norm import remove_spectral_norm, SpectralNorm
+from torch.export import export, ExportedProgram
 
 # --- MLIR and Turbine Imports ---
 try:
@@ -87,6 +88,38 @@ def try_torchao_quantize(model_fp32, results_list): # for other reference: https
         results_list.append({'name': name, 'status': 'FAILED', 'error': error_msg})
         return None
 
+def try_torch_onnx_export(model, example_inputs, model_name, model_type, model_output_dir, results_list):
+    """Attempts to export model to ONNX"""
+    name = f"torch.onnx.export to ONNX ({model_type})"
+    print_separator(f"Attempting: {name}")
+
+    output_path = os.path.join(model_output_dir, f"{model_name}_{model_type}_torch_onnx.onnx")
+    
+    if torch_onnx is None:
+        print("FAILED: torch.onnx is not installed.")
+        results_list.append({'name': name, 'status': 'FAILED', 'error': 'torch.onnx not installed'})
+        return
+
+    try:
+        model.eval()
+        print(f"Exporting model to {output_path}...")
+        torch_onnx.export(
+            model,
+            example_inputs,
+            output_path,
+            input_names=["input"],
+            output_names=["output"],
+            dynamo=False,
+            opset_version=21
+        )
+        
+        print(f"Successfully exported to {output_path}")
+        results_list.append({'name': name, 'status': 'SUCCEEDED', 'error': None})
+    except Exception:
+        error_msg = traceback.format_exc()
+        print(f"FAILED:\n{error_msg}")
+        results_list.append({'name': name, 'status': 'FAILED', 'error': error_msg})
+
 def try_turbine_aot_export(model, example_inputs, model_name, model_type, model_output_dir, results_list):
     """Exports the model to MLIR using the IREE Turbine AOT exporter."""
     name = f"iree.turbine.aot.export ({model_type})"
@@ -106,11 +139,21 @@ def try_turbine_aot_export(model, example_inputs, model_name, model_type, model_
         # did not work :skull: torch._dynamo.exc.Unsupported: torch.* op returned non-Tensor Explanation: torch.* ops that return a non-Tensor cannot be traced into the Dynamo FX graph output
         # torch.compiler.allow_in_graph(torch.typename)
 
-        print(f"Exporting model to {output_path}...")
-        turbine_aot.externalize_module_parameters(model)
-        exported_module = turbine_aot.export(model, *example_inputs)
-        mlir_str = str(exported_module.mlir_module)
+        # turbine_aot.externalize_module_parameters(model)
 
+        print(f"Exporting model to {output_path}...")
+
+        with torch.no_grad():
+            exported = export(
+                model,
+                example_inputs,
+                strict=False
+            )
+    
+        # exported_module = turbine_aot.export(model, *example_inputs)
+        exported_module = turbine_aot.export(exported)
+        # mlir_str = str(exported_module.mlir_module)
+        
         with open(output_path, "w") as f:
             f.write(mlir_str)
         print(f"Successfully exported to {output_path}")
@@ -209,8 +252,6 @@ def main():
     if model_fp32 is None:
         return
 
-    print(model_fp32)
-
     sample_inputs = get_sample_inputs(args.model)
     forward_args = get_forward_args_for_export(args.model, sample_inputs)
     with torch.no_grad():
@@ -224,10 +265,11 @@ def main():
 
     # # --- Step 3: Apply Quantization (All Paths) ---
     model_int8 = try_torchao_quantize(model_fp32, results)
-    # model_fp8
 
     # # --- Step 4: Run all export paths on Quantized models ---
+    model_type_str="int8"
     try_turbine_aot_export(model_int8, forward_args, args.model, model_type_str, model_output_dir, results)
+    # try_torch_onnx_export(model_int8, forward_args, args.model, model_type_str, model_output_dir, results)
 
     # # --- Step 5: Print Final Report ---
 
