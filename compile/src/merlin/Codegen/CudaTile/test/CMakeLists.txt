@@ -1,0 +1,13 @@
+iree_lit_test_suite(
+  NAME
+    lit
+  SRCS
+    "linalg_to_cuda_tile_text.mlir"
+    "matmul_256x256.mlir"
+    "matmul_64x64.mlir"
+    "matmul_512x512.mlir"
+    "matmul_custom_tiles.mlir"
+  TOOLS
+    FileCheck
+    iree-opt
+)

@@ -1,0 +1,339 @@
+// LinalgToCudaTileText.cpp — Merlin pass that pattern-matches a linalg.generic
+// matmul and emits cuda_tile-dialect MLIR as *text* to a file on disk.
+//
+// CRITICAL: This file does NOT include any cuda-tile headers.  The integration
+// boundary is textual IR written to a temp file, later consumed by
+// cuda-tile-translate as a subprocess.
+
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassRegistry.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/raw_ostream.h"
+
+#include <fstream>
+#include <string>
+
+#define DEBUG_TYPE "merlin-linalg-to-cuda-tile-text"
+
+namespace mlir::iree_compiler {
+namespace {
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Return the MLIR type-name string for an element type that cuda_tile
+/// understands (f16, bf16, f32, f64).
+static std::string elemTypeStr(Type ty) {
+  if (ty.isF16())
+    return "f16";
+  if (ty.isBF16())
+    return "bf16";
+  if (ty.isF32())
+    return "f32";
+  if (ty.isF64())
+    return "f64";
+  return "f32"; // fallback
+}
+
+/// Check whether a linalg.generic is a simple matmul:
+///   C[m, n] += A[m, k] * B[k, n]
+/// i.e. 3 iterator types (par, par, red), 2 inputs, 1 output,
+/// and the body is {mul, add, yield}.
+static bool isMatmulGeneric(linalg::GenericOp op) {
+  // 2 inputs, 1 output.
+  if (op.getNumDpsInputs() != 2 || op.getNumDpsInits() != 1)
+    return false;
+
+  // Iterator types: parallel, parallel, reduction.
+  auto iterTypes = op.getIteratorTypesArray();
+  if (iterTypes.size() != 3)
+    return false;
+  if (iterTypes[0] != utils::IteratorType::parallel ||
+      iterTypes[1] != utils::IteratorType::parallel ||
+      iterTypes[2] != utils::IteratorType::reduction)
+    return false;
+
+  // Indexing maps:  (m,n,k)->(m,k), (m,n,k)->(k,n), (m,n,k)->(m,n).
+  auto maps = op.getIndexingMapsArray();
+  if (maps.size() != 3)
+    return false;
+
+  auto ctx = op.getContext();
+  auto m = getAffineDimExpr(0, ctx);
+  auto n = getAffineDimExpr(1, ctx);
+  auto k = getAffineDimExpr(2, ctx);
+  auto expectedA = AffineMap::get(3, 0, {m, k}, ctx);
+  auto expectedB = AffineMap::get(3, 0, {k, n}, ctx);
+  auto expectedC = AffineMap::get(3, 0, {m, n}, ctx);
+  if (maps[0] != expectedA || maps[1] != expectedB || maps[2] != expectedC)
+    return false;
+
+  // Body: exactly  %mul = arith.mulf, %add = arith.addf, linalg.yield.
+  Region &body = op.getRegion();
+  if (body.getBlocks().size() != 1)
+    return false;
+  Block &block = body.front();
+  // 3 block args (a, b, c) + 3 ops (mulf, addf, yield).
+  if (block.getNumArguments() != 3)
+    return false;
+  auto ops = block.without_terminator();
+  auto it = ops.begin();
+  if (it == ops.end() || !isa<arith::MulFOp>(*it))
+    return false;
+  ++it;
+  if (it == ops.end() || !isa<arith::AddFOp>(*it))
+    return false;
+  ++it;
+  if (it != ops.end())
+    return false;
+
+  return true;
+}
+
+/// Generate cuda_tile textual IR for a matmul with the given dimensions
+/// and tile sizes.
+///
+/// The output uses the real cuda_tile dialect syntax (as defined in
+/// NVIDIA/cuda-tile).  Key ops:
+///   cuda_tile.module, entry, make_tensor_view, make_partition_view,
+///   get_tile_block_id, load_view_tko, mmaf, store_view_tko,
+///   for, continue, return.
+/// Entry args are scalar tile<ptr<eTy>>; 2D tiling is done inside the kernel
+/// via tensor_view / partition_view.
+static std::string generateCudaTileText(int64_t M, int64_t N, int64_t K,
+                                        StringRef eTy, int64_t tileM,
+                                        int64_t tileN, int64_t tileK) {
+  std::string buf;
+  llvm::raw_string_ostream os(buf);
+
+  // Number of K-tiles (K / tileK).
+  int64_t kTiles = K / tileK;
+
+  // Stride helpers for row-major layout.
+  int64_t strideA0 = K;   // A is MxK
+  int64_t strideB0 = N;   // B is KxN
+  int64_t strideC0 = N;   // C is MxN
+
+  // Shorthand for partition_view type strings (used multiple times).
+  auto pvA = llvm::formatv(
+      "partition_view<tile=({0}x{1}), tensor_view<{2}x{3}x{4}, strides=[{5},1]>>",
+      tileM, tileK, M, K, eTy, strideA0);
+  auto pvB = llvm::formatv(
+      "partition_view<tile=({0}x{1}), tensor_view<{2}x{3}x{4}, strides=[{5},1]>>",
+      tileK, tileN, K, N, eTy, strideB0);
+  auto pvC = llvm::formatv(
+      "partition_view<tile=({0}x{1}), tensor_view<{2}x{3}x{4}, strides=[{5},1]>>",
+      tileM, tileN, M, N, eTy, strideC0);
+
+  auto tileATy = llvm::formatv("tile<{0}x{1}x{2}>", tileM, tileK, eTy);
+  auto tileBTy = llvm::formatv("tile<{0}x{1}x{2}>", tileK, tileN, eTy);
+  auto tileCTy = llvm::formatv("tile<{0}x{1}x{2}>", tileM, tileN, eTy);
+
+  os << "// Auto-generated by merlin LinalgToCudaTileText pass.\n";
+  os << "// Source matmul: C[" << M << "x" << N << "] = A[" << M << "x" << K
+     << "] * B[" << K << "x" << N << "], " << eTy << "\n";
+  os << "// Tile sizes: TILE_M=" << tileM << ", TILE_N=" << tileN
+     << ", TILE_K=" << tileK << "\n\n";
+
+  // --- cuda_tile.module (top-level, no builtin module wrapper) ---
+  os << "cuda_tile.module @matmul_kernel {\n";
+
+  // --- entry kernel: scalar pointer args ---
+  os << "  entry @matmul_" << eTy << "(\n";
+  os << "      %A_base: !cuda_tile.tile<ptr<" << eTy << ">>,\n";
+  os << "      %B_base: !cuda_tile.tile<ptr<" << eTy << ">>,\n";
+  os << "      %C_base: !cuda_tile.tile<ptr<" << eTy << ">>) {\n";
+
+  // --- tensor views from base pointers ---
+  os << "    %A_tv = make_tensor_view %A_base, shape = [" << M << ", " << K
+     << "], strides = [" << strideA0 << ", 1]\n";
+  os << "        : tensor_view<" << M << "x" << K << "x" << eTy
+     << ", strides=[" << strideA0 << ",1]>\n";
+
+  os << "    %B_tv = make_tensor_view %B_base, shape = [" << K << ", " << N
+     << "], strides = [" << strideB0 << ", 1]\n";
+  os << "        : tensor_view<" << K << "x" << N << "x" << eTy
+     << ", strides=[" << strideB0 << ",1]>\n";
+
+  os << "    %C_tv = make_tensor_view %C_base, shape = [" << M << ", " << N
+     << "], strides = [" << strideC0 << ", 1]\n";
+  os << "        : tensor_view<" << M << "x" << N << "x" << eTy
+     << ", strides=[" << strideC0 << ",1]>\n";
+
+  // --- partition views ---
+  os << "    %A_pv = make_partition_view %A_tv\n";
+  os << "        : " << pvA << "\n";
+  os << "    %B_pv = make_partition_view %B_tv\n";
+  os << "        : " << pvB << "\n";
+  os << "    %C_pv = make_partition_view %C_tv\n";
+  os << "        : " << pvC << "\n";
+
+  // --- tile block ID ---
+  os << "    %bx, %by, %bz = get_tile_block_id : tile<i32>\n";
+
+  // --- load C accumulator tile ---
+  os << "    %c_tile:2 = load_view_tko weak %C_pv[%bx, %by]\n";
+  os << "        : " << pvC << ", tile<i32>\n";
+  os << "        -> " << tileCTy << ", token\n";
+
+  // --- K-loop constants ---
+  os << "    %c0 = constant <i32: 0> : tile<i32>\n";
+  os << "    %c_K_tiles = constant <i32: " << kTiles << "> : tile<i32>\n";
+  os << "    %c1 = constant <i32: 1> : tile<i32>\n";
+
+  // --- K-dimension reduction loop ---
+  os << "    %acc = for %k in (%c0 to %c_K_tiles, step %c1) : tile<i32>\n";
+  os << "        iter_values(%acc_iter = %c_tile) -> (" << tileCTy << ") {\n";
+
+  // load A tile [bx, k]
+  os << "      %a_tile:2 = load_view_tko weak %A_pv[%bx, %k]\n";
+  os << "          : " << pvA << ", tile<i32>\n";
+  os << "          -> " << tileATy << ", token\n";
+
+  // load B tile [k, by]
+  os << "      %b_tile:2 = load_view_tko weak %B_pv[%k, %by]\n";
+  os << "          : " << pvB << ", tile<i32>\n";
+  os << "          -> " << tileBTy << ", token\n";
+
+  // mmaf
+  os << "      %updated = mmaf %a_tile, %b_tile, %acc_iter\n";
+  os << "          : " << tileATy << ", " << tileBTy << ", " << tileCTy << "\n";
+
+  os << "      continue %updated : " << tileCTy << "\n";
+  os << "    }\n"; // end K loop
+
+  // store C
+  os << "    %tok = store_view_tko weak %acc, %C_pv[%bx, %by]\n";
+  os << "        : " << tileCTy << ", " << pvC << ", tile<i32>\n";
+  os << "        -> token\n";
+
+  os << "    return\n";
+  os << "  }\n"; // end entry
+  os << "}\n";   // end cuda_tile.module
+
+  return buf;
+}
+
+// ---------------------------------------------------------------------------
+// Pass definition  (manual — no TableGen needed)
+// ---------------------------------------------------------------------------
+struct LinalgToCudaTileTextPass
+    : public PassWrapper<LinalgToCudaTileTextPass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LinalgToCudaTileTextPass)
+
+  LinalgToCudaTileTextPass() = default;
+  LinalgToCudaTileTextPass(const LinalgToCudaTileTextPass &other)
+      : PassWrapper(other) {};
+
+  StringRef getArgument() const override {
+    return "merlin-linalg-to-cuda-tile-text";
+  }
+  StringRef getDescription() const override {
+    return "Pattern-match linalg.generic matmul and emit cuda_tile dialect "
+           "text to a file (subprocess integration boundary).";
+  }
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<linalg::LinalgDialect, arith::ArithDialect>();
+  }
+
+  /// File path to write the generated cuda_tile IR text.
+  Option<std::string> outputPath{
+      *this, "output-path",
+      llvm::cl::desc("Output file path for cuda_tile IR text"),
+      llvm::cl::init("")};
+
+  /// Tile sizes for the M, N, K dimensions.
+  Option<int64_t> tileM{*this, "tile-m",
+                        llvm::cl::desc("Tile size for M dimension"),
+                        llvm::cl::init(64)};
+  Option<int64_t> tileN{*this, "tile-n",
+                        llvm::cl::desc("Tile size for N dimension"),
+                        llvm::cl::init(64)};
+  Option<int64_t> tileK{*this, "tile-k",
+                        llvm::cl::desc("Tile size for K dimension"),
+                        llvm::cl::init(32)};
+
+  void runOnOperation() override {
+    ModuleOp module = getOperation();
+    bool found = false;
+
+    LLVM_DEBUG(llvm::dbgs() << "LinalgToCudaTileText: tile-m=" << tileM
+                            << " tile-n=" << tileN << " tile-k=" << tileK
+                            << "\n");
+
+    module.walk([&](linalg::GenericOp genericOp) {
+      if (!isMatmulGeneric(genericOp))
+        return;
+
+      // Extract shapes from the first input (A: MxK) and second (B: KxN).
+      auto lhsType = cast<ShapedType>(genericOp.getInputs()[0].getType());
+      auto rhsType = cast<ShapedType>(genericOp.getInputs()[1].getType());
+      if (!lhsType.hasStaticShape() || !rhsType.hasStaticShape())
+        return;
+
+      int64_t M = lhsType.getShape()[0];
+      int64_t K = lhsType.getShape()[1];
+      int64_t N = rhsType.getShape()[1];
+      std::string eTy = elemTypeStr(lhsType.getElementType());
+
+      // Validate divisibility.
+      int64_t tm = tileM, tn = tileN, tk = tileK;
+      if (M % tm != 0 || N % tn != 0 || K % tk != 0) {
+        genericOp.emitError("matmul dimensions (M=")
+            << M << ", N=" << N << ", K=" << K
+            << ") must be divisible by tile sizes (tile-m=" << tm
+            << ", tile-n=" << tn << ", tile-k=" << tk << ")";
+        return signalPassFailure();
+      }
+
+      genericOp.emitRemark("lowering matmul C[")
+          << M << "x" << N << "] = A[" << M << "x" << K << "] * B[" << K
+          << "x" << N << "] with tiles (" << tm << "," << tn << "," << tk
+          << ")";
+
+      std::string text =
+          generateCudaTileText(M, N, K, eTy, tileM, tileN, tileK);
+
+      if (outputPath.empty()) {
+        // If no output path, emit to stdout (useful for testing).
+        llvm::outs() << text;
+      } else {
+        std::ofstream ofs(outputPath.getValue());
+        if (!ofs) {
+          genericOp.emitError("could not open output file: ") << outputPath;
+          return signalPassFailure();
+        }
+        ofs << text;
+        LLVM_DEBUG(llvm::dbgs()
+                   << "LinalgToCudaTileText: wrote " << outputPath << "\n");
+      }
+      found = true;
+    });
+
+    if (!found) {
+      // Not a failure — just nothing to convert.
+      LLVM_DEBUG(llvm::dbgs()
+                 << "LinalgToCudaTileText: no matmul linalg.generic found\n");
+    }
+  }
+};
+
+} // namespace
+
+// ---------------------------------------------------------------------------
+// Registration
+// ---------------------------------------------------------------------------
+void registerLinalgToCudaTileTextPass() {
+  PassRegistration<LinalgToCudaTileTextPass>();
+}
+
+} // namespace mlir::iree_compiler

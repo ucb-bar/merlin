@@ -28,3 +28,6 @@
 [submodule "third_party/iree-turbine"]
 	path = third_party/iree-turbine
 	url = https://github.com/iree-org/iree-turbine.git
+[submodule "third_party/cuda-tile"]
+	path = third_party/cuda-tile
+	url = https://github.com/NVIDIA/cuda-tile
