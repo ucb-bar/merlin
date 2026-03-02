@@ -41,3 +41,48 @@ cmake -G Ninja -B build-riscv \
 # Build the custom dispatch sample
 cmake --build build-riscv --target compile_custom_model
 ```
+
+## Repository Workflows
+
+For a small maintainer team, use the unified entrypoint:
+
+```bash
+python3 tools/merlin.py --help
+python3 tools/merlin.py targets list
+```
+
+Core routines:
+
+```bash
+# Patch-stack lifecycle
+python3 tools/merlin.py patches apply
+python3 tools/merlin.py patches verify
+python3 tools/merlin.py patches drift
+
+# Lint + script sanity
+python3 tools/merlin.py ci lint
+
+# Build profile wrappers
+python3 tools/merlin.py build host-release
+python3 tools/merlin.py build riscv-spacemit-dual-model
+
+# Upstream release tracking
+python3 tools/merlin.py release-status
+python3 tools/merlin.py release-status --json
+```
+
+## Project Structure (Maintained Paths)
+
+- `compiler/`: Merlin-owned compiler/plugin logic.
+- `patches/`: IREE/LLVM patch stack and base commit manifests.
+- `scripts/`: low-level helper scripts (wrapped by `tools/merlin.py`).
+- `tools/`: stable developer/CI entrypoints.
+- `samples/`: runnable runtime examples and sample code.
+- `benchmark/target/<board>/`: deployment + profiling flows per hardware target.
+
+Further maintenance/process docs:
+
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md)
+- [docs/architecture/plugin_and_patch_model.md](docs/architecture/plugin_and_patch_model.md)
+- [docs/cmake_presets.md](docs/cmake_presets.md)
