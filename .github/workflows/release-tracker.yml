@@ -1,0 +1,90 @@
+name: Upstream Release Tracker
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  track-iree-releases:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Query release status
+        id: status
+        run: |
+          python3 tools/merlin.py release-status --json > /tmp/release_status.json
+          cat /tmp/release_status.json
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          data = json.load(open("/tmp/release_status.json"))
+          print(f"update_available={str(bool(data.get('update_available'))).lower()}")
+          print(f"latest_tag={data.get('latest_upstream_release_tag') or ''}")
+          print(f"tracked_tag={data.get('tracked_release_tag') or ''}")
+          print(f"upstream_repo={data.get('iree_upstream_repo') or ''}")
+          PY
+
+      - name: Check for existing tracking issue
+        if: steps.status.outputs.update_available == 'true'
+        id: issue_check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const latestTag = `${{ steps.status.outputs.latest_tag }}`;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const title = `Track IREE release ${latestTag}`;
+            const q = `repo:${owner}/${repo} is:issue is:open in:title "${title}"`;
+            const result = await github.rest.search.issuesAndPullRequests({ q });
+            core.setOutput("exists", result.data.total_count > 0 ? "true" : "false");
+            core.setOutput("title", title);
+
+      - name: Create tracking issue
+        if: steps.status.outputs.update_available == 'true' && steps.issue_check.outputs.exists != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const latestTag = `${{ steps.status.outputs.latest_tag }}`;
+            const trackedTag = `${{ steps.status.outputs.tracked_tag }}`;
+            const upstreamRepo = `${{ steps.status.outputs.upstream_repo }}`;
+            const title = `Track IREE release ${latestTag}`;
+            const body = [
+              "A newer upstream IREE stable release was detected.",
+              "",
+              `- Upstream repo: \`${upstreamRepo}\``,
+              `- Tracked release: \`${trackedTag}\``,
+              `- Latest release: \`${latestTag}\``,
+              "",
+              "Checklist:",
+              "1. Update `config/upstream_tracking.yaml`.",
+              "2. Update `patches/manifest.env` and `patches/manifest.yaml` pins.",
+              "3. Re-run patch stack apply/verify/drift checks.",
+              "4. Validate host build, RISC-V cross build, and board run workflows.",
+              "",
+              "_Opened automatically by `.github/workflows/release-tracker.yml`._"
+            ].join("\n");
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body
+            });
+
+      - name: No update summary
+        if: steps.status.outputs.update_available != 'true'
+        run: |
+          echo "No new upstream stable IREE release detected."

@@ -1,0 +1,41 @@
+name: PR Fast Checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: pr-fast-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-patch-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Lint scripts and python entrypoints
+        run: |
+          python3 tools/merlin.py ci lint
+
+      - name: Validate upstream tracking config
+        run: |
+          python3 tools/merlin.py release-status --offline --json
+
+      - name: Patch gate
+        run: |
+          python3 tools/merlin.py ci patch-gate
