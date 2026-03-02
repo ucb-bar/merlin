@@ -1,2 +1,3 @@
 
 add_subdirectory(custom_dispatch_ukernels_saturn)
+add_subdirectory(baseline_dual_model_async)
