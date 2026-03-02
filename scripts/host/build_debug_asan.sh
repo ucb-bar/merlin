@@ -17,7 +17,7 @@ export INSTALL_HOST_DIR=${BUILD_HOST_DIR}/install
 REBUILD=0
 if [[ "$*" == *"--rebuild"* ]]; then
     REBUILD=1
-    echo ">> REBUILD MODE ENABLED: Will clean install directory before building"
+    echo ">> REBUILD MODE ENABLED: Will clean whole build directory before building"
 fi
 
 # Check for the fast flag
@@ -36,8 +36,7 @@ echo " Install Dir:  ${INSTALL_HOST_DIR}"
 echo "========================================================"
 
 if [ "${REBUILD}" -eq "1" ]; then
-    rm -rf "${INSTALL_HOST_DIR}"
-    # Note: We don't delete BUILD_HOST_DIR to keep cache, unless strictly requested
+    rm -rf "${BUILD_HOST_DIR}"
 fi
 
 # Ensure build dir exists
@@ -81,6 +80,9 @@ else
     echo " FULL BUILD: Compiling and Installing everything..."
     echo "========================================================"
     cmake --build "${BUILD_HOST_DIR}" --target install
+
+    echo "Building extra LLVM tools..."
+    cmake --build "${BUILD_HOST_DIR}" --target llvm-mca llvm-objdump
 fi
 
 echo "========================================================"
