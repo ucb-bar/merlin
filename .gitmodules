@@ -4,12 +4,9 @@
 [submodule "third_party/shark_ai"]
 	path = third_party/shark_ai
 	url = https://github.com/nod-ai/shark-ai.git
-# [submodule "third_party/saturn_vectors"]
-#	path = third_party/saturn_vectors
-#	url = https://github.com/miles-rusch-berkeley/saturn-vectors.git
 [submodule "third_party/iree_bar"]
 	path = third_party/iree_bar
-	url = https://github.com/copparihollmann/iree.git
+	url = https://github.com/ucb-bar/iree.git
 [submodule "third_party/KernelBench"]
 	path = third_party/KernelBench
 	url = https://github.com/ScalingIntelligence/KernelBench.git
