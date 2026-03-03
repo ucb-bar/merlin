@@ -38,11 +38,21 @@ if(MERLIN_ENABLE_TARGET_GEMMINI)
 endif()
 
 if(MERLIN_ENABLE_TARGET_SATURN)
-  add_subdirectory("${MERLIN_COMPILER_SOURCE_DIR}/plugins/target/Saturn"
-                   "${MERLIN_COMPILER_BINARY_ROOT}/target/Saturn")
+  if(EXISTS "${MERLIN_COMPILER_SOURCE_DIR}/plugins/target/Saturn/CMakeLists.txt")
+    add_subdirectory("${MERLIN_COMPILER_SOURCE_DIR}/plugins/target/Saturn"
+                     "${MERLIN_COMPILER_BINARY_ROOT}/target/Saturn")
+  else()
+    message(WARNING
+      "MERLIN_ENABLE_TARGET_SATURN=ON but target source is missing; skipping.")
+  endif()
 endif()
 
 if(MERLIN_ENABLE_TARGET_SPACEMIT)
-  add_subdirectory("${MERLIN_COMPILER_SOURCE_DIR}/plugins/target/SpacemiT"
-                   "${MERLIN_COMPILER_BINARY_ROOT}/target/SpacemiT")
+  if(EXISTS "${MERLIN_COMPILER_SOURCE_DIR}/plugins/target/SpacemiT/CMakeLists.txt")
+    add_subdirectory("${MERLIN_COMPILER_SOURCE_DIR}/plugins/target/SpacemiT"
+                     "${MERLIN_COMPILER_BINARY_ROOT}/target/SpacemiT")
+  else()
+    message(WARNING
+      "MERLIN_ENABLE_TARGET_SPACEMIT=ON but target source is missing; skipping.")
+  endif()
 endif()
