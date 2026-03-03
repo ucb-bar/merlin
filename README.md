@@ -2,18 +2,19 @@
 
 **Merlin** (**M**L**IR**-**in**) is an end-to-end compiler lowering funnel that connects high-level ML frameworks (PyTorch, ONNX) to custom RISC-V silicon and the [UCB-BAR](https://github.com/ucb-bar) ecosystem via [IREE](https://github.com/openxla/iree).
 
-## Build the repo:
+<p align="center">
+  <img src="docs/assets/merlin_transparent.png" width="400">
+</p>
+
+## Build the repo
 
 ```bash
 conda env create -f env_linux.yml
 conda activate merlin-dev
 
 python tools/setup.py env
-python tools/build.py build --target host --config debug 
+python tools/build.py --target host --config debug 
 ```
-
-
-
 
 ## ⚡ Overview
 
