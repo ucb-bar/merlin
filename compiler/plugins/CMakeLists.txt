@@ -1,1 +1,1 @@
-add_subdirectory()
+iree_add_all_subdirs()
