@@ -1,0 +1,4 @@
+interface:
+  display_name: "Merlin Build"
+  short_description: "Set up and build Merlin for host, spacemit, or firesim targets"
+  default_prompt: "Use this skill to set up the Merlin dev environment and run tools/setup.py and tools/build.py for a requested target/config/plugin combination."
