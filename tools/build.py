@@ -52,14 +52,14 @@ def get_iree_version(iree_src: pathlib.Path) -> str:
 def main(args: argparse.Namespace) -> int:
     # 1. Setup Paths
     iree_src = utils.resolve_repo_path("third_party/iree_bar")
-    plugin_src = utils.REPO_ROOT / "compiler"
+    plugin_src = utils.REPO_ROOT
     
     variant = "merlin" if args.with_plugin else "vanilla"
     version = get_iree_version(iree_src)
     
-    # Structure: build/vanilla/host/debug/iree-host-vanilla-3.10.0
-    output_name = f"iree-{args.target}-{variant}-{version}"
-    build_dir = utils.REPO_ROOT / "build" / variant / args.target / args.config / output_name
+    # Clean structure: build/spacemit-merlin-perf
+    build_name = f"{args.target}-{variant}-{args.config}"
+    build_dir = utils.REPO_ROOT / "build" / build_name
     install_dir = build_dir / "install"
 
     print(f"🔧 Configuration: {args.target} | {args.config} | Plugin: {args.with_plugin}")
@@ -121,7 +121,8 @@ def main(args: argparse.Namespace) -> int:
         cmake_args.extend([
             f"-DCMAKE_BUILD_TYPE={build_type}",
             "-DIREE_ENABLE_ASSERTIONS=ON",
-            "-DCMAKE_CXX_FLAGS=-Wno-error=cpp",
+            "-DCMAKE_CXX_FLAGS=-Wno-error=cpp -fno-omit-frame-pointer -fdebug-types-section -gz=none",
+            "-DCMAKE_C_FLAGS=-fno-omit-frame-pointer -fdebug-types-section -gz=none",
         ])
         if args.config == "perf":
              cmake_args.extend([
@@ -143,6 +144,34 @@ def main(args: argparse.Namespace) -> int:
              cmake_args.append("-DTRACY_NO_POINTER_COMPRESSION=ON")
 
     # 4. Target Specific Logic
+
+    # For cross-compilation targets, we must provide the path to the native host tools.
+    # We ALWAYS use the 'release' build of the host tools for maximum compilation speed.
+    if args.target != "host":
+        # UPDATED: Reconstruct the name to match the flat build/target-variant-config structure
+        # We always check for 'release' config for host tools.
+        primary_host_name = f"host-{variant}-release"
+        fallback_host_name = f"host-vanilla-release"
+        
+        host_variant_bin_dir = utils.REPO_ROOT / "build" / primary_host_name / "install" / "bin"
+        host_vanilla_bin_dir = utils.REPO_ROOT / "build" / fallback_host_name / "install" / "bin"
+
+        host_bin_dir = None
+
+        if host_variant_bin_dir.exists():
+            host_bin_dir = host_variant_bin_dir
+        elif host_vanilla_bin_dir.exists():
+            print(f"ℹ️  Note: Using vanilla host tools from {host_vanilla_bin_dir}")
+            host_bin_dir = host_vanilla_bin_dir
+        
+        if host_bin_dir:
+            cmake_args.append(f"-DIREE_HOST_BIN_DIR={host_bin_dir}")
+        else:
+            # This error message now correctly reflects the paths actually being checked
+            print(f"❌ Error: No host tools found at {host_variant_bin_dir} or {host_vanilla_bin_dir}")
+            print("   Please build host tools first: python3 tools/build.py --target host --config release")
+            return 1
+    
     if args.target == "host":
         cmake_args.extend([
             "-DIREE_TARGET_BACKEND_DEFAULTS=OFF",
@@ -158,7 +187,7 @@ def main(args: argparse.Namespace) -> int:
     elif args.target == "spacemit":
         tc_root = os.environ.get("RISCV_TOOLCHAIN_ROOT")
         if not tc_root:
-            default_tc = utils.REPO_ROOT / "riscv-tools-spacemit" / "spacemit-toolchain-linux-glibc-x86_64-v1.1.2"
+            default_tc = utils.REPO_ROOT / "build_tools" / "riscv-tools-spacemit" / "spacemit-toolchain-linux-glibc-x86_64-v1.1.2"
             if default_tc.exists():
                 tc_root = str(default_tc)
         
@@ -167,6 +196,7 @@ def main(args: argparse.Namespace) -> int:
             return 1
 
         cmake_args.extend([
+            "-DMERLIN_BUILD_SPACEMITX60=ON",
             f"-DCMAKE_TOOLCHAIN_FILE={iree_src}/build_tools/cmake/riscv.toolchain.cmake",
             "-DRISCV_CPU=linux-riscv_64",
             "-DIREE_BUILD_COMPILER=OFF",
@@ -182,12 +212,13 @@ def main(args: argparse.Namespace) -> int:
         ])
 
     elif args.target == "firesim":
-        tc_file = utils.REPO_ROOT / "scripts" / "riscv_firesim" / "riscv_firesim.toolchain.cmake"
+        tc_file = utils.REPO_ROOT / "build_tools" / "firesim" / "riscv_firesim.toolchain.cmake"
         tc_root = os.environ.get("RISCV_TOOLCHAIN_ROOT")
         if not tc_root:
-             tc_root = str(utils.REPO_ROOT / "riscv-tools-iree" / "toolchain" / "clang" / "linux" / "RISCV")
+             tc_root = str(utils.REPO_ROOT / "build_tools" / "riscv-tools-iree" / "toolchain" / "clang" / "linux" / "RISCV")
 
         cmake_args.extend([
+            "-DMERLIN_BUILD_SATURN_OPU=ON",
             f"-DCMAKE_TOOLCHAIN_FILE={tc_file}",
             "-DIREE_BUILD_COMPILER=OFF",
             f"-DRISCV_TOOLCHAIN_ROOT={tc_root}",
