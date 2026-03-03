@@ -1,3 +1,7 @@
+if(MERLIN_BUILD_SPACEMITX60)
+  add_subdirectory(SpacemiTX60)
+endif()
 
-add_subdirectory(custom_dispatch_ukernels_saturn)
-add_subdirectory(baseline_dual_model_async)
+if(MERLIN_BUILD_SATURN_OPU)
+  add_subdirectory(SaturnOPU)
+endif()

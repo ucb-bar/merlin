@@ -17,7 +17,11 @@ static void print_usage(const char* argv0) {
           "  driver     = local-task\n"
           "  report_hz  = 1.0\n"
           "  dronet_sensor_hz = 60.0\n"
-          "  mlp_sensor_hz    = mlp_hz\n",
+          "  mlp_sensor_hz    = mlp_hz\n"
+          "\n"
+          "Notes:\n"
+          "  Functions must be compiled with async-external ABI\n"
+          "  (iree.abi.model = coarse-fences).\n",
           argv0);
 }
 

@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 # ==============================================================================
 # Configuration
@@ -8,6 +9,7 @@ INPUT_FILE="input.mlir"
 
 # The output compiled binary
 OUTPUT_FILE="static_schedule.vmfb"
+DUMP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/phases_input"
 
 # ==============================================================================
 # Compilation
@@ -20,8 +22,8 @@ iree-compile "${INPUT_FILE}" \
   --iree-hal-target-device=device_b=local[1] \
   --iree-hal-target-device=device_ab=local[2] \
   --iree-hal-local-target-device-backends=llvm-cpu \
-  --dump-compilation-phases-to=/scratch2/agustin/merlin/samples/promise_devices_layer/phases_input \
-  -o "${OUTPUT_FILE}" 
+  --dump-compilation-phases-to="${DUMP_DIR}" \
+  -o "${OUTPUT_FILE}"
   #--compile-from=stream
 
 echo "Build complete: ${OUTPUT_FILE}"

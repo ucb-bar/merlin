@@ -15,6 +15,9 @@ extern "C" {
 //   "dronet.main_graph" and "mlp.main_graph".
 // - If both compiled modules are still named "module", rename at compile time
 //   so both can coexist in one session.
+// - Functions must use async-external ABI:
+//   iree.abi.model = "coarse-fences" (compile with
+//   --iree-execution-model=async-external).
 typedef struct merlin_dual_model_runtime_config_t {
   const char* dronet_vmfb_path;
   const char* mlp_vmfb_path;
