@@ -150,7 +150,7 @@ def parse_arguments() -> argparse.Namespace:
 
     default_input = repo_root / "third_party" / "KernelBench" / "KernelBench"
     default_output = script_dir / "results"
-    default_report = Path("/scratch2/agustin/merlin/benchmark/KernelBench/report")
+    default_report = script_dir / "report"
 
     parser.add_argument(
         "--input_base_dir",

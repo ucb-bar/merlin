@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
-IREE_COMPILE="${IREE_COMPILE:-${REPO_ROOT}/build-host/install/bin/iree-compile}"
+IREE_COMPILE="${IREE_COMPILE:-${REPO_ROOT}/build-iree-BAR-host-release/install/bin/iree-compile}"
 OUT_DIR="${OUT_DIR:-${SCRIPT_DIR}/artifacts/vmfb}"
 TARGET="${TARGET:-spacemit-riscv}"  # spacemit-riscv | host
 
