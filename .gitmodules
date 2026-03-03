@@ -10,15 +10,15 @@
 [submodule "third_party/KernelBench"]
 	path = third_party/KernelBench
 	url = https://github.com/ScalingIntelligence/KernelBench.git
-[submodule "samples/models/tinydepth/TinyDepth"]
-	path = samples/models/tinydepth/TinyDepth
-	url = https://github.com/ZYCheng777/TinyDepth.git
-[submodule "samples/models/midas/MiDaS"]
-	path = samples/models/midas/MiDaS
-	url = https://github.com/isl-org/MiDaS.git
-[submodule "samples/models/depth_anything_v2/Depth-Anything-V2"]
-	path = samples/models/depth_anything_v2/Depth-Anything-V2
-	url = https://github.com/DepthAnything/Depth-Anything-V2.git
+[submodule "models/tinydepth/TinyDepth"]
+    path = models/tinydepth/TinyDepth
+    url = https://github.com/ZYCheng777/TinyDepth.git
+[submodule "models/midas/MiDaS"]
+    path = models/midas/MiDaS
+    url = https://github.com/isl-org/MiDaS.git
+[submodule "models/depth_anything_v2/Depth-Anything-V2"]
+    path = models/depth_anything_v2/Depth-Anything-V2
+    url = https://github.com/DepthAnything/Depth-Anything-V2.git
 [submodule "third_party/iree-turbine"]
 	path = third_party/iree-turbine
 	url = https://github.com/iree-org/iree-turbine.git
