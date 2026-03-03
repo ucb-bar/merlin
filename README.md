@@ -2,6 +2,19 @@
 
 **Merlin** (**M**L**IR**-**in**) is an end-to-end compiler lowering funnel that connects high-level ML frameworks (PyTorch, ONNX) to custom RISC-V silicon and the [UCB-BAR](https://github.com/ucb-bar) ecosystem via [IREE](https://github.com/openxla/iree).
 
+## Build the repo:
+
+```bash
+conda env create -f env_linux.yml
+conda activate merlin-dev
+
+python tools/setup.py env
+python tools/build.py build --target host --config debug 
+```
+
+
+
+
 ## ⚡ Overview
 
 Merlin bridges the gap between software models and bare-metal hardware execution. It is designed to support:
@@ -74,15 +87,16 @@ python3 tools/merlin.py release-status --json
 ## Project Structure (Maintained Paths)
 
 - `compiler/`: Merlin-owned compiler/plugin logic.
-- `patches/`: IREE/LLVM patch stack and base commit manifests.
-- `scripts/`: low-level helper scripts (wrapped by `tools/merlin.py`).
+- `patches/`: IREE/LLVM patch stack, manifests, and patch tooling.
+- `scripts/`: build helpers (`scripts/legacy/` is archived reference-only).
 - `tools/`: stable developer/CI entrypoints.
 - `samples/`: runnable runtime examples and sample code.
 - `benchmark/target/<board>/`: deployment + profiling flows per hardware target.
+- `config/`: canonical small config files consumed by `tools/merlin.py` and CI.
 
 Further maintenance/process docs:
 
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md)
 - [docs/architecture/plugin_and_patch_model.md](docs/architecture/plugin_and_patch_model.md)
-- [docs/cmake_presets.md](docs/cmake_presets.md)
+- [docs/architecture/cmake_presets.md](docs/architecture/cmake_presets.md)
