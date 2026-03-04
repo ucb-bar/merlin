@@ -11,6 +11,7 @@ from export_models_torch import print_separator
 from torch.nn.utils.spectral_norm import remove_spectral_norm, SpectralNorm
 from torch.export import export, ExportedProgram
 
+
 # --- MLIR and Turbine Imports ---
 try:
     from torch_mlir.fx import export_and_import as torch_mlir_export
@@ -47,7 +48,6 @@ except ImportError:
 try:
     from torch.ao.quantization import get_default_qconfig_mapping
     from torch.ao.quantization.quantize_fx import prepare_fx, convert_fx
-    from torch.ao.quantization.qconfig_mapping import QConfigMapping
     import torch.ao.quantization
     print("Successfully imported torch.ao.quantization (FX).")
 except ImportError:
@@ -62,6 +62,15 @@ try:
 except ImportError:
     print("Warning: torchao.quantization is not installed. 'torchao' Quantization path will be unavailable.")
     torchao_quant = None
+try:
+    from torchao.quantization.pt2e.quantize_pt2e import prepare_pt2e, convert_pt2e
+    from torchao.quantization.pt2e.quantizer.x86_inductor_quantizer import (
+        X86InductorQuantizer,
+        get_default_x86_inductor_quantization_config,
+    )
+    print("Successfully imported torchao.quantization.pt2e.")
+except ImportError:
+    print("Warning: torchao.quantization.pt2e is not installed. 'torchao pt2e' Quantization path will be unavailable.")
 
 def try_torchao_quantize(model_fp32, results_list): # for other reference: https://docs.pytorch.org/ao/main/eager_tutorials/first_quantization_example.html
     """Attempts to apply torchao INT8 dynamic quantization."""
@@ -126,6 +135,74 @@ def try_torchao_quantize_weights_only(model_fp32, results_list):
         results_list.append({'name': name, 'status': 'FAILED', 'error': error_msg})
         return None
 
+def try_fx_quantize(model_fp32, example_inputs, results_list): # ignore, deprecated, moving to torchao prepare_pt2e and convert_pt2e
+    """uses prepare_fx and convert_fx to quantize the model"""
+    name = f"torch.ao.quantization FX int8 (fbgemm)"
+    print_separator(f"Attempting: {name}")
+
+    if torchao_quant is None:
+        print("FAILED: torchao.quantization is not installed.")
+        results_list.append({'name': name, 'status': 'FAILED', 'error': 'torchao.quantization not installed'})
+        return None
+
+    try:
+        model_to_quant = copy.deepcopy(model_fp32).eval()
+        qconfig_mapping = get_default_qconfig_mapping("fbgemm")
+        prepared = prepare_fx(model_to_quant, qconfig_mapping, example_inputs)
+
+        # Calibration: run a few batches through the prepared model;
+        # i do not understand the point of calibrating on random inputs: https://docs.pytorch.org/docs/stable/generated/torch.ao.quantization.quantize_fx.prepare_fx.html
+        with torch.no_grad():
+            for _ in range(10):
+                prepared(*example_inputs)
+
+        quantized_model = convert_fx(prepared)
+
+        print("torchao quantization successful.")
+        results_list.append({'name': name, 'status': 'SUCCEEDED', 'error': None})
+        return quantized_model
+    except Exception:
+        error_msg = traceback.format_exc()
+        print(f"FAILED:\n{error_msg}")
+        results_list.append({'name': name, 'status': 'FAILED', 'error': error_msg})
+        return None
+
+def try_torchao_pt2e_quantize(model_fp32, example_inputs, results_list):
+    """uses prepare_pt2e and convert_pt2e to quantize the model"""
+    name = f"torchao.quantization PT2E int8 (X86InductorQuantizer())"
+    print_separator(f"Attempting: {name}")
+
+    if torchao_quant is None:
+        print("FAILED: torchao.quantization is not installed.")
+        results_list.append({'name': name, 'status': 'FAILED', 'error': 'torchao.quantization not installed'})
+        return None
+        
+    try:
+        exported_model = torch.export.export(model_fp32, example_inputs).module()
+        quantizer = X86InductorQuantizer() # https://github.com/pytorch/ao/tree/ee3d62aafa90d07f27d03d751be4636ed9801934/torchao/quantization/pt2e/quantizer
+        quantizer.set_global(
+            get_default_x86_inductor_quantization_config()
+            # Optional per-module overrides:
+            # .set_module_name("lstm", None)    # None = skip this module
+        )
+
+        prepared_model = prepare_pt2e(exported_model, quantizer)
+
+        with torch.no_grad():
+            for _ in range(10):
+                prepared_model(*example_inputs)
+        
+        quantized_model = convert_pt2e(prepared_model)
+
+        print("torchao quantization successful.")
+        results_list.append({'name': name, 'status': 'SUCCEEDED', 'error': None})
+        return quantized_model
+    except Exception:
+        error_msg = traceback.format_exc()
+        print(f"FAILED:\n{error_msg}")
+        results_list.append({'name': name, 'status': 'FAILED', 'error': error_msg})
+        return None
+
 def try_torch_onnx_export(model, example_inputs, model_name, model_type, model_output_dir, results_list):
     """Attempts to export model to ONNX"""
     name = f"torch.onnx.export to ONNX ({model_type})"
@@ -171,25 +248,20 @@ def try_turbine_aot_export(model, example_inputs, model_name, model_type, model_
         return
 
     try:
-        model.eval()
-        # Allow torch.typename in the graph so spectral_norm's setattr's typename doesn't cause Dynamo to raise.
-        # If downstream iree fails on the resulting graph then i need to strip spectral norm or something
-        # did not work :skull: torch._dynamo.exc.Unsupported: torch.* op returned non-Tensor Explanation: torch.* ops that return a non-Tensor cannot be traced into the Dynamo FX graph output
-        # torch.compiler.allow_in_graph(torch.typename)
-
-        # turbine_aot.externalize_module_parameters(model)
+        # model.eval()
 
         print(f"Exporting model to {output_path}...")
 
+        # export the model without using dynamo. strict = False
         # with torch.no_grad():
         #     exported = export( # might have to do exported: ExportedProgram = export(model, example_inputs, strict=False)
         #         model,
         #         example_inputs,
         #         strict=False
         #     )
+        # exported_module = turbine_aot.export(exported)
 
         exported_module = turbine_aot.export(model, *example_inputs)
-        # exported_module = turbine_aot.export(exported)
         mlir_str = str(exported_module.mlir_module)
         
         with open(output_path, "w") as f:
@@ -213,7 +285,6 @@ def get_sample_inputs(model_name):
     if model_name == "LSTMNetVIT":
         return (image, velocity, quaternion, h_in, c_in)
     return (image, velocity, quaternion)
-
 
 def get_forward_args_for_export(model_name, sample_inputs):
     if model_name == "LSTMNetVIT":
@@ -252,6 +323,9 @@ def get_model(model_name, checkpoint_path=None):
     return model
 
 def main():
+    if torchao_quant is None:
+        print("FAILED: torchao.quantization is not installed.")
+        return
     parser = argparse.ArgumentParser(
         description="Quantize a VitFly model and export to MLIR."
     )
@@ -266,13 +340,6 @@ def main():
     parser.add_argument(
         "--output_dir", type=str, default="quantize_test_export",
         help="Directory to save the exported files and report."
-    )
-    parser.add_argument(
-        "--quant",
-        type=str,
-        default="torchao_dynamic_int8",
-        choices=["none", "torchao_dynamic_int8", "torchao_int8_weight_only"],
-        help="Quantization mode to apply before export.",
     )
     args = parser.parse_args()
 
@@ -311,10 +378,10 @@ def main():
 
     # # --- Step 3: Apply Quantization (All Paths) ---
     model_int8 = None
-    if args.quant == "torchao_dynamic_int8":
-        model_int8 = try_torchao_quantize(model_fp32, results)
-    elif args.quant == "torchao_int8_weight_only":
-        model_int8 = try_torchao_quantize_weights_only(model_fp32, results)
+    # model_int8 = try_torchao_quantize(model_fp32, results)
+    # model_int8 = try_torchao_quantize_weights_only(model_fp32, results)
+    # model_int8 = try_fx_quantize(model_fp32, forward_args, results)
+    model_int8 = try_torchao_pt2e_quantize(model_fp32, forward_args, results)
 
     # # --- Step 4: Run all export paths on Quantized models ---
     if model_int8 is not None:
