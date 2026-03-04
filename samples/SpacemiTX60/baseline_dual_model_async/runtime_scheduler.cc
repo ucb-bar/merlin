@@ -155,7 +155,8 @@ static iree_status_t ValidateOutputList(iree_vm_list_t* outputs,
     iree_vm_ref_t ref = iree_vm_ref_null();
     IREE_RETURN_IF_ERROR(iree_vm_list_get_ref_assign(outputs, i, &ref));
     const bool is_buffer_view = iree_hal_buffer_view_isa(ref);
-    iree_vm_ref_release(&ref);
+    // TODO: CHECK IF COMMENTING THIS OUT MAKES ANY DIFFERENCE FOR `malloc_consolidate(): unaligned fastbin chunk detected`
+    //iree_vm_ref_release(&ref);
     if (!is_buffer_view) {
       return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                               "output %" PRIu64 " was not a HAL buffer view",
@@ -577,19 +578,27 @@ extern "C" int merlin_dual_model_runtime_run(
         device, IREE_HAL_QUEUE_AFFINITY_ANY, /*initial_value=*/0ull,
         IREE_HAL_SEMAPHORE_FLAG_DEFAULT, &dronet_timeline);
     if (!iree_status_is_ok(status)) break;
+    fprintf(stdout, "Created dronet timeline semaphore.\n");
     status = iree_hal_semaphore_create(
         device, IREE_HAL_QUEUE_AFFINITY_ANY, /*initial_value=*/0ull,
         IREE_HAL_SEMAPHORE_FLAG_DEFAULT, &mlp_timeline);
     if (!iree_status_is_ok(status)) break;
+    fprintf(stdout, "Created mlp timeline semaphore.\n");
 
     dronet_sensor = std::make_unique<PeriodicTensorSensor>(
         "dronet_sensor", dronet_shape, config->dronet_sensor_frequency_hz,
         /*base_value=*/0.01f, /*amplitude=*/1.0f);
+    fprintf(stdout, "Created dronet sensor.\n");
+
     mlp_sensor = std::make_unique<PeriodicTensorSensor>(
         "mlp_sensor", mlp_shape, config->mlp_sensor_frequency_hz,
         /*base_value=*/0.25f, /*amplitude=*/0.5f);
+    fprintf(stdout, "Created mlp sensor.\n");
+
     dronet_sensor->Start();
+    fprintf(stdout, "Started dronet sensor.\n");
     mlp_sensor->Start();
+    fprintf(stdout, "Started mlp sensor.\n");
 
     ModelSubmitContext dronet_submit;
     dronet_submit.function_name = config->dronet_function;

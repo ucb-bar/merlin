@@ -42,8 +42,8 @@ int main(int argc, char** argv) {
   double mlp_hz = (argc >= 4) ? parse_double_or_default(argv[3], 20.0) : 20.0;
   double duration_s =
       (argc >= 5) ? parse_double_or_default(argv[4], 10.0) : 10.0;
-  const char* dronet_fn = (argc >= 6) ? argv[5] : "dronet.main_graph";
-  const char* mlp_fn = (argc >= 7) ? argv[6] : "mlp.main_graph";
+  const char* dronet_fn = (argc >= 6) ? argv[5] : "dronet.main_graph$async";
+  const char* mlp_fn = (argc >= 7) ? argv[6] : "mlp.main_graph$async";
   const char* driver_name = (argc >= 8) ? argv[7] : "local-task";
   double report_hz = (argc >= 9) ? parse_double_or_default(argv[8], 1.0) : 1.0;
   double dronet_sensor_hz =
