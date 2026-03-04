@@ -21,17 +21,18 @@ static void print_usage(const char* argv0) {
   fprintf(stderr,
           "Usage:\n"
           "  %s <dispatch_graph.json> [driver] [graph_iters] [dispatch_iters] "
-          "[report_every]\n"
+          "[report_every] [warmup_graph_iters]\n"
           "\n"
           "Defaults:\n"
           "  driver    = local-task\n"
           "  graph_iters    = 1\n"
           "  dispatch_iters = 1 (passed as i32 arg to each dispatch stub)\n"
           "  report_every = 0 (only print final summary)\n"
+          "  warmup_graph_iters = 0 (excluded from metrics)\n"
           "\n"
           "Notes:\n"
-          "  Executes per-dispatch benchmark VMFBs in dependency order as\n"
-          "  described by the JSON file produced from the dispatch .dot.\n",
+          "  Preloads all per-dispatch benchmark VMFBs and prepares their sessions\n"
+          "  once, then times only the dispatch executions in dependency order.\n",
           argv0);
 }
 
@@ -252,10 +253,16 @@ typedef struct dispatch_node_t {
   char** deps;       // array of keys this depends on
   size_t dep_count;
   invocation_stats_t stats;
+  // Prepared execution state (constructed once before timing).
+  iree_runtime_session_t* session;
+  iree_vm_function_t entry_fn;
+  iree_vm_list_t* inputs;  // contains the dispatch_iters i32
 } dispatch_node_t;
 
 static void dispatch_node_deinit(dispatch_node_t* n) {
   if (!n) return;
+  iree_vm_list_release(n->inputs);
+  iree_runtime_session_release(n->session);
   free(n->key);
   free(n->vmfb_path);
   for (size_t i = 0; i < n->dep_count; ++i) free(n->deps[i]);
@@ -640,57 +647,56 @@ static iree_status_t pick_dispatch_entry_function(iree_vm_module_t* module,
       module, IREE_VM_FUNCTION_LINKAGE_EXPORT, 0, out_fn);
 }
 
-static iree_status_t run_dispatch_vmfb_once(iree_runtime_instance_t* instance,
-                                            iree_hal_device_t* device,
-                                            const char* vmfb_path,
-                                            int32_t dispatch_iters,
-                                             iree_allocator_t host_allocator) {
-  iree_status_t status = iree_ok_status();
-  iree_runtime_session_t* session = NULL;
+static iree_status_t prepare_dispatch_session(iree_runtime_instance_t* instance,
+                                              iree_hal_device_t* device,
+                                              dispatch_node_t* node,
+                                              int32_t dispatch_iters,
+                                              iree_allocator_t host_allocator) {
+  IREE_ASSERT_ARGUMENT(instance);
+  IREE_ASSERT_ARGUMENT(device);
+  IREE_ASSERT_ARGUMENT(node);
+  IREE_ASSERT_ARGUMENT(node->vmfb_path);
+
+  // Ensure idempotent cleanup if called on a partially prepared node.
+  iree_vm_list_release(node->inputs);
+  node->inputs = NULL;
+  iree_runtime_session_release(node->session);
+  node->session = NULL;
+  node->entry_fn = (iree_vm_function_t){0};
 
   iree_runtime_session_options_t session_options;
   iree_runtime_session_options_initialize(&session_options);
-  status = iree_runtime_session_create_with_device(instance, &session_options,
-                                                   device, host_allocator,
-                                                   &session);
-  if (!iree_status_is_ok(status)) goto cleanup;
+  IREE_RETURN_IF_ERROR(iree_runtime_session_create_with_device(
+      instance, &session_options, device, host_allocator, &node->session));
 
-  status = iree_runtime_session_append_bytecode_module_from_file(session,
-                                                                 vmfb_path);
-  if (!iree_status_is_ok(status)) goto cleanup;
+  IREE_RETURN_IF_ERROR(iree_runtime_session_append_bytecode_module_from_file(
+      node->session, node->vmfb_path));
 
-  iree_vm_context_t* ctx = iree_runtime_session_context(session);
+  iree_vm_context_t* ctx = iree_runtime_session_context(node->session);
   const iree_host_size_t module_count = iree_vm_context_module_count(ctx);
   if (module_count == 0) {
-    status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                              "session context had 0 modules");
-    goto cleanup;
+    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                            "session context had 0 modules");
   }
   iree_vm_module_t* module = iree_vm_context_module_at(ctx, module_count - 1);
 
-  iree_vm_function_t entry_fn;
-  status = pick_dispatch_entry_function(module, &entry_fn);
-  if (!iree_status_is_ok(status)) goto cleanup;
+  IREE_RETURN_IF_ERROR(pick_dispatch_entry_function(module, &node->entry_fn));
 
-  iree_vm_list_t* inputs = NULL;
-  status = iree_vm_list_create(iree_vm_make_undefined_type_def(),
-                               /*initial_capacity=*/1, host_allocator, &inputs);
-  if (!iree_status_is_ok(status)) goto cleanup;
+  IREE_RETURN_IF_ERROR(iree_vm_list_create(iree_vm_make_undefined_type_def(),
+                                          /*initial_capacity=*/1, host_allocator,
+                                          &node->inputs));
   iree_vm_value_t v = iree_vm_value_make_i32(dispatch_iters);
-  status = iree_vm_list_push_value(inputs, &v);
-  if (!iree_status_is_ok(status)) {
-    iree_vm_list_release(inputs);
-    goto cleanup;
-  }
+  IREE_RETURN_IF_ERROR(iree_vm_list_push_value(node->inputs, &v));
 
-  status = iree_runtime_session_call(session, &entry_fn, inputs,
-                                     /*output_list=*/NULL);
-  iree_vm_list_release(inputs);
-  if (!iree_status_is_ok(status)) goto cleanup;
+  return iree_ok_status();
+}
 
-cleanup:
-  iree_runtime_session_release(session);
-  return status;
+static iree_status_t execute_prepared_dispatch(dispatch_node_t* node) {
+  IREE_ASSERT_ARGUMENT(node);
+  IREE_ASSERT_ARGUMENT(node->session);
+  IREE_ASSERT_ARGUMENT(node->inputs);
+  return iree_runtime_session_call(node->session, &node->entry_fn, node->inputs,
+                                  /*output_list=*/NULL);
 }
 
 int main(int argc, char** argv) {
@@ -705,6 +711,8 @@ int main(int argc, char** argv) {
   const int dispatch_iters =
       (argc >= 5) ? parse_int_or_default(argv[4], 1) : 1;
   const int report_every = (argc >= 6) ? parse_int_or_default(argv[5], 0) : 0;
+  const int warmup_graph_iters =
+      (argc >= 7) ? parse_int_or_default(argv[6], 0) : 0;
 
   dispatch_node_t* nodes = NULL;
   size_t node_count = 0;
@@ -723,8 +731,10 @@ int main(int argc, char** argv) {
           "  driver       = %s\n"
           "  graph_iters  = %d\n"
           "  dispatch_iters = %d\n"
-          "  report_every = %d\n",
-          json_path, driver_name, graph_iters, dispatch_iters, report_every);
+          "  report_every = %d\n"
+          "  warmup_graph_iters = %d\n",
+          json_path, driver_name, graph_iters, dispatch_iters, report_every,
+          warmup_graph_iters);
   fflush(stdout);
 
   if (!parse_dispatch_graph_json(json_path, &nodes, &node_count)) {
@@ -756,21 +766,40 @@ int main(int argc, char** argv) {
       instance, iree_make_cstring_view(driver_name), &device);
   if (!iree_status_is_ok(status)) goto cleanup;
 
+  // Prepare all sessions/functions/inputs before measuring.
+  for (size_t oi = 0; oi < order_count; ++oi) {
+    dispatch_node_t* n = &nodes[order[oi]];
+    if (!n->vmfb_path) {
+      status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "node %s missing vmfb_path", n->key);
+      goto cleanup;
+    }
+    status = prepare_dispatch_session(instance, device, n, (int32_t)dispatch_iters,
+                                     host_allocator);
+    if (!iree_status_is_ok(status)) {
+      fprintf(stderr, "Failed to prepare %s from %s\n", n->key, n->vmfb_path);
+      goto cleanup;
+    }
+  }
+
+  // Optional warmup (excluded from stats/timing).
+  for (int wi = 0; wi < warmup_graph_iters; ++wi) {
+    for (size_t oi = 0; oi < order_count; ++oi) {
+      dispatch_node_t* n = &nodes[order[oi]];
+      status = execute_prepared_dispatch(n);
+      if (!iree_status_is_ok(status)) goto cleanup;
+    }
+  }
+
   const uint64_t run_start_ns = now_monotonic_ns();
   for (int gi = 0; gi < graph_iters; ++gi) {
     for (size_t oi = 0; oi < order_count; ++oi) {
       dispatch_node_t* n = &nodes[order[oi]];
-      if (!n->vmfb_path) {
-        status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                                  "node %s missing vmfb_path", n->key);
-        goto cleanup;
-      }
       const uint64_t t0 = now_monotonic_ns();
-      status = run_dispatch_vmfb_once(instance, device, n->vmfb_path,
-                                      (int32_t)dispatch_iters, host_allocator);
+      status = execute_prepared_dispatch(n);
       const uint64_t t1 = now_monotonic_ns();
       stats_update(&n->stats, t1 - t0);
-    if (!iree_status_is_ok(status)) goto cleanup;
+      if (!iree_status_is_ok(status)) goto cleanup;
     }
 
     if (report_every > 0 && ((gi + 1) % report_every) == 0) {
