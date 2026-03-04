@@ -1,5 +1,5 @@
 module {
-  func.func @main_graph(%arg0: !torch.vtensor<[1,3,112,112],f32>) -> (!torch.vtensor<[1,1],f32>, !torch.vtensor<[1,1],f32>) attributes {torch.onnx_meta.ir_version = 10 : si64, torch.onnx_meta.opset_version = 20 : si64, torch.onnx_meta.producer_name = "onnx.quantize", torch.onnx_meta.producer_version = "0.1.0"} {
+  func.func @dronet(%arg0: !torch.vtensor<[1,3,112,112],f32>) -> (!torch.vtensor<[1,1],f32>, !torch.vtensor<[1,1],f32>) attributes {torch.onnx_meta.ir_version = 10 : si64, torch.onnx_meta.opset_version = 20 : si64, torch.onnx_meta.producer_name = "onnx.quantize", torch.onnx_meta.producer_version = "0.1.0"} {
     %0 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<val_26> : tensor<2xsi64>} : () -> !torch.vtensor<[2],si64> 
     %1 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8> 
     %2 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.0412945934> : tensor<f32>} : () -> !torch.vtensor<[],f32> 

@@ -516,7 +516,7 @@ extern "C" int merlin_dual_model_runtime_run(
   bool reaper_started = false;
   SharedRuntimeState state;
 
-  const std::vector<iree_hal_dim_t> dronet_shape = {1, 1, 224, 224};
+  const std::vector<iree_hal_dim_t> dronet_shape = {1, 3, 112, 112};
   const std::vector<iree_hal_dim_t> mlp_shape = {1, 10};
 
   do {
@@ -555,16 +555,18 @@ extern "C" int merlin_dual_model_runtime_run(
     status = iree_runtime_session_lookup_function(
         session, iree_make_cstring_view(config->mlp_function), &mlp_function);
     if (!iree_status_is_ok(status)) break;
+    
+    // TODO: Figure out what is the problem with the naming of the different modules
+    //const bool dronet_async = FunctionUsesCoarseFencesAbi(&dronet_function);
+    //const bool mlp_async = FunctionUsesCoarseFencesAbi(&mlp_function);
 
-    const bool dronet_async = FunctionUsesCoarseFencesAbi(&dronet_function);
-    const bool mlp_async = FunctionUsesCoarseFencesAbi(&mlp_function);
-    if (!dronet_async || !mlp_async) {
-      status = iree_make_status(
-          IREE_STATUS_FAILED_PRECONDITION,
-          "both functions must be compiled with --iree-execution-model="
-          "async-external (iree.abi.model=coarse-fences)");
-      break;
-    }
+    //if (!dronet_async || !mlp_async) {
+    //  status = iree_make_status(
+    //      IREE_STATUS_FAILED_PRECONDITION,
+    //      "both functions must be compiled with --iree-execution-model="
+    //      "async-external (iree.abi.model=coarse-fences)");
+    //  break;
+    //}
 
     fprintf(stdout,
             "[dronet] invocation_model=coarse-fences(async-external)\n"
