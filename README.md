@@ -13,7 +13,7 @@ conda env create -f env_linux.yml
 conda activate merlin-dev
 
 python tools/setup.py env
-python tools/build.py --target host --config debug 
+python tools/build.py --target host --config release 
 ```
 
 ## ⚡ Overview
