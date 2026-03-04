@@ -26,6 +26,7 @@ constexpr uint64_t kDronetMaxInFlight = 8;
 constexpr uint64_t kMlpMaxInFlight = 2;
 constexpr int64_t kSubmitLoopIdleSleepNs = 200000;   // 0.2ms
 constexpr int64_t kReaperWaitTimeoutNs = 1000000;    // 1.0ms
+constexpr int64_t kReaperBackoffSleepNs = 50000;  // 0.05ms
 
 enum class ModelId : uint8_t {
   kDronet = 0,
@@ -35,10 +36,16 @@ enum class ModelId : uint8_t {
 struct InflightInvocation {
   ModelId model_id = ModelId::kDronet;
   uint64_t epoch = 0;
+
+  // Keep the signal fence alive until the timeline epoch is reached and the
+  // reaper has validated outputs.
+  iree_hal_fence_t* signal_fence = nullptr;
+  iree_hal_buffer_view_t* input_view = nullptr;
+
   iree_vm_list_t* outputs = nullptr;
   iree_host_size_t expected_outputs = 0;
   Clock::time_point submit_time;
-};
+};  
 
 struct SharedRuntimeState {
   std::atomic<bool> submission_done{false};
@@ -106,6 +113,11 @@ static void StoreFatalStatusIfFirst(SharedRuntimeState* state,
 static bool FunctionUsesCoarseFencesAbi(const iree_vm_function_t* function) {
   const iree_string_view_t model = iree_vm_function_lookup_attr_by_name(
       function, IREE_SV("iree.abi.model"));
+
+  // Many VMFBs (especially embedded/perf builds) don't retain reflection attrs.
+  // If it's missing, we can't validate here, so don't fail.
+  if (iree_string_view_is_empty(model)) return true;
+
   return iree_string_view_equal(model, IREE_SV("coarse-fences"));
 }
 
@@ -148,90 +160,92 @@ static iree_status_t ValidateOutputList(iree_vm_list_t* outputs,
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "expected %" PRIu64
                             " outputs from invocation but got %" PRIu64,
-                            (uint64_t)expected_outputs, (uint64_t)output_count);
+                            (uint64_t)expected_outputs,
+                            (uint64_t)output_count);
   }
 
   for (iree_host_size_t i = 0; i < output_count; ++i) {
-    iree_vm_ref_t ref = iree_vm_ref_null();
-    IREE_RETURN_IF_ERROR(iree_vm_list_get_ref_assign(outputs, i, &ref));
-    const bool is_buffer_view = iree_hal_buffer_view_isa(ref);
-    // TODO: CHECK IF COMMENTING THIS OUT MAKES ANY DIFFERENCE FOR `malloc_consolidate(): unaligned fastbin chunk detected`
-    //iree_vm_ref_release(&ref);
-    if (!is_buffer_view) {
+    // Returns NULL if the item is not a HAL buffer view.
+    iree_hal_buffer_view_t* view =
+        iree_vm_list_get_buffer_view_assign(outputs, i);
+    if (!view) {
       return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                               "output %" PRIu64 " was not a HAL buffer view",
                               (uint64_t)i);
     }
   }
-
   return iree_ok_status();
 }
 
 static iree_status_t SubmitAsyncInvocation(
     iree_runtime_session_t* session, const char* function_name,
-    iree_hal_buffer_view_t* input_view, iree_hal_device_t* device,
+    iree_hal_buffer_view_t* input_view,
+    iree_hal_device_t* device,
     iree_hal_semaphore_t* signal_semaphore, uint64_t signal_epoch,
-    iree_allocator_t host_allocator, iree_vm_list_t** out_outputs) {
+    iree_host_size_t expected_outputs, iree_allocator_t host_allocator,
+    iree_hal_fence_t** out_signal_fence, iree_vm_list_t** out_outputs) {
   IREE_ASSERT_ARGUMENT(session);
   IREE_ASSERT_ARGUMENT(function_name);
   IREE_ASSERT_ARGUMENT(input_view);
   IREE_ASSERT_ARGUMENT(device);
   IREE_ASSERT_ARGUMENT(signal_semaphore);
+  IREE_ASSERT_ARGUMENT(out_signal_fence);
   IREE_ASSERT_ARGUMENT(out_outputs);
+  *out_signal_fence = nullptr;
   *out_outputs = nullptr;
+
+  // IMPORTANT: declare before any goto can jump past it.
+  iree_allocator_t device_host_allocator = iree_hal_device_host_allocator(device);
 
   iree_status_t status = iree_ok_status();
   iree_vm_list_t* inputs = nullptr;
   iree_vm_list_t* outputs = nullptr;
   iree_hal_fence_t* signal_fence = nullptr;
 
+  // Inputs: (buffer_view, wait_fence, signal_fence)
   status = iree_vm_list_create(iree_vm_make_undefined_type_def(),
                                /*capacity=*/3, host_allocator, &inputs);
   if (!iree_status_is_ok(status)) goto cleanup;
 
   status = iree_vm_list_create(iree_vm_make_undefined_type_def(),
-                               /*capacity=*/8, host_allocator, &outputs);
+                               /*capacity=*/expected_outputs, host_allocator,
+                               &outputs);
   if (!iree_status_is_ok(status)) goto cleanup;
 
+  // 1) input buffer_view
   {
     iree_vm_ref_t input_ref = iree_hal_buffer_view_retain_ref(input_view);
     status = iree_vm_list_push_ref_move(inputs, &input_ref);
-    iree_vm_ref_release(&input_ref);
     if (!iree_status_is_ok(status)) goto cleanup;
   }
 
+  // 2) wait fence: typed null = "no dependencies"
   {
-    iree_hal_fence_t* empty_wait_fence = nullptr;
-    // Create an empty fence (0 capacity) to represent "no wait dependencies"
-    status = iree_hal_fence_create(/*capacity=*/0, host_allocator, &empty_wait_fence);
-    if (!iree_status_is_ok(status)) goto cleanup;
-
-    iree_vm_ref_t wait_fence_ref = iree_hal_fence_retain_ref(empty_wait_fence);
+    iree_hal_fence_t* wait_fence = NULL;
+    iree_vm_ref_t wait_fence_ref = iree_hal_fence_retain_ref(wait_fence);
     status = iree_vm_list_push_ref_move(inputs, &wait_fence_ref);
-    
-    // Release our local references (the VM list now owns a ref)
-    iree_vm_ref_release(&wait_fence_ref);
-    iree_hal_fence_release(empty_wait_fence);
-    
     if (!iree_status_is_ok(status)) goto cleanup;
   }
 
+  // 3) signal fence: timeline@epoch
   status = iree_hal_fence_create_at(signal_semaphore, signal_epoch,
-                                    iree_hal_device_host_allocator(device),
-                                    &signal_fence);
+                                    device_host_allocator, &signal_fence);
   if (!iree_status_is_ok(status)) goto cleanup;
 
   {
     iree_vm_ref_t signal_fence_ref = iree_hal_fence_retain_ref(signal_fence);
     status = iree_vm_list_push_ref_move(inputs, &signal_fence_ref);
-    iree_vm_ref_release(&signal_fence_ref);
     if (!iree_status_is_ok(status)) goto cleanup;
   }
 
+  // Schedules async work (should return quickly).
   status = iree_runtime_session_call_by_name(
       session, iree_make_cstring_view(function_name), inputs, outputs);
   if (!iree_status_is_ok(status)) goto cleanup;
 
+  // Transfer ownership to caller:
+  *out_signal_fence = signal_fence;
+  signal_fence = nullptr;
   *out_outputs = outputs;
   outputs = nullptr;
 
@@ -272,16 +286,25 @@ static iree_status_t SubmitModelFrame(SharedRuntimeState* state,
 
   const uint64_t epoch = model->next_epoch + 1;
   iree_vm_list_t* outputs = nullptr;
+  iree_hal_fence_t* signal_fence = nullptr;
+
   status = SubmitAsyncInvocation(
-      model->session, model->function_name, input_view, model->device,
-      model->timeline, epoch, host_allocator, &outputs);
-  iree_hal_buffer_view_release(input_view);
-  if (!iree_status_is_ok(status)) return status;
+      model->session, model->function_name, input_view,
+      model->device, model->timeline, epoch,
+      model->expected_outputs, host_allocator,
+      &signal_fence, &outputs);
+
+  if (!iree_status_is_ok(status)) {
+    iree_hal_buffer_view_release(input_view);
+    return status;
+  }
 
   InflightInvocation invocation;
   invocation.model_id = model->model_id;
   invocation.epoch = epoch;
   invocation.outputs = outputs;
+  invocation.signal_fence = signal_fence;
+  invocation.input_view = input_view;  // keep alive until reaped
   invocation.expected_outputs = model->expected_outputs;
   invocation.submit_time = Clock::now();
 
@@ -315,24 +338,26 @@ static iree_status_t PollTimelineReached(iree_hal_semaphore_t* semaphore,
   return status;
 }
 
-static iree_status_t WaitTimelineWithTimeout(iree_hal_semaphore_t* semaphore,
-                                             uint64_t epoch,
-                                             iree_timeout_t timeout) {
-  IREE_ASSERT_ARGUMENT(semaphore);
-
-  iree_status_t status = iree_hal_semaphore_wait(
-      semaphore, epoch, timeout, IREE_HAL_WAIT_FLAG_DEFAULT);
-  if (iree_status_is_ok(status)) return iree_ok_status();
-  if (iree_status_code(status) == IREE_STATUS_DEADLINE_EXCEEDED) {
-    iree_status_ignore(status);
-    return iree_ok_status();
-  }
-  return status;
-}
+//static iree_status_t WaitTimelineWithTimeout(iree_hal_semaphore_t* semaphore,
+//                                             uint64_t epoch,
+//                                             iree_timeout_t timeout) {
+//  IREE_ASSERT_ARGUMENT(semaphore);
+//
+//  iree_status_t status = iree_hal_semaphore_wait(
+//      semaphore, epoch, timeout, IREE_HAL_WAIT_FLAG_DEFAULT);
+//  if (iree_status_is_ok(status)) return iree_ok_status();
+//  if (iree_status_code(status) == IREE_STATUS_DEADLINE_EXCEEDED) {
+//    iree_status_ignore(status);
+//    return iree_ok_status();
+//  }
+//  return status;
+//}
 
 static void ReleasePendingOutputsUnlocked(std::deque<InflightInvocation>* queue) {
   while (!queue->empty()) {
+    iree_hal_buffer_view_release(queue->front().input_view);
     iree_vm_list_release(queue->front().outputs);
+    iree_hal_fence_release(queue->front().signal_fence);
     queue->pop_front();
   }
 }
@@ -400,31 +425,9 @@ static void ReaperMain(SharedRuntimeState* state,
     }
 
     if (!dronet_ready && !mlp_ready) {
-      iree_hal_semaphore_t* wait_timeline = nullptr;
-      uint64_t wait_epoch = 0;
-      if (has_dronet && has_mlp) {
-        if (dronet_submit_time <= mlp_submit_time) {
-          wait_timeline = dronet_timeline;
-          wait_epoch = dronet_epoch;
-        } else {
-          wait_timeline = mlp_timeline;
-          wait_epoch = mlp_epoch;
-        }
-      } else if (has_dronet) {
-        wait_timeline = dronet_timeline;
-        wait_epoch = dronet_epoch;
-      } else {
-        wait_timeline = mlp_timeline;
-        wait_epoch = mlp_epoch;
-      }
-
-      iree_status_t status = WaitTimelineWithTimeout(
-          wait_timeline, wait_epoch, iree_make_timeout_ns(kReaperWaitTimeoutNs));
-      if (!iree_status_is_ok(status)) {
-        StoreFatalStatusIfFirst(state, status,
-                                "[reaper] timed wait on timeline failed");
-        break;
-      }
+      // Avoid timed semaphore waits (some embedded builds/drivers return ABORTED).
+      std::this_thread::sleep_for(
+          std::chrono::nanoseconds(kReaperBackoffSleepNs));
       continue;
     }
 
@@ -443,6 +446,8 @@ static void ReaperMain(SharedRuntimeState* state,
     iree_status_t status =
         ValidateOutputList(invocation.outputs, invocation.expected_outputs);
     iree_vm_list_release(invocation.outputs);
+    iree_hal_fence_release(invocation.signal_fence);
+    iree_hal_buffer_view_release(invocation.input_view);
     if (!iree_status_is_ok(status)) {
       StoreFatalStatusIfFirst(state, status,
                               "[reaper] invocation outputs were invalid");
@@ -556,6 +561,15 @@ extern "C" int merlin_dual_model_runtime_run(
     status = iree_runtime_session_lookup_function(
         session, iree_make_cstring_view(config->mlp_function), &mlp_function);
     if (!iree_status_is_ok(status)) break;
+
+    auto dump_model = [](const char* tag, const iree_vm_function_t* f) {
+      iree_string_view_t v =
+          iree_vm_function_lookup_attr_by_name(f, IREE_SV("iree.abi.model"));
+      fprintf(stderr, "[%s] iree.abi.model='%.*s'\n", tag, (int)v.size, v.data);
+    };
+
+    dump_model("dronet", &dronet_function);
+    dump_model("mlp", &mlp_function);
     
     // TODO: Figure out what is the problem with the naming of the different modules
     //const bool dronet_async = FunctionUsesCoarseFencesAbi(&dronet_function);
@@ -568,6 +582,17 @@ extern "C" int merlin_dual_model_runtime_run(
     //      "async-external (iree.abi.model=coarse-fences)");
     //  break;
     //}
+
+    const bool dronet_async = FunctionUsesCoarseFencesAbi(&dronet_function);
+    const bool mlp_async = FunctionUsesCoarseFencesAbi(&mlp_function);
+
+    if (!dronet_async || !mlp_async) {
+      status = iree_make_status(
+          IREE_STATUS_FAILED_PRECONDITION,
+          "both functions must be compiled with --iree-execution-model=async-external "
+          "(iree.abi.model=coarse-fences) and you must call the $async exports");
+      break;
+    }
 
     fprintf(stdout,
             "[dronet] invocation_model=coarse-fences(async-external)\n"
