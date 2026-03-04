@@ -1,23 +1,45 @@
-// compiler/src/merlin/Dialect/Gemmini/RegisterGemmini.cpp
+// Copyright 2026 UCB-BAR
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "merlin/Dialect/Gemmini/RegisterGemmini.h"
 #include "merlin/Dialect/Gemmini/IR/GemminiDialect.h"
 
-// Include the translation header we moved to Target/
-#include "merlin/Target/LLVMIR/Dialect/Gemmini/GemminiToLLVMIRTranslation.h"
-
 using namespace mlir;
+
+// Forward declarations for pass factory/registration functions
+// (defined in Transforms/*.cpp under namespace mlir::merlin)
+namespace mlir {
+namespace merlin {
+std::unique_ptr<Pass> createLowerLinalgToGemminiPass();
+std::unique_ptr<Pass> createLowerGemminiPass();
+void registerLowerLinalgToGemminiPass();
+void registerLowerGemminiPass();
+void registerGemminiIRDumpsPass();
+} // namespace merlin
+} // namespace mlir
 
 namespace merlin {
 namespace gemmini {
 
 void registerGemminiDialect(DialectRegistry &registry) {
-  // 1. Insert the Dialect itself (this calls GemminiDialect::initialize via hook)
+  // GemminiDialect lives in ::merlin::gemmini (from generated .inc files)
   registry.insert<GemminiDialect>();
+}
 
-  // 2. Add the interface that allows Gemmini ops to be translated to LLVM IR
-  //    (This calls the function from GemminiToLLVMIRTranslation.cpp)
-  merlin::registerGemminiDialectTranslation(registry);
+void registerGemminiPasses() {
+  mlir::merlin::registerLowerLinalgToGemminiPass();
+  mlir::merlin::registerLowerGemminiPass();
+  mlir::merlin::registerGemminiIRDumpsPass();
+}
+
+std::unique_ptr<Pass> createConvertLinalgToGemminiPass() {
+  return mlir::merlin::createLowerLinalgToGemminiPass();
+}
+
+std::unique_ptr<Pass> createLowerGemminiPass() {
+  return mlir::merlin::createLowerGemminiPass();
 }
 
 } // namespace gemmini

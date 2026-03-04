@@ -3,39 +3,104 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# 1. Define a library for the plugin registration code.
-#    This compiles PluginRegistration.cpp.
-add_library(MerlinGemminiPluginRegistration STATIC
-  PluginRegistration.cpp
+# ============================================================================
+# All Gemmini dialect + passes + plugin registration are built in this single
+# CMake scope so that iree_cc_library :: target references resolve correctly.
+#
+# Source files live under compiler/src/merlin/Dialect/Gemmini/ per the
+# Merlin repo convention.  We reference them here using absolute paths.
+# ============================================================================
+
+set(_GEMMINI_SRC_DIR "${MERLIN_COMPILER_SOURCE_DIR}/src/merlin/Dialect/Gemmini")
+
+# --- Gemmini Dialect IR Library ---
+iree_cc_library(
+  NAME
+    IR
+  SRCS
+    "${_GEMMINI_SRC_DIR}/IR/GemminiDialect.cpp"
+  DEPS
+    MLIRFuncDialect
+    MLIRIR
+    MLIRLLVMDialect
+    MLIRSideEffectInterfaces
+  PUBLIC
 )
 
-# 2. Link against the necessary dependencies.
-#    - IREECompilerPluginAPI: Required for the plugin system.
-#    - MerlinDialectGemminiRegistration: Your library that registers the Dialect & LLVM Translation.
-#    - MerlinDialectGemminiTransforms: Your library containing the passes (Linalg->Gemmini, etc).
-target_link_libraries(MerlinGemminiPluginRegistration
+# --- Gemmini Transforms / Passes Library ---
+iree_cc_library(
+  NAME
+    Transforms
+  SRCS
+    "${_GEMMINI_SRC_DIR}/Transforms/LegalizeForLLVMExport.cpp"
+    "${_GEMMINI_SRC_DIR}/Transforms/LowerLinalgToGemmini.cpp"
+    "${_GEMMINI_SRC_DIR}/Transforms/LowerGemminiPass.cpp"
+    "${_GEMMINI_SRC_DIR}/Transforms/GemminiIRDumps.cpp"
+  DEPS
+    ::IR
+    MLIRArithDialect
+    MLIRArithToLLVM
+    MLIRBufferizationTransforms
+    MLIRFuncDialect
+    MLIRFuncToLLVM
+    MLIRIR
+    MLIRLinalgDialect
+    MLIRLLVMCommonConversion
+    MLIRLLVMDialect
+    MLIRMemRefDialect
+    MLIRMemRefToLLVM
+    MLIRPass
+    MLIRSCFDialect
+    MLIRTransforms
+    MLIRVectorDialect
   PUBLIC
-    IREECompilerPluginAPI
-    MerlinDialectGemminiRegistration
-    MerlinDialectGemminiTransforms
+)
+
+# --- Gemmini Registration Library ---
+iree_cc_library(
+  NAME
+    GemminiRegistration
+  SRCS
+    "${_GEMMINI_SRC_DIR}/RegisterGemmini.cpp"
+  DEPS
+    ::IR
+    ::Transforms
     MLIRIR
     MLIRPass
+  PUBLIC
 )
 
-# 3. Add the include directory for your Merlin source tree.
-#    This allows PluginRegistration.cpp to include "merlin/Dialect/Gemmini/..."
-target_include_directories(MerlinGemminiPluginRegistration
-  PRIVATE
-    "${MERLIN_SOURCE_DIR}/compiler/src"
+# --- Plugin Entry Point ---
+iree_cc_library(
+  NAME
+    registration
+  SRCS
+    "PluginRegistration.cpp"
+  DEPS
+    ::GemminiRegistration
+    ::IR
+    ::Transforms
+    iree::compiler::PluginAPI
+    MLIRIR
+    MLIRPass
+  PUBLIC
 )
 
-# 4. Register the plugin with the IREE compiler system.
-#    - PLUGIN_ID: Must match the name used in your C++ code:
-#                 registrar->registerPlugin<GemminiSession>("merlin_gemmini");
-#    - TARGET: The library defined above.
 iree_compiler_register_plugin(
   PLUGIN_ID
     merlin_gemmini
   TARGET
-    MerlinGemminiPluginRegistration
+    ::registration
+)
+
+iree_lit_test_suite(
+  NAME
+    test
+  SRCS
+    "test/gemmini_matmul_lowering.mlir"
+  TOOLS
+    FileCheck
+    iree-compile
+  LABELS
+    "hostonly"
 )
