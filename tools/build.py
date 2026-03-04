@@ -244,6 +244,9 @@ def main(args: argparse.Namespace) -> int:
             "-DMERLIN_ENABLE_TARGET_GEMMINI=ON",
             "-DMERLIN_ENABLE_TARGET_SATURN=ON",
             "-DMERLIN_ENABLE_TARGET_SPACEMIT=ON",
+            # Disable the in-tree IREE fork's gemmini plugin so that
+            # the Merlin-provided merlin_gemmini plugin is used instead.
+            "-DIREE_GEMMINI_EXTERNAL_PLUGIN=ON",
         ])
 
     # 6. Configure & Build Main Target

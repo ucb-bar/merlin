@@ -12,10 +12,10 @@ set(MERLIN_COMPILER_BINARY_ROOT "${CMAKE_CURRENT_BINARY_DIR}/merlin")
 set(IREE_GEMMINI_EXTERNAL_PLUGIN ON CACHE BOOL "" FORCE)
 
 # Include paths so that #include "merlin/Dialect/Gemmini/..." resolves
-# from the source tree AND the pre-generated .inc files.
+# from the source tree.  Generated .inc files are found via the build
+# directory (added by the plugin CMakeLists.txt itself).
 include_directories(
   "${MERLIN_COMPILER_SOURCE_DIR}/src"
-  "${MERLIN_COMPILER_SOURCE_DIR}/src/merlin/Dialect/Gemmini/_generated"
 )
 
 # Build the Gemmini plugin (dialect + passes + registration) in one package.

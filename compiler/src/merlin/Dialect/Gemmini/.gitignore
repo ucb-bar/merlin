@@ -1,0 +1,12 @@
+# TableGen-generated include files (produced at build time)
+_generated/
+*.inc
+
+# Build / compilation artifacts
+*.s
+*.vmfb
+
+# Lit test output artifacts
+test/Output/
+test/*.tmp*
+test/.lit_test_times.txt

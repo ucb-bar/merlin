@@ -13,6 +13,27 @@
 
 set(_GEMMINI_SRC_DIR "${MERLIN_COMPILER_SOURCE_DIR}/src/merlin/Dialect/Gemmini")
 
+# --- Generate .inc files from Gemmini.td at build time ---
+# Output into a nested directory so that
+#   #include "merlin/Dialect/Gemmini/IR/Gemmini.h.inc"
+# resolves via ${CMAKE_CURRENT_BINARY_DIR}.
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/merlin/Dialect/Gemmini/IR")
+
+iree_tablegen_library(
+  NAME
+    GemminiIncGen
+  TD_FILE
+    "${_GEMMINI_SRC_DIR}/IR/Gemmini.td"
+  OUTS
+    --gen-op-decls    merlin/Dialect/Gemmini/IR/Gemmini.h.inc
+    --gen-op-defs     merlin/Dialect/Gemmini/IR/Gemmini.cpp.inc
+    --dialect=gemmini --gen-dialect-decls merlin/Dialect/Gemmini/IR/GemminiDialect.h.inc
+    --dialect=gemmini --gen-dialect-defs  merlin/Dialect/Gemmini/IR/GemminiDialect.cpp.inc
+)
+
+# Make generated .inc headers visible to all targets in this scope.
+include_directories("${CMAKE_CURRENT_BINARY_DIR}")
+
 # --- Gemmini Dialect IR Library ---
 iree_cc_library(
   NAME
@@ -20,6 +41,7 @@ iree_cc_library(
   SRCS
     "${_GEMMINI_SRC_DIR}/IR/GemminiDialect.cpp"
   DEPS
+    ::GemminiIncGen
     MLIRFuncDialect
     MLIRIR
     MLIRLLVMDialect
@@ -55,7 +77,6 @@ iree_cc_library(
     MLIRVectorDialect
   PUBLIC
 )
-
 # --- Gemmini Registration Library ---
 iree_cc_library(
   NAME
@@ -93,14 +114,18 @@ iree_compiler_register_plugin(
     ::registration
 )
 
+# --- Lit Test ---
+# Test file lives in the dialect source tree
+# (compiler/src/merlin/Dialect/Gemmini/test/).
 iree_lit_test_suite(
   NAME
     test
   SRCS
-    "test/gemmini_matmul_lowering.mlir"
+    "${_GEMMINI_SRC_DIR}/test/gemmini_matmul_lowering.mlir"
   TOOLS
     FileCheck
     iree-compile
   LABELS
     "hostonly"
+    "gemmini"
 )
