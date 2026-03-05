@@ -4,6 +4,8 @@ import torchvision.models as models
 import argparse
 import os
 import copy
+import onnx
+import numpy as np
 import traceback
 from contextlib import suppress
 from custom_models.vitfly_models_july import ConvNet, LSTMNet, LSTMNetVIT, ViT, UNetConvLSTMNet
@@ -43,6 +45,17 @@ try:
 except ImportError:
     print("Warning: torch.onnx is not available. 'torch.onnx' path will be unavailable.")
     torch_onnx = None
+
+# --- ONNX Runtime Imports ---
+try:
+    import onnxruntime
+    from onnxruntime.quantization import quantize_static, QuantType, CalibrationDataReader
+    import onnxscript
+except ImportError:
+    raise ImportError(
+        "onnxruntime is not installed. Please install it with "
+        "'pip install onnx onnxruntime onnxscript'"
+    )
 
 # --- torch.ao.quantization (FX) Imports ---
 try:
@@ -192,11 +205,13 @@ def try_torchao_pt2e_quantize(model_fp32, example_inputs, results_list):
             for _ in range(10):
                 prepared_model(*example_inputs)
         
-        quantized_model = convert_pt2e(prepared_model)
+        converted_model = convert_pt2e(prepared_model)
+        with torch.no_grad():
+            optimized_model = torch.compile(converted_model)
 
         print("torchao quantization successful.")
         results_list.append({'name': name, 'status': 'SUCCEEDED', 'error': None})
-        return quantized_model
+        return optimized_model
     except Exception:
         error_msg = traceback.format_exc()
         print(f"FAILED:\n{error_msg}")
@@ -208,32 +223,124 @@ def try_torch_onnx_export(model, example_inputs, model_name, model_type, model_o
     name = f"torch.onnx.export to ONNX ({model_type})"
     print_separator(f"Attempting: {name}")
 
-    output_path = os.path.join(model_output_dir, f"{model_name}_{model_type}_torch_onnx.onnx")
+    onnx_output_path = os.path.join(model_output_dir, f"{model_name}_{model_type}_torch_onnx.onnx")
+    quantized_onnx_output_path = os.path.join(model_output_dir, f"{model_name}_{model_type}_torch_onnx_quantized.onnx")
     
     if torch_onnx is None:
         print("FAILED: torch.onnx is not installed.")
         results_list.append({'name': name, 'status': 'FAILED', 'error': 'torch.onnx not installed'})
         return
+    
+    # 2. Define input names (must match forward() args)
+    input_names = ["image", "velocity", "quaternion", "h_in", "c_in"]
+    
+    # 3. Define output names (must match forward() return)
+    output_names = ["output", "h_out", "c_out"]
 
+    # --- Step 2: Export the FP32 model to ONNX ---
+    # This print statement will now show the full path
+    print(f"Exporting FP32 model to ONNX file: {onnx_output_path}...")
     try:
-        model.eval()
-        print(f"Exporting model to {output_path}...")
-        torch_onnx.export(
+        torch.onnx.export(
             model,
             example_inputs,
-            output_path,
-            input_names=["input"],
-            output_names=["output"],
-            dynamo=False,
-            opset_version=21
+            onnx_output_path,
+            input_names=input_names,
+            output_names=output_names,
+            opset_version=20, # <-- Set to 17 for better IREE compatibility
+            dynamic_axes=None, # Explicitly disable dynamic axes for quantization
         )
+        print(f"Successfully exported FP32 model to {onnx_output_path}")
+    except Exception as e:
+        print(f"Error during FP32 ONNX export: {e}")
+        exit(1)
         
-        print(f"Successfully exported to {output_path}")
+        print(f"Successfully exported to {onnx_output_path}")
         results_list.append({'name': name, 'status': 'SUCCEEDED', 'error': None})
     except Exception:
         error_msg = traceback.format_exc()
         print(f"FAILED:\n{error_msg}")
         results_list.append({'name': name, 'status': 'FAILED', 'error': error_msg})
+    
+    class MultiInputCalibrationDataReader(CalibrationDataReader):
+        """
+        Generates calibration data for models with multiple inputs.
+        """
+        def __init__(self, example_inputs_tuple, input_names, num_samples=10):
+            self.input_names = input_names
+            # Create a list of shapes from the example inputs
+            self.input_shapes = [tuple(tensor.shape) for tensor in example_inputs_tuple]
+            self.num_samples = num_samples
+
+            print(f"\nInitializing calibration data reader with {len(input_names)} inputs:")
+            for name, shape in zip(self.input_names, self.input_shapes):
+                print(f"  Input '{name}' with shape={shape}")
+            # This will be our iterator
+            self.data_generator = self._data_generator()
+
+        def _data_generator(self):
+            """A generator function that yields a dictionary of {input_name: data}."""
+            for _ in range(self.num_samples):
+                # Create a dictionary of {input_name: numpy_array}
+                sample = {}
+                for name, shape in zip(self.input_names, self.input_shapes):
+                    sample[name] = np.random.randn(*shape).astype(np.float32)
+                yield sample
+
+        def get_next(self):
+            """Returns the next sample from the generator."""
+            return next(self.data_generator, None)
+        
+        def rewind(self):
+            """Resets the iterator to the beginning."""
+            self.data_generator = self._data_generator()
+
+    print("\nStarting post-training static quantization with ONNX Runtime...")
+    calibration_data_reader = MultiInputCalibrationDataReader(
+        example_inputs_tuple=example_inputs[0],  # <-- Pass the *entire tuple* of inputs
+        input_names=input_names,              # <-- Pass the *entire list* of names
+        num_samples=10 
+    )
+
+    # --- Find nodes to exclude (as requested) ---
+    print(f"Loading {onnx_output_path} to find nodes for exclusion...")
+    model_for_exclusion = onnx.load(onnx_output_path)
+    graph = model_for_exclusion.graph
+
+    nodes_to_exclude = []
+    op_types_to_exclude = {'Add', 'Gemm'} # Define the op_types you want to skip
+
+    for node in graph.node:
+        if node.op_type in op_types_to_exclude:
+            nodes_to_exclude.append(node.name)
+
+    print(f"Found {len(nodes_to_exclude)} nodes to exclude (if enabled):")
+    # print(nodes_to_exclude) # Uncomment to debug
+
+    try:
+        quantize_static(
+            model_input=onnx_output_path,
+            model_output=quantized_onnx_output_path,
+            calibration_data_reader=calibration_data_reader,
+            
+            # nodes_to_exclude=nodes_to_exclude,
+            
+            quant_format=onnxruntime.quantization.QuantFormat.QDQ,
+            activation_type=QuantType.QInt8,
+            weight_type=QuantType.QInt8,
+            per_channel=False, 
+            extra_options={
+            'ActivationSymmetric': True,
+            'WeightSymmetric': True
+            }
+        )
+        print(f"Successfully generated quantized ONNX model: {quantized_onnx_output_path}")
+        print("\nNext step: Verify the ONNX file with a tool like Netron to see the Q/DQ nodes,")
+        mlir_output_path = os.path.join(model_output_dir, f"{model_name}_{model_type}_onnx.mlir")
+        print(f"then import into MLIR using 'iree-import-onnx {quantized_onnx_output_path} -o {mlir_output_path}'.")
+
+    except Exception as e:
+        print(f"Error during ONNX Runtime quantization: {e}")
 
 def try_turbine_aot_export(model, example_inputs, model_name, model_type, model_output_dir, results_list):
     """Exports the model to MLIR using the IREE Turbine AOT exporter."""
@@ -381,7 +488,8 @@ def main():
     # model_int8 = try_torchao_quantize(model_fp32, results)
     # model_int8 = try_torchao_quantize_weights_only(model_fp32, results)
     # model_int8 = try_fx_quantize(model_fp32, forward_args, results)
-    model_int8 = try_torchao_pt2e_quantize(model_fp32, forward_args, results)
+    # model_int8 = try_torchao_pt2e_quantize(model_fp32, forward_args, results)
+    model_int8 = try_torch_onnx_export(model_fp32, forward_args, args.model, model_type_str, model_output_dir, results)
 
     # # --- Step 4: Run all export paths on Quantized models ---
     if model_int8 is not None:
