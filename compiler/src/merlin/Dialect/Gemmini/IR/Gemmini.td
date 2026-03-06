@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Original File sourced and modified from https://github.com/buddy-compiler/buddy-mlir
-//
 //===----------------------------------------------------------------------===//
 //
 // This file defines the basic operations for the Gemmini dialect.
 //
 //===----------------------------------------------------------------------===//
+
+#ifndef GEMMINI_OPS
+#define GEMMINI_OPS
 
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 include "mlir/IR/AttrTypeBase.td"
@@ -30,7 +31,7 @@ include "mlir/IR/PatternBase.td"
 
 def Gemmini_Dialect : Dialect {
   let name = "gemmini";
-  let cppNamespace = "::buddy::gemmini";
+  let cppNamespace = "::merlin::gemmini";
   let summary = "Basic dialect to target RISC-V Gemmini extension";
   let description = [{
     Gemmini is an accelerator based on systolic array architecture.
@@ -353,7 +354,16 @@ def Gemmini_Mvout_IntrOp : Gemmini_IntrOpBase<"mvout">,
 def Gemmini_Flush_IntrOp : Gemmini_IntrOpBase<"flush">,
   Arguments<(ins LLVM_Type, LLVM_Type)>;
 
-def Gemmini_Config_IntrOp : Gemmini_IntrOpBase<"config">,
+def Gemmini_ConifgLd_IntrOp : Gemmini_IntrOpBase<"config_ld">,
+  Arguments<(ins LLVM_Type, LLVM_Type)>;
+
+def Gemmini_ConfigSt_IntrOp : Gemmini_IntrOpBase<"config_st">,
+  Arguments<(ins LLVM_Type, LLVM_Type)>;
+
+def Gemmini_ConfigEX_IntrOp : Gemmini_IntrOpBase<"config_ex">,
+  Arguments<(ins LLVM_Type, LLVM_Type)>;
+
+def Gemmini_ConfigNorm_IntrOp : Gemmini_IntrOpBase<"config_norm">,
   Arguments<(ins LLVM_Type, LLVM_Type)>;
 
 def Gemmini_Preload_IntrOp : Gemmini_IntrOpBase<"preload">,
@@ -403,3 +413,5 @@ def Gemmini_LoopConvWsConfig5_IntrOp : Gemmini_IntrOpBase<"loop_conv_ws_config5"
 
 def Gemmini_LoopConvWsConfig6_IntrOp : Gemmini_IntrOpBase<"loop_conv_ws_config6">,
   Arguments<(ins LLVM_Type, LLVM_Type)>;
+
+#endif

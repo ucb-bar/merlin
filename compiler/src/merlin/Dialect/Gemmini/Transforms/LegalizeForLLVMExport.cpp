@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Original File sourced and modified from https://github.com/buddy-compiler/buddy-mlir
-//
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -26,8 +26,6 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "llvm/ADT/TypeSwitch.h"
-#include "llvm/Support/raw_ostream.h"
 
 #include "merlin/Dialect/Gemmini/IR/GemminiDialect.h"
 #include "merlin/Dialect/Gemmini/IR/GemminiOps.h"
@@ -62,14 +60,6 @@ scale_t_bits scale_t_to_scale_t_bits(scale_t x) {
 
   un.f = x;
   return un.b;
-}
-
-// This function is used to insert a fence operation to ensure that the
-// NPU and CPU memory operations are executed in the correct order.
-// Use sequentially consistent ordering for strongest memory guarantee.
-void insertFence(Location loc, ConversionPatternRewriter &rewriter) {
-  auto ordering = LLVM::AtomicOrdering::seq_cst;
-  rewriter.create<LLVM::FenceOp>(loc, ordering);
 }
 
 template <typename IntrOp = Mvin_IntrOp>
@@ -114,8 +104,9 @@ class ForwardOperands : public OpConversionPattern<OpTy> {
   LogicalResult
   matchAndRewrite(OpTy op, typename OpTy::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const final {
-    if (adaptor.getOperands().getTypes() == op->getOperands().getTypes())
+    if (adaptor.getOperands().getTypes() == op->getOperands().getTypes()) {
       return rewriter.notifyMatchFailure(op, "operand types already match");
+    }
     rewriter.modifyOpInPlace(op,
                              [&]() { op->setOperands(adaptor.getOperands()); });
     return success();
@@ -145,7 +136,12 @@ struct GemminiFlushLowering : public ConvertOpToLLVMPattern<FlushOp> {
     IntegerAttr rs2Attr = rewriter.getI64IntegerAttr(0);
     Value rs2 =
         rewriter.create<arith::ConstantOp>(loc, rewriter.getI64Type(), rs2Attr);
-    rewriter.replaceOpWithNewOp<Flush_IntrOp>(flushOp, skip, rs2);
+    auto newOp = rewriter.create<Flush_IntrOp>(loc, skip, rs2);
+    if (flushOp->getNumResults() == 0) {
+      rewriter.eraseOp(flushOp);
+    } else {
+      rewriter.replaceOp(flushOp, newOp->getResults());
+    }
     return success();
   }
 };
@@ -167,7 +163,12 @@ struct GemminiConfigStLowering : public ConvertOpToLLVMPattern<ConfigStOp> {
         loc, rewriter.getI64IntegerAttr(rs1));
     Value value2 = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI64IntegerAttr(arg));
-    rewriter.replaceOpWithNewOp<Config_IntrOp>(configStOp, value1, value2);
+    auto newOp = rewriter.create<ConfigSt_IntrOp>(loc, value1, value2);
+    if (configStOp->getNumResults() == 0) {
+      rewriter.eraseOp(configStOp);
+    } else {
+      rewriter.replaceOp(configStOp, newOp->getResults());
+    }
     return success();
   }
 };
@@ -183,8 +184,9 @@ struct GemminiConfigLdLowering : public ConvertOpToLLVMPattern<ConfigLdOp> {
     Value rs2Value = configLdOp.getStride();
     float scale = configLdOp.getScale().convertToFloat();
     uint64_t blockMvinStride = configLdOp.getBlockMvinStride();
-    if (blockMvinStride == (uint64_t)-1)
+    if (blockMvinStride == (uint64_t)-1) {
       blockMvinStride = dim;
+    }
     uint64_t pixelRepeats = configLdOp.getPixelRepeats();
     uint64_t rs1 = (uint64_t)scale_t_to_scale_t_bits(scale) << 32 |
                    (blockMvinStride << 16) | pixelRepeats << 8 |
@@ -193,7 +195,12 @@ struct GemminiConfigLdLowering : public ConvertOpToLLVMPattern<ConfigLdOp> {
     Location loc = configLdOp.getLoc();
     Value rs1value = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI64IntegerAttr(rs1));
-    rewriter.replaceOpWithNewOp<Config_IntrOp>(configLdOp, rs1value, rs2Value);
+    auto newOp = rewriter.create<ConifgLd_IntrOp>(loc, rs1value, rs2Value);
+    if (configLdOp->getNumResults() == 0) {
+      rewriter.eraseOp(configLdOp);
+    } else {
+      rewriter.replaceOp(configLdOp, newOp->getResults());
+    }
     return success();
   }
 
@@ -220,7 +227,12 @@ struct GemminiConfigExLowering : public ConvertOpToLLVMPattern<ConfigExOp> {
     IntegerAttr rs2Attr = rewriter.getI64IntegerAttr(rs2);
     Value rs1Value = rewriter.create<arith::ConstantOp>(loc, i64Type, rs1Attr);
     Value rs2Value = rewriter.create<arith::ConstantOp>(loc, i64Type, rs2Attr);
-    rewriter.replaceOpWithNewOp<Config_IntrOp>(configExOp, rs1Value, rs2Value);
+    auto newOp = rewriter.create<ConfigEX_IntrOp>(loc, rs1Value, rs2Value);
+    if (configExOp->getNumResults() == 0) {
+      rewriter.eraseOp(configExOp);
+    } else {
+      rewriter.replaceOp(configExOp, newOp->getResults());
+    }
     return success();
   }
 };
@@ -242,8 +254,12 @@ struct GemminiConfigNormLowering : public ConvertOpToLLVMPattern<ConfigNormOp> {
         loc, rewriter.getI64IntegerAttr(rs1));
     Value rs2Value = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI64IntegerAttr(rs2));
-    rewriter.replaceOpWithNewOp<Config_IntrOp>(configNormOp, rs1Value,
-                                               rs2Value);
+    auto newOp = rewriter.create<ConfigNorm_IntrOp>(loc, rs1Value, rs2Value);
+    if (configNormOp->getNumResults() == 0) {
+      rewriter.eraseOp(configNormOp);
+    } else {
+      rewriter.replaceOp(configNormOp, newOp->getResults());
+    }
     return success();
   }
 };
@@ -261,7 +277,7 @@ struct GemminiMvinLowering : public ConvertOpToLLVMPattern<MvinOp> {
     MemRefType memRefType =
         dyn_cast<MemRefType>(mvinOp.getOperandTypes().front());
     llvm::ArrayRef<int64_t> memRefShape = memRefType.getShape();
-    TypeRange resultType = mlir::TypeRange(rewriter.getIndexType());
+    Type indexTy = rewriter.getIndexType(); TypeRange resultType(indexTy);
     Value extractOp = rewriter.create<memref::ExtractAlignedPointerAsIndexOp>(
         loc, resultType, input);
     IntegerType i64Type = rewriter.getI64Type();
@@ -273,7 +289,12 @@ struct GemminiMvinLowering : public ConvertOpToLLVMPattern<MvinOp> {
                            (uint64_t)memRefShape[1] << addrLen | number;
     Value spad = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI64IntegerAttr(spadAddrInt));
-    rewriter.replaceOpWithNewOp<Mvin_IntrOp>(mvinOp, indexCastOp, spad);
+    auto newOp = rewriter.create<Mvin_IntrOp>(loc, indexCastOp, spad);
+    if (mvinOp->getNumResults() == 0) {
+      rewriter.eraseOp(mvinOp);
+    } else {
+      rewriter.replaceOp(mvinOp, newOp->getResults());
+    }
     return success();
   }
 
@@ -294,7 +315,7 @@ struct GemminiMvin2Lowering : public ConvertOpToLLVMPattern<Mvin2Op> {
     MemRefType memRefType =
         dyn_cast<MemRefType>(mvin2Op.getOperandTypes().front());
     llvm::ArrayRef<int64_t> memRefShape = memRefType.getShape();
-    TypeRange resultType = mlir::TypeRange(rewriter.getIndexType());
+    Type indexTy = rewriter.getIndexType(); TypeRange resultType(indexTy);
     Value extractOp = rewriter.create<memref::ExtractAlignedPointerAsIndexOp>(
         loc, resultType, input);
     IntegerType i64Type = rewriter.getI64Type();
@@ -306,7 +327,12 @@ struct GemminiMvin2Lowering : public ConvertOpToLLVMPattern<Mvin2Op> {
                            (uint64_t)memRefShape[1] << addrLen | number;
     Value spad = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI64IntegerAttr(spadAddrInt));
-    rewriter.replaceOpWithNewOp<Mvin2_IntrOp>(mvin2Op, indexCastOp, spad);
+    auto newOp = rewriter.create<Mvin2_IntrOp>(loc, indexCastOp, spad);
+    if (mvin2Op->getNumResults() == 0) {
+      rewriter.eraseOp(mvin2Op);
+    } else {
+      rewriter.replaceOp(mvin2Op, newOp->getResults());
+    }
     return success();
   }
 
@@ -327,7 +353,7 @@ struct GemminiMvin3Lowering : public ConvertOpToLLVMPattern<Mvin3Op> {
     MemRefType memRefType =
         dyn_cast<MemRefType>(mvin3Op.getOperandTypes().front());
     llvm::ArrayRef<int64_t> memRefShape = memRefType.getShape();
-    TypeRange resultType = mlir::TypeRange(rewriter.getIndexType());
+    Type indexTy = rewriter.getIndexType(); TypeRange resultType(indexTy);
     Value extractOp = rewriter.create<memref::ExtractAlignedPointerAsIndexOp>(
         loc, resultType, input);
     IntegerType i64Type = rewriter.getI64Type();
@@ -339,7 +365,12 @@ struct GemminiMvin3Lowering : public ConvertOpToLLVMPattern<Mvin3Op> {
                            (uint64_t)memRefShape[1] << addrLen | number;
     Value spad = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI64IntegerAttr(spadAddrInt));
-    rewriter.replaceOpWithNewOp<Mvin3_IntrOp>(mvin3Op, indexCastOp, spad);
+    auto newOp = rewriter.create<Mvin3_IntrOp>(loc, indexCastOp, spad);
+    if (mvin3Op->getNumResults() == 0) {
+      rewriter.eraseOp(mvin3Op);
+    } else {
+      rewriter.replaceOp(mvin3Op, newOp->getResults());
+    }
     return success();
   }
 
@@ -356,7 +387,7 @@ struct GemminiMvoutLowering : public ConvertOpToLLVMPattern<MvoutOp> {
   matchAndRewrite(MvoutOp mvoutOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Value output = mvoutOp.getOutput();
-    TypeRange resultType = mlir::TypeRange(rewriter.getIndexType());
+    Type indexTy = rewriter.getIndexType(); TypeRange resultType(indexTy);
     Location loc = mvoutOp.getLoc();
     Value extractOp = rewriter.create<memref::ExtractAlignedPointerAsIndexOp>(
         loc, resultType, output);
@@ -372,7 +403,12 @@ struct GemminiMvoutLowering : public ConvertOpToLLVMPattern<MvoutOp> {
                            (uint64_t)memRefShape[1] << addrLen | number;
     Value newSpad = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI64IntegerAttr(spadAddrInt));
-    rewriter.replaceOpWithNewOp<Mvout_IntrOp>(mvoutOp, indexCastOp, newSpad);
+    auto newOp = rewriter.create<Mvout_IntrOp>(loc, indexCastOp, newSpad);
+    if (mvoutOp->getNumResults() == 0) {
+      rewriter.eraseOp(mvoutOp);
+    } else {
+      rewriter.replaceOp(mvoutOp, newOp->getResults());
+    }
     return success();
   }
 
@@ -403,8 +439,12 @@ struct GemminiPreloadZerosLowering
         loc, rewriter.getI64IntegerAttr(rs1));
     Value rs2Value = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI64IntegerAttr(rs2));
-    rewriter.replaceOpWithNewOp<Preload_IntrOp>(preloadZerosOp, rs1Value,
-                                                rs2Value);
+    auto newOp = rewriter.create<Preload_IntrOp>(loc, rs1Value, rs2Value);
+    if (preloadZerosOp->getNumResults() == 0) {
+      rewriter.eraseOp(preloadZerosOp);
+    } else {
+      rewriter.replaceOp(preloadZerosOp, newOp->getResults());
+    }
     return success();
   }
 
@@ -442,7 +482,12 @@ struct GemminiPreloadLowering : public ConvertOpToLLVMPattern<PreloadOp> {
         loc, rewriter.getI64IntegerAttr(rs1));
     Value rs2Value = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI64IntegerAttr(rs2));
-    rewriter.replaceOpWithNewOp<Preload_IntrOp>(preloadOp, rs1Value, rs2Value);
+    auto newOp = rewriter.create<Preload_IntrOp>(loc, rs1Value, rs2Value);
+    if (preloadOp->getNumResults() == 0) {
+      rewriter.eraseOp(preloadOp);
+    } else {
+      rewriter.replaceOp(preloadOp, newOp->getResults());
+    }
     return success();
   }
 
@@ -479,8 +524,13 @@ struct GemminiComputePreloadedLowering
         loc, rewriter.getI64IntegerAttr(rs1));
     Value rs2Value = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI64IntegerAttr(rs2));
-    rewriter.replaceOpWithNewOp<ComputePreloaded_IntrOp>(computePreloadedOp,
-                                                         rs1Value, rs2Value);
+    auto newOp =
+        rewriter.create<ComputePreloaded_IntrOp>(loc, rs1Value, rs2Value);
+    if (computePreloadedOp->getNumResults() == 0) {
+      rewriter.eraseOp(computePreloadedOp);
+    } else {
+      rewriter.replaceOp(computePreloadedOp, newOp->getResults());
+    }
     return success();
   }
 
@@ -517,8 +567,13 @@ struct GemminiComputeAccumulatedLowering
         loc, rewriter.getI64IntegerAttr(rs1));
     Value rs2Value = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI64IntegerAttr(rs2));
-    rewriter.replaceOpWithNewOp<ComputeAccumulated_IntrOp>(computeAccumulatedOp,
-                                                           rs1Value, rs2Value);
+    auto newOp =
+        rewriter.create<ComputeAccumulated_IntrOp>(loc, rs1Value, rs2Value);
+    if (computeAccumulatedOp->getNumResults() == 0) {
+      rewriter.eraseOp(computeAccumulatedOp);
+    } else {
+      rewriter.replaceOp(computeAccumulatedOp, newOp->getResults());
+    }
 
     return success();
   }
@@ -561,12 +616,8 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
     rs2Value = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI64IntegerAttr(cRowStride));
     rewriter.create<LoopWsConfigStridesDC_IntrOp>(loc, rs1Value, rs2Value);
-    const int aSpadId = 0;
-    const int bSpadId = 0;
-    const int isResadd = 0;
-    rs1 = (uint64_t)aSpadId << 18 | (uint64_t)bSpadId << 16 |
-          (uint64_t)act << 8 | lowD << 2 | (fullC) << 1 | exAccumulate;
-    rs2 = isResadd << 2 | bTranspose << 1 | aTranspose;
+    rs1 = (uint64_t)act << 8 | lowD << 2 | (fullC) << 1 | exAccumulate;
+    rs2 = bTranspose << 1 | aTranspose;
     rs1Value = rewriter.create<arith::ConstantOp>(
         loc, i64Type, rewriter.getI64IntegerAttr(rs1));
     rs2Value = rewriter.create<arith::ConstantOp>(
@@ -833,8 +884,8 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
       rewriter.create<ConfigNormOp>(loc, qln2_inv, 1, 0, 1, 0, qb, qc);
     }
 
-    for (size_t i0 = 0; i0 < I0; i0++)
-      for (size_t j0 = 0; j0 < J0; j0++)
+    for (size_t i0 = 0; i0 < I0; i0++) {
+      for (size_t j0 = 0; j0 < J0; j0++) {
         for (size_t k0 = 0; k0 < K0; k0++) {
           Value pre;
           Location loc = A.getLoc();
@@ -922,11 +973,17 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
                             tileMatMulOp, rewriter);
           }
         }
+      }
+    }
     IntegerAttr flushAttr = rewriter.getI64IntegerAttr(0);
     Value flushValue = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI64Type(), flushAttr);
-    rewriter.replaceOpWithNewOp<Flush_IntrOp>(tileMatMulOp, flushValue,
-                                              flushValue);
+    auto flushOp = rewriter.create<Flush_IntrOp>(loc, flushValue, flushValue);
+    if (tileMatMulOp->getNumResults() == 0) {
+      rewriter.eraseOp(tileMatMulOp);
+    } else {
+      rewriter.replaceOp(tileMatMulOp, flushOp->getResults());
+    }
     return;
   }
 
@@ -1072,8 +1129,9 @@ public:
         tileK++;
         increased = true;
       }
-      if (!increased)
+      if (!increased) {
         break;
+      }
     }
     int dataflow = tileMatMulOp.getDataflow();
 
@@ -1083,9 +1141,6 @@ public:
                      tileI, tileJ, tileK, act, scale, bertScale, repeatingBias,
                      aTranspose, bTranspose, fullC, lowD, weightA, dataflow,
                      tileMatMulOp, rewriter);
-
-    insertFence(loc, rewriter);
-
     return success();
   };
 
@@ -1110,25 +1165,22 @@ class GemminiTileConvLowering : public ConvertOpToLLVMPattern<TileConvOp> {
       Value &bias, Value &input, bool noBias, bool noPool, bool downsample,
       bool writ180, bool inputDilated, int act, bool transOutput1203,
       bool transWeight1203, bool transWeight0132, bool transInput3120,
-      int maxPixelsPerRow, int inStride, int weightStride, int outStride,
-      bool dw, TileConvOp &tileConvOp,
+      int maxPixelsPerRow, bool dw, TileConvOp &tileConvOp,
       ConversionPatternRewriter &rewriter) const {
     Location loc = tileConvOp.getLoc();
     // loopConvWsConfig1
     uint64_t rs1 = (uint64_t)outChannels << 48 | (uint64_t)inChannels << 32 |
                    (uint64_t)inDim << 16 | (uint64_t)batchSize;
-    uint64_t rs2 = (uint64_t)padding << 56 | (uint64_t)stride << 48 |
-                   (uint64_t)outDim << 32 | (uint64_t)poolOutDim << 16 |
-                   (uint64_t)outDim;
+    uint64_t rs2 = (uint64_t)padding << 48 | (uint64_t)stride << 32 |
+                   (uint64_t)poolOutDim << 16 | (uint64_t)outDim;
     TypedAttr rs1Attr = rewriter.getI64IntegerAttr(rs1);
     TypedAttr rs2Attr = rewriter.getI64IntegerAttr(rs2);
     Value rs1Value = rewriter.create<arith::ConstantOp>(loc, rs1Attr);
     Value rs2Value = rewriter.create<arith::ConstantOp>(loc, rs2Attr);
     rewriter.create<LoopConvWsConfig1_IntrOp>(loc, rs1Value, rs2Value);
     // loopConvWsConfig2
-    rs1 = (uint64_t)kernelDim << 48 | (uint64_t)poolOutDim << 32 |
-          (uint64_t)poolSize << 16 | (uint64_t)poolStride << 8 |
-          (uint64_t)poolPadding;
+    rs1 = (uint64_t)kernelDim << 48 | (uint64_t)poolSize << 32 |
+          (uint64_t)poolStride << 16 | (uint64_t)poolPadding;
     rs2 = (uint64_t)batches << 48 | (uint64_t)porows << 32 |
           (uint64_t)pocols << 16 | (uint64_t)pochs;
     rs1Attr = rewriter.getI64IntegerAttr(rs1);
@@ -1139,19 +1191,17 @@ class GemminiTileConvLowering : public ConvertOpToLLVMPattern<TileConvOp> {
     // loopConvWsConfig3
     rs1 = (uint64_t)krows << 48 | (uint64_t)kcols << 32 | (uint64_t)kchs << 16 |
           (uint64_t)lpad;
-    rs2 = (uint64_t)rpad << 48 | (uint64_t)upad << 32 | (uint64_t)dpad << 24 |
-          (uint64_t)plpad << 16 | (uint64_t)inDim;
+    rs2 = (uint64_t)rpad << 48 | (uint64_t)upad << 32 | (uint64_t)dpad << 16 |
+          (uint64_t)plpad;
     rs1Attr = rewriter.getI64IntegerAttr(rs1);
     rs2Attr = rewriter.getI64IntegerAttr(rs2);
     rs1Value = rewriter.create<arith::ConstantOp>(loc, rs1Attr);
     rs2Value = rewriter.create<arith::ConstantOp>(loc, rs2Attr);
     rewriter.create<LoopConvWsConfig3_IntrOp>(loc, rs1Value, rs2Value);
-    // loopConvWsconfig4
+    // loopConvWsConfig4
     rs1 = (uint64_t)orows << 48 | (uint64_t)prpad << 32 |
-          (uint64_t)pupad << 21 | (uint64_t)pdpad << 10 |
-          (uint64_t)kernelDilation;
-    rs2 = (uint64_t)inStride << 48 | (uint64_t)weightStride << 32 |
-          (uint64_t)outStride << 16 | (uint64_t)ocols;
+          (uint64_t)pupad << 16 | (uint64_t)pdpad;
+    rs2 = (uint64_t)kernelDilation << 16 | (uint64_t)ocols;
     rs1Attr = rewriter.getI64IntegerAttr(rs1);
     rs2Attr = rewriter.getI64IntegerAttr(rs2);
     rs1Value = rewriter.create<arith::ConstantOp>(loc, rs1Attr);
@@ -1162,10 +1212,7 @@ class GemminiTileConvLowering : public ConvertOpToLLVMPattern<TileConvOp> {
     // loopConvWsconfig6
     rewriter.create<LoopConvWsConfig6_IntrOp>(loc, bias, input);
     // loopConvWs
-    const int aSpadId = 0;
-    const int bSpadId = 0;
-    rs1 = (uint64_t)aSpadId << 18 | (uint64_t)bSpadId << 16 |
-          (uint64_t)maxPixelsPerRow << 8 | dw << 6 | transInput3120 << 5 |
+    rs1 = (uint64_t)maxPixelsPerRow << 8 | dw << 6 | transInput3120 << 5 |
           transWeight0132 << 4 | transWeight1203 << 3 | transOutput1203 << 2 |
           writ180 << 1 | noBias;
     rs2 = act << 3 | inputDilated << 2 | downsample << 1 | noPool;
@@ -1230,8 +1277,9 @@ class GemminiTileConvLowering : public ConvertOpToLLVMPattern<TileConvOp> {
                                   kernelDilation > 1 || ichs > dim
                               ? 1
                               : dim / ichs;
-    if (maxPixelsPerRow > kcols)
+    if (maxPixelsPerRow > kcols) {
       maxPixelsPerRow = kcols;
+    }
 #else
     const int maxPixelsPerRow = 1;
 #endif
@@ -1266,8 +1314,8 @@ class GemminiTileConvLowering : public ConvertOpToLLVMPattern<TileConvOp> {
           kchs, lpad, rpad, upad, dpad, plpad, prpad, pupad, pdpad, orows,
           ocols, weights, output, bias, input, noBias, noPool, downsample,
           wrot180, inputDilated, act, transOutput1203, transWeight1203,
-          transWeight0132, transInput3120, maxPixelsPerRow, inStride,
-          weightStride, outStride, dw, tileConvOp, rewriter);
+          transWeight0132, transInput3120, maxPixelsPerRow, dw, tileConvOp,
+          rewriter);
       return;
     }
     if (!noPool) {
@@ -1288,8 +1336,8 @@ class GemminiTileConvLowering : public ConvertOpToLLVMPattern<TileConvOp> {
       rewriter.create<ConfigLdOp>(loc, zeroValue,
                                   llvm::APFloat((float)MVIN_SCALE_IDENTITY),
                                   false, 2, batches * orows * ocols);
-      for (int b = 0; b < batches; b++)
-        for (int orow = 0; orow < orows; orow++)
+      for (int b = 0; b < batches; b++) {
+        for (int orow = 0; orow < orows; orow++) {
           for (int ocol = 0; ocol < ocols; ocol += dim) {
             const int I = ocols - ocol > dim ? dim : ocols - ocol;
             for (int och = 0; och < ochs; och += maxOchsPerMvin) {
@@ -1308,6 +1356,8 @@ class GemminiTileConvLowering : public ConvertOpToLLVMPattern<TileConvOp> {
               }
             }
           }
+        }
+      }
     }
     // mvin input
     if (input != NULL) {
@@ -1330,7 +1380,7 @@ class GemminiTileConvLowering : public ConvertOpToLLVMPattern<TileConvOp> {
                                   false, 0, spadStride, maxPixelsPerRow);
       const int b_it = transInput3120 ? maxChsPerMvin : 1;
       const int ich_it = transInput3120 ? 1 : maxChsPerMvin;
-      for (int b = 0; b < batches; b += b_it)
+      for (int b = 0; b < batches; b += b_it) {
         for (int irow = -UNDILATED(upad);
              irow < irowsUnpadded + UNDILATED(dpad); irow += 1 + downsample) {
           const int irowPadded = irow + UNDILATED(upad);
@@ -1387,6 +1437,7 @@ class GemminiTileConvLowering : public ConvertOpToLLVMPattern<TileConvOp> {
             icol += I;
           }
         }
+      }
     }
     // mvin weights
     if (weights != NULL) {
@@ -1415,8 +1466,8 @@ class GemminiTileConvLowering : public ConvertOpToLLVMPattern<TileConvOp> {
       const size_t och_it = transWeight0132 ? dim : max_chs_per_mvin;
       const size_t kch_it = transWeight0132 ? max_chs_per_mvin : dim;
       for (int och = 0; och < ochs; och += och_it) {
-        for (int krow = 0; krow < krows; krow++)
-          for (int kcol = 0; kcol < kcols; kcol++)
+        for (int krow = 0; krow < krows; krow++) {
+          for (int kcol = 0; kcol < kcols; kcol++) {
             for (int kch = 0; kch < kchs; kch += kch_it) {
               int K = kchs - kch > dim ? dim : kchs - kch;
               int J =
@@ -1453,6 +1504,8 @@ class GemminiTileConvLowering : public ConvertOpToLLVMPattern<TileConvOp> {
               gemminiMvinOffset<Mvin2_IntrOp>(weights, offset * sizeOfElemT,
                                               bSpAddr, J, K, addrLen, rewriter);
             }
+          }
+        }
       }
     }
     // Compute
@@ -1582,8 +1635,8 @@ class GemminiTileConvLowering : public ConvertOpToLLVMPattern<TileConvOp> {
     // mvout output
     if (output != NULL) {
       if (noPool) {
-        for (int b = 0; b < batches; b++)
-          for (int orow = 0; orow < orows; orow++)
+        for (int b = 0; b < batches; b++) {
+          for (int orow = 0; orow < orows; orow++) {
             for (int ocol = 0; ocol < ocols; ocol += dim) {
               const int I = ocols - ocol > dim ? dim : ocols - ocol;
               for (int och = 0; och < ochs; och += dim) {
@@ -1605,6 +1658,8 @@ class GemminiTileConvLowering : public ConvertOpToLLVMPattern<TileConvOp> {
                                    I, addrLen, rewriter);
               }
             }
+          }
+        }
       } else {
         printf("Pooling with rectangular convolutions is currently not "
                "supported.\n");
@@ -1858,8 +1913,12 @@ class GemminiTileConvLowering : public ConvertOpToLLVMPattern<TileConvOp> {
     IntegerAttr flushAttr = rewriter.getI64IntegerAttr(0);
     Value flushValue = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI64Type(), flushAttr);
-    rewriter.replaceOpWithNewOp<Flush_IntrOp>(tileConvOp, flushValue,
-                                              flushValue);
+    auto flushOp = rewriter.create<Flush_IntrOp>(loc, flushValue, flushValue);
+    if (tileConvOp->getNumResults() == 0) {
+      rewriter.eraseOp(tileConvOp);
+    } else {
+      rewriter.replaceOp(tileConvOp, flushOp->getResults());
+    }
   }
 
   int tiledConvTotalSpadRows(bool acc, int stride, int inputDilation,
@@ -2033,8 +2092,9 @@ public:
                              args[4], args[5], args[6]};
       argsCandidate[ocolsIdx]++;
 
-      if (argsCandidate[ocolsIdx] > maxArgs[ocolsIdx])
+      if (argsCandidate[ocolsIdx] > maxArgs[ocolsIdx]) {
         continue;
+      }
 
       spadRows = tiledConvTotalSpadRows(
           false, stride, inputDilation, kernelDilation, downsample,
@@ -2061,8 +2121,9 @@ public:
                                args[4], args[5], args[6]};
         argsCandidate[i]++;
 
-        if (argsCandidate[i] > maxArgs[i])
+        if (argsCandidate[i] > maxArgs[i]) {
           continue;
+        }
         spadRows = tiledConvTotalSpadRows(
             false, stride, inputDilation, kernelDilation, downsample,
             transWeight0132, transInput3120, argsCandidate[0], argsCandidate[1],
@@ -2099,9 +2160,6 @@ public:
               weightsIndexCastOp, biasIndexCastOp, outputIndexCastOp, act,
               scale, poolSize, noPool ? 0 : poolStride, poolPadding, tileConvOp,
               rewriter);
-
-    insertFence(loc, rewriter);
-
     return success();
   }
 
@@ -2143,14 +2201,15 @@ void mlir::populateGemminiLegalizeForLLVMExportPatterns(
 void mlir::configureGemminiLegalizeForExportTarget(
     LLVMConversionTarget &target) {
   target.addLegalOp<
-      Flush_IntrOp, Config_IntrOp, Mvin_IntrOp, Mvin2_IntrOp, Mvin3_IntrOp,
-      Mvout_IntrOp, Preload_IntrOp, ComputePreloaded_IntrOp,
-      ComputeAccumulated_IntrOp, LoopWsConfigBounds_IntrOp,
-      LoopWsConfigAddrsAB_IntrOp, LoopWsConfigAddrsDC_IntrOp,
-      LoopWsConfigStridesAB_IntrOp, LoopWsConfigStridesDC_IntrOp, LoopWs_IntrOp,
-      LoopConvWsConfig1_IntrOp, LoopConvWsConfig2_IntrOp,
-      LoopConvWsConfig3_IntrOp, LoopConvWsConfig4_IntrOp,
-      LoopConvWsConfig5_IntrOp, LoopConvWsConfig6_IntrOp, LoopConvWs_IntrOp>();
+      Flush_IntrOp, ConfigSt_IntrOp, ConifgLd_IntrOp, ConfigEX_IntrOp,
+      Mvin_IntrOp, Mvin2_IntrOp, Mvin3_IntrOp, Mvout_IntrOp, Preload_IntrOp,
+      ComputePreloaded_IntrOp, ComputeAccumulated_IntrOp,
+      LoopWsConfigBounds_IntrOp, LoopWsConfigAddrsAB_IntrOp,
+      LoopWsConfigAddrsDC_IntrOp, LoopWsConfigStridesAB_IntrOp,
+      LoopWsConfigStridesDC_IntrOp, LoopWs_IntrOp, LoopConvWsConfig1_IntrOp,
+      LoopConvWsConfig2_IntrOp, LoopConvWsConfig3_IntrOp,
+      LoopConvWsConfig4_IntrOp, LoopConvWsConfig5_IntrOp,
+      LoopConvWsConfig6_IntrOp, LoopConvWs_IntrOp, ConfigNorm_IntrOp>();
   target.addIllegalOp<FlushOp, ConfigStOp, ConfigLdOp, ConfigExOp, MvinOp,
                       Mvin2Op, Mvin3Op, MvoutOp, PrintOp, PreloadZerosOp,
                       PreloadOp, ComputePreloadedOp, ComputeAccumulatedOp,

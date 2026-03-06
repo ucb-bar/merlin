@@ -93,8 +93,8 @@ def main(args: argparse.Namespace) -> int:
             "-DCMAKE_BUILD_TYPE=Debug",
             "-DIREE_ENABLE_ASSERTIONS=ON",
             "-DIREE_ENABLE_ASAN=OFF",
-            "-DCMAKE_CXX_FLAGS=-Wno-error=cpp -Wno-error=maybe-uninitialized -fno-omit-frame-pointer -fdebug-types-section -gz=none",
-            "-DCMAKE_C_FLAGS=-fno-omit-frame-pointer -fdebug-types-section -gz=none",
+            "-DCMAKE_CXX_FLAGS=-Wno-error=cpp -Wno-error=maybe-uninitialized -fno-omit-frame-pointer -gz=none",
+            "-DCMAKE_C_FLAGS=-fno-omit-frame-pointer -fdebug-types-section",
         ])
     elif args.config == "asan":
         cmake_args.extend([
@@ -244,6 +244,9 @@ def main(args: argparse.Namespace) -> int:
             "-DMERLIN_ENABLE_TARGET_GEMMINI=ON",
             "-DMERLIN_ENABLE_TARGET_SATURN=ON",
             "-DMERLIN_ENABLE_TARGET_SPACEMIT=ON",
+            # Disable the in-tree IREE fork's gemmini plugin so that
+            # the Merlin-provided merlin_gemmini plugin is used instead.
+            "-DIREE_GEMMINI_EXTERNAL_PLUGIN=ON",
         ])
 
     # 6. Configure & Build Main Target

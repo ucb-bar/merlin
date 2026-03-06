@@ -14,6 +14,8 @@ conda activate merlin-dev
 
 python tools/setup.py env
 python tools/build.py --target host --config release 
+python tools/build.py --target host --config release --with-plugin
+
 ```
 
 ## ⚡ Overview

@@ -1,16 +1,29 @@
-add_mlir_library(MerlinDialectGemminiTransforms
-  LegalizeForLLVMExport.cpp
-  
-  EXCLUDE_FROM_LIBMLIR
-
-  LINK_LIBS PUBLIC
-    MerlinDialectGemmini
+iree_cc_library(
+  NAME
+    GemminiTransforms
+  HDRS
+    "Transforms.h"
+  SRCS
+    "LegalizeForLLVMExport.cpp"
+    "LowerLinalgToGemmini.cpp"
+    "LowerGemminiPass.cpp"
+    "GemminiIRDumps.cpp"
+  DEPS
+    merlin::Dialect::Gemmini::IR::GemminiDialect
+    MLIRArithDialect
+    MLIRArithToLLVM
+    MLIRBufferizationTransforms
+    MLIRFuncDialect
+    MLIRFuncToLLVM
     MLIRIR
-    MLIRPass
-    MLIRTransforms
+    MLIRLinalgDialect
     MLIRLLVMCommonConversion
     MLIRLLVMDialect
-    MLIRArithToLLVM
-    MLIRFuncToLLVM
+    MLIRMemRefDialect
     MLIRMemRefToLLVM
+    MLIRPass
+    MLIRSCFDialect
+    MLIRTransforms
+    MLIRVectorDialect
+  PUBLIC
 )
