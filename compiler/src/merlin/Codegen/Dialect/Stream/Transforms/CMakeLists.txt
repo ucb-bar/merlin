@@ -1,0 +1,11 @@
+iree_cc_library(
+  NAME
+    StreamTransformsOverrides
+  SRCS
+    "Passes.cpp"
+    "SplitExecuteRegions.cpp"
+  DEPS
+    merlin::defs
+    iree::compiler::Dialect::Stream::Transforms
+  PUBLIC
+)

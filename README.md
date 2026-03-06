@@ -2,6 +2,20 @@
 
 **Merlin** (**M**L**IR**-**in**) is an end-to-end compiler lowering funnel that connects high-level ML frameworks (PyTorch, ONNX) to custom RISC-V silicon and the [UCB-BAR](https://github.com/ucb-bar) ecosystem via [IREE](https://github.com/openxla/iree).
 
+<p align="center">
+  <img src="docs/assets/merlin_transparent.png" width="400">
+</p>
+
+## Build the repo
+
+```bash
+conda env create -f env_linux.yml
+conda activate merlin-dev
+
+python tools/setup.py env
+python tools/build.py --target host --config release 
+```
+
 ## ⚡ Overview
 
 Merlin bridges the gap between software models and bare-metal hardware execution. It is designed to support:
@@ -41,3 +55,49 @@ cmake -G Ninja -B build-riscv \
 # Build the custom dispatch sample
 cmake --build build-riscv --target compile_custom_model
 ```
+
+## Repository Workflows
+
+For a small maintainer team, use the unified entrypoint:
+
+```bash
+python3 tools/merlin.py --help
+python3 tools/merlin.py targets list
+```
+
+Core routines:
+
+```bash
+# Patch-stack lifecycle
+python3 tools/merlin.py patches apply
+python3 tools/merlin.py patches verify
+python3 tools/merlin.py patches drift
+
+# Lint + script sanity
+python3 tools/merlin.py ci lint
+
+# Build profile wrappers
+python3 tools/merlin.py build host-release
+python3 tools/merlin.py build riscv-spacemit-dual-model
+
+# Upstream release tracking
+python3 tools/merlin.py release-status
+python3 tools/merlin.py release-status --json
+```
+
+## Project Structure (Maintained Paths)
+
+- `compiler/`: Merlin-owned compiler/plugin logic.
+- `patches/`: IREE/LLVM patch stack, manifests, and patch tooling.
+- `scripts/`: build helpers (`scripts/legacy/` is archived reference-only).
+- `tools/`: stable developer/CI entrypoints.
+- `samples/`: runnable runtime examples and sample code.
+- `benchmark/target/<board>/`: deployment + profiling flows per hardware target.
+- `config/`: canonical small config files consumed by `tools/merlin.py` and CI.
+
+Further maintenance/process docs:
+
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md)
+- [docs/architecture/plugin_and_patch_model.md](docs/architecture/plugin_and_patch_model.md)
+- [docs/architecture/cmake_presets.md](docs/architecture/cmake_presets.md)

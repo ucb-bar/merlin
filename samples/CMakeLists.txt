@@ -1,2 +1,11 @@
+# merlin/samples/CMakeLists.txt
 
-add_subdirectory(custom_dispatch_ukernels_saturn)
+if(MERLIN_BUILD_SPACEMITX60)
+  message(STATUS "Including Merlin SpacemiTX60 samples")
+  add_subdirectory(SpacemiTX60)
+endif()
+
+if(MERLIN_BUILD_SATURN_OPU)
+  message(STATUS "Including Merlin SaturnOPU samples")
+  add_subdirectory(SaturnOPU)
+endif()

@@ -51,6 +51,12 @@ __pycache__/
 
 # Benchmark results
 benchmark/KernelBench/results/*
+benchmark/KernelBench/report/*
+!benchmark/KernelBench/report/.gitkeep
+benchmark/target/SpacemiTX60/results/*
+benchmark/target/SpacemiTX60/artifacts/*
+benchmark/target/SpacemiTX60/spacemitx60.env
+tutorials/*/artifacts/*
 
 # Toochains
 riscv-tools-*/
@@ -65,6 +71,8 @@ compilation*
 # Temporary files
 tmp/*
 .vscode/
+mlirEvolve/.venv/
+mlirEvolve/.pytest_cache/
 
 # Ignore models if they can get compiled
 *.onnx
@@ -76,3 +84,6 @@ samples/models/*.mlir
 quantize_test_export
 pretrained_models
 
+# Sample-generated artifacts
+samples/custom_dispatch_ukernels_saturn/saturn_test
+samples/custom_dispatch_ukernels_saturn/*.npy

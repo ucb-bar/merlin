@@ -1,7 +1,6 @@
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
+# Merlin runtime plugin entrypoint used by IREE plugin CMake integration.
+# Keep this intentionally minimal and only register Merlin-owned sample/runtime
+# targets from this repository.
 
-set(IREE_ITA_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
-
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/samples merlin-samples)
-
-#add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/ukernels merlin-ukernels)
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/samples" "merlin-samples")
+#add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/benchmarks" "merlin-benchmarks")
