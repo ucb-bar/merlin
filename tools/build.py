@@ -93,8 +93,8 @@ def main(args: argparse.Namespace) -> int:
             "-DCMAKE_BUILD_TYPE=Debug",
             "-DIREE_ENABLE_ASSERTIONS=ON",
             "-DIREE_ENABLE_ASAN=OFF",
-            "-DCMAKE_CXX_FLAGS=-Wno-error=cpp -Wno-error=maybe-uninitialized -fno-omit-frame-pointer -fdebug-types-section -gz=none",
-            "-DCMAKE_C_FLAGS=-fno-omit-frame-pointer -fdebug-types-section -gz=none",
+            "-DCMAKE_CXX_FLAGS=-Wno-error=cpp -Wno-error=maybe-uninitialized -fno-omit-frame-pointer -gz=none",
+            "-DCMAKE_C_FLAGS=-fno-omit-frame-pointer -fdebug-types-section",
         ])
     elif args.config == "asan":
         cmake_args.extend([
