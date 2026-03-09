@@ -101,7 +101,7 @@ exclude = [
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
-ignore = ["F821", "E501"]
+ignore = ["F821", "E501", "UP038"]
 
 [tool.ruff.format]
 docstring-code-format = true
