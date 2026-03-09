@@ -93,3 +93,4 @@ plots/*
 # Added to ignore the specified folder
 benchmarks/SpacemiTX60/baseline_dual_model_async/results/plots/
 benchmarks/SpacemiTX60/baseline_dual_model_async/results/logs
+benchmarks/SpacemiTX60/baseline_dual_model_async/results
