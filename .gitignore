@@ -83,3 +83,6 @@ samples/models/*.mlir
 # Sample-generated artifacts
 samples/custom_dispatch_ukernels_saturn/saturn_test
 samples/custom_dispatch_ukernels_saturn/*.npy
+benchmarks/SpacemiTX60/baseline_dual_model_async/results/*
+compiler/src/merlin/Dialect/Gemmini/Transforms/tests/Output/*
+merlin_dev.egg-info/*

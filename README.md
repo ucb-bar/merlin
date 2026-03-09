@@ -6,14 +6,38 @@
   <img src="docs/assets/merlin_transparent.png" width="400">
 </p>
 
-## Build the repo
+## 🛠️ Environment Setup (Required for Development)
+
+We use `conda` for the base C++ toolchains, `uv` for lightning-fast Python dependency resolution, and `pre-commit` to guarantee code quality across the team.
 
 ```bash
+# 1. Create and activate the base environment
 conda env create -f env_linux.yml
 conda activate merlin-dev
 
-python tools/setup.py env
-python tools/build.py --target host --config release 
+# 2. Install all Python dependencies (automatically handles Mac/Linux ML tooling)
+uv sync
+
+# 3. Install the pre-commit hooks (CRITICAL before making any commits)
+pre-commit install
+
+# 4. Bootstrap the local compiler environment
+uv run tools/setup.py env
+uv run tools/build.py --target host --config release
+```
+
+### 🛡️ Developer Workflow & Code Formatting
+
+To keep the codebase clean, this repository uses automatic formatting. By running `pre-commit install`, Git will automatically check your code every time you type `git commit`.
+
+* **Python:** Linted and formatted automatically by `ruff`.
+* **C/C++/MLIR:** Formatted automatically by `clang-format`.
+
+**If a commit fails:** Don't panic! The tools likely just auto-fixed your spacing or syntax. Simply run `git add .` to stage their fixes, and run `git commit` again.
+
+To manually run the formatters across the entire repository at any time:
+```bash
+pre-commit run --all-files
 ```
 
 ## ⚡ Overview
@@ -50,7 +74,8 @@ Merlin allows dispatching specific operations to custom hardware units:
 # Configure for RISC-V Cross-Compilation
 cmake -G Ninja -B build-riscv \
     -DCMAKE_TOOLCHAIN_FILE=../toolchain.cmake \
-    -DIREE_HOST_BIN_DIR=../host/bin
+    -DIREE_HOST_BIN_DIR=../host/bin \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON  # Enables clang-tidy support
 
 # Build the custom dispatch sample
 cmake --build build-riscv --target compile_custom_model

@@ -1,0 +1,18 @@
+# .gitattributes
+# Auto-detect text files and normalize to LF (Linux style)
+* text=auto eol=lf
+
+# Force specific files to ALWAYS be LF (crucial for bash/docker/make)
+*.sh text eol=lf
+*.bash text eol=lf
+*.cmake text eol=lf
+CMakeLists.txt text eol=lf
+
+# Keep Windows specific files as CRLF (if you ever add them)
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Denote binary files so Git doesn't try to diff them
+*.png binary
+*.vmfb binary
+*.mlir.bc binary

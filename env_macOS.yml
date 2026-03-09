@@ -13,22 +13,14 @@ dependencies:
   - pkg-config
   - ccache
 
-  # 3. Compilers
+  # 3. Compilers (macOS relies heavily on Clang/LLVM)
   - clang
   - clangxx
-  - gxx_linux-64
   - lld
 
-  # 4. System / GUI / Networking Libraries
-  - wayland
-  - wayland-protocols
-  - xorg-libx11
-  - xorg-libxext
-  - libglvnd
-  - libegl
+  # 4. System & Networking Libraries
+  # (Wayland/X11/EGL are removed, macOS handles graphics natively)
   - glfw
   - libcurl
   - openssl
   - zstd
-  - pre-commit
-  - nodejs
