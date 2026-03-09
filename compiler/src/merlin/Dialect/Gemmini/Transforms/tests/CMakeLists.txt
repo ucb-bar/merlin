@@ -1,0 +1,13 @@
+iree_lit_test_suite(
+  NAME
+  lit
+  SRCS
+  "convert-to-gemmini.mlir"
+  "fp8-no-convert.mlir"
+  "lower-gemmini-to-iree.mlir"
+  "matmul-lower-to-isa.mlir"
+  "post-global-opt-hook.mlir"
+  TOOLS
+  FileCheck
+  iree-compile
+  iree-opt)

@@ -1,18 +1,77 @@
-# Define the dialect library
-add_mlir_dialect(MerlinDialectGemmini
-  TD_FILE Gemmini.td
-  SOURCES
-    GemminiDialect.cpp
-  DEPENDS
-    MLIRFuncDialect
-    MLIRLLVMDialect
-)
+set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
+set(IREE_PACKAGE_ROOT_PREFIX "iree::gemmini::compiler::Dialect::Gemmini::IR")
 
-# Link dependencies
-target_link_libraries(MerlinDialectGemmini
-  PUBLIC
-    MLIRIR
-    MLIRFuncDialect
-    MLIRLLVMDialect
-    MLIRSideEffectInterfaces
-)
+iree_tablegen_library(
+  NAME
+  GemminiDialectGen
+  TD_FILE
+  "GemminiDialect.td"
+  OUTS
+  --gen-dialect-decls
+  GemminiDialect.h.inc
+  --gen-dialect-defs
+  GemminiDialect.cpp.inc)
+
+iree_tablegen_library(
+  NAME
+  GemminiAttrsGen
+  TD_FILE
+  "GemminiAttrs.td"
+  OUTS
+  --gen-attrdef-decls
+  --attrdefs-dialect=gemmini
+  GemminiAttrs.h.inc
+  --gen-attrdef-defs
+  --attrdefs-dialect=gemmini
+  GemminiAttrs.cpp.inc
+  --gen-enum-decls
+  GemminiEnums.h.inc
+  --gen-enum-defs
+  GemminiEnums.cpp.inc)
+
+iree_tablegen_library(
+  NAME
+  GemminiOpsGen
+  TD_FILE
+  "GemminiOps.td"
+  OUTS
+  -gen-op-decls
+  GemminiOps.h.inc
+  -gen-op-defs
+  GemminiOps.cpp.inc)
+
+iree_cc_library(
+  NAME
+  GemminiDialect
+  HDRS
+  "GemminiDialect.h"
+  "GemminiAttrs.h"
+  "GemminiOps.h"
+  TEXTUAL_HDRS
+  "GemminiDialect.h.inc"
+  "GemminiDialect.cpp.inc"
+  "GemminiAttrs.h.inc"
+  "GemminiAttrs.cpp.inc"
+  "GemminiEnums.h.inc"
+  "GemminiEnums.cpp.inc"
+  "GemminiOps.h.inc"
+  "GemminiOps.cpp.inc"
+  SRCS
+  "GemminiDialect.cpp"
+  "GemminiAttrs.cpp"
+  "GemminiOps.cpp"
+  INCLUDES
+  "${MERLIN_COMPILER_SOURCE_DIR}"
+  "${IREE_BINARY_DIR}/compiler/plugins/merlin"
+  DEPS
+  ::GemminiDialectGen
+  ::GemminiAttrsGen
+  ::GemminiOpsGen
+  LLVMSupport
+  MLIRArithDialect
+  MLIRIR
+  MLIRLinalgDialect
+  MLIRMathDialect
+  MLIRTensorDialect
+  MLIRSupport
+  PUBLIC)
