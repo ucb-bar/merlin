@@ -9,7 +9,7 @@ func.func @schedule(
     %c0 = arith.constant 0.0 : f32
     %c1 = arith.constant dense<1.0> : tensor<128x128xf32>
     %c2 = arith.constant dense<2.0> : tensor<128x128xf32>
-    
+
     // Init for Matmul
     %empty = tensor.empty() : tensor<128x128xf32>
     %init = linalg.fill ins(%c0 : f32) outs(%empty : tensor<128x128xf32>) -> tensor<128x128xf32>
@@ -23,16 +23,16 @@ func.func @schedule(
     // --- LANE A ---
     %in_a = flow.tensor.transfer %input : tensor<128x128xf32> to #hal.device.promise<@device_a>
     // [X1] Heavy Compute
-    %x1 = linalg.matmul 
+    %x1 = linalg.matmul
       ins(%in_a, %in_a : tensor<128x128xf32>, tensor<128x128xf32>)
       outs(%init : tensor<128x128xf32>) -> tensor<128x128xf32>
 
     // --- LANE B ---
     %in_b = flow.tensor.transfer %input : tensor<128x128xf32> to #hal.device.promise<@device_b>
-    
+
     // [Y1] First op on B
     %y1 = arith.addf %in_b, %c1 : tensor<128x128xf32>
-    
+
     // [Z1] Second op on B (Independent data, but scheduled after Y1 on this core)
     %z1 = arith.mulf %in_b, %c2 : tensor<128x128xf32>
 
@@ -60,7 +60,7 @@ func.func @schedule(
     %x3 = arith.divf %x2_a, %c2 : tensor<128x128xf32>
 
     // --- LANE B ---
-    // Y stream resumes here using Y1 result. 
+    // Y stream resumes here using Y1 result.
     // (Ideally Y1 is still on B, or we transfer it back if context was lost)
     %y1_b = flow.tensor.transfer %y1 : tensor<128x128xf32> to #hal.device.promise<@device_b>
     // [Y2]
@@ -81,7 +81,7 @@ func.func @schedule(
     // RETURN
     // Collect all results back to A
     // =========================================================
-    
+
     %final_y = flow.tensor.transfer %y2 : tensor<128x128xf32> to #hal.device.promise<@device_a>
     %final_z = flow.tensor.transfer %z2 : tensor<128x128xf32> to #hal.device.promise<@device_a>
 

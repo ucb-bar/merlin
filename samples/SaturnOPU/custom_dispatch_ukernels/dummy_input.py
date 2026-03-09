@@ -11,7 +11,7 @@ dtype = np.float32
 data = np.random.randn(*shape).astype(dtype)
 
 # Define the output filename
-filename = 'input_16x1024_f32.npy'
+filename = "input_16x1024_f32.npy"
 
 # Save the array to a .npy file
 np.save(filename, data)

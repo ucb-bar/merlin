@@ -1,0 +1,50 @@
+.
+├── dump.txt
+├── plugins
+│   ├── CMakeLists.txt
+│   └── target
+│       └── Gemmini
+│           ├── CMakeLists.txt
+│           └── PluginRegistration.cpp
+└── src
+    └── merlin
+        ├── CMakeLists.txt
+        ├── Codegen
+        │   ├── CMakeLists.txt
+        │   ├── Dialect
+        │   │   └── Stream
+        │   │       └── Transforms
+        │   │           ├── CMakeLists.txt
+        │   │           ├── Passes.cpp
+        │   │           ├── Passes.td
+        │   │           └── SplitExecuteRegions.cpp
+        │   ├── ExternalInterfaces
+        │   │   ├── CMakeLists.txt
+        │   │   └── CPUEncodingExternalModels.cpp
+        │   └── LLVMCPU
+        │       ├── CMakeLists.txt
+        │       ├── KernelDispatch.cpp
+        │       └── VectorContractCustomKernels.cpp
+        ├── Dialect
+        │   ├── CMakeLists.txt
+        │   └── Gemmini
+        │       ├── CMakeLists.txt
+        │       ├── IR
+        │       │   ├── CMakeLists.txt
+        │       │   ├── Gemmini.td
+        │       │   ├── GemminiDialect.cpp
+        │       │   ├── GemminiDialect.h
+        │       │   └── GemminiOps.h
+        │       ├── RegisterGemmini.cpp
+        │       ├── RegisterGemmini.h
+        │       └── Transforms
+        │           ├── CMakeLists.txt
+        │           ├── LegalizeForLLVMExport.cpp
+        │           └── Transforms.h
+        └── target
+            └── LLVMIR
+                └── Dialect
+                    ├── CMakeLists.txt
+                    └── GemminiToLLVMIRTranslation.cpp
+
+19 directories, 29 files

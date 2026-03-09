@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Original File sourced and modified from https://github.com/buddy-compiler/buddy-mlir
+// Original File sourced and modified from
+// https://github.com/buddy-compiler/buddy-mlir
 //
 //===----------------------------------------------------------------------===//
 //
@@ -23,12 +24,12 @@
 #include "mlir/IR/Operation.h"
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 
-#include "llvm/IR/IRBuilder.h"
 #include "backend/include/llvm/IR/IntrinsicsRISCV.h"
+#include "llvm/IR/IRBuilder.h"
 
+#include "Target/LLVMIR/Dialect/Gemmini/GemminiToLLVMIRTranslation.h"
 #include "merlin/Dialect/Gemmini/IR/GemminiDialect.h"
 #include "merlin/Dialect/Gemmini/IR/GemminiOps.h"
-#include "Target/LLVMIR/Dialect/Gemmini/GemminiToLLVMIRTranslation.h"
 
 using namespace mlir;
 using namespace mlir::LLVM;
@@ -38,33 +39,32 @@ namespace {
 /// Implementation of the dialect interface that converts operations belonging
 /// to the Gemmini dialect to LLVM IR.
 class GemminiDialectLLVMIRTranslationInterface
-    : public LLVMTranslationDialectInterface {
-public:
-  using LLVMTranslationDialectInterface::LLVMTranslationDialectInterface;
+	: public LLVMTranslationDialectInterface {
+  public:
+	using LLVMTranslationDialectInterface::LLVMTranslationDialectInterface;
 
-  /// Translates the given operation to LLVM IR using the provided IR builder
-  /// and saving the state in `moduleTranslation`.
-  LogicalResult
-  convertOperation(Operation *op, llvm::IRBuilderBase &builder,
-                   LLVM::ModuleTranslation &moduleTranslation) const final {
-    Operation &opInst = *op;
+	/// Translates the given operation to LLVM IR using the provided IR builder
+	/// and saving the state in `moduleTranslation`.
+	LogicalResult convertOperation(Operation *op, llvm::IRBuilderBase &builder,
+		LLVM::ModuleTranslation &moduleTranslation) const final {
+		Operation &opInst = *op;
 #include "Gemmini/GemminiConversions.inc"
 
-    return failure();
-  }
+		return failure();
+	}
 };
 } // end namespace
 
 void buddy::registerGemminiDialectTranslation(DialectRegistry &registry) {
-  registry.insert<gemmini::GemminiDialect>();
-  registry.addExtension(
-      +[](MLIRContext *ctx, gemmini::GemminiDialect *dialect) {
-        dialect->addInterfaces<GemminiDialectLLVMIRTranslationInterface>();
-      });
+	registry.insert<gemmini::GemminiDialect>();
+	registry.addExtension(
+		+[](MLIRContext *ctx, gemmini::GemminiDialect *dialect) {
+			dialect->addInterfaces<GemminiDialectLLVMIRTranslationInterface>();
+		});
 }
 
 void buddy::registerGemminiDialectTranslation(MLIRContext &context) {
-  DialectRegistry registry;
-  registerGemminiDialectTranslation(registry);
-  context.appendDialectRegistry(registry);
+	DialectRegistry registry;
+	registerGemminiDialectTranslation(registry);
+	context.appendDialectRegistry(registry);
 }

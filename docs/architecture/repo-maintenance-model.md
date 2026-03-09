@@ -12,7 +12,7 @@ key risks.
 ## Decision
 
 1. Keep upstream forks pinned and patch-driven:
-   - Pins: `patches/manifest.*`
+   - Pins: `patches/manifest.env`
    - Ordered patch series: `patches/series.*`
 2. Prefer out-of-tree Merlin logic in this repository.
 3. Use one stable developer entrypoint:

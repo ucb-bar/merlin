@@ -79,7 +79,7 @@ cmake \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DIREE_BUILD_TESTS=ON \
-    -DIREE_BUILD_SAMPLES=ON 
+    -DIREE_BUILD_SAMPLES=ON
 
 # Build and install the host tools
 cmake --build "${BUILD_HOST_DIR}" --target install

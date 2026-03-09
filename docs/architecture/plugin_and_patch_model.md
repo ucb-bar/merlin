@@ -47,25 +47,25 @@ python3 tools/merlin.py --help
 2. Export or refresh patch files from local in-tree edits:
 
 ```bash
-./scripts/patches/refresh_all.sh
+./patches/tools/refresh_all.sh
 ```
 
 3. Apply patch stack to fresh trees:
 
 ```bash
-./scripts/patches/apply_all.sh
+./patches/tools/apply_all.sh
 ```
 
 4. Verify patched state is exactly as expected:
 
 ```bash
-./scripts/patches/verify_clean.sh
+./patches/tools/verify_clean.sh
 ```
 
 5. Check drift against pinned upstream commits:
 
 ```bash
-./scripts/drift/check_upstream_drift.sh
+./patches/tools/check_upstream_drift.sh
 ```
 
 ## Policy for New Changes
@@ -81,8 +81,8 @@ python3 tools/merlin.py --help
 
 A strict CI gate should run at least:
 
-- `scripts/patches/apply_all.sh`
-- `scripts/patches/verify_clean.sh`
-- `scripts/drift/check_upstream_drift.sh`
+- `patches/tools/apply_all.sh`
+- `patches/tools/verify_clean.sh`
+- `patches/tools/check_upstream_drift.sh`
 
 This catches upstream drift and silent local edits before demo/release branches.

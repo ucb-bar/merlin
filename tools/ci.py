@@ -2,17 +2,18 @@
 # tools/ci.py
 
 import argparse
-import sys
-import os
+import pathlib
 import re
 import shutil
 import subprocess
-import pathlib
-from typing import Optional, List, Sequence, Dict
+import sys
+from collections.abc import Sequence
+
 import utils
 
 UPSTREAM_TRACKING_CONFIG = utils.REPO_ROOT / "config" / "upstream_tracking.yaml"
 SEMVER_TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+
 
 def setup_parser(parser: argparse.ArgumentParser):
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
@@ -29,30 +30,35 @@ def setup_parser(parser: argparse.ArgumentParser):
     release.add_argument("--offline", action="store_true")
     release.add_argument("--json", action="store_true")
 
+
 # --- Helpers ---
 
-def find_files_with_suffixes(roots: Sequence[pathlib.Path], suffixes: Sequence[str]) -> List[pathlib.Path]:
+
+def find_files_with_suffixes(roots: Sequence[pathlib.Path], suffixes: Sequence[str]) -> list[pathlib.Path]:
     found = []
     suffix_set = set(suffixes)
     for root in roots:
-        if not root.exists(): continue
+        if not root.exists():
+            continue
         for path in root.rglob("*"):
             if path.is_file() and path.suffix in suffix_set:
                 found.append(path)
     return sorted(found)
 
+
 def parse_semver_tag(tag: str):
     m = SEMVER_TAG_RE.match(tag)
     return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
 
+
 def fetch_latest_release_tag(repo_slug: str) -> str:
     remote_url = f"https://github.com/{repo_slug}.git"
     res = subprocess.run(
-        ["git", "ls-remote", "--tags", "--refs", remote_url],
-        capture_output=True, text=True, timeout=30
+        ["git", "ls-remote", "--tags", "--refs", remote_url], capture_output=True, text=True, timeout=30
     )
-    if res.returncode != 0: raise RuntimeError(f"git ls-remote failed: {res.stderr}")
-    
+    if res.returncode != 0:
+        raise RuntimeError(f"git ls-remote failed: {res.stderr}")
+
     latest_tag, latest_semver = None, None
     for line in res.stdout.splitlines():
         ref = line.split()[1]
@@ -63,7 +69,9 @@ def fetch_latest_release_tag(repo_slug: str) -> str:
             latest_tag = tag
     return latest_tag
 
+
 # --- Commands ---
+
 
 def run_lint(args) -> int:
     sh_files = find_files_with_suffixes([utils.REPO_ROOT / "scripts", utils.REPO_ROOT / "patches"], [".sh"])
@@ -80,8 +88,9 @@ def run_lint(args) -> int:
             return 1
     else:
         print("Warning: shellcheck not found")
-    
+
     return 0
+
 
 def run_patch_gate(args) -> int:
     steps = [
@@ -94,6 +103,7 @@ def run_patch_gate(args) -> int:
             return 1
     return 0
 
+
 def run_release_status(args) -> int:
     # Simplified YAML loader for the config
     def load_simple_yaml(path):
@@ -102,7 +112,7 @@ def run_release_status(args) -> int:
             for line in f:
                 if ":" in line and not line.strip().startswith("#"):
                     k, v = line.split(":", 1)
-                    data[k.strip()] = v.strip().replace('"', '')
+                    data[k.strip()] = v.strip().replace('"', "")
         return data
 
     try:
@@ -113,7 +123,7 @@ def run_release_status(args) -> int:
 
     tracked = config.get("tracked_release_tag")
     repo = config.get("upstream_repo", "iree-org/iree")
-    
+
     latest = "offline"
     if not args.offline:
         try:
@@ -123,17 +133,23 @@ def run_release_status(args) -> int:
 
     if args.json:
         import json
+
         print(json.dumps({"tracked": tracked, "latest": latest}))
     else:
         print(f"Tracked: {tracked}")
         print(f"Latest:  {latest}")
     return 0
 
+
 def main(args: argparse.Namespace) -> int:
-    if args.subcommand == "lint": return run_lint(args)
-    if args.subcommand == "patch-gate": return run_patch_gate(args)
-    if args.subcommand == "release-status": return run_release_status(args)
+    if args.subcommand == "lint":
+        return run_lint(args)
+    if args.subcommand == "patch-gate":
+        return run_patch_gate(args)
+    if args.subcommand == "release-status":
+        return run_release_status(args)
     return 1
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Merlin CI Tools")

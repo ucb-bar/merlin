@@ -1,70 +1,70 @@
 module {
   func.func @main_graph(%arg0: !torch.vtensor<[1,1,224,224],f32>) -> (!torch.vtensor<[1,1],f32>, !torch.vtensor<[1,1],f32>) attributes {torch.onnx_meta.ir_version = 8 : si64, torch.onnx_meta.opset_version = 17 : si64, torch.onnx_meta.producer_name = "pytorch", torch.onnx_meta.producer_version = "2.9.1"} {
-    %0 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.0.weight> : tensor<32x1x5x5xf32>} : () -> !torch.vtensor<[32,1,5,5],f32> 
-    %1 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.0.bias> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32> 
-    %2 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.2.weight> : tensor<32x32x3x3xf32>} : () -> !torch.vtensor<[32,32,3,3],f32> 
-    %3 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.2.bias> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32> 
-    %4 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.3.weight> : tensor<32x32x1x1xf32>} : () -> !torch.vtensor<[32,32,1,1],f32> 
-    %5 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.3.bias> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32> 
-    %6 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.5.weight> : tensor<64x64x3x3xf32>} : () -> !torch.vtensor<[64,64,3,3],f32> 
-    %7 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.5.bias> : tensor<64xf32>} : () -> !torch.vtensor<[64],f32> 
-    %8 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.6.weight> : tensor<64x32x1x1xf32>} : () -> !torch.vtensor<[64,32,1,1],f32> 
-    %9 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.6.bias> : tensor<64xf32>} : () -> !torch.vtensor<[64],f32> 
-    %10 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.8.weight> : tensor<128x128x3x3xf32>} : () -> !torch.vtensor<[128,128,3,3],f32> 
-    %11 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.8.bias> : tensor<128xf32>} : () -> !torch.vtensor<[128],f32> 
-    %12 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.9.weight> : tensor<128x64x1x1xf32>} : () -> !torch.vtensor<[128,64,1,1],f32> 
-    %13 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.9.bias> : tensor<128xf32>} : () -> !torch.vtensor<[128],f32> 
-    %14 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.0.weight> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32> 
-    %15 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.0.bias> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32> 
-    %16 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.0.running_mean> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32> 
-    %17 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.0.running_var> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32> 
-    %18 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.2.running_mean> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32> 
-    %19 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.4.weight> : tensor<64xf32>} : () -> !torch.vtensor<[64],f32> 
-    %20 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.4.bias> : tensor<64xf32>} : () -> !torch.vtensor<[64],f32> 
-    %21 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.4.running_mean> : tensor<64xf32>} : () -> !torch.vtensor<[64],f32> 
-    %22 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.4.running_var> : tensor<64xf32>} : () -> !torch.vtensor<[64],f32> 
-    %23 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_linear1.weight> : tensor<1x6272xf32>} : () -> !torch.vtensor<[1,6272],f32> 
-    %24 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_linear1.bias> : tensor<1xf32>} : () -> !torch.vtensor<[1],f32> 
-    %25 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_linear2.weight> : tensor<1x6272xf32>} : () -> !torch.vtensor<[1,6272],f32> 
-    %26 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_linear2.bias> : tensor<1xf32>} : () -> !torch.vtensor<[1],f32> 
-    %27 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_onnx__Conv_87> : tensor<32x32x3x3xf32>} : () -> !torch.vtensor<[32,32,3,3],f32> 
-    %28 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_onnx__Conv_88> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32> 
-    %29 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_onnx__Conv_90> : tensor<64x32x3x3xf32>} : () -> !torch.vtensor<[64,32,3,3],f32> 
-    %30 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_onnx__Conv_91> : tensor<64xf32>} : () -> !torch.vtensor<[64],f32> 
-    %31 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_onnx__Conv_93> : tensor<128x64x3x3xf32>} : () -> !torch.vtensor<[128,64,3,3],f32> 
-    %32 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_onnx__Conv_94> : tensor<128xf32>} : () -> !torch.vtensor<[128],f32> 
+    %0 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.0.weight> : tensor<32x1x5x5xf32>} : () -> !torch.vtensor<[32,1,5,5],f32>
+    %1 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.0.bias> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32>
+    %2 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.2.weight> : tensor<32x32x3x3xf32>} : () -> !torch.vtensor<[32,32,3,3],f32>
+    %3 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.2.bias> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32>
+    %4 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.3.weight> : tensor<32x32x1x1xf32>} : () -> !torch.vtensor<[32,32,1,1],f32>
+    %5 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.3.bias> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32>
+    %6 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.5.weight> : tensor<64x64x3x3xf32>} : () -> !torch.vtensor<[64,64,3,3],f32>
+    %7 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.5.bias> : tensor<64xf32>} : () -> !torch.vtensor<[64],f32>
+    %8 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.6.weight> : tensor<64x32x1x1xf32>} : () -> !torch.vtensor<[64,32,1,1],f32>
+    %9 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.6.bias> : tensor<64xf32>} : () -> !torch.vtensor<[64],f32>
+    %10 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.8.weight> : tensor<128x128x3x3xf32>} : () -> !torch.vtensor<[128,128,3,3],f32>
+    %11 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.8.bias> : tensor<128xf32>} : () -> !torch.vtensor<[128],f32>
+    %12 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.9.weight> : tensor<128x64x1x1xf32>} : () -> !torch.vtensor<[128,64,1,1],f32>
+    %13 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_conv_modules.9.bias> : tensor<128xf32>} : () -> !torch.vtensor<[128],f32>
+    %14 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.0.weight> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32>
+    %15 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.0.bias> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32>
+    %16 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.0.running_mean> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32>
+    %17 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.0.running_var> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32>
+    %18 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.2.running_mean> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32>
+    %19 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.4.weight> : tensor<64xf32>} : () -> !torch.vtensor<[64],f32>
+    %20 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.4.bias> : tensor<64xf32>} : () -> !torch.vtensor<[64],f32>
+    %21 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.4.running_mean> : tensor<64xf32>} : () -> !torch.vtensor<[64],f32>
+    %22 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_bn_modules.4.running_var> : tensor<64xf32>} : () -> !torch.vtensor<[64],f32>
+    %23 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_linear1.weight> : tensor<1x6272xf32>} : () -> !torch.vtensor<[1,6272],f32>
+    %24 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_linear1.bias> : tensor<1xf32>} : () -> !torch.vtensor<[1],f32>
+    %25 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_linear2.weight> : tensor<1x6272xf32>} : () -> !torch.vtensor<[1,6272],f32>
+    %26 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_linear2.bias> : tensor<1xf32>} : () -> !torch.vtensor<[1],f32>
+    %27 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_onnx__Conv_87> : tensor<32x32x3x3xf32>} : () -> !torch.vtensor<[32,32,3,3],f32>
+    %28 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_onnx__Conv_88> : tensor<32xf32>} : () -> !torch.vtensor<[32],f32>
+    %29 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_onnx__Conv_90> : tensor<64x32x3x3xf32>} : () -> !torch.vtensor<[64,32,3,3],f32>
+    %30 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_onnx__Conv_91> : tensor<64xf32>} : () -> !torch.vtensor<[64],f32>
+    %31 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_onnx__Conv_93> : tensor<128x64x3x3xf32>} : () -> !torch.vtensor<[128,64,3,3],f32>
+    %32 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_onnx__Conv_94> : tensor<128xf32>} : () -> !torch.vtensor<[128],f32>
     %none = torch.constant.none
-    %33 = torch.operator "onnx.Identity"(%17) : (!torch.vtensor<[32],f32>) -> !torch.vtensor<[32],f32> 
-    %34 = torch.operator "onnx.Identity"(%15) : (!torch.vtensor<[32],f32>) -> !torch.vtensor<[32],f32> 
-    %35 = torch.operator "onnx.Identity"(%14) : (!torch.vtensor<[32],f32>) -> !torch.vtensor<[32],f32> 
-    %36 = torch.operator "onnx.Conv"(%arg0, %0, %1) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [5 : si64, 5 : si64], torch.onnx.pads = [2 : si64, 2 : si64, 2 : si64, 2 : si64], torch.onnx.strides = [2 : si64, 2 : si64]} : (!torch.vtensor<[1,1,224,224],f32>, !torch.vtensor<[32,1,5,5],f32>, !torch.vtensor<[32],f32>) -> !torch.vtensor<[1,32,112,112],f32> 
-    %37 = torch.operator "onnx.MaxPool"(%36) {torch.onnx.ceil_mode = 0 : si64, torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.kernel_shape = [3 : si64, 3 : si64], torch.onnx.pads = [0 : si64, 0 : si64, 0 : si64, 0 : si64], torch.onnx.strides = [2 : si64, 2 : si64]} : (!torch.vtensor<[1,32,112,112],f32>) -> !torch.vtensor<[1,32,55,55],f32> 
-    %38 = torch.operator "onnx.BatchNormalization"(%37, %14, %15, %16, %17) {torch.onnx.epsilon = 9.99999974E-6 : f32, torch.onnx.momentum = 0.899999976 : f32, torch.onnx.training_mode = 0 : si64} : (!torch.vtensor<[1,32,55,55],f32>, !torch.vtensor<[32],f32>, !torch.vtensor<[32],f32>, !torch.vtensor<[32],f32>, !torch.vtensor<[32],f32>) -> !torch.vtensor<[1,32,55,55],f32> 
-    %39 = torch.operator "onnx.Relu"(%38) : (!torch.vtensor<[1,32,55,55],f32>) -> !torch.vtensor<[1,32,55,55],f32> 
-    %40 = torch.operator "onnx.Conv"(%39, %27, %28) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [3 : si64, 3 : si64], torch.onnx.pads = [1 : si64, 1 : si64, 1 : si64, 1 : si64], torch.onnx.strides = [2 : si64, 2 : si64]} : (!torch.vtensor<[1,32,55,55],f32>, !torch.vtensor<[32,32,3,3],f32>, !torch.vtensor<[32],f32>) -> !torch.vtensor<[1,32,28,28],f32> 
-    %41 = torch.operator "onnx.Relu"(%40) : (!torch.vtensor<[1,32,28,28],f32>) -> !torch.vtensor<[1,32,28,28],f32> 
-    %42 = torch.operator "onnx.Conv"(%41, %2, %3) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [3 : si64, 3 : si64], torch.onnx.pads = [1 : si64, 1 : si64, 1 : si64, 1 : si64], torch.onnx.strides = [1 : si64, 1 : si64]} : (!torch.vtensor<[1,32,28,28],f32>, !torch.vtensor<[32,32,3,3],f32>, !torch.vtensor<[32],f32>) -> !torch.vtensor<[1,32,28,28],f32> 
-    %43 = torch.operator "onnx.Conv"(%37, %4, %5) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [1 : si64, 1 : si64], torch.onnx.pads = [0 : si64, 0 : si64, 0 : si64, 0 : si64], torch.onnx.strides = [2 : si64, 2 : si64]} : (!torch.vtensor<[1,32,55,55],f32>, !torch.vtensor<[32,32,1,1],f32>, !torch.vtensor<[32],f32>) -> !torch.vtensor<[1,32,28,28],f32> 
-    %44 = torch.operator "onnx.Add"(%43, %42) : (!torch.vtensor<[1,32,28,28],f32>, !torch.vtensor<[1,32,28,28],f32>) -> !torch.vtensor<[1,32,28,28],f32> 
-    %45 = torch.operator "onnx.BatchNormalization"(%44, %35, %34, %18, %33) {torch.onnx.epsilon = 9.99999974E-6 : f32, torch.onnx.momentum = 0.899999976 : f32, torch.onnx.training_mode = 0 : si64} : (!torch.vtensor<[1,32,28,28],f32>, !torch.vtensor<[32],f32>, !torch.vtensor<[32],f32>, !torch.vtensor<[32],f32>, !torch.vtensor<[32],f32>) -> !torch.vtensor<[1,32,28,28],f32> 
-    %46 = torch.operator "onnx.Relu"(%45) : (!torch.vtensor<[1,32,28,28],f32>) -> !torch.vtensor<[1,32,28,28],f32> 
-    %47 = torch.operator "onnx.Conv"(%46, %29, %30) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [3 : si64, 3 : si64], torch.onnx.pads = [1 : si64, 1 : si64, 1 : si64, 1 : si64], torch.onnx.strides = [2 : si64, 2 : si64]} : (!torch.vtensor<[1,32,28,28],f32>, !torch.vtensor<[64,32,3,3],f32>, !torch.vtensor<[64],f32>) -> !torch.vtensor<[1,64,14,14],f32> 
-    %48 = torch.operator "onnx.Relu"(%47) : (!torch.vtensor<[1,64,14,14],f32>) -> !torch.vtensor<[1,64,14,14],f32> 
-    %49 = torch.operator "onnx.Conv"(%48, %6, %7) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [3 : si64, 3 : si64], torch.onnx.pads = [1 : si64, 1 : si64, 1 : si64, 1 : si64], torch.onnx.strides = [1 : si64, 1 : si64]} : (!torch.vtensor<[1,64,14,14],f32>, !torch.vtensor<[64,64,3,3],f32>, !torch.vtensor<[64],f32>) -> !torch.vtensor<[1,64,14,14],f32> 
-    %50 = torch.operator "onnx.Conv"(%44, %8, %9) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [1 : si64, 1 : si64], torch.onnx.pads = [0 : si64, 0 : si64, 0 : si64, 0 : si64], torch.onnx.strides = [2 : si64, 2 : si64]} : (!torch.vtensor<[1,32,28,28],f32>, !torch.vtensor<[64,32,1,1],f32>, !torch.vtensor<[64],f32>) -> !torch.vtensor<[1,64,14,14],f32> 
-    %51 = torch.operator "onnx.Add"(%50, %49) : (!torch.vtensor<[1,64,14,14],f32>, !torch.vtensor<[1,64,14,14],f32>) -> !torch.vtensor<[1,64,14,14],f32> 
-    %52 = torch.operator "onnx.BatchNormalization"(%51, %19, %20, %21, %22) {torch.onnx.epsilon = 9.99999974E-6 : f32, torch.onnx.momentum = 0.899999976 : f32, torch.onnx.training_mode = 0 : si64} : (!torch.vtensor<[1,64,14,14],f32>, !torch.vtensor<[64],f32>, !torch.vtensor<[64],f32>, !torch.vtensor<[64],f32>, !torch.vtensor<[64],f32>) -> !torch.vtensor<[1,64,14,14],f32> 
-    %53 = torch.operator "onnx.Relu"(%52) : (!torch.vtensor<[1,64,14,14],f32>) -> !torch.vtensor<[1,64,14,14],f32> 
-    %54 = torch.operator "onnx.Conv"(%53, %31, %32) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [3 : si64, 3 : si64], torch.onnx.pads = [1 : si64, 1 : si64, 1 : si64, 1 : si64], torch.onnx.strides = [2 : si64, 2 : si64]} : (!torch.vtensor<[1,64,14,14],f32>, !torch.vtensor<[128,64,3,3],f32>, !torch.vtensor<[128],f32>) -> !torch.vtensor<[1,128,7,7],f32> 
-    %55 = torch.operator "onnx.Relu"(%54) : (!torch.vtensor<[1,128,7,7],f32>) -> !torch.vtensor<[1,128,7,7],f32> 
-    %56 = torch.operator "onnx.Conv"(%55, %10, %11) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [3 : si64, 3 : si64], torch.onnx.pads = [1 : si64, 1 : si64, 1 : si64, 1 : si64], torch.onnx.strides = [1 : si64, 1 : si64]} : (!torch.vtensor<[1,128,7,7],f32>, !torch.vtensor<[128,128,3,3],f32>, !torch.vtensor<[128],f32>) -> !torch.vtensor<[1,128,7,7],f32> 
-    %57 = torch.operator "onnx.Conv"(%51, %12, %13) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [1 : si64, 1 : si64], torch.onnx.pads = [0 : si64, 0 : si64, 0 : si64, 0 : si64], torch.onnx.strides = [2 : si64, 2 : si64]} : (!torch.vtensor<[1,64,14,14],f32>, !torch.vtensor<[128,64,1,1],f32>, !torch.vtensor<[128],f32>) -> !torch.vtensor<[1,128,7,7],f32> 
-    %58 = torch.operator "onnx.Add"(%57, %56) : (!torch.vtensor<[1,128,7,7],f32>, !torch.vtensor<[1,128,7,7],f32>) -> !torch.vtensor<[1,128,7,7],f32> 
-    %59 = torch.operator "onnx.Flatten"(%58) {torch.onnx.axis = 1 : si64} : (!torch.vtensor<[1,128,7,7],f32>) -> !torch.vtensor<[1,6272],f32> 
-    %60 = torch.operator "onnx.Relu"(%59) : (!torch.vtensor<[1,6272],f32>) -> !torch.vtensor<[1,6272],f32> 
-    %61 = torch.operator "onnx.Gemm"(%60, %23, %24) {torch.onnx.alpha = 1.000000e+00 : f32, torch.onnx.beta = 1.000000e+00 : f32, torch.onnx.transB = 1 : si64} : (!torch.vtensor<[1,6272],f32>, !torch.vtensor<[1,6272],f32>, !torch.vtensor<[1],f32>) -> !torch.vtensor<[1,1],f32> 
-    %62 = torch.operator "onnx.Gemm"(%60, %25, %26) {torch.onnx.alpha = 1.000000e+00 : f32, torch.onnx.beta = 1.000000e+00 : f32, torch.onnx.transB = 1 : si64} : (!torch.vtensor<[1,6272],f32>, !torch.vtensor<[1,6272],f32>, !torch.vtensor<[1],f32>) -> !torch.vtensor<[1,1],f32> 
-    %63 = torch.operator "onnx.Sigmoid"(%62) : (!torch.vtensor<[1,1],f32>) -> !torch.vtensor<[1,1],f32> 
+    %33 = torch.operator "onnx.Identity"(%17) : (!torch.vtensor<[32],f32>) -> !torch.vtensor<[32],f32>
+    %34 = torch.operator "onnx.Identity"(%15) : (!torch.vtensor<[32],f32>) -> !torch.vtensor<[32],f32>
+    %35 = torch.operator "onnx.Identity"(%14) : (!torch.vtensor<[32],f32>) -> !torch.vtensor<[32],f32>
+    %36 = torch.operator "onnx.Conv"(%arg0, %0, %1) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [5 : si64, 5 : si64], torch.onnx.pads = [2 : si64, 2 : si64, 2 : si64, 2 : si64], torch.onnx.strides = [2 : si64, 2 : si64]} : (!torch.vtensor<[1,1,224,224],f32>, !torch.vtensor<[32,1,5,5],f32>, !torch.vtensor<[32],f32>) -> !torch.vtensor<[1,32,112,112],f32>
+    %37 = torch.operator "onnx.MaxPool"(%36) {torch.onnx.ceil_mode = 0 : si64, torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.kernel_shape = [3 : si64, 3 : si64], torch.onnx.pads = [0 : si64, 0 : si64, 0 : si64, 0 : si64], torch.onnx.strides = [2 : si64, 2 : si64]} : (!torch.vtensor<[1,32,112,112],f32>) -> !torch.vtensor<[1,32,55,55],f32>
+    %38 = torch.operator "onnx.BatchNormalization"(%37, %14, %15, %16, %17) {torch.onnx.epsilon = 9.99999974E-6 : f32, torch.onnx.momentum = 0.899999976 : f32, torch.onnx.training_mode = 0 : si64} : (!torch.vtensor<[1,32,55,55],f32>, !torch.vtensor<[32],f32>, !torch.vtensor<[32],f32>, !torch.vtensor<[32],f32>, !torch.vtensor<[32],f32>) -> !torch.vtensor<[1,32,55,55],f32>
+    %39 = torch.operator "onnx.Relu"(%38) : (!torch.vtensor<[1,32,55,55],f32>) -> !torch.vtensor<[1,32,55,55],f32>
+    %40 = torch.operator "onnx.Conv"(%39, %27, %28) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [3 : si64, 3 : si64], torch.onnx.pads = [1 : si64, 1 : si64, 1 : si64, 1 : si64], torch.onnx.strides = [2 : si64, 2 : si64]} : (!torch.vtensor<[1,32,55,55],f32>, !torch.vtensor<[32,32,3,3],f32>, !torch.vtensor<[32],f32>) -> !torch.vtensor<[1,32,28,28],f32>
+    %41 = torch.operator "onnx.Relu"(%40) : (!torch.vtensor<[1,32,28,28],f32>) -> !torch.vtensor<[1,32,28,28],f32>
+    %42 = torch.operator "onnx.Conv"(%41, %2, %3) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [3 : si64, 3 : si64], torch.onnx.pads = [1 : si64, 1 : si64, 1 : si64, 1 : si64], torch.onnx.strides = [1 : si64, 1 : si64]} : (!torch.vtensor<[1,32,28,28],f32>, !torch.vtensor<[32,32,3,3],f32>, !torch.vtensor<[32],f32>) -> !torch.vtensor<[1,32,28,28],f32>
+    %43 = torch.operator "onnx.Conv"(%37, %4, %5) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [1 : si64, 1 : si64], torch.onnx.pads = [0 : si64, 0 : si64, 0 : si64, 0 : si64], torch.onnx.strides = [2 : si64, 2 : si64]} : (!torch.vtensor<[1,32,55,55],f32>, !torch.vtensor<[32,32,1,1],f32>, !torch.vtensor<[32],f32>) -> !torch.vtensor<[1,32,28,28],f32>
+    %44 = torch.operator "onnx.Add"(%43, %42) : (!torch.vtensor<[1,32,28,28],f32>, !torch.vtensor<[1,32,28,28],f32>) -> !torch.vtensor<[1,32,28,28],f32>
+    %45 = torch.operator "onnx.BatchNormalization"(%44, %35, %34, %18, %33) {torch.onnx.epsilon = 9.99999974E-6 : f32, torch.onnx.momentum = 0.899999976 : f32, torch.onnx.training_mode = 0 : si64} : (!torch.vtensor<[1,32,28,28],f32>, !torch.vtensor<[32],f32>, !torch.vtensor<[32],f32>, !torch.vtensor<[32],f32>, !torch.vtensor<[32],f32>) -> !torch.vtensor<[1,32,28,28],f32>
+    %46 = torch.operator "onnx.Relu"(%45) : (!torch.vtensor<[1,32,28,28],f32>) -> !torch.vtensor<[1,32,28,28],f32>
+    %47 = torch.operator "onnx.Conv"(%46, %29, %30) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [3 : si64, 3 : si64], torch.onnx.pads = [1 : si64, 1 : si64, 1 : si64, 1 : si64], torch.onnx.strides = [2 : si64, 2 : si64]} : (!torch.vtensor<[1,32,28,28],f32>, !torch.vtensor<[64,32,3,3],f32>, !torch.vtensor<[64],f32>) -> !torch.vtensor<[1,64,14,14],f32>
+    %48 = torch.operator "onnx.Relu"(%47) : (!torch.vtensor<[1,64,14,14],f32>) -> !torch.vtensor<[1,64,14,14],f32>
+    %49 = torch.operator "onnx.Conv"(%48, %6, %7) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [3 : si64, 3 : si64], torch.onnx.pads = [1 : si64, 1 : si64, 1 : si64, 1 : si64], torch.onnx.strides = [1 : si64, 1 : si64]} : (!torch.vtensor<[1,64,14,14],f32>, !torch.vtensor<[64,64,3,3],f32>, !torch.vtensor<[64],f32>) -> !torch.vtensor<[1,64,14,14],f32>
+    %50 = torch.operator "onnx.Conv"(%44, %8, %9) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [1 : si64, 1 : si64], torch.onnx.pads = [0 : si64, 0 : si64, 0 : si64, 0 : si64], torch.onnx.strides = [2 : si64, 2 : si64]} : (!torch.vtensor<[1,32,28,28],f32>, !torch.vtensor<[64,32,1,1],f32>, !torch.vtensor<[64],f32>) -> !torch.vtensor<[1,64,14,14],f32>
+    %51 = torch.operator "onnx.Add"(%50, %49) : (!torch.vtensor<[1,64,14,14],f32>, !torch.vtensor<[1,64,14,14],f32>) -> !torch.vtensor<[1,64,14,14],f32>
+    %52 = torch.operator "onnx.BatchNormalization"(%51, %19, %20, %21, %22) {torch.onnx.epsilon = 9.99999974E-6 : f32, torch.onnx.momentum = 0.899999976 : f32, torch.onnx.training_mode = 0 : si64} : (!torch.vtensor<[1,64,14,14],f32>, !torch.vtensor<[64],f32>, !torch.vtensor<[64],f32>, !torch.vtensor<[64],f32>, !torch.vtensor<[64],f32>) -> !torch.vtensor<[1,64,14,14],f32>
+    %53 = torch.operator "onnx.Relu"(%52) : (!torch.vtensor<[1,64,14,14],f32>) -> !torch.vtensor<[1,64,14,14],f32>
+    %54 = torch.operator "onnx.Conv"(%53, %31, %32) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [3 : si64, 3 : si64], torch.onnx.pads = [1 : si64, 1 : si64, 1 : si64, 1 : si64], torch.onnx.strides = [2 : si64, 2 : si64]} : (!torch.vtensor<[1,64,14,14],f32>, !torch.vtensor<[128,64,3,3],f32>, !torch.vtensor<[128],f32>) -> !torch.vtensor<[1,128,7,7],f32>
+    %55 = torch.operator "onnx.Relu"(%54) : (!torch.vtensor<[1,128,7,7],f32>) -> !torch.vtensor<[1,128,7,7],f32>
+    %56 = torch.operator "onnx.Conv"(%55, %10, %11) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [3 : si64, 3 : si64], torch.onnx.pads = [1 : si64, 1 : si64, 1 : si64, 1 : si64], torch.onnx.strides = [1 : si64, 1 : si64]} : (!torch.vtensor<[1,128,7,7],f32>, !torch.vtensor<[128,128,3,3],f32>, !torch.vtensor<[128],f32>) -> !torch.vtensor<[1,128,7,7],f32>
+    %57 = torch.operator "onnx.Conv"(%51, %12, %13) {torch.onnx.dilations = [1 : si64, 1 : si64], torch.onnx.group = 1 : si64, torch.onnx.kernel_shape = [1 : si64, 1 : si64], torch.onnx.pads = [0 : si64, 0 : si64, 0 : si64, 0 : si64], torch.onnx.strides = [2 : si64, 2 : si64]} : (!torch.vtensor<[1,64,14,14],f32>, !torch.vtensor<[128,64,1,1],f32>, !torch.vtensor<[128],f32>) -> !torch.vtensor<[1,128,7,7],f32>
+    %58 = torch.operator "onnx.Add"(%57, %56) : (!torch.vtensor<[1,128,7,7],f32>, !torch.vtensor<[1,128,7,7],f32>) -> !torch.vtensor<[1,128,7,7],f32>
+    %59 = torch.operator "onnx.Flatten"(%58) {torch.onnx.axis = 1 : si64} : (!torch.vtensor<[1,128,7,7],f32>) -> !torch.vtensor<[1,6272],f32>
+    %60 = torch.operator "onnx.Relu"(%59) : (!torch.vtensor<[1,6272],f32>) -> !torch.vtensor<[1,6272],f32>
+    %61 = torch.operator "onnx.Gemm"(%60, %23, %24) {torch.onnx.alpha = 1.000000e+00 : f32, torch.onnx.beta = 1.000000e+00 : f32, torch.onnx.transB = 1 : si64} : (!torch.vtensor<[1,6272],f32>, !torch.vtensor<[1,6272],f32>, !torch.vtensor<[1],f32>) -> !torch.vtensor<[1,1],f32>
+    %62 = torch.operator "onnx.Gemm"(%60, %25, %26) {torch.onnx.alpha = 1.000000e+00 : f32, torch.onnx.beta = 1.000000e+00 : f32, torch.onnx.transB = 1 : si64} : (!torch.vtensor<[1,6272],f32>, !torch.vtensor<[1,6272],f32>, !torch.vtensor<[1],f32>) -> !torch.vtensor<[1,1],f32>
+    %63 = torch.operator "onnx.Sigmoid"(%62) : (!torch.vtensor<[1,1],f32>) -> !torch.vtensor<[1,1],f32>
     return %61, %63 : !torch.vtensor<[1,1],f32>, !torch.vtensor<[1,1],f32>
   }
 }
@@ -108,4 +108,3 @@ module {
     }
   }
 #-}
-

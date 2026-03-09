@@ -37,4 +37,3 @@ func.func @run(
   // Return all outputs as a tuple
   return %steer, %collision, %depth, %mlp_out : tensor<1x1xf32>, tensor<1x1xf32>, tensor<1x1x224x224xf32>, tensor<1x2xf32>
 }
-

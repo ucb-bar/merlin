@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-export WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+export WORKSPACE_DIR
 export TOOLCHAIN_DIR="${WORKSPACE_DIR}/build_tools/riscv-tools-spacemit"
 
 mkdir -p "${TOOLCHAIN_DIR}"

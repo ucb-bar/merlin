@@ -24,15 +24,15 @@ module attributes {stream.affinity.default = #hal.device.affinity<@device_a>} {
         %lhs_bind = stream.binding.subspan %lhs[%c0] : !stream.binding -> !iree_tensor_ext.dispatch.tensor<readonly:tensor<128x128xf32>>
         %rhs_bind = stream.binding.subspan %rhs[%c0] : !stream.binding -> !iree_tensor_ext.dispatch.tensor<readonly:tensor<128x128xf32>>
         %out_bind = stream.binding.subspan %out[%c0] : !stream.binding -> !iree_tensor_ext.dispatch.tensor<writeonly:tensor<128x128xf32>>
-        
+
         %lhs_t = iree_tensor_ext.dispatch.tensor.load %lhs_bind, offsets = [0, 0], sizes = [128, 128], strides = [1, 1] : !iree_tensor_ext.dispatch.tensor<readonly:tensor<128x128xf32>> -> tensor<128x128xf32>
         %rhs_t = iree_tensor_ext.dispatch.tensor.load %rhs_bind, offsets = [0, 0], sizes = [128, 128], strides = [1, 1] : !iree_tensor_ext.dispatch.tensor<readonly:tensor<128x128xf32>> -> tensor<128x128xf32>
-        
+
         %empty = tensor.empty() : tensor<128x128xf32>
         %cst_0 = arith.constant 0.0 : f32
         %init = linalg.fill ins(%cst_0 : f32) outs(%empty : tensor<128x128xf32>) -> tensor<128x128xf32>
         %res = linalg.matmul ins(%lhs_t, %rhs_t : tensor<128x128xf32>, tensor<128x128xf32>) outs(%init : tensor<128x128xf32>) -> tensor<128x128xf32>
-        
+
         iree_tensor_ext.dispatch.tensor.store %res, %out_bind, offsets = [0, 0], sizes = [128, 128], strides = [1, 1] : tensor<128x128xf32> -> !iree_tensor_ext.dispatch.tensor<writeonly:tensor<128x128xf32>>
         return
       }
@@ -50,11 +50,11 @@ module attributes {stream.affinity.default = #hal.device.affinity<@device_a>} {
         %c0 = arith.constant 0 : index
         %in_bind = stream.binding.subspan %input[%c0] : !stream.binding -> !iree_tensor_ext.dispatch.tensor<readonly:tensor<128x128xf32>>
         %out_bind = stream.binding.subspan %out[%c0] : !stream.binding -> !iree_tensor_ext.dispatch.tensor<writeonly:tensor<128x128xf32>>
-        
+
         %in_t = iree_tensor_ext.dispatch.tensor.load %in_bind, offsets = [0, 0], sizes = [128, 128], strides = [1, 1] : !iree_tensor_ext.dispatch.tensor<readonly:tensor<128x128xf32>> -> tensor<128x128xf32>
         %empty = tensor.empty() : tensor<128x128xf32>
         %cst_1 = arith.constant 1.0 : f32
-        
+
         %res = linalg.generic {
           indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>],
           iterator_types = ["parallel", "parallel"]
@@ -82,12 +82,12 @@ module attributes {stream.affinity.default = #hal.device.affinity<@device_a>} {
         %a_bind = stream.binding.subspan %in_a[%c0] : !stream.binding -> !iree_tensor_ext.dispatch.tensor<readonly:tensor<128x128xf32>>
         %b_bind = stream.binding.subspan %in_b[%c0] : !stream.binding -> !iree_tensor_ext.dispatch.tensor<readonly:tensor<128x128xf32>>
         %out_bind = stream.binding.subspan %out[%c0] : !stream.binding -> !iree_tensor_ext.dispatch.tensor<writeonly:tensor<128x128xf32>>
-        
+
         %a_t = iree_tensor_ext.dispatch.tensor.load %a_bind, offsets = [0, 0], sizes = [128, 128], strides = [1, 1] : !iree_tensor_ext.dispatch.tensor<readonly:tensor<128x128xf32>> -> tensor<128x128xf32>
         %b_t = iree_tensor_ext.dispatch.tensor.load %b_bind, offsets = [0, 0], sizes = [128, 128], strides = [1, 1] : !iree_tensor_ext.dispatch.tensor<readonly:tensor<128x128xf32>> -> tensor<128x128xf32>
-        
+
         %empty = tensor.empty() : tensor<128x128xf32>
-        
+
         %res = linalg.generic {
           indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>],
           iterator_types = ["parallel", "parallel"]
@@ -117,11 +117,11 @@ module attributes {stream.affinity.default = #hal.device.affinity<@device_a>} {
 
     // [X1] on Device A (Core 0)
     // Note: Changed `promise` to `affinity` to ensure static compiler resolution
-    %mem_x1, %t_alloc_x1 = stream.resource.alloca uninitialized 
-        on(#hal.device.affinity<@device_a>) 
-        await(%t0) => 
+    %mem_x1, %t_alloc_x1 = stream.resource.alloca uninitialized
+        on(#hal.device.affinity<@device_a>)
+        await(%t0) =>
         !stream.resource<transient>{%sz} => !stream.timepoint
-    
+
     %res_x1, %tp_x1_done = stream.async.execute
         on(#hal.device.affinity<@device_a>)
         await(%t_alloc_x1) =>
@@ -133,9 +133,9 @@ module attributes {stream.affinity.default = #hal.device.affinity<@device_a>} {
     } => !stream.timepoint
 
     // [Y1] on Device B (Core 1)
-    %mem_y1, %t_alloc_y1 = stream.resource.alloca uninitialized 
-        on(#hal.device.affinity<@device_b>) 
-        await(%t0) => 
+    %mem_y1, %t_alloc_y1 = stream.resource.alloca uninitialized
+        on(#hal.device.affinity<@device_b>)
+        await(%t0) =>
         !stream.resource<transient>{%sz} => !stream.timepoint
 
     %res_y1, %tp_y1_done = stream.async.execute
@@ -153,11 +153,11 @@ module attributes {stream.affinity.default = #hal.device.affinity<@device_a>} {
     // -------------------------------------------------------------------------
 
     // [Z1] on Device B (Core 1)
-    %mem_z1, %t_alloc_z1 = stream.resource.alloca uninitialized 
-        on(#hal.device.affinity<@device_b>) 
-        await(%t0) => 
+    %mem_z1, %t_alloc_z1 = stream.resource.alloca uninitialized
+        on(#hal.device.affinity<@device_b>)
+        await(%t0) =>
         !stream.resource<transient>{%sz} => !stream.timepoint
-    
+
     // DEPENDENCY: Wait for Y1
     %tp_z1_ready = stream.timepoint.join max(%tp_y1_done, %t_alloc_z1) => !stream.timepoint
 
@@ -176,9 +176,9 @@ module attributes {stream.affinity.default = #hal.device.affinity<@device_a>} {
     // -------------------------------------------------------------------------
 
     // [X2] on Device A (Core 0)
-    %mem_x2, %t_alloc_x2 = stream.resource.alloca uninitialized 
-        on(#hal.device.affinity<@device_a>) 
-        await(%t0) => 
+    %mem_x2, %t_alloc_x2 = stream.resource.alloca uninitialized
+        on(#hal.device.affinity<@device_a>)
+        await(%t0) =>
         !stream.resource<transient>{%sz} => !stream.timepoint
 
     // DEPENDENCY: Wait for X1
@@ -199,9 +199,9 @@ module attributes {stream.affinity.default = #hal.device.affinity<@device_a>} {
     // -------------------------------------------------------------------------
 
     // [Z2] on Device AB (Core 0 + Core 1)
-    %mem_z2, %t_alloc_z2 = stream.resource.alloca uninitialized 
-        on(#hal.device.affinity<@device_ab>) 
-        await(%t0) => 
+    %mem_z2, %t_alloc_z2 = stream.resource.alloca uninitialized
+        on(#hal.device.affinity<@device_ab>)
+        await(%t0) =>
         !stream.resource<transient>{%sz} => !stream.timepoint
 
     // SYNCHRONIZATION POINT: Join timelines from both devices.
@@ -210,7 +210,7 @@ module attributes {stream.affinity.default = #hal.device.affinity<@device_a>} {
     %res_z2, %tp_z2_done = stream.async.execute
         on(#hal.device.affinity<@device_ab>)
         await(%tp_ab_ready) =>
-        with(%res_x2 as %in_a: !stream.resource<transient>{%sz}, 
+        with(%res_x2 as %in_a: !stream.resource<transient>{%sz},
              %res_z1 as %in_b: !stream.resource<transient>{%sz},
              %mem_z2 as %out: !stream.resource<transient>{%sz})
         -> !stream.resource<transient>{%sz}

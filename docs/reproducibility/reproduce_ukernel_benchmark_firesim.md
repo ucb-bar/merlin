@@ -39,7 +39,7 @@ From your `samples/custom_dispatch_ukernels_saturn` directory, run the export sc
 cd samples/custom_dispatch_ukernels_saturn
 
 # Use for a simple MLP model we just include a batch size of 16 to trigger the instruction
-python export_models_onnx.py --model fc 
+python export_models_onnx.py --model fc
 ```
 
 ### Step 2.2: Convert ONNX to MLIR
@@ -198,7 +198,7 @@ for i in {0..3}; do
     TEST_NUM=$((i + 1))
 
     echo "--- Test $TEST_NUM: Benchmarking $MODULE_FILE ---"
-    
+
     echo "--- Capturing Start Cycle ---"
     ./get_cycle > /start_cycle_$TEST_NUM.txt
 
@@ -210,7 +210,7 @@ for i in {0..3}; do
       --benchmark_min_warmup_time=1 \
       --benchmark_repetitions=10 \
       --module=$MODULE_FILE > /output_$TEST_NUM.txt
-      
+
 
     echo "--- Capturing End Cycle ---"
     ./get_cycle > /end_cycle_$TEST_NUM.txt
@@ -223,7 +223,7 @@ echo
 for i in {0..3}; do
     TEST_NUM=$((i + 1))
     MODULE_FILE=${MODULES_TO_TEST[$i]}
-    
+
     START_CYCLE=$(cat /start_cycle_$TEST_NUM.txt)
     END_CYCLE=$(cat /end_cycle_$TEST_NUM.txt)
     TOTAL_CYCLES=$((END_CYCLE - START_CYCLE))
@@ -312,7 +312,7 @@ TOTAL_DISPATCHES=$((BATCH_SIZE * REPETITIONS))
         TEST_NUM=$((i + 1))
 
         echo "--- Test $TEST_NUM: Benchmarking $SO_FILE ---"
-        
+
         echo "--- Capturing Start Cycle ---"
         $CYCLE_TOOL > /start_cycle_$TEST_NUM.txt
 
@@ -343,11 +343,11 @@ TOTAL_DISPATCHES=$((BATCH_SIZE * REPETITIONS))
     for i in {0..3}; do
         TEST_NUM=$((i + 1))
         MODULE_FILE=${MODULES_TO_TEST[$i]}
-        
+
         START_CYCLE=$(cat /start_cycle_$TEST_NUM.txt)
         END_CYCLE=$(cat /end_cycle_$TEST_NUM.txt)
         TOTAL_CYCLES=$((END_CYCLE - START_CYCLE))
-        
+
         # This is your final number:
         AVG_CYCLES=$((TOTAL_CYCLES / TOTAL_DISPATCHES))
 

@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Original File sourced and modified from https://github.com/buddy-compiler/buddy-mlir
+// Original File sourced and modified from
+// https://github.com/buddy-compiler/buddy-mlir
 //
 //===----------------------------------------------------------------------===//
 
@@ -54,10 +55,9 @@ class LLVMTypeConverter;
 class RewritePatternSet;
 using OwningRewritePatternList = RewritePatternSet;
 
-void populateGemminiLegalizeForLLVMExportPatterns(
-    LLVMTypeConverter &converter, RewritePatternSet &patterns, int64_t dim,
-    int64_t addrLen, int64_t accRows, int64_t bankRows, size_t sizeOfElemT,
-    size_t sizeOfAccT);
+void populateGemminiLegalizeForLLVMExportPatterns(LLVMTypeConverter &converter,
+	RewritePatternSet &patterns, int64_t dim, int64_t addrLen, int64_t accRows,
+	int64_t bankRows, size_t sizeOfElemT, size_t sizeOfAccT);
 void configureGemminiLegalizeForExportTarget(LLVMConversionTarget &target);
 
 } // namespace mlir

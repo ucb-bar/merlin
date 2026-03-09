@@ -141,15 +141,15 @@ module attributes {transform.with_named_sequence} {
     %root: !transform.any_op {transform.readonly}
   ) -> (!transform.any_value, !transform.any_value) {
     %ins, %outs = transform.iree.match.cast_compatible_dag_from_root %root {
-    ^bb0(%A: tensor<1x?xi8>, %B: tensor<?x?xi8>, %Bias_i32: tensor<?xi32>, 
+    ^bb0(%A: tensor<1x?xi8>, %B: tensor<?x?xi8>, %Bias_i32: tensor<?xi32>,
           %Scale_Matmul: f32, %Scale_Bias: f32):
-      
+
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %dim_0 = tensor.dim %A, %c0 : tensor<1x?xi8> // M (which is 1)
       %dim_K = tensor.dim %A, %c1 : tensor<1x?xi8> // K
       %dim_1 = tensor.dim %B, %c1 : tensor<?x?xi8> // N
-      
+
       // 1. Matmul
       %c0_i32 = arith.constant 0 : i32
       %empty_i32 = tensor.empty(%dim_1) {"match.dynamic_dim_only"} : tensor<1x?xi32>
@@ -164,7 +164,7 @@ module attributes {transform.with_named_sequence} {
       %C_f32 = linalg.generic {
         indexing_maps = [#map_2d, #map_scalar_in_2d, #map_2d],
         iterator_types = ["parallel", "parallel"]
-      } 
+      }
       ins(%C_i32, %Scale_Matmul : tensor<1x?xi32>, f32)
       outs(%empty_f32_C : tensor<1x?xf32>) {
       ^bb0(%in: i32, %scale: f32, %out: f32): // %scale is the new block argument
@@ -178,7 +178,7 @@ module attributes {transform.with_named_sequence} {
       %Bias_f32 = linalg.generic {
         indexing_maps = [#map_1d, #map_scalar_in_1d, #map_1d],
         iterator_types = ["parallel"]
-      } 
+      }
       ins(%Bias_i32, %Scale_Bias : tensor<?xi32>, f32)
       outs(%empty_f32_B : tensor<?xf32>) {
       ^bb0(%in: i32, %scale: f32, %out: f32): // %scale is the new block argument
@@ -187,7 +187,7 @@ module attributes {transform.with_named_sequence} {
         linalg.yield %s : f32
       } -> tensor<?xf32>
 
-      // 4. Add Bias 
+      // 4. Add Bias
       %empty_f32_Out = tensor.empty(%dim_0) {"match.dynamic_dim_only"} : tensor<1x?xf32>
       %Result_f32 = linalg.generic {
         indexing_maps = [#map_2d, #map_broadcast_1d_in_2d, #map_2d],
@@ -227,14 +227,14 @@ module attributes {transform.with_named_sequence} {
   transform.named_sequence @__transform_main(%module: !transform.any_op) {
     %funcs = transform.structured.match ops{["util.func"]} in %module
       : (!transform.any_op) -> !transform.any_op
-    
+
     transform.foreach %funcs : !transform.any_op {
     ^bb1(%func: !transform.any_op):
       transform.foreach_match in %func
         @match_qgemm_bias_fused_scale -> @cast_and_call_dag
         : (!transform.any_op) -> (!transform.any_op)
     }
-    
+
     transform.apply_dce to %module : !transform.any_op
     transform.yield
   }

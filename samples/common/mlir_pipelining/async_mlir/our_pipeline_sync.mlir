@@ -38,4 +38,3 @@ func.func @run(%input: tensor<1x3x224x224xf32>) -> (tensor<1x1xf32>, tensor<1x1x
 //   return %depth : tensor<1x1x224x224xf32>
 // return %input : tensor<1x3x224x224xf32>
 }
-

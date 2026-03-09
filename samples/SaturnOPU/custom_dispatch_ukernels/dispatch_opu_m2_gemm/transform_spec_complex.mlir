@@ -141,9 +141,9 @@ module attributes {transform.with_named_sequence} {
     %root: !transform.any_op {transform.readonly}
   ) -> (!transform.any_value, !transform.any_value) {
     %ins, %outs = transform.iree.match.cast_compatible_dag_from_root %root {
-    ^bb0(%A: tensor<1x?xi8>, %B: tensor<?x?xi8>, %Bias_i32: tensor<?xi32>, 
+    ^bb0(%A: tensor<1x?xi8>, %B: tensor<?x?xi8>, %Bias_i32: tensor<?xi32>,
           %Scale_Matmul_tensor: tensor<f32>, %Scale_Bias_tensor: tensor<f32>):
-      
+
       //%c0 = arith.constant 0 : index
       //%c1 = arith.constant 1 : index
       //%dim_0 = tensor.dim %A, %c0 : tensor<1x?xi8> // M (which is 1)
@@ -157,7 +157,7 @@ module attributes {transform.with_named_sequence} {
 
       %cst_9 = arith.constant 0.0354968868 : f32
 
-      
+
       %2 = linalg.generic {indexing_maps = [#map, #map], iterator_types = ["parallel"]} ins(%Bias_i32 : tensor<?xi32>) outs(%1 : tensor<?xf32>) {
       ^bb0(%in: i32, %out: f32):
         %44 = arith.sitofp %in : i32 to f32
@@ -176,7 +176,7 @@ module attributes {transform.with_named_sequence} {
         linalg.yield %49 : i8
       } -> tensor<1x?xi8>
       %7 = tensor.empty() : tensor<?x?xi8>
-      %transposed = linalg.transpose ins(%cst : tensor<?x?xi8>) outs(%7 : tensor<?x?xi8>) permutation = [1, 0] 
+      %transposed = linalg.transpose ins(%cst : tensor<?x?xi8>) outs(%7 : tensor<?x?xi8>) permutation = [1, 0]
       %8 = tensor.empty() : tensor<1x?xi32>
       %9 = linalg.fill ins(%c0_i32 : i32) outs(%8 : tensor<1x?xi32>) -> tensor<1x?xi32>
       %10 = linalg.quantized_matmul ins(%6, %transposed, %c0_i32, %c0_i32 : tensor<1x?xi8>, tensor<?x?xi8>, i32, i32) outs(%9 : tensor<1x?xi32>) -> tensor<1x?xi32>
@@ -192,9 +192,9 @@ module attributes {transform.with_named_sequence} {
         %44 = arith.addf %in, %in_16 : f32
         linalg.yield %44 : f32
       } -> tensor<1x?xf32>
-      
 
-      
+
+
     } : (!transform.any_op) -> (!transform.any_value, !transform.any_value)
     transform.yield %ins, %outs : !transform.any_value, !transform.any_value
   }
@@ -224,14 +224,14 @@ module attributes {transform.with_named_sequence} {
   transform.named_sequence @__transform_main(%module: !transform.any_op) {
     %funcs = transform.structured.match ops{["util.func"]} in %module
       : (!transform.any_op) -> !transform.any_op
-    
+
     transform.foreach %funcs : !transform.any_op {
     ^bb1(%func: !transform.any_op):
       transform.foreach_match in %func
         @match_qgemm_bias_fused_scale -> @cast_and_call_dag
         : (!transform.any_op) -> (!transform.any_op)
     }
-    
+
     transform.apply_dce to %module : !transform.any_op
     transform.yield
   }
