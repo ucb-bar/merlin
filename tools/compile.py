@@ -13,6 +13,11 @@ def setup_parser(parser: argparse.ArgumentParser):
     parser.add_argument("--target", required=True, help="Target YAML config file name (e.g., spacemit_x60)")
     parser.add_argument("--hw", help="Hardware sub-target from YAML (e.g., RVV, OPU). If omitted, uses default_hw from YAML.")
     parser.add_argument("--quantized", action="store_true", help="Force quantized mode (auto-detected if .q. in filename)")
+    parser.add_argument(
+        "--output-dir",
+        help=("Override output directory (default: build/compiled_models/<model>/<target>_<basename>/). "
+              "If set, all generated files/artifacts are written under this directory."),
+    )
     
     # NEW: Build Directory Selector
     parser.add_argument("--build-dir", default="host-vanilla-release", help="Which build directory to use for compiler tools (default: host-vanilla-release)")
@@ -115,7 +120,10 @@ def main(args: argparse.Namespace) -> int:
     print("=" * 80)
 
     hw_suffix = f"_{hw_choice}" if hw_choice else ""
-    output_dir = utils.REPO_ROOT / "build" / "compiled_models" / model_name / f"{args.target}{hw_suffix}_{basename}"
+    if args.output_dir:
+        output_dir = pathlib.Path(args.output_dir).resolve()
+    else:
+        output_dir = utils.REPO_ROOT / "build" / "compiled_models" / model_name / f"{args.target}{hw_suffix}_{basename}"
     output_dir.mkdir(parents=True, exist_ok=True)
     
     mlir_file = output_dir / f"{basename}.mlir"
