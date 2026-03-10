@@ -10,14 +10,13 @@ validation:
 
 theme:
   name: material
-  # 1. Add the Merlin Logo
   logo: assets/merlin_transparent.png
-  favicon: assets/merlin_transparent.png # Optional: makes the logo your site favicon too
+  favicon: assets/merlin_transparent.png
 
-  # 2. Set the primary text font to Inter
+  # Set the primary text font to Open Sans per UC Berkeley guidelines
   font:
-    text: Inter
-    code: Roboto Mono # You can change this to Fira Code or another monospace font if preferred
+    text: Open Sans
+    code: Roboto Mono
 
   features:
     - navigation.tabs
@@ -26,8 +25,8 @@ theme:
     - content.code.copy
     - content.code.annotate
 
-  # 3. Set colors to 'custom' to allow CSS overrides
   palette:
+    # Light Mode (Default)
     - media: "(prefers-color-scheme: light)"
       scheme: default
       primary: custom
@@ -35,6 +34,7 @@ theme:
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
+    # Dark Mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: custom
@@ -43,7 +43,6 @@ theme:
         icon: material/brightness-4
         name: Switch to light mode
 
-# 4. Link a custom stylesheet for the colors and secondary font
 extra_css:
   - stylesheets/extra.css
 

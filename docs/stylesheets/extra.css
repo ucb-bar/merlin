@@ -7,7 +7,7 @@ h1, h2, h3, h4, h5, h6, .md-nav__title, .md-header__title {
 }
 
 /* ------------------------------------
-   LIGHT MODE (Clean, Slide-Inspired)
+   LIGHT MODE (Default - Berkeley Clean)
 ------------------------------------ */
 :root > * {
   /* Crisp backgrounds & text */
@@ -21,16 +21,16 @@ h1, h2, h3, h4, h5, h6, .md-nav__title, .md-header__title {
 
   /* Buttons, active states, and links */
   --md-accent-fg-color:         #FDB515; /* California Gold */
-  --md-typeset-a-color:         #0F3759; /* Blue for inline links for readability */
+  --md-typeset-a-color:         #003262; /* Berkeley Blue for inline links for readability */
 
   /* Code Blocks - High Legibility */
   --md-code-bg-color:           #f6f8fa; /* Very light grey like GitHub */
   --md-code-fg-color:           #24292f;
-  --md-code-hl-color:           rgba(253, 181, 21, 0.2); /* Soft gold for highlighted lines */
+  --md-code-hl-color:           rgba(253, 181, 21, 0.2); /* Soft Gold for highlighted lines */
 }
 
 /* ------------------------------------
-   DARK MODE (GitHub Dark Style)
+   DARK MODE (GitHub Dark with Berkeley Accents)
 ------------------------------------ */
 [data-md-color-scheme="slate"] {
   /* GitHub Dark background & text */
@@ -45,11 +45,11 @@ h1, h2, h3, h4, h5, h6, .md-nav__title, .md-header__title {
   --md-primary-fg-color--dark:  #010409;
 
   /* High contrast accents for dark mode */
-  --md-accent-fg-color:         #58a6ff; /* Vibrant blue that pops on dark grey */
-  --md-typeset-a-color:         #58a6ff;
+  --md-accent-fg-color:         #FDB515; /* California Gold pops beautifully on dark grey */
+  --md-typeset-a-color:         #FDB515; /* Gold for inline links */
 
   /* Code Blocks - High Legibility */
   --md-code-bg-color:           #161b22; /* Distinct dark grey offset from the main background */
   --md-code-fg-color:           #c9d1d9;
-  --md-code-hl-color:           rgba(88, 166, 255, 0.15); /* Soft blue for highlighted lines */
+  --md-code-hl-color:           rgba(253, 181, 21, 0.15); /* Soft Gold for highlighted lines */
 }
