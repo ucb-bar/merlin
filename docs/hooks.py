@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import argparse
+import importlib
 import os
 import re
 import shutil
@@ -24,6 +26,15 @@ _EXCLUDED_DIR_NAMES = {
 
 _PYTHON_SCAN_ROOTS = ("tools", "models", "benchmarks", "samples")
 _EXCLUDED_PATH_SNIPPETS = ("samples/SaturnOPU/custom_dispatch_ukernels/",)
+_CLI_MODULES = (
+    ("merlin.py", "merlin", "Unified Merlin developer command reference parser."),
+    ("build.py", "build", "Configure and build Merlin and target runtimes"),
+    ("compile.py", "compile", "Compile MLIR/ONNX models to target artifacts"),
+    ("setup.py", "setup", "Bootstrap developer environment and toolchains"),
+    ("ci.py", "ci", "Run repository CI/lint/patch workflows"),
+    ("patches.py", "patches", "Apply/verify/refresh/drift patch stack"),
+    ("benchmark.py", "benchmark", "Run benchmark helper scripts"),
+)
 
 
 def _config_file_path(config) -> Path:
@@ -75,6 +86,7 @@ def _collect_python_modules(repo_root: Path) -> list[tuple[str, Path]]:
 def _generate_python_api_docs(repo_root: Path, docs_root: Path) -> None:
     modules = _collect_python_modules(repo_root)
     generated_root = docs_root / "reference" / "generated" / "python"
+    expected_docs: set[Path] = set()
 
     index_lines = [
         "# Python API",
@@ -94,6 +106,7 @@ def _generate_python_api_docs(repo_root: Path, docs_root: Path) -> None:
             current_group = group
 
         doc_path = generated_root / ("/".join(module_name.split(".")) + ".md")
+        expected_docs.add(doc_path.resolve())
         rel_link = Path(os.path.relpath(doc_path, docs_root / "reference" / "python"))
         page = "\n".join(
             [
@@ -108,7 +121,127 @@ def _generate_python_api_docs(repo_root: Path, docs_root: Path) -> None:
         _write_if_changed(doc_path, page)
         index_lines.append(f"- [`{module_name}`]({rel_link.as_posix()})")
 
+    if generated_root.exists():
+        for existing in generated_root.rglob("*.md"):
+            if existing.resolve() not in expected_docs:
+                existing.unlink()
+
     _write_if_changed(docs_root / "reference" / "python" / "index.md", "\n".join(index_lines) + "\n")
+
+
+def _format_option_name(action: argparse.Action) -> str:
+    if action.option_strings:
+        return ", ".join(f"`{opt}`" for opt in action.option_strings)
+    return f"`{action.dest}`"
+
+
+def _format_option_default(action: argparse.Action) -> str:
+    if action.default in (None, argparse.SUPPRESS):
+        return "-"
+    return f"`{action.default}`"
+
+
+def _format_option_choices(action: argparse.Action) -> str:
+    if not action.choices:
+        return "-"
+    values = ", ".join(str(choice) for choice in action.choices)
+    return f"`{values}`"
+
+
+def _render_option_table(parser: argparse.ArgumentParser) -> list[str]:
+    lines = [
+        "| Argument | Required | Default | Choices | Help |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for action in parser._actions:
+        if isinstance(action, argparse._HelpAction) or isinstance(action, argparse._SubParsersAction):
+            continue
+        help_text = (action.help or "").replace("\n", " ").strip()
+        lines.append(
+            f"| {_format_option_name(action)} | "
+            f"{'yes' if getattr(action, 'required', False) else 'no'} | "
+            f"{_format_option_default(action)} | "
+            f"{_format_option_choices(action)} | "
+            f"{help_text} |"
+        )
+    return lines
+
+
+def _render_subcommand_tables(parser: argparse.ArgumentParser) -> list[str]:
+    lines: list[str] = []
+    for action in parser._actions:
+        if not isinstance(action, argparse._SubParsersAction):
+            continue
+        for sub_name in sorted(action.choices):
+            sub_parser = action.choices[sub_name]
+            lines.extend(
+                [
+                    f"#### Subcommand `{sub_name}`",
+                    "",
+                    "```text",
+                    sub_parser.format_usage().strip(),
+                    "```",
+                    "",
+                    *_render_option_table(sub_parser),
+                    "",
+                ]
+            )
+    return lines
+
+
+def _build_cli_reference(repo_root: Path, docs_root: Path) -> None:
+    tools_dir = repo_root / "tools"
+    os.sys.path.insert(0, str(tools_dir))
+    try:
+        lines = [
+            "# CLI Reference",
+            "",
+            "This page is generated from real argparse parsers in `tools/*.py`.",
+            "",
+            "Each command is shown with argument introspection and raw `--help` output.",
+            "",
+        ]
+
+        for script_name, module_name, summary in _CLI_MODULES:
+            module = importlib.import_module(module_name)
+            parser = argparse.ArgumentParser(
+                prog=f"uv run tools/{script_name}",
+                description=summary,
+            )
+            module.setup_parser(parser)
+
+            lines.extend(
+                [
+                    f"## `tools/{script_name}`",
+                    "",
+                    summary,
+                    "",
+                    "### Usage",
+                    "",
+                    "```text",
+                    parser.format_usage().strip(),
+                    "```",
+                    "",
+                    "### Arguments",
+                    "",
+                    *_render_option_table(parser),
+                    "",
+                    *_render_subcommand_tables(parser),
+                    "### `--help` Output",
+                    "",
+                    "```text",
+                    parser.format_help().rstrip(),
+                    "```",
+                    "",
+                ]
+            )
+    finally:
+        try:
+            os.sys.path.remove(str(tools_dir))
+        except ValueError:
+            pass
+
+    _write_if_changed(docs_root / "reference" / "cli.md", "\n".join(lines))
 
 
 def _resolve_mlir_tblgen(repo_root: Path) -> Path:
@@ -319,6 +452,7 @@ def on_pre_build(config, **kwargs) -> None:
     repo_root = config_path.parent
     docs_root = repo_root / "docs"
 
+    _build_cli_reference(repo_root, docs_root)
     _generate_python_api_docs(repo_root, docs_root)
     _generate_mlir_docs(repo_root, docs_root)
     _generate_cmake_targets_page(repo_root, docs_root)

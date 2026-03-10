@@ -1,0 +1,43 @@
+/* Import DM Serif Display from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&display=swap');
+
+/* Apply DM Serif Display to all headings for that academic feel */
+h1, h2, h3, h4, h5, h6, .md-nav__title, .md-header__title {
+  font-family: 'DM Serif Display', serif !important;
+}
+
+/* ------------------------------------
+   Light Mode Custom Colors
+------------------------------------ */
+:root > * {
+  /* Core Background and Text */
+  --md-default-bg-color:        #FDF7EF; /* Off-white background */
+  --md-default-fg-color:        #2E2D2C; /* Dark charcoal text */
+
+  /* Main header and sidebar colors */
+  --md-primary-fg-color:        #0F3759; /* Berkeley Blue */
+  --md-primary-fg-color--light: #164f80; /* Slightly lighter blue for hover states */
+  --md-primary-fg-color--dark:  #0a253c; /* Darker blue */
+
+  /* Buttons, active states, and links */
+  --md-accent-fg-color:         #AB9A89; /* Muted Gold/Taupe */
+  --md-typeset-a-color:         #0F3759; /* Blue for inline links so they contrast well against the off-white */
+}
+
+/* ------------------------------------
+   Dark Mode Custom Colors
+------------------------------------ */
+[data-md-color-scheme="slate"] {
+  /* Core Background and Text */
+  --md-default-bg-color:        #2E2D2C; /* Dark charcoal background */
+  --md-default-fg-color:        #FDF7EF; /* Off-white text */
+
+  /* Main header and sidebar colors */
+  --md-primary-fg-color:        #0F3759; /* Berkeley Blue */
+  --md-primary-fg-color--light: #AB9A89; /* Muted Gold */
+  --md-primary-fg-color--dark:  #0a253c; /* Darker blue */
+
+  /* Buttons, active states, and links */
+  --md-accent-fg-color:         #AB9A89; /* Muted Gold pops nicely on the dark charcoal */
+  --md-typeset-a-color:         #AB9A89; /* Muted Gold for inline links */
+}

@@ -1,5 +1,5 @@
-site_name: Merlin Compiler Infrastructure
-site_description: Multi-language compiler infrastructure docs for Python, C/C++, CMake, and MLIR.
+site_name: Merlin Compiler Infrastructure for UCB-BAR
+site_description: Docs for Merlin (Setup, Tutorial, API, etc)
 repo_url: https://github.com/ucb-bar/merlin
 edit_uri: edit/main/docs/
 docs_dir: docs
@@ -10,23 +10,42 @@ validation:
 
 theme:
   name: material
+  # 1. Add the Merlin Logo
+  logo: assets/merlin_transparent.png
+  favicon: assets/merlin_transparent.png # Optional: makes the logo your site favicon too
+
+  # 2. Set the primary text font to Inter
+  font:
+    text: Inter
+    code: Roboto Mono # You can change this to Fira Code or another monospace font if preferred
+
   features:
     - navigation.tabs
     - navigation.sections
     - navigation.indexes
     - content.code.copy
     - content.code.annotate
+
+  # 3. Set colors to 'custom' to allow CSS overrides
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
+
+# 4. Link a custom stylesheet for the colors and secondary font
+extra_css:
+  - stylesheets/extra.css
 
 plugins:
   - search
@@ -44,12 +63,6 @@ plugins:
               warn_unknown_params: false
               warn_missing_types: false
               warnings: false
-  - mkdocs-rich-argparse:
-      module: docs_cli
-      factory: get_parser
-      path: tools
-      src_uri: reference/cli.md
-      heading: CLI Reference
   - mkdoxy:
       enabled: !ENV [MKDOXY_ENABLED, false]
       doxygen-bin-path: !ENV [DOXYGEN_BIN, doxygen]
@@ -81,6 +94,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Setup & Tutorials:
+      - Getting Started: getting_started.md
       - Getting Started / Installation: iree_setup.md
       - Cross-Compiling for Banana Pi: reproducibility/cross_compile_banana_pi.md
       - Build Types: different_build_types.md

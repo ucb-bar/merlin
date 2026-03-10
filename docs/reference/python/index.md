@@ -8,7 +8,7 @@ The pages below are generated from Python source files at docs build time.
 - [`tools.build`](../generated/python/tools/build.md)
 - [`tools.ci`](../generated/python/tools/ci.md)
 - [`tools.compile`](../generated/python/tools/compile.md)
-- [`tools.docs_cli`](../generated/python/tools/docs_cli.md)
+- [`tools.merlin`](../generated/python/tools/merlin.md)
 - [`tools.patches`](../generated/python/tools/patches.md)
 - [`tools.setup`](../generated/python/tools/setup.md)
 - [`tools.utils`](../generated/python/tools/utils.md)

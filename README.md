@@ -17,11 +17,17 @@ uv sync
 pre-commit install
 ```
 
+Optional convenience alias for your shell session:
+
+```bash
+alias merlin='uv run tools/merlin.py'
+```
+
 ### 2) Build host compiler tools
 
 ```bash
 conda activate merlin-dev
-uv run tools/build.py --target host --config release
+uv run tools/merlin.py build --target host --config release
 ```
 
 This creates host tools under:
@@ -33,7 +39,7 @@ This creates host tools under:
 
 ```bash
 conda activate merlin-dev
-uv run tools/compile.py models/dronet/dronet.mlir --target spacemit_x60
+uv run tools/merlin.py compile models/dronet/dronet.mlir --target spacemit_x60
 ```
 
 Expected output artifact:
@@ -44,7 +50,7 @@ Expected output artifact:
 
 ```bash
 conda activate merlin-dev
-uv run tools/build.py --target spacemit --config release --with-plugin --cmake-target merlin_baseline_dual_model_async_run
+uv run tools/merlin.py build --target spacemit --config release --with-plugin --cmake-target merlin_baseline_dual_model_async_run
 find build/spacemit-merlin-release -name baseline-dual-model-async-run
 ```
 
@@ -101,6 +107,7 @@ Detailed folder guide with auto-generated tracked tree:
 Primary docs:
 
 - [docs/index.md](docs/index.md)
+- [docs/getting_started.md](docs/getting_started.md)
 - [docs/iree_setup.md](docs/iree_setup.md)
 - [docs/architecture/plugin_and_patch_model.md](docs/architecture/plugin_and_patch_model.md)
 - [docs/architecture/cmake_presets.md](docs/architecture/cmake_presets.md)
@@ -112,6 +119,13 @@ conda activate merlin-dev
 MLIR_TBLGEN=build/host-vanilla-release/llvm-project/bin/mlir-tblgen \
   uv run --with-requirements docs/requirements.txt mkdocs serve
 ```
+
+Unified CLI help:
+
+```bash
+conda activate merlin-dev
+uv run tools/merlin.py --help
+```
 Published docs URL (after GitHub Pages is enabled): `https://ucb-bar.github.io/merlin/`
 
 Then open `http://127.0.0.1:8000`.
@@ -121,7 +135,7 @@ Then open `http://127.0.0.1:8000`.
 ```bash
 conda activate merlin-dev
 pre-commit run --all-files
-uv run tools/ci.py lint
+uv run tools/merlin.py ci lint
 ```
 
 ## Contributing

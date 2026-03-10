@@ -77,15 +77,26 @@ merlin/
 │   │   └── merlin_transparent.png
 │   ├── build_tracy_ubuntu.md
 │   ├── different_build_types.md
+│   ├── hooks.py
+│   ├── index.md
 │   ├── iree_setup.md
-│   └── reproducibility
-│       ├── cross_compile_banana_pi.md
-│       ├── export_tinyllama_8bit_sharktank_to_mlir.md
-│       └── reproduce_ukernel_benchmark_firesim.md
+│   ├── reference
+│   │   ├── cmake_targets.md
+│   │   ├── cpp.md
+│   │   ├── mlir.md
+│   │   ├── overview.md
+│   │   └── python
+│   ├── repository_guide.md
+│   ├── reproducibility
+│   │   ├── cross_compile_banana_pi.md
+│   │   ├── export_tinyllama_8bit_sharktank_to_mlir.md
+│   │   └── reproduce_ukernel_benchmark_firesim.md
+│   └── requirements.txt
 ├── env_linux.yml
 ├── env_macOS.yml
 ├── iree_compiler_plugin.cmake
 ├── iree_runtime_plugin.cmake
+├── mkdocs.yml
 ├── models
 │   ├── compile_spacemit.sh
 │   ├── depth_anything_v2
@@ -139,6 +150,7 @@ merlin/
 │   ├── build.py
 │   ├── ci.py
 │   ├── compile.py
+│   ├── docs_cli.py
 │   ├── patches.py
 │   ├── setup.py
 │   └── utils.py
