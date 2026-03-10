@@ -71,9 +71,9 @@ jobs:
               "",
               "Checklist:",
               "1. Update `config/upstream_tracking.yaml`.",
-              "2. Update `patches/manifest.env` and `patches/manifest.yaml` pins.",
+              "2. Update `patches/manifest.env` pins.",
               "3. Re-run patch stack apply/verify/drift checks.",
-              "4. Validate host build, RISC-V cross build, and board run workflows.",
+              "4. Validate host build and required target build flows.",
               "",
               "_Opened automatically by `.github/workflows/release-tracker.yml`._"
             ].join("\n");

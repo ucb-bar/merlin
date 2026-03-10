@@ -1,11 +1,10 @@
 iree_cc_library(
   NAME
-    Overrides
+  Overrides
   SRCS
-    "KernelDispatch.cpp"
-    "VectorContractCustomKernels.cpp"
+  "KernelDispatch.cpp"
+  "VectorContractCustomKernels.cpp"
   DEPS
-    merlin::defs
-    iree::compiler::Codegen::LLVMCPU
-  PUBLIC
-)
+  merlin::defs
+  iree::compiler::Codegen::LLVMCPU
+  PUBLIC)

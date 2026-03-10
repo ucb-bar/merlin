@@ -4,8 +4,12 @@
   - PR-time fast checks (lint + patch gate).
 - `nightly-upstream-drift.yml`
   - Scheduled/manual drift checks against pinned upstream commits.
-- `riscv-cross-build.yml`
-  - Manual cross-build workflow for selected RISC-V profiles.
 - `release-tracker.yml`
   - Scheduled/manual check for new upstream IREE stable releases and optional
     automatic tracking issue creation.
+- `docs-pages.yml`
+  - PR docs validation and `main` deployment to GitHub Pages with MkDocs.
+
+Non-CI operational flows (board SSH runs, ad hoc cross deploy) remain as
+manual scripts under `benchmark/target/` and are intentionally not part of
+GitHub Actions.

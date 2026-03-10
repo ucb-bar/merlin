@@ -1,10 +1,9 @@
 iree_cc_library(
   NAME
-    Overrides
+  Overrides
   SRCS
-    "CPUEncodingExternalModels.cpp"
+  "CPUEncodingExternalModels.cpp"
   DEPS
-    merlin::defs
-    iree::compiler::Codegen::ExternalInterfaces::ExternalModels
-  PUBLIC
-)
+  merlin::defs
+  iree::compiler::Codegen::ExternalInterfaces::ExternalModels
+  PUBLIC)

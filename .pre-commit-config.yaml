@@ -6,6 +6,7 @@ repos:
     rev: v4.5.0
     hooks:
     -   id: check-yaml
+        args: [--unsafe]
     -   id: end-of-file-fixer
     -   id: trailing-whitespace
     -   id: check-added-large-files
@@ -26,7 +27,8 @@ repos:
 -   repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.10.0.1
     hooks:
-      - id: shellcheck
+    - id: shellcheck
+    args: ["--exclude=SC2054"]
 
 -   repo: https://github.com/cheshirekow/cmake-format-precommit
     rev: v0.6.13

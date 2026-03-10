@@ -67,6 +67,7 @@ COMMON_FLAGS=(
 )
 
 if [[ "${TARGET}" == "spacemit-riscv" ]]; then
+# shellcheck disable=SC2054
   TARGET_FLAGS=(
     --iree-llvmcpu-target-triple=riscv64-unknown-linux-gnu
     --iree-llvmcpu-target-abi=lp64d

@@ -1,0 +1,99 @@
+site_name: Merlin Compiler Infrastructure
+site_description: Multi-language compiler infrastructure docs for Python, C/C++, CMake, and MLIR.
+repo_url: https://github.com/ucb-bar/merlin
+edit_uri: edit/main/docs/
+docs_dir: docs
+strict: true
+validation:
+  nav:
+    omitted_files: ignore
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - content.code.copy
+    - content.code.annotate
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - .
+            - tools
+          options:
+            allow_inspection: false
+            show_source: false
+            show_root_heading: true
+            docstring_options:
+              warn_unknown_params: false
+              warn_missing_types: false
+              warnings: false
+  - mkdocs-rich-argparse:
+      module: docs_cli
+      factory: get_parser
+      path: tools
+      src_uri: reference/cli.md
+      heading: CLI Reference
+  - mkdoxy:
+      enabled: !ENV [MKDOXY_ENABLED, false]
+      doxygen-bin-path: !ENV [DOXYGEN_BIN, doxygen]
+      projects:
+        merlin_cpp:
+          src-dirs: "compiler/src/merlin compiler/plugins samples benchmarks"
+          api-path: "reference/cpp_api"
+          doxy-cfg:
+            GENERATE_HTML: NO
+            GENERATE_XML: YES
+            EXTRACT_ALL: YES
+            RECURSIVE: YES
+            FILE_PATTERNS: "*.c *.cc *.cpp *.h *.hpp"
+            EXCLUDE_PATTERNS: "*/__pycache__/* */compiled_models/* */compilation_phases*/* */report_pt_export/*"
+
+hooks:
+  - docs/hooks.py
+
+markdown_extensions:
+  - admonition
+  - tables
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      check_paths: true
+
+nav:
+  - Home: index.md
+  - Setup & Tutorials:
+      - Getting Started / Installation: iree_setup.md
+      - Cross-Compiling for Banana Pi: reproducibility/cross_compile_banana_pi.md
+      - Build Types: different_build_types.md
+      - Build Tracy on Ubuntu: build_tracy_ubuntu.md
+  - Repository Guide: repository_guide.md
+  - Architecture:
+      - Plugin & Patch Model: architecture/plugin_and_patch_model.md
+      - Repo Maintenance Model: architecture/repo-maintenance-model.md
+      - CMake Presets: architecture/cmake_presets.md
+  - Reference:
+      - Overview: reference/overview.md
+      - CLI Commands: reference/cli.md
+      - Python API: reference/python/index.md
+      - C/C++ API: reference/cpp.md
+      - MLIR Dialects & Passes: reference/mlir.md
+      - CMake Targets: reference/cmake_targets.md
