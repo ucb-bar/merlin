@@ -82,16 +82,14 @@ mlirEvolve/.pytest_cache/
 samples/models/*.mlir
 *.vmfb
 
-<<<<<<< HEAD
 # Sample-generated artifacts
 samples/custom_dispatch_ukernels_saturn/saturn_test
 samples/custom_dispatch_ukernels_saturn/*.npy
 benchmarks/SpacemiTX60/baseline_dual_model_async/results/*
 compiler/src/merlin/Dialect/Gemmini/Transforms/tests/Output/*
 merlin_dev.egg-info/*
-=======
+
 # quantize test models and export
 quantize_test_export
 pretrained_models
 
->>>>>>> 53cc6ee (begin sam quantize test branch. import vitfly models into test python file)

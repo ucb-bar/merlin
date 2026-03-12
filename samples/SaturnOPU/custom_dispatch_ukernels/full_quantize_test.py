@@ -485,11 +485,11 @@ def main():
 
     # # --- Step 3: Apply Quantization (All Paths) ---
     model_int8 = None
-    # model_int8 = try_torchao_quantize(model_fp32, results)
+    model_int8 = try_torchao_quantize(model_fp32, results)
     # model_int8 = try_torchao_quantize_weights_only(model_fp32, results)
     # model_int8 = try_fx_quantize(model_fp32, forward_args, results)
     # model_int8 = try_torchao_pt2e_quantize(model_fp32, forward_args, results)
-    model_int8 = try_torch_onnx_export(model_fp32, forward_args, args.model, model_type_str, model_output_dir, results)
+    # model_int8 = try_torch_onnx_export(model_fp32, forward_args, args.model, model_type_str, model_output_dir, results)
 
     # # --- Step 4: Run all export paths on Quantized models ---
     if model_int8 is not None:
