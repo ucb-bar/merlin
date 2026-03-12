@@ -48,7 +48,7 @@ except ImportError:
 # --- ONNX Runtime Imports ---
 try:
     import onnxruntime
-    from onnxruntime.quantization import quantize_static, QuantType, QuantFormat, CalibrationDataReader, CalibrationMethod
+    from onnxruntime.quantization import static_quantize_runner, QuantType, QuantFormat, CalibrationDataReader, CalibrationMethod
     import onnxscript
     try:
         from onnxruntime.quantization import CalibrationMethod
@@ -139,7 +139,7 @@ def try_ONNX_fp8_quantize(model, example_inputs, model_name, model_output_dir, r
     data_reader = MultiInputCalibrationDataReader(example_inputs[0], input_names, num_samples=10)
 
     try:
-        quantize_static(
+        static_quantize_runner(
             model_input=onnx_output_path,
             model_output=quantized_onnx_output_path,
             calibration_data_reader=data_reader,

@@ -1,0 +1,17 @@
+python samples/SaturnOPU/custom_dispatch_ukernels/onnx_static_test.py \
+-i samples/SaturnOPU/custom_dispatch_ukernels/pretrained_models/quantize_test_export/LSTMnet_fp32.onnx \
+-o samples/SaturnOPU/custom_dispatch_ukernels/pretrained_models/quantize_test_export/LSTMnet_fp8.onnx \
+--activation_type qfloat8e4m3fn \
+--weight_type qfloat8e4m3fn \
+--calibration_method distribution \
+--quant_format qoperator \
+--calib_tensor_range_symmetric
+
+python samples/SaturnOPU/custom_dispatch_ukernels/static_quantize_runner.py \
+-i samples/SaturnOPU/custom_dispatch_ukernels/pretrained_models/quantize_test_export/LSTMnet_fp32.onnx \
+-o samples/SaturnOPU/custom_dispatch_ukernels/pretrained_models/quantize_test_export/LSTMnet_fp8.onnx \
+--activation_type qfloat8e4m3fn \
+--weight_type qfloat8e4m3fn \
+--calibration_method distribution \
+--quant_format qoperator \
+--calib_tensor_range_symmetric
