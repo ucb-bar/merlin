@@ -1,5 +1,11 @@
 # Merlin NPU Dialect Stack
 
+The development of this NPU dialect is heavily based on the UCB-EE 194 Tapeout class and work done in the npu_model repository:
+
+- [NPU Model](https://github.com/ucb-ee194-tapeout/npu_model)
+
+For ISA information and documentation and proper attribution to the work of this authors please check their work using the link above.
+
 This integrates the `third_party/npu_model/compiler` scaffold into Merlin as a
 compiler plugin target.
 

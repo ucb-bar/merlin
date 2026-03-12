@@ -1,5 +1,13 @@
 # Radiance HAL Driver (Merlin Runtime Plugin)
 
+Development of this section is only possible by basing ourselves on the development from the authors of the following repositories:
+
+- [Radiance](https://github.com/ucb-bar/radiance/tree/main)
+- [Gluon](https://github.com/Sh-Anand/gluon)
+- [Radiance-Kernels](https://github.com/ucb-bar/radiance-kernels)
+
+For ISA information and documentation and proper attribution to the work of this authors please check their work using the link above.
+
 This directory is the out-of-tree IREE HAL driver integration point for Radiance/Muon in Merlin.
 
 The design split is intentional:
