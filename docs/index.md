@@ -10,6 +10,7 @@ This site is the documentation hub for Merlin across Python tooling, C/C++ compi
 Start here:
 
 - `getting_started.md` for first build/compile/output-locations workflow.
+- `how_to/index.md` for implementation guides (dialects, HALs, samples, targets).
 - `repository_guide.md` for where to place new code in the repo.
 - `dev_blog/index.md` for ongoing development logs (Gemmini, NPU, Radiance HAL).
 - `reference/` for generated CLI/API/CMake/MLIR documentation.

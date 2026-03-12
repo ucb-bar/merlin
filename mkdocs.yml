@@ -98,6 +98,13 @@ nav:
       - Cross-Compiling for Banana Pi: reproducibility/cross_compile_banana_pi.md
       - Build Types: different_build_types.md
       - Build Tracy on Ubuntu: build_tracy_ubuntu.md
+  - How-To:
+      - Overview: how_to/index.md
+      - Add Compiler Dialect Plugin: how_to/add_compiler_dialect_plugin.md
+      - Add/Modify HAL Driver: how_to/add_runtime_hal_driver.md
+      - Add Sample Application: how_to/add_sample_application.md
+      - Add Compile Target: how_to/add_compile_target.md
+      - Use build.py: how_to/use_build_py.md
   - Repository Guide: repository_guide.md
   - Dev Blog:
       - Overview: dev_blog/index.md

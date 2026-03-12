@@ -56,7 +56,7 @@ find build/spacemit-merlin-release -name baseline-dual-model-async-run
 
 Typical binary path:
 
-- `build/spacemit-merlin-release/samples/SpacemiTX60/baseline_dual_model_async/baseline-dual-model-async-run`
+- `build/spacemit-merlin-release/runtime/plugins/merlin-samples/SpacemiTX60/baseline_dual_model_async/baseline-dual-model-async-run`
 
 ## 5) Where outputs go
 
@@ -67,6 +67,7 @@ Typical binary path:
 
 ## Next
 
+- Practical extension guides (dialects/HAL/samples/targets): `how_to/index.md`
 - Repository layout and placement conventions: `repository_guide.md`
 - Active implementation notes and debugging logs: `dev_blog/index.md`
 - Full command and API reference: `reference/`

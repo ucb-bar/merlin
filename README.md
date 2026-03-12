@@ -132,6 +132,7 @@ Primary docs:
 
 - [docs/index.md](docs/index.md)
 - [docs/getting_started.md](docs/getting_started.md)
+- [docs/how_to/index.md](docs/how_to/index.md)
 - [docs/iree_setup.md](docs/iree_setup.md)
 - [docs/dev_blog/index.md](docs/dev_blog/index.md)
 - [docs/architecture/plugin_and_patch_model.md](docs/architecture/plugin_and_patch_model.md)
