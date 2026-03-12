@@ -1,0 +1,11 @@
+dma.load.mxu1 rd=0, base=0, size=512, flag=0
+dma.load.mxu1 rd=1, base=512, size=512, flag=1
+dma.wait flag=0
+dma.wait flag=1
+dma.load rd=0, base=8192, size=2048, flag=2
+dma.wait flag=2
+matmul.mxu0 rd=1, rs1=0, rs2=0
+matmul.mxu0 rd=2, rs1=0, rs2=1
+vmul vrd=6, vs1=1, vs2=2
+dma.store rs1=6, base=12288, size=2048, flag=0
+dma.wait flag=0
