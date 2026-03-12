@@ -1,50 +1,60 @@
 ---
 name: merlin-build
-description: Build and set up the Merlin repository using the project-standard workflow (`conda`, `tools/setup.py`, and `tools/build.py`). Use when asked to configure environment dependencies, compile for `host`, `spacemit`, or `firesim`, switch build configs (`debug`, `release`, `asan`, `trace`, `perf`), enable the Merlin plugin, clean/rebuild, or locate build/install outputs.
+description: Build and set up Merlin using repository scripts only (`tools/merlin.py`, `tools/setup.py`, `tools/build.py`) with `merlin-dev` and `uv run`. Use for host/spacemit/firesim builds, profile selection, plugin toggles, clean rebuilds, and output-path discovery.
 ---
 
 # Merlin Build
 
 ## Overview
 
-Use this skill to run reproducible Merlin setup/build commands across targets and configs. Prefer `tools/setup.py` and `tools/build.py` over ad hoc CMake unless explicitly requested.
+Use this skill for reproducible builds using Merlin-owned scripts. Do not use ad
+hoc CMake commands unless explicitly requested.
+
+Primary references (always prefer these over duplicated logic):
+
+- `docs/how_to/use_build_py.md`
+- `docs/reference/cli.md`
+- `tools/merlin.py`
+- `tools/build.py`
+- `tools/setup.py`
 
 ## Build Workflow
 
 1. Confirm the repository root is active.
-2. Prepare the environment:
-- First-time machine/bootstrap: `conda env create -f env_linux.yml` then `conda activate merlin-dev`.
-- Ongoing sync in the environment: `python tools/setup.py env`.
-3. Select target/config/plugin flags and run `python tools/build.py ...`.
-4. If required for cross targets, ensure toolchain prerequisites are met before building.
-5. Report build and install directories from command output.
+2. Ensure commands execute in `merlin-dev`:
+   - use `conda run -n merlin-dev ...` when shell activation is uncertain.
+3. Run Python tooling with `uv run`.
+4. Prefer `tools/merlin.py build` (wrapper) for normal usage.
+5. Use `tools/build.py` directly only when exact low-level flagging is needed.
+6. Report build and install directories from command output.
 
 ## Standard Commands
 
-- Host debug baseline:
+- Sync env:
 ```bash
-python tools/build.py --target host --config debug
+conda run -n merlin-dev uv run tools/merlin.py setup env
 ```
 
-- Host debug with plugin:
+- Host baseline:
 ```bash
-python tools/build.py --target host --config debug --with-plugin
+conda run -n merlin-dev uv run tools/merlin.py build --profile vanilla
 ```
 
-- Clean rebuild:
+- Host plugin build:
 ```bash
-python tools/build.py --target host --config debug --clean
+conda run -n merlin-dev uv run tools/merlin.py build --profile full-plugin
 ```
 
-- Build a specific CMake target:
+- Targeted build target:
 ```bash
-python tools/build.py --target host --config debug --cmake-target <target_name>
+conda run -n merlin-dev uv run tools/merlin.py build --profile spacemit --cmake-target <target_name>
 ```
 
-## Target Matrix
+## Guardrails
 
-Load [references/targets.md](references/targets.md) for:
-- target-specific requirements (`host`, `spacemit`, `firesim`)
-- config behavior (`debug`, `release`, `asan`, `trace`, `perf`)
-- plugin flags and output path conventions
-- troubleshooting and common fixes
+- Do not bypass `tools/build.py` with direct CMake unless requested.
+- Prefer profile-driven workflows over manual flag bundles.
+- Keep API compatibility when touching scripts.
+- If script changes are needed:
+  - make minimal, scalable changes,
+  - preserve existing flags and behavior unless explicitly requested.

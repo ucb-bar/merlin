@@ -1,0 +1,4 @@
+interface:
+  display_name: "Merlin Plugin Dev"
+  short_description: "Develop compiler dialect plugins and runtime HAL integrations"
+  default_prompt: "Use this skill to add/modify Merlin compiler plugins and HAL drivers using Gemmini/NPU/Radiance patterns, validated through tools/build.py workflows."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Merlin Compile Target"
+  short_description: "Compile models with tools/compile.py and maintain models/*.yaml targets"
+  default_prompt: "Use this skill to run tools/compile.py, update target YAML files in models/, and report output artifacts under build/compiled_models with merlin-dev + uv run."
