@@ -290,6 +290,8 @@ def _generate_mlir_docs(repo_root: Path, docs_root: Path) -> None:
     include_dirs = [
         repo_root / "compiler" / "src" / "merlin" / "Dialect" / "Gemmini" / "IR",
         repo_root / "compiler" / "src" / "merlin" / "Dialect" / "Gemmini" / "Transforms",
+        repo_root / "compiler" / "src" / "merlin" / "Dialect" / "NPU" / "IR",
+        repo_root / "compiler" / "src" / "merlin" / "Dialect" / "NPU" / "Transforms",
         repo_root / "compiler" / "src" / "merlin" / "Codegen" / "Dialect" / "Stream" / "Transforms",
         repo_root / "third_party" / "iree_bar" / "compiler" / "src",
         repo_root / "third_party" / "iree_bar" / "third_party" / "llvm-project" / "mlir" / "include",
@@ -300,31 +302,101 @@ def _generate_mlir_docs(repo_root: Path, docs_root: Path) -> None:
     ]
 
     mlir_generated = docs_root / "reference" / "generated" / "mlir"
-    ops_td = repo_root / "compiler" / "src" / "merlin" / "Dialect" / "Gemmini" / "IR" / "GemminiOps.td"
-    attrs_td = repo_root / "compiler" / "src" / "merlin" / "Dialect" / "Gemmini" / "IR" / "GemminiAttrs.td"
-    gemmini_passes_td = repo_root / "compiler" / "src" / "merlin" / "Dialect" / "Gemmini" / "Transforms" / "Passes.td"
-    stream_passes_td = (
-        repo_root / "compiler" / "src" / "merlin" / "Codegen" / "Dialect" / "Stream" / "Transforms" / "Passes.td"
-    )
+    jobs = [
+        (
+            "Gemmini dialect",
+            "-gen-dialect-doc",
+            repo_root / "compiler" / "src" / "merlin" / "Dialect" / "Gemmini" / "IR" / "GemminiOps.td",
+            "gemmini_dialect.md",
+        ),
+        (
+            "Gemmini operations",
+            "-gen-op-doc",
+            repo_root / "compiler" / "src" / "merlin" / "Dialect" / "Gemmini" / "IR" / "GemminiOps.td",
+            "gemmini_ops.md",
+        ),
+        (
+            "Gemmini attributes",
+            "-gen-attrdef-doc",
+            repo_root / "compiler" / "src" / "merlin" / "Dialect" / "Gemmini" / "IR" / "GemminiAttrs.td",
+            "gemmini_attrs.md",
+        ),
+        (
+            "Gemmini passes",
+            "-gen-pass-doc",
+            repo_root / "compiler" / "src" / "merlin" / "Dialect" / "Gemmini" / "Transforms" / "Passes.td",
+            "gemmini_passes.md",
+        ),
+        (
+            "NPU kernel dialect",
+            "-gen-dialect-doc",
+            repo_root / "compiler" / "src" / "merlin" / "Dialect" / "NPU" / "IR" / "NPUKernelOps.td",
+            "npu_kernel_dialect.md",
+        ),
+        (
+            "NPU kernel operations",
+            "-gen-op-doc",
+            repo_root / "compiler" / "src" / "merlin" / "Dialect" / "NPU" / "IR" / "NPUKernelOps.td",
+            "npu_kernel_ops.md",
+        ),
+        (
+            "NPU schedule dialect",
+            "-gen-dialect-doc",
+            repo_root / "compiler" / "src" / "merlin" / "Dialect" / "NPU" / "IR" / "NPUScheduleOps.td",
+            "npu_schedule_dialect.md",
+        ),
+        (
+            "NPU schedule operations",
+            "-gen-op-doc",
+            repo_root / "compiler" / "src" / "merlin" / "Dialect" / "NPU" / "IR" / "NPUScheduleOps.td",
+            "npu_schedule_ops.md",
+        ),
+        (
+            "NPU ISA dialect",
+            "-gen-dialect-doc",
+            repo_root / "compiler" / "src" / "merlin" / "Dialect" / "NPU" / "IR" / "NPUISAOps.td",
+            "npu_isa_dialect.md",
+        ),
+        (
+            "NPU ISA operations",
+            "-gen-op-doc",
+            repo_root / "compiler" / "src" / "merlin" / "Dialect" / "NPU" / "IR" / "NPUISAOps.td",
+            "npu_isa_ops.md",
+        ),
+        (
+            "Stream codegen passes",
+            "-gen-pass-doc",
+            repo_root / "compiler" / "src" / "merlin" / "Codegen" / "Dialect" / "Stream" / "Transforms" / "Passes.td",
+            "stream_passes.md",
+        ),
+    ]
 
-    _run_tblgen(tblgen, include_dirs, "-gen-dialect-doc", ops_td, mlir_generated / "gemmini_dialect.md")
-    _run_tblgen(tblgen, include_dirs, "-gen-op-doc", ops_td, mlir_generated / "gemmini_ops.md")
-    _run_tblgen(tblgen, include_dirs, "-gen-attrdef-doc", attrs_td, mlir_generated / "gemmini_attrs.md")
-    _run_tblgen(tblgen, include_dirs, "-gen-pass-doc", gemmini_passes_td, mlir_generated / "gemmini_passes.md")
-    _run_tblgen(tblgen, include_dirs, "-gen-pass-doc", stream_passes_td, mlir_generated / "stream_passes.md")
+    generated_links: list[str] = []
+    expected_docs: set[Path] = set()
+    for label, mode, td_file, output_name in jobs:
+        if not td_file.exists():
+            continue
+        output = mlir_generated / output_name
+        _run_tblgen(tblgen, include_dirs, mode, td_file, output)
+        expected_docs.add(output.resolve())
+        generated_links.append(f"- [{label}](generated/mlir/{output_name})")
+
+    if mlir_generated.exists():
+        for existing in mlir_generated.glob("*.md"):
+            if existing.resolve() not in expected_docs:
+                existing.unlink()
 
     page_lines = [
         "# MLIR Dialects & Passes",
         "",
         "The files linked below are generated from TableGen (`.td`) definitions during docs build.",
         "",
-        "- [Gemmini dialect](generated/mlir/gemmini_dialect.md)",
-        "- [Gemmini operations](generated/mlir/gemmini_ops.md)",
-        "- [Gemmini attributes](generated/mlir/gemmini_attrs.md)",
-        "- [Gemmini passes](generated/mlir/gemmini_passes.md)",
-        "- [Stream codegen passes](generated/mlir/stream_passes.md)",
-        "",
     ]
+    if generated_links:
+        page_lines.extend(generated_links)
+    else:
+        page_lines.extend(["- No TableGen docs were generated (no matching `.td` inputs found)."])
+    page_lines.append("")
     _write_if_changed(docs_root / "reference" / "mlir.md", "\n".join(page_lines))
 
 
@@ -447,13 +519,41 @@ def _generate_repository_guide(repo_root: Path, docs_root: Path) -> None:
     _write_if_changed(docs_root / "repository_guide.md", "\n".join(guide))
 
 
-def on_pre_build(config, **kwargs) -> None:
-    config_path = _config_file_path(config)
-    repo_root = config_path.parent
-    docs_root = repo_root / "docs"
-
+def generate_reference_docs(repo_root: Path, docs_root: Path) -> None:
     _build_cli_reference(repo_root, docs_root)
     _generate_python_api_docs(repo_root, docs_root)
     _generate_mlir_docs(repo_root, docs_root)
     _generate_cmake_targets_page(repo_root, docs_root)
     _generate_repository_guide(repo_root, docs_root)
+
+
+def on_pre_build(config, **kwargs) -> None:
+    config_path = _config_file_path(config)
+    repo_root = config_path.parent
+    docs_root = repo_root / "docs"
+    generate_reference_docs(repo_root, docs_root)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Generate Merlin docs reference pages.")
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=Path(__file__).resolve().parent.parent,
+        help="Repository root path (default: inferred from docs/hooks.py location).",
+    )
+    parser.add_argument(
+        "--docs-root",
+        type=Path,
+        default=None,
+        help="Docs source root path (default: <repo-root>/docs).",
+    )
+    args = parser.parse_args()
+
+    repo_root = args.repo_root.resolve()
+    docs_root = args.docs_root.resolve() if args.docs_root else (repo_root / "docs").resolve()
+    generate_reference_docs(repo_root, docs_root)
+
+
+if __name__ == "__main__":
+    main()

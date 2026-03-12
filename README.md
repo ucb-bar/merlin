@@ -143,7 +143,8 @@ Build docs locally:
 ```bash
 conda activate merlin-dev
 MLIR_TBLGEN=build/host-vanilla-release/llvm-project/bin/mlir-tblgen \
-  uv run --with-requirements docs/requirements.txt mkdocs serve
+  uv run --with-requirements docs/requirements.txt python docs/hooks.py
+uv run --with-requirements docs/requirements.txt zensical serve
 ```
 
 Unified CLI help:

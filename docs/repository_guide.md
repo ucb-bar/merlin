@@ -10,7 +10,6 @@ Merlin is organized to separate model frontends, compiler internals, and hardwar
 - `samples/`: C/C++ runtime examples and hardware-facing sample flows.
 - `benchmarks/`: Benchmark scripts and board-specific profiling helpers.
 - `docs/`: Documentation source consumed by MkDocs.
-- `runtime/`: Merlin-owned external HAL/runtime integrations (for IREE runtime plugin wiring).
 
 ## Placement Conventions (Where New Code Should Go)
 
@@ -20,9 +19,7 @@ Merlin is organized to separate model frontends, compiler internals, and hardwar
 - New target flag bundles for `tools/compile.py`: `models/<target>.yaml`.
 - New board/runtime sample executables: `samples/<platform>/`.
 - New benchmark flows and parsers: `benchmarks/<target>/`.
-- New external HAL/runtime integrations: `runtime/src/iree/hal/drivers/<driver>/`.
 - New end-user docs and guides: `docs/`.
-- Ongoing engineering notes/dev logs: `docs/dev_blog/`.
 
 ## Tracked Tree Snapshot (Depth 3)
 
@@ -61,7 +58,6 @@ merlin/
 │       ├── riscv_firesim.toolchain.cmake
 │       └── spike.cfg
 ├── compiler
-│   ├── dump.txt
 │   ├── plugins
 │   │   ├── CMakeLists.txt
 │   │   └── target
@@ -75,15 +71,31 @@ merlin/
 │   ├── architecture
 │   │   ├── cmake_presets.md
 │   │   ├── plugin_and_patch_model.md
+│   │   ├── radiance_author_questions.md
 │   │   └── repo-maintenance-model.md
 │   ├── assets
 │   │   └── merlin_transparent.png
 │   ├── build_tracy_ubuntu.md
+│   ├── dev_blog
+│   │   ├── 2026-03-11-gemmini-workstream-log.md
+│   │   ├── 2026-03-11-npu-dialect-e2e.md
+│   │   ├── 2026-03-11-radiance-hal-workstream-log.md
+│   │   ├── TEMPLATE.md
+│   │   └── index.md
 │   ├── different_build_types.md
+│   ├── getting_started.md
 │   ├── hooks.py
+│   ├── how_to
+│   │   ├── add_compile_target.md
+│   │   ├── add_compiler_dialect_plugin.md
+│   │   ├── add_runtime_hal_driver.md
+│   │   ├── add_sample_application.md
+│   │   ├── index.md
+│   │   └── use_build_py.md
 │   ├── index.md
 │   ├── iree_setup.md
 │   ├── reference
+│   │   ├── cli.md
 │   │   ├── cmake_targets.md
 │   │   ├── cpp.md
 │   │   ├── mlir.md
@@ -94,7 +106,9 @@ merlin/
 │   │   ├── cross_compile_banana_pi.md
 │   │   ├── export_tinyllama_8bit_sharktank_to_mlir.md
 │   │   └── reproduce_ukernel_benchmark_firesim.md
-│   └── requirements.txt
+│   ├── requirements.txt
+│   └── stylesheets
+│       └── extra.css
 ├── env_linux.yml
 ├── env_macOS.yml
 ├── iree_compiler_plugin.cmake
@@ -132,6 +146,9 @@ merlin/
 │       └── tinydepth.py
 ├── pyproject.toml
 ├── requirements.txt
+├── runtime
+│   └── src
+│       └── iree
 ├── samples
 │   ├── CMakeLists.txt
 │   ├── SaturnOPU
@@ -144,16 +161,22 @@ merlin/
 │       ├── promise_devices_layer
 │       └── promise_schedule_multi_model
 ├── third_party
+│   ├── Understanding-PI0
+│   ├── autocomp
+│   ├── gemmini-mx
+│   ├── gluon
 │   ├── iree-turbine
 │   ├── iree_bar
-│   ├── llama.cpp
-│   └── shark_ai
+│   ├── lerobot
+│   ├── npu_model
+│   ├── saturn-vectors
+│   └── torch-mlir
 ├── tools
 │   ├── benchmark.py
 │   ├── build.py
 │   ├── ci.py
 │   ├── compile.py
-│   ├── docs_cli.py
+│   ├── merlin.py
 │   ├── patches.py
 │   ├── setup.py
 │   └── utils.py

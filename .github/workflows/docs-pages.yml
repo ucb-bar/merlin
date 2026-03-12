@@ -56,17 +56,35 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y doxygen mlir-18-tools
 
+      - name: Resolve mlir-tblgen path
+        run: |
+          if command -v mlir-tblgen >/dev/null 2>&1; then
+            echo "MLIR_TBLGEN=$(command -v mlir-tblgen)" >> "$GITHUB_ENV"
+          elif [ -x /usr/lib/llvm-18/bin/mlir-tblgen ]; then
+            echo "MLIR_TBLGEN=/usr/lib/llvm-18/bin/mlir-tblgen" >> "$GITHUB_ENV"
+          else
+            echo "mlir-tblgen not found"
+            exit 1
+          fi
+
       - name: Install documentation dependencies
         run: uv pip install --system -r docs/requirements.txt
 
-      - name: Build docs (strict)
+      - name: Generate docs reference content
         env:
-          MLIR_TBLGEN: /usr/lib/llvm-18/bin/mlir-tblgen
           MKDOXY_ENABLED: "true"
           DOXYGEN_BIN: doxygen
           NO_COLOR: "1"
           TERM: dumb
-        run: mkdocs build --strict
+        run: uv run python docs/hooks.py
+
+      - name: Build docs
+        env:
+          MKDOXY_ENABLED: "true"
+          DOXYGEN_BIN: doxygen
+          NO_COLOR: "1"
+          TERM: dumb
+        run: uv run zensical build --clean
 
       - name: Upload GitHub Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

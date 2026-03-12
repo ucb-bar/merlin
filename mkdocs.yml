@@ -3,13 +3,9 @@ site_description: Docs for Merlin (Setup, Tutorial, API, etc)
 repo_url: https://github.com/ucb-bar/merlin
 edit_uri: edit/main/docs/
 docs_dir: docs
-strict: true
-validation:
-  nav:
-    omitted_files: ignore
 
 theme:
-  name: material
+  variant: classic
   logo: assets/merlin_transparent.png
   favicon: assets/merlin_transparent.png
 
@@ -76,9 +72,6 @@ plugins:
             RECURSIVE: YES
             FILE_PATTERNS: "*.c *.cc *.cpp *.h *.hpp"
             EXCLUDE_PATTERNS: "*/__pycache__/* */compiled_models/* */compilation_phases*/* */report_pt_export/*"
-
-hooks:
-  - docs/hooks.py
 
 markdown_extensions:
   - admonition
