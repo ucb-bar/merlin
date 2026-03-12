@@ -1,0 +1,14 @@
+iree_cc_library(
+  NAME
+  registration
+  HDRS
+  "driver_module.h"
+  SRCS
+  "driver_module.c"
+  DEPS
+  iree::base
+  iree::hal
+  iree::hal::drivers::radiance
+  DEFINES
+  "IREE_HAVE_HAL_RADIANCE_DRIVER_MODULE=1"
+  PUBLIC)

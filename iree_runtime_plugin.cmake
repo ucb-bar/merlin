@@ -1,6 +1,60 @@
-# Merlin runtime plugin entrypoint used by IREE plugin CMake integration. Keep
-# this intentionally minimal and only register Merlin-owned sample/runtime
-# targets from this repository.
+# Merlin runtime plugin entrypoint used by IREE plugin CMake integration.
 
-add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/samples" "merlin-samples")
-# add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/benchmarks" "merlin-benchmarks")
+# Runtime plugin tree toggles.
+option(MERLIN_RUNTIME_ENABLE_SAMPLES "Build Merlin runtime plugin samples" ON)
+option(MERLIN_RUNTIME_ENABLE_BENCHMARKS
+       "Build Merlin runtime plugin benchmarks" OFF)
+
+# Radiance external HAL toggles.
+option(MERLIN_RUNTIME_ENABLE_HAL_RADIANCE
+       "Enable Merlin Radiance external HAL driver" OFF)
+# Backward-compatibility option kept for existing build.py invocations.
+option(MERLIN_ENABLE_HAL_RADIANCE
+       "Legacy alias for MERLIN_RUNTIME_ENABLE_HAL_RADIANCE" OFF)
+option(MERLIN_HAL_RADIANCE_BUILD_TESTS "Build Radiance runtime plugin tests" ON)
+option(MERLIN_HAL_RADIANCE_ENABLE_RPC_COMPAT
+       "Enable Radiance RPC-compat transport backend" ON)
+option(MERLIN_HAL_RADIANCE_ENABLE_DIRECT_SUBMIT
+       "Enable Radiance direct-submit transport backend" ON)
+option(MERLIN_HAL_RADIANCE_ENABLE_KMOD "Enable Radiance kmod transport backend"
+       ON)
+
+if(MERLIN_ENABLE_HAL_RADIANCE)
+  set(MERLIN_RUNTIME_ENABLE_HAL_RADIANCE ON)
+endif()
+
+if(MERLIN_RUNTIME_ENABLE_HAL_RADIANCE)
+  iree_register_external_hal_driver(
+    NAME
+    radiance
+    SOURCE_DIR
+    "${CMAKE_CURRENT_LIST_DIR}/runtime/src/iree/hal/drivers/radiance"
+    BINARY_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/merlin/runtime/iree/hal/drivers/radiance"
+    DRIVER_TARGET
+    iree::hal::drivers::radiance::registration
+    REGISTER_FN
+    iree_hal_radiance_driver_module_register)
+
+  if(NOT "radiance" IN_LIST IREE_EXTERNAL_HAL_DRIVERS)
+    list(APPEND IREE_EXTERNAL_HAL_DRIVERS "radiance")
+    set(IREE_EXTERNAL_HAL_DRIVERS
+        "${IREE_EXTERNAL_HAL_DRIVERS}"
+        CACHE STRING "" FORCE)
+  endif()
+endif()
+
+if(MERLIN_RUNTIME_ENABLE_SAMPLES)
+  add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/samples" "merlin-samples")
+endif()
+
+if(MERLIN_RUNTIME_ENABLE_BENCHMARKS)
+  if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/benchmarks/CMakeLists.txt")
+    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/benchmarks" "merlin-benchmarks")
+  else()
+    message(
+      WARNING
+        "MERLIN_RUNTIME_ENABLE_BENCHMARKS=ON but benchmarks/CMakeLists.txt is missing"
+    )
+  endif()
+endif()

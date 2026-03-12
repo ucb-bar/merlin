@@ -1,0 +1,26 @@
+iree_cc_library(
+  NAME
+  fake_transport
+  HDRS
+  "fake_transport.h"
+  SRCS
+  "fake_transport.c"
+  "fake_transport.h"
+  DEPS
+  iree::base
+  iree::hal::drivers::radiance
+  TESTONLY
+  PUBLIC)
+
+iree_cc_test(
+  NAME
+  transport_smoke_test
+  SRCS
+  "transport_smoke_test.cc"
+  DEPS
+  ::fake_transport
+  iree::hal::drivers::radiance
+  iree::testing::gtest
+  iree::testing::gtest_main
+  LABELS
+  "driver=radiance")
