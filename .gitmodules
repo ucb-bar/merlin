@@ -23,3 +23,25 @@
 [submodule "third_party/saturn-vectors"]
 	path = third_party/saturn-vectors
 	url = https://github.com/ucb-bar/saturn-vectors.git
+[submodule "third_party/gluon"]
+	path = third_party/gluon
+	url = https://github.com/Sh-Anand/gluon.git
+[submodule "third_party/cyclotron"]
+	path = third_party/cyclotron
+	url = https://github.com/ucb-bar/cyclotron.git
+[submodule "third_party/radiance-kernels"]
+	path = third_party/radiance-kernels
+	url = https://github.com/ucb-bar/radiance-kernels.git
+[submodule "third_party/npu_model"]
+	path = third_party/npu_model
+	url = https://github.com/ucb-ee194-tapeout/npu_model.git
+	branch = dev/npu-dialect
+[submodule "third_party/Understanding-PI0"]
+	path = third_party/Understanding-PI0
+	url = https://github.com/ucb-bar/Understanding-PI0.git
+[submodule "third_party/lerobot"]
+	path = third_party/lerobot
+	url = https://github.com/huggingface/lerobot.git
+[submodule "third_party/torch-mlir"]
+	path = third_party/torch-mlir
+	url = https://github.com/llvm/torch-mlir.git
