@@ -284,6 +284,14 @@ def _run_tblgen(tblgen: Path, include_dirs: list[Path], mode: str, td_file: Path
     subprocess.run(cmd, check=True, cwd=td_file.parent)
 
 
+def _find_include_file(include_dirs: list[Path], relative_path: Path) -> Path | None:
+    for include_dir in include_dirs:
+        candidate = include_dir / relative_path
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def _generate_mlir_docs(repo_root: Path, docs_root: Path) -> None:
     tblgen = _resolve_mlir_tblgen(repo_root)
 
@@ -300,6 +308,15 @@ def _generate_mlir_docs(repo_root: Path, docs_root: Path) -> None:
         Path("/usr/lib/llvm-18/include"),
         Path("/usr/lib/llvm-17/include"),
     ]
+
+    required_td = Path("mlir/IR/DialectBase.td")
+    include_hit = _find_include_file(include_dirs, required_td)
+    if not include_hit:
+        print(
+            "WARNING: skipping MLIR TableGen docs generation because "
+            f"'{required_td.as_posix()}' was not found in include dirs."
+        )
+        return
 
     mlir_generated = docs_root / "reference" / "generated" / "mlir"
     jobs = [

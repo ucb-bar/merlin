@@ -52,11 +52,17 @@ merlin/
 ├── build_tools
 │   ├── SpacemiT
 │   │   └── setup_toolchain.sh
-│   └── firesim
-│       ├── htif-nano.spec
-│       ├── htif.ld
-│       ├── riscv_firesim.toolchain.cmake
-│       └── spike.cfg
+│   ├── firesim
+│   │   ├── htif-nano.spec
+│   │   ├── htif.ld
+│   │   ├── riscv_firesim.toolchain.cmake
+│   │   └── spike.cfg
+│   └── patches
+│       ├── README.md
+│       ├── manifest.env
+│       ├── series.iree
+│       ├── series.llvm
+│       └── tools
 ├── compiler
 │   ├── plugins
 │   │   ├── CMakeLists.txt

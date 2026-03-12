@@ -499,7 +499,7 @@ usage: uv run tools/ci.py release-status [-h] [--tracking-file TRACKING_FILE]
 
 | Argument | Required | Default | Choices | Help |
 | --- | --- | --- | --- | --- |
-| `--tracking-file` | no | `/scratch2/agustin/merlin/config/upstream_tracking.yaml` | - |  |
+| `--tracking-file` | no | `/scratch2/agustin/merlin/.github/upstream_tracking.yaml` | - |  |
 | `--offline` | no | `False` | - |  |
 | `--json` | no | `False` | - |  |
 
