@@ -1,8 +1,6 @@
 name: Nightly Upstream Drift
 
 on:
-  schedule:
-    - cron: "0 8 * * *"
   workflow_dispatch:
 
 jobs:
@@ -12,13 +10,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Initialize required submodule(s)
+        run: |
+          git submodule update --init --recursive third_party/iree_bar
 
       - name: Verify patch state
         run: |

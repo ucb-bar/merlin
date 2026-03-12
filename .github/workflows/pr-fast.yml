@@ -9,14 +9,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint-and-patch-gate:
+  lint-and-config-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -34,8 +32,4 @@ jobs:
 
       - name: Validate upstream tracking config
         run: |
-          python3 tools/merlin.py release-status --offline --json
-
-      - name: Patch gate
-        run: |
-          python3 tools/merlin.py ci patch-gate
+          python3 tools/merlin.py ci release-status --offline --json

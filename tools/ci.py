@@ -11,7 +11,14 @@ from collections.abc import Sequence
 
 import utils
 
-UPSTREAM_TRACKING_CONFIG = utils.REPO_ROOT / "config" / "upstream_tracking.yaml"
+_TRACKING_CONFIG_CANDIDATES = (
+    utils.REPO_ROOT / ".github" / "upstream_tracking.yaml",
+    utils.REPO_ROOT / "config" / "upstream_tracking.yaml",
+)
+UPSTREAM_TRACKING_CONFIG = next(
+    (candidate for candidate in _TRACKING_CONFIG_CANDIDATES if candidate.exists()),
+    _TRACKING_CONFIG_CANDIDATES[0],
+)
 SEMVER_TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 
@@ -94,9 +101,9 @@ def run_lint(args) -> int:
 
 def run_patch_gate(args) -> int:
     steps = [
-        "patches/tools/apply_all.sh",
-        "patches/tools/verify_clean.sh",
-        "patches/tools/check_upstream_drift.sh",
+        "build_tools/patches/tools/apply_all.sh",
+        "build_tools/patches/tools/verify_clean.sh",
+        "build_tools/patches/tools/check_upstream_drift.sh",
     ]
     for script in steps:
         if utils.run_repo_script(script, [], args.dry_run) != 0:
@@ -131,13 +138,28 @@ def run_release_status(args) -> int:
         except Exception as e:
             latest = f"error: {e}"
 
+    has_valid_latest = bool(latest) and latest != "offline" and not str(latest).startswith("error:")
+    update_available = bool(tracked) and has_valid_latest and latest != tracked
+
     if args.json:
         import json
 
-        print(json.dumps({"tracked": tracked, "latest": latest}))
+        print(
+            json.dumps(
+                {
+                    "tracked": tracked,
+                    "latest": latest,
+                    "tracked_release_tag": tracked,
+                    "latest_upstream_release_tag": latest if has_valid_latest else "",
+                    "upstream_repo": repo,
+                    "update_available": update_available,
+                }
+            )
+        )
     else:
         print(f"Tracked: {tracked}")
         print(f"Latest:  {latest}")
+        print(f"Update available: {update_available}")
     return 0
 
 

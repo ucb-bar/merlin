@@ -16,8 +16,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -27,7 +25,7 @@ jobs:
       - name: Query release status
         id: status
         run: |
-          python3 tools/merlin.py release-status --json > /tmp/release_status.json
+          python3 tools/merlin.py ci release-status --json > /tmp/release_status.json
           cat /tmp/release_status.json
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json
@@ -71,7 +69,7 @@ jobs:
               "",
               "Checklist:",
               "1. Update `config/upstream_tracking.yaml`.",
-              "2. Update `patches/manifest.env` pins.",
+              "2. Update `build_tools/patches/manifest.env` pins.",
               "3. Re-run patch stack apply/verify/drift checks.",
               "4. Validate host build and required target build flows.",
               "",

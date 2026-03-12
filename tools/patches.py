@@ -13,10 +13,10 @@ def setup_parser(parser: argparse.ArgumentParser):
 
 def main(args: argparse.Namespace) -> int:
     script_map = {
-        "apply": "patches/tools/apply_all.sh",
-        "verify": "patches/tools/verify_clean.sh",
-        "refresh": "patches/tools/refresh_all.sh",
-        "drift": "patches/tools/check_upstream_drift.sh",
+        "apply": "build_tools/patches/tools/apply_all.sh",
+        "verify": "build_tools/patches/tools/verify_clean.sh",
+        "refresh": "build_tools/patches/tools/refresh_all.sh",
+        "drift": "build_tools/patches/tools/check_upstream_drift.sh",
     }
 
     script = script_map.get(args.action)
