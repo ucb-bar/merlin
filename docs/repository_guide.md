@@ -10,6 +10,7 @@ Merlin is organized to separate model frontends, compiler internals, and hardwar
 - `samples/`: C/C++ runtime examples and hardware-facing sample flows.
 - `benchmarks/`: Benchmark scripts and board-specific profiling helpers.
 - `docs/`: Documentation source consumed by MkDocs.
+- `runtime/`: Merlin-owned external HAL/runtime integrations (for IREE runtime plugin wiring).
 
 ## Placement Conventions (Where New Code Should Go)
 
@@ -19,7 +20,9 @@ Merlin is organized to separate model frontends, compiler internals, and hardwar
 - New target flag bundles for `tools/compile.py`: `models/<target>.yaml`.
 - New board/runtime sample executables: `samples/<platform>/`.
 - New benchmark flows and parsers: `benchmarks/<target>/`.
+- New external HAL/runtime integrations: `runtime/src/iree/hal/drivers/<driver>/`.
 - New end-user docs and guides: `docs/`.
+- Ongoing engineering notes/dev logs: `docs/dev_blog/`.
 
 ## Tracked Tree Snapshot (Depth 3)
 

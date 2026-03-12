@@ -58,6 +58,30 @@ Typical binary location:
 
 - `build/spacemit-merlin-release/samples/SpacemiTX60/baseline_dual_model_async/baseline-dual-model-async-run`
 
+## Build Profiles (Recommended)
+
+For common workflows, prefer `--profile` instead of combining many low-level flags:
+
+```bash
+# Host vanilla developer build
+uv run tools/merlin.py build --profile vanilla
+
+# Host full plugin build (compiler + runtime plugin paths)
+uv run tools/merlin.py build --profile full-plugin
+
+# Host Radiance runtime bring-up path (minimal compiler dependencies)
+uv run tools/merlin.py build --profile radiance --cmake-target iree_hal_drivers_radiance_testing_transport_smoke_test
+
+# Cross-target runtime/sample builds
+uv run tools/merlin.py build --profile spacemit
+uv run tools/merlin.py build --profile firesim
+
+# Host Gemmini-focused compiler plugin flow
+uv run tools/merlin.py build --profile gemmini
+```
+
+If needed, you can still override profile defaults with specific flags (for advanced use).
+
 ## Where Build Outputs Go
 
 - Host tool binaries: `build/host-*/install/bin/`
@@ -109,6 +133,7 @@ Primary docs:
 - [docs/index.md](docs/index.md)
 - [docs/getting_started.md](docs/getting_started.md)
 - [docs/iree_setup.md](docs/iree_setup.md)
+- [docs/dev_blog/index.md](docs/dev_blog/index.md)
 - [docs/architecture/plugin_and_patch_model.md](docs/architecture/plugin_and_patch_model.md)
 - [docs/architecture/cmake_presets.md](docs/architecture/cmake_presets.md)
 

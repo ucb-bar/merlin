@@ -20,6 +20,12 @@ The pages below are generated from Python source files at docs build time.
 - [`models.dronet.dronet`](../generated/python/models/dronet/dronet.md)
 - [`models.midas.midas_onnx`](../generated/python/models/midas/midas_onnx.md)
 - [`models.mlp.mlp`](../generated/python/models/mlp/mlp.md)
+- [`models.pi0_test.export_one_step_mlir`](../generated/python/models/pi0_test/export_one_step_mlir.md)
+- [`models.pi0_test.fx_dtype_bridge`](../generated/python/models/pi0_test/fx_dtype_bridge.md)
+- [`models.pi0_test.inspect_fqns`](../generated/python/models/pi0_test/inspect_fqns.md)
+- [`models.pi0_test.openpi_loader`](../generated/python/models/pi0_test/openpi_loader.md)
+- [`models.pi0_test.quantize_torchao`](../generated/python/models/pi0_test/quantize_torchao.md)
+- [`models.pi0_test.validate_one_step`](../generated/python/models/pi0_test/validate_one_step.md)
 - [`models.quantize_models`](../generated/python/models/quantize_models.md)
 - [`models.tinydepth.tinydepth`](../generated/python/models/tinydepth/tinydepth.md)
 

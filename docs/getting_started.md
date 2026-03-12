@@ -27,7 +27,7 @@ alias merlin='uv run tools/merlin.py'
 
 ```bash
 conda activate merlin-dev
-uv run tools/merlin.py build --target host --config release
+uv run tools/merlin.py build --profile vanilla
 ```
 
 Expected tool locations:
@@ -50,7 +50,7 @@ Expected output:
 
 ```bash
 conda activate merlin-dev
-uv run tools/merlin.py build --target spacemit --config release --with-plugin --cmake-target merlin_baseline_dual_model_async_run
+uv run tools/merlin.py build --profile spacemit --cmake-target merlin_baseline_dual_model_async_run
 find build/spacemit-merlin-release -name baseline-dual-model-async-run
 ```
 
@@ -68,5 +68,6 @@ Typical binary path:
 ## Next
 
 - Repository layout and placement conventions: `repository_guide.md`
+- Active implementation notes and debugging logs: `dev_blog/index.md`
 - Full command and API reference: `reference/`
 - Setup details and prerequisites: `iree_setup.md`

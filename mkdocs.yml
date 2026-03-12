@@ -99,6 +99,11 @@ nav:
       - Build Types: different_build_types.md
       - Build Tracy on Ubuntu: build_tracy_ubuntu.md
   - Repository Guide: repository_guide.md
+  - Dev Blog:
+      - Overview: dev_blog/index.md
+      - 2026-03-11 Gemmini Workstream Log: dev_blog/2026-03-11-gemmini-workstream-log.md
+      - 2026-03-11 NPU E2E Bring-Up: dev_blog/2026-03-11-npu-dialect-e2e.md
+      - 2026-03-11 Radiance HAL Workstream Log: dev_blog/2026-03-11-radiance-hal-workstream-log.md
   - Architecture:
       - Plugin & Patch Model: architecture/plugin_and_patch_model.md
       - Repo Maintenance Model: architecture/repo-maintenance-model.md

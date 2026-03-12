@@ -11,4 +11,5 @@ Start here:
 
 - `getting_started.md` for first build/compile/output-locations workflow.
 - `repository_guide.md` for where to place new code in the repo.
+- `dev_blog/index.md` for ongoing development logs (Gemmini, NPU, Radiance HAL).
 - `reference/` for generated CLI/API/CMake/MLIR documentation.
