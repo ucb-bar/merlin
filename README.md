@@ -6,7 +6,21 @@ Merlin is an MLIR/IREE-based compiler stack for compiling models to CPU and cust
   <img src="docs/assets/merlin_transparent.png" width="400">
 </p>
 
+We recommend you to navigate the Merlin documentation using the website:
+
+- [**Merlin Documentation**](https://ucb-bar.github.io/merlin/)
+
 ## Quick Start
+
+**Important:**
+
+- First time you set up the repository it will take longer because you will have to clone LLVM-Project and then build Merlin plugin. Depending on your machine this might take ~30 min, but only the first time! Afterwards any changes (even if you rebuild) should go relatively fast.
+
+### 0) Git setup
+
+```bash
+git submodule update --init --recursive
+```
 
 ### 1) Environment
 
@@ -27,13 +41,14 @@ alias merlin='uv run tools/merlin.py'
 
 ```bash
 conda activate merlin-dev
-uv run tools/merlin.py build --target host --config release
+uv run tools/merlin.py build --profile full-plugin --config release
 ```
 
 This creates host tools under:
 
-- `build/host-vanilla-release/install/bin/`
-- or `build/host-merlin-release/install/bin/` when using `--with-plugin`
+- `build/host-merlin-release/install/bin/` when using `--with-plugin`
+
+(Note: If you ever need a strictly upstream IREE build without Merlin plugins, you can use `--profile vanilla` instead, which outputs to `build/host-vanilla-release/install/bin/`)
 
 ### 3) Compile one model with `compile.py`
 
