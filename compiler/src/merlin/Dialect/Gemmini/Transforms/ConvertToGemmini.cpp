@@ -9,6 +9,7 @@
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -109,6 +110,22 @@ static bool isRankedI32Tensor(Value value, int rank) {
 static bool isRankedF32Tensor(Value value, int rank) {
 	auto type = dyn_cast<RankedTensorType>(value.getType());
 	return type && type.getRank() == rank && type.getElementType().isF32();
+}
+
+static bool isRankedBF16Tensor(Value value, int rank) {
+	auto type = dyn_cast<RankedTensorType>(value.getType());
+	return type && type.getRank() == rank && type.getElementType().isBF16();
+}
+
+static bool isRankedF8E4M3FNTensor(Value value, int rank) {
+	auto type = dyn_cast<RankedTensorType>(value.getType());
+	return type && type.getRank() == rank &&
+		isa<Float8E4M3FNType>(type.getElementType());
+}
+
+static bool dimsCompatible(int64_t lhs, int64_t rhs) {
+	return ShapedType::isDynamic(lhs) || ShapedType::isDynamic(rhs) ||
+		lhs == rhs;
 }
 
 static bool extractDimTimesConstant(
@@ -256,6 +273,58 @@ static bool matchInt8I8I32AccumulatorBody(
 	return false;
 }
 
+static bool matchFP8F8AccumulatorBody(linalg::GenericOp op) {
+	Block &block = op.getRegion().front();
+	if (block.empty() || block.getNumArguments() != 3)
+		return false;
+
+	SmallVector<Operation *> ops;
+	for (Operation &nested : block.without_terminator())
+		ops.push_back(&nested);
+	auto yield = dyn_cast<linalg::YieldOp>(block.getTerminator());
+	if (!yield || yield.getNumOperands() != 1 || ops.size() != 4)
+		return false;
+
+	auto extL = dyn_cast<arith::ExtFOp>(ops[0]);
+	auto extR = dyn_cast<arith::ExtFOp>(ops[1]);
+	auto mul = dyn_cast<arith::MulFOp>(ops[2]);
+	auto add = dyn_cast<arith::AddFOp>(ops[3]);
+	if (!extL || !extR || !mul || !add)
+		return false;
+
+	Value lhsArg = block.getArgument(0);
+	Value rhsArg = block.getArgument(1);
+	Value outArg = block.getArgument(2);
+	if (extL.getIn() != lhsArg || extR.getIn() != rhsArg)
+		return false;
+
+	auto outTensorType = dyn_cast<RankedTensorType>(op.getResult(0).getType());
+	if (!outTensorType)
+		return false;
+	Type outElemType = outTensorType.getElementType();
+	if (!isa<FloatType>(outElemType) ||
+		(!cast<FloatType>(outElemType).isBF16() &&
+			!cast<FloatType>(outElemType).isF32())) {
+		return false;
+	}
+	if (extL.getType() != outElemType || extR.getType() != outElemType)
+		return false;
+
+	bool mulMatches = ((mul.getLhs() == extL.getResult() &&
+						   mul.getRhs() == extR.getResult()) ||
+		(mul.getRhs() == extL.getResult() && mul.getLhs() == extR.getResult()));
+	if (!mulMatches)
+		return false;
+
+	bool addMatches =
+		((add.getLhs() == outArg && add.getRhs() == mul.getResult()) ||
+			(add.getRhs() == outArg && add.getLhs() == mul.getResult()));
+	if (!addMatches)
+		return false;
+
+	return yield.getOperand(0) == add.getResult();
+}
+
 static bool matchMatmulMaps(linalg::GenericOp op) {
 	auto maps = op.getIndexingMapsArray();
 	if (maps.size() != 3 && maps.size() != 5)
@@ -361,6 +430,62 @@ static bool matchConv2DMaps(linalg::GenericOp op, int64_t &strideH,
 	return strideH > 0 && strideW > 0 && dilationH > 0 && dilationW > 0;
 }
 
+struct ConvertNamedMatmulPattern final : OpRewritePattern<linalg::MatmulOp> {
+	ConvertNamedMatmulPattern(
+		MLIRContext *ctx, const GemminiTransformOptions &options)
+		: OpRewritePattern(ctx), options(options) {}
+
+	LogicalResult matchAndRewrite(
+		linalg::MatmulOp op, PatternRewriter &rewriter) const override {
+		if (!options.enableMatmul)
+			return failure();
+		if (!op.hasPureTensorSemantics())
+			return failure();
+		if (op.getNumDpsInputs() != 2 || op.getNumDpsInits() != 1 ||
+			op->getNumResults() != 1) {
+			return failure();
+		}
+
+		Value lhs = op.getDpsInputs()[0];
+		Value rhs = op.getDpsInputs()[1];
+		Value result = op.getResult(0);
+
+		bool isInt8Path = isRankedI8Tensor(lhs, 2) &&
+			isRankedI8Tensor(rhs, 2) && isRankedI32Tensor(result, 2);
+		bool isFP8Path = options.enableFP8Matmul &&
+			isRankedF8E4M3FNTensor(lhs, 2) && isRankedF8E4M3FNTensor(rhs, 2) &&
+			(isRankedBF16Tensor(result, 2) || isRankedF32Tensor(result, 2));
+		if (!isInt8Path && !isFP8Path) {
+			return failure();
+		}
+
+		auto lhsType = cast<RankedTensorType>(lhs.getType());
+		auto rhsType = cast<RankedTensorType>(rhs.getType());
+		auto outType = cast<RankedTensorType>(result.getType());
+
+		// Gemmini::MatmulOp currently models rhs as NxK.
+		int64_t lhsM = lhsType.getDimSize(0);
+		int64_t lhsK = lhsType.getDimSize(1);
+		int64_t rhsN = rhsType.getDimSize(0);
+		int64_t rhsK = rhsType.getDimSize(1);
+		int64_t outM = outType.getDimSize(0);
+		int64_t outN = outType.getDimSize(1);
+		if (!dimsCompatible(lhsK, rhsK) || !dimsCompatible(lhsM, outM) ||
+			!dimsCompatible(rhsN, outN)) {
+			return failure();
+		}
+
+		rewriter.replaceOpWithNewOp<Gemmini::MatmulOp>(op, op.getResultTypes(),
+			lhs, rhs, rewriter.getI64IntegerAttr(0),
+			rewriter.getI64IntegerAttr(0),
+			Gemmini::DataflowAttr::get(
+				op.getContext(), options.defaultDataflow));
+		return success();
+	}
+
+	GemminiTransformOptions options;
+};
+
 struct ConvertMatmulPattern final : OpRewritePattern<linalg::GenericOp> {
 	ConvertMatmulPattern(
 		MLIRContext *ctx, const GemminiTransformOptions &options)
@@ -379,23 +504,32 @@ struct ConvertMatmulPattern final : OpRewritePattern<linalg::GenericOp> {
 		if (op.getNumDpsInits() != 1)
 			return failure();
 
-		if (!isRankedI8Tensor(op.getDpsInputs()[0], 2) ||
-			!isRankedI8Tensor(op.getDpsInputs()[1], 2) ||
-			!isRankedI32Tensor(op.getResult(0), 2)) {
-			return failure();
-		}
-
 		if (!matchMatmulMaps(op))
+			return failure();
+
+		Value lhs = op.getDpsInputs()[0];
+		Value rhs = op.getDpsInputs()[1];
+		Value result = op.getResult(0);
+
+		bool isInt8Path = isRankedI8Tensor(lhs, 2) &&
+			isRankedI8Tensor(rhs, 2) && isRankedI32Tensor(result, 2);
+		bool isFP8Path = options.enableFP8Matmul && op.getNumDpsInputs() == 2 &&
+			isRankedF8E4M3FNTensor(lhs, 2) && isRankedF8E4M3FNTensor(rhs, 2) &&
+			(isRankedBF16Tensor(result, 2) || isRankedF32Tensor(result, 2));
+		if (!isInt8Path && !isFP8Path)
 			return failure();
 
 		int64_t lhsZp = 0;
 		int64_t rhsZp = 0;
-		if (!matchInt8I8I32AccumulatorBody(op, lhsZp, rhsZp))
+		if (isInt8Path) {
+			if (!matchInt8I8I32AccumulatorBody(op, lhsZp, rhsZp))
+				return failure();
+		} else if (!matchFP8F8AccumulatorBody(op)) {
 			return failure();
+		}
 
 		rewriter.replaceOpWithNewOp<Gemmini::MatmulOp>(op, op.getResultTypes(),
-			op.getDpsInputs()[0], op.getDpsInputs()[1],
-			rewriter.getI64IntegerAttr(lhsZp),
+			lhs, rhs, rewriter.getI64IntegerAttr(lhsZp),
 			rewriter.getI64IntegerAttr(rhsZp),
 			Gemmini::DataflowAttr::get(
 				op.getContext(), options.defaultDataflow));
@@ -625,9 +759,9 @@ struct ConvertToGemminiPass final
 
 	void runOnOperation() override {
 		RewritePatternSet patterns(&getContext());
-		patterns.add<ConvertMatmulPattern, ConvertConv2DPattern,
-			ConvertRequantizePattern, ConvertClampPattern>(
-			&getContext(), options);
+		patterns.add<ConvertNamedMatmulPattern, ConvertMatmulPattern,
+			ConvertConv2DPattern, ConvertRequantizePattern,
+			ConvertClampPattern>(&getContext(), options);
 
 		if (failed(applyPatternsAndFoldGreedily(
 				getOperation(), std::move(patterns)))) {

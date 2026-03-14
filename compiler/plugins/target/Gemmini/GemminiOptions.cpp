@@ -1,4 +1,4 @@
-#include "iree-gemmini/compiler/plugin/GemminiOptions.h"
+#include "compiler/plugins/target/Gemmini/GemminiOptions.h"
 
 IREE_DEFINE_COMPILER_OPTION_FLAGS(::mlir::iree_compiler::GemminiOptions);
 
@@ -20,6 +20,10 @@ void GemminiOptions::bindOptions(OptionsBinder &binder) {
 
 	binder.opt<bool>("iree-gemmini-enable-matmul", enableMatmul,
 		llvm::cl::desc("Recover Gemmini matmul patterns."),
+		llvm::cl::cat(category));
+
+	binder.opt<bool>("iree-gemmini-enable-fp8-matmul", enableFP8Matmul,
+		llvm::cl::desc("Enable recovery of FP8 matmul patterns."),
 		llvm::cl::cat(category));
 
 	binder.opt<bool>("iree-gemmini-enable-conv2d", enableConv2D,

@@ -7,6 +7,7 @@
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -18,6 +19,26 @@ namespace mlir::iree_compiler::Gemmini {
 #include "compiler/src/merlin/Dialect/Gemmini/Transforms/Passes.h.inc"
 
 namespace {
+
+static bool isInt8I8I32MatmulPath(RankedTensorType lhsType,
+	RankedTensorType rhsType, RankedTensorType outType) {
+	return lhsType.getElementType().isSignlessInteger(8) &&
+		rhsType.getElementType().isSignlessInteger(8) &&
+		outType.getElementType().isSignlessInteger(32);
+}
+
+static bool isFP8MatmulPath(RankedTensorType lhsType, RankedTensorType rhsType,
+	RankedTensorType outType) {
+	Type lhsElem = lhsType.getElementType();
+	Type rhsElem = rhsType.getElementType();
+	Type outElem = outType.getElementType();
+	if (!isa<Float8E4M3FNType>(lhsElem) || !isa<Float8E4M3FNType>(rhsElem) ||
+		!isa<FloatType>(outElem)) {
+		return false;
+	}
+	auto outFloatType = cast<FloatType>(outElem);
+	return outFloatType.isBF16() || outFloatType.isF32();
+}
 
 static SmallVector<Value> getIdentityDynamicDims(
 	OpBuilder &builder, Location loc, Value source) {
@@ -45,6 +66,10 @@ static Value createZeroFilledTensor(OpBuilder &builder, Location loc,
 	if (elemType.isSignlessInteger()) {
 		zero = builder.create<arith::ConstantIntOp>(
 			loc, cast<IntegerType>(elemType), 0);
+	} else if (elemType.isBF16()) {
+		zero = builder.create<arith::ConstantFloatOp>(loc,
+			cast<FloatType>(elemType),
+			APFloat::getZero(cast<FloatType>(elemType).getFloatSemantics()));
 	} else if (elemType.isF32()) {
 		zero = builder.create<arith::ConstantFloatOp>(
 			loc, cast<FloatType>(elemType), APFloat(0.0f));
@@ -114,7 +139,13 @@ struct LowerMatmulPattern final : OpRewritePattern<Gemmini::MatmulOp> {
 
 	LogicalResult matchAndRewrite(
 		Gemmini::MatmulOp op, PatternRewriter &rewriter) const override {
+		auto lhsType = cast<RankedTensorType>(op.getLhs().getType());
+		auto rhsType = cast<RankedTensorType>(op.getRhs().getType());
 		auto resultType = cast<RankedTensorType>(op.getResult().getType());
+		bool int8Path = isInt8I8I32MatmulPath(lhsType, rhsType, resultType);
+		bool fp8Path = isFP8MatmulPath(lhsType, rhsType, resultType);
+		if (!int8Path && !fp8Path)
+			return failure();
 		Location loc = op.getLoc();
 
 		SmallVector<Value> dynamicDims = getMatmulResultDynamicDims(
@@ -140,26 +171,39 @@ struct LowerMatmulPattern final : OpRewritePattern<Gemmini::MatmulOp> {
 
 		int64_t lhsZp = static_cast<int64_t>(op.getLhsZeroPoint());
 		int64_t rhsZp = static_cast<int64_t>(op.getRhsZeroPoint());
+		Type outElemType = resultType.getElementType();
 
 		auto generic = rewriter.create<linalg::GenericOp>(loc, resultType,
 			ValueRange{op.getLhs(), op.getRhs()}, ValueRange{init}, maps,
 			iterators, [&](OpBuilder &b, Location nestedLoc, ValueRange args) {
-				Value lhs = b.create<arith::ExtSIOp>(
-					nestedLoc, b.getI32Type(), args[0]);
-				Value rhs = b.create<arith::ExtSIOp>(
-					nestedLoc, b.getI32Type(), args[1]);
-				if (lhsZp != 0) {
-					Value zp =
-						b.create<arith::ConstantIntOp>(nestedLoc, lhsZp, 32);
-					lhs = b.create<arith::SubIOp>(nestedLoc, lhs, zp);
+				if (int8Path) {
+					Value lhs = b.create<arith::ExtSIOp>(
+						nestedLoc, b.getI32Type(), args[0]);
+					Value rhs = b.create<arith::ExtSIOp>(
+						nestedLoc, b.getI32Type(), args[1]);
+					if (lhsZp != 0) {
+						Value zp = b.create<arith::ConstantIntOp>(
+							nestedLoc, lhsZp, 32);
+						lhs = b.create<arith::SubIOp>(nestedLoc, lhs, zp);
+					}
+					if (rhsZp != 0) {
+						Value zp = b.create<arith::ConstantIntOp>(
+							nestedLoc, rhsZp, 32);
+						rhs = b.create<arith::SubIOp>(nestedLoc, rhs, zp);
+					}
+					Value prod = b.create<arith::MulIOp>(nestedLoc, lhs, rhs);
+					Value acc =
+						b.create<arith::AddIOp>(nestedLoc, args[2], prod);
+					b.create<linalg::YieldOp>(nestedLoc, acc);
+					return;
 				}
-				if (rhsZp != 0) {
-					Value zp =
-						b.create<arith::ConstantIntOp>(nestedLoc, rhsZp, 32);
-					rhs = b.create<arith::SubIOp>(nestedLoc, rhs, zp);
-				}
-				Value prod = b.create<arith::MulIOp>(nestedLoc, lhs, rhs);
-				Value acc = b.create<arith::AddIOp>(nestedLoc, args[2], prod);
+
+				Value lhs =
+					b.create<arith::ExtFOp>(nestedLoc, outElemType, args[0]);
+				Value rhs =
+					b.create<arith::ExtFOp>(nestedLoc, outElemType, args[1]);
+				Value prod = b.create<arith::MulFOp>(nestedLoc, lhs, rhs);
+				Value acc = b.create<arith::AddFOp>(nestedLoc, args[2], prod);
 				b.create<linalg::YieldOp>(nestedLoc, acc);
 			});
 
@@ -173,7 +217,13 @@ struct LowerMatmulTilePattern final : OpRewritePattern<Gemmini::MatmulTileOp> {
 
 	LogicalResult matchAndRewrite(
 		Gemmini::MatmulTileOp op, PatternRewriter &rewriter) const override {
+		auto lhsType = cast<RankedTensorType>(op.getLhs().getType());
+		auto rhsType = cast<RankedTensorType>(op.getRhs().getType());
 		auto resultType = cast<RankedTensorType>(op.getResult().getType());
+		bool int8Path = isInt8I8I32MatmulPath(lhsType, rhsType, resultType);
+		bool fp8Path = isFP8MatmulPath(lhsType, rhsType, resultType);
+		if (!int8Path && !fp8Path)
+			return failure();
 		Location loc = op.getLoc();
 
 		SmallVector<Value> dynamicDims = getMatmulResultDynamicDims(
@@ -199,26 +249,39 @@ struct LowerMatmulTilePattern final : OpRewritePattern<Gemmini::MatmulTileOp> {
 
 		int64_t lhsZp = static_cast<int64_t>(op.getLhsZeroPoint());
 		int64_t rhsZp = static_cast<int64_t>(op.getRhsZeroPoint());
+		Type outElemType = resultType.getElementType();
 
 		auto generic = rewriter.create<linalg::GenericOp>(loc, resultType,
 			ValueRange{op.getLhs(), op.getRhs()}, ValueRange{init}, maps,
 			iterators, [&](OpBuilder &b, Location nestedLoc, ValueRange args) {
-				Value lhs = b.create<arith::ExtSIOp>(
-					nestedLoc, b.getI32Type(), args[0]);
-				Value rhs = b.create<arith::ExtSIOp>(
-					nestedLoc, b.getI32Type(), args[1]);
-				if (lhsZp != 0) {
-					Value zp =
-						b.create<arith::ConstantIntOp>(nestedLoc, lhsZp, 32);
-					lhs = b.create<arith::SubIOp>(nestedLoc, lhs, zp);
+				if (int8Path) {
+					Value lhs = b.create<arith::ExtSIOp>(
+						nestedLoc, b.getI32Type(), args[0]);
+					Value rhs = b.create<arith::ExtSIOp>(
+						nestedLoc, b.getI32Type(), args[1]);
+					if (lhsZp != 0) {
+						Value zp = b.create<arith::ConstantIntOp>(
+							nestedLoc, lhsZp, 32);
+						lhs = b.create<arith::SubIOp>(nestedLoc, lhs, zp);
+					}
+					if (rhsZp != 0) {
+						Value zp = b.create<arith::ConstantIntOp>(
+							nestedLoc, rhsZp, 32);
+						rhs = b.create<arith::SubIOp>(nestedLoc, rhs, zp);
+					}
+					Value prod = b.create<arith::MulIOp>(nestedLoc, lhs, rhs);
+					Value acc =
+						b.create<arith::AddIOp>(nestedLoc, args[2], prod);
+					b.create<linalg::YieldOp>(nestedLoc, acc);
+					return;
 				}
-				if (rhsZp != 0) {
-					Value zp =
-						b.create<arith::ConstantIntOp>(nestedLoc, rhsZp, 32);
-					rhs = b.create<arith::SubIOp>(nestedLoc, rhs, zp);
-				}
-				Value prod = b.create<arith::MulIOp>(nestedLoc, lhs, rhs);
-				Value acc = b.create<arith::AddIOp>(nestedLoc, args[2], prod);
+
+				Value lhs =
+					b.create<arith::ExtFOp>(nestedLoc, outElemType, args[0]);
+				Value rhs =
+					b.create<arith::ExtFOp>(nestedLoc, outElemType, args[1]);
+				Value prod = b.create<arith::MulFOp>(nestedLoc, lhs, rhs);
+				Value acc = b.create<arith::AddFOp>(nestedLoc, args[2], prod);
 				b.create<linalg::YieldOp>(nestedLoc, acc);
 			});
 

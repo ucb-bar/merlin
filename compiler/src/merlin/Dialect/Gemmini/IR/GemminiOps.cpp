@@ -9,6 +9,15 @@ using namespace mlir::iree_compiler::Gemmini;
 
 namespace {
 
+static bool isFP8(Type type) {
+	return isa<Float8E4M3FNType>(type);
+}
+
+static bool isFP8MatmulLike(Type lhs, Type rhs, Type out) {
+	return isFP8(lhs) && isFP8(rhs) &&
+		(cast<FloatType>(out).isF32() || cast<FloatType>(out).isBF16());
+}
+
 static LogicalResult verifyMatmulTypes(
 	Operation *op, Value lhs, Value rhs, Value result) {
 	auto lhsType = dyn_cast<RankedTensorType>(lhs.getType());
@@ -17,10 +26,16 @@ static LogicalResult verifyMatmulTypes(
 	if (!lhsType || !rhsType || !resultType) {
 		return op->emitOpError() << "expects ranked tensor operands and result";
 	}
-	if (!lhsType.getElementType().isSignlessInteger(8) ||
-		!rhsType.getElementType().isSignlessInteger(8) ||
-		!resultType.getElementType().isSignlessInteger(32)) {
-		return op->emitOpError() << "expects i8 lhs/rhs and i32 result";
+	Type lhsElem = lhsType.getElementType();
+	Type rhsElem = rhsType.getElementType();
+	Type outElem = resultType.getElementType();
+	bool isInt8Path = lhsElem.isSignlessInteger(8) &&
+		rhsElem.isSignlessInteger(8) && outElem.isSignlessInteger(32);
+	bool isFP8Path =
+		isa<FloatType>(outElem) && isFP8MatmulLike(lhsElem, rhsElem, outElem);
+	if (!isInt8Path && !isFP8Path) {
+		return op->emitOpError()
+			<< "expects either i8/i8->i32 or f8E4M3FN/f8E4M3FN->{bf16|f32}";
 	}
 	if (lhsType.getRank() != 2 || rhsType.getRank() != 2 ||
 		resultType.getRank() != 2) {

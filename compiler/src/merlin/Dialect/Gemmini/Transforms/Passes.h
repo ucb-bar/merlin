@@ -11,6 +11,7 @@ namespace mlir::iree_compiler::Gemmini {
 
 struct GemminiTransformOptions {
 	bool enableMatmul = true;
+	bool enableFP8Matmul = false;
 	bool enableConv2D = true;
 	bool enableRequantize = true;
 	bool enableClamp = true;

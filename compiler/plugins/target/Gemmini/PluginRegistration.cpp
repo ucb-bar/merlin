@@ -35,6 +35,7 @@ struct GemminiSession : public PluginSession<GemminiSession, GemminiOptions,
 
 		Gemmini::GemminiTransformOptions transformOptions;
 		transformOptions.enableMatmul = options.enableMatmul;
+		transformOptions.enableFP8Matmul = options.enableFP8Matmul;
 		transformOptions.enableConv2D = options.enableConv2D;
 		transformOptions.enableRequantize = options.enableRequantize;
 		transformOptions.enableClamp = options.enableClamp;

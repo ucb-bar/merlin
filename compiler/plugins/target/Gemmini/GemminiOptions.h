@@ -13,6 +13,7 @@ struct GemminiOptions {
 	bool lowerBackToIREE = true;
 
 	bool enableMatmul = true;
+	bool enableFP8Matmul = false;
 	bool enableConv2D = true;
 	bool enableRequantize = true;
 	bool enableClamp = true;
