@@ -30,6 +30,10 @@ jobs:
         run: |
           python3 tools/merlin.py ci lint
 
+      - name: Check CLI docs drift
+        run: |
+          python3 tools/merlin.py ci cli-docs-drift
+
       - name: Validate upstream tracking config
         run: |
           python3 tools/merlin.py ci release-status --offline --json

@@ -1,7 +1,7 @@
 # CI Workflows
 
 - `pr-fast.yml`
-  - PR-time fast checks (lint + patch gate).
+  - PR-time fast checks (lint + CLI docs drift + release tracking config validation).
 - `nightly-upstream-drift.yml`
   - Scheduled/manual drift checks against pinned upstream commits.
 - `release-tracker.yml`
