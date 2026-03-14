@@ -48,38 +48,60 @@ static bool isF32(Type type) {
 	return isa<Float32Type>(type);
 }
 
-static LogicalResult verifyMatmulShapes(Operation *op, StringRef symbol,
+static bool dimsCompatible(int64_t lhs, int64_t rhs) {
+	return ShapedType::isDynamic(lhs) || ShapedType::isDynamic(rhs) ||
+		lhs == rhs;
+}
+
+static bool dimsCompatible3(int64_t a, int64_t b, int64_t c) {
+	return dimsCompatible(a, b) && dimsCompatible(a, c) && dimsCompatible(b, c);
+}
+
+static LogicalResult verifyMatmulLikeShapes(Operation *op, StringRef symbol,
 	Value lhs, Value rhs, Type resultType, bool enforceFp8f8f32) {
 	auto lhsTy = dyn_cast<ShapedType>(lhs.getType());
 	auto rhsTy = dyn_cast<ShapedType>(rhs.getType());
 	auto outTy = dyn_cast<ShapedType>(resultType);
-	if (!lhsTy || !rhsTy || !outTy || lhsTy.getRank() != 2 ||
-		rhsTy.getRank() != 2 || outTy.getRank() != 2) {
+	if (!lhsTy || !rhsTy || !outTy || !lhsTy.hasRank() || !rhsTy.hasRank() ||
+		!outTy.hasRank() || lhsTy.getRank() < 2 || rhsTy.getRank() < 2 ||
+		outTy.getRank() < 2) {
 		op->emitOpError() << "symbol '" << symbol
-						  << "' expects rank-2 shaped tensors";
+						  << "' expects ranked tensors with rank >= 2";
 		return failure();
 	}
 
-	// Accept both rhs layouts (KxN) and (NxK) for current frontend flexibility.
-	auto lhsK = lhsTy.getDimSize(1);
-	auto rhs0 = rhsTy.getDimSize(0);
-	auto rhs1 = rhsTy.getDimSize(1);
-	auto outM = outTy.getDimSize(0);
-	auto outN = outTy.getDimSize(1);
+	int64_t lhsRank = lhsTy.getRank();
+	int64_t rhsRank = rhsTy.getRank();
+	int64_t outRank = outTy.getRank();
+	if (lhsRank - 2 != rhsRank - 2 || lhsRank - 2 != outRank - 2) {
+		op->emitOpError() << "symbol '" << symbol
+						  << "' expects equal batch rank across lhs/rhs/result";
+		return failure();
+	}
 
-	auto lhsM = lhsTy.getDimSize(0);
-	bool mMatches = ShapedType::isDynamic(lhsM) ||
-		ShapedType::isDynamic(outM) || lhsM == outM;
+	for (int64_t i = 0, e = lhsRank - 2; i < e; ++i) {
+		if (!dimsCompatible3(lhsTy.getDimSize(i), rhsTy.getDimSize(i),
+				outTy.getDimSize(i))) {
+			op->emitOpError()
+				<< "symbol '" << symbol
+				<< "' has incompatible batch dimensions at index " << i;
+			return failure();
+		}
+	}
+
+	// Accept both rhs layouts (..xKxN) and (..xNxK).
+	auto lhsM = lhsTy.getDimSize(lhsRank - 2);
+	auto lhsK = lhsTy.getDimSize(lhsRank - 1);
+	auto rhs0 = rhsTy.getDimSize(rhsRank - 2);
+	auto rhs1 = rhsTy.getDimSize(rhsRank - 1);
+	auto outM = outTy.getDimSize(outRank - 2);
+	auto outN = outTy.getDimSize(outRank - 1);
+
+	bool mMatches = dimsCompatible(lhsM, outM);
 	bool standardCompatible =
-		(ShapedType::isDynamic(lhsK) || ShapedType::isDynamic(rhs0) ||
-			lhsK == rhs0) &&
-		(ShapedType::isDynamic(rhs1) || ShapedType::isDynamic(outN) ||
-			rhs1 == outN);
+		dimsCompatible(lhsK, rhs0) && dimsCompatible(rhs1, outN);
 	bool transposedCompatible =
-		(ShapedType::isDynamic(lhsK) || ShapedType::isDynamic(rhs1) ||
-			lhsK == rhs1) &&
-		(ShapedType::isDynamic(rhs0) || ShapedType::isDynamic(outN) ||
-			rhs0 == outN);
+		dimsCompatible(lhsK, rhs1) && dimsCompatible(rhs0, outN);
 
 	if (!mMatches || (!standardCompatible && !transposedCompatible)) {
 		op->emitOpError()
@@ -102,6 +124,56 @@ static LogicalResult verifyMatmulShapes(Operation *op, StringRef symbol,
 	return success();
 }
 
+static LogicalResult verifyAttentionShapes(
+	Operation *op, StringRef symbol, ValueRange inputs, Type resultType) {
+	if (inputs.size() < 3) {
+		op->emitOpError() << "symbol '" << symbol
+						  << "' expects at least 3 tensor inputs";
+		return failure();
+	}
+
+	auto qTy = dyn_cast<ShapedType>(inputs[0].getType());
+	auto kTy = dyn_cast<ShapedType>(inputs[1].getType());
+	auto vTy = dyn_cast<ShapedType>(inputs[2].getType());
+	auto outTy = dyn_cast<ShapedType>(resultType);
+	if (!qTy || !kTy || !vTy || !outTy || !qTy.hasRank() || !kTy.hasRank() ||
+		!vTy.hasRank() || !outTy.hasRank() || qTy.getRank() < 3 ||
+		kTy.getRank() < 3 || vTy.getRank() < 3 || outTy.getRank() < 3) {
+		op->emitOpError()
+			<< "symbol '" << symbol
+			<< "' expects ranked attention tensors with rank >= 3";
+		return failure();
+	}
+
+	int64_t qRank = qTy.getRank();
+	if (kTy.getRank() != qRank || vTy.getRank() != qRank ||
+		outTy.getRank() != qRank) {
+		op->emitOpError() << "symbol '" << symbol
+						  << "' expects equal tensor rank across q/k/v/result";
+		return failure();
+	}
+
+	for (int64_t i = 0, e = qRank - 2; i < e; ++i) {
+		if (!dimsCompatible3(
+				qTy.getDimSize(i), kTy.getDimSize(i), vTy.getDimSize(i)) ||
+			!dimsCompatible(qTy.getDimSize(i), outTy.getDimSize(i))) {
+			op->emitOpError()
+				<< "symbol '" << symbol
+				<< "' has incompatible batch dimensions at index " << i;
+			return failure();
+		}
+	}
+
+	if (!dimsCompatible(
+			qTy.getDimSize(qRank - 2), outTy.getDimSize(qRank - 2))) {
+		op->emitOpError() << "symbol '" << symbol
+						  << "' expects query M to match output M";
+		return failure();
+	}
+
+	return success();
+}
+
 template <typename OpTy>
 static LogicalResult verifyUkernelOp(OpTy op, bool strict) {
 	StringRef symbol = op.getSymbol();
@@ -121,12 +193,21 @@ static LogicalResult verifyUkernelOp(OpTy op, bool strict) {
 		return failure();
 	}
 
-	if (failed(verifyMatmulShapes(op, symbol, op.getInputs()[0],
-			op.getInputs()[1], op.getResult().getType(),
-			strict && family != UkernelFamily::Matmul))) {
-		return failure();
+	switch (family) {
+		case UkernelFamily::Matmul:
+			return verifyMatmulLikeShapes(op, symbol, op.getInputs()[0],
+				op.getInputs()[1], op.getResult().getType(),
+				/*enforceFp8f8f32=*/false);
+		case UkernelFamily::GemmaMLP:
+			return verifyMatmulLikeShapes(op, symbol, op.getInputs()[0],
+				op.getInputs()[1], op.getResult().getType(),
+				/*enforceFp8f8f32=*/strict);
+		case UkernelFamily::GemmaAttention:
+			return verifyAttentionShapes(
+				op, symbol, op.getInputs(), op.getResult().getType());
+		case UkernelFamily::Unknown:
+			break;
 	}
-
 	return success();
 }
 

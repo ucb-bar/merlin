@@ -84,7 +84,9 @@ def parse_text_isa(isa_text: Path) -> list[tuple[int, str, set[str]]]:
 
 def main() -> int:
     repo_root = Path(__file__).resolve().parents[6]
-    default_isa_def = repo_root / "third_party" / "npu_model" / "model_npu" / "configs" / "isa_definition.py"
+    legacy_isa_def = repo_root / "third_party" / "npu_model" / "model_npu" / "configs" / "isa_definition.py"
+    modern_isa_def = repo_root / "third_party" / "npu_model" / "npu_model" / "configs" / "isa_definition.py"
+    default_isa_def = modern_isa_def if modern_isa_def.exists() else legacy_isa_def
 
     parser = argparse.ArgumentParser(description="Check emitted ISA against model_npu contract")
     parser.add_argument("isa_text", type=Path, help="Path to emitted text ISA file")
