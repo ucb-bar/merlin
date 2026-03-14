@@ -45,7 +45,7 @@ Runtime-plugin integration comes from:
 For SpacemiTX60 async baseline sample:
 
 ```bash
-conda run -n merlin-dev python tools/build.py \
+conda run -n merlin-dev uv run tools/build.py \
   --profile spacemit \
   --config perf \
   --cmake-target merlin_baseline_dual_model_async_run

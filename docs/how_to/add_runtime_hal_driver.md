@@ -80,7 +80,7 @@ Radiance example:
 Build and run:
 
 ```bash
-conda run -n merlin-dev python tools/build.py \
+conda run -n merlin-dev uv run tools/build.py \
   --profile radiance \
   --cmake-target iree_hal_drivers_radiance_testing_transport_smoke_test
 ```

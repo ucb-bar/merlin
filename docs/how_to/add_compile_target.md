@@ -11,6 +11,8 @@ Create:
 Current in-tree example:
 
 - `models/spacemit_x60.yaml`
+- `models/npu_ucb.yaml`
+- `models/gemmini_mx.yaml`
 
 ## 2) YAML Schema Used By `tools/compile.py`
 
@@ -30,16 +32,20 @@ Common keys:
 3. quantized flags
 4. model-specific overrides
 
+When `plugin_flags` is non-empty and `--build-dir` is left at its default
+(`host-vanilla-release`), `tools/compile.py` automatically uses
+`host-merlin-release` so plugin-enabled targets work with short user commands.
+
 ## 3) Compile With Your New Target
 
 Examples:
 
 ```bash
-conda run -n merlin-dev python tools/compile.py models/dronet/dronet.mlir --target <target_name>
+conda run -n merlin-dev uv run tools/compile.py models/dronet/dronet.mlir --target <target_name>
 ```
 
 ```bash
-conda run -n merlin-dev python tools/compile.py models/dronet/dronet.mlir --target <target_name> --hw <hw_profile>
+conda run -n merlin-dev uv run tools/compile.py models/dronet/dronet.mlir --target <target_name> --hw <hw_profile>
 ```
 
 ## 4) Output Layout
@@ -58,13 +64,19 @@ Typical outputs:
 
 `tools/compile.py` picks `iree-compile` from:
 
-1. `build/<build_dir>/install/bin/`
-2. fallback `build/host-merlin-release/install/bin/`
-3. fallback current environment
+1. `build/<build_dir>/tools/`
+2. `build/<build_dir>/install/bin/`
+3. fallback `build/host-merlin-release/tools/`
+4. fallback `build/host-merlin-release/install/bin/`
+5. fallback current environment
 
 Control primary location with:
 
 - `--build-dir <build_dir_name>`
+- `--compile-to <phase_name>`
+- `--dump-compilation-phases-to <dir>`
+- `--iree-compile-arg <flag>` / `--compilation-custom-arg <flag>` (repeatable passthrough)
+- `--reuse-imported-mlir` (skip refresh of copied/imported MLIR)
 
 ## 6) When To Add A New Target vs. New `--hw`
 

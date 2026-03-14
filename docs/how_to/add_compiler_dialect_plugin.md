@@ -95,7 +95,7 @@ Examples:
 Build:
 
 ```bash
-conda run -n merlin-dev python tools/build.py --profile npu --config release
+conda run -n merlin-dev uv run tools/build.py --profile npu --config release
 ```
 
 Check loaded plugins:

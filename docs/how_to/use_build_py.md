@@ -7,7 +7,7 @@ This page is a practical guide for common build workflows.
 Use:
 
 ```bash
-conda run -n merlin-dev python tools/build.py --profile <profile>
+conda run -n merlin-dev uv run tools/build.py --profile <profile>
 ```
 
 Available profiles include:
@@ -42,13 +42,13 @@ Examples:
 Host compiler with NPU plugin scope:
 
 ```bash
-conda run -n merlin-dev python tools/build.py --profile npu --config release
+conda run -n merlin-dev uv run tools/build.py --profile npu --config release
 ```
 
 Host runtime Radiance smoke target:
 
 ```bash
-conda run -n merlin-dev python tools/build.py \
+conda run -n merlin-dev uv run tools/build.py \
   --profile radiance \
   --cmake-target iree_hal_drivers_radiance_testing_transport_smoke_test
 ```
@@ -56,7 +56,7 @@ conda run -n merlin-dev python tools/build.py \
 Cross-target sample build:
 
 ```bash
-conda run -n merlin-dev python tools/build.py \
+conda run -n merlin-dev uv run tools/build.py \
   --profile spacemit \
   --config perf \
   --cmake-target merlin_baseline_dual_model_async_run
@@ -82,6 +82,19 @@ Common output locations:
 - `--plugin-runtime-radiance*` toggles
 - `--build-compiler`, `--build-tests`, `--build-python-bindings`, etc.
 - `--cmake-target <target>`
+- `--cmake-arg <arg>` / `--configure-custom-arg <arg>` (repeatable, configure passthrough)
+- `--cmake-build-arg <arg>` / `--build-custom-arg <arg>` (repeatable, `cmake --build` passthrough)
+- `--native-build-arg <arg>` (repeatable, native tool passthrough after `--`)
+
+Examples:
+
+```bash
+conda run -n merlin-dev uv run tools/build.py \
+  --profile full-plugin \
+  --cmake-arg=-DIREE_ENABLE_CPUINFO=OFF \
+  --cmake-build-arg=--parallel \
+  --cmake-build-arg=16
+```
 
 ## 6) Verify Build Result Quickly
 
