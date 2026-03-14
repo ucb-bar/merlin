@@ -84,7 +84,7 @@ Primary runtime smoke target:
 Build (Merlin scripts):
 
 ```bash
-conda run -n merlin-dev python tools/build.py \
+conda run -n merlin-dev uv run tools/build.py \
   --profile radiance \
   --cmake-target iree_hal_drivers_radiance_testing_transport_smoke_test
 ```
@@ -101,7 +101,7 @@ evidence of real kernel dispatch on hardware.
 ## Reproduce Latest Stage (Checklist)
 
 1. Build Radiance runtime plugin test target:
-   - `conda run -n merlin-dev python tools/build.py --profile radiance --cmake-target iree_hal_drivers_radiance_testing_transport_smoke_test`
+   - `conda run -n merlin-dev uv run tools/build.py --profile radiance --cmake-target iree_hal_drivers_radiance_testing_transport_smoke_test`
 2. Run transport smoke test binary.
 3. Confirm passing sub-tests:
    - direct-submit smoke

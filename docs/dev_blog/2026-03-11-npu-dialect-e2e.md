@@ -71,7 +71,7 @@ text consumable by `npu_model`.
 Build:
 
 ```bash
-conda run -n merlin-dev python tools/build.py --profile npu --config release --no-build-python-bindings --no-enable-libbacktrace
+conda run -n merlin-dev uv run tools/build.py --profile npu --config release --no-build-python-bindings --no-enable-libbacktrace
 ```
 
 Plugin visibility:
