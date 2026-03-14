@@ -39,6 +39,8 @@ Optional starter template:
 
 ## Current Entries
 
+- [2026-03-13 RISC-V MMT4D Ukernel Workstream](2026-03-13-riscv-mmt4d-ukernel-workstream.md)
+- [2026-03-12 SmolVLA FP8/INT8 Global-Optimization Workstream](2026-03-12-smolvla-fp8-int8-global-opt-workstream.md)
 - [2026-03-11 Gemmini Workstream Log](2026-03-11-gemmini-workstream-log.md)
 - [2026-03-11 NPU Dialect E2E Bring-Up](2026-03-11-npu-dialect-e2e.md)
 - [2026-03-11 Radiance HAL Workstream Log](2026-03-11-radiance-hal-workstream-log.md)
@@ -47,6 +49,8 @@ Optional starter template:
 
 | Stream | Latest entry | Status |
 |---|---|---|
+| RISC-V mmt4d ukernels | [2026-03-13 RISC-V MMT4D Ukernel Workstream](2026-03-13-riscv-mmt4d-ukernel-workstream.md) | Active |
+| SmolVLA FP8/INT8 quantization | [2026-03-12 SmolVLA FP8/INT8 Global-Optimization Workstream](2026-03-12-smolvla-fp8-int8-global-opt-workstream.md) | Active |
 | Gemmini dialect | [2026-03-11 Gemmini Workstream Log](2026-03-11-gemmini-workstream-log.md) | Active |
 | NPU dialect | [2026-03-11 NPU Dialect E2E Bring-Up](2026-03-11-npu-dialect-e2e.md) | Active |
 | Radiance HAL | [2026-03-11 Radiance HAL Workstream Log](2026-03-11-radiance-hal-workstream-log.md) | Active |
