@@ -1,5 +1,3 @@
-# models/spacemit_x60.yaml
-
 default_hw: RVV
 
 generic:
@@ -16,13 +14,18 @@ generic:
   - --iree-llvmcpu-target-vector-width-in-bytes=32
   - --iree-execution-model=async-external
 
+plugin_flags:
+  - --iree-plugin=npu
+  - --iree-npu-enable
+  - --iree-npu-enable-ukernel-verify
+  - --iree-npu-strict-ukernel-verify
+  - --iree-npu-allow-unknown-ukernel-fallback=false
+
 quantized:
   - --iree-llvmcpu-skip-intermediate-roundings=true
   - --riscv-v-fixed-length-vector-lmul-max=2
 
 models:
-  dronet:
-    - --iree-preprocessing-pass-pipeline=builtin.module(util.func(iree-global-opt-quantized-conv-to-conv, iree-preprocessing-convert-conv2d-to-img2col))
   smolVLA:
     - --iree-input-type=torch
     - --iree-opt-const-eval=false
