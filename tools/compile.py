@@ -24,7 +24,41 @@ def setup_parser(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--build-dir",
         default="host-vanilla-release",
-        help="Which build directory to use for compiler tools (default: host-vanilla-release)",
+        help=(
+            "Which build directory to use for compiler tools "
+            "(default: host-vanilla-release). If omitted and target YAML uses "
+            "plugin_flags, compile.py auto-selects host-merlin-release."
+        ),
+    )
+    parser.add_argument(
+        "--compile-to",
+        help=(
+            "Stop compilation at the given phase (for example: global-optimization). "
+            "When set, output is emitted as an intermediate MLIR file."
+        ),
+    )
+    parser.add_argument(
+        "--dump-compilation-phases-to",
+        help=(
+            "Directory for --dump-compilation-phases-to. "
+            "If omitted and --dump-phases is set, defaults to <output_dir>/phases/."
+        ),
+    )
+    parser.add_argument(
+        "--iree-compile-arg",
+        "--compilation-custom-arg",
+        action="append",
+        dest="iree_compile_arg",
+        default=[],
+        help=("Extra flag forwarded directly to iree-compile. " "Repeat for multiple flags."),
+    )
+    parser.add_argument(
+        "--reuse-imported-mlir",
+        action="store_true",
+        help=(
+            "Reuse an existing output MLIR instead of refreshing from explicit input files. "
+            "By default, explicit input files are re-imported/re-copied."
+        ),
     )
 
     # Optional Artifacts
@@ -37,15 +71,25 @@ def setup_parser(parser: argparse.ArgumentParser):
 
 
 def get_iree_tool(tool_name: str, build_dir_name: str) -> pathlib.Path:
-    # 1. ALWAYS check the user's requested build directory FIRST
-    primary_build_tool = utils.REPO_ROOT / "build" / build_dir_name / "install" / "bin" / tool_name
+    # 1. ALWAYS check the user's requested build directory FIRST.
+    # Prefer in-tree built tools so incremental `--cmake-target` builds are picked up
+    # without requiring a full `install` target.
+    primary_build_tool = utils.REPO_ROOT / "build" / build_dir_name / "tools" / tool_name
     if primary_build_tool.exists():
         return primary_build_tool
 
+    primary_install_tool = utils.REPO_ROOT / "build" / build_dir_name / "install" / "bin" / tool_name
+    if primary_install_tool.exists():
+        return primary_install_tool
+
     # 2. Fallback to merlin release if vanilla isn't found
-    fallback_build_tool = utils.REPO_ROOT / "build" / "host-merlin-release" / "install" / "bin" / tool_name
+    fallback_build_tool = utils.REPO_ROOT / "build" / "host-merlin-release" / "tools" / tool_name
     if fallback_build_tool.exists():
         return fallback_build_tool
+
+    fallback_install_tool = utils.REPO_ROOT / "build" / "host-merlin-release" / "install" / "bin" / tool_name
+    if fallback_install_tool.exists():
+        return fallback_install_tool
 
     # 3. Absolute last resort: the Conda environment
     env_tool = pathlib.Path(sys.executable).parent / tool_name
@@ -78,6 +122,10 @@ def zip_artifacts(zip_path: pathlib.Path, sources_dir: pathlib.Path, vmfb_dir: p
 
 
 def main(args: argparse.Namespace) -> int:
+    if args.build_benchmarks and args.compile_to:
+        utils.eprint("❌ Error: --build-benchmarks is only supported for full VMFB compilation (no --compile-to).")
+        return 1
+
     input_p = pathlib.Path(args.input_path).resolve()
 
     is_quantized = args.quantized
@@ -111,6 +159,16 @@ def main(args: argparse.Namespace) -> int:
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
 
+    plugin_flags = cfg.get("plugin_flags", [])
+    effective_build_dir = args.build_dir
+    if args.build_dir == "host-vanilla-release" and plugin_flags:
+        # Plugin-backed targets are expected in merlin builds.
+        effective_build_dir = "host-merlin-release"
+        print(
+            "  🔧 Target uses plugin flags; selecting build dir "
+            f"'{effective_build_dir}' (override with --build-dir)."
+        )
+
     hw_choice = args.hw
     if not hw_choice and "default_hw" in cfg:
         hw_choice = cfg["default_hw"]
@@ -136,15 +194,27 @@ def main(args: argparse.Namespace) -> int:
 
     mlir_file = output_dir / f"{basename}.mlir"
     vmfb_file = output_dir / f"{basename}.vmfb"
+    compile_output_file = vmfb_file
+    if args.compile_to:
+        compile_output_file = output_dir / f"{basename}_{args.compile_to.replace('-', '_')}.mlir"
     graph_out = output_dir / f"{basename}_dispatch_graph.dot"
 
+    should_refresh_mlir = False
     if not mlir_file.exists():
+        should_refresh_mlir = True
+    elif explicit_file and not args.reuse_imported_mlir:
+        should_refresh_mlir = True
+
+    if should_refresh_mlir:
         if explicit_file:
             if explicit_file.suffix == ".onnx":
-                import_onnx(explicit_file, mlir_file, args.build_dir, args.dry_run)
+                import_onnx(explicit_file, mlir_file, effective_build_dir, args.dry_run)
             elif explicit_file.suffix == ".mlir":
                 print(f"  📄 Using explicit MLIR file: {explicit_file}")
-                mlir_file.write_bytes(explicit_file.read_bytes())
+                if args.dry_run:
+                    print(f"+ cp {explicit_file} {mlir_file}")
+                else:
+                    mlir_file.write_bytes(explicit_file.read_bytes())
             else:
                 utils.eprint(f"❌ Error: Unsupported file type: {explicit_file}")
                 return 1
@@ -152,16 +222,21 @@ def main(args: argparse.Namespace) -> int:
             source_onnx = model_dir / f"{model_name}{'.q.' + quant_type if is_quantized else ''}.onnx"
             source_mlir = model_dir / f"{basename}.mlir"
             if source_onnx.exists():
-                import_onnx(source_onnx, mlir_file, args.build_dir, args.dry_run)
+                import_onnx(source_onnx, mlir_file, effective_build_dir, args.dry_run)
             elif source_mlir.exists():
                 print(f"  📄 Found Source MLIR: {source_mlir}")
-                mlir_file.write_bytes(source_mlir.read_bytes())
+                if args.dry_run:
+                    print(f"+ cp {source_mlir} {mlir_file}")
+                else:
+                    mlir_file.write_bytes(source_mlir.read_bytes())
             else:
                 utils.eprint(f"❌ Error: Could not find ONNX or MLIR in {model_dir}")
                 return 1
+    else:
+        print(f"  ♻️  Reusing imported MLIR: {mlir_file}")
 
     # Stack Flags (UPDATED KEYS TO MATCH YOUR YAML)
-    static_flags = cfg.get("generic", []) + cfg.get("plugin_flags", [])
+    static_flags = cfg.get("generic", []) + plugin_flags
 
     if "targets" in cfg and hw_choice:
         static_flags.extend(cfg["targets"][hw_choice])
@@ -188,8 +263,14 @@ def main(args: argparse.Namespace) -> int:
             ]
         )
 
-    if args.dump_phases:
+    dump_phases_dir = args.dump_compilation_phases_to
+    if dump_phases_dir:
+        dynamic_flags.append(f"--dump-compilation-phases-to={pathlib.Path(dump_phases_dir)}")
+    elif args.dump_phases:
         dynamic_flags.append(f"--dump-compilation-phases-to={output_dir}/phases/")
+
+    if args.compile_to:
+        dynamic_flags.append(f"--compile-to={args.compile_to}")
 
     if args.dump_graph:
         dynamic_flags.extend(
@@ -197,13 +278,14 @@ def main(args: argparse.Namespace) -> int:
         )
 
     print("  🔨 Compiling main model...")
-    iree_compile = get_iree_tool("iree-compile", args.build_dir)
-    cmd = [str(iree_compile), str(mlir_file), "-o", str(vmfb_file)] + static_flags + dynamic_flags
+    iree_compile = get_iree_tool("iree-compile", effective_build_dir)
+    cmd = [str(iree_compile), str(mlir_file), "-o", str(compile_output_file)] + static_flags + dynamic_flags
+    cmd.extend(args.iree_compile_arg)
 
     if utils.run(cmd, dry_run=args.dry_run) != 0:
         utils.eprint("❌ Main compilation failed.")
         return 1
-    print(f"  ✅ Successfully compiled: {vmfb_file}")
+    print(f"  ✅ Successfully compiled: {compile_output_file}")
 
     if args.build_benchmarks:
         sources_dir = output_dir / "benchmarks"

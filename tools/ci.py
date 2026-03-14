@@ -27,6 +27,7 @@ def setup_parser(parser: argparse.ArgumentParser):
 
     # Lint
     subparsers.add_parser("lint", help="Run linters (shellcheck, python)")
+    subparsers.add_parser("cli-docs-drift", help="Regenerate docs/reference/cli.md and fail on drift")
 
     # Patch Gate
     subparsers.add_parser("patch-gate", help="CI gate: apply, verify, drift check")
@@ -99,6 +100,42 @@ def run_lint(args) -> int:
     return 0
 
 
+def run_cli_docs_drift(args) -> int:
+    repo_root = utils.REPO_ROOT.resolve()
+    docs_root = (repo_root / "docs").resolve()
+    hooks_module_path = str(docs_root)
+    inserted = False
+
+    if hooks_module_path not in sys.path:
+        sys.path.insert(0, hooks_module_path)
+        inserted = True
+    try:
+        import hooks  # type: ignore
+    except Exception as e:
+        utils.eprint(f"❌ Failed to import docs/hooks.py: {e}")
+        return 1
+    finally:
+        if inserted:
+            try:
+                sys.path.remove(hooks_module_path)
+            except ValueError:
+                pass
+
+    try:
+        hooks._build_cli_reference(repo_root, docs_root)
+    except Exception as e:
+        utils.eprint(f"❌ Failed to regenerate docs/reference/cli.md: {e}")
+        return 1
+
+    diff_cmd = ["git", "diff", "--exit-code", "--", "docs/reference/cli.md"]
+    if utils.run(diff_cmd, dry_run=args.dry_run) != 0:
+        utils.eprint("❌ docs/reference/cli.md is out of date. Regenerate and commit the result.")
+        return 1
+
+    print("✅ docs/reference/cli.md is up to date.")
+    return 0
+
+
 def run_patch_gate(args) -> int:
     steps = [
         "build_tools/patches/tools/apply_all.sh",
@@ -166,6 +203,8 @@ def run_release_status(args) -> int:
 def main(args: argparse.Namespace) -> int:
     if args.subcommand == "lint":
         return run_lint(args)
+    if args.subcommand == "cli-docs-drift":
+        return run_cli_docs_drift(args)
     if args.subcommand == "patch-gate":
         return run_patch_gate(args)
     if args.subcommand == "release-status":

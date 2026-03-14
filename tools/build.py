@@ -259,6 +259,28 @@ def setup_parser(parser: argparse.ArgumentParser):
         default=True,
         help="Enable/disable ccache compiler launchers (default: enabled).",
     )
+    parser.add_argument(
+        "--cmake-arg",
+        "--configure-custom-arg",
+        action="append",
+        dest="cmake_arg",
+        default=[],
+        help="Extra argument forwarded to CMake configure (repeatable).",
+    )
+    parser.add_argument(
+        "--cmake-build-arg",
+        "--build-custom-arg",
+        action="append",
+        dest="cmake_build_arg",
+        default=[],
+        help="Extra argument forwarded to CMake build command (repeatable).",
+    )
+    parser.add_argument(
+        "--native-build-arg",
+        action="append",
+        default=[],
+        help="Extra argument forwarded to the native build tool after '--' (repeatable).",
+    )
     parser.add_argument("--clean", action="store_true", help="Delete build directory before building")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose build output")
 
@@ -424,6 +446,10 @@ def main(args: argparse.Namespace) -> int:
         f"compiler={build_compiler} python_bindings={build_python_bindings} "
         f"samples={build_samples} tests={build_tests} libbacktrace={enable_libbacktrace}"
     )
+    if args.cmake_arg:
+        print(f"🧱 Extra CMake Configure Args: {args.cmake_arg}")
+    if args.cmake_build_arg or args.native_build_arg:
+        print("🏗️  Extra CMake Build Args: " f"cmake={args.cmake_build_arg or []} native={args.native_build_arg or []}")
     print(f"🛠️  CMake:         {cmake_bin}")
     print(f"📂 Build Dir:     {build_dir}")
     print(f"📂 Install Dir:   {install_dir}")
@@ -704,6 +730,7 @@ def main(args: argparse.Namespace) -> int:
             f"-DIREE_ENABLE_LIBBACKTRACE={cmake_bool(enable_libbacktrace)}",
         ]
     )
+    cmake_args.extend(args.cmake_arg)
 
     # 7. Configure & Build Main Target
     if utils.run(cmake_args, dry_run=args.dry_run, env=env) != 0:
@@ -711,8 +738,12 @@ def main(args: argparse.Namespace) -> int:
 
     target_arg = args.cmake_target if args.cmake_target else "install"
     build_cmd = [cmake_bin, "--build", str(build_dir), "--target", target_arg]
+    build_cmd.extend(args.cmake_build_arg)
     if args.verbose:
         build_cmd.append("--verbose")
+    if args.native_build_arg:
+        build_cmd.append("--")
+        build_cmd.extend(args.native_build_arg)
 
     if utils.run(build_cmd, dry_run=args.dry_run, env=env) != 0:
         return 1
@@ -722,8 +753,12 @@ def main(args: argparse.Namespace) -> int:
     if args.target == "host" and not args.cmake_target:
         print(">> Building extra LLVM tools (llvm-mca, llvm-objdump)...")
         extra_tools_cmd = [cmake_bin, "--build", str(build_dir), "--target", "llvm-mca", "llvm-objdump"]
+        extra_tools_cmd.extend(args.cmake_build_arg)
         if args.verbose:
             extra_tools_cmd.append("--verbose")
+        if args.native_build_arg:
+            extra_tools_cmd.append("--")
+            extra_tools_cmd.extend(args.native_build_arg)
         if utils.run(extra_tools_cmd, dry_run=args.dry_run, env=env) != 0:
             return 1
 
