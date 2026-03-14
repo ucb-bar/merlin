@@ -125,7 +125,7 @@ Please validate and/or provide:
 
 Tracked question list (maintained in Merlin):
 
-- [`docs/architecture/radiance_author_questions.md`](/scratch2/agustin/merlin/docs/architecture/radiance_author_questions.md)
+- [`docs/architecture/radiance_author_questions.md`](../../../../../../docs/architecture/radiance_author_questions.md)
 
 ## Non-Goals for This Layer
 
