@@ -89,6 +89,8 @@ nav:
       - Getting Started: getting_started.md
       - Getting Started / Installation: iree_setup.md
       - Cross-Compiling for Banana Pi: reproducibility/cross_compile_banana_pi.md
+      - Export TinyLlama 8-bit to MLIR: reproducibility/export_tinyllama_8bit_sharktank_to_mlir.md
+      - Reproduce Ukernel Benchmark: reproducibility/reproduce_ukernel_benchmark_firesim.md
       - Build Types: different_build_types.md
       - Build Tracy on Ubuntu: build_tracy_ubuntu.md
   - How-To:
@@ -100,10 +102,12 @@ nav:
       - Use build.py: how_to/use_build_py.md
   - Repository Guide: repository_guide.md
   - Dev Blog:
-      - Overview: dev_blog/index.md
-      - 2026-03-11 Gemmini Workstream Log: dev_blog/2026-03-11-gemmini-workstream-log.md
-      - 2026-03-11 NPU E2E Bring-Up: dev_blog/2026-03-11-npu-dialect-e2e.md
-      - 2026-03-11 Radiance HAL Workstream Log: dev_blog/2026-03-11-radiance-hal-workstream-log.md
+      - Home: dev_blog/index.md
+      - Gemmini Workstream: dev_blog/2026-03-11-gemmini-workstream-log.md
+      - NPU Dialect E2E: dev_blog/2026-03-11-npu-dialect-e2e.md
+      - Radiance HAL: dev_blog/2026-03-11-radiance-hal-workstream-log.md
+      - SmolVLA FP8: dev_blog/2026-03-12-smolvla-fp8-int8-global-opt-workstream.md
+      - RISC-V MMT4D: dev_blog/2026-03-13-riscv-mmt4d-ukernel-workstream.md
   - Architecture:
       - Plugin & Patch Model: architecture/plugin_and_patch_model.md
       - Repo Maintenance Model: architecture/repo-maintenance-model.md
