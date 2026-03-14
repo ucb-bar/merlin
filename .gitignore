@@ -72,6 +72,7 @@ compilation*
 
 # Temporary files
 tmp/*
+third_party/tmp
 .vscode/
 mlirEvolve/.venv/
 mlirEvolve/.pytest_cache/
@@ -80,7 +81,10 @@ mlirEvolve/.pytest_cache/
 *.onnx
 *.onnx.data
 samples/models/*.mlir
+models/smolVLA/*.mlir
+models/smolVLA/*.vmfb
 *.vmfb
+models/smolVLA/*.mlir
 
 # Sample-generated artifacts
 samples/custom_dispatch_ukernels_saturn/saturn_test
