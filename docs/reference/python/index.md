@@ -4,6 +4,7 @@ The pages below are generated from Python source files at docs build time.
 
 ## `tools/`
 
+- [`tools.analyze_quant_ir`](../generated/python/tools/analyze_quant_ir.md)
 - [`tools.benchmark`](../generated/python/tools/benchmark.md)
 - [`tools.build`](../generated/python/tools/build.md)
 - [`tools.ci`](../generated/python/tools/ci.md)
@@ -21,6 +22,8 @@ The pages below are generated from Python source files at docs build time.
 - [`models.midas.midas_onnx`](../generated/python/models/midas/midas_onnx.md)
 - [`models.mlp.mlp`](../generated/python/models/mlp/mlp.md)
 - [`models.quantize_models`](../generated/python/models/quantize_models.md)
+- [`models.smolVLA.export_smolvla`](../generated/python/models/smolVLA/export_smolvla.md)
+- [`models.smolVLA.export_smolvla_int8`](../generated/python/models/smolVLA/export_smolvla_int8.md)
 - [`models.tinydepth.tinydepth`](../generated/python/models/tinydepth/tinydepth.md)
 
 ## `benchmarks/`

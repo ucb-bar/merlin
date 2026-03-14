@@ -63,8 +63,11 @@ usage: uv run tools/merlin.py build [-h] [--dry-run]
                                     [--offline-friendly]
                                     [--cmake-bin CMAKE_BIN]
                                     [--use-system-cmake]
-                                    [--use-ccache | --no-use-ccache] [--clean]
-                                    [--verbose]
+                                    [--use-ccache | --no-use-ccache]
+                                    [--cmake-arg CMAKE_ARG]
+                                    [--cmake-build-arg CMAKE_BUILD_ARG]
+                                    [--native-build-arg NATIVE_BUILD_ARG]
+                                    [--clean] [--verbose]
 ```
 
 | Argument | Required | Default | Choices | Help |
@@ -94,6 +97,9 @@ usage: uv run tools/merlin.py build [-h] [--dry-run]
 | `--cmake-bin` | no | `cmake` | - | CMake executable to use (default: cmake). |
 | `--use-system-cmake` | no | `False` | - | Use /usr/bin/cmake instead of cmake from PATH. |
 | `--use-ccache`, `--no-use-ccache` | no | `True` | - | Enable/disable ccache compiler launchers (default: enabled). |
+| `--cmake-arg`, `--configure-custom-arg` | no | `[]` | - | Extra argument forwarded to CMake configure (repeatable). |
+| `--cmake-build-arg`, `--build-custom-arg` | no | `[]` | - | Extra argument forwarded to CMake build command (repeatable). |
+| `--native-build-arg` | no | `[]` | - | Extra argument forwarded to the native build tool after '--' (repeatable). |
 | `--clean` | no | `False` | - | Delete build directory before building |
 | `--verbose` | no | `False` | - | Enable verbose build output |
 
@@ -101,7 +107,8 @@ usage: uv run tools/merlin.py build [-h] [--dry-run]
 
 ```text
 usage: uv run tools/merlin.py ci [-h] [--dry-run]
-                                 {lint,patch-gate,release-status} ...
+                                 {lint,cli-docs-drift,patch-gate,release-status}
+                                 ...
 ```
 
 | Argument | Required | Default | Choices | Help |
@@ -114,6 +121,10 @@ usage: uv run tools/merlin.py ci [-h] [--dry-run]
 usage: uv run tools/merlin.py compile [-h] [--dry-run] --target TARGET
                                       [--hw HW] [--quantized]
                                       [--build-dir BUILD_DIR]
+                                      [--compile-to COMPILE_TO]
+                                      [--dump-compilation-phases-to DUMP_COMPILATION_PHASES_TO]
+                                      [--iree-compile-arg IREE_COMPILE_ARG]
+                                      [--reuse-imported-mlir]
                                       [--dump-artifacts] [--dump-phases]
                                       [--dump-graph] [--build-benchmarks]
                                       input_path
@@ -126,7 +137,11 @@ usage: uv run tools/merlin.py compile [-h] [--dry-run] --target TARGET
 | `--target` | yes | - | - | Target YAML config file name (e.g., spacemit_x60) |
 | `--hw` | no | - | - | Hardware sub-target from YAML (e.g., RVV, OPU). If omitted, uses default_hw from YAML. |
 | `--quantized` | no | `False` | - | Force quantized mode (auto-detected if .q. in filename) |
-| `--build-dir` | no | `host-vanilla-release` | - | Which build directory to use for compiler tools (default: host-vanilla-release) |
+| `--build-dir` | no | `host-vanilla-release` | - | Which build directory to use for compiler tools (default: host-vanilla-release). If omitted and target YAML uses plugin_flags, compile.py auto-selects host-merlin-release. |
+| `--compile-to` | no | - | - | Stop compilation at the given phase (for example: global-optimization). When set, output is emitted as an intermediate MLIR file. |
+| `--dump-compilation-phases-to` | no | - | - | Directory for --dump-compilation-phases-to. If omitted and --dump-phases is set, defaults to <output_dir>/phases/. |
+| `--iree-compile-arg`, `--compilation-custom-arg` | no | `[]` | - | Extra flag forwarded directly to iree-compile. Repeat for multiple flags. |
+| `--reuse-imported-mlir` | no | `False` | - | Reuse an existing output MLIR instead of refreshing from explicit input files. By default, explicit input files are re-imported/re-copied. |
 | `--dump-artifacts` | no | `False` | - | Dump executable sources, binaries, and configs |
 | `--dump-phases` | no | `False` | - | Dump MLIR compilation phases |
 | `--dump-graph` | no | `False` | - | Dump the flow dispatch graph (.dot) |
@@ -214,7 +229,10 @@ usage: uv run tools/build.py [-h]
                              [--enable-libbacktrace | --no-enable-libbacktrace]
                              [--offline-friendly] [--cmake-bin CMAKE_BIN]
                              [--use-system-cmake]
-                             [--use-ccache | --no-use-ccache] [--clean]
+                             [--use-ccache | --no-use-ccache]
+                             [--cmake-arg CMAKE_ARG]
+                             [--cmake-build-arg CMAKE_BUILD_ARG]
+                             [--native-build-arg NATIVE_BUILD_ARG] [--clean]
                              [--verbose]
 ```
 
@@ -246,6 +264,9 @@ usage: uv run tools/build.py [-h]
 | `--cmake-bin` | no | `cmake` | - | CMake executable to use (default: cmake). |
 | `--use-system-cmake` | no | `False` | - | Use /usr/bin/cmake instead of cmake from PATH. |
 | `--use-ccache`, `--no-use-ccache` | no | `True` | - | Enable/disable ccache compiler launchers (default: enabled). |
+| `--cmake-arg`, `--configure-custom-arg` | no | `[]` | - | Extra argument forwarded to CMake configure (repeatable). |
+| `--cmake-build-arg`, `--build-custom-arg` | no | `[]` | - | Extra argument forwarded to CMake build command (repeatable). |
+| `--native-build-arg` | no | `[]` | - | Extra argument forwarded to the native build tool after '--' (repeatable). |
 | `--clean` | no | `False` | - | Delete build directory before building |
 | `--verbose` | no | `False` | - | Enable verbose build output |
 
@@ -274,7 +295,10 @@ usage: uv run tools/build.py [-h]
                              [--enable-libbacktrace | --no-enable-libbacktrace]
                              [--offline-friendly] [--cmake-bin CMAKE_BIN]
                              [--use-system-cmake]
-                             [--use-ccache | --no-use-ccache] [--clean]
+                             [--use-ccache | --no-use-ccache]
+                             [--cmake-arg CMAKE_ARG]
+                             [--cmake-build-arg CMAKE_BUILD_ARG]
+                             [--native-build-arg NATIVE_BUILD_ARG] [--clean]
                              [--verbose]
 
 Configure and build Merlin and target runtimes
@@ -338,6 +362,15 @@ options:
   --use-ccache, --no-use-ccache
                         Enable/disable ccache compiler launchers (default:
                         enabled).
+  --cmake-arg CMAKE_ARG, --configure-custom-arg CMAKE_ARG
+                        Extra argument forwarded to CMake configure
+                        (repeatable).
+  --cmake-build-arg CMAKE_BUILD_ARG, --build-custom-arg CMAKE_BUILD_ARG
+                        Extra argument forwarded to CMake build command
+                        (repeatable).
+  --native-build-arg NATIVE_BUILD_ARG
+                        Extra argument forwarded to the native build tool
+                        after '--' (repeatable).
   --clean               Delete build directory before building
   --verbose             Enable verbose build output
 ```
@@ -350,7 +383,11 @@ Compile MLIR/ONNX models to target artifacts
 
 ```text
 usage: uv run tools/compile.py [-h] --target TARGET [--hw HW] [--quantized]
-                               [--build-dir BUILD_DIR] [--dump-artifacts]
+                               [--build-dir BUILD_DIR]
+                               [--compile-to COMPILE_TO]
+                               [--dump-compilation-phases-to DUMP_COMPILATION_PHASES_TO]
+                               [--iree-compile-arg IREE_COMPILE_ARG]
+                               [--reuse-imported-mlir] [--dump-artifacts]
                                [--dump-phases] [--dump-graph]
                                [--build-benchmarks]
                                input_path
@@ -364,7 +401,11 @@ usage: uv run tools/compile.py [-h] --target TARGET [--hw HW] [--quantized]
 | `--target` | yes | - | - | Target YAML config file name (e.g., spacemit_x60) |
 | `--hw` | no | - | - | Hardware sub-target from YAML (e.g., RVV, OPU). If omitted, uses default_hw from YAML. |
 | `--quantized` | no | `False` | - | Force quantized mode (auto-detected if .q. in filename) |
-| `--build-dir` | no | `host-vanilla-release` | - | Which build directory to use for compiler tools (default: host-vanilla-release) |
+| `--build-dir` | no | `host-vanilla-release` | - | Which build directory to use for compiler tools (default: host-vanilla-release). If omitted and target YAML uses plugin_flags, compile.py auto-selects host-merlin-release. |
+| `--compile-to` | no | - | - | Stop compilation at the given phase (for example: global-optimization). When set, output is emitted as an intermediate MLIR file. |
+| `--dump-compilation-phases-to` | no | - | - | Directory for --dump-compilation-phases-to. If omitted and --dump-phases is set, defaults to <output_dir>/phases/. |
+| `--iree-compile-arg`, `--compilation-custom-arg` | no | `[]` | - | Extra flag forwarded directly to iree-compile. Repeat for multiple flags. |
+| `--reuse-imported-mlir` | no | `False` | - | Reuse an existing output MLIR instead of refreshing from explicit input files. By default, explicit input files are re-imported/re-copied. |
 | `--dump-artifacts` | no | `False` | - | Dump executable sources, binaries, and configs |
 | `--dump-phases` | no | `False` | - | Dump MLIR compilation phases |
 | `--dump-graph` | no | `False` | - | Dump the flow dispatch graph (.dot) |
@@ -374,7 +415,11 @@ usage: uv run tools/compile.py [-h] --target TARGET [--hw HW] [--quantized]
 
 ```text
 usage: uv run tools/compile.py [-h] --target TARGET [--hw HW] [--quantized]
-                               [--build-dir BUILD_DIR] [--dump-artifacts]
+                               [--build-dir BUILD_DIR]
+                               [--compile-to COMPILE_TO]
+                               [--dump-compilation-phases-to DUMP_COMPILATION_PHASES_TO]
+                               [--iree-compile-arg IREE_COMPILE_ARG]
+                               [--reuse-imported-mlir] [--dump-artifacts]
                                [--dump-phases] [--dump-graph]
                                [--build-benchmarks]
                                input_path
@@ -394,7 +439,24 @@ options:
                         filename)
   --build-dir BUILD_DIR
                         Which build directory to use for compiler tools
-                        (default: host-vanilla-release)
+                        (default: host-vanilla-release). If omitted and target
+                        YAML uses plugin_flags, compile.py auto-selects host-
+                        merlin-release.
+  --compile-to COMPILE_TO
+                        Stop compilation at the given phase (for example:
+                        global-optimization). When set, output is emitted as
+                        an intermediate MLIR file.
+  --dump-compilation-phases-to DUMP_COMPILATION_PHASES_TO
+                        Directory for --dump-compilation-phases-to. If omitted
+                        and --dump-phases is set, defaults to
+                        <output_dir>/phases/.
+  --iree-compile-arg IREE_COMPILE_ARG, --compilation-custom-arg IREE_COMPILE_ARG
+                        Extra flag forwarded directly to iree-compile. Repeat
+                        for multiple flags.
+  --reuse-imported-mlir
+                        Reuse an existing output MLIR instead of refreshing
+                        from explicit input files. By default, explicit input
+                        files are re-imported/re-copied.
   --dump-artifacts      Dump executable sources, binaries, and configs
   --dump-phases         Dump MLIR compilation phases
   --dump-graph          Dump the flow dispatch graph (.dot)
@@ -464,10 +526,20 @@ Run repository CI/lint/patch workflows
 ### Usage
 
 ```text
-usage: uv run tools/ci.py [-h] {lint,patch-gate,release-status} ...
+usage: uv run tools/ci.py [-h]
+                          {lint,cli-docs-drift,patch-gate,release-status} ...
 ```
 
 ### Arguments
+
+| Argument | Required | Default | Choices | Help |
+| --- | --- | --- | --- | --- |
+
+#### Subcommand `cli-docs-drift`
+
+```text
+usage: uv run tools/ci.py cli-docs-drift [-h]
+```
 
 | Argument | Required | Default | Choices | Help |
 | --- | --- | --- | --- | --- |
@@ -506,13 +578,15 @@ usage: uv run tools/ci.py release-status [-h] [--tracking-file TRACKING_FILE]
 ### `--help` Output
 
 ```text
-usage: uv run tools/ci.py [-h] {lint,patch-gate,release-status} ...
+usage: uv run tools/ci.py [-h]
+                          {lint,cli-docs-drift,patch-gate,release-status} ...
 
 Run repository CI/lint/patch workflows
 
 positional arguments:
-  {lint,patch-gate,release-status}
+  {lint,cli-docs-drift,patch-gate,release-status}
     lint                Run linters (shellcheck, python)
+    cli-docs-drift      Regenerate docs/reference/cli.md and fail on drift
     patch-gate          CI gate: apply, verify, drift check
     release-status      Check upstream IREE versions
 
