@@ -40,7 +40,7 @@ pipeline wiring is migrated out-of-tree.
 Preferred entrypoint (wraps the scripts below):
 
 ```bash
-python3 tools/merlin.py --help
+uv run tools/merlin.py --help
 ```
 
 1. Ensure submodules are at pinned commits.
@@ -81,6 +81,7 @@ python3 tools/merlin.py --help
 
 A strict CI gate should run at least:
 
+- `uv run tools/merlin.py ci cli-docs-drift`
 - `build_tools/patches/tools/apply_all.sh`
 - `build_tools/patches/tools/verify_clean.sh`
 - `build_tools/patches/tools/check_upstream_drift.sh`

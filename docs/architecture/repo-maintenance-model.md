@@ -19,6 +19,7 @@ key risks.
    - `tools/merlin.py`
 4. Add CI gates for:
    - script lint/syntax
+   - CLI docs drift (`docs/reference/cli.md`)
    - patch verify
    - drift check
 5. Keep board flows in `benchmark/target/<board>/` with deploy/run/parser
