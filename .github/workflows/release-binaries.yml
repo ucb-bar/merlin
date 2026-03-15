@@ -1,0 +1,185 @@
+name: release-binaries
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  host-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Init core submodules only
+        run: |
+          python3 tools/merlin.py setup submodules --submodules-profile core --submodule-sync
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: merlin-dev
+          environment-file: env_linux.yml
+          auto-activate-base: false
+
+      - name: Sync Python deps
+        shell: bash -el {0}
+        run: |
+          uv sync
+
+      - name: Build packaged host artifact
+        shell: bash -el {0}
+        run: |
+          uv run tools/merlin.py build --profile package-host
+          mv dist/host-merlin-perf.tar.gz dist/merlin-host-linux-x86_64.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: merlin-host-linux-x86_64
+          path: dist/*.tar.gz
+
+  host-macos:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Init core submodules only
+        run: |
+          python3 tools/merlin.py setup submodules --submodules-profile core --submodule-sync
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: merlin-dev
+          environment-file: env_macOS.yml
+          auto-activate-base: false
+
+      - name: Sync Python deps
+        shell: bash -el {0}
+        run: |
+          uv sync
+
+      - name: Build packaged host artifact
+        shell: bash -el {0}
+        run: |
+          uv run tools/merlin.py build --profile package-host
+          mv dist/host-merlin-perf.tar.gz dist/merlin-host-macos.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: merlin-host-macos
+          path: dist/*.tar.gz
+
+  runtime-spacemit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Init core submodules only
+        run: |
+          python3 tools/merlin.py setup submodules --submodules-profile core --submodule-sync
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: merlin-dev
+          environment-file: env_linux.yml
+          auto-activate-base: false
+
+      - name: Sync Python deps
+        shell: bash -el {0}
+        run: |
+          uv sync
+
+      - name: Build host tools needed for cross compile
+        shell: bash -el {0}
+        run: |
+          uv run tools/merlin.py build \
+            --profile vanilla \
+            --config perf \
+            --cmake-target install \
+            --no-build-tests \
+            --no-build-python-bindings
+
+      - name: Build packaged spacemit runtime artifact
+        shell: bash -el {0}
+        run: |
+          uv run tools/merlin.py build --profile package-spacemit
+          mv dist/spacemit-merlin-perf.tar.gz dist/merlin-runtime-spacemit.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: merlin-runtime-spacemit
+          path: dist/*.tar.gz
+
+  runtime-saturnopu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Init core submodules only
+        run: |
+          python3 tools/merlin.py setup submodules --submodules-profile core --submodule-sync
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: merlin-dev
+          environment-file: env_linux.yml
+          auto-activate-base: false
+
+      - name: Sync Python deps
+        shell: bash -el {0}
+        run: |
+          uv sync
+
+      - name: Build host tools needed for cross compile
+        shell: bash -el {0}
+        run: |
+          uv run tools/merlin.py build \
+            --profile vanilla \
+            --config perf \
+            --cmake-target install \
+            --no-build-tests \
+            --no-build-python-bindings
+
+      - name: Build packaged saturn OPU runtime artifact
+        shell: bash -el {0}
+        run: |
+          uv run tools/merlin.py build --profile package-firesim
+          mv dist/firesim-merlin-perf.tar.gz dist/merlin-runtime-saturnopu.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: merlin-runtime-saturnopu
+          path: dist/*.tar.gz
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs:
+      - host-linux
+      - host-macos
+      - runtime-spacemit
+      - runtime-saturnopu
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Flatten assets
+        run: |
+          mkdir -p dist
+          find release-assets -name '*.tar.gz' -exec cp {} dist/ \;
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tar.gz
