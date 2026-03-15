@@ -1,119 +1,161 @@
-# Prerequisites
-*.d
+# -----------------------------------------------------------------------------
+# Build artifacts and compiled binaries
+# -----------------------------------------------------------------------------
 
-# Compiled Object files
+# Dependency / compiler-generated files
+*.d
+*.gch
+*.pch
+*.dwo
+
+# Object files
 *.slo
 *.lo
 *.o
 *.obj
 
-# Precompiled Headers
-*.gch
-*.pch
-
-# Linker files
+# Linker / debug files
 *.ilk
-
-# Debugger Files
 *.pdb
 
-# Compiled Dynamic libraries
+# Dynamic libraries
 *.so
 *.dylib
 *.dll
 
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
+# Static libraries
 *.lai
 *.la
 *.a
 *.lib
+
+# Fortran modules
+*.mod
+*.smod
 
 # Executables
 *.exe
 *.out
 *.app
 
-# debug information files
-*.dwo
-
-# build directories
+# Build directories
 /build/
 /build-*/
+dist/
+
+# Generated documentation
 /site/
 /docs/reference/generated/
 
-# cahce files from python
+
+# -----------------------------------------------------------------------------
+# Python cache / virtual envs / tooling
+# -----------------------------------------------------------------------------
+
 __pycache__/
 *.pyc
 *.pyo
+.pytest_cache/
+.ruff_cache/
+.uv-cache/
+.venv/
 
-# Benchmark results
-benchmark/KernelBench/results/*
-benchmark/KernelBench/report/*
-!benchmark/KernelBench/report/.gitkeep
-benchmark/target/SpacemiTX60/results/*
-benchmark/target/SpacemiTX60/artifacts/*
-benchmark/target/SpacemiTX60/spacemitx60.env
-tutorials/*/artifacts/*
-
-# Toochains
-riscv-tools-*/
-dist/
-
-# Ignore compilation phases and report
-compilation_phases_*
-report_pt_export
-compiled_models
-phases*
-compilation*
-
-# Temporary files
-tmp/*
-third_party/tmp
-.vscode/
+# Project-specific venv/cache
 mlirEvolve/.venv/
 mlirEvolve/.pytest_cache/
 
-# Ignore models if they can get compiled
+# Packaging artifacts
+merlin_dev.egg-info/
+*.egg-info/
+
+
+# -----------------------------------------------------------------------------
+# Temporary / editor / local environment files
+# -----------------------------------------------------------------------------
+
+tmp
+third_party/tmp
+.vscode/
+.docker_home
+
+
+# -----------------------------------------------------------------------------
+# Toolchains / local installs
+# -----------------------------------------------------------------------------
+
+riscv-tools-*/
+
+
+# -----------------------------------------------------------------------------
+# Compilation reports / generated compiler outputs
+# -----------------------------------------------------------------------------
+
+compilation_phases_*
+compilation*
+phases*
+report_pt_export
+compiled_models
+
+
+# -----------------------------------------------------------------------------
+# Benchmark outputs
+# -----------------------------------------------------------------------------
+
+benchmark/KernelBench/results/*
+benchmark/KernelBench/report/*
+!benchmark/KernelBench/report/.gitkeep
+
+benchmark/target/SpacemiTX60/results/*
+benchmark/target/SpacemiTX60/artifacts/*
+benchmark/target/SpacemiTX60/spacemitx60.env
+
+tutorials/*/artifacts/*
+
+# Async baseline benchmark outputs
+benchmarks/SpacemiTX60/baseline_dual_model_async/results/*
+benchmarks/SpacemiTX60/baseline_dual_model_async/results
+benchmarks/SpacemiTX60/baseline_dual_model_async/results/logs
+benchmarks/SpacemiTX60/baseline_dual_model_async/results/plots/
+
+
+# -----------------------------------------------------------------------------
+# Logs / plots
+# -----------------------------------------------------------------------------
+
+*/logs/*
+*/plots/*
+plots/*
+
+
+# -----------------------------------------------------------------------------
+# Models and compiled model artifacts
+# -----------------------------------------------------------------------------
+
 *.onnx
 *.onnx.data
+*.vmfb
+
 samples/models/*.mlir
 models/smolVLA/*.mlir
 models/smolVLA/*.vmfb
-*.vmfb
-models/smolVLA/*.mlir
 
+
+# -----------------------------------------------------------------------------
 # Sample-generated artifacts
+# -----------------------------------------------------------------------------
+
 samples/custom_dispatch_ukernels_saturn/saturn_test
 samples/custom_dispatch_ukernels_saturn/*.npy
 
-# Ignore plots and logs
 
-*/logs/*
-*/plots/*
-plots/*
+# -----------------------------------------------------------------------------
+# Test / transform outputs
+# -----------------------------------------------------------------------------
 
-# Added to ignore the specified folder
-benchmarks/SpacemiTX60/baseline_dual_model_async/results/plots/
-benchmarks/SpacemiTX60/baseline_dual_model_async/results/logs
-benchmarks/SpacemiTX60/baseline_dual_model_async/results
-benchmarks/SpacemiTX60/baseline_dual_model_async/results/*
 compiler/src/merlin/Dialect/Gemmini/Transforms/tests/Output/*
-merlin_dev.egg-info/*
 
-.ruff_cache
 
-# Ignore plots and logs
-
-*/logs/*
-*/plots/*
-plots/*
-
-# Added to ignore the specified folder
-benchmarks/SpacemiTX60/baseline_dual_model_async/results/plots/
-benchmarks/SpacemiTX60/baseline_dual_model_async/results/logs
-benchmarks/SpacemiTX60/baseline_dual_model_async/results
+# -----------------------------------------------------------------------------
+# Repository-local extras
+# -----------------------------------------------------------------------------
+mlirEvolve/
