@@ -10,82 +10,6 @@ permissions:
   contents: write
 
 jobs:
-  host-linux-tools:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: false
-
-      - name: Init core submodules only
-        run: |
-          python3 tools/setup.py submodules --submodules-profile core --submodule-sync
-
-      - uses: conda-incubator/setup-miniconda@v3
-        with:
-          activate-environment: merlin-dev
-          environment-file: env_linux.yml
-          auto-activate-base: false
-
-      - name: Sync Python deps
-        shell: bash -el {0}
-        run: |
-          uv sync
-
-      - name: Build reusable Linux host tools for cross compile
-        shell: bash -el {0}
-        run: |
-          uv run tools/merlin.py build \
-            --profile vanilla \
-            --config perf \
-            --cmake-target install \
-            --no-build-tests \
-            --no-build-python-bindings
-
-      - name: Pack reusable Linux host tools
-        shell: bash -el {0}
-        run: |
-          mkdir -p /tmp/merlin-artifacts
-          tar -C . -czf /tmp/merlin-artifacts/host-vanilla-perf-install.tgz build/host-vanilla-perf/install
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: host-vanilla-perf-install
-          path: /tmp/merlin-artifacts/host-vanilla-perf-install.tgz
-
-  host-linux:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: false
-
-      - name: Init core submodules only
-        run: |
-          python3 tools/setup.py submodules --submodules-profile core --submodule-sync
-
-      - uses: conda-incubator/setup-miniconda@v3
-        with:
-          activate-environment: merlin-dev
-          environment-file: env_linux.yml
-          auto-activate-base: false
-
-      - name: Sync Python deps
-        shell: bash -el {0}
-        run: |
-          uv sync
-
-      - name: Build packaged host artifact
-        shell: bash -el {0}
-        run: |
-          uv run tools/merlin.py build --profile package-host
-          mv dist/host-merlin-perf.tar.gz dist/merlin-host-linux-x86_64.tar.gz
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: merlin-host-linux-x86_64
-          path: dist/*.tar.gz
-
   host-macos:
     runs-on: macos-26
     steps:
@@ -108,7 +32,7 @@ jobs:
         run: |
           uv sync
 
-      - name: Build packaged host artifact
+      - name: Build packaged macOS host artifact
         shell: bash -el {0}
         run: |
           uv run tools/merlin.py build --profile package-host
@@ -117,130 +41,20 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: merlin-host-macos
-          path: dist/*.tar.gz
-
-  runtime-spacemit:
-    runs-on: ubuntu-24.04
-    needs:
-      - host-linux-tools
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: false
-
-      - name: Init core submodules only
-        run: |
-          python3 tools/setup.py submodules --submodules-profile core --submodule-sync
-
-      - uses: conda-incubator/setup-miniconda@v3
-        with:
-          activate-environment: merlin-dev
-          environment-file: env_linux.yml
-          auto-activate-base: false
-
-      - name: Sync Python deps
-        shell: bash -el {0}
-        run: |
-          uv sync
-
-      - name: Restore reusable Linux host tools
-        uses: actions/download-artifact@v4
-        with:
-          name: host-vanilla-perf-install
-          path: /tmp/host-tools
-
-      - name: Unpack reusable Linux host tools
-        shell: bash -el {0}
-        run: |
-          tar -C . -xzf /tmp/host-tools/host-vanilla-perf-install.tgz
-          test -x build/host-vanilla-perf/install/bin/iree-compile || ls -R build/host-vanilla-perf
-
-      - name: Install SpacemiT toolchain
-        shell: bash -el {0}
-        run: |
-          python3 tools/setup.py toolchain --toolchain-target spacemit
-
-      - name: Build packaged spacemit runtime artifact
-        shell: bash -el {0}
-        run: |
-          uv run tools/merlin.py build --profile package-spacemit
-          mv dist/spacemit-merlin-perf.tar.gz dist/merlin-runtime-spacemit.tar.gz
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: merlin-runtime-spacemit
-          path: dist/*.tar.gz
-
-  runtime-saturnopu:
-    runs-on: ubuntu-24.04
-    needs:
-      - host-linux-tools
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: false
-
-      - name: Init core submodules only
-        run: |
-          python3 tools/setup.py submodules --submodules-profile core --submodule-sync
-
-      - uses: conda-incubator/setup-miniconda@v3
-        with:
-          activate-environment: merlin-dev
-          environment-file: env_linux.yml
-          auto-activate-base: false
-
-      - name: Sync Python deps
-        shell: bash -el {0}
-        run: |
-          uv sync
-
-      - name: Restore reusable Linux host tools
-        uses: actions/download-artifact@v4
-        with:
-          name: host-vanilla-perf-install
-          path: /tmp/host-tools
-
-      - name: Unpack reusable Linux host tools
-        shell: bash -el {0}
-        run: |
-          tar -C . -xzf /tmp/host-tools/host-vanilla-perf-install.tgz
-          test -x build/host-vanilla-perf/install/bin/iree-compile || ls -R build/host-vanilla-perf
-
-      - name: Install FireSim toolchain
-        shell: bash -el {0}
-        run: |
-          python3 tools/setup.py toolchain --toolchain-target firesim
-
-      - name: Build packaged saturn OPU runtime artifact
-        shell: bash -el {0}
-        run: |
-          uv run tools/merlin.py build --profile package-firesim
-          mv dist/firesim-merlin-perf.tar.gz dist/merlin-runtime-saturnopu.tar.gz
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: merlin-runtime-saturnopu
-          path: dist/*.tar.gz
+          path: dist/merlin-host-macos.tar.gz
 
   publish:
     if: startsWith(github.ref, 'refs/tags/')
     needs:
-      - host-linux
       - host-macos
-      - runtime-spacemit
-      - runtime-saturnopu
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: release-assets
-
-      - name: Flatten assets
-        run: |
-          mkdir -p dist
-          find release-assets -name '*.tar.gz' -exec cp {} dist/ \;
+          name: merlin-host-macos
+          path: dist
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.tar.gz
+          files: dist/merlin-host-macos.tar.gz
+          draft: true
