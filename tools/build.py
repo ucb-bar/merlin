@@ -376,6 +376,33 @@ def is_cmake_usable(cmake_path: str) -> bool:
     return result.returncode == 0
 
 
+def is_darwin_host() -> bool:
+    return sys.platform == "darwin"
+
+
+def make_common_cmake_flags(
+    *,
+    cxx_warn_cpp: bool,
+    cxx_warn_maybe_uninitialized: bool = False,
+) -> tuple[str, str]:
+    c_flags = ["-fno-omit-frame-pointer"]
+    cxx_flags = []
+
+    if cxx_warn_cpp:
+        cxx_flags.append("-Wno-error=cpp")
+    if cxx_warn_maybe_uninitialized and not is_darwin_host():
+        cxx_flags.append("-Wno-error=maybe-uninitialized")
+
+    cxx_flags.append("-fno-omit-frame-pointer")
+
+    # Linux/ELF-oriented flags: do not use them on macOS.
+    if not is_darwin_host():
+        c_flags.extend(["-fdebug-types-section", "-gz=none"])
+        cxx_flags.extend(["-fdebug-types-section", "-gz=none"])
+
+    return " ".join(c_flags), " ".join(cxx_flags)
+
+
 def package_dist(
     build_dir: pathlib.Path,
     install_dir: pathlib.Path,
@@ -592,6 +619,8 @@ def main(args: argparse.Namespace) -> int:
         env["CCACHE_TEMPDIR"] = str(ccache_tmp_dir)
 
     # 2. Base CMake Flags
+    iree_enable_lld = "OFF" if is_darwin_host() else "ON"
+
     cmake_args = [
         cmake_bin,
         "-G",
@@ -599,7 +628,7 @@ def main(args: argparse.Namespace) -> int:
         f"-B{build_dir}",
         f"-S{iree_src}",
         f"-DCMAKE_INSTALL_PREFIX={install_dir}",
-        "-DIREE_ENABLE_LLD=ON",
+        f"-DIREE_ENABLE_LLD={iree_enable_lld}",
         f"-DPython3_EXECUTABLE={sys.executable}",
     ]
     if use_ccache:
@@ -614,13 +643,17 @@ def main(args: argparse.Namespace) -> int:
 
     # 3. Config Specific Flags
     if args.config == "debug":
+        common_c_flags, common_cxx_flags = make_common_cmake_flags(
+            cxx_warn_cpp=True,
+            cxx_warn_maybe_uninitialized=True,
+        )
         cmake_args.extend(
             [
                 "-DCMAKE_BUILD_TYPE=Debug",
                 "-DIREE_ENABLE_ASSERTIONS=ON",
                 "-DIREE_ENABLE_ASAN=OFF",
-                "-DCMAKE_CXX_FLAGS=-Wno-error=cpp -Wno-error=maybe-uninitialized -fno-omit-frame-pointer -fdebug-types-section -gz=none",
-                "-DCMAKE_C_FLAGS=-fno-omit-frame-pointer -fdebug-types-section -gz=none",
+                f"-DCMAKE_CXX_FLAGS={common_cxx_flags}",
+                f"-DCMAKE_C_FLAGS={common_c_flags}",
             ]
         )
     elif args.config == "asan":
@@ -631,28 +664,30 @@ def main(args: argparse.Namespace) -> int:
                 "-DIREE_ENABLE_ASSERTIONS=ON",
             ]
         )
-        # Attempt to inject LD_PRELOAD for ASan
-        try:
-            cc = env.get("CC", "clang")
-            if "clang" in cc:
-                res = subprocess.run([cc, "-print-resource-dir"], capture_output=True, text=True)
-                if res.returncode == 0:
-                    resource_dir = pathlib.Path(res.stdout.strip())
-                    candidates = list(resource_dir.glob("lib/**/libclang_rt.asan-x86_64.so"))
-                    if candidates:
-                        env["LD_PRELOAD"] = str(candidates[0])
-                        print(f"⚠️  Injecting LD_PRELOAD={candidates[0]}")
-        except Exception as e:
-            print(f"Warning: Failed ASan LD_PRELOAD detection: {e}")
+        # Attempt to inject LD_PRELOAD for Linux ASan only.
+        if not is_darwin_host():
+            try:
+                cc = env.get("CC", "clang")
+                if "clang" in cc:
+                    res = subprocess.run([cc, "-print-resource-dir"], capture_output=True, text=True)
+                    if res.returncode == 0:
+                        resource_dir = pathlib.Path(res.stdout.strip())
+                        candidates = list(resource_dir.glob("lib/**/libclang_rt.asan-x86_64.so"))
+                        if candidates:
+                            env["LD_PRELOAD"] = str(candidates[0])
+                            print(f"⚠️  Injecting LD_PRELOAD={candidates[0]}")
+            except Exception as e:
+                print(f"Warning: Failed ASan LD_PRELOAD detection: {e}")
 
     elif args.config == "release" or args.config == "perf":
         build_type = "Release" if args.config == "perf" else "RelWithDebInfo"
+        common_c_flags, common_cxx_flags = make_common_cmake_flags(cxx_warn_cpp=True)
         cmake_args.extend(
             [
                 f"-DCMAKE_BUILD_TYPE={build_type}",
                 "-DIREE_ENABLE_ASSERTIONS=ON",
-                "-DCMAKE_CXX_FLAGS=-Wno-error=cpp -fno-omit-frame-pointer -fdebug-types-section -gz=none",
-                "-DCMAKE_C_FLAGS=-fno-omit-frame-pointer -fdebug-types-section -gz=none",
+                f"-DCMAKE_CXX_FLAGS={common_cxx_flags}",
+                f"-DCMAKE_C_FLAGS={common_c_flags}",
             ]
         )
         if args.config == "perf":
@@ -676,22 +711,30 @@ def main(args: argparse.Namespace) -> int:
     # 4. Target Specific Logic
 
     # For cross-compilation targets, we must provide the path to native host tools.
-    # Prefer a host build that matches the current config, then fall back to release.
+    # Prefer Merlin host tools when this build enables any Merlin plugin path,
+    # then fall back to vanilla host tools.
     if args.target != "host":
-        host_tools_variant = "merlin" if plugin_compiler_enabled else "vanilla"
-        preferred_host_names = [
-            f"host-{host_tools_variant}-{args.config}",
-            f"host-{host_tools_variant}-release",
-        ]
-        fallback_host_names = [
-            f"host-vanilla-{args.config}",
-            "host-vanilla-release",
-        ]
+        preferred_host_names: list[str] = []
+
+        if with_any_plugin:
+            preferred_host_names.extend(
+                [
+                    f"host-merlin-{args.config}",
+                    "host-merlin-release",
+                ]
+            )
+
+        preferred_host_names.extend(
+            [
+                f"host-vanilla-{args.config}",
+                "host-vanilla-release",
+            ]
+        )
 
         host_bin_dir = None
         selected_candidate = None
 
-        for candidate_name in preferred_host_names + fallback_host_names:
+        for candidate_name in preferred_host_names:
             candidate_dir = utils.REPO_ROOT / "build" / candidate_name / "install" / "bin"
             if candidate_dir.exists():
                 host_bin_dir = candidate_dir
@@ -699,17 +742,16 @@ def main(args: argparse.Namespace) -> int:
                 break
 
         if host_bin_dir:
-            expected_names = set(preferred_host_names)
-            if selected_candidate not in expected_names:
+            if selected_candidate != preferred_host_names[0]:
                 print(f"ℹ️  Note: Using fallback host tools from {host_bin_dir}")
             cmake_args.append(f"-DIREE_HOST_BIN_DIR={host_bin_dir}")
         else:
             print("❌ Error: No host tools found for cross compilation.")
             print("   Checked:")
-            for name in preferred_host_names + fallback_host_names:
+            for name in preferred_host_names:
                 print(f"     build/{name}/install/bin")
             print("   Please build host tools first, for example:")
-            print(f"   python3 tools/build.py --target host --config {args.config}")
+            print("   python3 tools/build.py --profile package-host")
             return 1
 
     if args.target == "host":
@@ -761,6 +803,11 @@ def main(args: argparse.Namespace) -> int:
             tc_root = str(
                 utils.REPO_ROOT / "build_tools" / "riscv-tools-iree" / "toolchain" / "clang" / "linux" / "RISCV"
             )
+
+        # The FireSim toolchain file expects these as environment variables,
+        # not only as CMake cache entries.
+        env["RISCV_TOOLCHAIN_ROOT"] = tc_root
+        env.setdefault("RISCV", tc_root)
 
         cmake_args.extend(
             [
@@ -863,7 +910,7 @@ def main(args: argparse.Namespace) -> int:
     if utils.run(cmake_args, dry_run=args.dry_run, env=env) != 0:
         return 1
 
-    target_arg = args.cmake_target if args.cmake_target else "install"
+    target_arg = args.cmake_target if args.cmake_target else ("all" if package_profile else "install")
     build_cmd = [cmake_bin, "--build", str(build_dir), "--target", target_arg]
     build_cmd.extend(args.cmake_build_arg)
     if args.verbose:

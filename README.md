@@ -1,28 +1,87 @@
 # Merlin Compiler Infrastructure
 
-Merlin is an MLIR/IREE-based compiler stack for compiling models to CPU and custom RISC-V targets (including SpacemiT and Saturn OPU flows).
+Merlin is an MLIR/IREE-based compiler stack for compiling models to CPU and custom RISC-V targets (including SpacemiT and Saturn OPU flows). Ideally here is where he handle the ***Compiler Magic*** that happens in the background so that you dont have to.
 
 <p align="center">
   <img src="docs/assets/merlin_transparent.png" width="400">
 </p>
 
-We recommend you to navigate the Merlin documentation using the website:
+We recommend navigating the Merlin documentation using the website:
 
 - [**Merlin Documentation**](https://ucb-bar.github.io/merlin/)
 
+Merlin can be used either from published prebuilt binaries or by building from source.
+For most users, the prebuilt release artifacts are the fastest way to get started.
+
 ## Quick Start
 
-**Important:**
+There are two supported ways to use Merlin:
 
-- First time you set up the repository it will take longer because you will have to clone LLVM-Project and then build Merlin plugin. Depending on your machine this might take ~30 min, but only the first time! Afterwards any changes (even if you rebuild) should go relatively fast.
+- **Recommended:** install a prebuilt release artifact
+- **Developer path:** build Merlin from source
 
-### 0) Git setup
+If you only want to compile models or run released runtimes, use the prebuilt binaries first.
+If you are actively developing Merlin, changing compiler passes, or working on unreleased targets, build from source.
+
+### Option A) Use prebuilt binaries (recommended)
+
+Release artifacts are published on the GitHub Releases page.
+
+Current release artifact families:
+
+- `merlin-host-linux-x86_64.tar.gz`
+- `merlin-host-macos.tar.gz`
+- `merlin-runtime-spacemit.tar.gz`
+- `merlin-runtime-saturnopu.tar.gz`
+
+These artifacts are meant to be installed into the same `build/...` layout that Merlin expects locally, so the rest of the scripts can continue to work normally.
+
+Typical installed layouts:
+
+- host tools:
+  - `build/host-merlin-perf/install/bin/`
+- SpacemiT runtime package:
+  - `build/spacemit-merlin-perf/install/`
+  - `build/spacemit-merlin-perf/runtime/plugins/merlin-samples/`
+- Saturn OPU / FireSim runtime package:
+  - `build/firesim-merlin-perf/install/`
+  - `build/firesim-merlin-perf/runtime/plugins/merlin-samples/`
+
+To install a prebuilt release, use:
 
 ```bash
-git submodule update --init --recursive
+python3 tools/install_prebuilt.py --help
 ```
 
-### 1) Environment
+Then install the artifact you want from a tagged release.
+
+Recommended artifacts by use case:
+
+- **Linux/macOS host compiler tools:** use the corresponding `merlin-host-*` artifact
+- **SpacemiT runtime + samples:** use `merlin-runtime-spacemit`
+- **Saturn OPU / FireSim runtime + samples:** use `merlin-runtime-saturnopu`
+
+Once installed, Merlin commands should work against those prebuilt tools using the normal `build/...` locations.
+
+### Option B) Build from source (developer path)
+
+Use this path if you are:
+
+- developing Merlin itself
+- changing compiler/runtime code
+- working on targets or flows that do not yet have released binaries
+
+#### 0) Git setup
+
+Initialize the core submodules:
+
+```bash
+python3 tools/setup.py submodules --submodules-profile core --submodule-sync
+```
+
+If you need additional development flows later, use the appropriate submodule profile.
+
+#### 1) Environment
 
 ```bash
 conda env create -f env_linux.yml
@@ -37,7 +96,7 @@ Optional convenience alias for your shell session:
 alias merlin='uv run tools/merlin.py'
 ```
 
-### 2) Build host compiler tools
+#### 2) Build host compiler tools
 
 ```bash
 conda activate merlin-dev
@@ -46,11 +105,19 @@ uv run tools/merlin.py build --profile full-plugin --config release
 
 This creates host tools under:
 
-- `build/host-merlin-release/install/bin/` when using `--with-plugin`
+- `build/host-merlin-release/install/bin/`
 
-(Note: If you ever need a strictly upstream IREE build without Merlin plugins, you can use `--profile vanilla` instead, which outputs to `build/host-vanilla-release/install/bin/`)
+If you ever need a strictly upstream IREE build without Merlin plugins, use:
 
-### 3) Compile one model with `compile.py`
+```bash
+uv run tools/merlin.py build --profile vanilla --config release
+```
+
+which outputs to:
+
+- `build/host-vanilla-release/install/bin/`
+
+#### 3) Compile one model with `compile.py`
 
 ```bash
 conda activate merlin-dev
@@ -61,7 +128,7 @@ Expected output artifact:
 
 - `build/compiled_models/dronet/spacemit_x60_RVV_dronet/dronet.vmfb`
 
-### 4) Build one runtime/sample binary
+#### 4) Build one runtime/sample binary
 
 ```bash
 conda activate merlin-dev
@@ -84,6 +151,9 @@ uv run tools/merlin.py build --profile vanilla
 # Host full plugin build (compiler + runtime plugin paths)
 uv run tools/merlin.py build --profile full-plugin
 
+# Host packaged release-style build
+uv run tools/merlin.py build --profile package-host
+
 # Host Radiance runtime bring-up path (minimal compiler dependencies)
 uv run tools/merlin.py build --profile radiance --cmake-target iree_hal_drivers_radiance_testing_transport_smoke_test
 
@@ -91,15 +161,33 @@ uv run tools/merlin.py build --profile radiance --cmake-target iree_hal_drivers_
 uv run tools/merlin.py build --profile spacemit
 uv run tools/merlin.py build --profile firesim
 
+# Cross-target packaged runtime builds
+uv run tools/merlin.py build --profile package-spacemit
+uv run tools/merlin.py build --profile package-firesim
+
 # Host Gemmini-focused compiler plugin flow
 uv run tools/merlin.py build --profile gemmini
 ```
 
-If needed, you can still override profile defaults with specific flags (for advanced use).
+If needed, you can still override profile defaults with specific flags for advanced use.
+
+## Prebuilt Release Artifacts
+
+Official release artifacts are published on GitHub Releases.
+
+Artifact naming:
+
+- `merlin-host-linux-x86_64.tar.gz`: Linux host compiler/runtime tools
+- `merlin-host-macos.tar.gz`: macOS host compiler/runtime tools
+- `merlin-runtime-spacemit.tar.gz`: SpacemiT runtime package and samples
+- `merlin-runtime-saturnopu.tar.gz`: Saturn OPU / FireSim runtime package and samples
+
+Use `tools/install_prebuilt.py` to place these into the expected local `build/...` layout.
 
 ## Where Build Outputs Go
 
 - Host tool binaries: `build/host-*/install/bin/`
+- Packaged release archives: `dist/*.tar.gz`
 - Cross-target build trees: `build/spacemit-*`, `build/firesim-*`
 - Compiled model artifacts (`.mlir`, `.vmfb`, optional dumps): `build/compiled_models/<model>/...`
 - Generated docs site (local): `site/`
@@ -108,24 +196,22 @@ If needed, you can still override profile defaults with specific flags (for adva
 
 ```text
 merlin/
-├── tools/              # Main developer CLIs (build.py, compile.py, setup.py, ci.py)
+├── tools/              # Main developer CLIs (build.py, compile.py, setup.py, ci.py, install_prebuilt.py)
 ├── models/             # Model sources and target YAML configs (add new model flows here)
 ├── compiler/
 │   ├── src/merlin/     # Merlin MLIR dialects/passes/codegen
 │   └── plugins/        # Merlin IREE plugin registration/target glue
 ├── samples/            # Runtime/sample applications and board-specific executables
-│   ├── common/         # Samples for that are not dependant on target
-│       └── AppName0    # Your application or example name
-│   ...
-│   └── TargetName/     # Samples built for a specifc target usecase
-│       └── AppName1    # Your application that is dependant on the compilation for that target
+│   ├── common/         # Samples that are not dependent on target
+│   │   └── AppName0    # Your application or example name
+│   └── TargetName/     # Samples built for a specific target use case
+│       └── AppName1    # Your application dependent on that target compilation flow
 ├── benchmarks/         # Benchmark scripts and profiling workflows
-│   ├── BenchName/      # Name of an interesting third party benchmark
-│   ...
+│   ├── BenchName/      # Name of an interesting third-party benchmark
 │   └── TargetName/     # Benchmarks you create for your specific target
-├── build_tools/        # Toolchains, target support scripts, patch-related helpers
+├── build_tools/        # Toolchains, target support scripts, Docker builder, patch helpers
 ├── docs/               # MkDocs source for architecture + generated reference
-├── third_party/        # Submodules (IREE fork, turbine, llama.cpp, shark_ai, ...)
+├── third_party/        # Submodules (IREE fork, turbine, torch-mlir, and other dependencies)
 └── build/              # Local build outputs and generated artifacts
 ```
 
@@ -157,8 +243,7 @@ Build docs locally:
 
 ```bash
 conda activate merlin-dev
-MLIR_TBLGEN=build/host-vanilla-release/llvm-project/bin/mlir-tblgen \
-  uv run --with-requirements docs/requirements.txt python docs/hooks.py
+MLIR_TBLGEN=build/host-vanilla-release/llvm-project/bin/mlir-tblgen   uv run --with-requirements docs/requirements.txt python docs/hooks.py
 uv run --with-requirements docs/requirements.txt zensical serve
 ```
 
@@ -168,6 +253,7 @@ Unified CLI help:
 conda activate merlin-dev
 uv run tools/merlin.py --help
 ```
+
 Published docs URL (after GitHub Pages is enabled): `https://ucb-bar.github.io/merlin/`
 
 Then open `http://127.0.0.1:8000`.
