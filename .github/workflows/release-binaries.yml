@@ -10,6 +10,49 @@ permissions:
   contents: write
 
 jobs:
+  host-linux-tools:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Init core submodules only
+        run: |
+          python3 tools/setup.py submodules --submodules-profile core --submodule-sync
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: merlin-dev
+          environment-file: env_linux.yml
+          auto-activate-base: false
+
+      - name: Sync Python deps
+        shell: bash -el {0}
+        run: |
+          uv sync
+
+      - name: Build reusable Linux host tools for cross compile
+        shell: bash -el {0}
+        run: |
+          uv run tools/merlin.py build \
+            --profile vanilla \
+            --config perf \
+            --cmake-target install \
+            --no-build-tests \
+            --no-build-python-bindings
+
+      - name: Pack reusable Linux host tools
+        shell: bash -el {0}
+        run: |
+          mkdir -p /tmp/merlin-artifacts
+          tar -C . -czf /tmp/merlin-artifacts/host-vanilla-perf-install.tgz build/host-vanilla-perf/install
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: host-vanilla-perf-install
+          path: /tmp/merlin-artifacts/host-vanilla-perf-install.tgz
+
   host-linux:
     runs-on: ubuntu-24.04
     steps:
@@ -19,7 +62,7 @@ jobs:
 
       - name: Init core submodules only
         run: |
-          python3 tools/merlin.py setup submodules --submodules-profile core --submodule-sync
+          python3 tools/setup.py submodules --submodules-profile core --submodule-sync
 
       - uses: conda-incubator/setup-miniconda@v3
         with:
@@ -52,7 +95,7 @@ jobs:
 
       - name: Init core submodules only
         run: |
-          python3 tools/merlin.py setup submodules --submodules-profile core --submodule-sync
+          python3 tools/setup.py submodules --submodules-profile core --submodule-sync
 
       - uses: conda-incubator/setup-miniconda@v3
         with:
@@ -78,6 +121,8 @@ jobs:
 
   runtime-spacemit:
     runs-on: ubuntu-24.04
+    needs:
+      - host-linux-tools
     steps:
       - uses: actions/checkout@v4
         with:
@@ -85,7 +130,7 @@ jobs:
 
       - name: Init core submodules only
         run: |
-          python3 tools/merlin.py setup submodules --submodules-profile core --submodule-sync
+          python3 tools/setup.py submodules --submodules-profile core --submodule-sync
 
       - uses: conda-incubator/setup-miniconda@v3
         with:
@@ -98,15 +143,22 @@ jobs:
         run: |
           uv sync
 
-      - name: Build host tools needed for cross compile
+      - name: Restore reusable Linux host tools
+        uses: actions/download-artifact@v4
+        with:
+          name: host-vanilla-perf-install
+          path: /tmp/host-tools
+
+      - name: Unpack reusable Linux host tools
         shell: bash -el {0}
         run: |
-          uv run tools/merlin.py build \
-            --profile vanilla \
-            --config perf \
-            --cmake-target install \
-            --no-build-tests \
-            --no-build-python-bindings
+          tar -C . -xzf /tmp/host-tools/host-vanilla-perf-install.tgz
+          test -x build/host-vanilla-perf/install/bin/iree-compile || ls -R build/host-vanilla-perf
+
+      - name: Install SpacemiT toolchain
+        shell: bash -el {0}
+        run: |
+          python3 tools/setup.py toolchain --toolchain-target spacemit
 
       - name: Build packaged spacemit runtime artifact
         shell: bash -el {0}
@@ -121,6 +173,8 @@ jobs:
 
   runtime-saturnopu:
     runs-on: ubuntu-24.04
+    needs:
+      - host-linux-tools
     steps:
       - uses: actions/checkout@v4
         with:
@@ -128,7 +182,7 @@ jobs:
 
       - name: Init core submodules only
         run: |
-          python3 tools/merlin.py setup submodules --submodules-profile core --submodule-sync
+          python3 tools/setup.py submodules --submodules-profile core --submodule-sync
 
       - uses: conda-incubator/setup-miniconda@v3
         with:
@@ -141,15 +195,22 @@ jobs:
         run: |
           uv sync
 
-      - name: Build host tools needed for cross compile
+      - name: Restore reusable Linux host tools
+        uses: actions/download-artifact@v4
+        with:
+          name: host-vanilla-perf-install
+          path: /tmp/host-tools
+
+      - name: Unpack reusable Linux host tools
         shell: bash -el {0}
         run: |
-          uv run tools/merlin.py build \
-            --profile vanilla \
-            --config perf \
-            --cmake-target install \
-            --no-build-tests \
-            --no-build-python-bindings
+          tar -C . -xzf /tmp/host-tools/host-vanilla-perf-install.tgz
+          test -x build/host-vanilla-perf/install/bin/iree-compile || ls -R build/host-vanilla-perf
+
+      - name: Install FireSim toolchain
+        shell: bash -el {0}
+        run: |
+          python3 tools/setup.py toolchain --toolchain-target firesim
 
       - name: Build packaged saturn OPU runtime artifact
         shell: bash -el {0}
