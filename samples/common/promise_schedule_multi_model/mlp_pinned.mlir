@@ -62,8 +62,8 @@ module attributes {stream.affinity.default = #hal.device.affinity<@device_a>} {
       func.func @_encoding_1_encode_32xf32_to_32xf32(%arg0: !stream.binding {stream.alignment = 64 : index}, %arg1: !stream.binding {stream.alignment = 64 : index}, %arg2: i32, %arg3: i32) {
         %0 = arith.index_castui %arg2 : i32 to index
         %1 = arith.index_castui %arg3 : i32 to index
-        %2:2 = util.assume.int 
-            %0[<umin = 1280, umax = 1280, udiv = 1280>, <umin = 5504, umax = 5504, udiv = 5504>], 
+        %2:2 = util.assume.int
+            %0[<umin = 1280, umax = 1280, udiv = 1280>, <umin = 5504, umax = 5504, udiv = 5504>],
             %1[<umin = 1408, umax = 1408, udiv = 1408>, <umin = 6080, umax = 6080, udiv = 6080>]
           : index, index
         %3 = stream.binding.subspan %arg0[%2#0] : !stream.binding -> !iree_tensor_ext.dispatch.tensor<readonly:tensor<32xf32>>
@@ -203,8 +203,8 @@ module attributes {stream.affinity.default = #hal.device.affinity<@device_a>} {
         %7 = arith.extui %arg5 : i32 to i64
         %8 = arith.ori %7, %6 : i64
         %9 = arith.index_castui %8 : i64 to index
-        %10:2 = util.assume.int 
-            %4<umin = 0, umax = 360287970189639680, udiv = 1280>, 
+        %10:2 = util.assume.int
+            %4<umin = 0, umax = 360287970189639680, udiv = 1280>,
             %9<umin = 0, umax = 9007199254740991>
           : index, index
         %11 = stream.binding.subspan %arg1[%c0] : !stream.binding -> !iree_tensor_ext.dispatch.tensor<readonly:tensor<32x10xf32, #encoding>>
@@ -263,9 +263,9 @@ module attributes {stream.affinity.default = #hal.device.affinity<@device_a>} {
         %12 = arith.extui %arg7 : i32 to i64
         %13 = arith.ori %12, %11 : i64
         %14 = arith.index_castui %13 : i64 to index
-        %15:3 = util.assume.int 
-            %4<umin = 0, umax = 360287970189639680, udiv = 1280>, 
-            %9<umin = 0, umax = 1513209474796486656>, 
+        %15:3 = util.assume.int
+            %4<umin = 0, umax = 360287970189639680, udiv = 1280>,
+            %9<umin = 0, umax = 1513209474796486656>,
             %14<umin = 0, umax = 9007199254740991>
           : index, index, index
         %16 = stream.binding.subspan %arg1[%c1600] : !stream.binding -> !iree_tensor_ext.dispatch.tensor<readonly:tensor<32x32xf32, #encoding>>
@@ -320,8 +320,8 @@ module attributes {stream.affinity.default = #hal.device.affinity<@device_a>} {
         %7 = arith.extui %arg5 : i32 to i64
         %8 = arith.ori %7, %6 : i64
         %9 = arith.index_castui %8 : i64 to index
-        %10:2 = util.assume.int 
-            %4<umin = 0, umax = 1513209474796486656>, 
+        %10:2 = util.assume.int
+            %4<umin = 0, umax = 1513209474796486656>,
             %9<umin = 0, umax = 9007199254740991>
           : index, index
         %11 = stream.binding.subspan %arg1[%c6272] : !stream.binding -> !iree_tensor_ext.dispatch.tensor<readonly:tensor<2x32xf32, #encoding2>>
@@ -370,8 +370,8 @@ module attributes {stream.affinity.default = #hal.device.affinity<@device_a>} {
         %7 = arith.extui %arg2 : i32 to i64
         %8 = arith.ori %7, %6 : i64
         %9 = arith.index_castui %8 : i64 to index
-        %10:2 = util.assume.int 
-            %4<umin = 0, umax = 9007199254740991>, 
+        %10:2 = util.assume.int
+            %4<umin = 0, umax = 9007199254740991>,
             %9<umin = 0, umax = 9007199254740991>
           : index, index
         %11 = iree_tensor_ext.dispatch.workload.ordinal %10#0, 0 : index

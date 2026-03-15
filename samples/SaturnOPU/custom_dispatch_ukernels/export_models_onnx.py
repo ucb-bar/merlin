@@ -1,32 +1,29 @@
-import torch
-import torchvision.models as models
 import argparse
 import os
+
 import numpy as np
 import onnx
-
-from torchvision.models.squeezenet import SqueezeNet1_0_Weights
-from torchvision.models.mobilenetv2 import MobileNet_V2_Weights
-from torchvision.models.mobilenetv3 import MobileNet_V3_Small_Weights, MobileNet_V3_Large_Weights
-from torchvision.models.alexnet import AlexNet_Weights
-from torchvision.models.resnet import ResNet50_Weights
-from custom_models.vitfly_models import LSTMNetVIT
+import torch
+import torchvision.models as models
 from custom_models.FC import SimpleFCModel
+from custom_models.vitfly_models import LSTMNetVIT
+from torchvision.models.alexnet import AlexNet_Weights
+from torchvision.models.mobilenetv2 import MobileNet_V2_Weights
+from torchvision.models.mobilenetv3 import MobileNet_V3_Large_Weights, MobileNet_V3_Small_Weights
+from torchvision.models.resnet import ResNet50_Weights
+from torchvision.models.squeezenet import SqueezeNet1_0_Weights
 
 # --- ONNX Runtime Imports ---
 try:
     import onnxruntime
-    from onnxruntime.quantization import quantize_static, QuantType, CalibrationDataReader
+    from onnxruntime.quantization import CalibrationDataReader, QuantType, quantize_static
 except ImportError:
-    raise ImportError(
-        "onnxruntime is not installed. Please install it with "
-        "'pip install onnx onnxruntime'"
-    )
+    raise ImportError("onnxruntime is not installed. Please install it with 'pip install onnx onnxruntime'")
 
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(
     description="Export a PyTorch FP32 model to ONNX, then perform post-training"
-                " static quantization using the ONNX Runtime."
+    " static quantization using the ONNX Runtime."
 )
 parser.add_argument(
     "--output_onnx_file",
@@ -44,7 +41,7 @@ parser.add_argument(
         "resnet",
         "mobilenetv3small",
         "mobilenetv3large",
-        "transformer", 
+        "transformer",
         "lstmvit",
         "fc",
     ],
@@ -98,18 +95,20 @@ elif args.model == "mobilenetv3small":
 elif args.model == "mobilenetv3large":
     model = models.mobilenet_v3_large(weights=MobileNet_V3_Large_Weights.DEFAULT).eval()
 elif args.model == "transformer":
+
     class SimpleTransformer(torch.nn.Module):
         def __init__(self, d_model=64, nhead=8, dim_feedforward=128, seq_len=16):
-            super(SimpleTransformer, self).__init__()
+            super().__init__()
             self.pos_embedding = torch.nn.Parameter(torch.randn(1, seq_len, d_model))
             encoder_layer = torch.nn.TransformerEncoderLayer(
-                d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward, batch_first=True)
+                d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward, batch_first=True
+            )
             self.encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=1)
-        
+
         def forward(self, x):
             x = x + self.pos_embedding  # Add positional encoding
             return self.encoder(x)
-    
+
     model = SimpleTransformer().eval()
     # Override sample_inputs for this specific model
     sample_inputs = (torch.randn(1, 16, 64),)  # (batch_size, seq_len, d_model)
@@ -117,12 +116,12 @@ elif args.model == "transformer":
 elif args.model == "fc":
     model = SimpleFCModel(input_size=1024, hidden_size=128, output_size=10).eval()
     sample_inputs = (torch.randn(16, 1024),)  # (batch_size, input_size)
-    
+
 elif args.model == "lstmvit":
     model = LSTMNetVIT().eval()
-    
-    batch_size = 1 # Static batch size for quantization
-    
+
+    batch_size = 1  # Static batch size for quantization
+
     num_layers = model.lstm_num_layers
     hidden_size = model.lstm_hidden_size
 
@@ -132,13 +131,13 @@ elif args.model == "lstmvit":
     quat_in = torch.randn(batch_size, 4)
     h_in = torch.randn(num_layers, batch_size, hidden_size)
     c_in = torch.randn(num_layers, batch_size, hidden_size)
-    
+
     # This tuple will be unpacked by the exporter
     sample_inputs = (img_in, vel_in, quat_in, h_in, c_in)
-    
+
     # 2. Define input names (must match forward() args)
     input_names = ["image", "velocity", "quaternion", "h_in", "c_in"]
-    
+
     # 3. Define output names (must match forward() return)
     output_names = ["output", "h_out", "c_out"]
 
@@ -161,8 +160,8 @@ try:
         fp32_output_path,
         input_names=input_names,
         output_names=output_names,
-        opset_version=20, # <-- Set to 17 for better IREE compatibility
-        dynamic_axes=None, # Explicitly disable dynamic axes for quantization
+        opset_version=20,  # <-- Set to 17 for better IREE compatibility
+        dynamic_axes=None,  # Explicitly disable dynamic axes for quantization
     )
     print(f"Successfully exported FP32 model to {fp32_output_path}")
 except Exception as e:
@@ -171,20 +170,22 @@ except Exception as e:
 
 # --- Step 3: Post-Training Static Quantization with ONNX Runtime ---
 
+
 class MultiInputCalibrationDataReader(CalibrationDataReader):
     """
     Generates calibration data for models with multiple inputs.
     """
+
     def __init__(self, example_inputs_tuple, input_names, num_samples=10):
         self.input_names = input_names
         # Create a list of shapes from the example inputs
         self.input_shapes = [tuple(tensor.shape) for tensor in example_inputs_tuple]
         self.num_samples = num_samples
-        
+
         print(f"\nInitializing calibration data reader with {len(input_names)} inputs:")
         for name, shape in zip(self.input_names, self.input_shapes):
             print(f"  Input '{name}' with shape={shape}")
-        
+
         # This will be our iterator
         self.data_generator = self._data_generator()
 
@@ -200,16 +201,17 @@ class MultiInputCalibrationDataReader(CalibrationDataReader):
     def get_next(self):
         """Returns the next sample from the generator."""
         return next(self.data_generator, None)
-    
+
     def rewind(self):
         """Resets the iterator to the beginning."""
         self.data_generator = self._data_generator()
 
+
 print("\nStarting post-training static quantization with ONNX Runtime...")
 calibration_data_reader = MultiInputCalibrationDataReader(
     example_inputs_tuple=sample_inputs,  # <-- Pass the *entire tuple* of inputs
-    input_names=input_names,              # <-- Pass the *entire list* of names
-    num_samples=10 
+    input_names=input_names,  # <-- Pass the *entire list* of names
+    num_samples=10,
 )
 
 # --- Find nodes to exclude (as requested) ---
@@ -218,7 +220,7 @@ model_for_exclusion = onnx.load(fp32_output_path)
 graph = model_for_exclusion.graph
 
 nodes_to_exclude = []
-op_types_to_exclude = {'Add', 'Gemm'} # Define the op_types you want to skip
+op_types_to_exclude = {"Add", "Gemm"}  # Define the op_types you want to skip
 
 for node in graph.node:
     if node.op_type in op_types_to_exclude:
@@ -232,17 +234,12 @@ try:
         model_input=fp32_output_path,
         model_output=quantized_output_path,
         calibration_data_reader=calibration_data_reader,
-        
         # nodes_to_exclude=nodes_to_exclude,
-        
         quant_format=onnxruntime.quantization.QuantFormat.QDQ,
         activation_type=QuantType.QInt8,
         weight_type=QuantType.QInt8,
-        per_channel=False, 
-        extra_options={
-        'ActivationSymmetric': True,
-        'WeightSymmetric': True
-        }
+        per_channel=False,
+        extra_options={"ActivationSymmetric": True, "WeightSymmetric": True},
     )
     print(f"Successfully generated quantized ONNX model: {quantized_output_path}")
     print("\nNext step: Verify the ONNX file with a tool like Netron to see the Q/DQ nodes,")

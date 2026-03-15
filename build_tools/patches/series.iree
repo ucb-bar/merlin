@@ -1,0 +1,2 @@
+# Ordered IREE patch stack
+build_tools/patches/iree/0001-merlin-iree-riscv-and-stream.patch

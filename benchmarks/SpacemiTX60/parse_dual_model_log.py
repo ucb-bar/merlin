@@ -4,7 +4,6 @@ import json
 import re
 from pathlib import Path
 
-
 STATS_RE = re.compile(
     r"^\[stats\]\s+"
     r"dronet_hz=(?P<dronet_hz>[0-9.]+)\s+"

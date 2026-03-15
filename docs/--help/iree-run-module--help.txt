@@ -56,17 +56,17 @@ provided to the compiler (`--function=foo` for `func.func @foo`).
 # Flags in c/runtime/src/iree/hal/drivers/hip/registration/driver_module.c
 # ===----------------------------------------------------------------------===
 
-# Path to search for an appropriate libamdhip64.so / amdhip64.dll. If any 
-# paths are provided, then only the given paths are searched. Otherwise, 
-# system heuristics are used to find the dylib. By default, each path is 
-# treated as a directory name, but a distinct file can be given which 
+# Path to search for an appropriate libamdhip64.so / amdhip64.dll. If any
+# paths are provided, then only the given paths are searched. Otherwise,
+# system heuristics are used to find the dylib. By default, each path is
+# treated as a directory name, but a distinct file can be given which
 # must match exactly by prefixing with 'file:'.
 # --hip_dylib_path=...
 
 # Use HIP streams (instead of graphs) for executing command buffers.
 --hip_use_streams=true
 
-# Allow command buffers to execute inline against HIP streams when 
+# Allow command buffers to execute inline against HIP streams when
 # possible.
 --hip_allow_inline_execution=false
 
@@ -399,4 +399,3 @@ provided to the compiler (`--function=foo` for `func.func @foo`).
 
 # Prints runtime statistics to stderr on exit.
 --print_statistics=false
-

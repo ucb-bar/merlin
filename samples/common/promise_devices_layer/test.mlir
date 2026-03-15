@@ -6,7 +6,7 @@ module attributes {
       // Use the symbol name directly: @device_a
       (@device_a -> @device_ab = {transparent_access = true, unified_memory = true}),
       (@device_ab -> @device_a = {transparent_access = true, unified_memory = true}),
-      
+
       // 2. Link B <-> AB (Unified Memory)
       (@device_b -> @device_ab = {transparent_access = true, unified_memory = true}),
       (@device_ab -> @device_b = {transparent_access = true, unified_memory = true}),
@@ -31,14 +31,14 @@ module attributes {
     // ---------------------------------------------------------
     %c1 = arith.constant dense<1.0> : tensor<4xf32>
     %res_a = arith.addf %input, %c1 : tensor<4xf32>
-    
+
     // ---------------------------------------------------------
     // STAGE 2: Transfer Device A -> Device B (Core 1)
     // ---------------------------------------------------------
-    // The topology tells the compiler this is a "Zero-Copy" view change, 
+    // The topology tells the compiler this is a "Zero-Copy" view change,
     // rather than a full malloc+memcpy.
     %input_b = flow.tensor.transfer %res_a : tensor<4xf32> to #hal.device.promise<@device_b>
-    
+
     %c2 = arith.constant dense<2.0> : tensor<4xf32>
     %res_b = arith.mulf %input_b, %c2 : tensor<4xf32>
 
@@ -54,7 +54,7 @@ module attributes {
     // STAGE 4: Transfer back to Device A (Core 0)
     // ---------------------------------------------------------
     %input_final = flow.tensor.transfer %res_ab : tensor<4xf32> to #hal.device.promise<@device_a>
-    
-    return %input_final : tensor<4xf32> 
+
+    return %input_final : tensor<4xf32>
   }
 }

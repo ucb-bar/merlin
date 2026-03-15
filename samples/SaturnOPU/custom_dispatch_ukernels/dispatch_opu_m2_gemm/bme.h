@@ -42,23 +42,23 @@
 #define v31 "x31"
 
 // opmvx. f6=b101010, f7=b1010101
-#define VMV_RV(md, rs1, vs2) \
-  asm volatile(".insn r 0x57, 0x6, 0x55, " md ", %0, " vs2 : : "r"(rs1));
+#define VMV_RV(md, rs1, vs2)                                                   \
+	asm volatile(".insn r 0x57, 0x6, 0x55, " md ", %0, " vs2 : : "r"(rs1));
 
 // opmvx. f6=b101110, f7=b1011101
-#define VMV_VR(vd, rs1, ms2) \
-  asm volatile(".insn r 0x57, 0x6, 0x5d, " vd ", %0, " ms2 : : "r"(rs1));
+#define VMV_VR(vd, rs1, ms2)                                                   \
+	asm volatile(".insn r 0x57, 0x6, 0x5d, " vd ", %0, " ms2 : : "r"(rs1));
 
 // opmvx. f6=b101100, f7=b1011001
-#define OPMVINBCAST(md, vs2) \
-  asm volatile(".insn r 0x57, 0x6, 0x59, " md ", x0, " vs2);
+#define OPMVINBCAST(md, vs2)                                                   \
+	asm volatile(".insn r 0x57, 0x6, 0x59, " md ", x0, " vs2);
 
 // opmvv. f6=b101000, f7=b1010001
-#define VOPACC(md, vs2, vs1) \
-  asm volatile(".insn r 0x57, 0x2, 0x51, " md ", " vs1 ", " vs2);
+#define VOPACC(md, vs2, vs1)                                                   \
+	asm volatile(".insn r 0x57, 0x2, 0x51, " md ", " vs1 ", " vs2);
 
 #include <stddef.h> // For size_t
 #include <stdint.h> // For int8_t and int32_t
 
-void i8_mm_bme_1x2(int32_t* c_bias, int32_t* c_out, int8_t* at, int8_t* b,
-                   size_t M, size_t N, size_t K);
+void i8_mm_bme_1x2(int32_t *c_bias, int32_t *c_out, int8_t *at, int8_t *b,
+	size_t M, size_t N, size_t K);

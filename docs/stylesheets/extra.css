@@ -1,0 +1,55 @@
+/* Import DM Serif Display from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&display=swap');
+
+/* Apply DM Serif Display to headings for the academic/slide feel */
+h1, h2, h3, h4, h5, h6, .md-nav__title, .md-header__title {
+  font-family: 'DM Serif Display', serif !important;
+}
+
+/* ------------------------------------
+   LIGHT MODE (Default - Berkeley Clean)
+------------------------------------ */
+:root > * {
+  /* Crisp backgrounds & text */
+  --md-default-bg-color:        #ffffff;
+  --md-default-fg-color:        #24292f; /* Deep grey text, softer than pure black */
+
+  /* Primary brand colors (Header & Nav) */
+  --md-primary-fg-color:        #003262; /* Berkeley Blue */
+  --md-primary-fg-color--light: #3b5a7a;
+  --md-primary-fg-color--dark:  #001a36;
+
+  /* Buttons, active states, and links */
+  --md-accent-fg-color:         #FDB515; /* California Gold */
+  --md-typeset-a-color:         #003262; /* Berkeley Blue for inline links for readability */
+
+  /* Code Blocks - High Legibility */
+  --md-code-bg-color:           #f6f8fa; /* Very light grey like GitHub */
+  --md-code-fg-color:           #24292f;
+  --md-code-hl-color:           rgba(253, 181, 21, 0.2); /* Soft Gold for highlighted lines */
+}
+
+/* ------------------------------------
+   DARK MODE (GitHub Dark with Berkeley Accents)
+------------------------------------ */
+[data-md-color-scheme="slate"] {
+  /* GitHub Dark background & text */
+  --md-default-bg-color:        #0d1117;
+  --md-default-fg-color:        #c9d1d9;
+  --md-default-bg-color--light: #161b22; /* Used for sidebars/cards */
+  --md-default-bg-color--lighter:#21262d;
+
+  /* Make the header blend cleanly into the dark theme */
+  --md-primary-fg-color:        #161b22; /* Dark header so the Merlin logo pops */
+  --md-primary-fg-color--light: #21262d;
+  --md-primary-fg-color--dark:  #010409;
+
+  /* High contrast accents for dark mode */
+  --md-accent-fg-color:         #FDB515; /* California Gold pops beautifully on dark grey */
+  --md-typeset-a-color:         #FDB515; /* Gold for inline links */
+
+  /* Code Blocks - High Legibility */
+  --md-code-bg-color:           #161b22; /* Distinct dark grey offset from the main background */
+  --md-code-fg-color:           #c9d1d9;
+  --md-code-hl-color:           rgba(253, 181, 21, 0.15); /* Soft Gold for highlighted lines */
+}

@@ -1,103 +1,271 @@
 # Merlin Compiler Infrastructure
 
-**Merlin** (**M**L**IR**-**in**) is an end-to-end compiler lowering funnel that connects high-level ML frameworks (PyTorch, ONNX) to custom RISC-V silicon and the [UCB-BAR](https://github.com/ucb-bar) ecosystem via [IREE](https://github.com/openxla/iree).
+Merlin is an MLIR/IREE-based compiler stack for compiling models to CPU and custom RISC-V targets (including SpacemiT and Saturn OPU flows). Ideally here is where he handle the ***Compiler Magic*** that happens in the background so that you dont have to.
 
 <p align="center">
   <img src="docs/assets/merlin_transparent.png" width="400">
 </p>
 
-## Build the repo
+We recommend navigating the Merlin documentation using the website:
+
+- [**Merlin Documentation**](https://ucb-bar.github.io/merlin/)
+
+Merlin can be used either from published prebuilt binaries or by building from source.
+For most users, the prebuilt release artifacts are the fastest way to get started.
+
+## Quick Start
+
+There are two supported ways to use Merlin:
+
+- **Recommended:** install a prebuilt release artifact
+- **Developer path:** build Merlin from source
+
+If you only want to compile models or run released runtimes, use the prebuilt binaries first.
+If you are actively developing Merlin, changing compiler passes, or working on unreleased targets, build from source.
+
+### Option A) Use prebuilt binaries (recommended)
+
+Release artifacts are published on the GitHub Releases page.
+
+Current release artifact families:
+
+- `merlin-host-linux-x86_64.tar.gz`
+- `merlin-host-macos.tar.gz`
+- `merlin-runtime-spacemit.tar.gz`
+- `merlin-runtime-saturnopu.tar.gz`
+
+These artifacts are meant to be installed into the same `build/...` layout that Merlin expects locally, so the rest of the scripts can continue to work normally.
+
+Typical installed layouts:
+
+- host tools:
+  - `build/host-merlin-perf/install/bin/`
+- SpacemiT runtime package:
+  - `build/spacemit-merlin-perf/install/`
+  - `build/spacemit-merlin-perf/runtime/plugins/merlin-samples/`
+- Saturn OPU / FireSim runtime package:
+  - `build/firesim-merlin-perf/install/`
+  - `build/firesim-merlin-perf/runtime/plugins/merlin-samples/`
+
+To install a prebuilt release, use:
+
+```bash
+python3 tools/install_prebuilt.py --help
+```
+
+Then install the artifact you want from a tagged release.
+
+Recommended artifacts by use case:
+
+- **Linux/macOS host compiler tools:** use the corresponding `merlin-host-*` artifact
+- **SpacemiT runtime + samples:** use `merlin-runtime-spacemit`
+- **Saturn OPU / FireSim runtime + samples:** use `merlin-runtime-saturnopu`
+
+Once installed, Merlin commands should work against those prebuilt tools using the normal `build/...` locations.
+
+### Option B) Build from source (developer path)
+
+Use this path if you are:
+
+- developing Merlin itself
+- changing compiler/runtime code
+- working on targets or flows that do not yet have released binaries
+
+#### 0) Git setup
+
+Initialize the core submodules:
+
+```bash
+python3 tools/setup.py submodules --submodules-profile core --submodule-sync
+```
+
+If you need additional development flows later, use the appropriate submodule profile.
+
+#### 1) Environment
 
 ```bash
 conda env create -f env_linux.yml
 conda activate merlin-dev
-
-python tools/setup.py env
-python tools/build.py --target host --config release 
+uv sync
+pre-commit install
 ```
 
-## ⚡ Overview
-
-Merlin bridges the gap between software models and bare-metal hardware execution. It is designed to support:
-1. **Custom Accelerators:** Targeted support for the **Saturn Outer Product Unit (OPU)** via custom microkernels and compiler intrinsics.
-2. **End-to-End Lowering:** Compiles standard models (ResNet, MobileNet, Dronet) down to `.vmfb` artifacts for execution on RISC-V softcores (FireSim) and commercial chips.
-3. **Benchmarking:** Automated suite (`KernelBench`) to profile performance across CPU, GPU (A100), and RISC-V targets.
-
-## 🏗️ Architecture
-
-- **Frontend:** PyTorch / ONNX / JAX
-- **Middle-end:** IREE (Linalg, Flow, Stream dialects) + Custom Merlin Passes
-- **Backend:** LLVM CPU / RISC-V (RVV 1.0 + Custom Extensions)
-- **Runtime:** IREE HAL (Hardware Abstraction Layer) for Bare-metal
-
-## 📦 Supported Models
-Merlin includes pre-configured compilation flows for:
-- **Robotics:** Dronet (Collision Avoidance), FastDepth
-- **Vision:** MobileNetV2, GLPDepth
-- **General:** MLPs, Diffusion Policies
-
-## 🚀 Getting Started
-
-### Prerequisites
-- IREE Compiler v3.8.0+
-- RISC-V Toolchain (for cross-compilation)
-- Ninja Build System
-
-### Compiling a Custom Kernel (Saturn OPU)
-Merlin allows dispatching specific operations to custom hardware units:
+Optional convenience alias for your shell session:
 
 ```bash
-# Configure for RISC-V Cross-Compilation
-cmake -G Ninja -B build-riscv \
-    -DCMAKE_TOOLCHAIN_FILE=../toolchain.cmake \
-    -DIREE_HOST_BIN_DIR=../host/bin
-
-# Build the custom dispatch sample
-cmake --build build-riscv --target compile_custom_model
+alias merlin='uv run tools/merlin.py'
 ```
 
-## Repository Workflows
-
-For a small maintainer team, use the unified entrypoint:
+#### 2) Build host compiler tools
 
 ```bash
-python3 tools/merlin.py --help
-python3 tools/merlin.py targets list
+conda activate merlin-dev
+uv run tools/merlin.py build --profile full-plugin --config release
 ```
 
-Core routines:
+This creates host tools under:
+
+- `build/host-merlin-release/install/bin/`
+
+If you ever need a strictly upstream IREE build without Merlin plugins, use:
 
 ```bash
-# Patch-stack lifecycle
-python3 tools/merlin.py patches apply
-python3 tools/merlin.py patches verify
-python3 tools/merlin.py patches drift
-
-# Lint + script sanity
-python3 tools/merlin.py ci lint
-
-# Build profile wrappers
-python3 tools/merlin.py build host-release
-python3 tools/merlin.py build riscv-spacemit-dual-model
-
-# Upstream release tracking
-python3 tools/merlin.py release-status
-python3 tools/merlin.py release-status --json
+uv run tools/merlin.py build --profile vanilla --config release
 ```
 
-## Project Structure (Maintained Paths)
+which outputs to:
 
-- `compiler/`: Merlin-owned compiler/plugin logic.
-- `patches/`: IREE/LLVM patch stack, manifests, and patch tooling.
-- `scripts/`: build helpers (`scripts/legacy/` is archived reference-only).
-- `tools/`: stable developer/CI entrypoints.
-- `samples/`: runnable runtime examples and sample code.
-- `benchmark/target/<board>/`: deployment + profiling flows per hardware target.
-- `config/`: canonical small config files consumed by `tools/merlin.py` and CI.
+- `build/host-vanilla-release/install/bin/`
 
-Further maintenance/process docs:
+#### 3) Compile one model with `compile.py`
 
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md)
+```bash
+conda activate merlin-dev
+uv run tools/merlin.py compile models/dronet/dronet.mlir --target spacemit_x60
+```
+
+Expected output artifact:
+
+- `build/compiled_models/dronet/spacemit_x60_RVV_dronet/dronet.vmfb`
+
+#### 4) Build one runtime/sample binary
+
+```bash
+conda activate merlin-dev
+uv run tools/merlin.py build --target spacemit --config release --with-plugin --cmake-target merlin_baseline_dual_model_async_run
+find build/spacemit-merlin-release -name baseline-dual-model-async-run
+```
+
+Typical binary location:
+
+- `build/spacemit-merlin-release/samples/SpacemiTX60/baseline_dual_model_async/baseline-dual-model-async-run`
+
+## Build Profiles (Recommended)
+
+For common workflows, prefer `--profile` instead of combining many low-level flags:
+
+```bash
+# Host vanilla developer build
+uv run tools/merlin.py build --profile vanilla
+
+# Host full plugin build (compiler + runtime plugin paths)
+uv run tools/merlin.py build --profile full-plugin
+
+# Host packaged release-style build
+uv run tools/merlin.py build --profile package-host
+
+# Host Radiance runtime bring-up path (minimal compiler dependencies)
+uv run tools/merlin.py build --profile radiance --cmake-target iree_hal_drivers_radiance_testing_transport_smoke_test
+
+# Cross-target runtime/sample builds
+uv run tools/merlin.py build --profile spacemit
+uv run tools/merlin.py build --profile firesim
+
+# Cross-target packaged runtime builds
+uv run tools/merlin.py build --profile package-spacemit
+uv run tools/merlin.py build --profile package-firesim
+
+# Host Gemmini-focused compiler plugin flow
+uv run tools/merlin.py build --profile gemmini
+```
+
+If needed, you can still override profile defaults with specific flags for advanced use.
+
+## Prebuilt Release Artifacts
+
+Official release artifacts are published on GitHub Releases.
+
+Artifact naming:
+
+- `merlin-host-linux-x86_64.tar.gz`: Linux host compiler/runtime tools
+- `merlin-host-macos.tar.gz`: macOS host compiler/runtime tools
+- `merlin-runtime-spacemit.tar.gz`: SpacemiT runtime package and samples
+- `merlin-runtime-saturnopu.tar.gz`: Saturn OPU / FireSim runtime package and samples
+
+Use `tools/install_prebuilt.py` to place these into the expected local `build/...` layout.
+
+## Where Build Outputs Go
+
+- Host tool binaries: `build/host-*/install/bin/`
+- Packaged release archives: `dist/*.tar.gz`
+- Cross-target build trees: `build/spacemit-*`, `build/firesim-*`
+- Compiled model artifacts (`.mlir`, `.vmfb`, optional dumps): `build/compiled_models/<model>/...`
+- Generated docs site (local): `site/`
+
+## Repository Map (Where To Put Things)
+
+```text
+merlin/
+├── tools/              # Main developer CLIs (build.py, compile.py, setup.py, ci.py, install_prebuilt.py)
+├── models/             # Model sources and target YAML configs (add new model flows here)
+├── compiler/
+│   ├── src/merlin/     # Merlin MLIR dialects/passes/codegen
+│   └── plugins/        # Merlin IREE plugin registration/target glue
+├── samples/            # Runtime/sample applications and board-specific executables
+│   ├── common/         # Samples that are not dependent on target
+│   │   └── AppName0    # Your application or example name
+│   └── TargetName/     # Samples built for a specific target use case
+│       └── AppName1    # Your application dependent on that target compilation flow
+├── benchmarks/         # Benchmark scripts and profiling workflows
+│   ├── BenchName/      # Name of an interesting third-party benchmark
+│   └── TargetName/     # Benchmarks you create for your specific target
+├── build_tools/        # Toolchains, target support scripts, Docker builder, patch helpers
+├── docs/               # MkDocs source for architecture + generated reference
+├── third_party/        # Submodules (IREE fork, turbine, torch-mlir, and other dependencies)
+└── build/              # Local build outputs and generated artifacts
+```
+
+Detailed folder guide with auto-generated tracked tree:
+
+- [docs/repository_guide.md](docs/repository_guide.md)
+
+## If You Want To Extend Merlin
+
+- New compiler pass/dialect: add under `compiler/src/merlin/...`
+- New plugin/target wiring: add under `compiler/plugins/...`
+- New model path/config: add model files in `models/<model>/` and flags in `models/<target>.yaml`
+- New sample runtime app: add under `samples/<platform>/...`
+- New benchmark flow: add under `benchmarks/<target>/...`
+
+## Documentation
+
+Primary docs:
+
+- [docs/index.md](docs/index.md)
+- [docs/getting_started.md](docs/getting_started.md)
+- [docs/how_to/index.md](docs/how_to/index.md)
+- [docs/iree_setup.md](docs/iree_setup.md)
+- [docs/dev_blog/index.md](docs/dev_blog/index.md)
 - [docs/architecture/plugin_and_patch_model.md](docs/architecture/plugin_and_patch_model.md)
 - [docs/architecture/cmake_presets.md](docs/architecture/cmake_presets.md)
+
+Build docs locally:
+
+```bash
+conda activate merlin-dev
+MLIR_TBLGEN=build/host-vanilla-release/llvm-project/bin/mlir-tblgen   uv run --with-requirements docs/requirements.txt python docs/hooks.py
+uv run --with-requirements docs/requirements.txt zensical serve
+```
+
+Unified CLI help:
+
+```bash
+conda activate merlin-dev
+uv run tools/merlin.py --help
+```
+
+Published docs URL (after GitHub Pages is enabled): `https://ucb-bar.github.io/merlin/`
+
+Then open `http://127.0.0.1:8000`.
+
+## Formatting and Checks
+
+```bash
+conda activate merlin-dev
+pre-commit run --all-files
+uv run tools/merlin.py ci lint
+```
+
+## Contributing
+
+- [CONTRIBUTING.md](CONTRIBUTING.md)

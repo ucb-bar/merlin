@@ -1,0 +1,27 @@
+version: 1
+
+# Canonical tracking state for upstream release/branch alignment.
+# Keep this file updated whenever you intentionally rebase/retarget.
+
+iree:
+  upstream_repo: iree-org/iree
+  fork_repo: ucb-bar/iree
+  tracked_release_tag: v3.9.0
+  tracked_branch: ucb-bar/main
+  tracked_commit: 56acf7ed012bd0432802891cbc8e3f30ae5deb4e
+
+llvm:
+  # IREE-maintained LLVM fork that IREE uses:
+  iree_llvm_upstream_repo: iree-org/llvm-project
+  # Canonical LLVM upstream:
+  llvm_upstream_repo: llvm/llvm-project
+  # Your fork:
+  fork_repo: ucb-bar/llvm-project
+  tracked_branch: ucb-bar/main
+  tracked_commit: 1839675d168e357c3db1559446031d55833f0181
+
+policy:
+  # Keep this true for your stated maintenance preference:
+  track_releases_only: true
+  # Optional note for maintainers.
+  notes: "Follow stable IREE releases and corresponding IREE LLVM baseline; avoid chasing every upstream commit."

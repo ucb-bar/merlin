@@ -1,0 +1,18 @@
+iree_lit_test_suite(
+  NAME
+  lit
+  SRCS
+  "global_opt_forms_pipeline.mlir"
+  "linalg_generic_fp8_ukernel_pipeline.mlir"
+  "linalg_to_isa.mlir"
+  "plan-memory.mlir"
+  "post-global-opt-hook.mlir"
+  "text_isa.mlir"
+  "verify-ukernel-symbols.mlir"
+  "ukernel_symbol_to_isa.mlir"
+  TOOLS
+  FileCheck
+  iree-compile
+  iree-opt
+  not
+  iree::npu::compiler::Dialect::NPU::Translation::npu-translate)

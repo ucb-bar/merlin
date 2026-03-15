@@ -12,7 +12,7 @@ set -euo pipefail
 # ------------------------------------------------------------------------------
 
 # Models to process (folder names)
-TARGET_MODELS=("diffusion") 
+TARGET_MODELS=("diffusion")
 
 # Configurations to build (comment out the ones you don't want)
 # Options are "NPU", "RVV", "SCALAR"
@@ -63,8 +63,9 @@ BASE_FLAGS=(
 
 )
 
-# NOT IN USE YET 
+# NOT IN USE YET
 # TODO: Integrate these into the compilation flags based on quantization
+# shellcheck disable=SC2034
 BASE_QUANT_FLAGS=(
     "--iree-global-opt-enable-quantized-matmul-reassociation"
     "--iree-global-opt-enable-quantized-matmul-reassociation"
@@ -124,12 +125,12 @@ for MODEL in "${TARGET_MODELS[@]}"; do
         MODEL_SUFFIX=""
         MODE_MSG="Float (FP32)"
     fi
-    
+
     # Define source MLIR location (if skipping ONNX import)
     SOURCE_MLIR="$BASE_DIR/${MODEL}/${MODEL}${MODEL_SUFFIX}.mlir"
 
     for CONFIG in "${TARGET_CONFIGS[@]}"; do
-        
+
         echo "################################################################################"
         echo "🚀 Processing Model: $MODEL | Config: spacemit_$CONFIG | Mode: $MODE_MSG"
         echo "################################################################################"
@@ -151,7 +152,7 @@ for MODEL in "${TARGET_MODELS[@]}"; do
         MLIR_OUTPUT="$OUTPUT_DIR/${MODEL}${MODEL_SUFFIX}.mlir"
         VMFB_OUTPUT="$OUTPUT_DIR/${MODEL}${MODEL_SUFFIX}.vmfb"
         GRAPH_OUT="$OUTPUT_DIR/${MODEL}${MODEL_SUFFIX}_dispatch_graph.dot"
-        
+
         mkdir -p "$OUTPUT_DIR"
 
         # Host flags for dumping artifacts specific to this run
@@ -172,7 +173,7 @@ for MODEL in "${TARGET_MODELS[@]}"; do
             echo "  ℹ️  MLIR file already exists at $MLIR_OUTPUT. Skipping import."
         elif [ -f "$SOURCE_ONNX" ]; then
             echo "  found ONNX file: $SOURCE_ONNX"
-            
+
             if ! command -v "$IMPORT_TOOL" &> /dev/null; then
                 echo "❌ Error: $IMPORT_TOOL not found. Activate your python venv."
                 exit 1
@@ -192,14 +193,14 @@ for MODEL in "${TARGET_MODELS[@]}"; do
         # ----------------------------------------------------------------------
         # 5. Compile Main Model (VMFB)
         # ----------------------------------------------------------------------
-        
+
         # Add graph output flag specifically for this run
         COMPILE_FLAGS_WITH_GRAPH=(
             "${HOST_FLAGS[@]}"
             "--iree-flow-dump-dispatch-graph"
             "--iree-flow-dump-dispatch-graph-output-file=$GRAPH_OUT"
         )
-        
+
         echo "  Compiling main model ($CONFIG)..."
         "$COMPILE_TOOL" "$MLIR_OUTPUT" \
             -o "$VMFB_OUTPUT" \
@@ -211,32 +212,32 @@ for MODEL in "${TARGET_MODELS[@]}"; do
         # 6. Compile Dispatches
         # ----------------------------------------------------------------------
         echo "  Compiling individual dispatch sources..."
-        
+
         SOURCES_DIR="$OUTPUT_DIR/benchmarks"
         VMFB_DIR="$SOURCES_DIR/vmfb"
 
         if [ -d "$SOURCES_DIR" ]; then
             mkdir -p "$VMFB_DIR"
-            
+
             # Use process substitution to avoid subshell variable issues if needed
             find "$SOURCES_DIR" -name "*.mlir" | sort -V | while read -r mlir_file; do
                 filename=$(basename -- "$mlir_file")
-                
+
                 output_vmfb_name="${filename%.mlir}.vmfb"
                 output_vmfb_path="$VMFB_DIR/$output_vmfb_name"
-                
+
                 echo "    Compiling $filename -> $output_vmfb_name"
                 "$COMPILE_TOOL" "$mlir_file" -o "$output_vmfb_path" "${CURRENT_FLAGS[@]}"
             done
-            
+
             # ------------------------------------------------------------------
             # 7. Zip Results
             # ------------------------------------------------------------------
             echo "  Zipping benchmark artifacts for $CONFIG..."
-            
+
             ZIP_NAME="${MODEL}_spacemit_${CONFIG}${MODEL_SUFFIX}_benchmarks.zip"
             ZIP_PATH="$OUTPUT_DIR/$ZIP_NAME"
-            
+
             # Check if VMFB files were actually created
             if ls "$VMFB_DIR"/*.vmfb >/dev/null 2>&1; then
                 zip -j "$ZIP_PATH" "$SOURCES_DIR"/*.mlir "$VMFB_DIR"/*.vmfb
@@ -244,7 +245,7 @@ for MODEL in "${TARGET_MODELS[@]}"; do
             else
                 echo "⚠️  No VMFB files were generated to zip."
             fi
-            
+
         else
             echo "⚠️  No benchmark directory found at $SOURCES_DIR"
         fi

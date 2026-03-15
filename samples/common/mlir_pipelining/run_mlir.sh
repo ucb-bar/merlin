@@ -1,4 +1,4 @@
-
+#!/bin/bash
 
 # iree-run-module   --device=local-sync   --module=dronet_sync.vmfb --module=fastdepth_sync.vmfb --module=our_pipeline_sync.vmfb   --function=run   --input=1x3x224x224xf32=0
 

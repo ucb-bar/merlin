@@ -13,10 +13,10 @@ This document defines the maintenance model for Merlin with a small team.
 
 - `compiler/src/merlin/`: Merlin-owned compiler logic (dialects, transforms, heuristics).
 - `compiler/plugins/target/*/`: IREE plugin registration and target glue.
-- `patches/iree/`: patch files applied to `third_party/iree_bar`.
-- `patches/llvm/`: patch files applied to `third_party/iree_bar/third_party/llvm-project`.
-- `patches/series.iree`, `patches/series.llvm`: ordered patch manifests.
-- `patches/manifest.env`: pinned base commits for drift checks.
+- `build_tools/patches/iree/`: patch files applied to `third_party/iree_bar`.
+- `build_tools/patches/llvm/`: patch files applied to `third_party/iree_bar/third_party/llvm-project`.
+- `build_tools/patches/series.iree`, `build_tools/patches/series.llvm`: ordered patch manifests.
+- `build_tools/patches/manifest.env`: pinned base commits for drift checks.
 
 ## Plugin IDs and Backend IDs
 
@@ -40,32 +40,32 @@ pipeline wiring is migrated out-of-tree.
 Preferred entrypoint (wraps the scripts below):
 
 ```bash
-python3 tools/merlin.py --help
+uv run tools/merlin.py --help
 ```
 
 1. Ensure submodules are at pinned commits.
 2. Export or refresh patch files from local in-tree edits:
 
 ```bash
-./scripts/patches/refresh_all.sh
+./build_tools/patches/tools/refresh_all.sh
 ```
 
 3. Apply patch stack to fresh trees:
 
 ```bash
-./scripts/patches/apply_all.sh
+./build_tools/patches/tools/apply_all.sh
 ```
 
 4. Verify patched state is exactly as expected:
 
 ```bash
-./scripts/patches/verify_clean.sh
+./build_tools/patches/tools/verify_clean.sh
 ```
 
 5. Check drift against pinned upstream commits:
 
 ```bash
-./scripts/drift/check_upstream_drift.sh
+./build_tools/patches/tools/check_upstream_drift.sh
 ```
 
 ## Policy for New Changes
@@ -81,8 +81,9 @@ python3 tools/merlin.py --help
 
 A strict CI gate should run at least:
 
-- `scripts/patches/apply_all.sh`
-- `scripts/patches/verify_clean.sh`
-- `scripts/drift/check_upstream_drift.sh`
+- `uv run tools/merlin.py ci cli-docs-drift`
+- `build_tools/patches/tools/apply_all.sh`
+- `build_tools/patches/tools/verify_clean.sh`
+- `build_tools/patches/tools/check_upstream_drift.sh`
 
 This catches upstream drift and silent local edits before demo/release branches.

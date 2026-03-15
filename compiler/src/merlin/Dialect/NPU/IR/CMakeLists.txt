@@ -1,0 +1,133 @@
+set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
+set(IREE_PACKAGE_ROOT_PREFIX "iree::npu::compiler::Dialect::NPU::IR")
+
+iree_tablegen_library(
+  NAME
+  NPUKernelDialectGen
+  TD_FILE
+  "NPUKernelDialect.td"
+  OUTS
+  --gen-dialect-decls
+  NPUKernelDialect.h.inc
+  --gen-dialect-defs
+  NPUKernelDialect.cpp.inc)
+
+iree_tablegen_library(
+  NAME
+  NPUKernelOpsGen
+  TD_FILE
+  "NPUKernelOps.td"
+  OUTS
+  -gen-op-decls
+  NPUKernelOps.h.inc
+  -gen-op-defs
+  NPUKernelOps.cpp.inc)
+
+iree_tablegen_library(
+  NAME
+  NPUScheduleDialectGen
+  TD_FILE
+  "NPUScheduleDialect.td"
+  OUTS
+  --gen-dialect-decls
+  NPUScheduleDialect.h.inc
+  --gen-dialect-defs
+  NPUScheduleDialect.cpp.inc)
+
+iree_tablegen_library(
+  NAME
+  NPUScheduleOpsGen
+  TD_FILE
+  "NPUScheduleOps.td"
+  OUTS
+  -gen-op-decls
+  NPUScheduleOps.h.inc
+  -gen-op-defs
+  NPUScheduleOps.cpp.inc)
+
+iree_tablegen_library(
+  NAME
+  NPUISADialectGen
+  TD_FILE
+  "NPUISADialect.td"
+  OUTS
+  --gen-dialect-decls
+  NPUISADialect.h.inc
+  --gen-dialect-defs
+  NPUISADialect.cpp.inc)
+
+iree_tablegen_library(
+  NAME
+  NPUISAOpsGen
+  TD_FILE
+  "NPUISAOps.td"
+  OUTS
+  -gen-op-decls
+  NPUISAOps.h.inc
+  -gen-op-defs
+  NPUISAOps.cpp.inc)
+
+iree_cc_library(
+  NAME
+  NPUKernelDialect
+  HDRS
+  "NPUKernelDialect.h"
+  TEXTUAL_HDRS
+  "NPUKernelDialect.h.inc"
+  "NPUKernelDialect.cpp.inc"
+  "NPUKernelOps.h.inc"
+  "NPUKernelOps.cpp.inc"
+  SRCS
+  "NPUKernelDialect.cpp"
+  INCLUDES
+  "${MERLIN_COMPILER_SOURCE_DIR}"
+  "${IREE_BINARY_DIR}/compiler/plugins/merlin"
+  DEPS
+  ::NPUKernelDialectGen
+  ::NPUKernelOpsGen
+  MLIRAsyncDialect
+  MLIRIR
+  PUBLIC)
+
+iree_cc_library(
+  NAME
+  NPUScheduleDialect
+  HDRS
+  "NPUScheduleDialect.h"
+  TEXTUAL_HDRS
+  "NPUScheduleDialect.h.inc"
+  "NPUScheduleDialect.cpp.inc"
+  "NPUScheduleOps.h.inc"
+  "NPUScheduleOps.cpp.inc"
+  SRCS
+  "NPUScheduleDialect.cpp"
+  INCLUDES
+  "${MERLIN_COMPILER_SOURCE_DIR}"
+  "${IREE_BINARY_DIR}/compiler/plugins/merlin"
+  DEPS
+  ::NPUScheduleDialectGen
+  ::NPUScheduleOpsGen
+  MLIRAsyncDialect
+  MLIRIR
+  PUBLIC)
+
+iree_cc_library(
+  NAME
+  NPUISADialect
+  HDRS
+  "NPUISADialect.h"
+  TEXTUAL_HDRS
+  "NPUISADialect.h.inc"
+  "NPUISADialect.cpp.inc"
+  "NPUISAOps.h.inc"
+  "NPUISAOps.cpp.inc"
+  SRCS
+  "NPUISADialect.cpp"
+  INCLUDES
+  "${MERLIN_COMPILER_SOURCE_DIR}"
+  "${IREE_BINARY_DIR}/compiler/plugins/merlin"
+  DEPS
+  ::NPUISADialectGen
+  ::NPUISAOpsGen
+  MLIRIR
+  PUBLIC)

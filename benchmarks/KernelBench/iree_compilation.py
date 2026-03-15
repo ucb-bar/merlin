@@ -31,31 +31,21 @@ It performs the following steps:
     per-target, and overall.
 """
 
-import sys
-import os
-import logging
-import json
-import importlib.util
-import subprocess
-import tempfile
-import time
 import argparse
-import copy
+import importlib.util
+import json
+import logging
+import subprocess
+import sys
+import time
 from pathlib import Path
-from typing import Dict, Any, Tuple, List, Set, Optional
+from typing import Any
 
 # Suppress noisy warnings if needed (adjust as necessary)
 # os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-
-try:
-    import torch
-    import iree.compiler as ireec
-    import iree.runtime as ireert
-    import iree.turbine.aot as aot
-except ImportError as e:
-    print(f"Error: Missing critical dependencies. {e}")
-    print("Please ensure 'torch', 'iree-turbine', 'iree-compiler', and 'iree-runtime' are installed.")
-    sys.exit(1)
+import iree.compiler as ireec  # noqa: F401
+import iree.turbine.aot as aot
+import torch
 
 # --- Target Definitions ---
 # Defines the compilation flags for each target.
@@ -78,7 +68,7 @@ TARGET_DEFINITIONS = {
         "hal_target_device": "local",
         "extra_flags": ["--iree-llvmcpu-target-cpu-features=host"],
         "export_precision": torch.float32,
-        "compiler_precision_flags": []#"--iree-input-demote-f32-to-f16"],
+        "compiler_precision_flags": [],  # "--iree-input-demote-f32-to-f16"],
     },
     "A100": {
         "name": "A100",
@@ -86,7 +76,7 @@ TARGET_DEFINITIONS = {
         "hal_target_device": "cuda",
         "extra_flags": ["--iree-cuda-target=sm_80"],
         "export_precision": torch.float32,
-        "compiler_precision_flags": []#"--iree-input-demote-f32-to-f16"],
+        "compiler_precision_flags": [],  # "--iree-input-demote-f32-to-f16"],
     },
     "A6000": {
         "name": "A6000",
@@ -110,14 +100,14 @@ TARGET_DEFINITIONS = {
         "compiler_precision_flags": [],
     },
     "arm_cortex_a72": {
-         "name": "ARM Cortex-A72",
-         "hal_target_backends": ["llvm-cpu"],
-         "hal_target_device": "cpu",
-         "extra_flags": [
-             "--iree-llvmcpu-target-triple=aarch64-linux-gnu",
-             "--iree-llvmcpu-target-cpu=cortex-a72",
-             # Ensure you have the correct sysroot/linker for cross-compilation
-         ],
+        "name": "ARM Cortex-A72",
+        "hal_target_backends": ["llvm-cpu"],
+        "hal_target_device": "cpu",
+        "extra_flags": [
+            "--iree-llvmcpu-target-triple=aarch64-linux-gnu",
+            "--iree-llvmcpu-target-cpu=cortex-a72",
+            # Ensure you have the correct sysroot/linker for cross-compilation
+        ],
         "export_precision": torch.float32,
         "compiler_precision_flags": [],
     },
@@ -135,7 +125,7 @@ TARGET_DEFINITIONS = {
         ],
         "export_precision": torch.float32,
         "compiler_precision_flags": [],
-    }
+    },
 }
 # --- End Target Definitions ---
 
@@ -143,10 +133,10 @@ TARGET_DEFINITIONS = {
 def parse_arguments() -> argparse.Namespace:
     """Parses command-line arguments."""
     parser = argparse.ArgumentParser(description="IREE Kernel Compilation Benchmark Script")
-    
+
     # Get the script's directory to set defaults relative to it
-    script_dir = Path(__file__).parent.resolve() # benchmark/KernelBench
-    repo_root = script_dir.parent.parent # Assumes script is at benchmark/KernelBench/iree_compilation.py
+    script_dir = Path(__file__).parent.resolve()  # benchmark/KernelBench
+    repo_root = script_dir.parent.parent  # Assumes script is at benchmark/KernelBench/iree_compilation.py
 
     default_input = repo_root / "third_party" / "KernelBench" / "KernelBench"
     default_output = script_dir / "results"
@@ -156,46 +146,46 @@ def parse_arguments() -> argparse.Namespace:
         "--input_base_dir",
         type=Path,
         default=default_input,
-        help=f"Base directory containing kernel levels (default: {default_input})"
+        help=f"Base directory containing kernel levels (default: {default_input})",
     )
     parser.add_argument(
         "--output_base_dir",
         type=Path,
         default=default_output,
-        help=f"Base directory to save compiled artifacts (default: {default_output})"
+        help=f"Base directory to save compiled artifacts (default: {default_output})",
     )
     parser.add_argument(
         "--report_dir",
         type=Path,
         default=default_report,
-        help=f"Directory to save log and report files (default: {default_report})"
+        help=f"Directory to save log and report files (default: {default_report})",
     )
     parser.add_argument(
         "--levels",
         nargs="+",
         default=["level1", "level2", "level3", "level4"],
-        help="List of kernel levels to process (default: level1 level2 level3 level4)"
+        help="List of kernel levels to process (default: level1 level2 level3 level4)",
     )
     parser.add_argument(
         "--targets",
         nargs="+",
         default=["LOCAL"],
         choices=list(TARGET_DEFINITIONS.keys()),
-        help=f"List of target names to compile for (default: A100). Choices: {', '.join(TARGET_DEFINITIONS.keys())}"
+        help=f"List of target names to compile for (default: A100). Choices: {', '.join(TARGET_DEFINITIONS.keys())}",
     )
-    
+
     parser.add_argument(
         "--force_recompile",
         action="store_true",
-        help="Force recompilation even if artifact.vmfb already exists (default: skip existing)"
+        help="Force recompilation even if artifact.vmfb already exists (default: skip existing)",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Create directories if they don't exist
     args.output_base_dir.mkdir(parents=True, exist_ok=True)
     args.report_dir.mkdir(parents=True, exist_ok=True)
-    
+
     return args
 
 
@@ -242,39 +232,40 @@ def load_kernel_module(kernel_file: Path) -> Any:
 
 
 def compile_kernel_for_target(
-    target_def: Dict[str, Any],
+    target_def: dict[str, Any],
     input_mlir_path: Path,
     vmfb_path: Path,
     mlir_dump_dir: Path,
-) -> Tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """
     Invokes iree-compile for a specific target configuration.
-    
+
     Returns:
         (success: bool, error_message: Optional[str])
     """
-    
+
     # Base command
     compile_command = [
         "iree-compile",
         str(input_mlir_path),
         "--iree-input-type=torch",
-        "-o", str(vmfb_path),
+        "-o",
+        str(vmfb_path),
         f"--dump-compilation-phases-to={mlir_dump_dir}",
         "--iree-opt-level=O3",
     ]
-    
+
     # Add HAL backend targets
     for backend in target_def["hal_target_backends"]:
         compile_command.append(f"--iree-hal-target-backends={backend}")
 
     # Add HAL device target
     if target_def.get("hal_target_device"):
-         compile_command.append(f"--iree-hal-target-device={target_def['hal_target_device']}")
-        
+        compile_command.append(f"--iree-hal-target-device={target_def['hal_target_device']}")
+
     # Add target-specific extra flags
     compile_command.extend(target_def["extra_flags"])
-    
+
     # Add precision-specific flags
     compile_command.extend(target_def["compiler_precision_flags"])
 
@@ -285,13 +276,13 @@ def compile_kernel_for_target(
             check=True,
             capture_output=True,
             text=True,
-            encoding='utf-8' # Ensure consistent encoding
+            encoding="utf-8",  # Ensure consistent encoding
         )
         if process.stderr:
-             logging.debug(f"iree-compile stderr:\n{process.stderr}")
+            logging.debug(f"iree-compile stderr:\n{process.stderr}")
         if process.stdout:
             logging.debug(f"iree-compile stdout:\n{process.stdout}")
-        
+
         return True, None
 
     except subprocess.CalledProcessError as e:
@@ -300,20 +291,20 @@ def compile_kernel_for_target(
         logging.error(f"Return Code: {e.returncode}")
         error_msg = f"iree-compile failed: {e.stderr.strip().splitlines()[-1] if e.stderr else 'No stderr'}"
         if e.stderr:
-             logging.error(f"Stderr:\n{e.stderr}")
+            logging.error(f"Stderr:\n{e.stderr}")
         if e.stdout:
-             logging.error(f"Stdout:\n{e.stdout}")
+            logging.error(f"Stdout:\n{e.stdout}")
         return False, error_msg
-        
+
     except Exception as e:
         logging.error(f"An unexpected error occurred during iree-compile: {e}", exc_info=True)
         return False, str(e)
 
 
 def generate_reports(
-    report: Dict[str, Any],
-    total_kernels_by_level: Dict[str, int],
-    active_target_names: List[str],
+    report: dict[str, Any],
+    total_kernels_by_level: dict[str, int],
+    active_target_names: list[str],
     json_report_path: Path,
     md_report_path: Path,
     start_time: float,
@@ -328,76 +319,72 @@ def generate_reports(
     load_failures = report["load_failures"]
 
     # --- 1. Calculate Statistics ---
-    stats = {
-        "overall": {"success": 0, "failed": 0, "total": 0},
-        "by_level": {},
-        "by_level_by_target": {}
-    }
+    stats = {"overall": {"success": 0, "failed": 0, "total": 0}, "by_level": {}, "by_level_by_target": {}}
 
     num_targets = len(active_target_names)
     total_kernels_attempted = sum(total_kernels_by_level.values())
     total_compilation_attempts = total_kernels_attempted * num_targets
-    
+
     stats["overall"]["total"] = total_compilation_attempts
 
     for level, level_total_kernels in total_kernels_by_level.items():
         if level not in report_data:
-            continue # Should not happen if initialized correctly
+            continue  # Should not happen if initialized correctly
 
         stats["by_level"][level] = {"success": 0, "failed": 0, "total": 0}
         stats["by_level_by_target"][level] = {}
 
         level_compilation_attempts = level_total_kernels * num_targets
         stats["by_level"][level]["total"] = level_compilation_attempts
-        
+
         # Count kernel load failures for this level
         level_load_failures_count = len([f for f in load_failures if f["level"] == level])
-        
+
         # Each load failure counts as a failure for *all* targets in that level
         level_failures_from_load = level_load_failures_count * num_targets
         stats["by_level"][level]["failed"] += level_failures_from_load
-        
+
         level_total_success = 0
 
         for target_name in active_target_names:
             target_results = report_data[level][target_name]
-            
+
             target_success = len(target_results["success"])
             target_compile_export_failures = len(target_results["failed"])
-            
+
             # Total failures for this target = compile/export failures + load failures
             target_total_failed = target_compile_export_failures + level_load_failures_count
-            
+
             # Total attempts for this target = total kernels in the level
             target_total_attempts = level_total_kernels
-            
+
             # Success must be total minus failures
             target_total_success = target_total_attempts - target_total_failed
             # (Sanity check)
             if target_total_success != target_success:
-                 logging.warning(f"Stats mismatch for {level}/{target_name}: "
-                                 f"{target_total_success} (calc) != {target_success} (list)")
+                logging.warning(
+                    f"Stats mismatch for {level}/{target_name}: "
+                    f"{target_total_success} (calc) != {target_success} (list)"
+                )
             # This can happen if a kernel is not in load_failures but also not in success/failed
             # Re-calculate success based on total attempts
             target_total_success = target_total_attempts - target_total_failed
 
-
             stats["by_level_by_target"][level][target_name] = {
                 "success": target_total_success,
                 "failed": target_total_failed,
-                "total": target_total_attempts
+                "total": target_total_attempts,
             }
-            
+
             level_total_success += target_total_success
-        
+
         stats["by_level"][level]["success"] = level_total_success
         # Sanity check: Total failed = total attempts - total success
         stats["by_level"][level]["failed"] = level_compilation_attempts - level_total_success
-        
+
         stats["overall"]["success"] += stats["by_level"][level]["success"]
         stats["overall"]["failed"] += stats["by_level"][level]["failed"]
 
-    
     # --- 2. JSON Report ---
     logging.info(f"Writing JSON report to {json_report_path}...")
     report_summary = {
@@ -414,7 +401,7 @@ def generate_reports(
     }
     try:
         with open(json_report_path, "w") as f:
-            json.dump(report_summary, f, indent=2, default=str) # Use default=str for Path objects
+            json.dump(report_summary, f, indent=2, default=str)  # Use default=str for Path objects
     except Exception as e:
         logging.error(f"Failed to write JSON report: {e}")
 
@@ -424,13 +411,15 @@ def generate_reports(
         with open(md_report_path, "w") as f:
             f.write("# IREE Compilation Report\n\n")
             f.write("## Overall Summary\n\n")
-            
-            overall_s = stats['overall']['success']
-            overall_t = stats['overall']['total']
+
+            overall_s = stats["overall"]["success"]
+            overall_t = stats["overall"]["total"]
             overall_pct = (overall_s / overall_t * 100.0) if overall_t > 0 else 0.0
-            
-            f.write(f"- **Total Compilation Attempts**: {overall_t} "
-                    f"({total_kernels_attempted} kernels x {num_targets} targets)\n")
+
+            f.write(
+                f"- **Total Compilation Attempts**: {overall_t} "
+                f"({total_kernels_attempted} kernels x {num_targets} targets)\n"
+            )
             f.write(f"- **Successful Compilations**: {overall_s}\n")
             f.write(f"- **Failed Compilations**: {stats['overall']['failed']}\n")
             f.write(f"- **Overall Success Rate**: **{overall_pct:.1f}%**\n")
@@ -440,26 +429,24 @@ def generate_reports(
             f.write("\n## Success Rate by Level\n\n")
 
             for level in stats["by_level"]:
-                level_s = stats['by_level'][level]['success']
-                level_t = stats['by_level'][level]['total']
+                level_s = stats["by_level"][level]["success"]
+                level_t = stats["by_level"][level]["total"]
                 level_pct = (level_s / level_t * 100.0) if level_t > 0 else 0.0
-                
+
                 f.write(f"### Level: {level}\n\n")
-                f.write(f"- **Level Total Success**: {level_s} / {level_t} compilations "
-                        f"**({level_pct:.1f}%)**\n")
-                
+                f.write(f"- **Level Total Success**: {level_s} / {level_t} compilations **({level_pct:.1f}%)**\n")
+
                 f.write("\n**Success Rate by Target:**\n\n")
                 for target in stats["by_level_by_target"][level]:
-                    target_s = stats['by_level_by_target'][level][target]['success']
-                    target_t = stats['by_level_by_target'][level][target]['total']
+                    target_s = stats["by_level_by_target"][level][target]["success"]
+                    target_t = stats["by_level_by_target"][level][target]["total"]
                     target_pct = (target_s / target_t * 100.0) if target_t > 0 else 0.0
-                    
-                    f.write(f"- **{target}**: {target_s} / {target_t} kernels succeeded "
-                            f"**({target_pct:.1f}%)**\n")
+
+                    f.write(f"- **{target}**: {target_s} / {target_t} kernels succeeded **({target_pct:.1f}%)**\n")
                 f.write("\n")
 
             f.write("---\n")
-            
+
             # --- Failure Details ---
             if load_failures:
                 f.write("## Kernel Loading Failures\n\n")
@@ -467,7 +454,7 @@ def generate_reports(
                 f.write("| Level | Kernel File | Error |\n")
                 f.write("|-------|-------------|-------|\n")
                 for item in load_failures:
-                    error_msg = str(item['error']).strip().split('\n')[-1]
+                    error_msg = str(item["error"]).strip().split("\n")[-1]
                     f.write(f"| {item['level']} | `{item['kernel_file']}` | `{error_msg}` |\n")
                 f.write("\n")
 
@@ -481,14 +468,16 @@ def generate_reports(
                 f.write("## Export & Compilation Failures\n\n")
                 f.write("| Level | Kernel File | Target | Stage | Error |\n")
                 f.write("|-------|-------------|--------|-------|-------|\n")
-                for item in sorted(export_compile_failures, key=lambda x: (x['level'], x['kernel_file'], x['target'])):
+                for item in sorted(export_compile_failures, key=lambda x: (x["level"], x["kernel_file"], x["target"])):
                     try:
-                       error_msg = str(item['error']).strip().split('\n')[-1]
-                    except:
-                       error_msg = str(item['error']).strip()
-                    f.write(f"| {item['level']} | `{item['kernel_file']}` | {item['target']} | {item['stage']} | `{error_msg}` |\n")
+                        error_msg = str(item["error"]).strip().split("\n")[-1]
+                    except Exception:  # <-- Added Exception here!
+                        error_msg = str(item["error"]).strip()
+                    f.write(
+                        f"| {item['level']} | `{item['kernel_file']}` | {item['target']} | {item['stage']} | `{error_msg}` |\n"
+                    )
                 f.write("\n")
-                
+
             # --- Success Details (optional, can be very long) ---
             # ... (omitted for brevity, but could be added similar to old script) ...
 
@@ -501,9 +490,9 @@ def generate_reports(
 def main():
     """Main execution function."""
     start_time_sec = time.time()
-    
+
     args = parse_arguments()
-    
+
     log_file_path = args.report_dir / "iree_compile.log"
     json_report_path = args.report_dir / "iree_compile_report.json"
     md_report_path = args.report_dir / "iree_compile_report.md"
@@ -533,7 +522,7 @@ def main():
             active_targets[t_name] = TARGET_DEFINITIONS[t_name]
         else:
             logging.warning(f"Target '{t_name}' not found in TARGET_DEFINITIONS. Skipping.")
-    
+
     if not active_targets:
         logging.error("No valid targets selected. Exiting.")
         sys.exit(1)
@@ -544,11 +533,10 @@ def main():
 
     # New report structure
     report = {
-        "load_failures": [], # List of {"kernel_file", "level", "error"}
-        "results": {}        # Dict[level, Dict[target, {"success": [], "failed": []}]]
+        "load_failures": [],  # List of {"kernel_file", "level", "error"}
+        "results": {},  # Dict[level, Dict[target, {"success": [], "failed": []}]]
     }
     total_kernels_by_level = {}
-
 
     for level in args.levels:
         level_dir = args.input_base_dir / level
@@ -559,11 +547,9 @@ def main():
         logging.info(f"--- Processing Level: {level} ---")
         kernel_files = sorted(level_dir.glob("*.py"))
         total_kernels_by_level[level] = len(kernel_files)
-        
+
         # Initialize report structure for this level
-        report["results"][level] = {
-            t_name: {"success": [], "failed": []} for t_name in active_targets
-        }
+        report["results"][level] = {t_name: {"success": [], "failed": []} for t_name in active_targets}
 
         if not kernel_files:
             logging.warning(f"No kernel files (*.py) found in {level_dir}")
@@ -578,81 +564,84 @@ def main():
                 relative_kernel_path = str(kernel_file)
 
             logging.info(f"Processing kernel: {relative_kernel_path}")
-            
+
             model_class = None
             init_args = []
             get_inputs_func = None
-            
+
             # --- 1. Load Module (once per kernel) ---
             try:
                 # Set to f32 globally *before* loading
-                #torch.set_default_dtype(torch.float32)
+                # torch.set_default_dtype(torch.float32)
 
                 kernel_module = load_kernel_module(kernel_file)
 
-                if not hasattr(kernel_module, 'Model'):
+                if not hasattr(kernel_module, "Model"):
                     raise AttributeError("Kernel file does not define a 'Model' class")
                 model_class = kernel_module.Model
                 if not (isinstance(model_class, type) and issubclass(model_class, torch.nn.Module)):
                     raise TypeError("'Model' attribute is not a class inheriting from nn.Module")
 
-                if hasattr(kernel_module, 'get_init_inputs'):
+                if hasattr(kernel_module, "get_init_inputs"):
                     init_args = kernel_module.get_init_inputs()
 
-                if not hasattr(kernel_module, 'get_inputs'):
+                if not hasattr(kernel_module, "get_inputs"):
                     raise AttributeError("Kernel file does not define a 'get_inputs' function")
                 get_inputs_func = kernel_module.get_inputs
 
             except Exception as e:
                 logging.error(f"Failed to load module/variables from {kernel_file}: {e}", exc_info=True)
-                report["load_failures"].append({
-                    "kernel_file": relative_kernel_path,
-                    "level": level,
-                    "error": str(e),
-                })
-                continue # Skip this kernel entirely
-
+                report["load_failures"].append(
+                    {
+                        "kernel_file": relative_kernel_path,
+                        "level": level,
+                        "error": str(e),
+                    }
+                )
+                continue  # Skip this kernel entirely
 
             # --- 2. Loop over targets for Export and Compile ---
             for target_name, target_def in active_targets.items():
                 logging.info(f"Processing {kernel_name} for {target_name}...")
-                
+
                 # --- 2a. Define output paths ---
                 kernel_output_dir = args.output_base_dir / level / target_name / kernel_name
-                mlir_dump_dir = kernel_output_dir / "compilation_phases" 
+                mlir_dump_dir = kernel_output_dir / "compilation_phases"
                 kernel_output_dir.mkdir(parents=True, exist_ok=True)
                 mlir_dump_dir.mkdir(parents=True, exist_ok=True)
 
-                vmfb_path = kernel_output_dir / "artifact.vmfb" 
-                input_mlir_path = kernel_output_dir / "kernel.mlir" 
+                vmfb_path = kernel_output_dir / "artifact.vmfb"
+                input_mlir_path = kernel_output_dir / "kernel.mlir"
                 relative_output_path = str(vmfb_path.relative_to(args.output_base_dir.parent))
-                
+
                 # --- 2b. Check for existing artifact ---
                 if not args.force_recompile and vmfb_path.exists():
                     logging.info(f"Artifact {relative_output_path} already exists. Skipping.")
-                    report["results"][level][target_name]["success"].append({
-                        "kernel_file": relative_kernel_path,
-                        "level": level,
-                        "target": target_name,
-                        "output_path": relative_output_path,
-                        "status": "skipped_exists"
-                    })
-                    continue # Skip to the next target
-                
+                    report["results"][level][target_name]["success"].append(
+                        {
+                            "kernel_file": relative_kernel_path,
+                            "level": level,
+                            "target": target_name,
+                            "output_path": relative_output_path,
+                            "status": "skipped_exists",
+                        }
+                    )
+                    continue  # Skip to the next target
+
                 # --- 2b. Export to MLIR (target-specific precision) ---
                 try:
                     target_precision = target_def["export_precision"]
                     logging.debug(f"Setting default torch dtype to {target_precision}")
-                    #torch.set_default_dtype(target_precision)
-                    
+                    # torch.set_default_dtype(target_precision)
+
                     # Re-instantiate model and inputs with the target precision
                     model = model_class(*init_args)
                     model.eval()
-                    
+
                     raw_inputs_list = get_inputs_func()
                     if raw_inputs_list is None:
                         raise ValueError("'get_inputs()' returned None")
-                    
+
                     # Convert tensor inputs to target precision
                     processed_inputs = []
                     for item in raw_inputs_list:
@@ -661,75 +650,83 @@ def main():
                             processed_inputs.append(item.to(target_precision))
                         else:
                             processed_inputs.append(item)
-                    
+
                     processed_inputs_tuple = tuple(processed_inputs)
-                    
+
                     export_output = aot.export(model, args=processed_inputs_tuple)
-                    
+
                     export_output.save_mlir(input_mlir_path)
-                    
+
                     logging.debug(f"Successfully exported Torch MLIR to {input_mlir_path}")
 
                 except Exception as e:
-                    logging.error(f"iree.turbine.aot.export failed for {kernel_file} (target: {target_name}): {e}", exc_info=True)
-                    report["results"][level][target_name]["failed"].append({
-                        "kernel_file": relative_kernel_path,
-                        "level": level,
-                        "target": target_name,
-                        "stage": "export",
-                        "error": f"aot.export error: {e}",
-                    })
-                    
-                    continue # Skip to next target
+                    logging.error(
+                        f"iree.turbine.aot.export failed for {kernel_file} (target: {target_name}): {e}", exc_info=True
+                    )
+                    report["results"][level][target_name]["failed"].append(
+                        {
+                            "kernel_file": relative_kernel_path,
+                            "level": level,
+                            "target": target_name,
+                            "stage": "export",
+                            "error": f"aot.export error: {e}",
+                        }
+                    )
+
+                    continue  # Skip to next target
                 finally:
                     # ALWAYS reset default dtype
-                    #torch.set_default_dtype(torch.float32)
-                    DUMMY = 0
+                    # torch.set_default_dtype(torch.float32)
+                    pass
 
                 # --- 2c. Compile MLIR (iree-compile) ---
                 try:
                     success, error_msg = compile_kernel_for_target(
-                        target_def,
-                        input_mlir_path, 
-                        vmfb_path,
-                        mlir_dump_dir
+                        target_def, input_mlir_path, vmfb_path, mlir_dump_dir
                     )
-                    
+
                     if success:
                         logging.info(f"Successfully compiled. Artifact: {relative_output_path}")
-                        report["results"][level][target_name]["success"].append({
-                            "kernel_file": relative_kernel_path,
-                            "level": level,
-                            "target": target_name,
-                            "output_path": relative_output_path,
-                            "status": "compiled"
-                        })
+                        report["results"][level][target_name]["success"].append(
+                            {
+                                "kernel_file": relative_kernel_path,
+                                "level": level,
+                                "target": target_name,
+                                "output_path": relative_output_path,
+                                "status": "compiled",
+                            }
+                        )
                     else:
-                        report["results"][level][target_name]["failed"].append({
+                        report["results"][level][target_name]["failed"].append(
+                            {
+                                "kernel_file": relative_kernel_path,
+                                "level": level,
+                                "target": target_name,
+                                "stage": "compile",
+                                "error": error_msg,
+                            }
+                        )
+
+                except Exception as e:
+                    logging.error(
+                        f"Unexpected error during compile step for {kernel_name} ({target_name}): {e}", exc_info=True
+                    )
+                    report["results"][level][target_name]["failed"].append(
+                        {
                             "kernel_file": relative_kernel_path,
                             "level": level,
                             "target": target_name,
-                            "stage": "compile",
-                            "error": error_msg,
-                        })
-                
-                except Exception as e:
-                    logging.error(f"Unexpected error during compile step for {kernel_name} ({target_name}): {e}", exc_info=True)
-                    report["results"][level][target_name]["failed"].append({
-                        "kernel_file": relative_kernel_path,
-                        "level": level,
-                        "target": target_name,
-                        "stage": "compile (unexpected)",
-                        "error": str(e),
-                    })
-                
+                            "stage": "compile (unexpected)",
+                            "error": str(e),
+                        }
+                    )
 
             logging.info(f"Finished processing targets for {kernel_name}.")
-            
+
     end_time_sec = time.time()
-    
+
     logging.info("--- Compilation Process Finished ---")
-    
+
     total_failures = generate_reports(
         report,
         total_kernels_by_level,
@@ -737,13 +734,13 @@ def main():
         json_report_path,
         md_report_path,
         start_time_sec,
-        end_time_sec
+        end_time_sec,
     )
     try:
         # --- Final Summary to Console ---
-        with open(json_report_path, "r") as f:
+        with open(json_report_path) as f:
             overall_stats = json.load(f)["summary"]
-        print("\n" + "="*30 + " IREE COMPILATION SUMMARY " + "="*30)
+        print("\n" + "=" * 30 + " IREE COMPILATION SUMMARY " + "=" * 30)
         print(f"Total Time: {overall_stats['total_time_seconds']:.2f} seconds")
         print(f"Total Compilation Attempts: {overall_stats['total_compilation_attempts']}")
         print(f"Successful Compilations:    {overall_stats['successful_compilations']}")
@@ -751,7 +748,7 @@ def main():
         print(f"\nDetailed log:    {log_file_path}")
         print(f"JSON report:     {json_report_path}")
         print(f"Markdown report: {md_report_path}")
-        print("="*82)
+        print("=" * 82)
     except FileNotFoundError:
         logging.error(f"Failed to read JSON report for final summary: {json_report_path}")
     except Exception as e:

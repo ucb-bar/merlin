@@ -1,0 +1,17 @@
+dma.load.mxu1 rd=0, base=8192, size=256, flag=0
+dma.load.mxu1 rd=1, base=12288, size=256, flag=1
+dma.wait flag=0
+dma.wait flag=1
+dma.load rd=0, base=0, size=1024, flag=2
+dma.load rd=2, base=16384, size=2048, flag=0
+dma.wait flag=2
+dma.wait flag=0
+matmul.mxu0 rd=3, rs1=0, rs2=0
+vmul vrd=4, vs1=3, vs2=2
+vexp vrd=5, vs1=4
+vreduce.sum vrd=6, vs1=5
+vrcp vrd=7, vs1=6
+vmul vrd=8, vs1=5, vs2=7
+matmul.mxu0 rd=9, rs1=8, rs2=1
+dma.store rs1=9, base=20480, size=2048, flag=1
+dma.wait flag=1

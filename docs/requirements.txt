@@ -1,0 +1,4 @@
+zensical>=0.0.26,<0.1
+mkdocstrings[python]>=0.25,<1
+mkdoxy>=1.2,<2
+pymdown-extensions>=10.7,<11

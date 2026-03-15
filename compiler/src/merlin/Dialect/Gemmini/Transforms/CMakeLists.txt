@@ -1,16 +1,60 @@
-add_mlir_library(MerlinDialectGemminiTransforms
-  LegalizeForLLVMExport.cpp
-  
-  EXCLUDE_FROM_LIBMLIR
+set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
+set(IREE_PACKAGE_ROOT_PREFIX
+    "iree::gemmini::compiler::Dialect::Gemmini::Transforms")
 
-  LINK_LIBS PUBLIC
-    MerlinDialectGemmini
-    MLIRIR
-    MLIRPass
-    MLIRTransforms
-    MLIRLLVMCommonConversion
-    MLIRLLVMDialect
-    MLIRArithToLLVM
-    MLIRFuncToLLVM
-    MLIRMemRefToLLVM
-)
+iree_tablegen_library(
+  NAME
+  PassesIncGen
+  TD_FILE
+  "Passes.td"
+  OUTS
+  --gen-pass-decls
+  Passes.h.inc)
+
+iree_cc_library(
+  NAME
+  PassHeaders
+  HDRS
+  "PassDetail.h"
+  "Passes.h"
+  "Passes.h.inc"
+  INCLUDES
+  "${MERLIN_COMPILER_SOURCE_DIR}"
+  "${IREE_BINARY_DIR}/compiler/plugins/merlin"
+  DEPS
+  ::PassesIncGen
+  iree::gemmini::compiler::Dialect::Gemmini::IR::GemminiDialect
+  MLIRFuncDialect
+  MLIRPass
+  PUBLIC)
+
+iree_cc_library(
+  NAME
+  Transforms
+  HDRS
+  "Passes.h"
+  SRCS
+  "Passes.cpp"
+  "ConvertToGemmini.cpp"
+  "LowerToISA.cpp"
+  "GemminiCanonicalize.cpp"
+  "LowerGemminiToIREE.cpp"
+  INCLUDES
+  "${MERLIN_COMPILER_SOURCE_DIR}"
+  "${IREE_BINARY_DIR}/compiler/plugins/merlin"
+  DEPS
+  ::PassHeaders
+  ::PassesIncGen
+  iree::gemmini::compiler::Dialect::Gemmini::IR::GemminiDialect
+  MLIRArithDialect
+  MLIRFuncDialect
+  MLIRIR
+  MLIRQueryMatcher
+  MLIRLinalgDialect
+  MLIRMathDialect
+  MLIRPass
+  MLIRTensorDialect
+  MLIRTransforms
+  PUBLIC)
+
+add_subdirectory(tests)

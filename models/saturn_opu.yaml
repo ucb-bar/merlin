@@ -1,0 +1,25 @@
+default_hw: OPU
+
+generic:
+  - --iree-hal-target-backends=llvm-cpu
+  - --iree-llvmcpu-target-triple=riscv64-unknown-linux-gnu
+  - --iree-llvmcpu-target-abi=lp64d
+  - --iree-opt-level=O3
+  - --iree-opt-data-tiling=true
+  - --iree-dispatch-creation-data-tiling=true
+  - --iree-llvmcpu-enable-ukernels=all
+  - --iree-llvmcpu-link-ukernel-bitcode=true
+  - --iree-llvmcpu-enable-vector-contract-custom-kernels=true
+  - --iree-vm-bytecode-module-strip-source-map=true
+  - --iree-vm-emit-polyglot-zip=false
+
+targets:
+  OPU:
+    - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl128b,+xopu
+    - --iree-llvmcpu-target-vector-width-in-bytes=16
+  RVV:
+    - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl256b
+    - --iree-llvmcpu-target-vector-width-in-bytes=32
+
+quantized:
+  - --iree-llvmcpu-skip-intermediate-roundings=true

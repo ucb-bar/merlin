@@ -1,59 +1,59 @@
 module {
   func.func @mlp(%arg0: !torch.vtensor<[1,10],f32>) -> !torch.vtensor<[1,2],f32> attributes {torch.onnx_meta.ir_version = 10 : si64, torch.onnx_meta.opset_version = 17 : si64, torch.onnx_meta.producer_name = "onnx.quantize", torch.onnx_meta.producer_version = "0.1.0"} {
-    %0 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8> 
-    %1 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.0251800455> : tensor<f32>} : () -> !torch.vtensor<[],f32> 
-    %2 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8> 
-    %3 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.0155197214> : tensor<f32>} : () -> !torch.vtensor<[],f32> 
-    %4 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8> 
-    %5 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.00248654163> : tensor<f32>} : () -> !torch.vtensor<[],f32> 
-    %6 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc1.weight_quantized> : tensor<32x10xsi8>} : () -> !torch.vtensor<[32,10],si8> 
-    %7 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8> 
-    %8 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.0155197214> : tensor<f32>} : () -> !torch.vtensor<[],f32> 
-    %9 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8> 
-    %10 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.0078596957> : tensor<f32>} : () -> !torch.vtensor<[],f32> 
-    %11 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8> 
-    %12 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.00139069092> : tensor<f32>} : () -> !torch.vtensor<[],f32> 
-    %13 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc2.weight_quantized> : tensor<32x32xsi8>} : () -> !torch.vtensor<[32,32],si8> 
-    %14 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8> 
-    %15 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.0078596957> : tensor<f32>} : () -> !torch.vtensor<[],f32> 
-    %16 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8> 
-    %17 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.00234139641> : tensor<f32>} : () -> !torch.vtensor<[],f32> 
-    %18 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8> 
-    %19 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.00138537993> : tensor<f32>} : () -> !torch.vtensor<[],f32> 
-    %20 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc3.weight_quantized> : tensor<2x32xsi8>} : () -> !torch.vtensor<[2,32],si8> 
-    %21 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc1.bias_quantized> : tensor<32xsi32>} : () -> !torch.vtensor<[32],si32> 
-    %22 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc1.bias_quantized_scale> : tensor<1xf32>} : () -> !torch.vtensor<[1],f32> 
-    %23 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si32>} : () -> !torch.vtensor<[],si32> 
-    %24 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc2.bias_quantized> : tensor<32xsi32>} : () -> !torch.vtensor<[32],si32> 
-    %25 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc2.bias_quantized_scale> : tensor<1xf32>} : () -> !torch.vtensor<[1],f32> 
-    %26 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si32>} : () -> !torch.vtensor<[],si32> 
-    %27 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc3.bias_quantized> : tensor<2xsi32>} : () -> !torch.vtensor<[2],si32> 
-    %28 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc3.bias_quantized_scale> : tensor<1xf32>} : () -> !torch.vtensor<[1],f32> 
-    %29 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si32>} : () -> !torch.vtensor<[],si32> 
+    %0 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8>
+    %1 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.0251800455> : tensor<f32>} : () -> !torch.vtensor<[],f32>
+    %2 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8>
+    %3 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.0155197214> : tensor<f32>} : () -> !torch.vtensor<[],f32>
+    %4 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8>
+    %5 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.00248654163> : tensor<f32>} : () -> !torch.vtensor<[],f32>
+    %6 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc1.weight_quantized> : tensor<32x10xsi8>} : () -> !torch.vtensor<[32,10],si8>
+    %7 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8>
+    %8 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.0155197214> : tensor<f32>} : () -> !torch.vtensor<[],f32>
+    %9 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8>
+    %10 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.0078596957> : tensor<f32>} : () -> !torch.vtensor<[],f32>
+    %11 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8>
+    %12 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.00139069092> : tensor<f32>} : () -> !torch.vtensor<[],f32>
+    %13 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc2.weight_quantized> : tensor<32x32xsi8>} : () -> !torch.vtensor<[32,32],si8>
+    %14 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8>
+    %15 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.0078596957> : tensor<f32>} : () -> !torch.vtensor<[],f32>
+    %16 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8>
+    %17 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.00234139641> : tensor<f32>} : () -> !torch.vtensor<[],f32>
+    %18 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si8>} : () -> !torch.vtensor<[],si8>
+    %19 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0.00138537993> : tensor<f32>} : () -> !torch.vtensor<[],f32>
+    %20 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc3.weight_quantized> : tensor<2x32xsi8>} : () -> !torch.vtensor<[2,32],si8>
+    %21 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc1.bias_quantized> : tensor<32xsi32>} : () -> !torch.vtensor<[32],si32>
+    %22 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc1.bias_quantized_scale> : tensor<1xf32>} : () -> !torch.vtensor<[1],f32>
+    %23 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si32>} : () -> !torch.vtensor<[],si32>
+    %24 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc2.bias_quantized> : tensor<32xsi32>} : () -> !torch.vtensor<[32],si32>
+    %25 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc2.bias_quantized_scale> : tensor<1xf32>} : () -> !torch.vtensor<[1],f32>
+    %26 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si32>} : () -> !torch.vtensor<[],si32>
+    %27 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc3.bias_quantized> : tensor<2xsi32>} : () -> !torch.vtensor<[2],si32>
+    %28 = torch.operator "onnx.Constant"() {torch.onnx.value = dense_resource<_fc3.bias_quantized_scale> : tensor<1xf32>} : () -> !torch.vtensor<[1],f32>
+    %29 = torch.operator "onnx.Constant"() {torch.onnx.value = dense<0> : tensor<si32>} : () -> !torch.vtensor<[],si32>
     %none = torch.constant.none
-    %30 = torch.operator "onnx.DequantizeLinear"(%21, %22, %23) : (!torch.vtensor<[32],si32>, !torch.vtensor<[1],f32>, !torch.vtensor<[],si32>) -> !torch.vtensor<[32],f32> 
-    %31 = torch.operator "onnx.DequantizeLinear"(%6, %5, %4) : (!torch.vtensor<[32,10],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[32,10],f32> 
-    %32 = torch.operator "onnx.DequantizeLinear"(%24, %25, %26) : (!torch.vtensor<[32],si32>, !torch.vtensor<[1],f32>, !torch.vtensor<[],si32>) -> !torch.vtensor<[32],f32> 
-    %33 = torch.operator "onnx.DequantizeLinear"(%13, %12, %11) : (!torch.vtensor<[32,32],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[32,32],f32> 
-    %34 = torch.operator "onnx.DequantizeLinear"(%27, %28, %29) : (!torch.vtensor<[2],si32>, !torch.vtensor<[1],f32>, !torch.vtensor<[],si32>) -> !torch.vtensor<[2],f32> 
-    %35 = torch.operator "onnx.DequantizeLinear"(%20, %19, %18) : (!torch.vtensor<[2,32],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[2,32],f32> 
-    %36 = torch.operator "onnx.QuantizeLinear"(%arg0, %1, %0) : (!torch.vtensor<[1,10],f32>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,10],si8> 
-    %37 = torch.operator "onnx.DequantizeLinear"(%36, %1, %0) : (!torch.vtensor<[1,10],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,10],f32> 
-    %38 = torch.operator "onnx.Gemm"(%37, %31, %30) {torch.onnx.alpha = 1.000000e+00 : f32, torch.onnx.beta = 1.000000e+00 : f32, torch.onnx.transA = 0 : si64, torch.onnx.transB = 1 : si64} : (!torch.vtensor<[1,10],f32>, !torch.vtensor<[32,10],f32>, !torch.vtensor<[32],f32>) -> !torch.vtensor<[1,32],f32> 
-    %39 = torch.operator "onnx.QuantizeLinear"(%38, %3, %2) : (!torch.vtensor<[1,32],f32>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,32],si8> 
-    %40 = torch.operator "onnx.DequantizeLinear"(%39, %3, %2) : (!torch.vtensor<[1,32],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,32],f32> 
-    %41 = torch.operator "onnx.Relu"(%40) : (!torch.vtensor<[1,32],f32>) -> !torch.vtensor<[1,32],f32> 
-    %42 = torch.operator "onnx.QuantizeLinear"(%41, %8, %7) : (!torch.vtensor<[1,32],f32>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,32],si8> 
-    %43 = torch.operator "onnx.DequantizeLinear"(%42, %8, %7) : (!torch.vtensor<[1,32],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,32],f32> 
-    %44 = torch.operator "onnx.Gemm"(%43, %33, %32) {torch.onnx.alpha = 1.000000e+00 : f32, torch.onnx.beta = 1.000000e+00 : f32, torch.onnx.transA = 0 : si64, torch.onnx.transB = 1 : si64} : (!torch.vtensor<[1,32],f32>, !torch.vtensor<[32,32],f32>, !torch.vtensor<[32],f32>) -> !torch.vtensor<[1,32],f32> 
-    %45 = torch.operator "onnx.QuantizeLinear"(%44, %10, %9) : (!torch.vtensor<[1,32],f32>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,32],si8> 
-    %46 = torch.operator "onnx.DequantizeLinear"(%45, %10, %9) : (!torch.vtensor<[1,32],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,32],f32> 
-    %47 = torch.operator "onnx.Relu"(%46) : (!torch.vtensor<[1,32],f32>) -> !torch.vtensor<[1,32],f32> 
-    %48 = torch.operator "onnx.QuantizeLinear"(%47, %15, %14) : (!torch.vtensor<[1,32],f32>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,32],si8> 
-    %49 = torch.operator "onnx.DequantizeLinear"(%48, %15, %14) : (!torch.vtensor<[1,32],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,32],f32> 
-    %50 = torch.operator "onnx.Gemm"(%49, %35, %34) {torch.onnx.alpha = 1.000000e+00 : f32, torch.onnx.beta = 1.000000e+00 : f32, torch.onnx.transA = 0 : si64, torch.onnx.transB = 1 : si64} : (!torch.vtensor<[1,32],f32>, !torch.vtensor<[2,32],f32>, !torch.vtensor<[2],f32>) -> !torch.vtensor<[1,2],f32> 
-    %51 = torch.operator "onnx.QuantizeLinear"(%50, %17, %16) : (!torch.vtensor<[1,2],f32>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,2],si8> 
-    %52 = torch.operator "onnx.DequantizeLinear"(%51, %17, %16) : (!torch.vtensor<[1,2],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,2],f32> 
+    %30 = torch.operator "onnx.DequantizeLinear"(%21, %22, %23) : (!torch.vtensor<[32],si32>, !torch.vtensor<[1],f32>, !torch.vtensor<[],si32>) -> !torch.vtensor<[32],f32>
+    %31 = torch.operator "onnx.DequantizeLinear"(%6, %5, %4) : (!torch.vtensor<[32,10],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[32,10],f32>
+    %32 = torch.operator "onnx.DequantizeLinear"(%24, %25, %26) : (!torch.vtensor<[32],si32>, !torch.vtensor<[1],f32>, !torch.vtensor<[],si32>) -> !torch.vtensor<[32],f32>
+    %33 = torch.operator "onnx.DequantizeLinear"(%13, %12, %11) : (!torch.vtensor<[32,32],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[32,32],f32>
+    %34 = torch.operator "onnx.DequantizeLinear"(%27, %28, %29) : (!torch.vtensor<[2],si32>, !torch.vtensor<[1],f32>, !torch.vtensor<[],si32>) -> !torch.vtensor<[2],f32>
+    %35 = torch.operator "onnx.DequantizeLinear"(%20, %19, %18) : (!torch.vtensor<[2,32],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[2,32],f32>
+    %36 = torch.operator "onnx.QuantizeLinear"(%arg0, %1, %0) : (!torch.vtensor<[1,10],f32>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,10],si8>
+    %37 = torch.operator "onnx.DequantizeLinear"(%36, %1, %0) : (!torch.vtensor<[1,10],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,10],f32>
+    %38 = torch.operator "onnx.Gemm"(%37, %31, %30) {torch.onnx.alpha = 1.000000e+00 : f32, torch.onnx.beta = 1.000000e+00 : f32, torch.onnx.transA = 0 : si64, torch.onnx.transB = 1 : si64} : (!torch.vtensor<[1,10],f32>, !torch.vtensor<[32,10],f32>, !torch.vtensor<[32],f32>) -> !torch.vtensor<[1,32],f32>
+    %39 = torch.operator "onnx.QuantizeLinear"(%38, %3, %2) : (!torch.vtensor<[1,32],f32>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,32],si8>
+    %40 = torch.operator "onnx.DequantizeLinear"(%39, %3, %2) : (!torch.vtensor<[1,32],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,32],f32>
+    %41 = torch.operator "onnx.Relu"(%40) : (!torch.vtensor<[1,32],f32>) -> !torch.vtensor<[1,32],f32>
+    %42 = torch.operator "onnx.QuantizeLinear"(%41, %8, %7) : (!torch.vtensor<[1,32],f32>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,32],si8>
+    %43 = torch.operator "onnx.DequantizeLinear"(%42, %8, %7) : (!torch.vtensor<[1,32],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,32],f32>
+    %44 = torch.operator "onnx.Gemm"(%43, %33, %32) {torch.onnx.alpha = 1.000000e+00 : f32, torch.onnx.beta = 1.000000e+00 : f32, torch.onnx.transA = 0 : si64, torch.onnx.transB = 1 : si64} : (!torch.vtensor<[1,32],f32>, !torch.vtensor<[32,32],f32>, !torch.vtensor<[32],f32>) -> !torch.vtensor<[1,32],f32>
+    %45 = torch.operator "onnx.QuantizeLinear"(%44, %10, %9) : (!torch.vtensor<[1,32],f32>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,32],si8>
+    %46 = torch.operator "onnx.DequantizeLinear"(%45, %10, %9) : (!torch.vtensor<[1,32],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,32],f32>
+    %47 = torch.operator "onnx.Relu"(%46) : (!torch.vtensor<[1,32],f32>) -> !torch.vtensor<[1,32],f32>
+    %48 = torch.operator "onnx.QuantizeLinear"(%47, %15, %14) : (!torch.vtensor<[1,32],f32>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,32],si8>
+    %49 = torch.operator "onnx.DequantizeLinear"(%48, %15, %14) : (!torch.vtensor<[1,32],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,32],f32>
+    %50 = torch.operator "onnx.Gemm"(%49, %35, %34) {torch.onnx.alpha = 1.000000e+00 : f32, torch.onnx.beta = 1.000000e+00 : f32, torch.onnx.transA = 0 : si64, torch.onnx.transB = 1 : si64} : (!torch.vtensor<[1,32],f32>, !torch.vtensor<[2,32],f32>, !torch.vtensor<[2],f32>) -> !torch.vtensor<[1,2],f32>
+    %51 = torch.operator "onnx.QuantizeLinear"(%50, %17, %16) : (!torch.vtensor<[1,2],f32>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,2],si8>
+    %52 = torch.operator "onnx.DequantizeLinear"(%51, %17, %16) : (!torch.vtensor<[1,2],si8>, !torch.vtensor<[],f32>, !torch.vtensor<[],si8>) -> !torch.vtensor<[1,2],f32>
     return %52 : !torch.vtensor<[1,2],f32>
   }
 }
@@ -73,4 +73,3 @@ module {
     }
   }
 #-}
-

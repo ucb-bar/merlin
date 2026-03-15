@@ -1,0 +1,5 @@
+4.048014e-02 Dialect/Gemmini/Transforms/tests/convert-to-gemmini.mlir
+4.085875e-02 Dialect/Gemmini/Transforms/tests/fp8-no-convert.mlir
+4.104733e-02 Dialect/Gemmini/Transforms/tests/lower-gemmini-to-iree.mlir
+4.084134e-02 Dialect/Gemmini/Transforms/tests/matmul-lower-to-isa.mlir
+5.936074e-02 Dialect/Gemmini/Transforms/tests/post-global-opt-hook.mlir

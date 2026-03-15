@@ -43,6 +43,8 @@
 # build directories
 /build/
 /build-*/
+/site/
+/docs/reference/generated/
 
 # cahce files from python
 __pycache__/
@@ -60,6 +62,7 @@ tutorials/*/artifacts/*
 
 # Toochains
 riscv-tools-*/
+dist/
 
 # Ignore compilation phases and report
 compilation_phases_*
@@ -70,6 +73,7 @@ compilation*
 
 # Temporary files
 tmp/*
+third_party/tmp
 .vscode/
 mlirEvolve/.venv/
 mlirEvolve/.pytest_cache/
@@ -78,11 +82,30 @@ mlirEvolve/.pytest_cache/
 *.onnx
 *.onnx.data
 samples/models/*.mlir
+models/smolVLA/*.mlir
+models/smolVLA/*.vmfb
 *.vmfb
+models/smolVLA/*.mlir
 
 # Sample-generated artifacts
 samples/custom_dispatch_ukernels_saturn/saturn_test
 samples/custom_dispatch_ukernels_saturn/*.npy
+
+# Ignore plots and logs
+
+*/logs/*
+*/plots/*
+plots/*
+
+# Added to ignore the specified folder
+benchmarks/SpacemiTX60/baseline_dual_model_async/results/plots/
+benchmarks/SpacemiTX60/baseline_dual_model_async/results/logs
+benchmarks/SpacemiTX60/baseline_dual_model_async/results
+benchmarks/SpacemiTX60/baseline_dual_model_async/results/*
+compiler/src/merlin/Dialect/Gemmini/Transforms/tests/Output/*
+merlin_dev.egg-info/*
+
+.ruff_cache
 
 # Ignore plots and logs
 

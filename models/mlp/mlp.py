@@ -1,11 +1,13 @@
+import os
+
 import torch
 import torch.nn as nn
 import torch.onnx
-import os
+
 
 class SimpleMLP(nn.Module):
     def __init__(self, input_dim=10, hidden_dim=32, output_dim=2):
-        super(SimpleMLP, self).__init__()
+        super().__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.relu1 = nn.ReLU()
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
@@ -19,6 +21,7 @@ class SimpleMLP(nn.Module):
         x = self.relu2(x)
         x = self.fc3(x)
         return x
+
 
 if __name__ == "__main__":
     # Example: input is a batch of 1, 10 features

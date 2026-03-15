@@ -1,0 +1,4 @@
+interface:
+  display_name: "Merlin Samples"
+  short_description: "Add/build Merlin samples and locate generated binaries"
+  default_prompt: "Use this skill to add or modify sample apps under samples/, build them via tools/build.py, and report runtime binary locations."

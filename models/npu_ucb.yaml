@@ -1,0 +1,36 @@
+default_hw: RVV
+
+generic:
+  - --iree-hal-target-backends=llvm-cpu
+  - --iree-llvmcpu-target-triple=riscv64-unknown-linux-gnu
+  - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl256b
+  - --iree-llvmcpu-target-abi=lp64d
+  - --iree-opt-data-tiling=true
+  - --iree-codegen-mmt4d-use-intrinsics
+  - --iree-llvmcpu-enable-ukernels=none
+  - --iree-llvmcpu-enable-vector-contract-custom-kernels=true
+  - --iree-llvmcpu-link-ukernel-bitcode=false
+  - --iree-llvmcpu-loop-vectorization=true
+  - --iree-llvmcpu-target-vector-width-in-bytes=32
+  - --iree-execution-model=async-external
+
+plugin_flags:
+  - --iree-plugin=npu
+  - --iree-npu-enable
+  - --iree-npu-enable-ukernel-verify
+  - --iree-npu-strict-ukernel-verify
+  - --iree-npu-allow-unknown-ukernel-fallback=false
+
+quantized:
+  - --iree-llvmcpu-skip-intermediate-roundings=true
+  - --riscv-v-fixed-length-vector-lmul-max=2
+
+models:
+  smolVLA:
+    - --iree-input-type=torch
+    - --iree-opt-const-eval=false
+    - --iree-global-opt-enable-demote-contraction-inputs-to-bf16=matmul
+  smolvla_mx:
+    - --iree-input-type=torch
+    - --iree-opt-const-eval=false
+    - --iree-global-opt-enable-demote-contraction-inputs-to-bf16=matmul

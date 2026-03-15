@@ -1,0 +1,121 @@
+site_name: Merlin Compiler Infrastructure for UCB-BAR
+site_description: Docs for Merlin (Setup, Tutorial, API, etc)
+repo_url: https://github.com/ucb-bar/merlin
+edit_uri: edit/main/docs/
+docs_dir: docs
+
+theme:
+  variant: classic
+  logo: assets/merlin_transparent.png
+  favicon: assets/merlin_transparent.png
+
+  # Set the primary text font to Open Sans per UC Berkeley guidelines
+  font:
+    text: Open Sans
+    code: Roboto Mono
+
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - content.code.copy
+    - content.code.annotate
+
+  palette:
+    # Light Mode (Default)
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark Mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - .
+            - tools
+          options:
+            allow_inspection: false
+            show_source: false
+            show_root_heading: true
+            docstring_options:
+              warn_unknown_params: false
+              warn_missing_types: false
+              warnings: false
+  - mkdoxy:
+      enabled: !ENV [MKDOXY_ENABLED, false]
+      doxygen-bin-path: !ENV [DOXYGEN_BIN, doxygen]
+      projects:
+        merlin_cpp:
+          src-dirs: "compiler/src/merlin compiler/plugins samples benchmarks"
+          api-path: "reference/cpp_api"
+          doxy-cfg:
+            GENERATE_HTML: NO
+            GENERATE_XML: YES
+            EXTRACT_ALL: YES
+            RECURSIVE: YES
+            FILE_PATTERNS: "*.c *.cc *.cpp *.h *.hpp"
+            EXCLUDE_PATTERNS: "*/__pycache__/* */compiled_models/* */compilation_phases*/* */report_pt_export/*"
+
+markdown_extensions:
+  - admonition
+  - tables
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      check_paths: true
+
+nav:
+  - Home: index.md
+  - Setup & Tutorials:
+      - Getting Started: getting_started.md
+      - Getting Started / Installation: iree_setup.md
+      - Cross-Compiling for Banana Pi: reproducibility/cross_compile_banana_pi.md
+      - Export TinyLlama 8-bit to MLIR: reproducibility/export_tinyllama_8bit_sharktank_to_mlir.md
+      - Reproduce Ukernel Benchmark: reproducibility/reproduce_ukernel_benchmark_firesim.md
+      - Build Types: different_build_types.md
+      - Build Tracy on Ubuntu: build_tracy_ubuntu.md
+  - How-To:
+      - Overview: how_to/index.md
+      - Add Compiler Dialect Plugin: how_to/add_compiler_dialect_plugin.md
+      - Add/Modify HAL Driver: how_to/add_runtime_hal_driver.md
+      - Add Sample Application: how_to/add_sample_application.md
+      - Add Compile Target: how_to/add_compile_target.md
+      - Use build.py: how_to/use_build_py.md
+  - Repository Guide: repository_guide.md
+  - Dev Blog:
+      - Home: dev_blog/index.md
+      - Gemmini Workstream: dev_blog/2026-03-11-gemmini-workstream-log.md
+      - NPU Dialect E2E: dev_blog/2026-03-11-npu-dialect-e2e.md
+      - Radiance HAL: dev_blog/2026-03-11-radiance-hal-workstream-log.md
+      - SmolVLA FP8: dev_blog/2026-03-12-smolvla-fp8-int8-global-opt-workstream.md
+      - RISC-V MMT4D: dev_blog/2026-03-13-riscv-mmt4d-ukernel-workstream.md
+  - Architecture:
+      - Plugin & Patch Model: architecture/plugin_and_patch_model.md
+      - Repo Maintenance Model: architecture/repo-maintenance-model.md
+      - CMake Presets: architecture/cmake_presets.md
+  - Reference:
+      - Overview: reference/overview.md
+      - CLI Commands: reference/cli.md
+      - Python API: reference/python/index.md
+      - C/C++ API: reference/cpp.md
+      - MLIR Dialects & Passes: reference/mlir.md
+      - CMake Targets: reference/cmake_targets.md

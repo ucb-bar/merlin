@@ -2,23 +2,32 @@
 # tools/ci.py
 
 import argparse
-import sys
-import os
+import pathlib
 import re
 import shutil
 import subprocess
-import pathlib
-from typing import Optional, List, Sequence, Dict
+import sys
+from collections.abc import Sequence
+
 import utils
 
-UPSTREAM_TRACKING_CONFIG = utils.REPO_ROOT / "config" / "upstream_tracking.yaml"
+_TRACKING_CONFIG_CANDIDATES = (
+    utils.REPO_ROOT / ".github" / "upstream_tracking.yaml",
+    utils.REPO_ROOT / "config" / "upstream_tracking.yaml",
+)
+UPSTREAM_TRACKING_CONFIG = next(
+    (candidate for candidate in _TRACKING_CONFIG_CANDIDATES if candidate.exists()),
+    _TRACKING_CONFIG_CANDIDATES[0],
+)
 SEMVER_TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+
 
 def setup_parser(parser: argparse.ArgumentParser):
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
     # Lint
     subparsers.add_parser("lint", help="Run linters (shellcheck, python)")
+    subparsers.add_parser("cli-docs-drift", help="Regenerate docs/reference/cli.md and fail on drift")
 
     # Patch Gate
     subparsers.add_parser("patch-gate", help="CI gate: apply, verify, drift check")
@@ -29,30 +38,35 @@ def setup_parser(parser: argparse.ArgumentParser):
     release.add_argument("--offline", action="store_true")
     release.add_argument("--json", action="store_true")
 
+
 # --- Helpers ---
 
-def find_files_with_suffixes(roots: Sequence[pathlib.Path], suffixes: Sequence[str]) -> List[pathlib.Path]:
+
+def find_files_with_suffixes(roots: Sequence[pathlib.Path], suffixes: Sequence[str]) -> list[pathlib.Path]:
     found = []
     suffix_set = set(suffixes)
     for root in roots:
-        if not root.exists(): continue
+        if not root.exists():
+            continue
         for path in root.rglob("*"):
             if path.is_file() and path.suffix in suffix_set:
                 found.append(path)
     return sorted(found)
 
+
 def parse_semver_tag(tag: str):
     m = SEMVER_TAG_RE.match(tag)
     return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
 
+
 def fetch_latest_release_tag(repo_slug: str) -> str:
     remote_url = f"https://github.com/{repo_slug}.git"
     res = subprocess.run(
-        ["git", "ls-remote", "--tags", "--refs", remote_url],
-        capture_output=True, text=True, timeout=30
+        ["git", "ls-remote", "--tags", "--refs", remote_url], capture_output=True, text=True, timeout=30
     )
-    if res.returncode != 0: raise RuntimeError(f"git ls-remote failed: {res.stderr}")
-    
+    if res.returncode != 0:
+        raise RuntimeError(f"git ls-remote failed: {res.stderr}")
+
     latest_tag, latest_semver = None, None
     for line in res.stdout.splitlines():
         ref = line.split()[1]
@@ -63,7 +77,9 @@ def fetch_latest_release_tag(repo_slug: str) -> str:
             latest_tag = tag
     return latest_tag
 
+
 # --- Commands ---
+
 
 def run_lint(args) -> int:
     sh_files = find_files_with_suffixes([utils.REPO_ROOT / "scripts", utils.REPO_ROOT / "patches"], [".sh"])
@@ -80,19 +96,57 @@ def run_lint(args) -> int:
             return 1
     else:
         print("Warning: shellcheck not found")
-    
+
     return 0
+
+
+def run_cli_docs_drift(args) -> int:
+    repo_root = utils.REPO_ROOT.resolve()
+    docs_root = (repo_root / "docs").resolve()
+    hooks_module_path = str(docs_root)
+    inserted = False
+
+    if hooks_module_path not in sys.path:
+        sys.path.insert(0, hooks_module_path)
+        inserted = True
+    try:
+        import hooks  # type: ignore
+    except Exception as e:
+        utils.eprint(f"❌ Failed to import docs/hooks.py: {e}")
+        return 1
+    finally:
+        if inserted:
+            try:
+                sys.path.remove(hooks_module_path)
+            except ValueError:
+                pass
+
+    try:
+        hooks._build_cli_reference(repo_root, docs_root)
+    except Exception as e:
+        utils.eprint(f"❌ Failed to regenerate docs/reference/cli.md: {e}")
+        return 1
+
+    diff_cmd = ["git", "diff", "--exit-code", "--", "docs/reference/cli.md"]
+    if utils.run(diff_cmd, dry_run=args.dry_run) != 0:
+        utils.eprint("❌ docs/reference/cli.md is out of date. Regenerate and commit the result.")
+        return 1
+
+    print("✅ docs/reference/cli.md is up to date.")
+    return 0
+
 
 def run_patch_gate(args) -> int:
     steps = [
-        "patches/tools/apply_all.sh",
-        "patches/tools/verify_clean.sh",
-        "patches/tools/check_upstream_drift.sh",
+        "build_tools/patches/tools/apply_all.sh",
+        "build_tools/patches/tools/verify_clean.sh",
+        "build_tools/patches/tools/check_upstream_drift.sh",
     ]
     for script in steps:
         if utils.run_repo_script(script, [], args.dry_run) != 0:
             return 1
     return 0
+
 
 def run_release_status(args) -> int:
     # Simplified YAML loader for the config
@@ -102,7 +156,7 @@ def run_release_status(args) -> int:
             for line in f:
                 if ":" in line and not line.strip().startswith("#"):
                     k, v = line.split(":", 1)
-                    data[k.strip()] = v.strip().replace('"', '')
+                    data[k.strip()] = v.strip().replace('"', "")
         return data
 
     try:
@@ -113,7 +167,7 @@ def run_release_status(args) -> int:
 
     tracked = config.get("tracked_release_tag")
     repo = config.get("upstream_repo", "iree-org/iree")
-    
+
     latest = "offline"
     if not args.offline:
         try:
@@ -121,19 +175,42 @@ def run_release_status(args) -> int:
         except Exception as e:
             latest = f"error: {e}"
 
+    has_valid_latest = bool(latest) and latest != "offline" and not str(latest).startswith("error:")
+    update_available = bool(tracked) and has_valid_latest and latest != tracked
+
     if args.json:
         import json
-        print(json.dumps({"tracked": tracked, "latest": latest}))
+
+        print(
+            json.dumps(
+                {
+                    "tracked": tracked,
+                    "latest": latest,
+                    "tracked_release_tag": tracked,
+                    "latest_upstream_release_tag": latest if has_valid_latest else "",
+                    "upstream_repo": repo,
+                    "update_available": update_available,
+                }
+            )
+        )
     else:
         print(f"Tracked: {tracked}")
         print(f"Latest:  {latest}")
+        print(f"Update available: {update_available}")
     return 0
 
+
 def main(args: argparse.Namespace) -> int:
-    if args.subcommand == "lint": return run_lint(args)
-    if args.subcommand == "patch-gate": return run_patch_gate(args)
-    if args.subcommand == "release-status": return run_release_status(args)
+    if args.subcommand == "lint":
+        return run_lint(args)
+    if args.subcommand == "cli-docs-drift":
+        return run_cli_docs_drift(args)
+    if args.subcommand == "patch-gate":
+        return run_patch_gate(args)
+    if args.subcommand == "release-status":
+        return run_release_status(args)
     return 1
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Merlin CI Tools")

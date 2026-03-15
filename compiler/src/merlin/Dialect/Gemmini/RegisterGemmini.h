@@ -8,7 +8,8 @@
 namespace merlin {
 namespace gemmini {
 
-// Registers the Gemmini dialect and optionally the LLVM IR translation interfaces.
+// Registers the Gemmini dialect and optionally the LLVM IR translation
+// interfaces.
 void registerGemminiDialect(mlir::DialectRegistry &registry);
 
 } // namespace gemmini

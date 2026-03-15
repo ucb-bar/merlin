@@ -45,7 +45,7 @@ General options:
   --amdgpu-verify-hsa-metadata                                             - Verify AMDGPU HSA Metadata
   --amdgpu-vgpr-index-mode                                                 - Use GPR indexing mode instead of movrel for vector indexing
   --arc-contract-use-objc-claim-rv                                         - Enable generation of calls to objc_claimAutoreleasedReturnValue
-  --arm-add-build-attributes                                               - 
+  --arm-add-build-attributes                                               -
   --arm-implicit-it=<value>                                                - Allow conditional instructions outside of an IT block
     =always                                                                -   Accept in both ISAs, emit implicit ITs in Thumb
     =never                                                                 -   Warn in ARM, reject in Thumb
@@ -55,8 +55,8 @@ General options:
   --atomic-first-counter                                                   - Use atomic fetch add for first counter in a function (usually the entry counter)
   --bounds-checking-single-trap                                            - Use one trap block per function
   --cfg-hide-cold-paths=<number>                                           - Hide blocks with relative frequency below the given value
-  --cfg-hide-deoptimize-paths                                              - 
-  --cfg-hide-unreachable-paths                                             - 
+  --cfg-hide-deoptimize-paths                                              -
+  --cfg-hide-unreachable-paths                                             -
   --check-functions-filter=<regex>                                         - Only emit checks for arguments of functions whose names match the given regular expression
   --compile-from=<value>                                                   - Compilation phase to resume from, starting with the following phase.
     =start                                                                 -   Entry point to the compilation pipeline.
@@ -97,7 +97,7 @@ General options:
     =all                                                                   -   Print all cost kinds
   --ctx-profile-force-is-specialized                                       - Treat the given module as-if it were containing the post-thinlink module containing the root
   --debug-info-correlate                                                   - Use debug info to correlate profiles. (Deprecated, use -profile-correlate=debug-info)
-  --debugify-atoms                                                         - 
+  --debugify-atoms                                                         -
   --debugify-func-limit=<ulong>                                            - Set max number of processed functions per pass.
   --debugify-level=<value>                                                 - Kind of debug info to add
     =locations                                                             -   Locations only
@@ -118,15 +118,15 @@ General options:
   --enable-emscripten-cxx-exceptions                                       - WebAssembly Emscripten-style exception handling
   --enable-emscripten-sjlj                                                 - WebAssembly Emscripten-style setjmp/longjmp handling
   --enable-gvn-hoist                                                       - Enable the GVN hoisting pass (default = off)
-  --enable-gvn-memdep                                                      - 
-  --enable-gvn-memoryssa                                                   - 
+  --enable-gvn-memdep                                                      -
+  --enable-gvn-memoryssa                                                   -
   --enable-gvn-sink                                                        - Enable the GVN sinking pass (default = off)
   --enable-jump-table-to-switch                                            - Enable JumpTableToSwitch pass (default = off)
-  --enable-load-in-loop-pre                                                - 
-  --enable-load-pre                                                        - 
-  --enable-loop-simplifycfg-term-folding                                   - 
+  --enable-load-in-loop-pre                                                -
+  --enable-load-pre                                                        -
+  --enable-loop-simplifycfg-term-folding                                   -
   --enable-name-compression                                                - Enable name/filename string compression
-  --enable-split-backedge-in-load-pre                                      - 
+  --enable-split-backedge-in-load-pre                                      -
   --enable-split-loopiv-heuristic                                          - Enable loop iv regalloc heuristic
   --enable-vtable-profile-use                                              - If ThinLTO and WPD is enabled and this option is true, vtable profiles will be used by ICP pass for more efficient indirect call sequence. If false, type profiles won't be used.
   --enable-vtable-value-profiling                                          - If true, the virtual table address will be instrumented to know the types of a C++ pointer. The information is used in indirect call promotion to do selective vtable-based comparison.
@@ -328,7 +328,7 @@ General options:
   --matrix-default-layout=<value>                                          - Sets the default matrix layout
     =column-major                                                          -   Use column-major layout
     =row-major                                                             -   Use row-major layout
-  --matrix-print-after-transpose-opt                                       - 
+  --matrix-print-after-transpose-opt                                       -
   --max-counter-promotions=<int>                                           - Max number of allowed counter promotions
   --max-counter-promotions-per-loop=<uint>                                 - Max number counter promotions per loop to avoid increasing register pressure too much
   --mir-strip-debugify-only                                                - Should mir-strip-debug only strip debug info from debugified modules by default
@@ -379,7 +379,7 @@ General options:
   --pgo-view-block-coverage-graph                                          - Create a dot file of CFGs with block coverage inference information
   --print-pipeline-passes                                                  - Print a '-passes' compatible string describing the pipeline (best-effort only).
   --profcheck-annotate-select                                              - Also inject (if missing) and verify MD_prof for `select` instructions
-  --profcheck-default-function-entry-count=<long>                          - 
+  --profcheck-default-function-entry-count=<long>                          -
   --profcheck-default-select-false-weight=<uint>                           - When annotating `select` instructions, this value will be used for the second ('false') case.
   --profcheck-default-select-true-weight=<uint>                            - When annotating `select` instructions, this value will be used for the first ('true') case.
   --profile-actions-to=<string>                                            - Profile action execution to a file, or stderr if  '-' is passed
@@ -389,10 +389,10 @@ General options:
     =binary                                                                -   Use binary to correlate
   --promote-alloca-vector-loop-user-weight=<uint>                          - The bonus weight of users of allocas within loop when sorting profitable allocas
   --r600-ir-structurize                                                    - Use StructurizeCFG IR pass
-  --riscv-add-build-attributes                                             - 
+  --riscv-add-build-attributes                                             -
   --riscv-use-aa                                                           - Enable the use of AA during codegen.
   --runtime-counter-relocation                                             - Enable relocating counters at runtime.
-  --safepoint-ir-verifier-print-only                                       - 
+  --safepoint-ir-verifier-print-only                                       -
   --sample-profile-check-record-coverage=<N>                               - Emit a warning if less than N% of records in the input profile are matched to the IR.
   --sample-profile-check-sample-coverage=<N>                               - Emit a warning if less than N% of samples in the input profile are matched to the IR.
   --sample-profile-max-propagate-iterations=<uint>                         - Maximum number of iterations to go through when propagating sample block/edge weights through the CFG.

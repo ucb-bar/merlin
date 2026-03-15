@@ -1,0 +1,5 @@
+dma.load rd=2, base=0, size=2048, flag=0
+dma.wait flag=0
+dma.load.mxu0 rd=1, base=2048, size=512, flag=0
+dma.wait flag=0
+matmul.mxu0 rd=0, rs1=2, rs2=1

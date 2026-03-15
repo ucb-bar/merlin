@@ -3,7 +3,7 @@ builtin.module {
 
   // =========================================================
   // SECTION 0: Topology Globals
-  // We must define the device globals so we can reference them 
+  // We must define the device globals so we can reference them
   // in the affinity attributes (#hal.device.promise<@name>).
   // =========================================================
   util.global private @device_a : !hal.device
@@ -29,10 +29,10 @@ builtin.module {
       // Signature: Input Binding -> Output Binding
       // Note: In stream executable bodies, we work with !stream.binding
       func.func @layer_heavy_1(%input: !stream.binding, %output: !stream.binding) {
-        return 
+        return
       }
       func.func @layer_light_2(%input: !stream.binding, %output: !stream.binding) {
-        return 
+        return
       }
     }
   }
@@ -46,7 +46,7 @@ builtin.module {
 
     builtin.module {
       func.func @layer_medium_1(%input: !stream.binding, %output: !stream.binding) {
-        return 
+        return
       }
     }
   }
@@ -74,7 +74,7 @@ builtin.module {
     // TIME STEP 1: Exclusive Heavy Compute
     // Device: AB (Cores 0+1)
     // +++++++++++++++++++++++++++++++++++++++++++++
-    
+
     // We explicitly allocate the result memory for this layer.
     // 'transient' means it lives only for this graph execution.
     %res_a1_alloc, %t_alloc_a1 = stream.resource.alloca uninitialized
@@ -85,13 +85,13 @@ builtin.module {
     // Execute the heavy kernel
     %res_a1, %t1 = stream.async.execute
         await(%t_alloc_a1)             // Wait for allocation
-        with(%input_a as %in: !stream.resource<external>{%sz_input}, 
+        with(%input_a as %in: !stream.resource<external>{%sz_input},
              %res_a1_alloc as %out: !stream.resource<transient>{%sz_heavy_out})
         on(#hal.device.promise<@device_ab>) // <--- PINNED TO CORE 0+1
     {
         // Dispatch writes into %out
-        %result = stream.async.dispatch @model_a_exe::@layer_heavy_1(%in, %out) : 
-                  (!stream.resource<external>{%sz_input}, !stream.resource<transient>{%sz_heavy_out}) 
+        %result = stream.async.dispatch @model_a_exe::@layer_heavy_1(%in, %out) :
+                  (!stream.resource<external>{%sz_input}, !stream.resource<transient>{%sz_heavy_out})
                   -> !stream.resource<transient>{%sz_heavy_out}
         stream.yield %result : !stream.resource<transient>{%sz_heavy_out}
     } => !stream.timepoint
@@ -101,14 +101,14 @@ builtin.module {
     // +++++++++++++++++++++++++++++++++++++++++++++
 
     // --- Path A: Model A Layer 2 on Device A (Core 0) ---
-    
+
     // Allocation for A2 result
     %res_a2_alloc, %t_alloc_a2 = stream.resource.alloca uninitialized
         on(#hal.device.promise<@device_a>)
         await(%t0) // Allocation can happen early, but execution waits for T1
         => !stream.resource<transient>{%sz_final} => !stream.timepoint
 
-    // Join timepoints for A2 execution: 
+    // Join timepoints for A2 execution:
     // 1. Heavy layer must be done (%t1)
     // 2. Output buffer must be ready (%t_alloc_a2)
     %t_ready_a2 = stream.timepoint.join max(%t1, %t_alloc_a2) => !stream.timepoint
@@ -119,18 +119,18 @@ builtin.module {
              %res_a2_alloc as %out: !stream.resource<transient>{%sz_final})
         on(#hal.device.promise<@device_a>)  // <--- PINNED TO CORE 0
     {
-        %result = stream.async.dispatch @model_a_exe::@layer_light_2(%in, %out) : 
-                  (!stream.resource<transient>{%sz_heavy_out}, !stream.resource<transient>{%sz_final}) 
+        %result = stream.async.dispatch @model_a_exe::@layer_light_2(%in, %out) :
+                  (!stream.resource<transient>{%sz_heavy_out}, !stream.resource<transient>{%sz_final})
                   -> !stream.resource<transient>{%sz_final}
         stream.yield %result : !stream.resource<transient>{%sz_final}
     } => !stream.timepoint
 
     // --- Path B: Model B Layer 1 on Device B (Core 1) ---
-    
+
     // Allocation for B1 result
     %res_b1_alloc, %t_alloc_b1 = stream.resource.alloca uninitialized
         on(#hal.device.promise<@device_b>)
-        await(%t0) 
+        await(%t0)
         => !stream.resource<transient>{%sz_final} => !stream.timepoint
 
     // CRITICAL SCHEDULING LOGIC:
@@ -144,8 +144,8 @@ builtin.module {
              %res_b1_alloc as %out: !stream.resource<transient>{%sz_final})
         on(#hal.device.promise<@device_b>)  // <--- PINNED TO CORE 1
     {
-        %result = stream.async.dispatch @model_b_exe::@layer_medium_1(%in, %out) : 
-                  (!stream.resource<external>{%sz_input}, !stream.resource<transient>{%sz_final}) 
+        %result = stream.async.dispatch @model_b_exe::@layer_medium_1(%in, %out) :
+                  (!stream.resource<external>{%sz_input}, !stream.resource<transient>{%sz_final})
                   -> !stream.resource<transient>{%sz_final}
         stream.yield %result : !stream.resource<transient>{%sz_final}
     } => !stream.timepoint
@@ -153,10 +153,10 @@ builtin.module {
     // +++++++++++++++++++++++++++++++++++++++++++++
     // TIME STEP 3: The Join
     // +++++++++++++++++++++++++++++++++++++++++++++
-    
+
     // Wait for both concurrent branches to finish
     %t_final = stream.timepoint.join max(%t2_a, %t2_b) => !stream.timepoint
-    
+
     // (Optional) Here you would export/return the results, but for now we return the sync token.
     return %t_final : !stream.timepoint
   }

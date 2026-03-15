@@ -1,0 +1,32 @@
+// Copyright 2026 UCB-BAR
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+#ifndef IREE_HAL_DRIVERS_RADIANCE_EXECUTABLE_H_
+#define IREE_HAL_DRIVERS_RADIANCE_EXECUTABLE_H_
+
+#include <stdint.h>
+
+#include "iree/base/api.h"
+
+typedef struct iree_hal_radiance_executable_entry_t {
+	iree_string_view_t name;
+	uint32_t start_pc;
+	uint32_t kernel_pc;
+	uint8_t regs_per_thread;
+	uint32_t shmem_per_block;
+} iree_hal_radiance_executable_entry_t;
+
+typedef struct iree_hal_radiance_executable_t {
+	iree_const_byte_span_t image_data;
+	uint64_t uploaded_device_address;
+	iree_hal_radiance_executable_entry_t entry;
+} iree_hal_radiance_executable_t;
+
+void iree_hal_radiance_executable_initialize(iree_const_byte_span_t image_data,
+	uint64_t uploaded_device_address,
+	iree_hal_radiance_executable_t *out_executable);
+
+#endif // IREE_HAL_DRIVERS_RADIANCE_EXECUTABLE_H_

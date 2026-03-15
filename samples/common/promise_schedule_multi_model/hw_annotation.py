@@ -1,7 +1,5 @@
 import json
 import re
-import os
-
 
 PRIMARY_DEVICE = "@device_a"
 SECONDARY_DEVICE = "@device_b"
@@ -38,17 +36,17 @@ def _attach_affinity(prefix, affinity_attr):
         attrs = [a for a in attrs if not a.startswith("stream.affinity")]
         attrs.append(affinity_attr)
         new_block = "{ " + ", ".join(attrs) + " }"
-        return prefix[: match.start()] + new_block + prefix[match.end():]
+        return prefix[: match.start()] + new_block + prefix[match.end() :]
     return prefix.rstrip() + f" {{ {affinity_attr} }}"
 
 
 def patch_split_personality(json_path, mlir_path, output_path):
-    with open(json_path, "r") as f:
+    with open(json_path) as f:
         data = json.load(f)
 
     schedule = _parse_schedule(data.get("dispatches", {}))
 
-    with open(mlir_path, "r") as f:
+    with open(mlir_path) as f:
         lines = f.readlines()
 
     target_def_line = None
@@ -79,7 +77,6 @@ def patch_split_personality(json_path, mlir_path, output_path):
 
     with open(output_path, "w") as out:
         targets_written = False
-        globals_written = False
 
         for line in lines:
             if not targets_written and "#hal.device.target" in line and "=" in line:
@@ -96,7 +93,6 @@ def patch_split_personality(json_path, mlir_path, output_path):
                 out.write(line)
                 out.write(f"  util.global private {PRIMARY_DEVICE} = {PRIMARY_TARGET} : !hal.device\n")
                 out.write(f"  util.global private {SECONDARY_DEVICE} = {SECONDARY_TARGET} : !hal.device\n")
-                globals_written = True
                 continue
 
             if "util.global" in line and ("!hal.device" in line or "#device_target" in line):
@@ -107,7 +103,11 @@ def patch_split_personality(json_path, mlir_path, output_path):
             line = line.replace("@device_ab", SECONDARY_DEVICE)
 
             if "hal.devices.get" in line:
-                line = re.sub(r"%\w+\s*=\s*hal\.devices\.get[^\n]*", f"%device_a = util.global.load {PRIMARY_DEVICE} : !hal.device", line)
+                line = re.sub(
+                    r"%\w+\s*=\s*hal\.devices\.get[^\n]*",
+                    f"%device_a = util.global.load {PRIMARY_DEVICE} : !hal.device",
+                    line,
+                )
 
             if "hal.fence.create" in line and "%device_" in line:
                 line = re.sub(r"%device_\w+", "%device_a", line)
