@@ -8,6 +8,7 @@ import pathlib
 import shutil
 import subprocess
 import sys
+import tarfile
 
 import utils
 
@@ -86,6 +87,23 @@ PROFILE_PRESETS: dict[str, dict[str, object]] = {
         "enable_libbacktrace": True,
         "compiler_scope": "npu",
     },
+    "package-host": {
+        "target": "host",
+        "config": "perf",
+        "with_plugin": True,
+        "plugin_compiler": True,
+        "plugin_runtime": True,
+        "plugin_runtime_radiance": False,
+        "plugin_runtime_samples": False,
+        "plugin_runtime_benchmarks": False,
+        "plugin_runtime_radiance_tests": False,
+        "build_compiler": True,
+        "build_python_bindings": False,
+        "build_samples": False,
+        "build_tests": False,
+        "enable_libbacktrace": False,
+        "compiler_scope": "all",
+    },
     "spacemit": {
         "target": "spacemit",
         "config": "release",
@@ -101,9 +119,39 @@ PROFILE_PRESETS: dict[str, dict[str, object]] = {
         "build_tests": False,
         "enable_libbacktrace": False,
     },
+    "package-spacemit": {
+        "target": "spacemit",
+        "config": "perf",
+        "with_plugin": False,
+        "plugin_compiler": False,
+        "plugin_runtime": True,
+        "plugin_runtime_radiance": False,
+        "plugin_runtime_samples": True,
+        "plugin_runtime_benchmarks": False,
+        "build_compiler": False,
+        "build_python_bindings": False,
+        "build_samples": True,
+        "build_tests": False,
+        "enable_libbacktrace": False,
+    },
     "firesim": {
         "target": "firesim",
         "config": "release",
+        "with_plugin": False,
+        "plugin_compiler": False,
+        "plugin_runtime": True,
+        "plugin_runtime_radiance": False,
+        "plugin_runtime_samples": True,
+        "plugin_runtime_benchmarks": False,
+        "build_compiler": False,
+        "build_python_bindings": False,
+        "build_samples": True,
+        "build_tests": False,
+        "enable_libbacktrace": False,
+    },
+    "package-firesim": {
+        "target": "firesim",
+        "config": "perf",
         "with_plugin": False,
         "plugin_compiler": False,
         "plugin_runtime": True,
@@ -328,6 +376,67 @@ def is_cmake_usable(cmake_path: str) -> bool:
     return result.returncode == 0
 
 
+def package_dist(
+    build_dir: pathlib.Path,
+    install_dir: pathlib.Path,
+    dist_dir: pathlib.Path,
+    dist_name: str,
+    include_runtime_samples: bool,
+) -> pathlib.Path:
+    if not install_dir.exists():
+        raise FileNotFoundError(f"Install tree not found: {install_dir}")
+
+    dist_dir.mkdir(parents=True, exist_ok=True)
+
+    stage_dir = dist_dir / dist_name
+    if stage_dir.exists():
+        shutil.rmtree(stage_dir)
+
+    if include_runtime_samples:
+        # Runtime target package layout:
+        #   <artifact>/install/...
+        #   <artifact>/runtime/plugins/merlin-samples/...
+        shutil.copytree(install_dir, stage_dir / "install")
+
+        runtime_samples_dir = build_dir / "runtime" / "plugins" / "merlin-samples"
+        if not runtime_samples_dir.exists():
+            raise FileNotFoundError(f"Runtime sample tree not found: {runtime_samples_dir}")
+
+        shutil.copytree(
+            runtime_samples_dir,
+            stage_dir / "runtime" / "plugins" / "merlin-samples",
+        )
+    else:
+        # Host package layout:
+        #   <artifact>/bin
+        #   <artifact>/lib
+        #   ...
+        shutil.copytree(install_dir, stage_dir)
+
+    archive_path = dist_dir / f"{dist_name}.tar.gz"
+    if archive_path.exists():
+        archive_path.unlink()
+
+    with tarfile.open(archive_path, "w:gz") as tar:
+        tar.add(stage_dir, arcname=dist_name)
+
+    shutil.rmtree(stage_dir)
+    return archive_path
+
+
+def maybe_install(
+    cmake_bin: str,
+    build_dir: pathlib.Path,
+    strip_install: bool,
+    dry_run: bool,
+    env: dict[str, str],
+) -> int:
+    cmd = [cmake_bin, "--install", str(build_dir)]
+    if strip_install:
+        cmd.append("--strip")
+    return utils.run(cmd, dry_run=dry_run, env=env)
+
+
 def main(args: argparse.Namespace) -> int:
     apply_profile(args)
 
@@ -335,6 +444,9 @@ def main(args: argparse.Namespace) -> int:
         args.target = "host"
     if args.config is None:
         args.config = "debug"
+
+    package_profile = args.profile in {"package-host", "package-spacemit", "package-firesim"}
+    package_runtime_samples = args.profile in {"package-spacemit", "package-firesim"}
 
     # 1. Setup Paths
     iree_src = utils.resolve_repo_path("third_party/iree_bar")
@@ -431,6 +543,9 @@ def main(args: argparse.Namespace) -> int:
     build_dir = utils.REPO_ROOT / "build" / build_name
     install_dir = build_dir / "install"
 
+    dist_dir = utils.REPO_ROOT / "dist"
+    dist_name = build_name
+
     print(f"🔧 Configuration: {args.target} | {args.config} | Plugin: {with_any_plugin}")
     if args.profile:
         print(f"🧭 Profile:      {args.profile}")
@@ -453,6 +568,9 @@ def main(args: argparse.Namespace) -> int:
     print(f"🛠️  CMake:         {cmake_bin}")
     print(f"📂 Build Dir:     {build_dir}")
     print(f"📂 Install Dir:   {install_dir}")
+    if package_profile:
+        print(f"📦 Dist Dir:      {dist_dir}")
+        print(f"📦 Dist Name:     {dist_name}")
 
     if args.clean and build_dir.exists():
         print("Cleaning build directory...")
@@ -557,32 +675,41 @@ def main(args: argparse.Namespace) -> int:
 
     # 4. Target Specific Logic
 
-    # For cross-compilation targets, we must provide the path to the native host tools.
-    # We ALWAYS use the 'release' build of the host tools for maximum compilation speed.
+    # For cross-compilation targets, we must provide the path to native host tools.
+    # Prefer a host build that matches the current config, then fall back to release.
     if args.target != "host":
-        # UPDATED: Reconstruct the name to match the flat build/target-variant-config structure
-        # We always check for 'release' config for host tools.
         host_tools_variant = "merlin" if plugin_compiler_enabled else "vanilla"
-        primary_host_name = f"host-{host_tools_variant}-release"
-        fallback_host_name = "host-vanilla-release"
-
-        host_variant_bin_dir = utils.REPO_ROOT / "build" / primary_host_name / "install" / "bin"
-        host_vanilla_bin_dir = utils.REPO_ROOT / "build" / fallback_host_name / "install" / "bin"
+        preferred_host_names = [
+            f"host-{host_tools_variant}-{args.config}",
+            f"host-{host_tools_variant}-release",
+        ]
+        fallback_host_names = [
+            f"host-vanilla-{args.config}",
+            "host-vanilla-release",
+        ]
 
         host_bin_dir = None
+        selected_candidate = None
 
-        if host_variant_bin_dir.exists():
-            host_bin_dir = host_variant_bin_dir
-        elif host_vanilla_bin_dir.exists():
-            print(f"ℹ️  Note: Using vanilla host tools from {host_vanilla_bin_dir}")
-            host_bin_dir = host_vanilla_bin_dir
+        for candidate_name in preferred_host_names + fallback_host_names:
+            candidate_dir = utils.REPO_ROOT / "build" / candidate_name / "install" / "bin"
+            if candidate_dir.exists():
+                host_bin_dir = candidate_dir
+                selected_candidate = candidate_name
+                break
 
         if host_bin_dir:
+            expected_names = set(preferred_host_names)
+            if selected_candidate not in expected_names:
+                print(f"ℹ️  Note: Using fallback host tools from {host_bin_dir}")
             cmake_args.append(f"-DIREE_HOST_BIN_DIR={host_bin_dir}")
         else:
-            # This error message now correctly reflects the paths actually being checked
-            print(f"❌ Error: No host tools found at {host_variant_bin_dir} or {host_vanilla_bin_dir}")
-            print("   Please build host tools first: python3 tools/build.py --target host --config release")
+            print("❌ Error: No host tools found for cross compilation.")
+            print("   Checked:")
+            for name in preferred_host_names + fallback_host_names:
+                print(f"     build/{name}/install/bin")
+            print("   Please build host tools first, for example:")
+            print(f"   python3 tools/build.py --target host --config {args.config}")
             return 1
 
     if args.target == "host":
@@ -750,7 +877,7 @@ def main(args: argparse.Namespace) -> int:
 
     # 8. Build Extra Tools (Host Only)
     # This replicates the logic from `build_debug_asan.sh`
-    if args.target == "host" and not args.cmake_target:
+    if args.target == "host" and not args.cmake_target and not package_profile:
         print(">> Building extra LLVM tools (llvm-mca, llvm-objdump)...")
         extra_tools_cmd = [cmake_bin, "--build", str(build_dir), "--target", "llvm-mca", "llvm-objdump"]
         extra_tools_cmd.extend(args.cmake_build_arg)
@@ -761,6 +888,34 @@ def main(args: argparse.Namespace) -> int:
             extra_tools_cmd.extend(args.native_build_arg)
         if utils.run(extra_tools_cmd, dry_run=args.dry_run, env=env) != 0:
             return 1
+
+    if package_profile:
+        print(">> Stripping installed binaries...")
+        if (
+            maybe_install(
+                cmake_bin=cmake_bin,
+                build_dir=build_dir,
+                strip_install=True,
+                dry_run=args.dry_run,
+                env=env,
+            )
+            != 0
+        ):
+            return 1
+
+        try:
+            artifact_path = package_dist(
+                build_dir=build_dir,
+                install_dir=install_dir,
+                dist_dir=dist_dir,
+                dist_name=dist_name,
+                include_runtime_samples=package_runtime_samples,
+            )
+        except FileNotFoundError as e:
+            utils.eprint(f"❌ Error: {e}")
+            return 1
+
+        print(f"✅ Packaged artifact: {artifact_path}")
 
     return 0
 

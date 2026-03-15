@@ -62,6 +62,7 @@ tutorials/*/artifacts/*
 
 # Toochains
 riscv-tools-*/
+dist/
 
 # Ignore compilation phases and report
 compilation_phases_*
