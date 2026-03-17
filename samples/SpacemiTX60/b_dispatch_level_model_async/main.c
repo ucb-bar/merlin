@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "iree_bench/cli_utils.h"
 #include "runtime_scheduler.h"
 
 static void print_usage(const char *argv0) {
@@ -43,23 +44,6 @@ static void print_usage(const char *argv0) {
 		"\\\n"
 		"     --out_json=run.json --out_dot=run.dot --trace_csv=trace.csv\n",
 		argv0, argv0);
-}
-
-static int parse_int_or_default(const char *text, int dflt) {
-	if (!text)
-		return dflt;
-	char *end = NULL;
-	long v = strtol(text, &end, 10);
-	return (end == text) ? dflt : (int)v;
-}
-
-static const char *get_flag_value(const char *arg, const char *key) {
-	size_t klen = strlen(key);
-	if (strncmp(arg, key, klen) != 0)
-		return NULL;
-	if (arg[klen] != '=')
-		return NULL;
-	return arg + klen + 1;
 }
 
 int main(int argc, char **argv) {
