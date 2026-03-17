@@ -393,6 +393,10 @@ def make_common_cmake_flags(
     if cxx_warn_maybe_uninitialized and not is_darwin_host():
         cxx_flags.append("-Wno-error=maybe-uninitialized")
 
+    # Apple clang is hitting upstream IREE warnings in some files.
+    if is_darwin_host():
+        cxx_flags.append("-Wno-error=unused-but-set-variable")
+
     cxx_flags.append("-fno-omit-frame-pointer")
 
     # Linux/ELF-oriented flags: do not use them on macOS.

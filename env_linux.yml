@@ -32,3 +32,4 @@ dependencies:
   - zstd
   - pre-commit
   - nodejs
+  - tree
