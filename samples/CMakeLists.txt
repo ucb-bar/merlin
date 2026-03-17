@@ -1,5 +1,7 @@
 # merlin/samples/CMakeLists.txt
 
+add_subdirectory(common/iree_bench)
+
 if(MERLIN_BUILD_SPACEMITX60)
   message(STATUS "Including Merlin SpacemiTX60 samples")
   add_subdirectory(SpacemiTX60)
