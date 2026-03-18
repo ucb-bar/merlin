@@ -68,6 +68,18 @@ def setup_parser(parser: argparse.ArgumentParser):
         ),
     )
 
+    # Tracy / Profiling
+    parser.add_argument(
+        "--tracy",
+        action="store_true",
+        help=(
+            "Enable Tracy profiling flags: embed debug info, use system linking, "
+            "and enable debug symbols in generated code. "
+            "Equivalent to --iree-hal-executable-debug-level=3 "
+            "--iree-llvmcpu-link-embedded=false --iree-llvmcpu-debug-symbols=true"
+        ),
+    )
+
     # Optional Artifacts
     parser.add_argument("--dump-artifacts", action="store_true", help="Dump executable sources, binaries, and configs")
     parser.add_argument("--dump-phases", action="store_true", help="Dump MLIR compilation phases")
@@ -260,6 +272,17 @@ def main(args: argparse.Namespace) -> int:
     if model_overrides:
         print(f"  🎯 Applying model-specific overrides for '{model_name}'...")
         static_flags.extend(model_overrides)
+
+    # Tracy profiling flags.
+    if args.tracy:
+        print("  🔬 Applying Tracy profiling flags (debug-level=3, system linking, debug symbols)...")
+        static_flags.extend(
+            [
+                "--iree-hal-executable-debug-level=3",
+                "--iree-llvmcpu-link-embedded=false",
+                "--iree-llvmcpu-debug-symbols=true",
+            ]
+        )
 
     dynamic_flags = []
     if args.dump_artifacts or args.build_benchmarks:
