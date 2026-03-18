@@ -1,2 +1,0 @@
-# Ordered LLVM patch stack
-build_tools/patches/llvm/0001-merlin-llvm-riscv-xsmtvdot.patch

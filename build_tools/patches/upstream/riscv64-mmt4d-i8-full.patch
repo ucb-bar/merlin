@@ -1,0 +1,865 @@
+diff --git a/compiler/src/iree/compiler/Codegen/ExternalInterfaces/CPUEncodingExternalModels.cpp b/compiler/src/iree/compiler/Codegen/ExternalInterfaces/CPUEncodingExternalModels.cpp
+index c585616f99..390c0b8b6f 100644
+--- a/compiler/src/iree/compiler/Codegen/ExternalInterfaces/CPUEncodingExternalModels.cpp
++++ b/compiler/src/iree/compiler/Codegen/ExternalInterfaces/CPUEncodingExternalModels.cpp
+@@ -422,7 +422,6 @@ size_t getRISCVVVlenFromCPUFeatures(DictionaryAttr config) {
+ // are handled by transposition in chooseMatmulTile.
+ static SmallVector<TileMxNxK>
+ enumerateMatmulTileRiscv64(TypeRange elementTypes, DictionaryAttr config) {
+-
+   // Data-Tiling is only implemented for the V extension
+   if (!hasFeature(config, "+v")) {
+     return {};
+@@ -432,11 +431,12 @@ enumerateMatmulTileRiscv64(TypeRange elementTypes, DictionaryAttr config) {
+   Type lhs = elementTypes[0];
+   Type rhs = elementTypes[1];
+   Type out = elementTypes[2];
++
++  // VLEN-aware Tile size selection.
++  // One concern that needs to be addressed here is that
++  // for larger VLENs tile sizes would be very large
++  // leading to a very high padding overhead.
+   if (lhs.isF32() && rhs.isF32() && out.isF32()) {
+-    // VLEN-aware Tile size selection
+-    // One concern that needs to be addressed here is that
+-    // for larger VLENs tile sizes would be very large
+-    // leading to a very high padding overhead
+     int N0 = vlen / 8;
+     return {
+         TileMxNxK{7, N0, 1}, // Aim to use vfmacc, 100% register utilization.
+@@ -462,6 +462,84 @@ enumerateMatmulTileRiscv64(TypeRange elementTypes, DictionaryAttr config) {
+       };
+     }
+   }
++
++  auto isFp8Type = [](Type type) -> bool {
++    auto floatType = dyn_cast<FloatType>(type);
++    return floatType && floatType.getWidth() == 8;
++  };
++
++  // FP8 paths.
++  if (isFp8Type(lhs) && isFp8Type(rhs) &&
++      isa<FloatType>(out) && out.getIntOrFloatBitWidth() >= 16) {
++    if (hasFeature(config, "+xopu")) {
++      int N0 = std::min<int>(16, vlen / 8);
++      // Keep K modest for now: fp8 OPU lowering is not yet mapped to a native
++      // hardware intrinsic path, and very large K tiles would create oversized
++      // vector contracts that fail legality checks.
++      constexpr int K0 = 8;
++      return {
++          TileMxNxK{N0, N0, K0},
++          TileMxNxK{N0 / 2, N0, K0},
++          TileMxNxK{N0 / 4, N0, K0},
++          TileMxNxK{1, N0, K0},
++      };
++    }
++    if (hasFeature(config, "+xsmtvdot")) {
++      return {
++          TileMxNxK{4, 4, 8},
++          TileMxNxK{2, 4, 8},
++          TileMxNxK{1, 4, 8},
++      };
++    }
++  }
++
++  // Integer 8 path.
++  if (lhs.isSignlessInteger(8) && rhs.isSignlessInteger(8) &&
++      out.isSignlessInteger(32)) {
++
++    // Saturn OPU path.
++    // Note: This only makes sense if your lowering actually maps to OPU
++    // (either via custom kernels or a future ukernel). Otherwise it just
++    // influences tile choice.
++    if (hasFeature(config, "+xopu")) {
++      // OPU HW tile is fixed to 16x16 with a high K-depth.
++      int N0 = std::min<int>(16, vlen / 8);  // e8, m1 lanes
++
++      // Enumerate narrow-M truncations; narrow-N handled via transpose logic.
++      return {
++          TileMxNxK{N0, N0, 128},
++          TileMxNxK{N0 / 2, N0, 128},
++          TileMxNxK{N0 / 4, N0, 128},
++          TileMxNxK{1, N0, 128},
++      };
++    }
++    if (hasFeature(config, "+xsmtvdot")) {
++      // SpacemiT vmadot: fixed 4x4x8 blocks.
++      return {
++          TileMxNxK{4, 4, 8},
++          TileMxNxK{2, 4, 8},
++          TileMxNxK{1, 4, 8},
++      };
++    }
++
++    // Standard RVV path:
++    // N0 calculation:
++    // vlen (bits) / 32 (bits per element) = elements per register (LMUL1)
++    // We target LMUL2 here (N0=16 on VLEN=256) to reduce accumulator pressure
++    // and allow deeper M unrolling.
++    int elementsPerReg = vlen / 32;
++    int N0 = elementsPerReg * 2; // Target LMUL=2 (e.g., 16 elements)
++
++    return {
++        // Prefer wider M when possible; chooseMatmulTile will pick the best fit.
++        TileMxNxK{8, N0, 1},
++        TileMxNxK{7, N0, 1},
++        TileMxNxK{4, N0, 1},
++        TileMxNxK{2, N0, 1},
++        TileMxNxK{1, N0, 1},
++    };
++  }
++
+   // Fallback - no architecture-optimized tile size for this case.
+   return {};
+ }
+diff --git a/runtime/src/iree/builtins/ukernel/arch/riscv_64/BUILD.bazel b/runtime/src/iree/builtins/ukernel/arch/riscv_64/BUILD.bazel
+index 3706e9a309..108ca5b242 100644
+--- a/runtime/src/iree/builtins/ukernel/arch/riscv_64/BUILD.bazel
++++ b/runtime/src/iree/builtins/ukernel/arch/riscv_64/BUILD.bazel
+@@ -51,6 +51,7 @@ iree_bitcode_library(
+     name = "ukernel_bitcode_arch_riscv_64_v",
+     srcs = [
+         "mmt4d_riscv_64_v.c",
++        "mmt4d_riscv_64_v_i8.c",
+     ],
+     arch = "riscv_64",
+     copts = ["-march=rv64gcv"],
+diff --git a/runtime/src/iree/builtins/ukernel/arch/riscv_64/CMakeLists.txt b/runtime/src/iree/builtins/ukernel/arch/riscv_64/CMakeLists.txt
+index 9469b86b27..19c1b28779 100644
+--- a/runtime/src/iree/builtins/ukernel/arch/riscv_64/CMakeLists.txt
++++ b/runtime/src/iree/builtins/ukernel/arch/riscv_64/CMakeLists.txt
+@@ -47,6 +47,7 @@ iree_bitcode_library(
+     "unpack_riscv_64_internal.h"
+   SRCS
+     "mmt4d_riscv_64_v.c"
++    "mmt4d_riscv_64_v_i8.c"
+   COPTS
+     "-march=rv64gcv"
+ )
+@@ -177,6 +178,7 @@ iree_cc_library(
+     riscv_64_v
+   SRCS
+     "mmt4d_riscv_64_v.c"
++    "mmt4d_riscv_64_v_i8.c"
+   COPTS
+     "${IREE_UK_COPTS_RISCV_64_V}"
+   DEPS
+diff --git a/runtime/src/iree/builtins/ukernel/arch/riscv_64/common_riscv_64.h b/runtime/src/iree/builtins/ukernel/arch/riscv_64/common_riscv_64.h
+index 62942fd037..eb6413bde1 100644
+--- a/runtime/src/iree/builtins/ukernel/arch/riscv_64/common_riscv_64.h
++++ b/runtime/src/iree/builtins/ukernel/arch/riscv_64/common_riscv_64.h
+@@ -38,4 +38,14 @@ static inline bool iree_uk_cpu_riscv_64_zvfh(const iree_uk_uint64_t* cpu_data) {
+   return iree_uk_all_bits_set(cpu_data[0], IREE_CPU_DATA0_RISCV_64_ZVFH);
+ }
+
++static inline bool iree_uk_cpu_riscv_64_xsmtvdot(
++    const iree_uk_uint64_t* cpu_data) {
++  return iree_uk_all_bits_set(cpu_data[0], IREE_CPU_DATA0_RISCV_64_XSMTVDOT);
++}
++
++static inline bool iree_uk_cpu_riscv_64_xopu(
++    const iree_uk_uint64_t* cpu_data) {
++  return iree_uk_all_bits_set(cpu_data[0], IREE_CPU_DATA0_RISCV_64_XOPU);
++}
++
+ #endif  // IREE_BUILTINS_UKERNEL_ARCH_RISCV_64_COMMON_RISCV_64_H_
+diff --git a/runtime/src/iree/builtins/ukernel/arch/riscv_64/mmt4d_riscv_64_entry_point.c b/runtime/src/iree/builtins/ukernel/arch/riscv_64/mmt4d_riscv_64_entry_point.c
+index 1c26680429..554c1ada09 100644
+--- a/runtime/src/iree/builtins/ukernel/arch/riscv_64/mmt4d_riscv_64_entry_point.c
++++ b/runtime/src/iree/builtins/ukernel/arch/riscv_64/mmt4d_riscv_64_entry_point.c
+@@ -26,8 +26,14 @@ iree_uk_mmt4d_tile_func_t iree_uk_mmt4d_select_tile_func_arch(
+ #ifdef IREE_UK_BUILD_RISCV_64_V
+ #define IREE_UK_MMT4D_TILE_riscv_64_v(lhs, rhs, out, m0, k0) \
+   IREE_UK_MMT4D_TILE_IMPL_riscv_64(lhs, rhs, out, m0, k0, _v)
++#define IREE_UK_MMT4D_TILE_riscv_64_xsmtvdot(lhs, rhs, out, m0, k0) \
++  IREE_UK_MMT4D_TILE_IMPL_riscv_64(lhs, rhs, out, m0, k0, _xsmtvdot)
++#define IREE_UK_MMT4D_TILE_riscv_64_xopu(lhs, rhs, out, m0, k0) \
++  IREE_UK_MMT4D_TILE_IMPL_riscv_64(lhs, rhs, out, m0, k0, _xopu)
+ #else
+ #define IREE_UK_MMT4D_TILE_riscv_64_v(lhs, rhs, out, m0, k0)
++#define IREE_UK_MMT4D_TILE_riscv_64_xsmtvdot(lhs, rhs, out, m0, k0)
++#define IREE_UK_MMT4D_TILE_riscv_64_xopu(lhs, rhs, out, m0, k0)
+ #endif
+
+ #ifdef IREE_UK_BUILD_RISCV_64_ZVFHMIN
+diff --git a/runtime/src/iree/builtins/ukernel/arch/riscv_64/mmt4d_riscv_64_tiles.inl b/runtime/src/iree/builtins/ukernel/arch/riscv_64/mmt4d_riscv_64_tiles.inl
+index 4f4d0413a9..c2515cf60f 100644
+--- a/runtime/src/iree/builtins/ukernel/arch/riscv_64/mmt4d_riscv_64_tiles.inl
++++ b/runtime/src/iree/builtins/ukernel/arch/riscv_64/mmt4d_riscv_64_tiles.inl
+@@ -13,6 +13,29 @@ IREE_UK_MMT4D_TILE(riscv_64, f32, f32, f32, 2, 1, _v)
+ IREE_UK_MMT4D_TILE(riscv_64, f32, f32, f32, 4, 1, _v)
+ IREE_UK_MMT4D_TILE(riscv_64, f32, f32, f32, 7, 1, _v)
+
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 1, 1, _v)
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 2, 1, _v)
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 4, 1, _v)
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 7, 1, _v)
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 8, 1, _v)
++
++// SpacemiT xsmtvdot uses 4x4x8-like blocking.
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 1, 8, _xsmtvdot)
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 2, 8, _xsmtvdot)
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 4, 8, _xsmtvdot)
++
++// Saturn OPU: keep K0=1 fallback and prefer high-K K0=128 kernels.
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 1, 1, _xopu)
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 2, 1, _xopu)
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 4, 1, _xopu)
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 8, 1, _xopu)
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 16, 1, _xopu)
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 1, 128, _xopu)
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 2, 128, _xopu)
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 4, 128, _xopu)
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 8, 128, _xopu)
++IREE_UK_MMT4D_TILE(riscv_64, s8, s8, s32, 16, 128, _xopu)
++
+ IREE_UK_MMT4D_TILE(riscv_64, f16, f16, f32, 1, 1, _zvfhmin)
+ IREE_UK_MMT4D_TILE(riscv_64, f16, f16, f32, 2, 1, _zvfhmin)
+ IREE_UK_MMT4D_TILE(riscv_64, f16, f16, f32, 4, 1, _zvfhmin)
+diff --git a/runtime/src/iree/builtins/ukernel/arch/riscv_64/mmt4d_riscv_64_v_i8.c b/runtime/src/iree/builtins/ukernel/arch/riscv_64/mmt4d_riscv_64_v_i8.c
+new file mode 100644
+index 0000000000..2a190c80ba
+--- /dev/null
++++ b/runtime/src/iree/builtins/ukernel/arch/riscv_64/mmt4d_riscv_64_v_i8.c
+@@ -0,0 +1,600 @@
++// Copyright 2026 The IREE Authors
++//
++// Licensed under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++
++#include <riscv_vector.h>
++
++#include "iree/builtins/ukernel/arch/riscv_64/common_riscv_64.h"
++#include "iree/builtins/ukernel/arch/riscv_64/mmt4d_riscv_64_internal.h"
++
++IREE_UK_ATTRIBUTE_ALWAYS_INLINE static inline void
++iree_uk_mmt4d_tile_s8s8s32_1xXXx1_to_8xXXx1_riscv_64_v(
++    void* IREE_UK_RESTRICT out_tile, const void* IREE_UK_RESTRICT lhs_panel,
++    const void* IREE_UK_RESTRICT rhs_panel,
++    const iree_uk_mmt4d_params_t* params, int M0) {
++  IREE_UK_ASSERT(M0 >= 1 && M0 <= 8);
++  const iree_uk_int8_t* IREE_UK_RESTRICT lhs_ptr = lhs_panel;
++  const iree_uk_int8_t* IREE_UK_RESTRICT rhs_ptr = rhs_panel;
++  iree_uk_int32_t* IREE_UK_RESTRICT out_ptr = out_tile;
++
++  vint32m4_t acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7;
++  int N0 = params->N0;
++  size_t vl = N0;
++
++#define IREE_UK_RISCV_64_VWACC_I8(ACC, LHS, RHS, VL)      \
++  do {                                                     \
++    vint16m2_t prod = __riscv_vwmul_vx_i16m2(RHS, LHS, VL); \
++    ACC = __riscv_vwadd_wv_i32m4(ACC, prod, VL);          \
++  } while (0)
++
++  if (M0 == 1) {
++    if (params->flags & IREE_UK_FLAG_MMT4D_ACCUMULATE) {
++      acc0 = __riscv_vle32_v_i32m4(out_ptr, vl);
++    } else {
++      acc0 = __riscv_vmv_v_x_i32m4(0, vl);
++    }
++    for (int k = 0; k < params->K; ++k) {
++      vint8m1_t rhs = __riscv_vle8_v_i8m1(rhs_ptr, vl);
++      rhs_ptr += N0;
++      iree_uk_int8_t lhs = *lhs_ptr++;
++      IREE_UK_RISCV_64_VWACC_I8(acc0, lhs, rhs, vl);
++    }
++    __riscv_vse32_v_i32m4(out_ptr, acc0, vl);
++  } else if (M0 == 2) {
++    if (params->flags & IREE_UK_FLAG_MMT4D_ACCUMULATE) {
++      acc0 = __riscv_vle32_v_i32m4(out_ptr, vl);
++      acc1 = __riscv_vle32_v_i32m4(out_ptr + N0, vl);
++    } else {
++      acc0 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc1 = __riscv_vmv_v_x_i32m4(0, vl);
++    }
++    for (int k = 0; k < params->K; ++k) {
++      vint8m1_t rhs = __riscv_vle8_v_i8m1(rhs_ptr, vl);
++      rhs_ptr += N0;
++      iree_uk_int8_t lhs0 = *lhs_ptr++;
++      iree_uk_int8_t lhs1 = *lhs_ptr++;
++      IREE_UK_RISCV_64_VWACC_I8(acc0, lhs0, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc1, lhs1, rhs, vl);
++    }
++    __riscv_vse32_v_i32m4(out_ptr, acc0, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0, acc1, vl);
++  } else if (M0 == 4) {
++    if (params->flags & IREE_UK_FLAG_MMT4D_ACCUMULATE) {
++      acc0 = __riscv_vle32_v_i32m4(out_ptr, vl);
++      acc1 = __riscv_vle32_v_i32m4(out_ptr + N0, vl);
++      acc2 = __riscv_vle32_v_i32m4(out_ptr + N0 * 2, vl);
++      acc3 = __riscv_vle32_v_i32m4(out_ptr + N0 * 3, vl);
++    } else {
++      acc0 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc1 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc2 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc3 = __riscv_vmv_v_x_i32m4(0, vl);
++    }
++    for (int k = 0; k < params->K; ++k) {
++      vint8m1_t rhs = __riscv_vle8_v_i8m1(rhs_ptr, vl);
++      rhs_ptr += N0;
++      iree_uk_int8_t lhs0 = *lhs_ptr++;
++      iree_uk_int8_t lhs1 = *lhs_ptr++;
++      iree_uk_int8_t lhs2 = *lhs_ptr++;
++      iree_uk_int8_t lhs3 = *lhs_ptr++;
++      IREE_UK_RISCV_64_VWACC_I8(acc0, lhs0, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc1, lhs1, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc2, lhs2, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc3, lhs3, rhs, vl);
++    }
++    __riscv_vse32_v_i32m4(out_ptr, acc0, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0, acc1, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0 * 2, acc2, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0 * 3, acc3, vl);
++  } else if (M0 == 7) {
++    if (params->flags & IREE_UK_FLAG_MMT4D_ACCUMULATE) {
++      acc0 = __riscv_vle32_v_i32m4(out_ptr, vl);
++      acc1 = __riscv_vle32_v_i32m4(out_ptr + N0, vl);
++      acc2 = __riscv_vle32_v_i32m4(out_ptr + N0 * 2, vl);
++      acc3 = __riscv_vle32_v_i32m4(out_ptr + N0 * 3, vl);
++      acc4 = __riscv_vle32_v_i32m4(out_ptr + N0 * 4, vl);
++      acc5 = __riscv_vle32_v_i32m4(out_ptr + N0 * 5, vl);
++      acc6 = __riscv_vle32_v_i32m4(out_ptr + N0 * 6, vl);
++    } else {
++      acc0 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc1 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc2 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc3 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc4 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc5 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc6 = __riscv_vmv_v_x_i32m4(0, vl);
++    }
++    for (int k = 0; k < params->K; ++k) {
++      vint8m1_t rhs = __riscv_vle8_v_i8m1(rhs_ptr, vl);
++      rhs_ptr += N0;
++      iree_uk_int8_t lhs0 = *lhs_ptr++;
++      iree_uk_int8_t lhs1 = *lhs_ptr++;
++      iree_uk_int8_t lhs2 = *lhs_ptr++;
++      iree_uk_int8_t lhs3 = *lhs_ptr++;
++      iree_uk_int8_t lhs4 = *lhs_ptr++;
++      iree_uk_int8_t lhs5 = *lhs_ptr++;
++      iree_uk_int8_t lhs6 = *lhs_ptr++;
++      IREE_UK_RISCV_64_VWACC_I8(acc0, lhs0, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc1, lhs1, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc2, lhs2, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc3, lhs3, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc4, lhs4, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc5, lhs5, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc6, lhs6, rhs, vl);
++    }
++    __riscv_vse32_v_i32m4(out_ptr, acc0, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0, acc1, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0 * 2, acc2, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0 * 3, acc3, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0 * 4, acc4, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0 * 5, acc5, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0 * 6, acc6, vl);
++  } else if (M0 == 8) {
++    if (params->flags & IREE_UK_FLAG_MMT4D_ACCUMULATE) {
++      acc0 = __riscv_vle32_v_i32m4(out_ptr, vl);
++      acc1 = __riscv_vle32_v_i32m4(out_ptr + N0, vl);
++      acc2 = __riscv_vle32_v_i32m4(out_ptr + N0 * 2, vl);
++      acc3 = __riscv_vle32_v_i32m4(out_ptr + N0 * 3, vl);
++      acc4 = __riscv_vle32_v_i32m4(out_ptr + N0 * 4, vl);
++      acc5 = __riscv_vle32_v_i32m4(out_ptr + N0 * 5, vl);
++      acc6 = __riscv_vle32_v_i32m4(out_ptr + N0 * 6, vl);
++      acc7 = __riscv_vle32_v_i32m4(out_ptr + N0 * 7, vl);
++    } else {
++      acc0 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc1 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc2 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc3 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc4 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc5 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc6 = __riscv_vmv_v_x_i32m4(0, vl);
++      acc7 = __riscv_vmv_v_x_i32m4(0, vl);
++    }
++    for (int k = 0; k < params->K; ++k) {
++      vint8m1_t rhs = __riscv_vle8_v_i8m1(rhs_ptr, vl);
++      rhs_ptr += N0;
++      iree_uk_int8_t lhs0 = *lhs_ptr++;
++      iree_uk_int8_t lhs1 = *lhs_ptr++;
++      iree_uk_int8_t lhs2 = *lhs_ptr++;
++      iree_uk_int8_t lhs3 = *lhs_ptr++;
++      iree_uk_int8_t lhs4 = *lhs_ptr++;
++      iree_uk_int8_t lhs5 = *lhs_ptr++;
++      iree_uk_int8_t lhs6 = *lhs_ptr++;
++      iree_uk_int8_t lhs7 = *lhs_ptr++;
++      IREE_UK_RISCV_64_VWACC_I8(acc0, lhs0, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc1, lhs1, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc2, lhs2, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc3, lhs3, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc4, lhs4, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc5, lhs5, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc6, lhs6, rhs, vl);
++      IREE_UK_RISCV_64_VWACC_I8(acc7, lhs7, rhs, vl);
++    }
++    __riscv_vse32_v_i32m4(out_ptr, acc0, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0, acc1, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0 * 2, acc2, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0 * 3, acc3, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0 * 4, acc4, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0 * 5, acc5, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0 * 6, acc6, vl);
++    __riscv_vse32_v_i32m4(out_ptr + N0 * 7, acc7, vl);
++  }
++
++#undef IREE_UK_RISCV_64_VWACC_I8
++}
++
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx1_to_8xXXx1_riscv_64_v,
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx1_riscv_64_v, 1)
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx1_to_8xXXx1_riscv_64_v,
++    iree_uk_mmt4d_tile_s8s8s32_2xXXx1_riscv_64_v, 2)
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx1_to_8xXXx1_riscv_64_v,
++    iree_uk_mmt4d_tile_s8s8s32_4xXXx1_riscv_64_v, 4)
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx1_to_8xXXx1_riscv_64_v,
++    iree_uk_mmt4d_tile_s8s8s32_7xXXx1_riscv_64_v, 7)
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx1_to_8xXXx1_riscv_64_v,
++    iree_uk_mmt4d_tile_s8s8s32_8xXXx1_riscv_64_v, 8)
++
++IREE_UK_ATTRIBUTE_ALWAYS_INLINE static inline void
++iree_uk_mmt4d_tile_s8s8s32_4x4x8_riscv_64_xsmtvdot_native(
++    iree_uk_int32_t* IREE_UK_RESTRICT out_ptr,
++    const iree_uk_int8_t* IREE_UK_RESTRICT lhs_ptr,
++    const iree_uk_int8_t* IREE_UK_RESTRICT rhs_ptr,
++    const iree_uk_mmt4d_params_t* params) {
++  IREE_UK_ASSERT(params->N0 == 4);
++  IREE_UK_ASSERT(params->K0 == 8);
++
++  if (params->flags & IREE_UK_FLAG_MMT4D_ACCUMULATE) {
++    asm volatile(
++        "vsetvli zero, zero, e32, m2, ta, ma\n\t"
++        "vle32.v v28, (%0)\n\t"
++        :
++        : "r"(out_ptr)
++        : "memory");
++  } else {
++    asm volatile(
++        "vsetvli zero, zero, e32, m2, ta, ma\n\t"
++        "vmv.v.i v28, 0\n\t"
++        :
++        :
++        : "memory");
++  }
++
++  asm volatile("vsetvli zero, zero, e8, m1, ta, ma\n\t" : : : "memory");
++  for (int k = 0; k < params->K; ++k) {
++    const iree_uk_int8_t* lhs_k_ptr = lhs_ptr + k * 32;
++    const iree_uk_int8_t* rhs_k_ptr = rhs_ptr + k * 32;
++    asm volatile(
++        "vle8.v v0, (%0)\n\t"
++        "vle8.v v1, (%1)\n\t"
++        ".insn r 0x2b, 0x3, 0x71, x28, x0, x1\n\t"
++        :
++        : "r"(lhs_k_ptr), "r"(rhs_k_ptr)
++        : "memory");
++  }
++
++  asm volatile(
++      "vsetvli zero, zero, e32, m2, ta, ma\n\t"
++      "vse32.v v28, (%0)\n\t"
++      :
++      : "r"(out_ptr)
++      : "memory");
++}
++
++IREE_UK_ATTRIBUTE_ALWAYS_INLINE static inline void
++iree_uk_mmt4d_tile_s8s8s32_1xXXx8_to_4xXXx8_riscv_64_xsmtvdot_fallback(
++    void* IREE_UK_RESTRICT out_tile, const void* IREE_UK_RESTRICT lhs_panel,
++    const void* IREE_UK_RESTRICT rhs_panel,
++    const iree_uk_mmt4d_params_t* params, int M0) {
++  IREE_UK_ASSERT(M0 >= 1 && M0 <= 4);
++  IREE_UK_ASSERT(params->K0 == 8);
++  const iree_uk_int8_t* IREE_UK_RESTRICT lhs_ptr = lhs_panel;
++  const iree_uk_int8_t* IREE_UK_RESTRICT rhs_ptr = rhs_panel;
++  iree_uk_int32_t* IREE_UK_RESTRICT out_ptr = out_tile;
++  const int N0 = params->N0;
++  const size_t vl = N0;
++  const int rhs_stride = 8;
++  vint32m4_t acc0, acc1, acc2, acc3;
++
++#define IREE_UK_RISCV_64_VWACC_I8_GENERIC(ACC, LHS, RHS, VL) \
++  do {                                                        \
++    vint16m2_t prod = __riscv_vwmul_vx_i16m2(RHS, LHS, VL);  \
++    ACC = __riscv_vwadd_wv_i32m4(ACC, prod, VL);             \
++  } while (0)
++
++  if (params->flags & IREE_UK_FLAG_MMT4D_ACCUMULATE) {
++    acc0 = __riscv_vle32_v_i32m4(out_ptr, vl);
++    if (M0 >= 2) acc1 = __riscv_vle32_v_i32m4(out_ptr + N0, vl);
++    if (M0 >= 3) acc2 = __riscv_vle32_v_i32m4(out_ptr + 2 * N0, vl);
++    if (M0 >= 4) acc3 = __riscv_vle32_v_i32m4(out_ptr + 3 * N0, vl);
++  } else {
++    acc0 = __riscv_vmv_v_x_i32m4(0, vl);
++    if (M0 >= 2) acc1 = __riscv_vmv_v_x_i32m4(0, vl);
++    if (M0 >= 3) acc2 = __riscv_vmv_v_x_i32m4(0, vl);
++    if (M0 >= 4) acc3 = __riscv_vmv_v_x_i32m4(0, vl);
++  }
++
++  for (int k = 0; k < params->K; ++k) {
++    for (int k0 = 0; k0 < 8; ++k0) {
++      vint8m1_t rhs =
++          __riscv_vlse8_v_i8m1(rhs_ptr + k0, rhs_stride, vl);
++      iree_uk_int8_t lhs0 = lhs_ptr[k0];
++      IREE_UK_RISCV_64_VWACC_I8_GENERIC(acc0, lhs0, rhs, vl);
++      if (M0 >= 2) {
++        iree_uk_int8_t lhs1 = lhs_ptr[8 + k0];
++        IREE_UK_RISCV_64_VWACC_I8_GENERIC(acc1, lhs1, rhs, vl);
++      }
++      if (M0 >= 3) {
++        iree_uk_int8_t lhs2 = lhs_ptr[16 + k0];
++        IREE_UK_RISCV_64_VWACC_I8_GENERIC(acc2, lhs2, rhs, vl);
++      }
++      if (M0 >= 4) {
++        iree_uk_int8_t lhs3 = lhs_ptr[24 + k0];
++        IREE_UK_RISCV_64_VWACC_I8_GENERIC(acc3, lhs3, rhs, vl);
++      }
++    }
++    lhs_ptr += M0 * 8;
++    rhs_ptr += N0 * 8;
++  }
++
++  __riscv_vse32_v_i32m4(out_ptr, acc0, vl);
++  if (M0 >= 2) __riscv_vse32_v_i32m4(out_ptr + N0, acc1, vl);
++  if (M0 >= 3) __riscv_vse32_v_i32m4(out_ptr + 2 * N0, acc2, vl);
++  if (M0 >= 4) __riscv_vse32_v_i32m4(out_ptr + 3 * N0, acc3, vl);
++
++#undef IREE_UK_RISCV_64_VWACC_I8_GENERIC
++}
++
++IREE_UK_ATTRIBUTE_ALWAYS_INLINE static inline void
++iree_uk_mmt4d_tile_s8s8s32_1xXXx8_to_4xXXx8_riscv_64_xsmtvdot(
++    void* IREE_UK_RESTRICT out_tile, const void* IREE_UK_RESTRICT lhs_panel,
++    const void* IREE_UK_RESTRICT rhs_panel,
++    const iree_uk_mmt4d_params_t* params, int M0) {
++  const int N0 = params->N0;
++  if (M0 == 4 && N0 == 4) {
++    iree_uk_mmt4d_tile_s8s8s32_4x4x8_riscv_64_xsmtvdot_native(
++        (iree_uk_int32_t*)out_tile, (const iree_uk_int8_t*)lhs_panel,
++        (const iree_uk_int8_t*)rhs_panel, params);
++    return;
++  }
++  // Truncation path for narrow-M cases, still using RVV widening ops.
++  iree_uk_mmt4d_tile_s8s8s32_1xXXx8_to_4xXXx8_riscv_64_xsmtvdot_fallback(
++      out_tile, lhs_panel, rhs_panel, params, M0);
++}
++
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx8_to_4xXXx8_riscv_64_xsmtvdot,
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx8_riscv_64_xsmtvdot, 1)
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx8_to_4xXXx8_riscv_64_xsmtvdot,
++    iree_uk_mmt4d_tile_s8s8s32_2xXXx8_riscv_64_xsmtvdot, 2)
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx8_to_4xXXx8_riscv_64_xsmtvdot,
++    iree_uk_mmt4d_tile_s8s8s32_4xXXx8_riscv_64_xsmtvdot, 4)
++
++IREE_UK_ATTRIBUTE_ALWAYS_INLINE static inline void
++iree_uk_riscv_64_xopu_opmvinbcast_mc0_from_v0(void) {
++  asm volatile(".insn r 0x57, 0x6, 0x59, x16, x0, x0\n\t" : : : "memory");
++}
++
++IREE_UK_ATTRIBUTE_ALWAYS_INLINE static inline void
++iree_uk_riscv_64_xopu_vmv_rv_m0_from_v0(int row) {
++  asm volatile(".insn r 0x57, 0x6, 0x55, x0, %0, x0\n\t"
++               :
++               : "r"(row)
++               : "memory");
++}
++
++IREE_UK_ATTRIBUTE_ALWAYS_INLINE static inline void
++iree_uk_riscv_64_xopu_vmv_vr_v0_from_m0(int row) {
++  asm volatile(".insn r 0x57, 0x6, 0x5d, x0, %0, x0\n\t"
++               :
++               : "r"(row)
++               : "memory");
++}
++
++IREE_UK_ATTRIBUTE_ALWAYS_INLINE static inline void
++iree_uk_riscv_64_xopu_vopacc_m0_v16_v18(void) {
++  asm volatile(".insn r 0x57, 0x2, 0x51, x0, x18, x16\n\t" : : : "memory");
++}
++
++IREE_UK_ATTRIBUTE_ALWAYS_INLINE static inline void
++iree_uk_mmt4d_tile_s8s8s32_1xXXx1_to_16xXXx1_riscv_64_xopu(
++    void* IREE_UK_RESTRICT out_tile, const void* IREE_UK_RESTRICT lhs_panel,
++    const void* IREE_UK_RESTRICT rhs_panel,
++    const iree_uk_mmt4d_params_t* params, int M0) {
++  IREE_UK_ASSERT(M0 >= 1 && M0 <= 16);
++  IREE_UK_ASSERT(params->K0 == 1);
++  const iree_uk_int8_t* IREE_UK_RESTRICT lhs_ptr = lhs_panel;
++  const iree_uk_int8_t* IREE_UK_RESTRICT rhs_ptr = rhs_panel;
++  iree_uk_int32_t* IREE_UK_RESTRICT out_ptr = out_tile;
++  const int N0 = params->N0;
++  const size_t vl = N0;
++
++  // Keep register pressure bounded by processing rows in groups of 4.
++  for (int m0 = 0; m0 < M0; m0 += 4) {
++    int rows = (M0 - m0 < 4) ? (M0 - m0) : 4;
++    vint32m4_t acc0, acc1, acc2, acc3;
++
++    if (params->flags & IREE_UK_FLAG_MMT4D_ACCUMULATE) {
++      acc0 = __riscv_vle32_v_i32m4(out_ptr + m0 * N0, vl);
++      if (rows >= 2) acc1 = __riscv_vle32_v_i32m4(out_ptr + (m0 + 1) * N0, vl);
++      if (rows >= 3) acc2 = __riscv_vle32_v_i32m4(out_ptr + (m0 + 2) * N0, vl);
++      if (rows >= 4) acc3 = __riscv_vle32_v_i32m4(out_ptr + (m0 + 3) * N0, vl);
++    } else {
++      acc0 = __riscv_vmv_v_x_i32m4(0, vl);
++      if (rows >= 2) acc1 = __riscv_vmv_v_x_i32m4(0, vl);
++      if (rows >= 3) acc2 = __riscv_vmv_v_x_i32m4(0, vl);
++      if (rows >= 4) acc3 = __riscv_vmv_v_x_i32m4(0, vl);
++    }
++
++    const iree_uk_int8_t* rhs_k_ptr = rhs_ptr;
++    for (int k = 0; k < params->K; ++k) {
++      vint8m1_t rhs = __riscv_vle8_v_i8m1(rhs_k_ptr, vl);
++      rhs_k_ptr += N0;
++      const iree_uk_int8_t* lhs_k_ptr = lhs_ptr + k * M0 + m0;
++      iree_uk_int8_t lhs0 = lhs_k_ptr[0];
++      vint16m2_t prod0 = __riscv_vwmul_vx_i16m2(rhs, lhs0, vl);
++      acc0 = __riscv_vwadd_wv_i32m4(acc0, prod0, vl);
++      if (rows >= 2) {
++        iree_uk_int8_t lhs1 = lhs_k_ptr[1];
++        vint16m2_t prod1 = __riscv_vwmul_vx_i16m2(rhs, lhs1, vl);
++        acc1 = __riscv_vwadd_wv_i32m4(acc1, prod1, vl);
++      }
++      if (rows >= 3) {
++        iree_uk_int8_t lhs2 = lhs_k_ptr[2];
++        vint16m2_t prod2 = __riscv_vwmul_vx_i16m2(rhs, lhs2, vl);
++        acc2 = __riscv_vwadd_wv_i32m4(acc2, prod2, vl);
++      }
++      if (rows >= 4) {
++        iree_uk_int8_t lhs3 = lhs_k_ptr[3];
++        vint16m2_t prod3 = __riscv_vwmul_vx_i16m2(rhs, lhs3, vl);
++        acc3 = __riscv_vwadd_wv_i32m4(acc3, prod3, vl);
++      }
++    }
++
++    __riscv_vse32_v_i32m4(out_ptr + m0 * N0, acc0, vl);
++    if (rows >= 2) __riscv_vse32_v_i32m4(out_ptr + (m0 + 1) * N0, acc1, vl);
++    if (rows >= 3) __riscv_vse32_v_i32m4(out_ptr + (m0 + 2) * N0, acc2, vl);
++    if (rows >= 4) __riscv_vse32_v_i32m4(out_ptr + (m0 + 3) * N0, acc3, vl);
++  }
++}
++
++IREE_UK_ATTRIBUTE_ALWAYS_INLINE static inline void
++iree_uk_mmt4d_tile_s8s8s32_16x16x128_riscv_64_xopu_native(
++    iree_uk_int32_t* IREE_UK_RESTRICT out_ptr,
++    const iree_uk_int8_t* IREE_UK_RESTRICT lhs_ptr,
++    const iree_uk_int8_t* IREE_UK_RESTRICT rhs_ptr,
++    const iree_uk_mmt4d_params_t* params) {
++  const long avl16 = 16;
++  const long stride = 128;
++
++  asm volatile("vsetvli zero, %0, e32, m4, ta, ma\n\t"
++               :
++               : "r"(avl16)
++               : "memory");
++
++  // OPU keeps the accumulator in m0; initialize from output tile if needed.
++  asm volatile("vmv.v.i v0, 0\n\t" : : : "memory");
++  iree_uk_riscv_64_xopu_opmvinbcast_mc0_from_v0();
++  if (params->flags & IREE_UK_FLAG_MMT4D_ACCUMULATE) {
++    for (int row = 0; row < 16; ++row) {
++      asm volatile("vle32.v v0, (%0)\n\t"
++                   :
++                   : "r"(out_ptr + row * 16)
++                   : "memory");
++      iree_uk_riscv_64_xopu_vmv_rv_m0_from_v0(row);
++    }
++  }
++
++  for (int k = 0; k < params->K; ++k) {
++    const iree_uk_int8_t* lhs_k_ptr = lhs_ptr + k * 16 * 128;
++    const iree_uk_int8_t* rhs_k_ptr = rhs_ptr + k * 16 * 128;
++    asm volatile("vsetvli zero, %0, e8, m1, ta, ma\n\t"
++                 :
++                 : "r"(avl16)
++                 : "memory");
++    for (int k0 = 0; k0 < 128; ++k0) {
++      asm volatile("vlse8.v v16, (%0), %1\n\t"
++                   :
++                   : "r"(lhs_k_ptr + k0), "r"(stride)
++                   : "memory");
++      asm volatile("vlse8.v v18, (%0), %1\n\t"
++                   :
++                   : "r"(rhs_k_ptr + k0), "r"(stride)
++                   : "memory");
++      iree_uk_riscv_64_xopu_vopacc_m0_v16_v18();
++    }
++  }
++
++  asm volatile("vsetvli zero, %0, e32, m4, ta, ma\n\t"
++               :
++               : "r"(avl16)
++               : "memory");
++  for (int row = 0; row < 16; ++row) {
++    iree_uk_riscv_64_xopu_vmv_vr_v0_from_m0(row);
++    asm volatile("vse32.v v0, (%0)\n\t"
++                 :
++                 : "r"(out_ptr + row * 16)
++                 : "memory");
++  }
++}
++
++IREE_UK_ATTRIBUTE_ALWAYS_INLINE static inline void
++iree_uk_mmt4d_tile_s8s8s32_1xXXx128_to_16xXXx128_riscv_64_xopu_fallback(
++    void* IREE_UK_RESTRICT out_tile, const void* IREE_UK_RESTRICT lhs_panel,
++    const void* IREE_UK_RESTRICT rhs_panel,
++    const iree_uk_mmt4d_params_t* params, int M0) {
++  IREE_UK_ASSERT(M0 >= 1 && M0 <= 16);
++  IREE_UK_ASSERT(params->K0 == 128);
++  const iree_uk_int8_t* IREE_UK_RESTRICT lhs_ptr = lhs_panel;
++  const iree_uk_int8_t* IREE_UK_RESTRICT rhs_ptr = rhs_panel;
++  iree_uk_int32_t* IREE_UK_RESTRICT out_ptr = out_tile;
++  const int N0 = params->N0;
++  const int K0 = params->K0;
++  const size_t vl = N0;
++
++  // Keep register pressure bounded by processing rows in groups of 4.
++  for (int m0 = 0; m0 < M0; m0 += 4) {
++    int rows = (M0 - m0 < 4) ? (M0 - m0) : 4;
++    vint32m4_t acc0, acc1, acc2, acc3;
++
++    if (params->flags & IREE_UK_FLAG_MMT4D_ACCUMULATE) {
++      acc0 = __riscv_vle32_v_i32m4(out_ptr + m0 * N0, vl);
++      if (rows >= 2) acc1 = __riscv_vle32_v_i32m4(out_ptr + (m0 + 1) * N0, vl);
++      if (rows >= 3) acc2 = __riscv_vle32_v_i32m4(out_ptr + (m0 + 2) * N0, vl);
++      if (rows >= 4) acc3 = __riscv_vle32_v_i32m4(out_ptr + (m0 + 3) * N0, vl);
++    } else {
++      acc0 = __riscv_vmv_v_x_i32m4(0, vl);
++      if (rows >= 2) acc1 = __riscv_vmv_v_x_i32m4(0, vl);
++      if (rows >= 3) acc2 = __riscv_vmv_v_x_i32m4(0, vl);
++      if (rows >= 4) acc3 = __riscv_vmv_v_x_i32m4(0, vl);
++    }
++
++    for (int k = 0; k < params->K; ++k) {
++      const iree_uk_int8_t* rhs_k_ptr = rhs_ptr + k * N0 * K0;
++      const iree_uk_int8_t* lhs_k_ptr = lhs_ptr + k * M0 * K0 + m0 * K0;
++      for (int k0 = 0; k0 < K0; ++k0) {
++        vint8m1_t rhs = __riscv_vlse8_v_i8m1(rhs_k_ptr + k0, K0, vl);
++        const iree_uk_int8_t* lhs_col = lhs_k_ptr + k0;
++        iree_uk_int8_t lhs0 = lhs_col[0];
++        vint16m2_t prod0 = __riscv_vwmul_vx_i16m2(rhs, lhs0, vl);
++        acc0 = __riscv_vwadd_wv_i32m4(acc0, prod0, vl);
++        if (rows >= 2) {
++          iree_uk_int8_t lhs1 = lhs_col[K0];
++          vint16m2_t prod1 = __riscv_vwmul_vx_i16m2(rhs, lhs1, vl);
++          acc1 = __riscv_vwadd_wv_i32m4(acc1, prod1, vl);
++        }
++        if (rows >= 3) {
++          iree_uk_int8_t lhs2 = lhs_col[2 * K0];
++          vint16m2_t prod2 = __riscv_vwmul_vx_i16m2(rhs, lhs2, vl);
++          acc2 = __riscv_vwadd_wv_i32m4(acc2, prod2, vl);
++        }
++        if (rows >= 4) {
++          iree_uk_int8_t lhs3 = lhs_col[3 * K0];
++          vint16m2_t prod3 = __riscv_vwmul_vx_i16m2(rhs, lhs3, vl);
++          acc3 = __riscv_vwadd_wv_i32m4(acc3, prod3, vl);
++        }
++      }
++    }
++
++    __riscv_vse32_v_i32m4(out_ptr + m0 * N0, acc0, vl);
++    if (rows >= 2) __riscv_vse32_v_i32m4(out_ptr + (m0 + 1) * N0, acc1, vl);
++    if (rows >= 3) __riscv_vse32_v_i32m4(out_ptr + (m0 + 2) * N0, acc2, vl);
++    if (rows >= 4) __riscv_vse32_v_i32m4(out_ptr + (m0 + 3) * N0, acc3, vl);
++  }
++}
++
++IREE_UK_ATTRIBUTE_ALWAYS_INLINE static inline void
++iree_uk_mmt4d_tile_s8s8s32_1xXXx128_to_16xXXx128_riscv_64_xopu(
++    void* IREE_UK_RESTRICT out_tile, const void* IREE_UK_RESTRICT lhs_panel,
++    const void* IREE_UK_RESTRICT rhs_panel,
++    const iree_uk_mmt4d_params_t* params, int M0) {
++  IREE_UK_ASSERT(params->K0 == 128);
++  if (M0 == 16 && params->N0 == 16) {
++    iree_uk_mmt4d_tile_s8s8s32_16x16x128_riscv_64_xopu_native(
++        (iree_uk_int32_t*)out_tile, (const iree_uk_int8_t*)lhs_panel,
++        (const iree_uk_int8_t*)rhs_panel, params);
++    return;
++  }
++  // Truncation path for narrow-M/N cases: keep a correct RVV implementation.
++  iree_uk_mmt4d_tile_s8s8s32_1xXXx128_to_16xXXx128_riscv_64_xopu_fallback(
++      out_tile, lhs_panel, rhs_panel, params, M0);
++}
++
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx1_to_8xXXx1_riscv_64_v,
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx1_riscv_64_xopu, 1)
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx1_to_8xXXx1_riscv_64_v,
++    iree_uk_mmt4d_tile_s8s8s32_2xXXx1_riscv_64_xopu, 2)
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx1_to_8xXXx1_riscv_64_v,
++    iree_uk_mmt4d_tile_s8s8s32_4xXXx1_riscv_64_xopu, 4)
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx1_to_8xXXx1_riscv_64_v,
++    iree_uk_mmt4d_tile_s8s8s32_8xXXx1_riscv_64_xopu, 8)
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx1_to_16xXXx1_riscv_64_xopu,
++    iree_uk_mmt4d_tile_s8s8s32_16xXXx1_riscv_64_xopu, 16)
++
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx128_to_16xXXx128_riscv_64_xopu,
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx128_riscv_64_xopu, 1)
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx128_to_16xXXx128_riscv_64_xopu,
++    iree_uk_mmt4d_tile_s8s8s32_2xXXx128_riscv_64_xopu, 2)
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx128_to_16xXXx128_riscv_64_xopu,
++    iree_uk_mmt4d_tile_s8s8s32_4xXXx128_riscv_64_xopu, 4)
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx128_to_16xXXx128_riscv_64_xopu,
++    iree_uk_mmt4d_tile_s8s8s32_8xXXx128_riscv_64_xopu, 8)
++IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
++    iree_uk_mmt4d_tile_s8s8s32_1xXXx128_to_16xXXx128_riscv_64_xopu,
++    iree_uk_mmt4d_tile_s8s8s32_16xXXx128_riscv_64_xopu, 16)
+diff --git a/runtime/src/iree/builtins/ukernel/arch/riscv_64/query_tile_sizes_riscv_64_entry_point.c b/runtime/src/iree/builtins/ukernel/arch/riscv_64/query_tile_sizes_riscv_64_entry_point.c
+index 352a0725a7..fe9c913a3a 100644
+--- a/runtime/src/iree/builtins/ukernel/arch/riscv_64/query_tile_sizes_riscv_64_entry_point.c
++++ b/runtime/src/iree/builtins/ukernel/arch/riscv_64/query_tile_sizes_riscv_64_entry_point.c
+@@ -19,6 +19,25 @@ iree_uk_query_matmul_tile_sizes_riscv_64_f32f32f32(
+   return (iree_uk_matmul_tile_sizes_t){.M = 8, .K = 1, .N = 8};
+ }
+
++static iree_uk_matmul_tile_sizes_t
++iree_uk_query_matmul_tile_sizes_riscv_64_i8i8i32(
++    const iree_uk_query_tile_sizes_2d_params_t* params) {
++#if defined(IREE_UK_BUILD_RISCV_64_V)
++  // Keep vendor-feature checks before generic RVV.
++  if (iree_uk_cpu_riscv_64_xsmtvdot(params->cpu_data)) {
++    return (iree_uk_matmul_tile_sizes_t){.M = 4, .K = 8, .N = 4};
++  }
++  if (iree_uk_cpu_riscv_64_xopu(params->cpu_data)) {
++    return (iree_uk_matmul_tile_sizes_t){.M = 16, .K = 128, .N = 16};
++  }
++  if (iree_uk_cpu_riscv_64_v(params->cpu_data)) {
++    return (iree_uk_matmul_tile_sizes_t){.M = 8, .K = 1, .N = 16};
++  }
++#endif
++  // generic fallback
++  return (iree_uk_matmul_tile_sizes_t){.M = 8, .K = 4, .N = 8};
++}
++
+ bool iree_uk_query_matmul_tile_sizes_arch(
+     const iree_uk_query_tile_sizes_2d_params_t* params,
+     iree_uk_matmul_tile_sizes_t* out_matmul_tile_sizes) {
+@@ -27,6 +46,10 @@ bool iree_uk_query_matmul_tile_sizes_arch(
+     *out_matmul_tile_sizes =
+         iree_uk_query_matmul_tile_sizes_riscv_64_f32f32f32(params);
+     return true;
++  } else if (op == IREE_UK_FLAG_QUERY_TILE_SIZES_OPERATION_MATMUL_I8I8I32) {
++    *out_matmul_tile_sizes =
++        iree_uk_query_matmul_tile_sizes_riscv_64_i8i8i32(params);
++    return true;
+   } else {
+     // Shouldn't happen, validated earlier.
+     return false;

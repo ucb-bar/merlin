@@ -82,7 +82,7 @@ def fetch_latest_release_tag(repo_slug: str) -> str:
 
 
 def run_lint(args) -> int:
-    sh_files = find_files_with_suffixes([utils.REPO_ROOT / "scripts", utils.REPO_ROOT / "patches"], [".sh"])
+    sh_files = find_files_with_suffixes([utils.REPO_ROOT / "scripts", utils.REPO_ROOT / "build_tools"], [".sh"])
     py_files = find_files_with_suffixes([utils.REPO_ROOT / "tools"], [".py"])
 
     # Python Syntax Check
@@ -137,15 +137,77 @@ def run_cli_docs_drift(args) -> int:
 
 
 def run_patch_gate(args) -> int:
-    steps = [
-        "build_tools/patches/tools/apply_all.sh",
-        "build_tools/patches/tools/verify_clean.sh",
-        "build_tools/patches/tools/check_upstream_drift.sh",
-    ]
-    for script in steps:
-        if utils.run_repo_script(script, [], args.dry_run) != 0:
-            return 1
+    """CI gate: verify the iree_bar submodule is a clean rebase of the pinned upstream."""
+    manifest = _load_manifest_env()
+    upstream_base = manifest.get("IREE_UPSTREAM_BASE")
+    iree_repo = utils.REPO_ROOT / "third_party" / "iree_bar"
+
+    if not iree_repo.is_dir():
+        utils.eprint("FAIL: third_party/iree_bar not found. Run: git submodule update --init")
+        return 1
+
+    errors = 0
+
+    # 1. Check ancestry: submodule HEAD must descend from pinned upstream base
+    if upstream_base:
+        rc = subprocess.run(
+            ["git", "-C", str(iree_repo), "merge-base", "--is-ancestor", upstream_base, "HEAD"],
+            capture_output=True,
+        ).returncode
+        if rc == 0:
+            print(f"OK  submodule is based on upstream {upstream_base[:10]}")
+        else:
+            utils.eprint(f"FAIL  submodule HEAD is not a descendant of IREE_UPSTREAM_BASE={upstream_base[:10]}")
+            utils.eprint("  The ucb-bar/main branch needs to be rebased onto upstream.")
+            errors += 1
+    else:
+        utils.eprint("WARNING: IREE_UPSTREAM_BASE not set in manifest.env")
+
+    # 2. Check for uncommitted changes in the submodule
+    status_out = subprocess.run(
+        ["git", "-C", str(iree_repo), "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if status_out:
+        utils.eprint("FAIL  submodule has uncommitted changes:")
+        for line in status_out.splitlines()[:10]:
+            utils.eprint(f"  {line}")
+        errors += 1
+    else:
+        print("OK  submodule working tree clean")
+
+    # 3. Show Merlin commit count for visibility
+    if upstream_base:
+        count_out = subprocess.run(
+            ["git", "-C", str(iree_repo), "rev-list", "--count", f"{upstream_base}..HEAD"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if count_out:
+            print(f"OK  {count_out} Merlin commit(s) on top of upstream")
+
+    if errors:
+        utils.eprint(f"\npatch-gate: {errors} check(s) failed")
+        return 1
+    print("\npatch-gate: all checks passed")
     return 0
+
+
+def _load_manifest_env() -> dict[str, str]:
+    """Parse build_tools/patches/manifest.env into a dict."""
+    manifest_path = utils.REPO_ROOT / "build_tools" / "patches" / "manifest.env"
+    result = {}
+    if not manifest_path.exists():
+        return result
+    for line in manifest_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            key, _, val = line.partition("=")
+            result[key.strip()] = val.strip().strip('"')
+    return result
 
 
 def run_release_status(args) -> int:
