@@ -1,0 +1,59 @@
+# Saturn OPU recipe for Merlin on FireSim U250
+name: saturn-opu-u250
+mode: firesim  # firesim | bare-metal | board
+
+chipyard:
+  repo: https://github.com/ucb-bar/chipyard
+  branch: main
+  sha: bcb612918bb964a0dad33a26a1921c161eb598d0
+
+submodules:
+  saturn:
+    branch: opu-fp8
+    sha: 1d3515e02b7a565a91bad2e0e2b6b1031721a910
+  shuttle:
+    sha: 337385f3634ad0489fa903d9152fcd29d2279f3b
+  firesim:
+    sha: b084672c2f8cf32e55d78f73a001074c23f8a2b8
+
+# FireSim-specific configuration
+firesim:
+  # Build recipe entry (goes into config_build_recipes.yaml)
+  build_recipe:
+    recipe_name: alveo_u250_firesim-opumx-v256-d128-shuttle
+    PLATFORM: xilinx_alveo_u250
+    TARGET_PROJECT: firesim
+    TARGET_PROJECT_MAKEFRAG: "{chipyard_root}/generators/firechip/chip/src/main/makefrag/firesim"
+    DESIGN: FireSim
+    TARGET_CONFIG: FireSimOPUMXV256D128ShuttleConfig
+    CONFIG_PACKAGE: firechip.chip
+    PLATFORM_CONFIG: BaseXilinxAlveoU250Config
+    platform_config_args:
+      fpga_frequency: 60
+      build_strategy: TIMING
+    bit_builder_recipe: bit-builder-recipes/xilinx_alveo_u250.yaml
+
+  # Runtime config (goes into config_runtime.yaml target_config section)
+  runtime:
+    topology: no_net_config
+    no_net_num_nodes: 1
+    default_hw_config: alveo_u250_firesim-opumx-v256-d128-shuttle
+    default_platform: XilinxAlveoU250InstanceDeployManager
+
+  # Workload definition
+  workload:
+    name: merlin-iree
+    # The boot binary and rootfs come from FireMarshal
+    firemarshal_config: br-base.json
+    # Command to run inside the workload
+    command: "/opt/merlin/run.sh && poweroff -f"
+    # Files to stage in the overlay (relative to merlin build output)
+    overlay_files:
+      - source: "build/firesim-merlin-release/install/"
+        dest: "/opt/merlin/"
+    outputs:
+      - "uartlog"
+
+merlin:
+  target: saturn_opu
+  profile: firesim

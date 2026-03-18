@@ -5,6 +5,7 @@ import argparse
 import sys
 
 import benchmark as benchmark_cmd
+import chipyard as chipyard_cmd
 import ci as ci_cmd
 import compile as compile_cmd
 import patches as patches_cmd
@@ -17,8 +18,9 @@ COMMANDS: tuple[tuple[str, object, str, bool], ...] = (
     ("compile", compile_cmd, "Compile MLIR/ONNX models to target artifacts", True),
     ("setup", setup_cmd, "Bootstrap developer environment and toolchains", False),
     ("ci", ci_cmd, "Run repository CI/lint/patch workflows", True),
-    ("patches", patches_cmd, "Apply/verify/refresh/drift patch stack", True),
+    ("patches", patches_cmd, "Verify submodule state and manage upstream patches", False),
     ("benchmark", benchmark_cmd, "Run benchmark helper scripts", True),
+    ("chipyard", chipyard_cmd, "Manage Chipyard hardware backend interactions", True),
 )
 
 

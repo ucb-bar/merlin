@@ -1,0 +1,37 @@
+# Gemmini MX bare-metal recipe for Merlin
+# Runs via VCS RTL simulation on Chipyard (graphics branch)
+name: gemmini-mx
+mode: bare-metal  # firesim | bare-metal | board
+
+chipyard:
+  repo: https://github.com/ucb-bar/chipyard
+  branch: graphics
+  sha: bcb612918bb964a0dad33a26a1921c161eb598d0
+
+submodules:
+  gemmini:
+    repo: https://github.com/ucb-bar/gemmini
+    branch: gemmini-mx
+    sha: 6ad65b90b1eb270c20ce4f04109e3dde0180b36f
+  radiance:
+    sha: 917c95cdb6d698c4fd267ccab2602e283d2ca6c3
+
+# Bare-metal VCS/Verilator simulation
+bare_metal:
+  config: RadianceGemminiOnlyConfig
+  simulator: vcs  # vcs | verilator
+  # The make command is constructed from these fields:
+  #   make CONFIG={config} BINARY={elf} LOADMEM=1 run-binary
+  # from {chipyard_root}/sims/{simulator}/
+
+# Optional reference tests for validating the simulator
+reference_tests:
+  gemmini_rocc_tests:
+    repo: https://github.com/Rakanic/gemmini-rocc-tests
+    branch: dev
+    build_script: build.sh
+    reference_binary: build/bareMetalC/matmul_ws_mx_generic
+
+merlin:
+  target: gemmini_mx
+  profile: firesim

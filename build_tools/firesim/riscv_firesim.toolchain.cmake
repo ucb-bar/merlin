@@ -25,9 +25,24 @@ else()
       "RISCV_TOOLCHAIN_ROOT (or RISCV) environment variable must be set.")
 endif()
 
-# Sysroot setup for Clang
-set(RISCV_NEWLIB_SYSROOT
-    "/scratch2/agustin/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf")
+# Sysroot setup for Clang Cascade: RISCV_NEWLIB_SYSROOT env →
+# CHIPYARD_ROOT-derived → FATAL_ERROR
+if(DEFINED ENV{RISCV_NEWLIB_SYSROOT})
+  set(RISCV_NEWLIB_SYSROOT
+      "$ENV{RISCV_NEWLIB_SYSROOT}"
+      CACHE PATH "Newlib sysroot for bare-metal RISC-V" FORCE)
+elseif(DEFINED ENV{CHIPYARD_ROOT})
+  set(RISCV_NEWLIB_SYSROOT
+      "$ENV{CHIPYARD_ROOT}/.conda-env/riscv-tools/riscv64-unknown-elf"
+      CACHE PATH "Newlib sysroot for bare-metal RISC-V" FORCE)
+else()
+  message(
+    FATAL_ERROR
+      "CHIPYARD_ROOT (or RISCV_NEWLIB_SYSROOT) environment variable must be set.\n"
+      "  export CHIPYARD_ROOT=/path/to/chipyard\n"
+      "Or override the sysroot directly:\n"
+      "  export RISCV_NEWLIB_SYSROOT=/path/to/riscv64-unknown-elf")
+endif()
 get_filename_component(RISCV_GCC_ROOT "${RISCV_NEWLIB_SYSROOT}" DIRECTORY)
 
 # Define Tools
@@ -53,8 +68,8 @@ endif()
 
 # --- 4. Flag Definitions ---
 
-# Paths to your scripts
-set(SCRIPTS_DIR "/scratch2/agustin/merlin/scripts/riscv_firesim")
+# Paths to linker scripts (co-located with this toolchain file)
+set(SCRIPTS_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(SPECS_FILE "${SCRIPTS_DIR}/htif-nano.spec")
 set(LINKER_SCRIPT "${SCRIPTS_DIR}/htif.ld")
 

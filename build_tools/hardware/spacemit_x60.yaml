@@ -1,0 +1,10 @@
+# SpacemiT X60 physical board recipe for Merlin
+name: spacemit-x60
+
+type: physical_board
+board: SpacemiT K1 (8-core RISC-V, VLEN=256)
+
+merlin:
+  target: spacemit_x60
+  profile: spacemit
+  toolchain: build_tools/riscv-tools-spacemit/spacemit-toolchain-linux-glibc-x86_64-v1.1.2
