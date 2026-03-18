@@ -1,4 +1,0 @@
-interface:
-  display_name: "Merlin Build"
-  short_description: "Build Merlin with script-first workflows (`uv run`, `merlin-dev`)"
-  default_prompt: "Use this skill to build Merlin using tools/merlin.py or tools/build.py, always in merlin-dev and with uv run, avoiding ad hoc CMake shortcuts."
