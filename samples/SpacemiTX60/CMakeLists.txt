@@ -1,1 +1,2 @@
-iree_add_all_subdirs()
+add_subdirectory(baseline_async)
+add_subdirectory(dispatch_scheduler)
