@@ -6,7 +6,7 @@
 // - Uses two long-lived worker threads only:
 //     * CPU_P worker pinned to cpu_p_cpu_ids
 //     * CPU_E worker pinned to cpu_e_cpu_ids
-// - Uses two local-task devices pinned by task_topology_cpu_ids.
+// - Uses two local-task devices with pinned task executors (one per core set).
 // - Reuses one runtime session per (target, vmfb_path).
 // - Schedules dependencies on the host without per-node HAL fences.
 // - Treats start_time as a priority hint only (no host sleeping/polling).
@@ -39,6 +39,12 @@
 #include "iree/hal/api.h"
 #include "iree/modules/hal/types.h"
 #include "iree/runtime/api.h"
+
+// Direct task executor + driver API for creating pinned local-task devices.
+#include "iree/hal/drivers/local_task/task_driver.h"
+#include "iree/hal/local/loaders/registration/init.h"
+#include "iree/task/api.h"
+#include "iree/task/topology.h"
 
 #include "iree_bench/fatal_state.h"
 #include "iree_bench/iree_module_utils.h"
@@ -150,42 +156,80 @@ static void BestEffortPinCurrentThreadToCpuIds(const char *cpu_ids_csv) {
 }
 
 //------------------------------------------------------------------------------
-// local-task device creation pinned by task_topology_cpu_ids
+// Pinned local-task device creation.
+//
+// Creates a local-task device with a dedicated task executor pinned to the
+// given CPU IDs. Each device gets its own executor + worker threads.
+//
+// NOTE: The device identifier MUST be "local" (not "local-task") to match
+// the #hal.device.target<"local", ...> encoded in compiled VMFBs.
 //------------------------------------------------------------------------------
 
-static iree_status_t CreateConfiguredLocalTaskDeviceFromCpuIds(
-	iree_runtime_instance_t *instance, iree_allocator_t host_allocator,
-	const char *cpu_ids_csv, iree_hal_device_t **out_device) {
+static iree_status_t CreatePinnedLocalTaskDevice(
+	iree_allocator_t host_allocator, const char *cpu_ids_csv,
+	iree_hal_device_t **out_device) {
 	*out_device = nullptr;
 
-	if (!instance) {
-		return iree_make_status(
-			IREE_STATUS_INVALID_ARGUMENT, "instance is null");
-	}
-	if (!cpu_ids_csv || !cpu_ids_csv[0]) {
-		return iree_make_status(
-			IREE_STATUS_INVALID_ARGUMENT, "cpu_ids_csv is empty");
+	// 1. Build topology from comma-separated CPU IDs.
+	iree_task_topology_t topology;
+	IREE_RETURN_IF_ERROR(
+		iree_task_topology_initialize_from_logical_cpu_set_string(
+			iree_make_cstring_view(cpu_ids_csv), &topology));
+
+	// 2. Create task executor pinned to those cores.
+	iree_task_executor_options_t exec_opts;
+	iree_task_executor_options_initialize(&exec_opts);
+	exec_opts.worker_local_memory_size = 64 * 1024;
+
+	iree_task_executor_t *executor = nullptr;
+	iree_status_t st = iree_task_executor_create(
+		exec_opts, &topology, host_allocator, &executor);
+	iree_task_topology_deinitialize(&topology);
+	if (!iree_status_is_ok(st))
+		return st;
+
+	// 3. Create executable loaders.
+	iree_hal_executable_loader_t *loaders[8] = {NULL};
+	iree_host_size_t loader_count = 0;
+	st = iree_hal_create_all_available_executable_loaders(
+		/*plugin_manager=*/NULL, IREE_ARRAYSIZE(loaders), &loader_count,
+		loaders, host_allocator);
+	if (!iree_status_is_ok(st)) {
+		iree_task_executor_release(executor);
+		return st;
 	}
 
-	iree_hal_driver_registry_t *registry =
-		iree_runtime_instance_driver_registry(instance);
-	if (!registry) {
-		return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-			"runtime instance has no driver registry");
+	// 4. Create heap allocator for device buffers.
+	iree_hal_allocator_t *device_allocator = NULL;
+	st = iree_hal_allocator_create_heap(iree_make_cstring_view("local"),
+		host_allocator, host_allocator, &device_allocator);
+	if (!iree_status_is_ok(st)) {
+		for (iree_host_size_t i = 0; i < loader_count; ++i)
+			iree_hal_executable_loader_release(loaders[i]);
+		iree_task_executor_release(executor);
+		return st;
 	}
 
+	// 5. Create driver + device. Identifier "local" matches VMFB targets.
+	iree_hal_task_device_params_t params;
+	iree_hal_task_device_params_initialize(&params);
+
+	iree_task_executor_t *executors[1] = {executor};
 	iree_hal_driver_t *driver = nullptr;
-	IREE_RETURN_IF_ERROR(iree_hal_driver_registry_try_create(registry,
-		iree_make_cstring_view("local-task"), host_allocator, &driver));
+	st = iree_hal_task_driver_create(iree_make_cstring_view("local"), &params,
+		/*queue_count=*/1, executors, loader_count, loaders, device_allocator,
+		host_allocator, &driver);
 
-	iree_string_pair_t params[1];
-	params[0].key = iree_make_cstring_view("task_topology_cpu_ids");
-	params[0].value = iree_make_cstring_view(cpu_ids_csv);
+	iree_hal_allocator_release(device_allocator);
+	for (iree_host_size_t i = 0; i < loader_count; ++i)
+		iree_hal_executable_loader_release(loaders[i]);
+	iree_task_executor_release(executor);
 
-	iree_status_t st = iree_hal_driver_create_device_by_path(driver,
-		iree_make_cstring_view("local-task"), iree_string_view_empty(),
-		IREE_ARRAYSIZE(params), params, host_allocator, out_device);
+	if (!iree_status_is_ok(st))
+		return st;
 
+	st = iree_hal_driver_create_device_by_id(driver, IREE_HAL_DEVICE_ID_DEFAULT,
+		/*param_count=*/0, /*params=*/nullptr, host_allocator, out_device);
 	iree_hal_driver_release(driver);
 	return st;
 }
@@ -473,9 +517,23 @@ static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
 				if (next_release_us == UINT64_MAX) {
 					sched->cv.wait(lock);
 				} else {
-					const auto wake_tp = sched->iter_t0 +
-						std::chrono::microseconds(next_release_us);
-					sched->cv.wait_until(lock, wake_tp);
+					// Spin-wait for short sleeps to avoid condvar
+					// timer overshoot (~2ms on RISC-V kernel).
+					const uint64_t now2 = UsSince(sched->iter_t0, Clock::now());
+					if (next_release_us > now2 + 5000) {
+						// Long wait: condvar, but wake 2ms early to spin.
+						const auto wake_tp = sched->iter_t0 +
+							std::chrono::microseconds(next_release_us - 2000);
+						sched->cv.wait_until(lock, wake_tp);
+					} else {
+						// Short wait: drop lock, spin-yield, re-acquire.
+						lock.unlock();
+						while (UsSince(sched->iter_t0, Clock::now()) <
+							next_release_us) {
+							sched_yield();
+						}
+						lock.lock();
+					}
 				}
 			}
 		}
@@ -691,10 +749,10 @@ extern "C" int dispatch_graph_run(const dispatch_graph_config_t *cfg) {
 	}
 
 	{
-		iree_status_t st = CreateConfiguredLocalTaskDeviceFromCpuIds(
-			instance, host_alloc, cfg->cpu_p_cpu_ids, &device_p);
+		iree_status_t st = CreatePinnedLocalTaskDevice(
+			host_alloc, cfg->cpu_p_cpu_ids, &device_p);
 		if (!iree_status_is_ok(st)) {
-			fprintf(stderr, "Failed creating CPU_P device\n");
+			fprintf(stderr, "Failed creating pinned CPU_P device\n");
 			iree_status_fprint(stderr, st);
 			iree_status_ignore(st);
 			iree_runtime_instance_release(instance);
@@ -704,10 +762,10 @@ extern "C" int dispatch_graph_run(const dispatch_graph_config_t *cfg) {
 	}
 
 	{
-		iree_status_t st = CreateConfiguredLocalTaskDeviceFromCpuIds(
-			instance, host_alloc, cfg->cpu_e_cpu_ids, &device_e);
+		iree_status_t st = CreatePinnedLocalTaskDevice(
+			host_alloc, cfg->cpu_e_cpu_ids, &device_e);
 		if (!iree_status_is_ok(st)) {
-			fprintf(stderr, "Failed creating CPU_E device\n");
+			fprintf(stderr, "Failed creating pinned CPU_E device\n");
 			iree_status_fprint(stderr, st);
 			iree_status_ignore(st);
 			iree_hal_device_release(device_p);

@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "iree/base/tracing.h"
 #include "iree/hal/api.h"
 #include "iree/modules/hal/types.h"
 #include "iree/runtime/api.h"
@@ -432,6 +433,7 @@ struct WorkQueue {
 } // namespace
 
 extern "C" int dispatch_graph_run(const dispatch_graph_config_t *cfg) {
+	IREE_TRACE_ZONE_BEGIN_NAMED(z_run, "dispatch_graph_run");
 	using namespace merlin_bench;
 
 	if (!cfg || !cfg->graph_json_path || !cfg->graph_json_path[0]) {
@@ -583,18 +585,25 @@ extern "C" int dispatch_graph_run(const dispatch_graph_config_t *cfg) {
 	// Sequential topo-order runner (baseline)
 	auto run_sequential_iter = [&](int graph_iter) {
 		(void)graph_iter;
+		IREE_TRACE_ZONE_BEGIN_NAMED(z_seq, "graph_iter_sequential");
 		for (int idx : order) {
 			if (HasFatal(&shared))
-				return;
+				break;
+
+			const auto &key = nodes[idx].key;
+			IREE_TRACE_ZONE_BEGIN_NAMED_DYNAMIC(
+				z_call, key.c_str(), key.size());
 
 			const auto t0 = Clock::now();
 			iree_status_t call_st = CallCachedModule(
 				node_module[idx], (int32_t)dispatch_iters, host_alloc);
 			const auto t1 = Clock::now();
 
+			IREE_TRACE_ZONE_END(z_call);
+
 			if (!iree_status_is_ok(call_st)) {
 				SetFatalOnce(&shared, call_st, "[dispatch] call failed");
-				return;
+				break;
 			}
 
 			const uint64_t us =
@@ -603,6 +612,7 @@ extern "C" int dispatch_graph_run(const dispatch_graph_config_t *cfg) {
 					.count();
 			nodes[idx].stats.Add(us);
 		}
+		IREE_TRACE_ZONE_END(z_seq);
 	};
 
 	// Parallel runner using dependency counts (per iteration)
@@ -640,10 +650,14 @@ extern "C" int dispatch_graph_run(const dispatch_graph_config_t *cfg) {
 				}
 
 				// Execute node
+				const auto &key = nodes[node_idx].key;
+				IREE_TRACE_ZONE_BEGIN_NAMED_DYNAMIC(
+					z_call, key.c_str(), key.size());
 				const auto t0 = Clock::now();
 				iree_status_t call_st = CallCachedModule(
 					node_module[node_idx], (int32_t)dispatch_iters, host_alloc);
 				const auto t1 = Clock::now();
+				IREE_TRACE_ZONE_END(z_call);
 
 				if (!iree_status_is_ok(call_st)) {
 					SetFatalOnce(&shared, call_st, "[dispatch] call failed");
@@ -749,5 +763,6 @@ extern "C" int dispatch_graph_run(const dispatch_graph_config_t *cfg) {
 	iree_hal_device_release(device);
 	iree_runtime_instance_release(instance);
 
+	IREE_TRACE_ZONE_END(z_run);
 	return HasFatal(&shared) ? 1 : 0;
 }

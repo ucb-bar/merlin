@@ -1,0 +1,1456 @@
+{
+  "dot_file": "combined_schedule_periodic.json",
+  "dispatches": {
+    "dronet_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_P",
+      "start_time": -0.0,
+      "duration": 0.242,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_0_embedded_elf_riscv_64_dronet$async_dispatch_0_elementwise_10_f32xi8"
+    },
+    "dronet_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_0"
+      ],
+      "hardware_target": "CPU_P",
+      "start_time": 0.242,
+      "duration": 6.21,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_1_embedded_elf_riscv_64_dronet$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "dronet_dispatch_0"
+    },
+    "dronet_dispatch_10": {
+      "id": 10,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_6",
+        "dronet_dispatch_9"
+      ],
+      "hardware_target": "CPU_P",
+      "start_time": 23.932000000000187,
+      "duration": 0.203,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_10_embedded_elf_riscv_64_dronet$async_dispatch_10_reduction_64x7x7x32_i8xi8xi32",
+      "time_dependency": "dronet_dispatch_8"
+    },
+    "dronet_dispatch_11": {
+      "id": 11,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_10"
+      ],
+      "hardware_target": "CPU_P",
+      "start_time": 24.135000000000183,
+      "duration": 0.212,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_11_embedded_elf_riscv_64_dronet$async_dispatch_11_elementwise_64x7x7_i8xf32xi8",
+      "time_dependency": "dronet_dispatch_9"
+    },
+    "dronet_dispatch_12": {
+      "id": 12,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_11"
+      ],
+      "hardware_target": "CPU_P",
+      "start_time": 24.347000000000182,
+      "duration": 2.63,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_12_embedded_elf_riscv_64_dronet$async_dispatch_12_conv_128x4x4x64x3x3_i8xi8xi32",
+      "time_dependency": "dronet_dispatch_11"
+    },
+    "dronet_dispatch_13": {
+      "id": 13,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_12"
+      ],
+      "hardware_target": "CPU_P",
+      "start_time": 26.97700000000018,
+      "duration": 4.9,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_13_embedded_elf_riscv_64_dronet$async_dispatch_13_conv_128x4x4x128x3x3_i8xi8xi32",
+      "time_dependency": "dronet_dispatch_12"
+    },
+    "dronet_dispatch_14": {
+      "id": 14,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_10",
+        "dronet_dispatch_13"
+      ],
+      "hardware_target": "CPU_P",
+      "start_time": 31.87700000000018,
+      "duration": 0.411,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_14_embedded_elf_riscv_64_dronet$async_dispatch_14_reduction_128x4x4x64_i8xi8xi32",
+      "time_dependency": "dronet_dispatch_13"
+    },
+    "dronet_dispatch_15": {
+      "id": 15,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_14"
+      ],
+      "hardware_target": "CPU_P",
+      "start_time": 32.28800000000018,
+      "duration": 0.125,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_15_embedded_elf_riscv_64_dronet$async_dispatch_15_elementwise_2048_f32xi8",
+      "time_dependency": "dronet_dispatch_14"
+    },
+    "dronet_dispatch_16_1": {
+      "id": 16,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_15"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 32.41300000000018,
+      "duration": 0.082,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_16_embedded_elf_riscv_64_dronet$async_dispatch_16_matmul_1x1x2048_i8xi8xi32",
+      "time_dependency": "mlp16_dispatch_3"
+    },
+    "dronet_dispatch_16_2": {
+      "id": 16,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_15"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 32.41300000000018,
+      "duration": 0.082,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_16_embedded_elf_riscv_64_dronet$async_dispatch_16_matmul_1x1x2048_i8xi8xi32",
+      "time_dependency": "mlp16_dispatch_3"
+    },
+    "dronet_dispatch_18": {
+      "id": 18,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_16_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 32.49500000000018,
+      "duration": 0.072,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_18_embedded_elf_riscv_64_dronet$async_dispatch_18_elementwise",
+      "time_dependency": "dronet_dispatch_16_2"
+    },
+    "dronet_dispatch_19": {
+      "id": 19,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_16_2"
+      ],
+      "hardware_target": "CPU_P",
+      "start_time": 32.49500025420022,
+      "duration": 0.069,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_19_embedded_elf_riscv_64_dronet$async_dispatch_19_elementwise",
+      "time_dependency": "dronet_dispatch_15"
+    },
+    "dronet_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_1"
+      ],
+      "hardware_target": "CPU_P",
+      "start_time": 6.452000000000189,
+      "duration": 0.886,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_2_embedded_elf_riscv_64_dronet$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "dronet_dispatch_1"
+    },
+    "dronet_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_2"
+      ],
+      "hardware_target": "CPU_P",
+      "start_time": 7.338000000000189,
+      "duration": 0.4,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_3_embedded_elf_riscv_64_dronet$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "dronet_dispatch_2"
+    },
+    "dronet_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_3"
+      ],
+      "hardware_target": "CPU_P",
+      "start_time": 7.73800000000019,
+      "duration": 3.99,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_4_embedded_elf_riscv_64_dronet$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "dronet_dispatch_3"
+    },
+    "dronet_dispatch_5": {
+      "id": 5,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_4"
+      ],
+      "hardware_target": "CPU_P",
+      "start_time": 11.72800000000019,
+      "duration": 4.3,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_5_embedded_elf_riscv_64_dronet$async_dispatch_5_conv_32x14x14x32x3x3_i8xi8xi32",
+      "time_dependency": "dronet_dispatch_4"
+    },
+    "dronet_dispatch_6": {
+      "id": 6,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_2",
+        "dronet_dispatch_5"
+      ],
+      "hardware_target": "CPU_P",
+      "start_time": 16.02800000000019,
+      "duration": 1.0,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_6_embedded_elf_riscv_64_dronet$async_dispatch_6_reduction_32x14x14x32_i8xi8xi32",
+      "time_dependency": "dronet_dispatch_5"
+    },
+    "dronet_dispatch_7": {
+      "id": 7,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_6"
+      ],
+      "hardware_target": "CPU_P",
+      "start_time": 17.02800000000019,
+      "duration": 0.314,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_7_embedded_elf_riscv_64_dronet$async_dispatch_7_elementwise_32x14x14_i8xf32xi8",
+      "time_dependency": "dronet_dispatch_6"
+    },
+    "dronet_dispatch_8": {
+      "id": 8,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_7"
+      ],
+      "hardware_target": "CPU_P",
+      "start_time": 17.34200000000019,
+      "duration": 2.33,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_8_embedded_elf_riscv_64_dronet$async_dispatch_8_conv_64x7x7x32x3x3_i8xi8xi32",
+      "time_dependency": "dronet_dispatch_7"
+    },
+    "dronet_dispatch_9": {
+      "id": 9,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "dronet_dispatch_8"
+      ],
+      "hardware_target": "CPU_P",
+      "start_time": 19.672000000000192,
+      "duration": 4.26,
+      "job_name": "dronet",
+      "module_name": "dronet$async_dispatch_9_embedded_elf_riscv_64_dronet$async_dispatch_9_conv_64x7x7x64x3x3_i8xi8xi32",
+      "time_dependency": "dronet_dispatch_8"
+    },
+    "mlp0_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": -0.0,
+      "duration": 0.073,
+      "job_name": "mlp0",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8"
+    },
+    "mlp0_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp0_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 0.207,
+      "duration": 0.078,
+      "job_name": "mlp0",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp0_dispatch_0"
+    },
+    "mlp0_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp0_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 0.285,
+      "duration": 0.084,
+      "job_name": "mlp0",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp0_dispatch_1"
+    },
+    "mlp0_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp0_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 0.369,
+      "duration": 0.064,
+      "job_name": "mlp0",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp0_dispatch_2"
+    },
+    "mlp0_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp0_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 0.43300000000000005,
+      "duration": 0.067,
+      "job_name": "mlp0",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp0_dispatch_3"
+    },
+    "mlp1_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": 2.1340000000000003,
+      "duration": 0.073,
+      "job_name": "mlp1",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8",
+      "time_dependency": "mlp0_dispatch_4"
+    },
+    "mlp1_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp1_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 2.2069999999994763,
+      "duration": 0.078,
+      "job_name": "mlp1",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp0_dispatch_4"
+    },
+    "mlp1_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp1_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 2.284999999999476,
+      "duration": 0.084,
+      "job_name": "mlp1",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp1_dispatch_1"
+    },
+    "mlp1_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp1_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 2.368999999999847,
+      "duration": 0.064,
+      "job_name": "mlp1",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp1_dispatch_2"
+    },
+    "mlp1_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp1_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 2.433,
+      "duration": 0.067,
+      "job_name": "mlp1",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp1_dispatch_3"
+    },
+    "mlp2_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": 4.134,
+      "duration": 0.073,
+      "job_name": "mlp2",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8",
+      "time_dependency": "mlp1_dispatch_4"
+    },
+    "mlp2_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp2_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 4.206999999999476,
+      "duration": 0.078,
+      "job_name": "mlp2",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp1_dispatch_4"
+    },
+    "mlp2_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp2_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 4.284999999999476,
+      "duration": 0.084,
+      "job_name": "mlp2",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp2_dispatch_1"
+    },
+    "mlp2_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp2_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 4.368999999999847,
+      "duration": 0.064,
+      "job_name": "mlp2",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp2_dispatch_2"
+    },
+    "mlp2_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp2_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 4.433,
+      "duration": 0.067,
+      "job_name": "mlp2",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp2_dispatch_3"
+    },
+    "mlp3_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": 6.134,
+      "duration": 0.073,
+      "job_name": "mlp3",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8",
+      "time_dependency": "mlp2_dispatch_4"
+    },
+    "mlp3_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp3_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 6.206999999999476,
+      "duration": 0.078,
+      "job_name": "mlp3",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp2_dispatch_4"
+    },
+    "mlp3_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp3_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 6.284999999999476,
+      "duration": 0.084,
+      "job_name": "mlp3",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp3_dispatch_1"
+    },
+    "mlp3_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp3_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 6.368999999999847,
+      "duration": 0.064,
+      "job_name": "mlp3",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp3_dispatch_2"
+    },
+    "mlp3_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp3_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 6.433,
+      "duration": 0.067,
+      "job_name": "mlp3",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp3_dispatch_3"
+    },
+    "mlp4_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": 8.0,
+      "duration": 0.073,
+      "job_name": "mlp4",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8",
+      "time_dependency": "mlp3_dispatch_4"
+    },
+    "mlp4_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp4_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 8.207,
+      "duration": 0.078,
+      "job_name": "mlp4",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp4_dispatch_0"
+    },
+    "mlp4_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp4_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 8.285,
+      "duration": 0.084,
+      "job_name": "mlp4",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp4_dispatch_1"
+    },
+    "mlp4_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp4_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 8.369000000000742,
+      "duration": 0.064,
+      "job_name": "mlp4",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp4_dispatch_2"
+    },
+    "mlp4_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp4_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 8.433,
+      "duration": 0.067,
+      "job_name": "mlp4",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp4_dispatch_2"
+    },
+    "mlp5_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": 10.0,
+      "duration": 0.073,
+      "job_name": "mlp5",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8",
+      "time_dependency": "mlp4_dispatch_4"
+    },
+    "mlp5_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp5_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 10.207,
+      "duration": 0.078,
+      "job_name": "mlp5",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp5_dispatch_0"
+    },
+    "mlp5_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp5_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 10.285,
+      "duration": 0.084,
+      "job_name": "mlp5",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp5_dispatch_1"
+    },
+    "mlp5_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp5_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 10.369000000000002,
+      "duration": 0.064,
+      "job_name": "mlp5",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp5_dispatch_2"
+    },
+    "mlp5_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp5_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 10.433000000000002,
+      "duration": 0.067,
+      "job_name": "mlp5",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp5_dispatch_3"
+    },
+    "mlp6_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": 12.0,
+      "duration": 0.073,
+      "job_name": "mlp6",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8",
+      "time_dependency": "mlp5_dispatch_4"
+    },
+    "mlp6_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp6_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 12.207,
+      "duration": 0.078,
+      "job_name": "mlp6",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp6_dispatch_0"
+    },
+    "mlp6_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp6_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 12.285,
+      "duration": 0.084,
+      "job_name": "mlp6",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp6_dispatch_1"
+    },
+    "mlp6_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp6_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 12.369000000000002,
+      "duration": 0.064,
+      "job_name": "mlp6",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp6_dispatch_2"
+    },
+    "mlp6_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp6_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 12.433000000000002,
+      "duration": 0.067,
+      "job_name": "mlp6",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp6_dispatch_3"
+    },
+    "mlp7_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": 14.0,
+      "duration": 0.073,
+      "job_name": "mlp7",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8",
+      "time_dependency": "mlp6_dispatch_4"
+    },
+    "mlp7_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp7_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 14.073,
+      "duration": 0.078,
+      "job_name": "mlp7",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp7_dispatch_0"
+    },
+    "mlp7_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp7_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 14.151,
+      "duration": 0.084,
+      "job_name": "mlp7",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp7_dispatch_1"
+    },
+    "mlp7_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp7_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 14.235,
+      "duration": 0.064,
+      "job_name": "mlp7",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp7_dispatch_2"
+    },
+    "mlp7_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp7_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 14.299,
+      "duration": 0.067,
+      "job_name": "mlp7",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp7_dispatch_3"
+    },
+    "mlp8_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": 16.0,
+      "duration": 0.073,
+      "job_name": "mlp8",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8",
+      "time_dependency": "mlp7_dispatch_4"
+    },
+    "mlp8_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp8_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 16.206999999999994,
+      "duration": 0.078,
+      "job_name": "mlp8",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp8_dispatch_0"
+    },
+    "mlp8_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp8_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 16.284999999999993,
+      "duration": 0.084,
+      "job_name": "mlp8",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp8_dispatch_1"
+    },
+    "mlp8_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp8_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 16.369,
+      "duration": 0.064,
+      "job_name": "mlp8",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp8_dispatch_2"
+    },
+    "mlp8_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp8_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 16.433,
+      "duration": 0.067,
+      "job_name": "mlp8",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp8_dispatch_3"
+    },
+    "mlp9_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": 18.0,
+      "duration": 0.073,
+      "job_name": "mlp9",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8",
+      "time_dependency": "mlp8_dispatch_4"
+    },
+    "mlp9_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp9_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 18.207,
+      "duration": 0.078,
+      "job_name": "mlp9",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp9_dispatch_0"
+    },
+    "mlp9_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp9_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 18.285,
+      "duration": 0.084,
+      "job_name": "mlp9",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp9_dispatch_1"
+    },
+    "mlp9_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp9_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 18.369,
+      "duration": 0.064,
+      "job_name": "mlp9",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp9_dispatch_2"
+    },
+    "mlp9_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp9_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 18.433,
+      "duration": 0.067,
+      "job_name": "mlp9",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp9_dispatch_3"
+    },
+    "mlp10_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": 20.0,
+      "duration": 0.073,
+      "job_name": "mlp10",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8",
+      "time_dependency": "mlp9_dispatch_4"
+    },
+    "mlp10_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp10_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 20.207,
+      "duration": 0.078,
+      "job_name": "mlp10",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp10_dispatch_0"
+    },
+    "mlp10_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp10_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 20.285,
+      "duration": 0.084,
+      "job_name": "mlp10",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp10_dispatch_1"
+    },
+    "mlp10_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp10_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 20.369000000000742,
+      "duration": 0.064,
+      "job_name": "mlp10",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp10_dispatch_2"
+    },
+    "mlp10_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp10_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 20.433000000000003,
+      "duration": 0.067,
+      "job_name": "mlp10",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp10_dispatch_2"
+    },
+    "mlp11_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": 22.0,
+      "duration": 0.073,
+      "job_name": "mlp11",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8",
+      "time_dependency": "mlp10_dispatch_4"
+    },
+    "mlp11_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp11_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 22.207,
+      "duration": 0.078,
+      "job_name": "mlp11",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp11_dispatch_0"
+    },
+    "mlp11_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp11_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 22.285,
+      "duration": 0.084,
+      "job_name": "mlp11",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp11_dispatch_1"
+    },
+    "mlp11_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp11_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 22.369,
+      "duration": 0.064,
+      "job_name": "mlp11",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp11_dispatch_2"
+    },
+    "mlp11_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp11_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 22.433000000000003,
+      "duration": 0.067,
+      "job_name": "mlp11",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp11_dispatch_3"
+    },
+    "mlp12_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": 24.0,
+      "duration": 0.073,
+      "job_name": "mlp12",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8",
+      "time_dependency": "mlp11_dispatch_4"
+    },
+    "mlp12_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp12_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 24.206999999999997,
+      "duration": 0.078,
+      "job_name": "mlp12",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp12_dispatch_0"
+    },
+    "mlp12_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp12_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 24.284999999999997,
+      "duration": 0.084,
+      "job_name": "mlp12",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp12_dispatch_1"
+    },
+    "mlp12_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp12_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 24.36900000000074,
+      "duration": 0.064,
+      "job_name": "mlp12",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp12_dispatch_2"
+    },
+    "mlp12_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp12_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 24.433000000000003,
+      "duration": 0.067,
+      "job_name": "mlp12",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp12_dispatch_2"
+    },
+    "mlp13_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": 26.0,
+      "duration": 0.073,
+      "job_name": "mlp13",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8",
+      "time_dependency": "mlp12_dispatch_4"
+    },
+    "mlp13_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp13_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 26.207,
+      "duration": 0.078,
+      "job_name": "mlp13",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp13_dispatch_0"
+    },
+    "mlp13_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp13_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 26.285,
+      "duration": 0.084,
+      "job_name": "mlp13",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp13_dispatch_1"
+    },
+    "mlp13_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp13_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 26.369000000000742,
+      "duration": 0.064,
+      "job_name": "mlp13",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp13_dispatch_2"
+    },
+    "mlp13_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp13_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 26.433000000000003,
+      "duration": 0.067,
+      "job_name": "mlp13",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp13_dispatch_2"
+    },
+    "mlp14_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": 28.0,
+      "duration": 0.073,
+      "job_name": "mlp14",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8",
+      "time_dependency": "mlp13_dispatch_4"
+    },
+    "mlp14_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp14_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 28.207,
+      "duration": 0.078,
+      "job_name": "mlp14",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp14_dispatch_0"
+    },
+    "mlp14_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp14_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 28.285,
+      "duration": 0.084,
+      "job_name": "mlp14",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp14_dispatch_1"
+    },
+    "mlp14_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp14_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 28.369000000000742,
+      "duration": 0.064,
+      "job_name": "mlp14",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp14_dispatch_2"
+    },
+    "mlp14_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp14_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 28.433000000000003,
+      "duration": 0.067,
+      "job_name": "mlp14",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp14_dispatch_2"
+    },
+    "mlp15_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": 30.0,
+      "duration": 0.073,
+      "job_name": "mlp15",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8",
+      "time_dependency": "mlp14_dispatch_4"
+    },
+    "mlp15_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp15_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 30.207,
+      "duration": 0.078,
+      "job_name": "mlp15",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp15_dispatch_0"
+    },
+    "mlp15_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp15_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 30.285,
+      "duration": 0.084,
+      "job_name": "mlp15",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp15_dispatch_1"
+    },
+    "mlp15_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp15_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 30.369000000000003,
+      "duration": 0.064,
+      "job_name": "mlp15",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp15_dispatch_2"
+    },
+    "mlp15_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp15_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 30.433000000000003,
+      "duration": 0.067,
+      "job_name": "mlp15",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp15_dispatch_3"
+    },
+    "mlp16_dispatch_0": {
+      "id": 0,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [],
+      "hardware_target": "CPU_E",
+      "start_time": 32.0,
+      "duration": 0.073,
+      "job_name": "mlp16",
+      "module_name": "mlp$async_dispatch_0_embedded_elf_riscv_64_mlp$async_dispatch_0_elementwise_10_f32xi8",
+      "time_dependency": "mlp15_dispatch_4"
+    },
+    "mlp16_dispatch_1": {
+      "id": 1,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp16_dispatch_0"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 32.073,
+      "duration": 0.078,
+      "job_name": "mlp16",
+      "module_name": "mlp$async_dispatch_1_embedded_elf_riscv_64_mlp$async_dispatch_1_matmul_1x32x10_i8xi8xi32",
+      "time_dependency": "mlp16_dispatch_0"
+    },
+    "mlp16_dispatch_2": {
+      "id": 2,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp16_dispatch_1"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 32.151,
+      "duration": 0.084,
+      "job_name": "mlp16",
+      "module_name": "mlp$async_dispatch_2_embedded_elf_riscv_64_mlp$async_dispatch_2_matmul_1x32x32_i8xi8xi32",
+      "time_dependency": "mlp16_dispatch_1"
+    },
+    "mlp16_dispatch_3": {
+      "id": 3,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp16_dispatch_2"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 32.282000000001084,
+      "duration": 0.064,
+      "job_name": "mlp16",
+      "module_name": "mlp$async_dispatch_3_embedded_elf_riscv_64_mlp$async_dispatch_3_matmul_1x2x32_i8xi8xi32",
+      "time_dependency": "mlp16_dispatch_2"
+    },
+    "mlp16_dispatch_4": {
+      "id": 4,
+      "ordinal": 1,
+      "total": 1,
+      "dependencies": [
+        "mlp16_dispatch_3"
+      ],
+      "hardware_target": "CPU_E",
+      "start_time": 32.346000000001084,
+      "duration": 0.067,
+      "job_name": "mlp16",
+      "module_name": "mlp$async_dispatch_4_embedded_elf_riscv_64_mlp$async_dispatch_4_elementwise_2_i8xf32",
+      "time_dependency": "mlp16_dispatch_3"
+    }
+  },
+  "metadata": {
+    "makespan": 32.567000000000185,
+    "num_operations": 105,
+    "machines": [
+      "CPU_P",
+      "CPU_E"
+    ],
+    "machine_combinations": [
+      [
+        "CPU_P"
+      ],
+      [
+        "CPU_E"
+      ]
+    ]
+  }
+}

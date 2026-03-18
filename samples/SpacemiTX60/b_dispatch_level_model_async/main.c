@@ -6,6 +6,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "iree/base/api.h"
+#include "iree/base/internal/flags.h"
+
 #include "iree_bench/cli_utils.h"
 #include "runtime_scheduler.h"
 
@@ -47,6 +50,10 @@ static void print_usage(const char *argv0) {
 }
 
 int main(int argc, char **argv) {
+	// Parse IREE global flags first (e.g. --task_topology_cpu_ids=0,1,2,3).
+	// This removes consumed flags from argv so our arg parser sees only ours.
+	iree_flags_parse_checked(IREE_FLAGS_PARSE_MODE_UNDEFINED_OK, &argc, &argv);
+
 	if (argc < 2) {
 		print_usage(argv[0]);
 		return 1;
