@@ -283,6 +283,15 @@ def setup_parser(parser: argparse.ArgumentParser):
         help="Override IREE_ENABLE_LIBBACKTRACE for this build.",
     )
     parser.add_argument(
+        "--enable-tracy",
+        action="store_true",
+        default=False,
+        help=(
+            "Enable Tracy runtime tracing (IREE_ENABLE_RUNTIME_TRACING=ON, "
+            "IREE_TRACING_MODE=4). Compatible with any --config."
+        ),
+    )
+    parser.add_argument(
         "--offline-friendly",
         action="store_true",
         help=(
@@ -710,6 +719,23 @@ def main(args: argparse.Namespace) -> int:
             ]
         )
         if args.target in ["spacemit", "firesim"]:
+            cmake_args.append("-DTRACY_NO_POINTER_COMPRESSION=ON")
+
+    # --enable-tracy: overlay runtime tracing onto any config.
+    if args.enable_tracy:
+        # Mode 1 = instrumentation zones + log messages (no alloc tracking,
+        # no callstacks). Higher modes crash on RISC-V due to pointer
+        # compression and callstack issues in Tracy's server code.
+        print("  🔬 Enabling Tracy runtime tracing (IREE_TRACING_MODE=1)")
+        cmake_args.extend(
+            [
+                "-DIREE_ENABLE_RUNTIME_TRACING=ON",
+                "-DIREE_TRACING_MODE=1",
+            ]
+        )
+        if args.target in ["spacemit", "firesim"]:
+            # RISC-V 64-bit uses address ranges incompatible with Tracy's
+            # default 48-bit pointer compression (PackPointer assert).
             cmake_args.append("-DTRACY_NO_POINTER_COMPRESSION=ON")
 
     # 4. Target Specific Logic
