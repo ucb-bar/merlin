@@ -3,6 +3,9 @@ set -euo pipefail
 
 cd /workspace
 
+export UV_PROJECT_ENVIRONMENT=/tmp/merlin-uv-env
+rm -rf "${UV_PROJECT_ENVIRONMENT}"
+
 # Start from clean release build trees so CMake caches do not clash between
 # host paths (/scratch2/...) and container paths (/workspace/...).
 rm -rf \
