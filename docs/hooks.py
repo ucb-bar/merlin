@@ -6,6 +6,8 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 # Large generated/derived directories that should never feed API docs.
@@ -536,12 +538,476 @@ def _generate_repository_guide(repo_root: Path, docs_root: Path) -> None:
     _write_if_changed(docs_root / "repository_guide.md", "\n".join(guide))
 
 
+## ---------------------------------------------------------------------------
+# C/C++ API docs: Doxygen XML → Markdown
+# ---------------------------------------------------------------------------
+
+_CPP_HEADER_DIRS = ("samples/common/core", "samples/common/runtime", "samples/common/dispatch")
+
+_CPP_SUBDIR_LABELS = {
+    "core": ("Core Utilities", "`samples/common/core/` — Generic utilities (no IREE dependency)"),
+    "runtime": ("Runtime Utilities", "`samples/common/runtime/` — IREE runtime helpers"),
+    "dispatch": ("Dispatch Scheduling", "`samples/common/dispatch/` — Dispatch graph types, parsing, and output"),
+}
+
+
+def _xml_text(node) -> str:
+    """Recursively extract plain text from a Doxygen XML element."""
+    if node is None:
+        return ""
+    parts: list[str] = []
+    if node.text:
+        parts.append(node.text)
+    for child in node:
+        tag = child.tag
+        if tag == "computeroutput":
+            parts.append(f"`{_xml_text(child)}`")
+        elif tag == "ref":
+            parts.append(f"`{_xml_text(child)}`")
+        elif tag == "parameterlist":
+            pass  # handled separately
+        elif tag == "simplesect":
+            pass  # handled separately
+        else:
+            parts.append(_xml_text(child))
+        if child.tail:
+            parts.append(child.tail)
+    return "".join(parts).strip()
+
+
+def _xml_paras(node) -> str:
+    """Extract text from all <para> children, joined by double newlines."""
+    if node is None:
+        return ""
+    paras = []
+    for para in node.findall("para"):
+        text = _xml_text(para)
+        if text:
+            paras.append(text)
+    return "\n\n".join(paras)
+
+
+def _extract_param_docs(detail_node) -> dict[str, str]:
+    """Extract @param name → description from a detaileddescription element."""
+    docs: dict[str, str] = {}
+    if detail_node is None:
+        return docs
+    for para in detail_node.findall("para"):
+        for plist in para.findall("parameterlist"):
+            if plist.get("kind") != "param":
+                continue
+            for item in plist.findall("parameteritem"):
+                names = item.findall("parameternamelist/parametername")
+                desc = item.find("parameterdescription")
+                if names and desc:
+                    name = names[0].text or ""
+                    docs[name] = _xml_paras(desc)
+    return docs
+
+
+def _extract_return_doc(detail_node) -> str:
+    """Extract @return description from a detaileddescription element."""
+    if detail_node is None:
+        return ""
+    for para in detail_node.findall("para"):
+        for sect in para.findall("simplesect"):
+            if sect.get("kind") == "return":
+                return _xml_paras(sect)
+    return ""
+
+
+def _extract_note_doc(detail_node) -> str:
+    """Extract @note from a detaileddescription element."""
+    if detail_node is None:
+        return ""
+    for para in detail_node.findall("para"):
+        for sect in para.findall("simplesect"):
+            if sect.get("kind") == "note":
+                return _xml_paras(sect)
+    return ""
+
+
+def _run_doxygen(repo_root: Path, output_dir: Path) -> Path | None:
+    """Run Doxygen on samples/common/ headers. Returns XML dir or None."""
+    doxygen_bin = shutil.which("doxygen")
+    if not doxygen_bin:
+        print("WARNING: doxygen not found, skipping C++ API docs generation.")
+        return None
+
+    doxyfile_template = repo_root / "docs" / "Doxyfile.in"
+    if not doxyfile_template.exists():
+        print("WARNING: docs/Doxyfile.in not found, skipping C++ API docs.")
+        return None
+
+    input_dirs = " ".join(str(repo_root / d) for d in _CPP_HEADER_DIRS if (repo_root / d).exists())
+    if not input_dirs:
+        print("WARNING: no C++ header directories found, skipping C++ API docs.")
+        return None
+
+    template = doxyfile_template.read_text(encoding="utf-8")
+    doxyfile_content = template.replace("@INPUT_DIRS@", input_dirs).replace("@OUTPUT_DIR@", str(output_dir))
+
+    doxyfile_path = output_dir / "Doxyfile"
+    doxyfile_path.write_text(doxyfile_content, encoding="utf-8")
+
+    result = subprocess.run(
+        [doxygen_bin, str(doxyfile_path)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"WARNING: Doxygen failed (exit {result.returncode}): {result.stderr[:500]}")
+        return None
+
+    xml_dir = output_dir / "xml"
+    if not (xml_dir / "index.xml").exists():
+        print("WARNING: Doxygen produced no index.xml, skipping C++ API docs.")
+        return None
+
+    return xml_dir
+
+
+def _parse_compound_xml(xml_dir: Path, refid: str):
+    """Parse a single Doxygen compound XML file."""
+    xml_path = xml_dir / f"{refid}.xml"
+    if not xml_path.exists():
+        return None
+    return ET.parse(xml_path).getroot()
+
+
+def _parse_members(sectiondef, param_style: str = "table") -> list[dict]:
+    """Parse memberdef elements from a sectiondef."""
+    members = []
+    for mdef in sectiondef.findall("memberdef"):
+        kind = mdef.get("kind", "")
+        name_el = mdef.find("name")
+        name = name_el.text if name_el is not None else ""
+        type_el = mdef.find("type")
+        type_str = _xml_text(type_el) if type_el is not None else ""
+        brief = _xml_paras(mdef.find("briefdescription"))
+        detail = mdef.find("detaileddescription")
+        detail_text = _xml_paras(detail)
+        param_docs = _extract_param_docs(detail)
+        return_doc = _extract_return_doc(detail)
+
+        # Build argsstring for functions
+        argsstring_el = mdef.find("argsstring")
+        argsstring = argsstring_el.text if argsstring_el is not None else ""
+
+        # Parse params
+        params = []
+        for p in mdef.findall("param"):
+            ptype = _xml_text(p.find("type")) if p.find("type") is not None else ""
+            pname_el = p.find("declname")
+            pname = pname_el.text if pname_el is not None else ""
+            pdesc = param_docs.get(pname, "")
+            params.append({"name": pname, "type": ptype, "description": pdesc})
+
+        members.append(
+            {
+                "kind": kind,
+                "name": name,
+                "type": type_str,
+                "brief": brief,
+                "detail": detail_text,
+                "return_doc": return_doc,
+                "argsstring": argsstring,
+                "params": params,
+                "static": mdef.get("static", "no") == "yes",
+            }
+        )
+    return members
+
+
+def _parse_struct(xml_dir: Path, refid: str, qualified_name: str) -> dict | None:
+    """Parse a struct/class compound into a descriptor."""
+    root = _parse_compound_xml(xml_dir, refid)
+    if root is None:
+        return None
+    cdef = root.find(".//compounddef")
+    if cdef is None:
+        return None
+
+    brief = _xml_paras(cdef.find("briefdescription"))
+    detail = _xml_paras(cdef.find("detaileddescription"))
+
+    variables = []
+    methods = []
+    for sdef in cdef.findall("sectiondef"):
+        mems = _parse_members(sdef)
+        for m in mems:
+            if m["kind"] == "variable":
+                variables.append(m)
+            elif m["kind"] == "function":
+                methods.append(m)
+            elif m["kind"] == "enum":
+                methods.append(m)  # enums inside structs
+
+    return {
+        "name": qualified_name.split("::")[-1],
+        "qualified": qualified_name,
+        "brief": brief,
+        "detail": detail,
+        "variables": variables,
+        "methods": methods,
+    }
+
+
+def _parse_doxygen_xml(xml_dir: Path, repo_root: Path) -> list[dict]:
+    """Parse Doxygen XML into a list of file descriptors."""
+    index = ET.parse(xml_dir / "index.xml").getroot()
+
+    file_descs = []
+    for compound in index.findall("compound"):
+        if compound.get("kind") != "file":
+            continue
+        refid = compound.get("refid", "")
+        root = _parse_compound_xml(xml_dir, refid)
+        if root is None:
+            continue
+        cdef = root.find(".//compounddef")
+        if cdef is None:
+            continue
+
+        # Get source location to determine subdir
+        location = cdef.find("location")
+        if location is None:
+            continue
+        file_path = location.get("file", "")
+        try:
+            rel_path = Path(file_path).relative_to(repo_root).as_posix()
+        except ValueError:
+            rel_path = file_path
+
+        # Determine subdir (core/runtime/dispatch)
+        subdir = ""
+        for d in _CPP_HEADER_DIRS:
+            if rel_path.startswith(d + "/") or rel_path.startswith(d.replace("/", os.sep) + os.sep):
+                subdir = d.split("/")[-1]
+                break
+        if not subdir:
+            continue
+
+        filename = cdef.findtext("compoundname", "")
+        brief = _xml_paras(cdef.find("briefdescription"))
+        detail = _xml_paras(cdef.find("detaileddescription"))
+
+        # Collect structs/classes
+        structs = []
+        for inner in cdef.findall("innerclass"):
+            inner_refid = inner.get("refid", "")
+            inner_name = inner.text or ""
+            s = _parse_struct(xml_dir, inner_refid, inner_name)
+            if s:
+                structs.append(s)
+
+        # Collect enums and free functions
+        enums = []
+        functions = []
+        for sdef in cdef.findall("sectiondef"):
+            skind = sdef.get("kind", "")
+            if "enum" in skind:
+                for mdef in sdef.findall("memberdef"):
+                    if mdef.get("kind") != "enum":
+                        continue
+                    name_el = mdef.find("name")
+                    name = name_el.text if name_el is not None else ""
+                    ebrief = _xml_paras(mdef.find("briefdescription"))
+                    values = []
+                    for ev in mdef.findall("enumvalue"):
+                        ev_name = ev.findtext("name", "")
+                        ev_brief = _xml_paras(ev.find("briefdescription"))
+                        ev_init = ev.findtext("initializer", "")
+                        values.append({"name": ev_name, "brief": ev_brief, "initializer": ev_init})
+                    enums.append({"name": name, "brief": ebrief, "values": values})
+            elif "func" in skind:
+                functions.extend(_parse_members(sdef))
+
+        file_descs.append(
+            {
+                "filename": filename,
+                "location": rel_path,
+                "subdir": subdir,
+                "brief": brief,
+                "detail": detail,
+                "structs": structs,
+                "enums": enums,
+                "functions": functions,
+            }
+        )
+
+    file_descs.sort(key=lambda d: (d["subdir"], d["filename"]))
+    return file_descs
+
+
+def _render_cpp_file_page(desc: dict) -> str:
+    """Render a file descriptor as a markdown page."""
+    lines = [f"# {desc['filename']}", "", f"**Source:** `{desc['location']}`", ""]
+    if desc["brief"]:
+        lines.extend([desc["brief"], ""])
+    if desc["detail"]:
+        lines.extend([desc["detail"], ""])
+
+    # Enums
+    if desc["enums"]:
+        lines.append("---")
+        lines.append("")
+        lines.append("## Enums")
+        lines.append("")
+        for enum in desc["enums"]:
+            lines.append(f"### `{enum['name']}`")
+            lines.append("")
+            if enum["brief"]:
+                lines.extend([enum["brief"], ""])
+            if enum["values"]:
+                lines.append("| Value | Description |")
+                lines.append("| --- | --- |")
+                for v in enum["values"]:
+                    desc_text = v["brief"] or ""
+                    lines.append(f"| `{v['name']}` | {desc_text} |")
+                lines.append("")
+
+    # Structs
+    if desc["structs"]:
+        lines.append("---")
+        lines.append("")
+        lines.append("## Structs")
+        lines.append("")
+        for s in desc["structs"]:
+            lines.append(f"### `{s['name']}`")
+            lines.append("")
+            if s["brief"]:
+                lines.extend([s["brief"], ""])
+            if s["detail"]:
+                lines.extend([s["detail"], ""])
+
+            if s["variables"]:
+                lines.append("#### Members")
+                lines.append("")
+                lines.append("| Name | Type | Description |")
+                lines.append("| --- | --- | --- |")
+                for v in s["variables"]:
+                    lines.append(f"| `{v['name']}` | `{v['type']}` | {v['brief']} |")
+                lines.append("")
+
+            if s["methods"]:
+                lines.append("#### Methods")
+                lines.append("")
+                for m in s["methods"]:
+                    lines.append(f"##### `{m['name']}{m['argsstring']}`")
+                    lines.append("")
+                    if m["brief"]:
+                        lines.extend([m["brief"], ""])
+                    if m["params"]:
+                        lines.append("**Parameters:**")
+                        lines.append("")
+                        lines.append("| Name | Type | Description |")
+                        lines.append("| --- | --- | --- |")
+                        for p in m["params"]:
+                            lines.append(f"| `{p['name']}` | `{p['type']}` | {p['description']} |")
+                        lines.append("")
+                    if m["return_doc"]:
+                        lines.append(f"**Returns:** {m['return_doc']}")
+                        lines.append("")
+
+    # Free functions
+    if desc["functions"]:
+        lines.append("---")
+        lines.append("")
+        lines.append("## Functions")
+        lines.append("")
+        for f in desc["functions"]:
+            sig_prefix = "static " if f["static"] else ""
+            lines.append(f"### `{f['name']}`")
+            lines.append("")
+            lines.append("```cpp")
+            lines.append(f"{sig_prefix}{f['type']} {f['name']}{f['argsstring']}")
+            lines.append("```")
+            lines.append("")
+            if f["brief"]:
+                lines.extend([f["brief"], ""])
+            if f["params"]:
+                lines.append("**Parameters:**")
+                lines.append("")
+                lines.append("| Name | Type | Description |")
+                lines.append("| --- | --- | --- |")
+                for p in f["params"]:
+                    lines.append(f"| `{p['name']}` | `{p['type']}` | {p['description']} |")
+                lines.append("")
+            if f["return_doc"]:
+                lines.append(f"**Returns:** {f['return_doc']}")
+                lines.append("")
+
+    return "\n".join(lines) + "\n"
+
+
+def _render_cpp_index_page(file_descs: list[dict]) -> str:
+    """Render the C/C++ API index page."""
+    lines = [
+        "# C/C++ API",
+        "",
+        "Auto-generated from Doxygen comments in `samples/common/` headers.",
+        "",
+    ]
+    current_subdir = None
+    for desc in file_descs:
+        if desc["subdir"] != current_subdir:
+            current_subdir = desc["subdir"]
+            label, subtitle = _CPP_SUBDIR_LABELS.get(current_subdir, (current_subdir, ""))
+            lines.extend(["", f"## {label}", "", subtitle, ""])
+        rel_link = f"generated/cpp/{desc['subdir']}/{Path(desc['filename']).stem}.md"
+        brief = f" — {desc['brief']}" if desc["brief"] else ""
+        lines.append(f"- [`{desc['filename']}`]({rel_link}){brief}")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _generate_cpp_api_docs(repo_root: Path, docs_root: Path) -> None:
+    """Generate C/C++ API reference docs from Doxygen XML."""
+    tmp_dir = None
+    try:
+        tmp_dir = Path(tempfile.mkdtemp(prefix="merlin_doxygen_"))
+        xml_dir = _run_doxygen(repo_root, tmp_dir)
+        if xml_dir is None:
+            return
+
+        file_descs = _parse_doxygen_xml(xml_dir, repo_root)
+        if not file_descs:
+            print("WARNING: Doxygen XML produced no file descriptors.")
+            return
+
+        generated_root = docs_root / "reference" / "generated" / "cpp"
+        expected_docs: set[Path] = set()
+
+        for desc in file_descs:
+            stem = Path(desc["filename"]).stem
+            doc_path = generated_root / desc["subdir"] / f"{stem}.md"
+            expected_docs.add(doc_path.resolve())
+            _write_if_changed(doc_path, _render_cpp_file_page(desc))
+
+        # Clean stale files
+        if generated_root.exists():
+            for existing in generated_root.rglob("*.md"):
+                if existing.resolve() not in expected_docs:
+                    existing.unlink()
+
+        # Write index page
+        _write_if_changed(docs_root / "reference" / "cpp.md", _render_cpp_index_page(file_descs))
+
+        print(f"C++ API docs: generated {len(file_descs)} pages from Doxygen XML.")
+    finally:
+        if tmp_dir and tmp_dir.exists():
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 def generate_reference_docs(repo_root: Path, docs_root: Path) -> None:
     _build_cli_reference(repo_root, docs_root)
     _generate_python_api_docs(repo_root, docs_root)
     _generate_mlir_docs(repo_root, docs_root)
     _generate_cmake_targets_page(repo_root, docs_root)
     _generate_repository_guide(repo_root, docs_root)
+    _generate_cpp_api_docs(repo_root, docs_root)
 
 
 def on_pre_build(config, **kwargs) -> None:

@@ -123,3 +123,9 @@ validation.
 - Implement `kmod` backend or remove it from default bring-up paths until ready.
 - Add targeted runtime tests for semaphore/event/channel semantics.
 - Add simulator/hardware-facing validation once backend path is available.
+
+---
+
+*Dev-blog written by:* Agustin Coppari Hollmann
+
+*Project Members:* See [Radiance](https://github.com/ucb-bar/radiance), [Gluon](https://github.com/Sh-Anand/gluon), and [Radiance-Kernels](https://github.com/ucb-bar/radiance-kernels) for the original hardware and kernel authors

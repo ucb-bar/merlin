@@ -231,3 +231,9 @@ Interpretation:
 - this same broad failure class also reproduces on non-Gemmini full-compile
   targets in this tree, so it should not currently be treated as a
   Gemmini-specific regression
+
+---
+
+*Dev-blog written by:* Agustin Coppari Hollmann
+
+*Project Members:* See [Gemmini-MX](https://github.com/ucb-bar/gemmini/tree/gemmini-mx) for the original Gemmini ISA authors

@@ -108,6 +108,16 @@ nav:
       - Radiance HAL: dev_blog/2026-03-11-radiance-hal-workstream-log.md
       - SmolVLA FP8: dev_blog/2026-03-12-smolvla-fp8-int8-global-opt-workstream.md
       - RISC-V MMT4D: dev_blog/2026-03-13-riscv-mmt4d-ukernel-workstream.md
+      - Dispatch Scheduler: dev_blog/2026-03-16-dispatch-level-async.md
+      - Chipyard Bare-Metal: dev_blog/2026-03-18-chipyard-bare-metal-integration.md
+  - Hardware Backends:
+      - Overview: hardware_backends/overview.md
+      - Compatibility Matrix: hardware_backends/compatibility_matrix.md
+      - Chipyard Concepts: hardware_backends/chipyard_concepts.md
+      - Recipes:
+          - Saturn OPU (FireSim U250): hardware_backends/recipes/saturn_opu_u250.md
+          - Gemmini MX (Bare-Metal): hardware_backends/recipes/gemmini_mx.md
+          - SpacemiT X60 (Linux Board): hardware_backends/recipes/spacemit_x60.md
   - Architecture:
       - Plugin & Patch Model: architecture/plugin_and_patch_model.md
       - Repo Maintenance Model: architecture/repo-maintenance-model.md

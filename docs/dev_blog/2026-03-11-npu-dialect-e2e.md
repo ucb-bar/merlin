@@ -136,3 +136,9 @@ compatibility, not taped-out hardware behavior.
 - Add CI coverage for NPU transform checks + one simulator smoke test.
 - Add shape-aware parity invocation in e2e script (derive M/K/N from IR).
 - Add more ukernel symbol-family tests and negative policy tests.
+
+---
+
+*Dev-blog written by:* Agustin Coppari Hollmann
+
+*Project Members:* Yufeng Chi, Huijae An and Agustin Coppari Hollmann

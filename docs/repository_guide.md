@@ -27,6 +27,7 @@ Merlin is organized to separate model frontends, compiler internals, and hardwar
 merlin/
 ├── .clang-format
 ├── .clang-tidy
+├── .dockerignore
 ├── .gitattributes
 ├── .gitignore
 ├── .gitmodules
@@ -43,19 +44,32 @@ merlin/
 │   │   ├── iree_run_subprocess.py
 │   │   ├── report
 │   │   └── results
+│   ├── SaturnOPU
+│   │   ├── README.md
+│   │   ├── compile_matmul_opu_fp8_ukernel_all.sh
+│   │   └── compile_matmul_opu_i8_ukernel_all.sh
 │   └── SpacemiTX60
 │       ├── README.md
+│       ├── baseline_dual_model_async
 │       ├── compile_dual_model_vmfb.sh
+│       ├── compile_matmul_rvv_i8_ukernel_all.sh
+│       ├── compile_matmul_xsmt_fp8.sh
+│       ├── compile_matmul_xsmt_i8_ukernel_all.sh
 │       ├── parse_dual_model_log.py
 │       ├── run_dual_model_remote.sh
 │       └── spacemitx60.env.example
 ├── build_tools
 │   ├── SpacemiT
 │   │   └── setup_toolchain.sh
+│   ├── docker
+│   │   ├── build_release.sh
+│   │   ├── in_container_release.sh
+│   │   └── linux-builder.Dockerfile
 │   ├── firesim
 │   │   ├── htif-nano.spec
 │   │   ├── htif.ld
 │   │   ├── riscv_firesim.toolchain.cmake
+│   │   ├── setup_toolchain.sh
 │   │   └── spike.cfg
 │   └── patches
 │       ├── README.md
@@ -86,6 +100,8 @@ merlin/
 │   │   ├── 2026-03-11-gemmini-workstream-log.md
 │   │   ├── 2026-03-11-npu-dialect-e2e.md
 │   │   ├── 2026-03-11-radiance-hal-workstream-log.md
+│   │   ├── 2026-03-12-smolvla-fp8-int8-global-opt-workstream.md
+│   │   ├── 2026-03-13-riscv-mmt4d-ukernel-workstream.md
 │   │   ├── TEMPLATE.md
 │   │   └── index.md
 │   ├── different_build_types.md
@@ -132,6 +148,7 @@ merlin/
 │   │   └── dronet.q.int8.mlir
 │   ├── fastdepth
 │   │   └── fastdepth.mlir
+│   ├── gemmini_mx.yaml
 │   ├── glpdepth
 │   │   ├── bear_image_data.h
 │   │   ├── glpdepth.mlir
@@ -146,10 +163,24 @@ merlin/
 │   ├── mobilenet_v2
 │   │   └── mobilenet_v2.mlir
 │   ├── models_config.json
+│   ├── npu_ucb.yaml
 │   ├── quantize_models.py
+│   ├── saturn_opu.yaml
+│   ├── smolVLA
+│   │   ├── README.md
+│   │   ├── export_smolvla.py
+│   │   └── export_smolvla_int8.py
 │   ├── spacemit_x60.yaml
 │   └── tinydepth
 │       └── tinydepth.py
+├── projects
+│   ├── mlirAgent
+│   └── xpu-rt
+│       ├── CMakeLists.txt
+│       ├── CMakeLists_standalone.cmake
+│       ├── xpurt_scheduler_backend_iree.c
+│       ├── xpurt_scheduler_core.c
+│       └── xpurt_scheduler_core.h
 ├── pyproject.toml
 ├── requirements.txt
 ├── runtime
@@ -158,12 +189,20 @@ merlin/
 ├── samples
 │   ├── CMakeLists.txt
 │   ├── SaturnOPU
-│   │   └── custom_dispatch_ukernels
+│   │   ├── CMakeLists.txt
+│   │   ├── custom_dispatch_ukernels
+│   │   └── simple_embedding_ukernel
 │   ├── SpacemiTX60
 │   │   ├── CMakeLists.txt
-│   │   └── baseline_dual_model_async
-│   └── common
+│   │   ├── baseline_async
+│   │   └── dispatch_scheduler
+│   ├── common
+│   │   ├── core
+│   │   ├── dispatch
+│   │   └── runtime
+│   └── research
 │       ├── mlir_pipelining
+│       ├── model_computation_graph_generation
 │       ├── promise_devices_layer
 │       └── promise_schedule_multi_model
 ├── third_party
@@ -178,10 +217,12 @@ merlin/
 │   ├── saturn-vectors
 │   └── torch-mlir
 ├── tools
+│   ├── analyze_quant_ir.py
 │   ├── benchmark.py
 │   ├── build.py
 │   ├── ci.py
 │   ├── compile.py
+│   ├── install_prebuilt.py
 │   ├── merlin.py
 │   ├── patches.py
 │   ├── setup.py

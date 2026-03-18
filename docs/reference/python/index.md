@@ -7,8 +7,10 @@ The pages below are generated from Python source files at docs build time.
 - [`tools.analyze_quant_ir`](../generated/python/tools/analyze_quant_ir.md)
 - [`tools.benchmark`](../generated/python/tools/benchmark.md)
 - [`tools.build`](../generated/python/tools/build.md)
+- [`tools.chipyard`](../generated/python/tools/chipyard.md)
 - [`tools.ci`](../generated/python/tools/ci.md)
 - [`tools.compile`](../generated/python/tools/compile.md)
+- [`tools.install_prebuilt`](../generated/python/tools/install_prebuilt.md)
 - [`tools.merlin`](../generated/python/tools/merlin.md)
 - [`tools.patches`](../generated/python/tools/patches.md)
 - [`tools.setup`](../generated/python/tools/setup.md)
@@ -30,8 +32,13 @@ The pages below are generated from Python source files at docs build time.
 
 - [`benchmarks.KernelBench.iree_compilation`](../generated/python/benchmarks/KernelBench/iree_compilation.md)
 - [`benchmarks.KernelBench.iree_run_subprocess`](../generated/python/benchmarks/KernelBench/iree_run_subprocess.md)
+- [`benchmarks.SpacemiTX60.baseline_dual_model_async.plot_results`](../generated/python/benchmarks/SpacemiTX60/baseline_dual_model_async/plot_results.md)
+- [`benchmarks.SpacemiTX60.baseline_dual_model_async.run_benchmark_remote`](../generated/python/benchmarks/SpacemiTX60/baseline_dual_model_async/run_benchmark_remote.md)
 - [`benchmarks.SpacemiTX60.parse_dual_model_log`](../generated/python/benchmarks/SpacemiTX60/parse_dual_model_log.md)
 
 ## `samples/`
 
-- [`samples.common.promise_schedule_multi_model.hw_annotation`](../generated/python/samples/common/promise_schedule_multi_model/hw_annotation.md)
+- [`samples.SpacemiTX60.dispatch_scheduler.analysis.plot_dispatch_trace`](../generated/python/samples/SpacemiTX60/dispatch_scheduler/analysis/plot_dispatch_trace.md)
+- [`samples.research.model_computation_graph_generation.dot_dispatch_parser`](../generated/python/samples/research/model_computation_graph_generation/dot_dispatch_parser.md)
+- [`samples.research.model_computation_graph_generation.mlir_flow_parser`](../generated/python/samples/research/model_computation_graph_generation/mlir_flow_parser.md)
+- [`samples.research.promise_schedule_multi_model.hw_annotation`](../generated/python/samples/research/promise_schedule_multi_model/hw_annotation.md)

@@ -1,0 +1,26 @@
+# Doxyfile template for C++ API docs generation.
+# Placeholders @INPUT_DIRS@ and @OUTPUT_DIR@ are substituted by docs/hooks.py.
+
+PROJECT_NAME           = "Merlin C++ API"
+PROJECT_BRIEF          = "Runtime and dispatch library for Merlin samples"
+
+INPUT                  = @INPUT_DIRS@
+FILE_PATTERNS          = *.h
+RECURSIVE              = NO
+
+GENERATE_HTML          = NO
+GENERATE_LATEX         = NO
+GENERATE_XML           = YES
+XML_OUTPUT             = xml
+OUTPUT_DIRECTORY       = @OUTPUT_DIR@
+
+EXTRACT_ALL            = NO
+EXTRACT_STATIC         = YES
+EXTRACT_PRIVATE        = NO
+
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = NO
+
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO
+BUILTIN_STL_SUPPORT    = YES

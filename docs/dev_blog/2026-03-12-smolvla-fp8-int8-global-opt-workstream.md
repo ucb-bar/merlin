@@ -754,3 +754,9 @@ rg -o "npu_isa\\.[a-zA-Z_]+" -N \
   tmp/smolvla_global_opt_phases_verify_npu_ucb_real/module.4.global-optimization.mlir \
   | sort | uniq -c
 ```
+
+---
+
+*Dev-blog written by:* Agustin Coppari Hollmann
+
+*Project Members:* Yufeng Chi and Agustin Coppari Hollmann

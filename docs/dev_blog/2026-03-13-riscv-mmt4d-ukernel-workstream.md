@@ -294,12 +294,463 @@ benchmarks/SaturnOPU/compile_matmul_opu_i8_ukernel_all.sh
 benchmarks/SaturnOPU/compile_matmul_opu_fp8_ukernel_all.sh
 ```
 
+## Critical Bug Fix: vmadot VL Not Set (2026-03-18)
+
+### Root cause
+
+The vmadot kernel (`iree_uk_mmt4d_tile_s8s8s32_4x4x8_riscv_64_xsmtvdot_native`
+in `mmt4d_riscv_64_v_i8.c`) triggered SIGILL on larger matrices (256x256+)
+while working on small ones (32x64). Two bugs:
+
+**Bug 1: VL=16 instead of VL=32.** The accumulator init used
+`vsetvli zero, zero, e32, m2` which set VL=16 (for 16 x i32). When switching
+to `e8, m1` for the input loads, the old code used `vsetvli zero, zero` which
+keeps VL=16. But vmadot requires VL=32 (4x4x8 = 32 bytes per operand).
+With VL=16, only half the data was loaded and the hardware trapped.
+
+**Bug 2: LLVM bitcode pipeline strips vsetvli.** Even after fixing the source
+to use `vsetvli zero, %0, e8, m1, ta, ma` with `%0=32`, LLVM's RISC-V backend
+(in the bitcode link path) merges consecutive `vsetvli` instructions with the
+same type config, converting our explicit VL=32 back to `vsetvli zero, zero`.
+
+### Fix
+
+Use `.word 0x0c02f057` (raw encoding of `vsetvli zero, t0, e8, m1, ta, ma`)
+inside the inline asm block, preceded by `li t0, 32`. This encoding is opaque
+to LLVM's bitcode optimizer, so it survives the bitcode pipeline intact.
+
+The fixed hot loop (`mmt4d_riscv_64_v_i8.c`):
+
+```c
+for (int k = 0; k < params->K; ++k) {
+    asm volatile(
+        "li t0, 32\n\t"
+        ".word 0x0c02f057\n\t"           // vsetvli zero, t0, e8, m1, ta, ma
+        "vle8.v v0, (%0)\n\t"            // Load LHS (32 bytes)
+        "vle8.v v4, (%1)\n\t"            // Load RHS (32 bytes)
+        ".insn r 0x2b, 3, 0x71, v8, v0, v4\n\t"  // vmadot v8, v0, v4
+        :
+        : "r"(lhs_ptr), "r"(rhs_ptr)
+        : "memory", "t0");
+    lhs_ptr += 32;
+    rhs_ptr += 32;
+}
+```
+
+Key register assignments:
+- `v8` accumulator (VRM2, even-aligned: v8-v9, holds 16 x i32 = 4x4 tile)
+- `v0` LHS input (32 bytes = 4 rows x 8 cols of i8)
+- `v4` RHS input (32 bytes, does NOT overlap with acc v8-v9)
+
+**Critical build step**: after changing the kernel, BOTH the host compiler
+(`iree-compile`) AND the cross-compiled runtime must be rebuilt:
+
+```bash
+# 1. Rebuild host ukernel bitcode + iree-compile
+conda run -n merlin-dev uv run tools/merlin.py build \
+  --profile full-plugin --config release \
+  --cmake-target iree-compile
+
+# 2. Rebuild cross-compiled runtime
+conda run -n merlin-dev uv run tools/merlin.py build \
+  --profile spacemit \
+  --cmake-target iree-run-module
+```
+
+The host `iree-compile` embeds the ukernel bitcode at link time. If only the
+spacemit runtime is rebuilt, the old bitcode remains embedded in `iree-compile`
+and the VMFB still contains the broken kernel.
+
+### Verified assembly output
+
+After the fix, the VMFB assembly shows:
+
+```asm
+.LBB0_3:                              ; hot loop
+    li      t0, 32                    ; AVL = 32
+    .word   201519191                 ; vsetvli zero, t0, e8, m1, ta, ma
+    vle8.v  v0, (a0)                  ; load LHS
+    vle8.v  v4, (a2)                  ; load RHS
+    .insn r 43, 3, 113, v8, v0, v4   ; vmadot v8, v0, v4
+    addi    a0, a0, 32
+    addi    a2, a2, 32
+    ...
+    bnez    ..., .LBB0_3
+```
+
+## On-Board Benchmark Results (2026-03-18)
+
+Tested on SpacemiT X60 (8-core RISC-V, VLEN=256, Linux 6.1.15).
+Board: `root@10.44.86.251`.
+
+### Correctness
+
+Both paths produce correct results for `matmul_q_i8_256.mlir`
+(256x256 quantized matmul, input=1):
+
+- RVV i8: `256x256xi32` = all 256. Correct.
+- xsmtvdot i8: `256x256xi32` = all 256. Correct.
+
+### Benchmark: 1024x1024 quantized matmul (i8xi8->i32)
+
+Using `iree-benchmark-module` with multiple iterations:
+
+| Path | Tile | Median | Speedup |
+|------|------|-------:|--------:|
+| RVV i8 (`vwmul.vx` + `vwadd.wv`) | 8x16x1 | **312 ms** | 1.0x |
+| xsmtvdot i8 (`vmadot` NPU) | 4x4x8 | **34.8 ms** | **9.0x** |
+
+```bash
+# RVV i8
+iree-benchmark-module --device=local-task \
+  --module=bench_1024_rvv.vmfb \
+  --function=matmul_i8_quantized \
+  --input="1024x1024xi8=1" --input="1024x1024xi8=1" \
+  --benchmark_repetitions=5
+
+# xsmtvdot (NPU)
+iree-benchmark-module --device=local-task \
+  --module=bench_1024_xsmtvdot.vmfb \
+  --function=matmul_i8_quantized \
+  --input="1024x1024xi8=1" --input="1024x1024xi8=1" \
+  --benchmark_repetitions=5
+```
+
+The vmadot IME instruction provides a **9x speedup** over standard RVV
+widening multiply-accumulate for int8 quantized matmul.
+
+### RVV i8 assembly (reference hot loop)
+
+From `tests/e2e/SpacemiT/tmp/matmul_q_i8_rvv/`:
+
+```asm
+.LBB0_1:
+    vsetvli  zero, zero, e8, mf2, ta, ma
+    vle8.v   v24, (t1)              ; load RHS (16 i8 elements)
+    lbu      a1, -3(a3)             ; load 8 scalar LHS bytes
+    lbu      a0, -2(a3)
+    ...
+    vwmul.vx v25, v24, a1           ; widening mul: i8*i8 -> i16
+    vwmul.vx v26, v24, a0
+    ...
+    vsetvli  zero, zero, e16, m1, tu, ma
+    vwadd.wv v8, v8, v25            ; widening add: i16+i32 -> i32
+    vwadd.wv v22, v22, v26
+    ...
+    bnez     a5, .LBB0_1
+```
+
+### Upstream patch
+
+Patches stored at `patches/upstream/`:
+- `riscv64-mmt4d-i8-rvv-kernel-only.patch` (606 lines) — just the RVV kernel
+- `riscv64-mmt4d-i8-full.patch` (865 lines) — all files
+- `README.md` — extraction guide
+
+The RVV i8 kernel uses only `<riscv_vector.h>` intrinsics (no inline assembly,
+no vendor extensions). Fully extractable from `mmt4d_riscv_64_v_i8.c` lines
+1-201.
+
+## FP8 vfmadot Progress (2026-03-18)
+
+### Runtime side: complete
+
+All runtime infrastructure for FP8 `f8E4M3FN x f8E4M3FN -> f16` is in place:
+
+| File | Change |
+|------|--------|
+| `exported_bits.h` | Added `IREE_UK_FLAG_MMT4D_TYPE_F8E4M3F8E4M3F16 = 0x0B` |
+| `common.h` | Added `IREE_UK_TYPE_FLOAT_8 = FLOAT_IEEE \| 3` |
+| `mmt4d_internal.h` | Added `iree_uk_mmt4d_type_f8e4m3f8e4m3f16` enum + routing |
+| `exported_bits.h` | Added `QUERY_TILE_SIZES_OPERATION_MATMUL_F8E4M3F8E4M3F16 = 0x0700` |
+| `query_tile_sizes_riscv_64_entry_point.c` | Returns `{M=4, K=8, N=4}` for xsmtvdot |
+| `mmt4d_riscv_64_tiles.inl` | Registered `f8e4m3, f8e4m3, f16, 4, 8, _xsmtvdot` |
+| `mmt4d_riscv_64_v_i8.c` | `iree_uk_mmt4d_tile_f8e4m3f8e4m3f16_4x4x8_riscv_64_xsmtvdot_native()` |
+
+The FP8 vfmadot kernel:
+```c
+// vfmadot: Opcode 0x2b, Funct3 0, Funct7 0x75 (OPFMMA).
+// Accumulator: VR (single register, 16 x fp16 = 256 bits).
+// Inputs: 32 bytes of f8E4M3FN packed as i8.
+asm volatile(
+    "li t0, 32\n\t"
+    ".word 0x0c02f057\n\t"              // vsetvli zero, t0, e8, m1, ta, ma
+    "vle8.v v0, (%0)\n\t"              // Load LHS (32 bytes f8)
+    "vle8.v v4, (%1)\n\t"              // Load RHS (32 bytes f8)
+    ".insn r 0x2b, 0, 0x75, v8, v0, v4\n\t"  // vfmadot v8, v0, v4
+    :
+    : "r"(lhs_ptr), "r"(rhs_ptr)
+    : "memory", "t0");
+```
+
+Key differences from int8 vmadot:
+- Accumulator: `e16, m1` (fp16) not `e32, m2` (i32)
+- Load/store: `vle16.v`/`vse16.v` for accumulator
+- Encoding: `funct7=0x75` (OPFMMA) and `funct3=0` (standard FP)
+
+### Compiler side: blocking
+
+### Compiler side: complete (2026-03-18)
+
+Added FP8 ukernel routing in `CPULowerToUKernels.cpp`:
+
+```cpp
+// In the mmt4d type matching (line ~215):
+} else if (isa<FloatType>(lhsElemType) &&
+           lhsElemType.getIntOrFloatBitWidth() == 8 &&
+           isa<FloatType>(rhsElemType) &&
+           rhsElemType.getIntOrFloatBitWidth() == 8 &&
+           outElemType.isF16()) {
+  flags = IREE_UK_FLAG_MMT4D_TYPE_F8E4M3F8E4M3F16;
+
+// In the query tile sizes (line ~507):
+} else if (isa<FloatType>(lhs) && lhs.getIntOrFloatBitWidth() == 8 &&
+           isa<FloatType>(rhs) && rhs.getIntOrFloatBitWidth() == 8 &&
+           out.isF16()) {
+  return IREE_UK_FLAG_QUERY_TILE_SIZES_OPERATION_MATMUL_F8E4M3F8E4M3F16;
+```
+
+### Assembly verification: vfmadot present
+
+After rebuilding `iree-compile`, the FP8 matmul hot loop now contains:
+
+```asm
+.LBB0_2:
+    li      t0, 32                    ; AVL = 32
+    .word   201519191                 ; vsetvli zero, t0, e8, m1, ta, ma
+    vle8.v  v0, (a0)                  ; load LHS (32 bytes f8E4M3FN)
+    vle8.v  v4, (a1)                  ; load RHS (32 bytes f8E4M3FN)
+    .insn r 43, 0, 117, v8, v0, v4   ; vfmadot v8, v0, v4 (fp8->fp16)
+    addi    a0, a0, 32
+    addi    a1, a1, 32
+```
+
+Only 12 remaining software conversions (for pack/unpack boundary ops),
+down from 652 in the baseline.
+
+### Board test: vfmadot SIGILL
+
+The SpacemiT X60 board has `vmadot` (OPMMA, integer) but **not** `vfmadot`
+(OPFMMA, floating-point). The FP8 VMFB correctly generates vfmadot
+instructions but they trap with SIGILL on the current hardware revision.
+
+The int8 vmadot works and gives 9x speedup. The FP8 vfmadot will work on
+future hardware that implements the full OPFMMA instruction set.
+
+## Saturn OPU Per-Operand Encoding Optimization (2026-03-18)
+
+### Problem: strided loads dominate OPU kernel throughput
+
+The original OPU kernel used `vlse8.v` (strided vector loads) because IREE's
+mmt4d packs tiles as `[M0, K0]` row-major. To extract a column of M0=16
+elements for one k0 value, the kernel needs stride=K0 access:
+
+```asm
+; BEFORE: strided loads (1 element/cycle on Saturn VLSU)
+vlse8.v v16, (lhs_ptr + k0), stride    ; 16 cycles
+vlse8.v v18, (rhs_ptr + k0), stride    ; 16 cycles
+.insn r 87, 2, 81, zero, v16, v18      ; VOPACC ~4 cycles
+; Total per k0: ~36 cycles (load-bound, 16x overhead)
+```
+
+Saturn's documentation (Section 4.6) confirms: "Saturn's VLSU is designed
+towards deployment as a DSP system, and thus fundamentally has limited
+performance on indexed or strided accesses, as it can only generate one
+element's address per cycle." Contiguous loads run at full dLen bandwidth
+(16 elements/cycle for dLen=128).
+
+The Saturn OPU benchmarks (`third_party/saturn-vectors/benchmarks/opu-gemm/`)
+avoid this entirely by pre-transposing the A matrix so M is innermost,
+enabling `vle8.v`.
+
+### Solution: per-operand encoding for xopu targets only
+
+IREE's `getEncodingInfoImpl()` is called **once per operand** (LHS, RHS,
+result), and the encoding attribute carries `operandIdx`. We exploit this to
+swap the inner dimension order for LHS/RHS when `+xopu` is present, without
+affecting the result operand or any other target.
+
+**Compiler change** (`CPUEncodingExternalModels.cpp`, ~10 lines):
+
+```cpp
+// In getEncodingInfoImpl(), after getEncodingInfoForMatmul():
+if (hasFeature(layoutAttr.getConfiguration(), "+xopu")) {
+  int64_t operandIdx = encoding.getOperandIndex().getInt();
+  if (operandIdx != IREE::Encoding::MATMUL_RESULT &&
+      info.innerDimsPos.size() >= 2) {
+    size_t sz = info.innerDimsPos.size();
+    std::swap(info.innerDimsPos[sz - 2], info.innerDimsPos[sz - 1]);
+    std::swap(info.innerTileSizes[sz - 2], info.innerTileSizes[sz - 1]);
+  }
+}
+```
+
+This changes:
+- LHS tile: `[M0, K0]` → `[K0, M0]` (M innermost = contiguous)
+- RHS tile: `[N0, K0]` → `[K0, N0]` (N innermost = contiguous)
+- Result: unchanged (`[M0, N0]`, has no K dim, skipped by condition)
+- `outerDimsPerm`: unchanged (mmt4d outer iteration order preserved)
+
+**What's NOT affected:**
+- RVV `_v` path (K0=1, stride=1, already contiguous)
+- SpacemiT `_xsmtvdot` path (no `+xopu` feature)
+- ARM, x86, or any other architecture
+- The result operand encoding
+
+**Kernel change** (`mmt4d_riscv_64_v_i8.c`): replace `vlse8.v` with `vle8.v`:
+
+```asm
+; AFTER: contiguous loads (16 elements/cycle on Saturn VLSU)
+vle8.v v16, (lhs_ptr + k0*16)          ; 1 cycle
+vle8.v v18, (rhs_ptr + k0*16)          ; 1 cycle
+.insn r 87, 2, 81, zero, v16, v18      ; VOPACC ~4 cycles
+; Total per k0: ~6 cycles (compute-bound, optimal)
+```
+
+The transpose cost is absorbed into the `linalg.pack` operation that runs
+once before the mmt4d kernel. The pack already copies and tiles the data;
+with the encoding swap it simply writes [K0, M0] order instead of [M0, K0].
+This is a one-time cost amortized over all K iterations.
+
+### Verified assembly
+
+Compiled `matmul_i8.mlir` with `+xopu`:
+
+```asm
+.LBB0_2:                              ; hot loop (k0 unrolled by 2)
+    vle8.v  v16, (a1)                 ; contiguous LHS load
+    vle8.v  v18, (a0)                 ; contiguous RHS load
+    .insn r 87, 2, 81, zero, a6, s2   ; VOPACC m0, v16, v18
+    vle8.v  v20, (a5)                 ; LHS (k0+1)
+    vle8.v  v22, (a3)                 ; RHS (k0+1)
+    .insn r 87, 2, 81, zero, s4, s6   ; VOPACC m0, v20, v22
+    addi    a0, a0, 32
+    addi    a1, a1, 32
+    bltu    a2, a4, .LBB0_2
+```
+
+No `vlse8.v` (strided) in the hot loop. All loads are `vle8.v` (contiguous).
+No stack spills. **6x improvement on the inner loop** (36 → 6 cycles per k0).
+
+### Additional fixes in this session
+
+1. **VOPACC/OPFMACC operand order bug**: rs1 and rs2 were swapped, producing
+   transposed output. Cross-referenced with `bme.h`: rs1=LHS(rows),
+   rs2=RHS(cols). Fixed for both int8 VOPACC and fp8 OPFMACC.
+
+2. **OPMVINBCAST register**: changed from mc0 (x16, column-broadcast) to m0
+   (x0, row-broadcast) to match the Saturn benchmark pattern.
+
+3. **Removed duplicate function definitions**: cleaned up broken sed-edit
+   remnants (K0=1 fallback functions conflicting with K0=16 tile functions).
+
+### Why K0=16 (and the case for K0=128)
+
+With contiguous loads, the inner compute per k0 is identical regardless of
+K0. The total VOPACC calls and loads are always `2 * total_K`. However, K0
+controls the split between the inner k0 loop and the outer K-tile loop, and
+the outer loop has real overhead per iteration:
+
+```
+Per K-tile overhead (~5 cycles):
+  - 2x pointer arithmetic (lhs_k_ptr, rhs_k_ptr)
+  - 1x vsetvli e8,m1 (may stall Shuttle pipeline on vtype transition)
+  - 1x loop branch + counter increment
+  - potential branch misprediction on small trip counts
+```
+
+For total K=128:
+
+| K0 | K-tiles | Overhead (cycles) | Compute (cycles) | Overhead % |
+|----|---------|------------------:|------------------:|-----------:|
+| 16 | 8 | 40 | 768 | **5.2%** |
+| 32 | 4 | 20 | 768 | 2.6% |
+| 64 | 2 | 10 | 768 | 1.3% |
+| 128 | 1 | 5 | 768 | **0.7%** |
+
+The overhead scales linearly with K-tiles, so the ~5% penalty is consistent
+regardless of total K. For large matrices (K=1024): K0=16 → 64 K-tiles ×
+5 = 320 overhead cycles vs K0=128 → 8 K-tiles × 5 = 40 cycles.
+
+Additional costs beyond raw cycle count:
+- **vsetvli pipeline stall**: each K-tile iteration transitions from e32
+  (accumulator) to e8 (loads). Shuttle may bubble on this vtype change.
+  With K0=16, this happens 8x per tile; with K0=128, only 1x.
+- **Branch prediction**: the K-tile loop has a small trip count that may
+  not predict well on Shuttle's in-order pipeline.
+- **Icache pressure**: more outer iterations = more fetch cycles for the
+  loop preamble.
+
+**Current choice: K0=16.** This was originally motivated by strided loads
+(stride=K0=16 = 1 cache line). With contiguous loads that constraint is
+gone, but K0=16 still has practical advantages:
+- Divides all common K dimensions (64, 128, 256, 512) cleanly
+- Pack tiles are small (256B), good for L1 locality
+- The kernel code already uses `params->K0` dynamically
+
+**TODO: evaluate K0=128.** See follow-up task below for what this requires.
+
+### Upstream RVV i8 patch
+
+Updated clean patch at `patches/upstream/riscv64-mmt4d-i8-rvv-only.patch`.
+Contains only standard RVV code (no xsmtvdot, no xopu, no fp8). 6 file diffs:
+
+1. New `mmt4d_riscv_64_v_i8.c` (201 lines, pure RVV intrinsics)
+2. `mmt4d_riscv_64_tiles.inl` (5 `_v` s8s8s32 entries)
+3. `query_tile_sizes_riscv_64_entry_point.c` (i8i8i32 query with `_v` branch)
+4. `CPUEncodingExternalModels.cpp` (standard RVV i8 tile enumeration)
+5. `CMakeLists.txt` (add source to bitcode library)
+6. `BUILD.bazel` (add source to srcs)
+
 ## Follow-Up Tasks
 
-- add true FP8 hardware-accelerated ukernels for `+xsmtvdot`
-- add true FP8 hardware-accelerated ukernels for `+xopu`
-- revisit OPU FP8 `K=128` after a native lowering exists
-- add explicit hot-loop assembly checks for FP8 once there is a real target
-  instruction sequence to validate
-- decide whether the final target-specific FP8 support should stay in-tree in
-  `third_party/iree_bar` or move to a cleaner out-of-tree extension layer
+- **Saturn FPGA/simulator test**: verify OPU int8 and fp8 correctness
+- **Upstream PR**: submit the RVV i8 patch to IREE upstream
+- **FP8 OPU on-board**: test `OPFMACC` assembly on Saturn hardware
+- **E5M2 altfmt**: add `VSETVLI_ALTFMT` support (vtypei bit 8 = 1)
+
+### TODO: Evaluate K0=128 for OPU
+
+Increasing K0 from 16 to 128 eliminates ~5% outer-loop overhead per tile.
+The kernel code already uses `params->K0` dynamically, so no kernel changes
+are needed. The changes required are compiler-side only:
+
+**Files to modify (3 files, ~6 lines total):**
+
+1. `CPUEncodingExternalModels.cpp` — change xopu tile from `{16, 16, 16}`
+   to `{16, 16, 128}` in `enumerateMatmulTileRiscv64()` for both i8 and fp8
+2. `query_tile_sizes_riscv_64_entry_point.c` — change xopu return from
+   `{.M=16, .K=16, .N=16}` to `{.M=16, .K=128, .N=16}`
+3. `mmt4d_riscv_64_tiles.inl` — change K0 from 16 to 128 in all xopu entries
+   (10 lines: 5 for s8s8s32, 5 for f8e4m3f8e4m3f32)
+
+**Implications:**
+
+| Aspect | K0=16 | K0=128 |
+|--------|------:|-------:|
+| Pack tile size (LHS) | 256B | 2KB |
+| Pack tile size (RHS) | 256B | 2KB |
+| Outer loop overhead | ~5% | ~0.7% |
+| K divisibility | K%16==0 | K%128==0 |
+| L1 cache pressure | minimal | still fits (32KB L1) |
+
+**Risks:**
+- K must be divisible by 128 (or IREE pads, adding waste). Common NN
+  dimensions (128, 256, 512, 1024) divide cleanly. Odd dimensions
+  (e.g. K=192) would need 128+64 split with K0=128 and padding/fallback
+  for the remainder.
+- Larger pack tiles may delay pipeline start: the first mmt4d invocation
+  can't begin until a full 2KB tile is packed, vs 256B with K0=16.
+- No impact on correctness — the kernel uses `params->K0` dynamically.
+
+**Validation plan:**
+1. Change the 3 files above
+2. Rebuild host (`--config release --with-plugin`)
+3. Compile `matmul_i8.mlir` with `+xopu` and verify `.s` shows same
+   `vle8.v` + VOPACC hot loop (just more inner iterations)
+4. Benchmark K0=16 vs K0=128 on Saturn simulator for 1024x1024 matmul
+5. If K0=128 shows measurable improvement, adopt it as default
+
+---
+
+*Dev-blog written by:* Agustin Coppari Hollmann
