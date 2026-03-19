@@ -346,7 +346,7 @@ def get_iree_version(iree_src: pathlib.Path) -> str:
     try:
         with (iree_src / "runtime" / "version.json").open() as f:
             return json.load(f).get("package-version", "unknown")
-    except Exception:
+    except FileNotFoundError:
         return "unknown"
 
 
@@ -575,8 +575,6 @@ def main(args: argparse.Namespace) -> int:
                 f"{cmake_bin}. Try --use-system-cmake or --cmake-bin."
             )
             return 1
-
-    get_iree_version(iree_src)
 
     # Clean structure: build/spacemit-merlin-perf
     build_name = f"{args.target}-{variant}-{args.config}"
@@ -820,8 +818,10 @@ def main(args: argparse.Namespace) -> int:
                 "-DIREE_HAL_DRIVER_DEFAULTS=OFF",
                 "-DIREE_HAL_DRIVER_LOCAL_SYNC=ON",
                 "-DIREE_HAL_DRIVER_LOCAL_TASK=ON",
-                "-DCMAKE_C_FLAGS=-march=rv64gc_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause -mabi=lp64d",
-                "-DCMAKE_CXX_FLAGS=-fno-omit-frame-pointer -march=rv64gc_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause -mabi=lp64d",
+                "-DCMAKE_C_FLAGS=" "-march=rv64gc_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause -mabi=lp64d",
+                "-DCMAKE_CXX_FLAGS="
+                "-fno-omit-frame-pointer"
+                " -march=rv64gc_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause -mabi=lp64d",
                 "-DIREE_ENABLE_CPUINFO=ON",
             ]
         )

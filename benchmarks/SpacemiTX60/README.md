@@ -31,10 +31,10 @@ Output binary name:
 Use:
 
 ```bash
-benchmark/target/SpacemiTX60/compile_dual_model_vmfb.sh \
+benchmarks/SpacemiTX60/compile_dual_model_vmfb.sh \
   --iree-compile /path/to/iree-compile \
   --target spacemit-riscv \
-  --out-dir benchmark/target/SpacemiTX60/artifacts/vmfb
+  --out-dir benchmarks/SpacemiTX60/artifacts/vmfb
 ```
 
 This script also rewrites module names so both can coexist in one runtime
@@ -46,7 +46,7 @@ Via unified entrypoint:
 python3 tools/merlin.py benchmark spacemitx60 compile-dual-vmfb -- \
   --iree-compile /path/to/iree-compile \
   --target spacemit-riscv \
-  --out-dir benchmark/target/SpacemiTX60/artifacts/vmfb
+  --out-dir benchmarks/SpacemiTX60/artifacts/vmfb
 ```
 
 ## 3) Configure board connection
@@ -54,8 +54,8 @@ python3 tools/merlin.py benchmark spacemitx60 compile-dual-vmfb -- \
 Copy and edit:
 
 ```bash
-cp benchmark/target/SpacemiTX60/spacemitx60.env.example \
-   benchmark/target/SpacemiTX60/spacemitx60.env
+cp benchmarks/SpacemiTX60/spacemitx60.env.example \
+   benchmarks/SpacemiTX60/spacemitx60.env
 ```
 
 Set at least:
@@ -65,10 +65,10 @@ Set at least:
 ## 4) Upload and run over SSH
 
 ```bash
-benchmark/target/SpacemiTX60/run_dual_model_remote.sh \
+benchmarks/SpacemiTX60/run_dual_model_remote.sh \
   --binary /path/to/baseline-dual-model-async-run \
-  --dronet-vmfb benchmark/target/SpacemiTX60/artifacts/vmfb/dronet.vmfb \
-  --mlp-vmfb benchmark/target/SpacemiTX60/artifacts/vmfb/mlp.vmfb \
+  --dronet-vmfb benchmarks/SpacemiTX60/artifacts/vmfb/dronet.vmfb \
+  --mlp-vmfb benchmarks/SpacemiTX60/artifacts/vmfb/mlp.vmfb \
   --mlp-hz 20 \
   --duration-s 30 \
   --report-hz 1 \
@@ -87,13 +87,13 @@ Via unified entrypoint:
 ```bash
 python3 tools/merlin.py benchmark spacemitx60 run-dual-remote -- \
   --binary /path/to/baseline-dual-model-async-run \
-  --dronet-vmfb benchmark/target/SpacemiTX60/artifacts/vmfb/dronet.vmfb \
-  --mlp-vmfb benchmark/target/SpacemiTX60/artifacts/vmfb/mlp.vmfb
+  --dronet-vmfb benchmarks/SpacemiTX60/artifacts/vmfb/dronet.vmfb \
+  --mlp-vmfb benchmarks/SpacemiTX60/artifacts/vmfb/mlp.vmfb
 ```
 
 Results are stored locally under:
 
-`benchmark/target/SpacemiTX60/results/<run_id>/`
+`benchmarks/SpacemiTX60/results/<run_id>/`
 
 including:
 - `runtime.log`

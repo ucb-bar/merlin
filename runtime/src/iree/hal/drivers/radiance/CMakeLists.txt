@@ -37,7 +37,6 @@ iree_cc_library(
   HDRS
   "api.h"
   SRCS
-  "api.h"
   "allocator.c"
   "allocator.h"
   "buffer.c"

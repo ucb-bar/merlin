@@ -28,8 +28,8 @@ This inventory is generated from repository `CMakeLists.txt` files.
 | `iree_tablegen_library` | `NPUScheduleOpsGen` | `compiler/src/merlin/Dialect/NPU/IR/CMakeLists.txt` |
 | `iree_cc_library` | `Passes` | `compiler/src/merlin/Dialect/NPU/Transforms/CMakeLists.txt` |
 | `iree_cc_library` | `TextISATranslation` | `compiler/src/merlin/Dialect/NPU/Translation/CMakeLists.txt` |
-| `add_library` | `xpurt_iree_plugin` | `projects/xpu-rt/CMakeLists.txt` |
-| `add_library` | `xpurt_iree_plugin_objs` | `projects/xpu-rt/CMakeLists.txt` |
+| `add_library` | `xpurt_iree_plugin` | `samples/common/xpu-rt/CMakeLists.txt` |
+| `add_library` | `xpurt_iree_plugin_objs` | `samples/common/xpu-rt/CMakeLists.txt` |
 | `iree_cc_library` | `radiance` | `runtime/src/iree/hal/drivers/radiance/CMakeLists.txt` |
 | `iree_cc_library` | `registration` | `runtime/src/iree/hal/drivers/radiance/registration/CMakeLists.txt` |
 | `iree_cc_library` | `fake_transport` | `runtime/src/iree/hal/drivers/radiance/testing/CMakeLists.txt` |

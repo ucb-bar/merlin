@@ -332,7 +332,7 @@ def main() -> None:
     parser.add_argument(
         "--trace-csv",
         type=Path,
-        default=Path("/scratch2/agustin/merlin/tmp/analysis/run_out/run_trace.csv"),
+        default=Path("run_trace.csv"),
     )
     parser.add_argument(
         "--out-dir",
