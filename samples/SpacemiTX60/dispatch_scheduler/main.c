@@ -7,10 +7,10 @@
 #include <string.h>
 
 #include "iree/base/api.h"
-#include "iree/base/internal/flags.h"
+#include "iree/base/tooling/flags.h"
 
 #include "core/cli_utils.h"
-#include "runtime_scheduler.h"
+#include "xpu-rt/scheduler_runner.h"
 
 static void print_usage(const char *argv0) {
 	fprintf(stderr,
@@ -97,7 +97,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	dispatch_graph_config_t cfg;
+	scheduler_runner_config_t cfg;
 	memset(&cfg, 0, sizeof(cfg));
 	cfg.graph_json_path = json_path;
 	cfg.driver_name = driver;
@@ -112,5 +112,11 @@ int main(int argc, char **argv) {
 	cfg.out_dot_path = out_dot;
 	cfg.trace_csv_path = trace_csv;
 
-	return dispatch_graph_run(&cfg);
+	// SpacemiT X60-specific target configuration.
+	cfg.target_platform = "spacemit_x60";
+	cfg.variant_p_dir = "RVV";
+	cfg.variant_e_dir = "scalar";
+	cfg.elf_marker = "_embedded_elf_riscv_64";
+
+	return scheduler_runner_run(&cfg);
 }

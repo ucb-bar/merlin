@@ -1,6 +1,6 @@
-// samples/SpacemiTX60/dispatch_scheduler/runtime_scheduler.cc
+// samples/common/xpu-rt/scheduler_runner.cc
 //
-// Dispatch-level scheduler for two-cluster systems (CPU_P + CPU_E).
+// Generic two-cluster dispatch scheduler (CPU_P + CPU_E).
 //
 // - Two long-lived worker threads, one per hardware target.
 // - Each worker is pinned to its CPU set via pthread_setaffinity_np.
@@ -8,10 +8,12 @@
 // - One cached runtime session per (target, vmfb_path).
 // - Release-time scheduling with phase-locked roots and dependency-driven
 //   chains.
-// - Spin-wait for short delays (<5ms) to avoid condvar timer overshoot on
-//   RISC-V.
+// - Spin-wait for short delays (<5ms) to avoid condvar timer overshoot.
+//
+// Target-agnostic: hardware-specific parameters (core layout, ISA variants,
+// platform name) are supplied via the scheduler_runner_config_t struct.
 
-#include "runtime_scheduler.h"
+#include "xpu-rt/scheduler_runner.h"
 
 #include <inttypes.h>
 #include <pthread.h>
@@ -76,28 +78,25 @@ static bool SplitCpuIds(const char *text, std::vector<int> *out_ids) {
 	return !out_ids->empty();
 }
 
-static bool ValidateCorePartition(const dispatch_graph_config_t *cfg) {
-	const int visible_cores = cfg->visible_cores > 0 ? cfg->visible_cores : 8;
+static bool ValidateCorePartition(const scheduler_runner_config_t *cfg) {
+	const int visible_cores = cfg->visible_cores > 0 ? cfg->visible_cores : 64;
 
 	std::vector<int> p_ids;
 	std::vector<int> e_ids;
-	if (!SplitCpuIds(
-			cfg->cpu_p_cpu_ids ? cfg->cpu_p_cpu_ids : "0,1,2,3", &p_ids)) {
+	if (!cfg->cpu_p_cpu_ids || !cfg->cpu_p_cpu_ids[0]) {
+		fprintf(stderr, "cpu_p_cpu_ids is required\n");
+		return false;
+	}
+	if (!cfg->cpu_e_cpu_ids || !cfg->cpu_e_cpu_ids[0]) {
+		fprintf(stderr, "cpu_e_cpu_ids is required\n");
+		return false;
+	}
+	if (!SplitCpuIds(cfg->cpu_p_cpu_ids, &p_ids)) {
 		fprintf(stderr, "Invalid --cpu_p_cpu_ids\n");
 		return false;
 	}
-	if (!SplitCpuIds(cfg->cpu_e_cpu_ids ? cfg->cpu_e_cpu_ids : "4,5", &e_ids)) {
+	if (!SplitCpuIds(cfg->cpu_e_cpu_ids, &e_ids)) {
 		fprintf(stderr, "Invalid --cpu_e_cpu_ids\n");
-		return false;
-	}
-	if (p_ids.size() != 4) {
-		fprintf(
-			stderr, "CPU_P must have exactly 4 cores; got %zu\n", p_ids.size());
-		return false;
-	}
-	if (e_ids.size() != 2) {
-		fprintf(
-			stderr, "CPU_E must have exactly 2 cores; got %zu\n", e_ids.size());
 		return false;
 	}
 
@@ -439,7 +438,7 @@ static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
 //------------------------------------------------------------------------------
 
 static bool WriteSummaryJson(const char *path,
-	const dispatch_graph_config_t *cfg, const GraphModel &model,
+	const scheduler_runner_config_t *cfg, const GraphModel &model,
 	const std::vector<int> &topo_order) {
 	if (!path || !path[0])
 		return true;
@@ -488,11 +487,11 @@ static bool WriteSummaryJson(const char *path,
 // Entry point
 //------------------------------------------------------------------------------
 
-extern "C" int dispatch_graph_run(const dispatch_graph_config_t *cfg) {
+extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 	using namespace merlin_bench;
 
 	if (!cfg || !cfg->graph_json_path || !cfg->graph_json_path[0]) {
-		fprintf(stderr, "dispatch_graph_run: missing graph_json_path\n");
+		fprintf(stderr, "scheduler_runner_run: missing graph_json_path\n");
 		return 1;
 	}
 
@@ -558,7 +557,8 @@ extern "C" int dispatch_graph_run(const dispatch_graph_config_t *cfg) {
 	const std::string json_dir = PathDirname(cfg->graph_json_path);
 	for (auto &n : model.nodes) {
 		n.vmfb_path_resolved =
-			ResolveVmfbPath(cfg->vmfb_root_dir, "spacemit_x60", json_dir, n);
+			ResolveVmfbPath(cfg->vmfb_root_dir, cfg->target_platform, json_dir,
+				n, cfg->variant_p_dir, cfg->variant_e_dir, cfg->elf_marker);
 		if (n.vmfb_path_resolved.empty()) {
 			fprintf(
 				stderr, "Unable to resolve VMFB for node %s\n", n.key.c_str());
@@ -738,15 +738,13 @@ extern "C" int dispatch_graph_run(const dispatch_graph_config_t *cfg) {
 	fprintf(stdout, "[dispatch] Warmup complete.\n");
 	fflush(stdout);
 
-	std::thread worker_p(WorkerMain, HardwareTarget::kCpuP,
-		cfg->cpu_p_cpu_ids ? cfg->cpu_p_cpu_ids : "0,1,2,3", &model.nodes,
-		&dependents, &node_modules, dispatch_iters, host_alloc, &shared, &sched,
-		&trace);
+	std::thread worker_p(WorkerMain, HardwareTarget::kCpuP, cfg->cpu_p_cpu_ids,
+		&model.nodes, &dependents, &node_modules, dispatch_iters, host_alloc,
+		&shared, &sched, &trace);
 
-	std::thread worker_e(WorkerMain, HardwareTarget::kCpuE,
-		cfg->cpu_e_cpu_ids ? cfg->cpu_e_cpu_ids : "4,5", &model.nodes,
-		&dependents, &node_modules, dispatch_iters, host_alloc, &shared, &sched,
-		&trace);
+	std::thread worker_e(WorkerMain, HardwareTarget::kCpuE, cfg->cpu_e_cpu_ids,
+		&model.nodes, &dependents, &node_modules, dispatch_iters, host_alloc,
+		&shared, &sched, &trace);
 
 	const auto run_t0 = Clock::now();
 

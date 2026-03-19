@@ -21,15 +21,18 @@
 namespace merlin_bench {
 
 /** @brief Map a HardwareTarget to an ISA variant directory name.
- *  @param target Hardware target enum.
- *  @return Directory name (e.g. "RVV" for kCpuP, "scalar" for kCpuE).
+ *  @param target    Hardware target enum.
+ *  @param variant_p Variant directory for CPU_P (e.g. "RVV"). NULL = empty.
+ *  @param variant_e Variant directory for CPU_E (e.g. "scalar"). NULL = empty.
+ *  @return The variant directory string for the given target.
  */
-inline const char *VariantDirFromHardwareTarget(HardwareTarget target) {
+inline const char *VariantDirFromHardwareTarget(
+	HardwareTarget target, const char *variant_p, const char *variant_e) {
 	switch (target) {
 		case HardwareTarget::kCpuP:
-			return "RVV";
+			return variant_p ? variant_p : "";
 		case HardwareTarget::kCpuE:
-			return "scalar";
+			return variant_e ? variant_e : "";
 		default:
 			return "";
 	}
@@ -100,22 +103,24 @@ inline void AppendUnique(std::vector<std::string> *out, const std::string &s) {
 
 /** @brief Extract the benchmark stem from a module name.
  *
- *  Finds the "_embedded_elf_riscv_64" marker and returns everything up to
- *  and including it.
+ *  Finds the given ELF marker (e.g. "_embedded_elf_riscv_64") and returns
+ *  everything up to and including it.  If marker is NULL or empty, returns
+ *  the full module_name unchanged.
  *
  *  @param module_name Full IREE module name.
+ *  @param elf_marker  Architecture-specific ELF marker string (nullable).
  *  @return Truncated stem, or the full module_name if the marker is absent.
  */
-inline std::string BenchmarkStemFromModuleName(const std::string &module_name) {
-	if (module_name.empty())
+inline std::string BenchmarkStemFromModuleName(
+	const std::string &module_name, const char *elf_marker) {
+	if (module_name.empty() || !elf_marker || !elf_marker[0])
 		return module_name;
 
-	static const char kMarker[] = "_embedded_elf_riscv_64";
-	const size_t pos = module_name.find(kMarker);
+	const size_t pos = module_name.find(elf_marker);
 	if (pos == std::string::npos)
 		return module_name;
 
-	return module_name.substr(0, pos + strlen(kMarker));
+	return module_name.substr(0, pos + strlen(elf_marker));
 }
 
 /** @brief Resolve the absolute VMFB path for a dispatch node.
@@ -129,14 +134,18 @@ inline std::string BenchmarkStemFromModuleName(const std::string &module_name) {
  *
  *  @param vmfb_root_dir   Root directory for VMFB resolution (nullable).
  *  @param target_platform Platform subdirectory (e.g. "spacemit_x60").
- *                         Defaults to "spacemit_x60" if null or empty.
  *  @param json_dir        Directory containing the schedule JSON.
  *  @param node            Dispatch node whose VMFB path is being resolved.
+ *  @param variant_p       ISA variant dir for CPU_P (e.g. "RVV", nullable).
+ *  @param variant_e       ISA variant dir for CPU_E (e.g. "scalar", nullable).
+ *  @param elf_marker      ELF marker for stem matching (e.g.
+ *                         "_embedded_elf_riscv_64", nullable).
  *  @return Resolved absolute path, or best-effort candidate if not found.
  */
 inline std::string ResolveVmfbPath(const char *vmfb_root_dir,
 	const char *target_platform, const std::string &json_dir,
-	const DispatchNode &node) {
+	const DispatchNode &node, const char *variant_p = nullptr,
+	const char *variant_e = nullptr, const char *elf_marker = nullptr) {
 
 	// 1. Exact vmfb_path from JSON wins.
 	if (!node.vmfb_path_json.empty()) {
@@ -155,19 +164,19 @@ inline std::string ResolveVmfbPath(const char *vmfb_root_dir,
 
 	const std::string platform = (target_platform && target_platform[0])
 		? std::string(target_platform)
-		: "spacemit_x60";
+		: "";
 
 	const std::string model_family =
 		NormalizeModelFamilyFromModuleName(node.module_name, node.job_name);
-	const std::string variant_dir =
-		VariantDirFromHardwareTarget(node.hardware_target);
+	const std::string variant_dir = VariantDirFromHardwareTarget(
+		node.hardware_target, variant_p, variant_e);
 	const std::string model_dir = model_family + ".q.int8";
 
 	std::vector<std::string> candidate_names;
 	if (!node.module_name.empty()) {
 		const std::string full_name = node.module_name;
 		const std::string short_name =
-			BenchmarkStemFromModuleName(node.module_name);
+			BenchmarkStemFromModuleName(node.module_name, elf_marker);
 
 		AppendUnique(
 			&candidate_names, "module_" + full_name + "_benchmark.vmfb");

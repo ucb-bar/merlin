@@ -4,10 +4,10 @@
 #include <string.h>
 
 #include "iree/base/api.h"
-#include "iree/base/internal/flags.h"
+#include "iree/base/tooling/flags.h"
 
 #include "core/cli_utils.h"
-#include "runtime_dispatch_graph.h"
+#include "xpu-rt/baseline_runner.h"
 
 static void print_usage(const char *argv0) {
 	fprintf(stderr,
@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	dispatch_graph_config_t cfg;
+	baseline_runner_config_t cfg;
 	memset(&cfg, 0, sizeof(cfg));
 	cfg.graph_json_path = json_path;
 	cfg.driver_name = driver;
@@ -78,5 +78,5 @@ int main(int argc, char **argv) {
 	cfg.core_mask = core_mask;
 	cfg.parallelism = parallelism;
 
-	return dispatch_graph_run(&cfg);
+	return baseline_runner_run(&cfg);
 }

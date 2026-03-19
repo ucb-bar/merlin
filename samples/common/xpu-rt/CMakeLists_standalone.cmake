@@ -1,17 +1,27 @@
-# Standalone xpu-rt static library: plugin + IREE runtime in one .a
+# Standalone xpu-rt static library: xpu-rt runners + IREE runtime in one .a
 #
 # This file is included from IREE's runtime/src/iree/runtime/CMakeLists.txt
 # after iree_runtime_impl and iree_runtime_unified are defined, so we can
 # reference INTERFACE_IREE_TRANSITIVE_OBJECTS and build a single archive that
-# contains both the xpu-rt plugin objects and the full IREE runtime. Consumers
-# (e.g. json_dispatch_runner) can then link only this lib (+ system libs).
+# contains both the xpu-rt runner objects and the full IREE runtime.
+#
+# Downstream consumers (XPU-RT repo, Zephyr, etc.) link only this archive plus
+# system libs:
+#
+# target_link_libraries(my_app PRIVATE -Wl,--whole-archive
+# /path/to/libxpurt_standalone.a -Wl,--no-whole-archive Threads::Threads
+# ${CMAKE_DL_LIBS} m)
+#
+# For Zephyr integration, point XPURT_STANDALONE_LIB_PATH at the archive
+# produced by a cross-compilation merlin build and use Zephyr's
+# zephyr_library_import_from_static() or target_link_libraries().
 
-if(NOT TARGET xpurt_iree_plugin_objs)
-  message(STATUS "xpurt standalone: xpurt_iree_plugin_objs not found, skipping")
+if(NOT TARGET xpurt_objs)
+  message(STATUS "xpurt standalone: xpurt_objs not found, skipping")
   return()
 endif()
 
-# IREE target naming: prefer the namespaced targets but accept the raw ones too.
+# IREE target naming: prefer the namespaced targets but accept the raw ones.
 set(_XPURT_IREE_IMPL_TARGET "")
 if(TARGET iree::runtime::impl)
   set(_XPURT_IREE_IMPL_TARGET "iree::runtime::impl")
@@ -37,33 +47,28 @@ if(_XPURT_IREE_UNIFIED_TARGET STREQUAL "")
   return()
 endif()
 
-set(_XPURT_OBJS "$<TARGET_OBJECTS:xpurt_iree_plugin_objs>")
+set(_XPURT_OBJS "$<TARGET_OBJECTS:xpurt_objs>")
 set(_IREE_OBJS
     "$<REMOVE_DUPLICATES:$<GENEX_EVAL:$<TARGET_PROPERTY:${_XPURT_IREE_IMPL_TARGET},INTERFACE_IREE_TRANSITIVE_OBJECTS>>>"
 )
 
-add_library(xpurt_iree_plugin_standalone STATIC ${_XPURT_OBJS} ${_IREE_OBJS})
+add_library(xpurt_standalone STATIC ${_XPURT_OBJS} ${_IREE_OBJS})
 target_include_directories(
-  xpurt_iree_plugin_standalone
+  xpurt_standalone
   PUBLIC
-    "${MERLIN_XPU_RT_SOURCE_DIR}"
+    "${MERLIN_XPU_RT_SOURCE_DIR}/.."
     # GENEX_EVAL is required here because some IREE targets' include dirs
     # contain nested generator expressions.
     $<GENEX_EVAL:$<TARGET_PROPERTY:${_XPURT_IREE_IMPL_TARGET},INTERFACE_INCLUDE_DIRECTORIES>>
 )
-# Forward link libs from IREE unified (e.g. pthread, dl) so the runner only
-# needs this + system.
+# Forward link libs from IREE unified (e.g. pthread, dl) so downstream consumers
+# only need this + system.
 target_link_libraries(
-  xpurt_iree_plugin_standalone
+  xpurt_standalone
   PUBLIC
-    # INTERFACE_LINK_LIBRARIES of the unified target may itself contain
-    # generator expressions (including $<GENEX_EVAL:...>) which must be
-    # evaluated before being used as link items on this target.
     $<GENEX_EVAL:$<TARGET_PROPERTY:${_XPURT_IREE_UNIFIED_TARGET},INTERFACE_LINK_LIBRARIES>>
 )
-# Output: libxpurt_iree_plugin_standalone.a (single .a for runner to link +
-# system libs).
+# Output: libxpurt_standalone.a
 message(
   STATUS
-    "xpurt standalone: added xpurt_iree_plugin_standalone (combined plugin + IREE runtime)"
-)
+    "xpurt standalone: added xpurt_standalone (combined xpu-rt + IREE runtime)")

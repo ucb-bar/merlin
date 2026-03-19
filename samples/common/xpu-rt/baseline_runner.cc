@@ -1,4 +1,4 @@
-#include "runtime_dispatch_graph.h"
+#include "xpu-rt/baseline_runner.h"
 
 #include <inttypes.h>
 
@@ -60,12 +60,12 @@ struct WorkQueue {
 
 } // namespace
 
-extern "C" int dispatch_graph_run(const dispatch_graph_config_t *cfg) {
-	IREE_TRACE_ZONE_BEGIN_NAMED(z_run, "dispatch_graph_run");
+extern "C" int baseline_runner_run(const baseline_runner_config_t *cfg) {
+	IREE_TRACE_ZONE_BEGIN_NAMED(z_run, "baseline_runner_run");
 	using namespace merlin_bench;
 
 	if (!cfg || !cfg->graph_json_path || !cfg->graph_json_path[0]) {
-		fprintf(stderr, "dispatch_graph_run: missing graph_json_path\n");
+		fprintf(stderr, "baseline_runner_run: missing graph_json_path\n");
 		return 1;
 	}
 
@@ -222,7 +222,7 @@ extern "C" int dispatch_graph_run(const dispatch_graph_config_t *cfg) {
 			if (HasFatal(&shared))
 				break;
 
-			const auto &key = model.nodes[idx].key;
+			const auto &key [[maybe_unused]] = model.nodes[idx].key;
 			IREE_TRACE_ZONE_BEGIN_NAMED_DYNAMIC(
 				z_call, key.c_str(), key.size());
 
@@ -282,7 +282,7 @@ extern "C" int dispatch_graph_run(const dispatch_graph_config_t *cfg) {
 				}
 
 				// Execute node.
-				const auto &key = model.nodes[node_idx].key;
+				const auto &key [[maybe_unused]] = model.nodes[node_idx].key;
 				IREE_TRACE_ZONE_BEGIN_NAMED_DYNAMIC(
 					z_call, key.c_str(), key.size());
 				const auto t0 = Clock::now();
