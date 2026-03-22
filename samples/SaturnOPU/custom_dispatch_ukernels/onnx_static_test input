@@ -14,7 +14,8 @@ python samples/SaturnOPU/custom_dispatch_ukernels/static_quantize_runner.py \
 --weight_type qfloat8e4m3fn \
 --calibration_method distribution \
 --quant_format qdq \
---calib_tensor_range_symmetric
+--calib_tensor_range_symmetric \
+--op_types mm
 
 python samples/SaturnOPU/custom_dispatch_ukernels/static_quantize_runner.py \
 -i samples/SaturnOPU/custom_dispatch_ukernels/pretrained_models/quantize_test_export/LSTMnet_fp8.onnx \

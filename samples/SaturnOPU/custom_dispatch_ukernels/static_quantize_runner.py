@@ -1,11 +1,8 @@
 import argparse
 import json
-import os
-import torch
-import numpy as np
-import onnx
 
-import onnxruntime
+import numpy as np
+import torch
 from onnxruntime.quantization import QuantFormat, QuantType, StaticQuantConfig, quantize
 from onnxruntime.quantization.calibrate import CalibrationDataReader, CalibrationMethod
 
@@ -14,6 +11,7 @@ class MultiInputCalibrationDataReader(CalibrationDataReader):
     """
     Generates calibration data for models with multiple inputs.
     """
+
     def __init__(self, example_inputs_tuple, input_names, num_samples=10):
         self.input_names = input_names
         # Create a list of shapes from the example inputs
@@ -38,7 +36,7 @@ class MultiInputCalibrationDataReader(CalibrationDataReader):
     def get_next(self):
         """Returns the next sample from the generator."""
         return next(self.data_generator, None)
-    
+
     def rewind(self):
         """Resets the iterator to the beginning."""
         self.data_generator = self._data_generator()
@@ -97,6 +95,12 @@ def parse_arguments():
         default="minmax",
         choices=["minmax", "entropy", "percentile", "distribution"],
         help="Calibration method used",
+    )
+    parser.add_argument(
+        "--op_types",
+        default="all",
+        choices=["mm", "all"],
+        help="Op types to quantize",
     )
     parser.add_argument("--quant_format", default="qdq", choices=["qdq", "qoperator"], help="Quantization format used")
     parser.add_argument(
@@ -195,7 +199,9 @@ def get_tensor_quant_overrides(file):
 
 def main():
     input_names = ["image", "velocity", "quaternion", "h_in", "c_in"]
-    forward_args = ((torch.randn(5, 1, 60, 90), torch.randn(5, 1), torch.cat([torch.ones(5, 1), torch.zeros(5, 3)], dim=1)),)
+    forward_args = (
+        (torch.randn(5, 1, 60, 90), torch.randn(5, 1), torch.cat([torch.ones(5, 1), torch.zeros(5, 3)], dim=1)),
+    )
     args = parse_arguments()
     data_reader = MultiInputCalibrationDataReader(forward_args[0], input_names, num_samples=10)
     arg2quant_type = {
@@ -238,14 +244,17 @@ def main():
         "qdq": QuantFormat.QDQ,
         "qoperator": QuantFormat.QOperator,
     }
+    arg2op_types = {
+        "mm": ["MatMul", "Gemm"],
+        "all": None,
+    }
     sqc = StaticQuantConfig(
         calibration_data_reader=data_reader,
         calibrate_method=arg2calib_method[args.calibration_method],
         quant_format=arg2quant_format[args.quant_format],
         activation_type=activation_type,
         weight_type=weight_type,
-        op_types_to_quantize=None,
-        # op_types_to_quantize=["MatMul", "Gemm"],
+        op_types_to_quantize=arg2op_types[args.op_types],
         nodes_to_quantize=args.nodes_to_quantize,
         nodes_to_exclude=args.nodes_to_exclude,
         per_channel=args.per_channel,
