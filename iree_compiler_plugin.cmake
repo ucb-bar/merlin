@@ -57,6 +57,13 @@ if(MERLIN_ENABLE_TARGET_GEMMINI OR MERLIN_BUILD_GEMMINI)
     "${MERLIN_COMPILER_BINARY_ROOT}/compiler/target/Gemmini")
 endif()
 
+# 1. CudaTile Support (NVIDIA cuda_tile IR → tileiras → cubin)
+if(MERLIN_ENABLE_TARGET_CUDA_TILE)
+  add_subdirectory(
+    "${MERLIN_COMPILER_SOURCE_DIR}/compiler/plugins/target/CudaTile"
+    "${MERLIN_COMPILER_BINARY_ROOT}/compiler/target/CudaTile")
+endif()
+
 # 1. NPU Support Keep backward compatibility with legacy MERLIN_BUILD_NPU while
 #   using MERLIN_ENABLE_TARGET_NPU as the primary knob from tools/build.py.
 if(MERLIN_ENABLE_TARGET_NPU OR MERLIN_BUILD_NPU)

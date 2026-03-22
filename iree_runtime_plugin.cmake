@@ -10,8 +10,10 @@
 
 get_filename_component(MERLIN_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
 
-add_subdirectory("${MERLIN_SOURCE_DIR}/projects/xpu-rt"
-                 "${IREE_BINARY_DIR}/runtime/plugins/xpu-rt")
+if(EXISTS "${MERLIN_SOURCE_DIR}/projects/xpu-rt/CMakeLists.txt")
+  add_subdirectory("${MERLIN_SOURCE_DIR}/projects/xpu-rt"
+                   "${IREE_BINARY_DIR}/runtime/plugins/xpu-rt")
+endif()
 
 # Merlin runtime plugin entrypoint used by IREE plugin CMake integration.
 
@@ -57,6 +59,15 @@ if(MERLIN_RUNTIME_ENABLE_HAL_RADIANCE)
         "${IREE_EXTERNAL_HAL_DRIVERS}"
         CACHE STRING "" FORCE)
   endif()
+endif()
+
+# CudaTile executable loader (plugs into CUDA HAL driver).
+option(MERLIN_RUNTIME_ENABLE_CUDA_TILE
+       "Build cuda_tile runtime executable loader" OFF)
+if(MERLIN_RUNTIME_ENABLE_CUDA_TILE)
+  add_subdirectory(
+    "${MERLIN_SOURCE_DIR}/runtime/src/iree/hal/drivers/cuda_tile"
+    "${CMAKE_CURRENT_BINARY_DIR}/merlin/runtime/iree/hal/drivers/cuda_tile")
 endif()
 
 if(MERLIN_RUNTIME_ENABLE_SAMPLES)

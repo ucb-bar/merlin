@@ -245,7 +245,7 @@ def setup_parser(parser: argparse.ArgumentParser):
     )
     parser.add_argument(
         "--compiler-scope",
-        choices=["all", "gemmini", "npu", "saturn", "spacemit", "none"],
+        choices=["all", "gemmini", "npu", "saturn", "spacemit", "cuda_tile", "none"],
         default=None,
         help=(
             "Limit compiler-plugin target registration scope. "
@@ -869,6 +869,7 @@ def main(args: argparse.Namespace) -> int:
     compiler_target_npu = compiler_scope in ["all", "npu"]
     compiler_target_saturn = compiler_scope in ["all", "saturn"]
     compiler_target_spacemit = compiler_scope in ["all", "spacemit"]
+    compiler_target_cuda_tile = compiler_scope in ["all", "cuda_tile"]
 
     if plugin_compiler_enabled and build_compiler:
         cmake_args.extend(
@@ -878,6 +879,7 @@ def main(args: argparse.Namespace) -> int:
                 f"-DMERLIN_ENABLE_TARGET_NPU={cmake_bool(compiler_target_npu)}",
                 f"-DMERLIN_ENABLE_TARGET_SATURN={cmake_bool(compiler_target_saturn)}",
                 f"-DMERLIN_ENABLE_TARGET_SPACEMIT={cmake_bool(compiler_target_spacemit)}",
+                f"-DMERLIN_ENABLE_TARGET_CUDA_TILE={cmake_bool(compiler_target_cuda_tile)}",
             ]
         )
     elif plugin_compiler_enabled and not build_compiler:
@@ -890,6 +892,7 @@ def main(args: argparse.Namespace) -> int:
                 "-DMERLIN_ENABLE_TARGET_NPU=OFF",
                 "-DMERLIN_ENABLE_TARGET_SATURN=OFF",
                 "-DMERLIN_ENABLE_TARGET_SPACEMIT=OFF",
+                "-DMERLIN_ENABLE_TARGET_CUDA_TILE=OFF",
             ]
         )
 

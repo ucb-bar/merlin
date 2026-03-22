@@ -1,0 +1,9 @@
+iree_lit_test_suite(
+  NAME
+    lit
+  SRCS
+    "smoketest.mlir"
+  TOOLS
+    FileCheck
+    iree-opt
+)
