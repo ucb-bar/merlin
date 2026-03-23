@@ -2,13 +2,19 @@
 
 iree_add_all_subdirs()
 
+# Compute relative path from build root to generated headers directory. The
+# build root is in the -isystem include path, so headers can be found via this
+# relative path.
+file(RELATIVE_PATH _GENERATED_HEADER_REL_DIR "${CMAKE_BINARY_DIR}"
+     "${CMAKE_CURRENT_BINARY_DIR}")
+
 # --- 1. Define Flags ---
 
-set(BASE_RISCV_FLAGS
+# Common flags for all RISC-V targets
+set(BASE_COMMON_FLAGS
     "--iree-hal-target-device=local"
     "--iree-hal-local-target-device-backends=llvm-cpu"
     "--iree-llvmcpu-target-triple=riscv64-unknown-elf"
-    "--iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl128b"
     "--iree-llvmcpu-target-abi=lp64d"
     "--iree-llvmcpu-target-vector-width-in-bytes=16"
     "--iree-llvmcpu-debug-symbols=false"
@@ -16,15 +22,25 @@ set(BASE_RISCV_FLAGS
     "--iree-vm-emit-polyglot-zip=false"
     "--iree-opt-level=O3")
 
-# UKERNEL=ALL (Tiling Enabled)
+# OPU target: includes +xopu for Saturn OPU hardware
+set(BASE_OPU_FLAGS
+    ${BASE_COMMON_FLAGS}
+    "--iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl128b,+xopu")
+
+# RVV baseline target: standard RVV without OPU
+set(BASE_RVV_FLAGS
+    ${BASE_COMMON_FLAGS}
+    "--iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl128b")
+
+# UKERNEL=ALL (OPU with data tiling)
 set(FLAGS_UK_ALL
-    ${BASE_RISCV_FLAGS} "--iree-llvmcpu-link-ukernel-bitcode=true"
+    ${BASE_OPU_FLAGS} "--iree-llvmcpu-link-ukernel-bitcode=true"
     "--iree-llvmcpu-enable-ukernels=all" "--iree-opt-data-tiling"
     "--iree-dispatch-creation-data-tiling")
 
-# UKERNEL=NONE (Tiling Disabled)
+# UKERNEL=NONE (RVV baseline, no tiling)
 set(FLAGS_UK_NONE
-    ${BASE_RISCV_FLAGS} "--iree-llvmcpu-link-ukernel-bitcode=false"
+    ${BASE_RVV_FLAGS} "--iree-llvmcpu-link-ukernel-bitcode=false"
     "--iree-llvmcpu-enable-ukernels=none" "--iree-opt-data-tiling=false"
     "--iree-dispatch-creation-data-tiling=false")
 
@@ -52,7 +68,7 @@ function(create_benchmark SIZE UKERNEL_ENABLED)
     NAME
     ${MODULE_NAME}
     SRC
-    "mm_${SIZE}.mlir"
+    "tests/mm_${SIZE}.mlir"
     C_IDENTIFIER
     "iree_samples_${MODULE_NAME}"
     FLAGS
@@ -80,7 +96,7 @@ function(create_benchmark SIZE UKERNEL_ENABLED)
     "MODEL_SIZE=${SIZE}"
     "UKERNEL_NAME=\"${UK_PRINT_NAME}\""
     "MODULE_CREATE_FN=iree_samples_${MODULE_NAME}_create"
-    "MODULE_HEADER=\"samples/simple_embedding_ukernel/${MODULE_NAME}_c.h\"")
+    "MODULE_HEADER=\"${_GENERATED_HEADER_REL_DIR}/${MODULE_NAME}_c.h\"")
 
   # Update the list of benchmarks (PARENT_SCOPE is needed to export variable
   # from function)
@@ -88,6 +104,51 @@ function(create_benchmark SIZE UKERNEL_ENABLED)
       ${ALL_BENCHMARKS} ${BINARY_NAME}
       PARENT_SCOPE)
 
+endfunction()
+
+# --- 2b. Variant Generator Function ---
+# Creates a benchmark with arbitrary flags and a custom tag name.
+
+function(create_variant_benchmark SIZE TAG PRINT_NAME COMPILE_FLAGS)
+  set(MODULE_NAME "mm_${SIZE}_${TAG}")
+  set(BINARY_NAME "bench_${MODULE_NAME}")
+
+  iree_bytecode_module(
+    NAME
+    ${MODULE_NAME}
+    SRC
+    "tests/mm_${SIZE}.mlir"
+    C_IDENTIFIER
+    "iree_samples_${MODULE_NAME}"
+    FLAGS
+    ${COMPILE_FLAGS}
+    PUBLIC)
+
+  iree_cc_binary(
+    NAME
+    ${BINARY_NAME}
+    SRCS
+    "device_embedded_sync.c"
+    "simple_embedding.c"
+    DEPS
+    ::${MODULE_NAME}_c
+    iree::base
+    iree::hal
+    iree::hal::drivers::local_sync::sync_driver
+    iree::hal::local
+    iree::hal::local::loaders::embedded_elf_loader
+    iree::modules::hal
+    iree::vm
+    iree::vm::bytecode::module
+    DEFINES
+    "MODEL_SIZE=${SIZE}"
+    "UKERNEL_NAME=\"${PRINT_NAME}\""
+    "MODULE_CREATE_FN=iree_samples_${MODULE_NAME}_create"
+    "MODULE_HEADER=\"${_GENERATED_HEADER_REL_DIR}/${MODULE_NAME}_c.h\"")
+
+  set(ALL_BENCHMARKS
+      ${ALL_BENCHMARKS} ${BINARY_NAME}
+      PARENT_SCOPE)
 endfunction()
 
 # --- 3. Instantiate All Benchmarks ---
@@ -105,6 +166,149 @@ create_benchmark(1024 0)
 create_benchmark(2048 1)
 create_benchmark(2048 0)
 
-# --- 4. Create Meta-Target ---
-# This restores the 'benchmark_suite' target so your build script works.
+# --- 3b. A/B Optimization Variants (1024 only) ---
+# All variants use BASE_OPU_FLAGS (defined above) + ukernels enabled.
+
+set(VARIANT_BASE_FLAGS
+    ${BASE_OPU_FLAGS} "--iree-llvmcpu-link-ukernel-bitcode=true"
+    "--iree-llvmcpu-enable-ukernels=all")
+
+# V1: baseline (current working config — dispatch-creation data tiling)
+set(V1_FLAGS ${VARIANT_BASE_FLAGS} "--iree-opt-data-tiling"
+             "--iree-dispatch-creation-data-tiling")
+create_variant_benchmark(1024 "v1_baseline" "V1_BASELINE" "${V1_FLAGS}")
+
+# V2: global-opt data tiling (may hoist packing to init time)
+set(V2_FLAGS ${VARIANT_BASE_FLAGS} "--iree-global-opt-data-tiling")
+create_variant_benchmark(1024 "v2_globalopt" "V2_GLOBALOPT" "${V2_FLAGS}")
+
+# V3: (removed — disabling data tiling causes oversized vector contracts)
+
+# V4: transpose propagation (fuse transposes into matmul)
+set(V4_FLAGS
+    ${VARIANT_BASE_FLAGS}
+    "--iree-opt-data-tiling"
+    "--iree-dispatch-creation-data-tiling"
+    "--iree-global-opt-propagate-transposes"
+    "--iree-opt-aggressively-propagate-transposes")
+create_variant_benchmark(1024 "v4_transpose" "V4_TRANSPOSE" "${V4_FLAGS}")
+
+# V5: optimized ukernel (4x unrolled K loop + vectorized pack/unpack)
+set(V5_FLAGS ${VARIANT_BASE_FLAGS} "--iree-opt-data-tiling"
+             "--iree-dispatch-creation-data-tiling")
+create_variant_benchmark(1024 "v5_opt_loop" "V5_OPT_LOOP" "${V5_FLAGS}")
+
+# V6: constant RHS (weight hoisting — only 1 runtime input, RHS embedded)
+set(V6_MODULE_NAME "mm_1024_v6_const_rhs")
+set(V6_BINARY_NAME "bench_${V6_MODULE_NAME}")
+set(V6_FLAGS ${VARIANT_BASE_FLAGS} "--iree-global-opt-data-tiling")
+iree_bytecode_module(
+  NAME
+  ${V6_MODULE_NAME}
+  SRC
+  "tests/mm_1024_const_rhs.mlir"
+  C_IDENTIFIER
+  "iree_samples_${V6_MODULE_NAME}"
+  FLAGS
+  ${V6_FLAGS}
+  PUBLIC)
+iree_cc_binary(
+  NAME
+  ${V6_BINARY_NAME}
+  SRCS
+  "device_embedded_sync.c"
+  "simple_embedding.c"
+  DEPS
+  ::${V6_MODULE_NAME}_c
+  iree::base
+  iree::hal
+  iree::hal::drivers::local_sync::sync_driver
+  iree::hal::local
+  iree::hal::local::loaders::embedded_elf_loader
+  iree::modules::hal
+  iree::vm
+  iree::vm::bytecode::module
+  DEFINES
+  "MODEL_SIZE=1024"
+  "UKERNEL_NAME=\"V6_CONST_RHS\""
+  "NUM_INPUTS=1"
+  "MODULE_CREATE_FN=iree_samples_${V6_MODULE_NAME}_create"
+  "MODULE_HEADER=\"${_GENERATED_HEADER_REL_DIR}/${V6_MODULE_NAME}_c.h\"")
+set(ALL_BENCHMARKS ${ALL_BENCHMARKS} ${V6_BINARY_NAME})
+
+# --- 3c. Non-square benchmark generator (K-sweep, etc.) ---
+
+function(create_nonsquare_benchmark M N K TAG COMPILE_FLAGS)
+  set(MODULE_NAME "mm_${M}x${N}x${K}_${TAG}")
+  set(BINARY_NAME "bench_${MODULE_NAME}")
+
+  iree_bytecode_module(
+    NAME
+    ${MODULE_NAME}
+    SRC
+    "tests/mm_${M}x${N}x${K}.mlir"
+    C_IDENTIFIER
+    "iree_samples_${MODULE_NAME}"
+    FLAGS
+    ${COMPILE_FLAGS}
+    PUBLIC)
+
+  iree_cc_binary(
+    NAME
+    ${BINARY_NAME}
+    SRCS
+    "device_embedded_sync.c"
+    "simple_embedding.c"
+    DEPS
+    ::${MODULE_NAME}_c
+    iree::base
+    iree::hal
+    iree::hal::drivers::local_sync::sync_driver
+    iree::hal::local
+    iree::hal::local::loaders::embedded_elf_loader
+    iree::modules::hal
+    iree::vm
+    iree::vm::bytecode::module
+    DEFINES
+    "MODEL_M=${M}"
+    "MODEL_N=${N}"
+    "MODEL_K=${K}"
+    "UKERNEL_NAME=\"${TAG}\""
+    "MODULE_CREATE_FN=iree_samples_${MODULE_NAME}_create"
+    "MODULE_HEADER=\"${_GENERATED_HEADER_REL_DIR}/${MODULE_NAME}_c.h\"")
+
+  set(ALL_BENCHMARKS
+      ${ALL_BENCHMARKS} ${BINARY_NAME}
+      PARENT_SCOPE)
+endfunction()
+
+# --- 3d. K-sweep: M=N=64 (VLEN/2), sweep K ---
+foreach(
+  K
+  64
+  128
+  256
+  512
+  1024
+  2048
+  4096)
+  create_nonsquare_benchmark(64 64 ${K} "opu" "${FLAGS_UK_ALL}")
+endforeach()
+
+# --- 4. Create Meta-Targets ---
 add_custom_target(benchmark_suite DEPENDS ${ALL_BENCHMARKS})
+
+# K-sweep only target
+add_custom_target(
+  benchmark_ksweep
+  DEPENDS bench_mm_64x64x64_opu
+          bench_mm_64x64x128_opu
+          bench_mm_64x64x256_opu
+          bench_mm_64x64x512_opu
+          bench_mm_64x64x1024_opu
+          bench_mm_64x64x2048_opu
+          bench_mm_64x64x4096_opu)
+
+# Variants-only target for quick A/B testing
+add_custom_target(benchmark_variants DEPENDS bench_mm_1024_v5_opt_loop
+                                             bench_mm_1024_v6_const_rhs)

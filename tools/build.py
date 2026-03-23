@@ -839,11 +839,16 @@ def main(args: argparse.Namespace) -> int:
         env["RISCV_TOOLCHAIN_ROOT"] = tc_root
         env.setdefault("RISCV", tc_root)
 
+        # Bare-metal CPU feature bitmask for ukernel dispatch.
+        # V=0x01, ZVFHMIN=0x02, ZVFH=0x04, XSMTVDOT=0x08, XOPU=0x10
+        bare_metal_cpu_features = "0x11"  # V + XOPU (Saturn OPU)
+
         cmake_args.extend(
             [
                 "-DMERLIN_BUILD_SATURN_OPU=ON",
                 f"-DCMAKE_TOOLCHAIN_FILE={tc_file}",
                 f"-DRISCV_TOOLCHAIN_ROOT={tc_root}",
+                f"-DIREE_RISCV_BARE_METAL_FEATURES={bare_metal_cpu_features}",
                 "-DIREE_ARCH=riscv_64",
                 "-DIREE_ENABLE_THREADING=OFF",
                 "-DIREE_HAL_DRIVER_DEFAULTS=OFF",

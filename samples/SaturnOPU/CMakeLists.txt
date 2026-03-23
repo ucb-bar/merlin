@@ -1,2 +1,1 @@
-# Intentionally empty placeholder.
-message(STATUS "samples/SaturnOPU: no top-level IREE samples defined")
+add_subdirectory(simple_embedding_ukernel)
