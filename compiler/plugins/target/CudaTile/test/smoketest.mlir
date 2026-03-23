@@ -1,5 +1,5 @@
-// Test that the cuda_tile backend compiles an external cubin into a CUDA-
-// compatible .vmfb (CDA1 format) that can run on --device=cuda.
+// Test that the cuda_tile backend compiles an external cubin into a CTL1
+// .vmfb that runs on --device=cuda_tile.
 //
 // Compile:
 //   iree-compile smoketest.mlir \
@@ -9,17 +9,17 @@
 //     -o /tmp/cuda_tile_test.vmfb
 //
 // Run:
-//   iree-run-module --device=cuda \
+//   iree-run-module --device=cuda_tile \
 //     --module=/tmp/cuda_tile_test.vmfb \
 //     --function=matmul \
 //     --input=128x128xf32=1 \
 //     --input=128x128xf32=1
 
-// cuda_tile backend emits CDA1 format for CUDA HAL compatibility.
-#cuda_tile_target = #hal.executable.target<"cuda_tile", "cuda-nvptx-fb", {
+// cuda_tile backend emits CTL1 format for the cuda_tile HAL driver.
+#cuda_tile_target = #hal.executable.target<"cuda_tile", "cuda-tile-fb", {
   target_arch = "sm_86"
 }>
-#device = #hal.device.target<"cuda", [#cuda_tile_target]> : !hal.device
+#device = #hal.device.target<"cuda_tile", [#cuda_tile_target]> : !hal.device
 
 module @cuda_tile_matmul_test attributes {hal.device.targets = [#device]} {
 

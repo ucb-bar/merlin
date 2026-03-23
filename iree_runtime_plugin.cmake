@@ -61,13 +61,36 @@ if(MERLIN_RUNTIME_ENABLE_HAL_RADIANCE)
   endif()
 endif()
 
-# CudaTile executable loader (plugs into CUDA HAL driver).
+# cuda_tile standalone HAL driver.
+option(MERLIN_RUNTIME_ENABLE_HAL_CUDA_TILE
+       "Enable cuda_tile external HAL driver" OFF)
+# Backward-compatibility alias.
 option(MERLIN_RUNTIME_ENABLE_CUDA_TILE
-       "Build cuda_tile runtime executable loader" OFF)
+       "Legacy alias for MERLIN_RUNTIME_ENABLE_HAL_CUDA_TILE" OFF)
+
 if(MERLIN_RUNTIME_ENABLE_CUDA_TILE)
-  add_subdirectory(
-    "${MERLIN_SOURCE_DIR}/runtime/src/iree/hal/drivers/cuda_tile"
-    "${CMAKE_CURRENT_BINARY_DIR}/merlin/runtime/iree/hal/drivers/cuda_tile")
+  set(MERLIN_RUNTIME_ENABLE_HAL_CUDA_TILE ON)
+endif()
+
+if(MERLIN_RUNTIME_ENABLE_HAL_CUDA_TILE)
+  iree_register_external_hal_driver(
+    NAME
+    cuda_tile
+    SOURCE_DIR
+    "${CMAKE_CURRENT_LIST_DIR}/runtime/src/iree/hal/drivers/cuda_tile"
+    BINARY_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/merlin/runtime/iree/hal/drivers/cuda_tile"
+    DRIVER_TARGET
+    iree::hal::drivers::cuda_tile::registration
+    REGISTER_FN
+    iree_hal_cuda_tile_driver_module_register)
+
+  if(NOT "cuda_tile" IN_LIST IREE_EXTERNAL_HAL_DRIVERS)
+    list(APPEND IREE_EXTERNAL_HAL_DRIVERS "cuda_tile")
+    set(IREE_EXTERNAL_HAL_DRIVERS
+        "${IREE_EXTERNAL_HAL_DRIVERS}"
+        CACHE STRING "" FORCE)
+  endif()
 endif()
 
 if(MERLIN_RUNTIME_ENABLE_SAMPLES)

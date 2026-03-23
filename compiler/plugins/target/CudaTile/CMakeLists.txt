@@ -17,7 +17,7 @@ iree_cc_library(
     iree::compiler::Dialect::HAL::Target
     iree::compiler::Dialect::HAL::Utils::ExecutableDebugInfoUtils
     iree::base::internal::flatcc::building
-    iree::schemas::cuda_executable_def_c_fbs
+    iree::schemas::cuda_tile_executable_def_c_fbs
     iree::schemas::executable_debug_info_c_fbs
     MLIRPass
     MLIRSupport

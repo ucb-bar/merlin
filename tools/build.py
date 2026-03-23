@@ -244,6 +244,12 @@ def setup_parser(parser: argparse.ArgumentParser):
         help="Enable/disable Radiance kmod transport backend.",
     )
     parser.add_argument(
+        "--plugin-runtime-cuda-tile",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable/disable cuda_tile HAL runtime driver.",
+    )
+    parser.add_argument(
         "--compiler-scope",
         choices=["all", "gemmini", "npu", "saturn", "spacemit", "cuda_tile", "none"],
         default=None,
@@ -527,6 +533,7 @@ def main(args: argparse.Namespace) -> int:
     runtime_radiance_backend_rpc = resolve_bool(True, args.plugin_runtime_radiance_rpc)
     runtime_radiance_backend_direct = resolve_bool(True, args.plugin_runtime_radiance_direct)
     runtime_radiance_backend_kmod = resolve_bool(True, args.plugin_runtime_radiance_kmod)
+    runtime_cuda_tile_enabled = resolve_bool(False, args.plugin_runtime_cuda_tile)
 
     if args.offline_friendly:
         if args.build_compiler is None:
@@ -903,6 +910,7 @@ def main(args: argparse.Namespace) -> int:
                 f"-DMERLIN_RUNTIME_ENABLE_BENCHMARKS={cmake_bool(runtime_benchmarks_enabled)}",
                 f"-DMERLIN_RUNTIME_ENABLE_HAL_RADIANCE={cmake_bool(runtime_radiance_enabled)}",
                 f"-DMERLIN_ENABLE_HAL_RADIANCE={cmake_bool(runtime_radiance_enabled)}",
+                f"-DMERLIN_RUNTIME_ENABLE_HAL_CUDA_TILE={cmake_bool(runtime_cuda_tile_enabled)}",
             ]
         )
         if runtime_radiance_enabled:
@@ -924,6 +932,7 @@ def main(args: argparse.Namespace) -> int:
                 "-DMERLIN_RUNTIME_ENABLE_HAL_RADIANCE=OFF",
                 "-DMERLIN_ENABLE_HAL_RADIANCE=OFF",
                 "-DMERLIN_HAL_RADIANCE_BUILD_TESTS=OFF",
+                "-DMERLIN_RUNTIME_ENABLE_HAL_CUDA_TILE=OFF",
             ]
         )
 

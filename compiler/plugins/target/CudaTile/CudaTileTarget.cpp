@@ -18,7 +18,7 @@
 #include "iree/compiler/Utils/FlatbufferUtils.h"
 #include "iree/compiler/Utils/StringUtils.h"
 #include "iree/compiler/Utils/ToolUtils.h"
-#include "iree/schemas/cuda_executable_def_builder.h"
+#include "iree/schemas/cuda_tile_executable_def_builder.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -165,7 +165,7 @@ public:
                                       executableTargetAttrs);
 
     return IREE::HAL::DeviceTargetAttr::get(context,
-                                            b.getStringAttr("cuda"),
+                                            b.getStringAttr("cuda_tile"),
                                             deviceConfigAttr,
                                             executableTargetAttrs);
   }
@@ -182,7 +182,7 @@ class CudaTileTargetBackend final : public TargetBackend {
 public:
   CudaTileTargetBackend(const CudaTileOptions &options) : options(options) {}
 
-  std::string getLegacyDefaultDeviceID() const override { return "cuda"; }
+  std::string getLegacyDefaultDeviceID() const override { return "cuda_tile"; }
 
   void getDefaultExecutableTargets(
       MLIRContext *context, StringRef deviceID,
@@ -204,7 +204,7 @@ public:
                              b.getStringAttr(options.smArch));
 
     return b.getAttr<IREE::HAL::ExecutableTargetAttr>(
-        b.getStringAttr("cuda_tile"), b.getStringAttr("cuda-nvptx-fb"),
+        b.getStringAttr("cuda_tile"), b.getStringAttr("cuda-tile-fb"),
         b.getDictionaryAttr(configItems));
   }
 
@@ -299,25 +299,25 @@ public:
                      variantOp.getName(), ".cubin", cubinData);
     }
 
-    //=== Build CDA1 FlatBuffer (CUDA-compatible format) ===//
-    // Using CDA1 format so the existing CUDA HAL can load and dispatch
-    // cuda_tile cubins via --device=cuda.
+    //=== Build CTL1 FlatBuffer (cuda_tile native format) ===//
     FlatbufferBuilder builder;
-    iree_hal_cuda_ExecutableDef_start_as_root(builder);
+    iree_hal_cuda_tile_ExecutableDef_start_as_root(builder);
 
     // Source files for debug info.
     auto sourceFilesRef = createSourceFilesVec(
         serOptions.debugLevel, variantOp.getSourcesAttr(), builder);
 
+    // SM architecture string.
+    auto smArchRef = builder.createString(options.smArch);
+
     // Module containing the cubin binary.
-    // Store cubin in ptx_image field — cuModuleLoadDataEx handles both PTX
-    // and cubin transparently.
-    SmallVector<iree_hal_cuda_ModuleDef_ref_t> moduleRefs;
+    SmallVector<iree_hal_cuda_tile_ModuleDef_ref_t> moduleRefs;
     {
-      auto ptxImageRef = flatbuffers_string_create(builder, cubinData.c_str(),
-                                                   cubinData.size());
+      auto cubinImageRef = flatbuffers_uint8_vec_create(
+          builder, reinterpret_cast<const uint8_t *>(cubinData.data()),
+          cubinData.size());
       moduleRefs.push_back(
-          iree_hal_cuda_ModuleDef_create(builder, ptxImageRef));
+          iree_hal_cuda_tile_ModuleDef_create(builder, cubinImageRef));
     }
     auto modulesRef = builder.createOffsetVecDestructive(moduleRefs);
 
@@ -326,7 +326,7 @@ public:
         createExportDefs(serOptions.debugLevel, exportOps, builder);
 
     // Build export definitions.
-    SmallVector<iree_hal_cuda_ExportDef_ref_t> exportRefs;
+    SmallVector<iree_hal_cuda_tile_ExportDef_ref_t> exportRefs;
     exportRefs.resize(exportOps.size(), 0);
     for (auto exportOp : exportOps) {
       auto ordinalAttr = exportOp.getOrdinalAttr();
@@ -340,51 +340,48 @@ public:
       auto kernelNameRef =
           builder.createString(sanitizeSymbolName(exportOp.getName()));
 
-      // cuda_tile manages threads internally — block dims are always
-      // {1,1,1}. The grid (workgroup count) is computed at dispatch time.
-      iree_hal_cuda_BlockDims_t blockDims = {1, 1, 1};
-
-      // Shared memory is managed by the cubin.
-      uint32_t blockSharedMemorySize = 0;
+      // Grid dims default to {1,1,1} — runtime overrides via workgroup_count.
+      iree_hal_cuda_tile_GridDims_t gridDims = {1, 1, 1};
 
       auto layoutAttr = exportOp.getLayoutAttr();
       uint32_t constantCount =
           static_cast<uint32_t>(layoutAttr.getConstants());
+      uint32_t bindingCount =
+          static_cast<uint32_t>(layoutAttr.getBindings().size());
 
-      SmallVector<iree_hal_cuda_BindingBits_enum_t> bindingFlags;
+      SmallVector<iree_hal_cuda_tile_BindingBits_enum_t> bindingFlags;
       for (auto bindingAttr : layoutAttr.getBindings()) {
-        iree_hal_cuda_BindingBits_enum_t flags = 0;
+        iree_hal_cuda_tile_BindingBits_enum_t flags = 0;
         if (allEnumBitsSet(bindingAttr.getFlags(),
                            IREE::HAL::DescriptorFlags::ReadOnly)) {
-          flags |= iree_hal_cuda_BindingBits_READ_ONLY;
+          flags |= iree_hal_cuda_tile_BindingBits_READ_ONLY;
         }
         if (allEnumBitsSet(bindingAttr.getFlags(),
                            IREE::HAL::DescriptorFlags::Indirect)) {
-          flags |= iree_hal_cuda_BindingBits_INDIRECT;
+          flags |= iree_hal_cuda_tile_BindingBits_INDIRECT;
         }
         bindingFlags.push_back(flags);
       }
-      auto bindingFlagsRef = iree_hal_cuda_BindingBits_vec_create(
+      auto bindingFlagsRef = iree_hal_cuda_tile_BindingBits_vec_create(
           builder, bindingFlags.data(), bindingFlags.size());
 
-      iree_hal_cuda_ExportDef_start(builder);
-      iree_hal_cuda_ExportDef_module_ordinal_add(builder, 0);
-      iree_hal_cuda_ExportDef_kernel_name_add(builder, kernelNameRef);
-      iree_hal_cuda_ExportDef_block_dims_add(builder, &blockDims);
-      iree_hal_cuda_ExportDef_block_shared_memory_size_add(
-          builder, blockSharedMemorySize);
-      iree_hal_cuda_ExportDef_constant_count_add(builder, constantCount);
-      iree_hal_cuda_ExportDef_binding_flags_add(builder, bindingFlagsRef);
-      iree_hal_cuda_ExportDef_debug_info_add(builder,
-                                             exportDebugInfos[ordinal]);
-      exportRefs[ordinal] = iree_hal_cuda_ExportDef_end(builder);
+      iree_hal_cuda_tile_ExportDef_start(builder);
+      iree_hal_cuda_tile_ExportDef_kernel_name_add(builder, kernelNameRef);
+      iree_hal_cuda_tile_ExportDef_grid_dims_add(builder, &gridDims);
+      iree_hal_cuda_tile_ExportDef_binding_count_add(builder, bindingCount);
+      iree_hal_cuda_tile_ExportDef_constant_count_add(builder, constantCount);
+      iree_hal_cuda_tile_ExportDef_binding_flags_add(builder, bindingFlagsRef);
+      iree_hal_cuda_tile_ExportDef_debug_info_add(builder,
+                                                  exportDebugInfos[ordinal]);
+      exportRefs[ordinal] = iree_hal_cuda_tile_ExportDef_end(builder);
     }
     auto exportsRef = builder.createOffsetVecDestructive(exportRefs);
 
-    iree_hal_cuda_ExecutableDef_exports_add(builder, exportsRef);
-    iree_hal_cuda_ExecutableDef_modules_add(builder, modulesRef);
-    iree_hal_cuda_ExecutableDef_source_files_add(builder, sourceFilesRef);
-    iree_hal_cuda_ExecutableDef_end_as_root(builder);
+    iree_hal_cuda_tile_ExecutableDef_sm_arch_add(builder, smArchRef);
+    iree_hal_cuda_tile_ExecutableDef_exports_add(builder, exportsRef);
+    iree_hal_cuda_tile_ExecutableDef_modules_add(builder, modulesRef);
+    iree_hal_cuda_tile_ExecutableDef_source_files_add(builder, sourceFilesRef);
+    iree_hal_cuda_tile_ExecutableDef_end_as_root(builder);
 
     // Create the binary op in the executable.
     auto binaryOp = IREE::HAL::ExecutableBinaryOp::create(
@@ -392,7 +389,7 @@ public:
         variantOp.getTarget().getFormat(),
         builder.getHeaderPrefixedBufferAttr(
             executableBuilder.getContext(),
-            /*magic=*/iree_hal_cuda_ExecutableDef_file_identifier,
+            /*magic=*/iree_hal_cuda_tile_ExecutableDef_file_identifier,
             /*version=*/0));
     binaryOp.setMimeTypeAttr(
         executableBuilder.getStringAttr("application/x-flatbuffers"));

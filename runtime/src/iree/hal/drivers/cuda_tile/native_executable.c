@@ -14,8 +14,8 @@
 #include <stddef.h>
 
 #include "iree/base/api.h"
-#include "iree/hal/drivers/cuda/cuda_dynamic_symbols.h"
-#include "iree/hal/drivers/cuda/cuda_status_util.h"
+#include "iree/hal/drivers/cuda_tile/cuda_tile_dynamic_symbols.h"
+#include "iree/hal/drivers/cuda_tile/cuda_tile_status_util.h"
 #include "iree/hal/utils/executable_debug_info.h"
 #include "iree/hal/utils/executable_header.h"
 
@@ -32,7 +32,7 @@ typedef struct iree_hal_cuda_tile_native_executable_t {
   iree_hal_resource_t resource;
   iree_allocator_t host_allocator;
 
-  const iree_hal_cuda_dynamic_symbols_t* symbols;
+  const iree_hal_cuda_tile_dynamic_symbols_t* symbols;
 
   // Loaded CUDA modules (from cubin data in the FlatBuffer).
   iree_host_size_t module_count;
@@ -173,7 +173,7 @@ iree_status_t iree_hal_cuda_tile_native_executable_infer_format(
 //===----------------------------------------------------------------------===//
 
 iree_status_t iree_hal_cuda_tile_native_executable_create(
-    const iree_hal_cuda_dynamic_symbols_t* symbols, CUdevice device,
+    const iree_hal_cuda_tile_dynamic_symbols_t* symbols, CUdevice device,
     const iree_hal_executable_params_t* executable_params,
     iree_allocator_t host_allocator, iree_hal_executable_t** out_executable) {
   IREE_ASSERT_ARGUMENT(executable_params);
@@ -326,6 +326,12 @@ iree_status_t iree_hal_cuda_tile_native_executable_create(
         kernel_info->grid_dims[1] = 1;
         kernel_info->grid_dims[2] = 1;
       }
+
+      // Cluster dims for Hopper CTA clustering (future schema extension).
+      // Default to {0,0,0} = no clustering.
+      kernel_info->cluster_dims[0] = 0;
+      kernel_info->cluster_dims[1] = 0;
+      kernel_info->cluster_dims[2] = 0;
 
       // Copy debug info for tracing.
       IREE_TRACE({
