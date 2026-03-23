@@ -1,0 +1,9 @@
+=== ResNet50 Conv1 - BAD Buddy MLIR (INTENTIONAL WRONG STRIDE) ===
+This should produce WRONG checksum to verify our test methodology
+
+BAD Buddy conv1 cycles: 7082
+Output checksum: 89685778
+(This should NOT match the Gemmini C reference!)
+=== BAD Conv1 DONE ===
+Gemmini extension configured with:
+    dim = 16

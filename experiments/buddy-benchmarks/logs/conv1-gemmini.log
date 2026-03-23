@@ -1,0 +1,16 @@
+=== ResNet50 Conv1 - Gemmini C Reference ===
+Input: 4 x 224 x 224 x 3
+Kernel: 7 x 7, stride=2, padding=3
+Output (before pool): 4 x 112 x 112 x 64
+Pool: 3 x 3, stride=2, padding=1
+Output (after pool): 4 x 56 x 56 x 64
+Input checksum: 3461497
+Weight checksum: -199
+Bias checksum: 110400
+Conv1 cycles: 225146
+Output checksum: 10206332
+Output elements: 802816
+First 10 output values: 11 21 0 28 26 31 8 12 27 10 
+=== Conv1 Gemmini C Reference PASS ===
+Gemmini extension configured with:
+    dim = 16
