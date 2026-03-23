@@ -20,35 +20,51 @@ extern "C" {
 // iree_hal_cuda_tile_device_t
 //===----------------------------------------------------------------------===//
 
+// How command buffers are recorded and executed.
+typedef enum iree_hal_cuda_tile_command_buffer_mode_e {
+  // Command buffers are recorded into CUDA graphs.
+  IREE_HAL_CUDA_TILE_COMMAND_BUFFER_MODE_GRAPH = 0,
+  // Command buffers are directly issued against a CUDA stream.
+  IREE_HAL_CUDA_TILE_COMMAND_BUFFER_MODE_STREAM = 1,
+} iree_hal_cuda_tile_command_buffer_mode_t;
+
+// ncclUniqueId exposed without exporting the NCCL headers.
+typedef struct {
+  char data[128];
+} iree_hal_cuda_tile_nccl_id_t;
+
+// Parameters defining a CUmemoryPool.
+typedef struct iree_hal_cuda_tile_memory_pool_params_t {
+  uint64_t minimum_capacity;
+  uint64_t release_threshold;
+} iree_hal_cuda_tile_memory_pool_params_t;
+
+// Parameters for each CUmemoryPool used for queue-ordered allocations.
+typedef struct iree_hal_cuda_tile_memory_pooling_params_t {
+  iree_hal_cuda_tile_memory_pool_params_t device_local;
+  iree_hal_cuda_tile_memory_pool_params_t other;
+} iree_hal_cuda_tile_memory_pooling_params_t;
+
 // Parameters configuring an iree_hal_cuda_tile_device_t.
 // Must be initialized with iree_hal_cuda_tile_device_params_initialize prior to
 // use.
 typedef struct iree_hal_cuda_tile_device_params_t {
-  // Number of queues exposed on the device.
-  // Each queue acts as a separate synchronization scope where all work executes
-  // concurrently unless prohibited by semaphores.
   iree_host_size_t queue_count;
-
-  // Total size of each block in the device shared block pool.
-  // Larger sizes will lower overhead and ensure the heap isn't hit for
-  // transient allocations while also increasing memory consumption.
   iree_host_size_t arena_block_size;
-
-  // The host and device event pool capacity.
-  // The CUDA driver implements semaphore with host and device events. This
-  // parameter controls the size of those pools. Larger values would make
-  // creating semaphore values quicker, though with increased memory
-  // consumption.
   iree_host_size_t event_pool_capacity;
 
-  // Controls the verbosity of command buffers tracing when when IREE
-  // tracing is enabled.
-  //
-  // NOTE: tracing has a non-trivial overhead and will skew the timing of
-  // submissions and may introduce false barriers between dispatches.
-  // Use this to identify slow dispatches and command buffers and refine
-  // from there; be wary of whole-program tracing with this enabled.
+  // Specifies how command buffers are recorded and executed.
+  iree_hal_cuda_tile_command_buffer_mode_t command_buffer_mode;
+
+  // Controls the verbosity of tracing when IREE tracing is enabled.
   int32_t stream_tracing;
+
+  // Whether to use async allocations even if reported as available by the
+  // device. Defaults to true when the device supports it.
+  bool async_allocations;
+
+  // Parameters for each CUmemoryPool used for queue-ordered allocations.
+  iree_hal_cuda_tile_memory_pooling_params_t memory_pools;
 } iree_hal_cuda_tile_device_params_t;
 
 // Initializes |out_params| to default values.

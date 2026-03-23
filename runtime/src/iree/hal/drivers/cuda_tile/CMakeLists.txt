@@ -1,11 +1,8 @@
 # Copyright 2026 UCB-BAR
 #
 # cuda_tile HAL driver — standalone device for cuda_tile IR executables.
-# Forked from IREE's CUDA HAL driver with simplifications:
-#   - No CUDA graph command buffers (always stream mode)
-#   - No NCCL collectives (single-GPU only)
-#   - No async memory pools (simple cuMemAlloc path)
-#   - CTL1 FlatBuffer format instead of PTXE/CDA1
+# Forked from IREE's CUDA HAL driver with cuda_tile dispatch semantics
+# (block_dims={1,1,1}, CTL1 FlatBuffer format).
 
 set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(IREE_PACKAGE_ROOT_PREFIX "iree/hal/drivers/cuda_tile")
@@ -25,16 +22,23 @@ iree_cc_library(
   HDRS
     "cuda_tile_dynamic_symbols.h"
     "cuda_tile_status_util.h"
+    "cuda_tile_nccl_dynamic_symbols.h"
+    "cuda_tile_nccl_status_util.h"
   TEXTUAL_HDRS
     "cuda_tile_dynamic_symbol_table.h"
+    "cuda_tile_nccl_dynamic_symbol_table.h"
   SRCS
     "cuda_tile_dynamic_symbols.c"
     "cuda_tile_headers.h"
     "cuda_tile_status_util.c"
+    "cuda_tile_nccl_dynamic_symbols.c"
+    "cuda_tile_nccl_headers.h"
+    "cuda_tile_nccl_status_util.c"
   DEPS
     iree::base
     iree::base::internal::dynamic_library
     iree_cuda::headers
+    nccl::headers
   PUBLIC
 )
 
@@ -56,7 +60,12 @@ iree_cc_library(
     "cuda_tile_event_pool.h"
     "cuda_tile_event_semaphore.c"
     "cuda_tile_event_semaphore.h"
+    "cuda_tile_graph_command_buffer.c"
+    "cuda_tile_graph_command_buffer.h"
+    "cuda_tile_memory_pools.c"
     "cuda_tile_memory_pools.h"
+    "cuda_tile_nccl_channel.c"
+    "cuda_tile_nccl_channel.h"
     "cuda_tile_nop_executable_cache.c"
     "cuda_tile_nop_executable_cache.h"
     "cuda_tile_stream_command_buffer.c"
@@ -78,6 +87,7 @@ iree_cc_library(
     iree::base::internal::threading
     iree::base::internal::wait_handle
     iree::hal
+    iree::hal::utils::collective_batch
     iree::hal::utils::deferred_command_buffer
     iree::hal::utils::deferred_work_queue
     iree::hal::utils::executable_debug_info

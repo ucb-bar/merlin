@@ -11,6 +11,7 @@
 #include "iree/hal/api.h"
 #include "iree/hal/drivers/cuda_tile/api.h"
 #include "iree/hal/drivers/cuda_tile/cuda_tile_dynamic_symbols.h"
+#include "iree/hal/drivers/cuda_tile/cuda_tile_nccl_dynamic_symbols.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,8 +21,10 @@ extern "C" {
 iree_status_t iree_hal_cuda_tile_device_create(
     iree_hal_driver_t* driver, iree_string_view_t identifier,
     const iree_hal_cuda_tile_device_params_t* params,
-    const iree_hal_cuda_tile_dynamic_symbols_t* symbols, CUdevice device,
-    iree_allocator_t host_allocator, iree_hal_device_t** out_device);
+    const iree_hal_cuda_tile_dynamic_symbols_t* symbols,
+    const iree_hal_cuda_tile_nccl_dynamic_symbols_t* nccl_symbols,
+    CUdevice device, iree_allocator_t host_allocator,
+    iree_hal_device_t** out_device);
 
 // Creates a CUDA stream-backed command buffer using resources from the given
 // |base_device|.

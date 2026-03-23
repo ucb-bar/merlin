@@ -14,6 +14,14 @@
 #include "iree/hal/drivers/cuda_tile/api.h"
 
 IREE_FLAG(
+    bool, cuda_tile_use_streams, true,
+    "Use CUDA streams (instead of graphs) for executing command buffers.");
+
+IREE_FLAG(
+    bool, cuda_tile_async_allocations, true,
+    "Enables CUDA asynchronous stream-ordered allocations when supported.");
+
+IREE_FLAG(
     int32_t, cuda_tile_tracing, 2,
     "Controls the verbosity of cuda_tile tracing when Tracy is enabled.\n"
     "  0: disabled, 1: coarse, 2: fine-grained kernel level.");
@@ -57,7 +65,12 @@ static iree_status_t iree_hal_cuda_tile_driver_factory_try_create(
 
   iree_hal_cuda_tile_device_params_t device_params;
   iree_hal_cuda_tile_device_params_initialize(&device_params);
+  device_params.command_buffer_mode =
+      FLAG_cuda_tile_use_streams
+          ? IREE_HAL_CUDA_TILE_COMMAND_BUFFER_MODE_STREAM
+          : IREE_HAL_CUDA_TILE_COMMAND_BUFFER_MODE_GRAPH;
   device_params.stream_tracing = FLAG_cuda_tile_tracing;
+  device_params.async_allocations = FLAG_cuda_tile_async_allocations;
 
   driver_options.default_device_index = FLAG_cuda_tile_default_index;
 

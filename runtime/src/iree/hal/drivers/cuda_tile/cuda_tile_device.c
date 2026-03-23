@@ -4,11 +4,12 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Simplified CUDA device for cuda_tile HAL driver.
-// Compared to the upstream CUDA HAL device, this removes:
-//   - CUDA graph command buffers (always stream mode)
+// CUDA device for cuda_tile HAL driver.
+// Forked from upstream CUDA HAL with cuda_tile dispatch semantics
+// (block_dims={1,1,1}, CTL1 format). Full feature set:
+//   - CUDA graph and stream command buffers
 //   - NCCL collective channels
-//   - Async memory pools (simple cuMemAlloc path)
+//   - Async memory pools
 
 #include "iree/hal/drivers/cuda_tile/cuda_tile_device.h"
 
@@ -23,6 +24,10 @@
 #include "iree/hal/drivers/cuda_tile/cuda_tile_dynamic_symbols.h"
 #include "iree/hal/drivers/cuda_tile/cuda_tile_event_pool.h"
 #include "iree/hal/drivers/cuda_tile/cuda_tile_event_semaphore.h"
+#include "iree/hal/drivers/cuda_tile/cuda_tile_graph_command_buffer.h"
+#include "iree/hal/drivers/cuda_tile/cuda_tile_memory_pools.h"
+#include "iree/hal/drivers/cuda_tile/cuda_tile_nccl_channel.h"
+#include "iree/hal/drivers/cuda_tile/cuda_tile_nccl_dynamic_symbols.h"
 #include "iree/hal/drivers/cuda_tile/cuda_tile_nop_executable_cache.h"
 #include "iree/hal/drivers/cuda_tile/cuda_tile_status_util.h"
 #include "iree/hal/drivers/cuda_tile/cuda_tile_stream_command_buffer.h"
@@ -54,6 +59,7 @@ typedef struct iree_hal_cuda_tile_device_t {
   iree_hal_driver_t* driver;
 
   const iree_hal_cuda_tile_dynamic_symbols_t* cuda_symbols;
+  const iree_hal_cuda_tile_nccl_dynamic_symbols_t* nccl_symbols;
 
   // Parameters used to control device behavior.
   iree_hal_cuda_tile_device_params_t params;
@@ -76,8 +82,13 @@ typedef struct iree_hal_cuda_tile_device_t {
   // are met.
   iree_hal_deferred_work_queue_t* work_queue;
 
-  // Device allocator (simple cuMemAlloc path, no async pools).
+  // Device memory pools and allocators.
+  bool supports_memory_pools;
+  iree_hal_cuda_tile_memory_pools_t memory_pools;
   iree_hal_allocator_t* device_allocator;
+
+  // Optional provider used for creating/configuring collective channels.
+  iree_hal_channel_provider_t* channel_provider;
 } iree_hal_cuda_tile_device_t;
 
 static const iree_hal_device_vtable_t iree_hal_cuda_tile_device_vtable;
@@ -243,11 +254,26 @@ static iree_status_t
 iree_hal_cuda_tile_deferred_work_queue_device_interface_submit_command_buffer(
     iree_hal_deferred_work_queue_device_interface_t* base_device_interface,
     iree_hal_command_buffer_t* command_buffer) {
-  // Always stream mode — just notify submitted.
+  iree_hal_cuda_tile_deferred_work_queue_device_interface_t* device_interface =
+      (iree_hal_cuda_tile_deferred_work_queue_device_interface_t*)(
+          base_device_interface);
+  iree_status_t status = iree_ok_status();
   if (iree_hal_cuda_tile_stream_command_buffer_isa(command_buffer)) {
+    // Stream command buffer — just notify submitted.
     iree_hal_cuda_tile_stream_notify_submitted_commands(command_buffer);
+  } else {
+    // Graph command buffer — launch the captured graph.
+    CUgraphExec exec =
+        iree_hal_cuda_tile_graph_command_buffer_handle(command_buffer);
+    status = IREE_CURESULT_TO_STATUS(
+        device_interface->cuda_symbols,
+        cuGraphLaunch(exec, device_interface->dispatch_cu_stream));
+    if (IREE_LIKELY(iree_status_is_ok(status))) {
+      iree_hal_cuda_tile_graph_tracing_notify_submitted_commands(
+          command_buffer);
+    }
   }
-  return iree_ok_status();
+  return status;
 }
 
 //===----------------------------------------------------------------------===//
@@ -374,7 +400,10 @@ IREE_API_EXPORT void iree_hal_cuda_tile_device_params_initialize(
   out_params->arena_block_size = 32 * 1024;
   out_params->event_pool_capacity = 32;
   out_params->queue_count = 1;
+  out_params->command_buffer_mode =
+      IREE_HAL_CUDA_TILE_COMMAND_BUFFER_MODE_GRAPH;
   out_params->stream_tracing = 0;
+  out_params->async_allocations = true;
 }
 
 static iree_status_t iree_hal_cuda_tile_device_check_params(
@@ -395,6 +424,7 @@ static iree_status_t iree_hal_cuda_tile_device_create_internal(
     const iree_hal_cuda_tile_device_params_t* params, CUdevice cu_device,
     CUstream dispatch_stream, CUcontext context,
     const iree_hal_cuda_tile_dynamic_symbols_t* cuda_symbols,
+    const iree_hal_cuda_tile_nccl_dynamic_symbols_t* nccl_symbols,
     iree_allocator_t host_allocator, iree_hal_device_t** out_device) {
   iree_hal_cuda_tile_device_t* device = NULL;
   iree_host_size_t total_size = iree_sizeof_struct(*device) + identifier.size;
@@ -411,6 +441,7 @@ static iree_status_t iree_hal_cuda_tile_device_create_internal(
   device->driver = driver;
   iree_hal_driver_retain(device->driver);
   device->cuda_symbols = cuda_symbols;
+  device->nccl_symbols = nccl_symbols;
   device->params = *params;
   device->cu_context = context;
   device->cu_device = cu_device;
@@ -477,11 +508,30 @@ static iree_status_t iree_hal_cuda_tile_device_create_internal(
         host_allocator, &device->tracing_context);
   }
 
-  // Simple allocator — no async memory pools.
+  // Memory pool support is conditional.
+  if (iree_status_is_ok(status) && params->async_allocations) {
+    int supports_memory_pools = 0;
+    status = IREE_CURESULT_TO_STATUS(
+        cuda_symbols,
+        cuDeviceGetAttribute(&supports_memory_pools,
+                             CU_DEVICE_ATTRIBUTE_MEMORY_POOLS_SUPPORTED,
+                             cu_device),
+        "cuDeviceGetAttribute");
+    device->supports_memory_pools = supports_memory_pools != 0;
+  }
+
+  // Create memory pools first so that we can share them with the allocator.
+  if (iree_status_is_ok(status) && device->supports_memory_pools) {
+    status = iree_hal_cuda_tile_memory_pools_initialize(
+        (iree_hal_device_t*)device, cuda_symbols, cu_device,
+        &params->memory_pools, host_allocator, &device->memory_pools);
+  }
+
   if (iree_status_is_ok(status)) {
     status = iree_hal_cuda_tile_allocator_create(
         (iree_hal_device_t*)device, cuda_symbols, cu_device, dispatch_stream,
-        /*memory_pools=*/NULL, host_allocator, &device->device_allocator);
+        device->supports_memory_pools ? &device->memory_pools : NULL,
+        host_allocator, &device->device_allocator);
   }
 
   if (iree_status_is_ok(status)) {
@@ -495,8 +545,10 @@ static iree_status_t iree_hal_cuda_tile_device_create_internal(
 iree_status_t iree_hal_cuda_tile_device_create(
     iree_hal_driver_t* driver, iree_string_view_t identifier,
     const iree_hal_cuda_tile_device_params_t* params,
-    const iree_hal_cuda_tile_dynamic_symbols_t* cuda_symbols, CUdevice device,
-    iree_allocator_t host_allocator, iree_hal_device_t** out_device) {
+    const iree_hal_cuda_tile_dynamic_symbols_t* cuda_symbols,
+    const iree_hal_cuda_tile_nccl_dynamic_symbols_t* nccl_symbols,
+    CUdevice device, iree_allocator_t host_allocator,
+    iree_hal_device_t** out_device) {
   IREE_ASSERT_ARGUMENT(driver);
   IREE_ASSERT_ARGUMENT(params);
   IREE_ASSERT_ARGUMENT(cuda_symbols);
@@ -526,7 +578,7 @@ iree_status_t iree_hal_cuda_tile_device_create(
   if (iree_status_is_ok(status)) {
     status = iree_hal_cuda_tile_device_create_internal(
         driver, identifier, params, device, dispatch_stream, context,
-        cuda_symbols, host_allocator, out_device);
+        cuda_symbols, nccl_symbols, host_allocator, out_device);
   } else {
     // Release resources we have acquired thus far.
     if (dispatch_stream) cuda_symbols->cuStreamDestroy(dispatch_stream);
@@ -599,6 +651,12 @@ static void iree_hal_cuda_tile_device_destroy(
   // There should be no more buffers live that use the allocator.
   iree_hal_allocator_release(device->device_allocator);
 
+  // Buffers may have been retaining collective resources.
+  iree_hal_channel_provider_release(device->channel_provider);
+
+  // Destroy memory pools that hold on to reserved memory.
+  iree_hal_cuda_tile_memory_pools_deinitialize(&device->memory_pools);
+
   iree_hal_stream_tracing_context_free(device->tracing_context);
 
   // Destroy various pools for synchronization.
@@ -659,9 +717,11 @@ static void iree_hal_cuda_tile_replace_device_allocator(
 
 static void iree_hal_cuda_tile_replace_channel_provider(
     iree_hal_device_t* base_device, iree_hal_channel_provider_t* new_provider) {
-  // No NCCL support — no-op.
-  (void)base_device;
-  (void)new_provider;
+  iree_hal_cuda_tile_device_t* device =
+      iree_hal_cuda_tile_device_cast(base_device);
+  iree_hal_channel_provider_retain(new_provider);
+  iree_hal_channel_provider_release(device->channel_provider);
+  device->channel_provider = new_provider;
 }
 
 static iree_status_t iree_hal_cuda_tile_device_trim(
@@ -670,6 +730,10 @@ static iree_status_t iree_hal_cuda_tile_device_trim(
       iree_hal_cuda_tile_device_cast(base_device);
   iree_arena_block_pool_trim(&device->block_pool);
   IREE_RETURN_IF_ERROR(iree_hal_allocator_trim(device->device_allocator));
+  if (device->supports_memory_pools) {
+    IREE_RETURN_IF_ERROR(iree_hal_cuda_tile_memory_pools_trim(
+        &device->memory_pools, &device->params.memory_pools));
+  }
   return iree_ok_status();
 }
 
@@ -728,8 +792,68 @@ static iree_status_t iree_hal_cuda_tile_device_query_i64(
 static iree_status_t iree_hal_cuda_tile_device_create_channel(
     iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
     iree_hal_channel_params_t params, iree_hal_channel_t** out_channel) {
-  return iree_make_status(IREE_STATUS_UNAVAILABLE,
-                          "NCCL not available in cuda_tile driver");
+  iree_hal_cuda_tile_device_t* device =
+      iree_hal_cuda_tile_device_cast(base_device);
+  if (!device->nccl_symbols || !device->nccl_symbols->dylib) {
+    return iree_make_status(
+        IREE_STATUS_UNAVAILABLE,
+        "NCCL runtime library not available; "
+        "ensure installed and the shared library (libnccl.so) "
+        "is on your LD_LIBRARY_PATH.");
+  }
+
+  int requested_count = iree_math_count_ones_u64(queue_affinity);
+  if (requested_count != 64 && requested_count != 1) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "exactly one participant is allowed in a "
+                            "channel but %d were specified",
+                            requested_count);
+  }
+
+  if (device->channel_provider &&
+      (params.rank == IREE_HAL_CHANNEL_RANK_DEFAULT ||
+       params.count == IREE_HAL_CHANNEL_COUNT_DEFAULT)) {
+    IREE_RETURN_IF_ERROR(
+        iree_hal_channel_provider_query_default_rank_and_count(
+            device->channel_provider, &params.rank, &params.count),
+        "querying default collective group rank and count");
+  }
+
+  iree_hal_cuda_tile_nccl_id_t id;
+  memset(&id, 0, sizeof(id));
+  if (iree_const_byte_span_is_empty(params.id)) {
+    if (!device->channel_provider) {
+      return iree_make_status(
+          IREE_STATUS_INVALID_ARGUMENT,
+          "default collective channel ID requested but no channel provider "
+          "has been set on the device to provide it");
+    }
+    if (params.rank == 0) {
+      IREE_RETURN_IF_ERROR(
+          iree_hal_cuda_tile_nccl_get_unique_id(device->nccl_symbols, &id),
+          "bootstrapping NCCL root");
+    }
+    IREE_RETURN_IF_ERROR(iree_hal_channel_provider_exchange_default_id(
+                             device->channel_provider,
+                             iree_make_byte_span((void*)&id, sizeof(id))),
+                         "exchanging NCCL ID with other participants");
+  } else if (params.id.data_length != IREE_ARRAYSIZE(id.data)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "NCCL ID must be %zu bytes but caller provided "
+                            "%zu bytes",
+                            IREE_ARRAYSIZE(id.data), sizeof(id));
+  } else {
+    memcpy(id.data, params.id.data, IREE_ARRAYSIZE(id.data));
+  }
+
+  if (iree_hal_cuda_tile_nccl_id_is_empty(&id)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "no default NCCL ID specified (all zeros)");
+  }
+
+  return iree_hal_cuda_tile_nccl_channel_create(
+      device->cuda_symbols, device->nccl_symbols, &id, params.rank,
+      params.count, device->host_allocator, out_channel);
 }
 
 iree_status_t iree_hal_cuda_tile_device_create_stream_command_buffer(
@@ -741,9 +865,9 @@ iree_status_t iree_hal_cuda_tile_device_create_stream_command_buffer(
       iree_hal_cuda_tile_device_cast(base_device);
   return iree_hal_cuda_tile_stream_command_buffer_create(
       iree_hal_device_allocator(base_device), device->cuda_symbols,
-      device->tracing_context, mode, command_categories, binding_capacity,
-      device->dispatch_cu_stream, &device->block_pool,
-      device->host_allocator, out_command_buffer);
+      device->nccl_symbols, device->tracing_context, mode,
+      command_categories, binding_capacity, device->dispatch_cu_stream,
+      &device->block_pool, device->host_allocator, out_command_buffer);
 }
 
 static iree_status_t iree_hal_cuda_tile_device_create_command_buffer(
@@ -753,11 +877,33 @@ static iree_status_t iree_hal_cuda_tile_device_create_command_buffer(
     iree_hal_command_buffer_t** out_command_buffer) {
   iree_hal_cuda_tile_device_t* device =
       iree_hal_cuda_tile_device_cast(base_device);
-  // Always use deferred (stream) mode — no graph command buffers.
-  return iree_hal_deferred_command_buffer_create(
-      iree_hal_device_allocator(base_device), mode, command_categories,
-      queue_affinity, binding_capacity, &device->block_pool,
-      iree_hal_device_host_allocator(base_device), out_command_buffer);
+
+  switch (device->params.command_buffer_mode) {
+    case IREE_HAL_CUDA_TILE_COMMAND_BUFFER_MODE_GRAPH: {
+      if (binding_capacity > 0) {
+        return iree_hal_deferred_command_buffer_create(
+            iree_hal_device_allocator(base_device), mode, command_categories,
+            queue_affinity, binding_capacity, &device->block_pool,
+            iree_hal_device_host_allocator(base_device), out_command_buffer);
+      } else {
+        return iree_hal_cuda_tile_graph_command_buffer_create(
+            iree_hal_device_allocator(base_device), device->cuda_symbols,
+            device->tracing_context, device->cu_context, mode,
+            command_categories, queue_affinity, binding_capacity,
+            &device->block_pool, device->host_allocator, out_command_buffer);
+      }
+    }
+    case IREE_HAL_CUDA_TILE_COMMAND_BUFFER_MODE_STREAM: {
+      return iree_hal_deferred_command_buffer_create(
+          iree_hal_device_allocator(base_device), mode, command_categories,
+          queue_affinity, binding_capacity, &device->block_pool,
+          iree_hal_device_host_allocator(base_device), out_command_buffer);
+    }
+    default: {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "invalid command buffer mode");
+    }
+  }
 }
 
 static iree_status_t iree_hal_cuda_tile_device_create_event(
@@ -814,14 +960,24 @@ static iree_status_t iree_hal_cuda_tile_device_queue_alloca(
     iree_hal_allocator_pool_t pool, iree_hal_buffer_params_t params,
     iree_device_size_t allocation_size, iree_hal_alloca_flags_t flags,
     iree_hal_buffer_t** IREE_RESTRICT out_buffer) {
+  iree_hal_cuda_tile_device_t* device =
+      iree_hal_cuda_tile_device_cast(base_device);
+
   IREE_RETURN_IF_ERROR(
       iree_hal_semaphore_list_wait(wait_semaphore_list, iree_infinite_timeout(),
                                    IREE_HAL_WAIT_FLAG_DEFAULT));
 
-  // Simple allocator path — no async pools.
-  iree_status_t status = iree_hal_allocator_allocate_buffer(
-      iree_hal_device_allocator(base_device), params, allocation_size,
-      out_buffer);
+  iree_status_t status = iree_ok_status();
+  if (device->supports_memory_pools &&
+      !iree_all_bits_set(params.type, IREE_HAL_MEMORY_TYPE_HOST_VISIBLE)) {
+    status = iree_hal_cuda_tile_memory_pools_alloca(
+        &device->memory_pools, device->dispatch_cu_stream, pool, params,
+        allocation_size, flags, out_buffer);
+  } else {
+    status = iree_hal_allocator_allocate_buffer(
+        iree_hal_device_allocator(base_device), params, allocation_size,
+        out_buffer);
+  }
 
   if (iree_status_is_ok(status)) {
     status = iree_hal_semaphore_list_signal(signal_semaphore_list);
@@ -834,12 +990,22 @@ static iree_status_t iree_hal_cuda_tile_device_queue_dealloca(
     const iree_hal_semaphore_list_t wait_semaphore_list,
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_hal_buffer_t* buffer, iree_hal_dealloca_flags_t flags) {
+  iree_hal_cuda_tile_device_t* device =
+      iree_hal_cuda_tile_device_cast(base_device);
+
   IREE_RETURN_IF_ERROR(
       iree_hal_semaphore_list_wait(wait_semaphore_list, iree_infinite_timeout(),
                                    IREE_HAL_WAIT_FLAG_DEFAULT));
 
-  // No async pool — buffer freed when released.
-  iree_status_t status = iree_hal_semaphore_list_signal(signal_semaphore_list);
+  iree_status_t status = iree_ok_status();
+  if (device->supports_memory_pools) {
+    status = iree_hal_cuda_tile_memory_pools_dealloca(
+        &device->memory_pools, device->dispatch_cu_stream, buffer, flags);
+  }
+
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_semaphore_list_signal(signal_semaphore_list);
+  }
   return status;
 }
 

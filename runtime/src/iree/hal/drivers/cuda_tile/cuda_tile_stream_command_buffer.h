@@ -11,6 +11,7 @@
 #include "iree/hal/api.h"
 #include "iree/hal/drivers/cuda_tile/cuda_tile_dynamic_symbols.h"
 #include "iree/hal/drivers/cuda_tile/cuda_tile_headers.h"
+#include "iree/hal/drivers/cuda_tile/cuda_tile_nccl_dynamic_symbols.h"
 #include "iree/hal/utils/stream_tracing.h"
 
 #ifdef __cplusplus
@@ -18,10 +19,11 @@ extern "C" {
 #endif  // __cplusplus
 
 // Creates a command buffer that immediately issues commands against the given
-// CUDA |stream|. No NCCL support (removed from cuda_tile driver).
+// CUDA |stream|.
 iree_status_t iree_hal_cuda_tile_stream_command_buffer_create(
     iree_hal_allocator_t* device_allocator,
     const iree_hal_cuda_tile_dynamic_symbols_t* cuda_symbols,
+    const iree_hal_cuda_tile_nccl_dynamic_symbols_t* nccl_symbols,
     iree_hal_stream_tracing_context_t* tracing_context,
     iree_hal_command_buffer_mode_t mode,
     iree_hal_command_category_t command_categories,

@@ -4,17 +4,17 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Simplified stream command buffer for cuda_tile HAL driver.
-// Compared to the upstream CUDA HAL:
-//   - No NCCL collective operations
-//   - Block dims always {1,1,1}
-//   - Grid dims from IREE dispatch workgroup_count
+// Stream command buffer for cuda_tile HAL driver.
+// cuda_tile dispatch: block_dims={1,1,1}, grid from workgroup_count.
+// Full NCCL collective support.
 
 #include "iree/hal/drivers/cuda_tile/cuda_tile_stream_command_buffer.h"
 
 #include "iree/hal/drivers/cuda_tile/cuda_tile_buffer.h"
+#include "iree/hal/drivers/cuda_tile/cuda_tile_nccl_channel.h"
 #include "iree/hal/drivers/cuda_tile/cuda_tile_status_util.h"
 #include "iree/hal/drivers/cuda_tile/native_executable.h"
+#include "iree/hal/utils/collective_batch.h"
 #include "iree/hal/utils/resource_set.h"
 
 typedef struct iree_hal_cuda_tile_stream_command_buffer_t {
@@ -22,6 +22,7 @@ typedef struct iree_hal_cuda_tile_stream_command_buffer_t {
   iree_allocator_t host_allocator;
 
   const iree_hal_cuda_tile_dynamic_symbols_t* cuda_symbols;
+  const iree_hal_cuda_tile_nccl_dynamic_symbols_t* nccl_symbols;
 
   // Per-stream CUDA tracing context.
   iree_hal_stream_tracing_context_t* tracing_context;
@@ -35,6 +36,9 @@ typedef struct iree_hal_cuda_tile_stream_command_buffer_t {
 
   // Staging arena used for host->device transfers.
   iree_arena_allocator_t arena;
+
+  // Iteratively constructed batch of collective operations.
+  iree_hal_collective_batch_t collective_batch;
 } iree_hal_cuda_tile_stream_command_buffer_t;
 
 static const iree_hal_command_buffer_vtable_t
@@ -48,9 +52,28 @@ iree_hal_cuda_tile_stream_command_buffer_cast(
   return (iree_hal_cuda_tile_stream_command_buffer_t*)base_value;
 }
 
+// Flushes any pending batched collective operations.
+static iree_status_t
+iree_hal_cuda_tile_stream_command_buffer_flush_collectives(
+    iree_hal_cuda_tile_stream_command_buffer_t* command_buffer) {
+  if (IREE_LIKELY(iree_hal_collective_batch_is_empty(
+          &command_buffer->collective_batch))) {
+    return iree_ok_status();
+  }
+  IREE_TRACE_ZONE_BEGIN(z0);
+  iree_status_t status = iree_hal_cuda_tile_nccl_submit_batch(
+      command_buffer->nccl_symbols, command_buffer->tracing_context,
+      &command_buffer->tracing_event_list, &command_buffer->collective_batch,
+      command_buffer->cu_stream);
+  iree_hal_collective_batch_clear(&command_buffer->collective_batch);
+  IREE_TRACE_ZONE_END(z0);
+  return status;
+}
+
 iree_status_t iree_hal_cuda_tile_stream_command_buffer_create(
     iree_hal_allocator_t* device_allocator,
     const iree_hal_cuda_tile_dynamic_symbols_t* cuda_symbols,
+    const iree_hal_cuda_tile_nccl_dynamic_symbols_t* nccl_symbols,
     iree_hal_stream_tracing_context_t* tracing_context,
     iree_hal_command_buffer_mode_t mode,
     iree_hal_command_category_t command_categories,
@@ -59,6 +82,7 @@ iree_status_t iree_hal_cuda_tile_stream_command_buffer_create(
     iree_hal_command_buffer_t** out_command_buffer) {
   IREE_ASSERT_ARGUMENT(device_allocator);
   IREE_ASSERT_ARGUMENT(cuda_symbols);
+  IREE_ASSERT_ARGUMENT(nccl_symbols);
   IREE_ASSERT_ARGUMENT(out_command_buffer);
   *out_command_buffer = NULL;
 
@@ -84,6 +108,7 @@ iree_status_t iree_hal_cuda_tile_stream_command_buffer_create(
       &iree_hal_cuda_tile_stream_command_buffer_vtable, &command_buffer->base);
   command_buffer->host_allocator = host_allocator;
   command_buffer->cuda_symbols = cuda_symbols;
+  command_buffer->nccl_symbols = nccl_symbols;
   command_buffer->tracing_context = tracing_context;
   command_buffer->tracing_event_list.head = NULL;
   command_buffer->tracing_event_list.tail = NULL;
@@ -94,6 +119,12 @@ iree_status_t iree_hal_cuda_tile_stream_command_buffer_create(
   if (!iree_all_bits_set(mode, IREE_HAL_COMMAND_BUFFER_MODE_UNRETAINED)) {
     status = iree_hal_resource_set_allocate(block_pool,
                                             &command_buffer->resource_set);
+  }
+
+  if (iree_status_is_ok(status)) {
+    iree_hal_collective_batch_initialize(&command_buffer->arena,
+                                         command_buffer->resource_set,
+                                         &command_buffer->collective_batch);
   }
 
   *out_command_buffer = &command_buffer->base;
@@ -111,6 +142,7 @@ static void iree_hal_cuda_tile_stream_command_buffer_destroy(
   iree_hal_stream_tracing_free(command_buffer->tracing_context,
                                &command_buffer->tracing_event_list);
 
+  iree_hal_collective_batch_deinitialize(&command_buffer->collective_batch);
   iree_hal_resource_set_free(command_buffer->resource_set);
   iree_arena_deinitialize(&command_buffer->arena);
   iree_allocator_free(host_allocator, command_buffer);
@@ -158,12 +190,21 @@ static iree_status_t iree_hal_cuda_tile_stream_command_buffer_end(
       iree_hal_cuda_tile_stream_command_buffer_cast(base_command_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
 
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0,
+      iree_hal_cuda_tile_stream_command_buffer_flush_collectives(
+          command_buffer));
+
   // Reset the arena as there should be nothing using it now.
   iree_arena_reset(&command_buffer->arena);
+  iree_hal_collective_batch_deinitialize(&command_buffer->collective_batch);
   iree_hal_resource_set_free(command_buffer->resource_set);
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_resource_set_allocate(command_buffer->arena.block_pool,
                                          &command_buffer->resource_set));
+  iree_hal_collective_batch_initialize(&command_buffer->arena,
+                                       command_buffer->resource_set,
+                                       &command_buffer->collective_batch);
 
   IREE_HAL_STREAM_TRACE_ZONE_END(command_buffer->tracing_context,
                                  &command_buffer->tracing_event_list,
@@ -226,9 +267,19 @@ iree_hal_cuda_tile_stream_command_buffer_execution_barrier(
     return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
                             "non-zero barrier flag not yet supported");
   }
+  IREE_TRACE_ZONE_BEGIN(z0);
 
-  // Nothing to do — CUDA stream semantics guarantees execution and memory
-  // visibility in program order.
+  iree_hal_cuda_tile_stream_command_buffer_t* command_buffer =
+      iree_hal_cuda_tile_stream_command_buffer_cast(base_command_buffer);
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0,
+      iree_hal_cuda_tile_stream_command_buffer_flush_collectives(
+          command_buffer));
+
+  // Nothing else to do — CUDA stream semantics guarantees execution and
+  // memory visibility in program order.
+
+  IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }
 
@@ -275,6 +326,11 @@ static iree_status_t iree_hal_cuda_tile_stream_command_buffer_fill_buffer(
   iree_hal_cuda_tile_stream_command_buffer_t* command_buffer =
       iree_hal_cuda_tile_stream_command_buffer_cast(base_command_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
+
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0,
+      iree_hal_cuda_tile_stream_command_buffer_flush_collectives(
+          command_buffer));
 
   CUdeviceptr target_device_buffer = iree_hal_cuda_tile_buffer_device_pointer(
       iree_hal_buffer_allocated_buffer(target_ref.buffer));
@@ -326,6 +382,11 @@ iree_hal_cuda_tile_stream_command_buffer_update_buffer(
       iree_hal_cuda_tile_stream_command_buffer_cast(base_command_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
 
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0,
+      iree_hal_cuda_tile_stream_command_buffer_flush_collectives(
+          command_buffer));
+
   // Copy source to arena to ensure async safety.
   const uint8_t* src = (const uint8_t*)source_buffer + source_offset;
   if (command_buffer->arena.block_pool) {
@@ -360,6 +421,11 @@ static iree_status_t iree_hal_cuda_tile_stream_command_buffer_copy_buffer(
       iree_hal_cuda_tile_stream_command_buffer_cast(base_command_buffer);
   IREE_TRACE_ZONE_BEGIN(z0);
 
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0,
+      iree_hal_cuda_tile_stream_command_buffer_flush_collectives(
+          command_buffer));
+
   CUdeviceptr source_device_buffer = iree_hal_cuda_tile_buffer_device_pointer(
       iree_hal_buffer_allocated_buffer(source_ref.buffer));
   iree_device_size_t source_offset =
@@ -385,8 +451,26 @@ static iree_status_t iree_hal_cuda_tile_stream_command_buffer_collective(
     iree_hal_command_buffer_t* base_command_buffer, iree_hal_channel_t* channel,
     iree_hal_collective_op_t op, uint32_t param, iree_hal_buffer_ref_t send_ref,
     iree_hal_buffer_ref_t recv_ref, iree_device_size_t element_count) {
-  return iree_make_status(IREE_STATUS_UNAVAILABLE,
-                          "NCCL collectives not available in cuda_tile driver");
+  iree_hal_cuda_tile_stream_command_buffer_t* command_buffer =
+      iree_hal_cuda_tile_stream_command_buffer_cast(base_command_buffer);
+  IREE_TRACE_ZONE_BEGIN(z0);
+
+  iree_hal_buffer_binding_t send_binding = {
+      .buffer = send_ref.buffer,
+      .offset = send_ref.offset,
+      .length = send_ref.length,
+  };
+  iree_hal_buffer_binding_t recv_binding = {
+      .buffer = recv_ref.buffer,
+      .offset = recv_ref.offset,
+      .length = recv_ref.length,
+  };
+  iree_status_t status = iree_hal_collective_batch_append(
+      &command_buffer->collective_batch, channel, op, param, send_binding,
+      recv_binding, element_count);
+
+  IREE_TRACE_ZONE_END(z0);
+  return status;
 }
 
 //===----------------------------------------------------------------------===//
@@ -413,6 +497,11 @@ static iree_status_t iree_hal_cuda_tile_stream_command_buffer_dispatch(
   }
 
   IREE_TRACE_ZONE_BEGIN(z0);
+
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0,
+      iree_hal_cuda_tile_stream_command_buffer_flush_collectives(
+          command_buffer));
 
   // Lookup kernel parameters from the CTL1 executable.
   const iree_hal_cuda_tile_kernel_params_t* kernel_params = NULL;
