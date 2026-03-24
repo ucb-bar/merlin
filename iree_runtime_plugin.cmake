@@ -10,7 +10,7 @@
 
 get_filename_component(MERLIN_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
 
-add_subdirectory("${MERLIN_SOURCE_DIR}/projects/xpu-rt"
+add_subdirectory("${MERLIN_SOURCE_DIR}/samples/common/xpu-rt"
                  "${IREE_BINARY_DIR}/runtime/plugins/xpu-rt")
 
 # Merlin runtime plugin entrypoint used by IREE plugin CMake integration.

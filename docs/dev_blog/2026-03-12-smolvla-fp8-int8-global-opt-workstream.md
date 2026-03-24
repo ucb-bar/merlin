@@ -20,7 +20,7 @@ git clone https://github.com/huggingface/lerobot.git
 ### 0.2 Set up Understanding-PI0 Python environment
 
 ```bash
-cd third_party/Understanding-PI0
+cd Understanding-PI0
 uv python pin 3.12
 uv sync --extra export_iree
 cd ../..
