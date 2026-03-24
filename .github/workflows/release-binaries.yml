@@ -35,7 +35,7 @@ jobs:
       - name: Build packaged macOS host artifact
         shell: bash -el {0}
         run: |
-          uv run tools/merlin.py build --profile package-host
+          uv run tools/merlin.py build --profile package-host --no-use-ccache
           mv dist/host-merlin-perf.tar.gz dist/merlin-host-macos.tar.gz
 
       - uses: actions/upload-artifact@v4
@@ -54,6 +54,10 @@ jobs:
           name: merlin-host-macos
           path: dist
 
+      # Creates a draft release with the macOS artifact attached.
+      # Linux artifacts (host, spacemit, saturnopu) are built locally
+      # with build_tools/docker/build_release.sh and uploaded manually:
+      #   gh release upload <tag> dist/*.tar.gz
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/merlin-host-macos.tar.gz

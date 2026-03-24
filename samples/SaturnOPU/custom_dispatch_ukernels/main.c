@@ -36,59 +36,85 @@ iree_status_t create_input_tensor(
 }
 
 int main(int argc, char **argv) {
+	iree_status_t status;
+	iree_runtime_instance_t *instance = NULL;
+	iree_hal_device_t *device = NULL;
+	iree_runtime_session_t *session = NULL;
+	iree_hal_buffer_view_t *input_view = NULL;
+	iree_hal_buffer_view_t *output_view = NULL;
+	int ret = 0;
+
 	iree_runtime_instance_options_t instance_options;
 	iree_runtime_instance_options_initialize(&instance_options);
 	iree_runtime_instance_options_use_all_available_drivers(&instance_options);
-	iree_runtime_instance_t *instance = NULL;
 	iree_allocator_t host_allocator = {
 		.self = NULL, .ctl = iree_allocator_libc_ctl};
-	IREE_CHECK_OK(iree_runtime_instance_create(
-		&instance_options, host_allocator, &instance));
+	status = iree_runtime_instance_create(
+		&instance_options, host_allocator, &instance);
+	if (!iree_status_is_ok(status))
+		goto cleanup;
 
-	iree_hal_device_t *device = NULL;
-	IREE_CHECK_OK(iree_runtime_instance_try_create_default_device(
-		instance, iree_make_cstring_view("local-sync"), &device));
+	status = iree_runtime_instance_try_create_default_device(
+		instance, iree_make_cstring_view("local-sync"), &device);
+	if (!iree_status_is_ok(status))
+		goto cleanup;
 
 	iree_runtime_session_options_t session_options;
 	iree_runtime_session_options_initialize(&session_options);
-	iree_runtime_session_t *session = NULL;
-	IREE_CHECK_OK(
-		iree_runtime_session_create_with_device(instance, &session_options,
-			device, iree_runtime_instance_host_allocator(instance), &session));
+	status = iree_runtime_session_create_with_device(instance, &session_options,
+		device, iree_runtime_instance_host_allocator(instance), &session);
+	if (!iree_status_is_ok(status))
+		goto cleanup;
 
 	// MODEL_VMFB_FILENAME is set by CMake
 	printf("Loading model: %s\n", MODEL_VMFB_FILENAME);
-	IREE_CHECK_OK(iree_runtime_session_append_bytecode_module_from_file(
-		session, MODEL_VMFB_FILENAME));
+	status = iree_runtime_session_append_bytecode_module_from_file(
+		session, MODEL_VMFB_FILENAME);
+	if (!iree_status_is_ok(status))
+		goto cleanup;
 
 	iree_runtime_call_t call;
-	IREE_CHECK_OK(iree_runtime_call_initialize_by_name(
-		session, iree_make_cstring_view("module.main_graph$async"), &call));
+	status = iree_runtime_call_initialize_by_name(
+		session, iree_make_cstring_view("module.main_graph$async"), &call);
+	if (!iree_status_is_ok(status))
+		goto cleanup;
 
 	// Create and push inputs
-	iree_hal_buffer_view_t *input_view = NULL;
-	IREE_CHECK_OK(create_input_tensor(device, &input_view));
-	IREE_CHECK_OK(
-		iree_runtime_call_inputs_push_back_buffer_view(&call, input_view));
+	status = create_input_tensor(device, &input_view);
+	if (!iree_status_is_ok(status))
+		goto call_cleanup;
+	status = iree_runtime_call_inputs_push_back_buffer_view(&call, input_view);
 	iree_hal_buffer_view_release(input_view);
+	input_view = NULL;
+	if (!iree_status_is_ok(status))
+		goto call_cleanup;
 
-	// (Note: Your MLIR has 3 inputs: %arg0, %arg1, %arg2. %arg1 and %arg2 are
-	// !hal.fence. We are in local-sync, so we can pass null fences)
-	IREE_CHECK_OK(iree_runtime_call_inputs_push_back_buffer_view(&call, NULL));
-	IREE_CHECK_OK(iree_runtime_call_inputs_push_back_buffer_view(&call, NULL));
+	// MLIR has 3 inputs: %arg0, %arg1, %arg2. %arg1 and %arg2 are
+	// !hal.fence. We are in local-sync, so we can pass null fences.
+	status = iree_runtime_call_inputs_push_back_buffer_view(&call, NULL);
+	if (!iree_status_is_ok(status))
+		goto call_cleanup;
+	status = iree_runtime_call_inputs_push_back_buffer_view(&call, NULL);
+	if (!iree_status_is_ok(status))
+		goto call_cleanup;
 
 	printf("Invoking model...\n");
-	IREE_CHECK_OK(iree_runtime_call_invoke(&call, /*flags=*/0));
+	status = iree_runtime_call_invoke(&call, /*flags=*/0);
+	if (!iree_status_is_ok(status))
+		goto call_cleanup;
 
 	// Get and print output
-	iree_hal_buffer_view_t *output_view = NULL;
-	IREE_CHECK_OK(
-		iree_runtime_call_outputs_pop_front_buffer_view(&call, &output_view));
+	status =
+		iree_runtime_call_outputs_pop_front_buffer_view(&call, &output_view);
+	if (!iree_status_is_ok(status))
+		goto call_cleanup;
 
 	iree_hal_buffer_mapping_t mapped_memory;
-	IREE_CHECK_OK(iree_hal_buffer_map_range(
-		iree_hal_buffer_view_buffer(output_view), IREE_HAL_MAPPING_MODE_SCOPED,
-		IREE_HAL_MEMORY_ACCESS_READ, 0, IREE_HAL_WHOLE_BUFFER, &mapped_memory));
+	status = iree_hal_buffer_map_range(iree_hal_buffer_view_buffer(output_view),
+		IREE_HAL_MAPPING_MODE_SCOPED, IREE_HAL_MEMORY_ACCESS_READ, 0,
+		IREE_HAL_WHOLE_BUFFER, &mapped_memory);
+	if (!iree_status_is_ok(status))
+		goto call_cleanup;
 
 	printf("Output (tensor<1x10xf32>):\n[ ");
 	const float *output_data = (const float *)mapped_memory.contents.data;
@@ -98,11 +124,25 @@ int main(int argc, char **argv) {
 	printf("]\n");
 
 	iree_hal_buffer_unmap_range(&mapped_memory);
-	iree_hal_buffer_view_release(output_view);
+
+call_cleanup:
+	if (output_view)
+		iree_hal_buffer_view_release(output_view);
 	iree_runtime_call_deinitialize(&call);
-	iree_runtime_session_release(session);
-	iree_hal_device_release(device);
-	iree_runtime_instance_release(instance);
-	printf("Run complete.\n");
-	return 0;
+
+cleanup:
+	if (!iree_status_is_ok(status)) {
+		iree_status_fprint(stderr, status);
+		iree_status_free(status);
+		ret = 1;
+	}
+	if (session)
+		iree_runtime_session_release(session);
+	if (device)
+		iree_hal_device_release(device);
+	if (instance)
+		iree_runtime_instance_release(instance);
+	if (ret == 0)
+		printf("Run complete.\n");
+	return ret;
 }

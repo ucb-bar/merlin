@@ -24,3 +24,6 @@ dependencies:
   - libcurl
   - openssl
   - zstd
+  - pre-commit
+  - nodejs
+  - gh

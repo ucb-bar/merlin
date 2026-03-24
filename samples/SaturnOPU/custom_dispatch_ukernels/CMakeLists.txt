@@ -27,8 +27,7 @@ set(IREE_COMPILE_FLAGS
     --iree-llvmcpu-target-abi=lp64d
     --iree-dispatch-creation-data-tiling
     -mlir-disable-threading
-    --dump-compilation-phases-to=/scratch2/agustin/merlin/samples/custom_dispatch_ukernels_saturn/dummy_kernel/compilation_phases
-)
+    --dump-compilation-phases-to=${CMAKE_CURRENT_BINARY_DIR}/compilation_phases)
 
 set(SOURCE_MODEL_MLIR
     "${CMAKE_CURRENT_SOURCE_DIR}/compilation_phases_fc/model_quantized_ort.mlir"

@@ -33,3 +33,4 @@ dependencies:
   - pre-commit
   - nodejs
   - tree
+  - gh

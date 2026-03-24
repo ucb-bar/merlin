@@ -352,7 +352,7 @@ def get_iree_version(iree_src: pathlib.Path) -> str:
     try:
         with (iree_src / "runtime" / "version.json").open() as f:
             return json.load(f).get("package-version", "unknown")
-    except Exception:
+    except FileNotFoundError:
         return "unknown"
 
 
@@ -582,8 +582,6 @@ def main(args: argparse.Namespace) -> int:
                 f"{cmake_bin}. Try --use-system-cmake or --cmake-bin."
             )
             return 1
-
-    get_iree_version(iree_src)
 
     # Clean structure: build/spacemit-merlin-perf
     build_name = f"{args.target}-{variant}-{args.config}"
@@ -827,8 +825,10 @@ def main(args: argparse.Namespace) -> int:
                 "-DIREE_HAL_DRIVER_DEFAULTS=OFF",
                 "-DIREE_HAL_DRIVER_LOCAL_SYNC=ON",
                 "-DIREE_HAL_DRIVER_LOCAL_TASK=ON",
-                "-DCMAKE_C_FLAGS=-march=rv64gc_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause -mabi=lp64d",
-                "-DCMAKE_CXX_FLAGS=-fno-omit-frame-pointer -march=rv64gc_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause -mabi=lp64d",
+                "-DCMAKE_C_FLAGS=" "-march=rv64gc_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause -mabi=lp64d",
+                "-DCMAKE_CXX_FLAGS="
+                "-fno-omit-frame-pointer"
+                " -march=rv64gc_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause -mabi=lp64d",
                 "-DIREE_ENABLE_CPUINFO=ON",
             ]
         )
@@ -846,11 +846,16 @@ def main(args: argparse.Namespace) -> int:
         env["RISCV_TOOLCHAIN_ROOT"] = tc_root
         env.setdefault("RISCV", tc_root)
 
+        # Bare-metal CPU feature bitmask for ukernel dispatch.
+        # V=0x01, ZVFHMIN=0x02, ZVFH=0x04, XSMTVDOT=0x08, XOPU=0x10
+        bare_metal_cpu_features = "0x11"  # V + XOPU (Saturn OPU)
+
         cmake_args.extend(
             [
                 "-DMERLIN_BUILD_SATURN_OPU=ON",
                 f"-DCMAKE_TOOLCHAIN_FILE={tc_file}",
                 f"-DRISCV_TOOLCHAIN_ROOT={tc_root}",
+                f"-DIREE_RISCV_BARE_METAL_FEATURES={bare_metal_cpu_features}",
                 "-DIREE_ARCH=riscv_64",
                 "-DIREE_ENABLE_THREADING=OFF",
                 "-DIREE_HAL_DRIVER_DEFAULTS=OFF",

@@ -184,6 +184,13 @@ Artifact naming:
 
 Use `tools/install_prebuilt.py` to place these into the expected local `build/...` layout.
 
+### Creating a release
+
+See the [packaging and release builds](docs/how_to/use_build_py.md#6-package-profiles-and-release-builds)
+guide for the full walkthrough. In short: Linux artifacts are built locally
+with `./build_tools/docker/build_release.sh v<VERSION>`, the macOS artifact
+is built by CI on tag push, and tarballs are uploaded to the GitHub release.
+
 ## Where Build Outputs Go
 
 - Host tool binaries: `build/host-*/install/bin/`

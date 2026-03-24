@@ -1,0 +1,56 @@
+# Vanilla Gemmini (int8) recipe for Merlin on FireSim U250
+# Uses the standard LeanGemminiRocketConfig — a single Rocket core with
+# Gemmini systolic array accelerator (RoCC). Bitstream already built.
+name: gemmini-u250
+mode: firesim  # firesim | bare-metal | board
+
+chipyard:
+  repo: https://github.com/ucb-bar/chipyard
+  branch: main
+  sha: bcb612918bb964a0dad33a26a1921c161eb598d0
+
+submodules:
+  gemmini:
+    repo: https://github.com/ucb-bar/gemmini
+    sha: 6ad65b90b1eb270c20ce4f04109e3dde0180b36f
+  firesim:
+    sha: b084672c2f8cf32e55d78f73a001074c23f8a2b8
+
+# FireSim-specific configuration
+firesim:
+  build_recipe:
+    recipe_name: alveo_u250_firesim_gemmini_rocket_singlecore_no_nic
+    PLATFORM: xilinx_alveo_u250
+    TARGET_PROJECT: firesim
+    DESIGN: FireSim
+    TARGET_CONFIG: FireSimLeanGemminiRocketConfig
+    PLATFORM_CONFIG: BaseXilinxAlveoU250Config
+    platform_config_args:
+      fpga_frequency: 60
+      build_strategy: TIMING
+    bit_builder_recipe: bit-builder-recipes/xilinx_alveo_u250.yaml
+
+  runtime:
+    topology: no_net_config
+    no_net_num_nodes: 1
+    default_hw_config: alveo_u250_firesim_gemmini_rocket_singlecore_no_nic
+    default_platform: XilinxAlveoU250InstanceDeployManager
+
+  workload:
+    name: merlin-iree
+    firemarshal_config: br-base.json
+    command: "/opt/merlin/run.sh && poweroff -f"
+    overlay_files:
+      - source: "build/firesim-merlin-release/install/"
+        dest: "/opt/merlin/"
+    outputs:
+      - "uartlog"
+
+# Bare-metal VCS/Verilator simulation (also supported)
+bare_metal:
+  config: LeanGemminiRocketConfig
+  simulator: vcs
+
+merlin:
+  target: gemmini
+  profile: firesim

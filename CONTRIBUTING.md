@@ -25,3 +25,20 @@ PRs should pass:
 1. Script/python lint gates.
 2. Patch-stack verification and drift checks.
 3. Any workflow-specific checks touched by your change.
+
+## Releasing Binaries
+
+Linux release artifacts are built locally with Docker; macOS is built by CI.
+
+1. Tag the commit: `git tag v<VERSION>`
+2. Build Linux artifacts: `./build_tools/docker/build_release.sh v<VERSION>`
+3. Push the tag: `git push origin v<VERSION>` (triggers CI for macOS)
+4. Upload Linux tarballs: `gh release upload v<VERSION> dist/*.tar.gz`
+5. Edit the draft release on GitHub, add notes, and publish.
+
+The Docker builder (`build_tools/docker/`) uses a reproducible container with
+the conda environment baked in. It produces three tarballs in `dist/`:
+`merlin-host-linux-x86_64.tar.gz`, `merlin-runtime-spacemit.tar.gz`, and
+`merlin-runtime-saturnopu.tar.gz`.
+
+See the "Creating a release" section in README.md for the full walkthrough.

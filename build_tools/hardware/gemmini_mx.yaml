@@ -1,28 +1,63 @@
-# Gemmini MX bare-metal recipe for Merlin
-# Runs via VCS RTL simulation on Chipyard (graphics branch)
+# Gemmini MX recipe for Merlin
+# Supports both bare-metal VCS simulation and FireSim FPGA on U250
 name: gemmini-mx
-mode: bare-metal  # firesim | bare-metal | board
+mode: firesim  # firesim | bare-metal | board
 
 chipyard:
   repo: https://github.com/ucb-bar/chipyard
   branch: graphics
-  sha: bcb612918bb964a0dad33a26a1921c161eb598d0
+  sha: 6a9b4cd95081100dc932e422cc52777bc9a98b2d
 
 submodules:
   gemmini:
     repo: https://github.com/ucb-bar/gemmini
     branch: gemmini-mx
-    sha: 6ad65b90b1eb270c20ce4f04109e3dde0180b36f
+    sha: 9c94a394c82ad7720420cd56f9c5c24fbcd06194
   radiance:
-    sha: 917c95cdb6d698c4fd267ccab2602e283d2ca6c3
+    repo: https://github.com/ucb-bar/radiance
+    sha: bdd970075a79b06d1fc50f579b1b28a35ecdb387
+    # radiance has a nested submodule (fpEX) that must be initialized:
+    #   cd generators/radiance && git submodule update --init src/main/scala/radiance/muon/backend/fp/fpEX
 
 # Bare-metal VCS/Verilator simulation
 bare_metal:
-  config: RadianceGemminiOnlyConfig
+  config: MxGemminiRocketConfig
   simulator: vcs  # vcs | verilator
   # The make command is constructed from these fields:
   #   make CONFIG={config} BINARY={elf} LOADMEM=1 run-binary
   # from {chipyard_root}/sims/{simulator}/
+
+# FireSim-specific configuration
+firesim:
+  build_recipe:
+    recipe_name: alveo_u250_firesim-radiance-gemmini-only
+    PLATFORM: xilinx_alveo_u250
+    TARGET_PROJECT: firesim
+    TARGET_PROJECT_MAKEFRAG: "{chipyard_root}/generators/firechip/chip/src/main/makefrag/firesim"
+    DESIGN: FireSim
+    TARGET_CONFIG: FireSimMxGemminiRocketConfig
+    CONFIG_PACKAGE: firechip.chip
+    PLATFORM_CONFIG: BaseXilinxAlveoU250Config
+    platform_config_args:
+      fpga_frequency: 50
+      build_strategy: TIMING
+    bit_builder_recipe: bit-builder-recipes/xilinx_alveo_u250.yaml
+
+  runtime:
+    topology: no_net_config
+    no_net_num_nodes: 1
+    default_hw_config: alveo_u250_firesim-radiance-gemmini-only
+    default_platform: XilinxAlveoU250InstanceDeployManager
+
+  workload:
+    name: merlin-iree
+    firemarshal_config: br-base.json
+    command: "/opt/merlin/run.sh && poweroff -f"
+    overlay_files:
+      - source: "build/firesim-merlin-release/install/"
+        dest: "/opt/merlin/"
+    outputs:
+      - "uartlog"
 
 # Optional reference tests for validating the simulator
 reference_tests:
