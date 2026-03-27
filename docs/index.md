@@ -7,10 +7,20 @@
 
 This site is the documentation hub for Merlin across Python tooling, C/C++ compiler code, CMake build logic, and MLIR dialect/pass definitions.
 
-Start here:
+Choose a path:
 
-- `getting_started.md` for first build/compile/output-locations workflow.
-- `how_to/index.md` for implementation guides (dialects, HALs, samples, targets).
-- `repository_guide.md` for where to place new code in the repo.
-- `dev_blog/index.md` for ongoing development logs (Gemmini, NPU, Radiance HAL).
-- `reference/` for generated CLI/API/CMake/MLIR documentation.
+- First-time user:
+  - `getting_started.md`
+  - `user_paths.md`
+  - `reference/cli.md`
+- Target bring-up:
+  - `architecture/target_generator.md`
+  - `architecture/ray_control_plane.md`
+  - `hardware_backends/overview.md`
+  - `how_to/add_compile_target.md`
+- Compiler or runtime development:
+  - `repository_guide.md`
+  - `how_to/index.md`
+  - `architecture/plugin_and_patch_model.md`
+- Deep implementation history:
+  - `dev_blog/index.md`

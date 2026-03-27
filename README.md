@@ -13,6 +13,32 @@ We recommend navigating the Merlin documentation using the website:
 Merlin can be used either from published prebuilt binaries or by building from source.
 For most users, the prebuilt release artifacts are the fastest way to get started.
 
+## Choose Your Path
+
+Most first-time users do not need to understand the whole repository.
+
+- If you want to compile or run models, start with:
+  - `tools/`
+  - `models/`
+  - `docs/getting_started.md`
+  - `build/` outputs
+- If you are bringing up a new hardware target, add:
+  - `target_specs/`
+  - `models/*.yaml`
+  - `build_tools/hardware/`
+  - `docs/architecture/target_generator.md`
+- If you are modifying compiler or runtime internals, you will eventually work in:
+  - `compiler/`
+  - `runtime/`
+  - `third_party/iree_bar`
+
+Most first users can ignore `third_party/`, `projects/`, most of `benchmarks/`,
+and the deeper `docs/dev_blog/` entries until they are debugging or extending
+Merlin.
+
+For a more opinionated first-user repo walkthrough, see
+[docs/user_paths.md](docs/user_paths.md).
+
 ## Quick Start
 
 There are two supported ways to use Merlin:
@@ -50,7 +76,7 @@ Typical installed layouts:
 To install a prebuilt release, use:
 
 ```bash
-python3 tools/install_prebuilt.py --help
+conda run -n merlin-dev uv run tools/merlin.py setup prebuilt --help
 ```
 
 Then install the artifact you want from a tagged release.
@@ -76,7 +102,8 @@ Use this path if you are:
 Initialize the core submodules:
 
 ```bash
-python3 tools/setup.py submodules --submodules-profile core --submodule-sync
+conda activate merlin-dev
+uv run tools/merlin.py setup submodules --submodules-profile core --submodule-sync
 ```
 
 If you need additional development flows later, use the appropriate submodule profile.
@@ -199,30 +226,27 @@ is built by CI on tag push, and tarballs are uploaded to the GitHub release.
 - Compiled model artifacts (`.mlir`, `.vmfb`, optional dumps): `build/compiled_models/<model>/...`
 - Generated docs site (local): `site/`
 
-## Repository Map (Where To Put Things)
+## Repository Map (User View First)
 
 ```text
 merlin/
-├── tools/              # Main developer CLIs (build.py, compile.py, setup.py, ci.py, install_prebuilt.py)
-├── models/             # Model sources and target YAML configs (add new model flows here)
-├── compiler/
-│   ├── src/merlin/     # Merlin MLIR dialects/passes/codegen
-│   └── plugins/        # Merlin IREE plugin registration/target glue
-├── samples/            # Runtime/sample applications and board-specific executables
-│   ├── common/         # Samples that are not dependent on target
-│   │   └── AppName0    # Your application or example name
-│   └── TargetName/     # Samples built for a specific target use case
-│       └── AppName1    # Your application dependent on that target compilation flow
-├── benchmarks/         # Benchmark scripts and profiling workflows
-│   ├── BenchName/      # Name of an interesting third-party benchmark
-│   └── TargetName/     # Benchmarks you create for your specific target
-├── build_tools/        # Toolchains, target support scripts, Docker builder, patch helpers
-├── docs/               # MkDocs source for architecture + generated reference
-├── third_party/        # Submodules (IREE fork, turbine, torch-mlir, and other dependencies)
-└── build/              # Local build outputs and generated artifacts
+├── tools/              # The main CLI entrypoint (`tools/merlin.py`) and developer helpers
+├── models/             # Models to compile and current target YAML views used by `compile.py`
+├── docs/               # Start here for getting started, how-to guides, and repo navigation
+├── build/              # Generated outputs, compiled artifacts, local build trees
+├── target_specs/       # Canonical TargetGen capability specs and deployment overlays
+├── compiler/           # MLIR dialects, passes, plugins, and compiler-side target work
+├── runtime/            # HAL drivers and runtime-side target work
+├── build_tools/        # Toolchains, recipes, packaging, and deployment helpers
+├── samples/            # End-to-end runtime examples and target-facing app flows
+├── benchmarks/         # Benchmark and profiling workflows
+├── third_party/        # Forks and submodules, including IREE and LLVM
+└── projects/           # Sidecar research or tooling projects such as `mlirAgent`
 ```
 
-Detailed folder guide with auto-generated tracked tree:
+If you are new here, the first four entries are the important ones.
+
+Detailed folder guide with contributor-facing placement rules:
 
 - [docs/repository_guide.md](docs/repository_guide.md)
 

@@ -12,7 +12,7 @@ Unified Merlin developer command reference parser.
 
 ```text
 usage: uv run tools/merlin.py [-h]
-                              {build,compile,setup,ci,patches,benchmark,chipyard}
+                              {build,compile,setup,ci,patches,benchmark,chipyard,ray,targetgen}
                               ...
 ```
 
@@ -20,6 +20,97 @@ usage: uv run tools/merlin.py [-h]
 
 | Argument | Required | Default | Choices | Help |
 | --- | --- | --- | --- | --- |
+
+#### Subcommand `targetgen`
+
+`targetgen` is the planner and orchestration entrypoint for capability-spec
+driven target enablement.
+
+Key actions:
+
+- `validate`: schema-check a capability spec and optional deployment overlay
+- `plan`: emit `support_plan.json`, `task_graph.json`, and derived compile or
+  deployment views
+- `generate`: emit non-live scaffold files under `build/generated/targetgen`
+  at prospective repo paths without touching repo-tracked sources
+- `explain`: print the normalized classification and verification ladder
+- `orchestrate`: emit `execution_bundle.json`, `execution_state.json`,
+  per-task state files, sectioned `briefs/*.md`, and optional prompt packets
+- `execute`: advance executor state, run safe preflight checks, emit prompts,
+  ingest `.response.md` files, and stop on operator or mutation gates
+- `stage-mutation`: assemble the mutating subset into `mutation/proposed_tree/`
+  and emit a branch/worktree plan without applying any repo edits
+- `answer`: record an explicit choice for an open operator request
+- `status`: print current task state plus any open or resolved operator requests
+
+Useful `orchestrate` flags:
+
+- `--prompt-backend none|manualllm|provider`
+- `--agent <config-name>`
+- `--prompts-dir <path>`
+
+Useful `execute` flags:
+
+- `--from-dir <target-output-dir>`
+- `--resume`
+- `--engine local|ray`
+- `--ray-state-root <path>`
+- `--prompt-backend none|manualllm|provider`
+- `--agent <config-name>`
+
+Examples:
+
+```bash
+uv run tools/merlin.py targetgen plan target_specs/examples/saturn_opu_v128/capability.yaml \
+  --overlay target_specs/examples/saturn_opu_v128/overlays/firesim_u250.yaml
+
+uv run tools/merlin.py targetgen generate \
+  target_specs/examples/gemmini_mx/capability.yaml \
+  --overlay target_specs/examples/gemmini_mx/overlays/baremetal_local.yaml
+
+uv run tools/merlin.py targetgen orchestrate \
+  target_specs/examples/npu_ucb/capability.yaml \
+  --overlay target_specs/examples/npu_ucb/overlays/simulator_local.yaml \
+  --prompt-backend manualllm
+
+uv run tools/merlin.py targetgen execute \
+  target_specs/examples/nvidia_vulkan_ada/capability.yaml \
+  --overlay target_specs/examples/nvidia_vulkan_ada/overlays/desktop_local.yaml \
+  --engine ray
+
+uv run tools/merlin.py targetgen answer \
+  --target-dir build/generated/targetgen/nvidia_vulkan_ada \
+  --question-id implement_runtime_hal-device \
+  --choice device_available
+
+uv run tools/merlin.py targetgen stage-mutation \
+  --from-dir build/generated/targetgen/gemmini_mx
+
+uv run tools/merlin.py targetgen status \
+  --target-dir build/generated/targetgen/nvidia_vulkan_ada
+```
+
+#### Subcommand `ray`
+
+`ray` is Merlin's fixed-cluster control plane for Ray-backed runs, leases, and
+artifact discovery.
+
+Key actions:
+
+- `cluster start-local|status|stop`
+- `jobs submit|status|logs|cancel`
+- `resources list|reserve|release`
+- `artifacts list|fetch`
+
+Examples:
+
+```bash
+uv run tools/merlin.py ray cluster start-local
+
+uv run tools/merlin.py ray jobs status <run-id>
+
+uv run tools/merlin.py ray resources reserve firesim_u250 --owner nightly-smoke
+```
 
 #### Subcommand `benchmark`
 
@@ -227,13 +318,13 @@ usage: uv run tools/merlin.py setup [-h] [--env-name ENV_NAME]
 
 ```text
 usage: uv run tools/merlin.py [-h]
-                              {build,compile,setup,ci,patches,benchmark,chipyard}
+                              {build,compile,setup,ci,patches,benchmark,chipyard,ray,targetgen}
                               ...
 
 Unified Merlin developer command reference parser.
 
 positional arguments:
-  {build,compile,setup,ci,patches,benchmark,chipyard}
+  {build,compile,setup,ci,patches,benchmark,chipyard,ray,targetgen}
     build               Configure and build Merlin and target runtimes
     compile             Compile MLIR/ONNX models to target artifacts
     setup               Bootstrap developer environment and toolchains

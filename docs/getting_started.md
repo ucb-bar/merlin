@@ -8,6 +8,11 @@ This page is the fastest path for first-time Merlin usage:
 4. Build one sample/runtime binary.
 5. Locate generated outputs.
 
+If this is your first time in the repo, you can ignore most of the tree.
+Start with `tools/`, `models/`, `docs/`, and the generated `build/` outputs.
+Use [user_paths.md](user_paths.md) if you want the repo explained by workflow
+instead of by folder name.
+
 ## 1) Environment
 
 ```bash
@@ -68,6 +73,7 @@ Typical binary path:
 ## Next
 
 - Practical extension guides (dialects/HAL/samples/targets): `how_to/index.md`
+- User-first repo navigation: `user_paths.md`
 - Repository layout and placement conventions: `repository_guide.md`
 - Active implementation notes and debugging logs: `dev_blog/index.md`
 - Full command and API reference: `reference/`

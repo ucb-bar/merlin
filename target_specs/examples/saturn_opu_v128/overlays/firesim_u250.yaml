@@ -1,0 +1,19 @@
+schema_version: 1
+
+deployment:
+  name: firesim_u250
+  mode: firesim
+  build_profile: firesim
+  compile_target: saturn_opu
+  compile_hw: OPU
+  hardware_recipe: build_tools/hardware/saturn_opu_u250.yaml
+  chipyard:
+    repo: https://github.com/ucb-bar/chipyard
+    branch: main
+    sha: bcb612918bb964a0dad33a26a1921c161eb598d0
+    config_class: FireSimOPUV128D64ShuttleConfig
+  runtime:
+    simulator: firesim
+    workload: merlin-iree
+  extra:
+    submodule_recipe: saturn_opu_u250

@@ -1,0 +1,16 @@
+schema_version: 1
+
+deployment:
+  name: android_lab_device
+  mode: runtime-driver
+  build_profile: host-vanilla-release
+  compile_target: null
+  compile_hw: null
+  hardware_recipe: null
+  chipyard: {}
+  runtime:
+    backend: vulkan
+    transport: adb_device
+  extra:
+    device_class: adreno
+    platform: android_lab

@@ -39,6 +39,7 @@ Optional starter template:
 
 ## Current Entries
 
+- [2026-03-25 TargetGen Generation + Mutation Staging](2026-03-25-targetgen-generation-staging.md)
 - [2026-03-18 Chipyard Bare-Metal Integration](2026-03-18-chipyard-bare-metal-integration.md)
 - [2026-03-16 SpacemiTX60 Dispatch Scheduler + Tracy](2026-03-16-dispatch-level-async.md)
 - [2026-03-13 RISC-V MMT4D Ukernel Workstream](2026-03-13-riscv-mmt4d-ukernel-workstream.md)
@@ -58,3 +59,4 @@ Optional starter template:
 | NPU dialect | [2026-03-11 NPU Dialect E2E Bring-Up](2026-03-11-npu-dialect-e2e.md) | Active |
 | Radiance HAL | [2026-03-11 Radiance HAL Workstream Log](2026-03-11-radiance-hal-workstream-log.md) | Active |
 | Chipyard bare-metal integration | [2026-03-18 Chipyard Bare-Metal Integration](2026-03-18-chipyard-bare-metal-integration.md) | Active |
+| TargetGen generation and staging | [2026-03-25 TargetGen Generation + Mutation Staging](2026-03-25-targetgen-generation-staging.md) | Active |

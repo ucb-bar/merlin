@@ -809,10 +809,17 @@ def main(args: argparse.Namespace) -> int:
             utils.eprint("❌ Error: SpacemiT toolchain not found. Set RISCV_TOOLCHAIN_ROOT.")
             return 1
 
+        toolchain_file = iree_src / "build_tools" / "cmake" / "riscv.toolchain.cmake"
+        if not toolchain_file.exists():
+            toolchain_file = iree_src / "build_tools" / "cmake" / "linux_riscv64.cmake"
+        if not toolchain_file.exists():
+            utils.eprint("❌ Error: RISC-V CMake toolchain file not found in third_party/iree_bar/build_tools/cmake.")
+            return 1
+
         cmake_args.extend(
             [
                 "-DMERLIN_BUILD_SPACEMITX60=ON",
-                f"-DCMAKE_TOOLCHAIN_FILE={iree_src}/build_tools/cmake/riscv.toolchain.cmake",
+                f"-DCMAKE_TOOLCHAIN_FILE={toolchain_file}",
                 "-DRISCV_CPU=linux-riscv_64",
                 f"-DRISCV_TOOLCHAIN_ROOT={tc_root}",
                 "-DIREE_HAL_DRIVER_DEFAULTS=OFF",

@@ -9,7 +9,9 @@ import chipyard as chipyard_cmd
 import ci as ci_cmd
 import compile as compile_cmd
 import patches as patches_cmd
+import ray_cmd as ray_cmd
 import setup as setup_cmd
+import targetgen_cmd as targetgen_cmd
 
 import build as build_cmd
 
@@ -21,6 +23,8 @@ COMMANDS: tuple[tuple[str, object, str, bool], ...] = (
     ("patches", patches_cmd, "Verify submodule state and manage upstream patches", False),
     ("benchmark", benchmark_cmd, "Run benchmark helper scripts", True),
     ("chipyard", chipyard_cmd, "Manage Chipyard hardware backend interactions", True),
+    ("ray", ray_cmd, "Manage Merlin's Ray control plane, jobs, resources, and artifacts", True),
+    ("targetgen", targetgen_cmd, "Plan and orchestrate hardware-spec-driven target enablement", True),
 )
 
 

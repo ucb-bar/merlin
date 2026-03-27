@@ -1,0 +1,13 @@
+schema_version: 1
+
+deployment:
+  name: example_overlay
+  mode: board
+  build_profile: spacemit
+  compile_target: example_target
+  compile_hw: default
+  hardware_recipe: build_tools/hardware/example.yaml
+  chipyard: {}
+  runtime:
+    transport: ssh
+  extra: {}

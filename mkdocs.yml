@@ -87,6 +87,7 @@ nav:
   - Home: index.md
   - Setup & Tutorials:
       - Getting Started: getting_started.md
+      - User Paths: user_paths.md
       - Getting Started / Installation: iree_setup.md
       - Cross-Compiling for Banana Pi: reproducibility/cross_compile_banana_pi.md
       - Export TinyLlama 8-bit to MLIR: reproducibility/export_tinyllama_8bit_sharktank_to_mlir.md
@@ -103,13 +104,16 @@ nav:
   - Repository Guide: repository_guide.md
   - Dev Blog:
       - Home: dev_blog/index.md
+      - Runtime Scheduling + PMCS: dev_blog/2026-03-27-runtime-scheduling-pmcs-direction.md
       - Gemmini Workstream: dev_blog/2026-03-11-gemmini-workstream-log.md
       - NPU Dialect E2E: dev_blog/2026-03-11-npu-dialect-e2e.md
       - Radiance HAL: dev_blog/2026-03-11-radiance-hal-workstream-log.md
       - SmolVLA FP8: dev_blog/2026-03-12-smolvla-fp8-int8-global-opt-workstream.md
       - RISC-V MMT4D: dev_blog/2026-03-13-riscv-mmt4d-ukernel-workstream.md
-      - Dispatch Scheduler: dev_blog/2026-03-16-dispatch-level-async.md
+      - Dispatch Scheduler + Tracy: dev_blog/2026-03-16-dispatch-level-async.md
       - Chipyard Bare-Metal: dev_blog/2026-03-18-chipyard-bare-metal-integration.md
+      - Ray Control Plane: dev_blog/2026-03-25-ray-control-plane-bootstrap.md
+      - TargetGen Generation + Staging: dev_blog/2026-03-25-targetgen-generation-staging.md
   - Hardware Backends:
       - Overview: hardware_backends/overview.md
       - Compatibility Matrix: hardware_backends/compatibility_matrix.md
@@ -122,6 +126,8 @@ nav:
       - Plugin & Patch Model: architecture/plugin_and_patch_model.md
       - Repo Maintenance Model: architecture/repo-maintenance-model.md
       - CMake Presets: architecture/cmake_presets.md
+      - Target Generator: architecture/target_generator.md
+      - Ray Control Plane: architecture/ray_control_plane.md
   - Reference:
       - Overview: reference/overview.md
       - CLI Commands: reference/cli.md

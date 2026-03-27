@@ -1,0 +1,148 @@
+schema_version: 1
+
+target:
+  name: saturn_opu_v128
+  display_name: Saturn OPU V128
+  vendor: UCB-BAR
+  maturity: experimental
+
+platform:
+  host_isa: riscv64
+  operating_systems:
+    - linux
+  environments:
+    - firesim
+
+execution_model:
+  kind: matrix_coprocessor
+  attachment: cpu_extension
+  submission_model: inline_cpu_instructions
+  compiler_recovery_stage: llvmcpu_codegen
+
+isa:
+  base: riscv64
+  features:
+    - +m
+    - +a
+    - +f
+    - +d
+    - +c
+    - +v
+    - +zvl128b
+    - +xopu
+  exposure:
+    kind: llvm_intrinsics
+    needs_llvm_backend_changes: true
+    needs_new_intrinsics: true
+    needs_new_feature_bits: true
+  state_model:
+    kind: implicit_accumulator_state
+  register_constraints:
+    accumulator_register_file: opm
+    even_alignment_required: false
+    vl_dependent: true
+
+operations:
+  compute:
+    - name: matmul
+      native: true
+      type_triples:
+        - i8*i8->i32
+        - f8e4m3*f8e4m3->f32
+    - name: outer_product
+      native: true
+      type_triples:
+        - i8*i8->i32
+  movement:
+    - vector_load
+    - vector_store
+  synchronization:
+    - fence
+
+geometry:
+  compute_array:
+    kind: outer_product
+  vector:
+    vlen_bits: 128
+    dlen_bits: 128
+  native_tile_options:
+    - [16, 16, 16]
+    - [32, 1, 32]
+    - [64, 1, 64]
+  preferred_tiles:
+    - [64, 1, 64]
+    - [32, 1, 32]
+
+memory:
+  spaces:
+    - name: global
+      kind: dram
+    - name: vector_registers
+      kind: register_file
+    - name: accumulator
+      kind: accumulator_state
+  preferred_layouts:
+    lhs: mmt4d_lhs
+    rhs: mmt4d_rhs
+    result: mmt4d_result
+  packing:
+    requires_pack: true
+    requires_unpack: true
+    supports_k0_eq_1_direct_pack: true
+
+numeric:
+  legal_type_triples:
+    - i8*i8->i32
+    - f8e4m3*f8e4m3->f32
+  quantization:
+    requantize_native: false
+  rounding_modes:
+    - rne
+  saturation: true
+
+runtime:
+  required: false
+  executable_format: llvm_cpu_vmfb
+  driver:
+    backend_id: null
+    uri_schemes: []
+  synchronization:
+    semaphores: false
+    timelines: false
+
+verification:
+  golden_model:
+    available: true
+    kind: cpu_reference
+  simulator:
+    available: true
+    kind: firesim
+  rtl:
+    available: false
+    kind: none
+  perf_counters:
+    available: true
+    kind: ops_per_cycle
+  tolerances:
+    int8:
+      atol: 0
+      rtol: 0
+
+access:
+  model: simulator
+  sdk_requirements:
+    - firesim
+    - iree_llvmcpu
+  credential_requirements: none
+  availability_class: sdk_install_required
+  verification_gates:
+    - compile_only
+    - smoke_run
+    - profile_run
+
+references:
+  - docs/dev_blog/2026-03-13-riscv-mmt4d-ukernel-workstream.md
+  - docs/hardware_backends/recipes/saturn_opu_u250.md
+  - models/saturn_opu.yaml
+  - build_tools/hardware/saturn_opu_u250.yaml
+  - third_party/iree_bar/third_party/llvm-project/llvm/include/llvm/IR/IntrinsicsRISCVXUCBBAR.td
