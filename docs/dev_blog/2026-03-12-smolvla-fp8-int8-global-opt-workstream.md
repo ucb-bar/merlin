@@ -29,7 +29,7 @@ cd ../..
 ### 0.3 Build Merlin tools with NPU plugin enabled
 
 ```bash
-conda run -n merlin-dev uv run tools/build.py \
+conda run -n merlin-dev uv run tools/merlin.py build \
   --profile npu \
   --config release \
   --no-build-python-bindings \
@@ -52,6 +52,14 @@ For this workstream, behavior depends on patched trees in:
 - `third_party/iree-turbine`
 - `third_party/iree_bar`
 - `third_party/torch-mlir`
+
+Important:
+
+- the Torch-input legalization used by the compile flow also depends on
+  `third_party/iree_bar/third_party/torch-mlir` as checked out by
+  `third_party/iree_bar`
+- after syncing any of the compiler-side trees above, rebuild
+  `build/host-merlin-release/` before retrying the SmolVLA compile flow
 
 As long as your `third_party/*` checkouts point at the patched branch/commit,
 the behavior documented here applies. Use this check:
@@ -142,13 +150,47 @@ Use this exact sequence from repo root:
 conda run -n merlin-dev uv run models/smolVLA/export_smolvla.py --mode fp8 --device cuda
 
 # 2) Compile to global-opt with NPU target (short command)
-conda run -n merlin-dev uv run tools/compile.py \
+conda run -n merlin-dev uv run tools/merlin.py compile \
   models/smolVLA/smolVLA.q.fp8.mlir \
   --target npu_ucb \
   --quantized \
   --compile-to global-optimization \
   --dump-phases
 ```
+
+If step 2 fails with:
+
+```text
+error: failed to legalize operation 'torch.operator' that was explicitly marked illegal
+... torch.prims.device_put ...
+```
+
+that is a compiler-stack mismatch, not an export-format requirement.
+The CUDA export is valid for this flow. The failing compiler build is missing the
+custom Torch-input lowering that forwards `torch.prims.device_put` during
+Torch-to-IREE legalization.
+
+Use this quick check before retrying:
+
+```bash
+rg -n "torch.prims.device_put|createConvertCustomQuantOpPass" \
+  third_party/iree_bar/third_party/torch-mlir/lib/Dialect/TorchConversion/Transforms/ConvertCustomQuantOp.cpp \
+  third_party/iree_bar/compiler/plugins/input/Torch/InputConversion/Passes.cpp
+```
+
+Then rebuild the compiler and rerun the compile step:
+
+```bash
+conda run -n merlin-dev uv run tools/merlin.py build \
+  --profile npu \
+  --config release \
+  --no-build-python-bindings \
+  --no-enable-libbacktrace
+```
+
+Exporting with `--device cpu` may avoid the `device_put` op, but that should be
+treated as a temporary workaround for an out-of-date compiler tree, not the
+expected setup for this workstream.
 
 Core output directory from step 2:
 
