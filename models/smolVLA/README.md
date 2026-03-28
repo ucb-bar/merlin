@@ -47,6 +47,18 @@ All user-facing compilation in this repo should go through
 `tools/merlin.py compile`.
 Example commands from repo root:
 
+Before building or compiling plugin targets on a fresh Merlin clone, check out
+the intended Merlin branch and sync its pinned submodules:
+
+```bash
+git checkout dev/main
+conda activate merlin-dev
+uv run tools/merlin.py setup submodules --submodules-profile core --submodule-sync
+```
+
+If you switch Merlin branches later, rerun the same submodule setup command
+before rebuilding `host-merlin-release`.
+
 ```bash
 # Baseline target (spacemit settings)
 conda run -n merlin-dev uv run tools/merlin.py compile \

@@ -99,14 +99,13 @@ Use this path if you are:
 
 #### 0) Git setup
 
-Initialize the core submodules:
+Choose the Merlin branch you want to work on before initializing submodules.
+Submodule SHAs follow the currently checked out Merlin commit, so if you switch
+branches later you must rerun the submodule setup step.
 
 ```bash
-conda activate merlin-dev
-uv run tools/merlin.py setup submodules --submodules-profile core --submodule-sync
+git checkout dev/main
 ```
-
-If you need additional development flows later, use the appropriate submodule profile.
 
 #### 1) Environment
 
@@ -123,7 +122,20 @@ Optional convenience alias for your shell session:
 alias merlin='uv run tools/merlin.py'
 ```
 
-#### 2) Build host compiler tools
+#### 2) Submodules
+
+Initialize the core submodules for the branch you checked out above:
+
+```bash
+conda activate merlin-dev
+uv run tools/merlin.py setup submodules --submodules-profile core --submodule-sync
+```
+
+If you need additional development flows later, use the appropriate submodule
+profile. If you switch Merlin branches later, rerun the same setup command so
+`third_party/` matches the new branch pins.
+
+#### 3) Build host compiler tools
 
 ```bash
 conda activate merlin-dev
@@ -144,7 +156,7 @@ which outputs to:
 
 - `build/host-vanilla-release/install/bin/`
 
-#### 3) Compile one model with `compile.py`
+#### 4) Compile one model with `compile.py`
 
 ```bash
 conda activate merlin-dev
@@ -155,7 +167,7 @@ Expected output artifact:
 
 - `build/compiled_models/dronet/spacemit_x60_RVV_dronet/dronet.vmfb`
 
-#### 4) Build one runtime/sample binary
+#### 5) Build one runtime/sample binary
 
 ```bash
 conda activate merlin-dev

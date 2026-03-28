@@ -5,6 +5,18 @@
 This section is the end-to-end onboarding path for users starting from a fresh
 Merlin checkout.
 
+Before running the steps below on a fresh Merlin clone, check out the Merlin
+branch you want first and then sync the pinned submodules for that branch:
+
+```bash
+git checkout dev/main
+conda activate merlin-dev
+uv run tools/merlin.py setup submodules --submodules-profile core --submodule-sync
+```
+
+`tools/merlin.py setup submodules` follows the currently checked out Merlin
+commit. If you switch branches later, rerun it before rebuilding or compiling.
+
 ### 0.1 Clone third-party repos used by SmolVLA export
 
 From repository root:
@@ -181,6 +193,10 @@ rg -n "torch.prims.device_put|createConvertCustomQuantOpPass" \
 Then rebuild the compiler and rerun the compile step:
 
 ```bash
+conda run -n merlin-dev uv run tools/merlin.py setup submodules \
+  --submodules-profile core \
+  --submodule-sync
+
 conda run -n merlin-dev uv run tools/merlin.py build \
   --profile npu \
   --config release \

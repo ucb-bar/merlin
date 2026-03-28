@@ -21,97 +21,6 @@ usage: uv run tools/merlin.py [-h]
 | Argument | Required | Default | Choices | Help |
 | --- | --- | --- | --- | --- |
 
-#### Subcommand `targetgen`
-
-`targetgen` is the planner and orchestration entrypoint for capability-spec
-driven target enablement.
-
-Key actions:
-
-- `validate`: schema-check a capability spec and optional deployment overlay
-- `plan`: emit `support_plan.json`, `task_graph.json`, and derived compile or
-  deployment views
-- `generate`: emit non-live scaffold files under `build/generated/targetgen`
-  at prospective repo paths without touching repo-tracked sources
-- `explain`: print the normalized classification and verification ladder
-- `orchestrate`: emit `execution_bundle.json`, `execution_state.json`,
-  per-task state files, sectioned `briefs/*.md`, and optional prompt packets
-- `execute`: advance executor state, run safe preflight checks, emit prompts,
-  ingest `.response.md` files, and stop on operator or mutation gates
-- `stage-mutation`: assemble the mutating subset into `mutation/proposed_tree/`
-  and emit a branch/worktree plan without applying any repo edits
-- `answer`: record an explicit choice for an open operator request
-- `status`: print current task state plus any open or resolved operator requests
-
-Useful `orchestrate` flags:
-
-- `--prompt-backend none|manualllm|provider`
-- `--agent <config-name>`
-- `--prompts-dir <path>`
-
-Useful `execute` flags:
-
-- `--from-dir <target-output-dir>`
-- `--resume`
-- `--engine local|ray`
-- `--ray-state-root <path>`
-- `--prompt-backend none|manualllm|provider`
-- `--agent <config-name>`
-
-Examples:
-
-```bash
-uv run tools/merlin.py targetgen plan target_specs/examples/saturn_opu_v128/capability.yaml \
-  --overlay target_specs/examples/saturn_opu_v128/overlays/firesim_u250.yaml
-
-uv run tools/merlin.py targetgen generate \
-  target_specs/examples/gemmini_mx/capability.yaml \
-  --overlay target_specs/examples/gemmini_mx/overlays/baremetal_local.yaml
-
-uv run tools/merlin.py targetgen orchestrate \
-  target_specs/examples/npu_ucb/capability.yaml \
-  --overlay target_specs/examples/npu_ucb/overlays/simulator_local.yaml \
-  --prompt-backend manualllm
-
-uv run tools/merlin.py targetgen execute \
-  target_specs/examples/nvidia_vulkan_ada/capability.yaml \
-  --overlay target_specs/examples/nvidia_vulkan_ada/overlays/desktop_local.yaml \
-  --engine ray
-
-uv run tools/merlin.py targetgen answer \
-  --target-dir build/generated/targetgen/nvidia_vulkan_ada \
-  --question-id implement_runtime_hal-device \
-  --choice device_available
-
-uv run tools/merlin.py targetgen stage-mutation \
-  --from-dir build/generated/targetgen/gemmini_mx
-
-uv run tools/merlin.py targetgen status \
-  --target-dir build/generated/targetgen/nvidia_vulkan_ada
-```
-
-#### Subcommand `ray`
-
-`ray` is Merlin's fixed-cluster control plane for Ray-backed runs, leases, and
-artifact discovery.
-
-Key actions:
-
-- `cluster start-local|status|stop`
-- `jobs submit|status|logs|cancel`
-- `resources list|reserve|release`
-- `artifacts list|fetch`
-
-Examples:
-
-```bash
-uv run tools/merlin.py ray cluster start-local
-
-uv run tools/merlin.py ray jobs status <run-id>
-
-uv run tools/merlin.py ray resources reserve firesim_u250 --owner nightly-smoke
-```
-
 #### Subcommand `benchmark`
 
 ```text
@@ -201,7 +110,7 @@ usage: uv run tools/merlin.py build [-h] [--dry-run]
 ```text
 usage: uv run tools/merlin.py chipyard [-h] [--dry-run]
                                        [--chipyard-root CHIPYARD_ROOT]
-                                       {set-path,info,validate,build-sim,run,configure-firesim,build-bitstream,register-hwdb,stage-workload,build-firemarshal,status}
+                                       {set-path,info,validate,checkout,build-sim,run,configure-firesim,build-bitstream,register-hwdb,stage-workload,build-firemarshal,status}
                                        ...
 ```
 
@@ -267,6 +176,18 @@ usage: uv run tools/merlin.py patches [-h]
 | Argument | Required | Default | Choices | Help |
 | --- | --- | --- | --- | --- |
 
+#### Subcommand `ray`
+
+```text
+usage: uv run tools/merlin.py ray [-h] [--dry-run] [--state-root STATE_ROOT]
+                                  {cluster,jobs,resources,artifacts} ...
+```
+
+| Argument | Required | Default | Choices | Help |
+| --- | --- | --- | --- | --- |
+| `--dry-run` | no | `False` | - | Print commands without executing |
+| `--state-root` | no | `build/generated/ray` | - | Directory for Merlin-owned Ray cluster, run, artifact, and lease metadata. |
+
 #### Subcommand `setup`
 
 ```text
@@ -300,12 +221,12 @@ usage: uv run tools/merlin.py setup [-h] [--env-name ENV_NAME]
 | `--skip-pip` | no | `False` | - | Skip Python dependency sync (uv/pip). |
 | `--python-deps` | no | `auto` | `auto, uv, pip` | Python dependency installer. 'auto' prefers uv sync with uv.lock and falls back to pip requirements. |
 | `--conda-no-plugins`, `--no-conda-no-plugins` | no | - | - | Force CONDA_NO_PLUGINS for conda env update. If unset, setup.py retries with CONDA_NO_PLUGINS=true on failure. |
-| `--submodules-profile` | no | `core` | `core, npu, smolvla, full` | Which submodule profile to initialize (default: core). |
+| `--submodules-profile` | no | `core` | `core, npu, smolvla, full` | Which submodule profile to initialize for the current Merlin checkout (default: core). |
 | `--submodule-path` | no | `[]` | - | Additional top-level submodule path to initialize (repeatable). |
 | `--submodule-paths-recursive`, `--no-submodule-paths-recursive` | no | `False` | - | Whether extra --submodule-path entries should be initialized recursively. |
 | `--submodule-depth` | no | `1` | - | Shallow depth for submodule fetches (default: 1). Use 0 for full history. |
 | `--submodule-jobs` | no | `8` | - | Parallel submodule fetch jobs (default: 8). |
-| `--submodule-sync` | no | `False` | - | Run `git submodule sync --recursive` before updating. |
+| `--submodule-sync` | no | `False` | - | Run `git submodule sync --recursive` before updating. Submodule SHAs still come from the current Merlin commit. |
 | `--toolchain-target` | no | `spacemit` | `spacemit, firesim, all` | Which toolchain target to install (default: spacemit). |
 | `--with-qemu` | no | `False` | - | For firesim toolchain setup, also install QEMU. |
 | `--toolchain-force` | no | `False` | - | Reinstall toolchains even if the destination already exists. |
@@ -313,6 +234,18 @@ usage: uv run tools/merlin.py setup [-h] [--env-name ENV_NAME]
 | `--prebuilt-tag` | no | `latest` | - | GitHub release tag to download from, or 'latest' (default: latest). |
 | `--prebuilt-repo` | no | `ucb-bar/merlin` | - | GitHub repository containing release assets (default: ucb-bar/merlin). |
 | `--prebuilt-force` | no | `False` | - | Replace an existing destination build tree when installing a prebuilt artifact. |
+
+#### Subcommand `targetgen`
+
+```text
+usage: uv run tools/merlin.py targetgen [-h] [--dry-run]
+                                        {validate,plan,generate,explain,orchestrate,execute,stage-mutation,answer,status}
+                                        ...
+```
+
+| Argument | Required | Default | Choices | Help |
+| --- | --- | --- | --- | --- |
+| `--dry-run` | no | `False` | - | Print commands without executing |
 
 ### `--help` Output
 
@@ -332,6 +265,10 @@ positional arguments:
     patches             Verify submodule state and manage upstream patches
     benchmark           Run benchmark helper scripts
     chipyard            Manage Chipyard hardware backend interactions
+    ray                 Manage Merlin's Ray control plane, jobs, resources,
+                        and artifacts
+    targetgen           Plan and orchestrate hardware-spec-driven target
+                        enablement
 
 options:
   -h, --help            show this help message and exit
@@ -656,12 +593,12 @@ usage: uv run tools/setup.py [-h] [--env-name ENV_NAME] [--env-file ENV_FILE]
 | `--skip-pip` | no | `False` | - | Skip Python dependency sync (uv/pip). |
 | `--python-deps` | no | `auto` | `auto, uv, pip` | Python dependency installer. 'auto' prefers uv sync with uv.lock and falls back to pip requirements. |
 | `--conda-no-plugins`, `--no-conda-no-plugins` | no | - | - | Force CONDA_NO_PLUGINS for conda env update. If unset, setup.py retries with CONDA_NO_PLUGINS=true on failure. |
-| `--submodules-profile` | no | `core` | `core, npu, smolvla, full` | Which submodule profile to initialize (default: core). |
+| `--submodules-profile` | no | `core` | `core, npu, smolvla, full` | Which submodule profile to initialize for the current Merlin checkout (default: core). |
 | `--submodule-path` | no | `[]` | - | Additional top-level submodule path to initialize (repeatable). |
 | `--submodule-paths-recursive`, `--no-submodule-paths-recursive` | no | `False` | - | Whether extra --submodule-path entries should be initialized recursively. |
 | `--submodule-depth` | no | `1` | - | Shallow depth for submodule fetches (default: 1). Use 0 for full history. |
 | `--submodule-jobs` | no | `8` | - | Parallel submodule fetch jobs (default: 8). |
-| `--submodule-sync` | no | `False` | - | Run `git submodule sync --recursive` before updating. |
+| `--submodule-sync` | no | `False` | - | Run `git submodule sync --recursive` before updating. Submodule SHAs still come from the current Merlin commit. |
 | `--toolchain-target` | no | `spacemit` | `spacemit, firesim, all` | Which toolchain target to install (default: spacemit). |
 | `--with-qemu` | no | `False` | - | For firesim toolchain setup, also install QEMU. |
 | `--toolchain-force` | no | `False` | - | Reinstall toolchains even if the destination already exists. |
@@ -713,7 +650,8 @@ options:
                         setup.py retries with CONDA_NO_PLUGINS=true on
                         failure.
   --submodules-profile {core,npu,smolvla,full}
-                        Which submodule profile to initialize (default: core).
+                        Which submodule profile to initialize for the current
+                        Merlin checkout (default: core).
   --submodule-path SUBMODULE_PATH
                         Additional top-level submodule path to initialize
                         (repeatable).
@@ -726,6 +664,8 @@ options:
   --submodule-jobs SUBMODULE_JOBS
                         Parallel submodule fetch jobs (default: 8).
   --submodule-sync      Run `git submodule sync --recursive` before updating.
+                        Submodule SHAs still come from the current Merlin
+                        commit.
   --toolchain-target {spacemit,firesim,all}
                         Which toolchain target to install (default: spacemit).
   --with-qemu           For firesim toolchain setup, also install QEMU.

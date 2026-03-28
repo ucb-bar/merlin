@@ -39,9 +39,10 @@ Optional starter template:
 
 ## Current Entries
 
+- [2026-03-27 Runtime Scheduling Baseline and PMCS v2 Direction](2026-03-27-runtime-scheduling-pmcs-direction.md)
 - [2026-03-25 TargetGen Generation + Mutation Staging](2026-03-25-targetgen-generation-staging.md)
 - [2026-03-18 Chipyard Bare-Metal Integration](2026-03-18-chipyard-bare-metal-integration.md)
-- [2026-03-16 SpacemiTX60 Dispatch Scheduler + Tracy](2026-03-16-dispatch-level-async.md)
+- [2026-03-17 SpacemiTX60 Dispatch Scheduler + Tracy](2026-03-16-dispatch-level-async.md)
 - [2026-03-13 RISC-V MMT4D Ukernel Workstream](2026-03-13-riscv-mmt4d-ukernel-workstream.md)
 - [2026-03-12 SmolVLA FP8/INT8 Global-Optimization Workstream](2026-03-12-smolvla-fp8-int8-global-opt-workstream.md)
 - [2026-03-11 Gemmini Workstream Log](2026-03-11-gemmini-workstream-log.md)
@@ -52,7 +53,8 @@ Optional starter template:
 
 | Stream | Latest entry | Status |
 |---|---|---|
-| SpacemiTX60 dispatch scheduling | [2026-03-16 Dispatch Scheduler + Tracy](2026-03-16-dispatch-level-async.md) | Active |
+| Merlin runtime scheduling direction | [2026-03-27 Runtime Scheduling Baseline and PMCS v2 Direction](2026-03-27-runtime-scheduling-pmcs-direction.md) | Active |
+| SpacemiTX60 dispatch scheduling | [2026-03-17 SpacemiTX60 Dispatch Scheduler + Tracy](2026-03-16-dispatch-level-async.md) | Active |
 | RISC-V mmt4d ukernels | [2026-03-13 RISC-V MMT4D Ukernel Workstream](2026-03-13-riscv-mmt4d-ukernel-workstream.md) | Active |
 | SmolVLA FP8/INT8 quantization | [2026-03-12 SmolVLA FP8/INT8 Global-Optimization Workstream](2026-03-12-smolvla-fp8-int8-global-opt-workstream.md) | Active |
 | Gemmini dialect | [2026-03-11 Gemmini Workstream Log](2026-03-11-gemmini-workstream-log.md) | Active |

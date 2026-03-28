@@ -22,5 +22,6 @@ Choose a path:
   - `repository_guide.md`
   - `how_to/index.md`
   - `architecture/plugin_and_patch_model.md`
+  - `dev_blog/index.md`
 - Deep implementation history:
   - `dev_blog/index.md`
