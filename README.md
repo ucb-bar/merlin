@@ -2,6 +2,12 @@
 
 Merlin is an MLIR/IREE-based compiler stack for compiling models to CPU and custom RISC-V targets (including SpacemiT and Saturn OPU flows). Ideally here is where he handle the ***Compiler Magic*** that happens in the background so that you dont have to.
 
+> **Early Development Warning** — ***Merlin*** under active development. Expect bugs,
+> incomplete features, and APIs that may change. Bugfixes are welcome; please
+> discuss significant changes in the
+> [issue tracker](https://github.com/ucb-bar/merlin/issues) before
+> starting work.
+
 <p align="center">
   <img src="docs/assets/merlin_transparent.png" width="400">
 </p>
