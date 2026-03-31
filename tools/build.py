@@ -944,6 +944,11 @@ def main(args: argparse.Namespace) -> int:
             f"-DIREE_BUILD_SAMPLES={cmake_bool(build_samples)}",
             f"-DIREE_BUILD_TESTS={cmake_bool(build_tests)}",
             f"-DIREE_ENABLE_LIBBACKTRACE={cmake_bool(enable_libbacktrace)}",
+            # Disable LLVM valgrind support unconditionally.  CMake's
+            # check_include_file detects the header via conda's CFLAGS
+            # (-I${CONDA_PREFIX}/include) but the LLVM build itself does not
+            # add that include path, causing a compile error in Valgrind.cpp.
+            "-DHAVE_VALGRIND_VALGRIND_H=OFF",
         ]
     )
     cmake_args.extend(args.cmake_arg)
