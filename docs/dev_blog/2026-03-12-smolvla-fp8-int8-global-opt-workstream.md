@@ -45,12 +45,14 @@ uv sync --extra export_iree
 cd ../..
 ```
 
-> **Note — `evdev` build failure on older kernels:** If `uv sync` fails
-> compiling `evdev` with errors about `KEY_ACCESSIBILITY` /
-> `KEY_DO_NOT_DISTURB`, your system kernel headers are older than Linux
-> 6.11. The `pyproject.toml` already constrains `evdev<1.9` to avoid
-> this. If you still hit the error, run `uv lock --upgrade-package evdev`
-> and retry.
+> **Note — `evdev` is excluded by default.** The `lerobot → pynput →
+> evdev` chain is only needed for physical input-device handling, not
+> MLIR export. `evdev` fails to build when the conda cross-compiler's
+> sysroot headers are older than the system kernel headers (the build
+> reads `/usr/include/linux/input-event-codes.h` to generate code, then
+> compiles against the conda sysroot which lacks newer constants like
+> `KEY_ACCESSIBILITY`). The `pyproject.toml` overrides evdev's marker so
+> it is never resolved.
 
 ### 0.3 Build Merlin tools with NPU plugin enabled
 
