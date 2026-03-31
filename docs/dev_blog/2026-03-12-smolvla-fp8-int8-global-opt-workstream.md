@@ -22,14 +22,21 @@ commit. If you switch branches later, rerun it before rebuilding or compiling.
 From repository root:
 
 ```bash
-mkdir -p third_party
-cd third_party
+git clone -b mlir-smolvla \
+  https://github.com/ucb-bar/Understanding-PI0.git \
+  third_party/Understanding-PI0
 
-git clone -b mlir-smolvla https://github.com/ucb-bar/Understanding-PI0.git
-git clone https://github.com/huggingface/lerobot.git
+git clone https://github.com/huggingface/lerobot.git \
+  third_party/lerobot
 ```
 
+Both clones are required: `Understanding-PI0/pyproject.toml` declares
+`lerobot` as an editable path dependency (`../lerobot`), so `lerobot`
+must be present before running `uv sync` in the next step.
+
 ### 0.2 Set up Understanding-PI0 Python environment
+
+From repository root:
 
 ```bash
 cd third_party/Understanding-PI0
@@ -37,6 +44,13 @@ uv python pin 3.12
 uv sync --extra export_iree
 cd ../..
 ```
+
+> **Note — `evdev` build failure on older kernels:** If `uv sync` fails
+> compiling `evdev` with errors about `KEY_ACCESSIBILITY` /
+> `KEY_DO_NOT_DISTURB`, your system kernel headers are older than Linux
+> 6.11. The `pyproject.toml` already constrains `evdev<1.9` to avoid
+> this. If you still hit the error, run `uv lock --upgrade-package evdev`
+> and retry.
 
 ### 0.3 Build Merlin tools with NPU plugin enabled
 
