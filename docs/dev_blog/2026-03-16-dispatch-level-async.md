@@ -1145,6 +1145,202 @@ sleep 1
 
 ---
 
+## 24. IREE 3.11 Runtime Migration (2026-03-31)
+
+### Problem
+
+After the IREE submodule was rebased to 3.11 (commit `b4bff6e`, 2026-03-23) and
+bumped again for SmolVLA (`6d5872d`, 2026-03-27), the dispatch scheduler showed
+severe dronet regressions:
+
+* Total wall time: **60-92ms** (was ~35ms with the old IREE)
+* Sporadic ~15ms blowups on 2-5 dronet dispatches per run
+* MLP timing remained perfect (1-4us delays)
+
+The blowups were **not random** — certain dispatches blew up consistently across
+runs (d0: 8/8, d6: 8/8, d14: 6/8), while others were sporadic.
+
+### Root cause analysis
+
+#### 1. Proactor pool threads (minor)
+
+The new IREE API requires a `proactor_pool` for device creation. The default
+`iree_async_proactor_pool_options_default()` spawns an unpinned poll thread per
+device (`iree-pro`, affinity=0xff). Thread affinity analysis on the board
+confirmed two `iree-pro` threads floating across all 8 cores.
+
+**Fix**: Create the proactor pool with a zeroed runner factory — no poll threads
+are spawned. This is safe because both sync and async (coarse-fences) dispatch
+wait paths use notification-based blocking (futex), not proactor polling.
+
+```cpp
+// pinned_device.h — no-runner proactor pool
+iree_async_proactor_pool_options_t pool_opts;
+memset(&pool_opts, 0, sizeof(pool_opts));
+pool_opts.proactor_options = iree_async_proactor_options_default();
+// runner left zeroed: no poll threads spawned.
+iree_async_proactor_pool_create(1, NULL, pool_opts, alloc, &pool);
+```
+
+**Result**: Thread count dropped from 10 to 8. But blowups persisted — this was
+not the primary cause.
+
+#### 2. Scheduler workers on executor cores (major)
+
+The scheduler spawns one worker thread per target. Each worker was pinned to the
+**same cores** as its target's IREE executor workers:
+
+```
+iree-worker-0  core 0  (CPU_P executor)
+iree-worker-1  core 1  (CPU_P executor)
+iree-worker-2  core 2  (CPU_P executor)
+iree-worker-3  core 3  (CPU_P executor)
+merlin-dispatch core 0-3  (CPU_P scheduler worker) ← COMPETING
+iree-worker-0  core 4  (CPU_E executor)
+iree-worker-1  core 5  (CPU_E executor)
+merlin-dispatch core 4-5  (CPU_E scheduler worker) ← COMPETING
+```
+
+When the scheduler worker spin-waits or does bookkeeping, it steals a core from
+the executor. A 4-core dronet dispatch running on 3 effective cores is slower.
+
+**Fix**: Pin scheduler workers to free cores (6, 7) that are not used by any
+executor.
+
+**Result**: The consistent d0/d14 blowups disappeared (they were tiny dispatches
+most affected by losing a core). But sporadic blowups on larger dispatches
+remained.
+
+#### 3. Shared mutex cross-target contention (critical)
+
+`SchedulerShared` had a **single** `std::mutex mu` and `std::condition_variable
+cv` shared between ALL worker threads. This caused two problems:
+
+**Lock contention**: The CPU_E worker (processing ~85 MLP dispatch completions
+during the 33ms schedule) repeatedly acquired the shared lock. Each acquisition
+briefly blocked the CPU_P worker from dispatching or completing its dronet work.
+
+**Spurious wakeups**: After each dispatch completion, `cv.notify_all()` woke ALL
+workers. The CPU_P worker was woken ~85 times by CPU_E MLP completions even when
+there was no CPU_P work available. Each spurious wakeup caused a context switch
+on a free core (6 or 7 after the pinning fix), but more critically, the worker
+then re-acquired the shared lock to check its queue, further contending with the
+CPU_E worker.
+
+**Fix**: Replace the shared condition variable with per-target condition
+variables. Each worker waits on its own CV and is only woken when:
+* Its target receives new work (from a cross-target dependency completion)
+* The scheduler signals shutdown or a new iteration
+
+```cpp
+// Per-target condvars in SchedulerShared
+std::vector<std::unique_ptr<std::condition_variable>> target_cv;
+std::condition_variable main_cv;  // For main thread completion wait
+
+// After dispatch completion, only wake affected targets:
+for (int child : dependents[node_idx]) {
+    if (--remaining_preds[child] == 0) {
+        TargetId child_tid = nodes[child].hardware_target;
+        targets_with_new_work |= (1u << child_tid);
+        // enqueue child...
+    }
+}
+// Wake only targets that got new work, plus self:
+targets_with_new_work |= (1u << target_id);
+for (size_t t = 0; t < target_cv.size(); ++t) {
+    if (targets_with_new_work & (1u << t))
+        target_cv[t]->notify_one();
+}
+```
+
+**Result**: All blowups eliminated. Total wall time: **34.0-35.0ms** across 8
+consecutive runs with near-zero variance.
+
+### Compilation pipeline fix
+
+The target YAML (`models/spacemit_x60.yaml`) referenced a renamed IREE pass:
+
+```yaml
+# BEFORE (broken — pass removed in 3.11 rebase):
+iree-preprocessing-convert-conv2d-to-img2col
+
+# AFTER (renamed pass, confirmed at GlobalOptimization/Passes.td:18):
+iree-global-opt-convert-conv2d-to-img2col
+```
+
+This caused dronet compilation to fail silently (the `compile.py` benchmark
+sub-compilation at line 333 does not check return codes). The benchmark VMFBs on
+the board were stale from a pre-3.11 build.
+
+After fixing the YAML, all 4 model variants were recompiled with
+`--build-benchmarks`:
+
+```bash
+uv run tools/merlin.py compile models/dronet/dronet.q.int8.mlir \
+  --target spacemit_x60 --hw RVV --quantized --build-benchmarks
+uv run tools/merlin.py compile models/dronet/dronet.q.int8.mlir \
+  --target spacemit_x60 --hw scalar --quantized --build-benchmarks
+uv run tools/merlin.py compile models/mlp/mlp.q.int8.mlir \
+  --target spacemit_x60 --hw scalar --quantized --build-benchmarks
+uv run tools/merlin.py compile models/mlp/mlp.q.int8.mlir \
+  --target spacemit_x60 --hw RVV --quantized --build-benchmarks
+```
+
+Note: recompilation alone did NOT fix the blowups — the runtime fixes
+(proactor pool, worker pinning, per-target CVs) were required.
+
+### Before vs after (IREE 3.11)
+
+| Metric | Before (3.11 naive) | After (3.11 fixed) | Reference (old IREE) |
+|--------|--------------------|--------------------|---------------------|
+| Total wall time | 60-92ms | **34.0-35.0ms** | ~35ms |
+| Wall time variance | ~30ms spread | **<1ms spread** | ~1ms |
+| MLP root delay | 1-4us | **1-3us** | 1-4us |
+| Dronet blowups (>2x plan) | 2-5 per run | **0** | 0 |
+| d6 runtime (plan=1000us) | 15000-21000us | **1026us** | ~1200us |
+| iree-pro threads | 2 (unpinned) | **0** | 0 |
+
+### N-target generalization (2026-03-31)
+
+As part of this work, the scheduler was generalized from hardcoded 2-target
+(CPU_P + CPU_E) to dynamic N-target support:
+
+#### Type system changes (`dispatch_types.h`)
+
+* `enum class HardwareTarget` replaced with `using TargetId = uint8_t`
+* New `TargetRegistry` struct for dynamic registration of targets
+* Each target has: name, cpu_ids (comma-separated), variant_dir (ISA variant)
+* Full backward compatibility via type aliases and legacy functions
+
+#### Scheduler changes (`scheduler_runner.cc`, `scheduler_runner.h`)
+
+* N worker threads (one per registered target) instead of hardcoded 2
+* Per-target ready/future queues as `vector<vector<int>>`
+* `--warmup_iters=N` flag for pre-warming before traced iterations
+* Worker threads relaunched after warmup to swap trace writers
+* Per-target condition variables for targeted wakeup
+* Scheduler workers pinned to non-executor cores
+
+#### CLI changes (`main.c`)
+
+* New `--target=NAME:CPU_IDS:VARIANT` repeatable flag for N-target config
+* Legacy `--cpu_p_cpu_ids` / `--cpu_e_cpu_ids` flags preserved for backward
+  compatibility
+* Default: CPU_P:0,1,2,3:RVV + CPU_E:4,5:scalar
+
+### Files changed
+
+| File | Changes |
+|------|---------|
+| `samples/common/runtime/pinned_device.h` | No-runner proactor pool for IREE 3.11 device creation |
+| `samples/common/xpu-rt/scheduler_runner.cc` | N-target workers, per-target CVs, free-core pinning |
+| `samples/common/xpu-rt/scheduler_runner.h` | N-target config struct, warmup_iters field |
+| `samples/common/dispatch/dispatch_types.h` | TargetId, TargetRegistry, dynamic target system |
+| `samples/SpacemiTX60/dispatch_scheduler/main.c` | --target flag, --warmup_iters, N-target CLI |
+| `models/spacemit_x60.yaml` | Fix renamed img2col pass for IREE 3.11 |
+
+---
+
 *Dev-blog written by:* Agustin Coppari Hollmann
 
 *Project Members:* Kris Dong, Dima Nikiforov and Agustin N. Coppari Hollmann

@@ -34,7 +34,7 @@ quantized:
 
 models:
   dronet:
-    - --iree-preprocessing-pass-pipeline=builtin.module(util.func(iree-global-opt-quantized-conv-to-conv, iree-preprocessing-convert-conv2d-to-img2col))
+    - --iree-preprocessing-pass-pipeline=builtin.module(util.func(iree-global-opt-quantized-conv-to-conv, iree-global-opt-convert-conv2d-to-img2col))
   smolVLA:
     - --iree-input-type=torch
     - --iree-opt-const-eval=false

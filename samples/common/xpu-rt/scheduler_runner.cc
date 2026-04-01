@@ -149,7 +149,11 @@ struct NodeExecState {
 
 struct SchedulerShared {
 	std::mutex mu;
-	std::condition_variable cv;
+	// Per-target condvars so workers only wake when their target has work.
+	// This avoids spurious cross-target wakeups that cause context switches
+	// on executor cores.
+	std::vector<std::unique_ptr<std::condition_variable>> target_cv;
+	std::condition_variable main_cv; // For main thread waiting on completion.
 
 	bool shutdown = false;
 	bool active = false;
@@ -170,6 +174,11 @@ struct SchedulerShared {
 	void InitQueues(int num_targets) {
 		ready_queues.assign(num_targets, {});
 		future_queues.assign(num_targets, {});
+		target_cv.resize(num_targets);
+		for (int i = 0; i < num_targets; ++i) {
+			if (!target_cv[i])
+				target_cv[i] = std::make_unique<std::condition_variable>();
+		}
 	}
 
 	void ClearQueues() {
@@ -177,6 +186,16 @@ struct SchedulerShared {
 			q.clear();
 		for (auto &q : future_queues)
 			q.clear();
+	}
+
+	void NotifyTarget(TargetId t) {
+		target_cv[t]->notify_one();
+	}
+
+	void NotifyAll() {
+		for (auto &cv : target_cv)
+			cv->notify_one();
+		main_cv.notify_all();
 	}
 };
 
@@ -292,14 +311,14 @@ static void SeedReadyNodes(
 // Worker thread
 //------------------------------------------------------------------------------
 
-static void WorkerMain(TargetId target_id, const char *cpu_ids_csv,
+static void WorkerMain(TargetId target_id, const char *sched_core_csv,
 	const char *target_name, iree_hal_device_t *device,
 	std::vector<DispatchNode> *nodes,
 	const std::vector<std::vector<int>> *dependents,
 	const std::vector<CachedModule *> *node_modules, int dispatch_iters,
 	iree_allocator_t host_alloc, SharedState *fatal, SchedulerShared *sched,
 	TraceWriter *trace) {
-	BestEffortPinCurrentThreadToCpuIds(cpu_ids_csv);
+	BestEffortPinCurrentThreadToCpuIds(sched_core_csv);
 
 	while (true) {
 		int node_idx = -1;
@@ -313,7 +332,7 @@ static void WorkerMain(TargetId target_id, const char *cpu_ids_csv,
 				if (sched->shutdown || HasFatal(fatal))
 					return;
 				if (!sched->active) {
-					sched->cv.wait(lock);
+					sched->target_cv[target_id]->wait(lock);
 					continue;
 				}
 
@@ -338,7 +357,7 @@ static void WorkerMain(TargetId target_id, const char *cpu_ids_csv,
 				const uint64_t next_release_us =
 					NextReleaseUsLocked(sched, target_id);
 				if (next_release_us == UINT64_MAX) {
-					sched->cv.wait(lock);
+					sched->target_cv[target_id]->wait(lock);
 				} else {
 					// Spin-wait for short sleeps to avoid condvar
 					// timer overshoot (~2ms on RISC-V kernel).
@@ -347,7 +366,7 @@ static void WorkerMain(TargetId target_id, const char *cpu_ids_csv,
 						// Long wait: condvar, but wake 2ms early to spin.
 						const auto wake_tp = sched->iter_t0 +
 							std::chrono::microseconds(next_release_us - 2000);
-						sched->cv.wait_until(lock, wake_tp);
+						sched->target_cv[target_id]->wait_until(lock, wake_tp);
 					} else {
 						// Short wait: drop lock, spin-yield, re-acquire.
 						lock.unlock();
@@ -382,13 +401,17 @@ static void WorkerMain(TargetId target_id, const char *cpu_ids_csv,
 
 		if (!iree_status_is_ok(st)) {
 			SetFatalOnce(fatal, st, "[dispatch] module call failed");
-			sched->cv.notify_all();
+			sched->NotifyAll();
 			return;
 		}
 
 		uint64_t planned_start_us = 0;
 		uint64_t ready_us = 0;
 		uint64_t start_us = 0;
+
+		// Track which targets got new work so we only wake those.
+		uint32_t targets_with_new_work = 0;
+		bool all_done = false;
 
 		{
 			std::lock_guard<std::mutex> lock(sched->mu);
@@ -416,6 +439,7 @@ static void WorkerMain(TargetId target_id, const char *cpu_ids_csv,
 
 					TargetId child_tid =
 						(*nodes)[(size_t)child].hardware_target;
+					targets_with_new_work |= (1u << child_tid);
 					if (cs.release_us <= UsSince(iter_t0, Clock::now())) {
 						ReadyQueueFor(sched, child_tid).push_back(child);
 					} else {
@@ -428,13 +452,21 @@ static void WorkerMain(TargetId target_id, const char *cpu_ids_csv,
 			sched->completed++;
 			if (sched->completed == sched->total_nodes) {
 				sched->active = false;
+				all_done = true;
 			}
 		}
 
 		trace->WriteRow(graph_iter, (*nodes)[(size_t)node_idx],
 			planned_start_us, ready_us, start_us, end_us, target_name);
 
-		sched->cv.notify_all();
+		// Only wake targets that received new work, plus self.
+		targets_with_new_work |= (1u << target_id);
+		for (size_t t = 0; t < sched->target_cv.size(); ++t) {
+			if (targets_with_new_work & (1u << t))
+				sched->target_cv[t]->notify_one();
+		}
+		if (all_done)
+			sched->main_cv.notify_all();
 	}
 }
 
@@ -821,12 +853,44 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 	// Trace writer is toggled on/off to separate warmup from real capture.
 	TraceWriter warmup_sink; // Dummy sink — discards rows during warmup.
 
+	// Compute free cores (not used by any executor) for scheduler workers.
+	// Pinning workers to non-executor cores prevents scheduler threads from
+	// competing with IREE executor worker threads for CPU time.
+	std::unordered_set<int> executor_cores;
+	for (int t = 0; t < num_targets; ++t) {
+		std::vector<int> ids;
+		SplitCpuIds(reg.CpuIds(static_cast<TargetId>(t)), &ids);
+		for (int id : ids)
+			executor_cores.insert(id);
+	}
+	int vc = cfg->visible_cores > 0 ? cfg->visible_cores : 8;
+	std::vector<int> free_cores;
+	for (int c = 0; c < vc; ++c) {
+		if (executor_cores.find(c) == executor_cores.end())
+			free_cores.push_back(c);
+	}
+
+	// Build per-worker core CSV strings.
+	std::vector<std::string> sched_core_strs(num_targets);
+	for (int t = 0; t < num_targets; ++t) {
+		if (!free_cores.empty()) {
+			// Assign each worker a distinct free core (round-robin).
+			sched_core_strs[t] =
+				std::to_string(free_cores[(size_t)t % free_cores.size()]);
+		} else {
+			// No free cores — fall back to executor cores.
+			sched_core_strs[t] = reg.CpuIds(static_cast<TargetId>(t));
+		}
+	}
+
 	std::vector<std::thread> workers;
 	workers.reserve(num_targets);
 	for (int t = 0; t < num_targets; ++t) {
 		TargetId tid = static_cast<TargetId>(t);
-		workers.emplace_back(WorkerMain, tid, reg.CpuIds(tid), reg.Name(tid),
-			devices[t], &model.nodes, &dependents, &node_modules,
+		fprintf(stdout, "[dispatch] %s scheduler worker -> core {%s}\n",
+			reg.Name(tid), sched_core_strs[t].c_str());
+		workers.emplace_back(WorkerMain, tid, sched_core_strs[t].c_str(),
+			reg.Name(tid), devices[t], &model.nodes, &dependents, &node_modules,
 			dispatch_iters, host_alloc, &shared, &sched,
 			warmup_iters > 0 ? &warmup_sink : &trace);
 	}
@@ -852,18 +916,18 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 
 			SeedReadyNodes(model.nodes, &sched);
 		}
-		sched.cv.notify_all();
+		sched.NotifyAll();
 
 		{
 			std::unique_lock<std::mutex> lock(sched.mu);
-			sched.cv.wait(lock, [&]() {
+			sched.main_cv.wait(lock, [&]() {
 				return HasFatal(&shared) ||
 					sched.completed == sched.total_nodes;
 			});
 			sched.active = false;
 			sched.ClearQueues();
 		}
-		sched.cv.notify_all();
+		sched.NotifyAll();
 	}
 
 	if (warmup_iters > 0 && !HasFatal(&shared)) {
@@ -883,7 +947,7 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 			sched.active = false;
 			sched.ClearQueues();
 		}
-		sched.cv.notify_all();
+		sched.NotifyAll();
 		for (auto &w : workers)
 			w.join();
 		workers.clear();
@@ -894,7 +958,7 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 
 		for (int t = 0; t < num_targets; ++t) {
 			TargetId tid = static_cast<TargetId>(t);
-			workers.emplace_back(WorkerMain, tid, reg.CpuIds(tid),
+			workers.emplace_back(WorkerMain, tid, sched_core_strs[t].c_str(),
 				reg.Name(tid), devices[t], &model.nodes, &dependents,
 				&node_modules, dispatch_iters, host_alloc, &shared, &sched,
 				&trace);
@@ -924,18 +988,18 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 
 			SeedReadyNodes(model.nodes, &sched);
 		}
-		sched.cv.notify_all();
+		sched.NotifyAll();
 
 		{
 			std::unique_lock<std::mutex> lock(sched.mu);
-			sched.cv.wait(lock, [&]() {
+			sched.main_cv.wait(lock, [&]() {
 				return HasFatal(&shared) ||
 					sched.completed == sched.total_nodes;
 			});
 			sched.active = false;
 			sched.ClearQueues();
 		}
-		sched.cv.notify_all();
+		sched.NotifyAll();
 
 		if (report_every > 0 && ((gi + 1) % report_every) == 0 &&
 			!HasFatal(&shared)) {
@@ -959,7 +1023,7 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 		sched.active = false;
 		sched.ClearQueues();
 	}
-	sched.cv.notify_all();
+	sched.NotifyAll();
 
 	for (auto &w : workers)
 		w.join();
