@@ -10,8 +10,12 @@
 
 get_filename_component(MERLIN_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
 
-# Runtime plugin tree toggles (must appear before add_subdirectory(samples) so
-# samples/CMakeLists.txt can gate optional demo subdirs).
+add_subdirectory("${MERLIN_SOURCE_DIR}/projects/xpu-rt"
+                 "${IREE_BINARY_DIR}/runtime/plugins/xpu-rt")
+
+# Merlin runtime plugin entrypoint used by IREE plugin CMake integration.
+
+# Runtime plugin tree toggles.
 option(MERLIN_RUNTIME_ENABLE_SAMPLES "Build Merlin runtime plugin samples" ON)
 option(MERLIN_RUNTIME_ENABLE_BENCHMARKS
        "Build Merlin runtime plugin benchmarks" OFF)
@@ -30,32 +34,8 @@ option(MERLIN_HAL_RADIANCE_ENABLE_DIRECT_SUBMIT
 option(MERLIN_HAL_RADIANCE_ENABLE_KMOD "Enable Radiance kmod transport backend"
        ON)
 
-# Always add samples/ so common libs (core, runtime, dispatch) exist for xpu-rt
-# and other runtime pieces. MERLIN_RUNTIME_ENABLE_SAMPLES only gates optional
-# demo subdirs inside samples/CMakeLists.txt (see there).
-add_subdirectory("${MERLIN_SOURCE_DIR}/samples"
-                 "${CMAKE_CURRENT_BINARY_DIR}/merlin-samples")
-
-add_subdirectory("${MERLIN_SOURCE_DIR}/samples/common/xpu-rt"
-                 "${IREE_BINARY_DIR}/runtime/plugins/xpu-rt")
-
-# Merlin runtime plugin entrypoint used by IREE plugin CMake integration.
-
 if(MERLIN_ENABLE_HAL_RADIANCE)
   set(MERLIN_RUNTIME_ENABLE_HAL_RADIANCE ON)
-endif()
-
-# Drops "radiance" from IREE_EXTERNAL_HAL_DRIVERS when Radiance is off after a
-# previous config turned it on. Previously would Error at
-# runtime/src/iree/hal/drivers/CMakeLists.txt if turned on then turned off
-if(NOT MERLIN_RUNTIME_ENABLE_HAL_RADIANCE)
-  set(_merlin_ext_hal "${IREE_EXTERNAL_HAL_DRIVERS}")
-  if(_merlin_ext_hal)
-    list(REMOVE_ITEM _merlin_ext_hal "radiance")
-    set(IREE_EXTERNAL_HAL_DRIVERS
-        "${_merlin_ext_hal}"
-        CACHE STRING "" FORCE)
-  endif()
 endif()
 
 if(MERLIN_RUNTIME_ENABLE_HAL_RADIANCE)
@@ -77,6 +57,10 @@ if(MERLIN_RUNTIME_ENABLE_HAL_RADIANCE)
         "${IREE_EXTERNAL_HAL_DRIVERS}"
         CACHE STRING "" FORCE)
   endif()
+endif()
+
+if(MERLIN_RUNTIME_ENABLE_SAMPLES)
+  add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/samples" "merlin-samples")
 endif()
 
 if(MERLIN_RUNTIME_ENABLE_BENCHMARKS)
