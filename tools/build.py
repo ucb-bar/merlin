@@ -822,13 +822,14 @@ def main(args: argparse.Namespace) -> int:
                 f"-DCMAKE_TOOLCHAIN_FILE={toolchain_file}",
                 "-DRISCV_CPU=linux-riscv_64",
                 f"-DRISCV_TOOLCHAIN_ROOT={tc_root}",
+                "-DIREE_ENABLE_LLD=OFF",
                 "-DIREE_HAL_DRIVER_DEFAULTS=OFF",
                 "-DIREE_HAL_DRIVER_LOCAL_SYNC=ON",
                 "-DIREE_HAL_DRIVER_LOCAL_TASK=ON",
-                "-DCMAKE_C_FLAGS=" "-march=rv64gc_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause -mabi=lp64d",
+                "-DCMAKE_C_FLAGS=" "-march=rv64gcv_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause -mabi=lp64d",
                 "-DCMAKE_CXX_FLAGS="
                 "-fno-omit-frame-pointer"
-                " -march=rv64gc_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause -mabi=lp64d",
+                " -march=rv64gcv_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause -mabi=lp64d",
                 "-DIREE_ENABLE_CPUINFO=ON",
             ]
         )

@@ -3,6 +3,7 @@
 add_subdirectory(common/core)
 add_subdirectory(common/runtime)
 add_subdirectory(common/dispatch)
+add_subdirectory(common/xpu-rt)
 
 if(MERLIN_BUILD_SPACEMITX60)
   message(STATUS "Including Merlin SpacemiTX60 samples")

@@ -34,10 +34,13 @@ namespace merlin_bench {
  *
  *  @param jp        Active JSON parser positioned at the opening '{'.
  *  @param out_nodes Receives parsed nodes; cleared on entry.
+ *  @param reg       Optional target registry for hardware_target lookup.
+ *                   When non-null, any target name in the registry is accepted.
+ *                   When null, only legacy "CPU_P"/"CPU_E" are recognized.
  *  @return True on success.
  */
-inline bool ParseDispatchesObject(
-	JsonParser *jp, std::vector<DispatchNode> *out_nodes) {
+inline bool ParseDispatchesObject(JsonParser *jp,
+	std::vector<DispatchNode> *out_nodes, const TargetRegistry *reg = nullptr) {
 	out_nodes->clear();
 	if (!jp->Consume('{'))
 		return false;
@@ -79,7 +82,13 @@ inline bool ParseDispatchesObject(
 					std::string s;
 					if (!jp->ParseString(&s))
 						return false;
-					if (!ParseHardwareTarget(s, &node.hardware_target)) {
+					bool parsed = false;
+					if (reg) {
+						parsed = ParseTarget(s, *reg, &node.hardware_target);
+					} else {
+						parsed = ParseHardwareTarget(s, &node.hardware_target);
+					}
+					if (!parsed) {
 						fprintf(stderr, "Unknown hardware_target '%s' for %s\n",
 							s.c_str(), node.key.c_str());
 						return false;
@@ -181,10 +190,11 @@ inline bool ParseMetadataObject(JsonParser *jp, double *out_makespan_ms) {
  *
  *  @param json_path  Path to the JSON file on disk.
  *  @param out_model  Receives the parsed graph model; cleared on entry.
+ *  @param reg        Optional target registry for hardware_target lookup.
  *  @return True if the file was parsed and contains at least one dispatch node.
  */
-inline bool ParseDispatchScheduleJson(
-	const std::string &json_path, GraphModel *out_model) {
+inline bool ParseDispatchScheduleJson(const std::string &json_path,
+	GraphModel *out_model, const TargetRegistry *reg = nullptr) {
 	out_model->nodes.clear();
 	out_model->dispatch_vmfb_dir_from_json.clear();
 	out_model->makespan_ms = 0.0;
@@ -217,7 +227,7 @@ inline bool ParseDispatchScheduleJson(
 			return false;
 
 		if (key == "dispatches") {
-			if (!ParseDispatchesObject(&jp, &out_model->nodes))
+			if (!ParseDispatchesObject(&jp, &out_model->nodes, reg))
 				return false;
 			saw_dispatches = true;
 		} else if (key == "dispatch_vmfb_dir") {

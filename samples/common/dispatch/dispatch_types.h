@@ -6,6 +6,10 @@
  *  control execution behavior, making the scheduler network-agnostic.
  *  When absent from JSON, InferSchedulingPolicies() applies
  *  backwards-compatible heuristics based on job_name.
+ *
+ *  Hardware targets are dynamic and registry-based: callers populate a
+ *  TargetRegistry at startup from JSON or CLI flags. Well-known constants
+ *  kTargetCpuP (0) and kTargetCpuE (1) exist for backward compatibility.
  */
 
 #ifndef MERLIN_DISPATCH_TYPES_H_
@@ -14,6 +18,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -22,42 +27,177 @@
 namespace merlin_bench {
 
 //------------------------------------------------------------------------------
-// Hardware targets
+// Hardware targets — registry-based, N-target
 //------------------------------------------------------------------------------
 
-/** @brief Execution target for a dispatch node. */
-enum class HardwareTarget {
-	kCpuP = 0, /**< Performance CPU cluster. */
-	kCpuE = 1, /**< Efficiency CPU cluster. */
+/** @brief Numeric target identifier. Indexes into a TargetRegistry. */
+using TargetId = uint8_t;
+
+/** Well-known target IDs for backward compatibility. */
+static constexpr TargetId kTargetCpuP = 0;
+static constexpr TargetId kTargetCpuE = 1;
+static constexpr TargetId kTargetInvalid = 255;
+
+/** Maximum number of simultaneously registered targets. */
+static constexpr int kMaxTargets = 16;
+
+/** @brief Per-target metadata stored in the registry. */
+struct TargetInfo {
+	std::string name; /**< Human-readable name (e.g. "CPU_P"). */
+	std::string cpu_ids; /**< Comma-separated logical CPU IDs. */
+	std::string variant_dir; /**< ISA variant directory (e.g. "RVV"). */
 };
 
-/** @brief Return a human-readable name for a HardwareTarget.
- *  @param t Target enum value.
- *  @return Static string such as "CPU_P" or "CPU_E".
+/** @brief Dynamic registry mapping TargetId <-> name + metadata.
+ *
+ *  Targets are assigned sequential IDs starting from 0. The registry
+ *  supports up to kMaxTargets entries.
+ *
+ *  Typical usage:
+ *    TargetRegistry reg;
+ *    reg.Register("CPU_P", "0,1,2,3", "RVV");   // -> id 0
+ *    reg.Register("CPU_E", "4,5", "scalar");     // -> id 1
+ *    reg.Register("CPU_AUX", "6,7", "scalar");   // -> id 2
  */
+struct TargetRegistry {
+	std::vector<TargetInfo> targets_;
+
+	/** @brief Register a new target.
+	 *  @return The assigned TargetId, or kTargetInvalid if full. */
+	TargetId Register(const std::string &name, const std::string &cpu_ids = "",
+		const std::string &variant_dir = "") {
+		if ((int)targets_.size() >= kMaxTargets) {
+			fprintf(stderr, "TargetRegistry: too many targets (max %d)\n",
+				kMaxTargets);
+			return kTargetInvalid;
+		}
+		TargetId id = static_cast<TargetId>(targets_.size());
+		targets_.push_back({name, cpu_ids, variant_dir});
+		return id;
+	}
+
+	/** @brief Number of registered targets. */
+	int Size() const {
+		return static_cast<int>(targets_.size());
+	}
+
+	/** @brief Look up a target by name.
+	 *  @return The TargetId, or kTargetInvalid if not found. */
+	TargetId Parse(const std::string &name) const {
+		for (size_t i = 0; i < targets_.size(); ++i) {
+			if (targets_[i].name == name)
+				return static_cast<TargetId>(i);
+		}
+		return kTargetInvalid;
+	}
+
+	/** @brief Return the human-readable name for a TargetId. */
+	const char *Name(TargetId id) const {
+		if (id < targets_.size())
+			return targets_[id].name.c_str();
+		return "UNKNOWN";
+	}
+
+	/** @brief Return the CPU IDs string for a TargetId. */
+	const char *CpuIds(TargetId id) const {
+		if (id < targets_.size())
+			return targets_[id].cpu_ids.c_str();
+		return "";
+	}
+
+	/** @brief Return the variant directory for a TargetId. */
+	const char *VariantDir(TargetId id) const {
+		if (id < targets_.size())
+			return targets_[id].variant_dir.c_str();
+		return "";
+	}
+
+	/** @brief Check whether a TargetId is valid in this registry. */
+	bool Valid(TargetId id) const {
+		return id != kTargetInvalid && id < targets_.size();
+	}
+
+	/** @brief Create a default 2-target registry (CPU_P + CPU_E).
+	 *
+	 *  For backward compatibility with code that assumes exactly two
+	 *  targets. The caller can override cpu_ids and variant_dirs after. */
+	static TargetRegistry Default2Target() {
+		TargetRegistry reg;
+		reg.Register("CPU_P", "0,1,2,3", "RVV");
+		reg.Register("CPU_E", "4,5", "scalar");
+		return reg;
+	}
+};
+
+//------------------------------------------------------------------------------
+// Backward-compatible free functions (delegate to a registry)
+//------------------------------------------------------------------------------
+
+/** @brief Return a human-readable name for a TargetId using a registry.
+ *  @param id  Target identifier.
+ *  @param reg Registry to look up in.
+ *  @return Static-ish string such as "CPU_P" or "CPU_E".
+ */
+inline const char *TargetName(TargetId id, const TargetRegistry &reg) {
+	return reg.Name(id);
+}
+
+/** @brief Parse a target name to a TargetId using a registry.
+ *  @param s   Input string (e.g. "CPU_P").
+ *  @param reg Registry to look up in.
+ *  @param out Receives the parsed TargetId on success.
+ *  @return True if parsing succeeded.
+ */
+inline bool ParseTarget(
+	const std::string &s, const TargetRegistry &reg, TargetId *out) {
+	TargetId id = reg.Parse(s);
+	if (id == kTargetInvalid)
+		return false;
+	*out = id;
+	return true;
+}
+
+//------------------------------------------------------------------------------
+// Legacy HardwareTarget compatibility shim
+//------------------------------------------------------------------------------
+
+/** @brief Legacy alias — kept so existing code that names the type still
+ *  compiles. New code should use TargetId directly. */
+using HardwareTarget = TargetId;
+
+/** @brief Legacy constant aliases. */
+static constexpr HardwareTarget kCpuP = kTargetCpuP;
+static constexpr HardwareTarget kCpuE = kTargetCpuE;
+
+/** @brief Legacy name lookup using the default 2-target convention.
+ *
+ *  Prefer TargetName(id, registry) in new code. This overload exists for
+ *  call sites that have not yet been plumbed with a registry reference. */
 inline const char *HardwareTargetName(HardwareTarget t) {
 	switch (t) {
-		case HardwareTarget::kCpuP:
+		case kTargetCpuP:
 			return "CPU_P";
-		case HardwareTarget::kCpuE:
+		case kTargetCpuE:
 			return "CPU_E";
-		default:
-			return "UNKNOWN";
+		default: {
+			// Fallback for ids > 1 when no registry is available.
+			static thread_local char buf[32];
+			snprintf(buf, sizeof(buf), "TARGET_%u", (unsigned)t);
+			return buf;
+		}
 	}
 }
 
-/** @brief Parse a HardwareTarget from its string representation.
- *  @param s   Input string ("CPU_P" or "CPU_E").
- *  @param out Receives the parsed value on success.
- *  @return True if parsing succeeded.
- */
+/** @brief Legacy parse using the default 2-target convention.
+ *
+ *  Prefer ParseTarget(s, registry, out) in new code. */
 inline bool ParseHardwareTarget(const std::string &s, HardwareTarget *out) {
 	if (s == "CPU_P") {
-		*out = HardwareTarget::kCpuP;
+		*out = kTargetCpuP;
 		return true;
 	}
 	if (s == "CPU_E") {
-		*out = HardwareTarget::kCpuE;
+		*out = kTargetCpuE;
 		return true;
 	}
 	return false;
@@ -139,8 +279,7 @@ struct DispatchNode {
 	int ordinal = 0; /**< Ordinal index within the dispatch sequence. */
 	int total = 0; /**< Total dispatches in the owning job. */
 
-	HardwareTarget hardware_target =
-		HardwareTarget::kCpuP; /**< Execution target. */
+	TargetId hardware_target = kTargetCpuP; /**< Execution target ID. */
 	double start_time_ms = 0.0; /**< Planned start time (ms). */
 	double planned_duration_ms = 0.0; /**< Planned duration (ms). */
 

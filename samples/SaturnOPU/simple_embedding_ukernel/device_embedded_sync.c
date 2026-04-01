@@ -29,15 +29,33 @@ iree_status_t create_sample_device(
 		identifier, host_allocator, host_allocator, &device_allocator);
 
 	if (iree_status_is_ok(status)) {
-		status =
-			iree_hal_sync_device_create(identifier, &params, /*loader_count=*/1,
-				&loader, device_allocator, host_allocator, out_device);
+		status = iree_hal_sync_device_create(identifier, &params,
+			/*create_params=*/NULL, /*loader_count=*/1, &loader,
+			device_allocator, host_allocator, out_device);
 	}
 
 	iree_hal_allocator_release(device_allocator);
 	iree_hal_executable_loader_release(loader);
 	return status;
 }
+
+// Bare-metal stubs for symbols pulled in transitively by the async/threading
+// libraries. These are never called on bare-metal (IREE_ENABLE_THREADING=OFF)
+// but the linker needs them resolved.
+#if defined(IREE_PLATFORM_GENERIC)
+typedef struct iree_thread_t iree_thread_t;
+iree_status_t iree_thread_create(void *params, void *entry, void *entry_arg,
+	iree_allocator_t allocator, iree_thread_t **out_thread) {
+	return iree_make_status(IREE_STATUS_UNIMPLEMENTED);
+}
+void iree_thread_release(iree_thread_t *thread) {
+	(void)thread;
+}
+iree_status_t iree_async_proactor_create_posix(
+	void *options, iree_allocator_t allocator, void **out) {
+	return iree_make_status(IREE_STATUS_UNIMPLEMENTED);
+}
+#endif // IREE_PLATFORM_GENERIC
 
 // Helper to Load the Single Module for this Binary
 const iree_const_byte_span_t load_bytecode_module_data() {

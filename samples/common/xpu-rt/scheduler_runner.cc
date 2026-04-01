@@ -1,8 +1,8 @@
 // samples/common/xpu-rt/scheduler_runner.cc
 //
-// Generic two-cluster dispatch scheduler (CPU_P + CPU_E).
+// Generic N-target dispatch scheduler.
 //
-// - Two long-lived worker threads, one per hardware target.
+// - N long-lived worker threads, one per hardware target.
 // - Each worker is pinned to its CPU set via pthread_setaffinity_np.
 // - Pinned local-task devices with dedicated task executors (one per core set).
 // - One cached runtime session per (target, vmfb_path).
@@ -78,50 +78,37 @@ static bool SplitCpuIds(const char *text, std::vector<int> *out_ids) {
 	return !out_ids->empty();
 }
 
-static bool ValidateCorePartition(const scheduler_runner_config_t *cfg) {
-	const int visible_cores = cfg->visible_cores > 0 ? cfg->visible_cores : 64;
-
-	std::vector<int> p_ids;
-	std::vector<int> e_ids;
-	if (!cfg->cpu_p_cpu_ids || !cfg->cpu_p_cpu_ids[0]) {
-		fprintf(stderr, "cpu_p_cpu_ids is required\n");
-		return false;
-	}
-	if (!cfg->cpu_e_cpu_ids || !cfg->cpu_e_cpu_ids[0]) {
-		fprintf(stderr, "cpu_e_cpu_ids is required\n");
-		return false;
-	}
-	if (!SplitCpuIds(cfg->cpu_p_cpu_ids, &p_ids)) {
-		fprintf(stderr, "Invalid --cpu_p_cpu_ids\n");
-		return false;
-	}
-	if (!SplitCpuIds(cfg->cpu_e_cpu_ids, &e_ids)) {
-		fprintf(stderr, "Invalid --cpu_e_cpu_ids\n");
-		return false;
-	}
-
+static bool ValidateCorePartition(
+	const TargetRegistry &reg, int visible_cores) {
+	const int vc = visible_cores > 0 ? visible_cores : 64;
 	std::unordered_set<int> seen;
-	for (int v : p_ids) {
-		if (v < 0 || v >= visible_cores) {
-			fprintf(stderr, "CPU_P core %d out of range [0,%d)\n", v,
-				visible_cores);
+
+	for (int t = 0; t < reg.Size(); ++t) {
+		const char *cpu_ids = reg.CpuIds(static_cast<TargetId>(t));
+		if (!cpu_ids || !cpu_ids[0]) {
+			fprintf(stderr, "Target %s: cpu_ids is required\n",
+				reg.Name(static_cast<TargetId>(t)));
 			return false;
 		}
-		if (!seen.insert(v).second) {
-			fprintf(stderr, "Duplicate logical core %d in CPU_P set\n", v);
+		std::vector<int> ids;
+		if (!SplitCpuIds(cpu_ids, &ids)) {
+			fprintf(stderr, "Target %s: invalid cpu_ids '%s'\n",
+				reg.Name(static_cast<TargetId>(t)), cpu_ids);
 			return false;
 		}
-	}
-	for (int v : e_ids) {
-		if (v < 0 || v >= visible_cores) {
-			fprintf(stderr, "CPU_E core %d out of range [0,%d)\n", v,
-				visible_cores);
-			return false;
-		}
-		if (!seen.insert(v).second) {
-			fprintf(
-				stderr, "CPU_E core %d overlaps CPU_P or is duplicated\n", v);
-			return false;
+		for (int v : ids) {
+			if (v < 0 || v >= vc) {
+				fprintf(stderr, "Target %s: core %d out of range [0,%d)\n",
+					reg.Name(static_cast<TargetId>(t)), v, vc);
+				return false;
+			}
+			if (!seen.insert(v).second) {
+				fprintf(stderr,
+					"Target %s: core %d overlaps another target or is "
+					"duplicated\n",
+					reg.Name(static_cast<TargetId>(t)), v);
+				return false;
+			}
 		}
 	}
 	return true;
@@ -173,22 +160,32 @@ struct SchedulerShared {
 	std::vector<int> remaining_preds;
 	std::vector<NodeExecState> exec;
 
-	std::vector<int> ready_p;
-	std::vector<int> ready_e;
-
-	std::vector<int> future_p;
-	std::vector<int> future_e;
+	// Per-target ready and future queues indexed by TargetId.
+	std::vector<std::vector<int>> ready_queues;
+	std::vector<std::vector<int>> future_queues;
 
 	size_t completed = 0;
 	size_t total_nodes = 0;
+
+	void InitQueues(int num_targets) {
+		ready_queues.assign(num_targets, {});
+		future_queues.assign(num_targets, {});
+	}
+
+	void ClearQueues() {
+		for (auto &q : ready_queues)
+			q.clear();
+		for (auto &q : future_queues)
+			q.clear();
+	}
 };
 
-static std::vector<int> &ReadyQueueFor(SchedulerShared *s, HardwareTarget t) {
-	return (t == HardwareTarget::kCpuP) ? s->ready_p : s->ready_e;
+static std::vector<int> &ReadyQueueFor(SchedulerShared *s, TargetId target) {
+	return s->ready_queues[target];
 }
 
-static std::vector<int> &FutureQueueFor(SchedulerShared *s, HardwareTarget t) {
-	return (t == HardwareTarget::kCpuP) ? s->future_p : s->future_e;
+static std::vector<int> &FutureQueueFor(SchedulerShared *s, TargetId target) {
+	return s->future_queues[target];
 }
 
 static void InsertFutureSorted(std::vector<int> *q,
@@ -213,8 +210,7 @@ static void InsertFutureSorted(std::vector<int> *q,
 }
 
 static void PromoteReleasedNodesLocked(SchedulerShared *sched,
-	const std::vector<DispatchNode> &nodes, HardwareTarget target,
-	uint64_t now_us) {
+	const std::vector<DispatchNode> &nodes, TargetId target, uint64_t now_us) {
 	std::vector<int> &future = FutureQueueFor(sched, target);
 	std::vector<int> &ready = ReadyQueueFor(sched, target);
 
@@ -228,8 +224,7 @@ static void PromoteReleasedNodesLocked(SchedulerShared *sched,
 	}
 }
 
-static uint64_t NextReleaseUsLocked(
-	SchedulerShared *sched, HardwareTarget target) {
+static uint64_t NextReleaseUsLocked(SchedulerShared *sched, TargetId target) {
 	const std::vector<int> &future = FutureQueueFor(sched, target);
 	if (future.empty())
 		return UINT64_MAX;
@@ -266,10 +261,7 @@ static int PickBestReadyIndex(
 
 static void SeedReadyNodes(
 	const std::vector<DispatchNode> &nodes, SchedulerShared *sched) {
-	sched->ready_p.clear();
-	sched->ready_e.clear();
-	sched->future_p.clear();
-	sched->future_e.clear();
+	sched->ClearQueues();
 	sched->completed = 0;
 
 	for (size_t i = 0; i < nodes.size(); ++i) {
@@ -286,11 +278,12 @@ static void SeedReadyNodes(
 		}
 		xs.ready_us = xs.release_us;
 
+		TargetId tid = nodes[i].hardware_target;
 		if (xs.release_us == 0) {
-			ReadyQueueFor(sched, nodes[i].hardware_target).push_back((int)i);
+			ReadyQueueFor(sched, tid).push_back((int)i);
 		} else {
-			InsertFutureSorted(&FutureQueueFor(sched, nodes[i].hardware_target),
-				nodes, sched->exec, (int)i);
+			InsertFutureSorted(
+				&FutureQueueFor(sched, tid), nodes, sched->exec, (int)i);
 		}
 	}
 }
@@ -299,7 +292,8 @@ static void SeedReadyNodes(
 // Worker thread
 //------------------------------------------------------------------------------
 
-static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
+static void WorkerMain(TargetId target_id, const char *cpu_ids_csv,
+	const char *target_name, iree_hal_device_t *device,
 	std::vector<DispatchNode> *nodes,
 	const std::vector<std::vector<int>> *dependents,
 	const std::vector<CachedModule *> *node_modules, int dispatch_iters,
@@ -324,9 +318,9 @@ static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
 				}
 
 				const uint64_t now_us = UsSince(sched->iter_t0, Clock::now());
-				PromoteReleasedNodesLocked(sched, *nodes, target, now_us);
+				PromoteReleasedNodesLocked(sched, *nodes, target_id, now_us);
 
-				std::vector<int> &ready = ReadyQueueFor(sched, target);
+				std::vector<int> &ready = ReadyQueueFor(sched, target_id);
 				if (!ready.empty()) {
 					const int best_i = PickBestReadyIndex(ready, *nodes);
 					node_idx = ready[(size_t)best_i];
@@ -342,7 +336,7 @@ static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
 				}
 
 				const uint64_t next_release_us =
-					NextReleaseUsLocked(sched, target);
+					NextReleaseUsLocked(sched, target_id);
 				if (next_release_us == UINT64_MAX) {
 					sched->cv.wait(lock);
 				} else {
@@ -367,14 +361,27 @@ static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
 			}
 		}
 
-		iree_status_t st = CallModuleUnlocked((*node_modules)[(size_t)node_idx],
-			(int32_t)dispatch_iters, host_alloc);
+		CachedModule *cm = (*node_modules)[(size_t)node_idx];
+		iree_status_t st;
+		if (cm->is_async) {
+			// Async dispatch: submit with fences, then wait for completion.
+			iree_hal_fence_t *signal_fence = nullptr;
+			st = CallModuleAsync(cm, (int32_t)dispatch_iters, device,
+				/*wait_fence=*/nullptr, host_alloc, &signal_fence);
+			if (iree_status_is_ok(st) && signal_fence) {
+				st = iree_hal_fence_wait(signal_fence, iree_infinite_timeout(),
+					IREE_ASYNC_WAIT_FLAG_NONE);
+				iree_hal_fence_release(signal_fence);
+			}
+		} else {
+			// Sync dispatch: blocks until complete.
+			st = CallModuleUnlocked(cm, (int32_t)dispatch_iters, host_alloc);
+		}
 
 		const uint64_t end_us = UsSince(iter_t0, Clock::now());
 
 		if (!iree_status_is_ok(st)) {
-			SetFatalOnce(
-				fatal, st, "[dispatch] sync benchmark module call failed");
+			SetFatalOnce(fatal, st, "[dispatch] module call failed");
 			sched->cv.notify_all();
 			return;
 		}
@@ -407,14 +414,12 @@ static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
 					cs.release_us = end_us;
 					cs.ready_us = cs.release_us;
 
+					TargetId child_tid =
+						(*nodes)[(size_t)child].hardware_target;
 					if (cs.release_us <= UsSince(iter_t0, Clock::now())) {
-						ReadyQueueFor(
-							sched, (*nodes)[(size_t)child].hardware_target)
-							.push_back(child);
+						ReadyQueueFor(sched, child_tid).push_back(child);
 					} else {
-						InsertFutureSorted(
-							&FutureQueueFor(
-								sched, (*nodes)[(size_t)child].hardware_target),
+						InsertFutureSorted(&FutureQueueFor(sched, child_tid),
 							*nodes, sched->exec, child);
 					}
 				}
@@ -427,10 +432,36 @@ static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
 		}
 
 		trace->WriteRow(graph_iter, (*nodes)[(size_t)node_idx],
-			planned_start_us, ready_us, start_us, end_us);
+			planned_start_us, ready_us, start_us, end_us, target_name);
 
 		sched->cv.notify_all();
 	}
+}
+
+//------------------------------------------------------------------------------
+// Build the TargetRegistry from config
+//------------------------------------------------------------------------------
+
+static TargetRegistry BuildRegistryFromConfig(
+	const scheduler_runner_config_t *cfg) {
+	TargetRegistry reg;
+
+	if (cfg->num_targets > 0 && cfg->target_names && cfg->target_cpu_ids &&
+		cfg->target_variant_dirs) {
+		for (int i = 0; i < cfg->num_targets; ++i) {
+			reg.Register(cfg->target_names[i] ? cfg->target_names[i] : "",
+				cfg->target_cpu_ids[i] ? cfg->target_cpu_ids[i] : "",
+				cfg->target_variant_dirs[i] ? cfg->target_variant_dirs[i] : "");
+		}
+	} else if (cfg->cpu_p_cpu_ids && cfg->cpu_p_cpu_ids[0]) {
+		// Legacy 2-target mode.
+		reg.Register("CPU_P", cfg->cpu_p_cpu_ids ? cfg->cpu_p_cpu_ids : "",
+			cfg->variant_p_dir ? cfg->variant_p_dir : "");
+		reg.Register("CPU_E", cfg->cpu_e_cpu_ids ? cfg->cpu_e_cpu_ids : "",
+			cfg->variant_e_dir ? cfg->variant_e_dir : "");
+	}
+
+	return reg;
 }
 
 //------------------------------------------------------------------------------
@@ -438,8 +469,8 @@ static void WorkerMain(HardwareTarget target, const char *cpu_ids_csv,
 //------------------------------------------------------------------------------
 
 static bool WriteSummaryJson(const char *path,
-	const scheduler_runner_config_t *cfg, const GraphModel &model,
-	const std::vector<int> &topo_order) {
+	const scheduler_runner_config_t *cfg, const TargetRegistry &reg,
+	const GraphModel &model, const std::vector<int> &topo_order) {
 	if (!path || !path[0])
 		return true;
 	FILE *f = fopen(path, "wb");
@@ -462,12 +493,20 @@ static bool WriteSummaryJson(const char *path,
 	fprintf(f, "    \"vmfb_root_dir\": ");
 	JsonWriteEscaped(f, cfg->vmfb_root_dir ? cfg->vmfb_root_dir : "");
 	fprintf(f, ",\n");
-	fprintf(f, "    \"cpu_p_cpu_ids\": ");
-	JsonWriteEscaped(f, cfg->cpu_p_cpu_ids ? cfg->cpu_p_cpu_ids : "");
-	fprintf(f, ",\n");
-	fprintf(f, "    \"cpu_e_cpu_ids\": ");
-	JsonWriteEscaped(f, cfg->cpu_e_cpu_ids ? cfg->cpu_e_cpu_ids : "");
-	fprintf(f, ",\n");
+
+	fprintf(f, "    \"targets\": [\n");
+	for (int t = 0; t < reg.Size(); ++t) {
+		TargetId tid = static_cast<TargetId>(t);
+		fprintf(f, "      {\"name\": ");
+		JsonWriteEscaped(f, reg.Name(tid));
+		fprintf(f, ", \"cpu_ids\": ");
+		JsonWriteEscaped(f, reg.CpuIds(tid));
+		fprintf(f, ", \"variant_dir\": ");
+		JsonWriteEscaped(f, reg.VariantDir(tid));
+		fprintf(f, "}%s\n", (t + 1 < reg.Size()) ? "," : "");
+	}
+	fprintf(f, "    ],\n");
+
 	fprintf(f, "    \"visible_cores\": %d,\n", cfg->visible_cores);
 	fprintf(f, "    \"schedule_makespan_ms\": %.6f\n", model.makespan_ms);
 	fprintf(f, "  },\n");
@@ -499,6 +538,7 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 		? cfg->driver_name
 		: "local-task";
 	const int graph_iters = (cfg->graph_iters > 0) ? cfg->graph_iters : 1;
+	const int warmup_iters = (cfg->warmup_iters > 0) ? cfg->warmup_iters : 0;
 	const int dispatch_iters =
 		(cfg->dispatch_iters > 0) ? cfg->dispatch_iters : 1;
 	const int report_every = (cfg->report_every >= 0) ? cfg->report_every : 0;
@@ -508,34 +548,44 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 			driver);
 		return 1;
 	}
-	if (!ValidateCorePartition(cfg))
+
+	// Build target registry from config.
+	TargetRegistry reg = BuildRegistryFromConfig(cfg);
+	if (reg.Size() == 0) {
+		fprintf(stderr,
+			"No targets configured. Use --target=NAME:CPU_IDS:VARIANT or "
+			"legacy --cpu_p_cpu_ids/--cpu_e_cpu_ids flags.\n");
 		return 1;
+	}
+
+	if (!ValidateCorePartition(reg, cfg->visible_cores))
+		return 1;
+
+	const int num_targets = reg.Size();
 
 	fprintf(stdout,
 		"Dispatch scheduler (sync benchmark VMFBs):\n"
 		"  json          = %s\n"
 		"  driver        = %s\n"
 		"  graph_iters   = %d\n"
+		"  warmup_iters  = %d\n"
 		"  dispatch_iters= %d\n"
 		"  report_every  = %d\n"
 		"  vmfb_root_dir = %s\n"
-		"  CPU_P cores   = %s\n"
-		"  CPU_E cores   = %s\n"
-		"  visible_cores = %d\n"
-		"  out_json      = %s\n"
-		"  out_dot       = %s\n"
-		"  trace_csv     = %s\n",
-		cfg->graph_json_path, driver, graph_iters, dispatch_iters, report_every,
-		cfg->vmfb_root_dir ? cfg->vmfb_root_dir : "",
-		cfg->cpu_p_cpu_ids ? cfg->cpu_p_cpu_ids : "",
-		cfg->cpu_e_cpu_ids ? cfg->cpu_e_cpu_ids : "", cfg->visible_cores,
-		cfg->out_json_path ? cfg->out_json_path : "",
-		cfg->out_dot_path ? cfg->out_dot_path : "",
-		cfg->trace_csv_path ? cfg->trace_csv_path : "");
+		"  num_targets   = %d\n",
+		cfg->graph_json_path, driver, graph_iters, warmup_iters, dispatch_iters,
+		report_every, cfg->vmfb_root_dir ? cfg->vmfb_root_dir : "",
+		num_targets);
+	for (int t = 0; t < num_targets; ++t) {
+		TargetId tid = static_cast<TargetId>(t);
+		fprintf(stdout, "  target[%d]     = %s cores={%s} variant=%s\n", t,
+			reg.Name(tid), reg.CpuIds(tid), reg.VariantDir(tid));
+	}
 	fflush(stdout);
 
+	// Parse schedule JSON with registry-aware target lookup.
 	GraphModel model;
-	if (!ParseDispatchScheduleJson(cfg->graph_json_path, &model)) {
+	if (!ParseDispatchScheduleJson(cfg->graph_json_path, &model, &reg)) {
 		fprintf(stderr, "Failed to parse schedule JSON: %s\n",
 			cfg->graph_json_path);
 		return 1;
@@ -554,11 +604,12 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 		model.makespan_ms = max_end_ms;
 	}
 
+	// Resolve VMFB paths using registry-based variant lookup.
 	const std::string json_dir = PathDirname(cfg->graph_json_path);
 	for (auto &n : model.nodes) {
-		n.vmfb_path_resolved =
-			ResolveVmfbPath(cfg->vmfb_root_dir, cfg->target_platform, json_dir,
-				n, cfg->variant_p_dir, cfg->variant_e_dir, cfg->elf_marker);
+		const char *variant_dir = reg.VariantDir(n.hardware_target);
+		n.vmfb_path_resolved = ResolveVmfbPathWithVariant(cfg->vmfb_root_dir,
+			cfg->target_platform, json_dir, n, variant_dir, cfg->elf_marker);
 		if (n.vmfb_path_resolved.empty()) {
 			fprintf(
 				stderr, "Unable to resolve VMFB for node %s\n", n.key.c_str());
@@ -585,16 +636,14 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 	for (size_t i = 0; i < topo_order.size(); ++i) {
 		const auto &n = model.nodes[static_cast<size_t>(topo_order[i])];
 		fprintf(stdout, "  %zu) %s target=%s start=%.3fms dur=%.3fms\n", i + 1,
-			n.key.c_str(), HardwareTargetName(n.hardware_target),
-			n.start_time_ms, n.planned_duration_ms);
+			n.key.c_str(), reg.Name(n.hardware_target), n.start_time_ms,
+			n.planned_duration_ms);
 	}
 	fflush(stdout);
 
 	SharedState shared;
 	iree_allocator_t host_alloc = iree_allocator_system();
 	iree_runtime_instance_t *instance = nullptr;
-	iree_hal_device_t *device_p = nullptr;
-	iree_hal_device_t *device_e = nullptr;
 
 	TraceWriter trace;
 	if (cfg->trace_csv_path && cfg->trace_csv_path[0]) {
@@ -620,45 +669,42 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 		}
 	}
 
-	{
+	// Create one pinned device per target.  Each target gets its own driver
+	// with a dedicated executor pinned to its core set.  This provides true
+	// core isolation — the key finding from dev blog §16-17.
+	std::vector<iree_hal_device_t *> devices(num_targets, nullptr);
+	for (int t = 0; t < num_targets; ++t) {
+		TargetId tid = static_cast<TargetId>(t);
 		iree_status_t st = CreatePinnedLocalTaskDevice(
-			host_alloc, cfg->cpu_p_cpu_ids, &device_p);
+			host_alloc, reg.CpuIds(tid), &devices[t]);
 		if (!iree_status_is_ok(st)) {
-			fprintf(stderr, "Failed creating pinned CPU_P device\n");
+			fprintf(stderr, "Failed creating device for target %s\n",
+				reg.Name(tid));
 			iree_status_fprint(stderr, st);
 			iree_status_ignore(st);
+			for (int j = 0; j < t; ++j) {
+				if (devices[j])
+					iree_hal_device_release(devices[j]);
+			}
 			iree_runtime_instance_release(instance);
 			trace.Close();
 			return 1;
 		}
 	}
 
-	{
-		iree_status_t st = CreatePinnedLocalTaskDevice(
-			host_alloc, cfg->cpu_e_cpu_ids, &device_e);
-		if (!iree_status_is_ok(st)) {
-			fprintf(stderr, "Failed creating pinned CPU_E device\n");
-			iree_status_fprint(stderr, st);
-			iree_status_ignore(st);
-			iree_hal_device_release(device_p);
-			iree_runtime_instance_release(instance);
-			trace.Close();
-			return 1;
-		}
+	for (int t = 0; t < num_targets; ++t) {
+		TargetId tid = static_cast<TargetId>(t);
+		fprintf(stdout, "[dispatch] %s local-task topology = {%s}\n",
+			reg.Name(tid), reg.CpuIds(tid));
 	}
-
-	fprintf(stdout,
-		"[dispatch] CPU_P local-task topology = {%s}\n"
-		"[dispatch] CPU_E local-task topology = {%s}\n",
-		cfg->cpu_p_cpu_ids, cfg->cpu_e_cpu_ids);
 	fflush(stdout);
 
 	// Cache one session per (target, vmfb_path).
 	std::unordered_map<std::string, std::unique_ptr<CachedModule>> cache;
 	cache.reserve(model.nodes.size() * 2);
 
-	auto cache_key_for = [](HardwareTarget target, const std::string &path) {
-		return std::string(HardwareTargetName(target)) + "|" + path;
+	auto cache_key_for = [&reg](TargetId target, const std::string &path) {
+		return std::string(reg.Name(target)) + "|" + path;
 	};
 
 	std::vector<CachedModule *> node_modules(model.nodes.size(), nullptr);
@@ -671,9 +717,7 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 		auto it = cache.find(cache_key);
 		if (it == cache.end()) {
 			auto cm = std::make_unique<CachedModule>();
-			iree_hal_device_t *target_device =
-				(node.hardware_target == HardwareTarget::kCpuP) ? device_p
-																: device_e;
+			iree_hal_device_t *target_device = devices[node.hardware_target];
 
 			iree_status_t st = LoadModule(
 				instance, target_device, node.vmfb_path_resolved, cm.get());
@@ -684,15 +728,20 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 				iree_status_ignore(st);
 
 				trace.Close();
-				if (device_e)
-					iree_hal_device_release(device_e);
-				if (device_p)
-					iree_hal_device_release(device_p);
+				for (auto &cache_kv : cache)
+					CachedModuleRelease(cache_kv.second.get());
+				for (int t = 0; t < num_targets; ++t) {
+					if (devices[t])
+						iree_hal_device_release(devices[t]);
+				}
 				if (instance)
 					iree_runtime_instance_release(instance);
 				return 1;
 			}
 
+			fprintf(stdout, "[dispatch] Loaded %-35s -> %s [%s]\n",
+				node.key.c_str(), node.vmfb_path_resolved.c_str(),
+				cm->is_async ? "async" : "sync");
 			node_modules[i] = cm.get();
 			cache.emplace(cache_key, std::move(cm));
 		} else {
@@ -702,6 +751,7 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 
 	SchedulerShared sched;
 	sched.total_nodes = model.nodes.size();
+	sched.InitQueues(num_targets);
 
 	// Pre-warm every unique cached module.
 	fprintf(stdout, "[dispatch] Pre-warming %zu unique cached modules...\n",
@@ -711,11 +761,39 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 	for (auto &kv : cache) {
 		CachedModule *cm = kv.second.get();
 
-		const int32_t warm_iters = (cm->arity == 1 && cm->first_is_i32)
+		const int32_t warm_iters = (cm->arity >= 1 && cm->first_is_i32)
 			? 0
 			: static_cast<int32_t>(dispatch_iters);
 
-		iree_status_t st = CallModuleUnlocked(cm, warm_iters, host_alloc);
+		iree_status_t st;
+		if (cm->is_async) {
+			// For async modules, find the device from the cache key and
+			// do an async warmup with fence wait.
+			// Extract target name from cache key "TARGET_NAME|vmfb_path".
+			const std::string &key = kv.first;
+			size_t sep = key.find('|');
+			std::string tname =
+				(sep != std::string::npos) ? key.substr(0, sep) : "";
+			TargetId tid = reg.Parse(tname);
+			iree_hal_device_t *dev = reg.Valid(tid) ? devices[tid] : nullptr;
+			if (!dev) {
+				fprintf(stderr, "Warmup: no device for async module %s\n",
+					cm->vmfb_path.c_str());
+				st = iree_make_status(
+					IREE_STATUS_INTERNAL, "no device for async warmup");
+			} else {
+				iree_hal_fence_t *signal = nullptr;
+				st = CallModuleAsync(
+					cm, warm_iters, dev, nullptr, host_alloc, &signal);
+				if (iree_status_is_ok(st) && signal) {
+					st = iree_hal_fence_wait(signal, iree_infinite_timeout(),
+						IREE_ASYNC_WAIT_FLAG_NONE);
+					iree_hal_fence_release(signal);
+				}
+			}
+		} else {
+			st = CallModuleUnlocked(cm, warm_iters, host_alloc);
+		}
 		if (!iree_status_is_ok(st)) {
 			fprintf(
 				stderr, "Warmup failed for VMFB: %s\n", cm->vmfb_path.c_str());
@@ -725,27 +803,105 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 			trace.Close();
 			for (auto &cache_kv : cache)
 				CachedModuleRelease(cache_kv.second.get());
-			if (device_e)
-				iree_hal_device_release(device_e);
-			if (device_p)
-				iree_hal_device_release(device_p);
+			for (int t = 0; t < num_targets; ++t) {
+				if (devices[t])
+					iree_hal_device_release(devices[t]);
+			}
 			if (instance)
 				iree_runtime_instance_release(instance);
 			return 1;
 		}
 	}
 
-	fprintf(stdout, "[dispatch] Warmup complete.\n");
+	fprintf(stdout, "[dispatch] Module warmup complete.\n");
 	fflush(stdout);
 
-	std::thread worker_p(WorkerMain, HardwareTarget::kCpuP, cfg->cpu_p_cpu_ids,
-		&model.nodes, &dependents, &node_modules, dispatch_iters, host_alloc,
-		&shared, &sched, &trace);
+	// Launch one worker thread per target.
+	// Workers run continuously, driven by the main thread's iteration loop.
+	// Trace writer is toggled on/off to separate warmup from real capture.
+	TraceWriter warmup_sink; // Dummy sink — discards rows during warmup.
 
-	std::thread worker_e(WorkerMain, HardwareTarget::kCpuE, cfg->cpu_e_cpu_ids,
-		&model.nodes, &dependents, &node_modules, dispatch_iters, host_alloc,
-		&shared, &sched, &trace);
+	std::vector<std::thread> workers;
+	workers.reserve(num_targets);
+	for (int t = 0; t < num_targets; ++t) {
+		TargetId tid = static_cast<TargetId>(t);
+		workers.emplace_back(WorkerMain, tid, reg.CpuIds(tid), reg.Name(tid),
+			devices[t], &model.nodes, &dependents, &node_modules,
+			dispatch_iters, host_alloc, &shared, &sched,
+			warmup_iters > 0 ? &warmup_sink : &trace);
+	}
 
+	// --- Warmup iterations (untraced) ---
+	for (int gi = 0; gi < warmup_iters && !HasFatal(&shared); ++gi) {
+		{
+			std::lock_guard<std::mutex> lock(sched.mu);
+			sched.current_graph_iter = gi;
+			sched.iter_t0 = Clock::now();
+			sched.active = true;
+			sched.completed = 0;
+
+			sched.remaining_preds.assign(model.nodes.size(), 0);
+			sched.exec.assign(model.nodes.size(), NodeExecState{});
+
+			for (size_t i = 0; i < model.nodes.size(); ++i) {
+				sched.remaining_preds[i] =
+					static_cast<int>(model.nodes[i].all_predecessors.size());
+				sched.exec[i].planned_start_us =
+					MsToUs(model.nodes[i].start_time_ms);
+			}
+
+			SeedReadyNodes(model.nodes, &sched);
+		}
+		sched.cv.notify_all();
+
+		{
+			std::unique_lock<std::mutex> lock(sched.mu);
+			sched.cv.wait(lock, [&]() {
+				return HasFatal(&shared) ||
+					sched.completed == sched.total_nodes;
+			});
+			sched.active = false;
+			sched.ClearQueues();
+		}
+		sched.cv.notify_all();
+	}
+
+	if (warmup_iters > 0 && !HasFatal(&shared)) {
+		fprintf(stdout, "[dispatch] %d warmup graph iterations complete.\n",
+			warmup_iters);
+		fflush(stdout);
+
+		// Reset per-node stats so only traced iterations contribute.
+		for (auto &n : model.nodes)
+			n.run_stats = RunningStats{};
+
+		// Swap workers to the real trace writer.  We do this by shutting
+		// down the warmup workers and relaunching with the trace writer.
+		{
+			std::lock_guard<std::mutex> lock(sched.mu);
+			sched.shutdown = true;
+			sched.active = false;
+			sched.ClearQueues();
+		}
+		sched.cv.notify_all();
+		for (auto &w : workers)
+			w.join();
+		workers.clear();
+
+		// Reset scheduler state for the real run.
+		sched.shutdown = false;
+		sched.InitQueues(num_targets);
+
+		for (int t = 0; t < num_targets; ++t) {
+			TargetId tid = static_cast<TargetId>(t);
+			workers.emplace_back(WorkerMain, tid, reg.CpuIds(tid),
+				reg.Name(tid), devices[t], &model.nodes, &dependents,
+				&node_modules, dispatch_iters, host_alloc, &shared, &sched,
+				&trace);
+		}
+	}
+
+	// --- Traced iterations ---
 	const auto run_t0 = Clock::now();
 
 	for (int gi = 0; gi < graph_iters && !HasFatal(&shared); ++gi) {
@@ -777,8 +933,7 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 					sched.completed == sched.total_nodes;
 			});
 			sched.active = false;
-			sched.ready_p.clear();
-			sched.ready_e.clear();
+			sched.ClearQueues();
 		}
 		sched.cv.notify_all();
 
@@ -790,7 +945,7 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 				fprintf(stdout,
 					"  %s target=%s plan=%.3fms run_avg=%.3fms p90=%.3fms "
 					"max=%.3fms\n",
-					n.key.c_str(), HardwareTargetName(n.hardware_target),
+					n.key.c_str(), reg.Name(n.hardware_target),
 					n.planned_duration_ms, n.run_stats.AvgMs(),
 					n.run_stats.P90Ms(), n.run_stats.MaxMs());
 			}
@@ -802,13 +957,12 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 		std::lock_guard<std::mutex> lock(sched.mu);
 		sched.shutdown = true;
 		sched.active = false;
-		sched.ready_p.clear();
-		sched.ready_e.clear();
+		sched.ClearQueues();
 	}
 	sched.cv.notify_all();
 
-	worker_p.join();
-	worker_e.join();
+	for (auto &w : workers)
+		w.join();
 
 	const auto run_t1 = Clock::now();
 	const double total_s =
@@ -830,7 +984,7 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 				"  %s target=%s plan=%.3fms run_avg=%.3fms p50=%.3fms "
 				"p90=%.3fms "
 				"p99=%.3fms min=%.3fms max=%.3fms\n",
-				n.key.c_str(), HardwareTargetName(n.hardware_target),
+				n.key.c_str(), reg.Name(n.hardware_target),
 				n.planned_duration_ms, n.run_stats.AvgMs(), n.run_stats.P50Ms(),
 				n.run_stats.P90Ms(), n.run_stats.P99Ms(), n.run_stats.MinMs(),
 				n.run_stats.MaxMs());
@@ -841,7 +995,7 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 
 	bool ok_write = true;
 	ok_write = ok_write &&
-		WriteSummaryJson(cfg->out_json_path, cfg, model, topo_order);
+		WriteSummaryJson(cfg->out_json_path, cfg, reg, model, topo_order);
 	ok_write = ok_write && WriteDotGraph(cfg->out_dot_path, model);
 	if (!ok_write) {
 		fprintf(stderr, "Warning: failed writing one or more outputs\n");
@@ -851,10 +1005,10 @@ extern "C" int scheduler_runner_run(const scheduler_runner_config_t *cfg) {
 
 	for (auto &kv : cache)
 		CachedModuleRelease(kv.second.get());
-	if (device_e)
-		iree_hal_device_release(device_e);
-	if (device_p)
-		iree_hal_device_release(device_p);
+	for (int t = 0; t < num_targets; ++t) {
+		if (devices[t])
+			iree_hal_device_release(devices[t]);
+	}
 	if (instance)
 		iree_runtime_instance_release(instance);
 

@@ -33,8 +33,10 @@ endif()
 add_library(xpurt_objs OBJECT baseline_runner.cc scheduler_runner.cc)
 target_compile_features(xpurt_objs PRIVATE cxx_std_17)
 target_include_directories(xpurt_objs PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
-target_link_libraries(xpurt_objs PUBLIC merlin_dispatch Threads::Threads)
+target_link_libraries(
+  xpurt_objs PUBLIC merlin_dispatch iree_tooling_function_util Threads::Threads)
 
 add_library(xpurt STATIC $<TARGET_OBJECTS:xpurt_objs>)
 target_include_directories(xpurt PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
-target_link_libraries(xpurt PUBLIC merlin_dispatch Threads::Threads)
+target_link_libraries(xpurt PUBLIC merlin_dispatch iree_tooling_function_util
+                                   Threads::Threads)

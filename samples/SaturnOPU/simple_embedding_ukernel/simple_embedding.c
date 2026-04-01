@@ -55,8 +55,8 @@ iree_status_t Run() {
 
 	iree_vm_module_t *hal_module = NULL;
 	IREE_RETURN_IF_ERROR(iree_hal_module_create(instance,
-		iree_hal_module_device_policy_default(), 1, &device,
-		IREE_HAL_MODULE_FLAG_SYNCHRONOUS,
+		iree_hal_module_device_policy_default(),
+		/*device_group=*/NULL, IREE_HAL_MODULE_FLAG_SYNCHRONOUS,
 		iree_hal_module_debug_sink_stdio(stderr), iree_allocator_system(),
 		&hal_module));
 

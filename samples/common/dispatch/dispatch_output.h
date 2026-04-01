@@ -79,12 +79,19 @@ struct TraceWriter {
 	 *  @param ready_us        Time the node became ready (us).
 	 *  @param start_us        Actual execution start time (us).
 	 *  @param end_us          Actual execution end time (us).
+	 *  @param target_name     Human-readable target name (overrides legacy
+	 *                         lookup). Pass nullptr to use
+	 * HardwareTargetName().
 	 */
 	void WriteRow(int graph_iter, const DispatchNode &node,
 		uint64_t planned_start_us, uint64_t ready_us, uint64_t start_us,
-		uint64_t end_us) {
+		uint64_t end_us, const char *target_name = nullptr) {
 		if (!f)
 			return;
+
+		const char *tname = target_name
+			? target_name
+			: HardwareTargetName(node.hardware_target);
 
 		const uint64_t eligible_us = ready_us;
 		const uint64_t submit_us = start_us;
@@ -110,8 +117,7 @@ struct TraceWriter {
 			"%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ","
 			"%" PRIu64 ",%" PRIu64 "\n",
 			graph_iter, node.key.c_str(), node.id, node.ordinal, node.total,
-			node.job_name.c_str(), node.module_name.c_str(),
-			HardwareTargetName(node.hardware_target),
+			node.job_name.c_str(), node.module_name.c_str(), tname,
 			node.vmfb_path_resolved.c_str(), planned_start_us, eligible_us,
 			submit_us, complete_us, residency_us, dep_slip_us,
 			MsToUs(node.planned_duration_ms), ready_us, start_us, end_us,

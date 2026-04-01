@@ -20,8 +20,18 @@
 
 namespace merlin_bench {
 
-/** @brief Map a HardwareTarget to an ISA variant directory name.
- *  @param target    Hardware target enum.
+/** @brief Map a TargetId to an ISA variant directory name via a registry.
+ *  @param target  Target identifier.
+ *  @param reg     Target registry.
+ *  @return The variant directory string for the given target.
+ */
+inline const char *VariantDirForTarget(
+	TargetId target, const TargetRegistry &reg) {
+	return reg.VariantDir(target);
+}
+
+/** @brief Legacy: Map a HardwareTarget to an ISA variant directory name.
+ *  @param target    Hardware target (kTargetCpuP or kTargetCpuE).
  *  @param variant_p Variant directory for CPU_P (e.g. "RVV"). NULL = empty.
  *  @param variant_e Variant directory for CPU_E (e.g. "scalar"). NULL = empty.
  *  @return The variant directory string for the given target.
@@ -29,9 +39,9 @@ namespace merlin_bench {
 inline const char *VariantDirFromHardwareTarget(
 	HardwareTarget target, const char *variant_p, const char *variant_e) {
 	switch (target) {
-		case HardwareTarget::kCpuP:
+		case kTargetCpuP:
 			return variant_p ? variant_p : "";
-		case HardwareTarget::kCpuE:
+		case kTargetCpuE:
 			return variant_e ? variant_e : "";
 		default:
 			return "";
@@ -132,20 +142,21 @@ inline std::string BenchmarkStemFromModuleName(
  *         <root>/gen/vmfb/<family>/<platform>/<variant>/<model>/benchmarks/vmfb/
  *    3. Fallback directories (root, json_dir).
  *
+ *  This overload uses a single variant_dir string (already resolved by the
+ *  caller, e.g. from a TargetRegistry). Prefer this in new N-target code.
+ *
  *  @param vmfb_root_dir   Root directory for VMFB resolution (nullable).
  *  @param target_platform Platform subdirectory (e.g. "spacemit_x60").
  *  @param json_dir        Directory containing the schedule JSON.
  *  @param node            Dispatch node whose VMFB path is being resolved.
- *  @param variant_p       ISA variant dir for CPU_P (e.g. "RVV", nullable).
- *  @param variant_e       ISA variant dir for CPU_E (e.g. "scalar", nullable).
- *  @param elf_marker      ELF marker for stem matching (e.g.
- *                         "_embedded_elf_riscv_64", nullable).
+ *  @param variant_dir     ISA variant dir for this node's target (e.g. "RVV").
+ *  @param elf_marker      ELF marker for stem matching (nullable).
  *  @return Resolved absolute path, or best-effort candidate if not found.
  */
-inline std::string ResolveVmfbPath(const char *vmfb_root_dir,
+inline std::string ResolveVmfbPathWithVariant(const char *vmfb_root_dir,
 	const char *target_platform, const std::string &json_dir,
-	const DispatchNode &node, const char *variant_p = nullptr,
-	const char *variant_e = nullptr, const char *elf_marker = nullptr) {
+	const DispatchNode &node, const char *variant_dir,
+	const char *elf_marker = nullptr) {
 
 	// 1. Exact vmfb_path from JSON wins.
 	if (!node.vmfb_path_json.empty()) {
@@ -168,8 +179,8 @@ inline std::string ResolveVmfbPath(const char *vmfb_root_dir,
 
 	const std::string model_family =
 		NormalizeModelFamilyFromModuleName(node.module_name, node.job_name);
-	const std::string variant_dir = VariantDirFromHardwareTarget(
-		node.hardware_target, variant_p, variant_e);
+	const std::string vdir =
+		(variant_dir && variant_dir[0]) ? std::string(variant_dir) : "";
 	const std::string model_dir = model_family + ".q.int8";
 
 	std::vector<std::string> candidate_names;
@@ -201,7 +212,7 @@ inline std::string ResolveVmfbPath(const char *vmfb_root_dir,
 				PathJoin2(PathJoin2(PathJoin2(PathJoin2(root, "gen"), "vmfb"),
 							  model_family),
 					platform),
-				variant_dir),
+				vdir),
 			model_dir),
 		"benchmarks/vmfb"));
 
@@ -212,7 +223,7 @@ inline std::string ResolveVmfbPath(const char *vmfb_root_dir,
 				PathJoin2(PathJoin2(PathJoin2(PathJoin2(root, "gen"), "vmfb"),
 							  model_family),
 					platform),
-				variant_dir),
+				vdir),
 			model_dir),
 		"benchmarks"));
 
@@ -231,6 +242,30 @@ inline std::string ResolveVmfbPath(const char *vmfb_root_dir,
 		return PathJoin2(candidate_dirs.front(), candidate_names.front());
 	}
 	return std::string();
+}
+
+/** @brief Resolve the absolute VMFB path for a dispatch node (legacy API).
+ *
+ *  This overload takes separate variant_p / variant_e strings and selects
+ *  based on the node's hardware_target. Kept for backward compatibility.
+ *
+ *  @param vmfb_root_dir   Root directory for VMFB resolution (nullable).
+ *  @param target_platform Platform subdirectory (e.g. "spacemit_x60").
+ *  @param json_dir        Directory containing the schedule JSON.
+ *  @param node            Dispatch node whose VMFB path is being resolved.
+ *  @param variant_p       ISA variant dir for CPU_P (e.g. "RVV", nullable).
+ *  @param variant_e       ISA variant dir for CPU_E (e.g. "scalar", nullable).
+ *  @param elf_marker      ELF marker for stem matching (nullable).
+ *  @return Resolved absolute path, or best-effort candidate if not found.
+ */
+inline std::string ResolveVmfbPath(const char *vmfb_root_dir,
+	const char *target_platform, const std::string &json_dir,
+	const DispatchNode &node, const char *variant_p = nullptr,
+	const char *variant_e = nullptr, const char *elf_marker = nullptr) {
+	const char *variant_dir = VariantDirFromHardwareTarget(
+		node.hardware_target, variant_p, variant_e);
+	return ResolveVmfbPathWithVariant(vmfb_root_dir, target_platform, json_dir,
+		node, variant_dir, elf_marker);
 }
 
 /** @brief Resolve VMFB paths for nodes that only have vmfb_path_json set.

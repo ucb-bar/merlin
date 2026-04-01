@@ -56,8 +56,28 @@ cd ../..
 
 ### 0.3 Build Merlin tools with NPU plugin enabled
 
+**Important:** All build commands require the `merlin-dev` conda environment
+because it provides the system toolchain (compilers, cmake, etc.). Running
+`uv run tools/merlin.py build` without conda will fail with missing-header
+errors.
+
+Either activate the environment first (recommended for long builds, so you
+see output in real time):
+
 ```bash
-conda run -n merlin-dev uv run tools/merlin.py build \
+conda activate merlin-dev
+uv run tools/merlin.py build \
+  --profile npu \
+  --config release \
+  --no-build-python-bindings \
+  --no-enable-libbacktrace
+```
+
+Or use `conda run` with `--no-capture-output` so the build log streams
+instead of being silently buffered until completion:
+
+```bash
+conda run --no-capture-output -n merlin-dev uv run tools/merlin.py build \
   --profile npu \
   --config release \
   --no-build-python-bindings \

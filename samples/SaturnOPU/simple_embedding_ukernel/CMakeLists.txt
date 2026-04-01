@@ -236,6 +236,51 @@ iree_cc_binary(
   "MODULE_HEADER=\"${_GENERATED_HEADER_REL_DIR}/${V6_MODULE_NAME}_c.h\"")
 set(ALL_BENCHMARKS ${ALL_BENCHMARKS} ${V6_BINARY_NAME})
 
+# V7: fused matmul+transpose (OPU TRANSPOSED_OUTPUT — matmul writes C^T
+# directly)
+set(V7_FLAGS
+    ${VARIANT_BASE_FLAGS}
+    "--iree-opt-data-tiling"
+    "--iree-dispatch-creation-data-tiling"
+    "--iree-global-opt-propagate-transposes"
+    "--iree-opt-aggressively-propagate-transposes")
+foreach(V7_SIZE 64 128 256 512 1024 2048)
+  set(V7_MODULE_NAME "mm_${V7_SIZE}_v7_fused_transpose")
+  set(V7_BINARY_NAME "bench_${V7_MODULE_NAME}")
+  iree_bytecode_module(
+    NAME
+    ${V7_MODULE_NAME}
+    SRC
+    "tests/mm_${V7_SIZE}_transpose.mlir"
+    C_IDENTIFIER
+    "iree_samples_${V7_MODULE_NAME}"
+    FLAGS
+    ${V7_FLAGS}
+    PUBLIC)
+  iree_cc_binary(
+    NAME
+    ${V7_BINARY_NAME}
+    SRCS
+    "device_embedded_sync.c"
+    "simple_embedding.c"
+    DEPS
+    ::${V7_MODULE_NAME}_c
+    iree::base
+    iree::hal
+    iree::hal::drivers::local_sync::sync_driver
+    iree::hal::local
+    iree::hal::local::loaders::embedded_elf_loader
+    iree::modules::hal
+    iree::vm
+    iree::vm::bytecode::module
+    DEFINES
+    "MODEL_SIZE=${V7_SIZE}"
+    "UKERNEL_NAME=\"V7_FUSED_TRANSPOSE\""
+    "MODULE_CREATE_FN=iree_samples_${V7_MODULE_NAME}_create"
+    "MODULE_HEADER=\"${_GENERATED_HEADER_REL_DIR}/${V7_MODULE_NAME}_c.h\"")
+  set(ALL_BENCHMARKS ${ALL_BENCHMARKS} ${V7_BINARY_NAME})
+endforeach()
+
 # --- 3c. Non-square benchmark generator (K-sweep, etc.) ---
 
 function(create_nonsquare_benchmark M N K TAG COMPILE_FLAGS)

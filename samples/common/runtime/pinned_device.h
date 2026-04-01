@@ -26,6 +26,8 @@
 		__has_include("iree/hal/drivers/local_task/task_driver.h") &&          \
 			__has_include("iree/hal/local/loaders/registration/init.h")
 #define MERLIN_HAS_PINNED_DEVICE 1
+#include "iree/async/util/proactor_pool.h"
+#include "iree/base/threading/numa.h"
 #include "iree/hal/drivers/local_task/task_driver.h"
 #include "iree/hal/local/loaders/registration/init.h"
 #include "iree/task/api.h"
@@ -113,8 +115,32 @@ inline iree_status_t CreatePinnedLocalTaskDevice(
 	if (!iree_status_is_ok(st))
 		return st;
 
+	// Create a proactor pool with NO runner threads.  The default pool
+	// options spawn an unpinned poll thread per proactor (affinity=ff),
+	// which causes ~15ms preemption hits when Linux schedules them onto
+	// executor cores.  By zeroing the runner factory we satisfy the
+	// device-creation assertion without spawning any extra threads.
+	// This is safe: both sync and async (coarse-fences) dispatch wait
+	// paths use notification-based blocking, not proactor polling.
+	iree_async_proactor_pool_options_t pool_opts;
+	memset(&pool_opts, 0, sizeof(pool_opts));
+	pool_opts.proactor_options = iree_async_proactor_options_default();
+	iree_async_proactor_pool_t *proactor_pool = nullptr;
+	st = iree_async_proactor_pool_create(
+		/*node_count=*/1, /*node_ids=*/NULL, pool_opts, host_allocator,
+		&proactor_pool);
+	if (!iree_status_is_ok(st)) {
+		iree_hal_driver_release(driver);
+		return st;
+	}
+
+	iree_hal_device_create_params_t create_params =
+		iree_hal_device_create_params_default();
+	create_params.proactor_pool = proactor_pool;
 	st = iree_hal_driver_create_device_by_id(driver, IREE_HAL_DEVICE_ID_DEFAULT,
-		/*param_count=*/0, /*params=*/nullptr, host_allocator, out_device);
+		/*param_count=*/0, /*params=*/nullptr, &create_params, host_allocator,
+		out_device);
+	iree_async_proactor_pool_release(proactor_pool);
 	iree_hal_driver_release(driver);
 	return st;
 #else
