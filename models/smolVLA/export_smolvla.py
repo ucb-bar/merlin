@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+# conda run -n merlin-dev uv pip install --upgrade torchao diffusers \
+#   --python third_party/Understanding-PI0/.venv/bin/python
 import argparse
 import shlex
 import subprocess
