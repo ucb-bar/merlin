@@ -27,6 +27,11 @@ void CudaTileOptions::bindOptions(OptionsBinder &binder) {
       "iree-cuda-tile-tileiras-params", tileirasParams, llvm::cl::cat(category),
       llvm::cl::desc("Additional parameters to pass to tileiras."));
 
+  binder.opt<bool>(
+      "iree-cuda-tile-enable-codegen", enableCodegen, llvm::cl::cat(category),
+      llvm::cl::desc("Enable codegen path (linalg -> cuda_tile ops -> "
+                     "tilebc -> cubin). Default: false (external only)."));
+
   binder.opt<int64_t>("iree-cuda-tile-tile-m", tileM, llvm::cl::cat(category),
                       llvm::cl::desc("Default tile M dimension."));
 

@@ -1,0 +1,60 @@
+set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
+set(IREE_PACKAGE_ROOT_PREFIX
+    "iree::cuda_tile::compiler::Dialect::CudaTile::Transforms")
+
+iree_tablegen_library(
+  NAME
+    PassesIncGen
+  TD_FILE
+    "Passes.td"
+  OUTS
+    --gen-pass-decls
+    Passes.h.inc
+)
+
+iree_cc_library(
+  NAME
+    PassHeaders
+  HDRS
+    "Passes.h"
+    "Passes.h.inc"
+  INCLUDES
+    "${MERLIN_COMPILER_SOURCE_DIR}"
+    "${IREE_BINARY_DIR}/compiler/plugins/merlin"
+  DEPS
+    ::PassesIncGen
+    MLIRFuncDialect
+    MLIRPass
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
+    Transforms
+  HDRS
+    "Passes.h"
+  SRCS
+    "Passes.cpp"
+    "ConvertDataMovementToCudaTile.cpp"
+    "ConvertElementwiseToCudaTile.cpp"
+    "ConvertReductionsToCudaTile.cpp"
+    "ConvertContractionsToCudaTile.cpp"
+    "ConvertSCFToCudaTile.cpp"
+  INCLUDES
+    "${MERLIN_COMPILER_SOURCE_DIR}"
+    "${IREE_BINARY_DIR}/compiler/plugins/merlin"
+  DEPS
+    ::PassHeaders
+    ::PassesIncGen
+    MLIRArithDialect
+    MLIRFuncDialect
+    MLIRIR
+    MLIRLinalgDialect
+    MLIRMathDialect
+    MLIRPass
+    MLIRSCFDialect
+    MLIRTensorDialect
+    MLIRTransforms
+    LLVMSupport
+  PUBLIC
+)

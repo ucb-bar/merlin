@@ -24,6 +24,10 @@ struct CudaTileOptions {
   // Additional parameters to pass to tileiras.
   std::string tileirasParams;
 
+  // Enable codegen path (linalg → cuda_tile ops → tilebc → cubin).
+  // When false (default), only external pre-compiled objects are supported.
+  bool enableCodegen = false;
+
   // Default tile dimensions for cuda_tile kernel generation.
   int64_t tileM = 128;
   int64_t tileN = 128;
