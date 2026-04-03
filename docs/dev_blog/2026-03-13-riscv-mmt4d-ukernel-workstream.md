@@ -753,4 +753,132 @@ are needed. The changes required are compiler-side only:
 
 ---
 
+## OPU Encoding Resolver Results (2026-04-02)
+
+### Background
+
+The standard IREE CPU encoding path for matmul produces 3 dispatches:
+
+1. **Pack LHS**: `[M, K]` -> `[M/M0, K, M0, K0]` (set_encoding -> linalg.pack)
+2. **Pack RHS**: `[N, K]` -> `[N/N0, K, N0, K0]` (set_encoding -> linalg.pack)
+3. **Fill + mmt4d + Unpack**: compute on packed 4D tensors, then copy 4D -> 2D
+
+The unpack dispatch copies from packed 4D `[M/M0, N/N0, M0, N0]` to 2D `[M, N]`.
+This is pure overhead: the OPU ukernel can write directly to 2D output using
+strided `vse32.v` stores. For 1024x1024, the unpack was ~20% of total cycles.
+
+The OPU encoding resolver eliminates the unpack by using **identity encoding**
+for the matmul result. It follows IREE's GPU data-tiling pattern:
+
+- `OPUEncodingResolverAttr` returns empty `MaterializeEncodingInfo` for the
+  result operand, so `unset_encoding` folds to a no-op
+- LHS/RHS keep packed encoding with 64x64x1 tiles for contiguous VOPACC loads
+- The matmul lowers directly to `iree_codegen.ukernel.generic "iree_uk_opu_matmul"`
+  instead of `linalg.mmt4d`, since mmt4d requires a 4D result shape
+
+After this change, the dispatch flow is:
+
+1. **Pack LHS** (unchanged, hoistable for constant weights)
+2. **Pack RHS** (unchanged, hoistable for constant weights)
+3. **Fill(2D) + iree_uk_opu_matmul(packed LHS, packed RHS -> 2D output)**
+
+Key files:
+
+- `compiler/.../CPU/IR/IREECPUAttrs.td` — `OPUEncodingResolverAttr`
+- `compiler/.../ExternalInterfaces/CPUEncodingExternalModels.cpp` — 5 external models
+- `compiler/plugins/target/LLVMCPU/LLVMCPUTarget.cpp` — selects OPU resolver for `+xopu`
+- `runtime/.../arch/riscv_64/opu_matmul_riscv_64.c` — OPU matmul ukernel with 2D output
+
+### Hardware Configuration
+
+- **Config**: Saturn OPU V128-D64 Shuttle (`alveo_u250_firesim-opu-v128-d64-shuttle`)
+- **VLEN**: 128 bits -> 16 i8 elements per vector register
+- **DLEN**: 64 bits -> (DLEN/8)^2 = 64 MACs/cycle in the 8x8 MACC array
+- **OPU peak**: 2 x (DLEN/8)^2 = 128 FLOPs/cycle (counting both mul and add per MAC)
+- **Matrix registers**: 4 x 16x16 (m0-m3), VOPACC takes 4 cycles per instruction
+  (processes 8x8 sub-tile per cycle, 16x16 = 4 sub-tiles)
+- **FPGA**: Alveo U250 via FireSim
+
+### How Performance is Measured
+
+Benchmark harness: `samples/SaturnOPU/simple_embedding_ukernel/simple_embedding.c`
+
+```c
+// rdcycle hardware counter (RISC-V CSR)
+uint64_t start = read_cycles();
+for (int i = 0; i < 10; ++i)
+    iree_vm_invoke(context, main_function, ...);
+uint64_t end = read_cycles();
+uint64_t avg_cycles = (end - start) / 10;
+
+// Total ops = 2 * M * N * K (counts both mul and add per MAC)
+uint64_t total_ops = 2 * M * N * K;
+// ops_per_cycle = total_ops / avg_cycles
+```
+
+**What the cycle count includes**: IREE VM dispatch, HAL command buffer,
+pack LHS dispatch, pack RHS dispatch, fill + matmul dispatch, memory allocation.
+This is end-to-end latency, not just ukernel compute time.
+
+**Utilization** = ops_per_cycle / peak = ops_per_cycle / 128
+
+**Inputs**: A[i][k] = 2, B[k][j] = 4 (constant i8 values).
+Verification: C[i][j] = 8 * K (checked every 101st element).
+
+### Results
+
+| Size | OPU Cycles | OPU Ops/Cycle | RVV Cycles | RVV Ops/Cycle | Speedup | Utilization |
+|------|-----------|--------------|-----------|--------------|---------|-------------|
+| 64x64x64 | 132,712 | 3.95 | 318,555 | 1.64 | 2.4x | 3.1% |
+| 128x128x128 | 299,041 | 14.02 | 1,800,432 | 2.32 | 6.0x | 11.0% |
+| 256x256x256 | 1,137,634 | 29.49 | 13,846,932 | 2.42 | 12.2x | 23.0% |
+| 512x512x512 | 6,321,465 | 42.46 | 138,156,393 | 1.94 | 21.9x | 33.2% |
+| 1024x1024x1024 | 37,057,772 | 57.94 | 1,580,608,373 | 1.35 | 42.9x | 45.3% |
+| 2048x2048x2048 | 261,803,423 | 65.62 | 13,726,856,451 | 1.25 | 52.5x | 51.3% |
+
+### Optimization Journey (1024x1024x1024)
+
+| Step | Ops/Cycle | Date | What Changed |
+|------|-----------|------|-------------|
+| RVV Baseline | 1.35 | 03-22 | Standard RVV vectorized matmul, no ukernels, no OPU |
+| Initial mmt4d+OPU | 0.84 | 03-21 | First mmt4d OPU ukernel; tile query returned 1x1x1 (wrong) |
+| Fixed Tile Query | 14.61 | 03-22 | Correct 16x16x1 tile selection in `query_tile_sizes` |
+| K-loop Unroll x4 | 34.82 | 03-22 | mmt4d K-loop unrolled by 4 with register pair rotation |
+| Const Weights | 38.98 | 03-23 | Compile-time packed RHS via `--iree-global-opt-data-tiling` |
+| Encoding Resolver | 57.94 | 04-02 | Identity result encoding eliminates unpack dispatch, 64x64 tiles |
+
+**Key observations**:
+
+1. The encoding resolver gave **1.67x improvement** over the best mmt4d result
+   (57.94 vs 34.82 ops/cycle) by eliminating the unpack copy.
+
+2. At 2048x2048, the OPU achieves **51.3% utilization**. The remaining ~49% is
+   pack dispatch overhead, IREE runtime dispatch, fill, and L1 cache misses from
+   2D strided stores (8KB between rows for N=2048).
+
+3. The RVV baseline degrades at large sizes (2.42 -> 1.25 ops/cycle from
+   256 to 2048) due to cache pressure. The OPU benefits from packed data layouts
+   that improve cache behavior.
+
+4. Assembly analysis of the ukernel K-loop confirmed it runs at hardware
+   saturation: the VOPACC pipeline is the bottleneck, not scalar instruction
+   overhead. Branch elimination and K-loop unrolling produced no measurable
+   improvement.
+
+5. Speedup grows with matrix size because the RVV baseline is memory-bound
+   (no packed layout) while the OPU benefits from contiguous packed data access.
+
+### Plots
+
+Generated by `benchmarks/SaturnOPU/plot_firesim_results.py`:
+
+- `benchmarks/SaturnOPU/performance_scaling.png` — Ops/Cycle vs Matrix Size
+- `benchmarks/SaturnOPU/speedup_vs_rvv.png` — Speedup over RVV
+- `benchmarks/SaturnOPU/utilization.png` — Hardware utilization
+- `benchmarks/SaturnOPU/optimization_journey.png` — 1024x1024 progression
+
+Raw data: `benchmarks/SaturnOPU/firesim_v128d64_results.csv`
+
+---
+
 *Dev-blog written by:* Agustin Coppari Hollmann

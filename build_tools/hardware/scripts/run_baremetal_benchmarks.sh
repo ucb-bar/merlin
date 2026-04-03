@@ -106,11 +106,15 @@ JSONEOF
     fi
 
     echo "[$(date +%H:%M:%S)] firesim runworkload..."
-    if ! (cd "${DEPLOY_DIR}" && firesim runworkload); then
-        echo "ERROR: runworkload failed for ${elf_name}"
-        echo "${elf_name},,,RUNWORKLOAD_FAILED" >> "${RESULTS_CSV}"
-        FAIL_COUNT=$((FAIL_COUNT + 1))
-        return 1
+    (cd "${DEPLOY_DIR}" && firesim runworkload)
+    local run_rc=$?
+
+    # Always kill the simulation after runworkload completes (or fails)
+    echo "[$(date +%H:%M:%S)] firesim kill..."
+    (cd "${DEPLOY_DIR}" && firesim kill) || true
+
+    if [ "${run_rc}" -ne 0 ]; then
+        echo "WARNING: runworkload exited with code ${run_rc} for ${elf_name} (may still have results)"
     fi
 
     # Find the uartlog from the most recent matching results directory

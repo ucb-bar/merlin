@@ -169,24 +169,12 @@ iree_status_t Run() {
 	const int kIters = 10;
 
 	for (int i = 0; i < kWarmup; ++i) {
-		fprintf(stdout, "[DBG] warmup %d/%d entering vm_invoke...\n", i + 1,
-			kWarmup);
+		fprintf(stdout, "[DBG] warmup %d/%d...\n", i + 1, kWarmup);
 		fflush(stdout);
 		iree_vm_list_resize(outputs, 0);
-		iree_status_t invoke_status =
+		IREE_RETURN_IF_ERROR(
 			iree_vm_invoke(context, main_function, IREE_VM_INVOCATION_FLAG_NONE,
-				NULL, inputs, outputs, iree_allocator_system());
-		if (!iree_status_is_ok(invoke_status)) {
-			fprintf(stdout, "[DBG] vm_invoke FAILED with code %d\n",
-				(int)iree_status_code(invoke_status));
-			fflush(stdout);
-			iree_status_fprint(stderr, invoke_status);
-			fflush(stderr);
-			iree_status_free(invoke_status);
-			return iree_make_status(IREE_STATUS_INTERNAL, "vm_invoke failed");
-		}
-		fprintf(stdout, "[DBG] warmup %d/%d done OK\n", i + 1, kWarmup);
-		fflush(stdout);
+				NULL, inputs, outputs, iree_allocator_system()));
 	}
 
 	fprintf(stdout, "[DBG] warmup done, starting benchmark...\n");
