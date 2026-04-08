@@ -355,3 +355,227 @@ add_custom_target(
 # Variants-only target for quick A/B testing
 add_custom_target(benchmark_variants DEPENDS bench_mm_1024_v5_opt_loop
                                              bench_mm_1024_v6_const_rhs)
+
+# =============================================================================
+# --- 5. E2E Model Benchmarks (OPU vs RVV) ---
+# =============================================================================
+# Each model is compiled twice: once with OPU ukernels, once with RVV baseline.
+# The harness (model_benchmark.c) takes a single float32 input.
+#
+# NOTE: QDQ models crash with data tiling + xopu (TilingInterface cast failure
+# in KernelDispatch.cpp). OPU models are compiled WITHOUT data tiling for now.
+# This means the OPU ukernel (mmt4d) path is NOT activated — matmuls lower
+# through generic vector-contract instead. Fixing the encoding resolver to
+# handle elementwise generics with encoding attrs is required for OPU mmt4d on
+# QDQ models.
+
+set(MODEL_BENCHMARKS "")
+
+# OPU flags for QDQ models: NO data tiling (avoids encoding resolver crash)
+set(FLAGS_MODEL_OPU
+    ${BASE_OPU_FLAGS} "--iree-llvmcpu-link-ukernel-bitcode=true"
+    "--iree-llvmcpu-enable-ukernels=all")
+
+# RVV flags for QDQ models: WITH data tiling (works fine)
+set(FLAGS_MODEL_RVV
+    ${BASE_RVV_FLAGS} "--iree-llvmcpu-link-ukernel-bitcode=false"
+    "--iree-llvmcpu-enable-ukernels=none" "--iree-opt-data-tiling=true"
+    "--iree-dispatch-creation-data-tiling=true")
+
+# Generator: create_model_benchmark(MODEL_NAME MLIR_SRC FUNC_NAME NDIMS DIM0
+# DIM1 DIM2 DIM3 VARIANT TAG COMPILE_FLAGS)
+function(
+  create_model_benchmark
+  MODEL_NAME
+  MLIR_SRC
+  FUNC_NAME
+  NDIMS
+  DIM0
+  DIM1
+  DIM2
+  DIM3
+  VARIANT
+  TAG
+  COMPILE_FLAGS)
+  set(MODULE_NAME "model_${MODEL_NAME}_${TAG}")
+  set(BINARY_NAME "bench_${MODULE_NAME}")
+
+  iree_bytecode_module(
+    NAME
+    ${MODULE_NAME}
+    SRC
+    "${MLIR_SRC}"
+    C_IDENTIFIER
+    "iree_samples_${MODULE_NAME}"
+    FLAGS
+    ${COMPILE_FLAGS}
+    PUBLIC)
+
+  iree_cc_binary(
+    NAME
+    ${BINARY_NAME}
+    SRCS
+    "device_embedded_sync.c"
+    "model_benchmark.c"
+    DEPS
+    ::${MODULE_NAME}_c
+    iree::base
+    iree::hal
+    iree::hal::drivers::local_sync::sync_driver
+    iree::hal::local
+    iree::hal::local::loaders::embedded_elf_loader
+    iree::modules::hal
+    iree::vm
+    iree::vm::bytecode::module
+    DEFINES
+    "MODEL_NAME=\"${MODEL_NAME}\""
+    "VARIANT_NAME=\"${VARIANT}\""
+    "FUNC_NAME=\"module.${FUNC_NAME}\""
+    "INPUT_NDIMS=${NDIMS}"
+    "INPUT_DIM0=${DIM0}"
+    "INPUT_DIM1=${DIM1}"
+    "INPUT_DIM2=${DIM2}"
+    "INPUT_DIM3=${DIM3}"
+    "MODULE_CREATE_FN=iree_samples_${MODULE_NAME}_create"
+    "MODULE_HEADER=\"${_GENERATED_HEADER_REL_DIR}/${MODULE_NAME}_c.h\"")
+
+  set(MODEL_BENCHMARKS
+      ${MODEL_BENCHMARKS} ${BINARY_NAME}
+      PARENT_SCOPE)
+endfunction()
+
+# --- Model definitions ---
+# Format: MODEL_NAME MLIR_PATH FUNC_NAME NDIMS D0 D1 D2 D3
+
+# 1. MLP: tiny classifier (1x10 input)
+create_model_benchmark(
+  mlp
+  "${CMAKE_SOURCE_DIR}/models/mlp/mlp.q.int8.mlir"
+  "mlp"
+  2
+  1
+  10
+  1
+  1
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU}")
+create_model_benchmark(
+  mlp
+  "${CMAKE_SOURCE_DIR}/models/mlp/mlp.q.int8.mlir"
+  "mlp"
+  2
+  1
+  10
+  1
+  1
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV}")
+
+# 1. DroNet: drone navigation CNN (1x3x112x112)
+create_model_benchmark(
+  dronet
+  "${CMAKE_SOURCE_DIR}/models/dronet/dronet.q.int8.mlir"
+  "dronet"
+  4
+  1
+  3
+  112
+  112
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU}")
+create_model_benchmark(
+  dronet
+  "${CMAKE_SOURCE_DIR}/models/dronet/dronet.q.int8.mlir"
+  "dronet"
+  4
+  1
+  3
+  112
+  112
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV}")
+
+# 1. MobileNet-V2: ImageNet classifier (1x3x224x224)
+create_model_benchmark(
+  mobilenet_v2
+  "${CMAKE_SOURCE_DIR}/models/mobilenet_v2/mobilenet_v2.q.int8.mlir"
+  "torch_jit"
+  4
+  1
+  3
+  224
+  224
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU}")
+create_model_benchmark(
+  mobilenet_v2
+  "${CMAKE_SOURCE_DIR}/models/mobilenet_v2/mobilenet_v2.q.int8.mlir"
+  "torch_jit"
+  4
+  1
+  3
+  224
+  224
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV}")
+
+# 1. GLPDepth: depth estimation (1x3x224x224)
+create_model_benchmark(
+  glpdepth
+  "${CMAKE_SOURCE_DIR}/models/glpdepth/glpdepth.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  224
+  224
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU}")
+create_model_benchmark(
+  glpdepth
+  "${CMAKE_SOURCE_DIR}/models/glpdepth/glpdepth.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  224
+  224
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV}")
+
+# 1. Depth-Anything-V2 Small: ViT depth estimation (1x3x518x518)
+create_model_benchmark(
+  depth_anything_v2
+  "${CMAKE_SOURCE_DIR}/models/depth_anything_v2/depth_anything_v2.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  518
+  518
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU}")
+create_model_benchmark(
+  depth_anything_v2
+  "${CMAKE_SOURCE_DIR}/models/depth_anything_v2/depth_anything_v2.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  518
+  518
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV}")
+
+# Meta-target for all model benchmarks
+add_custom_target(benchmark_models DEPENDS ${MODEL_BENCHMARKS})

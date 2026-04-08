@@ -4,7 +4,6 @@ generic:
   - --iree-hal-target-backends=llvm-cpu
   - --iree-llvmcpu-target-triple=riscv64-unknown-linux-gnu
   - --iree-llvmcpu-target-abi=lp64d
-  - --iree-opt-level=O3
   - --iree-opt-data-tiling=true
   - --iree-dispatch-creation-data-tiling=true
   - --iree-llvmcpu-enable-ukernels=all
@@ -14,12 +13,35 @@ generic:
   - --iree-vm-emit-polyglot-zip=false
 
 targets:
+  # OPU: VOPACC for dense matmuls (MLP, LLM attention/FFN)
   OPU:
+    - --iree-opt-level=O3
     - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl128b,+xopu
     - --iree-llvmcpu-target-vector-width-in-bytes=16
+  # OPU_IM2COL: For CNN models — use im2col to convert convs to matmuls.
+  # Uses CPU encoding (no +xopu) because the OPU materializer doesn't yet
+  # handle im2col-generated dispatch shapes. The matmuls still get OPU
+  # VOPACC at runtime via iree_uk_mmt4d hardware detection.
+  # No --iree-opt-level: O2/O3 crash with im2col on RISC-V (IREE bug).
+  OPU_IM2COL:
+    - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl128b
+    - --iree-llvmcpu-target-vector-width-in-bytes=16
   RVV:
+    - --iree-opt-level=O3
     - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl256b
     - --iree-llvmcpu-target-vector-width-in-bytes=32
 
 quantized:
   - --iree-llvmcpu-skip-intermediate-roundings=true
+  - --iree-llvmcpu-stack-allocation-limit=64mib
+
+models:
+  # CNN models: im2col preprocessing. Use --hw OPU_IM2COL.
+  dronet:
+    - --iree-preprocessing-pass-pipeline=builtin.module(util.func(iree-preprocessing-convert-conv-to-channels-last), util.func(iree-global-opt-quantized-conv-to-conv), util.func(iree-global-opt-convert-conv2d-to-img2col))
+  mobilenet_v2:
+    - --iree-preprocessing-pass-pipeline=builtin.module(util.func(iree-preprocessing-convert-conv-to-channels-last), util.func(iree-global-opt-quantized-conv-to-conv), util.func(iree-global-opt-convert-conv2d-to-img2col))
+  glpdepth:
+    - --iree-preprocessing-pass-pipeline=builtin.module(util.func(iree-preprocessing-convert-conv-to-channels-last), util.func(iree-global-opt-quantized-conv-to-conv), util.func(iree-global-opt-convert-conv2d-to-img2col))
+  yolov8_nano:
+    - --iree-preprocessing-pass-pipeline=builtin.module(util.func(iree-preprocessing-convert-conv-to-channels-last), util.func(iree-global-opt-quantized-conv-to-conv), util.func(iree-global-opt-convert-conv2d-to-img2col))
