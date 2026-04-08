@@ -92,6 +92,7 @@ exclude = [
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+per-file-ignores = {"benchmarks/SaturnNPU/scripts/generate_mlir_golden_data.py" = ["E501"]}
 ignore = ["F821", "UP038"]
 
 [tool.ruff.format]
