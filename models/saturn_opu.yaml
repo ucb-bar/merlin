@@ -18,6 +18,11 @@ targets:
     - --iree-opt-level=O3
     - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl128b,+xopu
     - --iree-llvmcpu-target-vector-width-in-bytes=16
+  # OPU_LLM: For LLM models with multi-head projections.
+  # No --iree-opt-level: O3 re-fuses the collapse pass (IREE SinkReshapes).
+  OPU_LLM:
+    - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl128b,+xopu
+    - --iree-llvmcpu-target-vector-width-in-bytes=16
   # OPU_IM2COL: For CNN models — use im2col to convert convs to matmuls.
   # Uses CPU encoding (no +xopu) because the OPU materializer doesn't yet
   # handle im2col-generated dispatch shapes. The matmuls still get OPU
@@ -36,6 +41,11 @@ quantized:
   - --iree-llvmcpu-stack-allocation-limit=64mib
 
 models:
+  # LLM models with multi-head projections: collapse multi-N contractions
+  # so Q/K/V projections flow through encoding → mmt4d → OPU ukernel.
+  # No --iree-opt-level: O3 re-fuses the collapse (IREE SinkReshapes bug).
+  tinyllama:
+    - --iree-preprocessing-pass-pipeline=builtin.module(func.func(iree-preprocessing-collapse-multi-n-contractions))
   # CNN models: im2col preprocessing. Use --hw OPU_IM2COL.
   dronet:
     - --iree-preprocessing-pass-pipeline=builtin.module(util.func(iree-preprocessing-convert-conv-to-channels-last), util.func(iree-global-opt-quantized-conv-to-conv), util.func(iree-global-opt-convert-conv2d-to-img2col))
