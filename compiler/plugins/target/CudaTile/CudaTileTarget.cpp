@@ -1523,31 +1523,42 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
         taggedOps.push_back(op);
     });
 
-    // Strategy 1: If only one tagged op is a "compute" op (matmul/reduce) and
-    // the rest are data movement (collapse/expand_shape), promote the compute
-    // op as primary and fall through to the single-op handlers.
-    // This handles im2col conv2d: collapse_shape + matmul.
+    // Strategy 1: If a matmul (contraction) is present, promote it as primary.
+    // The matmul handler generates the kernel; fused elementwise (bias add)
+    // is absorbed into the dispatch output copy.
+    // Also handles im2col conv2d: collapse_shape + matmul.
     {
-      Operation *computeOp = nullptr;
-      int computeCount = 0;
+      Operation *matmulOp = nullptr;
       for (auto *op : taggedOps) {
         auto k = op->getAttrOfType<StringAttr>("cuda_tile.kernel_class");
-        if (!k)
-          continue;
-        StringRef klass = k.getValue();
-        if (klass != "collapse_shape" && klass != "expand_shape" &&
-            klass != "copy") {
-          computeOp = op;
-          computeCount++;
+        if (k && k.getValue() == "matmul") {
+          matmulOp = op;
+          break;
         }
       }
-      if (computeCount == 1 && computeOp && taggedOps.size() > 1) {
-        // Promote the compute op as primary and fall through.
-        primaryOp = computeOp;
+      // Also check untagged generics for contractions.
+      if (!matmulOp) {
+        innerModule->walk([&](linalg::GenericOp genOp) {
+          if (matmulOp) return;
+          if (genOp.getNumReductionLoops() > 0 &&
+              genOp.getNumDpsInputs() == 2) {
+            // Check for mulf+addf body (contraction pattern).
+            auto &body = genOp.getRegion().front();
+            bool hasMul = false, hasAdd = false;
+            for (auto &op : body.without_terminator()) {
+              if (isa<arith::MulFOp>(&op)) hasMul = true;
+              if (isa<arith::AddFOp>(&op)) hasAdd = true;
+            }
+            if (hasMul && hasAdd)
+              matmulOp = genOp;
+          }
+        });
+      }
+      if (matmulOp) {
+        // Promote matmul as primary and fall through.
+        primaryOp = matmulOp;
         taggedOpCount = 1;
-        auto newClass =
-            computeOp->getAttrOfType<StringAttr>("cuda_tile.kernel_class");
-        kernelClass = newClass ? newClass.getValue().str() : "generic";
+        kernelClass = "matmul";
         // Re-extract shapes from the promoted primary op.
         srcShape.clear();
         dstShape.clear();
