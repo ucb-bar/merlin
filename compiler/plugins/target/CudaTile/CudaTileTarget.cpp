@@ -378,6 +378,231 @@ static bool isIdentitySlice(ArrayRef<int64_t> offsets, ArrayRef<int64_t> strides
          llvm::all_of(strides, [](int64_t v) { return v == 1; });
 }
 
+static bool hasUnitSteps(ArrayRef<int64_t> values) {
+  return llvm::all_of(values, [](int64_t v) { return v == 1; });
+}
+
+static bool isMultiplyAddGeneric(linalg::GenericOp genOp) {
+  if (genOp.getNumDpsInputs() != 2 || genOp.getNumDpsInits() != 1)
+    return false;
+
+  Block &body = genOp.getRegion().front();
+  auto ops = body.without_terminator();
+  int opCount = 0;
+  bool hasMul = false;
+  bool hasAdd = false;
+  for (auto &op : ops) {
+    if (isa<arith::MulFOp, arith::MulIOp>(&op))
+      hasMul = true;
+    else if (isa<arith::AddFOp, arith::AddIOp>(&op))
+      hasAdd = true;
+    opCount++;
+  }
+  return opCount == 2 && hasMul && hasAdd;
+}
+
+static bool collectAffineCoefficients(AffineExpr expr,
+                                      SmallVectorImpl<int64_t> &coeffs,
+                                      int64_t &constant,
+                                      int64_t scale = 1) {
+  if (auto dimExpr = dyn_cast<AffineDimExpr>(expr)) {
+    unsigned pos = dimExpr.getPosition();
+    if (pos >= coeffs.size())
+      return false;
+    coeffs[pos] += scale;
+    return true;
+  }
+  if (auto cstExpr = dyn_cast<AffineConstantExpr>(expr)) {
+    constant += scale * cstExpr.getValue();
+    return true;
+  }
+  if (auto binaryExpr = dyn_cast<AffineBinaryOpExpr>(expr)) {
+    switch (binaryExpr.getKind()) {
+    case AffineExprKind::Add:
+      return collectAffineCoefficients(binaryExpr.getLHS(), coeffs, constant,
+                                       scale) &&
+             collectAffineCoefficients(binaryExpr.getRHS(), coeffs, constant,
+                                       scale);
+    case AffineExprKind::Mul: {
+      auto lhsCst = dyn_cast<AffineConstantExpr>(binaryExpr.getLHS());
+      auto rhsCst = dyn_cast<AffineConstantExpr>(binaryExpr.getRHS());
+      if (lhsCst)
+        return collectAffineCoefficients(binaryExpr.getRHS(), coeffs, constant,
+                                         scale * lhsCst.getValue());
+      if (rhsCst)
+        return collectAffineCoefficients(binaryExpr.getLHS(), coeffs, constant,
+                                         scale * rhsCst.getValue());
+      return false;
+    }
+    default:
+      return false;
+    }
+  }
+  return false;
+}
+
+enum class ConvLoweringMode : uint8_t {
+  NotConv,
+  PointwiseMatmul,
+  DirectConv2D,
+};
+
+struct ConvPlan {
+  ConvLoweringMode mode = ConvLoweringMode::NotConv;
+  int64_t spatialRank = 0;
+  SmallVector<int64_t> inputShape;
+  SmallVector<int64_t> filterShape;
+  SmallVector<int64_t> outputShape;
+  SmallVector<int64_t> strides;
+  SmallVector<int64_t> dilations;
+  bool isPointwise = false;
+
+  explicit operator bool() const { return mode != ConvLoweringMode::NotConv; }
+};
+
+static ConvPlan buildConvPlan(linalg::GenericOp genOp) {
+  ConvPlan plan;
+  if (!isMultiplyAddGeneric(genOp))
+    return plan;
+
+  auto maps = genOp.getIndexingMapsArray();
+  if (maps.size() < 3)
+    return plan;
+
+  auto inputShape = getStaticShapeFromType(genOp.getDpsInputs()[0].getType());
+  auto filterShape = getStaticShapeFromType(genOp.getDpsInputs()[1].getType());
+  SmallVector<int64_t> outputShape;
+  for (auto result : genOp.getResults()) {
+    outputShape = getStaticShapeFromType(result.getType());
+    if (!outputShape.empty())
+      break;
+  }
+  if (outputShape.empty() && !genOp.getDpsInits().empty())
+    outputShape = getStaticShapeFromType(genOp.getDpsInits()[0].getType());
+  if (inputShape.empty() || filterShape.empty() || outputShape.empty())
+    return plan;
+  if (filterShape.size() < 3)
+    return plan;
+
+  int64_t spatialRank = static_cast<int64_t>(filterShape.size()) - 2;
+  bool hasBatchDim = static_cast<int64_t>(outputShape.size()) == spatialRank + 2;
+  bool droppedBatchDim =
+      static_cast<int64_t>(outputShape.size()) == spatialRank + 1;
+  if (!hasBatchDim && !droppedBatchDim)
+    return plan;
+  if (static_cast<int64_t>(inputShape.size()) !=
+          (hasBatchDim ? spatialRank + 2 : spatialRank + 1) ||
+      static_cast<int64_t>(filterShape.size()) != spatialRank + 2)
+    return plan;
+
+  AffineMap inputMap = maps[0];
+  AffineMap filterMap = maps[1];
+  AffineMap outputMap = maps[2];
+  if (outputMap.getNumResults() != outputShape.size() ||
+      filterMap.getNumResults() != filterShape.size() ||
+      inputMap.getNumResults() != inputShape.size())
+    return plan;
+
+  SmallVector<int64_t> outputLoops;
+  for (AffineExpr expr : outputMap.getResults()) {
+    auto dimExpr = dyn_cast<AffineDimExpr>(expr);
+    if (!dimExpr)
+      return plan;
+    outputLoops.push_back(dimExpr.getPosition());
+  }
+
+  SmallVector<int64_t> filterLoops;
+  for (AffineExpr expr : filterMap.getResults()) {
+    auto dimExpr = dyn_cast<AffineDimExpr>(expr);
+    if (!dimExpr)
+      return plan;
+    filterLoops.push_back(dimExpr.getPosition());
+  }
+
+  int64_t batchLoop = hasBatchDim ? outputLoops.front() : -1;
+  int64_t outChannelLoop = outputLoops.back();
+  SmallVector<int64_t> outputSpatialLoops;
+  for (int64_t i = hasBatchDim ? 1 : 0;
+       i < static_cast<int64_t>(outputLoops.size()) - 1; ++i)
+    outputSpatialLoops.push_back(outputLoops[i]);
+
+  if (static_cast<int64_t>(outputSpatialLoops.size()) != spatialRank)
+    return plan;
+
+  SmallVector<int64_t> kernelLoops(filterLoops.begin(),
+                                   filterLoops.begin() + spatialRank);
+  int64_t inputChannelLoop = filterLoops[spatialRank];
+  if (filterLoops.back() != outChannelLoop)
+    return plan;
+
+  SmallVector<int64_t> strides(spatialRank, 1);
+  SmallVector<int64_t> dilations(spatialRank, 1);
+  int64_t inputSpatialBase = hasBatchDim ? 1 : 0;
+  for (int64_t i = 0; i < spatialRank; ++i) {
+    SmallVector<int64_t> coeffs(genOp.getNumLoops(), 0);
+    int64_t constant = 0;
+    if (!collectAffineCoefficients(inputMap.getResult(inputSpatialBase + i),
+                                   coeffs, constant) ||
+        constant != 0) {
+      return plan;
+    }
+
+    for (int64_t d = 0; d < static_cast<int64_t>(coeffs.size()); ++d) {
+      if (d != outputSpatialLoops[i] && d != kernelLoops[i] && coeffs[d] != 0)
+        return plan;
+    }
+
+    int64_t stride = coeffs[outputSpatialLoops[i]];
+    int64_t dilation = coeffs[kernelLoops[i]];
+    if (stride <= 0)
+      return plan;
+    if (dilation == 0 && filterShape[i] == 1)
+      dilation = 1;
+    if (dilation <= 0)
+      return plan;
+
+    strides[i] = stride;
+    dilations[i] = dilation;
+  }
+
+  if (hasBatchDim) {
+    auto batchExpr = dyn_cast<AffineDimExpr>(inputMap.getResult(0));
+    if (!batchExpr || batchExpr.getPosition() != batchLoop)
+      return plan;
+  }
+
+  auto inputChannelExpr = dyn_cast<AffineDimExpr>(inputMap.getResult(
+      hasBatchDim ? spatialRank + 1 : spatialRank));
+  if (!inputChannelExpr || inputChannelExpr.getPosition() != inputChannelLoop)
+    return plan;
+
+  plan.spatialRank = spatialRank;
+  plan.filterShape = SmallVector<int64_t>(filterShape);
+  plan.strides = std::move(strides);
+  plan.dilations = std::move(dilations);
+  plan.isPointwise = llvm::all_of(
+      filterShape.take_front(spatialRank), [](int64_t dim) { return dim == 1; });
+
+  if (hasBatchDim) {
+    plan.inputShape = SmallVector<int64_t>(inputShape);
+    plan.outputShape = SmallVector<int64_t>(outputShape);
+  } else {
+    plan.inputShape.push_back(1);
+    plan.inputShape.append(inputShape.begin(), inputShape.end());
+    plan.outputShape.push_back(1);
+    plan.outputShape.append(outputShape.begin(), outputShape.end());
+  }
+
+  if (plan.spatialRank == 2) {
+    plan.mode = ConvLoweringMode::DirectConv2D;
+  } else if (plan.isPointwise && hasUnitSteps(plan.strides) &&
+             hasUnitSteps(plan.dilations)) {
+    plan.mode = ConvLoweringMode::PointwiseMatmul;
+  }
+
+  return plan;
+}
+
 //===----------------------------------------------------------------------===//
 // CudaTileOpEmitter — builds cuda_tile dialect ops in-process
 //===----------------------------------------------------------------------===//
