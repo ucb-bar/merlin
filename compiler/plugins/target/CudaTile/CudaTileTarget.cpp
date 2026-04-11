@@ -373,6 +373,11 @@ static SmallVector<int64_t> getStaticShapeFromType(Type type) {
   return {};
 }
 
+static bool isIdentitySlice(ArrayRef<int64_t> offsets, ArrayRef<int64_t> strides) {
+  return llvm::all_of(offsets, [](int64_t v) { return v == 0; }) &&
+         llvm::all_of(strides, [](int64_t v) { return v == 1; });
+}
+
 //===----------------------------------------------------------------------===//
 // CudaTileOpEmitter — builds cuda_tile dialect ops in-process
 //===----------------------------------------------------------------------===//
@@ -1426,6 +1431,63 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
   // If still no op found, this is a pure data-movement dispatch.
   // Generate a copy kernel using shapes from tensor values in the module.
   if (!primaryOp) {
+    IREE::TensorExt::DispatchTensorLoadOp loadOp;
+    IREE::TensorExt::DispatchTensorStoreOp storeOp;
+    bool sawMultipleLoads = false;
+    bool sawMultipleStores = false;
+    innerModule->walk([&](IREE::TensorExt::DispatchTensorLoadOp op) {
+      if (loadOp)
+        sawMultipleLoads = true;
+      else
+        loadOp = op;
+    });
+    innerModule->walk([&](IREE::TensorExt::DispatchTensorStoreOp op) {
+      if (storeOp)
+        sawMultipleStores = true;
+      else
+        storeOp = op;
+    });
+
+    if (loadOp && storeOp && !sawMultipleLoads && !sawMultipleStores) {
+      auto loadSourceShape = getStaticShapeFromType(loadOp.getSource().getType());
+      auto loadResultShape =
+          SmallVector<int64_t>(loadOp.getType().getShape().begin(),
+                               loadOp.getType().getShape().end());
+      auto storeTargetShape =
+          getStaticShapeFromType(storeOp.getTarget().getType());
+      auto elemType = loadOp.getType().getElementType();
+      auto loadOffsets = SmallVector<int64_t>(loadOp.getStaticOffsets());
+      auto loadStrides = SmallVector<int64_t>(loadOp.getStaticStrides());
+      auto storeOffsets = SmallVector<int64_t>(storeOp.getStaticOffsets());
+      auto storeStrides = SmallVector<int64_t>(storeOp.getStaticStrides());
+
+      bool loadIsSlice =
+          !loadOp.isLoadOfWholeSource() || !isIdentitySlice(loadOffsets, loadStrides);
+      bool storeIsSlice =
+          !storeOp.isStoreToWholeTarget() ||
+          !isIdentitySlice(storeOffsets, storeStrides);
+
+      int64_t tileM = options.tileM, tileN = options.tileN;
+      if (loadIsSlice && !storeIsSlice) {
+        auto [e, grid] = generateExtractSliceKernel(
+            ctx, kernelName, loadSourceShape, loadResultShape, loadOffsets,
+            loadStrides, elemType, tileM, tileN);
+        std::string tilebcData;
+        if (failed(e.serialize(tilebcData)))
+          return failure();
+        return std::make_pair(std::move(tilebcData), std::move(grid));
+      }
+      if (!loadIsSlice && storeIsSlice) {
+        auto [e, grid] = generateInsertSliceKernel(
+            ctx, kernelName, loadResultShape, storeTargetShape, storeOffsets,
+            storeStrides, elemType, tileM, tileN);
+        std::string tilebcData;
+        if (failed(e.serialize(tilebcData)))
+          return failure();
+        return std::make_pair(std::move(tilebcData), std::move(grid));
+      }
+    }
+
     SmallVector<int64_t> copyShape;
     Type copyElemType;
     innerModule->walk([&](Operation *op) {
@@ -2152,9 +2214,12 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     SmallVector<int64_t> shA2 = {M, K}, shB2 = {K, N}, shC2 = {M, N};
     SmallVector<int64_t> stA = {K, 1}, stB = {N, 1}, stC = {N, 1};
 
+    // Use the last binding as output (handles fused matmul+bias dispatches
+    // where extra bindings come before the output).
+    int64_t outBindIdx = numBindings - 1;
     auto vA = e.makeTensorView(e.getArg(0), shA2, stA, elemType);
     auto vB = e.makeTensorView(e.getArg(1), shB2, stB, elemType);
-    auto vC = e.makeTensorView(e.getArg(2), shC2, stC, elemType);
+    auto vC = e.makeTensorView(e.getArg(outBindIdx), shC2, stC, elemType);
 
     SmallVector<int64_t> tA = {aTM, aTK}, tB = {aTK, aTN}, tC = {aTM, aTN};
     auto pA = e.makePartitionView(vA, tA);
@@ -2180,6 +2245,128 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
 
     // The for loop result is the final accumulator.
     Value finalAcc = forOp.getResult(0);
+
+    // Post-matmul elementwise fusion: apply any elementwise generics that
+    // follow the matmul in the dispatch (e.g., bias_add + relu).
+    {
+      SmallVector<linalg::GenericOp> postOps;
+      innerModule->walk([&](linalg::GenericOp genOp) {
+        if (genOp.getOperation() == primaryOp)
+          return; // skip the matmul itself
+        if (genOp.getNumReductionLoops() == 0 &&
+            genOp.getNumParallelLoops() > 0)
+          postOps.push_back(genOp);
+      });
+
+      for (auto postOp : postOps) {
+        // Walk the body's SSA graph to apply the elementwise ops.
+        Block &body = postOp.getRegion().front();
+        DenseMap<Value, Value> bodyMap;
+
+        // Map block args to tiles. The first arg is typically the matmul
+        // result (connected via SSA), subsequent args are additional inputs
+        // (bias, etc.) from later bindings.
+        int64_t argIdx = 0;
+        for (int64_t a = 0; a < postOp.getNumDpsInputs(); ++a) {
+          Value input = postOp.getDpsInputs()[a];
+          // Check if this input comes from the matmul result.
+          bool isMatmulResult = false;
+          if (input.getDefiningOp() == primaryOp)
+            isMatmulResult = true;
+          // Also check linalg.fill → matmul chain.
+          for (auto result : primaryOp->getResults()) {
+            if (input == result)
+              isMatmulResult = true;
+          }
+
+          if (isMatmulResult) {
+            bodyMap[body.getArgument(a)] = finalAcc;
+          } else {
+            // Load from a binding. Find which binding this input maps to.
+            // Extra bindings start after the matmul's A, B, C (idx 2+).
+            for (int64_t bi = 0; bi < (int64_t)bindingShapes.size(); ++bi) {
+              bool match = (bindingShapes[bi].memref == input);
+              if (!match) {
+                if (auto loadOp = input.getDefiningOp()) {
+                  for (auto operand : loadOp->getOperands()) {
+                    if (bindingShapes[bi].memref == operand)
+                      match = true;
+                  }
+                }
+              }
+              if (match) {
+                // Load bias/extra input and broadcast if needed.
+                auto &bInfo = bindingShapes[bi];
+                int64_t bRank = bInfo.shape.size();
+                SmallVector<int64_t> bTile;
+                for (int64_t d = 0; d < bRank; ++d)
+                  bTile.push_back(nextPow2(std::min(
+                      d == bRank - 1 ? tileN : tileM, bInfo.shape[d])));
+
+                auto bStrides = computeRowMajorStrides(bInfo.shape);
+                auto tv = e.makeTensorView(e.getArg(bi), bInfo.shape,
+                                           bStrides, elemType);
+                auto pv = e.makePartitionView(tv, bTile);
+
+                SmallVector<Value> bIndices;
+                if (bRank == 2)
+                  bIndices = {by, bx};
+                else if (bRank == 1)
+                  bIndices = {bx};
+
+                auto [tile, tok] =
+                    e.loadViewTko(pv, bIndices, bTile, elemType);
+
+                // Broadcast if needed.
+                if (bRank < 2) {
+                  SmallVector<int64_t> reshapeShape = {1, bTile[0]};
+                  SmallVector<int64_t> broadcastShape = {aTM, aTN};
+                  tile = e.reshape(tile, reshapeShape, elemType);
+                  if (reshapeShape != broadcastShape)
+                    tile = e.broadcastTile(tile, broadcastShape, elemType);
+                }
+                bodyMap[body.getArgument(a)] = tile;
+                break;
+              }
+            }
+          }
+          argIdx++;
+        }
+
+        // Walk body ops and apply them.
+        for (auto &op : body.without_terminator()) {
+          StringRef name = mapArithToCudaTileLocal(&op);
+          if (name.empty())
+            name = mapMathToCudaTileLocal(&op);
+          if (name.empty())
+            continue;
+
+          SmallVector<Value> opInputs;
+          bool allResolved = true;
+          for (auto operand : op.getOperands()) {
+            auto it = bodyMap.find(operand);
+            if (it != bodyMap.end()) {
+              opInputs.push_back(it->second);
+            } else if (auto cstOp =
+                           operand.getDefiningOp<arith::ConstantOp>()) {
+              double val = 0.0;
+              if (auto fAttr = dyn_cast<FloatAttr>(cstOp.getValue()))
+                val = fAttr.getValueAsDouble();
+              opInputs.push_back(e.constSplat(tC, elemType, val));
+            } else {
+              allResolved = false;
+            }
+          }
+          if (allResolved && !opInputs.empty()) {
+            Value result = e.emitElementwise(name, opInputs);
+            if (op.getNumResults() > 0)
+              bodyMap[op.getResult(0)] = result;
+            finalAcc = result;
+          }
+        }
+      }
+    }
+
     e.storeViewTko(finalAcc, pC, {by, bx});
     e.emitReturn();
     e.endEntry();
@@ -2348,10 +2535,43 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     if (rank >= 3)
       outIndices[0] = bz;
 
-    // Load first input (full rank).
-    auto [tile, tok] =
-        e.loadViewTko(partViews[0], outIndices, tileShape, elemType);
-    Value current = tile;
+    auto loadInputTile = [&](int64_t bindIdx) -> Value {
+      auto bShape =
+          (bindIdx < (int64_t)bindingShapes.size() &&
+           !bindingShapes[bindIdx].shape.empty())
+              ? SmallVector<int64_t>(bindingShapes[bindIdx].shape)
+              : SmallVector<int64_t>(shape);
+      int64_t bRank = bShape.size();
+      if (bRank == rank) {
+        auto [tile, tok] =
+            e.loadViewTko(partViews[bindIdx], outIndices, tileShape, elemType);
+        return tile;
+      }
+
+      SmallVector<Value> bIndices;
+      SmallVector<int64_t> reshapeShape, broadcastShape;
+      int64_t bDim = 0;
+      for (int64_t d = 0; d < rank; ++d) {
+        if (bDim < bRank && bShape[bDim] == shape[d]) {
+          bIndices.push_back(outIndices[d]);
+          reshapeShape.push_back(bindTileShapes[bindIdx][bDim]);
+          bDim++;
+        } else {
+          reshapeShape.push_back(1);
+        }
+        broadcastShape.push_back(tileShape[d]);
+      }
+
+      auto [tile, tok] =
+          e.loadViewTko(partViews[bindIdx], bIndices, bindTileShapes[bindIdx],
+                        elemType);
+      tile = e.reshape(tile, reshapeShape, elemType);
+      if (reshapeShape != broadcastShape)
+        tile = e.broadcastTile(tile, broadcastShape, elemType);
+      return tile;
+    };
+
+    Value current = loadInputTile(0);
 
     if (kernelClass == "elementwise") {
       auto opNameAttr =
@@ -2362,37 +2582,8 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
 
       // Load second input with broadcast handling (if binary op).
       Value tile2;
-      if (numBindings >= 3) {
-        int64_t bRank = bindingShapes.size() > 1
-                            ? (int64_t)bindingShapes[1].shape.size()
-                            : rank;
-        if (bRank < rank && bRank > 0) {
-          SmallVector<Value> bIndices;
-          for (int64_t d = 0; d < bRank; ++d)
-            bIndices.push_back(outIndices[d]);
-          auto [t2, tok2] = e.loadViewTko(partViews[1], bIndices,
-                                          bindTileShapes[1], elemType);
-          SmallVector<int64_t> reshapeShape, broadcastShape;
-          int64_t bDim = 0;
-          for (int64_t d = 0; d < rank; ++d) {
-            if (bDim < bRank && bindingShapes[1].shape[bDim] == shape[d]) {
-              reshapeShape.push_back(bindTileShapes[1][bDim]);
-              broadcastShape.push_back(tileShape[d]);
-              bDim++;
-            } else {
-              reshapeShape.push_back(1);
-              broadcastShape.push_back(tileShape[d]);
-            }
-          }
-          tile2 = e.reshape(t2, reshapeShape, elemType);
-          if (reshapeShape != broadcastShape)
-            tile2 = e.broadcastTile(tile2, broadcastShape, elemType);
-        } else {
-          auto [t2, tok2] =
-              e.loadViewTko(partViews[1], outIndices, tileShape, elemType);
-          tile2 = t2;
-        }
-      }
+      if (numBindings >= 3)
+        tile2 = loadInputTile(1);
 
       // Chain all ops (e.g., "subf;exp" → sub then exp).
       for (auto opName : ops) {
