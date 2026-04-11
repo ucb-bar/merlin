@@ -45,7 +45,9 @@ static StringRef matchReduceCombiner(Region &body) {
   if (isa<arith::AddFOp>(combinerOp)) return "addf";
   if (isa<arith::AddIOp>(combinerOp)) return "addi";
   if (isa<arith::MaximumFOp>(combinerOp)) return "maxf";
+  if (isa<arith::MaxNumFOp>(combinerOp)) return "maxf";
   if (isa<arith::MinimumFOp>(combinerOp)) return "minf";
+  if (isa<arith::MinNumFOp>(combinerOp)) return "minf";
   if (isa<arith::MaxSIOp>(combinerOp)) return "maxi";
   if (isa<arith::MinSIOp>(combinerOp)) return "mini";
   if (isa<arith::MulFOp>(combinerOp)) return "mulf";

@@ -24,6 +24,8 @@ iree_cc_library(
     iree::schemas::cuda_tile_executable_def_c_fbs
     iree::schemas::executable_debug_info_c_fbs
     iree::cuda_tile::compiler::Dialect::CudaTile::Transforms
+    # im2col conv→matmul conversion (shared with LLVMGPU/SPIRV backends).
+    iree::compiler::Dialect::LinalgExt::Transforms
     # Resolve workgroup count hints (shared with LLVMGPU/SPIRV backends).
     iree::compiler::Codegen::Common
     # cuda-tile dialect + bytecode writer (in-process compilation).

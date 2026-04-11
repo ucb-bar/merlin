@@ -102,25 +102,31 @@ struct ConvertElementwisePass
       if (genericOp.getNumReductionLoops() > 0)
         return;
 
-      // Find the primary compute op in the body.
-      StringRef primaryOpName;
-      genericOp.getBody()->walk([&](Operation *op) {
-        if (primaryOpName.empty()) {
-          StringRef name = mapArithToCudaTile(op);
-          if (name.empty())
-            name = mapMathToCudaTile(op);
-          if (!name.empty())
-            primaryOpName = name;
-        }
-      });
+      // Collect all compute ops in the body (in order).
+      // A body may have multiple ops chained (e.g., subf → exp for softmax).
+      SmallVector<StringRef> opNames;
+      for (auto &op : genericOp.getBody()->without_terminator()) {
+        StringRef name = mapArithToCudaTile(&op);
+        if (name.empty())
+          name = mapMathToCudaTile(&op);
+        if (!name.empty())
+          opNames.push_back(name);
+      }
 
-      if (!primaryOpName.empty()) {
+      if (!opNames.empty()) {
+        // Store as semicolon-separated list: "subf;exp".
+        std::string joined;
+        for (size_t i = 0; i < opNames.size(); ++i) {
+          if (i > 0)
+            joined += ";";
+          joined += opNames[i];
+        }
         genericOp->setAttr("cuda_tile.kernel_class",
                            StringAttr::get(genericOp->getContext(),
                                            "elementwise"));
         genericOp->setAttr("cuda_tile.op_name",
                            StringAttr::get(genericOp->getContext(),
-                                           primaryOpName));
+                                           joined));
       }
       }
     });
