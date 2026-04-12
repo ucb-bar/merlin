@@ -125,6 +125,16 @@ SECTIONS
     PROVIDE (__stack_start = ALIGN (__stack_align));
     PROVIDE (__stack_shift = LOG2CEIL( ALIGN (__stack_size_min + __tcb_size, __stack_align)));
     PROVIDE (__stack_size = 1 << __stack_shift);
+    . = __stack_start + __stack_size;
+
+    /* Large embedded model data (e.g., TinyLlama 1.1GB VMFB).
+     * Placed AFTER heap+stack to keep those symbols within medany ±2GB of
+     * .text. If no .vmfb_data section exists, this outputs a 0-byte section
+     * and is harmless. */
+    . = ALIGN (16);
+    .vmfb_data : {
+        *(.vmfb_data)
+    }
 
     /* Default boot hart */
     PROVIDE (__boot_hart = 0);

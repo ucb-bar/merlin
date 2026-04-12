@@ -38,10 +38,10 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 RESULTS_CSV="${RESULTS_DIR}/results-${TIMESTAMP}.csv"
 
 # Find all benchmark ELFs
-mapfile -t ELFS < <(find "${ELF_DIR}" -maxdepth 1 -name 'bench_mm_*' -type f -executable | sort)
+mapfile -t ELFS < <(find "${ELF_DIR}" -maxdepth 1 -name 'bench_model_*' -type f -executable | sort)
 
 if [ ${#ELFS[@]} -eq 0 ]; then
-    echo "ERROR: No bench_mm_* ELFs found in ${ELF_DIR}"
+    echo "ERROR: No bench_model_* ELFs found in ${ELF_DIR}"
     exit 1
 fi
 
