@@ -1,0 +1,8 @@
+{
+  "benchmark_name": "merlin-bench-bench_mm_1024_v6_const_rhs",
+  "common_bootbinary": "bench_mm_1024_v6_const_rhs",
+  "common_rootfs": null,
+  "common_outputs": [],
+
+  "common_simulation_outputs": ["uartlog"]
+}

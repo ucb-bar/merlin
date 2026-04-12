@@ -1,0 +1,7 @@
+{
+  "benchmark_name": "merlin-bench-bench_model_yolov8_nano_opu",
+  "common_bootbinary": "bench_model_yolov8_nano_opu",
+  "common_rootfs": null,
+  "common_outputs": [],
+  "common_simulation_outputs": ["uartlog"]
+}
