@@ -3,6 +3,9 @@
 namespace mlir::iree_compiler::NPU {
 
 void registerNPUPasses() {
+	registerFoldFP8ScalesAroundContractionsPass();
+	registerFuseF32IntermediateConversionsPass();
+	registerDemoteF32ToBF16Pass();
 	registerConvertLinalgToNPUKernelPass();
 	registerConvertNPUKernelToSchedulePass();
 	registerVerifyNPUUkernelSymbolsPass();

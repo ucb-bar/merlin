@@ -22,9 +22,36 @@ struct NPUSession : public PluginSession<NPUSession, NPUOptions,
 		registry.insert<NPUISA::NPUISADialect>();
 	}
 
+	void extendPreprocessingPassPipeline(
+		OpPassManager &passManager) override {
+		if (!options.enable)
+			return;
+		if (options.enableFoldFP8Scales) {
+			passManager.addPass(
+				NPU::createFoldFP8ScalesAroundContractionsPass());
+		}
+		passManager.addPass(
+			NPU::createFuseF32IntermediateConversionsPass());
+		passManager.addPass(
+			NPU::createDemoteF32ToBF16Pass());
+		passManager.addPass(createCanonicalizerPass());
+		passManager.addPass(createCSEPass());
+	}
+
 	void extendPostGlobalOptimizationPassPipeline(
 		OpPassManager &passManager) override {
 		if (!options.enable)
+			return;
+
+		// Eliminate all f32: fuse intermediates, then demote remaining f32→bf16.
+		passManager.addPass(
+			NPU::createFuseF32IntermediateConversionsPass());
+		passManager.addPass(
+			NPU::createDemoteF32ToBF16Pass());
+		passManager.addPass(createCanonicalizerPass());
+		passManager.addPass(createCSEPass());
+
+		if (!options.enableNPULowering)
 			return;
 
 		NPU::NPUUkernelVerifyOptions verifyOptions;

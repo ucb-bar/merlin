@@ -1,17 +1,22 @@
 # SmolVLA Export Scripts
 
 This directory provides a stable interface to export SmolVLA from
-`third_party/Understanding-PI0` into three MLIR variants:
+`third_party/Understanding-PI0` into MLIR variants:
 
 - `smolVLA.mlir` (fp32 export path)
 - `smolVLA.q.int8.mlir` (forced int8 quantization path)
-- `smolVLA.q.fp8.mlir` (mixed fp8/int8 quantization path)
+- `smolVLA.q.fp8.mlir` (mixed fp8/int8 quantization path — MX block format)
+- `smolVLA.q.fp8po2.mlir` (pure fp8 with per-tensor po2 scaling — **recommended**)
 
 ## Quick Start
 
 From repo root:
 
 ```bash
+# Recommended: pure FP8 po2 (no int8 fallback, all 302 linears in fp8)
+conda run -n merlin-dev uv run models/smolVLA/export_smolvla.py --mode fp8-po2 --device cuda
+
+# Legacy: all three variants (fp32, int8, mixed fp8/int8)
 conda run -n merlin-dev uv run models/smolVLA/export_smolvla.py --mode all --device cuda
 ```
 
@@ -27,10 +32,11 @@ ls -lh models/smolVLA/smolVLA*.mlir
 
 ## Export Modes
 
+- `--mode fp8-po2` exports `smolVLA.q.fp8po2.mlir` (**recommended** — pure fp8, no int8 fallback)
 - `--mode fp32` exports only `smolVLA.mlir`
 - `--mode int8` exports only `smolVLA.q.int8.mlir`
-- `--mode fp8` exports only `smolVLA.q.fp8.mlir`
-- `--mode all` exports all three
+- `--mode fp8` exports only `smolVLA.q.fp8.mlir` (MX block fp8 with int8 fallback)
+- `--mode all` exports fp32, int8, and mixed fp8/int8 (legacy)
 
 ## Notes
 
@@ -62,7 +68,7 @@ before rebuilding `host-merlin-release`.
 ```bash
 # Baseline target (spacemit settings)
 conda run -n merlin-dev uv run tools/merlin.py compile \
-  models/smolVLA/smolVLA.q.fp8.mlir \
+  models/smolVLA/smolVLA.q.fp8po2.mlir \
   --target spacemit_x60 \
   --quantized \
   --compile-to global-optimization \
@@ -72,7 +78,7 @@ conda run -n merlin-dev uv run tools/merlin.py compile \
 ```bash
 # NPU-targeted global-opt lowering path
 conda run -n merlin-dev uv run tools/merlin.py compile \
-  models/smolVLA/smolVLA.q.fp8.mlir \
+  models/smolVLA/smolVLA.q.fp8po2.mlir \
   --target npu_ucb \
   --quantized \
   --compile-to global-optimization \
@@ -82,7 +88,7 @@ conda run -n merlin-dev uv run tools/merlin.py compile \
 ```bash
 # Gemmini-targeted global-opt matching path
 conda run -n merlin-dev uv run tools/merlin.py compile \
-  models/smolVLA/smolVLA.q.fp8.mlir \
+  models/smolVLA/smolVLA.q.fp8po2.mlir \
   --target gemmini_mx \
   --quantized \
   --compile-to global-optimization \
@@ -113,6 +119,6 @@ Inspect the two required dump files each run (example for `npu_ucb`):
 
 ```bash
 ls -lh \
-  build/compiled_models/smolVLA/npu_ucb_RVV_smolVLA.q.fp8/phases/module.1.input.mlir \
-  build/compiled_models/smolVLA/npu_ucb_RVV_smolVLA.q.fp8/phases/module.4.global-optimization.mlir
+  build/compiled_models/smolVLA/npu_ucb_RVV_smolVLA.q.fp8po2/phases/module.1.input.mlir \
+  build/compiled_models/smolVLA/npu_ucb_RVV_smolVLA.q.fp8po2/phases/module.4.global-optimization.mlir
 ```

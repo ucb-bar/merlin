@@ -27,6 +27,9 @@ struct NPUMemoryPlannerOptions {
 	int64_t dmaFlagModulo = 3;
 };
 
+std::unique_ptr<Pass> createFoldFP8ScalesAroundContractionsPass();
+std::unique_ptr<Pass> createFuseF32IntermediateConversionsPass();
+std::unique_ptr<Pass> createDemoteF32ToBF16Pass();
 std::unique_ptr<Pass> createConvertLinalgToNPUKernelPass();
 std::unique_ptr<Pass> createConvertNPUKernelToSchedulePass();
 std::unique_ptr<Pass> createConvertNPUScheduleToISAPass();
@@ -37,6 +40,9 @@ std::unique_ptr<Pass> createVerifyNPUUkernelSymbolsPass(
 std::unique_ptr<Pass> createPlanNPUISAMemoryPass(
 	const NPUMemoryPlannerOptions &options = {});
 
+void registerFoldFP8ScalesAroundContractionsPass();
+void registerFuseF32IntermediateConversionsPass();
+void registerDemoteF32ToBF16Pass();
 void registerConvertLinalgToNPUKernelPass();
 void registerConvertNPUKernelToSchedulePass();
 void registerConvertNPUScheduleToISAPass();

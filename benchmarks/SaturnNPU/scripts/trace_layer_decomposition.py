@@ -224,10 +224,10 @@ def build_layer_trace(ops: list[dict], level_name: str) -> list[dict]:
     """
     # Find key markers
     attn_idx = [i for i, o in enumerate(ops) if o["name"] == "iree_linalg_ext.attention"]
-    _ = [i for i, o in enumerate(ops) if o["name"] == "linalg.batch_matmul"]
-    _ = [i for i, o in enumerate(ops) if o["name"] == "linalg.matmul"]
-    _ = [i for i, o in enumerate(ops) if o["name"] == "linalg.softmax"]
-    _ = [i for i, o in enumerate(ops) if o["cls"] == "gelu_tanh"]
+    bmatmul_idx = [i for i, o in enumerate(ops) if o["name"] == "linalg.batch_matmul"]
+    _matmul_idx = [i for i, o in enumerate(ops) if o["name"] == "linalg.matmul"]
+    _softmax_idx = [i for i, o in enumerate(ops) if o["name"] == "linalg.softmax"]
+    _gelu_idx = [i for i, o in enumerate(ops) if o["cls"] == "gelu_tanh"]
     silu_idx = [i for i, o in enumerate(ops) if o["cls"] == "silu"]
 
     layers = []
@@ -414,8 +414,8 @@ def write_trace_report(
     lines.append("")
 
     # Summary by layer type
-    siglip_layers = [l for layer in input_layers if layer["layer_type"] == "siglip_encoder"]
-    gemma_layers = [l for layer in input_layers if layer["layer_type"] == "gemma_decoder"]
+    siglip_layers = [layer for layer in input_layers if layer["layer_type"] == "siglip_encoder"]
+    gemma_layers = [layer for layer in input_layers if layer["layer_type"] == "gemma_decoder"]
 
     lines.append(f"- **{len(siglip_layers)} SigLIP Encoder Layers** (12 per image × 3 images)")
     lines.append(f"- **{len(gemma_layers)} Gemma Decoder Layers** (attention + MLP)")
@@ -490,8 +490,8 @@ def write_trace_report(
     lines.append("- Named ops (`linalg.batch_matmul`, `linalg.softmax`, `iree_linalg_ext.attention`) still present")
     lines.append("")
 
-    gopt_siglip = [l for layer in gopt_layers if layer["layer_type"] == "siglip_encoder"]
-    gopt_gemma = [l for layer in gopt_layers if layer["layer_type"] == "gemma_decoder"]
+    gopt_siglip = [layer for layer in gopt_layers if layer["layer_type"] == "siglip_encoder"]
+    gopt_gemma = [layer for layer in gopt_layers if layer["layer_type"] == "gemma_decoder"]
 
     lines.append(f"- **{len(gopt_siglip)} SigLIP Encoder Layers**")
     lines.append(f"- **{len(gopt_gemma)} Gemma Decoder Layers**")

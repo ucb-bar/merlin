@@ -71,7 +71,7 @@ SKIP = {
 
 def main():
     gopt_path = Path(
-        "build/compiled_models/smolVLA/spacemit_x60_RVV_smolVLA.q.fp8/phases/module.4.global-optimization.mlir"
+        "build/compiled_models/smolVLA/npu_ucb_RVV_smolVLA.q.fp8po2/phases/module.5.demoted.mlir"
     )
     kernels_dir = Path("benchmarks/SaturnNPU/kernels")
 

@@ -11,25 +11,25 @@ From the Merlin repo root, with `merlin-dev` conda environment:
 ```bash
 # 0. Compile (if not done) — vanilla target, no accelerator plugins
 conda run -n merlin-dev uv run tools/merlin.py compile \
-  models/smolVLA/smolVLA.q.fp8.mlir \
+  models/smolVLA/smolVLA.q.fp8po2.mlir \
   --target spacemit_x60 --quantized \
   --compile-to global-optimization --dump-phases
 
 # 1. Strip weight blobs
 conda run -n merlin-dev uv run tools/strip_mlir_weights.py \
-  build/compiled_models/smolVLA/spacemit_x60_RVV_smolVLA.q.fp8/ --in-place
+  build/compiled_models/smolVLA/spacemit_x60_RVV_smolVLA.q.fp8po2/ --in-place
 
 # 2. Run analysis
 conda run -n merlin-dev uv run benchmarks/SaturnNPU/scripts/analyze_npu_graph.py \
-  --torch-mlir   build/compiled_models/smolVLA/spacemit_x60_RVV_smolVLA.q.fp8/smolVLA.q.fp8.mlir \
-  --linalg-input build/compiled_models/smolVLA/spacemit_x60_RVV_smolVLA.q.fp8/phases/module.1.input.mlir \
-  --global-opt   build/compiled_models/smolVLA/spacemit_x60_RVV_smolVLA.q.fp8/phases/module.4.global-optimization.mlir \
+  --torch-mlir   build/compiled_models/smolVLA/spacemit_x60_RVV_smolVLA.q.fp8po2/smolVLA.q.fp8po2.mlir \
+  --linalg-input build/compiled_models/smolVLA/spacemit_x60_RVV_smolVLA.q.fp8po2/phases/module.1.input.mlir \
+  --global-opt   build/compiled_models/smolVLA/spacemit_x60_RVV_smolVLA.q.fp8po2/phases/module.4.global-optimization.mlir \
   --output-dir   benchmarks/SaturnNPU/ --assert-counts
 
 # 3. Layer decomposition trace (uses MLIR Python bindings)
 conda run -n merlin-dev uv run benchmarks/SaturnNPU/scripts/trace_layer_decomposition.py \
-  --linalg-input build/compiled_models/smolVLA/spacemit_x60_RVV_smolVLA.q.fp8/phases/module.1.input.mlir \
-  --global-opt   build/compiled_models/smolVLA/spacemit_x60_RVV_smolVLA.q.fp8/phases/module.4.global-optimization.mlir
+  --linalg-input build/compiled_models/smolVLA/spacemit_x60_RVV_smolVLA.q.fp8po2/phases/module.1.input.mlir \
+  --global-opt   build/compiled_models/smolVLA/spacemit_x60_RVV_smolVLA.q.fp8po2/phases/module.4.global-optimization.mlir
 
 # 4. Plots
 conda run -n merlin-dev uv run benchmarks/SaturnNPU/scripts/plot_npu_coverage.py \
@@ -50,18 +50,23 @@ conda run -n merlin-dev uv run benchmarks/SaturnNPU/scripts/export_golden_data.p
 
 ## Quantization Status
 
-SmolVLA uses **MX fp8 weight quantization** (block_size=32) with int8 fallback:
+SmolVLA uses **per-tensor FP8 E4M3 weight quantization** with power-of-two
+(po2) scaling — no int8 fallback:
 
-- **236 linears**: MX fp8 weights (`f8E4M3FN`) — SigLIP + Gemma main
-- **66 linears**: int8 weights — Gemma expert (hidden_dim=720, not divisible by 32)
-- **1 linear**: unquantized (lm_head)
+- **302 linears**: FP8 po2 weights (`f8E4M3FN`) — all components
+- **1 linear**: unquantized (lm_head, intentionally skipped)
 
-The int8 fallback exists because TorchAO's MX format requires `in_features % 32 == 0`,
-and SmolVLA_base's Gemma expert has `hidden_dim=720` (`720 % 32 = 16`).
+All linears, including Gemma expert (`hidden_dim=720`), are quantized to FP8.
+The per-tensor po2 scheme has no `in_features % block_size` constraint (unlike
+MX block quantization). Scale = `2^floor(log2(amax / 256))`, which fits in
+the NPU's E8M0 scale registers.
 
-Kernel writers need **two matmul types**:
-1. `quantized_matmul_fp8`: bf16 activation × f8E4M3FN weight + block scaling (82% of compute)
-2. `linalg.matmul i8`: i8 activation × i8 weight → i32 accumulator (0.8% of compute)
+After global-optimization + the `fold-fp8-scales-around-contractions` pass,
+kernel writers see:
+1. `quantized_matmul_fp8`: fp8 activation × bf16 weight → bf16 accum (446 instances, 82% compute)
+2. `linalg.batch_matmul`: bf16 × bf16 → f32 accum (46 instances, SigLIP attention only)
+3. `iree_linalg_ext.attention`: fused SDPA (36 instances)
+4. All elementwise/softmax/norm: bf16
 
 ## Kernel Developer Walkthrough
 
@@ -69,11 +74,14 @@ Kernel writers need **two matmul types**:
 
 Run Step 2. The Pareto output shows what to implement first:
 ```
-#1  quantized_matmul_fp8     379 instances   82.2%
+#1  quantized_matmul_fp8     446 instances   82.2%  (fp8 act, bf16 weight, bf16 accum)
 #2  fused_attention           36 instances   16.1%
-#3  matmul_i8                 67 instances    0.8%
-#4  batch_matmul_bf16         46 instances    0.6%
+#3  batch_matmul_bf16         46 instances    0.6%  (SigLIP attention only)
 ```
+
+Matmul inputs are fp8 (activation) with bf16 accumulation.
+All vector ops (softmax, norm, silu, elementwise) are bf16.
+No int8 operations remain in the model.
 
 ### 2. See the MLIR
 
@@ -105,11 +113,12 @@ vmfb = compiler.compile_str(open("kernels/silu/variant_0_....mlir").read(),
 
 | File | Level | Use for |
 |------|-------|---------|
-| `smolVLA.q.fp8.mlir` | Torch-MLIR | PyTorch op structure |
+| `smolVLA.q.fp8po2.mlir` | Torch-MLIR | PyTorch op structure |
 | `module.1.input.mlir` | Linalg/Input | Full decomposition with named ops |
 | `module.4.global-optimization.mlir` | Global-Opt | **Implement against this** |
 
 All from the **spacemit_x60** target (vanilla IREE, no accelerator plugins).
+Weights are FP8 E4M3 with per-tensor po2 scaling (no int8 fallback).
 
 ## Scripts
 

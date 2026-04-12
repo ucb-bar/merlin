@@ -1140,7 +1140,7 @@ def detect_composite_patterns(lines: list[str]) -> list[dict]:
     # Build ordered op sequence
     func_start = 0
     for i, line_str in enumerate(lines):
-        if "@main" in l and "func" in line_str:
+        if "@main" in line_str and "func" in line_str:
             func_start = i
             break
 
@@ -1240,9 +1240,9 @@ def compute_per_layer_decomposition(lines: list[str], linalg_data: dict) -> list
     Gemma attention, and Gemma MLP by locating key marker ops.
     """
     # Find marker lines
-    attn_lines = [i for i, line_str in enumerate(lines) if "iree_linalg_ext.attention" in l]
-    matmul_lines = [i for i, line_str in enumerate(lines) if "linalg.matmul " in l and "batch" not in l]
-    batch_matmul_lines = [i for i, line_str in enumerate(lines) if "linalg.batch_matmul" in l]
+    attn_lines = [i for i, line_str in enumerate(lines) if "iree_linalg_ext.attention" in line_str]
+    matmul_lines = [i for i, line_str in enumerate(lines) if "linalg.matmul " in line_str and "batch" not in line_str]
+    batch_matmul_lines = [i for i, line_str in enumerate(lines) if "linalg.batch_matmul" in line_str]
 
     results = []
 
@@ -1271,7 +1271,7 @@ def compute_per_layer_decomposition(lines: list[str], linalg_data: dict) -> list
         # Find function body start (after util.global declarations)
         func_start = 0
         for i, line_str in enumerate(lines):
-            if "func public @main" in l or "util.func public @main" in line_str:
+            if "func public @main" in line_str or "util.func public @main" in line_str:
                 func_start = i
                 break
         s, e = func_start, attn_lines[1]

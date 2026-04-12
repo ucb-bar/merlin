@@ -66,9 +66,9 @@ def main() -> int:
     )
     ap.add_argument(
         "--mode",
-        choices=["all", "fp32", "int8", "fp8"],
+        choices=["all", "fp32", "int8", "fp8", "fp8-po2"],
         default="all",
-        help="Which export(s) to run.",
+        help="Which export(s) to run. 'fp8-po2' uses per-tensor FP8 po2 (no int8 fallback).",
     )
     ap.add_argument("--python", help="Python interpreter to run Understanding-PI0 exports.")
     ap.add_argument("--model-id", default="lerobot/smolvla_base")
@@ -104,6 +104,7 @@ def main() -> int:
     out_fp32 = out_dir / "smolVLA.mlir"
     out_int8 = out_dir / "smolVLA.q.int8.mlir"
     out_fp8 = out_dir / "smolVLA.q.fp8.mlir"
+    out_fp8po2 = out_dir / "smolVLA.q.fp8po2.mlir"
 
     common = build_common_args(args)
     steps: list[tuple[str, list[str]]] = []
@@ -118,6 +119,21 @@ def main() -> int:
         steps.append(("int8", [str(py), str(INT8_EXPORT_SCRIPT), *common, "--out", str(out_int8)]))
     if args.mode in ("all", "fp8"):
         steps.append(("fp8/int8-mixed", [str(py), str(UNDERSTANDING_EXPORT_SCRIPT), *common, "--out", str(out_fp8)]))
+    if args.mode == "fp8-po2":
+        steps.append(
+            (
+                "fp8-po2 (pure fp8, no int8 fallback)",
+                [
+                    str(py),
+                    str(UNDERSTANDING_EXPORT_SCRIPT),
+                    *common,
+                    "--quant-mode",
+                    "fp8-po2",
+                    "--out",
+                    str(out_fp8po2),
+                ],
+            )
+        )
 
     print(f"[smolVLA-export] python={py}")
     print(f"[smolVLA-export] out_dir={out_dir}")
@@ -125,10 +141,12 @@ def main() -> int:
         print(f"[smolVLA-export] exporting {label} ...")
         run_cmd(cmd, dry_run=args.dry_run)
 
+    outputs = [out_fp32, out_int8, out_fp8]
+    if args.mode == "fp8-po2":
+        outputs = [out_fp8po2]
     print("[smolVLA-export] done")
-    print(f"  - {out_fp32}")
-    print(f"  - {out_int8}")
-    print(f"  - {out_fp8}")
+    for o in outputs:
+        print(f"  - {o}")
     return 0
 
 

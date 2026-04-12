@@ -8,6 +8,9 @@ iree_cc_library(
   "Passes.h"
   SRCS
   "Passes.cpp"
+  "FoldFP8ScalesAroundContractions.cpp"
+  "FuseF32IntermediateConversions.cpp"
+  "DemoteF32ToBF16.cpp"
   "ConvertLinalgToNPUKernel.cpp"
   "ConvertNPUKernelToSchedule.cpp"
   "VerifyNPUUkernelSymbols.cpp"

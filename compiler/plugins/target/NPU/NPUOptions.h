@@ -7,6 +7,8 @@ namespace mlir::iree_compiler {
 
 struct NPUOptions {
 	bool enable = false;
+	bool enableFoldFP8Scales = true;
+	bool enableNPULowering = true;
 	bool enableUkernelVerify = true;
 	bool strictUkernelVerify = true;
 	bool allowUnknownUkernelFallback = true;

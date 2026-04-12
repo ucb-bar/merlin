@@ -17,9 +17,9 @@ generic:
 plugin_flags:
   - --iree-plugin=npu
   - --iree-npu-enable
-  - --iree-npu-enable-ukernel-verify
-  - --iree-npu-strict-ukernel-verify
-  - --iree-npu-allow-unknown-ukernel-fallback=false
+  - --iree-npu-enable-fold-fp8-scales
+  - --iree-npu-enable-npu-lowering=false
+  - --iree-npu-enable-ukernel-verify=false
 
 quantized:
   - --iree-llvmcpu-skip-intermediate-roundings=true
@@ -29,8 +29,8 @@ models:
   smolVLA:
     - --iree-input-type=torch
     - --iree-opt-const-eval=false
-    - --iree-global-opt-enable-demote-contraction-inputs-to-bf16=matmul
+    - --iree-global-opt-enable-demote-contraction-inputs-to-bf16=conv
   smolvla_mx:
     - --iree-input-type=torch
     - --iree-opt-const-eval=false
-    - --iree-global-opt-enable-demote-contraction-inputs-to-bf16=matmul
+    - --iree-global-opt-enable-demote-contraction-inputs-to-bf16=conv

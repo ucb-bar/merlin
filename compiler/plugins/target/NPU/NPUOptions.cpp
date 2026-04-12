@@ -12,6 +12,18 @@ void NPUOptions::bindOptions(OptionsBinder &binder) {
 			"Enables the NPU post-global-optimization lowering pipeline."),
 		llvm::cl::cat(category));
 
+	binder.opt<bool>("iree-npu-enable-fold-fp8-scales", enableFoldFP8Scales,
+		llvm::cl::desc(
+			"Fold FP8 QDQ chains into contractions during preprocessing "
+			"(before global-opt hoists constants)."),
+		llvm::cl::cat(category));
+
+	binder.opt<bool>("iree-npu-enable-npu-lowering", enableNPULowering,
+		llvm::cl::desc(
+			"Enable NPU kernel/schedule/ISA lowering after global-opt. "
+			"Set to false to run only the FP8 fold pass without NPU ops."),
+		llvm::cl::cat(category));
+
 	binder.opt<bool>("iree-npu-enable-ukernel-verify", enableUkernelVerify,
 		llvm::cl::desc("Enable verification of NPU ukernel symbols/shapes."),
 		llvm::cl::cat(category));
