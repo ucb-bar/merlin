@@ -19,8 +19,7 @@ set(BASE_COMMON_FLAGS
     "--iree-llvmcpu-target-vector-width-in-bytes=16"
     "--iree-llvmcpu-debug-symbols=false"
     "--iree-vm-bytecode-module-strip-source-map=true"
-    "--iree-vm-emit-polyglot-zip=false"
-    "--iree-opt-level=O3")
+    "--iree-vm-emit-polyglot-zip=false")
 
 # OPU target: includes +xopu for Saturn OPU hardware
 set(BASE_OPU_FLAGS
@@ -362,28 +361,48 @@ add_custom_target(benchmark_variants DEPENDS bench_mm_1024_v5_opt_loop
 # Each model is compiled twice: once with OPU ukernels, once with RVV baseline.
 # The harness (model_benchmark.c) takes a single float32 input.
 #
-# NOTE: QDQ models crash with data tiling + xopu (TilingInterface cast failure
-# in KernelDispatch.cpp). OPU models are compiled WITHOUT data tiling for now.
-# This means the OPU ukernel (mmt4d) path is NOT activated — matmuls lower
-# through generic vector-contract instead. Fixing the encoding resolver to
-# handle elementwise generics with encoding attrs is required for OPU mmt4d on
-# QDQ models.
+# Three OPU compilation profiles matching saturn_opu.yaml: OPU:       +xopu, O3,
+# data tiling (dense matmul models: MLP) OPU_LLM:   +xopu, no O3,
+# collapse-multi-N preprocessing (LLMs: TinyLlama) OPU_IM2COL: no +xopu, no O3,
+# im2col preprocessing (CNNs: DroNet, YOLOv8)
 
 set(MODEL_BENCHMARKS "")
 
-# OPU flags for QDQ models: NO data tiling (avoids encoding resolver crash)
-set(FLAGS_MODEL_OPU
-    ${BASE_OPU_FLAGS} "--iree-llvmcpu-link-ukernel-bitcode=true"
-    "--iree-llvmcpu-enable-ukernels=all")
+# Shared data tiling + ukernel flags
+set(FLAGS_DATA_TILING
+    "--iree-opt-data-tiling=true"
+    "--iree-dispatch-creation-data-tiling=true"
+    "--iree-llvmcpu-enable-ukernels=all"
+    "--iree-llvmcpu-link-ukernel-bitcode=true"
+    "--iree-llvmcpu-enable-vector-contract-custom-kernels=true"
+    "--iree-llvmcpu-target-vector-width-in-bytes=16"
+    "--iree-llvmcpu-skip-intermediate-roundings=true"
+    "--iree-llvmcpu-stack-allocation-limit=64mib")
 
-# RVV flags for QDQ models: WITH data tiling (works fine)
-set(FLAGS_MODEL_RVV
-    ${BASE_RVV_FLAGS} "--iree-llvmcpu-link-ukernel-bitcode=false"
-    "--iree-llvmcpu-enable-ukernels=none" "--iree-opt-data-tiling=true"
-    "--iree-dispatch-creation-data-tiling=true")
+# OPU: +xopu with O3 for dense matmul models (MLP)
+set(FLAGS_MODEL_OPU ${BASE_OPU_FLAGS} ${FLAGS_DATA_TILING}
+                    "--iree-opt-level=O3")
+
+# OPU_LLM: +xopu without O3 + collapse preprocessing (TinyLlama)
+set(FLAGS_MODEL_OPU_LLM
+    ${BASE_OPU_FLAGS}
+    ${FLAGS_DATA_TILING}
+    "--iree-preprocessing-pass-pipeline=builtin.module(func.func(iree-preprocessing-collapse-multi-n-contractions))"
+)
+
+# OPU_IM2COL: no +xopu, no O3, im2col preprocessing (DroNet, YOLOv8)
+set(FLAGS_MODEL_OPU_IM2COL
+    ${BASE_RVV_FLAGS}
+    ${FLAGS_DATA_TILING}
+    "--iree-preprocessing-pass-pipeline=builtin.module(util.func(iree-preprocessing-convert-conv-to-channels-last),util.func(iree-global-opt-quantized-conv-to-conv),util.func(iree-global-opt-convert-conv2d-to-img2col))"
+)
+
+# RVV baseline: standard RVV with data tiling, no OPU
+set(FLAGS_MODEL_RVV ${BASE_RVV_FLAGS} ${FLAGS_DATA_TILING}
+                    "--iree-opt-level=O3")
 
 # Generator: create_model_benchmark(MODEL_NAME MLIR_SRC FUNC_NAME NDIMS DIM0
-# DIM1 DIM2 DIM3 VARIANT TAG COMPILE_FLAGS)
+# DIM1 DIM2 DIM3 VARIANT TAG COMPILE_FLAGS [EXTRA_DEFINES...])
 function(
   create_model_benchmark
   MODEL_NAME
@@ -397,6 +416,7 @@ function(
   VARIANT
   TAG
   COMPILE_FLAGS)
+  set(EXTRA_DEFINES ${ARGN})
   set(MODULE_NAME "model_${MODEL_NAME}_${TAG}")
   set(BINARY_NAME "bench_${MODULE_NAME}")
 
@@ -437,7 +457,8 @@ function(
     "INPUT_DIM2=${DIM2}"
     "INPUT_DIM3=${DIM3}"
     "MODULE_CREATE_FN=iree_samples_${MODULE_NAME}_create"
-    "MODULE_HEADER=\"${_GENERATED_HEADER_REL_DIR}/${MODULE_NAME}_c.h\"")
+    "MODULE_HEADER=\"${_GENERATED_HEADER_REL_DIR}/${MODULE_NAME}_c.h\""
+    ${EXTRA_DEFINES})
 
   set(MODEL_BENCHMARKS
       ${MODEL_BENCHMARKS} ${BINARY_NAME}
@@ -447,36 +468,39 @@ endfunction()
 # --- Model definitions ---
 # Format: MODEL_NAME MLIR_PATH FUNC_NAME NDIMS D0 D1 D2 D3
 
-# 1. MLP: tiny classifier (1x10 input)
+# MLP — WIDE variant: 16x16 input, hidden 32, output 16. All layer dims are
+# multiples of 16 so every matmul lands directly on the OPU 16x16 hardware tile
+# (PATH A). The original narrow `mlp` (1x10 input) hits the OPU narrow-M code
+# path which is fragile and currently hangs on FireSim — do NOT use it.
 create_model_benchmark(
-  mlp
-  "${CMAKE_SOURCE_DIR}/models/mlp/mlp.q.int8.mlir"
-  "mlp"
+  mlp_wide
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/mlp_wide/mlp_wide.q.int8.mlir"
+  "main_graph"
   2
-  1
-  10
+  16
+  16
   1
   1
   "OPU"
   "opu"
   "${FLAGS_MODEL_OPU}")
 create_model_benchmark(
-  mlp
-  "${CMAKE_SOURCE_DIR}/models/mlp/mlp.q.int8.mlir"
-  "mlp"
+  mlp_wide
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/mlp_wide/mlp_wide.q.int8.mlir"
+  "main_graph"
   2
-  1
-  10
+  16
+  16
   1
   1
   "RVV"
   "rvv"
   "${FLAGS_MODEL_RVV}")
 
-# 1. DroNet: drone navigation CNN (1x3x112x112)
+# DroNet: drone navigation CNN (1x3x112x112) — OPU_IM2COL target
 create_model_benchmark(
   dronet
-  "${CMAKE_SOURCE_DIR}/models/dronet/dronet.q.int8.mlir"
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/dronet/dronet.q.int8.mlir"
   "dronet"
   4
   1
@@ -485,10 +509,10 @@ create_model_benchmark(
   112
   "OPU"
   "opu"
-  "${FLAGS_MODEL_OPU}")
+  "${FLAGS_MODEL_OPU_IM2COL}")
 create_model_benchmark(
   dronet
-  "${CMAKE_SOURCE_DIR}/models/dronet/dronet.q.int8.mlir"
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/dronet/dronet.q.int8.mlir"
   "dronet"
   4
   1
@@ -499,10 +523,37 @@ create_model_benchmark(
   "rvv"
   "${FLAGS_MODEL_RVV}")
 
-# 1. MobileNet-V2: ImageNet classifier (1x3x224x224)
+# YOLOv8-nano: object detection (1x3x320x320) — OPU_IM2COL target
+create_model_benchmark(
+  yolov8_nano
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/yolov8_nano/yolov8n.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  320
+  320
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU_IM2COL}")
+create_model_benchmark(
+  yolov8_nano
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/yolov8_nano/yolov8n.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  320
+  320
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV}"
+  "FAST_BENCHMARK")
+
+# MobileNet-V2: ImageNet classifier (1x3x224x224) — OPU_IM2COL target
 create_model_benchmark(
   mobilenet_v2
-  "${CMAKE_SOURCE_DIR}/models/mobilenet_v2/mobilenet_v2.q.int8.mlir"
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/mobilenet_v2/mobilenet_v2.q.int8.mlir"
   "torch_jit"
   4
   1
@@ -511,10 +562,10 @@ create_model_benchmark(
   224
   "OPU"
   "opu"
-  "${FLAGS_MODEL_OPU}")
+  "${FLAGS_MODEL_OPU_IM2COL}")
 create_model_benchmark(
   mobilenet_v2
-  "${CMAKE_SOURCE_DIR}/models/mobilenet_v2/mobilenet_v2.q.int8.mlir"
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/mobilenet_v2/mobilenet_v2.q.int8.mlir"
   "torch_jit"
   4
   1
@@ -525,10 +576,10 @@ create_model_benchmark(
   "rvv"
   "${FLAGS_MODEL_RVV}")
 
-# 1. GLPDepth: depth estimation (1x3x224x224)
+# GLPDepth: depth estimation (1x3x224x224) — OPU_IM2COL target
 create_model_benchmark(
   glpdepth
-  "${CMAKE_SOURCE_DIR}/models/glpdepth/glpdepth.q.int8.mlir"
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/glpdepth/glpdepth.q.int8.mlir"
   "main_graph"
   4
   1
@@ -537,10 +588,10 @@ create_model_benchmark(
   224
   "OPU"
   "opu"
-  "${FLAGS_MODEL_OPU}")
+  "${FLAGS_MODEL_OPU_IM2COL}")
 create_model_benchmark(
   glpdepth
-  "${CMAKE_SOURCE_DIR}/models/glpdepth/glpdepth.q.int8.mlir"
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/glpdepth/glpdepth.q.int8.mlir"
   "main_graph"
   4
   1
@@ -551,10 +602,10 @@ create_model_benchmark(
   "rvv"
   "${FLAGS_MODEL_RVV}")
 
-# 1. Depth-Anything-V2 Small: ViT depth estimation (1x3x518x518)
+# Depth-Anything-V2 Small: ViT depth estimation (1x3x518x518) — OPU target
 create_model_benchmark(
   depth_anything_v2
-  "${CMAKE_SOURCE_DIR}/models/depth_anything_v2/depth_anything_v2.q.int8.mlir"
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/depth_anything_v2/depth_anything_v2.q.int8.mlir"
   "main_graph"
   4
   1
@@ -566,7 +617,7 @@ create_model_benchmark(
   "${FLAGS_MODEL_OPU}")
 create_model_benchmark(
   depth_anything_v2
-  "${CMAKE_SOURCE_DIR}/models/depth_anything_v2/depth_anything_v2.q.int8.mlir"
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/depth_anything_v2/depth_anything_v2.q.int8.mlir"
   "main_graph"
   4
   1
@@ -576,6 +627,156 @@ create_model_benchmark(
   "RVV"
   "rvv"
   "${FLAGS_MODEL_RVV}")
+
+# =============================================================================
+# --- OPU Benchmark Suite (custom models designed for OPU evaluation) ---
+# =============================================================================
+
+# OPU-Bench-ViT: 2-block ViT encoder (dim=512, 8 heads, seq=196)
+create_model_benchmark(
+  opu_bench_vit
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_vit.q.int8.mlir"
+  "main_graph"
+  3
+  1
+  196
+  512
+  1
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU}"
+  "FAST_BENCHMARK")
+
+# OPU-Bench-ViT-Small: fast iteration variant (dim=128, 4 heads, seq=64)
+create_model_benchmark(
+  opu_bench_vit_small
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_vit_small.q.int8.mlir"
+  "main_graph"
+  3
+  1
+  64
+  128
+  1
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU}"
+  "FAST_BENCHMARK")
+create_model_benchmark(
+  opu_bench_vit_small
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_vit_small.q.int8.mlir"
+  "main_graph"
+  3
+  1
+  64
+  128
+  1
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV}"
+  "FAST_BENCHMARK")
+
+# OPU-Bench-LargeMLP: 4-layer FFN (hidden=2048, batch=128) fc2/3: M=128 K=2048
+# N=2048 — the OPU dream case
+create_model_benchmark(
+  opu_bench_large_mlp
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_large_mlp.q.int8.mlir"
+  "main_graph"
+  2
+  128
+  512
+  1
+  1
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU}")
+create_model_benchmark(
+  opu_bench_large_mlp
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_large_mlp.q.int8.mlir"
+  "main_graph"
+  2
+  128
+  512
+  1
+  1
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV}")
+
+# OPU-Bench-ConvNet: DISABLED — IREE im2col pass doesn't convert quantized int8
+# convs (onnx.QLinearConv → linalg.conv_2d_nchw_fchw) to matmul. The direct conv
+# dispatches hang on FireSim. Needs investigation. create_model_benchmark(
+# opu_bench_convnet ...)
+
+# TinyLlama 1.1B: LLM (input_ids [1,128] + attention_mask [1,128], int64) Too
+# large for iree-c-embed-data (1.1GB). Uses .incbin assembly to embed the
+# pre-compiled VMFB directly into .rodata. Pre-compile with: uv run
+# tools/merlin.py compile ... --target saturn_opu --hw OPU_LLM
+set(_TINYLLAMA_VMFB
+    "${IREE_CMAKE_PLUGIN_PATHS}/build/compiled_models/tinyllama/saturn_opu_OPU_LLM_tinyllama.q.int8/tinyllama.q.int8.vmfb"
+)
+
+# Generate .S file with correct VMFB path via configure_file
+set(TINYLLAMA_VMFB_PATH "${_TINYLLAMA_VMFB}")
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/tinyllama_vmfb_embed.S.in"
+               "${CMAKE_CURRENT_BINARY_DIR}/tinyllama_vmfb_embed.S" @ONLY)
+
+# Assemble .incbin wrapper (embeds VMFB as .rodata)
+set(_TINYLLAMA_ASM_OBJ "${CMAKE_CURRENT_BINARY_DIR}/tinyllama_vmfb_embed.o")
+add_custom_command(
+  OUTPUT "${_TINYLLAMA_ASM_OBJ}"
+  COMMAND
+    ${CMAKE_C_COMPILER} --target=riscv64-unknown-elf
+    "--sysroot=${CMAKE_SYSROOT}" -march=rv64imafdc -mabi=lp64d -mcmodel=medany
+    -c "${CMAKE_CURRENT_BINARY_DIR}/tinyllama_vmfb_embed.S" -o
+    "${_TINYLLAMA_ASM_OBJ}"
+  DEPENDS "${_TINYLLAMA_VMFB}"
+          "${CMAKE_CURRENT_BINARY_DIR}/tinyllama_vmfb_embed.S"
+  COMMENT "Embedding TinyLlama VMFB via .incbin (1.1GB)")
+add_custom_target(tinyllama_vmfb_obj DEPENDS "${_TINYLLAMA_ASM_OBJ}")
+
+# Step 3: Build benchmark binary with custom VMFB loader
+iree_cc_binary(
+  NAME
+  bench_model_tinyllama_opu
+  SRCS
+  "device_embedded_sync.c"
+  "model_benchmark.c"
+  "tinyllama_vmfb_loader.c"
+  DEPS
+  iree::base
+  iree::hal
+  iree::hal::drivers::local_sync::sync_driver
+  iree::hal::local
+  iree::hal::local::loaders::embedded_elf_loader
+  iree::modules::hal
+  iree::vm
+  iree::vm::bytecode::module
+  LINKOPTS
+  ""
+  DEFINES
+  "MODEL_NAME=\"tinyllama\""
+  "VARIANT_NAME=\"OPU\""
+  "FUNC_NAME=\"module.main_graph\""
+  "INPUT_NDIMS=2"
+  "INPUT_DIM0=1"
+  "INPUT_DIM1=128"
+  "INPUT_DIM2=1"
+  "INPUT_DIM3=1"
+  "INPUT_TYPE_I64"
+  "NUM_INPUTS=2"
+  "FAST_BENCHMARK"
+  "MODULE_CREATE_FN=iree_samples_model_tinyllama_opu_create"
+  "MODULE_HEADER=\"${CMAKE_CURRENT_SOURCE_DIR}/tinyllama_vmfb_loader.h\"")
+# Link the VMFB binary blob. The .vmfb_data section is handled by htif.ld's
+# .vmfb_data output section (placed after heap+stack to stay within medany ±2GB
+# of .text). No custom linker script needed.
+target_link_libraries(
+  iree_.._.._samples_SaturnOPU_simple_embedding_ukernel_bench_model_tinyllama_opu
+  PRIVATE "${_TINYLLAMA_ASM_OBJ}")
+add_dependencies(
+  iree_.._.._samples_SaturnOPU_simple_embedding_ukernel_bench_model_tinyllama_opu
+  tinyllama_vmfb_obj)
+set(MODEL_BENCHMARKS ${MODEL_BENCHMARKS} bench_model_tinyllama_opu)
 
 # Meta-target for all model benchmarks
 add_custom_target(benchmark_models DEPENDS ${MODEL_BENCHMARKS})

@@ -19,6 +19,11 @@
         "input_names": ["input"],
         "input_shapes": [[1, 10]]
     },
+    "mlp_wide": {
+        "source_path": "mlp_wide/mlp_wide.onnx",
+        "input_names": ["input"],
+        "input_shapes": [[16, 16]]
+    },
     "mobilenet_v2": {
         "source_path": "mobilenet_v2/mobilenet_v2.onnx",
         "input_names": ["input_0"],
@@ -43,5 +48,30 @@
         "source_path": "tinyllama/tinyllama.onnx",
         "input_names": ["input_ids", "attention_mask"],
         "input_shapes": [[1, 128], [1, 128]]
+    },
+    "opu_bench_vit": {
+        "source_path": "opu_bench_suite/opu_bench_vit.onnx",
+        "input_names": ["input"],
+        "input_shapes": [[1, 196, 512]]
+    },
+    "opu_bench_vit_small": {
+        "source_path": "opu_bench_suite/opu_bench_vit_small.onnx",
+        "input_names": ["input"],
+        "input_shapes": [[1, 64, 128]]
+    },
+    "opu_bench_convnet": {
+        "source_path": "opu_bench_suite/opu_bench_convnet.onnx",
+        "input_names": ["input"],
+        "input_shapes": [[1, 3, 64, 64]]
+    },
+    "opu_bench_hybrid": {
+        "source_path": "opu_bench_suite/opu_bench_hybrid.onnx",
+        "input_names": ["input"],
+        "input_shapes": [[1, 3, 64, 64]]
+    },
+    "opu_bench_large_mlp": {
+        "source_path": "opu_bench_suite/opu_bench_large_mlp.onnx",
+        "input_names": ["input"],
+        "input_shapes": [[128, 512]]
     }
 }

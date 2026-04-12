@@ -53,6 +53,57 @@ def classify_opu_status(func_asm):
     return "none"
 
 
+def classify_opu_kernel(func_asm, opu_status):
+    """Classify the specific OPU kernel path used by this dispatch.
+
+    Maps to the optimization journey categories:
+    - "opu_encoding_resolver" — iree_uk_opu_matmul via +xopu encoding (best)
+    - "opu_fused_qdq"        — iree_uk_opu_matmul_qdq (fused dequant+bias+requant)
+    - "opu_runtime_mmt4d"    — iree_uk_mmt4d with runtime OPU detection (OPU_IM2COL)
+    - "opu_vectorcontract"   — inline VOPACC via VectorContractCustomKernels
+    - "rvv_baseline"         — no OPU, standard RVV
+    - "non_compute"          — elementwise/reduction/softmax (not a matmul)
+    """
+    if opu_status == "fused_qdq":
+        return "opu_fused_qdq"
+    if opu_status == "vopacc":
+        # Distinguish: encoding resolver vs vector contract custom kernels.
+        # Encoding resolver calls iree_uk_opu_matmul which gets inlined
+        # and shows OPMVINBCAST (insn r 87, 6, 89) + VFETCH (insn r 87, 6, 93)
+        # + VOPACC (insn r 87, 2, 81).
+        # VectorContractCustomKernels also produce VOPACC but the pattern is
+        # different — they use llvm.riscv.opu.* intrinsics which produce
+        # the same opcodes. Distinguish by checking for OPMVINBCAST (the
+        # encoding resolver's ukernel always initializes matrix registers).
+        if ".insn r 87, 6, 89" in func_asm:  # OPMVINBCAST
+            return "opu_encoding_resolver"
+        return "opu_vectorcontract"
+    if opu_status == "mmt4d_ukernel":
+        return "opu_runtime_mmt4d"
+    return "rvv_baseline"
+
+
+def extract_matmul_dims(dispatch_name):
+    """Extract M, N, K dimensions from dispatch name like 'matmul_like_64x512x128'.
+
+    Returns (M, N, K) or None if not a matmul dispatch.
+    Also handles batch matmuls like 'batch_matmul_8x64x64x128' → (64, 64, 128).
+    """
+    # batch_matmul_BxMxNxK
+    m = re.search(r"batch_matmul_(\d+)x(\d+)x(\d+)x(\d+)", dispatch_name)
+    if m:
+        return int(m.group(2)), int(m.group(3)), int(m.group(4))
+    # matmul_like_MxNxK or matmul_MxNxK
+    m = re.search(r"matm(?:ul|vec)(?:_like)?_(\d+)x(\d+)x(\d+)", dispatch_name)
+    if m:
+        return int(m.group(1)), int(m.group(2)), int(m.group(3))
+    # Batch: BxMxNxK pattern (e.g., 3x64x128x128)
+    m = re.search(r"(\d+)x(\d+)x(\d+)x(\d+)_i8", dispatch_name)
+    if m:
+        return int(m.group(2)), int(m.group(3)), int(m.group(4))
+    return None
+
+
 def analyze_assembly(asm_path, model_name="unknown"):
     """Analyze an assembly file and return dispatch-level metrics."""
     with open(asm_path) as f:
@@ -89,12 +140,36 @@ def analyze_assembly(asm_path, model_name="unknown"):
         opmvinbcast_count = func_asm.count(".insn r 87, 6, 89")
         vmv_vr_count = func_asm.count(".insn r 87, 6, 93")
 
+        opu_kernel = classify_opu_kernel(func_asm, opu_status)
+        dims = extract_matmul_dims(func_name)
+        ops = 2 * dims[0] * dims[1] * dims[2] if dims else 0
+
+        # Detect OPU tile configuration from assembly patterns.
+        # OPMVINBCAST count reveals sub-tiling: 1=single 16×16, 4=2×2 sub-tiling.
+        # Packed tensor shape from the ukernel args reveals M0/N0.
+        if opmvinbcast_count == 4:
+            tile_config = "32x32_2x2sub"  # Uses m0+m1+m2+m3
+        elif opmvinbcast_count == 1:
+            tile_config = "16x16_single"  # Uses m0 only
+        elif opmvinbcast_count == 0 and vopacc_count > 0:
+            tile_config = "vectorcontract"  # Inline VOPACC (no ukernel)
+        elif vopacc_count == 0 and opu_status != "none":
+            tile_config = "mmt4d_runtime"  # Runtime-detected, tile unknown
+        else:
+            tile_config = "none"
+
         results.append(
             {
                 "model": model_name,
                 "dispatch": short_name,
                 "op_type": op_type,
                 "opu_status": opu_status,
+                "opu_kernel": opu_kernel,
+                "tile_config": tile_config,
+                "M": dims[0] if dims else 0,
+                "N": dims[1] if dims else 0,
+                "K": dims[2] if dims else 0,
+                "ops": ops,
                 "lines": line_count,
                 "vopacc": vopacc_count,
                 "opmvinbcast": opmvinbcast_count,
@@ -146,6 +221,38 @@ def print_summary(results, model_name):
         p = (d["opu"] * 100 // d["total"]) if d["total"] > 0 else 0
         print(f"  {t:<15} {d['total']:>6} {d['opu']:>6} {p:>5}% {d['lines']:>8} {d['opu_lines']:>10}")
 
+    # OPU kernel decomposition (maps to optimization journey categories)
+    kernels = {}
+    for r in compute:
+        k = r.get("opu_kernel", "rvv_baseline")
+        if k not in kernels:
+            kernels[k] = {"count": 0, "lines": 0, "ops": 0}
+        kernels[k]["count"] += 1
+        kernels[k]["lines"] += r["lines"]
+        kernels[k]["ops"] += r.get("ops", 0)
+
+    print("\n  OPU Kernel Decomposition:")
+    print(f"  {'Kernel Type':<25} {'Count':>6} {'Lines':>8} {'Ops (M)':>10}")
+    print(f"  {'-' * 55}")
+    for k in sorted(kernels, key=lambda x: -kernels[x]["ops"]):
+        d = kernels[k]
+        mops = d["ops"] / 1e6 if d["ops"] > 0 else 0
+        print(f"  {k:<25} {d['count']:>6} {d['lines']:>8} {mops:>9.1f}M")
+
+    # OPU matmul dispatches with M, N, K
+    matmul_dispatches = [r for r in compute if r.get("M", 0) > 0]
+    if matmul_dispatches:
+        print("\n  Matmul Dispatch Detail:")
+        print(f"  {'Dispatch':<40} {'M':>5} {'N':>5} {'K':>6} {'Ops(M)':>8} {'Tile':>18} {'Kernel':<25}")
+        print(f"  {'-' * 110}")
+        for r in sorted(matmul_dispatches, key=lambda x: -x.get("ops", 0)):
+            mops = r["ops"] / 1e6 if r["ops"] > 0 else 0
+            print(
+                f"  {r['dispatch'][:40]:<40} {r['M']:>5} {r['N']:>5} {r['K']:>6}"
+                f" {mops:>7.1f}M {r.get('tile_config', 'none'):>18}"
+                f" {r.get('opu_kernel', 'unknown'):<25}"
+            )
+
     # Show non-OPU dispatches
     non_opu = [r for r in compute if r["opu_status"] == "none"]
     if non_opu:
@@ -173,6 +280,12 @@ def save_csv(all_results, output_path):
                 "dispatch",
                 "op_type",
                 "opu_status",
+                "opu_kernel",
+                "tile_config",
+                "M",
+                "N",
+                "K",
+                "ops",
                 "lines",
                 "vopacc",
                 "opmvinbcast",
