@@ -1,0 +1,12 @@
+// Assembly wrapper to embed a large VMFB in a dedicated section.
+// Uses .section .rodata.vmfb — separated from regular .rodata by the linker
+// script so that small .rodata (switch tables, strings) stays near .text
+// while the 1.1GB VMFB is placed after heap/stack.
+
+    .section .vmfb_data, "a", @progbits
+    .global _binary_tinyllama_vmfb_start
+    .global _binary_tinyllama_vmfb_end
+    .balign 16
+_binary_tinyllama_vmfb_start:
+    .incbin "@TINYLLAMA_VMFB_PATH@"
+_binary_tinyllama_vmfb_end:

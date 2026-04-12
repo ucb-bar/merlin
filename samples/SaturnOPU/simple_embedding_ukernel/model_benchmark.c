@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Generic model benchmark harness for FireSim / bare-metal IREE.
-// Supports models with a single float32 input of arbitrary shape.
+// Supports models with one or two inputs of float32 or int64 type.
 // Configure via compile-time defines:
 //   MODEL_NAME    — human-readable name (string)
 //   INPUT_NDIMS   — number of input dimensions (1-4)
 //   INPUT_DIM0..3 — input dimension sizes
 //   VARIANT_NAME  — "OPU" or "RVV" (string)
+//   INPUT_TYPE_I64 — if defined, use int64 inputs instead of float32
+//   NUM_INPUTS    — number of inputs (default 1, max 2)
 
 #include <stdint.h>
 #include <stdio.h>
@@ -57,6 +59,9 @@ extern const iree_const_byte_span_t load_bytecode_module_data(void);
 #endif
 #ifndef FUNC_NAME
 #define FUNC_NAME "module.main"
+#endif
+#ifndef NUM_INPUTS
+#define NUM_INPUTS 1
 #endif
 
 iree_status_t Run(void) {
@@ -110,63 +115,115 @@ iree_status_t Run(void) {
 	}
 
 	fprintf(stdout, "Model: %s, Variant: %s\n", MODEL_NAME, VARIANT_NAME);
+#ifdef INPUT_TYPE_I64
+	const char *type_name = "i64";
+	iree_hal_element_type_t elem_type = IREE_HAL_ELEMENT_TYPE_INT_64;
+	iree_host_size_t elem_size = sizeof(int64_t);
+#else
+	const char *type_name = "f32";
+	iree_hal_element_type_t elem_type = IREE_HAL_ELEMENT_TYPE_FLOAT_32;
+	iree_host_size_t elem_size = sizeof(float);
+#endif
 	fprintf(stdout, "Input shape: ");
 	for (int d = 0; d < ndims; ++d) {
 		fprintf(stdout, "%s%d", d > 0 ? "x" : "", (int)shape[d]);
 	}
-	fprintf(stdout, " (%lu elements, f32)\n", (unsigned long)num_elements);
+	fprintf(stdout, " (%lu elements, %s, %d inputs)\n",
+		(unsigned long)num_elements, type_name, NUM_INPUTS);
 	fflush(stdout);
-
-	// Allocate and fill input with small random-ish values
-	float *input_data = (float *)malloc(num_elements * sizeof(float));
-	if (!input_data) {
-		return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED, "malloc");
-	}
-	for (iree_host_size_t i = 0; i < num_elements; ++i) {
-		// Simple deterministic pattern: small floats in [0, 1)
-		input_data[i] = (float)(i % 256) / 256.0f;
-	}
 
 	iree_hal_buffer_params_t params = {
 		.type = IREE_HAL_MEMORY_TYPE_DEVICE_LOCAL,
 		.usage = IREE_HAL_BUFFER_USAGE_DEFAULT};
 
-	iree_hal_buffer_view_t *input_bv = NULL;
-	IREE_RETURN_IF_ERROR(iree_hal_buffer_view_allocate_buffer_copy(device,
-		iree_hal_device_allocator(device), ndims, shape,
-		IREE_HAL_ELEMENT_TYPE_FLOAT_32, IREE_HAL_ENCODING_TYPE_DENSE_ROW_MAJOR,
-		params,
-		iree_make_const_byte_span(input_data, num_elements * sizeof(float)),
-		&input_bv));
-	free(input_data);
-
 	iree_vm_list_t *inputs = NULL;
 	IREE_RETURN_IF_ERROR(iree_vm_list_create(iree_vm_make_undefined_type_def(),
-		1, iree_allocator_system(), &inputs));
-	iree_vm_ref_t ref0 = iree_hal_buffer_view_move_ref(input_bv);
-	iree_vm_list_push_ref_move(inputs, &ref0);
+		NUM_INPUTS, iree_allocator_system(), &inputs));
+
+	// Create NUM_INPUTS identical inputs
+	for (int inp = 0; inp < NUM_INPUTS; ++inp) {
+		void *input_data = malloc(num_elements * elem_size);
+		if (!input_data) {
+			return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED, "malloc");
+		}
+		memset(input_data, 0, num_elements * elem_size);
+#ifdef INPUT_TYPE_I64
+		// Fill with token IDs 1..N for LLM inputs
+		int64_t *i64_data = (int64_t *)input_data;
+		for (iree_host_size_t i = 0; i < num_elements; ++i) {
+			i64_data[i] = (inp == 0) ? (int64_t)(i + 1) : 1;
+		}
+#else
+		float *f32_data = (float *)input_data;
+		for (iree_host_size_t i = 0; i < num_elements; ++i) {
+			f32_data[i] = (float)(i % 256) / 256.0f;
+		}
+#endif
+		iree_hal_buffer_view_t *bv = NULL;
+		IREE_RETURN_IF_ERROR(iree_hal_buffer_view_allocate_buffer_copy(device,
+			iree_hal_device_allocator(device), ndims, shape, elem_type,
+			IREE_HAL_ENCODING_TYPE_DENSE_ROW_MAJOR, params,
+			iree_make_const_byte_span(input_data, num_elements * elem_size),
+			&bv));
+		free(input_data);
+		iree_vm_ref_t ref = iree_hal_buffer_view_move_ref(bv);
+		iree_vm_list_push_ref_move(inputs, &ref);
+	}
 
 	iree_vm_list_t *outputs = NULL;
 	IREE_RETURN_IF_ERROR(iree_vm_list_create(iree_vm_make_undefined_type_def(),
 		1, iree_allocator_system(), &outputs));
 
 	// --- Benchmark Loop ---
+#ifdef FAST_BENCHMARK
+	const int kWarmup = 1;
+#else
 	const int kWarmup = 2;
+#endif
+#ifdef FAST_BENCHMARK
+	const int kIters = 3;
+#else
 	const int kIters = 10;
+#endif
 
-	fprintf(stdout, "Warmup (%d iterations)...\n", kWarmup);
+	fprintf(stdout, "Warmup START (%d iterations)\n", kWarmup);
 	fflush(stdout);
 	for (int i = 0; i < kWarmup; ++i) {
+		uint64_t w_start = read_cycles();
+		fprintf(stdout, "Warmup iter %d/%d enter (cycle=%lu)\n", i + 1, kWarmup,
+			(unsigned long)w_start);
+		fflush(stdout);
 		iree_vm_list_resize(outputs, 0);
-		IREE_RETURN_IF_ERROR(
-			iree_vm_invoke(context, main_function, IREE_VM_INVOCATION_FLAG_NONE,
-				NULL, inputs, outputs, iree_allocator_system()));
+		{
+			iree_status_t s = iree_vm_invoke(context, main_function,
+				IREE_VM_INVOCATION_FLAG_NONE, NULL, inputs, outputs,
+				iree_allocator_system());
+			if (!iree_status_is_ok(s)) {
+				uint64_t w_fail = read_cycles();
+				fprintf(stderr,
+					"INVOKE FAILED at warmup iter %d (cycle=%lu, delta=%lu): ",
+					i + 1, (unsigned long)w_fail,
+					(unsigned long)(w_fail - w_start));
+				iree_status_fprint(stderr, s);
+				fprintf(stderr, "\n");
+				fflush(stderr);
+				iree_status_free(s);
+				return iree_make_status(IREE_STATUS_INTERNAL, "invoke failed");
+			}
+		}
+		uint64_t w_end = read_cycles();
+		fprintf(stdout, "Warmup iter %d/%d done (cycle=%lu, delta=%lu)\n",
+			i + 1, kWarmup, (unsigned long)w_end,
+			(unsigned long)(w_end - w_start));
+		fflush(stdout);
 	}
 
-	fprintf(stdout, "Benchmark (%d iterations)...\n", kIters);
+	fprintf(stdout, "Benchmark START (%d iterations)\n", kIters);
 	fflush(stdout);
 	uint64_t start = read_cycles();
 	for (int i = 0; i < kIters; ++i) {
+		fprintf(stdout, "Bench iter %d/%d\n", i + 1, kIters);
+		fflush(stdout);
 		iree_vm_list_resize(outputs, 0);
 		IREE_RETURN_IF_ERROR(
 			iree_vm_invoke(context, main_function, IREE_VM_INVOCATION_FLAG_NONE,
