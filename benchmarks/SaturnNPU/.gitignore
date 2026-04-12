@@ -8,3 +8,4 @@ LAYER_DECOMPOSITION_TRACE.md
 layer_decomposition.json
 SMOLVLA_NPU_DECOMPOSITION.md
 __pycache__/
+autocomp_results
