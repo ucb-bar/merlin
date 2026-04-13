@@ -581,7 +581,7 @@ static ConvPlan buildConvPlan(linalg::GenericOp genOp) {
   plan.strides = std::move(strides);
   plan.dilations = std::move(dilations);
   plan.isPointwise = llvm::all_of(
-      filterShape.take_front(spatialRank), [](int64_t dim) { return dim == 1; });
+      ArrayRef<int64_t>(filterShape).take_front(spatialRank), [](int64_t dim) { return dim == 1; });
 
   if (hasBatchDim) {
     plan.inputShape = SmallVector<int64_t>(inputShape);
@@ -593,11 +593,11 @@ static ConvPlan buildConvPlan(linalg::GenericOp genOp) {
     plan.outputShape.append(outputShape.begin(), outputShape.end());
   }
 
-  if (plan.spatialRank == 2) {
-    plan.mode = ConvLoweringMode::DirectConv2D;
-  } else if (plan.isPointwise && hasUnitSteps(plan.strides) &&
-             hasUnitSteps(plan.dilations)) {
+  if (plan.isPointwise && hasUnitSteps(plan.strides) &&
+      hasUnitSteps(plan.dilations)) {
     plan.mode = ConvLoweringMode::PointwiseMatmul;
+  } else if (plan.spatialRank == 2) {
+    plan.mode = ConvLoweringMode::DirectConv2D;
   }
 
   return plan;
@@ -1496,30 +1496,39 @@ generateReduceKernel(MLIRContext *ctx, StringRef kernelName,
 // Loops over filter positions (kh, kw), loading shifted input patches and
 // accumulating via mmaf.
 //
-// Input:  [H, W, C_in]     (NHWC with N=1 dropped by IREE)
+// Input:  [N, H, W, C_in]
 // Filter: [KH, KW, C_in, C_out]
-// Output: [OH, OW, C_out]
+// Output: [N, OH, OW, C_out]
 //
 // For each (kh, kw):
-//   input_ptr = base_input + (kh * W * C_in + kw * C_in)
-//   input_view = [OH, OW, C_in] at offset, flatten to [M, K]
+//   input_ptr = base_input + (kh * dilation_h * W * C_in +
+//                             kw * dilation_w * C_in)
+//   input_view = [N, OH, OW, C_in] with strides derived from the convolution
+//   strides, then flatten each output spatial tile to [M, K]
 //   filter_view = filter[kh*KW*C_in*C_out + kw*C_in*C_out] → [K, N]
 //   acc += mmaf(input_slice, filter_slice, acc)
 //
 static std::pair<CudaTileOpEmitter, SmallVector<int64_t, 3>>
-generateConvKernel(MLIRContext *ctx, StringRef kernelName,
-                   ArrayRef<int64_t> inputShape,   // [H, W, C_in]
-                   ArrayRef<int64_t> filterShape,   // [KH, KW, C_in, C_out]
-                   ArrayRef<int64_t> outputShape,   // [OH, OW, C_out]
-                   Type elemType, int64_t tileM, int64_t tileN,
-                   int64_t tileK) {
-  int64_t W = inputShape[1];
-  int64_t Cin = inputShape[2];
+generateConv2DKernel(MLIRContext *ctx, StringRef kernelName,
+                     ArrayRef<int64_t> inputShape,   // [N, H, W, C_in]
+                     ArrayRef<int64_t> filterShape,  // [KH, KW, C_in, C_out]
+                     ArrayRef<int64_t> outputShape,  // [N, OH, OW, C_out]
+                     ArrayRef<int64_t> strides, ArrayRef<int64_t> dilations,
+                     Type elemType, int64_t tileM, int64_t tileN,
+                     int64_t tileK) {
+  int64_t N = inputShape[0];
+  int64_t H = inputShape[1];
+  int64_t W = inputShape[2];
+  int64_t Cin = inputShape[3];
   int64_t KH = filterShape[0];
   int64_t KW = filterShape[1];
   int64_t Cout = filterShape[3];
-  int64_t OH = outputShape[0];
-  int64_t OW = outputShape[1];
+  int64_t OH = outputShape[1];
+  int64_t OW = outputShape[2];
+  int64_t strideH = strides[0];
+  int64_t strideW = strides[1];
+  int64_t dilationH = dilations[0];
+  int64_t dilationW = dilations[1];
 
   // Tile output as [OH-block, OW-block, OC-block].
   // Keep the spatial-width tile conservative for now so the block mapping is
@@ -1535,35 +1544,52 @@ generateConvKernel(MLIRContext *ctx, StringRef kernelName,
   e.beginModule(kernelName);
   e.beginEntry("main", 3, elemType); // input, filter, output
 
-  // Output view: [OH, OW, C_out].
-  SmallVector<int64_t> shC3 = {OH, OW, Cout};
-  SmallVector<int64_t> stC3 = {OW * Cout, Cout, 1};
-  SmallVector<int64_t> tileC3 = {tOH, tOW, tOC};
-  auto vC = e.makeTensorView(e.getArg(2), shC3, stC3, elemType);
-  auto pC = e.makePartitionView(vC, tileC3);
+  // Output view: [N, OH, OW, C_out].
+  SmallVector<int64_t> shC4 = {N, OH, OW, Cout};
+  SmallVector<int64_t> stC4 = {OH * OW * Cout, OW * Cout, Cout, 1};
+  SmallVector<int64_t> tileC4 = {1, tOH, tOW, tOC};
+  auto vC = e.makeTensorView(e.getArg(2), shC4, stC4, elemType);
+  auto pC = e.makePartitionView(vC, tileC4);
 
   auto [bx, by, bz] = e.getTileBlockId();
   auto c0 = e.constI32(0);
   auto accInit = e.constSplat({flatM, tOC}, elemType, 0.0);
+  int64_t ohTiles = (OH + tOH - 1) / tOH;
+
+  auto signAttr = cuda_tile::SignednessAttr::get(
+      ctx, cuda_tile::Signedness::Unsigned);
+  auto rndAttr = cuda_tile::RoundingModeAttr::get(
+      ctx, cuda_tile::RoundingMode::ZERO);
+  auto batchDivisor = e.constI32(ohTiles);
+  auto batchId =
+      e.builder().create<cuda_tile::DivIOp>(e.getLoc(), bz, batchDivisor,
+                                            signAttr, rndAttr)
+          .getResult();
+  auto ohBlockId =
+      e.builder().create<cuda_tile::RemIOp>(e.getLoc(), bz, batchDivisor,
+                                            signAttr)
+          .getResult();
 
   // Outer loops over filter dimensions (unrolled for small KH*KW).
   Value acc = accInit;
   for (int64_t kh = 0; kh < KH; ++kh) {
     for (int64_t kw = 0; kw < KW; ++kw) {
       // Offset into input: for output pixel (oh, ow), input pixel is
-      // (oh+kh, ow+kw). With row-major [H, W, C_in], the offset is:
-      // (kh * W + kw) * C_in elements from the start.
-      // Then view as [OH, OW, C_in].
-      int64_t inputOffset = (kh * W + kw) * Cin;
+      // (oh * stride_h + kh * dilation_h, ow * stride_w + kw * dilation_w).
+      // The input pointer is shifted by the kernel offset while the tensor view
+      // strides encode the convolution stride across output coordinates.
+      int64_t inputOffset =
+          ((kh * dilationH) * W + (kw * dilationW)) * Cin;
       Value inputPtr = e.offsetPtr(e.getArg(0), inputOffset);
 
-      // The shifted input has shape [OH, OW, C_in] with strides [W*Cin, Cin, 1]
-      // (using the original W stride, not OH).
-      SmallVector<int64_t> shA3 = {OH, OW, Cin};
-      SmallVector<int64_t> stA3 = {W * Cin, Cin, 1};
-      auto vA = e.makeTensorView(inputPtr, shA3, stA3, elemType);
-      SmallVector<int64_t> tileA3 = {tOH, tOW, tK};
-      auto pA = e.makePartitionView(vA, tileA3);
+      // The shifted input has shape [N, OH, OW, C_in] with strides derived
+      // from the original NHWC layout and the convolution strides.
+      SmallVector<int64_t> shA4 = {N, OH, OW, Cin};
+      SmallVector<int64_t> stA4 = {H * W * Cin, strideH * W * Cin,
+                                   strideW * Cin, 1};
+      auto vA = e.makeTensorView(inputPtr, shA4, stA4, elemType);
+      SmallVector<int64_t> tileA4 = {1, tOH, tOW, tK};
+      auto pA = e.makePartitionView(vA, tileA4);
 
       // Offset into filter: filter[kh, kw, :, :] → [C_in, C_out]
       int64_t filterOffset = (kh * KW + kw) * Cin * Cout;
@@ -1579,7 +1605,7 @@ generateConvKernel(MLIRContext *ctx, StringRef kernelName,
 
       if (nK == 1) {
         auto [tAd, tokA] =
-            e.loadViewTko(pA, {bz, by, c0}, tileA3, elemType);
+            e.loadViewTko(pA, {batchId, ohBlockId, by, c0}, tileA4, elemType);
         SmallVector<int64_t> reshapeA = {flatM, tK};
         Value flatA = e.reshape(tAd, reshapeA, elemType);
 
@@ -1597,7 +1623,7 @@ generateConvKernel(MLIRContext *ctx, StringRef kernelName,
         Value iterAcc = forOp.getRegionIterValues()[0];
 
         auto [tAd, tokA] =
-            e.loadViewTko(pA, {bz, by, iv}, tileA3, elemType);
+            e.loadViewTko(pA, {batchId, ohBlockId, by, iv}, tileA4, elemType);
         SmallVector<int64_t> reshapeA = {flatM, tK};
         Value flatA = e.reshape(tAd, reshapeA, elemType);
 
@@ -1611,14 +1637,14 @@ generateConvKernel(MLIRContext *ctx, StringRef kernelName,
     }
   }
 
-  Value acc3D = e.reshape(acc, tileC3, elemType);
-  e.storeViewTko(acc3D, pC, {bz, by, bx});
+  Value acc4D = e.reshape(acc, tileC4, elemType);
+  e.storeViewTko(acc4D, pC, {batchId, ohBlockId, by, bx});
   e.emitReturn();
   e.endEntry();
 
   SmallVector<int64_t, 3> gridDims = {(Cout + tOC - 1) / tOC,
                                       (OW + tOW - 1) / tOW,
-                                      (OH + tOH - 1) / tOH};
+                                      N * ohTiles};
   return {std::move(e), gridDims};
 }
 
@@ -2322,66 +2348,17 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
   //=== Phase 4: Contractions ===//
 
   if (kernelClass == "matmul") {
-    // Generic sliding-window convs are currently classified as "matmul" by the
-    // contraction pass. Detect them here and route them to the direct conv
-    // kernel instead of flattening them as a plain A x B contraction.
     if (auto genOp = dyn_cast<linalg::GenericOp>(primaryOp)) {
-      auto iterTypes = genOp.getIteratorTypesArray();
-      unsigned numParallel = 0, numReduction = 0;
-      for (auto it : iterTypes) {
-        if (it == mlir::utils::IteratorType::parallel)
-          numParallel++;
-        else
-          numReduction++;
-      }
-      if (numParallel >= 2 && numReduction >= 2 &&
-          genOp.getNumDpsInputs() == 2) {
-        auto maps = genOp.getIndexingMapsArray();
-        AffineMap inputMap = maps[0];
-        bool hasAdditive = false;
-        for (unsigned i = 0; i < inputMap.getNumResults(); ++i) {
-          if (inputMap.getResult(i).getKind() == AffineExprKind::Add) {
-            hasAdditive = true;
-            break;
-          }
+      if (ConvPlan convPlan = buildConvPlan(genOp); convPlan) {
+        if (convPlan.mode == ConvLoweringMode::DirectConv2D) {
+          auto [e, grid] =
+              generateConv2DKernel(ctx, kernelName, convPlan.inputShape,
+                                   convPlan.filterShape, convPlan.outputShape,
+                                   convPlan.strides, convPlan.dilations,
+                                   elemType, tileM, tileN, tileK);
+          return buildAndSerialize(std::move(e), std::move(grid));
         }
-        if (hasAdditive) {
-          SmallVector<int64_t> inpShape, filtShape, outShape;
-
-          for (auto operand : genOp.getOperands()) {
-            if (auto shaped = dyn_cast<ShapedType>(operand.getType())) {
-              if (!shaped.hasStaticShape())
-                continue;
-              if (inpShape.empty())
-                inpShape.assign(shaped.getShape().begin(), shaped.getShape().end());
-              else if (filtShape.empty())
-                filtShape.assign(shaped.getShape().begin(), shaped.getShape().end());
-            }
-          }
-          for (auto result : genOp.getResults()) {
-            if (auto shaped = dyn_cast<ShapedType>(result.getType())) {
-              if (!shaped.hasStaticShape())
-                continue;
-              outShape.assign(shaped.getShape().begin(), shaped.getShape().end());
-            }
-          }
-
-          // Current IREE lowering may preserve the batch dimension even for
-          // batch=1 NHWC/HWCF convs. Normalize those shapes to the direct conv
-          // generator's expected [H, W, C] / [OH, OW, C_out] form.
-          if (inpShape.size() == 4 && inpShape[0] == 1)
-            inpShape.erase(inpShape.begin());
-          if (outShape.size() == 4 && outShape[0] == 1)
-            outShape.erase(outShape.begin());
-
-          if (inpShape.size() == 3 && filtShape.size() == 4 &&
-              outShape.size() == 3) {
-            auto [e, grid] = generateConvKernel(
-                ctx, kernelName, inpShape, filtShape, outShape, elemType,
-                tileM, tileN, tileK);
-            return buildAndSerialize(std::move(e), std::move(grid));
-          }
-        }
+        // Pointwise convs intentionally reuse the contraction emitter below.
       }
     }
 
@@ -2408,11 +2385,38 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     if (shC.empty())
       shC = dstShape;
 
+    // Detect transposed B from indexing maps.
+    // PyTorch nn.Linear stores weights as [N,K] (out,in), which gives
+    // B map: (d0,d1,d2) -> (d1,d2) instead of (d2,d1).
+    // When B's last dim maps to the reduction dim, B is transposed.
+    bool bTransposed = false;
+    if (auto linalgOp = dyn_cast<linalg::LinalgOp>(primaryOp)) {
+      auto maps = linalgOp.getIndexingMapsArray();
+      auto iterTypes = linalgOp.getIteratorTypesArray();
+      if (maps.size() >= 2) {
+        AffineMap bMap = maps[1];
+        // Find the reduction dimension index.
+        for (unsigned d = 0; d < iterTypes.size(); ++d) {
+          if (iterTypes[d] == mlir::utils::IteratorType::reduction) {
+            // Check if reduction dim is B's LAST result.
+            if (bMap.getNumResults() >= 2) {
+              auto lastExpr = bMap.getResult(bMap.getNumResults() - 1);
+              if (auto dimExpr = dyn_cast<AffineDimExpr>(lastExpr)) {
+                if (dimExpr.getPosition() == d)
+                  bTransposed = true;
+              }
+            }
+            break; // only check first reduction dim
+          }
+        }
+      }
+    }
+
     // Extract M, N, K. For batched contractions (e.g., im2col conv2d
     // C[5,5,16]), flatten all dims except the last into M.
-    // A[...×K] × B[K×N] → C[...×N]
     int64_t N = shC.empty() ? 1 : shC.back();
-    int64_t K = shA.empty() ? 1 : shA.back();
+    int64_t K = bTransposed ? (shB.empty() ? 1 : shB.back())
+                            : (shA.empty() ? 1 : shA.back());
     int64_t M = 1;
     for (int64_t i = 0; i + 1 < (int64_t)shC.size(); ++i)
       M *= shC[i];
@@ -2436,19 +2440,32 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     e.beginEntry("main", numBindings, elemType);
 
     // Use 2D shapes for the kernel (flatten batch dims if present).
-    SmallVector<int64_t> shA2 = {M, K}, shB2 = {K, N}, shC2 = {M, N};
-    SmallVector<int64_t> stA = {K, 1}, stB = {N, 1}, stC = {N, 1};
+    SmallVector<int64_t> shA2 = {M, K}, shC2 = {M, N};
+    SmallVector<int64_t> stA = {K, 1}, stC = {N, 1};
 
     // Use the last binding as output (handles fused matmul+bias dispatches
     // where extra bindings come before the output).
     int64_t outBindIdx = numBindings - 1;
     auto vA = e.makeTensorView(e.getArg(0), shA2, stA, elemType);
-    auto vB = e.makeTensorView(e.getArg(1), shB2, stB, elemType);
-    auto vC = e.makeTensorView(e.getArg(outBindIdx), shC2, stC, elemType);
 
-    SmallVector<int64_t> tA = {aTM, aTK}, tB = {aTK, aTN}, tC = {aTM, aTN};
+    // When B is transposed (PyTorch [N,K]), use physical shape [N,K]
+    // and permute loaded tiles to [K,N] before mmaf.
+    SmallVector<int64_t> shB2, stB, tB;
+    if (bTransposed) {
+      shB2 = {N, K};
+      stB = {K, 1};
+      tB = {aTN, aTK};
+    } else {
+      shB2 = {K, N};
+      stB = {N, 1};
+      tB = {aTK, aTN};
+    }
+    auto vB = e.makeTensorView(e.getArg(1), shB2, stB, elemType);
+    auto pBv = e.makePartitionView(vB, tB);
+
+    auto vC = e.makeTensorView(e.getArg(outBindIdx), shC2, stC, elemType);
+    SmallVector<int64_t> tA = {aTM, aTK}, tC = {aTM, aTN};
     auto pA = e.makePartitionView(vA, tA);
-    auto pB = e.makePartitionView(vB, tB);
     auto pC = e.makePartitionView(vC, tC);
 
     auto [bx, by, bz] = e.getTileBlockId();
@@ -2464,7 +2481,17 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     Value iterAcc = forOp.getRegionIterValues()[0];
 
     auto [tAd, tokA] = e.loadViewTko(pA, {by, iv}, tA, elemType);
-    auto [tBd, tokB] = e.loadViewTko(pB, {iv, bx}, tB, elemType);
+    Value tBd;
+    if (bTransposed) {
+      // Load B tile as [aTN, aTK] then permute to [aTK, aTN].
+      auto [tBraw, tokB] = e.loadViewTko(pBv, {bx, iv}, tB, elemType);
+      SmallVector<int64_t> permTB = {aTK, aTN};
+      auto permType = cuda_tile::TileType::get(ctx, permTB, elemType);
+      tBd = e.permute(tBraw, {1, 0}, permType);
+    } else {
+      auto [tBraw, tokB] = e.loadViewTko(pBv, {iv, bx}, tB, elemType);
+      tBd = tBraw;
+    }
     auto newAcc = e.mmaf(tAd, tBd, iterAcc);
     e.endFor(forOp, ValueRange{newAcc});
 
@@ -2605,63 +2632,15 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
   }
 
   //=== Phase 5: Convolution (sliding-window generic) ===//
-  // Detect untagged conv2d generics: 6D with additive indexing maps like
-  // (d0,d1,d2,d3,d4,d5) → (d0+d3, d1+d4, d5) for input.
   if (auto genOp = dyn_cast<linalg::GenericOp>(primaryOp)) {
-    auto iterTypes = genOp.getIteratorTypesArray();
-    unsigned numParallel = 0, numReduction = 0;
-    for (auto it : iterTypes) {
-      if (it == mlir::utils::IteratorType::parallel)
-        numParallel++;
-      else
-        numReduction++;
-    }
-    // Conv2d pattern: 3 parallel + 3 reduction dims, mulf+addf body,
-    // input map has additive expressions.
-    if (numParallel >= 2 && numReduction >= 2 &&
-        genOp.getNumDpsInputs() == 2) {
-      auto maps = genOp.getIndexingMapsArray();
-      AffineMap inputMap = maps[0];
-      // Check for additive expressions in input map (e.g., d0+d3).
-      bool hasAdditive = false;
-      for (unsigned i = 0; i < inputMap.getNumResults(); ++i) {
-        auto expr = inputMap.getResult(i);
-        if (expr.getKind() == AffineExprKind::Add)
-          hasAdditive = true;
-      }
-        if (hasAdditive) {
-          SmallVector<int64_t> inpShape, filtShape, outShape;
-          for (auto operand : genOp.getOperands()) {
-            if (auto shaped = dyn_cast<ShapedType>(operand.getType())) {
-              if (!shaped.hasStaticShape())
-                continue;
-              if (inpShape.empty())
-                inpShape.assign(shaped.getShape().begin(), shaped.getShape().end());
-              else if (filtShape.empty())
-                filtShape.assign(shaped.getShape().begin(), shaped.getShape().end());
-            }
-          }
-          for (auto result : genOp.getResults()) {
-            if (auto shaped = dyn_cast<ShapedType>(result.getType())) {
-              if (!shaped.hasStaticShape())
-                continue;
-              outShape.assign(shaped.getShape().begin(), shaped.getShape().end());
-            }
-          }
-
-          if (inpShape.size() == 4 && inpShape[0] == 1)
-            inpShape.erase(inpShape.begin());
-          if (outShape.size() == 4 && outShape[0] == 1)
-            outShape.erase(outShape.begin());
-
-        if (inpShape.size() == 3 && filtShape.size() == 4 &&
-            outShape.size() == 3) {
-          auto [e, grid] = generateConvKernel(
-              ctx, kernelName, inpShape, filtShape, outShape, elemType,
-              tileM, tileN, tileK);
-          return buildAndSerialize(std::move(e), std::move(grid));
-        }
-      }
+    if (ConvPlan convPlan = buildConvPlan(genOp);
+        convPlan.mode == ConvLoweringMode::DirectConv2D) {
+      auto [e, grid] =
+          generateConv2DKernel(ctx, kernelName, convPlan.inputShape,
+                               convPlan.filterShape, convPlan.outputShape,
+                               convPlan.strides, convPlan.dilations, elemType,
+                               tileM, tileN, tileK);
+      return buildAndSerialize(std::move(e), std::move(grid));
     }
   }
 
