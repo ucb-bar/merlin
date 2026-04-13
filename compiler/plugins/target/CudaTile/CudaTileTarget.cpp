@@ -36,6 +36,7 @@
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/DialectResourceBlobManager.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FileUtilities.h"
@@ -43,6 +44,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
 
@@ -441,6 +443,20 @@ static bool collectAffineCoefficients(AffineExpr expr,
   return false;
 }
 
+static bool getLoopPositionOrUnitConstant(AffineExpr expr, int64_t extent,
+                                          int64_t &loopPos) {
+  if (auto dimExpr = dyn_cast<AffineDimExpr>(expr)) {
+    loopPos = dimExpr.getPosition();
+    return true;
+  }
+  if (auto cstExpr = dyn_cast<AffineConstantExpr>(expr);
+      cstExpr && cstExpr.getValue() == 0 && extent == 1) {
+    loopPos = -1;
+    return true;
+  }
+  return false;
+}
+
 enum class ConvLoweringMode : uint8_t {
   NotConv,
   PointwiseMatmul,
@@ -512,11 +528,12 @@ static ConvPlan buildConvPlan(linalg::GenericOp genOp) {
   }
 
   SmallVector<int64_t> filterLoops;
-  for (AffineExpr expr : filterMap.getResults()) {
-    auto dimExpr = dyn_cast<AffineDimExpr>(expr);
-    if (!dimExpr)
+  filterLoops.reserve(filterShape.size());
+  for (auto [expr, extent] : llvm::zip(filterMap.getResults(), filterShape)) {
+    int64_t loopPos = -1;
+    if (!getLoopPositionOrUnitConstant(expr, extent, loopPos))
       return plan;
-    filterLoops.push_back(dimExpr.getPosition());
+    filterLoops.push_back(loopPos);
   }
 
   int64_t batchLoop = hasBatchDim ? outputLoops.front() : -1;
@@ -534,6 +551,8 @@ static ConvPlan buildConvPlan(linalg::GenericOp genOp) {
   int64_t inputChannelLoop = filterLoops[spatialRank];
   if (filterLoops.back() != outChannelLoop)
     return plan;
+  if (inputChannelLoop < 0 || outChannelLoop < 0)
+    return plan;
 
   SmallVector<int64_t> strides(spatialRank, 1);
   SmallVector<int64_t> dilations(spatialRank, 1);
@@ -548,16 +567,19 @@ static ConvPlan buildConvPlan(linalg::GenericOp genOp) {
     }
 
     for (int64_t d = 0; d < static_cast<int64_t>(coeffs.size()); ++d) {
-      if (d != outputSpatialLoops[i] && d != kernelLoops[i] && coeffs[d] != 0)
+      bool isOutputLoop =
+          outputSpatialLoops[i] >= 0 && d == outputSpatialLoops[i];
+      bool isKernelLoop = kernelLoops[i] >= 0 && d == kernelLoops[i];
+      if (!isOutputLoop && !isKernelLoop && coeffs[d] != 0)
         return plan;
     }
 
-    int64_t stride = coeffs[outputSpatialLoops[i]];
-    int64_t dilation = coeffs[kernelLoops[i]];
+    int64_t stride =
+        outputSpatialLoops[i] >= 0 ? coeffs[outputSpatialLoops[i]] : 1;
+    int64_t dilation =
+        kernelLoops[i] >= 0 ? coeffs[kernelLoops[i]] : 1;
     if (stride <= 0)
       return plan;
-    if (dilation == 0 && filterShape[i] == 1)
-      dilation = 1;
     if (dilation <= 0)
       return plan;
 
@@ -566,9 +588,18 @@ static ConvPlan buildConvPlan(linalg::GenericOp genOp) {
   }
 
   if (hasBatchDim) {
-    auto batchExpr = dyn_cast<AffineDimExpr>(inputMap.getResult(0));
-    if (!batchExpr || batchExpr.getPosition() != batchLoop)
+    int64_t inputBatchLoop = -1;
+    if (!getLoopPositionOrUnitConstant(inputMap.getResult(0), inputShape[0],
+                                       inputBatchLoop))
       return plan;
+    if (batchLoop >= 0) {
+      if (inputBatchLoop != batchLoop)
+        return plan;
+    } else if (inputBatchLoop >= 0) {
+      batchLoop = inputBatchLoop;
+    } else {
+      return plan;
+    }
   }
 
   auto inputChannelExpr = dyn_cast<AffineDimExpr>(inputMap.getResult(
@@ -1648,6 +1679,89 @@ generateConv2DKernel(MLIRContext *ctx, StringRef kernelName,
   return {std::move(e), gridDims};
 }
 
+static std::pair<CudaTileOpEmitter, SmallVector<int64_t, 3>>
+generateStridedPointwiseMatmul2DKernel(
+    MLIRContext *ctx, StringRef kernelName, int64_t numBindings,
+    int64_t bindA, int64_t bindB, int64_t bindC,
+    ArrayRef<int64_t> sourceShape, ArrayRef<int64_t> sliceOffsets,
+    ArrayRef<int64_t> sliceStrides, ArrayRef<int64_t> aShape,
+    ArrayRef<int64_t> bShape, ArrayRef<int64_t> cShape, Type elemType,
+    int64_t tileM, int64_t tileN, int64_t tileK) {
+  int64_t OH = aShape[0];
+  int64_t OW = aShape[1];
+  int64_t K = aShape[2];
+  int64_t N = cShape[2];
+
+  auto sourceBaseStrides = computeRowMajorStrides(sourceShape);
+  int64_t baseOffset = 0;
+  SmallVector<int64_t> logicalStrides;
+  logicalStrides.reserve(aShape.size());
+  for (int64_t i = 0; i < static_cast<int64_t>(aShape.size()); ++i) {
+    int64_t offset = i < static_cast<int64_t>(sliceOffsets.size())
+                         ? sliceOffsets[i]
+                         : 0;
+    int64_t stride = i < static_cast<int64_t>(sliceStrides.size())
+                         ? sliceStrides[i]
+                         : 1;
+    baseOffset += offset * sourceBaseStrides[i];
+    logicalStrides.push_back(sourceBaseStrides[i] * stride);
+  }
+
+  int64_t tOH = nextPow2(std::min(tileM, OH));
+  int64_t tOW = 1;
+  int64_t tN = nextPow2(std::min(tileN, N));
+  int64_t tK = nextPow2(std::min(tileK, K));
+  int64_t flatM = tOH * tOW;
+  int64_t nK = (K + tK - 1) / tK;
+
+  CudaTileOpEmitter e(ctx);
+  e.beginModule(kernelName);
+  e.beginEntry("main", numBindings, elemType);
+
+  SmallVector<int64_t> shC = {OH, OW, N};
+  SmallVector<int64_t> stC = {OW * N, N, 1};
+  SmallVector<int64_t> tileC = {tOH, tOW, tN};
+  auto vC = e.makeTensorView(e.getArg(bindC), shC, stC, elemType);
+  auto pC = e.makePartitionView(vC, tileC);
+
+  Value inputPtr = e.offsetPtr(e.getArg(bindA), baseOffset);
+  auto vA = e.makeTensorView(inputPtr, aShape, logicalStrides, elemType);
+  SmallVector<int64_t> tileA = {tOH, tOW, tK};
+  auto pA = e.makePartitionView(vA, tileA);
+
+  SmallVector<int64_t> shB = {bShape[0], bShape[1]};
+  SmallVector<int64_t> stB = {bShape[1], 1};
+  SmallVector<int64_t> tileB = {tK, tN};
+  auto vB = e.makeTensorView(e.getArg(bindB), shB, stB, elemType);
+  auto pB = e.makePartitionView(vB, tileB);
+
+  auto [bx, by, bz] = e.getTileBlockId();
+  auto accInit = e.constSplat({flatM, tN}, elemType, 0.0);
+  auto lb = e.constI32(0);
+  auto ub = e.constI32(nK);
+  auto step = e.constI32(1);
+  auto forOp = e.beginFor(lb, ub, step, ValueRange{accInit});
+  Value iv = forOp.getInductionVar();
+  Value iterAcc = forOp.getRegionIterValues()[0];
+
+  auto [tAd, tokA] = e.loadViewTko(pA, {bz, by, iv}, tileA, elemType);
+  Value flatA = e.reshape(tAd, {flatM, tK}, elemType);
+  auto [tBd, tokB] = e.loadViewTko(pB, {iv, bx}, tileB, elemType);
+  Value newAcc = e.mmaf(flatA, tBd, iterAcc);
+  e.endFor(forOp, ValueRange{newAcc});
+
+  Value finalAcc = forOp.getResult(0);
+  Value acc3D = e.reshape(finalAcc, tileC, elemType);
+  e.storeViewTko(acc3D, pC, {bz, by, bx});
+  e.emitReturn();
+  e.endEntry();
+
+  SmallVector<int64_t, 3> gridDims = {(N + tN - 1) / tN,
+                                      (OW + tOW - 1) / tOW,
+                                      (OH + tOH - 1) / tOH};
+  return {std::move(e), gridDims};
+}
+
 //===----------------------------------------------------------------------===//
 // buildCudaTileKernel — main codegen entry point
 //===----------------------------------------------------------------------===//
@@ -2435,18 +2549,143 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     if (numBindings == 0)
       numBindings = 3;
 
+    // Trace the matmul op's SSA operands to binding indices.
+    // This handles any binding order and embedded-constant weights.
+    // Build a map: Value → binding index (trace through dispatch.tensor.load).
+    DenseMap<Value, int64_t> valueToBind;
+    innerModule->walk([&](Operation *op) {
+      if (op->getName().getStringRef() ==
+          "iree_tensor_ext.dispatch.tensor.load") {
+        if (op->getNumOperands() >= 1) {
+          Value src = op->getOperand(0);
+          for (int64_t i = 0; i < (int64_t)bindingShapes.size(); ++i) {
+            if (bindingShapes[i].memref == src) {
+              valueToBind[op->getResult(0)] = i;
+              break;
+            }
+          }
+        }
+      }
+    });
+    for (int64_t i = 0; i < (int64_t)bindingShapes.size(); ++i)
+      valueToBind[bindingShapes[i].memref] = i;
+
+    // Find binding indices for A, B, C from the matmul op's operands.
+    int64_t bindA = -1, bindB = -1, bindC = -1;
+    if (auto linalgOp = dyn_cast<linalg::LinalgOp>(primaryOp)) {
+      auto dpsInputs = linalgOp.getDpsInputs();
+      if (dpsInputs.size() >= 1) {
+        auto it = valueToBind.find(dpsInputs[0]);
+        if (it != valueToBind.end()) bindA = it->second;
+      }
+      if (dpsInputs.size() >= 2) {
+        auto it = valueToBind.find(dpsInputs[1]);
+        if (it != valueToBind.end()) bindB = it->second;
+      }
+      auto dpsInits = linalgOp.getDpsInits();
+      if (!dpsInits.empty()) {
+        // The init traces through linalg.fill → tensor.empty → binding.
+        // Walk the use chain to find the store binding (writeonly).
+        for (int64_t i = 0; i < (int64_t)bindingShapes.size(); ++i) {
+          // Writeonly binding → output.
+          auto bVal = bindingShapes[i].memref;
+          if (auto subspan = bVal.getDefiningOp()) {
+            if (subspan->getName().getStringRef() ==
+                "hal.interface.binding.subspan") {
+              // Check flags for writeonly.
+              auto flags = subspan->getAttrOfType<IntegerAttr>(
+                  "descriptor_flags");
+              if (flags && (flags.getInt() & 0x2)) { // Indirect writeonly
+                bindC = i;
+              }
+            }
+          }
+        }
+      }
+    }
+    // Fallback: use positional binding assignment.
+    if (bindA < 0) bindA = 0;
+    if (bindC < 0) bindC = numBindings - 1;
+
+    // Check if B's weight is an embedded constant (no binding).
+    // Turbine bakes nn.Linear weights as dense_resource constants.
+    Value weightConstant; // set if B is a constant, not a binding
+    if (bindB < 0) {
+      if (auto linalgOp = dyn_cast<linalg::LinalgOp>(primaryOp)) {
+        auto dpsInputs = linalgOp.getDpsInputs();
+        if (dpsInputs.size() >= 2) {
+          Value bInput = dpsInputs[1];
+          if (auto cstOp = bInput.getDefiningOp<arith::ConstantOp>()) {
+            weightConstant = bInput; // mark for later handling
+          }
+        }
+      }
+      if (!weightConstant) {
+        // B is whichever binding is not A or C.
+        for (int64_t i = 0; i < numBindings; ++i) {
+          if (i != bindA && i != bindC) { bindB = i; break; }
+        }
+        if (bindB < 0) bindB = 1;
+      }
+    }
+
+    // If weight is a constant, add an extra entry arg for it.
+    // We'll embed the constant data in the cuda_tile module and pass
+    // it through the extra pointer slot.
+    // Strategy: create an extra binding slot for the constant weight.
+    // At runtime, IREE handles the constant pool → binding mapping.
+    // For code generation, we treat it like any other binding.
+    // NOTE: If the constant has no binding, we can't load it from a
+    // pointer. Instead, embed it as a cuda_tile constant tile.
+    int64_t actualNumBindings = numBindings;
+    if (weightConstant) {
+      // We'll embed the weight as a constant tile inside the kernel.
+      // No extra binding needed.
+      bindB = -1; // signal to use constant tile instead of loading
+    }
+
+    IREE::TensorExt::DispatchTensorLoadOp slicedALoadOp;
+    SmallVector<int64_t> slicedASourceShape;
+    SmallVector<int64_t> slicedAOffsets;
+    SmallVector<int64_t> slicedAStrides;
+    if (auto linalgOp = dyn_cast<linalg::LinalgOp>(primaryOp)) {
+      auto dpsInputs = linalgOp.getDpsInputs();
+      if (!dpsInputs.empty()) {
+        slicedALoadOp =
+            dpsInputs[0].getDefiningOp<IREE::TensorExt::DispatchTensorLoadOp>();
+        if (slicedALoadOp) {
+          slicedASourceShape =
+              getStaticShapeFromType(slicedALoadOp.getSource().getType());
+          slicedAOffsets = SmallVector<int64_t>(slicedALoadOp.getStaticOffsets());
+          slicedAStrides = SmallVector<int64_t>(slicedALoadOp.getStaticStrides());
+        }
+      }
+    }
+
+    bool hasSlicedA =
+        slicedALoadOp &&
+        (!slicedALoadOp.isLoadOfWholeSource() ||
+         !isIdentitySlice(slicedAOffsets, slicedAStrides));
+    if (hasSlicedA && !weightConstant && bindA >= 0 && bindB >= 0 &&
+        bindC >= 0 && slicedASourceShape.size() == 3 && shA.size() == 3 &&
+        shB.size() == 2 && shC.size() == 3 &&
+        llvm::equal(slicedALoadOp.getStaticSizes(), shA)) {
+      auto [e, grid] = generateStridedPointwiseMatmul2DKernel(
+          ctx, kernelName, actualNumBindings, bindA, bindB, bindC,
+          slicedASourceShape, slicedAOffsets, slicedAStrides, shA, shB, shC,
+          elemType, tileM, tileN, tileK);
+      return buildAndSerialize(std::move(e), std::move(grid));
+    }
+
     CudaTileOpEmitter e(ctx);
     e.beginModule(kernelName);
-    e.beginEntry("main", numBindings, elemType);
+    e.beginEntry("main", actualNumBindings, elemType);
 
     // Use 2D shapes for the kernel (flatten batch dims if present).
     SmallVector<int64_t> shA2 = {M, K}, shC2 = {M, N};
     SmallVector<int64_t> stA = {K, 1}, stC = {N, 1};
 
-    // Use the last binding as output (handles fused matmul+bias dispatches
-    // where extra bindings come before the output).
-    int64_t outBindIdx = numBindings - 1;
-    auto vA = e.makeTensorView(e.getArg(0), shA2, stA, elemType);
+    auto vA = e.makeTensorView(e.getArg(bindA), shA2, stA, elemType);
 
     // When B is transposed (PyTorch [N,K]), use physical shape [N,K]
     // and permute loaded tiles to [K,N] before mmaf.
@@ -2460,10 +2699,13 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
       stB = {N, 1};
       tB = {aTK, aTN};
     }
-    auto vB = e.makeTensorView(e.getArg(1), shB2, stB, elemType);
-    auto pBv = e.makePartitionView(vB, tB);
+    Value pBv; // partition view for B (or null if B is a constant)
+    if (bindB >= 0) {
+      auto vB = e.makeTensorView(e.getArg(bindB), shB2, stB, elemType);
+      pBv = e.makePartitionView(vB, tB);
+    }
 
-    auto vC = e.makeTensorView(e.getArg(outBindIdx), shC2, stC, elemType);
+    auto vC = e.makeTensorView(e.getArg(bindC), shC2, stC, elemType);
     SmallVector<int64_t> tA = {aTM, aTK}, tC = {aTM, aTN};
     auto pA = e.makePartitionView(vA, tA);
     auto pC = e.makePartitionView(vC, tC);
@@ -2482,7 +2724,56 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
 
     auto [tAd, tokA] = e.loadViewTko(pA, {by, iv}, tA, elemType);
     Value tBd;
-    if (bTransposed) {
+    if (weightConstant) {
+      // B is an embedded constant. Create the full constant tile.
+      // For the K-loop, we need the slice [iv*aTK : (iv+1)*aTK, :].
+      // When nK==1, the full constant IS the tile.
+      // TODO: support nK>1 by slicing the constant per K iteration.
+      auto cstOp = weightConstant.getDefiningOp<arith::ConstantOp>();
+      auto attrVal = cstOp.getValue();
+
+      // Extract float data from DenseElementsAttr or DenseResourceElementsAttr.
+      SmallVector<float> weightData;
+      if (auto dense = dyn_cast<DenseElementsAttr>(attrVal)) {
+        for (auto val : dense.getValues<float>())
+          weightData.push_back(val);
+      } else if (auto resAttr =
+                     dyn_cast<DenseResourceElementsAttr>(attrVal)) {
+        auto blob = resAttr.getRawHandle().getBlob();
+        if (blob) {
+          auto data = blob->getData();
+          auto *floats = reinterpret_cast<const float *>(data.data());
+          int64_t numElem = data.size() / sizeof(float);
+          weightData.assign(floats, floats + numElem);
+        }
+      }
+      if (weightData.empty())
+        return failure();
+
+      // Create cuda_tile constant tile with physical layout.
+      SmallVector<int64_t> physShape = bTransposed
+                                           ? SmallVector<int64_t>{N, K}
+                                           : SmallVector<int64_t>{K, N};
+      auto physType =
+          cuda_tile::TileType::get(ctx, physShape, elemType);
+      int64_t tileElems = physShape[0] * physShape[1];
+      if ((int64_t)weightData.size() < tileElems)
+        weightData.resize(tileElems, 0.0f);
+      auto tensorType = RankedTensorType::get(physShape, elemType);
+      auto physAttr = DenseElementsAttr::get(
+          tensorType, ArrayRef<float>(weightData.data(), tileElems));
+      tBd = e.builder()
+                .create<cuda_tile::ConstantOp>(
+                    e.builder().getUnknownLoc(), physType,
+                    cast<DenseTypedElementsAttr>(
+                        physAttr.reshape(cast<ShapedType>(physType))))
+                .getResult();
+      if (bTransposed) {
+        auto permType =
+            cuda_tile::TileType::get(ctx, {K, N}, elemType);
+        tBd = e.permute(tBd, {1, 0}, permType);
+      }
+    } else if (bTransposed) {
       // Load B tile as [aTN, aTK] then permute to [aTK, aTN].
       auto [tBraw, tokB] = e.loadViewTko(pBv, {bx, iv}, tB, elemType);
       SmallVector<int64_t> permTB = {aTK, aTN};
