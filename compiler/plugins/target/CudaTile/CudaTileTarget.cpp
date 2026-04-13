@@ -1687,10 +1687,12 @@ generateStridedPointwiseMatmul2DKernel(
     ArrayRef<int64_t> sliceStrides, ArrayRef<int64_t> aShape,
     ArrayRef<int64_t> bShape, ArrayRef<int64_t> cShape, Type elemType,
     int64_t tileM, int64_t tileN, int64_t tileK) {
-  int64_t OH = aShape[0];
-  int64_t OW = aShape[1];
-  int64_t K = aShape[2];
-  int64_t N = cShape[2];
+  bool hasBatch = aShape.size() == 4;
+  int64_t batch = hasBatch ? aShape[0] : 1;
+  int64_t OH = aShape[hasBatch ? 1 : 0];
+  int64_t OW = aShape[hasBatch ? 2 : 1];
+  int64_t K = aShape[hasBatch ? 3 : 2];
+  int64_t N = cShape[hasBatch ? 3 : 2];
 
   auto sourceBaseStrides = computeRowMajorStrides(sourceShape);
   int64_t baseOffset = 0;
@@ -1718,15 +1720,26 @@ generateStridedPointwiseMatmul2DKernel(
   e.beginModule(kernelName);
   e.beginEntry("main", numBindings, elemType);
 
-  SmallVector<int64_t> shC = {OH, OW, N};
-  SmallVector<int64_t> stC = {OW * N, N, 1};
-  SmallVector<int64_t> tileC = {tOH, tOW, tN};
+  SmallVector<int64_t> shC;
+  SmallVector<int64_t> stC;
+  SmallVector<int64_t> tileC;
+  if (hasBatch) {
+    shC = {batch, OH, OW, N};
+    stC = {OH * OW * N, OW * N, N, 1};
+    tileC = {1, tOH, tOW, tN};
+  } else {
+    shC = {OH, OW, N};
+    stC = {OW * N, N, 1};
+    tileC = {tOH, tOW, tN};
+  }
   auto vC = e.makeTensorView(e.getArg(bindC), shC, stC, elemType);
   auto pC = e.makePartitionView(vC, tileC);
 
   Value inputPtr = e.offsetPtr(e.getArg(bindA), baseOffset);
   auto vA = e.makeTensorView(inputPtr, aShape, logicalStrides, elemType);
-  SmallVector<int64_t> tileA = {tOH, tOW, tK};
+  SmallVector<int64_t> tileA =
+      hasBatch ? SmallVector<int64_t>{1, tOH, tOW, tK}
+               : SmallVector<int64_t>{tOH, tOW, tK};
   auto pA = e.makePartitionView(vA, tileA);
 
   SmallVector<int64_t> shB = {bShape[0], bShape[1]};
@@ -1736,6 +1749,24 @@ generateStridedPointwiseMatmul2DKernel(
   auto pB = e.makePartitionView(vB, tileB);
 
   auto [bx, by, bz] = e.getTileBlockId();
+  Value batchId = bz;
+  Value ohBlockId = by;
+  if (hasBatch) {
+    auto signAttr = cuda_tile::SignednessAttr::get(
+        ctx, cuda_tile::Signedness::Unsigned);
+    auto rndAttr = cuda_tile::RoundingModeAttr::get(
+        ctx, cuda_tile::RoundingMode::ZERO);
+    Value ohTiles = e.constI32((OH + tOH - 1) / tOH);
+    batchId =
+        e.builder()
+            .create<cuda_tile::DivIOp>(e.getLoc(), bz, ohTiles, signAttr,
+                                       rndAttr)
+            .getResult();
+    ohBlockId =
+        e.builder()
+            .create<cuda_tile::RemIOp>(e.getLoc(), bz, ohTiles, signAttr)
+            .getResult();
+  }
   auto accInit = e.constSplat({flatM, tN}, elemType, 0.0);
   auto lb = e.constI32(0);
   auto ub = e.constI32(nK);
@@ -1744,21 +1775,27 @@ generateStridedPointwiseMatmul2DKernel(
   Value iv = forOp.getInductionVar();
   Value iterAcc = forOp.getRegionIterValues()[0];
 
-  auto [tAd, tokA] = e.loadViewTko(pA, {bz, by, iv}, tileA, elemType);
+  SmallVector<Value> aCoords =
+      hasBatch ? SmallVector<Value>{batchId, ohBlockId, by, iv}
+               : SmallVector<Value>{bz, by, iv};
+  auto [tAd, tokA] = e.loadViewTko(pA, aCoords, tileA, elemType);
   Value flatA = e.reshape(tAd, {flatM, tK}, elemType);
   auto [tBd, tokB] = e.loadViewTko(pB, {iv, bx}, tileB, elemType);
   Value newAcc = e.mmaf(flatA, tBd, iterAcc);
   e.endFor(forOp, ValueRange{newAcc});
 
   Value finalAcc = forOp.getResult(0);
-  Value acc3D = e.reshape(finalAcc, tileC, elemType);
-  e.storeViewTko(acc3D, pC, {bz, by, bx});
+  Value accTile = e.reshape(finalAcc, tileC, elemType);
+  SmallVector<Value> cCoords =
+      hasBatch ? SmallVector<Value>{batchId, ohBlockId, by, bx}
+               : SmallVector<Value>{bz, by, bx};
+  e.storeViewTko(accTile, pC, cCoords);
   e.emitReturn();
   e.endEntry();
 
   SmallVector<int64_t, 3> gridDims = {(N + tN - 1) / tN,
                                       (OW + tOW - 1) / tOW,
-                                      (OH + tOH - 1) / tOH};
+                                      (OH + tOH - 1) / tOH * batch};
   return {std::move(e), gridDims};
 }
 
@@ -2666,9 +2703,13 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
         slicedALoadOp &&
         (!slicedALoadOp.isLoadOfWholeSource() ||
          !isIdentitySlice(slicedAOffsets, slicedAStrides));
+    bool slicedPointwiseRankOK =
+        (slicedASourceShape.size() == 3 && shA.size() == 3 &&
+         shC.size() == 3) ||
+        (slicedASourceShape.size() == 4 && shA.size() == 4 &&
+         shC.size() == 4);
     if (hasSlicedA && !weightConstant && bindA >= 0 && bindB >= 0 &&
-        bindC >= 0 && slicedASourceShape.size() == 3 && shA.size() == 3 &&
-        shB.size() == 2 && shC.size() == 3 &&
+        bindC >= 0 && slicedPointwiseRankOK && shB.size() == 2 &&
         llvm::equal(slicedALoadOp.getStaticSizes(), shA)) {
       auto [e, grid] = generateStridedPointwiseMatmul2DKernel(
           ctx, kernelName, actualNumBindings, bindA, bindB, bindC,
@@ -2733,10 +2774,10 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
       auto attrVal = cstOp.getValue();
 
       // Extract float data from DenseElementsAttr or DenseResourceElementsAttr.
-      SmallVector<float> weightData;
+      SmallVector<float> rawData;
       if (auto dense = dyn_cast<DenseElementsAttr>(attrVal)) {
         for (auto val : dense.getValues<float>())
-          weightData.push_back(val);
+          rawData.push_back(val);
       } else if (auto resAttr =
                      dyn_cast<DenseResourceElementsAttr>(attrVal)) {
         auto blob = resAttr.getRawHandle().getBlob();
@@ -2744,33 +2785,41 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
           auto data = blob->getData();
           auto *floats = reinterpret_cast<const float *>(data.data());
           int64_t numElem = data.size() / sizeof(float);
-          weightData.assign(floats, floats + numElem);
+          rawData.assign(floats, floats + numElem);
         }
       }
-      if (weightData.empty())
+      if (rawData.empty())
         return failure();
 
-      // Create cuda_tile constant tile with physical layout.
-      SmallVector<int64_t> physShape = bTransposed
-                                           ? SmallVector<int64_t>{N, K}
-                                           : SmallVector<int64_t>{K, N};
-      auto physType =
-          cuda_tile::TileType::get(ctx, physShape, elemType);
-      int64_t tileElems = physShape[0] * physShape[1];
-      if ((int64_t)weightData.size() < tileElems)
-        weightData.resize(tileElems, 0.0f);
-      auto tensorType = RankedTensorType::get(physShape, elemType);
-      auto physAttr = DenseElementsAttr::get(
-          tensorType, ArrayRef<float>(weightData.data(), tileElems));
+      // Physical shape is the original weight shape. Tile shape must be
+      // power-of-2 padded. Pad the data with zeros for extra rows/cols.
+      int64_t physRows = bTransposed ? N : K;
+      int64_t physCols = bTransposed ? K : N;
+      int64_t tileRows = bTransposed ? aTN : aTK;
+      int64_t tileCols = bTransposed ? aTK : aTN;
+
+      SmallVector<float> paddedData(tileRows * tileCols, 0.0f);
+      for (int64_t r = 0; r < physRows && r < tileRows; ++r)
+        for (int64_t c = 0; c < physCols && c < tileCols; ++c)
+          paddedData[r * tileCols + c] = rawData[r * physCols + c];
+
+      SmallVector<int64_t> tileBShape = {tileRows, tileCols};
+      auto tileBType =
+          cuda_tile::TileType::get(ctx, tileBShape, elemType);
+      auto tensorType = RankedTensorType::get(tileBShape, elemType);
+      auto paddedAttr = DenseElementsAttr::get(
+          tensorType,
+          ArrayRef<float>(paddedData.data(), paddedData.size()));
       tBd = e.builder()
                 .create<cuda_tile::ConstantOp>(
-                    e.builder().getUnknownLoc(), physType,
+                    e.builder().getUnknownLoc(), tileBType,
                     cast<DenseTypedElementsAttr>(
-                        physAttr.reshape(cast<ShapedType>(physType))))
+                        paddedAttr.reshape(cast<ShapedType>(tileBType))))
                 .getResult();
       if (bTransposed) {
+        // Permute from [aTN, aTK] to [aTK, aTN] for mmaf.
         auto permType =
-            cuda_tile::TileType::get(ctx, {K, N}, elemType);
+            cuda_tile::TileType::get(ctx, {aTK, aTN}, elemType);
         tBd = e.permute(tBd, {1, 0}, permType);
       }
     } else if (bTransposed) {
@@ -2825,42 +2874,34 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
           if (isMatmulResult) {
             bodyMap[body.getArgument(a)] = finalAcc;
           } else {
-            // Load from a binding. Find which binding this input maps to.
-            // Extra bindings start after the matmul's A, B, C (idx 2+).
-            for (int64_t bi = 0; bi < (int64_t)bindingShapes.size(); ++bi) {
+            // Try binding first, then constant.
+            bool found = false;
+
+            // Check bindings (trace through dispatch.tensor.load).
+            for (int64_t bi = 0;
+                 bi < (int64_t)bindingShapes.size() && !found; ++bi) {
               bool match = (bindingShapes[bi].memref == input);
               if (!match) {
-                if (auto loadOp = input.getDefiningOp()) {
-                  for (auto operand : loadOp->getOperands()) {
-                    if (bindingShapes[bi].memref == operand)
-                      match = true;
-                  }
-                }
+                auto it = valueToBind.find(input);
+                if (it != valueToBind.end() && it->second == bi)
+                  match = true;
               }
               if (match) {
-                // Load bias/extra input and broadcast if needed.
                 auto &bInfo = bindingShapes[bi];
                 int64_t bRank = bInfo.shape.size();
                 SmallVector<int64_t> bTile;
                 for (int64_t d = 0; d < bRank; ++d)
                   bTile.push_back(nextPow2(std::min(
                       d == bRank - 1 ? tileN : tileM, bInfo.shape[d])));
-
                 auto bStrides = computeRowMajorStrides(bInfo.shape);
                 auto tv = e.makeTensorView(e.getArg(bi), bInfo.shape,
                                            bStrides, elemType);
                 auto pv = e.makePartitionView(tv, bTile);
-
                 SmallVector<Value> bIndices;
-                if (bRank == 2)
-                  bIndices = {by, bx};
-                else if (bRank == 1)
-                  bIndices = {bx};
-
+                if (bRank == 2) bIndices = {by, bx};
+                else if (bRank == 1) bIndices = {bx};
                 auto [tile, tok] =
                     e.loadViewTko(pv, bIndices, bTile, elemType);
-
-                // Broadcast if needed.
                 if (bRank < 2) {
                   SmallVector<int64_t> reshapeShape = {1, bTile[0]};
                   SmallVector<int64_t> broadcastShape = {aTM, aTN};
@@ -2869,7 +2910,80 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
                     tile = e.broadcastTile(tile, broadcastShape, elemType);
                 }
                 bodyMap[body.getArgument(a)] = tile;
-                break;
+                found = true;
+              }
+            }
+
+            // Check if input is a constant (bias embedded in dispatch).
+            if (!found) {
+              if (auto cstOp =
+                      input.getDefiningOp<arith::ConstantOp>()) {
+                SmallVector<float> cstData;
+                auto cstAttr = cstOp.getValue();
+                if (auto dense = dyn_cast<DenseElementsAttr>(cstAttr)) {
+                  for (auto v : dense.getValues<float>())
+                    cstData.push_back(v);
+                } else if (auto resAttr =
+                               dyn_cast<DenseResourceElementsAttr>(
+                                   cstAttr)) {
+                  auto blob = resAttr.getRawHandle().getBlob();
+                  if (blob) {
+                    auto data = blob->getData();
+                    auto *f =
+                        reinterpret_cast<const float *>(data.data());
+                    cstData.assign(f, f + data.size() / sizeof(float));
+                  }
+                }
+                if (!cstData.empty()) {
+                  auto cstType = dyn_cast<ShapedType>(input.getType());
+                  auto cstShape = cstType ? cstType.getShape()
+                                          : ArrayRef<int64_t>{};
+                  int64_t cRank = cstShape.size();
+                  // Pad to power-of-2 tile shape.
+                  SmallVector<int64_t> cTile;
+                  for (int64_t d = 0; d < cRank; ++d)
+                    cTile.push_back(nextPow2(cstShape[d]));
+                  int64_t cElems = 1;
+                  for (auto d : cTile) cElems *= d;
+                  // Pad data with zeros (row-padded).
+                  SmallVector<float> padded(cElems, 0.0f);
+                  if (cRank == 1) {
+                    for (int64_t i = 0;
+                         i < (int64_t)cstData.size() && i < cTile[0];
+                         ++i)
+                      padded[i] = cstData[i];
+                  } else if (cRank == 2) {
+                    for (int64_t r = 0; r < cstShape[0]; ++r)
+                      for (int64_t c = 0; c < cstShape[1]; ++c)
+                        padded[r * cTile[1] + c] =
+                            cstData[r * cstShape[1] + c];
+                  }
+                  auto tileCstType =
+                      cuda_tile::TileType::get(ctx, cTile, elemType);
+                  auto tensorCstType =
+                      RankedTensorType::get(cTile, elemType);
+                  auto attr = DenseElementsAttr::get(
+                      tensorCstType,
+                      ArrayRef<float>(padded.data(), padded.size()));
+                  Value tile =
+                      e.builder()
+                          .create<cuda_tile::ConstantOp>(
+                              e.builder().getUnknownLoc(), tileCstType,
+                              cast<DenseTypedElementsAttr>(
+                                  attr.reshape(
+                                      cast<ShapedType>(tileCstType))))
+                          .getResult();
+                  // Broadcast if needed (1D bias → 2D).
+                  if (cRank < 2) {
+                    SmallVector<int64_t> rshp = {1, cTile[0]};
+                    SmallVector<int64_t> bshp = {aTM, aTN};
+                    tile = e.reshape(tile, rshp, elemType);
+                    if (rshp != bshp)
+                      tile = e.broadcastTile(tile, bshp, elemType);
+                  }
+                  bodyMap[body.getArgument(a)] = tile;
+                  found = true;
+                }
               }
             }
           }
