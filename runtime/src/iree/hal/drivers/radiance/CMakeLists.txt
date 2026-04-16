@@ -78,7 +78,6 @@ iree_cc_library(
   iree::hal::utils::file_transfer
   iree::hal::utils::files
   iree::hal::utils::queue_emulation
-  iree::hal::utils::semaphore_base
   DEFINES
   ${_RADIANCE_DEFINES}
   PUBLIC)

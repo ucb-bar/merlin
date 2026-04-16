@@ -1,0 +1,46 @@
+model_key,model,segment,dispatches,ops,vopacc,opmvinbcast,opu_fetch,rvv_reduction,rvv_sqrt,rvv_gather
+dronet,DroNet,data_movement,13,318272,0,0,0,0,0,0
+dronet,DroNet,direct_conv,1,200704,0,0,0,0,0,0
+dronet,DroNet,elementwise_other,7,72416,0,0,0,0,0,11
+dronet,DroNet,runtime_8x8_tile,10,26005504,10,40,10,0,0,8
+dronet,DroNet,runtime_narrow_tile,1,4096,1,4,1,0,0,0
+mlp,MLP,elementwise_other,2,12,0,0,0,0,0,0
+mlp,MLP,runtime_narrow_tile,3,2816,3,12,3,0,0,0
+mlp_wide,MLP-Wide,elementwise_other,2,512,0,0,0,0,0,0
+mlp_wide,MLP-Wide,encoding_16x16_tile,3,65536,3,12,3,0,0,0
+opu_bench_convnet,ConvNet,data_movement,3,70528,0,0,0,0,0,0
+opu_bench_convnet,ConvNet,direct_conv,13,15199488,0,0,0,0,0,0
+opu_bench_convnet,ConvNet,elementwise_other,2,12304,0,0,0,0,0,0
+opu_bench_convnet,ConvNet,runtime_narrow_tile,1,4096,1,4,1,0,0,0
+opu_bench_convnet,ConvNet,rvv_reduction_softmax_norm,3,1032064,0,0,0,3,0,0
+opu_bench_hybrid,Hybrid CNN+Trf,direct_conv,2,2663424,0,0,0,0,0,0
+opu_bench_hybrid,Hybrid CNN+Trf,elementwise_other,12,13021200,0,0,0,0,0,0
+opu_bench_hybrid,Hybrid CNN+Trf,encoding_16x16_tile,2,16777216,2,8,2,0,0,0
+opu_bench_hybrid,Hybrid CNN+Trf,encoding_narrow_tile,1,4096,1,4,1,0,0,0
+opu_bench_hybrid,Hybrid CNN+Trf,runtime_32x32_tile,8,201326592,32,32,32,0,0,0
+opu_bench_hybrid,Hybrid CNN+Trf,runtime_narrow_tile,1,25165824,4,4,4,0,0,0
+opu_bench_hybrid,Hybrid CNN+Trf,rvv_reduction_softmax_norm,13,2979200,0,0,0,0,0,0
+opu_bench_large_mlp,Large MLP,elementwise_other,2,81920,0,0,0,0,0,0
+opu_bench_large_mlp,Large MLP,encoding_16x16_tile,4,2483027968,4,16,4,0,0,0
+opu_bench_vit,ViT,elementwise_other,13,155546128,0,0,0,0,0,0
+opu_bench_vit,ViT,encoding_16x16_tile,2,205520896,2,8,2,0,0,0
+opu_bench_vit,ViT,encoding_narrow_tile,1,16384,1,4,1,0,0,0
+opu_bench_vit,ViT,runtime_32x32_tile,8,1801519104,32,32,32,0,0,0
+opu_bench_vit,ViT,runtime_narrow_tile,1,308281344,4,4,4,0,0,0
+opu_bench_vit,ViT,rvv_reduction_softmax_norm,10,3874528,0,0,0,0,0,0
+opu_bench_vit_small,ViT-Small,elementwise_other,8,49296,0,0,0,0,0,0
+opu_bench_vit_small,ViT-Small,encoding_16x16_tile,6,37748736,6,24,6,0,0,0
+opu_bench_vit_small,ViT-Small,runtime_narrow_tile,5,102400,17,20,17,0,0,0
+opu_bench_vit_small,ViT-Small,rvv_matmul,2,98304,0,0,0,0,0,16
+opu_bench_vit_small,ViT-Small,rvv_reduction_softmax_norm,6,196352,0,0,0,0,0,0
+tinyllama,TinyLlama,data_movement,4,589824,0,0,0,0,0,0
+tinyllama,TinyLlama,elementwise_other,513,86005504,0,0,0,0,45,182
+tinyllama,TinyLlama,runtime_32x32_tile,135,239444426752,540,540,540,0,0,0
+tinyllama,TinyLlama,rvv_reduction_softmax_norm,46,14412160,0,0,0,0,0,0
+yolov8_nano,YOLOv8-n,data_movement,13,1320576,0,0,0,0,0,0
+yolov8_nano,YOLOv8-n,direct_conv,40,78464512,0,0,0,0,0,0
+yolov8_nano,YOLOv8-n,elementwise_other,63,4370800,0,0,0,0,0,0
+yolov8_nano,YOLOv8-n,runtime_8x8_tile,20,338995200,20,80,20,0,0,11
+yolov8_nano,YOLOv8-n,runtime_narrow_tile,1,268800,1,4,1,0,0,0
+yolov8_nano,YOLOv8-n,rvv_matmul,4,768000,0,0,0,0,0,0
+yolov8_nano,YOLOv8-n,rvv_reduction_softmax_norm,2,252000,0,0,0,0,0,0

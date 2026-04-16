@@ -12,7 +12,6 @@
 #include <string.h>
 
 #include "iree/base/internal/synchronization.h"
-#include "iree/hal/utils/semaphore_base.h"
 
 typedef struct iree_hal_radiance_semaphore_t {
 	iree_hal_semaphore_t base;

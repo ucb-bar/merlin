@@ -1,0 +1,10 @@
+model,iter_cycles,opu_cyc_est_1cyc,opu_util_pct,n_dispatches,n_matched,n_stale
+dronet,32414749,304800,0.9403,11,11,0
+mlp,,30,,3,0,3
+mlp_wide,179772,1152,0.6408,3,3,0
+opu_bench_convnet,113368645,2478384,2.1861,16,0,16
+opu_bench_hybrid,766195067,1916976,0.2502,12,0,12
+opu_bench_large_mlp,87002344,12386304,14.2367,6,0,6
+opu_bench_vit,,19587648,,12,0,12
+opu_bench_vit_small,76917198,1351728,1.7574,11,7,4
+yolov8_nano,1503596008,25617150,1.7037,64,0,64

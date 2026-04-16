@@ -1,7 +1,3 @@
-# ruff: noqa: E501, E741
-# E501: the embedded MLIR-IR literal has long lines that shouldn't wrap.
-# E741: kernel math uses single-letter names (l, m, O) that mirror the
-# flash-attention paper — renaming would hurt readability, not help it.
 """Fused attention (SDPA) kernel — matches MLIR variant_0_12_1024_64_bf16.
 
 MLIR source: SaturnNPU/kernels/iree_linalg_ext.attention/variant_0_12_1024_64_bf16.mlir
@@ -57,14 +53,6 @@ bf16 → fp8 quantization uses the acc roundtrip (vmatpush.acc.bf16 + vmatpop.fp
   be much larger than -100, so the first tile always overwrites the initial m value.
 """
 
-import math
-from typing import Any
-
-import torch
-from npu_model.isa import DmaArgs, MatrixArgs, ScalarArgs, VectorArgs
-
-from ...software import Instruction, Program
-
 FUSED_ATTENTION_MLIR = """
 // Kernel: iree_linalg_ext.attention, variant 0
 // Result: tensor<12x1024x64xbf16>
@@ -76,6 +64,14 @@ FUSED_ATTENTION_MLIR = """
   iree_linalg_ext.yield %arg13 : bf16
 } -> tensor<12x1024x64xbf16>
 """
+
+import math
+from typing import Any
+
+import torch
+from npu_model.isa import DmaArgs, MatrixArgs, ScalarArgs, VectorArgs
+
+from ...software import Instruction, Program
 
 
 def fused_attention_reference(

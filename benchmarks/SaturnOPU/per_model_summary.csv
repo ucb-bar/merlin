@@ -1,0 +1,12 @@
+model_key,model,encoding_32x32_tile,encoding_16x16_tile,encoding_narrow_tile,encoding_other_tile,runtime_32x32_tile,runtime_16x16_tile,runtime_8x8_tile,runtime_narrow_tile,runtime_other_tile,fused_qdq,inline_vopacc,rvv_matmul,direct_conv,rvv_reduction_softmax_norm,elementwise_other,data_movement,total_ops,opu_ops,opu_pct,dispatches,opu_dispatches,opu_dispatch_pct,artifact_dir,opu_params,total_params,opu_param_pct,opu_compute_ops,total_compute_ops,opu_compute_pct,quantize_f32_to_i8,dequantize_i8_to_f32,requantize_i32_to_i8,activation,elementwise_multi_dtype,transpose_reshape,runtime_support
+mlp,MLP,0,0,0,0,0,0,0,3,0,0,0,0,0,0,2,0,2828,2816,99.575672,5,3,60.000000,build/compiled_models/mlp/saturn_opu_OPU_mlp.q.int8,,,,2816,2828,99.5757,,,,,,,
+mlp_wide,MLP-Wide,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,5,0,0,0,10,3,30.000000,0,0,0,0,0,0,0,1,1,0,0,0,0,33
+opu_bench_large_mlp,Large MLP,0,4,0,0,0,0,0,0,0,0,0,0,0,0,2,0,2483109888,2483027968,99.996701,6,4,66.666667,build/compiled_models/opu_bench_suite/saturn_opu_OPU_opu_bench_large_mlp.q.int8,1378944,1378944,100.0000,2483027968,2483109888,99.9967,,,,,,,
+opu_bench_vit_small,ViT-Small,0,6,0,0,0,0,0,5,0,0,0,2,0,6,8,0,38195088,37851136,99.099486,27,11,40.740741,build/compiled_models/opu_bench_suite/saturn_opu_OPU_opu_bench_vit_small.q.int8,397584,398608,99.7431,37851136,38195088,99.0995,,,,,,,
+opu_bench_vit,ViT,32,0,0,0,0,0,0,0,0,0,0,0,0,25,0,9,0,0,0,115,32,27.826087,0,0,0,0,0,0,0,1,12,18,0,0,18,33
+opu_bench_hybrid,Hybrid CNN+Trf,0,2,1,0,8,0,0,1,0,0,0,0,2,13,12,0,261937552,243273728,92.874705,39,12,30.769231,build/compiled_models/opu_bench_suite/saturn_opu_OPU_LLM_opu_bench_hybrid.q.int8,397584,474704,83.7541,243273728,261937552,92.8747,,,,,,,
+opu_bench_convnet,ConvNet,0,16,0,0,0,0,0,0,0,0,0,0,0,1,3,21,0,0,0,51,16,31.372549,0,0,0,0,0,0,0,0,1,0,8,0,1,33
+dronet,DroNet,0,11,0,0,0,0,0,0,0,0,0,0,1,0,5,20,0,0,0,52,11,21.153846,0,0,0,0,0,0,0,1,0,0,10,3,1,33
+yolov8_nano,YOLOv8-n,0,64,0,0,0,0,0,0,0,0,0,0,1,2,30,74,0,0,0,252,64,25.396825,0,0,0,0,0,0,0,20,18,0,24,0,19,33
+tinyllama,TinyLlama,135,0,0,0,0,0,0,0,0,0,0,0,0,46,163,8,0,0,0,706,135,19.121813,0,0,0,0,0,0,0,66,89,66,89,44,0,33
+mlp_fast,MLP-Fast,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,5,0,0,0,11,4,36.363636,0,0,0,0,0,0,0,1,1,0,0,0,0,33
