@@ -59,6 +59,47 @@ class ViTBlock(nn.Module):
         return x
 
 
+class ViTBlockExplicit(nn.Module):
+    """ViT block with EXPLICIT Q/K/V linear layers (instead of
+    nn.MultiheadAttention's combined in_proj_weight). This exports to
+    ONNX as three separate Gemm nodes, avoiding the B=3 batch_matmul
+    pattern that the IREE encoding resolver does not accelerate. Each
+    QKV projection becomes a clean 2D matmul → OPU 32×32 tile."""
+
+    def __init__(self, dim=256, num_heads=4, seq_len=256, mlp_ratio=4):
+        super().__init__()
+        assert dim % num_heads == 0, "dim must be divisible by num_heads"
+        self.dim = dim
+        self.num_heads = num_heads
+        self.head_dim = dim // num_heads
+        self.scale = self.head_dim**-0.5
+        self.norm1 = nn.LayerNorm(dim)
+        # Separate Q / K / V projections (3 × 2D matmul, not 1 × batch_matmul).
+        self.q_proj = nn.Linear(dim, dim, bias=True)
+        self.k_proj = nn.Linear(dim, dim, bias=True)
+        self.v_proj = nn.Linear(dim, dim, bias=True)
+        self.o_proj = nn.Linear(dim, dim, bias=True)
+        self.norm2 = nn.LayerNorm(dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, dim * mlp_ratio),
+            nn.GELU(),
+            nn.Linear(dim * mlp_ratio, dim),
+        )
+
+    def forward(self, x):
+        B, S, C = x.shape
+        h = self.norm1(x)
+        q = self.q_proj(h).reshape(B, S, self.num_heads, self.head_dim).transpose(1, 2)
+        k = self.k_proj(h).reshape(B, S, self.num_heads, self.head_dim).transpose(1, 2)
+        v = self.v_proj(h).reshape(B, S, self.num_heads, self.head_dim).transpose(1, 2)
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = attn.softmax(dim=-1)
+        out = (attn @ v).transpose(1, 2).reshape(B, S, C)
+        x = x + self.o_proj(out)
+        x = x + self.mlp(self.norm2(x))
+        return x
+
+
 class ViTModel(nn.Module):
     """2-block ViT encoder (enough to show OPU utilization, small enough to run)."""
 
@@ -71,6 +112,38 @@ class ViTModel(nn.Module):
         for block in self.blocks:
             x = block(x)
         return self.head(x[:, 0])  # CLS token
+
+
+class ViTAllTokens(nn.Module):
+    """ViT with conv stem + transformer blocks + all-token head.
+
+    The conv stem (3→64→dim, two 3×3 stride-2 convs) produces "direct
+    conv" dispatches in the decomposition, similar to DroNet. The
+    transformer blocks produce OPU 32×32 matmul dispatches. The head
+    Linear applied to ALL tokens (not CLS-only) produces an encoding
+    16×16 dispatch (N=output_dim < 32). This gives a rich mixed
+    decomposition: direct conv + OPU 32×32 + encoding 16×16 +
+    reduction/softmax + elementwise.
+
+    Input: spatial image [B, 3, H, H] where H = sqrt(seq_len) * 4.
+    Conv stem: 3→64→dim with two stride-2 convs reduces spatial to
+    sqrt(seq_len) × sqrt(seq_len), then reshaped to [B, seq_len, dim].
+    """
+
+    def __init__(self, dim=1024, num_heads=8, seq_len=128, num_blocks=12, output_dim=16):
+        super().__init__()
+        # No conv stem — input is already a sequence [B, S, dim]. Pure
+        # transformer maximizes matmul fraction of total compute, which is
+        # what TinyLlama's 10.97× speedup comes from. Earlier ViT variants
+        # had a conv stem + BN + LayerNorm + softmax + quant chain that
+        # diluted OPU coverage (ViT v2 at dim=512 got only 1.09×).
+        self.blocks = nn.ModuleList([ViTBlockExplicit(dim, num_heads, seq_len) for _ in range(num_blocks)])
+        self.head = nn.Linear(dim, output_dim)
+
+    def forward(self, x):
+        for block in self.blocks:
+            x = block(x)
+        return self.head(x)
 
 
 # =============================================================================
@@ -188,19 +261,45 @@ class HybridModel(nn.Module):
 
 
 class LargeMLP(nn.Module):
-    """4-layer MLP with large hidden dims for pure GEMM throughput measurement."""
+    """Deep MLP sized to keep matmul K small enough to fit L1 on the OPU
+    (working-set per 32×32 output tile ≈ K·64 B; K=512 → 32 KB, fits
+    comfortably). 6 layers × 128×512×512 ≈ 200 M i8 FMAs total."""
 
-    def __init__(self, input_dim=128, hidden_dim=512, output_dim=16):
+    def __init__(self, input_dim=128, hidden_dim=512, output_dim=16, depth=6):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, output_dim),
-        )
+        layers = [nn.Linear(input_dim, hidden_dim), nn.ReLU()]
+        for _ in range(depth - 2):
+            layers += [nn.Linear(hidden_dim, hidden_dim), nn.ReLU()]
+        layers += [nn.Linear(hidden_dim, output_dim)]
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class MLPFast(nn.Module):
+    """MLP designed to maximize OPU matmul dominance. Modeled on the same
+    principles as TinyLlama: all matmul shapes are TinyLlama-scale
+    (K ≥ 1024), no per-layer non-matmul overhead beyond ReLU, so the
+    matmul-% of total compute approaches 99%. Expected speedup > 2×
+    (and in practice closer to 5× because the OPU 32×32 tile amortizes
+    memory bandwidth well at K=1024).
+
+    Matmul shapes produced:
+      Layer 0:  128 × 1024 × 128    (input 128 → hidden 1024)
+      Layer i:  128 × 1024 × 1024   (depth-2 copies)
+      Last:     128 × 16   × 1024   (hidden 1024 → 16 classes; N=16 < 32
+                                     so the encoding resolver picks 16×16)
+    All dims are multiples of 32. Compute ≈ depth × 128 × 1024² ≈
+    500M MACs for depth=4, dominated by matmul."""
+
+    def __init__(self, input_dim=128, hidden_dim=1024, output_dim=16, depth=4):
+        super().__init__()
+        layers = [nn.Linear(input_dim, hidden_dim), nn.ReLU()]
+        for _ in range(depth - 2):
+            layers += [nn.Linear(hidden_dim, hidden_dim), nn.ReLU()]
+        layers += [nn.Linear(hidden_dim, output_dim)]
+        self.net = nn.Sequential(*layers)
 
     def forward(self, x):
         return self.net(x)
@@ -212,21 +311,24 @@ class LargeMLP(nn.Module):
 
 MODELS = {
     "vit": {
-        "class": ViTModel,
-        # ViT-like: dim=512, 8 heads of 64 each, seq=196 (14×14 patches).
-        # QKV: M=196 K=512 N=512 → large GEMM. FFN: K=2048.
-        # 8 heads (not 12) ensures batch_mmt4d tile compatibility with RVV.
-        "kwargs": {"dim": 512, "num_heads": 8, "seq_len": 196, "num_blocks": 2},
-        "input_shape": (1, 196, 512),  # [batch, 14×14 patches, dim=512]
+        "class": ViTAllTokens,
+        # ViT v3 — pure transformer, no conv stem. dim=1024, 12 blocks.
+        # Modeled after TinyLlama's structure (10.97× speedup): large
+        # matmul dimensions with minimal non-matmul overhead so OPU
+        # dominates total cycles. Combined with OPU_LLM compile flags
+        # (collapse-multi-n), all 12 × ~5 matmuls per block become
+        # 2D matmuls that hit OPU 32×32 via encoding resolver.
+        "kwargs": {"dim": 1024, "num_heads": 8, "seq_len": 128, "num_blocks": 6, "output_dim": 16},
+        "input_shape": (1, 128, 1024),  # [batch, tokens, dim]
         "input_names": ["input"],
         "output_names": ["output"],
     },
     "vit_small": {
         "class": ViTModel,
-        # Small ViT for fast FireSim iteration: dim=128, 4 heads, seq=64.
-        # QKV: M=64 K=128. FFN: M=64 K=512. All dims multiples of 16.
-        # Finishes init+inference in ~2-3 minutes on FireSim.
-        "kwargs": {"dim": 128, "num_heads": 4, "seq_len": 64, "num_blocks": 2},
+        # Small ViT for fast FireSim iteration: dim=128, 2 heads, seq=64.
+        # QKV: M=64 K=128. FFN: M=64 K=512. 2 heads × 64 dim/head keeps
+        # per-head attention K=64 so the batch_matmul hits OPU 32×32.
+        "kwargs": {"dim": 128, "num_heads": 2, "seq_len": 64, "num_blocks": 2},
         "input_shape": (1, 64, 128),  # [batch, 8×8 patches, dim=128]
         "input_names": ["input"],
         "output_names": ["output"],
@@ -240,19 +342,33 @@ MODELS = {
     },
     "hybrid": {
         "class": HybridModel,
-        # dim=128 → K=128 for transformer matmuls. Conv stem 3→64→128.
-        # 16×16 spatial → 256 tokens with K=128.
-        "kwargs": {"dim": 128, "num_heads": 4, "num_blocks": 2},
+        # dim=128, 2 heads × 64 dim/head. Conv stem 3→64→128.
+        # Per-head attention K=64 → lands on OPU 32×32 fast path
+        # (was K=32 with 4 heads, forcing narrow-tile fallback).
+        "kwargs": {"dim": 128, "num_heads": 2, "num_blocks": 2},
         "input_shape": (1, 3, 64, 64),  # [batch, channels, H, W]
+        "input_names": ["input"],
+        "output_names": ["output"],
+    },
+    "mlp_fast": {
+        "class": MLPFast,
+        # Fast MLP (ViT-style matmul sizes, no attention/softmax):
+        # matmul K=1024 puts OPU in the compute-bound regime (same as
+        # TinyLlama's transformer blocks). Only ReLU between layers.
+        # Target speedup: >2× (expected 3-5× based on MNK scaling).
+        "kwargs": {"input_dim": 128, "hidden_dim": 1024, "output_dim": 16, "depth": 4},
+        "input_shape": (128, 128),  # [batch=128, features=128]
         "input_names": ["input"],
         "output_names": ["output"],
     },
     "large_mlp": {
         "class": LargeMLP,
-        # Transformer FFN scale: hidden=2048, batch=128 → M=128.
-        # fc1: [128,512]×[512,2048] K=512, N=2048
-        # fc2/3: [128,2048]×[2048,2048] K=2048, N=2048 — the OPU dream case
-        "kwargs": {"input_dim": 512, "hidden_dim": 2048, "output_dim": 128},
+        # Deep MLP: hidden_dim=512 keeps all matmul K ≤ 512 so each 32×32
+        # OPU output tile's working set (≈32 KB) fits in L1. 6 layers of
+        # 128×512×512 gives ~200 M FMAs total — less wall-work than the
+        # old 3×(128×2048×2048) but avoids the K=2048 memory-thrash that
+        # was bottlenecking OPU to 0.06× RVV.
+        "kwargs": {"input_dim": 512, "hidden_dim": 512, "output_dim": 128, "depth": 6},
         "input_shape": (128, 512),  # [batch=128, features=512]
         "input_names": ["input"],
         "output_names": ["output"],
