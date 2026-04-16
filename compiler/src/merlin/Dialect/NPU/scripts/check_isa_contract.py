@@ -13,7 +13,7 @@ import ast
 import re
 from pathlib import Path
 
-LINE_RE = re.compile(r"^([a-zA-Z0-9_.]+)(?:\s+(.*))?$")
+LINE_RE = re.compile(r"^([a-zA-Z0-9_.<>]+)(?:\s+(.*))?$")
 KV_RE = re.compile(r"([a-zA-Z0-9_]+)\s*=\s*([+-]?[0-9]+)")
 
 

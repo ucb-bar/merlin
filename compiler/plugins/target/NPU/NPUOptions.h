@@ -3,6 +3,8 @@
 
 #include "iree/compiler/Utils/OptionUtils.h"
 
+#include <string>
+
 namespace mlir::iree_compiler {
 
 struct NPUOptions {
@@ -12,6 +14,9 @@ struct NPUOptions {
 	bool allowUnknownUkernelFallback = true;
 	bool matmulUseMxu1Weights = false;
 	bool enableMemoryPlanner = false;
+	bool nativeKernelLowering = false;
+	bool strictNativeKernelCoverage = true;
+	std::string kernelManifestPath;
 	int64_t dmaFlagModulo = 3;
 	int64_t loadBase = 0;
 	int64_t weightBase = 0x2000;

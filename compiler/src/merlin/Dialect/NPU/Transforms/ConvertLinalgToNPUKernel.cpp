@@ -22,6 +22,105 @@ static bool isDimExpr(AffineExpr expr, unsigned position) {
 	return dimExpr && dimExpr.getPosition() == position;
 }
 
+// Returns true iff `op` has all-parallel iterators and every indexing map is an
+// identity-equivalent map (a dim permutation with no reduction, no broadcast).
+// This is what makes an op a candidate for binary/unary elementwise binding.
+static bool isPurelyParallelElementwise(linalg::GenericOp op) {
+	if (!op.hasPureTensorSemantics() || op->getNumResults() != 1) {
+		return false;
+	}
+	for (utils::IteratorType it : op.getIteratorTypesArray()) {
+		if (it != utils::IteratorType::parallel) {
+			return false;
+		}
+	}
+	// Output map must be an identity (no transpose).
+	AffineMap outMap = op.getIndexingMapsArray().back();
+	if (!outMap.isIdentity()) {
+		return false;
+	}
+	// Input maps must each be identity too — i.e. no broadcast/permutation.
+	// This is strict on purpose; broadcasts and transposes need separate
+	// handling because their DRAM layout differs from the kernel ABI.
+	for (AffineMap m : llvm::ArrayRef(op.getIndexingMapsArray()).drop_back(1)) {
+		if (!m.isIdentity()) {
+			return false;
+		}
+	}
+	return true;
+}
+
+// Inspects the linalg body for a single binary arith op matching `opName`
+// (e.g. "arith.addf") whose operands are the two block arguments and whose
+// result is yielded. Returns true on exact match. Rejects bodies with any
+// other compute op to keep the pattern unambiguous.
+static bool isBinaryElementwiseBody(Block &body, StringRef opName) {
+	if (body.getNumArguments() < 2) {
+		return false;
+	}
+	BlockArgument a = body.getArgument(0);
+	BlockArgument b = body.getArgument(1);
+	Operation *computeOp = nullptr;
+	Operation *yieldOp = nullptr;
+	for (Operation &op : body) {
+		if (isa<linalg::YieldOp>(op)) {
+			yieldOp = &op;
+			continue;
+		}
+		if (computeOp) {
+			return false; // Only one compute op allowed.
+		}
+		computeOp = &op;
+	}
+	if (!computeOp || !yieldOp ||
+		computeOp->getName().getStringRef() != opName) {
+		return false;
+	}
+	if (computeOp->getNumOperands() != 2 || computeOp->getNumResults() != 1) {
+		return false;
+	}
+	// Operands must be the two block args (in either order for commutative
+	// ops, but for subf/divf we additionally require canonical order later).
+	Value x = computeOp->getOperand(0);
+	Value y = computeOp->getOperand(1);
+	if (!((x == a && y == b) || (x == b && y == a))) {
+		return false;
+	}
+	if (yieldOp->getNumOperands() != 1 ||
+		yieldOp->getOperand(0) != computeOp->getResult(0)) {
+		return false;
+	}
+	return true;
+}
+
+// For non-commutative binary ops (subf, divf), we must preserve operand order.
+// Returns the (lhs, rhs) pair from the linalg inputs in the order the body
+// consumes them, or std::nullopt if the body reverses them (which would flip
+// the op's semantics).
+static std::optional<std::pair<Value, Value>> orderedBinaryInputs(
+	linalg::GenericOp op, StringRef opName) {
+	Block &body = op.getBlock()->getParent()->front();
+	BlockArgument a = body.getArgument(0);
+	Operation *computeOp = nullptr;
+	for (Operation &o : body) {
+		if (isa<linalg::YieldOp>(o))
+			continue;
+		computeOp = &o;
+		break;
+	}
+	if (!computeOp || computeOp->getName().getStringRef() != opName) {
+		return std::nullopt;
+	}
+	Value lhs = op.getDpsInputOperand(0)->get();
+	Value rhs = op.getDpsInputOperand(1)->get();
+	// If the body reads arg0 as lhs of the op, we keep input order.
+	// If it reads arg1 as lhs, we need to swap inputs to match the op order.
+	if (computeOp->getOperand(0) == a) {
+		return std::make_pair(lhs, rhs);
+	}
+	return std::make_pair(rhs, lhs);
+}
+
 static bool isMatmulLikeGeneric(linalg::GenericOp op) {
 	if (!op.hasPureTensorSemantics()) {
 		return false;
@@ -303,6 +402,118 @@ struct LowerMatmulGenericToNPUKernelUKernelPattern
 	}
 };
 
+// Binds a linalg.generic with one "reduction" iterator and a single
+// `arith.addf` body to `npu_uk_reduction_sum`. This is the row-sum shape:
+//   ins(%x : tensor<MxKxbf16>) outs(%init : tensor<Mxbf16>) { addf %in, %out }
+// with iterators [parallel, reduction].
+struct LowerRowReductionSumToUKernelPattern
+	: public OpRewritePattern<linalg::GenericOp> {
+	using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
+
+	LogicalResult matchAndRewrite(
+		linalg::GenericOp op, PatternRewriter &rewriter) const override {
+		if (!op.hasPureTensorSemantics() || op->getNumResults() != 1 ||
+			op.getNumDpsInputs() != 1) {
+			return rewriter.notifyMatchFailure(
+				op, "not single-input reduction");
+		}
+		// Exactly one reduction iterator.
+		int reductionCount = 0;
+		for (utils::IteratorType it : op.getIteratorTypesArray()) {
+			if (it == utils::IteratorType::reduction) {
+				++reductionCount;
+			}
+		}
+		if (reductionCount != 1) {
+			return rewriter.notifyMatchFailure(
+				op, "need exactly one reduction dim");
+		}
+		// Body: single `arith.addf` combining %in with %out, yielded.
+		Block &body = op->getRegion(0).front();
+		if (body.getNumArguments() != 2) {
+			return rewriter.notifyMatchFailure(op, "body args != 2");
+		}
+		Operation *computeOp = nullptr;
+		Operation *yieldOp = nullptr;
+		for (Operation &o : body) {
+			if (isa<linalg::YieldOp>(o)) {
+				yieldOp = &o;
+				continue;
+			}
+			if (computeOp) {
+				return rewriter.notifyMatchFailure(op, "multi-op body");
+			}
+			computeOp = &o;
+		}
+		if (!computeOp || !yieldOp ||
+			computeOp->getName().getStringRef() != "arith.addf") {
+			return rewriter.notifyMatchFailure(op, "body is not single addf");
+		}
+		// Output must be bf16 to match the kernel ABI.
+		auto outTy =
+			llvm::dyn_cast<RankedTensorType>(op.getResult(0).getType());
+		if (!outTy || !llvm::cast<FloatType>(outTy.getElementType()).isBF16()) {
+			return rewriter.notifyMatchFailure(op, "output not bf16");
+		}
+
+		Value input = op.getDpsInputOperand(0)->get();
+		auto symbol = rewriter.getStringAttr("npu_uk_reduction_sum");
+		rewriter.replaceOpWithNewOp<NPUKernel::UKernelGenericOp>(
+			op, op.getResult(0).getType(), symbol, ValueRange{input});
+		return success();
+	}
+};
+
+// Binds a linalg.generic body with a single `arith.<op>` to the corresponding
+// `npu_uk_elementwise_<suffix>` manifest kernel. `commutative=true` means
+// operand order doesn't matter; for subf/divf we preserve it.
+struct LowerElementwiseGenericToUKernelPattern
+	: public OpRewritePattern<linalg::GenericOp> {
+	using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
+
+	LowerElementwiseGenericToUKernelPattern(MLIRContext *ctx, StringRef arithOp,
+		StringRef kernelSuffix, bool commutative)
+		: OpRewritePattern(ctx), arithOp(arithOp.str()),
+		  kernelSuffix(kernelSuffix.str()), commutative(commutative) {}
+
+	LogicalResult matchAndRewrite(
+		linalg::GenericOp op, PatternRewriter &rewriter) const override {
+		if (!isPurelyParallelElementwise(op)) {
+			return rewriter.notifyMatchFailure(op, "not parallel elementwise");
+		}
+		if (op.getNumDpsInputs() != 2) {
+			return rewriter.notifyMatchFailure(op, "not a binary op");
+		}
+		if (!isBinaryElementwiseBody(op->getRegion(0).front(), arithOp)) {
+			return rewriter.notifyMatchFailure(op, "body mismatch");
+		}
+
+		Value lhs;
+		Value rhs;
+		if (commutative) {
+			lhs = op.getDpsInputOperand(0)->get();
+			rhs = op.getDpsInputOperand(1)->get();
+		} else {
+			auto ordered = orderedBinaryInputs(op, arithOp);
+			if (!ordered) {
+				return rewriter.notifyMatchFailure(op, "cannot order operands");
+			}
+			lhs = ordered->first;
+			rhs = ordered->second;
+		}
+
+		auto symbol =
+			rewriter.getStringAttr("npu_uk_elementwise_" + kernelSuffix);
+		rewriter.replaceOpWithNewOp<NPUKernel::UKernelGenericOp>(
+			op, op.getResult(0).getType(), symbol, ValueRange{lhs, rhs});
+		return success();
+	}
+
+	std::string arithOp;
+	std::string kernelSuffix;
+	bool commutative;
+};
+
 struct LowerSoftmaxToNPUSchedulePattern
 	: public OpRewritePattern<linalg::SoftmaxOp> {
 	using OpRewritePattern<linalg::SoftmaxOp>::OpRewritePattern;
@@ -385,6 +596,22 @@ struct ConvertLinalgToNPUKernelPass
 		patterns.add<LowerBatchMatmulToNPUKernelPattern>(&getContext());
 		patterns.add<LowerMatmulGenericToNPUKernelUKernelPattern>(
 			&getContext());
+		// Row-reduction: must register BEFORE elementwise because a
+		// reduction-iterator addf body would otherwise match the strict
+		// elementwise matcher's isPurelyParallelElementwise check... wait,
+		// it doesn't, because that matcher rejects non-parallel iterators.
+		// But registering reduction first is still clearer intent.
+		patterns.add<LowerRowReductionSumToUKernelPattern>(&getContext());
+		// Elementwise: register last so matmul-like patterns win when a body
+		// contains addf+mulf (that's a contraction, not an elementwise add).
+		patterns.add<LowerElementwiseGenericToUKernelPattern>(
+			&getContext(), "arith.addf", "add", /*commutative=*/true);
+		patterns.add<LowerElementwiseGenericToUKernelPattern>(
+			&getContext(), "arith.mulf", "mul", /*commutative=*/true);
+		patterns.add<LowerElementwiseGenericToUKernelPattern>(
+			&getContext(), "arith.subf", "sub", /*commutative=*/false);
+		patterns.add<LowerElementwiseGenericToUKernelPattern>(
+			&getContext(), "arith.divf", "div", /*commutative=*/false);
 		patterns.add<LowerSoftmaxToNPUSchedulePattern>(&getContext());
 		patterns.add<LowerIreeAttentionToNPUKernelUKernelPattern>(
 			&getContext());
