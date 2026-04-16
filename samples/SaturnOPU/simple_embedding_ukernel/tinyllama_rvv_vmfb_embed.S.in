@@ -1,0 +1,10 @@
+// RVV variant of tinyllama .incbin wrapper. Distinct symbols so both
+// OPU and RVV VMFBs can coexist in the firesim build tree.
+
+    .section .vmfb_data, "a", @progbits
+    .global _binary_tinyllama_rvv_vmfb_start
+    .global _binary_tinyllama_rvv_vmfb_end
+    .balign 16
+_binary_tinyllama_rvv_vmfb_start:
+    .incbin "@TINYLLAMA_RVV_VMFB_PATH@"
+_binary_tinyllama_rvv_vmfb_end:
