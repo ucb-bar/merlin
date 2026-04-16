@@ -14,5 +14,7 @@ struct iree_file_toc_t {
 
 extern const struct iree_file_toc_t *iree_samples_model_tinyllama_opu_create(
 	void);
+extern const struct iree_file_toc_t *iree_samples_model_tinyllama_rvv_create(
+	void);
 
 #endif

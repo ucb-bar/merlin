@@ -1,7 +1,6 @@
 step,label,ops_per_cycle,date,description
 1,RVV Baseline,1.35,2026-03-22,Standard RVV vectorized matmul without ukernels or OPU
-2,Initial mmt4d+OPU,0.84,2026-03-21,First mmt4d OPU ukernel with incorrect tile query returning 1x1x1
-3,Fixed Tile Query,14.61,2026-03-22,Correct 16x16x1 tile selection for OPU in query_tile_sizes
-4,K-loop Unroll x4,34.82,2026-03-22,mmt4d K-loop unrolled by 4 with register pair rotation
-5,Const Weights,38.98,2026-03-23,Compile-time packed RHS via global-opt data tiling
-6,Encoding Resolver,57.94,2026-04-02,OPU encoding resolver: identity result encoding eliminates unpack dispatch
+2,Fixed Tile Query,14.61,2026-03-22,Correct 16x16x1 tile selection for OPU in query_tile_sizes
+3,K-loop Unroll x4,34.82,2026-03-22,mmt4d K-loop unrolled by 4 with register pair rotation
+4,Const Weights,38.98,2026-03-23,Compile-time packed RHS via global-opt data tiling
+5,Encoding Resolver,57.94,2026-04-02,OPU encoding resolver: identity result encoding eliminates unpack dispatch

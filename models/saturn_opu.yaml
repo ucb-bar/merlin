@@ -6,7 +6,11 @@ generic:
   - --iree-llvmcpu-target-abi=lp64d
   - --iree-opt-data-tiling=true
   - --iree-dispatch-creation-data-tiling=true
-  - --iree-llvmcpu-enable-ukernels=all
+  # Exclude `iree_uk_unpack` from the ukernel set — it hangs on Saturn
+  # OPU for the shapes that our narrow-M OPU bypass emits (mmt4d +
+  # unpack). Inlined linalg unpack works fine. `mmt4d`, `pack`, and
+  # `query_tile_sizes` cover everything we need.
+  - --iree-llvmcpu-enable-ukernels=mmt4d,pack,query_tile_sizes
   - --iree-llvmcpu-link-ukernel-bitcode=true
   - --iree-llvmcpu-enable-vector-contract-custom-kernels=true
   - --iree-vm-bytecode-module-strip-source-map=true
