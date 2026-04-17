@@ -27,10 +27,12 @@ jobs:
           sudo apt-get install -y shellcheck
 
       - name: Pre-commit (changed files)
-        # Runs every pre-commit hook on the diff this PR introduces.
-        # Scoped to changed files so pre-existing tech debt does not block
-        # unrelated PRs; new violations are still caught.
+        # Runs pre-commit hooks on the diff this PR introduces.
+        # clang-format and cmake-format are skipped because the CI runner
+        # does not have those binaries — they run locally via conda instead.
         if: github.event_name == 'pull_request'
+        env:
+          SKIP: clang-format,cmake-format
         run: |
           pip install pre-commit
           pre-commit run \
