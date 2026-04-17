@@ -59,8 +59,8 @@ struct GemminiCanonicalizePass final
 		patterns.add<FoldClampOfClampPattern, ElideIdentityClampPattern>(
 			&getContext());
 
-		if (failed(applyPatternsAndFoldGreedily(
-				getOperation(), std::move(patterns)))) {
+		if (failed(
+				applyPatternsGreedily(getOperation(), std::move(patterns)))) {
 			signalPassFailure();
 		}
 	}

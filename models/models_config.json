@@ -1,22 +1,235 @@
 {
-    "dronet": {
-        "source_path": "dronet/dronet.onnx",
-        "input_names": ["input_0"],
-        "input_shapes": [[1, 3, 112, 112]]
-    },
-    "glpdepth": {
-        "source_path": "glpdepth/glpdepth.onnx",
-        "input_names": ["input"],
-        "input_shapes": [[1, 3, 224, 224]]
-    },
-    "fastdepth": {
-        "source_path": "fastdepth/fastdepth.onnx",
-        "input_names": ["input"],
-        "input_shapes": [[1, 3, 224, 224]]
-    },
-    "mlp": {
-        "source_path": "mlp/mlp.onnx",
-        "input_names": ["input"],
-        "input_shapes": [[1, 10]]
-    }
+  "dronet": {
+    "source_path": "dronet/dronet.onnx",
+    "input_names": [
+      "input_0"
+    ],
+    "input_shapes": [
+      [
+        1,
+        3,
+        112,
+        112
+      ]
+    ]
+  },
+  "glpdepth": {
+    "source_path": "glpdepth/glpdepth.onnx",
+    "input_names": [
+      "input"
+    ],
+    "input_shapes": [
+      [
+        1,
+        3,
+        224,
+        224
+      ]
+    ]
+  },
+  "fastdepth": {
+    "source_path": "fastdepth/fastdepth.onnx",
+    "input_names": [
+      "input"
+    ],
+    "input_shapes": [
+      [
+        1,
+        3,
+        224,
+        224
+      ]
+    ]
+  },
+  "mlp": {
+    "source_path": "mlp/mlp.onnx",
+    "input_names": [
+      "input"
+    ],
+    "input_shapes": [
+      [
+        1,
+        10
+      ]
+    ]
+  },
+  "mlp_wide": {
+    "source_path": "mlp_wide/mlp_wide.onnx",
+    "input_names": [
+      "input"
+    ],
+    "input_shapes": [
+      [
+        16,
+        16
+      ]
+    ]
+  },
+  "mobilenet_v2": {
+    "source_path": "mobilenet_v2/mobilenet_v2.onnx",
+    "input_names": [
+      "input_0"
+    ],
+    "input_shapes": [
+      [
+        1,
+        3,
+        224,
+        224
+      ]
+    ]
+  },
+  "diffusion": {
+    "source_path": "diffusion/diffusion.onnx",
+    "input_names": [
+      "past_states",
+      "actions",
+      "timestep",
+      "image"
+    ],
+    "input_shapes": [
+      [
+        1,
+        4,
+        14
+      ],
+      [
+        1,
+        16,
+        7
+      ],
+      [
+        1
+      ],
+      [
+        1,
+        3,
+        224,
+        224
+      ]
+    ]
+  },
+  "depth_anything_v2": {
+    "source_path": "depth_anything_v2/depth_anything_v2.onnx",
+    "input_names": [
+      "input"
+    ],
+    "input_shapes": [
+      [
+        1,
+        3,
+        518,
+        518
+      ]
+    ]
+  },
+  "yolov8_nano": {
+    "source_path": "yolov8_nano/yolov8n.onnx",
+    "input_names": [
+      "images"
+    ],
+    "input_shapes": [
+      [
+        1,
+        3,
+        320,
+        320
+      ]
+    ]
+  },
+  "tinyllama": {
+    "source_path": "tinyllama/tinyllama.onnx",
+    "input_names": [
+      "input_ids",
+      "attention_mask"
+    ],
+    "input_shapes": [
+      [
+        1,
+        128
+      ],
+      [
+        1,
+        128
+      ]
+    ]
+  },
+  "opu_bench_vit": {
+    "source_path": "opu_bench_suite/opu_bench_vit.onnx",
+    "input_names": [
+      "input"
+    ],
+    "input_shapes": [
+      [
+        1,
+        128,
+        1024
+      ]
+    ]
+  },
+  "opu_bench_vit_small": {
+    "source_path": "opu_bench_suite/opu_bench_vit_small.onnx",
+    "input_names": [
+      "input"
+    ],
+    "input_shapes": [
+      [
+        1,
+        64,
+        128
+      ]
+    ]
+  },
+  "opu_bench_convnet": {
+    "source_path": "opu_bench_suite/opu_bench_convnet.onnx",
+    "input_names": [
+      "input"
+    ],
+    "input_shapes": [
+      [
+        1,
+        3,
+        64,
+        64
+      ]
+    ]
+  },
+  "opu_bench_hybrid": {
+    "source_path": "opu_bench_suite/opu_bench_hybrid.onnx",
+    "input_names": [
+      "input"
+    ],
+    "input_shapes": [
+      [
+        1,
+        3,
+        64,
+        64
+      ]
+    ]
+  },
+  "opu_bench_large_mlp": {
+    "source_path": "opu_bench_suite/opu_bench_large_mlp.onnx",
+    "input_names": [
+      "input"
+    ],
+    "input_shapes": [
+      [
+        128,
+        512
+      ]
+    ]
+  },
+  "mlp_fast": {
+    "source_path": "opu_bench_suite/opu_bench_mlp_fast.onnx",
+    "input_names": [
+      "input"
+    ],
+    "input_shapes": [
+      [
+        128,
+        128
+      ]
+    ]
+  }
 }

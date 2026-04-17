@@ -5,3 +5,8 @@ dist
 .venv
 __pycache__
 *.pyc
+third_party
+models
+benchmarks
+.docker_home
+build_tools/riscv-tools-*

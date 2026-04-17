@@ -7,9 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules.utils import _pair  # utility to turn int → (int, int)
 
-# from torchinfo import summary
-
-# SMALL = True
+SMALL = True
 
 
 # dronet implementation in pytorch.
@@ -339,20 +337,18 @@ def extract_layer_info(model: nn.Module, input_shape):
     return info
 
 
-if SMALL:
-    model = DronetTorch(img_dims=(112, 112), img_channels=3, output_dim=1)
-    layer_info = extract_layer_info(model, input_shape=(1, 3, 112, 112))
-else:
-    model = DronetTorch(img_dims=(224, 224), img_channels=3, output_dim=1)
-    layer_info = extract_layer_info(model, input_shape=(1, 3, 224, 224))
+if __name__ == "__main__":
+    if SMALL:
+        model = DronetTorch(img_dims=(112, 112), img_channels=3, output_dim=1)
+        layer_info = extract_layer_info(model, input_shape=(1, 3, 112, 112))
+    else:
+        model = DronetTorch(img_dims=(224, 224), img_channels=3, output_dim=1)
+        layer_info = extract_layer_info(model, input_shape=(1, 3, 224, 224))
 
+    print(json.dumps(layer_info, indent=2))
 
-# Now `layer_info` is a list of dicts; you can print or dump to JSON/CSV:
-
-print(json.dumps(layer_info, indent=2))
-
-# Export to ONNX
-dummy_input = torch.randn(1, 3, 112, 112) if SMALL else torch.randn(1, 3, 224, 224)
-onnx_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dronet.onnx")
-torch.onnx.export(model, dummy_input, onnx_path, input_names=["input"], output_names=["steer", "collision"])
-print(f"Exported ONNX model to {onnx_path}")
+    # Export to ONNX
+    dummy_input = torch.randn(1, 3, 112, 112) if SMALL else torch.randn(1, 3, 224, 224)
+    onnx_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dronet.onnx")
+    torch.onnx.export(model, dummy_input, onnx_path, input_names=["input"], output_names=["steer", "collision"])
+    print(f"Exported ONNX model to {onnx_path}")

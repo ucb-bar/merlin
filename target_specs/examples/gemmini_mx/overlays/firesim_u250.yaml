@@ -1,0 +1,19 @@
+schema_version: 1
+
+deployment:
+  name: firesim_u250
+  mode: firesim
+  build_profile: firesim
+  compile_target: gemmini_mx
+  compile_hw: RVV
+  hardware_recipe: build_tools/hardware/gemmini_mx.yaml
+  chipyard:
+    repo: https://github.com/ucb-bar/chipyard
+    branch: graphics
+    sha: 6a9b4cd95081100dc932e422cc52777bc9a98b2d
+    config_class: FireSimMxGemminiRocketConfig
+  runtime:
+    simulator: firesim
+    workload: merlin-iree
+  extra:
+    bare_metal_config: MxGemminiRocketConfig

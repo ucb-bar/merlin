@@ -41,14 +41,27 @@ ls -lh models/smolVLA/smolVLA*.mlir
   (`--model-id`, `--batch-size`, `--image-h`, `--image-w`, `--prompt-len`,
   `--no-vision`, `--skip-patches`, and `--no-exportable-mx`).
 
-## Compile via `tools/compile.py`
+## Compile via `tools/merlin.py`
 
-All user-facing compilation in this repo should go through `tools/compile.py`.
+All user-facing compilation in this repo should go through
+`tools/merlin.py compile`.
 Example commands from repo root:
+
+Before building or compiling plugin targets on a fresh Merlin clone, check out
+the intended Merlin branch and sync its pinned submodules:
+
+```bash
+git checkout dev/main
+conda activate merlin-dev
+uv run tools/merlin.py setup submodules --submodules-profile core --submodule-sync
+```
+
+If you switch Merlin branches later, rerun the same submodule setup command
+before rebuilding `host-merlin-release`.
 
 ```bash
 # Baseline target (spacemit settings)
-conda run -n merlin-dev uv run tools/compile.py \
+conda run -n merlin-dev uv run tools/merlin.py compile \
   models/smolVLA/smolVLA.q.fp8.mlir \
   --target spacemit_x60 \
   --quantized \
@@ -58,7 +71,7 @@ conda run -n merlin-dev uv run tools/compile.py \
 
 ```bash
 # NPU-targeted global-opt lowering path
-conda run -n merlin-dev uv run tools/compile.py \
+conda run -n merlin-dev uv run tools/merlin.py compile \
   models/smolVLA/smolVLA.q.fp8.mlir \
   --target npu_ucb \
   --quantized \
@@ -68,7 +81,7 @@ conda run -n merlin-dev uv run tools/compile.py \
 
 ```bash
 # Gemmini-targeted global-opt matching path
-conda run -n merlin-dev uv run tools/compile.py \
+conda run -n merlin-dev uv run tools/merlin.py compile \
   models/smolVLA/smolVLA.q.fp8.mlir \
   --target gemmini_mx \
   --quantized \
@@ -79,6 +92,19 @@ conda run -n merlin-dev uv run tools/compile.py \
 The SmolVLA-specific compile flags are configured in target YAML files, so these
 commands stay short. For plugin targets (`npu_ucb`, `gemmini_mx`), the compile
 wrapper auto-selects `host-merlin-release` when needed.
+
+If compilation fails on `torch.prims.device_put`, that usually means the local
+compiler build is stale or missing the patched
+`third_party/iree_bar/third_party/torch-mlir` lowering, not that the model must
+be exported with `--device cpu`. Rebuild the compiler and retry:
+
+```bash
+conda run -n merlin-dev uv run tools/merlin.py build \
+  --profile npu \
+  --config release \
+  --no-build-python-bindings \
+  --no-enable-libbacktrace
+```
 
 Compiled artifacts are written under `build/compiled_models/` (not in `models/`)
 so generated outputs do not get committed accidentally.

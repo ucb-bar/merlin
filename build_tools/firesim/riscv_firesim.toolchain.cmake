@@ -70,12 +70,29 @@ endif()
 
 # Paths to linker scripts (co-located with this toolchain file)
 set(SCRIPTS_DIR "${CMAKE_CURRENT_LIST_DIR}")
-set(SPECS_FILE "${SCRIPTS_DIR}/htif-nano.spec")
+set(SPECS_FILE "${RISCV_NEWLIB_SYSROOT}/lib/htif.specs")
 set(LINKER_SCRIPT "${SCRIPTS_DIR}/htif.ld")
 
 set(ARCH_FLAGS "-march=rv64imafdc -mabi=lp64d -mcmodel=medany -mstrict-align")
 
-# 4a. Clang Compile Flags CRITICAL FIX: We use -Wno-error=... to ensure these
+# --- 4a. Bare-metal CPU feature detection ---
+# On bare-metal there is no OS to query CPU features at runtime. Set
+# IREE_BARE_METAL_CPU_DATA0 so the IREE runtime knows which ukernel
+# implementations to select. Each hardware target sets
+# IREE_RISCV_BARE_METAL_FEATURES via cmake cache (from build.py or recipe).
+#
+# Bit definitions (from cpu_feature_bits.inl): V        = 1 << 0 = 0x01 ZVFHMIN
+# = 1 << 1 = 0x02 ZVFH     = 1 << 2 = 0x04 XSMTVDOT = 1 << 3 = 0x08 XOPU     = 1
+# << 4 = 0x10
+set(IREE_RISCV_BARE_METAL_FEATURES
+    "0x01"
+    CACHE STRING
+          "Bitmask of IREE_CPU_DATA0_RISCV_64_* features for bare-metal targets"
+)
+set(IREE_BARE_METAL_CPU_FLAGS
+    "-DIREE_BARE_METAL_CPU_DATA0=${IREE_RISCV_BARE_METAL_FEATURES}")
+
+# 4b. Clang Compile Flags CRITICAL FIX: We use -Wno-error=... to ensure these
 # specific warnings never stop the build, even if -Wall -Werror is appended
 # later by IREE.
 set(CLANG_COMPILE_FLAGS
@@ -105,7 +122,8 @@ ${ARCH_FLAGS} \
 -DIREE_WAIT_UNTIL_FN=sizeof \
 -DIREE_DEVICE_SIZE_T=uint64_t \
 -DPRIdsz=PRIu64 \
--DIREE_MEMORY_ACCESS_ALIGNMENT_REQUIRED") # <--- ADD THIS LINE
+-DIREE_MEMORY_ACCESS_ALIGNMENT_REQUIRED \
+${IREE_BARE_METAL_CPU_FLAGS}")
 
 # 4b. GCC Link Flags -specs=... handles system libs (libgloss, libc_nano, lgcc)
 # automatically. -T ... handles the memory map.

@@ -8,6 +8,7 @@
 
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
+#include "iree/hal/device_group.h"
 #include "iree/modules/hal/module.h"
 #include "iree/vm/api.h"
 #include "iree/vm/bytecode/module.h"
@@ -28,6 +29,17 @@ extern const iree_const_byte_span_t load_bytecode_module_data();
 #ifndef MODEL_SIZE
 #define MODEL_SIZE 64
 #endif
+// Non-square support: define MODEL_M, MODEL_N, MODEL_K separately.
+// If not defined, fall back to MODEL_SIZE for square matrices.
+#ifndef MODEL_M
+#define MODEL_M MODEL_SIZE
+#endif
+#ifndef MODEL_N
+#define MODEL_N MODEL_SIZE
+#endif
+#ifndef MODEL_K
+#define MODEL_K MODEL_SIZE
+#endif
 #ifndef UKERNEL_NAME
 #define UKERNEL_NAME "UNKNOWN"
 #endif
@@ -42,17 +54,23 @@ iree_status_t Run() {
 	IREE_RETURN_IF_ERROR(
 		create_sample_device(iree_allocator_system(), &device));
 
+	iree_hal_device_group_t *device_group = NULL;
+	IREE_RETURN_IF_ERROR(iree_hal_device_group_create_from_device(
+		device, iree_allocator_system(), &device_group));
+
 	iree_vm_module_t *hal_module = NULL;
 	IREE_RETURN_IF_ERROR(iree_hal_module_create(instance,
-		iree_hal_module_device_policy_default(), 1, &device,
+		iree_hal_module_device_policy_default(), device_group,
 		IREE_HAL_MODULE_FLAG_SYNCHRONOUS,
 		iree_hal_module_debug_sink_stdio(stderr), iree_allocator_system(),
 		&hal_module));
+	iree_hal_device_group_release(device_group);
 
 	const iree_const_byte_span_t module_data = load_bytecode_module_data();
 	iree_vm_module_t *bytecode_module = NULL;
-	IREE_RETURN_IF_ERROR(iree_vm_bytecode_module_create(instance, module_data,
-		iree_allocator_null(), iree_allocator_system(), &bytecode_module));
+	IREE_RETURN_IF_ERROR(iree_vm_bytecode_module_create(instance,
+		IREE_VM_BYTECODE_MODULE_FLAG_NONE, module_data, iree_allocator_null(),
+		iree_allocator_system(), &bytecode_module));
 
 	iree_vm_context_t *context = NULL;
 	iree_vm_module_t *modules[] = {hal_module, bytecode_module};
@@ -68,61 +86,99 @@ iree_status_t Run() {
 		context, iree_make_cstring_view("module.main"), &main_function));
 
 	// --- Prepare Data ---
-	const int size = MODEL_SIZE;
-	const iree_host_size_t kCount = (iree_host_size_t)size * size;
+	const int mm_m = MODEL_M;
+	const int mm_n = MODEL_N;
+	const int mm_k = MODEL_K;
+	const iree_host_size_t countA = (iree_host_size_t)mm_m * mm_k;
+	const iree_host_size_t countB = (iree_host_size_t)mm_k * mm_n;
+	const iree_host_size_t countC = (iree_host_size_t)mm_m * mm_n;
 
-	fprintf(stdout, "Benchmarking: Size=%d, Ukernel=%s\n", size, UKERNEL_NAME);
+	fprintf(stdout, "Benchmarking: M=%d, N=%d, K=%d, Ukernel=%s\n", mm_m, mm_n,
+		mm_k, UKERNEL_NAME);
+	fflush(stdout);
 
 	// Allocate host memory
-	int8_t *valA = (int8_t *)malloc(kCount * sizeof(int8_t));
-	int8_t *valB = (int8_t *)malloc(kCount * sizeof(int8_t));
-	memset(valA, 4, kCount * sizeof(int8_t));
-	memset(valB, 2, kCount * sizeof(int8_t));
-
-	iree_hal_dim_t shape[2] = {size, size};
-	iree_hal_buffer_view_t *bv0 = NULL, *bv1 = NULL;
-
+	iree_hal_dim_t shapeA[2] = {mm_m, mm_k};
+	iree_hal_dim_t shapeB[2] = {mm_k, mm_n};
 	iree_hal_buffer_params_t params = {
 		.type = IREE_HAL_MEMORY_TYPE_DEVICE_LOCAL,
 		.usage = IREE_HAL_BUFFER_USAGE_DEFAULT};
 
-	IREE_RETURN_IF_ERROR(iree_hal_buffer_view_allocate_buffer_copy(device,
-		iree_hal_device_allocator(device), 2, shape,
-		IREE_HAL_ELEMENT_TYPE_SINT_8, IREE_HAL_ENCODING_TYPE_DENSE_ROW_MAJOR,
-		params, iree_make_const_byte_span(valA, kCount), &bv0));
+#ifdef NUM_INPUTS
+	const int num_inputs = NUM_INPUTS;
+#else
+	const int num_inputs = 2;
+#endif
 
-	IREE_RETURN_IF_ERROR(iree_hal_buffer_view_allocate_buffer_copy(device,
-		iree_hal_device_allocator(device), 2, shape,
-		IREE_HAL_ELEMENT_TYPE_SINT_8, IREE_HAL_ENCODING_TYPE_DENSE_ROW_MAJOR,
-		params, iree_make_const_byte_span(valB, kCount), &bv1));
+	fprintf(stdout, "[DBG] allocating %d input(s)...\n", num_inputs);
+	fflush(stdout);
 
-	// FREE HOST MEMORY ASAP
+	int8_t *valA = (int8_t *)malloc(countA * sizeof(int8_t));
+	if (!valA) {
+		fprintf(stderr, "[DBG] malloc FAILED\n");
+		return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED, "malloc");
+	}
+	memset(valA, 4, countA * sizeof(int8_t));
+
+	iree_hal_buffer_view_t *bv0 = NULL;
+	IREE_RETURN_IF_ERROR(iree_hal_buffer_view_allocate_buffer_copy(device,
+		iree_hal_device_allocator(device), 2, shapeA,
+		IREE_HAL_ELEMENT_TYPE_SINT_8, IREE_HAL_ENCODING_TYPE_DENSE_ROW_MAJOR,
+		params, iree_make_const_byte_span(valA, countA), &bv0));
 	free(valA);
-	free(valB);
+
+	iree_hal_buffer_view_t *bv1 = NULL;
+	if (num_inputs >= 2) {
+		int8_t *valB = (int8_t *)malloc(countB * sizeof(int8_t));
+		if (!valB) {
+			fprintf(stderr, "[DBG] malloc FAILED\n");
+			return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED, "malloc");
+		}
+		memset(valB, 2, countB * sizeof(int8_t));
+		IREE_RETURN_IF_ERROR(iree_hal_buffer_view_allocate_buffer_copy(device,
+			iree_hal_device_allocator(device), 2, shapeB,
+			IREE_HAL_ELEMENT_TYPE_SINT_8,
+			IREE_HAL_ENCODING_TYPE_DENSE_ROW_MAJOR, params,
+			iree_make_const_byte_span(valB, countB), &bv1));
+		free(valB);
+	}
+
+	fprintf(stdout, "[DBG] buffers allocated OK\n");
+	fflush(stdout);
 
 	iree_vm_list_t *inputs = NULL;
 	IREE_RETURN_IF_ERROR(iree_vm_list_create(iree_vm_make_undefined_type_def(),
-		2, iree_allocator_system(), &inputs));
+		num_inputs, iree_allocator_system(), &inputs));
 
 	iree_vm_ref_t ref0 = iree_hal_buffer_view_move_ref(bv0);
-	iree_vm_ref_t ref1 = iree_hal_buffer_view_move_ref(bv1);
 	iree_vm_list_push_ref_move(inputs, &ref0);
-	iree_vm_list_push_ref_move(inputs, &ref1);
+	if (num_inputs >= 2) {
+		iree_vm_ref_t ref1 = iree_hal_buffer_view_move_ref(bv1);
+		iree_vm_list_push_ref_move(inputs, &ref1);
+	}
 
 	iree_vm_list_t *outputs = NULL;
 	IREE_RETURN_IF_ERROR(iree_vm_list_create(iree_vm_make_undefined_type_def(),
 		1, iree_allocator_system(), &outputs));
+
+	fprintf(stdout, "[DBG] inputs ready, starting warmup...\n");
+	fflush(stdout);
 
 	// --- Benchmark Loop ---
 	const int kWarmup = 2;
 	const int kIters = 10;
 
 	for (int i = 0; i < kWarmup; ++i) {
+		fprintf(stdout, "[DBG] warmup %d/%d...\n", i + 1, kWarmup);
+		fflush(stdout);
 		iree_vm_list_resize(outputs, 0);
 		IREE_RETURN_IF_ERROR(
 			iree_vm_invoke(context, main_function, IREE_VM_INVOCATION_FLAG_NONE,
 				NULL, inputs, outputs, iree_allocator_system()));
 	}
+
+	fprintf(stdout, "[DBG] warmup done, starting benchmark...\n");
+	fflush(stdout);
 
 	uint64_t start = read_cycles();
 	for (int i = 0; i < kIters; ++i) {
@@ -132,15 +188,15 @@ iree_status_t Run() {
 				NULL, inputs, outputs, iree_allocator_system()));
 	}
 	uint64_t end = read_cycles();
+	fprintf(stdout, "[DBG] benchmark done\n");
+	fflush(stdout);
 
 	// --- SAFE INTEGER MATH ---
 	uint64_t total_cycles = end - start;
 	uint64_t avg_cycles_int = total_cycles / kIters;
 
-	// Calculate Total Ops = 2 * N^3
-	// Use uint64_t to prevent overflow for large N
-	uint64_t n = (uint64_t)size;
-	uint64_t total_ops = 2 * n * n * n;
+	// Calculate Total Ops = 2 * M * N * K
+	uint64_t total_ops = 2 * (uint64_t)mm_m * (uint64_t)mm_n * (uint64_t)mm_k;
 
 	// Calculate Efficiency (Ops/Cycle) with 2 decimal places manually
 	// Formula: (Ops * 100) / Cycles
@@ -153,21 +209,22 @@ iree_status_t Run() {
 	uint64_t eff_whole = efficiency_x100 / 100;
 	uint64_t eff_frac = efficiency_x100 % 100;
 
-	// CSV Output using only integer formatting (%lu)
-	fprintf(stdout, "CSV, %d, %s, %lu, %lu.%02lu\n", size, UKERNEL_NAME,
-		avg_cycles_int, eff_whole, eff_frac);
+	// CSV Output: M, N, K, ukernel, cycles, ops/cycle
+	fprintf(stdout, "CSV, %dx%dx%d, %s, %lu, %lu.%02lu\n", mm_m, mm_n, mm_k,
+		UKERNEL_NAME, avg_cycles_int, eff_whole, eff_frac);
 
 	// --- Verification ---
 	iree_hal_buffer_view_t *ret_bv =
 		iree_vm_list_get_buffer_view_assign(outputs, 0);
-	int32_t *res_data = (int32_t *)malloc(kCount * sizeof(int32_t));
+	int32_t *res_data = (int32_t *)malloc(countC * sizeof(int32_t));
 	IREE_RETURN_IF_ERROR(iree_hal_device_transfer_d2h(device,
-		iree_hal_buffer_view_buffer(ret_bv), 0, res_data, kCount * 4,
+		iree_hal_buffer_view_buffer(ret_bv), 0, res_data, countC * 4,
 		IREE_HAL_TRANSFER_BUFFER_FLAG_DEFAULT, iree_infinite_timeout()));
 
-	int32_t expected = 8 * size;
+	// C[i][j] = sum_k(A[i][k]*B[k][j]) = 4*2*K = 8*K
+	int32_t expected = 8 * mm_k;
 	int errs = 0;
-	for (int i = 0; i < kCount; i += 101) {
+	for (iree_host_size_t i = 0; i < countC; i += 101) {
 		if (res_data[i] != expected) {
 			if (errs < 1)
 				fprintf(stderr, "Mismatch: Expected %d, got %d\n", expected,

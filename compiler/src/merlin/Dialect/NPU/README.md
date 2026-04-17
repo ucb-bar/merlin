@@ -33,16 +33,7 @@ Extra compiler stages:
 Use Merlin scripts:
 
 ```bash
-conda run -n merlin-dev python tools/build.py --profile npu --config release
-```
-
-Or explicitly:
-
-```bash
-conda run -n merlin-dev python tools/build.py \
-  --target host --config release \
-  --plugin-compiler --no-plugin-runtime \
-  --compiler-scope npu
+conda run -n merlin-dev uv run tools/merlin.py build --profile npu
 ```
 
 ## Lit tests
@@ -67,6 +58,9 @@ Relevant options:
 - `--iree-npu-allow-unknown-ukernel-fallback`
 - `--iree-npu-matmul-use-mxu1-weights`
 - `--iree-npu-enable-memory-planner`
+- `--iree-npu-native-kernel-lowering`
+- `--iree-npu-strict-native-kernel-coverage`
+- `--iree-npu-kernel-manifest=<path/to/manifest.json>`
 - `--iree-npu-dma-flag-modulo`
 - `--iree-npu-load-base`
 - `--iree-npu-weight-base`
@@ -88,15 +82,66 @@ conda run -n merlin-dev ./compiler/src/merlin/Dialect/NPU/scripts/run_npu_model_
 Validate emitted text ISA against `model_npu/configs/isa_definition.py`:
 
 ```bash
-uv run python compiler/src/merlin/Dialect/NPU/scripts/check_isa_contract.py /path/to/program.isa.txt
+conda run -n merlin-dev uv run python \
+  compiler/src/merlin/Dialect/NPU/scripts/check_isa_contract.py \
+  /path/to/program.isa.txt
 ```
 
 Default behavior checks that all required keys from `isa_definition.py` are
 present in emitted ISA lines. To require exact key matches:
 
 ```bash
-uv run python compiler/src/merlin/Dialect/NPU/scripts/check_isa_contract.py \
+conda run -n merlin-dev uv run python \
+  compiler/src/merlin/Dialect/NPU/scripts/check_isa_contract.py \
   --strict-keys /path/to/program.isa.txt
+```
+
+## Kernel Manifest Stitching
+
+The AutoComp/handwritten SaturnNPU kernel library can also emit native
+`npu_model` instruction text directly from
+`benchmarks/SaturnNPU/kernel_library/manifest.json`:
+
+```bash
+conda run -n merlin-dev uv run python \
+  compiler/src/merlin/Dialect/NPU/scripts/emit_kernel_manifest_isa.py \
+  --sequence rms_norm,matmul,softmax,reduction_sum,requant \
+  --connect-linear \
+  --output /tmp/smolvla_kernel_sequence.isa.txt
+
+conda run -n merlin-dev uv run python \
+  compiler/src/merlin/Dialect/NPU/scripts/check_isa_contract.py \
+  /tmp/smolvla_kernel_sequence.isa.txt
+```
+
+To run the stitched sequence directly in `npu_model`:
+
+```bash
+conda run -n merlin-dev uv run python \
+  compiler/src/merlin/Dialect/NPU/scripts/run_kernel_manifest_smoke.py \
+  --sequence rms_norm,matmul,softmax,reduction_sum,requant \
+  --connect-linear \
+  --max-cycles 20000
+```
+
+The stitcher keeps each kernel's VMEM scratch layout local and rewrites only
+the DRAM address registers used by `dma.load.ch<N>` and `dma.store.ch<N>`.
+
+To lower scheduled compiler IR through the same manifest-native path:
+
+```bash
+conda run -n merlin-dev bash -lc '
+build/host-merlin-debug/tools/iree-compile \
+  compiler/src/merlin/Dialect/NPU/Transforms/tests/post-global-opt-hook.mlir \
+  --iree-input-type=none \
+  --iree-hal-target-backends=llvm-cpu \
+  --compile-to=global-optimization \
+  --iree-plugin=npu \
+  --iree-npu-enable \
+  --iree-npu-native-kernel-lowering \
+  --iree-npu-kernel-manifest=benchmarks/SaturnNPU/kernel_library/manifest.json \
+  --mlir-print-op-generic
+'
 ```
 
 ## Numerical parity harness
@@ -104,7 +149,9 @@ uv run python compiler/src/merlin/Dialect/NPU/scripts/check_isa_contract.py \
 For matmul-style ISA outputs:
 
 ```bash
-uv run python compiler/src/merlin/Dialect/NPU/scripts/run_numerical_parity.py /path/to/program.isa.txt
+conda run -n merlin-dev uv run python \
+  compiler/src/merlin/Dialect/NPU/scripts/run_numerical_parity.py \
+  /path/to/program.isa.txt
 ```
 
 ## Frontend-to-simulator E2E

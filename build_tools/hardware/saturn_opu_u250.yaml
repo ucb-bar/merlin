@@ -1,4 +1,4 @@
-# Saturn OPU recipe for Merlin on FireSim U250
+# Saturn OPU (int8) recipe for Merlin on FireSim U250
 name: saturn-opu-u250
 mode: firesim  # firesim | bare-metal | board
 
@@ -9,23 +9,30 @@ chipyard:
 
 submodules:
   saturn:
-    branch: opu-fp8
-    sha: 1d3515e02b7a565a91bad2e0e2b6b1031721a910
+    repo: https://github.com/miles-rusch-berkeley/saturn-vectors.git
+    branch: opu-int8
+    sha: ea373800169ce7bbb9ca27ececf74101a7caf9d5
   shuttle:
     sha: 337385f3634ad0489fa903d9152fcd29d2279f3b
   firesim:
     sha: b084672c2f8cf32e55d78f73a001074c23f8a2b8
 
 # FireSim-specific configuration
+# The opu-int8 branch provides multiple size variants in config_build_recipes.yaml.
+# This recipe uses the V128-D64 variant (validated for bitstream build on U250).
+# Other available variants (not yet validated for bitstream):
+#   - alveo_u250_firesim-opu-v128-shuttle  (60 MHz, no firechip wrapper)
+#   - alveo_u250_firesim-opu-v256-shuttle  (50 MHz)
+#   - alveo_u250_firesim-opu-v512-shuttle  (40 MHz)
 firesim:
-  # Build recipe entry (goes into config_build_recipes.yaml)
+  # Build recipe entry (in Chipyard config_build_recipes.yaml)
   build_recipe:
-    recipe_name: alveo_u250_firesim-opumx-v256-d128-shuttle
+    recipe_name: alveo_u250_firesim-opu-v128-d64-shuttle
     PLATFORM: xilinx_alveo_u250
     TARGET_PROJECT: firesim
     TARGET_PROJECT_MAKEFRAG: "{chipyard_root}/generators/firechip/chip/src/main/makefrag/firesim"
     DESIGN: FireSim
-    TARGET_CONFIG: FireSimOPUMXV256D128ShuttleConfig
+    TARGET_CONFIG: FireSimOPUV128D64ShuttleConfig
     CONFIG_PACKAGE: firechip.chip
     PLATFORM_CONFIG: BaseXilinxAlveoU250Config
     platform_config_args:
@@ -37,7 +44,7 @@ firesim:
   runtime:
     topology: no_net_config
     no_net_num_nodes: 1
-    default_hw_config: alveo_u250_firesim-opumx-v256-d128-shuttle
+    default_hw_config: alveo_u250_firesim-opu-v128-d64-shuttle
     default_platform: XilinxAlveoU250InstanceDeployManager
 
   # Workload definition

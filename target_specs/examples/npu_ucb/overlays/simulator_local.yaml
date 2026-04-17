@@ -1,0 +1,15 @@
+schema_version: 1
+
+deployment:
+  name: simulator_local
+  mode: simulator
+  build_profile: host-merlin-release
+  compile_target: npu_ucb
+  compile_hw: RVV
+  hardware_recipe: null
+  chipyard: {}
+  runtime:
+    simulator: third_party/npu_model
+    execution_mode: local
+  extra:
+    isa_output: textual

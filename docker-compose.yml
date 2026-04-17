@@ -1,0 +1,25 @@
+# Dev container for Merlin.
+#
+# Usage:
+#   docker compose build merlin-dev
+#   docker compose run --rm merlin-dev ./merlin --help
+#
+# The repo is bind-mounted at /workspace, so edits on the host are live
+# inside the container. Port 8000 is forwarded for the docs site
+# (`./merlin` invocations that run `zensical serve`).
+
+services:
+  merlin-dev:
+    build:
+      context: .
+      dockerfile: build_tools/docker/dev.Dockerfile
+    image: merlin-dev:latest
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    ports:
+      - "8000:8000"
+    # Keep stdin open so interactive shells (`docker compose run merlin-dev`)
+    # behave normally.
+    stdin_open: true
+    tty: true

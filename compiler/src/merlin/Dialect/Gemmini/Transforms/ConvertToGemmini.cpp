@@ -763,8 +763,8 @@ struct ConvertToGemminiPass final
 			ConvertConv2DPattern, ConvertRequantizePattern,
 			ConvertClampPattern>(&getContext(), options);
 
-		if (failed(applyPatternsAndFoldGreedily(
-				getOperation(), std::move(patterns)))) {
+		if (failed(
+				applyPatternsGreedily(getOperation(), std::move(patterns)))) {
 			signalPassFailure();
 		}
 	}

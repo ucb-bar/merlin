@@ -2,29 +2,47 @@
 
 iree_add_all_subdirs()
 
+# Compute relative path from build root to generated headers directory. The
+# build root is in the -isystem include path, so headers can be found via this
+# relative path.
+file(RELATIVE_PATH _GENERATED_HEADER_REL_DIR "${CMAKE_BINARY_DIR}"
+     "${CMAKE_CURRENT_BINARY_DIR}")
+
 # --- 1. Define Flags ---
 
-set(BASE_RISCV_FLAGS
+# Common flags for all RISC-V targets
+set(BASE_COMMON_FLAGS
     "--iree-hal-target-device=local"
     "--iree-hal-local-target-device-backends=llvm-cpu"
     "--iree-llvmcpu-target-triple=riscv64-unknown-elf"
-    "--iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl128b"
     "--iree-llvmcpu-target-abi=lp64d"
     "--iree-llvmcpu-target-vector-width-in-bytes=16"
-    "--iree-llvmcpu-debug-symbols=false"
+    # debug-symbols=true embeds the per-export name table so the runtime can
+    # print dispatch symbols in [dn] lines. Previously false to save a few KB
+    # per VMFB — re-enabling for the per-dispatch timing sweep.
+    "--iree-llvmcpu-debug-symbols=true"
     "--iree-vm-bytecode-module-strip-source-map=true"
-    "--iree-vm-emit-polyglot-zip=false"
-    "--iree-opt-level=O3")
+    "--iree-vm-emit-polyglot-zip=false")
 
-# UKERNEL=ALL (Tiling Enabled)
+# OPU target: includes +xopu for Saturn OPU hardware
+set(BASE_OPU_FLAGS
+    ${BASE_COMMON_FLAGS}
+    "--iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl128b,+xopu")
+
+# RVV baseline target: standard RVV without OPU
+set(BASE_RVV_FLAGS
+    ${BASE_COMMON_FLAGS}
+    "--iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl128b")
+
+# UKERNEL=ALL (OPU with data tiling)
 set(FLAGS_UK_ALL
-    ${BASE_RISCV_FLAGS} "--iree-llvmcpu-link-ukernel-bitcode=true"
+    ${BASE_OPU_FLAGS} "--iree-llvmcpu-link-ukernel-bitcode=true"
     "--iree-llvmcpu-enable-ukernels=all" "--iree-opt-data-tiling"
     "--iree-dispatch-creation-data-tiling")
 
-# UKERNEL=NONE (Tiling Disabled)
+# UKERNEL=NONE (RVV baseline, no tiling)
 set(FLAGS_UK_NONE
-    ${BASE_RISCV_FLAGS} "--iree-llvmcpu-link-ukernel-bitcode=false"
+    ${BASE_RVV_FLAGS} "--iree-llvmcpu-link-ukernel-bitcode=false"
     "--iree-llvmcpu-enable-ukernels=none" "--iree-opt-data-tiling=false"
     "--iree-dispatch-creation-data-tiling=false")
 
@@ -52,7 +70,7 @@ function(create_benchmark SIZE UKERNEL_ENABLED)
     NAME
     ${MODULE_NAME}
     SRC
-    "mm_${SIZE}.mlir"
+    "tests/mm_${SIZE}.mlir"
     C_IDENTIFIER
     "iree_samples_${MODULE_NAME}"
     FLAGS
@@ -80,7 +98,7 @@ function(create_benchmark SIZE UKERNEL_ENABLED)
     "MODEL_SIZE=${SIZE}"
     "UKERNEL_NAME=\"${UK_PRINT_NAME}\""
     "MODULE_CREATE_FN=iree_samples_${MODULE_NAME}_create"
-    "MODULE_HEADER=\"samples/simple_embedding_ukernel/${MODULE_NAME}_c.h\"")
+    "MODULE_HEADER=\"${_GENERATED_HEADER_REL_DIR}/${MODULE_NAME}_c.h\"")
 
   # Update the list of benchmarks (PARENT_SCOPE is needed to export variable
   # from function)
@@ -88,6 +106,51 @@ function(create_benchmark SIZE UKERNEL_ENABLED)
       ${ALL_BENCHMARKS} ${BINARY_NAME}
       PARENT_SCOPE)
 
+endfunction()
+
+# --- 2b. Variant Generator Function ---
+# Creates a benchmark with arbitrary flags and a custom tag name.
+
+function(create_variant_benchmark SIZE TAG PRINT_NAME COMPILE_FLAGS)
+  set(MODULE_NAME "mm_${SIZE}_${TAG}")
+  set(BINARY_NAME "bench_${MODULE_NAME}")
+
+  iree_bytecode_module(
+    NAME
+    ${MODULE_NAME}
+    SRC
+    "tests/mm_${SIZE}.mlir"
+    C_IDENTIFIER
+    "iree_samples_${MODULE_NAME}"
+    FLAGS
+    ${COMPILE_FLAGS}
+    PUBLIC)
+
+  iree_cc_binary(
+    NAME
+    ${BINARY_NAME}
+    SRCS
+    "device_embedded_sync.c"
+    "simple_embedding.c"
+    DEPS
+    ::${MODULE_NAME}_c
+    iree::base
+    iree::hal
+    iree::hal::drivers::local_sync::sync_driver
+    iree::hal::local
+    iree::hal::local::loaders::embedded_elf_loader
+    iree::modules::hal
+    iree::vm
+    iree::vm::bytecode::module
+    DEFINES
+    "MODEL_SIZE=${SIZE}"
+    "UKERNEL_NAME=\"${PRINT_NAME}\""
+    "MODULE_CREATE_FN=iree_samples_${MODULE_NAME}_create"
+    "MODULE_HEADER=\"${_GENERATED_HEADER_REL_DIR}/${MODULE_NAME}_c.h\"")
+
+  set(ALL_BENCHMARKS
+      ${ALL_BENCHMARKS} ${BINARY_NAME}
+      PARENT_SCOPE)
 endfunction()
 
 # --- 3. Instantiate All Benchmarks ---
@@ -105,6 +168,1407 @@ create_benchmark(1024 0)
 create_benchmark(2048 1)
 create_benchmark(2048 0)
 
-# --- 4. Create Meta-Target ---
-# This restores the 'benchmark_suite' target so your build script works.
+# --- 3b. A/B Optimization Variants (1024 only) ---
+# All variants use BASE_OPU_FLAGS (defined above) + ukernels enabled.
+
+set(VARIANT_BASE_FLAGS
+    ${BASE_OPU_FLAGS} "--iree-llvmcpu-link-ukernel-bitcode=true"
+    "--iree-llvmcpu-enable-ukernels=all")
+
+# V1: baseline (current working config — dispatch-creation data tiling)
+set(V1_FLAGS ${VARIANT_BASE_FLAGS} "--iree-opt-data-tiling"
+             "--iree-dispatch-creation-data-tiling")
+create_variant_benchmark(1024 "v1_baseline" "V1_BASELINE" "${V1_FLAGS}")
+
+# V2: global-opt data tiling (may hoist packing to init time)
+set(V2_FLAGS ${VARIANT_BASE_FLAGS} "--iree-global-opt-data-tiling")
+create_variant_benchmark(1024 "v2_globalopt" "V2_GLOBALOPT" "${V2_FLAGS}")
+
+# V3: (removed — disabling data tiling causes oversized vector contracts)
+
+# V4: transpose propagation (fuse transposes into matmul)
+set(V4_FLAGS
+    ${VARIANT_BASE_FLAGS}
+    "--iree-opt-data-tiling"
+    "--iree-dispatch-creation-data-tiling"
+    "--iree-global-opt-propagate-transposes"
+    "--iree-opt-aggressively-propagate-transposes")
+create_variant_benchmark(1024 "v4_transpose" "V4_TRANSPOSE" "${V4_FLAGS}")
+
+# V5: optimized ukernel (4x unrolled K loop + vectorized pack/unpack)
+set(V5_FLAGS ${VARIANT_BASE_FLAGS} "--iree-opt-data-tiling"
+             "--iree-dispatch-creation-data-tiling")
+create_variant_benchmark(1024 "v5_opt_loop" "V5_OPT_LOOP" "${V5_FLAGS}")
+
+# V6: constant RHS (weight hoisting — only 1 runtime input, RHS embedded)
+set(V6_MODULE_NAME "mm_1024_v6_const_rhs")
+set(V6_BINARY_NAME "bench_${V6_MODULE_NAME}")
+set(V6_FLAGS ${VARIANT_BASE_FLAGS} "--iree-global-opt-data-tiling")
+iree_bytecode_module(
+  NAME
+  ${V6_MODULE_NAME}
+  SRC
+  "tests/mm_1024_const_rhs.mlir"
+  C_IDENTIFIER
+  "iree_samples_${V6_MODULE_NAME}"
+  FLAGS
+  ${V6_FLAGS}
+  PUBLIC)
+iree_cc_binary(
+  NAME
+  ${V6_BINARY_NAME}
+  SRCS
+  "device_embedded_sync.c"
+  "simple_embedding.c"
+  DEPS
+  ::${V6_MODULE_NAME}_c
+  iree::base
+  iree::hal
+  iree::hal::drivers::local_sync::sync_driver
+  iree::hal::local
+  iree::hal::local::loaders::embedded_elf_loader
+  iree::modules::hal
+  iree::vm
+  iree::vm::bytecode::module
+  DEFINES
+  "MODEL_SIZE=1024"
+  "UKERNEL_NAME=\"V6_CONST_RHS\""
+  "NUM_INPUTS=1"
+  "MODULE_CREATE_FN=iree_samples_${V6_MODULE_NAME}_create"
+  "MODULE_HEADER=\"${_GENERATED_HEADER_REL_DIR}/${V6_MODULE_NAME}_c.h\"")
+set(ALL_BENCHMARKS ${ALL_BENCHMARKS} ${V6_BINARY_NAME})
+
+# V7: fused matmul+transpose (OPU TRANSPOSED_OUTPUT — matmul writes C^T
+# directly)
+set(V7_MODULE_NAME "mm_1024_v7_fused_transpose")
+set(V7_BINARY_NAME "bench_${V7_MODULE_NAME}")
+set(V7_FLAGS
+    ${VARIANT_BASE_FLAGS}
+    "--iree-opt-data-tiling"
+    "--iree-dispatch-creation-data-tiling"
+    "--iree-global-opt-propagate-transposes"
+    "--iree-opt-aggressively-propagate-transposes")
+iree_bytecode_module(
+  NAME
+  ${V7_MODULE_NAME}
+  SRC
+  "tests/mm_1024_transpose.mlir"
+  C_IDENTIFIER
+  "iree_samples_${V7_MODULE_NAME}"
+  FLAGS
+  ${V7_FLAGS}
+  PUBLIC)
+iree_cc_binary(
+  NAME
+  ${V7_BINARY_NAME}
+  SRCS
+  "device_embedded_sync.c"
+  "simple_embedding.c"
+  DEPS
+  ::${V7_MODULE_NAME}_c
+  iree::base
+  iree::hal
+  iree::hal::drivers::local_sync::sync_driver
+  iree::hal::local
+  iree::hal::local::loaders::embedded_elf_loader
+  iree::modules::hal
+  iree::vm
+  iree::vm::bytecode::module
+  DEFINES
+  "MODEL_SIZE=1024"
+  "UKERNEL_NAME=\"V7_FUSED_TRANSPOSE\""
+  "MODULE_CREATE_FN=iree_samples_${V7_MODULE_NAME}_create"
+  "MODULE_HEADER=\"${_GENERATED_HEADER_REL_DIR}/${V7_MODULE_NAME}_c.h\"")
+set(ALL_BENCHMARKS ${ALL_BENCHMARKS} ${V7_BINARY_NAME})
+
+# --- 3c. Non-square benchmark generator (K-sweep, etc.) ---
+
+function(create_nonsquare_benchmark M N K TAG COMPILE_FLAGS)
+  set(MODULE_NAME "mm_${M}x${N}x${K}_${TAG}")
+  set(BINARY_NAME "bench_${MODULE_NAME}")
+
+  iree_bytecode_module(
+    NAME
+    ${MODULE_NAME}
+    SRC
+    "tests/mm_${M}x${N}x${K}.mlir"
+    C_IDENTIFIER
+    "iree_samples_${MODULE_NAME}"
+    FLAGS
+    ${COMPILE_FLAGS}
+    PUBLIC)
+
+  iree_cc_binary(
+    NAME
+    ${BINARY_NAME}
+    SRCS
+    "device_embedded_sync.c"
+    "simple_embedding.c"
+    DEPS
+    ::${MODULE_NAME}_c
+    iree::base
+    iree::hal
+    iree::hal::drivers::local_sync::sync_driver
+    iree::hal::local
+    iree::hal::local::loaders::embedded_elf_loader
+    iree::modules::hal
+    iree::vm
+    iree::vm::bytecode::module
+    DEFINES
+    "MODEL_M=${M}"
+    "MODEL_N=${N}"
+    "MODEL_K=${K}"
+    "UKERNEL_NAME=\"${TAG}\""
+    "MODULE_CREATE_FN=iree_samples_${MODULE_NAME}_create"
+    "MODULE_HEADER=\"${_GENERATED_HEADER_REL_DIR}/${MODULE_NAME}_c.h\"")
+
+  set(ALL_BENCHMARKS
+      ${ALL_BENCHMARKS} ${BINARY_NAME}
+      PARENT_SCOPE)
+endfunction()
+
+# --- 3d. K-sweep: M=N=64 (VLEN/2), sweep K ---
+foreach(
+  K
+  64
+  128
+  256
+  512
+  1024
+  2048
+  4096)
+  create_nonsquare_benchmark(64 64 ${K} "opu" "${FLAGS_UK_ALL}")
+endforeach()
+
+# --- 4. Create Meta-Targets ---
 add_custom_target(benchmark_suite DEPENDS ${ALL_BENCHMARKS})
+
+# K-sweep only target
+add_custom_target(
+  benchmark_ksweep
+  DEPENDS bench_mm_64x64x64_opu
+          bench_mm_64x64x128_opu
+          bench_mm_64x64x256_opu
+          bench_mm_64x64x512_opu
+          bench_mm_64x64x1024_opu
+          bench_mm_64x64x2048_opu
+          bench_mm_64x64x4096_opu)
+
+# Variants-only target for quick A/B testing
+add_custom_target(benchmark_variants DEPENDS bench_mm_1024_v5_opt_loop
+                                             bench_mm_1024_v6_const_rhs)
+
+# =============================================================================
+# --- 5. E2E Model Benchmarks (OPU vs RVV) ---
+# =============================================================================
+# Each model is compiled twice: once with OPU ukernels, once with RVV baseline.
+# The harness (model_benchmark.c) takes a single float32 input.
+#
+# Three OPU compilation profiles matching saturn_opu.yaml: OPU:       +xopu, O3,
+# data tiling (dense matmul models: MLP) OPU_LLM:   +xopu, no O3,
+# collapse-multi-N preprocessing (LLMs: TinyLlama) OPU_IM2COL: no +xopu, no O3,
+# im2col preprocessing (CNNs: DroNet, YOLOv8)
+
+set(MODEL_BENCHMARKS "")
+
+# Shared data tiling + ukernel flags
+set(FLAGS_DATA_TILING
+    "--iree-opt-data-tiling=true"
+    "--iree-dispatch-creation-data-tiling=true"
+    # Disable the unpack ukernel (`iree_uk_unpack`) because it hangs on Saturn
+    # OPU — our OPU narrow-M bypass in the encoding resolver emits mmt4d+unpack
+    # for narrow 2D matmuls, and the unpack ukernel is the hang site. Inlined
+    # linalg.generic unpack works fine.
+    "--iree-llvmcpu-enable-ukernels=mmt4d,pack,query_tile_sizes"
+    "--iree-llvmcpu-link-ukernel-bitcode=true"
+    "--iree-llvmcpu-enable-vector-contract-custom-kernels=true"
+    "--iree-llvmcpu-target-vector-width-in-bytes=16"
+    "--iree-llvmcpu-skip-intermediate-roundings=true"
+    "--iree-llvmcpu-stack-allocation-limit=64mib")
+
+# OPU: +xopu with O3 for dense matmul models (MLP)
+set(FLAGS_MODEL_OPU ${BASE_OPU_FLAGS} ${FLAGS_DATA_TILING}
+                    "--iree-opt-level=O3")
+
+# OPU_LLM: +xopu without O3 + collapse preprocessing (TinyLlama)
+set(FLAGS_MODEL_OPU_LLM
+    ${BASE_OPU_FLAGS}
+    ${FLAGS_DATA_TILING}
+    "--iree-preprocessing-pass-pipeline=builtin.module(func.func(iree-preprocessing-collapse-multi-n-contractions))"
+)
+
+# OPU_IM2COL: no +xopu, no O3, im2col preprocessing (DroNet, YOLOv8)
+set(FLAGS_MODEL_OPU_IM2COL
+    ${BASE_RVV_FLAGS}
+    ${FLAGS_DATA_TILING}
+    "--iree-preprocessing-pass-pipeline=builtin.module(util.func(iree-preprocessing-convert-conv-to-channels-last),util.func(iree-global-opt-quantized-conv-to-conv),util.func(iree-global-opt-convert-conv2d-to-img2col))"
+)
+
+# RVV baseline: standard RVV with data tiling, no OPU
+set(FLAGS_MODEL_RVV ${BASE_RVV_FLAGS} ${FLAGS_DATA_TILING}
+                    "--iree-opt-level=O3")
+
+# RVV pure-vectorization: no data tiling, no ukernels. Uses base `+v` (no
+# `+xopu`). Fallback for models whose non-standard batch_matmul layouts break
+# the CPU encoding resolver (vit_small batch attention with (d1,d0,d3) indexing
+# maps). Note: without `+xopu` the vfredusum scalarization does NOT fire, so
+# dispatches that lower to `vfredusum.vs` will still hang on Saturn; that's a
+# known limitation of the pure-RVV baseline.
+set(FLAGS_MODEL_RVV_NO_TILING
+    ${BASE_RVV_FLAGS}
+    "--iree-opt-level=O3"
+    "--iree-opt-data-tiling=false"
+    "--iree-dispatch-creation-data-tiling=false"
+    "--iree-llvmcpu-skip-intermediate-roundings=true"
+    "--iree-llvmcpu-stack-allocation-limit=64mib"
+    "--iree-llvmcpu-target-vector-width-in-bytes=16")
+
+# Reserved for a future OPU variant that forces a real function call to
+# `iree_uk_opu_matmul` (no inlining). Currently identical to FLAGS_MODEL_OPU; a
+# `IREE_UK_ATTRIBUTE_NOINLINE` on the ukernel export is needed to truly prevent
+# inlining, but that requires rebuilding the host compiler — blocked by an
+# unrelated submodule skew in the radiance HAL driver's CMakeLists. See dev blog
+# addendum.
+set(FLAGS_MODEL_OPU_NO_INLINE_UK ${BASE_OPU_FLAGS} ${FLAGS_DATA_TILING}
+                                 "--iree-opt-level=O3")
+
+# Generator: create_model_benchmark(MODEL_NAME MLIR_SRC FUNC_NAME NDIMS DIM0
+# DIM1 DIM2 DIM3 VARIANT TAG COMPILE_FLAGS [EXTRA_DEFINES...])
+function(
+  create_model_benchmark
+  MODEL_NAME
+  MLIR_SRC
+  FUNC_NAME
+  NDIMS
+  DIM0
+  DIM1
+  DIM2
+  DIM3
+  VARIANT
+  TAG
+  COMPILE_FLAGS)
+  set(EXTRA_DEFINES ${ARGN})
+  set(MODULE_NAME "model_${MODEL_NAME}_${TAG}")
+  set(BINARY_NAME "bench_${MODULE_NAME}")
+
+  iree_bytecode_module(
+    NAME
+    ${MODULE_NAME}
+    SRC
+    "${MLIR_SRC}"
+    C_IDENTIFIER
+    "iree_samples_${MODULE_NAME}"
+    FLAGS
+    ${COMPILE_FLAGS}
+    PUBLIC)
+
+  iree_cc_binary(
+    NAME
+    ${BINARY_NAME}
+    SRCS
+    "device_embedded_sync.c"
+    "model_benchmark.c"
+    DEPS
+    ::${MODULE_NAME}_c
+    iree::base
+    iree::hal
+    iree::hal::drivers::local_sync::sync_driver
+    iree::hal::local
+    iree::hal::local::loaders::embedded_elf_loader
+    iree::modules::hal
+    iree::vm
+    iree::vm::bytecode::module
+    DEFINES
+    "MODEL_NAME=\"${MODEL_NAME}\""
+    "VARIANT_NAME=\"${VARIANT}\""
+    "FUNC_NAME=\"module.${FUNC_NAME}\""
+    "INPUT_NDIMS=${NDIMS}"
+    "INPUT_DIM0=${DIM0}"
+    "INPUT_DIM1=${DIM1}"
+    "INPUT_DIM2=${DIM2}"
+    "INPUT_DIM3=${DIM3}"
+    "MODULE_CREATE_FN=iree_samples_${MODULE_NAME}_create"
+    "MODULE_HEADER=\"${_GENERATED_HEADER_REL_DIR}/${MODULE_NAME}_c.h\""
+    ${EXTRA_DEFINES})
+
+  set(MODEL_BENCHMARKS
+      ${MODEL_BENCHMARKS} ${BINARY_NAME}
+      PARENT_SCOPE)
+endfunction()
+
+# --- Model definitions ---
+# Format: MODEL_NAME MLIR_PATH FUNC_NAME NDIMS D0 D1 D2 D3
+
+# MLP — WIDE variant: 16x16 input, hidden 32, output 16. All layer dims are
+# multiples of 16 so every matmul lands directly on the OPU 16x16 hardware tile
+# (PATH A). The original narrow `mlp` (1x10 input) hits the OPU narrow-M code
+# path which is fragile and currently hangs on FireSim — do NOT use it.
+create_model_benchmark(
+  mlp_wide
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/mlp_wide/mlp_wide.q.int8.mlir"
+  "main_graph"
+  2
+  16
+  16
+  1
+  1
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU}")
+create_model_benchmark(
+  # NO_TILING: pure RVV vector baseline, no ukernels → no iree_uk_mmt4d
+  # runtime-OPU-hardware detection. Ensures the RVV cycle count is
+  # apples-to-apples vs the pure-RVV implementation.
+  mlp_wide
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/mlp_wide/mlp_wide.q.int8.mlir"
+  "main_graph"
+  2
+  16
+  16
+  1
+  1
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV_NO_TILING}")
+
+# DroNet: drone navigation CNN (1x3x112x112) — OPU_IM2COL target
+create_model_benchmark(
+  dronet
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/dronet/dronet.q.int8.mlir"
+  "dronet"
+  4
+  1
+  3
+  112
+  112
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU_IM2COL}")
+create_model_benchmark(
+  # NO_TILING: ensure RVV baseline doesn't call iree_uk_mmt4d which would
+  # auto-detect OPU hardware and use it at runtime.
+  dronet
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/dronet/dronet.q.int8.mlir"
+  "dronet"
+  4
+  1
+  3
+  112
+  112
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV_NO_TILING}")
+
+# YOLOv8-nano: object detection (1x3x320x320) — OPU_IM2COL target
+create_model_benchmark(
+  yolov8_nano
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/yolov8_nano/yolov8n.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  320
+  320
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU_IM2COL}")
+create_model_benchmark(
+  # NO_TILING: pure RVV vector baseline for fair comparison. Reduced iter budget
+  # (0 warmup + 2 measure) because 320x320 YOLO inference on pure-vector RVV is
+  # ~13.6B cycles per iter — the full 2+5 budget would take ~30min on FireSim
+  # and hit the global timeout.
+  yolov8_nano
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/yolov8_nano/yolov8n.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  320
+  320
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV_NO_TILING}"
+  "FAST_BENCHMARK"
+  "BENCH_WARMUP_ITERS=0"
+  "BENCH_MEASURE_ITERS=2")
+
+# MobileNet-V2: ImageNet classifier (1x3x224x224) — OPU_IM2COL target
+create_model_benchmark(
+  mobilenet_v2
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/mobilenet_v2/mobilenet_v2.q.int8.mlir"
+  "torch_jit"
+  4
+  1
+  3
+  224
+  224
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU_IM2COL}")
+create_model_benchmark(
+  mobilenet_v2
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/mobilenet_v2/mobilenet_v2.q.int8.mlir"
+  "torch_jit"
+  4
+  1
+  3
+  224
+  224
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV}")
+
+# GLPDepth: depth estimation (1x3x224x224) — OPU_IM2COL target
+create_model_benchmark(
+  glpdepth
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/glpdepth/glpdepth.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  224
+  224
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU_IM2COL}")
+create_model_benchmark(
+  glpdepth
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/glpdepth/glpdepth.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  224
+  224
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV}")
+
+# Depth-Anything-V2 Small: ViT depth estimation (1x3x518x518) — OPU target
+create_model_benchmark(
+  depth_anything_v2
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/depth_anything_v2/depth_anything_v2.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  518
+  518
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU}")
+create_model_benchmark(
+  depth_anything_v2
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/depth_anything_v2/depth_anything_v2.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  518
+  518
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV}")
+
+# =============================================================================
+# --- OPU Benchmark Suite (custom models designed for OPU evaluation) ---
+# =============================================================================
+
+# MLP-Fast — 4-layer MLP with TinyLlama-scale matmul dimensions. Shapes:
+# 128×1024×128 (L1), 128×1024×1024 (L2-3), 128×16×1024 (head). K=1024 puts OPU
+# in compute-bound regime. Expected speedup >2×.
+create_model_benchmark(
+  mlp_fast
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/mlp_fast.q.int8.mlir"
+  "main_graph"
+  2
+  128
+  128
+  1
+  1
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU_LLM}"
+  "FAST_BENCHMARK"
+  "BENCH_WARMUP_ITERS=0"
+  "BENCH_MEASURE_ITERS=2")
+create_model_benchmark(
+  mlp_fast
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/mlp_fast.q.int8.mlir"
+  "main_graph"
+  2
+  128
+  128
+  1
+  1
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV_NO_TILING}"
+  "FAST_BENCHMARK"
+  "BENCH_WARMUP_ITERS=0"
+  "BENCH_MEASURE_ITERS=2")
+
+# OPU-Bench-ViT v2: 6-block ViT encoder (dim=256, 4 heads, seq=256). All
+# dimensions multiples of 32 (no M=196 tile-boundary issues, no M=1 narrow from
+# CLS head). Head matmul 256×16×256 → encoding 16×16 path; all other matmuls use
+# runtime 32×32. Standard FLAGS_MODEL_OPU (O3 + data tiling + xopu). The old
+# dim=512/seq=196 variant crashed with tohost=5 due to non-32-aligned M=196 and
+# narrow M=1 CLS dispatches.
+create_model_benchmark(
+  opu_bench_vit
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_vit.q.int8.mlir"
+  "main_graph"
+  3
+  1
+  128
+  1024
+  1
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU_LLM}"
+  "FAST_BENCHMARK"
+  "BENCH_WARMUP_ITERS=0"
+  "BENCH_MEASURE_ITERS=2")
+create_model_benchmark(
+  opu_bench_vit
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_vit.q.int8.mlir"
+  "main_graph"
+  3
+  1
+  128
+  1024
+  1
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV_NO_TILING}"
+  "FAST_BENCHMARK"
+  "BENCH_WARMUP_ITERS=0"
+  "BENCH_MEASURE_ITERS=2")
+
+# OPU-Bench-ViT-Small: fast iteration variant (dim=128, 4 heads, seq=64).
+#
+# OPU variant: `+v,+xopu`, full OPU flow (data tiling + ukernels), with
+# `--iree-llvmcpu-link-ukernel-bitcode=false` so each matmul dispatch issues a
+# real function call to `iree_uk_opu_matmul` instead of inlining the ukernel
+# bitcode. Sidesteps callsite specialization with M_tiles=4 constants that
+# appears to break OPU register state between outer-loop iterations. See
+# docs/dev_blog/2026-04-13-saturn-opu-vfredusum-scalarization.md.
+create_model_benchmark(
+  opu_bench_vit_small
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_vit_small.q.int8.mlir"
+  "main_graph"
+  3
+  1
+  64
+  128
+  1
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU_NO_INLINE_UK}"
+  "FAST_BENCHMARK")
+# RVV variant: pure `+v` (no `+xopu`), no data tiling, no ukernels. Standalone
+# RVV-only baseline binary so we can run vit_small through the stock RVV path.
+# Known caveat: dispatch 1's LayerNorm uses `vfredusum.vs`, which hangs on
+# Saturn — the scalarization workaround is `+xopu`-gated and will not fire here.
+create_model_benchmark(
+  opu_bench_vit_small
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_vit_small.q.int8.mlir"
+  "main_graph"
+  3
+  1
+  64
+  128
+  1
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV_NO_TILING}"
+  "FAST_BENCHMARK")
+
+# RVV self-test binary: same vit_small module, but with SATURN_RVV_SELFTEST
+# defined so main() runs the isolated probes (cps 1..9) BEFORE any IREE init.
+# Each checkpoint can be independently skipped via SATURN_RVV_SELFTEST_SKIP
+# bitmask (1<<N skips cp=N) so we can step past a confirmed hang to expose the
+# next probe across multiple FireSim runs.
+#
+# Set with: cmake -DSATURN_RVV_SELFTEST_SKIP=0x18 (skip cp=3, cp=4)
+set(SATURN_RVV_SELFTEST_SKIP
+    "0"
+    CACHE STRING
+          "Bitmask of RVV selftest checkpoints to skip (1<<N skips cp=N)")
+create_model_benchmark(
+  opu_bench_vit_small
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_vit_small.q.int8.mlir"
+  "main_graph"
+  3
+  1
+  64
+  128
+  1
+  "RVVTEST"
+  "rvvtest"
+  "${FLAGS_MODEL_OPU}"
+  "FAST_BENCHMARK"
+  "SATURN_RVV_SELFTEST=1"
+  "SATURN_RVV_SELFTEST_SKIP=${SATURN_RVV_SELFTEST_SKIP}")
+
+# OPU-Bench-LargeMLP: 4-layer FFN (hidden=2048, batch=128) fc2/3: M=128 K=2048
+# N=2048 — the OPU dream case
+create_model_benchmark(
+  opu_bench_large_mlp
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_large_mlp.q.int8.mlir"
+  "main_graph"
+  2
+  128
+  512
+  1
+  1
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU}")
+create_model_benchmark(
+  # NO_TILING: pure RVV vector baseline; prevents iree_uk_mmt4d from
+  # hw-detecting OPU at runtime and pulling in VOPACC opcodes.
+  opu_bench_large_mlp
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_large_mlp.q.int8.mlir"
+  "main_graph"
+  2
+  128
+  512
+  1
+  1
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV_NO_TILING}")
+
+# OPU-Bench-ConvNet + Hybrid CNN+trf: re-enabled post Option E fix for the final
+# e2e benchmark. ConvNet uses the OPU_IM2COL flag set (same as dronet) to
+# convert quantized convs to matmul. Hybrid uses OPU flags (standard path). Both
+# take 1x3x64x64 f32 inputs. If either still hangs on FireSim the sweep script
+# records it as "skipped" without blocking the rest of the matrix.
+create_model_benchmark(
+  opu_bench_convnet
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_convnet.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  64
+  64
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU_IM2COL}")
+create_model_benchmark(
+  # NO_TILING: pure RVV vector baseline for fair comparison.
+  opu_bench_convnet
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_convnet.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  64
+  64
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV_NO_TILING}")
+
+create_model_benchmark(
+  opu_bench_hybrid
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_hybrid.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  64
+  64
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU}")
+create_model_benchmark(
+  # NO_TILING profile: Hybrid's 4-head attention batch_matmul (1x4x256x256 @
+  # 1x4x256x32) breaks the CPU encoding resolver's batch_mmt4d tile inference.
+  # Using the no-tiling RVV profile (pure vectorization, no ukernels) sidesteps
+  # that compile error. Option E still fires on f32 reductions via the `+v`
+  # broadening.
+  opu_bench_hybrid
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_hybrid.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  64
+  64
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV_NO_TILING}")
+
+# MLP narrow (1x10 f32 → narrow-M OPU path). Previously disabled; worth another
+# run post f32-reduction fix. Entry `@mlp` not `@main_graph`.
+create_model_benchmark(
+  mlp
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/mlp/mlp.q.int8.mlir"
+  "mlp"
+  2
+  1
+  10
+  1
+  1
+  "OPU"
+  "opu"
+  "${FLAGS_MODEL_OPU}")
+create_model_benchmark(
+  # NO_TILING profile: mlp's narrow-K=10 matvec chain hangs at runtime under
+  # data-tiling + mmt4d ukernels (encoding-resolver edge case for K not aligned
+  # to 16). Pure vectorization (no data tiling, no ukernels) avoids that path
+  # entirely. Option E still handles any f32 reductions.
+  mlp
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/mlp/mlp.q.int8.mlir"
+  "mlp"
+  2
+  1
+  10
+  1
+  1
+  "RVV"
+  "rvv"
+  "${FLAGS_MODEL_RVV_NO_TILING}")
+
+# TinyLlama 1.1B: LLM (input_ids [1,128] + attention_mask [1,128], int64) Too
+# large for iree-c-embed-data (1.1GB). Uses .incbin assembly to embed the
+# pre-compiled VMFB directly into .rodata. Pre-compile with: uv run
+# tools/merlin.py compile ... --target saturn_opu --hw OPU_LLM
+set(_TINYLLAMA_VMFB
+    "${IREE_CMAKE_PLUGIN_PATHS}/build/compiled_models/tinyllama/saturn_opu_OPU_LLM_tinyllama.q.int8/tinyllama.q.int8.vmfb"
+)
+
+# Generate .S file with correct VMFB path via configure_file
+set(TINYLLAMA_VMFB_PATH "${_TINYLLAMA_VMFB}")
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/tinyllama_vmfb_embed.S.in"
+               "${CMAKE_CURRENT_BINARY_DIR}/tinyllama_vmfb_embed.S" @ONLY)
+
+# Assemble .incbin wrapper (embeds VMFB as .rodata)
+set(_TINYLLAMA_ASM_OBJ "${CMAKE_CURRENT_BINARY_DIR}/tinyllama_vmfb_embed.o")
+add_custom_command(
+  OUTPUT "${_TINYLLAMA_ASM_OBJ}"
+  COMMAND
+    ${CMAKE_C_COMPILER} --target=riscv64-unknown-elf
+    "--sysroot=${CMAKE_SYSROOT}" -march=rv64imafdc -mabi=lp64d -mcmodel=medany
+    -c "${CMAKE_CURRENT_BINARY_DIR}/tinyllama_vmfb_embed.S" -o
+    "${_TINYLLAMA_ASM_OBJ}"
+  DEPENDS "${_TINYLLAMA_VMFB}"
+          "${CMAKE_CURRENT_BINARY_DIR}/tinyllama_vmfb_embed.S"
+  COMMENT "Embedding TinyLlama VMFB via .incbin (1.1GB)")
+add_custom_target(tinyllama_vmfb_obj DEPENDS "${_TINYLLAMA_ASM_OBJ}")
+
+# Step 3: Build benchmark binary with custom VMFB loader
+iree_cc_binary(
+  NAME
+  bench_model_tinyllama_opu
+  SRCS
+  "device_embedded_sync.c"
+  "model_benchmark.c"
+  "tinyllama_vmfb_loader.c"
+  DEPS
+  iree::base
+  iree::hal
+  iree::hal::drivers::local_sync::sync_driver
+  iree::hal::local
+  iree::hal::local::loaders::embedded_elf_loader
+  iree::modules::hal
+  iree::vm
+  iree::vm::bytecode::module
+  LINKOPTS
+  ""
+  DEFINES
+  "MODEL_NAME=\"tinyllama\""
+  "VARIANT_NAME=\"OPU\""
+  "FUNC_NAME=\"module.main_graph\""
+  "INPUT_NDIMS=2"
+  "INPUT_DIM0=1"
+  "INPUT_DIM1=128"
+  "INPUT_DIM2=1"
+  "INPUT_DIM3=1"
+  "INPUT_TYPE_I64"
+  "NUM_INPUTS=2"
+  "FAST_BENCHMARK"
+  "MODULE_CREATE_FN=iree_samples_model_tinyllama_opu_create"
+  "MODULE_HEADER=\"${CMAKE_CURRENT_SOURCE_DIR}/tinyllama_vmfb_loader.h\""
+  # TinyLlama: skip warmup, measure 2 iters. The 1.1GB VMFB load + first
+  # transformer pass cost ~1h on FireSim; the smaller iter budget keeps the wall
+  # time bounded while still yielding a trimmable two-run avg.
+  "BENCH_WARMUP_ITERS=0"
+  "BENCH_MEASURE_ITERS=2")
+# Link the VMFB binary blob. The .vmfb_data section is handled by htif.ld's
+# .vmfb_data output section (placed after heap+stack to stay within medany ±2GB
+# of .text). No custom linker script needed.
+target_link_libraries(
+  iree_.._.._samples_SaturnOPU_simple_embedding_ukernel_bench_model_tinyllama_opu
+  PRIVATE "${_TINYLLAMA_ASM_OBJ}")
+add_dependencies(
+  iree_.._.._samples_SaturnOPU_simple_embedding_ukernel_bench_model_tinyllama_opu
+  tinyllama_vmfb_obj)
+set(MODEL_BENCHMARKS ${MODEL_BENCHMARKS} bench_model_tinyllama_opu)
+
+# TinyLlama RVV (NO_TILING) variant: pure-vector baseline. Pre-compile with
+# iree-compile using FLAGS_MODEL_RVV_NO_TILING-equivalent flags. Output at
+# build/compiled_models/tinyllama/saturn_opu_RVV_NO_TILING_tinyllama.q.int8/.
+set(_TINYLLAMA_RVV_VMFB
+    "${IREE_CMAKE_PLUGIN_PATHS}/build/compiled_models/tinyllama/saturn_opu_RVV_NO_TILING_tinyllama.q.int8/tinyllama.q.int8.vmfb"
+)
+set(TINYLLAMA_RVV_VMFB_PATH "${_TINYLLAMA_RVV_VMFB}")
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/tinyllama_rvv_vmfb_embed.S.in"
+               "${CMAKE_CURRENT_BINARY_DIR}/tinyllama_rvv_vmfb_embed.S" @ONLY)
+set(_TINYLLAMA_RVV_ASM_OBJ
+    "${CMAKE_CURRENT_BINARY_DIR}/tinyllama_rvv_vmfb_embed.o")
+add_custom_command(
+  OUTPUT "${_TINYLLAMA_RVV_ASM_OBJ}"
+  COMMAND
+    ${CMAKE_C_COMPILER} --target=riscv64-unknown-elf
+    "--sysroot=${CMAKE_SYSROOT}" -march=rv64imafdc -mabi=lp64d -mcmodel=medany
+    -c "${CMAKE_CURRENT_BINARY_DIR}/tinyllama_rvv_vmfb_embed.S" -o
+    "${_TINYLLAMA_RVV_ASM_OBJ}"
+  DEPENDS "${_TINYLLAMA_RVV_VMFB}"
+          "${CMAKE_CURRENT_BINARY_DIR}/tinyllama_rvv_vmfb_embed.S"
+  COMMENT "Embedding TinyLlama RVV VMFB via .incbin")
+add_custom_target(tinyllama_rvv_vmfb_obj DEPENDS "${_TINYLLAMA_RVV_ASM_OBJ}")
+
+iree_cc_binary(
+  NAME
+  bench_model_tinyllama_rvv
+  SRCS
+  "device_embedded_sync.c"
+  "model_benchmark.c"
+  "tinyllama_rvv_vmfb_loader.c"
+  DEPS
+  iree::base
+  iree::hal
+  iree::hal::drivers::local_sync::sync_driver
+  iree::hal::local
+  iree::hal::local::loaders::embedded_elf_loader
+  iree::modules::hal
+  iree::vm
+  iree::vm::bytecode::module
+  LINKOPTS
+  ""
+  DEFINES
+  "MODEL_NAME=\"tinyllama\""
+  "VARIANT_NAME=\"RVV\""
+  "FUNC_NAME=\"module.main_graph\""
+  "INPUT_NDIMS=2"
+  "INPUT_DIM0=1"
+  "INPUT_DIM1=128"
+  "INPUT_DIM2=1"
+  "INPUT_DIM3=1"
+  "INPUT_TYPE_I64"
+  "NUM_INPUTS=2"
+  "FAST_BENCHMARK"
+  "MODULE_CREATE_FN=iree_samples_model_tinyllama_rvv_create"
+  "MODULE_HEADER=\"${CMAKE_CURRENT_SOURCE_DIR}/tinyllama_vmfb_loader.h\""
+  "BENCH_WARMUP_ITERS=0"
+  "BENCH_MEASURE_ITERS=2")
+target_link_libraries(
+  iree_.._.._samples_SaturnOPU_simple_embedding_ukernel_bench_model_tinyllama_rvv
+  PRIVATE "${_TINYLLAMA_RVV_ASM_OBJ}")
+add_dependencies(
+  iree_.._.._samples_SaturnOPU_simple_embedding_ukernel_bench_model_tinyllama_rvv
+  tinyllama_rvv_vmfb_obj)
+set(MODEL_BENCHMARKS ${MODEL_BENCHMARKS} bench_model_tinyllama_rvv)
+
+# =============================================================================
+# --- 6. Phase-D micro-tests (one-op MLIRs for hang isolation) ---
+# =============================================================================
+# Each entry compiles a single-op MLIR under tests/microtests/ into two
+# FireSim-runnable binaries (OPU and RVV variants). Shape/dtype metadata is
+# passed via the usual create_model_benchmark arguments so model_benchmark.c can
+# allocate the input buffer correctly.
+set(MICROTESTS "")
+
+# Use for tests that truly exercise the OPU custom ISA — i.e., the MLIR contains
+# at least one i8×i8→i32 contraction that goes through the
+# iree_cpu.opu_encoding_resolver + iree_uk_opu_matmul ukernel. For those the OPU
+# flag set (+xopu + data tiling + ukernels) produces different code from
+# RVV_NO_TILING, so both variants are worth building.
+function(
+  _add_microtest
+  NAME
+  MLIR
+  FUNC
+  NDIMS
+  D0
+  D1
+  D2
+  D3
+  EXTRA)
+  create_model_benchmark(
+    ${NAME}
+    ${MLIR}
+    ${FUNC}
+    ${NDIMS}
+    ${D0}
+    ${D1}
+    ${D2}
+    ${D3}
+    "OPU"
+    "opu"
+    "${FLAGS_MODEL_OPU}"
+    "MERLIN_DISPATCH_DEBUG=1"
+    ${EXTRA})
+  create_model_benchmark(
+    ${NAME}
+    ${MLIR}
+    ${FUNC}
+    ${NDIMS}
+    ${D0}
+    ${D1}
+    ${D2}
+    ${D3}
+    "RVV"
+    "rvv"
+    "${FLAGS_MODEL_RVV_NO_TILING}"
+    "MERLIN_DISPATCH_DEBUG=1"
+    ${EXTRA})
+  set(MICROTESTS
+      ${MICROTESTS} bench_model_${NAME}_opu bench_model_${NAME}_rvv
+      PARENT_SCOPE)
+endfunction()
+
+# Use for pure-f32 tests (no i8 matmul). The OPU encoding resolver never
+# attaches an encoding to f32 ops, so FLAGS_MODEL_OPU produces identical
+# dispatch ELFs to FLAGS_MODEL_RVV_NO_TILING for these. Skip the redundant OPU
+# variant.
+function(
+  _add_microtest_rvv_only
+  NAME
+  MLIR
+  FUNC
+  NDIMS
+  D0
+  D1
+  D2
+  D3
+  EXTRA)
+  create_model_benchmark(
+    ${NAME}
+    ${MLIR}
+    ${FUNC}
+    ${NDIMS}
+    ${D0}
+    ${D1}
+    ${D2}
+    ${D3}
+    "RVV"
+    "rvv"
+    "${FLAGS_MODEL_RVV_NO_TILING}"
+    "MERLIN_DISPATCH_DEBUG=1"
+    ${EXTRA})
+  set(MICROTESTS
+      ${MICROTESTS} bench_model_${NAME}_rvv
+      PARENT_SCOPE)
+endfunction()
+
+# Shared microtest src dir
+set(_MT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/microtests")
+
+# All pure-f32 tests: no i8 contraction → OPU encoding resolver is a no-op → OPU
+# build produces identical code to RVV. RVV-only.
+_add_microtest_rvv_only(
+  mt_rsqrt_64xf32
+  "${_MT_DIR}/rsqrt_64xf32.mlir"
+  "main"
+  1
+  64
+  1
+  1
+  1
+  "")
+_add_microtest_rvv_only(
+  mt_sqrt_64xf32
+  "${_MT_DIR}/sqrt_64xf32.mlir"
+  "main"
+  1
+  64
+  1
+  1
+  1
+  "")
+_add_microtest_rvv_only(
+  mt_erf_64xf32
+  "${_MT_DIR}/erf_64xf32.mlir"
+  "main"
+  1
+  64
+  1
+  1
+  1
+  "")
+_add_microtest_rvv_only(
+  mt_softmax_64x64
+  "${_MT_DIR}/softmax_64x64xf32.mlir"
+  "main"
+  2
+  64
+  64
+  1
+  1
+  "")
+_add_microtest_rvv_only(
+  mt_cvt_64
+  "${_MT_DIR}/cvt_64_i32_f32_i32.mlir"
+  "main"
+  1
+  64
+  1
+  1
+  1
+  "")
+_add_microtest_rvv_only(
+  mt_divf_vv_64
+  "${_MT_DIR}/divf_vv_64xf32.mlir"
+  "main"
+  1
+  64
+  1
+  1
+  1
+  "")
+
+# --- OPU ukernel path coverage (i8 matmul variants) ---
+# Each of these hits a distinct code region in iree_uk_opu_matmul.
+_add_microtest(
+  mt_mm_i8_64x128
+  "${_MT_DIR}/matmul_i8_64x128x128.mlir"
+  "main"
+  2
+  64
+  128
+  1
+  1
+  "")
+_add_microtest(
+  mt_mm_i8_narrow_m
+  "${_MT_DIR}/matmul_i8_narrow_m_1x128x128.mlir"
+  "main"
+  2
+  1
+  128
+  1
+  1
+  "")
+_add_microtest(
+  mt_mm_i8_wide
+  "${_MT_DIR}/matmul_i8_wide_128x256x256.mlir"
+  "main"
+  2
+  128
+  256
+  1
+  1
+  "")
+_add_microtest(
+  mt_mm_i8_resid_bias
+  "${_MT_DIR}/matmul_i8_residual_bias_requant.mlir"
+  "main"
+  2
+  64
+  128
+  1
+  1
+  "")
+_add_microtest(
+  mt_mm_i8_accumulate
+  "${_MT_DIR}/matmul_i8_accumulate.mlir"
+  "main"
+  2
+  64
+  128
+  1
+  1
+  "")
+
+# --- Representative chunks LIFTED from real vit_small compiled dispatches ---
+# These reproduce the exact op chain + indexing maps of the hanging dispatches.
+# d1 has NO i8 matmul (LN only), so OPU ≡ RVV. d7/d9 wrap around an i8 matmul so
+# both variants are distinct.
+_add_microtest_rvv_only(
+  mt_vit_d1_layernorm
+  "${_MT_DIR}/vit_layernorm_d1_chunk.mlir"
+  "main"
+  2
+  64
+  128
+  1
+  1
+  "")
+_add_microtest(
+  mt_vit_d7_softmax
+  "${_MT_DIR}/vit_d7_softmax_chunk.mlir"
+  "main"
+  3
+  4
+  64
+  64
+  1
+  "")
+_add_microtest(
+  mt_vit_d9_matmul
+  "${_MT_DIR}/vit_d9_chunk.mlir"
+  "main"
+  2
+  64
+  128
+  1
+  1
+  "")
+
+# --- Flag-bisection variants of mt_bmm_4x64x64 ---
+# Reuse the same MLIR; compile with progressively more aggressive
+# de-vectorization so whichever variant stops hanging pinpoints the broken
+# lowering class. Results form a ladder of coverage.
+set(_MT_BMM_MLIR "${_MT_DIR}/matmul_bmm_4x64x64.mlir")
+
+# bmm_scalar: disable vectorization entirely (vector-width=0).
+create_model_benchmark(
+  mt_bmm_4x64x64
+  "${_MT_BMM_MLIR}"
+  "main"
+  3
+  4
+  64
+  32
+  1
+  "OPU_SCALAR"
+  "opu_scalar"
+  "${FLAGS_MODEL_OPU};--iree-llvmcpu-target-vector-width-in-bytes=0"
+  "MERLIN_DISPATCH_DEBUG=1")
+list(APPEND MICROTESTS bench_model_mt_bmm_4x64x64_opu_scalar)
+
+# bmm_novec: drop +v from target features; scalar code only.
+create_model_benchmark(
+  mt_bmm_4x64x64
+  "${_MT_BMM_MLIR}"
+  "main"
+  3
+  4
+  64
+  32
+  1
+  "OPU_NOVEC"
+  "opu_novec"
+  "${BASE_COMMON_FLAGS};--iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c;--iree-opt-level=O3;--iree-opt-data-tiling=false;--iree-dispatch-creation-data-tiling=false;--iree-llvmcpu-skip-intermediate-roundings=true;--iree-llvmcpu-stack-allocation-limit=64mib"
+  "MERLIN_DISPATCH_DEBUG=1")
+list(APPEND MICROTESTS bench_model_mt_bmm_4x64x64_opu_novec)
+
+# bmm_nocustom: keep OPU + RVV but disable custom vector-contract kernels.
+create_model_benchmark(
+  mt_bmm_4x64x64
+  "${_MT_BMM_MLIR}"
+  "main"
+  3
+  4
+  64
+  32
+  1
+  "OPU_NOCUSTOM"
+  "opu_nocustom"
+  "${FLAGS_MODEL_OPU};--iree-llvmcpu-enable-vector-contract-custom-kernels=false"
+  "MERLIN_DISPATCH_DEBUG=1")
+list(APPEND MICROTESTS bench_model_mt_bmm_4x64x64_opu_nocustom)
+
+# bmm_noukernel: disable ukernel lowering entirely.
+create_model_benchmark(
+  mt_bmm_4x64x64
+  "${_MT_BMM_MLIR}"
+  "main"
+  3
+  4
+  64
+  32
+  1
+  "OPU_NOUKERNEL"
+  "opu_noukernel"
+  "${FLAGS_MODEL_OPU};--iree-llvmcpu-enable-ukernels=none"
+  "MERLIN_DISPATCH_DEBUG=1")
+list(APPEND MICROTESTS bench_model_mt_bmm_4x64x64_opu_noukernel)
+_add_microtest_rvv_only(
+  mt_bmm_4x64x64
+  "${_MT_DIR}/matmul_bmm_4x64x64.mlir"
+  "main"
+  3
+  4
+  64
+  32
+  1
+  "")
+# D12: same f32 matmul (64x128x128, matching vit d9 shape) under OPU and
+# OPU_LLM. The only flag delta is
+# --iree-preprocessing-collapse-multi-n-contractions; if OPU passes but OPU_LLM
+# hangs, that pass is the tinyllama-specific culprit.
+_add_microtest_rvv_only(
+  mt_matmul_64x128
+  "${_MT_DIR}/matmul_64x128x128.mlir"
+  "main"
+  2
+  64
+  128
+  1
+  1
+  "")
+create_model_benchmark(
+  mt_matmul_64x128
+  "${_MT_DIR}/matmul_64x128x128.mlir"
+  "main"
+  2
+  64
+  128
+  1
+  1
+  "OPU_LLM"
+  "opu_llm"
+  "${FLAGS_MODEL_OPU_LLM}"
+  "MERLIN_DISPATCH_DEBUG=1")
+list(APPEND MICROTESTS bench_model_mt_matmul_64x128_opu_llm)
+
+# Saturn OPU instruction-cost microbench — bare-metal, no IREE runtime. Measures
+# marginal cyc/op for VOPACC, OPMVINBCAST, VMV_VR via two-point timing that
+# cancels constant overhead. See opu_microbench.c.
+iree_cc_binary(NAME bench_mt_opu_microbench SRCS "opu_microbench.c")
+list(APPEND MICROTESTS bench_mt_opu_microbench)
+
+add_custom_target(microtests DEPENDS ${MICROTESTS})
+
+# ---- Profile variants (OPU only) ----
+# These binaries are IDENTICAL to the clean `bench_model_<name>_opu` builds plus
+# `-DMERLIN_PROFILE_CYCLES=1`, which enables per-ordinal rdcycle accumulation
+# inside the embedded-ELF loader and a one-shot cycle dump (`CYC, ordinal, sym,
+# cycles, wg_count`) at end-of-run. Intended for the compute-share decomposition
+# plot only — NEVER used for OPU-vs-RVV speedup comparisons (the rdcycle wrap
+# adds ~8 cyc/dispatch overhead).
+#
+# Profile variants reuse the VMFB that was built for the clean OPU build (same
+# compile flags); only the host-side benchmark harness + ELF loader differ. We
+# simply re-instantiate `create_model_benchmark` with a different TAG so we get
+# a separate binary name like `bench_model_mlp_wide_opu_prof`.
+
+set(_PROF_DEFINE "MERLIN_PROFILE_CYCLES=1")
+
+create_model_benchmark(
+  mlp_wide
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/mlp_wide/mlp_wide.q.int8.mlir"
+  "main_graph"
+  2
+  16
+  16
+  1
+  1
+  "OPU_PROF"
+  "opu_prof"
+  "${FLAGS_MODEL_OPU}"
+  "${_PROF_DEFINE}")
+create_model_benchmark(
+  opu_bench_large_mlp
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_large_mlp.q.int8.mlir"
+  "main_graph"
+  2
+  128
+  128
+  1
+  1
+  "OPU_PROF"
+  "opu_prof"
+  "${FLAGS_MODEL_OPU}"
+  "${_PROF_DEFINE}")
+create_model_benchmark(
+  dronet
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/dronet/dronet.q.int8.mlir"
+  "dronet"
+  4
+  1
+  3
+  112
+  112
+  "OPU_PROF"
+  "opu_prof"
+  "${FLAGS_MODEL_OPU_IM2COL}"
+  "${_PROF_DEFINE}")
+create_model_benchmark(
+  yolov8_nano
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/yolov8_nano/yolov8n.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  320
+  320
+  "OPU_PROF"
+  "opu_prof"
+  "${FLAGS_MODEL_OPU_IM2COL}"
+  "${_PROF_DEFINE}")
+create_model_benchmark(
+  opu_bench_vit
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_vit.q.int8.mlir"
+  "main_graph"
+  3
+  1
+  197
+  768
+  1
+  "OPU_PROF"
+  "opu_prof"
+  "${FLAGS_MODEL_OPU}"
+  "${_PROF_DEFINE}")
+create_model_benchmark(
+  opu_bench_vit_small
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_vit_small.q.int8.mlir"
+  "main_graph"
+  3
+  1
+  64
+  128
+  1
+  "OPU_PROF"
+  "opu_prof"
+  "${FLAGS_MODEL_OPU_NO_INLINE_UK}"
+  "${_PROF_DEFINE}")
+create_model_benchmark(
+  opu_bench_hybrid
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_hybrid.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  64
+  64
+  "OPU_PROF"
+  "opu_prof"
+  "${FLAGS_MODEL_OPU}"
+  "${_PROF_DEFINE}")
+create_model_benchmark(
+  opu_bench_convnet
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/opu_bench_suite/opu_bench_convnet.q.int8.mlir"
+  "main_graph"
+  4
+  1
+  3
+  64
+  64
+  "OPU_PROF"
+  "opu_prof"
+  "${FLAGS_MODEL_OPU_IM2COL}"
+  "${_PROF_DEFINE}")
+create_model_benchmark(
+  mlp
+  "${IREE_CMAKE_PLUGIN_PATHS}/models/mlp/mlp.q.int8.mlir"
+  "mlp"
+  2
+  1
+  10
+  1
+  1
+  "OPU_PROF"
+  "opu_prof"
+  "${FLAGS_MODEL_OPU}"
+  "${_PROF_DEFINE}")
+
+add_custom_target(benchmark_models_prof DEPENDS ${MODEL_BENCHMARKS})
+
+# Meta-target for all model benchmarks
+add_custom_target(benchmark_models DEPENDS ${MODEL_BENCHMARKS})

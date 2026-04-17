@@ -3,9 +3,17 @@ cmake_minimum_required(VERSION 3.16)
 
 # --- 1. Target Architecture Configuration ---
 set(_ARCH "riscv_64")
-set(RISCV_GCC
-    "/scratch2/agustin/merlin/riscv-tools-iree/toolchain/clang/linux/RISCV/bin/clang"
-)
+if(NOT DEFINED RISCV_TOOLCHAIN_ROOT)
+  set(RISCV_TOOLCHAIN_ROOT "$ENV{RISCV_TOOLCHAIN_ROOT}")
+endif()
+if(NOT RISCV_TOOLCHAIN_ROOT)
+  message(
+    FATAL_ERROR
+      "RISCV_TOOLCHAIN_ROOT is not set. "
+      "Please set the RISCV_TOOLCHAIN_ROOT environment variable or CMake variable."
+  )
+endif()
+set(RISCV_GCC "${RISCV_TOOLCHAIN_ROOT}/bin/clang")
 message(STATUS "Using RISC-V GCC: ${RISCV_GCC}")
 
 # --- 2. Define Source Files ---
@@ -25,7 +33,7 @@ set(CUSTOM_OP_OBJECT_FILE ${CMAKE_CURRENT_BINARY_DIR}/riscv_qgemm.o) # This is
 # --- Compilation Flags (shared) ---
 set(RISCV_COMPILE_FLAGS
     --target=riscv64-unknown-linux-gnu
-    --sysroot=/scratch2/agustin/merlin/riscv-tools-iree/toolchain/clang/linux/RISCV/sysroot
+    --sysroot=${RISCV_TOOLCHAIN_ROOT}/sysroot
     -march=rv64gcv_zvl512b_zvbb1p0
     -mabi=lp64d
     -mcmodel=medany
@@ -39,8 +47,7 @@ set(RISCV_COMPILE_FLAGS
     -menable-experimental-extensions
     -fdata-sections
     -ffunction-sections
-    -I/scratch2/agustin/merlin/riscv-tools-iree/toolchain/clang/linux/RISCV/lib/clang/18/include
-)
+    -I${RISCV_TOOLCHAIN_ROOT}/lib/clang/18/include)
 
 # --- 4. Custom Command to Build ukernel.o ---
 add_custom_command(

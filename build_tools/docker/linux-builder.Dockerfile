@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     git \
     tar \
+    xz-utils \
     wget \
     curl \
     ca-certificates \

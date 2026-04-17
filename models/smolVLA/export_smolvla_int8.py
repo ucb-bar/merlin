@@ -15,6 +15,7 @@ if str(UNDERSTANDING_PI0_ROOT) not in sys.path:
     sys.path.insert(0, str(UNDERSTANDING_PI0_ROOT))
 
 from understanding_pi0.common.env import (  # noqa: E402
+    normalize_torch_device,
     print_runtime_info,
     seed_all,
     warn_if_mx_execution_unavailable,
@@ -81,6 +82,7 @@ def main() -> int:
     ap.add_argument("--no-exportable-mx", action="store_true")
     ap.add_argument("--out", default="models/smolVLA/smolVLA.q.int8.mlir")
     args = ap.parse_args()
+    args.device = normalize_torch_device(args.device)
 
     seed_all(args.seed)
     print_runtime_info(args.device)

@@ -137,10 +137,19 @@ def _format_option_name(action: argparse.Action) -> str:
     return f"`{action.dest}`"
 
 
-def _format_option_default(action: argparse.Action) -> str:
+def _format_option_default(action: argparse.Action, repo_root: Path | None = None) -> str:
     if action.default in (None, argparse.SUPPRESS):
         return "-"
-    return f"`{action.default}`"
+    value = action.default
+    if repo_root is not None and isinstance(value, (Path, str)):
+        text = str(value)
+        if text.startswith("/") or isinstance(value, Path):
+            try:
+                rel = Path(text).resolve().relative_to(repo_root)
+                return f"`<repo>/{rel.as_posix()}`"
+            except (ValueError, OSError):
+                pass
+    return f"`{value}`"
 
 
 def _format_option_choices(action: argparse.Action) -> str:
@@ -150,7 +159,7 @@ def _format_option_choices(action: argparse.Action) -> str:
     return f"`{values}`"
 
 
-def _render_option_table(parser: argparse.ArgumentParser) -> list[str]:
+def _render_option_table(parser: argparse.ArgumentParser, repo_root: Path | None = None) -> list[str]:
     lines = [
         "| Argument | Required | Default | Choices | Help |",
         "| --- | --- | --- | --- | --- |",
@@ -162,14 +171,14 @@ def _render_option_table(parser: argparse.ArgumentParser) -> list[str]:
         lines.append(
             f"| {_format_option_name(action)} | "
             f"{'yes' if getattr(action, 'required', False) else 'no'} | "
-            f"{_format_option_default(action)} | "
+            f"{_format_option_default(action, repo_root)} | "
             f"{_format_option_choices(action)} | "
             f"{help_text} |"
         )
     return lines
 
 
-def _render_subcommand_tables(parser: argparse.ArgumentParser) -> list[str]:
+def _render_subcommand_tables(parser: argparse.ArgumentParser, repo_root: Path | None = None) -> list[str]:
     lines: list[str] = []
     for action in parser._actions:
         if not isinstance(action, argparse._SubParsersAction):
@@ -184,7 +193,7 @@ def _render_subcommand_tables(parser: argparse.ArgumentParser) -> list[str]:
                     sub_parser.format_usage().strip(),
                     "```",
                     "",
-                    *_render_option_table(sub_parser),
+                    *_render_option_table(sub_parser, repo_root),
                     "",
                 ]
             )
@@ -226,9 +235,9 @@ def _build_cli_reference(repo_root: Path, docs_root: Path) -> None:
                     "",
                     "### Arguments",
                     "",
-                    *_render_option_table(parser),
+                    *_render_option_table(parser, repo_root),
                     "",
-                    *_render_subcommand_tables(parser),
+                    *_render_subcommand_tables(parser, repo_root),
                     "### `--help` Output",
                     "",
                     "```text",

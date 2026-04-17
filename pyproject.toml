@@ -31,11 +31,7 @@ dependencies = [
 
     "openai==1.55.3",
     "datasets==3.0.0",
-    "gguf==0.17.1",
-    "mistral_common==1.8.5",
-    "tiktoken==0.12.0",
     "huggingface-hub==0.36.0rc0",
-
 
     "numpy==2.2.6",
     "pandas==2.2.3",
@@ -45,21 +41,17 @@ dependencies = [
     "pyarrow==21.0.0",
     "networkx==3.3",
     "sympy==1.14.0",
-    "z3-solver==4.15.3.0",
-
 
     "matplotlib==3.10.7",
     "seaborn==0.13.2",
     "pillow==11.0.0",
     "opencv-python==4.12.0.88",
     "imageio==2.37.0",
-    "pydotplus==2.0.2",
 
     "hydra-core==1.3.2",
     "omegaconf==2.3.0",
     "fire==0.7.1",
     "typer==0.15.4",
-    "inquirerpy==0.3.4",
     "click==8.1.8",
 
     "fastapi==0.119.1",
@@ -81,7 +73,6 @@ dependencies = [
     "rich==14.2.0",
     "tqdm==4.67.1",
 
-    "wave-lang==3.8.0; sys_platform == 'linux'",
     "wget==3.2",
     "filelock==3.13.1",
 ]
@@ -101,7 +92,11 @@ exclude = [
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
-ignore = ["F821", "E501", "UP038"]
+per-file-ignores = {"benchmarks/SaturnNPU/scripts/generate_mlir_golden_data.py" = ["E501"]}
+ignore = ["F821", "UP038"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["benchmark", "build", "chipyard", "ci", "compile", "patches", "ray_cmd", "setup", "targetgen_cmd", "utils"]
 
 [tool.ruff.format]
 docstring-code-format = true

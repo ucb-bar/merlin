@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 # tools/build.py
+"""Backs `./merlin build`: configures and builds Merlin host tools and target
+runtimes via cmake/ninja, with curated `--profile` presets (vanilla, full-plugin,
+spacemit, firesim, gemmini, etc.).
+
+See docs/how_to/use_build_py.md for profile reference and examples.
+"""
 
 import argparse
 import json
@@ -20,9 +26,9 @@ PROFILE_PRESETS: dict[str, dict[str, object]] = {
         "plugin_compiler": False,
         "plugin_runtime": False,
         "build_compiler": True,
-        "build_python_bindings": True,
+        "build_python_bindings": False,
         "build_samples": False,
-        "build_tests": True,
+        "build_tests": False,
         "enable_libbacktrace": True,
     },
     "full-plugin": {
@@ -36,9 +42,9 @@ PROFILE_PRESETS: dict[str, dict[str, object]] = {
         "plugin_runtime_benchmarks": False,
         "plugin_runtime_radiance_tests": True,
         "build_compiler": True,
-        "build_python_bindings": True,
+        "build_python_bindings": False,
         "build_samples": False,
-        "build_tests": True,
+        "build_tests": False,
         "enable_libbacktrace": True,
         "compiler_scope": "all",
     },
@@ -346,7 +352,7 @@ def get_iree_version(iree_src: pathlib.Path) -> str:
     try:
         with (iree_src / "runtime" / "version.json").open() as f:
             return json.load(f).get("package-version", "unknown")
-    except Exception:
+    except FileNotFoundError:
         return "unknown"
 
 
@@ -576,8 +582,6 @@ def main(args: argparse.Namespace) -> int:
             )
             return 1
 
-    get_iree_version(iree_src)
-
     # Clean structure: build/spacemit-merlin-perf
     build_name = f"{args.target}-{variant}-{args.config}"
     build_dir = utils.REPO_ROOT / "build" / build_name
@@ -693,7 +697,7 @@ def main(args: argparse.Namespace) -> int:
                 print(f"Warning: Failed ASan LD_PRELOAD detection: {e}")
 
     elif args.config == "release" or args.config == "perf":
-        build_type = "Release" if args.config == "perf" else "RelWithDebInfo"
+        build_type = "Release"
         common_c_flags, common_cxx_flags = make_common_cmake_flags(cxx_warn_cpp=True)
         cmake_args.extend(
             [
@@ -789,9 +793,11 @@ def main(args: argparse.Namespace) -> int:
             [
                 "-DIREE_TARGET_BACKEND_DEFAULTS=OFF",
                 "-DIREE_TARGET_BACKEND_LLVM_CPU=ON",
+                "-DIREE_TARGET_BACKEND_VMVX=OFF",
                 "-DIREE_HAL_DRIVER_DEFAULTS=OFF",
                 "-DIREE_HAL_DRIVER_LOCAL_SYNC=ON",
                 "-DIREE_HAL_DRIVER_LOCAL_TASK=ON",
+                "-DIREE_DEFAULT_CPU_LLVM_TARGETS=X86;RISCV",
             ]
         )
 
@@ -811,17 +817,26 @@ def main(args: argparse.Namespace) -> int:
             utils.eprint("❌ Error: SpacemiT toolchain not found. Set RISCV_TOOLCHAIN_ROOT.")
             return 1
 
+        toolchain_file = iree_src / "build_tools" / "cmake" / "riscv.toolchain.cmake"
+        if not toolchain_file.exists():
+            toolchain_file = iree_src / "build_tools" / "cmake" / "linux_riscv64.cmake"
+        if not toolchain_file.exists():
+            utils.eprint("❌ Error: RISC-V CMake toolchain file not found in third_party/iree_bar/build_tools/cmake.")
+            return 1
+
         cmake_args.extend(
             [
                 "-DMERLIN_BUILD_SPACEMITX60=ON",
-                f"-DCMAKE_TOOLCHAIN_FILE={iree_src}/build_tools/cmake/riscv.toolchain.cmake",
+                f"-DCMAKE_TOOLCHAIN_FILE={toolchain_file}",
                 "-DRISCV_CPU=linux-riscv_64",
                 f"-DRISCV_TOOLCHAIN_ROOT={tc_root}",
                 "-DIREE_HAL_DRIVER_DEFAULTS=OFF",
                 "-DIREE_HAL_DRIVER_LOCAL_SYNC=ON",
                 "-DIREE_HAL_DRIVER_LOCAL_TASK=ON",
-                "-DCMAKE_C_FLAGS=-march=rv64gc_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause -mabi=lp64d",
-                "-DCMAKE_CXX_FLAGS=-fno-omit-frame-pointer -march=rv64gc_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause -mabi=lp64d",
+                "-DCMAKE_C_FLAGS=" "-march=rv64gc_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause -mabi=lp64d",
+                "-DCMAKE_CXX_FLAGS="
+                "-fno-omit-frame-pointer"
+                " -march=rv64gc_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause -mabi=lp64d",
                 "-DIREE_ENABLE_CPUINFO=ON",
             ]
         )
@@ -839,11 +854,16 @@ def main(args: argparse.Namespace) -> int:
         env["RISCV_TOOLCHAIN_ROOT"] = tc_root
         env.setdefault("RISCV", tc_root)
 
+        # Bare-metal CPU feature bitmask for ukernel dispatch.
+        # V=0x01, ZVFHMIN=0x02, ZVFH=0x04, XSMTVDOT=0x08, XOPU=0x10
+        bare_metal_cpu_features = "0x11"  # V + XOPU (Saturn OPU)
+
         cmake_args.extend(
             [
                 "-DMERLIN_BUILD_SATURN_OPU=ON",
                 f"-DCMAKE_TOOLCHAIN_FILE={tc_file}",
                 f"-DRISCV_TOOLCHAIN_ROOT={tc_root}",
+                f"-DIREE_RISCV_BARE_METAL_FEATURES={bare_metal_cpu_features}",
                 "-DIREE_ARCH=riscv_64",
                 "-DIREE_ENABLE_THREADING=OFF",
                 "-DIREE_HAL_DRIVER_DEFAULTS=OFF",
@@ -932,6 +952,14 @@ def main(args: argparse.Namespace) -> int:
             f"-DIREE_BUILD_SAMPLES={cmake_bool(build_samples)}",
             f"-DIREE_BUILD_TESTS={cmake_bool(build_tests)}",
             f"-DIREE_ENABLE_LIBBACKTRACE={cmake_bool(enable_libbacktrace)}",
+            "-DIREE_BUILD_BINDINGS_TFLITE=OFF",
+            "-DIREE_BUILD_BINDINGS_TFLITE_JAVA=OFF",
+            "-DIREE_BUILD_ALL_CHECK_TEST_MODULES=OFF",
+            # Disable LLVM valgrind support unconditionally.  CMake's
+            # check_include_file detects the header via conda's CFLAGS
+            # (-I${CONDA_PREFIX}/include) but the LLVM build itself does not
+            # add that include path, causing a compile error in Valgrind.cpp.
+            "-DHAVE_VALGRIND_VALGRIND_H=OFF",
         ]
     )
     cmake_args.extend(args.cmake_arg)

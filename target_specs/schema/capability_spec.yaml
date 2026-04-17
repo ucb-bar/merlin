@@ -1,0 +1,118 @@
+schema_version: 1
+
+target:
+  name: example_target
+  display_name: Example Target
+  vendor: Example Vendor
+  maturity: experimental
+
+platform:
+  host_isa: riscv64
+  operating_systems:
+    - linux
+  environments:
+    - board
+
+execution_model:
+  kind: vector_cpu_extension
+  attachment: cpu_extension
+  submission_model: inline_cpu_instructions
+  compiler_recovery_stage: llvmcpu_codegen
+
+isa:
+  base: riscv64
+  features:
+    - +v
+  exposure:
+    kind: llvm_intrinsics
+    needs_llvm_backend_changes: true
+    needs_new_intrinsics: true
+    needs_new_feature_bits: true
+  state_model:
+    kind: explicit_ssa
+  register_constraints:
+    accumulator_register_file: vector
+    even_alignment_required: false
+    vl_dependent: true
+
+operations:
+  compute:
+    - name: matmul
+      native: true
+      type_triples:
+        - i8*i8->i32
+  movement:
+    - dma_in
+    - dma_out
+  synchronization:
+    - fence
+
+geometry:
+  compute_array:
+    kind: vector
+  vector:
+    vlen_bits: 256
+    dlen_bits: 256
+  native_tile_options:
+    - [8, 8, 8]
+  preferred_tiles:
+    - [8, 8, 8]
+
+memory:
+  spaces:
+    - name: global
+      kind: dram
+  preferred_layouts:
+    lhs: row_major
+    rhs: row_major
+    result: row_major
+  packing:
+    requires_pack: false
+    requires_unpack: false
+
+numeric:
+  legal_type_triples:
+    - i8*i8->i32
+  quantization:
+    requantize_native: false
+  rounding_modes:
+    - rne
+  saturation: true
+
+runtime:
+  required: false
+  executable_format: llvm_cpu_vmfb
+  driver:
+    backend_id: null
+    uri_schemes: []
+  synchronization:
+    semaphores: false
+    timelines: false
+
+verification:
+  golden_model:
+    available: true
+    kind: cpu_reference
+  simulator:
+    available: false
+    kind: none
+  rtl:
+    available: false
+    kind: none
+  perf_counters:
+    available: false
+    kind: none
+  tolerances: {}
+
+access:
+  model: local_device
+  sdk_requirements:
+    - iree_llvmcpu
+  credential_requirements: none
+  availability_class: sdk_install_required
+  verification_gates:
+    - compile_only
+    - smoke_run
+
+references:
+  - docs/architecture/plugin_and_patch_model.md

@@ -12,7 +12,7 @@ Unified Merlin developer command reference parser.
 
 ```text
 usage: uv run tools/merlin.py [-h]
-                              {build,compile,setup,ci,patches,benchmark,chipyard}
+                              {build,compile,setup,ci,patches,benchmark,chipyard,ray,targetgen}
                               ...
 ```
 
@@ -110,7 +110,7 @@ usage: uv run tools/merlin.py build [-h] [--dry-run]
 ```text
 usage: uv run tools/merlin.py chipyard [-h] [--dry-run]
                                        [--chipyard-root CHIPYARD_ROOT]
-                                       {set-path,info,validate,build-sim,run,configure-firesim,build-bitstream,register-hwdb,stage-workload,build-firemarshal,status}
+                                       {set-path,info,validate,checkout,build-sim,run,configure-firesim,build-bitstream,register-hwdb,stage-workload,build-firemarshal,status}
                                        ...
 ```
 
@@ -176,6 +176,18 @@ usage: uv run tools/merlin.py patches [-h]
 | Argument | Required | Default | Choices | Help |
 | --- | --- | --- | --- | --- |
 
+#### Subcommand `ray`
+
+```text
+usage: uv run tools/merlin.py ray [-h] [--dry-run] [--state-root STATE_ROOT]
+                                  {cluster,jobs,resources,artifacts} ...
+```
+
+| Argument | Required | Default | Choices | Help |
+| --- | --- | --- | --- | --- |
+| `--dry-run` | no | `False` | - | Print commands without executing |
+| `--state-root` | no | `build/generated/ray` | - | Directory for Merlin-owned Ray cluster, run, artifact, and lease metadata. |
+
 #### Subcommand `setup`
 
 ```text
@@ -203,18 +215,18 @@ usage: uv run tools/merlin.py setup [-h] [--env-name ENV_NAME]
 | --- | --- | --- | --- | --- |
 | `component` | no | `all` | `all, env, toolchain, submodules, prebuilt` |  |
 | `--env-name` | no | `merlin-dev` | - | Conda environment name to update/install packages into (default: merlin-dev). |
-| `--env-file` | no | `/scratch2/agustin/merlin/env_linux.yml` | - | Conda environment file to use. Default is platform-specific: env_linux.yml |
+| `--env-file` | no | `<repo>/env_linux.yml` | - | Conda environment file to use. Default is platform-specific: env_linux.yml |
 | `--offline` | no | `False` | - | Run setup in offline mode when possible. |
 | `--skip-conda` | no | `False` | - | Skip conda environment sync. |
 | `--skip-pip` | no | `False` | - | Skip Python dependency sync (uv/pip). |
 | `--python-deps` | no | `auto` | `auto, uv, pip` | Python dependency installer. 'auto' prefers uv sync with uv.lock and falls back to pip requirements. |
 | `--conda-no-plugins`, `--no-conda-no-plugins` | no | - | - | Force CONDA_NO_PLUGINS for conda env update. If unset, setup.py retries with CONDA_NO_PLUGINS=true on failure. |
-| `--submodules-profile` | no | `core` | `core, npu, smolvla, full` | Which submodule profile to initialize (default: core). |
+| `--submodules-profile` | no | `core` | `core, npu, smolvla, full` | Which submodule profile to initialize for the current Merlin checkout (default: core). |
 | `--submodule-path` | no | `[]` | - | Additional top-level submodule path to initialize (repeatable). |
 | `--submodule-paths-recursive`, `--no-submodule-paths-recursive` | no | `False` | - | Whether extra --submodule-path entries should be initialized recursively. |
 | `--submodule-depth` | no | `1` | - | Shallow depth for submodule fetches (default: 1). Use 0 for full history. |
 | `--submodule-jobs` | no | `8` | - | Parallel submodule fetch jobs (default: 8). |
-| `--submodule-sync` | no | `False` | - | Run `git submodule sync --recursive` before updating. |
+| `--submodule-sync` | no | `False` | - | Run `git submodule sync --recursive` before updating. Submodule SHAs still come from the current Merlin commit. |
 | `--toolchain-target` | no | `spacemit` | `spacemit, firesim, all` | Which toolchain target to install (default: spacemit). |
 | `--with-qemu` | no | `False` | - | For firesim toolchain setup, also install QEMU. |
 | `--toolchain-force` | no | `False` | - | Reinstall toolchains even if the destination already exists. |
@@ -223,17 +235,29 @@ usage: uv run tools/merlin.py setup [-h] [--env-name ENV_NAME]
 | `--prebuilt-repo` | no | `ucb-bar/merlin` | - | GitHub repository containing release assets (default: ucb-bar/merlin). |
 | `--prebuilt-force` | no | `False` | - | Replace an existing destination build tree when installing a prebuilt artifact. |
 
+#### Subcommand `targetgen`
+
+```text
+usage: uv run tools/merlin.py targetgen [-h] [--dry-run]
+                                        {validate,plan,generate,explain,orchestrate,execute,stage-mutation,answer,status}
+                                        ...
+```
+
+| Argument | Required | Default | Choices | Help |
+| --- | --- | --- | --- | --- |
+| `--dry-run` | no | `False` | - | Print commands without executing |
+
 ### `--help` Output
 
 ```text
 usage: uv run tools/merlin.py [-h]
-                              {build,compile,setup,ci,patches,benchmark,chipyard}
+                              {build,compile,setup,ci,patches,benchmark,chipyard,ray,targetgen}
                               ...
 
 Unified Merlin developer command reference parser.
 
 positional arguments:
-  {build,compile,setup,ci,patches,benchmark,chipyard}
+  {build,compile,setup,ci,patches,benchmark,chipyard,ray,targetgen}
     build               Configure and build Merlin and target runtimes
     compile             Compile MLIR/ONNX models to target artifacts
     setup               Bootstrap developer environment and toolchains
@@ -241,6 +265,10 @@ positional arguments:
     patches             Verify submodule state and manage upstream patches
     benchmark           Run benchmark helper scripts
     chipyard            Manage Chipyard hardware backend interactions
+    ray                 Manage Merlin's Ray control plane, jobs, resources,
+                        and artifacts
+    targetgen           Plan and orchestrate hardware-spec-driven target
+                        enablement
 
 options:
   -h, --help            show this help message and exit
@@ -559,18 +587,18 @@ usage: uv run tools/setup.py [-h] [--env-name ENV_NAME] [--env-file ENV_FILE]
 | --- | --- | --- | --- | --- |
 | `component` | no | `all` | `all, env, toolchain, submodules, prebuilt` |  |
 | `--env-name` | no | `merlin-dev` | - | Conda environment name to update/install packages into (default: merlin-dev). |
-| `--env-file` | no | `/scratch2/agustin/merlin/env_linux.yml` | - | Conda environment file to use. Default is platform-specific: env_linux.yml |
+| `--env-file` | no | `<repo>/env_linux.yml` | - | Conda environment file to use. Default is platform-specific: env_linux.yml |
 | `--offline` | no | `False` | - | Run setup in offline mode when possible. |
 | `--skip-conda` | no | `False` | - | Skip conda environment sync. |
 | `--skip-pip` | no | `False` | - | Skip Python dependency sync (uv/pip). |
 | `--python-deps` | no | `auto` | `auto, uv, pip` | Python dependency installer. 'auto' prefers uv sync with uv.lock and falls back to pip requirements. |
 | `--conda-no-plugins`, `--no-conda-no-plugins` | no | - | - | Force CONDA_NO_PLUGINS for conda env update. If unset, setup.py retries with CONDA_NO_PLUGINS=true on failure. |
-| `--submodules-profile` | no | `core` | `core, npu, smolvla, full` | Which submodule profile to initialize (default: core). |
+| `--submodules-profile` | no | `core` | `core, npu, smolvla, full` | Which submodule profile to initialize for the current Merlin checkout (default: core). |
 | `--submodule-path` | no | `[]` | - | Additional top-level submodule path to initialize (repeatable). |
 | `--submodule-paths-recursive`, `--no-submodule-paths-recursive` | no | `False` | - | Whether extra --submodule-path entries should be initialized recursively. |
 | `--submodule-depth` | no | `1` | - | Shallow depth for submodule fetches (default: 1). Use 0 for full history. |
 | `--submodule-jobs` | no | `8` | - | Parallel submodule fetch jobs (default: 8). |
-| `--submodule-sync` | no | `False` | - | Run `git submodule sync --recursive` before updating. |
+| `--submodule-sync` | no | `False` | - | Run `git submodule sync --recursive` before updating. Submodule SHAs still come from the current Merlin commit. |
 | `--toolchain-target` | no | `spacemit` | `spacemit, firesim, all` | Which toolchain target to install (default: spacemit). |
 | `--with-qemu` | no | `False` | - | For firesim toolchain setup, also install QEMU. |
 | `--toolchain-force` | no | `False` | - | Reinstall toolchains even if the destination already exists. |
@@ -622,7 +650,8 @@ options:
                         setup.py retries with CONDA_NO_PLUGINS=true on
                         failure.
   --submodules-profile {core,npu,smolvla,full}
-                        Which submodule profile to initialize (default: core).
+                        Which submodule profile to initialize for the current
+                        Merlin checkout (default: core).
   --submodule-path SUBMODULE_PATH
                         Additional top-level submodule path to initialize
                         (repeatable).
@@ -635,6 +664,8 @@ options:
   --submodule-jobs SUBMODULE_JOBS
                         Parallel submodule fetch jobs (default: 8).
   --submodule-sync      Run `git submodule sync --recursive` before updating.
+                        Submodule SHAs still come from the current Merlin
+                        commit.
   --toolchain-target {spacemit,firesim,all}
                         Which toolchain target to install (default: spacemit).
   --with-qemu           For firesim toolchain setup, also install QEMU.
@@ -704,7 +735,7 @@ usage: uv run tools/ci.py release-status [-h] [--tracking-file TRACKING_FILE]
 
 | Argument | Required | Default | Choices | Help |
 | --- | --- | --- | --- | --- |
-| `--tracking-file` | no | `/scratch2/agustin/merlin/.github/upstream_tracking.yaml` | - |  |
+| `--tracking-file` | no | `<repo>/.github/upstream_tracking.yaml` | - |  |
 | `--offline` | no | `False` | - |  |
 | `--json` | no | `False` | - |  |
 

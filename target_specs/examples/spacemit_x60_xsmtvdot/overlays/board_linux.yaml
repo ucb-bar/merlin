@@ -1,0 +1,15 @@
+schema_version: 1
+
+deployment:
+  name: board_linux
+  mode: board
+  build_profile: spacemit
+  compile_target: spacemit_x60
+  compile_hw: RVV
+  hardware_recipe: build_tools/hardware/spacemit_x60.yaml
+  chipyard: {}
+  runtime:
+    transport: ssh
+    board: SpacemiT K1
+  extra:
+    toolchain: build_tools/riscv-tools-spacemit/spacemit-toolchain-linux-glibc-x86_64-v1.1.2

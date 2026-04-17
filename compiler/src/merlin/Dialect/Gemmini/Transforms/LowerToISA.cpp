@@ -59,8 +59,8 @@ struct LowerToISAPass final
 		patterns.add<LowerMatmulToTilePattern>(
 			&getContext(), options.tileM, options.tileN, options.tileK);
 
-		if (failed(applyPatternsAndFoldGreedily(
-				getOperation(), std::move(patterns)))) {
+		if (failed(
+				applyPatternsGreedily(getOperation(), std::move(patterns)))) {
 			signalPassFailure();
 		}
 	}

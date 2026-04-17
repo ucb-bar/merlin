@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # tools/ci.py
+"""Backs `./merlin ci`: runs lint, formatting, and patch-state checks the
+same way GitHub Actions runs them. Useful before pushing.
+"""
 
 import argparse
 import pathlib

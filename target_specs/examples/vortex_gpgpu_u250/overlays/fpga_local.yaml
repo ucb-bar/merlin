@@ -1,0 +1,15 @@
+schema_version: 1
+
+deployment:
+  name: fpga_local
+  mode: board
+  build_profile: host-vanilla-release
+  compile_target: null
+  compile_hw: null
+  hardware_recipe: null
+  chipyard: {}
+  runtime:
+    backend: vortex
+    transport: fpga_local
+  extra:
+    board_class: u250
