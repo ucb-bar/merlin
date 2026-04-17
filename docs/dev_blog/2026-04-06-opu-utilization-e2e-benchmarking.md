@@ -1,4 +1,12 @@
-# Saturn OPU: Int8 QDQ Model Compilation & VOPACC Coverage
+# 2026-04-06: Saturn OPU — Int8 QDQ Model Compilation & VOPACC Coverage
+
+> **Repro pin:** merlin@[`57529095`](https://github.com/ucb-bar/merlin/commit/57529095a81ea8df1258170c961da02f73423858) · iree_bar@[`b05497ea75`](https://github.com/ucb-bar/iree_bar/commit/b05497ea75)
+> **Status:** Active
+
+Related entries:
+
+- [2026-03-13 RISC-V MMT4D ukernel workstream](2026-03-13-riscv-mmt4d-ukernel-workstream.md) — earlier "TODO: Evaluate K0=128" thread that anticipated narrow-M problems.
+- [2026-04-14 f32-reduction hang findings](2026-04-14-f32-reduction-hang-findings.md) — separate transformer-only hang class on the same FireSim build.
 
 **Date:** 2026-04-06 → 2026-04-08
 

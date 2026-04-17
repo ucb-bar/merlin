@@ -1,5 +1,12 @@
 # 2026-03-13: RISC-V MMT4D Ukernel Workstream
 
+> **Repro pin:** merlin@[`36576ee7`](https://github.com/ucb-bar/merlin/commit/36576ee757e1564494dbe24a0a0204c5c1785de7) · iree_bar@[`a53ce62467`](https://github.com/ucb-bar/iree_bar/commit/a53ce62467)
+> **Status:** Active
+
+Related entries:
+
+- [2026-04-06 OPU VOPACC coverage](2026-04-06-opu-utilization-e2e-benchmarking.md) — narrow-M findings and bypass fix that built on the K0 questions raised here.
+
 ## Context and Goal
 
 This workstream focused on moving the RISC-V matmul effort onto the `mmt4d`

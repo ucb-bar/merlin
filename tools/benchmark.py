@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 # tools/benchmark.py
+"""Backs `./merlin benchmark`: dispatches to per-target benchmark scripts
+declared in `config/targets.json` (compile dual-VMFB bundles, run remote on a
+board, etc.). Thin wrapper over the scripts under `benchmarks/<target>/`.
+"""
 
 import argparse
 import sys

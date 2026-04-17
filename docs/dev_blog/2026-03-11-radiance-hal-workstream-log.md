@@ -1,5 +1,8 @@
 # 2026-03-11: Radiance HAL Workstream Log
 
+> **Repro pin:** merlin@[`e18fc562`](https://github.com/ucb-bar/merlin/commit/e18fc562c5c9a9601fc3e34a6d990a0427ddc255) · iree_bar@[`dd293bb513`](https://github.com/ucb-bar/iree_bar/commit/dd293bb513)
+> **Status:** Active
+
 ## Context and Goal
 
 Radiance in Merlin is an out-of-tree IREE runtime HAL driver integration

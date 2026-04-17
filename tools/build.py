@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 # tools/build.py
+"""Backs `./merlin build`: configures and builds Merlin host tools and target
+runtimes via cmake/ninja, with curated `--profile` presets (vanilla, full-plugin,
+spacemit, firesim, gemmini, etc.).
+
+See docs/how_to/use_build_py.md for profile reference and examples.
+"""
 
 import argparse
 import json

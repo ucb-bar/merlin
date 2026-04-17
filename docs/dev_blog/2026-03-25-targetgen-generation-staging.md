@@ -1,5 +1,8 @@
 # 2026-03-25 TargetGen Generation + Mutation Staging
 
+> **Repro pin:** merlin@[`2903e28b`](https://github.com/ucb-bar/merlin/commit/2903e28b0ec45c4e109fa9c98592b7f0353fcf40) · iree_bar@[`ddf4685ae1`](https://github.com/ucb-bar/iree_bar/commit/ddf4685ae1)
+> **Status:** Active
+
 ## 1. Context and goal
 
 TargetGen already knew how to:

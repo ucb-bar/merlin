@@ -18,14 +18,17 @@ I recommend you to have a look at those files if you want to understand how we i
 
 ## Part 1: Build the IREE Toolchain
 
-You should follow the first 5 steps in the `iree_setup.md` documentation.
+Follow [getting_started.md](../getting_started.md) to bring up the conda env,
+sync submodules, and build host tools (`./merlin build --profile vanilla`).
+Then add the RISC-V cross-toolchain for FireSim:
 
-Key steps are:
+```bash
+./build_tools/firesim/setup_toolchain.sh
+./merlin build --profile firesim
+```
 
-1. Set up the Conda environment.
-2. Set the `WORKSPACE_DIR`, `IREE_SRC`, `BUILD_HOST_DIR`, etc.
-3. Build the host tools (like `iree-compile`).
-4. Build the RISC-V tools (like `iree-benchmark-module`).
+This produces both the host `iree-compile` (under `build/host-vanilla-release/`)
+and the RISC-V `iree-benchmark-module` (under `build/firesim-merlin-release/`).
 
 ## Part 2: Generate and Compile the Model (A/B Test)
 

@@ -84,6 +84,13 @@ jobs:
           TERM: dumb
         run: uv run zensical build --clean
 
+      - name: Verify mkdocs nav targets exist
+        # zensical's --strict is unsupported as of this writing, so we
+        # explicitly check that every file referenced in the nav exists.
+        # This catches the kind of stale entry that has bitten this repo
+        # before (e.g. dev_blog/2026-03-27-…md after a file was renamed).
+        run: python3 .github/scripts/check_mkdocs_nav.py
+
       - name: Upload GitHub Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3

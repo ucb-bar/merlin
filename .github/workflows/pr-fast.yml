@@ -26,6 +26,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y shellcheck
 
+      - name: Pre-commit (changed files)
+        # Runs every pre-commit hook on the diff this PR introduces.
+        # Scoped to changed files so pre-existing tech debt does not block
+        # unrelated PRs; new violations are still caught.
+        if: github.event_name == 'pull_request'
+        run: |
+          pip install pre-commit
+          pre-commit run \
+            --from-ref ${{ github.event.pull_request.base.sha }} \
+            --to-ref ${{ github.event.pull_request.head.sha }} \
+            --show-diff-on-failure
+
       - name: Lint scripts and python entrypoints
         run: |
           python3 tools/merlin.py ci lint
@@ -37,3 +49,20 @@ jobs:
       - name: Validate upstream tracking config
         run: |
           python3 tools/merlin.py ci release-status --offline --json
+
+      - name: Smoke test merlin CLI
+        # Catches import errors and broken argparse setup. ~2s overhead.
+        run: |
+          python3 tools/merlin.py --help > /dev/null
+          for sub in build compile setup ci patches benchmark chipyard ray targetgen; do
+            python3 tools/merlin.py "$sub" --help > /dev/null
+          done
+
+      - name: Validate conda env files
+        run: |
+          python3 -c "import yaml; yaml.safe_load(open('env_linux.yml')); yaml.safe_load(open('env_macOS.yml'))"
+
+      - name: Run Python tests
+        run: |
+          pip install pytest pyyaml
+          pytest tests/ -v --tb=short

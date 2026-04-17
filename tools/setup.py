@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+# tools/setup.py
+"""Backs `./merlin setup`: bootstraps the developer environment — conda env,
+uv-managed Python deps, submodule sync (per profile), and prebuilt-artifact
+installation.
+
+See docs/getting_started.md for the canonical first-time flow.
+"""
+
 import argparse
 import pathlib
 import platform

@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 # tools/compile.py
+"""Backs `./merlin compile`: lowers `.mlir` / `.onnx` model inputs to target
+artifacts (`.vmfb`, intermediate dumps) using flag bundles defined in
+`models/<target>.yaml`.
+
+Outputs land under `build/compiled_models/<model>/<target>/`.
+"""
 
 import argparse
 import pathlib

@@ -85,15 +85,10 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Setup & Tutorials:
-      - Getting Started: getting_started.md
-      - User Paths: user_paths.md
-      - Getting Started / Installation: iree_setup.md
-      - Cross-Compiling for Banana Pi: reproducibility/cross_compile_banana_pi.md
-      - Export TinyLlama 8-bit to MLIR: reproducibility/export_tinyllama_8bit_sharktank_to_mlir.md
-      - Reproduce Ukernel Benchmark: reproducibility/reproduce_ukernel_benchmark_firesim.md
-      - Build Types: different_build_types.md
-      - Build Tracy on Ubuntu: build_tracy_ubuntu.md
+  - Get Started:
+      - Quick start: getting_started.md
+      - User paths: user_paths.md
+      - Build types: different_build_types.md
   - How-To:
       - Overview: how_to/index.md
       - Add Compiler Dialect Plugin: how_to/add_compiler_dialect_plugin.md
@@ -101,19 +96,10 @@ nav:
       - Add Sample Application: how_to/add_sample_application.md
       - Add Compile Target: how_to/add_compile_target.md
       - Use build.py: how_to/use_build_py.md
-  - Repository Guide: repository_guide.md
-  - Dev Blog:
-      - Home: dev_blog/index.md
-      - Runtime Scheduling + PMCS: dev_blog/2026-03-27-runtime-scheduling-pmcs-direction.md
-      - Gemmini Workstream: dev_blog/2026-03-11-gemmini-workstream-log.md
-      - NPU Dialect E2E: dev_blog/2026-03-11-npu-dialect-e2e.md
-      - Radiance HAL: dev_blog/2026-03-11-radiance-hal-workstream-log.md
-      - SmolVLA FP8: dev_blog/2026-03-12-smolvla-fp8-int8-global-opt-workstream.md
-      - RISC-V MMT4D: dev_blog/2026-03-13-riscv-mmt4d-ukernel-workstream.md
-      - Dispatch Scheduler + Tracy: dev_blog/2026-03-16-dispatch-level-async.md
-      - Chipyard Bare-Metal: dev_blog/2026-03-18-chipyard-bare-metal-integration.md
-      - Ray Control Plane: dev_blog/2026-03-25-ray-control-plane-bootstrap.md
-      - TargetGen Generation + Staging: dev_blog/2026-03-25-targetgen-generation-staging.md
+      - Cross-compile for Banana Pi: reproducibility/cross_compile_banana_pi.md
+      - Export TinyLlama 8-bit to MLIR: reproducibility/export_tinyllama_8bit_sharktank_to_mlir.md
+      - Reproduce ukernel benchmark: reproducibility/reproduce_ukernel_benchmark_firesim.md
+      - Build Tracy on Ubuntu: build_tracy_ubuntu.md
   - Hardware Backends:
       - Overview: hardware_backends/overview.md
       - Compatibility Matrix: hardware_backends/compatibility_matrix.md
@@ -128,6 +114,7 @@ nav:
       - CMake Presets: architecture/cmake_presets.md
       - Target Generator: architecture/target_generator.md
       - Ray Control Plane: architecture/ray_control_plane.md
+      - NPU Compilation Pipeline: architecture/npu_compilation_pipeline.md
   - Reference:
       - Overview: reference/overview.md
       - CLI Commands: reference/cli.md
@@ -135,3 +122,18 @@ nav:
       - C/C++ API: reference/cpp.md
       - MLIR Dialects & Passes: reference/mlir.md
       - CMake Targets: reference/cmake_targets.md
+  - Repository Guide: repository_guide.md
+  - Workstream Logs:
+      - Overview: dev_blog/index.md
+      - 2026-04-14 F32 Reduction Hang: dev_blog/2026-04-14-f32-reduction-hang-findings.md
+      - 2026-04-13 Saturn OPU vfredusum: dev_blog/2026-04-13-saturn-opu-vfredusum-scalarization.md
+      - 2026-04-06 OPU Utilization + E2E: dev_blog/2026-04-06-opu-utilization-e2e-benchmarking.md
+      - 2026-03-25 TargetGen Staging: dev_blog/2026-03-25-targetgen-generation-staging.md
+      - 2026-03-25 Ray Control Plane: dev_blog/2026-03-25-ray-control-plane-bootstrap.md
+      - 2026-03-18 Chipyard Bare-Metal: dev_blog/2026-03-18-chipyard-bare-metal-integration.md
+      - 2026-03-17 Dispatch Scheduler + Tracy: dev_blog/2026-03-16-dispatch-level-async.md
+      - 2026-03-13 RISC-V MMT4D: dev_blog/2026-03-13-riscv-mmt4d-ukernel-workstream.md
+      - 2026-03-12 SmolVLA FP8/INT8: dev_blog/2026-03-12-smolvla-fp8-int8-global-opt-workstream.md
+      - 2026-03-11 Gemmini Workstream: dev_blog/2026-03-11-gemmini-workstream-log.md
+      - 2026-03-11 NPU Dialect E2E: dev_blog/2026-03-11-npu-dialect-e2e.md
+      - 2026-03-11 Radiance HAL: dev_blog/2026-03-11-radiance-hal-workstream-log.md

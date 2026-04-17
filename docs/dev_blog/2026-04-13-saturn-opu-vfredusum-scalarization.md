@@ -1,5 +1,12 @@
 # 2026-04-13: Saturn OPU `vfredusum.vs` hang — opcode survey + MLIR scalarization fix
 
+> **Repro pin:** merlin@[`320fbf06`](https://github.com/ucb-bar/merlin/commit/320fbf064de5572cbae276206c479f0bed843eb8) · iree_bar@[`68acd99c74`](https://github.com/ucb-bar/iree_bar/commit/68acd99c74)
+> **Status:** Active
+
+Related entries:
+
+- [2026-04-14 f32-reduction lowering hang](2026-04-14-f32-reduction-hang-findings.md) — sibling reduction-hang on the same hardware; the present entry fixes the `vfredusum.vs` opcode case via MLIR scalarization, while the 2026-04-14 entry handles the broader f32-reduction tree-reduction codegen via per-function `target-features="-v"`.
+
 ## Context and Goal
 
 ViT-small inference on the Saturn OPU FireSim build hangs at HAL dispatch

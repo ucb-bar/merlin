@@ -25,6 +25,12 @@ from targetgen import (  # noqa: E402
     render_prompt_packets,
 )
 
+_MLIR_AGENT_CONFIG = REPO_ROOT / "projects" / "mlirAgent" / "configs" / "agents" / "codex.yaml"
+requires_mlir_agent = pytest.mark.skipif(
+    not _MLIR_AGENT_CONFIG.exists(),
+    reason="requires projects/mlirAgent checkout (sidecar repo)",
+)
+
 EXAMPLES = [
     (
         "spacemit_x60_xsmtvdot",
@@ -294,6 +300,7 @@ def test_target_and_overlay_prompt_overrides_apply():
     assert "FireSim on U250" in review_task.prompt
 
 
+@requires_mlir_agent
 def test_provider_backend_uses_mlir_agent_configs(tmp_path: Path):
     parser = argparse.ArgumentParser()
     targetgen_cmd.setup_parser(parser)
@@ -334,6 +341,7 @@ def test_render_prompt_packets_assigns_manual_llm_filenames():
     assert "Expected Response File" in prompt_packets["prompt_001.md"]
 
 
+@requires_mlir_agent
 def test_load_provider_config_reuses_mlir_agent_agent_configs():
     config = load_provider_config("codex")
 
@@ -460,6 +468,7 @@ def test_cli_execute_resume_from_dir_ingests_response_and_hits_branch_gate(tmp_p
     assert task_state["response_file"] == str(response_path)
 
 
+@requires_mlir_agent
 def test_cli_execute_provider_backend_pauses_with_provider_request(tmp_path: Path):
     parser = argparse.ArgumentParser()
     targetgen_cmd.setup_parser(parser)

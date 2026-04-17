@@ -1,4 +1,7 @@
-# Ray Control Plane Bootstrap
+# 2026-03-25: Ray Control Plane Bootstrap
+
+> **Repro pin:** merlin@[`2903e28b`](https://github.com/ucb-bar/merlin/commit/2903e28b0ec45c4e109fa9c98592b7f0353fcf40) · iree_bar@[`ddf4685ae1`](https://github.com/ucb-bar/iree_bar/commit/ddf4685ae1)
+> **Status:** Active
 
 This log tracks the first Merlin-owned Ray control-plane slice.
 
@@ -69,6 +72,27 @@ Current records:
 
 These are meant to be easy to inspect while the Ray Serve API and MCP gateway
 are still under construction.
+
+## Test commands
+
+```bash
+# Start a local Ray cluster and write the bootstrap record
+./merlin ray cluster start-local
+
+# Submit a TargetGen run through the Ray engine
+./merlin targetgen execute \
+  target_specs/examples/nvidia_vulkan_ada/capability.yaml \
+  --overlay target_specs/examples/nvidia_vulkan_ada/overlays/desktop_local.yaml \
+  --engine ray
+
+# Verify the run record landed
+ls build/generated/ray/runs/
+cat build/generated/ray/runs/<run_id>/run_record.json
+```
+
+If Ray itself is not installed, the second command still materializes a run
+record with status `blocked` and an actionable message — that is intentional
+during bring-up.
 
 ## Immediate follow-ups
 

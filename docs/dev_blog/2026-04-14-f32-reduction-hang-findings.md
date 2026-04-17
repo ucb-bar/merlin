@@ -1,4 +1,26 @@
-# Saturn OPU FireSim — f32-reduction lowering hang: findings & workaround plan
+# 2026-04-14: Saturn OPU FireSim — f32-reduction lowering hang: findings & workaround plan
+
+> **Repro pin:** merlin@[`320fbf06`](https://github.com/ucb-bar/merlin/commit/320fbf064de5572cbae276206c479f0bed843eb8) · iree_bar@[`68acd99c74`](https://github.com/ucb-bar/iree_bar/commit/68acd99c74)
+> **Status:** Active
+
+## Final outcome
+
+This entry is a live debugging log. The recommendation evolved during the
+session — read in this order to avoid confusion:
+
+1. **TL;DR** and **Evidence summary** below.
+2. The flag-bisection that introduces **Option E** (per-function
+   `target-features="-v"`, line 161) — this is the recommended fix.
+3. Options A–D earlier in the file are superseded by Option E (the file
+   explicitly says so on line 158–159). Read them only for the alternatives
+   that were considered and ruled out.
+
+Related entries:
+
+- [2026-04-13 vfredusum.vs scalarization](2026-04-13-saturn-opu-vfredusum-scalarization.md) — sibling reduction-hang on the same hardware, different codegen path, scalarized-MLIR fix.
+- [2026-04-06 OPU VOPACC coverage](2026-04-06-opu-utilization-e2e-benchmarking.md) — earlier narrow-M analysis (a separate hang class) and its bypass fix.
+
+---
 
 **Date**: 2026-04-14 (pre-deadline consolidation)
 **Status**: Root cause isolated via 37 targeted micro-tests + per-op bisection.
