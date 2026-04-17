@@ -17,8 +17,9 @@ import subprocess
 import sys
 import tempfile
 
-import utils
 import yaml
+
+import utils
 
 HARDWARE_DIR = utils.REPO_ROOT / "build_tools" / "hardware"
 SCRIPTS_DIR = HARDWARE_DIR / "scripts"

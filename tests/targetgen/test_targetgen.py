@@ -12,7 +12,6 @@ TOOLS_DIR = REPO_ROOT / "tools"
 if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
-import targetgen_cmd  # noqa: E402
 from raycp import service as ray_service  # noqa: E402
 from targetgen import (  # noqa: E402
     build_execution_bundle,
@@ -24,6 +23,8 @@ from targetgen import (  # noqa: E402
     load_provider_config,
     render_prompt_packets,
 )
+
+import targetgen_cmd  # noqa: E402
 
 _MLIR_AGENT_CONFIG = REPO_ROOT / "projects" / "mlirAgent" / "configs" / "agents" / "codex.yaml"
 requires_mlir_agent = pytest.mark.skipif(

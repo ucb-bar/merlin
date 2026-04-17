@@ -13,8 +13,9 @@ if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
 import merlin  # noqa: E402
-import ray_cmd  # noqa: E402
 from raycp import service as ray_service  # noqa: E402
+
+import ray_cmd  # noqa: E402
 
 
 def test_merlin_registers_ray_subcommand():
