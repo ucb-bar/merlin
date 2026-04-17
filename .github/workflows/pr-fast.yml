@@ -28,6 +28,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y shellcheck
 
+      - name: Install Python dependencies for merlin CLI + tests
+        # Minimal set needed to import tools/merlin.py (which transitively
+        # imports jinja2 via targetgen) and to run pytest. The full project
+        # env is not installed in CI — only these two non-stdlib deps are
+        # required.
+        run: |
+          pip install pre-commit pyyaml jinja2 pytest
+
       - name: Pre-commit (changed files)
         # Runs pre-commit hooks on the diff this PR introduces.
         # clang-format and cmake-format are skipped because the CI runner
@@ -36,7 +44,6 @@ jobs:
         env:
           SKIP: clang-format,cmake-format
         run: |
-          pip install pre-commit
           pre-commit run \
             --from-ref ${{ github.event.pull_request.base.sha }} \
             --to-ref ${{ github.event.pull_request.head.sha }} \
@@ -67,6 +74,4 @@ jobs:
           python3 -c "import yaml; yaml.safe_load(open('env_linux.yml')); yaml.safe_load(open('env_macOS.yml'))"
 
       - name: Run Python tests
-        run: |
-          pip install pytest pyyaml
-          pytest tests/ -v --tb=short
+        run: pytest tests/ -v --tb=short
