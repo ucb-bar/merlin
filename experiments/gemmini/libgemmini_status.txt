@@ -1,0 +1,13 @@
+Mac setup notes:
+
+- buddy-mlir Gemmini lowering works (matmul, batch_matmul, conv, matmul+softmax).
+- Generated LLVM IR (log.ll) and RISC-V asm (log.s) via Makefile targets, asm has Gemmini ops (config_ex, config_st, loop_ws, etc.).
+- Spike + pk + riscv64-unknown-elf-gcc work for a simple "hello" test.
+
+Blocked on:
+- Installing libgemmini (Spike extension) from https://github.com/ucb-bar/libgemmini.
+- `make libgemmini.so` fails on macOS with `ld: symbol(s) not found for architecture arm64` and RISCV-dependent paths that assume a full Chipyard/Gemmini tree.
+
+Plan:
+- Use Mac primarily for IR/pipeline experiments.
+- Do Spike+Gemmini execution on a SLICE Linux machine with Chipyard/Gemmini installed.
