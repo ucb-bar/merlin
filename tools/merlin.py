@@ -5,6 +5,7 @@ import argparse
 import sys
 
 import benchmark as benchmark_cmd
+import build as build_cmd
 import chipyard as chipyard_cmd
 import ci as ci_cmd
 import compile as compile_cmd
@@ -12,8 +13,6 @@ import patches as patches_cmd
 import ray_cmd as ray_cmd
 import setup as setup_cmd
 import targetgen_cmd as targetgen_cmd
-
-import build as build_cmd
 
 COMMANDS: tuple[tuple[str, object, str, bool], ...] = (
     ("build", build_cmd, "Configure and build Merlin and target runtimes", True),

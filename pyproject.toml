@@ -95,6 +95,9 @@ select = ["E", "F", "I", "UP"]
 per-file-ignores = {"benchmarks/SaturnNPU/scripts/generate_mlir_golden_data.py" = ["E501"]}
 ignore = ["F821", "UP038"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["benchmark", "build", "chipyard", "ci", "compile", "patches", "ray_cmd", "setup", "targetgen_cmd", "utils"]
+
 [tool.ruff.format]
 docstring-code-format = true
 
