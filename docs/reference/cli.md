@@ -215,7 +215,7 @@ usage: uv run tools/merlin.py setup [-h] [--env-name ENV_NAME]
 | --- | --- | --- | --- | --- |
 | `component` | no | `all` | `all, env, toolchain, submodules, prebuilt` |  |
 | `--env-name` | no | `merlin-dev` | - | Conda environment name to update/install packages into (default: merlin-dev). |
-| `--env-file` | no | `/scratch2/agustin/merlin/env_linux.yml` | - | Conda environment file to use. Default is platform-specific: env_linux.yml |
+| `--env-file` | no | `<repo>/env_linux.yml` | - | Conda environment file to use. Default is platform-specific: env_linux.yml |
 | `--offline` | no | `False` | - | Run setup in offline mode when possible. |
 | `--skip-conda` | no | `False` | - | Skip conda environment sync. |
 | `--skip-pip` | no | `False` | - | Skip Python dependency sync (uv/pip). |
@@ -587,7 +587,7 @@ usage: uv run tools/setup.py [-h] [--env-name ENV_NAME] [--env-file ENV_FILE]
 | --- | --- | --- | --- | --- |
 | `component` | no | `all` | `all, env, toolchain, submodules, prebuilt` |  |
 | `--env-name` | no | `merlin-dev` | - | Conda environment name to update/install packages into (default: merlin-dev). |
-| `--env-file` | no | `/scratch2/agustin/merlin/env_linux.yml` | - | Conda environment file to use. Default is platform-specific: env_linux.yml |
+| `--env-file` | no | `<repo>/env_linux.yml` | - | Conda environment file to use. Default is platform-specific: env_linux.yml |
 | `--offline` | no | `False` | - | Run setup in offline mode when possible. |
 | `--skip-conda` | no | `False` | - | Skip conda environment sync. |
 | `--skip-pip` | no | `False` | - | Skip Python dependency sync (uv/pip). |
@@ -735,7 +735,7 @@ usage: uv run tools/ci.py release-status [-h] [--tracking-file TRACKING_FILE]
 
 | Argument | Required | Default | Choices | Help |
 | --- | --- | --- | --- | --- |
-| `--tracking-file` | no | `/scratch2/agustin/merlin/.github/upstream_tracking.yaml` | - |  |
+| `--tracking-file` | no | `<repo>/.github/upstream_tracking.yaml` | - |  |
 | `--offline` | no | `False` | - |  |
 | `--json` | no | `False` | - |  |
 
