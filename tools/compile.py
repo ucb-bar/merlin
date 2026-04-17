@@ -12,8 +12,9 @@ import pathlib
 import sys
 import zipfile
 
-import utils
 import yaml
+
+import utils
 
 
 def setup_parser(parser: argparse.ArgumentParser):

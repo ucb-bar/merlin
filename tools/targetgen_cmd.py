@@ -7,7 +7,6 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-import utils
 import yaml
 from raycp import normalize_state_root, submit_job
 from targetgen import (
@@ -30,6 +29,8 @@ from targetgen import (
     render_prompt_packets,
     render_task_briefs,
 )
+
+import utils
 
 
 def setup_parser(parser: argparse.ArgumentParser) -> None:
