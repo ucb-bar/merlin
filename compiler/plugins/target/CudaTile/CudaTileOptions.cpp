@@ -40,6 +40,12 @@ void CudaTileOptions::bindOptions(OptionsBinder &binder) {
 
   binder.opt<int64_t>("iree-cuda-tile-tile-k", tileK, llvm::cl::cat(category),
                       llvm::cl::desc("Default tile K dimension."));
+
+  binder.opt<std::string>(
+      "iree-cuda-tile-dump-kernel-plan-to", dumpKernelPlanTo,
+      llvm::cl::cat(category),
+      llvm::cl::desc("Dump recognized cuda_tile kernel plans to the given "
+                     "path. Use '-' for stdout."));
 }
 
 LogicalResult CudaTileOptions::verify(mlir::Builder &builder) const {

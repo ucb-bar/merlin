@@ -33,6 +33,10 @@ struct CudaTileOptions {
   int64_t tileN = 128;
   int64_t tileK = 32;
 
+  // Dumps the recognized cuda_tile kernel plan. "-" writes to stdout; any
+  // other non-empty value appends to that file.
+  std::string dumpKernelPlanTo;
+
   void bindOptions(OptionsBinder &binder);
   LogicalResult verify(mlir::Builder &builder) const;
   using FromFlags = OptionsFromFlags<CudaTileOptions>;

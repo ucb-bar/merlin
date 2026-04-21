@@ -2,8 +2,10 @@ iree_lit_test_suite(
   NAME
     lit
   SRCS
+    "plan_dump.mlir"
     "smoketest.mlir"
   TOOLS
     FileCheck
+    iree-compile
     iree-opt
 )

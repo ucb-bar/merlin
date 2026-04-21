@@ -5,8 +5,10 @@ iree_cc_library(
   NAME
     registration
   HDRS
+    "CudaTileKernelPlan.h"
     "CudaTileOptions.h"
   SRCS
+    "CudaTileKernelPlan.cpp"
     "CudaTileTarget.cpp"
     "CudaTileOptions.cpp"
   INCLUDES
@@ -28,6 +30,8 @@ iree_cc_library(
     iree::compiler::Dialect::LinalgExt::Transforms
     # Resolve workgroup count hints (shared with LLVMGPU/SPIRV backends).
     iree::compiler::Codegen::Common
+    iree::compiler::Codegen::Dialect::Codegen::IR::IREECodegenDialect
+    iree::compiler::Codegen::Dialect::GPU::IR::IREEGPUDialect
     # cuda-tile dialect + bytecode writer (in-process compilation).
     CudaTileDialect
     CudaTileBytecodeWriter
@@ -49,3 +53,5 @@ iree_compiler_register_plugin(
   TARGET
     ::registration
 )
+
+add_subdirectory(test)
