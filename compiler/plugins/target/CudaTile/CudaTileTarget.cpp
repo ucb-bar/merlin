@@ -863,6 +863,94 @@ private:
   SmallVector<Value> entryArgs;
 };
 
+static std::optional<double> getScalarConstantValue(Value value) {
+  auto cstOp = value.getDefiningOp<arith::ConstantOp>();
+  if (!cstOp)
+    return std::nullopt;
+  Attribute attr = cstOp.getValue();
+  if (auto fAttr = dyn_cast<FloatAttr>(attr))
+    return fAttr.getValueAsDouble();
+  if (auto iAttr = dyn_cast<IntegerAttr>(attr))
+    return static_cast<double>(iAttr.getInt());
+  return std::nullopt;
+}
+
+static bool resolveCudaTileBodyOperands(CudaTileOpEmitter &e,
+                                        Operation *bodyOp,
+                                        DenseMap<Value, Value> &bodyMap,
+                                        ArrayRef<int64_t> tileShape,
+                                        Type elemType,
+                                        SmallVectorImpl<Value> &opInputs) {
+  for (Value operand : bodyOp->getOperands()) {
+    auto it = bodyMap.find(operand);
+    if (it != bodyMap.end()) {
+      opInputs.push_back(it->second);
+      continue;
+    }
+    if (std::optional<double> value = getScalarConstantValue(operand)) {
+      opInputs.push_back(e.constSplat(tileShape, elemType, *value));
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+static Value emitElementwiseGenericBody(CudaTileOpEmitter &e,
+                                        linalg::GenericOp genericOp,
+                                        ArrayRef<Value> inputTiles,
+                                        ArrayRef<int64_t> tileShape,
+                                        Type elemType, Value fallback) {
+  Block &body = genericOp.getRegion().front();
+  DenseMap<Value, Value> bodyMap;
+
+  int64_t numDpsInputs = genericOp.getNumDpsInputs();
+  for (int64_t i = 0; i < numDpsInputs && i < (int64_t)inputTiles.size(); ++i)
+    bodyMap[body.getArgument(i)] = inputTiles[i];
+
+  Value current = fallback;
+  for (Operation &op : body.without_terminator()) {
+    if (auto cmpOp = dyn_cast<arith::CmpFOp>(&op)) {
+      SmallVector<Value> opInputs;
+      if (resolveCudaTileBodyOperands(e, &op, bodyMap, tileShape, elemType,
+                                      opInputs) &&
+          opInputs.size() == 2) {
+        Value result = e.emitCmpF(cmpOp.getPredicate(), opInputs[0],
+                                  opInputs[1]);
+        bodyMap[op.getResult(0)] = result;
+        current = result;
+      }
+      continue;
+    }
+
+    StringRef name = mapArithToCudaTileLocal(&op);
+    if (name.empty())
+      name = mapMathToCudaTileLocal(&op);
+    if (name.empty())
+      continue;
+
+    SmallVector<Value> opInputs;
+    if (!resolveCudaTileBodyOperands(e, &op, bodyMap, tileShape, elemType,
+                                     opInputs) ||
+        opInputs.empty())
+      continue;
+
+    Value result = e.emitElementwise(name, opInputs);
+    if (op.getNumResults() > 0)
+      bodyMap[op.getResult(0)] = result;
+    current = result;
+  }
+
+  if (auto yieldOp = dyn_cast<linalg::YieldOp>(body.getTerminator())) {
+    if (!yieldOp.getOperands().empty()) {
+      auto it = bodyMap.find(yieldOp.getOperand(0));
+      if (it != bodyMap.end())
+        current = it->second;
+    }
+  }
+  return current;
+}
+
 //===----------------------------------------------------------------------===//
 // Kernel Boilerplate Helper
 //===----------------------------------------------------------------------===//
@@ -3339,52 +3427,18 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
       if (loweringStrategy == CudaTileLoweringStrategy::Elementwise) {
         auto genericOp = dyn_cast<linalg::GenericOp>(primaryOp);
         if (genericOp) {
-          auto &body = genericOp.getRegion().front();
-          DenseMap<Value, Value> bodyMap;
-
-          int64_t numInputs = genericOp.getNumDpsInputs();
-          for (int64_t a = 0; a < (int64_t)body.getNumArguments(); ++a) {
-            if (a == 0) {
-              bodyMap[body.getArgument(a)] = current;
-            } else if (a < numInputs && a < numBindings - 1) {
-              auto [t, tok2] = e.loadViewTko(bp.partViews[a], bp.indices,
-                                             tileShape, elemType);
-              bodyMap[body.getArgument(a)] = t;
-            }
+          SmallVector<Value> inputTiles;
+          int64_t inputCount =
+              std::min<int64_t>(genericOp.getNumDpsInputs(),
+                                std::max<int64_t>(numBindings - 1, 0));
+          inputTiles.push_back(current);
+          for (int64_t i = 1; i < inputCount; ++i) {
+            auto [nextTile, nextTok] =
+                e.loadViewTko(bp.partViews[i], bp.indices, tileShape, elemType);
+            inputTiles.push_back(nextTile);
           }
-
-          for (auto &op : body.without_terminator()) {
-            StringRef name = mapArithToCudaTileLocal(&op);
-            if (name.empty())
-              name = mapMathToCudaTileLocal(&op);
-            if (name.empty())
-              continue;
-
-            SmallVector<Value> opInputs;
-            bool allResolved = true;
-            for (auto operand : op.getOperands()) {
-              auto it = bodyMap.find(operand);
-              if (it != bodyMap.end()) {
-                opInputs.push_back(it->second);
-              } else if (auto cstOp =
-                             operand.getDefiningOp<arith::ConstantOp>()) {
-                double val = 0.0;
-                if (auto fAttr = dyn_cast<FloatAttr>(cstOp.getValue()))
-                  val = fAttr.getValueAsDouble();
-                else if (auto iAttr = dyn_cast<IntegerAttr>(cstOp.getValue()))
-                  val = static_cast<double>(iAttr.getInt());
-                opInputs.push_back(e.constSplat(tileShape, elemType, val));
-              } else {
-                allResolved = false;
-              }
-            }
-            if (allResolved && !opInputs.empty()) {
-              Value result = e.emitElementwise(name, opInputs);
-              if (op.getNumResults() > 0)
-                bodyMap[op.getResult(0)] = result;
-              current = result;
-            }
-          }
+          current = emitElementwiseGenericBody(e, genericOp, inputTiles,
+                                               tileShape, elemType, current);
         } else {
           SmallVector<StringRef> ops = getElementwiseOpNames(primaryOp);
           Value tile2;
@@ -3478,50 +3532,14 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     if (loweringStrategy == CudaTileLoweringStrategy::Elementwise) {
       auto genericOp = dyn_cast<linalg::GenericOp>(primaryOp);
       if (genericOp) {
-        auto &body = genericOp.getRegion().front();
-        DenseMap<Value, Value> bodyMap;
-
-        int64_t numInputs = genericOp.getNumDpsInputs();
-        for (int64_t a = 0; a < (int64_t)body.getNumArguments(); ++a) {
-          if (a == 0) {
-            bodyMap[body.getArgument(a)] = current;
-          } else if (a < numInputs && a < numBindings - 1) {
-            bodyMap[body.getArgument(a)] = loadInputTile(a);
-          }
-        }
-
-        for (auto &op : body.without_terminator()) {
-          StringRef name = mapArithToCudaTileLocal(&op);
-          if (name.empty())
-            name = mapMathToCudaTileLocal(&op);
-          if (name.empty())
-            continue;
-
-          SmallVector<Value> opInputs;
-          bool allResolved = true;
-          for (auto operand : op.getOperands()) {
-            auto it = bodyMap.find(operand);
-            if (it != bodyMap.end()) {
-              opInputs.push_back(it->second);
-            } else if (auto cstOp =
-                           operand.getDefiningOp<arith::ConstantOp>()) {
-              double val = 0.0;
-              if (auto fAttr = dyn_cast<FloatAttr>(cstOp.getValue()))
-                val = fAttr.getValueAsDouble();
-              else if (auto iAttr = dyn_cast<IntegerAttr>(cstOp.getValue()))
-                val = static_cast<double>(iAttr.getInt());
-              opInputs.push_back(e.constSplat(tileShape, elemType, val));
-            } else {
-              allResolved = false;
-            }
-          }
-          if (allResolved && !opInputs.empty()) {
-            Value result = e.emitElementwise(name, opInputs);
-            if (op.getNumResults() > 0)
-              bodyMap[op.getResult(0)] = result;
-            current = result;
-          }
-        }
+        SmallVector<Value> inputTiles;
+        int64_t inputCount =
+            std::min<int64_t>(genericOp.getNumDpsInputs(),
+                              std::max<int64_t>(numBindings - 1, 0));
+        for (int64_t i = 0; i < inputCount; ++i)
+          inputTiles.push_back(loadInputTile(i));
+        current = emitElementwiseGenericBody(e, genericOp, inputTiles,
+                                             tileShape, elemType, current);
       } else {
         SmallVector<StringRef> ops = getElementwiseOpNames(primaryOp);
         Value tile2;
