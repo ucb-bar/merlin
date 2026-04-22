@@ -9,7 +9,7 @@ iree_cc_library(
     "driver_module.c"
   DEPS
     iree::base
-    iree::base::internal::flags
+    iree::base::tooling::flags
     iree::hal
     iree::hal::drivers::cuda_tile
   DEFINES

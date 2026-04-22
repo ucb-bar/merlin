@@ -54,6 +54,7 @@ enum class CudaTileConvLoweringMode : uint8_t {
   NotConv,
   PointwiseMatmul,
   DirectConv2D,
+  Pooling,
 };
 
 enum class CudaTileOperandRole : uint8_t {
@@ -85,17 +86,30 @@ enum class CudaTileLoweringStrategy : uint8_t {
   Matmul,
   PointwiseConvAsMatmul,
   DirectConv2D,
+  Pooling,
 };
 
 struct CudaTileConvPlan {
   CudaTileConvLoweringMode mode = CudaTileConvLoweringMode::NotConv;
   int64_t spatialRank = 0;
+  // Logical shapes in NHWC order: [N, H, W, C] / [KH, KW, IC, OC].
+  // The kernel generator uses these for loop structure.
   llvm::SmallVector<int64_t> inputShape;
   llvm::SmallVector<int64_t> filterShape;
   llvm::SmallVector<int64_t> outputShape;
+  // Physical shapes in the tensor's actual memory layout.
+  // For NHWC these equal the logical shapes; for NCHW they are [N,C,H,W].
+  llvm::SmallVector<int64_t> physInputShape;
+  llvm::SmallVector<int64_t> physFilterShape;
+  llvm::SmallVector<int64_t> physOutputShape;
   llvm::SmallVector<int64_t> strides;
   llvm::SmallVector<int64_t> dilations;
+  // Window shape for pooling [KH, KW]. Same as filterShape spatial dims for conv.
+  llvm::SmallVector<int64_t> windowShape;
+  // Combiner for pooling ("maxf", "addf"). Empty for conv2d.
+  std::string combiner;
   bool isPointwise = false;
+  bool isNCHW = false;
 
   explicit operator bool() const {
     return mode != CudaTileConvLoweringMode::NotConv;
@@ -257,6 +271,7 @@ StringRef stringifyCudaTileConvLoweringMode(CudaTileConvLoweringMode mode);
 StringRef stringifyCudaTileLoweringStrategy(CudaTileLoweringStrategy strategy);
 
 CudaTileConvPlan extractCudaTileConvPlan(linalg::GenericOp genOp);
+CudaTileConvPlan extractPoolingPlan(linalg::GenericOp genOp);
 
 CudaTileKernelPlan extractCudaTileKernelPlan(Operation *innerModule,
                                              const CudaTileOptions &options);
