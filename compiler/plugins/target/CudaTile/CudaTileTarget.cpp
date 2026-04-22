@@ -700,6 +700,32 @@ public:
         .getResult();
   }
 
+  /// Emit a cuda_tile comparison (cmpi) from an arith::CmpIPredicate.
+  Value emitCmpI(arith::CmpIPredicate pred, Value lhs, Value rhs) {
+    using CP = cuda_tile::ComparisonPredicate;
+    using SG = cuda_tile::Signedness;
+    CP ctPred;
+    SG ctSignedness;
+    // clang-format off
+    switch (pred) {
+    case arith::CmpIPredicate::eq:  ctPred = CP::EQUAL;                 ctSignedness = SG::Signed;   break;
+    case arith::CmpIPredicate::ne:  ctPred = CP::NOT_EQUAL;             ctSignedness = SG::Signed;   break;
+    case arith::CmpIPredicate::slt: ctPred = CP::LESS_THAN;             ctSignedness = SG::Signed;   break;
+    case arith::CmpIPredicate::sle: ctPred = CP::LESS_THAN_OR_EQUAL;    ctSignedness = SG::Signed;   break;
+    case arith::CmpIPredicate::sgt: ctPred = CP::GREATER_THAN;          ctSignedness = SG::Signed;   break;
+    case arith::CmpIPredicate::sge: ctPred = CP::GREATER_THAN_OR_EQUAL; ctSignedness = SG::Signed;   break;
+    case arith::CmpIPredicate::ult: ctPred = CP::LESS_THAN;             ctSignedness = SG::Unsigned; break;
+    case arith::CmpIPredicate::ule: ctPred = CP::LESS_THAN_OR_EQUAL;    ctSignedness = SG::Unsigned; break;
+    case arith::CmpIPredicate::ugt: ctPred = CP::GREATER_THAN;          ctSignedness = SG::Unsigned; break;
+    case arith::CmpIPredicate::uge: ctPred = CP::GREATER_THAN_OR_EQUAL; ctSignedness = SG::Unsigned; break;
+    }
+    // clang-format on
+    auto predAttr = cuda_tile::ComparisonPredicateAttr::get(ctx, ctPred);
+    auto signAttr = cuda_tile::SignednessAttr::get(ctx, ctSignedness);
+    return b.create<cuda_tile::CmpIOp>(loc, predAttr, lhs, rhs, signAttr)
+        .getResult();
+  }
+
   //===-- Reductions ------------------------------------------------------===//
 
   /// Create a reduce op with the given combiner.
@@ -916,6 +942,19 @@ static Value emitElementwiseGenericBody(CudaTileOpEmitter &e,
                                       opInputs) &&
           opInputs.size() == 2) {
         Value result = e.emitCmpF(cmpOp.getPredicate(), opInputs[0],
+                                  opInputs[1]);
+        bodyMap[op.getResult(0)] = result;
+        current = result;
+      }
+      continue;
+    }
+
+    if (auto cmpOp = dyn_cast<arith::CmpIOp>(&op)) {
+      SmallVector<Value> opInputs;
+      if (resolveCudaTileBodyOperands(e, &op, bodyMap, tileShape, elemType,
+                                      opInputs) &&
+          opInputs.size() == 2) {
+        Value result = e.emitCmpI(cmpOp.getPredicate(), opInputs[0],
                                   opInputs[1]);
         bodyMap[op.getResult(0)] = result;
         current = result;
