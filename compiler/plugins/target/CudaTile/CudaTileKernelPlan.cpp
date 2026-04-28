@@ -9,6 +9,7 @@
 #include "iree/compiler/Codegen/Dialect/Codegen/IR/IREECodegenAttrs.h"
 #include "iree/compiler/Codegen/Dialect/GPU/IR/GPULoweringConfigUtils.h"
 #include "iree/compiler/Codegen/Dialect/GPU/IR/IREEGPUAttrs.h"
+#include "iree/compiler/Dialect/HAL/IR/HALOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/IR/AffineExpr.h"
@@ -16,6 +17,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 
@@ -62,6 +64,18 @@ static Type getElementType(Type type) {
       return shaped.getElementType();
   }
   return {};
+}
+
+static std::optional<int64_t> getStaticIndexValue(Value value) {
+  if (!value)
+    return int64_t{0};
+  if (auto constantIndex = value.getDefiningOp<arith::ConstantIndexOp>())
+    return constantIndex.value();
+  if (auto constant = value.getDefiningOp<arith::ConstantOp>()) {
+    if (auto integerAttr = dyn_cast<IntegerAttr>(constant.getValue()))
+      return integerAttr.getInt();
+  }
+  return std::nullopt;
 }
 
 static Type getElementTypeFromCudaTileString(MLIRContext *ctx,
@@ -718,6 +732,151 @@ static void populateFusedOpPlans(Operation *innerModule,
   });
 }
 
+static bool isCudaTilePrimaryCandidate(CudaTileLoweringStrategy strategy) {
+  return strategy == CudaTileLoweringStrategy::Matmul ||
+         strategy == CudaTileLoweringStrategy::PointwiseConvAsMatmul ||
+         strategy == CudaTileLoweringStrategy::DirectConv2D ||
+         strategy == CudaTileLoweringStrategy::Pooling;
+}
+
+static void refreshPrimaryFacts(CudaTileKernelPlan &plan) {
+  plan.srcShape.clear();
+  plan.dstShape.clear();
+  plan.elementType = {};
+  plan.conv = {};
+
+  if (!plan.primaryOp)
+    return;
+
+  if (auto classAttr =
+          plan.primaryOp->getAttrOfType<StringAttr>("cuda_tile.kernel_class")) {
+    plan.kernelClass = classAttr.getValue().str();
+  }
+
+  extractPrimaryShapeAndType(plan);
+  if (auto genOp = dyn_cast<linalg::GenericOp>(plan.primaryOp)) {
+    plan.conv = extractCudaTileConvPlan(genOp);
+    if (!plan.conv)
+      plan.conv = extractPoolingPlan(genOp);
+  }
+}
+
+static void promotePrimaryFromFusedOps(CudaTileKernelPlan &plan) {
+  for (const CudaTileFusedOpPlan &fusedOp : plan.fusedOps) {
+    if (!isCudaTilePrimaryCandidate(fusedOp.loweringStrategy))
+      continue;
+
+    plan.primaryOp = fusedOp.op;
+    plan.kind = fusedOp.kind;
+    plan.semanticKind = fusedOp.semanticKind;
+    plan.loweringStrategy = fusedOp.loweringStrategy;
+    plan.conv = fusedOp.conv;
+    switch (fusedOp.loweringStrategy) {
+    case CudaTileLoweringStrategy::DirectConv2D:
+      plan.kernelClass = "conv";
+      break;
+    case CudaTileLoweringStrategy::Pooling:
+      plan.kernelClass = "pooling";
+      break;
+    default:
+      plan.kernelClass = "matmul";
+      break;
+    }
+
+    refreshPrimaryFacts(plan);
+    return;
+  }
+}
+
+static CudaTileFusedOpPlan *findFusedOpPlan(CudaTileKernelPlan &plan,
+                                            Operation *op) {
+  for (CudaTileFusedOpPlan &fusedOp : plan.fusedOps) {
+    if (fusedOp.op == op)
+      return &fusedOp;
+  }
+  return nullptr;
+}
+
+static void markPrologueInput(CudaTileFusedOpPlan &fusedOp,
+                              int64_t primaryInputIndex) {
+  if (fusedOp.role == CudaTileFusedOpRole::Primary)
+    return;
+  fusedOp.role = CudaTileFusedOpRole::Prologue;
+  if (fusedOp.primaryInputIndex < 0) {
+    fusedOp.primaryInputIndex = primaryInputIndex;
+  } else if (fusedOp.primaryInputIndex != primaryInputIndex) {
+    fusedOp.primaryInputIndex = -1;
+  }
+}
+
+static void markPrologueChain(CudaTileKernelPlan &plan, Value value,
+                              int64_t primaryInputIndex,
+                              llvm::DenseSet<Operation *> &visited) {
+  Operation *op = value.getDefiningOp();
+  if (!op || !visited.insert(op).second)
+    return;
+
+  CudaTileFusedOpPlan *fusedOp = findFusedOpPlan(plan, op);
+  if (!fusedOp || fusedOp->op == plan.primaryOp ||
+      fusedOp->role == CudaTileFusedOpRole::Epilogue) {
+    return;
+  }
+
+  markPrologueInput(*fusedOp, primaryInputIndex);
+  if (auto linalgOp = dyn_cast<linalg::LinalgOp>(op)) {
+    for (Value input : linalgOp.getDpsInputs())
+      markPrologueChain(plan, input, primaryInputIndex, visited);
+  }
+}
+
+static void markEpilogueChain(CudaTileKernelPlan &plan, Operation *op,
+                              llvm::DenseSet<Operation *> &visited) {
+  if (!op || !visited.insert(op).second)
+    return;
+
+  CudaTileFusedOpPlan *fusedOp = findFusedOpPlan(plan, op);
+  if (!fusedOp || fusedOp->op == plan.primaryOp ||
+      fusedOp->role == CudaTileFusedOpRole::Prologue) {
+    return;
+  }
+
+  fusedOp->role = CudaTileFusedOpRole::Epilogue;
+  fusedOp->primaryInputIndex = -1;
+  for (Value result : op->getResults()) {
+    for (Operation *user : result.getUsers())
+      markEpilogueChain(plan, user, visited);
+  }
+}
+
+static void classifyFusedOpRoles(CudaTileKernelPlan &plan) {
+  for (CudaTileFusedOpPlan &fusedOp : plan.fusedOps) {
+    fusedOp.role = CudaTileFusedOpRole::Unknown;
+    fusedOp.primaryInputIndex = -1;
+  }
+
+  if (!plan.primaryOp)
+    return;
+
+  if (CudaTileFusedOpPlan *primaryFusedOp =
+          findFusedOpPlan(plan, plan.primaryOp)) {
+    primaryFusedOp->role = CudaTileFusedOpRole::Primary;
+  }
+
+  if (auto linalgOp = dyn_cast<linalg::LinalgOp>(plan.primaryOp)) {
+    auto dpsInputs = linalgOp.getDpsInputs();
+    for (auto [index, input] : llvm::enumerate(dpsInputs)) {
+      llvm::DenseSet<Operation *> visited;
+      markPrologueChain(plan, input, index, visited);
+    }
+  }
+
+  for (Value result : plan.primaryOp->getResults()) {
+    llvm::DenseSet<Operation *> visited;
+    for (Operation *user : result.getUsers())
+      markEpilogueChain(plan, user, visited);
+  }
+}
+
 static void incrementSemanticCount(CudaTileKernelPlan &plan,
                                    CudaTileSemanticKind semanticKind) {
   switch (semanticKind) {
@@ -938,6 +1097,20 @@ StringRef stringifyCudaTileOperandRole(CudaTileOperandRole role) {
     return "output";
   case CudaTileOperandRole::Result:
     return "result";
+  }
+  return "unknown";
+}
+
+StringRef stringifyCudaTileFusedOpRole(CudaTileFusedOpRole role) {
+  switch (role) {
+  case CudaTileFusedOpRole::Unknown:
+    return "unknown";
+  case CudaTileFusedOpRole::Primary:
+    return "primary";
+  case CudaTileFusedOpRole::Prologue:
+    return "prologue";
+  case CudaTileFusedOpRole::Epilogue:
+    return "epilogue";
   }
   return "unknown";
 }
@@ -1563,6 +1736,8 @@ void printCudaTileKernelPlan(const CudaTileKernelPlan &plan,
        << stringifyCudaTileSemanticKind(fusedOp.semanticKind)
        << ", lowering_strategy = "
        << stringifyCudaTileLoweringStrategy(fusedOp.loweringStrategy)
+       << ", role = " << stringifyCudaTileFusedOpRole(fusedOp.role)
+       << ", primary_input_index = " << fusedOp.primaryInputIndex
        << ", reduction_dims = ";
     printI64Array(fusedOp.reductionDims, os);
     os << ", conv_mode = "
@@ -1660,6 +1835,19 @@ void printCudaTileKernelPlan(const CudaTileKernelPlan &plan,
   printOptionalAttr(schedule.mmaKind, os);
   os << "}\n";
 
+  os << "  bindings = [\n";
+  for (const CudaTileBindingPlan &binding : plan.bindingShapes) {
+    os << "    {binding = " << binding.binding << ", shape = ";
+    printI64Array(binding.shape, os);
+    os << ", byte_offset = ";
+    if (binding.hasStaticByteOffset)
+      os << binding.byteOffset;
+    else
+      os << "<dynamic>";
+    os << "}\n";
+  }
+  os << "  ]\n";
+
   os << "  operands = [\n";
   for (const CudaTileOperandPlan &operand : plan.operands) {
     os << "    {role = " << stringifyCudaTileOperandRole(operand.role)
@@ -1721,11 +1909,18 @@ CudaTileKernelPlan extractCudaTileKernelPlan(Operation *innerModule,
   innerModule->walk([&](linalg::GenericOp) { plan.genericOpCount++; });
 
   innerModule->walk([&](Operation *op) {
-    if (op->getName().getStringRef() == "hal.interface.binding.subspan") {
+    if (auto subspan = dyn_cast<IREE::HAL::InterfaceBindingSubspanOp>(op)) {
       CudaTileBindingPlan binding;
-      binding.binding = static_cast<int64_t>(plan.bindingShapes.size());
+      binding.binding = subspan.getBinding().getSExtValue();
       binding.memref = op->getResult(0);
       binding.shape = getStaticShapeFromType(op->getResult(0).getType());
+      std::optional<int64_t> byteOffset =
+          getStaticIndexValue(subspan.getByteOffset());
+      if (byteOffset) {
+        binding.byteOffset = *byteOffset;
+      } else {
+        binding.hasStaticByteOffset = false;
+      }
       plan.bindingShapes.push_back(std::move(binding));
     }
   });
@@ -1777,6 +1972,8 @@ CudaTileKernelPlan extractCudaTileKernelPlan(Operation *innerModule,
   plan.semanticKind = getCudaTileSemanticKind(plan.kernelClass);
 
   populateFusedOpPlans(innerModule, plan);
+  promotePrimaryFromFusedOps(plan);
+  classifyFusedOpRoles(plan);
   populatePrimaryOperandPlans(plan);
 
   if (auto linalgOp = dyn_cast<linalg::LinalgOp>(plan.primaryOp)) {

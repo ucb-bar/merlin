@@ -25,3 +25,4 @@ here does not imply taped-out hardware validation.
 3. [Add A Sample Application](add_sample_application.md)
 4. [Add A Compile Target](add_compile_target.md)
 5. [Use `tools/build.py`](use_build_py.md) (includes packaging and release builds)
+6. [Debug Compilation Dumps](debug_compilation_dumps.md)

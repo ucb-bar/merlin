@@ -45,6 +45,9 @@ static StringRef mapArithToCudaTile(Operation *op) {
   if (isa<arith::AddIOp>(op)) return "addi";
   if (isa<arith::SubIOp>(op)) return "subi";
   if (isa<arith::MulIOp>(op)) return "muli";
+  if (isa<arith::AndIOp>(op)) return "andi";
+  if (isa<arith::OrIOp>(op)) return "ori";
+  if (isa<arith::XOrIOp>(op)) return "xori";
   if (isa<arith::MaxSIOp>(op)) return "maxi";
   if (isa<arith::MinSIOp>(op)) return "mini";
   // Ternary

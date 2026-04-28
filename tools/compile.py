@@ -48,7 +48,7 @@ def setup_parser(parser: argparse.ArgumentParser):
         "--dump-compilation-phases-to",
         help=(
             "Directory for --dump-compilation-phases-to. "
-            "If omitted and --dump-phases is set, defaults to <output_dir>/phases/."
+            "If omitted and --dump-phases/--debug-dumps is set, defaults to <output_dir>/phases/."
         ),
     )
     parser.add_argument(
@@ -81,8 +81,27 @@ def setup_parser(parser: argparse.ArgumentParser):
     )
 
     # Optional Artifacts
-    parser.add_argument("--dump-artifacts", action="store_true", help="Dump executable sources, binaries, and configs")
-    parser.add_argument("--dump-phases", action="store_true", help="Dump MLIR compilation phases")
+    parser.add_argument(
+        "--debug-dumps",
+        action="store_true",
+        help=(
+            "Enable the standard debug workflow: dump MLIR compilation phases plus HAL executable "
+            "sources, files, intermediates, binaries, and benchmarks under <output_dir>/."
+        ),
+    )
+    parser.add_argument(
+        "--dump-artifacts",
+        action="store_true",
+        help=(
+            "Dump HAL executable sources, files, intermediates, binaries, and benchmarks under "
+            "<output_dir>/."
+        ),
+    )
+    parser.add_argument(
+        "--dump-phases",
+        action="store_true",
+        help="Dump MLIR compilation phases under <output_dir>/phases/.",
+    )
     parser.add_argument("--dump-graph", action="store_true", help="Dump the flow dispatch graph (.dot)")
     parser.add_argument(
         "--build-benchmarks", action="store_true", help="Recompile individual dispatch benchmarks and zip them"
@@ -285,13 +304,15 @@ def main(args: argparse.Namespace) -> int:
         )
 
     dynamic_flags = []
-    if args.dump_artifacts or args.build_benchmarks:
+    enable_debug_dumps = args.debug_dumps
+    enable_artifact_dumps = args.dump_artifacts or args.build_benchmarks or enable_debug_dumps
+    if enable_artifact_dumps:
         dynamic_flags.extend(
             [
                 f"--iree-hal-dump-executable-sources-to={output_dir}/sources/",
                 f"--iree-hal-dump-executable-files-to={output_dir}/files/",
+                f"--iree-hal-dump-executable-intermediates-to={output_dir}/intermediates/",
                 f"--iree-hal-dump-executable-binaries-to={output_dir}/binaries/",
-                f"--iree-hal-dump-executable-configurations-to={output_dir}/configs/",
                 f"--iree-hal-dump-executable-benchmarks-to={output_dir}/benchmarks/",
             ]
         )
@@ -299,8 +320,19 @@ def main(args: argparse.Namespace) -> int:
     dump_phases_dir = args.dump_compilation_phases_to
     if dump_phases_dir:
         dynamic_flags.append(f"--dump-compilation-phases-to={pathlib.Path(dump_phases_dir)}")
-    elif args.dump_phases:
-        dynamic_flags.append(f"--dump-compilation-phases-to={output_dir}/phases/")
+    else:
+        enable_phase_dumps = args.dump_phases or enable_debug_dumps
+        if enable_phase_dumps:
+            dump_phases_dir = output_dir / "phases"
+            dynamic_flags.append(f"--dump-compilation-phases-to={dump_phases_dir}/")
+
+    if enable_debug_dumps:
+        print(
+            "  🪵 Enabling debug dumps: "
+            f"phases={dump_phases_dir}, "
+            f"sources={output_dir / 'sources'}, files={output_dir / 'files'}, "
+            f"intermediates={output_dir / 'intermediates'}"
+        )
 
     if args.compile_to:
         dynamic_flags.append(f"--compile-to={args.compile_to}")

@@ -89,6 +89,13 @@ enum class CudaTileLoweringStrategy : uint8_t {
   Pooling,
 };
 
+enum class CudaTileFusedOpRole : uint8_t {
+  Unknown,
+  Primary,
+  Prologue,
+  Epilogue,
+};
+
 struct CudaTileConvPlan {
   CudaTileConvLoweringMode mode = CudaTileConvLoweringMode::NotConv;
   int64_t spatialRank = 0;
@@ -118,6 +125,8 @@ struct CudaTileConvPlan {
 
 struct CudaTileBindingPlan {
   int64_t binding = -1;
+  int64_t byteOffset = 0;
+  bool hasStaticByteOffset = true;
   llvm::SmallVector<int64_t> shape;
   Value memref;
 };
@@ -145,6 +154,8 @@ struct CudaTileFusedOpPlan {
   CudaTileSemanticKind semanticKind = CudaTileSemanticKind::Unknown;
   CudaTileLoweringStrategy loweringStrategy =
       CudaTileLoweringStrategy::Unsupported;
+  CudaTileFusedOpRole role = CudaTileFusedOpRole::Unknown;
+  int64_t primaryInputIndex = -1;
   CudaTileConvPlan conv;
   llvm::SmallVector<int64_t> reductionDims;
 };
@@ -263,6 +274,8 @@ CudaTileSemanticKind getCudaTileSemanticKind(StringRef kernelClass);
 StringRef stringifyCudaTileSemanticKind(CudaTileSemanticKind kind);
 
 StringRef stringifyCudaTileOperandRole(CudaTileOperandRole role);
+
+StringRef stringifyCudaTileFusedOpRole(CudaTileFusedOpRole role);
 
 StringRef stringifyCudaTileScheduleSource(CudaTileScheduleSource source);
 

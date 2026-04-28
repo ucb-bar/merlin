@@ -74,6 +74,7 @@ Control primary location with:
 
 - `--build-dir <build_dir_name>`
 - `--compile-to <phase_name>`
+- `--debug-dumps` (preferred when debugging a target end-to-end)
 - `--dump-compilation-phases-to <dir>`
 - `--iree-compile-arg <flag>` / `--compilation-custom-arg <flag>` (repeatable passthrough)
 - `--reuse-imported-mlir` (skip refresh of copied/imported MLIR)

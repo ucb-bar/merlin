@@ -142,8 +142,9 @@ usage: uv run tools/merlin.py compile [-h] [--dry-run] --target TARGET
                                       [--dump-compilation-phases-to DUMP_COMPILATION_PHASES_TO]
                                       [--iree-compile-arg IREE_COMPILE_ARG]
                                       [--reuse-imported-mlir] [--tracy]
-                                      [--dump-artifacts] [--dump-phases]
-                                      [--dump-graph] [--build-benchmarks]
+                                      [--debug-dumps] [--dump-artifacts]
+                                      [--dump-phases] [--dump-graph]
+                                      [--build-benchmarks]
                                       input_path
 ```
 
@@ -157,12 +158,13 @@ usage: uv run tools/merlin.py compile [-h] [--dry-run] --target TARGET
 | `--output-dir` | no | - | - | Override output directory (default: build/compiled_models/<model>/<target>_<basename>/). If set, all generated files/artifacts are written under this directory. |
 | `--build-dir` | no | `host-vanilla-release` | - | Which build directory to use for compiler tools (default: host-vanilla-release). If omitted and target YAML uses plugin_flags, compile.py auto-selects host-merlin-release. |
 | `--compile-to` | no | - | - | Stop compilation at the given phase (for example: global-optimization). When set, output is emitted as an intermediate MLIR file. |
-| `--dump-compilation-phases-to` | no | - | - | Directory for --dump-compilation-phases-to. If omitted and --dump-phases is set, defaults to <output_dir>/phases/. |
+| `--dump-compilation-phases-to` | no | - | - | Directory for --dump-compilation-phases-to. If omitted and --dump-phases/--debug-dumps is set, defaults to <output_dir>/phases/. |
 | `--iree-compile-arg`, `--compilation-custom-arg` | no | `[]` | - | Extra flag forwarded directly to iree-compile. Repeat for multiple flags. |
 | `--reuse-imported-mlir` | no | `False` | - | Reuse an existing output MLIR instead of refreshing from explicit input files. By default, explicit input files are re-imported/re-copied. |
 | `--tracy` | no | `False` | - | Enable Tracy profiling flags: embed debug info, use system linking, and enable debug symbols in generated code. Equivalent to --iree-hal-executable-debug-level=3 --iree-llvmcpu-link-embedded=false --iree-llvmcpu-debug-symbols=true |
-| `--dump-artifacts` | no | `False` | - | Dump executable sources, binaries, and configs |
-| `--dump-phases` | no | `False` | - | Dump MLIR compilation phases |
+| `--debug-dumps` | no | `False` | - | Enable the standard debug workflow: dump MLIR compilation phases plus HAL executable sources, files, intermediates, binaries, and benchmarks under <output_dir>/. |
+| `--dump-artifacts` | no | `False` | - | Dump HAL executable sources, files, intermediates, binaries, and benchmarks under <output_dir>/. |
+| `--dump-phases` | no | `False` | - | Dump MLIR compilation phases under <output_dir>/phases/. |
 | `--dump-graph` | no | `False` | - | Dump the flow dispatch graph (.dot) |
 | `--build-benchmarks` | no | `False` | - | Recompile individual dispatch benchmarks and zip them |
 
@@ -439,8 +441,9 @@ usage: uv run tools/compile.py [-h] --target TARGET [--hw HW] [--quantized]
                                [--dump-compilation-phases-to DUMP_COMPILATION_PHASES_TO]
                                [--iree-compile-arg IREE_COMPILE_ARG]
                                [--reuse-imported-mlir] [--tracy]
-                               [--dump-artifacts] [--dump-phases]
-                               [--dump-graph] [--build-benchmarks]
+                               [--debug-dumps] [--dump-artifacts]
+                               [--dump-phases] [--dump-graph]
+                               [--build-benchmarks]
                                input_path
 ```
 
@@ -455,12 +458,13 @@ usage: uv run tools/compile.py [-h] --target TARGET [--hw HW] [--quantized]
 | `--output-dir` | no | - | - | Override output directory (default: build/compiled_models/<model>/<target>_<basename>/). If set, all generated files/artifacts are written under this directory. |
 | `--build-dir` | no | `host-vanilla-release` | - | Which build directory to use for compiler tools (default: host-vanilla-release). If omitted and target YAML uses plugin_flags, compile.py auto-selects host-merlin-release. |
 | `--compile-to` | no | - | - | Stop compilation at the given phase (for example: global-optimization). When set, output is emitted as an intermediate MLIR file. |
-| `--dump-compilation-phases-to` | no | - | - | Directory for --dump-compilation-phases-to. If omitted and --dump-phases is set, defaults to <output_dir>/phases/. |
+| `--dump-compilation-phases-to` | no | - | - | Directory for --dump-compilation-phases-to. If omitted and --dump-phases/--debug-dumps is set, defaults to <output_dir>/phases/. |
 | `--iree-compile-arg`, `--compilation-custom-arg` | no | `[]` | - | Extra flag forwarded directly to iree-compile. Repeat for multiple flags. |
 | `--reuse-imported-mlir` | no | `False` | - | Reuse an existing output MLIR instead of refreshing from explicit input files. By default, explicit input files are re-imported/re-copied. |
 | `--tracy` | no | `False` | - | Enable Tracy profiling flags: embed debug info, use system linking, and enable debug symbols in generated code. Equivalent to --iree-hal-executable-debug-level=3 --iree-llvmcpu-link-embedded=false --iree-llvmcpu-debug-symbols=true |
-| `--dump-artifacts` | no | `False` | - | Dump executable sources, binaries, and configs |
-| `--dump-phases` | no | `False` | - | Dump MLIR compilation phases |
+| `--debug-dumps` | no | `False` | - | Enable the standard debug workflow: dump MLIR compilation phases plus HAL executable sources, files, intermediates, binaries, and benchmarks under <output_dir>/. |
+| `--dump-artifacts` | no | `False` | - | Dump HAL executable sources, files, intermediates, binaries, and benchmarks under <output_dir>/. |
+| `--dump-phases` | no | `False` | - | Dump MLIR compilation phases under <output_dir>/phases/. |
 | `--dump-graph` | no | `False` | - | Dump the flow dispatch graph (.dot) |
 | `--build-benchmarks` | no | `False` | - | Recompile individual dispatch benchmarks and zip them |
 
@@ -474,8 +478,9 @@ usage: uv run tools/compile.py [-h] --target TARGET [--hw HW] [--quantized]
                                [--dump-compilation-phases-to DUMP_COMPILATION_PHASES_TO]
                                [--iree-compile-arg IREE_COMPILE_ARG]
                                [--reuse-imported-mlir] [--tracy]
-                               [--dump-artifacts] [--dump-phases]
-                               [--dump-graph] [--build-benchmarks]
+                               [--debug-dumps] [--dump-artifacts]
+                               [--dump-phases] [--dump-graph]
+                               [--build-benchmarks]
                                input_path
 
 Compile MLIR/ONNX models to target artifacts
@@ -507,7 +512,7 @@ options:
                         an intermediate MLIR file.
   --dump-compilation-phases-to DUMP_COMPILATION_PHASES_TO
                         Directory for --dump-compilation-phases-to. If omitted
-                        and --dump-phases is set, defaults to
+                        and --dump-phases/--debug-dumps is set, defaults to
                         <output_dir>/phases/.
   --iree-compile-arg IREE_COMPILE_ARG, --compilation-custom-arg IREE_COMPILE_ARG
                         Extra flag forwarded directly to iree-compile. Repeat
@@ -521,8 +526,14 @@ options:
                         code. Equivalent to --iree-hal-executable-debug-
                         level=3 --iree-llvmcpu-link-embedded=false --iree-
                         llvmcpu-debug-symbols=true
-  --dump-artifacts      Dump executable sources, binaries, and configs
-  --dump-phases         Dump MLIR compilation phases
+  --debug-dumps         Enable the standard debug workflow: dump MLIR
+                        compilation phases plus HAL executable sources, files,
+                        intermediates, binaries, and benchmarks under
+                        <output_dir>/.
+  --dump-artifacts      Dump HAL executable sources, files, intermediates,
+                        binaries, and benchmarks under <output_dir>/.
+  --dump-phases         Dump MLIR compilation phases under
+                        <output_dir>/phases/.
   --dump-graph          Dump the flow dispatch graph (.dot)
   --build-benchmarks    Recompile individual dispatch benchmarks and zip them
 ```

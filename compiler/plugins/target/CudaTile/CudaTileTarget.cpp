@@ -50,6 +50,8 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
 
+#include <cstdlib>
+
 #define DEBUG_TYPE "cuda-tile-target"
 
 namespace mlir::iree_compiler::IREE::HAL {
@@ -289,6 +291,9 @@ static StringRef mapArithToCudaTileLocal(Operation *op) {
   if (isa<arith::AddIOp>(op)) return "addi";
   if (isa<arith::SubIOp>(op)) return "subi";
   if (isa<arith::MulIOp>(op)) return "muli";
+  if (isa<arith::AndIOp>(op)) return "andi";
+  if (isa<arith::OrIOp>(op)) return "ori";
+  if (isa<arith::XOrIOp>(op)) return "xori";
   if (isa<arith::SelectOp>(op)) return "select";
   return "";
 }
@@ -384,6 +389,27 @@ static SmallVector<int64_t> getStaticShapeFromType(Type type) {
     }
   }
   return {};
+}
+
+static Type getElementTypeFromType(Type type) {
+  if (auto shaped = dyn_cast<ShapedType>(type))
+    return shaped.getElementType();
+  if (auto dispatchTensor =
+          dyn_cast<IREE::TensorExt::DispatchTensorType>(type)) {
+    if (auto shaped = dyn_cast<ShapedType>(dispatchTensor.getBoundType()))
+      return shaped.getElementType();
+  }
+  return {};
+}
+
+static int64_t getElementByteWidth(Type elemType) {
+  if (elemType.isIndex())
+    return 8;
+  if (auto intType = dyn_cast<IntegerType>(elemType))
+    return std::max<int64_t>(1, (intType.getWidth() + 7) / 8);
+  if (auto floatType = dyn_cast<FloatType>(elemType))
+    return std::max<int64_t>(1, (floatType.getWidth() + 7) / 8);
+  return 0;
 }
 
 static bool isIdentitySlice(ArrayRef<int64_t> offsets, ArrayRef<int64_t> strides) {
@@ -491,6 +517,65 @@ public:
         .getResult();
   }
 
+  /// Broadcast a scalar tile value to an N-D tile shape.
+  Value broadcastScalarToTile(Value scalar, ArrayRef<int64_t> shape,
+                              Type elemType) {
+    if (shape.empty())
+      return scalar;
+    SmallVector<int64_t> ones(shape.size(), 1);
+    Value shaped = reshape(scalar, ones, elemType);
+    if (ones == SmallVector<int64_t>(shape))
+      return shaped;
+    return broadcastTile(shaped, shape, elemType);
+  }
+
+  /// Create a per-lane 0..tileShape[dim)-1 index tile for one tile dimension.
+  Value iotaForDim(ArrayRef<int64_t> tileShape, int64_t dim) {
+    Type i32 = b.getI32Type();
+    auto oneDType = cuda_tile::TileType::get(ctx, {tileShape[dim]}, i32);
+    Value local =
+        b.create<cuda_tile::IotaOp>(loc, oneDType).getResult();
+    if (tileShape.size() == 1)
+      return local;
+
+    SmallVector<int64_t> reshapeShape(tileShape.size(), 1);
+    reshapeShape[dim] = tileShape[dim];
+    local = reshape(local, reshapeShape, i32);
+    if (reshapeShape == SmallVector<int64_t>(tileShape))
+      return local;
+    return broadcastTile(local, tileShape, i32);
+  }
+
+  /// Create a tile containing global element indices for a linalg.index dim.
+  Value globalIndexTile(ArrayRef<int64_t> tileShape, int64_t dim,
+                        Value tileIndex) {
+    Type i32 = b.getI32Type();
+    Value local = iotaForDim(tileShape, dim);
+    Value tileExtent = constI32(tileShape[dim]);
+    Value base = b.create<cuda_tile::MulIOp>(
+                      loc, tileIndex, tileExtent,
+                      cuda_tile::IntegerOverflowAttr::get(
+                          ctx, cuda_tile::IntegerOverflow::NONE))
+                     .getResult();
+    base = broadcastScalarToTile(base, tileShape, i32);
+    return b.create<cuda_tile::AddIOp>(
+                loc, local, base,
+                cuda_tile::IntegerOverflowAttr::get(
+                    ctx, cuda_tile::IntegerOverflow::NONE))
+        .getResult();
+  }
+
+  /// Create a scalar tile containing lane 0's global index for a dimension.
+  Value globalIndexScalar(ArrayRef<int64_t> tileShape, int64_t dim,
+                          Value tileIndex) {
+    Value tileExtent = constI32(tileShape[dim]);
+    return b.create<cuda_tile::MulIOp>(
+                loc, tileIndex, tileExtent,
+                cuda_tile::IntegerOverflowAttr::get(
+                    ctx, cuda_tile::IntegerOverflow::NONE))
+        .getResult();
+  }
+
   //===-- Data movement ---------------------------------------------------===//
 
   /// Create make_tensor_view with static shape and strides.
@@ -506,17 +591,19 @@ public:
   }
 
   /// Create make_partition_view.
-  Value makePartitionView(Value tensorView, ArrayRef<int64_t> tileShape) {
+  Value makePartitionView(Value tensorView, ArrayRef<int64_t> tileShape,
+                          bool zeroPad = false) {
     auto tvType = cast<cuda_tile::TensorViewType>(tensorView.getType());
     SmallVector<int32_t> tileShapeI32(tileShape.begin(), tileShape.end());
     auto tileShapeAttr = DenseI32ArrayAttr::get(ctx, tileShapeI32);
-    // dim_map: identity map — tile dim i maps to tensor_view dim i.
-    // For a 2D tensor_view with 2D tile: [0, 1].
     SmallVector<int32_t> dimMap(tileShape.size());
     std::iota(dimMap.begin(), dimMap.end(), 0);
-    auto pvType = cuda_tile::PartitionViewType::get(
-        ctx, tileShapeAttr, tvType, dimMap,
-        /*paddingValue=*/cuda_tile::PaddingValueAttr());
+    auto padAttr =
+        zeroPad ? cuda_tile::PaddingValueAttr::get(
+                      ctx, cuda_tile::PaddingValue::zero)
+                : cuda_tile::PaddingValueAttr();
+    auto pvType = cuda_tile::PartitionViewType::get(ctx, tileShapeAttr, tvType,
+                                                    dimMap, padAttr);
     return b.create<cuda_tile::MakePartitionViewOp>(loc, pvType, tensorView)
         .getResult();
   }
@@ -542,6 +629,22 @@ public:
         /*token=*/Value(),
         /*optimization_hints=*/cuda_tile::OptimizationHintsAttr());
     return {op.getTile(), op.getResultToken()};
+  }
+
+  /// Create load_ptr_tko weak → {tile, token}.
+  std::pair<Value, Value> loadPtrTko(Value ptrTile,
+                                     ArrayRef<int64_t> tileShape,
+                                     Type elemType, Value mask = {},
+                                     Value padding = {}) {
+    auto tileType = cuda_tile::TileType::get(ctx, tileShape, elemType);
+    auto tokenType = cuda_tile::TokenType::get(ctx);
+    auto op = b.create<cuda_tile::LoadPtrTkoOp>(
+        loc, tileType, tokenType,
+        cuda_tile::MemoryOrderingSemantics::WEAK,
+        /*memory_scope=*/cuda_tile::MemoryScopeAttr(), ptrTile, mask, padding,
+        /*token=*/Value(),
+        /*optimization_hints=*/cuda_tile::OptimizationHintsAttr());
+    return {op.getResult(), op.getResultToken()};
   }
 
   /// Create store_view_tko weak → token.
@@ -583,6 +686,8 @@ public:
     MaxF, MinF, Pow,
     // Binary integer (lhs, rhs, overflow)
     AddI, SubI, MulI,
+    // Binary integer bitwise
+    AndI, OrI, XOrI,
     // Binary integer (lhs, rhs, signedness)
     MaxI, MinI,
     // Ternary
@@ -614,6 +719,8 @@ public:
         .Case("pow",  EWOp::Pow)
         .Case("addi", EWOp::AddI).Case("subi", EWOp::SubI)
         .Case("muli", EWOp::MulI)
+        .Case("andi", EWOp::AndI).Case("ori", EWOp::OrI)
+        .Case("xori", EWOp::XOrI)
         .Case("maxi", EWOp::MaxI).Case("mini", EWOp::MinI)
         .Case("select", EWOp::Select).Case("fma", EWOp::Fma)
         .Case("negf", EWOp::NegF).Case("absf", EWOp::AbsF)
@@ -641,6 +748,9 @@ public:
     case EWOp::AddI: return b.create<cuda_tile::AddIOp>(loc, a, c, ovf).getResult();
     case EWOp::SubI: return b.create<cuda_tile::SubIOp>(loc, a, c, ovf).getResult();
     case EWOp::MulI: return b.create<cuda_tile::MulIOp>(loc, a, c, ovf).getResult();
+    case EWOp::AndI: return b.create<cuda_tile::AndIOp>(loc, a, c).getResult();
+    case EWOp::OrI:  return b.create<cuda_tile::OrIOp>(loc, a, c).getResult();
+    case EWOp::XOrI: return b.create<cuda_tile::XOrIOp>(loc, a, c).getResult();
     case EWOp::MaxI: return b.create<cuda_tile::MaxIOp>(loc, a.getType(), ValueRange{a, c}, cuda_tile::Signedness::Signed).getResult();
     case EWOp::MinI: return b.create<cuda_tile::MinIOp>(loc, a.getType(), ValueRange{a, c}, cuda_tile::Signedness::Signed).getResult();
     // Ternary
@@ -726,6 +836,31 @@ public:
         .getResult();
   }
 
+  Value emitDivI(Value lhs, Value rhs, cuda_tile::Signedness signedness,
+                 cuda_tile::RoundingMode rounding) {
+    auto signAttr = cuda_tile::SignednessAttr::get(ctx, signedness);
+    auto rndAttr = cuda_tile::RoundingModeAttr::get(ctx, rounding);
+    return b.create<cuda_tile::DivIOp>(loc, lhs, rhs, signAttr, rndAttr)
+        .getResult();
+  }
+
+  Value emitRemI(Value lhs, Value rhs, cuda_tile::Signedness signedness) {
+    auto signAttr = cuda_tile::SignednessAttr::get(ctx, signedness);
+    return b.create<cuda_tile::RemIOp>(loc, lhs, rhs, signAttr).getResult();
+  }
+
+  Value emitIToF(Value source, ArrayRef<int64_t> resultShape,
+                 Type floatElemType) {
+    auto resultType = cuda_tile::TileType::get(ctx, resultShape, floatElemType);
+    auto signAttr =
+        cuda_tile::SignednessAttr::get(ctx, cuda_tile::Signedness::Signed);
+    auto rndAttr = cuda_tile::RoundingModeAttr::get(
+        ctx, cuda_tile::RoundingMode::NEAREST_EVEN);
+    return b.create<cuda_tile::IToFOp>(loc, resultType, source, signAttr,
+                                       rndAttr)
+        .getResult();
+  }
+
   //===-- Reductions ------------------------------------------------------===//
 
   /// Create a reduce op with the given combiner.
@@ -801,11 +936,37 @@ public:
     return b.create<cuda_tile::ReshapeOp>(loc, resultType, source).getResult();
   }
 
+  /// Extract a subtile from a tile.
+  Value extractSubtile(Value source, ArrayRef<int64_t> resultShape,
+                       Type elemType, ValueRange indices) {
+    auto resultType = cuda_tile::TileType::get(ctx, resultShape, elemType);
+    return b.create<cuda_tile::ExtractOp>(loc, resultType, source, indices)
+        .getResult();
+  }
+
+  /// Concatenate two tiles along a dimension.
+  Value cat(Value lhs, Value rhs, int64_t dim, ArrayRef<int64_t> resultShape,
+            Type elemType) {
+    auto resultType = cuda_tile::TileType::get(ctx, resultShape, elemType);
+    return b.create<cuda_tile::CatOp>(loc, resultType, lhs, rhs,
+                                      static_cast<uint64_t>(dim))
+        .getResult();
+  }
+
   /// Broadcast a tile: expand 1-dims to match the new shape.
   /// E.g., tile<4x1xf32> → tile<4x8xf32>
   Value broadcastTile(Value source, ArrayRef<int64_t> newShape, Type elemType) {
     auto resultType = cuda_tile::TileType::get(ctx, newShape, elemType);
     return b.create<cuda_tile::BroadcastOp>(loc, resultType, source)
+        .getResult();
+  }
+
+  /// Attach a same_elements assumption to a broadcast-like tile.
+  Value assumeSameElements(Value value, ArrayRef<int64_t> chunkShape) {
+    SmallVector<int64_t> chunk(chunkShape.begin(), chunkShape.end());
+    auto attr = cuda_tile::SameElementsAttr::get(
+        ctx, DenseI64ArrayAttr::get(ctx, chunk));
+    return b.create<cuda_tile::AssumeOp>(loc, value.getType(), value, attr)
         .getResult();
   }
 
@@ -817,6 +978,13 @@ public:
     auto offsetVal = constI32(offset);
     return b.create<cuda_tile::OffsetOp>(loc, basePtr.getType(), basePtr,
                                          offsetVal)
+        .getResult();
+  }
+
+  /// Offset a tile of pointers by a tile of element offsets.
+  Value offsetPtrTile(Value ptrTile, Value offsets) {
+    return b.create<cuda_tile::OffsetOp>(loc, ptrTile.getType(), ptrTile,
+                                         offsets)
         .getResult();
   }
 
@@ -840,6 +1008,21 @@ public:
     b.setInsertionPoint(body->getTerminator());
     return forOp;
   }
+
+  cuda_tile::IfOp beginIf(Value condition) {
+    auto ifOp = b.create<cuda_tile::IfOp>(loc, TypeRange{}, condition);
+    Block *thenBlock = new Block();
+    ifOp.getThenRegion().push_back(thenBlock);
+    {
+      OpBuilder::InsertionGuard guard(b);
+      b.setInsertionPointToEnd(thenBlock);
+      b.create<cuda_tile::YieldOp>(loc);
+    }
+    b.setInsertionPoint(thenBlock->getTerminator());
+    return ifOp;
+  }
+
+  void endIf(cuda_tile::IfOp ifOp) { b.setInsertionPointAfter(ifOp); }
 
   /// Finalize the for loop body: replace the implicit ContinueOp with one
   /// that yields the given values, then restore insertion point after the loop.
@@ -889,6 +1072,126 @@ private:
   SmallVector<Value> entryArgs;
 };
 
+static Value offsetPtrByBytes(CudaTileOpEmitter &e, Value basePtr,
+                              Type elemType, int64_t byteOffset) {
+  if (byteOffset == 0)
+    return basePtr;
+  int64_t elemBytes = getElementByteWidth(elemType);
+  if (elemBytes <= 0 || byteOffset % elemBytes != 0) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "[cuda_tile] ignoring unsupported binding byte offset "
+               << byteOffset << " for element type " << elemType << "\n");
+    return basePtr;
+  }
+  return e.offsetPtr(basePtr, byteOffset / elemBytes);
+}
+
+static const CudaTileBindingPlan *
+findBindingPlan(ArrayRef<CudaTileBindingPlan> bindings, int64_t bindingIndex) {
+  for (const CudaTileBindingPlan &binding : bindings) {
+    if (binding.binding == bindingIndex)
+      return &binding;
+  }
+  if (bindingIndex >= 0 && bindingIndex < (int64_t)bindings.size())
+    return &bindings[bindingIndex];
+  return nullptr;
+}
+
+static const CudaTileBindingPlan *
+findBindingPlanForMemref(ArrayRef<CudaTileBindingPlan> bindings, Value memref) {
+  for (const CudaTileBindingPlan &binding : bindings) {
+    if (binding.memref == memref)
+      return &binding;
+  }
+  return nullptr;
+}
+
+static int64_t getNumBindingArgs(ArrayRef<CudaTileBindingPlan> bindings) {
+  int64_t maxBinding = -1;
+  for (const CudaTileBindingPlan &binding : bindings)
+    maxBinding = std::max(maxBinding, binding.binding);
+  if (maxBinding >= 0)
+    return maxBinding + 1;
+  return bindings.size();
+}
+
+static Value getSubspanArg(CudaTileOpEmitter &e,
+                           const CudaTileBindingPlan &binding,
+                           Type elemType) {
+  int64_t bindingIndex = binding.binding >= 0 ? binding.binding : 0;
+  Value ptr = e.getArg(bindingIndex);
+  if (!binding.hasStaticByteOffset) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "[cuda_tile] binding " << bindingIndex
+               << " has dynamic byte offset; using base pointer\n");
+    return ptr;
+  }
+  return offsetPtrByBytes(e, ptr, elemType, binding.byteOffset);
+}
+
+static Value getBindingArg(CudaTileOpEmitter &e,
+                           ArrayRef<CudaTileBindingPlan> bindings,
+                           int64_t bindingIndex, Type elemType) {
+  Value ptr = e.getArg(bindingIndex);
+  const CudaTileBindingPlan *binding =
+      findBindingPlan(bindings, bindingIndex);
+  if (!binding)
+    return ptr;
+  if (!binding->hasStaticByteOffset) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "[cuda_tile] binding " << bindingIndex
+               << " has dynamic byte offset; using base pointer\n");
+    return ptr;
+  }
+  return offsetPtrByBytes(e, ptr, elemType, binding->byteOffset);
+}
+
+struct CudaTileGatherSource {
+  Value tensor;
+  int64_t binding = -1;
+  int64_t byteOffset = 0;
+  bool hasStaticByteOffset = true;
+  SmallVector<int64_t> logicalShape;
+  SmallVector<int64_t> physicalShape;
+  SmallVector<int64_t> loadOffsets;
+  SmallVector<int64_t> loadStrides;
+  Type elemType;
+};
+
+static SmallVector<CudaTileGatherSource, 4>
+buildGatherSources(const CudaTileKernelPlan &plan) {
+  SmallVector<CudaTileGatherSource, 4> sources;
+  for (const CudaTileOperandPlan &operand : plan.operands) {
+    if (!operand.isDispatchLoad)
+      continue;
+    auto loadOp =
+        operand.value.getDefiningOp<IREE::TensorExt::DispatchTensorLoadOp>();
+    if (!loadOp)
+      continue;
+
+    const CudaTileBindingPlan *binding =
+        findBindingPlanForMemref(plan.bindingShapes, loadOp.getSource());
+    if (!binding)
+      continue;
+
+    CudaTileGatherSource source;
+    source.tensor = operand.value;
+    source.binding = binding->binding >= 0 ? binding->binding
+                                           : operand.binding;
+    source.byteOffset = binding->byteOffset;
+    source.hasStaticByteOffset = binding->hasStaticByteOffset;
+    source.logicalShape = operand.logicalShape;
+    source.physicalShape = operand.physicalShape.empty()
+                               ? binding->shape
+                               : operand.physicalShape;
+    source.loadOffsets = operand.offsets;
+    source.loadStrides = operand.strides;
+    source.elemType = getElementTypeFromType(operand.value.getType());
+    sources.push_back(std::move(source));
+  }
+  return sources;
+}
+
 static std::optional<double> getScalarConstantValue(Value value) {
   auto cstOp = value.getDefiningOp<arith::ConstantOp>();
   if (!cstOp)
@@ -899,6 +1202,16 @@ static std::optional<double> getScalarConstantValue(Value value) {
   if (auto iAttr = dyn_cast<IntegerAttr>(attr))
     return static_cast<double>(iAttr.getInt());
   return std::nullopt;
+}
+
+static Type getCudaTileConstantElementType(CudaTileOpEmitter &e, Value value,
+                                           Type defaultElemType) {
+  Type type = value.getType();
+  if (type.isIndex())
+    return e.builder().getI32Type();
+  if (auto intType = dyn_cast<IntegerType>(type))
+    return intType.getWidth() > 32 ? e.builder().getI32Type() : type;
+  return defaultElemType;
 }
 
 static bool resolveCudaTileBodyOperands(CudaTileOpEmitter &e,
@@ -914,7 +1227,9 @@ static bool resolveCudaTileBodyOperands(CudaTileOpEmitter &e,
       continue;
     }
     if (std::optional<double> value = getScalarConstantValue(operand)) {
-      opInputs.push_back(e.constSplat(tileShape, elemType, *value));
+      Type constElemType =
+          getCudaTileConstantElementType(e, operand, elemType);
+      opInputs.push_back(e.constSplat(tileShape, constElemType, *value));
       continue;
     }
     return false;
@@ -922,11 +1237,628 @@ static bool resolveCudaTileBodyOperands(CudaTileOpEmitter &e,
   return true;
 }
 
+static const CudaTileGatherSource *
+findGatherSource(ArrayRef<CudaTileGatherSource> sources, Value tensor) {
+  for (const CudaTileGatherSource &source : sources) {
+    if (source.tensor == tensor)
+      return &source;
+  }
+  return nullptr;
+}
+
+static std::optional<SmallVector<int64_t>>
+normalizeStaticIndexList(ArrayRef<int64_t> values, int64_t rank,
+                         int64_t defaultValue) {
+  SmallVector<int64_t> normalized(rank, defaultValue);
+  if (values.empty())
+    return normalized;
+  if (values.size() != static_cast<size_t>(rank))
+    return std::nullopt;
+  for (auto [i, value] : llvm::enumerate(values)) {
+    if (ShapedType::isDynamic(value))
+      return std::nullopt;
+    normalized[i] = value;
+  }
+  return normalized;
+}
+
+static Value resolveCudaTileIndexOperand(CudaTileOpEmitter &e, Value operand,
+                                         DenseMap<Value, Value> &bodyMap,
+                                         ArrayRef<int64_t> tileShape) {
+  auto it = bodyMap.find(operand);
+  if (it != bodyMap.end())
+    return it->second;
+  if (std::optional<double> value = getScalarConstantValue(operand))
+    return e.constSplat(tileShape, e.builder().getI32Type(), *value);
+  return {};
+}
+
+static Value andTileMasks(CudaTileOpEmitter &e, Value lhs, Value rhs) {
+  if (!lhs)
+    return rhs;
+  if (!rhs)
+    return lhs;
+  return e.emitElementwise("andi", {lhs, rhs});
+}
+
+static Value buildOutputInBoundsMask(CudaTileOpEmitter &e,
+                                     ArrayRef<int64_t> tileShape,
+                                     ArrayRef<Value> outputTileIndices,
+                                     ArrayRef<int64_t> outputShape) {
+  Value mask = e.constSplat(tileShape, e.builder().getI1Type(), 1);
+  if (outputShape.empty() ||
+      outputTileIndices.size() < static_cast<size_t>(outputShape.size()))
+    return mask;
+
+  Type i32Type = e.builder().getI32Type();
+  for (auto [dim, extent] : llvm::enumerate(outputShape)) {
+    if (ShapedType::isDynamic(extent))
+      continue;
+    Value index = e.globalIndexTile(tileShape, dim, outputTileIndices[dim]);
+    Value upper = e.constSplat(tileShape, i32Type, extent);
+    Value inBounds = e.emitCmpI(arith::CmpIPredicate::ult, index, upper);
+    mask = andTileMasks(e, mask, inBounds);
+  }
+  return mask;
+}
+
+struct CudaTileAffineIndexExpr {
+  SmallVector<int64_t> coeffs;
+  int64_t constant = 0;
+};
+
+static CudaTileAffineIndexExpr makeConstantAffineIndexExpr(int64_t outputRank,
+                                                           int64_t value) {
+  CudaTileAffineIndexExpr expr;
+  expr.coeffs.assign(outputRank, 0);
+  expr.constant = value;
+  return expr;
+}
+
+static std::optional<int64_t> getIntegerConstantValue(Value value) {
+  auto cstOp = value.getDefiningOp<arith::ConstantOp>();
+  if (!cstOp)
+    return std::nullopt;
+  if (auto intAttr = dyn_cast<IntegerAttr>(cstOp.getValue()))
+    return intAttr.getInt();
+  return std::nullopt;
+}
+
+static CudaTileAffineIndexExpr addAffineIndexExpr(
+    const CudaTileAffineIndexExpr &lhs,
+    const CudaTileAffineIndexExpr &rhs) {
+  CudaTileAffineIndexExpr result;
+  result.coeffs.assign(lhs.coeffs.begin(), lhs.coeffs.end());
+  for (auto [i, coeff] : llvm::enumerate(rhs.coeffs))
+    result.coeffs[i] += coeff;
+  result.constant = lhs.constant + rhs.constant;
+  return result;
+}
+
+static CudaTileAffineIndexExpr scaleAffineIndexExpr(
+    const CudaTileAffineIndexExpr &expr, int64_t scale) {
+  CudaTileAffineIndexExpr result;
+  result.coeffs.reserve(expr.coeffs.size());
+  for (int64_t coeff : expr.coeffs)
+    result.coeffs.push_back(coeff * scale);
+  result.constant = expr.constant * scale;
+  return result;
+}
+
+static std::optional<CudaTileAffineIndexExpr>
+matchAffineIndexExpr(Value value, int64_t outputRank) {
+  if (std::optional<int64_t> cst = getIntegerConstantValue(value))
+    return makeConstantAffineIndexExpr(outputRank, *cst);
+
+  Operation *defOp = value.getDefiningOp();
+  if (!defOp)
+    return std::nullopt;
+
+  if (auto indexOp = dyn_cast<linalg::IndexOp>(defOp)) {
+    int64_t dim = indexOp.getDim();
+    if (dim < 0 || dim >= outputRank)
+      return std::nullopt;
+    CudaTileAffineIndexExpr expr =
+        makeConstantAffineIndexExpr(outputRank, 0);
+    expr.coeffs[dim] = 1;
+    return expr;
+  }
+
+  if (isa<arith::IndexCastOp, arith::IndexCastUIOp>(defOp))
+    return matchAffineIndexExpr(defOp->getOperand(0), outputRank);
+
+  if (isa<arith::AddIOp>(defOp)) {
+    auto lhs = matchAffineIndexExpr(defOp->getOperand(0), outputRank);
+    auto rhs = matchAffineIndexExpr(defOp->getOperand(1), outputRank);
+    if (!lhs || !rhs)
+      return std::nullopt;
+    return addAffineIndexExpr(*lhs, *rhs);
+  }
+
+  if (isa<arith::SubIOp>(defOp)) {
+    auto lhs = matchAffineIndexExpr(defOp->getOperand(0), outputRank);
+    auto rhs = matchAffineIndexExpr(defOp->getOperand(1), outputRank);
+    if (!lhs || !rhs)
+      return std::nullopt;
+    return addAffineIndexExpr(*lhs, scaleAffineIndexExpr(*rhs, -1));
+  }
+
+  if (isa<arith::MulIOp>(defOp)) {
+    if (std::optional<int64_t> lhsCst =
+            getIntegerConstantValue(defOp->getOperand(0))) {
+      auto rhs = matchAffineIndexExpr(defOp->getOperand(1), outputRank);
+      if (!rhs)
+        return std::nullopt;
+      return scaleAffineIndexExpr(*rhs, *lhsCst);
+    }
+    if (std::optional<int64_t> rhsCst =
+            getIntegerConstantValue(defOp->getOperand(1))) {
+      auto lhs = matchAffineIndexExpr(defOp->getOperand(0), outputRank);
+      if (!lhs)
+        return std::nullopt;
+      return scaleAffineIndexExpr(*lhs, *rhsCst);
+    }
+  }
+
+  return std::nullopt;
+}
+
+static bool isFlatLinalgIndex(Value value) {
+  Operation *defOp = value.getDefiningOp();
+  if (!defOp)
+    return false;
+  if (auto indexOp = dyn_cast<linalg::IndexOp>(defOp))
+    return indexOp.getDim() == 0;
+  if (isa<arith::IndexCastOp, arith::IndexCastUIOp>(defOp))
+    return isFlatLinalgIndex(defOp->getOperand(0));
+  return false;
+}
+
+static std::optional<CudaTileAffineIndexExpr>
+matchFlat2DAffineIndexExpr(Value value, int64_t innerDim) {
+  constexpr int64_t kUnflattenedRank = 2;
+  if (std::optional<int64_t> cst = getIntegerConstantValue(value))
+    return makeConstantAffineIndexExpr(kUnflattenedRank, *cst);
+
+  Operation *defOp = value.getDefiningOp();
+  if (!defOp)
+    return std::nullopt;
+
+  if (isa<arith::IndexCastOp, arith::IndexCastUIOp>(defOp))
+    return matchFlat2DAffineIndexExpr(defOp->getOperand(0), innerDim);
+
+  if (isa<arith::DivSIOp, arith::FloorDivSIOp>(defOp) &&
+      isFlatLinalgIndex(defOp->getOperand(0))) {
+    std::optional<int64_t> divisor =
+        getIntegerConstantValue(defOp->getOperand(1));
+    if (!divisor || *divisor != innerDim)
+      return std::nullopt;
+    CudaTileAffineIndexExpr expr =
+        makeConstantAffineIndexExpr(kUnflattenedRank, 0);
+    expr.coeffs[0] = 1;
+    return expr;
+  }
+
+  if (isa<arith::RemSIOp>(defOp) && isFlatLinalgIndex(defOp->getOperand(0))) {
+    std::optional<int64_t> divisor =
+        getIntegerConstantValue(defOp->getOperand(1));
+    if (!divisor || *divisor != innerDim)
+      return std::nullopt;
+    CudaTileAffineIndexExpr expr =
+        makeConstantAffineIndexExpr(kUnflattenedRank, 0);
+    expr.coeffs[1] = 1;
+    return expr;
+  }
+
+  if (isa<arith::AddIOp>(defOp)) {
+    auto lhs = matchFlat2DAffineIndexExpr(defOp->getOperand(0), innerDim);
+    auto rhs = matchFlat2DAffineIndexExpr(defOp->getOperand(1), innerDim);
+    if (!lhs || !rhs)
+      return std::nullopt;
+    return addAffineIndexExpr(*lhs, *rhs);
+  }
+
+  if (isa<arith::SubIOp>(defOp)) {
+    auto lhs = matchFlat2DAffineIndexExpr(defOp->getOperand(0), innerDim);
+    auto rhs = matchFlat2DAffineIndexExpr(defOp->getOperand(1), innerDim);
+    if (!lhs || !rhs)
+      return std::nullopt;
+    return addAffineIndexExpr(*lhs, scaleAffineIndexExpr(*rhs, -1));
+  }
+
+  if (isa<arith::MulIOp>(defOp)) {
+    if (std::optional<int64_t> lhsCst =
+            getIntegerConstantValue(defOp->getOperand(0))) {
+      auto rhs = matchFlat2DAffineIndexExpr(defOp->getOperand(1), innerDim);
+      if (!rhs)
+        return std::nullopt;
+      return scaleAffineIndexExpr(*rhs, *lhsCst);
+    }
+    if (std::optional<int64_t> rhsCst =
+            getIntegerConstantValue(defOp->getOperand(1))) {
+      auto lhs = matchFlat2DAffineIndexExpr(defOp->getOperand(0), innerDim);
+      if (!lhs)
+        return std::nullopt;
+      return scaleAffineIndexExpr(*lhs, *rhsCst);
+    }
+  }
+
+  return std::nullopt;
+}
+
+static bool affineIndicesAreInBounds(
+    ArrayRef<CudaTileAffineIndexExpr> sourceIndexExprs,
+    ArrayRef<int64_t> logicalShape, ArrayRef<int64_t> outputShape) {
+  if (logicalShape.size() != sourceIndexExprs.size())
+    return false;
+  if (llvm::any_of(logicalShape, ShapedType::isDynamic) ||
+      llvm::any_of(outputShape, ShapedType::isDynamic))
+    return false;
+
+  for (auto [sourceDim, expr] : llvm::enumerate(sourceIndexExprs)) {
+    int64_t minIndex = expr.constant;
+    int64_t maxIndex = expr.constant;
+    if (expr.coeffs.size() != outputShape.size())
+      return false;
+    for (auto [outDim, coeff] : llvm::enumerate(expr.coeffs)) {
+      int64_t maxOutIndex = outputShape[outDim] - 1;
+      if (coeff >= 0)
+        maxIndex += coeff * maxOutIndex;
+      else
+        minIndex += coeff * maxOutIndex;
+    }
+    if (minIndex < 0 || maxIndex >= logicalShape[sourceDim])
+      return false;
+  }
+  return true;
+}
+
+static Value concatenateOneElementTiles(CudaTileOpEmitter &e,
+                                        SmallVector<Value> pieces,
+                                        Type elemType) {
+  SmallVector<std::pair<Value, int64_t>> work;
+  work.reserve(pieces.size());
+  for (Value piece : pieces)
+    work.push_back({piece, 1});
+
+  while (work.size() > 1) {
+    SmallVector<std::pair<Value, int64_t>> next;
+    for (int64_t i = 0; i < static_cast<int64_t>(work.size()); i += 2) {
+      if (i + 1 == static_cast<int64_t>(work.size())) {
+        next.push_back(work[i]);
+        continue;
+      }
+      int64_t lhsSize = work[i].second;
+      int64_t rhsSize = work[i + 1].second;
+      int64_t resultSize = lhsSize + rhsSize;
+      Value combined = e.cat(work[i].first, work[i + 1].first, 0,
+                             {resultSize}, elemType);
+      next.push_back({combined, resultSize});
+    }
+    work = std::move(next);
+  }
+
+  return work.empty() ? Value() : work.front().first;
+}
+
+static Value emitTensorExtractAffineViewGather(
+    CudaTileOpEmitter &e, tensor::ExtractOp extractOp,
+    const CudaTileGatherSource &source, ArrayRef<int64_t> tileShape,
+    ArrayRef<Value> outputTileIndices, ArrayRef<int64_t> outputShape) {
+  int64_t sourceRank = extractOp.getIndices().size();
+  int64_t outputRank = outputShape.size();
+  if (outputRank == 0 || tileShape.size() != static_cast<size_t>(outputRank) ||
+      outputTileIndices.size() < static_cast<size_t>(outputRank))
+    return {};
+
+  SmallVector<int64_t> logicalShape = source.logicalShape;
+  if (logicalShape.empty())
+    logicalShape = getStaticShapeFromType(extractOp.getTensor().getType());
+  SmallVector<int64_t> physicalShape =
+      source.physicalShape.empty() ? logicalShape : source.physicalShape;
+  if (sourceRank == 0 ||
+      logicalShape.size() != static_cast<size_t>(sourceRank) ||
+      physicalShape.size() != static_cast<size_t>(sourceRank))
+    return {};
+  if (llvm::any_of(logicalShape, ShapedType::isDynamic) ||
+      llvm::any_of(physicalShape, ShapedType::isDynamic) ||
+      llvm::any_of(outputShape, ShapedType::isDynamic))
+    return {};
+
+  std::optional<SmallVector<int64_t>> loadOffsets =
+      normalizeStaticIndexList(source.loadOffsets, sourceRank, 0);
+  std::optional<SmallVector<int64_t>> loadStrides =
+      normalizeStaticIndexList(source.loadStrides, sourceRank, 1);
+  if (!loadOffsets || !loadStrides)
+    return {};
+
+  SmallVector<CudaTileAffineIndexExpr> sourceIndexExprs;
+  sourceIndexExprs.reserve(sourceRank);
+  for (Value index : extractOp.getIndices()) {
+    auto expr = matchAffineIndexExpr(index, outputRank);
+    if (!expr)
+      return {};
+    sourceIndexExprs.push_back(std::move(*expr));
+  }
+
+  if (!affineIndicesAreInBounds(sourceIndexExprs, logicalShape, outputShape))
+    return {};
+
+  SmallVector<int64_t> physicalStrides = computeRowMajorStrides(physicalShape);
+  SmallVector<int64_t> viewStrides(outputRank, 0);
+  int64_t baseOffset = 0;
+  for (int64_t sourceDim = 0; sourceDim < sourceRank; ++sourceDim) {
+    int64_t strideScale = (*loadStrides)[sourceDim] *
+                          physicalStrides[sourceDim];
+    baseOffset += ((*loadOffsets)[sourceDim] +
+                   (*loadStrides)[sourceDim] *
+                       sourceIndexExprs[sourceDim].constant) *
+                  physicalStrides[sourceDim];
+    for (int64_t outDim = 0; outDim < outputRank; ++outDim)
+      viewStrides[outDim] += sourceIndexExprs[sourceDim].coeffs[outDim] *
+                             strideScale;
+  }
+
+  // TensorView strides are the simplest robust lowering for affine gathers, but
+  // reverse/negative-stride gathers need a separate legality path.
+  if (baseOffset < 0 ||
+      llvm::any_of(viewStrides, [](int64_t stride) { return stride < 0; }))
+    return {};
+
+  Value basePtr = e.getArg(source.binding);
+  if (source.hasStaticByteOffset) {
+    basePtr =
+        offsetPtrByBytes(e, basePtr, source.elemType, source.byteOffset);
+  } else {
+    LLVM_DEBUG(llvm::dbgs()
+               << "[cuda_tile] affine gather source binding "
+               << source.binding
+               << " has dynamic byte offset; using base pointer\n");
+  }
+  if (baseOffset != 0)
+    basePtr = e.offsetPtr(basePtr, baseOffset);
+
+  auto view = e.makeTensorView(basePtr, outputShape, viewStrides,
+                               source.elemType);
+  auto partition = e.makePartitionView(view, tileShape, /*zeroPad=*/true);
+  auto [tile, token] =
+      e.loadViewTko(partition, outputTileIndices, tileShape, source.elemType);
+  return tile;
+}
+
+static Value emitTensorExtractFlat2DAffineViewGather(
+    CudaTileOpEmitter &e, tensor::ExtractOp extractOp,
+    const CudaTileGatherSource &source, ArrayRef<int64_t> tileShape,
+    ArrayRef<int64_t> outputShape) {
+  if (outputShape.size() != 1 || tileShape.size() != 1)
+    return {};
+  int64_t outputElementCount = outputShape[0];
+  int64_t flatTileCount = tileShape[0];
+  if (ShapedType::isDynamic(outputElementCount) || outputElementCount <= 0 ||
+      outputElementCount > flatTileCount || flatTileCount > 256)
+    return {};
+
+  int64_t sourceRank = extractOp.getIndices().size();
+  SmallVector<int64_t> logicalShape = source.logicalShape;
+  if (logicalShape.empty())
+    logicalShape = getStaticShapeFromType(extractOp.getTensor().getType());
+  SmallVector<int64_t> physicalShape =
+      source.physicalShape.empty() ? logicalShape : source.physicalShape;
+  if (sourceRank == 0 ||
+      logicalShape.size() != static_cast<size_t>(sourceRank) ||
+      physicalShape.size() != static_cast<size_t>(sourceRank))
+    return {};
+  if (llvm::any_of(logicalShape, ShapedType::isDynamic) ||
+      llvm::any_of(physicalShape, ShapedType::isDynamic))
+    return {};
+
+  std::optional<SmallVector<int64_t>> loadOffsets =
+      normalizeStaticIndexList(source.loadOffsets, sourceRank, 0);
+  std::optional<SmallVector<int64_t>> loadStrides =
+      normalizeStaticIndexList(source.loadStrides, sourceRank, 1);
+  if (!loadOffsets || !loadStrides)
+    return {};
+
+  for (int64_t innerDim = 1; innerDim <= outputElementCount; ++innerDim) {
+    if ((outputElementCount % innerDim) != 0)
+      continue;
+    SmallVector<int64_t> unflattenedOutputShape = {
+        outputElementCount / innerDim, innerDim};
+
+    SmallVector<CudaTileAffineIndexExpr> sourceIndexExprs;
+    sourceIndexExprs.reserve(sourceRank);
+    bool matched = true;
+    for (Value index : extractOp.getIndices()) {
+      auto expr = matchFlat2DAffineIndexExpr(index, innerDim);
+      if (!expr) {
+        matched = false;
+        break;
+      }
+      sourceIndexExprs.push_back(std::move(*expr));
+    }
+    if (!matched)
+      continue;
+    if (!affineIndicesAreInBounds(sourceIndexExprs, logicalShape,
+                                  unflattenedOutputShape))
+      continue;
+
+    SmallVector<int64_t> physicalStrides =
+        computeRowMajorStrides(physicalShape);
+    SmallVector<int64_t> viewStrides(2, 0);
+    int64_t baseOffset = 0;
+    for (int64_t sourceDim = 0; sourceDim < sourceRank; ++sourceDim) {
+      int64_t strideScale =
+          (*loadStrides)[sourceDim] * physicalStrides[sourceDim];
+      baseOffset += ((*loadOffsets)[sourceDim] +
+                     (*loadStrides)[sourceDim] *
+                         sourceIndexExprs[sourceDim].constant) *
+                    physicalStrides[sourceDim];
+      for (int64_t outDim = 0; outDim < 2; ++outDim)
+        viewStrides[outDim] +=
+            sourceIndexExprs[sourceDim].coeffs[outDim] * strideScale;
+    }
+    if (baseOffset < 0 ||
+        llvm::any_of(viewStrides,
+                     [](int64_t stride) { return stride < 0; }))
+      continue;
+
+    SmallVector<int64_t> viewTileShape = {
+        nextPow2(unflattenedOutputShape[0]),
+        nextPow2(unflattenedOutputShape[1])};
+    int64_t viewFlatCount = viewTileShape[0] * viewTileShape[1];
+    if (viewFlatCount > 256)
+      continue;
+
+    Value basePtr = e.getArg(source.binding);
+    if (source.hasStaticByteOffset) {
+      basePtr =
+          offsetPtrByBytes(e, basePtr, source.elemType, source.byteOffset);
+    } else {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "[cuda_tile] flat affine gather source binding "
+                 << source.binding
+                 << " has dynamic byte offset; using base pointer\n");
+    }
+    if (baseOffset != 0)
+      basePtr = e.offsetPtr(basePtr, baseOffset);
+
+    auto view = e.makeTensorView(basePtr, unflattenedOutputShape,
+                                 viewStrides, source.elemType);
+    auto partition = e.makePartitionView(view, viewTileShape,
+                                         /*zeroPad=*/true);
+    auto [viewTile, token] =
+        e.loadViewTko(partition, {e.constI32(0), e.constI32(0)},
+                      viewTileShape, source.elemType);
+    Value flatViewTile = e.reshape(viewTile, {viewFlatCount},
+                                   source.elemType);
+
+    SmallVector<Value> pieces;
+    pieces.reserve(flatTileCount);
+    Value zeroPiece = e.constSplat({1}, source.elemType, 0.0);
+    for (int64_t lane = 0; lane < flatTileCount; ++lane) {
+      if (lane >= outputElementCount) {
+        pieces.push_back(zeroPiece);
+        continue;
+      }
+      int64_t row = lane / innerDim;
+      int64_t col = lane % innerDim;
+      int64_t sourceLane = row * viewTileShape[1] + col;
+      pieces.push_back(e.extractSubtile(flatViewTile, {1}, source.elemType,
+                                        {e.constI32(sourceLane)}));
+    }
+    return concatenateOneElementTiles(e, std::move(pieces),
+                                      source.elemType);
+  }
+
+  return {};
+}
+
+static Value emitTensorExtractGather(
+    CudaTileOpEmitter &e, tensor::ExtractOp extractOp,
+    DenseMap<Value, Value> &bodyMap,
+    ArrayRef<int64_t> tileShape, ArrayRef<Value> outputTileIndices,
+    ArrayRef<int64_t> outputShape,
+    ArrayRef<CudaTileGatherSource> gatherSources) {
+  const CudaTileGatherSource *source =
+      findGatherSource(gatherSources, extractOp.getTensor());
+  if (!source || source->binding < 0 || !source->elemType)
+    return {};
+
+  if (Value affineTile = emitTensorExtractAffineViewGather(
+          e, extractOp, *source, tileShape, outputTileIndices, outputShape))
+    return affineTile;
+  if (Value flatAffineTile = emitTensorExtractFlat2DAffineViewGather(
+          e, extractOp, *source, tileShape, outputShape))
+    return flatAffineTile;
+
+  int64_t rank = extractOp.getIndices().size();
+  SmallVector<int64_t> logicalShape = source->logicalShape;
+  if (logicalShape.empty())
+    logicalShape = getStaticShapeFromType(extractOp.getTensor().getType());
+  SmallVector<int64_t> physicalShape = source->physicalShape.empty()
+                                           ? logicalShape
+                                           : source->physicalShape;
+  if (rank == 0 || logicalShape.size() != static_cast<size_t>(rank) ||
+      physicalShape.size() != static_cast<size_t>(rank))
+    return {};
+  if (llvm::any_of(logicalShape, ShapedType::isDynamic) ||
+      llvm::any_of(physicalShape, ShapedType::isDynamic))
+    return {};
+
+  std::optional<SmallVector<int64_t>> loadOffsets =
+      normalizeStaticIndexList(source->loadOffsets, rank, 0);
+  std::optional<SmallVector<int64_t>> loadStrides =
+      normalizeStaticIndexList(source->loadStrides, rank, 1);
+  if (!loadOffsets || !loadStrides)
+    return {};
+
+  SmallVector<Value> indexTiles;
+  for (Value index : extractOp.getIndices()) {
+    Value indexTile =
+        resolveCudaTileIndexOperand(e, index, bodyMap, tileShape);
+    if (!indexTile)
+      return {};
+    indexTiles.push_back(indexTile);
+  }
+
+  Type i32Type = e.builder().getI32Type();
+  SmallVector<int64_t> physicalStrides = computeRowMajorStrides(physicalShape);
+  int64_t baseOffset = 0;
+  for (int64_t dim = 0; dim < rank; ++dim)
+    baseOffset += (*loadOffsets)[dim] * physicalStrides[dim];
+
+  Value linearOffset = e.constSplat(tileShape, i32Type, baseOffset);
+  for (int64_t dim = 0; dim < rank; ++dim) {
+    int64_t coeff = (*loadStrides)[dim] * physicalStrides[dim];
+    if (coeff == 0)
+      continue;
+
+    Value term = indexTiles[dim];
+    if (coeff != 1) {
+      Value coeffTile = e.constSplat(tileShape, i32Type, coeff);
+      term = e.emitElementwise("muli", {term, coeffTile});
+    }
+    linearOffset = e.emitElementwise("addi", {linearOffset, term});
+  }
+
+  int64_t physicalElementCount = 1;
+  for (int64_t dim : physicalShape)
+    physicalElementCount *= dim;
+  if (physicalElementCount > 0) {
+    Value minOffset = e.constSplat(tileShape, i32Type, 0.0);
+    Value maxOffset =
+        e.constSplat(tileShape, i32Type, physicalElementCount - 1);
+    linearOffset = e.emitElementwise("maxi", {linearOffset, minOffset});
+    linearOffset = e.emitElementwise("mini", {linearOffset, maxOffset});
+  }
+
+  Value basePtr = e.getArg(source->binding);
+  if (source->hasStaticByteOffset) {
+    basePtr =
+        offsetPtrByBytes(e, basePtr, source->elemType, source->byteOffset);
+  } else {
+    LLVM_DEBUG(llvm::dbgs()
+               << "[cuda_tile] gather source binding " << source->binding
+               << " has dynamic byte offset; using base pointer\n");
+  }
+
+  auto ptrType = cuda_tile::PointerType::get(e.getContext(), source->elemType);
+  Value ptrTile = e.broadcastScalarToTile(basePtr, tileShape, ptrType);
+  Value gatherPtrs = e.offsetPtrTile(ptrTile, linearOffset);
+  auto [tile, token] =
+      e.loadPtrTko(gatherPtrs, tileShape, source->elemType, Value(), Value());
+  return tile;
+}
+
 static Value emitElementwiseGenericBody(CudaTileOpEmitter &e,
                                         linalg::GenericOp genericOp,
                                         ArrayRef<Value> inputTiles,
                                         ArrayRef<int64_t> tileShape,
-                                        Type elemType, Value fallback) {
+                                        Type elemType, Value fallback,
+                                        ArrayRef<Value> outputTileIndices = {},
+                                        ArrayRef<int64_t> outputShape = {},
+                                        ArrayRef<CudaTileGatherSource>
+                                            gatherSources = {}) {
   Block &body = genericOp.getRegion().front();
   DenseMap<Value, Value> bodyMap;
 
@@ -936,6 +1868,29 @@ static Value emitElementwiseGenericBody(CudaTileOpEmitter &e,
 
   Value current = fallback;
   for (Operation &op : body.without_terminator()) {
+    if (auto indexOp = dyn_cast<linalg::IndexOp>(&op)) {
+      int64_t dim = indexOp.getDim();
+      if (dim >= 0 && dim < (int64_t)tileShape.size() &&
+          dim < (int64_t)outputTileIndices.size()) {
+        Value result = e.globalIndexTile(tileShape, dim,
+                                         outputTileIndices[dim]);
+        bodyMap[indexOp.getResult()] = result;
+        current = result;
+      }
+      continue;
+    }
+
+    if (auto extractOp = dyn_cast<tensor::ExtractOp>(&op)) {
+      if (Value result =
+              emitTensorExtractGather(e, extractOp, bodyMap, tileShape,
+                                      outputTileIndices, outputShape,
+                                      gatherSources)) {
+        bodyMap[extractOp.getResult()] = result;
+        current = result;
+      }
+      continue;
+    }
+
     if (auto cmpOp = dyn_cast<arith::CmpFOp>(&op)) {
       SmallVector<Value> opInputs;
       if (resolveCudaTileBodyOperands(e, &op, bodyMap, tileShape, elemType,
@@ -957,6 +1912,70 @@ static Value emitElementwiseGenericBody(CudaTileOpEmitter &e,
         Value result = e.emitCmpI(cmpOp.getPredicate(), opInputs[0],
                                   opInputs[1]);
         bodyMap[op.getResult(0)] = result;
+        current = result;
+      }
+      continue;
+    }
+
+    if (isa<arith::IndexCastOp, arith::IndexCastUIOp>(&op)) {
+      SmallVector<Value> opInputs;
+      if (resolveCudaTileBodyOperands(e, &op, bodyMap, tileShape, elemType,
+                                      opInputs) &&
+          opInputs.size() == 1) {
+        bodyMap[op.getResult(0)] = opInputs[0];
+        current = opInputs[0];
+      }
+      continue;
+    }
+
+    if (auto sitofpOp = dyn_cast<arith::SIToFPOp>(&op)) {
+      SmallVector<Value> opInputs;
+      if (resolveCudaTileBodyOperands(e, &op, bodyMap, tileShape, elemType,
+                                      opInputs) &&
+          opInputs.size() == 1) {
+        Value result = e.emitIToF(opInputs[0], tileShape, elemType);
+        bodyMap[sitofpOp.getResult()] = result;
+        current = result;
+      }
+      continue;
+    }
+
+    if (auto divOp = dyn_cast<arith::DivSIOp>(&op)) {
+      SmallVector<Value> opInputs;
+      if (resolveCudaTileBodyOperands(e, &op, bodyMap, tileShape, elemType,
+                                      opInputs) &&
+          opInputs.size() == 2) {
+        Value result = e.emitDivI(opInputs[0], opInputs[1],
+                                  cuda_tile::Signedness::Signed,
+                                  cuda_tile::RoundingMode::ZERO);
+        bodyMap[divOp.getResult()] = result;
+        current = result;
+      }
+      continue;
+    }
+
+    if (auto divOp = dyn_cast<arith::FloorDivSIOp>(&op)) {
+      SmallVector<Value> opInputs;
+      if (resolveCudaTileBodyOperands(e, &op, bodyMap, tileShape, elemType,
+                                      opInputs) &&
+          opInputs.size() == 2) {
+        Value result = e.emitDivI(opInputs[0], opInputs[1],
+                                  cuda_tile::Signedness::Signed,
+                                  cuda_tile::RoundingMode::NEGATIVE_INF);
+        bodyMap[divOp.getResult()] = result;
+        current = result;
+      }
+      continue;
+    }
+
+    if (auto remOp = dyn_cast<arith::RemSIOp>(&op)) {
+      SmallVector<Value> opInputs;
+      if (resolveCudaTileBodyOperands(e, &op, bodyMap, tileShape, elemType,
+                                      opInputs) &&
+          opInputs.size() == 2) {
+        Value result =
+            e.emitRemI(opInputs[0], opInputs[1], cuda_tile::Signedness::Signed);
+        bodyMap[remOp.getResult()] = result;
         current = result;
       }
       continue;
@@ -1044,14 +2063,18 @@ static KernelBoilerplate
 emitKernelBoilerplate(CudaTileOpEmitter &e, StringRef kernelName,
                       int64_t numArgs, ArrayRef<int64_t> shape,
                       ArrayRef<int64_t> strides, ArrayRef<int64_t> tileShape,
-                      Type elemType) {
+                      Type elemType,
+                      ArrayRef<CudaTileBindingPlan> bindings = {}) {
   KernelBoilerplate bp;
 
   e.beginModule(kernelName);
   e.beginEntry("main", numArgs, elemType);
 
   for (int64_t i = 0; i < numArgs; ++i) {
-    auto tv = e.makeTensorView(e.getArg(i), shape, strides, elemType);
+    Value ptr = bindings.empty()
+                    ? e.getArg(i)
+                    : getBindingArg(e, bindings, i, elemType);
+    auto tv = e.makeTensorView(ptr, shape, strides, elemType);
     auto pv = e.makePartitionView(tv, tileShape);
     bp.partViews.push_back(pv);
   }
@@ -1340,16 +2363,17 @@ generateReduceKernel(MLIRContext *ctx, StringRef kernelName,
   int64_t reduceDim = reduceDims.empty() ? srcShape.size() - 1 : reduceDims[0];
 
   // Tile shape: keep full reduce dim, tile non-reduce dims.
+  // All dimensions must be power-of-2 for cuda_tile.
   SmallVector<int64_t> inputTileShape;
   for (size_t i = 0; i < srcShape.size(); ++i) {
     if ((int64_t)i == reduceDim) {
-      inputTileShape.push_back(srcShape[i]); // full reduce dim
+      inputTileShape.push_back(nextPow2(srcShape[i]));
     } else if (i == srcShape.size() - 1) {
-      inputTileShape.push_back(std::min(tileN, srcShape[i]));
+      inputTileShape.push_back(nextPow2(std::min(tileN, srcShape[i])));
     } else if (i == srcShape.size() - 2) {
-      inputTileShape.push_back(std::min(tileM, srcShape[i]));
+      inputTileShape.push_back(nextPow2(std::min(tileM, srcShape[i])));
     } else {
-      inputTileShape.push_back(srcShape[i]);
+      inputTileShape.push_back(nextPow2(srcShape[i]));
     }
   }
 
@@ -1366,12 +2390,27 @@ generateReduceKernel(MLIRContext *ctx, StringRef kernelName,
   auto gridDims = computeGridDims(
       dstShape.empty() ? ArrayRef<int64_t>{1} : dstShape, outputTileShape);
 
+  LLVM_DEBUG({
+    llvm::dbgs() << "[cuda_tile] reduce kernel=" << kernelName
+                 << " srcShape=[";
+    llvm::interleaveComma(srcShape, llvm::dbgs());
+    llvm::dbgs() << "] dstShape=[";
+    llvm::interleaveComma(dstShape, llvm::dbgs());
+    llvm::dbgs() << "] reduceDim=" << reduceDim << " combiner=" << combiner
+                 << " inputTile=[";
+    llvm::interleaveComma(inputTileShape, llvm::dbgs());
+    llvm::dbgs() << "] outputTile=[";
+    llvm::interleaveComma(outputTileShape, llvm::dbgs());
+    llvm::dbgs() << "]\n";
+  });
+
   e.beginModule(kernelName);
   e.beginEntry("main", 2, elemType); // input + output bindings
 
   auto srcStrides = computeRowMajorStrides(srcShape);
   auto srcView = e.makeTensorView(e.getArg(0), srcShape, srcStrides, elemType);
-  auto srcPart = e.makePartitionView(srcView, inputTileShape);
+  bool needReducePad = (inputTileShape[reduceDim] != srcShape[reduceDim]);
+  auto srcPart = e.makePartitionView(srcView, inputTileShape, needReducePad);
 
   auto dstStrides = computeRowMajorStrides(
       dstShape.empty() ? ArrayRef<int64_t>{1} : dstShape);
@@ -1520,7 +2559,8 @@ generateConv2DKernel(MLIRContext *ctx, StringRef kernelName,
                                      strideW * Cin, 1};
       auto vA = e.makeTensorView(inputPtr, shA4, stA4, elemType);
       SmallVector<int64_t> tileA4 = {1, tOH, tOW, tK};
-      auto pA = e.makePartitionView(vA, tileA4);
+      bool needKPad = (Cin % tK) != 0;
+      auto pA = e.makePartitionView(vA, tileA4, needKPad);
 
       // Filter slice at (kh, kw): logical [C_in, C_out].
       // HWIO: offset = (kh*KW+kw)*Cin*Cout, strides = [Cout, 1]
@@ -1534,7 +2574,7 @@ generateConv2DKernel(MLIRContext *ctx, StringRef kernelName,
                  : SmallVector<int64_t>{Cout, 1};
       auto vB = e.makeTensorView(filterPtr, shB, stB, elemType);
       SmallVector<int64_t> tB = {tK, tOC};
-      auto pB = e.makePartitionView(vB, tB);
+      auto pB = e.makePartitionView(vB, tB, needKPad);
 
       // Inner loop over K (C_in) reduction.
       // For small Cin, this may be just 1 iteration.
@@ -1756,13 +2796,14 @@ generateStridedPointwiseMatmul2DKernel(
   SmallVector<int64_t> tileA =
       hasBatch ? SmallVector<int64_t>{1, tOH, tOW, tK}
                : SmallVector<int64_t>{tOH, tOW, tK};
-  auto pA = e.makePartitionView(vA, tileA);
+  bool needKPad = (K % tK) != 0;
+  auto pA = e.makePartitionView(vA, tileA, needKPad);
 
   SmallVector<int64_t> shB = {bShape[0], bShape[1]};
   SmallVector<int64_t> stB = {bShape[1], 1};
   SmallVector<int64_t> tileB = {tK, tN};
   auto vB = e.makeTensorView(e.getArg(bindB), shB, stB, elemType);
-  auto pB = e.makePartitionView(vB, tileB);
+  auto pB = e.makePartitionView(vB, tileB, needKPad);
 
   auto [bx, by, bz] = e.getTileBlockId();
   Value batchId = bz;
@@ -1821,6 +2862,10 @@ using CudaTileKernelBinary =
 static FailureOr<CudaTileKernelBinary>
 serializeCudaTileKernel(CudaTileOpEmitter &&e,
                         SmallVector<int64_t, 3> gridDims) {
+  if (std::getenv("IREE_CUDA_TILE_DUMP_TILE_IR")) {
+    e.getModule().print(llvm::errs());
+    llvm::errs() << "\n";
+  }
   std::string tilebcData;
   if (failed(e.serialize(tilebcData)))
     return failure();
@@ -1959,9 +3004,31 @@ emitDataMovementKernel(MLIRContext *ctx, StringRef kernelName,
 static FailureOr<CudaTileKernelBinary>
 emitReductionKernel(MLIRContext *ctx, StringRef kernelName,
                     const CudaTileKernelPlan &plan, Operation *primaryOp,
-                    ArrayRef<int64_t> srcShape, ArrayRef<int64_t> dstShape,
+                    ArrayRef<int64_t> srcShapeIn, ArrayRef<int64_t> dstShapeIn,
                     Type elemType, int64_t tileM, int64_t tileN) {
   LLVM_DEBUG(llvm::dbgs() << "[cuda_tile]   entering reduce path\n");
+
+  SmallVector<int64_t> srcShape(srcShapeIn);
+  SmallVector<int64_t> dstShape(dstShapeIn);
+  if (auto genericOp = dyn_cast<linalg::GenericOp>(primaryOp)) {
+    auto inType = dyn_cast<RankedTensorType>(
+        genericOp.getDpsInputs()[0].getType());
+    auto outType = dyn_cast<RankedTensorType>(
+        genericOp.getDpsInits()[0].getType());
+    if (inType)
+      srcShape.assign(inType.getShape().begin(), inType.getShape().end());
+    if (outType)
+      dstShape.assign(outType.getShape().begin(), outType.getShape().end());
+  }
+
+  int64_t srcElems = 1, dstElems = 1;
+  for (auto d : srcShape)
+    srcElems *= d;
+  for (auto d : dstShape)
+    dstElems *= d;
+  if (srcElems <= dstElems && srcShape.size() <= dstShape.size())
+    return failure();
+
   auto combinerAttr =
       primaryOp->getAttrOfType<StringAttr>("cuda_tile.combiner");
   StringRef combiner = combinerAttr ? combinerAttr.getValue() : "addf";
@@ -2035,6 +3102,235 @@ emitPoolingKernel(MLIRContext *ctx, StringRef kernelName,
       convPlan.windowShape, convPlan.strides, convPlan.dilations,
       convPlan.combiner, elemType, tileM, tileN, convPlan.isNCHW);
   return serializeCudaTileKernel(std::move(e), std::move(grid));
+}
+
+struct IdentityAdaptiveAvgPoolPlan {
+  int64_t inputBinding = -1;
+  int64_t sumBinding = -1;
+  int64_t countBinding = -1;
+  int64_t numBindings = 0;
+  int64_t inputByteOffset = 0;
+  int64_t sumByteOffset = 0;
+  int64_t countByteOffset = 0;
+
+  int64_t channels = 0;
+  int64_t inputH = 0;
+  int64_t inputW = 0;
+  int64_t outputH = 0;
+  int64_t outputW = 0;
+
+  Type elemType;
+};
+
+static bool isAllowedIdentityPoolIndexConstant(int64_t value, int64_t outputH,
+                                               int64_t outputW) {
+  return value == 0 || value == 1 || value == 2 || value == outputH ||
+         value == outputW;
+}
+
+static bool bodyLooksLikeIdentityAdaptiveAvgPool(linalg::GenericOp genericOp,
+                                                 int64_t outputH,
+                                                 int64_t outputW) {
+  if (genericOp.getNumDpsInputs() != 1 || genericOp.getNumDpsInits() != 2)
+    return false;
+  if (genericOp.getNumParallelLoops() != 2 ||
+      genericOp.getNumReductionLoops() != 1)
+    return false;
+
+  bool sawIndex = false;
+  bool sawExtract = false;
+  bool sawCountCast = false;
+  Block &body = genericOp.getRegion().front();
+  for (Operation &op : body.without_terminator()) {
+    sawIndex |= isa<linalg::IndexOp>(&op);
+    sawExtract |= isa<tensor::ExtractOp>(&op);
+    sawCountCast |= isa<arith::SIToFPOp>(&op);
+
+    for (Value operand : op.getOperands()) {
+      auto cst = operand.getDefiningOp<arith::ConstantOp>();
+      if (!cst || !operand.getType().isIndex())
+        continue;
+      auto intAttr = dyn_cast<IntegerAttr>(cst.getValue());
+      if (!intAttr)
+        continue;
+      int64_t value = intAttr.getInt();
+      if (!isAllowedIdentityPoolIndexConstant(value, outputH, outputW))
+        return false;
+    }
+  }
+
+  auto yieldOp = dyn_cast<linalg::YieldOp>(body.getTerminator());
+  return sawIndex && sawExtract && sawCountCast && yieldOp &&
+         yieldOp.getNumOperands() == 2;
+}
+
+static FailureOr<IdentityAdaptiveAvgPoolPlan>
+matchIdentityAdaptiveAvgPoolDispatch(const CudaTileKernelPlan &plan) {
+  auto debugFailure = [](StringRef reason)
+      -> FailureOr<IdentityAdaptiveAvgPoolPlan> {
+    LLVM_DEBUG(llvm::dbgs()
+               << "[cuda_tile]   identity adaptive avg pool miss: " << reason
+               << "\n");
+    return failure();
+  };
+
+  auto genericOp = dyn_cast_or_null<linalg::GenericOp>(plan.primaryOp);
+  if (!genericOp)
+    return debugFailure("primary op is not linalg.generic");
+
+  SmallVector<const CudaTileOperandPlan *> loads;
+  SmallVector<const CudaTileOperandPlan *> stores;
+  for (const CudaTileOperandPlan &operand : plan.operands) {
+    if (operand.isDispatchLoad)
+      loads.push_back(&operand);
+    if (operand.isDispatchStore)
+      stores.push_back(&operand);
+  }
+  if (loads.size() != 1 || stores.size() != 2)
+    return debugFailure("expected one dispatch load and two dispatch stores");
+
+  const CudaTileOperandPlan *input = loads.front();
+  const CudaTileOperandPlan *sum = nullptr;
+  const CudaTileOperandPlan *count = nullptr;
+  for (const CudaTileOperandPlan *store : stores) {
+    if (store->logicalShape.size() == 2)
+      sum = store;
+    else if (store->logicalShape.size() == 1)
+      count = store;
+  }
+  if (!sum || !count)
+    return debugFailure("could not identify sum/count outputs");
+
+  ArrayRef<int64_t> inputShape = input->physicalShape;
+  ArrayRef<int64_t> sumShape = sum->logicalShape;
+  ArrayRef<int64_t> countShape = count->logicalShape;
+  if (inputShape.size() != 3 || sumShape.size() != 2 ||
+      countShape.size() != 1)
+    return debugFailure("unexpected input/output ranks");
+  if (inputShape[0] != sumShape[0] || sumShape[1] != countShape[0])
+    return debugFailure("sum/count shapes are not compatible");
+
+  int64_t channels = inputShape[0];
+  int64_t spatial = sumShape[1];
+  int64_t inputH = inputShape[1];
+  int64_t inputW = inputShape[2];
+  int64_t outputH = -1;
+  int64_t outputW = -1;
+  if (inputH > 1 && inputW > 1 && (inputH - 1) * (inputW - 1) == spatial) {
+    outputH = inputH - 1;
+    outputW = inputW - 1;
+  } else if (inputH * inputW == spatial) {
+    outputH = inputH;
+    outputW = inputW;
+  } else {
+    return debugFailure("output spatial size does not match identity pool");
+  }
+
+  if (!bodyLooksLikeIdentityAdaptiveAvgPool(genericOp, outputH, outputW))
+    return debugFailure("body does not match identity pool shape/count pattern");
+
+  Type elemType = getElementTypeFromType(input->value.getType());
+  if (!elemType)
+    elemType = getElementTypeFromType(sum->value.getType());
+  if (!elemType || !isa<FloatType>(elemType))
+    return debugFailure("could not infer floating-point element type");
+
+  IdentityAdaptiveAvgPoolPlan poolPlan;
+  poolPlan.inputBinding = input->binding;
+  poolPlan.sumBinding = sum->binding;
+  poolPlan.countBinding = count->binding;
+  poolPlan.numBindings = getNumBindingArgs(plan.bindingShapes);
+  if (const CudaTileBindingPlan *binding =
+          findBindingPlan(plan.bindingShapes, input->binding))
+    poolPlan.inputByteOffset = binding->byteOffset;
+  if (const CudaTileBindingPlan *binding =
+          findBindingPlan(plan.bindingShapes, sum->binding))
+    poolPlan.sumByteOffset = binding->byteOffset;
+  if (const CudaTileBindingPlan *binding =
+          findBindingPlan(plan.bindingShapes, count->binding))
+    poolPlan.countByteOffset = binding->byteOffset;
+  poolPlan.channels = channels;
+  poolPlan.inputH = inputH;
+  poolPlan.inputW = inputW;
+  poolPlan.outputH = outputH;
+  poolPlan.outputW = outputW;
+  poolPlan.elemType = elemType;
+  LLVM_DEBUG(llvm::dbgs()
+             << "[cuda_tile]   matched identity adaptive avg pool C="
+             << channels << " input=[" << inputH << "," << inputW
+             << "] output=[" << outputH << "," << outputW << "]\n");
+  return poolPlan;
+}
+
+static std::pair<CudaTileOpEmitter, SmallVector<int64_t, 3>>
+generateIdentityAdaptiveAvgPoolKernel(MLIRContext *ctx, StringRef kernelName,
+                                      const IdentityAdaptiveAvgPoolPlan &plan,
+                                      int64_t tileM, int64_t tileN) {
+  int64_t tH = nextPow2(std::min(tileM, plan.outputH));
+  int64_t tW = nextPow2(std::min(tileN, plan.outputW));
+  constexpr int64_t kMaxTileElements = 16 * 1024;
+  int64_t maxChannelsPerTile = std::max<int64_t>(1, kMaxTileElements / (tH * tW));
+  int64_t tC = nextPow2(std::min(plan.channels, maxChannelsPerTile));
+
+  SmallVector<int64_t> logicalShape = {plan.channels, plan.outputH,
+                                       plan.outputW};
+  SmallVector<int64_t> inputStrides = {plan.inputH * plan.inputW,
+                                       plan.inputW, 1};
+  SmallVector<int64_t> outputStrides = {plan.outputH * plan.outputW,
+                                        plan.outputW, 1};
+  SmallVector<int64_t> countShape = {plan.outputH, plan.outputW};
+  SmallVector<int64_t> countStrides = {plan.outputW, 1};
+  SmallVector<int64_t> tile3D = {tC, tH, tW};
+  SmallVector<int64_t> tile2D = {tH, tW};
+  SmallVector<int64_t, 3> gridDims = {
+      (plan.outputW + tW - 1) / tW,
+      (plan.outputH + tH - 1) / tH,
+      (plan.channels + tC - 1) / tC};
+
+  CudaTileOpEmitter e(ctx);
+  e.beginModule(kernelName);
+  e.beginEntry("main", plan.numBindings, plan.elemType);
+
+  Value inputPtr = offsetPtrByBytes(e, e.getArg(plan.inputBinding),
+                                    plan.elemType, plan.inputByteOffset);
+  auto inputView = e.makeTensorView(inputPtr, logicalShape, inputStrides,
+                                    plan.elemType);
+  auto inputPart = e.makePartitionView(inputView, tile3D, /*zeroPad=*/true);
+
+  Value sumPtr = offsetPtrByBytes(e, e.getArg(plan.sumBinding), plan.elemType,
+                                  plan.sumByteOffset);
+  auto sumView = e.makeTensorView(sumPtr, logicalShape, outputStrides,
+                                  plan.elemType);
+  auto sumPart = e.makePartitionView(sumView, tile3D);
+
+  Value countPtr = offsetPtrByBytes(e, e.getArg(plan.countBinding),
+                                    plan.elemType, plan.countByteOffset);
+  auto countView = e.makeTensorView(countPtr, countShape, countStrides,
+                                    plan.elemType);
+  auto countPart = e.makePartitionView(countView, tile2D);
+
+  auto [bx, by, bz] = e.getTileBlockId();
+  SmallVector<Value> indices3D =
+      buildNDIndices(e, logicalShape, tile3D, bx, by, bz);
+  auto [tile, token] =
+      e.loadViewTko(inputPart, indices3D, tile3D, plan.elemType);
+  e.storeViewTko(tile, sumPart, indices3D);
+
+  Value one = e.constSplat(tile2D, plan.elemType, 1.0);
+  SmallVector<Value> countIndices = {indices3D[1], indices3D[2]};
+  if (gridDims[2] == 1) {
+    e.storeViewTko(one, countPart, countIndices);
+  } else {
+    Value isFirstChannelTile =
+        e.emitCmpI(arith::CmpIPredicate::eq, bz, e.constI32(0));
+    auto ifOp = e.beginIf(isFirstChannelTile);
+    e.storeViewTko(one, countPart, countIndices);
+    e.endIf(ifOp);
+  }
+
+  e.emitReturn();
+  e.endEntry();
+  return {std::move(e), gridDims};
 }
 
 struct CudaTileMatmulEmissionPlan {
@@ -2152,15 +3448,14 @@ static CudaTileMatmulEmissionPlan buildMatmulEmissionPlan(
   emissionPlan.tileK =
       nextPow2(std::min(contractionTileK, emissionPlan.k));
 
-  int64_t numBindings = 0;
-  innerModule->walk([&](Operation *op) {
-    if (op->getName().getStringRef() == "hal.interface.binding.subspan")
-      numBindings++;
-  });
-  if (numBindings == 0)
-    numBindings = 3;
+  int64_t numBindings = bindingShapes.empty()
+                            ? int64_t{3}
+                            : static_cast<int64_t>(bindingShapes.size());
+  int64_t actualNumBindings = getNumBindingArgs(bindingShapes);
+  if (actualNumBindings == 0)
+    actualNumBindings = numBindings;
   emissionPlan.numBindings = numBindings;
-  emissionPlan.actualNumBindings = numBindings;
+  emissionPlan.actualNumBindings = actualNumBindings;
 
   innerModule->walk([&](Operation *op) {
     if (op->getName().getStringRef() !=
@@ -2214,7 +3509,7 @@ static CudaTileMatmulEmissionPlan buildMatmulEmissionPlan(
   if (bindA < 0)
     bindA = 0;
   if (bindC < 0)
-    bindC = numBindings - 1;
+    bindC = actualNumBindings - 1;
 
   Value weightConstant = contractionPlan.constantRhs;
   if (bindB < 0) {
@@ -2330,7 +3625,8 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
                  << " semantic=" << (int)plan.semanticKind
                  << " lowering="
                  << stringifyCudaTileLoweringStrategy(loweringStrategy)
-                 << " bindings=" << plan.bindingShapes.size() << "\n";
+                 << " binding_args=" << getNumBindingArgs(plan.bindingShapes)
+                 << " subspans=" << plan.bindingShapes.size() << "\n";
   });
 
   int64_t tileM = plan.schedule.tileM ? plan.schedule.tileM : options.tileM;
@@ -2338,7 +3634,16 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
   int64_t tileK = plan.schedule.tileK ? plan.schedule.tileK : options.tileK;
 
   auto &bindingShapes = plan.bindingShapes;
+  SmallVector<CudaTileGatherSource, 4> gatherSources =
+      buildGatherSources(plan);
   int genericOpCount = plan.genericOpCount;
+
+  auto poolPlan = matchIdentityAdaptiveAvgPoolDispatch(plan);
+  if (succeeded(poolPlan)) {
+    auto [e, grid] = generateIdentityAdaptiveAvgPoolKernel(
+        ctx, kernelName, *poolPlan, tileM, tileN);
+    return serializeCudaTileKernel(std::move(e), std::move(grid));
+  }
 
   // Multi-op fused dispatches.
   if (taggedOpCount > 1 || genericOpCount > 1) {
@@ -2609,9 +3914,12 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
           gridDims[2] = batchTiles;
         }
 
-        int64_t numBindings = bindingShapes.size();
+        int64_t numSubspans = bindingShapes.size();
+        int64_t numBindings = getNumBindingArgs(bindingShapes);
         if (numBindings < 2)
           numBindings = 2;
+        if (numSubspans == 0)
+          numSubspans = numBindings;
 
         CudaTileOpEmitter e(ctx);
         e.beginModule(kernelName);
@@ -2620,7 +3928,7 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
         // Create per-binding views (handles broadcast shapes).
         SmallVector<Value> partViews;
         SmallVector<SmallVector<int64_t>> bindTileShapes;
-        for (int64_t i = 0; i < numBindings; ++i) {
+        for (int64_t i = 0; i < numSubspans; ++i) {
           auto bShape =
               (i < (int64_t)bindingShapes.size() &&
                !bindingShapes[i].shape.empty())
@@ -2639,8 +3947,10 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
                   std::min(d == (int64_t)bShape.size() - 1 ? tileN : tileM,
                            bShape[d]));
           }
-          auto tv =
-              e.makeTensorView(e.getArg(i), bShape, bStrides, elemType);
+          Value ptr = i < (int64_t)bindingShapes.size()
+                          ? getSubspanArg(e, bindingShapes[i], elemType)
+                          : e.getArg(i);
+          auto tv = e.makeTensorView(ptr, bShape, bStrides, elemType);
           auto pv = e.makePartitionView(tv, bTile);
           partViews.push_back(pv);
           bindTileShapes.push_back(bTile);
@@ -3014,9 +4324,13 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
   //=== Phase 3b: Reductions ===//
 
   if (loweringStrategy == CudaTileLoweringStrategy::Reduction ||
-      semanticKind == CudaTileSemanticKind::Reduction)
-    return emitReductionKernel(ctx, kernelName, plan, primaryOp, srcShape,
-                               dstShape, elemType, tileM, tileN);
+      semanticKind == CudaTileSemanticKind::Reduction) {
+    auto result = emitReductionKernel(ctx, kernelName, plan, primaryOp,
+                                      srcShape, dstShape, elemType, tileM,
+                                      tileN);
+    if (succeeded(result))
+      return result;
+  }
 
   //=== Phase 4: Contractions ===//
 
@@ -3078,7 +4392,8 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     SmallVector<int64_t> shA2 = {M, K}, shC2 = {M, N};
     SmallVector<int64_t> stA = {K, 1}, stC = {N, 1};
 
-    auto vA = e.makeTensorView(e.getArg(bindA), shA2, stA, elemType);
+    auto ptrA = getBindingArg(e, plan.bindingShapes, bindA, elemType);
+    auto vA = e.makeTensorView(ptrA, shA2, stA, elemType);
 
     // When B is transposed (PyTorch [N,K]), use physical shape [N,K]
     // and permute loaded tiles to [K,N] before mmaf.
@@ -3094,14 +4409,29 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     }
     Value pBv; // partition view for B (or null if B is a constant)
     if (bindB >= 0) {
-      auto vB = e.makeTensorView(e.getArg(bindB), shB2, stB, elemType);
+      auto ptrB = getBindingArg(e, plan.bindingShapes, bindB, elemType);
+      auto vB = e.makeTensorView(ptrB, shB2, stB, elemType);
       pBv = e.makePartitionView(vB, tB);
     }
 
-    auto vC = e.makeTensorView(e.getArg(bindC), shC2, stC, elemType);
+    auto ptrC = getBindingArg(e, plan.bindingShapes, bindC, elemType);
+    auto vC = e.makeTensorView(ptrC, shC2, stC, elemType);
     SmallVector<int64_t> tA = {aTM, aTK}, tC = {aTM, aTN};
     auto pA = e.makePartitionView(vA, tA);
     auto pC = e.makePartitionView(vC, tC);
+    SmallVector<Value> primaryInputs;
+    if (auto linalgOp = dyn_cast<linalg::LinalgOp>(primaryOp)) {
+      primaryInputs.append(linalgOp.getDpsInputs().begin(),
+                           linalgOp.getDpsInputs().end());
+    }
+    auto findFusedOpPlanFor = [&](Operation *op)
+        -> const CudaTileFusedOpPlan * {
+      for (const CudaTileFusedOpPlan &fusedOp : plan.fusedOps) {
+        if (fusedOp.op == op)
+          return &fusedOp;
+      }
+      return nullptr;
+    };
 
     auto [bx, by, bz] = e.getTileBlockId();
     auto accInit = e.constSplat(tC, elemType, 0.0);
@@ -3115,23 +4445,20 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     Value iv = forOp.getInductionVar();
     Value iterAcc = forOp.getRegionIterValues()[0];
 
-    auto [tAd, tokA] = e.loadViewTko(pA, {by, iv}, tA, elemType);
-    Value tBd;
-    if (weightConstant) {
-      // B is an embedded constant. Create the full constant tile.
-      // For the K-loop, we need the slice [iv*aTK : (iv+1)*aTK, :].
-      // When nK==1, the full constant IS the tile.
-      // TODO: support nK>1 by slicing the constant per K iteration.
-      auto cstOp = weightConstant.getDefiningOp<arith::ConstantOp>();
-      auto attrVal = cstOp.getValue();
+    auto getDenseFloatConstant = [&](Value value, SmallVector<float> &rawData,
+                                     SmallVector<int64_t> &shape) -> bool {
+      auto cstOp = value.getDefiningOp<arith::ConstantOp>();
+      if (!cstOp)
+        return false;
 
-      // Extract float data from DenseElementsAttr or DenseResourceElementsAttr.
-      SmallVector<float> rawData;
+      if (auto shapedType = dyn_cast<ShapedType>(value.getType()))
+        shape.assign(shapedType.getShape().begin(), shapedType.getShape().end());
+
+      auto attrVal = cstOp.getValue();
       if (auto dense = dyn_cast<DenseElementsAttr>(attrVal)) {
         for (auto val : dense.getValues<float>())
           rawData.push_back(val);
-      } else if (auto resAttr =
-                     dyn_cast<DenseResourceElementsAttr>(attrVal)) {
+      } else if (auto resAttr = dyn_cast<DenseResourceElementsAttr>(attrVal)) {
         auto blob = resAttr.getRawHandle().getBlob();
         if (blob) {
           auto data = blob->getData();
@@ -3140,53 +4467,325 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
           rawData.assign(floats, floats + numElem);
         }
       }
-      if (rawData.empty())
-        return failure();
+      return !rawData.empty();
+    };
 
-      // Physical shape is the original weight shape. Tile shape must be
-      // power-of-2 padded. Pad the data with zeros for extra rows/cols.
-      int64_t physRows = bTransposed ? N : K;
-      int64_t physCols = bTransposed ? K : N;
-      int64_t tileRows = bTransposed ? aTN : aTK;
-      int64_t tileCols = bTransposed ? aTK : aTN;
+    auto emitDenseConstantTile = [&](ArrayRef<float> rawData,
+                                     ArrayRef<int64_t> sourceShape,
+                                     ArrayRef<int64_t> loadTileShape) -> Value {
+      SmallVector<int64_t> paddedSourceShape(sourceShape);
+      if (paddedSourceShape.empty())
+        paddedSourceShape.push_back(1);
 
-      SmallVector<float> paddedData(tileRows * tileCols, 0.0f);
-      for (int64_t r = 0; r < physRows && r < tileRows; ++r)
-        for (int64_t c = 0; c < physCols && c < tileCols; ++c) {
-          int64_t srcIdx = r * physCols + c;
-          if (srcIdx < (int64_t)rawData.size())
-            paddedData[r * tileCols + c] = rawData[srcIdx];
+      SmallVector<int64_t> paddedTileShape(loadTileShape);
+      if (paddedTileShape.empty())
+        paddedTileShape.push_back(1);
+
+      int64_t tileElemCount = 1;
+      for (int64_t dim : paddedTileShape)
+        tileElemCount *= dim;
+      SmallVector<float> paddedData(tileElemCount, 0.0f);
+
+      int64_t sourceElemCount = 1;
+      for (int64_t dim : paddedSourceShape)
+        sourceElemCount *= dim;
+      for (int64_t flat = 0;
+           flat < sourceElemCount && flat < static_cast<int64_t>(rawData.size());
+           ++flat) {
+        int64_t rem = flat;
+        SmallVector<int64_t> coords(paddedSourceShape.size(), 0);
+        for (int64_t d = paddedSourceShape.size() - 1; d >= 0; --d) {
+          coords[d] = rem % paddedSourceShape[d];
+          rem /= paddedSourceShape[d];
+        }
+        int64_t paddedIdx = 0;
+        int64_t stride = 1;
+        for (int64_t d = paddedTileShape.size() - 1; d >= 0; --d) {
+          paddedIdx += coords[d] * stride;
+          stride *= paddedTileShape[d];
+        }
+        if (paddedIdx < tileElemCount)
+          paddedData[paddedIdx] = rawData[flat];
+      }
+
+      auto tileType = cuda_tile::TileType::get(ctx, paddedTileShape, elemType);
+      auto tensorType = RankedTensorType::get(paddedTileShape, elemType);
+      auto attr =
+          DenseElementsAttr::get(tensorType,
+                                 ArrayRef<float>(paddedData.data(),
+                                                 paddedData.size()));
+      return e.builder()
+          .create<cuda_tile::ConstantOp>(
+              e.builder().getUnknownLoc(), tileType,
+              cast<DenseTypedElementsAttr>(
+                  attr.reshape(cast<ShapedType>(tileType))))
+          .getResult();
+    };
+
+    auto computeBroadcastLoadPlan =
+        [&](ArrayRef<int64_t> sourceShape, ArrayRef<int64_t> fullShape,
+            ArrayRef<int64_t> targetTileShape, ArrayRef<Value> fullTileIndices,
+            SmallVector<int64_t> &loadTileShape, SmallVector<Value> &loadIndices,
+            SmallVector<int64_t> &reshapeShape) -> bool {
+      loadTileShape.clear();
+      loadIndices.clear();
+      reshapeShape.clear();
+
+      if (sourceShape.empty()) {
+        loadTileShape.push_back(1);
+        reshapeShape.assign(fullShape.size(), 1);
+        return true;
+      }
+
+      if (sourceShape == fullShape) {
+        loadTileShape.assign(targetTileShape.begin(), targetTileShape.end());
+        loadIndices.assign(fullTileIndices.begin(), fullTileIndices.end());
+        reshapeShape.assign(loadTileShape.begin(), loadTileShape.end());
+        return true;
+      }
+
+      if (sourceShape.size() == fullShape.size()) {
+        for (int64_t d = 0; d < static_cast<int64_t>(fullShape.size()); ++d) {
+          if (sourceShape[d] == fullShape[d]) {
+            loadTileShape.push_back(targetTileShape[d]);
+            loadIndices.push_back(fullTileIndices[d]);
+          } else if (sourceShape[d] == 1) {
+            loadTileShape.push_back(1);
+            loadIndices.push_back(e.constI32(0));
+          } else {
+            return false;
+          }
+        }
+        reshapeShape.assign(loadTileShape.begin(), loadTileShape.end());
+        return true;
+      }
+
+      if (sourceShape.size() == 1 && fullShape.size() == 2) {
+        if (sourceShape[0] == fullShape[0]) {
+          loadTileShape.push_back(targetTileShape[0]);
+          loadIndices.push_back(fullTileIndices[0]);
+          reshapeShape = {targetTileShape[0], 1};
+          return true;
+        }
+        if (sourceShape[0] == fullShape[1]) {
+          loadTileShape.push_back(targetTileShape[1]);
+          loadIndices.push_back(fullTileIndices[1]);
+          reshapeShape = {1, targetTileShape[1]};
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+    auto emitTensorTileForSpace = [&](Value value, ArrayRef<int64_t> fullShape,
+                                      ArrayRef<int64_t> targetTileShape,
+                                      ArrayRef<Value> fullTileIndices) -> Value {
+      int64_t bindingIndex = -1;
+      auto bindingIt = valueToBind.find(value);
+      if (bindingIt != valueToBind.end()) {
+        bindingIndex = bindingIt->second;
+      } else if (const CudaTileBindingPlan *binding =
+                     findBindingPlanForMemref(bindingShapes, value)) {
+        bindingIndex = binding->binding;
+      }
+
+      SmallVector<int64_t> loadTileShape;
+      SmallVector<Value> loadIndices;
+      SmallVector<int64_t> reshapeShape;
+      if (bindingIndex >= 0) {
+        const CudaTileBindingPlan *binding =
+            findBindingPlan(bindingShapes, bindingIndex);
+        if (!binding)
+          return {};
+        SmallVector<int64_t> sourceShape =
+            binding->shape.empty() ? SmallVector<int64_t>(fullShape)
+                                   : SmallVector<int64_t>(binding->shape);
+        if (!computeBroadcastLoadPlan(sourceShape, fullShape, targetTileShape,
+                                      fullTileIndices, loadTileShape,
+                                      loadIndices, reshapeShape)) {
+          return {};
+        }
+        auto strides = computeRowMajorStrides(sourceShape);
+        Value ptr = getSubspanArg(e, *binding, elemType);
+        auto view = e.makeTensorView(ptr, sourceShape, strides, elemType);
+        auto partition = e.makePartitionView(view, loadTileShape);
+        auto [tile, token] =
+            e.loadViewTko(partition, loadIndices, loadTileShape, elemType);
+        if (reshapeShape.size() != loadTileShape.size() ||
+            !llvm::equal(reshapeShape, loadTileShape)) {
+          tile = e.reshape(tile, reshapeShape, elemType);
+        }
+        if (!llvm::equal(reshapeShape, targetTileShape))
+          tile = e.broadcastTile(tile, targetTileShape, elemType);
+        return tile;
+      }
+
+      SmallVector<float> rawData;
+      SmallVector<int64_t> sourceShape;
+      if (!getDenseFloatConstant(value, rawData, sourceShape))
+        return {};
+      if (!computeBroadcastLoadPlan(sourceShape, fullShape, targetTileShape,
+                                    fullTileIndices, loadTileShape, loadIndices,
+                                    reshapeShape)) {
+        return {};
+      }
+      Value tile = emitDenseConstantTile(rawData, sourceShape, loadTileShape);
+      if (reshapeShape.size() != loadTileShape.size() ||
+          !llvm::equal(reshapeShape, loadTileShape)) {
+        tile = e.reshape(tile, reshapeShape, elemType);
+      }
+      if (!llvm::equal(reshapeShape, targetTileShape))
+        tile = e.broadcastTile(tile, targetTileShape, elemType);
+      return tile;
+    };
+
+    auto emitDirectMatmulPhysicalOperandTile = [&](int64_t operandIndex) -> Value {
+      if (operandIndex == 0) {
+        auto [tile, token] = e.loadViewTko(pA, {by, iv}, tA, elemType);
+        return tile;
+      }
+      if (weightConstant) {
+        auto cstOp = weightConstant.getDefiningOp<arith::ConstantOp>();
+        if (!cstOp)
+          return {};
+
+        SmallVector<float> rawData;
+        auto attrVal = cstOp.getValue();
+        if (auto dense = dyn_cast<DenseElementsAttr>(attrVal)) {
+          for (auto val : dense.getValues<float>())
+            rawData.push_back(val);
+        } else if (auto resAttr = dyn_cast<DenseResourceElementsAttr>(attrVal)) {
+          auto blob = resAttr.getRawHandle().getBlob();
+          if (blob) {
+            auto data = blob->getData();
+            auto *floats = reinterpret_cast<const float *>(data.data());
+            int64_t numElem = data.size() / sizeof(float);
+            rawData.assign(floats, floats + numElem);
+          }
+        }
+        if (rawData.empty())
+          return {};
+
+        int64_t physRows = bTransposed ? N : K;
+        int64_t physCols = bTransposed ? K : N;
+        int64_t tileRows = bTransposed ? aTN : aTK;
+        int64_t tileCols = bTransposed ? aTK : aTN;
+        SmallVector<float> paddedData(tileRows * tileCols, 0.0f);
+        for (int64_t r = 0; r < physRows && r < tileRows; ++r) {
+          for (int64_t c = 0; c < physCols && c < tileCols; ++c) {
+            int64_t srcIdx = r * physCols + c;
+            if (srcIdx < static_cast<int64_t>(rawData.size()))
+              paddedData[r * tileCols + c] = rawData[srcIdx];
+          }
         }
 
-      SmallVector<int64_t> tileBShape = {tileRows, tileCols};
-      auto tileBType =
-          cuda_tile::TileType::get(ctx, tileBShape, elemType);
-      auto tensorType = RankedTensorType::get(tileBShape, elemType);
-      auto paddedAttr = DenseElementsAttr::get(
-          tensorType,
-          ArrayRef<float>(paddedData.data(), paddedData.size()));
-      tBd = e.builder()
-                .create<cuda_tile::ConstantOp>(
-                    e.builder().getUnknownLoc(), tileBType,
-                    cast<DenseTypedElementsAttr>(
-                        paddedAttr.reshape(cast<ShapedType>(tileBType))))
-                .getResult();
-      if (bTransposed) {
-        // Permute from [aTN, aTK] to [aTK, aTN] for mmaf.
-        auto permType =
-            cuda_tile::TileType::get(ctx, {aTK, aTN}, elemType);
-        tBd = e.permute(tBd, {1, 0}, permType);
+        SmallVector<int64_t> tileBShape = {tileRows, tileCols};
+        auto tileType = cuda_tile::TileType::get(ctx, tileBShape, elemType);
+        auto tensorType = RankedTensorType::get(tileBShape, elemType);
+        auto attr =
+            DenseElementsAttr::get(tensorType,
+                                   ArrayRef<float>(paddedData.data(),
+                                                   paddedData.size()));
+        return e.builder()
+            .create<cuda_tile::ConstantOp>(
+                e.builder().getUnknownLoc(), tileType,
+                cast<DenseTypedElementsAttr>(
+                    attr.reshape(cast<ShapedType>(tileType))))
+            .getResult();
       }
-    } else if (bTransposed) {
-      // Load B tile as [aTN, aTK] then permute to [aTK, aTN].
-      auto [tBraw, tokB] = e.loadViewTko(pBv, {bx, iv}, tB, elemType);
-      SmallVector<int64_t> permTB = {aTK, aTN};
-      auto permType = cuda_tile::TileType::get(ctx, permTB, elemType);
-      tBd = e.permute(tBraw, {1, 0}, permType);
-    } else {
-      auto [tBraw, tokB] = e.loadViewTko(pBv, {iv, bx}, tB, elemType);
-      tBd = tBraw;
+      auto [tile, token] =
+          bTransposed ? e.loadViewTko(pBv, {bx, iv}, tB, elemType)
+                      : e.loadViewTko(pBv, {iv, bx}, tB, elemType);
+      return tile;
+    };
+
+    DenseMap<Value, Value> lhsPhysicalTileCache;
+    DenseMap<Value, Value> rhsPhysicalTileCache;
+    auto emitPhysicalOperandTile = [&](auto &&self, Value value,
+                                       int64_t operandIndex) -> Value {
+      auto &cache =
+          operandIndex == 0 ? lhsPhysicalTileCache : rhsPhysicalTileCache;
+      auto cacheIt = cache.find(value);
+      if (cacheIt != cache.end())
+        return cacheIt->second;
+
+      ArrayRef<int64_t> fullShape = operandIndex == 0 ? ArrayRef<int64_t>(shA2)
+                                                      : ArrayRef<int64_t>(shB2);
+      ArrayRef<int64_t> targetTileShape =
+          operandIndex == 0 ? ArrayRef<int64_t>(tA) : ArrayRef<int64_t>(tB);
+      SmallVector<Value> tileIndices =
+          operandIndex == 0 ? SmallVector<Value>{by, iv}
+                            : (bTransposed ? SmallVector<Value>{bx, iv}
+                                           : SmallVector<Value>{iv, bx});
+
+      if (auto genericOp = value.getDefiningOp<linalg::GenericOp>()) {
+        if (const CudaTileFusedOpPlan *fusedOp =
+                findFusedOpPlanFor(genericOp.getOperation());
+            fusedOp && fusedOp->role == CudaTileFusedOpRole::Prologue &&
+            (fusedOp->primaryInputIndex < 0 ||
+             fusedOp->primaryInputIndex == operandIndex)) {
+          SmallVector<Value> inputTiles;
+          for (Value input : genericOp.getDpsInputs()) {
+            Value tile = self(self, input, operandIndex);
+            if (!tile) {
+              tile = emitTensorTileForSpace(input, fullShape, targetTileShape,
+                                            tileIndices);
+            }
+            if (!tile)
+              return {};
+            inputTiles.push_back(tile);
+          }
+          Value fallback = inputTiles.empty()
+                               ? e.constSplat(targetTileShape, elemType, 0.0)
+                               : inputTiles.front();
+          Value tile = emitElementwiseGenericBody(
+              e, genericOp, inputTiles, targetTileShape, elemType, fallback,
+              tileIndices, fullShape, gatherSources);
+          cache[value] = tile;
+          return tile;
+        }
+      }
+
+      if (operandIndex < static_cast<int64_t>(primaryInputs.size()) &&
+          value == primaryInputs[operandIndex]) {
+        Value tile = emitDirectMatmulPhysicalOperandTile(operandIndex);
+        cache[value] = tile;
+        return tile;
+      }
+
+      Value tile =
+          emitTensorTileForSpace(value, fullShape, targetTileShape, tileIndices);
+      if (tile)
+        cache[value] = tile;
+      return tile;
+    };
+
+    auto finalizeMatmulOperandTile = [&](Value tile, int64_t operandIndex) {
+      if (!tile || operandIndex != 1 || !bTransposed)
+        return tile;
+      auto permType = cuda_tile::TileType::get(ctx, {aTK, aTN}, elemType);
+      return e.permute(tile, {1, 0}, permType);
+    };
+
+    Value tAd = primaryInputs.empty()
+                    ? emitDirectMatmulPhysicalOperandTile(0)
+                    : emitPhysicalOperandTile(emitPhysicalOperandTile,
+                                              primaryInputs.front(), 0);
+    Value tBd =
+        primaryInputs.size() < 2
+            ? emitDirectMatmulPhysicalOperandTile(1)
+            : emitPhysicalOperandTile(emitPhysicalOperandTile,
+                                      primaryInputs[1], 1);
+    if (!tAd) {
+      primaryOp->emitError("failed to materialize matmul lhs tile");
+      return failure();
     }
+    if (!tBd) {
+      primaryOp->emitError("failed to materialize matmul rhs tile");
+      return failure();
+    }
+    tBd = finalizeMatmulOperandTile(tBd, 1);
     // `plan.schedule.mmaKind` records IREEGPU MMA intent. The current
     // cuda_tile emitter still lowers through the generic floating MMA op until
     // we have a legal mapping from IREEGPU intrinsic attrs to cuda_tile/tileiras
@@ -3201,223 +4800,40 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     // Post-matmul elementwise fusion: apply any elementwise generics that
     // follow the matmul in the dispatch (e.g., bias_add + relu).
     {
-      SmallVector<linalg::GenericOp> postOps;
-      innerModule->walk([&](linalg::GenericOp genOp) {
-        if (genOp.getOperation() == primaryOp)
-          return; // skip the matmul itself
-        if (genOp.getNumReductionLoops() == 0 &&
-            genOp.getNumParallelLoops() > 0)
-          postOps.push_back(genOp);
-      });
+      DenseMap<Value, Value> fusedValueMap;
+      for (Value result : primaryOp->getResults())
+        fusedValueMap[result] = finalAcc;
 
-      for (auto postOp : postOps) {
-        // Walk the body's SSA graph to apply the elementwise ops.
-        Block &body = postOp.getRegion().front();
-        DenseMap<Value, Value> bodyMap;
-
-        // Map block args to tiles. The first arg is typically the matmul
-        // result (connected via SSA), subsequent args are additional inputs
-        // (bias, etc.) from later bindings.
-        int64_t argIdx = 0;
-        for (int64_t a = 0; a < postOp.getNumDpsInputs(); ++a) {
-          Value input = postOp.getDpsInputs()[a];
-          // Check if this input comes from the matmul result.
-          bool isMatmulResult = false;
-          if (input.getDefiningOp() == primaryOp)
-            isMatmulResult = true;
-          // Also check linalg.fill → matmul chain.
-          for (auto result : primaryOp->getResults()) {
-            if (input == result)
-              isMatmulResult = true;
-          }
-
-          if (isMatmulResult) {
-            bodyMap[body.getArgument(a)] = finalAcc;
-          } else {
-            // Try binding first, then constant.
-            bool found = false;
-
-            // Check bindings (trace through dispatch.tensor.load).
-            for (int64_t bi = 0;
-                 bi < (int64_t)bindingShapes.size() && !found; ++bi) {
-              bool match = (bindingShapes[bi].memref == input);
-              if (!match) {
-                auto it = valueToBind.find(input);
-                if (it != valueToBind.end() && it->second == bi)
-                  match = true;
-              }
-              if (match) {
-                auto &bInfo = bindingShapes[bi];
-                int64_t bRank = bInfo.shape.size();
-                SmallVector<int64_t> bTile;
-                for (int64_t d = 0; d < bRank; ++d)
-                  bTile.push_back(nextPow2(std::min(
-                      d == bRank - 1 ? tileN : tileM, bInfo.shape[d])));
-                auto bStrides = computeRowMajorStrides(bInfo.shape);
-                auto tv = e.makeTensorView(e.getArg(bi), bInfo.shape,
-                                           bStrides, elemType);
-                auto pv = e.makePartitionView(tv, bTile);
-                SmallVector<Value> bIndices;
-                if (bRank == 2) bIndices = {by, bx};
-                else if (bRank == 1) bIndices = {bx};
-                auto [tile, tok] =
-                    e.loadViewTko(pv, bIndices, bTile, elemType);
-                if (bRank < 2) {
-                  SmallVector<int64_t> reshapeShape = {1, bTile[0]};
-                  SmallVector<int64_t> broadcastShape = {aTM, aTN};
-                  tile = e.reshape(tile, reshapeShape, elemType);
-                  if (reshapeShape != broadcastShape)
-                    tile = e.broadcastTile(tile, broadcastShape, elemType);
-                }
-                bodyMap[body.getArgument(a)] = tile;
-                found = true;
-              }
-            }
-
-            // Check if input is a constant (bias embedded in dispatch).
-            if (!found) {
-              if (auto cstOp =
-                      input.getDefiningOp<arith::ConstantOp>()) {
-                SmallVector<float> cstData;
-                auto cstAttr = cstOp.getValue();
-                if (auto dense = dyn_cast<DenseElementsAttr>(cstAttr)) {
-                  for (auto v : dense.getValues<float>())
-                    cstData.push_back(v);
-                } else if (auto resAttr =
-                               dyn_cast<DenseResourceElementsAttr>(
-                                   cstAttr)) {
-                  auto blob = resAttr.getRawHandle().getBlob();
-                  if (blob) {
-                    auto data = blob->getData();
-                    auto *f =
-                        reinterpret_cast<const float *>(data.data());
-                    cstData.assign(f, f + data.size() / sizeof(float));
-                  }
-                }
-                if (!cstData.empty()) {
-                  auto cstType = dyn_cast<ShapedType>(input.getType());
-                  auto cstShape = cstType ? cstType.getShape()
-                                          : ArrayRef<int64_t>{};
-                  int64_t cRank = cstShape.size();
-                  // Pad to power-of-2 tile shape.
-                  SmallVector<int64_t> cTile;
-                  for (int64_t d = 0; d < cRank; ++d)
-                    cTile.push_back(nextPow2(cstShape[d]));
-                  int64_t cElems = 1;
-                  for (auto d : cTile) cElems *= d;
-                  // Pad data with zeros (generic N-dimensional).
-                  SmallVector<float> padded(cElems, 0.0f);
-                  int64_t totalSrcElems = 1;
-                  for (int64_t d = 0; d < cRank; ++d)
-                    totalSrcElems *= cstShape[d];
-                  for (int64_t flat = 0;
-                       flat < totalSrcElems &&
-                       flat < (int64_t)cstData.size();
-                       ++flat) {
-                    int64_t rem = flat;
-                    SmallVector<int64_t> coords(cRank);
-                    for (int64_t d = cRank - 1; d >= 0; --d) {
-                      coords[d] = rem % cstShape[d];
-                      rem /= cstShape[d];
-                    }
-                    int64_t paddedIdx = 0;
-                    int64_t stride = 1;
-                    for (int64_t d = cRank - 1; d >= 0; --d) {
-                      paddedIdx += coords[d] * stride;
-                      stride *= cTile[d];
-                    }
-                    if (paddedIdx < cElems)
-                      padded[paddedIdx] = cstData[flat];
-                  }
-                  auto tileCstType =
-                      cuda_tile::TileType::get(ctx, cTile, elemType);
-                  auto tensorCstType =
-                      RankedTensorType::get(cTile, elemType);
-                  auto attr = DenseElementsAttr::get(
-                      tensorCstType,
-                      ArrayRef<float>(padded.data(), padded.size()));
-                  Value tile =
-                      e.builder()
-                          .create<cuda_tile::ConstantOp>(
-                              e.builder().getUnknownLoc(), tileCstType,
-                              cast<DenseTypedElementsAttr>(
-                                  attr.reshape(
-                                      cast<ShapedType>(tileCstType))))
-                          .getResult();
-                  // Broadcast if needed (1D bias → 2D).
-                  if (cRank < 2) {
-                    SmallVector<int64_t> rshp = {1, cTile[0]};
-                    SmallVector<int64_t> bshp = {aTM, aTN};
-                    tile = e.reshape(tile, rshp, elemType);
-                    if (rshp != bshp)
-                      tile = e.broadcastTile(tile, bshp, elemType);
-                  }
-                  bodyMap[body.getArgument(a)] = tile;
-                  found = true;
-                }
-              }
-            }
-          }
-          argIdx++;
+      SmallVector<Value> outputTileIndices = {by, bx};
+      for (const CudaTileFusedOpPlan &fusedOp : plan.fusedOps) {
+        if (fusedOp.role != CudaTileFusedOpRole::Epilogue)
+          continue;
+        auto postOp = dyn_cast<linalg::GenericOp>(fusedOp.op);
+        if (!postOp || postOp.getNumReductionLoops() != 0 ||
+            postOp.getNumParallelLoops() == 0) {
+          continue;
         }
 
-        // Walk body ops and apply them.
-        for (auto &op : body.without_terminator()) {
-          // Handle CmpFOp directly (needs predicate/ordering attrs).
-          if (auto cmpOp = dyn_cast<arith::CmpFOp>(&op)) {
-            SmallVector<Value> opInputs;
-            bool allResolved = true;
-            for (auto operand : op.getOperands()) {
-              auto it = bodyMap.find(operand);
-              if (it != bodyMap.end()) {
-                opInputs.push_back(it->second);
-              } else if (auto cstOp =
-                             operand.getDefiningOp<arith::ConstantOp>()) {
-                double val = 0.0;
-                if (auto fAttr = dyn_cast<FloatAttr>(cstOp.getValue()))
-                  val = fAttr.getValueAsDouble();
-                opInputs.push_back(e.constSplat(tC, elemType, val));
-              } else {
-                allResolved = false;
-              }
-            }
-            if (allResolved && opInputs.size() == 2) {
-              Value result =
-                  e.emitCmpF(cmpOp.getPredicate(), opInputs[0], opInputs[1]);
-              bodyMap[op.getResult(0)] = result;
-            }
+        SmallVector<Value> inputTiles;
+        for (Value input : postOp.getDpsInputs()) {
+          auto valueIt = fusedValueMap.find(input);
+          if (valueIt != fusedValueMap.end()) {
+            inputTiles.push_back(valueIt->second);
             continue;
           }
-
-          StringRef name = mapArithToCudaTileLocal(&op);
-          if (name.empty())
-            name = mapMathToCudaTileLocal(&op);
-          if (name.empty())
-            continue;
-
-          SmallVector<Value> opInputs;
-          bool allResolved = true;
-          for (auto operand : op.getOperands()) {
-            auto it = bodyMap.find(operand);
-            if (it != bodyMap.end()) {
-              opInputs.push_back(it->second);
-            } else if (auto cstOp =
-                           operand.getDefiningOp<arith::ConstantOp>()) {
-              double val = 0.0;
-              if (auto fAttr = dyn_cast<FloatAttr>(cstOp.getValue()))
-                val = fAttr.getValueAsDouble();
-              opInputs.push_back(e.constSplat(tC, elemType, val));
-            } else {
-              allResolved = false;
-            }
-          }
-          if (allResolved && !opInputs.empty()) {
-            Value result = e.emitElementwise(name, opInputs);
-            if (op.getNumResults() > 0)
-              bodyMap[op.getResult(0)] = result;
-            finalAcc = result;
-          }
+          Value tile =
+              emitTensorTileForSpace(input, shC2, tC, outputTileIndices);
+          if (!tile)
+            return failure();
+          inputTiles.push_back(tile);
         }
+
+        Value fallback = inputTiles.empty() ? finalAcc : inputTiles.front();
+        finalAcc = emitElementwiseGenericBody(
+            e, postOp, inputTiles, tC, elemType, fallback, outputTileIndices,
+            shC2, gatherSources);
+        for (Value result : postOp.getResults())
+          fusedValueMap[result] = finalAcc;
       }
     }
 
@@ -3440,14 +4856,17 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     auto gridDims = computeGridDims(shape, tileShape);
     int64_t rank = shape.size();
 
-    int64_t numBindings = bindingShapes.size();
+    int64_t numSubspans = bindingShapes.size();
+    int64_t numBindings = getNumBindingArgs(bindingShapes);
     if (numBindings == 0)
       numBindings = primaryOp->getNumOperands() + primaryOp->getNumResults();
     if (numBindings < 2)
       numBindings = 2;
+    if (numSubspans == 0)
+      numSubspans = numBindings;
 
     // Check if any input binding has a different shape (broadcast).
-    bool hasBroadcast = false;
+    bool hasBroadcast = numSubspans != numBindings;
     for (int64_t i = 0; i < (int64_t)bindingShapes.size() - 1; ++i) {
       if (!bindingShapes[i].shape.empty() &&
           bindingShapes[i].shape != SmallVector<int64_t>(shape))
@@ -3457,7 +4876,8 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     if (!hasBroadcast) {
       // No broadcast: use standard boilerplate.
       auto bp = emitKernelBoilerplate(e, kernelName, numBindings, shape,
-                                      strides, tileShape, elemType);
+                                      strides, tileShape, elemType,
+                                      bindingShapes);
 
       auto [tile, tok] =
           e.loadViewTko(bp.partViews[0], bp.indices, tileShape, elemType);
@@ -3477,7 +4897,9 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
             inputTiles.push_back(nextTile);
           }
           current = emitElementwiseGenericBody(e, genericOp, inputTiles,
-                                               tileShape, elemType, current);
+                                               tileShape, elemType, current,
+                                               bp.indices, shape,
+                                               gatherSources);
         } else {
           SmallVector<StringRef> ops = getElementwiseOpNames(primaryOp);
           Value tile2;
@@ -3508,14 +4930,17 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
 
     SmallVector<Value> partViews;
     SmallVector<SmallVector<int64_t>> bindTileShapes;
-    for (int64_t i = 0; i < numBindings; ++i) {
+    for (int64_t i = 0; i < numSubspans; ++i) {
       auto bShape =
           (i < (int64_t)bindingShapes.size() && !bindingShapes[i].shape.empty())
               ? SmallVector<int64_t>(bindingShapes[i].shape)
               : SmallVector<int64_t>(shape);
       auto bStrides = computeRowMajorStrides(bShape);
       auto bTile = computeTileShape(bShape, tileM, tileN);
-      auto tv = e.makeTensorView(e.getArg(i), bShape, bStrides, elemType);
+      Value ptr = i < (int64_t)bindingShapes.size()
+                      ? getSubspanArg(e, bindingShapes[i], elemType)
+                      : e.getArg(i);
+      auto tv = e.makeTensorView(ptr, bShape, bStrides, elemType);
       auto pv = e.makePartitionView(tv, bTile);
       partViews.push_back(pv);
       bindTileShapes.push_back(bTile);
@@ -3566,32 +4991,39 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
       return tile;
     };
 
-    Value current = loadInputTile(0);
-
+    Value current;
     if (loweringStrategy == CudaTileLoweringStrategy::Elementwise) {
       auto genericOp = dyn_cast<linalg::GenericOp>(primaryOp);
       if (genericOp) {
         SmallVector<Value> inputTiles;
         int64_t inputCount =
             std::min<int64_t>(genericOp.getNumDpsInputs(),
-                              std::max<int64_t>(numBindings - 1, 0));
+                              std::max<int64_t>(numSubspans - 1, 0));
         for (int64_t i = 0; i < inputCount; ++i)
           inputTiles.push_back(loadInputTile(i));
+        current = inputTiles.empty()
+                      ? e.constSplat(tileShape, elemType, 0.0)
+                      : inputTiles.front();
         current = emitElementwiseGenericBody(e, genericOp, inputTiles,
-                                             tileShape, elemType, current);
+                                             tileShape, elemType, current,
+                                             outIndices, shape,
+                                             gatherSources);
       } else {
+        current = loadInputTile(0);
         SmallVector<StringRef> ops = getElementwiseOpNames(primaryOp);
         Value tile2;
-        if (numBindings >= 3)
+        if (numSubspans >= 3)
           tile2 = loadInputTile(1);
         for (auto opName : ops) {
-          if (tile2 && opName == ops.front() && numBindings >= 3)
+          if (tile2 && opName == ops.front() && numSubspans >= 3)
             current = e.emitElementwise(opName, {current, tile2});
           else
             current = e.emitElementwise(opName, {current});
         }
       }
     }
+    if (!current)
+      current = loadInputTile(0);
 
     e.storeViewTko(current, partViews.back(), outIndices);
     e.emitReturn();
