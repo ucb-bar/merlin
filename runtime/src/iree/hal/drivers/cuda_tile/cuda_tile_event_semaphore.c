@@ -322,28 +322,30 @@ iree_status_t iree_hal_cuda_tile_event_semaphore_acquire_timepoint_device_wait(
     return iree_ok_status();
   }
 
-  // Register the timepoint with the async semaphore's timepoint list.
-  // The pre-check above prevents the synchronous fast path (same TOCTOU
-  // rationale as the signal path). In the normal case, the timepoint is
-  // enqueued and remains valid until its callback fires asynchronously.
+  // Try to reuse an existing signal timepoint to avoid a redundant device
+  // wait. Done before registration so we don't touch wait_timepoint after
+  // it has been handed to the timepoint list.
+  iree_hal_cuda_tile_event_t* wait_event = NULL;
+  if (iree_hal_cuda_tile_semaphore_acquire_event_host_wait(
+          iree_hal_semaphore_cast(&semaphore->async), min_value, &wait_event)) {
+    iree_hal_cuda_tile_event_release(wait_timepoint->timepoint.device_wait);
+    wait_timepoint->timepoint.device_wait = wait_event;
+  }
+
+  // Cache the event handle before registration. After
+  // iree_async_semaphore_acquire_timepoint, a concurrent signal advancing the
+  // timeline past min_value can fire device_wait_callback on another thread,
+  // releasing wait_timepoint back to the pool — so we must not dereference it
+  // after this point.
+  *out_event =
+      iree_hal_cuda_tile_event_handle(wait_timepoint->timepoint.device_wait);
+
   wait_timepoint->base.callback =
       iree_hal_cuda_tile_semaphore_timepoint_device_wait_callback;
   wait_timepoint->base.user_data = NULL;
   iree_async_semaphore_acquire_timepoint(&semaphore->async, min_value,
                                          &wait_timepoint->base);
 
-  iree_hal_cuda_tile_event_t* wait_event = NULL;
-  if (iree_hal_cuda_tile_semaphore_acquire_event_host_wait(
-          iree_hal_semaphore_cast(&semaphore->async), min_value, &wait_event)) {
-    // We've found an existing signal timepoint to wait on; we don't need a
-    // standalone wait timepoint anymore. Decrease its refcount before
-    // overwriting it to return it back to the pool and retain the existing one.
-    iree_hal_cuda_tile_event_release(wait_timepoint->timepoint.device_wait);
-    wait_timepoint->timepoint.device_wait = wait_event;
-  }
-
-  *out_event =
-      iree_hal_cuda_tile_event_handle(wait_timepoint->timepoint.device_wait);
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }

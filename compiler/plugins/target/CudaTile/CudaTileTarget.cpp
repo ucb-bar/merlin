@@ -16,6 +16,9 @@
 #include "compiler/plugins/target/CudaTile/CudaTileKernelPlan.h"
 #include "compiler/plugins/target/CudaTile/CudaTileOptions.h"
 #include "compiler/src/merlin/Dialect/CudaTile/Transforms/Passes.h"
+#include "compiler/src/merlin/Dialect/CudaTile/Utils/OpMapping.h"
+#include "mlir/Dialect/Utils/IndexingUtils.h"
+#include "llvm/Support/MathExtras.h"
 
 // cuda_tile dialect + bytecode writer (in-process compilation).
 #include "cuda_tile/Bytecode/Writer/BytecodeWriter.h"
@@ -205,10 +208,7 @@ dumpCudaTileKernelPlanIfRequested(Operation *anchor,
 
 /// Compute row-major strides for a shape.
 static SmallVector<int64_t> computeRowMajorStrides(ArrayRef<int64_t> shape) {
-  SmallVector<int64_t> strides(shape.size(), 1);
-  for (int i = static_cast<int>(shape.size()) - 2; i >= 0; --i)
-    strides[i] = strides[i + 1] * shape[i + 1];
-  return strides;
+  return mlir::computeSuffixProduct(shape);
 }
 
 /// Read a DenseI64ArrayAttr from an op, or return empty.
@@ -219,14 +219,10 @@ static SmallVector<int64_t> getI64ArrayAttr(Operation *op, StringRef name) {
   return {};
 }
 
-/// Compute tile shape for the trailing dims of a shape.
 /// Round up to next power of 2 (or keep if already power of 2).
 static int64_t nextPow2(int64_t v) {
   if (v <= 1) return 1;
-  v--;
-  v |= v >> 1; v |= v >> 2; v |= v >> 4;
-  v |= v >> 8; v |= v >> 16; v |= v >> 32;
-  return v + 1;
+  return static_cast<int64_t>(llvm::PowerOf2Ceil(static_cast<uint64_t>(v)));
 }
 
 /// Extract the tensor dimension that is reduced in a linalg.generic.
@@ -253,66 +249,11 @@ static int64_t extractReduceDim(linalg::GenericOp genOp,
   return -1;
 }
 
-/// Extract combiner op name from a reduction body.
-/// Duplicated from ConvertReductionsToCudaTile.cpp for codegen-time use.
-static StringRef matchReduceCombinerLocal(Region &body) {
-  if (body.empty() || body.front().empty())
-    return "";
-  Block &block = body.front();
-  auto ops = block.without_terminator();
-  auto it = ops.begin();
-  if (it == ops.end())
-    return "";
-  Operation *combinerOp = &*it;
-  ++it;
-  if (it != ops.end())
-    return "";
-  if (isa<arith::AddFOp>(combinerOp)) return "addf";
-  if (isa<arith::AddIOp>(combinerOp)) return "addi";
-  if (isa<arith::MaximumFOp, arith::MaxNumFOp>(combinerOp)) return "maxf";
-  if (isa<arith::MinimumFOp, arith::MinNumFOp>(combinerOp)) return "minf";
-  if (isa<arith::MaxSIOp>(combinerOp)) return "maxi";
-  if (isa<arith::MinSIOp>(combinerOp)) return "mini";
-  if (isa<arith::MulFOp>(combinerOp)) return "mulf";
-  if (isa<arith::MulIOp>(combinerOp)) return "muli";
-  return "";
-}
-
-/// Map arith/math ops to cuda_tile op names (codegen-time body walking).
-/// Duplicated from ConvertElementwiseToCudaTile.cpp.
-static StringRef mapArithToCudaTileLocal(Operation *op) {
-  if (isa<arith::AddFOp>(op)) return "addf";
-  if (isa<arith::SubFOp>(op)) return "subf";
-  if (isa<arith::MulFOp>(op)) return "mulf";
-  if (isa<arith::DivFOp>(op)) return "divf";
-  if (isa<arith::MaximumFOp, arith::MaxNumFOp>(op)) return "maxf";
-  if (isa<arith::MinimumFOp, arith::MinNumFOp>(op)) return "minf";
-  if (isa<arith::NegFOp>(op)) return "negf";
-  if (isa<arith::AddIOp>(op)) return "addi";
-  if (isa<arith::SubIOp>(op)) return "subi";
-  if (isa<arith::MulIOp>(op)) return "muli";
-  if (isa<arith::AndIOp>(op)) return "andi";
-  if (isa<arith::OrIOp>(op)) return "ori";
-  if (isa<arith::XOrIOp>(op)) return "xori";
-  if (isa<arith::SelectOp>(op)) return "select";
-  return "";
-}
-static StringRef mapMathToCudaTileLocal(Operation *op) {
-  if (isa<math::ExpOp>(op)) return "exp";
-  if (isa<math::Exp2Op>(op)) return "exp2";
-  if (isa<math::LogOp>(op)) return "log";
-  if (isa<math::Log2Op>(op)) return "log2";
-  if (isa<math::SqrtOp>(op)) return "sqrt";
-  if (isa<math::RsqrtOp>(op)) return "rsqrt";
-  if (isa<math::SinOp>(op)) return "sin";
-  if (isa<math::CosOp>(op)) return "cos";
-  if (isa<math::TanhOp>(op)) return "tanh";
-  if (isa<math::CeilOp>(op)) return "ceil";
-  if (isa<math::FloorOp>(op)) return "floor";
-  if (isa<math::AbsFOp>(op)) return "absf";
-  if (isa<math::FmaOp>(op)) return "fma";
-  return "";
-}
+// Op-name mapping tables live in the shared header so the linalg→cuda_tile
+// transform passes and codegen-time body walking stay in lock-step.
+using ::mlir::iree_compiler::cuda_tile::mapArithToCudaTile;
+using ::mlir::iree_compiler::cuda_tile::mapMathToCudaTile;
+using ::mlir::iree_compiler::cuda_tile::matchReduceCombiner;
 
 static SmallVector<StringRef> getElementwiseOpNames(Operation *op) {
   SmallVector<StringRef> ops;
@@ -326,9 +267,9 @@ static SmallVector<StringRef> getElementwiseOpNames(Operation *op) {
     return ops;
 
   for (auto &bodyOp : genericOp.getRegion().front().without_terminator()) {
-    StringRef name = mapArithToCudaTileLocal(&bodyOp);
+    StringRef name = mapArithToCudaTile(&bodyOp);
     if (name.empty())
-      name = mapMathToCudaTileLocal(&bodyOp);
+      name = mapMathToCudaTile(&bodyOp);
     if (!name.empty())
       ops.push_back(name);
   }
@@ -421,7 +362,7 @@ static bool isIdentitySlice(ArrayRef<int64_t> offsets, ArrayRef<int64_t> strides
 // CudaTileOpEmitter — builds cuda_tile dialect ops in-process
 //===----------------------------------------------------------------------===//
 
-/// Builds a cuda_tile::ModuleOp with ops via OpBuilder, then serializes to
+/// Builds a ::mlir::cuda_tile::ModuleOp with ops via OpBuilder, then serializes to
 /// tilebc bytecode. Replaces the old text-based CudaTileTextEmitter.
 class CudaTileOpEmitter {
 public:
@@ -447,23 +388,23 @@ public:
 
   /// Create a standalone cuda_tile.module (not attached to any parent).
   void beginModule(StringRef name) {
-    OperationState state(loc, cuda_tile::ModuleOp::getOperationName());
+    OperationState state(loc, ::mlir::cuda_tile::ModuleOp::getOperationName());
     state.addAttribute(SymbolTable::getSymbolAttrName(),
                        StringAttr::get(ctx, name));
     state.addRegion()->emplaceBlock();
     Operation *op = Operation::create(state);
-    moduleOp = cast<cuda_tile::ModuleOp>(op);
+    moduleOp = cast<::mlir::cuda_tile::ModuleOp>(op);
     b.setInsertionPointToEnd(&moduleOp.getBody().front());
   }
 
   /// Create an entry function with numArgs pointer arguments.
   void beginEntry(StringRef name, int numArgs, Type elemType) {
-    auto ptrType = cuda_tile::PointerType::get(ctx, elemType);
-    auto tilePtrType = cuda_tile::TileType::get(ctx, {}, ptrType);
+    auto ptrType = ::mlir::cuda_tile::PointerType::get(ctx, elemType);
+    auto tilePtrType = ::mlir::cuda_tile::TileType::get(ctx, {}, ptrType);
     SmallVector<Type> argTypes(numArgs, tilePtrType);
     auto funcType = FunctionType::get(ctx, argTypes, {});
 
-    entryOp = b.create<cuda_tile::EntryOp>(
+    entryOp = b.create<::mlir::cuda_tile::EntryOp>(
         loc, StringAttr::get(ctx, name), TypeAttr::get(funcType),
         /*arg_attrs=*/nullptr, /*res_attrs=*/nullptr,
         /*optimization_hints=*/nullptr);
@@ -475,7 +416,7 @@ public:
     {
       OpBuilder::InsertionGuard guard(b);
       b.setInsertionPointToEnd(entryBlock);
-      b.create<cuda_tile::ReturnOp>(loc);
+      b.create<::mlir::cuda_tile::ReturnOp>(loc);
     }
 
     // Set insertion point before the terminator for body ops.
@@ -495,24 +436,24 @@ public:
 
   /// Create a scalar i32 constant: `constant dense<val> : tile<i32>`.
   Value constI32(int64_t val) {
-    auto type = cuda_tile::TileType::get(ctx, {}, b.getI32Type());
+    auto type = ::mlir::cuda_tile::TileType::get(ctx, {}, b.getI32Type());
     auto attr = DenseElementsAttr::get(cast<ShapedType>(type),
                                        b.getI32IntegerAttr(val));
-    return b.create<cuda_tile::ConstantOp>(loc, type,
+    return b.create<::mlir::cuda_tile::ConstantOp>(loc, type,
                                            cast<DenseTypedElementsAttr>(attr))
         .getResult();
   }
 
   /// Create a splat tile constant: `constant dense<val> : tile<shape x elem>`.
   Value constSplat(ArrayRef<int64_t> shape, Type elemType, double val) {
-    auto type = cuda_tile::TileType::get(ctx, shape, elemType);
+    auto type = ::mlir::cuda_tile::TileType::get(ctx, shape, elemType);
     Attribute elemVal;
     if (isa<FloatType>(elemType))
       elemVal = FloatAttr::get(elemType, val);
     else
       elemVal = IntegerAttr::get(elemType, static_cast<int64_t>(val));
     auto attr = DenseElementsAttr::get(cast<ShapedType>(type), elemVal);
-    return b.create<cuda_tile::ConstantOp>(loc, type,
+    return b.create<::mlir::cuda_tile::ConstantOp>(loc, type,
                                            cast<DenseTypedElementsAttr>(attr))
         .getResult();
   }
@@ -532,9 +473,9 @@ public:
   /// Create a per-lane 0..tileShape[dim)-1 index tile for one tile dimension.
   Value iotaForDim(ArrayRef<int64_t> tileShape, int64_t dim) {
     Type i32 = b.getI32Type();
-    auto oneDType = cuda_tile::TileType::get(ctx, {tileShape[dim]}, i32);
+    auto oneDType = ::mlir::cuda_tile::TileType::get(ctx, {tileShape[dim]}, i32);
     Value local =
-        b.create<cuda_tile::IotaOp>(loc, oneDType).getResult();
+        b.create<::mlir::cuda_tile::IotaOp>(loc, oneDType).getResult();
     if (tileShape.size() == 1)
       return local;
 
@@ -552,16 +493,16 @@ public:
     Type i32 = b.getI32Type();
     Value local = iotaForDim(tileShape, dim);
     Value tileExtent = constI32(tileShape[dim]);
-    Value base = b.create<cuda_tile::MulIOp>(
+    Value base = b.create<::mlir::cuda_tile::MulIOp>(
                       loc, tileIndex, tileExtent,
-                      cuda_tile::IntegerOverflowAttr::get(
-                          ctx, cuda_tile::IntegerOverflow::NONE))
+                      ::mlir::cuda_tile::IntegerOverflowAttr::get(
+                          ctx, ::mlir::cuda_tile::IntegerOverflow::NONE))
                      .getResult();
     base = broadcastScalarToTile(base, tileShape, i32);
-    return b.create<cuda_tile::AddIOp>(
+    return b.create<::mlir::cuda_tile::AddIOp>(
                 loc, local, base,
-                cuda_tile::IntegerOverflowAttr::get(
-                    ctx, cuda_tile::IntegerOverflow::NONE))
+                ::mlir::cuda_tile::IntegerOverflowAttr::get(
+                    ctx, ::mlir::cuda_tile::IntegerOverflow::NONE))
         .getResult();
   }
 
@@ -569,10 +510,10 @@ public:
   Value globalIndexScalar(ArrayRef<int64_t> tileShape, int64_t dim,
                           Value tileIndex) {
     Value tileExtent = constI32(tileShape[dim]);
-    return b.create<cuda_tile::MulIOp>(
+    return b.create<::mlir::cuda_tile::MulIOp>(
                 loc, tileIndex, tileExtent,
-                cuda_tile::IntegerOverflowAttr::get(
-                    ctx, cuda_tile::IntegerOverflow::NONE))
+                ::mlir::cuda_tile::IntegerOverflowAttr::get(
+                    ctx, ::mlir::cuda_tile::IntegerOverflow::NONE))
         .getResult();
   }
 
@@ -582,9 +523,9 @@ public:
   Value makeTensorView(Value basePtr, ArrayRef<int64_t> shape,
                        ArrayRef<int64_t> strides, Type elemType) {
     auto tvType =
-        cuda_tile::TensorViewType::get(ctx, elemType, shape, strides);
+        ::mlir::cuda_tile::TensorViewType::get(ctx, elemType, shape, strides);
     return b
-        .create<cuda_tile::MakeTensorViewOp>(loc, tvType, basePtr,
+        .create<::mlir::cuda_tile::MakeTensorViewOp>(loc, tvType, basePtr,
                                              /*dynamicShape=*/ValueRange{},
                                              /*dynamicStrides=*/ValueRange{})
         .getResult();
@@ -593,26 +534,26 @@ public:
   /// Create make_partition_view.
   Value makePartitionView(Value tensorView, ArrayRef<int64_t> tileShape,
                           bool zeroPad = false) {
-    auto tvType = cast<cuda_tile::TensorViewType>(tensorView.getType());
+    auto tvType = cast<::mlir::cuda_tile::TensorViewType>(tensorView.getType());
     SmallVector<int32_t> tileShapeI32(tileShape.begin(), tileShape.end());
     auto tileShapeAttr = DenseI32ArrayAttr::get(ctx, tileShapeI32);
     SmallVector<int32_t> dimMap(tileShape.size());
     std::iota(dimMap.begin(), dimMap.end(), 0);
     auto padAttr =
-        zeroPad ? cuda_tile::PaddingValueAttr::get(
-                      ctx, cuda_tile::PaddingValue::zero)
-                : cuda_tile::PaddingValueAttr();
-    auto pvType = cuda_tile::PartitionViewType::get(ctx, tileShapeAttr, tvType,
+        zeroPad ? ::mlir::cuda_tile::PaddingValueAttr::get(
+                      ctx, ::mlir::cuda_tile::PaddingValue::zero)
+                : ::mlir::cuda_tile::PaddingValueAttr();
+    auto pvType = ::mlir::cuda_tile::PartitionViewType::get(ctx, tileShapeAttr, tvType,
                                                     dimMap, padAttr);
-    return b.create<cuda_tile::MakePartitionViewOp>(loc, pvType, tensorView)
+    return b.create<::mlir::cuda_tile::MakePartitionViewOp>(loc, pvType, tensorView)
         .getResult();
   }
 
   /// Create get_tile_block_id → {x, y, z}.
   std::tuple<Value, Value, Value> getTileBlockId() {
-    auto i32Tile = cuda_tile::TileType::get(ctx, {}, b.getI32Type());
+    auto i32Tile = ::mlir::cuda_tile::TileType::get(ctx, {}, b.getI32Type());
     auto op =
-        b.create<cuda_tile::GetTileBlockIdOp>(loc, i32Tile, i32Tile, i32Tile);
+        b.create<::mlir::cuda_tile::GetTileBlockIdOp>(loc, i32Tile, i32Tile, i32Tile);
     return {op.getBlockIdX(), op.getBlockIdY(), op.getBlockIdZ()};
   }
 
@@ -620,14 +561,14 @@ public:
   std::pair<Value, Value> loadViewTko(Value view, ValueRange indices,
                                       ArrayRef<int64_t> tileShape,
                                       Type elemType) {
-    auto tileType = cuda_tile::TileType::get(ctx, tileShape, elemType);
-    auto tokenType = cuda_tile::TokenType::get(ctx);
-    auto op = b.create<cuda_tile::LoadViewTkoOp>(
+    auto tileType = ::mlir::cuda_tile::TileType::get(ctx, tileShape, elemType);
+    auto tokenType = ::mlir::cuda_tile::TokenType::get(ctx);
+    auto op = b.create<::mlir::cuda_tile::LoadViewTkoOp>(
         loc, tileType, tokenType,
-        cuda_tile::MemoryOrderingSemantics::WEAK,
-        /*memory_scope=*/cuda_tile::MemoryScopeAttr(), view, indices,
+        ::mlir::cuda_tile::MemoryOrderingSemantics::WEAK,
+        /*memory_scope=*/::mlir::cuda_tile::MemoryScopeAttr(), view, indices,
         /*token=*/Value(),
-        /*optimization_hints=*/cuda_tile::OptimizationHintsAttr());
+        /*optimization_hints=*/::mlir::cuda_tile::OptimizationHintsAttr());
     return {op.getTile(), op.getResultToken()};
   }
 
@@ -636,26 +577,26 @@ public:
                                      ArrayRef<int64_t> tileShape,
                                      Type elemType, Value mask = {},
                                      Value padding = {}) {
-    auto tileType = cuda_tile::TileType::get(ctx, tileShape, elemType);
-    auto tokenType = cuda_tile::TokenType::get(ctx);
-    auto op = b.create<cuda_tile::LoadPtrTkoOp>(
+    auto tileType = ::mlir::cuda_tile::TileType::get(ctx, tileShape, elemType);
+    auto tokenType = ::mlir::cuda_tile::TokenType::get(ctx);
+    auto op = b.create<::mlir::cuda_tile::LoadPtrTkoOp>(
         loc, tileType, tokenType,
-        cuda_tile::MemoryOrderingSemantics::WEAK,
-        /*memory_scope=*/cuda_tile::MemoryScopeAttr(), ptrTile, mask, padding,
+        ::mlir::cuda_tile::MemoryOrderingSemantics::WEAK,
+        /*memory_scope=*/::mlir::cuda_tile::MemoryScopeAttr(), ptrTile, mask, padding,
         /*token=*/Value(),
-        /*optimization_hints=*/cuda_tile::OptimizationHintsAttr());
+        /*optimization_hints=*/::mlir::cuda_tile::OptimizationHintsAttr());
     return {op.getResult(), op.getResultToken()};
   }
 
   /// Create store_view_tko weak → token.
   Value storeViewTko(Value tile, Value view, ValueRange indices) {
-    auto tokenType = cuda_tile::TokenType::get(ctx);
-    auto op = b.create<cuda_tile::StoreViewTkoOp>(
+    auto tokenType = ::mlir::cuda_tile::TokenType::get(ctx);
+    auto op = b.create<::mlir::cuda_tile::StoreViewTkoOp>(
         loc, tokenType,
-        cuda_tile::MemoryOrderingSemantics::WEAK,
-        /*memory_scope=*/cuda_tile::MemoryScopeAttr(), tile, view, indices,
+        ::mlir::cuda_tile::MemoryOrderingSemantics::WEAK,
+        /*memory_scope=*/::mlir::cuda_tile::MemoryScopeAttr(), tile, view, indices,
         /*token=*/Value(),
-        /*optimization_hints=*/cuda_tile::OptimizationHintsAttr());
+        /*optimization_hints=*/::mlir::cuda_tile::OptimizationHintsAttr());
     return op.getResultToken();
   }
 
@@ -663,13 +604,13 @@ public:
 
   /// Create mmaf (float matrix multiply-accumulate).
   Value mmaf(Value lhs, Value rhs, Value acc) {
-    return b.create<cuda_tile::MmaFOp>(loc, lhs, rhs, acc).getResult();
+    return b.create<::mlir::cuda_tile::MmaFOp>(loc, lhs, rhs, acc).getResult();
   }
 
   /// Create permute op for tile dimension reordering.
   Value permute(Value source, ArrayRef<int32_t> permutation, Type resultType) {
     auto permAttr = DenseI32ArrayAttr::get(ctx, permutation);
-    return b.create<cuda_tile::PermuteOp>(loc, resultType, source, permAttr)
+    return b.create<::mlir::cuda_tile::PermuteOp>(loc, resultType, source, permAttr)
         .getResult();
   }
 
@@ -707,10 +648,10 @@ public:
     Value a = operands.size() > 0 ? operands[0] : Value();
     Value c = operands.size() > 1 ? operands[1] : Value();
     Value d = operands.size() > 2 ? operands[2] : Value();
-    auto rnd = cuda_tile::RoundingModeAttr::get(
-        ctx, cuda_tile::RoundingMode::NEAREST_EVEN);
-    auto ovf = cuda_tile::IntegerOverflowAttr::get(
-        ctx, cuda_tile::IntegerOverflow::NONE);
+    auto rnd = ::mlir::cuda_tile::RoundingModeAttr::get(
+        ctx, ::mlir::cuda_tile::RoundingMode::NEAREST_EVEN);
+    auto ovf = ::mlir::cuda_tile::IntegerOverflowAttr::get(
+        ctx, ::mlir::cuda_tile::IntegerOverflow::NONE);
 
     auto kind = llvm::StringSwitch<EWOp>(opName)
         .Case("addf", EWOp::AddF).Case("subf", EWOp::SubF)
@@ -736,44 +677,44 @@ public:
     // clang-format off
     switch (kind) {
     // Binary float with rounding
-    case EWOp::AddF: return b.create<cuda_tile::AddFOp>(loc, a, c, rnd).getResult();
-    case EWOp::SubF: return b.create<cuda_tile::SubFOp>(loc, a, c, rnd).getResult();
-    case EWOp::MulF: return b.create<cuda_tile::MulFOp>(loc, a, c, rnd).getResult();
-    case EWOp::DivF: return b.create<cuda_tile::DivFOp>(loc, a, c, rnd).getResult();
+    case EWOp::AddF: return b.create<::mlir::cuda_tile::AddFOp>(loc, a, c, rnd).getResult();
+    case EWOp::SubF: return b.create<::mlir::cuda_tile::SubFOp>(loc, a, c, rnd).getResult();
+    case EWOp::MulF: return b.create<::mlir::cuda_tile::MulFOp>(loc, a, c, rnd).getResult();
+    case EWOp::DivF: return b.create<::mlir::cuda_tile::DivFOp>(loc, a, c, rnd).getResult();
     // Binary float without rounding
-    case EWOp::MaxF: return b.create<cuda_tile::MaxFOp>(loc, a, c).getResult();
-    case EWOp::MinF: return b.create<cuda_tile::MinFOp>(loc, a, c).getResult();
-    case EWOp::Pow:  return b.create<cuda_tile::PowOp>(loc, a, c).getResult();
+    case EWOp::MaxF: return b.create<::mlir::cuda_tile::MaxFOp>(loc, a, c).getResult();
+    case EWOp::MinF: return b.create<::mlir::cuda_tile::MinFOp>(loc, a, c).getResult();
+    case EWOp::Pow:  return b.create<::mlir::cuda_tile::PowOp>(loc, a, c).getResult();
     // Binary integer
-    case EWOp::AddI: return b.create<cuda_tile::AddIOp>(loc, a, c, ovf).getResult();
-    case EWOp::SubI: return b.create<cuda_tile::SubIOp>(loc, a, c, ovf).getResult();
-    case EWOp::MulI: return b.create<cuda_tile::MulIOp>(loc, a, c, ovf).getResult();
-    case EWOp::AndI: return b.create<cuda_tile::AndIOp>(loc, a, c).getResult();
-    case EWOp::OrI:  return b.create<cuda_tile::OrIOp>(loc, a, c).getResult();
-    case EWOp::XOrI: return b.create<cuda_tile::XOrIOp>(loc, a, c).getResult();
-    case EWOp::MaxI: return b.create<cuda_tile::MaxIOp>(loc, a.getType(), ValueRange{a, c}, cuda_tile::Signedness::Signed).getResult();
-    case EWOp::MinI: return b.create<cuda_tile::MinIOp>(loc, a.getType(), ValueRange{a, c}, cuda_tile::Signedness::Signed).getResult();
+    case EWOp::AddI: return b.create<::mlir::cuda_tile::AddIOp>(loc, a, c, ovf).getResult();
+    case EWOp::SubI: return b.create<::mlir::cuda_tile::SubIOp>(loc, a, c, ovf).getResult();
+    case EWOp::MulI: return b.create<::mlir::cuda_tile::MulIOp>(loc, a, c, ovf).getResult();
+    case EWOp::AndI: return b.create<::mlir::cuda_tile::AndIOp>(loc, a, c).getResult();
+    case EWOp::OrI:  return b.create<::mlir::cuda_tile::OrIOp>(loc, a, c).getResult();
+    case EWOp::XOrI: return b.create<::mlir::cuda_tile::XOrIOp>(loc, a, c).getResult();
+    case EWOp::MaxI: return b.create<::mlir::cuda_tile::MaxIOp>(loc, a.getType(), ValueRange{a, c}, ::mlir::cuda_tile::Signedness::Signed).getResult();
+    case EWOp::MinI: return b.create<::mlir::cuda_tile::MinIOp>(loc, a.getType(), ValueRange{a, c}, ::mlir::cuda_tile::Signedness::Signed).getResult();
     // Ternary
-    case EWOp::Select: return b.create<cuda_tile::SelectOp>(loc, a, c, d).getResult();
-    case EWOp::Fma:    return b.create<cuda_tile::FmaOp>(loc, a, c, d, rnd).getResult();
+    case EWOp::Select: return b.create<::mlir::cuda_tile::SelectOp>(loc, a, c, d).getResult();
+    case EWOp::Fma:    return b.create<::mlir::cuda_tile::FmaOp>(loc, a, c, d, rnd).getResult();
     // Unary float (simple)
-    case EWOp::NegF:  return b.create<cuda_tile::NegFOp>(loc, a).getResult();
-    case EWOp::AbsF:  return b.create<cuda_tile::AbsFOp>(loc, a).getResult();
-    case EWOp::Exp:   return b.create<cuda_tile::ExpOp>(loc, a).getResult();
-    case EWOp::Exp2:  return b.create<cuda_tile::Exp2Op>(loc, a).getResult();
-    case EWOp::Log:   return b.create<cuda_tile::LogOp>(loc, a).getResult();
-    case EWOp::Log2:  return b.create<cuda_tile::Log2Op>(loc, a).getResult();
-    case EWOp::Sin:   return b.create<cuda_tile::SinOp>(loc, a).getResult();
-    case EWOp::Cos:   return b.create<cuda_tile::CosOp>(loc, a).getResult();
-    case EWOp::Tanh:  return b.create<cuda_tile::TanHOp>(loc, a).getResult();
-    case EWOp::Ceil:  return b.create<cuda_tile::CeilOp>(loc, a).getResult();
-    case EWOp::Floor: return b.create<cuda_tile::FloorOp>(loc, a).getResult();
+    case EWOp::NegF:  return b.create<::mlir::cuda_tile::NegFOp>(loc, a).getResult();
+    case EWOp::AbsF:  return b.create<::mlir::cuda_tile::AbsFOp>(loc, a).getResult();
+    case EWOp::Exp:   return b.create<::mlir::cuda_tile::ExpOp>(loc, a).getResult();
+    case EWOp::Exp2:  return b.create<::mlir::cuda_tile::Exp2Op>(loc, a).getResult();
+    case EWOp::Log:   return b.create<::mlir::cuda_tile::LogOp>(loc, a).getResult();
+    case EWOp::Log2:  return b.create<::mlir::cuda_tile::Log2Op>(loc, a).getResult();
+    case EWOp::Sin:   return b.create<::mlir::cuda_tile::SinOp>(loc, a).getResult();
+    case EWOp::Cos:   return b.create<::mlir::cuda_tile::CosOp>(loc, a).getResult();
+    case EWOp::Tanh:  return b.create<::mlir::cuda_tile::TanHOp>(loc, a).getResult();
+    case EWOp::Ceil:  return b.create<::mlir::cuda_tile::CeilOp>(loc, a).getResult();
+    case EWOp::Floor: return b.create<::mlir::cuda_tile::FloorOp>(loc, a).getResult();
     // Unary float with rounding/attrs
-    case EWOp::Sqrt:  return b.create<cuda_tile::SqrtOp>(loc, a, rnd).getResult();
-    case EWOp::Rsqrt: return b.create<cuda_tile::RsqrtOp>(loc, a).getResult();
+    case EWOp::Sqrt:  return b.create<::mlir::cuda_tile::SqrtOp>(loc, a, rnd).getResult();
+    case EWOp::Rsqrt: return b.create<::mlir::cuda_tile::RsqrtOp>(loc, a).getResult();
     // Unary integer
-    case EWOp::NegI:  return b.create<cuda_tile::NegIOp>(loc, a).getResult();
-    case EWOp::AbsI:  return b.create<cuda_tile::AbsIOp>(loc, a).getResult();
+    case EWOp::NegI:  return b.create<::mlir::cuda_tile::NegIOp>(loc, a).getResult();
+    case EWOp::AbsI:  return b.create<::mlir::cuda_tile::AbsIOp>(loc, a).getResult();
     // Fallback
     case EWOp::Unknown: return a;
     }
@@ -783,8 +724,8 @@ public:
 
   /// Emit a cuda_tile comparison (cmpf) from an arith::CmpFPredicate.
   Value emitCmpF(arith::CmpFPredicate pred, Value lhs, Value rhs) {
-    using CP = cuda_tile::ComparisonPredicate;
-    using CO = cuda_tile::ComparisonOrdering;
+    using CP = ::mlir::cuda_tile::ComparisonPredicate;
+    using CO = ::mlir::cuda_tile::ComparisonOrdering;
     CP ctPred;
     CO ctOrder;
     // clang-format off
@@ -804,16 +745,16 @@ public:
     default: ctPred = CP::EQUAL; ctOrder = CO::ORDERED; break;
     }
     // clang-format on
-    auto predAttr = cuda_tile::ComparisonPredicateAttr::get(ctx, ctPred);
-    auto orderAttr = cuda_tile::ComparisonOrderingAttr::get(ctx, ctOrder);
-    return b.create<cuda_tile::CmpFOp>(loc, predAttr, orderAttr, lhs, rhs)
+    auto predAttr = ::mlir::cuda_tile::ComparisonPredicateAttr::get(ctx, ctPred);
+    auto orderAttr = ::mlir::cuda_tile::ComparisonOrderingAttr::get(ctx, ctOrder);
+    return b.create<::mlir::cuda_tile::CmpFOp>(loc, predAttr, orderAttr, lhs, rhs)
         .getResult();
   }
 
   /// Emit a cuda_tile comparison (cmpi) from an arith::CmpIPredicate.
   Value emitCmpI(arith::CmpIPredicate pred, Value lhs, Value rhs) {
-    using CP = cuda_tile::ComparisonPredicate;
-    using SG = cuda_tile::Signedness;
+    using CP = ::mlir::cuda_tile::ComparisonPredicate;
+    using SG = ::mlir::cuda_tile::Signedness;
     CP ctPred;
     SG ctSignedness;
     // clang-format off
@@ -830,33 +771,33 @@ public:
     case arith::CmpIPredicate::uge: ctPred = CP::GREATER_THAN_OR_EQUAL; ctSignedness = SG::Unsigned; break;
     }
     // clang-format on
-    auto predAttr = cuda_tile::ComparisonPredicateAttr::get(ctx, ctPred);
-    auto signAttr = cuda_tile::SignednessAttr::get(ctx, ctSignedness);
-    return b.create<cuda_tile::CmpIOp>(loc, predAttr, lhs, rhs, signAttr)
+    auto predAttr = ::mlir::cuda_tile::ComparisonPredicateAttr::get(ctx, ctPred);
+    auto signAttr = ::mlir::cuda_tile::SignednessAttr::get(ctx, ctSignedness);
+    return b.create<::mlir::cuda_tile::CmpIOp>(loc, predAttr, lhs, rhs, signAttr)
         .getResult();
   }
 
-  Value emitDivI(Value lhs, Value rhs, cuda_tile::Signedness signedness,
-                 cuda_tile::RoundingMode rounding) {
-    auto signAttr = cuda_tile::SignednessAttr::get(ctx, signedness);
-    auto rndAttr = cuda_tile::RoundingModeAttr::get(ctx, rounding);
-    return b.create<cuda_tile::DivIOp>(loc, lhs, rhs, signAttr, rndAttr)
+  Value emitDivI(Value lhs, Value rhs, ::mlir::cuda_tile::Signedness signedness,
+                 ::mlir::cuda_tile::RoundingMode rounding) {
+    auto signAttr = ::mlir::cuda_tile::SignednessAttr::get(ctx, signedness);
+    auto rndAttr = ::mlir::cuda_tile::RoundingModeAttr::get(ctx, rounding);
+    return b.create<::mlir::cuda_tile::DivIOp>(loc, lhs, rhs, signAttr, rndAttr)
         .getResult();
   }
 
-  Value emitRemI(Value lhs, Value rhs, cuda_tile::Signedness signedness) {
-    auto signAttr = cuda_tile::SignednessAttr::get(ctx, signedness);
-    return b.create<cuda_tile::RemIOp>(loc, lhs, rhs, signAttr).getResult();
+  Value emitRemI(Value lhs, Value rhs, ::mlir::cuda_tile::Signedness signedness) {
+    auto signAttr = ::mlir::cuda_tile::SignednessAttr::get(ctx, signedness);
+    return b.create<::mlir::cuda_tile::RemIOp>(loc, lhs, rhs, signAttr).getResult();
   }
 
   Value emitIToF(Value source, ArrayRef<int64_t> resultShape,
                  Type floatElemType) {
-    auto resultType = cuda_tile::TileType::get(ctx, resultShape, floatElemType);
+    auto resultType = ::mlir::cuda_tile::TileType::get(ctx, resultShape, floatElemType);
     auto signAttr =
-        cuda_tile::SignednessAttr::get(ctx, cuda_tile::Signedness::Signed);
-    auto rndAttr = cuda_tile::RoundingModeAttr::get(
-        ctx, cuda_tile::RoundingMode::NEAREST_EVEN);
-    return b.create<cuda_tile::IToFOp>(loc, resultType, source, signAttr,
+        ::mlir::cuda_tile::SignednessAttr::get(ctx, ::mlir::cuda_tile::Signedness::Signed);
+    auto rndAttr = ::mlir::cuda_tile::RoundingModeAttr::get(
+        ctx, ::mlir::cuda_tile::RoundingMode::NEAREST_EVEN);
+    return b.create<::mlir::cuda_tile::IToFOp>(loc, resultType, source, signAttr,
                                        rndAttr)
         .getResult();
   }
@@ -870,7 +811,7 @@ public:
   Value reduce(Value input, int64_t reduceDim, StringRef combiner,
                ArrayRef<int64_t> resultShape, Type elemType) {
     auto resultTileType =
-        cuda_tile::TileType::get(ctx, resultShape, elemType);
+        ::mlir::cuda_tile::TileType::get(ctx, resultShape, elemType);
 
     // Determine identity value.
     Attribute identity;
@@ -905,14 +846,14 @@ public:
     auto identities = b.getArrayAttr({identity});
     auto dimAttr = b.getI32IntegerAttr(reduceDim);
 
-    auto reduceOp = b.create<cuda_tile::ReduceOp>(
+    auto reduceOp = b.create<::mlir::cuda_tile::ReduceOp>(
         loc, TypeRange{resultTileType}, ValueRange{input}, dimAttr,
         identities);
 
     // Build the combiner body region.
     Block *body = b.createBlock(&reduceOp.getBody());
     // Region args: [current_elem, prev_accum] for each operand.
-    auto scalarTileType = cuda_tile::TileType::get(ctx, {}, elemType);
+    auto scalarTileType = ::mlir::cuda_tile::TileType::get(ctx, {}, elemType);
     body->addArgument(scalarTileType, loc); // current
     body->addArgument(scalarTileType, loc); // accumulator
 
@@ -922,7 +863,7 @@ public:
     Value cur = body->getArgument(0);
     Value acc = body->getArgument(1);
     Value result = emitElementwise(combiner, {cur, acc});
-    b.create<cuda_tile::YieldOp>(loc, ValueRange{result});
+    b.create<::mlir::cuda_tile::YieldOp>(loc, ValueRange{result});
 
     return reduceOp.getResult(0);
   }
@@ -932,23 +873,23 @@ public:
   /// Reshape a tile to a new shape (same number of elements).
   /// E.g., tile<4xf32> → tile<4x1xf32>
   Value reshape(Value source, ArrayRef<int64_t> newShape, Type elemType) {
-    auto resultType = cuda_tile::TileType::get(ctx, newShape, elemType);
-    return b.create<cuda_tile::ReshapeOp>(loc, resultType, source).getResult();
+    auto resultType = ::mlir::cuda_tile::TileType::get(ctx, newShape, elemType);
+    return b.create<::mlir::cuda_tile::ReshapeOp>(loc, resultType, source).getResult();
   }
 
   /// Extract a subtile from a tile.
   Value extractSubtile(Value source, ArrayRef<int64_t> resultShape,
                        Type elemType, ValueRange indices) {
-    auto resultType = cuda_tile::TileType::get(ctx, resultShape, elemType);
-    return b.create<cuda_tile::ExtractOp>(loc, resultType, source, indices)
+    auto resultType = ::mlir::cuda_tile::TileType::get(ctx, resultShape, elemType);
+    return b.create<::mlir::cuda_tile::ExtractOp>(loc, resultType, source, indices)
         .getResult();
   }
 
   /// Concatenate two tiles along a dimension.
   Value cat(Value lhs, Value rhs, int64_t dim, ArrayRef<int64_t> resultShape,
             Type elemType) {
-    auto resultType = cuda_tile::TileType::get(ctx, resultShape, elemType);
-    return b.create<cuda_tile::CatOp>(loc, resultType, lhs, rhs,
+    auto resultType = ::mlir::cuda_tile::TileType::get(ctx, resultShape, elemType);
+    return b.create<::mlir::cuda_tile::CatOp>(loc, resultType, lhs, rhs,
                                       static_cast<uint64_t>(dim))
         .getResult();
   }
@@ -956,17 +897,17 @@ public:
   /// Broadcast a tile: expand 1-dims to match the new shape.
   /// E.g., tile<4x1xf32> → tile<4x8xf32>
   Value broadcastTile(Value source, ArrayRef<int64_t> newShape, Type elemType) {
-    auto resultType = cuda_tile::TileType::get(ctx, newShape, elemType);
-    return b.create<cuda_tile::BroadcastOp>(loc, resultType, source)
+    auto resultType = ::mlir::cuda_tile::TileType::get(ctx, newShape, elemType);
+    return b.create<::mlir::cuda_tile::BroadcastOp>(loc, resultType, source)
         .getResult();
   }
 
   /// Attach a same_elements assumption to a broadcast-like tile.
   Value assumeSameElements(Value value, ArrayRef<int64_t> chunkShape) {
     SmallVector<int64_t> chunk(chunkShape.begin(), chunkShape.end());
-    auto attr = cuda_tile::SameElementsAttr::get(
+    auto attr = ::mlir::cuda_tile::SameElementsAttr::get(
         ctx, DenseI64ArrayAttr::get(ctx, chunk));
-    return b.create<cuda_tile::AssumeOp>(loc, value.getType(), value, attr)
+    return b.create<::mlir::cuda_tile::AssumeOp>(loc, value.getType(), value, attr)
         .getResult();
   }
 
@@ -976,14 +917,14 @@ public:
   /// result = base + offset * sizeof(element)
   Value offsetPtr(Value basePtr, int64_t offset) {
     auto offsetVal = constI32(offset);
-    return b.create<cuda_tile::OffsetOp>(loc, basePtr.getType(), basePtr,
+    return b.create<::mlir::cuda_tile::OffsetOp>(loc, basePtr.getType(), basePtr,
                                          offsetVal)
         .getResult();
   }
 
   /// Offset a tile of pointers by a tile of element offsets.
   Value offsetPtrTile(Value ptrTile, Value offsets) {
-    return b.create<cuda_tile::OffsetOp>(loc, ptrTile.getType(), ptrTile,
+    return b.create<::mlir::cuda_tile::OffsetOp>(loc, ptrTile.getType(), ptrTile,
                                          offsets)
         .getResult();
   }
@@ -992,9 +933,9 @@ public:
 
   /// Create a for loop. Returns the ForOp. Caller must build the body
   /// and call endFor() afterwards.
-  cuda_tile::ForOp beginFor(Value lb, Value ub, Value step,
+  ::mlir::cuda_tile::ForOp beginFor(Value lb, Value ub, Value step,
                             ValueRange initArgs) {
-    auto forOp = b.create<cuda_tile::ForOp>(loc, lb, ub, step, initArgs);
+    auto forOp = b.create<::mlir::cuda_tile::ForOp>(loc, lb, ub, step, initArgs);
     // ForOp with initArgs doesn't create a terminator automatically.
     // Add a placeholder ContinueOp that endFor() will replace.
     Block *body = forOp.getBody();
@@ -1002,35 +943,35 @@ public:
       OpBuilder::InsertionGuard guard(b);
       b.setInsertionPointToEnd(body);
       // Yield the iter args back as-is (placeholder).
-      b.create<cuda_tile::ContinueOp>(loc, forOp.getRegionIterValues());
+      b.create<::mlir::cuda_tile::ContinueOp>(loc, forOp.getRegionIterValues());
     }
     // Set insertion point before the terminator for body ops.
     b.setInsertionPoint(body->getTerminator());
     return forOp;
   }
 
-  cuda_tile::IfOp beginIf(Value condition) {
-    auto ifOp = b.create<cuda_tile::IfOp>(loc, TypeRange{}, condition);
+  ::mlir::cuda_tile::IfOp beginIf(Value condition) {
+    auto ifOp = b.create<::mlir::cuda_tile::IfOp>(loc, TypeRange{}, condition);
     Block *thenBlock = new Block();
     ifOp.getThenRegion().push_back(thenBlock);
     {
       OpBuilder::InsertionGuard guard(b);
       b.setInsertionPointToEnd(thenBlock);
-      b.create<cuda_tile::YieldOp>(loc);
+      b.create<::mlir::cuda_tile::YieldOp>(loc);
     }
     b.setInsertionPoint(thenBlock->getTerminator());
     return ifOp;
   }
 
-  void endIf(cuda_tile::IfOp ifOp) { b.setInsertionPointAfter(ifOp); }
+  void endIf(::mlir::cuda_tile::IfOp ifOp) { b.setInsertionPointAfter(ifOp); }
 
   /// Finalize the for loop body: replace the implicit ContinueOp with one
   /// that yields the given values, then restore insertion point after the loop.
-  void endFor(cuda_tile::ForOp forOp, ValueRange yieldValues) {
+  void endFor(::mlir::cuda_tile::ForOp forOp, ValueRange yieldValues) {
     // Replace the implicit (empty) ContinueOp with one carrying yield values.
     auto *terminator = forOp.getBody()->getTerminator();
     b.setInsertionPoint(terminator);
-    b.create<cuda_tile::ContinueOp>(loc, yieldValues);
+    b.create<::mlir::cuda_tile::ContinueOp>(loc, yieldValues);
     terminator->erase();
     // Restore insertion point to after the for op.
     b.setInsertionPointAfter(forOp);
@@ -1054,11 +995,11 @@ public:
   /// Serialize the cuda_tile module to tilebc bytecode.
   LogicalResult serialize(std::string &output) {
     llvm::raw_string_ostream os(output);
-    return cuda_tile::writeBytecode(os, moduleOp);
+    return ::mlir::cuda_tile::writeBytecode(os, moduleOp);
   }
 
   /// Get the module for inspection/debugging.
-  cuda_tile::ModuleOp getModule() { return moduleOp; }
+  ::mlir::cuda_tile::ModuleOp getModule() { return moduleOp; }
   OpBuilder &builder() { return b; }
   MLIRContext *getContext() { return ctx; }
   Location getLoc() { return loc; }
@@ -1067,8 +1008,8 @@ private:
   MLIRContext *ctx;
   Location loc;
   OpBuilder b;
-  cuda_tile::ModuleOp moduleOp = nullptr;
-  cuda_tile::EntryOp entryOp = nullptr;
+  ::mlir::cuda_tile::ModuleOp moduleOp = nullptr;
+  ::mlir::cuda_tile::EntryOp entryOp = nullptr;
   SmallVector<Value> entryArgs;
 };
 
@@ -1842,7 +1783,7 @@ static Value emitTensorExtractGather(
                << " has dynamic byte offset; using base pointer\n");
   }
 
-  auto ptrType = cuda_tile::PointerType::get(e.getContext(), source->elemType);
+  auto ptrType = ::mlir::cuda_tile::PointerType::get(e.getContext(), source->elemType);
   Value ptrTile = e.broadcastScalarToTile(basePtr, tileShape, ptrType);
   Value gatherPtrs = e.offsetPtrTile(ptrTile, linearOffset);
   auto [tile, token] =
@@ -1946,8 +1887,8 @@ static Value emitElementwiseGenericBody(CudaTileOpEmitter &e,
                                       opInputs) &&
           opInputs.size() == 2) {
         Value result = e.emitDivI(opInputs[0], opInputs[1],
-                                  cuda_tile::Signedness::Signed,
-                                  cuda_tile::RoundingMode::ZERO);
+                                  ::mlir::cuda_tile::Signedness::Signed,
+                                  ::mlir::cuda_tile::RoundingMode::ZERO);
         bodyMap[divOp.getResult()] = result;
         current = result;
       }
@@ -1960,8 +1901,8 @@ static Value emitElementwiseGenericBody(CudaTileOpEmitter &e,
                                       opInputs) &&
           opInputs.size() == 2) {
         Value result = e.emitDivI(opInputs[0], opInputs[1],
-                                  cuda_tile::Signedness::Signed,
-                                  cuda_tile::RoundingMode::NEGATIVE_INF);
+                                  ::mlir::cuda_tile::Signedness::Signed,
+                                  ::mlir::cuda_tile::RoundingMode::NEGATIVE_INF);
         bodyMap[divOp.getResult()] = result;
         current = result;
       }
@@ -1974,16 +1915,16 @@ static Value emitElementwiseGenericBody(CudaTileOpEmitter &e,
                                       opInputs) &&
           opInputs.size() == 2) {
         Value result =
-            e.emitRemI(opInputs[0], opInputs[1], cuda_tile::Signedness::Signed);
+            e.emitRemI(opInputs[0], opInputs[1], ::mlir::cuda_tile::Signedness::Signed);
         bodyMap[remOp.getResult()] = result;
         current = result;
       }
       continue;
     }
 
-    StringRef name = mapArithToCudaTileLocal(&op);
+    StringRef name = mapArithToCudaTile(&op);
     if (name.empty())
-      name = mapMathToCudaTileLocal(&op);
+      name = mapMathToCudaTile(&op);
     if (name.empty())
       continue;
 
@@ -2028,10 +1969,10 @@ buildNDIndices(CudaTileOpEmitter &e, ArrayRef<int64_t> shape,
   if (rank == 3) {
     indices[0] = bidZ;
   } else if (rank > 3) {
-    auto signAttr = cuda_tile::SignednessAttr::get(
-        e.builder().getContext(), cuda_tile::Signedness::Unsigned);
-    auto rndAttr = cuda_tile::RoundingModeAttr::get(
-        e.builder().getContext(), cuda_tile::RoundingMode::ZERO);
+    auto signAttr = ::mlir::cuda_tile::SignednessAttr::get(
+        e.builder().getContext(), ::mlir::cuda_tile::Signedness::Unsigned);
+    auto rndAttr = ::mlir::cuda_tile::RoundingModeAttr::get(
+        e.builder().getContext(), ::mlir::cuda_tile::RoundingMode::ZERO);
     auto loc = e.builder().getUnknownLoc();
     Value remaining = bidZ;
     for (int64_t i = rank - 3; i >= 0; --i) {
@@ -2039,11 +1980,11 @@ buildNDIndices(CudaTileOpEmitter &e, ArrayRef<int64_t> shape,
       auto dimTilesVal = e.constI32(dimTiles);
       indices[i] =
           e.builder()
-              .create<cuda_tile::RemIOp>(loc, remaining, dimTilesVal, signAttr)
+              .create<::mlir::cuda_tile::RemIOp>(loc, remaining, dimTilesVal, signAttr)
               .getResult();
       remaining =
           e.builder()
-              .create<cuda_tile::DivIOp>(loc, remaining, dimTilesVal, signAttr,
+              .create<::mlir::cuda_tile::DivIOp>(loc, remaining, dimTilesVal, signAttr,
                                          rndAttr)
               .getResult();
     }
@@ -2159,8 +2100,8 @@ generateTransposeKernel(MLIRContext *ctx, StringRef kernelName,
 
   // Permute the tile dimensions.
   SmallVector<int32_t> permI32(permutation.begin(), permutation.end());
-  auto srcTileType = cuda_tile::TileType::get(ctx, srcTileShape, elemType);
-  auto dstTileType = cuda_tile::TileType::get(ctx, dstTileShape, elemType);
+  auto srcTileType = ::mlir::cuda_tile::TileType::get(ctx, srcTileShape, elemType);
+  auto dstTileType = ::mlir::cuda_tile::TileType::get(ctx, dstTileShape, elemType);
   auto permuted = e.permute(tile, permI32, dstTileType);
 
   // Permuted indices: apply permutation to source indices.
@@ -2525,17 +2466,17 @@ generateConv2DKernel(MLIRContext *ctx, StringRef kernelName,
   auto accInit = e.constSplat({flatM, tOC}, elemType, 0.0);
   int64_t ohTiles = (OH + tOH - 1) / tOH;
 
-  auto signAttr = cuda_tile::SignednessAttr::get(
-      ctx, cuda_tile::Signedness::Unsigned);
-  auto rndAttr = cuda_tile::RoundingModeAttr::get(
-      ctx, cuda_tile::RoundingMode::ZERO);
+  auto signAttr = ::mlir::cuda_tile::SignednessAttr::get(
+      ctx, ::mlir::cuda_tile::Signedness::Unsigned);
+  auto rndAttr = ::mlir::cuda_tile::RoundingModeAttr::get(
+      ctx, ::mlir::cuda_tile::RoundingMode::ZERO);
   auto batchDivisor = e.constI32(ohTiles);
   auto batchId =
-      e.builder().create<cuda_tile::DivIOp>(e.getLoc(), bz, batchDivisor,
+      e.builder().create<::mlir::cuda_tile::DivIOp>(e.getLoc(), bz, batchDivisor,
                                             signAttr, rndAttr)
           .getResult();
   auto ohBlockId =
-      e.builder().create<cuda_tile::RemIOp>(e.getLoc(), bz, batchDivisor,
+      e.builder().create<::mlir::cuda_tile::RemIOp>(e.getLoc(), bz, batchDivisor,
                                             signAttr)
           .getResult();
 
@@ -2676,19 +2617,19 @@ generatePoolingKernel(MLIRContext *ctx, StringRef kernelName,
   auto [bx, by, bz] = e.getTileBlockId();
   int64_t ohTiles = (OH + tOH - 1) / tOH;
 
-  auto signAttr = cuda_tile::SignednessAttr::get(
-      ctx, cuda_tile::Signedness::Unsigned);
-  auto rndAttr = cuda_tile::RoundingModeAttr::get(
-      ctx, cuda_tile::RoundingMode::ZERO);
+  auto signAttr = ::mlir::cuda_tile::SignednessAttr::get(
+      ctx, ::mlir::cuda_tile::Signedness::Unsigned);
+  auto rndAttr = ::mlir::cuda_tile::RoundingModeAttr::get(
+      ctx, ::mlir::cuda_tile::RoundingMode::ZERO);
   auto batchDivisor = e.constI32(ohTiles);
   auto batchId =
       e.builder()
-          .create<cuda_tile::DivIOp>(e.getLoc(), bz, batchDivisor, signAttr,
+          .create<::mlir::cuda_tile::DivIOp>(e.getLoc(), bz, batchDivisor, signAttr,
                                      rndAttr)
           .getResult();
   auto ohBlockId =
       e.builder()
-          .create<cuda_tile::RemIOp>(e.getLoc(), bz, batchDivisor, signAttr)
+          .create<::mlir::cuda_tile::RemIOp>(e.getLoc(), bz, batchDivisor, signAttr)
           .getResult();
 
   double initVal = 0.0;
@@ -2809,19 +2750,19 @@ generateStridedPointwiseMatmul2DKernel(
   Value batchId = bz;
   Value ohBlockId = by;
   if (hasBatch) {
-    auto signAttr = cuda_tile::SignednessAttr::get(
-        ctx, cuda_tile::Signedness::Unsigned);
-    auto rndAttr = cuda_tile::RoundingModeAttr::get(
-        ctx, cuda_tile::RoundingMode::ZERO);
+    auto signAttr = ::mlir::cuda_tile::SignednessAttr::get(
+        ctx, ::mlir::cuda_tile::Signedness::Unsigned);
+    auto rndAttr = ::mlir::cuda_tile::RoundingModeAttr::get(
+        ctx, ::mlir::cuda_tile::RoundingMode::ZERO);
     Value ohTiles = e.constI32((OH + tOH - 1) / tOH);
     batchId =
         e.builder()
-            .create<cuda_tile::DivIOp>(e.getLoc(), bz, ohTiles, signAttr,
+            .create<::mlir::cuda_tile::DivIOp>(e.getLoc(), bz, ohTiles, signAttr,
                                        rndAttr)
             .getResult();
     ohBlockId =
         e.builder()
-            .create<cuda_tile::RemIOp>(e.getLoc(), bz, ohTiles, signAttr)
+            .create<::mlir::cuda_tile::RemIOp>(e.getLoc(), bz, ohTiles, signAttr)
             .getResult();
   }
   auto accInit = e.constSplat({flatM, tN}, elemType, 0.0);
@@ -4087,7 +4028,7 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
                     padded[paddedIdx] = cstData[flat];
                 }
                 auto tileCstType =
-                    cuda_tile::TileType::get(ctx, cTile, elemType);
+                    ::mlir::cuda_tile::TileType::get(ctx, cTile, elemType);
                 auto tensorCstType =
                     RankedTensorType::get(cTile, elemType);
                 auto attr = DenseElementsAttr::get(
@@ -4095,7 +4036,7 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
                     ArrayRef<float>(padded.data(), padded.size()));
                 Value tile =
                     e.builder()
-                        .create<cuda_tile::ConstantOp>(
+                        .create<::mlir::cuda_tile::ConstantOp>(
                             e.builder().getUnknownLoc(), tileCstType,
                             cast<DenseTypedElementsAttr>(
                                 attr.reshape(
@@ -4130,7 +4071,7 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
             // Extract combiner and any pre-reduction elementwise ops.
             // E.g., square-sum body: mulf(x,x) then addf(sq, acc).
             StringRef combiner =
-                matchReduceCombinerLocal(genOp.getRegion());
+                matchReduceCombiner(genOp.getRegion());
             SmallVector<StringRef> preOps; // ops applied before reduce
             if (combiner.empty()) {
               // Multi-op body: extract pre-reduce and combiner ops.
@@ -4138,9 +4079,9 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
               // a pre-reduce elementwise; the last 2-input op is the combiner.
               Block &block = genOp.getRegion().front();
               for (auto &op : block.without_terminator()) {
-                StringRef name = mapArithToCudaTileLocal(&op);
+                StringRef name = mapArithToCudaTile(&op);
                 if (name.empty())
-                  name = mapMathToCudaTileLocal(&op);
+                  name = mapMathToCudaTile(&op);
                 if (!name.empty()) {
                   // If this op uses the block's second arg (accumulator),
                   // it's the combiner. Otherwise it's a pre-reduce op.
@@ -4236,9 +4177,9 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
                 continue;
               }
 
-              StringRef name = mapArithToCudaTileLocal(&op);
+              StringRef name = mapArithToCudaTile(&op);
               if (name.empty())
-                name = mapMathToCudaTileLocal(&op);
+                name = mapMathToCudaTile(&op);
               if (name.empty())
                 continue; // skip unknown ops
 
@@ -4508,14 +4449,14 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
           paddedData[paddedIdx] = rawData[flat];
       }
 
-      auto tileType = cuda_tile::TileType::get(ctx, paddedTileShape, elemType);
+      auto tileType = ::mlir::cuda_tile::TileType::get(ctx, paddedTileShape, elemType);
       auto tensorType = RankedTensorType::get(paddedTileShape, elemType);
       auto attr =
           DenseElementsAttr::get(tensorType,
                                  ArrayRef<float>(paddedData.data(),
                                                  paddedData.size()));
       return e.builder()
-          .create<cuda_tile::ConstantOp>(
+          .create<::mlir::cuda_tile::ConstantOp>(
               e.builder().getUnknownLoc(), tileType,
               cast<DenseTypedElementsAttr>(
                   attr.reshape(cast<ShapedType>(tileType))))
@@ -4681,14 +4622,14 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
         }
 
         SmallVector<int64_t> tileBShape = {tileRows, tileCols};
-        auto tileType = cuda_tile::TileType::get(ctx, tileBShape, elemType);
+        auto tileType = ::mlir::cuda_tile::TileType::get(ctx, tileBShape, elemType);
         auto tensorType = RankedTensorType::get(tileBShape, elemType);
         auto attr =
             DenseElementsAttr::get(tensorType,
                                    ArrayRef<float>(paddedData.data(),
                                                    paddedData.size()));
         return e.builder()
-            .create<cuda_tile::ConstantOp>(
+            .create<::mlir::cuda_tile::ConstantOp>(
                 e.builder().getUnknownLoc(), tileType,
                 cast<DenseTypedElementsAttr>(
                     attr.reshape(cast<ShapedType>(tileType))))
@@ -4764,7 +4705,7 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     auto finalizeMatmulOperandTile = [&](Value tile, int64_t operandIndex) {
       if (!tile || operandIndex != 1 || !bTransposed)
         return tile;
-      auto permType = cuda_tile::TileType::get(ctx, {aTK, aTN}, elemType);
+      auto permType = ::mlir::cuda_tile::TileType::get(ctx, {aTK, aTN}, elemType);
       return e.permute(tile, {1, 0}, permType);
     };
 
@@ -5256,7 +5197,7 @@ public:
 
   void getDependentDialects(DialectRegistry &registry) const override {
     // Register the cuda_tile dialect for in-process compilation.
-    registry.insert<cuda_tile::CudaTileDialect>();
+    registry.insert<::mlir::cuda_tile::CudaTileDialect>();
   }
 
   void buildConfigurationPassPipeline(

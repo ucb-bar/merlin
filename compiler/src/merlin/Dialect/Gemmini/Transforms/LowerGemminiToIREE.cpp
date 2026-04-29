@@ -466,7 +466,7 @@ struct LowerGemminiToIREEPass final
 			LowerConv2DPattern, LowerRequantizePattern, LowerClampPattern>(
 			&getContext());
 
-		if (failed(applyPatternsAndFoldGreedily(
+		if (failed(applyPatternsGreedily(
 				getOperation(), std::move(patterns)))) {
 			signalPassFailure();
 		}

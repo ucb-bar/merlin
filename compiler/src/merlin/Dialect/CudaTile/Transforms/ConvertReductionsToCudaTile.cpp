@@ -12,6 +12,7 @@
 // extracted at translation time from the actual inner module IR.
 
 #include "compiler/src/merlin/Dialect/CudaTile/Transforms/Passes.h"
+#include "compiler/src/merlin/Dialect/CudaTile/Utils/OpMapping.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -27,33 +28,7 @@ namespace mlir::iree_compiler::CudaTile {
 
 namespace {
 
-/// Match the combiner body to: add, max, min, mul.
-static StringRef matchReduceCombiner(Region &body) {
-  if (body.empty() || body.front().empty())
-    return "";
-
-  Block &block = body.front();
-  auto ops = block.without_terminator();
-  auto it = ops.begin();
-  if (it == ops.end())
-    return "";
-  Operation *combinerOp = &*it;
-  ++it;
-  if (it != ops.end())
-    return ""; // More than one non-yield op.
-
-  if (isa<arith::AddFOp>(combinerOp)) return "addf";
-  if (isa<arith::AddIOp>(combinerOp)) return "addi";
-  if (isa<arith::MaximumFOp>(combinerOp)) return "maxf";
-  if (isa<arith::MaxNumFOp>(combinerOp)) return "maxf";
-  if (isa<arith::MinimumFOp>(combinerOp)) return "minf";
-  if (isa<arith::MinNumFOp>(combinerOp)) return "minf";
-  if (isa<arith::MaxSIOp>(combinerOp)) return "maxi";
-  if (isa<arith::MinSIOp>(combinerOp)) return "mini";
-  if (isa<arith::MulFOp>(combinerOp)) return "mulf";
-  if (isa<arith::MulIOp>(combinerOp)) return "muli";
-  return "";
-}
+using cuda_tile::matchReduceCombiner;
 
 /// Tag a named linalg.reduce with classification attrs.
 static void classifyReduce(linalg::ReduceOp op) {

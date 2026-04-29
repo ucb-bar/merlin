@@ -13,6 +13,7 @@
 // Detects chains of elementwise ops and fuses into single kernel.
 
 #include "compiler/src/merlin/Dialect/CudaTile/Transforms/Passes.h"
+#include "compiler/src/merlin/Dialect/CudaTile/Utils/OpMapping.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -29,49 +30,8 @@ namespace mlir::iree_compiler::CudaTile {
 
 namespace {
 
-/// Map arith/math op to cuda_tile op name. Returns empty string if not mapped.
-/// Map arith ops to cuda_tile op names. Returns "" if not mapped.
-static StringRef mapArithToCudaTile(Operation *op) {
-  // Binary float
-  if (isa<arith::AddFOp>(op)) return "addf";
-  if (isa<arith::SubFOp>(op)) return "subf";
-  if (isa<arith::MulFOp>(op)) return "mulf";
-  if (isa<arith::DivFOp>(op)) return "divf";
-  if (isa<arith::MaximumFOp>(op)) return "maxf";
-  if (isa<arith::MinimumFOp>(op)) return "minf";
-  // Unary float
-  if (isa<arith::NegFOp>(op)) return "negf";
-  // Binary integer
-  if (isa<arith::AddIOp>(op)) return "addi";
-  if (isa<arith::SubIOp>(op)) return "subi";
-  if (isa<arith::MulIOp>(op)) return "muli";
-  if (isa<arith::AndIOp>(op)) return "andi";
-  if (isa<arith::OrIOp>(op)) return "ori";
-  if (isa<arith::XOrIOp>(op)) return "xori";
-  if (isa<arith::MaxSIOp>(op)) return "maxi";
-  if (isa<arith::MinSIOp>(op)) return "mini";
-  // Ternary
-  if (isa<arith::SelectOp>(op)) return "select";
-  return "";
-}
-
-/// Map math ops to cuda_tile op names. Returns "" if not mapped.
-static StringRef mapMathToCudaTile(Operation *op) {
-  if (isa<math::ExpOp>(op)) return "exp";
-  if (isa<math::Exp2Op>(op)) return "exp2";
-  if (isa<math::LogOp>(op)) return "log";
-  if (isa<math::Log2Op>(op)) return "log2";
-  if (isa<math::SqrtOp>(op)) return "sqrt";
-  if (isa<math::RsqrtOp>(op)) return "rsqrt";
-  if (isa<math::SinOp>(op)) return "sin";
-  if (isa<math::CosOp>(op)) return "cos";
-  if (isa<math::TanhOp>(op)) return "tanh";
-  if (isa<math::CeilOp>(op)) return "ceil";
-  if (isa<math::FloorOp>(op)) return "floor";
-  if (isa<math::AbsFOp>(op)) return "absf";
-  if (isa<math::FmaOp>(op)) return "fma";
-  return "";
-}
+using cuda_tile::mapArithToCudaTile;
+using cuda_tile::mapMathToCudaTile;
 
 /// Check if an operation is a supported elementwise op.
 static bool isSupportedElementwiseOp(Operation *op) {
