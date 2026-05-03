@@ -141,11 +141,14 @@ static iree_status_t iree_hal_cuda_new_driver_query_available_devices(
 		cuDeviceGetCount(&device_count), "cuDeviceGetCount");
 	if (device_count == 0) return iree_ok_status();
 
+	#define IREE_HAL_CUDA_NEW_MAX_PATH_LENGTH 16
 	iree_host_size_t name_storage_size =
 		(iree_host_size_t)device_count * IREE_HAL_CUDA_NEW_MAX_DEVICE_NAME_LENGTH;
+	iree_host_size_t path_storage_size =
+		(iree_host_size_t)device_count * IREE_HAL_CUDA_NEW_MAX_PATH_LENGTH;
 	iree_host_size_t total_size =
 		(iree_host_size_t)device_count * sizeof(iree_hal_device_info_t) +
-		name_storage_size;
+		name_storage_size + path_storage_size;
 	iree_hal_device_info_t *device_infos = NULL;
 	IREE_RETURN_IF_ERROR(
 		iree_allocator_malloc(host_allocator, total_size, (void **)&device_infos));
@@ -153,6 +156,7 @@ static iree_status_t iree_hal_cuda_new_driver_query_available_devices(
 	char *name_storage =
 		(char *)device_infos +
 		(iree_host_size_t)device_count * sizeof(iree_hal_device_info_t);
+	char *path_storage = name_storage + name_storage_size;
 
 	for (int i = 0; i < device_count; ++i) {
 		CUdevice cu_device;
@@ -173,10 +177,17 @@ static iree_status_t iree_hal_cuda_new_driver_query_available_devices(
 			return status;
 		}
 
+		char *path_buf =
+			path_storage + (iree_host_size_t)i * IREE_HAL_CUDA_NEW_MAX_PATH_LENGTH;
+		int path_len = snprintf(path_buf, IREE_HAL_CUDA_NEW_MAX_PATH_LENGTH,
+			"%d", i);
+
 		device_infos[i].device_id = (iree_hal_device_id_t)i;
+		device_infos[i].path = iree_make_string_view(path_buf, path_len);
 		device_infos[i].name =
 			iree_make_string_view(name_buf, strlen(name_buf));
 	}
+	#undef IREE_HAL_CUDA_NEW_MAX_PATH_LENGTH
 
 	*out_device_info_count = (iree_host_size_t)device_count;
 	*out_device_infos = device_infos;
@@ -205,6 +216,7 @@ static iree_status_t iree_hal_cuda_new_driver_dump_device_info(
 
 static iree_status_t iree_hal_cuda_new_driver_create_device_by_ordinal(
 	iree_hal_cuda_new_driver_t *driver, int cuda_ordinal,
+	const iree_hal_device_create_params_t *create_params,
 	iree_allocator_t host_allocator, iree_hal_device_t **out_device) {
 	int device_count = 0;
 	IREE_CUDA_NEW_RETURN_IF_ERROR(&driver->syms,
@@ -220,8 +232,9 @@ static iree_status_t iree_hal_cuda_new_driver_create_device_by_ordinal(
 		&driver->syms, cuda_ordinal, &phys));
 
 	iree_status_t status = iree_hal_cuda_new_logical_device_create(
-		driver->identifier, &driver->options.default_device_options,
-		&driver->syms, &phys, host_allocator, out_device);
+		(iree_hal_driver_t *)driver, driver->identifier,
+		&driver->options.default_device_options, &driver->syms, &phys,
+		create_params, host_allocator, out_device);
 
 	iree_hal_cuda_new_physical_device_deinitialize(&phys);
 	return status;
@@ -244,7 +257,7 @@ static iree_status_t iree_hal_cuda_new_driver_create_device_by_id(
 					  : (int)device_id;
 
 	return iree_hal_cuda_new_driver_create_device_by_ordinal(
-		driver, ordinal, host_allocator, out_device);
+		driver, ordinal, create_params, host_allocator, out_device);
 }
 
 static iree_status_t iree_hal_cuda_new_driver_create_device_by_path(
@@ -274,7 +287,7 @@ static iree_status_t iree_hal_cuda_new_driver_create_device_by_path(
 	}
 
 	return iree_hal_cuda_new_driver_create_device_by_ordinal(
-		driver, ordinal, host_allocator, out_device);
+		driver, ordinal, create_params, host_allocator, out_device);
 }
 
 static const iree_hal_driver_vtable_t iree_hal_cuda_new_driver_vtable = {

@@ -24,5 +24,21 @@ IREE_CU_PFN_DECL(cuDevicePrimaryCtxRetain, CUcontext *, CUdevice)
 IREE_CU_PFN_DECL(cuDevicePrimaryCtxRelease, CUdevice)
 IREE_CU_PFN_DECL(cuCtxSetCurrent, CUcontext)
 
+// Memory allocation.
+IREE_CU_PFN_DECL(cuMemAlloc, CUdeviceptr *, size_t)
+IREE_CU_PFN_DECL(cuMemFree, CUdeviceptr)
+IREE_CU_PFN_DECL(cuMemAllocManaged, CUdeviceptr *, size_t, unsigned int)
+IREE_CU_PFN_DECL(cuMemHostAlloc, void **, size_t, unsigned int)
+IREE_CU_PFN_DECL(cuMemFreeHost, void *)
+IREE_CU_PFN_DECL(cuMemHostGetDevicePointer, CUdeviceptr *, void *, unsigned int)
+IREE_CU_PFN_DECL(cuMemHostRegister, void *, size_t, unsigned int)
+IREE_CU_PFN_DECL(cuMemHostUnregister, void *)
+IREE_CU_PFN_DECL(cuMemPrefetchAsync, CUdeviceptr, size_t, CUdevice, CUstream)
+
+// Stream management.
+IREE_CU_PFN_DECL(cuStreamCreate, CUstream *, unsigned int)
+IREE_CU_PFN_DECL(cuStreamDestroy, CUstream)
+IREE_CU_PFN_DECL(cuStreamSynchronize, CUstream)
+
 // Symbol resolution.
 IREE_CU_PFN_DECL(cuGetProcAddress, const char *, void **, int, cuuint64_t)

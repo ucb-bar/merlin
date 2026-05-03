@@ -29,6 +29,10 @@ iree_cc_library(
     "api.h"
   SRCS
     "api.h"
+    "allocator.c"
+    "allocator.h"
+    "buffer.c"
+    "buffer.h"
     "driver.c"
     "driver.h"
     "physical_device.c"
