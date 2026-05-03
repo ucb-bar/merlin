@@ -8,13 +8,20 @@
 #define IREE_HAL_DRIVERS_CUDA_NEW_DYNAMIC_SYMBOLS_H_
 
 #include "iree/base/api.h"
+#include "iree/base/internal/dynamic_library.h"
+#include "headers.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
 
 typedef struct iree_hal_cuda_new_dynamic_symbols_t {
-	int reserved;
+	iree_dynamic_library_t *dylib;
+
+#define IREE_CU_PFN_DECL(cudaSymbolName, ...) \
+	CUresult (*cudaSymbolName)(__VA_ARGS__);
+#include "dynamic_symbol_table.h" // IWYU pragma: export
+#undef IREE_CU_PFN_DECL
 } iree_hal_cuda_new_dynamic_symbols_t;
 
 iree_status_t iree_hal_cuda_new_dynamic_symbols_initialize(

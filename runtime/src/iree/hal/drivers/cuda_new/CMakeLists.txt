@@ -5,6 +5,25 @@ iree_add_all_subdirs()
 
 iree_cc_library(
   NAME
+    dynamic_symbols
+  HDRS
+    "dynamic_symbols.h"
+    "status_util.h"
+  TEXTUAL_HDRS
+    "dynamic_symbol_table.h"
+  SRCS
+    "dynamic_symbols.c"
+    "headers.h"
+    "status_util.c"
+  DEPS
+    iree::base
+    iree::base::internal::dynamic_library
+    iree_cuda::headers
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     cuda_new
   HDRS
     "api.h"
@@ -18,11 +37,8 @@ iree_cc_library(
     "logical_device.h"
     "target_caps.c"
     "target_caps.h"
-    "dynamic_symbols.c"
-    "dynamic_symbols.h"
-    "status_util.c"
-    "status_util.h"
   DEPS
+    ::dynamic_symbols
     iree::base
     iree::hal
   PUBLIC

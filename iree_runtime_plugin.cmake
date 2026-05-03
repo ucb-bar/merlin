@@ -85,14 +85,29 @@ if(MERLIN_RUNTIME_ENABLE_HAL_CUDA_TILE)
   endif()
 endif()
 
-# cuda_new HAL driver (spike — buildable skeleton, no device registration).
+# cuda_new external HAL driver.
 option(MERLIN_RUNTIME_ENABLE_HAL_CUDA_NEW
-       "Enable cuda_new external HAL driver (spike)" OFF)
+       "Enable cuda_new external HAL driver" OFF)
 
 if(MERLIN_RUNTIME_ENABLE_HAL_CUDA_NEW)
-  add_subdirectory(
+  iree_register_external_hal_driver(
+    NAME
+    cuda_new
+    SOURCE_DIR
     "${CMAKE_CURRENT_LIST_DIR}/runtime/src/iree/hal/drivers/cuda_new"
-    "merlin/runtime/iree/hal/drivers/cuda_new")
+    BINARY_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/merlin/runtime/iree/hal/drivers/cuda_new"
+    DRIVER_TARGET
+    iree::hal::drivers::cuda_new::registration
+    REGISTER_FN
+    iree_hal_cuda_new_driver_module_register)
+
+  if(NOT "cuda_new" IN_LIST IREE_EXTERNAL_HAL_DRIVERS)
+    list(APPEND IREE_EXTERNAL_HAL_DRIVERS "cuda_new")
+    set(IREE_EXTERNAL_HAL_DRIVERS
+        "${IREE_EXTERNAL_HAL_DRIVERS}"
+        CACHE STRING "" FORCE)
+  endif()
 endif()
 
 if(MERLIN_RUNTIME_ENABLE_SAMPLES)

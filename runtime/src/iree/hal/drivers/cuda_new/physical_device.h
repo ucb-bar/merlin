@@ -14,6 +14,7 @@
 #define IREE_HAL_CUDA_NEW_MAX_DEVICE_NAME_LENGTH 256
 
 typedef struct iree_hal_cuda_new_physical_device_t {
+	CUdevice cu_device;
 	int cuda_ordinal;
 	char device_name[IREE_HAL_CUDA_NEW_MAX_DEVICE_NAME_LENGTH];
 	iree_hal_cuda_new_target_caps_t caps;
