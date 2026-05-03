@@ -11,8 +11,14 @@
 #include <string.h>
 
 #include "allocator.h"
+#include "command_buffer.h"
+#include "executable_cache.h"
 #include "status_util.h"
 #include "target_caps.h"
+#include "iree/async/util/proactor_pool.h"
+#include "iree/hal/drivers/local_sync/sync_semaphore.h"
+#include "iree/hal/utils/deferred_command_buffer.h"
+#include "iree/hal/utils/queue_emulation.h"
 
 //===----------------------------------------------------------------------===//
 // iree_hal_cuda_new_logical_device_t
@@ -33,6 +39,11 @@ typedef struct iree_hal_cuda_new_logical_device_t {
 
 	iree_hal_cuda_new_target_caps_t caps;
 	iree_hal_allocator_t *device_allocator;
+	iree_arena_block_pool_t block_pool;
+
+	iree_async_proactor_pool_t *proactor_pool;
+	iree_async_proactor_t *proactor;
+
 	iree_hal_device_topology_info_t topology_info;
 
 	// + trailing identifier string storage
@@ -102,6 +113,10 @@ iree_status_t iree_hal_cuda_new_logical_device_create(
 		device->cu_context = cu_context;
 		device->dispatch_stream = dispatch_stream;
 		device->caps = physical_device->caps;
+		iree_arena_block_pool_initialize(
+			options->arena_block_size, host_allocator, &device->block_pool);
+		device->proactor_pool = create_params->proactor_pool;
+		iree_async_proactor_pool_retain(device->proactor_pool);
 		memset(&device->topology_info, 0, sizeof(device->topology_info));
 	}
 
@@ -109,7 +124,14 @@ iree_status_t iree_hal_cuda_new_logical_device_create(
 	if (iree_status_is_ok(status)) {
 		status = iree_hal_cuda_new_allocator_create(
 			(iree_hal_device_t *)device, syms, physical_device->cu_device,
-			dispatch_stream, host_allocator, &device->device_allocator);
+			cu_context, dispatch_stream, host_allocator,
+			&device->device_allocator);
+	}
+
+	// Acquire a proactor for semaphore support.
+	if (iree_status_is_ok(status)) {
+		status = iree_async_proactor_pool_get(
+			device->proactor_pool, 0, &device->proactor);
 	}
 
 	if (iree_status_is_ok(status)) {
@@ -118,6 +140,9 @@ iree_status_t iree_hal_cuda_new_logical_device_create(
 		if (device) {
 			if (device->device_allocator) {
 				iree_hal_allocator_release(device->device_allocator);
+			}
+			if (device->proactor_pool) {
+				iree_async_proactor_pool_release(device->proactor_pool);
 			}
 			if (device->driver) {
 				iree_hal_driver_release(device->driver);
@@ -150,6 +175,8 @@ static void iree_hal_cuda_new_device_destroy(iree_hal_device_t *base_device) {
 	IREE_TRACE_ZONE_BEGIN(z0);
 
 	iree_hal_allocator_release(device->device_allocator);
+	iree_arena_block_pool_deinitialize(&device->block_pool);
+	iree_async_proactor_pool_release(device->proactor_pool);
 
 	IREE_CUDA_NEW_IGNORE_ERROR(syms,
 		cuStreamDestroy(device->dispatch_stream));
@@ -219,12 +246,22 @@ static iree_status_t iree_hal_cuda_new_device_query_i64(
 	if (iree_string_view_equal(category, IREE_SV("hal.device.id"))) {
 		*out_value =
 			iree_string_view_match_pattern(device->identifier, key) ? 1 : 0;
+		// Also accept cuda_tile device targets so existing VMFBs work.
+		if (!*out_value) {
+			*out_value =
+				iree_string_view_match_pattern(IREE_SV("cuda_tile"), key)
+					? 1
+					: 0;
+		}
 		return iree_ok_status();
 	}
 
 	if (iree_string_view_equal(category, IREE_SV("hal.executable.format"))) {
 		*out_value =
-			iree_string_view_equal(key, IREE_SV("cuda-new-fb")) ? 1 : 0;
+			(iree_string_view_equal(key, IREE_SV("cuda-tile-fb")) ||
+			 iree_string_view_equal(key, IREE_SV("CTL1")))
+				? 1
+				: 0;
 		return iree_ok_status();
 	}
 
@@ -291,8 +328,12 @@ static iree_status_t iree_hal_cuda_new_device_create_command_buffer(
 	iree_hal_queue_affinity_t queue_affinity,
 	iree_host_size_t binding_capacity,
 	iree_hal_command_buffer_t **out_command_buffer) {
-	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-		"cuda_new command buffer not yet implemented");
+	iree_hal_cuda_new_logical_device_t *device =
+		iree_hal_cuda_new_logical_device_cast(base_device);
+	return iree_hal_deferred_command_buffer_create(
+		iree_hal_device_allocator(base_device), mode, command_categories,
+		queue_affinity, binding_capacity, &device->block_pool,
+		device->host_allocator, out_command_buffer);
 }
 
 static iree_status_t iree_hal_cuda_new_device_create_event(
@@ -305,8 +346,11 @@ static iree_status_t iree_hal_cuda_new_device_create_event(
 static iree_status_t iree_hal_cuda_new_device_create_executable_cache(
 	iree_hal_device_t *base_device, iree_string_view_t identifier,
 	iree_hal_executable_cache_t **out_executable_cache) {
-	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-		"cuda_new executable cache not yet implemented");
+	iree_hal_cuda_new_logical_device_t *device =
+		iree_hal_cuda_new_logical_device_cast(base_device);
+	return iree_hal_cuda_new_executable_cache_create(identifier,
+		device->syms, device->cu_device, device->cu_context,
+		device->host_allocator, out_executable_cache);
 }
 
 static iree_status_t iree_hal_cuda_new_device_import_file(
@@ -321,8 +365,10 @@ static iree_status_t iree_hal_cuda_new_device_create_semaphore(
 	iree_hal_device_t *base_device, iree_hal_queue_affinity_t queue_affinity,
 	uint64_t initial_value, iree_hal_semaphore_flags_t flags,
 	iree_hal_semaphore_t **out_semaphore) {
-	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-		"cuda_new semaphore not yet implemented");
+	iree_hal_cuda_new_logical_device_t *device =
+		iree_hal_cuda_new_logical_device_cast(base_device);
+	return iree_hal_sync_semaphore_create(device->proactor, queue_affinity,
+		initial_value, flags, device->host_allocator, out_semaphore);
 }
 
 static iree_hal_semaphore_compatibility_t
@@ -338,8 +384,22 @@ static iree_status_t iree_hal_cuda_new_device_queue_alloca(
 	iree_hal_allocator_pool_t pool, iree_hal_buffer_params_t params,
 	iree_device_size_t allocation_size, iree_hal_alloca_flags_t flags,
 	iree_hal_buffer_t **IREE_RESTRICT out_buffer) {
-	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-		"cuda_new queue_alloca not yet implemented");
+	IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(
+		wait_semaphore_list, iree_infinite_timeout(),
+		IREE_ASYNC_WAIT_FLAG_NONE));
+
+	iree_status_t status = iree_hal_allocator_allocate_buffer(
+		iree_hal_device_allocator(base_device), params, allocation_size,
+		out_buffer);
+
+	if (iree_status_is_ok(status)) {
+		status = iree_hal_semaphore_list_signal(signal_semaphore_list,
+			/*frontier=*/NULL);
+	} else {
+		iree_hal_semaphore_list_fail(signal_semaphore_list,
+			iree_status_clone(status));
+	}
+	return status;
 }
 
 static iree_status_t iree_hal_cuda_new_device_queue_dealloca(
@@ -347,41 +407,18 @@ static iree_status_t iree_hal_cuda_new_device_queue_dealloca(
 	const iree_hal_semaphore_list_t wait_semaphore_list,
 	const iree_hal_semaphore_list_t signal_semaphore_list,
 	iree_hal_buffer_t *buffer, iree_hal_dealloca_flags_t flags) {
-	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-		"cuda_new queue_dealloca not yet implemented");
-}
+	IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(
+		wait_semaphore_list, iree_infinite_timeout(),
+		IREE_ASYNC_WAIT_FLAG_NONE));
 
-static iree_status_t iree_hal_cuda_new_device_queue_fill(
-	iree_hal_device_t *base_device, iree_hal_queue_affinity_t queue_affinity,
-	const iree_hal_semaphore_list_t wait_semaphore_list,
-	const iree_hal_semaphore_list_t signal_semaphore_list,
-	iree_hal_buffer_t *target_buffer, iree_device_size_t target_offset,
-	iree_device_size_t length, const void *pattern,
-	iree_host_size_t pattern_length, iree_hal_fill_flags_t flags) {
-	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-		"cuda_new queue_fill not yet implemented");
-}
-
-static iree_status_t iree_hal_cuda_new_device_queue_update(
-	iree_hal_device_t *base_device, iree_hal_queue_affinity_t queue_affinity,
-	const iree_hal_semaphore_list_t wait_semaphore_list,
-	const iree_hal_semaphore_list_t signal_semaphore_list,
-	const void *source_buffer, iree_host_size_t source_offset,
-	iree_hal_buffer_t *target_buffer, iree_device_size_t target_offset,
-	iree_device_size_t length, iree_hal_update_flags_t flags) {
-	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-		"cuda_new queue_update not yet implemented");
-}
-
-static iree_status_t iree_hal_cuda_new_device_queue_copy(
-	iree_hal_device_t *base_device, iree_hal_queue_affinity_t queue_affinity,
-	const iree_hal_semaphore_list_t wait_semaphore_list,
-	const iree_hal_semaphore_list_t signal_semaphore_list,
-	iree_hal_buffer_t *source_buffer, iree_device_size_t source_offset,
-	iree_hal_buffer_t *target_buffer, iree_device_size_t target_offset,
-	iree_device_size_t length, iree_hal_copy_flags_t flags) {
-	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-		"cuda_new queue_copy not yet implemented");
+	iree_status_t status =
+		iree_hal_semaphore_list_signal(signal_semaphore_list,
+			/*frontier=*/NULL);
+	if (!iree_status_is_ok(status)) {
+		iree_hal_semaphore_list_fail(signal_semaphore_list,
+			iree_status_clone(status));
+	}
+	return status;
 }
 
 static iree_status_t iree_hal_cuda_new_device_queue_read(
@@ -416,20 +453,6 @@ static iree_status_t iree_hal_cuda_new_device_queue_host_call(
 		"cuda_new queue_host_call not yet implemented");
 }
 
-static iree_status_t iree_hal_cuda_new_device_queue_dispatch(
-	iree_hal_device_t *base_device, iree_hal_queue_affinity_t queue_affinity,
-	const iree_hal_semaphore_list_t wait_semaphore_list,
-	const iree_hal_semaphore_list_t signal_semaphore_list,
-	iree_hal_executable_t *executable,
-	iree_hal_executable_export_ordinal_t export_ordinal,
-	const iree_hal_dispatch_config_t config,
-	iree_const_byte_span_t constants,
-	const iree_hal_buffer_ref_list_t bindings,
-	iree_hal_dispatch_flags_t flags) {
-	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-		"cuda_new queue_dispatch not yet implemented");
-}
-
 static iree_status_t iree_hal_cuda_new_device_queue_execute(
 	iree_hal_device_t *base_device, iree_hal_queue_affinity_t queue_affinity,
 	const iree_hal_semaphore_list_t wait_semaphore_list,
@@ -437,8 +460,65 @@ static iree_status_t iree_hal_cuda_new_device_queue_execute(
 	iree_hal_command_buffer_t *command_buffer,
 	iree_hal_buffer_binding_table_t binding_table,
 	iree_hal_execute_flags_t flags) {
-	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-		"cuda_new queue_execute not yet implemented");
+	iree_hal_cuda_new_logical_device_t *device =
+		iree_hal_cuda_new_logical_device_cast(base_device);
+	IREE_TRACE_ZONE_BEGIN(z0);
+
+	IREE_RETURN_AND_END_ZONE_IF_ERROR(z0,
+		IREE_CURESULT_TO_STATUS_NEW(device->syms,
+			cuCtxSetCurrent(device->cu_context), "cuCtxSetCurrent"));
+
+	IREE_RETURN_AND_END_ZONE_IF_ERROR(z0,
+		iree_hal_semaphore_list_wait(wait_semaphore_list,
+			iree_infinite_timeout(), IREE_ASYNC_WAIT_FLAG_NONE));
+
+	iree_status_t status = iree_ok_status();
+
+	if (command_buffer) {
+		if (iree_hal_deferred_command_buffer_isa(command_buffer)) {
+			// Create a transient stream command buffer and replay into it.
+			iree_hal_command_buffer_t *stream_cb = NULL;
+			status = iree_hal_cuda_new_stream_command_buffer_create(
+				device->device_allocator, device->syms,
+				IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT |
+					IREE_HAL_COMMAND_BUFFER_MODE_UNRETAINED,
+				IREE_HAL_COMMAND_CATEGORY_ANY, /*binding_capacity=*/0,
+				device->dispatch_stream, &device->block_pool,
+				device->host_allocator, &stream_cb);
+			if (iree_status_is_ok(status)) {
+				status = iree_hal_deferred_command_buffer_apply(
+					command_buffer, stream_cb, binding_table);
+			}
+			if (iree_status_is_ok(status)) {
+				status = IREE_CURESULT_TO_STATUS_NEW(device->syms,
+					cuStreamSynchronize(device->dispatch_stream),
+					"cuStreamSynchronize");
+			}
+			if (stream_cb) {
+				iree_hal_command_buffer_release(stream_cb);
+			}
+		} else if (iree_hal_cuda_new_stream_command_buffer_isa(
+					   command_buffer)) {
+			// Already executed inline on the stream; just sync.
+			status = IREE_CURESULT_TO_STATUS_NEW(device->syms,
+				cuStreamSynchronize(device->dispatch_stream),
+				"cuStreamSynchronize");
+		} else {
+			status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+				"unsupported command buffer type");
+		}
+	}
+
+	if (iree_status_is_ok(status)) {
+		status = iree_hal_semaphore_list_signal(signal_semaphore_list,
+			/*frontier=*/NULL);
+	} else {
+		iree_hal_semaphore_list_fail(signal_semaphore_list,
+			iree_status_clone(status));
+	}
+
+	IREE_TRACE_ZONE_END(z0);
+	return status;
 }
 
 static iree_status_t iree_hal_cuda_new_device_queue_flush(
@@ -492,13 +572,13 @@ static const iree_hal_device_vtable_t iree_hal_cuda_new_device_vtable = {
 		iree_hal_cuda_new_device_query_semaphore_compatibility,
 	.queue_alloca = iree_hal_cuda_new_device_queue_alloca,
 	.queue_dealloca = iree_hal_cuda_new_device_queue_dealloca,
-	.queue_fill = iree_hal_cuda_new_device_queue_fill,
-	.queue_update = iree_hal_cuda_new_device_queue_update,
-	.queue_copy = iree_hal_cuda_new_device_queue_copy,
+	.queue_fill = iree_hal_device_queue_emulated_fill,
+	.queue_update = iree_hal_device_queue_emulated_update,
+	.queue_copy = iree_hal_device_queue_emulated_copy,
 	.queue_read = iree_hal_cuda_new_device_queue_read,
 	.queue_write = iree_hal_cuda_new_device_queue_write,
 	.queue_host_call = iree_hal_cuda_new_device_queue_host_call,
-	.queue_dispatch = iree_hal_cuda_new_device_queue_dispatch,
+	.queue_dispatch = iree_hal_device_queue_emulated_dispatch,
 	.queue_execute = iree_hal_cuda_new_device_queue_execute,
 	.queue_flush = iree_hal_cuda_new_device_queue_flush,
 	.profiling_begin = iree_hal_cuda_new_device_profiling_begin,

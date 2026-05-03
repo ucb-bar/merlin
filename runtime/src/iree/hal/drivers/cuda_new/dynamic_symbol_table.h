@@ -35,6 +35,28 @@ IREE_CU_PFN_DECL(cuMemHostRegister, void *, size_t, unsigned int)
 IREE_CU_PFN_DECL(cuMemHostUnregister, void *)
 IREE_CU_PFN_DECL(cuMemPrefetchAsync, CUdeviceptr, size_t, CUdevice, CUstream)
 
+// Module management.
+IREE_CU_PFN_DECL(cuModuleLoadDataEx, CUmodule *, const void *, unsigned int,
+	CUjit_option *, void **)
+IREE_CU_PFN_DECL(cuModuleUnload, CUmodule)
+IREE_CU_PFN_DECL(cuModuleGetFunction, CUfunction *, CUmodule, const char *)
+
+// Memory transfer.
+IREE_CU_PFN_DECL(cuMemcpyAsync, CUdeviceptr, CUdeviceptr, size_t, CUstream)
+IREE_CU_PFN_DECL(cuMemcpyHtoDAsync, CUdeviceptr, const void *, size_t,
+	CUstream)
+IREE_CU_PFN_DECL(cuMemsetD8Async, CUdeviceptr, unsigned char, size_t,
+	CUstream)
+IREE_CU_PFN_DECL(cuMemsetD16Async, CUdeviceptr, unsigned short, size_t,
+	CUstream)
+IREE_CU_PFN_DECL(cuMemsetD32Async, CUdeviceptr, unsigned int, size_t,
+	CUstream)
+
+// Kernel launch.
+IREE_CU_PFN_DECL(cuLaunchKernel, CUfunction, unsigned int, unsigned int,
+	unsigned int, unsigned int, unsigned int, unsigned int, unsigned int,
+	CUstream, void **, void **)
+
 // Stream management.
 IREE_CU_PFN_DECL(cuStreamCreate, CUstream *, unsigned int)
 IREE_CU_PFN_DECL(cuStreamDestroy, CUstream)

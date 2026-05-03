@@ -20,6 +20,7 @@ typedef struct iree_hal_cuda_new_allocator_t {
 	iree_hal_resource_t resource;
 	iree_hal_device_t *parent_device;
 	CUdevice device;
+	CUcontext cu_context;
 	CUstream stream;
 	const iree_hal_cuda_new_dynamic_symbols_t *symbols;
 	iree_allocator_t host_allocator;
@@ -38,7 +39,7 @@ static iree_hal_cuda_new_allocator_t *iree_hal_cuda_new_allocator_cast(
 iree_status_t iree_hal_cuda_new_allocator_create(
 	iree_hal_device_t *parent_device,
 	const iree_hal_cuda_new_dynamic_symbols_t *syms, CUdevice device,
-	CUstream stream, iree_allocator_t host_allocator,
+	CUcontext cu_context, CUstream stream, iree_allocator_t host_allocator,
 	iree_hal_allocator_t **out_allocator) {
 	IREE_ASSERT_ARGUMENT(parent_device);
 	IREE_ASSERT_ARGUMENT(syms);
@@ -61,6 +62,7 @@ iree_status_t iree_hal_cuda_new_allocator_create(
 		&allocator->resource);
 	allocator->parent_device = parent_device;
 	allocator->device = device;
+	allocator->cu_context = cu_context;
 	allocator->stream = stream;
 	allocator->symbols = syms;
 	allocator->host_allocator = host_allocator;
@@ -247,6 +249,9 @@ static iree_status_t iree_hal_cuda_new_allocator_allocate_buffer(
 	iree_hal_cuda_new_allocator_t *allocator =
 		iree_hal_cuda_new_allocator_cast(base_allocator);
 
+	IREE_RETURN_IF_ERROR(IREE_CURESULT_TO_STATUS_NEW(allocator->symbols,
+		cuCtxSetCurrent(allocator->cu_context), "cuCtxSetCurrent"));
+
 	iree_hal_buffer_params_t compat_params = *params;
 	iree_hal_buffer_compatibility_t compatibility =
 		iree_hal_cuda_new_allocator_query_buffer_compatibility(
@@ -342,6 +347,9 @@ static void iree_hal_cuda_new_allocator_deallocate_buffer(
 	iree_hal_cuda_new_allocator_t *allocator =
 		iree_hal_cuda_new_allocator_cast(base_allocator);
 
+	IREE_CUDA_NEW_IGNORE_ERROR(allocator->symbols,
+		cuCtxSetCurrent(allocator->cu_context));
+
 	const iree_hal_cuda_new_buffer_type_t buffer_type =
 		iree_hal_cuda_new_buffer_type(base_buffer);
 
@@ -369,6 +377,9 @@ static void iree_hal_cuda_new_buffer_release_callback(void *user_data,
 	iree_hal_buffer_t *buffer) {
 	iree_hal_cuda_new_allocator_t *allocator =
 		(iree_hal_cuda_new_allocator_t *)user_data;
+
+	IREE_CUDA_NEW_IGNORE_ERROR(allocator->symbols,
+		cuCtxSetCurrent(allocator->cu_context));
 
 	const iree_hal_cuda_new_buffer_type_t buffer_type =
 		iree_hal_cuda_new_buffer_type(buffer);

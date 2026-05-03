@@ -33,8 +33,15 @@ iree_cc_library(
     "allocator.h"
     "buffer.c"
     "buffer.h"
+    "command_buffer.c"
+    "command_buffer.h"
     "driver.c"
     "driver.h"
+    "executable.c"
+    "executable.h"
+    "executable_cache.c"
+    "executable_cache.h"
+    "launch_abi.h"
     "physical_device.c"
     "physical_device.h"
     "logical_device.c"
@@ -43,7 +50,20 @@ iree_cc_library(
     "target_caps.h"
   DEPS
     ::dynamic_symbols
+    iree::async
+    iree::async::util::proactor_pool
     iree::base
+    iree::base::internal
+    iree::base::internal::arena
+    iree::base::internal::flatcc::parsing
     iree::hal
+    iree::hal::drivers::local_sync::sync_driver
+    iree::hal::utils::deferred_command_buffer
+    iree::hal::utils::executable_debug_info
+    iree::hal::utils::executable_header
+    iree::hal::utils::queue_emulation
+    iree::hal::utils::resource_set
+    iree::schemas::cuda_tile_executable_def_c_fbs
+    iree::schemas::executable_debug_info_c_fbs
   PUBLIC
 )
