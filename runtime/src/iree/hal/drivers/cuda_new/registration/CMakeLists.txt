@@ -1,0 +1,15 @@
+iree_cc_library(
+  NAME
+    registration
+  HDRS
+    "driver_module.h"
+  SRCS
+    "driver_module.c"
+  DEPS
+    iree::base
+    iree::hal
+    iree::hal::drivers::cuda_new
+  DEFINES
+    "IREE_HAVE_HAL_CUDA_NEW_DRIVER_MODULE=1"
+  PUBLIC
+)
