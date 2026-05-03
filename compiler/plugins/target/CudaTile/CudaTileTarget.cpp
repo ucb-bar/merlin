@@ -2426,7 +2426,12 @@ generateConv2DKernel(MLIRContext *ctx, StringRef kernelName,
                      ArrayRef<int64_t> outputShape,  // [N, OH, OW, C_out]
                      ArrayRef<int64_t> strides, ArrayRef<int64_t> dilations,
                      Type elemType, int64_t tileM, int64_t tileN,
-                     int64_t tileK, bool isNCHW = false) {
+                     int64_t tileK, bool isNCHW = false,
+                     ArrayRef<CudaTileFusedOpPlan> fusedOps = {},
+                     ArrayRef<CudaTileBindingPlan> bindingShapes = {},
+                     int64_t numBindings = 3,
+                     int64_t outputBinding = 2,
+                     const DenseMap<Value, int64_t> &valueToBind = DenseMap<Value, int64_t>()) {
   int64_t N = inputShape[0];
   int64_t H = inputShape[1];
   int64_t W = inputShape[2];
@@ -2450,7 +2455,7 @@ generateConv2DKernel(MLIRContext *ctx, StringRef kernelName,
 
   CudaTileOpEmitter e(ctx);
   e.beginModule(kernelName);
-  e.beginEntry("main", 3, elemType); // input, filter, output
+  e.beginEntry("main", numBindings, elemType);
 
   // Output view: logical [N, OH, OW, C_out], strides depend on physical layout.
   SmallVector<int64_t> shC4 = {N, OH, OW, Cout};
@@ -2458,7 +2463,7 @@ generateConv2DKernel(MLIRContext *ctx, StringRef kernelName,
       isNCHW ? SmallVector<int64_t>{Cout * OH * OW, OW, 1, OH * OW}
              : SmallVector<int64_t>{OH * OW * Cout, OW * Cout, Cout, 1};
   SmallVector<int64_t> tileC4 = {1, tOH, tOW, tOC};
-  auto vC = e.makeTensorView(e.getArg(2), shC4, stC4, elemType);
+  auto vC = e.makeTensorView(e.getArg(outputBinding), shC4, stC4, elemType);
   auto pC = e.makePartitionView(vC, tileC4);
 
   auto [bx, by, bz] = e.getTileBlockId();
@@ -2550,6 +2555,144 @@ generateConv2DKernel(MLIRContext *ctx, StringRef kernelName,
         Value newAcc = e.mmaf(flatA, tBd, iterAcc);
         e.endFor(forOp, ValueRange{newAcc});
         acc = forOp.getResult(0);
+      }
+    }
+  }
+
+  // Post-conv elementwise epilogue: bias add, relu, etc.
+  {
+    DenseMap<Value, Value> fusedValueMap;
+    for (const auto &fop : fusedOps) {
+      if (fop.role == CudaTileFusedOpRole::Primary) {
+        for (Value result : fop.op->getResults())
+          fusedValueMap[result] = acc;
+      }
+    }
+
+    SmallVector<int64_t> epilogueTileShape = {flatM, tOC};
+    for (const auto &fop : fusedOps) {
+      if (fop.role != CudaTileFusedOpRole::Epilogue)
+        continue;
+      auto postOp = dyn_cast<linalg::GenericOp>(fop.op);
+      if (!postOp || postOp.getNumReductionLoops() != 0 ||
+          postOp.getNumParallelLoops() == 0)
+        continue;
+
+      SmallVector<Value> inputTiles;
+      bool allResolved = true;
+
+      for (Value input : postOp.getDpsInputs()) {
+        auto it = fusedValueMap.find(input);
+        if (it != fusedValueMap.end()) {
+          inputTiles.push_back(it->second);
+          continue;
+        }
+
+        if (auto cstOp = input.getDefiningOp<arith::ConstantOp>()) {
+          SmallVector<float> rawData;
+          auto attrVal = cstOp.getValue();
+          if (auto dense = dyn_cast<DenseElementsAttr>(attrVal)) {
+            for (auto val : dense.getValues<float>())
+              rawData.push_back(val);
+          } else if (auto resAttr =
+                         dyn_cast<DenseResourceElementsAttr>(attrVal)) {
+            auto blob = resAttr.getRawHandle().getBlob();
+            if (blob) {
+              auto data = blob->getData();
+              auto *floats = reinterpret_cast<const float *>(data.data());
+              int64_t numElem = data.size() / sizeof(float);
+              rawData.assign(floats, floats + numElem);
+            }
+          }
+
+          if (!rawData.empty()) {
+            auto cstType = dyn_cast<ShapedType>(input.getType());
+            if (cstType && cstType.getRank() == 1) {
+              int64_t cstSize = cstType.getShape()[0];
+              int64_t padOC = nextPow2(cstSize);
+              SmallVector<float> padded(padOC, 0.0f);
+              for (int64_t i = 0;
+                   i < cstSize && i < static_cast<int64_t>(rawData.size());
+                   ++i)
+                padded[i] = rawData[i];
+
+              auto fullTileType =
+                  ::mlir::cuda_tile::TileType::get(ctx, {padOC}, elemType);
+              auto fullTensorType = RankedTensorType::get({padOC}, elemType);
+              auto attr = DenseElementsAttr::get(
+                  fullTensorType,
+                  ArrayRef<float>(padded.data(), padded.size()));
+              Value fullBias =
+                  e.builder()
+                      .create<::mlir::cuda_tile::ConstantOp>(
+                          e.getLoc(), fullTileType,
+                          cast<DenseTypedElementsAttr>(
+                              attr.reshape(cast<ShapedType>(fullTileType))))
+                      .getResult();
+
+              Value tile;
+              if (tOC >= padOC) {
+                tile = fullBias;
+                if (tOC != padOC)
+                  tile = e.reshape(tile, {tOC}, elemType);
+              } else {
+                Value offset = e.globalIndexScalar(
+                    epilogueTileShape, /*dim=*/1, bx);
+                tile = e.extractSubtile(fullBias, {tOC}, elemType,
+                                        ValueRange{offset});
+              }
+              tile = e.reshape(tile, {1, tOC}, elemType);
+              tile = e.broadcastTile(tile, epilogueTileShape, elemType);
+              inputTiles.push_back(tile);
+              continue;
+            }
+          }
+
+          if (auto fAttr = dyn_cast<FloatAttr>(cstOp.getValue())) {
+            inputTiles.push_back(e.constSplat(epilogueTileShape, elemType,
+                                              fAttr.getValueAsDouble()));
+            continue;
+          }
+        }
+
+        const CudaTileBindingPlan *binding = nullptr;
+        auto bindIt = valueToBind.find(input);
+        if (bindIt != valueToBind.end()) {
+          int64_t idx = bindIt->second;
+          if (idx >= 0 && idx < static_cast<int64_t>(bindingShapes.size()))
+            binding = &bindingShapes[idx];
+        }
+        if (!binding)
+          binding = findBindingPlanForMemref(bindingShapes, input);
+        if (binding && !binding->shape.empty() &&
+            binding->shape.size() == 1) {
+          Value ptr = getSubspanArg(e, *binding, elemType);
+          SmallVector<int64_t> biasSourceShape = {binding->shape[0]};
+          auto strides = computeRowMajorStrides(biasSourceShape);
+          auto view =
+              e.makeTensorView(ptr, biasSourceShape, strides, elemType);
+          SmallVector<int64_t> loadShape = {tOC};
+          auto partition = e.makePartitionView(view, loadShape);
+          auto [tile, token] =
+              e.loadViewTko(partition, {bx}, loadShape, elemType);
+          tile = e.reshape(tile, {1, tOC}, elemType);
+          tile = e.broadcastTile(tile, epilogueTileShape, elemType);
+          inputTiles.push_back(tile);
+          continue;
+        }
+
+        allResolved = false;
+        LLVM_DEBUG(llvm::dbgs()
+                   << "[cuda_tile] conv epilogue: unresolved input\n");
+      }
+
+      if (allResolved) {
+        Value fallback = inputTiles.empty() ? acc : inputTiles.front();
+        acc = emitElementwiseGenericBody(e, postOp, inputTiles,
+                                         epilogueTileShape, elemType,
+                                         fallback);
+        for (Value result : postOp->getResults())
+          fusedValueMap[result] = acc;
       }
     }
   }
@@ -2797,20 +2940,30 @@ generateStridedPointwiseMatmul2DKernel(
   return {std::move(e), gridDims};
 }
 
-using CudaTileKernelBinary =
-    std::pair<std::string, SmallVector<int64_t, 3>>;
+struct CudaTileKernelBinary {
+  std::string tilebcData;
+  SmallVector<int64_t, 3> gridDims;
+  std::string tileIRText;
+};
 
 static FailureOr<CudaTileKernelBinary>
 serializeCudaTileKernel(CudaTileOpEmitter &&e,
                         SmallVector<int64_t, 3> gridDims) {
+  // Capture human-readable tile IR before serialization.
+  std::string tileIRText;
+  {
+    llvm::raw_string_ostream os(tileIRText);
+    e.getModule().print(os);
+  }
+
   if (std::getenv("IREE_CUDA_TILE_DUMP_TILE_IR")) {
-    e.getModule().print(llvm::errs());
-    llvm::errs() << "\n";
+    llvm::errs() << tileIRText << "\n";
   }
   std::string tilebcData;
   if (failed(e.serialize(tilebcData)))
     return failure();
-  return std::make_pair(std::move(tilebcData), std::move(gridDims));
+  return CudaTileKernelBinary{std::move(tilebcData), std::move(gridDims),
+                              std::move(tileIRText)};
 }
 
 static bool isDataMovementStrategy(CudaTileLoweringStrategy strategy) {
@@ -3026,11 +3179,47 @@ emitReductionKernel(MLIRContext *ctx, StringRef kernelName,
 static FailureOr<CudaTileKernelBinary>
 emitDirectConv2DKernel(MLIRContext *ctx, StringRef kernelName,
                        const CudaTileConvPlan &convPlan, Type elemType,
-                       int64_t tileM, int64_t tileN, int64_t tileK) {
+                       int64_t tileM, int64_t tileN, int64_t tileK,
+                       const CudaTileKernelPlan &plan = {},
+                       ArrayRef<CudaTileBindingPlan> bindingShapes = {},
+                       Operation *innerModule = nullptr) {
+  int64_t numBindings = bindingShapes.empty()
+                            ? 3
+                            : std::max<int64_t>(3, getNumBindingArgs(bindingShapes));
+  int64_t outputBinding = numBindings - 1;
+  for (const CudaTileOperandPlan &op : plan.operands) {
+    if (op.isDispatchStore && op.binding >= 0) {
+      outputBinding = op.binding;
+      break;
+    }
+  }
+
+  DenseMap<Value, int64_t> valueToBind;
+  if (innerModule) {
+    innerModule->walk([&](Operation *op) {
+      if (op->getName().getStringRef() !=
+          "iree_tensor_ext.dispatch.tensor.load")
+        return;
+      if (op->getNumOperands() < 1)
+        return;
+      Value src = op->getOperand(0);
+      for (int64_t i = 0; i < static_cast<int64_t>(bindingShapes.size());
+           ++i) {
+        if (bindingShapes[i].memref == src) {
+          valueToBind[op->getResult(0)] = i;
+          break;
+        }
+      }
+    });
+  }
+  for (int64_t i = 0; i < static_cast<int64_t>(bindingShapes.size()); ++i)
+    valueToBind[bindingShapes[i].memref] = i;
+
   auto [e, grid] = generateConv2DKernel(
       ctx, kernelName, convPlan.inputShape, convPlan.filterShape,
       convPlan.outputShape, convPlan.strides, convPlan.dilations, elemType,
-      tileM, tileN, tileK, convPlan.isNCHW);
+      tileM, tileN, tileK, convPlan.isNCHW, plan.fusedOps, bindingShapes,
+      numBindings, outputBinding, valueToBind);
   return serializeCudaTileKernel(std::move(e), std::move(grid));
 }
 
@@ -3526,8 +3715,8 @@ static CudaTileMatmulEmissionPlan buildMatmulEmissionPlan(
 /// annotated ops, build a cuda_tile module with the appropriate kernel, and
 /// serialize it to tilebc bytecode.
 ///
-/// Returns {tilebcBytes, gridDims} on success.
-static FailureOr<std::pair<std::string, SmallVector<int64_t, 3>>>
+/// Returns {tilebcBytes, gridDims, tileIRText} on success.
+static FailureOr<CudaTileKernelBinary>
 buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
                     StringRef kernelName, const CudaTileOptions &options) {
   LLVM_DEBUG(llvm::dbgs() << "[cuda_tile] extracting plan...\n");
@@ -3775,6 +3964,47 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
         goto singleOpDispatch;
       }
     }
+
+    // Helper: compute tile permutation to align an input tile (in its physical
+    // dim order) with the output tile's dim order, using the linalg indexing maps.
+    // Returns identity permutation {0,1,...} if no reordering is needed.
+    auto computeInputToOutputPerm =
+        [](AffineMap inputMap,
+           AffineMap outputMap) -> SmallVector<int32_t> {
+      int64_t outRank = outputMap.getNumResults();
+      int64_t inRank = inputMap.getNumResults();
+      if (inRank != outRank || inRank == 0)
+        return {};
+      // Build inverse of output map: outPhysDim → iterDim.
+      DenseMap<unsigned, unsigned> iterToOutPhys;
+      for (unsigned p = 0; p < (unsigned)outRank; ++p) {
+        if (auto dimExpr =
+                dyn_cast<AffineDimExpr>(outputMap.getResult(p)))
+          iterToOutPhys[dimExpr.getPosition()] = p;
+      }
+      // For each output physical dim p, find the matching input physical dim.
+      SmallVector<int32_t> perm(outRank, -1);
+      bool isIdentity = true;
+      for (unsigned q = 0; q < (unsigned)inRank; ++q) {
+        if (auto dimExpr =
+                dyn_cast<AffineDimExpr>(inputMap.getResult(q))) {
+          unsigned iterDim = dimExpr.getPosition();
+          auto it = iterToOutPhys.find(iterDim);
+          if (it != iterToOutPhys.end()) {
+            perm[it->second] = q;
+            if ((int32_t)it->second != (int32_t)q)
+              isIdentity = false;
+          }
+        }
+      }
+      if (isIdentity)
+        return {};
+      // Check all entries filled.
+      for (auto v : perm)
+        if (v < 0)
+          return {};
+      return perm;
+    };
 
     // Strategy 2: Generic fused reduction+elementwise kernel.
     // Walks ALL linalg.generic ops in the dispatch dynamically.
@@ -4277,7 +4507,8 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
 
   if (loweringStrategy == CudaTileLoweringStrategy::DirectConv2D)
     return emitDirectConv2DKernel(ctx, kernelName, convPlan, elemType, tileM,
-                                  tileN, tileK);
+                                  tileN, tileK, plan, bindingShapes,
+                                  innerModule);
 
   if (loweringStrategy == CudaTileLoweringStrategy::Matmul ||
       loweringStrategy == CudaTileLoweringStrategy::PointwiseConvAsMatmul ||
@@ -4522,23 +4753,26 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     auto emitTensorTileForSpace = [&](Value value, ArrayRef<int64_t> fullShape,
                                       ArrayRef<int64_t> targetTileShape,
                                       ArrayRef<Value> fullTileIndices) -> Value {
-      int64_t bindingIndex = -1;
+      const CudaTileBindingPlan *binding = nullptr;
       auto bindingIt = valueToBind.find(value);
       if (bindingIt != valueToBind.end()) {
-        bindingIndex = bindingIt->second;
-      } else if (const CudaTileBindingPlan *binding =
+        // valueToBind records the exact subspan ordinal. Do not feed it
+        // through findBindingPlan(), which first matches by HAL binding number
+        // and can conflate packed parameters that share a binding but differ by
+        // byte offset (for example linear weight and bias).
+        int64_t subspanIndex = bindingIt->second;
+        if (subspanIndex >= 0 &&
+            subspanIndex < static_cast<int64_t>(bindingShapes.size()))
+          binding = &bindingShapes[subspanIndex];
+      } else if (const CudaTileBindingPlan *candidate =
                      findBindingPlanForMemref(bindingShapes, value)) {
-        bindingIndex = binding->binding;
+        binding = candidate;
       }
 
       SmallVector<int64_t> loadTileShape;
       SmallVector<Value> loadIndices;
       SmallVector<int64_t> reshapeShape;
-      if (bindingIndex >= 0) {
-        const CudaTileBindingPlan *binding =
-            findBindingPlan(bindingShapes, bindingIndex);
-        if (!binding)
-          return {};
+      if (binding) {
         SmallVector<int64_t> sourceShape =
             binding->shape.empty() ? SmallVector<int64_t>(fullShape)
                                    : SmallVector<int64_t>(binding->shape);
@@ -5072,7 +5306,7 @@ struct CudaTileCodegenPass
       innerModule->emitError("failed to build cuda_tile kernel");
       return signalPassFailure();
     }
-    auto &[tilebcData, gridDims] = maybeTilebc.value();
+    auto &[tilebcData, gridDims, tileIRText] = maybeTilebc.value();
 
     // Step 3: tilebc → cubin via tileiras.
     std::string message;
@@ -5090,12 +5324,15 @@ struct CudaTileCodegenPass
       return signalPassFailure();
     }
 
-    // Step 4: Store cubin + grid dims as attributes on the variant op.
+    // Step 4: Store cubin + grid dims + tile IR as attributes on the variant.
     auto cubinAttr = StringAttr::get(
         ctx, StringRef(maybeCubin.value().data(), maybeCubin.value().size()));
     variantOp->setAttr("cuda_tile.cubin_data", cubinAttr);
     variantOp->setAttr("cuda_tile.grid_dims",
                        Builder(ctx).getDenseI64ArrayAttr(gridDims));
+    if (!tileIRText.empty())
+      variantOp->setAttr("cuda_tile.tile_ir",
+                         StringAttr::get(ctx, tileIRText));
 
     // Step 4b: Update the export op's workgroup_count body to return
     // our computed grid dims. This is what the runtime uses for cuLaunchKernel.
@@ -5301,6 +5538,17 @@ public:
                            cubinAttr.getValue().size());
       // Clean up the cubin attribute (grid_dims read later in FlatBuffer build).
       variantOp->removeAttr("cuda_tile.cubin_data");
+
+      // Dump tile IR intermediate if requested.
+      if (!serOptions.dumpIntermediatesPath.empty()) {
+        if (auto tileIRAttr =
+                variantOp->getAttrOfType<StringAttr>("cuda_tile.tile_ir")) {
+          dumpDataToPath(serOptions.dumpIntermediatesPath,
+                         serOptions.dumpBaseName, variantOp.getName(),
+                         ".tile.mlir", tileIRAttr.getValue());
+        }
+      }
+      variantOp->removeAttr("cuda_tile.tile_ir");
     } else {
       //=== Codegen disabled and no external objects ===//
       return variantOp.emitError()
