@@ -37,6 +37,8 @@ iree_cc_library(
     "command_buffer.h"
     "driver.c"
     "driver.h"
+    "event_pool.c"
+    "event_pool.h"
     "executable.c"
     "executable.h"
     "executable_cache.c"
@@ -61,6 +63,8 @@ iree_cc_library(
     iree::hal::utils::deferred_command_buffer
     iree::hal::utils::executable_debug_info
     iree::hal::utils::executable_header
+    iree::hal::utils::file_transfer
+    iree::hal::utils::files
     iree::hal::utils::queue_emulation
     iree::hal::utils::resource_set
     iree::schemas::cuda_tile_executable_def_c_fbs

@@ -18,6 +18,7 @@ typedef struct iree_hal_cuda_new_stream_command_buffer_t {
 	iree_allocator_t host_allocator;
 
 	const iree_hal_cuda_new_dynamic_symbols_t *syms;
+	CUcontext cu_context;
 	CUstream cu_stream;
 
 	iree_hal_resource_set_t *resource_set;
@@ -38,6 +39,7 @@ iree_hal_cuda_new_stream_command_buffer_cast(
 iree_status_t iree_hal_cuda_new_stream_command_buffer_create(
 	iree_hal_allocator_t *device_allocator,
 	const iree_hal_cuda_new_dynamic_symbols_t *syms,
+	CUcontext cu_context,
 	iree_hal_command_buffer_mode_t mode,
 	iree_hal_command_category_t command_categories,
 	iree_host_size_t binding_capacity, CUstream stream,
@@ -70,6 +72,7 @@ iree_status_t iree_hal_cuda_new_stream_command_buffer_create(
 		&command_buffer->base);
 	command_buffer->host_allocator = host_allocator;
 	command_buffer->syms = syms;
+	command_buffer->cu_context = cu_context;
 	command_buffer->cu_stream = stream;
 	iree_arena_initialize(block_pool, &command_buffer->arena);
 
@@ -106,7 +109,10 @@ static void iree_hal_cuda_new_stream_command_buffer_destroy(
 
 static iree_status_t iree_hal_cuda_new_stream_command_buffer_begin(
 	iree_hal_command_buffer_t *base_command_buffer) {
-	return iree_ok_status();
+	iree_hal_cuda_new_stream_command_buffer_t *command_buffer =
+		iree_hal_cuda_new_stream_command_buffer_cast(base_command_buffer);
+	return IREE_CURESULT_TO_STATUS_NEW(command_buffer->syms,
+		cuCtxSetCurrent(command_buffer->cu_context), "cuCtxSetCurrent");
 }
 
 static iree_status_t iree_hal_cuda_new_stream_command_buffer_end(
@@ -146,14 +152,16 @@ static iree_status_t
 iree_hal_cuda_new_stream_command_buffer_signal_event(
 	iree_hal_command_buffer_t *base_command_buffer, iree_hal_event_t *event,
 	iree_hal_execution_stage_t source_stage_mask) {
-	return iree_ok_status();
+	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+		"cuda_new stream command buffer events are not yet implemented");
 }
 
 static iree_status_t
 iree_hal_cuda_new_stream_command_buffer_reset_event(
 	iree_hal_command_buffer_t *base_command_buffer, iree_hal_event_t *event,
 	iree_hal_execution_stage_t source_stage_mask) {
-	return iree_ok_status();
+	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+		"cuda_new stream command buffer events are not yet implemented");
 }
 
 static iree_status_t
@@ -166,7 +174,8 @@ iree_hal_cuda_new_stream_command_buffer_wait_events(
 	const iree_hal_memory_barrier_t *memory_barriers,
 	iree_host_size_t buffer_barrier_count,
 	const iree_hal_buffer_barrier_t *buffer_barriers) {
-	return iree_ok_status();
+	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+		"cuda_new stream command buffer events are not yet implemented");
 }
 
 static iree_status_t

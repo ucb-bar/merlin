@@ -12,12 +12,15 @@
 
 #include "allocator.h"
 #include "command_buffer.h"
+#include "event_pool.h"
 #include "executable_cache.h"
 #include "status_util.h"
 #include "target_caps.h"
 #include "iree/async/util/proactor_pool.h"
 #include "iree/hal/drivers/local_sync/sync_semaphore.h"
 #include "iree/hal/utils/deferred_command_buffer.h"
+#include "iree/hal/utils/file_registry.h"
+#include "iree/hal/utils/file_transfer.h"
 #include "iree/hal/utils/queue_emulation.h"
 
 //===----------------------------------------------------------------------===//
@@ -40,6 +43,7 @@ typedef struct iree_hal_cuda_new_logical_device_t {
 	iree_hal_cuda_new_target_caps_t caps;
 	iree_hal_allocator_t *device_allocator;
 	iree_arena_block_pool_t block_pool;
+	iree_hal_cuda_new_event_pool_t *event_pool;
 
 	iree_async_proactor_pool_t *proactor_pool;
 	iree_async_proactor_t *proactor;
@@ -135,6 +139,12 @@ iree_status_t iree_hal_cuda_new_logical_device_create(
 	}
 
 	if (iree_status_is_ok(status)) {
+		status = iree_hal_cuda_new_event_pool_allocate(
+			syms, /*available_capacity=*/64, host_allocator,
+			&device->event_pool);
+	}
+
+	if (iree_status_is_ok(status)) {
 		*out_device = (iree_hal_device_t *)device;
 	} else {
 		if (device) {
@@ -143,6 +153,9 @@ iree_status_t iree_hal_cuda_new_logical_device_create(
 			}
 			if (device->proactor_pool) {
 				iree_async_proactor_pool_release(device->proactor_pool);
+			}
+			if (device->event_pool) {
+				iree_hal_cuda_new_event_pool_release(device->event_pool);
 			}
 			if (device->driver) {
 				iree_hal_driver_release(device->driver);
@@ -176,6 +189,7 @@ static void iree_hal_cuda_new_device_destroy(iree_hal_device_t *base_device) {
 
 	iree_hal_allocator_release(device->device_allocator);
 	iree_arena_block_pool_deinitialize(&device->block_pool);
+	iree_hal_cuda_new_event_pool_release(device->event_pool);
 	iree_async_proactor_pool_release(device->proactor_pool);
 
 	IREE_CUDA_NEW_IGNORE_ERROR(syms,
@@ -357,8 +371,10 @@ static iree_status_t iree_hal_cuda_new_device_import_file(
 	iree_hal_device_t *base_device, iree_hal_queue_affinity_t queue_affinity,
 	iree_hal_memory_access_t access, iree_io_file_handle_t *handle,
 	iree_hal_external_file_flags_t flags, iree_hal_file_t **out_file) {
-	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-		"cuda_new file import not yet implemented");
+	return iree_hal_file_from_handle(
+		iree_hal_device_allocator(base_device), queue_affinity, access,
+		handle, /*proactor=*/NULL,
+		iree_hal_device_host_allocator(base_device), out_file);
 }
 
 static iree_status_t iree_hal_cuda_new_device_create_semaphore(
@@ -428,8 +444,14 @@ static iree_status_t iree_hal_cuda_new_device_queue_read(
 	iree_hal_file_t *source_file, uint64_t source_offset,
 	iree_hal_buffer_t *target_buffer, iree_device_size_t target_offset,
 	iree_device_size_t length, iree_hal_read_flags_t flags) {
-	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-		"cuda_new queue_read not yet implemented");
+	iree_hal_file_transfer_options_t options = {
+		.chunk_count = IREE_HAL_FILE_TRANSFER_CHUNK_COUNT_DEFAULT,
+		.chunk_size = IREE_HAL_FILE_TRANSFER_CHUNK_SIZE_DEFAULT,
+	};
+	return iree_hal_device_queue_read_streaming(base_device, queue_affinity,
+		wait_semaphore_list, signal_semaphore_list, source_file,
+		source_offset, target_buffer, target_offset, length, flags,
+		options);
 }
 
 static iree_status_t iree_hal_cuda_new_device_queue_write(
@@ -439,8 +461,14 @@ static iree_status_t iree_hal_cuda_new_device_queue_write(
 	iree_hal_buffer_t *source_buffer, iree_device_size_t source_offset,
 	iree_hal_file_t *target_file, uint64_t target_offset,
 	iree_device_size_t length, iree_hal_write_flags_t flags) {
-	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-		"cuda_new queue_write not yet implemented");
+	iree_hal_file_transfer_options_t options = {
+		.chunk_count = IREE_HAL_FILE_TRANSFER_CHUNK_COUNT_DEFAULT,
+		.chunk_size = IREE_HAL_FILE_TRANSFER_CHUNK_SIZE_DEFAULT,
+	};
+	return iree_hal_device_queue_write_streaming(base_device, queue_affinity,
+		wait_semaphore_list, signal_semaphore_list, source_buffer,
+		source_offset, target_file, target_offset, length, flags,
+		options);
 }
 
 static iree_status_t iree_hal_cuda_new_device_queue_host_call(
@@ -479,9 +507,8 @@ static iree_status_t iree_hal_cuda_new_device_queue_execute(
 			// Create a transient stream command buffer and replay into it.
 			iree_hal_command_buffer_t *stream_cb = NULL;
 			status = iree_hal_cuda_new_stream_command_buffer_create(
-				device->device_allocator, device->syms,
-				IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT |
-					IREE_HAL_COMMAND_BUFFER_MODE_UNRETAINED,
+				device->device_allocator, device->syms, device->cu_context,
+				IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
 				IREE_HAL_COMMAND_CATEGORY_ANY, /*binding_capacity=*/0,
 				device->dispatch_stream, &device->block_pool,
 				device->host_allocator, &stream_cb);

@@ -41,6 +41,12 @@ IREE_CU_PFN_DECL(cuModuleLoadDataEx, CUmodule *, const void *, unsigned int,
 IREE_CU_PFN_DECL(cuModuleUnload, CUmodule)
 IREE_CU_PFN_DECL(cuModuleGetFunction, CUfunction *, CUmodule, const char *)
 
+// Event management.
+IREE_CU_PFN_DECL(cuEventCreate, CUevent *, unsigned int)
+IREE_CU_PFN_DECL(cuEventDestroy, CUevent)
+IREE_CU_PFN_DECL(cuEventRecord, CUevent, CUstream)
+IREE_CU_PFN_DECL(cuStreamWaitEvent, CUstream, CUevent, unsigned int)
+
 // Memory transfer.
 IREE_CU_PFN_DECL(cuMemcpyAsync, CUdeviceptr, CUdeviceptr, size_t, CUstream)
 IREE_CU_PFN_DECL(cuMemcpyHtoDAsync, CUdeviceptr, const void *, size_t,
