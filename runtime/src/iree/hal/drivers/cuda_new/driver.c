@@ -29,6 +29,7 @@ IREE_API_EXPORT void iree_hal_cuda_new_logical_device_options_initialize(
 	out_options->arena_block_size = 32 * 1024;
 	out_options->stream_tracing = 0;
 	out_options->async_allocations = false;
+	out_options->use_graphs = false;
 }
 
 //===----------------------------------------------------------------------===//

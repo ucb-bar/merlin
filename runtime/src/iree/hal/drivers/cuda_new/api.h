@@ -23,6 +23,7 @@ typedef struct iree_hal_cuda_new_logical_device_options_t {
 	iree_host_size_t arena_block_size;
 	int32_t stream_tracing;
 	bool async_allocations;
+	bool use_graphs;
 } iree_hal_cuda_new_logical_device_options_t;
 
 IREE_API_EXPORT void iree_hal_cuda_new_logical_device_options_initialize(

@@ -30,12 +30,14 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "allocator.h"
 #include "command_buffer.h"
 #include "event_pool.h"
 #include "executable_cache.h"
+#include "graph_command_buffer.h"
 #include "semaphore.h"
 #include "status_util.h"
 #include "target_caps.h"
@@ -138,6 +140,9 @@ iree_status_t iree_hal_cuda_new_logical_device_create(
 		iree_hal_driver_retain(driver);
 		device->syms = syms;
 		device->options = *options;
+		if (getenv("IREE_CUDA_NEW_USE_GRAPHS")) {
+			device->options.use_graphs = true;
+		}
 		device->cu_device = physical_device->cu_device;
 		device->cu_context = cu_context;
 		device->dispatch_stream = dispatch_stream;
@@ -563,19 +568,44 @@ static iree_status_t iree_hal_cuda_new_device_queue_execute(
 
 	if (command_buffer) {
 		if (iree_hal_deferred_command_buffer_isa(command_buffer)) {
-			iree_hal_command_buffer_t *stream_cb = NULL;
-			status = iree_hal_cuda_new_stream_command_buffer_create(
-				device->device_allocator, device->syms, device->cu_context,
-				IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
-				IREE_HAL_COMMAND_CATEGORY_ANY, /*binding_capacity=*/0,
-				device->dispatch_stream, &device->block_pool,
-				device->host_allocator, &stream_cb);
-			if (iree_status_is_ok(status)) {
-				status = iree_hal_deferred_command_buffer_apply(
-					command_buffer, stream_cb, binding_table);
-			}
-			if (stream_cb) {
-				iree_hal_command_buffer_release(stream_cb);
+			if (device->options.use_graphs) {
+				// Graph mode: capture and launch.
+				CUgraphExec graph_exec = NULL;
+				status =
+					iree_hal_cuda_new_graph_command_buffer_create(
+						device->device_allocator, device->syms,
+						device->cu_context, device->dispatch_stream,
+						&device->block_pool, device->host_allocator,
+						command_buffer, binding_table, &graph_exec);
+				if (iree_status_is_ok(status)) {
+					status = IREE_CURESULT_TO_STATUS_NEW(device->syms,
+						cuGraphLaunch(graph_exec,
+							device->dispatch_stream),
+						"cuGraphLaunch");
+				}
+				if (graph_exec) {
+					IREE_CUDA_NEW_IGNORE_ERROR(device->syms,
+						cuGraphExecDestroy(graph_exec));
+				}
+			} else {
+				// Stream mode: replay into transient stream CB.
+				iree_hal_command_buffer_t *stream_cb = NULL;
+				status =
+					iree_hal_cuda_new_stream_command_buffer_create(
+						device->device_allocator, device->syms,
+						device->cu_context,
+						IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
+						IREE_HAL_COMMAND_CATEGORY_ANY,
+						/*binding_capacity=*/0,
+						device->dispatch_stream, &device->block_pool,
+						device->host_allocator, &stream_cb);
+				if (iree_status_is_ok(status)) {
+					status = iree_hal_deferred_command_buffer_apply(
+						command_buffer, stream_cb, binding_table);
+				}
+				if (stream_cb) {
+					iree_hal_command_buffer_release(stream_cb);
+				}
 			}
 		} else if (iree_hal_cuda_new_stream_command_buffer_isa(
 					   command_buffer)) {

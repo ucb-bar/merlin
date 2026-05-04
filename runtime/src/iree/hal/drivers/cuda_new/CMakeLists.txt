@@ -43,6 +43,8 @@ iree_cc_library(
     "executable.h"
     "executable_cache.c"
     "executable_cache.h"
+    "graph_command_buffer.c"
+    "graph_command_buffer.h"
     "launch_abi.h"
     "physical_device.c"
     "physical_device.h"

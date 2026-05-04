@@ -63,6 +63,14 @@ IREE_CU_PFN_DECL(cuLaunchKernel, CUfunction, unsigned int, unsigned int,
 	unsigned int, unsigned int, unsigned int, unsigned int, unsigned int,
 	CUstream, void **, void **)
 
+// Graph capture and execution.
+IREE_CU_PFN_DECL(cuStreamBeginCapture, CUstream, CUstreamCaptureMode)
+IREE_CU_PFN_DECL(cuStreamEndCapture, CUstream, CUgraph *)
+IREE_CU_PFN_DECL(cuGraphInstantiate, CUgraphExec *, CUgraph, unsigned long long)
+IREE_CU_PFN_DECL(cuGraphLaunch, CUgraphExec, CUstream)
+IREE_CU_PFN_DECL(cuGraphExecDestroy, CUgraphExec)
+IREE_CU_PFN_DECL(cuGraphDestroy, CUgraph)
+
 // Stream management.
 IREE_CU_PFN_DECL(cuStreamCreate, CUstream *, unsigned int)
 IREE_CU_PFN_DECL(cuStreamDestroy, CUstream)
