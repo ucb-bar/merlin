@@ -150,7 +150,9 @@ iree_status_t iree_hal_cuda_new_event_pool_allocate(
 		status = iree_hal_cuda_new_event_create(syms, event_pool,
 			host_allocator, &event);
 		if (!iree_status_is_ok(status)) break;
-		event_pool->available_list[event_pool->available_count++] = event;
+		iree_host_size_t idx = event_pool->available_count;
+		event_pool->available_list[idx] = event;
+		event_pool->available_count = idx + 1;
 	}
 
 	if (iree_status_is_ok(status)) {

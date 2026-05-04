@@ -48,8 +48,12 @@ iree_cc_library(
     "physical_device.h"
     "logical_device.c"
     "logical_device.h"
+    "semaphore.c"
+    "semaphore.h"
     "target_caps.c"
     "target_caps.h"
+    "timepoint_pool.c"
+    "timepoint_pool.h"
   DEPS
     ::dynamic_symbols
     iree::async
@@ -59,7 +63,6 @@ iree_cc_library(
     iree::base::internal::arena
     iree::base::internal::flatcc::parsing
     iree::hal
-    iree::hal::drivers::local_sync::sync_driver
     iree::hal::utils::deferred_command_buffer
     iree::hal::utils::executable_debug_info
     iree::hal::utils::executable_header

@@ -14,10 +14,12 @@
 #include "command_buffer.h"
 #include "event_pool.h"
 #include "executable_cache.h"
+#include "semaphore.h"
 #include "status_util.h"
 #include "target_caps.h"
+#include "timepoint_pool.h"
+#include "iree/async/semaphore.h"
 #include "iree/async/util/proactor_pool.h"
-#include "iree/hal/drivers/local_sync/sync_semaphore.h"
 #include "iree/hal/utils/deferred_command_buffer.h"
 #include "iree/hal/utils/file_registry.h"
 #include "iree/hal/utils/file_transfer.h"
@@ -44,6 +46,7 @@ typedef struct iree_hal_cuda_new_logical_device_t {
 	iree_hal_allocator_t *device_allocator;
 	iree_arena_block_pool_t block_pool;
 	iree_hal_cuda_new_event_pool_t *event_pool;
+	iree_hal_cuda_new_timepoint_pool_t *timepoint_pool;
 
 	iree_async_proactor_pool_t *proactor_pool;
 	iree_async_proactor_t *proactor;
@@ -117,6 +120,8 @@ iree_status_t iree_hal_cuda_new_logical_device_create(
 		device->cu_context = cu_context;
 		device->dispatch_stream = dispatch_stream;
 		device->caps = physical_device->caps;
+		device->event_pool = NULL;
+		device->timepoint_pool = NULL;
 		iree_arena_block_pool_initialize(
 			options->arena_block_size, host_allocator, &device->block_pool);
 		device->proactor_pool = create_params->proactor_pool;
@@ -139,9 +144,17 @@ iree_status_t iree_hal_cuda_new_logical_device_create(
 	}
 
 	if (iree_status_is_ok(status)) {
+		device->event_pool = NULL;
 		status = iree_hal_cuda_new_event_pool_allocate(
 			syms, /*available_capacity=*/64, host_allocator,
 			&device->event_pool);
+	}
+
+	if (iree_status_is_ok(status)) {
+		device->timepoint_pool = NULL;
+		status = iree_hal_cuda_new_timepoint_pool_allocate(
+			device->event_pool, /*available_capacity=*/64,
+			host_allocator, &device->timepoint_pool);
 	}
 
 	if (iree_status_is_ok(status)) {
@@ -153,6 +166,10 @@ iree_status_t iree_hal_cuda_new_logical_device_create(
 			}
 			if (device->proactor_pool) {
 				iree_async_proactor_pool_release(device->proactor_pool);
+			}
+			if (device->timepoint_pool) {
+				iree_hal_cuda_new_timepoint_pool_free(
+					device->timepoint_pool);
 			}
 			if (device->event_pool) {
 				iree_hal_cuda_new_event_pool_release(device->event_pool);
@@ -189,6 +206,7 @@ static void iree_hal_cuda_new_device_destroy(iree_hal_device_t *base_device) {
 
 	iree_hal_allocator_release(device->device_allocator);
 	iree_arena_block_pool_deinitialize(&device->block_pool);
+	iree_hal_cuda_new_timepoint_pool_free(device->timepoint_pool);
 	iree_hal_cuda_new_event_pool_release(device->event_pool);
 	iree_async_proactor_pool_release(device->proactor_pool);
 
@@ -383,14 +401,16 @@ static iree_status_t iree_hal_cuda_new_device_create_semaphore(
 	iree_hal_semaphore_t **out_semaphore) {
 	iree_hal_cuda_new_logical_device_t *device =
 		iree_hal_cuda_new_logical_device_cast(base_device);
-	return iree_hal_sync_semaphore_create(device->proactor, queue_affinity,
-		initial_value, flags, device->host_allocator, out_semaphore);
+	return iree_hal_cuda_new_semaphore_create(device->proactor,
+		initial_value, device->syms, device->timepoint_pool,
+		device->host_allocator, out_semaphore);
 }
 
 static iree_hal_semaphore_compatibility_t
 iree_hal_cuda_new_device_query_semaphore_compatibility(
 	iree_hal_device_t *base_device, iree_hal_semaphore_t *semaphore) {
-	return IREE_HAL_SEMAPHORE_COMPATIBILITY_HOST_ONLY;
+	return IREE_HAL_SEMAPHORE_COMPATIBILITY_HOST_ONLY |
+		   IREE_HAL_SEMAPHORE_COMPATIBILITY_DEVICE_ONLY;
 }
 
 static iree_status_t iree_hal_cuda_new_device_queue_alloca(
@@ -496,10 +516,26 @@ static iree_status_t iree_hal_cuda_new_device_queue_execute(
 		IREE_CURESULT_TO_STATUS_NEW(device->syms,
 			cuCtxSetCurrent(device->cu_context), "cuCtxSetCurrent"));
 
-	// Host-side wait for all wait semaphores.
-	IREE_RETURN_AND_END_ZONE_IF_ERROR(z0,
-		iree_hal_semaphore_list_wait(wait_semaphore_list,
-			iree_infinite_timeout(), IREE_ASYNC_WAIT_FLAG_NONE));
+	// Insert device-side waits via cuStreamWaitEvent for each wait semaphore.
+	for (iree_host_size_t i = 0; i < wait_semaphore_list.count; ++i) {
+		CUevent wait_event = NULL;
+		iree_status_t ws = iree_hal_cuda_new_semaphore_acquire_wait_event(
+			wait_semaphore_list.semaphores[i],
+			wait_semaphore_list.payload_values[i], &wait_event);
+		if (!iree_status_is_ok(ws)) {
+			IREE_TRACE_ZONE_END(z0);
+			return ws;
+		}
+		if (wait_event) {
+			ws = IREE_CURESULT_TO_STATUS_NEW(device->syms,
+				cuStreamWaitEvent(device->dispatch_stream, wait_event, 0),
+				"cuStreamWaitEvent");
+			if (!iree_status_is_ok(ws)) {
+				IREE_TRACE_ZONE_END(z0);
+				return ws;
+			}
+		}
+	}
 
 	iree_status_t status = iree_ok_status();
 
@@ -528,13 +564,32 @@ static iree_status_t iree_hal_cuda_new_device_queue_execute(
 		}
 	}
 
-	// Synchronize for correctness.
+	// Record events on signal semaphores via cuEventRecord.
+	if (iree_status_is_ok(status)) {
+		for (iree_host_size_t i = 0; i < signal_semaphore_list.count;
+			 ++i) {
+			CUevent signal_event = NULL;
+			status = iree_hal_cuda_new_semaphore_acquire_signal_event(
+				signal_semaphore_list.semaphores[i],
+				signal_semaphore_list.payload_values[i], &signal_event);
+			if (!iree_status_is_ok(status)) break;
+			if (signal_event) {
+				status = IREE_CURESULT_TO_STATUS_NEW(device->syms,
+					cuEventRecord(signal_event, device->dispatch_stream),
+					"cuEventRecord");
+				if (!iree_status_is_ok(status)) break;
+			}
+		}
+	}
+
+	// Synchronize for correctness — host observes completion.
 	if (iree_status_is_ok(status)) {
 		status = IREE_CURESULT_TO_STATUS_NEW(device->syms,
 			cuStreamSynchronize(device->dispatch_stream),
 			"cuStreamSynchronize");
 	}
 
+	// Advance host-visible timeline after stream sync.
 	if (iree_status_is_ok(status)) {
 		status = iree_hal_semaphore_list_signal(signal_semaphore_list,
 			/*frontier=*/NULL);
