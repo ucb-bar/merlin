@@ -496,6 +496,7 @@ static iree_status_t iree_hal_cuda_new_device_queue_execute(
 		IREE_CURESULT_TO_STATUS_NEW(device->syms,
 			cuCtxSetCurrent(device->cu_context), "cuCtxSetCurrent"));
 
+	// Host-side wait for all wait semaphores.
 	IREE_RETURN_AND_END_ZONE_IF_ERROR(z0,
 		iree_hal_semaphore_list_wait(wait_semaphore_list,
 			iree_infinite_timeout(), IREE_ASYNC_WAIT_FLAG_NONE));
@@ -504,7 +505,6 @@ static iree_status_t iree_hal_cuda_new_device_queue_execute(
 
 	if (command_buffer) {
 		if (iree_hal_deferred_command_buffer_isa(command_buffer)) {
-			// Create a transient stream command buffer and replay into it.
 			iree_hal_command_buffer_t *stream_cb = NULL;
 			status = iree_hal_cuda_new_stream_command_buffer_create(
 				device->device_allocator, device->syms, device->cu_context,
@@ -516,24 +516,23 @@ static iree_status_t iree_hal_cuda_new_device_queue_execute(
 				status = iree_hal_deferred_command_buffer_apply(
 					command_buffer, stream_cb, binding_table);
 			}
-			if (iree_status_is_ok(status)) {
-				status = IREE_CURESULT_TO_STATUS_NEW(device->syms,
-					cuStreamSynchronize(device->dispatch_stream),
-					"cuStreamSynchronize");
-			}
 			if (stream_cb) {
 				iree_hal_command_buffer_release(stream_cb);
 			}
 		} else if (iree_hal_cuda_new_stream_command_buffer_isa(
 					   command_buffer)) {
-			// Already executed inline on the stream; just sync.
-			status = IREE_CURESULT_TO_STATUS_NEW(device->syms,
-				cuStreamSynchronize(device->dispatch_stream),
-				"cuStreamSynchronize");
+			// Already executed inline on the stream.
 		} else {
 			status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
 				"unsupported command buffer type");
 		}
+	}
+
+	// Synchronize for correctness.
+	if (iree_status_is_ok(status)) {
+		status = IREE_CURESULT_TO_STATUS_NEW(device->syms,
+			cuStreamSynchronize(device->dispatch_stream),
+			"cuStreamSynchronize");
 	}
 
 	if (iree_status_is_ok(status)) {
