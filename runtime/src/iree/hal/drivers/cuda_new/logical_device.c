@@ -3,6 +3,28 @@
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// == Execution and Lifetime Model ==
+//
+// cuda_new currently uses synchronous single-stream execution:
+//   1. queue_execute waits on all wait semaphores (device-side via
+//      cuStreamWaitEvent when events exist, host-side otherwise).
+//   2. Deferred command buffers are replayed into a transient stream CB.
+//   3. Signal semaphores get cuEventRecord on the dispatch stream.
+//   4. cuStreamSynchronize blocks until all stream work completes.
+//   5. Signal semaphores are advanced on the host timeline.
+//
+// Resource lifetime: all resources (buffers, executables, command buffers)
+// are guaranteed live through step 4 because the host blocks. If queue_execute
+// becomes async (step 4 removed), resources must be retained via resource_set
+// until stream completion is observed.
+//
+// Future work (not yet implemented):
+//   - Async queue_execute (return before GPU finishes)
+//   - CUDA graph capture/replay
+//   - CUDA memory pools / async allocation
+//   - NCCL / multi-device channel support
+//   - Multi-stream execution with cross-stream dependencies
 
 #include "logical_device.h"
 
