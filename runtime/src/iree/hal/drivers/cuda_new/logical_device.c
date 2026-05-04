@@ -19,10 +19,12 @@
 // becomes async (step 4 removed), resources must be retained via resource_set
 // until stream completion is observed.
 //
+// Implemented behind env toggles:
+//   - CUDA graph capture/replay (IREE_CUDA_NEW_USE_GRAPHS=1)
+//   - CUDA memory pools / async allocation (IREE_CUDA_NEW_ASYNC_ALLOCATIONS=1)
+//
 // Future work (not yet implemented):
 //   - Async queue_execute (return before GPU finishes)
-//   - CUDA graph capture/replay
-//   - CUDA memory pools / async allocation
 //   - NCCL / multi-device channel support
 //   - Multi-stream execution with cross-stream dependencies
 
@@ -155,6 +157,7 @@ iree_status_t iree_hal_cuda_new_logical_device_create(
 		device->caps = physical_device->caps;
 		device->event_pool = NULL;
 		device->timepoint_pool = NULL;
+		device->supports_memory_pools = false;
 		iree_arena_block_pool_initialize(
 			options->arena_block_size, host_allocator, &device->block_pool);
 		device->proactor_pool = create_params->proactor_pool;
