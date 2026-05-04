@@ -20,6 +20,7 @@ typedef enum iree_hal_cuda_new_buffer_type_e {
 	IREE_HAL_CUDA_NEW_BUFFER_TYPE_HOST,
 	IREE_HAL_CUDA_NEW_BUFFER_TYPE_HOST_REGISTERED,
 	IREE_HAL_CUDA_NEW_BUFFER_TYPE_EXTERNAL,
+	IREE_HAL_CUDA_NEW_BUFFER_TYPE_ASYNC,
 } iree_hal_cuda_new_buffer_type_t;
 
 iree_status_t iree_hal_cuda_new_buffer_wrap(
@@ -38,6 +39,9 @@ CUdeviceptr iree_hal_cuda_new_buffer_device_pointer(
 	const iree_hal_buffer_t *buffer);
 
 void *iree_hal_cuda_new_buffer_host_pointer(const iree_hal_buffer_t *buffer);
+
+void iree_hal_cuda_new_buffer_drop_release_callback(
+	iree_hal_buffer_t *buffer);
 
 #ifdef __cplusplus
 } // extern "C"

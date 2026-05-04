@@ -152,6 +152,14 @@ void *iree_hal_cuda_new_buffer_host_pointer(
 	return buffer->host_ptr;
 }
 
+void iree_hal_cuda_new_buffer_drop_release_callback(
+	iree_hal_buffer_t *base_buffer) {
+	iree_hal_cuda_new_buffer_t *buffer =
+		iree_hal_cuda_new_buffer_cast(base_buffer);
+	buffer->release_callback.fn = NULL;
+	buffer->release_callback.user_data = NULL;
+}
+
 static const iree_hal_buffer_vtable_t iree_hal_cuda_new_buffer_vtable = {
 	.recycle = iree_hal_buffer_recycle,
 	.destroy = iree_hal_cuda_new_buffer_destroy,

@@ -233,6 +233,7 @@ static void iree_hal_cuda_new_buffer_free(
 		IREE_CUDA_NEW_IGNORE_ERROR(syms, cuMemHostUnregister(host_ptr));
 		break;
 	case IREE_HAL_CUDA_NEW_BUFFER_TYPE_EXTERNAL:
+	case IREE_HAL_CUDA_NEW_BUFFER_TYPE_ASYNC:
 		break;
 	}
 	IREE_TRACE_ZONE_END(z0);

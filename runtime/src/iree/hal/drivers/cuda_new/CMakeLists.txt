@@ -46,6 +46,8 @@ iree_cc_library(
     "graph_command_buffer.c"
     "graph_command_buffer.h"
     "launch_abi.h"
+    "memory_pools.c"
+    "memory_pools.h"
     "physical_device.c"
     "physical_device.h"
     "logical_device.c"

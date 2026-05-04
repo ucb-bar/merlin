@@ -63,6 +63,16 @@ IREE_CU_PFN_DECL(cuLaunchKernel, CUfunction, unsigned int, unsigned int,
 	unsigned int, unsigned int, unsigned int, unsigned int, unsigned int,
 	CUstream, void **, void **)
 
+// Memory pool management.
+IREE_CU_PFN_DECL(cuMemPoolCreate, CUmemoryPool *, const CUmemPoolProps *)
+IREE_CU_PFN_DECL(cuMemPoolDestroy, CUmemoryPool)
+IREE_CU_PFN_DECL(cuMemPoolSetAttribute, CUmemoryPool, CUmemPool_attribute,
+	void *)
+IREE_CU_PFN_DECL(cuMemPoolTrimTo, CUmemoryPool, size_t)
+IREE_CU_PFN_DECL(cuMemAllocFromPoolAsync, CUdeviceptr *, size_t,
+	CUmemoryPool, CUstream)
+IREE_CU_PFN_DECL(cuMemFreeAsync, CUdeviceptr, CUstream)
+
 // Graph capture and execution.
 IREE_CU_PFN_DECL(cuStreamBeginCapture, CUstream, CUstreamCaptureMode)
 IREE_CU_PFN_DECL(cuStreamEndCapture, CUstream, CUgraph *)

@@ -38,6 +38,7 @@
 #include "event_pool.h"
 #include "executable_cache.h"
 #include "graph_command_buffer.h"
+#include "memory_pools.h"
 #include "semaphore.h"
 #include "status_util.h"
 #include "target_caps.h"
@@ -71,6 +72,8 @@ typedef struct iree_hal_cuda_new_logical_device_t {
 	iree_arena_block_pool_t block_pool;
 	iree_hal_cuda_new_event_pool_t *event_pool;
 	iree_hal_cuda_new_timepoint_pool_t *timepoint_pool;
+	bool supports_memory_pools;
+	iree_hal_cuda_new_memory_pools_t memory_pools;
 
 	iree_async_proactor_pool_t *proactor_pool;
 	iree_async_proactor_t *proactor;
@@ -143,6 +146,9 @@ iree_status_t iree_hal_cuda_new_logical_device_create(
 		if (getenv("IREE_CUDA_NEW_USE_GRAPHS")) {
 			device->options.use_graphs = true;
 		}
+		if (getenv("IREE_CUDA_NEW_ASYNC_ALLOCATIONS")) {
+			device->options.async_allocations = true;
+		}
 		device->cu_device = physical_device->cu_device;
 		device->cu_context = cu_context;
 		device->dispatch_stream = dispatch_stream;
@@ -182,6 +188,20 @@ iree_status_t iree_hal_cuda_new_logical_device_create(
 		status = iree_hal_cuda_new_timepoint_pool_allocate(
 			device->event_pool, /*available_capacity=*/64,
 			host_allocator, &device->timepoint_pool);
+	}
+
+	if (iree_status_is_ok(status) && device->options.async_allocations) {
+		iree_status_t pool_status =
+			iree_hal_cuda_new_memory_pools_initialize(
+				(iree_hal_device_t *)device, syms,
+				physical_device->cu_device, host_allocator,
+				&device->memory_pools);
+		if (iree_status_is_ok(pool_status)) {
+			device->supports_memory_pools = true;
+		} else {
+			iree_status_ignore(pool_status);
+			device->supports_memory_pools = false;
+		}
 	}
 
 	if (iree_status_is_ok(status)) {
@@ -232,6 +252,9 @@ static void iree_hal_cuda_new_device_destroy(iree_hal_device_t *base_device) {
 	IREE_TRACE_ZONE_BEGIN(z0);
 
 	iree_hal_allocator_release(device->device_allocator);
+	if (device->supports_memory_pools) {
+		iree_hal_cuda_new_memory_pools_deinitialize(&device->memory_pools);
+	}
 	iree_arena_block_pool_deinitialize(&device->block_pool);
 	iree_hal_cuda_new_timepoint_pool_free(device->timepoint_pool);
 	iree_hal_cuda_new_event_pool_release(device->event_pool);
@@ -447,13 +470,25 @@ static iree_status_t iree_hal_cuda_new_device_queue_alloca(
 	iree_hal_allocator_pool_t pool, iree_hal_buffer_params_t params,
 	iree_device_size_t allocation_size, iree_hal_alloca_flags_t flags,
 	iree_hal_buffer_t **IREE_RESTRICT out_buffer) {
+	iree_hal_cuda_new_logical_device_t *device =
+		iree_hal_cuda_new_logical_device_cast(base_device);
+
 	IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(
 		wait_semaphore_list, iree_infinite_timeout(),
 		IREE_ASYNC_WAIT_FLAG_NONE));
 
-	iree_status_t status = iree_hal_allocator_allocate_buffer(
-		iree_hal_device_allocator(base_device), params, allocation_size,
-		out_buffer);
+	iree_status_t status = iree_ok_status();
+	if (device->supports_memory_pools &&
+		!iree_all_bits_set(params.type,
+			IREE_HAL_MEMORY_TYPE_HOST_VISIBLE)) {
+		status = iree_hal_cuda_new_memory_pools_alloca(
+			&device->memory_pools, device->dispatch_stream, pool, params,
+			allocation_size, flags, out_buffer);
+	} else {
+		status = iree_hal_allocator_allocate_buffer(
+			iree_hal_device_allocator(base_device), params, allocation_size,
+			out_buffer);
+	}
 
 	if (iree_status_is_ok(status)) {
 		status = iree_hal_semaphore_list_signal(signal_semaphore_list,
@@ -470,14 +505,23 @@ static iree_status_t iree_hal_cuda_new_device_queue_dealloca(
 	const iree_hal_semaphore_list_t wait_semaphore_list,
 	const iree_hal_semaphore_list_t signal_semaphore_list,
 	iree_hal_buffer_t *buffer, iree_hal_dealloca_flags_t flags) {
+	iree_hal_cuda_new_logical_device_t *device =
+		iree_hal_cuda_new_logical_device_cast(base_device);
+
 	IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(
 		wait_semaphore_list, iree_infinite_timeout(),
 		IREE_ASYNC_WAIT_FLAG_NONE));
 
-	iree_status_t status =
-		iree_hal_semaphore_list_signal(signal_semaphore_list,
+	iree_status_t status = iree_ok_status();
+	if (device->supports_memory_pools) {
+		status = iree_hal_cuda_new_memory_pools_dealloca(
+			&device->memory_pools, device->dispatch_stream, buffer, flags);
+	}
+
+	if (iree_status_is_ok(status)) {
+		status = iree_hal_semaphore_list_signal(signal_semaphore_list,
 			/*frontier=*/NULL);
-	if (!iree_status_is_ok(status)) {
+	} else {
 		iree_hal_semaphore_list_fail(signal_semaphore_list,
 			iree_status_clone(status));
 	}
