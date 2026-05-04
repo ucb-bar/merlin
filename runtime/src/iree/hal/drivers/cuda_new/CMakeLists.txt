@@ -48,6 +48,8 @@ iree_cc_library(
     "launch_abi.h"
     "memory_pools.c"
     "memory_pools.h"
+    "pending_queue_actions.c"
+    "pending_queue_actions.h"
     "physical_device.c"
     "physical_device.h"
     "logical_device.c"

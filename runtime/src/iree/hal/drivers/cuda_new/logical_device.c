@@ -6,25 +6,24 @@
 //
 // == Execution and Lifetime Model ==
 //
-// cuda_new currently uses synchronous single-stream execution:
-//   1. queue_execute waits on all wait semaphores (device-side via
-//      cuStreamWaitEvent when events exist, host-side otherwise).
+// cuda_new uses async single-stream execution:
+//   1. queue_execute inserts cuStreamWaitEvent for wait semaphores.
 //   2. Deferred command buffers are replayed into a transient stream CB.
 //   3. Signal semaphores get cuEventRecord on the dispatch stream.
-//   4. cuStreamSynchronize blocks until all stream work completes.
-//   5. Signal semaphores are advanced on the host timeline.
+//   4. cuLaunchHostFunc enqueues a completion callback on the stream.
+//   5. queue_execute returns immediately (CPU/GPU overlap).
+//   6. When stream work completes, the callback signals semaphores and
+//      releases retained resources (stream CB, graph exec).
 //
-// Resource lifetime: all resources (buffers, executables, command buffers)
-// are guaranteed live through step 4 because the host blocks. If queue_execute
-// becomes async (step 4 removed), resources must be retained via resource_set
-// until stream completion is observed.
+// Resource lifetime: the completion callback retains the stream command
+// buffer (which holds a resource_set retaining buffers/executables) and
+// any graph exec. Released only after GPU work completes.
 //
-// Implemented behind env toggles:
+// Env toggles:
 //   - CUDA graph capture/replay (IREE_CUDA_NEW_USE_GRAPHS=1)
 //   - CUDA memory pools / async allocation (IREE_CUDA_NEW_ASYNC_ALLOCATIONS=1)
 //
 // Future work (not yet implemented):
-//   - Async queue_execute (return before GPU finishes)
 //   - NCCL / multi-device channel support
 //   - Multi-stream execution with cross-stream dependencies
 
@@ -41,6 +40,7 @@
 #include "executable_cache.h"
 #include "graph_command_buffer.h"
 #include "memory_pools.h"
+#include "pending_queue_actions.h"
 #include "semaphore.h"
 #include "status_util.h"
 #include "target_caps.h"
@@ -612,30 +612,25 @@ static iree_status_t iree_hal_cuda_new_device_queue_execute(
 	}
 
 	iree_status_t status = iree_ok_status();
+	iree_hal_command_buffer_t *retained_cb = NULL;
+	CUgraphExec retained_graph = NULL;
 
 	if (command_buffer) {
 		if (iree_hal_deferred_command_buffer_isa(command_buffer)) {
 			if (device->options.use_graphs) {
-				// Graph mode: capture and launch.
-				CUgraphExec graph_exec = NULL;
 				status =
 					iree_hal_cuda_new_graph_command_buffer_create(
 						device->device_allocator, device->syms,
 						device->cu_context, device->dispatch_stream,
 						&device->block_pool, device->host_allocator,
-						command_buffer, binding_table, &graph_exec);
+						command_buffer, binding_table, &retained_graph);
 				if (iree_status_is_ok(status)) {
 					status = IREE_CURESULT_TO_STATUS_NEW(device->syms,
-						cuGraphLaunch(graph_exec,
+						cuGraphLaunch(retained_graph,
 							device->dispatch_stream),
 						"cuGraphLaunch");
 				}
-				if (graph_exec) {
-					IREE_CUDA_NEW_IGNORE_ERROR(device->syms,
-						cuGraphExecDestroy(graph_exec));
-				}
 			} else {
-				// Stream mode: replay into transient stream CB.
 				iree_hal_command_buffer_t *stream_cb = NULL;
 				status =
 					iree_hal_cuda_new_stream_command_buffer_create(
@@ -650,9 +645,7 @@ static iree_status_t iree_hal_cuda_new_device_queue_execute(
 					status = iree_hal_deferred_command_buffer_apply(
 						command_buffer, stream_cb, binding_table);
 				}
-				if (stream_cb) {
-					iree_hal_command_buffer_release(stream_cb);
-				}
+				retained_cb = stream_cb;
 			}
 		} else if (iree_hal_cuda_new_stream_command_buffer_isa(
 					   command_buffer)) {
@@ -681,18 +674,34 @@ static iree_status_t iree_hal_cuda_new_device_queue_execute(
 		}
 	}
 
-	// Synchronize for correctness — host observes completion.
+	// Enqueue host callback for async completion: signals semaphores and
+	// releases retained resources when stream work finishes.
 	if (iree_status_is_ok(status)) {
-		status = IREE_CURESULT_TO_STATUS_NEW(device->syms,
-			cuStreamSynchronize(device->dispatch_stream),
-			"cuStreamSynchronize");
+		iree_hal_cuda_new_completion_t *completion = NULL;
+		status = iree_hal_cuda_new_completion_create(device->syms,
+			signal_semaphore_list, retained_cb, retained_graph,
+			device->host_allocator, &completion);
+		if (iree_status_is_ok(status)) {
+			status = IREE_CURESULT_TO_STATUS_NEW(device->syms,
+				cuLaunchHostFunc(device->dispatch_stream,
+					iree_hal_cuda_new_completion_host_callback,
+					completion),
+				"cuLaunchHostFunc");
+			if (!iree_status_is_ok(status)) {
+				iree_hal_cuda_new_completion_host_callback(completion);
+			}
+		}
+		// Ownership transferred to the completion/callback.
+		retained_cb = NULL;
+		retained_graph = NULL;
 	}
 
-	// Advance host-visible timeline after stream sync.
-	if (iree_status_is_ok(status)) {
-		status = iree_hal_semaphore_list_signal(signal_semaphore_list,
-			/*frontier=*/NULL);
-	} else {
+	if (!iree_status_is_ok(status)) {
+		if (retained_cb) iree_hal_command_buffer_release(retained_cb);
+		if (retained_graph) {
+			IREE_CUDA_NEW_IGNORE_ERROR(device->syms,
+				cuGraphExecDestroy(retained_graph));
+		}
 		iree_hal_semaphore_list_fail(signal_semaphore_list,
 			iree_status_clone(status));
 	}

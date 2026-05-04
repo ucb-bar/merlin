@@ -62,6 +62,7 @@ IREE_CU_PFN_DECL(cuMemsetD32Async, CUdeviceptr, unsigned int, size_t,
 IREE_CU_PFN_DECL(cuLaunchKernel, CUfunction, unsigned int, unsigned int,
 	unsigned int, unsigned int, unsigned int, unsigned int, unsigned int,
 	CUstream, void **, void **)
+IREE_CU_PFN_DECL(cuLaunchHostFunc, CUstream, CUhostFn, void *)
 
 // Memory pool management.
 IREE_CU_PFN_DECL(cuMemPoolCreate, CUmemoryPool *, const CUmemPoolProps *)
