@@ -12,6 +12,7 @@
 #include "api.h"
 #include "dynamic_symbols.h"
 #include "logical_device.h"
+#include "nccl_dynamic_symbols.h"
 #include "physical_device.h"
 #include "status_util.h"
 
@@ -63,6 +64,8 @@ typedef struct iree_hal_cuda_new_driver_t {
 	iree_hal_cuda_new_driver_options_t options;
 
 	iree_hal_cuda_new_dynamic_symbols_t syms;
+	iree_hal_cuda_new_nccl_dynamic_symbols_t nccl_syms;
+	bool nccl_available;
 
 	// + trailing identifier string storage
 } iree_hal_cuda_new_driver_t;
@@ -107,6 +110,19 @@ IREE_API_EXPORT iree_status_t iree_hal_cuda_new_driver_create(
 			cuInit(0), "cuInit");
 	}
 
+	// Try to load NCCL (optional — tolerate missing library).
+	if (iree_status_is_ok(status)) {
+		iree_status_t nccl_status =
+			iree_hal_cuda_new_nccl_dynamic_symbols_initialize(
+				host_allocator, &driver->syms, &driver->nccl_syms);
+		if (iree_status_is_ok(nccl_status)) {
+			driver->nccl_available = true;
+		} else {
+			iree_status_ignore(nccl_status);
+			driver->nccl_available = false;
+		}
+	}
+
 	if (iree_status_is_ok(status)) {
 		*out_driver = (iree_hal_driver_t *)driver;
 	} else {
@@ -122,6 +138,10 @@ static void iree_hal_cuda_new_driver_destroy(iree_hal_driver_t *base_driver) {
 	iree_allocator_t host_allocator = driver->host_allocator;
 	IREE_TRACE_ZONE_BEGIN(z0);
 
+	if (driver->nccl_available) {
+		iree_hal_cuda_new_nccl_dynamic_symbols_deinitialize(
+			&driver->nccl_syms);
+	}
 	iree_hal_cuda_new_dynamic_symbols_deinitialize(&driver->syms);
 	iree_allocator_free(host_allocator, driver);
 
@@ -234,8 +254,9 @@ static iree_status_t iree_hal_cuda_new_driver_create_device_by_ordinal(
 
 	iree_status_t status = iree_hal_cuda_new_logical_device_create(
 		(iree_hal_driver_t *)driver, driver->identifier,
-		&driver->options.default_device_options, &driver->syms, &phys,
-		create_params, host_allocator, out_device);
+		&driver->options.default_device_options, &driver->syms,
+		driver->nccl_available ? &driver->nccl_syms : NULL,
+		&phys, create_params, host_allocator, out_device);
 
 	iree_hal_cuda_new_physical_device_deinitialize(&phys);
 	return status;

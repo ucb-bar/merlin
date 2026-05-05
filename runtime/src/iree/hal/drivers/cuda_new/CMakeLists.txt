@@ -48,6 +48,14 @@ iree_cc_library(
     "launch_abi.h"
     "memory_pools.c"
     "memory_pools.h"
+    "nccl_channel.c"
+    "nccl_channel.h"
+    "nccl_dynamic_symbols.c"
+    "nccl_dynamic_symbols.h"
+    "nccl_dynamic_symbol_table.h"
+    "nccl_headers.h"
+    "nccl_status_util.c"
+    "nccl_status_util.h"
     "pending_queue_actions.c"
     "pending_queue_actions.h"
     "physical_device.c"
@@ -69,6 +77,7 @@ iree_cc_library(
     iree::base::internal::arena
     iree::base::internal::flatcc::parsing
     iree::hal
+    iree::hal::utils::collective_batch
     iree::hal::utils::deferred_command_buffer
     iree::hal::utils::executable_debug_info
     iree::hal::utils::executable_header

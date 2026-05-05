@@ -10,7 +10,9 @@
 
 #include "buffer.h"
 #include "executable.h"
+#include "nccl_channel.h"
 #include "status_util.h"
+#include "iree/hal/utils/collective_batch.h"
 #include "iree/hal/utils/resource_set.h"
 
 typedef struct iree_hal_cuda_new_stream_command_buffer_t {
@@ -18,15 +20,21 @@ typedef struct iree_hal_cuda_new_stream_command_buffer_t {
 	iree_allocator_t host_allocator;
 
 	const iree_hal_cuda_new_dynamic_symbols_t *syms;
+	const iree_hal_cuda_new_nccl_dynamic_symbols_t *nccl_syms;
 	CUcontext cu_context;
 	CUstream cu_stream;
 
 	iree_hal_resource_set_t *resource_set;
 	iree_arena_allocator_t arena;
+	iree_hal_collective_batch_t collective_batch;
 } iree_hal_cuda_new_stream_command_buffer_t;
 
 static const iree_hal_command_buffer_vtable_t
 	iree_hal_cuda_new_stream_command_buffer_vtable;
+
+static iree_status_t
+iree_hal_cuda_new_stream_command_buffer_flush_collectives(
+	iree_hal_cuda_new_stream_command_buffer_t *command_buffer);
 
 static iree_hal_cuda_new_stream_command_buffer_t *
 iree_hal_cuda_new_stream_command_buffer_cast(
@@ -39,6 +47,7 @@ iree_hal_cuda_new_stream_command_buffer_cast(
 iree_status_t iree_hal_cuda_new_stream_command_buffer_create(
 	iree_hal_allocator_t *device_allocator,
 	const iree_hal_cuda_new_dynamic_symbols_t *syms,
+	const iree_hal_cuda_new_nccl_dynamic_symbols_t *nccl_syms,
 	CUcontext cu_context,
 	iree_hal_command_buffer_mode_t mode,
 	iree_hal_command_category_t command_categories,
@@ -72,6 +81,7 @@ iree_status_t iree_hal_cuda_new_stream_command_buffer_create(
 		&command_buffer->base);
 	command_buffer->host_allocator = host_allocator;
 	command_buffer->syms = syms;
+	command_buffer->nccl_syms = nccl_syms;
 	command_buffer->cu_context = cu_context;
 	command_buffer->cu_stream = stream;
 	iree_arena_initialize(block_pool, &command_buffer->arena);
@@ -80,6 +90,12 @@ iree_status_t iree_hal_cuda_new_stream_command_buffer_create(
 	if (!iree_all_bits_set(mode, IREE_HAL_COMMAND_BUFFER_MODE_UNRETAINED)) {
 		status = iree_hal_resource_set_allocate(block_pool,
 			&command_buffer->resource_set);
+	}
+
+	if (iree_status_is_ok(status)) {
+		iree_hal_collective_batch_initialize(&command_buffer->arena,
+			command_buffer->resource_set,
+			&command_buffer->collective_batch);
 	}
 
 	*out_command_buffer = &command_buffer->base;
@@ -100,6 +116,8 @@ static void iree_hal_cuda_new_stream_command_buffer_destroy(
 	iree_allocator_t host_allocator = command_buffer->host_allocator;
 	IREE_TRACE_ZONE_BEGIN(z0);
 
+	iree_hal_collective_batch_deinitialize(
+		&command_buffer->collective_batch);
 	iree_hal_resource_set_free(command_buffer->resource_set);
 	iree_arena_deinitialize(&command_buffer->arena);
 	iree_allocator_free(host_allocator, command_buffer);
@@ -117,7 +135,10 @@ static iree_status_t iree_hal_cuda_new_stream_command_buffer_begin(
 
 static iree_status_t iree_hal_cuda_new_stream_command_buffer_end(
 	iree_hal_command_buffer_t *base_command_buffer) {
-	return iree_ok_status();
+	iree_hal_cuda_new_stream_command_buffer_t *command_buffer =
+		iree_hal_cuda_new_stream_command_buffer_cast(base_command_buffer);
+	return iree_hal_cuda_new_stream_command_buffer_flush_collectives(
+		command_buffer);
 }
 
 static iree_status_t
@@ -308,8 +329,39 @@ iree_hal_cuda_new_stream_command_buffer_collective(
 	iree_hal_channel_t *channel, iree_hal_collective_op_t op,
 	uint32_t param, iree_hal_buffer_ref_t send_ref,
 	iree_hal_buffer_ref_t recv_ref, iree_device_size_t element_count) {
-	return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-		"cuda_new collective not yet implemented");
+	iree_hal_cuda_new_stream_command_buffer_t *command_buffer =
+		iree_hal_cuda_new_stream_command_buffer_cast(base_command_buffer);
+	if (!command_buffer->nccl_syms || !command_buffer->nccl_syms->dylib) {
+		return iree_make_status(IREE_STATUS_UNAVAILABLE,
+			"NCCL runtime library not available for collective ops");
+	}
+	iree_hal_buffer_binding_t send_binding = {
+		.buffer = send_ref.buffer,
+		.offset = send_ref.offset,
+		.length = send_ref.length,
+	};
+	iree_hal_buffer_binding_t recv_binding = {
+		.buffer = recv_ref.buffer,
+		.offset = recv_ref.offset,
+		.length = recv_ref.length,
+	};
+	return iree_hal_collective_batch_append(
+		&command_buffer->collective_batch, channel, op, param,
+		send_binding, recv_binding, element_count);
+}
+
+static iree_status_t
+iree_hal_cuda_new_stream_command_buffer_flush_collectives(
+	iree_hal_cuda_new_stream_command_buffer_t *command_buffer) {
+	if (iree_hal_collective_batch_is_empty(
+			&command_buffer->collective_batch)) {
+		return iree_ok_status();
+	}
+	iree_status_t status = iree_hal_cuda_new_nccl_submit_batch(
+		command_buffer->nccl_syms, &command_buffer->collective_batch,
+		command_buffer->cu_stream);
+	iree_hal_collective_batch_clear(&command_buffer->collective_batch);
+	return status;
 }
 
 //===----------------------------------------------------------------------===//
@@ -336,6 +388,10 @@ static iree_status_t iree_hal_cuda_new_stream_command_buffer_dispatch(
 	}
 
 	IREE_TRACE_ZONE_BEGIN(z0);
+
+	IREE_RETURN_AND_END_ZONE_IF_ERROR(z0,
+		iree_hal_cuda_new_stream_command_buffer_flush_collectives(
+			command_buffer));
 
 	const iree_hal_cuda_new_kernel_params_t *kernel_params = NULL;
 	IREE_RETURN_AND_END_ZONE_IF_ERROR(z0,

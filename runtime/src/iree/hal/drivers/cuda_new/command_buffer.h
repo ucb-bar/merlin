@@ -12,6 +12,7 @@
 #include "iree/hal/api.h"
 #include "dynamic_symbols.h"
 #include "headers.h"
+#include "nccl_dynamic_symbols.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,6 +21,7 @@ extern "C" {
 iree_status_t iree_hal_cuda_new_stream_command_buffer_create(
 	iree_hal_allocator_t *device_allocator,
 	const iree_hal_cuda_new_dynamic_symbols_t *syms,
+	const iree_hal_cuda_new_nccl_dynamic_symbols_t *nccl_syms,
 	CUcontext cu_context,
 	iree_hal_command_buffer_mode_t mode,
 	iree_hal_command_category_t command_categories,
