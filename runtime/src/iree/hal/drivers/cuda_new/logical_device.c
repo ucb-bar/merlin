@@ -682,11 +682,16 @@ static iree_status_t iree_hal_cuda_new_device_queue_execute(
 			signal_semaphore_list, retained_cb, retained_graph,
 			device->host_allocator, &completion);
 		if (iree_status_is_ok(status)) {
-			status = IREE_CURESULT_TO_STATUS_NEW(device->syms,
-				cuLaunchHostFunc(device->dispatch_stream,
-					iree_hal_cuda_new_completion_host_callback,
-					completion),
-				"cuLaunchHostFunc");
+			if (getenv("IREE_CUDA_NEW_INJECT_CALLBACK_FAILURE")) {
+				status = iree_make_status(IREE_STATUS_INTERNAL,
+					"injected cuLaunchHostFunc failure for testing");
+			} else {
+				status = IREE_CURESULT_TO_STATUS_NEW(device->syms,
+					cuLaunchHostFunc(device->dispatch_stream,
+						iree_hal_cuda_new_completion_host_callback,
+						completion),
+					"cuLaunchHostFunc");
+			}
 			if (!iree_status_is_ok(status)) {
 				iree_hal_cuda_new_completion_abort(completion);
 			}
