@@ -688,7 +688,7 @@ static iree_status_t iree_hal_cuda_new_device_queue_execute(
 					completion),
 				"cuLaunchHostFunc");
 			if (!iree_status_is_ok(status)) {
-				iree_hal_cuda_new_completion_host_callback(completion);
+				iree_hal_cuda_new_completion_abort(completion);
 			}
 		}
 		// Ownership transferred to the completion/callback.

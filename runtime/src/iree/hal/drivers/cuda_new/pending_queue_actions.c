@@ -69,6 +69,11 @@ static void iree_hal_cuda_new_completion_destroy(
 	iree_allocator_free(completion->host_allocator, completion);
 }
 
+void iree_hal_cuda_new_completion_abort(
+	iree_hal_cuda_new_completion_t *completion) {
+	iree_hal_cuda_new_completion_destroy(completion);
+}
+
 void CUDA_CB iree_hal_cuda_new_completion_host_callback(void *user_data) {
 	iree_hal_cuda_new_completion_t *completion =
 		(iree_hal_cuda_new_completion_t *)user_data;

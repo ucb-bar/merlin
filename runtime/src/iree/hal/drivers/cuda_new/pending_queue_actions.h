@@ -42,6 +42,11 @@ iree_status_t iree_hal_cuda_new_completion_create(
 // The CUhostFn callback signature. Enqueue via cuLaunchHostFunc.
 void CUDA_CB iree_hal_cuda_new_completion_host_callback(void *user_data);
 
+// Releases all retained resources without signaling semaphores.
+// Use when the submission itself failed (cuLaunchHostFunc error, etc.).
+void iree_hal_cuda_new_completion_abort(
+	iree_hal_cuda_new_completion_t *completion);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif // __cplusplus
