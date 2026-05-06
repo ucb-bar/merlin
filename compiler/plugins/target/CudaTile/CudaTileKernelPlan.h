@@ -286,6 +286,23 @@ StringRef stringifyCudaTileLoweringStrategy(CudaTileLoweringStrategy strategy);
 CudaTileConvPlan extractCudaTileConvPlan(linalg::GenericOp genOp);
 CudaTileConvPlan extractPoolingPlan(linalg::GenericOp genOp);
 
+/// Returns default (empty) optimization hints for the given plan.
+/// Future work will populate hints based on the plan's semantic kind,
+/// contraction shape, reduction strategy, etc.
+///
+/// Hint families to be added:
+///   - MMA shape/layout intent
+///   - Cache/coalescing/promotion hints for loads
+///   - Store/vectorization hints
+///   - Reduction aggregation hints
+///   - Async copy/TMA eligibility and pipeline depth
+///   - Epilogue fusion hints
+struct CudaTileOptimizationHints {
+  bool empty = true;
+};
+CudaTileOptimizationHints
+buildCudaTileOptimizationHints(const CudaTileKernelPlan &plan);
+
 CudaTileKernelPlan extractCudaTileKernelPlan(Operation *innerModule,
                                              const CudaTileOptions &options);
 

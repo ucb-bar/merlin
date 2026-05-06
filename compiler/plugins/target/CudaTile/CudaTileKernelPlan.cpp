@@ -1149,6 +1149,14 @@ StringRef stringifyCudaTileLoweringStrategy(CudaTileLoweringStrategy strategy) {
   return "unsupported";
 }
 
+CudaTileOptimizationHints
+buildCudaTileOptimizationHints(const CudaTileKernelPlan &plan) {
+  CudaTileOptimizationHints hints;
+  hints.empty = true;
+  // Future: populate hints based on plan.semanticKind, contraction shape, etc.
+  return hints;
+}
+
 CudaTileConvPlan extractCudaTileConvPlan(linalg::GenericOp genOp) {
   CudaTileConvPlan plan;
   if (!isMultiplyAddGeneric(genOp))
