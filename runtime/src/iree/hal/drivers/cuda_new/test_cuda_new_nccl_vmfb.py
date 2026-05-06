@@ -89,8 +89,10 @@ def _run_mpi(
             "vals=','.join(str((r+1)*10000+i) for i in range(n)); "
             "print(f'{n}xf32={vals}')"
             f'" $r {count}); '
-            f'CUDA_VISIBLE_DEVICES=$r {IREE_RUN_MODULE} '
-            f'--device=cuda_new --module={vmfb_path} '
+            f'{IREE_RUN_MODULE} '
+            f'--device=cuda_new://$r '
+            f'--cuda_new_default_index_from_mpi=false '
+            f'--module={vmfb_path} '
             f'--function=all_reduce_sum --input=$INPUT'
         )
 
