@@ -3739,8 +3739,25 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
   SmallVector<int64_t> srcShape = plan.srcShape;
   SmallVector<int64_t> dstShape = plan.dstShape;
   Type elemType = plan.elementType;
-  if (srcShape.empty() || !elemType)
-    return failure();
+  if (srcShape.empty() || !elemType) {
+    return innerModule->emitError()
+           << "cuda_tile: unsupported dispatch: "
+           << "class=" << plan.kernelClass
+           << " semantic="
+           << (int)plan.semanticKind
+           << " lowering="
+           << stringifyCudaTileLoweringStrategy(plan.loweringStrategy)
+           << " (empty src shape or missing element type)";
+  }
+  if (plan.loweringStrategy == CudaTileLoweringStrategy::Unsupported) {
+    return innerModule->emitError()
+           << "cuda_tile: unsupported lowering strategy for dispatch: "
+           << "class=" << plan.kernelClass
+           << " semantic="
+           << (int)plan.semanticKind
+           << " primary_op="
+           << (primaryOp ? primaryOp->getName().getStringRef() : "none");
+  }
 
   LLVM_DEBUG({
     llvm::dbgs() << "[cuda_tile]   class=" << kernelClass << " src=[";

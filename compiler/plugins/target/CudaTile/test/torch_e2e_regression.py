@@ -141,6 +141,89 @@ def _define_cases() -> list[Case]:
     ]
 
 
+def _define_extended_cases() -> list[Case]:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+
+    def reshape_flatten():
+        class M(nn.Module):
+            def forward(self, x):
+                return x.reshape(2, 12)
+        return M().eval(), (torch.randn(2, 3, 4),)
+
+    def permute_3d():
+        class M(nn.Module):
+            def forward(self, x):
+                return x.permute(0, 2, 1)
+        return M().eval(), (torch.randn(2, 3, 4),)
+
+    def strided_slice():
+        class M(nn.Module):
+            def forward(self, x):
+                return x[:, 1:7:2]
+        return M().eval(), (torch.randn(3, 8),)
+
+    def concat_dim1():
+        class M(nn.Module):
+            def forward(self, a, b):
+                return torch.cat([a, b], dim=1)
+        return M().eval(), (torch.randn(2, 3), torch.randn(2, 5))
+
+    def gelu():
+        class M(nn.Module):
+            def forward(self, x):
+                return F.gelu(x)
+        return M().eval(), (torch.randn(2, 8),)
+
+    def layer_norm():
+        return nn.LayerNorm(8).eval(), (torch.randn(2, 8),)
+
+    def conv2d_1x1():
+        return nn.Conv2d(3, 4, kernel_size=1, stride=1, bias=True).eval(), (
+            torch.randn(1, 3, 5, 5),
+        )
+
+    def conv2d_3x3_stride2():
+        return nn.Conv2d(3, 4, kernel_size=3, stride=2, padding=1, bias=True).eval(), (
+            torch.randn(1, 3, 7, 7),
+        )
+
+    def maxpool2d():
+        return nn.MaxPool2d(kernel_size=2, stride=2).eval(), (torch.randn(1, 3, 6, 6),)
+
+    def transformer_encoder_layer():
+        class M(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.layer = nn.TransformerEncoderLayer(
+                    d_model=8,
+                    nhead=2,
+                    dim_feedforward=16,
+                    dropout=0.0,
+                    batch_first=True,
+                    activation="relu",
+                )
+
+            def forward(self, x):
+                return self.layer(x)
+
+        return M().eval(), (torch.randn(1, 4, 8),)
+
+    return [
+        Case("reshape_flatten", reshape_flatten),
+        Case("permute_3d", permute_3d),
+        Case("strided_slice", strided_slice),
+        Case("concat_dim1", concat_dim1),
+        Case("gelu", gelu, atol=1e-3, xfail="codegen produces wrong results for erf/tanh gelu approximation"),
+        Case("layer_norm", layer_norm, atol=1e-3),
+        Case("conv2d_1x1", conv2d_1x1, atol=1e-3, xfail="pointwise conv1x1 codegen produces incorrect results"),
+        Case("conv2d_3x3_stride2", conv2d_3x3_stride2, atol=1e-3),
+        Case("maxpool2d", maxpool2d, atol=1e-3),
+        Case("transformer_encoder_layer", transformer_encoder_layer, atol=1e-2, xfail="translation fails on multi-dispatch transformer pattern"),
+    ]
+
+
 def _export(case: Case, artifact_dir: Path, iree_compile: Path) -> tuple[Path | None, np.ndarray | None, list[str]]:
     """Export and compile. Returns (vmfb_path, expected_output, input_cli_args)."""
     import torch
@@ -236,6 +319,9 @@ def _run_case(case: Case, artifact_dir: Path, iree_compile: Path,
     tile_new_diff = float(np.max(np.abs(tile_out - new_out)))
 
     if max_diff_tile > case.atol:
+        if case.xfail:
+            return Result(case.name, "XFAIL",
+                          f"correctness: {case.xfail} (diff={max_diff_tile:.2e})")
         return Result(case.name, "FAIL",
                       f"cuda_tile vs expected: max_diff={max_diff_tile:.6e} > atol={case.atol}")
     if tile_new_diff > 1e-6:
@@ -254,6 +340,8 @@ def main(argv: list[str]) -> int:
                         default=Path("/scratch/ashvin/merlin/compile/cudatile_cmp_step1"))
     parser.add_argument("--compile-only", action="store_true")
     parser.add_argument("--case", dest="cases", action="append")
+    parser.add_argument("--extended", action="store_true",
+                        help="Also run broader model/pattern discovery cases.")
     parser.add_argument("--keep-going", action="store_true")
     args = parser.parse_args(argv)
 
@@ -265,6 +353,8 @@ def main(argv: list[str]) -> int:
         return 2
 
     all_cases = _define_cases()
+    if args.extended:
+        all_cases += _define_extended_cases()
     if args.cases:
         all_cases = [c for c in all_cases if c.name in args.cases]
 
