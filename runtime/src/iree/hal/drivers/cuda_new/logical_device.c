@@ -270,12 +270,6 @@ iree_status_t iree_hal_cuda_new_logical_device_create(
 		device->nccl_symbols = nccl_symbols;
 		device->channel_provider = NULL;
 		device->options = *options;
-		if (getenv("IREE_CUDA_NEW_USE_GRAPHS")) {
-			device->options.use_graphs = true;
-		}
-		if (getenv("IREE_CUDA_NEW_ASYNC_ALLOCATIONS")) {
-			device->options.async_allocations = true;
-		}
 		device->cu_device = physical_device->cu_device;
 		device->cu_context = cu_context;
 		device->dispatch_stream = dispatch_stream;

@@ -7,6 +7,7 @@ iree_cc_library(
     "driver_module.c"
   DEPS
     iree::base
+    iree::base::tooling::flags
     iree::hal
     iree::hal::drivers::cuda_new
   DEFINES
