@@ -177,3 +177,45 @@ func.func @conv2d_pointwise(%input: tensor<1x3x5x2xf32>, %filter: tensor<1x1x2x4
 // CHECK:   shapes = {src = [15, 2], dst = [15, 4], element_type = f32}
 // CHECK:   contraction = {valid = true, m = 15, n = 4, k = 2
 // CHECK-SAME: rhs_shape = [2, 4]
+
+// ---- Transpose ----
+
+#map_transpose_in = affine_map<(d0, d1) -> (d0, d1)>
+#map_transpose_out = affine_map<(d0, d1) -> (d1, d0)>
+
+func.func @transpose(%input: tensor<3x5xf32>) -> tensor<5x3xf32> {
+  %empty = tensor.empty() : tensor<5x3xf32>
+  %result = linalg.generic {
+      indexing_maps = [#map_transpose_in, #map_transpose_out],
+      iterator_types = ["parallel", "parallel"]}
+      ins(%input: tensor<3x5xf32>)
+      outs(%empty: tensor<5x3xf32>) {
+    ^bb0(%x: f32, %out: f32):
+      linalg.yield %x : f32
+  } -> tensor<5x3xf32>
+  return %result : tensor<5x3xf32>
+}
+
+// CHECK-LABEL: cuda_tile.kernel_plan {
+// CHECK:   lowering_strategy = transpose
+
+// ---- Broadcast ----
+
+#map_broadcast_in = affine_map<(d0, d1) -> (d1)>
+#map_broadcast_out = affine_map<(d0, d1) -> (d0, d1)>
+
+func.func @broadcast(%input: tensor<4xf32>) -> tensor<3x4xf32> {
+  %empty = tensor.empty() : tensor<3x4xf32>
+  %result = linalg.generic {
+      indexing_maps = [#map_broadcast_in, #map_broadcast_out],
+      iterator_types = ["parallel", "parallel"]}
+      ins(%input: tensor<4xf32>)
+      outs(%empty: tensor<3x4xf32>) {
+    ^bb0(%x: f32, %out: f32):
+      linalg.yield %x : f32
+  } -> tensor<3x4xf32>
+  return %result : tensor<3x4xf32>
+}
+
+// CHECK-LABEL: cuda_tile.kernel_plan {
+// CHECK:   lowering_strategy = elementwise
