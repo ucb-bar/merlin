@@ -39,7 +39,8 @@ iree_status_t iree_hal_cuda_new_graph_command_buffer_create(
 	// Create a stream command buffer targeting the capture stream and replay.
 	iree_hal_command_buffer_t *stream_cb = NULL;
 	iree_status_t status = iree_hal_cuda_new_stream_command_buffer_create(
-		device_allocator, syms, /*nccl_syms=*/NULL, cu_context,
+		device_allocator, syms, /*nccl_syms=*/NULL,
+		/*tracing_context=*/NULL, cu_context,
 		IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
 		IREE_HAL_COMMAND_CATEGORY_ANY, /*binding_capacity=*/0,
 		capture_stream, block_pool, host_allocator, &stream_cb);

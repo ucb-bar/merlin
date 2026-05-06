@@ -52,6 +52,123 @@
 #include "iree/hal/utils/file_registry.h"
 #include "iree/hal/utils/file_transfer.h"
 #include "iree/hal/utils/queue_emulation.h"
+#include "iree/hal/utils/stream_tracing.h"
+
+//===----------------------------------------------------------------------===//
+// Stream tracing device interface
+//===----------------------------------------------------------------------===//
+
+typedef struct iree_hal_cuda_new_tracing_device_interface_t {
+	iree_hal_stream_tracing_device_interface_t base;
+	CUstream dispatch_stream;
+	iree_allocator_t host_allocator;
+	const iree_hal_cuda_new_dynamic_symbols_t *syms;
+} iree_hal_cuda_new_tracing_device_interface_t;
+
+static const iree_hal_stream_tracing_device_interface_vtable_t
+	iree_hal_cuda_new_tracing_device_interface_vtable;
+
+static void iree_hal_cuda_new_tracing_destroy(
+	iree_hal_stream_tracing_device_interface_t *base) {
+	iree_hal_cuda_new_tracing_device_interface_t *iface =
+		(iree_hal_cuda_new_tracing_device_interface_t *)base;
+	iree_allocator_free(iface->host_allocator, iface);
+}
+
+static iree_status_t iree_hal_cuda_new_tracing_synchronize_native_event(
+	iree_hal_stream_tracing_device_interface_t *base,
+	iree_hal_stream_tracing_native_event_t event) {
+	iree_hal_cuda_new_tracing_device_interface_t *iface =
+		(iree_hal_cuda_new_tracing_device_interface_t *)base;
+	return IREE_CURESULT_TO_STATUS_NEW(iface->syms,
+		cuEventSynchronize((CUevent)event), "cuEventSynchronize");
+}
+
+static iree_status_t iree_hal_cuda_new_tracing_create_native_event(
+	iree_hal_stream_tracing_device_interface_t *base,
+	iree_hal_stream_tracing_native_event_t *event) {
+	iree_hal_cuda_new_tracing_device_interface_t *iface =
+		(iree_hal_cuda_new_tracing_device_interface_t *)base;
+	return IREE_CURESULT_TO_STATUS_NEW(iface->syms,
+		cuEventCreate((CUevent *)event, CU_EVENT_DEFAULT),
+		"cuEventCreate");
+}
+
+static iree_status_t iree_hal_cuda_new_tracing_query_native_event(
+	iree_hal_stream_tracing_device_interface_t *base,
+	iree_hal_stream_tracing_native_event_t event) {
+	iree_hal_cuda_new_tracing_device_interface_t *iface =
+		(iree_hal_cuda_new_tracing_device_interface_t *)base;
+	return IREE_CURESULT_TO_STATUS_NEW(iface->syms,
+		cuEventQuery((CUevent)event), "cuEventQuery");
+}
+
+static void iree_hal_cuda_new_tracing_event_elapsed_time(
+	iree_hal_stream_tracing_device_interface_t *base,
+	float *relative_millis,
+	iree_hal_stream_tracing_native_event_t start_event,
+	iree_hal_stream_tracing_native_event_t end_event) {
+	iree_hal_cuda_new_tracing_device_interface_t *iface =
+		(iree_hal_cuda_new_tracing_device_interface_t *)base;
+	IREE_CUDA_NEW_IGNORE_ERROR(iface->syms,
+		cuEventElapsedTime(relative_millis, (CUevent)start_event,
+			(CUevent)end_event));
+}
+
+static void iree_hal_cuda_new_tracing_destroy_native_event(
+	iree_hal_stream_tracing_device_interface_t *base,
+	iree_hal_stream_tracing_native_event_t event) {
+	iree_hal_cuda_new_tracing_device_interface_t *iface =
+		(iree_hal_cuda_new_tracing_device_interface_t *)base;
+	IREE_CUDA_NEW_IGNORE_ERROR(iface->syms,
+		cuEventDestroy((CUevent)event));
+}
+
+static iree_status_t iree_hal_cuda_new_tracing_record_native_event(
+	iree_hal_stream_tracing_device_interface_t *base,
+	iree_hal_stream_tracing_native_event_t event) {
+	iree_hal_cuda_new_tracing_device_interface_t *iface =
+		(iree_hal_cuda_new_tracing_device_interface_t *)base;
+	return IREE_CURESULT_TO_STATUS_NEW(iface->syms,
+		cuEventRecord((CUevent)event, iface->dispatch_stream),
+		"cuEventRecord");
+}
+
+static iree_status_t
+iree_hal_cuda_new_tracing_add_graph_event_record_node(
+	iree_hal_stream_tracing_device_interface_t *base,
+	iree_hal_stream_tracing_native_graph_node_t *out_node,
+	iree_hal_stream_tracing_native_graph_t graph,
+	iree_hal_stream_tracing_native_graph_node_t *dependency_nodes,
+	size_t dependency_nodes_count,
+	iree_hal_stream_tracing_native_event_t event) {
+	iree_hal_cuda_new_tracing_device_interface_t *iface =
+		(iree_hal_cuda_new_tracing_device_interface_t *)base;
+	return IREE_CURESULT_TO_STATUS_NEW(iface->syms,
+		cuGraphAddEventRecordNode((CUgraphNode *)out_node,
+			(CUgraph)graph, (const CUgraphNode *)dependency_nodes,
+			dependency_nodes_count, (CUevent)event),
+		"cuGraphAddEventRecordNode");
+}
+
+static const iree_hal_stream_tracing_device_interface_vtable_t
+	iree_hal_cuda_new_tracing_device_interface_vtable = {
+		.destroy = iree_hal_cuda_new_tracing_destroy,
+		.synchronize_native_event =
+			iree_hal_cuda_new_tracing_synchronize_native_event,
+		.create_native_event =
+			iree_hal_cuda_new_tracing_create_native_event,
+		.query_native_event =
+			iree_hal_cuda_new_tracing_query_native_event,
+		.event_elapsed_time =
+			iree_hal_cuda_new_tracing_event_elapsed_time,
+		.destroy_native_event =
+			iree_hal_cuda_new_tracing_destroy_native_event,
+		.record_native_event =
+			iree_hal_cuda_new_tracing_record_native_event,
+		.add_graph_event_record_node =
+			iree_hal_cuda_new_tracing_add_graph_event_record_node,
+};
 
 //===----------------------------------------------------------------------===//
 // iree_hal_cuda_new_logical_device_t
@@ -82,6 +199,8 @@ typedef struct iree_hal_cuda_new_logical_device_t {
 
 	iree_async_proactor_pool_t *proactor_pool;
 	iree_async_proactor_t *proactor;
+
+	iree_hal_stream_tracing_context_t *tracing_context;
 
 	iree_hal_device_topology_info_t topology_info;
 
@@ -185,6 +304,31 @@ iree_status_t iree_hal_cuda_new_logical_device_create(
 			device->proactor_pool, 0, &device->proactor);
 	}
 
+	// Initialize tracing if requested.
+	if (iree_status_is_ok(status) && device->options.stream_tracing > 0) {
+		iree_hal_cuda_new_tracing_device_interface_t *trace_iface = NULL;
+		status = iree_allocator_malloc(host_allocator,
+			sizeof(*trace_iface), (void **)&trace_iface);
+		if (iree_status_is_ok(status)) {
+			trace_iface->base.vtable =
+				&iree_hal_cuda_new_tracing_device_interface_vtable;
+			trace_iface->dispatch_stream = dispatch_stream;
+			trace_iface->host_allocator = host_allocator;
+			trace_iface->syms = syms;
+			iree_hal_stream_tracing_verbosity_t verbosity =
+				(device->options.stream_tracing >= 2)
+					? IREE_HAL_STREAM_TRACING_VERBOSITY_FINE
+					: IREE_HAL_STREAM_TRACING_VERBOSITY_COARSE;
+			status = iree_hal_stream_tracing_context_allocate(
+				&trace_iface->base, device->identifier, verbosity,
+				&device->block_pool, host_allocator,
+				&device->tracing_context);
+			if (!iree_status_is_ok(status)) {
+				iree_allocator_free(host_allocator, trace_iface);
+			}
+		}
+	}
+
 	if (iree_status_is_ok(status)) {
 		device->event_pool = NULL;
 		status = iree_hal_cuda_new_event_pool_allocate(
@@ -260,6 +404,7 @@ static void iree_hal_cuda_new_device_destroy(iree_hal_device_t *base_device) {
 	const iree_hal_cuda_new_dynamic_symbols_t *syms = device->syms;
 	IREE_TRACE_ZONE_BEGIN(z0);
 
+	iree_hal_stream_tracing_context_free(device->tracing_context);
 	iree_hal_channel_provider_release(device->channel_provider);
 	iree_hal_allocator_release(device->device_allocator);
 	if (device->supports_memory_pools) {
@@ -470,7 +615,7 @@ static iree_status_t iree_hal_cuda_new_device_create_channel(
 	}
 
 	return iree_hal_cuda_new_nccl_channel_create(device->syms,
-		device->nccl_symbols, &id, params.rank, params.count,
+		device->nccl_symbols, device->cu_context, &id, params.rank, params.count,
 		device->host_allocator, out_channel);
 }
 
@@ -702,7 +847,8 @@ static iree_status_t iree_hal_cuda_new_device_queue_execute(
 				status =
 					iree_hal_cuda_new_stream_command_buffer_create(
 						device->device_allocator, device->syms,
-						device->nccl_symbols, device->cu_context,
+						device->nccl_symbols,
+						device->tracing_context, device->cu_context,
 						IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
 						IREE_HAL_COMMAND_CATEGORY_ANY,
 						/*binding_capacity=*/0,

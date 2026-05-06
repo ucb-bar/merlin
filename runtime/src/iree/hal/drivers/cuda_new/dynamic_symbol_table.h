@@ -45,6 +45,11 @@ IREE_CU_PFN_DECL(cuModuleGetFunction, CUfunction *, CUmodule, const char *)
 IREE_CU_PFN_DECL(cuEventCreate, CUevent *, unsigned int)
 IREE_CU_PFN_DECL(cuEventDestroy, CUevent)
 IREE_CU_PFN_DECL(cuEventRecord, CUevent, CUstream)
+IREE_CU_PFN_DECL(cuEventSynchronize, CUevent)
+IREE_CU_PFN_DECL(cuEventQuery, CUevent)
+IREE_CU_PFN_DECL(cuEventElapsedTime, float *, CUevent, CUevent)
+IREE_CU_PFN_DECL(cuGraphAddEventRecordNode, CUgraphNode *, CUgraph,
+	const CUgraphNode *, size_t, CUevent)
 IREE_CU_PFN_DECL(cuStreamWaitEvent, CUstream, CUevent, unsigned int)
 
 // Memory transfer.

@@ -21,6 +21,8 @@ typedef struct iree_hal_cuda_new_stream_command_buffer_t {
 
 	const iree_hal_cuda_new_dynamic_symbols_t *syms;
 	const iree_hal_cuda_new_nccl_dynamic_symbols_t *nccl_syms;
+	iree_hal_stream_tracing_context_t *tracing_context;
+	iree_hal_stream_tracing_context_event_list_t tracing_event_list;
 	CUcontext cu_context;
 	CUstream cu_stream;
 
@@ -48,6 +50,7 @@ iree_status_t iree_hal_cuda_new_stream_command_buffer_create(
 	iree_hal_allocator_t *device_allocator,
 	const iree_hal_cuda_new_dynamic_symbols_t *syms,
 	const iree_hal_cuda_new_nccl_dynamic_symbols_t *nccl_syms,
+	iree_hal_stream_tracing_context_t *tracing_context,
 	CUcontext cu_context,
 	iree_hal_command_buffer_mode_t mode,
 	iree_hal_command_category_t command_categories,
@@ -82,6 +85,9 @@ iree_status_t iree_hal_cuda_new_stream_command_buffer_create(
 	command_buffer->host_allocator = host_allocator;
 	command_buffer->syms = syms;
 	command_buffer->nccl_syms = nccl_syms;
+	command_buffer->tracing_context = tracing_context;
+	command_buffer->tracing_event_list.head = NULL;
+	command_buffer->tracing_event_list.tail = NULL;
 	command_buffer->cu_context = cu_context;
 	command_buffer->cu_stream = stream;
 	iree_arena_initialize(block_pool, &command_buffer->arena);
@@ -116,6 +122,8 @@ static void iree_hal_cuda_new_stream_command_buffer_destroy(
 	iree_allocator_t host_allocator = command_buffer->host_allocator;
 	IREE_TRACE_ZONE_BEGIN(z0);
 
+	iree_hal_stream_tracing_free(command_buffer->tracing_context,
+		&command_buffer->tracing_event_list);
 	iree_hal_collective_batch_deinitialize(
 		&command_buffer->collective_batch);
 	iree_hal_resource_set_free(command_buffer->resource_set);
@@ -364,7 +372,7 @@ iree_hal_cuda_new_stream_command_buffer_flush_collectives(
 	}
 	iree_status_t status = iree_hal_cuda_new_nccl_submit_batch(
 		command_buffer->nccl_syms, &command_buffer->collective_batch,
-		command_buffer->cu_stream);
+		command_buffer->cu_context, command_buffer->cu_stream);
 	iree_hal_collective_batch_clear(&command_buffer->collective_batch);
 	return status;
 }
@@ -449,6 +457,13 @@ static iree_status_t iree_hal_cuda_new_stream_command_buffer_dispatch(
 			((const uint32_t *)constants.data)[i];
 	}
 
+	IREE_HAL_STREAM_TRACE_ZONE_BEGIN_EXTERNAL(
+		command_buffer->tracing_context,
+		&command_buffer->tracing_event_list,
+		IREE_HAL_STREAM_TRACING_VERBOSITY_FINE,
+		/*file_name=*/NULL, 0, /*line=*/0,
+		/*function_name=*/NULL, 0, /*name=*/NULL, 0);
+
 	IREE_CUDA_NEW_RETURN_AND_END_ZONE_IF_ERROR(z0,
 		command_buffer->syms,
 		cuLaunchKernel(kernel_params->function,
@@ -458,6 +473,11 @@ static iree_status_t iree_hal_cuda_new_stream_command_buffer_dispatch(
 			kernel_params->block_dims[2],
 			0, command_buffer->cu_stream, params_ptr, NULL),
 		"cuLaunchKernel");
+
+	IREE_HAL_STREAM_TRACE_ZONE_END(
+		command_buffer->tracing_context,
+		&command_buffer->tracing_event_list,
+		IREE_HAL_STREAM_TRACING_VERBOSITY_FINE);
 
 	IREE_TRACE_ZONE_END(z0);
 	return iree_ok_status();

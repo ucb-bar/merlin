@@ -85,7 +85,22 @@ iree_cc_library(
     iree::hal::utils::files
     iree::hal::utils::queue_emulation
     iree::hal::utils::resource_set
+    iree::hal::utils::stream_tracing
     iree::schemas::cuda_tile_executable_def_c_fbs
     iree::schemas::executable_debug_info_c_fbs
   PUBLIC
+)
+
+iree_cc_binary(
+  NAME
+    test_cuda_new_nccl_hal
+  SRCS
+    "test_cuda_new_nccl_hal.c"
+  DEPS
+    ::cuda_new
+    iree::async::util::proactor_pool
+    iree::base
+    iree::base::internal::arena
+    iree::hal
+    iree::hal::utils::deferred_command_buffer
 )
