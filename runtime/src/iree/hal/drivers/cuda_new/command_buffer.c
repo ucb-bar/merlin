@@ -331,10 +331,15 @@ iree_hal_cuda_new_stream_command_buffer_collective(
 	iree_hal_buffer_ref_t recv_ref, iree_device_size_t element_count) {
 	iree_hal_cuda_new_stream_command_buffer_t *command_buffer =
 		iree_hal_cuda_new_stream_command_buffer_cast(base_command_buffer);
+	// Graph capture cannot capture NCCL collectives; nccl_syms is NULL
+	// during graph mode to make this explicit. Collectives are unsupported
+	// in graph command buffers — use stream fallback for collective work.
 	if (!command_buffer->nccl_syms || !command_buffer->nccl_syms->dylib) {
 		return iree_make_status(IREE_STATUS_UNAVAILABLE,
 			"NCCL runtime library not available for collective ops");
 	}
+	IREE_RETURN_IF_ERROR(iree_hal_resource_set_insert(
+		command_buffer->resource_set, 1, &channel));
 	iree_hal_buffer_binding_t send_binding = {
 		.buffer = send_ref.buffer,
 		.offset = send_ref.offset,

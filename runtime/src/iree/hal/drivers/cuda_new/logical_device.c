@@ -64,7 +64,7 @@ typedef struct iree_hal_cuda_new_logical_device_t {
 
 	iree_hal_driver_t *driver;
 	const iree_hal_cuda_new_dynamic_symbols_t *syms;
-	const iree_hal_cuda_new_nccl_dynamic_symbols_t *nccl_syms;
+	const iree_hal_cuda_new_nccl_dynamic_symbols_t *nccl_symbols;
 	iree_hal_channel_provider_t *channel_provider;
 	iree_hal_cuda_new_logical_device_options_t options;
 
@@ -100,7 +100,7 @@ iree_status_t iree_hal_cuda_new_logical_device_create(
 	iree_hal_driver_t *driver, iree_string_view_t identifier,
 	const iree_hal_cuda_new_logical_device_options_t *options,
 	const iree_hal_cuda_new_dynamic_symbols_t *syms,
-	const iree_hal_cuda_new_nccl_dynamic_symbols_t *nccl_syms,
+	const iree_hal_cuda_new_nccl_dynamic_symbols_t *nccl_symbols,
 	const iree_hal_cuda_new_physical_device_t *physical_device,
 	const iree_hal_device_create_params_t *create_params,
 	iree_allocator_t host_allocator, iree_hal_device_t **out_device) {
@@ -148,7 +148,7 @@ iree_status_t iree_hal_cuda_new_logical_device_create(
 		device->driver = driver;
 		iree_hal_driver_retain(driver);
 		device->syms = syms;
-		device->nccl_syms = nccl_syms;
+		device->nccl_symbols = nccl_symbols;
 		device->channel_provider = NULL;
 		device->options = *options;
 		if (getenv("IREE_CUDA_NEW_USE_GRAPHS")) {
@@ -415,7 +415,7 @@ static iree_status_t iree_hal_cuda_new_device_create_channel(
 	iree_hal_channel_params_t params, iree_hal_channel_t **out_channel) {
 	iree_hal_cuda_new_logical_device_t *device =
 		iree_hal_cuda_new_logical_device_cast(base_device);
-	if (!device->nccl_syms || !device->nccl_syms->dylib) {
+	if (!device->nccl_symbols || !device->nccl_symbols->dylib) {
 		return iree_make_status(IREE_STATUS_UNAVAILABLE,
 			"NCCL runtime library not available; ensure installed and "
 			"libnccl.so is on your LD_LIBRARY_PATH.");
@@ -429,6 +429,16 @@ static iree_status_t iree_hal_cuda_new_device_create_channel(
 				device->channel_provider, &params.rank, &params.count));
 	}
 
+	if (params.count < 1) {
+		return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+			"channel count must be >= 1 but got %d", params.count);
+	}
+	if (params.rank < 0 || params.rank >= params.count) {
+		return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+			"channel rank %d out of range [0, %d)", params.rank,
+			params.count);
+	}
+
 	iree_hal_cuda_new_nccl_id_t id;
 	memset(&id, 0, sizeof(id));
 	if (iree_const_byte_span_is_empty(params.id)) {
@@ -440,7 +450,7 @@ static iree_status_t iree_hal_cuda_new_device_create_channel(
 		if (params.rank == 0) {
 			IREE_RETURN_IF_ERROR(
 				iree_hal_cuda_new_nccl_get_unique_id(
-					device->nccl_syms, &id));
+					device->nccl_symbols, &id));
 		}
 		IREE_RETURN_IF_ERROR(
 			iree_hal_channel_provider_exchange_default_id(
@@ -460,7 +470,7 @@ static iree_status_t iree_hal_cuda_new_device_create_channel(
 	}
 
 	return iree_hal_cuda_new_nccl_channel_create(device->syms,
-		device->nccl_syms, &id, params.rank, params.count,
+		device->nccl_symbols, &id, params.rank, params.count,
 		device->host_allocator, out_channel);
 }
 
@@ -692,7 +702,7 @@ static iree_status_t iree_hal_cuda_new_device_queue_execute(
 				status =
 					iree_hal_cuda_new_stream_command_buffer_create(
 						device->device_allocator, device->syms,
-						device->nccl_syms, device->cu_context,
+						device->nccl_symbols, device->cu_context,
 						IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
 						IREE_HAL_COMMAND_CATEGORY_ANY,
 						/*binding_capacity=*/0,
