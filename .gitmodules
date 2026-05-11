@@ -48,9 +48,6 @@
 [submodule "third_party/autocomp"]
 	path = third_party/autocomp
 	url = https://github.com/ucb-bar/autocomp.git
-[submodule "projects/mlirAgent"]
-	path = projects/mlirAgent
-	url = https://github.com/ucb-bar/mlirAgent.git
 [submodule "third_party/cuda-tile"]
 	path = third_party/cuda-tile
 	url = https://github.com/NVIDIA/cuda-tile.git
