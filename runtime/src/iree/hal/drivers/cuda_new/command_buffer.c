@@ -471,7 +471,8 @@ static iree_status_t iree_hal_cuda_new_stream_command_buffer_dispatch(
 			config.workgroup_count[2],
 			kernel_params->block_dims[0], kernel_params->block_dims[1],
 			kernel_params->block_dims[2],
-			0, command_buffer->cu_stream, params_ptr, NULL),
+			kernel_params->block_shared_memory_size,
+			command_buffer->cu_stream, params_ptr, NULL),
 		"cuLaunchKernel");
 
 	IREE_HAL_STREAM_TRACE_ZONE_END(

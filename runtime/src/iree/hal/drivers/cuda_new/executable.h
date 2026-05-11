@@ -37,11 +37,13 @@ typedef struct iree_hal_cuda_new_kernel_params_t {
 	// Grid dims baked at compile time from static tensor shapes.
 	uint32_t grid_dims[3];
 
-	// Block dims (currently {1,1,1} for cuda_tile kernels).
+	// Block dims ({1,1,1} for CTL1, from executable for PTXE).
 	uint32_t block_dims[3];
 
 	// CTA cluster dims for Hopper (0,0,0 = no clustering).
 	uint32_t cluster_dims[3];
+
+	uint32_t block_shared_memory_size;
 
 	IREE_TRACE(iree_hal_cuda_new_kernel_debug_info_t debug_info;)
 } iree_hal_cuda_new_kernel_params_t;
@@ -52,6 +54,12 @@ iree_status_t iree_hal_cuda_new_executable_infer_format(
 	iree_host_size_t *out_inferred_size);
 
 iree_status_t iree_hal_cuda_new_executable_create(
+	const iree_hal_cuda_new_dynamic_symbols_t *syms, CUdevice device,
+	CUcontext cu_context,
+	const iree_hal_executable_params_t *executable_params,
+	iree_allocator_t host_allocator, iree_hal_executable_t **out_executable);
+
+iree_status_t iree_hal_cuda_new_executable_create_ptxe(
 	const iree_hal_cuda_new_dynamic_symbols_t *syms, CUdevice device,
 	CUcontext cu_context,
 	const iree_hal_executable_params_t *executable_params,

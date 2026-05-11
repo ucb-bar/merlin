@@ -86,6 +86,7 @@ iree_cc_library(
     iree::hal::utils::queue_emulation
     iree::hal::utils::resource_set
     iree::hal::utils::stream_tracing
+    iree::schemas::cuda_executable_def_c_fbs
     iree::schemas::cuda_tile_executable_def_c_fbs
     iree::schemas::executable_debug_info_c_fbs
   PUBLIC

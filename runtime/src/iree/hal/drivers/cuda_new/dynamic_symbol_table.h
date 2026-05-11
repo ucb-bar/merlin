@@ -41,6 +41,9 @@ IREE_CU_PFN_DECL(cuModuleLoadDataEx, CUmodule *, const void *, unsigned int,
 IREE_CU_PFN_DECL(cuModuleUnload, CUmodule)
 IREE_CU_PFN_DECL(cuModuleGetFunction, CUfunction *, CUmodule, const char *)
 
+// Function management.
+IREE_CU_PFN_DECL(cuFuncSetAttribute, CUfunction, CUfunction_attribute, int)
+
 // Event management.
 IREE_CU_PFN_DECL(cuEventCreate, CUevent *, unsigned int)
 IREE_CU_PFN_DECL(cuEventDestroy, CUevent)

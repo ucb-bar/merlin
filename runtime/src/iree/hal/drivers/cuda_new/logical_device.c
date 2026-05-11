@@ -480,10 +480,16 @@ static iree_status_t iree_hal_cuda_new_device_query_i64(
 	if (iree_string_view_equal(category, IREE_SV("hal.device.id"))) {
 		*out_value =
 			iree_string_view_match_pattern(device->identifier, key) ? 1 : 0;
-		// Also accept cuda_tile device targets so existing VMFBs work.
+		// Also accept cuda_tile and cuda device targets.
 		if (!*out_value) {
 			*out_value =
 				iree_string_view_match_pattern(IREE_SV("cuda_tile"), key)
+					? 1
+					: 0;
+		}
+		if (!*out_value) {
+			*out_value =
+				iree_string_view_match_pattern(IREE_SV("cuda"), key)
 					? 1
 					: 0;
 		}
@@ -493,7 +499,8 @@ static iree_status_t iree_hal_cuda_new_device_query_i64(
 	if (iree_string_view_equal(category, IREE_SV("hal.executable.format"))) {
 		*out_value =
 			(iree_string_view_equal(key, IREE_SV("cuda-tile-fb")) ||
-			 iree_string_view_equal(key, IREE_SV("CTL1")))
+			 iree_string_view_equal(key, IREE_SV("CTL1")) ||
+			 iree_string_view_equal(key, IREE_SV("cuda-nvptx-fb")))
 				? 1
 				: 0;
 		return iree_ok_status();

@@ -93,7 +93,9 @@ static bool iree_hal_cuda_new_executable_cache_can_prepare_format(
 	return iree_string_view_equal(executable_format,
 			   iree_make_cstring_view("CTL1")) ||
 		   iree_string_view_equal(executable_format,
-			   iree_make_cstring_view("cuda-tile-fb"));
+			   iree_make_cstring_view("cuda-tile-fb")) ||
+		   iree_string_view_equal(executable_format,
+			   iree_make_cstring_view("cuda-nvptx-fb"));
 }
 
 static iree_status_t
@@ -103,6 +105,12 @@ iree_hal_cuda_new_executable_cache_prepare_executable(
 	iree_hal_executable_t **out_executable) {
 	iree_hal_cuda_new_executable_cache_t *cache =
 		iree_hal_cuda_new_executable_cache_cast(base_cache);
+	if (iree_string_view_equal(executable_params->executable_format,
+			iree_make_cstring_view("cuda-nvptx-fb"))) {
+		return iree_hal_cuda_new_executable_create_ptxe(
+			cache->syms, cache->device, cache->cu_context,
+			executable_params, cache->host_allocator, out_executable);
+	}
 	return iree_hal_cuda_new_executable_create(cache->syms, cache->device,
 		cache->cu_context, executable_params, cache->host_allocator,
 		out_executable);
