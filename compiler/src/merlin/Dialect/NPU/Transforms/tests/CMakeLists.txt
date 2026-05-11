@@ -8,6 +8,8 @@ iree_lit_test_suite(
   "plan-memory.mlir"
   "post-global-opt-hook.mlir"
   "text_isa.mlir"
+  "tile_matmul_k.mlir"
+  "tile_attention_kv.mlir"
   "verify-ukernel-symbols.mlir"
   "ukernel_symbol_to_isa.mlir"
   TOOLS

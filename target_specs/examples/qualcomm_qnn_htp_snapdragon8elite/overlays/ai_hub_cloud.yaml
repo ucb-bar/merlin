@@ -1,0 +1,16 @@
+schema_version: 1
+
+deployment:
+  name: ai_hub_cloud
+  mode: runtime-driver
+  build_profile: host-vanilla-release
+  compile_target: null
+  compile_hw: null
+  hardware_recipe: null
+  chipyard: {}
+  runtime:
+    backend: qnn
+    transport: ai_hub_cloud
+  extra:
+    device_class: snapdragon_8_elite
+    credential_gate: aihub_api_token

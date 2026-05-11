@@ -18,6 +18,29 @@ namespace {
 
 LogicalResult translateToTextISA(Operation *op, llvm::raw_ostream &os) {
 	op->walk([&](Operation *nested) {
+		if (auto native = llvm::dyn_cast<NPUISA::NativeInstOp>(nested)) {
+			os << native.getMnemonic();
+			DictionaryAttr args = native.getArgs();
+			if (!args.empty()) {
+				os << " ";
+				bool first = true;
+				for (NamedAttribute arg : args) {
+					if (!first) {
+						os << ", ";
+					}
+					first = false;
+					os << arg.getName().getValue() << "=";
+					if (auto integer =
+							llvm::dyn_cast<IntegerAttr>(arg.getValue())) {
+						os << integer.getInt();
+					} else {
+						arg.getValue().print(os);
+					}
+				}
+			}
+			os << "\n";
+			return;
+		}
 		if (auto load = llvm::dyn_cast<NPUISA::DmaLoadOp>(nested)) {
 			os << "dma.load"
 			   << " rd=" << load.getRd() << ", base=" << load.getBase()

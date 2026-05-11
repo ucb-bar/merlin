@@ -1,0 +1,135 @@
+schema_version: 1
+
+target:
+  name: ara_rvv_vlen256
+  display_name: Ara RVV VLEN256
+  vendor: PULP Platform
+  maturity: planned
+
+platform:
+  host_isa: riscv64
+  operating_systems:
+    - linux
+  environments:
+    - simulator
+
+execution_model:
+  kind: vector_cpu_extension
+  attachment: cpu_extension
+  submission_model: inline_cpu_instructions
+  compiler_recovery_stage: llvmcpu_codegen
+
+isa:
+  base: riscv64
+  features:
+    - +m
+    - +a
+    - +f
+    - +d
+    - +c
+    - +v
+    - +zvl256b
+  exposure:
+    kind: llvm_backend_features
+    needs_llvm_backend_changes: false
+    needs_new_intrinsics: false
+    needs_new_feature_bits: false
+  state_model:
+    kind: explicit_ssa
+  register_constraints:
+    accumulator_register_file: vector
+    even_alignment_required: false
+    vl_dependent: true
+
+operations:
+  compute:
+    - name: matmul
+      native: true
+      type_triples:
+        - i8*i8->i32
+    - name: dot_product
+      native: true
+      type_triples:
+        - i8*i8->i32
+  movement:
+    - vector_load
+    - vector_store
+  synchronization:
+    - fence
+
+geometry:
+  compute_array:
+    kind: vector_dot
+  vector:
+    vlen_bits: 256
+    dlen_bits: 256
+  native_tile_options:
+    - [8, 8, 8]
+  preferred_tiles:
+    - [8, 8, 8]
+
+memory:
+  spaces:
+    - name: global
+      kind: dram
+    - name: vector_registers
+      kind: register_file
+  preferred_layouts:
+    lhs: mmt4d_lhs
+    rhs: mmt4d_rhs
+    result: mmt4d_result
+  packing:
+    requires_pack: false
+    requires_unpack: false
+
+numeric:
+  legal_type_triples:
+    - i8*i8->i32
+  quantization:
+    requantize_native: false
+  rounding_modes:
+    - rne
+  saturation: true
+
+runtime:
+  required: false
+  executable_format: llvm_cpu_vmfb
+  driver:
+    backend_id: null
+    uri_schemes: []
+  synchronization:
+    semaphores: false
+    timelines: false
+
+verification:
+  golden_model:
+    available: true
+    kind: cpu_reference
+  simulator:
+    available: true
+    kind: rtl_sim
+  rtl:
+    available: false
+    kind: none
+  perf_counters:
+    available: false
+    kind: none
+  tolerances:
+    int8:
+      atol: 0
+      rtol: 0
+
+access:
+  model: simulator
+  sdk_requirements:
+    - rtl_sim
+    - iree_llvmcpu
+  credential_requirements: none
+  availability_class: always_local
+  verification_gates:
+    - compile_only
+    - smoke_run
+
+references:
+  - docs/architecture/target_generator.md
+  - docs/reference/cli.md

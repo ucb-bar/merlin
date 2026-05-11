@@ -96,4 +96,15 @@ def NPUISA_MatmulMxu0Op : NPUISA_Op<"matmul_mxu0"> {
   }];
 }
 
+def NPUISA_NativeInstOp : NPUISA_Op<"native_inst"> {
+  let summary = "Native npu_model instruction";
+  let description = [{
+    Carries a manifest-backed simulator instruction exactly as consumed by
+    npu_model. The compiler uses this as the bridge from scheduled kernel
+    launches to the already-verified native SaturnNPU kernel library.
+  }];
+  let arguments = (ins StrAttr:$mnemonic, DictionaryAttr:$args);
+  let assemblyFormat = "$mnemonic $args attr-dict";
+}
+
 #endif // IREE_NPU_COMPILER_DIALECT_NPU_IR_NPUISAOPS_TD_

@@ -1,0 +1,136 @@
+schema_version: 1
+
+target:
+  name: qualcomm_qnn_htp_snapdragon8elite
+  display_name: Qualcomm QNN HTP Snapdragon 8 Elite
+  vendor: Qualcomm
+  maturity: planned
+
+platform:
+  host_isa: aarch64
+  operating_systems:
+    - android
+    - linux
+  environments:
+    - runtime-driver
+
+execution_model:
+  kind: mixed
+  attachment: device
+  submission_model: queue_dispatch
+  compiler_recovery_stage: runtime_only
+
+isa:
+  base: qualcomm_htp
+  features:
+    - qnn
+    - htp
+    - context_binary
+  exposure:
+    kind: hal_runtime
+    needs_llvm_backend_changes: false
+    needs_new_intrinsics: false
+    needs_new_feature_bits: false
+  state_model:
+    kind: vendor_sdk_managed_state
+  register_constraints:
+    accumulator_register_file: null
+    even_alignment_required: false
+    vl_dependent: false
+
+operations:
+  compute:
+    - name: matmul
+      native: true
+      type_triples:
+        - i8*i8->i32
+        - f16*f16->f16
+    - name: activation
+      native: true
+      type_triples:
+        - i32->i8
+  movement:
+    - host_transfer
+    - dma_in
+    - dma_out
+  synchronization:
+    - fence
+
+geometry:
+  compute_array:
+    kind: vendor_npu
+  vector: {}
+  native_tile_options:
+    - [16, 16, 16]
+  preferred_tiles:
+    - [16, 16, 16]
+
+memory:
+  spaces:
+    - name: global
+      kind: dram
+    - name: local
+      kind: onchip_sram
+  preferred_layouts:
+    lhs: row_major
+    rhs: row_major
+    result: row_major
+  packing:
+    requires_pack: true
+    requires_unpack: true
+
+numeric:
+  legal_type_triples:
+    - i8*i8->i32
+    - f16*f16->f16
+    - i32->i8
+  quantization:
+    requantize_native: true
+  rounding_modes:
+    - rne
+  saturation: true
+
+runtime:
+  required: true
+  executable_format: vmfb_plus_qnn_context
+  driver:
+    backend_id: qnn
+    uri_schemes:
+      - qnn://htp
+  synchronization:
+    semaphores: true
+    timelines: false
+
+verification:
+  golden_model:
+    available: true
+    kind: host_reference
+  simulator:
+    available: false
+    kind: none
+  rtl:
+    available: false
+    kind: none
+  perf_counters:
+    available: false
+    kind: none
+  tolerances:
+    int8:
+      atol: 1
+      rtol: 0
+
+access:
+  model: cloud_service
+  sdk_requirements:
+    - qnn_sdk
+    - qualcomm_ai_hub
+  credential_requirements: aihub_api_token
+  availability_class: cloud_token_required
+  verification_gates:
+    - compile_only
+    - smoke_run
+
+references:
+  - docs/architecture/target_generator.md
+  - docs/how_to/add_runtime_hal_driver.md
+  - docs/reference/cli.md

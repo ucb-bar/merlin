@@ -36,6 +36,24 @@ void NPUOptions::bindOptions(OptionsBinder &binder) {
 			"Enable deterministic NPU ISA memory/flag assignment pass."),
 		llvm::cl::cat(category));
 
+	binder.opt<bool>("iree-npu-native-kernel-lowering", nativeKernelLowering,
+		llvm::cl::desc(
+			"Lower scheduled NPU kernels with native manifest-backed "
+			"npu_model instruction streams."),
+		llvm::cl::cat(category));
+
+	binder.opt<bool>("iree-npu-strict-native-kernel-coverage",
+		strictNativeKernelCoverage,
+		llvm::cl::desc(
+			"Treat missing native manifest kernel coverage as a hard "
+			"lowering error."),
+		llvm::cl::cat(category));
+
+	binder.opt<std::string>("iree-npu-kernel-manifest", kernelManifestPath,
+		llvm::cl::desc(
+			"Path to a SaturnNPU kernel_library/manifest.json file."),
+		llvm::cl::cat(category));
+
 	binder.opt<int64_t>("iree-npu-dma-flag-modulo", dmaFlagModulo,
 		llvm::cl::desc("Modulo used for planned DMA flag assignment."),
 		llvm::cl::cat(category));

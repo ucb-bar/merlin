@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -25,6 +27,27 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
+
+      - name: Install Python dependencies for merlin CLI + tests
+        # Minimal set needed to import tools/merlin.py (which transitively
+        # imports jinja2 via targetgen) and to run pytest. The full project
+        # env is not installed in CI — only these two non-stdlib deps are
+        # required.
+        run: |
+          pip install pre-commit pyyaml jinja2 pytest
+
+      - name: Pre-commit (changed files)
+        # Runs pre-commit hooks on the diff this PR introduces.
+        # clang-format and cmake-format are skipped because the CI runner
+        # does not have those binaries — they run locally via conda instead.
+        if: github.event_name == 'pull_request'
+        env:
+          SKIP: clang-format,cmake-format
+        run: |
+          pre-commit run \
+            --from-ref ${{ github.event.pull_request.base.sha }} \
+            --to-ref ${{ github.event.pull_request.head.sha }} \
+            --show-diff-on-failure
 
       - name: Lint scripts and python entrypoints
         run: |
@@ -37,3 +60,18 @@ jobs:
       - name: Validate upstream tracking config
         run: |
           python3 tools/merlin.py ci release-status --offline --json
+
+      - name: Smoke test merlin CLI
+        # Catches import errors and broken argparse setup. ~2s overhead.
+        run: |
+          python3 tools/merlin.py --help > /dev/null
+          for sub in build compile setup ci patches benchmark chipyard ray targetgen; do
+            python3 tools/merlin.py "$sub" --help > /dev/null
+          done
+
+      - name: Validate conda env files
+        run: |
+          python3 -c "import yaml; yaml.safe_load(open('env_linux.yml')); yaml.safe_load(open('env_macOS.yml'))"
+
+      - name: Run Python tests
+        run: pytest tests/ -v --tb=short

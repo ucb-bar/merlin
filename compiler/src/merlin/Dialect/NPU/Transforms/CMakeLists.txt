@@ -10,6 +10,7 @@ iree_cc_library(
   "Passes.cpp"
   "ConvertLinalgToNPUKernel.cpp"
   "ConvertNPUKernelToSchedule.cpp"
+  "TileNPUKernelToSchedule.cpp"
   "VerifyNPUUkernelSymbols.cpp"
   "ConvertNPUScheduleToISA.cpp"
   "PlanNPUISAMemory.cpp"
@@ -21,11 +22,14 @@ iree_cc_library(
   iree::npu::compiler::Dialect::NPU::IR::NPUScheduleDialect
   iree::npu::compiler::Dialect::NPU::IR::NPUISADialect
   LLVMSupport
+  MLIRArithDialect
   MLIRFuncDialect
   MLIRFunctionInterfaces
   MLIRIR
   MLIRLinalgDialect
   MLIRPass
+  MLIRSCFDialect
+  MLIRTensorDialect
   MLIRTransforms
   PUBLIC)
 

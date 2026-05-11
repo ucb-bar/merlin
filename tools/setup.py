@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
+# tools/setup.py
+"""Backs `./merlin setup`: bootstraps the developer environment — conda env,
+uv-managed Python deps, submodule sync (per profile), and prebuilt-artifact
+installation.
+
+See docs/getting_started.md for the canonical first-time flow.
+"""
+
 import argparse
 import pathlib
 import platform
 import shutil
+import subprocess
 import sys
 
 import utils
@@ -92,7 +101,7 @@ def setup_parser(parser: argparse.ArgumentParser):
         "--submodules-profile",
         choices=["core", "npu", "smolvla", "full"],
         default="core",
-        help="Which submodule profile to initialize (default: core).",
+        help=("Which submodule profile to initialize for the current Merlin " "checkout (default: core)."),
     )
     parser.add_argument(
         "--submodule-path",
@@ -121,7 +130,10 @@ def setup_parser(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--submodule-sync",
         action="store_true",
-        help="Run `git submodule sync --recursive` before updating.",
+        help=(
+            "Run `git submodule sync --recursive` before updating. "
+            "Submodule SHAs still come from the current Merlin commit."
+        ),
     )
 
     parser.add_argument(
@@ -249,15 +261,41 @@ def resolve_submodule_steps(args):
     return steps
 
 
+def describe_repo_ref() -> str:
+    branch = subprocess.run(
+        ["git", "-C", str(utils.REPO_ROOT), "symbolic-ref", "--short", "-q", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    commit = subprocess.run(
+        ["git", "-C", str(utils.REPO_ROOT), "rev-parse", "--short", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    if branch and commit:
+        return f"{branch} ({commit})"
+    if commit:
+        return f"detached HEAD ({commit})"
+    return "unknown ref"
+
+
 def setup_submodules(args) -> int:
     print("--- Setting up Git Submodules ---")
     if not shutil.which("git"):
         print("Error: 'git' not found.")
         return 1
+    print(f">>> Merlin ref: {describe_repo_ref()}")
+    print(
+        ">>> Note: submodule SHAs follow the current Merlin commit. "
+        "If you switch branches later, rerun this command."
+    )
 
     if args.offline:
         print(
-            ">>> Offline mode enabled. Submodule setup will only succeed if needed git objects are already available locally."
+            ">>> Offline mode enabled. Submodule setup will only succeed if "
+            "needed git objects are already available locally."
         )
 
     if args.submodule_sync:

@@ -34,6 +34,10 @@ struct NPUSession : public PluginSession<NPUSession, NPUOptions,
 		loweringOptions.matmulUseMxu1Weights = options.matmulUseMxu1Weights;
 		loweringOptions.allowUnknownUkernelFallback =
 			options.allowUnknownUkernelFallback;
+		loweringOptions.nativeKernelLowering = options.nativeKernelLowering;
+		loweringOptions.kernelManifestPath = options.kernelManifestPath;
+		loweringOptions.strictNativeKernelCoverage =
+			options.strictNativeKernelCoverage;
 
 		NPU::NPUMemoryPlannerOptions plannerOptions;
 		plannerOptions.loadBase = options.loadBase;

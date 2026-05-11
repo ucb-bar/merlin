@@ -1,0 +1,21 @@
+{
+  "name": "Merlin (conda + uv)",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "merlin-dev",
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+  "postCreateCommand": "uv sync && pre-commit install && ./merlin setup submodules --submodules-profile core --submodule-sync || true",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-vscode.cmake-tools",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "charliermarsh.ruff",
+        "tamasfe.even-better-toml"
+      ]
+    }
+  },
+  "forwardPorts": [8000]
+}

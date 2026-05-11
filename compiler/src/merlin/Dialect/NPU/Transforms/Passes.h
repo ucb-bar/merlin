@@ -18,6 +18,15 @@ struct NPULoweringOptions {
 	bool matmulUseMxu1Weights = false;
 	// If false, unknown ukernel symbols are rejected during lowering.
 	bool allowUnknownUkernelFallback = true;
+	// If true, lower supported schedule ops by splicing native manifest-backed
+	// npu_model instruction streams instead of older abstract npu_isa
+	// skeletons.
+	bool nativeKernelLowering = false;
+	// JSON manifest containing native SaturnNPU kernel instruction streams.
+	std::string kernelManifestPath;
+	// If true, manifest mode rejects missing kernel family coverage instead of
+	// falling back to abstract skeleton lowering.
+	bool strictNativeKernelCoverage = true;
 };
 
 struct NPUMemoryPlannerOptions {
@@ -29,6 +38,7 @@ struct NPUMemoryPlannerOptions {
 
 std::unique_ptr<Pass> createConvertLinalgToNPUKernelPass();
 std::unique_ptr<Pass> createConvertNPUKernelToSchedulePass();
+std::unique_ptr<Pass> createTileNPUKernelToSchedulePass();
 std::unique_ptr<Pass> createConvertNPUScheduleToISAPass();
 std::unique_ptr<Pass> createConvertNPUScheduleToISAPass(
 	const NPULoweringOptions &options);
@@ -39,6 +49,7 @@ std::unique_ptr<Pass> createPlanNPUISAMemoryPass(
 
 void registerConvertLinalgToNPUKernelPass();
 void registerConvertNPUKernelToSchedulePass();
+void registerTileNPUKernelToSchedulePass();
 void registerConvertNPUScheduleToISAPass();
 void registerVerifyNPUUkernelSymbolsPass();
 void registerPlanNPUISAMemoryPass();

@@ -2,6 +2,8 @@
 # Build artifacts and compiled binaries
 # -----------------------------------------------------------------------------
 
+.env
+
 # Dependency / compiler-generated files
 *.d
 *.gch

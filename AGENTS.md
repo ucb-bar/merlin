@@ -2,7 +2,7 @@
 
 ## Golden Rules
 
-1. **Always use `tools/`** — Never invoke `cmake`, `ninja`, `make`, or raw build commands directly. All build, compile, benchmark, CI, and setup operations go through `tools/merlin.py` subcommands. See `docs/reference/cli.md` for the full CLI reference.
+1. **Always use `./merlin`** — Never invoke `cmake`, `ninja`, `make`, or raw build commands directly. All build, compile, benchmark, CI, and setup operations go through `./merlin` (the thin wrapper at the repo root that runs `tools/merlin.py` inside the `merlin-dev` conda env). See `docs/reference/cli.md` for the full CLI reference.
 2. **Always consult `docs/`** — Before proposing changes or answering questions about architecture, workflows, hardware targets, or conventions, read the relevant documentation under `docs/`. This includes dev-blogs (`docs/dev_blog/`), architecture notes (`docs/architecture/`), how-to guides (`docs/how_to/`), and reference pages (`docs/reference/`).
 3. **Never skip the environment** — All commands must run inside the correct environment (see below).
 4. **Never commit or push** — Do not run `git commit`, `git push`, or create branches unless the user explicitly asks you to. Stage files (`git add`) only when instructed. The user manages all version control operations.
@@ -13,15 +13,18 @@ Merlin uses a two-layer environment: **conda** for system/native toolchain deps 
 
 ### Running tools (build, compile, benchmark, etc.)
 
-```bash
-conda run -n merlin-dev uv run tools/merlin.py <subcommand> [args...]
-```
-
-Or, if the conda environment is already activated in the shell:
+These three forms are equivalent and all fully supported. The docs use
+`./merlin` because it is shortest, but nothing about the longer forms is
+deprecated:
 
 ```bash
-uv run tools/merlin.py <subcommand> [args...]
+./merlin <subcommand> [args...]                                       # wrapper
+conda activate merlin-dev && uv run tools/merlin.py <subcommand> [args...]  # direct
+conda run -n merlin-dev uv run tools/merlin.py <subcommand> [args...]       # direct, no activate
 ```
+
+`./merlin` is a 30-line bash wrapper that delegates to form (3) when conda
+isn't active and form (2) when it is — it caches nothing.
 
 ### Running any Python script
 
@@ -49,22 +52,22 @@ Never use bare `python3` or `pip install` — the project uses `uv` (managed via
 | `benchmark`  | `tools/benchmark.py` | Run benchmark helper scripts                      |
 | `chipyard`   | `tools/chipyard.py`  | Manage Chipyard hardware backend interactions     |
 
-When you need to understand what flags or options a subcommand accepts, read the corresponding `tools/<module>.py` file or run `uv run tools/merlin.py <subcommand> --help`.
+When you need to understand what flags or options a subcommand accepts, read the corresponding `tools/<module>.py` file or run `./merlin <subcommand> --help`.
 
 ### Common build examples
 
 ```bash
 # Host-only vanilla build (compiler tools)
-uv run tools/merlin.py build --profile vanilla
+./merlin build --profile vanilla
 
 # SpacemiT cross-compile with plugin
-uv run tools/merlin.py build --profile spacemit
+./merlin build --profile spacemit
 
 # Build a specific cmake target
-uv run tools/merlin.py build --profile spacemit --cmake-target <target_name>
+./merlin build --profile spacemit --cmake-target <target_name>
 
 # Compile a model
-uv run tools/merlin.py compile models/dronet/dronet.mlir --target spacemit_x60
+./merlin compile models/dronet/dronet.mlir --target spacemit_x60
 ```
 
 ## docs/ — Always Read Before Acting

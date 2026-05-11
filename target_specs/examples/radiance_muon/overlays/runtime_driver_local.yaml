@@ -1,0 +1,15 @@
+schema_version: 1
+
+deployment:
+  name: runtime_driver_local
+  mode: runtime-driver
+  build_profile: host-vanilla-release
+  compile_target: null
+  compile_hw: null
+  hardware_recipe: null
+  chipyard: {}
+  runtime:
+    backend: radiance
+    transport: host_emulation
+  extra:
+    executable_contract: vmfb_plus_device_executable

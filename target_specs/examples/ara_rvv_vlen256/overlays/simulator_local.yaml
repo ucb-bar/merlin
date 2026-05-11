@@ -1,0 +1,15 @@
+schema_version: 1
+
+deployment:
+  name: simulator_local
+  mode: simulator
+  build_profile: host-vanilla-release
+  compile_target: null
+  compile_hw: null
+  hardware_recipe: null
+  chipyard: {}
+  runtime:
+    backend: llvmcpu
+    transport: simulator_local
+  extra:
+    simulator: rtl_sim

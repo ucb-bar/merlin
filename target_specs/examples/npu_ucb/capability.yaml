@@ -1,0 +1,132 @@
+schema_version: 1
+
+target:
+  name: npu_ucb
+  display_name: UCB NPU Model
+  vendor: UCB
+  maturity: experimental
+
+platform:
+  host_isa: riscv64
+  operating_systems:
+    - linux
+  environments:
+    - simulator
+
+execution_model:
+  kind: structured_npu
+  attachment: device
+  submission_model: scheduled_command_stream
+  compiler_recovery_stage: post_global_optimization
+
+isa:
+  base: npu_custom
+  features:
+    - matrix_register_file
+    - dma
+    - barrier
+  exposure:
+    kind: text_isa
+    needs_llvm_backend_changes: false
+    needs_new_intrinsics: false
+    needs_new_feature_bits: false
+  state_model:
+    kind: explicit_schedule_state
+  register_constraints:
+    accumulator_register_file: matrix_registers
+    even_alignment_required: false
+    vl_dependent: false
+
+operations:
+  compute:
+    - name: matmul
+      native: true
+      type_triples:
+        - i8*i8->i32
+    - name: activation
+      native: true
+      type_triples:
+        - i32->i8
+  movement:
+    - dma_in
+    - dma_out
+  synchronization:
+    - barrier
+
+geometry:
+  compute_array:
+    kind: scheduled_matrix_engine
+  vector:
+    vlen_bits: 256
+    dlen_bits: 256
+  native_tile_options:
+    - [16, 16, 16]
+  preferred_tiles:
+    - [16, 16, 16]
+
+memory:
+  spaces:
+    - name: global
+      kind: dram
+    - name: weight_buffer
+      kind: local_sram
+    - name: matrix_registers
+      kind: register_file
+  preferred_layouts:
+    lhs: blocked_lhs
+    rhs: blocked_rhs
+    result: blocked_result
+  packing:
+    requires_pack: true
+    requires_unpack: true
+
+numeric:
+  legal_type_triples:
+    - i8*i8->i32
+    - i32->i8
+  quantization:
+    requantize_native: true
+  rounding_modes:
+    - rne
+  saturation: true
+
+runtime:
+  required: false
+  executable_format: text_isa_bundle
+  driver:
+    backend_id: null
+    uri_schemes: []
+  synchronization:
+    semaphores: false
+    timelines: false
+
+verification:
+  golden_model:
+    available: true
+    kind: software_reference
+  simulator:
+    available: true
+    kind: tick_based_execution_driven
+  rtl:
+    available: false
+    kind: none
+  perf_counters:
+    available: false
+    kind: none
+  tolerances: {}
+
+access:
+  model: simulator
+  sdk_requirements:
+    - npu_model
+  credential_requirements: none
+  availability_class: always_local
+  verification_gates:
+    - compile_only
+    - smoke_run
+
+references:
+  - compiler/src/merlin/Dialect/NPU/README.md
+  - docs/dev_blog/2026-03-11-npu-dialect-e2e.md
+  - models/npu_ucb.yaml
+  - third_party/npu_model/README.md

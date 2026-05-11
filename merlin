@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Optional convenience wrapper for `tools/merlin.py`.
+#
+# All three of these are equivalent and supported — pick whichever you like:
+#   ./merlin <subcommand> [args...]
+#   conda activate merlin-dev && uv run tools/merlin.py <subcommand> [args...]
+#   conda run -n merlin-dev uv run tools/merlin.py <subcommand> [args...]
+#
+# This wrapper just delegates to `uv run tools/merlin.py` (auto-activating the
+# conda env if you forgot to). It does no compilation, caching, or version
+# pinning — every invocation re-execs `uv run`, so it cannot go stale relative
+# to `tools/merlin.py`.
+#
+# Maintenance: the only repo-specific facts encoded here are CONDA_ENV and
+# MERLIN_PY (next two lines). If either ever changes, update them here.
+
+set -euo pipefail
+
+CONDA_ENV="merlin-dev"
+MERLIN_PY="tools/merlin.py"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ "$PWD" != "$SCRIPT_DIR" ]]; then
+    echo "error: ./merlin must be run from the repository root" >&2
+    echo "       (you are in $PWD; expected $SCRIPT_DIR)" >&2
+    exit 2
+fi
+
+if [[ ! -f "$SCRIPT_DIR/$MERLIN_PY" ]]; then
+    echo "error: $MERLIN_PY not found under $SCRIPT_DIR" >&2
+    exit 2
+fi
+
+if [[ "${CONDA_DEFAULT_ENV:-}" == "$CONDA_ENV" ]]; then
+    exec uv run "$MERLIN_PY" "$@"
+fi
+
+if ! command -v conda >/dev/null 2>&1; then
+    echo "error: conda not on PATH and $CONDA_ENV env not active" >&2
+    echo "       install miniconda/anaconda, then run:" >&2
+    echo "         conda activate $CONDA_ENV && ./merlin $*" >&2
+    exit 2
+fi
+
+exec conda run --no-capture-output -n "$CONDA_ENV" uv run "$MERLIN_PY" "$@"

@@ -1,0 +1,151 @@
+schema_version: 1
+
+target:
+  name: gemmini_mx
+  display_name: Gemmini MX
+  vendor: UCB-BAR
+  maturity: experimental
+
+platform:
+  host_isa: riscv64
+  operating_systems:
+    - baremetal
+    - linux
+  environments:
+    - bare-metal
+    - firesim
+
+execution_model:
+  kind: rocc_accelerator
+  attachment: rocc
+  submission_model: command_stream
+  compiler_recovery_stage: post_global_optimization
+
+isa:
+  base: riscv64
+  features:
+    - +m
+    - +a
+    - +f
+    - +d
+    - +c
+    - +v
+    - +zvl256b
+  exposure:
+    kind: llvm_intrinsics
+    needs_llvm_backend_changes: true
+    needs_new_intrinsics: true
+    needs_new_feature_bits: false
+  state_model:
+    kind: command_payload
+  register_constraints:
+    accumulator_register_file: scratchpad_accumulator
+    even_alignment_required: false
+    vl_dependent: false
+
+operations:
+  compute:
+    - name: matmul
+      native: true
+      type_triples:
+        - i8*i8->i32
+        - f8e4m3*f8e4m3->f32
+    - name: conv2d
+      native: true
+      type_triples:
+        - i8*i8->i32
+    - name: requantize
+      native: true
+      type_triples:
+        - i32->i8
+  movement:
+    - mvin
+    - mvout
+    - preload
+  synchronization:
+    - fence
+
+geometry:
+  compute_array:
+    kind: systolic_array
+  vector:
+    vlen_bits: 256
+    dlen_bits: 256
+  native_tile_options:
+    - [16, 16, 16]
+  preferred_tiles:
+    - [16, 16, 16]
+
+memory:
+  spaces:
+    - name: global
+      kind: dram
+    - name: scratchpad
+      kind: scratchpad
+    - name: accumulator
+      kind: accumulator_sram
+  preferred_layouts:
+    lhs: gemmini_lhs
+    rhs: gemmini_rhs
+    result: gemmini_accumulator
+  packing:
+    requires_pack: true
+    requires_unpack: true
+
+numeric:
+  legal_type_triples:
+    - i8*i8->i32
+    - f8e4m3*f8e4m3->f32
+    - i32->i8
+  quantization:
+    requantize_native: true
+    clamp_native: true
+  rounding_modes:
+    - rne
+  saturation: true
+
+runtime:
+  required: false
+  executable_format: llvm_cpu_vmfb
+  driver:
+    backend_id: null
+    uri_schemes: []
+  synchronization:
+    semaphores: false
+    timelines: false
+
+verification:
+  golden_model:
+    available: true
+    kind: cpu_reference
+  simulator:
+    available: true
+    kind: bare_metal_rtl
+  rtl:
+    available: true
+    kind: chipyard_vcs
+  perf_counters:
+    available: false
+    kind: none
+  tolerances:
+    fp8:
+      atol: 0.125
+      rtol: 0.05
+
+access:
+  model: simulator
+  sdk_requirements:
+    - chipyard
+    - firesim
+  credential_requirements: none
+  availability_class: sdk_install_required
+  verification_gates:
+    - compile_only
+    - smoke_run
+
+references:
+  - compiler/src/merlin/Dialect/Gemmini/README.md
+  - docs/dev_blog/2026-03-11-gemmini-workstream-log.md
+  - models/gemmini_mx.yaml
+  - build_tools/hardware/gemmini_mx.yaml
+  - third_party/iree_bar/third_party/llvm-project/llvm/test/CodeGen/RISCV/gemmini-intrinsics.ll

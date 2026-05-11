@@ -1,0 +1,137 @@
+schema_version: 1
+
+target:
+  name: nvidia_cuda_sm89
+  display_name: NVIDIA CUDA SM89
+  vendor: NVIDIA
+  maturity: planned
+
+platform:
+  host_isa: x86_64
+  operating_systems:
+    - linux
+  environments:
+    - runtime-driver
+
+execution_model:
+  kind: simt_gpu
+  attachment: device
+  submission_model: queue_dispatch
+  compiler_recovery_stage: runtime_only
+
+isa:
+  base: nvidia_gpu
+  features:
+    - cuda
+    - tensor_cores
+    - sm89
+  exposure:
+    kind: hal_runtime
+    needs_llvm_backend_changes: false
+    needs_new_intrinsics: false
+    needs_new_feature_bits: false
+  state_model:
+    kind: runtime_managed_device_state
+  register_constraints:
+    accumulator_register_file: null
+    even_alignment_required: false
+    vl_dependent: false
+
+operations:
+  compute:
+    - name: simt_kernel
+      native: true
+      type_triples:
+        - generic
+    - name: matmul
+      native: true
+      type_triples:
+        - f16*f16->f16
+        - f16*f16->f32
+  movement:
+    - device_copy
+    - host_transfer
+  synchronization:
+    - semaphore
+    - event
+
+geometry:
+  compute_array:
+    kind: simt
+  vector: {}
+  native_tile_options:
+    - [32, 8, 16]
+  preferred_tiles:
+    - [32, 8, 16]
+
+memory:
+  spaces:
+    - name: global
+      kind: dram
+    - name: shared
+      kind: shared_memory
+    - name: registers
+      kind: register_file
+  preferred_layouts:
+    lhs: row_major
+    rhs: row_major
+    result: row_major
+  packing:
+    requires_pack: false
+    requires_unpack: false
+
+numeric:
+  legal_type_triples:
+    - f16*f16->f16
+    - f16*f16->f32
+  quantization:
+    requantize_native: false
+  rounding_modes:
+    - rne
+  saturation: false
+
+runtime:
+  required: true
+  executable_format: vmfb_plus_cuda_binary
+  driver:
+    backend_id: cuda
+    uri_schemes:
+      - cuda://0
+  synchronization:
+    semaphores: true
+    timelines: true
+
+verification:
+  golden_model:
+    available: true
+    kind: host_reference
+  simulator:
+    available: false
+    kind: none
+  rtl:
+    available: false
+    kind: none
+  perf_counters:
+    available: false
+    kind: none
+  tolerances:
+    fp16:
+      atol: 0.01
+      rtol: 0.01
+
+access:
+  model: local_device
+  sdk_requirements:
+    - cuda
+    - iree_cuda
+  credential_requirements: none
+  availability_class: sdk_install_required
+  verification_gates:
+    - compile_only
+    - device_query
+    - smoke_run
+
+references:
+  - docs/architecture/target_generator.md
+  - docs/how_to/add_runtime_hal_driver.md
+  - docs/reference/cli.md
