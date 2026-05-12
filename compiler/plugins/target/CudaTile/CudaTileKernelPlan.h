@@ -109,6 +109,7 @@ struct CudaTileConvPlan {
   llvm::SmallVector<int64_t> physInputShape;
   llvm::SmallVector<int64_t> physFilterShape;
   llvm::SmallVector<int64_t> physOutputShape;
+  llvm::SmallVector<int64_t> storeOffsets;
   llvm::SmallVector<int64_t> strides;
   llvm::SmallVector<int64_t> dilations;
   // Window shape for pooling [KH, KW]. Same as filterShape spatial dims for conv.
@@ -127,6 +128,7 @@ struct CudaTileBindingPlan {
   int64_t binding = -1;
   int64_t byteOffset = 0;
   bool hasStaticByteOffset = true;
+  int64_t pushConstantOrdinal = -1;
   llvm::SmallVector<int64_t> shape;
   Value memref;
 };

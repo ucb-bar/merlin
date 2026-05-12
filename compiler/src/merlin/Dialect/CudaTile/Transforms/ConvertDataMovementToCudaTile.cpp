@@ -361,14 +361,12 @@ detectTransposeGeneric(linalg::GenericOp genericOp) {
     for (unsigned i = 0; i < numDims; ++i)
       perm[i] = inputPerm[i];
   } else if (inputMap.isIdentity()) {
-    // Output is permuted: output(d0,d1) -> (d_p0, d_p1).
-    // The outputPerm maps iteration dim → output dim.
-    // The transpose is the inverse: for output dim i, which iteration dim?
-    SmallVector<unsigned> inversePerm(numDims);
+    // Output is permuted: output(d0,d1,...) -> (d_p0, d_p1,...).
+    // outputPerm[i] is the iteration dim that fills output position i.
+    // Since input is identity, src[j] = iteration dim j, so
+    // dst[i] = src[outputPerm[i]].
     for (unsigned i = 0; i < numDims; ++i)
-      inversePerm[outputPerm[i]] = i;
-    for (unsigned i = 0; i < numDims; ++i)
-      perm[i] = inversePerm[i];
+      perm[i] = outputPerm[i];
   } else {
     // Both permuted — general case.
     // Compose: perm = outputPerm^{-1} * inputPerm.

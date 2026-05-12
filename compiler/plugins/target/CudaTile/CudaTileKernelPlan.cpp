@@ -1928,6 +1928,24 @@ CudaTileKernelPlan extractCudaTileKernelPlan(Operation *innerModule,
         binding.byteOffset = *byteOffset;
       } else {
         binding.hasStaticByteOffset = false;
+        // Trace dynamic offset back to hal.interface.constant.load to find
+        // the push constant ordinal.
+        Value offsetVal = subspan.getByteOffset();
+        if (auto assumeOp =
+                offsetVal.getDefiningOp<IREE::Util::AssumeIntOp>()) {
+          offsetVal = assumeOp.getOperand(
+              cast<OpResult>(offsetVal).getResultNumber());
+        }
+        if (auto castOp = offsetVal.getDefiningOp<arith::IndexCastUIOp>())
+          offsetVal = castOp.getIn();
+        if (auto castOp = offsetVal.getDefiningOp<arith::IndexCastOp>())
+          offsetVal = castOp.getIn();
+        if (auto loadOp =
+                offsetVal
+                    .getDefiningOp<IREE::HAL::InterfaceConstantLoadOp>()) {
+          binding.pushConstantOrdinal =
+              loadOp.getOrdinal().getSExtValue();
+        }
       }
       plan.bindingShapes.push_back(std::move(binding));
     }
@@ -1945,6 +1963,36 @@ CudaTileKernelPlan extractCudaTileKernelPlan(Operation *innerModule,
     else
       plan.singleStoreOp = op;
   });
+
+  // Apply store offsets to output binding byte offsets. When a
+  // dispatch.tensor.store writes at a non-zero offset within a padded buffer,
+  // fold that offset into the binding's byte offset so all emitters
+  // automatically write to the correct position.
+  if (plan.singleStoreOp && !plan.sawMultipleStores) {
+    auto offsets = plan.singleStoreOp.getStaticOffsets();
+    if (llvm::any_of(offsets, [](int64_t o) { return o != 0; })) {
+      auto targetShape =
+          getStaticShapeFromType(plan.singleStoreOp.getTarget().getType());
+      if (!targetShape.empty()) {
+        // Compute row-major strides inline.
+        SmallVector<int64_t> targetStrides(targetShape.size(), 1);
+        for (int i = (int)targetShape.size() - 2; i >= 0; --i)
+          targetStrides[i] = targetStrides[i + 1] * targetShape[i + 1];
+        int64_t storeElemOff = 0;
+        for (size_t i = 0; i < offsets.size() && i < targetStrides.size(); ++i)
+          storeElemOff += offsets[i] * targetStrides[i];
+        if (storeElemOff != 0) {
+          Value storeMem = plan.singleStoreOp.getTarget();
+          for (auto &bp : plan.bindingShapes) {
+            if (bp.memref == storeMem) {
+              int64_t elemBytes = 4; // f32 default
+              bp.byteOffset += storeElemOff * elemBytes;
+            }
+          }
+        }
+      }
+    }
+  }
 
   populateDispatchTensorOperandPlans(innerModule, plan);
 
