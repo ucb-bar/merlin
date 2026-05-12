@@ -398,10 +398,19 @@ public:
   }
 
   /// Create an entry function with numArgs pointer arguments.
-  void beginEntry(StringRef name, int numArgs, Type elemType) {
+  void beginEntry(StringRef name, int numArgs, Type elemType,
+                  ArrayRef<CudaTileBindingPlan> bindingShapes = {}) {
     auto ptrType = ::mlir::cuda_tile::PointerType::get(ctx, elemType);
     auto tilePtrType = ::mlir::cuda_tile::TileType::get(ctx, {}, ptrType);
+    // Add push constant i32 args after pointer args.
+    int64_t numPC = 0;
+    for (const auto &bp : bindingShapes)
+      numPC = std::max(numPC, bp.pushConstantOrdinal + 1);
+    auto tileI32Type = ::mlir::cuda_tile::TileType::get(
+        ctx, {}, IntegerType::get(ctx, 32));
     SmallVector<Type> argTypes(numArgs, tilePtrType);
+    for (int64_t i = 0; i < numPC; ++i)
+      argTypes.push_back(tileI32Type);
     auto funcType = FunctionType::get(ctx, argTypes, {});
 
     entryOp = b.create<::mlir::cuda_tile::EntryOp>(
@@ -409,9 +418,6 @@ public:
         /*arg_attrs=*/nullptr, /*res_attrs=*/nullptr,
         /*optimization_hints=*/nullptr);
 
-    // The builder creates the region but not the entry block.
-    // Use FunctionOpInterface::addEntryBlock() to create the block with
-    // properly-typed arguments, then add the implicit ReturnOp terminator.
     Block *entryBlock = entryOp.addEntryBlock();
     {
       OpBuilder::InsertionGuard guard(b);
@@ -419,15 +425,56 @@ public:
       b.create<::mlir::cuda_tile::ReturnOp>(loc);
     }
 
-    // Set insertion point before the terminator for body ops.
     b.setInsertionPoint(entryBlock->getTerminator());
 
     entryArgs.clear();
     for (auto arg : entryBlock->getArguments())
       entryArgs.push_back(arg);
+
+    // Auto-apply byte offsets for single-subspan bindings.
+    bindingOffsetMap.clear();
+    bindingElemType = elemType;
+    DenseMap<int, int> bindingCount;
+    for (const auto &bp : bindingShapes)
+      if (bp.binding >= 0)
+        bindingCount[bp.binding]++;
+    for (const auto &bp : bindingShapes) {
+      if (bp.binding >= 0 && bp.hasStaticByteOffset && bp.byteOffset != 0 &&
+          bindingCount[bp.binding] == 1) {
+        int64_t elemBytes = getElementByteWidth(elemType);
+        if (elemBytes > 0 && bp.byteOffset % elemBytes == 0)
+          bindingOffsetMap[bp.binding] = bp.byteOffset / elemBytes;
+      }
+    }
   }
 
-  Value getArg(int idx) { return entryArgs[idx]; }
+  bool hasAutoOffset(int idx) const {
+    return bindingOffsetMap.count(idx) > 0;
+  }
+
+  int64_t getAutoOffsetBytes(int idx, Type elemType) const {
+    auto it = bindingOffsetMap.find(idx);
+    if (it == bindingOffsetMap.end())
+      return 0;
+    int64_t elemBytes = getElementByteWidth(elemType);
+    return it->second * (elemBytes > 0 ? elemBytes : 4);
+  }
+
+  void addAutoOffset(int idx, int64_t elemOffset) {
+    if (elemOffset != 0)
+      bindingOffsetMap[idx] += elemOffset;
+  }
+
+  Value getArg(int idx) {
+    Value ptr = entryArgs[idx];
+    auto it = bindingOffsetMap.find(idx);
+    if (it != bindingOffsetMap.end() && it->second != 0) {
+      ptr = offsetPtr(ptr, it->second);
+      entryArgs[idx] = ptr;
+      it->second = 0;
+    }
+    return ptr;
+  }
 
   /// Finalize the entry. Insertion point moves back to module body.
   void endEntry() { b.setInsertionPointToEnd(&moduleOp.getBody().front()); }
@@ -929,6 +976,20 @@ public:
         .getResult();
   }
 
+  /// Offset a scalar pointer by a dynamic element offset.
+  Value offsetPtrDynamic(Value ptr, Value elemOffset) {
+    return b.create<::mlir::cuda_tile::OffsetOp>(loc, ptr.getType(), ptr,
+                                                  elemOffset).getResult();
+  }
+
+  /// Unsigned right shift of two scalar i32 tiles.
+  Value shrI32(Value lhs, Value rhs) {
+    return b.create<::mlir::cuda_tile::ShRIOp>(
+               loc, lhs, rhs,
+               ::mlir::cuda_tile::Signedness::Unsigned)
+        .getResult();
+  }
+
   //===-- Control flow ----------------------------------------------------===//
 
   /// Create a for loop. Returns the ForOp. Caller must build the body
@@ -1011,6 +1072,8 @@ private:
   ::mlir::cuda_tile::ModuleOp moduleOp = nullptr;
   ::mlir::cuda_tile::EntryOp entryOp = nullptr;
   SmallVector<Value> entryArgs;
+  DenseMap<int, int64_t> bindingOffsetMap;
+  Type bindingElemType;
 };
 
 static Value offsetPtrByBytes(CudaTileOpEmitter &e, Value basePtr,
@@ -1056,35 +1119,36 @@ static int64_t getNumBindingArgs(ArrayRef<CudaTileBindingPlan> bindings) {
   return bindings.size();
 }
 
+static int64_t getNumPushConstants(ArrayRef<CudaTileBindingPlan> bindings) {
+  int64_t maxOrdinal = -1;
+  for (const CudaTileBindingPlan &binding : bindings)
+    maxOrdinal = std::max(maxOrdinal, binding.pushConstantOrdinal);
+  return maxOrdinal >= 0 ? maxOrdinal + 1 : 0;
+}
+
 static Value getSubspanArg(CudaTileOpEmitter &e,
                            const CudaTileBindingPlan &binding,
                            Type elemType) {
   int64_t bindingIndex = binding.binding >= 0 ? binding.binding : 0;
   Value ptr = e.getArg(bindingIndex);
-  if (!binding.hasStaticByteOffset) {
-    LLVM_DEBUG(llvm::dbgs()
-               << "[cuda_tile] binding " << bindingIndex
-               << " has dynamic byte offset; using base pointer\n");
-    return ptr;
-  }
-  return offsetPtrByBytes(e, ptr, elemType, binding.byteOffset);
+  // For multi-subspan bindings where auto-offset was skipped, apply manually.
+  if (binding.hasStaticByteOffset && binding.byteOffset != 0 &&
+      !e.hasAutoOffset(bindingIndex))
+    ptr = offsetPtrByBytes(e, ptr, elemType, binding.byteOffset);
+  return ptr;
 }
 
 static Value getBindingArg(CudaTileOpEmitter &e,
                            ArrayRef<CudaTileBindingPlan> bindings,
                            int64_t bindingIndex, Type elemType) {
   Value ptr = e.getArg(bindingIndex);
-  const CudaTileBindingPlan *binding =
-      findBindingPlan(bindings, bindingIndex);
-  if (!binding)
-    return ptr;
-  if (!binding->hasStaticByteOffset) {
-    LLVM_DEBUG(llvm::dbgs()
-               << "[cuda_tile] binding " << bindingIndex
-               << " has dynamic byte offset; using base pointer\n");
-    return ptr;
+  if (!e.hasAutoOffset(bindingIndex)) {
+    const CudaTileBindingPlan *binding =
+        findBindingPlan(bindings, bindingIndex);
+    if (binding && binding->hasStaticByteOffset && binding->byteOffset != 0)
+      ptr = offsetPtrByBytes(e, ptr, elemType, binding->byteOffset);
   }
-  return offsetPtrByBytes(e, ptr, elemType, binding->byteOffset);
+  return ptr;
 }
 
 struct CudaTileGatherSource {
@@ -1097,6 +1161,8 @@ struct CudaTileGatherSource {
   SmallVector<int64_t> loadOffsets;
   SmallVector<int64_t> loadStrides;
   Type elemType;
+  int64_t pushConstantOrdinal = -1;
+  int64_t numBindingArgs = 0;
 };
 
 static SmallVector<CudaTileGatherSource, 4>
@@ -1121,6 +1187,8 @@ buildGatherSources(const CudaTileKernelPlan &plan) {
                                            : operand.binding;
     source.byteOffset = binding->byteOffset;
     source.hasStaticByteOffset = binding->hasStaticByteOffset;
+    source.pushConstantOrdinal = binding->pushConstantOrdinal;
+    source.numBindingArgs = getNumBindingArgs(plan.bindingShapes);
     source.logicalShape = operand.logicalShape;
     source.physicalShape = operand.physicalShape.empty()
                                ? binding->shape
@@ -1550,6 +1618,17 @@ static Value emitTensorExtractAffineViewGather(
   if (source.hasStaticByteOffset) {
     basePtr =
         offsetPtrByBytes(e, basePtr, source.elemType, source.byteOffset);
+  } else if (source.pushConstantOrdinal >= 0) {
+    Value pcArg =
+        e.getArg(source.numBindingArgs + source.pushConstantOrdinal);
+    int64_t elemBytes = getElementByteWidth(source.elemType);
+    if (elemBytes > 0 && (elemBytes & (elemBytes - 1)) == 0) {
+      int shift = 0;
+      for (int64_t b = elemBytes; b > 1; b >>= 1)
+        ++shift;
+      Value elemOff = e.shrI32(pcArg, e.constI32(shift));
+      basePtr = e.offsetPtrDynamic(basePtr, elemOff);
+    }
   } else {
     LLVM_DEBUG(llvm::dbgs()
                << "[cuda_tile] affine gather source binding "
@@ -1654,6 +1733,17 @@ static Value emitTensorExtractFlat2DAffineViewGather(
     if (source.hasStaticByteOffset) {
       basePtr =
           offsetPtrByBytes(e, basePtr, source.elemType, source.byteOffset);
+    } else if (source.pushConstantOrdinal >= 0) {
+      Value pcArg =
+          e.getArg(source.numBindingArgs + source.pushConstantOrdinal);
+      int64_t elemBytes = getElementByteWidth(source.elemType);
+      if (elemBytes > 0 && (elemBytes & (elemBytes - 1)) == 0) {
+        int shift = 0;
+        for (int64_t b = elemBytes; b > 1; b >>= 1)
+          ++shift;
+        Value elemOff = e.shrI32(pcArg, e.constI32(shift));
+        basePtr = e.offsetPtrDynamic(basePtr, elemOff);
+      }
     } else {
       LLVM_DEBUG(llvm::dbgs()
                  << "[cuda_tile] flat affine gather source binding "
@@ -1777,6 +1867,17 @@ static Value emitTensorExtractGather(
   if (source->hasStaticByteOffset) {
     basePtr =
         offsetPtrByBytes(e, basePtr, source->elemType, source->byteOffset);
+  } else if (source->pushConstantOrdinal >= 0) {
+    Value pcArg =
+        e.getArg(source->numBindingArgs + source->pushConstantOrdinal);
+    int64_t elemBytes = getElementByteWidth(source->elemType);
+    if (elemBytes > 0 && (elemBytes & (elemBytes - 1)) == 0) {
+      int shift = 0;
+      for (int64_t b = elemBytes; b > 1; b >>= 1)
+        ++shift;
+      Value elemOff = e.shrI32(pcArg, e.constI32(shift));
+      basePtr = e.offsetPtrDynamic(basePtr, elemOff);
+    }
   } else {
     LLVM_DEBUG(llvm::dbgs()
                << "[cuda_tile] gather source binding " << source->binding
@@ -2009,7 +2110,7 @@ emitKernelBoilerplate(CudaTileOpEmitter &e, StringRef kernelName,
   KernelBoilerplate bp;
 
   e.beginModule(kernelName);
-  e.beginEntry("main", numArgs, elemType);
+  e.beginEntry("main", numArgs, elemType, bindings);
 
   for (int64_t i = 0; i < numArgs; ++i) {
     Value ptr = bindings.empty()
@@ -2038,7 +2139,8 @@ emitKernelBoilerplate(CudaTileOpEmitter &e, StringRef kernelName,
 static std::pair<CudaTileOpEmitter, SmallVector<int64_t, 3>>
 generateCopyKernel(MLIRContext *ctx, StringRef kernelName,
                    ArrayRef<int64_t> shape, Type elemType, int64_t tileM,
-                   int64_t tileN) {
+                   int64_t tileN,
+                   ArrayRef<CudaTileBindingPlan> bindings = {}) {
   CudaTileOpEmitter e(ctx);
   auto tileShape = computeTileShape(shape, tileM, tileN);
   auto strides = computeRowMajorStrides(shape);
@@ -2061,7 +2163,8 @@ static std::pair<CudaTileOpEmitter, SmallVector<int64_t, 3>>
 generateTransposeKernel(MLIRContext *ctx, StringRef kernelName,
                         ArrayRef<int64_t> srcShape, ArrayRef<int64_t> dstShape,
                         ArrayRef<int64_t> permutation, Type elemType,
-                        int64_t tileM, int64_t tileN) {
+                        int64_t tileM, int64_t tileN,
+                        ArrayRef<CudaTileBindingPlan> bindings = {}) {
   CudaTileOpEmitter e(ctx);
 
   auto srcStrides = computeRowMajorStrides(srcShape);
@@ -2080,7 +2183,7 @@ generateTransposeKernel(MLIRContext *ctx, StringRef kernelName,
   }
 
   e.beginModule(kernelName);
-  e.beginEntry("main", 2, elemType);
+  e.beginEntry("main", 2, elemType, bindings);
 
   // Source view + partition.
   auto srcView = e.makeTensorView(e.getArg(0), srcShape, srcStrides, elemType);
@@ -2122,7 +2225,8 @@ generateExtractSliceKernel(MLIRContext *ctx, StringRef kernelName,
                            ArrayRef<int64_t> dstShape,
                            ArrayRef<int64_t> offsets,
                            ArrayRef<int64_t> sliceStrides, Type elemType,
-                           int64_t tileM, int64_t tileN) {
+                           int64_t tileM, int64_t tileN,
+                           ArrayRef<CudaTileBindingPlan> bindings = {}) {
   CudaTileOpEmitter e(ctx);
 
   auto dstTileShape = computeTileShape(dstShape, tileM, tileN);
@@ -2141,7 +2245,7 @@ generateExtractSliceKernel(MLIRContext *ctx, StringRef kernelName,
     linearOffset += offsets[i] * srcStridesRM[i];
 
   e.beginModule(kernelName);
-  e.beginEntry("main", 2, elemType);
+  e.beginEntry("main", 2, elemType, bindings);
 
   Value srcPtr = e.getArg(0);
 
@@ -2178,7 +2282,8 @@ generateInsertSliceKernel(MLIRContext *ctx, StringRef kernelName,
                           ArrayRef<int64_t> dstShape,
                           ArrayRef<int64_t> offsets,
                           ArrayRef<int64_t> sliceStrides, Type elemType,
-                          int64_t tileM, int64_t tileN) {
+                          int64_t tileM, int64_t tileN,
+                          ArrayRef<CudaTileBindingPlan> bindings = {}) {
   CudaTileOpEmitter e(ctx);
 
   auto srcTileShape = computeTileShape(srcShape, tileM, tileN);
@@ -2195,7 +2300,7 @@ generateInsertSliceKernel(MLIRContext *ctx, StringRef kernelName,
     linearOffset += offsets[i] * dstStridesRM[i];
 
   e.beginModule(kernelName);
-  e.beginEntry("main", 2, elemType);
+  e.beginEntry("main", 2, elemType, bindings);
 
   auto srcView =
       e.makeTensorView(e.getArg(0), srcShape, srcStridesRM, elemType);
@@ -2226,7 +2331,8 @@ static std::pair<CudaTileOpEmitter, SmallVector<int64_t, 3>>
 generateBroadcastKernel(MLIRContext *ctx, StringRef kernelName,
                         ArrayRef<int64_t> srcShape, ArrayRef<int64_t> dstShape,
                         ArrayRef<int64_t> broadcastDims, Type elemType,
-                        int64_t tileM, int64_t tileN) {
+                        int64_t tileM, int64_t tileN,
+                        ArrayRef<CudaTileBindingPlan> bindings = {}) {
   CudaTileOpEmitter e(ctx);
 
   auto dstTileShape = computeTileShape(dstShape, tileM, tileN);
@@ -2249,7 +2355,7 @@ generateBroadcastKernel(MLIRContext *ctx, StringRef kernelName,
     srcTileShape.push_back(1);
 
   e.beginModule(kernelName);
-  e.beginEntry("main", 2, elemType);
+  e.beginEntry("main", 2, elemType, bindings);
 
   auto srcView = e.makeTensorView(e.getArg(0), srcShape, srcStrides, elemType);
   auto srcPart = e.makePartitionView(srcView, srcTileShape);
@@ -2296,7 +2402,8 @@ static std::pair<CudaTileOpEmitter, SmallVector<int64_t, 3>>
 generateReduceKernel(MLIRContext *ctx, StringRef kernelName,
                      ArrayRef<int64_t> srcShape, ArrayRef<int64_t> dstShape,
                      ArrayRef<int64_t> reduceDims, StringRef combiner,
-                     Type elemType, int64_t tileM, int64_t tileN) {
+                     Type elemType, int64_t tileM, int64_t tileN,
+                     ArrayRef<CudaTileBindingPlan> bindings = {}) {
   CudaTileOpEmitter e(ctx);
 
   // For simplicity: single reduce dim, full tile along reduce axis.
@@ -2346,7 +2453,7 @@ generateReduceKernel(MLIRContext *ctx, StringRef kernelName,
   });
 
   e.beginModule(kernelName);
-  e.beginEntry("main", 2, elemType); // input + output bindings
+  e.beginEntry("main", 2, elemType, bindings); // input + output bindings
 
   auto srcStrides = computeRowMajorStrides(srcShape);
   auto srcView = e.makeTensorView(e.getArg(0), srcShape, srcStrides, elemType);
@@ -2455,12 +2562,25 @@ generateConv2DKernel(MLIRContext *ctx, StringRef kernelName,
 
   CudaTileOpEmitter e(ctx);
   e.beginModule(kernelName);
-  e.beginEntry("main", numBindings, elemType);
+  e.beginEntry("main", numBindings, elemType, bindingShapes);
 
   // Output view: logical [N, OH, OW, C_out], strides depend on physical layout.
+  int64_t physOH = OH, physOW = OW;
+  for (const auto &bp : bindingShapes) {
+    if (bp.binding == outputBinding && bp.shape.size() >= 2) {
+      int64_t r = bp.shape.size();
+      int64_t bpH = bp.shape[r - 2];
+      int64_t bpW = bp.shape[r - 1];
+      if (bpH >= OH && bpW >= OW) {
+        physOH = bpH;
+        physOW = bpW;
+      }
+    }
+  }
   SmallVector<int64_t> shC4 = {N, OH, OW, Cout};
   SmallVector<int64_t> stC4 =
-      isNCHW ? SmallVector<int64_t>{Cout * OH * OW, OW, 1, OH * OW}
+      isNCHW ? SmallVector<int64_t>{Cout * physOH * physOW, physOW, 1,
+                                     physOH * physOW}
              : SmallVector<int64_t>{OH * OW * Cout, OW * Cout, Cout, 1};
   SmallVector<int64_t> tileC4 = {1, tOH, tOW, tOC};
   auto vC = e.makeTensorView(e.getArg(outputBinding), shC4, stC4, elemType);
@@ -2513,7 +2633,16 @@ generateConv2DKernel(MLIRContext *ctx, StringRef kernelName,
       // FCHW: offset = kh*KW+kw, strides = [KH*KW, Cin*KH*KW]
       int64_t filterOffset =
           isNCHW ? kh * KW + kw : (kh * KW + kw) * Cin * Cout;
-      Value filterPtr = e.offsetPtr(e.getArg(1), filterOffset);
+      Value filterBase = e.getArg(1);
+      if (!e.hasAutoOffset(1)) {
+        const CudaTileBindingPlan *filterBP =
+            findBindingPlan(bindingShapes, 1);
+        if (filterBP && filterBP->hasStaticByteOffset &&
+            filterBP->byteOffset != 0)
+          filterBase =
+              offsetPtrByBytes(e, filterBase, elemType, filterBP->byteOffset);
+      }
+      Value filterPtr = e.offsetPtr(filterBase, filterOffset);
       SmallVector<int64_t> shB = {Cin, Cout};
       SmallVector<int64_t> stB =
           isNCHW ? SmallVector<int64_t>{KH * KW, Cin * KH * KW}
@@ -2727,7 +2856,8 @@ generatePoolingKernel(MLIRContext *ctx, StringRef kernelName,
                       ArrayRef<int64_t> windowShape,
                       ArrayRef<int64_t> strides, ArrayRef<int64_t> dilations,
                       StringRef combiner, Type elemType, int64_t tileM,
-                      int64_t tileN, bool isNCHW) {
+                      int64_t tileN, bool isNCHW,
+                      ArrayRef<CudaTileBindingPlan> bindings = {}) {
   int64_t N = inputShape[0];
   int64_t H = inputShape[1];
   int64_t W = inputShape[2];
@@ -2747,11 +2877,24 @@ generatePoolingKernel(MLIRContext *ctx, StringRef kernelName,
 
   CudaTileOpEmitter e(ctx);
   e.beginModule(kernelName);
-  e.beginEntry("main", 2, elemType);
+  e.beginEntry("main", 2, elemType, bindings);
 
+  int64_t physOH = OH, physOW = OW;
+  for (const auto &bp : bindings) {
+    if (bp.binding == 1 && bp.shape.size() >= 2) {
+      int64_t r = bp.shape.size();
+      int64_t bpH = bp.shape[r - 2];
+      int64_t bpW = bp.shape[r - 1];
+      if (bpH >= OH && bpW >= OW) {
+        physOH = bpH;
+        physOW = bpW;
+      }
+    }
+  }
   SmallVector<int64_t> shOut = {N, OH, OW, C};
   SmallVector<int64_t> stOut =
-      isNCHW ? SmallVector<int64_t>{C * OH * OW, OW, 1, OH * OW}
+      isNCHW ? SmallVector<int64_t>{C * physOH * physOW, physOW, 1,
+                                     physOH * physOW}
              : SmallVector<int64_t>{OH * OW * C, OW * C, C, 1};
   SmallVector<int64_t> tileOut = {1, tOH, tOW, tOC};
   auto vOut = e.makeTensorView(e.getArg(1), shOut, stOut, elemType);
@@ -2826,7 +2969,8 @@ generateStridedPointwiseMatmul2DKernel(
     ArrayRef<int64_t> sourceShape, ArrayRef<int64_t> sliceOffsets,
     ArrayRef<int64_t> sliceStrides, ArrayRef<int64_t> aShape,
     ArrayRef<int64_t> bShape, ArrayRef<int64_t> cShape, Type elemType,
-    int64_t tileM, int64_t tileN, int64_t tileK) {
+    int64_t tileM, int64_t tileN, int64_t tileK,
+    ArrayRef<CudaTileBindingPlan> bindings = {}) {
   bool hasBatch = aShape.size() == 4;
   int64_t batch = hasBatch ? aShape[0] : 1;
   int64_t OH = aShape[hasBatch ? 1 : 0];
@@ -2858,7 +3002,7 @@ generateStridedPointwiseMatmul2DKernel(
 
   CudaTileOpEmitter e(ctx);
   e.beginModule(kernelName);
-  e.beginEntry("main", numBindings, elemType);
+  e.beginEntry("main", numBindings, elemType, bindings);
 
   SmallVector<int64_t> shC;
   SmallVector<int64_t> stC;
@@ -3039,7 +3183,8 @@ emitDataMovementKernel(MLIRContext *ctx, StringRef kernelName,
                        Operation *primaryOp,
                        CudaTileLoweringStrategy loweringStrategy,
                        ArrayRef<int64_t> srcShape, ArrayRef<int64_t> dstShape,
-                       Type elemType, int64_t tileM, int64_t tileN) {
+                       Type elemType, int64_t tileM, int64_t tileN,
+                       ArrayRef<CudaTileBindingPlan> bindings = {}) {
   switch (loweringStrategy) {
   case CudaTileLoweringStrategy::Copy: {
     auto [e, grid] =
@@ -3226,11 +3371,12 @@ emitDirectConv2DKernel(MLIRContext *ctx, StringRef kernelName,
 static FailureOr<CudaTileKernelBinary>
 emitPoolingKernel(MLIRContext *ctx, StringRef kernelName,
                   const CudaTileConvPlan &convPlan, Type elemType,
-                  int64_t tileM, int64_t tileN) {
+                  int64_t tileM, int64_t tileN,
+                  ArrayRef<CudaTileBindingPlan> bindings = {}) {
   auto [e, grid] = generatePoolingKernel(
       ctx, kernelName, convPlan.inputShape, convPlan.outputShape,
       convPlan.windowShape, convPlan.strides, convPlan.dilations,
-      convPlan.combiner, elemType, tileM, tileN, convPlan.isNCHW);
+      convPlan.combiner, elemType, tileM, tileN, convPlan.isNCHW, bindings);
   return serializeCudaTileKernel(std::move(e), std::move(grid));
 }
 
@@ -3395,7 +3541,8 @@ matchIdentityAdaptiveAvgPoolDispatch(const CudaTileKernelPlan &plan) {
 static std::pair<CudaTileOpEmitter, SmallVector<int64_t, 3>>
 generateIdentityAdaptiveAvgPoolKernel(MLIRContext *ctx, StringRef kernelName,
                                       const IdentityAdaptiveAvgPoolPlan &plan,
-                                      int64_t tileM, int64_t tileN) {
+                                      int64_t tileM, int64_t tileN,
+                                      ArrayRef<CudaTileBindingPlan> bindings = {}) {
   int64_t tH = nextPow2(std::min(tileM, plan.outputH));
   int64_t tW = nextPow2(std::min(tileN, plan.outputW));
   constexpr int64_t kMaxTileElements = 16 * 1024;
@@ -3419,7 +3566,7 @@ generateIdentityAdaptiveAvgPoolKernel(MLIRContext *ctx, StringRef kernelName,
 
   CudaTileOpEmitter e(ctx);
   e.beginModule(kernelName);
-  e.beginEntry("main", plan.numBindings, plan.elemType);
+  e.beginEntry("main", plan.numBindings, plan.elemType, bindings);
 
   Value inputPtr = offsetPtrByBytes(e, e.getArg(plan.inputBinding),
                                     plan.elemType, plan.inputByteOffset);
@@ -3490,6 +3637,9 @@ struct CudaTileMatmulEmissionPlan {
   SmallVector<int64_t> slicedLhsOffsets;
   SmallVector<int64_t> slicedLhsSizes;
   SmallVector<int64_t> slicedLhsStrides;
+
+  int64_t lhsByteOffset = -1;
+  int64_t rhsByteOffset = -1;
 
   DenseMap<Value, int64_t> valueToBinding;
 };
@@ -4111,7 +4261,7 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
 
         CudaTileOpEmitter e(ctx);
         e.beginModule(kernelName);
-        e.beginEntry("main", numBindings, elemType);
+        e.beginEntry("main", numBindings, elemType, bindingShapes);
 
         // Create per-binding views (handles broadcast shapes).
         SmallVector<Value> partViews;
@@ -4500,14 +4650,16 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
 
   if (isDataMovementStrategy(loweringStrategy))
     return emitDataMovementKernel(ctx, kernelName, primaryOp, loweringStrategy,
-                                  srcShape, dstShape, elemType, tileM, tileN);
+                                  srcShape, dstShape, elemType, tileM, tileN,
+                                  plan.bindingShapes);
 
   //=== Phase 3: Pooling (windowed reduction) — before generic reductions ===//
 
   if (loweringStrategy == CudaTileLoweringStrategy::Pooling ||
       (convPlan.mode == CudaTileConvLoweringMode::Pooling &&
        convPlan.spatialRank == 2))
-    return emitPoolingKernel(ctx, kernelName, convPlan, elemType, tileM, tileN);
+    return emitPoolingKernel(ctx, kernelName, convPlan, elemType, tileM, tileN,
+                              plan.bindingShapes);
 
   //=== Phase 3b: Reductions ===//
 
@@ -4575,13 +4727,20 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
 
     CudaTileOpEmitter e(ctx);
     e.beginModule(kernelName);
-    e.beginEntry("main", actualNumBindings, elemType);
+    e.beginEntry("main", actualNumBindings, elemType, plan.bindingShapes);
 
     // Use 2D shapes for the kernel (flatten batch dims if present).
     SmallVector<int64_t> shA2 = {M, K}, shC2 = {M, N};
     SmallVector<int64_t> stA = {K, 1}, stC = {N, 1};
 
-    auto ptrA = getBindingArg(e, plan.bindingShapes, bindA, elemType);
+    Value ptrA;
+    if (matmulPlan.lhsByteOffset >= 0) {
+      ptrA = e.getArg(bindA);
+      if (!e.hasAutoOffset(bindA))
+        ptrA = offsetPtrByBytes(e, ptrA, elemType, matmulPlan.lhsByteOffset);
+    } else {
+      ptrA = getBindingArg(e, plan.bindingShapes, bindA, elemType);
+    }
     auto vA = e.makeTensorView(ptrA, shA2, stA, elemType);
 
     // When B is transposed (PyTorch [N,K]), use physical shape [N,K]
@@ -4598,7 +4757,14 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     }
     Value pBv; // partition view for B (or null if B is a constant)
     if (bindB >= 0) {
-      auto ptrB = getBindingArg(e, plan.bindingShapes, bindB, elemType);
+      Value ptrB;
+      if (matmulPlan.rhsByteOffset >= 0) {
+        ptrB = e.getArg(bindB);
+        if (!e.hasAutoOffset(bindB))
+          ptrB = offsetPtrByBytes(e, ptrB, elemType, matmulPlan.rhsByteOffset);
+      } else {
+        ptrB = getBindingArg(e, plan.bindingShapes, bindB, elemType);
+      }
       auto vB = e.makeTensorView(ptrB, shB2, stB, elemType);
       pBv = e.makePartitionView(vB, tB);
     }
@@ -5118,7 +5284,7 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
 
     // Broadcast case: create per-binding views with correct shapes.
     e.beginModule(kernelName);
-    e.beginEntry("main", numBindings, elemType);
+    e.beginEntry("main", numBindings, elemType, bindingShapes);
 
     SmallVector<Value> partViews;
     SmallVector<SmallVector<int64_t>> bindTileShapes;
