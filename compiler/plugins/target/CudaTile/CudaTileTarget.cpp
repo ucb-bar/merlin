@@ -297,6 +297,14 @@ static SmallVector<int64_t> computeTileShape(ArrayRef<int64_t> shape,
   return tileShape;
 }
 
+/// For sub-f32 types (f16, bf16), MMA accumulation should use f32 for both
+/// performance (tensor core optimal path on Ampere/Hopper) and precision.
+static Type getMmaAccumulatorType(MLIRContext *ctx, Type elemType) {
+  if (elemType.isF16() || elemType.isBF16())
+    return Float32Type::get(ctx);
+  return elemType;
+}
+
 /// Compute grid dims from N-D shape and tile shape.
 /// gridX = tiles along last dim, gridY = tiles along second-to-last,
 /// gridZ = product of all batch dims (dims before the last 2).
@@ -652,6 +660,16 @@ public:
   /// Create mmaf (float matrix multiply-accumulate).
   Value mmaf(Value lhs, Value rhs, Value acc) {
     return b.create<::mlir::cuda_tile::MmaFOp>(loc, lhs, rhs, acc).getResult();
+  }
+
+  /// Convert tile from one float type to another (e.g. f32 -> f16).
+  Value ftof(Value from, ArrayRef<int64_t> shape, Type toElemType) {
+    auto toType = ::mlir::cuda_tile::TileType::get(ctx, shape, toElemType);
+    return b.create<::mlir::cuda_tile::FToFOp>(
+                loc, toType, from,
+                ::mlir::cuda_tile::RoundingModeAttr::get(
+                    ctx, ::mlir::cuda_tile::RoundingMode::NEAREST_EVEN))
+        .getResult();
   }
 
   /// Create permute op for tile dimension reordering.
@@ -2588,7 +2606,8 @@ generateConv2DKernel(MLIRContext *ctx, StringRef kernelName,
 
   auto [bx, by, bz] = e.getTileBlockId();
   auto c0 = e.constI32(0);
-  auto accInit = e.constSplat({flatM, tOC}, elemType, 0.0);
+  Type accType = getMmaAccumulatorType(ctx, elemType);
+  auto accInit = e.constSplat({flatM, tOC}, accType, 0.0);
   int64_t ohTiles = (OH + tOH - 1) / tOH;
 
   auto signAttr = ::mlir::cuda_tile::SignednessAttr::get(
@@ -3052,7 +3071,8 @@ generateStridedPointwiseMatmul2DKernel(
             .create<::mlir::cuda_tile::RemIOp>(e.getLoc(), bz, ohTiles, signAttr)
             .getResult();
   }
-  auto accInit = e.constSplat({flatM, tN}, elemType, 0.0);
+  Type accType = getMmaAccumulatorType(ctx, elemType);
+  auto accInit = e.constSplat({flatM, tN}, accType, 0.0);
   auto lb = e.constI32(0);
   auto ub = e.constI32(nK);
   auto step = e.constI32(1);
@@ -4789,7 +4809,8 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     };
 
     auto [bx, by, bz] = e.getTileBlockId();
-    auto accInit = e.constSplat(tC, elemType, 0.0);
+    Type accType = getMmaAccumulatorType(ctx, elemType);
+    auto accInit = e.constSplat(tC, accType, 0.0);
 
     int64_t nK = (K + aTK - 1) / aTK;
     auto lb = e.constI32(0);
@@ -5313,7 +5334,17 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     if (rank >= 3)
       outIndices[0] = bz;
 
+    auto getBindingElemType = [&](int64_t bindIdx) -> Type {
+      if (bindIdx < (int64_t)bindingShapes.size() &&
+          bindingShapes[bindIdx].memref) {
+        if (auto t = getElementTypeFromType(bindingShapes[bindIdx].memref.getType()))
+          return t;
+      }
+      return elemType;
+    };
+
     auto loadInputTile = [&](int64_t bindIdx) -> Value {
+      Type bindElemType = getBindingElemType(bindIdx);
       auto bShape =
           (bindIdx < (int64_t)bindingShapes.size() &&
            !bindingShapes[bindIdx].shape.empty())
@@ -5322,7 +5353,7 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
       int64_t bRank = bShape.size();
       if (bRank == rank) {
         auto [tile, tok] =
-            e.loadViewTko(partViews[bindIdx], outIndices, tileShape, elemType);
+            e.loadViewTko(partViews[bindIdx], outIndices, tileShape, bindElemType);
         return tile;
       }
 
@@ -5342,10 +5373,10 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
 
       auto [tile, tok] =
           e.loadViewTko(partViews[bindIdx], bIndices, bindTileShapes[bindIdx],
-                        elemType);
-      tile = e.reshape(tile, reshapeShape, elemType);
+                        bindElemType);
+      tile = e.reshape(tile, reshapeShape, bindElemType);
       if (reshapeShape != broadcastShape)
-        tile = e.broadcastTile(tile, broadcastShape, elemType);
+        tile = e.broadcastTile(tile, broadcastShape, bindElemType);
       return tile;
     };
 

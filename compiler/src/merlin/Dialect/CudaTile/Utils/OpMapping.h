@@ -40,6 +40,8 @@ inline llvm::StringRef mapArithToCudaTile(Operation *op) {
   if (isa<arith::MaxSIOp>(op)) return "maxi";
   if (isa<arith::MinSIOp>(op)) return "mini";
   if (isa<arith::SelectOp>(op)) return "select";
+  if (isa<arith::CmpFOp>(op)) return "cmpf";
+  if (isa<arith::CmpIOp>(op)) return "cmpi";
   return "";
 }
 
