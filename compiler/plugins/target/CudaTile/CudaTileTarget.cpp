@@ -2845,6 +2845,8 @@ generateConv2DKernel(MLIRContext *ctx, StringRef kernelName,
     }
   }
 
+  if (accType != elemType)
+    acc = e.ftof(acc, {flatM, tOC}, elemType);
   Value acc4D = e.reshape(acc, tileC4, elemType);
   e.storeViewTko(acc4D, pC, {batchId, ohBlockId, by, bx});
   e.emitReturn();
@@ -3090,6 +3092,8 @@ generateStridedPointwiseMatmul2DKernel(
   e.endFor(forOp, ValueRange{newAcc});
 
   Value finalAcc = forOp.getResult(0);
+  if (accType != elemType)
+    finalAcc = e.ftof(finalAcc, {flatM, tN}, elemType);
   Value accTile = e.reshape(finalAcc, tileC, elemType);
   SmallVector<Value> cCoords =
       hasBatch ? SmallVector<Value>{batchId, ohBlockId, by, bx}
@@ -5216,6 +5220,8 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
       }
     }
 
+    if (accType != elemType)
+      finalAcc = e.ftof(finalAcc, tC, elemType);
     e.storeViewTko(finalAcc, pC, {by, bx});
     e.emitReturn();
     e.endEntry();
