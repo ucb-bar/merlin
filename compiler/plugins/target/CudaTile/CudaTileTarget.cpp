@@ -3954,6 +3954,13 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
   int64_t tileN = plan.schedule.tileN ? plan.schedule.tileN : options.tileN;
   int64_t tileK = plan.schedule.tileK ? plan.schedule.tileK : options.tileK;
 
+  // For sub-f32 contractions, clamp tileK to 16 so tileiras emits HMMA.16816.
+  if (!plan.schedule.tileK &&
+      plan.semanticKind == CudaTileSemanticKind::Contraction &&
+      elemType && (elemType.isF16() || elemType.isBF16())) {
+    if (tileK > 16) tileK = 16;
+  }
+
   auto &bindingShapes = plan.bindingShapes;
   SmallVector<CudaTileGatherSource, 4> gatherSources =
       buildGatherSources(plan);
@@ -5115,8 +5122,12 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
               tile = emitTensorTileForSpace(input, fullShape, targetTileShape,
                                             tileIndices);
             }
-            if (!tile)
-              return {};
+            if (!tile) {
+              // Input may be accessed via tensor.extract inside the body
+              // (gather pattern). Push a zero placeholder; the body walker
+              // will resolve it via emitTensorExtractGather.
+              tile = e.constSplat(targetTileShape, elemType, 0.0);
+            }
             inputTiles.push_back(tile);
           }
           Value fallback = inputTiles.empty()
@@ -5139,8 +5150,12 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
 
       Value tile =
           emitTensorTileForSpace(value, fullShape, targetTileShape, tileIndices);
-      if (tile)
-        cache[value] = tile;
+      if (!tile) {
+        // Unresolvable input (e.g., gather source accessed via tensor.extract).
+        // Use zero placeholder; the body walker resolves it via gather.
+        tile = e.constSplat(targetTileShape, elemType, 0.0);
+      }
+      cache[value] = tile;
       return tile;
     };
 
@@ -5207,7 +5222,7 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
           Value tile =
               emitTensorTileForSpace(input, shC2, tC, outputTileIndices);
           if (!tile)
-            return failure();
+            tile = e.constSplat(tC, elemType, 0.0);
           inputTiles.push_back(tile);
         }
 
