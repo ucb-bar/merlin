@@ -1910,6 +1910,160 @@ static Value emitTensorExtractGather(
   return tile;
 }
 
+/// Extract float data from an arith.constant with DenseElementsAttr or
+/// DenseResourceElementsAttr.
+static bool getDenseFloatData(Value value, SmallVector<float> &rawData,
+                              SmallVector<int64_t> &shape) {
+  auto cstOp = value.getDefiningOp<arith::ConstantOp>();
+  if (!cstOp)
+    return false;
+  if (auto shapedType = dyn_cast<ShapedType>(value.getType()))
+    shape.assign(shapedType.getShape().begin(), shapedType.getShape().end());
+  auto attrVal = cstOp.getValue();
+  if (auto dense = dyn_cast<DenseElementsAttr>(attrVal)) {
+    for (auto val : dense.getValues<float>())
+      rawData.push_back(val);
+  } else if (auto resAttr = dyn_cast<DenseResourceElementsAttr>(attrVal)) {
+    auto blob = resAttr.getRawHandle().getBlob();
+    if (blob) {
+      auto data = blob->getData();
+      auto *floats = reinterpret_cast<const float *>(data.data());
+      int64_t numElem = data.size() / sizeof(float);
+      rawData.assign(floats, floats + numElem);
+    }
+  }
+  return !rawData.empty();
+}
+
+/// Materialize all DPS inputs for a linalg.generic as tile values.
+/// Uses the generic's indexing maps to determine broadcast dimensions.
+/// Handles: previous op results (via fusedValueMap), dense resource constants
+/// (extracted + padded + broadcast), scalar constants (splatted).
+static SmallVector<Value>
+materializeDpsInputs(CudaTileOpEmitter &e, linalg::GenericOp genericOp,
+                     ArrayRef<int64_t> tileShape, Type elemType,
+                     const DenseMap<Value, Value> &fusedValueMap,
+                     ArrayRef<CudaTileBindingPlan> bindingShapes) {
+  SmallVector<Value> inputTiles;
+  auto maps = genericOp.getIndexingMapsArray();
+  AffineMap outMap = maps.back();
+
+  for (auto [inputIdx, input] : llvm::enumerate(genericOp.getDpsInputs())) {
+    // 1. Previous fused op result.
+    auto it = fusedValueMap.find(input);
+    if (it != fusedValueMap.end()) {
+      inputTiles.push_back(it->second);
+      continue;
+    }
+
+    // Determine which tile dims this input covers via its indexing map.
+    AffineMap inputMap = maps[inputIdx];
+    SmallVector<int64_t> inputTileShape(tileShape.size(), 1);
+    for (unsigned r = 0; r < inputMap.getNumResults(); ++r) {
+      auto dimExpr = dyn_cast<AffineDimExpr>(inputMap.getResult(r));
+      if (!dimExpr)
+        continue;
+      unsigned iterDim = dimExpr.getPosition();
+      for (unsigned od = 0; od < outMap.getNumResults() &&
+                            od < tileShape.size(); ++od) {
+        auto outDim = dyn_cast<AffineDimExpr>(outMap.getResult(od));
+        if (outDim && outDim.getPosition() == iterDim) {
+          inputTileShape[od] = tileShape[od];
+          break;
+        }
+      }
+    }
+
+    // 2. Dense constant (DenseElementsAttr or DenseResourceElementsAttr).
+    SmallVector<float> rawData;
+    SmallVector<int64_t> constShape;
+    if (getDenseFloatData(input, rawData, constShape)) {
+      // Compute the constant's padded tile shape.
+      SmallVector<int64_t> constTileShape;
+      if (constShape.size() == inputTileShape.size()) {
+        for (size_t d = 0; d < constShape.size(); ++d)
+          constTileShape.push_back(
+              constShape[d] == 1 ? 1 : nextPow2(constShape[d]));
+      } else {
+        // Lower-rank constant: pad with leading 1s.
+        constTileShape.assign(inputTileShape.size(), 1);
+        int64_t offset = inputTileShape.size() - constShape.size();
+        for (size_t d = 0; d < constShape.size(); ++d)
+          constTileShape[offset + d] = nextPow2(constShape[d]);
+      }
+
+      // Create padded constant tile.
+      int64_t tileCount = 1;
+      for (int64_t d : constTileShape)
+        tileCount *= d;
+      SmallVector<float> padded(tileCount, 0.0f);
+      SmallVector<int64_t> padSrc(constShape);
+      if (padSrc.empty())
+        padSrc.push_back(1);
+      int64_t srcCount = 1;
+      for (int64_t d : padSrc)
+        srcCount *= d;
+      for (int64_t flat = 0;
+           flat < srcCount && flat < static_cast<int64_t>(rawData.size());
+           ++flat) {
+        int64_t rem = flat;
+        int64_t idx = 0, stride = 1;
+        int64_t rankDiff = constTileShape.size() - padSrc.size();
+        for (int64_t d = constTileShape.size() - 1; d >= 0; --d) {
+          int64_t srcD = d - rankDiff;
+          int64_t coord = 0;
+          if (srcD >= 0) {
+            coord = rem % padSrc[srcD];
+            rem /= padSrc[srcD];
+          }
+          idx += coord * stride;
+          stride *= constTileShape[d];
+        }
+        if (idx < tileCount)
+          padded[idx] = rawData[flat];
+      }
+
+      auto *ctx = e.getContext();
+      auto tileType =
+          ::mlir::cuda_tile::TileType::get(ctx, constTileShape, elemType);
+      auto tensorType = RankedTensorType::get(constTileShape, elemType);
+      auto attr = DenseElementsAttr::get(
+          tensorType, ArrayRef<float>(padded.data(), padded.size()));
+      Value tile =
+          e.builder()
+              .create<::mlir::cuda_tile::ConstantOp>(
+                  e.getLoc(), tileType,
+                  cast<DenseTypedElementsAttr>(
+                      attr.reshape(cast<ShapedType>(tileType))))
+              .getResult();
+
+      // Reshape + broadcast to output tile shape if needed.
+      if (constTileShape != SmallVector<int64_t>(tileShape)) {
+        tile = e.reshape(tile, constTileShape, elemType);
+        tile = e.broadcastTile(tile, tileShape, elemType);
+      }
+      inputTiles.push_back(tile);
+      continue;
+    }
+
+    // 3. Scalar constant.
+    if (auto cstOp = input.getDefiningOp<arith::ConstantOp>()) {
+      if (auto fAttr = dyn_cast<FloatAttr>(cstOp.getValue())) {
+        inputTiles.push_back(
+            e.constSplat(tileShape, elemType, fAttr.getValueAsDouble()));
+        continue;
+      }
+    }
+
+    // 4. Unresolved — zero splat fallback.
+    LLVM_DEBUG(llvm::dbgs()
+               << "[cuda_tile] materializeDpsInputs: unresolved input\n");
+    inputTiles.push_back(e.constSplat(tileShape, elemType, 0.0));
+  }
+
+  return inputTiles;
+}
+
 static Value emitElementwiseGenericBody(CudaTileOpEmitter &e,
                                         linalg::GenericOp genericOp,
                                         ArrayRef<Value> inputTiles,
@@ -2726,115 +2880,11 @@ generateConv2DKernel(MLIRContext *ctx, StringRef kernelName,
           postOp.getNumParallelLoops() == 0)
         continue;
 
-      SmallVector<Value> inputTiles;
-      bool allResolved = true;
+      SmallVector<Value> inputTiles = materializeDpsInputs(
+          e, postOp, epilogueTileShape, elemType, fusedValueMap,
+          bindingShapes);
 
-      for (Value input : postOp.getDpsInputs()) {
-        auto it = fusedValueMap.find(input);
-        if (it != fusedValueMap.end()) {
-          inputTiles.push_back(it->second);
-          continue;
-        }
-
-        if (auto cstOp = input.getDefiningOp<arith::ConstantOp>()) {
-          SmallVector<float> rawData;
-          auto attrVal = cstOp.getValue();
-          if (auto dense = dyn_cast<DenseElementsAttr>(attrVal)) {
-            for (auto val : dense.getValues<float>())
-              rawData.push_back(val);
-          } else if (auto resAttr =
-                         dyn_cast<DenseResourceElementsAttr>(attrVal)) {
-            auto blob = resAttr.getRawHandle().getBlob();
-            if (blob) {
-              auto data = blob->getData();
-              auto *floats = reinterpret_cast<const float *>(data.data());
-              int64_t numElem = data.size() / sizeof(float);
-              rawData.assign(floats, floats + numElem);
-            }
-          }
-
-          if (!rawData.empty()) {
-            auto cstType = dyn_cast<ShapedType>(input.getType());
-            if (cstType && cstType.getRank() == 1) {
-              int64_t cstSize = cstType.getShape()[0];
-              int64_t padOC = nextPow2(cstSize);
-              SmallVector<float> padded(padOC, 0.0f);
-              for (int64_t i = 0;
-                   i < cstSize && i < static_cast<int64_t>(rawData.size());
-                   ++i)
-                padded[i] = rawData[i];
-
-              auto fullTileType =
-                  ::mlir::cuda_tile::TileType::get(ctx, {padOC}, elemType);
-              auto fullTensorType = RankedTensorType::get({padOC}, elemType);
-              auto attr = DenseElementsAttr::get(
-                  fullTensorType,
-                  ArrayRef<float>(padded.data(), padded.size()));
-              Value fullBias =
-                  e.builder()
-                      .create<::mlir::cuda_tile::ConstantOp>(
-                          e.getLoc(), fullTileType,
-                          cast<DenseTypedElementsAttr>(
-                              attr.reshape(cast<ShapedType>(fullTileType))))
-                      .getResult();
-
-              Value tile;
-              if (tOC >= padOC) {
-                tile = fullBias;
-                if (tOC != padOC)
-                  tile = e.reshape(tile, {tOC}, elemType);
-              } else {
-                Value offset = e.globalIndexScalar(
-                    epilogueTileShape, /*dim=*/1, bx);
-                tile = e.extractSubtile(fullBias, {tOC}, elemType,
-                                        ValueRange{offset});
-              }
-              tile = e.reshape(tile, {1, tOC}, elemType);
-              tile = e.broadcastTile(tile, epilogueTileShape, elemType);
-              inputTiles.push_back(tile);
-              continue;
-            }
-          }
-
-          if (auto fAttr = dyn_cast<FloatAttr>(cstOp.getValue())) {
-            inputTiles.push_back(e.constSplat(epilogueTileShape, elemType,
-                                              fAttr.getValueAsDouble()));
-            continue;
-          }
-        }
-
-        const CudaTileBindingPlan *binding = nullptr;
-        auto bindIt = valueToBind.find(input);
-        if (bindIt != valueToBind.end()) {
-          int64_t idx = bindIt->second;
-          if (idx >= 0 && idx < static_cast<int64_t>(bindingShapes.size()))
-            binding = &bindingShapes[idx];
-        }
-        if (!binding)
-          binding = findBindingPlanForMemref(bindingShapes, input);
-        if (binding && !binding->shape.empty() &&
-            binding->shape.size() == 1) {
-          Value ptr = getSubspanArg(e, *binding, elemType);
-          SmallVector<int64_t> biasSourceShape = {binding->shape[0]};
-          auto strides = computeRowMajorStrides(biasSourceShape);
-          auto view =
-              e.makeTensorView(ptr, biasSourceShape, strides, elemType);
-          SmallVector<int64_t> loadShape = {tOC};
-          auto partition = e.makePartitionView(view, loadShape);
-          auto [tile, token] =
-              e.loadViewTko(partition, {bx}, loadShape, elemType);
-          tile = e.reshape(tile, {1, tOC}, elemType);
-          tile = e.broadcastTile(tile, epilogueTileShape, elemType);
-          inputTiles.push_back(tile);
-          continue;
-        }
-
-        allResolved = false;
-        LLVM_DEBUG(llvm::dbgs()
-                   << "[cuda_tile] conv epilogue: unresolved input\n");
-      }
-
-      if (allResolved) {
+      {
         Value fallback = inputTiles.empty() ? acc : inputTiles.front();
         acc = emitElementwiseGenericBody(e, postOp, inputTiles,
                                          epilogueTileShape, elemType,
