@@ -84,9 +84,13 @@ class IREEBackend(Backend):
                 )
             mlir_path.write_text(mlir_text)
 
+        extra = None
+        if self._hal_backend == "cuda_tile" and self.config.ctl_extra_flags:
+            extra = self.config.ctl_extra_flags
         return self._compile_mlir(
             mlir_path, vmfb_path, export_time,
             input_type="torch" if torch_result is not None else None,
+            extra_flags=extra,
         )
 
     def _export_turbine(
@@ -114,6 +118,7 @@ class IREEBackend(Backend):
         vmfb_path: Path,
         export_time: float = 0.0,
         input_type: str | None = None,
+        extra_flags: list[str] | None = None,
     ) -> CompileResult:
         cmd = [
             self.config.iree_compile,
@@ -131,6 +136,8 @@ class IREEBackend(Backend):
             ])
         elif self._hal_backend == "cuda":
             cmd.append(f"--iree-cuda-target={self.config.sm_arch}")
+        if extra_flags:
+            cmd.extend(extra_flags)
 
         try:
             t0 = time.perf_counter()

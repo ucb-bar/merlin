@@ -18,9 +18,21 @@
 #   python benchmark_runner.py --phase 1 --build-dir /path/to/build
 
 import argparse
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+def _early_gpu_setup():
+    """Set CUDA_VISIBLE_DEVICES before any torch imports to avoid dynamo crashes."""
+    for i, arg in enumerate(sys.argv):
+        if arg == "--gpu" and i + 1 < len(sys.argv):
+            os.environ["CUDA_VISIBLE_DEVICES"] = sys.argv[i + 1]
+            break
+
+
+_early_gpu_setup()
 
 from config import BenchConfig
 from backends.base import BackendID, CompileResult, RunResult
@@ -161,6 +173,10 @@ def main():
     parser.add_argument("--iterations", type=int, default=100)
     parser.add_argument("--warmup", type=int, default=5)
     parser.add_argument("--gpu", type=int, default=None, help="GPU index (sets CUDA_VISIBLE_DEVICES)")
+    parser.add_argument(
+        "--ctl-tiles", type=str, default=None,
+        help="Tile flags for cuda_tile backends, e.g. '64,64,16' for tileM,tileN,tileK",
+    )
     parser.add_argument("--filter", type=str, default=None, help="Glob filter on workload names")
     parser.add_argument(
         "--phase",
@@ -199,6 +215,16 @@ def main():
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     output_dir = Path(args.output_dir) if args.output_dir else Path(f"results/run_{ts}")
 
+    ctl_extra = []
+    if args.ctl_tiles:
+        parts = args.ctl_tiles.split(",")
+        if len(parts) == 3:
+            ctl_extra = [
+                f"--iree-cuda-tile-tile-m={parts[0]}",
+                f"--iree-cuda-tile-tile-n={parts[1]}",
+                f"--iree-cuda-tile-tile-k={parts[2]}",
+            ]
+
     config = BenchConfig(
         build_dir=Path(args.build_dir),
         sm_arch=args.sm_arch,
@@ -206,6 +232,7 @@ def main():
         warmup=args.warmup,
         iterations=args.iterations,
         gpu_index=args.gpu,
+        ctl_extra_flags=ctl_extra,
     )
 
     output_dir.mkdir(parents=True, exist_ok=True)

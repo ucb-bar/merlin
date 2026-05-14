@@ -16,6 +16,7 @@ class BenchConfig:
     profiler: str = "none"
     tracy_build_dir: Path | None = None
     gpu_index: int | None = None
+    ctl_extra_flags: list[str] = field(default_factory=list)
 
     @property
     def env(self) -> dict[str, str]:

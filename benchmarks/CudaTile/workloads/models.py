@@ -198,9 +198,36 @@ class AlexNetModel(TorchModelWorkload):
         return [(B, 3, 224, 224)]
 
 
+def _vgg11_factory(size):
+    import torch
+    import torchvision.models as models
+
+    B = size.get("B", 1)
+    model = models.vgg11(weights=None).eval()
+    return model, [torch.randn(B, 3, 224, 224)]
+
+
+@dataclass
+class VGG11Model(TorchModelWorkload):
+    name: str = "vgg11"
+    level: int = 4
+    _model_factory: object = field(default=_vgg11_factory, repr=False)
+    sizes: list[dict] = field(
+        default_factory=lambda: [
+            {"B": 1, "desc": "batch1"},
+            {"B": 8, "desc": "batch8"},
+        ]
+    )
+
+    def _get_input_shapes(self, size):
+        B = size.get("B", 1)
+        return [(B, 3, 224, 224)]
+
+
 ALL_MODELS: list[Workload] = [
     SimpleMLP(),
     DroNetModel(),
     MobileNetV2Model(),
     AlexNetModel(),
+    VGG11Model(),
 ]
