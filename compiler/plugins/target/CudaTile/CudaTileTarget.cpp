@@ -3554,16 +3554,24 @@ matchIdentityAdaptiveAvgPoolDispatch(const CudaTileKernelPlan &plan) {
   ArrayRef<int64_t> inputShape = input->physicalShape;
   ArrayRef<int64_t> sumShape = sum->logicalShape;
   ArrayRef<int64_t> countShape = count->logicalShape;
-  if (inputShape.size() != 3 || sumShape.size() != 2 ||
-      countShape.size() != 1)
+  if ((inputShape.size() != 3 && inputShape.size() != 4) ||
+      sumShape.size() != 2 || countShape.size() != 1)
     return debugFailure("unexpected input/output ranks");
-  if (inputShape[0] != sumShape[0] || sumShape[1] != countShape[0])
-    return debugFailure("sum/count shapes are not compatible");
 
-  int64_t channels = inputShape[0];
+  // For 4D inputs [N, C, H, W], flatten N*C as channels.
+  int64_t channels, inputH, inputW;
+  if (inputShape.size() == 4) {
+    channels = inputShape[0] * inputShape[1];
+    inputH = inputShape[2];
+    inputW = inputShape[3];
+  } else {
+    channels = inputShape[0];
+    inputH = inputShape[1];
+    inputW = inputShape[2];
+  }
   int64_t spatial = sumShape[1];
-  int64_t inputH = inputShape[1];
-  int64_t inputW = inputShape[2];
+  if (channels != sumShape[0] || sumShape[1] != countShape[0])
+    return debugFailure("sum/count shapes are not compatible");
   int64_t outputH = -1;
   int64_t outputW = -1;
   if (inputH > 1 && inputW > 1 && (inputH - 1) * (inputW - 1) == spatial) {
@@ -5315,12 +5323,14 @@ buildCudaTileKernel(MLIRContext *ctx, Operation *innerModule,
     if (numSubspans == 0)
       numSubspans = numBindings;
 
-    // Check if any input binding has a different shape (broadcast).
+    // Check if any input binding has a different shape or rank (broadcast/gather).
     bool hasBroadcast = numSubspans != numBindings;
     for (int64_t i = 0; i < (int64_t)bindingShapes.size() - 1; ++i) {
-      if (!bindingShapes[i].shape.empty() &&
-          bindingShapes[i].shape != SmallVector<int64_t>(shape))
-        hasBroadcast = true;
+      if (!bindingShapes[i].shape.empty()) {
+        if (bindingShapes[i].shape != SmallVector<int64_t>(shape) ||
+            (int64_t)bindingShapes[i].shape.size() != rank)
+          hasBroadcast = true;
+      }
     }
 
     if (!hasBroadcast) {

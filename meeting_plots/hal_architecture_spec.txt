@@ -1,0 +1,30 @@
+HAL Architecture Diagram — Text Reference
+==========================================
+
+OLD CUDA HAL (upstream IREE, ~1ms per dispatch):
+  [VM Bytecode] → [Deferred Command Buffer] → [Queue Emulation] → [Stream Sync] → [cuLaunchKernel]
+                         |                          |
+                   Enables CUDA              Multi-queue
+                   graph capture             scheduling
+
+  Why slow: 4 abstraction layers between VM and GPU kernel launch.
+  Deferred command buffer records ops for later replay (needed for graph capture).
+  Queue emulation multiplexes logical queues onto CUDA streams.
+  Stream sync manages dependencies between dispatches.
+
+NEW CUDA HAL (cuda_new, ~0.06ms per dispatch):
+  [VM Bytecode] → [cuLaunchKernel] + [Event Sync]
+
+  Why fast: Direct path from VM to kernel launch. Single CUDA stream.
+  Event-based synchronization (lightweight, no queue layer).
+
+  What's removed: deferred command buffer, queue emulation, multi-queue.
+  What's traded: no CUDA graph capture, no multi-queue scheduling.
+  What's kept: event semaphores, NCCL multi-GPU, async memory pools.
+
+Overhead comparison:
+  Old HAL:  ~1.0ms per dispatch (dominated by command buffer + queue layers)
+  New HAL:  ~0.06ms per dispatch (just cuLaunchKernel + event record)
+  Speedup:  4-19x depending on kernel size
+  Crossover: dispatch overhead < 10% of total at ~512x512 matmul (old HAL)
+             dispatch overhead < 10% of total at ~128x128 matmul (new HAL)
