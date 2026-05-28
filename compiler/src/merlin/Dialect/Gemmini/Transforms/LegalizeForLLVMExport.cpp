@@ -19,7 +19,6 @@
 
 #include <cstdlib>
 
-#include "llvm/Support/Format.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/LoweringOptions.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
@@ -35,14 +34,15 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "compiler/src/merlin/Dialect/Gemmini/IR/GemminiDialect.h"
 #include "compiler/src/merlin/Dialect/Gemmini/IR/GemminiOps.h"
 #include "compiler/src/merlin/Dialect/Gemmini/Transforms/Transforms.h"
-#include "third_party/iree_bar/runtime/src/iree/hal/local/loaders/merlin_debug_addresses.h"
 #include "iree/compiler/Dialect/HAL/IR/HALOps.h"
 #include "mlir/Support/LLVM.h"
+#include "third_party/iree_bar/runtime/src/iree/hal/local/loaders/merlin_debug_addresses.h"
 
 using namespace mlir;
 using namespace mlir::iree_compiler::Gemmini;
@@ -107,12 +107,14 @@ static std::optional<Value> walkBackToSubspanByteOffset(Value operand) {
 	Value cur = operand;
 	// Bound iterations to avoid cycles in pathological IR.
 	for (int hop = 0; hop < 16; ++hop) {
-		if (!cur) return std::nullopt;
+		if (!cur)
+			return std::nullopt;
 		Operation *def = cur.getDefiningOp();
-		if (!def) return std::nullopt;
-		if (auto subspan =
-				dyn_cast<mlir::iree_compiler::IREE::HAL::
-					InterfaceBindingSubspanOp>(def)) {
+		if (!def)
+			return std::nullopt;
+		if (auto subspan = dyn_cast<
+				mlir::iree_compiler::IREE::HAL::InterfaceBindingSubspanOp>(
+				def)) {
 			// FIX (2026-05-21): always apply byte_offset, regardless of
 			// the Indirect flag. Empirical evidence (bprobe traces) shows
 			// the IREE local-task runtime does NOT pre-resolve the
@@ -317,14 +319,11 @@ struct GemminiConfigExLowering : public ConvertOpToLLVMPattern<ConfigExOp> {
 			const uint64_t actMxFmt = 0;
 			const uint64_t wgtMxFmt = 0;
 			const uint64_t outMxFmt = 3;
-			mxBits = (actMxFmt << 10)
-				| (wgtMxFmt << 12)
-				| (outMxFmt << 14);
+			mxBits = (actMxFmt << 10) | (wgtMxFmt << 12) | (outMxFmt << 14);
 		}
 		uint64_t rs1 = (uint64_t)acc_scale_t_to_acc_scale_t_bits(scale) << 32 |
 			configExOp.getAStride() << 16 | mxBits |
-			configExOp.getBTranspose() << 9 |
-			configExOp.getATranspose() << 8 |
+			configExOp.getBTranspose() << 9 | configExOp.getATranspose() << 8 |
 			configExOp.getSetOnlyStrides() << 7 | configExOp.getSysAct() << 3 |
 			configExOp.getDataflow() << 2 | CONFIG_EX;
 
@@ -492,8 +491,7 @@ struct GemminiMvoutLowering : public ConvertOpToLLVMPattern<MvoutOp> {
 			(uint64_t)memRefShape[1] << addrLen | number;
 		Value newSpad = rewriter.create<arith::ConstantOp>(
 			loc, rewriter.getI64IntegerAttr(spadAddrInt));
-		rewriter.replaceOpWithNewOp<MvoutIntrOp>(
-			mvoutOp, indexCastOp, newSpad);
+		rewriter.replaceOpWithNewOp<MvoutIntrOp>(mvoutOp, indexCastOp, newSpad);
 		return success();
 	}
 
@@ -794,7 +792,6 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 			}
 		}
 
-
 		// Move-in B — same port 0, id=0 (see comment on Move-in D above).
 		Value strideValue = rewriter.create<arith::ConstantOp>(
 			loc, rewriter.getI64IntegerAttr(strideB));
@@ -812,7 +809,6 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 					b, offset, bSpAddr, cols, rows, addrLen, rewriter);
 			}
 		}
-
 
 		// Move-in A
 		strideValue = rewriter.create<arith::ConstantOp>(
@@ -832,7 +828,6 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 					a, offset, aSpAddr, cols, rows, addrLen, rewriter);
 			}
 		}
-
 
 		for (size_t i0 = 0; i0 < i; i0++) {
 			for (size_t j0 = 0; j0 < j; j0++) {
@@ -1207,10 +1202,10 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 	void tiledMatmulOuterLoopWs(size_t dimI, size_t dimJ, size_t dimK, Value &A,
 		Value &B, Value &D, Value &C, size_t strideA, size_t strideB,
 		size_t strideD, size_t strideC, scale_t aScaleFactor,
-		scale_t bScaleFactor, scale_acc_t dScaleFactor,
-		size_t tileI, size_t tileJ, size_t tileK,
-		int act, acc_scale_t scale, bool repeatingBias, bool aTranspose,
-		bool bTranspose, bool fullC, bool lowD, TileMatMulOp &tileMatMulOp,
+		scale_t bScaleFactor, scale_acc_t dScaleFactor, size_t tileI,
+		size_t tileJ, size_t tileK, int act, acc_scale_t scale,
+		bool repeatingBias, bool aTranspose, bool bTranspose, bool fullC,
+		bool lowD, TileMatMulOp &tileMatMulOp,
 		ConversionPatternRewriter &rewriter) const {
 		const size_t dimIPadded = (dimI / dim + (dimI % dim != 0)) * dim;
 		const size_t dimJPadded = (dimJ / dim + (dimJ % dim != 0)) * dim;
@@ -1267,8 +1262,7 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 			/*cStride=*/1, /*aStride=*/1,
 			/*aTranspose=*/aTranspose, /*bTranspose=*/bTranspose);
 
-		const size_t dStrideBytes =
-			(repeatingBias ? 0 : strideD) * sizeofD;
+		const size_t dStrideBytes = (repeatingBias ? 0 : strideD) * sizeofD;
 
 		// CONFIG_LD/CONFIG_ST want strides in BYTES.
 		Value cStrideBytesV = rewriter.create<arith::ConstantOp>(
@@ -1313,9 +1307,8 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 			loc, i64Type, rewriter.getI64IntegerAttr(strideB));
 		Value cStrideElemsV = rewriter.create<arith::ConstantOp>(
 			loc, i64Type, rewriter.getI64IntegerAttr(strideC));
-		Value dStrideElemsV = rewriter.create<arith::ConstantOp>(
-			loc, i64Type, rewriter.getI64IntegerAttr(
-				repeatingBias ? 0 : strideD));
+		Value dStrideElemsV = rewriter.create<arith::ConstantOp>(loc, i64Type,
+			rewriter.getI64IntegerAttr(repeatingBias ? 0 : strideD));
 
 		// Operand-reuse formula per canonical gemmini.h:783-792.
 		// Only kicks in when the outer-tile count along one operand axis
@@ -1325,141 +1318,162 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 		const bool bReuse = (J0 * K0 <= 2);
 
 		for (size_t i0 = 0; i0 < I0; i0++) {
-		for (size_t j0 = 0; j0 < J0; j0++) {
-		for (size_t k0 = 0; k0 < K0; k0++) {
-			// Per-tile bounds and padding.
-			const size_t Ii = i0 < I0 - 1 ? tileI : lastI;
-			const size_t Jj = j0 < J0 - 1 ? tileJ : lastJ;
-			const size_t Kk = k0 < K0 - 1 ? tileK : lastK;
-			const size_t padI = i0 == I0 - 1 ? paddingI : 0;
-			const size_t padJ = j0 == J0 - 1 ? paddingJ : 0;
-			const size_t padK = k0 == K0 - 1 ? paddingK : 0;
+			for (size_t j0 = 0; j0 < J0; j0++) {
+				for (size_t k0 = 0; k0 < K0; k0++) {
+					// Per-tile bounds and padding.
+					const size_t Ii = i0 < I0 - 1 ? tileI : lastI;
+					const size_t Jj = j0 < J0 - 1 ? tileJ : lastJ;
+					const size_t Kk = k0 < K0 - 1 ? tileK : lastK;
+					const size_t padI = i0 == I0 - 1 ? paddingI : 0;
+					const size_t padJ = j0 == J0 - 1 ? paddingJ : 0;
+					const size_t padK = k0 == K0 - 1 ? paddingK : 0;
 
-			// Per-tile A/B addresses (DRAM byte offsets).
-			// Canonical operand-reuse via NULL address (gemmini.h:819-820):
-			// when aReuse is active, pass A=NULL for any j0 >= 1 so the
-			// hardware reuses the already-MVIN'd A copy in SPAD. Same
-			// for bReuse with i0 >= 1.
-			Value aAddr;
-			if (aReuse && j0 >= 1) {
-				aAddr = rewriter.create<arith::ConstantOp>(
-					loc, i64Type, rewriter.getI64IntegerAttr(0));
-			} else {
-				size_t offset = aTranspose
-					? (k0 * tileK * dim * strideA + i0 * tileI * dim) * sizeOfElemT
-					: (i0 * tileI * dim * strideA + k0 * tileK * dim) * sizeOfElemT;
-				Value offConst = rewriter.create<arith::ConstantOp>(
-					loc, i64Type, rewriter.getI64IntegerAttr(offset));
-				aAddr = rewriter.create<arith::AddIOp>(loc, i64Type, A, offConst);
+					// Per-tile A/B addresses (DRAM byte offsets).
+					// Canonical operand-reuse via NULL address
+					// (gemmini.h:819-820): when aReuse is active, pass A=NULL
+					// for any j0 >= 1 so the hardware reuses the already-MVIN'd
+					// A copy in SPAD. Same for bReuse with i0 >= 1.
+					Value aAddr;
+					if (aReuse && j0 >= 1) {
+						aAddr = rewriter.create<arith::ConstantOp>(
+							loc, i64Type, rewriter.getI64IntegerAttr(0));
+					} else {
+						size_t offset = aTranspose
+							? (k0 * tileK * dim * strideA + i0 * tileI * dim) *
+								sizeOfElemT
+							: (i0 * tileI * dim * strideA + k0 * tileK * dim) *
+								sizeOfElemT;
+						Value offConst = rewriter.create<arith::ConstantOp>(
+							loc, i64Type, rewriter.getI64IntegerAttr(offset));
+						aAddr = rewriter.create<arith::AddIOp>(
+							loc, i64Type, A, offConst);
+					}
+					Value bAddr;
+					if (bReuse && i0 >= 1) {
+						bAddr = rewriter.create<arith::ConstantOp>(
+							loc, i64Type, rewriter.getI64IntegerAttr(0));
+					} else {
+						size_t offset = bTranspose
+							? (j0 * tileJ * dim * strideB + k0 * tileK * dim) *
+								sizeOfElemT
+							: (k0 * tileK * dim * strideB + j0 * tileJ * dim) *
+								sizeOfElemT;
+						Value offConst = rewriter.create<arith::ConstantOp>(
+							loc, i64Type, rewriter.getI64IntegerAttr(offset));
+						bAddr = rewriter.create<arith::AddIOp>(
+							loc, i64Type, B, offConst);
+					}
+
+					// D address: NULL on k0!=0 (intermediate K tile, no bias
+					// mvin) and on noBias (no bias at all). Else D + per-tile
+					// offset. ex_accumulate matches canonical: false only when
+					// (noBias && k0==0) — the only case the accumulator must be
+					// overwritten on first compute rather than accumulated
+					// into.
+					Value dAddr;
+					if (k0 != 0 || noBias) {
+						dAddr = rewriter.create<arith::ConstantOp>(
+							loc, i64Type, rewriter.getI64IntegerAttr(0));
+					} else {
+						size_t biasRow = repeatingBias ? 0 : i0 * tileI * dim;
+						size_t offset =
+							(biasRow * strideD + j0 * tileJ * dim) * sizeofD;
+						Value offConst = rewriter.create<arith::ConstantOp>(
+							loc, i64Type, rewriter.getI64IntegerAttr(offset));
+						dAddr = rewriter.create<arith::AddIOp>(
+							loc, i64Type, D, offConst);
+					}
+					const bool exAccumulate = !(noBias && k0 == 0);
+
+					// C address: NULL on intermediate K iters (output stays in
+					// accumulator), else C + per-tile offset to drain on
+					// k0==K0-1.
+					Value cAddr;
+					if (k0 == K0 - 1) {
+						size_t offset =
+							(i0 * tileI * dim * strideC + j0 * tileJ * dim) *
+							sizeofC;
+						Value offConst = rewriter.create<arith::ConstantOp>(
+							loc, i64Type, rewriter.getI64IntegerAttr(offset));
+						cAddr = rewriter.create<arith::AddIOp>(
+							loc, i64Type, C, offConst);
+					} else {
+						cAddr = rewriter.create<arith::ConstantOp>(
+							loc, i64Type, rewriter.getI64IntegerAttr(0));
+					}
+
+					// Spad-id alternation per canonical gemmini.h:789-792.
+					int aSpadId = 0, bSpadId = 0;
+					if (aReuse)
+						aSpadId = ((i0 + k0) == 0) ? 1 : 2;
+					if (bReuse)
+						bSpadId = ((j0 + k0) == 0) ? 1 : 2;
+
+					// Emit the 6 LOOP_WS RoCC instructions for this tile.
+					uint64_t boundsRs1 = (uint64_t)padK << 32 |
+						(uint64_t)padJ << 16 | (uint64_t)padI;
+					uint64_t boundsRs2 =
+						(uint64_t)Kk << 32 | (uint64_t)Jj << 16 | (uint64_t)Ii;
+
+					// 2026-05-26 LOOP_WS RoCC emission trace.
+					// Enabled when env var MERLIN_LOOPWS_TRACE=1 at compile
+					// time. Dumps every per-tile (i0,j0,k0) parameter so we can
+					// diff against canonical chipyard's `gemmini_loop_ws`
+					// output.
+					if (const char *e = std::getenv("MERLIN_LOOPWS_TRACE");
+						e && e[0] != '0') {
+						llvm::errs()
+							<< "[loopws] matmul " << dimI << "x" << dimJ << "x"
+							<< dimK << " (i0=" << i0 << " j0=" << j0
+							<< " k0=" << k0 << ")"
+							<< " I=" << Ii << " J=" << Jj << " K=" << Kk
+							<< " padI=" << padI << " padJ=" << padJ
+							<< " padK=" << padK << " aSpadId=" << aSpadId
+							<< " bSpadId=" << bSpadId
+							<< " exAcc=" << exAccumulate << " noBias=" << noBias
+							<< " aTr=" << aTranspose << " bTr=" << bTranspose
+							<< " strideA=" << strideA << " strideB=" << strideB
+							<< " strideC=" << strideC << " strideD=" << strideD
+							<< " sizeOfElemT=" << sizeOfElemT
+							<< " sizeofC=" << sizeofC << " sizeofD=" << sizeofD
+							<< " dStrideBytes=" << dStrideBytes
+							<< " boundsRs1=0x"
+							<< llvm::format_hex_no_prefix(boundsRs1, 16)
+							<< " boundsRs2=0x"
+							<< llvm::format_hex_no_prefix(boundsRs2, 16)
+							<< "\n";
+					}
+					Value boundsRs1V = rewriter.create<arith::ConstantOp>(
+						loc, i64Type, rewriter.getI64IntegerAttr(boundsRs1));
+					Value boundsRs2V = rewriter.create<arith::ConstantOp>(
+						loc, i64Type, rewriter.getI64IntegerAttr(boundsRs2));
+					rewriter.create<LoopWsConfigBoundsIntrOp>(
+						loc, boundsRs1V, boundsRs2V);
+
+					rewriter.create<LoopWsConfigAddrsABIntrOp>(
+						loc, aAddr, bAddr);
+					rewriter.create<LoopWsConfigAddrsDCIntrOp>(
+						loc, dAddr, cAddr);
+
+					rewriter.create<LoopWsConfigStridesABIntrOp>(
+						loc, aStrideElemsV, bStrideElemsV);
+					rewriter.create<LoopWsConfigStridesDCIntrOp>(
+						loc, dStrideElemsV, cStrideElemsV);
+
+					const int isResadd = 0;
+					uint64_t rs1 = (uint64_t)aSpadId << 18 |
+						(uint64_t)bSpadId << 16 | (uint64_t)(act & 0xFF) << 8 |
+						((lowD ? 1u : 0u) << 2) | ((fullC ? 1u : 0u) << 1) |
+						(exAccumulate ? 1u : 0u);
+					uint64_t rs2 = (uint64_t)isResadd << 2 |
+						((bTranspose ? 1u : 0u) << 1) | (aTranspose ? 1u : 0u);
+					Value loopWsRs1 = rewriter.create<arith::ConstantOp>(
+						loc, i64Type, rewriter.getI64IntegerAttr(rs1));
+					Value loopWsRs2 = rewriter.create<arith::ConstantOp>(
+						loc, i64Type, rewriter.getI64IntegerAttr(rs2));
+					rewriter.create<LoopWsIntrOp>(loc, loopWsRs1, loopWsRs2);
+				}
 			}
-			Value bAddr;
-			if (bReuse && i0 >= 1) {
-				bAddr = rewriter.create<arith::ConstantOp>(
-					loc, i64Type, rewriter.getI64IntegerAttr(0));
-			} else {
-				size_t offset = bTranspose
-					? (j0 * tileJ * dim * strideB + k0 * tileK * dim) * sizeOfElemT
-					: (k0 * tileK * dim * strideB + j0 * tileJ * dim) * sizeOfElemT;
-				Value offConst = rewriter.create<arith::ConstantOp>(
-					loc, i64Type, rewriter.getI64IntegerAttr(offset));
-				bAddr = rewriter.create<arith::AddIOp>(loc, i64Type, B, offConst);
-			}
-
-			// D address: NULL on k0!=0 (intermediate K tile, no bias mvin)
-			// and on noBias (no bias at all). Else D + per-tile offset.
-			// ex_accumulate matches canonical: false only when
-			// (noBias && k0==0) — the only case the accumulator must be
-			// overwritten on first compute rather than accumulated into.
-			Value dAddr;
-			if (k0 != 0 || noBias) {
-				dAddr = rewriter.create<arith::ConstantOp>(
-					loc, i64Type, rewriter.getI64IntegerAttr(0));
-			} else {
-				size_t biasRow = repeatingBias ? 0 : i0 * tileI * dim;
-				size_t offset = (biasRow * strideD + j0 * tileJ * dim) * sizeofD;
-				Value offConst = rewriter.create<arith::ConstantOp>(
-					loc, i64Type, rewriter.getI64IntegerAttr(offset));
-				dAddr = rewriter.create<arith::AddIOp>(loc, i64Type, D, offConst);
-			}
-			const bool exAccumulate = !(noBias && k0 == 0);
-
-			// C address: NULL on intermediate K iters (output stays in
-			// accumulator), else C + per-tile offset to drain on k0==K0-1.
-			Value cAddr;
-			if (k0 == K0 - 1) {
-				size_t offset =
-					(i0 * tileI * dim * strideC + j0 * tileJ * dim) * sizeofC;
-				Value offConst = rewriter.create<arith::ConstantOp>(
-					loc, i64Type, rewriter.getI64IntegerAttr(offset));
-				cAddr = rewriter.create<arith::AddIOp>(loc, i64Type, C, offConst);
-			} else {
-				cAddr = rewriter.create<arith::ConstantOp>(
-					loc, i64Type, rewriter.getI64IntegerAttr(0));
-			}
-
-			// Spad-id alternation per canonical gemmini.h:789-792.
-			int aSpadId = 0, bSpadId = 0;
-			if (aReuse) aSpadId = ((i0 + k0) == 0) ? 1 : 2;
-			if (bReuse) bSpadId = ((j0 + k0) == 0) ? 1 : 2;
-
-			// Emit the 6 LOOP_WS RoCC instructions for this tile.
-			uint64_t boundsRs1 =
-				(uint64_t)padK << 32 | (uint64_t)padJ << 16 | (uint64_t)padI;
-			uint64_t boundsRs2 =
-				(uint64_t)Kk << 32 | (uint64_t)Jj << 16 | (uint64_t)Ii;
-
-			// 2026-05-26 LOOP_WS RoCC emission trace.
-			// Enabled when env var MERLIN_LOOPWS_TRACE=1 at compile time.
-			// Dumps every per-tile (i0,j0,k0) parameter so we can diff
-			// against canonical chipyard's `gemmini_loop_ws` output.
-			if (const char *e = std::getenv("MERLIN_LOOPWS_TRACE");
-				e && e[0] != '0') {
-				llvm::errs() << "[loopws] matmul " << dimI << "x" << dimJ
-					<< "x" << dimK << " (i0=" << i0 << " j0=" << j0
-					<< " k0=" << k0 << ")"
-					<< " I=" << Ii << " J=" << Jj << " K=" << Kk
-					<< " padI=" << padI << " padJ=" << padJ
-					<< " padK=" << padK
-					<< " aSpadId=" << aSpadId << " bSpadId=" << bSpadId
-					<< " exAcc=" << exAccumulate
-					<< " noBias=" << noBias
-					<< " aTr=" << aTranspose << " bTr=" << bTranspose
-					<< " strideA=" << strideA << " strideB=" << strideB
-					<< " strideC=" << strideC << " strideD=" << strideD
-					<< " sizeOfElemT=" << sizeOfElemT
-					<< " sizeofC=" << sizeofC << " sizeofD=" << sizeofD
-					<< " dStrideBytes=" << dStrideBytes
-					<< " boundsRs1=0x" << llvm::format_hex_no_prefix(boundsRs1, 16)
-					<< " boundsRs2=0x" << llvm::format_hex_no_prefix(boundsRs2, 16)
-					<< "\n";
-			}
-			Value boundsRs1V = rewriter.create<arith::ConstantOp>(
-				loc, i64Type, rewriter.getI64IntegerAttr(boundsRs1));
-			Value boundsRs2V = rewriter.create<arith::ConstantOp>(
-				loc, i64Type, rewriter.getI64IntegerAttr(boundsRs2));
-			rewriter.create<LoopWsConfigBoundsIntrOp>(loc, boundsRs1V, boundsRs2V);
-
-			rewriter.create<LoopWsConfigAddrsABIntrOp>(loc, aAddr, bAddr);
-			rewriter.create<LoopWsConfigAddrsDCIntrOp>(loc, dAddr, cAddr);
-
-			rewriter.create<LoopWsConfigStridesABIntrOp>(
-				loc, aStrideElemsV, bStrideElemsV);
-			rewriter.create<LoopWsConfigStridesDCIntrOp>(
-				loc, dStrideElemsV, cStrideElemsV);
-
-			const int isResadd = 0;
-			uint64_t rs1 = (uint64_t)aSpadId << 18 | (uint64_t)bSpadId << 16 |
-				(uint64_t)(act & 0xFF) << 8 | ((lowD ? 1u : 0u) << 2) |
-				((fullC ? 1u : 0u) << 1) | (exAccumulate ? 1u : 0u);
-			uint64_t rs2 = (uint64_t)isResadd << 2 |
-				((bTranspose ? 1u : 0u) << 1) | (aTranspose ? 1u : 0u);
-			Value loopWsRs1 = rewriter.create<arith::ConstantOp>(
-				loc, i64Type, rewriter.getI64IntegerAttr(rs1));
-			Value loopWsRs2 = rewriter.create<arith::ConstantOp>(
-				loc, i64Type, rewriter.getI64IntegerAttr(rs2));
-			rewriter.create<LoopWsIntrOp>(loc, loopWsRs1, loopWsRs2);
-		}
-		}
 		}
 	}
 
@@ -1571,8 +1585,8 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 			auto emitTrace = [&](uint64_t dramAddr, Value v) {
 				Value addrConst = rewriter.create<LLVM::ConstantOp>(
 					loc, i64Type, rewriter.getI64IntegerAttr(dramAddr));
-				Value ptr = rewriter.create<LLVM::IntToPtrOp>(
-					loc, ptrTy, addrConst);
+				Value ptr =
+					rewriter.create<LLVM::IntToPtrOp>(loc, ptrTy, addrConst);
 				rewriter.create<LLVM::StoreOp>(loc, v, ptr,
 					/*alignment=*/0, /*isVolatile=*/true);
 			};
@@ -1666,15 +1680,15 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 		const bool mxFullC = false;
 		const bool mxLowD = false;
 		const bool mxExAccumulate = false;
-		const int mxAct = 0;            // NO_ACTIVATION
-		const uint64_t skipMask = 0x38ULL;          // skip ldA, ldB, ldD
-		const uint64_t spadOnly = 0x200ULL;         // bit 9
+		const int mxAct = 0; // NO_ACTIVATION
+		const uint64_t skipMask = 0x38ULL; // skip ldA, ldB, ldD
+		const uint64_t spadOnly = 0x200ULL; // bit 9
 		uint64_t rs1 = (uint64_t)aSpadId << 18 | (uint64_t)bSpadId << 16 |
 			(uint64_t)(mxAct & 0xFF) << 8 | ((mxLowD ? 1u : 0u) << 2) |
 			((mxFullC ? 1u : 0u) << 1) | (mxExAccumulate ? 1u : 0u);
 		uint64_t rs2 = ((uint64_t)cSpadAddr << 32) | spadOnly | skipMask |
-			((uint64_t)isResadd << 2) |
-			((bTranspose ? 1u : 0u) << 1) | (aTranspose ? 1u : 0u);
+			((uint64_t)isResadd << 2) | ((bTranspose ? 1u : 0u) << 1) |
+			(aTranspose ? 1u : 0u);
 		Value loopWsRs1 = rewriter.create<arith::ConstantOp>(
 			loc, i64Type, rewriter.getI64IntegerAttr(rs1));
 		Value loopWsRs2 = rewriter.create<arith::ConstantOp>(
@@ -1699,8 +1713,8 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 		//   if sign:        v = -v
 		// Selects (not branches) so no block-split inside the pattern.
 		{
-			Value flushZero = rewriter.create<arith::ConstantOp>(loc,
-				i64Type, rewriter.getI64IntegerAttr(0));
+			Value flushZero = rewriter.create<arith::ConstantOp>(
+				loc, i64Type, rewriter.getI64IntegerAttr(0));
 			rewriter.create<FlushIntrOp>(loc, flushZero, flushZero);
 
 			auto ptrTy = LLVM::LLVMPointerType::get(rewriter.getContext());
@@ -1711,20 +1725,20 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 				0x40000000ULL + (uint64_t)cSpadAddr * 16ULL;
 			const size_t numCells = dimI * dimJ;
 
-			Value cZeroI32 = rewriter.create<LLVM::ConstantOp>(loc, i32Ty,
-				rewriter.getI32IntegerAttr(0));
-			Value c0x7F = rewriter.create<LLVM::ConstantOp>(loc, i32Ty,
-				rewriter.getI32IntegerAttr(0x7F));
-			Value c0x80 = rewriter.create<LLVM::ConstantOp>(loc, i32Ty,
-				rewriter.getI32IntegerAttr(0x80));
-			Value c0xFF = rewriter.create<LLVM::ConstantOp>(loc, i32Ty,
-				rewriter.getI32IntegerAttr(0xFF));
-			Value c7 = rewriter.create<LLVM::ConstantOp>(loc, i32Ty,
-				rewriter.getI32IntegerAttr(7));
-			Value c15 = rewriter.create<LLVM::ConstantOp>(loc, i32Ty,
-				rewriter.getI32IntegerAttr(15));
-			Value c134 = rewriter.create<LLVM::ConstantOp>(loc, i32Ty,
-				rewriter.getI32IntegerAttr(134));
+			Value cZeroI32 = rewriter.create<LLVM::ConstantOp>(
+				loc, i32Ty, rewriter.getI32IntegerAttr(0));
+			Value c0x7F = rewriter.create<LLVM::ConstantOp>(
+				loc, i32Ty, rewriter.getI32IntegerAttr(0x7F));
+			Value c0x80 = rewriter.create<LLVM::ConstantOp>(
+				loc, i32Ty, rewriter.getI32IntegerAttr(0x80));
+			Value c0xFF = rewriter.create<LLVM::ConstantOp>(
+				loc, i32Ty, rewriter.getI32IntegerAttr(0xFF));
+			Value c7 = rewriter.create<LLVM::ConstantOp>(
+				loc, i32Ty, rewriter.getI32IntegerAttr(7));
+			Value c15 = rewriter.create<LLVM::ConstantOp>(
+				loc, i32Ty, rewriter.getI32IntegerAttr(15));
+			Value c134 = rewriter.create<LLVM::ConstantOp>(
+				loc, i32Ty, rewriter.getI32IntegerAttr(134));
 
 			// Unroll: emit straight-line code per cell. For 16x16=256 cells
 			// this is ~13 LLVM ops × 256 = ~3300 ops. Bounded and avoids
@@ -1736,9 +1750,11 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 				Value srcConst = rewriter.create<LLVM::ConstantOp>(loc, i64Type,
 					rewriter.getI64IntegerAttr(
 						(int64_t)(smemBaseAddr + (uint64_t)cell * 2ULL)));
-				Value srcPtr = rewriter.create<LLVM::IntToPtrOp>(loc, ptrTy, srcConst);
-				Value bf16Val = rewriter.create<LLVM::LoadOp>(loc, i16Ty, srcPtr,
-					/*alignment=*/0, /*isVolatile=*/true);
+				Value srcPtr =
+					rewriter.create<LLVM::IntToPtrOp>(loc, ptrTy, srcConst);
+				Value bf16Val =
+					rewriter.create<LLVM::LoadOp>(loc, i16Ty, srcPtr,
+						/*alignment=*/0, /*isVolatile=*/true);
 				Value ext = rewriter.create<LLVM::ZExtOp>(loc, i32Ty, bf16Val);
 
 				// sign = ext >> 15
@@ -1753,30 +1769,35 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 				Value rshift = rewriter.create<LLVM::SubOp>(loc, c134, exp);
 				// lshift = exp - 134 ; left-shift count
 				Value lshift = rewriter.create<LLVM::SubOp>(loc, exp, c134);
-				// rRes = m >> rshift  (saturated to 0 for huge rshift OK on RV64I)
+				// rRes = m >> rshift  (saturated to 0 for huge rshift OK on
+				// RV64I)
 				Value rRes = rewriter.create<LLVM::LShrOp>(loc, m, rshift);
 				// lRes = m << lshift
 				Value lRes = rewriter.create<LLVM::ShlOp>(loc, m, lshift);
 				// shiftIsPos = exp > 134
-				Value shiftIsPos = rewriter.create<LLVM::ICmpOp>(loc,
-					LLVM::ICmpPredicate::ugt, exp, c134);
-				Value v0 = rewriter.create<LLVM::SelectOp>(loc, shiftIsPos, lRes, rRes);
+				Value shiftIsPos = rewriter.create<LLVM::ICmpOp>(
+					loc, LLVM::ICmpPredicate::ugt, exp, c134);
+				Value v0 = rewriter.create<LLVM::SelectOp>(
+					loc, shiftIsPos, lRes, rRes);
 				// expIsZero = exp == 0
-				Value expIsZero = rewriter.create<LLVM::ICmpOp>(loc,
-					LLVM::ICmpPredicate::eq, exp, cZeroI32);
-				Value v1 = rewriter.create<LLVM::SelectOp>(loc, expIsZero, cZeroI32, v0);
+				Value expIsZero = rewriter.create<LLVM::ICmpOp>(
+					loc, LLVM::ICmpPredicate::eq, exp, cZeroI32);
+				Value v1 = rewriter.create<LLVM::SelectOp>(
+					loc, expIsZero, cZeroI32, v0);
 				// neg = -v1 ; final = sign ? neg : v1
 				Value zero = cZeroI32;
 				Value neg = rewriter.create<LLVM::SubOp>(loc, zero, v1);
-				Value signIsOne = rewriter.create<LLVM::ICmpOp>(loc,
-					LLVM::ICmpPredicate::ne, sign, cZeroI32);
-				Value finalVal = rewriter.create<LLVM::SelectOp>(loc, signIsOne, neg, v1);
+				Value signIsOne = rewriter.create<LLVM::ICmpOp>(
+					loc, LLVM::ICmpPredicate::ne, sign, cZeroI32);
+				Value finalVal =
+					rewriter.create<LLVM::SelectOp>(loc, signIsOne, neg, v1);
 
 				// Store to bvC + cell*4
 				Value offI32 = rewriter.create<LLVM::ConstantOp>(loc, i64Type,
 					rewriter.getI64IntegerAttr((int64_t)cell * 4));
 				Value dstAddr = rewriter.create<LLVM::AddOp>(loc, C, offI32);
-				Value dstPtr = rewriter.create<LLVM::IntToPtrOp>(loc, ptrTy, dstAddr);
+				Value dstPtr =
+					rewriter.create<LLVM::IntToPtrOp>(loc, ptrTy, dstAddr);
 				rewriter.create<LLVM::StoreOp>(loc, finalVal, dstPtr,
 					/*alignment=*/0, /*isVolatile=*/true);
 			}
@@ -1797,13 +1818,12 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 	using ConvertOpToLLVMPattern<TileMatMulOp>::ConvertOpToLLVMPattern;
 	explicit GemminiTileMatMulLowering(LLVMTypeConverter &typeConverter,
 		int64_t dim, int64_t addrLen, int64_t accRows, int64_t bankRows,
-		size_t sizeOfElemT, size_t sizeOfAccT, bool clampSingleBlockMvin = false,
-		bool useLoopWs = false, int64_t mxFormat = -1,
-		bool dispatchDebug = false)
+		size_t sizeOfElemT, size_t sizeOfAccT,
+		bool clampSingleBlockMvin = false, bool useLoopWs = false,
+		int64_t mxFormat = -1, bool dispatchDebug = false)
 		: ConvertOpToLLVMPattern(typeConverter), dim(dim), addrLen(addrLen),
 		  accRows(accRows), bankRows(bankRows), sizeOfElemT(sizeOfElemT),
-		  sizeOfAccT(sizeOfAccT),
-		  clampSingleBlockMvin(clampSingleBlockMvin),
+		  sizeOfAccT(sizeOfAccT), clampSingleBlockMvin(clampSingleBlockMvin),
 		  useLoopWs(useLoopWs), mxFormat(mxFormat),
 		  dispatchDebug(dispatchDebug) {}
 	LogicalResult matchAndRewrite(TileMatMulOp tileMatMulOp, OpAdaptor adaptor,
@@ -1845,7 +1865,8 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 		// non-first weight tensor (dronet's steer head, etc.).
 		auto applySubspanOffset = [&](Value extracted, Value origMemref) {
 			auto subspanOff = walkBackToSubspanByteOffset(origMemref);
-			if (!subspanOff) return extracted;
+			if (!subspanOff)
+				return extracted;
 			// byte_offset is an index-typed SSA value (bytes). The existing
 			// static-layout addition below uses element-multiples, so we add
 			// the dynamic byte offset directly in bytes here.
@@ -1896,21 +1917,26 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 		dArrayExtractOp = applySubspanOffset(dArrayExtractOp, dArray);
 		Value dArrayindexCastOp =
 			rewriter.create<arith::IndexCastOp>(loc, i64Type, dArrayExtractOp);
-		// 2026-05-21 Bug A fix attempt: explicitly mask bit 63 of every mvin/mvout
-		// rs1 derivative. The chipyard Gemmini RTL's DMA address register does NOT
-		// mask bit 63 (LoadController.scala:102 + DMA.scala:251 — paddrBits=56 so
-		// bits 56-63 are undefined when set). Setting bit 63 in rs1 causes DMA to
-		// silently misread for offset!=0 cases. The toggle is added by upstream
-		// MemRefToLLVM/ArithToLLVM (PtrToIntOp + signed IndexCastOp) — we mask it
-		// here, at the point all addresses converge to i64, so subsequent ops
-		// preserve our cleared bit-63.
+		// 2026-05-21 Bug A fix attempt: explicitly mask bit 63 of every
+		// mvin/mvout rs1 derivative. The chipyard Gemmini RTL's DMA address
+		// register does NOT mask bit 63 (LoadController.scala:102 +
+		// DMA.scala:251 — paddrBits=56 so bits 56-63 are undefined when set).
+		// Setting bit 63 in rs1 causes DMA to silently misread for offset!=0
+		// cases. The toggle is added by upstream MemRefToLLVM/ArithToLLVM
+		// (PtrToIntOp + signed IndexCastOp) — we mask it here, at the point all
+		// addresses converge to i64, so subsequent ops preserve our cleared
+		// bit-63.
 		{
 			Value mask = rewriter.create<arith::ConstantOp>(
 				loc, i64Type, rewriter.getI64IntegerAttr(0x7FFFFFFFFFFFFFFFLL));
-			aArrayindexCastOp = rewriter.create<arith::AndIOp>(loc, aArrayindexCastOp, mask);
-			bArrayindexCastOp = rewriter.create<arith::AndIOp>(loc, bArrayindexCastOp, mask);
-			cArrayindexCastOp = rewriter.create<arith::AndIOp>(loc, cArrayindexCastOp, mask);
-			dArrayindexCastOp = rewriter.create<arith::AndIOp>(loc, dArrayindexCastOp, mask);
+			aArrayindexCastOp =
+				rewriter.create<arith::AndIOp>(loc, aArrayindexCastOp, mask);
+			bArrayindexCastOp =
+				rewriter.create<arith::AndIOp>(loc, bArrayindexCastOp, mask);
+			cArrayindexCastOp =
+				rewriter.create<arith::AndIOp>(loc, cArrayindexCastOp, mask);
+			dArrayindexCastOp =
+				rewriter.create<arith::AndIOp>(loc, dArrayindexCastOp, mask);
 		}
 		// Opt-in Bug A matmul-operand trace. Emits volatile stores of the
 		// computed MLIR-level i64 A/B/C/D addresses (post-applySubspanOffset,
@@ -1922,8 +1948,8 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 			auto emitMatmulTrace = [&](uint64_t dramAddr, Value v) {
 				Value addrConst = rewriter.create<LLVM::ConstantOp>(
 					loc, i64Type, rewriter.getI64IntegerAttr(dramAddr));
-				Value ptr = rewriter.create<LLVM::IntToPtrOp>(
-					loc, ptrTy, addrConst);
+				Value ptr =
+					rewriter.create<LLVM::IntToPtrOp>(loc, ptrTy, addrConst);
 				rewriter.create<LLVM::StoreOp>(loc, v, ptr,
 					/*alignment=*/0, /*isVolatile=*/true);
 			};
@@ -1931,14 +1957,14 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 				rewriter.getI64IntegerAttr(
 					(int64_t)MERLIN_DEBUG_MATMUL_TRACE_SENTINEL));
 			emitMatmulTrace(MERLIN_DEBUG_MATMUL_TRACE_ADDR + 0x00ULL, sentinel);
-			emitMatmulTrace(MERLIN_DEBUG_MATMUL_TRACE_ADDR + 0x08ULL,
-				aArrayindexCastOp);
-			emitMatmulTrace(MERLIN_DEBUG_MATMUL_TRACE_ADDR + 0x10ULL,
-				bArrayindexCastOp);
-			emitMatmulTrace(MERLIN_DEBUG_MATMUL_TRACE_ADDR + 0x18ULL,
-				cArrayindexCastOp);
-			emitMatmulTrace(MERLIN_DEBUG_MATMUL_TRACE_ADDR + 0x20ULL,
-				dArrayindexCastOp);
+			emitMatmulTrace(
+				MERLIN_DEBUG_MATMUL_TRACE_ADDR + 0x08ULL, aArrayindexCastOp);
+			emitMatmulTrace(
+				MERLIN_DEBUG_MATMUL_TRACE_ADDR + 0x10ULL, bArrayindexCastOp);
+			emitMatmulTrace(
+				MERLIN_DEBUG_MATMUL_TRACE_ADDR + 0x18ULL, cArrayindexCastOp);
+			emitMatmulTrace(
+				MERLIN_DEBUG_MATMUL_TRACE_ADDR + 0x20ULL, dArrayindexCastOp);
 		}
 		llvm::ArrayRef<int64_t> aArrayShape = aArrayType.getShape();
 		llvm::ArrayRef<int64_t> bArrayShape = bArrayType.getShape();
@@ -1997,50 +2023,62 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 		const size_t maxK = dimKPaded / dim;
 		auto canGrowI = [&]() {
 			return tileI < maxI &&
-				tiledMatmulTotalSpadRows(tileI + 1, tileJ, tileK) <= maxSpadRows &&
+				tiledMatmulTotalSpadRows(tileI + 1, tileJ, tileK) <=
+				maxSpadRows &&
 				tiledMatmulTotalAccRows(tileI + 1, tileJ) <= maxAccRows;
 		};
 		auto canGrowJ = [&]() {
 			return tileJ < maxJ &&
-				tiledMatmulTotalSpadRows(tileI, tileJ + 1, tileK) <= maxSpadRows &&
+				tiledMatmulTotalSpadRows(tileI, tileJ + 1, tileK) <=
+				maxSpadRows &&
 				tiledMatmulTotalAccRows(tileI, tileJ + 1) <= maxAccRows;
 		};
 		auto canGrowK = [&]() {
 			return tileK < maxK &&
-				tiledMatmulTotalSpadRows(tileI, tileJ, tileK + 1) <= maxSpadRows;
+				tiledMatmulTotalSpadRows(tileI, tileJ, tileK + 1) <=
+				maxSpadRows;
 		};
 		while (true) {
-			// Remaining DIM-units that each axis could still grow toward its max.
+			// Remaining DIM-units that each axis could still grow toward its
+			// max.
 			const size_t remI = maxI > tileI ? maxI - tileI : 0;
 			const size_t remJ = maxJ > tileJ ? maxJ - tileJ : 0;
 			const size_t remK = maxK > tileK ? maxK - tileK : 0;
-			if (remI == 0 && remJ == 0 && remK == 0) break;
+			if (remI == 0 && remJ == 0 && remK == 0)
+				break;
 			// Pick the axis with the largest remaining count and try it
 			// first. Ties broken by the static priority I > J > K (matches the
 			// canonical gemmini-rocc-tests preference: amortize MVIN-B across
 			// the outer-M loop).
 			bool grew = false;
-			std::array<std::pair<size_t, int>, 3> order = {{
-				{remI, 0}, {remJ, 1}, {remK, 2}
-			}};
+			std::array<std::pair<size_t, int>, 3> order = {
+				{{remI, 0}, {remJ, 1}, {remK, 2}}};
 			std::sort(order.begin(), order.end(),
-				[](const std::pair<size_t, int>& a,
-					const std::pair<size_t, int>& b) {
+				[](const std::pair<size_t, int> &a,
+					const std::pair<size_t, int> &b) {
 					return a.first > b.first;
 				});
-			for (auto& p : order) {
-				if (p.first == 0) continue;
+			for (auto &p : order) {
+				if (p.first == 0)
+					continue;
 				if (p.second == 0 && canGrowI()) {
-					tileI++; grew = true; break;
+					tileI++;
+					grew = true;
+					break;
 				}
 				if (p.second == 1 && canGrowJ()) {
-					tileJ++; grew = true; break;
+					tileJ++;
+					grew = true;
+					break;
 				}
 				if (p.second == 2 && canGrowK()) {
-					tileK++; grew = true; break;
+					tileK++;
+					grew = true;
+					break;
 				}
 			}
-			if (!grew) break;
+			if (!grew)
+				break;
 		}
 		// 2026-05-24: tileI=1 hardcode REMOVED for experimentation.
 		// Original comment (kept for context): "spTiledMatmulOs at tileI>1
@@ -2064,14 +2102,16 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 			size_t pos = 0;
 			while (pos < spec.size()) {
 				size_t entryEnd = spec.find(';', pos);
-				if (entryEnd == std::string::npos) entryEnd = spec.size();
+				if (entryEnd == std::string::npos)
+					entryEnd = spec.size();
 				std::string entry = spec.substr(pos, entryEnd - pos);
 				pos = entryEnd + 1;
 				size_t colon = entry.find(':');
-				if (colon == std::string::npos) continue;
+				if (colon == std::string::npos)
+					continue;
 				size_t shM, shN, shK, ovI, ovJ, ovK;
-				if (sscanf(entry.c_str(), "%zu,%zu,%zu:%zu,%zu,%zu",
-						&shM, &shN, &shK, &ovI, &ovJ, &ovK) == 6) {
+				if (sscanf(entry.c_str(), "%zu,%zu,%zu:%zu,%zu,%zu", &shM, &shN,
+						&shK, &ovI, &ovJ, &ovK) == 6) {
 					// Match raw matmul dims (pre-padding). Use Kpadded
 					// for K matching since IR sees padded.
 					if (dimI == shM && dimJ == shN &&
@@ -2079,8 +2119,8 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 						const size_t ovItry = std::min(ovI, maxI);
 						const size_t ovJtry = std::min(ovJ, maxJ);
 						const size_t ovKtry = std::min(ovK, maxK);
-						if (tiledMatmulTotalSpadRows(
-								ovItry, ovJtry, ovKtry) <= maxSpadRows &&
+						if (tiledMatmulTotalSpadRows(ovItry, ovJtry, ovKtry) <=
+								maxSpadRows &&
 							tiledMatmulTotalAccRows(ovItry, ovJtry) <=
 								maxAccRows) {
 							tileI = ovItry;
@@ -2163,11 +2203,9 @@ class GemminiTileMatMulLowering : public ConvertOpToLLVMPattern<TileMatMulOp> {
 				tiledMatmulOuterLoopWs(dimI, dimJ, dimK, aArrayindexCastOp,
 					bArrayindexCastOp, dArrayindexCastOp, cArrayindexCastOp,
 					strideA, strideB, strideD, strideC, aScaleFactor,
-					bScaleFactor, dScaleFactor,
-					tileI, tileJ, tileK,
-					act, scale, repeatingBias,
-					aTranspose, bTranspose, fullC, lowD, tileMatMulOp,
-					rewriter);
+					bScaleFactor, dScaleFactor, tileI, tileJ, tileK, act, scale,
+					repeatingBias, aTranspose, bTranspose, fullC, lowD,
+					tileMatMulOp, rewriter);
 			}
 
 			IntegerAttr flushAttr = rewriter.getI64IntegerAttr(0);
@@ -3413,11 +3451,10 @@ void mlir::configureGemminiLegalizeForExportTarget(
 		Mvin3IntrOp, MvoutIntrOp, PreloadIntrOp, ComputePreloadedIntrOp,
 		ComputeAccumulatedIntrOp, LoopWsConfigBoundsIntrOp,
 		LoopWsConfigAddrsABIntrOp, LoopWsConfigAddrsDCIntrOp,
-		LoopWsConfigStridesABIntrOp, LoopWsConfigStridesDCIntrOp,
-		LoopWsIntrOp, LoopConvWsConfig1IntrOp, LoopConvWsConfig2IntrOp,
+		LoopWsConfigStridesABIntrOp, LoopWsConfigStridesDCIntrOp, LoopWsIntrOp,
+		LoopConvWsConfig1IntrOp, LoopConvWsConfig2IntrOp,
 		LoopConvWsConfig3IntrOp, LoopConvWsConfig4IntrOp,
-		LoopConvWsConfig5IntrOp, LoopConvWsConfig6IntrOp,
-		LoopConvWsIntrOp>();
+		LoopConvWsConfig5IntrOp, LoopConvWsConfig6IntrOp, LoopConvWsIntrOp>();
 	target.addIllegalOp<FlushOp, ConfigStOp, ConfigLdOp, ConfigExOp, MvinOp,
 		Mvin2Op, Mvin3Op, MvoutOp, PrintOp, PreloadZerosOp, PreloadOp,
 		ComputePreloadedOp, ComputeAccumulatedOp, TileMatMulOp, TileConvOp,
