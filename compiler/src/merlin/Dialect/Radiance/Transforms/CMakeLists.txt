@@ -1,0 +1,37 @@
+set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
+set(IREE_PACKAGE_ROOT_PREFIX
+    "iree::radiance::compiler::Dialect::Radiance::Transforms")
+
+iree_cc_library(
+  NAME
+  Transforms
+  HDRS
+  "Passes.h"
+  SRCS
+  "ConvertRadianceAddrSpaces.cpp"
+  "LowerRadianceToLLVM.cpp"
+  INCLUDES
+  "${MERLIN_COMPILER_SOURCE_DIR}"
+  "${IREE_BINARY_DIR}/compiler/plugins/merlin"
+  DEPS
+  iree::radiance::compiler::Dialect::Radiance::IR::RadianceDialect
+  LLVMCore
+  LLVMSupport
+  MLIRArithDialect
+  MLIRArithToLLVM
+  MLIRControlFlowDialect
+  MLIRControlFlowToLLVM
+  MLIRFuncDialect
+  MLIRFuncToLLVM
+  MLIRIR
+  MLIRLLVMDialect
+  MLIRMemRefDialect
+  MLIRMemRefToLLVM
+  MLIRPass
+  MLIRReconcileUnrealizedCasts
+  MLIRSCFDialect
+  MLIRSCFToControlFlow
+  MLIRSupport
+  MLIRTargetLLVMIRExport
+  MLIRTransforms
+  PUBLIC)
