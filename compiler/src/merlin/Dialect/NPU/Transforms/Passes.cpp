@@ -5,7 +5,8 @@ namespace mlir::iree_compiler::NPU {
 void registerNPUPasses() {
 	registerConvertLinalgToNPUKernelPass();
 	registerConvertNPUKernelToSchedulePass();
-	registerTileNPUKernelToSchedulePass();
+	// registerTileNPUKernelToSchedulePass();  // .cpp was removed; matching
+	// CMakeLists.txt + Passes.h drop.
 	registerVerifyNPUUkernelSymbolsPass();
 	registerConvertNPUScheduleToISAPass();
 	registerPlanNPUISAMemoryPass();

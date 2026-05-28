@@ -10,7 +10,7 @@ iree_cc_library(
   "Passes.cpp"
   "ConvertLinalgToNPUKernel.cpp"
   "ConvertNPUKernelToSchedule.cpp"
-  "TileNPUKernelToSchedule.cpp"
+  # "TileNPUKernelToSchedule.cpp" -- file was removed; CMakeLists not updated.
   "VerifyNPUUkernelSymbols.cpp"
   "ConvertNPUScheduleToISA.cpp"
   "PlanNPUISAMemory.cpp"
