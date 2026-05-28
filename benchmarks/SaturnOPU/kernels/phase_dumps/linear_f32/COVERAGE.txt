@@ -1,0 +1,7 @@
+Source: tests/granularity/fixtures/embed_pipeline/matmul_input.mlir
+Compiled: /scratch2/agustin/merlin/build/saturnopu_phase_dumps/linear_f32/matmul_input.vmfb
+
+--- Kernel call sites in flow phase (one line per actual rewrite) ---
+      1 util.call @call_saturnopu_linear_f32
+
+--- Unmatched linalg ops (still in dispatch-creation) ---

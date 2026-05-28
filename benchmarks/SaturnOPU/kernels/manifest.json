@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "kernels": [
+    {
+      "name": "saturnopu_add_f32",
+      "source": "abi/add_f32_workgroup.c",
+      "source_lang": "c",
+      "entry_symbol": "add_f32_workgroup",
+      "signature": {
+        "operands": [
+          {"role": "in",  "tensor": "tensor<?xf32>"},
+          {"role": "in",  "tensor": "tensor<?xf32>"},
+          {"role": "out", "tensor": "tensor<?xf32>"}
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/add_f32.match.mlir"
+      },
+      "targets": ["llvm-cpu-spacemit-x60"]
+    },
+    {
+      "name": "saturnopu_conv_2d_nchw_fchw_f32",
+      "source": "abi/conv_2d_nchw_fchw_workgroup.c",
+      "source_lang": "c",
+      "entry_symbol": "conv_2d_nchw_fchw_workgroup",
+      "signature": {
+        "operands": [
+          {"role": "in",  "tensor": "tensor<?x?x?x?xf32>"},
+          {"role": "in",  "tensor": "tensor<?x?x?x?xf32>"},
+          {"role": "in",  "tensor": "tensor<?x?x?x?xf32>"},
+          {"role": "out", "tensor": "tensor<?x?x?x?xf32>"}
+        ],
+        "constants": [
+          {"name": "N",     "type": "i32", "from": {"input": 0, "dim": 0}, "aliases": [{"input": 2, "dim": 0}]},
+          {"name": "C_in",  "type": "i32", "from": {"input": 0, "dim": 1}, "aliases": [{"input": 1, "dim": 1}]},
+          {"name": "H_in",  "type": "i32", "from": {"input": 0, "dim": 2}},
+          {"name": "W_in",  "type": "i32", "from": {"input": 0, "dim": 3}},
+          {"name": "F",     "type": "i32", "from": {"input": 1, "dim": 0}, "aliases": [{"input": 2, "dim": 1}]},
+          {"name": "KH",    "type": "i32", "from": {"input": 1, "dim": 2}},
+          {"name": "KW",    "type": "i32", "from": {"input": 1, "dim": 3}},
+          {"name": "H_out", "type": "i32", "from": {"input": 2, "dim": 2}},
+          {"name": "W_out", "type": "i32", "from": {"input": 2, "dim": 3}}
+        ],
+        "output_dims": ["N", "F", "H_out", "W_out"]
+      },
+      "match": {
+        "kind": "named_op",
+        "op_name": "linalg.conv_2d_nchw_fchw",
+        "outs_from_input": 2,
+        "op_attrs": "{dilations = dense<1> : vector<2xi64>, strides = dense<2> : vector<2xi64>}"
+      },
+      "targets": ["llvm-cpu-spacemit-x60"]
+    },
+    {
+      "name": "saturnopu_pooling_nchw_max_f32",
+      "source": "abi/pooling_nchw_max_workgroup.c",
+      "source_lang": "c",
+      "entry_symbol": "pooling_nchw_max_workgroup",
+      "signature": {
+        "operands": [
+          {"role": "in",  "tensor": "tensor<?x?x?x?xf32>"},
+          {"role": "in",  "tensor": "tensor<?x?xf32>"},
+          {"role": "in",  "tensor": "tensor<?x?x?x?xf32>"},
+          {"role": "out", "tensor": "tensor<?x?x?x?xf32>"}
+        ],
+        "constants": [
+          {"name": "N",     "type": "i32", "from": {"input": 0, "dim": 0}, "aliases": [{"input": 2, "dim": 0}]},
+          {"name": "C",     "type": "i32", "from": {"input": 0, "dim": 1}, "aliases": [{"input": 2, "dim": 1}]},
+          {"name": "H_in",  "type": "i32", "from": {"input": 0, "dim": 2}},
+          {"name": "W_in",  "type": "i32", "from": {"input": 0, "dim": 3}},
+          {"name": "KH",    "type": "i32", "from": {"input": 1, "dim": 0}},
+          {"name": "KW",    "type": "i32", "from": {"input": 1, "dim": 1}},
+          {"name": "H_out", "type": "i32", "from": {"input": 2, "dim": 2}},
+          {"name": "W_out", "type": "i32", "from": {"input": 2, "dim": 3}}
+        ],
+        "output_dims": ["N", "C", "H_out", "W_out"]
+      },
+      "match": {
+        "kind": "named_op",
+        "op_name": "linalg.pooling_nchw_max",
+        "outs_from_input": 2,
+        "op_attrs": "{dilations = dense<1> : vector<2xi64>, strides = dense<2> : vector<2xi64>}"
+      },
+      "targets": ["llvm-cpu-spacemit-x60"]
+    },
+    {
+      "name": "saturnopu_bias_add_3d_f32",
+      "source": "abi/bias_add_3d_f32_workgroup.c",
+      "source_lang": "c",
+      "entry_symbol": "bias_add_3d_f32_workgroup",
+      "signature": {
+        "operands": [
+          {"role": "in",  "tensor": "tensor<?x?x?xf32>"},
+          {"role": "in",  "tensor": "tensor<?xf32>"},
+          {"role": "out", "tensor": "tensor<?x?x?xf32>"}
+        ],
+        "constants": [
+          {"name": "C", "type": "i32", "from": {"input": 0, "dim": 0}, "aliases": [{"input": 1, "dim": 0}]},
+          {"name": "H", "type": "i32", "from": {"input": 0, "dim": 1}},
+          {"name": "W", "type": "i32", "from": {"input": 0, "dim": 2}}
+        ],
+        "output_dims": ["C", "H", "W"]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/bias_add_3d_f32.match.mlir"
+      },
+      "targets": ["llvm-cpu-spacemit-x60"]
+    },
+    {
+      "name": "saturnopu_matmul_f32",
+      "source": "abi/matmul_f32_workgroup.c",
+      "source_lang": "c",
+      "entry_symbol": "matmul_f32_workgroup",
+      "signature": {
+        "operands": [
+          {"role": "in",  "tensor": "tensor<?x?xf32>"},
+          {"role": "in",  "tensor": "tensor<?x?xf32>"},
+          {"role": "out", "tensor": "tensor<?x?xf32>"}
+        ],
+        "constants": [
+          {"name": "M", "type": "i32", "from": {"input": 0, "dim": 0}},
+          {"name": "K", "type": "i32", "from": {"input": 0, "dim": 1}, "aliases": [{"input": 1, "dim": 0}]},
+          {"name": "N", "type": "i32", "from": {"input": 1, "dim": 1}}
+        ],
+        "output_dims": ["M", "N"]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/matmul_f32.match.mlir"
+      },
+      "targets": ["llvm-cpu-spacemit-x60"]
+    },
+    {
+      "name": "saturnopu_linear_f32",
+      "source": "abi/linear_f32_workgroup.c",
+      "source_lang": "c",
+      "entry_symbol": "linear_f32_workgroup",
+      "signature": {
+        "operands": [
+          {"role": "in",  "tensor": "tensor<?x?xf32>"},
+          {"role": "in",  "tensor": "tensor<?x?xf32>"},
+          {"role": "out", "tensor": "tensor<?x?xf32>"}
+        ],
+        "constants": [
+          {"name": "M", "type": "i32", "from": {"input": 0, "dim": 0}},
+          {"name": "K", "type": "i32", "from": {"input": 0, "dim": 1}, "aliases": [{"input": 1, "dim": 1}]},
+          {"name": "N", "type": "i32", "from": {"input": 1, "dim": 0}}
+        ],
+        "output_dims": ["M", "N"]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/linear_f32.match.mlir"
+      },
+      "targets": ["llvm-cpu-spacemit-x60"]
+    }
+  ]
+}

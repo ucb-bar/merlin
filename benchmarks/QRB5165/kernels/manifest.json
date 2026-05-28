@@ -1,0 +1,400 @@
+{
+  "schema_version": 1,
+  "kernels": [
+    {
+      "name": "qnn_add_f32",
+      "source": "abi/add_f32.qnn.cpp",
+      "source_lang": "qnn-context-binary",
+      "entry_symbol": "add_f32",
+      "signature": {
+        "operands": [
+          {
+            "role": "in",
+            "tensor": "tensor<1x16xf32>"
+          },
+          {
+            "role": "in",
+            "tensor": "tensor<1x16xf32>"
+          },
+          {
+            "role": "out",
+            "tensor": "tensor<1x16xf32>"
+          }
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/add_f32.match.mlir"
+      },
+      "targets": [
+        "qnn-gpu"
+      ]
+    },
+    {
+      "name": "qnn_sub_f32",
+      "source": "abi/sub_f32.qnn.cpp",
+      "source_lang": "qnn-context-binary",
+      "entry_symbol": "sub_f32",
+      "signature": {
+        "operands": [
+          {
+            "role": "in",
+            "tensor": "tensor<1x16xf32>"
+          },
+          {
+            "role": "in",
+            "tensor": "tensor<1x16xf32>"
+          },
+          {
+            "role": "out",
+            "tensor": "tensor<1x16xf32>"
+          }
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/sub_f32.match.mlir"
+      },
+      "targets": [
+        "qnn-gpu"
+      ]
+    },
+    {
+      "name": "qnn_mul_f32",
+      "source": "abi/mul_f32.qnn.cpp",
+      "source_lang": "qnn-context-binary",
+      "entry_symbol": "mul_f32",
+      "signature": {
+        "operands": [
+          {
+            "role": "in",
+            "tensor": "tensor<1x16xf32>"
+          },
+          {
+            "role": "in",
+            "tensor": "tensor<1x16xf32>"
+          },
+          {
+            "role": "out",
+            "tensor": "tensor<1x16xf32>"
+          }
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/mul_f32.match.mlir"
+      },
+      "targets": [
+        "qnn-gpu"
+      ]
+    },
+    {
+      "name": "qnn_div_f32",
+      "source": "abi/div_f32.qnn.cpp",
+      "source_lang": "qnn-context-binary",
+      "entry_symbol": "div_f32",
+      "signature": {
+        "operands": [
+          {
+            "role": "in",
+            "tensor": "tensor<1x16xf32>"
+          },
+          {
+            "role": "in",
+            "tensor": "tensor<1x16xf32>"
+          },
+          {
+            "role": "out",
+            "tensor": "tensor<1x16xf32>"
+          }
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/div_f32.match.mlir"
+      },
+      "targets": [
+        "qnn-gpu"
+      ]
+    },
+    {
+      "name": "qnn_sigmoid_f32",
+      "source": "abi/sigmoid_f32.qnn.cpp",
+      "source_lang": "qnn-context-binary",
+      "entry_symbol": "sigmoid_f32",
+      "signature": {
+        "operands": [
+          {
+            "role": "in",
+            "tensor": "tensor<1x16xf32>"
+          },
+          {
+            "role": "out",
+            "tensor": "tensor<1x16xf32>"
+          }
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/sigmoid_f32.match.mlir"
+      },
+      "targets": [
+        "qnn-gpu"
+      ]
+    },
+    {
+      "name": "qnn_relu_f32",
+      "source": "abi/relu_f32.qnn.cpp",
+      "source_lang": "qnn-context-binary",
+      "entry_symbol": "relu_f32",
+      "signature": {
+        "operands": [
+          {
+            "role": "in",
+            "tensor": "tensor<1x16xf32>"
+          },
+          {
+            "role": "out",
+            "tensor": "tensor<1x16xf32>"
+          }
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/relu_f32.match.mlir"
+      },
+      "targets": [
+        "qnn-gpu"
+      ]
+    },
+    {
+      "name": "qnn_relu6_f32",
+      "source": "abi/relu6_f32.qnn.cpp",
+      "source_lang": "qnn-context-binary",
+      "entry_symbol": "relu6_f32",
+      "signature": {
+        "operands": [
+          {
+            "role": "in",
+            "tensor": "tensor<1x16xf32>"
+          },
+          {
+            "role": "out",
+            "tensor": "tensor<1x16xf32>"
+          }
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/relu6_f32.match.mlir"
+      },
+      "targets": [
+        "qnn-gpu"
+      ]
+    },
+    {
+      "name": "qnn_hardswish_f32",
+      "source": "abi/hardswish_f32.qnn.cpp",
+      "source_lang": "qnn-context-binary",
+      "entry_symbol": "hardswish_f32",
+      "signature": {
+        "operands": [
+          {
+            "role": "in",
+            "tensor": "tensor<1x16xf32>"
+          },
+          {
+            "role": "out",
+            "tensor": "tensor<1x16xf32>"
+          }
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/hardswish_f32.match.mlir"
+      },
+      "targets": [
+        "qnn-gpu"
+      ]
+    },
+    {
+      "name": "qnn_tanh_f32",
+      "source": "abi/tanh_f32.qnn.cpp",
+      "source_lang": "qnn-context-binary",
+      "entry_symbol": "tanh_f32",
+      "signature": {
+        "operands": [
+          {
+            "role": "in",
+            "tensor": "tensor<1x16xf32>"
+          },
+          {
+            "role": "out",
+            "tensor": "tensor<1x16xf32>"
+          }
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/tanh_f32.match.mlir"
+      },
+      "targets": [
+        "qnn-gpu"
+      ]
+    },
+    {
+      "name": "qnn_conv2d_relu_smoke_f32",
+      "source": "abi/conv2d_relu_smoke_f32.qnn.cpp",
+      "source_lang": "qnn-context-binary",
+      "entry_symbol": "conv2d_relu_smoke_f32",
+      "signature": {
+        "operands": [
+          {
+            "role": "in",
+            "tensor": "tensor<1x8x8x3xf32>"
+          },
+          {
+            "role": "out",
+            "tensor": "tensor<1x6x6x4xf32>"
+          }
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/conv2d_relu_smoke_f32.match.mlir"
+      },
+      "targets": [
+        "qnn-gpu"
+      ]
+    },
+    {
+      "name": "qnn_add_uint8",
+      "source": "abi/add_uint8.qnn.cpp",
+      "source_lang": "qnn-context-binary",
+      "entry_symbol": "add_uint8",
+      "signature": {
+        "operands": [
+          {
+            "role": "in",
+            "tensor": "tensor<1x16xi8>"
+          },
+          {
+            "role": "in",
+            "tensor": "tensor<1x16xi8>"
+          },
+          {
+            "role": "out",
+            "tensor": "tensor<1x16xi8>"
+          }
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/add_uint8.match.mlir"
+      },
+      "targets": [
+        "qnn-hta"
+      ]
+    },
+    {
+      "name": "bb_mlp_gpu",
+      "source": "abi/bb_mlp.qnn-ctx",
+      "source_lang": "qnn-context-binary",
+      "entry_symbol": "mlp",
+      "signature": {
+        "operands": [
+          {
+            "role": "in",
+            "tensor": "tensor<1x128xf32>"
+          },
+          {
+            "role": "out",
+            "tensor": "tensor<1x10xf32>"
+          }
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/bb_mlp.match.mlir"
+      },
+      "targets": [
+        "qnn-gpu"
+      ]
+    },
+    {
+      "name": "bb_vit_gpu",
+      "source": "abi/bb_vit.qnn-ctx",
+      "source_lang": "qnn-context-binary",
+      "entry_symbol": "vit_ffn",
+      "signature": {
+        "operands": [
+          {
+            "role": "in",
+            "tensor": "tensor<64x128xf32>"
+          },
+          {
+            "role": "out",
+            "tensor": "tensor<64x128xf32>"
+          }
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/bb_vit.match.mlir"
+      },
+      "targets": [
+        "qnn-gpu"
+      ]
+    },
+    {
+      "name": "bb_mlp_hta",
+      "source": "abi/bb_mlp_hta.qnn-ctx",
+      "source_lang": "qnn-context-binary",
+      "entry_symbol": "mlp_q",
+      "signature": {
+        "operands": [
+          {
+            "role": "in",
+            "tensor": "tensor<1x128xi8>"
+          },
+          {
+            "role": "out",
+            "tensor": "tensor<1x10xi8>"
+          }
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/bb_mlp_hta.match.mlir"
+      },
+      "targets": [
+        "qnn-hta"
+      ]
+    },
+    {
+      "name": "bb_vit_hta",
+      "source": "abi/bb_vit_hta.qnn-ctx",
+      "source_lang": "qnn-context-binary",
+      "entry_symbol": "vit_ffn_q",
+      "signature": {
+        "operands": [
+          {
+            "role": "in",
+            "tensor": "tensor<64x128xi8>"
+          },
+          {
+            "role": "out",
+            "tensor": "tensor<64x128xi8>"
+          }
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/bb_vit_hta.match.mlir"
+      },
+      "targets": [
+        "qnn-hta"
+      ]
+    }
+  ]
+}
