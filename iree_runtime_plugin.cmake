@@ -53,6 +53,36 @@ if(MERLIN_RUNTIME_ENABLE_HAL_RADIANCE)
   endif()
 endif()
 
+# QNN external HAL driver. Wraps Qualcomm's QNN SDK so the Merlin runtime can
+# dispatch chunks to Adreno GPU + Hexagon HTP/DSP via the standard IREE HAL
+# device interface. Lives at runtime/src/iree/hal/drivers/qnn/ alongside
+# radiance — the established Merlin pattern for vendor HAL plugins. Verified
+# end-to-end on QRB5165 against libQnnGpu.so.
+option(MERLIN_RUNTIME_ENABLE_HAL_QNN
+       "Enable Merlin QNN external HAL driver (Adreno GPU + Hexagon HTP/DSP)"
+       OFF)
+
+if(MERLIN_RUNTIME_ENABLE_HAL_QNN)
+  iree_register_external_hal_driver(
+    NAME
+    qnn
+    SOURCE_DIR
+    "${CMAKE_CURRENT_LIST_DIR}/runtime/src/iree/hal/drivers/qnn"
+    BINARY_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/merlin/runtime/iree/hal/drivers/qnn"
+    DRIVER_TARGET
+    iree::hal::drivers::qnn::registration::registration
+    REGISTER_FN
+    iree_hal_qnn_driver_module_register)
+
+  if(NOT "qnn" IN_LIST IREE_EXTERNAL_HAL_DRIVERS)
+    list(APPEND IREE_EXTERNAL_HAL_DRIVERS "qnn")
+    set(IREE_EXTERNAL_HAL_DRIVERS
+        "${IREE_EXTERNAL_HAL_DRIVERS}"
+        CACHE STRING "" FORCE)
+  endif()
+endif()
+
 if(MERLIN_RUNTIME_ENABLE_SAMPLES)
   add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/samples" "merlin-samples")
 endif()
