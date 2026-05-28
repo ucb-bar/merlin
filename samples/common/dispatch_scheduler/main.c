@@ -85,10 +85,12 @@ int main(int argc, char **argv) {
 	const char *vmfb_dir = NULL;
 	// Performance cores 4-7 (Kryo 585 Gold, A77-derived) for CPU_P;
 	// efficiency cores 0-1 (Kryo 585 Silver, A55-derived) for CPU_E.
-	// Layout per QRB5165: cores 0-3 are A55 efficiency, 4-7 are A77
-	// performance (7 = prime). Defaulting CPU_P to the A55s caused
-	// per-layer dispatches to run 4-7x slower than the steady-state
-	// profile predicted; pinning to A77s closes that gap.
+	// Per QRB5165 layout: cores 0-3 are A55 efficiency, 4-7 are A77
+	// performance (7 = prime). The earlier 0-3 default pinned CPU_P
+	// to the slow A55s — per-layer dispatches ran 3-4x slower than
+	// the steady-state profile predicted because they were on
+	// 1.8 GHz cores instead of 2.4-2.8 GHz cores. Pinning to A77s
+	// closes that gap.
 	const char *cpu_p_cpu_ids = "4,5,6,7";
 	const char *cpu_e_cpu_ids = "0,1";
 	const char *cpu_cpu_ids = NULL; // unified CPU device (all cores) — opt-in

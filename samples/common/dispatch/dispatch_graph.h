@@ -117,6 +117,32 @@ inline bool ParseDispatchesObject(
 						return false;
 					if (ParseTimeDependencyMode(s, &node.time_dep_mode))
 						node.policies_from_json = true;
+				} else if (field == "skipped") {
+					// Robotics-deadline support (PR 6 of the rosy-sundae
+					// plan). The schedule emits a bare JSON boolean.
+					// JsonParser doesn't have ParseBool, so we inline a
+					// direct peek-and-consume on the parser's cursor.
+					jp->SkipWs();
+					if (jp->p + 4 <= jp->end && jp->p[0] == 't' &&
+						jp->p[1] == 'r' && jp->p[2] == 'u' && jp->p[3] == 'e') {
+						node.skipped = true;
+						jp->p += 4;
+					} else if (jp->p + 5 <= jp->end && jp->p[0] == 'f' &&
+						jp->p[1] == 'a' && jp->p[2] == 'l' && jp->p[3] == 's' &&
+						jp->p[4] == 'e') {
+						node.skipped = false;
+						jp->p += 5;
+					} else {
+						if (!jp->SkipValue())
+							return false;
+					}
+				} else if (field == "deadline_ms" || field == "deadline_us") {
+					double v = 0.0;
+					if (!jp->ParseDouble(&v))
+						return false;
+					if (field == "deadline_us")
+						v /= 1000.0;
+					node.deadline_ms = v;
 				} else {
 					if (!jp->SkipValue())
 						return false;

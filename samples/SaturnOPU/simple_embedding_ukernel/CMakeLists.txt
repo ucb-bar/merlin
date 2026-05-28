@@ -1572,3 +1572,169 @@ add_custom_target(benchmark_models_prof DEPENDS ${MODEL_BENCHMARKS})
 
 # Meta-target for all model benchmarks
 add_custom_target(benchmark_models DEPENDS ${MODEL_BENCHMARKS})
+
+# =============================================================================
+# --- Gemmini-on-Spike: bare-metal runner for the matmul_8x8x8 fixture ---
+# =============================================================================
+# Validates the dialect-driven Gemmini codegen by loading the .vmfb produced by
+# `./merlin compile --target gemmini_spike` through the IREE local-sync HAL
+# driver and invoking `module.matmul_8x8x8`. The dispatch ELF inside the .vmfb
+# embeds custom-3 (RoCC) Gemmini opcodes; `spike --extension=gemmini` interprets
+# them via libgemmini.so.
+#
+# Build the .vmfb on the host (inside this CMake configure) using the host-side
+# iree-compile that produced this firesim build's compiler. The path to the host
+# compiler is taken from MERLIN_HOST_IREE_COMPILE if set, otherwise we fall back
+# to the conventional path.
+#
+# Usage: ./merlin build --profile firesim --cmake-target
+# bench_gemmini_spike_matmul spike --extension=gemmini
+# $RISCV/riscv64-unknown-elf/bin/pk \ <build-dir>/.../bench_gemmini_spike_matmul
+
+# 2026-05-18: allow swapping the fixture via -DGEMMINI_SPIKE_MATMUL_SHAPE= from
+# the merlin build command line so we can probe shape-dependence of the matmul
+# bug without editing this file each time. Accepts any MxNxK string; the
+# corresponding fixture must exist at
+# tests/integration/gemmini_spike/fixtures/matmul_MxNxK_tensor.mlir.
+if(NOT DEFINED GEMMINI_SPIKE_MATMUL_SHAPE)
+  set(GEMMINI_SPIKE_MATMUL_SHAPE "16x128x576")
+endif()
+
+if(NOT GEMMINI_SPIKE_MATMUL_SHAPE MATCHES
+   "^([0-9]+)x([0-9]+)x([0-9]+)(_[a-z_]+)?$")
+  message(
+    FATAL_ERROR
+      "GEMMINI_SPIKE_MATMUL_SHAPE='${GEMMINI_SPIKE_MATMUL_SHAPE}' must look like MxNxK or MxNxK_suffix"
+  )
+endif()
+set(_GEMMINI_MATMUL_M "${CMAKE_MATCH_1}")
+set(_GEMMINI_MATMUL_N "${CMAKE_MATCH_2}")
+set(_GEMMINI_MATMUL_K "${CMAKE_MATCH_3}")
+set(_GEMMINI_MATMUL_SUFFIX "${CMAKE_MATCH_4}")
+# Variants: <suffix empty>: standard linalg.matmul B as K×N, expect K _bias :
+# output prefilled with 1, expect K + 1 _transposed  : B passed as N×K (dronet's
+# actual lowering form), expect K _pattern     : deterministic mixed-sign A,B;
+# reference computed in runner
+set(_GEMMINI_TRANSPOSED_DEFS "")
+set(_GEMMINI_PATTERN_DEFS "")
+set(_GEMMINI_SOAK_DEFS "")
+if(_GEMMINI_MATMUL_SUFFIX STREQUAL "_bias")
+  math(EXPR _GEMMINI_MATMUL_EXPECTED "${_GEMMINI_MATMUL_K} + 1")
+elseif(_GEMMINI_MATMUL_SUFFIX STREQUAL "_transposed")
+  set(_GEMMINI_MATMUL_EXPECTED "${_GEMMINI_MATMUL_K}")
+  set(_GEMMINI_TRANSPOSED_DEFS -DMATMUL_B_TRANSPOSED=1)
+elseif(_GEMMINI_MATMUL_SUFFIX STREQUAL "_pattern")
+  set(_GEMMINI_MATMUL_EXPECTED "${_GEMMINI_MATMUL_K}") # unused
+  set(_GEMMINI_PATTERN_DEFS -DMATMUL_INPUT_PATTERN=1)
+elseif(_GEMMINI_MATMUL_SUFFIX STREQUAL "_soak")
+  set(_GEMMINI_MATMUL_EXPECTED "${_GEMMINI_MATMUL_K}")
+  set(_GEMMINI_SOAK_DEFS -DMATMUL_SOAK_PRE=1)
+else()
+  set(_GEMMINI_MATMUL_EXPECTED "${_GEMMINI_MATMUL_K}")
+endif()
+set(_GEMMINI_MN_K_DEFS
+    -DMATMUL_M=${_GEMMINI_MATMUL_M}
+    -DMATMUL_N=${_GEMMINI_MATMUL_N}
+    -DMATMUL_K=${_GEMMINI_MATMUL_K}
+    -DMATMUL_EXPECTED=${_GEMMINI_MATMUL_EXPECTED}
+    ${_GEMMINI_TRANSPOSED_DEFS}
+    ${_GEMMINI_PATTERN_DEFS}
+    ${_GEMMINI_SOAK_DEFS}
+    -DMATMUL_FN="module.matmul_${GEMMINI_SPIKE_MATMUL_SHAPE}")
+
+set(_GEMMINI_FIXTURE
+    "${IREE_CMAKE_PLUGIN_PATHS}/tests/integration/gemmini_spike/fixtures/matmul_${GEMMINI_SPIKE_MATMUL_SHAPE}_tensor.mlir"
+)
+
+# Locate host iree-compile. The host build lands in build/host-merlin-debug
+# (default for `./merlin build` without --profile firesim) or whatever the user
+# passed as MERLIN_HOST_IREE_COMPILE.
+if(DEFINED ENV{MERLIN_HOST_IREE_COMPILE})
+  set(_GEMMINI_HOST_COMPILE "$ENV{MERLIN_HOST_IREE_COMPILE}")
+elseif(EXISTS
+       "${IREE_CMAKE_PLUGIN_PATHS}/build/host-merlin-debug/tools/iree-compile")
+  set(_GEMMINI_HOST_COMPILE
+      "${IREE_CMAKE_PLUGIN_PATHS}/build/host-merlin-debug/tools/iree-compile")
+elseif(
+  EXISTS
+  "${IREE_CMAKE_PLUGIN_PATHS}/build/host-merlin-release/tools/iree-compile")
+  set(_GEMMINI_HOST_COMPILE
+      "${IREE_CMAKE_PLUGIN_PATHS}/build/host-merlin-release/tools/iree-compile")
+else()
+  message(
+    WARNING "Skipping bench_gemmini_spike_matmul: no host iree-compile found. "
+            "Run `./merlin build --profile vanilla` (or merlin) first, or set "
+            "MERLIN_HOST_IREE_COMPILE.")
+  set(_GEMMINI_HOST_COMPILE "")
+endif()
+
+if(_GEMMINI_HOST_COMPILE)
+  set(_GEMMINI_VMFB
+      "${CMAKE_CURRENT_BINARY_DIR}/gemmini_spike_matmul_8x8x8.embedded.vmfb")
+
+  # Produce an embedded-elf-riscv_64 .vmfb (so the bare-metal embedded ELF
+  # loader can consume it). The dispatch ELF still contains the gemmini RoCC
+  # opcodes — verified by iree-compile flags below mirroring
+  # models/gemmini_spike.yaml except for `--iree-llvmcpu-link-embedded=true`.
+  add_custom_command(
+    OUTPUT "${_GEMMINI_VMFB}"
+    COMMAND
+      "${_GEMMINI_HOST_COMPILE}" "${_GEMMINI_FIXTURE}" -o "${_GEMMINI_VMFB}"
+      --iree-hal-target-device=local
+      --iree-hal-local-target-device-backends=llvm-cpu
+      --iree-llvmcpu-target-triple=riscv64-unknown-elf
+      --iree-llvmcpu-target-abi=lp64d
+      --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl256b
+      --iree-llvmcpu-target-vector-width-in-bytes=32
+      --iree-opt-data-tiling=false --iree-dispatch-creation-data-tiling=false
+      --iree-llvmcpu-enable-ukernels=none
+      --iree-llvmcpu-link-ukernel-bitcode=false
+      --iree-execution-model=async-external --iree-llvmcpu-link-embedded=true
+      --iree-vm-bytecode-module-strip-source-map=true
+      --iree-vm-emit-polyglot-zip=false --iree-plugin=gemmini
+      --iree-gemmini-enable --iree-gemmini-lower-back-to-iree=false
+    DEPENDS "${_GEMMINI_FIXTURE}"
+    COMMENT "[gemmini-spike] compiling ${_GEMMINI_FIXTURE} → embedded VMFB")
+
+  set(GEMMINI_SPIKE_VMFB_PATH "${_GEMMINI_VMFB}")
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/gemmini_spike_vmfb_embed.S.in"
+                 "${CMAKE_CURRENT_BINARY_DIR}/gemmini_spike_vmfb_embed.S" @ONLY)
+
+  set(_GEMMINI_ASM_OBJ "${CMAKE_CURRENT_BINARY_DIR}/gemmini_spike_vmfb_embed.o")
+  add_custom_command(
+    OUTPUT "${_GEMMINI_ASM_OBJ}"
+    COMMAND
+      ${CMAKE_C_COMPILER} --target=riscv64-unknown-elf
+      "--sysroot=${CMAKE_SYSROOT}" -march=rv64imafdc -mabi=lp64d -mcmodel=medany
+      -c "${CMAKE_CURRENT_BINARY_DIR}/gemmini_spike_vmfb_embed.S" -o
+      "${_GEMMINI_ASM_OBJ}"
+    DEPENDS "${_GEMMINI_VMFB}"
+            "${CMAKE_CURRENT_BINARY_DIR}/gemmini_spike_vmfb_embed.S"
+    COMMENT "[gemmini-spike] embedding VMFB via .incbin")
+  add_custom_target(gemmini_spike_vmfb_obj DEPENDS "${_GEMMINI_ASM_OBJ}")
+
+  iree_cc_binary(
+    NAME
+    bench_gemmini_spike_matmul
+    SRCS
+    "gemmini_spike_runner.c"
+    DEPS
+    iree::base
+    iree::hal
+    iree::hal::drivers::local_sync::sync_driver
+    iree::hal::local
+    iree::hal::local::loaders::embedded_elf_loader
+    iree::modules::hal
+    iree::vm
+    iree::vm::bytecode::module)
+
+  target_link_libraries(
+    iree_.._.._samples_SaturnOPU_simple_embedding_ukernel_bench_gemmini_spike_matmul
+    PRIVATE "${_GEMMINI_ASM_OBJ}")
+  target_compile_definitions(
+    iree_.._.._samples_SaturnOPU_simple_embedding_ukernel_bench_gemmini_spike_matmul
+    PRIVATE ${_GEMMINI_MN_K_DEFS})
+  add_dependencies(
+    iree_.._.._samples_SaturnOPU_simple_embedding_ukernel_bench_gemmini_spike_matmul
+    gemmini_spike_vmfb_obj)
+endif()

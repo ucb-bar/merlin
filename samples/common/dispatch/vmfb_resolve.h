@@ -73,6 +73,22 @@ inline std::string NormalizeModelFamilyFromModuleName(
 	return job_name;
 }
 
+/** @brief Returns the on-disk extension a HardwareTarget's executable artifact
+ *  uses. CPU clusters store .vmfb files (IREE bytecode); QNN-backed targets
+ *  store .qnn-ctx context binaries (QnnContext_createFromBinary input).
+ */
+inline const char *ExtensionForTarget(HardwareTarget t) {
+	switch (t) {
+		case HardwareTarget::kQnnGpu:
+		case HardwareTarget::kQnnHta:
+			return ".qnn-ctx";
+		case HardwareTarget::kCpuP:
+		case HardwareTarget::kCpuE:
+		default:
+			return ".vmfb";
+	}
+}
+
 /** @brief Append "_benchmark.vmfb" suffix to a VMFB stem if not already
  * present.
  *  @param stem Input filename or stem.
