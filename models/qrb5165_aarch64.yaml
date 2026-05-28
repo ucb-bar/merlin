@@ -1,0 +1,37 @@
+# Qualcomm QRB5165 (Snapdragon SA8155 / RB5) — aarch64-linux CPU.
+#
+# Cores: Kryo 585 (1xA77 prime + 3xA77 perf + 4xA55 eff). cpuinfo reports CPU
+# part 0x805 (Kryo-585-Silver A77-derivative). Features: fp asimd evtstrm
+# aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm lrcpc dcpop
+# asimddp (so dotprod is available).
+
+default_hw: a77
+
+generic:
+  - --iree-hal-target-device=local
+  - --iree-hal-local-target-device-backends=llvm-cpu
+  - --iree-llvmcpu-target-triple=aarch64-linux-gnu
+  - --iree-llvmcpu-target-abi=lp64
+  - --iree-llvmcpu-target-cpu=generic
+  - --iree-llvmcpu-target-cpu-features=+dotprod,+fp16fml,+fullfp16,+lse,+rcpc
+  - --iree-execution-model=async-external
+  # Data tiling + mmt4d ukernels unlock the AArch64 SDOT instruction for
+  # int8 quantized convolutions (4×i8→i32 per lane). Verified empirically:
+  # disabled  -> 0 SDOT, 7 widening SMLAL, scalar i32 accumulation.
+  # enabled   -> 32 SDOT, 0 SMLAL, packed mmt4d hot path.
+  - --iree-opt-data-tiling=true
+  - --iree-llvmcpu-enable-ukernels=all
+  - --iree-llvmcpu-link-ukernel-bitcode=true
+
+targets:
+  a77:
+    - --iree-llvmcpu-target-cpu=cortex-a77
+  a55:
+    - --iree-llvmcpu-target-cpu=cortex-a55
+
+quantized:
+  - --iree-llvmcpu-skip-intermediate-roundings=true
+
+models:
+  dronet:
+    - --iree-preprocessing-pass-pipeline=builtin.module(util.func(iree-global-opt-quantized-conv-to-conv))

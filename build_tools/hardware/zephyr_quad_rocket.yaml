@@ -1,0 +1,70 @@
+# Zephyr-on-Quad-Rocket recipe for Merlin on FireSim U250.
+#
+# Multi-core RV64GC + RVV host running Zephyr 4.1.99 (chipyard_riscv64 board)
+# with the IREE runtime statically linked as a Zephyr module. This recipe
+# drives end-to-end execution of Merlin-compiled `.vmfb` modules on FireSim.
+#
+# Pipeline:
+#   1. ./merlin compile <model>.mlir --target zephyr_rocket_rv64 -> mlp.vmfb
+#   2. ./merlin build --profile zephyr  -> install/{lib,include}
+#   3. west build -b chipyard_riscv64 samples/merlin/model_benchmark
+#   4. ./merlin chipyard stage-zephyr-workload zephyr-quad-rocket
+#   5. cd $CHIPYARD_ROOT/sims/firesim/deploy && firesim infrasetup runworkload
+name: zephyr-quad-rocket
+mode: firesim  # firesim | bare-metal | board
+
+chipyard:
+  repo: https://github.com/ucb-bar/chipyard
+  branch: graphics
+
+submodules:
+  firesim:
+    sha: b084672c2f8cf32e55d78f73a001074c23f8a2b8
+
+# FireSim-specific configuration. Targets the stock multi-core Rocket SoC
+# (no accelerator) -- this is the baseline configuration. For accelerator
+# variants see gemmini_mx.yaml (Gemmini) or saturn_opu_u250.yaml (OPU).
+firesim:
+  build_recipe:
+    recipe_name: alveo_u250_firesim_quad_rocket
+    PLATFORM: xilinx_alveo_u250
+    TARGET_PROJECT: firesim
+    TARGET_PROJECT_MAKEFRAG: "{chipyard_root}/generators/firechip/chip/src/main/makefrag/firesim"
+    DESIGN: FireSim
+    # 4 Rocket harts, RV64GC + RVV (zvl128b), wired up as a FireSim target.
+    # Defined in generators/chipyard/src/main/scala/config/FireSimConfigs.scala.
+    TARGET_CONFIG: FireSimQuadRocketConfig
+    CONFIG_PACKAGE: firechip.chip
+    PLATFORM_CONFIG: BaseXilinxAlveoU250Config
+    platform_config_args:
+      fpga_frequency: 60
+      build_strategy: TIMING
+    bit_builder_recipe: bit-builder-recipes/xilinx_alveo_u250.yaml
+
+  runtime:
+    topology: no_net_config
+    no_net_num_nodes: 1
+    default_hw_config: alveo_u250_firesim_quad_rocket
+    default_platform: XilinxAlveoU250InstanceDeployManager
+
+  # Bare-metal Zephyr workload -- no Linux kernel, no rootfs. The Zephyr
+  # ELF is loaded directly via the Chipyard `LOADMEM=1` style pathway.
+  # tools/chipyard.py recognises `kind: bare-metal-zephyr` and stages the
+  # ELF into deploy/workloads/<name>/ rather than the Linux overlay flow.
+  workload:
+    name: zephyr-merlin-mlp
+    kind: bare-metal-zephyr
+    # Resolved at stage-zephyr-workload time; relative to the Zephyr build dir.
+    elf: "{zephyr_build_dir}/zephyr/zephyr.elf"
+    # IREE static-archive install consumed by the Zephyr build.
+    iree_install: "{merlin_root}/build/zephyr-vanilla-release/install"
+    outputs:
+      - "uartlog"
+
+merlin:
+  target: zephyr_rocket_rv64
+  profile: zephyr
+  # Default sample driven by ./merlin chipyard run-zephyr.
+  zephyr_sample: samples/merlin/model_benchmark
+  # Default model compiled by the e2e driver script.
+  default_model: models/mlp/mlp.q.int8.mlir

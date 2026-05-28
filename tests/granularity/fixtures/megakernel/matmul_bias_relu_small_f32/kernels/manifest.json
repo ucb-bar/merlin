@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "kernels": [
+    {
+      "name": "matmul_bias_relu_small_f32",
+      "source": "src/matmul_bias_relu_small_f32.c",
+      "source_lang": "c",
+      "entry_symbol": "matmul_bias_relu_small_f32",
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/matmul_bias_relu_small_f32.match.mlir"
+      },
+      "targets": [
+        "llvm-cpu-x86_64"
+      ]
+    }
+  ]
+}

@@ -29,11 +29,14 @@ namespace merlin_bench {
 enum class HardwareTarget {
 	kCpuP = 0, /**< Performance CPU cluster. */
 	kCpuE = 1, /**< Efficiency CPU cluster. */
+	kQnnGpu = 2, /**< Qualcomm Adreno GPU via QNN HAL. */
+	kQnnHta = 3, /**< Hexagon NPU (HTA) via QNN HAL. */
+	kCpu = 4, /**< Unified CPU (all 8 cores, single device). */
 };
 
 /** @brief Return a human-readable name for a HardwareTarget.
  *  @param t Target enum value.
- *  @return Static string such as "CPU_P" or "CPU_E".
+ *  @return Static string such as "CPU_P", "CPU_E", "QNN_GPU", "QNN_HTA".
  */
 inline const char *HardwareTargetName(HardwareTarget t) {
 	switch (t) {
@@ -41,13 +44,19 @@ inline const char *HardwareTargetName(HardwareTarget t) {
 			return "CPU_P";
 		case HardwareTarget::kCpuE:
 			return "CPU_E";
+		case HardwareTarget::kQnnGpu:
+			return "QNN_GPU";
+		case HardwareTarget::kQnnHta:
+			return "QNN_HTA";
+		case HardwareTarget::kCpu:
+			return "CPU";
 		default:
 			return "UNKNOWN";
 	}
 }
 
 /** @brief Parse a HardwareTarget from its string representation.
- *  @param s   Input string ("CPU_P" or "CPU_E").
+ *  @param s   Input string ("CPU_P", "CPU_E", "QNN_GPU", "QNN_HTA").
  *  @param out Receives the parsed value on success.
  *  @return True if parsing succeeded.
  */
@@ -60,7 +69,25 @@ inline bool ParseHardwareTarget(const std::string &s, HardwareTarget *out) {
 		*out = HardwareTarget::kCpuE;
 		return true;
 	}
+	if (s == "QNN_GPU" || s == "GPU") {
+		*out = HardwareTarget::kQnnGpu;
+		return true;
+	}
+	if (s == "QNN_HTA" || s == "QNN_HTP" || s == "NPU") {
+		*out = HardwareTarget::kQnnHta;
+		return true;
+	}
+	if (s == "CPU") {
+		*out = HardwareTarget::kCpu;
+		return true;
+	}
 	return false;
+}
+
+/** @brief Returns true if |t| is a QNN-backed target (uses .qnn-ctx artifacts
+ *  via the IREE QNN HAL driver instead of .vmfb via local-task). */
+inline bool IsQnnTarget(HardwareTarget t) {
+	return t == HardwareTarget::kQnnGpu || t == HardwareTarget::kQnnHta;
 }
 
 //------------------------------------------------------------------------------
@@ -163,6 +190,22 @@ struct DispatchNode {
 	std::string vmfb_path_resolved; /**< Resolved absolute VMFB path. */
 
 	RunningStats run_stats; /**< Per-node runtime statistics. */
+
+	/** Robotics-deadline support (PR 6 of the rosy-sundae plan):
+	 *
+	 *  - skipped: when true, the runtime drops this node from execution
+	 *    entirely. The node is recorded in the trace CSV with run_us=0
+	 *    and a synthetic 'skipped' marker. Set from the schedule JSON's
+	 *    per-dispatch "skipped: true" field.
+	 *
+	 *  - deadline_ms: optional hard real-time deadline. When set and the
+	 *    runtime detects this node won't finish before the deadline, the
+	 *    runtime stops the OWNING JOB (matched by job_name) — no further
+	 *    nodes from that job execute. Recorded as deadline_violation in
+	 *    the trace.
+	 */
+	bool skipped = false;
+	double deadline_ms = 0.0;
 };
 
 /** @brief Top-level model holding all dispatch nodes and graph metadata. */

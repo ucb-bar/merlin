@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "kernels": [
+    {
+      "name": "qnn_relu_f32",
+      "source": "abi/relu_f32.qnn.cpp",
+      "source_lang": "qnn-context-binary",
+      "entry_symbol": "relu_f32",
+      "signature": {
+        "operands": [
+          {"role": "in",  "tensor": "tensor<1x16xf32>"},
+          {"role": "out", "tensor": "tensor<1x16xf32>"}
+        ]
+      },
+      "match": {"kind": "linalg_dag", "spec_path": "match/relu_f32.match.mlir"},
+      "targets": ["qnn-gpu", "qnn-hta"]
+    }
+  ]
+}

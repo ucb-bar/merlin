@@ -1,0 +1,38 @@
+# Phase-2 vecadd descriptor for the radiance_muon target.
+#
+# Manifest-mode equivalent of vecadd.yaml (Phase 1, inline kernel body).
+# This descriptor sources the kernel body from
+# benchmarks/Radiance/kernels/manifest.json (entry: radiance_vecadd_body)
+# instead of inlining it.
+#
+# Pipeline:
+#   merlin compile vecadd_v2.yaml --target radiance_muon
+#     ↓
+#   tools.kernels.precompile.precompile(manifest)  → radiance_vecadd_body.muon.o
+#     ↓
+#   render kernel_phase2.cpp.j2 (declares kernel as extern "C")
+#     ↓
+#   merlin build --profile radiance_muon --kernel-body-obj <obj>
+#     ↓ links wrapper.o + body.o + libmuonrt.a + tohost.S → kernel.radiance.elf
+
+kernel_name: vecadd
+num_warps: 4
+args_struct_name: VecAddArgs
+
+# Kernel-body source: precompile this manifest entry, link the .o.
+manifest: ../../benchmarks/Radiance/kernels/manifest.json
+kernel_entry_symbol: radiance_vecadd_body
+
+args_fields:
+  - { type: "__global float*", name: "A", init: "nullptr",
+      bind_from: "reinterpret_cast<__global float*>(A_raw)" }
+  - { type: "__global float*", name: "B", init: "nullptr",
+      bind_from: "reinterpret_cast<__global float*>(B_raw)" }
+  - { type: "__global float*", name: "C", init: "nullptr",
+      bind_from: "reinterpret_cast<__global float*>(C_raw)" }
+  - { type: "uint32_t",         name: "n", init: "0",
+      bind_from: "n" }
+
+# Data sidecar (same as Phase 1) — copied verbatim into the build dir as
+# `data` so the wrapper's `#include "data"` resolves correctly.
+data_file: "../../../radiance-kernels/kernels/vecadd/data"

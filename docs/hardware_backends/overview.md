@@ -53,10 +53,10 @@ conda run -n merlin-dev uv run tools/merlin.py chipyard validate gemmini_mx
 merlin chipyard build-sim gemmini_mx
 
 # Build the bare-metal IREE runtime
-conda run -n merlin-dev uv run tools/build.py --profile firesim --config release
+./merlin build --profile firesim --config release
 
 # Compile your model
-conda run -n merlin-dev uv run tools/compile.py \
+./merlin compile \
   models/mlp/mlp.q.int8.mlir --target gemmini_mx --quantized
 
 # Run on VCS

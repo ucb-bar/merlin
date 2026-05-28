@@ -1,0 +1,189 @@
+{
+  "integration_styles": [
+    "runtime_hal"
+  ],
+  "primary_integration": "runtime_hal",
+  "stages": [
+    {
+      "applies": true,
+      "blocking_questions": [
+        "Which model entrypoints (mlp, dronet, vit, etc.) are in scope for the first compile?"
+      ],
+      "read_paths": [
+        "docs/how_to/add_compile_target.md",
+        "docs/how_to/add_hardware_spec.md",
+        "models/",
+        "target_specs/examples/"
+      ],
+      "reason": "Every Merlin target needs a compile-target manifest and a capability spec to be reachable from `./merlin compile`.",
+      "repo_root": "merlin",
+      "stage": "ml_framework_import",
+      "validation_commands": [
+        "./merlin targetgen validate target_specs/examples/nvidia_cuda_sm89/capability.yaml"
+      ],
+      "write_paths": [
+        "models/nvidia_cuda_sm89.yaml",
+        "target_specs/examples/nvidia_cuda_sm89/capability.yaml",
+        "target_specs/examples/nvidia_cuda_sm89/overlays/"
+      ]
+    },
+    {
+      "applies": false,
+      "blocking_questions": [],
+      "read_paths": [
+        "docs/how_to/add_compiler_dialect_plugin.md",
+        "compiler/src/merlin/Dialect/"
+      ],
+      "reason": "Pure llvm_ukernel paths reuse generic IREE codegen; no Merlin dialect is required at this stage.",
+      "repo_root": "merlin",
+      "stage": "linalg_arith_dialect",
+      "validation_commands": [
+        "./merlin build --profile nvidia_cuda_sm89"
+      ],
+      "write_paths": []
+    },
+    {
+      "applies": false,
+      "blocking_questions": [],
+      "read_paths": [
+        "docs/how_to/add_compiler_dialect_plugin.md",
+        "docs/architecture/plugin_and_patch_model.md",
+        "compiler/plugins/target/",
+        "iree_compiler_plugin.cmake"
+      ],
+      "reason": "No post-global plugin needed for this integration style.",
+      "repo_root": "merlin",
+      "stage": "global_optimization",
+      "validation_commands": [
+        "./merlin build --profile nvidia_cuda_sm89"
+      ],
+      "write_paths": []
+    },
+    {
+      "applies": false,
+      "blocking_questions": [],
+      "read_paths": [
+        "compiler/src/merlin/Dialect/",
+        "third_party/iree_bar/compiler/src/iree/compiler/DispatchCreation/"
+      ],
+      "reason": "Default IREE dispatch-region formation is sufficient.",
+      "repo_root": "merlin",
+      "stage": "dispatch_generation",
+      "validation_commands": [
+        "./merlin build --profile nvidia_cuda_sm89",
+        "./merlin compile models/nvidia_cuda_sm89.yaml  # create this file: see docs/how_to/add_compile_target.md --target nvidia_cuda_sm89"
+      ],
+      "write_paths": []
+    },
+    {
+      "applies": true,
+      "blocking_questions": [
+        "What are the preferred tile shapes? Are they exposed on the spec?"
+      ],
+      "read_paths": [
+        "third_party/iree_bar/compiler/src/iree/compiler/Codegen/",
+        "compiler/src/merlin/Dialect/"
+      ],
+      "reason": "Target has tile constraints (vector length, systolic dims, scratchpad banking, ukernel layout) that require explicit data tiling decisions.",
+      "repo_root": "merlin",
+      "stage": "data_tiling",
+      "validation_commands": [
+        "./merlin build --profile nvidia_cuda_sm89",
+        "./merlin compile models/nvidia_cuda_sm89.yaml  # create this file: see docs/how_to/add_compile_target.md --target nvidia_cuda_sm89"
+      ],
+      "write_paths": [
+        "compiler/src/merlin/Dialect/NvidiaCudaSm89/Translation/"
+      ]
+    },
+    {
+      "applies": true,
+      "blocking_questions": [
+        "What synchronization primitives does the device expose (fences, events, barriers)?"
+      ],
+      "read_paths": [
+        "runtime/src/iree/hal/drivers/",
+        "target_specs/examples/nvidia_cuda_sm89/capability.yaml",
+        "target_specs/examples/nvidia_cuda_sm89/overlays/"
+      ],
+      "reason": "Target has an explicit command queue or device-side scheduling model that must be reflected in the runtime.",
+      "repo_root": "merlin",
+      "stage": "dispatch_scheduling",
+      "validation_commands": [
+        "./merlin build --profile nvidia_cuda_sm89"
+      ],
+      "write_paths": [
+        "target_specs/examples/nvidia_cuda_sm89/capability.yaml",
+        "runtime/src/iree/hal/drivers/nvidia_cuda_sm89/",
+        "samples/nvidia_cuda_sm89/",
+        "runtime/src/iree/hal/drivers/nvidia_cuda_sm89/dispatch_builder.c"
+      ]
+    },
+    {
+      "applies": false,
+      "blocking_questions": [],
+      "read_paths": [
+        "third_party/iree_bar/third_party/llvm-project/llvm/lib/Target/",
+        "third_party/iree_bar/compiler/src/iree/compiler/Codegen/",
+        "compiler/src/merlin/Dialect/"
+      ],
+      "reason": "Target consumes generic IREE executables; no custom exporter or LLVM intrinsic work is required initially.",
+      "repo_root": "merlin",
+      "stage": "executable_sources_llvm_intrinsics",
+      "validation_commands": [
+        "./merlin build --profile nvidia_cuda_sm89"
+      ],
+      "write_paths": []
+    },
+    {
+      "applies": true,
+      "blocking_questions": [
+        "How are completion events surfaced to the host? Polling, IRQ, or both?"
+      ],
+      "read_paths": [
+        "runtime/src/iree/hal/drivers/",
+        "docs/how_to/add_runtime_hal_driver.md"
+      ],
+      "reason": "Target exposes semaphores/events/barriers that the runtime must model for correctness and async overlap.",
+      "repo_root": "merlin",
+      "stage": "vm_hw_synchronization",
+      "validation_commands": [
+        "./merlin build --profile nvidia_cuda_sm89"
+      ],
+      "write_paths": [
+        "runtime/src/iree/hal/drivers/nvidia_cuda_sm89/device.c",
+        "runtime/src/iree/hal/drivers/nvidia_cuda_sm89/driver.c",
+        "runtime/src/iree/hal/drivers/nvidia_cuda_sm89/testing/"
+      ]
+    },
+    {
+      "applies": true,
+      "blocking_questions": [
+        "Does the device expose host-mappable memory, a command-buffer API, or only a driver-level submission interface?",
+        "Confirm launch packet ABI, completion contract, and code-object format."
+      ],
+      "read_paths": [
+        "docs/how_to/add_runtime_hal_driver.md",
+        "runtime/src/iree/hal/drivers/",
+        "iree_runtime_plugin.cmake",
+        "tools/build.py",
+        "docs/architecture/radiance_author_questions.md"
+      ],
+      "reason": "Target is a runtime-visible device; needs a HAL driver under `runtime/src/iree/hal/drivers/<target>/` per docs/how_to/add_runtime_hal_driver.md. (SIMT GPU \u2014 see radiance_author_questions.md for open contracts.)",
+      "repo_root": "merlin",
+      "stage": "hal_driver",
+      "validation_commands": [
+        "./merlin build --profile nvidia_cuda_sm89"
+      ],
+      "write_paths": [
+        "runtime/src/iree/hal/drivers/nvidia_cuda_sm89/api.h",
+        "runtime/src/iree/hal/drivers/nvidia_cuda_sm89/driver.c",
+        "runtime/src/iree/hal/drivers/nvidia_cuda_sm89/device.c",
+        "runtime/src/iree/hal/drivers/nvidia_cuda_sm89/registration/driver_module.c",
+        "runtime/src/iree/hal/drivers/nvidia_cuda_sm89/testing/",
+        "iree_runtime_plugin.cmake",
+        "tools/build.py"
+      ]
+    }
+  ],
+  "target": "nvidia_cuda_sm89"
+}

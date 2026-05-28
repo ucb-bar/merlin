@@ -2,6 +2,8 @@
 
 #include "compiler/src/merlin/Dialect/Gemmini/IR/GemminiAttrs.h"
 #include "compiler/src/merlin/Dialect/Gemmini/IR/GemminiOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "llvm/Support/ErrorHandling.h"
 

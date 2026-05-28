@@ -13,12 +13,24 @@ OUT_DIR="${REPO_ROOT}/build/compiled_models/${MODEL_NAME}/${TARGET}_${HW}_${BASE
 
 cd "${REPO_ROOT}"
 
+# Optional XPU-RT feedback overlay. The runner that orchestrates this
+# script (tools/run_full_loop.py) sets MERLIN_DIR to the merlin output
+# dir whose breakdowns/feedback.json should drive the next compile. If
+# unset, the path stays standalone and compile.py's --with-feedback is
+# omitted (additive-only invariant).
+FEEDBACK_ARGS=()
+if [[ -n "${MERLIN_DIR:-}" && -f "${MERLIN_DIR}/breakdowns/feedback.json" ]]; then
+  FEEDBACK_ARGS+=(--with-feedback "${MERLIN_DIR}/breakdowns/feedback.json")
+  echo "[feedback] using ${MERLIN_DIR}/breakdowns/feedback.json"
+fi
+
 conda run -n merlin-dev uv run tools/compile.py "${INPUT_MLIR}" \
   --build-dir host-merlin-release \
   --target "${TARGET}" \
   --hw "${HW}" \
   --dump-artifacts \
   --dump-phases \
+  "${FEEDBACK_ARGS[@]}" \
   --iree-compile-arg=--iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl256b,+xsmtvdot \
   --iree-compile-arg=--iree-llvmcpu-enable-ukernels=all \
   --iree-compile-arg=--iree-llvmcpu-link-ukernel-bitcode=true \

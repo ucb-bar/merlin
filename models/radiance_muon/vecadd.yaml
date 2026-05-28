@@ -1,0 +1,39 @@
+# vecadd kernel descriptor for the radiance_muon target.
+#
+# Drives `./merlin compile models/radiance_muon/vecadd.yaml --target radiance_muon`.
+# The compile step renders this into a kernel.cpp matching the upstream
+# radiance-kernels/kernels/vecadd/kernel.cpp, then build_tools/radiance/
+# cross-compiles it via llvm-muon clang.
+
+kernel_name: vecadd
+num_warps: 4
+args_struct_name: VecAddArgs
+
+# Argument struct fields. `init` is the C++ initializer in the
+# `<name>_args = { ... }` declaration; `bind_from` (optional) is the C++
+# expression assigned to that field at the top of main(), typically a
+# reinterpret_cast of a raw symbol from the data file.
+args_fields:
+  - { type: "__global float*", name: "A", init: "nullptr",
+      bind_from: "reinterpret_cast<__global float*>(A_raw)" }
+  - { type: "__global float*", name: "B", init: "nullptr",
+      bind_from: "reinterpret_cast<__global float*>(B_raw)" }
+  - { type: "__global float*", name: "C", init: "nullptr",
+      bind_from: "reinterpret_cast<__global float*>(C_raw)" }
+  - { type: "uint32_t",         name: "n", init: "0",
+      bind_from: "n" }
+
+# Per-thread kernel body. Inserted verbatim inside the static inline
+# function. The template wraps it with the standard signature
+# (void* arg, uint32_t tid_in_threadblock, uint32_t threads_per_threadblock,
+#  uint32_t threadblock_id) and casts `arg` to args_struct_name*.
+kernel_body: |
+  for (uint32_t i = tid_in_threadblock; i < args->n; i += threads_per_threadblock) {
+    args->C[i] = args->A[i] + args->B[i];
+  }
+
+# Path to the data sidecar (relative to this descriptor). Copied next to
+# the generated kernel.cpp as `data` so `#include "data"` in the template
+# resolves correctly. Same shape the upstream Make recipe uses: A_raw[],
+# B_raw[], C_raw[], n.
+data_file: "../../../radiance-kernels/kernels/vecadd/data"

@@ -1,0 +1,58 @@
+# SaturnOPU on bare-metal Spike — separate target YAML so the SaturnOPU
+# generic flags (which use the legacy `--iree-hal-target-backends=llvm-cpu`)
+# don't conflict with the kernel-embedding pipeline. The legacy flag
+# combined with `--iree-preprocessing-transform-spec-filename=` causes
+# iree-lld to emit non-PIC RISC-V relocations against codegen-emitted
+# constant pools (`.LCPI0_0`) that the bare-metal profile can't satisfy.
+#
+# Usage:
+#   ./merlin compile models/dronet/dronet.mlir \
+#       --target saturn_opu_spike --hw SPIKE \
+#       --kernels-dir benchmarks/SaturnOPU/kernels \
+#       --kernels-strict-coverage \
+#       --output-dir build/dronet_spike/
+#
+# Then embed the resulting .vmfb into a bare-metal RISC-V ELF using the
+# existing firesim sample at samples/SaturnOPU/simple_embedding_ukernel/
+# (build via `./merlin build --profile firesim`) and run with
+# `spike --isa=rv64gcv <elf>` — htif.ld provides the boot path; no pk needed.
+
+default_hw: SPIKE
+
+generic:
+  # Use the modern device-target flags (avoids the codegen-relocation
+  # conflict from --iree-hal-target-backends=).
+  - --iree-hal-target-device=local
+  - --iree-hal-local-target-device-backends=llvm-cpu
+  - --iree-llvmcpu-target-triple=riscv64-unknown-elf
+  - --iree-llvmcpu-target-abi=lp64d
+  # Bare-metal Spike doesn't implement OPU custom ISA; pure RVV only.
+  - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl256b
+  - --iree-llvmcpu-target-vector-width-in-bytes=32
+  # Disable both data-tiling layers — kernels operate on row-major tensors.
+  - --iree-opt-data-tiling=false
+  - --iree-dispatch-creation-data-tiling=false
+  # Disable IREE built-in ukernels so user kernels handle every linalg op
+  # (or `--kernels-strict-coverage` errors out at compile time).
+  - --iree-llvmcpu-enable-ukernels=none
+  - --iree-llvmcpu-link-ukernel-bitcode=false
+  - --iree-execution-model=async-external
+  # System-linker path (vs the default embedded-elf): with embedded-elf,
+  # iree-lld emits a non-PIC RISC-V code model that conflicts with our
+  # precompiled .o files. System linking sidesteps the relocation issue.
+  - --iree-llvmcpu-link-embedded=false
+  - --iree-vm-bytecode-module-strip-source-map=true
+  - --iree-vm-emit-polyglot-zip=false
+
+targets:
+  SPIKE: []
+
+quantized:
+  - --iree-llvmcpu-skip-intermediate-roundings=true
+  - --iree-llvmcpu-stack-allocation-limit=64mib
+
+models:
+  # Dronet uses im2col preprocessing — match what saturn_opu.yaml does so
+  # the post-preprocessing IR is comparable.
+  dronet:
+    - --iree-preprocessing-pass-pipeline=builtin.module(util.func(iree-preprocessing-convert-conv-to-channels-last), util.func(iree-global-opt-quantized-conv-to-conv), util.func(iree-global-opt-convert-conv2d-to-img2col))

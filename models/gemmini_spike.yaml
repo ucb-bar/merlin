@@ -1,0 +1,80 @@
+# Gemmini on bare-metal Spike — drives `./merlin compile` through the
+# real IREE pipeline with the gemmini compiler plugin enabled.
+#
+# Pipeline (mirrors models/saturn_opu_spike.yaml):
+#   linalg.matmul (tensor)
+#     └► (IREE GlobalOptimization)
+#     └► [POST-GLOBAL-OPT: gemmini plugin]
+#         convert-to-gemmini → lower-to-isa → canonicalize-func →
+#         lower-tile-to-isa → legalize-for-llvm-export
+#     └► (IREE DispatchCreation + bufferization + codegen)
+#     └► .vmfb with embedded RISC-V ELF (extracted via the same flow
+#         used by samples/SaturnOPU/simple_embedding_ukernel/).
+#
+# Usage:
+#   ./merlin compile tests/integration/gemmini_spike/fixtures/matmul_8x8x8_tensor.mlir \
+#       --target gemmini_spike --output-dir build/gemmini_spike_matmul/
+
+default_hw: SPIKE
+
+generic:
+  # Modern device-target flags (avoids the codegen-relocation conflict that
+  # the legacy `--iree-hal-target-backends=` flag produces on bare metal).
+  - --iree-hal-target-device=local
+  - --iree-hal-local-target-device-backends=llvm-cpu
+  - --iree-llvmcpu-target-triple=riscv64-unknown-elf
+  - --iree-llvmcpu-target-abi=lp64d
+  # rv64gc + RVV (matches the chipyard riscv-tools spike build the
+  # tests/integration/gemmini_spike harness exercises). The Gemmini ISA is
+  # injected later via gemmini.intr.* → llvm.riscv.* and consumed by
+  # `spike --extension=gemmini` at run time, not as a CPU feature flag here.
+  - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl256b
+  - --iree-llvmcpu-target-vector-width-in-bytes=32
+  # Disable IREE's data-tiling — gemmini.matmul recovery operates on the
+  # pre-data-tiled linalg.matmul shape.
+  - --iree-opt-data-tiling=false
+  - --iree-dispatch-creation-data-tiling=false
+  # Disable IREE's built-in ukernels — the gemmini plugin owns the
+  # contraction lowering on this target.
+  - --iree-llvmcpu-enable-ukernels=none
+  - --iree-llvmcpu-link-ukernel-bitcode=false
+  - --iree-execution-model=async-external
+  # Embedded-ELF format. The bare-metal IREE runtime built via --profile
+  # firesim has IREE_HAL_EXECUTABLE_LOADER_EMBEDDED_ELF=ON and no
+  # system-elf loader, so dispatches must be in embedded format or they
+  # silently fail to load (and the output buffer stays at the linalg.fill
+  # zero value, which is exactly the bug we hit on first end-to-end run).
+  # If iree-lld then crashes on non-PIC RISC-V relocations (the bug the
+  # SaturnOPU yaml dodges with link-embedded=false), debug from there.
+  - --iree-llvmcpu-link-embedded=true
+  - --iree-vm-bytecode-module-strip-source-map=true
+  - --iree-vm-emit-polyglot-zip=false
+
+plugin_flags:
+  - --iree-plugin=gemmini
+  - --iree-gemmini-enable
+  # Native gemmini codegen path: post-global-opt the gemmini plugin
+  # attaches an iree_codegen.compilation_info on each linalg.matmul,
+  # pinning a textual pass_pipeline that runs the gemmini recovery and
+  # ISA-tier lowering INSIDE the dispatch executable (via
+  # PipelineAttrInterface). IREE outlines the matmul as usual, then
+  # MaterializeUserConfigsPass propagates our translation_info to the
+  # dispatch func, and LLVMCPULowerExecutableTargetPass invokes our
+  # textual pipeline. The output .vmfb embeds a RISC-V ELF whose dispatch
+  # executable contains custom-3 (RoCC) opcodes lowered through
+  # gemmini.intr.* → llvm.intr.riscv.* → custom-3.
+  #
+  # Set this to `true` to keep the older codegen-fallback path (recover at
+  # host scope, then immediately lower back to vanilla linalg/tensor IR
+  # for IREE's standard codegen). The fallback path produces a runnable
+  # .vmfb whose matmul executes as scalar/vector RISC-V; useful for
+  # validating the recovery patterns without needing the dispatch-side
+  # codegen plumbing.
+  - --iree-gemmini-lower-back-to-iree=false
+
+targets:
+  SPIKE: []
+
+quantized:
+  - --iree-llvmcpu-skip-intermediate-roundings=true
+  - --iree-llvmcpu-stack-allocation-limit=64mib

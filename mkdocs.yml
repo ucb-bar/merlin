@@ -91,6 +91,7 @@ nav:
       - Build types: different_build_types.md
   - How-To:
       - Overview: how_to/index.md
+      - SmolVLA End-to-End: how_to/smolvla_end_to_end.md
       - Add Compiler Dialect Plugin: how_to/add_compiler_dialect_plugin.md
       - Add/Modify HAL Driver: how_to/add_runtime_hal_driver.md
       - Add Sample Application: how_to/add_sample_application.md

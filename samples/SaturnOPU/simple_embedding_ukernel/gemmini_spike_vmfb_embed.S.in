@@ -1,0 +1,11 @@
+// Assembly wrapper to embed the gemmini_spike matmul VMFB in a dedicated
+// section. The .vmfb_data output section is provided by htif.ld and is
+// placed AFTER heap+stack so medany ±2GB constraints on .text are honored.
+
+	.section .vmfb_data, "a", @progbits
+	.global _binary_gemmini_spike_vmfb_start
+	.global _binary_gemmini_spike_vmfb_end
+	.balign 16
+_binary_gemmini_spike_vmfb_start:
+	.incbin "@GEMMINI_SPIKE_VMFB_PATH@"
+_binary_gemmini_spike_vmfb_end:

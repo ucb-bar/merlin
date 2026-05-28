@@ -6,6 +6,8 @@ include "GemminiAttrs.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
+include "GemminiIntrinsicOps.td"
+
 class Gemmini_Op<string mnemonic, list<Trait> traits = []> :
     Op<Gemmini_Dialect, mnemonic, traits>;
 

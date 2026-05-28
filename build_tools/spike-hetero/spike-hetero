@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# spike-hetero — wrap `spike` with both Gemmini and Saturn-OPU extensions.
+#
+# Drop-in for testing merlin_hetero_runner Zephyr ELFs (or any bare-metal
+# RISC-V binary that mixes custom-3 Gemmini RoCC ops and OP-V OPU ops)
+# without needing FireSim. ~50× faster wall-clock than FireSim for dronet.
+#
+# Usage:
+#   ./spike-hetero <elf> [extra spike args...]
+#   ./spike-hetero --help    # prints spike's --help
+#
+# Environment:
+#   CHIPYARD_ROOT  chipyard checkout (required, gives us spike binary path)
+#   SPIKE_ISA      override ISA string (default: rv64gcv_zicntr)
+#   SPIKE_HARTS    override hart count (default: 2 to match the FireSim
+#                  DualSaturnOPUGemmini bitstream)
+#
+# Both libgemmini.so and libsaturn_opu.so must live in $RISCV/lib (run
+# `make install` in this directory if libsaturn_opu.so is missing).
+
+set -euo pipefail
+
+if [ -z "${CHIPYARD_ROOT:-}" ]; then
+    echo "spike-hetero: CHIPYARD_ROOT is unset" >&2
+    exit 1
+fi
+
+RISCV="${RISCV:-$CHIPYARD_ROOT/.conda-env/riscv-tools}"
+SPIKE="$RISCV/bin/spike"
+SPIKE_ISA="${SPIKE_ISA:-rv64gcv_zicntr}"
+SPIKE_HARTS="${SPIKE_HARTS:-2}"
+
+if [ ! -x "$SPIKE" ]; then
+    echo "spike-hetero: $SPIKE not executable" >&2
+    exit 1
+fi
+
+for lib in libgemmini.so libsaturn_opu.so; do
+    if [ ! -f "$RISCV/lib/$lib" ]; then
+        echo "spike-hetero: $RISCV/lib/$lib not found." >&2
+        echo "  For libsaturn_opu.so: run \`make install\` in $(dirname "$0")." >&2
+        exit 1
+    fi
+done
+
+exec "$SPIKE" \
+    --extension=gemmini \
+    --extension=saturn_opu \
+    --isa="$SPIKE_ISA" \
+    -p"$SPIKE_HARTS" \
+    "$@"

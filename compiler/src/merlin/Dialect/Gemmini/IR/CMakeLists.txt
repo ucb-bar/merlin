@@ -40,6 +40,15 @@ iree_tablegen_library(
   -gen-op-defs
   GemminiOps.cpp.inc)
 
+iree_tablegen_library(
+  NAME
+  GemminiConversionsGen
+  TD_FILE
+  "GemminiOps.td"
+  OUTS
+  -gen-llvmir-conversions
+  GemminiConversions.inc)
+
 iree_cc_library(
   NAME
   GemminiDialect
@@ -70,8 +79,10 @@ iree_cc_library(
   LLVMSupport
   MLIRArithDialect
   MLIRIR
+  MLIRLLVMDialect
   MLIRLinalgDialect
   MLIRMathDialect
+  MLIRMemRefDialect
   MLIRTensorDialect
   MLIRSupport
   PUBLIC)

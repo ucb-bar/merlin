@@ -1,0 +1,173 @@
+{
+  "integration_styles": [
+    "llvm_ukernel"
+  ],
+  "primary_integration": "llvm_ukernel",
+  "stages": [
+    {
+      "applies": true,
+      "blocking_questions": [
+        "Which model entrypoints (mlp, dronet, vit, etc.) are in scope for the first compile?"
+      ],
+      "read_paths": [
+        "docs/how_to/add_compile_target.md",
+        "docs/how_to/add_hardware_spec.md",
+        "models/",
+        "target_specs/examples/"
+      ],
+      "reason": "Every Merlin target needs a compile-target manifest and a capability spec to be reachable from `./merlin compile`.",
+      "repo_root": "merlin",
+      "stage": "ml_framework_import",
+      "validation_commands": [
+        "./merlin targetgen validate target_specs/examples/spacemit_x60_xsmtvdot/capability.yaml"
+      ],
+      "write_paths": [
+        "models/spacemit_x60_xsmtvdot.yaml",
+        "target_specs/examples/spacemit_x60_xsmtvdot/capability.yaml",
+        "target_specs/examples/spacemit_x60_xsmtvdot/overlays/"
+      ]
+    },
+    {
+      "applies": false,
+      "blocking_questions": [],
+      "read_paths": [
+        "docs/how_to/add_compiler_dialect_plugin.md",
+        "compiler/src/merlin/Dialect/"
+      ],
+      "reason": "Pure llvm_ukernel paths reuse generic IREE codegen; no Merlin dialect is required at this stage.",
+      "repo_root": "merlin",
+      "stage": "linalg_arith_dialect",
+      "validation_commands": [
+        "./merlin build --profile spacemit_x60_xsmtvdot"
+      ],
+      "write_paths": []
+    },
+    {
+      "applies": false,
+      "blocking_questions": [],
+      "read_paths": [
+        "docs/how_to/add_compiler_dialect_plugin.md",
+        "docs/architecture/plugin_and_patch_model.md",
+        "compiler/plugins/target/",
+        "iree_compiler_plugin.cmake"
+      ],
+      "reason": "No post-global plugin needed for this integration style.",
+      "repo_root": "merlin",
+      "stage": "global_optimization",
+      "validation_commands": [
+        "./merlin build --profile spacemit_x60_xsmtvdot"
+      ],
+      "write_paths": []
+    },
+    {
+      "applies": false,
+      "blocking_questions": [],
+      "read_paths": [
+        "compiler/src/merlin/Dialect/",
+        "third_party/iree_bar/compiler/src/iree/compiler/DispatchCreation/"
+      ],
+      "reason": "Default IREE dispatch-region formation is sufficient.",
+      "repo_root": "merlin",
+      "stage": "dispatch_generation",
+      "validation_commands": [
+        "./merlin build --profile spacemit_x60_xsmtvdot",
+        "./merlin compile models/spacemit_x60_xsmtvdot.yaml  # create this file: see docs/how_to/add_compile_target.md --target spacemit_x60_xsmtvdot"
+      ],
+      "write_paths": []
+    },
+    {
+      "applies": true,
+      "blocking_questions": [
+        "What are the preferred tile shapes? Are they exposed on the spec?"
+      ],
+      "read_paths": [
+        "third_party/iree_bar/compiler/src/iree/compiler/Codegen/",
+        "compiler/src/merlin/Dialect/"
+      ],
+      "reason": "Target has tile constraints (vector length, systolic dims, scratchpad banking, ukernel layout) that require explicit data tiling decisions.",
+      "repo_root": "merlin",
+      "stage": "data_tiling",
+      "validation_commands": [
+        "./merlin build --profile spacemit_x60_xsmtvdot",
+        "./merlin compile models/spacemit_x60_xsmtvdot.yaml  # create this file: see docs/how_to/add_compile_target.md --target spacemit_x60_xsmtvdot"
+      ],
+      "write_paths": [
+        "third_party/iree_bar/compiler/src/iree/compiler/Codegen/",
+        "third_party/iree_bar/runtime/src/iree/builtins/ukernel/"
+      ]
+    },
+    {
+      "applies": false,
+      "blocking_questions": [],
+      "read_paths": [
+        "runtime/src/iree/hal/drivers/",
+        "target_specs/examples/spacemit_x60_xsmtvdot/capability.yaml",
+        "target_specs/examples/spacemit_x60_xsmtvdot/overlays/"
+      ],
+      "reason": "Pure CPU/embedded paths use IREE's default scheduler.",
+      "repo_root": "merlin",
+      "stage": "dispatch_scheduling",
+      "validation_commands": [
+        "./merlin build --profile spacemit_x60_xsmtvdot"
+      ],
+      "write_paths": []
+    },
+    {
+      "applies": true,
+      "blocking_questions": [
+        "Will new LLVM intrinsics or feature bits be added? If so, plan the LLVM-then-IREE rebase order from docs/architecture/plugin_and_patch_model.md.",
+        "Are new RISC-V vendor intrinsics required, or do existing RVV/RISCV intrinsics suffice?",
+        "Will custom feature bits be added to RISCVFeatures.td (rebase order: LLVM \u2192 IREE)?"
+      ],
+      "read_paths": [
+        "third_party/iree_bar/third_party/llvm-project/llvm/lib/Target/",
+        "third_party/iree_bar/compiler/src/iree/compiler/Codegen/",
+        "compiler/src/merlin/Dialect/"
+      ],
+      "reason": "Target needs an exporter (text ISA / binary / LLVM intrinsics) to lower kernels into something the device can run. (RISC-V extension target.)",
+      "repo_root": "third_party/iree_bar/third_party/llvm-project",
+      "stage": "executable_sources_llvm_intrinsics",
+      "validation_commands": [
+        "./merlin build --profile spacemit_x60_xsmtvdot"
+      ],
+      "write_paths": [
+        "third_party/iree_bar/third_party/llvm-project/llvm/include/llvm/IR/IntrinsicsRISCV.td",
+        "third_party/iree_bar/third_party/llvm-project/llvm/lib/Target/RISCV/",
+        "third_party/iree_bar/compiler/src/iree/compiler/Codegen/"
+      ]
+    },
+    {
+      "applies": false,
+      "blocking_questions": [],
+      "read_paths": [
+        "runtime/src/iree/hal/drivers/",
+        "docs/how_to/add_runtime_hal_driver.md"
+      ],
+      "reason": "No device-visible sync primitives \u2014 VM uses generic CPU semantics.",
+      "repo_root": "merlin",
+      "stage": "vm_hw_synchronization",
+      "validation_commands": [
+        "./merlin build --profile spacemit_x60_xsmtvdot"
+      ],
+      "write_paths": []
+    },
+    {
+      "applies": false,
+      "blocking_questions": [],
+      "read_paths": [
+        "docs/how_to/add_runtime_hal_driver.md",
+        "runtime/src/iree/hal/drivers/",
+        "iree_runtime_plugin.cmake",
+        "tools/build.py"
+      ],
+      "reason": "No runtime device is required for this integration style.",
+      "repo_root": "merlin",
+      "stage": "hal_driver",
+      "validation_commands": [
+        "./merlin build --profile spacemit_x60_xsmtvdot"
+      ],
+      "write_paths": []
+    }
+  ],
+  "target": "spacemit_x60_xsmtvdot"
+}

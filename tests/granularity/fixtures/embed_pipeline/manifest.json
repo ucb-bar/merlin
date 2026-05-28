@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "kernels": [
+    {
+      "name": "add_8xf32",
+      "source": "src/add_8xf32.c",
+      "source_lang": "c",
+      "entry_symbol": "add_8xf32_workgroup",
+      "signature": {
+        "operands": [
+          {"role": "in",  "tensor": "tensor<?xf32>"},
+          {"role": "in",  "tensor": "tensor<?xf32>"},
+          {"role": "out", "tensor": "tensor<?xf32>"}
+        ]
+      },
+      "match": {
+        "kind": "linalg_dag",
+        "spec_path": "match/add_8xf32.match.mlir"
+      },
+      "targets": ["llvm-cpu-spacemit-x60"]
+    }
+  ]
+}

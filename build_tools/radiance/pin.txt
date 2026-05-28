@@ -1,0 +1,20 @@
+# Pinned commit of radiance-kernels validated against this build.
+#
+# The Muon kernel ABI (libmuonrt.a, mu_intrinsics.h, mu_schedule, tohost.S,
+# mu_link.ld) is unstable across radiance-kernels commits. Bump this pin
+# only after re-running:
+#
+#   1. byte-equivalence check: Merlin-built vecadd ELF nm-matches the
+#      radiance-kernels reference ELF.
+#   2. simv smoke: `merlin chipyard run-radiance-muon` exits 0 on
+#      RadianceMuonConfig (or whatever sim config we currently support).
+#
+# Mismatch behavior: Merlin's CMake should fail loud at configure time.
+# See merlin/build_tools/radiance/common.cmake for the check.
+
+radiance_kernels_commit = 56aad6e1620c452bd131c948f72352dab0754d6e
+radiance_kernels_subject = "Port gaussian and bfs from vortex"
+
+# Toolchain pinned via $LLVM_MUON / $RADIANCE_KERNELS_ROOT env vars.
+# The CMake glue resolves these at configure time and fails fast if either
+# is unset.

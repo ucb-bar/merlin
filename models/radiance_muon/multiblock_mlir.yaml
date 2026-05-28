@@ -1,0 +1,18 @@
+# Phase 2.10 demo descriptor — exercises tbid usage in MLIR codegen.
+
+kernel_name: multiblock
+num_warps: 4
+args_struct_name: MultiblockArgs
+
+mlir: ./multiblock.mlir
+kernel_entry_symbol: radiance_multiblock_body
+
+args_fields:
+  - { type: "__global float*", name: "src", init: "nullptr",
+      bind_from: "reinterpret_cast<__global float*>(src_raw)" }
+  - { type: "__global float*", name: "dst", init: "nullptr",
+      bind_from: "reinterpret_cast<__global float*>(dst_raw)" }
+  - { type: "uint32_t", name: "n", init: "0",
+      bind_from: "n" }
+
+data_file: "../../../radiance-kernels/kernels/saxpy/data"

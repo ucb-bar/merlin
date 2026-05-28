@@ -17,6 +17,7 @@ iree_cc_library(
   iree::compiler::Utils
   iree::gemmini::compiler::Dialect::Gemmini::IR::GemminiDialect
   iree::gemmini::compiler::Dialect::Gemmini::Transforms
+  iree::gemmini::compiler::Target::LLVMIR::Dialect::Gemmini::GemminiToLLVMIRTranslation
   MLIRFuncDialect
   MLIRIR
   MLIRTransforms

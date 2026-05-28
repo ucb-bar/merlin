@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// merlin spike testbench wrapper for gemmini.tile_matmul kernels.
+//
+// This file is template-rendered by tools/spike.py: tokens of the form
+// {{TOKEN}} are substituted before compile. The rendered file is then
+// statically linked together with kernel.o (compiled from lowered MLIR via
+// clang -target riscv64-unknown-elf) into a Spike-runnable ELF.
+
+#include <stdint.h>
+#include <stdio.h>
+
+#include "include/gemmini.h"
+
+// Static-shape `memref<MxKxi8>` after `finalize-memref-to-llvm` is passed as
+// the unrolled descriptor:
+//   (allocated_ptr, aligned_ptr, offset, size_0, size_1, stride_0, stride_1)
+// Everything is `int64_t` on rv64.
+extern void {{KERNEL_NAME}}(
+    int8_t  *a_alloc,  int8_t  *a_align, int64_t a_off,
+    int64_t a_s0,      int64_t a_s1,     int64_t a_st0, int64_t a_st1,
+    int8_t  *b_alloc,  int8_t  *b_align, int64_t b_off,
+    int64_t b_s0,      int64_t b_s1,     int64_t b_st0, int64_t b_st1,
+    int32_t *c_alloc,  int32_t *c_align, int64_t c_off,
+    int64_t c_s0,      int64_t c_s1,     int64_t c_st0, int64_t c_st1);
+
+#define M {{M}}
+#define K {{K}}
+#define N {{N}}
+
+// Aligned to a Gemmini DIM-row boundary; libgemmini.so default is DIM=16,
+// so 64-byte alignment is enough for both i8 and i32 tiles.
+static int8_t  __attribute__((aligned(64))) A[M][K];
+static int8_t  __attribute__((aligned(64))) B[K][N];
+static int32_t __attribute__((aligned(64))) C[M][N];
+
+int main(void) {
+    // Deterministic test pattern. The matching numpy reference in the
+    // .expected file uses (i + j) & 0x7F for A and the identity for B, so
+    // the result is just A.
+    for (int i = 0; i < M; ++i)
+        for (int j = 0; j < K; ++j)
+            A[i][j] = (int8_t)((i + j) & 0x7F);
+    for (int i = 0; i < K; ++i)
+        for (int j = 0; j < N; ++j)
+            B[i][j] = (int8_t)(i == j ? 1 : 0);
+    for (int i = 0; i < M; ++i)
+        for (int j = 0; j < N; ++j)
+            C[i][j] = 0;
+
+    // Reset Gemmini scale config to identity so a stale config from a prior
+    // test does not corrupt this run's output (defensive — the kernel emits
+    // its own config_st prologue but accumulator state is sticky).
+    gemmini_extended_config_st(0, 0, MVIN_SCALE_IDENTITY);
+    gemmini_extended_config_ld(K * sizeof(int8_t), MVIN_SCALE_IDENTITY,
+                                false, 0, 0);
+    gemmini_extended_config_ld(N * sizeof(int8_t), MVIN_SCALE_IDENTITY,
+                                false, 1, 0);
+
+    {{KERNEL_NAME}}(
+        A[0], A[0], 0, M, K, K, 1,
+        B[0], B[0], 0, K, N, N, 1,
+        C[0], C[0], 0, M, N, N, 1);
+    gemmini_fence();
+
+    // Print row-major output, one cell per `%ld` so the harness can diff
+    // against a numpy-generated .expected file.
+    printf("MERLIN_SPIKE_OUT_BEGIN\n");
+    for (int i = 0; i < M; ++i) {
+        for (int j = 0; j < N; ++j) {
+            printf("%ld%s", (long)C[i][j], j + 1 == N ? "" : " ");
+        }
+        printf("\n");
+    }
+    printf("MERLIN_SPIKE_OUT_END\n");
+    printf("MERLIN_SPIKE_DONE\n");
+    return 0;
+}

@@ -1,0 +1,64 @@
+# Merlin hardware recipe for the FireSim Shuttle Gemmini+OPU bitstream.
+#
+# Bitstream: alveo_u250_firesim_shuttle_gemmini_opu
+# Target: FireSimGemminiAndOPUShuttleConfig (2 Shuttle tiles, Gemmini RoCC on
+# hart 0, Saturn OPU vector unit (vLen=128, dLen=64) on hart 1, scalar RV64GC
+# on both harts). Validated 2026-05-13 with the gemmini_opu_test Zephyr sample
+# — see docs/dev_blog/2026-05-13-zephyr-on-hetero-shuttle-firesim.md.
+#
+# Pipeline driven by benchmarks/firesim_shuttle/run_all.sh:
+#   1. ./merlin compile <model>.mlir --target firesim_shuttle[_gemmini]
+#   2. west build samples/merlin_model_runner -- -DMERLIN_VMFB=...
+#   3. ./merlin chipyard stage-zephyr-workload firesim-shuttle-gemmini-opu \
+#        --elf <build>/zephyr/zephyr.elf
+#   4. cd $CHIPYARD_ROOT/sims/firesim/deploy && firesim infrasetup runworkload
+
+name: firesim-shuttle-gemmini-opu
+mode: firesim
+
+chipyard:
+  repo: https://github.com/ucb-bar/chipyard
+  branch: graphics
+
+# The bitstream was built externally (May 6 2026 run). See dev blog for the
+# exact submodule juggle required to elaborate the gemmini-mx + saturn driver.
+submodules: {}
+
+firesim:
+  build_recipe:
+    recipe_name: alveo_u250_firesim_shuttle_gemmini_opu
+    PLATFORM: xilinx_alveo_u250
+    TARGET_PROJECT: firesim
+    TARGET_PROJECT_MAKEFRAG: "{chipyard_root}/generators/firechip/chip/src/main/makefrag/firesim"
+    DESIGN: FireSim
+    TARGET_CONFIG: FireSimGemminiAndOPUShuttleConfig
+    CONFIG_PACKAGE: firechip.chip
+    PLATFORM_CONFIG: BaseXilinxAlveoU250Config
+    platform_config_args:
+      fpga_frequency: 30
+      build_strategy: TIMING
+    bit_builder_recipe: bit-builder-recipes/xilinx_alveo_u250.yaml
+
+  runtime:
+    topology: no_net_config
+    no_net_num_nodes: 1
+    default_hw_config: alveo_u250_firesim_shuttle_gemmini_opu
+    default_platform: XilinxAlveoU250InstanceDeployManager
+
+  # Bare-metal Zephyr workload. The ELF path is resolved by
+  # `merlin chipyard stage-zephyr-workload --elf <path>` at run time.
+  workload:
+    name: zephyr-merlin-shuttle
+    kind: bare-metal-zephyr
+    elf: "{zephyr_build_dir}/zephyr/zephyr.elf"
+    iree_install: "{merlin_root}/build/zephyr-vanilla-release/install"
+    outputs:
+      - "uartlog"
+
+merlin:
+  # Two YAML targets feed this bitstream: firesim_shuttle (scalar/RVV/OPU) and
+  # firesim_shuttle_gemmini (Gemmini plugin). The driver script picks per cell.
+  target: firesim_shuttle
+  profile: zephyr
+  zephyr_sample: samples/merlin_model_runner
+  # No `default_model`: benchmarks/firesim_shuttle/run_all.sh loops models.

@@ -29,10 +29,26 @@ static void print_usage(const char *argv0) {
 		"files\n"
 		"  --cpu_p_cpu_ids=0,1,2,3     Exactly 4 logical CPUs for CPU_P\n"
 		"  --cpu_e_cpu_ids=4,5         Exactly 2 logical CPUs for CPU_E\n"
+		"  --cpu_cpu_ids=0,1,2,3,4,5,6,7\n"
+		"                              Unified CPU device (all cores). "
+		"Opt-in;\n"
+		"                              auto-on when schedule references CPU.\n"
 		"  --visible_cores=8           Validate IDs are in [0, visible_cores)\n"
+		"  --qnn_gpu_enabled[=1|0]     Force-create the QNN_GPU device "
+		"(libQnnGpu.so).\n"
+		"                              Auto-on when the schedule references "
+		"QNN_GPU.\n"
+		"  --qnn_hta_enabled[=1|0]     Force-create the QNN_HTA device "
+		"(libQnnHtp.so / Hexagon\n"
+		"                              NPU). Auto-on when schedule references "
+		"QNN_HTA.\n"
 		"  --out_json=<path>           Write summary JSON\n"
 		"  --out_dot=<path>            Write DOT graph\n"
 		"  --trace_csv=<path>          Write trace CSV\n"
+		"  --telemetry_jsonl=<path>    Stream per-dispatch JSON-Lines for\n"
+		"                              XPU-RT hardware-in-the-loop feedback.\n"
+		"  --schedule_next=<path>      Watch this path for hot-swapped\n"
+		"                              schedules (atomic at epoch boundary).\n"
 		"\n"
 		"Notes:\n"
 		"  - This runner is strict and expects async-external dispatch VMFB "
@@ -67,12 +83,24 @@ int main(int argc, char **argv) {
 	const int report_every = (argc >= 6) ? parse_int_or_default(argv[5], 0) : 0;
 
 	const char *vmfb_dir = NULL;
-	const char *cpu_p_cpu_ids = "0,1,2,3";
-	const char *cpu_e_cpu_ids = "4,5";
+	// Performance cores 4-7 (Kryo 585 Gold, A77-derived) for CPU_P;
+	// efficiency cores 0-1 (Kryo 585 Silver, A55-derived) for CPU_E.
+	// Layout per QRB5165: cores 0-3 are A55 efficiency, 4-7 are A77
+	// performance (7 = prime). Defaulting CPU_P to the A55s caused
+	// per-layer dispatches to run 4-7x slower than the steady-state
+	// profile predicted; pinning to A77s closes that gap.
+	const char *cpu_p_cpu_ids = "4,5,6,7";
+	const char *cpu_e_cpu_ids = "0,1";
+	const char *cpu_cpu_ids = NULL; // unified CPU device (all cores) — opt-in
 	int visible_cores = 8;
+	int qnn_gpu_enabled = 0;
+	int qnn_hta_enabled = 0;
+	int cpu_use_local_sync = 0;
 	const char *out_json = NULL;
 	const char *out_dot = NULL;
 	const char *trace_csv = NULL;
+	const char *telemetry_jsonl = NULL;
+	const char *schedule_next = NULL;
 
 	for (int i = 6; i < argc; ++i) {
 		const char *v = NULL;
@@ -82,14 +110,32 @@ int main(int argc, char **argv) {
 			cpu_p_cpu_ids = v;
 		} else if ((v = get_flag_value(argv[i], "--cpu_e_cpu_ids"))) {
 			cpu_e_cpu_ids = v;
+		} else if ((v = get_flag_value(argv[i], "--cpu_cpu_ids"))) {
+			cpu_cpu_ids = v;
 		} else if ((v = get_flag_value(argv[i], "--visible_cores"))) {
 			visible_cores = parse_int_or_default(v, 8);
+		} else if ((v = get_flag_value(argv[i], "--qnn_gpu_enabled"))) {
+			qnn_gpu_enabled = parse_int_or_default(v, 1);
+		} else if (strcmp(argv[i], "--qnn_gpu_enabled") == 0) {
+			qnn_gpu_enabled = 1;
+		} else if ((v = get_flag_value(argv[i], "--qnn_hta_enabled"))) {
+			qnn_hta_enabled = parse_int_or_default(v, 1);
+		} else if (strcmp(argv[i], "--qnn_hta_enabled") == 0) {
+			qnn_hta_enabled = 1;
+		} else if ((v = get_flag_value(argv[i], "--cpu_use_local_sync"))) {
+			cpu_use_local_sync = parse_int_or_default(v, 1);
+		} else if (strcmp(argv[i], "--cpu_use_local_sync") == 0) {
+			cpu_use_local_sync = 1;
 		} else if ((v = get_flag_value(argv[i], "--out_json"))) {
 			out_json = v;
 		} else if ((v = get_flag_value(argv[i], "--out_dot"))) {
 			out_dot = v;
 		} else if ((v = get_flag_value(argv[i], "--trace_csv"))) {
 			trace_csv = v;
+		} else if ((v = get_flag_value(argv[i], "--telemetry_jsonl"))) {
+			telemetry_jsonl = v;
+		} else if ((v = get_flag_value(argv[i], "--schedule_next"))) {
+			schedule_next = v;
 		} else {
 			fprintf(stderr, "Unknown arg: %s\n\n", argv[i]);
 			print_usage(argv[0]);
@@ -107,10 +153,17 @@ int main(int argc, char **argv) {
 	cfg.vmfb_root_dir = vmfb_dir;
 	cfg.cpu_p_cpu_ids = cpu_p_cpu_ids;
 	cfg.cpu_e_cpu_ids = cpu_e_cpu_ids;
+	cfg.cpu_cpu_ids = cpu_cpu_ids;
 	cfg.visible_cores = visible_cores;
+	cfg.qnn_gpu_enabled = qnn_gpu_enabled;
+	cfg.qnn_hta_enabled = qnn_hta_enabled;
+	cfg.cpu_use_local_sync = cpu_use_local_sync;
 	cfg.out_json_path = out_json;
 	cfg.out_dot_path = out_dot;
 	cfg.trace_csv_path = trace_csv;
+	cfg.telemetry_jsonl_path = telemetry_jsonl;
+	cfg.telemetry_fd = -1; // path-based telemetry; main.c does not own an fd
+	cfg.schedule_next_path = schedule_next;
 
 	// SpacemiT X60-specific target configuration.
 	cfg.target_platform = "spacemit_x60";

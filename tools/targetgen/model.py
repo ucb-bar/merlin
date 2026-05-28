@@ -131,6 +131,77 @@ class DeploymentProfile:
 
 
 @dataclass(slots=True)
+class SourceRepository:
+    name: str
+    url: str | None
+    local_path: str
+    ref: str | None
+    source_kind_hints: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class SourceFinding:
+    kind: str
+    path: str
+    symbol: str | None
+    evidence: str
+    confidence: float
+
+
+@dataclass(slots=True)
+class SourceInventory:
+    target: str
+    repositories: list[SourceRepository]
+    findings: list[SourceFinding]
+    detected_source_kinds: list[str]
+    missing_information: list[str] = field(default_factory=list)
+
+
+PIPELINE_STAGES: tuple[str, ...] = (
+    "ml_framework_import",
+    "linalg_arith_dialect",
+    "global_optimization",
+    "dispatch_generation",
+    "data_tiling",
+    "dispatch_scheduling",
+    "executable_sources_llvm_intrinsics",
+    "vm_hw_synchronization",
+    "hal_driver",
+)
+
+
+@dataclass(slots=True)
+class PipelineStageSurface:
+    stage: str
+    applies: bool
+    reason: str
+    repo_root: str
+    read_paths: list[str] = field(default_factory=list)
+    write_paths: list[str] = field(default_factory=list)
+    validation_commands: list[str] = field(default_factory=list)
+    blocking_questions: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class ModificationMap:
+    target: str
+    integration_styles: list[str]
+    primary_integration: str
+    stages: list[PipelineStageSurface]
+
+
+@dataclass(slots=True)
+class Classification:
+    target: str
+    source_styles: list[str]
+    targetgen_styles: list[str]
+    primary_integration: str
+    confidence: float
+    missing_information: list[str] = field(default_factory=list)
+    rationales: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class TargetCapabilities:
     schema_version: int
     identity: TargetIdentity
@@ -147,6 +218,8 @@ class TargetCapabilities:
     references: list[str]
     capability_path: str
     deployment: DeploymentProfile | None = None
+    source_inventory: SourceInventory | None = None
+    external_toolchains: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(slots=True)

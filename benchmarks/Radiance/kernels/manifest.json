@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "kernels": [
+    {
+      "name": "radiance_vecadd_body",
+      "source": "abi/vecadd_body.cpp",
+      "source_lang": "cpp",
+      "entry_symbol": "radiance_vecadd_body",
+      "signature": {
+        "operands": [
+          {"role": "in",  "tensor": "tensor<?xf32>"},
+          {"role": "in",  "tensor": "tensor<?xf32>"},
+          {"role": "out", "tensor": "tensor<?xf32>"}
+        ]
+      },
+      "match": {
+        "kind": "named_op",
+        "op_name": "radiance.embed.vecadd"
+      },
+      "targets": ["radiance-muon"]
+    }
+  ]
+}

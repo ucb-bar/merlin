@@ -1,3 +1,15 @@
+// Drives the gemmini plugin's post-global-opt hook in the native-codegen
+// path (`--iree-gemmini-lower-back-to-iree=false`, the default shipped by
+// `models/gemmini_spike.yaml`). In this path the plugin does NOT lower
+// linalg.matmul into gemmini.matmul_tile at host scope; instead it attaches
+// `iree_codegen.compilation_info` on each linalg.matmul, pinning a textual
+// `iree_codegen.pass_pipeline` that runs the gemmini recovery + ISA-tier
+// lowering inside the dispatch executable (via PipelineAttrInterface).
+//
+// The host-recovery + lower-back-to-IREE path still exists (the
+// `--iree-gemmini-lower-back-to-iree=true` flag); see `convert-to-gemmini.mlir`
+// and `matmul-lower-to-isa.mlir` for direct lit coverage of the recovery
+// patterns at the dialect level.
 // RUN: iree-compile %s --iree-input-type=none --iree-hal-target-backends=llvm-cpu --compile-to=global-optimization --iree-plugin=gemmini --iree-gemmini-enable --iree-gemmini-lower-back-to-iree=false | FileCheck %s --check-prefix=CHECK-I8
 // RUN: iree-compile %s --iree-input-type=none --iree-hal-target-backends=llvm-cpu --compile-to=global-optimization --iree-plugin=gemmini --iree-gemmini-enable --iree-gemmini-enable-fp8-matmul --iree-gemmini-lower-back-to-iree=false | FileCheck %s --check-prefix=CHECK-FP8
 
@@ -48,14 +60,26 @@ func.func @main_fp8(%lhs: tensor<16x32xf8E4M3FN>, %rhs: tensor<64x32xf8E4M3FN>) 
   return %0 : tensor<16x64xbf16>
 }
 
+// In the native-codegen path the gemmini matmul ops never appear at host
+// scope; instead the linalg ops carry an `iree_codegen.compilation_info`
+// attribute that pins our textual `iree_codegen.pass_pipeline` for use
+// inside the dispatch executable. The textual pipeline body is opaque to
+// FileCheck so we just verify it is present and references the gemmini
+// passes.
+
 // CHECK-I8-LABEL: util.func public @main
-// CHECK-I8: gemmini.matmul_tile
+// CHECK-I8: compilation_info = #iree_codegen.compilation_info
+// CHECK-I8-SAME: merlin-gemmini-legalize-for-llvm-export
 // CHECK-I8-LABEL: util.func public @main_named
-// CHECK-I8: gemmini.matmul_tile
+// CHECK-I8: compilation_info = #iree_codegen.compilation_info
+// CHECK-I8-SAME: merlin-gemmini-legalize-for-llvm-export
 
 // CHECK-FP8-LABEL: util.func public @main
-// CHECK-FP8: gemmini.matmul_tile
+// CHECK-FP8: compilation_info = #iree_codegen.compilation_info
+// CHECK-FP8-SAME: merlin-gemmini-legalize-for-llvm-export
 // CHECK-FP8-LABEL: util.func public @main_named
-// CHECK-FP8: gemmini.matmul_tile
+// CHECK-FP8: compilation_info = #iree_codegen.compilation_info
+// CHECK-FP8-SAME: merlin-gemmini-legalize-for-llvm-export
 // CHECK-FP8-LABEL: util.func public @main_fp8
-// CHECK-FP8: gemmini.matmul_tile
+// CHECK-FP8: compilation_info = #iree_codegen.compilation_info
+// CHECK-FP8-SAME: merlin-gemmini-legalize-for-llvm-export
