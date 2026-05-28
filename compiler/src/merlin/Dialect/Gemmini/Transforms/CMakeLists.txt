@@ -33,12 +33,18 @@ iree_cc_library(
   Transforms
   HDRS
   "Passes.h"
+  "Transforms.h"
   SRCS
   "Passes.cpp"
   "ConvertToGemmini.cpp"
+  "Preprocess.cpp"
   "LowerToISA.cpp"
+  "LowerTileToISA.cpp"
   "GemminiCanonicalize.cpp"
   "LowerGemminiToIREE.cpp"
+  "LegalizeForLLVMExport.cpp"
+  "LowerIntrToMmio.cpp"
+  "AttachCompilationInfo.cpp"
   INCLUDES
   "${MERLIN_COMPILER_SOURCE_DIR}"
   "${IREE_BINARY_DIR}/compiler/plugins/merlin"
@@ -46,9 +52,16 @@ iree_cc_library(
   ::PassHeaders
   ::PassesIncGen
   iree::gemmini::compiler::Dialect::Gemmini::IR::GemminiDialect
+  iree::compiler::Codegen::Dialect::CPU::IR::IREECPUDialect
+  iree::compiler::Codegen::Dialect::Codegen::IR::IREECodegenDialect
+  iree::compiler::Dialect::HAL::IR::IR
   MLIRArithDialect
   MLIRFuncDialect
   MLIRIR
+  MLIRLLVMCommonConversion
+  MLIRLLVMDialect
+  MLIRMemRefDialect
+  MLIRSCFDialect
   MLIRQueryMatcher
   MLIRLinalgDialect
   MLIRMathDialect

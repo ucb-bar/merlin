@@ -2,6 +2,7 @@
 #define IREE_GEMMINI_COMPILER_DIALECT_GEMMINI_IR_GEMMINIOPS_H_
 
 #include "mlir/Bytecode/BytecodeOpInterface.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"

@@ -55,9 +55,39 @@ class LLVMTypeConverter;
 class RewritePatternSet;
 using OwningRewritePatternList = RewritePatternSet;
 
+// `mxFormat` selects the mxGemmini format encoding (per
+// `MxParameters.scala:124-130`): -1=Disabled (vanilla Gemmini, all MX bits
+// zero in CONFIG_EX), 0=Fp4, 1=Fp6_0, 2=Fp8_0, 3=Fp6_1, 4=Fp8_1.
+//
+// `clampSingleBlockMvin` forces the tile-matmul lowering to issue one MVIN
+// per j-tile (cols == dim). Required for the mxGemmini-MMIO target
+// (RadianceGemminiOnlyConfig) whose generated LoadController only allocates
+// a 6-bit MvinRs2.num_cols field — the default `blocks * dim` MVINs (with
+// blocks up to MAX_BYTES/dim = 4) overflow that field and trip the
+// "A single mvin instruction must load more than 0 bytes" assertion.
+// Default false preserves Phase 1-4 RoCC/Spike behavior byte-identically.
+//
+// `useLoopWs` (Phase 8) replaces the per-tile MVIN/PRELOAD/COMPUTE/MVOUT
+// expansion with a single LOOP_WS sequence (~11 commands per matmul:
+// CONFIG_EX + CONFIG_ST + 3×CONFIG_LD + 5×LOOP_WS_CONFIG_* + LOOP_WS +
+// FLUSH). The hardware then loops over the I/J/K tiles internally without
+// flooding the MMIO command queue. Default false keeps the Phase 1-7
+// per-tile lowering for the RoCC/Spike path. Required for the MMIO path
+// (RadianceGemminiOnlyConfig) to clear the GemminiTile.scala:446 backpressure
+// assertion that fires when ~56 commands per matmul are pushed faster
+// than gemmini's queue can drain.
+//
+// `dispatchDebug` opt-in (default false): emit volatile stores of binding
+// pointers + matmul-operand pointers to fixed DRAM trace regions
+// (MERLIN_DEBUG_BINDING_TRACE_ADDR / MERLIN_DEBUG_MATMUL_TRACE_ADDR) so
+// the runtime debug probes (built with -DMERLIN_DISPATCH_DEBUG=ON) can
+// read them back. Off in production; adds a handful of stores per matmul
+// dispatch when on.
 void populateGemminiLegalizeForLLVMExportPatterns(LLVMTypeConverter &converter,
 	RewritePatternSet &patterns, int64_t dim, int64_t addrLen, int64_t accRows,
-	int64_t bankRows, size_t sizeOfElemT, size_t sizeOfAccT);
+	int64_t bankRows, size_t sizeOfElemT, size_t sizeOfAccT,
+	int64_t mxFormat = -1, bool clampSingleBlockMvin = false,
+	bool useLoopWs = false, bool dispatchDebug = false);
 void configureGemminiLegalizeForExportTarget(LLVMConversionTarget &target);
 
 } // namespace mlir
