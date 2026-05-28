@@ -1,0 +1,23 @@
+# Phase 2.6 saxpy descriptor (MLIR mode).
+
+kernel_name: saxpy
+num_warps: 4
+args_struct_name: SaxpyArgs
+
+mlir: ./saxpy.mlir
+kernel_entry_symbol: radiance_saxpy_body
+
+# C++ wrapper args struct + bind expressions. Field order MUST match
+# the function-arg order in saxpy.mlir (the LLVM IR will receive these
+# in declaration order).
+args_fields:
+  - { type: "__global float*", name: "src",    init: "nullptr",
+      bind_from: "reinterpret_cast<__global float*>(src_raw)" }
+  - { type: "__global float*", name: "dst",    init: "nullptr",
+      bind_from: "reinterpret_cast<__global float*>(dst_raw)" }
+  - { type: "float",            name: "factor", init: "0.0f",
+      bind_from: "__builtin_bit_cast(float, factor_raw)" }
+  - { type: "uint32_t",         name: "n",      init: "0",
+      bind_from: "n" }
+
+data_file: "../../../radiance-kernels/kernels/saxpy/data"

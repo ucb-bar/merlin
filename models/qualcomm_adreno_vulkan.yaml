@@ -1,0 +1,16 @@
+# Qualcomm Adreno (Vulkan SPIR-V) target.
+#
+# Cross-compile only — this target produces a VMFB that an Adreno-equipped
+# device can run via IREE's vulkan HAL driver. Verification on host is
+# limited to structural inspection (`iree-dump-module`, the kernel-embedding
+# pipeline's own checks) and optional execution under lavapipe.
+
+default_hw: adreno
+
+generic:
+  - --iree-hal-target-device=vulkan
+
+targets:
+  adreno: []
+
+models: {}

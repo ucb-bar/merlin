@@ -58,9 +58,11 @@ __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+.mypy_cache/
 .ruff_cache/
 .uv-cache/
 .venv/
+.venv-*/
 .cache
 
 # Project-specific venv/cache
@@ -70,6 +72,9 @@ mlirEvolve/.pytest_cache/
 # Packaging artifacts
 merlin_dev.egg-info/
 *.egg-info/
+
+# Editor / IDE local config (devcontainer is dev-machine specific)
+.devcontainer/
 
 
 # -----------------------------------------------------------------------------
@@ -167,3 +172,6 @@ mlirEvolve/
 .chipyard_config.json
 .claude
 .codex
+
+.lit_test_times.txt
+models/tinyllama/tinyllama.q.int8.mlir

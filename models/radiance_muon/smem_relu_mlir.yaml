@@ -1,0 +1,24 @@
+# Phase 2.9 demo descriptor — exercises __shared smem on the MLIR path.
+
+kernel_name: smem_relu
+num_warps: 4
+args_struct_name: SmemReluArgs
+
+mlir: ./smem_relu.mlir
+kernel_entry_symbol: radiance_smem_relu_body
+
+# C++ wrapper args struct — order MUST match the function-arg order in
+# smem_relu.mlir (the LLVM IR will receive these in declaration order).
+# The shared memref is allocated by the wrapper as a static __shared
+# array; its descriptor is built from a kernel-side __shared symbol.
+args_fields:
+  - { type: "__global float*", name: "src", init: "nullptr",
+      bind_from: "reinterpret_cast<__global float*>(src_raw)" }
+  - { type: "__global float*", name: "dst", init: "nullptr",
+      bind_from: "reinterpret_cast<__global float*>(dst_raw)" }
+  - { type: "__shared float*", name: "smem_ptr", init: "g_smem_relu_scratch",
+      bind_from: "g_smem_relu_scratch" }
+  - { type: "uint32_t", name: "n", init: "0",
+      bind_from: "n" }
+
+data_file: "../../../radiance-kernels/kernels/saxpy/data"

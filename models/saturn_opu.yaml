@@ -39,6 +39,11 @@ targets:
     - --iree-opt-level=O3
     - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl256b
     - --iree-llvmcpu-target-vector-width-in-bytes=32
+  # For the bare-metal Spike target paired with the SaturnOPU kernel
+  # manifest see models/saturn_opu_spike.yaml — it lives in its own file
+  # because the legacy `--iree-hal-target-backends=` flag in this yaml's
+  # `generic` block conflicts with the custom-kernel embed path on bare
+  # metal (non-PIC RISC-V relocations that iree-lld can't satisfy).
 
 quantized:
   - --iree-llvmcpu-skip-intermediate-roundings=true

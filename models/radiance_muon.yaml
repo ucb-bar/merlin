@@ -1,0 +1,44 @@
+# Compile-flag bundle for the `radiance_muon` Merlin target.
+#
+# Drives `./merlin compile <kernel>.yaml --target radiance_muon`. The compile
+# pipeline for radiance_muon is fundamentally different from llvm-cpu /
+# Saturn / Spacemit targets:
+#
+#   * Input is a Jinja2 kernel descriptor YAML (see models/radiance_muon/
+#     vecadd.yaml for the schema), not MLIR. (MLIR support lands in Phase 2
+#     via the Merlin Radiance compiler plugin; the same descriptor schema
+#     is shared so the consumer interface is stable.)
+#   * The descriptor renders into a kernel.cpp matching the
+#     radiance-kernels/kernels/<name>/kernel.cpp shape, then `./merlin build
+#     --profile radiance_muon` cross-compiles it via llvm-muon clang.
+#   * Output: build/compiled_models/<kernel>/radiance_muon_<hw>_<kernel>/
+#     kernel.radiance.elf -- the Muon device kernel ready for `make
+#     run-binary CONFIG=RadianceMuonConfig BINARY=...`.
+#
+# Sub-targets (--hw):
+#   muon (default): pure Muon SIMT, no Gemmini coupling. Works on
+#                   RadianceMuonConfig (1 Muon core, fastest elaborate) and
+#                   RadianceSingleClusterConfig (2 Muon + Gemmini, kernel
+#                   must avoid Gemmini ops).
+
+default_hw: muon
+
+# These flags are forwarded as `merlin compile`'s post-emit C++ build args.
+# The flag set here mirrors radiance-kernels/kernels/common.mk MU_CFLAGS,
+# but at the compile-orchestration level (not the toolchain level — that's
+# handled by build_tools/radiance/riscv_muon.toolchain.cmake).
+generic:
+  - --emit-cpp
+  - --emit-template=build_tools/radiance/templates/kernel.cpp.j2
+
+targets:
+  muon:
+    - --num-warps=4
+    - --kernel-config=muon-default
+
+# Per-kernel overrides (descriptor-driven). When `merlin compile` is given a
+# YAML descriptor that lists a `models:` key here, the matching flags are
+# appended.
+models:
+  vecadd:
+    - --num-warps=4

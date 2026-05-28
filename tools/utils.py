@@ -63,3 +63,59 @@ def run_repo_script(relative_script: str, script_args: Sequence[str], dry_run: b
         eprint(f"Script not found: {script}")
         return 2
     return run(["bash", str(script), *script_args], dry_run=dry_run)
+
+
+def find_toolchain_binary(
+    name: str,
+    *,
+    env_var: str | None = None,
+    aliases: Sequence[str] = (),
+    fallbacks: Sequence[str] = (),
+) -> pathlib.Path:
+    """Locate a cross-toolchain binary, preferring portable paths.
+
+    Resolution order:
+      1. ``$env_var`` if set and the path exists.
+      2. ``shutil.which(name)`` on ``$PATH``.
+      3. Each alias under ``shutil.which``.
+      4. Each absolute path in ``fallbacks`` if it exists.
+
+    Raises ``FileNotFoundError`` with a helpful message if nothing resolves.
+
+    Example::
+
+        RISCV_OBJDUMP = find_toolchain_binary(
+            "riscv64-unknown-elf-objdump",
+            env_var="MERLIN_RISCV_OBJDUMP",
+            aliases=("riscv64-zephyr-elf-objdump",),
+            fallbacks=(),  # no developer-machine-specific absolute paths
+        )
+
+    Using this helper everywhere keeps machine-specific paths out of
+    `tools/<x>/` packages (see CLAUDE.md "Tool Extension Protocol" — the
+    no-overfit rule).
+    """
+    import shutil
+
+    if env_var:
+        env_val = os.environ.get(env_var)
+        if env_val and pathlib.Path(env_val).exists():
+            return pathlib.Path(env_val)
+
+    for candidate in (name, *aliases):
+        path = shutil.which(candidate)
+        if path:
+            return pathlib.Path(path)
+
+    for fallback in fallbacks:
+        if pathlib.Path(fallback).exists():
+            return pathlib.Path(fallback)
+
+    tried = [
+        f"$PATH (name={name!r}" + (f", aliases={list(aliases)!r}" if aliases else "") + ")",
+    ]
+    if env_var:
+        tried.insert(0, f"${env_var}")
+    if fallbacks:
+        tried.append(f"fallbacks={list(fallbacks)!r}")
+    raise FileNotFoundError(f"could not locate {name!r}; tried (in order): " + " → ".join(tried))

@@ -1,0 +1,147 @@
+# FireSim Shuttle (FireSimGemminiAndOPUShuttleConfig) — non-plugin variants.
+#
+# Drives `./merlin compile <model>.mlir --target firesim_shuttle [--hw <hw>]`.
+# Produces `riscv64-unknown-elf` `.vmfb` consumable by an IREE runtime built
+# under `--profile zephyr` (or `--profile firesim`) and loaded into a Zephyr
+# application on chipyard_riscv64.
+#
+# Bitstream config (see docs/dev_blog/2026-05-13-zephyr-on-hetero-shuttle-firesim.md):
+#   tile 0 = Shuttle + Gemmini RoCC (use models/firesim_shuttle_gemmini.yaml)
+#   tile 1 = Shuttle + Saturn OPU vector unit (vLen=128, dLen=64)
+#   both tiles: scalar RV64GC
+#
+# Sub-targets ("--hw"):
+#   scalar (no V) — runs on either hart
+#   RVV   (V, zvl128b)                 — runs on hart 1 only (tile 0 has no V)
+#   OPU   (V + xopu, mmt4d ukernel)    — runs on hart 1 only
+
+default_hw: OPU
+
+generic:
+  - --iree-hal-target-device=local
+  - --iree-hal-local-target-device-backends=llvm-cpu
+  - --iree-llvmcpu-target-triple=riscv64-unknown-elf
+  - --iree-llvmcpu-target-abi=lp64d
+  - --iree-vm-bytecode-module-strip-source-map=true
+  - --iree-vm-emit-polyglot-zip=false
+  # Use embedded-elf executable format. The IREE Zephyr runtime is built
+  # with IREE_HAL_EXECUTABLE_LOADER_EMBEDDED_ELF=ON (and no system-elf
+  # loader), so the VMFB must be embedded-elf or it loads as INCOMPATIBLE.
+  # (saturn_opu_spike.yaml uses link-embedded=false but that's specifically
+  # for the kernel-embedding path with precompiled custom .o files — not
+  # what scalar/RVV/OPU codegen here produces.)
+  - --iree-llvmcpu-link-embedded=true
+
+quantized:
+  - --iree-llvmcpu-skip-intermediate-roundings=true
+  - --iree-llvmcpu-stack-allocation-limit=64mib
+
+targets:
+  # Pure scalar RV64GC — no V. Runs on either hart of the Shuttle SoC.
+  scalar:
+    - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c
+    - --iree-llvmcpu-target-vector-width-in-bytes=8
+    - --iree-llvmcpu-enable-ukernels=none
+    - --iree-llvmcpu-link-ukernel-bitcode=false
+    - --iree-opt-data-tiling=false
+    - --iree-dispatch-creation-data-tiling=false
+
+  # Generic Shuttle Vector pipe (zvl128b, no accelerator). hart 1 only.
+  RVV:
+    # 2026-05-24: parity with ASPLOS27's RVV setup — enable mmt4d ukernel
+    # + O3 so the RVV comparison is apples-to-apples with the OPU column
+    # (which already uses these). Previously RVV used `enable-ukernels=none`
+    # (pure LLVM auto-vectorize) while OPU got the hand-tuned mmt4d ukernel
+    # path; that asymmetry was inflating the OPU-over-RVV speedup ratio.
+    # NOTE: data-tiling is OFF here because IREE crashes on im2col-produced
+    # matmul shapes when data-tiling tries to wrap them in an encoding
+    # (same root cause as the OPU encoding resolver issue handled via
+    # --iree-llvmcpu-disable-opu-encoding-resolver for OPU_IM2COL). For
+    # mlp_wide (matmul-only, no im2col) data-tiling would compile clean,
+    # but we keep it OFF for consistency across all 3 models.
+    - --iree-opt-level=O3
+    - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl128b
+    - --iree-llvmcpu-target-vector-width-in-bytes=16
+    - --iree-llvmcpu-enable-ukernels=mmt4d,pack,query_tile_sizes
+    - --iree-llvmcpu-link-ukernel-bitcode=true
+    - --iree-llvmcpu-enable-vector-contract-custom-kernels=true
+    - --iree-opt-data-tiling=false
+    - --iree-dispatch-creation-data-tiling=false
+
+  # Saturn OPU outer-product (VOPACC). hart 1 only.
+  # Mirrors models/saturn_opu.yaml `OPU` hw row, adjusted for the Shuttle pipe.
+  #
+  # Use this row for **matmul-only** models (mlp_wide, tinyllama-style MLPs).
+  # +xopu enables the OPU encoding resolver (data-tiled mmt4d → vopacc).
+  # For CNN models with conv layers, use OPU_IM2COL — the encoding resolver
+  # currently can't handle im2col-produced matmul shapes.
+  OPU:
+    - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl128b,+xopu
+    - --iree-llvmcpu-target-vector-width-in-bytes=16
+    # ukernel set lifted from saturn_opu.yaml:13 — mmt4d/pack/query_tile_sizes
+    # cover the OPU dispatch path; iree_uk_unpack hangs on narrow-M shapes.
+    - --iree-llvmcpu-enable-ukernels=mmt4d,pack,query_tile_sizes
+    - --iree-llvmcpu-link-ukernel-bitcode=true
+    - --iree-llvmcpu-enable-vector-contract-custom-kernels=true
+    - --iree-opt-data-tiling=true
+    - --iree-dispatch-creation-data-tiling=true
+
+  # OPU for CNN models — convs go through im2col → matmul → ukernel path.
+  # Mirrors saturn_opu.yaml's OPU_IM2COL row. Two key differences from OPU:
+  #   1. NO +xopu in cpu-features → disables the compile-time encoding
+  #      resolver, which currently mis-handles im2col-produced matmul
+  #      shapes (fails 'workgroup distribution verification' on the
+  #      linalg.generic that the resolver wraps around the matmul).
+  #   2. OPU custom opcodes still get emitted at compile time because the
+  #      linked mmt4d ukernel bitcode contains them inline (xopu-flavoured
+  #      iree_uk_mmt4d_riscv_64_xopu_* symbols are dragged in via
+  #      link-ukernel-bitcode=true). On non-OPU silicon the ukernel
+  #      hardware-detects and falls back to plain RVV.
+  # Verified on 2026-05-14: dronet 12 → 72 OPU ops (6×); yolov8n 0
+  # leftover vwmacc (100% conv coverage); both compile cleanly.
+  OPU_IM2COL:
+    # 2026-05-24: turn +xopu back ON for CNN models, paired with the new
+    # --iree-llvmcpu-disable-opu-encoding-resolver=true so the OPU
+    # encoding resolver (which can't materialize im2col matmul shapes
+    # without tripping VerifyWorkgroupDistribution) is bypassed, while
+    # the rest of +xopu's benefits stay active: scalarize-float-reduction
+    # safety, VectorContractCustomKernels OPU patterns, the OPU ukernel
+    # lowering path, and OPU-specific KernelDispatch tile selection.
+    # Net effect: CNN dispatches emit full-width OPU `.insn` opcodes
+    # in their hot loops instead of falling back to plain RVV.
+    - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl128b,+xopu
+    - --iree-llvmcpu-disable-opu-encoding-resolver=true
+    - --iree-llvmcpu-target-vector-width-in-bytes=16
+    - --iree-llvmcpu-enable-ukernels=mmt4d,pack,query_tile_sizes
+    - --iree-llvmcpu-link-ukernel-bitcode=true
+    - --iree-llvmcpu-enable-vector-contract-custom-kernels=true
+    - --iree-opt-data-tiling=true
+    - --iree-dispatch-creation-data-tiling=true
+
+# Per-model preprocessing.
+#
+# Use the saturn_opu-proven 3-step pipeline (channels-last →
+# quantized-conv-to-conv → im2col):
+#   1. `convert-conv-to-channels-last` transforms `linalg.conv_2d_nchw_fchw_q`
+#      (NCHW + quantized) into `linalg.conv_2d_nhwc_hwcf_q` so that…
+#   2. `quantized-conv-to-conv` (NHWC-only) can fire and strip the `_q`
+#      suffix into separate quantize/dequantize ops, leaving…
+#   3. `convert-conv2d-to-img2col` to rewrite the unquantized conv into
+#      `iree_linalg_ext.im2col` + `linalg.matmul`.
+#
+# Without step 1, the other two passes silently no-op on the NCHW form
+# and 100% of conv layers stay as `linalg.conv_2d_nchw_fchw_q`. This is
+# why the previous workaround left dronet and yolov8n with 0%/36% conv
+# coverage — restoring step 1 brings dronet to 100% conv-routed and
+# yolov8n to 0 leftover vwmacc.
+#
+# IMPORTANT: pair this preprocessing with `--hw OPU_IM2COL` (no +xopu)
+# for OPU compiles. The +xopu encoding resolver currently fails on the
+# matmul shapes that im2col produces (workgroup distribution verifier
+# error). For Gemmini there's no equivalent restriction — the Gemmini
+# dialect pattern matches both encoded and im2col-produced matmuls.
+models:
+  dronet:
+    - --iree-preprocessing-pass-pipeline=builtin.module(util.func(iree-preprocessing-convert-conv-to-channels-last), util.func(iree-global-opt-quantized-conv-to-conv), util.func(iree-global-opt-convert-conv2d-to-img2col))
+  yolov8_nano:
+    - --iree-preprocessing-pass-pipeline=builtin.module(util.func(iree-preprocessing-convert-conv-to-channels-last), util.func(iree-global-opt-quantized-conv-to-conv), util.func(iree-global-opt-convert-conv2d-to-img2col))

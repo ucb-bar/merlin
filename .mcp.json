@@ -1,0 +1,34 @@
+{
+  "mcpServers": {
+    "merlin-targetgen": {
+      "type": "stdio",
+      "command": "./merlin",
+      "args": ["mcp", "targetgen"]
+    },
+    "merlin-build": {
+      "type": "stdio",
+      "command": "./merlin",
+      "args": ["mcp", "build"]
+    },
+    "merlin-compile": {
+      "type": "stdio",
+      "command": "./merlin",
+      "args": ["mcp", "compile"]
+    },
+    "merlin-run": {
+      "type": "stdio",
+      "command": "./merlin",
+      "args": ["mcp", "run"]
+    },
+    "merlin-perf": {
+      "type": "stdio",
+      "command": "./merlin",
+      "args": ["mcp", "perf"]
+    },
+    "merlin-verify": {
+      "type": "stdio",
+      "command": "./merlin",
+      "args": ["mcp", "verify"]
+    }
+  }
+}

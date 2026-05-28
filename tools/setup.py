@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-# tools/setup.py
-"""Backs `./merlin setup`: bootstraps the developer environment — conda env,
-uv-managed Python deps, submodule sync (per profile), and prebuilt-artifact
-installation.
+"""Backs `./merlin setup`: bootstraps the developer environment.
 
-See docs/getting_started.md for the canonical first-time flow.
+Handles:
+- conda env sync against env_linux.yml / env_macOS.yml
+- Python deps via uv (preferred) or pip
+- git submodule init/update per profile (core, npu, smolvla, full)
+- toolchain install (SpacemiT, FireSim)
+- prebuilt artifact download + install
+
+See `docs/getting_started.md` for the canonical first-time flow.
 """
+
+from __future__ import annotations
 
 import argparse
 import pathlib
@@ -13,6 +19,9 @@ import platform
 import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
+import urllib.request
 
 import utils
 
@@ -21,26 +30,14 @@ PIP_REQ_FILE = utils.REPO_ROOT / "requirements.txt"
 
 SUBMODULE_STEP_PROFILES = {
     "core": [
-        {
-            "paths": ["third_party/iree_bar"],
-            "recursive": True,
-        },
+        {"paths": ["third_party/iree_bar"], "recursive": True},
     ],
     "npu": [
-        {
-            "paths": ["third_party/iree_bar"],
-            "recursive": True,
-        },
-        {
-            "paths": ["third_party/npu_model"],
-            "recursive": False,
-        },
+        {"paths": ["third_party/iree_bar"], "recursive": True},
+        {"paths": ["third_party/npu_model"], "recursive": False},
     ],
     "smolvla": [
-        {
-            "paths": ["third_party/iree_bar"],
-            "recursive": True,
-        },
+        {"paths": ["third_party/iree_bar"], "recursive": True},
         {
             "paths": [
                 "third_party/Understanding-PI0",
@@ -51,12 +48,35 @@ SUBMODULE_STEP_PROFILES = {
         },
     ],
     "full": [
-        {
-            "paths": [],
-            "recursive": True,
-        },
+        {"paths": [], "recursive": True},
     ],
 }
+
+# Prebuilt artifact catalog (merged from the former tools/install_prebuilt.py).
+PREBUILT_ARTIFACTS = {
+    "host-linux-x86_64": {
+        "asset_name": "merlin-host-linux-x86_64.tar.gz",
+        "build_dir": utils.REPO_ROOT / "build" / "host-merlin-perf",
+        "layout": "host-install-root",
+    },
+    "host-macos": {
+        "asset_name": "merlin-host-macos.tar.gz",
+        "build_dir": utils.REPO_ROOT / "build" / "host-merlin-perf",
+        "layout": "host-install-root",
+    },
+    "runtime-spacemit": {
+        "asset_name": "merlin-runtime-spacemit.tar.gz",
+        "build_dir": utils.REPO_ROOT / "build" / "spacemit-merlin-perf",
+        "layout": "runtime-tree",
+    },
+    "runtime-saturnopu": {
+        "asset_name": "merlin-runtime-saturnopu.tar.gz",
+        "build_dir": utils.REPO_ROOT / "build" / "firesim-merlin-perf",
+        "layout": "runtime-tree",
+    },
+}
+
+_PREBUILT_CACHE_DIR = utils.REPO_ROOT / "build" / "downloads" / "prebuilts"
 
 
 def setup_parser(parser: argparse.ArgumentParser):
@@ -74,7 +94,7 @@ def setup_parser(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--env-file",
         default=str(DEFAULT_CONDA_ENV_FILE),
-        help=("Conda environment file to use. " f"Default is platform-specific: {DEFAULT_CONDA_ENV_FILE.name}"),
+        help=f"Conda environment file to use. Default is platform-specific: {DEFAULT_CONDA_ENV_FILE.name}",
     )
     parser.add_argument("--offline", action="store_true", help="Run setup in offline mode when possible.")
     parser.add_argument("--skip-conda", action="store_true", help="Skip conda environment sync.")
@@ -83,9 +103,7 @@ def setup_parser(parser: argparse.ArgumentParser):
         "--python-deps",
         choices=["auto", "uv", "pip"],
         default="auto",
-        help=(
-            "Python dependency installer. " "'auto' prefers uv sync with uv.lock and falls back to pip requirements."
-        ),
+        help="Python dependency installer. 'auto' prefers uv sync with uv.lock and falls back to pip.",
     )
     parser.add_argument(
         "--conda-no-plugins",
@@ -93,7 +111,7 @@ def setup_parser(parser: argparse.ArgumentParser):
         default=None,
         help=(
             "Force CONDA_NO_PLUGINS for conda env update. "
-            "If unset, setup.py retries with CONDA_NO_PLUGINS=true on failure."
+            "If unset, setup retries with CONDA_NO_PLUGINS=true on failure."
         ),
     )
 
@@ -101,7 +119,7 @@ def setup_parser(parser: argparse.ArgumentParser):
         "--submodules-profile",
         choices=["core", "npu", "smolvla", "full"],
         default="core",
-        help=("Which submodule profile to initialize for the current Merlin " "checkout (default: core)."),
+        help="Which submodule profile to initialize (default: core).",
     )
     parser.add_argument(
         "--submodule-path",
@@ -130,10 +148,7 @@ def setup_parser(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--submodule-sync",
         action="store_true",
-        help=(
-            "Run `git submodule sync --recursive` before updating. "
-            "Submodule SHAs still come from the current Merlin commit."
-        ),
+        help="Run `git submodule sync --recursive` before updating.",
     )
 
     parser.add_argument(
@@ -155,7 +170,7 @@ def setup_parser(parser: argparse.ArgumentParser):
 
     parser.add_argument(
         "--prebuilt-artifact",
-        choices=["host-linux-x86_64", "host-macos", "runtime-spacemit", "runtime-saturnopu"],
+        choices=sorted(PREBUILT_ARTIFACTS.keys()),
         default="host-linux-x86_64",
         help="Which published Merlin prebuilt artifact to install.",
     )
@@ -174,6 +189,11 @@ def setup_parser(parser: argparse.ArgumentParser):
         action="store_true",
         help="Replace an existing destination build tree when installing a prebuilt artifact.",
     )
+
+
+# ---------------------------------------------------------------------------
+# env
+# ---------------------------------------------------------------------------
 
 
 def resolve_env_file(args) -> pathlib.Path:
@@ -236,6 +256,11 @@ def setup_env(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# submodules
+# ---------------------------------------------------------------------------
+
+
 def run_git_submodule_update(paths, *, recursive: bool, depth: int, jobs: int) -> int:
     cmd = ["git", "-C", str(utils.REPO_ROOT), "submodule", "update", "--init", "--jobs", str(jobs)]
     if recursive:
@@ -249,15 +274,8 @@ def run_git_submodule_update(paths, *, recursive: bool, depth: int, jobs: int) -
 
 def resolve_submodule_steps(args):
     steps = list(SUBMODULE_STEP_PROFILES[args.submodules_profile])
-
     if args.submodule_path:
-        steps.append(
-            {
-                "paths": list(args.submodule_path),
-                "recursive": bool(args.submodule_paths_recursive),
-            }
-        )
-
+        steps.append({"paths": list(args.submodule_path), "recursive": bool(args.submodule_paths_recursive)})
     return steps
 
 
@@ -305,7 +323,6 @@ def setup_submodules(args) -> int:
             return ret
 
     steps = resolve_submodule_steps(args)
-
     for step in steps:
         paths = step["paths"]
         recursive = step["recursive"]
@@ -319,8 +336,12 @@ def setup_submodules(args) -> int:
         )
         if ret != 0:
             return ret
-
     return 0
+
+
+# ---------------------------------------------------------------------------
+# toolchain
+# ---------------------------------------------------------------------------
 
 
 def run_toolchain_script(script_path: pathlib.Path, script_args: list[str]) -> int:
@@ -343,7 +364,6 @@ def setup_toolchain(args) -> int:
 
     if args.toolchain_target == "spacemit":
         return run_toolchain_script(spacemit_script, common_args)
-
     if args.toolchain_target == "firesim":
         firesim_args = list(common_args)
         if args.with_qemu:
@@ -353,29 +373,116 @@ def setup_toolchain(args) -> int:
     ret = run_toolchain_script(spacemit_script, common_args)
     if ret != 0:
         return ret
-
     firesim_args = list(common_args)
     if args.with_qemu:
         firesim_args.append("--with-qemu")
     return run_toolchain_script(firesim_script, firesim_args)
 
 
+# ---------------------------------------------------------------------------
+# prebuilt (inlined from former tools/install_prebuilt.py)
+# ---------------------------------------------------------------------------
+
+
+def _release_asset_url(repo: str, tag: str, asset_name: str) -> str:
+    if tag == "latest":
+        return f"https://github.com/{repo}/releases/latest/download/{asset_name}"
+    return f"https://github.com/{repo}/releases/download/{tag}/{asset_name}"
+
+
+def _download_file(url: str, dest: pathlib.Path, *, offline: bool, force: bool) -> int:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists() and not force:
+        print(f"Reusing existing download: {dest}")
+        return 0
+    if offline:
+        print(f"Offline mode enabled and file not already present: {dest}")
+        return 1
+    print(f"Downloading {url}")
+    try:
+        urllib.request.urlretrieve(url, dest)
+    except Exception as e:
+        print(f"Download failed: {e}")
+        return 1
+    return 0
+
+
+def _safe_extract_tar(archive_path: pathlib.Path, dest_dir: pathlib.Path) -> int:
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        with tarfile.open(archive_path, "r:*") as tar:
+            for member in tar.getmembers():
+                member_path = (dest_dir / member.name).resolve()
+                if not str(member_path).startswith(str(dest_dir.resolve())):
+                    print(f"Refusing to extract suspicious path from archive: {member.name}")
+                    return 1
+            tar.extractall(dest_dir)
+    except Exception as e:
+        print(f"Extraction failed for {archive_path}: {e}")
+        return 1
+    return 0
+
+
+def _copy_tree_contents(src: pathlib.Path, dst: pathlib.Path) -> None:
+    dst.mkdir(parents=True, exist_ok=True)
+    for child in src.iterdir():
+        dest_child = dst / child.name
+        if child.is_dir():
+            shutil.copytree(child, dest_child, dirs_exist_ok=True)
+        else:
+            shutil.copy2(child, dest_child)
+
+
 def setup_prebuilt(args) -> int:
-    cmd = [
-        sys.executable,
-        str(utils.REPO_ROOT / "tools" / "install_prebuilt.py"),
-        "--artifact",
-        args.prebuilt_artifact,
-        "--tag",
-        args.prebuilt_tag,
-        "--repo",
-        args.prebuilt_repo,
-    ]
-    if args.prebuilt_force:
-        cmd.append("--force")
-    if args.offline:
-        cmd.append("--offline")
-    return utils.run(cmd, dry_run=False)
+    """Install a published Merlin prebuilt artifact into build/."""
+    spec = PREBUILT_ARTIFACTS[args.prebuilt_artifact]
+    asset_name = spec["asset_name"]
+    build_dir = spec["build_dir"]
+    layout = spec["layout"]
+
+    _PREBUILT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    archive_path = _PREBUILT_CACHE_DIR / asset_name
+    url = _release_asset_url(args.prebuilt_repo, args.prebuilt_tag, asset_name)
+
+    ret = _download_file(url, archive_path, offline=args.offline, force=args.prebuilt_force)
+    if ret != 0:
+        return ret
+
+    with tempfile.TemporaryDirectory(prefix="merlin-prebuilt-") as tmp:
+        tmp_dir = pathlib.Path(tmp)
+        ret = _safe_extract_tar(archive_path, tmp_dir)
+        if ret != 0:
+            return ret
+
+        entries = list(tmp_dir.iterdir())
+        if len(entries) != 1 or not entries[0].is_dir():
+            print(f"Expected a single top-level directory in {archive_path}")
+            return 1
+        payload_root = entries[0]
+
+        if build_dir.exists():
+            if not args.prebuilt_force:
+                print(f"Destination already exists: {build_dir}")
+                print("Re-run with --prebuilt-force to replace it.")
+                return 1
+            shutil.rmtree(build_dir)
+        build_dir.mkdir(parents=True, exist_ok=True)
+
+        if layout == "host-install-root":
+            shutil.copytree(payload_root, build_dir / "install", dirs_exist_ok=True)
+        elif layout == "runtime-tree":
+            _copy_tree_contents(payload_root, build_dir)
+        else:
+            print(f"Unknown prebuilt layout: {layout}")
+            return 1
+
+    print(f"Installed prebuilt artifact '{args.prebuilt_artifact}' into {build_dir}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
 
 
 def main(args: argparse.Namespace) -> int:

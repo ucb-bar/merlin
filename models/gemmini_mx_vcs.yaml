@@ -1,0 +1,114 @@
+# mxGemmini on bare-metal VCS (RadianceGemminiOnlyConfig) — drives
+# `./merlin compile` through the IREE plugin pipeline with the gemmini
+# plugin in MMIO command-issue mode.
+#
+# Pipeline (extends gemmini_spike.yaml with two Phase-5 mxGemmini knobs):
+#   linalg.matmul (tensor)
+#     └► (IREE GlobalOptimization)
+#     └► [POST-GLOBAL-OPT: gemmini plugin]
+#         attach iree_codegen.compilation_info(pass_pipeline=
+#           "iree-codegen-llvmcpu-bufferization-pipeline,
+#            gemmini-lower-tile-to-isa, canonicalize, cse,
+#            iree-codegen-erase-hal-descriptor-type-from-memref,
+#            merlin-gemmini-legalize-for-llvm-export{... mx-format=1 ...},
+#            gemmini-lower-intr-to-mmio{mmio-base=0x40084000},
+#            canonicalize, cse")
+#     └► (IREE DispatchCreation + bufferization + codegen)
+#     └► .vmfb with embedded RISC-V ELF whose dispatch body issues
+#        Gemmini commands as volatile MMIO stores (no custom-3 RoCC).
+#
+# Why MMIO and not RoCC: in chipyard's RadianceGemminiOnlyConfig, the
+# Rocket "small core" has no RoCC port — Gemmini sits as a cluster-side
+# MMIO peripheral at GEMMINI_CTRL=0x40084000. The reference kernel
+# (chipyard/.../gemmini-rocc-tests/bareMetalC/matmul_ws_mx_generic.c)
+# demonstrates the access pattern: write rs1/rs2/encoded-instruction to
+# offsets 0x10/0x18/0x00. Our gemmini-lower-intr-to-mmio pass produces
+# the equivalent llvm.store volatile sequence for every gemmini.intr.*.
+#
+# Why VCS and not Verilator: the disabled-Muon RadianceGemminiOnlyConfig
+# still pulls in ETH Zurich's CVFPU IP (mxGemmini's bf16 accumulator
+# datapath). Verilator rejects fpnew_fma_multi.sv with BLKANDNBLK errors.
+# build_tools/hardware/radiance_muon.yaml documents the same Verilator
+# blocker.
+#
+# Usage:
+#   # FP8 (default — broadest dynamic range):
+#   ./merlin compile tests/integration/gemmini_mx_vcs/fixtures/matmul_16x16x16_fp6.mlir \
+#       --target gemmini_mx_vcs --output-dir build/gemmini_mx_vcs_matmul/
+#
+#   # FP4 (tightest precision):
+#   ./merlin compile tests/integration/gemmini_mx_vcs/fixtures/mlp_3layer_fp4.mlir \
+#       --target gemmini_mx_vcs --hw VCS_FP4 --output-dir build/gemmini_mx_vcs_fp4_mlp/
+
+default_hw: VCS
+
+generic:
+  - --iree-hal-target-device=local
+  - --iree-hal-local-target-device-backends=llvm-cpu
+  - --iree-llvmcpu-target-triple=riscv64-unknown-elf
+  - --iree-llvmcpu-target-abi=lp64d
+  # rv64gc, no RVV — matches the small Rocket core in
+  # RadianceGemminiOnlyConfig.
+  - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c
+  - --iree-llvmcpu-target-vector-width-in-bytes=8
+  - --iree-opt-data-tiling=false
+  - --iree-dispatch-creation-data-tiling=false
+  - --iree-llvmcpu-enable-ukernels=none
+  - --iree-llvmcpu-link-ukernel-bitcode=false
+  - --iree-execution-model=async-external
+  - --iree-llvmcpu-link-embedded=true
+  - --iree-vm-bytecode-module-strip-source-map=true
+  - --iree-vm-emit-polyglot-zip=false
+
+# Shared mxGemmini plugin flags. The mx-format and bank-rows knobs vary
+# per hw variant — see `targets:` below.
+plugin_flags:
+  - --iree-plugin=gemmini
+  - --iree-gemmini-enable
+  - --iree-gemmini-lower-back-to-iree=false
+  # MMIO command-issue path. Without this flag the dispatch ELF emits
+  # custom-3 RoCC instructions, which the small Rocket core in
+  # RadianceGemminiOnlyConfig has no port to consume.
+  - --iree-gemmini-command-issue=mmio
+  # Cluster-0 GEMMINI_CTRL window (matches matmul_ws_mx_generic.c:28).
+  # The dispatch's volatile stores hit base + 0x10/0x18/0x00.
+  - --iree-gemmini-mmio-base=0x40084000
+  # Element bit width for FP6 packed two-per-byte. The dialect treats it
+  # as i8 at the buffer level (libgemmini handles the FP6 unpack inside
+  # the systolic array), so elem-bits=8 is correct here.
+  - --iree-gemmini-elem-bits=8
+  - --iree-gemmini-acc-bits=32
+
+# mxGemmini format selection per hw variant.
+#
+# mxGemmini's default `MxFPMul` (gemmini-mx/.../MxFPMul.scala:18-21)
+# enables three act×wei combinations:
+#   - fp4   (E2M2, 4 bits)
+#   - fp6_1 (E3M3, 6 bits)
+#   - fp8_0 (E4M4, 8 bits)
+# `fp6_0` (E2M4) and `fp8_1` (E5M3) are NOT supported by the default
+# hardware config — do not add them as variants here.
+#
+# Path B (2026-05-08): with --use-loop-ws=true (the default for MMIO
+# command issue) and the spad-source emitter tiledMatmulOuterLoopWsSpad
+# in LegalizeForLLVMExport.cpp, the compiler matches what
+# matmul_ws_mx_generic.c does on mxGemmini.
+targets:
+  # FP8 variant (default) — broadest dynamic range (±448 saturation).
+  VCS:
+    - --iree-gemmini-mx-format=fp8_0
+    # mxGemmini scratchpad geometry — see
+    # third_party/gemmini-mx/software/gemmini-rocc-tests/include/gemmini_params.h
+    # which has BANK_ROWS=2048 (vs vanilla libgemmini's 4096). Our compiler
+    # default of 4096 means pre-MVIN B writes spad rows up to 16384, beyond
+    # the actual 8192-row capacity — causing pipeline stalls.
+    - --iree-gemmini-bank-rows=2048
+  # FP4 variant — tightest precision (±6 saturation). Inputs must be
+  # pre-normalized to fit in this range. Packed two-per-byte at the
+  # buffer level; libgemmini handles unpacking inside the systolic array.
+  VCS_FP4:
+    - --iree-gemmini-mx-format=fp4
+
+quantized:
+  - --iree-llvmcpu-skip-intermediate-roundings=true
+  - --iree-llvmcpu-stack-allocation-limit=64mib

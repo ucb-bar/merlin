@@ -1,0 +1,34 @@
+# Phase 2.6 MLIR-mode vecadd descriptor for the radiance_muon target.
+#
+# Pipeline:
+#   merlin compile vecadd_mlir.yaml --target radiance_muon
+#     ↓ iree-compile (with Radiance plugin)
+#         --iree-radiance-enable=true
+#         --iree-radiance-emit-llvm-ir=true
+#         --iree-radiance-emit-llvm-ir-path=<out>/radiance_vecadd_body.ll
+#     ↓ synthesize a one-entry manifest with source_lang: ll
+#     ↓ tools/kernels/precompile.py: llvm-muon clang -c .ll → .o
+#     ↓ render kernel_phase2.cpp.j2 (extern "C" kernel decl)
+#     ↓ ./merlin build --kernel-body-obj <obj>
+#   kernel.radiance.elf
+
+kernel_name: vecadd
+num_warps: 4
+args_struct_name: VecAddArgs
+
+# Kernel-body source: MLIR file, lowered to LLVM IR by the Radiance
+# compiler plugin.
+mlir: ./vecadd.mlir
+kernel_entry_symbol: radiance_vecadd_body
+
+args_fields:
+  - { type: "__global float*", name: "A", init: "nullptr",
+      bind_from: "reinterpret_cast<__global float*>(A_raw)" }
+  - { type: "__global float*", name: "B", init: "nullptr",
+      bind_from: "reinterpret_cast<__global float*>(B_raw)" }
+  - { type: "__global float*", name: "C", init: "nullptr",
+      bind_from: "reinterpret_cast<__global float*>(C_raw)" }
+  - { type: "uint32_t",         name: "n", init: "0",
+      bind_from: "n" }
+
+data_file: "../../../radiance-kernels/kernels/vecadd/data"

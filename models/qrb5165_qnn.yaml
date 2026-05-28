@@ -1,0 +1,44 @@
+# Qualcomm QRB5165 (Snapdragon SA8155 / RB5) — QNN backend.
+#
+# Picks the QNN backend via `--hw`:
+#   - GPU (default): Adreno — fp32 / fp16. The QRB5165's Hexagon 698 is
+#                    v66, so bf16 is unavailable (HTP v68+ only).
+#   - HTA          : Hexagon Tensor Accelerator — uint8 only. Conv2D and
+#                    activation tensors travel as QNN_DATATYPE_UFIXED_POINT_8;
+#                    bias accepts uint8 or sfixed_point_32. No signed int8,
+#                    no fp paths.
+#
+# Compile path (both backends):
+#   .mlir -> kernel-embedding (manifest) substitutes matched dispatches
+#   with per-kernel .qnn-ctx blobs -> iree-compile produces a multi-device
+#   VMFB that wires QNN dispatches to the matching libQnn{Gpu,Hta}.so at
+#   runtime.
+#
+# Build the kernels on the board (matching backend lib) — fp16 weights
+# (GPU) and uint8 graphs (HTA) are both rejected by libQnnCpu's
+# compose-time validator. Set the environment before `./merlin compile`:
+#
+#   export QNN_USE_BOARD_BUILD=1
+#   export QNN_BOARD_HOST=qdev
+#   export QNN_BOARD_QAIRT_ROOT=/tmp/qnn_probe
+#
+# Usage:
+#   ./merlin compile <mlir> --target qrb5165_qnn           # GPU (default)
+#   ./merlin compile <mlir> --target qrb5165_qnn --hw HTA
+#
+# Kernel manifest is intentionally not declared inline (path resolution
+# would be fragile across fixtures). Pass it explicitly:
+#   ./merlin compile <mlir> --target qrb5165_qnn --hw HTA \
+#       --kernel-manifest benchmarks/QRB5165/kernels/manifest.json
+
+default_hw: GPU
+
+generic:
+  - --iree-hal-target-device=qnn
+  - --iree-execution-model=async-external
+
+targets:
+  GPU:
+    - --iree-hal-qnn-backend=gpu
+  HTA:
+    - --iree-hal-qnn-backend=hta

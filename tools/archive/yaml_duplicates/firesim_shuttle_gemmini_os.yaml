@@ -1,0 +1,118 @@
+# FireSim Shuttle (FireSimGemminiAndOPUShuttleConfig) — Gemmini OS-path
+# variant. Identical to firesim_shuttle_gemmini.yaml except this YAML
+# OMITS `--iree-gemmini-use-loop-ws=true`, so matmuls route through
+# the per-tile MVIN/PRELOAD/COMPUTE/MVOUT OS expansion path. Used for
+# reproducing + debugging the OS-emission bug surfaced by the progress
+# markers in `LegalizeForLLVMExport.cpp::spTiledMatmulOs`. Production
+# compiles should use firesim_shuttle_gemmini.yaml instead.
+#
+# Drives `./merlin compile <model>.mlir --target firesim_shuttle_gemmini_os --hw Gemmini`.
+# Produces a `riscv64-unknown-elf` `.vmfb` whose dispatch executables embed
+# Gemmini RoCC opcodes (custom-3, funct7 = k_MVIN/k_MVOUT/k_PRELOAD/...).
+# Loadable by an IREE runtime built under `--profile zephyr` and dispatched
+# on hart 0 of the Shuttle SoC (tile 0 has the Gemmini RoCC accelerator).
+#
+# Pipeline (mirrors models/gemmini_spike.yaml):
+#   linalg.matmul (tensor)
+#     └► (IREE GlobalOptimization)
+#     └► [POST-GLOBAL-OPT: gemmini plugin]
+#         convert-to-gemmini → lower-to-isa → canonicalize-func →
+#         lower-tile-to-isa → legalize-for-llvm-export
+#     └► (IREE DispatchCreation + bufferization + codegen)
+#     └► .vmfb with embedded RISC-V ELF containing custom-3 opcodes.
+#
+# Pin the Zephyr thread to hart 0 when running this VMFB on the SoC.
+
+default_hw: Gemmini
+
+generic:
+  # Modern device-target flags (avoids the codegen-relocation conflict that
+  # the legacy `--iree-hal-target-backends=` flag produces on bare metal).
+  - --iree-hal-target-device=local
+  - --iree-hal-local-target-device-backends=llvm-cpu
+  - --iree-llvmcpu-target-triple=riscv64-unknown-elf
+  - --iree-llvmcpu-target-abi=lp64d
+  # Scalar-only RV64GC (NO V). The Gemmini bitstream wires the RoCC
+  # accelerator on hart 0 only, and hart 0 has no V hardware in this
+  # Shuttle config. Including +v in cpu_features makes LLVM auto-vectorize
+  # non-matmul dispatch code (fills, broadcasts, reshapes) with vsetvli/
+  # vle/vse → illegal-instruction trap on hart 0 at runtime. The Gemmini
+  # plugin's own matmul recovery emits custom-3 RoCC opcodes, not V.
+  - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c
+  - --iree-llvmcpu-target-vector-width-in-bytes=8
+  # Disable IREE's data-tiling — gemmini.matmul recovery operates on the
+  # pre-data-tiled linalg.matmul shape.
+  - --iree-opt-data-tiling=false
+  - --iree-dispatch-creation-data-tiling=false
+  # Disable IREE's built-in ukernels — the gemmini plugin owns the
+  # contraction lowering on this target.
+  - --iree-llvmcpu-enable-ukernels=none
+  - --iree-llvmcpu-link-ukernel-bitcode=false
+  - --iree-execution-model=async-external
+  # Embedded-ELF format (required by the bare-metal IREE runtime which only
+  # has IREE_HAL_EXECUTABLE_LOADER_EMBEDDED_ELF=ON; system-elf loader is
+  # off). See gemmini_spike.yaml:42-49 for the diagnostic story.
+  - --iree-llvmcpu-link-embedded=true
+  - --iree-vm-bytecode-module-strip-source-map=true
+  - --iree-vm-emit-polyglot-zip=false
+
+plugin_flags:
+  - --iree-plugin=gemmini
+  - --iree-gemmini-enable
+  # Native gemmini codegen path: post-global-opt the gemmini plugin
+  # attaches an iree_codegen.compilation_info on each linalg.matmul,
+  # pinning a textual pass_pipeline that runs the gemmini recovery and
+  # ISA-tier lowering INSIDE the dispatch executable. The output .vmfb
+  # embeds a RISC-V ELF whose dispatch executable contains custom-3
+  # (RoCC) opcodes.
+  #
+  - --iree-gemmini-lower-back-to-iree=false
+
+quantized:
+  - --iree-llvmcpu-skip-intermediate-roundings=true
+  - --iree-llvmcpu-stack-allocation-limit=64mib
+
+# Two hw rows separate vanilla Gemmini (RoCC custom-3 with mx-format=-1) from
+# mxGemmini (CONFIG_EX rs1[15:10]/[5] populated, mxquant_config_mvout emitted).
+# Vanilla and MX both emit custom-3 opcodes; the differentiator is the
+# presence of funct7=26 (k_CONFIG_SCALE_MEM) in the MX build and the MX bits
+# in CONFIG_EX. See compiler/src/merlin/Dialect/Gemmini/Transforms/
+# LegalizeForLLVMExport.cpp:227-248,1654-1730 for the encoding.
+#
+# MX (microscaling) selects an fp shared-exponent block format and only
+# activates on fp matmuls; on int8-quantized models the matmul lowering is
+# bit-identical to the vanilla row (the mxFormat parse just doesn't fire any
+# extra commands when the matmul element type is integer).
+targets:
+  Gemmini:
+    - --iree-gemmini-mx-format=disabled
+  GemminiMX:
+    # fp8_0 (E4M4) shared exponent. Matches the matmul_ws_mx_generic.c
+    # reference kernel's default mxGemmini fmt. Switch to fp4/fp6_0/fp6_1/
+    # fp8_1 to exercise the other microscaling encodings; the only
+    # downstream effect is the rs1[15:10]/[5] bit pattern in CONFIG_EX
+    # (and the mvout requant scale path).
+    - --iree-gemmini-mx-format=fp8_0
+
+# Per-model preprocessing. Same 3-step pipeline as firesim_shuttle.yaml:
+#   channels-last → quantized-conv-to-conv → im2col
+#
+# `convert-conv-to-channels-last` is required because the upstream
+# `quantized-conv-to-conv` and `convert-conv2d-to-img2col` passes are
+# NHWC-only — without the channels-last transpose, dronet/yolov8n stay
+# as NCHW `linalg.conv_2d_nchw_fchw_q` and neither pass fires.
+#
+# Verified 2026-05-14 on post-ucb-bar/main iree_bar: dronet 852 → 9329
+# RoCC custom-3 ops (11× more) when all 10 convs route via Gemmini
+# dialect after im2col. Earlier "rank-0 output bug for stride>1
+# quantized convs" comment referenced a pre-switch IREE snapshot; the
+# current upstream channels-last pass is healthy.
+#
+# Gemmini's plugin pattern (`convert-to-gemmini`) matches matmul
+# shapes regardless of how they were produced, so unlike the OPU side
+# we don't need a separate hw row.
+models:
+  dronet:
+    - --iree-preprocessing-pass-pipeline=builtin.module(util.func(iree-preprocessing-convert-conv-to-channels-last), util.func(iree-global-opt-quantized-conv-to-conv), util.func(iree-global-opt-convert-conv2d-to-img2col))
+  yolov8_nano:
+    - --iree-preprocessing-pass-pipeline=builtin.module(util.func(iree-preprocessing-convert-conv-to-channels-last), util.func(iree-global-opt-quantized-conv-to-conv), util.func(iree-global-opt-convert-conv2d-to-img2col))

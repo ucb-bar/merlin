@@ -1,0 +1,32 @@
+# Compile flag bundle for the `zephyr_rocket_rv64` Merlin target.
+#
+# Drives `./merlin compile <model>.mlir --target zephyr_rocket_rv64 [--hw RVV]`.
+# Produces `riscv64-unknown-elf` `.vmfb` consumable by an IREE runtime that
+# was built with `./merlin build --profile zephyr` (single-thread local-sync
+# HAL under IREE_PLATFORM_GENERIC).
+#
+# Sub-targets ("--hw"):
+#   RVV (default): generic Rocket Vector pipe (zvl128b, no accelerator).
+
+default_hw: RVV
+
+generic:
+  - --iree-hal-target-device=local
+  - --iree-hal-local-target-device-backends=llvm-cpu
+  - --iree-llvmcpu-target-triple=riscv64-unknown-elf
+  - --iree-llvmcpu-target-abi=lp64d
+  - --iree-llvmcpu-target-vector-width-in-bytes=16
+  - --iree-llvmcpu-link-ukernel-bitcode=false
+  - --iree-llvmcpu-enable-ukernels=none
+  - --iree-llvmcpu-debug-symbols=true
+  - --iree-vm-bytecode-module-strip-source-map=true
+  - --iree-vm-emit-polyglot-zip=false
+
+quantized:
+  - --iree-llvmcpu-skip-intermediate-roundings=true
+
+targets:
+  RVV:
+    - --iree-llvmcpu-target-cpu-features=+m,+a,+f,+d,+c,+v,+zvl128b
+
+models: {}
