@@ -1,0 +1,58 @@
+# Radiance Muon recipe for Merlin (bare-metal Verilator).
+#
+# Per maintainer guidance (Hansung, Apr 2026):
+#   * RadianceMuonConfig elaborates faster (no Gemmini in the design).
+#   * RadianceSingleClusterConfig also works as long as the kernel does not
+#     issue Gemmini instructions.
+#   * Run shape: `make run-binary CONFIG=<config> BINARY=<elf>` from
+#     `chipyard/sims/verilator/`.
+#
+# Kernels live at https://github.com/ucb-bar/radiance-kernels and are
+# compiled with the custom llvm-muon toolchain (clang). See the kernels'
+# Makefile and the vecadd starter at kernels/vecadd.
+
+name: radiance-muon
+mode: bare-metal  # bare-metal | firesim | board
+
+chipyard:
+  repo: https://github.com/ucb-bar/chipyard
+  branch: main
+
+submodules:
+  radiance:
+    repo: https://github.com/ucb-bar/radiance
+    # Pin tracks the Hansung-recommended config family. Update via
+    # `./merlin chipyard validate radiance-muon` after a Chipyard refresh.
+    branch: main
+
+bare_metal:
+  # RadianceMuonConfig — fastest-elaborating Radiance configuration with no
+  # Gemmini, suitable as the first end-to-end Merlin oracle.
+  #
+  # Simulator choice: VCS, NOT Verilator. The Muon CVFPU IP
+  # (gen-collateral/fpnew_fma_multi.sv) uses both blocking and non-blocking
+  # assignments to the same registers, which Verilator rejects with
+  # `Error-BLKANDNBLK`. VCS accepts the IP as-is. The simv harness
+  # additionally embeds Cyclotron, the Muon functional simulator, which
+  # loads ELFs directly via its `loading ELF file:` mechanism.
+  config: RadianceMuonConfig
+  simulator: vcs
+
+# Optional reference kernels for validating the simulator.
+reference_tests:
+  radiance_kernels:
+    repo: https://github.com/ucb-bar/radiance-kernels
+    # The Makefiles under kernels/ expect llvm-muon (clang) on PATH; see
+    # the radiance-kernels README. Build entrypoints:
+    #   cd kernels/vecadd && make
+    #   cd kernels/<name>  && make
+    build_script: kernels/vecadd/Makefile
+    # The actual produced filename is `kernel.radiance.elf`, not vecadd.riscv.
+    # The Make recipe puts it directly in the kernel dir.
+    reference_binary: kernels/vecadd/kernel.radiance.elf
+
+merlin:
+  target: radiance_muon
+  profile: radiance_muon
+  # Default kernel for `merlin chipyard run-radiance-muon` when --kernel not set.
+  default_kernel_dir: "{radiance_kernels_root}/kernels/vecadd"
