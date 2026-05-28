@@ -1,25 +1,22 @@
-# Exporting TinyLlama-1.1B (8-Bit Weights) to MLIR using SHARK Tank
+# Export TinyLlama-1.1B (int8 weights) to MLIR via SHARK Tank
 
-This guide documents the step-by-step process to convert the TinyLlama-1.1B model into an 8-bit quantized GGUF file and then export it to the MLIR format using the SHARK Tank toolkit, following the GGUF LLM workflow. It includes troubleshooting steps for common dependency issues encountered during the process.
+Convert TinyLlama-1.1B to 8-bit GGUF with llama.cpp, then export to MLIR via
+SHARK Tank for IREE compilation.
 
-**Target:** Produce a `.mlir` file representing TinyLlama-1.1B with 8-bit weights and float activations, suitable for compilation with IREE.
+**Output:** a `.mlir` file with int8 weights + fp activations, ready for
+`./merlin compile` (or `iree-compile`).
 
-**Model:** [TinyLlama/TinyLlama-1.1B-Chat-v1.0](https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0)
+**Tools used:**
 
-**Frameworks/Tools:**
-* SHARK Tank ([nod-ai/shark-ai GitHub - Assumed](https://github.com/nod-ai/shark-ai/tree/main/sharktank) - *Note: Official link might differ*)
-* llama.cpp ([ggerganov/llama.cpp GitHub](https://github.com/ggerganov/llama.cpp))
-* Hugging Face Hub CLI ([Installation Guide](https://huggingface.co/docs/huggingface_hub/en/guides/cli))
-* IREE Compiler ([iree-org/iree GitHub](https://github.com/iree-org/iree))
+- [SHARK Tank](https://github.com/nod-ai/shark-ai/tree/main/sharktank)
+- [llama.cpp](https://github.com/ggerganov/llama.cpp)
+- [Hugging Face Hub CLI](https://huggingface.co/docs/huggingface_hub/en/guides/cli)
 
 ## Prerequisites
 
-Ensure you have the following installed:
-* Python (>= 3.9 recommended)
-* `pip` and `venv`
-* `git`
-* `cmake`
-* A C/C++ compiler toolchain (`build-essential` on Debian/Ubuntu, Xcode Command Line Tools on macOS, etc.)
+- Python ≥ 3.9 with `pip` + `venv`
+- `git`, `cmake`, a C/C++ compiler toolchain
+- A Hugging Face account (for `hf` login)
 
 ## Step 1: Set Up SHARK Tank Environment
 
@@ -126,7 +123,7 @@ python -m sharktank.examples.export_paged_llm_v1 \
   --output-config=/tmp/TinyLlama-1.1B-q8_0.json
 ```
 
-**Step 4: Compile MLIR to VMFB**
+## Step 4: Compile MLIR to VMFB
 
 Compile the generated .mlir file into an IREE deployable format (.vmfb).
 

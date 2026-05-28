@@ -49,7 +49,7 @@ Pattern already used:
 
 Add your target with the same compatibility style.
 
-## 4) Expose Build-Time Control In `tools/build.py`
+## 4) Expose Build-Time Control In `./merlin build`
 
 Add:
 
@@ -95,7 +95,7 @@ Examples:
 Build:
 
 ```bash
-conda run -n merlin-dev uv run tools/build.py --profile npu --config release
+./merlin build --profile npu --config release
 ```
 
 Check loaded plugins:

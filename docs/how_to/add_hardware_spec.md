@@ -51,56 +51,56 @@ bare-metal and FireSim overlays while sharing one capability spec.
 
 ## 4) Validate and inspect
 
-Validate the spec:
+### Pick the right subcommand
+
+| If you want… | Run | Output |
+|---|---|---|
+| Schema check (am I missing required fields?) | `targetgen validate` | OK / errors to stdout |
+| Read the planner's view of your spec | `targetgen explain` | classification + ladder summary |
+| See what implementation tasks the planner derives | `targetgen plan` | normalized model + task graph |
+| Generate the full executor-ready bundle (tasks + briefs + state) | `targetgen orchestrate` | `execution_bundle.json` + `task_states/*` |
+| Same bundle + LLM-ready prompt packets (manual review) | `targetgen orchestrate --prompt-backend manualllm` | adds `prompts/prompt_NNN.md` |
+| Same bundle + provider metadata for an agent runner | `targetgen orchestrate --prompt-backend provider --agent <name>` | adds `<provider>.json` |
+
+**Typical sequence:** `validate` → `explain` → `plan` → `orchestrate`. The
+last three each subsume the previous, so it's safe to skip ahead once
+you trust the spec; revisit `validate` after every spec edit.
+
+All subcommands take the same positional + `--overlay`:
 
 ```bash
-conda run -n merlin-dev uv run tools/merlin.py targetgen validate \
+./merlin targetgen <subcommand> \
   target_specs/examples/<target>/capability.yaml \
   --overlay target_specs/examples/<target>/overlays/<profile>.yaml
 ```
 
-Generate the support plan:
+Examples:
 
 ```bash
-conda run -n merlin-dev uv run tools/merlin.py targetgen plan \
+# 1. Schema-check after each edit
+./merlin targetgen validate \
   target_specs/examples/<target>/capability.yaml \
   --overlay target_specs/examples/<target>/overlays/<profile>.yaml
-```
 
-Explain the classification:
-
-```bash
-conda run -n merlin-dev uv run tools/merlin.py targetgen explain \
+# 2. Once the schema passes, ask the planner what it sees
+./merlin targetgen explain \
   target_specs/examples/<target>/capability.yaml \
   --overlay target_specs/examples/<target>/overlays/<profile>.yaml
-```
 
-Generate the execution bundle:
-
-```bash
-conda run -n merlin-dev uv run tools/merlin.py targetgen orchestrate \
-  target_specs/examples/<target>/capability.yaml \
-  --overlay target_specs/examples/<target>/overlays/<profile>.yaml
-```
-
-Generate mlirAgent-compatible prompt packets:
-
-```bash
-conda run -n merlin-dev uv run tools/merlin.py targetgen orchestrate \
+# 3. Generate the full orchestration bundle + LLM prompts for review
+./merlin targetgen orchestrate \
   target_specs/examples/<target>/capability.yaml \
   --overlay target_specs/examples/<target>/overlays/<profile>.yaml \
   --prompt-backend manualllm
 ```
 
-Generate provider metadata from `projects/mlirAgent/configs/agents/*.yaml`:
+### Flag effects on `orchestrate`
 
-```bash
-conda run -n merlin-dev uv run tools/merlin.py targetgen orchestrate \
-  target_specs/examples/<target>/capability.yaml \
-  --overlay target_specs/examples/<target>/overlays/<profile>.yaml \
-  --prompt-backend provider \
-  --agent codex
-```
+| Flag | Effect |
+|---|---|
+| (no `--prompt-backend`) | Bundle only — JSON state + briefs, no LLM prompts. |
+| `--prompt-backend manualllm` | Adds `prompts/prompt_NNN.md` — pasteable LLM prompts. |
+| `--prompt-backend provider --agent <name>` | Adds provider metadata from `projects/mlirAgent/configs/agents/<name>.yaml`. |
 
 ## 5) Add target-specific prompt overrides when needed
 

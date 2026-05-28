@@ -1,6 +1,8 @@
-# Add A Compile Target (`tools/compile.py`)
+# Add A Compile Target
 
-`tools/compile.py` uses YAML target files in `models/` to define compile flags.
+Configure target-specific flags for `./merlin compile`.
+
+`./merlin compile` uses YAML target files in `models/` to define compile flags.
 
 ## 1) Add A New Target YAML
 
@@ -14,7 +16,7 @@ Current in-tree example:
 - `models/npu_ucb.yaml`
 - `models/gemmini_mx.yaml`
 
-## 2) YAML Schema Used By `tools/compile.py`
+## 2) YAML Schema Used By `./merlin compile`
 
 Common keys:
 
@@ -25,7 +27,7 @@ Common keys:
 - `models`: per-model overrides
 - `plugin_flags`: optional plugin-related flags appended with generic flags
 
-`tools/compile.py` currently merges flags in this order:
+`./merlin compile` currently merges flags in this order:
 
 1. `generic` + `plugin_flags`
 2. `targets[--hw]` (if used)
@@ -33,7 +35,7 @@ Common keys:
 4. model-specific overrides
 
 When `plugin_flags` is non-empty and `--build-dir` is left at its default
-(`host-vanilla-release`), `tools/compile.py` automatically uses
+(`host-vanilla-release`), `./merlin compile` automatically uses
 `host-merlin-release` so plugin-enabled targets work with short user commands.
 
 ## 3) Compile With Your New Target
@@ -41,11 +43,11 @@ When `plugin_flags` is non-empty and `--build-dir` is left at its default
 Examples:
 
 ```bash
-conda run -n merlin-dev uv run tools/compile.py models/dronet/dronet.mlir --target <target_name>
+./merlin compile models/dronet/dronet.mlir --target <target_name>
 ```
 
 ```bash
-conda run -n merlin-dev uv run tools/compile.py models/dronet/dronet.mlir --target <target_name> --hw <hw_profile>
+./merlin compile models/dronet/dronet.mlir --target <target_name> --hw <hw_profile>
 ```
 
 ## 4) Output Layout
@@ -62,7 +64,7 @@ Typical outputs:
 
 ## 5) Tool Selection Behavior
 
-`tools/compile.py` picks `iree-compile` from:
+`./merlin compile` picks `iree-compile` from:
 
 1. `build/<build_dir>/tools/`
 2. `build/<build_dir>/install/bin/`
@@ -89,4 +91,4 @@ Prefer:
 ## 7) Optional: Add Convenience Build Profile
 
 If the new compile target needs special compiler plugin/runtime configuration,
-also add a `tools/build.py` profile so the build command is easy to reproduce.
+also add a `./merlin build` profile so the build command is easy to reproduce.

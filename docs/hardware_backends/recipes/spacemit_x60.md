@@ -29,17 +29,19 @@ conda run -n merlin-dev uv run tools/compile.py \
 
 ### 3. Deploy to the board
 
-Copy the runtime installation and compiled model artifacts to the board:
+Set `BOARD_IP` to your X60 board's address (use `bpi-f3` or the IP given
+by `arp` / `ip neigh`):
 
 ```bash
-scp -r build/spacemit-merlin-release/install/ root@10.44.86.251:/opt/merlin/
-scp build/compiled_models/mlp/*.vmfb root@10.44.86.251:/opt/merlin/models/
+export BOARD_IP=<your-board-ip>
+scp -r build/spacemit-merlin-release/install/ root@${BOARD_IP}:/opt/merlin/
+scp build/compiled_models/mlp/*.vmfb root@${BOARD_IP}:/opt/merlin/models/
 ```
 
 ### 4. Run on the board
 
 ```bash
-ssh root@10.44.86.251
+ssh root@${BOARD_IP}
 /opt/merlin/install/bin/iree-benchmark-module \
     --module=/opt/merlin/models/mlp.q.int8.vmfb \
     --function=main

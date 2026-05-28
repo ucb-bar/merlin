@@ -38,7 +38,7 @@ Radiance registration uses:
 Expose toggles in:
 
 - `iree_runtime_plugin.cmake`
-- `tools/build.py`
+- `./merlin build`
 
 Radiance examples:
 
@@ -80,7 +80,7 @@ Radiance example:
 Build and run:
 
 ```bash
-conda run -n merlin-dev uv run tools/build.py \
+./merlin build \
   --profile radiance \
   --cmake-target iree_hal_drivers_radiance_testing_transport_smoke_test
 ```

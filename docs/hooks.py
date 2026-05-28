@@ -29,13 +29,24 @@ _EXCLUDED_DIR_NAMES = {
 _PYTHON_SCAN_ROOTS = ("tools", "models", "benchmarks", "samples")
 _EXCLUDED_PATH_SNIPPETS = ("samples/SaturnOPU/custom_dispatch_ukernels/",)
 _CLI_MODULES = (
-    ("merlin.py", "merlin", "Unified Merlin developer command reference parser."),
-    ("build.py", "build", "Configure and build Merlin and target runtimes"),
-    ("compile.py", "compile", "Compile MLIR/ONNX models to target artifacts"),
-    ("setup.py", "setup", "Bootstrap developer environment and toolchains"),
-    ("ci.py", "ci", "Run repository CI/lint/patch workflows"),
-    ("patches.py", "patches", "Apply/verify/refresh/drift patch stack"),
-    ("benchmark.py", "benchmark", "Run benchmark helper scripts"),
+    ("merlin", "merlin", "Unified Merlin developer command dispatcher."),
+    ("build", "build.cli", "Configure and build Merlin and target runtimes."),
+    ("compile", "compile.cli", "Compile MLIR/ONNX models to target artifacts."),
+    ("setup", "setup", "Bootstrap developer environment and toolchains."),
+    ("ci", "ci", "Run repository CI / lint / patch workflows."),
+    ("patches", "patches", "Apply / verify / refresh / drift patch stack."),
+    ("benchmark", "benchmark", "Run benchmark helper scripts."),
+    ("chipyard", "chipyard.cli", "Manage Chipyard hardware backend interactions."),
+    ("targetgen", "targetgen.cli", "Planner-first hardware target integration framework."),
+    ("ray", "ray.cli", "Ray-based execution engine for targetgen workflows."),
+    ("run", "run.cli", "Run compiled models on local or board devices."),
+    ("perf-decompose", "perf.cli", "Per-dispatch performance decomposition."),
+    ("verify-output", "verify.cli", "Verify model outputs against golden references."),
+    ("coverage-check", "coverage.cli", "Kernel-embedding coverage check."),
+    ("quantize", "quantize.cli", "Quantize models to int8 and analyze."),
+    ("sim", "sim", "RTL simulator orchestration."),
+    ("spike", "spike", "Spike RISC-V ISA simulator runner."),
+    ("mcp", "mcp.cli", "MCP (Model Context Protocol) server dispatcher."),
 )
 
 
@@ -207,7 +218,7 @@ def _build_cli_reference(repo_root: Path, docs_root: Path) -> None:
         lines = [
             "# CLI Reference",
             "",
-            "This page is generated from real argparse parsers in `tools/*.py`.",
+            "This page is generated from the real argparse parsers behind `./merlin <subcommand>`.",
             "",
             "Each command is shown with argument introspection and raw `--help` output.",
             "",
@@ -215,15 +226,16 @@ def _build_cli_reference(repo_root: Path, docs_root: Path) -> None:
 
         for script_name, module_name, summary in _CLI_MODULES:
             module = importlib.import_module(module_name)
+            display_name = "merlin" if script_name == "merlin" else f"merlin {script_name}"
             parser = argparse.ArgumentParser(
-                prog=f"uv run tools/{script_name}",
+                prog=f"./{display_name}",
                 description=summary,
             )
             module.setup_parser(parser)
 
             lines.extend(
                 [
-                    f"## `tools/{script_name}`",
+                    f"## `./{display_name}`",
                     "",
                     summary,
                     "",
@@ -518,10 +530,24 @@ def _generate_repository_guide(repo_root: Path, docs_root: Path) -> None:
         "",
         "Merlin is organized to separate model frontends, compiler internals, and hardware-targeted runtimes.",
         "",
+        (
+            "This page is contributor-facing: file placement rules and "
+            "the tracked-tree snapshot. If you are using Merlin for the "
+            "first time and just want to know which entry points to "
+            "invoke, read [user_paths.md](user_paths.md) instead."
+        ),
+        "",
+        "## Contributor Layers",
+        "",
+        "- **User layer**: `docs/`, `tools/`, `models/`, `build/`",
+        "- **Target bring-up layer**: `target_specs/`, `build_tools/hardware/`, `models/*.yaml`",
+        "- **Implementation layer**: `compiler/`, `runtime/`, `third_party/iree_bar`",
+        "- **Research / sidecar tooling**: `benchmarks/`, `samples/research/`, `projects/`",
+        "",
         "## Core Directories",
         "",
         "- `compiler/`: C++ and MLIR compiler code (dialects, passes, plugins).",
-        "- `tools/`: Python developer entrypoints (`build.py`, `compile.py`, `setup.py`, `ci.py`, etc.).",
+        "- `tools/`: Python developer entrypoints behind `./merlin <subcommand>` (see `tools/merlin.py`).",
         "- `models/`: Model definitions, exports, and quantization helpers.",
         "- `samples/`: C/C++ runtime examples and hardware-facing sample flows.",
         "- `benchmarks/`: Benchmark scripts and board-specific profiling helpers.",
@@ -532,7 +558,7 @@ def _generate_repository_guide(repo_root: Path, docs_root: Path) -> None:
         "- New compiler dialects/passes/transforms: `compiler/src/merlin/`.",
         "- New plugin/target registration glue: `compiler/plugins/`.",
         "- New model exports or conversion flows: `models/<model_name>/`.",
-        "- New target flag bundles for `tools/compile.py`: `models/<target>.yaml`.",
+        "- New target flag bundles for `./merlin compile`: `models/<target>.yaml`.",
         "- New board/runtime sample executables: `samples/<platform>/`.",
         "- New benchmark flows and parsers: `benchmarks/<target>/`.",
         "- New end-user docs and guides: `docs/`.",

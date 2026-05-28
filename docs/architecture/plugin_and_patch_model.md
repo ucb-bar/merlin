@@ -1,11 +1,18 @@
-Here’s an updated version that reflects the workflow we just used in practice, including backups, LLVM-first rebases, submodule-pointer conflicts, temp branches, and post-force-push local reset behavior.
-
-````text
 # Merlin Plugin and Patch Model
 
-This document defines the maintenance model for Merlin with a small team and
-documents the practical rebase workflow for both IREE and its pinned
-`llvm-project`.
+Merlin changes live in this repository; IREE and LLVM changes are tracked as
+commits on dedicated fork branches and rebased onto upstream together. This
+doc explains the submodule layout, the rebase workflow, and how to add a new
+change.
+
+## When to read which section
+
+| Doing this | Jump to |
+|---|---|
+| Adding a new Merlin-owned compiler feature | [Directory Contracts](#directory-contracts) + [Plugin IDs](#plugin-ids-and-backend-ids) |
+| Patching IREE or LLVM in-tree | [Branch-Based Patch Management](#branch-based-patch-management), then [Commit Conventions](#commit-conventions) |
+| Rebasing onto a newer IREE/LLVM upstream | [Rebase Policy](#rebase-policy) (theory) then [Practical Rebase Workflow](#practical-rebase-workflow) (steps) |
+| Recovering from a bad rebase | [Backup Policy](#backup-policy) |
 
 ## Goals
 
@@ -59,7 +66,6 @@ github.com/iree-org/llvm-project      (IREE's LLVM fork)
 
 github.com/ucb-bar/llvm-project       (our LLVM fork)
   └── ucb-bar/main                     (default downstream LLVM branch = IREE-pinned LLVM + merlin LLVM commits)
-````
 
 The `third_party/iree_bar` submodule points at `ucb-bar/main`. Inside that
 submodule, `third_party/llvm-project` points at the downstream LLVM commit
@@ -100,6 +106,17 @@ Examples of good granularity:
 * LLVM pointer update commit in IREE
 
 ## Rebase Policy
+
+**Decision tree:**
+
+1. Need to rebase? Always do **LLVM first**, then IREE, then update
+   submodule pointers. Skip [Golden rule](#golden-rule) only if you
+   already know why.
+2. Already comfortable with the policy? Jump to
+   [Practical Rebase Workflow](#practical-rebase-workflow).
+3. Hit a conflict mid-rebase? See
+   [Conflict handling during rebase](#3-conflict-handling-during-rebase)
+   or [Submodule pointer conflicts during IREE rebase](#4-submodule-pointer-conflicts-during-ireee-rebase).
 
 ### Golden rule
 

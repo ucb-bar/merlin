@@ -19,10 +19,10 @@ cmake --build profiler/build --parallel --config Release
 
 ## 2. Compile Models with Tracy Debug Info
 
-Use the `--tracy` flag in `tools/compile.py`:
+Use the `--tracy` flag with `./merlin compile`:
 
 ```bash
-conda run -n merlin-dev uv run tools/compile.py \
+./merlin compile \
   models/dronet/dronet.q.int8.mlir \
   --target spacemit_x60 --hw RVV --quantized --tracy
 ```
@@ -35,10 +35,10 @@ This adds:
 
 ## 3. Build Runtime with Tracy Instrumentation
 
-Use the `--enable-tracy` flag in `tools/build.py`:
+Use the `--enable-tracy` flag with `./merlin build`:
 
 ```bash
-conda run -n merlin-dev uv run tools/merlin.py build \
+./merlin build \
   --profile spacemit --config release --enable-tracy \
   --cmake-target merlin_benchmark_baseline_dual_model_async
 ```

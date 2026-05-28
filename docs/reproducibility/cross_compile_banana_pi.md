@@ -1,6 +1,22 @@
-# Steps to cross compile for banana pi
+# Cross-compile IREE for Banana Pi (SpacemiT X60)
 
-Best guide is to follow the steps in the page here: [LINK](https://bianbu.spacemit.com/en/development/kernel_compile/#install-cross-compiler-toolchain).
+End-to-end recipe: vendor toolchain → cross-built `zstd` → IREE runtime
++ Tracy → model compile → on-board profiling script.
+
+Vendor reference (full kernel cross-compile background):
+[SpacemiT Bianbu kernel compile guide](https://bianbu.spacemit.com/en/development/kernel_compile/#install-cross-compiler-toolchain).
+
+## Why three different `-march` strings appear below
+
+The three build stages pick different ISA extensions on purpose:
+
+| Stage | `-march` | Why |
+|---|---|---|
+| `zstd` cross-build (§ 1.2) | `rv64gc` | Plain scalar; no extension dependencies. |
+| IREE runtime tools (§ 2.2) | `rv64gc_zba_zbb_zbc_zbs_zicbom_zicboz_zicbop_zihintpause` | Bitmanip + cache-management, **no `+v`** — vector + unaligned C++ runtime code triggers Bus Error on this board. |
+| Model compile (§ 3) | `+m,+a,+f,+d,+c,+v,+zvl256b,+zba,…` | IREE-generated kernels are alignment-safe; vector ISA is enabled here. |
+
+Common to all three: `-mabi=lp64d` to match the board GLIBC's ABI.
 
 ## 1. Toolchain & Environment
 
@@ -62,14 +78,11 @@ Strategy: We compile the Runtime Tools (`iree-run-module`, `iree-tracy-capture`)
 
 ### 2.1 Apply Tracy Source Patch
 
-The Tracy Capture server hits an assertion failure on 64-bit RISC-V regarding pointer packing. You must disable it manually.
+Tracy's `PackPointer` assertion in
+`${IREE_SRC}/third_party/tracy/server/TracyWorker.cpp` (~line 3931)
+fires on rv64. Comment it out:
 
-- **File:** `${IREE_SRC}/third_party/tracy/server/TracyWorker.cpp`
-- **Line:** ~3931 (inside `PackPointer` function)
-- **Action:** Comment out the assertion.
-
-```C++
-// Comment this line out:
+```cpp
 // assert( ( ( ptr & 0x3000000000000000 ) << 2 ) == ( ptr & 0xC000000000000000 ) );
 ```
 
