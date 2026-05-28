@@ -1,0 +1,198 @@
+{
+  "integration_styles": [
+    "post_global_plugin",
+    "llvm_ukernel"
+  ],
+  "primary_integration": "post_global_plugin",
+  "stages": [
+    {
+      "applies": true,
+      "blocking_questions": [
+        "Which model entrypoints (mlp, dronet, vit, etc.) are in scope for the first compile?"
+      ],
+      "read_paths": [
+        "docs/how_to/add_compile_target.md",
+        "docs/how_to/add_hardware_spec.md",
+        "models/",
+        "target_specs/examples/",
+        "docs/dev_blog/",
+        "samples/gemmini/"
+      ],
+      "reason": "Every Merlin target needs a compile-target manifest and a capability spec to be reachable from `./merlin compile`.",
+      "repo_root": "merlin",
+      "stage": "ml_framework_import",
+      "validation_commands": [
+        "./merlin targetgen validate target_specs/examples/gemmini_mx/capability.yaml"
+      ],
+      "write_paths": [
+        "models/gemmini_mx.yaml",
+        "target_specs/examples/gemmini_mx/capability.yaml",
+        "target_specs/examples/gemmini_mx/overlays/"
+      ]
+    },
+    {
+      "applies": true,
+      "blocking_questions": [
+        "Which native ops (matmul/conv/attention/elementwise) anchor the dialect surface?"
+      ],
+      "read_paths": [
+        "docs/how_to/add_compiler_dialect_plugin.md",
+        "compiler/src/merlin/Dialect/"
+      ],
+      "reason": "Target consumes generic linalg/arith IR before specialization; needs a Merlin dialect to recover semantics after IREE global optimization.",
+      "repo_root": "merlin",
+      "stage": "linalg_arith_dialect",
+      "validation_commands": [
+        "./merlin build --profile gemmini_mx"
+      ],
+      "write_paths": [
+        "compiler/src/merlin/Dialect/GemminiMx/IR/",
+        "compiler/src/merlin/Dialect/GemminiMx/Transforms/",
+        "compiler/src/merlin/Dialect/GemminiMx/RegisterGemminiMx.cpp",
+        "compiler/src/merlin/Dialect/GemminiMx/CMakeLists.txt"
+      ]
+    },
+    {
+      "applies": true,
+      "blocking_questions": [
+        "Is the plugin a hard pass-pipeline extension (`extendPostGlobalOptimizationPassPipeline`) or an optional one-shot rewrite?"
+      ],
+      "read_paths": [
+        "docs/how_to/add_compiler_dialect_plugin.md",
+        "docs/architecture/plugin_and_patch_model.md",
+        "compiler/plugins/target/",
+        "iree_compiler_plugin.cmake"
+      ],
+      "reason": "post_global_plugin style requires a Merlin compiler plugin that registers passes and dialects after IREE global optimization.",
+      "repo_root": "merlin",
+      "stage": "global_optimization",
+      "validation_commands": [
+        "./merlin build --profile gemmini_mx"
+      ],
+      "write_paths": [
+        "compiler/plugins/target/GemminiMx/PluginRegistration.cpp",
+        "compiler/plugins/target/GemminiMx/GemminiMxOptions.h",
+        "compiler/plugins/target/GemminiMx/GemminiMxOptions.cpp",
+        "compiler/plugins/target/GemminiMx/CMakeLists.txt",
+        "iree_compiler_plugin.cmake",
+        "tools/build.py"
+      ]
+    },
+    {
+      "applies": true,
+      "blocking_questions": [
+        "Are dispatches per-op or per-region? Any cross-op fusion the target requires?"
+      ],
+      "read_paths": [
+        "compiler/src/merlin/Dialect/",
+        "third_party/iree_bar/compiler/src/iree/compiler/DispatchCreation/"
+      ],
+      "reason": "Target requires explicit control over dispatch region formation; Merlin transforms add lowering and region carving.",
+      "repo_root": "merlin",
+      "stage": "dispatch_generation",
+      "validation_commands": [
+        "./merlin build --profile gemmini_mx",
+        "./merlin compile models/gemmini_mx.yaml --target gemmini_mx"
+      ],
+      "write_paths": [
+        "compiler/src/merlin/Dialect/GemminiMx/Transforms/"
+      ]
+    },
+    {
+      "applies": true,
+      "blocking_questions": [
+        "What are the preferred tile shapes? Are they exposed on the spec?"
+      ],
+      "read_paths": [
+        "third_party/iree_bar/compiler/src/iree/compiler/Codegen/",
+        "compiler/src/merlin/Dialect/"
+      ],
+      "reason": "Target has tile constraints (vector length, systolic dims, scratchpad banking, ukernel layout) that require explicit data tiling decisions.",
+      "repo_root": "merlin",
+      "stage": "data_tiling",
+      "validation_commands": [
+        "./merlin build --profile gemmini_mx",
+        "./merlin compile models/gemmini_mx.yaml --target gemmini_mx"
+      ],
+      "write_paths": [
+        "compiler/src/merlin/Dialect/GemminiMx/Transforms/",
+        "compiler/src/merlin/Dialect/GemminiMx/IR/",
+        "third_party/iree_bar/compiler/src/iree/compiler/Codegen/",
+        "third_party/iree_bar/runtime/src/iree/builtins/ukernel/"
+      ]
+    },
+    {
+      "applies": false,
+      "blocking_questions": [],
+      "read_paths": [
+        "runtime/src/iree/hal/drivers/",
+        "target_specs/examples/gemmini_mx/capability.yaml",
+        "target_specs/examples/gemmini_mx/overlays/"
+      ],
+      "reason": "Pure CPU/embedded paths use IREE's default scheduler.",
+      "repo_root": "merlin",
+      "stage": "dispatch_scheduling",
+      "validation_commands": [
+        "./merlin build --profile gemmini_mx"
+      ],
+      "write_paths": []
+    },
+    {
+      "applies": true,
+      "blocking_questions": [
+        "Will new LLVM intrinsics or feature bits be added? If so, plan the LLVM-then-IREE rebase order from docs/architecture/plugin_and_patch_model.md.",
+        "Will RoCC ops be exposed via LLVM intrinsics, RoCC C macros, or both?"
+      ],
+      "read_paths": [
+        "third_party/iree_bar/third_party/llvm-project/llvm/lib/Target/",
+        "third_party/iree_bar/compiler/src/iree/compiler/Codegen/",
+        "compiler/src/merlin/Dialect/"
+      ],
+      "reason": "Target needs an exporter (text ISA / binary / LLVM intrinsics) to lower kernels into something the device can run. (RoCC accelerator \u2014 RISC-V custom-3 opcode space.)",
+      "repo_root": "third_party/iree_bar/third_party/llvm-project",
+      "stage": "executable_sources_llvm_intrinsics",
+      "validation_commands": [
+        "./merlin build --profile gemmini_mx"
+      ],
+      "write_paths": [
+        "third_party/iree_bar/third_party/llvm-project/llvm/include/llvm/IR/IntrinsicsRISCV.td",
+        "third_party/iree_bar/third_party/llvm-project/llvm/lib/Target/RISCV/",
+        "third_party/iree_bar/compiler/src/iree/compiler/Codegen/",
+        "compiler/src/merlin/Dialect/GemminiMx/Translation/"
+      ]
+    },
+    {
+      "applies": false,
+      "blocking_questions": [],
+      "read_paths": [
+        "runtime/src/iree/hal/drivers/",
+        "docs/how_to/add_runtime_hal_driver.md"
+      ],
+      "reason": "No device-visible sync primitives \u2014 VM uses generic CPU semantics.",
+      "repo_root": "merlin",
+      "stage": "vm_hw_synchronization",
+      "validation_commands": [
+        "./merlin build --profile gemmini_mx"
+      ],
+      "write_paths": []
+    },
+    {
+      "applies": false,
+      "blocking_questions": [],
+      "read_paths": [
+        "docs/how_to/add_runtime_hal_driver.md",
+        "runtime/src/iree/hal/drivers/",
+        "iree_runtime_plugin.cmake",
+        "tools/build.py"
+      ],
+      "reason": "No runtime device is required for this integration style.",
+      "repo_root": "merlin",
+      "stage": "hal_driver",
+      "validation_commands": [
+        "./merlin build --profile gemmini_mx"
+      ],
+      "write_paths": []
+    }
+  ],
+  "target": "gemmini_mx"
+}

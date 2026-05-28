@@ -1,0 +1,9 @@
+iree_register_external_hal_driver(
+  NAME
+  radiance
+  SOURCE_DIR
+  "${CMAKE_CURRENT_SOURCE_DIR}"
+  DRIVER_TARGET
+  iree::hal::drivers::radiance::registration
+  REGISTER_FN
+  iree_hal_radiance_driver_module_register)

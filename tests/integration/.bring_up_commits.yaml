@@ -1,0 +1,99 @@
+# Curated bring-up commit lists per existing target.
+#
+# Each target lists the commits that landed the *initial* dialect, plugin,
+# and (where applicable) HAL driver. Follow-up bug fixes, pure docs, and
+# unrelated refactors are intentionally excluded — we want the truth set
+# of "files an engineer actually had to touch to bring this target up,"
+# not every file the target ever appeared in.
+#
+# When a new target is brought up, append its block here. The retrospective
+# accuracy test reads this YAML and computes precision/recall/F1 between
+# the union of files touched in these commits and TargetGen's predicted
+# `write_paths` for the matching capability spec.
+#
+# To inspect a commit:
+#   git show --stat --name-only --pretty=format: <sha>
+#
+# Conventions:
+# - List 3-6 commits maximum per target; more dilutes the signal.
+# - Prefer the commit that introduced the dialect/plugin/driver over later
+#   refactors. The first row of each `commits` list is treated as the
+#   "primary" bring-up commit for documentation.
+
+gemmini_mx:
+  capability: gemmini_mx
+  description: |
+    Gemmini integration via Merlin compiler dialect + IREE plugin. The
+    bring-up landed across two commits: the dialect skeleton and the
+    plugin glue. Later commits added Translation/, samples, and FireSim
+    infra; only the core dialect+plugin commits are in the truth set.
+  commits:
+    - 481f22aa  # Add Gemmini Dialect integration into IREE
+    - 7feb46d3  # Gemmini: integrate dialect and target plugin (matmul lowering)
+    - 885c4800  # Gemmini: clean dialect integration with build-time tablegen
+    - ceab1a82  # Add: Compiled implementation for new Gemmini Dialect
+  exclude_path_patterns:
+    - "docs/"          # excluded — documentation isn't a bring-up patch surface
+    - "*.md"
+    - "third_party/"   # not in scope of the planner's predictions
+
+npu_ucb:
+  capability: npu_ucb
+  description: |
+    SaturnNPU dialect + plugin + kernel library. The dialect is unusual
+    in that it carries three sub-dialects (ISA, Kernel, Schedule) and a
+    text ISA exporter under Translation/. Three commits land the
+    canonical surface.
+  commits:
+    - af2485eb  # Add Implementation of the NPU Dialect connecting front-end
+    - ce073ca9  # SaturnNPU NPU dialect + plugin + kernel library
+    - b32f35de  # SaturnNPU NPU dialect + plugin + kernel library (re-land)
+    - 5cee2161  # Add NPU Dialect able to match fp8 format in smolVLA model
+  exclude_path_patterns:
+    - "docs/"
+    - "*.md"
+    - "third_party/"
+
+radiance_muon:
+  capability: radiance_muon
+  description: |
+    Radiance / Gluon HAL skeleton. Currently a single-commit bring-up
+    (the skeleton), so precision/recall is computed against the
+    smallest sensible bring-up.
+  commits:
+    - ff75c70d  # Add First implementation Skeleton of Radiance / Gluon HAL
+  exclude_path_patterns:
+    - "docs/"
+    - "*.md"
+    - "third_party/"
+
+saturn_opu_v128:
+  capability: saturn_opu_v128
+  description: |
+    Saturn OPU is an LLVM-RVV-extension target — its bring-up touches
+    `models/`, `target_specs/`, `samples/`, `tools/`, NOT a Merlin
+    dialect. The truth set therefore looks very different from
+    Gemmini/NPU.
+  commits:
+    - 20773dd5  # SaturnOPU Sample runtime + target YAML + OPU dev blogs
+    - fbc3c42c  # SaturnOPU Sample runtime + target YAML + OPU dev blogs
+    - 91b1f7c2  # Add Toolchain for firesim (RISCV) and SpacemiT
+  exclude_path_patterns:
+    - "docs/"
+    - "*.md"
+    - "third_party/"
+
+spacemit_x60_xsmtvdot:
+  capability: spacemit_x60_xsmtvdot
+  description: |
+    SpacemiT X60 is the closest analogue to Saturn OPU but lands the
+    custom-vector-dot extension via tools/, build_tools/, models/, and
+    target_specs/. No dialect, no plugin.
+  commits:
+    - 91b1f7c2  # Add Toolchain for firesim (RISCV) and SpacemiT
+    - 485ffeb6  # SpacemiTX60 decompose runtime_scheduler.cc
+    - b5f8f339  # update spacemit yaml to have scalar and rvv distinction
+  exclude_path_patterns:
+    - "docs/"
+    - "*.md"
+    - "third_party/"
