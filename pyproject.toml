@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "merlin"
+version = "0.0.1"
+description = "Compiler-centered framework for HW/SW abstraction exploration"
+requires-python = ">=3.10"
+readme = "README.md"
+
+[project.optional-dependencies]
+dev = ["pytest", "pyyaml", "pydantic", "rich"]
+xdsl = ["xdsl"]
+
+[tool.setuptools]
+package-dir = { "" = "merlin/python" }
+
+[tool.setuptools.packages.find]
+where = ["merlin/python"]
+
+[tool.pytest.ini_options]
+testpaths = ["merlin/python/tests", "merlin/tests"]
+
+[tool.uv]
+# Default dev environment includes the dev tools and the xdsl prototyping plane.
+# Sync with:  uv sync --all-extras
+default-groups = []
+

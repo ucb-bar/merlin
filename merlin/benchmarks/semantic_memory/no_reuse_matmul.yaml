@@ -1,0 +1,16 @@
+# Workload: matmul with no RHS reuse (negative control).
+name: no_reuse_matmul
+description: >-
+  Each matmul uses a distinct weight matrix. There is no cross-region RHS reuse, so
+  residency should NOT be recommended. Negative control for design-pressure analysis.
+ops: [matmul]
+region:
+  loop: i in 1..R
+  body: Y_i = A_i @ W_i
+tensors:
+  A_i: {shape: [64, 128], dtype: i8, lifetime: single_use}
+  W_i: {shape: [128, 64], dtype: i8, lifetime: single_use, reuse_count: 1, mutable: false}
+  Y_i: {shape: [64, 64], dtype: i8, lifetime: single_use}
+reuse:
+  rhs_reuse_count: 1
+expected_candidate_features: []

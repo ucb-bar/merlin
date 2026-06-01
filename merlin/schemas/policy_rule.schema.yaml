@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Policy Rule
+purpose: >-
+  A compiler heuristic distilled from kernel evidence: when a condition holds, take these scheduling actions. Owned by kernel-mining; consumed by DSE and (later) merlin.schedule.
+
+required_top_level_fields:
+  - policy
+  - evidence
+  - when
+  - actions
+
+example: |
+  policy: packed_rhs_policy
+  evidence:
+    - xnnpack_rvv_gemm
+    - autocomp_gemmini_matmul
+  when:
+    rhs_reuse_count: ">= 2"
+    K: ">= 256"
+  actions:
+    - preserve_packed_rhs_layout
+    - hoist_pack
+    - consider_resident_packed_tensor

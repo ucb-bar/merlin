@@ -1,0 +1,24 @@
+# ToyNPU target contract (validates against merlin/schemas/target_contract.schema.yaml).
+name: toy_npu
+version: 0.1
+capabilities:
+  ops: [matmul, bias_add, requant, relu]
+  layouts: [packed_rhs]
+  resident_storage_bytes: 131072
+  accumulator_entries: 4096
+memory_model:
+  resident: true
+  accumulators: true
+compiler_obligations:
+  - must_prove_rhs_immutable_for_residency
+  - must_respect_resident_storage_bytes
+  - must_commit_accumulator_before_reuse
+hardware_promises:
+  - persistent_resident_tensor
+  - accumulator_commit_epilogue
+runtime_promises:
+  - persistent_handles
+  - profiling_regions
+legality:
+  - "res_pack requires rhs.mutable == false"
+  - "sum(resident_tensor.bytes) <= resident_storage_bytes"

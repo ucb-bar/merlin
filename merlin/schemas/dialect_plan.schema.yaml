@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Dialect Plan
+purpose: >-
+  A plan for a target dialect derived from a target_contract: which ops and types to expose, how they lower, and what tests to generate. Owned by TargetGen.
+
+required_top_level_fields:
+  - target
+  - dialect_name
+  - ops
+  - types
+  - lowering
+  - tests
+
+example: |
+  target: toy_npu
+  dialect_name: toynpu
+  ops:
+    - name: res_pack
+      summary: pack + make RHS resident
+    - name: matmul
+    - name: commit
+    - name: evict
+  types:
+    - name: resident_tensor
+    - name: accumulator
+  lowering:
+    - from: merlin.interface.resident_pack
+      to: toynpu.res_pack
+  tests:
+    - lit: res_pack_roundtrip

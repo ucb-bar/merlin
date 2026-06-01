@@ -1,0 +1,16 @@
+# Workload: matmul with fused epilogue (bias -> requant -> relu).
+name: matmul_bias_requant_relu
+description: >-
+  A matmul followed by a bias add, requantization, and relu. The accumulator stays
+  live across the epilogue; committing after the epilogue avoids extra writes.
+ops: [matmul, bias_add, requant, relu]
+region:
+  body: Y = relu(requant(A @ W + bias))
+tensors:
+  A:    {shape: [64, 128], dtype: i8}
+  W:    {shape: [128, 64], dtype: i8, mutable: false}
+  bias: {shape: [64], dtype: i32, mutable: false}
+  Y:    {shape: [64, 64], dtype: i8}
+op_sequence: [matmul, bias_add, requant, relu]
+expected_candidate_features:
+  - accumulator_commit

@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Interface Candidate
+purpose: >-
+  A concrete target-independent interface abstraction proposed for the merlin.interface dialect, with the design pressure that justifies it. Owned by design-pressure/DSE; consumed by TargetGen.
+
+required_top_level_fields:
+  - name
+  - interface_ops
+  - interface_types
+  - justified_by
+
+example: |
+  name: resident_packed_tensor
+  interface_ops: [resident_pack, matmul, commit, evict]
+  interface_types: [resident_tensor, accumulator]
+  justified_by:
+    design_pressure: repeated_rhs_matmul
+    policies: [packed_rhs_policy]

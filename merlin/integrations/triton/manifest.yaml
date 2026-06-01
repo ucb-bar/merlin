@@ -1,0 +1,13 @@
+# Integration manifest for Triton.
+name: triton
+display_name: Triton
+kind: adapter
+vendored: false
+external_repo:
+  env_var: MERLIN_TRITON_REPO
+  required: false
+emits_schema: kernel_record
+status: scaffold
+notes: >-
+  External repo is passed by path/env var, never vendored. Adapter must degrade
+  gracefully when MERLIN_TRITON_REPO is unset.

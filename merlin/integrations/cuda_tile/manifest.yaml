@@ -1,0 +1,13 @@
+# Integration manifest for CUDA Tile.
+name: cuda_tile
+display_name: CUDA Tile
+kind: adapter
+vendored: false
+external_repo:
+  env_var: MERLIN_CUDA_TILE_REPO
+  required: false
+emits_schema: kernel_record
+status: scaffold
+notes: >-
+  External repo is passed by path/env var, never vendored. Adapter must degrade
+  gracefully when MERLIN_CUDA_TILE_REPO is unset.
