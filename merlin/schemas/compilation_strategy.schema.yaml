@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema).
+title: Compilation Strategy
+purpose: >-
+  A first-class, hashable description of ONE way of compiling a workload: the contract
+  assumptions made, schedule policies applied, interface features exposed, target, and the
+  xDSL lowering pipeline. Two strategies that differ only in pipeline or features are two
+  comparable approaches. Generalizes the baseline/software_visible/hardware_managed/oracle
+  variant enum. Owned by design-pressure/DSE; consumed by the harness and search layer.
+
+required_top_level_fields:
+  - id
+  - variant_class
+  - target
+  - lowering_pipeline
+
+example: |
+  id: resident_sw_visible
+  description: expose resident packed RHS to software
+  variant_class: software_visible      # baseline | software_visible | hardware_managed | oracle
+  contract_assumptions: [rhs_immutable_across_region]
+  schedule_policies: [packed_rhs_policy, accumulator_commit_policy]   # refs policy_rule
+  interface_features: [resident_packed_tensor]                        # refs interface_candidate
+  target: toy_npu
+  lowering_pipeline: "merlin-contract,merlin-schedule,interface-lower,toynpu-lower"  # xDSL pass spec
+  cost_model_overrides:
+    pack_startup_cycles: 64

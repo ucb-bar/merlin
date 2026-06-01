@@ -40,6 +40,8 @@ REQUIRED_DIRS = [
     "merlin/python/merlin/kernels",
     "merlin/python/merlin/design_pressure",
     "merlin/python/merlin/dse",
+    "merlin/python/merlin/search",
+    "merlin/python/merlin/pipelines",
     "merlin/python/merlin/runtime",
     "merlin/python/merlin/common",
     "merlin/runtime/common",
@@ -79,13 +81,14 @@ REQUIRED_DIRS = [
 REQUIRED_SCHEMAS = [
     "target_contract", "dialect_plan", "kernel_record", "abstraction_candidate",
     "policy_rule", "workload_region", "design_pressure", "interface_candidate",
-    "dse_result", "exploitability_report",
+    "dse_result", "exploitability_report", "compilation_strategy", "search_space",
 ]
 
 REQUIRED_DOCS = [
     "architecture", "repo_structure", "contracts", "dialects", "targetgen",
     "kernel_mining", "design_pressure", "dse", "runtime", "integrations",
     "xdsl", "parallel_workstreams", "adding_a_target",
+    "compilation_strategies", "search",
 ]
 
 REQUIRED_BENCHMARKS = [

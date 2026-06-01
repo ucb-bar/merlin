@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema).
+title: Search Space
+purpose: >-
+  Declarative description of a search over candidate compiler artifacts: which candidate type,
+  which method (grid | evolutionary | map_elites), the parameter space / mutation operators, the
+  objective + priority order, and (for MAP-Elites) the behavior dimensions of the archive. Search
+  spaces are schemas/YAML, NOT a dialect. Owned by design-pressure/DSE.
+
+required_top_level_fields:
+  - name
+  - candidate_type
+  - method
+  - space
+  - objective
+
+example: |
+  name: resident_regime
+  candidate_type: compilation_strategy   # or policy_rule | dialect_plan | interface_candidate
+  method: grid                           # grid | evolutionary | map_elites
+  space:
+    reuse_threshold: [1, 2, 4, 8]
+    resident_store_bytes: [0, 65536, 131072, 262144]
+  objective:
+    # scoring is shared across all methods; priority resolves ties / early work
+    priority: [correctness, compile_success, coverage, exploitability, speedup]
+    maximize: [exploitability, speedup]
+    minimize: [complexity_penalty]
+  behavior_dimensions:                   # only used by method: map_elites
+    memory_abstraction: [scratchpad, resident_object, hardware_cache, streaming_fifo]
+    control_abstraction: [blocking, command_queue, event_token, persistent_command_buffer]
+    granularity: [micro_op, tile_op, fused_region, coarse_operator]
+    workload_regime: [repeated_rhs, epilogue, no_reuse, capacity_stress, decode_like]
