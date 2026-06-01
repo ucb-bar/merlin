@@ -1,0 +1,18 @@
+# ToyNPU dialect plan (validates against merlin/schemas/dialect_plan.schema.yaml).
+target: toy_npu
+dialect_name: toynpu
+ops:
+  - {name: res_pack, summary: "pack + make RHS resident"}
+  - {name: matmul,   summary: "matmul vs resident tensor -> accumulator"}
+  - {name: commit,   summary: "apply epilogue + commit accumulator"}
+  - {name: evict,    summary: "free resident storage"}
+types:
+  - {name: resident_tensor}
+  - {name: accumulator}
+lowering:
+  - {from: merlin.interface.resident_pack, to: toynpu.res_pack}
+  - {from: merlin.interface.matmul,        to: toynpu.matmul}
+  - {from: merlin.interface.commit,        to: toynpu.commit}
+tests:
+  - {lit: res_pack_roundtrip}
+  - {lit: matmul_commit_epilogue}

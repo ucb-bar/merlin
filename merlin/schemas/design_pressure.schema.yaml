@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Design Pressure Report
+purpose: >-
+  Per-workload measurable pressures extracted at one or more compiler cut points (reuse, lifetimes, layout conversions, dispatch counts, intermediate bytes). Owned by design-pressure/DSE; consumed by TargetGen and kernel-mining.
+
+required_top_level_fields:
+  - workload
+  - cutpoints
+  - metrics
+  - candidate_contracts
+
+example: |
+  workload: repeated_rhs_matmul
+  cutpoints: [linalg, loop, dispatch]
+  metrics:
+    rhs_reuse_count: 8
+    rhs_mutable: false
+    pack_count: 8
+    layout_conversions: 8
+    intermediate_write_bytes: 0
+    dispatch_count: 8
+  candidate_contracts:
+    - resident_packed_tensor

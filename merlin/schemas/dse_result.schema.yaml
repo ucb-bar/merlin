@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: DSE Result
+purpose: >-
+  Results of comparing variants (baseline / software_visible / hardware_managed / oracle) for a candidate feature, with measurable cost-model parameters. Owned by design-pressure/DSE; consumed by all.
+
+required_top_level_fields:
+  - workload
+  - feature
+  - variants
+  - cost_model
+  - results
+
+example: |
+  workload: repeated_rhs_matmul
+  feature: resident_packed_tensor
+  variants: [baseline, software_visible, hardware_managed, oracle]
+  cost_model:
+    dispatch_fixed_cycles: 200
+    pack_startup_cycles: 64
+    pack_bytes_per_cycle: 16
+    dram_bytes_per_cycle: 8
+    resident_store_bytes: 131072
+  results:
+    baseline: {cycles: 100000}
+    software_visible: {cycles: 42000}
+    hardware_managed: {cycles: 47000}
+    oracle: {cycles: 38000}

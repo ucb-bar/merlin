@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Workload Region
+purpose: >-
+  A small, analyzable workload region: ops, tensors, shapes, dtypes, reuse, and lifetimes. The shared input format for design-pressure analysis. Owned by design-pressure/DSE.
+
+required_top_level_fields:
+  - name
+  - ops
+  - tensors
+
+example: |
+  name: repeated_rhs_matmul
+  ops: [matmul]
+  tensors:
+    A_i:
+      shape: [64, 128]
+      dtype: i8
+      lifetime: single_use
+    W:
+      shape: [128, 64]
+      dtype: i8
+      lifetime: reused_across_region
+      reuse_count: 8
+      mutable: false
+    Y_i:
+      shape: [64, 64]
+      dtype: i8

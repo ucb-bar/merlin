@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Target Contract
+purpose: >-
+  Describes a hardware/software target: its capabilities, the obligations it places on the compiler, and the promises the hardware/runtime makes. Owned by the TargetGen workstream; consumed by kernel-mining and design-pressure/DSE.
+
+required_top_level_fields:
+  - name
+  - version
+  - capabilities
+  - memory_model
+  - compiler_obligations
+  - hardware_promises
+  - runtime_promises
+  - legality
+
+example: |
+  name: toy_npu
+  version: 0.1
+  capabilities:
+    ops: [matmul, requant, relu]
+    layouts: [packed_rhs]
+    resident_storage_bytes: 131072
+  memory_model:
+    resident: true
+    accumulators: true
+  compiler_obligations:
+    - must_prove_rhs_immutable_for_residency
+    - must_respect_resident_storage_bytes
+  hardware_promises:
+    - persistent_resident_tensor
+    - accumulator_commit
+  runtime_promises:
+    - persistent_handles
+  legality:
+    - resident_pack requires rhs.mutable == false

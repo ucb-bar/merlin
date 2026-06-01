@@ -1,0 +1,53 @@
+# --- Generated build outputs (structured, gitignored) ---
+# Keep the tracked skeleton files (AGENT.md / README.md / .gitkeep), ignore the rest.
+/build/**
+!/build/
+!/build/**/
+!/build/**/AGENT.md
+!/build/**/README.md
+!/build/**/.gitkeep
+
+# --- Produced artifacts (structured, gitignored) ---
+/output/**
+!/output/
+!/output/**/
+!/output/**/AGENT.md
+!/output/**/README.md
+!/output/**/.gitkeep
+
+# --- Per-target generated scaffolds ---
+/merlin/targets/*/generated/**
+!/merlin/targets/*/generated/
+!/merlin/targets/*/generated/AGENT.md
+!/merlin/targets/*/generated/.gitkeep
+
+# --- Local scratch (fully ignored; cross-session notes live here) ---
+/tmp/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/lib/
+dist/
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- CMake / C++ ---
+CMakeCache.txt
+CMakeFiles/
+*.o
+*.a
+*.so
+compile_commands.json
+
+# --- Editor / OS ---
+.DS_Store
+*.swp
+.idea/
+.vscode/

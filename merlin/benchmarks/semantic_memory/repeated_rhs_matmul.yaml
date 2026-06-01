@@ -1,0 +1,19 @@
+# Workload: repeated RHS matmul.
+#   for i in 1..R: Y_i = A_i @ W      (W immutable, reused across the region)
+name: repeated_rhs_matmul
+description: >-
+  Repeated matmul against a single immutable weight matrix W. W is reused R times
+  across the region; each A_i and Y_i is single-use.
+ops: [matmul]
+region:
+  loop: i in 1..R
+  body: Y_i = A_i @ W
+tensors:
+  A_i: {shape: [64, 128], dtype: i8, lifetime: single_use}
+  W:   {shape: [128, 64], dtype: i8, lifetime: reused_across_region, reuse_count: 8, mutable: false}
+  Y_i: {shape: [64, 64], dtype: i8, lifetime: single_use}
+reuse:
+  rhs_reuse_count: 8
+  rhs_mutable: false
+expected_candidate_features:
+  - resident_packed_tensor

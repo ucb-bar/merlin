@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Kernel Record
+purpose: >-
+  Normalized record of a single mined kernel from an external source. Owned by the kernel-mining workstream; consumed by design-pressure/DSE.
+
+required_top_level_fields:
+  - source
+  - target
+  - path
+  - op
+  - dtype
+  - features
+  - evidence
+
+example: |
+  source: xnnpack
+  target: rvv
+  path: src/qs8-gemm/...
+  op: gemm
+  dtype: i8
+  shape_family: unknown
+  features:
+    packing: true
+    packed_rhs: true
+    vector_length_strategy: scalable
+    tail_strategy: predicated_or_vl_loop
+    epilogue_fusion: false
+  evidence:
+    code_markers: [pack, vsetvl, tile_loop]

@@ -1,0 +1,13 @@
+# Integration manifest for Hexagon-MLIR.
+name: hexagon_mlir
+display_name: Hexagon-MLIR
+kind: adapter
+vendored: false
+external_repo:
+  env_var: MERLIN_HEXAGON_MLIR_REPO
+  required: false
+emits_schema: n/a
+status: scaffold
+notes: >-
+  External repo is passed by path/env var, never vendored. Adapter must degrade
+  gracefully when MERLIN_HEXAGON_MLIR_REPO is unset.

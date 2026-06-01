@@ -1,0 +1,13 @@
+# Integration manifest for XNNPACK.
+name: xnnpack
+display_name: XNNPACK
+kind: adapter
+vendored: false
+external_repo:
+  env_var: MERLIN_XNNPACK_REPO
+  required: false
+emits_schema: kernel_record
+status: scaffold
+notes: >-
+  External repo is passed by path/env var, never vendored. Adapter must degrade
+  gracefully when MERLIN_XNNPACK_REPO is unset.

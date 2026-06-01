@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Abstraction Candidate
+purpose: >-
+  A candidate HW/SW abstraction surfaced from kernels or design pressure (e.g. resident_packed_tensor, accumulator_commit). Owned by kernel-mining; consumed by TargetGen and DSE.
+
+required_top_level_fields:
+  - name
+  - kind
+  - motivation
+  - evidence
+  - interface_features
+
+example: |
+  name: resident_packed_tensor
+  kind: memory_state
+  motivation: immutable RHS reused across a region; avoid repeated pack/load
+  evidence:
+    - xnnpack_rvv_gemm
+    - autocomp_gemmini_matmul
+  interface_features:
+    - resident_pack
+    - resident_tensor_type

@@ -1,0 +1,20 @@
+# Workload: capacity stress for resident reuse.
+name: capacity_stress_reuse
+description: >-
+  Multiple reused immutable weights whose combined footprint may exceed resident
+  storage. Tests the capacity tradeoff: residency helps only while weights fit.
+ops: [matmul]
+region:
+  loop: (i, j) in (1..R, 1..W_COUNT)
+  body: Y_ij = A_i @ W_j
+tensors:
+  A_i: {shape: [64, 128], dtype: i8, lifetime: single_use}
+  W_j: {shape: [128, 64], dtype: i8, lifetime: reused_across_region, reuse_count: 8, mutable: false}
+  Y_ij: {shape: [64, 64], dtype: i8, lifetime: single_use}
+reuse:
+  rhs_reuse_count: 8
+  distinct_weights: 16
+parameters:
+  resident_store_bytes: [65536, 131072, 262144]
+expected_candidate_features:
+  - resident_packed_tensor   # only while distinct_weights fit in resident_store_bytes
