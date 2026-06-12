@@ -1,0 +1,112 @@
+target: gemmini
+version: "0.1"
+
+description: >
+  Expected hardware concepts that a correct Gemmini dialect must capture.
+  A method's target_contract.yaml is evaluated against this list.
+
+concepts:
+  # Memory subsystem
+  - name: scratchpad
+    description: >
+      Banked SRAM used for input/weight tiles. Addressed by row.
+      Resident tensors live here between DMA loads and compute phases.
+
+  - name: accumulator
+    description: >
+      Higher-precision SRAM (int32 or float32) holding partial sums.
+      Written by compute, read by mvout after requantisation.
+
+  # DMA engine
+  - name: dma_load
+    description: >
+      mvin instruction: transfers a 2D tile from DRAM into the scratchpad.
+      Parameterised by address, stride, and tile dimensions.
+
+  - name: dma_store
+    description: >
+      mvout instruction: transfers a tile from the accumulator to DRAM.
+      Triggers requantisation (scale + bias + relu) if configured.
+
+  # Systolic array
+  - name: systolic_matmul
+    description: >
+      Core compute primitive: A × B → C accumulation over the systolic mesh.
+      Supports weight-stationary (WS) and output-stationary (OS) dataflows.
+
+  - name: preload
+    description: >
+      Loads a weight tile into the systolic array's weight registers (WS mode).
+      Must precede a compute instruction in WS dataflow.
+
+  - name: compute
+    description: >
+      Triggers one systolic matmul accumulation: A_tile × preloaded_B → accumulator.
+
+  - name: accumulate
+    description: >
+      Flag on the compute instruction: if set, adds to the existing accumulator value
+      instead of overwriting. Enables tiled K-dimension reduction.
+
+  # Command interface
+  - name: rocc_command_interface
+    description: >
+      Gemmini is exposed to the host CPU as a RoCC accelerator.
+      All commands are issued via custom RISC-V instructions (funct7 encoding).
+
+  - name: config_load
+    description: config_ld: sets stride and scale for subsequent mvin operations.
+
+  - name: config_store
+    description: config_st: sets stride and requantisation params for mvout.
+
+  - name: config_execute
+    description: config_ex: sets dataflow (WS/OS), tile dimensions, and accumulate mode.
+
+  - name: fence
+    description: >
+      gemmini_fence: synchronises CPU and accelerator.
+      Must be issued before reading mvout results from DRAM.
+
+  # Dataflow modes
+  - name: output_stationary
+    description: >
+      OS dataflow: partial sums stay in the systolic array output register file.
+      Weights flow through the array each cycle.
+
+  - name: weight_stationary
+    description: >
+      WS dataflow: weights are preloaded and stationary in the array.
+      Inputs flow through each cycle.
+
+  # Tensor abstractions
+  - name: resident_tensor
+    description: >
+      A tile that resides in the scratchpad across multiple compute phases.
+      The key optimisation opportunity: avoid re-DMAs when a tile is reused.
+
+  - name: accumulator_tensor
+    description: >
+      A tile in the accumulator SRAM. Produced by compute, consumed by mvout.
+
+  - name: resident_pack
+    description: >
+      The operation of DMA-loading a tile into the scratchpad and registering it
+      as resident. Equivalent to mvin + mark_resident.
+
+  # High-level operations
+  - name: matmul
+    description: >
+      High-level tiled matmul: decomposes into config + preload + compute + mvout
+      sequences. The primary user-facing operation.
+
+  - name: commit
+    description: >
+      Flush accumulator to DRAM with optional requantisation. Includes fence.
+
+  # Shape constraints
+  - name: tile_shape_constraints
+    description: >
+      All tile dimensions (tile_m, tile_n, tile_k) must be multiples of the
+      systolic mesh dimensions (DIM × DIM, typically 16 × 16).
+      Violating this is a verifier error.

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Headers for merlin.runtime (command buffers, dispatches, queues, handles, waits, profiling).
+Headers for runtime (command buffers, dispatches, queues, handles, waits, profiling).
 
 ## What belongs here
 

@@ -16,7 +16,7 @@ In-tree **toy / reference targets** used for TargetGen development and conforman
 
 ## Interfaces
 
-Target contracts/plans validate against `merlin/schemas/target_contract.schema.yaml` and `dialect_plan.schema.yaml`. Consumed by `merlin-targetgen`.
+Target contracts/plans validate against `merlin/schemas/target_contract.schema.yaml` and `dialect_plan.schema.yaml`. Consumed by `targetgen`.
 
 ## Invariants
 

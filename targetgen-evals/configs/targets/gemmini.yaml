@@ -1,0 +1,18 @@
+target: gemmini
+display_name: Gemmini Systolic Array Accelerator
+dataset_dir: datasets/gemmini
+generated_repo_name: gemmini-mlir
+
+# Capabilities expected in the generated dialect
+expected_contract: datasets/gemmini/golden/expected_contract.yaml
+expected_dialect_features: datasets/gemmini/golden/expected_dialect_features.yaml
+heldout_shapes: datasets/gemmini/golden/heldout_shapes.yaml
+
+# Source snapshot (frozen before any method runs)
+source_snapshot: datasets/gemmini/source_snapshot/
+
+notes: >
+  Gemmini is a systolic-array DNN accelerator generator built on top of Chipyard/RoCC.
+  The key hardware concepts are: scratchpad SRAM, accumulator SRAM, DMA engine,
+  systolic matmul (weight-stationary and output-stationary), and a RoCC command interface.
+  The dialect must expose tile-shape constraints and support resident-tensor packing.

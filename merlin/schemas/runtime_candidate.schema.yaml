@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Runtime Candidate
+purpose: >-
+  A runtime-level abstraction surfaced from kernels whose bottleneck is launch/dispatch/state
+  rather than schedule (e.g. command-buffer batching for many tiny accelerator dispatches).
+  Owned by kernel-mining (L7); consumed by the runtime workstream and DSE.
+
+required_top_level_fields:
+  - name
+  - evidence
+  - compiler_action
+  - runtime_requirement
+
+example: |
+  name: command_buffer_batching
+  evidence:
+    - autocomp_gemmini_matmul
+  observed:
+    median_dispatches_per_kernel: 44
+    small_dispatch_fraction: 0.9
+  compiler_action:
+    - group_dispatches
+    - emit_command_buffer
+  runtime_requirement:
+    - batch_submit
+    - event_completion
+    - persistent_handles

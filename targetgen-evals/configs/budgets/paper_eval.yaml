@@ -1,0 +1,15 @@
+name: paper_eval
+description: >
+  Full paper-quality evaluation. Runs all validators including held-out shape
+  execution and runtime mock comparison. Requires MLIR toolchain to be installed
+  for passes and runtime_mock validators to produce non-NA results.
+
+token_limit_usd: 100.00
+
+validators:
+  - all
+
+notes: >
+  Use for: final ablation table, camera-ready results. Each run under this budget
+  produces the complete metric set. Held-out shape success and time_to_first_pass_s
+  will be NA until mlir-opt/xdsl-opt are wired in.

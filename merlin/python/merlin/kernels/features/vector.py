@@ -1,10 +1,19 @@
-"""Extract vector features from a kernel.
+"""Vector-length strategy features.
 
-Placeholder module. No real logic yet.
+Decision recorded: *is the loop vector-length-agnostic* (scalable, RVV ``vsetvl`` style) vs
+*fixed-width* (AVX/NEON) vs *not applicable* (systolic, e.g. Gemmini). Never records the
+concrete VLEN/LMUL — that is a constant, not a decision.
 """
 from __future__ import annotations
 
+from merlin.kernels.markers import target_family
+from merlin.kernels.types import NormalizedKernel
 
-def extract_vector(*args, **kwargs):  # noqa: D401
-    """TODO: implement. See module docstring and the owning workstream's docs/."""
-    raise NotImplementedError("extract_vector is a scaffold stub; not implemented yet.")
+
+def extract_vector(nk: NormalizedKernel, fired: dict[str, list[str]]) -> dict:
+    fam = target_family(nk.target)
+    if "vector_length_polymorphic" in fired:
+        return {"vector_length_strategy": "scalable", "tail_strategy": "predicated_or_vl_loop"}
+    if fam in {"avx", "neon"}:
+        return {"vector_length_strategy": "fixed", "tail_strategy": "fixed_width"}
+    return {"vector_length_strategy": "na", "tail_strategy": "na"}

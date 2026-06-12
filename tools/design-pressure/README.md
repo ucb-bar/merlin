@@ -1,23 +1,25 @@
-# merlin-design-pressure — design-pressure analyzer
+# design-pressure — design-pressure analyzer
 
-Thin CLI entrypoint. **Not implemented yet** — this directory documents intent only.
-
-## What it will do
-
-Compute design-pressure metrics for a workload_region at multiple cut points.
+Computes the Region Pressure Vector for a workload region and synthesizes the legal I0–I3
+contracts. Implemented as the `merlin-design-pressure` console script (Milestone 1).
 
 ## Backing module
 
-`merlin.python.merlin.design_pressure`
+`merlin.design_pressure.cli` (logic in `merlin.design_pressure.{pressure_vector,synthesize}`).
 
-## Intended usage
+## Usage
 
 ```bash
-merlin-design-pressure --workload merlin/benchmarks/semantic_memory/repeated_rhs_matmul.yaml --out output/dse/repeated_rhs/design_pressure.json
+# synthetic VLA action-chunk decode region
+merlin-design-pressure --workload vla_action_chunk_decode --H 16 --reuse 16 --K 256
+
+# an existing benchmark region by name
+merlin-design-pressure --workload repeated_rhs_matmul
+
+# an explicit workload_region YAML
+merlin-design-pressure --region-yaml path/to/region.yaml
 ```
 
-## Notes
-
-CLI logic is deliberately absent at this scaffold stage. When implemented, this entrypoint
-should stay thin and delegate to the backing Python module. Artifacts are written under
-`output/` (gitignored).
+Writes `design_pressure.json` + `candidate_contracts.yaml` under `output/dse/<workload>/`
+(gitignored). The pressure vector is architecture-independent; the mined `policy_rules.yaml`
+are the legality verifiers.

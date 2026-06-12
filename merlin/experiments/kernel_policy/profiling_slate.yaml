@@ -1,0 +1,222 @@
+# Profiling slate — Stage F/G measurement plan for the mined kernel-policy insights.
+#
+# Purpose: attach a MAGNITUDE to each promoted insight (mining attaches only frequency).
+# Every measurement is a paired ABLATION (decision on vs off) on a small fixed workload
+# slate — never a flat profile of corpus kernels. Results land in metrics.schema.yaml-shaped
+# records and feed the "measured benefit" column of the actionability scorecard; the
+# adoption decision (act / park / skip) is mechanical from the decide block of each insight.
+version: 1
+
+environment:
+  # Resolved via env vars so the slate stays machine-portable. Discovered local defaults:
+  #   MERLIN_CHIPYARD=/scratch/agustin/projects/chipyard          (spike 1.1.1-dev + libgemmini)
+  #   alternate:       /scratch2/agustin/chipyard                 (has PREBUILT rocc-tests in
+  #                    generators/gemmini/software/gemmini-rocc-tests/build/)
+  spike: "$MERLIN_CHIPYARD/.conda-env/riscv-tools/bin/spike"
+  gemmini_extension: "--extension=gemmini"   # libgemmini.so ships in the same conda env
+  riscv_gcc: "$MERLIN_CHIPYARD/.conda-env/riscv-tools/bin/riscv64-unknown-elf-gcc"
+  gemmini_rocc_tests: "$MERLIN_CHIPYARD/generators/gemmini/software/gemmini-rocc-tests"
+  gemmini_headers: "$MERLIN_CHIPYARD/generators/gemmini/software/gemmini-rocc-tests/include"
+  fidelity_note: >-
+    Spike+libgemmini is a FUNCTIONAL model: it counts events (mvin/mvout/compute/fence,
+    bytes), it does not model cycles. That is exactly what the mined motifs claim about
+    (packs, traffic, dispatches), so L2 settles them. Cycle-level numbers require the
+    Chipyard Verilator sim or FireSim (L3) and are used only for final validation of an
+    already-winning insight, never for triage.
+
+fidelity_levels:
+  L1_analytical:
+    source: kernel_features.jsonl (working_set_bytes, arithmetic_intensity, dispatch_metrics)
+    use: prune — an insight whose analytical ceiling is small is skipped without execution.
+    cost: zero
+  L2_event_counts:
+    source: >-
+      spike --extension=gemmini -l (commit log) filtered for Gemmini custom opcodes,
+      plus instret from spike. Event counters per run — mvin_count, mvin2_count,
+      compute_count, mvout_count, fence_count, rhs_bytes_moved, pack_count.
+    use: rank insights, compute exploitability = gain(compiler_variant) / gain(oracle).
+    cost: seconds per workload — runs in CI.
+  L2_5_calibrated:
+    implemented: merlin/python/merlin/cost_model/{gemmini.py,calibrate.py}
+    source: >-
+      Linear event->cycle model: cycles = const + sum_e coeff[e]*n_e over Gemmini commands
+      (config, mvin_A, mvin2_B, compute[+preload], mvout, fence). Coefficients fit by
+      relative-error-weighted least squares on isolation microbenchmarks
+      (calib/gemmini_costmodel_calib.c) run under the cycle-exact Verilator sim; predictions
+      for the full grid then come from L2 Spike events in seconds. Frozen in
+      cost_model/gemmini_cost_coeffs.json with its error band.
+    calibrated:
+      sim: GemminiAndOPUShuttleConfig (Verilator, dim=16)
+      coeffs_cycles_per_cmd: {const: -32, config: 4.9, mvin_A: 29.1, mvin2_B: 29.9,
+                              compute: 63.8, mvout: 30.6, fence: 33.4}
+      fit_mape: 0.173            # degenerate config/fence microbenchmarks dominate this
+      validation_mape: 0.081     # operative band on the realistic Stage-F kernels
+      decisions_preserved: true  # resident & dispatch ratios agree in sign with measured RTL
+      key_finding: >-
+        The cost model corrects an L2 over-claim: resident_packed_tensor cuts RHS *traffic*
+        16x (L2 event count) but the end-to-end *cycle* win is only ~1.2x at DIM=16 single
+        tile, because systolic compute dominates. Still ACT (22% margin > 8% band) and the
+        cycle win grows in memory-bound regimes (skinny / large-K). At R=1 the predicted
+        speedup falls within the band -> correctly no action (reproduces the negative
+        control). This is exactly why cycle-grade ranking beats raw event counts.
+    use: >-
+      cycle-grade RANKING at Spike speed — faster than FireSim with FireSim-anchored
+      estimates. Validate on held-out cells and report the error band (expect 10-20% for
+      these regular tiled kernels); a triage decision a 20% band could flip is too close
+      to act on anyway. Known breakage (handled): overlap effects (double_buffering is
+      parked to true L3) and capacity-overflow cells (keep those IN the calibration set).
+    cost: one-time Verilator build + ~16 calibration runs; afterwards seconds per cell.
+  L3_cycles:
+    source: >-
+      Chipyard Verilator sim (make CONFIG=GemminiRocketConfig — same RTL as FireSim, so
+      identical cycles at ~kHz; minutes per slate-sized workload, no FPGA) or FireSim on
+      the local Xilinx U250 (/opt/firesim-db.json) for long workloads only — its FPGA
+      speed amortizes over full networks, not microbenchmark ablations.
+    use: calibration points for L2_5; double_buffering; final confirmation for insights
+      about to become dialect ops. Never triage.
+    cost: Verilator minutes/run after one ~30-60min build; FireSim hours of bitstream
+      build before the first run.
+
+# Counter definitions (the vocabulary used by every insight's `metrics` list).
+metrics:
+  pack_count:        "number of weight-staging operations (Gemmini: mvin2/mvin of B; RVV: packed-B buffer fills)"
+  rhs_bytes_moved:   "total bytes of RHS/weight traffic into local storage"
+  compute_count:     "compute_preloaded / compute_accumulated instruction count"
+  mvout_count:       "result commits to memory"
+  store_count:       "output-tensor stores (accumulator materializations show up here)"
+  dispatch_count:    "accelerator command count per workload (config+mvin+compute+mvout)"
+  fence_count:       "host-accelerator synchronizations"
+  instret:           "retired instruction count (whole-program proxy)"
+  tail_overhead_fraction: "extra instructions attributable to non-VLEN-divisible trip counts"
+
+# Fixed workload slate: 4 semantic-memory benchmarks + the regime grid (matches the
+# Stage-D symbolic sweep, so symbolic and measured matrices are directly comparable).
+workloads:
+  benchmarks:
+    - repeated_rhs_matmul        # positive: reuse R>=4, W fits
+    - no_reuse_matmul            # negative control: R=1
+    - matmul_bias_requant_relu   # epilogue/commit positive
+    - capacity_stress_reuse      # W exceeds resident store
+  regime_grid:
+    base: {op: matmul, M: 64, N: 64, dtype: i8}
+    dimensions:
+      reuse:    [1, 2, 4, 8, 16]      # times the same B is consumed
+      K:        [64, 1024]
+      tail:     [aligned, K_plus_8]   # divisible vs tail-heavy
+      capacity: [fits, overflow]      # scale N/distinct-weights vs the 256KB scratchpad
+    note: full cross is 40 cells; run the 20-cell {reuse x K x tail, fits} core always,
+          the overflow column only for resident_packed_tensor.
+
+insights:
+  - name: resident_packed_tensor
+    backed_by: packed_rhs_policy          # 6 sources, 1089 kernels, Stage-D validated
+    claim: "packing/staging B once and reusing it R times cuts pack_count and rhs_bytes_moved ~R-fold"
+    ablation:
+      baseline: "re-stage B before every matmul invocation (pack inside the loop)"
+      variant:  "stage B once, R matmuls consume the resident copy (pack hoisted)"
+      oracle:   "B preloaded for free before timing starts"
+    harness: gemmini-rocc-tests bareMetalC matmul templates (tiled_matmul_ws.c), R-loop added
+    metrics: [pack_count, rhs_bytes_moved, compute_count, instret]
+    workloads: [repeated_rhs_matmul, no_reuse_matmul, capacity_stress_reuse, regime_grid]
+    decide:
+      act_if:  "rhs_bytes_moved(baseline)/rhs_bytes_moved(variant) >= 2 at R>=4 AND exploitability >= 0.5"
+      skip_if: "oracle gain < 1.2x on every fits-cell"
+      calibrates: "the reuse_count >= 2 threshold in packed_rhs_policy's when-clause"
+    status: measured_L2_act
+    measured:
+      harness: stageF/resident_rhs_ablation.c + stageF/run_l2.py
+      result: >-
+        rhs_bytes_moved ratio = R exactly (16x at R=16); mvin2_B: baseline=R, hoisted=1,
+        oracle=1; identical compute/mvout per variant. Exploitability = 1.00 — the hoisted
+        pack achieves 100% of oracle benefit. Decision rule passes at R>=2 -> ACT.
+      artifact: output/kernels/stageF/resident_rhs_l2.json
+
+  - name: accumulator_commit
+    backed_by: accumulator_commit_policy   # 4 sources, 436 kernels, Stage-D validated
+    claim: "keeping the accumulator live across the epilogue avoids one full output round-trip"
+    ablation:
+      baseline: "matmul -> mvout i32 acc -> load -> bias/requant/relu -> store i8"
+      variant:  "bias via mvin to accumulator, activation via config_ex, single mvout"
+    harness: gemmini-rocc-tests bareMetalC (matmul with full_C vs fused bias/activation path)
+    metrics: [store_count, mvout_count, rhs_bytes_moved, instret]
+    workloads: [matmul_bias_requant_relu, regime_grid]
+    decide:
+      act_if:  "store_count(variant) <= 0.55 * store_count(baseline)"
+      skip_if: "output traffic < 10% of total traffic on every cell (epilogue is noise)"
+    status: measured_L2_act
+    measured:
+      harness: stageF/accumulator_commit_ablation.c + stageF/run_l2.py
+      result: >-
+        mvout bytes ratio = 4.0x (i32 accumulator round-trip vs fused i8 commit); CPU
+        epilogue eliminated (26.9k instret saved at REPS=8). Correctness PASS — ACT.
+      artifact: output/kernels/stageF/accumulator_commit_l2.json
+
+  - name: command_buffer_batching
+    backed_by: command_buffer_batching     # L7; single source but 498 kernels, measured 39 disp/kernel
+    claim: "grouping the many small dispatches amortizes per-command config/fence overhead"
+    ablation:
+      baseline: "config_ex/config_ld/config_st re-issued per tile (as the mined corpus does)"
+      variant:  "hoist invariant config, fence once per batch"
+    harness: replay a mined autocomp kernel (dispatch_metrics-rich) as a rocc-tests bareMetalC file
+    metrics: [dispatch_count, fence_count, instret]
+    workloads: [regime_grid]                 # K x reuse drives tile count
+    decide:
+      act_if:  "fence_count + config fraction of dispatch_count > 30% AND batching removes >= half"
+      skip_if: "config/fence overhead < 5% of instret (functional overhead is noise)"
+      note: "even if act: runtime-workstream primitive first; NO dialect op from one source family"
+    status: measured_L2_act
+    measured:
+      harness: stageF/dispatch_batching_ablation.c + stageF/run_l2.py
+      result: >-
+        At the corpus-median 39 tiles/kernel: config+fence = 85.2% of issued accelerator
+        commands; batching removes 54% of all commands — matches the mined 0.849
+        small-dispatch fraction. ACT (runtime primitive first).
+      artifact: output/kernels/stageF/dispatch_batching_l2.json
+
+  - name: vl_agnostic_loop
+    backed_by: vl_agnostic_loop_policy     # 2 sources (xnnpack, openblas)
+    claim: "dynamic-VL loops remove scalar tail handling on non-divisible trip counts"
+    ablation:
+      baseline: "fixed-width vector loop + scalar tail"
+      variant:  "vsetvl-driven loop (XNNPACK/OpenBLAS style)"
+    harness: spike with RVV (--isa=rv64gcv) on two ~30-line C kernels; no Gemmini needed
+    metrics: [instret, tail_overhead_fraction]
+    workloads: {n: [64, 72, 1024, 1032]}    # aligned vs tail-heavy lengths
+    decide:
+      act_if:  "tail_overhead_fraction(baseline) >= 0.1 on tail-heavy n"
+      skip_if: "never — schedule-level rule is already cheap; this only sizes the win"
+    status: measured_L2_park
+    measured:
+      harness: stageF/vl_tail_ablation.c + stageF/run_l2.py
+      result: >-
+        tail_overhead_fraction ~ 0 at VLEN=128 (n in {64,70,1024,1030}): dynamic-VL loop
+        overhead matches scalar-tail cost. PARK as a performance policy — the rationale
+        is portability (no fixed-width assumptions), not measurable instret win.
+      artifact: output/kernels/stageF/vl_tail_l2.json
+
+  - name: double_buffering
+    backed_by: double_buffer_policy        # PARKED: 22 kernels, 2 sources
+    claim: "overlapping mvin with compute hides load latency"
+    blocker: >-
+      Spike is functional — overlap has no observable effect on event counts, and overlap
+      is an interaction effect so the L2_5 linear model cannot see it either. Requires true
+      L3 cycles (Verilator on a slate-sized workload is enough; FireSim not needed). Keep
+      parked until then; do not promote on L2/L2_5 evidence.
+    metrics: [L3: compute_idle_cycles]
+    status: parked_pending_L3
+
+  - name: weight_stationary_dataflow
+    backed_by: weight_stationary_dataflow_policy
+    disposition: >-
+      Reclassified: target capability, not compiler decision. Goes into
+      target_contract.yaml (dataflow: weight_stationary) — no profiling pair exists
+      because there is no per-kernel decision to ablate on a WS-only accelerator.
+      OS-vs-WS comparison belongs to DSE over target contracts, not this slate.
+    status: reclassified_no_profiling
+
+reporting:
+  schema: metrics.schema.yaml per (insight, workload, variant) run
+  rollup: "measured_benefit + exploitability columns appended to the actionability scorecard"
+  honesty:
+    - "L2 numbers are event counts from a functional model, never cycles or seconds"
+    - "a measured win on this slate is still simulator-relative until L3 confirms"

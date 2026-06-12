@@ -2,32 +2,35 @@
 
 ## Purpose
 
-merlin's own **prototype dialects** in xDSL. This is the default, fast Python plane for iterating on `merlin.contract`, `merlin.schedule`, `merlin.interface`, and `merlin.runtime` before committing to stable MLIR/C++.
+merlin's own **core dialects** in xDSL. This is the default, fast Python plane for iterating on the `contract`, `schedule`, `interface`, `runtime`, and `dse` dialects before committing to stable MLIR/C++. Dialect namespaces are bare (no `m`/`merlin.` prefix).
 
 ## What belongs here
 
-- xDSL dialect definitions, parsers/printers, verifiers, lowering prototypes.
-- `contract.py`, `schedule.py`, `interface.py`, `runtime.py`.
+- xDSL dialect definitions, parsers/printers, verifiers.
+- `_common.py` (shared enums/guards), `contract.py`, `schedule.py`, `interface.py`, `runtime.py`, `dse.py`.
+- `lowering/` — the staged contract → schedule → interface → target → runtime lowering and its cross-op analyses, ending in a command-buffer dict for `merlin.runtime` (the Python engine).
 
 ## What does not belong here
 
 - Stable production dialects (those get promoted to `merlin/compiler/`).
 - Adapters to external xDSL tooling (that is `merlin/integrations/xdsl/`).
+- Target dialects (generated into target repos by TargetGen).
 
 ## Interfaces
 
-Prototypes the same four dialects scaffolded in `merlin/compiler/include/merlin/Dialect/`. Consumes/produces `merlin/schemas/` artifacts.
+Prototypes the dialects scaffolded in `merlin/compiler/include/merlin/Dialect/`. Consumes/produces `merlin/schemas/` artifacts. `lowering/emit_command_buffer.py` emits dicts conforming to `command_buffer.schema.yaml`, executed by the `merlin.runtime` Python engine.
 
 ## Invariants
 
-- These are rapid prototypes — expect churn.
+- These are rapid prototypes — expect churn, but keep `module.verify()` green.
 - Stable dialects may be promoted to MLIR/C++ under `merlin/compiler/`; keep names aligned.
-- Do not create `merlin.dse` or `merlin.kernel` dialects — those stay schemas-first.
+- `dse` is a real (minimal) dialect by explicit decision — it mirrors the `interface_candidate`/`dse_result`/`exploitability_report` schemas and never participates in lowering. `kernel`/`search` stay schemas-first.
+- Local single-op checks live in `verify_`; cross-op checks (use-after-evict, placement legality, command-buffer consistency) live in `lowering/analyses.py`.
 
 ## Testing expectations
 
-Small xDSL round-trip / verifier tests under `merlin/python/tests/`.
+Per-dialect build/verify/invalid/round-trip tests plus the end-to-end lowering test under `merlin/python/tests/` (`test_xdsl_*.py`, `test_xdsl_lowering_e2e.py`).
 
 ## Notes for future agents
 
-xDSL is the default way we handle MLIR-style IR until a specific pipeline is chosen. See `docs/xdsl.md` and `docs/dialects.md`.
+xDSL is the default way we handle MLIR-style IR until a specific pipeline is chosen. Copy the proven xDSL 0.65 idioms (field-annotation attribute params, `EnumAttribute` + `SpacedOpaqueSyntaxAttribute`, `func.ReturnOp`). See `docs/xdsl.md` and `docs/dialects.md`.

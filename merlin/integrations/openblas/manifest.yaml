@@ -1,0 +1,17 @@
+# Integration manifest for OpenBLAS (RISC-V vector kernels).
+name: openblas
+display_name: OpenBLAS
+kind: adapter
+vendored: false
+external_repo:
+  env_var: MERLIN_OPENBLAS_REPO
+  required: false
+emits_schema: kernel_record
+status: implemented
+backing_module: merlin.kernels.ingest.openblas
+notes: >-
+  External repo is passed by path/env var, never vendored. The adapter mines
+  kernel/riscv64/*.c, keeping only vector kernels (*_rvv.c, *_vector*.c, *_zvl{128,256}b.c,
+  *_c910v.c) and skipping scalar fallbacks (counted in diagnostics). GEMM/TRMM filenames
+  encode dtype + MRxNR register blocking; BLAS1/2 kernels are precision-generic via DOUBLE
+  macros so their dtype is recorded as unknown. Pure text parsing — nothing is compiled.

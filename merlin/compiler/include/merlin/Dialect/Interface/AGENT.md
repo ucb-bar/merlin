@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Headers for merlin.interface (resident tensors, accumulators, event tokens, command objects).
+Headers for interface (resident tensors, accumulators, event tokens, command objects).
 
 ## What belongs here
 

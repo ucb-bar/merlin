@@ -1,4 +1,4 @@
-# AGENT.md — tools/merlin-dse
+# AGENT.md — tools/dse
 
 ## Purpose
 

@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Dialect Requirement
+purpose: >-
+  What a *validated interface candidate* requires from a target dialect (L6): the ops, types
+  and verifier conditions a target must provide to implement the abstraction, and where it
+  must lower to. Emitted by kernel mining as INPUT to TargetGen's dialect_plan — it never
+  creates a dialect itself. A dialect op is justified only by an interface abstraction that
+  cleared the promotion gate, never directly by a kernel.
+
+required_top_level_fields:
+  - source_abstraction
+  - target
+  - required_ops
+  - required_types
+  - required_verifiers
+  - lowering_target
+  - status
+producer: merlin.kernels.emit.dialect_requirement
+consumers:
+  - merlin.targetgen.synthesize.dialect_plan
+validation_notes: >-
+  status is one of proposed|validated. Kernel mining always emits `proposed`; only Stage-F
+  target-lowering validation may flip it. required_ops/types must trace back to the
+  interface candidate's interface_ops/interface_types.
+
+example: |
+  source_abstraction: resident_packed_tensor
+  target: toy_npu
+  required_ops:
+    - res_pack
+    - matmul_resident
+    - evict
+  required_types:
+    - resident_tensor
+  required_verifiers:
+    - capacity_constraint
+    - lifetime_constraint
+    - layout_constraint
+  lowering_target:
+    - command_buffer
+    - simulator
+  status: proposed

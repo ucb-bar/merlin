@@ -1,4 +1,4 @@
 """Ingest kernels from external sources.
 
-Scaffold package. No real logic yet.
+Source adapters normalizing kernels into NormalizedKernel records.
 """

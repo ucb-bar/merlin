@@ -14,3 +14,6 @@ tensors:
 op_sequence: [matmul, bias_add, requant, relu]
 expected_candidate_features:
   - accumulator_commit
+negative_controls:
+  - no_reuse_matmul
+metrics_to_capture: [cycles, bytes_moved, accumulator_commits, intermediate_write_bytes]

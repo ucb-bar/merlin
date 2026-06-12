@@ -1,0 +1,9 @@
+{
+  "validator": "xdsl",
+  "xdsl_dir_exists": false,
+  "xdsl_files": 0,
+  "xdsl_op_estimate": 0,
+  "errors": [
+    "xdsl/ directory does not exist under generated/gemmini-mlir/; no xDSL artifacts produced yet"
+  ]
+}

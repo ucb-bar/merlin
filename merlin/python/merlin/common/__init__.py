@@ -1,4 +1,4 @@
 """Shared utilities: schema loading/validation, IO, common types.
 
-Scaffold package. No real logic yet.
+Shared infrastructure: schema load/validate, yaml, advisory llm summary.
 """

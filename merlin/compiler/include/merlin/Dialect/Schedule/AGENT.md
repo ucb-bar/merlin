@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Headers for merlin.schedule (tiling, layout, placement, dispatch grouping).
+Headers for schedule (tiling, layout, placement, dispatch grouping).
 
 ## What belongs here
 

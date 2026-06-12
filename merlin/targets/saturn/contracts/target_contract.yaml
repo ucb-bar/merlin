@@ -1,0 +1,54 @@
+# Saturn target contract (validates against merlin/schemas/target_contract.schema.yaml).
+#
+# Curated reference contract for the Saturn RVV vector unit modeled as a multicore
+# RV64GCV CPU on spike (chipyard toolchain). Vector parameters below describe the
+# spike model; confirm VLEN/ELEN/queue depths against a concrete Saturn RTL config
+# (chipyard generators/saturn) before drawing RTL-level conclusions.
+name: saturn
+version: 0.1
+features: [rvv, scalable_vl, multicore, resident_packed_tensor, accumulator_commit, command_buffer, metrics]
+ops: [pack, matmul, commit, release]
+types: [packed_tensor, accumulator]
+runtime:
+  backends: [simulator, baremetal, vcs, zephyr]
+capabilities:
+  ops: [matmul, bias_add, requant, relu]
+  layouts: [packed_rhs]
+  # "Residency" on a CPU target = a packed weight kept live in memory/cache across
+  # the region; bound by a conservative working-set budget (L2-class).
+  resident_storage_bytes: 2097152
+  harts: 4
+vector:
+  isa: rv64gcv_zfh_zvfh
+  elen: 64
+  vlen_default: 128       # spike default; Saturn configs are typically 256/512
+  vl_policy: scalable_vl
+  tail_policy: agnostic   # vsetvli ta,ma
+  lmul_policy: static_m4_accumulate   # e8m1 loads widened into e32m4 accumulators
+memory_model:
+  resident: true
+  accumulators: true      # vector register accumulators (e32m4 tiles)
+compiler_obligations:
+  - must_prove_rhs_immutable_for_residency
+  - must_respect_resident_storage_bytes
+  - must_commit_accumulator_before_reuse
+  - must_partition_rows_across_harts_deterministically
+hardware_promises:
+  - scalable_vector_length
+  - widening_integer_accumulate
+  - per_hart_mcycle
+runtime_promises:
+  - command_buffer
+  - metrics
+  - multicore_barrier
+legality:
+  - "pack requires rhs.mutable == false"
+  - "sum(packed_tensor.bytes) <= resident_storage_bytes"
+  - "row partition must cover [0, M) exactly once across harts"
+confidence: medium
+requires_human_review: false
+notes: >-
+  Curated by hand for the spike-modeled multicore RVV CPU (Merlin's first real-ISA
+  backend). The RVV kernel is hand-written assembly
+  (merlin/runtime/baremetal/spike/rvv_matmul_i8.S); VCS replay is gated on
+  MERLIN_SATURN_SIMV.

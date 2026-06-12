@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "validation_report.schema.json",
+  "title": "ValidationReport",
+  "type": "object",
+  "required": ["status", "run_id", "overall"],
+  "properties": {
+    "status":       {"type": "string", "enum": ["not_validated", "validated"]},
+    "run_id":       {"type": "string"},
+    "validated_at": {"type": "string"},
+    "is_smoke_test":{"type": "boolean"},
+    "overall":      {"type": "string", "enum": ["pass", "fail"]},
+    "errors":       {"type": "array", "items": {"type": "string"}},
+    "architecture_rules": {
+      "type": "object",
+      "properties": {
+        "passed":  {"type": "integer"},
+        "failed":  {"type": "integer"},
+        "results": {"type": "array"}
+      }
+    },
+    "validator_results": {"type": "object"}
+  },
+  "additionalProperties": true
+}

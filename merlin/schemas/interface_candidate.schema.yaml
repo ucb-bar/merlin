@@ -2,7 +2,7 @@
 # merlin schema (not yet formal JSON Schema; structured enough for validation).
 title: Interface Candidate
 purpose: >-
-  A concrete target-independent interface abstraction proposed for the merlin.interface dialect, with the design pressure that justifies it. Owned by design-pressure/DSE; consumed by TargetGen.
+  A concrete target-independent interface abstraction proposed for the interface dialect, with the design pressure that justifies it. Owned by design-pressure/DSE; consumed by TargetGen.
 
 required_top_level_fields:
   - name

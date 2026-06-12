@@ -1,4 +1,4 @@
-# merlin-targetgen — target dialect generator
+# targetgen — target dialect generator
 
 Thin CLI entrypoint. **Not implemented yet** — this directory documents intent only.
 
@@ -13,7 +13,7 @@ ISA/docs/RTL/examples -> target_contract.yaml -> dialect_plan.yaml -> generated 
 ## Intended usage
 
 ```bash
-merlin-targetgen --isa ... --arch ... --examples ... --out output/targetgen/<target>
+targetgen --isa ... --arch ... --examples ... --out output/targetgen/<target>
 ```
 
 ## Notes

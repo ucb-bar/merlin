@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Implementation of merlin.runtime (scaffold).
+Implementation of runtime (scaffold).
 
 ## What belongs here
 

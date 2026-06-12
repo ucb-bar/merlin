@@ -1,0 +1,28 @@
+budget: cheap_smoke
+created_at: '2026-06-08T20:55:02.833722+00:00'
+git_hash_at_init: 617a7a24dbfdf9dff6cede4c4a4f6fa0a825c41e
+is_smoke_test: true
+method: v0_naive_claude
+observability:
+  capture_policy:
+    capture_outputs: true
+    capture_prompts: true
+    capture_tool_results: true
+    redact_secrets: true
+    store_raw_llm_content: local_only
+  mlflow:
+    enabled: false
+    experiment_name: null
+    run_id: null
+    tracking_uri: null
+  opentelemetry:
+    enabled: false
+    endpoint: null
+    service_name: targetgen-evals
+    trace_id: null
+  tracking_mode: local
+promotion_flag: false
+run_id: 2026-06-08_v0_naive_claude_seed010
+schema_version: '1.0'
+seed: 10
+target: gemmini

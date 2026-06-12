@@ -1,0 +1,16 @@
+method: v0_naive_claude
+
+allowed_tools:
+  - Read        # any file under datasets/, source_snapshot/, selected_*
+  - Write       # only inside <run_dir>/
+  - Edit        # only inside <run_dir>/
+  - Bash        # restricted: no git push, no external clones, no writes outside run_dir
+
+forbidden_tools:
+  - WebFetch    # no live internet access during official runs
+  - WebSearch   # no live internet access during official runs
+
+bash_restrictions:
+  - No git push, git clone, or network operations
+  - No writes to paths outside <run_dir>/
+  - No modifications to merlin/, gemmini/, datasets/, methods/, configs/, harness/

@@ -1,0 +1,37 @@
+target: gemmini
+version: "0.1"
+
+description: >
+  Expected kernel-level patterns that the dialect must be able to represent.
+  Derived from the selected_kernels/ corpus. Used to evaluate v5_kernel_miner.
+
+patterns:
+  - name: simple_matmul
+    signature: "C[M][N] += A[M][K] * B[K][N]"
+    tile_pattern: one_shot
+    resident_rhs: false
+    notes: Baseline pattern. No reuse. One pack(A) + one pack(B) + one matmul + one commit.
+
+  - name: repeated_rhs_matmul
+    signature: "for b: C[b][M][N] += A[b][M][K] * B[K][N]"
+    tile_pattern: batched_lhs
+    resident_rhs: true
+    notes: >
+      B is fixed across the batch dimension. pack(B) is done once; pack(A) and matmul
+      are repeated. The dialect must represent B as a resident_tensor across loop iterations.
+
+  - name: matmul_bias_requant_relu
+    signature: "D = relu(requant(C + bias))"
+    tile_pattern: fused_output
+    resident_rhs: false
+    notes: >
+      After matmul, the accumulator is read, bias is added, requantisation is applied,
+      and relu clips negative values. commit must accept scale + bias + relu flags.
+
+  - name: accumulate_k_dim
+    signature: "C[M][N] += sum_k A[M][K] * B[K][N] over tiled K"
+    tile_pattern: tiled_k_reduction
+    resident_rhs: true
+    notes: >
+      K is larger than tile_k. Multiple compute calls with accumulate=true before
+      a final commit. The dialect must represent the accumulate flag on matmul.

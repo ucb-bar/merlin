@@ -1,4 +1,4 @@
-# AGENT.md — tools/merlin-design-pressure
+# AGENT.md — tools/design-pressure
 
 ## Purpose
 

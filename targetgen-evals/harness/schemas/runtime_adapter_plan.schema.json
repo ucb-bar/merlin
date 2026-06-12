@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "runtime_adapter_plan.schema.json",
+  "title": "RuntimeAdapterPlan",
+  "description": "Describes how generated ops map to runtime commands (e.g. RoCC, DMA).",
+  "type": "object",
+  "required": ["target", "adapters"],
+  "properties": {
+    "target": {"type": "string"},
+    "adapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["op", "runtime_command"],
+        "properties": {
+          "op":              {"type": "string"},
+          "runtime_command": {"type": "string"},
+          "encoding":        {"type": "string"},
+          "notes":           {"type": "string"}
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -2,7 +2,7 @@
 # merlin schema (not yet formal JSON Schema; structured enough for validation).
 title: Policy Rule
 purpose: >-
-  A compiler heuristic distilled from kernel evidence: when a condition holds, take these scheduling actions. Owned by kernel-mining; consumed by DSE and (later) merlin.schedule.
+  A compiler heuristic distilled from kernel evidence: when a condition holds, take these scheduling actions. Owned by kernel-mining; consumed by DSE and (later) the schedule dialect.
 
 required_top_level_fields:
   - policy

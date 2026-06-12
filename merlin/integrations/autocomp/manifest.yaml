@@ -7,7 +7,8 @@ external_repo:
   env_var: MERLIN_AUTOCOMP_REPO
   required: false
 emits_schema: kernel_record
-status: scaffold
+status: implemented
+backing_module: merlin.kernels.ingest.autocomp
 notes: >-
   External repo is passed by path/env var, never vendored. Adapter must degrade
   gracefully when MERLIN_AUTOCOMP_REPO is unset.

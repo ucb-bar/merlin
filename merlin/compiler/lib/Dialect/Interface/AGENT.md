@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Implementation of merlin.interface (scaffold).
+Implementation of interface (scaffold).
 
 ## What belongs here
 

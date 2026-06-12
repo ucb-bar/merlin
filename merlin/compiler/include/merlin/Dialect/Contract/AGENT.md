@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Headers for merlin.contract (workload facts, capabilities, obligations, legality).
+Headers for contract (workload facts, capabilities, obligations, legality).
 
 ## What belongs here
 

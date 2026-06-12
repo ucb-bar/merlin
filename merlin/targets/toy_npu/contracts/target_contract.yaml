@@ -1,6 +1,11 @@
 # ToyNPU target contract (validates against merlin/schemas/target_contract.schema.yaml).
 name: toy_npu
 version: 0.1
+features: [resident_packed_tensor, accumulator_commit, command_buffer, metrics]
+ops: [res_pack, matmul, commit, evict]
+types: [resident_tensor, accumulator]
+runtime:
+  backends: [simulator, zephyr]
 capabilities:
   ops: [matmul, bias_add, requant, relu]
   layouts: [packed_rhs]

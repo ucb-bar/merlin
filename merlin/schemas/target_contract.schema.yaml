@@ -13,6 +13,16 @@ required_top_level_fields:
   - hardware_promises
   - runtime_promises
   - legality
+producer: merlin.targetgen.synthesize.target_contract (or hand-authored under merlin/targets/<t>/contracts/)
+consumers:
+  - merlin.python.merlin.kernels
+  - merlin.python.merlin.design_pressure
+  - merlin.python.merlin.dse
+  - merlin.targetgen.synthesize.* (seeds the other plans)
+validation_notes: >-
+  Required top-level fields must all be present. For toy_npu the synthesized contract also
+  carries `features`, `ops`, `types`, and `runtime.backends`; real targets surface detected
+  concepts under `capabilities.detected_concepts` and are flagged `requires_human_review: true`.
 
 example: |
   name: toy_npu

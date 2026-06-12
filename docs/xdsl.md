@@ -7,7 +7,7 @@ It lets us iterate on dialects and lowerings in Python without a full LLVM/MLIR 
 
 - **Fast dialect prototyping.** TargetGen's first backend is `xdsl_backend.py`; generate an xDSL
   dialect + parser/printer/verifier + small tests before any C++ TableGen.
-- **Research IR** for `merlin.contract / schedule / interface / runtime`
+- **Research IR** for `contract / schedule / interface / runtime / dse`
   (`merlin/python/merlin/xdsl_dialects/`).
 - **Standalone analysis/lowering playground** for design-pressure and DSE.
 

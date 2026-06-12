@@ -1,10 +1,11 @@
 """Cut point: bufferized.
 
-Placeholder module. No real logic yet.
+Honest pass-through in M1. Real bufferization-level analysis (actual buffer allocation,
+in-place reuse, spill bytes) requires lowering and is M2.
 """
 from __future__ import annotations
 
 
-def cut_bufferized(*args, **kwargs):  # noqa: D401
-    """TODO: implement. See module docstring and the owning workstream's docs/."""
-    raise NotImplementedError("cut_bufferized is a scaffold stub; not implemented yet.")
+def cut_bufferized(region: dict) -> dict:
+    """Pass-through marker for the bufferized cutpoint (M1)."""
+    return {"cutpoint": "present"}

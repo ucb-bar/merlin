@@ -1,4 +1,4 @@
-# merlin-compare — parallel strategy comparison
+# compare — parallel strategy comparison
 
 Thin CLI entrypoint. **Not implemented yet.**
 
@@ -15,7 +15,7 @@ matrix), in parallel, and emit a scoreboard + decision report. Reuses `dse_resul
 ## Intended usage
 
 ```bash
-merlin-compare \
+compare \
   --workloads merlin/benchmarks/semantic_memory/*.yaml \
   --strategies output/dse/strategies/*.yaml \
   --out output/dse/interface_dse/

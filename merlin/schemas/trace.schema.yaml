@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Trace
+purpose: >-
+  The Merlin-owned trace-event stream format. Backends emit ordered trace markers (e.g.
+  resident_hit, eviction, dispatch boundaries) so runs can be inspected and compared. Owned by
+  Merlin core runtime; produced by the simulator/backends, consumed by reporting/visualization.
+required_top_level_fields:
+  - abi_version
+  - target
+  - events
+producer: merlin/runtime (simulator + backends)
+consumers:
+  - reporting / visualization tooling
+  - human inspection
+validation_notes: >-
+  Each event has a name and optional attributes (object, count, timestamp). Timestamps, when
+  present, are integer cycle/tick counts. The stream order is significant.
+example: |
+  abi_version: "0.1"
+  target: toy_npu
+  events:
+    - {name: resident_pack, object: W_res, count: 1}
+    - {name: resident_hit, object: W_res, count: 8}
+    - {name: accumulator_commit, object: acc0, count: 1}
+    - {name: eviction, object: W_res, count: 1}

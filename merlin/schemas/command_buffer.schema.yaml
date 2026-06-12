@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Command Buffer
+purpose: >-
+  The Merlin-owned, target-independent command-buffer format. A command buffer is an ordered
+  list of opaque commands plus resource/handle tables and a list of requested metrics. Target
+  adapters encode this abstract buffer into their own packet/instruction/runtime format; the
+  simulator interprets it directly. Owned by Merlin core runtime; produced by runtime lowering,
+  consumed by every runtime backend and adapter.
+required_top_level_fields:
+  - abi_version
+  - target
+  - backend
+  - commands
+  - resources
+  - metrics_requested
+producer: merlin runtime lowering (merlin-runtime-to-command-buffer)
+consumers:
+  - merlin/runtime/simulator
+  - generated target repo runtime/adapter
+validation_notes: >-
+  abi_version must match a runtime_abi.schema.yaml version. Each command needs an opcode and
+  operands; metrics_requested entries must be common metric names from metrics.schema.yaml.
+example: |
+  abi_version: "0.1"
+  target: toy_npu
+  backend: simulator
+  commands:
+    - {opcode: RES_PACK, operands: {src: W, dst: W_res}, attributes: {layout: packed_rhs}}
+    - {opcode: MATMUL_RESIDENT, operands: {lhs: A0, rhs: W_res, dst: acc0}}
+    - {opcode: COMMIT, operands: {src: acc0, dst: Y0}, attributes: {epilogue: [requant, relu]}}
+    - {opcode: EVICT, operands: {handle: W_res}}
+  resources:
+    buffers: []
+    handles: [W_res, acc0]
+  metrics_requested: [cycles, bytes_moved, pack_count, resident_hits, evictions]

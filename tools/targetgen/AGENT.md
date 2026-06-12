@@ -1,4 +1,4 @@
-# AGENT.md — tools/merlin-targetgen
+# AGENT.md — tools/targetgen
 
 ## Purpose
 

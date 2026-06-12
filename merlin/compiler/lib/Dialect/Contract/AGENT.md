@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Implementation of merlin.contract (scaffold).
+Implementation of contract (scaffold).
 
 ## What belongs here
 

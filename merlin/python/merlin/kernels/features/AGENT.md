@@ -10,11 +10,11 @@ Feature extractors (loops, vector, memory, packing, epilogue, async, target).
 
 ## What does not belong here
 
-- Real algorithm implementations (TODO stubs only at this stage).
+- Vendored external kernel repos (pass by path / `MERLIN_<SRC>_REPO`, never vendor).
 - Generated artifacts (write those to `output/`).
 
 ## Invariants
 
 - Keep this directory focused on its stated purpose.
 - Every subdirectory must also contain an AGENT.md.
-- No real algorithms yet — placeholder modules with explicit TODOs only.
+- Per-kernel extraction stays deterministic (regex/filename/AST), zero LLM calls; reusable logic lives here, not in `experiments/`.

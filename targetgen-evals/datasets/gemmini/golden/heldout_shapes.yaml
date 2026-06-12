@@ -1,0 +1,63 @@
+target: gemmini
+version: "0.1"
+
+description: >
+  Held-out tile shapes not used during dialect design. Used to evaluate
+  whether the generated dialect generalises beyond the training examples.
+  These shapes are withheld from the method's source_snapshot.
+
+shapes:
+  - name: small_square
+    M: 16
+    N: 16
+    K: 16
+    batch: 1
+    dtype_in: i8
+    dtype_out: i32
+    notes: Minimum tile size. Must pass.
+
+  - name: large_square
+    M: 64
+    N: 64
+    K: 64
+    batch: 1
+    dtype_in: i8
+    dtype_out: i32
+    notes: 4× the minimum mesh dimension in each axis.
+
+  - name: non_square_wide
+    M: 16
+    N: 64
+    K: 32
+    batch: 1
+    dtype_in: i8
+    dtype_out: i32
+    notes: Wide output. Tile_n > tile_m. Should generalise if dim attrs are symbolic.
+
+  - name: batched_repeated_rhs
+    M: 32
+    N: 32
+    K: 32
+    batch: 8
+    dtype_in: i8
+    dtype_out: i32
+    notes: Batched matmul with resident RHS. Tests resident_tensor across batch.
+
+  - name: illegal_non_multiple
+    M: 20
+    N: 16
+    K: 16
+    batch: 1
+    dtype_in: i8
+    dtype_out: i32
+    expected_result: verifier_error
+    notes: M=20 is not a multiple of DIM=16. Must be rejected by the tile-shape verifier.
+
+  - name: float_accumulator
+    M: 16
+    N: 16
+    K: 16
+    batch: 1
+    dtype_in: i8
+    dtype_out: f32
+    notes: f32 accumulator variant. Gemmini supports this in some configurations.

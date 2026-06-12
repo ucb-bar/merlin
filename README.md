@@ -30,7 +30,7 @@ See `docs/parallel_workstreams.md` for ownership and the shared-artifact flow.
 
 ## Core dialects
 
-`merlin.contract`, `merlin.schedule`, `merlin.interface`, `merlin.runtime`. DSE search spaces and
+`contract`, `schedule`, `interface`, `runtime`. DSE search spaces and
 kernel-derived policies stay as **schemas/YAML/JSON** — there is no `merlin.dse` or `merlin.kernel`
 dialect. See `docs/dialects.md`.
 

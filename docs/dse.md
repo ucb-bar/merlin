@@ -23,7 +23,7 @@ benefit a compiler can actually capture.
 
 ## Modules / tools
 
-`merlin/python/merlin/dse/`; `tools/merlin-dse/`, `tools/merlin-exploitability/`
+`merlin/python/merlin/dse/`; `tools/dse/`, `tools/exploitability/`
 (write to `output/dse/<workload>/`).
 
 ## Must not

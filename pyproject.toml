@@ -8,10 +8,24 @@ version = "0.0.1"
 description = "Compiler-centered framework for HW/SW abstraction exploration"
 requires-python = ">=3.10"
 readme = "README.md"
+# PyYAML is used at runtime by the contracts/schemas/targetgen layers.
+dependencies = ["pyyaml"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pyyaml", "pydantic", "rich"]
 xdsl = ["xdsl"]
+# Kernel-mining extras: Exo compile-to-C ingest, a columnar feature table, evaluation plots.
+kernels-exo = ["exo-lang"]
+kernels-parquet = ["pyarrow"]
+kernels-plots = ["matplotlib"]
+
+[project.scripts]
+kernel-index = "merlin.kernels.cli_index:main"
+kernel-extract = "merlin.kernels.cli_extract:main"
+kernel-audit = "merlin.kernels.audit:main"
+merlin-targetgen = "merlin.targetgen.cli:main"
+merlin-design-pressure = "merlin.design_pressure.cli:main"
+merlin-dse = "merlin.dse.cli:main"
 
 [tool.setuptools]
 package-dir = { "" = "merlin/python" }
