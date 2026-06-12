@@ -1,10 +1,11 @@
-"""Emit candidate_contracts.
-
-Placeholder module. No real logic yet.
-"""
+"""Emit a candidate_contracts payload (the I0–I3 ladder for a workload)."""
 from __future__ import annotations
 
 
-def emit_candidate_contracts(*args, **kwargs):  # noqa: D401
-    """TODO: implement. See module docstring and the owning workstream's docs/."""
-    raise NotImplementedError("emit_candidate_contracts is a scaffold stub; not implemented yet.")
+def emit_candidate_contracts(workload: str, contracts: list[dict]) -> dict:
+    """Build the candidate_contracts artifact from ``legal_contracts`` output."""
+    return {
+        "workload": workload,
+        "contracts": [dict(c) for c in contracts],
+        "legal_contracts": [c["name"] for c in contracts if c.get("legal")],
+    }

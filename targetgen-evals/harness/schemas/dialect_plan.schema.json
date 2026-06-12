@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dialect_plan.schema.json",
+  "title": "DialectPlan",
+  "description": "Plan for the generated MLIR dialect: ops, types, attrs, and lowering exits.",
+  "type": "object",
+  "required": ["dialect_name", "ops"],
+  "properties": {
+    "dialect_name": {"type": "string"},
+    "namespace":    {"type": "string"},
+    "ops": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name":               {"type": "string"},
+          "summary":            {"type": "string"},
+          "evidence":           {"type": "array", "items": {"type": "string"}},
+          "verifier":           {"type": "string"},
+          "lowering_exits":     {"type": "array", "items": {"type": "string"}},
+          "scheduling_policy":  {"type": ["string", "null"]},
+          "runtime_launch_in_type": {"type": "boolean"},
+          "has_unsupported_cases":  {"type": "boolean"},
+          "unsupported_handling":   {"type": "string"}
+        }
+      }
+    },
+    "types": {"type": "array"},
+    "attrs": {"type": "array"}
+  },
+  "additionalProperties": true
+}

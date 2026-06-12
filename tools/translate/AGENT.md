@@ -1,4 +1,4 @@
-# AGENT.md — tools/merlin-translate
+# AGENT.md — tools/translate
 
 ## Purpose
 

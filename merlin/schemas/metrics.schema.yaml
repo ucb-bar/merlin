@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Metrics
+purpose: >-
+  The Merlin-owned common metrics schema. All backends and target adapters normalize their raw
+  counters into these common names so results are comparable across targets (essential for DSE
+  and compiler-exploitability studies). Targets may add extra counters under `target_specific`.
+  Owned by Merlin core runtime; produced by the simulator/backends, consumed by DSE/reporting.
+required_top_level_fields:
+  - common
+  - target_specific
+producer: merlin/runtime (simulator + backends), via adapter normalize_metrics
+consumers:
+  - merlin.python.merlin.dse
+  - exploitability/compare reporting
+validation_notes: >-
+  `common` is the canonical metric vocabulary; a metrics instance need not populate every key
+  but keys used MUST come from this vocabulary. `target_specific` holds extra named counters.
+example: |
+  common:
+    - cycles
+    - host_cycles
+    - device_cycles
+    - submit_cycles
+    - wait_cycles
+    - queue_wait_cycles
+    - dispatch_count
+    - command_count
+    - bytes_moved
+    - bytes_read
+    - bytes_written
+    - pack_count
+    - resident_hits
+    - resident_misses
+    - evictions
+    - accumulator_commits
+    - intermediate_write_bytes
+    - error_count
+  target_specific:
+    - mvin_count
+    - mvout_count

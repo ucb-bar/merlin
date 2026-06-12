@@ -1,10 +1,17 @@
 """Cut point: loop.
 
-Placeholder module. No real logic yet.
+At the loop view the region's iteration structure (the action-chunk loop) is explicit, so
+layout-conversion and lifetime pressure across iterations become visible.
 """
 from __future__ import annotations
 
+from merlin.design_pressure.metrics.layout import metric_layout
+from merlin.design_pressure.metrics.lifetimes import metric_lifetimes
 
-def cut_loop(*args, **kwargs):  # noqa: D401
-    """TODO: implement. See module docstring and the owning workstream's docs/."""
-    raise NotImplementedError("cut_loop is a scaffold stub; not implemented yet.")
+
+def cut_loop(region: dict) -> dict:
+    """Metrics observable at the loop cutpoint."""
+    out: dict = {}
+    out.update(metric_layout(region))
+    out.update(metric_lifetimes(region))
+    return out

@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Evidence Report Index
+purpose: >-
+  Machine-readable index of the source evidence TargetGen collected for a target: the files
+  discovered (docs, Scala/Chisel, examples) with short filename/first-lines summaries, and the
+  concepts detected. It is deliberately conservative: it records what was *found*, not a claim
+  to understand arbitrary RTL. The human-readable companion is `evidence_report.md`. Owned by
+  TargetGen; consumed by the synthesizers and by human reviewers.
+required_top_level_fields:
+  - target
+  - sources
+  - files
+  - detected_concepts
+producer: merlin.targetgen.evidence.report
+consumers:
+  - merlin.targetgen.synthesize.*
+  - human reviewers
+validation_notes: >-
+  Every file entry should carry a path relative to the source root and a short summary. Every
+  detected concept should cite at least one supporting file path. No automatic-correctness
+  claims: this is evidence, not synthesis.
+example: |
+  target: toy_npu
+  sources:
+    source_dirs: [merlin/targets/toy_npu/docs]
+    examples_dirs: [merlin/targets/toy_npu/examples]
+  files:
+    - {path: docs/architecture.md, kind: doc, summary: "ToyNPU architecture overview"}
+    - {path: examples/repeated_rhs_matmul.mlir, kind: example, summary: "repeated RHS matmul"}
+  detected_concepts:
+    - {concept: resident_packed_tensor, evidence: [docs/architecture.md]}
+    - {concept: accumulator_commit, evidence: [docs/isa.md]}

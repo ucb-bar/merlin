@@ -1,4 +1,4 @@
-# merlin-run — workload runner
+# run — workload runner
 
 Thin CLI entrypoint. **Not implemented yet** — this directory documents intent only.
 
@@ -13,7 +13,7 @@ Run a workload through the simulator / a runner backend.
 ## Intended usage
 
 ```bash
-merlin-run --workload ... --backend simulator
+run --workload ... --backend simulator
 ```
 
 ## Notes

@@ -1,0 +1,6 @@
+method: v3_evidence_graph
+allowed_tools: [Read, Write, Edit, Bash]
+forbidden_tools: [WebFetch, WebSearch]
+bash_restrictions:
+  - No writes outside <run_dir>/
+  - No network operations

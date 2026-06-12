@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "run_manifest.schema.json",
+  "title": "RunManifest",
+  "description": "Metadata for a single isolated targetgen-evals experiment run.",
+  "type": "object",
+  "required": ["schema_version", "run_id", "target", "method", "seed", "git_hash_at_init", "is_smoke_test"],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "run_id":         {"type": "string"},
+    "target":         {"type": "string"},
+    "method":         {"type": "string"},
+    "seed":           {"type": "integer", "minimum": 0},
+    "git_hash_at_init": {"type": "string"},
+    "is_smoke_test":  {"type": "boolean"},
+    "budget":         {"type": "string"},
+    "created_at":     {"type": "string"},
+    "promotion_flag": {"type": "boolean"},
+    "observability": {
+      "type": "object",
+      "properties": {
+        "tracking_mode": {"type": "string", "enum": ["local", "mlflow", "full", "debug"]},
+        "mlflow": {"type": "object"},
+        "opentelemetry": {"type": "object"},
+        "capture_policy": {"type": "object"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

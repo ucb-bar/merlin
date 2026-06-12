@@ -1,10 +1,21 @@
-"""Ingest examples for TargetGen.
+"""Discover example/program files referenced by a SourceManifest.
 
-Placeholder module. No real logic yet.
+Lists the kinds of artifacts that demonstrate how a target is programmed: MLIR, C/headers,
+assembly, JSON/YAML configs. Deterministic, read-only.
 """
 from __future__ import annotations
 
+from pathlib import Path
 
-def ingest_examples(*args, **kwargs):  # noqa: D401
-    """TODO: implement. See module docstring and the owning workstream's docs/."""
-    raise NotImplementedError("ingest_examples is a scaffold stub; not implemented yet.")
+from ...common.io import find_by_suffix
+from .source_manifest import SourceManifest
+
+EXAMPLE_SUFFIXES = ("mlir", "c", "h", "s", "json", "yaml", "yml")
+
+
+def discover_examples(manifest: SourceManifest) -> list[Path]:
+    """Return sorted example files found under the manifest's examples dirs."""
+    hits: list[Path] = []
+    for d in manifest.examples_dirs:
+        hits.extend(find_by_suffix(d, EXAMPLE_SUFFIXES))
+    return sorted(set(hits))

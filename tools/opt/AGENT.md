@@ -1,4 +1,4 @@
-# AGENT.md — tools/merlin-opt
+# AGENT.md — tools/opt
 
 ## Purpose
 

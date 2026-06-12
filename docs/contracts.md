@@ -10,7 +10,7 @@ hardware/runtime promises. Contracts are the legality/evidence layer.
 
 Schema: `merlin/schemas/target_contract.schema.yaml` (target side) and
 `merlin/schemas/workload_region.schema.yaml` (workload side). The eventual IR home is the
-`merlin.contract` dialect (see `docs/dialects.md`); prototype it in
+`contract` dialect (see `docs/dialects.md`); prototype it in
 `merlin/python/merlin/xdsl_dialects/contract.py`.
 
 Example (ToyNPU): `merlin/targets/toy_npu/contracts/target_contract.yaml`.

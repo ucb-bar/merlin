@@ -1,4 +1,4 @@
-# merlin-search — candidate search (grid / evolutionary / MAP-Elites)
+# search — candidate search (grid / evolutionary / MAP-Elites)
 
 Thin CLI entrypoint. **Not implemented yet.**
 
@@ -15,7 +15,7 @@ and a decision report.
 ## Intended usage
 
 ```bash
-merlin-search \
+search \
   --space output/dse/spaces/resident_regime.yaml \
   --method grid \
   --out output/dse/interface_dse/

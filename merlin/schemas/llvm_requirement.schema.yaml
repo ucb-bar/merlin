@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: LLVM Requirement
+purpose: >-
+  Whether a mined abstraction needs LLVM-project (backend/MC) support — the L8 record.
+  Emitted by kernel mining per interface candidate, feeding TargetGen's llvm_extension_plan.
+  The promotion rule is strict: LLVM is modified only after interface validation, target
+  lowering, and exploitability (Stages E/F/G) all pass; kernel mining therefore always emits
+  requires_llvm_fork: false with the fork_triggers that WOULD justify a change later.
+
+required_top_level_fields:
+  - source_abstraction
+  - requires_llvm_fork
+  - justification
+  - fork_triggers
+  - status
+producer: merlin.kernels.emit.llvm_requirement
+consumers:
+  - merlin.targetgen.synthesize.llvm_extension_plan
+validation_notes: >-
+  requires_llvm_fork is false|maybe|true; kernel mining only ever emits false. status is
+  not_justified_pending_stage_F_G until measured exploitability exists. A single generated
+  kernel using a target intrinsic is never a fork trigger.
+
+example: |
+  source_abstraction: resident_packed_tensor
+  requires_llvm_fork: false
+  justification: >-
+    Stage F (target lowering) and Stage G (compiler exploitability vs oracle) have not run;
+    no machine-code support is justified by evidence frequency alone.
+  fork_triggers:
+    - custom_riscv_pack_instruction
+    - new_instruction_selection_patterns
+    - mc_encoding_decoding
+  status: not_justified_pending_stage_F_G

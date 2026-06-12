@@ -44,6 +44,7 @@ REQUIRED_DIRS = [
     "merlin/python/merlin/pipelines",
     "merlin/python/merlin/runtime",
     "merlin/python/merlin/common",
+    "merlin/python/merlin/validation",
     "merlin/runtime/common",
     "merlin/runtime/command_buffer",
     "merlin/runtime/simulator",
@@ -82,6 +83,11 @@ REQUIRED_SCHEMAS = [
     "target_contract", "dialect_plan", "kernel_record", "abstraction_candidate",
     "policy_rule", "workload_region", "design_pressure", "interface_candidate",
     "dse_result", "exploitability_report", "compilation_strategy", "search_space",
+    # Runtime + TargetGen plans (Merlin-owned runtime model; targets adapt it).
+    "runtime_adapter_plan", "zephyr_plan", "llvm_extension_plan", "evidence_report",
+    "target_source_manifest", "command_buffer", "runtime_abi", "metrics", "trace",
+    # Kernel-mining L6/L8 outputs (feed TargetGen's dialect_plan / llvm_extension_plan).
+    "runtime_candidate", "dialect_requirement", "llvm_requirement",
 ]
 
 REQUIRED_DOCS = [
@@ -89,6 +95,9 @@ REQUIRED_DOCS = [
     "kernel_mining", "design_pressure", "dse", "runtime", "integrations",
     "xdsl", "parallel_workstreams", "adding_a_target",
     "compilation_strategies", "search",
+    # Core-dialect + runtime + generated-target documentation.
+    "core_dialects", "zephyr", "llvm_integration", "generated_target_repos",
+    "implementation_milestones",
 ]
 
 REQUIRED_BENCHMARKS = [
@@ -118,6 +127,11 @@ def check_agent_md(errors):
             if rel == "." and not os.path.isfile(top):
                 errors.append("missing AGENT.md: (root)")
             continue
+        # third_party/ holds pinned external dependencies (e.g. the llvm-project
+        # submodule). Require an AGENT.md at third_party/ itself, but do not descend
+        # into vendored dependency trees — they don't carry Merlin AGENT.md files.
+        if rel == "third_party":
+            dirnames[:] = []
         if not os.path.isfile(os.path.join(dirpath, "AGENT.md")):
             errors.append(f"missing AGENT.md: {rel}")
 

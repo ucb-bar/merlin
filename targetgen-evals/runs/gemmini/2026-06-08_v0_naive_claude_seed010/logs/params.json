@@ -1,0 +1,9 @@
+{
+  "target": "gemmini",
+  "method": "v0_naive_claude",
+  "seed": 10,
+  "budget": "cheap_smoke",
+  "is_smoke_test": true,
+  "git_hash_at_init": "617a7a24dbfdf9dff6cede4c4a4f6fa0a825c41e",
+  "git_hash": "617a7a24dbfdf9dff6cede4c4a4f6fa0a825c41e"
+}

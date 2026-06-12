@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: LLVM Extension Plan
+purpose: >-
+  Records whether and how a target needs LLVM-project changes. The default posture is
+  out-of-tree (TableGen fragments / intrinsic headers / runtime calls) with a fork only when
+  real backend/instruction-selection/MC support is proven necessary. No LLVM backend patches
+  are required for the MVP. Owned by TargetGen; consumed by the (optional) LLVM extension
+  generator and by humans deciding whether to fork.
+required_top_level_fields:
+  - target
+  - requires_llvm_fork
+  - initial_strategy
+  - out_of_tree_candidates
+  - fork_triggers
+producer: merlin.targetgen.synthesize.llvm_extension_plan
+consumers:
+  - merlin.targetgen.generate.llvm_plan
+  - third_party/llvm-project (only if a fork is later justified)
+validation_notes: >-
+  requires_llvm_fork is one of false|maybe|true. Do not emit real backend patches from this
+  plan during the MVP; td/ and patches/ start as README placeholders. A fork is justified only
+  by fork_triggers (new backend, register classes, instruction selection, MC encoding, etc.).
+example: |
+  target: saturn
+  requires_llvm_fork: maybe
+  initial_strategy: rvv_intrinsics_or_existing_riscv_vector_path
+  reason: "Saturn is RVV-oriented; custom extensions may eventually require LLVM TableGen/backend changes."
+  out_of_tree_candidates: [td_fragments, intrinsic_headers, lit_tests, patch_series]
+  fork_triggers:
+    - new_riscv_custom_extension_feature
+    - new_instruction_selection_patterns
+    - mc_encoding_decoding
+  confidence: medium
+  requires_human_review: true

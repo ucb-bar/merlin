@@ -1,0 +1,27 @@
+{
+ "const": -31.96429320034571,
+ "coeff": {
+  "config": 4.89443958703685,
+  "mvin_A": 29.122080474577473,
+  "mvin2_B": 29.907951210413152,
+  "compute": 63.847648960050364,
+  "mvout": 30.634657164316693,
+  "fence": 33.35642182760452
+ },
+ "error": {
+  "mape": 0.08148882762918322,
+  "max_abs_pct": 0.34933369102735795,
+  "n_points": 14,
+  "fit_mape": 0.17259718308861607,
+  "validation_mape": 0.08148882762918322
+ },
+ "meta": {
+  "fidelity": "L2.5 calibrated (linear, serial; no overlap)",
+  "fit": "relative-error-weighted lstsq",
+  "sim": "?",
+  "counts": [
+   4,
+   16
+  ]
+ }
+}

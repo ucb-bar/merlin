@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Implementation of merlin.schedule (scaffold).
+Implementation of schedule (scaffold).
 
 ## What belongs here
 

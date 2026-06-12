@@ -7,7 +7,8 @@ external_repo:
   env_var: MERLIN_XNNPACK_REPO
   required: false
 emits_schema: kernel_record
-status: scaffold
+status: implemented
+backing_module: merlin.kernels.ingest.xnnpack
 notes: >-
   External repo is passed by path/env var, never vendored. Adapter must degrade
   gracefully when MERLIN_XNNPACK_REPO is unset.

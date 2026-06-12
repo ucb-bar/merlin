@@ -1,0 +1,43 @@
+# Minimal OpenTelemetry Collector config for local development.
+# Receives OTLP traces, logs them to console.
+# Uncomment the SigNoz or Logfire exporter stubs to forward to a backend.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch:
+    timeout: 1s
+
+exporters:
+  debug:
+    verbosity: detailed
+
+  # --- SigNoz (self-hosted, Docker Compose) ---
+  # otlp/signoz:
+  #   endpoint: http://signoz-otel-collector:4317
+  #   tls:
+  #     insecure: true
+
+  # --- Logfire (cloud) ---
+  # otlp/logfire:
+  #   endpoint: https://logfire-api.pydantic.dev
+  #   headers:
+  #     Authorization: "Bearer ${LOGFIRE_TOKEN}"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+    # Uncomment to forward:
+    # traces/forward:
+    #   receivers: [otlp]
+    #   processors: [batch]
+    #   exporters: [otlp/signoz]

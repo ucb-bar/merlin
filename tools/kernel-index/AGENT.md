@@ -1,4 +1,4 @@
-# AGENT.md — tools/merlin-kernel-index
+# AGENT.md — tools/kernel-index
 
 ## Purpose
 

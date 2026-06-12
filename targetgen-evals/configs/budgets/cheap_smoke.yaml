@@ -1,0 +1,17 @@
+name: cheap_smoke
+description: >
+  Minimal smoke-test budget. Verifies harness mechanics only.
+  Does not run expensive evidence or held-out shape checks.
+
+# Maximum LLM spend permitted for the method run (enforced by method runner, not harness)
+token_limit_usd: 1.00
+
+# Validators to run during `harness.cli validate`
+validators:
+  - schema
+  - naming
+  - xdsl
+
+notes: >
+  Use for: harness bootstrap, CI sanity checks, and confirming a new run directory
+  is correctly structured. The real v0 baseline should use standard_eval or paper_eval.

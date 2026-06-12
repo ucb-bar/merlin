@@ -1,0 +1,66 @@
+"""End-to-end whole-model lowering driver.
+
+linalg-on-tensors text
+  → Merlin xDSL passes (quant_ext → linalg, emit_c_interface)
+  → upstream MLIR pipeline + translation (model2MLIR venv, torch-mlir wheel)
+  → clang-23 codegen (x86 host .so / rv64gcv object).
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from .codegen import build_host_shared, compile_ll
+from .passes_xdsl import preprocess_text
+from .pipeline import lower_to_llvm_ir
+
+
+@dataclass
+class LowerResult:
+    workdir: Path
+    ll_path: Path
+    stats: dict[str, Any] = field(default_factory=dict)
+    host_so: Path | None = None
+    riscv_obj: Path | None = None
+
+
+def lower_model(mlir_text: str, workdir: str | Path,
+                targets: tuple[str, ...] = ("host",), textual: bool = False,
+                vectorize: bool = False) -> LowerResult:
+    """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
+
+    ``textual=True`` uses the pure-text preprocessing (no xDSL round-trip) —
+    required for whole-model artifacts until xDSL prints rank-reducing
+    extract_slice correctly.
+
+    ``vectorize=True`` bakes native RVV (fixed-width vector ops) into the IR instead of
+    relying on clang auto-vectorization — for the rv64gcv / Saturn-tile target.
+    """
+    work = Path(workdir)
+    work.mkdir(parents=True, exist_ok=True)
+
+    if textual:
+        from .passes_xdsl import preprocess_text_textual
+        upstream_text, stats = preprocess_text_textual(mlir_text)
+    else:
+        upstream_text, stats = preprocess_text(mlir_text)
+    (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
+
+    ll_text = lower_to_llvm_ir(upstream_text, workdir=work, vectorize=vectorize)
+    ll_path = work / "model.ll"
+    ll_path.write_text(ll_text, encoding="utf-8")
+
+    result = LowerResult(workdir=work, ll_path=ll_path, stats=stats)
+    if "host" in targets:
+        result.host_so = build_host_shared(ll_path, work / "model_host.so")
+    if "riscv" in targets:
+        result.riscv_obj = compile_ll(ll_path, work / "model_rv64gcv.o", "riscv")
+    return result
+
+
+def lower_model_file(mlir_path: str | Path, workdir: str | Path,
+                     targets: tuple[str, ...] = ("host",),
+                     textual: bool = False, vectorize: bool = False) -> LowerResult:
+    return lower_model(Path(mlir_path).read_text(encoding="utf-8"), workdir, targets,
+                       textual=textual, vectorize=vectorize)

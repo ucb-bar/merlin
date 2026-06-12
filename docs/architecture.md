@@ -17,11 +17,11 @@ candidate + cost model  --> dse                  --> dse_result --> exploitabili
 
 ```
 linalg / tensor / scf
-  -> merlin.contract     (facts, obligations, legality)
-  -> merlin.schedule     (chosen compiler decisions)
-  -> merlin.interface    (target-independent HW/SW abstractions)
+  -> contract     (facts, obligations, legality)
+  -> schedule     (chosen compiler decisions)
+  -> interface    (target-independent HW/SW abstractions)
   -> <target dialect>    (e.g. toynpu)
-  -> merlin.runtime      (command buffers, dispatch, waits, profiling)
+  -> runtime      (command buffers, dispatch, waits, profiling)
   -> binary / simulator / external runner
 ```
 

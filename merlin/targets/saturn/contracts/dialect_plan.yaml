@@ -1,0 +1,22 @@
+# Saturn dialect plan (validates against merlin/schemas/dialect_plan.schema.yaml).
+target: saturn
+dialect_name: saturn
+ops:
+  - {name: pack,    summary: "layout-pack an immutable RHS (resident-in-memory; no-cost copy on CPU)"}
+  - {name: matmul,  summary: "RVV widening matmul vs packed tensor -> e32 accumulator tile"}
+  - {name: commit,  summary: "apply epilogue + commit accumulator (scalar or RVV)"}
+  - {name: release, summary: "release the packed tensor (free the working-set budget)"}
+types:
+  - {name: packed_tensor}
+  - {name: accumulator}
+lowering:
+  - {from: interface.resident_pack,  to: saturn.pack}
+  - {from: interface.matmul,         to: saturn.matmul}
+  - {from: interface.commit,         to: saturn.commit}
+  - {from: interface.resident_evict, to: saturn.release}
+tests:
+  - {lit: pack_roundtrip}
+  - {lit: matmul_commit_epilogue}
+  - {lit: release_after_use}
+confidence: medium
+requires_human_review: false

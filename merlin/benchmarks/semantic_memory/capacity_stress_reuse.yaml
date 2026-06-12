@@ -16,5 +16,9 @@ reuse:
   distinct_weights: 16
 parameters:
   resident_store_bytes: [65536, 131072, 262144]
+op_sequence: [matmul]
 expected_candidate_features:
   - resident_packed_tensor   # only while distinct_weights fit in resident_store_bytes
+negative_controls:
+  - no_reuse_matmul
+metrics_to_capture: [cycles, bytes_moved, pack_count, resident_hits, resident_misses, evictions]

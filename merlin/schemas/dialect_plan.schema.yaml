@@ -11,6 +11,13 @@ required_top_level_fields:
   - types
   - lowering
   - tests
+producer: merlin.targetgen.synthesize.dialect_plan
+consumers:
+  - merlin.targetgen.generate.xdsl
+  - merlin.targetgen.generate.mlir_scaffold
+validation_notes: >-
+  Ops/types/lowerings are a human-review decision; do not auto-generate dialect ops directly
+  from instruction names. Real targets emit empty ops/types flagged requires_human_review.
 
 example: |
   target: toy_npu
@@ -25,7 +32,7 @@ example: |
     - name: resident_tensor
     - name: accumulator
   lowering:
-    - from: merlin.interface.resident_pack
+    - from: interface.resident_pack
       to: toynpu.res_pack
   tests:
     - lit: res_pack_roundtrip

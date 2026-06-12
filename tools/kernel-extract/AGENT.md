@@ -1,4 +1,4 @@
-# AGENT.md — tools/merlin-kernel-extract
+# AGENT.md — tools/kernel-extract
 
 ## Purpose
 

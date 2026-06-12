@@ -13,4 +13,7 @@ tensors:
   Y_i: {shape: [64, 64], dtype: i8, lifetime: single_use}
 reuse:
   rhs_reuse_count: 1
+op_sequence: [matmul]
 expected_candidate_features: []
+negative_controls: []   # this workload is itself the negative control
+metrics_to_capture: [cycles, bytes_moved, pack_count, resident_hits, evictions]

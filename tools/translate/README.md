@@ -1,4 +1,4 @@
-# merlin-translate — IR translation driver
+# translate — IR translation driver
 
 Thin CLI entrypoint. **Not implemented yet** — this directory documents intent only.
 
@@ -8,12 +8,12 @@ Translate between merlin IR and external formats.
 
 ## Backing module
 
-`merlin/compiler/tools/merlin-translate`
+`merlin/compiler/tools/translate`
 
 ## Intended usage
 
 ```bash
-merlin-translate --emit=... input  ->  output
+translate --emit=... input  ->  output
 ```
 
 ## Notes

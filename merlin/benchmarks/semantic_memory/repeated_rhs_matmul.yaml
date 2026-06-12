@@ -15,5 +15,9 @@ tensors:
 reuse:
   rhs_reuse_count: 8
   rhs_mutable: false
+op_sequence: [matmul]
 expected_candidate_features:
   - resident_packed_tensor
+negative_controls:
+  - no_reuse_matmul
+metrics_to_capture: [cycles, bytes_moved, pack_count, resident_hits, evictions]

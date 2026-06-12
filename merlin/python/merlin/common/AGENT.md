@@ -10,11 +10,11 @@ Shared utilities: schema loading/validation, IO, common types.
 
 ## What does not belong here
 
-- Real algorithm implementations (TODO stubs only at this stage).
+- Workstream-specific logic (this is shared infrastructure only).
 - Generated artifacts (write those to `output/`).
 
 ## Invariants
 
 - Keep this directory focused on its stated purpose.
 - Every subdirectory must also contain an AGENT.md.
-- No real algorithms yet — placeholder modules with explicit TODOs only.
+- Shared helpers (schema load/validate, yaml, llm summary) are real and dependency-light.

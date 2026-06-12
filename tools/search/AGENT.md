@@ -1,4 +1,4 @@
-# AGENT.md — tools/merlin-search
+# AGENT.md — tools/search
 
 ## Purpose
 

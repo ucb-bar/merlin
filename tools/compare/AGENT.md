@@ -1,4 +1,4 @@
-# AGENT.md — tools/merlin-compare
+# AGENT.md — tools/compare
 
 ## Purpose
 
@@ -11,7 +11,7 @@ Entrypoint: run the (workload x strategy) matrix and emit a scoreboard + decisio
 ## What does not belong here
 
 - CLI logic now (scaffold).
-- Search loops (that is `merlin-search` / `merlin.search`).
+- Search loops (that is `search` / `merlin.search`).
 
 ## Invariants
 

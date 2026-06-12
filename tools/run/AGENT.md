@@ -1,4 +1,4 @@
-# AGENT.md — tools/merlin-run
+# AGENT.md — tools/run
 
 ## Purpose
 

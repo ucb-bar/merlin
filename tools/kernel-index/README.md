@@ -1,23 +1,29 @@
-# merlin-kernel-index — kernel indexer
+# kernel-index — kernel indexer
 
-Thin CLI entrypoint. **Not implemented yet** — this directory documents intent only.
+Thin CLI entrypoint. Scans an external kernel repo and emits a normalized kernel-record index.
 
-## What it will do
+## What it does
 
-Scan an external kernel repo and emit normalized kernel_record artifacts.
+Streams kernels from one source, runs the deterministic feature/motif pipeline
+(`merlin.kernels.{ingest,features,emit}`), and writes a JSON index
+(`{source, target, count, diagnostics, records}`) under `output/` (gitignored).
 
 ## Backing module
 
-`merlin.python.merlin.kernels.ingest`
+`merlin.kernels.cli_index:main` (installed as the `kernel-index` console script).
 
-## Intended usage
+## Usage
 
 ```bash
-merlin-kernel-index --source xnnpack --repo $MERLIN_XNNPACK_REPO --target rvv --out output/kernels/xnnpack_rvv_index.json
+kernel-index --source xnnpack  --repo $MERLIN_XNNPACK_REPO  --target rvv      --out output/kernels/xnnpack_rvv_index.json
+kernel-index --source autocomp --repo $MERLIN_AUTOCOMP_REPO --target gemmini  --out output/kernels/autocomp_gemmini_index.json
+kernel-index --source exo      --repo $MERLIN_EXO_REPO                        --out output/kernels/exo_index.json   # needs .[kernels-exo]
 ```
+
+`--repo` may be omitted if `MERLIN_<SOURCE>_REPO` is set. `--limit N` caps kernels for dev runs.
 
 ## Notes
 
-CLI logic is deliberately absent at this scaffold stage. When implemented, this entrypoint
-should stay thin and delegate to the backing Python module. Artifacts are written under
-`output/` (gitignored).
+Source-specific parsing only; no kernel is executed except Exo specs, which are compiled to C
+(failures are skipped and logged). Per-kernel work is regex/filename/signature based — zero
+LLM calls — so it scales to the full corpus.

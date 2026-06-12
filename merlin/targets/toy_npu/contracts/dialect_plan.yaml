@@ -10,9 +10,11 @@ types:
   - {name: resident_tensor}
   - {name: accumulator}
 lowering:
-  - {from: merlin.interface.resident_pack, to: toynpu.res_pack}
-  - {from: merlin.interface.matmul,        to: toynpu.matmul}
-  - {from: merlin.interface.commit,        to: toynpu.commit}
+  - {from: interface.resident_pack,  to: toynpu.res_pack}
+  - {from: interface.matmul,         to: toynpu.matmul}
+  - {from: interface.commit,         to: toynpu.commit}
+  - {from: interface.resident_evict, to: toynpu.evict}
 tests:
   - {lit: res_pack_roundtrip}
   - {lit: matmul_commit_epilogue}
+  - {lit: evict_after_use}

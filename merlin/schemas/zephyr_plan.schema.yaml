@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Zephyr Plan
+purpose: >-
+  Describes the Zephyr runtime-backend scaffold to generate for a target: the module, the
+  devicetree binding, Kconfig symbols, the driver API surface, and which sample(s)/test(s)
+  to emit. Zephyr is a runtime *backend* for Merlin, not the core compiler model; the driver
+  implements the Merlin-owned `merlin_submit`/`merlin_wait`/`merlin_get_metrics` API. Owned by
+  TargetGen; consumed by the Zephyr module generator and integrators.
+required_top_level_fields:
+  - target
+  - module
+  - devicetree
+  - kconfig
+  - driver_api
+  - samples
+producer: merlin.targetgen.synthesize.zephyr_plan
+consumers:
+  - merlin.targetgen.generate.zephyr_module
+  - merlin/integrations/zephyr
+validation_notes: >-
+  driver_api must center on the Merlin-owned generic API (submit/wait/get_metrics). The
+  devicetree compatible should be `ucb,<target>`. The blocking driver mode must come first;
+  interrupt/RTIO modes are optional later stages.
+example: |
+  target: toy_npu
+  module:
+    name: merlin_toynpu
+  devicetree:
+    compatible: "ucb,toynpu"
+    properties: [reg, interrupts, resident-store-bytes, accumulator-entries, command-queue-depth]
+  kconfig:
+    symbols: [MERLIN_TOYNPU, MERLIN_TOYNPU_PROFILING, MERLIN_TOYNPU_RTIO]
+  driver_api:
+    mode: blocking
+    functions: [merlin_submit, merlin_wait, merlin_get_metrics]
+  samples:
+    - toynpu_repeated_rhs_matmul
+  confidence: high
+  requires_human_review: false

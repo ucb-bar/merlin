@@ -1,0 +1,52 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Runtime Adapter Plan
+purpose: >-
+  Describes how a target implements the Merlin-owned runtime abstraction. Merlin owns the
+  runtime ABI, command-buffer schema, event/handle/metrics model; the target only provides
+  an adapter. This plan records which runtime features the target supports, how its commands
+  are encoded, and how its raw counters map onto the common Merlin metrics. Owned by the
+  TargetGen workstream; consumed by the runtime/simulator and DSE/exploitability tooling.
+required_top_level_fields:
+  - target
+  - implements
+  - command_encoding
+  - queues
+  - events
+  - handles
+  - metrics
+producer: merlin.targetgen.synthesize.runtime_adapter_plan
+consumers:
+  - merlin/runtime (simulator + backends)
+  - merlin.python.merlin.dse
+  - generated target repo runtime/adapter
+validation_notes: >-
+  A target MUST NOT define its own runtime model; it only implements/declares support for the
+  Merlin runtime ABI version named in `implements`. metrics.maps_to_common keys must be drawn
+  from the common metric names in metrics.schema.yaml.
+example: |
+  target: toy_npu
+  implements:
+    runtime_abi_version: "0.1"
+  command_encoding:
+    format: toynpu_command_stream
+    supports_batching: true
+    supports_async: false
+  queues:
+    - {name: compute}
+    - {name: dma}
+  events:
+    completion: polling
+    interrupts: optional
+  handles:
+    resident_tensor: resident_store_slot
+    accumulator: accumulator_slot
+  metrics:
+    maps_to_common:
+      bytes_moved: [pack_bytes, commit_bytes]
+      command_count: [command_count]
+    target_specific:
+      - pack_count
+      - resident_hits
+  confidence: high
+  requires_human_review: false

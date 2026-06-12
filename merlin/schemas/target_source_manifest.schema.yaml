@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Target Source Manifest
+purpose: >-
+  Records the inputs TargetGen was pointed at for a target: local source directories, files,
+  Scala roots, example directories, plus optional URLs and a branch/commit pin. Source URLs are
+  recorded but NOT crawled. Large external repos are never vendored; only local paths passed by
+  CLI flags or environment variables are read. Owned by TargetGen; consumed by ingest/evidence.
+required_top_level_fields:
+  - target_name
+  - source_dirs
+  - source_files
+  - source_urls
+  - scala_roots
+  - examples_dirs
+producer: merlin.targetgen.ingest.source_manifest
+consumers:
+  - merlin.targetgen.evidence.report
+  - merlin.targetgen.pipeline
+validation_notes: >-
+  Paths are recorded as given (absolute or repo-relative). source_urls are recorded for
+  provenance only and must not trigger network access. branch/commit/notes are optional.
+example: |
+  target_name: toy_npu
+  source_dirs: [merlin/targets/toy_npu/docs]
+  source_files: []
+  source_urls: []
+  scala_roots: []
+  examples_dirs: [merlin/targets/toy_npu/examples]
+  branch: null
+  commit: null
+  notes: "reference in-tree target used to validate the generator"

@@ -7,7 +7,10 @@ external_repo:
   env_var: MERLIN_TRITON_REPO
   required: false
 emits_schema: kernel_record
-status: scaffold
+status: implemented
+backing_module: merlin.kernels.ingest.triton
 notes: >-
-  External repo is passed by path/env var, never vendored. Adapter must degrade
-  gracefully when MERLIN_TRITON_REPO is unset.
+  External repo is passed by path/env var, never vendored. The adapter extracts one record
+  per @triton.jit function (block-pointer staging, tl.dot accumulation, masked tails,
+  num_stages pipelining) via pure text parsing — no Triton/CUDA install required. No Triton
+  corpus is bundled; point MERLIN_TRITON_REPO at one to mine it.
