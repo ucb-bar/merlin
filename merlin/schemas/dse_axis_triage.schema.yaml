@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: DSE Axis Triage
+purpose: >-
+  The key DSE-guidance output: a ranking of accelerator DSE axes by how much of the
+  measured/trace-derived target gap each axis can actually close for a given workload and
+  target. Each axis row records the intervention model, the affected cost components, the
+  evidence type and confidence weight, legality, cost tier, gap_closure, and the resulting
+  priority_score. Produced under both the flat and multi-rate representations so the
+  recommendation flip is explicit. Owned by design-pressure/DSE.
+
+required_top_level_fields:
+  - workload
+  - representation
+  - axes
+
+example: |
+  workload: smolvla_action_head
+  representation: multirate
+  target_total_ms: 50
+  baseline_total_ms: 100
+  axes:
+    - axis: resident_packed_weights
+      baseline_total: 100.0
+      target_total: 50.0
+      intervention_total: 81.0
+      gap_closure: 0.38
+      affected_components: [packing, dma_memory]
+      evidence_type: structural_bound
+      confidence: 0.55
+      legality: 1
+      cost_tier: 3
+      priority_score: 0.0697
+      reason: "K=10 loop reuses immutable action-head weights; one-time pack + resident load"
+      could_be_wrong_if:
+        - weights do not fit resident capacity
+        - packing is already hoisted
