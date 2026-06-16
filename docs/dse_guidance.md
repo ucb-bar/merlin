@@ -46,15 +46,18 @@ that loss hides.
   (count, MACs, weight/activation bytes, epilogue) from the captured `model.mlir` to topology
   phases, with **explicit provenance** for every assignment. What the captures carry: per-op
   `prov.*` provenance (`prov.region_id`, `prov.op`=matmul/addmm, shapes/dtypes). What they do
-  **not** carry: a backbone-vs-head marker (`prov.module`/`prov.level` are uniform; forward args
-  are positional). So per-region **facts are recovered exactly from IR**, but the **role** of a
-  region comes from an explicit operator mapping (`merlin/benchmarks/dse_guidance/region_maps/<model>.yaml`,
-  matched by `region_ids`/`shape_signature`) or stays `unknown`. Output: `region_attribution.yaml`
-  (per role: status, source, confidence, IR facts; head facts ×K, backbone ×1; repeated-shape
-  clusters; and the unresolved remainder). When a repeated head is attributed, its candidate axes
-  carry the real facts and report `quantification_blocked_by: missing_calibration`; otherwise
-  `missing_region_attribution`. **The persistent `unknown` is itself the finding**: a flattened
-  capture does not encode backbone/head, which is the motivation for Level 2.
+  **not** carry (in pre-`prov.fqn` captures): a backbone-vs-head marker. **Now fixed in
+  `model2MLIR`:** the importer emits `prov.fqn` (the deepest `nn.Module` path, e.g.
+  `vision_backbone.layers.3.attn` vs `action_expert.denoise.2`), so for freshly-captured models the
+  **role is recovered automatically** from the module path (`attribution.role_from_fqn`,
+  `source: prov_fqn`, verified end-to-end on a toy capture). For captures that predate `prov.fqn`,
+  the role comes from an explicit operator mapping
+  (`merlin/benchmarks/dse_guidance/region_maps/<model>.yaml`, by `region_ids`/`shape_signature`) or
+  stays `unknown`. Either way per-region **facts are recovered exactly from IR**. Output:
+  `region_attribution.yaml` (per role: status, source, confidence, IR facts; head facts ×K,
+  backbone ×1; repeated-shape clusters; unresolved remainder). When a repeated head is attributed,
+  its candidate axes carry the real facts and report `quantification_blocked_by: missing_calibration`;
+  otherwise `missing_region_attribution`.
 - **Level 2 (long-term, in `model2MLIR` at `/scratch/agustin/projects/model2MLIR`)** — preserve
   `scf.for`/`scf.while` loops and region cadence in the capture IR itself, so roles need not be
   operator-supplied.
@@ -158,21 +161,33 @@ must therefore be charged component-specifically:
 
 ## Calibration finding (read this before trusting magnitudes)
 
-The single real hardware anchor (xr0 = 146.2 G FireSim cycles) vs the analytical cost model's
-prediction shows the model is off by ~10⁵× (it is single-pass and matmul-only, on uncalibrated
-M1 placeholder constants). See `output/dse_guidance/study_models/calibration_anchor.md`.
-**Consequence:** the cross-workload `gap_closure` *magnitudes* are analytical and are NOT
-trustworthy until the cost model is calibrated. What stands on its own is the **structural /
-legality** result — which DSE axes the flat capture hides — and the *ordering* within a single
-analytical baseline. The numbers carry evidence tags precisely so this distinction is visible.
+Calibrating against the real FireSim FASED cycle sweep (6 models, `docs/results.md`) gives a
+fitted **≈ 99 cycles/MAC** (median over the 4 parseable, consistent models — tiny_llama, rdt2,
+openvla, small_llama), at **MAPE ≈ 32 %**. See
+`output/dse_guidance/study_models/cost_calibration.md`. Two honest takeaways:
+
+- A single cycles/MAC constant is a *crude* whole-model predictor — usable as analytical ordering,
+  not as a validated magnitude (32 % error, and small_llama is 88 % off because fixed overheads
+  dominate a tiny model).
+- **xr0 is a 1123× outlier** the matmul-only predictor cannot explain — its capture has 1.3 M MACs
+  but the run measured 146 G cycles. This *explains* the earlier "10⁵× off" anomaly: it was an
+  xr0 capture/run inconsistency (a partial capture or a non-matmul/repeated-body-dominated run),
+  not a uniform model failure.
+
+**Consequence:** cross-workload `gap_closure` *magnitudes* remain analytical (the per-component
+cost model is still uncalibrated; the fit above is a whole-model sanity anchor, not a per-component
+model). What stands on its own is the **structural / legality** result and the *ordering* within a
+single baseline. Evidence tags make the distinction visible.
 
 ## What is and isn't measured today (honest status)
 
 | Quantity | Status |
 |---|---|
 | Which axes flat hides (legality flip) | structural — robust, definitional given the K-loop |
-| xr0 total cycles (anchor) | **measured** (FireSim, `results.md`) — and shows the model is uncalibrated |
+| FASED cycle totals (6 models) | **measured** (FireSim, `results.md`) |
+| cycles/MAC fit (≈99, MAPE 32%) | **calibrated** — crude whole-model anchor; xr0 a 1123× outlier |
 | Per-model cost components | analytical (placeholder constants, uncalibrated) |
+| Region roles (backbone/head) | **recovered from `prov.fqn`** for freshly-captured models; operator-mapped or `unknown` for pre-`prov.fqn` captures |
 | Loop counts K | assumed / reference (architecture values, overridable) |
 | CPU coupling (host/dispatch/sync) | **unavailable** — no real measurement exists yet; the ingestion path is unit-tested with a synthetic fixture only |
 | smolvla per-component head split | illustrative — exercises the component-attributed path; not measured |

@@ -455,6 +455,33 @@ def test_attribution_explicit_mapping_attributes_real_facts():
     assert bb.facts["macs_total"] == bb.facts["macs_per_invocation"]
 
 
+def test_role_from_fqn_inference():
+    assert ATTR.role_from_fqn("model.action_expert.denoise_block.2") == "repeated_head"
+    assert ATTR.role_from_fqn("model.vision_backbone.layers.3.attn") == "backbone_once"
+    assert ATTR.role_from_fqn("model.kv_cache.update") == "prefix_builder"
+    assert ATTR.role_from_fqn("model.mystery.layer") is None
+    assert ATTR.role_from_fqn(None) is None
+
+
+def test_attribution_auto_recovers_roles_from_prov_fqn():
+    # With prov.fqn present (model2MLIR module-FQN provenance), roles recover with NO operator map.
+    recs = (
+        ATTR.MatmulRecord(0, "matmul_0", "matmul", False, 1, 2048, 9216, 2048 * 9216 * 4,
+                          1, "f32", fqn="model.vision_backbone.proj"),
+        ATTR.MatmulRecord(1, "matmul_1", "addmm", True, 28, 1024, 1024, 1024 * 1024 * 4,
+                          1, "f32", fqn="model.action_expert.denoise.0"),
+        ATTR.MatmulRecord(2, "matmul_2", "addmm", True, 28, 1024, 1024, 1024 * 1024 * 4,
+                          1, "f32", fqn="model.action_expert.denoise.1"),
+    )
+    attr = ATTR.attribute_records(recs, _topo(K=5), mapping_rules=None)
+    head = attr.role("repeated_head")
+    bb = attr.role("backbone_once")
+    assert head is not None and head.source == "prov_fqn" and head.facts["matmul_count"] == 2
+    assert head.invocations == 5                      # head ×K
+    assert bb is not None and bb.source == "prov_fqn" and bb.invocations == 1  # backbone ×1
+    assert attr.attribution_status == "attributed" and not attr.unresolved
+
+
 def test_attribution_unknown_when_no_rule_matches():
     attr = ATTR.attribute_records(_records(), _topo(), mapping_rules=None)
     assert attr.attribution_status in ("unknown", "partial")
@@ -481,6 +508,53 @@ def test_candidates_carry_attributed_facts_or_block_on_attribution():
     for c in CAND.detect(topo, attribution=attr):
         assert c.benefit == "unquantified"
         assert not hasattr(c, "gap_closure")
+
+
+def test_cost_calibration_fits_and_flags_outlier():
+    from merlin.dse_guidance import cost_calibration as CC
+    # Synthetic measured set: 3 consistent models (~100 cycles/MAC) + 1 huge outlier + 1 unparsed.
+    measured = {"substrate": "test", "source": "test", "points": [
+        {"model": "a", "dtype": "int8", "cycles": 1_000_000},
+        {"model": "b", "dtype": "int8", "cycles": 10_000_000},
+        {"model": "c", "dtype": "int8", "cycles": 5_000_000},
+        {"model": "outlier", "dtype": "fp32", "cycles": 10_000_000_000},
+        {"model": "noparse", "dtype": "int8", "cycles": 7_000_000},
+    ]}
+    macs = {"a": 10_000, "b": 100_000, "c": 50_000, "outlier": 10_000, "noparse": None}
+    res = CC.calibrate(lambda m: macs[m], measured)
+    assert res.fitted_cycles_per_mac == pytest.approx(100.0, rel=0.01)  # 3 consistent ~100
+    assert res.n_fit == 3 and res.n_unparsed == 1
+    out = next(p for p in res.points if p.model == "outlier")
+    assert out.is_outlier                       # 1e10/1e4 = 1e6 cycles/MAC >> 100
+    assert res.mape_consistent is not None and res.mape_consistent < 5  # exact-ish on consistent
+    assert "cycles/MAC" in res.verdict
+
+
+def test_cost_calibration_loads_real_measured_data():
+    from merlin.dse_guidance import cost_calibration as CC
+    doc = CC.load_measured()
+    models = {p["model"] for p in doc["points"]}
+    assert {"xr0", "openvla", "rdt2"} <= models   # the real FASED sweep points exist
+    assert all(isinstance(p["cycles"], int) for p in doc["points"])
+
+
+@pytest.mark.skipif(not _has_model_captures(), reason="no model.mlir captures under output/")
+def test_cost_calibration_on_real_models_flags_xr0_outlier():
+    from merlin.dse_guidance import cost_calibration as CC
+    from merlin.dse_guidance import models as M
+    caps = M.discover_model_captures()
+
+    def macs_of(model):
+        if model not in caps:
+            return None
+        f = M.capture_facts(M._prefer_capture(caps[model]))
+        return f.total_macs if (f.parsed and f.total_macs) else None
+
+    res = CC.calibrate(macs_of)
+    assert res.fitted_cycles_per_mac is not None       # a real fitted constant
+    xr0 = next((p for p in res.points if p.model == "xr0"), None)
+    if xr0 and xr0.macs:
+        assert xr0.is_outlier                          # capture MACs can't explain its cycles
 
 
 @pytest.mark.skipif(not _has_model_captures(), reason="no model.mlir captures under output/")

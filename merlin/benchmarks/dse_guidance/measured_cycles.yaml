@@ -1,0 +1,22 @@
+# Real cycle-exact measurements for calibrating the analytical cost model.
+#
+# Source: docs/results.md — the FireSim FASED sweep on the 2-tile Chipyard Shuttle SoC, SCALAR
+# Gemmini tile (hart 0). These are whole-model *run* totals (cycle-exact). The live sweep ledgers
+# were transient; these are the totals recorded in results.md. Tagged evidence: measured.
+#
+# Caveats (carried into the fit, not hidden):
+#  - scalar-core totals include ALL work (matmul + attention + norm + elementwise + conv + the
+#    per-row quant/requant overhead), while the analytical predictor counts only matmul MACs;
+#  - dtype/substrate differ per row (int8 vs fp32) — the MAC *count* is dtype-independent but
+#    cycles-per-MAC is not;
+#  - the MAC count is from the single-pass fp32 capture, so a model whose run repeats the body
+#    (denoise/decode) many times will show an inflated cycles/MAC.
+substrate: firesim_fased_scalar
+source: "docs/results.md (FireSim FASED scalar sweep)"
+points:
+  - {model: small_llama, dtype: int8, cycles: 180500000}
+  - {model: tiny_llama,  dtype: int8, cycles: 133100000000}
+  - {model: openvla,     dtype: int8, cycles: 9830000000}
+  - {model: bitvla,      dtype: int8, cycles: 8170000000}
+  - {model: rdt2,        dtype: int8, cycles: 85000000000}
+  - {model: xr0,         dtype: fp32, cycles: 146200000000}

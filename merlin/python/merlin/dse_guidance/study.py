@@ -107,11 +107,31 @@ def discover_model_specs() -> list[WorkloadSpec]:
 
 
 def run_model_study(out_dir: str | Path) -> dict:
-    """Run the exhaustive study over the real model zoo, plus the measured calibration anchor."""
+    """Run the exhaustive study over the real model zoo, plus the measured calibration."""
     out = Path(out_dir)
     summary = run_study(discover_model_specs(), out)
     _write_calibration_anchor(out)
+    _write_cost_calibration(out)
     return summary
+
+
+def _write_cost_calibration(out: Path) -> None:
+    """Fit cycles/MAC against the real FASED measurements and emit the honest calibration."""
+    from merlin.dse_guidance import cost_calibration as CC
+    captures = M.discover_model_captures()
+
+    def macs_of(model: str):
+        if model not in captures:
+            return None
+        f = M.capture_facts(M._prefer_capture(captures[model]))
+        return f.total_macs if (f.parsed and f.total_macs) else None
+
+    try:
+        res = CC.calibrate(macs_of)
+    except FileNotFoundError:
+        return
+    Artifact("cost_calibration.csv", CC.to_csv(res)).write(out)
+    Artifact("cost_calibration.md", CC.markdown(res)).write(out)
 
 
 def _write_calibration_anchor(out: Path) -> None:

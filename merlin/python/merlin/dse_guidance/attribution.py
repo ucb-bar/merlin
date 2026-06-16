@@ -46,6 +46,29 @@ def _read_attr(op, key: str) -> str | None:
     return None
 
 
+# FQN substring -> role inference (Level-1.5: roles recovered from the capture's module path).
+# model2MLIR now emits prov.fqn (the deepest nn.Module path); these prefixes/keywords let a
+# downstream tool tell backbone from action head WITHOUT an operator mapping.
+_FQN_ROLE_KEYWORDS: list[tuple[tuple[str, ...], str]] = [
+    (("action_expert", "action_head", "denoise", "flow", "diffusion", "dit", "noise_pred"),
+     "repeated_head"),
+    (("kv_cache", "prefix", "kv_proj"), "prefix_builder"),
+    (("vision", "backbone", "encoder", "vlm", "patch_embed", "image", "siglip", "vit",
+      "language_model", "llm", "text_model"), "backbone_once"),
+]
+
+
+def role_from_fqn(fqn: str | None) -> str | None:
+    """Infer a topology role from a module FQN (``prov.fqn``); None if no keyword matches."""
+    if not fqn:
+        return None
+    low = fqn.lower()
+    for keywords, role in _FQN_ROLE_KEYWORDS:
+        if any(k in low for k in keywords):
+            return role
+    return None
+
+
 @dataclass
 class MatmulRecord:
     index: int
@@ -58,6 +81,7 @@ class MatmulRecord:
     weight_bytes: int
     activation_bytes: int
     dtype: str | None
+    fqn: str | None = None     # prov.fqn (deepest module path), when the capture carries it
 
     @property
     def macs(self) -> int:
@@ -94,6 +118,7 @@ def extract_matmuls(capture_dir: str) -> tuple[MatmulRecord, ...]:
             weight_bytes=K * N * R.dtype_bytes(rd),
             activation_bytes=(M * K + M * N) * R.dtype_bytes(ld),
             dtype=rd,
+            fqn=_read_attr(op, "fqn"),
         ))
     return tuple(out)
 
@@ -199,7 +224,7 @@ def attribute_records(records, topo: VlaRuntimeTopology,
     rules = (mapping_rules or {}).get("rules", [])
     assigned: dict[str, RoleFacts] = {}
     assigned_idx: dict[str, list[int]] = {}
-    sources: dict[str, str] = {}
+    sources: dict[str, set] = {}
     unknown = RoleFacts()
     unknown_idx: list[int] = []
 
@@ -210,22 +235,30 @@ def attribute_records(records, topo: VlaRuntimeTopology,
             if _match(rule, rec):
                 role, source = rule["role"], "explicit_mapping"
                 break
-        if role is None:                          # 2..n) auto-recovery unavailable from flat IR
+        if role is None:                          # 2) prov.fqn module-path inference (from IR)
+            role = role_from_fqn(rec.fqn)
+            if role is not None:
+                source = "prov_fqn"
+        if role is None:                          # 3) unattributed (role not recoverable)
             unknown.add(rec)
             unknown_idx.append(rec.index)
             continue
         assigned.setdefault(role, RoleFacts()).add(rec)
         assigned_idx.setdefault(role, []).append(rec.index)
-        sources[role] = source
+        sources.setdefault(role, set()).add(source)
 
+    _SRC_CONF = {"explicit_mapping": 0.9, "prov_fqn": 0.7}
     regions: list[RegionRoleAttribution] = []
     for role, facts in assigned.items():
         invs = K if role == ROLE_REPEATED_HEAD else 1   # head ×K; backbone ×1 — never ×K backbone
+        srcs = sources[role]
+        src = next(iter(srcs)) if len(srcs) == 1 else "mixed"
+        conf = min(_SRC_CONF.get(s, 0.5) for s in srcs)
         regions.append(RegionRoleAttribution(
-            role=role, attribution_status="attributed", confidence=0.9,
-            source=sources[role], invocations=invs, facts=facts.scaled(invs),
+            role=role, attribution_status="attributed", confidence=conf,
+            source=src, invocations=invs, facts=facts.scaled(invs),
             matmul_indices=assigned_idx[role],
-            reason=f"{facts.matmul_count} matmuls assigned by {sources[role]}"))
+            reason=f"{facts.matmul_count} matmuls assigned by {src}"))
     if unknown.matmul_count:
         regions.append(RegionRoleAttribution(
             role=ROLE_UNKNOWN, attribution_status="unknown", confidence=0.0, source="unknown",
@@ -234,14 +267,21 @@ def attribute_records(records, topo: VlaRuntimeTopology,
 
     status = ("attributed" if assigned and not unknown.matmul_count
               else "partial" if assigned else "unknown")
+    any_fqn = any(r.fqn for r in records)
     unresolved = []
     if unknown.matmul_count:
-        unresolved.append(
-            f"{unknown.matmul_count}/{len(records)} matmuls unattributed: backbone-vs-head role "
-            "is not encoded in the capture (prov.module/level uniform; args positional)")
-    if not rules:
-        unresolved.append("no mapping rules supplied; supply region_ids / shape_signature rules "
-                          "to attribute roles, or add loop-preserving capture (Level 2)")
+        if any_fqn:
+            unresolved.append(
+                f"{unknown.matmul_count}/{len(records)} matmuls unattributed: their prov.fqn "
+                "matched no role keyword (extend _FQN_ROLE_KEYWORDS or add an explicit rule)")
+        else:
+            unresolved.append(
+                f"{unknown.matmul_count}/{len(records)} matmuls unattributed: this capture has no "
+                "prov.fqn (predates the model2MLIR module-FQN provenance); re-capture for "
+                "automatic role recovery, or supply region_ids / shape_signature rules")
+    if not any_fqn and not rules:
+        unresolved.append("no prov.fqn and no mapping rules; role recovery unavailable — "
+                          "loop/role-preserving capture is the Level-2 fix")
     return RegionAttribution(
         workload=topo.workload, attribution_status=status, regions=regions,
         repeated_signatures=_repeated_signatures(records), unresolved=unresolved)
