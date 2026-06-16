@@ -48,7 +48,14 @@ from . import spike as _spike
 #            FireSim-safe path: no V means no Saturn-V trap (the FPU_SHARING silent-retry
 #            hang the vector path is still being brought up against).
 _CFLAGS_COMMON = ["-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"]
-RVV_CFLAGS = ["-march=rv64gcv", *_CFLAGS_COMMON]
+# RVV: the ONLY vector ops are the controlled fixed-width ones baked into the IR by the
+# transform schedule (linalg.matmul/batch_matmul -> vector<MxNxf32/i32> at e32,m1/m2). clang's
+# auto-vectorizer is DISABLED (-fno-vectorize -fno-slp-vectorize): left on, it emits
+# fractional-LMUL (mf2/mf4/mf8) and other configs the Saturn-OPU (vLen=128, tuned for LMUL=1)
+# wedges on — the documented RVV-on-FASED hang. With autovec off, the non-contraction generics
+# fall through convert-linalg-to-loops to scalar code (Saturn-safe), and only the transform
+# path's fixed-width contraction vectors reach the Saturn vector lanes.
+RVV_CFLAGS = ["-march=rv64gcv", "-fno-vectorize", "-fno-slp-vectorize", *_CFLAGS_COMMON]
 SCALAR_CFLAGS = ["-march=rv64gc", *_CFLAGS_COMMON]
 
 
