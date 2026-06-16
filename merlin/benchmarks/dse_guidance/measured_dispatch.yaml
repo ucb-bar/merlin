@@ -12,9 +12,19 @@
 # input to the command_batching / autonomous_K_loop axes (previously ESTIMATED as the matmul
 # count). exec_wall_s is host-interpreter timing on the Python reference executor, NOT the
 # deployable C runtime -- use it for dispatch-count grounding, not as an absolute latency.
+# Per-dispatch host-cost breakdown (P1-b): a timing tap over the executor splits each forward's
+# host time into compute-kernel calls (func.call) vs dispatch/allocation overhead (everything
+# else). overhead_frac is the stable, machine-independent signal: ~0.63 of host time is dispatch
+# overhead, NOT compute -> the forward is host-dispatch-bound on this executor, which is exactly
+# what the command_batching / autonomous_K_loop axes target. Absolute *_ms are a machine-dependent
+# snapshot of the Python reference executor (reproduce with dispatch_measure.measure_host_breakdown);
+# use overhead_frac and the dispatch COUNT, not the absolute ms, as the deployable signal.
 substrate: host_reference_executor
 source: "merlin.runtime.dispatch_runtime.run_model (host, cos=1.0 vs torch golden)"
 points:
-  - {model: small,            n_kernels: 183, n_unique: 159, matmul_estimate: 15, cos: 1.0, exec_wall_s: 0.645}
-  - {model: small_llama_int8, n_kernels: 198, n_unique: 163, matmul_estimate: 15, cos: 1.0, exec_wall_s: 0.680}
-  - {model: small_llama_fp8,  n_kernels: 213, n_unique: 177, matmul_estimate: 15, cos: 1.0, exec_wall_s: 0.701}
+  - {model: small,            n_kernels: 183, n_unique: 159, matmul_estimate: 15, cos: 1.0,
+     exec_wall_s: 0.645, compute_call_ms: 243.7, host_overhead_ms: 410.7, overhead_frac: 0.628}
+  - {model: small_llama_int8, n_kernels: 198, n_unique: 163, matmul_estimate: 15, cos: 1.0,
+     exec_wall_s: 0.680, compute_call_ms: 242.2, host_overhead_ms: 436.3, overhead_frac: 0.643}
+  - {model: small_llama_fp8,  n_kernels: 213, n_unique: 177, matmul_estimate: 15, cos: 1.0,
+     exec_wall_s: 0.701, compute_call_ms: 259.9, host_overhead_ms: 445.7, overhead_frac: 0.632}

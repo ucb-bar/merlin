@@ -552,6 +552,34 @@ def test_measured_dispatch_data_grounds_command_batching():
     assert all(r["quantity"] == "dispatches_per_forward" for r in rows)
 
 
+def test_measured_host_breakdown_shows_dispatch_bound():
+    # P1-b: the per-dispatch host-cost breakdown shows the forward is host-dispatch-bound.
+    from merlin.dse_guidance import dispatch_measure as DM
+    bd = [m for m in DM.load_measured() if m.overhead_frac is not None]
+    assert bd, "expected recorded host breakdowns"
+    for m in bd:
+        assert m.overhead_frac > 0.5             # majority of host time is dispatch/alloc overhead
+        assert m.per_dispatch_host_ms and m.per_dispatch_host_ms > 0
+
+
+def test_per_component_calibration_reports_unidentifiable():
+    # P1-a: multi-feature fits over a handful of whole-model points must not be presented as a
+    # calibrated per-component model; the report says coefficients are not identifiable.
+    from merlin.dse_guidance import cost_calibration as CC
+    rows = [
+        {"cycles": 1.8e8, "macs": 3.4e6, "act_bytes": 1.0e6, "matmuls": 15},
+        {"cycles": 1.3e11, "macs": 1.2e9, "act_bytes": 5.0e8, "matmuls": 15},
+        {"cycles": 9.8e9, "macs": 8.0e7, "act_bytes": 2.0e7, "matmuls": 26},
+        {"cycles": 8.5e10, "macs": 9.4e8, "act_bytes": 3.0e8, "matmuls": 23},
+    ]
+    mf = CC.multifeature_calibration(rows)
+    assert mf["n_points"] == 4 and "macs_only" in mf["fits"]
+    for fit in mf["fits"].values():
+        assert "loo_mape" in fit and "condition_number" in fit
+    assert "not\nidentifiable" in CC.multifeature_report_md(mf).replace(" ", "\n") \
+        or "not identifiable" in CC.multifeature_report_md(mf)
+
+
 _OUTPUT = Path(__file__).resolve().parents[3] / "output"
 
 
