@@ -95,9 +95,17 @@ and logistic — with no scalar integer divide and no remaining `math.rsqrt`/`ex
 
 A literature-backed multi-tier gate (`zephyr_model._gate`) accepts these: **T1** vs a W8A8
 reference (the host int8 output) cos > 0.999, **T2** vs the fp32 golden cos > 0.99 with top-1
-argmax match. All five pass both tiers. **Spike (RVV) cross-check:** small_llama int8 returns
-cos 0.99993 — identical to the host interpreter, confirming the integer datapath runs the same on
-the RISC-V vector target.
+argmax match. All five pass both tiers.
+
+**Spike (RVV) cross-check** (`backend=rvv`, whole model on the RISC-V vector target): small_llama
+cos 0.99993, tiny_llama cos 0.99941, bitvla cos 0.99994 — matching the host interpreter and
+confirming the integer datapath runs the same on RVV. (rdt2, a flow-matching VLA, exceeds the
+functional-spike time budget and is validated on FASED instead.)
+
+**FireSim (FASED, cycle-exact) cross-check:** small_llama int8 returns cos **0.9999999** vs the
+W8A8 reference with **rel = 0.0** — bit-identical to the host interpreter, since both execute the
+same deterministic integer arithmetic — at 180.5 M cycles. (A wider int8-vs-fp32 FASED cycle
+sweep + speedup table is produced by `firesim_sweep.py --int8` / `--report`.)
 
 ## Capture / lowering fixes
 
