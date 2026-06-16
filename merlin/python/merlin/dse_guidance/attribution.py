@@ -60,10 +60,13 @@ _FQN_ROLE_KEYWORDS: list[tuple[tuple[str, ...], str]] = [
     # 2) prefix / KV state produced once, reused across the head
     (("kv_cache", "prefix_kv", "kv_proj"), "prefix_builder"),
     # 3) the repeated action / denoise / decode head: explicit head names, diffusion-timestep
-    #    conditioning embedders, and (last, generic) transformer-block bodies + decoders.
+    #    conditioning embedders, LLaMA-style decoder attention/MLP projections, and (last,
+    #    generic) transformer-block bodies. Reached only after backbone/encoder is ruled out.
     (("action_expert", "action_head", "denoise", "flow", "diffusion", "dit", "noise_pred",
       "t_embedder", "freq_embedder", "timestep", "time_embed",
       "decoder", "language_model", "llm", "lm_head",
+      "self_attn", "q_proj", "k_proj", "v_proj", "o_proj",
+      "gate_proj", "up_proj", "down_proj",
       "blocks", "transformer_block", "cross_attn", "ffn"), "repeated_head"),
 ]
 

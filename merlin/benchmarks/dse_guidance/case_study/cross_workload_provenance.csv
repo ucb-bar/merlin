@@ -1,0 +1,14 @@
+workload,item,flat_view,recovered_view,evidence_source,dse_implication,quantification_status
+rdt,action-head weight reuse,weights used once (0 contract facts),"repeated_head x5: 20 matmuls, 391.1 MB weights, 39.43 GMAC/step",recovered_from_prov_fqn (role) + recovered_from_ir (facts); K=5 assumed_reference,resident_action_head_weights,blocked: missing_calibration
+rdt,K-step loop,absent (loop unrolled by torch.export),"bounded repeated head, K=5",assumed_reference (K) + recovered_from_prov_fqn (head exists),autonomous_K_loop,blocked: missing_calibration
+rdt,host dispatch / sync coupling,not represented,not measured,unavailable,command_batching / autonomous_K_loop,blocked: measurement required
+openvla,action-head weight reuse,weights used once (0 contract facts),"repeated_head x7: 15 matmuls, 3.1 MB weights, 0.02 GMAC/step",recovered_from_prov_fqn (role) + recovered_from_ir (facts); K=7 assumed_reference,resident_action_head_weights,blocked: missing_calibration
+openvla,K-step loop,absent (loop unrolled by torch.export),"bounded repeated head, K=7",assumed_reference (K) + recovered_from_prov_fqn (head exists),autonomous_K_loop,blocked: missing_calibration
+openvla,backbone vs head split,undifferentiated single forward,backbone_once: 8 matmuls; repeated_head: 15 matmuls,recovered_from_prov_fqn,backbone_head_partition,structural (no magnitude claimed)
+openvla,host dispatch / sync coupling,not represented,not measured,unavailable,command_batching / autonomous_K_loop,blocked: measurement required
+small_llama,action-head weight reuse,weights used once (0 contract facts),"repeated_head x32: 14 matmuls, 1.6 MB weights, 0.00 GMAC/step",recovered_from_prov_fqn (role) + recovered_from_ir (facts); K=32 assumed_reference,resident_action_head_weights,blocked: missing_calibration
+small_llama,K-step loop,absent (loop unrolled by torch.export),"bounded repeated head, K=32",assumed_reference (K) + recovered_from_prov_fqn (head exists),autonomous_K_loop,blocked: missing_calibration
+small_llama,host dispatch / sync coupling,not represented,not measured,unavailable,command_batching / autonomous_K_loop,blocked: measurement required
+tiny_llama,action-head weight reuse,weights used once (0 contract facts),"repeated_head x32: 15 matmuls, 614.5 MB weights, 0.61 GMAC/step",recovered_from_prov_fqn (role) + recovered_from_ir (facts); K=32 assumed_reference,resident_action_head_weights,blocked: missing_calibration
+tiny_llama,K-step loop,absent (loop unrolled by torch.export),"bounded repeated head, K=32",assumed_reference (K) + recovered_from_prov_fqn (head exists),autonomous_K_loop,blocked: missing_calibration
+tiny_llama,host dispatch / sync coupling,not represented,not measured,unavailable,command_batching / autonomous_K_loop,blocked: measurement required

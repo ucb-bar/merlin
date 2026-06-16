@@ -228,6 +228,21 @@ analytical baseline + temporal view from each region's reuse):
 merlin-dse-guidance --study --out output/dse_guidance/study/
 ```
 
+Cross-workload provenance case study over the **real `prov.fqn` recaptures** (the breadth
+result — rdt, openvla, small_llama, tiny_llama; not overfit to one):
+
+```bash
+merlin-dse-guidance --case-study --out output/dse_guidance/case_study/
+```
+
+Reads `merlin/benchmarks/dse_guidance/recaptures/<workload>/model.mlir` (real architectures via
+the `prov.fqn`-enabled `m2m`, small/random configs — weights not committed), auto-recovers roles
+from `prov.fqn`, and emits `case_study.md` + `cross_workload_provenance.csv` (per-item
+flat-vs-recovered with explicit evidence labels: `recovered_from_ir` / `recovered_from_prov_fqn` /
+`assumed_reference` / `calibrated` / `uncalibrated` / `unavailable`). OpenVLA's vision-backbone vs
+LM-decode split is recovered; every candidate stays `blocked_by: missing_calibration`. A committed
+copy lives at `merlin/benchmarks/dse_guidance/case_study/`.
+
 Exhaustive study across the **real model zoo** — every captured workload under
 `output/<model>_<dtype>_consistent/model.mlir` (smolvla, openvla, pi05, rdt/rdt2, groot,
 molmoact, bitvla, xr0, the llama LMs):
