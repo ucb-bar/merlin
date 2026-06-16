@@ -1,0 +1,32 @@
+# Baseline cost breakdown for the SmolVLA action head (ms). Evidence tagged per component.
+# The repeated_head / loop_invariant sub-breakdowns attribute cost to the K-step action head and
+# the once-produced prefix/KV, so residency benefit is charged to the head — NOT the backbone.
+# NOTE: these magnitudes are illustrative (no measured per-component breakdown exists yet); they
+# exercise the component-attributed residency path. The only real measured anchor in the repo is
+# xr0's FireSim cycle total (see the model study's calibration_anchor.md).
+workload: smolvla_action_head
+target:
+  total_ms: 50
+baseline:
+  total_ms: 100
+  components:
+    compute_ms: 20
+    dma_memory_ms: 25
+    packing_ms: 20
+    cpu_dispatch_ms: 25
+    sync_ms: 5
+    intermediate_materialization_ms: 5
+  repeated_head:            # the slice of each component spent inside the K-step action head
+    packing_ms: 14
+    weight_memory_ms: 12
+    cpu_dispatch_ms: 18
+    sync_ms: 4
+  loop_invariant:          # state produced once by the backbone, reused across the K steps
+    prefix_kv_memory_ms: 8
+metadata_source:
+  compute_ms: trace_derived
+  dma_memory_ms: analytical
+  packing_ms: structural_bound
+  cpu_dispatch_ms: measured
+  sync_ms: measured
+  intermediate_materialization_ms: trace_derived
