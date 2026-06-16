@@ -157,7 +157,9 @@ def capture_facts(capture_dir: str) -> CaptureFacts:
             weight_bytes += K * N * bw           # weight matrix: reused across the decode loop
             activation_bytes += (M * K + M * N) * abw   # input + output activations: not reusable
             dtype = dtype or rd
-        if mlir_m2m._attr(op, "m2m.op") == "addmm":
+        # Captures use the prov.* provenance namespace (not m2m.*); addmm == matmul+bias.
+        op_kind = mlir_m2m._attr(op, "prov.op") or mlir_m2m._attr(op, "m2m.op")
+        if op_kind == "addmm":
             epilogue = True
     return CaptureFacts(len(matmuls), total_macs, weight_bytes, activation_bytes, epilogue,
                         dtype, parsed=True, capture_dir=capture_dir)

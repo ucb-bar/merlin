@@ -44,6 +44,7 @@ class GuidanceResult:
     deadline: dict | None
     is_negative_control: bool
     warnings: list[str] = field(default_factory=list)
+    attribution: object | None = None    # Level-1 RegionAttribution, when a capture is available
 
 
 def _deadline_feasibility(multirate: Representation, baseline: BaselineCost) -> dict:
@@ -75,7 +76,8 @@ def run_guidance(temporal: TemporalMetadata, baseline: BaselineCost | None = Non
                  region: dict | None = None,
                  coupling: CpuCoupling | None = None,
                  overrides: dict | None = None,
-                 capture_facts=None) -> GuidanceResult:
+                 capture_facts=None,
+                 attribution=None) -> GuidanceResult:
     """Run the guidance pipeline for one workload.
 
     The structural front-end (topology, capture fidelity, candidate axes) is always produced —
@@ -89,7 +91,7 @@ def run_guidance(temporal: TemporalMetadata, baseline: BaselineCost | None = Non
     # --- structural front-end (no calibration needed) ---
     topo = TOP.from_temporal(temporal)
     capture_fidelity = FID.assess(topo, capture_facts)
-    candidate_axes = CAND.detect(topo, capture_facts)
+    candidate_axes = CAND.detect(topo, capture_facts, attribution=attribution)
 
     warnings = list(temporal.warnings)
 
@@ -122,6 +124,7 @@ def run_guidance(temporal: TemporalMetadata, baseline: BaselineCost | None = Non
         deadline=deadline,
         is_negative_control=not multirate.facts.get("has_k_loop", False),
         warnings=warnings,
+        attribution=attribution,
     )
 
 
@@ -149,6 +152,12 @@ def write_artifacts(result: GuidanceResult, out_dir: str | Path) -> list[Path]:
         Artifact("flat_vs_multirate_diff.csv",
                  report.flat_vs_multirate_csv(result.flat, result.multirate)),
     ]
+    # Level-1 region attribution (when a real capture was available).
+    if result.attribution is not None:
+        from merlin.dse_guidance import attribution as ATTR
+        artifacts.append(yaml_artifact("region_attribution.yaml",
+                                       ATTR.to_yaml_obj(result.attribution),
+                                       header=f"region_attribution (Level-1): {result.workload}"))
 
     # --- quantitative back-end (only with a baseline; uncalibrated by default) ---
     if result.baseline is not None:

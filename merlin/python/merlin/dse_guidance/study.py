@@ -18,9 +18,10 @@ from pathlib import Path
 from merlin.common import paths
 from merlin.common.artifacts import Artifact
 from merlin.common.yaml import load_yaml
+from merlin.dse_guidance import attribution as ATTR
 from merlin.dse_guidance import baseline_cost as BC
 from merlin.dse_guidance import models as M
-from merlin.dse_guidance import synth, temporal as T
+from merlin.dse_guidance import synth, temporal as T, topology as TOP
 from merlin.dse_guidance.aet_ingest import CpuCoupling
 from merlin.dse_guidance.pipeline import GuidanceResult, run_guidance, write_artifacts
 
@@ -34,6 +35,7 @@ class WorkloadSpec:
     coupling: CpuCoupling | None = None
     overrides: dict | None = None
     capture_facts: object | None = None
+    attribution: object | None = None
     source: str = "synthesized"   # "synthesized" | "measured_fixture" | "model_capture"
 
 
@@ -81,9 +83,18 @@ def spec_from_model(base_model: str, capture_dirs: list[str]) -> WorkloadSpec:
         # backbone/head cost split, which a single-pass capture cannot provide.
         "weights_immutable": True,
     }
+    # Level-1 attribution from the real capture IR. An optional per-model mapping (region_ids /
+    # shape_signature -> role) lives at merlin/benchmarks/dse_guidance/region_maps/<model>.yaml;
+    # without it, facts + repeated-shape clusters are still extracted and roles stay unknown.
+    topo = TOP.from_temporal(temporal)
+    map_path = (paths.merlin_dir() / "benchmarks" / "dse_guidance" / "region_maps"
+                / f"{base_model}.yaml")
+    mapping = load_yaml(map_path) if map_path.is_file() else None
+    attribution = ATTR.attribute(capture, topo, mapping_rules=mapping)
+
     return WorkloadSpec(name=base_model, temporal=temporal, baseline=baseline,
                         region=None, overrides=overrides, source=source,
-                        coupling=None, capture_facts=facts)
+                        coupling=None, capture_facts=facts, attribution=attribution)
 
 
 def discover_model_specs() -> list[WorkloadSpec]:
@@ -157,7 +168,7 @@ def run_study(specs: list[WorkloadSpec], out_dir: str | Path) -> dict:
     for spec in specs:
         res = run_guidance(spec.temporal, spec.baseline, region=spec.region,
                            coupling=spec.coupling, overrides=spec.overrides,
-                           capture_facts=spec.capture_facts)
+                           capture_facts=spec.capture_facts, attribution=spec.attribution)
         write_artifacts(res, out / spec.name)
         results.append(res)
 

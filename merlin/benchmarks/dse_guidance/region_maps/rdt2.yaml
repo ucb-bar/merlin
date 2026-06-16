@@ -1,0 +1,21 @@
+# Level-1 region map for rdt2 (diffusion action head).
+#
+# The flat capture does NOT encode backbone-vs-head role (prov.module/level are uniform, args
+# are positional). This operator-supplied mapping assigns roles by matmul shape signature; the
+# per-region FACTS (counts, MACs, bytes) are then extracted exactly from the IR. Provenance of
+# the role assignment is therefore "explicit_mapping" — recorded as such, not auto-recovered.
+#
+# Signatures observed in output/rdt2_fp32_consistent/model.mlir:
+#   [28,1024,1024] x10  -> the repeated DiT/transformer block matmuls (the K-step denoise head)
+#   [1,2048,9216]       -> a one-shot projection (treated as backbone here)
+# Remaining matmuls stay unknown (honestly unattributed).
+workload: rdt2
+rules:
+  - role: repeated_head
+    match: {shape_signature: [28, 1024, 1024]}
+  - role: repeated_head
+    match: {shape_signature: [28, 1024, 2816]}
+  - role: repeated_head
+    match: {shape_signature: [28, 2816, 1024]}
+  - role: backbone_once
+    match: {shape_signature: [1, 2048, 9216]}

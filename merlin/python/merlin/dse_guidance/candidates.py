@@ -117,6 +117,12 @@ CANDIDATE_CATALOG: dict[str, dict] = {
 }
 
 
+# Axes whose quantification needs the action-head cost separated from the backbone (Level-1
+# region attribution). The rest need measured cost/calibration but not a head/backbone split.
+_HEAD_ATTRIBUTED_AXES = ("resident_action_head_weights", "resident_prefix_kv",
+                         "packed_layout_preservation")
+
+
 @dataclass
 class DseCandidate:
     id: str
@@ -131,6 +137,10 @@ class DseCandidate:
     legality: str = "structural"
     benefit: str = "unquantified"
     reason_benefit_unquantified: str = ""
+    # Filled from Level-1 attribution when available (real IR facts for the region this axis
+    # touches); ``quantification_blocked_by`` names what is still missing to rank the axis.
+    attributed_facts: dict | None = None
+    quantification_blocked_by: str = "missing_calibration"
 
 
 def _make(topo: VlaRuntimeTopology, axis: str, signal_type: str, evidence: dict,
@@ -247,8 +257,15 @@ _DETECTORS = (_detect_temporal_reuse, _detect_prefix_kv, _detect_rate_mismatch,
               _detect_dynamic_loop)
 
 
-def detect(topo: VlaRuntimeTopology, capture_facts=None) -> list[DseCandidate]:
-    """Run all pressure detectors; return structural candidates (deduped by axis, first wins)."""
+def detect(topo: VlaRuntimeTopology, capture_facts=None,
+           attribution=None) -> list[DseCandidate]:
+    """Run all pressure detectors; return structural candidates (deduped by axis, first wins).
+
+    When a Level-1 ``attribution`` (a ``RegionAttribution``) is supplied, head-attributed axes
+    carry the real per-region IR facts and report the remaining blocker as ``missing_calibration``;
+    without an attributed repeated head they report ``missing_region_attribution`` — and either
+    way no gap_closure is produced here (that needs calibration).
+    """
     seen: set[str] = set()
     out: list[DseCandidate] = []
     for det in _DETECTORS:
@@ -258,6 +275,16 @@ def detect(topo: VlaRuntimeTopology, capture_facts=None) -> list[DseCandidate]:
                 continue
             seen.add(axis)
             out.append(_make(topo, axis, signal_type, evidence, reason))
+
+    head = attribution.role("repeated_head") if attribution is not None else None
+    head_ok = head is not None and head.attribution_status == "attributed"
+    for c in out:
+        if c.axis in _HEAD_ATTRIBUTED_AXES:
+            if head_ok:
+                c.attributed_facts = head.facts
+                c.quantification_blocked_by = "missing_calibration"  # have bytes, need measured cost
+            else:
+                c.quantification_blocked_by = "missing_region_attribution"
     return out
 
 
@@ -270,8 +297,10 @@ def to_yaml_obj(candidates: list[DseCandidate]) -> dict:
          "required_hw_support": c.required_hw_support,
          "required_measurements": c.required_measurements,
          "could_be_wrong_if": c.could_be_wrong_if,
+         "attributed_facts": c.attributed_facts,
          "current_status": {"legality": c.legality, "benefit": c.benefit,
-                            "reason_benefit_unquantified": c.reason_benefit_unquantified}}
+                            "reason_benefit_unquantified": c.reason_benefit_unquantified,
+                            "quantification_blocked_by": c.quantification_blocked_by}}
         for c in candidates
     ]}
 
@@ -294,8 +323,10 @@ def markdown(topo: VlaRuntimeTopology, candidates: list[DseCandidate]) -> str:
         L.append(f"- **needs (compiler)**: {c.required_compiler_proof}")
         L.append(f"- **needs (hw/runtime)**: {c.required_hw_support}")
         L.append(f"- **measure first**: {', '.join(c.required_measurements)}")
+        if c.attributed_facts:
+            L.append(f"- **attributed IR facts (Level-1)**: `{c.attributed_facts}`")
         L.append(f"- **status**: legality={c.legality}, benefit={c.benefit} "
-                 f"({c.reason_benefit_unquantified})")
+                 f"(blocked by: {c.quantification_blocked_by})")
         L.append(f"- **could be wrong if**: {'; '.join(c.could_be_wrong_if)}")
         L.append("")
     return "\n".join(L)
