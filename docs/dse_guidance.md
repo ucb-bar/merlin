@@ -199,6 +199,20 @@ cost model is still uncalibrated; the fit above is a whole-model sanity anchor, 
 model). What stands on its own is the **structural / legality** result and the *ordering* within a
 single baseline. Evidence tags make the distinction visible.
 
+## Measured dispatch coupling (the one measured runtime leg)
+
+Running real small captures through the host reference executor
+(`merlin.runtime.dispatch_runtime.run_model`, cos=1.0 vs the torch golden) **measures** the actual
+dispatch count per forward: 183–213 dispatches vs a 15-matmul estimate — **the matmul proxy
+under-counts real dispatch granularity by ~13×** (real dispatches include every
+elementwise/norm/view/glue kernel). This grounds the `dispatches per replan` input to
+`command_batching` / `autonomous_K_loop` in a *measured* number instead of an estimate; the
+opportunity is larger than the matmul-only view implied. Data:
+`merlin/benchmarks/dse_guidance/measured_dispatch.yaml`; report:
+`benchmarks/dse_guidance/case_study/dispatch_coupling_report.md`. Honest scope: the dispatch
+*count* is measured; per-dispatch *host cost* is host-interpreter timing (Python reference
+executor), not the deployable C runtime — so no speedup is claimed.
+
 ## What is and isn't measured today (honest status)
 
 | Quantity | Status |
@@ -209,7 +223,8 @@ single baseline. Evidence tags make the distinction visible.
 | Per-model cost components | analytical (placeholder constants, uncalibrated) |
 | Region roles (backbone/head) | **recovered from `prov.fqn`** for freshly-captured models; operator-mapped or `unknown` for pre-`prov.fqn` captures |
 | Loop counts K | assumed / reference (architecture values, overridable) |
-| CPU coupling (host/dispatch/sync) | **unavailable** — no real measurement exists yet; the ingestion path is unit-tested with a synthetic fixture only |
+| Dispatch count per forward | **measured** (host reference executor, cos=1.0) — ~13× the matmul estimate |
+| Per-dispatch host submit/sync ns | host-interpreter proxy only; deployable-runtime coupling still **unavailable** |
 | smolvla per-component head split | illustrative — exercises the component-attributed path; not measured |
 
 ## What not to claim

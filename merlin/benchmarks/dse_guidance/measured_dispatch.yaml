@@ -1,0 +1,20 @@
+# MEASURED dispatch coupling — the first measured runtime leg.
+#
+# Source: merlin.runtime.dispatch_runtime.run_model (the host reference executor: outline ->
+# compile each unique kernel -> walk the driver invoking compiled symbols). For each model:
+#   n_kernels  = total dispatches issued per forward (ALL ops, not just matmul) -- MEASURED
+#   n_unique   = distinct compiled kernels
+#   matmul_estimate = linalg.matmul count in the capture (the structural proxy we used before)
+#   cos        = output cosine vs the captured torch golden (1.0 == faithful run)
+#   exec_wall_s = cached execution wall (compile excluded)
+#
+# Honesty: n_kernels is a clean MEASURED dispatch count and grounds the "dispatches per replan"
+# input to the command_batching / autonomous_K_loop axes (previously ESTIMATED as the matmul
+# count). exec_wall_s is host-interpreter timing on the Python reference executor, NOT the
+# deployable C runtime -- use it for dispatch-count grounding, not as an absolute latency.
+substrate: host_reference_executor
+source: "merlin.runtime.dispatch_runtime.run_model (host, cos=1.0 vs torch golden)"
+points:
+  - {model: small,            n_kernels: 183, n_unique: 159, matmul_estimate: 15, cos: 1.0, exec_wall_s: 0.645}
+  - {model: small_llama_int8, n_kernels: 198, n_unique: 163, matmul_estimate: 15, cos: 1.0, exec_wall_s: 0.680}
+  - {model: small_llama_fp8,  n_kernels: 213, n_unique: 177, matmul_estimate: 15, cos: 1.0, exec_wall_s: 0.701}
