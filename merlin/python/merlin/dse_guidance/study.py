@@ -131,7 +131,21 @@ def _write_cost_calibration(out: Path) -> None:
     except FileNotFoundError:
         return
     Artifact("cost_calibration.csv", CC.to_csv(res)).write(out)
-    Artifact("cost_calibration.md", CC.markdown(res)).write(out)
+    # Per-component calibration attempt (multi-feature + leave-one-out CV) over consistent points.
+    feature_rows = []
+    for p in res.points:
+        if not p.macs or p.is_outlier:
+            continue
+        facts = M.capture_facts(M._prefer_capture(captures[p.model])) if p.model in captures else None
+        if facts is None or not facts.parsed:
+            continue
+        feature_rows.append({"cycles": p.measured_cycles, "macs": facts.total_macs,
+                             "act_bytes": facts.total_activation_bytes,
+                             "matmuls": facts.n_matmuls})
+    md = CC.markdown(res)
+    if len(feature_rows) >= 3:
+        md += "\n" + CC.multifeature_report_md(CC.multifeature_calibration(feature_rows))
+    Artifact("cost_calibration.md", md).write(out)
 
 
 def _write_calibration_anchor(out: Path) -> None:

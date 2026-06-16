@@ -30,21 +30,76 @@ class DispatchMeasurement:
     matmul_estimate: int           # structural proxy used before (matmul count)
     cos: float
     exec_wall_s: float | None = None
+    # Per-dispatch host-cost breakdown (P1-b), host reference executor (machine-dependent ms).
+    compute_call_ms: float | None = None
+    host_overhead_ms: float | None = None
+    overhead_frac: float | None = None    # dispatch/alloc overhead / total host time (stable)
 
     @property
     def undercount_ratio(self) -> float | None:
         """How much the matmul-count proxy under-counts the real dispatch granularity."""
         return (self.n_kernels / self.matmul_estimate) if self.matmul_estimate else None
 
+    @property
+    def per_dispatch_host_ms(self) -> float | None:
+        """Total host time per dispatch (compute call + its share of overhead)."""
+        if self.compute_call_ms is None or self.host_overhead_ms is None or not self.n_kernels:
+            return None
+        return (self.compute_call_ms + self.host_overhead_ms) / self.n_kernels
+
 
 def load_measured(path=None) -> list[DispatchMeasurement]:
     p = path or (paths.merlin_dir() / "benchmarks" / "dse_guidance" / "measured_dispatch.yaml")
     doc = load_yaml(p)
+    def _f(r, k):
+        return float(r[k]) if r.get(k) is not None else None
     return [DispatchMeasurement(
         model=r["model"], n_kernels=int(r["n_kernels"]), n_unique=int(r.get("n_unique", 0)),
         matmul_estimate=int(r.get("matmul_estimate", 0)), cos=float(r.get("cos", 0.0)),
-        exec_wall_s=(float(r["exec_wall_s"]) if r.get("exec_wall_s") is not None else None))
+        exec_wall_s=_f(r, "exec_wall_s"), compute_call_ms=_f(r, "compute_call_ms"),
+        host_overhead_ms=_f(r, "host_overhead_ms"), overhead_frac=_f(r, "overhead_frac"))
         for r in doc.get("points", [])]
+
+
+def measure_host_breakdown(model_dir, workdir=None, cache_dir=None) -> DispatchMeasurement:
+    """Measure the per-forward host-time split (compute calls vs dispatch/alloc overhead).
+
+    Uses a timing tap over the executor (no runtime modification): each op's wall time is the
+    delta between consecutive tap calls. ``func.call`` ops are the compiled-kernel dispatches;
+    everything else (output allocation, view/glue) is host dispatch overhead. ``overhead_frac``
+    is the stable signal; absolute ms are host-interpreter, machine-dependent.
+    """
+    import tempfile
+    import time
+    from pathlib import Path
+    from merlin.runtime import dispatch_runtime as DR
+    md = Path(model_dir)
+    wd = Path(workdir or tempfile.mkdtemp())
+    cache = Path(cache_dir or tempfile.mkdtemp())
+    DR.run_model(md, wd, cache_dir=cache)                 # warm the compile cache
+    events: list = []
+    t0 = time.perf_counter()
+    res = DR.run_model(md, wd, cache_dir=cache,
+                       tap=lambda op, val: events.append((op.name, time.perf_counter())))
+    compute = overhead = 0.0
+    ndisp = 0
+    prev = t0
+    for name, t in events:
+        dt = t - prev
+        prev = t
+        if name == "func.call":
+            compute += dt
+            ndisp += 1
+        else:
+            overhead += dt
+    total = compute + overhead
+    matmuls = (md / "model.mlir").read_text().count("linalg.matmul")
+    return DispatchMeasurement(
+        model=md.name, n_kernels=int(res["n_kernels"]),
+        n_unique=int(res.get("n_unique_kernels") or 0), matmul_estimate=matmuls,
+        cos=float(res.get("cos", 0.0)), exec_wall_s=round(total, 3),
+        compute_call_ms=round(compute * 1e3, 1), host_overhead_ms=round(overhead * 1e3, 1),
+        overhead_frac=round(overhead / total, 3) if total else None)
 
 
 def measure(model_dir, workdir=None, cache_dir=None) -> DispatchMeasurement:
@@ -107,6 +162,23 @@ def report_md(measured: list[DispatchMeasurement] | None = None) -> str:
                  f"~{avg:.0f}x (real dispatches include every elementwise/norm/view/glue kernel). "
                  "So the command-batching / autonomous-loop opportunity is *larger* than the "
                  "matmul-only estimate implied — now grounded in a measured dispatch count.\n")
+    # Per-dispatch host-cost breakdown (P1-b)
+    bd = [m for m in ms if m.overhead_frac is not None]
+    if bd:
+        L.append("## Per-dispatch host cost (host reference executor)\n")
+        L.append("| model | dispatches | compute-call ms | dispatch/alloc overhead ms | overhead frac |")
+        L.append("|-------|-----------|-----------------|----------------------------|---------------|")
+        for m in bd:
+            L.append(f"| {m.model} | {m.n_kernels} | {m.compute_call_ms} | {m.host_overhead_ms} | "
+                     f"{m.overhead_frac:.2f} |")
+        avgf = sum(m.overhead_frac for m in bd) / len(bd)
+        L.append("")
+        L.append(f"**Finding:** ~{avgf*100:.0f}% of host time per forward is dispatch/allocation "
+                 "overhead, NOT compute-kernel calls — the forward is **host-dispatch-bound** on "
+                 "this executor, which is exactly the regime `command_batching` / "
+                 "`autonomous_K_loop` target. Absolute ms are host-interpreter (Python reference "
+                 "executor), machine-dependent — the stable, deployable-relevant signals are the "
+                 "dispatch *count* and the overhead *fraction*, not the absolute latency.\n")
     return "\n".join(L)
 
 

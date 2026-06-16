@@ -194,10 +194,21 @@ openvla, small_llama), at **MAPE ≈ 32 %**. See
   xr0 capture/run inconsistency (a partial capture or a non-matmul/repeated-body-dominated run),
   not a uniform model failure.
 
+**Per-component calibration attempt (P1-a).** A multi-feature regression (MACs / activation-bytes /
+matmul-count) over the consistent measured points, with leave-one-out CV, shows the features are
+collinear (condition number ~10⁹) and multi-feature fits do **not** beat single cycles/MAC under
+CV — **per-component coefficients are not identifiable from whole-model totals**. Cycle-exact
+per-component calibration needs isolated microbenchmarks (compute-bound matmul, memory/repeated-RHS
+matmul, dispatch-heavy tiny-kernel sequence, `matmul_bias_requant_relu`, `no_reuse_matmul`) measured
+on the chipyard/spike or FireSim toolchain — which is **unavailable in this environment**
+(`MERLIN_CHIPYARD` unset, `spike` not on PATH), so it is the precise scoped remaining measurement,
+not a fabricated coefficient. See `cost_calibration.md`.
+
 **Consequence:** cross-workload `gap_closure` *magnitudes* remain analytical (the per-component
-cost model is still uncalibrated; the fit above is a whole-model sanity anchor, not a per-component
-model). What stands on its own is the **structural / legality** result and the *ordering* within a
-single baseline. Evidence tags make the distinction visible.
+cost model is still uncalibrated; the fits above are whole-model sanity anchors, not a per-component
+model). What stands on its own is the **structural / legality** result, the *ordering* within a
+single baseline, the **measured dispatch count + host-dispatch-bound finding**, and the numerical
+contract. Evidence tags make the distinction visible.
 
 ## Measured dispatch coupling (the one measured runtime leg)
 

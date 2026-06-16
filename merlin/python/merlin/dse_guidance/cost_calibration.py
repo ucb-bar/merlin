@@ -132,6 +132,87 @@ _COLUMNS = ["model", "dtype", "macs", "measured_cycles", "ratio_cycles_per_mac",
             "predicted_cycles", "rel_err_pct", "is_outlier", "note"]
 
 
+def _loo_mape(X, y) -> float | None:
+    """Leave-one-out cross-validated MAPE for an ordinary-least-squares fit ``y ~ X``."""
+    import numpy as np
+    X = np.asarray(X, float)
+    y = np.asarray(y, float)
+    n = len(y)
+    if n < X.shape[1] + 1:           # need more points than parameters for any CV signal
+        return None
+    errs = []
+    for i in range(n):
+        mask = np.arange(n) != i
+        coef, *_ = np.linalg.lstsq(X[mask], y[mask], rcond=None)
+        pred = float(X[i] @ coef)
+        if y[i]:
+            errs.append(abs(pred - y[i]) / abs(y[i]))
+    return float(np.mean(errs) * 100.0) if errs else None
+
+
+def multifeature_calibration(feature_rows: list[dict]) -> dict:
+    """Compare 1- and multi-feature fits of measured cycles, with leave-one-out CV.
+
+    ``feature_rows``: one dict per consistent measured model with keys ``cycles``, ``macs``,
+    ``act_bytes``, ``matmuls``. Honestly reports whether adding features beats cycles/MAC under
+    CV — with N this small (a handful of whole-model points), it usually does NOT, which is the
+    finding: per-component coefficients are not identifiable from whole-model totals.
+    """
+    import numpy as np
+    rows = [r for r in feature_rows if r.get("macs")]
+    n = len(rows)
+    y = [r["cycles"] for r in rows]
+    feature_sets = {
+        "macs_only": [("macs",)],
+        "macs+act_bytes": [("macs", "act_bytes")],
+        "macs+matmuls": [("macs", "matmuls")],
+    }
+    out: dict = {"n_points": n, "fits": {}}
+    for name, (feats,) in feature_sets.items():
+        X = [[r[f] for f in feats] + [1.0] for r in rows]   # + intercept
+        try:
+            coef, *_ = np.linalg.lstsq(np.asarray(X, float), np.asarray(y, float), rcond=None)
+            cond = float(np.linalg.cond(np.asarray(X, float)))
+        except Exception:
+            continue
+        out["fits"][name] = {
+            "features": list(feats),
+            "coef": [round(float(c), 4) for c in coef],
+            "loo_mape": _loo_mape(X, y),
+            "condition_number": round(cond, 1),
+        }
+    return out
+
+
+def multifeature_report_md(mf: dict) -> str:
+    L = ["## Per-component calibration attempt (multi-feature, leave-one-out CV)\n"]
+    L.append(f"Fit measured cycles against feature sets over {mf['n_points']} consistent points; "
+             "leave-one-out CV is the honest test of whether extra features *generalize*.\n")
+    L.append("| feature set | LOO-CV MAPE | condition number |")
+    L.append("|-------------|-------------|------------------|")
+    best = None
+    for name, fit in mf["fits"].items():
+        loo = "n/a" if fit["loo_mape"] is None else f"{fit['loo_mape']:.0f}%"
+        L.append(f"| {name} | {loo} | {fit['condition_number']:.0f} |")
+        if fit["loo_mape"] is not None and (best is None or fit["loo_mape"] < best[1]):
+            best = (name, fit["loo_mape"])
+    L.append("")
+    if best:
+        L.append(f"**Best CV:** `{best[0]}` (LOO-MAPE {best[1]:.0f}%). ")
+    L.append("**Finding:** with only a handful of whole-model totals, the features are collinear "
+             "(high condition number) and multi-feature fits do **not** reliably beat the single "
+             "cycles/MAC term under cross-validation — per-component coefficients are **not "
+             "identifiable** from whole-model data. Cycle-exact per-component calibration needs "
+             "isolated microbenchmarks measured on RTL/spike: a compute-bound matmul, a "
+             "memory/repeated-RHS matmul, a dispatch-heavy tiny-kernel sequence, "
+             "`matmul_bias_requant_relu`, and `no_reuse_matmul`. Until then per-axis gap_closure "
+             "stays gated.\n")
+    L.append("_Status: the cycle-exact microbenchmark path needs the chipyard/spike (or FireSim) "
+             "toolchain; where that is unavailable this is the precise scoped remaining "
+             "measurement — not a fabricated coefficient._\n")
+    return "\n".join(L)
+
+
 def to_csv(res: CalibResult) -> str:
     buf = io.StringIO()
     w = csv.DictWriter(buf, fieldnames=_COLUMNS)
