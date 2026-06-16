@@ -468,13 +468,14 @@ def test_role_from_fqn_inference():
     assert ATTR.role_from_fqn("vision_backbone.blocks.3.attn") == "backbone_once"
 
 
-# A fresh RDT denoise-step capture (real architecture, small random config) produced by the
-# prov.fqn-enabled model2MLIR. ~283 KB MLIR; weights are NOT committed.
-_RDT_RECAP = FIX / "rdt_recap_fqn"
+# Real prov.fqn recaptures (real architectures, small random configs) live under
+# merlin/benchmarks/dse_guidance/recaptures/<workload>/model.mlir. ~MLIR only; weights NOT committed.
+_RECAP = Path(__file__).resolve().parents[2] / "benchmarks" / "dse_guidance" / "recaptures"
+_RDT_RECAP = _RECAP / "rdt"
 
 
 @pytest.mark.skipif(not (_RDT_RECAP / "model.mlir").is_file(),
-                    reason="no fresh rdt prov.fqn capture fixture")
+                    reason="no fresh rdt prov.fqn capture")
 def test_real_capture_auto_recovers_head_role_from_prov_fqn():
     # The whole captured graph is the denoise head; every matmul carries prov.fqn and
     # auto-recovers to repeated_head with NO operator mapping.
@@ -500,6 +501,53 @@ def test_real_capture_auto_recovers_head_role_from_prov_fqn():
     assert cand.attributed_facts and cand.attributed_facts["matmul_count"] == len(recs)
     assert cand.quantification_blocked_by == "missing_calibration"
     assert cand.benefit == "unquantified"
+
+
+# --------------------------------------------- cross-workload case study (multiple real captures)
+
+def _has_recaptures() -> bool:
+    from merlin.dse_guidance import case_study as CS
+    return len(CS.available_models()) >= 2
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_case_study_is_multi_workload_and_honest():
+    from merlin.dse_guidance import case_study as CS
+    models = CS.available_models()
+    assert len(models) >= 2                     # the value is breadth, not one model
+    cases = [CS.analyze(w) for w in models]
+    for c in cases:
+        # Roles auto-recovered from prov.fqn; at least the repeated head is attributed.
+        head = c.attribution.role("repeated_head")
+        assert head is not None and head.attribution_status == "attributed"
+        assert head.facts["matmul_count"] > 0 and head.facts["weight_bytes"] > 0
+        # No candidate fabricates a quantitative benefit.
+        for cand in c.candidates:
+            assert cand.benefit == "unquantified"
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_case_study_openvla_recovers_backbone_head_split():
+    from merlin.dse_guidance import case_study as CS
+    if "openvla" not in CS.available_models():
+        pytest.skip("no openvla recapture")
+    case = CS.analyze("openvla")
+    # The real OpenVLA capture splits into a vision backbone AND a decode head, from prov.fqn.
+    assert case.attribution.role("backbone_once") is not None
+    assert case.attribution.role("repeated_head") is not None
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_case_study_provenance_csv_labels_evidence(tmp_path):
+    from merlin.dse_guidance import case_study as CS
+    CS.run_case_study(tmp_path)
+    csv_text = (tmp_path / "cross_workload_provenance.csv").read_text()
+    assert "recovered_from_prov_fqn" in csv_text      # roles from the capture
+    assert "recovered_from_ir" in csv_text            # facts from the capture
+    assert "assumed_reference" in csv_text             # K
+    assert "unavailable" in csv_text                   # CPU coupling
+    assert "missing_calibration" in csv_text           # quantification gate
+    assert (tmp_path / "case_study.md").is_file()
 
 
 def test_attribution_auto_recovers_roles_from_prov_fqn():

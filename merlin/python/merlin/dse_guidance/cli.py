@@ -116,12 +116,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--models", action="store_true",
                     help="with --study: study the real model zoo (captures under output/) "
                          "instead of the semantic_memory regions")
+    ap.add_argument("--case-study", action="store_true",
+                    help="generate the cross-workload provenance case study from the real "
+                         "prov.fqn recaptures under merlin/benchmarks/dse_guidance/recaptures/")
     ap.add_argument("--structural-only", action="store_true",
                     help="emit only the structural front-end (topology, capture fidelity, "
                          "candidate axes); skip the quantitative triage even if a region is given")
     ap.add_argument("--out", default=None, help="output dir")
     args = ap.parse_args(argv)
 
+    if args.case_study:
+        from merlin.dse_guidance.case_study import run_case_study
+        out = Path(args.out) if args.out else (
+            paths.repo_root() / "output" / "dse_guidance" / "case_study")
+        summary = run_case_study(out)
+        print(f"cross-workload case study over {len(summary['workloads'])} real captures: "
+              f"{', '.join(summary['workloads'])}")
+        print(f"artifacts -> {out}  (case_study.md, cross_workload_provenance.csv, <workload>/...)")
+        return 0
     if args.study:
         return _study(args)
     return _single(args)
