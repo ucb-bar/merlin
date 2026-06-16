@@ -120,12 +120,19 @@ hardware — the two patch-embed `i8×i8→i32` convs run bit-identically to the
 The int8 *compute* is faithful everywhere (cos 1.0 vs W8A8). Accuracy-vs-fp32 follows the expected
 W8A8 band: the action-head VLAs (rdt2, bitvla) hold up (rdt2 passes, bitvla 0.97 per-row argmax),
 while the small LLM (tiny_llama) drops to 0.75 per-row argmax — the inherent loss of calibration-free
-dynamic W8A8 on a language head. On a **scalar** FireSim core the cycle win depends on the
-matmul-vs-quant-overhead ratio: rdt2 (matmul-heavy) is **1.33×** faster, while bitvla (a cheap BitNet
-path) is slightly slower because the per-row quant/requant overhead outweighs the savings. The large
-int8 throughput lever is **RVV** — the spike cross-check shows the contractions issue `vmul.vv`/
-`vmacc.vx` over `vle8.v`-loaded int8 lanes (≈4× an fp32 lane), which a scalar core cannot exploit.
-Reproduce with `firesim_sweep.py --int8` / `--report`.
+dynamic W8A8 on a language head.
+
+**These cycle counts are from the SCALAR tile (Gemmini, hart 0), so the speedup column is NOT the
+int8 story** — on a scalar core `i8×i8→i32` has no lane-width advantage and only carries the per-row
+quant/requant overhead, so it can even be slower (bitvla 0.87×; rdt2's 1.33× is just the cheaper i32
+accumulate + smaller footprint). The board (`GemminiAndOPUShuttleConfig`) *does* have a vector tile
+(Saturn-OPU, hart 1) where int8 packs ≈4× the lanes of f32 — that is where the throughput win lives,
+and the spike cross-check confirms the contractions issue `vmul.vv`/`vmacc.vx` over `vle8.v`-loaded
+int8 lanes there. **The cycle-exact int8-vs-fp32 RVV speedup on FASED is not yet measured: the
+`rv64gcv` image runs on spike but currently HANGS on the FireSim Saturn-OPU tile** (a vector-trap
+silent-hang — the code keeps scalar as the "FireSim-safe path" for this reason). Resolving that
+RVV-on-FASED bring-up is the open item for a real hardware speedup number; `firesim_sweep.py --int8
+--backend rvv` is wired and ready once the hang is fixed.
 
 ## Capture / lowering fixes
 
