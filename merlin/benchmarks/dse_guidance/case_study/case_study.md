@@ -4,6 +4,15 @@
 
 Real recaptured workloads: **4** (rdt, openvla, small_llama, tiny_llama). Captures are real architectures via the `prov.fqn`-enabled model2MLIR at small/random configs — structure & provenance real, magnitudes are small instances.
 
+## Headline: flat capture vs recovered contract
+
+| workload | flat view | recovered view | real facts | DSE implication | quantification |
+|----------|-----------|----------------|------------|-----------------|----------------|
+| rdt | weights once, no K-loop | repeated_head | 20 mm, 391 MB, 39.4 GMAC/step xK=5 | resident_action_head_weights | blocked: missing_calibration |
+| openvla | weights once, no K-loop | repeated_head + backbone_once split | 15 mm, 3 MB, 0.0 GMAC/step xK=7 | resident_action_head_weights, backbone_head_partition | blocked: missing_calibration |
+| small_llama | weights once, no K-loop | repeated_head | 14 mm, 2 MB, 0.0 GMAC/step xK=32 | resident_action_head_weights | blocked: missing_calibration |
+| tiny_llama | weights once, no K-loop | repeated_head | 15 mm, 614 MB, 0.6 GMAC/step xK=32 | resident_action_head_weights | blocked: missing_calibration |
+
 ## Per-workload recovery
 
 | workload | class | matmuls | roles recovered (from prov.fqn) | repeated_head facts | quant |
@@ -23,4 +32,4 @@ Real recaptured workloads: **4** (rdt, openvla, small_llama, tiny_llama). Captur
 
 `recovered_from_ir` · `recovered_from_prov_fqn` · `assumed_reference` · `calibrated` · `uncalibrated` · `unavailable`
 
-See `cross_workload_provenance.csv` for the per-item flat-vs-recovered table.
+See `cross_workload_provenance.csv` for the per-item flat-vs-recovered table, and `numerical_contract_fidelity_report.md` for the precision/quantization contract (the orthogonal axis: every int8/fp8 zoo capture stores weights low-bit but runs f32 matmuls — native low-bit compute and the packed layout are absent).

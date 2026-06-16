@@ -11,6 +11,16 @@ triage.
 
 > Merlin does not perform DSE. Merlin prevents DSE from optimizing the wrong abstraction.
 
+For VLA accelerator DSE, Merlin recovers **two contracts that flat captures obscure**: the
+**temporal contract** — which regions repeat, persist, or run at different rates (`topology.py`,
+`attribution.py`) — and the **numerical contract** — which tensors are stored, computed,
+accumulated, dequantized, and requantized in which precision (`numerical_contract.py`). It emits
+structural DSE candidates only when those contracts justify them, and gates quantitative ranking
+on measurement. Concretely: across the captured zoo, every int8/fp8 model stores weights low-bit
+but runs **f32 matmuls** — native low-bit compute and the packed layout are absent from the
+capture (a hidden DSE axis), reported by the numerical-contract audit with no speedup/accuracy
+claim. See `merlin/benchmarks/dse_guidance/case_study/`.
+
 ## Pipeline order (structural first, quantitative last)
 
 ```

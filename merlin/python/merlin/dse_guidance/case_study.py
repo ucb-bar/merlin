@@ -22,6 +22,7 @@ from merlin.common import paths
 from merlin.common.artifacts import Artifact
 from merlin.dse_guidance import attribution as ATTR
 from merlin.dse_guidance import candidates as CAND
+from merlin.dse_guidance import numerical_contract as NC
 from merlin.dse_guidance import temporal as T
 from merlin.dse_guidance import topology as TOP
 
@@ -166,6 +167,24 @@ def case_study_md(cases: list[WorkloadCase]) -> str:
              f"({', '.join(c.workload for c in cases)}). Captures are real architectures via the "
              "`prov.fqn`-enabled model2MLIR at small/random configs — structure & provenance real, "
              "magnitudes are small instances.\n")
+    # Headline result table: one row per workload (flat vs recovered vs facts vs implication).
+    L.append("## Headline: flat capture vs recovered contract\n")
+    L.append("| workload | flat view | recovered view | real facts | DSE implication | quantification |")
+    L.append("|----------|-----------|----------------|------------|-----------------|----------------|")
+    for c in cases:
+        head = _role(c, "repeated_head")
+        bb = _role(c, "backbone_once")
+        recovered = "repeated_head" + (" + backbone_once split" if bb else "")
+        if head and head.attribution_status == "attributed":
+            facts = (f"{head.facts['matmul_count']} mm, "
+                     f"{head.facts['weight_bytes']/1e6:.0f} MB, "
+                     f"{head.facts['macs_per_invocation']/1e9:.1f} GMAC/step xK={c.K}")
+        else:
+            facts = "—"
+        impl = "resident_action_head_weights" + (", backbone_head_partition" if bb else "")
+        L.append(f"| {c.workload} | weights once, no K-loop | {recovered} | {facts} | {impl} | "
+                 f"blocked: missing_calibration |")
+    L.append("")
     L.append("## Per-workload recovery\n")
     L.append("| workload | class | matmuls | roles recovered (from prov.fqn) | repeated_head facts | quant |")
     L.append("|----------|-------|---------|---------------------------------|---------------------|-------|")
@@ -190,8 +209,37 @@ def case_study_md(cases: list[WorkloadCase]) -> str:
              "`blocked_by: missing_calibration`; no speedup is claimed.\n")
     L.append("## Evidence provenance legend\n")
     L.append(f"`{P_IR}` · `{P_FQN}` · `{P_ASSUMED}` · `{P_CALIB}` · `{P_UNCAL}` · `{P_NA}`\n")
-    L.append("See `cross_workload_provenance.csv` for the per-item flat-vs-recovered table.\n")
+    L.append("See `cross_workload_provenance.csv` for the per-item flat-vs-recovered table, and "
+             "`numerical_contract_fidelity_report.md` for the precision/quantization contract "
+             "(the orthogonal axis: every int8/fp8 zoo capture stores weights low-bit but runs "
+             "f32 matmuls — native low-bit compute and the packed layout are absent).\n")
     return "\n".join(L)
+
+
+def _head_weight_bytes(case: WorkloadCase) -> int | None:
+    head = case.attribution.role("repeated_head")
+    return head.facts.get("weight_bytes") if head and head.attribution_status == "attributed" else None
+
+
+def zoo_numerical_audit() -> list:
+    """Audit the numerical contract of the existing quantized zoo captures (int8/fp8/fp32).
+
+    These predate prov.fqn but still carry prov.quantization + dtypes — enough to show the
+    cross-zoo finding that low-bit weights are dequantized to f32 before compute.
+    """
+    root = paths.repo_root() / "output"
+    contracts = []
+    seen = set()
+    for d in sorted(root.glob("*_consistent")):
+        if not (d / "model.mlir").is_file():
+            continue
+        # one capture per (base, dtype) is plenty; keep it readable
+        if d.name in seen:
+            continue
+        seen.add(d.name)
+        contracts.append(NC.audit(str(d), workload=d.name))
+    return [c for c in contracts if c.declared_quantization != "none" or c.low_bit_storage] \
+        or contracts
 
 
 def run_case_study(out_dir) -> dict:
@@ -208,4 +256,14 @@ def run_case_study(out_dir) -> dict:
                       header=f"region_attribution (Level-1, prov.fqn): {c.workload}").write(out)
         Artifact(f"{c.workload}/dse_candidate_axes.md",
                  CAND.markdown(c.topo, c.candidates)).write(out)
-    return {"workloads": models, "out": str(out)}
+        # numerical contract per recaptured workload (fp32 -> low-bit opportunity)
+        nc = NC.audit(str(_recap_dir(c.workload)), workload=c.workload, workload_class=c.cls,
+                      repeated_head_weight_bytes=_head_weight_bytes(c),
+                      has_epilogue=bool(c.attribution.role("repeated_head")
+                                        and any(r.role == "repeated_head" for r in c.attribution.regions)))
+        yaml_artifact(f"{c.workload}/numerical_contract.yaml", NC.to_yaml_obj(nc),
+                      header=f"numerical_contract: {c.workload}").write(out)
+    # cross-zoo numerical-contract report (shows low-bit compute lost across the quantized zoo)
+    zoo = zoo_numerical_audit()
+    Artifact("numerical_contract_fidelity_report.md", NC.fidelity_report_md(zoo)).write(out)
+    return {"workloads": models, "out": str(out), "numerical_captures": len(zoo)}

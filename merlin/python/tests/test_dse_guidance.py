@@ -537,6 +537,49 @@ def test_case_study_openvla_recovers_backbone_head_split():
     assert case.attribution.role("repeated_head") is not None
 
 
+# ------------------------------------------------ numerical-contract audit (structural)
+
+def test_numerical_contract_flags_lost_lowbit():
+    from merlin.dse_guidance import numerical_contract as NC
+    import os
+    cap = "output/rdt2_int8_consistent"
+    if not os.path.isfile(f"{cap}/model.mlir"):
+        pytest.skip("no int8 zoo capture")
+    c = NC.audit(cap, workload="rdt2_int8", has_epilogue=True)
+    assert c.low_bit_storage and c.weight_storage_dtype == "int8"
+    assert c.low_bit_compute_lost and not c.packed_layout_visible   # f32 compute -> lost
+    assert "native_low_bit_compute" in c.lost_structure and c.severity == "high"
+    axes = {k.axis for k in c.candidates}
+    assert {"native_lowbit_compute", "fused_dequant_matmul"} <= axes
+    for k in c.candidates:                       # never a speedup/accuracy/gap_closure
+        assert k.benefit == "unquantified" and not hasattr(k, "gap_closure")
+
+
+def test_numerical_contract_fp32_emits_lowbit_candidate_from_real_bytes():
+    from merlin.dse_guidance import numerical_contract as NC
+    if not (_RDT_RECAP / "model.mlir").is_file():
+        pytest.skip("no rdt recapture")
+    c = NC.audit(str(_RDT_RECAP), workload="rdt", workload_class="diffusion/denoise_steps",
+                 repeated_head_weight_bytes=391_118_848)
+    assert c.declared_quantization == "none" and not c.low_bit_compute_lost
+    rw = next(k for k in c.candidates if k.axis == "resident_packed_lowbit_weights")
+    assert rw.evidence["repeated_head_weight_bytes"] == 391_118_848
+    assert "int4_weight_only" in rw.evidence["candidate_formats"]
+    assert rw.benefit == "unquantified" and rw.required_accuracy_measurements
+
+
+def test_numerical_contract_yaml_has_no_speedup_or_accuracy_number():
+    from merlin.dse_guidance import numerical_contract as NC
+    if not (_RDT_RECAP / "model.mlir").is_file():
+        pytest.skip("no rdt recapture")
+    obj = NC.to_yaml_obj(NC.audit(str(_RDT_RECAP), workload="rdt",
+                                  repeated_head_weight_bytes=391_118_848))
+    blob = str(obj).lower()
+    assert "speedup" not in blob and "gap_closure" not in blob
+    for cand in obj["numerical_contract"]["candidates"]:
+        assert cand["current_status"]["benefit"] == "unquantified"
+
+
 @pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
 def test_case_study_provenance_csv_labels_evidence(tmp_path):
     from merlin.dse_guidance import case_study as CS
