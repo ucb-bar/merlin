@@ -629,8 +629,9 @@ def run_model(model_dir: str | Path, workdir: str | Path,
     collapse_overrank_matmul(module)
     _propagate_quant_inner(module)            # dequant prov.quant_inner_{w,s} -> source empties
     if int8_compute:
-        from ..llvmlower.passes_quant_int import lower_matmul_int8
-        lower_matmul_int8(module)             # dequant+f32-matmul -> i8×i8→i32 + requant
+        from ..llvmlower.passes_quant_int import lower_contraction_int8, lower_softmax_int
+        lower_contraction_int8(module)        # matmul/attention -> i8×i8→i32 + requant
+        lower_softmax_int(module)             # softmax exp -> integer I-BERT i-exp (no math.exp)
     lower_quant_ext(module)                   # residual dequants (unconverted) -> f32 fallback
     lower_bf16_matmul_f32acc(module)
     fix_bool_sitofp(module)
