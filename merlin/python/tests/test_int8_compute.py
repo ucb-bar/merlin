@@ -129,6 +129,51 @@ def test_lower_matmul_int8_makes_integer_contraction(tmp_path):
     assert int_contract, "expected one i8×i8→i32 integer contraction"
 
 
+# conv: a 7-iterator linalg.generic with a stride-16 affine input map (d2*16+d5, d3*16+d6),
+# f32 activation + f32 weight (torchao leaves conv weights f32) -> i8×i8→i32 + requant.
+_CONV_MOD = (
+    "builtin.module {{ func.func @forward(%x: tensor<1x3x64x64xf32>, "
+    "%w: tensor<{oc}x3x16x16xf32>) -> tensor<1x{oc}x4x4xf32> {{ "
+    "%e = tensor.empty() : tensor<1x{oc}x4x4xf32> "
+    "%c0 = arith.constant 0.0 : f32 "
+    "%f = linalg.fill ins(%c0 : f32) outs(%e : tensor<1x{oc}x4x4xf32>) -> tensor<1x{oc}x4x4xf32> "
+    "%y = linalg.generic {{indexing_maps = ["
+    "affine_map<(d0,d1,d2,d3,d4,d5,d6)->(d0,d4,d2*16+d5,d3*16+d6)>, "
+    "affine_map<(d0,d1,d2,d3,d4,d5,d6)->(d1,d4,d5,d6)>, "
+    "affine_map<(d0,d1,d2,d3,d4,d5,d6)->(d0,d1,d2,d3)>], "
+    "iterator_types = [\"parallel\",\"parallel\",\"parallel\",\"parallel\","
+    "\"reduction\",\"reduction\",\"reduction\"], "
+    'prov.op = "conv2d"}} '
+    "ins(%x, %w : tensor<1x3x64x64xf32>, tensor<{oc}x3x16x16xf32>) "
+    "outs(%f : tensor<1x{oc}x4x4xf32>) {{ "
+    "^bb(%a: f32, %b: f32, %o: f32): %m = arith.mulf %a, %b : f32 "
+    "%s = arith.addf %o, %m : f32 linalg.yield %s : f32 }} "
+    "-> tensor<1x{oc}x4x4xf32> func.return %y : tensor<1x{oc}x4x4xf32> }} }}")
+
+
+def test_lower_conv_int8_makes_integer_conv(tmp_path):
+    """``lower_conv_int8`` turns an f32 conv generic into an i8×i8→i32 contraction, dynamically
+    quantizing both operands and keeping the EXACT stride-affine maps (so the conv structure —
+    7 iterators, compound input map — survives, unlike the matmul rebuild which drops it)."""
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.passes_quant_int import lower_conv_int8
+
+    src = tmp_path / "conv.mlir"
+    src.write_text(_CONV_MOD.format(oc=192), encoding="utf-8")
+    module = parse_mlir_file(src)
+    n = lower_conv_int8(module)
+    module.verify()
+    assert n == 1
+    def _ibits(t):
+        return getattr(getattr(t.element_type, "width", None), "data", None)
+    i8conv = [
+        op for op in module.walk()
+        if op.name == "linalg.generic" and len(op.inputs) == 2
+        and op.indexing_maps.data[0].data.num_dims == 7          # conv iterator space preserved
+        and all(_ibits(i.type) == 8 for i in op.inputs) and _ibits(op.results[0].type) == 32]
+    assert i8conv, "expected one i8×i8→i32 conv with the stride-affine maps intact"
+
+
 # softmax-shaped: a (S - rowmax) subtraction feeding the exp (the signature lower_softmax_int
 # requires). %m is the per-row max (pass zeros in the numeric test so sub == x).
 _EXP_MOD = (
@@ -164,6 +209,87 @@ def test_lower_softmax_int_removes_math_exp(tmp_path):
     assert sum(1 for op in module.walk() if op.name == "math.exp") == 0
     # the integer exp body uses integer multiply-accumulate / shift ops
     assert any(op.name in ("arith.muli", "arith.shrsi") for op in module.walk())
+
+
+# SiLU sigmoid generic (logistic 1/(1+exp(-x)), tagged prov.op = sigmoid).
+_SIGMOID_MOD = (
+    "builtin.module {{ func.func @forward(%x: tensor<{m}x{l}xf32>) -> tensor<{m}x{l}xf32> {{ "
+    "%e = tensor.empty() : tensor<{m}x{l}xf32> "
+    "%r = linalg.generic {{indexing_maps = [affine_map<(d0,d1)->(d0,d1)>, "
+    "affine_map<(d0,d1)->(d0,d1)>], iterator_types = [\"parallel\",\"parallel\"]}} "
+    "ins(%x : tensor<{m}x{l}xf32>) outs(%e : tensor<{m}x{l}xf32>) "
+    'attrs = {{prov.op = "sigmoid"}} {{ '
+    "^bb(%a: f32, %o: f32): %n = arith.negf %a : f32 %ex = math.exp %n : f32 "
+    "%c1 = arith.constant 1.0 : f32 %d = arith.addf %c1, %ex : f32 "
+    "%s = arith.divf %c1, %d : f32 linalg.yield %s : f32 }} "
+    "-> tensor<{m}x{l}xf32> func.return %r : tensor<{m}x{l}xf32> }} }}")
+
+
+def test_lower_silu_int_removes_math_exp(tmp_path):
+    """``lower_silu_int`` replaces the logistic ``sigmoid`` (``math.exp``) with the integer
+    I-BERT exp + an f32 logistic — no ``math.exp`` remains, integer poly ops appear."""
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.passes_quant_int import lower_silu_int
+
+    src = tmp_path / "sig.mlir"
+    src.write_text(_SIGMOID_MOD.format(m=4, l=8), encoding="utf-8")
+    module = parse_mlir_file(src)
+    n = lower_silu_int(module)
+    module.verify()
+    assert n == 1
+    assert sum(1 for op in module.walk() if op.name == "math.exp") == 0
+    assert any(op.name in ("arith.muli", "arith.shrsi") for op in module.walk())
+
+
+_RSQRT_MOD = (
+    "builtin.module {{ func.func @forward(%x: tensor<{m}x{l}xf32>) -> tensor<{m}x{l}xf32> {{ "
+    "%e = tensor.empty() : tensor<{m}x{l}xf32> "
+    "%r = linalg.generic {{indexing_maps = [affine_map<(d0,d1)->(d0,d1)>, "
+    "affine_map<(d0,d1)->(d0,d1)>], iterator_types = [\"parallel\",\"parallel\"]}} "
+    "ins(%x : tensor<{m}x{l}xf32>) outs(%e : tensor<{m}x{l}xf32>) {{ "
+    "^bb(%a: f32, %o: f32): %q = math.rsqrt %a : f32 linalg.yield %q : f32 }} "
+    "-> tensor<{m}x{l}xf32> func.return %r : tensor<{m}x{l}xf32> }} }}")
+
+
+def test_lower_rsqrt_int_removes_math_rsqrt(tmp_path):
+    """``lower_rsqrt_int`` replaces ``math.rsqrt`` with the fast-inverse-sqrt (bitcast + integer
+    sub/shift + f32 Newton) — no ``math.rsqrt`` (no libm), bit-hack integer ops appear."""
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.passes_quant_int import lower_rsqrt_int
+
+    src = tmp_path / "rsq.mlir"
+    src.write_text(_RSQRT_MOD.format(m=4, l=8), encoding="utf-8")
+    module = parse_mlir_file(src)
+    n = lower_rsqrt_int(module)
+    module.verify()
+    assert n == 1
+    assert sum(1 for op in module.walk() if op.name == "math.rsqrt") == 0
+    assert any(op.name == "arith.bitcast" for op in module.walk())
+
+
+@pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang-23 missing")
+def test_silu_sigmoid_matches_float(tmp_path):
+    """The integer SiLU sigmoid tracks the f32 logistic over mixed-sign inputs (cos > 0.999)."""
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.passes_quant_int import lower_silu_int
+    from merlin.llvmlower.lower import lower_model
+    from merlin.llvmlower.abi import HostModel
+    from merlin.xdsl_dialects._common import text as to_text
+
+    M, L = 4, 16
+    src = tmp_path / "sig.mlir"
+    src.write_text(_SIGMOID_MOD.format(m=M, l=L), encoding="utf-8")
+    module = parse_mlir_file(src)
+    lower_silu_int(module)
+    res = lower_model(to_text(module), tmp_path / "b", targets=("host",))
+    hm = HostModel.load(str(res.host_so))
+    rng = np.random.default_rng(0)
+    xs = (rng.standard_normal((M, L)) * 4).astype(np.float32)            # mixed sign
+    out = np.zeros((M, L), np.float32)
+    hm([(xs.ctypes.data, (M, L)), (out.ctypes.data, (M, L))])
+    ref = 1.0 / (1.0 + np.exp(-xs))
+    cos = float((out.ravel() @ ref.ravel()) / (np.linalg.norm(out) * np.linalg.norm(ref) + 1e-12))
+    assert cos > 0.999, cos
 
 
 @pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang-23 missing")
