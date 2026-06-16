@@ -64,6 +64,41 @@ openvla (fp32 + int8), rdt2 (fp32 + int8).
 2-cell boot), molmoact, pi05 — these exceed the ~8 h FASED wall (effective ~11 MHz) and SIGTERM
 before completing. This is a simulation-time limit, not a correctness failure.
 
+## Integer (W8A8) compute datapath
+
+The int8 captures are weight-only by default (i8 storage, dequantized to f32 before an f32
+matmul — int8 *storage*, not compute). The `int8_compute` path (`llvmlower/passes_quant_int.py`,
+enabled on both the host interpreter and the spike/FireSim build) rewrites every compute op into
+real integer arithmetic, requantizing only at op boundaries:
+
+- **matmul / attention** (QKᵀ, attn·V) → `i8×i8→i32` with dynamic per-row activation quant
+  (`s = max|x|/127`, symmetric) and the i32 accumulator requantized by `acc · s_act · s_weight`;
+- **conv2d** → `i8×i8→i32` keeping the exact stride-affine maps (activation quantized per-tensor,
+  the f32 conv weight per-output-channel);
+- **softmax / GELU / SiLU** → I-BERT integer approximations (fixed-point `exp`/`erf` polynomials,
+  power-of-two shifts) — no `math.exp`/`math.erf`;
+- **RMSNorm/LayerNorm `rsqrt`** → fast inverse square root (integer bit-hack + f32 Newton),
+  removing the libm transcendental.
+
+Per-row reciprocals replace per-lane integer divides, so the datapath is RVV-vectorizable. On
+spike (`backend=rvv`) the compiled int8 object is genuine integer RVV SIMD — `vmul.vv`/`vadd.vv`/
+`vmacc.vx` over `vle8.v`-loaded int8 operands for the contractions, `vfdiv.vv` for the f32 requant
+and logistic — with no scalar integer divide and no remaining `math.rsqrt`/`exp`/`erf`.
+
+**Accuracy (interpreter, vs fp32 golden; W8A8 literature band is cos 0.99–0.999):**
+
+| model | cos | rel | model | cos | rel |
+|---|---|---|---|---|---|
+| small_llama | 0.99993 | 0.013 | rdt2 | 0.99979 | 0.025 |
+| bitvla | 0.99995 | 0.010 | tiny_llama | 0.99842 | 0.064 |
+| openvla (+2 convs) | 0.99813 | 0.084 | | | |
+
+A literature-backed multi-tier gate (`zephyr_model._gate`) accepts these: **T1** vs a W8A8
+reference (the host int8 output) cos > 0.999, **T2** vs the fp32 golden cos > 0.99 with top-1
+argmax match. All five pass both tiers. **Spike (RVV) cross-check:** small_llama int8 returns
+cos 0.99993 — identical to the host interpreter, confirming the integer datapath runs the same on
+the RISC-V vector target.
+
 ## Capture / lowering fixes
 
 Three capture-path defects were found and fixed during bring-up:
