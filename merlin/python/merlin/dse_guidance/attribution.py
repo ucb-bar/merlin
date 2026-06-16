@@ -47,19 +47,33 @@ def _read_attr(op, key: str) -> str | None:
 
 
 # FQN substring -> role inference (Level-1.5: roles recovered from the capture's module path).
-# model2MLIR now emits prov.fqn (the deepest nn.Module path); these prefixes/keywords let a
-# downstream tool tell backbone from action head WITHOUT an operator mapping.
+# model2MLIR now emits prov.fqn (the deepest nn.Module path); these keywords let a downstream
+# tool recover backbone vs action head WITHOUT an operator mapping. ORDER MATTERS: the
+# once-per-replan backbone (vision/text encoder) is checked first, so a vision backbone's own
+# transformer blocks (vision_backbone.blocks.3.attn) are not mislabeled by the generic
+# block-body keywords below. Verified against the real RDT denoise-step capture (module paths
+# model.blocks.N.{attn,cross_attn,ffn}, model.{t,freq}_embedder).
 _FQN_ROLE_KEYWORDS: list[tuple[tuple[str, ...], str]] = [
-    (("action_expert", "action_head", "denoise", "flow", "diffusion", "dit", "noise_pred"),
-     "repeated_head"),
-    (("kv_cache", "prefix", "kv_proj"), "prefix_builder"),
-    (("vision", "backbone", "encoder", "vlm", "patch_embed", "image", "siglip", "vit",
-      "language_model", "llm", "text_model"), "backbone_once"),
+    # 1) once-per-replan backbone (vision / multimodal encoder)
+    (("vision", "backbone", "encoder", "vlm", "patch_embed", "siglip", "vit", "dino",
+      "image_encoder", "img_encoder"), "backbone_once"),
+    # 2) prefix / KV state produced once, reused across the head
+    (("kv_cache", "prefix_kv", "kv_proj"), "prefix_builder"),
+    # 3) the repeated action / denoise / decode head: explicit head names, diffusion-timestep
+    #    conditioning embedders, and (last, generic) transformer-block bodies + decoders.
+    (("action_expert", "action_head", "denoise", "flow", "diffusion", "dit", "noise_pred",
+      "t_embedder", "freq_embedder", "timestep", "time_embed",
+      "decoder", "language_model", "llm", "lm_head",
+      "blocks", "transformer_block", "cross_attn", "ffn"), "repeated_head"),
 ]
 
 
 def role_from_fqn(fqn: str | None) -> str | None:
-    """Infer a topology role from a module FQN (``prov.fqn``); None if no keyword matches."""
+    """Infer a topology role from a module FQN (``prov.fqn``); None if no keyword matches.
+
+    Priority order (see ``_FQN_ROLE_KEYWORDS``): backbone/encoder, then prefix/KV, then the
+    repeated head. The ordering prevents a backbone's own blocks from being read as head.
+    """
     if not fqn:
         return None
     low = fqn.lower()

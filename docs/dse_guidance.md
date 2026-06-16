@@ -58,6 +58,16 @@ that loss hides.
   backbone ×1; repeated-shape clusters; unresolved remainder). When a repeated head is attributed,
   its candidate axes carry the real facts and report `quantification_blocked_by: missing_calibration`;
   otherwise `missing_region_attribution`.
+
+  **Demonstrated on a real capture (not the toy):** a fresh RDT denoise-step capture (the real
+  `RoboticsDiffusionTransformer` architecture, small random config, via the `prov.fqn`-enabled
+  `m2m`) — module paths `model.blocks.N.{attn,cross_attn,ffn}`, `model.{t,freq}_embedder` — has all
+  20 matmuls **auto-recovered to `repeated_head` from `prov.fqn`** (no operator map), with real
+  attributed facts: 20 matmuls, 39.4 GMAC/step, 391 MB weights, ×K. The
+  `resident_action_head_weights` certificate carries those facts and stays
+  `blocked_by: missing_calibration`. Fixture: `tests/fixtures/dse_guidance/rdt_recap_fqn/model.mlir`
+  (+ `region_attribution.example.yaml`). Caveats: depth=2 (real 1B is 28) and random init — the
+  *structure and provenance* are real, the magnitudes are a small-config instance.
 - **Level 2 (long-term, in `model2MLIR` at `/scratch/agustin/projects/model2MLIR`)** — preserve
   `scf.for`/`scf.while` loops and region cadence in the capture IR itself, so roles need not be
   operator-supplied.

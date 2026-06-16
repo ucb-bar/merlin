@@ -461,6 +461,45 @@ def test_role_from_fqn_inference():
     assert ATTR.role_from_fqn("model.kv_cache.update") == "prefix_builder"
     assert ATTR.role_from_fqn("model.mystery.layer") is None
     assert ATTR.role_from_fqn(None) is None
+    # Real RDT denoise-step module paths (observed in a fresh capture) -> repeated_head.
+    assert ATTR.role_from_fqn("model.blocks.0.attn.qkv") == "repeated_head"
+    assert ATTR.role_from_fqn("model.t_embedder.mlp.0") == "repeated_head"
+    # Ordering: a vision backbone's OWN blocks must not be read as head.
+    assert ATTR.role_from_fqn("vision_backbone.blocks.3.attn") == "backbone_once"
+
+
+# A fresh RDT denoise-step capture (real architecture, small random config) produced by the
+# prov.fqn-enabled model2MLIR. ~283 KB MLIR; weights are NOT committed.
+_RDT_RECAP = FIX / "rdt_recap_fqn"
+
+
+@pytest.mark.skipif(not (_RDT_RECAP / "model.mlir").is_file(),
+                    reason="no fresh rdt prov.fqn capture fixture")
+def test_real_capture_auto_recovers_head_role_from_prov_fqn():
+    # The whole captured graph is the denoise head; every matmul carries prov.fqn and
+    # auto-recovers to repeated_head with NO operator mapping.
+    recs = ATTR.extract_matmuls(str(_RDT_RECAP))
+    assert len(recs) > 0 and all(r.fqn for r in recs)
+    assert all(ATTR.role_from_fqn(r.fqn) == "repeated_head" for r in recs)
+
+    topo = TOP.from_temporal(T.parse({
+        "workload": "rdt_recap", "class": "diffusion/denoise_steps",
+        "timing": {"K": 5, "H": 64, "control_rate_hz": 30},
+        "regions": [{"name": "denoise", "role": "repeated_head", "invocation_count": 5,
+                     "loop_invariant_state": ["weights"]}]}))
+    attr = ATTR.attribute(str(_RDT_RECAP), topo)          # NO operator map
+    head = attr.role("repeated_head")
+    assert head is not None and head.attribution_status == "attributed"
+    assert head.source == "prov_fqn"                       # role recovered from the capture
+    assert head.facts["matmul_count"] == len(recs)
+    assert head.facts["weight_bytes"] > 0 and head.facts["macs_per_invocation"] > 0
+    assert head.invocations == 5 and head.facts["macs_total"] == head.facts["macs_per_invocation"] * 5
+
+    # The candidate certificate carries the real attributed facts; ranking stays gated.
+    cand = {c.axis: c for c in CAND.detect(topo, attribution=attr)}["resident_action_head_weights"]
+    assert cand.attributed_facts and cand.attributed_facts["matmul_count"] == len(recs)
+    assert cand.quantification_blocked_by == "missing_calibration"
+    assert cand.benefit == "unquantified"
 
 
 def test_attribution_auto_recovers_roles_from_prov_fqn():
