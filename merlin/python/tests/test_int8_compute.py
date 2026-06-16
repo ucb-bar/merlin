@@ -127,3 +127,66 @@ def test_lower_matmul_int8_makes_integer_contraction(tmp_path):
         if op.name == "linalg.generic" and len(op.inputs) == 2
         and all(_ibits(i.type) == 8 for i in op.inputs) and _ibits(op.results[0].type) == 32]
     assert int_contract, "expected one i8×i8→i32 integer contraction"
+
+
+# softmax-shaped: a (S - rowmax) subtraction feeding the exp (the signature lower_softmax_int
+# requires). %m is the per-row max (pass zeros in the numeric test so sub == x).
+_EXP_MOD = (
+    "builtin.module {{ func.func @forward(%x: tensor<{m}x{l}xf32>, %mx: tensor<{m}xf32>) "
+    "-> tensor<{m}x{l}xf32> {{ "
+    "%se = tensor.empty() : tensor<{m}x{l}xf32> "
+    "%sub = linalg.generic {{indexing_maps = [affine_map<(d0,d1)->(d0,d1)>, "
+    "affine_map<(d0,d1)->(d0)>, affine_map<(d0,d1)->(d0,d1)>], "
+    "iterator_types = [\"parallel\",\"parallel\"]}} "
+    "ins(%x, %mx : tensor<{m}x{l}xf32>, tensor<{m}xf32>) outs(%se : tensor<{m}x{l}xf32>) {{ "
+    "^bb(%a: f32, %mm: f32, %o: f32): %s = arith.subf %a, %mm : f32 linalg.yield %s : f32 }} "
+    "-> tensor<{m}x{l}xf32> "
+    "%e = tensor.empty() : tensor<{m}x{l}xf32> "
+    "%r = linalg.generic {{indexing_maps = [affine_map<(d0,d1)->(d0,d1)>, "
+    "affine_map<(d0,d1)->(d0,d1)>], iterator_types = [\"parallel\",\"parallel\"]}} "
+    "ins(%sub : tensor<{m}x{l}xf32>) outs(%e : tensor<{m}x{l}xf32>) {{ "
+    "^bb(%a: f32, %o: f32): %ex = math.exp %a : f32 linalg.yield %ex : f32 }} "
+    "-> tensor<{m}x{l}xf32> func.return %r : tensor<{m}x{l}xf32> }} }}")
+
+
+def test_lower_softmax_int_removes_math_exp(tmp_path):
+    """``lower_softmax_int`` replaces the softmax ``math.exp`` with an integer (I-BERT) i-exp:
+    no ``math.exp`` remains and an integer (i32/i64) exp body is emitted."""
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.passes_quant_int import lower_softmax_int
+
+    src = tmp_path / "exp.mlir"
+    src.write_text(_EXP_MOD.format(m=4, l=8), encoding="utf-8")
+    module = parse_mlir_file(src)
+    n = lower_softmax_int(module)
+    module.verify()
+    assert n == 1
+    assert sum(1 for op in module.walk() if op.name == "math.exp") == 0
+    # the integer exp body uses integer multiply-accumulate / shift ops
+    assert any(op.name in ("arith.muli", "arith.shrsi") for op in module.walk())
+
+
+@pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang-23 missing")
+def test_integer_exp_matches_float_exp(tmp_path):
+    """The integer i-exp tracks float exp for x<=0 (cos > 0.99 — I-BERT 2nd-order poly)."""
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.passes_quant_int import lower_softmax_int
+    from merlin.llvmlower.lower import lower_model
+    from merlin.llvmlower.abi import HostModel
+    from merlin.xdsl_dialects._common import text as to_text
+
+    M, L = 4, 8
+    src = tmp_path / "exp.mlir"
+    src.write_text(_EXP_MOD.format(m=M, l=L), encoding="utf-8")
+    module = parse_mlir_file(src)
+    lower_softmax_int(module)
+    res = lower_model(to_text(module), tmp_path / "b", targets=("host",))
+    hm = HostModel.load(str(res.host_so))
+    rng = np.random.default_rng(0)
+    xs = (-np.abs(rng.standard_normal((M, L))) * 3).astype(np.float32)   # x <= 0
+    mx = np.zeros((M,), np.float32)                                      # rowmax 0 -> sub == xs
+    out = np.zeros((M, L), np.float32)
+    hm([(xs.ctypes.data, (M, L)), (mx.ctypes.data, (M,)), (out.ctypes.data, (M, L))])
+    ref = np.exp(xs)
+    cos = float((out.ravel() @ ref.ravel()) / (np.linalg.norm(out) * np.linalg.norm(ref) + 1e-12))
+    assert cos > 0.99, cos
