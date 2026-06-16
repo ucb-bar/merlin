@@ -34,32 +34,34 @@ def already_done(ledger: Path, bundle: str) -> bool:
 
 
 def cycle_report(ledger: Path) -> int:
-    """Pair <model>_int8 vs <model>_fp32 cycle counts from the ledger -> speedup table.
-    int8 cycles / fp32 cycles for the same model (same mcycle parser on spike + FireSim)."""
+    """Pair <model>_int8 vs <model>_fp32 cycle counts -> speedup table, PER BACKEND (scalar vs
+    rvv are not comparable — the int8 win lives on the Saturn-OPU vector tile). Uses the most
+    recent row per (model, dtype, backend)."""
     if not ledger.is_file():
         print(f"no ledger at {ledger}"); return 1
-    cyc: dict[str, dict[str, int]] = {}
+    # (backend, model) -> {dtype: cycles}; last row wins (ledger is append-only / time-ordered)
+    cyc: dict[tuple, dict[str, int]] = {}
     for line in ledger.read_text().splitlines():
         try:
             r = json.loads(line)
         except Exception:
             continue
-        b = r.get("bundle", "")
         if r.get("cycles") is None:
             continue
-        # bundle = <model>_<dtype>_consistent (dtype in {int8, fp32, ...})
+        b = r.get("bundle", "")
+        backend = r.get("backend", "scalar")
         parts = b.split("_")
         if "consistent" in parts:
             parts = parts[:parts.index("consistent")]
         dtype = parts[-1] if parts else ""
         model = "_".join(parts[:-1]) if len(parts) > 1 else b
-        cyc.setdefault(model, {})[dtype] = int(r["cycles"])
-    print(f"{'model':18s} {'fp32_cycles':>14s} {'int8_cycles':>14s} {'speedup':>9s}")
-    for model in sorted(cyc):
-        d = cyc[model]
+        cyc.setdefault((backend, model), {})[dtype] = int(r["cycles"])
+    print(f"{'backend':8s} {'model':18s} {'fp32_cycles':>14s} {'int8_cycles':>14s} {'speedup':>9s}")
+    for (backend, model) in sorted(cyc):
+        d = cyc[(backend, model)]
         fp, i8 = d.get("fp32"), d.get("int8")
         sp = f"{fp / i8:.2f}x" if (fp and i8) else "-"
-        print(f"{model:18s} {str(fp or '-'):>14s} {str(i8 or '-'):>14s} {sp:>9s}")
+        print(f"{backend:8s} {model:18s} {str(fp or '-'):>14s} {str(i8 or '-'):>14s} {sp:>9s}")
     return 0
 
 
@@ -72,6 +74,11 @@ def main() -> int:
                          "nonlinears) and gate multi-tier vs golden_w8a8.npy + golden.npy")
     ap.add_argument("--report", action="store_true",
                     help="print the int8-vs-fp32 cycle/speedup table from the ledger and exit")
+    ap.add_argument("--backend", default="scalar", choices=("scalar", "rvv"),
+                    help="scalar (Gemmini tile 0) or rvv (Saturn-OPU vector tile 1). The int8 "
+                         "throughput win lives on rvv — i8 lanes pack ~4x an f32 lane.")
+    ap.add_argument("--rvv-hart", type=int, default=1,
+                    help="hart the rvv model object runs on (Saturn-OPU tile = hart 1)")
     # Build scratch goes on /scratch (3 TB), NOT /tmp (the small shared root disk) — a
     # multi-GB external-weights image in /tmp pressures root, where /home caches already
     # sit at ~94%. /scratch is the project's filesystem with terabytes free.
@@ -90,12 +97,15 @@ def main() -> int:
             continue
         mdir = ROOT / "output" / bundle
         rec = {"bundle": bundle, "t": time.strftime("%Y-%m-%dT%H:%M:%S"),
-               "int8_compute": bool(args.int8)}
+               "int8_compute": bool(args.int8), "backend": args.backend}
         try:
             golden = np.load(mdir / "golden.npy")
-            # 1. build the chipyard scalar image locally (int8: real W8A8 integer datapath)
+            # 1. build the chipyard image locally (int8: real W8A8 integer datapath). The rvv
+            #    backend targets the Saturn-OPU vector tile (hart 1) where i8xi8->i32 packs ~4x
+            #    the lanes of f32 — that is where the int8 throughput win actually shows up.
             b = zm.build_app(mdir, f"{args.workroot}/{bundle}", board="chipyard_riscv64",
-                             backend="scalar", cpus=2, int8_compute=args.int8)
+                             backend=args.backend, rvv_hart=args.rvv_hart, cpus=2,
+                             int8_compute=args.int8)
             rec["ram_mb"] = b["ram_bytes"] // (1024 * 1024)
             print(f"BUILT {bundle} ram={rec['ram_mb']}MB -> submitting to firesim-queue",
                   flush=True)
