@@ -1,0 +1,249 @@
+# DSE Guidance
+
+## Framing
+
+**Merlin is not the DSE optimizer.** It is a DSE *instrument*. Its first job is to **recover the
+workload contract that flat captures erase**. For VLAs that means identifying the slow backbone
+phase, the repeated action-head loop, the chunk deadline, the loop-invariant state, and the
+CPU/accelerator coupling. From that contract it emits **structural DSE candidates** and the
+**measurements needed** to rank them. Only after calibration does it produce a quantitative axis
+triage.
+
+> Merlin does not perform DSE. Merlin prevents DSE from optimizing the wrong abstraction.
+
+## Pipeline order (structural first, quantitative last)
+
+```
+flat capture
+  → VLA runtime topology         (topology.py — recover the contract)
+  → capture fidelity report      (fidelity.py — what flattening lost, and the DSE risk)
+  → structural DSE candidates    (candidates.py — which axes matter + what to measure)
+  → measurement plan             (each candidate lists required_measurements)
+  → quantitative axis triage     (triage.py — ONLY with a baseline; uncalibrated by default)
+```
+
+The structural layer (topology / fidelity / candidates) is valid **without** calibration and is
+always emitted. The quantitative triage runs only when a baseline cost is supplied and is clearly
+labelled uncalibrated unless its components are `measured`/`calibrated`. Two distinct outputs:
+
+- `dse_candidate_axes.md` / `.yaml` — **structural, defensible now.**
+- `axis_triage.csv` / `.md` — **quantitative, only valid when calibrated.**
+
+### Workload classes and capture fidelity
+
+`flow_matching_action_head` (Class A) and `autoregressive_decode` (Class C) have an inner
+loop that flattening destroys → **high** DSE-risk severity. A `regression_parallel_head`
+(Class B) has no inner loop → **low** severity. The capture-fidelity report names exactly which
+structure was lost (`denoise_loop`, `prefix_kv_reuse`, `replan_deadline`, …) and which DSE axes
+that loss hides.
+
+### Recovering structure: three levels
+
+- **Level 0 (implemented)** — sidecar `vla_runtime_topology` / temporal metadata (hand-authored
+  K, H, control rate, region roles, loop-invariant/carried state).
+- **Level 1 (next)** — infer backbone/head/KV region attribution from IR/weights/naming
+  (`/scratch/agustin/projects/model2MLIR`); this is what would let residency be *quantified* on
+  whole-model captures instead of reported unquantified.
+- **Level 2 (long-term)** — preserve `scf.for`/`scf.while` loops and region cadence in the
+  capture IR itself.
+
+The concrete question that drives every ranking:
+
+> For a workload W and target T, if DSE optimizes axis X, how much of the measured/
+> trace-derived target gap can X actually close?
+
+## The multi-rate timing budget
+
+A flat capture collapses a VLA action head to a single pass. Reality is multi-rate:
+
+```
+backbone once
+for k in K:            # denoise / action-head steps
+    action_head_step(...)
+emit H actions
+execute actions at control_rate_hz
+```
+
+The budget the guidance reasons about:
+
+```
+t_backbone + K * t_head_step  <=  H / control_rate_hz
+replan_deadline_ms = 1000 * H / control_rate_hz
+```
+
+A flat representation hides `K`, the loop-invariant reuse, and the deadline — which is exactly
+why it leads DSE to the wrong axis. The tool builds **both** the flat and the multi-rate
+representation and shows the recommendation flip.
+
+## Scoring
+
+```
+target_gap            = baseline_total - target_total
+intervention_benefit  = baseline_total - intervention_total      (= Σ component reductions)
+gap_closure           = intervention_benefit / target_gap
+priority_score        = gap_closure * confidence * legality / max(cost_tier, 1)
+```
+
+Edge cases are handled explicitly, never papered over: no target → `gap_closure` is null and we
+report the benefit as a share of the baseline; `target_gap <= 0` (baseline already meets the
+target) → no gap, no invented score; `gap_closure` is clamped to `[0, 1]` for scoring with the
+raw value retained.
+
+Each axis declares exactly which baseline cost components its intervention reduces, and a
+benefit can never exceed the sum of the components it touches.
+
+## Evidence tags
+
+Every important number carries a source tag. Confidence is a **weight** (it scales the
+priority score), not a performance measurement:
+
+| evidence type     | confidence weight | meaning                                        |
+|-------------------|-------------------|------------------------------------------------|
+| `measured`        | 1.0               | observed on real hardware / runtime (via aet)  |
+| `trace_derived`   | 0.8               | derived from an execution trace                |
+| `calibrated`      | 0.7               | model calibrated against measurement           |
+| `structural_bound`| 0.55              | provable structural bound (e.g. reuse removes repeated traffic) |
+| `analytical`      | 0.4               | analytical cost model                          |
+| `assumed`         | 0.2               | assumption / default                           |
+
+An axis is only as trustworthy as its softest input: its tag is the **weakest** of its
+intervention-model evidence and the evidence of every baseline component it touches. A
+structural intervention therefore caps at `structural_bound` even when its inputs are measured.
+
+The cost tier is an ordinal **build-cost proxy** (1 = software-only … 5 = major datapath/memory
+redesign), not measured PPA.
+
+## Instrumentation (aet)
+
+Measured / trace-derived evidence comes from the `aet` harness
+(`/scratch/agustin/projects/aet`), never hand-coded constants. The adapter
+(`merlin.dse_guidance.aet_ingest`) reads an aet run's canonical metrics file
+`runs/<suite>/<run_id>/metrics/summary_metrics.json` (flat, dotted keys
+`cpu.<regime>.{host_submit_ns,command_encode_ns,sync_wait_ns}`), or an equivalent
+`cpu_coupling` YAML. When neither is supplied, the tool reports
+
+```
+CPU coupling result unavailable: no measured overhead file provided.
+```
+
+and emits no calibration anchor — an anchor without a measurement would be a fabricated number.
+
+## Backbone vs. action head (component-specific residency)
+
+Real VLA timing is `t_backbone_once + K · t_action_head_step`, not `K · t_whole_model`. The
+backbone (vision/LM) runs **once** per replan; only the action head repeats K times. Residency
+must therefore be charged component-specifically:
+
+- `resident_packed_weights` reduces only the **action-head** weights' repeated packing + weight
+  DMA. It is quantified when the baseline supplies a `repeated_head` sub-breakdown (or, for a
+  single-region workload, a region-derived reducible fraction). For a whole-model capture that
+  does **not** separate head from backbone, it is reported **structurally legal but
+  unquantified** — never a fabricated whole-model K-reuse number.
+- `resident_prefix_kv` reduces the prefix/KV produced once and reused across the head; quantified
+  only when a `loop_invariant.prefix_kv_memory` cost is given.
+- `autonomous_K_loop` removes the per-step host launches **inside** the loop — the head's
+  repeated dispatch/sync, with the backbone's once-per-replan dispatch excluded.
+
+## Calibration finding (read this before trusting magnitudes)
+
+The single real hardware anchor (xr0 = 146.2 G FireSim cycles) vs the analytical cost model's
+prediction shows the model is off by ~10⁵× (it is single-pass and matmul-only, on uncalibrated
+M1 placeholder constants). See `output/dse_guidance/study_models/calibration_anchor.md`.
+**Consequence:** the cross-workload `gap_closure` *magnitudes* are analytical and are NOT
+trustworthy until the cost model is calibrated. What stands on its own is the **structural /
+legality** result — which DSE axes the flat capture hides — and the *ordering* within a single
+analytical baseline. The numbers carry evidence tags precisely so this distinction is visible.
+
+## What is and isn't measured today (honest status)
+
+| Quantity | Status |
+|---|---|
+| Which axes flat hides (legality flip) | structural — robust, definitional given the K-loop |
+| xr0 total cycles (anchor) | **measured** (FireSim, `results.md`) — and shows the model is uncalibrated |
+| Per-model cost components | analytical (placeholder constants, uncalibrated) |
+| Loop counts K | assumed / reference (architecture values, overridable) |
+| CPU coupling (host/dispatch/sync) | **unavailable** — no real measurement exists yet; the ingestion path is unit-tested with a synthetic fixture only |
+| smolvla per-component head split | illustrative — exercises the component-attributed path; not measured |
+
+## What not to claim
+
+- Do **not** claim global optimality — this is guidance, not a solver.
+- Do **not** claim a validated cost model unless the numbers are `measured`/`calibrated`.
+- Do **not** use invented constants as measurements. Synthesized baselines are tagged
+  `analytical` and weighted accordingly.
+
+## Commands
+
+Single workload (headline VLA action head, with measured coupling from an aet run):
+
+```bash
+merlin-dse-guidance \
+  --temporal-metadata merlin/python/tests/fixtures/dse_guidance/smolvla_action_head_temporal.yaml \
+  --baseline-cost     merlin/python/tests/fixtures/dse_guidance/smolvla_action_head_cost.yaml \
+  --aet-run           merlin/python/tests/fixtures/dse_guidance/aet_run \
+  --out output/dse_guidance/smolvla_action_head/
+```
+
+Exhaustive study across the design-pressure `semantic_memory` regions (synthesizes an
+analytical baseline + temporal view from each region's reuse):
+
+```bash
+merlin-dse-guidance --study --out output/dse_guidance/study/
+```
+
+Exhaustive study across the **real model zoo** — every captured workload under
+`output/<model>_<dtype>_consistent/model.mlir` (smolvla, openvla, pi05, rdt/rdt2, groot,
+molmoact, bitvla, xr0, the llama LMs):
+
+```bash
+merlin-dse-guidance --study --models --out output/dse_guidance/study_models/
+```
+
+This is the headline demonstration. `docs/results.md` records that **whole-model captures use
+each weight once — they emit 0 contract facts**: the capture is flat and hides the host-side
+decode/denoise loop. The model study reads each `model.mlir` for aggregate structural facts
+(matmul count, MACs, weight vs activation bytes — `analytical`), applies the architecture's
+loop count K (a reference value, tagged `assumed`, overridable), anchors xr0's total to its
+measured FireSim cycles (`146.2 G`, `measured`/`calibrated`), and shows that residency and the
+autonomous K-loop **become legal only under the multi-rate view** — for every model, including
+the autoregressive ones (they reuse weights across action-token decode). Captures that do not
+parse with stock xDSL still show the structural legality flip (magnitudes reported as `n/a`,
+parse status surfaced — never fabricated).
+
+Residency benefit is grounded: it always claims the repeated **packing** it can prove, and
+claims a slice of **DMA** only when there is a region-derived reducible fraction or an explicit
+`weight_memory` component. It never assumes all DMA is reducible weight traffic.
+
+Structural-only run (no baseline needed — recover contract + candidates for any workload):
+
+```bash
+merlin-dse-guidance --temporal-metadata <topology.yaml> --structural-only --out <dir>/
+```
+
+### Output
+
+```
+output/dse_guidance/<workload>/
+  # structural front-end (always)
+  vla_runtime_topology.yaml
+  capture_fidelity_report.md / capture_fidelity.yaml
+  dse_candidate_axes.md / dse_candidate_axes.yaml
+  flat_report.yaml
+  multirate_report.yaml
+  flat_vs_multirate_diff.csv
+  # quantitative back-end (only with a baseline cost; uncalibrated by default)
+  axis_triage.csv          # multi-rate
+  axis_triage_flat.csv     # flat
+  axis_triage.md           # ranking + why the representation matters
+  bottleneck_breakdown.csv
+  deadline_feasibility.yaml
+  cpu_coupling_result.yaml | cpu_coupling_result.txt   # measured, or the unavailable message
+  calibration_anchor.csv   # only when a measurement was supplied
+  negative_control_report.md   # for no-reuse (K=1) workloads
+  figures/                 # optional (matplotlib): axis_triage / bottleneck / flat_vs_multirate
+output/dse_guidance/study/         # --study (semantic_memory regions)
+output/dse_guidance/study_models/  # --study --models (real model zoo)
+  study_summary.csv
+  study_summary.md         # per-workload top axis + cross-workload axis ranking + representation flips
+  <workload>/...
+```
