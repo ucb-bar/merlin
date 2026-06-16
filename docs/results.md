@@ -110,8 +110,12 @@ same deterministic integer arithmetic), confirming the integer datapath is exact
 |---|---|---|---|---|---|
 | small_llama | 0.9999999 | — | 180.5 M | (not captured) | — |
 | tiny_llama | 1.0000000 | 0.75 | 133.1 B | (not captured) | — |
+| openvla (+2 convs) | 0.9999999 | 0.95 | 9.83 B | (not captured) | — |
 | bitvla | 1.0000001 | 0.97 | 8.17 B | 7.07 B | 0.87× |
 | rdt2 | 1.0000000 | — (`ok`) | 85.0 B | 113.1 B | **1.33×** |
+
+openvla's cos 0.9999999 / rel 0.0 vs the W8A8 reference also validates the **int8 conv** path on
+hardware — the two patch-embed `i8×i8→i32` convs run bit-identically to the host on FASED.
 
 The int8 *compute* is faithful everywhere (cos 1.0 vs W8A8). Accuracy-vs-fp32 follows the expected
 W8A8 band: the action-head VLAs (rdt2, bitvla) hold up (rdt2 passes, bitvla 0.97 per-row argmax),
