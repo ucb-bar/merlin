@@ -1,0 +1,13 @@
+{
+  "run_id": "smolvla_coupling_r1",
+  "suite": "hardware_benchmark",
+  "method": "smolvla_action_head",
+  "workload": "smolvla_action_head",
+  "cpu.op_level_dispatch.host_submit_ns": 12000,
+  "cpu.op_level_dispatch.command_encode_ns": 3000,
+  "cpu.op_level_dispatch.sync_wait_ns": 8000,
+  "cpu.batched_command_buffer.host_submit_ns": 15000,
+  "cpu.batched_command_buffer.command_encode_ns": 6000,
+  "cpu.batched_command_buffer.sync_wait_ns": 9000,
+  "run.wall_time_s": 1.23
+}

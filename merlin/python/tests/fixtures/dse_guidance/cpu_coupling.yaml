@@ -1,0 +1,13 @@
+# Measured host/runtime coupling overhead, op-level vs batched command buffer (ns).
+workload: smolvla_action_head
+measurements:
+  op_level_dispatch:
+    host_submit_ns: 12000
+    command_encode_ns: 3000
+    sync_wait_ns: 8000
+    source: measured
+  batched_command_buffer:
+    host_submit_ns: 15000
+    command_encode_ns: 6000
+    sync_wait_ns: 9000
+    source: measured

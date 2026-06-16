@@ -1,0 +1,19 @@
+# A regression / parallel action head: one shot, no inner denoise/decode loop (Class B).
+# Flattening loses little here, so the tool must NOT recommend loop-specific axes.
+workload: regression_vla_head
+class: regression_parallel_head
+timing:
+  K: 1
+  H: 1
+  control_rate_hz: 30
+regions:
+  - name: backbone
+    cadence: once_per_replan
+    role: backbone_once
+    invocation_count: 1
+    produces: [visual_features]
+  - name: action_head
+    cadence: once_per_replan
+    role: backbone_once
+    invocation_count: 1
+    consumes: [visual_features]

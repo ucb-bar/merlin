@@ -1,0 +1,19 @@
+# Temporal metadata for the SmolVLA flow-matching action head (multi-rate VLA workload).
+workload: smolvla_action_head
+class: flow_matching_action_head
+timing:
+  K: 10
+  H: 50
+  control_rate_hz: 30
+regions:
+  - name: backbone_prefix
+    cadence: once_per_replan
+    produces: [prefix_kv, visual_features]
+  - name: action_head_step
+    cadence: K_times_per_replan
+    loop_trip_count: 10
+    loop_invariant_state: [action_head_weights, prefix_kv]
+    loop_carried_state: [denoise_latent]
+  - name: action_execution
+    cadence: control_loop
+    consumes: [action_chunk]

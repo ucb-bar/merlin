@@ -1,0 +1,13 @@
+# Negative control: a single matmul with no cross-step reuse (K=1, no loop).
+workload: no_reuse_matmul
+class: negative_control
+timing:
+  K: 1
+  H: 1
+  control_rate_hz: 1
+regions:
+  - name: matmul
+    cadence: once_per_replan
+    loop_trip_count: 1
+    loop_invariant_state: []
+    loop_carried_state: []
