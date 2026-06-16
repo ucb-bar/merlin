@@ -1,0 +1,4 @@
+model,quantity,predicted_matmul_proxy,measured,error_pct,undercount_ratio,evidence_type
+small,dispatches_per_forward,15,183,-91.8,12.2,measured
+small_llama_int8,dispatches_per_forward,15,198,-92.4,13.2,measured
+small_llama_fp8,dispatches_per_forward,15,213,-93.0,14.2,measured

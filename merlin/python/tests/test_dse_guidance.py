@@ -537,6 +537,38 @@ def test_case_study_openvla_recovers_backbone_head_split():
     assert case.attribution.role("repeated_head") is not None
 
 
+# ------------------------------------------------ measured dispatch coupling (one measured leg)
+
+def test_measured_dispatch_data_grounds_command_batching():
+    from merlin.dse_guidance import dispatch_measure as DM
+    ms = DM.load_measured()
+    assert len(ms) >= 1
+    for m in ms:
+        assert m.cos >= 0.999                       # the measured run was faithful
+        assert m.n_kernels > m.matmul_estimate       # real dispatches >> matmul proxy
+        assert m.undercount_ratio and m.undercount_ratio > 3  # matmul count badly undercounts
+    rows = DM.calibration_rows(ms)
+    assert all(r["evidence_type"] == "measured" for r in rows)
+    assert all(r["quantity"] == "dispatches_per_forward" for r in rows)
+
+
+_OUTPUT = Path(__file__).resolve().parents[3] / "output"
+
+
+@pytest.mark.skipif(not (_OUTPUT / "small_llama_int8_consistent" / "model.mlir").exists(),
+                    reason="no small capture to reproduce the dispatch measurement")
+def test_measure_reproduces_dispatch_count_if_runtime_available():
+    # Reproduce one measured row end-to-end (host reference executor). Skips cleanly if the
+    # runtime/toolchain is unavailable.
+    from merlin.dse_guidance import dispatch_measure as DM
+    md = _OUTPUT / "small_llama_int8_consistent"
+    try:
+        m = DM.measure(str(md))
+    except Exception as e:  # noqa: BLE001 - toolchain/runtime may be unavailable in CI
+        pytest.skip(f"dispatch runtime unavailable: {type(e).__name__}")
+    assert m.cos >= 0.999 and m.n_kernels > m.matmul_estimate
+
+
 # ------------------------------------------------ numerical-contract audit (structural)
 
 def test_numerical_contract_flags_lost_lowbit():

@@ -266,4 +266,13 @@ def run_case_study(out_dir) -> dict:
     # cross-zoo numerical-contract report (shows low-bit compute lost across the quantized zoo)
     zoo = zoo_numerical_audit()
     Artifact("numerical_contract_fidelity_report.md", NC.fidelity_report_md(zoo)).write(out)
+    # measured dispatch coupling (the one measured runtime leg) — committed measured data
+    try:
+        from merlin.dse_guidance import dispatch_measure as DM
+        dm = DM.load_measured()
+        if dm:
+            Artifact("dispatch_coupling_report.md", DM.report_md(dm)).write(out)
+            Artifact("dispatch_coupling.csv", DM.to_csv(DM.calibration_rows(dm))).write(out)
+    except FileNotFoundError:
+        pass
     return {"workloads": models, "out": str(out), "numerical_captures": len(zoo)}
