@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Temporal Workload Metadata
+purpose: >-
+  A small multi-rate wrapper around an existing workload region. Captures the temporal
+  structure that flat captures hide: the K-step denoise/action loop, the action horizon H,
+  the control rate, the replan deadline, and per-region cadence with loop-invariant and
+  loop-carried state. Consumed by merlin-dse-guidance to reconstruct a multi-rate view of a
+  workload whose capture was flattened. Owned by design-pressure/DSE.
+
+required_top_level_fields:
+  - workload
+  - timing
+  - regions
+
+example: |
+  workload: smolvla_action_head
+  class: flow_matching_action_head
+  timing:
+    K: 10
+    H: 50
+    control_rate_hz: 30
+    replan_deadline_ms: 1666.7   # derived = 1000 * H / control_rate_hz (optional; validated)
+  regions:
+    # `role` (optional) names the multi-rate role; if omitted it is derived from `cadence`:
+    #   once_per_replan -> backbone_once | K_times_per_replan -> repeated_head | control_loop.
+    # Residency is charged to the repeated_head, NOT the once-per-replan backbone.
+    - name: backbone_prefix
+      cadence: once_per_replan
+      role: backbone_once
+      invocation_count: 1
+      produces: [prefix_kv, visual_features]
+    - name: action_head_step
+      cadence: K_times_per_replan
+      role: repeated_head
+      invocation_count: 10
+      loop_trip_count: 10
+      loop_invariant_state: [action_head_weights, prefix_kv]
+      loop_carried_state: [denoise_latent]
+    - name: action_execution
+      cadence: control_loop
+      consumes: [action_chunk]

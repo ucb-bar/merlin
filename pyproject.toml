@@ -26,6 +26,7 @@ kernel-audit = "merlin.kernels.audit:main"
 merlin-targetgen = "merlin.targetgen.cli:main"
 merlin-design-pressure = "merlin.design_pressure.cli:main"
 merlin-dse = "merlin.dse.cli:main"
+merlin-dse-guidance = "merlin.dse_guidance.cli:main"
 
 [tool.setuptools]
 package-dir = { "" = "merlin/python" }

@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Baseline Cost Breakdown
+purpose: >-
+  A measured/modelled latency breakdown for a workload, decomposed into named cost
+  components, each tagged with its evidence source. The baseline input to the DSE axis
+  triage table: target_gap and per-axis gap_closure are computed against this breakdown.
+  Components that do not sum to the stated total are residualized (never silently dropped).
+  Owned by design-pressure/DSE.
+
+required_top_level_fields:
+  - workload
+  - baseline
+
+example: |
+  workload: smolvla_action_head
+  target:
+    total_ms: 50
+  baseline:
+    total_ms: 100
+    components:
+      compute_ms: 20
+      dma_memory_ms: 25
+      packing_ms: 20
+      cpu_dispatch_ms: 25
+      sync_ms: 5
+      intermediate_materialization_ms: 5
+    repeated_head:        # OPTIONAL: the slice of each component spent in the K-step action head
+      packing_ms: 14      # lets residency be charged to the head, not the once-run backbone
+      weight_memory_ms: 12
+      cpu_dispatch_ms: 18
+      sync_ms: 4
+    loop_invariant:       # OPTIONAL: state produced once, reused across the K steps (prefix/KV)
+      prefix_kv_memory_ms: 8
+  metadata_source:        # evidence tag per component; defaults to 'assumed' if omitted
+    compute_ms: trace_derived
+    dma_memory_ms: analytical
+    packing_ms: structural_bound
+    cpu_dispatch_ms: measured
+    sync_ms: measured
+    intermediate_materialization_ms: trace_derived
