@@ -152,7 +152,7 @@ def _ram_for_weights(weights_bytes: int) -> int:
     return max(DEFAULT_RAM_BYTES, total)
 
 
-def _prepare_model_mlir(mlir_path: Path, work: Path) -> Path:
+def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = False) -> Path:
     """Apply the dispatch_runtime normalization passes to ``model.mlir`` and write the
     prepared module to ``work/model.prepared.mlir``. These make quantized / bf16 /
     over-rank-matmul / bool-cast models lowerable to a single object — the same fixes the
@@ -168,6 +168,19 @@ def _prepare_model_mlir(mlir_path: Path, work: Path) -> Path:
     module = parse_mlir_file(mlir_path)
     collapse_overrank_matmul(module)
     _propagate_quant_inner(module)
+    if int8_compute:
+        # Real W8A8 integer datapath (matmul/conv/attention -> i8xi8->i32 + requant; the
+        # transcendentals -> integer/RVV). lower_quant_ext stays AFTER as the f32 fallback
+        # for any dequant the int8 passes did not convert (nonzero-zp, embeddings).
+        from ...llvmlower.passes_quant_int import (lower_contraction_int8, lower_conv_int8,
+                                                   lower_softmax_int, lower_gelu_int,
+                                                   lower_silu_int, lower_rsqrt_int)
+        lower_contraction_int8(module)
+        lower_conv_int8(module)
+        lower_softmax_int(module)
+        lower_gelu_int(module)
+        lower_silu_int(module)
+        lower_rsqrt_int(module)
     lower_quant_ext(module)
     lower_bf16_matmul_f32acc(module)
     fix_bool_sitofp(module)
@@ -362,7 +375,8 @@ zephyr_link_libraries(-Wl,--whole-archive {model_archive} -Wl,--no-whole-archive
 
 def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_riscv64",
               backend: str = "rvv", rvv_hart: int = 0, arena_mb: int = 64, cpus: int = 2,
-              inputs_npz: str | Path | None = None, ram_bytes_override: int | None = None) -> dict:
+              inputs_npz: str | Path | None = None, ram_bytes_override: int | None = None,
+              int8_compute: bool = False) -> dict:
     """Lower the model, generate the Zephyr app, and build ``zephyr.elf``.
 
     ``backend``: ``"rvv"`` (vector tile / Saturn) or ``"scalar"`` (scalar tile). The
@@ -385,7 +399,7 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     # 1. model.mlir -> normalize (SAME prep passes the dispatch_runtime applies, so
     #    quantized / bf16 / over-rank / bool-cast models lower correctly — without these
     #    the whole-model path only handles already-clean LLMs) -> LLVM IR -> object.
-    prepared = _prepare_model_mlir(model_dir / "model.mlir", work)
+    prepared = _prepare_model_mlir(model_dir / "model.mlir", work, int8_compute=int8_compute)
     # For the rvv backend, bake native RVV (fixed-width vector ops on the matmuls) into the
     # IR rather than leaving it to clang's auto-vectorizer — see llvmlower.pipeline.
     res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
@@ -581,11 +595,11 @@ def run_on_firesim(elf: str | Path, *, reference: np.ndarray | None = None,
 
 def build_and_run(model_dir: str | Path, work: str | Path, *, board: str = "spike_riscv64",
                   backend: str = "rvv", rvv_hart: int = 0, harts: int = 2, arena_mb: int = 64,
-                  reference: np.ndarray | None = None, timeout: int = 3600
-                  ) -> dict[str, Any]:
+                  reference: np.ndarray | None = None, timeout: int = 3600,
+                  int8_compute: bool = False) -> dict[str, Any]:
     """Build the Zephyr image and (for spike) run + gate vs a reference array."""
     b = build_app(model_dir, work, board=board, backend=backend, rvv_hart=rvv_hart,
-                  arena_mb=arena_mb, cpus=max(harts, rvv_hart + 1))
+                  arena_mb=arena_mb, cpus=max(harts, rvv_hart + 1), int8_compute=int8_compute)
     result: dict[str, Any] = {"elf": str(b["elf"]), "app_dir": str(b["app_dir"]),
                               "ram_bytes": b["ram_bytes"]}
     if board != "spike_riscv64":
