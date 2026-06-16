@@ -602,10 +602,15 @@ def _propagate_quant_inner(module) -> int:
 
 
 def run_model(model_dir: str | Path, workdir: str | Path,
-              cache_dir: str | Path | None = None, tap=None) -> dict[str, Any]:
+              cache_dir: str | Path | None = None, tap=None,
+              int8_compute: bool = False) -> dict[str, Any]:
     """Outline + bind + execute a captured model; gate against ``golden.npy``.
 
     Returns ``{output, golden, cos, rel, ok, n_kernels, n_unique_kernels}``.
+
+    ``int8_compute=True`` runs the integer (W8A8) datapath: each ``dequant(weight)→f32 matmul``
+    becomes ``quantize(act)→ i8×i8→i32 matmul → requant`` (real integer contraction on RVV),
+    instead of dequantizing the weight to f32 (the default weight-only path).
     """
     from ..frontends.linalg_mlir import parse_mlir_file
     from ..xdsl_dialects.lowering.outline import outline_dispatches
@@ -623,7 +628,10 @@ def run_model(model_dir: str | Path, workdir: str | Path,
     #    (fixes the eager-attention causal-mask sign flip; molmoact decoder).
     collapse_overrank_matmul(module)
     _propagate_quant_inner(module)            # dequant prov.quant_inner_{w,s} -> source empties
-    lower_quant_ext(module)
+    if int8_compute:
+        from ..llvmlower.passes_quant_int import lower_matmul_int8
+        lower_matmul_int8(module)             # dequant+f32-matmul -> i8×i8→i32 + requant
+    lower_quant_ext(module)                   # residual dequants (unconverted) -> f32 fallback
     lower_bf16_matmul_f32acc(module)
     fix_bool_sitofp(module)
     outlined = outline_dispatches(module)
