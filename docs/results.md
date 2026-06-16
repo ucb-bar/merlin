@@ -102,10 +102,26 @@ cos 0.99993, tiny_llama cos 0.99941, bitvla cos 0.99994 — matching the host in
 confirming the integer datapath runs the same on RVV. (rdt2, a flow-matching VLA, exceeds the
 functional-spike time budget and is validated on FASED instead.)
 
-**FireSim (FASED, cycle-exact) cross-check:** small_llama int8 returns cos **0.9999999** vs the
-W8A8 reference with **rel = 0.0** — bit-identical to the host interpreter, since both execute the
-same deterministic integer arithmetic — at 180.5 M cycles. (A wider int8-vs-fp32 FASED cycle
-sweep + speedup table is produced by `firesim_sweep.py --int8` / `--report`.)
+**FireSim (FASED, cycle-exact, scalar core) — int8 correctness + cycle sweep.** Every int8 model
+matches the W8A8 reference at cos ≈ 1.0 (small_llama rel = 0.0, bit-identical to host — both run the
+same deterministic integer arithmetic), confirming the integer datapath is exact on hardware:
+
+| model | cos vs W8A8 | argmax vs fp32 | int8 cycles | fp32 cycles | speedup |
+|---|---|---|---|---|---|
+| small_llama | 0.9999999 | — | 180.5 M | (not captured) | — |
+| tiny_llama | 1.0000000 | 0.75 | 133.1 B | (not captured) | — |
+| bitvla | 1.0000001 | 0.97 | 8.17 B | 7.07 B | 0.87× |
+| rdt2 | 1.0000000 | — (`ok`) | 85.0 B | 113.1 B | **1.33×** |
+
+The int8 *compute* is faithful everywhere (cos 1.0 vs W8A8). Accuracy-vs-fp32 follows the expected
+W8A8 band: the action-head VLAs (rdt2, bitvla) hold up (rdt2 passes, bitvla 0.97 per-row argmax),
+while the small LLM (tiny_llama) drops to 0.75 per-row argmax — the inherent loss of calibration-free
+dynamic W8A8 on a language head. On a **scalar** FireSim core the cycle win depends on the
+matmul-vs-quant-overhead ratio: rdt2 (matmul-heavy) is **1.33×** faster, while bitvla (a cheap BitNet
+path) is slightly slower because the per-row quant/requant overhead outweighs the savings. The large
+int8 throughput lever is **RVV** — the spike cross-check shows the contractions issue `vmul.vv`/
+`vmacc.vx` over `vle8.v`-loaded int8 lanes (≈4× an fp32 lane), which a scalar core cannot exploit.
+Reproduce with `firesim_sweep.py --int8` / `--report`.
 
 ## Capture / lowering fixes
 
