@@ -88,3 +88,42 @@ def test_i8_matmul_emits_rvv_integer_simd(tmp_path):
                          text=True).stdout
     assert "vwmacc" in dis or "vmacc" in dis, "expected RVV integer multiply-accumulate"
     assert "vsetvli" in dis or "vsetivli" in dis
+
+
+# --- W8A8 integer datapath (passes_quant_int.lower_matmul_int8) -------------------------------
+
+_DEQUANT_MM = (
+    'builtin.module attributes {{prov.quantization = "int8_weight_only"}} {{ '
+    "func.func @forward(%act: tensor<{m}x{k}xf32>, %w: tensor<{k}x{n}xi8>, "
+    "%s: tensor<{n}xf32>, %zp: tensor<{n}xi32>) -> tensor<{m}x{n}xf32> {{ "
+    '%wd = "quant_ext.dequantize_per_channel"(%w, %s, %zp) '
+    '<{{axis = 1 : i64, input_dtype = "i8"}}> : '
+    "(tensor<{k}x{n}xi8>, tensor<{n}xf32>, tensor<{n}xi32>) -> tensor<{k}x{n}xf32> "
+    "%e = tensor.empty() : tensor<{m}x{n}xf32> "
+    "%c0 = arith.constant 0.0 : f32 "
+    "%f = linalg.fill ins(%c0 : f32) outs(%e : tensor<{m}x{n}xf32>) -> tensor<{m}x{n}xf32> "
+    "%y = linalg.matmul ins(%act, %wd : tensor<{m}x{k}xf32>, tensor<{k}x{n}xf32>) "
+    "outs(%f : tensor<{m}x{n}xf32>) -> tensor<{m}x{n}xf32> "
+    "func.return %y : tensor<{m}x{n}xf32> }} }}")
+
+
+def test_lower_matmul_int8_makes_integer_contraction(tmp_path):
+    """``lower_matmul_int8`` turns dequant(weight)+f32-matmul into an i8×i8→i32 contraction:
+    the weight stays i8, the activation is dynamically quantized, the matmul accumulates i32."""
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.passes_quant_int import lower_matmul_int8
+
+    src = tmp_path / "deqmm.mlir"
+    src.write_text(_DEQUANT_MM.format(m=8, k=64, n=16), encoding="utf-8")
+    module = parse_mlir_file(src)
+    n = lower_matmul_int8(module)
+    module.verify()
+    assert n == 1
+    assert all(op.name != "linalg.matmul" for op in module.walk())  # f32 matmul gone
+    def _ibits(t):
+        return getattr(getattr(t.element_type, "width", None), "data", None)
+    int_contract = [
+        op for op in module.walk()
+        if op.name == "linalg.generic" and len(op.inputs) == 2
+        and all(_ibits(i.type) == 8 for i in op.inputs) and _ibits(op.results[0].type) == 32]
+    assert int_contract, "expected one i8×i8→i32 integer contraction"
