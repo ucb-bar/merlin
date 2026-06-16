@@ -537,7 +537,42 @@ def _parse_console(console: str, rc: int) -> dict[str, Any]:
             "metrics": metrics, "console": console}
 
 
+def _gate(prefix: np.ndarray, references) -> dict:
+    """Multi-tier accuracy gate for an int8 (W8A8) run. ``references`` is either a single
+    fp32 reference array (legacy: one ``cos``/``rel``/``ok`` at the strict fp32 threshold) or
+    a ``{tier: array}`` dict. Tiers (literature-backed for W8A8 transformers — I-BERT /
+    SmoothQuant put W8A8 at cos 0.99–0.999 vs fp32):
+      * ``w8a8`` — vs a torch/host W8A8 reference: T1 cos > 0.999 AND rel < 1e-2 (the int8
+        datapath is faithful to the W8A8 math it intends to run);
+      * ``fp32`` — vs the fp32 golden: T2 cos > 0.99 AND top-1 argmax matches (the quantization
+        degradation is within the accepted band).
+    ``ok = T1 or T2``. Emits per-tier ``<tier>_cos``/``<tier>_rel``/``<tier>_argmax`` keys."""
+    pref = np.asarray(prefix, dtype=np.float32).ravel()
+    if not isinstance(references, dict):
+        references = {"fp32": references}
+    out: dict[str, Any] = {}
+    k = len(pref)
+    for tier, ref in references.items():
+        if ref is None:
+            continue
+        r = np.asarray(ref, dtype=np.float32).ravel()[:k]
+        rel = float(np.abs(pref - r).max()) / max(1e-9, float(np.abs(r).max()))
+        cos = float((pref @ r) / (np.linalg.norm(pref) * np.linalg.norm(r) + 1e-12))
+        out[f"{tier}_cos"] = cos
+        out[f"{tier}_rel"] = rel
+        out[f"{tier}_argmax"] = bool(int(np.argmax(pref)) == int(np.argmax(r)))
+    t1 = out.get("w8a8_cos", 0.0) > 0.999 and out.get("w8a8_rel", 1.0) < 1e-2
+    t2 = out.get("fp32_cos", 0.0) > 0.99 and out.get("fp32_argmax", False)
+    # legacy single-reference callers gate at the strict fp32 threshold
+    legacy = "w8a8" not in out and out.get("fp32_cos", 0.0) > 0.9999 and out.get("fp32_rel", 1.0) < 1e-3
+    out["cos"] = out.get("w8a8_cos", out.get("fp32_cos"))
+    out["rel"] = out.get("w8a8_rel", out.get("fp32_rel"))
+    out["ok"] = bool(t1 or t2 or legacy)
+    return out
+
+
 def run_on_firesim(elf: str | Path, *, reference: np.ndarray | None = None,
+                   references: dict | None = None,
                    timeout: int = 900, queue: bool = True,
                    firesim_root: str | None = None, firesim_env: str | None = None
                    ) -> dict[str, Any]:
@@ -582,22 +617,19 @@ def run_on_firesim(elf: str | Path, *, reference: np.ndarray | None = None,
     uart = run_firesim(str(elf), models=None, firesim_root=fr, firesim_env=fe,
                        timeout=float(timeout))
     res = _parse_console(uart, 0)
-    if reference is not None:
-        ref = np.asarray(reference, dtype=np.float32).ravel()
-        pref = res["prefix"]
-        k = len(pref)
-        rel = float(np.abs(pref - ref[:k]).max()) / max(1e-9, float(np.abs(ref[:k]).max()))
-        cos = float((pref @ ref[:k]) /
-                    (np.linalg.norm(pref) * np.linalg.norm(ref[:k]) + 1e-12))
-        res.update(rel=rel, cos=cos, ok=bool(cos > 0.9999 and rel < 1e-3))
+    refs = references if references is not None else reference
+    if refs is not None:
+        res.update(_gate(res["prefix"], refs))
     return res
 
 
 def build_and_run(model_dir: str | Path, work: str | Path, *, board: str = "spike_riscv64",
                   backend: str = "rvv", rvv_hart: int = 0, harts: int = 2, arena_mb: int = 64,
-                  reference: np.ndarray | None = None, timeout: int = 3600,
-                  int8_compute: bool = False) -> dict[str, Any]:
-    """Build the Zephyr image and (for spike) run + gate vs a reference array."""
+                  reference: np.ndarray | None = None, references: dict | None = None,
+                  timeout: int = 3600, int8_compute: bool = False) -> dict[str, Any]:
+    """Build the Zephyr image and (for spike) run + gate. ``references`` (a ``{tier: array}``
+    dict, e.g. ``{"w8a8": ..., "fp32": ...}``) drives the multi-tier int8 gate; a single
+    ``reference`` array keeps the legacy strict fp32 gate."""
     b = build_app(model_dir, work, board=board, backend=backend, rvv_hart=rvv_hart,
                   arena_mb=arena_mb, cpus=max(harts, rvv_hart + 1), int8_compute=int8_compute)
     result: dict[str, Any] = {"elf": str(b["elf"]), "app_dir": str(b["app_dir"]),
@@ -606,12 +638,7 @@ def build_and_run(model_dir: str | Path, work: str | Path, *, board: str = "spik
         return result  # FireSim path runs the elf separately (firesim_runner / queue)
     run = run_on_spike(b["elf"], harts=harts, mem_bytes=b["ram_bytes"], timeout=timeout)
     result.update(run)
-    if reference is not None:
-        ref = np.asarray(reference, dtype=np.float32).ravel()
-        pref = run["prefix"]
-        k = len(pref)
-        rel = float(np.abs(pref - ref[:k]).max()) / max(1e-9, float(np.abs(ref[:k]).max()))
-        cos = float((pref @ ref[:k]) /
-                    (np.linalg.norm(pref) * np.linalg.norm(ref[:k]) + 1e-12))
-        result.update(rel=rel, cos=cos, ok=bool(cos > 0.9999 and rel < 1e-3))
+    refs = references if references is not None else reference
+    if refs is not None:
+        result.update(_gate(run["prefix"], refs))
     return result
