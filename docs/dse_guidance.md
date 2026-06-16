@@ -40,12 +40,24 @@ that loss hides.
 ### Recovering structure: three levels
 
 - **Level 0 (implemented)** — sidecar `vla_runtime_topology` / temporal metadata (hand-authored
-  K, H, control rate, region roles, loop-invariant/carried state).
-- **Level 1 (next)** — infer backbone/head/KV region attribution from IR/weights/naming
-  (`/scratch/agustin/projects/model2MLIR`); this is what would let residency be *quantified* on
-  whole-model captures instead of reported unquantified.
-- **Level 2 (long-term)** — preserve `scf.for`/`scf.while` loops and region cadence in the
-  capture IR itself.
+  K, H, control rate, region roles, loop-invariant/carried state). Every interesting fact is
+  human-asserted.
+- **Level 1 (partially implemented — `attribution.py`)** — attribute *real* per-matmul IR facts
+  (count, MACs, weight/activation bytes, epilogue) from the captured `model.mlir` to topology
+  phases, with **explicit provenance** for every assignment. What the captures carry: per-op
+  `prov.*` provenance (`prov.region_id`, `prov.op`=matmul/addmm, shapes/dtypes). What they do
+  **not** carry: a backbone-vs-head marker (`prov.module`/`prov.level` are uniform; forward args
+  are positional). So per-region **facts are recovered exactly from IR**, but the **role** of a
+  region comes from an explicit operator mapping (`merlin/benchmarks/dse_guidance/region_maps/<model>.yaml`,
+  matched by `region_ids`/`shape_signature`) or stays `unknown`. Output: `region_attribution.yaml`
+  (per role: status, source, confidence, IR facts; head facts ×K, backbone ×1; repeated-shape
+  clusters; and the unresolved remainder). When a repeated head is attributed, its candidate axes
+  carry the real facts and report `quantification_blocked_by: missing_calibration`; otherwise
+  `missing_region_attribution`. **The persistent `unknown` is itself the finding**: a flattened
+  capture does not encode backbone/head, which is the motivation for Level 2.
+- **Level 2 (long-term, in `model2MLIR` at `/scratch/agustin/projects/model2MLIR`)** — preserve
+  `scf.for`/`scf.while` loops and region cadence in the capture IR itself, so roles need not be
+  operator-supplied.
 
 The concrete question that drives every ranking:
 

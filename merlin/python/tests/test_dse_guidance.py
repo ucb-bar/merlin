@@ -14,9 +14,9 @@ import pytest
 
 from merlin.common import schemas
 from merlin.common.yaml import load_yaml
-from merlin.dse_guidance import (aet_ingest, axes, baseline_cost as BC, calibration,
-                                 candidates as CAND, fidelity as FID, pipeline, representation,
-                                 study, synth, temporal as T, topology as TOP)
+from merlin.dse_guidance import (aet_ingest, attribution as ATTR, axes, baseline_cost as BC,
+                                 calibration, candidates as CAND, fidelity as FID, pipeline,
+                                 representation, study, synth, temporal as T, topology as TOP)
 
 FIX = Path(__file__).parent / "fixtures" / "dse_guidance"
 
@@ -408,6 +408,94 @@ def test_structural_only_run_needs_no_baseline(tmp_path):
     assert (tmp_path / "capture_fidelity_report.md").is_file()
     assert (tmp_path / "vla_runtime_topology.yaml").is_file()
     assert not (tmp_path / "axis_triage.csv").exists()   # gated on a baseline
+
+
+# ------------------------------------------------ Level-1 region attribution
+
+def _head_rec(i):
+    return ATTR.MatmulRecord(i, f"matmul_{i}", "addmm", True, 28, 1024, 1024, 1024 * 1024 * 4,
+                             (28 * 1024 + 28 * 1024) * 4, "f32")
+
+
+def _records():
+    # backbone: one big projection; head: a transformer block repeated 3x in the capture.
+    return (
+        ATTR.MatmulRecord(0, "matmul_0", "matmul", False, 1, 2048, 9216, 2048 * 9216 * 4,
+                          (1 * 2048 + 1 * 9216) * 4, "f32"),
+        _head_rec(1), _head_rec(2), _head_rec(3),
+        ATTR.MatmulRecord(4, "matmul_4", "matmul", False, 28, 512, 512, 512 * 512 * 4,
+                          (28 * 512 + 28 * 512) * 4, "f32"),  # unmapped -> unknown
+    )
+
+
+def _topo(K=5):
+    doc = {"workload": "m", "class": "diffusion/denoise_steps",
+           "timing": {"K": K, "H": K, "control_rate_hz": 30},
+           "regions": [{"name": "bb", "role": "backbone_once"},
+                       {"name": "hd", "role": "repeated_head", "invocation_count": K,
+                        "loop_invariant_state": ["weights"]}]}
+    return TOP.from_temporal(T.parse(doc))
+
+
+def test_attribution_explicit_mapping_attributes_real_facts():
+    rules = {"rules": [
+        {"role": "repeated_head", "match": {"shape_signature": [28, 1024, 1024]}},
+        {"role": "backbone_once", "match": {"region_ids": ["matmul_0"]}},
+    ]}
+    attr = ATTR.attribute_records(_records(), _topo(K=5), rules)
+    head = attr.role("repeated_head")
+    bb = attr.role("backbone_once")
+    assert head.attribution_status == "attributed" and head.source == "explicit_mapping"
+    assert head.facts["matmul_count"] == 3
+    # repeated_head total is multiplied by K (5); per-invocation is not.
+    assert head.facts["invocations"] == 5
+    assert head.facts["macs_total"] == head.facts["macs_per_invocation"] * 5
+    # backbone is NOT multiplied by K.
+    assert bb.invocations == 1
+    assert bb.facts["macs_total"] == bb.facts["macs_per_invocation"]
+
+
+def test_attribution_unknown_when_no_rule_matches():
+    attr = ATTR.attribute_records(_records(), _topo(), mapping_rules=None)
+    assert attr.attribution_status in ("unknown", "partial")
+    unk = attr.role("unknown")
+    assert unk is not None and unk.attribution_status == "unknown"
+    # The shape clusters are still reported (real IR facts), even with no role mapping.
+    assert any(s["signature"] == [28, 1024, 1024] for s in attr.repeated_signatures)
+
+
+def test_candidates_carry_attributed_facts_or_block_on_attribution():
+    topo = _topo(K=5)
+    rules = {"rules": [{"role": "repeated_head",
+                        "match": {"shape_signature": [28, 1024, 1024]}}]}
+    attr = ATTR.attribute_records(_records(), topo, rules)
+    with_attr = {c.axis: c for c in CAND.detect(topo, attribution=attr)}
+    rw = with_attr["resident_action_head_weights"]
+    assert rw.attributed_facts is not None and rw.attributed_facts["matmul_count"] == 3
+    assert rw.quantification_blocked_by == "missing_calibration"
+    # Without attribution, the same axis is blocked on region attribution and carries no facts.
+    without = {c.axis: c for c in CAND.detect(topo)}["resident_action_head_weights"]
+    assert without.attributed_facts is None
+    assert without.quantification_blocked_by == "missing_region_attribution"
+    # Crucially: still no quantitative speedup/gap_closure on any candidate.
+    for c in CAND.detect(topo, attribution=attr):
+        assert c.benefit == "unquantified"
+        assert not hasattr(c, "gap_closure")
+
+
+@pytest.mark.skipif(not _has_model_captures(), reason="no model.mlir captures under output/")
+def test_attribution_reads_real_prov_provenance_from_capture():
+    from merlin.dse_guidance import models as M
+    captures = M.discover_model_captures()
+    if "rdt2" not in captures:
+        pytest.skip("no rdt2 capture")
+    recs = ATTR.extract_matmuls(M._prefer_capture(captures["rdt2"]))
+    assert len(recs) > 0
+    # prov.op is read (not the wrong m2m.* namespace): some matmuls are addmm (epilogue).
+    assert any(r.epilogue for r in recs)
+    # And the repeated transformer-block signature is recovered from real shapes.
+    sigs = {s["signature"][0] for s in ATTR._repeated_signatures(recs)}
+    assert sigs  # at least one repeated shape cluster
 
 
 @pytest.mark.skipif(not _has_model_captures(), reason="no model.mlir captures under output/")
