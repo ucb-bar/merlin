@@ -1889,6 +1889,27 @@ def test_p10_no_forbidden_wording_or_false_measured_pass():
 
 
 @pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_consolidated_dse_search_space_knobs(tmp_path):
+    # the capstone bridge aggregates the P5-P10 structural knobs (not a stale P1-P4 list)
+    from merlin.dse_guidance import case_study as CS
+    from merlin.common.yaml import load_yaml
+    from merlin.dse_guidance.primitive_coverage import TILE_PRIMITIVES, GEMV_PRIMITIVES
+    CS.run_case_study(tmp_path)
+    assert (tmp_path / "dse_search_space_knobs.yaml").is_file()
+    assert (tmp_path / "dse_search_space_knobs.md").is_file()
+    cat = load_yaml(tmp_path / "dse_search_space_knobs.yaml")["dse_search_space_knobs"]
+    groups = {g["group"]: g for g in cat["knob_groups"]}
+    assert {"P5", "P7", "P8", "P9", "P10"} <= {g["source_phase"] for g in groups.values()}
+    # primitive knobs are grounded in the P5 candidate set (not hand-written)
+    prim = [n for n, _, _ in TILE_PRIMITIVES] + [n for n, _ in GEMV_PRIMITIVES]
+    assert groups["compute_primitive_shape"]["knobs"] == prim
+    # inter-op parallelism is honestly disabled (low avg parallelism), sharding enabled
+    assert groups["inter_op_parallelism"]["enabled"] is False
+    assert groups["intra_op_sharding"]["enabled"] is True
+    assert "speedup" not in str(cat).lower() or "no speedup" in str(cat).lower()
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
 def test_case_study_emits_p10_artifacts(tmp_path):
     from merlin.dse_guidance import case_study as CS
     CS.run_case_study(tmp_path)

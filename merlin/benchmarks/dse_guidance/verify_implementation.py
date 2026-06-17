@@ -226,6 +226,19 @@ def verify_global() -> None:
                 affirmative.append((f.name, ln.strip()[:80]))
     check(not affirmative, f"speedup only in disclaimers (affirmative: {affirmative})")
 
+    # --- M: capstone — the consolidated DSE knob catalog aggregates all of P5-P10 with valid
+    # evidence, and its grounded knob lists match the source modules (not a stale/hand list) ---
+    knobs = load_yaml(CS / "dse_search_space_knobs.yaml")["dse_search_space_knobs"]
+    groups = {g["group"]: g for g in knobs["knob_groups"]}
+    phases = {g["source_phase"] for g in groups.values()}
+    ev_ok = all(g["evidence"] in ALLOWED_EVIDENCE for g in groups.values())
+    from merlin.dse_guidance.primitive_coverage import TILE_PRIMITIVES, GEMV_PRIMITIVES
+    prim = [n for n, _, _ in TILE_PRIMITIVES] + [n for n, _ in GEMV_PRIMITIVES]
+    prim_ok = groups.get("compute_primitive_shape", {}).get("knobs") == prim
+    check({"P5", "P7", "P8", "P9", "P10"} <= phases and ev_ok and prim_ok,
+          f"consolidated DSE knob catalog aggregates P5-P10 (phases={sorted(phases)}), valid "
+          f"evidence, primitive knobs match the P5 candidate set")
+
 
 # ============================================================ P5 operator geometry + coverage
 # Re-derived INDEPENDENTLY here (the taxonomy thresholds + tile arithmetic are re-implemented, not

@@ -420,6 +420,94 @@ def _case_study_summary_md(packages) -> str:
     return "\n".join(L)
 
 
+def _dse_search_space_knobs(all_shapes, all_axes, dags, units, overlap_by_wl, pat_by_wl,
+                            region_mem_by_wl) -> dict:
+    """Consolidate the structural search-space knobs discovered across P5-P10 into one catalog —
+    the bridge artifact a DSE engine consumes alongside the per-workload abstraction-axis template.
+    Each knob group is grounded in the computed results, evidence-labeled; no speedup is claimed."""
+    prim = [n for n, _, _ in PC.TILE_PRIMITIVES] + [n for n, _ in PC.GEMV_PRIMITIVES]
+    clean_mn = sum(1 for a in all_axes if a.axis in ("M", "N") and a.shardable[8]
+                   and not a.has_tail[8])
+    avg_par = round(sum(d.available_parallelism for d in dags) / len(dags), 3) if dags else 0.0
+    units_ir = sorted({u.unit for u in units if u.workloads})
+    pipe_abs = sorted({a for cands in overlap_by_wl.values() for c in cands
+                       if c.can_overlap == "yes" for a in c.required_abstractions})
+    epi = {"bias": False, "activation": False, "scale": False, "clamp": False, "cast": False}
+    for pats in pat_by_wl.values():
+        for p in pats:
+            epi["bias"] |= p.has_bias
+            epi["activation"] |= p.has_activation
+            epi["scale"] |= p.has_scale
+            epi["clamp"] |= p.has_clamp
+            epi["cast"] |= p.has_cast
+    epi_ops = [k for k, v in epi.items() if v]
+    groups = [
+        {"group": "compute_primitive_shape", "source_phase": "P5", "knobs": prim, "enabled": True,
+         "evidence": DE.E_DERIVED,
+         "gated_by": "structural tile/lane coverage of the real operator geometry (no perf)"},
+        {"group": "intra_op_sharding", "source_phase": "P7",
+         "knobs": [f"shard_axis in {{M,N,K}}", f"shard_count in {list(SH.UNIT_COUNTS)}"],
+         "enabled": clean_mn > 0, "evidence": DE.E_DERIVED,
+         "gated_by": f"{clean_mn} reduction-free M/N shards available; K-sharding needs "
+                     "partial-sum reduction"},
+        {"group": "inter_op_parallelism", "source_phase": "P7", "knobs": ["num_engines"],
+         "enabled": avg_par >= 1.5, "evidence": DE.E_DERIVED,
+         "gated_by": f"avg inter-op parallelism {avg_par}x (low -> limited; favors intra-op "
+                     "sharding)"},
+        {"group": "processing_unit_set", "source_phase": "P7/P8", "knobs": units_ir,
+         "enabled": True, "evidence": DE.E_IR,
+         "gated_by": "distinct operator families (dense GEMM + skinny/GEMV) + epilogue + DMA"},
+        {"group": "pipeline_overlap", "source_phase": "P8", "knobs": pipe_abs,
+         "enabled": bool(pipe_abs), "evidence": DE.E_DERIVED,
+         "gated_by": "candidate overlaps gated on recovered structure (backbone compute / control "
+                     "loop); per-phase timing needed to schedule"},
+        {"group": "memory_residency", "source_phase": "P9",
+         "knobs": ["resident_weight_object", f"weight_dtype in {list(DE.CAPACITY_FORMATS)}",
+                   "prefetch_depth"], "enabled": True, "evidence": DE.E_IR,
+         "gated_by": "weight-dominated memory pressure; bandwidth needs a design YAML"},
+        {"group": "dma_streams", "source_phase": "P9",
+         "knobs": ["multi_stream_dma_descriptor", "double_buffered_activation_tile",
+                   "prefetch_weight_once"], "enabled": True, "evidence": DE.E_IR,
+         "gated_by": "3 byte-carrying streams/region (weight/activation/output)"},
+        {"group": "epilogue_fusion", "source_phase": "P10",
+         "knobs": [f"epilogue_op_set subset of {epi_ops}", "accumulator_dtype",
+                   "requant_in_epilogue"], "enabled": bool(epi_ops), "evidence": DE.E_IR,
+         "gated_by": "directly-fused epilogue slot proven (addmm bias); low-bit/scale gated by a "
+                     "low-bit capture + accuracy"},
+    ]
+    return {"dse_search_space_knobs": {
+        "note": "consolidated STRUCTURAL search-space knobs discovered across P5-P10, each with its "
+                "source phase, enabled status, evidence, and what gates it. This is the bridge a "
+                "future DSE engine consumes together with the per-workload abstraction-axis "
+                "template (dse_search_space_template.yaml). Structural only — no speedup, cycle, or "
+                "area claim.",
+        "knob_groups": groups,
+        "what_is_not_claimed": "no speedup, no schedule, no chosen design; these are search-space "
+                               "dimensions a DSE engine would explore, with the measurements each "
+                               "needs named in the per-phase artifacts"}}
+
+
+def _dse_search_space_knobs_md(catalog: dict) -> str:
+    groups = catalog["dse_search_space_knobs"]["knob_groups"]
+    L = ["# DSE search-space knobs (consolidated P5-P10)\n",
+         "> The structural search-space dimensions the workload-contract analysis discovered, "
+         "consolidated as the bridge a future DSE engine consumes (alongside the per-workload "
+         "abstraction-axis `dse_search_space_template.yaml`). **Structural only — no speedup, no "
+         "chosen design.**\n"]
+    L.append("| knob group | phase | enabled | knobs | gated by |")
+    L.append("|---|---|---|---|---|")
+    for g in groups:
+        knobs = ", ".join(str(k) for k in g["knobs"]) or "—"
+        L.append(f"| {g['group']} | {g['source_phase']} | {g['enabled']} | {knobs} | "
+                 f"{g['gated_by']} |")
+    L.append("\nEach knob group is evidence-labeled and grounded in the per-phase artifacts "
+             "(P5 geometry/coverage, P7 sharding/hierarchy, P8 pipeline, P9 memory/DMA, P10 "
+             "epilogue). The measurements each knob needs before a *quantitative* DSE decision "
+             "(per-unit throughput, bandwidth, accuracy for low-bit, per-phase timing) are named "
+             "in those artifacts. **No speedup is claimed.**\n")
+    return "\n".join(L)
+
+
 def _readme_md(packages) -> str:
     names = ", ".join(p["case"].workload for p in packages)
     return (
@@ -446,7 +534,11 @@ def _readme_md(packages) -> str:
         "- `workload_family_table.csv` — workloads clustered into families (iterative_denoise / "
         "token_decode / single_shot).\n"
         "- `<workload>/dse_search_space_template.yaml`, `dse_search_space_template_<family>.yaml` — "
-        "the **DSE search-space template** (the bridge a DSE engine consumes: enabled axes + knobs).\n"
+        "the **DSE search-space template** (per-workload abstraction axes + knobs).\n"
+        "- `dse_search_space_knobs.yaml`, `dse_search_space_knobs.md` — the **consolidated "
+        "structural search-space knobs** discovered across P5-P10 (primitive shapes, sharding, "
+        "processing units, pipeline overlap, memory/DMA, epilogue fusion) — the capstone bridge a "
+        "DSE engine consumes.\n"
         "- `measurement_priority_table.csv` — what to measure next, ranked by candidates unblocked.\n"
         "- `operator_shape_table.csv`, `operator_geometry.yaml` — per-operator geometry (M/N/K, "
         "MACs, aspect, shape_class + semantic role). `shape_summary_by_workload.csv`, "
@@ -769,6 +861,12 @@ def run_case_study(out_dir) -> dict:
     Artifact("lost_numerical_contracts.csv", FE.lost_contracts_csv(acc_by_wl)).write(out)
     Artifact("fusion_opportunity_report.md",
              FE.fusion_report_md(pat_by_wl, acc_by_wl, cert_by_wl)).write(out)
+    # Consolidated DSE search-space knobs across P5-P10 (the bridge a DSE engine consumes)
+    knob_catalog = _dse_search_space_knobs(all_shapes, all_axes, dags, units, overlap_by_wl,
+                                           pat_by_wl, region_mem_by_wl)
+    yaml_artifact("dse_search_space_knobs.yaml", knob_catalog,
+                  header="dse_search_space_knobs (consolidated P5-P10; no speedup)").write(out)
+    Artifact("dse_search_space_knobs.md", _dse_search_space_knobs_md(knob_catalog)).write(out)
     # TorchAO integration plan (a plan, not a sweep)
     Artifact("torchao_integration_plan.md", NC.torchao_integration_plan_md()).write(out)
     # accuracy gate (measurable-now real leg)
