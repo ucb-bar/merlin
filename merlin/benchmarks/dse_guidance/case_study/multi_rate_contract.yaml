@@ -1,0 +1,124 @@
+# multi_rate_contract (rate model + phases)
+multi_rate_contract:
+  note: rate constants (K/H/control_rate) are assumed_reference; the replan deadline is derived; per-K-step wall time is unavailable. No speedup/cycle claim.
+  workloads:
+  - phases:
+    - cadence: once_per_replan
+      invocations: 1
+      phase: backbone
+      role: backbone_once
+    - cadence: K_times_per_replan
+      invocations: 5
+      phase: head
+      role: repeated_head
+    rate_model:
+      H:
+        source: assumed_reference
+        value: 64
+      K:
+        source: assumed_reference
+        value: 5
+      control_rate_hz:
+        source: assumed_reference
+        value: 30.0
+      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
+      replan_deadline_s:
+        source: derived_requirement
+        value: 2.133333
+    states_across_rates:
+    - bytes: 391118848
+      evidence: recovered_from_ir
+      lifetime: loop_invariant
+      state: weights
+    workload: rdt
+    workload_class: flow_matching_action_head
+  - phases:
+    - cadence: once_per_replan
+      invocations: 1
+      phase: backbone
+      role: backbone_once
+    - cadence: token_loop
+      invocations: 7
+      phase: head
+      role: repeated_head
+    rate_model:
+      H:
+        source: assumed_reference
+        value: 7
+      K:
+        source: assumed_reference
+        value: 7
+      control_rate_hz:
+        source: assumed_reference
+        value: 5.0
+      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
+      replan_deadline_s:
+        source: derived_requirement
+        value: 1.4
+    states_across_rates:
+    - bytes: 3145728
+      evidence: recovered_from_ir
+      lifetime: loop_invariant
+      state: weights
+    workload: openvla
+    workload_class: autoregressive_decode
+  - phases:
+    - cadence: once_per_replan
+      invocations: 1
+      phase: backbone
+      role: backbone_once
+    - cadence: token_loop
+      invocations: 32
+      phase: head
+      role: repeated_head
+    rate_model:
+      H:
+        source: assumed_reference
+        value: 32
+      K:
+        source: assumed_reference
+        value: 32
+      control_rate_hz:
+        source: assumed_reference
+        value: 30.0
+      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
+      replan_deadline_s:
+        source: derived_requirement
+        value: 1.066667
+    states_across_rates:
+    - bytes: 1581056
+      evidence: recovered_from_ir
+      lifetime: loop_invariant
+      state: weights
+    workload: small_llama
+    workload_class: autoregressive_decode
+  - phases:
+    - cadence: once_per_replan
+      invocations: 1
+      phase: backbone
+      role: backbone_once
+    - cadence: token_loop
+      invocations: 32
+      phase: head
+      role: repeated_head
+    rate_model:
+      H:
+        source: assumed_reference
+        value: 32
+      K:
+        source: assumed_reference
+        value: 32
+      control_rate_hz:
+        source: assumed_reference
+        value: 30.0
+      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
+      replan_deadline_s:
+        source: derived_requirement
+        value: 1.066667
+    states_across_rates:
+    - bytes: 614465536
+      evidence: recovered_from_ir
+      lifetime: loop_invariant
+      state: weights
+    workload: tiny_llama
+    workload_class: autoregressive_decode

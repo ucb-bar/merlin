@@ -1325,3 +1325,138 @@ def test_case_study_emits_operator_geometry_and_coverage(tmp_path):
     tw = list(csv.DictReader(io.StringIO((tmp_path / "tile_waste_table.csv").read_text())))
     assert not [r for r in tw if r["primitive_kind"] == "gemv_lane"
                 and r["shape_class"] == "squareish_gemm" and r["applicable"] == "True"]
+
+
+# ============================================================ P6 multi-rate workload contract graph
+
+_ALLOWED_EV = {"recovered_from_ir", "recovered_from_prov_fqn", "assumed_reference",
+               "derived_requirement", "design_assumption", "measured", "proxy_measured",
+               "unavailable"}
+
+
+def _graph_fixture(K=5, cls="diffusion/denoise_steps", fqn="model.action_expert.denoise.0"):
+    from merlin.dse_guidance import contract_graph as CG2, operator_geometry as OG
+    from merlin.dse_guidance import state_lifetime as SL
+    topo = TOP.from_temporal(T.parse({
+        "workload": "m", "class": cls, "timing": {"K": K, "H": K, "control_rate_hz": 30},
+        "regions": [{"name": "backbone", "role": "backbone_once", "invocation_count": 1},
+                    {"name": "head", "role": "repeated_head", "invocation_count": K,
+                     "loop_invariant_state": ["weights"]}]}))
+    recs = (_mm(28, 1024, 1024, fqn=fqn, op="addmm", idx=0),)
+    attr = ATTR.attribute_records(recs, topo)
+    shapes = OG.operator_shapes(recs, "m", attr)
+    state = SL.state_records(topo, attr)
+    case = type("C", (), {"workload": "m", "cls": cls, "K": K, "topo": topo, "attribution": attr})()
+    return CG2.build_graph(case, shapes, None, state)
+
+
+def test_phase_rate_cadence_classification():
+    from merlin.dse_guidance import phase_rate as PR
+    from merlin.dse_guidance import topology as TOP
+    assert PR.classify_cadence("backbone_once", TOP.CLASS_FLOW_MATCHING, 1, 5) == "once_per_replan"
+    assert PR.classify_cadence("repeated_head", TOP.CLASS_FLOW_MATCHING, 5, 5) == "K_times_per_replan"
+    assert PR.classify_cadence("repeated_head", TOP.CLASS_AUTOREGRESSIVE, 8, 8) == "token_loop"
+    assert PR.classify_cadence("repeated_head", TOP.CLASS_FLOW_MATCHING, 1, 1) == "once_per_forward"
+    assert PR.classify_cadence("control_loop", TOP.CLASS_FLOW_MATCHING, None, 5) == "control_tick"
+    assert PR.classify_cadence(None, TOP.CLASS_UNKNOWN, None, 5) == "unknown"
+
+
+def test_phase_rate_model_sources():
+    from merlin.dse_guidance import phase_rate as PR
+    from merlin.dse_guidance.design_envelope import E_ASSUMED, E_DERIVED
+    topo = TOP.from_temporal(T.parse({"workload": "m", "class": "diffusion/denoise_steps",
+                                      "timing": {"K": 5, "H": 8, "control_rate_hz": 30},
+                                      "regions": [{"name": "h", "role": "repeated_head"}]}))
+    rm = PR.rate_model(topo)
+    assert rm["K"]["value"] == 5 and rm["K"]["source"] == E_ASSUMED
+    assert rm["replan_deadline_s"]["source"] == E_DERIVED  # derived from H / control_rate
+    assert rm["replan_deadline_s"]["value"] == round(8 / 30, 6)
+
+
+def test_contract_graph_node_and_edge_schema():
+    from merlin.dse_guidance import contract_graph as CG2
+    g = _graph_fixture(K=5)
+    kinds = {n.kind for n in g.nodes}
+    assert {"phase", "region", "operator", "loop_body", "state_object"} <= kinds
+    assert all(n.kind in CG2.NODE_KINDS for n in g.nodes)
+    assert all(n.evidence in _ALLOWED_EV for n in g.nodes)
+    assert all(e.kind in CG2.EDGE_KINDS for e in g.edges)
+    assert all(e.evidence in _ALLOWED_EV for e in g.edges)
+    assert all(e.can_pipeline in (True, False, "unknown") for e in g.edges)
+    # a loop-invariant weight edge exists and is read-only pipelineable
+    inv = next(e for e in g.edges if e.kind == "loop_invariant")
+    assert inv.tensor == "weights" and inv.can_pipeline is True and inv.bytes == 1024 * 1024 * 4
+
+
+def test_contract_graph_region_mac_aggregation():
+    g = _graph_fixture(K=5)
+    region = next(n for n in g.nodes if n.kind == "region" and n.region_role == "repeated_head")
+    ws = region.work_summary
+    assert ws["macs_per_invocation"] == 28 * 1024 * 1024
+    assert ws["macs_per_replan"] == ws["macs_per_invocation"] * 5     # derived identity
+    loop = next(n for n in g.nodes if n.kind == "loop_body")
+    assert loop.rate["trip_count"] == 5
+
+
+def test_contract_graph_missing_k_has_no_loop_body():
+    g = _graph_fixture(K=1)
+    assert not [n for n in g.nodes if n.kind == "loop_body"]          # K=1 -> no repeated loop
+    head_phase = next(n for n in g.nodes if n.kind == "phase" and n.region_role == "repeated_head")
+    assert head_phase.rate["cadence"] == "once_per_forward"
+
+
+def test_contract_graph_unknown_dependency_is_explicit():
+    from merlin.dse_guidance.design_envelope import E_NA
+    # two head ops -> one conservative sequential edge, explicitly unavailable / can_pipeline unknown
+    from merlin.dse_guidance import contract_graph as CG2, operator_geometry as OG
+    from merlin.dse_guidance import state_lifetime as SL
+    topo = TOP.from_temporal(T.parse({
+        "workload": "m", "class": "diffusion/denoise_steps", "timing": {"K": 3, "H": 3,
+        "control_rate_hz": 30}, "regions": [{"name": "head", "role": "repeated_head",
+        "invocation_count": 3, "loop_invariant_state": ["weights"]}]}))
+    recs = (_mm(8, 128, 128, fqn="model.denoise.0", idx=0),
+            _mm(8, 128, 128, fqn="model.denoise.1", idx=1))
+    attr = ATTR.attribute_records(recs, topo)
+    shapes = OG.operator_shapes(recs, "m", attr)
+    case = type("C", (), {"workload": "m", "cls": "x", "K": 3, "topo": topo, "attribution": attr})()
+    g = CG2.build_graph(case, shapes, None, SL.state_records(topo, attr))
+    ud = [e for e in g.edges if e.kind == "unknown_dependency"]
+    assert ud and all(e.evidence == E_NA and e.can_pipeline == "unknown" for e in ud)
+
+
+def test_contract_graph_token_loop_for_autoregressive():
+    g = _graph_fixture(K=8, cls="llm/token_decode", fqn="lm.model.layers.0.self_attn.q_proj")
+    loop = next(n for n in g.nodes if n.kind == "loop_body")
+    assert loop.rate["cadence"] == "token_loop"
+
+
+def test_contract_graph_no_forbidden_wording():
+    from merlin.dse_guidance import contract_graph as CG2
+    g = _graph_fixture(K=5)
+    blobs = [str(CG2.to_yaml_obj([g])).lower(), CG2.summary_md([g]).lower(),
+             CG2.rate_mismatch_report_md([g]).lower(),
+             str(CG2.multi_rate_contract_yaml([g])).lower(), CG2.phase_rate_csv([g]).lower()]
+    for b in blobs:
+        for term in ("gap_closure", "faster", "optimal", "predicted cycles", "improvement"):
+            assert term not in b, f"forbidden term {term!r}"
+        for ln in b.splitlines():
+            if "speedup" in ln:
+                assert "no speedup" in ln
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_case_study_emits_contract_graph(tmp_path):
+    from merlin.dse_guidance import case_study as CS
+    from merlin.common.yaml import load_yaml
+    CS.run_case_study(tmp_path)
+    for f in ("workload_contract_graph.yaml", "workload_contract_graph_summary.md",
+              "phase_rate_table.csv", "multi_rate_contract.yaml", "rate_mismatch_report.md"):
+        assert (tmp_path / f).is_file(), f"missing {f}"
+    g = load_yaml(tmp_path / "workload_contract_graph.yaml")["workload_contract_graph"]
+    wls = {x["workload"] for x in g["graphs"]}
+    assert wls == set(CS.available_models())
+    # every graph has phase + operator nodes and a recovered rate model
+    for x in g["graphs"]:
+        kinds = {n["kind"] for n in x["nodes"]}
+        assert "phase" in kinds and "operator" in kinds
+        assert x["rate_model"]["K"]["value"] >= 1
