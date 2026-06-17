@@ -135,6 +135,42 @@ def _study(args) -> int:
     return 0
 
 
+def _insight_mining(args) -> int:
+    """Meta-analysis runs. The CLI builds each run folder name from scope + UTC timestamp +
+    '_dse_analysis' under results/ (regeneratable, not committed). Per-network + combined 'all'."""
+    from datetime import datetime, timezone
+    from merlin.common import paths
+    from merlin.dse_guidance import insight_mining as IM
+    from merlin.dse_guidance import presentation_plots as PP
+    cs_dir = Path(args.case_study_dir) if args.case_study_dir else (
+        paths.merlin_dir() / "benchmarks" / "dse_guidance" / "case_study")
+    if not (cs_dir / "dse_contract.json").is_file() and not (cs_dir / "critical_path_table.csv").is_file():
+        raise SystemExit(f"no case-study artifacts under {cs_dir} (run --case-study first)")
+    base = Path(args.out) if args.out else (paths.repo_root() / "results")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    nets = IM._workloads(cs_dir)
+    scopes = [args.workload] if args.workload else (nets + ["all"])
+    all_ok = True
+    for scope in scopes:
+        run_dir = base / f"{scope}_{ts}_dse_analysis"
+        bundle = IM.mine(cs_dir, scope)
+        rendered = PP.render_plots(bundle["plots"], cs_dir, bundle["facts"],
+                                   run_dir / "generated_plots")
+        IM.emit_run(bundle, run_dir, rendered)
+        passed = all(ok for ok, _ in bundle["consistency_checks"])
+        npass = sum(1 for ok, _ in bundle["consistency_checks"] if ok)
+        all_ok = all_ok and passed
+        s = bundle["evidence_strength"]
+        print(f"{scope:14s} -> {run_dir}")
+        print(f"               facts={s['total_facts']} tiers(A/B/C/D)="
+              f"{s['by_tier'].get('A',0)}/{s['by_tier'].get('B',0)}/{s['by_tier'].get('C',0)}/"
+              f"{s['by_tier'].get('D',0)} main_findings="
+              f"{sum(1 for f in bundle['findings'] if f['presentation_placement']=='main')} "
+              f"plots={len(rendered)} consistency={npass}/{len(bundle['consistency_checks'])}"
+              f" {'PASS' if passed else 'FAIL'}")
+    return 0 if all_ok else 1
+
+
 def _query(args) -> int:
     """Consume the case-study contract manifest (dse_contract.json) — the one-object entry point."""
     import json
@@ -227,12 +263,21 @@ def main(argv: list[str] | None = None) -> int:
                     help="emit only the structural front-end (topology, capture fidelity, "
                          "candidate axes); skip the quantitative triage even if a region is given")
     ap.add_argument("--out", default=None, help="output dir")
+    ap.add_argument("--insight-mining", action="store_true",
+                    help="meta-analysis over the committed case-study artifacts: mine evidence, "
+                         "score DSE-usefulness, extract presentation findings + plots. Writes a "
+                         "regeneratable (non-committed) timestamped run under results/ per network "
+                         "and a combined 'all' run. Use --workload to scope to one network.")
+    ap.add_argument("--case-study-dir", default=None,
+                    help="case-study artifact dir to mine (default: committed case_study)")
     ap.add_argument("--query", default=None,
                     help="consume the case-study contract manifest: one of summary | knobs | "
                          "boundary[:<abstraction>] | missing | index (reads dse_contract.json under "
                          "--out or the committed case_study dir)")
     args = ap.parse_args(argv)
 
+    if getattr(args, "insight_mining", False):
+        return _insight_mining(args)
     if args.query:
         return _query(args)
     if args.design_envelope:

@@ -2,6 +2,8 @@
 
 **Consume this package as one object:** `dse_contract.json` is the machine-readable manifest (per-workload readiness + facts, the search-space knob groups, the boundary-placement top, the measurements still needed, and a topic→artifact index). Query it with `merlin-dse-guidance --query {summary,knobs,boundary[:abstraction],missing,index}`.
 
+**Meta-analysis (P13):** `merlin-dse-guidance --insight-mining` mines this package (per network + combined), scores DSE-usefulness, and extracts evidence-tiered presentation findings + plots into a regeneratable, **non-committed** timestamped run under `results/` (`<scope>_<UTCstamp>_dse_analysis/`).
+
 Merlin is a compiler-based **workload-contract analysis** tool for accelerator DSE. It does not pick a design and does not calibrate against existing hardware. It recovers the temporal + numerical workload contract a flat capture erases and emits a DSE-ready package: region facts, hardware-independent requirements, HW/SW abstraction candidates, a measurement plan, and a readiness report.
 
 Workloads (real `prov.fqn` recaptures): **rdt, openvla, small_llama, tiny_llama**.
