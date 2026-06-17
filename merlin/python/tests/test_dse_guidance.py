@@ -1183,3 +1183,16 @@ def test_case_study_emits_envelope_and_certificate_tables(tmp_path):
     for r in csv.DictReader(io.StringIO(gated)):
         if r["dtype"] != "int8_w8a8":
             assert r["accuracy_status"] != "measured_pass", f"false pass: {r}"
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_independent_verification_harness_passes():
+    # The standalone verifier independently re-derives every key number from the raw captures and
+    # cross-checks them against the emitted artifacts; --check-only means it does not write the report.
+    import subprocess, sys
+    root = Path(__file__).resolve().parents[2]
+    script = root / "benchmarks" / "dse_guidance" / "verify_implementation.py"
+    r = subprocess.run([sys.executable, str(script), "--check-only"],
+                       capture_output=True, text=True, cwd=str(root))
+    assert r.returncode == 0, f"verifier failed:\n{r.stdout}\n{r.stderr}"
+    assert "checks passed" in r.stdout
