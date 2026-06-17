@@ -1,0 +1,291 @@
+# abstraction_candidates: tiny_llama
+abstraction_candidates:
+- axis: resident_action_head_weights
+  compiler_proof: action-head weights immutable and live across the K-loop (resident-pack candidate); backbone weights excluded
+  dse_knobs_exposed:
+  - local_memory_capacity
+  - packed_weight_format
+  - dma_bandwidth
+  - residency/replacement_policy
+  - weight_prefetch_overlap
+  measurements_needed:
+  - action_head_weight_bytes
+  - weight_reload_bytes_per_step
+  - pack_cost_per_step
+  - resident_capacity_required
+  - measured memory bandwidth
+  runtime_hw_support: resident weight store + pack-once/use-many interface
+  status:
+    legality: structural
+    quantification_blocked_by: missing_calibration
+  system_abstraction_needed: resident_weight_object
+  what_is_not_claimed:
+  - speedup
+  - cycle_reduction
+  - energy_reduction
+  - accuracy
+  why_this_exists:
+    attributed_facts: &id001
+      activation_bytes_per_invocation: 1691648
+      activation_bytes_total: 54132736
+      invocations: 32
+      macs_per_invocation: 614465536
+      macs_total: 19662897152
+      matmul_count: 15
+      weight_bytes: 614465536
+    evidence:
+      K: 32
+      head_phases:
+      - head
+      loop_invariant_state:
+      - weights
+    reason: action-head weights are loop-invariant across K=32 steps; a flat capture sees one use and hides this axis
+    signal: temporal_reuse
+- axis: autonomous_K_loop
+  compiler_proof: bounded K and a loop body expressible as a device-resident program
+  dse_knobs_exposed:
+  - device_loop_controller
+  - dependency_tracking
+  - resident_state_handles
+  measurements_needed:
+  - K
+  - per_step_host_dispatch_ns
+  - per_step_sync_ns
+  - loop_carried_state_bytes
+  runtime_hw_support: device-side loop controller + dependency tracking
+  status:
+    legality: structural
+    quantification_blocked_by: missing_calibration
+  system_abstraction_needed: bounded_loop_command + loop_carried_state_handle
+  what_is_not_claimed:
+  - speedup
+  - cycle_reduction
+  - energy_reduction
+  - accuracy
+  why_this_exists:
+    attributed_facts: null
+    evidence:
+      K: 32
+      loop_carried_state: []
+    reason: a bounded K=32 loop with loop-carried state can run device-side
+    signal: temporal_reuse
+- axis: backbone_head_partition
+  compiler_proof: a clean state boundary between the once-per-replan backbone and the K-times head (the crossing tensors are enumerable)
+  dse_knobs_exposed:
+  - engine_partition
+  - time_share_vs_split
+  - state_crossing_transport
+  measurements_needed:
+  - backbone_cost
+  - head_cost_per_step
+  - state_crossing_bytes
+  - deadline_slack
+  runtime_hw_support: slow-path/fast-path engine split or time-shared scheduling
+  status:
+    legality: structural
+    quantification_blocked_by: missing_calibration
+  system_abstraction_needed: phase_boundary / region_handle (slow/fast split)
+  what_is_not_claimed:
+  - speedup
+  - cycle_reduction
+  - energy_reduction
+  - accuracy
+  why_this_exists:
+    attributed_facts: null
+    evidence:
+      H: 32
+      K: 32
+      backbone_phases:
+      - backbone
+      control_rate_hz: 30.0
+      head_phases:
+      - head
+      replan_deadline_ms: 1066.6666666666667
+    reason: backbone runs once per replan while the head runs K times — the rates differ, so a slow/fast partition is a candidate
+    signal: rate_mismatch
+- axis: async_chunk_overlap
+  compiler_proof: the next replan is independent of the current chunk's execution
+  dse_knobs_exposed:
+  - double_buffering
+  - async_scheduling
+  - deadline_slack_use
+  measurements_needed:
+  - replan_latency
+  - chunk_execution_time
+  - deadline_slack
+  runtime_hw_support: double-buffered action chunks + async backbone/head scheduling
+  status:
+    legality: structural
+    quantification_blocked_by: missing_calibration
+  system_abstraction_needed: double_buffered_replan_state + async_queue
+  what_is_not_claimed:
+  - speedup
+  - cycle_reduction
+  - energy_reduction
+  - accuracy
+  why_this_exists:
+    attributed_facts: null
+    evidence:
+      H: 32
+      control_rate_hz: 30.0
+      replan_deadline_ms: 1066.6666666666667
+    reason: the robot executes H actions at the control rate, opening a window to overlap the next replan with chunk execution
+    signal: rate_mismatch
+- axis: command_batching
+  compiler_proof: the K-loop dependency graph is static and known at submit time
+  dse_knobs_exposed:
+  - submission_granularity
+  - persistent_command_graph
+  measurements_needed:
+  - dispatches_per_replan
+  - host_submit_ns
+  - command_encode_ns
+  - batched_submit_ns
+  runtime_hw_support: persistent/batched command buffer submit
+  status:
+    legality: structural
+    quantification_blocked_by: missing_calibration
+  system_abstraction_needed: command_buffer
+  what_is_not_claimed:
+  - speedup
+  - cycle_reduction
+  - energy_reduction
+  - accuracy
+  why_this_exists:
+    attributed_facts: null
+    evidence:
+      K: 32
+      note: K per-step submits are collapsible to one buffer
+    reason: the K=32 head steps issue repeated host submits a flat capture hides
+    signal: cpu_coupling
+- axis: packed_layout_preservation
+  compiler_proof: a packed/quantized weight layout is produced once and consumed by the same op family across the loop without re-pack
+  dse_knobs_exposed:
+  - packed_layout_object
+  - repack_avoidance
+  measurements_needed:
+  - pack_count_per_replan
+  - pack_bytes
+  - repacks_avoided
+  runtime_hw_support: packed layout as a first-class, dispatch-crossing object
+  status:
+    legality: structural
+    quantification_blocked_by: missing_calibration
+  system_abstraction_needed: packed_weight_cache / layout_persistent_buffer
+  what_is_not_claimed:
+  - speedup
+  - cycle_reduction
+  - energy_reduction
+  - accuracy
+  why_this_exists:
+    attributed_facts: *id001
+    evidence:
+      K: 32
+      quantized: false
+    reason: the same (packed/quantized) weight layout is consumed every step; preserving it across dispatches avoids re-packing
+    signal: layout_packing
+- axis: decode_kv_cache_path
+  compiler_proof: autoregressive decode with a growing KV cache and batch=1 GEMV shapes
+  dse_knobs_exposed: []
+  measurements_needed:
+  - tokens_decoded
+  - kv_growth_bytes
+  - gemv_shape_distribution
+  runtime_hw_support: decode/GEMV-optimized datapath + resident KV cache object
+  status:
+    legality: structural
+    quantification_blocked_by: missing_calibration
+  system_abstraction_needed: decode_kv_cache_path
+  what_is_not_claimed:
+  - speedup
+  - cycle_reduction
+  - energy_reduction
+  - accuracy
+  why_this_exists:
+    attributed_facts: null
+    evidence:
+      K: 32
+      workload_class: autoregressive_decode
+    reason: autoregressive decode with a growing KV cache and batch=1 GEMV shapes wants a decode/KV-cache-optimized path, not GEMM throughput
+    signal: dynamic_loop
+- axis: resident_packed_lowbit_weights
+  compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+  dse_knobs_exposed:
+  - resident_capacity_at_format
+  - packed_layout_support
+  - scale_object
+  - low_bit_matmul_datapath
+  measurements_needed:
+  - per-format accuracy vs fp32 (cos/argmax) sweep
+  - low-bit weight bytes
+  - dequant/pack cost
+  - resident capacity at each format
+  runtime_hw_support: resident packed low-bit weight store + matching matmul datapath
+  status:
+    legality: structural
+    quantification_blocked_by: missing accuracy sweep + low-bit kernel calibration + resident-capacity model
+  system_abstraction_needed: packed_lowbit_tensor + resident_weight_object + scale_object
+  what_is_not_claimed:
+  - speedup
+  - cycle_reduction
+  - energy_reduction
+  - accuracy
+  why_this_exists:
+    evidence:
+      candidate_formats:
+      - fp8_w8a8
+      - int8_w8a8
+      - int4_weight_only
+      - int4_weight_fp8_activation
+      compute_dtype: f32
+      repeated_head_weight_bytes: 614465536
+      weight_storage_dtype: f32
+    signal: numerical_contract
+- axis: fused_requant_epilogue
+  compiler_proof: (numerical) fused requant/activation bit-exactness
+  dse_knobs_exposed:
+  - in_hw_epilogue_commit
+  - accumulator_visibility
+  measurements_needed:
+  - fused requant/activation bit-exactness
+  - i32 intermediate bytes
+  - epilogue dispatch count
+  runtime_hw_support: in-hardware accumulator commit + fused requant/activation
+  status:
+    legality: structural
+    quantification_blocked_by: missing intermediate-materialization measurement
+  system_abstraction_needed: accumulator_object + requant_epilogue
+  what_is_not_claimed:
+  - speedup
+  - cycle_reduction
+  - energy_reduction
+  - accuracy
+  why_this_exists:
+    evidence:
+      has_epilogue: true
+      requant_ops: 0
+    signal: numerical_contract
+- axis: quantized_KV_cache
+  compiler_proof: (numerical) KV-quant accuracy vs fp16 KV
+  dse_knobs_exposed:
+  - kv_precision
+  - kv_capacity
+  - decode_gemv_datapath
+  measurements_needed:
+  - KV-quant accuracy vs fp16 KV
+  - KV bytes per step
+  - KV growth over decode
+  runtime_hw_support: quantized resident KV-cache object
+  status:
+    legality: structural
+    quantification_blocked_by: missing KV-size profile + KV-quant accuracy sweep
+  system_abstraction_needed: resident_KV_cache (quantized)
+  what_is_not_claimed:
+  - speedup
+  - cycle_reduction
+  - energy_reduction
+  - accuracy
+  why_this_exists:
+    evidence:
+      workload_class: llm/token_decode
+    signal: numerical_contract

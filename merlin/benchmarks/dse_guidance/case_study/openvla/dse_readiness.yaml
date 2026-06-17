@@ -1,0 +1,36 @@
+# dse_readiness: openvla
+dse_readiness:
+  fields:
+    K_source:
+      available: true
+      source: assumed_reference
+    accuracy_constraints:
+      available: false
+      source: unavailable
+    cpu_coupling:
+      available: false
+      source: unavailable
+    deadline_source:
+      available: true
+      source: assumed_reference
+    dispatch_graph:
+      available: true
+      source: recovered_from_ir
+    dtype_contract:
+      available: true
+      source: recovered_from_ir
+    role_attribution:
+      available: true
+      source: prov_fqn
+    state_lifetimes:
+      available: true
+      source: recovered_from_prov_fqn
+    topology_recovered:
+      available: true
+      source: recovered_from_prov_fqn
+  missing_before_ranking:
+  - quantization accuracy gates (per candidate low-bit format)
+  - real (target) command-submit / sync latency
+  - K / control-rate from the real deployment (currently reference values)
+  ready_to_rank_designs: false
+  workload: openvla

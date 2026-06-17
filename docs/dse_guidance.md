@@ -1,15 +1,36 @@
-# DSE Guidance
+# DSE Guidance — Workload-Contract Analysis
 
 ## Framing
 
-**Merlin is not the DSE optimizer.** It is a DSE *instrument*. Its first job is to **recover the
-workload contract that flat captures erase**. For VLAs that means identifying the slow backbone
-phase, the repeated action-head loop, the chunk deadline, the loop-invariant state, and the
-CPU/accelerator coupling. From that contract it emits **structural DSE candidates** and the
-**measurements needed** to rank them. Only after calibration does it produce a quantitative axis
-triage.
+**Merlin is a compiler-based workload-contract analysis tool for accelerator DSE. It does not
+choose hardware designs, and it does not calibrate against existing hardware to predict a future
+one.** It recovers temporal, numerical, memory, and runtime-interface structure from real model
+captures, identifies which HW/SW abstractions the workload appears to require, derives the
+design requirements/theoretical pressure points that contract imposes, and emits a DSE-ready
+**contract-analysis package** for a later DSE engine.
 
-> Merlin does not perform DSE. Merlin prevents DSE from optimizing the wrong abstraction.
+> Merlin tells a future DSE engine what the workload actually needs the HW/SW boundary to express,
+> what any design must satisfy, and what facts are still missing — without picking a design or
+> claiming a speedup.
+
+### The contract-analysis package (per workload)
+
+The DSE engine does not consume a flat MLIR graph + a list of knobs. It consumes
+(`merlin-dse-guidance --case-study`, per `<workload>/`):
+
+- `workload_contract_report.md` — the unified package (structure → numerical contract →
+  requirements → abstraction candidates → measurement plan → readiness).
+- `region_attribution.yaml` — region roles + real per-region IR facts (`prov.fqn`).
+- `numerical_contract.yaml` — storage/compute/accumulator precision + what the capture lost.
+- `design_envelope.yaml` + `requirements_table.csv` — hardware-independent requirements
+  (compute/bandwidth/capacity/command-rate) + optional roofline feasibility vs a candidate design.
+- `abstraction_candidates.yaml` — the HW/SW abstractions the workload implies (e.g.
+  `resident_weight_object`, `bounded_loop_command`, `packed_lowbit_tensor + scale_object`), each
+  with the compiler proof + runtime/HW support needed, the DSE knobs it exposes, and an explicit
+  *what_is_not_claimed*.
+- `measurement_plan.yaml` — what to measure next, split into measurable-now (accuracy + runtime
+  **proxy**) vs needs-**target**-design.
+- `dse_readiness.yaml` — is this workload ready for a DSE tool to rank designs, and what's missing.
 
 For VLA accelerator DSE, Merlin recovers **two contracts that flat captures obscure**: the
 **temporal contract** — which regions repeat, persist, or run at different rates (`topology.py`,
@@ -20,6 +41,30 @@ on measurement. Concretely: across the captured zoo, every int8/fp8 model stores
 but runs **f32 matmuls** — native low-bit compute and the packed layout are absent from the
 capture (a hidden DSE axis), reported by the numerical-contract audit with no speedup/accuracy
 claim. See `merlin/benchmarks/dse_guidance/case_study/`.
+
+## Design envelope vs calibration
+
+We do **not** calibrate nonexistent hardware. For a not-yet-existent accelerator, a model fitted to
+one existing instance does not transfer to a proposed design (and the P1 work showed whole-model
+coefficients aren't even identifiable). Instead:
+
+- **Requirements** are derived from the workload contract + the real-time deadline, hardware-
+  independent: `required_compute_rate`, `required_bandwidth`, `resident_capacity` (per dtype),
+  `required_command_rate`, `avoidable_weight_reload`. (`design_envelope.py`)
+- **Feasibility / lower bounds** use **analytical roofline** against an *optional, hypothetical*
+  candidate design (`compute_bound`, `memory_bound`, `latency_lower_bound`, capacity/dtype/command
+  feasibility) — labelled `design_assumption`, not measured.
+- **Measurement** grounds only (a) real system interactions that exist regardless of the future
+  accelerator — CPU/runtime coupling (a `proxy_measured` host signal) — and (b) accuracy of a
+  numerical contract (`accuracy_measurable_now`). Everything needing the proposed design is
+  `needs_target_design` and stays gated.
+- **Calibration is demoted** to a sanity-check / anchor for an *existing* target only
+  (`cost_calibration.py`, `measured_cycles.yaml`) — never future-HW prediction.
+
+So the precision↔capacity coupling becomes a clean, hardware-independent DSE insight, e.g. for RDT
+the repeated head is **197 GMAC/replan**, **1.56 GB avoidable reload**, and a resident set of
+**196 MB (bf16) / 98 MB (int8) / 49 MB (int4)** — datatype determines whether residency is even
+feasible, with no speedup claimed.
 
 ## Pipeline order (structural first, quantitative last)
 

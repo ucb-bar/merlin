@@ -1,0 +1,64 @@
+# region_attribution (Level-1, prov.fqn): openvla
+topology_recovery:
+  attribution_status: partial
+  level: 1
+  regions:
+  - attribution_status: attributed
+    confidence: 0.7
+    facts:
+      activation_bytes_per_invocation: 626688
+      activation_bytes_total: 626688
+      invocations: 1
+      macs_per_invocation: 37601280
+      macs_total: 37601280
+      matmul_count: 8
+      weight_bytes: 8847360
+    invocations: 1
+    matmul_count_attributed: 8
+    reason: 8 matmuls assigned by prov_fqn
+    role: backbone_once
+    source: prov_fqn
+  - attribution_status: attributed
+    confidence: 0.7
+    facts:
+      activation_bytes_per_invocation: 645120
+      activation_bytes_total: 4515840
+      invocations: 7
+      macs_per_invocation: 15728640
+      macs_total: 110100480
+      matmul_count: 15
+      weight_bytes: 3145728
+    invocations: 7
+    matmul_count_attributed: 15
+    reason: 15 matmuls assigned by prov_fqn
+    role: repeated_head
+    source: prov_fqn
+  - attribution_status: unknown
+    confidence: 0.0
+    facts:
+      activation_bytes_per_invocation: 356352
+      activation_bytes_total: 356352
+      invocations: 1
+      macs_per_invocation: 26214400
+      macs_total: 26214400
+      matmul_count: 3
+      weight_bytes: 6553600
+    invocations: 1
+    matmul_count_attributed: 3
+    reason: no explicit mapping rule matched; role not recoverable from the flat capture
+    role: unknown
+    source: unknown
+  repeated_shape_signatures:
+  - count: 7
+    signature:
+    - 20
+    - 128
+    - 512
+  - count: 4
+    signature:
+    - 20
+    - 128
+    - 256
+  unresolved:
+  - '3/26 matmuls unattributed: their prov.fqn matched no role keyword (extend _FQN_ROLE_KEYWORDS or add an explicit rule)'
+workload: openvla

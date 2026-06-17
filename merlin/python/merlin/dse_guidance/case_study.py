@@ -22,6 +22,8 @@ from merlin.common import paths
 from merlin.common.artifacts import Artifact
 from merlin.dse_guidance import attribution as ATTR
 from merlin.dse_guidance import candidates as CAND
+from merlin.dse_guidance import contract as CON
+from merlin.dse_guidance import design_envelope as DE
 from merlin.dse_guidance import numerical_contract as NC
 from merlin.dse_guidance import temporal as T
 from merlin.dse_guidance import topology as TOP
@@ -68,11 +70,17 @@ class WorkloadCase:
 
 
 def analyze(workload: str) -> WorkloadCase:
+    from merlin.dse_guidance import models as M
     spec = RECAP_MODELS[workload]
     K = int(spec["K"])
+    # Action horizon H and control rate are architecture facts (not the denoise/decode count K);
+    # pull them from the model registry so the replan deadline is correct (H != K).
+    arch = M.MODEL_ARCH.get(workload)
+    H = int(arch.action_horizon) if (arch and arch.action_horizon) else K
+    control = float(arch.control_rate_hz) if (arch and arch.control_rate_hz) else 30.0
     temporal = T.parse({
         "workload": workload, "class": spec["class"],
-        "timing": {"K": K, "H": K, "control_rate_hz": 30},
+        "timing": {"K": K, "H": H, "control_rate_hz": control},
         "regions": [
             {"name": "backbone", "role": "backbone_once", "invocation_count": 1},
             {"name": "head", "role": "repeated_head", "invocation_count": K,
@@ -251,18 +259,43 @@ def run_case_study(out_dir) -> dict:
     cases = [analyze(w) for w in models]
     Artifact("cross_workload_provenance.csv", provenance_csv(cases)).write(out)
     Artifact("case_study.md", case_study_md(cases)).write(out)
+    envelopes = []
     for c in cases:
+        cap = str(_recap_dir(c.workload))
+        dtype = NC.extract_numerical_facts(cap).get("compute_dtype", "f32")
         yaml_artifact(f"{c.workload}/region_attribution.yaml", ATTR.to_yaml_obj(c.attribution),
                       header=f"region_attribution (Level-1, prov.fqn): {c.workload}").write(out)
         Artifact(f"{c.workload}/dse_candidate_axes.md",
                  CAND.markdown(c.topo, c.candidates)).write(out)
         # numerical contract per recaptured workload (fp32 -> low-bit opportunity)
-        nc = NC.audit(str(_recap_dir(c.workload)), workload=c.workload, workload_class=c.cls,
+        nc = NC.audit(cap, workload=c.workload, workload_class=c.cls,
                       repeated_head_weight_bytes=_head_weight_bytes(c),
-                      has_epilogue=bool(c.attribution.role("repeated_head")
-                                        and any(r.role == "repeated_head" for r in c.attribution.regions)))
+                      has_epilogue=bool(c.attribution.role("repeated_head")))
         yaml_artifact(f"{c.workload}/numerical_contract.yaml", NC.to_yaml_obj(nc),
                       header=f"numerical_contract: {c.workload}").write(out)
+        # design envelope (hardware-independent requirements)
+        env = DE.from_recovered(c.topo, c.attribution, captured_dtype=dtype)
+        if env is not None:
+            envelopes.append(env)
+            yaml_artifact(f"{c.workload}/design_envelope.yaml", DE.to_yaml_obj(env),
+                          header=f"design_envelope (requirements, not calibration): {c.workload}").write(out)
+            Artifact(f"{c.workload}/design_envelope.md", DE.markdown(env)).write(out)
+        # workload-contract package: abstraction candidates + readiness + measurement plan + report
+        cands = CON.abstraction_candidates(c.candidates, nc)
+        readiness = CON.dse_readiness(c.topo, c.attribution, nc, cpu_coupling_available=False)
+        plan = CON.measurement_plan(cands)
+        yaml_artifact(f"{c.workload}/abstraction_candidates.yaml", CON.abstraction_yaml(cands),
+                      header=f"abstraction_candidates: {c.workload}").write(out)
+        yaml_artifact(f"{c.workload}/dse_readiness.yaml", CON.readiness_yaml(readiness),
+                      header=f"dse_readiness: {c.workload}").write(out)
+        yaml_artifact(f"{c.workload}/measurement_plan.yaml", {"measurement_plan": plan},
+                      header=f"measurement_plan: {c.workload}").write(out)
+        Artifact(f"{c.workload}/workload_contract_report.md",
+                 CON.workload_contract_report_md(c.topo, c.attribution, nc, env, cands,
+                                                 readiness, plan)).write(out)
+    if envelopes:
+        Artifact("requirements_table.csv", DE.requirements_csv(envelopes)).write(out)
+
     # cross-zoo numerical-contract report (shows low-bit compute lost across the quantized zoo)
     zoo = zoo_numerical_audit()
     Artifact("numerical_contract_fidelity_report.md", NC.fidelity_report_md(zoo)).write(out)
