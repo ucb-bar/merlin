@@ -18,6 +18,13 @@ from merlin.dse_guidance.design_envelope import E_IR, E_NA
 
 _MAX_HOPS = 3   # local epilogue window: follow linalg.generic consumer chains this far
 
+# value-preserving layout ops: a matmul output reshaped by these before any elementwise op has its
+# downstream ops *reshape-separated* (not directly fused). We deliberately do NOT traverse them to
+# grab the downstream op, because a reshape-distant addf/mulf is ambiguous (residual / rotary /
+# gating / norm), not a fusible bias/scale — claiming it would over-state the fusion.
+_SHAPE_OPS = {"tensor.expand_shape", "tensor.collapse_shape", "tensor.extract_slice",
+              "linalg.transpose"}
+
 # elementwise op-class -> the epilogue flag it sets
 _BIAS = {"arith.addf"}
 _SCALE = {"arith.mulf"}
@@ -59,6 +66,7 @@ class EpiloguePattern:
     has_clamp: bool
     has_cast: bool
     epilogue_generic_count: int
+    reshape_separated_epilogue: bool   # matmul output reshaped before any elementwise op
     evidence: str
 
 
@@ -95,9 +103,14 @@ def epilogue_patterns(capture_dir: str) -> tuple[EpiloguePattern, ...]:
             op_kind = str(v).strip().strip('"')
         if op_kind == "addmm":
             flags["bias"] = True          # addmm = matmul + bias
+        # directly-fused vs reshape-separated: is the immediate consumer an elementwise generic,
+        # or a value-preserving layout op (reshape) that separates any downstream elementwise op?
+        direct = [u.operation for r in mm.results for u in r.uses]
+        direct_generic = any(o.name == "linalg.generic" for o in direct)
+        reshape_separated = (not direct_generic) and any(o.name in _SHAPE_OPS for o in direct)
         n_generic = 0
         visited: set[int] = set()
-        frontier = [u.operation for r in mm.results for u in r.uses]
+        frontier = list(direct)
         hops = 0
         while frontier and hops < _MAX_HOPS:
             nxt = []
@@ -125,7 +138,7 @@ def epilogue_patterns(capture_dir: str) -> tuple[EpiloguePattern, ...]:
             index=i, op_kind=op_kind, pattern=_pattern_label(flags),
             has_bias=flags["bias"], has_activation=flags["activation"], has_scale=flags["scale"],
             has_clamp=flags["clamp"], has_cast=flags["cast"], epilogue_generic_count=n_generic,
-            evidence=E_IR))
+            reshape_separated_epilogue=reshape_separated, evidence=E_IR))
     return tuple(out)
 
 
@@ -279,9 +292,12 @@ def epilogue_pattern_csv(pat_by_workload: dict) -> str:
                          "pattern": p.pattern, "has_bias": p.has_bias,
                          "has_activation": p.has_activation, "has_scale": p.has_scale,
                          "has_clamp": p.has_clamp, "has_cast": p.has_cast,
-                         "epilogue_generics": p.epilogue_generic_count, "evidence": p.evidence})
+                         "epilogue_generics": p.epilogue_generic_count,
+                         "reshape_separated_epilogue": p.reshape_separated_epilogue,
+                         "evidence": p.evidence})
     return _csv(rows, ["workload", "op_index", "op_kind", "pattern", "has_bias", "has_activation",
-                       "has_scale", "has_clamp", "has_cast", "epilogue_generics", "evidence"])
+                       "has_scale", "has_clamp", "has_cast", "epilogue_generics",
+                       "reshape_separated_epilogue", "evidence"])
 
 
 def accumulator_contract_csv(acc_by_workload: dict) -> str:
@@ -373,6 +389,19 @@ def fusion_report_md(pat_by_workload: dict, acc_by_workload: dict, cert_by_workl
     L.append("|---|---|")
     for p, n in pat.most_common():
         L.append(f"| {p} | {n} |")
+    L.append("")
+    # directly-fused vs reshape-separated
+    n_reshape = sum(1 for pats in pat_by_workload.values() for p in pats
+                    if p.reshape_separated_epilogue)
+    n_plain = sum(1 for pats in pat_by_workload.values() for p in pats if p.pattern == "matmul")
+    L.append("## Directly-fused vs reshape-separated\n")
+    L.append(f"- Of the {n_plain} matmuls with **no directly-fused epilogue**, {n_reshape} are "
+             "`reshape_separated_epilogue` — their output is reshaped (collapse/expand/transpose) "
+             "before any elementwise op, so downstream ops (residual add, rotary, SiLU gating) are "
+             "**not directly fused**. This is the bias-free LLaMA-style projection pattern. The "
+             "reshape-distant ops are deliberately **not** labelled bias/scale: a reshape-distant "
+             "addf/mulf is ambiguous (residual / rotary / gating / norm), so claiming it would "
+             "over-state the fusion — it is reported as a layout-separated boundary instead.")
     L.append("")
     L.append("## Where numerical structure is preserved vs erased\n")
     L.append("- **Preserved (`recovered_from_ir`):** the matmul→bias epilogue (addmm / addf) and the "
