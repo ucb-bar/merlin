@@ -689,10 +689,18 @@ def run_case_study(out_dir) -> dict:
     Artifact("processing_unit_parallelism_report.md",
              RH.processing_unit_report_md(units, pressure, clusters, dags)).write(out)
     # P8 pipeline / multi-rate overlap / processing-unit multiplicity guidance (structural)
+    from merlin.dse_guidance import models as _M
+    _VLA_FAMILIES = {"flow_matching", "diffusion", "autoregressive_vla"}
+
+    def _has_control_loop(w: str) -> bool:
+        a = _M.MODEL_ARCH.get(w)
+        return bool(a and a.family in _VLA_FAMILIES and a.control_rate_hz and a.action_horizon)
+
     graph_by_wl = {g.workload: g for g in graphs}
     phase_by_wl = {w: PE.phase_model(graph_by_wl[w], geom_by_workload[w])
                    for w in geom_by_workload}
-    overlap_by_wl = {w: PE.overlap_candidates(graph_by_wl[w], phase_by_wl[w])
+    overlap_by_wl = {w: PE.overlap_candidates(graph_by_wl[w], phase_by_wl[w],
+                                              has_control_loop=_has_control_loop(w))
                      for w in phase_by_wl}
     yaml_artifact("pipeline_envelope.yaml", PE.pipeline_envelope_yaml(phase_by_wl),
                   header="pipeline_envelope (multi-rate phase model; no speedup)").write(out)

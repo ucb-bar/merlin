@@ -3,23 +3,23 @@ pipeline_candidates:
   note: candidate phase overlaps. can_overlap is a STRUCTURAL judgement (yes/no/unknown) from the recovered dependencies + cadences — NOT a schedule and NOT a speedup. Each carries the buffering/event/queue abstraction it would require and the evidence still missing. 'yes' means structurally permitted, not realized.
   workloads:
   - candidates:
-    - can_overlap: 'yes'
+    - can_overlap: unknown
       dependency_type: cross_replan_no_shared_state
       event_queue_support:
       - async_queue
       - event_token
-      evidence: derived_requirement
-      missing_evidence: per-phase timing (to size the overlap)
+      evidence: unavailable
+      missing_evidence: backbone compute is not in this capture
       required_abstractions:
       - double_buffered_action_chunk
       - async_queue
       - event_token
       - prefix_state_object
-      required_buffer_count: 2
+      required_buffer_count: unavailable
       source_phase: backbone(next replan)
       target_phase: action_execution(current chunk)
       what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
-      why: backbone of replan n+1 shares no loop-carried state with replan n's head, so the rates decouple
+      why: no backbone compute is recovered in this capture (the capture is the head only) — the overlap target is not present
     - can_overlap: 'yes'
       dependency_type: read_only_resident_state
       event_queue_support:
@@ -157,23 +157,23 @@ pipeline_candidates:
       why: attention / KV structure is lowered into the matmul projections and not recoverable
     workload: openvla
   - candidates:
-    - can_overlap: 'yes'
+    - can_overlap: unknown
       dependency_type: cross_replan_no_shared_state
       event_queue_support:
       - async_queue
       - event_token
-      evidence: derived_requirement
-      missing_evidence: per-phase timing (to size the overlap)
+      evidence: unavailable
+      missing_evidence: backbone compute is not in this capture
       required_abstractions:
       - double_buffered_action_chunk
       - async_queue
       - event_token
       - prefix_state_object
-      required_buffer_count: 2
+      required_buffer_count: unavailable
       source_phase: backbone(next replan)
       target_phase: action_execution(current chunk)
       what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
-      why: backbone of replan n+1 shares no loop-carried state with replan n's head, so the rates decouple
+      why: no backbone compute is recovered in this capture (the capture is the head only) — the overlap target is not present
     - can_overlap: 'yes'
       dependency_type: read_only_resident_state
       event_queue_support:
@@ -203,22 +203,22 @@ pipeline_candidates:
       target_phase: head
       what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
       why: the repeated head is a bounded K-loop with loop-invariant weights — representable as a device-side bounded loop command, removing host re-dispatch per step
-    - can_overlap: 'yes'
+    - can_overlap: unknown
       dependency_type: different_cadence_producer_consumer
       event_queue_support:
       - producer_consumer_queue
       - event_token
-      evidence: derived_requirement
-      missing_evidence: the control-tick consumer is a runtime phase not in the model-forward capture; its timing is unavailable
+      evidence: unavailable
+      missing_evidence: no control loop in this workload's architecture
       required_abstractions:
       - double_buffered_action_chunk
       - producer_consumer_queue
       - event_token
-      required_buffer_count: 2
+      required_buffer_count: unavailable
       source_phase: control_tick_consumer
       target_phase: replan_inference(next)
       what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
-      why: the control loop consumes H actions at the control rate while the next replan computes — different cadences, no data dependency
+      why: this workload has no real-time control loop (not a VLA action head) — no control tick to decouple
     - can_overlap: unknown
       dependency_type: kv_dependency
       event_queue_support: []
@@ -234,23 +234,23 @@ pipeline_candidates:
       why: attention / KV structure is lowered into the matmul projections and not recoverable
     workload: small_llama
   - candidates:
-    - can_overlap: 'yes'
+    - can_overlap: unknown
       dependency_type: cross_replan_no_shared_state
       event_queue_support:
       - async_queue
       - event_token
-      evidence: derived_requirement
-      missing_evidence: per-phase timing (to size the overlap)
+      evidence: unavailable
+      missing_evidence: backbone compute is not in this capture
       required_abstractions:
       - double_buffered_action_chunk
       - async_queue
       - event_token
       - prefix_state_object
-      required_buffer_count: 2
+      required_buffer_count: unavailable
       source_phase: backbone(next replan)
       target_phase: action_execution(current chunk)
       what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
-      why: backbone of replan n+1 shares no loop-carried state with replan n's head, so the rates decouple
+      why: no backbone compute is recovered in this capture (the capture is the head only) — the overlap target is not present
     - can_overlap: 'yes'
       dependency_type: read_only_resident_state
       event_queue_support:
@@ -280,22 +280,22 @@ pipeline_candidates:
       target_phase: head
       what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
       why: the repeated head is a bounded K-loop with loop-invariant weights — representable as a device-side bounded loop command, removing host re-dispatch per step
-    - can_overlap: 'yes'
+    - can_overlap: unknown
       dependency_type: different_cadence_producer_consumer
       event_queue_support:
       - producer_consumer_queue
       - event_token
-      evidence: derived_requirement
-      missing_evidence: the control-tick consumer is a runtime phase not in the model-forward capture; its timing is unavailable
+      evidence: unavailable
+      missing_evidence: no control loop in this workload's architecture
       required_abstractions:
       - double_buffered_action_chunk
       - producer_consumer_queue
       - event_token
-      required_buffer_count: 2
+      required_buffer_count: unavailable
       source_phase: control_tick_consumer
       target_phase: replan_inference(next)
       what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
-      why: the control loop consumes H actions at the control rate while the next replan computes — different cadences, no data dependency
+      why: this workload has no real-time control loop (not a VLA action head) — no control tick to decouple
     - can_overlap: unknown
       dependency_type: kv_dependency
       event_queue_support: []
