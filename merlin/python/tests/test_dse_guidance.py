@@ -1635,20 +1635,35 @@ def test_pipeline_overlap_schema_and_double_buffer_rule():
     from merlin.dse_guidance import pipeline_envelope as PE
     g, shapes = _p8_inputs(K=5)
     phases = PE.phase_model(g, shapes)
-    cands = {(c.source_phase, c.target_phase): c for c in PE.overlap_candidates(g, phases)}
+    cands = {c.source_phase: c for c in PE.overlap_candidates(g, phases, has_control_loop=True)}
     for c in cands.values():
         assert c.can_overlap in ("yes", "no", "unknown")
         assert all(a in PE.ALLOWED_ABSTRACTIONS for a in c.required_abstractions)
         assert isinstance(c.required_buffer_count, int) or c.required_buffer_count == "unavailable"
-    # double-buffer rule: cross-replan backbone||execution and control||inference need 2 buffers
-    bb = next(c for c in cands.values() if c.source_phase.startswith("backbone(next"))
-    assert bb.can_overlap == "yes" and bb.required_buffer_count == 2
-    assert "double_buffered_action_chunk" in bb.required_abstractions
+    # double-buffer rule: the control||inference overlap (VLA) needs 2 buffers
+    ctrl = cands["control_tick_consumer"]
+    assert ctrl.can_overlap == "yes" and ctrl.required_buffer_count == 2
+    assert "double_buffered_action_chunk" in ctrl.required_abstractions
     # the bounded K-loop needs 1 buffer; KV pipelining is unknown -> unavailable
     loop = next(c for c in cands.values() if c.dependency_type == "bounded_loop")
     assert loop.required_buffer_count == 1 and "bounded_loop_command" in loop.required_abstractions
     kv = next(c for c in cands.values() if c.dependency_type == "kv_dependency")
     assert kv.can_overlap == "unknown" and kv.required_buffer_count == "unavailable"
+
+
+def test_overlap_candidates_gated_on_recovered_structure():
+    from merlin.dse_guidance import pipeline_envelope as PE
+    # head-only capture (no backbone compute) + no control loop -> both gated overlaps are unknown
+    g, shapes = _p8_inputs(K=5)              # single repeated_head op, no backbone ops
+    phases = PE.phase_model(g, shapes)
+    c = {x.source_phase: x for x in PE.overlap_candidates(g, phases, has_control_loop=False)}
+    bb = next(v for k, v in c.items() if k.startswith("backbone(next"))
+    assert bb.can_overlap == "unknown" and bb.required_buffer_count == "unavailable"  # no backbone
+    assert c["control_tick_consumer"].can_overlap == "unknown"                        # no control loop
+    # a VLA (control loop present) flips the control-tick overlap to a structural yes
+    c2 = {x.source_phase: x for x in PE.overlap_candidates(g, phases, has_control_loop=True)}
+    assert c2["control_tick_consumer"].can_overlap == "yes"
+    assert c2["control_tick_consumer"].required_buffer_count == 2
 
 
 def test_pipeline_missing_period_is_explicit():

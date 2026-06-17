@@ -117,9 +117,17 @@ def phase_model(graph, shapes) -> list[Phase]:
     return phases
 
 
-def overlap_candidates(graph, phases) -> list[OverlapCandidate]:
-    """Candidate phase overlaps, each evaluated against the recovered structure (no scheduling)."""
-    has_backbone = any(p.phase_class == PC_BACKBONE for p in phases)
+def overlap_candidates(graph, phases, has_control_loop: bool = False) -> list[OverlapCandidate]:
+    """Candidate phase overlaps, each evaluated against the recovered structure (no scheduling).
+
+    Two candidates are gated on per-workload recovered structure, not asserted uniformly: the
+    backbone/action overlap requires *recovered backbone compute* (a backbone phase with attributed
+    ops — absent when the capture is the head only), and the control-tick overlap requires a real
+    control loop (a VLA action chunk consumed at a control rate — absent for a plain LLM).
+    """
+    # backbone overlap is only meaningful if the capture actually contains backbone COMPUTE
+    bb = next((p for p in phases if p.phase_class == PC_BACKBONE), None)
+    has_backbone_compute = bb is not None and bb.resource_class != "unavailable"
     head = next((p for p in phases if p.phase_class in (PC_ACTION_HEAD, PC_DECODER)), None)
     head_id = head.phase_id if head else "head"
     out: list[OverlapCandidate] = []
@@ -128,15 +136,18 @@ def overlap_candidates(graph, phases) -> list[OverlapCandidate]:
     out.append(OverlapCandidate(
         source_phase="backbone(next replan)", target_phase="action_execution(current chunk)",
         dependency_type="cross_replan_no_shared_state",
-        can_overlap=("yes" if has_backbone else "unknown"),
+        can_overlap=("yes" if has_backbone_compute else "unknown"),
         why=("backbone of replan n+1 shares no loop-carried state with replan n's head, so the "
-             "rates decouple" if has_backbone else "no once-per-replan backbone phase in this capture"),
+             "rates decouple" if has_backbone_compute else
+             "no backbone compute is recovered in this capture (the capture is the head only) — "
+             "the overlap target is not present"),
         required_abstractions=["double_buffered_action_chunk", "async_queue", "event_token",
                                "prefix_state_object"],
-        required_buffer_count=(2 if has_backbone else "unavailable"),
+        required_buffer_count=(2 if has_backbone_compute else "unavailable"),
         event_queue_support=["async_queue", "event_token"],
-        missing_evidence="per-phase timing (to size the overlap)",
-        evidence=(E_DERIVED if has_backbone else E_NA)))
+        missing_evidence=("per-phase timing (to size the overlap)" if has_backbone_compute else
+                          "backbone compute is not in this capture"),
+        evidence=(E_DERIVED if has_backbone_compute else E_NA)))
 
     # 2) DMA prefetch of resident weights overlaps compute
     out.append(OverlapCandidate(
@@ -160,18 +171,24 @@ def overlap_candidates(graph, phases) -> list[OverlapCandidate]:
         missing_evidence="host dispatch/sync latency (to value the saved re-dispatches)",
         evidence=E_FQN))
 
-    # 4) control-tick consumption decoupled from replan inference (the VLA async loop)
+    # 4) control-tick consumption decoupled from replan inference (the VLA async loop) — only for
+    #    workloads that actually have a real-time control loop (a VLA action chunk + control rate)
     out.append(OverlapCandidate(
         source_phase="control_tick_consumer", target_phase="replan_inference(next)",
-        dependency_type="different_cadence_producer_consumer", can_overlap="yes",
-        why="the control loop consumes H actions at the control rate while the next replan computes "
-            "— different cadences, no data dependency",
+        dependency_type="different_cadence_producer_consumer",
+        can_overlap=("yes" if has_control_loop else "unknown"),
+        why=("the control loop consumes H actions at the control rate while the next replan "
+             "computes — different cadences, no data dependency" if has_control_loop else
+             "this workload has no real-time control loop (not a VLA action head) — no control "
+             "tick to decouple"),
         required_abstractions=["double_buffered_action_chunk", "producer_consumer_queue",
                                "event_token"],
-        required_buffer_count=2, event_queue_support=["producer_consumer_queue", "event_token"],
-        missing_evidence="the control-tick consumer is a runtime phase not in the model-forward "
-                         "capture; its timing is unavailable",
-        evidence=E_DERIVED))
+        required_buffer_count=(2 if has_control_loop else "unavailable"),
+        event_queue_support=["producer_consumer_queue", "event_token"],
+        missing_evidence=("the control-tick consumer is a runtime phase not in the model-forward "
+                          "capture; its timing is unavailable" if has_control_loop else
+                          "no control loop in this workload's architecture"),
+        evidence=(E_DERIVED if has_control_loop else E_NA)))
 
     # 5) decode token steps pipelined with KV movement — needs attention structure (not visible)
     out.append(OverlapCandidate(

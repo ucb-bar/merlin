@@ -15,7 +15,7 @@
 
 | candidate | can_overlap | required abstractions | buffers |
 |---|---|---|---|
-| backbone(next replan) ‖ action_execution(current chunk) | yes | double_buffered_action_chunk, async_queue, event_token, prefix_state_object | 2 |
+| backbone(next replan) ‖ action_execution(current chunk) | unknown | double_buffered_action_chunk, async_queue, event_token, prefix_state_object | unavailable |
 | dma_prefetch(resident weights) ‖ head | yes | resident_weight_object, async_queue | 2 |
 | head ‖ head | yes | bounded_loop_command, loop_carried_state_handle, resident_weight_object | 1 |
 | control_tick_consumer ‖ replan_inference(next) | yes | double_buffered_action_chunk, producer_consumer_queue, event_token | 2 |
@@ -23,14 +23,14 @@
 
 ## Abstractions repeatedly required for overlap
 
-- `double_buffered_action_chunk` — required by 8 candidate overlaps
-- `async_queue` — required by 8 candidate overlaps
-- `event_token` — required by 8 candidate overlaps
 - `resident_weight_object` — required by 8 candidate overlaps
-- `prefix_state_object` — required by 4 candidate overlaps
+- `async_queue` — required by 5 candidate overlaps
 - `bounded_loop_command` — required by 4 candidate overlaps
 - `loop_carried_state_handle` — required by 4 candidate overlaps
-- `producer_consumer_queue` — required by 4 candidate overlaps
+- `double_buffered_action_chunk` — required by 3 candidate overlaps
+- `event_token` — required by 3 candidate overlaps
+- `producer_consumer_queue` — required by 2 candidate overlaps
+- `prefix_state_object` — required by 1 candidate overlaps
 
 ## Findings
 

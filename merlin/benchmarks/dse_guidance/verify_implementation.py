@@ -646,6 +646,22 @@ def verify_p8_workload(w: str, graphs: dict) -> dict:
     p8check(abst_ok, f"[{w}] overlap required_abstractions in allowed vocabulary")
     p8check(buf_ok, f"[{w}] overlap buffer counts are positive ints or unavailable "
                     f"(yes-overlaps have >=1 buffer)")
+
+    # P8-F: gated overlaps reflect recovered per-workload structure (not a uniform template)
+    bb_ops = sum(int((n.get("work_summary") or {}).get("matmul_count") or 0)
+                 for n in g["nodes"] if n["kind"] == "region" and n["region_role"] == "backbone_once")
+    bb_yes = any(c["can_overlap"] == "yes" for c in cands
+                 if c["source_phase"].startswith("backbone(next"))
+    p8check((bb_ops > 0) == bb_yes,
+            f"[{w}] backbone overlap=yes iff recovered backbone compute exists (ops={bb_ops})")
+    from merlin.dse_guidance import models as _M
+    a = _M.MODEL_ARCH.get(w)
+    is_vla = bool(a and a.family in {"flow_matching", "diffusion", "autoregressive_vla"}
+                  and a.control_rate_hz and a.action_horizon)
+    ctrl_yes = any(c["can_overlap"] == "yes" for c in cands
+                   if c["source_phase"] == "control_tick_consumer")
+    p8check(is_vla == ctrl_yes,
+            f"[{w}] control-tick overlap=yes iff workload is a VLA with a control loop (vla={is_vla})")
     return {"workload": w, "phases": len(phases),
             "yes_overlaps": sum(1 for c in cands if c["can_overlap"] == "yes")}
 
