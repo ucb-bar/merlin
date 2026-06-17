@@ -46,6 +46,9 @@ CS_HIER = CS / "operator_cluster_to_hierarchy.csv"
 CS_RESPRESS = CS / "resource_pressure_table.csv"
 CS_PHASE_RATE = CS / "phase_rate_table.csv"
 CS_PIPE_STAGE = CS / "pipeline_stage_table.csv"
+CS_DATAMOVE = CS / "data_movement_table.csv"
+CS_DMA = CS / "dma_stream_table.csv"
+CS_BUFREQ = CS / "buffer_requirement_table.csv"
 ALLOWED_CADENCE = {"once_per_instruction", "once_per_replan", "K_times_per_replan", "token_loop",
                    "control_tick", "once_per_forward", "unknown"}
 ALLOWED_EVIDENCE = {"recovered_from_ir", "recovered_from_prov_fqn", "recovered_from_model_config",
@@ -690,6 +693,98 @@ def verify_p8_global() -> None:
     p8check(not leaked, f"P8 artifacts free of forbidden performance terms (found: {leaked})")
 
 
+# ============================================================ P9 memory / DMA / buffer envelope
+# Re-derived against the IR primitive: per-region weight bytes, the avoidable-reload formula, the
+# dtype-scaled resident set, and that DMA streams / buffers reference valid regions and name the
+# unavailable bytes explicitly.
+
+p9_results: list[tuple[bool, str]] = []
+
+
+def p9check(ok: bool, msg: str) -> None:
+    p9_results.append((bool(ok), msg))
+
+
+def verify_p9_workload(w: str) -> dict:
+    recs = ATTR.extract_matmuls(str(RECAP / w))
+    # independent per-role weight bytes + invocations from the IR primitive
+    K = int(RECAP_MODELS[w]["K"])
+    role_weight: dict[str, int] = {}
+    for r in recs:
+        role = ATTR.role_from_fqn(r.fqn)
+        if role:
+            role_weight[role] = role_weight.get(role, 0) + r.weight_bytes
+    dm = {r["region"]: r for r in _csv_rows(CS_DATAMOVE) if r["workload"] == w}
+
+    # P9-A: region weight bytes match the independent recompute
+    wb_ok = all(int(dm[role]["weight_bytes"]) == wb for role, wb in role_weight.items()
+                if role in dm)
+    p9check(wb_ok and set(role_weight) <= set(dm),
+            f"[{w}] data_movement weight bytes match IR recompute ({role_weight})")
+
+    # P9-B: avoidable reload == weight_bytes * max(inv - 1, 0)
+    reload_ok = True
+    for role, row in dm.items():
+        inv = int(row["invocations"])
+        if int(row["avoidable_weight_reload"]) != int(row["weight_bytes"]) * max(inv - 1, 0):
+            reload_ok = False
+    p9check(reload_ok, f"[{w}] avoidable_weight_reload == weight_bytes * max(inv-1, 0)")
+
+    # P9-C: dtype-scaled resident set matches the f32 element-count scaling (int8 = WB/4)
+    res_ok = True
+    for role, row in dm.items():
+        wb = int(row["weight_bytes"])
+        n = wb / ELEMENT_BYTES["f32"]
+        if not (_eq(row["resident_int8_B"], n * ELEMENT_BYTES["int8"])
+                and _eq(row["resident_bf16_B"], n * ELEMENT_BYTES["bf16"])):
+            res_ok = False
+    p9check(res_ok, f"[{w}] resident_by_dtype == weights scaled by element width (int8 == WB/4)")
+
+    # P9-D: intermediate / scale / KV bytes are explicitly unavailable (not invented)
+    una_ok = all(row["intermediate_bytes"] == "unavailable" and row["scale_bytes"] == "unavailable"
+                 and row["kv_bytes"] == "unavailable" for row in dm.values())
+    p9check(una_ok, f"[{w}] intermediate / scale / KV bytes explicitly unavailable")
+
+    # P9-E: DMA streams reference valid regions; byte-carrying streams have int bytes
+    regions = set(dm)
+    streams = [r for r in _csv_rows(CS_DMA) if r["workload"] == w]
+    sref_ok = all(r["region"] in regions for r in streams)
+    byte_ok = all((r["bytes"] == "unavailable") or r["bytes"].lstrip("-").isdigit()
+                  for r in streams)
+    p9check(sref_ok and byte_ok and streams,
+            f"[{w}] DMA streams reference valid regions; bytes int-or-unavailable")
+
+    # P9-F: buffer rows reference valid regions; counts are positive ints; double-buffer is yes/no/unknown
+    bufs = [r for r in _csv_rows(CS_BUFREQ) if r["workload"] == w]
+    buf_ok = all(r["region"] in regions and int(r["min_input_buffer_count"]) >= 1
+                 and int(r["min_output_buffer_count"]) >= 1
+                 and r["double_buffering_needed"] in ("yes", "no", "unknown") for r in bufs)
+    p9check(buf_ok and bufs, f"[{w}] buffer rows reference valid regions with positive counts")
+    return {"workload": w, "regions": len(dm),
+            "top_avoidable_reload": max((int(r["avoidable_weight_reload"]) for r in dm.values()),
+                                        default=0)}
+
+
+def verify_p9_global() -> None:
+    # candidate DMA abstractions are in the allowed vocabulary
+    from merlin.dse_guidance.dma_buffer_analysis import ALLOWED_DMA_ABSTRACTIONS
+    streams = _csv_rows(CS_DMA)
+    p9check(all(r["candidate_abstraction"] in ALLOWED_DMA_ABSTRACTIONS for r in streams),
+            "DMA candidate abstractions in allowed vocabulary")
+    # no bandwidth/speedup/cycle claim leaks into P9 artifacts
+    p9_files = ["memory_hierarchy_envelope.yaml", "data_movement_table.csv",
+                "reuse_lifetime_table.csv", "memory_abstraction_candidates.yaml",
+                "memory_envelope_report.md", "dma_stream_table.csv",
+                "buffer_requirement_table.csv", "dma_pressure_report.md"]
+    leaked = {}
+    for fn in p9_files:
+        low = (CS / fn).read_text(errors="ignore").lower()
+        for t in DANGEROUS:
+            if t in low:
+                leaked.setdefault(t, []).append(fn)
+    p9check(not leaked, f"P9 artifacts free of forbidden performance terms (found: {leaked})")
+
+
 def main(write: bool = True) -> int:
     rows = [verify_workload(w) for w in RECAP_MODELS if (RECAP / w / "model.mlir").is_file()]
     verify_global()
@@ -705,13 +800,18 @@ def main(write: bool = True) -> int:
     p8_rows = [verify_p8_workload(w, _graphs) for w in RECAP_MODELS
                if (RECAP / w / "model.mlir").is_file()]
     verify_p8_global()
+    p9_rows = [verify_p9_workload(w) for w in RECAP_MODELS
+               if (RECAP / w / "model.mlir").is_file()]
+    verify_p9_global()
 
-    passed = sum(1 for ok, _ in results + p5_results + p6_results + p7_results + p8_results if ok)
-    total = len(results) + len(p5_results) + len(p6_results) + len(p7_results) + len(p8_results)
+    _all = results + p5_results + p6_results + p7_results + p8_results + p9_results
+    passed = sum(1 for ok, _ in _all if ok)
+    total = len(_all)
     p5_passed = sum(1 for ok, _ in p5_results if ok)
     p6_passed = sum(1 for ok, _ in p6_results if ok)
     p7_passed = sum(1 for ok, _ in p7_results if ok)
     p8_passed = sum(1 for ok, _ in p8_results if ok)
+    p9_passed = sum(1 for ok, _ in p9_results if ok)
     L = ["# Implementation verification report\n",
          "> Independent re-derivation of the dse_guidance package: every number below is recomputed "
          "from the raw captures / base facts and cross-checked against the emitted artifacts. "
@@ -803,15 +903,30 @@ def main(write: bool = True) -> int:
              "abstraction vocabulary + positive/unavailable buffer counts), and that the "
              "processing-unit guidance references existing resource classes. Structural overlap "
              "candidates only — **no speedup**, no schedule.\n")
+
+    # P9 memory / DMA / buffer verification section
+    L.append("## P9 memory / DMA / buffer envelope verification\n")
+    L.append(f"**{p9_passed}/{len(p9_results)} P9 checks passed.**\n")
+    L.append("| workload | regions | top avoidable reload (B) |")
+    L.append("|---|---|---|")
+    for r in p9_rows:
+        L.append(f"| {r['workload']} | {r['regions']} | {r['top_avoidable_reload']:,} |")
+    L.append("\n### P9 checks\n")
+    for ok, msg in p9_results:
+        L.append(f"- [{'PASS' if ok else 'FAIL'}] {msg}")
+    L.append("\nP9 recomputes per-region weight bytes from the IR primitive, the avoidable-reload "
+             "formula (weight × max(K−1,0)), and the dtype-scaled resident set (int8 == WB/4); it "
+             "checks DMA streams/buffers reference valid regions and that intermediate/scale/KV "
+             "bytes are explicitly unavailable. **No bandwidth/speedup** is claimed (needs a design "
+             "YAML).\n")
     if write:
         (CS / "verification_report.md").write_text("\n".join(L) + "\n")
 
-    all_results = results + p5_results + p6_results + p7_results + p8_results
-    print("\n".join(f"[{'PASS' if ok else 'FAIL'}] {m}" for ok, m in all_results))
+    print("\n".join(f"[{'PASS' if ok else 'FAIL'}] {m}" for ok, m in _all))
     dest = f" -> {CS / 'verification_report.md'}" if write else ""
     print(f"\n{passed}/{total} checks passed ({p5_passed}/{len(p5_results)} P5, "
           f"{p6_passed}/{len(p6_results)} P6, {p7_passed}/{len(p7_results)} P7, "
-          f"{p8_passed}/{len(p8_results)} P8){dest}")
+          f"{p8_passed}/{len(p8_results)} P8, {p9_passed}/{len(p9_results)} P9){dest}")
     return 0 if passed == total else 1
 
 

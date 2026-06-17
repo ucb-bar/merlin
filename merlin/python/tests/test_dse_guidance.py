@@ -1713,6 +1713,100 @@ def test_p8_reports_have_no_forbidden_wording():
                 assert "no speedup" in ln or "not a speedup" in ln
 
 
+# ============================================================ P9 memory / DMA / buffer envelope
+
+def _mem_inputs(K=5):
+    from merlin.dse_guidance import operator_geometry as OG
+    topo = TOP.from_temporal(T.parse({
+        "workload": "m", "class": "diffusion/denoise_steps", "timing": {"K": K, "H": K,
+        "control_rate_hz": 30}, "regions": [{"name": "head", "role": "repeated_head",
+        "invocation_count": K, "loop_invariant_state": ["weights"]}]}))
+    recs = (_mm(8, 256, 128, fqn="model.denoise.0", idx=0),)   # M=8, N=256, K=128 (f32)
+    attr = ATTR.attribute_records(recs, topo)
+    return attr, OG.operator_shapes(recs, "m", attr)
+
+
+def test_memory_envelope_schema_and_avoidable_reload():
+    from merlin.dse_guidance import memory_envelope as ME
+    from merlin.dse_guidance.design_envelope import E_IR
+    attr, shapes = _mem_inputs(K=5)
+    rm = ME.region_memory(attr, shapes)[0]
+    assert rm.region == "repeated_head" and rm.invocations == 5
+    assert rm.weight_bytes == 128 * 256 * 4 and rm.activation_input_bytes == 8 * 128 * 4
+    assert rm.output_bytes == 8 * 256 * 4
+    assert rm.avoidable_weight_reload == rm.weight_bytes * 4         # weight * (K-1)
+    assert rm.lifetime == "across_K" and rm.evidence == E_IR
+    # bytes a flat dequantized capture cannot expose are unavailable, not invented
+    assert rm.intermediate_bytes is None and rm.scale_bytes is None and rm.kv_bytes is None
+
+
+def test_memory_envelope_dtype_resident_scaling():
+    from merlin.dse_guidance import memory_envelope as ME
+    attr, shapes = _mem_inputs(K=5)
+    rm = ME.region_memory(attr, shapes)[0]
+    assert rm.resident_by_dtype["int8"] == rm.weight_bytes // 4    # f32 -> int8 is /4
+    assert rm.resident_by_dtype["bf16"] == rm.weight_bytes // 2
+
+
+def test_dma_stream_classification_and_missing_kv_scale():
+    from merlin.dse_guidance import memory_envelope as ME, dma_buffer_analysis as DMA
+    from merlin.dse_guidance.design_envelope import E_NA
+    attr, shapes = _mem_inputs(K=5)
+    rm = ME.region_memory(attr, shapes)[0]
+    streams = {s.stream: s for s in DMA.region_streams(rm)}
+    assert streams["weight"].bytes == rm.weight_bytes and streams["weight"].direction == "read"
+    assert streams["weight"].prefetchable == "yes"
+    assert streams["output"].direction == "write"
+    # scale-sideband and KV streams are unavailable (dequantized capture / attention lowered)
+    assert streams["scale_sideband"].bytes == "unavailable" and streams["scale_sideband"].sideband
+    assert streams["scale_sideband"].evidence == E_NA
+    assert streams["kv_prefix"].bytes == "unavailable"
+    assert all(s.candidate_abstraction in DMA.ALLOWED_DMA_ABSTRACTIONS for s in streams.values())
+
+
+def test_buffer_requirement_double_buffer_rule():
+    from merlin.dse_guidance import memory_envelope as ME, dma_buffer_analysis as DMA
+    attr, shapes = _mem_inputs(K=5)
+    b = DMA.buffer_requirements(ME.region_memory(attr, shapes))[0]
+    assert b.min_input_buffer_count == 2 and b.min_output_buffer_count == 2   # double-buffered
+    assert b.double_buffering_needed == "yes"
+    assert b.input_buffer_bytes == 8 * 128 * 4 and b.resident_weight_bytes == 128 * 256 * 4
+
+
+def test_p9_reports_have_no_forbidden_wording():
+    from merlin.dse_guidance import memory_envelope as ME, dma_buffer_analysis as DMA
+    attr, shapes = _mem_inputs(K=5)
+    rm = ME.region_memory(attr, shapes)
+    mem = {"m": rm}
+    blobs = [ME.memory_envelope_report_md(mem).lower(),
+             str(ME.memory_hierarchy_yaml(mem)).lower(),
+             DMA.dma_pressure_report_md({"m": DMA.all_streams(rm)}, mem).lower(),
+             str(ME.memory_abstraction_candidates_yaml({"m": ME.reuse_lifetime(rm)})).lower()]
+    for b in blobs:
+        for term in ("gap_closure", "faster", "optimal", "predicted cycles", "improvement"):
+            assert term not in b, f"forbidden term {term!r}"
+        for ln in b.splitlines():
+            if "speedup" in ln:
+                assert "no speedup" in ln or "not a speedup" in ln or "no bandwidth/speedup" in ln
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_case_study_emits_p9_artifacts(tmp_path):
+    from merlin.dse_guidance import case_study as CS
+    CS.run_case_study(tmp_path)
+    for f in ("memory_hierarchy_envelope.yaml", "data_movement_table.csv",
+              "reuse_lifetime_table.csv", "memory_abstraction_candidates.yaml",
+              "memory_envelope_report.md", "dma_stream_table.csv",
+              "buffer_requirement_table.csv", "dma_pressure_report.md"):
+        assert (tmp_path / f).is_file(), f"missing {f}"
+    import csv, io
+    dm = list(csv.DictReader(io.StringIO((tmp_path / "data_movement_table.csv").read_text())))
+    for r in dm:
+        assert int(r["avoidable_weight_reload"]) == int(r["weight_bytes"]) * max(
+            int(r["invocations"]) - 1, 0)
+        assert r["scale_bytes"] == "unavailable" and r["kv_bytes"] == "unavailable"
+
+
 @pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
 def test_case_study_emits_p8_artifacts(tmp_path):
     from merlin.dse_guidance import case_study as CS
