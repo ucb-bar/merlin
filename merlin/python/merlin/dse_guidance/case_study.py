@@ -421,6 +421,74 @@ def _case_study_summary_md(packages) -> str:
     return "\n".join(L)
 
 
+# curated topic -> artifact map (the entry points a consumer actually wants).
+_ARTIFACT_INDEX = {
+    "readme": "README.md",
+    "summary": "case_study_summary.md",
+    "workload_contract": "workload_contract_table.csv",
+    "requirements": "requirements_table.csv",
+    "dse_readiness": "dse_readiness_summary.csv",
+    "consolidated_knobs": "dse_search_space_knobs.yaml",
+    "operator_geometry": "operator_shape_table.csv",
+    "primitive_coverage": "primitive_coverage_matrix.csv",
+    "contract_graph": "workload_contract_graph.yaml",
+    "parallelism": "critical_path_table.csv",
+    "sharding": "sharding_table.csv",
+    "memory_envelope": "data_movement_table.csv",
+    "dma_streams": "dma_stream_table.csv",
+    "fusion_epilogue": "epilogue_pattern_table.csv",
+    "boundary_matrix": "hw_sw_boundary_matrix.csv",
+    "boundary_contracts": "boundary_candidate_contracts.yaml",
+    "responsibility_matrix": "responsibility_split_matrix.csv",
+    "measurement_priority": "measurement_priority_table.csv",
+    "accuracy_gate": "accuracy_gate_report.md",
+}
+
+
+def _dse_contract_manifest(packages, knob_catalog, boundary_certs) -> dict:
+    """One machine-readable object a DSE engine (or a human) loads to consume the whole package:
+    per-workload readiness + facts, the consolidated knob groups, the boundary-placement top, the
+    measurements still needed, and a topic->artifact index. Pointers, not duplication."""
+    per_wl = {}
+    missing_union: set = set()
+    for p in packages:
+        c = p["case"]
+        r = p["readiness"]
+        per_wl[c.workload] = {
+            "class": c.cls, "K": c.K, "K_source": "recovered_from_model_config",
+            "roles": sorted({reg.role for reg in c.attribution.regions}),
+            "head_weight_bytes": _head_weight_bytes(c),
+            "accuracy_int8": p["acc"], "ready_structural_dse": True,
+            "ready_quantitative_dse": bool(r.ready),
+            "missing_before_quantitative_dse": list(r.missing)}
+        missing_union.update(r.missing)
+    groups = knob_catalog["dse_search_space_knobs"]["knob_groups"]
+    top_boundary = sorted(boundary_certs, key=lambda c: -c.boundary_pressure_score)[:8]
+    return {
+        "schema_version": "1",
+        "generator": "merlin.dse_guidance case study (P1-P12)",
+        "what_is_not_claimed": "no speedup, cycles, area, energy, or a chosen/ranked design; this "
+                               "is a DSE search space + workload contract, not a selection. Magnitudes "
+                               "are small random-init capture instances.",
+        "workloads": sorted(per_wl),
+        "per_workload": per_wl,
+        "search_space_knob_groups": [
+            {"group": g["group"], "source_phase": g["source_phase"], "enabled": g["enabled"],
+             "n_knobs": len(g["knobs"])} for g in groups],
+        "boundary_placement": {
+            "n_abstractions": len(boundary_certs),
+            "levels": list(BP.LEVELS),
+            "score_is": "evidence_breadth (not performance/priority)",
+            "top_by_evidence_breadth": [
+                {"abstraction": c.abstraction, "boundary_pressure_score": c.boundary_pressure_score,
+                 "strong_levels": [b["level"] for b in c.boundary_levels
+                                   if b["status"] == "strong_candidate"],
+                 "supporting_workloads": c.supporting_workloads} for c in top_boundary]},
+        "measurements_needed_before_quantitative_dse": sorted(missing_union),
+        "artifacts_index": dict(_ARTIFACT_INDEX),
+    }
+
+
 def _dse_search_space_knobs(all_shapes, all_axes, dags, units, overlap_by_wl, pat_by_wl,
                             region_mem_by_wl, boundary_certs=None) -> dict:
     """Consolidate the structural search-space knobs discovered across P5-P10 into one catalog —
@@ -522,6 +590,10 @@ def _readme_md(packages) -> str:
     names = ", ".join(p["case"].workload for p in packages)
     return (
         "# Merlin workload-contract analysis — case study\n\n"
+        "**Consume this package as one object:** `dse_contract.json` is the machine-readable "
+        "manifest (per-workload readiness + facts, the search-space knob groups, the boundary-"
+        "placement top, the measurements still needed, and a topic→artifact index). Query it with "
+        "`merlin-dse-guidance --query {summary,knobs,boundary[:abstraction],missing,index}`.\n\n"
         "Merlin is a compiler-based **workload-contract analysis** tool for accelerator DSE. It "
         "does not pick a design and does not calibrate against existing hardware. It recovers the "
         "temporal + numerical workload contract a flat capture erases and emits a DSE-ready "
@@ -921,6 +993,11 @@ def run_case_study(out_dir) -> dict:
     yaml_artifact("dse_search_space_knobs.yaml", knob_catalog,
                   header="dse_search_space_knobs (consolidated P5-P10; no speedup)").write(out)
     Artifact("dse_search_space_knobs.md", _dse_search_space_knobs_md(knob_catalog)).write(out)
+    # Single machine-readable manifest a DSE engine / human loads to consume the whole package
+    import json as _json
+    manifest = _dse_contract_manifest(packages, knob_catalog, boundary_certs)
+    Artifact("dse_contract.json",
+             _json.dumps(manifest, indent=2, sort_keys=True) + "\n").write(out)
     # TorchAO integration plan (a plan, not a sweep)
     Artifact("torchao_integration_plan.md", NC.torchao_integration_plan_md()).write(out)
     # accuracy gate (measurable-now real leg)

@@ -2124,6 +2124,31 @@ def test_boundary_no_forbidden_wording():
 
 
 @pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_dse_contract_manifest_and_query(tmp_path):
+    # the single machine-readable consume entry point + the --query CLI on top of it
+    import json
+    from merlin.dse_guidance import case_study as CS
+    from merlin.dse_guidance import cli
+    CS.run_case_study(tmp_path)
+    mf = tmp_path / "dse_contract.json"
+    assert mf.is_file()
+    m = json.loads(mf.read_text())
+    for k in ("workloads", "per_workload", "search_space_knob_groups", "boundary_placement",
+              "measurements_needed_before_quantitative_dse", "artifacts_index",
+              "what_is_not_claimed"):
+        assert k in m, f"manifest missing {k}"
+    assert set(m["workloads"]) == set(CS.available_models())
+    for v in m["artifacts_index"].values():
+        assert (tmp_path / v).is_file(), f"index points at missing {v}"
+    assert m["boundary_placement"]["score_is"].startswith("evidence_breadth")
+    assert m["boundary_placement"]["top_by_evidence_breadth"]
+    # the --query CLI consumes the manifest
+    for q in ("summary", "knobs", "boundary", "missing", "index",
+              "boundary:resident_weight_object"):
+        assert cli.main(["--query", q, "--out", str(tmp_path)]) == 0
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
 def test_case_study_emits_p12_artifacts(tmp_path):
     from merlin.dse_guidance import case_study as CS
     from merlin.common.yaml import load_yaml

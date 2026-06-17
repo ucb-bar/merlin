@@ -239,6 +239,22 @@ def verify_global() -> None:
           f"consolidated DSE knob catalog aggregates P5-P10 (phases={sorted(phases)}), valid "
           f"evidence, primitive knobs match the P5 candidate set")
 
+    # --- N: the machine-readable contract manifest is well-formed, references real artifacts, and
+    # its per-workload set matches the recaptures (the single consume entry point) ---
+    import json as _json
+    man = _json.loads((CS / "dse_contract.json").read_text())
+    req_keys = {"workloads", "per_workload", "search_space_knob_groups", "boundary_placement",
+                "measurements_needed_before_quantitative_dse", "artifacts_index",
+                "what_is_not_claimed"}
+    wl_ok = set(man.get("workloads", [])) == {w for w in RECAP_MODELS
+                                              if (RECAP / w / "model.mlir").is_file()}
+    idx_ok = all((CS / v).is_file() for v in man.get("artifacts_index", {}).values())
+    man_low = (CS / "dse_contract.json").read_text().lower()
+    clean = not any(t in man_low for t in DANGEROUS + ("optimal",))
+    check(req_keys <= set(man) and wl_ok and idx_ok and clean,
+          f"dse_contract.json well-formed, workloads match recaptures, artifact index resolves "
+          f"({len(man.get('artifacts_index', {}))} entries), no forbidden terms")
+
 
 # ============================================================ P5 operator geometry + coverage
 # Re-derived INDEPENDENTLY here (the taxonomy thresholds + tile arithmetic are re-implemented, not
