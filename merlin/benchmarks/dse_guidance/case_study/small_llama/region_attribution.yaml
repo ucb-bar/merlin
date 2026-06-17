@@ -1,38 +1,23 @@
 # region_attribution (Level-1, prov.fqn): small_llama
 topology_recovery:
-  attribution_status: partial
+  attribution_status: attributed
   level: 1
   regions:
   - attribution_status: attributed
     confidence: 0.7
     facts:
-      activation_bytes_per_invocation: 156160
-      activation_bytes_total: 4997120
+      activation_bytes_per_invocation: 168448
+      activation_bytes_total: 5390336
       invocations: 32
-      macs_per_invocation: 3162112
-      macs_total: 101187584
-      matmul_count: 14
-      weight_bytes: 1581056
+      macs_per_invocation: 3424256
+      macs_total: 109576192
+      matmul_count: 15
+      weight_bytes: 1712128
     invocations: 32
-    matmul_count_attributed: 14
-    reason: 14 matmuls assigned by prov_fqn
+    matmul_count_attributed: 15
+    reason: 15 matmuls assigned by prov_fqn
     role: repeated_head
     source: prov_fqn
-  - attribution_status: unknown
-    confidence: 0.0
-    facts:
-      activation_bytes_per_invocation: 12288
-      activation_bytes_total: 12288
-      invocations: 1
-      macs_per_invocation: 262144
-      macs_total: 262144
-      matmul_count: 1
-      weight_bytes: 131072
-    invocations: 1
-    matmul_count_attributed: 1
-    reason: no explicit mapping rule matched; role not recoverable from the flat capture
-    role: unknown
-    source: unknown
   repeated_shape_signatures:
   - count: 8
     signature:
@@ -44,6 +29,5 @@ topology_recovery:
     - 8
     - 128
     - 344
-  unresolved:
-  - '1/15 matmuls unattributed: their prov.fqn matched no role keyword (extend _FQN_ROLE_KEYWORDS or add an explicit rule)'
+  unresolved: []
 workload: small_llama

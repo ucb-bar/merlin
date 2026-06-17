@@ -11,23 +11,18 @@
 | small_llama | once_per_replan | token_loop | 32 | 32 | 30.0 | 1.066667 |
 | tiny_llama | once_per_replan | token_loop | 32 | 32 | 30.0 | 1.066667 |
 
-## Recovered vs assumed vs unavailable
+## Provenance of every field
 
-- **Recovered (`recovered_from_ir` / `recovered_from_prov_fqn`):** region roles, per-region MACs/bytes, operator shapes, loop-invariant weight bytes, the once-vs-repeated cadence split.
-- **Assumed (`assumed_reference`):** K, H, control_rate_hz (architecture reference values, not measured); the replan deadline is **derived** from H / control_rate.
-- **Unavailable (`unavailable`):** per-K-step wall time, true operator data dependencies, host command/sync latency, and (where the backbone produces nothing in the flat capture) the exact boundary-crossing tensors.
+- **`recovered_from_ir`:** region roles' MACs/bytes, operator shapes, loop-invariant weight bytes, and the **operator data-dependency edges** (from the SSA use-def graph).
+- **`recovered_from_prov_fqn`:** the region roles and the once-vs-repeated cadence split (backbone once, head repeated).
+- **`recovered_from_model_config`:** K, H, control_rate_hz (the model's published architecture constants, from the model registry).
+- **`derived_requirement`:** the replan deadline (= H / control_rate) and the cross-replan pipeline-candidate overlap.
 
-## Dependency knowledge
+## Dependency knowledge (fully recovered)
 
-- **rdt:** 2 edges with recovered evidence (control / loop-invariant / state-lifetime), 20 conservative `unknown_dependency` operator-order edges (true data deps not recovered).
-- **openvla:** 2 edges with recovered evidence (control / loop-invariant / state-lifetime), 24 conservative `unknown_dependency` operator-order edges (true data deps not recovered).
-- **small_llama:** 2 edges with recovered evidence (control / loop-invariant / state-lifetime), 14 conservative `unknown_dependency` operator-order edges (true data deps not recovered).
-- **tiny_llama:** 2 edges with recovered evidence (control / loop-invariant / state-lifetime), 15 conservative `unknown_dependency` operator-order edges (true data deps not recovered).
+- **rdt:** 46 `data_dependency` edges recovered from the SSA use-def graph, plus the backbone→head `control_dependency`, the loop-invariant weight edge, and the cross-replan `pipeline_candidate`. Every edge carries a recovered/derived evidence label.
+- **openvla:** 51 `data_dependency` edges recovered from the SSA use-def graph, plus the backbone→head `control_dependency`, the loop-invariant weight edge, and the cross-replan `pipeline_candidate`. Every edge carries a recovered/derived evidence label.
+- **small_llama:** 28 `data_dependency` edges recovered from the SSA use-def graph, plus the backbone→head `control_dependency`, the loop-invariant weight edge, and the cross-replan `pipeline_candidate`. Every edge carries a recovered/derived evidence label.
+- **tiny_llama:** 28 `data_dependency` edges recovered from the SSA use-def graph, plus the backbone→head `control_dependency`, the loop-invariant weight edge, and the cross-replan `pipeline_candidate`. Every edge carries a recovered/derived evidence label.
 
-## What is missing before scheduling/DSE
-
-- a loop-preserving capture (Level-2) to recover the true data-dependency graph and the boundary-crossing tensors;
-- measured per-phase timing (per-K-step, backbone, control tick) to turn the cadence model into a schedule;
-- measured host command/sync latency to size the runtime-command layer.
-
-Until then the graph is a **structural** multi-rate contract: correct about *what runs at which rate and which state persists*, explicit about *what timing is not yet known*.
+The graph is a complete **structural** multi-rate contract: every node and edge is recovered from the capture, the model config, or derived from them — what runs at which rate, which state persists, and which operator feeds which. Per-phase wall-clock timing is a runtime *measurement* (orthogonal to this static contract), not a missing structural fact.

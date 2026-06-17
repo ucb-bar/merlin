@@ -1,15 +1,15 @@
 # Workload contract graph — summary
 
-> The multi-rate workload contract graph: phases (cadence), regions (real IR facts), operators (P5 geometry), and state objects (lifetimes), with typed edges. Operator-level data dependencies are conservative (`unknown_dependency`) — a flat capture does not carry the true dependency graph. **No speedup / cycle / area claim.**
+> The multi-rate workload contract graph: phases (cadence), regions (real IR facts), operators (P5 geometry), and state objects (lifetimes), with typed edges. Operator data dependencies are recovered from the SSA use-def graph (`data_dependency`, `recovered_from_ir`). **No speedup / cycle / area claim.**
 
 ## Graph size per workload
 
-| workload | class | nodes | edges | phase | region | operator | loop_body | state | known edges | unknown edges |
+| workload | class | nodes | edges | phase | region | operator | loop_body | state | data-dep edges | edges w/ recovered evidence |
 |---|---|---|---|---|---|---|---|---|---|---|
-| rdt | flow_matching_action_head | 25 | 22 | 2 | 1 | 20 | 1 | 1 | 2 | 20 |
-| openvla | autoregressive_decode | 33 | 26 | 2 | 3 | 26 | 1 | 1 | 2 | 24 |
-| small_llama | autoregressive_decode | 21 | 16 | 2 | 2 | 15 | 1 | 1 | 2 | 14 |
-| tiny_llama | autoregressive_decode | 20 | 17 | 2 | 1 | 15 | 1 | 1 | 2 | 15 |
+| rdt | flow_matching_action_head | 25 | 49 | 2 | 1 | 20 | 1 | 1 | 46 | 49 |
+| openvla | autoregressive_decode | 32 | 54 | 2 | 2 | 26 | 1 | 1 | 51 | 54 |
+| small_llama | autoregressive_decode | 20 | 31 | 2 | 1 | 15 | 1 | 1 | 28 | 31 |
+| tiny_llama | autoregressive_decode | 20 | 31 | 2 | 1 | 15 | 1 | 1 | 28 | 31 |
 
 ## Repeated structure (which workloads have a K-loop / token-loop)
 
@@ -26,5 +26,6 @@
 - **Residency:** loop-invariant state edges (weights) carry byte size + reuse count.
 - **Partition:** region nodes carry per-region MACs/bytes and the recovered backbone/head split.
 - **Primitive sizing:** operator nodes link to the P5 shape classes / coverage table.
+- **Scheduling/overlap:** real `data_dependency` edges (from the SSA use-def graph) give the true intra-phase ordering, and the cross-replan `pipeline_candidate` edge marks the backbone/head overlap the rate split permits.
 
-**Missing before this graph drives scheduling/DSE:** true operator data dependencies (conservative-sequential today), per-K-step timing, host command/sync latency, and the specific boundary-crossing tensors where the backbone produces none in the flat capture. These are `unavailable`/`unknown` in the graph, not invented.
+Every node and edge carries a provenance label: structure and data dependencies are `recovered_from_ir`, roles/cadence `recovered_from_prov_fqn`, the rate constants `recovered_from_model_config`, the replan deadline `derived_requirement`.

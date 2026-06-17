@@ -1329,9 +1329,9 @@ def test_case_study_emits_operator_geometry_and_coverage(tmp_path):
 
 # ============================================================ P6 multi-rate workload contract graph
 
-_ALLOWED_EV = {"recovered_from_ir", "recovered_from_prov_fqn", "assumed_reference",
-               "derived_requirement", "design_assumption", "measured", "proxy_measured",
-               "unavailable"}
+_ALLOWED_EV = {"recovered_from_ir", "recovered_from_prov_fqn", "recovered_from_model_config",
+               "assumed_reference", "derived_requirement", "design_assumption", "measured",
+               "proxy_measured", "unavailable"}
 
 
 def _graph_fixture(K=5, cls="diffusion/denoise_steps", fqn="model.action_expert.denoise.0"):
@@ -1363,12 +1363,13 @@ def test_phase_rate_cadence_classification():
 
 def test_phase_rate_model_sources():
     from merlin.dse_guidance import phase_rate as PR
-    from merlin.dse_guidance.design_envelope import E_ASSUMED, E_DERIVED
+    from merlin.dse_guidance.design_envelope import E_CONFIG, E_DERIVED
     topo = TOP.from_temporal(T.parse({"workload": "m", "class": "diffusion/denoise_steps",
                                       "timing": {"K": 5, "H": 8, "control_rate_hz": 30},
                                       "regions": [{"name": "h", "role": "repeated_head"}]}))
     rm = PR.rate_model(topo)
-    assert rm["K"]["value"] == 5 and rm["K"]["source"] == E_ASSUMED
+    # K/H/control come from the model's published config (a real source, not a bare assumption)
+    assert rm["K"]["value"] == 5 and rm["K"]["source"] == E_CONFIG
     assert rm["replan_deadline_s"]["source"] == E_DERIVED  # derived from H / control_rate
     assert rm["replan_deadline_s"]["value"] == round(8 / 30, 6)
 
@@ -1405,9 +1406,9 @@ def test_contract_graph_missing_k_has_no_loop_body():
     assert head_phase.rate["cadence"] == "once_per_forward"
 
 
-def test_contract_graph_unknown_dependency_is_explicit():
-    from merlin.dse_guidance.design_envelope import E_NA
-    # two head ops -> one conservative sequential edge, explicitly unavailable / can_pipeline unknown
+def test_contract_graph_data_dependencies_recovered_from_ir():
+    from merlin.dse_guidance.design_envelope import E_IR
+    # real producer->consumer edges come from the dependencies arg (the SSA use-def graph)
     from merlin.dse_guidance import contract_graph as CG2, operator_geometry as OG
     from merlin.dse_guidance import state_lifetime as SL
     topo = TOP.from_temporal(T.parse({
@@ -1419,9 +1420,25 @@ def test_contract_graph_unknown_dependency_is_explicit():
     attr = ATTR.attribute_records(recs, topo)
     shapes = OG.operator_shapes(recs, "m", attr)
     case = type("C", (), {"workload": "m", "cls": "x", "K": 3, "topo": topo, "attribution": attr})()
-    g = CG2.build_graph(case, shapes, None, SL.state_records(topo, attr))
-    ud = [e for e in g.edges if e.kind == "unknown_dependency"]
-    assert ud and all(e.evidence == E_NA and e.can_pipeline == "unknown" for e in ud)
+    deps = ((), (0,))                       # op1 consumes op0's result
+    g = CG2.build_graph(case, shapes, None, SL.state_records(topo, attr), dependencies=deps)
+    dd = [e for e in g.edges if e.kind == "data_dependency"]
+    assert dd and not [e for e in g.edges if e.kind == "unknown_dependency"]
+    e = dd[0]
+    assert e.source == "m:op:0" and e.target == "m:op:1"
+    assert e.evidence == E_IR and e.can_pipeline is False
+
+
+def test_matmul_dependencies_recovers_real_ssa_chain():
+    # on the real tiny_llama capture: a Llama layer's o_proj consumes q/k/v_proj; the next
+    # layer's q_proj consumes the previous layer's mlp.down_proj — recovered from SSA use-def.
+    if not (_RECAP / "tiny_llama" / "model.mlir").is_file():
+        pytest.skip("no tiny_llama recapture")
+    deps = ATTR.matmul_dependencies(str(_RECAP / "tiny_llama"))
+    assert deps and len(deps) == len(ATTR.extract_matmuls(str(_RECAP / "tiny_llama")))
+    assert set(deps[3]) == {0, 1, 2}        # o_proj <- q_proj, k_proj, v_proj
+    assert 3 in deps[4] and 3 in deps[5]    # gate_proj, up_proj <- o_proj output (residual stream)
+    assert set(deps[6]) == {4, 5}           # down_proj <- gate_proj, up_proj
 
 
 def test_contract_graph_token_loop_for_autoregressive():

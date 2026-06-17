@@ -27,20 +27,20 @@ openvla,repeated_head,resident_capacity_fp8,786432,B,recovered_from_ir,dtype-sca
 openvla,repeated_head,resident_capacity_int8,786432,B,recovered_from_ir,dtype-scaled from captured element count
 openvla,repeated_head,resident_capacity_int4,393216,B,recovered_from_ir,dtype-scaled from captured element count
 openvla,repeated_head,resident_capacity_fp6,589824,B,recovered_from_ir,dtype-scaled from captured element count
-small_llama,repeated_head,macs_per_replan,101187584.0,MAC,recovered_from_ir,macs_per_step x K=32
-small_llama,repeated_head,resident_capacity_required,1581056.0,B,recovered_from_ir,action-head weights (f32); resident set to avoid reloads
-small_llama,repeated_head,weight_reload_bytes_per_replan,50593792.0,B,recovered_from_ir,naive reload: weight_bytes x K=32
-small_llama,repeated_head,avoidable_weight_reload_bytes,49012736.0,B,recovered_from_ir,"removed by residency (keep 1 load, avoid K-1)"
-small_llama,repeated_head,dispatches_per_replan,448.0,dispatch,derived_requirement,dispatches_per_step x K=32
-small_llama,repeated_head,required_compute_rate,94863360.0,MAC/s,derived_requirement,macs_per_replan / deadline
-small_llama,repeated_head,required_weight_bandwidth,47431680.0,B/s,derived_requirement,naive reload bandwidth if non-resident
-small_llama,repeated_head,required_activation_bandwidth,4684800.0,B/s,derived_requirement,activation traffic / deadline
-small_llama,repeated_head,required_command_rate,420.0,dispatch/s,derived_requirement,host command issue rate to meet deadline
-small_llama,repeated_head,resident_capacity_bf16,790528,B,recovered_from_ir,dtype-scaled from captured element count
-small_llama,repeated_head,resident_capacity_fp8,395264,B,recovered_from_ir,dtype-scaled from captured element count
-small_llama,repeated_head,resident_capacity_int8,395264,B,recovered_from_ir,dtype-scaled from captured element count
-small_llama,repeated_head,resident_capacity_int4,197632,B,recovered_from_ir,dtype-scaled from captured element count
-small_llama,repeated_head,resident_capacity_fp6,296448,B,recovered_from_ir,dtype-scaled from captured element count
+small_llama,repeated_head,macs_per_replan,109576192.0,MAC,recovered_from_ir,macs_per_step x K=32
+small_llama,repeated_head,resident_capacity_required,1712128.0,B,recovered_from_ir,action-head weights (f32); resident set to avoid reloads
+small_llama,repeated_head,weight_reload_bytes_per_replan,54788096.0,B,recovered_from_ir,naive reload: weight_bytes x K=32
+small_llama,repeated_head,avoidable_weight_reload_bytes,53075968.0,B,recovered_from_ir,"removed by residency (keep 1 load, avoid K-1)"
+small_llama,repeated_head,dispatches_per_replan,480.0,dispatch,derived_requirement,dispatches_per_step x K=32
+small_llama,repeated_head,required_compute_rate,102727680.0,MAC/s,derived_requirement,macs_per_replan / deadline
+small_llama,repeated_head,required_weight_bandwidth,51363840.0,B/s,derived_requirement,naive reload bandwidth if non-resident
+small_llama,repeated_head,required_activation_bandwidth,5053440.0,B/s,derived_requirement,activation traffic / deadline
+small_llama,repeated_head,required_command_rate,450.0,dispatch/s,derived_requirement,host command issue rate to meet deadline
+small_llama,repeated_head,resident_capacity_bf16,856064,B,recovered_from_ir,dtype-scaled from captured element count
+small_llama,repeated_head,resident_capacity_fp8,428032,B,recovered_from_ir,dtype-scaled from captured element count
+small_llama,repeated_head,resident_capacity_int8,428032,B,recovered_from_ir,dtype-scaled from captured element count
+small_llama,repeated_head,resident_capacity_int4,214016,B,recovered_from_ir,dtype-scaled from captured element count
+small_llama,repeated_head,resident_capacity_fp6,321024,B,recovered_from_ir,dtype-scaled from captured element count
 tiny_llama,repeated_head,macs_per_replan,19662897152.0,MAC,recovered_from_ir,macs_per_step x K=32
 tiny_llama,repeated_head,resident_capacity_required,614465536.0,B,recovered_from_ir,action-head weights (f32); resident set to avoid reloads
 tiny_llama,repeated_head,weight_reload_bytes_per_replan,19662897152.0,B,recovered_from_ir,naive reload: weight_bytes x K=32

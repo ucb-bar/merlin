@@ -83,10 +83,10 @@ class WorkloadCase:
 def analyze(workload: str) -> WorkloadCase:
     from merlin.dse_guidance import models as M
     spec = RECAP_MODELS[workload]
-    K = int(spec["K"])
-    # Action horizon H and control rate are architecture facts (not the denoise/decode count K);
-    # pull them from the model registry so the replan deadline is correct (H != K).
+    # K, H, control rate are the model's published architecture constants — source them from the
+    # model registry (the model card / config), not a bare assumption (recovered_from_model_config).
     arch = M.MODEL_ARCH.get(workload)
+    K = int(arch.loop_count) if (arch and arch.loop_count) else int(spec["K"])
     H = int(arch.action_horizon) if (arch and arch.action_horizon) else K
     control = float(arch.control_rate_hz) if (arch and arch.control_rate_hz) else 30.0
     temporal = T.parse({
@@ -543,8 +543,10 @@ def run_case_study(out_dir) -> dict:
                       records=records, attribution=c.attribution)
         yaml_artifact(f"{c.workload}/numerical_contract.yaml", NC.to_yaml_obj(nc),
                       header=f"numerical_contract: {c.workload}").write(out)
-        # P6: multi-rate workload contract graph (joins topo/attribution/nc/geometry/state)
-        graphs.append(CGRAPH.build_graph(c, shapes, nc, recs))
+        # P6: multi-rate workload contract graph (joins topo/attribution/nc/geometry/state +
+        # real operator data dependencies recovered from the SSA use-def graph)
+        graphs.append(CGRAPH.build_graph(c, shapes, nc, recs,
+                                         dependencies=ATTR.matmul_dependencies(cap)))
         # design envelope (hardware-independent requirements)
         env = DE.from_recovered(c.topo, c.attribution, captured_dtype=dtype)
         if env is not None:

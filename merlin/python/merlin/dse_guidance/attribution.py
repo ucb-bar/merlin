@@ -54,9 +54,10 @@ def _read_attr(op, key: str) -> str | None:
 # block-body keywords below. Verified against the real RDT denoise-step capture (module paths
 # model.blocks.N.{attn,cross_attn,ffn}, model.{t,freq}_embedder).
 _FQN_ROLE_KEYWORDS: list[tuple[tuple[str, ...], str]] = [
-    # 1) once-per-replan backbone (vision / multimodal encoder)
+    # 1) once-per-replan backbone (vision / multimodal encoder + the vision->LM projector that
+    #    runs once per replan to build the decode prefix)
     (("vision", "backbone", "encoder", "vlm", "patch_embed", "siglip", "vit", "dino",
-      "image_encoder", "img_encoder"), "backbone_once"),
+      "image_encoder", "img_encoder", "projector"), "backbone_once"),
     # 2) prefix / KV state produced once, reused across the head
     (("kv_cache", "prefix_kv", "kv_proj"), "prefix_builder"),
     # 3) the repeated action / denoise / decode head: explicit head names, diffusion-timestep
@@ -80,6 +81,9 @@ def role_from_fqn(fqn: str | None) -> str | None:
     if not fqn:
         return None
     low = fqn.lower()
+    # the bare "lm" leaf is the vocab/output projection (lm-head); it runs once per decode step.
+    if low.rsplit(".", 1)[-1] == "lm":
+        return ROLE_REPEATED_HEAD
     for keywords, role in _FQN_ROLE_KEYWORDS:
         if any(k in low for k in keywords):
             return role
@@ -137,6 +141,50 @@ def extract_matmuls(capture_dir: str) -> tuple[MatmulRecord, ...]:
             dtype=rd,
             fqn=_read_attr(op, "fqn"),
         ))
+    return tuple(out)
+
+
+@lru_cache(maxsize=None)
+def matmul_dependencies(capture_dir: str) -> tuple[tuple[int, ...], ...]:
+    """Real per-matmul data dependencies, recovered from the capture's SSA use-def graph.
+
+    The flat ``model.mlir`` is a real dataflow IR: each ``linalg.matmul`` consumes SSA values that
+    trace back (through reshapes / element-wise epilogues) to the *results* of earlier matmuls.
+    Walking those use-def chains recovers the true producer→consumer edges — not a guess from op
+    order. Returns a tuple indexed by the same matmul enumeration as :func:`extract_matmuls`; entry
+    ``i`` is the sorted tuple of matmul indices whose result feeds matmul ``i`` (empty if it depends
+    only on inputs/weights). Empty tuple-of-tuples if the capture will not parse.
+    """
+    path = f"{capture_dir}/model.mlir"
+    try:
+        from xdsl.ir import Operation
+        module = mlir_m2m._parse_module(open(path, encoding="utf-8").read())
+    except Exception:
+        return ()
+    matmuls = [o for o in module.walk() if o.name == "linalg.matmul"]
+    result_idx: dict[int, int] = {}
+    for i, mm in enumerate(matmuls):
+        for r in mm.results:
+            result_idx[id(r)] = i
+    out: list[tuple[int, ...]] = []
+    for i, mm in enumerate(matmuls):
+        preds: set[int] = set()
+        seen: set[int] = set()
+        stack = list(mm.operands)
+        while stack:
+            v = stack.pop()
+            if id(v) in seen:
+                continue
+            seen.add(id(v))
+            j = result_idx.get(id(v))
+            if j is not None:
+                if j != i:
+                    preds.add(j)         # reached a producing matmul -> a real data dependency
+                continue                 # stop at the matmul boundary (do not trace through it)
+            owner = getattr(v, "owner", None)
+            if isinstance(owner, Operation):
+                stack.extend(owner.operands)
+        out.append(tuple(sorted(preds)))
     return tuple(out)
 
 

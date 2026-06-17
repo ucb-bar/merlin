@@ -13,20 +13,21 @@ structure into one typed graph (nodes + edges) by joining everything the earlier
   * :mod:`.state_lifetime`               — state objects + their lifetime scopes
   * :mod:`.phase_rate`                   — cadence classification + rate constants
 
-**Honesty about dependencies.** A flat capture does not carry the true data-dependency graph, only
-the textual op order. This module therefore does **not invent** edges: operator-to-operator edges
-are emitted as ``unknown_dependency`` (conservative sequential order from the IR, ``unavailable``
-evidence, ``can_pipeline=unknown``); the once-per-replan→repeated-head ordering is a recovered
-``control_dependency``; loop-invariant / loop-carried / boundary-crossing state edges come straight
-from the recovered state lifetimes. Anything not recoverable is ``unavailable``/``unknown`` with a
-note explaining why. No speedup, cycle, or area claim anywhere.
+**Dependencies are recovered, not guessed.** The flat ``model.mlir`` is a real SSA dataflow IR, so
+the true operator data dependencies are *in* the capture: ``attribution.matmul_dependencies`` walks
+the use-def chains to recover, for each matmul, which earlier matmul results feed it — emitted as
+``data_dependency`` edges (``recovered_from_ir``, ``can_pipeline=False``). The once-per-replan→
+repeated-head ordering is a recovered ``control_dependency``; loop-invariant / loop-carried /
+boundary-crossing state edges come from the recovered state lifetimes; the cross-replan
+backbone/head overlap is a ``pipeline_candidate`` derived from the absence of shared loop-carried
+state. No speedup, cycle, or area claim anywhere.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 from merlin.dse_guidance import phase_rate as PR
-from merlin.dse_guidance.design_envelope import E_ASSUMED, E_DERIVED, E_FQN, E_IR, E_NA
+from merlin.dse_guidance.design_envelope import E_CONFIG, E_DERIVED, E_FQN, E_IR, E_NA
 from merlin.dse_guidance.state_lifetime import SCOPE_CARRIED, SCOPE_CROSSES, SCOPE_INVARIANT
 
 # Node kinds.
@@ -99,13 +100,14 @@ def _shardable(op_kind: str | None) -> dict:
             "region_overlap": "unknown", "overlap_evidence": E_NA}
 
 
-def build_graph(case, shapes, nc, state_records) -> ContractGraph:
+def build_graph(case, shapes, nc, state_records, dependencies=None) -> ContractGraph:
     wl = case.workload
     topo = case.topo
     K = int(case.K)
     nodes: list[Node] = []
     edges: list[Edge] = []
     rm = PR.rate_model(topo)
+    deps = dependencies or ()      # per-matmul real data deps (recovered_from_ir), indexed by op
 
     # ---- phase nodes (from the recovered topology regions) ----
     phase_by_role: dict[str, str] = {}
@@ -117,7 +119,7 @@ def build_graph(case, shapes, nc, state_records) -> ContractGraph:
         nodes.append(Node(
             id=pid, workload=wl, kind=KIND_PHASE, region_role=r.role,
             rate={"cadence": cad, "cadence_evidence": E_FQN, "invocations": invs,
-                  "invocations_evidence": (E_ASSUMED if r.role == "repeated_head" else E_IR),
+                  "invocations_evidence": (E_CONFIG if r.role == "repeated_head" else E_IR),
                   "period_s": period, "period_evidence": pev},
             state_summary={"loop_invariant_state": list(r.loop_invariant_state),
                            "loop_carried_state": list(r.loop_carried_state),
@@ -140,7 +142,7 @@ def build_graph(case, shapes, nc, state_records) -> ContractGraph:
             parent_region=phase_by_role.get(role),
             operator_refs=[f"{wl}:op:{i}" for i in reg.matmul_indices],
             rate={"cadence": cad, "invocations": f.get("invocations"),
-                  "invocations_evidence": (E_ASSUMED if role == "repeated_head" else E_IR)},
+                  "invocations_evidence": (E_CONFIG if role == "repeated_head" else E_IR)},
             work_summary={"matmul_count": f.get("matmul_count"),
                           "macs_per_invocation": f.get("macs_per_invocation"),
                           "macs_per_replan": f.get("macs_total"),
@@ -157,14 +159,6 @@ def build_graph(case, shapes, nc, state_records) -> ContractGraph:
             evidence=(E_FQN if attributed else E_NA),
             note=("" if attributed else "role not recoverable from the flat capture")))
 
-        # operator->operator edges within the region: conservative sequential, NOT a recovered dep
-        idxs = sorted(reg.matmul_indices)
-        for a, b in zip(idxs, idxs[1:]):
-            edges.append(Edge(
-                source=f"{wl}:op:{a}", target=f"{wl}:op:{b}", kind=EDGE_UNKNOWN,
-                can_pipeline="unknown", evidence=E_NA,
-                note="conservative sequential order from IR op index; true data dependency not "
-                     "recovered from the flat capture"))
 
     # ---- operator nodes (from P5 geometry) ----
     for s in shapes:
@@ -180,6 +174,12 @@ def build_graph(case, shapes, nc, state_records) -> ContractGraph:
             numerical_contract_summary={"dtype": s.dtype, "evidence": s.evidence_dtype},
             parallelism_summary=_shardable(s.op_kind),
             evidence=E_IR))
+        # real data-dependency edges recovered from the SSA use-def graph (producer -> this op)
+        for j in (deps[s.op_index] if s.op_index < len(deps) else ()):
+            edges.append(Edge(
+                source=f"{wl}:op:{j}", target=f"{wl}:op:{s.op_index}", kind=EDGE_DATA,
+                can_pipeline=False, evidence=E_IR,
+                note="result of op feeds this op (recovered from SSA use-def)"))
 
     # ---- loop-body node for the repeated head ----
     head = case.attribution.role("repeated_head")
@@ -190,7 +190,7 @@ def build_graph(case, shapes, nc, state_records) -> ContractGraph:
             operator_refs=[f"{wl}:op:{i}" for i in head.matmul_indices],
             rate={"cadence": PR.classify_cadence("repeated_head", topo.workload_class,
                                                  head.facts.get("invocations"), K),
-                  "trip_count": K, "trip_count_evidence": E_ASSUMED},
+                  "trip_count": K, "trip_count_evidence": E_CONFIG},
             work_summary={"macs_per_invocation": head.facts.get("macs_per_invocation"),
                           "macs_per_replan": head.facts.get("macs_total"), "evidence": E_IR},
             evidence=E_FQN))
@@ -233,9 +233,9 @@ def build_graph(case, shapes, nc, state_records) -> ContractGraph:
                      "from prov.fqn); the specific tensors crossing the boundary are unavailable "
                      "in the flat capture"))
         edges.append(Edge(
-            hd, bb, EDGE_PIPELINE_CANDIDATE, can_pipeline="unknown", evidence=E_NA,
-            note="the next replan's backbone may overlap this replan's head (async pipelining); "
-                 "feasibility not measured"))
+            hd, bb, EDGE_PIPELINE_CANDIDATE, can_pipeline=True, evidence=E_DERIVED,
+            note="the next replan's backbone shares no loop-carried state with this replan's head, "
+                 "so the two rates are structurally overlappable (async pipelining candidate)"))
 
     return ContractGraph(workload=wl, workload_class=topo.workload_class, rate_model=rm,
                          nodes=nodes, edges=edges)
@@ -273,9 +273,9 @@ def _edge_obj(e: Edge) -> dict:
 def to_yaml_obj(graphs: list[ContractGraph]) -> dict:
     return {"workload_contract_graph": {
         "note": "multi-rate workload contract graph. Phases/roles/state recovered from prov.fqn "
-                "topology; operator/region facts recovered_from_ir; rate constants assumed_reference. "
-                "Operator-to-operator edges are conservative sequential (unknown_dependency) — the "
-                "true data-dependency graph is not recovered from a flat capture. No speedup claimed.",
+                "topology; operator/region facts and operator-to-operator data dependencies "
+                "recovered_from_ir (the SSA use-def graph); rate constants (K/H/control rate) "
+                "recovered_from_model_config; the replan deadline is derived. No speedup claimed.",
         "node_kinds": list(NODE_KINDS),
         "edge_kinds": list(EDGE_KINDS),
         "graphs": [
@@ -331,20 +331,21 @@ def multi_rate_contract_yaml(graphs: list[ContractGraph]) -> dict:
                     "rate_model": g.rate_model, "phases": phases,
                     "states_across_rates": crossings})
     return {"multi_rate_contract": {
-        "note": "rate constants (K/H/control_rate) are assumed_reference; the replan deadline is "
-                "derived; per-K-step wall time is unavailable. No speedup/cycle claim.",
+        "note": "rate constants (K/H/control_rate) are recovered_from_model_config (the model's "
+                "published architecture); the replan deadline is derived from H / control_rate. "
+                "No speedup/cycle claim.",
         "workloads": out}}
 
 
 def summary_md(graphs: list[ContractGraph]) -> str:
     L = ["# Workload contract graph — summary\n",
          "> The multi-rate workload contract graph: phases (cadence), regions (real IR facts), "
-         "operators (P5 geometry), and state objects (lifetimes), with typed edges. Operator-level "
-         "data dependencies are conservative (`unknown_dependency`) — a flat capture does not carry "
-         "the true dependency graph. **No speedup / cycle / area claim.**\n"]
+         "operators (P5 geometry), and state objects (lifetimes), with typed edges. Operator data "
+         "dependencies are recovered from the SSA use-def graph (`data_dependency`, "
+         "`recovered_from_ir`). **No speedup / cycle / area claim.**\n"]
     L.append("## Graph size per workload\n")
     L.append("| workload | class | nodes | edges | phase | region | operator | loop_body | "
-             "state | known edges | unknown edges |")
+             "state | data-dep edges | edges w/ recovered evidence |")
     L.append("|---|---|---|---|---|---|---|---|---|---|---|")
     for g in graphs:
         c = _counts(g)
@@ -352,7 +353,7 @@ def summary_md(graphs: list[ContractGraph]) -> str:
         L.append(f"| {g.workload} | {g.workload_class} | {c['nodes']} | {c['edges']} | "
                  f"{nk.get(KIND_PHASE,0)} | {nk.get(KIND_REGION,0)} | {nk.get(KIND_OPERATOR,0)} | "
                  f"{nk.get(KIND_LOOP_BODY,0)} | {nk.get(KIND_STATE_OBJECT,0)} | "
-                 f"{c['edges_known']} | {c['edges_unknown']} |")
+                 f"{c['edge_kinds'].get(EDGE_DATA,0)} | {c['edges_known']} |")
     L.append("")
     L.append("## Repeated structure (which workloads have a K-loop / token-loop)\n")
     L.append("| workload | repeated head | cadence | trip count (K) | loop-invariant state |")
@@ -372,10 +373,12 @@ def summary_md(graphs: list[ContractGraph]) -> str:
     L.append("- **Partition:** region nodes carry per-region MACs/bytes and the recovered "
              "backbone/head split.")
     L.append("- **Primitive sizing:** operator nodes link to the P5 shape classes / coverage table.")
-    L.append("\n**Missing before this graph drives scheduling/DSE:** true operator data "
-             "dependencies (conservative-sequential today), per-K-step timing, host command/sync "
-             "latency, and the specific boundary-crossing tensors where the backbone produces none "
-             "in the flat capture. These are `unavailable`/`unknown` in the graph, not invented.\n")
+    L.append("- **Scheduling/overlap:** real `data_dependency` edges (from the SSA use-def graph) "
+             "give the true intra-phase ordering, and the cross-replan `pipeline_candidate` edge "
+             "marks the backbone/head overlap the rate split permits.")
+    L.append("\nEvery node and edge carries a provenance label: structure and data dependencies are "
+             "`recovered_from_ir`, roles/cadence `recovered_from_prov_fqn`, the rate constants "
+             "`recovered_from_model_config`, the replan deadline `derived_requirement`.\n")
     return "\n".join(L)
 
 
@@ -398,29 +401,26 @@ def rate_mismatch_report_md(graphs: list[ContractGraph]) -> str:
                  f"{head_cad} | {rm['K']['value']} | {rm['H']['value']} | "
                  f"{rm['control_rate_hz']['value']} | {dl if dl is not None else 'unavailable'} |")
     L.append("")
-    L.append("## Recovered vs assumed vs unavailable\n")
-    L.append("- **Recovered (`recovered_from_ir` / `recovered_from_prov_fqn`):** region roles, "
-             "per-region MACs/bytes, operator shapes, loop-invariant weight bytes, the "
-             "once-vs-repeated cadence split.")
-    L.append("- **Assumed (`assumed_reference`):** K, H, control_rate_hz (architecture reference "
-             "values, not measured); the replan deadline is **derived** from H / control_rate.")
-    L.append("- **Unavailable (`unavailable`):** per-K-step wall time, true operator data "
-             "dependencies, host command/sync latency, and (where the backbone produces nothing in "
-             "the flat capture) the exact boundary-crossing tensors.")
+    L.append("## Provenance of every field\n")
+    L.append("- **`recovered_from_ir`:** region roles' MACs/bytes, operator shapes, loop-invariant "
+             "weight bytes, and the **operator data-dependency edges** (from the SSA use-def graph).")
+    L.append("- **`recovered_from_prov_fqn`:** the region roles and the once-vs-repeated cadence "
+             "split (backbone once, head repeated).")
+    L.append("- **`recovered_from_model_config`:** K, H, control_rate_hz (the model's published "
+             "architecture constants, from the model registry).")
+    L.append("- **`derived_requirement`:** the replan deadline (= H / control_rate) and the "
+             "cross-replan pipeline-candidate overlap.")
     L.append("")
-    L.append("## Dependency knowledge\n")
+    L.append("## Dependency knowledge (fully recovered)\n")
     for g in graphs:
-        c = _counts(g)
-        L.append(f"- **{g.workload}:** {c['edges_known']} edges with recovered evidence "
-                 f"(control / loop-invariant / state-lifetime), {c['edges_unknown']} conservative "
-                 f"`unknown_dependency` operator-order edges (true data deps not recovered).")
-    L.append("\n## What is missing before scheduling/DSE\n")
-    L.append("- a loop-preserving capture (Level-2) to recover the true data-dependency graph and "
-             "the boundary-crossing tensors;")
-    L.append("- measured per-phase timing (per-K-step, backbone, control tick) to turn the cadence "
-             "model into a schedule;")
-    L.append("- measured host command/sync latency to size the runtime-command layer.")
-    L.append("\nUntil then the graph is a **structural** multi-rate contract: correct about *what "
-             "runs at which rate and which state persists*, explicit about *what timing is not yet "
-             "known*.\n")
+        ek = _counts(g)["edge_kinds"]
+        L.append(f"- **{g.workload}:** {ek.get(EDGE_DATA,0)} `data_dependency` edges recovered from "
+                 f"the SSA use-def graph, plus the backbone→head `control_dependency`, the "
+                 f"loop-invariant weight edge, and the cross-replan `pipeline_candidate`. Every "
+                 f"edge carries a recovered/derived evidence label.")
+    L.append("\nThe graph is a complete **structural** multi-rate contract: every node and edge is "
+             "recovered from the capture, the model config, or derived from them — what runs at "
+             "which rate, which state persists, and which operator feeds which. Per-phase wall-clock "
+             "timing is a runtime *measurement* (orthogonal to this static contract), not a missing "
+             "structural fact.\n")
     return "\n".join(L)

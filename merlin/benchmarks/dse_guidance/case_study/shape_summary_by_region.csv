@@ -2,9 +2,7 @@ workload,region_role,shape_class,op_count,macs_total
 rdt,repeated_head,gemv_like,4,9437184
 rdt,repeated_head,squareish_gemm,2,34377302016
 rdt,repeated_head,wide_skinny,14,5045747712
-openvla,backbone_once,wide_skinny,8,37601280
+openvla,backbone_once,wide_skinny,11,63815680
 openvla,repeated_head,wide_skinny,15,15728640
-openvla,unknown,wide_skinny,3,26214400
-small_llama,repeated_head,wide_skinny,14,3162112
-small_llama,unknown,wide_skinny,1,262144
+small_llama,repeated_head,wide_skinny,15,3424256
 tiny_llama,repeated_head,gemv_like,15,614465536

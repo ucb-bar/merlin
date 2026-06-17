@@ -35,6 +35,7 @@ CAPACITY_FORMATS = ("bf16", "fp8", "int8", "int4", "fp6")
 # Evidence labels.
 E_IR = "recovered_from_ir"
 E_FQN = "recovered_from_prov_fqn"
+E_CONFIG = "recovered_from_model_config"   # published architecture constant (model card / registry)
 E_ASSUMED = "assumed_reference"
 E_DERIVED = "derived_requirement"
 E_DESIGN = "design_assumption"
