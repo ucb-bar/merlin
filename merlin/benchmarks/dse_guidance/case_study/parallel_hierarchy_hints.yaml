@@ -58,4 +58,65 @@ parallel_hierarchy_hints:
     supported_workloads:
     - rdt
     - tiny_llama
-  note: operator clusters mapped to candidate hardware-hierarchy options. Structural hints for a future DSE search space — NOT a chosen design, NOT a speedup.
+  note: operator clusters + structural units mapped to candidate hardware-hierarchy options. Structural hints for a future DSE search space — NOT a chosen design, NOT a speedup. compute-shape clusters cover the GEMM/GEMV engines; structural_units cover reduction_tree (K-sharding), epilogue_unit, DMA_engine, loop_controller, and multi_engine_cluster (inter-op parallelism).
+  structural_units:
+  - dse_knobs_exposed:
+    - reduction_radix
+    - accumulator_width
+    evidence: recovered_from_ir
+    evidence_for: 76 K-shardable ops produce partial sums that must be merged across shards
+    hierarchy_option: reduction_tree
+    missing_measurements:
+    - reduction latency
+    required_compiler_proof: K-sharding produces partial sums that a reduction tree merges
+    supported_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+  - dse_knobs_exposed:
+    - fused_bias
+    - fused_activation
+    - requant_path
+    evidence: recovered_from_ir
+    evidence_for: 31 ops carry a fused bias/activation (addmm epilogue)
+    hierarchy_option: epilogue_unit
+    missing_measurements:
+    - epilogue throughput
+    required_compiler_proof: the addmm epilogue fuses onto the GEMM output
+    supported_workloads:
+    - openvla
+    - rdt
+  - dse_knobs_exposed:
+    - prefetch_depth
+    - resident_capacity
+    evidence: recovered_from_prov_fqn
+    evidence_for: loop-invariant weights are read-only across the repeated head (reused every step)
+    hierarchy_option: DMA_engine
+    missing_measurements:
+    - DRAM bandwidth
+    required_compiler_proof: loop-invariant weights are read-only across the K-loop
+    supported_workloads: &id001
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+  - dse_knobs_exposed:
+    - loop_bound_K
+    - unroll_factor
+    evidence: recovered_from_prov_fqn
+    evidence_for: the repeated head is a bounded K-loop driving the per-step command stream
+    hierarchy_option: loop_controller
+    missing_measurements: []
+    required_compiler_proof: the repeated head runs K times per replan
+    supported_workloads: *id001
+  - dse_knobs_exposed:
+    - num_engines
+    evidence: derived_requirement
+    evidence_for: inter-op parallelism in small_llama (independent ops become ready together)
+    hierarchy_option: multi_engine_cluster
+    missing_measurements:
+    - scheduling / communication latency
+    required_compiler_proof: independent operators in the DAG can occupy separate engines
+    supported_workloads:
+    - small_llama

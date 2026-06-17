@@ -16,7 +16,12 @@ from collections import Counter
 from dataclasses import dataclass
 
 from merlin.dse_guidance import shape_taxonomy as ST
-from merlin.dse_guidance.design_envelope import E_DERIVED, E_IR, E_NA
+from merlin.dse_guidance.design_envelope import E_DERIVED, E_FQN, E_IR, E_NA
+
+# The full P7-c hierarchy vocabulary (compute-shape engines + structural units).
+HIER_UNITS = {"matrix_tile_engine", "vector_gemv_engine", "reduction_tree", "systolic_array",
+              "SIMD_vector_lanes", "multi_engine_cluster", "epilogue_unit", "DMA_engine",
+              "loop_controller"}
 
 # --- resource classes (what kind of work) ---
 RC_DENSE = "dense_gemm"
@@ -196,6 +201,65 @@ def processing_unit_candidates(all_shapes, pressure: list[ResourcePressure]) -> 
     return out
 
 
+# --------------------------------------------------------------------------- structural hierarchy
+
+@dataclass
+class StructuralHint:
+    hierarchy_option: str
+    evidence_for: str
+    supported_workloads: list
+    evidence: str
+    dse_knobs: list
+    required_compiler_proof: str
+    missing_measurements: list
+
+
+def structural_hierarchy_hints(all_shapes, all_axes, dags) -> list[StructuralHint]:
+    """Structural hierarchy units the rest of P7 implies but the shape-cluster map doesn't surface:
+    reduction_tree (K-sharding), epilogue_unit (addmm), DMA_engine + loop_controller (the resident-
+    weight K-loop), and multi_engine_cluster (inter-op parallelism). Each is grounded in recovered
+    structure or marked unavailable — never invented."""
+    hints: list[StructuralHint] = []
+
+    kshard = [a for a in all_axes if a.axis == "K" and a.shardable[8]]
+    kw = sorted({a.workload for a in kshard})
+    hints.append(StructuralHint(
+        "reduction_tree",
+        f"{len(kshard)} K-shardable ops produce partial sums that must be merged across shards",
+        kw, E_IR if kshard else E_NA, ["reduction_radix", "accumulator_width"],
+        "K-sharding produces partial sums that a reduction tree merges", ["reduction latency"]))
+
+    epi = [s for s in all_shapes if s.epilogue]
+    ew = sorted({s.workload for s in epi})
+    hints.append(StructuralHint(
+        "epilogue_unit",
+        f"{len(epi)} ops carry a fused bias/activation (addmm epilogue)",
+        ew, E_IR if epi else E_NA, ["fused_bias", "fused_activation", "requant_path"],
+        "the addmm epilogue fuses onto the GEMM output", ["epilogue throughput"]))
+
+    headw = sorted({s.workload for s in all_shapes if s.region_role == "repeated_head"})
+    hints.append(StructuralHint(
+        "DMA_engine",
+        "loop-invariant weights are read-only across the repeated head (reused every step)",
+        headw, E_FQN if headw else E_NA, ["prefetch_depth", "resident_capacity"],
+        "loop-invariant weights are read-only across the K-loop", ["DRAM bandwidth"]))
+    hints.append(StructuralHint(
+        "loop_controller",
+        "the repeated head is a bounded K-loop driving the per-step command stream",
+        headw, E_FQN if headw else E_NA, ["loop_bound_K", "unroll_factor"],
+        "the repeated head runs K times per replan", []))
+
+    par = [d.workload for d in dags if d.serialization != "mostly_sequential"]
+    hints.append(StructuralHint(
+        "multi_engine_cluster",
+        (f"inter-op parallelism in {', '.join(par)} (independent ops become ready together)" if par
+         else "no workload exposes > 1.5x inter-op parallelism — limited evidence for many engines"),
+        par, E_DERIVED if par else E_NA, ["num_engines"],
+        "independent operators in the DAG can occupy separate engines",
+        ["scheduling / communication latency"]))
+    return hints
+
+
 # --------------------------------------------------------------------------- emitters
 
 def cluster_to_hierarchy_csv(clusters: list[ClusterHierarchy]) -> str:
@@ -217,10 +281,14 @@ def resource_pressure_csv(pressure: list[ResourcePressure]) -> str:
                        "workloads"])
 
 
-def hierarchy_hints_yaml(clusters: list[ClusterHierarchy]) -> dict:
+def hierarchy_hints_yaml(clusters: list[ClusterHierarchy],
+                         structural: list[StructuralHint] | None = None) -> dict:
     return {"parallel_hierarchy_hints": {
-        "note": "operator clusters mapped to candidate hardware-hierarchy options. Structural "
-                "hints for a future DSE search space — NOT a chosen design, NOT a speedup.",
+        "note": "operator clusters + structural units mapped to candidate hardware-hierarchy "
+                "options. Structural hints for a future DSE search space — NOT a chosen design, "
+                "NOT a speedup. compute-shape clusters cover the GEMM/GEMV engines; structural_units "
+                "cover reduction_tree (K-sharding), epilogue_unit, DMA_engine, loop_controller, and "
+                "multi_engine_cluster (inter-op parallelism).",
         "clusters": [
             {"shape_class": c.shape_class,
              "hierarchy_options": c.hierarchy_options,
@@ -233,7 +301,16 @@ def hierarchy_hints_yaml(clusters: list[ClusterHierarchy]) -> dict:
              "missing_measurements": ["per-unit throughput", "communication latency",
                                       "energy/area"],
              "evidence": E_IR}
-            for c in clusters]}}
+            for c in clusters],
+        "structural_units": [
+            {"hierarchy_option": h.hierarchy_option,
+             "evidence_for": h.evidence_for,
+             "supported_workloads": h.supported_workloads,
+             "dse_knobs_exposed": h.dse_knobs,
+             "required_compiler_proof": h.required_compiler_proof,
+             "missing_measurements": h.missing_measurements,
+             "evidence": h.evidence}
+            for h in (structural or [])]}}
 
 
 def processing_unit_candidates_yaml(units: list[UnitCandidate]) -> dict:

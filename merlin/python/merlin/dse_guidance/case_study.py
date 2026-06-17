@@ -670,7 +670,9 @@ def run_case_study(out_dir) -> dict:
     units = RH.processing_unit_candidates(all_shapes, pressure)
     Artifact("operator_cluster_to_hierarchy.csv",
              RH.cluster_to_hierarchy_csv(clusters)).write(out)
-    yaml_artifact("parallel_hierarchy_hints.yaml", RH.hierarchy_hints_yaml(clusters),
+    structural_hints = RH.structural_hierarchy_hints(all_shapes, all_axes, dags)
+    yaml_artifact("parallel_hierarchy_hints.yaml",
+                  RH.hierarchy_hints_yaml(clusters, structural_hints),
                   header="parallel_hierarchy_hints (structural; no speedup)").write(out)
     Artifact("resource_pressure_table.csv", RH.resource_pressure_csv(pressure)).write(out)
     yaml_artifact("processing_unit_candidates.yaml",
