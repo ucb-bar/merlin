@@ -32,7 +32,10 @@ from merlin.dse_guidance import dtype_certificates as DC
 from merlin.dse_guidance import memory_envelope as ME
 from merlin.dse_guidance import numerical_contract as NC
 from merlin.dse_guidance import operator_geometry as OG
+from merlin.dse_guidance import parallelism as PAR
 from merlin.dse_guidance import primitive_coverage as PC
+from merlin.dse_guidance import resource_hierarchy as RH
+from merlin.dse_guidance import sharding as SH
 from merlin.dse_guidance import search_space as SS
 from merlin.dse_guidance import state_lifetime as SL
 from merlin.dse_guidance import temporal as T
@@ -452,6 +455,14 @@ def _readme_md(packages) -> str:
         "workload contract graph** (the central IR later phases consume: phase/region/operator/"
         "state nodes + typed edges). `phase_rate_table.csv`, `multi_rate_contract.yaml`, "
         "`rate_mismatch_report.md` expose the per-phase cadence + rate model (structural only).\n"
+        "- `dag_parallelism_report.md`, `critical_path_table.csv`, `concurrency_windows.csv`, "
+        "`parallel_region_candidates.yaml` — inter-op DAG concurrency (work/span, not a speedup).\n"
+        "- `sharding_table.csv`, `sharding_opportunities.yaml`, `intra_op_sharding_report.md` — "
+        "per-matmul M/N/K sharding geometry + required reduction/broadcast abstractions.\n"
+        "- `operator_cluster_to_hierarchy.csv`, `parallel_hierarchy_hints.yaml`, "
+        "`resource_pressure_table.csv`, `processing_unit_candidates.yaml`, "
+        "`processing_unit_parallelism_report.md` — hierarchical resource analysis: which "
+        "processing-unit shapes the workloads imply (one bigger / many identical / specialized).\n"
         "- `traffic_table.csv` — per-region byte traffic + avoidable reload (memory/reuse envelope).\n"
         "- `dispatch_granularity_table.csv` — command-graph view (honest: loop unrolled, syncs "
         "unavailable).\n"
@@ -639,6 +650,34 @@ def run_case_study(out_dir) -> dict:
     yaml_artifact("multi_rate_contract.yaml", CGRAPH.multi_rate_contract_yaml(graphs),
                   header="multi_rate_contract (rate model + phases)").write(out)
     Artifact("rate_mismatch_report.md", CGRAPH.rate_mismatch_report_md(graphs)).write(out)
+    # P7 parallelism / sharding / hierarchical resource analysis (structural; no speedup)
+    dags = [PAR.analyze_graph(g) for g in graphs]
+    Artifact("dag_parallelism_report.md", PAR.report_md(dags)).write(out)
+    Artifact("critical_path_table.csv", PAR.critical_path_csv(dags)).write(out)
+    Artifact("concurrency_windows.csv", PAR.concurrency_windows_csv(dags)).write(out)
+    yaml_artifact("parallel_region_candidates.yaml",
+                  PAR.parallel_region_candidates_yaml(dags),
+                  header="parallel_region_candidates (structural; no speedup)").write(out)
+    shard_by_workload = {w: SH.all_shard_axes(s) for w, s in geom_by_workload.items()}
+    all_axes = SH.all_shard_axes(all_shapes)
+    Artifact("sharding_table.csv", SH.sharding_csv(all_axes)).write(out)
+    yaml_artifact("sharding_opportunities.yaml",
+                  SH.sharding_opportunities_yaml(shard_by_workload),
+                  header="sharding_opportunities (structural; no speedup)").write(out)
+    Artifact("intra_op_sharding_report.md", SH.report_md(shard_by_workload, all_axes)).write(out)
+    clusters = RH.cluster_hierarchy(all_shapes)
+    pressure = RH.resource_pressure(all_shapes, dags)
+    units = RH.processing_unit_candidates(all_shapes, pressure)
+    Artifact("operator_cluster_to_hierarchy.csv",
+             RH.cluster_to_hierarchy_csv(clusters)).write(out)
+    yaml_artifact("parallel_hierarchy_hints.yaml", RH.hierarchy_hints_yaml(clusters),
+                  header="parallel_hierarchy_hints (structural; no speedup)").write(out)
+    Artifact("resource_pressure_table.csv", RH.resource_pressure_csv(pressure)).write(out)
+    yaml_artifact("processing_unit_candidates.yaml",
+                  RH.processing_unit_candidates_yaml(units),
+                  header="processing_unit_candidates (structural; no speedup)").write(out)
+    Artifact("processing_unit_parallelism_report.md",
+             RH.processing_unit_report_md(units, pressure, clusters, dags)).write(out)
     # TorchAO integration plan (a plan, not a sweep)
     Artifact("torchao_integration_plan.md", NC.torchao_integration_plan_md()).write(out)
     # accuracy gate (measurable-now real leg)

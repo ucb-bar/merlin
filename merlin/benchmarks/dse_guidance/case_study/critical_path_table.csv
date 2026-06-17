@@ -1,0 +1,5 @@
+workload,total_ops,total_macs,critical_path_ops,critical_path_macs,available_parallelism,max_ready_width,avg_ready_width,n_levels,independent_components,serialization,dep_evidence
+rdt,20,39432486912,11,35501375488,1.1107,4,1.25,16,1,mostly_sequential,recovered_from_ir
+openvla,26,79544320,16,65470464,1.215,3,1.625,16,1,mostly_sequential,recovered_from_ir
+small_llama,15,3424256,9,2195456,1.5597,3,1.6667,9,1,some_parallelism,recovered_from_ir
+tiny_llama,15,614465536,9,513802240,1.1959,3,1.6667,9,1,mostly_sequential,recovered_from_ir

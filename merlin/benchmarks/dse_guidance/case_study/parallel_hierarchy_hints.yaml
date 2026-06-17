@@ -1,0 +1,61 @@
+# parallel_hierarchy_hints (structural; no speedup)
+parallel_hierarchy_hints:
+  clusters:
+  - dse_knobs_exposed:
+    - unit_count
+    - unit_shape
+    - tile_dims
+    evidence: recovered_from_ir
+    evidence_against: none
+    evidence_for: 2 ops, 85.7% of MACs, in rdt
+    hierarchy_options:
+    - matrix_tile_engine
+    - systolic_array
+    missing_measurements:
+    - per-unit throughput
+    - communication latency
+    - energy/area
+    required_compiler_proof: operator geometry is tile/lane-legal for the option (recovered_from_ir shapes)
+    shape_class: squareish_gemm
+    supported_workloads:
+    - rdt
+  - dse_knobs_exposed:
+    - unit_count
+    - unit_shape
+    - tile_dims
+    evidence: recovered_from_ir
+    evidence_against: none
+    evidence_for: 55 ops, 12.8% of MACs, in openvla, rdt, small_llama
+    hierarchy_options:
+    - matrix_tile_engine
+    - SIMD_vector_lanes
+    missing_measurements:
+    - per-unit throughput
+    - communication latency
+    - energy/area
+    required_compiler_proof: operator geometry is tile/lane-legal for the option (recovered_from_ir shapes)
+    shape_class: wide_skinny
+    supported_workloads:
+    - openvla
+    - rdt
+    - small_llama
+  - dse_knobs_exposed:
+    - unit_count
+    - unit_shape
+    - tile_dims
+    evidence: recovered_from_ir
+    evidence_against: very small MAC share
+    evidence_for: 19 ops, 1.6% of MACs, in rdt, tiny_llama
+    hierarchy_options:
+    - vector_gemv_engine
+    - SIMD_vector_lanes
+    missing_measurements:
+    - per-unit throughput
+    - communication latency
+    - energy/area
+    required_compiler_proof: operator geometry is tile/lane-legal for the option (recovered_from_ir shapes)
+    shape_class: gemv_like
+    supported_workloads:
+    - rdt
+    - tiny_llama
+  note: operator clusters mapped to candidate hardware-hierarchy options. Structural hints for a future DSE search space — NOT a chosen design, NOT a speedup.
