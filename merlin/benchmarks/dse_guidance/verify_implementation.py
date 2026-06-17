@@ -877,6 +877,81 @@ def verify_p10_global() -> None:
     p10check(not leaked, f"P10 artifacts free of forbidden performance terms (found: {leaked})")
 
 
+# ============================================================ P12 HW/SW boundary placement
+p12_results: list[tuple[bool, str]] = []
+
+
+def p12check(ok: bool, msg: str) -> None:
+    p12_results.append((bool(ok), msg))
+
+
+def verify_p12() -> dict:
+    from merlin.dse_guidance.boundary_placement import (ABSTRACTIONS, LEVELS, STATUS, RESP_CELLS,
+                                                        REGION_ROLES)
+    contracts = load_yaml(CS / "boundary_candidate_contracts.yaml")["boundary_candidate_contracts"]
+    certs = contracts["certificates"]
+    cp_axes = {r["axis"] for r in _csv_rows(CS / "compiler_proof_matrix.csv")}
+    valid_wl = {w for w in RECAP_MODELS if (RECAP / w / "model.mlir").is_file()}
+    ALL_ABS = set(ABSTRACTIONS)
+
+    # (1) every candidate references a known abstraction
+    p12check(all(c["abstraction"] in ALL_ABS for c in certs) and len(certs) == len(ALL_ABS),
+             f"every boundary candidate references a known abstraction ({len(certs)})")
+    # (2) every workload reference exists
+    p12check(all(w in valid_wl for c in certs for w in c["supporting_workloads"]),
+             "every boundary workload reference exists")
+    # (3) every region role reference is real
+    p12check(all(r in REGION_ROLES for c in certs for r in c["region_roles"]),
+             "every boundary region-role reference is real")
+    # (4) every boundary level uses the allowed vocabulary
+    lv_ok = all(b["level"] in LEVELS for c in certs for b in c["boundary_levels"]) and \
+        all({b["level"] for b in c["boundary_levels"]} == set(LEVELS) for c in certs)
+    p12check(lv_ok, "every boundary level uses the allowed 6-level vocabulary")
+    # (5) every status uses the allowed vocabulary
+    p12check(all(b["status"] in STATUS for c in certs for b in c["boundary_levels"]),
+             "every placement status uses the allowed vocabulary")
+    # (6) every required proof references a CP-matrix axis or is unavailable
+    proof_ok = all((c["compiler_proof_matrix_axis"] in cp_axes)
+                   or (c["compiler_proof_status"] == "unavailable") for c in certs)
+    p12check(proof_ok, "every required compiler proof references a CP-matrix axis or is unavailable")
+    # (7) every DSE knob has a reason + evidence
+    knobs = load_yaml(CS / "boundary_dse_knobs.yaml")["boundary_dse_knobs"]["knobs"]
+    p12check(knobs and all(k.get("reason") and k.get("evidence") for k in knobs),
+             f"every boundary DSE knob has a reason + evidence ({len(knobs)})")
+    # (8) every responsibility-matrix cell uses the allowed vocabulary
+    cols = ["compiler", "runtime_hal", "command_processor", "accelerator_isa", "device_microcode",
+            "datapath"]
+    resp = _csv_rows(CS / "responsibility_split_matrix.csv")
+    p12check(resp and all(r[col] in RESP_CELLS for r in resp for col in cols),
+             f"every responsibility-matrix cell uses the allowed vocabulary ({len(resp)} rows)")
+    # (9) no boundary artifact claims speedup/cycles/area/energy/optimal/best
+    p12_files = ["hw_sw_boundary_matrix.csv", "boundary_candidate_contracts.yaml",
+                 "boundary_placement_report.md", "responsibility_split_matrix.csv",
+                 "interface_contract_sketches.md", "isa_candidate_primitives.yaml",
+                 "runtime_object_candidates.yaml", "command_isa_candidates.yaml",
+                 "boundary_dse_knobs.yaml"]
+    leaked = {}
+    for fn in p12_files:
+        low = (CS / fn).read_text(errors="ignore").lower()
+        for t in DANGEROUS + ("optimal",):
+            if t in low:
+                leaked.setdefault(t, []).append(fn)
+    p12check(not leaked, f"P12 artifacts free of forbidden performance terms (found: {leaked})")
+    # (10) partial mode: builder works with absent inputs (no workloads / no proofs)
+    from merlin.dse_guidance.boundary_placement import build_certificates
+    try:
+        part = build_certificates({}, {})
+        partial_ok = len(part) == len(ALL_ABS) and all(c.supporting_workloads == [] for c in part) \
+            and all(c.compiler_proof_status == "unavailable" for c in part)
+    except Exception:
+        partial_ok = False
+    p12check(partial_ok, "partial mode: boundary builder works with absent P7/P8/P9 inputs")
+
+    top = max(certs, key=lambda c: c["boundary_pressure_score"])
+    return {"abstractions": len(certs), "top": top["abstraction"],
+            "top_score": top["boundary_pressure_score"]}
+
+
 def main(write: bool = True) -> int:
     rows = [verify_workload(w) for w in RECAP_MODELS if (RECAP / w / "model.mlir").is_file()]
     verify_global()
@@ -898,9 +973,10 @@ def main(write: bool = True) -> int:
     p10_rows = [verify_p10_workload(w) for w in RECAP_MODELS
                 if (RECAP / w / "model.mlir").is_file()]
     verify_p10_global()
+    p12_summary = verify_p12()
 
     _all = (results + p5_results + p6_results + p7_results + p8_results + p9_results
-            + p10_results)
+            + p10_results + p12_results)
     passed = sum(1 for ok, _ in _all if ok)
     total = len(_all)
     p5_passed = sum(1 for ok, _ in p5_results if ok)
@@ -909,6 +985,7 @@ def main(write: bool = True) -> int:
     p8_passed = sum(1 for ok, _ in p8_results if ok)
     p9_passed = sum(1 for ok, _ in p9_results if ok)
     p10_passed = sum(1 for ok, _ in p10_results if ok)
+    p12_passed = sum(1 for ok, _ in p12_results if ok)
     L = ["# Implementation verification report\n",
          "> Independent re-derivation of the dse_guidance package: every number below is recomputed "
          "from the raw captures / base facts and cross-checked against the emitted artifacts. "
@@ -1032,6 +1109,21 @@ def main(write: bool = True) -> int:
              "accumulator == compute), and confirms scale/dequant/low-bit/sparsity are explicitly "
              "unavailable with no false measured-pass. **No speedup or low-bit performance** is "
              "claimed.\n")
+
+    # P12 HW/SW boundary-placement verification section
+    L.append("## P12 HW/SW boundary-placement verification\n")
+    L.append(f"**{p12_passed}/{len(p12_results)} P12 checks passed.** "
+             f"{p12_summary['abstractions']} abstractions; top by evidence breadth: "
+             f"`{p12_summary['top']}` (score {p12_summary['top_score']}).\n")
+    for ok, msg in p12_results:
+        L.append(f"- [{'PASS' if ok else 'FAIL'}] {msg}")
+    L.append("\nP12 checks the boundary search space: every candidate references a known "
+             "abstraction / real workload / real region role; every boundary level + status + "
+             "responsibility cell uses the allowed vocabulary; every required compiler proof "
+             "references the compiler-proof matrix (or is unavailable); every DSE knob carries a "
+             "reason + evidence; partial mode works with absent inputs; and no boundary artifact "
+             "claims speedup/cycles/area/energy/optimal/best. Merlin generates the search space; "
+             "the DSE tool chooses.\n")
     if write:
         (CS / "verification_report.md").write_text("\n".join(L) + "\n")
 
@@ -1040,7 +1132,7 @@ def main(write: bool = True) -> int:
     print(f"\n{passed}/{total} checks passed ({p5_passed}/{len(p5_results)} P5, "
           f"{p6_passed}/{len(p6_results)} P6, {p7_passed}/{len(p7_results)} P7, "
           f"{p8_passed}/{len(p8_results)} P8, {p9_passed}/{len(p9_results)} P9, "
-          f"{p10_passed}/{len(p10_results)} P10){dest}")
+          f"{p10_passed}/{len(p10_results)} P10, {p12_passed}/{len(p12_results)} P12){dest}")
     return 0 if passed == total else 1
 
 

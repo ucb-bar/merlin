@@ -1,0 +1,18 @@
+function,compiler,runtime_hal,command_processor,accelerator_isa,device_microcode,datapath,note
+region_partitioning,owns,assists,not_applicable,not_applicable,not_applicable,not_applicable,
+layout_selection,owns,assists,not_applicable,consumes,not_applicable,consumes,
+dtype_selection,owns,assists,not_applicable,consumes,not_applicable,consumes,
+weight_packing,owns,assists,not_applicable,consumes,not_applicable,consumes,
+scale_metadata_management,declares,owns,consumes,consumes,not_applicable,consumes,scales erased by the dequantized capture
+resident_object_lifetime,declares,owns,owns,not_applicable,assists,not_applicable,
+K_loop_iteration,assists,assists,owns,not_applicable,owns,owns,
+loop_carried_state_update,declares,assists,owns,not_applicable,owns,owns,
+command_dependency_tracking,declares,assists,owns,not_applicable,owns,not_applicable,
+event_synchronization,not_applicable,owns,owns,not_applicable,assists,not_applicable,
+DMA_prefetch,assists,owns,owns,not_applicable,assists,assists,
+buffer_allocation,assists,owns,owns,not_applicable,assists,not_applicable,
+sharding_split,owns,assists,assists,consumes,assists,assists,
+partial_sum_merge,declares,not_applicable,assists,owns,owns,owns,
+epilogue_requant,assists,not_applicable,assists,owns,owns,owns,
+deadline_enforcement,not_applicable,owns,assists,not_applicable,assists,not_applicable,"runtime concern; the deadline is derived from H/control_rate, enforcement timing is unavailable in a model-forward capture"
+safety_action_commit,not_applicable,owns,assists,not_applicable,not_applicable,not_applicable,post-processing/runtime; not in the model-forward capture

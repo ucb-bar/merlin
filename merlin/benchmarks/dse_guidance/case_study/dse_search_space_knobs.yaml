@@ -83,5 +83,17 @@ dse_search_space_knobs:
     - accumulator_dtype
     - requant_in_epilogue
     source_phase: P10
-  note: consolidated STRUCTURAL search-space knobs discovered across P5-P10, each with its source phase, enabled status, evidence, and what gates it. This is the bridge a future DSE engine consumes together with the per-workload abstraction-axis template (dse_search_space_template.yaml). Structural only — no speedup, cycle, or area claim.
+  - enabled: true
+    evidence: derived_requirement
+    gated_by: boundary placement is a search-space axis (Merlin does not choose); see boundary_candidate_contracts.yaml + boundary_dse_knobs.yaml
+    group: hw_sw_boundary_placement
+    knobs:
+    - resident_weight_object@{compiler/runtime/command/isa/microcode/datapath}
+    - region_level_dispatch@{compiler/runtime/command/isa/microcode/datapath}
+    - event_token@{compiler/runtime/command/isa/microcode/datapath}
+    - async_queue@{compiler/runtime/command/isa/microcode/datapath}
+    - dma_engine@{compiler/runtime/command/isa/microcode/datapath}
+    - partial_sum_object@{compiler/runtime/command/isa/microcode/datapath}
+    source_phase: P12
+  note: consolidated STRUCTURAL search-space knobs discovered across P5-P12, each with its source phase, enabled status, evidence, and what gates it. This is the bridge a future DSE engine consumes together with the per-workload abstraction-axis template (dse_search_space_template.yaml). Structural only — no speedup, cycle, or area claim.
   what_is_not_claimed: no speedup, no schedule, no chosen design; these are search-space dimensions a DSE engine would explore, with the measurements each needs named in the per-phase artifacts
