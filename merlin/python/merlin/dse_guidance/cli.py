@@ -135,6 +135,64 @@ def _study(args) -> int:
     return 0
 
 
+def _query(args) -> int:
+    """Consume the case-study contract manifest (dse_contract.json) — the one-object entry point."""
+    import json
+    from merlin.common import paths
+    base = Path(args.out) if args.out else (
+        paths.merlin_dir() / "benchmarks" / "dse_guidance" / "case_study")
+    manifest_path = base / "dse_contract.json"
+    if not manifest_path.is_file():
+        raise SystemExit(f"no dse_contract.json under {base}; run --case-study first")
+    m = json.loads(manifest_path.read_text())
+    topic, _, arg = args.query.partition(":")
+    topic = topic.strip().lower()
+
+    if topic == "summary":
+        print(f"workloads: {', '.join(m['workloads'])}")
+        for w, d in sorted(m["per_workload"].items()):
+            print(f"  {w}: class={d['class']} K={d['K']} roles={d['roles']} "
+                  f"structural_dse={d['ready_structural_dse']} "
+                  f"quantitative_dse={d['ready_quantitative_dse']} acc_int8={d['accuracy_int8']}")
+        print(f"\nnot claimed: {m['what_is_not_claimed']}")
+    elif topic == "knobs":
+        for g in m["search_space_knob_groups"]:
+            print(f"  [{g['source_phase']:6s}] {g['group']:28s} enabled={g['enabled']} "
+                  f"n_knobs={g['n_knobs']}")
+    elif topic == "boundary":
+        bp = m["boundary_placement"]
+        if arg:
+            from merlin.common.yaml import load_yaml
+            certs = load_yaml(base / "boundary_candidate_contracts.yaml")[
+                "boundary_candidate_contracts"]["certificates"]
+            c = next((x for x in certs if x["abstraction"] == arg.strip()), None)
+            if c is None:
+                raise SystemExit(f"unknown abstraction '{arg}'; see --query boundary")
+            print(f"{c['abstraction']}  (pressure/evidence={c['boundary_pressure_score']}, "
+                  f"workloads={c['supporting_workloads']})")
+            print(f"  compiler proof: {c['required_compiler_proof']} "
+                  f"[{c['compiler_proof_status']}]")
+            for b in c["boundary_levels"]:
+                print(f"  {b['level']:32s} {b['status']:18s} sw='{b['software_manages'][:40]}'")
+        else:
+            print(f"boundary score = {bp['score_is']}; levels = {', '.join(bp['levels'])}")
+            for t in bp["top_by_evidence_breadth"]:
+                print(f"  {t['abstraction']:28s} score={t['boundary_pressure_score']} "
+                      f"strong@={t['strong_levels']}")
+            print("\nquery a placement: --query boundary:<abstraction>")
+    elif topic == "missing":
+        print("measurements needed before quantitative DSE:")
+        for mm in m["measurements_needed_before_quantitative_dse"]:
+            print(f"  - {mm}")
+    elif topic == "index":
+        for k, v in sorted(m["artifacts_index"].items()):
+            print(f"  {k:24s} -> {v}")
+    else:
+        raise SystemExit("query must be one of: summary | knobs | boundary[:<abstraction>] | "
+                         "missing | index")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="merlin-dse-guidance", description=__doc__)
     ap.add_argument("--workload", default=None,
@@ -169,8 +227,14 @@ def main(argv: list[str] | None = None) -> int:
                     help="emit only the structural front-end (topology, capture fidelity, "
                          "candidate axes); skip the quantitative triage even if a region is given")
     ap.add_argument("--out", default=None, help="output dir")
+    ap.add_argument("--query", default=None,
+                    help="consume the case-study contract manifest: one of summary | knobs | "
+                         "boundary[:<abstraction>] | missing | index (reads dse_contract.json under "
+                         "--out or the committed case_study dir)")
     args = ap.parse_args(argv)
 
+    if args.query:
+        return _query(args)
     if args.design_envelope:
         return _design_envelope(args)
     if args.case_study:
