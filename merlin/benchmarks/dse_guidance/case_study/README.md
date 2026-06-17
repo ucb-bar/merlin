@@ -16,6 +16,8 @@ Workloads (real `prov.fqn` recaptures): **rdt, openvla, small_llama, tiny_llama*
 - `workload_family_table.csv` — workloads clustered into families (iterative_denoise / token_decode / single_shot).
 - `<workload>/dse_search_space_template.yaml`, `dse_search_space_template_<family>.yaml` — the **DSE search-space template** (the bridge a DSE engine consumes: enabled axes + knobs).
 - `measurement_priority_table.csv` — what to measure next, ranked by candidates unblocked.
+- `operator_shape_table.csv`, `operator_geometry.yaml` — per-operator geometry (M/N/K, MACs, aspect, shape_class + semantic role). `shape_summary_by_workload.csv`, `shape_summary_by_region.csv`, `operator_cluster_table.csv`, `operator_geometry_report.md` summarise it (structural geometry only).
+- `tile_waste_table.csv`, `primitive_coverage_matrix.csv`, `primitive_regret_table.csv` — candidate compute-primitive (tile / GEMV-lane) structural coverage + cross-workload regret; `primitive_coverage_report.md`, `cross_workload_coverage_report.md` read them (no speedup).
 - `traffic_table.csv` — per-region byte traffic + avoidable reload (memory/reuse envelope).
 - `dispatch_granularity_table.csv` — command-graph view (honest: loop unrolled, syncs unavailable).
 - `accuracy_gated_dtype_candidates.csv` — which low-bit formats are accuracy-legal vs blocked (int8 measured; fp8/int4 unavailable).
