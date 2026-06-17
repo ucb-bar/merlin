@@ -1801,7 +1801,7 @@ def test_epilogue_pattern_label_and_certificates():
     # certificates from a bias+activation epilogue: epilogue/accumulator/activation IR-supported;
     # low-bit/scale/sparsity always blocked (no low-bit storage in a dequantized capture)
     pat = FE.EpiloguePattern(0, "addmm", "matmul->bias->activation", True, True, False, False,
-                             False, 2, "recovered_from_ir")
+                             False, 2, False, "recovered_from_ir")
     certs = {c.abstraction: c for c in FE.certificates([pat], [])}
     assert certs["fused_requant_epilogue"].evidence == "recovered_from_ir"
     assert certs["activation_clamp_unit"].evidence == "recovered_from_ir"
@@ -1842,6 +1842,22 @@ def test_epilogue_detection_and_accumulator_on_real_capture():
     assert a.accumulator_materialization == "committed_directly"
 
 
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_epilogue_reshape_separation_no_overclaim():
+    # LLaMA-style projections reshape their output before any elementwise op: report the boundary
+    # as reshape-separated and claim NO directly-fused epilogue (don't mislabel a residual add as
+    # bias). rdt (matmul feeds a generic directly) is NOT reshape-separated.
+    from merlin.dse_guidance import fusion_epilogue as FE, case_study as CS
+    avail = CS.available_models()
+    if "tiny_llama" in avail:
+        pats = FE.epilogue_patterns(str(CS._recap_dir("tiny_llama")))
+        assert pats and all(p.reshape_separated_epilogue for p in pats)
+        assert all(not (p.has_bias or p.has_activation or p.has_scale) for p in pats)  # no overclaim
+    if "rdt" in avail:
+        rdt = FE.epilogue_patterns(str(CS._recap_dir("rdt")))
+        assert any(not p.reshape_separated_epilogue and p.has_bias for p in rdt)  # directly fused
+
+
 def test_lost_numerical_contracts_marks_erased():
     from merlin.dse_guidance import fusion_epilogue as FE
     a = FE.AccumulatorContract("repeated_head", 5, "f32", "f32", "f32", "f32", "unavailable",
@@ -1856,7 +1872,7 @@ def test_lost_numerical_contracts_marks_erased():
 def test_p10_no_forbidden_wording_or_false_measured_pass():
     from merlin.dse_guidance import fusion_epilogue as FE
     pat = FE.EpiloguePattern(0, "addmm", "matmul->bias", True, False, False, False, False, 1,
-                             "recovered_from_ir")
+                             False, "recovered_from_ir")
     a = FE.AccumulatorContract("r", 1, "f32", "f32", "f32", "f32", "unavailable", "unavailable",
                                FE.DEQ_NA, FE.REQ_EPILOGUE, FE.ACC_COMMITTED, "recovered_from_ir")
     certs = FE.certificates([pat], [a])

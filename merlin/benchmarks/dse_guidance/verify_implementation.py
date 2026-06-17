@@ -826,6 +826,13 @@ def verify_p10_workload(w: str) -> dict:
     erased_ok = all(r["scale_dtype"] == "unavailable" and r["dequant_location"] == "unavailable"
                     for r in accs)
     p10check(erased_ok, f"[{w}] scale metadata + dequant location explicitly unavailable")
+
+    # P10-E: reshape-separated matmuls carry NO directly-fused epilogue flag (no over-claim of a
+    # reshape-distant residual/rotary as bias/scale)
+    rs_ok = all(p["has_bias"] == "False" and p["has_activation"] == "False"
+                and p["has_scale"] == "False" and p["has_clamp"] == "False"
+                for p in pats if p["reshape_separated_epilogue"] == "True")
+    p10check(rs_ok, f"[{w}] reshape-separated matmuls claim no directly-fused epilogue")
     return {"workload": w, "matmuls": len(recs),
             "bias_ops": sum(1 for p in pats if p["has_bias"] == "True")}
 
