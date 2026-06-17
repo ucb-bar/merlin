@@ -1,0 +1,6 @@
+workload,region,invocations,weight_bytes,activation_input_bytes,output_bytes,intermediate_bytes,scale_bytes,kv_bytes,read_bytes_resident,write_bytes,read_write_ratio,avoidable_weight_reload,resident_int8_B,resident_bf16_B,lifetime
+rdt,repeated_head,5,391118848,41519104,77030912,unavailable,unavailable,unavailable,598714368,385154560,1.554,1564475392,97779712,195559424,across_K
+openvla,backbone_once,1,15400960,466688,516352,unavailable,unavailable,unavailable,15867648,516352,30.73,0,3850240,7700480,across_replan
+openvla,repeated_head,7,3145728,235520,409600,unavailable,unavailable,unavailable,4794368,2867200,1.672,18874368,786432,1572864,across_K
+small_llama,repeated_head,32,1712128,75264,93184,unavailable,unavailable,unavailable,4120576,2981888,1.382,53075968,428032,856064,across_K
+tiny_llama,repeated_head,32,614465536,606208,1085440,unavailable,unavailable,unavailable,633864192,34734080,18.249,19048431616,153616384,307232768,across_K

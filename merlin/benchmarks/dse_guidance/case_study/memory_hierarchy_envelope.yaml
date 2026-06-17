@@ -1,0 +1,197 @@
+# memory_hierarchy_envelope (structural; no bandwidth)
+memory_hierarchy_envelope:
+  note: per-region byte envelope. weight/activation/output bytes are recovered_from_ir; resident_by_dtype scales the weights by element width. intermediate-materialization, scale/zero-point, and KV/prefix bytes are NOT exposed by a flat dequantized capture and are marked unavailable, never invented. No bandwidth/speedup is claimed (that needs an explicit design YAML).
+  workloads:
+  - regions:
+    - activation_input_bytes:
+        evidence: recovered_from_ir
+        value: 41519104
+      avoidable_weight_reload:
+        evidence: derived_requirement
+        value: 1564475392
+      intermediate_bytes:
+        evidence: unavailable
+        value: unavailable
+      invocations: 5
+      kv_bytes:
+        evidence: unavailable
+        value: unavailable
+      lifetime: across_K
+      output_bytes:
+        evidence: recovered_from_ir
+        value: 77030912
+      read_bytes_resident:
+        evidence: derived_requirement
+        value: 598714368
+      read_write_ratio: 1.554
+      region: repeated_head
+      resident_by_dtype:
+        bf16: 195559424
+        fp6: 73334784
+        fp8: 97779712
+        int4: 48889856
+        int8: 97779712
+      scale_bytes:
+        evidence: unavailable
+        value: unavailable
+      weight_bytes:
+        evidence: recovered_from_ir
+        value: 391118848
+      write_bytes:
+        evidence: derived_requirement
+        value: 385154560
+    workload: rdt
+  - regions:
+    - activation_input_bytes:
+        evidence: recovered_from_ir
+        value: 466688
+      avoidable_weight_reload:
+        evidence: derived_requirement
+        value: 0
+      intermediate_bytes:
+        evidence: unavailable
+        value: unavailable
+      invocations: 1
+      kv_bytes:
+        evidence: unavailable
+        value: unavailable
+      lifetime: across_replan
+      output_bytes:
+        evidence: recovered_from_ir
+        value: 516352
+      read_bytes_resident:
+        evidence: derived_requirement
+        value: 15867648
+      read_write_ratio: 30.73
+      region: backbone_once
+      resident_by_dtype:
+        bf16: 7700480
+        fp6: 2887680
+        fp8: 3850240
+        int4: 1925120
+        int8: 3850240
+      scale_bytes:
+        evidence: unavailable
+        value: unavailable
+      weight_bytes:
+        evidence: recovered_from_ir
+        value: 15400960
+      write_bytes:
+        evidence: derived_requirement
+        value: 516352
+    - activation_input_bytes:
+        evidence: recovered_from_ir
+        value: 235520
+      avoidable_weight_reload:
+        evidence: derived_requirement
+        value: 18874368
+      intermediate_bytes:
+        evidence: unavailable
+        value: unavailable
+      invocations: 7
+      kv_bytes:
+        evidence: unavailable
+        value: unavailable
+      lifetime: across_K
+      output_bytes:
+        evidence: recovered_from_ir
+        value: 409600
+      read_bytes_resident:
+        evidence: derived_requirement
+        value: 4794368
+      read_write_ratio: 1.672
+      region: repeated_head
+      resident_by_dtype:
+        bf16: 1572864
+        fp6: 589824
+        fp8: 786432
+        int4: 393216
+        int8: 786432
+      scale_bytes:
+        evidence: unavailable
+        value: unavailable
+      weight_bytes:
+        evidence: recovered_from_ir
+        value: 3145728
+      write_bytes:
+        evidence: derived_requirement
+        value: 2867200
+    workload: openvla
+  - regions:
+    - activation_input_bytes:
+        evidence: recovered_from_ir
+        value: 75264
+      avoidable_weight_reload:
+        evidence: derived_requirement
+        value: 53075968
+      intermediate_bytes:
+        evidence: unavailable
+        value: unavailable
+      invocations: 32
+      kv_bytes:
+        evidence: unavailable
+        value: unavailable
+      lifetime: across_K
+      output_bytes:
+        evidence: recovered_from_ir
+        value: 93184
+      read_bytes_resident:
+        evidence: derived_requirement
+        value: 4120576
+      read_write_ratio: 1.382
+      region: repeated_head
+      resident_by_dtype:
+        bf16: 856064
+        fp6: 321024
+        fp8: 428032
+        int4: 214016
+        int8: 428032
+      scale_bytes:
+        evidence: unavailable
+        value: unavailable
+      weight_bytes:
+        evidence: recovered_from_ir
+        value: 1712128
+      write_bytes:
+        evidence: derived_requirement
+        value: 2981888
+    workload: small_llama
+  - regions:
+    - activation_input_bytes:
+        evidence: recovered_from_ir
+        value: 606208
+      avoidable_weight_reload:
+        evidence: derived_requirement
+        value: 19048431616
+      intermediate_bytes:
+        evidence: unavailable
+        value: unavailable
+      invocations: 32
+      kv_bytes:
+        evidence: unavailable
+        value: unavailable
+      lifetime: across_K
+      output_bytes:
+        evidence: recovered_from_ir
+        value: 1085440
+      read_bytes_resident:
+        evidence: derived_requirement
+        value: 633864192
+      read_write_ratio: 18.249
+      region: repeated_head
+      resident_by_dtype:
+        bf16: 307232768
+        fp6: 115212288
+        fp8: 153616384
+        int4: 76808192
+        int8: 153616384
+      scale_bytes:
+        evidence: unavailable
+        value: unavailable
+      weight_bytes:
+        evidence: recovered_from_ir
+        value: 614465536
+      write_bytes:
+        evidence: derived_requirement
+        value: 34734080
+    workload: tiny_llama

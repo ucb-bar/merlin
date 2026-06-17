@@ -1,0 +1,6 @@
+workload,region,min_input_buffer_count,min_output_buffer_count,double_buffering_needed,producer_consumer_queue_candidate,input_buffer_bytes,output_buffer_bytes,resident_weight_bytes,buffer_bytes_int8,buffer_bytes_bf16,evidence
+rdt,repeated_head,2,2,yes,yes,41519104,77030912,391118848,29637504,59275008,derived_requirement
+openvla,backbone_once,2,2,yes,yes,466688,516352,15400960,245760,491520,derived_requirement
+openvla,repeated_head,2,2,yes,yes,235520,409600,3145728,161280,322560,derived_requirement
+small_llama,repeated_head,2,2,yes,yes,75264,93184,1712128,42112,84224,derived_requirement
+tiny_llama,repeated_head,2,2,yes,yes,606208,1085440,614465536,422912,845824,derived_requirement

@@ -28,6 +28,7 @@ from merlin.dse_guidance import compiler_proof as CP
 from merlin.dse_guidance import contract_graph as CGRAPH
 from merlin.dse_guidance import contract as CON
 from merlin.dse_guidance import design_envelope as DE
+from merlin.dse_guidance import dma_buffer_analysis as DMA
 from merlin.dse_guidance import dtype_certificates as DC
 from merlin.dse_guidance import memory_envelope as ME
 from merlin.dse_guidance import numerical_contract as NC
@@ -471,6 +472,13 @@ def _readme_md(packages) -> str:
         "abstractions each requires (structural, not scheduled).\n"
         "- `processing_unit_guidance.yaml`, `heterogeneity_report.md` — monolithic vs. replicated "
         "vs. heterogeneous evidence + the search-space implication (evidence only, no selection).\n"
+        "- `memory_hierarchy_envelope.yaml`, `data_movement_table.csv`, `reuse_lifetime_table.csv`, "
+        "`memory_abstraction_candidates.yaml`, `memory_envelope_report.md` — per-region byte "
+        "envelope (weight/activation/output + dtype-scaled resident set), reuse/residency, and the "
+        "memory abstractions implied (no bandwidth claim).\n"
+        "- `dma_stream_table.csv`, `buffer_requirement_table.csv`, `dma_pressure_report.md` — "
+        "structural data-movement streams + minimum buffering per region (no bandwidth/deadline "
+        "claim).\n"
         "- `traffic_table.csv` — per-region byte traffic + avoidable reload (memory/reuse envelope).\n"
         "- `dispatch_granularity_table.csv` — command-graph view (honest: loop unrolled, syncs "
         "unavailable).\n"
@@ -715,6 +723,26 @@ def run_case_study(out_dir) -> dict:
     yaml_artifact("processing_unit_guidance.yaml", PUG.guidance_yaml(pug),
                   header="processing_unit_guidance (evidence only; no selection)").write(out)
     Artifact("heterogeneity_report.md", PUG.heterogeneity_report_md(pug)).write(out)
+    # P9 memory / DMA / buffer / data-movement envelope (structural; no bandwidth/speedup)
+    region_mem_by_wl = {c.workload: ME.region_memory(c.attribution, geom_by_workload[c.workload])
+                        for c in cases}
+    reuse_by_wl = {w: ME.reuse_lifetime(rm) for w, rm in region_mem_by_wl.items()}
+    stream_by_wl = {w: DMA.all_streams(rm) for w, rm in region_mem_by_wl.items()}
+    buf_by_wl = {w: DMA.buffer_requirements(rm) for w, rm in region_mem_by_wl.items()}
+    yaml_artifact("memory_hierarchy_envelope.yaml",
+                  ME.memory_hierarchy_yaml(region_mem_by_wl),
+                  header="memory_hierarchy_envelope (structural; no bandwidth)").write(out)
+    Artifact("data_movement_table.csv", ME.data_movement_csv(region_mem_by_wl)).write(out)
+    Artifact("reuse_lifetime_table.csv", ME.reuse_lifetime_csv(reuse_by_wl)).write(out)
+    yaml_artifact("memory_abstraction_candidates.yaml",
+                  ME.memory_abstraction_candidates_yaml(reuse_by_wl),
+                  header="memory_abstraction_candidates (structural)").write(out)
+    Artifact("memory_envelope_report.md",
+             ME.memory_envelope_report_md(region_mem_by_wl)).write(out)
+    Artifact("dma_stream_table.csv", DMA.dma_stream_csv(stream_by_wl)).write(out)
+    Artifact("buffer_requirement_table.csv", DMA.buffer_requirement_csv(buf_by_wl)).write(out)
+    Artifact("dma_pressure_report.md",
+             DMA.dma_pressure_report_md(stream_by_wl, region_mem_by_wl)).write(out)
     # TorchAO integration plan (a plan, not a sweep)
     Artifact("torchao_integration_plan.md", NC.torchao_integration_plan_md()).write(out)
     # accuracy gate (measurable-now real leg)
