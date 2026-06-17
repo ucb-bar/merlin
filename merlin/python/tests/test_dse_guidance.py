@@ -1561,6 +1561,28 @@ def test_resource_hierarchy_schema_and_unavailable_units():
     assert units["matrix_engine"]["evidence"] == "recovered_from_ir"     # dense gemm present
 
 
+def test_structural_hierarchy_hints_cover_vocabulary():
+    from merlin.dse_guidance import resource_hierarchy as RH, operator_geometry as OG
+    from merlin.dse_guidance import sharding as SH, parallelism as PAR
+    shapes = [OG.operator_shape(_mm(4096, 4096, 2048, idx=0, op="addmm"), "w", "repeated_head"),
+              OG.operator_shape(_mm(1, 2048, 256, idx=1), "w", "repeated_head")]
+    axes = SH.all_shard_axes(shapes)
+    dags = [PAR.analyze_graph(_toy_graph())]
+    hints = {h.hierarchy_option: h for h in RH.structural_hierarchy_hints(shapes, axes, dags)}
+    # the structural units the rest of P7 implies are now surfaced (closing the vocab gap)
+    assert {"reduction_tree", "epilogue_unit", "DMA_engine", "loop_controller",
+            "multi_engine_cluster"} <= set(hints)
+    assert all(h.hierarchy_option in RH.HIER_UNITS for h in hints.values())
+    assert all(h.evidence in _ALLOWED_EV for h in hints.values())
+    assert hints["reduction_tree"].evidence == "recovered_from_ir"      # K-shardable ops exist
+    assert hints["epilogue_unit"].evidence == "recovered_from_ir"       # the addmm op
+    assert hints["loop_controller"].supported_workloads == ["w"]        # repeated_head present
+    # the yaml emits both clusters and structural_units
+    obj = RH.hierarchy_hints_yaml(RH.cluster_hierarchy(shapes),
+                                  list(hints.values()))["parallel_hierarchy_hints"]
+    assert obj["clusters"] and obj["structural_units"]
+
+
 def test_p7_reports_have_no_forbidden_wording():
     from merlin.dse_guidance import (parallelism as PAR, sharding as SH, resource_hierarchy as RH,
                                      operator_geometry as OG)

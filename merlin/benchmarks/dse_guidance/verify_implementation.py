@@ -559,6 +559,15 @@ def verify_p7_global() -> None:
     hier = _csv_rows(CS_HIER)
     p7check(all(r["shape_class"] in known_clusters for r in hier),
             "hierarchy hints reference only known shape clusters")
+    # structural hierarchy hints cover the rest of the P7-c vocabulary, only with known unit names
+    hints = load_yaml(CS / "parallel_hierarchy_hints.yaml")["parallel_hierarchy_hints"]
+    from merlin.dse_guidance.resource_hierarchy import HIER_UNITS
+    su = {h["hierarchy_option"]: h for h in hints.get("structural_units", [])}
+    units_ok = set(su) <= HIER_UNITS and all(h["evidence"] in ALLOWED_EVIDENCE for h in su.values())
+    expect = {"reduction_tree", "epilogue_unit", "DMA_engine", "loop_controller",
+              "multi_engine_cluster"}
+    p7check(units_ok and expect <= set(su),
+            f"structural hierarchy hints cover {sorted(expect)} with known-unit names + valid evidence")
     # processing-unit candidates: any unit marked present must cite a present resource class
     press = {r["resource_class"]: r for r in _csv_rows(CS_RESPRESS)}
     units = load_yaml(CS / "processing_unit_candidates.yaml")["processing_unit_candidates"]["units"]
