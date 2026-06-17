@@ -1,0 +1,25 @@
+workload,contract,status,evidence,reason
+rdt,low_bit_weight_storage,lost,unavailable,weights are f32 in the capture (dequantized) — native low-bit storage erased
+rdt,scale_zero_point_metadata,erased,unavailable,scales/zero-points folded away when the capture was dequantized
+rdt,packed_lowbit_layout,lost,unavailable,weights stored in dense f32 layout — packed sub-byte layout erased
+rdt,dequant_op,unavailable,unavailable,no dequant op in the capture (folded into f32 weights)
+rdt,requant_op,unavailable,unavailable,no requant op in the capture (f32 datapath)
+rdt,sparsity_metadata,unavailable,unavailable,weights dense — no structured-sparsity metadata
+openvla,low_bit_weight_storage,lost,unavailable,weights are f32 in the capture (dequantized) — native low-bit storage erased
+openvla,scale_zero_point_metadata,erased,unavailable,scales/zero-points folded away when the capture was dequantized
+openvla,packed_lowbit_layout,lost,unavailable,weights stored in dense f32 layout — packed sub-byte layout erased
+openvla,dequant_op,unavailable,unavailable,no dequant op in the capture (folded into f32 weights)
+openvla,requant_op,unavailable,unavailable,no requant op in the capture (f32 datapath)
+openvla,sparsity_metadata,unavailable,unavailable,weights dense — no structured-sparsity metadata
+small_llama,low_bit_weight_storage,lost,unavailable,weights are f32 in the capture (dequantized) — native low-bit storage erased
+small_llama,scale_zero_point_metadata,erased,unavailable,scales/zero-points folded away when the capture was dequantized
+small_llama,packed_lowbit_layout,lost,unavailable,weights stored in dense f32 layout — packed sub-byte layout erased
+small_llama,dequant_op,unavailable,unavailable,no dequant op in the capture (folded into f32 weights)
+small_llama,requant_op,unavailable,unavailable,no requant op in the capture (f32 datapath)
+small_llama,sparsity_metadata,unavailable,unavailable,weights dense — no structured-sparsity metadata
+tiny_llama,low_bit_weight_storage,lost,unavailable,weights are f32 in the capture (dequantized) — native low-bit storage erased
+tiny_llama,scale_zero_point_metadata,erased,unavailable,scales/zero-points folded away when the capture was dequantized
+tiny_llama,packed_lowbit_layout,lost,unavailable,weights stored in dense f32 layout — packed sub-byte layout erased
+tiny_llama,dequant_op,unavailable,unavailable,no dequant op in the capture (folded into f32 weights)
+tiny_llama,requant_op,unavailable,unavailable,no requant op in the capture (f32 datapath)
+tiny_llama,sparsity_metadata,unavailable,unavailable,weights dense — no structured-sparsity metadata

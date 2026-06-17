@@ -30,6 +30,7 @@ from merlin.dse_guidance import contract as CON
 from merlin.dse_guidance import design_envelope as DE
 from merlin.dse_guidance import dma_buffer_analysis as DMA
 from merlin.dse_guidance import dtype_certificates as DC
+from merlin.dse_guidance import fusion_epilogue as FE
 from merlin.dse_guidance import memory_envelope as ME
 from merlin.dse_guidance import numerical_contract as NC
 from merlin.dse_guidance import operator_geometry as OG
@@ -479,6 +480,11 @@ def _readme_md(packages) -> str:
         "- `dma_stream_table.csv`, `buffer_requirement_table.csv`, `dma_pressure_report.md` — "
         "structural data-movement streams + minimum buffering per region (no bandwidth/deadline "
         "claim).\n"
+        "- `epilogue_pattern_table.csv`, `accumulator_contract_table.csv`, "
+        "`numerical_epilogue_candidates.yaml`, `lost_numerical_contracts.csv`, "
+        "`fusion_opportunity_report.md` — fusion/epilogue/accumulator placement: detected "
+        "matmul-epilogue patterns, accumulator + dequant/requant contract, fused abstraction "
+        "certificates, and the numerical contracts the flat capture erased (no low-bit perf claim).\n"
         "- `traffic_table.csv` — per-region byte traffic + avoidable reload (memory/reuse envelope).\n"
         "- `dispatch_granularity_table.csv` — command-graph view (honest: loop unrolled, syncs "
         "unavailable).\n"
@@ -743,6 +749,26 @@ def run_case_study(out_dir) -> dict:
     Artifact("buffer_requirement_table.csv", DMA.buffer_requirement_csv(buf_by_wl)).write(out)
     Artifact("dma_pressure_report.md",
              DMA.dma_pressure_report_md(stream_by_wl, region_mem_by_wl)).write(out)
+    # P10 fusion / epilogue / accumulator / numerical-contract integration (structural; no speedup)
+    pat_by_wl = {c.workload: FE.epilogue_patterns(str(_recap_dir(c.workload))) for c in cases}
+    acc_by_wl: dict = {}
+    cert_by_wl: dict = {}
+    for p in packages:
+        c = p["case"]
+        cap = str(_recap_dir(c.workload))
+        pats = pat_by_wl[c.workload]
+        accs = FE.accumulator_contract(ATTR.extract_matmuls(cap), c.attribution, p["nc"], pats)
+        acc_by_wl[c.workload] = accs
+        cert_by_wl[c.workload] = FE.certificates(pats, accs)
+    Artifact("epilogue_pattern_table.csv", FE.epilogue_pattern_csv(pat_by_wl)).write(out)
+    Artifact("accumulator_contract_table.csv",
+             FE.accumulator_contract_csv(acc_by_wl)).write(out)
+    yaml_artifact("numerical_epilogue_candidates.yaml",
+                  FE.epilogue_candidates_yaml(cert_by_wl),
+                  header="numerical_epilogue_candidates (structural; no low-bit perf)").write(out)
+    Artifact("lost_numerical_contracts.csv", FE.lost_contracts_csv(acc_by_wl)).write(out)
+    Artifact("fusion_opportunity_report.md",
+             FE.fusion_report_md(pat_by_wl, acc_by_wl, cert_by_wl)).write(out)
     # TorchAO integration plan (a plan, not a sweep)
     Artifact("torchao_integration_plan.md", NC.torchao_integration_plan_md()).write(out)
     # accuracy gate (measurable-now real leg)

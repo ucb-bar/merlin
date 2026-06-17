@@ -49,6 +49,11 @@ CS_PIPE_STAGE = CS / "pipeline_stage_table.csv"
 CS_DATAMOVE = CS / "data_movement_table.csv"
 CS_DMA = CS / "dma_stream_table.csv"
 CS_BUFREQ = CS / "buffer_requirement_table.csv"
+CS_EPILOGUE = CS / "epilogue_pattern_table.csv"
+CS_ACCUM = CS / "accumulator_contract_table.csv"
+_DEQ_VOCAB = {"before_matmul", "fused_candidate", "after_load", "unavailable"}
+_REQ_VOCAB = {"separate_op", "epilogue_candidate", "unavailable"}
+_ACC_VOCAB = {"materialized", "committed_directly", "unavailable"}
 ALLOWED_CADENCE = {"once_per_instruction", "once_per_replan", "K_times_per_replan", "token_loop",
                    "control_tick", "once_per_forward", "unknown"}
 ALLOWED_EVIDENCE = {"recovered_from_ir", "recovered_from_prov_fqn", "recovered_from_model_config",
@@ -785,6 +790,73 @@ def verify_p9_global() -> None:
     p9check(not leaked, f"P9 artifacts free of forbidden performance terms (found: {leaked})")
 
 
+# ============================================================ P10 fusion / epilogue / accumulator
+p10_results: list[tuple[bool, str]] = []
+
+
+def p10check(ok: bool, msg: str) -> None:
+    p10_results.append((bool(ok), msg))
+
+
+def verify_p10_workload(w: str) -> dict:
+    recs = ATTR.extract_matmuls(str(RECAP / w))
+    by_idx = {r.index: r for r in recs}
+    pats = [r for r in _csv_rows(CS_EPILOGUE) if r["workload"] == w]
+
+    # P10-A: pattern rows reference valid matmul ops, one per matmul
+    p10check(len(pats) == len(recs) and all(int(p["op_index"]) in by_idx for p in pats),
+             f"[{w}] epilogue pattern rows reference valid ops ({len(recs)} matmuls)")
+
+    # P10-B: bias detection is sound — every addmm op is flagged has_bias (independent op kind)
+    bias_ok = all(p["has_bias"] == "True" for p in pats
+                  if (by_idx[int(p["op_index"])].op == "addmm"))
+    p10check(bias_ok, f"[{w}] every addmm op detected as has_bias (matmul+bias epilogue)")
+
+    # P10-C: accumulator/dequant/requant fields use the allowed vocabulary + dtype is consistent
+    accs = [r for r in _csv_rows(CS_ACCUM) if r["workload"] == w]
+    vocab_ok = all(r["dequant_location"] in _DEQ_VOCAB and r["requant_location"] in _REQ_VOCAB
+                   and r["accumulator_materialization"] in _ACC_VOCAB for r in accs)
+    # f32 storage -> accumulator == compute (no widening); int8 would be i32 (derived, not here)
+    dtype_ok = all(r["accumulator_dtype"] == r["compute_dtype"] for r in accs
+                   if r["storage_dtype"] in ("f32", "float32", "fp32"))
+    p10check(vocab_ok and dtype_ok and accs,
+             f"[{w}] accumulator/dequant/requant fields use allowed vocabulary; f32 acc==compute")
+
+    # P10-D: scale/zero-point + dequant are explicitly unavailable (erased by dequantized capture)
+    erased_ok = all(r["scale_dtype"] == "unavailable" and r["dequant_location"] == "unavailable"
+                    for r in accs)
+    p10check(erased_ok, f"[{w}] scale metadata + dequant location explicitly unavailable")
+    return {"workload": w, "matmuls": len(recs),
+            "bias_ops": sum(1 for p in pats if p["has_bias"] == "True")}
+
+
+def verify_p10_global() -> None:
+    cand = load_yaml(CS / "numerical_epilogue_candidates.yaml")["numerical_epilogue_candidates"]
+    units = {c["abstraction"]: c for c in cand["candidates"]}
+    # certificate evidence is consistent: recovered_from_ir iff a workload shows the pattern
+    cons_ok = all((c["evidence"] == "recovered_from_ir") == bool(c["present_in_workloads"])
+                  for c in units.values())
+    p10check(cons_ok, "epilogue certificates: recovered_from_ir iff present in a workload, else unavailable")
+    # low-bit / scale / sparsity abstractions must be unavailable (not falsely IR-supported)
+    must_block = {"fused_dequant_matmul", "scale_object", "packed_lowbit_tensor",
+                  "resident_packed_weight_object", "structured_sparsity_skip"}
+    block_ok = all(units[a]["evidence"] == "unavailable" for a in must_block if a in units)
+    p10check(block_ok, f"low-bit/scale/sparsity certificates are unavailable (not falsely supported)")
+    # no false measured-pass for any non-int8 format leaked into the P10 artifacts
+    p10_files = ["epilogue_pattern_table.csv", "accumulator_contract_table.csv",
+                 "numerical_epilogue_candidates.yaml", "lost_numerical_contracts.csv",
+                 "fusion_opportunity_report.md"]
+    no_pass = all("measured_pass" not in (CS / f).read_text() for f in p10_files)
+    p10check(no_pass, "no measured_pass status leaked into P10 fusion artifacts")
+    leaked = {}
+    for fn in p10_files:
+        low = (CS / fn).read_text(errors="ignore").lower()
+        for t in DANGEROUS:
+            if t in low:
+                leaked.setdefault(t, []).append(fn)
+    p10check(not leaked, f"P10 artifacts free of forbidden performance terms (found: {leaked})")
+
+
 def main(write: bool = True) -> int:
     rows = [verify_workload(w) for w in RECAP_MODELS if (RECAP / w / "model.mlir").is_file()]
     verify_global()
@@ -803,8 +875,12 @@ def main(write: bool = True) -> int:
     p9_rows = [verify_p9_workload(w) for w in RECAP_MODELS
                if (RECAP / w / "model.mlir").is_file()]
     verify_p9_global()
+    p10_rows = [verify_p10_workload(w) for w in RECAP_MODELS
+                if (RECAP / w / "model.mlir").is_file()]
+    verify_p10_global()
 
-    _all = results + p5_results + p6_results + p7_results + p8_results + p9_results
+    _all = (results + p5_results + p6_results + p7_results + p8_results + p9_results
+            + p10_results)
     passed = sum(1 for ok, _ in _all if ok)
     total = len(_all)
     p5_passed = sum(1 for ok, _ in p5_results if ok)
@@ -812,6 +888,7 @@ def main(write: bool = True) -> int:
     p7_passed = sum(1 for ok, _ in p7_results if ok)
     p8_passed = sum(1 for ok, _ in p8_results if ok)
     p9_passed = sum(1 for ok, _ in p9_results if ok)
+    p10_passed = sum(1 for ok, _ in p10_results if ok)
     L = ["# Implementation verification report\n",
          "> Independent re-derivation of the dse_guidance package: every number below is recomputed "
          "from the raw captures / base facts and cross-checked against the emitted artifacts. "
@@ -919,6 +996,22 @@ def main(write: bool = True) -> int:
              "checks DMA streams/buffers reference valid regions and that intermediate/scale/KV "
              "bytes are explicitly unavailable. **No bandwidth/speedup** is claimed (needs a design "
              "YAML).\n")
+
+    # P10 fusion / epilogue / accumulator verification section
+    L.append("## P10 fusion / epilogue / accumulator verification\n")
+    L.append(f"**{p10_passed}/{len(p10_results)} P10 checks passed.**\n")
+    L.append("| workload | matmuls | matmul+bias epilogues |")
+    L.append("|---|---|---|")
+    for r in p10_rows:
+        L.append(f"| {r['workload']} | {r['matmuls']} | {r['bias_ops']} |")
+    L.append("\n### P10 checks\n")
+    for ok, msg in p10_results:
+        L.append(f"- [{'PASS' if ok else 'FAIL'}] {msg}")
+    L.append("\nP10 detects matmul epilogue patterns from the IR (every addmm is flagged bias), "
+             "checks the accumulator/dequant/requant fields use the allowed vocabulary (f32 "
+             "accumulator == compute), and confirms scale/dequant/low-bit/sparsity are explicitly "
+             "unavailable with no false measured-pass. **No speedup or low-bit performance** is "
+             "claimed.\n")
     if write:
         (CS / "verification_report.md").write_text("\n".join(L) + "\n")
 
@@ -926,7 +1019,8 @@ def main(write: bool = True) -> int:
     dest = f" -> {CS / 'verification_report.md'}" if write else ""
     print(f"\n{passed}/{total} checks passed ({p5_passed}/{len(p5_results)} P5, "
           f"{p6_passed}/{len(p6_results)} P6, {p7_passed}/{len(p7_results)} P7, "
-          f"{p8_passed}/{len(p8_results)} P8, {p9_passed}/{len(p9_results)} P9){dest}")
+          f"{p8_passed}/{len(p8_results)} P8, {p9_passed}/{len(p9_results)} P9, "
+          f"{p10_passed}/{len(p10_results)} P10){dest}")
     return 0 if passed == total else 1
 
 

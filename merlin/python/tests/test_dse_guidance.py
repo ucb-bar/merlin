@@ -1790,6 +1790,105 @@ def test_p9_reports_have_no_forbidden_wording():
                 assert "no speedup" in ln or "not a speedup" in ln or "no bandwidth/speedup" in ln
 
 
+# ============================================================ P10 fusion / epilogue / accumulator
+
+def test_epilogue_pattern_label_and_certificates():
+    from merlin.dse_guidance import fusion_epilogue as FE
+    assert FE._pattern_label({"bias": True, "activation": True, "scale": False, "clamp": False,
+                              "cast": False}) == "matmul->bias->activation"
+    assert FE._pattern_label({"bias": False, "activation": False, "scale": False, "clamp": False,
+                              "cast": False}) == "matmul"
+    # certificates from a bias+activation epilogue: epilogue/accumulator/activation IR-supported;
+    # low-bit/scale/sparsity always blocked (no low-bit storage in a dequantized capture)
+    pat = FE.EpiloguePattern(0, "addmm", "matmul->bias->activation", True, True, False, False,
+                             False, 2, "recovered_from_ir")
+    certs = {c.abstraction: c for c in FE.certificates([pat], [])}
+    assert certs["fused_requant_epilogue"].evidence == "recovered_from_ir"
+    assert certs["activation_clamp_unit"].evidence == "recovered_from_ir"
+    assert certs["fused_dequant_matmul"].evidence == "unavailable"
+    assert certs["scale_object"].evidence == "unavailable"
+    assert certs["structured_sparsity_skip"].evidence == "unavailable"
+    for c in certs.values():                       # every certificate carries the honest fields
+        assert c.could_be_wrong_if and c.what_is_not_claimed and c.accuracy_measurements_needed
+
+
+def test_accumulator_field_vocab():
+    from merlin.dse_guidance import fusion_epilogue as FE
+    assert FE.DEQ_NA == "unavailable" and FE.REQ_EPILOGUE == "epilogue_candidate"
+    assert FE.ACC_COMMITTED == "committed_directly"
+
+
+@pytest.mark.skipif(not (_RDT_RECAP / "model.mlir").is_file(), reason="no rdt recapture")
+def test_epilogue_detection_and_accumulator_on_real_capture():
+    from merlin.dse_guidance import fusion_epilogue as FE, numerical_contract as NC
+    cap = str(_RDT_RECAP)
+    pats = FE.epilogue_patterns(cap)
+    recs = ATTR.extract_matmuls(cap)
+    assert len(pats) == len(recs)
+    # every addmm op must be flagged has_bias (matmul+bias epilogue), recovered_from_ir
+    assert all(p.has_bias for p in pats if recs[p.index].op == "addmm")
+    assert any(p.has_bias for p in pats)            # rdt (DiT) uses addmm bias
+    # accumulator contract: f32 capture -> no dequant, no scale; bias slot -> requant candidate
+    topo = TOP.from_temporal(T.parse({"workload": "rdt", "class": "diffusion/denoise_steps",
+                                      "timing": {"K": 5, "H": 64, "control_rate_hz": 30},
+                                      "regions": [{"name": "h", "role": "repeated_head",
+                                                   "invocation_count": 5}]}))
+    attr = ATTR.attribute(cap, topo)
+    nc = NC.audit(cap, workload="rdt", records=recs, attribution=attr)
+    accs = FE.accumulator_contract(recs, attr, nc, pats)
+    a = next(x for x in accs if x.region == "repeated_head")
+    assert a.dequant_location == "unavailable" and a.scale_dtype == "unavailable"
+    assert a.requant_location == "epilogue_candidate"      # bias epilogue exists
+    assert a.accumulator_materialization == "committed_directly"
+
+
+def test_lost_numerical_contracts_marks_erased():
+    from merlin.dse_guidance import fusion_epilogue as FE
+    a = FE.AccumulatorContract("repeated_head", 5, "f32", "f32", "f32", "f32", "unavailable",
+                               "unavailable", FE.DEQ_NA, FE.REQ_EPILOGUE, FE.ACC_COMMITTED,
+                               "recovered_from_ir")
+    csv_txt = FE.lost_contracts_csv({"m": [a]})
+    assert "low_bit_weight_storage" in csv_txt and "lost" in csv_txt
+    assert "scale_zero_point_metadata" in csv_txt and "erased" in csv_txt
+    assert "measured_pass" not in csv_txt
+
+
+def test_p10_no_forbidden_wording_or_false_measured_pass():
+    from merlin.dse_guidance import fusion_epilogue as FE
+    pat = FE.EpiloguePattern(0, "addmm", "matmul->bias", True, False, False, False, False, 1,
+                             "recovered_from_ir")
+    a = FE.AccumulatorContract("r", 1, "f32", "f32", "f32", "f32", "unavailable", "unavailable",
+                               FE.DEQ_NA, FE.REQ_EPILOGUE, FE.ACC_COMMITTED, "recovered_from_ir")
+    certs = FE.certificates([pat], [a])
+    blobs = [FE.fusion_report_md({"m": [pat]}, {"m": [a]}, {"m": certs}).lower(),
+             str(FE.epilogue_candidates_yaml({"m": certs})).lower(),
+             FE.lost_contracts_csv({"m": [a]}).lower()]
+    for b in blobs:
+        assert "measured_pass" not in b              # P10 makes no accuracy verdict
+        for term in ("gap_closure", "faster", "optimal", "predicted cycles", "x faster"):
+            assert term not in b, f"forbidden term {term!r}"
+        for ln in b.splitlines():
+            if "speedup" in ln:
+                assert "no speedup" in ln or "not a speedup" in ln
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_case_study_emits_p10_artifacts(tmp_path):
+    from merlin.dse_guidance import case_study as CS
+    CS.run_case_study(tmp_path)
+    for f in ("epilogue_pattern_table.csv", "accumulator_contract_table.csv",
+              "numerical_epilogue_candidates.yaml", "lost_numerical_contracts.csv",
+              "fusion_opportunity_report.md"):
+        assert (tmp_path / f).is_file(), f"missing {f}"
+    import csv, io
+    accs = list(csv.DictReader(io.StringIO(
+        (tmp_path / "accumulator_contract_table.csv").read_text())))
+    for r in accs:
+        assert r["scale_dtype"] == "unavailable" and r["dequant_location"] == "unavailable"
+    # no non-int8 false measured-pass introduced anywhere
+    assert "measured_pass" not in (tmp_path / "numerical_epilogue_candidates.yaml").read_text()
+
+
 @pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
 def test_case_study_emits_p9_artifacts(tmp_path):
     from merlin.dse_guidance import case_study as CS
