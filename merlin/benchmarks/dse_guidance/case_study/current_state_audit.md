@@ -7,7 +7,10 @@ reproduce the contribution, is every claim evidence-labeled, are caveats explici
 avoid speedup / quantitative-DSE claims, and does it regenerate byte-stably. **Verdict: PASS.**
 
 Read this with `claim_evidence_matrix.csv` (claim → artifact), `known_limitations.md` (what is not
-claimed and why), and `reproducibility_check.log` (the verification run).
+claimed and why), and `reproducibility_check.log` (the verification run). For an **independent
+re-derivation** of every key number (recomputed from the raw captures and cross-checked against the
+emitted artifacts), see `verification_report.md` — regenerate it with
+`.venv/bin/python merlin/benchmarks/dse_guidance/verify_implementation.py` (37/37 checks pass).
 
 ---
 
