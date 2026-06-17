@@ -1,0 +1,224 @@
+# boundary_dse_knobs (search-space knobs; no speedup)
+boundary_dse_knobs:
+  knobs:
+  - abstraction: resident_weight_object
+    boundary_level: runtime_hal_object
+    evidence: recovered_from_ir
+    knob: resident_capacity
+    reason: weight bytes resident across the K-loop
+  - abstraction: resident_weight_object
+    boundary_level: runtime_hal_object
+    evidence: recovered_from_ir
+    knob: replacement_policy
+    reason: which resident objects evict
+  - abstraction: resident_weight_object
+    boundary_level: runtime_hal_object
+    evidence: recovered_from_ir
+    knob: lifetime_scope
+    reason: loop-invariant vs replan scope
+  - abstraction: resident_packed_weight_object
+    boundary_level: compiler_transform
+    evidence: unavailable
+    knob: pack_format
+    reason: sub-byte packing layout
+  - abstraction: resident_packed_weight_object
+    boundary_level: compiler_transform
+    evidence: unavailable
+    knob: resident_capacity
+    reason: packed resident bytes
+  - abstraction: packed_lowbit_tensor
+    boundary_level: compiler_transform
+    evidence: unavailable
+    knob: weight_format
+    reason: int4/fp8/... packed format
+  - abstraction: packed_lowbit_tensor
+    boundary_level: compiler_transform
+    evidence: unavailable
+    knob: group_size
+    reason: quant group granularity
+  - abstraction: scale_object
+    boundary_level: compiler_transform
+    evidence: unavailable
+    knob: scale_granularity
+    reason: per-tensor / channel / group
+  - abstraction: scale_object
+    boundary_level: compiler_transform
+    evidence: unavailable
+    knob: zero_point
+    reason: asymmetric vs symmetric
+  - abstraction: prefix_kv_object
+    boundary_level: compiler_transform
+    evidence: unavailable
+    knob: kv_capacity
+    reason: resident KV bytes
+  - abstraction: loop_carried_state_handle
+    boundary_level: command_buffer_or_command_isa
+    evidence: recovered_from_ir
+    knob: state_capacity
+    reason: carried-state bytes
+  - abstraction: loop_carried_state_handle
+    boundary_level: command_buffer_or_command_isa
+    evidence: recovered_from_ir
+    knob: update_in_loop
+    reason: in-loop vs host update
+  - abstraction: bounded_loop_command
+    boundary_level: command_buffer_or_command_isa
+    evidence: recovered_from_ir
+    knob: loop_bound_K
+    reason: device-side trip count
+  - abstraction: bounded_loop_command
+    boundary_level: command_buffer_or_command_isa
+    evidence: recovered_from_ir
+    knob: unroll_factor
+    reason: loop unroll
+  - abstraction: region_level_dispatch
+    boundary_level: command_buffer_or_command_isa
+    evidence: recovered_from_ir
+    knob: dispatch_granularity
+    reason: op vs region dispatch
+  - abstraction: persistent_command_buffer
+    boundary_level: command_buffer_or_command_isa
+    evidence: recovered_from_ir
+    knob: buffer_reuse_scope
+    reason: per-replan vs persistent
+  - abstraction: event_token
+    boundary_level: runtime_hal_object
+    evidence: recovered_from_ir
+    knob: event_depth
+    reason: in-flight events
+  - abstraction: async_queue
+    boundary_level: runtime_hal_object
+    evidence: recovered_from_ir
+    knob: queue_depth
+    reason: async queue depth
+  - abstraction: producer_consumer_queue
+    boundary_level: runtime_hal_object
+    evidence: recovered_from_ir
+    knob: pc_queue_depth
+    reason: producer/consumer slack
+  - abstraction: double_buffered_action_chunk
+    boundary_level: runtime_hal_object
+    evidence: recovered_from_ir
+    knob: buffer_count
+    reason: double vs triple buffer
+  - abstraction: matrix_engine
+    boundary_level: accelerator_isa
+    evidence: recovered_from_ir
+    knob: tile_M
+    reason: output tile rows
+  - abstraction: matrix_engine
+    boundary_level: accelerator_isa
+    evidence: recovered_from_ir
+    knob: tile_N
+    reason: output tile cols
+  - abstraction: matrix_engine
+    boundary_level: accelerator_isa
+    evidence: recovered_from_ir
+    knob: pe_array_dims
+    reason: PE grid
+  - abstraction: vector_gemv_engine
+    boundary_level: accelerator_isa
+    evidence: recovered_from_ir
+    knob: lane_width
+    reason: GEMV lane width
+  - abstraction: vector_gemv_engine
+    boundary_level: accelerator_isa
+    evidence: recovered_from_ir
+    knob: num_lanes
+    reason: vector lanes
+  - abstraction: epilogue_requant_unit
+    boundary_level: accelerator_isa
+    evidence: recovered_from_ir
+    knob: fused_bias
+    reason: bias in epilogue
+  - abstraction: epilogue_requant_unit
+    boundary_level: accelerator_isa
+    evidence: recovered_from_ir
+    knob: requant_path
+    reason: requant in epilogue
+  - abstraction: dma_engine
+    boundary_level: runtime_hal_object
+    evidence: recovered_from_ir
+    knob: num_channels
+    reason: DMA channels
+  - abstraction: dma_engine
+    boundary_level: runtime_hal_object
+    evidence: recovered_from_ir
+    knob: prefetch_depth
+    reason: prefetch lookahead
+  - abstraction: multi_stream_dma_descriptor
+    boundary_level: runtime_hal_object
+    evidence: recovered_from_ir
+    knob: num_streams
+    reason: independent DMA streams
+  - abstraction: prefetch_descriptor
+    boundary_level: runtime_hal_object
+    evidence: recovered_from_ir
+    knob: prefetch_depth
+    reason: weight/activation prefetch lookahead
+  - abstraction: partial_sum_object
+    boundary_level: accelerator_isa
+    evidence: recovered_from_ir
+    knob: shard_count_K
+    reason: K-shards
+  - abstraction: partial_sum_object
+    boundary_level: accelerator_isa
+    evidence: recovered_from_ir
+    knob: partial_dtype
+    reason: accumulator width
+  - abstraction: accumulator_merge
+    boundary_level: accelerator_isa
+    evidence: recovered_from_ir
+    knob: reduction_radix
+    reason: merge tree radix
+  - abstraction: accumulator_commit
+    boundary_level: accelerator_isa
+    evidence: recovered_from_ir
+    knob: commit_dtype
+    reason: output dtype of the commit
+  - abstraction: fused_dequant_matmul
+    boundary_level: compiler_transform
+    evidence: unavailable
+    knob: weight_format
+    reason: packed format
+  - abstraction: fused_dequant_matmul
+    boundary_level: compiler_transform
+    evidence: unavailable
+    knob: dequant_in_load
+    reason: fuse dequant onto load
+  - abstraction: fused_requant_epilogue
+    boundary_level: compiler_transform
+    evidence: recovered_from_ir
+    knob: requant_in_epilogue
+    reason: requant onto the matmul output
+  - abstraction: fused_requant_epilogue
+    boundary_level: compiler_transform
+    evidence: recovered_from_ir
+    knob: epilogue_op_set
+    reason: bias/activation/requant subset
+  - abstraction: native_lowbit_matmul
+    boundary_level: compiler_transform
+    evidence: unavailable
+    knob: compute_dtype
+    reason: int4/fp8 datapath
+  - abstraction: native_lowbit_matmul
+    boundary_level: compiler_transform
+    evidence: unavailable
+    knob: accumulator_dtype
+    reason: i32 accumulate
+  - abstraction: kv_cache_object
+    boundary_level: compiler_transform
+    evidence: unavailable
+    knob: kv_capacity
+    reason: resident KV bytes
+  - abstraction: decode_loop_controller
+    boundary_level: command_buffer_or_command_isa
+    evidence: recovered_from_ir
+    knob: decode_bound
+    reason: max decode tokens
+  - abstraction: decode_loop_controller
+    boundary_level: command_buffer_or_command_isa
+    evidence: recovered_from_ir
+    knob: kv_update_in_loop
+    reason: in-loop KV update
+  note: DSE knobs created by the boundary-placement options, each with the abstraction it comes from, the strongest candidate boundary level, a reason, and evidence. Search-space dimensions only — no speedup/priority/benefit claimed.

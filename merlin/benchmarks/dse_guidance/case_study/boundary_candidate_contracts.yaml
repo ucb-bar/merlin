@@ -1,0 +1,2652 @@
+# boundary_candidate_contracts (search space; no speedup)
+boundary_candidate_contracts:
+  boundary_levels_vocabulary:
+  - compiler_transform
+  - runtime_hal_object
+  - command_buffer_or_command_isa
+  - accelerator_isa
+  - device_microcode_or_controller
+  - fixed_hardware_datapath
+  certificates:
+  - abstraction: resident_weight_object
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: a hardware cache would hide the semantic lifetime the compiler already knows
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: possible
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: dtype, shape, layout, size_bytes, lifetime
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: action-head weights immutable and live across the K-loop (resident-pack candidate); backbone weights excluded
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: a hardware cache would hide the semantic lifetime the compiler already knows
+      software_manages: runtime tracks the object's lifetime + layout
+      status: strong_candidate
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: dtype, shape, layout, size_bytes, lifetime
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: action-head weights immutable and live across the K-loop (resident-pack candidate); backbone weights excluded
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: a hardware cache would hide the semantic lifetime the compiler already knows
+      software_manages: submits higher-level commands instead of ops
+      status: strong_candidate
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: dtype, shape, layout, size_bytes, lifetime
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: action-head weights immutable and live across the K-loop (resident-pack candidate); backbone weights excluded
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: a hardware cache would hide the semantic lifetime the compiler already knows
+      software_manages: compiler targets the semantic ISA op
+      status: weak_candidate
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: dtype, shape, layout, size_bytes, lifetime
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: action-head weights immutable and live across the K-loop (resident-pack candidate); backbone weights excluded
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: a hardware cache would hide the semantic lifetime the compiler already knows
+      software_manages: submits a bounded region; device iterates
+      status: possible
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: n/a
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: a hardware cache would hide the semantic lifetime the compiler already knows
+      software_manages: none (absorbed into the unit)
+      status: not_applicable
+    boundary_pressure_score: 9
+    compiler_proof_matrix_axis: resident_action_head_weights
+    compiler_proof_status: proven_for_workload
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: resident_capacity
+      reason: weight bytes resident across the K-loop
+    - evidence: recovered_from_ir
+      knob: replacement_policy
+      reason: which resident objects evict
+    - evidence: recovered_from_ir
+      knob: lifetime_scope
+      reason: loop-invariant vs replan scope
+    evidence_summary: supported by memory_hierarchy_envelope, state_lifetime, compiler_proof_matrix; suggested in openvla, rdt, small_llama, tiny_llama
+    pressure_components:
+      compiler_provable: 1
+      crosses_rate_boundary: 1
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 2
+      n_supporting_workloads: 4
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    - backbone_once
+    required_compiler_proof: action-head weights immutable and live across the K-loop (resident-pack candidate); backbone weights excluded
+    source_analyses:
+    - memory_hierarchy_envelope
+    - state_lifetime
+    - compiler_proof_matrix
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: resident_packed_weight_object
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: packed residency overfits a weight layout; needs a low-bit capture
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: possible
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: packed dtype, pack_format, scale_object_handle, lifetime
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: packed residency overfits a weight layout; needs a low-bit capture
+      software_manages: runtime tracks the object's lifetime + layout
+      status: blocked
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: packed dtype, pack_format, scale_object_handle, lifetime
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: packed residency overfits a weight layout; needs a low-bit capture
+      software_manages: submits higher-level commands instead of ops
+      status: blocked
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: packed dtype, pack_format, scale_object_handle, lifetime
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: packed residency overfits a weight layout; needs a low-bit capture
+      software_manages: compiler targets the semantic ISA op
+      status: blocked
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: packed dtype, pack_format, scale_object_handle, lifetime
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: packed residency overfits a weight layout; needs a low-bit capture
+      software_manages: submits a bounded region; device iterates
+      status: blocked
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: packed dtype, pack_format, scale_object_handle, lifetime
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: packed residency overfits a weight layout; needs a low-bit capture
+      software_manages: none (absorbed into the unit)
+      status: blocked
+    boundary_pressure_score: 5
+    compiler_proof_matrix_axis: resident_packed_lowbit_weights
+    compiler_proof_status: unknown
+    dse_knobs:
+    - evidence: unavailable
+      knob: pack_format
+      reason: sub-byte packing layout
+    - evidence: unavailable
+      knob: resident_capacity
+      reason: packed resident bytes
+    evidence_summary: packed residency overfits a weight layout; needs a low-bit capture; only the compiler-dequant (f32) path is present
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 0
+      in_repeated_loop: 1
+      missing_evidence_penalty: -1
+      n_region_roles: 1
+      n_supporting_workloads: 4
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+    source_analyses:
+    - numerical_contract
+    - memory_hierarchy_envelope
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: packed_lowbit_tensor
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: format / layout overfit; capture is dequantized f32
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: possible
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: storage dtype, pack_format, group_size, scale_object_handle
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: format / layout overfit; capture is dequantized f32
+      software_manages: runtime tracks the object's lifetime + layout
+      status: blocked
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: storage dtype, pack_format, group_size, scale_object_handle
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: format / layout overfit; capture is dequantized f32
+      software_manages: submits higher-level commands instead of ops
+      status: blocked
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: storage dtype, pack_format, group_size, scale_object_handle
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: format / layout overfit; capture is dequantized f32
+      software_manages: compiler targets the semantic ISA op
+      status: blocked
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: storage dtype, pack_format, group_size, scale_object_handle
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: format / layout overfit; capture is dequantized f32
+      software_manages: submits a bounded region; device iterates
+      status: blocked
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: storage dtype, pack_format, group_size, scale_object_handle
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: format / layout overfit; capture is dequantized f32
+      software_manages: none (absorbed into the unit)
+      status: blocked
+    boundary_pressure_score: 5
+    compiler_proof_matrix_axis: resident_packed_lowbit_weights
+    compiler_proof_status: unknown
+    dse_knobs:
+    - evidence: unavailable
+      knob: weight_format
+      reason: int4/fp8/... packed format
+    - evidence: unavailable
+      knob: group_size
+      reason: quant group granularity
+    evidence_summary: format / layout overfit; capture is dequantized f32; only the compiler-dequant (f32) path is present
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 0
+      in_repeated_loop: 1
+      missing_evidence_penalty: -1
+      n_region_roles: 1
+      n_supporting_workloads: 4
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+    source_analyses:
+    - numerical_contract
+    - dtype_capacity_table
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: scale_object
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: scales folded away in the capture; needs the source quant metadata
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: possible
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: scale dtype, zero_point, granularity (per-tensor/-channel/-group)
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: scales folded away in the capture; needs the source quant metadata
+      software_manages: runtime tracks the object's lifetime + layout
+      status: blocked
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: scale dtype, zero_point, granularity (per-tensor/-channel/-group)
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: scales folded away in the capture; needs the source quant metadata
+      software_manages: submits higher-level commands instead of ops
+      status: blocked
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: scale dtype, zero_point, granularity (per-tensor/-channel/-group)
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: scales folded away in the capture; needs the source quant metadata
+      software_manages: compiler targets the semantic ISA op
+      status: blocked
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: scale dtype, zero_point, granularity (per-tensor/-channel/-group)
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: scales folded away in the capture; needs the source quant metadata
+      software_manages: submits a bounded region; device iterates
+      status: blocked
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: scale dtype, zero_point, granularity (per-tensor/-channel/-group)
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: scales folded away in the capture; needs the source quant metadata
+      software_manages: none (absorbed into the unit)
+      status: blocked
+    boundary_pressure_score: 5
+    compiler_proof_matrix_axis: resident_packed_lowbit_weights
+    compiler_proof_status: unknown
+    dse_knobs:
+    - evidence: unavailable
+      knob: scale_granularity
+      reason: per-tensor / channel / group
+    - evidence: unavailable
+      knob: zero_point
+      reason: asymmetric vs symmetric
+    evidence_summary: scales folded away in the capture; needs the source quant metadata; only the compiler-dequant (f32) path is present
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 0
+      in_repeated_loop: 1
+      missing_evidence_penalty: -1
+      n_region_roles: 1
+      n_supporting_workloads: 4
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+    source_analyses:
+    - numerical_contract
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: prefix_kv_object
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: attention/KV lowered into matmul projections — structure not recovered
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: not_applicable
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: n/a
+      missing_evidence: attention/KV structure (a loop-preserving capture)
+      required_compiler_proof: n/a
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: attention/KV lowered into matmul projections — structure not recovered
+      software_manages: runtime tracks the object's lifetime + layout
+      status: unavailable
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: n/a
+      missing_evidence: attention/KV structure (a loop-preserving capture)
+      required_compiler_proof: n/a
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: attention/KV lowered into matmul projections — structure not recovered
+      software_manages: submits higher-level commands instead of ops
+      status: unavailable
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: n/a
+      missing_evidence: attention/KV structure (a loop-preserving capture)
+      required_compiler_proof: n/a
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: attention/KV lowered into matmul projections — structure not recovered
+      software_manages: compiler targets the semantic ISA op
+      status: unavailable
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: n/a
+      missing_evidence: attention/KV structure (a loop-preserving capture)
+      required_compiler_proof: n/a
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: attention/KV lowered into matmul projections — structure not recovered
+      software_manages: submits a bounded region; device iterates
+      status: unavailable
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: n/a
+      missing_evidence: attention/KV structure (a loop-preserving capture)
+      required_compiler_proof: n/a
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: attention/KV lowered into matmul projections — structure not recovered
+      software_manages: none (absorbed into the unit)
+      status: unavailable
+    boundary_pressure_score: 4
+    compiler_proof_matrix_axis: decode_kv_cache_path
+    compiler_proof_status: assumed
+    dse_knobs:
+    - evidence: unavailable
+      knob: kv_capacity
+      reason: resident KV bytes
+    evidence_summary: attention/KV lowered into matmul projections — structure not recovered; structure unavailable in the flat capture
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 1
+      in_repeated_loop: 0
+      missing_evidence_penalty: -1
+      n_region_roles: 1
+      n_supporting_workloads: 3
+      overfit_penalty: 0
+    region_roles:
+    - prefix_builder
+    required_compiler_proof: autoregressive decode with a growing KV cache and batch=1 GEMV shapes
+    source_analyses:
+    - workload_contract_graph
+    - state_lifetime
+    supporting_workloads:
+    - openvla
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: loop_carried_state_handle
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: serializes the loop w.r.t. the carried state
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: not_applicable
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: state dtype, shape, update site, lifetime=across_K
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: bounded K and a loop body expressible as a device-resident program
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: serializes the loop w.r.t. the carried state
+      software_manages: runtime tracks the object's lifetime + layout
+      status: possible
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: state dtype, shape, update site, lifetime=across_K
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: bounded K and a loop body expressible as a device-resident program
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: serializes the loop w.r.t. the carried state
+      software_manages: submits higher-level commands instead of ops
+      status: strong_candidate
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: state dtype, shape, update site, lifetime=across_K
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: bounded K and a loop body expressible as a device-resident program
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: serializes the loop w.r.t. the carried state; highest overfit risk at a fixed/native level
+      software_manages: compiler targets the semantic ISA op
+      status: possible
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: state dtype, shape, update site, lifetime=across_K
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: bounded K and a loop body expressible as a device-resident program
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: serializes the loop w.r.t. the carried state
+      software_manages: submits a bounded region; device iterates
+      status: strong_candidate
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: state dtype, shape, update site, lifetime=across_K
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: bounded K and a loop body expressible as a device-resident program
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: serializes the loop w.r.t. the carried state; highest overfit risk at a fixed/native level
+      software_manages: none (absorbed into the unit)
+      status: possible
+    boundary_pressure_score: 6
+    compiler_proof_matrix_axis: autonomous_K_loop
+    compiler_proof_status: assumed
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: state_capacity
+      reason: carried-state bytes
+    - evidence: recovered_from_ir
+      knob: update_in_loop
+      reason: in-loop vs host update
+    evidence_summary: supported by workload_contract_graph, state_lifetime; suggested in openvla, rdt, small_llama, tiny_llama
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 0
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 1
+      n_supporting_workloads: 4
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    required_compiler_proof: bounded K and a loop body expressible as a device-resident program
+    source_analyses:
+    - workload_contract_graph
+    - state_lifetime
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: bounded_loop_command
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: needs bounded-K semantics + device-side state
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: not_applicable
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: trip_count, body_region_handle, loop_carried/invariant handles, event_in/out
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: bounded K and a loop body expressible as a device-resident program
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: needs bounded-K semantics + device-side state
+      software_manages: runtime tracks the object's lifetime + layout
+      status: possible
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: trip_count, body_region_handle, loop_carried/invariant handles, event_in/out
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: bounded K and a loop body expressible as a device-resident program
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: needs bounded-K semantics + device-side state
+      software_manages: submits higher-level commands instead of ops
+      status: strong_candidate
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: trip_count, body_region_handle, loop_carried/invariant handles, event_in/out
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: bounded K and a loop body expressible as a device-resident program
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: needs bounded-K semantics + device-side state; highest overfit risk at a fixed/native level
+      software_manages: compiler targets the semantic ISA op
+      status: possible
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: trip_count, body_region_handle, loop_carried/invariant handles, event_in/out
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: bounded K and a loop body expressible as a device-resident program
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: needs bounded-K semantics + device-side state
+      software_manages: submits a bounded region; device iterates
+      status: strong_candidate
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: trip_count, body_region_handle, loop_carried/invariant handles, event_in/out
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: bounded K and a loop body expressible as a device-resident program
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: needs bounded-K semantics + device-side state; highest overfit risk at a fixed/native level
+      software_manages: none (absorbed into the unit)
+      status: possible
+    boundary_pressure_score: 6
+    compiler_proof_matrix_axis: autonomous_K_loop
+    compiler_proof_status: assumed
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: loop_bound_K
+      reason: device-side trip count
+    - evidence: recovered_from_ir
+      knob: unroll_factor
+      reason: loop unroll
+    evidence_summary: supported by workload_contract_graph, command_graph, phase_rate_table; suggested in openvla, rdt, small_llama, tiny_llama
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 0
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 1
+      n_supporting_workloads: 4
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    required_compiler_proof: bounded K and a loop body expressible as a device-resident program
+    source_analyses:
+    - workload_contract_graph
+    - command_graph
+    - phase_rate_table
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: region_level_dispatch
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: requires a command ISA + device scheduler
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: possible
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: region_handle, dependency list
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the K-loop dependency graph is static and known at submit time
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: requires a command ISA + device scheduler
+      software_manages: runtime tracks the object's lifetime + layout
+      status: possible
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: region_handle, dependency list
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the K-loop dependency graph is static and known at submit time
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: requires a command ISA + device scheduler
+      software_manages: submits higher-level commands instead of ops
+      status: strong_candidate
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: region_handle, dependency list
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the K-loop dependency graph is static and known at submit time
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: requires a command ISA + device scheduler; highest overfit risk at a fixed/native level
+      software_manages: compiler targets the semantic ISA op
+      status: possible
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: region_handle, dependency list
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the K-loop dependency graph is static and known at submit time
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: requires a command ISA + device scheduler
+      software_manages: submits a bounded region; device iterates
+      status: strong_candidate
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: n/a
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: requires a command ISA + device scheduler
+      software_manages: none (absorbed into the unit)
+      status: not_applicable
+    boundary_pressure_score: 8
+    compiler_proof_matrix_axis: command_batching
+    compiler_proof_status: assumed
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: dispatch_granularity
+      reason: op vs region dispatch
+    evidence_summary: supported by command_graph, pipeline_envelope; suggested in openvla, rdt, small_llama, tiny_llama
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 1
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 2
+      n_supporting_workloads: 4
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    - backbone_once
+    required_compiler_proof: the K-loop dependency graph is static and known at submit time
+    source_analyses:
+    - command_graph
+    - pipeline_envelope
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: persistent_command_buffer
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: static dependency graph required at submit time
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: not_applicable
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: command stream, reusable across replans
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the K-loop dependency graph is static and known at submit time
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: static dependency graph required at submit time
+      software_manages: runtime tracks the object's lifetime + layout
+      status: possible
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: command stream, reusable across replans
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the K-loop dependency graph is static and known at submit time
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: static dependency graph required at submit time
+      software_manages: submits higher-level commands instead of ops
+      status: strong_candidate
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: command stream, reusable across replans
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the K-loop dependency graph is static and known at submit time
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: static dependency graph required at submit time
+      software_manages: compiler targets the semantic ISA op
+      status: weak_candidate
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: command stream, reusable across replans
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the K-loop dependency graph is static and known at submit time
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: static dependency graph required at submit time
+      software_manages: submits a bounded region; device iterates
+      status: strong_candidate
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: n/a
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: static dependency graph required at submit time
+      software_manages: none (absorbed into the unit)
+      status: not_applicable
+    boundary_pressure_score: 6
+    compiler_proof_matrix_axis: command_batching
+    compiler_proof_status: assumed
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: buffer_reuse_scope
+      reason: per-replan vs persistent
+    evidence_summary: supported by command_graph; suggested in openvla, rdt, small_llama, tiny_llama
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 0
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 1
+      n_supporting_workloads: 4
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    required_compiler_proof: the K-loop dependency graph is static and known at submit time
+    source_analyses:
+    - command_graph
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: event_token
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: requires a device synchronization primitive
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: not_applicable
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: event id, producer, consumer
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the next replan is independent of the current chunk's execution
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: requires a device synchronization primitive
+      software_manages: runtime tracks the object's lifetime + layout
+      status: strong_candidate
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: event id, producer, consumer
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the next replan is independent of the current chunk's execution
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: requires a device synchronization primitive
+      software_manages: submits higher-level commands instead of ops
+      status: strong_candidate
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: event id, producer, consumer
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the next replan is independent of the current chunk's execution
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: requires a device synchronization primitive
+      software_manages: compiler targets the semantic ISA op
+      status: weak_candidate
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: event id, producer, consumer
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the next replan is independent of the current chunk's execution
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: requires a device synchronization primitive
+      software_manages: submits a bounded region; device iterates
+      status: possible
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: n/a
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: requires a device synchronization primitive
+      software_manages: none (absorbed into the unit)
+      status: not_applicable
+    boundary_pressure_score: 8
+    compiler_proof_matrix_axis: async_chunk_overlap
+    compiler_proof_status: assumed
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: event_depth
+      reason: in-flight events
+    evidence_summary: supported by pipeline_envelope, command_graph; suggested in openvla, rdt, small_llama, tiny_llama
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 1
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 2
+      n_supporting_workloads: 4
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    - backbone_once
+    required_compiler_proof: the next replan is independent of the current chunk's execution
+    source_analyses:
+    - pipeline_envelope
+    - command_graph
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: async_queue
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: requires async submission + completion signalling
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: not_applicable
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: queue id, depth
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the next replan is independent of the current chunk's execution
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: requires async submission + completion signalling
+      software_manages: runtime tracks the object's lifetime + layout
+      status: strong_candidate
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: queue id, depth
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the next replan is independent of the current chunk's execution
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: requires async submission + completion signalling
+      software_manages: submits higher-level commands instead of ops
+      status: strong_candidate
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: queue id, depth
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the next replan is independent of the current chunk's execution
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: requires async submission + completion signalling
+      software_manages: compiler targets the semantic ISA op
+      status: weak_candidate
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: queue id, depth
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the next replan is independent of the current chunk's execution
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: requires async submission + completion signalling
+      software_manages: submits a bounded region; device iterates
+      status: possible
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: n/a
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: requires async submission + completion signalling
+      software_manages: none (absorbed into the unit)
+      status: not_applicable
+    boundary_pressure_score: 8
+    compiler_proof_matrix_axis: async_chunk_overlap
+    compiler_proof_status: assumed
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: queue_depth
+      reason: async queue depth
+    evidence_summary: supported by pipeline_envelope, dma_stream_table; suggested in openvla, rdt, small_llama, tiny_llama
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 1
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 2
+      n_supporting_workloads: 4
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    - backbone_once
+    required_compiler_proof: the next replan is independent of the current chunk's execution
+    source_analyses:
+    - pipeline_envelope
+    - dma_stream_table
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: producer_consumer_queue
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: only meaningful for a real producer/consumer rate split
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: not_applicable
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: chunk producer, control consumer, depth
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the next replan is independent of the current chunk's execution
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: only meaningful for a real producer/consumer rate split
+      software_manages: runtime tracks the object's lifetime + layout
+      status: strong_candidate
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: chunk producer, control consumer, depth
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the next replan is independent of the current chunk's execution
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: only meaningful for a real producer/consumer rate split
+      software_manages: submits higher-level commands instead of ops
+      status: strong_candidate
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: chunk producer, control consumer, depth
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the next replan is independent of the current chunk's execution
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: only meaningful for a real producer/consumer rate split
+      software_manages: compiler targets the semantic ISA op
+      status: weak_candidate
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: chunk producer, control consumer, depth
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the next replan is independent of the current chunk's execution
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: only meaningful for a real producer/consumer rate split
+      software_manages: submits a bounded region; device iterates
+      status: possible
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: n/a
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: only meaningful for a real producer/consumer rate split
+      software_manages: none (absorbed into the unit)
+      status: not_applicable
+    boundary_pressure_score: 6
+    compiler_proof_matrix_axis: async_chunk_overlap
+    compiler_proof_status: assumed
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: pc_queue_depth
+      reason: producer/consumer slack
+    evidence_summary: supported by pipeline_envelope; suggested in openvla, rdt
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 1
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 2
+      n_supporting_workloads: 2
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    - backbone_once
+    required_compiler_proof: the next replan is independent of the current chunk's execution
+    source_analyses:
+    - pipeline_envelope
+    supporting_workloads:
+    - openvla
+    - rdt
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: double_buffered_action_chunk
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: only applies to a VLA action chunk consumed at a control rate
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: not_applicable
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: chunk buffer x2, action_horizon H
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the next replan is independent of the current chunk's execution
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: only applies to a VLA action chunk consumed at a control rate
+      software_manages: runtime tracks the object's lifetime + layout
+      status: strong_candidate
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: chunk buffer x2, action_horizon H
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the next replan is independent of the current chunk's execution
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: only applies to a VLA action chunk consumed at a control rate
+      software_manages: submits higher-level commands instead of ops
+      status: strong_candidate
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: n/a
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: only applies to a VLA action chunk consumed at a control rate
+      software_manages: compiler targets the semantic ISA op
+      status: not_applicable
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: chunk buffer x2, action_horizon H
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: the next replan is independent of the current chunk's execution
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: only applies to a VLA action chunk consumed at a control rate
+      software_manages: submits a bounded region; device iterates
+      status: possible
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: n/a
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: only applies to a VLA action chunk consumed at a control rate
+      software_manages: none (absorbed into the unit)
+      status: not_applicable
+    boundary_pressure_score: 5
+    compiler_proof_matrix_axis: async_chunk_overlap
+    compiler_proof_status: assumed
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: buffer_count
+      reason: double vs triple buffer
+    evidence_summary: supported by pipeline_envelope, phase_rate_table; suggested in openvla, rdt
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 1
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 1
+      n_supporting_workloads: 2
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    required_compiler_proof: the next replan is independent of the current chunk's execution
+    source_analyses:
+    - pipeline_envelope
+    - phase_rate_table
+    supporting_workloads:
+    - openvla
+    - rdt
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: matrix_engine
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: square matrix engine over-serves the skinny/GEMV decode shapes
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: possible
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: n/a
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: square matrix engine over-serves the skinny/GEMV decode shapes
+      software_manages: runtime tracks the object's lifetime + layout
+      status: not_applicable
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: tile shape, accumulator dtype
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: square matrix engine over-serves the skinny/GEMV decode shapes
+      software_manages: submits higher-level commands instead of ops
+      status: possible
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: tile shape, accumulator dtype
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: square matrix engine over-serves the skinny/GEMV decode shapes; highest overfit risk at a fixed/native level
+      software_manages: compiler targets the semantic ISA op
+      status: strong_candidate
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: tile shape, accumulator dtype
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: square matrix engine over-serves the skinny/GEMV decode shapes
+      software_manages: submits a bounded region; device iterates
+      status: possible
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: tile shape, accumulator dtype
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: square matrix engine over-serves the skinny/GEMV decode shapes; highest overfit risk at a fixed/native level
+      software_manages: none (absorbed into the unit)
+      status: strong_candidate
+    boundary_pressure_score: 4
+    compiler_proof_matrix_axis: null
+    compiler_proof_status: unavailable
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: tile_M
+      reason: output tile rows
+    - evidence: recovered_from_ir
+      knob: tile_N
+      reason: output tile cols
+    - evidence: recovered_from_ir
+      knob: pe_array_dims
+      reason: PE grid
+    evidence_summary: supported by operator_shape_table, primitive_coverage_matrix, resource_pressure_table; suggested in rdt
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 1
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 2
+      n_supporting_workloads: 1
+      overfit_penalty: -1
+    region_roles:
+    - repeated_head
+    - backbone_once
+    required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+    source_analyses:
+    - operator_shape_table
+    - primitive_coverage_matrix
+    - resource_pressure_table
+    supporting_workloads:
+    - rdt
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: vector_gemv_engine
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: GEMV unit under-serves the large dense GEMM
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: possible
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: n/a
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: GEMV unit under-serves the large dense GEMM
+      software_manages: runtime tracks the object's lifetime + layout
+      status: not_applicable
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: lane width, accumulator depth
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: GEMV unit under-serves the large dense GEMM
+      software_manages: submits higher-level commands instead of ops
+      status: possible
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: lane width, accumulator depth
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: GEMV unit under-serves the large dense GEMM; highest overfit risk at a fixed/native level
+      software_manages: compiler targets the semantic ISA op
+      status: strong_candidate
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: lane width, accumulator depth
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: GEMV unit under-serves the large dense GEMM
+      software_manages: submits a bounded region; device iterates
+      status: possible
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: lane width, accumulator depth
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: GEMV unit under-serves the large dense GEMM; highest overfit risk at a fixed/native level
+      software_manages: none (absorbed into the unit)
+      status: strong_candidate
+    boundary_pressure_score: 5
+    compiler_proof_matrix_axis: null
+    compiler_proof_status: unavailable
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: lane_width
+      reason: GEMV lane width
+    - evidence: recovered_from_ir
+      knob: num_lanes
+      reason: vector lanes
+    evidence_summary: supported by operator_shape_table, primitive_coverage_matrix; suggested in openvla, rdt, small_llama, tiny_llama
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 0
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 1
+      n_supporting_workloads: 4
+      overfit_penalty: -1
+    region_roles:
+    - repeated_head
+    required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+    source_analyses:
+    - operator_shape_table
+    - primitive_coverage_matrix
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: epilogue_requant_unit
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: requant numerics need accuracy measurement (the slot is proven, the math is not)
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: possible
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: n/a
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: requant numerics need accuracy measurement (the slot is proven, the math is not)
+      software_manages: runtime tracks the object's lifetime + layout
+      status: not_applicable
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: epilogue op set, requant scale, output dtype
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: (numerical) fused requant/activation bit-exactness
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: requant numerics need accuracy measurement (the slot is proven, the math is not)
+      software_manages: submits higher-level commands instead of ops
+      status: possible
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: epilogue op set, requant scale, output dtype
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: (numerical) fused requant/activation bit-exactness
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: requant numerics need accuracy measurement (the slot is proven, the math is not); highest overfit risk at a fixed/native level
+      software_manages: compiler targets the semantic ISA op
+      status: strong_candidate
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: epilogue op set, requant scale, output dtype
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: (numerical) fused requant/activation bit-exactness
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: requant numerics need accuracy measurement (the slot is proven, the math is not)
+      software_manages: submits a bounded region; device iterates
+      status: possible
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: epilogue op set, requant scale, output dtype
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: (numerical) fused requant/activation bit-exactness
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: requant numerics need accuracy measurement (the slot is proven, the math is not); highest overfit risk at a fixed/native level
+      software_manages: none (absorbed into the unit)
+      status: strong_candidate
+    boundary_pressure_score: 5
+    compiler_proof_matrix_axis: fused_requant_epilogue
+    compiler_proof_status: unknown
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: fused_bias
+      reason: bias in epilogue
+    - evidence: recovered_from_ir
+      knob: requant_path
+      reason: requant in epilogue
+    evidence_summary: supported by fusion_epilogue, resource_pressure_table; suggested in openvla, rdt
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 1
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 2
+      n_supporting_workloads: 2
+      overfit_penalty: -1
+    region_roles:
+    - repeated_head
+    - backbone_once
+    required_compiler_proof: (numerical) fused requant/activation bit-exactness
+    source_analyses:
+    - fusion_epilogue
+    - resource_pressure_table
+    supporting_workloads:
+    - openvla
+    - rdt
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: dma_engine
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: hardware-managed cache would hide reuse the compiler can express
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: weak_candidate
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: stream descriptors, directions
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: hardware-managed cache would hide reuse the compiler can express
+      software_manages: runtime tracks the object's lifetime + layout
+      status: strong_candidate
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: stream descriptors, directions
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: hardware-managed cache would hide reuse the compiler can express
+      software_manages: submits higher-level commands instead of ops
+      status: strong_candidate
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: stream descriptors, directions
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: hardware-managed cache would hide reuse the compiler can express; highest overfit risk at a fixed/native level
+      software_manages: compiler targets the semantic ISA op
+      status: possible
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: stream descriptors, directions
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: hardware-managed cache would hide reuse the compiler can express
+      software_manages: submits a bounded region; device iterates
+      status: possible
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: stream descriptors, directions
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: hardware-managed cache would hide reuse the compiler can express; highest overfit risk at a fixed/native level
+      software_manages: none (absorbed into the unit)
+      status: possible
+    boundary_pressure_score: 8
+    compiler_proof_matrix_axis: null
+    compiler_proof_status: unavailable
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: num_channels
+      reason: DMA channels
+    - evidence: recovered_from_ir
+      knob: prefetch_depth
+      reason: prefetch lookahead
+    evidence_summary: supported by memory_hierarchy_envelope, dma_stream_table; suggested in openvla, rdt, small_llama, tiny_llama
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 1
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 2
+      n_supporting_workloads: 4
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    - backbone_once
+    required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+    source_analyses:
+    - memory_hierarchy_envelope
+    - dma_stream_table
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: multi_stream_dma_descriptor
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: requires a descriptor format + multi-channel engine
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: not_applicable
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: per-stream descriptor (weight/activation/output)
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: requires a descriptor format + multi-channel engine
+      software_manages: runtime tracks the object's lifetime + layout
+      status: strong_candidate
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: per-stream descriptor (weight/activation/output)
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: requires a descriptor format + multi-channel engine
+      software_manages: submits higher-level commands instead of ops
+      status: strong_candidate
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: per-stream descriptor (weight/activation/output)
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: requires a descriptor format + multi-channel engine; highest overfit risk at a fixed/native level
+      software_manages: compiler targets the semantic ISA op
+      status: possible
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: per-stream descriptor (weight/activation/output)
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: requires a descriptor format + multi-channel engine
+      software_manages: submits a bounded region; device iterates
+      status: possible
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: n/a
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: requires a descriptor format + multi-channel engine
+      software_manages: none (absorbed into the unit)
+      status: not_applicable
+    boundary_pressure_score: 6
+    compiler_proof_matrix_axis: null
+    compiler_proof_status: unavailable
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: num_streams
+      reason: independent DMA streams
+    evidence_summary: supported by dma_stream_table; suggested in openvla, rdt, small_llama, tiny_llama
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 0
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 1
+      n_supporting_workloads: 4
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+    source_analyses:
+    - dma_stream_table
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: prefetch_descriptor
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: device-managed prefetch may diverge from the compiler's reuse plan
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: weak_candidate
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: prefetch target, depth, trigger
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: device-managed prefetch may diverge from the compiler's reuse plan
+      software_manages: runtime tracks the object's lifetime + layout
+      status: strong_candidate
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: prefetch target, depth, trigger
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: device-managed prefetch may diverge from the compiler's reuse plan
+      software_manages: submits higher-level commands instead of ops
+      status: strong_candidate
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: prefetch target, depth, trigger
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: device-managed prefetch may diverge from the compiler's reuse plan; highest overfit risk at a fixed/native level
+      software_manages: compiler targets the semantic ISA op
+      status: possible
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: prefetch target, depth, trigger
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: device-managed prefetch may diverge from the compiler's reuse plan
+      software_manages: submits a bounded region; device iterates
+      status: strong_candidate
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: prefetch target, depth, trigger
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: device-managed prefetch may diverge from the compiler's reuse plan; highest overfit risk at a fixed/native level
+      software_manages: none (absorbed into the unit)
+      status: possible
+    boundary_pressure_score: 6
+    compiler_proof_matrix_axis: null
+    compiler_proof_status: unavailable
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: prefetch_depth
+      reason: weight/activation prefetch lookahead
+    evidence_summary: supported by dma_stream_table, memory_hierarchy_envelope; suggested in openvla, rdt, small_llama, tiny_llama
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 0
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 1
+      n_supporting_workloads: 4
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+    source_analyses:
+    - dma_stream_table
+    - memory_hierarchy_envelope
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: partial_sum_object
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: hardware-internal K-sharding hides the reduction from the compiler
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: not_applicable
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: partial dtype (i32), shard count, M×N tile
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: hardware-internal K-sharding hides the reduction from the compiler
+      software_manages: runtime tracks the object's lifetime + layout
+      status: weak_candidate
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: partial dtype (i32), shard count, M×N tile
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: hardware-internal K-sharding hides the reduction from the compiler
+      software_manages: submits higher-level commands instead of ops
+      status: possible
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: partial dtype (i32), shard count, M×N tile
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: hardware-internal K-sharding hides the reduction from the compiler; highest overfit risk at a fixed/native level
+      software_manages: compiler targets the semantic ISA op
+      status: strong_candidate
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: partial dtype (i32), shard count, M×N tile
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: hardware-internal K-sharding hides the reduction from the compiler
+      software_manages: submits a bounded region; device iterates
+      status: strong_candidate
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: partial dtype (i32), shard count, M×N tile
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: hardware-internal K-sharding hides the reduction from the compiler; highest overfit risk at a fixed/native level
+      software_manages: none (absorbed into the unit)
+      status: strong_candidate
+    boundary_pressure_score: 7
+    compiler_proof_matrix_axis: null
+    compiler_proof_status: unavailable
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: shard_count_K
+      reason: K-shards
+    - evidence: recovered_from_ir
+      knob: partial_dtype
+      reason: accumulator width
+    evidence_summary: supported by sharding_opportunities; suggested in openvla, rdt, small_llama, tiny_llama
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 1
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 2
+      n_supporting_workloads: 4
+      overfit_penalty: -1
+    region_roles:
+    - repeated_head
+    - backbone_once
+    required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+    source_analyses:
+    - sharding_opportunities
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: accumulator_merge
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: reduction network cost unknown (not measured)
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: not_applicable
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: reduction radix, accumulator width
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: reduction network cost unknown (not measured)
+      software_manages: runtime tracks the object's lifetime + layout
+      status: weak_candidate
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: reduction radix, accumulator width
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: reduction network cost unknown (not measured)
+      software_manages: submits higher-level commands instead of ops
+      status: possible
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: reduction radix, accumulator width
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: reduction network cost unknown (not measured); highest overfit risk at a fixed/native level
+      software_manages: compiler targets the semantic ISA op
+      status: strong_candidate
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: reduction radix, accumulator width
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: reduction network cost unknown (not measured)
+      software_manages: submits a bounded region; device iterates
+      status: strong_candidate
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: reduction radix, accumulator width
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: reduction network cost unknown (not measured); highest overfit risk at a fixed/native level
+      software_manages: none (absorbed into the unit)
+      status: strong_candidate
+    boundary_pressure_score: 5
+    compiler_proof_matrix_axis: null
+    compiler_proof_status: unavailable
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: reduction_radix
+      reason: merge tree radix
+    evidence_summary: supported by sharding_opportunities; suggested in openvla, rdt, small_llama, tiny_llama
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 0
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 1
+      n_supporting_workloads: 4
+      overfit_penalty: -1
+    region_roles:
+    - repeated_head
+    required_compiler_proof: unavailable (no compiler_proof_matrix entry)
+    source_analyses:
+    - sharding_opportunities
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: accumulator_commit
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: a separate accumulator materialization may exist that the capture hid
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: not_applicable
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: n/a
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: a separate accumulator materialization may exist that the capture hid
+      software_manages: runtime tracks the object's lifetime + layout
+      status: not_applicable
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: commit dtype, commit-in-epilogue
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: (numerical) fused requant/activation bit-exactness
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: a separate accumulator materialization may exist that the capture hid
+      software_manages: submits higher-level commands instead of ops
+      status: possible
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: commit dtype, commit-in-epilogue
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: (numerical) fused requant/activation bit-exactness
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: a separate accumulator materialization may exist that the capture hid; highest overfit risk at a fixed/native level
+      software_manages: compiler targets the semantic ISA op
+      status: strong_candidate
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: commit dtype, commit-in-epilogue
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: (numerical) fused requant/activation bit-exactness
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: a separate accumulator materialization may exist that the capture hid
+      software_manages: submits a bounded region; device iterates
+      status: possible
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: commit dtype, commit-in-epilogue
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: (numerical) fused requant/activation bit-exactness
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: a separate accumulator materialization may exist that the capture hid; highest overfit risk at a fixed/native level
+      software_manages: none (absorbed into the unit)
+      status: strong_candidate
+    boundary_pressure_score: 5
+    compiler_proof_matrix_axis: fused_requant_epilogue
+    compiler_proof_status: unknown
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: commit_dtype
+      reason: output dtype of the commit
+    evidence_summary: supported by fusion_epilogue; suggested in openvla, rdt, small_llama, tiny_llama
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 0
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 1
+      n_supporting_workloads: 4
+      overfit_penalty: -1
+    region_roles:
+    - repeated_head
+    required_compiler_proof: (numerical) fused requant/activation bit-exactness
+    source_analyses:
+    - fusion_epilogue
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: fused_dequant_matmul
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: needs a low-bit capture; the f32 capture only shows compiler-dequant
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: possible
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: storage dtype, compute dtype, dequant-in-load
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: needs a low-bit capture; the f32 capture only shows compiler-dequant
+      software_manages: runtime tracks the object's lifetime + layout
+      status: blocked
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: storage dtype, compute dtype, dequant-in-load
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: needs a low-bit capture; the f32 capture only shows compiler-dequant
+      software_manages: submits higher-level commands instead of ops
+      status: blocked
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: storage dtype, compute dtype, dequant-in-load
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: needs a low-bit capture; the f32 capture only shows compiler-dequant
+      software_manages: compiler targets the semantic ISA op
+      status: blocked
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: storage dtype, compute dtype, dequant-in-load
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: needs a low-bit capture; the f32 capture only shows compiler-dequant
+      software_manages: submits a bounded region; device iterates
+      status: blocked
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: storage dtype, compute dtype, dequant-in-load
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: needs a low-bit capture; the f32 capture only shows compiler-dequant
+      software_manages: none (absorbed into the unit)
+      status: blocked
+    boundary_pressure_score: 5
+    compiler_proof_matrix_axis: resident_packed_lowbit_weights
+    compiler_proof_status: unknown
+    dse_knobs:
+    - evidence: unavailable
+      knob: weight_format
+      reason: packed format
+    - evidence: unavailable
+      knob: dequant_in_load
+      reason: fuse dequant onto load
+    evidence_summary: needs a low-bit capture; the f32 capture only shows compiler-dequant; only the compiler-dequant (f32) path is present
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 0
+      in_repeated_loop: 1
+      missing_evidence_penalty: -1
+      n_region_roles: 1
+      n_supporting_workloads: 4
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+    source_analyses:
+    - numerical_contract
+    - fusion_epilogue
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: fused_requant_epilogue
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: the epilogue slot is proven (bias); requant accuracy is unmeasured
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: possible
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: n/a
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: the epilogue slot is proven (bias); requant accuracy is unmeasured
+      software_manages: runtime tracks the object's lifetime + layout
+      status: not_applicable
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: epilogue op set, requant scale, output dtype
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: (numerical) fused requant/activation bit-exactness
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: the epilogue slot is proven (bias); requant accuracy is unmeasured
+      software_manages: submits higher-level commands instead of ops
+      status: possible
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: epilogue op set, requant scale, output dtype
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: (numerical) fused requant/activation bit-exactness
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: the epilogue slot is proven (bias); requant accuracy is unmeasured; highest overfit risk at a fixed/native level
+      software_manages: compiler targets the semantic ISA op
+      status: possible
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: epilogue op set, requant scale, output dtype
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: (numerical) fused requant/activation bit-exactness
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: the epilogue slot is proven (bias); requant accuracy is unmeasured
+      software_manages: submits a bounded region; device iterates
+      status: possible
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: epilogue op set, requant scale, output dtype
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: (numerical) fused requant/activation bit-exactness
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: the epilogue slot is proven (bias); requant accuracy is unmeasured; highest overfit risk at a fixed/native level
+      software_manages: none (absorbed into the unit)
+      status: possible
+    boundary_pressure_score: 6
+    compiler_proof_matrix_axis: fused_requant_epilogue
+    compiler_proof_status: unknown
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: requant_in_epilogue
+      reason: requant onto the matmul output
+    - evidence: recovered_from_ir
+      knob: epilogue_op_set
+      reason: bias/activation/requant subset
+    evidence_summary: supported by fusion_epilogue; suggested in openvla, rdt
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 1
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 2
+      n_supporting_workloads: 2
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    - backbone_once
+    required_compiler_proof: (numerical) fused requant/activation bit-exactness
+    source_analyses:
+    - fusion_epilogue
+    supporting_workloads:
+    - openvla
+    - rdt
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: native_lowbit_matmul
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: accuracy + format overfit; needs a low-bit capture + accuracy gate
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: possible
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: lhs/rhs storage dtype, accumulator dtype, scale object, output dtype
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: accuracy + format overfit; needs a low-bit capture + accuracy gate
+      software_manages: runtime tracks the object's lifetime + layout
+      status: blocked
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: lhs/rhs storage dtype, accumulator dtype, scale object, output dtype
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: accuracy + format overfit; needs a low-bit capture + accuracy gate
+      software_manages: submits higher-level commands instead of ops
+      status: blocked
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: lhs/rhs storage dtype, accumulator dtype, scale object, output dtype
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: accuracy + format overfit; needs a low-bit capture + accuracy gate
+      software_manages: compiler targets the semantic ISA op
+      status: blocked
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: lhs/rhs storage dtype, accumulator dtype, scale object, output dtype
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: accuracy + format overfit; needs a low-bit capture + accuracy gate
+      software_manages: submits a bounded region; device iterates
+      status: blocked
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: lhs/rhs storage dtype, accumulator dtype, scale object, output dtype
+      missing_evidence: low-bit capture (packed weights + scales) + per-format accuracy
+      required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: accuracy + format overfit; needs a low-bit capture + accuracy gate
+      software_manages: none (absorbed into the unit)
+      status: blocked
+    boundary_pressure_score: 5
+    compiler_proof_matrix_axis: resident_packed_lowbit_weights
+    compiler_proof_status: unknown
+    dse_knobs:
+    - evidence: unavailable
+      knob: compute_dtype
+      reason: int4/fp8 datapath
+    - evidence: unavailable
+      knob: accumulator_dtype
+      reason: i32 accumulate
+    evidence_summary: accuracy + format overfit; needs a low-bit capture + accuracy gate; only the compiler-dequant (f32) path is present
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 0
+      in_repeated_loop: 1
+      missing_evidence_penalty: -1
+      n_region_roles: 1
+      n_supporting_workloads: 4
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    required_compiler_proof: (numerical) per-format accuracy vs fp32 (cos/argmax) sweep
+    source_analyses:
+    - numerical_contract
+    - accuracy_gated_dtype_candidates
+    supporting_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: kv_cache_object
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: attention/KV not recovered from the flat capture
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: not_applicable
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: n/a
+      missing_evidence: attention/KV structure (a loop-preserving capture)
+      required_compiler_proof: n/a
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: attention/KV not recovered from the flat capture
+      software_manages: runtime tracks the object's lifetime + layout
+      status: unavailable
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: n/a
+      missing_evidence: attention/KV structure (a loop-preserving capture)
+      required_compiler_proof: n/a
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: attention/KV not recovered from the flat capture
+      software_manages: submits higher-level commands instead of ops
+      status: unavailable
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: n/a
+      missing_evidence: attention/KV structure (a loop-preserving capture)
+      required_compiler_proof: n/a
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: attention/KV not recovered from the flat capture
+      software_manages: compiler targets the semantic ISA op
+      status: unavailable
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: n/a
+      missing_evidence: attention/KV structure (a loop-preserving capture)
+      required_compiler_proof: n/a
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: attention/KV not recovered from the flat capture
+      software_manages: submits a bounded region; device iterates
+      status: unavailable
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: n/a
+      missing_evidence: attention/KV structure (a loop-preserving capture)
+      required_compiler_proof: n/a
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: attention/KV not recovered from the flat capture
+      software_manages: none (absorbed into the unit)
+      status: unavailable
+    boundary_pressure_score: 4
+    compiler_proof_matrix_axis: decode_kv_cache_path
+    compiler_proof_status: assumed
+    dse_knobs:
+    - evidence: unavailable
+      knob: kv_capacity
+      reason: resident KV bytes
+    evidence_summary: attention/KV not recovered from the flat capture; structure unavailable in the flat capture
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 1
+      in_repeated_loop: 0
+      missing_evidence_penalty: -1
+      n_region_roles: 1
+      n_supporting_workloads: 3
+      overfit_penalty: 0
+    region_roles:
+    - prefix_builder
+    required_compiler_proof: autoregressive decode with a growing KV cache and batch=1 GEMV shapes
+    source_analyses:
+    - workload_contract_graph
+    supporting_workloads:
+    - openvla
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  - abstraction: decode_loop_controller
+    boundary_levels:
+    - hardware_manages: none (generic ops)
+      level: compiler_transform
+      metadata_crossing: n/a
+      missing_evidence: n/a
+      required_compiler_proof: none (generic ops)
+      required_hw_support: generic matmul / elementwise datapath
+      required_isa_semantics: none
+      required_runtime_support: none
+      risk: needs bounded decode semantics + (unavailable) KV structure
+      software_manages: compiler rewrites the workload; hardware sees ordinary ops
+      status: not_applicable
+    - hardware_manages: exploits the declared lifetime / layout
+      level: runtime_hal_object
+      metadata_crossing: token trip count, kv handle, loop-carried token state
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: autoregressive decode with a growing KV cache and batch=1 GEMV shapes
+      required_hw_support: addressable resident store
+      required_isa_semantics: none
+      required_runtime_support: object ABI + lifetime tracking + metadata
+      risk: needs bounded decode semantics + (unavailable) KV structure
+      software_manages: runtime tracks the object's lifetime + layout
+      status: possible
+    - hardware_manages: command processor executes / loops / tracks deps
+      level: command_buffer_or_command_isa
+      metadata_crossing: token trip count, kv handle, loop-carried token state
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: autoregressive decode with a growing KV cache and batch=1 GEMV shapes
+      required_hw_support: device-side command processor
+      required_isa_semantics: command opcodes + handles
+      required_runtime_support: command encoder + event/queue
+      risk: needs bounded decode semantics + (unavailable) KV structure
+      software_manages: submits higher-level commands instead of ops
+      status: strong_candidate
+    - hardware_manages: datapath executes the semantic instruction
+      level: accelerator_isa
+      metadata_crossing: token trip count, kv handle, loop-carried token state
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: autoregressive decode with a growing KV cache and batch=1 GEMV shapes
+      required_hw_support: datapath implementing the op
+      required_isa_semantics: the semantic instruction + operands
+      required_runtime_support: dispatch only
+      risk: needs bounded decode semantics + (unavailable) KV structure; highest overfit risk at a fixed/native level
+      software_manages: compiler targets the semantic ISA op
+      status: possible
+    - hardware_manages: controller owns the loop / deps / prefetch / state
+      level: device_microcode_or_controller
+      metadata_crossing: token trip count, kv handle, loop-carried token state
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: autoregressive decode with a growing KV cache and batch=1 GEMV shapes
+      required_hw_support: sequencer + state + dependency tracking
+      required_isa_semantics: region / loop descriptor
+      required_runtime_support: bounded-region handoff
+      risk: needs bounded decode semantics + (unavailable) KV structure
+      software_manages: submits a bounded region; device iterates
+      status: strong_candidate
+    - hardware_manages: hardwired unit
+      level: fixed_hardware_datapath
+      metadata_crossing: token trip count, kv handle, loop-carried token state
+      missing_evidence: per-unit throughput / latency / area (a design YAML) to choose this placement
+      required_compiler_proof: autoregressive decode with a growing KV cache and batch=1 GEMV shapes
+      required_hw_support: dedicated fixed unit
+      required_isa_semantics: implicit
+      required_runtime_support: none
+      risk: needs bounded decode semantics + (unavailable) KV structure; highest overfit risk at a fixed/native level
+      software_manages: none (absorbed into the unit)
+      status: possible
+    boundary_pressure_score: 6
+    compiler_proof_matrix_axis: decode_kv_cache_path
+    compiler_proof_status: assumed
+    dse_knobs:
+    - evidence: recovered_from_ir
+      knob: decode_bound
+      reason: max decode tokens
+    - evidence: recovered_from_ir
+      knob: kv_update_in_loop
+      reason: in-loop KV update
+    evidence_summary: supported by workload_contract_graph, command_graph, phase_rate_table; suggested in openvla, small_llama, tiny_llama
+    pressure_components:
+      compiler_provable: 0
+      crosses_rate_boundary: 1
+      in_repeated_loop: 1
+      missing_evidence_penalty: 0
+      n_region_roles: 1
+      n_supporting_workloads: 3
+      overfit_penalty: 0
+    region_roles:
+    - repeated_head
+    required_compiler_proof: autoregressive decode with a growing KV cache and batch=1 GEMV shapes
+    source_analyses:
+    - workload_contract_graph
+    - command_graph
+    - phase_rate_table
+    supporting_workloads:
+    - openvla
+    - small_llama
+    - tiny_llama
+    what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
+  note: HW/SW boundary-placement certificates — where each workload-implied abstraction could live (compiler / runtime-HAL / command-ISA / accelerator-ISA / microcode / datapath), what each side manages, the compiler proof and runtime/ISA/HW support required, and the missing evidence. Merlin emits the search space; the DSE tool chooses. No speedup/cycles/area/energy and no chosen design claimed. boundary_pressure_score is EVIDENCE BREADTH, not performance/priority.
+  status_vocabulary:
+  - blocked
+  - not_applicable
+  - possible
+  - strong_candidate
+  - unavailable
+  - weak_candidate

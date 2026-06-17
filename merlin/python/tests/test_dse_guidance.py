@@ -1971,3 +1971,172 @@ def test_case_study_emits_p7_artifacts(tmp_path):
     for r in crit:
         assert int(r["critical_path_macs"]) <= int(r["total_macs"])      # span <= work
         assert float(r["available_parallelism"]) >= 1.0
+
+
+# ============================================================ P12 HW/SW boundary placement
+
+_BP_EVID = {
+    "rdt": {"dense": True, "gemv": True, "backbone": False, "epilogue": True, "k_loop": True,
+            "control_loop": True, "decode": False},
+    "openvla": {"dense": False, "gemv": True, "backbone": True, "epilogue": True, "k_loop": True,
+                "control_loop": True, "decode": True},
+    "small_llama": {"dense": False, "gemv": True, "backbone": False, "epilogue": False,
+                    "k_loop": True, "control_loop": False, "decode": True},
+    "tiny_llama": {"dense": False, "gemv": True, "backbone": False, "epilogue": False,
+                   "k_loop": True, "control_loop": False, "decode": True},
+}
+_BP_CP = {
+    "resident_action_head_weights": ("weights immutable across K", "proven_for_workload"),
+    "autonomous_K_loop": ("bounded K + device-resident body", "assumed"),
+    "command_batching": ("static K-loop dependency graph", "assumed"),
+    "async_chunk_overlap": ("next replan independent of current chunk", "assumed"),
+    "fused_requant_epilogue": ("fused requant bit-exactness", "unknown"),
+    "resident_packed_lowbit_weights": ("per-format accuracy vs fp32", "unknown"),
+    "decode_kv_cache_path": ("autoregressive KV path", "assumed"),
+}
+
+
+def _bp_certs():
+    from merlin.dse_guidance import boundary_placement as BP
+    return {c.abstraction: c for c in BP.build_certificates(_BP_EVID, _BP_CP)}
+
+
+def test_boundary_level_and_status_vocabulary():
+    from merlin.dse_guidance import boundary_placement as BP
+    for c in _bp_certs().values():
+        assert {b["level"] for b in c.boundary_levels} == set(BP.LEVELS)
+        assert all(b["status"] in BP.STATUS for b in c.boundary_levels)
+    assert len(BP.ABSTRACTIONS) == 27
+
+
+def test_boundary_certificate_schema():
+    certs = _bp_certs()
+    for c in certs.values():
+        for b in c.boundary_levels:
+            for fld in ("level", "status", "software_manages", "hardware_manages",
+                        "required_compiler_proof", "required_runtime_support",
+                        "required_isa_semantics", "required_hw_support", "metadata_crossing",
+                        "risk", "missing_evidence"):
+                assert fld in b, f"{c.abstraction} level missing {fld}"
+        assert c.cp_matrix_axis is None or isinstance(c.cp_matrix_axis, str)
+        assert c.what_is_not_claimed and c.source_analyses
+
+
+def test_boundary_grounded_supporting_workloads():
+    certs = _bp_certs()
+    # matrix engine only where dense GEMM exists (rdt); GEMV everywhere; requant where epilogue
+    assert certs["matrix_engine"].supporting_workloads == ["rdt"]
+    assert certs["vector_gemv_engine"].supporting_workloads == \
+        ["openvla", "rdt", "small_llama", "tiny_llama"]
+    assert certs["fused_requant_epilogue"].supporting_workloads == ["openvla", "rdt"]
+    # decode controller only for autoregressive workloads (not rdt flow-matching)
+    assert "rdt" not in certs["decode_loop_controller"].supporting_workloads
+
+
+def test_boundary_resident_weight_matches_ladder():
+    from merlin.dse_guidance import boundary_placement as BP
+    c = _bp_certs()["resident_weight_object"]
+    st = {b["level"]: b["status"] for b in c.boundary_levels}
+    assert st[BP.L_RUNTIME] == "strong_candidate" and st[BP.L_COMMAND] == "strong_candidate"
+    assert st[BP.L_ISA] == "weak_candidate" and st[BP.L_DATAPATH] == "not_applicable"
+    assert c.cp_matrix_axis == "resident_action_head_weights"
+    assert c.compiler_proof_status == "proven_for_workload"
+
+
+def test_boundary_bounded_loop_and_partial_sum():
+    from merlin.dse_guidance import boundary_placement as BP
+    c = _bp_certs()
+    bl = {b["level"]: b["status"] for b in c["bounded_loop_command"].boundary_levels}
+    assert bl[BP.L_COMMAND] == "strong_candidate" and bl[BP.L_MICROCODE] == "strong_candidate"
+    assert c["bounded_loop_command"].cp_matrix_axis == "autonomous_K_loop"
+    ps = {b["level"]: b["status"] for b in c["partial_sum_object"].boundary_levels}
+    assert ps[BP.L_COMPILER] == "not_applicable" and ps[BP.L_ISA] == "strong_candidate"
+
+
+def test_boundary_erased_abstractions_blocked():
+    from merlin.dse_guidance import boundary_placement as BP
+    c = _bp_certs()
+    for name in ("packed_lowbit_tensor", "scale_object", "fused_dequant_matmul",
+                 "native_lowbit_matmul"):
+        st = {b["level"]: b["status"] for b in c[name].boundary_levels}
+        assert st[BP.L_COMPILER] == "possible"                 # compiler-dequant (status quo)
+        assert st[BP.L_DATAPATH] == "blocked" and st[BP.L_ISA] == "blocked"  # need low-bit capture
+        assert c[name].erased is True
+    # KV abstractions unavailable (attention lowered)
+    kv = {b["level"]: b["status"] for b in c["kv_cache_object"].boundary_levels}
+    assert kv[BP.L_RUNTIME] == "unavailable" and kv[BP.L_COMPILER] == "not_applicable"
+
+
+def test_boundary_pressure_score_recomputes():
+    certs = _bp_certs()
+    for c in certs.values():
+        assert c.boundary_pressure_score == sum(c.pressure_components.values())
+    # resident_weight (proven, both roles, all 4 workloads) scores high
+    assert certs["resident_weight_object"].boundary_pressure_score >= 8
+
+
+def test_responsibility_matrix_schema():
+    from merlin.dse_guidance import boundary_placement as BP
+    rows = BP.responsibility_rows()
+    assert len(rows) == 17
+    for r in rows:
+        for col in ("compiler", "runtime_hal", "command_processor", "accelerator_isa",
+                    "device_microcode", "datapath"):
+            assert r[col] in BP.RESP_CELLS
+    by = {r["function"]: r for r in rows}
+    assert by["region_partitioning"]["compiler"] == "owns"
+    assert by["partial_sum_merge"]["accelerator_isa"] == "owns"
+    assert by["resident_object_lifetime"]["runtime_hal"] == "owns"
+
+
+def test_boundary_dse_knobs_have_reason_and_evidence():
+    from merlin.dse_guidance import boundary_placement as BP
+    obj = BP.boundary_dse_knobs_yaml(list(_bp_certs().values()))["boundary_dse_knobs"]
+    assert obj["knobs"]
+    for k in obj["knobs"]:
+        assert k["knob"] and k["reason"] and k["evidence"] and k["abstraction"]
+        assert k["boundary_level"] in BP.LEVELS
+
+
+def test_boundary_partial_mode():
+    from merlin.dse_guidance import boundary_placement as BP
+    certs = BP.build_certificates({}, {})        # no workloads, no compiler proofs
+    assert len(certs) == 27
+    assert all(c.supporting_workloads == [] for c in certs)
+    assert all(c.compiler_proof_status == "unavailable" for c in certs)
+    assert all(c.cp_matrix_axis is None or c.compiler_proof_status == "unavailable" for c in certs)
+
+
+def test_boundary_no_forbidden_wording():
+    from merlin.dse_guidance import boundary_placement as BP
+    certs = list(_bp_certs().values())
+    blobs = [BP.boundary_report_md(certs, BP.responsibility_rows()).lower(),
+             str(BP.boundary_candidate_contracts_yaml(certs)).lower(),
+             BP.interface_contract_sketches_md(certs).lower(),
+             str(BP.boundary_dse_knobs_yaml(certs)).lower()]
+    for b in blobs:
+        for term in ("optimal", "best design", "faster", "predicted", "performance improvement",
+                     "gap_closure"):
+            assert term not in b, f"forbidden term {term!r}"
+        for ln in b.splitlines():
+            if "speedup" in ln:
+                assert "no speedup" in ln or "not a speedup" in ln
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_case_study_emits_p12_artifacts(tmp_path):
+    from merlin.dse_guidance import case_study as CS
+    from merlin.common.yaml import load_yaml
+    CS.run_case_study(tmp_path)
+    for f in ("hw_sw_boundary_matrix.csv", "boundary_candidate_contracts.yaml",
+              "boundary_placement_report.md", "responsibility_split_matrix.csv",
+              "interface_contract_sketches.md", "isa_candidate_primitives.yaml",
+              "runtime_object_candidates.yaml", "command_isa_candidates.yaml",
+              "boundary_dse_knobs.yaml"):
+        assert (tmp_path / f).is_file(), f"missing {f}"
+    contracts = load_yaml(tmp_path / "boundary_candidate_contracts.yaml")[
+        "boundary_candidate_contracts"]["certificates"]
+    assert len(contracts) == 27
+    # boundary placement now feeds the consolidated bridge
+    knobs = load_yaml(tmp_path / "dse_search_space_knobs.yaml")["dse_search_space_knobs"]
+    assert any(g["source_phase"] == "P12" for g in knobs["knob_groups"])

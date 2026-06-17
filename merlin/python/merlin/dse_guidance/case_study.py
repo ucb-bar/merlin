@@ -22,6 +22,7 @@ from merlin.common import paths
 from merlin.common.artifacts import Artifact
 from merlin.dse_guidance import accuracy_gate as AG
 from merlin.dse_guidance import attribution as ATTR
+from merlin.dse_guidance import boundary_placement as BP
 from merlin.dse_guidance import candidates as CAND
 from merlin.dse_guidance import command_graph as CG
 from merlin.dse_guidance import compiler_proof as CP
@@ -421,7 +422,7 @@ def _case_study_summary_md(packages) -> str:
 
 
 def _dse_search_space_knobs(all_shapes, all_axes, dags, units, overlap_by_wl, pat_by_wl,
-                            region_mem_by_wl) -> dict:
+                            region_mem_by_wl, boundary_certs=None) -> dict:
     """Consolidate the structural search-space knobs discovered across P5-P10 into one catalog —
     the bridge artifact a DSE engine consumes alongside the per-workload abstraction-axis template.
     Each knob group is grounded in the computed results, evidence-labeled; no speedup is claimed."""
@@ -475,8 +476,17 @@ def _dse_search_space_knobs(all_shapes, all_axes, dags, units, overlap_by_wl, pa
          "gated_by": "directly-fused epilogue slot proven (addmm bias); low-bit/scale gated by a "
                      "low-bit capture + accuracy"},
     ]
+    if boundary_certs:
+        top = sorted(boundary_certs, key=lambda c: -c.boundary_pressure_score)[:6]
+        groups.append({
+            "group": "hw_sw_boundary_placement", "source_phase": "P12",
+            "knobs": [f"{c.abstraction}@{{compiler/runtime/command/isa/microcode/datapath}}"
+                      for c in top],
+            "enabled": True, "evidence": DE.E_DERIVED,
+            "gated_by": "boundary placement is a search-space axis (Merlin does not choose); see "
+                        "boundary_candidate_contracts.yaml + boundary_dse_knobs.yaml"})
     return {"dse_search_space_knobs": {
-        "note": "consolidated STRUCTURAL search-space knobs discovered across P5-P10, each with its "
+        "note": "consolidated STRUCTURAL search-space knobs discovered across P5-P12, each with its "
                 "source phase, enabled status, evidence, and what gates it. This is the bridge a "
                 "future DSE engine consumes together with the per-workload abstraction-axis "
                 "template (dse_search_space_template.yaml). Structural only — no speedup, cycle, or "
@@ -535,10 +545,18 @@ def _readme_md(packages) -> str:
         "token_decode / single_shot).\n"
         "- `<workload>/dse_search_space_template.yaml`, `dse_search_space_template_<family>.yaml` — "
         "the **DSE search-space template** (per-workload abstraction axes + knobs).\n"
+        "- `hw_sw_boundary_matrix.csv`, `boundary_candidate_contracts.yaml`, "
+        "`boundary_placement_report.md`, `responsibility_split_matrix.csv`, "
+        "`interface_contract_sketches.md`, `isa_candidate_primitives.yaml`, "
+        "`runtime_object_candidates.yaml`, `command_isa_candidates.yaml`, `boundary_dse_knobs.yaml` "
+        "— the **HW/SW boundary search space**: where each abstraction could live "
+        "(compiler/runtime/command/ISA/microcode/datapath), what each side manages, and the "
+        "compiler proof + DSE knobs each placement creates (Merlin generates options, does not "
+        "choose; no speedup).\n"
         "- `dse_search_space_knobs.yaml`, `dse_search_space_knobs.md` — the **consolidated "
-        "structural search-space knobs** discovered across P5-P10 (primitive shapes, sharding, "
-        "processing units, pipeline overlap, memory/DMA, epilogue fusion) — the capstone bridge a "
-        "DSE engine consumes.\n"
+        "structural search-space knobs** discovered across P5-P12 (primitive shapes, sharding, "
+        "processing units, pipeline overlap, memory/DMA, epilogue fusion, boundary placement) — the "
+        "capstone bridge a DSE engine consumes.\n"
         "- `measurement_priority_table.csv` — what to measure next, ranked by candidates unblocked.\n"
         "- `operator_shape_table.csv`, `operator_geometry.yaml` — per-operator geometry (M/N/K, "
         "MACs, aspect, shape_class + semantic role). `shape_summary_by_workload.csv`, "
@@ -861,9 +879,45 @@ def run_case_study(out_dir) -> dict:
     Artifact("lost_numerical_contracts.csv", FE.lost_contracts_csv(acc_by_wl)).write(out)
     Artifact("fusion_opportunity_report.md",
              FE.fusion_report_md(pat_by_wl, acc_by_wl, cert_by_wl)).write(out)
-    # Consolidated DSE search-space knobs across P5-P10 (the bridge a DSE engine consumes)
+    # P12 HW/SW boundary-placement analysis (the boundary search space; Merlin does not choose)
+    ev_ctx = {}
+    for c in cases:
+        sh = geom_by_workload[c.workload]
+        ev_ctx[c.workload] = {
+            "dense": any(s.shape_class == "squareish_gemm" for s in sh),
+            "gemv": any(s.shape_class in ("gemv_like", "wide_skinny", "tall_skinny") for s in sh),
+            "backbone": any(s.region_role == "backbone_once" for s in sh),
+            "epilogue": any(p.has_bias for p in pat_by_wl[c.workload]),
+            "k_loop": c.K > 1, "control_loop": _has_control_loop(c.workload),
+            "decode": c.topo.workload_class == TOP.CLASS_AUTOREGRESSIVE}
+    cp_proofs = {r.axis: (r.compiler_proof_needed, r.status) for r in CP.proof_matrix(packages)}
+    boundary_certs = BP.build_certificates(ev_ctx, cp_proofs)
+    resp_rows = BP.responsibility_rows()
+    Artifact("hw_sw_boundary_matrix.csv",
+             BP.hw_sw_boundary_matrix_csv(boundary_certs)).write(out)
+    yaml_artifact("boundary_candidate_contracts.yaml",
+                  BP.boundary_candidate_contracts_yaml(boundary_certs),
+                  header="boundary_candidate_contracts (search space; no speedup)").write(out)
+    Artifact("boundary_placement_report.md",
+             BP.boundary_report_md(boundary_certs, resp_rows)).write(out)
+    Artifact("responsibility_split_matrix.csv",
+             BP.responsibility_split_csv(resp_rows)).write(out)
+    Artifact("interface_contract_sketches.md",
+             BP.interface_contract_sketches_md(boundary_certs)).write(out)
+    yaml_artifact("isa_candidate_primitives.yaml",
+                  BP.isa_candidate_primitives_yaml(boundary_certs),
+                  header="isa_candidate_primitives (sketch; no speedup)").write(out)
+    yaml_artifact("runtime_object_candidates.yaml",
+                  BP.runtime_object_candidates_yaml(boundary_certs),
+                  header="runtime_object_candidates (sketch; no speedup)").write(out)
+    yaml_artifact("command_isa_candidates.yaml",
+                  BP.command_isa_candidates_yaml(boundary_certs),
+                  header="command_isa_candidates (sketch; no speedup)").write(out)
+    yaml_artifact("boundary_dse_knobs.yaml", BP.boundary_dse_knobs_yaml(boundary_certs),
+                  header="boundary_dse_knobs (search-space knobs; no speedup)").write(out)
+    # Consolidated DSE search-space knobs across P5-P12 (the bridge a DSE engine consumes)
     knob_catalog = _dse_search_space_knobs(all_shapes, all_axes, dags, units, overlap_by_wl,
-                                           pat_by_wl, region_mem_by_wl)
+                                           pat_by_wl, region_mem_by_wl, boundary_certs)
     yaml_artifact("dse_search_space_knobs.yaml", knob_catalog,
                   header="dse_search_space_knobs (consolidated P5-P10; no speedup)").write(out)
     Artifact("dse_search_space_knobs.md", _dse_search_space_knobs_md(knob_catalog)).write(out)
