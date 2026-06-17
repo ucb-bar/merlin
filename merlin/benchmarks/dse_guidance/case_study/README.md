@@ -19,6 +19,9 @@ Workloads (real `prov.fqn` recaptures): **rdt, openvla, small_llama, tiny_llama*
 - `operator_shape_table.csv`, `operator_geometry.yaml` — per-operator geometry (M/N/K, MACs, aspect, shape_class + semantic role). `shape_summary_by_workload.csv`, `shape_summary_by_region.csv`, `operator_cluster_table.csv`, `operator_geometry_report.md` summarise it (structural geometry only).
 - `tile_waste_table.csv`, `primitive_coverage_matrix.csv`, `primitive_regret_table.csv` — candidate compute-primitive (tile / GEMV-lane) structural coverage + cross-workload regret; `primitive_coverage_report.md`, `cross_workload_coverage_report.md` read them (no speedup).
 - `workload_contract_graph.yaml`, `workload_contract_graph_summary.md` — the **multi-rate workload contract graph** (the central IR later phases consume: phase/region/operator/state nodes + typed edges). `phase_rate_table.csv`, `multi_rate_contract.yaml`, `rate_mismatch_report.md` expose the per-phase cadence + rate model (structural only).
+- `dag_parallelism_report.md`, `critical_path_table.csv`, `concurrency_windows.csv`, `parallel_region_candidates.yaml` — inter-op DAG concurrency (work/span, not a speedup).
+- `sharding_table.csv`, `sharding_opportunities.yaml`, `intra_op_sharding_report.md` — per-matmul M/N/K sharding geometry + required reduction/broadcast abstractions.
+- `operator_cluster_to_hierarchy.csv`, `parallel_hierarchy_hints.yaml`, `resource_pressure_table.csv`, `processing_unit_candidates.yaml`, `processing_unit_parallelism_report.md` — hierarchical resource analysis: which processing-unit shapes the workloads imply (one bigger / many identical / specialized).
 - `traffic_table.csv` — per-region byte traffic + avoidable reload (memory/reuse envelope).
 - `dispatch_granularity_table.csv` — command-graph view (honest: loop unrolled, syncs unavailable).
 - `accuracy_gated_dtype_candidates.csv` — which low-bit formats are accuracy-legal vs blocked (int8 measured; fp8/int4 unavailable).

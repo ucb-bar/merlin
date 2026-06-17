@@ -1,0 +1,4 @@
+shape_class,op_count,macs,mac_fraction,hierarchy_options,workloads,evidence_for,evidence_against
+squareish_gemm,2,34377302016,0.8567,matrix_tile_engine; systolic_array,rdt,"2 ops, 85.7% of MACs, in rdt",—
+wide_skinny,55,5128716288,0.1278,matrix_tile_engine; SIMD_vector_lanes,openvla; rdt; small_llama,"55 ops, 12.8% of MACs, in openvla, rdt, small_llama",—
+gemv_like,19,623902720,0.0155,vector_gemv_engine; SIMD_vector_lanes,rdt; tiny_llama,"19 ops, 1.6% of MACs, in rdt, tiny_llama",very small MAC share

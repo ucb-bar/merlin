@@ -1,0 +1,62 @@
+# sharding_opportunities (structural; no speedup)
+sharding_opportunities:
+  attention_sharding:
+    evidence: unavailable
+    reason: attention is lowered into matmul projections; head / query / KV / sequence sharding structure is not visible
+    value: unavailable
+  conv_sharding:
+    evidence: unavailable
+    reason: no linalg.conv* ops in the captures
+    value: unavailable
+  note: intra-operator sharding geometry for matmuls. M/N sharding has NO reduction (broadcast input + concat output); K sharding requires partial sums + an accumulator merge (the high-communication mode). All byte costs are derived from recovered_from_ir shapes. No speedup/cycle claim.
+  required_abstractions:
+  - accumulator_merge
+  - activation_multicast
+  - output_partition_commit
+  - partial_sum_object
+  - weight_broadcast
+  workloads:
+  - clean_8way_shards:
+      K: 20
+      M: 2
+      N: 20
+    evidence: recovered_from_ir
+    ops: 20
+    tailed_8way_shards:
+      K: 0
+      M: 14
+      N: 0
+    workload: rdt
+  - clean_8way_shards:
+      K: 26
+      M: 3
+      N: 26
+    evidence: recovered_from_ir
+    ops: 26
+    tailed_8way_shards:
+      K: 0
+      M: 23
+      N: 0
+    workload: openvla
+  - clean_8way_shards:
+      K: 15
+      M: 15
+      N: 15
+    evidence: recovered_from_ir
+    ops: 15
+    tailed_8way_shards:
+      K: 0
+      M: 0
+      N: 0
+    workload: small_llama
+  - clean_8way_shards:
+      K: 15
+      M: 0
+      N: 15
+    evidence: recovered_from_ir
+    ops: 15
+    tailed_8way_shards:
+      K: 0
+      M: 0
+      N: 0
+    workload: tiny_llama

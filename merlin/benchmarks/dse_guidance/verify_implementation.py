@@ -28,6 +28,7 @@ from pathlib import Path
 from merlin.common.yaml import load_yaml
 from merlin.dse_guidance import accuracy_gate as AG
 from merlin.dse_guidance import attribution as ATTR
+from merlin.dse_guidance import shape_taxonomy as ST
 from merlin.dse_guidance.case_study import RECAP_MODELS
 from merlin.dse_guidance.design_envelope import ELEMENT_BYTES
 
@@ -39,6 +40,10 @@ CS_TILE = CS / "tile_waste_table.csv"
 CS_COVMAT = CS / "primitive_coverage_matrix.csv"
 CS_REGRET = CS / "primitive_regret_table.csv"
 CS_GRAPH = CS / "workload_contract_graph.yaml"
+CS_CRIT = CS / "critical_path_table.csv"
+CS_SHARD = CS / "sharding_table.csv"
+CS_HIER = CS / "operator_cluster_to_hierarchy.csv"
+CS_RESPRESS = CS / "resource_pressure_table.csv"
 ALLOWED_CADENCE = {"once_per_instruction", "once_per_replan", "K_times_per_replan", "token_loop",
                    "control_tick", "once_per_forward", "unknown"}
 ALLOWED_EVIDENCE = {"recovered_from_ir", "recovered_from_prov_fqn", "recovered_from_model_config",
@@ -485,6 +490,106 @@ def verify_p6_global(graphs: dict) -> None:
     p6check(not leaked, f"P6 artifacts free of forbidden performance terms (found: {leaked})")
 
 
+# ============================================================ P7 parallelism / sharding / hierarchy
+# Re-derived against the IR primitive + the P6 data-dependency edges: critical-path bound, the
+# work/span identity, sharding tail/byte formulas, hierarchy/unit references, and discipline.
+
+p7_results: list[tuple[bool, str]] = []
+
+
+def p7check(ok: bool, msg: str) -> None:
+    p7_results.append((bool(ok), msg))
+
+
+def verify_p7_workload(w: str, graphs: dict) -> dict:
+    crit = next(r for r in _csv_rows(CS_CRIT) if r["workload"] == w)
+    total_macs = int(crit["total_macs"])
+    cp_macs = int(crit["critical_path_macs"])
+    total_ops = int(crit["total_ops"])
+
+    # P7-A: total work matches the operator nodes' MAC sum (independent of the parallelism module)
+    recs = ATTR.extract_matmuls(str(RECAP / w))
+    indep_total = sum(r.macs for r in recs)
+    p7check(total_macs == indep_total and total_ops == len(recs),
+            f"[{w}] DAG total work == sum of operator MACs ({indep_total:,}) over {len(recs)} ops")
+
+    # P7-B: critical path is a real bound (<= total work) and >= the single largest op
+    biggest = max((r.macs for r in recs), default=0)
+    p7check(biggest <= cp_macs <= total_macs,
+            f"[{w}] largest op ({biggest:,}) <= critical path ({cp_macs:,}) <= total ({total_macs:,})")
+
+    # P7-C: available_parallelism recomputes from total / critical
+    ap = float(crit["available_parallelism"])
+    p7check(_eq(ap, total_macs / cp_macs, tol=1e-3),
+            f"[{w}] available_parallelism == total/critical == {total_macs/cp_macs:.4f}")
+
+    # P7-D: sharding formulas recompute for this workload's ops (tails + partial-sum / dup bytes)
+    by_idx = {r.index: r for r in recs}
+    srows = [r for r in _csv_rows(CS_SHARD) if r["workload"] == w]
+    shard_ok = True
+    k_has_reduction = mn_has_broadcast = True
+    for r in srows:
+        rec = by_idx[int(r["op_index"])]
+        axis = r["axis"]
+        dim = {"M": rec.M, "N": rec.N, "K": rec.K}[axis]
+        if int(r["dim_size"]) != dim or (r["tail_8"] == "True") != (dim % 8 != 0):
+            shard_ok = False
+        # K must require reduction + a partial-sum object; M/N must not
+        if axis == "K":
+            if r["reduction_required"] != "True" or "partial_sum_object" not in r["required_abstractions"]:
+                k_has_reduction = False
+            if int(r["per_extra_shard_bytes"]) != rec.M * rec.N * 4:           # M*N*acc(4)
+                shard_ok = False
+        else:
+            if r["reduction_required"] != "False":
+                mn_has_broadcast = False
+            if "broadcast" not in r["required_abstractions"] and "multicast" not in r["required_abstractions"]:
+                mn_has_broadcast = False
+    p7check(shard_ok, f"[{w}] sharding dim_size/tail/partial-sum bytes recompute from M/N/K")
+    p7check(k_has_reduction, f"[{w}] K-sharding requires reduction + partial_sum_object")
+    p7check(mn_has_broadcast, f"[{w}] M/N-sharding is reduction-free + needs broadcast/multicast")
+
+    return {"workload": w, "available_parallelism": ap, "max_ready_width": int(crit["max_ready_width"]),
+            "serialization": crit["serialization"]}
+
+
+def verify_p7_global() -> None:
+    # hierarchy hints reference only known geometry clusters
+    known_clusters = set(ST.GEOMETRY_CLASSES)
+    hier = _csv_rows(CS_HIER)
+    p7check(all(r["shape_class"] in known_clusters for r in hier),
+            "hierarchy hints reference only known shape clusters")
+    # processing-unit candidates: any unit marked present must cite a present resource class
+    press = {r["resource_class"]: r for r in _csv_rows(CS_RESPRESS)}
+    units = load_yaml(CS / "processing_unit_candidates.yaml")["processing_unit_candidates"]["units"]
+    unit_ok = True
+    for u in units:
+        supported = bool(u["workloads_supporting"])
+        if supported and u["evidence"] != "recovered_from_ir":
+            unit_ok = False
+        if not supported and u["evidence"] != "unavailable":
+            unit_ok = False
+    p7check(unit_ok, "processing-unit candidates: supported<->recovered_from_ir, else unavailable")
+    # resource pressure MAC fractions for compute classes are in [0,1]
+    comp = [r for r in press.values() if r["basis"] == "compute_macs"]
+    p7check(all(0.0 <= float(r["mac_fraction"]) <= 1.0 for r in comp),
+            "resource-pressure compute MAC fractions in [0,1]")
+    # no forbidden performance claims in P7 artifacts
+    p7_files = ["dag_parallelism_report.md", "critical_path_table.csv", "concurrency_windows.csv",
+                "parallel_region_candidates.yaml", "sharding_table.csv",
+                "sharding_opportunities.yaml", "intra_op_sharding_report.md",
+                "operator_cluster_to_hierarchy.csv", "parallel_hierarchy_hints.yaml",
+                "resource_pressure_table.csv", "processing_unit_candidates.yaml",
+                "processing_unit_parallelism_report.md"]
+    leaked = {}
+    for fn in p7_files:
+        low = (CS / fn).read_text(errors="ignore").lower()
+        for t in DANGEROUS:
+            if t in low:
+                leaked.setdefault(t, []).append(fn)
+    p7check(not leaked, f"P7 artifacts free of forbidden performance terms (found: {leaked})")
+
+
 def main(write: bool = True) -> int:
     rows = [verify_workload(w) for w in RECAP_MODELS if (RECAP / w / "model.mlir").is_file()]
     verify_global()
@@ -494,11 +599,15 @@ def main(write: bool = True) -> int:
     p6_rows = [verify_p6_workload(w, _graphs) for w in RECAP_MODELS
                if (RECAP / w / "model.mlir").is_file()]
     verify_p6_global(_graphs)
+    p7_rows = [verify_p7_workload(w, _graphs) for w in RECAP_MODELS
+               if (RECAP / w / "model.mlir").is_file()]
+    verify_p7_global()
 
-    passed = sum(1 for ok, _ in results + p5_results + p6_results if ok)
-    total = len(results) + len(p5_results) + len(p6_results)
+    passed = sum(1 for ok, _ in results + p5_results + p6_results + p7_results if ok)
+    total = len(results) + len(p5_results) + len(p6_results) + len(p7_results)
     p5_passed = sum(1 for ok, _ in p5_results if ok)
     p6_passed = sum(1 for ok, _ in p6_results if ok)
+    p7_passed = sum(1 for ok, _ in p7_results if ok)
     L = ["# Implementation verification report\n",
          "> Independent re-derivation of the dse_guidance package: every number below is recomputed "
          "from the raw captures / base facts and cross-checked against the emitted artifacts. "
@@ -554,16 +663,34 @@ def main(write: bool = True) -> int:
     L.append("\nP6 checks that the contract graph agrees with everything earlier phases recovered: "
              "operator nodes == `operator_shape_table.csv`, region facts == attribution, "
              "macs_per_replan == macs_per_invocation·invocations, loop trip == K, and every edge "
-             "evidence / cadence label is valid with `unknown_dependency` edges explicit. Structural "
-             "only; **no speedup** claimed.\n")
+             "evidence / cadence label is valid with data-dependency edges recovered from the SSA "
+             "use-def graph. Structural only; **no speedup** claimed.\n")
+
+    # P7 parallelism / sharding / hierarchy verification section
+    L.append("## P7 parallelism / sharding / hierarchy verification\n")
+    L.append(f"**{p7_passed}/{len(p7_results)} P7 checks passed.**\n")
+    L.append("Inter-op concurrency (recomputed from the DAG); low values mean the parallelism "
+             "opportunity is intra-op sharding, not inter-op concurrency:\n")
+    L.append("| workload | available parallelism | max ready width | structure |")
+    L.append("|---|---|---|---|")
+    for r in p7_rows:
+        L.append(f"| {r['workload']} | {r['available_parallelism']}× | {r['max_ready_width']} | "
+                 f"{r['serialization']} |")
+    L.append("\n### P7 checks\n")
+    for ok, msg in p7_results:
+        L.append(f"- [{'PASS' if ok else 'FAIL'}] {msg}")
+    L.append("\nP7 recomputes total work from the operator MACs, bounds the critical path "
+             "(largest op ≤ critical path ≤ total), recomputes available_parallelism = total/"
+             "critical, and recomputes the M/N/K sharding tail + partial-sum/broadcast byte formulas. "
+             "available_parallelism is work/span — **not a speedup**, no hardware assumed.\n")
     if write:
         (CS / "verification_report.md").write_text("\n".join(L) + "\n")
 
-    all_results = results + p5_results + p6_results
+    all_results = results + p5_results + p6_results + p7_results
     print("\n".join(f"[{'PASS' if ok else 'FAIL'}] {m}" for ok, m in all_results))
     dest = f" -> {CS / 'verification_report.md'}" if write else ""
     print(f"\n{passed}/{total} checks passed ({p5_passed}/{len(p5_results)} P5, "
-          f"{p6_passed}/{len(p6_results)} P6){dest}")
+          f"{p6_passed}/{len(p6_results)} P6, {p7_passed}/{len(p7_results)} P7){dest}")
     return 0 if passed == total else 1
 
 

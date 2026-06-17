@@ -1,0 +1,9 @@
+resource_class,present,op_count,macs,mac_fraction,basis,workloads
+dense_gemm,True,2,34377302016,0.8567,compute_macs,rdt
+skinny_gemm_or_gemv,True,74,5752619008,0.1433,compute_macs,openvla; rdt; small_llama; tiny_llama
+epilogue_or_requant,True,31,39496302592,0.9842,op_count,openvla; rdt
+dma_or_memory,True,0,0,0.0,structural,openvla; rdt; small_llama; tiny_llama
+control_or_dispatch,True,0,0,0.0,structural,openvla; rdt; small_llama; tiny_llama
+attention_softmax_or_reduction,False,0,0,0.0,unavailable,—
+conv_or_patch_embed,False,0,0,0.0,unavailable,—
+sparse_or_skip,False,0,0,0.0,unavailable,—

@@ -1477,3 +1477,122 @@ def test_case_study_emits_contract_graph(tmp_path):
         kinds = {n["kind"] for n in x["nodes"]}
         assert "phase" in kinds and "operator" in kinds
         assert x["rate_model"]["K"]["value"] >= 1
+
+
+# ============================================================ P7 parallelism / sharding / hierarchy
+
+def _toy_graph():
+    from merlin.dse_guidance import contract_graph as CG2
+    N = CG2.Node
+    nodes = [N(id="w:op:0", workload="w", kind="operator", shape_summary={"macs": 10}),
+             N(id="w:op:1", workload="w", kind="operator", shape_summary={"macs": 10}),
+             N(id="w:op:2", workload="w", kind="operator", shape_summary={"macs": 100})]
+    edges = [CG2.Edge("w:op:0", "w:op:2", "data_dependency"),
+             CG2.Edge("w:op:1", "w:op:2", "data_dependency")]
+    return CG2.ContractGraph("w", "x", {}, nodes, edges)
+
+
+def test_parallelism_critical_path_and_available_parallelism():
+    from merlin.dse_guidance import parallelism as PAR
+    d = PAR.analyze_graph(_toy_graph())
+    assert d.total_macs == 120 and d.critical_path_macs == 110   # op0/op1 (10) -> op2 (100)
+    assert d.critical_path_ops == 2
+    assert d.available_parallelism == round(120 / 110, 4)        # work/span, NOT speedup
+    assert d.max_ready_width == 2 and d.n_levels == 2            # op0,op1 ready together
+    assert d.critical_path_macs <= d.total_macs
+    assert d.dep_evidence == "recovered_from_ir"
+
+
+def test_parallelism_conservative_fallback_when_no_data_edges():
+    from merlin.dse_guidance import parallelism as PAR, contract_graph as CG2
+    nodes = [CG2.Node(id="w:op:0", workload="w", kind="operator", shape_summary={"macs": 5}),
+             CG2.Node(id="w:op:1", workload="w", kind="operator", shape_summary={"macs": 5})]
+    g = CG2.ContractGraph("w", "x", {}, nodes, [])               # no data_dependency edges
+    d = PAR.analyze_graph(g)
+    assert d.dep_evidence == "conservative_assumption"           # sequential chain, labeled honestly
+    assert d.critical_path_macs == 10                            # forced sequential
+
+
+def test_sharding_mnk_formulas_and_partial_sum_bytes():
+    from merlin.dse_guidance import sharding as SH, operator_geometry as OG
+    s = OG.operator_shape(_mm(8, 344, 128), "w", "repeated_head")   # M=8,N=344,K=128 (f32)
+    axes = {a.axis: a for a in SH.shard_axes(s)}
+    # M: rows, no reduction, broadcast weights (K*N*4); 8%8==0 -> no tail at 8
+    assert axes["M"].reduction_required is False and not axes["M"].has_tail[8]
+    assert axes["M"].per_extra_shard_bytes == 128 * 344 * 4
+    assert "weight_broadcast" in axes["M"].required_abstractions
+    # N: cols, no reduction, broadcast activations (M*K*4); 344%8==0 -> no tail
+    assert axes["N"].reduction_required is False
+    assert axes["N"].per_extra_shard_bytes == 8 * 128 * 4
+    assert "activation_multicast" in axes["N"].required_abstractions
+    # K: reduction split -> partial sums M*N*acc(4) + accumulator_merge
+    assert axes["K"].reduction_required is True and axes["K"].comm_category == "high"
+    assert axes["K"].per_extra_shard_bytes == 8 * 344 * 4
+    assert "partial_sum_object" in axes["K"].required_abstractions
+
+
+def test_sharding_attention_and_conv_unavailable():
+    from merlin.dse_guidance import sharding as SH, operator_geometry as OG
+    shapes = [OG.operator_shape(_mm(8, 128, 128), "w", "r")]
+    obj = SH.sharding_opportunities_yaml({"w": SH.all_shard_axes(shapes)})["sharding_opportunities"]
+    assert obj["attention_sharding"]["value"] == "unavailable"
+    assert obj["conv_sharding"]["value"] == "unavailable"
+
+
+def test_resource_hierarchy_schema_and_unavailable_units():
+    from merlin.dse_guidance import resource_hierarchy as RH, operator_geometry as OG, parallelism as PAR
+    shapes = [OG.operator_shape(_mm(4096, 4096, 2048, idx=0), "w", "r"),   # dense_gemm
+              OG.operator_shape(_mm(1, 2048, 256, idx=1), "w", "r")]       # gemv -> skinny
+    dags = [PAR.analyze_graph(_toy_graph())]
+    clusters = RH.cluster_hierarchy(shapes)
+    hints = RH.hierarchy_hints_yaml(clusters)["parallel_hierarchy_hints"]["clusters"]
+    known = set(("matrix_tile_engine", "vector_gemv_engine", "reduction_tree", "systolic_array",
+                 "SIMD_vector_lanes", "multi_engine_cluster", "epilogue_unit", "DMA_engine",
+                 "loop_controller"))
+    for h in hints:
+        assert set(h["hierarchy_options"]) <= known        # only known hierarchy units referenced
+    pressure = RH.resource_pressure(shapes, dags)
+    units = {u["unit"]: u for u in
+             RH.processing_unit_candidates_yaml(RH.processing_unit_candidates(shapes, pressure))
+             ["processing_unit_candidates"]["units"]}
+    # attention / conv have no operators in the capture -> unavailable, not dropped
+    assert units["attention_kv_engine"]["evidence"] == "unavailable"
+    assert units["conv_engine"]["evidence"] == "unavailable"
+    assert units["matrix_engine"]["evidence"] == "recovered_from_ir"     # dense gemm present
+
+
+def test_p7_reports_have_no_forbidden_wording():
+    from merlin.dse_guidance import (parallelism as PAR, sharding as SH, resource_hierarchy as RH,
+                                     operator_geometry as OG)
+    shapes = [OG.operator_shape(_mm(4096, 4096, 2048), "w", "r")]
+    dags = [PAR.analyze_graph(_toy_graph())]
+    pressure = RH.resource_pressure(shapes, dags)
+    units = RH.processing_unit_candidates(shapes, pressure)
+    clusters = RH.cluster_hierarchy(shapes)
+    blobs = [PAR.report_md(dags).lower(),
+             SH.report_md({"w": SH.all_shard_axes(shapes)}, SH.all_shard_axes(shapes)).lower(),
+             RH.processing_unit_report_md(units, pressure, clusters, dags).lower(),
+             str(RH.processing_unit_candidates_yaml(units)).lower()]
+    for b in blobs:
+        for term in ("gap_closure", "faster", "optimal", "predicted cycles", "improvement"):
+            assert term not in b, f"forbidden term {term!r}"
+        for ln in b.splitlines():
+            if "speedup" in ln:
+                assert "no speedup" in ln or "not a speedup" in ln
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_case_study_emits_p7_artifacts(tmp_path):
+    from merlin.dse_guidance import case_study as CS
+    CS.run_case_study(tmp_path)
+    for f in ("dag_parallelism_report.md", "critical_path_table.csv", "concurrency_windows.csv",
+              "parallel_region_candidates.yaml", "sharding_table.csv", "sharding_opportunities.yaml",
+              "intra_op_sharding_report.md", "operator_cluster_to_hierarchy.csv",
+              "parallel_hierarchy_hints.yaml", "resource_pressure_table.csv",
+              "processing_unit_candidates.yaml", "processing_unit_parallelism_report.md"):
+        assert (tmp_path / f).is_file(), f"missing {f}"
+    import csv, io
+    crit = list(csv.DictReader(io.StringIO((tmp_path / "critical_path_table.csv").read_text())))
+    for r in crit:
+        assert int(r["critical_path_macs"]) <= int(r["total_macs"])      # span <= work
+        assert float(r["available_parallelism"]) >= 1.0

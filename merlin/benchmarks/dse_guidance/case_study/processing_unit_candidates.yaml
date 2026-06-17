@@ -1,0 +1,119 @@
+# processing_unit_candidates (structural; no speedup)
+processing_unit_candidates:
+  note: candidate processing-unit types implied by the resource pressure. Each carries evidence for/against; units whose structure is not in the capture are marked unavailable, not dropped. Knobs are search-space dimensions, not chosen values. No speedup/cycle/area claim.
+  units:
+  - compiler_proof_needed: matmul tiling is shape-legal for the dense operators (no cross-tile dependency)
+    dse_knobs_exposed:
+    - tile_M
+    - tile_N
+    - tile_K
+    - pe_array_rows
+    - pe_array_cols
+    evidence: recovered_from_ir
+    evidence_against: none
+    evidence_for: 'serves dense_gemm: 86% of MACs across rdt'
+    region_roles_supporting:
+    - repeated_head
+    unit: matrix_engine
+    what_is_not_claimed: no speedup, throughput, cycle, or area is claimed; this is a structural search-space candidate, not a chosen design
+    workloads_supporting:
+    - rdt
+  - compiler_proof_needed: the skinny/GEMV operators vectorize along the long output dimension
+    dse_knobs_exposed:
+    - lane_width
+    - num_lanes
+    - accumulator_depth
+    evidence: recovered_from_ir
+    evidence_against: none
+    evidence_for: 'serves skinny_gemm_or_gemv: 14% of MACs across openvla, rdt, small_llama, tiny_llama'
+    region_roles_supporting:
+    - backbone_once
+    - repeated_head
+    unit: vector_gemv_engine
+    what_is_not_claimed: no speedup, throughput, cycle, or area is claimed; this is a structural search-space candidate, not a chosen design
+    workloads_supporting:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+  - compiler_proof_needed: requires attention structure (heads / KV) which is not recoverable from the flat capture
+    dse_knobs_exposed:
+    - kv_tile
+    - head_parallelism
+    evidence: unavailable
+    evidence_against: unavailable — the structure this unit needs is not in the flat capture
+    evidence_for: no supporting operators in the captures
+    region_roles_supporting: []
+    unit: attention_kv_engine
+    what_is_not_claimed: no speedup, throughput, cycle, or area is claimed; this is a structural search-space candidate, not a chosen design
+    workloads_supporting: []
+  - compiler_proof_needed: requires conv structure which is absent from the captures
+    dse_knobs_exposed:
+    - spatial_tile
+    - channel_tile
+    evidence: unavailable
+    evidence_against: unavailable — the structure this unit needs is not in the flat capture
+    evidence_for: no supporting operators in the captures
+    region_roles_supporting: []
+    unit: conv_engine
+    what_is_not_claimed: no speedup, throughput, cycle, or area is claimed; this is a structural search-space candidate, not a chosen design
+    workloads_supporting: []
+  - compiler_proof_needed: the addmm epilogue (bias / activation) fuses onto the GEMM output
+    dse_knobs_exposed:
+    - fused_bias
+    - fused_activation
+    - requant_path
+    evidence: recovered_from_ir
+    evidence_against: none
+    evidence_for: serves epilogue_or_requant (op_count; 31 across openvla, rdt)
+    region_roles_supporting: []
+    unit: epilogue_requant_unit
+    what_is_not_claimed: no speedup, throughput, cycle, or area is claimed; this is a structural search-space candidate, not a chosen design
+    workloads_supporting:
+    - openvla
+    - rdt
+  - compiler_proof_needed: loop-invariant weights are read-only across the K-loop and can be made resident
+    dse_knobs_exposed:
+    - prefetch_depth
+    - resident_capacity
+    - tiling_of_residency
+    evidence: recovered_from_ir
+    evidence_against: none
+    evidence_for: serves dma_or_memory (structural; structural across openvla, rdt, small_llama, tiny_llama)
+    region_roles_supporting: []
+    unit: dma_engine
+    what_is_not_claimed: no speedup, throughput, cycle, or area is claimed; this is a structural search-space candidate, not a chosen design
+    workloads_supporting:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+  - compiler_proof_needed: the repeated head is a bounded K-loop with loop-invariant weights
+    dse_knobs_exposed:
+    - loop_bound_K
+    - unroll_factor
+    evidence: recovered_from_ir
+    evidence_against: none
+    evidence_for: serves control_or_dispatch (structural; structural across openvla, rdt, small_llama, tiny_llama)
+    region_roles_supporting: []
+    unit: loop_controller
+    what_is_not_claimed: no speedup, throughput, cycle, or area is claimed; this is a structural search-space candidate, not a chosen design
+    workloads_supporting:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+  - compiler_proof_needed: host dispatch / control flow drives the per-step command stream
+    dse_knobs_exposed:
+    - dispatch_width
+    evidence: recovered_from_ir
+    evidence_against: none
+    evidence_for: serves control_or_dispatch (structural; structural across openvla, rdt, small_llama, tiny_llama)
+    region_roles_supporting: []
+    unit: scalar_control_unit
+    what_is_not_claimed: no speedup, throughput, cycle, or area is claimed; this is a structural search-space candidate, not a chosen design
+    workloads_supporting:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
