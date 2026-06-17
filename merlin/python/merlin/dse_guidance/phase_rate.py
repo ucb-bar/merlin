@@ -13,7 +13,7 @@ never an equal-split guess. No speedup, no cycle count.
 from __future__ import annotations
 
 from merlin.dse_guidance import topology as TOP
-from merlin.dse_guidance.design_envelope import E_ASSUMED, E_DERIVED, E_NA
+from merlin.dse_guidance.design_envelope import E_CONFIG, E_DERIVED, E_NA
 
 # Cadence vocabulary (the allowed set; the verifier checks membership).
 CAD_ONCE_INSTRUCTION = "once_per_instruction"
@@ -54,9 +54,9 @@ def rate_model(topo) -> dict:
     rate = float(topo.control_rate_hz)
     deadline_s = (topo.replan_deadline_ms / 1000.0) if topo.replan_deadline_ms else None
     return {
-        "K": {"value": K, "source": E_ASSUMED},
-        "H": {"value": H, "source": E_ASSUMED},
-        "control_rate_hz": {"value": rate, "source": E_ASSUMED},
+        "K": {"value": K, "source": E_CONFIG},
+        "H": {"value": H, "source": E_CONFIG},
+        "control_rate_hz": {"value": rate, "source": E_CONFIG},
         "replan_deadline_s": {"value": (round(deadline_s, 6) if deadline_s else None),
                               "source": (E_DERIVED if deadline_s else E_NA)},
         "deadline_equation": topo.deadline_equation(),

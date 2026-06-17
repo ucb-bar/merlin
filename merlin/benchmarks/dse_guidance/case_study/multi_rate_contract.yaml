@@ -1,6 +1,6 @@
 # multi_rate_contract (rate model + phases)
 multi_rate_contract:
-  note: rate constants (K/H/control_rate) are assumed_reference; the replan deadline is derived; per-K-step wall time is unavailable. No speedup/cycle claim.
+  note: rate constants (K/H/control_rate) are recovered_from_model_config (the model's published architecture); the replan deadline is derived from H / control_rate. No speedup/cycle claim.
   workloads:
   - phases:
     - cadence: once_per_replan
@@ -13,13 +13,13 @@ multi_rate_contract:
       role: repeated_head
     rate_model:
       H:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 64
       K:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 5
       control_rate_hz:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 30.0
       deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
       replan_deadline_s:
@@ -43,13 +43,13 @@ multi_rate_contract:
       role: repeated_head
     rate_model:
       H:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 7
       K:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 7
       control_rate_hz:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 5.0
       deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
       replan_deadline_s:
@@ -73,20 +73,20 @@ multi_rate_contract:
       role: repeated_head
     rate_model:
       H:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 32
       K:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 32
       control_rate_hz:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 30.0
       deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
       replan_deadline_s:
         source: derived_requirement
         value: 1.066667
     states_across_rates:
-    - bytes: 1581056
+    - bytes: 1712128
       evidence: recovered_from_ir
       lifetime: loop_invariant
       state: weights
@@ -103,13 +103,13 @@ multi_rate_contract:
       role: repeated_head
     rate_model:
       H:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 32
       K:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 32
       control_rate_hz:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 30.0
       deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
       replan_deadline_s:

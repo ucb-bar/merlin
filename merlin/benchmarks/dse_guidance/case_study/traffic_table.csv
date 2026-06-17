@@ -1,6 +1,6 @@
 workload,region,invocations,weight_bytes,weight_traffic_if_nonresident,avoidable_weight_reload,activation_bytes_per_invocation,activation_traffic_total,reuse_factor
 rdt,repeated_head,5,391118848,1955594240,1564475392,118550016,592750080,5
-openvla,backbone_once,1,8847360,8847360,0,626688,626688,1
+openvla,backbone_once,1,15400960,15400960,0,983040,983040,1
 openvla,repeated_head,7,3145728,22020096,18874368,645120,4515840,7
-small_llama,repeated_head,32,1581056,50593792,49012736,156160,4997120,32
+small_llama,repeated_head,32,1712128,54788096,53075968,168448,5390336,32
 tiny_llama,repeated_head,32,614465536,19662897152,19048431616,1691648,54132736,32

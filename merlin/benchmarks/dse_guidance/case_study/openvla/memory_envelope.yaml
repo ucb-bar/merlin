@@ -4,10 +4,10 @@ memory_envelope:
   regions:
   - activation_bytes_per_invocation:
       evidence: recovered_from_ir
-      value: 626688
+      value: 983040
     activation_traffic_total:
       evidence: derived_requirement
-      value: 626688
+      value: 983040
     avoidable_weight_reload:
       evidence: derived_requirement
       value: 0
@@ -26,10 +26,10 @@ memory_envelope:
       value: 1
     weight_bytes:
       evidence: recovered_from_ir
-      value: 8847360
+      value: 15400960
     weight_traffic_if_nonresident:
       evidence: derived_requirement
-      value: 8847360
+      value: 15400960
   - activation_bytes_per_invocation:
       evidence: recovered_from_ir
       value: 645120

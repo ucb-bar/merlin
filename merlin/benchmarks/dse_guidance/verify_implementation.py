@@ -41,9 +41,9 @@ CS_REGRET = CS / "primitive_regret_table.csv"
 CS_GRAPH = CS / "workload_contract_graph.yaml"
 ALLOWED_CADENCE = {"once_per_instruction", "once_per_replan", "K_times_per_replan", "token_loop",
                    "control_tick", "once_per_forward", "unknown"}
-ALLOWED_EVIDENCE = {"recovered_from_ir", "recovered_from_prov_fqn", "assumed_reference",
-                    "derived_requirement", "design_assumption", "measured", "proxy_measured",
-                    "unavailable"}
+ALLOWED_EVIDENCE = {"recovered_from_ir", "recovered_from_prov_fqn", "recovered_from_model_config",
+                    "assumed_reference", "derived_requirement", "design_assumption", "measured",
+                    "proxy_measured", "unavailable"}
 DANGEROUS = ("improvement", "optimal", "best design", "predicted cycles", "calibrated future",
              "gap_closure", "faster")
 V0_DOCS = {"current_state_audit.md", "claim_evidence_matrix.csv", "reproducibility_check.log",
@@ -364,6 +364,33 @@ def _graphs_by_workload() -> dict:
     return {x["workload"]: x for x in g["graphs"]}
 
 
+def _indep_matmul_deps(w: str) -> list[tuple[int, ...]]:
+    """Independent re-trace of per-matmul data deps from the SSA use-def graph (re-implemented)."""
+    from merlin.design_pressure.ingest import mlir_m2m
+    from xdsl.ir import Operation
+    m = mlir_m2m._parse_module((RECAP / w / "model.mlir").read_text())
+    mms = [o for o in m.walk() if o.name == "linalg.matmul"]
+    res = {id(r): i for i, mm in enumerate(mms) for r in mm.results}
+    out = []
+    for i, mm in enumerate(mms):
+        preds, seen, st = set(), set(), list(mm.operands)
+        while st:
+            v = st.pop()
+            if id(v) in seen:
+                continue
+            seen.add(id(v))
+            j = res.get(id(v))
+            if j is not None:
+                if j != i:
+                    preds.add(j)
+                continue
+            o = getattr(v, "owner", None)
+            if isinstance(o, Operation):
+                st.extend(o.operands)
+        out.append(tuple(sorted(preds)))
+    return out
+
+
 def verify_p6_workload(w: str, graphs: dict) -> dict:
     g = graphs[w]
     nodes, edges = g["nodes"], g["edges"]
@@ -407,15 +434,35 @@ def verify_p6_workload(w: str, graphs: dict) -> dict:
         and bool(head) and int(head[0]["rate"]["invocations"]) == K
     p6check(k_ok, f"[{w}] loop_body trip_count == repeated_head invocations == K == {K}")
 
-    # P6-D: cadence vocabulary + edge evidence labels + unknown explicitness
+    # P6-D: cadence vocabulary + edge evidence labels
     cad_ok = all((n.get("rate") or {}).get("cadence", "unknown") in ALLOWED_CADENCE
                  for n in nodes if n["kind"] in ("phase", "region", "loop_body"))
     ev_ok = all(e["evidence"] in ALLOWED_EVIDENCE for e in edges)
-    unk_ok = all(e["evidence"] == "unavailable" and e.get("can_pipeline") == "unknown"
-                 for e in edges if e["kind"] == "unknown_dependency")
     p6check(cad_ok, f"[{w}] all cadence fields in allowed vocabulary")
     p6check(ev_ok, f"[{w}] all edge evidence labels valid")
-    p6check(unk_ok, f"[{w}] unknown_dependency edges are explicit (unavailable + can_pipeline unknown)")
+
+    # P6-E: operator data-dependency edges match an INDEPENDENT SSA re-trace (recovered_from_ir)
+    indep = _indep_matmul_deps(w)
+    graph_deps: dict[int, set] = {}
+    dd_ev_ok = True
+    for e in edges:
+        if e["kind"] != "data_dependency":
+            continue
+        if e["evidence"] != "recovered_from_ir" or e.get("can_pipeline") is not False:
+            dd_ev_ok = False
+        tgt = int(e["target"].split(":")[-1])
+        graph_deps.setdefault(tgt, set()).add(int(e["source"].split(":")[-1]))
+    deps_match = all(graph_deps.get(i, set()) == set(indep[i]) for i in range(len(indep)))
+    n_dd = sum(len(d) for d in indep)
+    p6check(deps_match and dd_ev_ok,
+            f"[{w}] {n_dd} data_dependency edges == independent SSA re-trace "
+            f"(recovered_from_ir, can_pipeline=False)")
+
+    # P6-F: every operator is attributed to a real role (no unknown region; full attribution)
+    op_roles = {n["region_role"] for n in nodes if n["kind"] == "operator"}
+    full_attr = "unknown" not in op_roles and not any(
+        n["kind"] == "region" and n["region_role"] == "unknown" for n in nodes)
+    p6check(full_attr, f"[{w}] every operator attributed to a real role (roles={sorted(op_roles)})")
 
     from collections import Counter
     nk = Counter(n["kind"] for n in nodes)

@@ -4,13 +4,13 @@ memory_envelope:
   regions:
   - activation_bytes_per_invocation:
       evidence: recovered_from_ir
-      value: 156160
+      value: 168448
     activation_traffic_total:
       evidence: derived_requirement
-      value: 4997120
+      value: 5390336
     avoidable_weight_reload:
       evidence: derived_requirement
-      value: 49012736
+      value: 53075968
     intermediate_materialization_bytes:
       evidence: unavailable
       value: null
@@ -26,8 +26,8 @@ memory_envelope:
       value: 32
     weight_bytes:
       evidence: recovered_from_ir
-      value: 1581056
+      value: 1712128
     weight_traffic_if_nonresident:
       evidence: derived_requirement
-      value: 50593792
+      value: 54788096
   workload: small_llama

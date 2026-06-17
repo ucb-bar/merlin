@@ -7,7 +7,7 @@
 ## 1. Recovered structure
 
 - repeated head (prov_fqn): 15 matmuls, 3 MB weights, 0.0 GMAC/step, reused x7
-- backbone (once/replan): 8 matmuls
+- backbone (once/replan): 11 matmuls
 
 ## 2. Numerical contract
 

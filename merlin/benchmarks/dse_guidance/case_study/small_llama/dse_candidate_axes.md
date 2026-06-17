@@ -10,7 +10,7 @@
 - **needs (compiler)**: action-head weights immutable and live across the K-loop (resident-pack candidate); backbone weights excluded
 - **needs (hw/runtime)**: resident weight store + pack-once/use-many interface
 - **measure first**: action_head_weight_bytes, weight_reload_bytes_per_step, pack_cost_per_step, resident_capacity_required, measured memory bandwidth
-- **attributed IR facts (Level-1)**: `{'matmul_count': 14, 'macs_per_invocation': 3162112, 'weight_bytes': 1581056, 'activation_bytes_per_invocation': 156160, 'invocations': 32, 'macs_total': 101187584, 'activation_bytes_total': 4997120}`
+- **attributed IR facts (Level-1)**: `{'matmul_count': 15, 'macs_per_invocation': 3424256, 'weight_bytes': 1712128, 'activation_bytes_per_invocation': 168448, 'invocations': 32, 'macs_total': 109576192, 'activation_bytes_total': 5390336}`
 - **status**: legality=structural, benefit=unquantified (blocked by: missing_calibration)
 - **could be wrong if**: weights exceed resident capacity; packing already hoisted out of the loop; DMA/weight traffic is not the bottleneck; host dispatch dominates total latency
 
@@ -56,7 +56,7 @@
 - **needs (compiler)**: a packed/quantized weight layout is produced once and consumed by the same op family across the loop without re-pack
 - **needs (hw/runtime)**: packed layout as a first-class, dispatch-crossing object
 - **measure first**: pack_count_per_replan, pack_bytes, repacks_avoided
-- **attributed IR facts (Level-1)**: `{'matmul_count': 14, 'macs_per_invocation': 3162112, 'weight_bytes': 1581056, 'activation_bytes_per_invocation': 156160, 'invocations': 32, 'macs_total': 101187584, 'activation_bytes_total': 4997120}`
+- **attributed IR facts (Level-1)**: `{'matmul_count': 15, 'macs_per_invocation': 3424256, 'weight_bytes': 1712128, 'activation_bytes_per_invocation': 168448, 'invocations': 32, 'macs_total': 109576192, 'activation_bytes_total': 5390336}`
 - **status**: legality=structural, benefit=unquantified (blocked by: missing_calibration)
 - **could be wrong if**: packing is not repeated; the op family changes layout between uses; dequant happens upstream regardless
 

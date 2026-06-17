@@ -11,118 +11,280 @@ workload_contract_graph:
   - unknown_dependency
   graphs:
   - edges:
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:0
       target: rdt:op:1
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: rdt:op:1
-      target: rdt:op:2
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:2
       target: rdt:op:3
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:1
+      target: rdt:op:4
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:3
       target: rdt:op:4
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:4
       target: rdt:op:5
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:1
+      target: rdt:op:6
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:3
+      target: rdt:op:6
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:5
       target: rdt:op:6
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:6
-      target: rdt:op:7
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+      target: rdt:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:7
       target: rdt:op:8
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:1
+      target: rdt:op:9
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:3
+      target: rdt:op:9
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:5
+      target: rdt:op:9
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:8
       target: rdt:op:9
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:9
       target: rdt:op:10
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:1
+      target: rdt:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:3
+      target: rdt:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:5
+      target: rdt:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:8
+      target: rdt:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:10
       target: rdt:op:11
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:11
       target: rdt:op:12
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:1
+      target: rdt:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:3
+      target: rdt:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:5
+      target: rdt:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:8
+      target: rdt:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:10
+      target: rdt:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:12
       target: rdt:op:13
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:13
-      target: rdt:op:14
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+      target: rdt:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:14
       target: rdt:op:15
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:1
+      target: rdt:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:3
+      target: rdt:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:5
+      target: rdt:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:8
+      target: rdt:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:10
+      target: rdt:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:12
+      target: rdt:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:15
       target: rdt:op:16
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:16
       target: rdt:op:17
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:1
+      target: rdt:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:3
+      target: rdt:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:5
+      target: rdt:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:8
+      target: rdt:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:10
+      target: rdt:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:12
+      target: rdt:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt:op:15
+      target: rdt:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:17
       target: rdt:op:18
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: rdt:op:18
       target: rdt:op:19
     - bytes: 391118848
@@ -140,10 +302,10 @@ workload_contract_graph:
       note: once-per-replan backbone precedes the repeated head (role split recovered from prov.fqn); the specific tensors crossing the boundary are unavailable in the flat capture
       source: rdt:phase:backbone
       target: rdt:phase:head
-    - can_pipeline: unknown
-      evidence: unavailable
+    - can_pipeline: true
+      evidence: derived_requirement
       kind: pipeline_candidate
-      note: the next replan's backbone may overlap this replan's head (async pipelining); feasibility not measured
+      note: the next replan's backbone shares no loop-carried state with this replan's head, so the two rates are structurally overlappable (async pipelining candidate)
       source: rdt:phase:head
       target: rdt:phase:backbone
     nodes:
@@ -172,7 +334,7 @@ workload_contract_graph:
         cadence: K_times_per_replan
         cadence_evidence: recovered_from_prov_fqn
         invocations: 5
-        invocations_evidence: assumed_reference
+        invocations_evidence: recovered_from_model_config
         period_evidence: unavailable
         period_s: null
       region_role: repeated_head
@@ -220,7 +382,7 @@ workload_contract_graph:
       rate:
         cadence: K_times_per_replan
         invocations: 5
-        invocations_evidence: assumed_reference
+        invocations_evidence: recovered_from_model_config
       region_role: repeated_head
       work_summary:
         activation_bytes_per_invocation: 118550016
@@ -859,7 +1021,7 @@ workload_contract_graph:
       rate:
         cadence: K_times_per_replan
         trip_count: 5
-        trip_count_evidence: assumed_reference
+        trip_count_evidence: recovered_from_model_config
       region_role: repeated_head
       work_summary:
         evidence: recovered_from_ir
@@ -880,13 +1042,13 @@ workload_contract_graph:
         reused_times: 5
     rate_model:
       H:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 64
       K:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 5
       control_rate_hz:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 30.0
       deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
       replan_deadline_s:
@@ -895,144 +1057,312 @@ workload_contract_graph:
     workload: rdt
     workload_class: flow_matching_action_head
   - edges:
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: openvla:op:0
       target: openvla:op:1
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: openvla:op:1
       target: openvla:op:2
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: openvla:op:2
       target: openvla:op:3
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: openvla:op:3
-      target: openvla:op:4
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: openvla:op:4
       target: openvla:op:5
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: openvla:op:5
       target: openvla:op:6
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: openvla:op:6
       target: openvla:op:7
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: openvla:op:11
-      target: openvla:op:12
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: openvla:op:12
-      target: openvla:op:13
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: openvla:op:13
-      target: openvla:op:14
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: openvla:op:14
-      target: openvla:op:15
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: openvla:op:15
-      target: openvla:op:16
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: openvla:op:16
-      target: openvla:op:17
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: openvla:op:17
-      target: openvla:op:18
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: openvla:op:18
-      target: openvla:op:19
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: openvla:op:19
-      target: openvla:op:20
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: openvla:op:20
-      target: openvla:op:21
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: openvla:op:21
-      target: openvla:op:22
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: openvla:op:22
-      target: openvla:op:23
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: openvla:op:23
-      target: openvla:op:24
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: openvla:op:24
-      target: openvla:op:25
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:1
+      target: openvla:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:3
+      target: openvla:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:5
+      target: openvla:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:7
+      target: openvla:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: openvla:op:8
       target: openvla:op:9
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: openvla:op:9
       target: openvla:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:10
+      target: openvla:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:10
+      target: openvla:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:10
+      target: openvla:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:11
+      target: openvla:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:12
+      target: openvla:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:13
+      target: openvla:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:10
+      target: openvla:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:14
+      target: openvla:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:10
+      target: openvla:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:14
+      target: openvla:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:15
+      target: openvla:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:16
+      target: openvla:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:10
+      target: openvla:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:14
+      target: openvla:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:17
+      target: openvla:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:10
+      target: openvla:op:19
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:14
+      target: openvla:op:19
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:17
+      target: openvla:op:19
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:10
+      target: openvla:op:20
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:14
+      target: openvla:op:20
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:17
+      target: openvla:op:20
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:18
+      target: openvla:op:21
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:19
+      target: openvla:op:21
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:20
+      target: openvla:op:21
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:10
+      target: openvla:op:22
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:14
+      target: openvla:op:22
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:17
+      target: openvla:op:22
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:21
+      target: openvla:op:22
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:10
+      target: openvla:op:23
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:14
+      target: openvla:op:23
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:17
+      target: openvla:op:23
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:21
+      target: openvla:op:23
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:22
+      target: openvla:op:24
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:23
+      target: openvla:op:24
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:10
+      target: openvla:op:25
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:14
+      target: openvla:op:25
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:17
+      target: openvla:op:25
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:21
+      target: openvla:op:25
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: openvla:op:24
+      target: openvla:op:25
     - bytes: 3145728
       can_pipeline: true
       evidence: recovered_from_ir
@@ -1048,10 +1378,10 @@ workload_contract_graph:
       note: once-per-replan backbone precedes the repeated head (role split recovered from prov.fqn); the specific tensors crossing the boundary are unavailable in the flat capture
       source: openvla:phase:backbone
       target: openvla:phase:head
-    - can_pipeline: unknown
-      evidence: unavailable
+    - can_pipeline: true
+      evidence: derived_requirement
       kind: pipeline_candidate
-      note: the next replan's backbone may overlap this replan's head (async pipelining); feasibility not measured
+      note: the next replan's backbone shares no loop-carried state with this replan's head, so the two rates are structurally overlappable (async pipelining candidate)
       source: openvla:phase:head
       target: openvla:phase:backbone
     nodes:
@@ -1080,7 +1410,7 @@ workload_contract_graph:
         cadence: token_loop
         cadence_evidence: recovered_from_prov_fqn
         invocations: 7
-        invocations_evidence: assumed_reference
+        invocations_evidence: recovered_from_model_config
         period_evidence: unavailable
         period_s: null
       region_role: repeated_head
@@ -1097,7 +1427,7 @@ workload_contract_graph:
         accumulator_dtype: f32
         dtype: f32
         evidence: recovered_from_ir
-        n_matmuls: 8
+        n_matmuls: 11
       operator_refs:
       - openvla:op:0
       - openvla:op:1
@@ -1107,6 +1437,9 @@ workload_contract_graph:
       - openvla:op:5
       - openvla:op:6
       - openvla:op:7
+      - openvla:op:8
+      - openvla:op:9
+      - openvla:op:10
       parallelism_summary:
         overlap_evidence: unavailable
         region_overlap: unknown
@@ -1119,14 +1452,14 @@ workload_contract_graph:
         invocations_evidence: recovered_from_ir
       region_role: backbone_once
       work_summary:
-        activation_bytes_per_invocation: 626688
-        activation_bytes_per_replan: 626688
-        dispatch_count_proxy: 8
+        activation_bytes_per_invocation: 983040
+        activation_bytes_per_replan: 983040
+        dispatch_count_proxy: 11
         evidence: recovered_from_ir
-        macs_per_invocation: 37601280
-        macs_per_replan: 37601280
-        matmul_count: 8
-        weight_bytes: 8847360
+        macs_per_invocation: 63815680
+        macs_per_replan: 63815680
+        matmul_count: 11
+        weight_bytes: 15400960
     - evidence: recovered_from_prov_fqn
       id: openvla:region:repeated_head
       kind: region
@@ -1160,7 +1493,7 @@ workload_contract_graph:
       rate:
         cadence: token_loop
         invocations: 7
-        invocations_evidence: assumed_reference
+        invocations_evidence: recovered_from_model_config
       region_role: repeated_head
       work_summary:
         activation_bytes_per_invocation: 645120
@@ -1171,37 +1504,6 @@ workload_contract_graph:
         macs_per_replan: 110100480
         matmul_count: 15
         weight_bytes: 3145728
-    - evidence: unavailable
-      id: openvla:region:unknown
-      kind: region
-      note: role not recoverable from the flat capture
-      numerical_contract_summary:
-        dtype: unavailable
-        evidence: unavailable
-      operator_refs:
-      - openvla:op:8
-      - openvla:op:9
-      - openvla:op:10
-      parallelism_summary:
-        overlap_evidence: unavailable
-        region_overlap: unknown
-        shardable_dim: N
-        shardable_evidence: derived_requirement
-      parent_region: null
-      rate:
-        cadence: unknown
-        invocations: 1
-        invocations_evidence: recovered_from_ir
-      region_role: unknown
-      work_summary:
-        activation_bytes_per_invocation: 356352
-        activation_bytes_per_replan: 356352
-        dispatch_count_proxy: 3
-        evidence: unavailable
-        macs_per_invocation: 26214400
-        macs_per_replan: 26214400
-        matmul_count: 3
-        weight_bytes: 6553600
     - evidence: recovered_from_ir
       id: openvla:op:0
       kind: operator
@@ -1453,8 +1755,8 @@ workload_contract_graph:
         region_overlap: unknown
         shardable_dim: N
         shardable_evidence: derived_requirement
-      parent_region: openvla:region:unknown
-      region_role: unknown
+      parent_region: openvla:region:backbone_once
+      region_role: backbone_once
       shape_summary:
         K: 576
         M: 16
@@ -1483,8 +1785,8 @@ workload_contract_graph:
         region_overlap: unknown
         shardable_dim: N
         shardable_evidence: derived_requirement
-      parent_region: openvla:region:unknown
-      region_role: unknown
+      parent_region: openvla:region:backbone_once
+      region_role: backbone_once
       shape_summary:
         K: 2304
         M: 16
@@ -1513,8 +1815,8 @@ workload_contract_graph:
         region_overlap: unknown
         shardable_dim: N
         shardable_evidence: derived_requirement
-      parent_region: openvla:region:unknown
-      region_role: unknown
+      parent_region: openvla:region:backbone_once
+      region_role: backbone_once
       shape_summary:
         K: 128
         M: 16
@@ -2005,7 +2307,7 @@ workload_contract_graph:
       rate:
         cadence: token_loop
         trip_count: 7
-        trip_count_evidence: assumed_reference
+        trip_count_evidence: recovered_from_model_config
       region_role: repeated_head
       work_summary:
         evidence: recovered_from_ir
@@ -2026,13 +2328,13 @@ workload_contract_graph:
         reused_times: 7
     rate_model:
       H:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 7
       K:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 7
       control_rate_hz:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 5.0
       deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
       replan_deadline_s:
@@ -2041,85 +2343,175 @@ workload_contract_graph:
     workload: openvla
     workload_class: autoregressive_decode
   - edges:
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: small_llama:op:0
-      target: small_llama:op:1
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+      target: small_llama:op:3
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: small_llama:op:1
-      target: small_llama:op:2
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+      target: small_llama:op:3
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: small_llama:op:2
       target: small_llama:op:3
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: small_llama:op:3
       target: small_llama:op:4
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: small_llama:op:4
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:3
       target: small_llama:op:5
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:4
+      target: small_llama:op:6
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: small_llama:op:5
       target: small_llama:op:6
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:3
+      target: small_llama:op:7
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: small_llama:op:6
       target: small_llama:op:7
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: small_llama:op:7
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:3
       target: small_llama:op:8
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: small_llama:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:6
+      target: small_llama:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:3
       target: small_llama:op:9
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:6
+      target: small_llama:op:9
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:7
+      target: small_llama:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:8
+      target: small_llama:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: small_llama:op:9
       target: small_llama:op:10
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:3
+      target: small_llama:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:6
+      target: small_llama:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: small_llama:op:10
       target: small_llama:op:11
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: small_llama:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:3
       target: small_llama:op:12
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:6
+      target: small_llama:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:10
+      target: small_llama:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:11
+      target: small_llama:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: small_llama:op:12
       target: small_llama:op:13
-    - bytes: 1581056
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:3
+      target: small_llama:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:6
+      target: small_llama:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:10
+      target: small_llama:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: small_llama:op:13
+      target: small_llama:op:14
+    - bytes: 1712128
       can_pipeline: true
       evidence: recovered_from_ir
       kind: loop_invariant
@@ -2134,10 +2526,10 @@ workload_contract_graph:
       note: once-per-replan backbone precedes the repeated head (role split recovered from prov.fqn); the specific tensors crossing the boundary are unavailable in the flat capture
       source: small_llama:phase:backbone
       target: small_llama:phase:head
-    - can_pipeline: unknown
-      evidence: unavailable
+    - can_pipeline: true
+      evidence: derived_requirement
       kind: pipeline_candidate
-      note: the next replan's backbone may overlap this replan's head (async pipelining); feasibility not measured
+      note: the next replan's backbone shares no loop-carried state with this replan's head, so the two rates are structurally overlappable (async pipelining candidate)
       source: small_llama:phase:head
       target: small_llama:phase:backbone
     nodes:
@@ -2166,7 +2558,7 @@ workload_contract_graph:
         cadence: token_loop
         cadence_evidence: recovered_from_prov_fqn
         invocations: 32
-        invocations_evidence: assumed_reference
+        invocations_evidence: recovered_from_model_config
         period_evidence: unavailable
         period_s: null
       region_role: repeated_head
@@ -2183,7 +2575,7 @@ workload_contract_graph:
         accumulator_dtype: f32
         dtype: f32
         evidence: recovered_from_ir
-        n_matmuls: 14
+        n_matmuls: 15
       operator_refs:
       - small_llama:op:0
       - small_llama:op:1
@@ -2199,6 +2591,7 @@ workload_contract_graph:
       - small_llama:op:11
       - small_llama:op:12
       - small_llama:op:13
+      - small_llama:op:14
       parallelism_summary:
         overlap_evidence: unavailable
         region_overlap: unknown
@@ -2208,46 +2601,17 @@ workload_contract_graph:
       rate:
         cadence: token_loop
         invocations: 32
-        invocations_evidence: assumed_reference
+        invocations_evidence: recovered_from_model_config
       region_role: repeated_head
       work_summary:
-        activation_bytes_per_invocation: 156160
-        activation_bytes_per_replan: 4997120
-        dispatch_count_proxy: 14
+        activation_bytes_per_invocation: 168448
+        activation_bytes_per_replan: 5390336
+        dispatch_count_proxy: 15
         evidence: recovered_from_ir
-        macs_per_invocation: 3162112
-        macs_per_replan: 101187584
-        matmul_count: 14
-        weight_bytes: 1581056
-    - evidence: unavailable
-      id: small_llama:region:unknown
-      kind: region
-      note: role not recoverable from the flat capture
-      numerical_contract_summary:
-        dtype: unavailable
-        evidence: unavailable
-      operator_refs:
-      - small_llama:op:14
-      parallelism_summary:
-        overlap_evidence: unavailable
-        region_overlap: unknown
-        shardable_dim: N
-        shardable_evidence: derived_requirement
-      parent_region: null
-      rate:
-        cadence: unknown
-        invocations: 1
-        invocations_evidence: recovered_from_ir
-      region_role: unknown
-      work_summary:
-        activation_bytes_per_invocation: 12288
-        activation_bytes_per_replan: 12288
-        dispatch_count_proxy: 1
-        evidence: unavailable
-        macs_per_invocation: 262144
-        macs_per_replan: 262144
-        matmul_count: 1
-        weight_bytes: 131072
+        macs_per_invocation: 3424256
+        macs_per_replan: 109576192
+        matmul_count: 15
+        weight_bytes: 1712128
     - evidence: recovered_from_ir
       id: small_llama:op:0
       kind: operator
@@ -2679,8 +3043,8 @@ workload_contract_graph:
         region_overlap: unknown
         shardable_dim: N
         shardable_evidence: derived_requirement
-      parent_region: small_llama:region:unknown
-      region_role: unknown
+      parent_region: small_llama:region:repeated_head
+      region_role: repeated_head
       shape_summary:
         K: 128
         M: 8
@@ -2716,23 +3080,24 @@ workload_contract_graph:
       - small_llama:op:11
       - small_llama:op:12
       - small_llama:op:13
+      - small_llama:op:14
       parent_region: small_llama:phase:head
       rate:
         cadence: token_loop
         trip_count: 32
-        trip_count_evidence: assumed_reference
+        trip_count_evidence: recovered_from_model_config
       region_role: repeated_head
       work_summary:
         evidence: recovered_from_ir
-        macs_per_invocation: 3162112
-        macs_per_replan: 101187584
+        macs_per_invocation: 3424256
+        macs_per_replan: 109576192
     - evidence: recovered_from_prov_fqn
       id: small_llama:state:weights
       kind: state_object
       parent_region: null
       region_role: null
       state_summary:
-        bytes: 1581056
+        bytes: 1712128
         bytes_evidence: recovered_from_ir
         consumed_by: null
         implied_abstraction: resident_weight_object
@@ -2741,13 +3106,13 @@ workload_contract_graph:
         reused_times: 32
     rate_model:
       H:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 32
       K:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 32
       control_rate_hz:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 30.0
       deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
       replan_deadline_s:
@@ -2756,88 +3121,172 @@ workload_contract_graph:
     workload: small_llama
     workload_class: autoregressive_decode
   - edges:
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: tiny_llama:op:0
-      target: tiny_llama:op:1
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+      target: tiny_llama:op:3
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: tiny_llama:op:1
-      target: tiny_llama:op:2
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+      target: tiny_llama:op:3
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: tiny_llama:op:2
       target: tiny_llama:op:3
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: tiny_llama:op:3
       target: tiny_llama:op:4
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: tiny_llama:op:4
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:3
       target: tiny_llama:op:5
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:4
+      target: tiny_llama:op:6
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: tiny_llama:op:5
       target: tiny_llama:op:6
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:3
+      target: tiny_llama:op:7
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: tiny_llama:op:6
       target: tiny_llama:op:7
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: tiny_llama:op:7
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:3
       target: tiny_llama:op:8
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: tiny_llama:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:6
+      target: tiny_llama:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:3
       target: tiny_llama:op:9
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:6
+      target: tiny_llama:op:9
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:7
+      target: tiny_llama:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:8
+      target: tiny_llama:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: tiny_llama:op:9
       target: tiny_llama:op:10
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:3
+      target: tiny_llama:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:6
+      target: tiny_llama:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: tiny_llama:op:10
       target: tiny_llama:op:11
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
-      source: tiny_llama:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:3
       target: tiny_llama:op:12
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:6
+      target: tiny_llama:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:10
+      target: tiny_llama:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:11
+      target: tiny_llama:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: tiny_llama:op:12
       target: tiny_llama:op:13
-    - can_pipeline: unknown
-      evidence: unavailable
-      kind: unknown_dependency
-      note: conservative sequential order from IR op index; true data dependency not recovered from the flat capture
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:3
+      target: tiny_llama:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:6
+      target: tiny_llama:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: tiny_llama:op:10
+      target: tiny_llama:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
       source: tiny_llama:op:13
       target: tiny_llama:op:14
     - bytes: 614465536
@@ -2855,10 +3304,10 @@ workload_contract_graph:
       note: once-per-replan backbone precedes the repeated head (role split recovered from prov.fqn); the specific tensors crossing the boundary are unavailable in the flat capture
       source: tiny_llama:phase:backbone
       target: tiny_llama:phase:head
-    - can_pipeline: unknown
-      evidence: unavailable
+    - can_pipeline: true
+      evidence: derived_requirement
       kind: pipeline_candidate
-      note: the next replan's backbone may overlap this replan's head (async pipelining); feasibility not measured
+      note: the next replan's backbone shares no loop-carried state with this replan's head, so the two rates are structurally overlappable (async pipelining candidate)
       source: tiny_llama:phase:head
       target: tiny_llama:phase:backbone
     nodes:
@@ -2887,7 +3336,7 @@ workload_contract_graph:
         cadence: token_loop
         cadence_evidence: recovered_from_prov_fqn
         invocations: 32
-        invocations_evidence: assumed_reference
+        invocations_evidence: recovered_from_model_config
         period_evidence: unavailable
         period_s: null
       region_role: repeated_head
@@ -2930,7 +3379,7 @@ workload_contract_graph:
       rate:
         cadence: token_loop
         invocations: 32
-        invocations_evidence: assumed_reference
+        invocations_evidence: recovered_from_model_config
       region_role: repeated_head
       work_summary:
         activation_bytes_per_invocation: 1691648
@@ -3414,7 +3863,7 @@ workload_contract_graph:
       rate:
         cadence: token_loop
         trip_count: 32
-        trip_count_evidence: assumed_reference
+        trip_count_evidence: recovered_from_model_config
       region_role: repeated_head
       work_summary:
         evidence: recovered_from_ir
@@ -3435,13 +3884,13 @@ workload_contract_graph:
         reused_times: 32
     rate_model:
       H:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 32
       K:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 32
       control_rate_hz:
-        source: assumed_reference
+        source: recovered_from_model_config
         value: 30.0
       deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
       replan_deadline_s:
@@ -3457,4 +3906,4 @@ workload_contract_graph:
   - pipeline_stage
   - runtime_command
   - state_object
-  note: multi-rate workload contract graph. Phases/roles/state recovered from prov.fqn topology; operator/region facts recovered_from_ir; rate constants assumed_reference. Operator-to-operator edges are conservative sequential (unknown_dependency) — the true data-dependency graph is not recovered from a flat capture. No speedup claimed.
+  note: multi-rate workload contract graph. Phases/roles/state recovered from prov.fqn topology; operator/region facts and operator-to-operator data dependencies recovered_from_ir (the SSA use-def graph); rate constants (K/H/control rate) recovered_from_model_config; the replan deadline is derived. No speedup claimed.

@@ -371,7 +371,7 @@ operator_geometry:
       macs: 21233664
       op_index: 8
       prov_fqn: vla.projector.fc1
-      region_role: unknown
+      region_role: backbone_once
       semantic_class: mlp_projection
       shape_class: wide_skinny
     - K: 2304
@@ -383,7 +383,7 @@ operator_geometry:
       macs: 4718592
       op_index: 9
       prov_fqn: vla.projector.fc2
-      region_role: unknown
+      region_role: backbone_once
       semantic_class: mlp_projection
       shape_class: wide_skinny
     - K: 128
@@ -395,7 +395,7 @@ operator_geometry:
       macs: 262144
       op_index: 10
       prov_fqn: vla.projector.fc3
-      region_role: unknown
+      region_role: backbone_once
       semantic_class: mlp_projection
       shape_class: wide_skinny
     - K: 128
@@ -767,7 +767,7 @@ operator_geometry:
       macs: 262144
       op_index: 14
       prov_fqn: lm
-      region_role: unknown
+      region_role: repeated_head
       semantic_class: lm_head_projection
       shape_class: wide_skinny
     semantic_class_histogram:

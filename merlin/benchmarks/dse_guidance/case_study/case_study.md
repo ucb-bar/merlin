@@ -10,7 +10,7 @@ Real recaptured workloads: **4** (rdt, openvla, small_llama, tiny_llama). Captur
 |----------|-----------|----------------|------------|-----------------|----------------|
 | rdt | weights once, no K-loop | repeated_head | 20 mm, 391 MB, 39.4 GMAC/step xK=5 | resident_action_head_weights | blocked: missing_calibration |
 | openvla | weights once, no K-loop | repeated_head + backbone_once split | 15 mm, 3 MB, 0.0 GMAC/step xK=7 | resident_action_head_weights, backbone_head_partition | blocked: missing_calibration |
-| small_llama | weights once, no K-loop | repeated_head | 14 mm, 2 MB, 0.0 GMAC/step xK=32 | resident_action_head_weights | blocked: missing_calibration |
+| small_llama | weights once, no K-loop | repeated_head | 15 mm, 2 MB, 0.0 GMAC/step xK=32 | resident_action_head_weights | blocked: missing_calibration |
 | tiny_llama | weights once, no K-loop | repeated_head | 15 mm, 614 MB, 0.6 GMAC/step xK=32 | resident_action_head_weights | blocked: missing_calibration |
 
 ## Per-workload recovery
@@ -18,8 +18,8 @@ Real recaptured workloads: **4** (rdt, openvla, small_llama, tiny_llama). Captur
 | workload | class | matmuls | roles recovered (from prov.fqn) | repeated_head facts | quant |
 |----------|-------|---------|---------------------------------|---------------------|-------|
 | rdt | diffusion/denoise_steps | 20 | repeated_head:20 | 20 mm, 391 MB, 39.4 GMAC/step xK=5 | blocked: missing_calibration |
-| openvla | autoregressive_vla/action_token_decode | 26 | backbone_once:8, repeated_head:15, unknown:3 | 15 mm, 3 MB, 0.0 GMAC/step xK=7 | blocked: missing_calibration |
-| small_llama | llm/token_decode | 15 | repeated_head:14, unknown:1 | 14 mm, 2 MB, 0.0 GMAC/step xK=32 | blocked: missing_calibration |
+| openvla | autoregressive_vla/action_token_decode | 26 | backbone_once:11, repeated_head:15 | 15 mm, 3 MB, 0.0 GMAC/step xK=7 | blocked: missing_calibration |
+| small_llama | llm/token_decode | 15 | repeated_head:15 | 15 mm, 2 MB, 0.0 GMAC/step xK=32 | blocked: missing_calibration |
 | tiny_llama | llm/token_decode | 15 | repeated_head:15 | 15 mm, 614 MB, 0.6 GMAC/step xK=32 | blocked: missing_calibration |
 
 ## What flattening hides vs what provenance recovers
