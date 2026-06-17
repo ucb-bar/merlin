@@ -137,10 +137,12 @@ class DseReadiness:
         return not self.missing
 
 
-def dse_readiness(topo, attribution, numerical, cpu_coupling_available: bool) -> DseReadiness:
+def dse_readiness(topo, attribution, numerical, cpu_coupling_available: bool,
+                  accuracy_status: str = "unavailable") -> DseReadiness:
     head = attribution.role("repeated_head") if attribution else None
     has_role = head is not None and head.attribution_status == "attributed"
     has_dtype = numerical is not None and numerical.declared_quantization is not None
+    acc_available = accuracy_status in ("pass", "fail")
     fields = {
         "topology_recovered": {"available": True, "source": "recovered_from_prov_fqn"},
         "role_attribution": {"available": has_role,
@@ -152,13 +154,17 @@ def dse_readiness(topo, attribution, numerical, cpu_coupling_available: bool) ->
         "state_lifetimes": {"available": bool(topo.loop_invariant_state()),
                             "source": "recovered_from_prov_fqn"},
         "dispatch_graph": {"available": has_role, "source": "recovered_from_ir"},
-        "accuracy_constraints": {"available": False, "source": "unavailable"},
+        "accuracy_constraints": {"available": acc_available,
+                                 "source": "measured" if acc_available else "unavailable",
+                                 "int8_status": accuracy_status},
         "cpu_coupling": {"available": cpu_coupling_available,
                          "source": "proxy_measured" if cpu_coupling_available else "unavailable"},
     }
     missing = []
-    if not fields["accuracy_constraints"]["available"]:
+    if not acc_available:
         missing.append("quantization accuracy gates (per candidate low-bit format)")
+    elif accuracy_status == "pass":
+        pass  # int8 accuracy measured; other formats still need sweeps but int8 is legal
     if not fields["cpu_coupling"]["available"]:
         missing.append("real (target) command-submit / sync latency")
     if fields["K_source"]["source"] == "assumed_reference":

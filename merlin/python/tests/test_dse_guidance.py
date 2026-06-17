@@ -537,6 +537,51 @@ def test_case_study_openvla_recovers_backbone_head_split():
     assert case.attribution.role("repeated_head") is not None
 
 
+# ------------------------------------------------ accuracy gate (measurable-now, real)
+
+def test_accuracy_gate_status():
+    from merlin.dse_guidance import accuracy_gate as AG
+    pts = AG.load()
+    assert pts and all(p.dtype == "int8" for p in pts)
+    assert AG.status_for("small_llama", "int8") == "pass"
+    assert AG.status_for("openvla", "int8_w8a8") == "pass"     # candidate-format label maps to int8
+    assert AG.status_for("small_llama", "int4_weight_only") == "unavailable"   # not measured
+    assert AG.status_for("nonexistent", "int8") == "unavailable"
+    assert "W8A8" in AG.report_md()
+
+
+def test_dse_readiness_accuracy_status_wired():
+    from merlin.dse_guidance import contract as CON
+    topo = _topo(K=5)
+    recs = (ATTR.MatmulRecord(0, "m0", "addmm", True, 28, 1024, 1024, 1024 * 1024 * 4, 1, "f32",
+                              fqn="model.action_expert.denoise.0"),)
+    attr = ATTR.attribute_records(recs, topo)
+    r_pass = CON.dse_readiness(topo, attr, None, cpu_coupling_available=False,
+                               accuracy_status="pass")
+    assert r_pass.fields["accuracy_constraints"]["available"] is True
+    assert r_pass.fields["accuracy_constraints"]["source"] == "measured"
+    assert not any("accuracy" in m for m in r_pass.missing)
+    r_na = CON.dse_readiness(topo, attr, None, cpu_coupling_available=False,
+                             accuracy_status="unavailable")
+    assert any("accuracy" in m for m in r_na.missing)
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_case_study_emits_presentation_package(tmp_path):
+    from merlin.dse_guidance import case_study as CS
+    CS.run_case_study(tmp_path)
+    for f in ("README.md", "case_study_summary.md", "workload_contract_table.csv",
+              "abstraction_pressure_table.csv", "dse_readiness_summary.csv",
+              "dtype_capacity_table.csv", "accuracy_gate_report.md", "accuracy_gate_results.csv",
+              "requirements_table.csv"):
+        assert (tmp_path / f).is_file(), f"missing {f}"
+    # Headline resident set is the bf16 figure (consistent), and quantitative DSE stays not-ready.
+    wct = (tmp_path / "workload_contract_table.csv").read_text()
+    assert "resident_bf16_B" in wct and "ready_quantitative" in wct
+    # The only mention of speedup is the explicit "no speedup claimed" disclaimer.
+    assert "no speedup claimed" in (tmp_path / "case_study_summary.md").read_text().lower()
+
+
 # ------------------------------------------------ design envelope (requirements, not calibration)
 
 def test_design_envelope_requirements_and_dtype_scaling():

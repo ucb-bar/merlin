@@ -1,0 +1,20 @@
+# MEASURED quantization accuracy — the measurable-now leg of the numerical contract.
+#
+# Accuracy can be measured WITHOUT the future accelerator (it depends only on the numerics), so it
+# is the right real measurement to gate low-bit candidates. These are the W8A8 (int8) results from
+# the host interpreter vs the fp32 golden, recorded in docs/results.md. Multi-tier gate
+# (zephyr_model._gate): T1 = cos > 0.999 vs the W8A8 reference; T2 = cos > 0.99 vs fp32 + top-1
+# argmax match. All recorded int8 models pass T2.
+#
+# Only int8/W8A8 has been measured; fp8/int4/fp4/fp6 are unavailable (not yet measured) and the
+# corresponding candidates stay accuracy_status=unavailable rather than assumed.
+metric: cosine_vs_fp32_golden
+substrate: host_interpreter
+source: "docs/results.md (W8A8 int8 accuracy table)"
+gate: {t1_vs_w8a8_cos: 0.999, t2_vs_fp32_cos: 0.99}
+points:
+  - {model: small_llama, dtype: int8, cos_vs_fp32: 0.99993, rel: 0.013, status: pass}
+  - {model: tiny_llama,  dtype: int8, cos_vs_fp32: 0.99842, rel: 0.064, status: pass}
+  - {model: openvla,     dtype: int8, cos_vs_fp32: 0.99813, rel: 0.084, status: pass}
+  - {model: rdt2,        dtype: int8, cos_vs_fp32: 0.99979, rel: 0.025, status: pass}
+  - {model: bitvla,      dtype: int8, cos_vs_fp32: 0.99995, rel: 0.010, status: pass}
