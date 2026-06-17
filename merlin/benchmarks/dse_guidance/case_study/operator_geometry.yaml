@@ -1,0 +1,972 @@
+# operator_geometry (structural; no speedup)
+operator_geometry:
+  attention_structure:
+    evidence: unavailable
+    reason: attention is lowered into matmul projections in the flat capture; heads / head_dim / q_len / kv_len / mask are not recoverable. Only the Q/K/V/O projection matmuls are visible (see semantic_class).
+    value: unavailable
+  conv_structure:
+    evidence: unavailable
+    value: none_visible
+  note: structural operator geometry recovered from the flat capture. M/N/K, MACs and bytes are recovered_from_ir; shape_class is a deterministic function of the IR shape; semantic_class is recovered_from_prov_fqn. No speedup or cost is claimed.
+  workloads:
+  - n_operators: 20
+    n_small_fragment: 0
+    n_tail_heavy: 18
+    operators:
+    - K: 256
+      M: 1
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 524288
+      op_index: 0
+      prov_fqn: model.t_embedder.mlp.0
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: gemv_like
+    - K: 2048
+      M: 1
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 4194304
+      op_index: 1
+      prov_fqn: model.t_embedder.mlp.2
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: gemv_like
+    - K: 256
+      M: 1
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 524288
+      op_index: 2
+      prov_fqn: model.freq_embedder.mlp.0
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: gemv_like
+    - K: 2048
+      M: 1
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 4194304
+      op_index: 3
+      prov_fqn: model.freq_embedder.mlp.2
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: gemv_like
+    - K: 2048
+      M: 67
+      N: 6144
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 843055104
+      op_index: 4
+      prov_fqn: model.blocks.0.attn.qkv
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 2048
+      M: 67
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 281018368
+      op_index: 5
+      prov_fqn: model.blocks.0.attn.proj
+      region_role: repeated_head
+      semantic_class: attention_output_projection
+      shape_class: wide_skinny
+    - K: 2048
+      M: 67
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 281018368
+      op_index: 6
+      prov_fqn: model.blocks.0.cross_attn.q
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 2048
+      M: 32
+      N: 4096
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: false
+      macs: 268435456
+      op_index: 7
+      prov_fqn: model.blocks.0.cross_attn.kv
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 2048
+      M: 67
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 281018368
+      op_index: 8
+      prov_fqn: model.blocks.0.cross_attn.proj
+      region_role: repeated_head
+      semantic_class: attention_output_projection
+      shape_class: wide_skinny
+    - K: 2048
+      M: 67
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 281018368
+      op_index: 9
+      prov_fqn: model.blocks.0.ffn.fc1
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 2048
+      M: 67
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 281018368
+      op_index: 10
+      prov_fqn: model.blocks.0.ffn.fc2
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 2048
+      M: 67
+      N: 6144
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 843055104
+      op_index: 11
+      prov_fqn: model.blocks.1.attn.qkv
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 2048
+      M: 67
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 281018368
+      op_index: 12
+      prov_fqn: model.blocks.1.attn.proj
+      region_role: repeated_head
+      semantic_class: attention_output_projection
+      shape_class: wide_skinny
+    - K: 2048
+      M: 67
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 281018368
+      op_index: 13
+      prov_fqn: model.blocks.1.cross_attn.q
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 2048
+      M: 4096
+      N: 4096
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: false
+      macs: 34359738368
+      op_index: 14
+      prov_fqn: model.blocks.1.cross_attn.kv
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: squareish_gemm
+    - K: 2048
+      M: 67
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 281018368
+      op_index: 15
+      prov_fqn: model.blocks.1.cross_attn.proj
+      region_role: repeated_head
+      semantic_class: attention_output_projection
+      shape_class: wide_skinny
+    - K: 2048
+      M: 67
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 281018368
+      op_index: 16
+      prov_fqn: model.blocks.1.ffn.fc1
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 2048
+      M: 67
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 281018368
+      op_index: 17
+      prov_fqn: model.blocks.1.ffn.fc2
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 2048
+      M: 67
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 281018368
+      op_index: 18
+      prov_fqn: model.final_layer.ffn_final.fc1
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 2048
+      M: 67
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 17563648
+      op_index: 19
+      prov_fqn: model.final_layer.ffn_final.fc2
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: squareish_gemm
+    semantic_class_histogram:
+      attention_output_projection: 4
+      attention_qkv_projection: 6
+      mlp_projection: 10
+    shape_class_histogram:
+      gemv_like: 4
+      squareish_gemm: 2
+      wide_skinny: 14
+    workload: rdt
+  - n_operators: 26
+    n_small_fragment: 0
+    n_tail_heavy: 26
+    operators:
+    - K: 192
+      M: 17
+      N: 576
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 1880064
+      op_index: 0
+      prov_fqn: vla.vision_backbone.featurizer.blocks.0.attn.qkv
+      region_role: backbone_once
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 192
+      M: 17
+      N: 192
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 626688
+      op_index: 1
+      prov_fqn: vla.vision_backbone.featurizer.blocks.0.attn.proj
+      region_role: backbone_once
+      semantic_class: attention_output_projection
+      shape_class: wide_skinny
+    - K: 192
+      M: 17
+      N: 768
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 2506752
+      op_index: 2
+      prov_fqn: vla.vision_backbone.featurizer.blocks.0.mlp.fc1
+      region_role: backbone_once
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 768
+      M: 17
+      N: 192
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 2506752
+      op_index: 3
+      prov_fqn: vla.vision_backbone.featurizer.blocks.0.mlp.fc2
+      region_role: backbone_once
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 384
+      M: 17
+      N: 1152
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 7520256
+      op_index: 4
+      prov_fqn: vla.vision_backbone.fused_featurizer.blocks.0.attn.qkv
+      region_role: backbone_once
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 384
+      M: 17
+      N: 384
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 2506752
+      op_index: 5
+      prov_fqn: vla.vision_backbone.fused_featurizer.blocks.0.attn.proj
+      region_role: backbone_once
+      semantic_class: attention_output_projection
+      shape_class: wide_skinny
+    - K: 384
+      M: 17
+      N: 1536
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 10027008
+      op_index: 6
+      prov_fqn: vla.vision_backbone.fused_featurizer.blocks.0.mlp.fc1
+      region_role: backbone_once
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 1536
+      M: 17
+      N: 384
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 10027008
+      op_index: 7
+      prov_fqn: vla.vision_backbone.fused_featurizer.blocks.0.mlp.fc2
+      region_role: backbone_once
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 576
+      M: 16
+      N: 2304
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 21233664
+      op_index: 8
+      prov_fqn: vla.projector.fc1
+      region_role: unknown
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 2304
+      M: 16
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 4718592
+      op_index: 9
+      prov_fqn: vla.projector.fc2
+      region_role: unknown
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 16
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 262144
+      op_index: 10
+      prov_fqn: vla.projector.fc3
+      region_role: unknown
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 20
+      N: 512
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 1310720
+      op_index: 11
+      prov_fqn: vla.language_model.model.layers.0.self_attn.q_proj
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 20
+      N: 512
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 1310720
+      op_index: 12
+      prov_fqn: vla.language_model.model.layers.0.self_attn.k_proj
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 20
+      N: 512
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 1310720
+      op_index: 13
+      prov_fqn: vla.language_model.model.layers.0.self_attn.v_proj
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 512
+      M: 20
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 1310720
+      op_index: 14
+      prov_fqn: vla.language_model.model.layers.0.self_attn.o_proj
+      region_role: repeated_head
+      semantic_class: attention_output_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 20
+      N: 256
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 655360
+      op_index: 15
+      prov_fqn: vla.language_model.model.layers.0.mlp.gate_proj
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 20
+      N: 256
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 655360
+      op_index: 16
+      prov_fqn: vla.language_model.model.layers.0.mlp.up_proj
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 256
+      M: 20
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 655360
+      op_index: 17
+      prov_fqn: vla.language_model.model.layers.0.mlp.down_proj
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 20
+      N: 512
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 1310720
+      op_index: 18
+      prov_fqn: vla.language_model.model.layers.1.self_attn.q_proj
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 20
+      N: 512
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 1310720
+      op_index: 19
+      prov_fqn: vla.language_model.model.layers.1.self_attn.k_proj
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 20
+      N: 512
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 1310720
+      op_index: 20
+      prov_fqn: vla.language_model.model.layers.1.self_attn.v_proj
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 512
+      M: 20
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 1310720
+      op_index: 21
+      prov_fqn: vla.language_model.model.layers.1.self_attn.o_proj
+      region_role: repeated_head
+      semantic_class: attention_output_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 20
+      N: 256
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 655360
+      op_index: 22
+      prov_fqn: vla.language_model.model.layers.1.mlp.gate_proj
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 20
+      N: 256
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 655360
+      op_index: 23
+      prov_fqn: vla.language_model.model.layers.1.mlp.up_proj
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 256
+      M: 20
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 655360
+      op_index: 24
+      prov_fqn: vla.language_model.model.layers.1.mlp.down_proj
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 20
+      N: 512
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 1310720
+      op_index: 25
+      prov_fqn: vla.language_model.lm_head
+      region_role: repeated_head
+      semantic_class: lm_head_projection
+      shape_class: wide_skinny
+    semantic_class_histogram:
+      attention_output_projection: 4
+      attention_qkv_projection: 8
+      lm_head_projection: 1
+      mlp_projection: 13
+    shape_class_histogram:
+      wide_skinny: 26
+    workload: openvla
+  - n_operators: 15
+    n_small_fragment: 0
+    n_tail_heavy: 15
+    operators:
+    - K: 128
+      M: 8
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 131072
+      op_index: 0
+      prov_fqn: blocks.0.attn.q
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 8
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 131072
+      op_index: 1
+      prov_fqn: blocks.0.attn.k
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 8
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 131072
+      op_index: 2
+      prov_fqn: blocks.0.attn.v
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 8
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 131072
+      op_index: 3
+      prov_fqn: blocks.0.attn.o
+      region_role: repeated_head
+      semantic_class: attention_output_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 8
+      N: 344
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 352256
+      op_index: 4
+      prov_fqn: blocks.0.mlp.g
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 8
+      N: 344
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 352256
+      op_index: 5
+      prov_fqn: blocks.0.mlp.u
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 344
+      M: 8
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 352256
+      op_index: 6
+      prov_fqn: blocks.0.mlp.dn
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 8
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 131072
+      op_index: 7
+      prov_fqn: blocks.1.attn.q
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 8
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 131072
+      op_index: 8
+      prov_fqn: blocks.1.attn.k
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 8
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 131072
+      op_index: 9
+      prov_fqn: blocks.1.attn.v
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 8
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 131072
+      op_index: 10
+      prov_fqn: blocks.1.attn.o
+      region_role: repeated_head
+      semantic_class: attention_output_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 8
+      N: 344
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 352256
+      op_index: 11
+      prov_fqn: blocks.1.mlp.g
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 8
+      N: 344
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 352256
+      op_index: 12
+      prov_fqn: blocks.1.mlp.u
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 344
+      M: 8
+      N: 128
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 352256
+      op_index: 13
+      prov_fqn: blocks.1.mlp.dn
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 128
+      M: 8
+      N: 256
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 262144
+      op_index: 14
+      prov_fqn: lm
+      region_role: unknown
+      semantic_class: lm_head_projection
+      shape_class: wide_skinny
+    semantic_class_histogram:
+      attention_output_projection: 2
+      attention_qkv_projection: 6
+      lm_head_projection: 1
+      mlp_projection: 6
+    shape_class_histogram:
+      wide_skinny: 15
+    workload: small_llama
+  - n_operators: 15
+    n_small_fragment: 0
+    n_tail_heavy: 15
+    operators:
+    - K: 2048
+      M: 4
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 16777216
+      op_index: 0
+      prov_fqn: lm.model.layers.0.self_attn.q_proj
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: gemv_like
+    - K: 2048
+      M: 4
+      N: 256
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 2097152
+      op_index: 1
+      prov_fqn: lm.model.layers.0.self_attn.k_proj
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: gemv_like
+    - K: 2048
+      M: 4
+      N: 256
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 2097152
+      op_index: 2
+      prov_fqn: lm.model.layers.0.self_attn.v_proj
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: gemv_like
+    - K: 2048
+      M: 4
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 16777216
+      op_index: 3
+      prov_fqn: lm.model.layers.0.self_attn.o_proj
+      region_role: repeated_head
+      semantic_class: attention_output_projection
+      shape_class: gemv_like
+    - K: 2048
+      M: 4
+      N: 5632
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 46137344
+      op_index: 4
+      prov_fqn: lm.model.layers.0.mlp.gate_proj
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: gemv_like
+    - K: 2048
+      M: 4
+      N: 5632
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 46137344
+      op_index: 5
+      prov_fqn: lm.model.layers.0.mlp.up_proj
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: gemv_like
+    - K: 5632
+      M: 4
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 46137344
+      op_index: 6
+      prov_fqn: lm.model.layers.0.mlp.down_proj
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: gemv_like
+    - K: 2048
+      M: 4
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 16777216
+      op_index: 7
+      prov_fqn: lm.model.layers.1.self_attn.q_proj
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: gemv_like
+    - K: 2048
+      M: 4
+      N: 256
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 2097152
+      op_index: 8
+      prov_fqn: lm.model.layers.1.self_attn.k_proj
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: gemv_like
+    - K: 2048
+      M: 4
+      N: 256
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 2097152
+      op_index: 9
+      prov_fqn: lm.model.layers.1.self_attn.v_proj
+      region_role: repeated_head
+      semantic_class: attention_qkv_projection
+      shape_class: gemv_like
+    - K: 2048
+      M: 4
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 16777216
+      op_index: 10
+      prov_fqn: lm.model.layers.1.self_attn.o_proj
+      region_role: repeated_head
+      semantic_class: attention_output_projection
+      shape_class: gemv_like
+    - K: 2048
+      M: 4
+      N: 5632
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 46137344
+      op_index: 11
+      prov_fqn: lm.model.layers.1.mlp.gate_proj
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: gemv_like
+    - K: 2048
+      M: 4
+      N: 5632
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 46137344
+      op_index: 12
+      prov_fqn: lm.model.layers.1.mlp.up_proj
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: gemv_like
+    - K: 5632
+      M: 4
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 46137344
+      op_index: 13
+      prov_fqn: lm.model.layers.1.mlp.down_proj
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: gemv_like
+    - K: 2048
+      M: 4
+      N: 32000
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 262144000
+      op_index: 14
+      prov_fqn: lm.lm_head
+      region_role: repeated_head
+      semantic_class: lm_head_projection
+      shape_class: gemv_like
+    semantic_class_histogram:
+      attention_output_projection: 2
+      attention_qkv_projection: 6
+      lm_head_projection: 1
+      mlp_projection: 6
+    shape_class_histogram:
+      gemv_like: 15
+    workload: tiny_llama

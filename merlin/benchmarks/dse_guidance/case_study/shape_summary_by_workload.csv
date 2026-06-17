@@ -1,0 +1,7 @@
+workload,shape_class,op_count,macs_total,mac_fraction
+rdt,gemv_like,4,9437184,0.0002
+rdt,squareish_gemm,2,34377302016,0.8718
+rdt,wide_skinny,14,5045747712,0.128
+openvla,wide_skinny,26,79544320,1.0
+small_llama,wide_skinny,15,3424256,1.0
+tiny_llama,gemv_like,15,614465536,1.0

@@ -1196,3 +1196,132 @@ def test_independent_verification_harness_passes():
                        capture_output=True, text=True, cwd=str(root))
     assert r.returncode == 0, f"verifier failed:\n{r.stdout}\n{r.stderr}"
     assert "checks passed" in r.stdout
+
+
+# ============================================================ P5 operator geometry + primitive coverage
+
+def _mm(M, N, K, fqn=None, op="matmul", idx=0):
+    from merlin.dse_guidance import attribution as ATTR
+    return ATTR.MatmulRecord(idx, f"matmul_{idx}", op, op == "addmm", M, K, N,
+                             K * N * 4, (M * K + M * N) * 4, "f32", fqn=fqn)
+
+
+def test_shape_taxonomy_geometry_thresholds():
+    from merlin.dse_guidance import shape_taxonomy as ST
+    assert ST.classify_geometry(1, 2048, 256) == ST.GEMV          # vector-like (M=1)
+    assert ST.classify_geometry(4, 2048, 2048) == ST.GEMV         # M=4 decode
+    assert ST.classify_geometry(67, 2048, 2048) == ST.WIDE_SKINNY  # N/M >= 4
+    assert ST.classify_geometry(2048, 67, 2048) == ST.TALL_SKINNY  # M/N >= 4
+    assert ST.classify_geometry(4096, 4096, 2048) == ST.SQUAREISH  # M/N==1, not tiny
+    # square but tiny -> not squareish (falls through to projection/odd/frag/unknown)
+    assert ST.classify_geometry(8, 8, 4) != ST.SQUAREISH
+
+
+def test_shape_taxonomy_semantic_from_fqn_and_priority():
+    from merlin.dse_guidance import shape_taxonomy as ST
+    assert ST.classify_semantic("vla.language_model.model.layers.0.self_attn.q_proj") == ST.SEM_QKV
+    assert ST.classify_semantic("model.blocks.0.attn.proj") == ST.SEM_ATTN_OUT
+    assert ST.classify_semantic("model.blocks.0.ffn.fc1") == ST.SEM_MLP
+    # lm-head leaf must NOT swallow a whole tree rooted at "lm." (tiny_llama style)
+    assert ST.classify_semantic("lm") == ST.SEM_LM_HEAD
+    assert ST.classify_semantic("lm.model.layers.0.self_attn.q_proj") == ST.SEM_QKV
+    assert ST.classify_semantic(None) == ST.SEM_UNKNOWN
+
+
+def test_operator_geometry_extracts_macs_bytes_aspect():
+    from merlin.dse_guidance import operator_geometry as OG
+    from merlin.dse_guidance.design_envelope import E_IR
+    s = OG.operator_shape(_mm(67, 2048, 2048, fqn="model.blocks.0.ffn.fc1", op="addmm"),
+                          "rdt", "repeated_head")
+    assert s.macs == 67 * 2048 * 2048
+    assert s.rhs_weight_bytes == 2048 * 2048 * 4 and s.output_bytes == 67 * 2048 * 4
+    assert s.aspect_ratio_NK == round(2048 / 2048, 4)
+    assert s.shape_class == "wide_skinny" and s.semantic_class == "mlp_projection"
+    assert s.epilogue is True and s.epilogue_hint == "bias_addmm"
+    assert s.batch_product == 1 and s.evidence_shape == E_IR
+
+
+def test_tile_padding_formula_and_nonmultiple_waste():
+    from merlin.dse_guidance import operator_geometry as OG, primitive_coverage as PC
+    # N=344 is not a multiple of 16 -> nonzero waste under tile_16x16
+    s = OG.operator_shape(_mm(8, 344, 128), "w", "repeated_head")
+    cov = PC.tile_coverage(s, "tile_16x16", 16, 16)
+    assert cov.padded_M == 16 and cov.padded_N == 352          # ceil(8/16)*16, ceil(344/16)*16
+    assert cov.padded_macs == 16 * 352 * 128
+    assert cov.padding_waste > 0 and 0 < cov.tile_utilization < 1
+    # an exact-multiple shape wastes nothing
+    s2 = OG.operator_shape(_mm(32, 64, 128), "w", "r")
+    c2 = PC.tile_coverage(s2, "tile_32x32", 32, 32)
+    assert c2.padding_waste == 0.0 and c2.tile_utilization == 1.0 and c2.covered_under_5pct
+
+
+def test_gemv_lane_coverage_rule_applicability():
+    from merlin.dse_guidance import operator_geometry as OG, primitive_coverage as PC
+    # gemv-like shape: lane applies along N, N=2048 multiple of 64 -> no waste
+    g = OG.operator_shape(_mm(1, 2048, 256), "w", "r")
+    assert g.shape_class == "gemv_like"
+    cov = PC.gemv_coverage(g, "gemv_lane_64", 64)
+    assert cov.applicable is True and cov.padding_waste == 0.0
+    # squareish shape: a lane is NOT applicable and must not be scored as covering it
+    sq = OG.operator_shape(_mm(4096, 4096, 2048), "w", "r")
+    assert sq.shape_class == "squareish_gemm"
+    covsq = PC.gemv_coverage(sq, "gemv_lane_64", 64)
+    assert covsq.applicable is False
+    assert not (covsq.covered_under_5pct or covsq.covered_under_10pct or covsq.covered_under_25pct)
+
+
+def test_primitive_coverage_aggregation_and_regret():
+    from merlin.dse_guidance import operator_geometry as OG, primitive_coverage as PC
+    shapes = [OG.operator_shape(_mm(8, 344, 128, idx=0), "wa", "r"),
+              OG.operator_shape(_mm(64, 64, 64, idx=1), "wb", "r")]
+    cov = PC.all_coverage(shapes)
+    per = PC.aggregate_by_primitive_workload(cov)
+    # one aggregate row per (primitive, workload); coverage_under_10pct in [0,1]
+    assert {a.workload for a in per} == {"wa", "wb"}
+    assert all(0.0 <= a.coverage_under_10pct <= 1.0 for a in per)
+    regret = PC.aggregate_regret(cov, per)
+    for r in regret:
+        assert abs(r.max_regret - (r.best_workload_coverage_10
+                                   - r.worst_workload_coverage_10)) < 1e-9
+        assert 0.0 <= r.coverage_under_10pct <= 1.0
+
+
+def test_p5_artifacts_have_no_speedup_or_forbidden_fields():
+    from merlin.dse_guidance import operator_geometry as OG, primitive_coverage as PC
+    shapes = [OG.operator_shape(_mm(67, 2048, 2048, fqn="model.blocks.0.ffn.fc1"), "rdt", "r")]
+    cov = PC.all_coverage(shapes)
+    per = PC.aggregate_by_primitive_workload(cov)
+    regret = PC.aggregate_regret(cov, per)
+    blobs = [str(OG.to_yaml_obj({"rdt": shapes}, conv_visible=False)).lower(),
+             OG.report_md({"rdt": shapes}, shapes).lower(),
+             PC.coverage_report_md(per, regret).lower(),
+             PC.cross_workload_report_md(regret, per).lower()]
+    for b in blobs:
+        for term in ("gap_closure", "faster", "optimal", "predicted cycles"):
+            assert term not in b, f"forbidden term {term!r}"
+        # 'speedup' may appear only inside an explicit no-speedup disclaimer
+        for ln in b.splitlines():
+            if "speedup" in ln:
+                assert "no speedup" in ln
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_case_study_emits_operator_geometry_and_coverage(tmp_path):
+    from merlin.dse_guidance import case_study as CS
+    CS.run_case_study(tmp_path)
+    for f in ("operator_shape_table.csv", "operator_geometry.yaml",
+              "shape_summary_by_workload.csv", "shape_summary_by_region.csv",
+              "operator_cluster_table.csv", "operator_geometry_report.md",
+              "tile_waste_table.csv", "primitive_coverage_matrix.csv",
+              "primitive_coverage_report.md", "primitive_regret_table.csv",
+              "cross_workload_coverage_report.md"):
+        assert (tmp_path / f).is_file(), f"missing {f}"
+    # operator_shape_table carries real geometry + both class axes
+    import csv, io
+    rows = list(csv.DictReader(io.StringIO((tmp_path / "operator_shape_table.csv").read_text())))
+    assert rows and all(int(r["macs"]) == int(r["M"]) * int(r["N"]) * int(r["K"]) for r in rows)
+    assert {r["shape_class"] for r in rows} - set()        # nonempty
+    # gemv lanes are never marked applicable on squareish ops
+    tw = list(csv.DictReader(io.StringIO((tmp_path / "tile_waste_table.csv").read_text())))
+    assert not [r for r in tw if r["primitive_kind"] == "gemv_lane"
+                and r["shape_class"] == "squareish_gemm" and r["applicable"] == "True"]

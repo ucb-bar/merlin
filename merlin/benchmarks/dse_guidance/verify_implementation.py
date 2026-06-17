@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 import re
 from pathlib import Path
 
@@ -33,6 +34,10 @@ from merlin.dse_guidance.design_envelope import ELEMENT_BYTES
 HERE = Path(__file__).resolve().parent
 CS = HERE / "case_study"
 RECAP = HERE / "recaptures"
+CS_SHAPE = CS / "operator_shape_table.csv"
+CS_TILE = CS / "tile_waste_table.csv"
+CS_COVMAT = CS / "primitive_coverage_matrix.csv"
+CS_REGRET = CS / "primitive_regret_table.csv"
 ALLOWED_EVIDENCE = {"recovered_from_ir", "recovered_from_prov_fqn", "assumed_reference",
                     "derived_requirement", "design_assumption", "measured", "proxy_measured",
                     "unavailable"}
@@ -204,12 +209,151 @@ def verify_global() -> None:
     check(not affirmative, f"speedup only in disclaimers (affirmative: {affirmative})")
 
 
+# ============================================================ P5 operator geometry + coverage
+# Re-derived INDEPENDENTLY here (the taxonomy thresholds + tile arithmetic are re-implemented, not
+# imported) so a divergence in operator_geometry.py / primitive_coverage.py / shape_taxonomy.py
+# surfaces as a verification FAILURE.
+
+p5_results: list[tuple[bool, str]] = []
+
+
+def p5check(ok: bool, msg: str) -> None:
+    p5_results.append((bool(ok), msg))
+
+
+def _ceil_to(x: int, t: int) -> int:
+    return int(math.ceil(x / t) * t)
+
+
+def _classify_geom_indep(M: int, N: int, K: int) -> str:
+    """Independent re-implementation of shape_taxonomy.classify_geometry (same documented rules)."""
+    if min(M, N) <= 4 and max(M, N) >= 32:
+        return "gemv_like"
+    mn = M / N
+    if mn >= 4:
+        return "tall_skinny"
+    if (1.0 / mn) >= 4:
+        return "wide_skinny"
+    if 0.5 <= mn <= 2.0 and min(M, N) >= 32:
+        return "squareish_gemm"
+    if K >= max(M, N):
+        return "projection_like"
+    if (_ceil_to(M, 32) * _ceil_to(N, 32)) / (M * N) - 1.0 > 0.10:
+        return "odd_tail_heavy"
+    if M * N * K < (1 << 16):
+        return "small_dispatch_fragment"
+    return "unknown"
+
+
+def verify_p5_workload(w: str) -> dict:
+    recs = ATTR.extract_matmuls(str(RECAP / w))
+    by_idx = {r.index: r for r in recs}
+    shape_rows = [r for r in _csv_rows(CS_SHAPE) if r["workload"] == w]
+
+    # P5-A: one shape row per matmul, M/N/K/macs/aspect/class re-derived from the IR primitive
+    geom_ok = len(shape_rows) == len(recs)
+    cls_ok = macs_ok = asp_ok = True
+    for sr in shape_rows:
+        rec = by_idx.get(int(sr["op_index"]))
+        if rec is None:
+            geom_ok = False
+            continue
+        if not (int(sr["M"]) == rec.M and int(sr["N"]) == rec.N and int(sr["K"]) == rec.K):
+            geom_ok = False
+        if int(sr["macs"]) != rec.M * rec.N * rec.K:
+            macs_ok = False
+        if not _eq(sr["aspect_ratio_MN"], round(rec.M / rec.N, 4), tol=1e-3):
+            asp_ok = False
+        if sr["shape_class"] != _classify_geom_indep(rec.M, rec.N, rec.K):
+            cls_ok = False
+    p5check(geom_ok, f"[{w}] operator_shape_table: {len(shape_rows)} rows == {len(recs)} matmuls, "
+                     f"M/N/K match IR primitive")
+    p5check(macs_ok, f"[{w}] macs == M*N*K for every operator")
+    p5check(asp_ok, f"[{w}] aspect_ratio_MN == round(M/N,4) for every operator")
+    p5check(cls_ok, f"[{w}] shape_class matches independent taxonomy re-derivation")
+
+    # P5-B: tile padding / waste / utilisation re-derived from primitive shape (tile rows only)
+    tw = [r for r in _csv_rows(CS_TILE) if r["workload"] == w]
+    pad_ok = waste_ok = util_ok = True
+    for r in tw:
+        if r["primitive_kind"] != "tile":
+            continue
+        rec = by_idx[int(r["op_index"])]
+        TM, TN = (int(x) for x in r["primitive"].replace("tile_", "").split("x"))
+        pM, pN = _ceil_to(rec.M, TM), _ceil_to(rec.N, TN)
+        pmacs = pM * pN * rec.K
+        if not (int(r["padded_M"]) == pM and int(r["padded_N"]) == pN
+                and int(r["padded_macs"]) == pmacs):
+            pad_ok = False
+        if not _eq(r["padding_waste"], pmacs / (rec.M * rec.N * rec.K) - 1.0, tol=1e-4):
+            waste_ok = False
+        if not _eq(r["tile_utilization"], (rec.M * rec.N * rec.K) / pmacs, tol=1e-4):
+            util_ok = False
+    p5check(pad_ok, f"[{w}] tile padded_M/N/macs == ceil-to-tile recompute")
+    p5check(waste_ok, f"[{w}] padding_waste == padded_macs/true_macs - 1")
+    p5check(util_ok, f"[{w}] tile_utilization == true_macs/padded_macs")
+
+    # P5-C: coverage matrix aggregates recompute from tile_waste_table
+    mat = {r["primitive"]: r for r in _csv_rows(CS_COVMAT) if r["workload"] == w}
+    agg_ok = True
+    by_prim: dict[str, list] = {}
+    for r in tw:
+        by_prim.setdefault(r["primitive"], []).append(r)
+    for prim, rows in by_prim.items():
+        m = mat.get(prim)
+        if m is None:
+            agg_ok = False
+            continue
+        macs_total = sum(int(x["true_macs"]) for x in rows)
+        m10 = sum(int(x["true_macs"]) for x in rows if x["covered_under_10pct"] == "True")
+        if int(m["op_count"]) != len(rows) or int(m["macs_covered_10"]) != m10:
+            agg_ok = False
+        if not _eq(m["coverage_under_10pct"], m10 / macs_total if macs_total else 0.0, tol=1e-4):
+            agg_ok = False
+    p5check(agg_ok, f"[{w}] primitive_coverage_matrix aggregates recompute from tile_waste_table")
+
+    dom = max(({}.fromkeys(r["shape_class"] for r in shape_rows)), default="—")
+    return {"workload": w, "operators": len(shape_rows),
+            "shape_classes": len({r["shape_class"] for r in shape_rows}),
+            "semantic_classes": len({r["semantic_class"] for r in shape_rows})}
+
+
+def verify_p5_global() -> None:
+    # gemv-lane applicability: a lane must NEVER be scored as covering a squareish_gemm op
+    bad = [r for r in _csv_rows(CS_TILE)
+           if r["primitive_kind"] == "gemv_lane" and r["shape_class"] == "squareish_gemm"
+           and r["applicable"] == "True"]
+    p5check(not bad, f"gemv lanes not applicable to squareish_gemm (offenders: {len(bad)})")
+    # regret table is internally consistent: max_regret == best - worst
+    reg_ok = True
+    for r in _csv_rows(CS_REGRET):
+        if not _eq(r["max_regret"], float(r["best_workload_coverage_10"])
+                   - float(r["worst_workload_coverage_10"]), tol=1e-4):
+            reg_ok = False
+    p5check(reg_ok, "primitive_regret max_regret == best - worst for every primitive")
+    # no forbidden performance claim in the P5 artifacts specifically
+    p5_files = ["operator_shape_table.csv", "operator_geometry.yaml", "operator_geometry_report.md",
+                "tile_waste_table.csv", "primitive_coverage_matrix.csv",
+                "primitive_coverage_report.md", "primitive_regret_table.csv",
+                "cross_workload_coverage_report.md", "operator_cluster_table.csv"]
+    leaked = {}
+    for fn in p5_files:
+        low = (CS / fn).read_text(errors="ignore").lower()
+        for t in DANGEROUS:
+            if t in low:
+                leaked.setdefault(t, []).append(fn)
+    p5check(not leaked, f"P5 artifacts free of forbidden performance terms (found: {leaked})")
+
+
 def main(write: bool = True) -> int:
     rows = [verify_workload(w) for w in RECAP_MODELS if (RECAP / w / "model.mlir").is_file()]
     verify_global()
+    p5_rows = [verify_p5_workload(w) for w in RECAP_MODELS if (RECAP / w / "model.mlir").is_file()]
+    verify_p5_global()
 
-    passed = sum(1 for ok, _ in results if ok)
-    total = len(results)
+    passed = sum(1 for ok, _ in results if ok) + sum(1 for ok, _ in p5_results if ok)
+    total = len(results) + len(p5_results)
+    p5_passed = sum(1 for ok, _ in p5_results if ok)
     L = ["# Implementation verification report\n",
          "> Independent re-derivation of the dse_guidance package: every number below is recomputed "
          "from the raw captures / base facts and cross-checked against the emitted artifacts. "
@@ -231,12 +375,31 @@ def main(write: bool = True) -> int:
              "- I: no low-bit format is credited with accuracy it was not measured to have.\n"
              "- J: every emitted number carries an allowed evidence label.\n"
              "- K/L: no speedup / cycle / gap_closure claim leaks into the generated artifacts.\n")
+
+    # P5 operator-geometry verification section
+    L.append("## P5 operator geometry verification\n")
+    L.append(f"**{p5_passed}/{len(p5_results)} P5 checks passed.**\n")
+    L.append("Key derived facts (operators / distinct geometry classes / distinct semantic roles):\n")
+    L.append("| workload | operators | geometry classes | semantic roles |")
+    L.append("|---|---|---|---|")
+    for r in p5_rows:
+        L.append(f"| {r['workload']} | {r['operators']} | {r['shape_classes']} | "
+                 f"{r['semantic_classes']} |")
+    L.append("\n### P5 checks\n")
+    for ok, msg in p5_results:
+        L.append(f"- [{'PASS' if ok else 'FAIL'}] {msg}")
+    L.append("\nP5 re-derives M/N/K from the IR primitive, re-implements the taxonomy thresholds "
+             "and tile arithmetic independently, and recomputes the coverage aggregates from "
+             "`tile_waste_table.csv` — so a divergence in `operator_geometry.py`, "
+             "`primitive_coverage.py`, or `shape_taxonomy.py` fails a check. All metrics are "
+             "structural geometry; **no speedup** is claimed.\n")
     if write:
         (CS / "verification_report.md").write_text("\n".join(L) + "\n")
 
-    print("\n".join(f"[{'PASS' if ok else 'FAIL'}] {m}" for ok, m in results))
+    all_results = results + p5_results
+    print("\n".join(f"[{'PASS' if ok else 'FAIL'}] {m}" for ok, m in all_results))
     dest = f" -> {CS / 'verification_report.md'}" if write else ""
-    print(f"\n{passed}/{total} checks passed{dest}")
+    print(f"\n{passed}/{total} checks passed ({p5_passed}/{len(p5_results)} P5){dest}")
     return 0 if passed == total else 1
 
 

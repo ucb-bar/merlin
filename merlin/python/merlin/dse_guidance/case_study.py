@@ -30,6 +30,8 @@ from merlin.dse_guidance import design_envelope as DE
 from merlin.dse_guidance import dtype_certificates as DC
 from merlin.dse_guidance import memory_envelope as ME
 from merlin.dse_guidance import numerical_contract as NC
+from merlin.dse_guidance import operator_geometry as OG
+from merlin.dse_guidance import primitive_coverage as PC
 from merlin.dse_guidance import search_space as SS
 from merlin.dse_guidance import state_lifetime as SL
 from merlin.dse_guidance import temporal as T
@@ -438,6 +440,13 @@ def _readme_md(packages) -> str:
         "- `<workload>/dse_search_space_template.yaml`, `dse_search_space_template_<family>.yaml` — "
         "the **DSE search-space template** (the bridge a DSE engine consumes: enabled axes + knobs).\n"
         "- `measurement_priority_table.csv` — what to measure next, ranked by candidates unblocked.\n"
+        "- `operator_shape_table.csv`, `operator_geometry.yaml` — per-operator geometry (M/N/K, "
+        "MACs, aspect, shape_class + semantic role). `shape_summary_by_workload.csv`, "
+        "`shape_summary_by_region.csv`, `operator_cluster_table.csv`, `operator_geometry_report.md` "
+        "summarise it (structural geometry only).\n"
+        "- `tile_waste_table.csv`, `primitive_coverage_matrix.csv`, `primitive_regret_table.csv` — "
+        "candidate compute-primitive (tile / GEMV-lane) structural coverage + cross-workload regret; "
+        "`primitive_coverage_report.md`, `cross_workload_coverage_report.md` read them (no speedup).\n"
         "- `traffic_table.csv` — per-region byte traffic + avoidable reload (memory/reuse envelope).\n"
         "- `dispatch_granularity_table.csv` — command-graph view (honest: loop unrolled, syncs "
         "unavailable).\n"
@@ -493,10 +502,19 @@ def run_case_study(out_dir) -> dict:
     Artifact("case_study.md", case_study_md(cases)).write(out)
     envelopes = []
     packages = []                       # accumulate per-workload data for cross-workload tables
+    geom_by_workload: dict = {}         # P5: per-workload operator geometry
+    all_shapes: list = []
+    conv_visible = False
     for c in cases:
         cap = str(_recap_dir(c.workload))
         dtype = NC.extract_numerical_facts(cap).get("compute_dtype", "f32")
         records = ATTR.extract_matmuls(cap)
+        # P5 operator geometry: per-op shapes for this workload (role from attribution/prov.fqn)
+        shapes = OG.operator_shapes(records, c.workload, c.attribution)
+        geom_by_workload[c.workload] = shapes
+        all_shapes.extend(shapes)
+        conv_visible = conv_visible or OG.conv_ops_present(
+            (_recap_dir(c.workload) / "model.mlir").read_text(errors="ignore"))
         yaml_artifact(f"{c.workload}/region_attribution.yaml", ATTR.to_yaml_obj(c.attribution),
                       header=f"region_attribution (Level-1, prov.fqn): {c.workload}").write(out)
         Artifact(f"{c.workload}/dse_candidate_axes.md",
@@ -581,6 +599,28 @@ def run_case_study(out_dir) -> dict:
         yaml_artifact(f"dse_search_space_template_{fam}.yaml",
                       SS.to_yaml_obj(SS.template_for_family(fam, axis_set)),
                       header=f"dse_search_space_template (family): {fam}").write(out)
+    # P5 operator-geometry + primitive-coverage (search-space formation; structural geometry only)
+    Artifact("operator_shape_table.csv", OG.operator_shape_csv(all_shapes)).write(out)
+    yaml_artifact("operator_geometry.yaml", OG.to_yaml_obj(geom_by_workload, conv_visible),
+                  header="operator_geometry (structural; no speedup)").write(out)
+    Artifact("shape_summary_by_workload.csv",
+             OG.shape_summary_by_workload_csv(geom_by_workload)).write(out)
+    Artifact("shape_summary_by_region.csv",
+             OG.shape_summary_by_region_csv(geom_by_workload)).write(out)
+    Artifact("operator_cluster_table.csv", OG.operator_cluster_csv(all_shapes)).write(out)
+    Artifact("operator_geometry_report.md",
+             OG.report_md(geom_by_workload, all_shapes)).write(out)
+    cov = PC.all_coverage(all_shapes)
+    per_wl = PC.aggregate_by_primitive_workload(cov)
+    regret = PC.aggregate_regret(cov, per_wl)
+    Artifact("tile_waste_table.csv", PC.tile_waste_csv(cov)).write(out)
+    Artifact("primitive_coverage_matrix.csv",
+             PC.primitive_coverage_matrix_csv(per_wl)).write(out)
+    Artifact("primitive_coverage_report.md",
+             PC.coverage_report_md(per_wl, regret)).write(out)
+    Artifact("primitive_regret_table.csv", PC.primitive_regret_csv(regret)).write(out)
+    Artifact("cross_workload_coverage_report.md",
+             PC.cross_workload_report_md(regret, per_wl)).write(out)
     # TorchAO integration plan (a plan, not a sweep)
     Artifact("torchao_integration_plan.md", NC.torchao_integration_plan_md()).write(out)
     # accuracy gate (measurable-now real leg)
