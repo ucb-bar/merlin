@@ -20,6 +20,7 @@ from dataclasses import dataclass
 
 from merlin.common import paths
 from merlin.common.artifacts import Artifact
+from merlin.dse_guidance import accuracy_gate as AG
 from merlin.dse_guidance import attribution as ATTR
 from merlin.dse_guidance import candidates as CAND
 from merlin.dse_guidance import contract as CON
@@ -224,6 +225,150 @@ def case_study_md(cases: list[WorkloadCase]) -> str:
     return "\n".join(L)
 
 
+def _csv(rows: list[dict], cols: list[str]) -> str:
+    import csv
+    import io
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow({k: ("" if r.get(k) is None else r[k]) for k in cols})
+    return buf.getvalue()
+
+
+def _envval(env, name):
+    if env is None:
+        return None
+    r = env.req(name)
+    return None if (r is None or r.value is None) else r.value
+
+
+def _roles_str(case) -> str:
+    return ", ".join(f"{r.role}:{len(r.matmul_indices)}" for r in case.attribution.regions)
+
+
+def _workload_contract_table(packages) -> str:
+    rows = []
+    for p in packages:
+        env = p["env"]
+        rows.append({
+            "workload": p["case"].workload, "class": p["case"].cls, "roles": _roles_str(p["case"]),
+            "macs_per_replan": _envval(env, "macs_per_replan"),
+            "avoidable_reload_bytes": _envval(env, "avoidable_weight_reload_bytes"),
+            "resident_bf16_B": (round(env.capacity_by_dtype_B["bf16"]) if env else None),
+            "top_abstraction": (p["cands"][0].system_abstraction if p["cands"] else ""),
+            "accuracy_int8": p["acc"], "ready_structural": True,
+            "ready_quantitative": p["readiness"].ready,
+            "missing_before_dse": "; ".join(p["readiness"].missing),
+        })
+    return _csv(rows, ["workload", "class", "roles", "macs_per_replan", "avoidable_reload_bytes",
+                       "resident_bf16_B", "top_abstraction", "accuracy_int8", "ready_structural",
+                       "ready_quantitative", "missing_before_dse"])
+
+
+def _abstraction_pressure_table(packages) -> str:
+    rows = []
+    for p in packages:
+        for c in p["cands"]:
+            rows.append({"workload": p["case"].workload, "axis": c.axis,
+                         "system_abstraction": c.system_abstraction,
+                         "dse_knobs": "; ".join(c.dse_knobs_exposed),
+                         "blocked_by": c.quantification_blocked_by})
+    return _csv(rows, ["workload", "axis", "system_abstraction", "dse_knobs", "blocked_by"])
+
+
+def _dse_readiness_table(packages) -> str:
+    rows = []
+    for p in packages:
+        f = p["readiness"].fields
+        rows.append({
+            "workload": p["case"].workload,
+            "topology_recovered": f["topology_recovered"]["available"],
+            "role_attribution": f["role_attribution"]["available"],
+            "K_source": f["K_source"]["source"],
+            "deadline_source": f["deadline_source"]["source"],
+            "dtype_contract": f["dtype_contract"]["available"],
+            "accuracy_status": f["accuracy_constraints"].get("int8_status", "unavailable"),
+            "cpu_coupling": f["cpu_coupling"]["source"],
+            "ready_structural_DSE": True,
+            "ready_quantitative_DSE": p["readiness"].ready,
+            "missing_before_ranking": "; ".join(p["readiness"].missing),
+        })
+    return _csv(rows, ["workload", "topology_recovered", "role_attribution", "K_source",
+                       "deadline_source", "dtype_contract", "accuracy_status", "cpu_coupling",
+                       "ready_structural_DSE", "ready_quantitative_DSE", "missing_before_ranking"])
+
+
+def _dtype_capacity_table(packages) -> str:
+    rows = []
+    for p in packages:
+        env = p["env"]
+        if env is None:
+            continue
+        cap = env.capacity_by_dtype_B
+        rows.append({
+            "workload": p["case"].workload, "captured_dtype": env.captured_dtype,
+            "bf16_B": round(cap["bf16"]), "fp8_B": round(cap["fp8"]), "int8_B": round(cap["int8"]),
+            "fp6_B": round(cap["fp6"]), "int4_B": round(cap["int4"]),
+            "avoidable_reload_B": _envval(env, "avoidable_weight_reload_bytes"),
+        })
+    return _csv(rows, ["workload", "captured_dtype", "bf16_B", "fp8_B", "int8_B", "fp6_B",
+                       "int4_B", "avoidable_reload_B"])
+
+
+def _case_study_summary_md(packages) -> str:
+    L = ["# Case study summary — workload-contract analysis\n"]
+    L.append("> Flat captures are not DSE-ready workload descriptions. Merlin recovers a temporal/"
+             "numerical workload contract from provenance-rich captures and emits HW/SW abstraction "
+             "candidates + hardware-independent requirements for a future DSE engine — no speedup "
+             "claimed.\n")
+    L.append("| workload | recovered roles | real IR facts | derived requirement | implied abstraction | missing before DSE |")
+    L.append("|----------|-----------------|---------------|---------------------|---------------------|--------------------|")
+    for p in packages:
+        env = p["env"]
+        macs = _envval(env, "macs_per_replan")
+        avoid = _envval(env, "avoidable_weight_reload_bytes")
+        facts = (f"{macs/1e9:.0f} GMAC/replan, {avoid/1e9:.2f} GB avoidable reload"
+                 if macs and avoid else "—")
+        bf16 = f"resident bf16 {env.capacity_by_dtype_B['bf16']/1e6:.0f} MB" if env else "—"
+        impl = p["cands"][0].system_abstraction if p["cands"] else "—"
+        L.append(f"| {p['case'].workload} | {_roles_str(p['case'])} | {facts} | {bf16} | {impl} | "
+                 f"{'; '.join(p['readiness'].missing)} |")
+    L.append("")
+    L.append("See per-workload `<workload>/workload_contract_report.md` for the full package, "
+             "`requirements_table.csv` / `dtype_capacity_table.csv` for requirements, "
+             "`abstraction_pressure_table.csv` for the HW/SW abstractions, "
+             "`dse_readiness_summary.csv` for readiness, and `accuracy_gate_report.md` for the "
+             "measured int8 accuracy leg.\n")
+    return "\n".join(L)
+
+
+def _readme_md(packages) -> str:
+    names = ", ".join(p["case"].workload for p in packages)
+    return (
+        "# Merlin workload-contract analysis — case study\n\n"
+        "Merlin is a compiler-based **workload-contract analysis** tool for accelerator DSE. It "
+        "does not pick a design and does not calibrate against existing hardware. It recovers the "
+        "temporal + numerical workload contract a flat capture erases and emits a DSE-ready "
+        "package: region facts, hardware-independent requirements, HW/SW abstraction candidates, a "
+        "measurement plan, and a readiness report.\n\n"
+        f"Workloads (real `prov.fqn` recaptures): **{names}**.\n\n"
+        "## Read this folder\n"
+        "- `case_study_summary.md` — start here (the central table).\n"
+        "- `<workload>/workload_contract_report.md` — full per-workload package.\n"
+        "- `requirements_table.csv`, `dtype_capacity_table.csv` — design requirements (hw-independent).\n"
+        "- `abstraction_pressure_table.csv` — implied HW/SW abstractions + DSE knobs.\n"
+        "- `dse_readiness_summary.csv` — what a DSE engine can consume today + what's missing.\n"
+        "- `accuracy_gate_report.md` — measured int8 accuracy (the measurable-now leg).\n"
+        "- `numerical_contract_fidelity_report.md`, `dispatch_coupling_report.md`, "
+        "`cost_calibration.md` — supporting evidence (calibration is a demoted existing-target anchor).\n\n"
+        "## Regenerate\n```\nmerlin-dse-guidance --case-study \\\n"
+        "  --out merlin/benchmarks/dse_guidance/case_study\n```\n\n"
+        "Every number carries an evidence label (`recovered_from_ir` / `recovered_from_prov_fqn` / "
+        "`assumed_reference` / `derived_requirement` / `design_assumption` / `measured` / "
+        "`proxy_measured` / `unavailable`). No file claims a speedup for unbuilt hardware.\n")
+
+
 def _head_weight_bytes(case: WorkloadCase) -> int | None:
     head = case.attribution.role("repeated_head")
     return head.facts.get("weight_bytes") if head and head.attribution_status == "attributed" else None
@@ -260,6 +405,7 @@ def run_case_study(out_dir) -> dict:
     Artifact("cross_workload_provenance.csv", provenance_csv(cases)).write(out)
     Artifact("case_study.md", case_study_md(cases)).write(out)
     envelopes = []
+    packages = []                       # accumulate per-workload data for cross-workload tables
     for c in cases:
         cap = str(_recap_dir(c.workload))
         dtype = NC.extract_numerical_facts(cap).get("compute_dtype", "f32")
@@ -282,7 +428,9 @@ def run_case_study(out_dir) -> dict:
             Artifact(f"{c.workload}/design_envelope.md", DE.markdown(env)).write(out)
         # workload-contract package: abstraction candidates + readiness + measurement plan + report
         cands = CON.abstraction_candidates(c.candidates, nc)
-        readiness = CON.dse_readiness(c.topo, c.attribution, nc, cpu_coupling_available=False)
+        acc = AG.status_for(c.workload, "int8")          # measured int8 accuracy (else unavailable)
+        readiness = CON.dse_readiness(c.topo, c.attribution, nc, cpu_coupling_available=False,
+                                      accuracy_status=acc)
         plan = CON.measurement_plan(cands)
         yaml_artifact(f"{c.workload}/abstraction_candidates.yaml", CON.abstraction_yaml(cands),
                       header=f"abstraction_candidates: {c.workload}").write(out)
@@ -293,8 +441,21 @@ def run_case_study(out_dir) -> dict:
         Artifact(f"{c.workload}/workload_contract_report.md",
                  CON.workload_contract_report_md(c.topo, c.attribution, nc, env, cands,
                                                  readiness, plan)).write(out)
+        packages.append({"case": c, "env": env, "nc": nc, "cands": cands,
+                         "readiness": readiness, "acc": acc})
     if envelopes:
         Artifact("requirements_table.csv", DE.requirements_csv(envelopes)).write(out)
+
+    # cross-workload presentation tables (P1/P2)
+    Artifact("workload_contract_table.csv", _workload_contract_table(packages)).write(out)
+    Artifact("abstraction_pressure_table.csv", _abstraction_pressure_table(packages)).write(out)
+    Artifact("dse_readiness_summary.csv", _dse_readiness_table(packages)).write(out)
+    Artifact("dtype_capacity_table.csv", _dtype_capacity_table(packages)).write(out)
+    Artifact("case_study_summary.md", _case_study_summary_md(packages)).write(out)
+    # accuracy gate (measurable-now real leg)
+    Artifact("accuracy_gate_report.md", AG.report_md()).write(out)
+    Artifact("accuracy_gate_results.csv", AG.to_csv()).write(out)
+    Artifact("README.md", _readme_md(packages)).write(out)
 
     # cross-zoo numerical-contract report (shows low-bit compute lost across the quantized zoo)
     zoo = zoo_numerical_audit()

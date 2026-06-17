@@ -1,0 +1,6 @@
+model,dtype,cos_vs_fp32,rel,status,source
+small_llama,int8,0.99993,0.013,pass,docs/results.md (W8A8 int8 accuracy table)
+tiny_llama,int8,0.99842,0.064,pass,docs/results.md (W8A8 int8 accuracy table)
+openvla,int8,0.99813,0.084,pass,docs/results.md (W8A8 int8 accuracy table)
+rdt2,int8,0.99979,0.025,pass,docs/results.md (W8A8 int8 accuracy table)
+bitvla,int8,0.99995,0.01,pass,docs/results.md (W8A8 int8 accuracy table)

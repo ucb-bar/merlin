@@ -49,6 +49,5 @@ _None claim a speedup/accuracy number — see `abstraction_candidates.yaml`._
 ## 6. DSE readiness
 
 - ready to rank designs: **False**
-  - missing: quantization accuracy gates (per candidate low-bit format)
   - missing: real (target) command-submit / sync latency
   - missing: K / control-rate from the real deployment (currently reference values)

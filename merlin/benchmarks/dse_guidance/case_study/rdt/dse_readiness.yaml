@@ -6,6 +6,7 @@ dse_readiness:
       source: assumed_reference
     accuracy_constraints:
       available: false
+      int8_status: unavailable
       source: unavailable
     cpu_coupling:
       available: false

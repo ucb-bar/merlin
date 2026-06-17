@@ -5,8 +5,9 @@ dse_readiness:
       available: true
       source: assumed_reference
     accuracy_constraints:
-      available: false
-      source: unavailable
+      available: true
+      int8_status: pass
+      source: measured
     cpu_coupling:
       available: false
       source: unavailable
@@ -29,7 +30,6 @@ dse_readiness:
       available: true
       source: recovered_from_prov_fqn
   missing_before_ranking:
-  - quantization accuracy gates (per candidate low-bit format)
   - real (target) command-submit / sync latency
   - K / control-rate from the real deployment (currently reference values)
   ready_to_rank_designs: false
