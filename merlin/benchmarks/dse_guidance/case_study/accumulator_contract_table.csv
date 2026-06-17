@@ -1,0 +1,6 @@
+workload,region,op_count,storage_dtype,compute_dtype,accumulator_dtype,output_dtype,scale_dtype,scale_granularity,dequant_location,requant_location,accumulator_materialization,evidence
+rdt,repeated_head,20,f32,f32,f32,f32,unavailable,unavailable,unavailable,epilogue_candidate,committed_directly,recovered_from_ir
+openvla,backbone_once,11,f32,f32,f32,f32,unavailable,unavailable,unavailable,epilogue_candidate,committed_directly,recovered_from_ir
+openvla,repeated_head,15,f32,f32,f32,f32,unavailable,unavailable,unavailable,unavailable,committed_directly,recovered_from_ir
+small_llama,repeated_head,15,f32,f32,f32,f32,unavailable,unavailable,unavailable,unavailable,committed_directly,recovered_from_ir
+tiny_llama,repeated_head,15,f32,f32,f32,f32,unavailable,unavailable,unavailable,unavailable,committed_directly,recovered_from_ir

@@ -26,6 +26,7 @@ Workloads (real `prov.fqn` recaptures): **rdt, openvla, small_llama, tiny_llama*
 - `processing_unit_guidance.yaml`, `heterogeneity_report.md` — monolithic vs. replicated vs. heterogeneous evidence + the search-space implication (evidence only, no selection).
 - `memory_hierarchy_envelope.yaml`, `data_movement_table.csv`, `reuse_lifetime_table.csv`, `memory_abstraction_candidates.yaml`, `memory_envelope_report.md` — per-region byte envelope (weight/activation/output + dtype-scaled resident set), reuse/residency, and the memory abstractions implied (no bandwidth claim).
 - `dma_stream_table.csv`, `buffer_requirement_table.csv`, `dma_pressure_report.md` — structural data-movement streams + minimum buffering per region (no bandwidth/deadline claim).
+- `epilogue_pattern_table.csv`, `accumulator_contract_table.csv`, `numerical_epilogue_candidates.yaml`, `lost_numerical_contracts.csv`, `fusion_opportunity_report.md` — fusion/epilogue/accumulator placement: detected matmul-epilogue patterns, accumulator + dequant/requant contract, fused abstraction certificates, and the numerical contracts the flat capture erased (no low-bit perf claim).
 - `traffic_table.csv` — per-region byte traffic + avoidable reload (memory/reuse envelope).
 - `dispatch_granularity_table.csv` — command-graph view (honest: loop unrolled, syncs unavailable).
 - `accuracy_gated_dtype_candidates.csv` — which low-bit formats are accuracy-legal vs blocked (int8 measured; fp8/int4 unavailable).

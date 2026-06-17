@@ -1,0 +1,121 @@
+# numerical_epilogue_candidates (structural; no low-bit perf)
+numerical_epilogue_candidates:
+  candidates:
+  - abstraction: fused_requant_epilogue
+    accuracy_measurements_needed: int8 W8A8 accuracy (measured for gated workloads); fp8/int4 unavailable
+    could_be_wrong_if: the detected addf is a residual add, not a fusible bias
+    dse_knobs_exposed:
+    - epilogue_op_set
+    - requant_in_epilogue
+    evidence: recovered_from_ir
+    performance_measurements_needed_later: per-op latency / energy once a backend exists
+    present_in_workloads:
+    - openvla
+    - rdt
+    required_compiler_proof: the matmul output epilogue (bias detected via addf) can also host a requant; the epilogue slot is recovered_from_ir
+    required_hw_runtime_support: epilogue ALU on the matmul output path
+    what_is_not_claimed: no speedup, no low-bit performance, no throughput; structural candidate only
+  - abstraction: accumulator_object
+    accuracy_measurements_needed: int8 accuracy depends on i32 accumulation (measured); fp8/int4 unavailable
+    could_be_wrong_if: the real datapath accumulates in a narrower type than assumed
+    dse_knobs_exposed:
+    - accumulator_dtype
+    - accumulator_depth
+    evidence: recovered_from_ir
+    performance_measurements_needed_later: per-op latency / energy once a backend exists
+    present_in_workloads:
+    - openvla
+    - rdt
+    - small_llama
+    - tiny_llama
+    required_compiler_proof: the matmul accumulates in a wider type (i32 for int8 storage; derived)
+    required_hw_runtime_support: wide accumulator register/SRAM
+    what_is_not_claimed: no speedup, no low-bit performance, no throughput; structural candidate only
+  - abstraction: accumulator_commit
+    accuracy_measurements_needed: output-dtype accuracy (int8 measured; others unavailable)
+    could_be_wrong_if: a separate accumulator materialization op exists that the flat capture hid
+    dse_knobs_exposed:
+    - commit_dtype
+    - commit_in_epilogue
+    evidence: recovered_from_ir
+    performance_measurements_needed_later: per-op latency / energy once a backend exists
+    present_in_workloads:
+    - openvla
+    - rdt
+    required_compiler_proof: the accumulator commits through the epilogue to the output dtype
+    required_hw_runtime_support: accumulator->epilogue->store path
+    what_is_not_claimed: no speedup, no low-bit performance, no throughput; structural candidate only
+  - abstraction: activation_clamp_unit
+    accuracy_measurements_needed: activation in low precision needs accuracy measurement (int8 measured; others unavailable)
+    could_be_wrong_if: the detected activation belongs to a separate op, not this matmul's epilogue
+    dse_knobs_exposed:
+    - activation_kind
+    - clamp_bounds
+    evidence: recovered_from_ir
+    performance_measurements_needed_later: per-op latency / energy once a backend exists
+    present_in_workloads:
+    - rdt
+    required_compiler_proof: an activation/clamp op follows the matmul epilogue (erf/exp/maximumf detected)
+    required_hw_runtime_support: activation/clamp ALU on the output path
+    what_is_not_claimed: no speedup, no low-bit performance, no throughput; structural candidate only
+  - abstraction: fused_dequant_matmul
+    accuracy_measurements_needed: low-bit accuracy (int8 measured for gated workloads; fp8/int4 unavailable)
+    could_be_wrong_if: the capture's f32 weights are the true storage (not a dequantized view)
+    dse_knobs_exposed:
+    - weight_format
+    - dequant_in_load
+    evidence: unavailable
+    performance_measurements_needed_later: per-op latency / energy once a backend exists
+    present_in_workloads: []
+    required_compiler_proof: weights stored packed low-bit and dequantized on load fused into the matmul
+    required_hw_runtime_support: low-bit weight load + on-the-fly dequant
+    what_is_not_claimed: no speedup, no low-bit performance, no throughput; structural candidate only
+  - abstraction: scale_object
+    accuracy_measurements_needed: quantization accuracy at the chosen granularity (unavailable — scales erased)
+    could_be_wrong_if: scales are actually present in the source model but were folded away
+    dse_knobs_exposed:
+    - scale_granularity
+    - zero_point
+    evidence: unavailable
+    performance_measurements_needed_later: per-op latency / energy once a backend exists
+    present_in_workloads: []
+    required_compiler_proof: per-tensor/-channel scale + zero-point carried alongside the packed weights
+    required_hw_runtime_support: scale sideband path
+    what_is_not_claimed: no speedup, no low-bit performance, no throughput; structural candidate only
+  - abstraction: packed_lowbit_tensor
+    accuracy_measurements_needed: low-bit accuracy (int8 measured; fp8/int4 unavailable)
+    could_be_wrong_if: the source model stores packed low-bit (the capture dequantized it)
+    dse_knobs_exposed:
+    - pack_format
+    - pack_alignment
+    evidence: unavailable
+    performance_measurements_needed_later: per-op latency / energy once a backend exists
+    present_in_workloads: []
+    required_compiler_proof: weights physically packed in a sub-byte layout
+    required_hw_runtime_support: packed-tensor load/unpack
+    what_is_not_claimed: no speedup, no low-bit performance, no throughput; structural candidate only
+  - abstraction: resident_packed_weight_object
+    accuracy_measurements_needed: low-bit accuracy (int8 measured; fp8/int4 unavailable)
+    could_be_wrong_if: packed residency is not legal for this weight layout
+    dse_knobs_exposed:
+    - resident_capacity
+    - pack_format
+    evidence: unavailable
+    performance_measurements_needed_later: per-op latency / energy once a backend exists
+    present_in_workloads: []
+    required_compiler_proof: the packed low-bit weights are made resident across the loop
+    required_hw_runtime_support: resident packed-weight store
+    what_is_not_claimed: no speedup, no low-bit performance, no throughput; structural candidate only
+  - abstraction: structured_sparsity_skip
+    accuracy_measurements_needed: accuracy at the sparsity level (unavailable — no sparsity metadata)
+    could_be_wrong_if: the weights are actually sparse (the dense f32 capture hid it)
+    dse_knobs_exposed:
+    - sparsity_pattern
+    - skip_granularity
+    evidence: unavailable
+    performance_measurements_needed_later: per-op latency / energy once a backend exists
+    present_in_workloads: []
+    required_compiler_proof: structured zeros in the weights allow skipping
+    required_hw_runtime_support: sparsity-aware datapath
+    what_is_not_claimed: no speedup, no low-bit performance, no throughput; structural candidate only
+  note: fused-epilogue / numerical-placement abstraction candidates. evidence is recovered_from_ir where the IR shows the supporting pattern, else unavailable (erased by a dequantized capture). int8 accuracy is measured for the gated workloads; fp8/int4 accuracy is unavailable. No speedup or low-bit performance is claimed.
