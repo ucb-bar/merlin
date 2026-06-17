@@ -23,11 +23,15 @@ from merlin.common.artifacts import Artifact
 from merlin.dse_guidance import accuracy_gate as AG
 from merlin.dse_guidance import attribution as ATTR
 from merlin.dse_guidance import candidates as CAND
+from merlin.dse_guidance import compiler_proof as CP
 from merlin.dse_guidance import contract as CON
 from merlin.dse_guidance import design_envelope as DE
 from merlin.dse_guidance import numerical_contract as NC
+from merlin.dse_guidance import search_space as SS
+from merlin.dse_guidance import state_lifetime as SL
 from merlin.dse_guidance import temporal as T
 from merlin.dse_guidance import topology as TOP
+from merlin.dse_guidance import workload_family as WF
 
 # Provenance labels (what kind of evidence backs each field).
 P_IR = "recovered_from_ir"
@@ -277,6 +281,66 @@ def _abstraction_pressure_table(packages) -> str:
     return _csv(rows, ["workload", "axis", "system_abstraction", "dse_knobs", "blocked_by"])
 
 
+def _abstraction_pressure_ranking(packages) -> str:
+    """Across-workload pressure ranking — how many workloads/regions suggest each abstraction.
+
+    This is *structural pressure*, a count — NOT a speedup or a performance ranking. evidence_strength
+    is a qualitative label (strong/partial/structural_only) based on how many suggesting workloads
+    carry real attributed IR facts for the axis.
+    """
+    from collections import Counter
+    agg: dict[str, dict] = {}
+    for p in packages:
+        for c in p["cands"]:
+            a = agg.setdefault(c.axis, {"sys": c.system_abstraction, "workloads": set(),
+                                        "n_regions": 0, "blocked": Counter()})
+            a["workloads"].add(p["case"].workload)
+            if (c.why_this_exists or {}).get("attributed_facts"):
+                a["n_regions"] += 1            # an attributed region with real IR facts backs it
+            a["blocked"][c.quantification_blocked_by] += 1
+    rows = []
+    for axis, a in agg.items():
+        nw, nr = len(a["workloads"]), a["n_regions"]
+        strength = "strong" if (nr >= nw and nr > 0) else "partial" if nr > 0 else "structural_only"
+        rows.append({"axis": axis, "system_abstraction": a["sys"], "n_workloads": nw,
+                     "n_regions": nr, "evidence_strength": strength,
+                     "blocked_by": (a["blocked"].most_common(1)[0][0] if a["blocked"] else "")})
+    rows.sort(key=lambda r: (-r["n_workloads"], -r["n_regions"], r["axis"]))
+    return _csv(rows, ["axis", "system_abstraction", "n_workloads", "n_regions",
+                       "evidence_strength", "blocked_by"])
+
+
+def _measurement_priority_table(packages) -> str:
+    """Aggregate the per-workload measurement plans into a priority table (what to measure next).
+
+    Categories come from contract.measurement_plan: accuracy_measurable_now / proxy_measured /
+    target_measured. n_candidates_unblocked counts abstraction candidates that need the measurement.
+    """
+    from collections import defaultdict
+    cat_of: dict[str, str] = {}
+    wls: dict[str, set] = defaultdict(set)
+    for p in packages:
+        plan = p.get("plan") or {}
+        mn = plan.get("measurable_now", {})
+        for m in mn.get("accuracy", []):
+            cat_of[m] = "accuracy_measurable_now"; wls[m].add(p["case"].workload)
+        for m in mn.get("runtime_proxy", []):
+            cat_of[m] = "proxy_measured"; wls[m].add(p["case"].workload)
+        for m in plan.get("needs_target_design", []):
+            cat_of[m] = "target_measured"; wls[m].add(p["case"].workload)
+    unblocks: dict[str, int] = defaultdict(int)
+    for p in packages:
+        for c in p["cands"]:
+            for m in set(c.measurements_needed):
+                if m in cat_of:
+                    unblocks[m] += 1
+    order = {"accuracy_measurable_now": 0, "proxy_measured": 1, "target_measured": 2}
+    rows = [{"measurement": m, "category": cat, "n_candidates_unblocked": unblocks.get(m, 0),
+             "workloads": "; ".join(sorted(wls[m]))} for m, cat in cat_of.items()]
+    rows.sort(key=lambda r: (order[r["category"]], -r["n_candidates_unblocked"], r["measurement"]))
+    return _csv(rows, ["measurement", "category", "n_candidates_unblocked", "workloads"])
+
+
 def _dse_readiness_table(packages) -> str:
     rows = []
     for p in packages:
@@ -357,7 +421,20 @@ def _readme_md(packages) -> str:
         "- `case_study_summary.md` — start here (the central table).\n"
         "- `<workload>/workload_contract_report.md` — full per-workload package.\n"
         "- `requirements_table.csv`, `dtype_capacity_table.csv` — design requirements (hw-independent).\n"
-        "- `abstraction_pressure_table.csv` — implied HW/SW abstractions + DSE knobs.\n"
+        "- `abstraction_pressure_table.csv` — implied HW/SW abstractions + DSE knobs (per workload).\n"
+        "- `abstraction_pressure_ranking.csv` — across-workload pressure ranking (a count, not a "
+        "speedup).\n"
+        "- `resident_state_table.csv` — state lifetimes (loop-invariant / carried / boundary-crossing) "
+        "+ the abstraction each implies.\n"
+        "- `compiler_proof_matrix.csv` — the compiler proof each abstraction needs + its status "
+        "(proven_for_workload / assumed / unknown).\n"
+        "- `workload_family_table.csv` — workloads clustered into families (iterative_denoise / "
+        "token_decode / single_shot).\n"
+        "- `<workload>/dse_search_space_template.yaml`, `dse_search_space_template_<family>.yaml` — "
+        "the **DSE search-space template** (the bridge a DSE engine consumes: enabled axes + knobs).\n"
+        "- `measurement_priority_table.csv` — what to measure next, ranked by candidates unblocked.\n"
+        "- `torchao_integration_plan.md` — plan (not a sweep) for wiring low-bit formats to the "
+        "numerical candidates.\n"
         "- `dse_readiness_summary.csv` — what a DSE engine can consume today + what's missing.\n"
         "- `accuracy_gate_report.md` — measured int8 accuracy (the measurable-now leg).\n"
         "- `numerical_contract_fidelity_report.md`, `dispatch_coupling_report.md`, "
@@ -409,14 +486,20 @@ def run_case_study(out_dir) -> dict:
     for c in cases:
         cap = str(_recap_dir(c.workload))
         dtype = NC.extract_numerical_facts(cap).get("compute_dtype", "f32")
+        records = ATTR.extract_matmuls(cap)
         yaml_artifact(f"{c.workload}/region_attribution.yaml", ATTR.to_yaml_obj(c.attribution),
                       header=f"region_attribution (Level-1, prov.fqn): {c.workload}").write(out)
         Artifact(f"{c.workload}/dse_candidate_axes.md",
                  CAND.markdown(c.topo, c.candidates)).write(out)
+        # state-lifetime / residency view (which tensors persist + the abstraction they imply)
+        recs = SL.state_records(c.topo, c.attribution)
+        yaml_artifact(f"{c.workload}/state_lifetime.yaml", SL.to_yaml_obj(recs, c.workload),
+                      header=f"state_lifetime: {c.workload}").write(out)
         # numerical contract per recaptured workload (fp32 -> low-bit opportunity)
         nc = NC.audit(cap, workload=c.workload, workload_class=c.cls,
                       repeated_head_weight_bytes=_head_weight_bytes(c),
-                      has_epilogue=bool(c.attribution.role("repeated_head")))
+                      has_epilogue=bool(c.attribution.role("repeated_head")),
+                      records=records, attribution=c.attribution)
         yaml_artifact(f"{c.workload}/numerical_contract.yaml", NC.to_yaml_obj(nc),
                       header=f"numerical_contract: {c.workload}").write(out)
         # design envelope (hardware-independent requirements)
@@ -441,8 +524,13 @@ def run_case_study(out_dir) -> dict:
         Artifact(f"{c.workload}/workload_contract_report.md",
                  CON.workload_contract_report_md(c.topo, c.attribution, nc, env, cands,
                                                  readiness, plan)).write(out)
-        packages.append({"case": c, "env": env, "nc": nc, "cands": cands,
-                         "readiness": readiness, "acc": acc})
+        pkg = {"case": c, "env": env, "nc": nc, "cands": cands, "readiness": readiness,
+               "acc": acc, "state": recs, "plan": plan}
+        # DSE search-space template (the bridge artifact) — per workload
+        yaml_artifact(f"{c.workload}/dse_search_space_template.yaml",
+                      SS.to_yaml_obj(SS.template_for_workload(pkg)),
+                      header=f"dse_search_space_template: {c.workload}").write(out)
+        packages.append(pkg)
     if envelopes:
         Artifact("requirements_table.csv", DE.requirements_csv(envelopes)).write(out)
 
@@ -452,6 +540,23 @@ def run_case_study(out_dir) -> dict:
     Artifact("dse_readiness_summary.csv", _dse_readiness_table(packages)).write(out)
     Artifact("dtype_capacity_table.csv", _dtype_capacity_table(packages)).write(out)
     Artifact("case_study_summary.md", _case_study_summary_md(packages)).write(out)
+
+    # contract-completeness package (state lifetime, compiler proofs, pressure ranking,
+    # workload families, search-space templates, measurement priority) — the DSE-ready hand-off
+    Artifact("resident_state_table.csv", SL.resident_state_csv(packages)).write(out)
+    Artifact("compiler_proof_matrix.csv", CP.compiler_proof_csv(packages)).write(out)
+    Artifact("abstraction_pressure_ranking.csv",
+             _abstraction_pressure_ranking(packages)).write(out)
+    Artifact("workload_family_table.csv", WF.workload_family_csv(packages)).write(out)
+    Artifact("measurement_priority_table.csv",
+             _measurement_priority_table(packages)).write(out)
+    # per-family search-space templates (union of member-workload axes)
+    for fam, axis_set in sorted(WF.family_axis_sets(packages).items()):
+        yaml_artifact(f"dse_search_space_template_{fam}.yaml",
+                      SS.to_yaml_obj(SS.template_for_family(fam, axis_set)),
+                      header=f"dse_search_space_template (family): {fam}").write(out)
+    # TorchAO integration plan (a plan, not a sweep)
+    Artifact("torchao_integration_plan.md", NC.torchao_integration_plan_md()).write(out)
     # accuracy gate (measurable-now real leg)
     Artifact("accuracy_gate_report.md", AG.report_md()).write(out)
     Artifact("accuracy_gate_results.csv", AG.to_csv()).write(out)
