@@ -1,0 +1,55 @@
+# processing_unit_guidance (evidence only; no selection)
+processing_unit_guidance:
+  avg_inter_op_parallelism:
+    evidence: derived_requirement
+    note: work/span average across workloads — not a speedup
+    value: 1.27
+  note: monolithic vs. replicated vs. heterogeneous processing-unit evidence. This emits evidence and search-space implications only — it does NOT select an architecture, and makes no speedup/cycle/area claim.
+  options:
+  - evidence_against:
+    - 3 distinct geometry classes coexist (gemv_like, squareish_gemm, wide_skinny)
+    - GEMV/decode shapes (skinny family) are a poor match for a square matrix unit
+    - phases run at different cadences (backbone vs head vs control) — pipelineable
+    evidence_for:
+    - low inter-op parallelism (avg 1.27×, 3/4 workloads near-sequential) — a single large unit is not starved by inter-op concurrency
+    - dense GEMM concentrates 86% of MACs in one shape family
+    option: one_bigger_unit
+  - blocked_by:
+    - reduction/partial-sum cost for K-sharding is unknown (not measured)
+    - memory bandwidth is unknown — replicas may contend for weight reload
+    - data dependencies serialize work (avg parallelism only 1.27×)
+    evidence_for:
+    - 1 workload(s) expose some inter-op parallelism
+    - 96 (op,axis) M/N shards split with no tail — reduction-free replication
+    option: multiple_identical_units
+  - candidate_units:
+    - evidence: recovered_from_ir
+      for: dense_gemm
+      unit: matrix_engine
+    - evidence: recovered_from_ir
+      for: skinny_gemm_or_gemv
+      unit: vector_gemv_engine
+    - evidence: recovered_from_ir
+      for: epilogue_or_requant
+      unit: epilogue_requant_unit
+    - evidence: recovered_from_prov_fqn
+      for: dma_or_memory
+      unit: dma_engine
+    - evidence: recovered_from_prov_fqn
+      for: control_or_dispatch
+      unit: loop_controller
+    - evidence: recovered_from_prov_fqn
+      for: control_or_dispatch
+      unit: scalar_control_unit
+    - evidence: unavailable
+      for: attention_softmax_or_reduction
+      unit: kv_cache_unit
+    evidence_against: []
+    evidence_for:
+    - 'distinct operator families coexist: dense GEMM 86% of MACs vs skinny/GEMV 14%'
+    - epilogue/requant appears on 31 ops
+    - DMA/memory can overlap compute (resident loop-invariant weights)
+    - backbone and head run at different rates (multi-rate contract)
+    - the control loop decouples from replan inference
+    option: multiple_specialized_units
+  search_space_implication: 'the evidence structurally suggests a HETEROGENEOUS (specialized) resource search space: distinct operator families (dense GEMM + skinny/GEMV), a frequent epilogue, resident-weight DMA, and multi-rate phases all coexist, while low inter-op parallelism argues against many identical units kept busy by concurrency. A future DSE should explore specialized units; this is an evidence-based search-space implication, NOT an architecture selection.'

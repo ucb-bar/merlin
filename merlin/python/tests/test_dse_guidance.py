@@ -1603,6 +1603,114 @@ def test_p7_reports_have_no_forbidden_wording():
                 assert "no speedup" in ln or "not a speedup" in ln
 
 
+# ============================================================ P8 pipeline / overlap / unit guidance
+
+def _p8_inputs(K=5, cls="diffusion/denoise_steps", fqn="model.action_expert.denoise.0"):
+    from merlin.dse_guidance import contract_graph as CG2, operator_geometry as OG
+    from merlin.dse_guidance import state_lifetime as SL
+    topo = TOP.from_temporal(T.parse({
+        "workload": "m", "class": cls, "timing": {"K": K, "H": K, "control_rate_hz": 30},
+        "regions": [{"name": "backbone", "role": "backbone_once", "invocation_count": 1},
+                    {"name": "head", "role": "repeated_head", "invocation_count": K,
+                     "loop_invariant_state": ["weights"]}]}))
+    recs = (_mm(28, 1024, 1024, fqn=fqn, op="addmm", idx=0),)
+    attr = ATTR.attribute_records(recs, topo)
+    shapes = OG.operator_shapes(recs, "m", attr)
+    case = type("C", (), {"workload": "m", "cls": cls, "K": K, "topo": topo, "attribution": attr})()
+    g = CG2.build_graph(case, shapes, None, SL.state_records(topo, attr), dependencies=((),))
+    return g, shapes
+
+
+def test_pipeline_phase_classification():
+    from merlin.dse_guidance import pipeline_envelope as PE
+    g, shapes = _p8_inputs(cls="diffusion/denoise_steps")
+    phases = {p.phase_class: p for p in PE.phase_model(g, shapes)}
+    assert "backbone_or_encoder" in phases and "repeated_action_head" in phases
+    g2, s2 = _p8_inputs(cls="llm/token_decode", fqn="lm.model.layers.0.self_attn.q_proj")
+    cls2 = {p.phase_class for p in PE.phase_model(g2, s2)}
+    assert "decoder_token_step" in cls2          # autoregressive head -> decoder_token_step
+
+
+def test_pipeline_overlap_schema_and_double_buffer_rule():
+    from merlin.dse_guidance import pipeline_envelope as PE
+    g, shapes = _p8_inputs(K=5)
+    phases = PE.phase_model(g, shapes)
+    cands = {(c.source_phase, c.target_phase): c for c in PE.overlap_candidates(g, phases)}
+    for c in cands.values():
+        assert c.can_overlap in ("yes", "no", "unknown")
+        assert all(a in PE.ALLOWED_ABSTRACTIONS for a in c.required_abstractions)
+        assert isinstance(c.required_buffer_count, int) or c.required_buffer_count == "unavailable"
+    # double-buffer rule: cross-replan backbone||execution and control||inference need 2 buffers
+    bb = next(c for c in cands.values() if c.source_phase.startswith("backbone(next"))
+    assert bb.can_overlap == "yes" and bb.required_buffer_count == 2
+    assert "double_buffered_action_chunk" in bb.required_abstractions
+    # the bounded K-loop needs 1 buffer; KV pipelining is unknown -> unavailable
+    loop = next(c for c in cands.values() if c.dependency_type == "bounded_loop")
+    assert loop.required_buffer_count == 1 and "bounded_loop_command" in loop.required_abstractions
+    kv = next(c for c in cands.values() if c.dependency_type == "kv_dependency")
+    assert kv.can_overlap == "unknown" and kv.required_buffer_count == "unavailable"
+
+
+def test_pipeline_missing_period_is_explicit():
+    from merlin.dse_guidance import pipeline_envelope as PE
+    g, shapes = _p8_inputs(K=5)
+    head = next(p for p in PE.phase_model(g, shapes) if p.phase_class == "repeated_action_head")
+    # per-K-step wall time is a runtime measurement -> period unavailable, named in missing (not faked)
+    assert head.period_s is None and head.missing
+
+
+def test_processing_unit_guidance_schema():
+    from merlin.dse_guidance import (processing_unit_guidance as PUG, resource_hierarchy as RH,
+                                     parallelism as PAR, sharding as SH, operator_geometry as OG)
+    shapes = [OG.operator_shape(_mm(4096, 4096, 2048, idx=0, op="addmm"), "w", "repeated_head"),
+              OG.operator_shape(_mm(1, 2048, 256, idx=1), "w", "repeated_head")]
+    dags = [PAR.analyze_graph(_toy_graph())]
+    pressure = RH.resource_pressure(shapes, dags)
+    g = PUG.guidance(shapes, dags, pressure, SH.all_shard_axes(shapes))
+    opts = {o.option for o in g["options"]}
+    assert opts == {"one_bigger_unit", "multiple_identical_units", "multiple_specialized_units"}
+    spec = next(o for o in g["options"] if o.option == "multiple_specialized_units")
+    classes = {p.resource_class for p in pressure}
+    assert spec.candidate_units and all(u["for"] in classes for u in spec.candidate_units)
+    assert "heterogeneous" in g["search_space_implication"].lower()
+    obj = PUG.guidance_yaml(g)["processing_unit_guidance"]
+    assert obj["options"] and "search_space_implication" in obj
+
+
+def test_p8_reports_have_no_forbidden_wording():
+    from merlin.dse_guidance import (pipeline_envelope as PE, processing_unit_guidance as PUG,
+                                     resource_hierarchy as RH, parallelism as PAR, sharding as SH,
+                                     operator_geometry as OG)
+    g, shapes = _p8_inputs(K=5)
+    phases = PE.phase_model(g, shapes)
+    cands = {"m": PE.overlap_candidates(g, phases)}
+    dags = [PAR.analyze_graph(_toy_graph())]
+    pug = PUG.guidance(shapes, dags, RH.resource_pressure(shapes, dags), SH.all_shard_axes(shapes))
+    blobs = [PE.overlap_report_md({"m": phases}, cands).lower(),
+             str(PE.pipeline_candidates_yaml(cands)).lower(),
+             PUG.heterogeneity_report_md(pug).lower(),
+             str(PUG.guidance_yaml(pug)).lower()]
+    for b in blobs:
+        for term in ("gap_closure", "faster", "will improve", "predicted cycles", "meets deadline"):
+            assert term not in b, f"forbidden term {term!r}"
+        for ln in b.splitlines():
+            if "speedup" in ln:
+                assert "no speedup" in ln or "not a speedup" in ln
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_case_study_emits_p8_artifacts(tmp_path):
+    from merlin.dse_guidance import case_study as CS
+    from merlin.common.yaml import load_yaml
+    CS.run_case_study(tmp_path)
+    for f in ("pipeline_envelope.yaml", "pipeline_stage_table.csv", "pipeline_candidates.yaml",
+              "buffering_requirement_table.csv", "overlap_opportunities.md",
+              "processing_unit_guidance.yaml", "heterogeneity_report.md"):
+        assert (tmp_path / f).is_file(), f"missing {f}"
+    pug = load_yaml(tmp_path / "processing_unit_guidance.yaml")["processing_unit_guidance"]
+    assert len(pug["options"]) == 3 and "heterogeneous" in pug["search_space_implication"].lower()
+
+
 @pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
 def test_case_study_emits_p7_artifacts(tmp_path):
     from merlin.dse_guidance import case_study as CS

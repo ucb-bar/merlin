@@ -1,0 +1,21 @@
+workload,source_phase,target_phase,can_overlap,required_buffer_count,event_queue_support,required_abstractions
+rdt,backbone(next replan),action_execution(current chunk),yes,2,async_queue; event_token,double_buffered_action_chunk; async_queue; event_token; prefix_state_object
+rdt,dma_prefetch(resident weights),head,yes,2,async_queue,resident_weight_object; async_queue
+rdt,head,head,yes,1,region_level_dispatch,bounded_loop_command; loop_carried_state_handle; resident_weight_object
+rdt,control_tick_consumer,replan_inference(next),yes,2,producer_consumer_queue; event_token,double_buffered_action_chunk; producer_consumer_queue; event_token
+rdt,decode_token_step,kv_cache_movement,unknown,unavailable,—,producer_consumer_queue; loop_carried_state_handle
+openvla,backbone(next replan),action_execution(current chunk),yes,2,async_queue; event_token,double_buffered_action_chunk; async_queue; event_token; prefix_state_object
+openvla,dma_prefetch(resident weights),head,yes,2,async_queue,resident_weight_object; async_queue
+openvla,head,head,yes,1,region_level_dispatch,bounded_loop_command; loop_carried_state_handle; resident_weight_object
+openvla,control_tick_consumer,replan_inference(next),yes,2,producer_consumer_queue; event_token,double_buffered_action_chunk; producer_consumer_queue; event_token
+openvla,decode_token_step,kv_cache_movement,unknown,unavailable,—,producer_consumer_queue; loop_carried_state_handle
+small_llama,backbone(next replan),action_execution(current chunk),yes,2,async_queue; event_token,double_buffered_action_chunk; async_queue; event_token; prefix_state_object
+small_llama,dma_prefetch(resident weights),head,yes,2,async_queue,resident_weight_object; async_queue
+small_llama,head,head,yes,1,region_level_dispatch,bounded_loop_command; loop_carried_state_handle; resident_weight_object
+small_llama,control_tick_consumer,replan_inference(next),yes,2,producer_consumer_queue; event_token,double_buffered_action_chunk; producer_consumer_queue; event_token
+small_llama,decode_token_step,kv_cache_movement,unknown,unavailable,—,producer_consumer_queue; loop_carried_state_handle
+tiny_llama,backbone(next replan),action_execution(current chunk),yes,2,async_queue; event_token,double_buffered_action_chunk; async_queue; event_token; prefix_state_object
+tiny_llama,dma_prefetch(resident weights),head,yes,2,async_queue,resident_weight_object; async_queue
+tiny_llama,head,head,yes,1,region_level_dispatch,bounded_loop_command; loop_carried_state_handle; resident_weight_object
+tiny_llama,control_tick_consumer,replan_inference(next),yes,2,producer_consumer_queue; event_token,double_buffered_action_chunk; producer_consumer_queue; event_token
+tiny_llama,decode_token_step,kv_cache_movement,unknown,unavailable,—,producer_consumer_queue; loop_carried_state_handle

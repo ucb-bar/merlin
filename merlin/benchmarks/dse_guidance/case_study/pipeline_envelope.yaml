@@ -1,0 +1,113 @@
+# pipeline_envelope (multi-rate phase model; no speedup)
+pipeline_envelope:
+  note: multi-rate phase model from the recovered contract graph. Cadences/roles are recovered_from_prov_fqn; per-phase wall-clock periods are a runtime measurement (unavailable). Phase classes that are runtime/IO (sensor, control-tick consumer, action-chunk output, safety/postprocess) never appear in a model-forward capture and are listed below, not invented. No speedup/scheduling claim.
+  phase_classes_not_in_capture:
+  - sensor_or_input
+  - action_chunk_output
+  - control_tick_consumer
+  - safety_or_postprocess
+  workloads:
+  - phases:
+    - cadence: once_per_replan
+      candidate_resource_class: unavailable
+      deadline_s: 2.133333
+      evidence: recovered_from_prov_fqn
+      invocations: 1
+      missing: []
+      period_s: 2.133333
+      phase: backbone
+      phase_class: backbone_or_encoder
+      state_inputs: []
+      state_outputs: []
+    - cadence: K_times_per_replan
+      candidate_resource_class: skinny_gemm_or_gemv
+      deadline_s: 2.133333
+      evidence: recovered_from_prov_fqn
+      invocations: 5
+      missing:
+      - per-phase wall-clock period (runtime measurement)
+      period_s: unavailable
+      phase: head
+      phase_class: repeated_action_head
+      state_inputs:
+      - weights
+      state_outputs: []
+    workload: rdt
+  - phases:
+    - cadence: once_per_replan
+      candidate_resource_class: skinny_gemm_or_gemv
+      deadline_s: 1.4
+      evidence: recovered_from_prov_fqn
+      invocations: 1
+      missing: []
+      period_s: 1.4
+      phase: backbone
+      phase_class: backbone_or_encoder
+      state_inputs: []
+      state_outputs: []
+    - cadence: token_loop
+      candidate_resource_class: skinny_gemm_or_gemv
+      deadline_s: 1.4
+      evidence: recovered_from_prov_fqn
+      invocations: 7
+      missing:
+      - per-phase wall-clock period (runtime measurement)
+      period_s: unavailable
+      phase: head
+      phase_class: decoder_token_step
+      state_inputs:
+      - weights
+      state_outputs: []
+    workload: openvla
+  - phases:
+    - cadence: once_per_replan
+      candidate_resource_class: unavailable
+      deadline_s: 1.066667
+      evidence: recovered_from_prov_fqn
+      invocations: 1
+      missing: []
+      period_s: 1.066667
+      phase: backbone
+      phase_class: backbone_or_encoder
+      state_inputs: []
+      state_outputs: []
+    - cadence: token_loop
+      candidate_resource_class: skinny_gemm_or_gemv
+      deadline_s: 1.066667
+      evidence: recovered_from_prov_fqn
+      invocations: 32
+      missing:
+      - per-phase wall-clock period (runtime measurement)
+      period_s: unavailable
+      phase: head
+      phase_class: decoder_token_step
+      state_inputs:
+      - weights
+      state_outputs: []
+    workload: small_llama
+  - phases:
+    - cadence: once_per_replan
+      candidate_resource_class: unavailable
+      deadline_s: 1.066667
+      evidence: recovered_from_prov_fqn
+      invocations: 1
+      missing: []
+      period_s: 1.066667
+      phase: backbone
+      phase_class: backbone_or_encoder
+      state_inputs: []
+      state_outputs: []
+    - cadence: token_loop
+      candidate_resource_class: skinny_gemm_or_gemv
+      deadline_s: 1.066667
+      evidence: recovered_from_prov_fqn
+      invocations: 32
+      missing:
+      - per-phase wall-clock period (runtime measurement)
+      period_s: unavailable
+      phase: head
+      phase_class: decoder_token_step
+      state_inputs:
+      - weights
+      state_outputs: []
+    workload: tiny_llama

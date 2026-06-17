@@ -1,0 +1,9 @@
+workload,phase,phase_class,cadence,invocations,period_s,candidate_resource_class,evidence
+rdt,backbone,backbone_or_encoder,once_per_replan,1,2.133333,unavailable,recovered_from_prov_fqn
+rdt,head,repeated_action_head,K_times_per_replan,5,unavailable,skinny_gemm_or_gemv,recovered_from_prov_fqn
+openvla,backbone,backbone_or_encoder,once_per_replan,1,1.4,skinny_gemm_or_gemv,recovered_from_prov_fqn
+openvla,head,decoder_token_step,token_loop,7,unavailable,skinny_gemm_or_gemv,recovered_from_prov_fqn
+small_llama,backbone,backbone_or_encoder,once_per_replan,1,1.066667,unavailable,recovered_from_prov_fqn
+small_llama,head,decoder_token_step,token_loop,32,unavailable,skinny_gemm_or_gemv,recovered_from_prov_fqn
+tiny_llama,backbone,backbone_or_encoder,once_per_replan,1,1.066667,unavailable,recovered_from_prov_fqn
+tiny_llama,head,decoder_token_step,token_loop,32,unavailable,skinny_gemm_or_gemv,recovered_from_prov_fqn

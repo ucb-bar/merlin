@@ -44,6 +44,8 @@ CS_CRIT = CS / "critical_path_table.csv"
 CS_SHARD = CS / "sharding_table.csv"
 CS_HIER = CS / "operator_cluster_to_hierarchy.csv"
 CS_RESPRESS = CS / "resource_pressure_table.csv"
+CS_PHASE_RATE = CS / "phase_rate_table.csv"
+CS_PIPE_STAGE = CS / "pipeline_stage_table.csv"
 ALLOWED_CADENCE = {"once_per_instruction", "once_per_replan", "K_times_per_replan", "token_loop",
                    "control_tick", "once_per_forward", "unknown"}
 ALLOWED_EVIDENCE = {"recovered_from_ir", "recovered_from_prov_fqn", "recovered_from_model_config",
@@ -599,6 +601,79 @@ def verify_p7_global() -> None:
     p7check(not leaked, f"P7 artifacts free of forbidden performance terms (found: {leaked})")
 
 
+# ============================================================ P8 pipeline / overlap / unit guidance
+
+p8_results: list[tuple[bool, str]] = []
+
+
+def p8check(ok: bool, msg: str) -> None:
+    p8_results.append((bool(ok), msg))
+
+
+def verify_p8_workload(w: str, graphs: dict) -> dict:
+    g = graphs[w]
+    graph_phase_ids = {n["id"].split(":")[-1] for n in g["nodes"] if n["kind"] == "phase"}
+    env = load_yaml(CS / "pipeline_envelope.yaml")["pipeline_envelope"]
+    phases = next(x["phases"] for x in env["workloads"] if x["workload"] == w)
+
+    # P8-A: every phase references a graph phase node
+    p8check(all(p["phase"] in graph_phase_ids for p in phases),
+            f"[{w}] pipeline phases reference graph phase nodes ({sorted(graph_phase_ids)})")
+
+    # P8-B: phase cadence matches phase_rate_table.csv (the P6 table)
+    rate = {r["phase"]: r["cadence"] for r in _csv_rows(CS_PHASE_RATE) if r["workload"] == w}
+    stage = {r["phase"]: r["cadence"] for r in _csv_rows(CS_PIPE_STAGE) if r["workload"] == w}
+    p8check(all(stage.get(p, rate.get(p)) == rate.get(p) for p in rate) and stage == {
+        p: rate[p] for p in rate},
+            f"[{w}] pipeline stage cadences == phase_rate_table cadences")
+
+    # P8-C/D/E: overlap candidates well-formed (can_overlap enum, buffers, allowed abstractions)
+    cand = load_yaml(CS / "pipeline_candidates.yaml")["pipeline_candidates"]
+    cands = next(x["candidates"] for x in cand["workloads"] if x["workload"] == w)
+    from merlin.dse_guidance.pipeline_envelope import ALLOWED_ABSTRACTIONS
+    enum_ok = all(c["can_overlap"] in ("yes", "no", "unknown") for c in cands)
+    abst_ok = all(a in ALLOWED_ABSTRACTIONS for c in cands for a in c["required_abstractions"])
+    buf_ok = True
+    for c in cands:
+        b = c["required_buffer_count"]
+        if b == "unavailable":
+            continue
+        if not (isinstance(b, int) and b >= 1):
+            buf_ok = False
+        if c["can_overlap"] == "yes" and not (isinstance(b, int) and b >= 1):
+            buf_ok = False
+    p8check(enum_ok, f"[{w}] overlap can_overlap in {{yes,no,unknown}}")
+    p8check(abst_ok, f"[{w}] overlap required_abstractions in allowed vocabulary")
+    p8check(buf_ok, f"[{w}] overlap buffer counts are positive ints or unavailable "
+                    f"(yes-overlaps have >=1 buffer)")
+    return {"workload": w, "phases": len(phases),
+            "yes_overlaps": sum(1 for c in cands if c["can_overlap"] == "yes")}
+
+
+def verify_p8_global() -> None:
+    # processing-unit guidance references existing resource classes
+    classes = {r["resource_class"] for r in _csv_rows(CS_RESPRESS)}
+    pug = load_yaml(CS / "processing_unit_guidance.yaml")["processing_unit_guidance"]
+    spec = next(o for o in pug["options"] if o["option"] == "multiple_specialized_units")
+    units_ok = all(u["for"] in classes for u in spec.get("candidate_units", []))
+    p8check(units_ok, "processing-unit guidance candidate_units reference existing resource classes")
+    # the three multiplicity options are all present
+    opts = {o["option"] for o in pug["options"]}
+    p8check(opts == {"one_bigger_unit", "multiple_identical_units", "multiple_specialized_units"},
+            "processing-unit guidance covers monolithic / replicated / specialized")
+    # no forbidden performance claims in P8 artifacts
+    p8_files = ["pipeline_envelope.yaml", "pipeline_stage_table.csv", "pipeline_candidates.yaml",
+                "buffering_requirement_table.csv", "overlap_opportunities.md",
+                "processing_unit_guidance.yaml", "heterogeneity_report.md"]
+    leaked = {}
+    for fn in p8_files:
+        low = (CS / fn).read_text(errors="ignore").lower()
+        for t in DANGEROUS:
+            if t in low:
+                leaked.setdefault(t, []).append(fn)
+    p8check(not leaked, f"P8 artifacts free of forbidden performance terms (found: {leaked})")
+
+
 def main(write: bool = True) -> int:
     rows = [verify_workload(w) for w in RECAP_MODELS if (RECAP / w / "model.mlir").is_file()]
     verify_global()
@@ -611,12 +686,16 @@ def main(write: bool = True) -> int:
     p7_rows = [verify_p7_workload(w, _graphs) for w in RECAP_MODELS
                if (RECAP / w / "model.mlir").is_file()]
     verify_p7_global()
+    p8_rows = [verify_p8_workload(w, _graphs) for w in RECAP_MODELS
+               if (RECAP / w / "model.mlir").is_file()]
+    verify_p8_global()
 
-    passed = sum(1 for ok, _ in results + p5_results + p6_results + p7_results if ok)
-    total = len(results) + len(p5_results) + len(p6_results) + len(p7_results)
+    passed = sum(1 for ok, _ in results + p5_results + p6_results + p7_results + p8_results if ok)
+    total = len(results) + len(p5_results) + len(p6_results) + len(p7_results) + len(p8_results)
     p5_passed = sum(1 for ok, _ in p5_results if ok)
     p6_passed = sum(1 for ok, _ in p6_results if ok)
     p7_passed = sum(1 for ok, _ in p7_results if ok)
+    p8_passed = sum(1 for ok, _ in p8_results if ok)
     L = ["# Implementation verification report\n",
          "> Independent re-derivation of the dse_guidance package: every number below is recomputed "
          "from the raw captures / base facts and cross-checked against the emitted artifacts. "
@@ -692,14 +771,31 @@ def main(write: bool = True) -> int:
              "(largest op ≤ critical path ≤ total), recomputes available_parallelism = total/"
              "critical, and recomputes the M/N/K sharding tail + partial-sum/broadcast byte formulas. "
              "available_parallelism is work/span — **not a speedup**, no hardware assumed.\n")
+
+    # P8 pipeline / overlap / unit-guidance verification section
+    L.append("## P8 pipeline / overlap / processing-unit guidance verification\n")
+    L.append(f"**{p8_passed}/{len(p8_results)} P8 checks passed.**\n")
+    L.append("| workload | phases | candidate overlaps (can_overlap=yes) |")
+    L.append("|---|---|---|")
+    for r in p8_rows:
+        L.append(f"| {r['workload']} | {r['phases']} | {r['yes_overlaps']} |")
+    L.append("\n### P8 checks\n")
+    for ok, msg in p8_results:
+        L.append(f"- [{'PASS' if ok else 'FAIL'}] {msg}")
+    L.append("\nP8 checks the phase model against the graph phase nodes, that pipeline cadences "
+             "match `phase_rate_table.csv`, that overlap candidates are well-formed (enum + allowed "
+             "abstraction vocabulary + positive/unavailable buffer counts), and that the "
+             "processing-unit guidance references existing resource classes. Structural overlap "
+             "candidates only — **no speedup**, no schedule.\n")
     if write:
         (CS / "verification_report.md").write_text("\n".join(L) + "\n")
 
-    all_results = results + p5_results + p6_results + p7_results
+    all_results = results + p5_results + p6_results + p7_results + p8_results
     print("\n".join(f"[{'PASS' if ok else 'FAIL'}] {m}" for ok, m in all_results))
     dest = f" -> {CS / 'verification_report.md'}" if write else ""
     print(f"\n{passed}/{total} checks passed ({p5_passed}/{len(p5_results)} P5, "
-          f"{p6_passed}/{len(p6_results)} P6, {p7_passed}/{len(p7_results)} P7){dest}")
+          f"{p6_passed}/{len(p6_results)} P6, {p7_passed}/{len(p7_results)} P7, "
+          f"{p8_passed}/{len(p8_results)} P8){dest}")
     return 0 if passed == total else 1
 
 

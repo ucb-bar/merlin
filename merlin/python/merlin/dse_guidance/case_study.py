@@ -33,7 +33,9 @@ from merlin.dse_guidance import memory_envelope as ME
 from merlin.dse_guidance import numerical_contract as NC
 from merlin.dse_guidance import operator_geometry as OG
 from merlin.dse_guidance import parallelism as PAR
+from merlin.dse_guidance import pipeline_envelope as PE
 from merlin.dse_guidance import primitive_coverage as PC
+from merlin.dse_guidance import processing_unit_guidance as PUG
 from merlin.dse_guidance import resource_hierarchy as RH
 from merlin.dse_guidance import sharding as SH
 from merlin.dse_guidance import search_space as SS
@@ -463,6 +465,12 @@ def _readme_md(packages) -> str:
         "`resource_pressure_table.csv`, `processing_unit_candidates.yaml`, "
         "`processing_unit_parallelism_report.md` — hierarchical resource analysis: which "
         "processing-unit shapes the workloads imply (one bigger / many identical / specialized).\n"
+        "- `pipeline_envelope.yaml`, `pipeline_stage_table.csv` — multi-rate phase model "
+        "(cadence per phase). `pipeline_candidates.yaml`, `buffering_requirement_table.csv`, "
+        "`overlap_opportunities.md` — candidate phase overlaps + the buffer/event/queue "
+        "abstractions each requires (structural, not scheduled).\n"
+        "- `processing_unit_guidance.yaml`, `heterogeneity_report.md` — monolithic vs. replicated "
+        "vs. heterogeneous evidence + the search-space implication (evidence only, no selection).\n"
         "- `traffic_table.csv` — per-region byte traffic + avoidable reload (memory/reuse envelope).\n"
         "- `dispatch_granularity_table.csv` — command-graph view (honest: loop unrolled, syncs "
         "unavailable).\n"
@@ -680,6 +688,25 @@ def run_case_study(out_dir) -> dict:
                   header="processing_unit_candidates (structural; no speedup)").write(out)
     Artifact("processing_unit_parallelism_report.md",
              RH.processing_unit_report_md(units, pressure, clusters, dags)).write(out)
+    # P8 pipeline / multi-rate overlap / processing-unit multiplicity guidance (structural)
+    graph_by_wl = {g.workload: g for g in graphs}
+    phase_by_wl = {w: PE.phase_model(graph_by_wl[w], geom_by_workload[w])
+                   for w in geom_by_workload}
+    overlap_by_wl = {w: PE.overlap_candidates(graph_by_wl[w], phase_by_wl[w])
+                     for w in phase_by_wl}
+    yaml_artifact("pipeline_envelope.yaml", PE.pipeline_envelope_yaml(phase_by_wl),
+                  header="pipeline_envelope (multi-rate phase model; no speedup)").write(out)
+    Artifact("pipeline_stage_table.csv", PE.pipeline_stage_csv(phase_by_wl)).write(out)
+    yaml_artifact("pipeline_candidates.yaml", PE.pipeline_candidates_yaml(overlap_by_wl),
+                  header="pipeline_candidates (structural overlap; no speedup)").write(out)
+    Artifact("buffering_requirement_table.csv",
+             PE.buffering_requirement_csv(overlap_by_wl)).write(out)
+    Artifact("overlap_opportunities.md",
+             PE.overlap_report_md(phase_by_wl, overlap_by_wl)).write(out)
+    pug = PUG.guidance(all_shapes, dags, pressure, all_axes)
+    yaml_artifact("processing_unit_guidance.yaml", PUG.guidance_yaml(pug),
+                  header="processing_unit_guidance (evidence only; no selection)").write(out)
+    Artifact("heterogeneity_report.md", PUG.heterogeneity_report_md(pug)).write(out)
     # TorchAO integration plan (a plan, not a sweep)
     Artifact("torchao_integration_plan.md", NC.torchao_integration_plan_md()).write(out)
     # accuracy gate (measurable-now real leg)
