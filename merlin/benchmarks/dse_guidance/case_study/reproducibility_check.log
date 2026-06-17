@@ -13,8 +13,10 @@ cross-workload case study over 4 real captures: rdt, openvla, small_llama, tiny_
 
 $ diff -r merlin/benchmarks/dse_guidance/case_study "$TMP"   # (excluding the 4 hand-authored V0 docs)
 RESULT: BYTE-STABLE — generated artifacts identical to the committed reference.
-  committed total files : 66    regenerated total files : 66
-  committed root  files : 22    regenerated root  files : 22
+  generated total files : 81    (was 66 at the V0 freeze; +15 from the P5a/P5b/P6 layer:
+  per-workload memory_envelope.yaml / command_graph.yaml / numerical_candidate_certificates.yaml
+  + cross-workload traffic_table.csv / dispatch_granularity_table.csv /
+  accuracy_gated_dtype_candidates.csv)
 
 Note: the four V0 verification files (current_state_audit.md, claim_evidence_matrix.csv,
 reproducibility_check.log, known_limitations.md) are hand-authored verification overlays; they are
@@ -63,7 +65,12 @@ control-rate from deployment; (rdt additionally) per-format quantization accurac
 5. TESTS
 ================================================================================
 $ .venv/bin/python -m pytest merlin/python/tests/test_dse_guidance.py -q
-69 passed.
+74 passed (69 at V0 + 5 for the P5a/P5b/P6 layer, incl. a regression for the accuracy-gate fix).
+
+NOTE (accuracy-gate correctness fix, this layer): accuracy_gate._family matched the generic
+"w8a8" before "fp8", so "fp8_w8a8" was misclassified as int8 and would have falsely inherited the
+measured int8 pass. Fixed (fp8 checked first); the accuracy_gated_dtype_candidates.csv now shows
+ONLY int8 as measured_pass; fp8/int4 are blocked_by_missing_accuracy. Regression test added.
 $ .venv/bin/python -m pytest merlin/python/tests --ignore=...test_dse_guidance.py \
       --deselect test_precision.py::test_f32_accumulation_is_far_more_accurate
 323 passed, 27 skipped, 1 deselected (lone pre-existing, unrelated test_precision NaN).

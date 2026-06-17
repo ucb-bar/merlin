@@ -51,10 +51,12 @@ def status_for(model: str, dtype: str, points: list[AccuracyPoint] | None = None
 
 def _family(dtype: str) -> str:
     d = dtype.lower()
-    if "int8" in d or d == "i8" or "w8a8" in d:
-        return "int8"
+    # fp8 must be checked before the generic "w8a8" (fp8_w8a8 is fp8, not int8) so a measured int8
+    # result is never falsely inherited by an unmeasured fp8 format.
     if "fp8" in d or "float8" in d:
         return "fp8"
+    if "int8" in d or d == "i8" or "w8a8" in d:
+        return "int8"
     if "int4" in d or "i4" in d:
         return "int4"
     if "fp4" in d:

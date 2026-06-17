@@ -66,15 +66,24 @@ named. The package is built to consume those measurements the moment they exist.
 
 ## Verification summary (full log: `reproducibility_check.log`)
 
-1. **Reproducible** — `bash reproduce_case_study.sh` regenerates **66/66 generated artifacts
-   byte-stably**. The four V0 docs are hand-authored verification overlays (the only non-generated
-   files here).
+1. **Reproducible** — `bash reproduce_case_study.sh` regenerates **81/81 generated artifacts
+   byte-stably** (66 at the original V0 freeze + 15 from the P5a/P5b/P6 layer). The four V0 docs are
+   hand-authored verification overlays (the only non-generated files here).
 2. **Isolated** — no unrelated repo files modified; in-flight gemmini/llvmlower/runtime work untouched.
 3. **Honest** — dangerous terms (`improvement`, `optimal`, `best design`, `predicted cycles`,
    `calibrated future`, `gap_closure`, `faster`) absent; `speedup` only in disclaimers/blocked fields.
 4. **Readiness** — structural=True, quantitative=False for all four workloads.
-5. **Tests** — 69 guidance tests pass; bounded suite 323 passed / 27 skipped (lone pre-existing,
+5. **Tests** — 74 guidance tests pass; bounded suite 323 passed / 27 skipped (lone pre-existing,
    unrelated `test_precision` NaN deselected).
+
+### P5a/P5b/P6 layer added on top of the freeze
+`traffic_table.csv` (memory/reuse envelope), `dispatch_granularity_table.csv` (honest command-graph
+view — syncs/dependencies `unavailable`, loop unrolled), `accuracy_gated_dtype_candidates.csv`
+(int8 measured-pass; fp8/int4 blocked), plus per-workload `memory_envelope.yaml` /
+`command_graph.yaml` / `numerical_candidate_certificates.yaml`. Includes a correctness fix:
+`accuracy_gate._family` matched `w8a8` before `fp8`, so `fp8_w8a8` was misclassified as int8 and
+would have falsely inherited the measured int8 pass — fixed (fp8 checked first), with a regression
+test. See `known_limitations.md` §8–9 for what these artifacts honestly cannot show.
 
 ## Acceptance criteria
 - [x] `current_state_audit.md` reads standalone

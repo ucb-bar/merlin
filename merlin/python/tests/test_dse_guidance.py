@@ -1096,3 +1096,90 @@ def test_case_study_emits_contract_completeness_package(tmp_path):
         assert cat in prio
     # at least one per-family search-space template exists
     assert list(tmp_path.glob("dse_search_space_template_*.yaml"))
+
+
+# ============================================================ P5a/P5b/P6 envelope + certificates
+
+def test_memory_envelope_traffic_and_avoidable_reload():
+    from merlin.dse_guidance import memory_envelope as ME
+    from merlin.dse_guidance.design_envelope import E_IR
+    topo, attr = _pkg_topo_attr(K=5)           # head invocations=5, weight_bytes=1024*1024*4
+    rows = ME.region_traffic(attr)
+    head = next(r for r in rows if r.region == "repeated_head")
+    wb = 1024 * 1024 * 4
+    assert head.invocations == 5 and head.reuse_factor == 5
+    assert head.weight_traffic_if_nonresident == wb * 5
+    assert head.avoidable_weight_reload == wb * 4          # residency keeps 1 load
+    obj = ME.to_yaml_obj(rows, "m")
+    r = obj["memory_envelope"]["regions"][0]
+    assert r["weight_bytes"]["evidence"] == E_IR
+    # traffic the flat capture cannot expose is unavailable, not invented
+    assert r["intermediate_materialization_bytes"]["value"] is None
+    assert "gap_closure" not in str(obj).lower()   # speedup only in the disclaimer note
+
+
+def test_command_graph_is_honest_about_unrolled_loop():
+    from merlin.dse_guidance import command_graph as CG
+    topo, attr = _pkg_topo_attr(K=5)           # head has 1 matmul
+    g = CG.command_graph(topo, attr)
+    assert g["commands_per_step_matmul_proxy"]["value"] == 1
+    assert g["dispatches_per_replan_proxy"]["value"] == 5          # proxy * K
+    assert g["batchable"]["value"] is True
+    # syncs / dependencies / allocations are NOT recoverable from an unrolled capture
+    assert g["syncs_per_step"]["value"] is None
+    assert g["dependency_graph"]["value"] is None
+    assert g["dependency_graph"]["evidence"] == "unavailable"
+    assert "speedup" in g["what_is_not_claimed"]
+
+
+def test_accuracy_gate_fp8_not_falsely_int8():
+    # regression: 'fp8_w8a8' contains 'w8a8' but must NOT inherit the measured int8 pass.
+    from merlin.dse_guidance import accuracy_gate as AG
+    assert AG._family("fp8_w8a8") == "fp8"
+    assert AG._family("int8_w8a8") == "int8"
+    assert AG.status_for("openvla", "int8_w8a8") == "pass"
+    assert AG.status_for("openvla", "fp8_w8a8") == "unavailable"   # fp8 not measured
+
+
+def test_dtype_certificates_accuracy_gated():
+    from merlin.dse_guidance import dtype_certificates as DC, numerical_contract as NC
+    from merlin.dse_guidance import design_envelope as DE
+    if not (_RDT_RECAP / "model.mlir").is_file():
+        pytest.skip("no rdt recapture")
+    nc = NC.audit(str(_RDT_RECAP), workload="x", repeated_head_weight_bytes=4_000_000)
+    env = DE.derive("x", K=5, deadline_s=None, deadline_evidence="unavailable",
+                    macs_per_step=1, weight_bytes=4_000_000, activation_bytes_per_step=0,
+                    dispatches_per_step=1, dispatches_evidence="derived_requirement",
+                    captured_dtype="f32")
+    # workload 'openvla' has a measured int8 pass; use it to exercise the legal path
+    certs = DC.certificates(nc, env, "openvla")
+    int8 = next(c for c in certs if c.dtype == "int8_w8a8")
+    fp8 = next(c for c in certs if c.dtype == "fp8_w8a8")
+    assert int8.accuracy_status == "measured_pass"
+    assert int8.dse_status == "accuracy_legal_structural_candidate"
+    assert int8.resident_capacity_at_format_B == env.capacity_by_dtype_B["int8"]
+    assert fp8.accuracy_status == "unavailable"            # never assumed
+    assert fp8.dse_status == "blocked_by_missing_accuracy"
+    assert int8.required_compiler_proofs and int8.what_dse_should_explore
+    obj = DC.to_yaml_obj(certs, "openvla")
+    assert "speedup" in str(obj["numerical_candidate_certificates"]["certificates"][0]
+                            ["what_is_not_claimed"])
+    assert "gap_closure" not in str(obj).lower()
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_case_study_emits_envelope_and_certificate_tables(tmp_path):
+    from merlin.dse_guidance import case_study as CS
+    CS.run_case_study(tmp_path)
+    for f in ("traffic_table.csv", "dispatch_granularity_table.csv",
+              "accuracy_gated_dtype_candidates.csv"):
+        assert (tmp_path / f).is_file(), f"missing {f}"
+    # honest command-graph: syncs/dependency unavailable for every workload
+    dg = (tmp_path / "dispatch_granularity_table.csv").read_text()
+    assert dg.count("unavailable") >= 2
+    # accuracy gating: NO non-int8 format may show measured_pass
+    gated = (tmp_path / "accuracy_gated_dtype_candidates.csv").read_text()
+    import csv, io
+    for r in csv.DictReader(io.StringIO(gated)):
+        if r["dtype"] != "int8_w8a8":
+            assert r["accuracy_status"] != "measured_pass", f"false pass: {r}"

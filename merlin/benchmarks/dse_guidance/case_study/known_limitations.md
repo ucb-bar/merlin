@@ -44,7 +44,20 @@ loop-carried machinery exists and is unit-tested, but the recaptured topologies 
 do not appear for these workloads. Honest gap, not a bug. *Lift:* a Level-0 topology sidecar (or
 Level-2 loop-preserving capture).
 
-## 8. Abstraction-pressure detectors are coarse
+## 8. Command-graph is structural-only (loop unrolled)
+`dispatch_granularity_table.csv` / `command_graph.yaml` give a matmul-count **proxy** for commands
+per step (a lower bound — measured dispatch granularity is ~12–14× higher) and the dispatches-per-
+replan proxy scaled by K. **Syncs, per-step dependencies, and in-loop allocations are `unavailable`**
+because `torch.export` unrolled the host loop — a true command graph is not recoverable from the
+flat capture. This artifact is largely an honest restatement, by design. *Lift:* Level-2
+loop-preserving capture.
+
+## 9. Memory envelope omits intermediate / layout-conversion traffic
+`traffic_table.csv` covers weight + activation traffic and avoidable reload (recovered/derived).
+Intermediate-materialization and layout-conversion bytes are **not** exposed by the flat capture and
+are emitted `unavailable`, never estimated.
+
+## 10. Abstraction-pressure detectors are coarse
 All four workloads suggest most axes; `evidence_strength` is `strong` only for the two head-attributed
 axes (`resident_action_head_weights`, `packed_layout_preservation`) and `structural_only` otherwise.
 The ranking is a structural **count**, never a speedup.

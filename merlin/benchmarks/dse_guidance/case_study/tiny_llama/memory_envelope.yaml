@@ -1,0 +1,33 @@
+# memory_envelope: tiny_llama
+memory_envelope:
+  note: byte traffic from recovered per-region facts; weight/activation bytes are recovered_from_ir, ×K scaling is derived from an assumed_reference K. intermediate-materialization and layout-conversion traffic are NOT exposed by a flat capture and are marked unavailable. No bandwidth/speedup claimed.
+  regions:
+  - activation_bytes_per_invocation:
+      evidence: recovered_from_ir
+      value: 1691648
+    activation_traffic_total:
+      evidence: derived_requirement
+      value: 54132736
+    avoidable_weight_reload:
+      evidence: derived_requirement
+      value: 19048431616
+    intermediate_materialization_bytes:
+      evidence: unavailable
+      value: null
+    invocations:
+      evidence: assumed_reference
+      value: 32
+    layout_conversion_bytes:
+      evidence: unavailable
+      value: null
+    region: repeated_head
+    reuse_factor:
+      evidence: assumed_reference
+      value: 32
+    weight_bytes:
+      evidence: recovered_from_ir
+      value: 614465536
+    weight_traffic_if_nonresident:
+      evidence: derived_requirement
+      value: 19662897152
+  workload: tiny_llama

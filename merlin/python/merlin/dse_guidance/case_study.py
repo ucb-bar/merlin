@@ -23,9 +23,12 @@ from merlin.common.artifacts import Artifact
 from merlin.dse_guidance import accuracy_gate as AG
 from merlin.dse_guidance import attribution as ATTR
 from merlin.dse_guidance import candidates as CAND
+from merlin.dse_guidance import command_graph as CG
 from merlin.dse_guidance import compiler_proof as CP
 from merlin.dse_guidance import contract as CON
 from merlin.dse_guidance import design_envelope as DE
+from merlin.dse_guidance import dtype_certificates as DC
+from merlin.dse_guidance import memory_envelope as ME
 from merlin.dse_guidance import numerical_contract as NC
 from merlin.dse_guidance import search_space as SS
 from merlin.dse_guidance import state_lifetime as SL
@@ -435,6 +438,11 @@ def _readme_md(packages) -> str:
         "- `<workload>/dse_search_space_template.yaml`, `dse_search_space_template_<family>.yaml` — "
         "the **DSE search-space template** (the bridge a DSE engine consumes: enabled axes + knobs).\n"
         "- `measurement_priority_table.csv` — what to measure next, ranked by candidates unblocked.\n"
+        "- `traffic_table.csv` — per-region byte traffic + avoidable reload (memory/reuse envelope).\n"
+        "- `dispatch_granularity_table.csv` — command-graph view (honest: loop unrolled, syncs "
+        "unavailable).\n"
+        "- `accuracy_gated_dtype_candidates.csv` — which low-bit formats are accuracy-legal vs "
+        "blocked (int8 measured; fp8/int4 unavailable).\n"
         "- `torchao_integration_plan.md` — plan (not a sweep) for wiring low-bit formats to the "
         "numerical candidates.\n"
         "- `dse_readiness_summary.csv` — what a DSE engine can consume today + what's missing.\n"
@@ -497,6 +505,13 @@ def run_case_study(out_dir) -> dict:
         recs = SL.state_records(c.topo, c.attribution)
         yaml_artifact(f"{c.workload}/state_lifetime.yaml", SL.to_yaml_obj(recs, c.workload),
                       header=f"state_lifetime: {c.workload}").write(out)
+        # memory-traffic / reuse envelope + (honest) command-graph view
+        mem = ME.region_traffic(c.attribution)
+        yaml_artifact(f"{c.workload}/memory_envelope.yaml", ME.to_yaml_obj(mem, c.workload),
+                      header=f"memory_envelope: {c.workload}").write(out)
+        cmd = CG.command_graph(c.topo, c.attribution)
+        yaml_artifact(f"{c.workload}/command_graph.yaml", CG.to_yaml_obj(cmd),
+                      header=f"command_graph (honest; loop unrolled): {c.workload}").write(out)
         # numerical contract per recaptured workload (fp32 -> low-bit opportunity)
         nc = NC.audit(cap, workload=c.workload, workload_class=c.cls,
                       repeated_head_weight_bytes=_head_weight_bytes(c),
@@ -511,6 +526,11 @@ def run_case_study(out_dir) -> dict:
             yaml_artifact(f"{c.workload}/design_envelope.yaml", DE.to_yaml_obj(env),
                           header=f"design_envelope (requirements, not calibration): {c.workload}").write(out)
             Artifact(f"{c.workload}/design_envelope.md", DE.markdown(env)).write(out)
+        # accuracy-gated dtype candidate certificates (int8 measured; others blocked, never assumed)
+        certs = DC.certificates(nc, env, c.workload)
+        yaml_artifact(f"{c.workload}/numerical_candidate_certificates.yaml",
+                      DC.to_yaml_obj(certs, c.workload),
+                      header=f"numerical_candidate_certificates: {c.workload}").write(out)
         # workload-contract package: abstraction candidates + readiness + measurement plan + report
         cands = CON.abstraction_candidates(c.candidates, nc)
         acc = AG.status_for(c.workload, "int8")          # measured int8 accuracy (else unavailable)
@@ -527,7 +547,7 @@ def run_case_study(out_dir) -> dict:
                  CON.workload_contract_report_md(c.topo, c.attribution, nc, env, cands,
                                                  readiness, plan)).write(out)
         pkg = {"case": c, "env": env, "nc": nc, "cands": cands, "readiness": readiness,
-               "acc": acc, "state": recs, "plan": plan}
+               "acc": acc, "state": recs, "plan": plan, "mem": mem, "cmd": cmd, "certs": certs}
         # DSE search-space template (the bridge artifact) — per workload
         yaml_artifact(f"{c.workload}/dse_search_space_template.yaml",
                       SS.to_yaml_obj(SS.template_for_workload(pkg)),
@@ -552,6 +572,10 @@ def run_case_study(out_dir) -> dict:
     Artifact("workload_family_table.csv", WF.workload_family_csv(packages)).write(out)
     Artifact("measurement_priority_table.csv",
              _measurement_priority_table(packages)).write(out)
+    # memory-traffic envelope, command-graph granularity, accuracy-gated dtype certificates
+    Artifact("traffic_table.csv", ME.traffic_csv(packages)).write(out)
+    Artifact("dispatch_granularity_table.csv", CG.dispatch_granularity_csv(packages)).write(out)
+    Artifact("accuracy_gated_dtype_candidates.csv", DC.gated_csv(packages)).write(out)
     # per-family search-space templates (union of member-workload axes)
     for fam, axis_set in sorted(WF.family_axis_sets(packages).items()):
         yaml_artifact(f"dse_search_space_template_{fam}.yaml",
