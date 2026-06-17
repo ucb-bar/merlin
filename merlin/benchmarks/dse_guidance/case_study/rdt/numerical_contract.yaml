@@ -44,6 +44,17 @@ numerical_contract:
     - i32 intermediate bytes
     - epilogue dispatch count
   expected_contract: null
+  honesty:
+    accumulator_dtype:
+      evidence: recovered_from_ir
+      value: f32
+    note: scale/zero-point/group-size and sparsity metadata are not present in a flat dequantized capture; they are marked unavailable, never invented.
+    scale_metadata:
+      evidence: unavailable
+      value: erased_or_unavailable
+    sparsity_metadata:
+      evidence: unavailable
+      value: erased_or_unavailable
   lost_structure: []
   mismatch: null
   observed:
@@ -54,5 +65,10 @@ numerical_contract:
     packed_layout_visible: true
     requant_ops: 0
     weight_storage_dtype: f32
+  per_region_dtype:
+  - dtype: f32
+    evidence: recovered_from_ir
+    n: 20
+    region: repeated_head
   severity: low
   workload: rdt

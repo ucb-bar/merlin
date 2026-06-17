@@ -19,6 +19,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from merlin.dse_guidance.design_envelope import E_DERIVED, E_IR, E_NA
+
 _QUANT_RE = re.compile(r'prov\.quantization = "([^"]+)"')
 _MATMUL_DTYPE_RE = re.compile(r'linalg\.matmul[^\n]*?ins\([^:]*:\s*tensor<[0-9x?]+x([a-z0-9]+)>')
 _LOWBIT = {"int8_weight_only": "int8", "float8_weight_only_e4m3": "fp8",
@@ -55,6 +57,15 @@ class NumericalContract:
     expected_contract: str | None = None
     mismatch: str | None = None
     candidates: list[NumericalCandidate] = field(default_factory=list)
+    # Per-region dtype (joined from IR matmul records + role attribution), empty when unavailable.
+    per_region_dtype: list[dict] = field(default_factory=list)
+    # Honesty fields: what the capture does NOT carry is stated, never invented.
+    accumulator_dtype: str = "?"
+    accumulator_dtype_evidence: str = E_NA
+    scale_metadata: str = "erased_or_unavailable"
+    scale_metadata_evidence: str = E_NA
+    sparsity_metadata: str = "erased_or_unavailable"
+    sparsity_metadata_evidence: str = E_NA
 
 
 def _read_text(capture_dir: str) -> str:
@@ -85,10 +96,48 @@ def _wide(dtype: str) -> bool:
     return dtype in ("f32", "f64", "bf16", "f16", "fp16", "float32")
 
 
+_LOWBIT_STORAGE = ("int8", "i8", "int4", "i4")
+
+
+def per_region_dtype(records, attribution) -> list[dict]:
+    """Per-region compute dtype, joining IR matmul records (dtype) with role attribution.
+
+    Returns one entry per attributed region with at least one dtyped matmul; regions with no
+    attributed/dtyped matmuls are omitted (never fabricated). Evidence is ``recovered_from_ir``.
+    """
+    if not records or attribution is None:
+        return []
+    by_index = {r.index: r for r in records}
+    out: list[dict] = []
+    for region in attribution.regions:
+        if region.attribution_status != "attributed":
+            continue
+        dtypes = [by_index[i].dtype for i in region.matmul_indices
+                  if i in by_index and by_index[i].dtype]
+        if not dtypes:
+            continue
+        dominant = max(set(dtypes), key=dtypes.count)
+        out.append({"region": region.role, "dtype": dominant, "n": len(dtypes), "evidence": E_IR})
+    return out
+
+
+def _accumulator_dtype(storage: str, compute: str) -> tuple[str, str]:
+    """Inferred accumulator dtype + evidence. i32 for integer low-bit storage (derived), else the
+    compute dtype as observed (recovered_from_ir)."""
+    if storage.lower() in _LOWBIT_STORAGE:
+        return "i32", E_DERIVED          # integer low-bit matmuls accumulate in i32 (inferred)
+    return compute, E_IR
+
+
 def audit(capture_dir: str, *, workload: str = "?", workload_class: str | None = None,
           repeated_head_weight_bytes: int | None = None,
-          has_epilogue: bool = False, expected_contract: str | None = None) -> NumericalContract:
-    """Audit one capture's numerical contract; attach structural candidates (no quantitative claims)."""
+          has_epilogue: bool = False, expected_contract: str | None = None,
+          records=None, attribution=None) -> NumericalContract:
+    """Audit one capture's numerical contract; attach structural candidates (no quantitative claims).
+
+    When ``records`` (from :func:`attribution.extract_matmuls`) and ``attribution`` are supplied, a
+    per-region dtype view is added by joining matmul dtypes to recovered roles.
+    """
     f = extract_numerical_facts(capture_dir)
     quant = f["declared_quantization"]
     low_bit_storage = quant in _LOWBIT
@@ -111,6 +160,7 @@ def audit(capture_dir: str, *, workload: str = "?", workload_class: str | None =
         if severity != "high":
             severity = "medium"
 
+    acc_dtype, acc_evidence = _accumulator_dtype(storage, compute)
     contract = NumericalContract(
         workload=workload, declared_quantization=quant, weight_storage_dtype=storage,
         compute_dtype=compute, n_matmuls=f["n_matmuls"], dequantize_ops=f["dequantize_ops"],
@@ -118,6 +168,8 @@ def audit(capture_dir: str, *, workload: str = "?", workload_class: str | None =
         low_bit_compute_lost=low_bit_compute_lost, packed_layout_visible=packed_layout_visible,
         lost_structure=lost, severity=severity, expected_contract=expected_contract,
         mismatch=mismatch,
+        per_region_dtype=per_region_dtype(records, attribution),
+        accumulator_dtype=acc_dtype, accumulator_dtype_evidence=acc_evidence,
     )
     contract.candidates = _candidates(contract, repeated_head_weight_bytes, has_epilogue,
                                       workload_class)
@@ -241,6 +293,17 @@ def to_yaml_obj(c: NumericalContract) -> dict:
                 "requant_ops": c.requant_ops,
                 "packed_layout_visible": c.packed_layout_visible,
             },
+            "per_region_dtype": c.per_region_dtype,
+            "honesty": {
+                "accumulator_dtype": {"value": c.accumulator_dtype,
+                                      "evidence": c.accumulator_dtype_evidence},
+                "scale_metadata": {"value": c.scale_metadata,
+                                   "evidence": c.scale_metadata_evidence},
+                "sparsity_metadata": {"value": c.sparsity_metadata,
+                                      "evidence": c.sparsity_metadata_evidence},
+                "note": "scale/zero-point/group-size and sparsity metadata are not present in a flat "
+                        "dequantized capture; they are marked unavailable, never invented.",
+            },
             "expected_contract": c.expected_contract,
             "mismatch": c.mismatch,
             "lost_structure": c.lost_structure,
@@ -257,3 +320,44 @@ def to_yaml_obj(c: NumericalContract) -> dict:
             ],
         }
     }
+
+
+def torchao_integration_plan_md() -> str:
+    """A PLAN (not a sweep): how a future DSE engine would wire TorchAO low-bit formats to the
+    numerical abstraction candidates, and what each format needs measured before it is legal."""
+    return (
+        "# TorchAO integration plan — numerical-contract candidates\n\n"
+        "> This is a **plan**, not a sweep. No quantization run is executed here, no speedup is "
+        "claimed, and no accuracy number is asserted for any format that has not been measured. "
+        "Only int8 (W8A8) has measured accuracy today (see `accuracy_gate_report.md`); every other "
+        "format is `unavailable` until a gate is run.\n\n"
+        "## What this connects\n"
+        "The numerical-contract audit surfaces structural candidates "
+        "(`resident_packed_lowbit_weights`, `native_lowbit_compute`, `fused_dequant_matmul`, "
+        "`fused_requant_epilogue`). Each needs a real low-bit format to become concrete. TorchAO is "
+        "the path to produce those formats and the metadata a compiler needs to keep them.\n\n"
+        "## Order to try (cheapest-signal first) — accuracy status\n"
+        "| format | TorchAO config | accuracy status | DSE candidate it informs |\n"
+        "|--------|----------------|-----------------|--------------------------|\n"
+        "| int8 W8A8 | `int8_dynamic_activation_int8_weight` | **measured: pass** (5/5, results.md) | "
+        "`native_lowbit_compute`, `resident_packed_lowbit_weights` |\n"
+        "| fp8 W8A8 | `float8_dynamic_activation_float8_weight` | unavailable (not measured) | "
+        "`native_lowbit_compute` |\n"
+        "| int4 weight-only | `int4_weight_only` | unavailable (not measured) | "
+        "`resident_packed_lowbit_weights` |\n"
+        "| int4 weight + fp8 act | (composed) | unavailable (not measured) | "
+        "`resident_packed_lowbit_weights` |\n\n"
+        "## What each format needs measured before it is DSE-legal\n"
+        "- **accuracy gate** vs fp32 on the task metric (cos/argmax, and trajectory error for action "
+        "outputs) — the only measurable-now leg; int8 done, others pending.\n"
+        "- **packed-layout + scale metadata preserved** through capture — today the flat capture "
+        "dequantizes to f32, so packed layout and scale/zero-point/group-size are erased "
+        "(`scale_metadata: unavailable` in `numerical_contract.yaml`).\n"
+        "- **low-bit kernel cost** — requires the proposed design (target_measured), not claimed here.\n\n"
+        "## What compiler facts to preserve (so DSE can target the format)\n"
+        "- packed weight layout as a dispatch-crossing object; per-tensor/-channel/-group scale "
+        "objects; dequant/requant placement; i32 (or fp32) accumulator width and epilogue commit.\n\n"
+        "## What is NOT claimed\n"
+        "No speedup, no cycle/area/energy, no accuracy for any `unavailable` format, and no broad "
+        "dtype sweep is run by this tool. This plan only states which formats to measure, in what "
+        "order, and which abstraction each would unblock.\n")

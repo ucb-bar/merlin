@@ -930,3 +930,169 @@ def test_model_study_runs_and_summarizes(tmp_path):
     assert "becomes legal under multi-rate" in text
     # Even an unparsed capture still shows the structural flip (legality), not a crash.
     assert "resident_packed_weights" in text
+
+
+# ============================================================ contract-completeness package (P5-P8)
+
+def _pkg_topo_attr(K=5, fqn="model.action_expert.denoise.0"):
+    """A minimal (topo, attribution) with an attributed loop-invariant-weight repeated head."""
+    topo = _topo(K=K)
+    recs = (ATTR.MatmulRecord(0, "m0", "addmm", True, 28, 1024, 1024, 1024 * 1024 * 4, 1, "f32",
+                              fqn=fqn),)
+    return topo, ATTR.attribute_records(recs, topo)
+
+
+def test_state_lifetime_joins_bytes_and_scope():
+    from merlin.dse_guidance import state_lifetime as SL
+    from merlin.dse_guidance.design_envelope import E_IR
+    topo, attr = _pkg_topo_attr(K=5)
+    recs = SL.state_records(topo, attr)
+    w = next(r for r in recs if r.state == "weights")
+    assert w.lifetime_scope == SL.SCOPE_INVARIANT
+    assert w.bytes == 1024 * 1024 * 4 and w.bytes_evidence == E_IR
+    assert w.implied_abstraction == "resident_weight_object"
+    assert w.reused_times == 5 and w.scope_evidence == "recovered_from_prov_fqn"
+
+
+def test_state_lifetime_marks_unknown_bytes_unavailable():
+    from merlin.dse_guidance import state_lifetime as SL
+    from merlin.dse_guidance.design_envelope import E_NA
+    # A non-weight loop-invariant state has no byte fact in a flat capture -> unavailable, not invented.
+    doc = {"workload": "m", "class": "diffusion/denoise_steps",
+           "timing": {"K": 4, "H": 4, "control_rate_hz": 30},
+           "regions": [{"name": "hd", "role": "repeated_head", "invocation_count": 4,
+                        "loop_invariant_state": ["prefix_kv"]}]}
+    topo = TOP.from_temporal(T.parse(doc))
+    recs = SL.state_records(topo, attribution=None)
+    kv = next(r for r in recs if r.state == "prefix_kv")
+    assert kv.bytes is None and kv.bytes_evidence == E_NA
+    assert kv.implied_abstraction == "prefix_kv_object"
+
+
+def test_compiler_proof_status_derivation():
+    from merlin.dse_guidance import compiler_proof as CP
+    topo, attr = _pkg_topo_attr(K=5)
+    case = type("C", (), {"topo": topo, "attribution": attr, "workload": "m"})()
+    assert CP.proof_status("resident_action_head_weights", case) == "proven_for_workload"
+    assert CP.proof_status("autonomous_K_loop", case) == "assumed"
+    assert CP.proof_status("packed_layout_preservation", case) == "unknown"   # layout erased
+    assert CP.proof_status("native_lowbit_compute", case) == "unknown"
+
+
+def test_compiler_proof_no_invented_proofs():
+    from merlin.dse_guidance import compiler_proof as CP, contract as CON
+    topo, attr = _pkg_topo_attr(K=5)
+    case = type("C", (), {"topo": topo, "attribution": attr, "workload": "m"})()
+    cands = CON.abstraction_candidates(CAND.detect(topo, attribution=attr), None)
+    rows = CP.proof_matrix([{"case": case, "cands": cands}])
+    assert rows
+    for r in rows:
+        # structural axes must reuse the catalog proof verbatim (nothing invented)
+        cat = CP.catalog_proof(r.axis)
+        if cat is not None:
+            assert r.compiler_proof_needed == cat
+
+
+def test_workload_family_clusters_by_class():
+    from merlin.dse_guidance import workload_family as WF
+    # build two cases via topology classes
+    d_topo = TOP.from_temporal(T.parse({"workload": "d", "class": "diffusion/denoise_steps",
+                                        "timing": {"K": 5, "H": 5, "control_rate_hz": 30},
+                                        "regions": [{"name": "h", "role": "repeated_head"}]}))
+    l_topo = TOP.from_temporal(T.parse({"workload": "l", "class": "llm/token_decode",
+                                        "timing": {"K": 8, "H": 8, "control_rate_hz": 30},
+                                        "regions": [{"name": "h", "role": "repeated_head"}]}))
+    c1 = type("C", (), {"topo": d_topo, "workload": "d"})()
+    c2 = type("C", (), {"topo": l_topo, "workload": "l"})()
+    fake_cand = type("AC", (), {"axis": "resident_action_head_weights"})()
+    pkgs = [{"case": c1, "cands": [fake_cand]}, {"case": c2, "cands": [fake_cand]}]
+    fams = {r.workload: r.family for r in WF.family_rows(pkgs)}
+    assert fams["d"] == "iterative_denoise" and fams["l"] == "token_decode"
+    sets = WF.family_axis_sets(pkgs)
+    assert "resident_action_head_weights" in sets["iterative_denoise"]
+
+
+def test_search_space_gates_by_enabled_axis_and_disclaims():
+    from merlin.dse_guidance import search_space as SS, contract as CON
+    from merlin.dse_guidance.design_envelope import E_NA
+    topo, attr = _pkg_topo_attr(K=5)
+    case = type("C", (), {"topo": topo, "attribution": attr, "workload": "m"})()
+    cands = CON.abstraction_candidates(CAND.detect(topo, attribution=attr), None)
+    obj = SS.to_yaml_obj(SS.template_for_workload({"case": case, "cands": cands}))
+    space = obj["dse_search_space_template"]
+    abstr = {e["axis"]: e for e in space["search_space"]["abstractions"]}
+    enabled = abstr["resident_action_head_weights"]
+    assert enabled["enabled"] is True and enabled["knobs"]   # carries ABSTRACTION_MAP knobs
+    # an axis this diffusion workload does not imply is listed but disabled + unavailable
+    assert abstr["quantized_KV_cache"]["enabled"] is False
+    assert abstr["quantized_KV_cache"]["evidence"] == E_NA
+    # discipline: what_is_not_claimed names speedup; no gap_closure anywhere
+    assert "speedup" in space["what_is_not_claimed"]
+    assert "gap_closure" not in str(obj).lower()
+
+
+def test_numerical_per_region_dtype_and_honesty_labels():
+    from merlin.dse_guidance import numerical_contract as NC
+    from merlin.dse_guidance.design_envelope import E_IR, E_NA
+    if not (_RDT_RECAP / "model.mlir").is_file():
+        pytest.skip("no rdt recapture")
+    topo = TOP.from_temporal(T.parse({
+        "workload": "rdt", "class": "diffusion/denoise_steps",
+        "timing": {"K": 5, "H": 64, "control_rate_hz": 30},
+        "regions": [{"name": "denoise", "role": "repeated_head", "invocation_count": 5,
+                     "loop_invariant_state": ["weights"]}]}))
+    recs = ATTR.extract_matmuls(str(_RDT_RECAP))
+    attr = ATTR.attribute(str(_RDT_RECAP), topo)
+    c = NC.audit(str(_RDT_RECAP), workload="rdt", records=recs, attribution=attr)
+    head = next(r for r in c.per_region_dtype if r["region"] == "repeated_head")
+    assert head["dtype"] and head["evidence"] == E_IR and head["n"] > 0
+    # honesty fields are labeled and never fabricated
+    assert c.accumulator_dtype and c.accumulator_dtype_evidence == E_IR  # f32 capture
+    assert c.scale_metadata == "erased_or_unavailable" and c.scale_metadata_evidence == E_NA
+    assert c.sparsity_metadata == "erased_or_unavailable"
+    blob = str(NC.to_yaml_obj(c)).lower()
+    assert "speedup" not in blob and "gap_closure" not in blob
+
+
+def test_numerical_accumulator_i32_for_int8_storage():
+    from merlin.dse_guidance import numerical_contract as NC
+    from merlin.dse_guidance.design_envelope import E_DERIVED
+    acc, ev = NC._accumulator_dtype("int8", "f32")
+    assert acc == "i32" and ev == E_DERIVED
+    acc2, ev2 = NC._accumulator_dtype("f32", "f32")
+    assert acc2 == "f32"
+
+
+def test_torchao_plan_is_plan_not_sweep():
+    from merlin.dse_guidance import numerical_contract as NC
+    md = NC.torchao_integration_plan_md()
+    assert "unavailable" in md.lower()                 # non-int8 formats not claimed
+    assert "measured: pass" in md.lower()              # int8 is the measured leg
+    assert "not a sweep" in md.lower()
+    # no fabricated per-format accuracy/speedup numbers
+    import re
+    assert not re.search(r"cos\s*=\s*0\.\d+", md.lower())
+    assert "x faster" not in md.lower()
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_case_study_emits_contract_completeness_package(tmp_path):
+    from merlin.dse_guidance import case_study as CS
+    CS.run_case_study(tmp_path)
+    for f in ("resident_state_table.csv", "compiler_proof_matrix.csv",
+              "abstraction_pressure_ranking.csv", "workload_family_table.csv",
+              "measurement_priority_table.csv", "torchao_integration_plan.md"):
+        assert (tmp_path / f).is_file(), f"missing {f}"
+    # abstraction pressure ranking is a count, not a speedup column
+    ranking = (tmp_path / "abstraction_pressure_ranking.csv").read_text()
+    assert "n_workloads" in ranking and "evidence_strength" in ranking
+    assert "speedup" not in ranking.lower() and "cycle" not in ranking.lower()
+    for line in ranking.strip().splitlines()[1:]:
+        strength = line.split(",")[4]
+        assert strength in ("strong", "partial", "structural_only")
+    # measurement priority uses the three contract categories
+    prio = (tmp_path / "measurement_priority_table.csv").read_text()
+    for cat in ("accuracy_measurable_now", "proxy_measured", "target_measured"):
+        assert cat in prio
+    # at least one per-family search-space template exists
+    assert list(tmp_path.glob("dse_search_space_template_*.yaml"))

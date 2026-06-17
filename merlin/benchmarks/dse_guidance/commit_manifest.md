@@ -7,6 +7,10 @@ The workload-contract analysis workstream (`merlin.dse_guidance`), branch
 Commits (newest first):
 
 ```
+(this phase)  contract-completeness package: state lifetime, compiler-proof matrix, abstraction
+              pressure ranking, workload families, DSE search-space template, measurement priority,
+              per-region numerical dtype + honesty fields + TorchAO integration plan
+2a85004  presentation-grade package + measured accuracy gate
 520d610  reframe to workload-contract analysis (envelope + abstractions)
 478cf70  P1-a per-component calibration + P1-b per-dispatch host cost
 eb36f7a  measured dispatch coupling (first measured runtime leg)

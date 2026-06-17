@@ -1,0 +1,14 @@
+# state_lifetime: tiny_llama
+state_lifetime:
+  note: lifetime scopes recovered from prov.fqn topology; only weight bytes are known from IR — other sizes are 'unavailable', never invented. No speedup/capacity claimed.
+  states:
+  - bytes: 614465536
+    bytes_evidence: recovered_from_ir
+    consumed_by: null
+    implied_abstraction: resident_weight_object
+    lifetime_scope: loop_invariant
+    produced_by: null
+    reused_times: 32
+    scope_evidence: recovered_from_prov_fqn
+    state: weights
+  workload: tiny_llama

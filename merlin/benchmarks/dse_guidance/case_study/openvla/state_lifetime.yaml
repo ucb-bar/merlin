@@ -1,0 +1,14 @@
+# state_lifetime: openvla
+state_lifetime:
+  note: lifetime scopes recovered from prov.fqn topology; only weight bytes are known from IR — other sizes are 'unavailable', never invented. No speedup/capacity claimed.
+  states:
+  - bytes: 3145728
+    bytes_evidence: recovered_from_ir
+    consumed_by: null
+    implied_abstraction: resident_weight_object
+    lifetime_scope: loop_invariant
+    produced_by: null
+    reused_times: 7
+    scope_evidence: recovered_from_prov_fqn
+    state: weights
+  workload: openvla
