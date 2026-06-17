@@ -38,6 +38,9 @@ CS_SHAPE = CS / "operator_shape_table.csv"
 CS_TILE = CS / "tile_waste_table.csv"
 CS_COVMAT = CS / "primitive_coverage_matrix.csv"
 CS_REGRET = CS / "primitive_regret_table.csv"
+CS_GRAPH = CS / "workload_contract_graph.yaml"
+ALLOWED_CADENCE = {"once_per_instruction", "once_per_replan", "K_times_per_replan", "token_loop",
+                   "control_tick", "once_per_forward", "unknown"}
 ALLOWED_EVIDENCE = {"recovered_from_ir", "recovered_from_prov_fqn", "assumed_reference",
                     "derived_requirement", "design_assumption", "measured", "proxy_measured",
                     "unavailable"}
@@ -345,15 +348,110 @@ def verify_p5_global() -> None:
     p5check(not leaked, f"P5 artifacts free of forbidden performance terms (found: {leaked})")
 
 
+# ============================================================ P6 multi-rate contract graph
+# Re-derived against the IR primitive + the P5 shape table + the attribution facts. A graph that
+# disagrees with what the earlier phases recovered fails a check.
+
+p6_results: list[tuple[bool, str]] = []
+
+
+def p6check(ok: bool, msg: str) -> None:
+    p6_results.append((bool(ok), msg))
+
+
+def _graphs_by_workload() -> dict:
+    g = load_yaml(CS_GRAPH)["workload_contract_graph"]
+    return {x["workload"]: x for x in g["graphs"]}
+
+
+def verify_p6_workload(w: str, graphs: dict) -> dict:
+    g = graphs[w]
+    nodes, edges = g["nodes"], g["edges"]
+    recs = ATTR.extract_matmuls(str(RECAP / w))
+
+    # P6-A: operator nodes match operator_shape_table.csv exactly (one per matmul, M/N/K/macs)
+    ops = [n for n in nodes if n["kind"] == "operator"]
+    shape_rows = {int(r["op_index"]): r for r in _csv_rows(CS_SHAPE) if r["workload"] == w}
+    op_ok = len(ops) == len(shape_rows) == len(recs)
+    for n in ops:
+        idx = int(n["id"].split(":")[-1])
+        sr = shape_rows.get(idx)
+        ss = n.get("shape_summary", {})
+        if not sr or any(int(ss.get(k, -1)) != int(sr[k]) for k in ("M", "N", "K", "macs")):
+            op_ok = False
+    p6check(op_ok, f"[{w}] graph operator nodes == operator_shape_table rows == {len(recs)} matmuls")
+
+    # P6-B: region nodes match attribution (independent raw recompute of role facts) + MAC identity
+    raw_roles = _head_facts_from_raw(w)["roles"]
+    regions = [n for n in nodes if n["kind"] == "region"]
+    reg_ok = True
+    for n in regions:
+        ws = n.get("work_summary", {})
+        rr = raw_roles.get(n["region_role"])
+        if rr is not None:
+            if int(ws.get("matmul_count") or 0) != rr["matmul_count"] \
+                    or int(ws.get("weight_bytes") or 0) != rr["weight_bytes"]:
+                reg_ok = False
+        mpi, mpr, inv = ws.get("macs_per_invocation"), ws.get("macs_per_replan"), \
+            (n.get("rate") or {}).get("invocations")
+        if mpi and mpr and inv and int(mpr) != int(mpi) * int(inv):  # derived MACs/replan identity
+            reg_ok = False
+    p6check(reg_ok, f"[{w}] region nodes match attribution facts; macs_per_replan == "
+                    f"macs_per_invocation * invocations")
+
+    # P6-C: K / invocation counts match the design-envelope input (loop trip == head invocations == K)
+    K = int(RECAP_MODELS[w]["K"])
+    loop = [n for n in nodes if n["kind"] == "loop_body"]
+    head = [n for n in regions if n["region_role"] == "repeated_head"]
+    k_ok = bool(loop) and int(loop[0]["rate"]["trip_count"]) == K \
+        and bool(head) and int(head[0]["rate"]["invocations"]) == K
+    p6check(k_ok, f"[{w}] loop_body trip_count == repeated_head invocations == K == {K}")
+
+    # P6-D: cadence vocabulary + edge evidence labels + unknown explicitness
+    cad_ok = all((n.get("rate") or {}).get("cadence", "unknown") in ALLOWED_CADENCE
+                 for n in nodes if n["kind"] in ("phase", "region", "loop_body"))
+    ev_ok = all(e["evidence"] in ALLOWED_EVIDENCE for e in edges)
+    unk_ok = all(e["evidence"] == "unavailable" and e.get("can_pipeline") == "unknown"
+                 for e in edges if e["kind"] == "unknown_dependency")
+    p6check(cad_ok, f"[{w}] all cadence fields in allowed vocabulary")
+    p6check(ev_ok, f"[{w}] all edge evidence labels valid")
+    p6check(unk_ok, f"[{w}] unknown_dependency edges are explicit (unavailable + can_pipeline unknown)")
+
+    from collections import Counter
+    nk = Counter(n["kind"] for n in nodes)
+    return {"workload": w, "nodes": len(nodes), "edges": len(edges),
+            "phase": nk.get("phase", 0), "region": nk.get("region", 0),
+            "operator": nk.get("operator", 0), "state": nk.get("state_object", 0)}
+
+
+def verify_p6_global(graphs: dict) -> None:
+    present = set(graphs) == {w for w in RECAP_MODELS if (RECAP / w / "model.mlir").is_file()}
+    p6check(present, f"graph contains all workloads ({sorted(graphs)})")
+    p6_files = ["workload_contract_graph.yaml", "workload_contract_graph_summary.md",
+                "phase_rate_table.csv", "multi_rate_contract.yaml", "rate_mismatch_report.md"]
+    leaked = {}
+    for fn in p6_files:
+        low = (CS / fn).read_text(errors="ignore").lower()
+        for t in DANGEROUS:
+            if t in low:
+                leaked.setdefault(t, []).append(fn)
+    p6check(not leaked, f"P6 artifacts free of forbidden performance terms (found: {leaked})")
+
+
 def main(write: bool = True) -> int:
     rows = [verify_workload(w) for w in RECAP_MODELS if (RECAP / w / "model.mlir").is_file()]
     verify_global()
     p5_rows = [verify_p5_workload(w) for w in RECAP_MODELS if (RECAP / w / "model.mlir").is_file()]
     verify_p5_global()
+    _graphs = _graphs_by_workload()
+    p6_rows = [verify_p6_workload(w, _graphs) for w in RECAP_MODELS
+               if (RECAP / w / "model.mlir").is_file()]
+    verify_p6_global(_graphs)
 
-    passed = sum(1 for ok, _ in results if ok) + sum(1 for ok, _ in p5_results if ok)
-    total = len(results) + len(p5_results)
+    passed = sum(1 for ok, _ in results + p5_results + p6_results if ok)
+    total = len(results) + len(p5_results) + len(p6_results)
     p5_passed = sum(1 for ok, _ in p5_results if ok)
+    p6_passed = sum(1 for ok, _ in p6_results if ok)
     L = ["# Implementation verification report\n",
          "> Independent re-derivation of the dse_guidance package: every number below is recomputed "
          "from the raw captures / base facts and cross-checked against the emitted artifacts. "
@@ -393,13 +491,32 @@ def main(write: bool = True) -> int:
              "`tile_waste_table.csv` — so a divergence in `operator_geometry.py`, "
              "`primitive_coverage.py`, or `shape_taxonomy.py` fails a check. All metrics are "
              "structural geometry; **no speedup** is claimed.\n")
+
+    # P6 multi-rate contract graph verification section
+    L.append("## P6 multi-rate contract graph verification\n")
+    L.append(f"**{p6_passed}/{len(p6_results)} P6 checks passed.**\n")
+    L.append("Graph size (recomputed against the IR primitive + P5 shape table + attribution):\n")
+    L.append("| workload | nodes | edges | phase | region | operator | state |")
+    L.append("|---|---|---|---|---|---|---|")
+    for r in p6_rows:
+        L.append(f"| {r['workload']} | {r['nodes']} | {r['edges']} | {r['phase']} | "
+                 f"{r['region']} | {r['operator']} | {r['state']} |")
+    L.append("\n### P6 checks\n")
+    for ok, msg in p6_results:
+        L.append(f"- [{'PASS' if ok else 'FAIL'}] {msg}")
+    L.append("\nP6 checks that the contract graph agrees with everything earlier phases recovered: "
+             "operator nodes == `operator_shape_table.csv`, region facts == attribution, "
+             "macs_per_replan == macs_per_invocation·invocations, loop trip == K, and every edge "
+             "evidence / cadence label is valid with `unknown_dependency` edges explicit. Structural "
+             "only; **no speedup** claimed.\n")
     if write:
         (CS / "verification_report.md").write_text("\n".join(L) + "\n")
 
-    all_results = results + p5_results
+    all_results = results + p5_results + p6_results
     print("\n".join(f"[{'PASS' if ok else 'FAIL'}] {m}" for ok, m in all_results))
     dest = f" -> {CS / 'verification_report.md'}" if write else ""
-    print(f"\n{passed}/{total} checks passed ({p5_passed}/{len(p5_results)} P5){dest}")
+    print(f"\n{passed}/{total} checks passed ({p5_passed}/{len(p5_results)} P5, "
+          f"{p6_passed}/{len(p6_results)} P6){dest}")
     return 0 if passed == total else 1
 
 

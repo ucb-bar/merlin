@@ -1,0 +1,9 @@
+workload,phase,role,cadence,invocations,period_s,period_evidence,cadence_evidence
+rdt,backbone,backbone_once,once_per_replan,1,2.133333,derived_requirement,recovered_from_prov_fqn
+rdt,head,repeated_head,K_times_per_replan,5,unavailable,unavailable,recovered_from_prov_fqn
+openvla,backbone,backbone_once,once_per_replan,1,1.4,derived_requirement,recovered_from_prov_fqn
+openvla,head,repeated_head,token_loop,7,unavailable,unavailable,recovered_from_prov_fqn
+small_llama,backbone,backbone_once,once_per_replan,1,1.066667,derived_requirement,recovered_from_prov_fqn
+small_llama,head,repeated_head,token_loop,32,unavailable,unavailable,recovered_from_prov_fqn
+tiny_llama,backbone,backbone_once,once_per_replan,1,1.066667,derived_requirement,recovered_from_prov_fqn
+tiny_llama,head,repeated_head,token_loop,32,unavailable,unavailable,recovered_from_prov_fqn

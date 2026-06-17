@@ -25,6 +25,7 @@ from merlin.dse_guidance import attribution as ATTR
 from merlin.dse_guidance import candidates as CAND
 from merlin.dse_guidance import command_graph as CG
 from merlin.dse_guidance import compiler_proof as CP
+from merlin.dse_guidance import contract_graph as CGRAPH
 from merlin.dse_guidance import contract as CON
 from merlin.dse_guidance import design_envelope as DE
 from merlin.dse_guidance import dtype_certificates as DC
@@ -447,6 +448,10 @@ def _readme_md(packages) -> str:
         "- `tile_waste_table.csv`, `primitive_coverage_matrix.csv`, `primitive_regret_table.csv` — "
         "candidate compute-primitive (tile / GEMV-lane) structural coverage + cross-workload regret; "
         "`primitive_coverage_report.md`, `cross_workload_coverage_report.md` read them (no speedup).\n"
+        "- `workload_contract_graph.yaml`, `workload_contract_graph_summary.md` — the **multi-rate "
+        "workload contract graph** (the central IR later phases consume: phase/region/operator/"
+        "state nodes + typed edges). `phase_rate_table.csv`, `multi_rate_contract.yaml`, "
+        "`rate_mismatch_report.md` expose the per-phase cadence + rate model (structural only).\n"
         "- `traffic_table.csv` — per-region byte traffic + avoidable reload (memory/reuse envelope).\n"
         "- `dispatch_granularity_table.csv` — command-graph view (honest: loop unrolled, syncs "
         "unavailable).\n"
@@ -505,6 +510,7 @@ def run_case_study(out_dir) -> dict:
     geom_by_workload: dict = {}         # P5: per-workload operator geometry
     all_shapes: list = []
     conv_visible = False
+    graphs: list = []                   # P6: per-workload multi-rate contract graphs
     for c in cases:
         cap = str(_recap_dir(c.workload))
         dtype = NC.extract_numerical_facts(cap).get("compute_dtype", "f32")
@@ -537,6 +543,8 @@ def run_case_study(out_dir) -> dict:
                       records=records, attribution=c.attribution)
         yaml_artifact(f"{c.workload}/numerical_contract.yaml", NC.to_yaml_obj(nc),
                       header=f"numerical_contract: {c.workload}").write(out)
+        # P6: multi-rate workload contract graph (joins topo/attribution/nc/geometry/state)
+        graphs.append(CGRAPH.build_graph(c, shapes, nc, recs))
         # design envelope (hardware-independent requirements)
         env = DE.from_recovered(c.topo, c.attribution, captured_dtype=dtype)
         if env is not None:
@@ -621,6 +629,14 @@ def run_case_study(out_dir) -> dict:
     Artifact("primitive_regret_table.csv", PC.primitive_regret_csv(regret)).write(out)
     Artifact("cross_workload_coverage_report.md",
              PC.cross_workload_report_md(regret, per_wl)).write(out)
+    # P6 multi-rate workload contract graph (the central IR for later phases; structural only)
+    yaml_artifact("workload_contract_graph.yaml", CGRAPH.to_yaml_obj(graphs),
+                  header="workload_contract_graph (multi-rate; no speedup)").write(out)
+    Artifact("workload_contract_graph_summary.md", CGRAPH.summary_md(graphs)).write(out)
+    Artifact("phase_rate_table.csv", CGRAPH.phase_rate_csv(graphs)).write(out)
+    yaml_artifact("multi_rate_contract.yaml", CGRAPH.multi_rate_contract_yaml(graphs),
+                  header="multi_rate_contract (rate model + phases)").write(out)
+    Artifact("rate_mismatch_report.md", CGRAPH.rate_mismatch_report_md(graphs)).write(out)
     # TorchAO integration plan (a plan, not a sweep)
     Artifact("torchao_integration_plan.md", NC.torchao_integration_plan_md()).write(out)
     # accuracy gate (measurable-now real leg)
