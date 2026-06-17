@@ -22,6 +22,8 @@ Workloads (real `prov.fqn` recaptures): **rdt, openvla, small_llama, tiny_llama*
 - `dag_parallelism_report.md`, `critical_path_table.csv`, `concurrency_windows.csv`, `parallel_region_candidates.yaml` — inter-op DAG concurrency (work/span, not a speedup).
 - `sharding_table.csv`, `sharding_opportunities.yaml`, `intra_op_sharding_report.md` — per-matmul M/N/K sharding geometry + required reduction/broadcast abstractions.
 - `operator_cluster_to_hierarchy.csv`, `parallel_hierarchy_hints.yaml`, `resource_pressure_table.csv`, `processing_unit_candidates.yaml`, `processing_unit_parallelism_report.md` — hierarchical resource analysis: which processing-unit shapes the workloads imply (one bigger / many identical / specialized).
+- `pipeline_envelope.yaml`, `pipeline_stage_table.csv` — multi-rate phase model (cadence per phase). `pipeline_candidates.yaml`, `buffering_requirement_table.csv`, `overlap_opportunities.md` — candidate phase overlaps + the buffer/event/queue abstractions each requires (structural, not scheduled).
+- `processing_unit_guidance.yaml`, `heterogeneity_report.md` — monolithic vs. replicated vs. heterogeneous evidence + the search-space implication (evidence only, no selection).
 - `traffic_table.csv` — per-region byte traffic + avoidable reload (memory/reuse envelope).
 - `dispatch_granularity_table.csv` — command-graph view (honest: loop unrolled, syncs unavailable).
 - `accuracy_gated_dtype_candidates.csv` — which low-bit formats are accuracy-legal vs blocked (int8 measured; fp8/int4 unavailable).
