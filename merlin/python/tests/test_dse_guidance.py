@@ -2165,3 +2165,111 @@ def test_case_study_emits_p12_artifacts(tmp_path):
     # boundary placement now feeds the consolidated bridge
     knobs = load_yaml(tmp_path / "dse_search_space_knobs.yaml")["dse_search_space_knobs"]
     assert any(g["source_phase"] == "P12" for g in knobs["knob_groups"])
+
+
+# ============================================================ P13 evidence mining / insight extract
+
+_CS_DIR = Path(__file__).resolve().parents[2] / "benchmarks" / "dse_guidance" / "case_study"
+
+
+def test_insight_evidence_tier_classification():
+    from merlin.dse_guidance import insight_mining as IM
+    assert IM.evidence_tier("recovered_from_ir", "operator_shape_table.csv") == "A"   # verified
+    assert IM.evidence_tier("recovered_from_ir", "not_a_real_artifact.csv") == "B"    # unverified
+    assert IM.evidence_tier("derived_requirement", "critical_path_table.csv") == "B"  # derived+verified
+    assert IM.evidence_tier("derived_requirement", "nope.csv") == "C"                 # derived-unverified
+    assert IM.evidence_tier("assumed_reference", "x") == "C"
+    assert IM.evidence_tier("unavailable", "x") == "D"
+
+
+def test_insight_partial_mode(tmp_path):
+    from merlin.dse_guidance import insight_mining as IM
+    # an empty dir: every expected artifact recorded exists=no, mining does not crash, no facts
+    b = IM.mine(tmp_path, "all")
+    assert b["inventory"] and all("exists" in r for r in b["inventory"])
+    assert all(not r["exists"] for r in b["inventory"])      # all missing, recorded explicitly
+    assert b["facts"] == [] and b["findings"] == []          # nothing to mine -> no invented facts
+    assert isinstance(b["consistency_checks"], list)         # ran without crashing
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_insight_unified_fact_schema_and_tiers():
+    from merlin.dse_guidance import insight_mining as IM
+    facts = IM.unified_facts(_CS_DIR, "all")
+    assert facts
+    ids = [f["fact_id"] for f in facts]
+    assert len(ids) == len(set(ids))                                   # no duplicate fact_id
+    for f in facts:
+        assert set(IM.FACT_COLUMNS) <= set(f)                          # full schema
+        assert f["evidence_tier"] in ("A", "B", "C", "D")
+        assert f["verification_status"] in ("verified", "not_verified", "unavailable")
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_insight_usefulness_and_findings_gate():
+    from merlin.dse_guidance import insight_mining as IM
+    facts = IM.unified_facts(_CS_DIR, "all")
+    answers = IM.usefulness(_CS_DIR, "all", facts)
+    assert len(answers) == 20
+    for a in answers:
+        assert a["status"] in ("strong", "partial", "weak", "unavailable")
+        assert a["recommended_presentation_use"] in ("main", "backup", "do_not_show")
+    findings = IM.presentation_findings(facts, answers)
+    main = [f for f in findings if f["presentation_placement"] == "main"]
+    assert main
+    # main gate: tier A/B, has implication, never purely tier C/D
+    assert all(f["evidence_tier"] in ("A", "B") for f in main)
+    assert all(f["dse_implication"] for f in main)
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_insight_plot_manifest_columns_exist():
+    from merlin.dse_guidance import insight_mining as IM
+    for p in IM.plot_manifest(_CS_DIR, "all"):
+        if p["recommendation"] == "omit":
+            continue
+        art = _CS_DIR / p["source_artifact"]
+        if p["source_artifact"] == "unified_fact_table.csv":
+            continue                                                   # run's own output
+        assert art.is_file(), f"plot {p['plot_id']} source missing"
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_insight_consistency_and_no_forbidden_wording():
+    from merlin.dse_guidance import insight_mining as IM
+    b = IM.mine(_CS_DIR, "all")
+    assert all(ok for ok, _ in b["consistency_checks"]), \
+        [m for ok, m in b["consistency_checks"] if not ok]
+    blob = (str(b["findings"]) + str(b["usefulness"]) + str(b["plots"])).lower()
+    for t in ("speedup", "faster", "optimal", "performance improvement", "predicted cycles"):
+        assert t not in blob, f"forbidden term {t!r}"
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_insight_per_network_completes_for_all(tmp_path):
+    # the per-network requirement: every supported network mines cleanly (all consistency checks pass)
+    from merlin.dse_guidance import insight_mining as IM, presentation_plots as PP, case_study as CS
+    for w in CS.available_models():
+        b = IM.mine(_CS_DIR, w)
+        assert len(b["facts"]) > 0, f"{w}: no facts"
+        assert all(ok for ok, _ in b["consistency_checks"]), f"{w}: consistency fail"
+        # emit + render once into a temp run dir to confirm the full pipeline works end-to-end
+        run = tmp_path / f"{w}_test_dse_analysis"
+        rendered = PP.render_plots(b["plots"], _CS_DIR, b["facts"], run / "generated_plots")
+        IM.emit_run(b, run, rendered)
+        assert (run / "unified_fact_table.csv").is_file()
+        assert (run / "presentation_candidate_findings.md").is_file()
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_insight_mining_is_deterministic():
+    from merlin.dse_guidance import insight_mining as IM
+    assert IM.unified_facts(_CS_DIR, "all") == IM.unified_facts(_CS_DIR, "all")
+    f = IM.unified_facts(_CS_DIR, "rdt")
+    assert IM.presentation_findings(f, IM.usefulness(_CS_DIR, "rdt", f)) == \
+        IM.presentation_findings(f, IM.usefulness(_CS_DIR, "rdt", f))

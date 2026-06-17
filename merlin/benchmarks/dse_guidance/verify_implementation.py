@@ -968,6 +968,58 @@ def verify_p12() -> dict:
             "top_score": top["boundary_pressure_score"]}
 
 
+# ============================================================ P13 evidence mining / insight extract
+# Runs the meta-analysis over the committed case-study (per network + 'all'), asserts the P13-g
+# cross-artifact consistency checks pass for every scope, mining is deterministic, no main finding is
+# weakly-evidenced, and partial mode degrades cleanly. Output is non-committed, so this is
+# run-in-memory-and-check (not a byte-stable committed diff).
+
+p13_results: list[tuple[bool, str]] = []
+
+
+def p13check(ok: bool, msg: str) -> None:
+    p13_results.append((bool(ok), msg))
+
+
+def verify_p13() -> dict:
+    from merlin.dse_guidance import insight_mining as IM
+    nets = IM._workloads(CS)
+    scopes = nets + ["all"]
+    total_facts = 0
+    for scope in scopes:
+        b = IM.mine(CS, scope)
+        total_facts += len(b["facts"]) if scope == "all" else 0
+        p13check(all(ok for ok, _ in b["consistency_checks"]),
+                 f"[{scope}] all {len(b['consistency_checks'])} P13-g consistency checks pass")
+        p13check(len(b["facts"]) > 0, f"[{scope}] >=1 normalized fact mined")
+        ids = [f["fact_id"] for f in b["facts"]]
+        p13check(len(ids) == len(set(ids)), f"[{scope}] no duplicate fact_id")
+        main = [f for f in b["findings"] if f["presentation_placement"] == "main"]
+        p13check(all(f["evidence_tier"] in ("A", "B") for f in main),
+                 f"[{scope}] every main finding is tier A/B (no weak/assumed main)")
+        # main findings carry a DSE implication + are corroborated (not purely assumed)
+        p13check(all(f["dse_implication"] for f in main),
+                 f"[{scope}] every main finding has a DSE implication")
+    # determinism: same committed inputs -> identical mined facts + findings
+    a1, a2 = IM.unified_facts(CS, "all"), IM.unified_facts(CS, "all")
+    p13check(a1 == a2, "insight mining is deterministic (same inputs -> identical facts)")
+    f1 = IM.presentation_findings(a1, IM.usefulness(CS, "all", a1))
+    f2 = IM.presentation_findings(a2, IM.usefulness(CS, "all", a2))
+    p13check(f1 == f2, "presentation findings are deterministic")
+    # forbidden wording across the mined findings/answers (outside the FORBIDDEN tuple definition)
+    bundle = IM.mine(CS, "all")
+    blob = (str(bundle["findings"]) + str(bundle["usefulness"]) + str(bundle["plots"])).lower()
+    leaked = [t for t in ("speedup", "faster", "optimal", "performance improvement", "gap_closure",
+                          "predicted cycles") if t in blob]
+    p13check(not leaked, f"no forbidden performance wording in mined findings/answers ({leaked})")
+    # partial mode: mining a dir without the root artifacts (a workload subdir) degrades cleanly
+    part = IM.mine(CS / nets[0], "all") if nets else None
+    p13check(part is not None and all("exists" in r for r in part["inventory"])
+             and any(not r["exists"] for r in part["inventory"]),
+             "partial mode: missing artifacts recorded exists=no, no crash")
+    return {"scopes": len(scopes), "facts_all": total_facts}
+
+
 def main(write: bool = True) -> int:
     rows = [verify_workload(w) for w in RECAP_MODELS if (RECAP / w / "model.mlir").is_file()]
     verify_global()
@@ -990,11 +1042,13 @@ def main(write: bool = True) -> int:
                 if (RECAP / w / "model.mlir").is_file()]
     verify_p10_global()
     p12_summary = verify_p12()
+    p13_summary = verify_p13()
 
     _all = (results + p5_results + p6_results + p7_results + p8_results + p9_results
-            + p10_results + p12_results)
+            + p10_results + p12_results + p13_results)
     passed = sum(1 for ok, _ in _all if ok)
     total = len(_all)
+    p13_passed = sum(1 for ok, _ in p13_results if ok)
     p5_passed = sum(1 for ok, _ in p5_results if ok)
     p6_passed = sum(1 for ok, _ in p6_results if ok)
     p7_passed = sum(1 for ok, _ in p7_results if ok)
@@ -1140,6 +1194,18 @@ def main(write: bool = True) -> int:
              "reason + evidence; partial mode works with absent inputs; and no boundary artifact "
              "claims speedup/cycles/area/energy/optimal/best. Merlin generates the search space; "
              "the DSE tool chooses.\n")
+
+    # P13 insight-mining verification section
+    L.append("## P13 evidence-mining / insight-extraction verification\n")
+    L.append(f"**{p13_passed}/{len(p13_results)} P13 checks passed.** "
+             f"{p13_summary['scopes']} scopes (per-network + all); "
+             f"{p13_summary['facts_all']} normalized facts in the combined scope.\n")
+    for ok, msg in p13_results:
+        L.append(f"- [{'PASS' if ok else 'FAIL'}] {msg}")
+    L.append("\nP13 mines the committed package per network + combined, asserts the 10 cross-artifact "
+             "consistency checks pass for every scope, mining is deterministic, every main finding "
+             "is tier A/B with a DSE implication, partial mode degrades cleanly, and no forbidden "
+             "performance wording leaks. Output is a non-committed `results/` run (regeneratable).\n")
     if write:
         (CS / "verification_report.md").write_text("\n".join(L) + "\n")
 
@@ -1148,7 +1214,8 @@ def main(write: bool = True) -> int:
     print(f"\n{passed}/{total} checks passed ({p5_passed}/{len(p5_results)} P5, "
           f"{p6_passed}/{len(p6_results)} P6, {p7_passed}/{len(p7_results)} P7, "
           f"{p8_passed}/{len(p8_results)} P8, {p9_passed}/{len(p9_results)} P9, "
-          f"{p10_passed}/{len(p10_results)} P10, {p12_passed}/{len(p12_results)} P12){dest}")
+          f"{p10_passed}/{len(p10_results)} P10, {p12_passed}/{len(p12_results)} P12, "
+          f"{p13_passed}/{len(p13_results)} P13){dest}")
     return 0 if passed == total else 1
 
 
