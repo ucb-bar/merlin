@@ -1,0 +1,18 @@
+claim,evidence_file,evidence_source,status,caveat
+prov.fqn recovers region roles (backbone/head/prefix-KV) with no operator map,<workload>/region_attribution.yaml; cross_workload_provenance.csv,recovered_from_prov_fqn,real,small/random-config captures (structure+provenance real; magnitudes are small instances)
+backbone vs repeated-head split recovered (e.g. OpenVLA vision backbone + decode head),openvla/region_attribution.yaml; case_study.md,recovered_from_prov_fqn,real,small-config captures
+per-region compute/MAC/weight-byte facts attached to the repeated head,<workload>/region_attribution.yaml; workload_contract_table.csv,recovered_from_ir,real,magnitudes are small-instance (not deployed-model sizes)
+numerical capture erased native low-bit compute + packed layout (low-bit stored / f32 matmul),numerical_contract_fidelity_report.md,recovered_from_ir,real,observation holds because the flat capture is post-dequant (20/20 quantized captures)
+per-region dtype recovered from IR (repeated_head dtype),<workload>/numerical_contract.yaml,recovered_from_ir,real,captures are f32/bf16 small instances
+scale/zero-point/group-size + sparsity metadata not present,<workload>/numerical_contract.yaml (honesty block),unavailable,real,erased by the flat dequantized capture; marked unavailable not invented
+int8 (W8A8) accuracy passes the band vs fp32,accuracy_gate_report.md; accuracy_gate_results.csv,measured (host interpreter; docs/results.md),real,int8 only (5 models); fp8/int4/fp4/fp6 unavailable; host interpreter not target HW
+measured dispatch count per forward (matmul proxy under-counts ~12-14x),dispatch_coupling_report.md; dispatch_coupling.csv,measured,real,dispatch COUNT measured; per-dispatch host COST is host-interpreter timing not deployable runtime
+hardware-independent requirements (MACs/replan, resident capacity, avoidable reload, rates),requirements_table.csv; <workload>/design_envelope.yaml,derived_requirement,real,rests on assumed_reference K / H / control_rate / deadline
+dtype-scaled resident capacity (bf16/fp8/int8/fp6/int4),dtype_capacity_table.csv,derived_requirement,real,analytical from captured element count; magnitudes are small-instance
+state lifetime + implied abstraction per persistent tensor,resident_state_table.csv; <workload>/state_lifetime.yaml,recovered_from_prov_fqn,real,only weight bytes IR-known; non-weight sizes + crossings unavailable for these topologies
+compiler proof each abstraction needs + status,compiler_proof_matrix.csv,recovered_from_prov_fqn / assumed_reference / unavailable,real,1 proven_for_workload (resident weights); 5 assumed; 4 unknown (layout/low-bit erased)
+abstraction pressure across workloads (a count, not a speedup),abstraction_pressure_ranking.csv,recovered_from_prov_fqn (counts),real,evidence_strength is qualitative (strong/partial/structural_only); coarse detectors
+DSE search-space template (enabled axes + knobs) — the bridge artifact,<workload>/dse_search_space_template.yaml; dse_search_space_template_<family>.yaml,recovered_from_prov_fqn / derived_requirement,real,a template not a ranking; carries what_is_not_claimed
+quantitative DSE readiness is FALSE (still missing measurements),dse_readiness_summary.csv,derived_requirement,real,missing: target command/sync latency; real K; per-format accuracy gates
+no speedup / cycle / energy / area claimed for unbuilt hardware,"all *.md/*.yaml (grep); design_envelope quantitative_speedup: not_claimed",verified,real,none (speedup appears only in disclaimers / what_is_not_claimed)
+no calibration to existing hardware as a predictive claim,cost_calibration.md (demoted to sanity anchor),verified,real,whole-model anchor was a ~147000x honest miss; reported as such

@@ -5,6 +5,7 @@ Merlin is a compiler-based **workload-contract analysis** tool for accelerator D
 Workloads (real `prov.fqn` recaptures): **rdt, openvla, small_llama, tiny_llama**.
 
 ## Read this folder
+- `current_state_audit.md` — V0 freeze audit (standalone); `claim_evidence_matrix.csv`, `known_limitations.md`, `reproducibility_check.log` are its companions.
 - `case_study_summary.md` — start here (the central table).
 - `<workload>/workload_contract_report.md` — full per-workload package.
 - `requirements_table.csv`, `dtype_capacity_table.csv` — design requirements (hw-independent).

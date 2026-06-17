@@ -418,6 +418,8 @@ def _readme_md(packages) -> str:
         "measurement plan, and a readiness report.\n\n"
         f"Workloads (real `prov.fqn` recaptures): **{names}**.\n\n"
         "## Read this folder\n"
+        "- `current_state_audit.md` — V0 freeze audit (standalone); `claim_evidence_matrix.csv`, "
+        "`known_limitations.md`, `reproducibility_check.log` are its companions.\n"
         "- `case_study_summary.md` — start here (the central table).\n"
         "- `<workload>/workload_contract_report.md` — full per-workload package.\n"
         "- `requirements_table.csv`, `dtype_capacity_table.csv` — design requirements (hw-independent).\n"
