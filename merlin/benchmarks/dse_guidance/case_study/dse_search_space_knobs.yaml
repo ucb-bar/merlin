@@ -1,0 +1,87 @@
+# dse_search_space_knobs (consolidated P5-P10; no speedup)
+dse_search_space_knobs:
+  knob_groups:
+  - enabled: true
+    evidence: derived_requirement
+    gated_by: structural tile/lane coverage of the real operator geometry (no perf)
+    group: compute_primitive_shape
+    knobs:
+    - tile_8x8
+    - tile_8x16
+    - tile_16x16
+    - tile_16x32
+    - tile_32x32
+    - gemv_lane_64
+    - gemv_lane_128
+    - gemv_lane_256
+    source_phase: P5
+  - enabled: true
+    evidence: derived_requirement
+    gated_by: 96 reduction-free M/N shards available; K-sharding needs partial-sum reduction
+    group: intra_op_sharding
+    knobs:
+    - shard_axis in {M,N,K}
+    - shard_count in [2, 4, 8]
+    source_phase: P7
+  - enabled: false
+    evidence: derived_requirement
+    gated_by: avg inter-op parallelism 1.27x (low -> limited; favors intra-op sharding)
+    group: inter_op_parallelism
+    knobs:
+    - num_engines
+    source_phase: P7
+  - enabled: true
+    evidence: recovered_from_ir
+    gated_by: distinct operator families (dense GEMM + skinny/GEMV) + epilogue + DMA
+    group: processing_unit_set
+    knobs:
+    - dma_engine
+    - epilogue_requant_unit
+    - loop_controller
+    - matrix_engine
+    - scalar_control_unit
+    - vector_gemv_engine
+    source_phase: P7/P8
+  - enabled: true
+    evidence: derived_requirement
+    gated_by: candidate overlaps gated on recovered structure (backbone compute / control loop); per-phase timing needed to schedule
+    group: pipeline_overlap
+    knobs:
+    - async_queue
+    - bounded_loop_command
+    - double_buffered_action_chunk
+    - event_token
+    - loop_carried_state_handle
+    - prefix_state_object
+    - producer_consumer_queue
+    - resident_weight_object
+    source_phase: P8
+  - enabled: true
+    evidence: recovered_from_ir
+    gated_by: weight-dominated memory pressure; bandwidth needs a design YAML
+    group: memory_residency
+    knobs:
+    - resident_weight_object
+    - weight_dtype in ['bf16', 'fp8', 'int8', 'int4', 'fp6']
+    - prefetch_depth
+    source_phase: P9
+  - enabled: true
+    evidence: recovered_from_ir
+    gated_by: 3 byte-carrying streams/region (weight/activation/output)
+    group: dma_streams
+    knobs:
+    - multi_stream_dma_descriptor
+    - double_buffered_activation_tile
+    - prefetch_weight_once
+    source_phase: P9
+  - enabled: true
+    evidence: recovered_from_ir
+    gated_by: directly-fused epilogue slot proven (addmm bias); low-bit/scale gated by a low-bit capture + accuracy
+    group: epilogue_fusion
+    knobs:
+    - epilogue_op_set subset of ['bias', 'activation', 'scale']
+    - accumulator_dtype
+    - requant_in_epilogue
+    source_phase: P10
+  note: consolidated STRUCTURAL search-space knobs discovered across P5-P10, each with its source phase, enabled status, evidence, and what gates it. This is the bridge a future DSE engine consumes together with the per-workload abstraction-axis template (dse_search_space_template.yaml). Structural only — no speedup, cycle, or area claim.
+  what_is_not_claimed: no speedup, no schedule, no chosen design; these are search-space dimensions a DSE engine would explore, with the measurements each needs named in the per-phase artifacts

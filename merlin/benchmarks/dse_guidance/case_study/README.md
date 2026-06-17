@@ -14,7 +14,8 @@ Workloads (real `prov.fqn` recaptures): **rdt, openvla, small_llama, tiny_llama*
 - `resident_state_table.csv` — state lifetimes (loop-invariant / carried / boundary-crossing) + the abstraction each implies.
 - `compiler_proof_matrix.csv` — the compiler proof each abstraction needs + its status (proven_for_workload / assumed / unknown).
 - `workload_family_table.csv` — workloads clustered into families (iterative_denoise / token_decode / single_shot).
-- `<workload>/dse_search_space_template.yaml`, `dse_search_space_template_<family>.yaml` — the **DSE search-space template** (the bridge a DSE engine consumes: enabled axes + knobs).
+- `<workload>/dse_search_space_template.yaml`, `dse_search_space_template_<family>.yaml` — the **DSE search-space template** (per-workload abstraction axes + knobs).
+- `dse_search_space_knobs.yaml`, `dse_search_space_knobs.md` — the **consolidated structural search-space knobs** discovered across P5-P10 (primitive shapes, sharding, processing units, pipeline overlap, memory/DMA, epilogue fusion) — the capstone bridge a DSE engine consumes.
 - `measurement_priority_table.csv` — what to measure next, ranked by candidates unblocked.
 - `operator_shape_table.csv`, `operator_geometry.yaml` — per-operator geometry (M/N/K, MACs, aspect, shape_class + semantic role). `shape_summary_by_workload.csv`, `shape_summary_by_region.csv`, `operator_cluster_table.csv`, `operator_geometry_report.md` summarise it (structural geometry only).
 - `tile_waste_table.csv`, `primitive_coverage_matrix.csv`, `primitive_regret_table.csv` — candidate compute-primitive (tile / GEMV-lane) structural coverage + cross-workload regret; `primitive_coverage_report.md`, `cross_workload_coverage_report.md` read them (no speedup).
