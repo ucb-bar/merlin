@@ -16,6 +16,9 @@ Workloads (real `prov.fqn` recaptures): **rdt, openvla, small_llama, tiny_llama*
 - `workload_family_table.csv` — workloads clustered into families (iterative_denoise / token_decode / single_shot).
 - `<workload>/dse_search_space_template.yaml`, `dse_search_space_template_<family>.yaml` — the **DSE search-space template** (the bridge a DSE engine consumes: enabled axes + knobs).
 - `measurement_priority_table.csv` — what to measure next, ranked by candidates unblocked.
+- `traffic_table.csv` — per-region byte traffic + avoidable reload (memory/reuse envelope).
+- `dispatch_granularity_table.csv` — command-graph view (honest: loop unrolled, syncs unavailable).
+- `accuracy_gated_dtype_candidates.csv` — which low-bit formats are accuracy-legal vs blocked (int8 measured; fp8/int4 unavailable).
 - `torchao_integration_plan.md` — plan (not a sweep) for wiring low-bit formats to the numerical candidates.
 - `dse_readiness_summary.csv` — what a DSE engine can consume today + what's missing.
 - `accuracy_gate_report.md` — measured int8 accuracy (the measurable-now leg).

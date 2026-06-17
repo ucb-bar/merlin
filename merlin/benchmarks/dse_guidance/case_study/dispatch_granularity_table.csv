@@ -1,0 +1,5 @@
+workload,commands_per_step_matmul_proxy,dispatches_per_replan_proxy,repeated_subgraph,batchable,syncs_per_step,dependency_graph
+rdt,20,100,repeated_head,True,unavailable,unavailable
+openvla,15,105,repeated_head,True,unavailable,unavailable
+small_llama,14,448,repeated_head,True,unavailable,unavailable
+tiny_llama,15,480,repeated_head,True,unavailable,unavailable
