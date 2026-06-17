@@ -76,6 +76,45 @@ def _top_names(tr: dict, n: int = 3) -> list[str]:
             if r["priority_score"] and r["legality"]][:n]
 
 
+def _design_envelope(args) -> int:
+    from merlin.common.artifacts import Artifact, yaml_artifact
+    from merlin.dse_guidance import (attribution as ATTR, design_envelope as DE,
+                                     numerical_contract as NC, topology as TOP)
+    from merlin.dse_guidance.case_study import analyze, available_models, _recap_dir
+    from merlin.common.yaml import load_yaml
+    design = load_yaml(args.design_candidate) if args.design_candidate else None
+    out = Path(args.out) if args.out else (
+        paths.repo_root() / "output" / "dse_guidance" / "design_envelope")
+
+    envs = []
+    if args.capture_dir and args.temporal_metadata:
+        topo = TOP.load(args.temporal_metadata)
+        attr = ATTR.attribute(args.capture_dir, topo)
+        dtype = NC.extract_numerical_facts(args.capture_dir).get("compute_dtype", "f32")
+        env = DE.from_recovered(topo, attr, captured_dtype=dtype, design=design)
+        if env is None:
+            raise SystemExit("no repeated_head attributed in the capture — cannot derive envelope")
+        envs.append(env)
+    else:
+        for w in available_models():
+            c = analyze(w)
+            dtype = NC.extract_numerical_facts(str(_recap_dir(w))).get("compute_dtype", "f32")
+            env = DE.from_recovered(c.topo, c.attribution, captured_dtype=dtype, design=design)
+            if env:
+                envs.append(env)
+    if not envs:
+        raise SystemExit("no design envelopes derived (no capture / recaptures available)")
+    for env in envs:
+        yaml_artifact(f"{env.workload}/design_envelope.yaml", DE.to_yaml_obj(env),
+                      header=f"design_envelope: {env.workload}").write(out)
+        Artifact(f"{env.workload}/design_envelope.md", DE.markdown(env)).write(out)
+    Artifact("requirements_table.csv", DE.requirements_csv(envs)).write(out)
+    print(f"design envelopes (requirements, not calibration) for {len(envs)} workload(s); "
+          f"design candidate={'yes' if design else 'none'}")
+    print(f"artifacts -> {out}  (requirements_table.csv, <workload>/design_envelope.{{yaml,md}})")
+    return 0
+
+
 def _study(args) -> int:
     if args.models:
         specs = discover_model_specs()
@@ -116,6 +155,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--models", action="store_true",
                     help="with --study: study the real model zoo (captures under output/) "
                          "instead of the semantic_memory regions")
+    ap.add_argument("--design-envelope", action="store_true",
+                    help="derive hardware-independent requirements + roofline bounds (NOT "
+                         "calibration). Over the recaptures, or a --capture-dir + --temporal-metadata")
+    ap.add_argument("--capture-dir", default=None,
+                    help="a dir with model.mlir to attribute (for --design-envelope)")
+    ap.add_argument("--design-candidate", default=None,
+                    help="optional candidate-design YAML for roofline feasibility")
     ap.add_argument("--case-study", action="store_true",
                     help="generate the cross-workload provenance case study from the real "
                          "prov.fqn recaptures under merlin/benchmarks/dse_guidance/recaptures/")
@@ -125,6 +171,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default=None, help="output dir")
     args = ap.parse_args(argv)
 
+    if args.design_envelope:
+        return _design_envelope(args)
     if args.case_study:
         from merlin.dse_guidance.case_study import run_case_study
         out = Path(args.out) if args.out else (

@@ -537,6 +537,106 @@ def test_case_study_openvla_recovers_backbone_head_split():
     assert case.attribution.role("repeated_head") is not None
 
 
+# ------------------------------------------------ design envelope (requirements, not calibration)
+
+def test_design_envelope_requirements_and_dtype_scaling():
+    from merlin.dse_guidance import design_envelope as DE
+    # K=5, deadline from H=64 @ 30Hz = 2.1333s; weight_bytes captured as f32.
+    env = DE.derive("rdt", K=5, deadline_s=64 / 30.0, deadline_evidence="assumed_reference",
+                    macs_per_step=39_432_486_912, weight_bytes=391_118_848,
+                    activation_bytes_per_step=10_000_000, dispatches_per_step=20,
+                    dispatches_evidence="derived_requirement", captured_dtype="f32")
+    assert env.req("macs_per_replan").value == 39_432_486_912 * 5
+    assert env.req("resident_capacity_required").value == 391_118_848
+    assert env.req("avoidable_weight_reload_bytes").value == 391_118_848 * 4
+    # dtype-scaled capacity from the f32 element count (97.78M params).
+    n_elem = 391_118_848 / 4
+    assert env.capacity_by_dtype_B["bf16"] == pytest.approx(n_elem * 2)
+    assert env.capacity_by_dtype_B["int8"] == pytest.approx(n_elem * 1)
+    assert env.capacity_by_dtype_B["int4"] == pytest.approx(n_elem * 0.5)
+    assert env.capacity_by_dtype_B["fp6"] == pytest.approx(n_elem * 0.75)
+    # No gap_closure anywhere; the only mention of speedup is the explicit "not_claimed" status.
+    obj = DE.to_yaml_obj(env)
+    assert "gap_closure" not in str(obj).lower()
+    assert obj["design_envelope"]["status"]["quantitative_speedup"] == "not_claimed"
+
+
+def test_design_envelope_missing_deadline_keeps_capacity_drops_rate():
+    from merlin.dse_guidance import design_envelope as DE
+    env = DE.derive("w", K=5, deadline_s=None, deadline_evidence="unavailable",
+                    macs_per_step=1000, weight_bytes=4000, activation_bytes_per_step=0,
+                    dispatches_per_step=2, dispatches_evidence="derived_requirement",
+                    captured_dtype="f32")
+    assert env.req("resident_capacity_required").value == 4000        # capacity still emitted
+    assert env.req("required_compute_rate").value is None             # rate unavailable
+    assert env.req("required_compute_rate").evidence == "unavailable"
+
+
+def test_design_envelope_feasibility_and_command_gate():
+    from merlin.dse_guidance import design_envelope as DE
+    design = {"name": "toy", "clock_ghz": 1.0, "macs_per_cycle": 4096, "local_memory_mb": 256,
+              "dram_bandwidth_gb_s": 256, "supported_dtypes": ["bf16", "int8"]}  # no submit_ns
+    env = DE.derive("rdt", K=5, deadline_s=64 / 30.0, deadline_evidence="assumed_reference",
+                    macs_per_step=39_432_486_912, weight_bytes=391_118_848,
+                    activation_bytes_per_step=1e7, dispatches_per_step=20,
+                    dispatches_evidence="derived_requirement", captured_dtype="f32", design=design)
+    f = env.feasibility
+    assert f["compute_feasible"] is True and f["memory_feasible"] is True
+    assert f["capacity_feasible"] is True
+    assert f["dtype_feasible"]["int8"] is True and f["dtype_feasible"]["fp6"] is False
+    assert f["command_feasible"] == "unavailable"     # no command_submit_ns -> not fabricated
+
+
+# ------------------------------------------------ workload-contract package (DSE-ready)
+
+def test_contract_abstraction_candidates_and_readiness():
+    from merlin.dse_guidance import contract as CON, candidates as CAND, numerical_contract as NC
+    topo = _topo(K=5)
+    recs = (
+        ATTR.MatmulRecord(0, "m0", "addmm", True, 28, 1024, 1024, 1024 * 1024 * 4, 1, "f32",
+                          fqn="model.action_expert.denoise.0"),
+        ATTR.MatmulRecord(1, "m1", "addmm", True, 28, 1024, 1024, 1024 * 1024 * 4, 1, "f32",
+                          fqn="model.action_expert.denoise.1"),
+    )
+    attr = ATTR.attribute_records(recs, topo)
+    structural = CAND.detect(topo, attribution=attr)
+    nc = NC.audit(str(_RDT_RECAP), workload="rdt") if (_RDT_RECAP / "model.mlir").is_file() else None
+    cands = CON.abstraction_candidates(structural, nc)
+    assert cands, "expected abstraction candidates"
+    by_axis = {c.axis: c for c in cands}
+    # Each maps to a concrete system abstraction + DSE knobs and claims no speedup.
+    rw = by_axis.get("resident_action_head_weights")
+    assert rw and "resident_weight_object" in rw.system_abstraction
+    assert rw.dse_knobs_exposed and "speedup" in rw.what_is_not_claimed
+    blob = str(CON.abstraction_yaml(cands)).lower()
+    assert "speedup" not in blob.replace("not_claimed", "").replace("what_is_not_claimed", "") \
+        or "speedup" in str(rw.what_is_not_claimed).lower()   # only as a "not claimed" entry
+
+    readiness = CON.dse_readiness(topo, attr, nc, cpu_coupling_available=False)
+    assert readiness.ready is False
+    assert any("accuracy" in m for m in readiness.missing)
+    assert any("command-submit" in m or "sync" in m for m in readiness.missing)
+    assert any("K /" in m or "control-rate" in m for m in readiness.missing)
+
+
+def test_contract_measurement_plan_splits_proxy_vs_target():
+    from merlin.dse_guidance import contract as CON, candidates as CAND
+    topo = _topo(K=5)
+    recs = (ATTR.MatmulRecord(0, "m0", "addmm", True, 28, 1024, 1024, 1024 * 1024 * 4, 1, "f32",
+                              fqn="model.action_expert.denoise.0"),)
+    attr = ATTR.attribute_records(recs, topo)
+    cands = CON.abstraction_candidates(CAND.detect(topo, attribution=attr), None)
+    plan = CON.measurement_plan(cands)
+    assert "measurable_now" in plan and "needs_target_design" in plan
+    # dispatch/host measurements are proxy-measurable now; bandwidth/capacity need the target.
+    runtime = " ".join(plan["measurable_now"]["runtime_proxy"]).lower()
+    target = " ".join(plan["needs_target_design"]).lower()
+    assert "dispatch" in runtime or "submit" in runtime
+    assert "bandwidth" in target or "capacity" in target
+    # "cost" must NOT be misclassified as accuracy (the "cos" substring bug).
+    assert not any("backbone_cost" in m for m in plan["measurable_now"]["accuracy"])
+
+
 # ------------------------------------------------ measured dispatch coupling (one measured leg)
 
 def test_measured_dispatch_data_grounds_command_batching():

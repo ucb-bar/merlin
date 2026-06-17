@@ -1,0 +1,9 @@
+# A hypothetical candidate accelerator design (NOT an existing target). Feasibility computed
+# against it is labelled design_assumption — roofline bounds, not measured performance.
+name: toy_npu_A
+clock_ghz: 1.0
+macs_per_cycle: 4096          # e.g. a 64x64 MAC array
+local_memory_mb: 256          # on-chip SRAM/eDRAM for the resident set
+dram_bandwidth_gb_s: 256
+command_submit_ns: 500        # host per-command submit cost (hypothetical)
+supported_dtypes: [bf16, int8, int4]

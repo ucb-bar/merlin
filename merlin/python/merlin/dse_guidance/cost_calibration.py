@@ -1,8 +1,13 @@
-"""Multi-point calibration of the analytical cost model against measured cycles.
+"""Calibration against an EXISTING target — a demoted sanity-check / anchor, not the DSE result.
 
-The single-point xr0 anchor showed the analytical model was uncalibrated. This generalises it:
-fit a cycles-per-MAC constant against the real FireSim FASED totals across every model whose
-capture parses, and report the fit honestly — including outliers and the overall inadequacy.
+Reframe (see docs "Design envelope vs calibration"): for DSE of a not-yet-existent accelerator,
+fitting a cost model to one existing hardware instance does not transfer to a proposed design, so
+calibration is NOT the primary output. It is kept only as a sanity-check/anchor for an existing
+target (here, FireSim FASED) and as evidence that whole-model fits are insufficient — the primary
+DSE output is the requirements/roofline `design_envelope`.
+
+This fits a cycles-per-MAC constant against the real FireSim FASED totals across every model whose
+capture parses, and reports the fit honestly — including outliers and the overall inadequacy.
 
 The predictor is deliberately the crudest defensible one: ``cycles ~ a * total_MACs`` (matmul
 MACs read from the real capture IR). We use the **median** cycles/MAC as the robust fitted
@@ -231,6 +236,9 @@ def to_csv(res: CalibResult) -> str:
 
 def markdown(res: CalibResult) -> str:
     L = ["# Cost-model calibration — predicted vs measured cycles\n"]
+    L.append("> **Demoted to a sanity-check / anchor.** This calibrates against an *existing* target "
+             "(FireSim FASED); it does not predict a future design. The primary DSE output is the "
+             "requirements/roofline `design_envelope`, which is hardware-independent.\n")
     L.append(f"- substrate: **{res.substrate}**  ·  source: {res.source}")
     L.append(f"- predictor: `cycles ~ (cycles/MAC) * total_matmul_MACs` (MACs from real capture IR)")
     L.append(f"- fitted: **{res.fitted_cycles_per_mac:.1f} cycles/MAC** "

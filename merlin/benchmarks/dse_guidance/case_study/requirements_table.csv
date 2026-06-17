@@ -1,0 +1,57 @@
+workload,region,requirement,value,unit,evidence,note
+rdt,repeated_head,macs_per_replan,197162434560.0,MAC,recovered_from_ir,macs_per_step x K=5
+rdt,repeated_head,resident_capacity_required,391118848.0,B,recovered_from_ir,action-head weights (f32); resident set to avoid reloads
+rdt,repeated_head,weight_reload_bytes_per_replan,1955594240.0,B,recovered_from_ir,naive reload: weight_bytes x K=5
+rdt,repeated_head,avoidable_weight_reload_bytes,1564475392.0,B,recovered_from_ir,"removed by residency (keep 1 load, avoid K-1)"
+rdt,repeated_head,dispatches_per_replan,100.0,dispatch,derived_requirement,dispatches_per_step x K=5
+rdt,repeated_head,required_compute_rate,92419891200.0,MAC/s,derived_requirement,macs_per_replan / deadline
+rdt,repeated_head,required_weight_bandwidth,916684800.0,B/s,derived_requirement,naive reload bandwidth if non-resident
+rdt,repeated_head,required_activation_bandwidth,277851600.0,B/s,derived_requirement,activation traffic / deadline
+rdt,repeated_head,required_command_rate,46.875,dispatch/s,derived_requirement,host command issue rate to meet deadline
+rdt,repeated_head,resident_capacity_bf16,195559424,B,recovered_from_ir,dtype-scaled from captured element count
+rdt,repeated_head,resident_capacity_fp8,97779712,B,recovered_from_ir,dtype-scaled from captured element count
+rdt,repeated_head,resident_capacity_int8,97779712,B,recovered_from_ir,dtype-scaled from captured element count
+rdt,repeated_head,resident_capacity_int4,48889856,B,recovered_from_ir,dtype-scaled from captured element count
+rdt,repeated_head,resident_capacity_fp6,73334784,B,recovered_from_ir,dtype-scaled from captured element count
+openvla,repeated_head,macs_per_replan,110100480.0,MAC,recovered_from_ir,macs_per_step x K=7
+openvla,repeated_head,resident_capacity_required,3145728.0,B,recovered_from_ir,action-head weights (f32); resident set to avoid reloads
+openvla,repeated_head,weight_reload_bytes_per_replan,22020096.0,B,recovered_from_ir,naive reload: weight_bytes x K=7
+openvla,repeated_head,avoidable_weight_reload_bytes,18874368.0,B,recovered_from_ir,"removed by residency (keep 1 load, avoid K-1)"
+openvla,repeated_head,dispatches_per_replan,105.0,dispatch,derived_requirement,dispatches_per_step x K=7
+openvla,repeated_head,required_compute_rate,78643200.0,MAC/s,derived_requirement,macs_per_replan / deadline
+openvla,repeated_head,required_weight_bandwidth,15728640.000000002,B/s,derived_requirement,naive reload bandwidth if non-resident
+openvla,repeated_head,required_activation_bandwidth,3225600.0,B/s,derived_requirement,activation traffic / deadline
+openvla,repeated_head,required_command_rate,75.0,dispatch/s,derived_requirement,host command issue rate to meet deadline
+openvla,repeated_head,resident_capacity_bf16,1572864,B,recovered_from_ir,dtype-scaled from captured element count
+openvla,repeated_head,resident_capacity_fp8,786432,B,recovered_from_ir,dtype-scaled from captured element count
+openvla,repeated_head,resident_capacity_int8,786432,B,recovered_from_ir,dtype-scaled from captured element count
+openvla,repeated_head,resident_capacity_int4,393216,B,recovered_from_ir,dtype-scaled from captured element count
+openvla,repeated_head,resident_capacity_fp6,589824,B,recovered_from_ir,dtype-scaled from captured element count
+small_llama,repeated_head,macs_per_replan,101187584.0,MAC,recovered_from_ir,macs_per_step x K=32
+small_llama,repeated_head,resident_capacity_required,1581056.0,B,recovered_from_ir,action-head weights (f32); resident set to avoid reloads
+small_llama,repeated_head,weight_reload_bytes_per_replan,50593792.0,B,recovered_from_ir,naive reload: weight_bytes x K=32
+small_llama,repeated_head,avoidable_weight_reload_bytes,49012736.0,B,recovered_from_ir,"removed by residency (keep 1 load, avoid K-1)"
+small_llama,repeated_head,dispatches_per_replan,448.0,dispatch,derived_requirement,dispatches_per_step x K=32
+small_llama,repeated_head,required_compute_rate,94863360.0,MAC/s,derived_requirement,macs_per_replan / deadline
+small_llama,repeated_head,required_weight_bandwidth,47431680.0,B/s,derived_requirement,naive reload bandwidth if non-resident
+small_llama,repeated_head,required_activation_bandwidth,4684800.0,B/s,derived_requirement,activation traffic / deadline
+small_llama,repeated_head,required_command_rate,420.0,dispatch/s,derived_requirement,host command issue rate to meet deadline
+small_llama,repeated_head,resident_capacity_bf16,790528,B,recovered_from_ir,dtype-scaled from captured element count
+small_llama,repeated_head,resident_capacity_fp8,395264,B,recovered_from_ir,dtype-scaled from captured element count
+small_llama,repeated_head,resident_capacity_int8,395264,B,recovered_from_ir,dtype-scaled from captured element count
+small_llama,repeated_head,resident_capacity_int4,197632,B,recovered_from_ir,dtype-scaled from captured element count
+small_llama,repeated_head,resident_capacity_fp6,296448,B,recovered_from_ir,dtype-scaled from captured element count
+tiny_llama,repeated_head,macs_per_replan,19662897152.0,MAC,recovered_from_ir,macs_per_step x K=32
+tiny_llama,repeated_head,resident_capacity_required,614465536.0,B,recovered_from_ir,action-head weights (f32); resident set to avoid reloads
+tiny_llama,repeated_head,weight_reload_bytes_per_replan,19662897152.0,B,recovered_from_ir,naive reload: weight_bytes x K=32
+tiny_llama,repeated_head,avoidable_weight_reload_bytes,19048431616.0,B,recovered_from_ir,"removed by residency (keep 1 load, avoid K-1)"
+tiny_llama,repeated_head,dispatches_per_replan,480.0,dispatch,derived_requirement,dispatches_per_step x K=32
+tiny_llama,repeated_head,required_compute_rate,18433966080.0,MAC/s,derived_requirement,macs_per_replan / deadline
+tiny_llama,repeated_head,required_weight_bandwidth,18433966080.0,B/s,derived_requirement,naive reload bandwidth if non-resident
+tiny_llama,repeated_head,required_activation_bandwidth,50749440.0,B/s,derived_requirement,activation traffic / deadline
+tiny_llama,repeated_head,required_command_rate,450.0,dispatch/s,derived_requirement,host command issue rate to meet deadline
+tiny_llama,repeated_head,resident_capacity_bf16,307232768,B,recovered_from_ir,dtype-scaled from captured element count
+tiny_llama,repeated_head,resident_capacity_fp8,153616384,B,recovered_from_ir,dtype-scaled from captured element count
+tiny_llama,repeated_head,resident_capacity_int8,153616384,B,recovered_from_ir,dtype-scaled from captured element count
+tiny_llama,repeated_head,resident_capacity_int4,76808192,B,recovered_from_ir,dtype-scaled from captured element count
+tiny_llama,repeated_head,resident_capacity_fp6,115212288,B,recovered_from_ir,dtype-scaled from captured element count
