@@ -45,10 +45,18 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
              width: int = 3, depth: int = 2, top_k: int = 2, target: str = "rvv",
              timestamp: str = "run", targets: tuple[str, ...] = ("spike",),
              baseline_run_dir: str | Path | None = None,
-             certify_fn: Callable = certify_rvv, proposer: Callable = propose_forks
+             certify_fn: Callable = certify_rvv, proposer: Callable = propose_forks,
+             loader: Callable = load_rvv_package, minter: Callable = mint_fork
              ) -> dict[str, Any]:
     """Run the beam. Returns {best, nodes, deferred, tree_path}. ``curated_text`` is the expert
-    kernel C source for this op (the structural target); ``op_key`` = {op,dtype,shape_regime}."""
+    kernel C source for this op (the structural target); ``op_key`` = {op,dtype,shape_regime}.
+
+    Target-plugin seams (all injectable; defaults are the RVV instantiation — see
+    rvvgen/TARGET_PLUGIN.md): ``loader(package_dir) -> pkg`` (pkg must expose ``.run_id`` and
+    ``.knobs``), ``minter(parent, overrides, ...) -> Path`` (render+write a fork package),
+    ``proposer(divergences, knobs) -> [ForkProposal]`` (the lever/tuning policy), and
+    ``certify_fn(**job) -> result`` (build+run+gate). A new target reuses this engine unchanged by
+    supplying its own four callables."""
     runs_root = Path(runs_root)
     curated = RvvFingerprint.from_curated(curated_text, op_key, "curated")
 
@@ -65,7 +73,7 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     deferred: list[dict] = []           # recorded lever-2/3 work-items the beam can't auto-apply
 
     # generation 0: the seed (e.g. hand_v0)
-    seed = load_rvv_package(seed_pkg)
+    seed = loader(seed_pkg)
     seed_node = certify_and_score(Path(seed_pkg), f"{seed.run_id}__beam", None, "seed",
                                   ["baseline"], 0)
     nodes.append(seed_node)
@@ -82,7 +90,7 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
                             for p in props if not p.forkable)
             for p in forkable:
                 counter += 1
-                fork_dir = mint_fork(parent_pkg, p.overrides, version=d, depth=d,
+                fork_dir = minter(parent_pkg, p.overrides, version=d, depth=d,
                                      timestamp=f"{timestamp}_{counter}", source_evidence=p.evidence,
                                      lever=p.lever, target=target, out_root=out_root,
                                      generated_by_agent=False)
@@ -103,7 +111,7 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
             gen_nodes.append(node)
             nodes.append(node)
         survivors = [n for n in rank_results(gen_nodes) if n["gate_ok"]][:top_k]
-        parents = [(load_rvv_package(n["package_dir"]), n) for n in survivors]
+        parents = [(loader(n["package_dir"]), n) for n in survivors]
         if not parents:
             break
 
