@@ -136,7 +136,8 @@ module attributes {transform.with_named_sequence} {
 """
 
 
-def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = True) -> str:
+def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = True,
+                       features: "frozenset[str]" = frozenset()) -> str:
     """Whole-module pipeline with the transform vectorization stage spliced in after
     named-op generalization (vectorize on tensors) and before bufferization, plus the
     vector-lowering passes needed to reach LLVM. ``sched_path`` is the preloaded schedule.
@@ -151,7 +152,7 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
             if hoist_static_allocs
             else "buffer-results-to-out-params{modify-public-functions}")
     late_hoist: list[str] = []
-    return ",".join([
+    passes = [
         "canonicalize", "cse",
         # Recover named contraction ops (matmul/batch_matmul) from the capture's generics so
         # the schedule can match them, THEN vectorize. Do NOT run linalg-fuse-elementwise-ops
@@ -184,7 +185,11 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
         "convert-cf-to-llvm",
         "reconcile-unrealized-casts",
         "canonicalize", "cse", "symbol-dce",
-    ])
+    ]
+    if features:                       # default-off impr-fork hooks; empty -> byte-identical
+        from .impr_features import apply_pipeline
+        passes = apply_pipeline(passes, features)
+    return ",".join(passes)
 
 
 _RUNNER = r'''
@@ -233,7 +238,8 @@ class PipelineError(RuntimeError):
 def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
                      pipeline: str | None = None, timeout: int = 7200,
                      vectorize: bool = False, transform_schedule: str | None = None,
-                     hoist_static_allocs: bool = True, parallel: bool = False) -> str:
+                     hoist_static_allocs: bool = True, parallel: bool = False,
+                     features: "frozenset[str] | None" = None) -> str:
     """Lower upstream-MLIR text to LLVM IR text via the m2m venv. Returns .ll text.
 
     ``vectorize=True`` selects the native RVV path: writes the transform schedule into
@@ -244,11 +250,15 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     """
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="merlin_lower_"))
     work.mkdir(parents=True, exist_ok=True)
+    from .impr_features import apply_schedule, normalize
+    feats = normalize(features)
     if pipeline is None:
         if vectorize:
             sched = work / "rvv_schedule.mlir"
-            sched.write_text(transform_schedule or RVV_TRANSFORM_SCHEDULE, encoding="utf-8")
-            pipeline = build_rvv_pipeline(sched, hoist_static_allocs=hoist_static_allocs)
+            sched_text = apply_schedule(transform_schedule or RVV_TRANSFORM_SCHEDULE, feats)
+            sched.write_text(sched_text, encoding="utf-8")
+            pipeline = build_rvv_pipeline(sched, hoist_static_allocs=hoist_static_allocs,
+                                          features=feats)
         elif parallel:
             pipeline = _parallel_pipeline()   # multicore (OpenMP) scalar path — K1 big models
         else:

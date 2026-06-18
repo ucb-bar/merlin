@@ -28,7 +28,8 @@ class LowerResult:
 def lower_model(mlir_text: str, workdir: str | Path,
                 targets: tuple[str, ...] = ("host",), textual: bool = False,
                 vectorize: bool = False, transform_schedule: str | None = None,
-                hoist_static_allocs: bool = True, parallel: bool = False) -> LowerResult:
+                hoist_static_allocs: bool = True, parallel: bool = False,
+                features: "frozenset[str] | None" = None) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
     ``textual=True`` uses the pure-text preprocessing (no xDSL round-trip) —
@@ -51,7 +52,7 @@ def lower_model(mlir_text: str, workdir: str | Path,
     ll_text = lower_to_llvm_ir(upstream_text, workdir=work, vectorize=vectorize,
                                transform_schedule=transform_schedule,
                                hoist_static_allocs=hoist_static_allocs,
-                               parallel=parallel)
+                               parallel=parallel, features=features)
     ll_path = work / "model.ll"
     ll_path.write_text(ll_text, encoding="utf-8")
 
@@ -68,9 +69,10 @@ def lower_model_file(mlir_path: str | Path, workdir: str | Path,
                      textual: bool = False, vectorize: bool = False,
                      transform_schedule: str | None = None,
                      hoist_static_allocs: bool = True,
-                     parallel: bool = False) -> LowerResult:
+                     parallel: bool = False,
+                     features: "frozenset[str] | None" = None) -> LowerResult:
     return lower_model(Path(mlir_path).read_text(encoding="utf-8"), workdir, targets,
                        textual=textual, vectorize=vectorize,
                        transform_schedule=transform_schedule,
                        hoist_static_allocs=hoist_static_allocs,
-                       parallel=parallel)
+                       parallel=parallel, features=features)
