@@ -1,0 +1,31 @@
+# RVV experiment result (merlin.rvvgen.runner.certify_rvv)
+any_rvv: false
+correctness:
+  fp32_argmax: true
+  fp32_cos: 1.0
+  fp32_rel: 1.6914300482886365e-07
+  gate_ok: true
+  w8a8_cos: null
+  w8a8_rel: null
+delta_vs_baseline: null
+expected_instructions_present: false
+failure: null
+instruction_histogram: {}
+ladder:
+  K0: pass
+  K1: pass
+  K2: pass
+  K3: pass
+  K4: fail
+  K5: not_run
+  K6: not_run
+measurement:
+- cycle_accurate: false
+  cycles: 486131
+  target: spike
+package:
+  dtype_strategy: fp32
+  run_id: hand_v0
+status: pass
+target: rvv
+workload: softmax_f32_64x64

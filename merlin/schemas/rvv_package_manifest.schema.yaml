@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: RVV Target-Package Manifest
+purpose: >-
+  Provenance + identity for one isolated RVV codegen package under
+  generated_targets/rvv/<run_id>/. RVV is a transform-dialect SCHEDULE + cflags, not a
+  resident-accelerator dialect, so the package payload is schedule.mlir + knobs.yaml (NOT a
+  dialect.py with SPEC_OPS). Mirrors the gemmini target-package manifest provenance fields so
+  the same isolation/certification discipline applies. Loaded via merlin.rvvgen.registry.
+
+required_top_level_fields:
+  - target
+  - run_id
+  - family
+  - authoring
+  - outputs
+
+example: |
+  target: rvv
+  run_id: hand_v0
+  family: vector_schedule          # NOT tensor_resident: RVV is a schedule, not a resident dialect
+  schedule_format: transform_dialect_mlir
+  status: spike_verified           # honest: spike functional + (if run) firesim/k1 cycle-accurate
+  authoring:
+    mode: hand_curated             # hand_curated | deterministic_generated_from_spec | agent_generated_from_recipe
+    generated_by_agent: false
+    author: human
+  # Lineage for the beam-search of forks (absent on the hand_v0 depth-0 root). A tuned fork is
+  # named <target>_tuned_v{version}_d{depth}_{timestamp} and records its parent + the evidence
+  # (mined policy / kernel ids) that justified the change. Forks never mutate a parent.
+  lineage:
+    parent_run_id: hand_v0
+    version: 1                     # generation
+    depth: 1                       # beam depth
+    source_evidence: [fma_broadcast_policy, xnnpack:f32-gemm-1x4v]
+    lever: lowering_pattern        # knob | lowering_pattern | llvm_requirement
+  reproducibility:
+    certified_execution_reproducible: true
+    package_regenerable_from_source: true   # verbatim capture of pipeline.RVV_TRANSFORM_SCHEDULE
+  inputs:
+    source: "merlin/python/merlin/llvmlower/pipeline.py:RVV_TRANSFORM_SCHEDULE + runtime/backends/zephyr_model.py:RVV_CFLAGS"
+  outputs:
+    schedule: schedule.mlir
+    knobs: knobs.yaml
+  validation:
+    package_loads_isolated: true   # merlin.rvvgen.registry.load_rvv_package
+    gate: "_gate cos/rel/argmax (runtime/backends/zephyr_model.py)"

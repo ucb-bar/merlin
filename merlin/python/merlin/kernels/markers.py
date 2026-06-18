@@ -28,6 +28,14 @@ MOTIFS = (
     "double_buffering",
     "weight_stationary_dataflow",
     "intrinsic_lowering",
+    # RVV intrinsic decisions (evidence snippets; the classified motifs of the same name in
+    # classify.py drive promotion — these markers give audit the matched substrings).
+    "lmul_grouping",
+    "scalar_broadcast_fma",
+    "int8_widening_mac",
+    "vl_polymorphic_tail",
+    "vector_reduction",
+    "requant_narrowing",
 )
 
 # Map a kernel.target string to an ISA family used for marker lookup.
@@ -74,6 +82,13 @@ _RAW: dict[str, dict[str, list[str]]] = {
         # Vector-length-agnostic loop: vsetvl/vsetvlmax driving the trip count.
         "vector_length_polymorphic": [r"__riscv_vsetvl(?:max)?_e\d+m\d+"],
         "intrinsic_lowering": [r"__riscv_v"],
+        # Discriminating RVV decisions (evidence snippets for the classified motifs).
+        "lmul_grouping": [r"_e\d+m[248]\b", r"#define\s+\w+[^\n]*_e\d+m[248]\b"],
+        "scalar_broadcast_fma": [r"__riscv_vf?macc_vf"],
+        "int8_widening_mac": [r"__riscv_vw(?:macc|maccu|maccsu|maccus)\w*"],
+        "vl_polymorphic_tail": [r"__riscv_vsetvl_e\d+mf?\d+"],
+        "vector_reduction": [r"__riscv_v(?:f)?red(?:usum|osum|sum|max|min|maxu|minu)\w*"],
+        "requant_narrowing": [r"__riscv_v(?:f)?ncvt\w*", r"__riscv_vnclip\w*", r"__riscv_vse8\b"],
     },
     "gemmini": {
         # Packed RHS / weight staged into scratchpad and reused across compute.

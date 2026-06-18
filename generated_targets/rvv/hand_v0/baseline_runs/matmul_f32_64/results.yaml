@@ -1,0 +1,47 @@
+# RVV experiment result (merlin.rvvgen.runner.certify_rvv)
+any_rvv: true
+correctness:
+  fp32_argmax: true
+  fp32_cos: 1.0
+  fp32_rel: 2.6270383190317367e-07
+  gate_ok: true
+  w8a8_cos: null
+  w8a8_rel: null
+delta_vs_baseline: null
+expected_instructions_present: true
+failure: null
+instruction_histogram:
+  vfadd.vv: 4
+  vfmul.vv: 4
+  vl2r.v: 1
+  vle32.v: 9
+  vle64.v: 1
+  vmv.s.x: 1
+  vmv1r.v: 8
+  vmv2r.v: 4
+  vs2r.v: 1
+  vse32.v: 4
+  vse64.v: 3
+  vsetivli: 12
+  vsext.vf8: 1
+  vslideup.vi: 12
+ladder:
+  K0: pass
+  K1: pass
+  K2: pass
+  K3: pass
+  K4: pass
+  K5: not_run
+  K6: not_run
+measurement:
+- cycle_accurate: false
+  cycles: 27118773
+  target: spike
+notes:
+  K5: K1 unavailable (toolchain or board unreachable)
+package:
+  dtype_strategy: fp32
+  run_id: hand_v0
+status: pass
+target: rvv
+workload: matmul_f32_64x64x64

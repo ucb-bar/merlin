@@ -383,19 +383,25 @@ zephyr_link_libraries(-Wl,--whole-archive {model_archive} -Wl,--no-whole-archive
 def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_riscv64",
               backend: str = "rvv", rvv_hart: int = 0, arena_mb: int = 64, cpus: int = 2,
               inputs_npz: str | Path | None = None, ram_bytes_override: int | None = None,
-              int8_compute: bool = False) -> dict:
+              int8_compute: bool = False, rvv_schedule: str | None = None,
+              cflags_override: list[str] | None = None) -> dict:
     """Lower the model, generate the Zephyr app, and build ``zephyr.elf``.
 
     ``backend``: ``"rvv"`` (vector tile / Saturn) or ``"scalar"`` (scalar tile). The
     scalar build is the portable FireSim-safe path; the vector build targets the Saturn
     tile (worker on ``rvv_hart``). Returns ``{elf, app_dir, backend, **c_runtime_info}``.
+
+    ``rvv_schedule`` overrides the default ``RVV_TRANSFORM_SCHEDULE`` (the seam through which
+    an isolated RVV target-package supplies its own transform schedule); ``cflags_override``
+    replaces ``_cflags(backend)``. Both default ``None`` -> the build is byte-identical to the
+    shipping codegen, so the global flow is never perturbed by the package machinery.
     """
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
     inputs_npz = inputs_npz or (model_dir / "inputs.npz")
     if not available():
         raise ZephyrModelError("Zephyr/spike toolchain unavailable (see env in module doc)")
-    cflags = _cflags(backend)
+    cflags = cflags_override or _cflags(backend)
 
     gcc = _spike.gcc_path()
     ld = gcc.with_name("riscv64-unknown-elf-ld")
@@ -410,7 +416,7 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     # For the rvv backend, bake native RVV (fixed-width vector ops on the matmuls) into the
     # IR rather than leaving it to clang's auto-vectorizer — see llvmlower.pipeline.
     res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
-                           vectorize=(backend == "rvv"))
+                           vectorize=(backend == "rvv"), transform_schedule=rvv_schedule)
     _run([clang, "--target=riscv64-unknown-elf", *cflags, "-c", res.ll_path,
           "-o", work / "model.o"])
 

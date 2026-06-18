@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: RVV Experiment Result
+purpose: >-
+  One certify_rvv run of (RVV package x workload) across coupled targets. Records the K-ladder
+  verdict, correctness gate, per-target cycles (with cycle_accurate flag), the emitted-instruction
+  histogram (objdump evidence), and the measured delta vs a frozen baseline package. Speedup is
+  credited ONLY when the correctness gate passes (fail-closed). not_run_is_not_pass: an unreachable
+  target is recorded not_run, never pass. Written by merlin.rvvgen.runner.
+
+required_top_level_fields:
+  - status
+  - target
+  - package
+  - workload
+  - ladder
+  - correctness
+  - measurement
+
+example: |
+  status: pass                     # pass | fail | not_run | error
+  target: rvv
+  package: {run_id: hand_v0, dtype_strategy: fp32, schedule_sha: 928064a1264cf3dd}
+  workload: matmul_64x64x64
+  ladder: {K0: pass, K1: pass, K2: pass, K3: pass, K4: pass, K5: pass, K6: pass}
+  correctness:
+    gate_ok: true
+    fp32_cos: 0.9999990
+    fp32_rel: 7.0e-05
+    fp32_argmax: true
+    w8a8_cos: null
+  measurement:
+    - {target: spike,   cycle_accurate: false, cycles: 412300}
+    - {target: k1,      cycle_accurate: true,  cycles: 120500, vlen: 256}
+  instruction_histogram: {vsetvli: 12, vle32.v: 96, vfmacc.vv: 96, vredsum: 8}
+  expected_instructions_present: true
+  delta_vs_baseline:
+    baseline_run_id: hand_v0
+    cycles_k1: {baseline: 120500, this: 95200, speedup: 1.27}
+    correctness_regressed: false
+  failure: null

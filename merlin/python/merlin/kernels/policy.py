@@ -122,6 +122,63 @@ CATALOG: dict[str, dict] = {
             "actions": ["schedule_weight_stationary", "stage_weights_resident"],
         },
     },
+    # --- RVV intrinsic decisions: schedule-level codegen knobs (abstraction None -> policy_rule
+    # only). Each maps to an RVV target-package knob/lever via kernels/rvv_knobs.MOTIF_TO_KNOB,
+    # which the tuning agent uses to propose forks. `when` is symbolic (compiler-visible facts),
+    # never a kernel's literal LMUL/tile constants.
+    "lmul_grouping": {
+        "abstraction": None,
+        "policy": {
+            "policy": "lmul_grouping_policy",
+            "when": {"target_has_scalable_vectors": "true", "op": "gemm|matmul|conv|dot",
+                     "dtype": "f32|i8|bf16"},
+            "actions": ["prefer_high_lmul", "set_vector_group_m4_or_m8"],
+        },
+    },
+    "scalar_broadcast_fma": {
+        "abstraction": None,
+        "policy": {
+            # Expert RVV GEMMs broadcast a scalar RHS into a FUSED multiply-add (vfmacc.vf);
+            # our schedule's lower_contraction emits vfmul.vv+vfadd.vv separately (the measured
+            # gap). This policy drives the contraction-lowering lever to recover fma.
+            "policy": "fma_broadcast_policy",
+            "when": {"op": "gemm|matmul", "rhs_reuse_count": ">= 1"},
+            "actions": ["emit_scalar_broadcast_fma", "fuse_multiply_add", "register_block_rhs"],
+        },
+    },
+    "int8_widening_mac": {
+        "abstraction": None,
+        "policy": {
+            "policy": "int8_widening_policy",
+            "when": {"dtype": "i8", "op": "gemm|matmul|conv"},
+            "actions": ["use_vwmacc_widening", "i32_accumulator"],
+        },
+    },
+    "vl_polymorphic_tail": {
+        "abstraction": None,
+        "policy": {
+            "policy": "vl_tail_policy",
+            "when": {"target_has_scalable_vectors": "true"},
+            "actions": ["emit_vsetvl_loop", "vl_or_mask_tail"],
+        },
+    },
+    "vector_reduction": {
+        "abstraction": None,
+        "policy": {
+            "policy": "vector_reduction_policy",
+            "when": {"op": "softmax|layernorm|rmsnorm|dot|reduce",
+                     "target_has_scalable_vectors": "true"},
+            "actions": ["emit_vector_reduction_tree", "use_vredsum_or_vfredusum"],
+        },
+    },
+    "requant_narrowing": {
+        "abstraction": None,
+        "policy": {
+            "policy": "requant_narrowing_policy",
+            "when": {"dtype": "i8", "has_epilogue": "true"},
+            "actions": ["fuse_requant_narrowing_store", "emit_vnclip_then_vse8"],
+        },
+    },
 }
 
 
