@@ -51,6 +51,14 @@ K1_CPU_HZ = 1_600_000_000     # X60 scaling_cur_freq (for the rdtime-ticks -> co
 # lower mmaps for the bigger models). Sized to leave headroom on the ~3.5G board.
 K1_STACK_BYTES = 2 * 1024 * 1024 * 1024
 
+# Cross-built static OpenMP runtime (riscv64, rv64gcv) — provides the __kmpc_* symbols the
+# multicore (parallel) lowering emits. Built once into build_tools/k1_openmp (see the
+# OpenMP path in llvmlower.pipeline._parallel_pipeline). Linking it fans the model's parallel
+# loops across the board's 8 cores (set OMP_NUM_THREADS at run time). Optional: only the
+# `parallel=True` build path references it.
+K1_OPENMP_DIR = _REPO / "build_tools" / "k1_openmp"
+K1_OMP_THREADS = int(os.environ.get("MERLIN_K1_OMP_THREADS", "8"))  # board has 8 cores (2x4)
+
 
 def _toolchain_root() -> Path | None:
     """Resolve the directory that actually contains ``bin/clang``.
@@ -235,7 +243,8 @@ class K1Error(RuntimeError):
 
 def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
                     inputs_npz: str | Path | None = None,
-                    force_scalar: bool | None = None) -> Path:
+                    force_scalar: bool | None = None,
+                    parallel: bool = False) -> Path:
     """Cross-compile a self-contained K1 Linux RVV binary from the workload + RVV package.
 
     Reuses the EXACT spike/Zephyr lowering (``zephyr_model._prepare_model_mlir`` ->
@@ -268,19 +277,26 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     from ..llvmlower.pipeline import PipelineError
     if force_scalar is None:
         force_scalar = bool(os.environ.get("MERLIN_K1_FORCE_SCALAR"))
-    try:
-        if force_scalar:
-            raise PipelineError("forced scalar (MERLIN_K1_FORCE_SCALAR)")
-        res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
-                               vectorize=True, transform_schedule=pkg.schedule_text,
-                               hoist_static_allocs=False)
-    except PipelineError:
-        # Some models (e.g. xr0's rank-4 two-batch attention) hit a vectorize-path
-        # specialization (linalg-specialize-generic-ops) that emits an invalid rank-4
-        # linalg.batch_matmul. Fall back to the SCALAR lowering (no specialize pass): the int8
-        # datapath is intact, only the contraction stays a scalar loop (correct, unvectorized).
-        res = lower_model_file(prepared, work / "lower_scalar", targets=(), textual=True,
-                               vectorize=False, hoist_static_allocs=False)
+    if parallel:
+        # Multicore path: scalar int8 datapath + OpenMP parallel loops (no fixed-width
+        # vectorize). Used for the big models (rdt/smolvla) that crash the vectorized lowering
+        # AND are too slow single-core — the parallel loops fan across the board's 8 cores.
+        res = lower_model_file(prepared, work / "lower_omp", targets=(), textual=True,
+                               vectorize=False, hoist_static_allocs=False, parallel=True)
+    else:
+        try:
+            if force_scalar:
+                raise PipelineError("forced scalar (MERLIN_K1_FORCE_SCALAR)")
+            res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
+                                   vectorize=True, transform_schedule=pkg.schedule_text,
+                                   hoist_static_allocs=False)
+        except PipelineError:
+            # Some models (e.g. xr0's rank-4 two-batch attention) hit a vectorize-path
+            # specialization (linalg-specialize-generic-ops) that emits an invalid rank-4
+            # linalg.batch_matmul. Fall back to the SCALAR lowering (no specialize pass): the int8
+            # datapath is intact, only the contraction stays a scalar loop (correct, unvectorized).
+            res = lower_model_file(prepared, work / "lower_scalar", targets=(), textual=True,
+                                   vectorize=False, hoist_static_allocs=False)
 
     # 2. compile model.ll -> K1 Linux object. The IR is emitted by the repo's clang-23 toolchain
     #    and carries LLVM-23 attribute syntax (e.g. `captures(none)`) the SpacemiT clang-19 can't
@@ -312,8 +328,15 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     binary = work / "merlin_k1"
     srcs = [main_c, cgen / "model_call.c", rt / "merlin_model.c", abi / "mlir_runtime.c"]
     base = [cc, f"--target=riscv64-unknown-linux-gnu", f"-march={K1_MARCH}", f"-mabi={K1_MABI}",
-            "-O2", f"-I{rt}", f"-I{cgen}", *srcs, model_o, weights_o, "-lm", "-lpthread",
-            "-o", binary]
+            "-O2", f"-I{rt}", f"-I{cgen}", *srcs, model_o, weights_o]
+    if parallel:
+        # Resolve the cross-built __kmpc_* symbols against the static libomp; its LLVM runtime
+        # needs the C++/dl deps (see the libomp build note). Order matters: libomp before its deps.
+        libomp = K1_OPENMP_DIR / "libomp.a"
+        if not libomp.is_file():
+            raise K1Error(f"parallel build needs {libomp} (cross-build libomp first)")
+        base += [str(libomp), "-lstdc++", "-ldl"]
+    base += ["-lm", "-lpthread", "-o", binary]
     try:
         _run([*base, "-static"])
     except K1Error:
@@ -354,14 +377,20 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
     if not K1_HOST:
         raise K1Error("MERLIN_K1_HOST unset — board unreachable")
 
-    def _build_deploy_run(force_scalar: bool | None, tag: str) -> dict:
-        binary = build_k1_binary(model_dir, Path(work) / tag, pkg, force_scalar=force_scalar)
+    def _build_deploy_run(mode: str, tag: str) -> dict:
+        # mode: "v" vectorized (fixed-width RVV); "omp" scalar int8 + OpenMP across 8 cores;
+        # "scalar" single-core scalar int8 (last-resort correctness).
+        binary = build_k1_binary(model_dir, Path(work) / tag, pkg,
+                                 force_scalar=(mode == "scalar"), parallel=(mode == "omp"))
         remote = f"/tmp/{Path(model_dir).name}_{pkg.run_id}_{tag}_merlin_k1"
         _run(["scp", "-i", K1_SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
               str(binary), f"{K1_HOST}:{remote}"])
+        # Fan the OpenMP loops across the board's cores (spread over the two clusters).
+        env = (f"OMP_NUM_THREADS={K1_OMP_THREADS} OMP_PROC_BIND=spread "
+               if mode == "omp" else "")
         try:
             _ssh(f"chmod +x {remote}", timeout=30)
-            proc = _ssh(remote, timeout=timeout)
+            proc = _ssh(f"{env}{remote}", timeout=timeout)
             return zm._parse_console(proc.stdout + proc.stderr, proc.returncode)
         finally:
             try:
@@ -370,12 +399,16 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
                 pass
 
     try:
-        res = _build_deploy_run(None, "v")
+        res = _build_deploy_run("v", "v")
     except zm.ZephyrModelError:
         # The vectorized int8 lowering OOB-stores / crashes for some shapes (e.g. rdt's diffusion
-        # transformer) while smaller models vectorize fine. Retry once with the SCALAR lowering
-        # (no specialize/vector-transfer path) — correct, slower — so the model still runs int8.
-        res = _build_deploy_run(True, "scalar")
+        # transformer) while smaller models vectorize fine. Retry with the MULTICORE lowering
+        # (scalar int8 datapath + OpenMP parallel loops) — correct AND fast enough to finish on
+        # the 8-core board, where single-core scalar times out. Final fall-back: single-core scalar.
+        try:
+            res = _build_deploy_run("omp", "omp")
+        except (zm.ZephyrModelError, K1Error):
+            res = _build_deploy_run("scalar", "scalar")
 
     # Prefer the vlenb the harness printed (=== merlin_k1 vlenb=N ===); else probe; else constant.
     vlen_bits = VLEN

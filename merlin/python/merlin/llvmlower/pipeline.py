@@ -51,6 +51,48 @@ UPSTREAM_PIPELINE = ",".join([
     "canonicalize", "cse", "symbol-dce",
 ])
 
+
+def _parallel_pipeline() -> str:
+    """The scalar pipeline, re-targeted for **multicore** via OpenMP.
+
+    Identical to :data:`UPSTREAM_PIPELINE` except the loop-generation stage: parallel
+    iterator dimensions of each linalg op become ``scf.parallel`` (``convert-linalg-to-
+    parallel-loops``) which ``convert-scf-to-openmp`` wraps in an ``omp.parallel`` +
+    ``omp.wsloop`` (work-shared across threads); reduction dims stay sequential
+    ``scf.for`` (correctness preserved). ``mlir-translate`` then emits ``__kmpc_*`` runtime
+    calls, satisfied at link time by the cross-built ``libomp.a`` (build_tools/k1_openmp).
+    Set ``OMP_NUM_THREADS`` on the board to fan out across the 8 cores.
+
+    This is the K1 big-model path: the diffusion-transformer / large VLAs that run on the
+    *scalar* fallback (no fixed-width vectorize) otherwise execute on one core and time out.
+    Gated — never on the default flow (``UPSTREAM_PIPELINE`` is untouched)."""
+    return ",".join([
+        "canonicalize", "cse",
+        "func.func(linalg-fuse-elementwise-ops)",
+        "func.func(linalg-generalize-named-ops)",
+        "one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map}",
+        "buffer-results-to-out-params{modify-public-functions}",  # heap intermediates (K1)
+        "func.func(buffer-hoisting,buffer-loop-hoisting)",
+        # parallel iterator dims -> scf.parallel; reduction dims stay scf.for (sequential).
+        "func.func(convert-linalg-to-parallel-loops)",
+        "convert-scf-to-openmp",          # scf.parallel -> omp.parallel{omp.wsloop}
+        "canonicalize",
+        "convert-scf-to-cf",              # remaining (reduction) scf.for -> cf
+        "expand-strided-metadata",
+        "lower-affine",
+        "convert-openmp-to-llvm",         # omp region operands -> llvm
+        "convert-math-to-libm",
+        "convert-math-to-llvm",
+        "convert-index-to-llvm",
+        "convert-arith-to-llvm",
+        "finalize-memref-to-llvm",
+        "convert-func-to-llvm",
+        "convert-cf-to-llvm",
+        "reconcile-unrealized-casts",
+        "canonicalize", "cse", "symbol-dce",
+    ])
+
+
 # --- Native RVV (fixed-width) vectorization path --------------------------------------
 # Instead of relying on clang's RISC-V auto-vectorizer of scalar loops (the scalar path
 # above), we bake vector ops into the IR: a transform-dialect schedule vectorizes every
@@ -108,6 +150,7 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
     brop = ("buffer-results-to-out-params{modify-public-functions hoist-static-allocs}"
             if hoist_static_allocs
             else "buffer-results-to-out-params{modify-public-functions}")
+    late_hoist: list[str] = []
     return ",".join([
         "canonicalize", "cse",
         # Recover named contraction ops (matmul/batch_matmul) from the capture's generics so
@@ -126,6 +169,7 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
         "func.func(lower-vector-mask)",
         "convert-vector-to-scf",
         "func.func(convert-linalg-to-loops)",   # fallback: any op the vectorizer skipped
+        *late_hoist,                            # K1: hoist loop-body alloca temps out of loops
         "convert-scf-to-cf",
         "expand-strided-metadata",
         "lower-affine",
@@ -160,6 +204,27 @@ with open(out_path, "w") as f:
 print("OK")
 '''
 
+# Parallel/OpenMP path: run the passes in the m2m venv (full LLVM-23 registry), but DUMP the
+# LLVM-dialect module instead of translating in-process — the torch-mlir wheel's
+# translate_module_to_llvmir segfaults on whole-model OpenMP IR (its OpenMPIRBuilder). The
+# standalone llvm-install mlir-translate (same LLVM 23) translates the omp IR cleanly, so the
+# translate step runs out-of-process below. The non-parallel paths keep the in-process bridge.
+_RUNNER_DUMP = r'''
+import sys
+
+from torch_mlir import ir
+from torch_mlir.passmanager import PassManager
+
+src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
+ctx = ir.Context()
+with open(src_path) as f:
+    module = ir.Module.parse(f.read(), ctx)
+PassManager.parse("builtin.module(" + pipeline + ")", ctx).run(module.operation)
+with open(out_path, "w") as f:
+    f.write(str(module.operation))
+print("OK")
+'''
+
 
 class PipelineError(RuntimeError):
     pass
@@ -168,7 +233,7 @@ class PipelineError(RuntimeError):
 def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
                      pipeline: str | None = None, timeout: int = 7200,
                      vectorize: bool = False, transform_schedule: str | None = None,
-                     hoist_static_allocs: bool = True) -> str:
+                     hoist_static_allocs: bool = True, parallel: bool = False) -> str:
     """Lower upstream-MLIR text to LLVM IR text via the m2m venv. Returns .ll text.
 
     ``vectorize=True`` selects the native RVV path: writes the transform schedule into
@@ -184,12 +249,33 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
             sched = work / "rvv_schedule.mlir"
             sched.write_text(transform_schedule or RVV_TRANSFORM_SCHEDULE, encoding="utf-8")
             pipeline = build_rvv_pipeline(sched, hoist_static_allocs=hoist_static_allocs)
+        elif parallel:
+            pipeline = _parallel_pipeline()   # multicore (OpenMP) scalar path — K1 big models
         else:
             pipeline = UPSTREAM_PIPELINE
     src = work / "model.mlir"
     out = work / "model.ll"
     runner = work / "run_lowering.py"
     src.write_text(mlir_text, encoding="utf-8")
+
+    if parallel:
+        # Two-step: run passes in the m2m venv (dump LLVM-dialect MLIR), then translate to
+        # LLVM IR with the standalone mlir-translate (the in-process bridge crashes on omp).
+        from .toolchain import mlir_translate
+        llvmdial = work / "model.llvmdialect.mlir"
+        runner.write_text(_RUNNER_DUMP, encoding="utf-8")
+        proc = subprocess.run(
+            [str(m2m_python()), str(runner), str(src), str(llvmdial), pipeline],
+            capture_output=True, text=True, timeout=timeout)
+        if proc.returncode != 0 or not llvmdial.is_file():
+            raise PipelineError(f"upstream lowering (parallel) failed:\n{proc.stdout}\n{proc.stderr}")
+        tproc = subprocess.run(
+            [str(mlir_translate()), "--mlir-to-llvmir", str(llvmdial), "-o", str(out)],
+            capture_output=True, text=True, timeout=timeout)
+        if tproc.returncode != 0 or not out.is_file():
+            raise PipelineError(f"mlir-translate (parallel) failed:\n{tproc.stdout}\n{tproc.stderr}")
+        return _fix_float_literals(out.read_text(encoding="utf-8"))
+
     runner.write_text(_RUNNER, encoding="utf-8")
     proc = subprocess.run(
         [str(m2m_python()), str(runner), str(src), str(out), pipeline],
