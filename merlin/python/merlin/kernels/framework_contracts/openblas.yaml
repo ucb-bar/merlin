@@ -1,0 +1,31 @@
+# Framework contract for OpenBLAS riscv64 RVV kernels (caller-side assumptions; hand-authored,
+# agent-refined). BLAS is column-major with an explicit copy/pack step.
+framework: openblas
+isa: rvv
+layout:
+  lhs: column_major                   # BLAS Fortran convention (column-major)
+  rhs: column_major
+  output: column_major
+operand_prepack:
+  operand: both
+  packed_layout: "GEMM uses _ncopy/_tcopy to pack A and B into block-panel buffers (GEMM_P/GEMM_Q/
+    GEMM_R blocking) before the inner kernel (gemmkernel_rvv_vMxN)"
+  prepacked_by: "*_ncopy_rvv / *_tcopy_rvv (separate copy kernels)"
+  implication: "the inner kernel assumes packed, aligned block panels; raw matmul must add the copy"
+transpose_assumption: "the N/T variants (gemm_n vs gemm_t) pick ncopy vs tcopy; the inner kernel
+  is transpose-agnostic (it sees packed panels)."
+accumulator:
+  init: zero
+  dtype: "f32 (SGEMM) or f64 (DGEMM, same source via #ifdef DOUBLE); LMUL behind VSETVL macro"
+  width: "MR x NR register block, heavily unrolled (e.g. v1x8 = 1x8)"
+dtype_quant:
+  f32: plain
+  f64: plain
+  note: "integer/quant GEMM not the focus of the riscv64 RVV kernels here"
+calling_convention:
+  signature: "bm, bn, bk, alpha, A(packed), B(packed), C, ldc (column-major)"
+  macro_indirection: "VSETVL/VLEV_FLOAT/VFMACCVF #defines hide the e<sew>m<lmul> + vf/vv form —
+    AST call-counting misses them; rvv_intrinsics resolves the macros for LMUL/fma decisions"
+notes: >-
+  Same source compiles to SGEMM(f32)/DGEMM(f64) via #ifdef DOUBLE, so the dtype is set by the
+  build, not the source. Packing (ncopy/tcopy) is separate, like XNNPACK — record compare mode.
