@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=none
+# merlin schema (not yet formal JSON Schema; structured enough for validation).
+title: Kernel Performance Ceiling Row
+purpose: >-
+  One measured performance ceiling for a single (op, dtype, M, N, K, shape_regime,
+  source) compiled standalone from a CURATED expert kernel and run on a real target
+  (spike). The ceiling is the bar our compiler's RVV codegen is judged against:
+  attainment = ceiling_cycles / compiler_cycles (1.0 == we matched the expert; <1.0 ==
+  the expert is faster). Owned by S4.2 (kernel-performance ceiling harness). The
+  fingerprint_key (op, dtype, shape_regime) joins 1:1 to the structural fingerprint key
+  in kernels/compare.py so a ceiling row pairs with a compiler-measured cycle count.
+
+# One JSON object per line, appended to output/kernels/ceiling/ceiling.jsonl
+required_top_level_fields:
+  - op            # canonical op token: gemm | matmul | dotprod | conv | softmax | ...
+  - dtype         # i8 | i32 | f16 | f32 | f64 | ...
+  - M             # contraction dims; for a dot/elementwise kernel N=K=1 and M=length
+  - N
+  - K
+  - shape_regime  # compact regime string (e.g. "square_small"); matches compare.py key
+  - source        # corpus the curated kernel came from: "saturn" (others later)
+  - target        # measurement target: "spike" (NOT the board)
+  - cycles        # measured cycle count for this op-shape (the ceiling); int
+  - fingerprint_key   # {op, dtype, shape_regime} — the 1:1 join key to compare.py
+
+optional_top_level_fields:
+  - bench         # source benchmark identifier (e.g. "vec-igemm")
+  - kernel_ref    # the kernel symbol/function measured (e.g. "imatmul")
+  - instructions  # retired instruction count when the bench reports it
+  - isa           # spike --isa string used (default rv64gcv_zfh_zvfh)
+  - note          # free-form provenance / how cycles were parsed
+
+example: |
+  {"op": "matmul", "dtype": "i64", "M": 32, "N": 32, "K": 32,
+   "shape_regime": "square_small", "source": "saturn", "target": "spike",
+   "bench": "vec-igemm", "kernel_ref": "imatmul", "cycles": 26055,
+   "isa": "rv64gcv_zfh_zvfh",
+   "fingerprint_key": {"op": "matmul", "dtype": "i64", "shape_regime": "square_small"},
+   "note": "parsed 'The execution took N cycles.' for (32 x 32) x (32 x 32)"}
