@@ -264,9 +264,18 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     prepared = zm._prepare_model_mlir(model_dir / "model.mlir", work, int8_compute=pkg.is_int8)
     # hoist_static_allocs=False: keep big intermediate buffers on the HEAP (board RAM) instead of
     # promoting them to stack alloca — large models otherwise overflow even a multi-GB stack.
-    res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
-                           vectorize=True, transform_schedule=pkg.schedule_text,
-                           hoist_static_allocs=False)
+    from ..llvmlower.pipeline import PipelineError
+    try:
+        res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
+                               vectorize=True, transform_schedule=pkg.schedule_text,
+                               hoist_static_allocs=False)
+    except PipelineError:
+        # Some models (e.g. xr0's rank-4 two-batch attention) hit a vectorize-path
+        # specialization (linalg-specialize-generic-ops) that emits an invalid rank-4
+        # linalg.batch_matmul. Fall back to the SCALAR lowering (no specialize pass): the int8
+        # datapath is intact, only the contraction stays a scalar loop (correct, unvectorized).
+        res = lower_model_file(prepared, work / "lower_scalar", targets=(), textual=True,
+                               vectorize=False, hoist_static_allocs=False)
 
     # 2. compile model.ll -> K1 Linux object. The IR is emitted by the repo's clang-23 toolchain
     #    and carries LLVM-23 attribute syntax (e.g. `captures(none)`) the SpacemiT clang-19 can't
