@@ -2174,10 +2174,13 @@ _CS_DIR = Path(__file__).resolve().parents[2] / "benchmarks" / "dse_guidance" / 
 
 def test_insight_evidence_tier_classification():
     from merlin.dse_guidance import insight_mining as IM
-    assert IM.evidence_tier("recovered_from_ir", "operator_shape_table.csv") == "A"   # verified
-    assert IM.evidence_tier("recovered_from_ir", "not_a_real_artifact.csv") == "B"    # unverified
-    assert IM.evidence_tier("derived_requirement", "critical_path_table.csv") == "B"  # derived+verified
-    assert IM.evidence_tier("derived_requirement", "nope.csv") == "C"                 # derived-unverified
+    # Tier now keys off a per-metric harness check OR >=2-artifact corroboration (not artifact set)
+    assert IM.evidence_tier("recovered_from_ir", "head_weight_bytes") == "A"        # has a check
+    assert IM.evidence_tier("recovered_from_ir", "no_check_metric", 2) == "A"       # corroborated>=2
+    assert IM.evidence_tier("recovered_from_ir", "no_check_metric", 1) == "B"       # unverified
+    assert IM.evidence_tier("derived_requirement", "avoidable_weight_reload") == "B"  # derived+check
+    assert IM.evidence_tier("derived_requirement", "no_check_metric", 1) == "C"     # derived-unverified
+    assert IM.evidence_tier("recovered_from_model_config", "K") == "C"              # config reference
     assert IM.evidence_tier("assumed_reference", "x") == "C"
     assert IM.evidence_tier("unavailable", "x") == "D"
 
@@ -2273,3 +2276,84 @@ def test_insight_mining_is_deterministic():
     f = IM.unified_facts(_CS_DIR, "rdt")
     assert IM.presentation_findings(f, IM.usefulness(_CS_DIR, "rdt", f)) == \
         IM.presentation_findings(f, IM.usefulness(_CS_DIR, "rdt", f))
+
+
+# ============================================================ P14 devil's-advocate iteration loop
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p14_gap_audit_converges_to_zero():
+    from merlin.dse_guidance import insight_mining as IM
+    nets = IM._workloads(_CS_DIR)
+    for scope in nets + ["all"]:
+        b = IM.mine(_CS_DIR, scope)
+        oa = b["open_avoidable_gaps"]
+        assert not oa, f"{scope}: open avoidable gaps {[g['category'] for g in oa]}"
+        # inherent limits are scoped (each carries a required input), not bare caveats
+        inh = [g for g in b["gaps"] if g["category"] == "inherent_limit"]
+        assert inh and all(g["required_input"] and g["status"] == "scoped" for g in inh)
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p14_full_artifact_coverage():
+    from merlin.dse_guidance import insight_mining as IM
+    facts = IM.unified_facts(_CS_DIR, "all")
+    used = {f["source_artifact"] for f in facts}
+    expected = set(IM._ARTIFACT_PHASE)
+    missing = sorted(expected - used)
+    assert not missing, f"unused expected artifacts: {missing}"     # leverages ALL of P0-P12
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p14_main_findings_corroborated_and_measured_lowbit_surfaced():
+    from merlin.dse_guidance import insight_mining as IM
+    b = IM.mine(_CS_DIR, "all")
+    main = [f for f in b["findings"] if f["presentation_placement"] == "main"]
+    assert main
+    for f in main:
+        check = any(x["verifying_check"] for m in f["relevant_metrics"]
+                    for x in b["facts"] if x["metric_name"] == m)
+        assert f["max_corroborated_by"] >= 2 or check, f"uncorroborated main: {f['title']}"
+    # real measured + low-bit evidence is present (inherent-limit removal via existing data)
+    assert any(f["derivation_type"] == "measured" for f in b["facts"])
+    assert any(f["workload"] == "ZOO" or "lowbit" in f["metric_name"] for f in b["facts"])
+
+
+def test_p14_uncorroborated_single_source_fact_not_a_candidate():
+    from merlin.dse_guidance import insight_mining as IM
+    # a tier-B recovered fact with no harness check and single source is NOT presentation-worthy
+    f = IM._fact("F0", workload="w", metric="n_runtime_objects", value=3, unit="count",
+                 artifact="runtime_object_candidates.yaml", phase="P12",
+                 evidence="derived_requirement", implication="objects crossing the HAL",
+                 corroborated_by=1)
+    assert f["presentation_candidate"] is False
+    # the same metric corroborated by 2 artifacts becomes a candidate
+    f2 = IM._fact("F1", workload="w", metric="n_runtime_objects", value=3, unit="count",
+                  artifact="runtime_object_candidates.yaml", phase="P12",
+                  evidence="recovered_from_ir", implication="objects crossing the HAL",
+                  corroborated_by=2)
+    assert f2["presentation_candidate"] is True
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p14_required_inputs_manifest_scopes_every_limit():
+    from merlin.dse_guidance import insight_mining as IM
+    ri = IM.required_inputs(_CS_DIR, IM.unified_facts(_CS_DIR, "all"))
+    assert ri
+    for x in ri:
+        assert x["limit"] and x["required_input"] and x["status"] == "scoped"
+
+
+@pytest.mark.skipif(not _has_recaptures(), reason="fewer than 2 prov.fqn recaptures present")
+def test_p14_cli_insight_mining_run_zero_gaps(tmp_path):
+    from merlin.dse_guidance import cli
+    rc = cli.main(["--insight-mining", "--out", str(tmp_path)])
+    assert rc == 0                                                   # nonzero iff any open gaps
+    runs = list(tmp_path.glob("*_dse_analysis"))
+    assert runs
+    allrun = next(r for r in runs if r.name.startswith("all_"))
+    assert (allrun / "gap_audit_report.md").is_file()
+    assert (allrun / "required_inputs_manifest.yaml").is_file()

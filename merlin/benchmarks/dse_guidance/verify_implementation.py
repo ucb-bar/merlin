@@ -986,6 +986,7 @@ def verify_p13() -> dict:
     nets = IM._workloads(CS)
     scopes = nets + ["all"]
     total_facts = 0
+    expected_arts = {a for a, _ in IM._ARTIFACT_PHASE.items()}
     for scope in scopes:
         b = IM.mine(CS, scope)
         total_facts += len(b["facts"]) if scope == "all" else 0
@@ -997,9 +998,29 @@ def verify_p13() -> dict:
         main = [f for f in b["findings"] if f["presentation_placement"] == "main"]
         p13check(all(f["evidence_tier"] in ("A", "B") for f in main),
                  f"[{scope}] every main finding is tier A/B (no weak/assumed main)")
-        # main findings carry a DSE implication + are corroborated (not purely assumed)
-        p13check(all(f["dse_implication"] for f in main),
-                 f"[{scope}] every main finding has a DSE implication")
+        # P14: every main finding is corroborated (a per-metric check OR >=2 artifacts), not fake
+        p13check(all(f["max_corroborated_by"] >= 2 or any(
+                     x["verifying_check"] for m in f["relevant_metrics"]
+                     for x in b["facts"] if x["metric_name"] == m) for f in main),
+                 f"[{scope}] every main finding corroborated (>=2 artifacts or a harness check)")
+        # P14 devil's-advocate convergence: ZERO open avoidable gaps
+        oa = b["open_avoidable_gaps"]
+        p13check(not oa, f"[{scope}] gap_audit: 0 open avoidable gaps "
+                         f"(found {len(oa)}: {[g['category'] for g in oa][:4]})")
+        # P14: every inherent limit is scoped to a required input (no bare caveats)
+        p13check(b["required_inputs"] and all(x.get("required_input") for x in b["required_inputs"]),
+                 f"[{scope}] every inherent limit carries a required_input")
+    # P14: the 'all' scope leverages EVERY expected artifact (coverage == all)
+    ball = IM.mine(CS, "all")
+    used = {f["source_artifact"] for f in ball["facts"]}
+    missing = sorted(a for a in expected_arts if a not in used)
+    p13check(not missing, f"[all] coverage == all {len(expected_arts)} expected artifacts "
+                          f"(unused: {missing[:5]})")
+    # P14: real measured + low-bit evidence is surfaced (not just small f32 recaptures)
+    measured = [f for f in ball["facts"] if f["derivation_type"] == "measured"]
+    lowbit = [f for f in ball["facts"] if "lowbit" in f["metric_name"] or f["workload"] == "ZOO"]
+    p13check(measured and lowbit,
+             f"[all] real measured ({len(measured)}) + low-bit ({len(lowbit)}) evidence surfaced")
     # determinism: same committed inputs -> identical mined facts + findings
     a1, a2 = IM.unified_facts(CS, "all"), IM.unified_facts(CS, "all")
     p13check(a1 == a2, "insight mining is deterministic (same inputs -> identical facts)")
