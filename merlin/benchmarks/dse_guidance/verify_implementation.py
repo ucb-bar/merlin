@@ -1038,7 +1038,96 @@ def verify_p13() -> dict:
     p13check(part is not None and all("exists" in r for r in part["inventory"])
              and any(not r["exists"] for r in part["inventory"]),
              "partial mode: missing artifacts recorded exists=no, no crash")
+    verify_p15(IM, bundle)
     return {"scopes": len(scopes), "facts_all": total_facts}
+
+
+def verify_p15(IM, bundle) -> None:
+    """P15 signal-first study: re-derive the canonical table, hotspots, coverage, family + corpus
+    plan independently and assert they match; every signal metric answers a DSE question."""
+    import csv as _csv
+    import io as _io
+
+    def _rows(name):
+        p = CS / name
+        return list(_csv.DictReader(_io.StringIO(p.read_text()))) if p.is_file() else []
+
+    # 1. canonical signal table is signal/measured ONLY (no context/count metric leaks in)
+    canon = bundle["canonical_signal"]
+    facts_by_metric = {f["metric_name"]: f for f in bundle["facts"]}
+    ctx_in_canon = [r["metric"] for r in canon
+                    if facts_by_metric.get(r["metric"], {}).get("metric_class") == "context"]
+    p13check(canon and not ctx_in_canon,
+             f"[P15] canonical_signal_table is signal/measured only ({len(canon)} rows, "
+             f"context leaks: {ctx_in_canon[:4]})")
+    # 2. every SIGNAL metric maps to a DSE question; every canonical row + main finding carries one
+    unmapped = [m for m in IM.SIGNAL_METRICS if m not in IM._METRIC_QUESTION]
+    canon_noq = [r["metric"] for r in canon if not r["dse_question"]]
+    main = [f for f in bundle["findings"] if f["presentation_placement"] == "main"]
+    main_noq = [f["title"] for f in main if not f.get("dse_question")]
+    valid_q = set(IM.DSE_QUESTIONS)
+    bad_q = [r["dse_question"] for r in canon if r["dse_question"] not in valid_q]
+    p13check(not unmapped and not canon_noq and not main_noq and not bad_q,
+             f"[P15] every signal metric/row/main-finding maps to a valid DSE question "
+             f"(unmapped {unmapped[:3]}, canon_noq {canon_noq[:3]}, main_noq {main_noq[:3]})")
+    # 3. per-operator hotspots reference real ops + recompute independently
+    h = bundle["hotspots"]
+    ops = _rows("operator_shape_table.csv")
+    op_keys = {(o["workload"], o["op_index"]) for o in ops}
+    refs_real = all((r["workload"], r["op_index"]) in op_keys for r in h["by_macs"])
+    indep_macs = sorted(ops, key=lambda o: -int(o["macs"]))[:10]
+    macs_match = [r["op_index"] for r in h["by_macs"]] == [o["op_index"] for o in indep_macs]
+    p13check(refs_real and macs_match and h["n_ops"] == len(ops),
+             f"[P15] hotspots reference real ops and top-by-MACs recomputes "
+             f"(refs_real={refs_real}, macs_match={macs_match}, n_ops={h['n_ops']})")
+    # padding waste matches an independent best-tile recompute
+    tw = _rows("tile_waste_table.csv")
+    best = {}
+    for r in tw:
+        if r.get("primitive_kind") == "tile" and r.get("applicable") == "True":
+            key = (r["workload"], r["op_index"])
+            w = float(r["padding_waste"])
+            best[key] = min(best.get(key, w), w)
+    pad_ok = all(abs(r["best_tile_padding_waste"]
+                     - best[(r["workload"], r["op_index"])]) < 1e-9 for r in h["by_padding_waste"])
+    p13check(pad_ok, "[P15] hotspot padding waste == independent best-tile recompute")
+    # 4. abstraction coverage MAC/byte/workload coverage recomputes from source artifacts
+    cov = bundle["abstraction_coverage"]
+    mac_by_wl, byte_by_wl = {}, {}
+    for o in ops:
+        mac_by_wl[o["workload"]] = mac_by_wl.get(o["workload"], 0) + int(o["macs"])
+        byte_by_wl[o["workload"]] = byte_by_wl.get(o["workload"], 0) + int(o["rhs_weight_bytes"])
+    tmac, tbyte = sum(mac_by_wl.values()) or 1, sum(byte_by_wl.values()) or 1
+    nwl = len(mac_by_wl)
+    cov_ok = True
+    for r in cov:
+        supp = [w.strip() for w in r["workloads_supporting"].split(";") if w.strip()]
+        exp_mac = round(sum(mac_by_wl.get(w, 0) for w in supp) / tmac, 4)
+        exp_wl = round(len(supp) / (nwl or 1), 4)
+        if abs(r["mac_coverage"] - exp_mac) > 1e-6 or abs(r["workload_coverage"] - exp_wl) > 1e-6:
+            cov_ok = False
+            break
+    p13check(cov and cov_ok, f"[P15] abstraction coverage recomputes from source ({len(cov)} rows)")
+    # 5. corpus-expansion plan references only real registry families lacking a recapture
+    from merlin.dse_guidance.models import MODEL_ARCH
+    cp = bundle["corpus_plan"]
+    missing = [m["model"] for ms in cp["missing_by_family"].values() for m in ms]
+    real = all(m in MODEL_ARCH for m in missing)
+    none_captured = not (set(missing) & set(cp["captured_models"]))
+    p13check(real and none_captured and cp["n_missing"] == len(missing),
+             f"[P15] corpus plan references only real, uncaptured registry models "
+             f"({cp['n_missing']} missing, all real={real})")
+    # 6. every rendered-eligible plot carries a non-empty DSE caption; no forbidden wording in P15
+    plots = bundle["plots"]
+    no_cap = [p["plot_id"] for p in plots
+              if p["recommendation"] != "omit" and not p.get("dse_caption")]
+    p15_blob = (str(canon) + str(h) + str(cov) + str(bundle["family_summary"])
+                + str(cp) + str([p.get("dse_caption") for p in plots])).lower()
+    leaked = [t for t in ("speedup", "faster", "optimal", "performance improvement",
+                          "predicted cycles", "throughput of", "x speedup") if t in p15_blob]
+    p13check(not no_cap and not leaked,
+             f"[P15] every presented plot has a DSE caption + no forbidden wording "
+             f"(no_cap {no_cap[:3]}, leaked {leaked})")
 
 
 def main(write: bool = True) -> int:

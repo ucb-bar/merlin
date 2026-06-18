@@ -2361,3 +2361,104 @@ def test_p14_cli_insight_mining_run_zero_gaps(tmp_path):
     allrun = next(r for r in runs if r.name.startswith("all_"))
     assert (allrun / "gap_audit_report.md").is_file()
     assert (allrun / "required_inputs_manifest.yaml").is_file()
+
+
+# --------------------------------------------------------------------------- P15 signal-first study
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p15_every_signal_metric_answers_a_dse_question():
+    from merlin.dse_guidance import insight_mining as IM
+    # the organizing rule: every SIGNAL/measured metric maps to one of the fixed DSE questions
+    unmapped = [m for m in IM.SIGNAL_METRICS if m not in IM._METRIC_QUESTION]
+    assert unmapped == []
+    assert set(IM._METRIC_QUESTION.values()) <= set(IM.DSE_QUESTIONS)
+    b = IM.mine(_CS_DIR, "all")
+    # canonical table is signal/measured only, each row carries a valid question
+    fbm = {f["metric_name"]: f for f in b["facts"]}
+    assert b["canonical_signal"]
+    for r in b["canonical_signal"]:
+        assert fbm[r["metric"]]["metric_class"] in ("signal", "measured")  # no context leaks
+        assert r["dse_question"] in IM.DSE_QUESTIONS
+    # every main finding carries a question
+    for f in b["findings"]:
+        if f["presentation_placement"] == "main":
+            assert f["dse_question"] in IM.DSE_QUESTIONS
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p15_hotspots_reference_real_ops_and_recompute():
+    from merlin.dse_guidance import insight_mining as IM
+    import csv as _csv
+    import io as _io
+    h = IM.per_operator_hotspots(_CS_DIR)
+    ops = list(_csv.DictReader(_io.StringIO(
+        (_CS_DIR / "operator_shape_table.csv").read_text())))
+    assert h["n_ops"] == len(ops)
+    keys = {(o["workload"], o["op_index"]) for o in ops}
+    assert all((r["workload"], r["op_index"]) in keys for r in h["by_macs"])
+    # top-by-MACs is an honest independent sort
+    indep = [o["op_index"] for o in sorted(ops, key=lambda o: -int(o["macs"]))[:10]]
+    assert [r["op_index"] for r in h["by_macs"]] == indep
+    # the dominant op carries a real per-workload MAC fraction in (0, 1]
+    d = h["dominant_op"]
+    assert 0.0 < d["mac_fraction_of_workload"] <= 1.0
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p15_abstraction_coverage_recomputes_and_flags_overfit():
+    from merlin.dse_guidance import insight_mining as IM
+    import csv as _csv
+    import io as _io
+    cov = IM.abstraction_coverage(_CS_DIR)
+    assert cov
+    ops = list(_csv.DictReader(_io.StringIO(
+        (_CS_DIR / "operator_shape_table.csv").read_text())))
+    mac_by_wl = {}
+    for o in ops:
+        mac_by_wl[o["workload"]] = mac_by_wl.get(o["workload"], 0) + int(o["macs"])
+    tmac = sum(mac_by_wl.values())
+    nwl = len(mac_by_wl)
+    for r in cov:
+        supp = [w.strip() for w in r["workloads_supporting"].split(";") if w.strip()]
+        assert abs(r["mac_coverage"] - round(sum(mac_by_wl.get(w, 0) for w in supp) / tmac, 4)) < 1e-6
+        # overfit risk is consistent with support breadth (single-workload = high)
+        assert r["overfit_risk"] == ("high" if len(supp) <= 1
+                                     else "low" if len(supp) == nwl else "medium")
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p15_corpus_plan_and_family_summary():
+    from merlin.dse_guidance import insight_mining as IM
+    from merlin.dse_guidance.models import MODEL_ARCH
+    cp = IM.corpus_expansion_plan(_CS_DIR)
+    missing = [m["model"] for ms in cp["missing_by_family"].values() for m in ms]
+    assert missing and all(m in MODEL_ARCH for m in missing)          # only real registry models
+    assert not (set(missing) & set(cp["captured_models"]))            # captured are excluded
+    assert cp["fidelity_asks"]
+    fs = IM.workload_family_summary(_CS_DIR, IM.mine(_CS_DIR, "all")["findings"])
+    assert set(fs["families"]) and "unknown" not in fs["families"]    # all workloads classified
+    for d in fs["families"].values():
+        assert d["workloads"] and d["dominant_shape_class"]
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p15_emit_writes_study_deliverables_and_plot_captions(tmp_path):
+    from merlin.dse_guidance import insight_mining as IM, presentation_plots as PP
+    b = IM.mine(_CS_DIR, "all")
+    rendered = PP.render_plots(b["plots"], _CS_DIR, b["facts"], tmp_path / "generated_plots")
+    IM.emit_run(b, tmp_path, rendered)
+    for f in ("canonical_signal_table.csv", "per_operator_hotspots.csv",
+              "abstraction_coverage_table.csv", "workload_family_summary.md",
+              "corpus_expansion_plan.md", "signal_findings_report.md",
+              "presentation_plots_index.md"):
+        assert (tmp_path / f).is_file(), f
+    # every non-omit plot carries a non-empty DSE-implication caption
+    assert all(p["dse_caption"] for p in b["plots"] if p["recommendation"] != "omit")
+    # the study refuses unbuilt-HW performance claims
+    blob = (tmp_path / "signal_findings_report.md").read_text().lower()
+    assert not any(t in blob for t in ("speedup", "faster", "optimal", "predicted cycles"))
