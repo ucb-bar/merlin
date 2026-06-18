@@ -1515,6 +1515,7 @@ def mine(cs_dir, scope: str) -> dict:
                                 else {"families": {}, "family_specific_findings": [],
                                       "cross_family_findings": []})
     bundle["corpus_plan"] = corpus_expansion_plan(cs_dir) if is_all else {}
+    bundle["cs_dir"] = str(cs_dir)
     return bundle
 
 
@@ -1819,6 +1820,71 @@ def _plots_index_md(plots, scope, rendered, folder) -> str:
     return "\n".join(L) + "\n"
 
 
+def _findings_digest_md(bundle: dict, cs_dir: Path, rendered: list[str]) -> str:
+    """ONE self-contained findings document per run: every metric table, the operator hotspots, the
+    decision-impact plots, and the DSE-ingest knobs in a single file you can open and evaluate.
+
+    Pure presentation of already-computed bundle data + the committed knob catalog — no new numbers.
+    """
+    cs_dir = Path(cs_dir)
+    scope = bundle["scope"]
+    canon = bundle["canonical_signal"]
+    L = [f"# DSE findings digest — scope: {scope}\n",
+         "Self-contained summary of the workload-contract analysis. Every number is recovered from "
+         "the captures or a host measurement; **no quantity is claimed for unbuilt hardware**. "
+         "Each metric carries an evidence tier (A/measured = IR or real measurement; B = "
+         "recovered/derived + recompute check; C = config/assumed; D = unavailable) so you can "
+         "weight it yourself. Source CSV/YAML are in this same folder; the full per-fact trace "
+         "(metric -> source artifact -> check) is in `unified_fact_table.csv`.\n",
+         "## 1. Headline metrics (canonical_signal_table.csv)\n",
+         "Grouped by the DSE question each answers. `entity` is the thing the metric is about "
+         "(workload / abstraction / region).\n"]
+    for q in DSE_QUESTIONS:
+        qrows = [r for r in canon if r["dse_question"] == q]
+        if not qrows:
+            continue
+        L.append(f"### {q}\n")
+        L.append("| metric | entity | value | unit | tier | strength | implication |")
+        L.append("|---|---|---|---|---|---|---|")
+        for r in qrows:
+            L.append(f"| {r['metric']} | {r['entity']} | {r['value']} | {r['unit']} | "
+                     f"{r['evidence_tier']} | {r['strength']} | {r['dse_implication']} |")
+        L.append("")
+    # 2. operator hotspots (reuse the dedicated builder; replace its H1 with our section header)
+    L.append("## 2. Per-operator hotspots\n")
+    L.append(_hotspots_md(bundle["hotspots"], scope).split("\n", 1)[1])
+    # 3. abstraction coverage (only meaningful at 'all')
+    if bundle["abstraction_coverage"]:
+        L.append("## 3. Abstraction coverage\n")
+        L.append(_coverage_md(bundle["abstraction_coverage"], scope).split("\n", 1)[1])
+    # 4. decision-impact plots
+    L.append("## Decision-impact plots (what changes if DSE picks differently)\n")
+    L.append("Structural what-if curves (bytes / coverage / counts — never latency or speedup). "
+             "PNGs under `generated_plots/`.\n")
+    for p in bundle["plots"]:
+        if p["plot_id"].startswith("decision_") and p["plot_id"] in rendered:
+            L.append(f"- **{p['title']}** (`generated_plots/{p['plot_id']}.png`)  \n"
+                     f"  {p.get('dse_caption', '')}")
+    # 5. the DSE-ingest knob catalog (embed the committed consolidated table verbatim)
+    L.append("\n## What a DSE tool ingests — knob catalog\n")
+    knobs = cs_dir / "dse_search_space_knobs.md"
+    if knobs.is_file():
+        body = knobs.read_text().split("\n", 1)[1] if "\n" in knobs.read_text() else ""
+        L.append(body.strip())
+    else:
+        L.append("_dse_search_space_knobs.md not found in the package._")
+    # 6. how to read / reproduce
+    L.append("\n## How to evaluate this yourself\n")
+    L.append("- Every headline row traces through `unified_fact_table.csv` "
+             "(`metric_name -> source_artifact -> verifying_check`).")
+    L.append("- The numbers are recomputed independently by "
+             "`merlin/benchmarks/dse_guidance/verify_implementation.py` (run it; exit 0 = all checks "
+             "pass).")
+    L.append("- Regenerate this whole folder with `merlin-dse-guidance --insight-mining` "
+             "(add `--workload <name>` for one network).")
+    return "\n".join(L) + "\n"
+
+
 def emit_run(bundle: dict, run_dir, rendered: list[str]) -> None:
     """Write all P13 deliverables for one mined scope into the run folder (non-committed)."""
     from merlin.common.artifacts import Artifact, yaml_artifact
@@ -1892,5 +1958,7 @@ def emit_run(bundle: dict, run_dir, rendered: list[str]) -> None:
     if bundle["corpus_plan"]:
         Artifact("corpus_expansion_plan.md", _corpus_md(bundle["corpus_plan"], scope)).write(run_dir)
     Artifact("signal_findings_report.md", _signal_report_md(bundle, scope)).write(run_dir)
+    Artifact("DSE_FINDINGS.md",
+             _findings_digest_md(bundle, bundle.get("cs_dir", run_dir), rendered)).write(run_dir)
     Artifact("presentation_plots_index.md",
              _plots_index_md(bundle["plots"], scope, rendered, "generated_plots")).write(run_dir)
