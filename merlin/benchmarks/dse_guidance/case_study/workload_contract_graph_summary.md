@@ -13,6 +13,8 @@
 | rdt2 | flow_matching_action_head | 28 | 67 | 2 | 1 | 23 | 1 | 1 | 64 | 67 |
 | groot_n1d7 | flow_matching_action_head | 24 | 34 | 2 | 2 | 18 | 1 | 1 | 31 | 34 |
 | molmoact | autoregressive_decode | 22 | 47 | 2 | 1 | 17 | 1 | 1 | 44 | 47 |
+| smolvla | flow_matching_action_head | 112 | 698 | 2 | 2 | 106 | 1 | 1 | 695 | 698 |
+| pi05 | flow_matching_action_head | 783 | 14352 | 2 | 2 | 777 | 1 | 1 | 14349 | 14352 |
 
 ## Repeated structure (which workloads have a K-loop / token-loop)
 
@@ -25,6 +27,8 @@
 | rdt2 | yes | K_times_per_replan | 5 | weights |
 | groot_n1d7 | yes | K_times_per_replan | 4 | weights |
 | molmoact | yes | token_loop | 8 | weights |
+| smolvla | yes | K_times_per_replan | 10 | weights |
+| pi05 | yes | K_times_per_replan | 10 | weights |
 
 ## What downstream DSE phases can now consume
 

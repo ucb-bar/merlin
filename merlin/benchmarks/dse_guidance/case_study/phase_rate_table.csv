@@ -13,3 +13,7 @@ groot_n1d7,backbone,backbone_once,once_per_replan,1,0.533333,derived_requirement
 groot_n1d7,head,repeated_head,K_times_per_replan,4,unavailable,unavailable,recovered_from_prov_fqn
 molmoact,backbone,backbone_once,once_per_replan,1,1.6,derived_requirement,recovered_from_prov_fqn
 molmoact,head,repeated_head,token_loop,8,unavailable,unavailable,recovered_from_prov_fqn
+smolvla,backbone,backbone_once,once_per_replan,1,1.666667,derived_requirement,recovered_from_prov_fqn
+smolvla,head,repeated_head,K_times_per_replan,10,unavailable,unavailable,recovered_from_prov_fqn
+pi05,backbone,backbone_once,once_per_replan,1,1.0,derived_requirement,recovered_from_prov_fqn
+pi05,head,repeated_head,K_times_per_replan,10,unavailable,unavailable,recovered_from_prov_fqn

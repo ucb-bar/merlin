@@ -6,3 +6,5 @@ tiny_llama,15,614465536,9,513802240,1.1959,3,1.6667,9,1,mostly_sequential,recove
 rdt2,23,941031424,17,697761792,1.3486,3,1.3529,17,1,mostly_sequential,recovered_from_ir
 groot_n1d7,18,2612133888,9,2103705600,1.2417,3,1.5,12,1,mostly_sequential,recovered_from_ir
 molmoact,17,7574913024,17,7574913024,1.0,1,1.0,17,1,mostly_sequential,recovered_from_ir
+smolvla,106,90656617984,59,74759946240,1.2126,5,1.7966,59,1,mostly_sequential,recovered_from_ir
+pi05,777,2146035695616,182,1330911969280,1.6125,40,4.2692,182,1,some_parallelism,recovered_from_ir

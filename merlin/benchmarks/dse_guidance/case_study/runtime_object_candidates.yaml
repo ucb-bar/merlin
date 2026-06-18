@@ -9,9 +9,11 @@ runtime_object_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: state dtype, shape, update site, lifetime=across_K
     object: loop_carried_state_handle
@@ -21,9 +23,11 @@ runtime_object_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: trip_count, body_region_handle, loop_carried/invariant handles, event_in/out
     object: bounded_loop_command
@@ -33,9 +37,11 @@ runtime_object_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: region_handle, dependency list
     object: region_level_dispatch
@@ -45,9 +51,11 @@ runtime_object_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: command stream, reusable across replans
     object: persistent_command_buffer
@@ -57,9 +65,11 @@ runtime_object_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: event id, producer, consumer
     object: event_token
@@ -69,9 +79,11 @@ runtime_object_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: queue id, depth
     object: async_queue
@@ -81,9 +93,11 @@ runtime_object_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: chunk producer, control consumer, depth
     object: producer_consumer_queue
@@ -93,8 +107,10 @@ runtime_object_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
+    - smolvla
   - metadata: chunk buffer x2, action_horizon H
     object: double_buffered_action_chunk
     required_runtime_support: object ABI + lifetime tracking + metadata
@@ -103,8 +119,10 @@ runtime_object_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
+    - smolvla
   - metadata: stream descriptors, directions
     object: dma_engine
     required_runtime_support: object ABI + lifetime tracking + metadata
@@ -113,9 +131,11 @@ runtime_object_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: per-stream descriptor (weight/activation/output)
     object: multi_stream_dma_descriptor
@@ -125,9 +145,11 @@ runtime_object_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: prefetch target, depth, trigger
     object: prefetch_descriptor
@@ -137,9 +159,11 @@ runtime_object_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: token trip count, kv handle, loop-carried token state
     object: decode_loop_controller

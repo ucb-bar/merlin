@@ -13,3 +13,16 @@ groot_n1d7,backbone_once,gemv_like,2,2752512
 groot_n1d7,repeated_head,gemv_like,3,14155776
 groot_n1d7,repeated_head,wide_skinny,13,2595225600
 molmoact,repeated_head,wide_skinny,17,7574913024
+smolvla,backbone_once,projection_like,4,138854400
+smolvla,backbone_once,squareish_gemm,60,57982058496
+smolvla,backbone_once,unknown,12,28991029248
+smolvla,backbone_once,wide_skinny,11,2837790720
+smolvla,repeated_head,gemv_like,1,30720
+smolvla,repeated_head,projection_like,2,23142400
+smolvla,repeated_head,squareish_gemm,1,1152000
+smolvla,repeated_head,wide_skinny,15,682560000
+pi05,backbone_once,wide_skinny,489,317514055680
+pi05,repeated_head,gemv_like,39,118489088
+pi05,repeated_head,projection_like,87,708485054464
+pi05,repeated_head,squareish_gemm,1,1638400
+pi05,repeated_head,wide_skinny,161,1119916457984

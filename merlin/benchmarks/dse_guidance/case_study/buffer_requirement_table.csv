@@ -8,3 +8,7 @@ rdt2,repeated_head,2,2,yes,yes,2839552,3188928,301268992,1507120,3014240,derived
 groot_n1d7,repeated_head,2,2,yes,yes,5349376,5021696,295698432,2592768,5185536,derived_requirement
 groot_n1d7,backbone_once,2,2,yes,yes,7168,12288,11010048,4864,9728,derived_requirement
 molmoact,repeated_head,2,2,yes,yes,3915776,6488064,3787456512,2600960,5201920,derived_requirement
+smolvla,backbone_once,2,2,yes,yes,346644992,343889664,426246144,172633664,345267328,derived_requirement
+smolvla,repeated_head,2,2,yes,yes,2049408,2094720,31493120,1036032,2072064,derived_requirement
+pi05,repeated_head,2,2,yes,yes,1944086784,2643781888,9210953728,1146967168,2293934336,derived_requirement
+pi05,backbone_once,2,2,yes,yes,838287360,841039872,4961157120,419831808,839663616,derived_requirement

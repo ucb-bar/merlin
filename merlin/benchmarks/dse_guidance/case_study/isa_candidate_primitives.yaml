@@ -10,9 +10,11 @@ isa_candidate_primitives:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: null
     primitive: bounded_loop_command
@@ -22,9 +24,11 @@ isa_candidate_primitives:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: null
     primitive: region_level_dispatch
@@ -34,16 +38,20 @@ isa_candidate_primitives:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: null
     primitive: matrix_engine
     required_compiler_proof: unavailable (no compiler_proof_matrix entry)
     status: strong_candidate
     supporting_workloads:
+    - pi05
     - rdt
+    - smolvla
   - metadata: null
     primitive: vector_gemv_engine
     required_compiler_proof: unavailable (no compiler_proof_matrix entry)
@@ -52,9 +60,11 @@ isa_candidate_primitives:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: null
     primitive: epilogue_requant_unit
@@ -64,8 +74,10 @@ isa_candidate_primitives:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
+    - smolvla
   - metadata: null
     primitive: dma_engine
     required_compiler_proof: unavailable (no compiler_proof_matrix entry)
@@ -74,9 +86,11 @@ isa_candidate_primitives:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: null
     primitive: multi_stream_dma_descriptor
@@ -86,9 +100,11 @@ isa_candidate_primitives:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: null
     primitive: prefetch_descriptor
@@ -98,9 +114,11 @@ isa_candidate_primitives:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: null
     primitive: partial_sum_object
@@ -110,9 +128,11 @@ isa_candidate_primitives:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: null
     primitive: accumulator_merge
@@ -122,9 +142,11 @@ isa_candidate_primitives:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: null
     primitive: accumulator_commit
@@ -134,9 +156,11 @@ isa_candidate_primitives:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - metadata: null
     primitive: fused_requant_epilogue
@@ -146,8 +170,10 @@ isa_candidate_primitives:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
+    - smolvla
   - metadata: null
     primitive: decode_loop_controller
     required_compiler_proof: autoregressive decode with a growing KV cache and batch=1 GEMV shapes

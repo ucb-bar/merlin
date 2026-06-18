@@ -34,7 +34,7 @@
     "top_by_evidence_breadth": [
       {
         "abstraction": "resident_weight_object",
-        "boundary_pressure_score": 12,
+        "boundary_pressure_score": 14,
         "strong_levels": [
           "runtime_hal_object",
           "command_buffer_or_command_isa"
@@ -43,15 +43,17 @@
           "groot_n1d7",
           "molmoact",
           "openvla",
+          "pi05",
           "rdt",
           "rdt2",
           "small_llama",
+          "smolvla",
           "tiny_llama"
         ]
       },
       {
         "abstraction": "region_level_dispatch",
-        "boundary_pressure_score": 11,
+        "boundary_pressure_score": 13,
         "strong_levels": [
           "command_buffer_or_command_isa",
           "device_microcode_or_controller"
@@ -60,15 +62,17 @@
           "groot_n1d7",
           "molmoact",
           "openvla",
+          "pi05",
           "rdt",
           "rdt2",
           "small_llama",
+          "smolvla",
           "tiny_llama"
         ]
       },
       {
         "abstraction": "event_token",
-        "boundary_pressure_score": 11,
+        "boundary_pressure_score": 13,
         "strong_levels": [
           "runtime_hal_object",
           "command_buffer_or_command_isa"
@@ -77,15 +81,17 @@
           "groot_n1d7",
           "molmoact",
           "openvla",
+          "pi05",
           "rdt",
           "rdt2",
           "small_llama",
+          "smolvla",
           "tiny_llama"
         ]
       },
       {
         "abstraction": "async_queue",
-        "boundary_pressure_score": 11,
+        "boundary_pressure_score": 13,
         "strong_levels": [
           "runtime_hal_object",
           "command_buffer_or_command_isa"
@@ -94,15 +100,17 @@
           "groot_n1d7",
           "molmoact",
           "openvla",
+          "pi05",
           "rdt",
           "rdt2",
           "small_llama",
+          "smolvla",
           "tiny_llama"
         ]
       },
       {
         "abstraction": "dma_engine",
-        "boundary_pressure_score": 11,
+        "boundary_pressure_score": 13,
         "strong_levels": [
           "runtime_hal_object",
           "command_buffer_or_command_isa"
@@ -111,15 +119,17 @@
           "groot_n1d7",
           "molmoact",
           "openvla",
+          "pi05",
           "rdt",
           "rdt2",
           "small_llama",
+          "smolvla",
           "tiny_llama"
         ]
       },
       {
         "abstraction": "partial_sum_object",
-        "boundary_pressure_score": 10,
+        "boundary_pressure_score": 12,
         "strong_levels": [
           "accelerator_isa",
           "device_microcode_or_controller",
@@ -129,15 +139,17 @@
           "groot_n1d7",
           "molmoact",
           "openvla",
+          "pi05",
           "rdt",
           "rdt2",
           "small_llama",
+          "smolvla",
           "tiny_llama"
         ]
       },
       {
         "abstraction": "loop_carried_state_handle",
-        "boundary_pressure_score": 9,
+        "boundary_pressure_score": 11,
         "strong_levels": [
           "command_buffer_or_command_isa",
           "device_microcode_or_controller"
@@ -146,15 +158,17 @@
           "groot_n1d7",
           "molmoact",
           "openvla",
+          "pi05",
           "rdt",
           "rdt2",
           "small_llama",
+          "smolvla",
           "tiny_llama"
         ]
       },
       {
         "abstraction": "bounded_loop_command",
-        "boundary_pressure_score": 9,
+        "boundary_pressure_score": 11,
         "strong_levels": [
           "command_buffer_or_command_isa",
           "device_microcode_or_controller"
@@ -163,9 +177,11 @@
           "groot_n1d7",
           "molmoact",
           "openvla",
+          "pi05",
           "rdt",
           "rdt2",
           "small_llama",
+          "smolvla",
           "tiny_llama"
         ]
       }
@@ -230,6 +246,24 @@
         "repeated_head"
       ]
     },
+    "pi05": {
+      "K": 10,
+      "K_source": "recovered_from_model_config",
+      "accuracy_int8": "unavailable",
+      "class": "flow_matching/denoise_steps",
+      "head_weight_bytes": 9210953728,
+      "missing_before_quantitative_dse": [
+        "quantization accuracy gates (per candidate low-bit format)",
+        "real (target) command-submit / sync latency",
+        "K / control-rate from the real deployment (currently reference values)"
+      ],
+      "ready_quantitative_dse": false,
+      "ready_structural_dse": true,
+      "roles": [
+        "backbone_once",
+        "repeated_head"
+      ]
+    },
     "rdt": {
       "K": 5,
       "K_source": "recovered_from_model_config",
@@ -276,6 +310,24 @@
       "ready_quantitative_dse": false,
       "ready_structural_dse": true,
       "roles": [
+        "repeated_head"
+      ]
+    },
+    "smolvla": {
+      "K": 10,
+      "K_source": "recovered_from_model_config",
+      "accuracy_int8": "unavailable",
+      "class": "flow_matching/denoise_steps",
+      "head_weight_bytes": 31493120,
+      "missing_before_quantitative_dse": [
+        "quantization accuracy gates (per candidate low-bit format)",
+        "real (target) command-submit / sync latency",
+        "K / control-rate from the real deployment (currently reference values)"
+      ],
+      "ready_quantitative_dse": false,
+      "ready_structural_dse": true,
+      "roles": [
+        "backbone_once",
         "repeated_head"
       ]
     },
@@ -358,9 +410,11 @@
     "groot_n1d7",
     "molmoact",
     "openvla",
+    "pi05",
     "rdt",
     "rdt2",
     "small_llama",
+    "smolvla",
     "tiny_llama"
   ]
 }

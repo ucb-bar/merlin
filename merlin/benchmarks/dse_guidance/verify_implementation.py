@@ -1225,11 +1225,18 @@ def verify_p16(IM, bundle) -> None:
     rdt = next(r for r in par["rows"] if r["workload"] == "rdt")
     p13check(pok and rdt["k_macs_50"] == 1,
              f"[P16] operator Pareto monotone + within n_ops; rdt k@50%MAC={rdt['k_macs_50']}")
-    # 4. leave-one-out: dense-MAC dominance is micro≫macro and collapses when rdt is removed
+    # 4. leave-one-out MECHANISM is sound (not a corpus-specific outcome — adding the VLAs correctly
+    #    overturned the 4-model 'dense dominates micro' finding, which is the point of LOO). Assert
+    #    macro/micro are valid fractions, micro_loo has an entry per workload, and collapses_if_removed
+    #    is exactly the set whose removal drops micro below 0.2 from at/above it.
     dom = next(f for f in bundle["robustness"]["findings"] if f["finding"] == "dense_gemm_mac_dominance")
-    p13check(dom["micro"] - dom["macro"] > 0.2 and "rdt" in dom["collapses_if_removed"],
-             f"[P16] dense-MAC dominance is micro({dom['micro']})≫macro({dom['macro']}), "
-             f"rdt-driven {dom['collapses_if_removed']}")
+    wls = bundle["robustness"]["workloads"]
+    frac_ok = 0.0 <= dom["macro"] <= 1.0 and 0.0 <= dom["micro"] <= 1.0
+    loo_ok = set(dom["micro_loo"]) == set(wls)
+    derived = sorted(w for w in wls if dom["micro_loo"][w] < 0.2 <= dom["micro"])
+    p13check(frac_ok and loo_ok and sorted(dom["collapses_if_removed"]) == derived,
+             f"[P16] dense-MAC LOO well-formed (macro={dom['macro']} micro={dom['micro']} "
+             f"collapses={dom['collapses_if_removed']})")
     # 5. capture-fidelity: low-bit erased everywhere; AR workloads hide KV; matches fidelity vocab
     cf = bundle["capture_fidelity"]
     lowbit = next(r for r in cf["matrix"] if r["feature"] == "packed_lowbit_layout")

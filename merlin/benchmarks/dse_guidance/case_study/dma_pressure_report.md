@@ -25,6 +25,8 @@
 | rdt2 | 1 | 3 |
 | groot_n1d7 | 2 | 6 |
 | molmoact | 1 | 3 |
+| smolvla | 2 | 6 |
+| pi05 | 2 | 6 |
 
 ## Findings
 

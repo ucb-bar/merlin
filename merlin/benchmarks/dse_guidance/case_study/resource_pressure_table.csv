@@ -1,9 +1,9 @@
 resource_class,present,op_count,macs,mac_fraction,basis,workloads
-dense_gemm,True,3,34379595776,0.6707,compute_macs,rdt; rdt2
-skinny_gemm_or_gemv,True,131,16878403584,0.3293,compute_macs,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
-epilogue_or_requant,True,60,42799906816,0.835,op_count,groot_n1d7; molmoact; openvla; rdt; rdt2
-dma_or_memory,True,0,0,0.0,structural,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
-control_or_dispatch,True,0,0,0.0,structural,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+dense_gemm,True,158,801011495936,0.3501,compute_macs,pi05; rdt; rdt2; smolvla
+skinny_gemm_or_gemv,True,847,1457947787776,0.6372,compute_macs,groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama
+epilogue_or_requant,True,667,447488910848,0.1956,op_count,groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla
+dma_or_memory,True,0,0,0.0,structural,groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama
+control_or_dispatch,True,0,0,0.0,structural,groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama
 attention_softmax_or_reduction,False,0,0,0.0,unavailable,—
 conv_or_patch_embed,False,0,0,0.0,unavailable,—
 sparse_or_skip,False,0,0,0.0,unavailable,—

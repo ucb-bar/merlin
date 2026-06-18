@@ -86,3 +86,27 @@ parallel_region_candidates:
       value: 1
     serialization: mostly_sequential
     workload: molmoact
+  - available_parallelism:
+      evidence: derived_requirement
+      value: 1.2126
+    independent_components:
+      evidence: recovered_from_ir
+      value: 1
+    interpretation: deep sequential dependency chain — the parallelism opportunity is intra-op sharding, not inter-op concurrency
+    max_ready_width:
+      evidence: recovered_from_ir
+      value: 5
+    serialization: mostly_sequential
+    workload: smolvla
+  - available_parallelism:
+      evidence: derived_requirement
+      value: 1.6125
+    independent_components:
+      evidence: recovered_from_ir
+      value: 1
+    interpretation: some independent operators per level — modest inter-op concurrency exists
+    max_ready_width:
+      evidence: recovered_from_ir
+      value: 40
+    serialization: some_parallelism
+    workload: pi05
