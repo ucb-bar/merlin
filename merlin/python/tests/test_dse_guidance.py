@@ -2644,3 +2644,55 @@ def test_p16_unit_multiplicity_demoted_to_context():
     assert "unit_multiplicity_implication" not in IM.SIGNAL_METRICS
     canon = IM.canonical_signal_table(IM.unified_facts(_CS_DIR, "all"))
     assert not any(r["metric"] == "unit_multiplicity_implication" for r in canon)
+
+
+# --------------------------------------------------------------------------- agent devil's-advocate
+
+def test_agent_citation_gate_keeps_grounded_rejects_ungrounded(tmp_path):
+    # the gate is the deterministic 'dispose' step: a critique survives ONLY if it quotes a real
+    # artifact line; a fabricated citation (incl. invented numbers/speedup) is rejected.
+    from merlin.dse_guidance.agent import critic
+    (tmp_path / "DSE_FINDINGS.md").write_text(
+        "# digest\nmatrix_engine is necessary only for rdt (corpus-narrow).\n")
+    (tmp_path / "table.csv").write_text("metric,value\navoidable_weight_reload,1564475392\n")
+    items = [
+        {"claim": "matrix_engine presented as general", "severity": "high",
+         "cite": "matrix_engine is necessary only for rdt", "suggested_fix": "say rdt-only"},
+        {"claim": "invented speedup", "severity": "high",
+         "cite": "the design is 3x faster than baseline", "suggested_fix": "remove"},
+        {"claim": "no citation", "severity": "low", "cite": "", "suggested_fix": "x"},
+        {"claim": "bad severity", "severity": "URGENT",
+         "cite": "avoidable_weight_reload,1564475392", "suggested_fix": "x"}]
+    res = critic.citation_gate(items, tmp_path)
+    assert res["n_proposed"] == 4
+    assert len(res["accepted"]) == 1 and res["accepted"][0]["severity"] == "high"
+    assert len(res["rejected"]) == 3
+    reasons = " ".join(r["reason"] for r in res["rejected"])
+    assert "not found" in reasons and "missing" in reasons and "severity" in reasons
+
+
+def test_agent_run_critic_with_injected_runner(tmp_path):
+    # run_critic with an injected runner exercises propose+parse+dispose without a live `claude`.
+    from merlin.dse_guidance.agent import critic
+    (tmp_path / "DSE_FINDINGS.md").write_text(
+        "# digest\nbest single primitive worst-workload coverage is 0.13.\n")
+
+    def fake_runner(prompt):
+        assert "Do NOT invent or recompute numbers" in prompt and "JSON array" in prompt
+        return {"text": '```json\n[{"claim":"worst-cov framed as adequate","severity":"medium",'
+                        '"cite":"worst-workload coverage is 0.13","suggested_fix":"flag as poor"}]\n```',
+                "usage": {}}
+    res = critic.run_critic(tmp_path, runner=fake_runner)
+    assert len(res["accepted"]) == 1 and not res["rejected"]
+    out = critic.emit_critique(res, tmp_path)
+    assert out.is_file() and "citation-gated" in out.read_text()
+
+
+def test_agent_unavailable_is_honest_not_fabricated():
+    # if the `claude` CLI is missing, the runner raises AgentError (callers report 'unavailable')
+    from merlin.dse_guidance.agent import claude_cli
+    import shutil
+    if shutil.which("claude") is not None:
+        pytest.skip("claude CLI present; cannot test the unavailable path")
+    with pytest.raises(claude_cli.AgentError):
+        claude_cli.run_agent("hello", cache_bust=False)
