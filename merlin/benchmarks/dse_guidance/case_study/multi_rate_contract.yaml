@@ -212,3 +212,63 @@ multi_rate_contract:
       state: weights
     workload: molmoact
     workload_class: autoregressive_decode
+  - phases:
+    - cadence: once_per_replan
+      invocations: 1
+      phase: backbone
+      role: backbone_once
+    - cadence: K_times_per_replan
+      invocations: 10
+      phase: head
+      role: repeated_head
+    rate_model:
+      H:
+        source: recovered_from_model_config
+        value: 50
+      K:
+        source: recovered_from_model_config
+        value: 10
+      control_rate_hz:
+        source: recovered_from_model_config
+        value: 30.0
+      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
+      replan_deadline_s:
+        source: derived_requirement
+        value: 1.666667
+    states_across_rates:
+    - bytes: 31493120
+      evidence: recovered_from_ir
+      lifetime: loop_invariant
+      state: weights
+    workload: smolvla
+    workload_class: flow_matching_action_head
+  - phases:
+    - cadence: once_per_replan
+      invocations: 1
+      phase: backbone
+      role: backbone_once
+    - cadence: K_times_per_replan
+      invocations: 10
+      phase: head
+      role: repeated_head
+    rate_model:
+      H:
+        source: recovered_from_model_config
+        value: 50
+      K:
+        source: recovered_from_model_config
+        value: 10
+      control_rate_hz:
+        source: recovered_from_model_config
+        value: 50.0
+      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
+      replan_deadline_s:
+        source: derived_requirement
+        value: 1.0
+    states_across_rates:
+    - bytes: 9210953728
+      evidence: recovered_from_ir
+      lifetime: loop_invariant
+      state: weights
+    workload: pi05
+    workload_class: flow_matching_action_head

@@ -13,6 +13,8 @@
 | rdt2 | 2 | K_times_per_replan, once_per_replan |
 | groot_n1d7 | 2 | K_times_per_replan, once_per_replan |
 | molmoact | 2 | once_per_replan, token_loop |
+| smolvla | 2 | K_times_per_replan, once_per_replan |
+| pi05 | 2 | K_times_per_replan, once_per_replan |
 
 ## Candidate overlaps (common across workloads)
 
@@ -26,14 +28,14 @@
 
 ## Abstractions repeatedly required for overlap
 
-- `resident_weight_object` — required by 14 candidate overlaps
-- `async_queue` — required by 9 candidate overlaps
-- `bounded_loop_command` — required by 7 candidate overlaps
-- `loop_carried_state_handle` — required by 7 candidate overlaps
-- `double_buffered_action_chunk` — required by 7 candidate overlaps
-- `event_token` — required by 7 candidate overlaps
-- `producer_consumer_queue` — required by 5 candidate overlaps
-- `prefix_state_object` — required by 2 candidate overlaps
+- `resident_weight_object` — required by 18 candidate overlaps
+- `async_queue` — required by 13 candidate overlaps
+- `double_buffered_action_chunk` — required by 11 candidate overlaps
+- `event_token` — required by 11 candidate overlaps
+- `bounded_loop_command` — required by 9 candidate overlaps
+- `loop_carried_state_handle` — required by 9 candidate overlaps
+- `producer_consumer_queue` — required by 7 candidate overlaps
+- `prefix_state_object` — required by 4 candidate overlaps
 
 ## Findings
 

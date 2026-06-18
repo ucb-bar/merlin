@@ -22,3 +22,11 @@ groot_n1d7,host dispatch / sync coupling,not represented,not measured,unavailabl
 molmoact,action-head weight reuse,weights used once (0 contract facts),"repeated_head x8: 17 matmuls, 3787.5 MB weights, 7.57 GMAC/step",recovered_from_prov_fqn (role) + recovered_from_ir (facts); K=8 assumed_reference,resident_action_head_weights,blocked: missing_calibration
 molmoact,K-step loop,absent (loop unrolled by torch.export),"bounded repeated head, K=8",assumed_reference (K) + recovered_from_prov_fqn (head exists),autonomous_K_loop,blocked: missing_calibration
 molmoact,host dispatch / sync coupling,not represented,not measured,unavailable,command_batching / autonomous_K_loop,blocked: measurement required
+smolvla,action-head weight reuse,weights used once (0 contract facts),"repeated_head x10: 19 matmuls, 31.5 MB weights, 0.71 GMAC/step",recovered_from_prov_fqn (role) + recovered_from_ir (facts); K=10 assumed_reference,resident_action_head_weights,blocked: missing_calibration
+smolvla,K-step loop,absent (loop unrolled by torch.export),"bounded repeated head, K=10",assumed_reference (K) + recovered_from_prov_fqn (head exists),autonomous_K_loop,blocked: missing_calibration
+smolvla,backbone vs head split,undifferentiated single forward,backbone_once: 87 matmuls; repeated_head: 19 matmuls,recovered_from_prov_fqn,backbone_head_partition,structural (no magnitude claimed)
+smolvla,host dispatch / sync coupling,not represented,not measured,unavailable,command_batching / autonomous_K_loop,blocked: measurement required
+pi05,action-head weight reuse,weights used once (0 contract facts),"repeated_head x10: 288 matmuls, 9211.0 MB weights, 1828.52 GMAC/step",recovered_from_prov_fqn (role) + recovered_from_ir (facts); K=10 assumed_reference,resident_action_head_weights,blocked: missing_calibration
+pi05,K-step loop,absent (loop unrolled by torch.export),"bounded repeated head, K=10",assumed_reference (K) + recovered_from_prov_fqn (head exists),autonomous_K_loop,blocked: missing_calibration
+pi05,backbone vs head split,undifferentiated single forward,backbone_once: 489 matmuls; repeated_head: 288 matmuls,recovered_from_prov_fqn,backbone_head_partition,structural (no magnitude claimed)
+pi05,host dispatch / sync coupling,not represented,not measured,unavailable,command_batching / autonomous_K_loop,blocked: measurement required

@@ -8,9 +8,11 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - command: loop_carried_state_handle
     required_isa_semantics: command opcodes + handles + event/queue
@@ -19,9 +21,11 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - command: bounded_loop_command
     required_isa_semantics: command opcodes + handles + event/queue
@@ -30,9 +34,11 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - command: region_level_dispatch
     required_isa_semantics: command opcodes + handles + event/queue
@@ -41,9 +47,11 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - command: persistent_command_buffer
     required_isa_semantics: command opcodes + handles + event/queue
@@ -52,9 +60,11 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - command: event_token
     required_isa_semantics: command opcodes + handles + event/queue
@@ -63,9 +73,11 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - command: async_queue
     required_isa_semantics: command opcodes + handles + event/queue
@@ -74,9 +86,11 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - command: producer_consumer_queue
     required_isa_semantics: command opcodes + handles + event/queue
@@ -85,8 +99,10 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
+    - smolvla
   - command: double_buffered_action_chunk
     required_isa_semantics: command opcodes + handles + event/queue
     status: strong_candidate
@@ -94,13 +110,17 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
+    - smolvla
   - command: matrix_engine
     required_isa_semantics: command opcodes + handles + event/queue
     status: possible
     supporting_workloads:
+    - pi05
     - rdt
+    - smolvla
   - command: vector_gemv_engine
     required_isa_semantics: command opcodes + handles + event/queue
     status: possible
@@ -108,9 +128,11 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - command: epilogue_requant_unit
     required_isa_semantics: command opcodes + handles + event/queue
@@ -119,8 +141,10 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
+    - smolvla
   - command: dma_engine
     required_isa_semantics: command opcodes + handles + event/queue
     status: strong_candidate
@@ -128,9 +152,11 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - command: multi_stream_dma_descriptor
     required_isa_semantics: command opcodes + handles + event/queue
@@ -139,9 +165,11 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - command: prefetch_descriptor
     required_isa_semantics: command opcodes + handles + event/queue
@@ -150,9 +178,11 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - command: partial_sum_object
     required_isa_semantics: command opcodes + handles + event/queue
@@ -161,9 +191,11 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - command: accumulator_merge
     required_isa_semantics: command opcodes + handles + event/queue
@@ -172,9 +204,11 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - command: accumulator_commit
     required_isa_semantics: command opcodes + handles + event/queue
@@ -183,9 +217,11 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - command: fused_requant_epilogue
     required_isa_semantics: command opcodes + handles + event/queue
@@ -194,8 +230,10 @@ command_isa_candidates:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
+    - smolvla
   - command: decode_loop_controller
     required_isa_semantics: command opcodes + handles + event/queue
     status: strong_candidate

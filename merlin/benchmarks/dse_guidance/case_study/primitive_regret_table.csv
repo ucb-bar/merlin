@@ -1,9 +1,9 @@
 primitive,primitive_kind,op_count,macs_total,mac_weighted_utilization,coverage_under_5pct,coverage_under_10pct,coverage_under_25pct,worst_workload_coverage_10,best_workload_coverage_10,average_workload_coverage_10,max_regret,clusters_poorly_served,workloads_where_overfit
-tile_8x16,tile,134,51257999360,0.962767,0.83178,0.925324,0.985876,0.0,1.0,0.497638,1.0,gemv_like; projection_like,molmoact; rdt; small_llama
-tile_8x8,tile,134,51257999360,0.962786,0.83178,0.925324,0.985876,0.0,1.0,0.497638,1.0,gemv_like; projection_like,molmoact; rdt; small_llama
-tile_16x16,tile,134,51257999360,0.811032,0.683933,0.683933,0.837722,0.0,0.878164,0.194553,0.878164,gemv_like; projection_like; wide_skinny,
-tile_16x32,tile,134,51257999360,0.811032,0.683933,0.683933,0.837722,0.0,0.878164,0.194553,0.878164,gemv_like; projection_like; wide_skinny,
-tile_32x32,tile,134,51257999360,0.610534,0.683422,0.683422,0.700892,0.0,0.878164,0.147473,0.878164,gemv_like; projection_like; wide_skinny,
-gemv_lane_64,gemv_lane,134,51257999360,0.99999,0.329256,0.329256,0.329283,0.128198,1.0,0.816325,0.871802,projection_like; squareish_gemm,groot_n1d7; molmoact; openvla; rdt2; tiny_llama
-gemv_lane_128,gemv_lane,134,51257999360,0.999916,0.329158,0.329158,0.329222,0.128198,1.0,0.807321,0.871802,projection_like; squareish_gemm,groot_n1d7; molmoact; openvla; rdt2; tiny_llama
-gemv_lane_256,gemv_lane,134,51257999360,0.998932,0.328559,0.328559,0.328705,0.076555,1.0,0.682161,0.923445,projection_like; squareish_gemm,groot_n1d7; molmoact; rdt2; tiny_llama
+tile_8x16,tile,1017,2287950312960,0.997862,0.988092,0.991169,0.999632,0.0,1.0,0.607623,1.0,gemv_like,molmoact; pi05; rdt; small_llama; smolvla
+tile_8x8,tile,1017,2287950312960,0.997863,0.988092,0.991169,0.999632,0.0,1.0,0.607623,1.0,gemv_like,molmoact; pi05; rdt; small_llama; smolvla
+tile_16x16,tile,1017,2287950312960,0.985547,0.98478,0.98478,0.989207,0.0,0.992687,0.369139,0.992687,gemv_like,pi05; smolvla
+tile_16x32,tile,1017,2287950312960,0.985381,0.98478,0.98478,0.989207,0.0,0.992687,0.369139,0.992687,gemv_like,pi05; smolvla
+tile_32x32,tile,1017,2287950312960,0.963546,0.984769,0.984769,0.986141,0.0,0.992687,0.332522,0.992687,gemv_like,pi05; smolvla
+gemv_lane_64,gemv_lane,1017,2287950312960,0.999201,0.637099,0.637228,0.637229,0.038832,1.0,0.713664,0.961168,projection_like; squareish_gemm; unknown,groot_n1d7; molmoact; openvla; rdt2; tiny_llama
+gemv_lane_128,gemv_lane,1017,2287950312960,0.999115,0.636302,0.637216,0.637227,0.038578,1.0,0.706632,0.961422,projection_like; squareish_gemm; unknown,groot_n1d7; molmoact; openvla; rdt2; tiny_llama
+gemv_lane_256,gemv_lane,1017,2287950312960,0.98316,0.543241,0.544155,0.637206,0.038578,1.0,0.598263,0.961422,projection_like; squareish_gemm; unknown,groot_n1d7; molmoact; rdt2; tiny_llama

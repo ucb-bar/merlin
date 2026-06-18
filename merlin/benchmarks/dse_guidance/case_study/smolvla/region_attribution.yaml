@@ -1,0 +1,73 @@
+# region_attribution (Level-1, prov.fqn): smolvla
+topology_recovery:
+  attribution_status: attributed
+  level: 1
+  regions:
+  - attribution_status: attributed
+    confidence: 0.7
+    facts:
+      activation_bytes_per_invocation: 690534656
+      activation_bytes_total: 690534656
+      invocations: 1
+      macs_per_invocation: 89949732864
+      macs_total: 89949732864
+      matmul_count: 87
+      weight_bytes: 426246144
+    invocations: 1
+    matmul_count_attributed: 87
+    reason: 87 matmuls assigned by prov_fqn
+    role: backbone_once
+    source: prov_fqn
+  - attribution_status: attributed
+    confidence: 0.7
+    facts:
+      activation_bytes_per_invocation: 4144128
+      activation_bytes_total: 41441280
+      invocations: 10
+      macs_per_invocation: 706885120
+      macs_total: 7068851200
+      matmul_count: 19
+      weight_bytes: 31493120
+    invocations: 10
+    matmul_count_attributed: 19
+    reason: 19 matmuls assigned by prov_fqn
+    role: repeated_head
+    source: prov_fqn
+  repeated_shape_signatures:
+  - count: 48
+    signature:
+    - 1024
+    - 768
+    - 768
+  - count: 12
+    signature:
+    - 1024
+    - 768
+    - 3072
+  - count: 12
+    signature:
+    - 1024
+    - 3072
+    - 768
+  - count: 4
+    signature:
+    - 113
+    - 960
+    - 960
+  - count: 4
+    signature:
+    - 113
+    - 960
+    - 320
+  - count: 4
+    signature:
+    - 113
+    - 960
+    - 2560
+  - count: 4
+    signature:
+    - 50
+    - 720
+    - 2048
+  unresolved: []
+workload: smolvla

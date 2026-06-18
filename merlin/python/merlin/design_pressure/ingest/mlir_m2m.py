@@ -27,18 +27,30 @@ def available() -> bool:
 
 
 def _parse_module(mlir_text: str):
-    from xdsl.context import Context
-    from xdsl.dialects import arith, builtin, cf, func, linalg, math, scf, tensor
-    from xdsl.parser import Parser
+    """Parse a model2MLIR linalg-on-tensors module for DSE analysis.
 
-    ctx = Context(allow_unregistered=True)
-    for d in (builtin.Builtin, func.Func, linalg.Linalg, tensor.Tensor, arith.Arith,
-              math.Math, scf.Scf, cf.Cf):
-        try:
-            ctx.load_dialect(d)
-        except Exception:
-            pass
-    return Parser(ctx, mlir_text).parse_module()
+    ONE grounded ingestion point: delegate to the inference frontend's parser
+    (:func:`merlin.frontends.linalg_mlir.parse_mlir_text`) rather than maintain a second xDSL parser.
+    That path is the one proven to actually run real captures (smolvla/pi05) — same dialect set
+    (Builtin/Func/Arith/Linalg/Tensor/Scf/Math/Cf, ``allow_unregistered``) plus the canonical
+    ``} -> (T1,T2)`` multi-result normalizer — so inference and DSE can't drift and a full merge later
+    is trivial. (Fallback below only if the frontend is somehow unavailable.)"""
+    try:
+        from merlin.frontends.linalg_mlir import parse_mlir_text
+        return parse_mlir_text(mlir_text)
+    except ImportError:
+        import re
+        from xdsl.context import Context
+        from xdsl.dialects import arith, builtin, cf, func, linalg, math, scf, tensor
+        from xdsl.parser import Parser
+        ctx = Context(allow_unregistered=True)
+        for d in (builtin.Builtin, func.Func, linalg.Linalg, tensor.Tensor, arith.Arith,
+                  math.Math, scf.Scf, cf.Cf):
+            try:
+                ctx.load_dialect(d)
+            except Exception:
+                pass
+        return Parser(ctx, re.sub(r"(\}\s*->\s*)\(([^()]+)\)", r"\1\2", mlir_text)).parse_module()
 
 
 def _shape_dtype(type_str: str):

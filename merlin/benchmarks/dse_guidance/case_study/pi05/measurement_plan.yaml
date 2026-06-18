@@ -1,0 +1,36 @@
+# measurement_plan: pi05
+measurement_plan:
+  measurable_now:
+    accuracy:
+    - fused requant/activation bit-exactness
+    - per-format accuracy vs fp32 (cos/argmax) sweep
+    runtime_proxy:
+    - batched_submit_ns
+    - command_encode_ns
+    - dispatches_per_replan
+    - epilogue dispatch count
+    - host_submit_ns
+    - per_step_host_dispatch_ns
+    - per_step_sync_ns
+  needs_target_design:
+  - K
+  - action_head_weight_bytes
+  - backbone_cost
+  - chunk_execution_time
+  - deadline_slack
+  - dequant/pack cost
+  - head_cost_per_step
+  - i32 intermediate bytes
+  - loop_carried_state_bytes
+  - low-bit weight bytes
+  - measured memory bandwidth
+  - pack_bytes
+  - pack_cost_per_step
+  - pack_count_per_replan
+  - repacks_avoided
+  - replan_latency
+  - resident capacity at each format
+  - resident_capacity_required
+  - state_crossing_bytes
+  - weight_reload_bytes_per_step
+  note: accuracy + runtime-proxy measurements need no future hardware; target_measured needs the proposed design (cycle-exact sim or implemented prototype).

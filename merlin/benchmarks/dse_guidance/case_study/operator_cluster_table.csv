@@ -1,5 +1,6 @@
 shape_class,op_count,macs_total,mac_fraction,workloads,semantic_roles
-squareish_gemm,2,34377302016,0.6707,rdt,attention_qkv_projection; mlp_projection
-wide_skinny,102,16194338816,0.3159,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama,attention_output_projection; attention_qkv_projection; lm_head_projection; mlp_projection; unknown
-gemv_like,29,684064768,0.0133,groot_n1d7; rdt; rdt2; tiny_llama,attention_output_projection; attention_qkv_projection; embedding_projection; lm_head_projection; mlp_projection; unknown
-projection_like,1,2293760,0.0,rdt2,mlp_projection
+wide_skinny,778,1457145203200,0.6369,groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla,attention_output_projection; attention_qkv_projection; lm_head_projection; mlp_projection; unknown
+projection_like,94,708649345024,0.3097,pi05; rdt2; smolvla,attention_output_projection; attention_qkv_projection; mlp_projection
+squareish_gemm,64,92362150912,0.0404,pi05; rdt; smolvla,attention_output_projection; attention_qkv_projection; mlp_projection
+unknown,12,28991029248,0.0127,smolvla,mlp_projection
+gemv_like,69,802584576,0.0004,groot_n1d7; pi05; rdt; rdt2; smolvla; tiny_llama,attention_output_projection; attention_qkv_projection; embedding_projection; lm_head_projection; mlp_projection; unknown

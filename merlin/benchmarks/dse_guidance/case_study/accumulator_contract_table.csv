@@ -8,3 +8,7 @@ rdt2,repeated_head,23,f32,f32,f32,f32,unavailable,unavailable,unavailable,epilog
 groot_n1d7,backbone_once,2,f32,f32,f32,f32,unavailable,unavailable,unavailable,epilogue_candidate,committed_directly,recovered_from_ir
 groot_n1d7,repeated_head,16,f32,f32,f32,f32,unavailable,unavailable,unavailable,epilogue_candidate,committed_directly,recovered_from_ir
 molmoact,repeated_head,17,f32,f32,f32,f32,unavailable,unavailable,unavailable,epilogue_candidate,committed_directly,recovered_from_ir
+smolvla,backbone_once,87,f32,f32,f32,f32,unavailable,unavailable,unavailable,epilogue_candidate,committed_directly,recovered_from_ir
+smolvla,repeated_head,19,f32,f32,f32,f32,unavailable,unavailable,unavailable,epilogue_candidate,committed_directly,recovered_from_ir
+pi05,backbone_once,489,f32,f32,f32,f32,unavailable,unavailable,unavailable,epilogue_candidate,committed_directly,recovered_from_ir
+pi05,repeated_head,288,f32,f32,f32,f32,unavailable,unavailable,unavailable,epilogue_candidate,committed_directly,recovered_from_ir

@@ -13,11 +13,13 @@
 | rdt2 | 0 | 22 | 23 |
 | groot_n1d7 | 2 | 18 | 18 |
 | molmoact | 17 | 17 | 17 |
+| smolvla | 73 | 106 | 106 |
+| pi05 | 610 | 777 | 777 |
 
 ## Findings
 
-- **Reduction-free sharding dominates:** 239 (op,axis) M/N opportunities split without any cross-shard reduction — only `weight_broadcast`/`activation_multicast` + `output_partition_commit`.
-- **K-sharding is the high-communication mode:** 134 (op,axis) opportunities would need a `partial_sum_object` + `accumulator_merge`; the partial-sum bytes are in `sharding_table.csv`.
+- **Reduction-free sharding dominates:** 1965 (op,axis) M/N opportunities split without any cross-shard reduction — only `weight_broadcast`/`activation_multicast` + `output_partition_commit`.
+- **K-sharding is the high-communication mode:** 1017 (op,axis) opportunities would need a `partial_sum_object` + `accumulator_merge`; the partial-sum bytes are in `sharding_table.csv`.
 - **Attention / conv sharding:** `unavailable` — that structure is lowered into the matmul projections and is not invented.
 
 **Caveat (structural, not realized):** these are sharding *geometries* and their byte costs. They are **not a speedup**, latency, or throughput claim, and assume no hardware.

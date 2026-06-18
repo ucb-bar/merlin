@@ -6,3 +6,5 @@ tiny_llama,15,480,repeated_head,True,unavailable,unavailable
 rdt2,23,115,repeated_head,True,unavailable,unavailable
 groot_n1d7,16,64,repeated_head,True,unavailable,unavailable
 molmoact,17,136,repeated_head,True,unavailable,unavailable
+smolvla,19,190,repeated_head,True,unavailable,unavailable
+pi05,288,2880,repeated_head,True,unavailable,unavailable

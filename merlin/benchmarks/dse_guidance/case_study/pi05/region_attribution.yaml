@@ -1,0 +1,108 @@
+# region_attribution (Level-1, prov.fqn): pi05
+topology_recovery:
+  attribution_status: attributed
+  level: 1
+  regions:
+  - attribution_status: attributed
+    confidence: 0.7
+    facts:
+      activation_bytes_per_invocation: 1679327232
+      activation_bytes_total: 1679327232
+      invocations: 1
+      macs_per_invocation: 317514055680
+      macs_total: 317514055680
+      matmul_count: 489
+      weight_bytes: 4961157120
+    invocations: 1
+    matmul_count_attributed: 489
+    reason: 489 matmuls assigned by prov_fqn
+    role: backbone_once
+    source: prov_fqn
+  - attribution_status: attributed
+    confidence: 0.7
+    facts:
+      activation_bytes_per_invocation: 4587868672
+      activation_bytes_total: 45878686720
+      invocations: 10
+      macs_per_invocation: 1828521639936
+      macs_total: 18285216399360
+      matmul_count: 288
+      weight_bytes: 9210953728
+    invocations: 10
+    matmul_count_attributed: 288
+    reason: 288 matmuls assigned by prov_fqn
+    role: repeated_head
+    source: prov_fqn
+  repeated_shape_signatures:
+  - count: 324
+    signature:
+    - 256
+    - 1152
+    - 1152
+  - count: 81
+    signature:
+    - 256
+    - 1152
+    - 4304
+  - count: 81
+    signature:
+    - 256
+    - 4304
+    - 1152
+  - count: 37
+    signature:
+    - 1
+    - 1024
+    - 3072
+  - count: 36
+    signature:
+    - 968
+    - 2048
+    - 256
+  - count: 36
+    signature:
+    - 50
+    - 1024
+    - 256
+  - count: 36
+    signature:
+    - 50
+    - 1024
+    - 4096
+  - count: 34
+    signature:
+    - 968
+    - 2048
+    - 2048
+  - count: 34
+    signature:
+    - 968
+    - 2048
+    - 16384
+  - count: 18
+    signature:
+    - 50
+    - 1024
+    - 2048
+  - count: 18
+    signature:
+    - 50
+    - 2048
+    - 1024
+  - count: 18
+    signature:
+    - 50
+    - 4096
+    - 1024
+  - count: 17
+    signature:
+    - 968
+    - 16384
+    - 2048
+  - count: 3
+    signature:
+    - 256
+    - 1152
+    - 2048
+  unresolved: []
+workload: pi05

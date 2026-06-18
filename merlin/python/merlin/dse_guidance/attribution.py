@@ -87,6 +87,15 @@ def role_from_fqn(fqn: str | None) -> str | None:
     # the bare "lm" leaf is the vocab/output projection (lm-head); it runs once per decode step.
     if low.rsplit(".", 1)[-1] == "lm":
         return ROLE_REPEATED_HEAD
+    # The flow-matching VLAs (smolVLA, pi0.5) wrap the VLM backbone AND the action expert in one
+    # container ("vlm_with_expert" / "paligemma_with_expert"); the container name contains the
+    # backbone token "vlm", so the expert submodule would be misread as backbone. Resolve the
+    # action expert + its per-step action/time/state projections FIRST (specific tokens only, never
+    # the bare "expert" of the container) — they run every denoise step -> repeated head.
+    if any(k in low for k in ("lm_expert", "gemma_expert", "action_expert", "action_in_proj",
+                              "action_out_proj", "action_time_mlp", "time_mlp", "state_proj",
+                              "action_proj")):
+        return ROLE_REPEATED_HEAD
     for keywords, role in _FQN_ROLE_KEYWORDS:
         if any(k in low for k in keywords):
             return role

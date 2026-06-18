@@ -7,25 +7,7 @@ parallel_hierarchy_hints:
     - tile_dims
     evidence: recovered_from_ir
     evidence_against: none
-    evidence_for: 2 ops, 67.1% of MACs, in rdt
-    hierarchy_options:
-    - matrix_tile_engine
-    - systolic_array
-    missing_measurements:
-    - per-unit throughput
-    - communication latency
-    - energy/area
-    required_compiler_proof: operator geometry is tile/lane-legal for the option (recovered_from_ir shapes)
-    shape_class: squareish_gemm
-    supported_workloads:
-    - rdt
-  - dse_knobs_exposed:
-    - unit_count
-    - unit_shape
-    - tile_dims
-    evidence: recovered_from_ir
-    evidence_against: none
-    evidence_for: 102 ops, 31.6% of MACs, in groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama
+    evidence_for: 778 ops, 63.7% of MACs, in groot_n1d7, molmoact, openvla, pi05, rdt, rdt2, small_llama, smolvla
     hierarchy_options:
     - matrix_tile_engine
     - SIMD_vector_lanes
@@ -39,16 +21,75 @@ parallel_hierarchy_hints:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
+  - dse_knobs_exposed:
+    - unit_count
+    - unit_shape
+    - tile_dims
+    evidence: recovered_from_ir
+    evidence_against: none
+    evidence_for: 94 ops, 31.0% of MACs, in pi05, rdt2, smolvla
+    hierarchy_options:
+    - matrix_tile_engine
+    - systolic_array
+    missing_measurements:
+    - per-unit throughput
+    - communication latency
+    - energy/area
+    required_compiler_proof: operator geometry is tile/lane-legal for the option (recovered_from_ir shapes)
+    shape_class: projection_like
+    supported_workloads:
+    - pi05
+    - rdt2
+    - smolvla
+  - dse_knobs_exposed:
+    - unit_count
+    - unit_shape
+    - tile_dims
+    evidence: recovered_from_ir
+    evidence_against: none
+    evidence_for: 64 ops, 4.0% of MACs, in pi05, rdt, smolvla
+    hierarchy_options:
+    - matrix_tile_engine
+    - systolic_array
+    missing_measurements:
+    - per-unit throughput
+    - communication latency
+    - energy/area
+    required_compiler_proof: operator geometry is tile/lane-legal for the option (recovered_from_ir shapes)
+    shape_class: squareish_gemm
+    supported_workloads:
+    - pi05
+    - rdt
+    - smolvla
   - dse_knobs_exposed:
     - unit_count
     - unit_shape
     - tile_dims
     evidence: recovered_from_ir
     evidence_against: very small MAC share
-    evidence_for: 29 ops, 1.3% of MACs, in groot_n1d7, rdt, rdt2, tiny_llama
+    evidence_for: 12 ops, 1.3% of MACs, in smolvla
+    hierarchy_options:
+    - multi_engine_cluster
+    missing_measurements:
+    - per-unit throughput
+    - communication latency
+    - energy/area
+    required_compiler_proof: operator geometry is tile/lane-legal for the option (recovered_from_ir shapes)
+    shape_class: unknown
+    supported_workloads:
+    - smolvla
+  - dse_knobs_exposed:
+    - unit_count
+    - unit_shape
+    - tile_dims
+    evidence: recovered_from_ir
+    evidence_against: very small MAC share
+    evidence_for: 69 ops, 0.0% of MACs, in groot_n1d7, pi05, rdt, rdt2, smolvla, tiny_llama
     hierarchy_options:
     - vector_gemv_engine
     - SIMD_vector_lanes
@@ -60,34 +101,18 @@ parallel_hierarchy_hints:
     shape_class: gemv_like
     supported_workloads:
     - groot_n1d7
+    - pi05
     - rdt
     - rdt2
+    - smolvla
     - tiny_llama
-  - dse_knobs_exposed:
-    - unit_count
-    - unit_shape
-    - tile_dims
-    evidence: recovered_from_ir
-    evidence_against: very small MAC share
-    evidence_for: 1 ops, 0.0% of MACs, in rdt2
-    hierarchy_options:
-    - matrix_tile_engine
-    - systolic_array
-    missing_measurements:
-    - per-unit throughput
-    - communication latency
-    - energy/area
-    required_compiler_proof: operator geometry is tile/lane-legal for the option (recovered_from_ir shapes)
-    shape_class: projection_like
-    supported_workloads:
-    - rdt2
   note: operator clusters + structural units mapped to candidate hardware-hierarchy options. Structural hints for a future DSE search space — NOT a chosen design, NOT a speedup. compute-shape clusters cover the GEMM/GEMV engines; structural_units cover reduction_tree (K-sharding), epilogue_unit, DMA_engine, loop_controller, and multi_engine_cluster (inter-op parallelism).
   structural_units:
   - dse_knobs_exposed:
     - reduction_radix
     - accumulator_width
     evidence: recovered_from_ir
-    evidence_for: 134 K-shardable ops produce partial sums that must be merged across shards
+    evidence_for: 1017 K-shardable ops produce partial sums that must be merged across shards
     hierarchy_option: reduction_tree
     missing_measurements:
     - reduction latency
@@ -96,16 +121,18 @@ parallel_hierarchy_hints:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - dse_knobs_exposed:
     - fused_bias
     - fused_activation
     - requant_path
     evidence: recovered_from_ir
-    evidence_for: 60 ops carry a fused bias/activation (addmm epilogue)
+    evidence_for: 667 ops carry a fused bias/activation (addmm epilogue)
     hierarchy_option: epilogue_unit
     missing_measurements:
     - epilogue throughput
@@ -114,8 +141,10 @@ parallel_hierarchy_hints:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
+    - smolvla
   - dse_knobs_exposed:
     - prefetch_depth
     - resident_capacity
@@ -129,9 +158,11 @@ parallel_hierarchy_hints:
     - groot_n1d7
     - molmoact
     - openvla
+    - pi05
     - rdt
     - rdt2
     - small_llama
+    - smolvla
     - tiny_llama
   - dse_knobs_exposed:
     - loop_bound_K
@@ -145,10 +176,11 @@ parallel_hierarchy_hints:
   - dse_knobs_exposed:
     - num_engines
     evidence: derived_requirement
-    evidence_for: inter-op parallelism in small_llama (independent ops become ready together)
+    evidence_for: inter-op parallelism in small_llama, pi05 (independent ops become ready together)
     hierarchy_option: multi_engine_cluster
     missing_measurements:
     - scheduling / communication latency
     required_compiler_proof: independent operators in the DAG can occupy separate engines
     supported_workloads:
     - small_llama
+    - pi05

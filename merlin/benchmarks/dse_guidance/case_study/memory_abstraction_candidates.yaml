@@ -3,10 +3,10 @@ memory_abstraction_candidates:
   candidates:
   - abstraction: resident_weight_object
     evidence: recovered_from_ir
-    implied_by_n_objects: 9
+    implied_by_n_objects: 13
   - abstraction: resident_activation_object
     evidence: recovered_from_ir
-    implied_by_n_objects: 9
+    implied_by_n_objects: 13
   note: memory abstractions implied by the reuse/residency structure. Counts are how many (workload,object) pairs imply each. Structural — no bandwidth/speedup claim.
   unavailable_abstractions:
   - abstraction: prefix_kv_object

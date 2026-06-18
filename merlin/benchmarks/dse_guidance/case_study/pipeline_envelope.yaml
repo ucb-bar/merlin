@@ -189,3 +189,55 @@ pipeline_envelope:
       - weights
       state_outputs: []
     workload: molmoact
+  - phases:
+    - cadence: once_per_replan
+      candidate_resource_class: dense_gemm
+      deadline_s: 1.666667
+      evidence: recovered_from_prov_fqn
+      invocations: 1
+      missing: []
+      period_s: 1.666667
+      phase: backbone
+      phase_class: backbone_or_encoder
+      state_inputs: []
+      state_outputs: []
+    - cadence: K_times_per_replan
+      candidate_resource_class: skinny_gemm_or_gemv
+      deadline_s: 1.666667
+      evidence: recovered_from_prov_fqn
+      invocations: 10
+      missing:
+      - per-phase wall-clock period (runtime measurement)
+      period_s: unavailable
+      phase: head
+      phase_class: repeated_action_head
+      state_inputs:
+      - weights
+      state_outputs: []
+    workload: smolvla
+  - phases:
+    - cadence: once_per_replan
+      candidate_resource_class: skinny_gemm_or_gemv
+      deadline_s: 1.0
+      evidence: recovered_from_prov_fqn
+      invocations: 1
+      missing: []
+      period_s: 1.0
+      phase: backbone
+      phase_class: backbone_or_encoder
+      state_inputs: []
+      state_outputs: []
+    - cadence: K_times_per_replan
+      candidate_resource_class: skinny_gemm_or_gemv
+      deadline_s: 1.0
+      evidence: recovered_from_prov_fqn
+      invocations: 10
+      missing:
+      - per-phase wall-clock period (runtime measurement)
+      period_s: unavailable
+      phase: head
+      phase_class: repeated_action_head
+      state_inputs:
+      - weights
+      state_outputs: []
+    workload: pi05

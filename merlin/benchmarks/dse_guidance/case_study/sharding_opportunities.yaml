@@ -93,3 +93,25 @@ sharding_opportunities:
       M: 0
       N: 0
     workload: molmoact
+  - clean_8way_shards:
+      K: 106
+      M: 73
+      N: 106
+    evidence: recovered_from_ir
+    ops: 106
+    tailed_8way_shards:
+      K: 0
+      M: 32
+      N: 0
+    workload: smolvla
+  - clean_8way_shards:
+      K: 777
+      M: 610
+      N: 777
+    evidence: recovered_from_ir
+    ops: 777
+    tailed_8way_shards:
+      K: 0
+      M: 128
+      N: 0
+    workload: pi05

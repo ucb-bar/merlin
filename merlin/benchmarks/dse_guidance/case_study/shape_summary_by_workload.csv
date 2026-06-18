@@ -11,3 +11,12 @@ rdt2,wide_skinny,17,895483904,0.9516
 groot_n1d7,gemv_like,5,16908288,0.0065
 groot_n1d7,wide_skinny,13,2595225600,0.9935
 molmoact,wide_skinny,17,7574913024,1.0
+smolvla,gemv_like,1,30720,0.0
+smolvla,projection_like,6,161996800,0.0018
+smolvla,squareish_gemm,61,57983210496,0.6396
+smolvla,unknown,12,28991029248,0.3198
+smolvla,wide_skinny,26,3520350720,0.0388
+pi05,gemv_like,39,118489088,0.0001
+pi05,projection_like,87,708485054464,0.3301
+pi05,squareish_gemm,1,1638400,0.0
+pi05,wide_skinny,650,1437430513664,0.6698
