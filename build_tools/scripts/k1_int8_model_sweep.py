@@ -108,7 +108,10 @@ def main() -> int:
                        wall_ns=res.get("metrics", {}).get("wall_ns"),
                        cycles_est=res.get("metrics", {}).get("cycles"),
                        tiers=list(refs))
-            rec["int_rvv"] = objdump_int_rvv(work / "model.o")
+            # run_on_k1 builds into work/<mode>/ (v|omp|scalar); find the model.o that was used.
+            mo = next(iter(sorted(work.rglob("model.o"), key=lambda p: p.stat().st_mtime,
+                                  reverse=True)), work / "model.o")
+            rec["int_rvv"] = objdump_int_rvv(mo)
             print(f"K1 {bundle}: ok={rec['gate_ok']} cos={rec.get('cos')} "
                   f"int_rvv={rec['int_rvv'].get('any_int_rvv')} wall_ms="
                   f"{(rec.get('wall_ns') or 0)/1e6:.1f} vlen={rec.get('vlen')}", flush=True)
