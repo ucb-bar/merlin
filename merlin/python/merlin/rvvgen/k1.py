@@ -234,7 +234,8 @@ class K1Error(RuntimeError):
 
 
 def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
-                    inputs_npz: str | Path | None = None) -> Path:
+                    inputs_npz: str | Path | None = None,
+                    force_scalar: bool | None = None) -> Path:
     """Cross-compile a self-contained K1 Linux RVV binary from the workload + RVV package.
 
     Reuses the EXACT spike/Zephyr lowering (``zephyr_model._prepare_model_mlir`` ->
@@ -265,7 +266,11 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     # hoist_static_allocs=False: keep big intermediate buffers on the HEAP (board RAM) instead of
     # promoting them to stack alloca — large models otherwise overflow even a multi-GB stack.
     from ..llvmlower.pipeline import PipelineError
+    if force_scalar is None:
+        force_scalar = bool(os.environ.get("MERLIN_K1_FORCE_SCALAR"))
     try:
+        if force_scalar:
+            raise PipelineError("forced scalar (MERLIN_K1_FORCE_SCALAR)")
         res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
                                vectorize=True, transform_schedule=pkg.schedule_text,
                                hoist_static_allocs=False)
@@ -348,21 +353,29 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
 
     if not K1_HOST:
         raise K1Error("MERLIN_K1_HOST unset — board unreachable")
-    binary = build_k1_binary(model_dir, work, pkg)
 
-    remote = f"/tmp/{Path(model_dir).name}_{pkg.run_id}_merlin_k1"
-    _run(["scp", "-i", K1_SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
-          str(binary), f"{K1_HOST}:{remote}"])
-    try:
-        _ssh(f"chmod +x {remote}", timeout=30)
-        proc = _ssh(remote, timeout=timeout)
-        console = proc.stdout + proc.stderr
-        res = zm._parse_console(console, proc.returncode)
-    finally:
+    def _build_deploy_run(force_scalar: bool | None, tag: str) -> dict:
+        binary = build_k1_binary(model_dir, Path(work) / tag, pkg, force_scalar=force_scalar)
+        remote = f"/tmp/{Path(model_dir).name}_{pkg.run_id}_{tag}_merlin_k1"
+        _run(["scp", "-i", K1_SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
+              str(binary), f"{K1_HOST}:{remote}"])
         try:
-            _ssh(f"rm -f {remote}", timeout=30)
-        except Exception:  # noqa: BLE001
-            pass
+            _ssh(f"chmod +x {remote}", timeout=30)
+            proc = _ssh(remote, timeout=timeout)
+            return zm._parse_console(proc.stdout + proc.stderr, proc.returncode)
+        finally:
+            try:
+                _ssh(f"rm -f {remote}", timeout=30)
+            except Exception:  # noqa: BLE001
+                pass
+
+    try:
+        res = _build_deploy_run(None, "v")
+    except zm.ZephyrModelError:
+        # The vectorized int8 lowering OOB-stores / crashes for some shapes (e.g. rdt's diffusion
+        # transformer) while smaller models vectorize fine. Retry once with the SCALAR lowering
+        # (no specialize/vector-transfer path) — correct, slower — so the model still runs int8.
+        res = _build_deploy_run(True, "scalar")
 
     # Prefer the vlenb the harness printed (=== merlin_k1 vlenb=N ===); else probe; else constant.
     vlen_bits = VLEN
