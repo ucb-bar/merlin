@@ -172,6 +172,28 @@ def _insight_mining(args) -> int:
     return 0 if all_ok else 1
 
 
+def _devils_advocate(args) -> int:
+    """Run the agent critic over an emitted insight-mining run folder (propose) and keep only
+    citation-grounded critiques (dispose). The agent is optional — if `claude` is unavailable we
+    report that honestly and exit nonzero, never fabricate a critique."""
+    from merlin.dse_guidance.agent import critic
+    from merlin.dse_guidance.agent.claude_cli import AgentError
+    run_dir = Path(args.devils_advocate)
+    if not run_dir.is_dir() or not (run_dir / "DSE_FINDINGS.md").is_file():
+        raise SystemExit(f"{run_dir} is not an insight-mining run (no DSE_FINDINGS.md); "
+                         "run --insight-mining first")
+    try:
+        result = critic.run_critic(run_dir)
+    except AgentError as e:
+        print(f"devil's-advocate agent unavailable: {e}")
+        return 2
+    out = critic.emit_critique(result, run_dir)
+    print(f"critic: {len(result['accepted'])} grounded over-claims kept / "
+          f"{result['n_proposed']} proposed ({len(result['rejected'])} rejected ungrounded)")
+    print(f"-> {out}")
+    return 0
+
+
 def _query(args) -> int:
     """Consume the case-study contract manifest (dse_contract.json) — the one-object entry point."""
     import json
@@ -275,8 +297,14 @@ def main(argv: list[str] | None = None) -> int:
                     help="consume the case-study contract manifest: one of summary | knobs | "
                          "boundary[:<abstraction>] | missing | index (reads dse_contract.json under "
                          "--out or the committed case_study dir)")
+    ap.add_argument("--devils-advocate", default=None, metavar="RUN_DIR",
+                    help="run the agent devil's-advocate critic over an emitted insight-mining run "
+                         "folder (headless `claude -p`); a deterministic citation gate keeps only "
+                         "critiques that quote a real artifact. Writes devils_advocate_critique.md")
     args = ap.parse_args(argv)
 
+    if getattr(args, "devils_advocate", None):
+        return _devils_advocate(args)
     if getattr(args, "insight_mining", False):
         return _insight_mining(args)
     if args.query:
