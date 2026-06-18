@@ -45,9 +45,11 @@ VLEN = 256  # K1 X60 vector length, bits; the runtime reads vlenb at run time an
 # reported as cycle_accurate=False (spike/FireSim remain the cycle-accurate authorities).
 K1_TIMEBASE_HZ = 24_000_000   # /proc/device-tree/cpus/timebase-frequency (rdtime tick rate)
 K1_CPU_HZ = 1_600_000_000     # X60 scaling_cur_freq (for the rdtime-ticks -> core-cycle estimate)
-# RLIMIT_STACK raised in the harness so alloca'd model intermediates (VLA vision activations)
-# don't overflow the default 8MB stack. Just a LIMIT (grows on demand); board has ~3.5G RAM.
-K1_STACK_BYTES = 3 * 1024 * 1024 * 1024
+# The lowered model alloca's large intermediate buffers; the default 8MB Linux stack overflows
+# (SIGSEGV store-fault) for VLAs. We run merlin_run on a pthread with an explicitly-mmap'd large
+# stack (one contiguous region — more robust than main-thread RLIMIT growth, which collides with
+# lower mmaps for the bigger models). Sized to leave headroom on the ~3.5G board.
+K1_STACK_BYTES = 2 * 1024 * 1024 * 1024
 
 
 def _toolchain_root() -> Path | None:
@@ -110,6 +112,7 @@ def main_linux_c(dump_cap: int = 4096) -> str:
 #include <string.h>
 #include <time.h>
 #include <sys/resource.h>
+#include <pthread.h>
 
 #include "merlin_model.h"
 #include "model_gen.h"
@@ -147,13 +150,8 @@ static uint64_t wall_ns(void) {{
   return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }}
 
-int main(void) {{
-  /* The lowered model alloca's large intermediate buffers on the stack (vision/VLA activations
-   * overflow the default 8MB Linux stack -> SIGSEGV store-fault). Raise RLIMIT_STACK so the
-   * main-thread stack grows on demand (we run as root on the board, so the hard limit can rise).
-   * The spike/Zephyr bare-metal harness sidesteps this with a large linker-reserved stack/arena. */
-  struct rlimit rl = {{ {K1_STACK_BYTES}ULL, {K1_STACK_BYTES}ULL }};
-  setrlimit(RLIMIT_STACK, &rl);
+static void *worker(void *arg) {{
+  (void)arg;
   printf("=== merlin_k1 vlenb=%llu ===\\n", (unsigned long long)rd_vlenb());
   uint64_t w0 = wall_ns();
   uint64_t t0 = rd_time();
@@ -197,6 +195,25 @@ int main(void) {{
   printf("METRIC wall_ns %llu\\n", (unsigned long long)(w1 - w0));
   printf("DONE\\n");
   fflush(stdout);
+  return NULL;
+}}
+
+int main(void) {{
+  /* The lowered model alloca's large intermediate buffers; the default 8MB stack overflows
+   * (SIGSEGV) for VLAs. Run merlin_run on a pthread with an explicitly-mmap'd {K1_STACK_BYTES}-byte
+   * stack (one contiguous region — robust vs main-thread growth, which collides with lower mmaps).
+   * Also raise RLIMIT_STACK as a fallback if pthread creation fails. */
+  struct rlimit rl = {{ {K1_STACK_BYTES}ULL, {K1_STACK_BYTES}ULL }};
+  setrlimit(RLIMIT_STACK, &rl);
+  pthread_attr_t attr;
+  pthread_t th;
+  if (pthread_attr_init(&attr) == 0 &&
+      pthread_attr_setstacksize(&attr, (size_t){K1_STACK_BYTES}ULL) == 0 &&
+      pthread_create(&th, &attr, worker, NULL) == 0) {{
+    pthread_join(th, NULL);
+  }} else {{
+    worker(NULL);   /* fallback: run inline (relies on the raised RLIMIT) */
+  }}
   return 0;
 }}
 """
@@ -278,7 +295,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     binary = work / "merlin_k1"
     srcs = [main_c, cgen / "model_call.c", rt / "merlin_model.c", abi / "mlir_runtime.c"]
     base = [cc, f"--target=riscv64-unknown-linux-gnu", f"-march={K1_MARCH}", f"-mabi={K1_MABI}",
-            "-O2", f"-I{rt}", f"-I{cgen}", *srcs, model_o, weights_o, "-lm", "-o", binary]
+            "-O2", f"-I{rt}", f"-I{cgen}", *srcs, model_o, weights_o, "-lm", "-lpthread",
+            "-o", binary]
     try:
         _run([*base, "-static"])
     except K1Error:
