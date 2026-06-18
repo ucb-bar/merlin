@@ -2469,6 +2469,13 @@ def test_p15_emit_writes_study_deliverables_and_plot_captions(tmp_path):
     blob = (tmp_path / "signal_findings_report.md").read_text().lower()
     assert not any(t in blob for t in ("speedup", "faster", "optimal", "predicted cycles"))
     assert "robust vs corpus-limited" in blob and "random-init" in blob
+    # the consolidated one-file digest exists and embeds every section + the knob catalog
+    dig = (tmp_path / "DSE_FINDINGS.md").read_text()
+    for section in ("Headline metrics", "Top ops by MACs", "Abstraction coverage",
+                    "Decision-impact plots", "What a DSE tool ingests", "How to evaluate this"):
+        assert section in dig, section
+    assert "compute_primitive_shape" in dig and "total_macs" in dig
+    assert "speedup" not in dig.lower() or "no speedup" in dig.lower()
 
 
 @pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
