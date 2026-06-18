@@ -22,8 +22,11 @@ from pathlib import Path
 from merlin.common.yaml import load_yaml
 
 # ---- evidence labels -> tier inputs ----
-_TIER_A_LABELS = {"measured", "proxy_measured", "recovered_from_ir", "recovered_from_prov_fqn",
-                  "recovered_from_model_config"}
+# Tier A is reserved for IR/prov.fqn-recovered or measured facts (independently verifiable). A
+# published config constant (recovered_from_model_config, e.g. K) is a *reference value*, not an
+# IR-recovered or measured fact, so it tiers as C alongside assumed_reference — NOT A.
+_TIER_A_LABELS = {"measured", "proxy_measured", "recovered_from_ir", "recovered_from_prov_fqn"}
+_CONFIG = {"recovered_from_model_config"}
 _DERIVED = "derived_requirement"
 _ASSUMED = {"assumed_reference", "design_assumption"}
 _ABSENT = {"unavailable", "unknown", ""}
@@ -121,8 +124,10 @@ def _count(text: str, label: str) -> int:
 def _derivation(evidence: str) -> str:
     if evidence in ("measured", "proxy_measured"):
         return "measured"
-    if evidence in ("recovered_from_ir", "recovered_from_prov_fqn", "recovered_from_model_config"):
+    if evidence in ("recovered_from_ir", "recovered_from_prov_fqn"):
         return "recovered"
+    if evidence in _CONFIG:
+        return "config_reference"
     if evidence == _DERIVED:
         return "derived"
     if evidence in _ASSUMED:
@@ -131,14 +136,14 @@ def _derivation(evidence: str) -> str:
 
 
 def evidence_tier(evidence: str, source_artifact: str) -> str:
-    """A: recovered/measured AND verified. B: recovered-unverified or derived+verified.
-    C: assumed (or derived-unverified). D: unavailable/unknown."""
+    """A: IR-recovered/measured AND verified. B: recovered-unverified or derived+verified.
+    C: assumed_reference / config reference (labeled) / derived-unverified. D: unavailable/unknown."""
     verified = source_artifact in _VERIFIED_ARTIFACTS
     if evidence in _TIER_A_LABELS:
         return "A" if verified else "B"
     if evidence == _DERIVED:
         return "B" if verified else "C"
-    if evidence in _ASSUMED:
+    if evidence in _ASSUMED or evidence in _CONFIG:
         return "C"
     return "D"
 
@@ -271,7 +276,8 @@ def unified_facts(cs_dir: Path, scope: str) -> list[dict]:
             add(workload=w, metric="available_parallelism", value=c["available_parallelism"],
                 unit="work/span", artifact="critical_path_table.csv", phase="P7",
                 evidence=_DERIVED, caveat="structural work/span, not a performance metric",
-                implication="low -> intra-op sharding over many identical units")
+                implication="low inter-op parallelism favors intra-op sharding (not many identical "
+                            "units kept busy by concurrency)")
             add(workload=w, metric="serialization", value=c["serialization"], unit="class",
                 artifact="critical_path_table.csv", phase="P7", evidence=_DERIVED,
                 implication="near-sequential DAG shape")
@@ -281,7 +287,9 @@ def unified_facts(cs_dir: Path, scope: str) -> list[dict]:
             top = max(ws, key=lambda r: float(r["mac_fraction"]))
             add(workload=w, metric="dominant_shape_class", value=top["shape_class"], unit="",
                 artifact="shape_summary_by_workload.csv", phase="P5", evidence="recovered_from_ir",
-                implication=f"{float(top['mac_fraction']):.0%} of MACs -> primitive shape to cover")
+                caveat=f"{w}: {float(top['mac_fraction']):.0%} of this workload's MACs",
+                implication="dominant geometry class -> the primitive shape the DSE must cover "
+                            "(per-workload MAC share in shape_summary_by_workload.csv)")
         # top avoidable-reload region (per workload)
         wm = [r for r in dm if r["workload"] == w]
         if wm:
