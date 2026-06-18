@@ -199,6 +199,103 @@ def _r_critical_path(cs, facts, ax):
     return True
 
 
+# ---- decision-impact ("what-if") renderers: outcome as a function of a DSE knob choice ----
+
+def _r_decision_primitive_choice(cs, facts, ax):
+    """If DSE commits to ONE primitive: worst-case vs mean MAC coverage across workloads."""
+    rows = _rows(cs / "primitive_coverage_matrix.csv")
+    if not rows:
+        return False
+    by_prim = defaultdict(list)
+    for r in rows:
+        by_prim[r["primitive"]].append(float(r["coverage_under_10pct"]))
+    prims = sorted(by_prim, key=lambda p: -min(by_prim[p]))      # safest single choice first
+    worst = [min(by_prim[p]) for p in prims]
+    mean = [sum(by_prim[p]) / len(by_prim[p]) for p in prims]
+    x = range(len(prims))
+    ax.bar([i - 0.2 for i in x], worst, 0.4, label="worst workload")
+    ax.bar([i + 0.2 for i in x], mean, 0.4, label="mean workload")
+    ax.set_xticks(list(x), prims, rotation=35, fontsize=6)
+    ax.set_title("Decision: single primitive choice -> MAC coverage (<=10% waste)")
+    ax.set_ylabel("MAC fraction covered")
+    ax.set_ylim(0, 1.02)
+    ax.legend(fontsize=7)
+    return True
+
+
+def _r_decision_weight_residency(cs, facts, ax):
+    """Weight bytes moved vs loop count: reload-every-step (linear) vs resident (flat)."""
+    rows = [r for r in _rows(cs / "data_movement_table.csv")
+            if r["region"] == "repeated_head" and int(r["weight_bytes"]) > 0]
+    if not rows:
+        return False
+    kmax = max(max(int(r["invocations"]), 2) for r in rows)
+    ks = list(range(1, kmax + 1))
+    for r in rows:
+        wb = int(r["weight_bytes"])
+        line, = ax.plot(ks, [wb * k for k in ks], label=f"{r['workload']} reload")
+        ax.plot(ks, [wb] * len(ks), "--", color=line.get_color(), alpha=0.6)
+        kr = int(r["invocations"])
+        ax.scatter([kr], [wb * kr], color=line.get_color(), zorder=5, s=18)
+    ax.set_title("Decision: weight residency -> bytes moved vs loop count\n"
+                 "(solid=reload every step, dashed=resident; dot=real K)")
+    ax.set_xlabel("head loop count K")
+    ax.set_ylabel("weight bytes moved")
+    ax.set_yscale("log")
+    ax.legend(fontsize=6, ncol=2)
+    return True
+
+
+def _r_decision_capacity_dtype(cs, facts, ax):
+    """How many workloads are fully weight-resident as the capacity budget grows, per dtype."""
+    rows = _rows(cs / "dtype_capacity_table.csv")
+    if not rows:
+        return False
+    cols = [("bf16_B", "bf16"), ("int8_B", "int8"), ("int4_B", "int4")]
+    allv = [int(float(r[c])) for r in rows for c, _ in cols]
+    lo, hi = min(allv), max(allv)
+    import math
+    budgets = [10 ** (math.log10(lo) + i * (math.log10(hi) - math.log10(lo)) / 40)
+               for i in range(41)] if hi > lo else [lo]
+    for col, name in cols:
+        sizes = [int(float(r[col])) for r in rows]
+        ax.step(budgets, [sum(1 for s in sizes if s <= b) for b in budgets], where="post",
+                label=name)
+    ax.set_title("Decision: on-chip capacity + dtype -> workloads fully weight-resident")
+    ax.set_xlabel("on-chip capacity budget (bytes)")
+    ax.set_ylabel(f"# workloads resident (of {len(rows)})")
+    ax.set_xscale("log")
+    ax.legend(fontsize=7)
+    return True
+
+
+def _r_decision_sharding_cost(cs, facts, ax):
+    """Extra data-movement bytes added by sharding 2/4/8-ways along M / N / K."""
+    rows = _rows(cs / "sharding_table.csv")
+    if not rows:
+        return False
+    counts = [2, 4, 8]
+    axes_ = ["M", "N", "K"]
+    tot = {a: [0.0, 0.0, 0.0] for a in axes_}
+    for r in rows:
+        a = r["axis"]
+        if a not in tot:
+            continue
+        per = float(r["per_extra_shard_bytes"])
+        for j, s in enumerate(counts):
+            if r.get(f"shardable_{s}") == "True":
+                tot[a][j] += per * (s - 1)
+    x = range(len(counts))
+    for k, a in enumerate(axes_):
+        ax.bar([i + (k - 1) * 0.25 for i in x], tot[a], 0.25, label=f"{a}-shard")
+    ax.set_xticks(list(x), [f"{s}-way" for s in counts])
+    ax.set_title("Decision: shard axis + count -> extra data-movement bytes")
+    ax.set_ylabel("extra bytes (partial-sum / broadcast)")
+    ax.set_yscale("symlog")
+    ax.legend(fontsize=7)
+    return True
+
+
 _RENDERERS = {
     "evidence_type_by_workload": _r_evidence_by_workload,
     "evidence_type_by_phase": _r_evidence_by_phase,
@@ -210,6 +307,10 @@ _RENDERERS = {
     "avoidable_reload_by_region": _r_avoidable_reload,
     "measurement_priority_bar": _r_measurement_priority,
     "critical_path_parallelism": _r_critical_path,
+    "decision_primitive_choice": _r_decision_primitive_choice,
+    "decision_weight_residency": _r_decision_weight_residency,
+    "decision_capacity_dtype": _r_decision_capacity_dtype,
+    "decision_sharding_cost": _r_decision_sharding_cost,
 }
 
 

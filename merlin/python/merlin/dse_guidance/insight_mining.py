@@ -991,6 +991,20 @@ _PLOTS = [
      ["workload", "available_parallelism"], "workload", "available_parallelism", "", "bar", "main"),
     ("epilogue_pattern_counts", "Epilogue patterns by workload", "epilogue_pattern_table.csv",
      ["workload", "pattern"], "workload", "count", "pattern", "stacked_bar", "backup"),
+    # ---- decision-impact ("what-if") plots: how an outcome changes under a DSE knob choice ----
+    ("decision_primitive_choice", "Decision: single primitive choice -> coverage",
+     "primitive_coverage_matrix.csv", ["primitive", "workload", "coverage_under_10pct"], "primitive",
+     "coverage_under_10pct", "workload", "decision_bar", "main"),
+    ("decision_weight_residency", "Decision: weight residency -> bytes moved vs loop count",
+     "data_movement_table.csv", ["workload", "region", "weight_bytes", "invocations"], "loop_count",
+     "bytes_moved", "policy", "decision_curve", "main"),
+    ("decision_capacity_dtype", "Decision: on-chip capacity + dtype -> weights resident",
+     "dtype_capacity_table.csv", ["workload", "bf16_B", "int8_B", "int4_B"], "capacity_budget",
+     "workloads_resident", "dtype", "decision_curve", "main"),
+    ("decision_sharding_cost", "Decision: shard axis + count -> extra data-movement bytes",
+     "sharding_table.csv", ["axis", "shardable_2", "shardable_4", "shardable_8",
+                            "per_extra_shard_bytes"], "shard_count", "extra_bytes", "axis",
+     "decision_bar", "main"),
 ]
 
 
@@ -1004,6 +1018,7 @@ def canonical_signal_table(facts: list[dict]) -> list[dict]:
     Context/count metrics (provenance, redundant corroboration, raw row counts) are excluded — they
     live in the full fact table for traceability but never in the headline."""
     rows = []
+    seen = set()
     for f in facts:
         if f.get("metric_class") not in ("signal", "measured"):
             continue
@@ -1012,13 +1027,24 @@ def canonical_signal_table(facts: list[dict]) -> list[dict]:
             "verified+corroborated" if (f.get("verifying_check") and int(cb or 1) >= 2)
             else "verified" if f.get("verifying_check")
             else "corroborated x%d" % int(cb or 1) if int(cb or 1) >= 2 else "single-source")
+        # entity = the row's discriminator (per-abstraction / per-region metrics share workload=ALL,
+        # so without it the headline shows uninterpretable duplicate rows)
+        entity = f.get("abstraction") or f.get("region") or f.get("workload", "")
+        # collapse rows that are the same metric on the same entity+value (e.g. one accuracy fact
+        # surfaced by two artifacts with different implication wording) to one headline row
+        key = (f.get("dse_question", ""), f["metric_name"], f.get("workload", ""), entity,
+               str(f.get("metric_value", "")))
+        if key in seen:
+            continue
+        seen.add(key)
         rows.append({
             "dse_question": f.get("dse_question", ""), "metric": f["metric_name"],
-            "workload": f.get("workload", ""), "value": f.get("metric_value", ""),
+            "workload": f.get("workload", ""), "entity": entity,
+            "value": f.get("metric_value", ""),
             "unit": f.get("metric_unit", ""), "evidence_tier": f.get("evidence_tier", ""),
             "strength": strength, "verification_status": f.get("verification_status", ""),
             "dse_implication": f.get("dse_implication", "")})
-    rows.sort(key=lambda r: (r["dse_question"], r["metric"], r["workload"]))
+    rows.sort(key=lambda r: (r["dse_question"], r["metric"], r["workload"], r["entity"]))
     return rows
 
 
@@ -1249,6 +1275,18 @@ _PLOT_CAPTION = {
     "critical_path_parallelism": "Inter-op work/span per workload — the unit-multiplicity the "
         "heterogeneity search space could exploit.",
     "epilogue_pattern_counts": "Epilogue/fusion patterns per workload (numerical-contract context).",
+    "decision_primitive_choice": "If DSE builds only ONE compute primitive, how much of each "
+        "workload's MACs it can tile under 10% waste — the worst-case bar shows no single primitive "
+        "covers every workload, so the search space needs both a tile and a GEMV lane.",
+    "decision_weight_residency": "Weight bytes moved as the head loop count grows: reload-every-step "
+        "(linear) vs keep-resident (flat). The vertical gap at each workload's real K is the "
+        "avoidable reload a residency knob removes (bytes, not bandwidth).",
+    "decision_capacity_dtype": "How many workloads become fully weight-resident as the on-chip "
+        "capacity budget grows, per storage dtype — low-bit dtypes reach full residency at a smaller "
+        "budget, quantifying the capacity-vs-dtype trade in the search space.",
+    "decision_sharding_cost": "Extra data-movement bytes added by sharding 2/4/8 ways along M, N, or "
+        "K: M/N shards are reduction-free (broadcast only) while K shards add partial-sum traffic — "
+        "the cost side of the parallelization decision.",
 }
 
 
@@ -1622,8 +1660,8 @@ def _required_inputs_md(ri, scope) -> str:
 
 # --------------------------------------------------------------------------- P15 emitters
 
-_CANON_COLS = ["dse_question", "metric", "workload", "value", "unit", "evidence_tier", "strength",
-               "verification_status", "dse_implication"]
+_CANON_COLS = ["dse_question", "metric", "workload", "entity", "value", "unit", "evidence_tier",
+               "strength", "verification_status", "dse_implication"]
 _HOTSPOT_COLS = ["ranking", "rank", "workload", "op_index", "prov_fqn", "op_kind", "shape_class",
                  "M", "N", "K", "macs", "mac_fraction_of_workload", "rhs_weight_bytes",
                  "best_tile_padding_waste", "is_tail_heavy", "region", "avoidable_weight_reload"]
