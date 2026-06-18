@@ -1022,16 +1022,22 @@ def canonical_signal_table(facts: list[dict]) -> list[dict]:
     return rows
 
 
-def per_operator_hotspots(cs_dir: Path, k: int = 10) -> dict:
+def per_operator_hotspots(cs_dir: Path, scope: str = "all", k: int = 10) -> dict:
     """Deeper-per-operator signal: which few ops dominate compute / weight / tile-waste / reload.
 
     Reads operator_shape_table (per-op M/N/K, macs, weight bytes, shape class), joins the best
     achievable tile padding waste per op from tile_waste_table, and the region reload from
-    data_movement_table. Top-k by each axis; structural quantities only."""
+    data_movement_table. Top-k by each axis; structural quantities only. When ``scope`` is a single
+    workload (not "all"), the tables are restricted to that workload so a per-network run reports
+    that network's own hotspots, not the corpus-wide top."""
     cs_dir = Path(cs_dir)
     ops = _csv_rows(cs_dir / "operator_shape_table.csv")
     tw = _csv_rows(cs_dir / "tile_waste_table.csv")
     dm = _csv_rows(cs_dir / "data_movement_table.csv")
+    if scope != "all":
+        ops = [o for o in ops if o["workload"] == scope]
+        tw = [r for r in tw if r["workload"] == scope]
+        dm = [r for r in dm if r["workload"] == scope]
     # best (lowest) achievable tile padding waste per op over the *real* applicable tile primitives
     best: dict[tuple, float] = {}
     for r in tw:
@@ -1458,12 +1464,19 @@ def mine(cs_dir, scope: str) -> dict:
               "required_inputs": required_inputs(cs_dir, facts)}
     bundle["gaps"] = gap_audit(cs_dir, scope, bundle)
     bundle["open_avoidable_gaps"] = open_avoidable(bundle["gaps"])
-    # P15 signal-first study layer (signal-only, every output answers a DSE question)
+    # P15 signal-first study layer (signal-only, every output answers a DSE question). Per-network
+    # scopes get their OWN canonical table + hotspots; the cross-workload artifacts (coverage /
+    # family / corpus) are corpus-level by nature and are emitted only in the 'all' scope (a single
+    # workload's coverage/regret/family is degenerate, so dumping the corpus-wide table into a
+    # per-network folder would misrepresent it).
     bundle["canonical_signal"] = canonical_signal_table(facts)
-    bundle["hotspots"] = per_operator_hotspots(cs_dir)
-    bundle["abstraction_coverage"] = abstraction_coverage(cs_dir)
-    bundle["family_summary"] = workload_family_summary(cs_dir, findings)
-    bundle["corpus_plan"] = corpus_expansion_plan(cs_dir)
+    bundle["hotspots"] = per_operator_hotspots(cs_dir, scope)
+    is_all = scope == "all"
+    bundle["abstraction_coverage"] = abstraction_coverage(cs_dir) if is_all else []
+    bundle["family_summary"] = (workload_family_summary(cs_dir, findings) if is_all
+                                else {"families": {}, "family_specific_findings": [],
+                                      "cross_family_findings": []})
+    bundle["corpus_plan"] = corpus_expansion_plan(cs_dir) if is_all else {}
     return bundle
 
 
@@ -1733,6 +1746,25 @@ def _signal_report_md(bundle, scope) -> str:
     L.append("## What remains unclaimed (and the exact input needed)\n")
     for x in bundle.get("required_inputs", []):
         L.append(f"- {x['limit']}: {x['required_input']}")
+    # closing devil's-advocate note: which signal is robust vs corpus-limited
+    fam = bundle.get("family_summary", {})
+    n_fam_specific = len(fam.get("family_specific_findings", []))
+    L.append("\n## Devil's advocate — robust vs corpus-limited\n")
+    L.append("**Robust (structural, independent of magnitudes):** shape-class distribution, the "
+             "recovered SSA data-dependency graph, the backbone/head role split, the dtype/epilogue "
+             "numerical contract, and per-op MAC *fractions* (relative, not absolute). These hold "
+             "regardless of weight magnitudes.")
+    L.append("\n**Corpus-limited (treat as directional, not settled):**")
+    L.append("- The 4 recaptures are small, random-init f32 instances — structure and provenance "
+             "are real, but absolute byte/MAC magnitudes are a small instance, so any finding that "
+             "leans on absolute size is directional only.")
+    L.append("- low-bit / KV / attention structure is erased or lowered in the capture, so those "
+             "candidates are blocked, not measured (see What remains unclaimed).")
+    if bundle.get("scope") == "all":
+        L.append(f"- {n_fam_specific} family-specific findings recovered: the corpus is small and "
+                 "structurally homogeneous across families, so cross-family separation is weak — "
+                 "expanding the corpus (see corpus_expansion_plan.md) is the prerequisite before any "
+                 "cross-family DSE claim.")
     return "\n".join(L) + "\n"
 
 
@@ -1810,12 +1842,17 @@ def emit_run(bundle: dict, run_dir, rendered: list[str]) -> None:
     h = bundle["hotspots"]
     Artifact("per_operator_hotspots.csv", _csv_text(h["rows"], _HOTSPOT_COLS)).write(run_dir)
     Artifact("per_operator_hotspots.md", _hotspots_md(h, scope)).write(run_dir)
-    Artifact("abstraction_coverage_table.csv",
-             _csv_text(bundle["abstraction_coverage"], _COVER_COLS)).write(run_dir)
-    Artifact("abstraction_coverage.md",
-             _coverage_md(bundle["abstraction_coverage"], scope)).write(run_dir)
-    Artifact("workload_family_summary.md", _family_md(bundle["family_summary"], scope)).write(run_dir)
-    Artifact("corpus_expansion_plan.md", _corpus_md(bundle["corpus_plan"], scope)).write(run_dir)
+    # cross-workload artifacts are corpus-level — only meaningful (and only emitted) in 'all'
+    if bundle["abstraction_coverage"]:
+        Artifact("abstraction_coverage_table.csv",
+                 _csv_text(bundle["abstraction_coverage"], _COVER_COLS)).write(run_dir)
+        Artifact("abstraction_coverage.md",
+                 _coverage_md(bundle["abstraction_coverage"], scope)).write(run_dir)
+    if bundle["family_summary"]["families"]:
+        Artifact("workload_family_summary.md",
+                 _family_md(bundle["family_summary"], scope)).write(run_dir)
+    if bundle["corpus_plan"]:
+        Artifact("corpus_expansion_plan.md", _corpus_md(bundle["corpus_plan"], scope)).write(run_dir)
     Artifact("signal_findings_report.md", _signal_report_md(bundle, scope)).write(run_dir)
     Artifact("presentation_plots_index.md",
              _plots_index_md(bundle["plots"], scope, rendered, "generated_plots")).write(run_dir)

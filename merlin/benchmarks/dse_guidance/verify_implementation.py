@@ -1093,21 +1093,45 @@ def verify_p15(IM, bundle) -> None:
     p13check(pad_ok, "[P15] hotspot padding waste == independent best-tile recompute")
     # 4. abstraction coverage MAC/byte/workload coverage recomputes from source artifacts
     cov = bundle["abstraction_coverage"]
-    mac_by_wl, byte_by_wl = {}, {}
+    dm_rows = _rows("data_movement_table.csv")
+    mac_by_wl, byte_by_wl, reg_by_wl = {}, {}, {}
     for o in ops:
         mac_by_wl[o["workload"]] = mac_by_wl.get(o["workload"], 0) + int(o["macs"])
         byte_by_wl[o["workload"]] = byte_by_wl.get(o["workload"], 0) + int(o["rhs_weight_bytes"])
+    for r in dm_rows:
+        reg_by_wl[r["workload"]] = reg_by_wl.get(r["workload"], 0) + 1
     tmac, tbyte = sum(mac_by_wl.values()) or 1, sum(byte_by_wl.values()) or 1
+    treg = len(dm_rows) or 1
     nwl = len(mac_by_wl)
     cov_ok = True
     for r in cov:
         supp = [w.strip() for w in r["workloads_supporting"].split(";") if w.strip()]
         exp_mac = round(sum(mac_by_wl.get(w, 0) for w in supp) / tmac, 4)
+        exp_byte = round(sum(byte_by_wl.get(w, 0) for w in supp) / tbyte, 4)
+        exp_reg = round(sum(reg_by_wl.get(w, 0) for w in supp) / treg, 4)
         exp_wl = round(len(supp) / (nwl or 1), 4)
-        if abs(r["mac_coverage"] - exp_mac) > 1e-6 or abs(r["workload_coverage"] - exp_wl) > 1e-6:
+        if (abs(r["mac_coverage"] - exp_mac) > 1e-6 or abs(r["byte_coverage"] - exp_byte) > 1e-6
+                or abs(r["region_coverage"] - exp_reg) > 1e-6
+                or abs(r["workload_coverage"] - exp_wl) > 1e-6):
             cov_ok = False
             break
-    p13check(cov and cov_ok, f"[P15] abstraction coverage recomputes from source ({len(cov)} rows)")
+    p13check(cov and cov_ok,
+             f"[P15] abstraction coverage (workload/MAC/byte/region) recomputes from source "
+             f"({len(cov)} rows)")
+    # per-network scoping: a single-workload run reports only that network's hotspots + canonical,
+    # and the corpus-level cross-workload artifacts are withheld from a per-network bundle
+    one = [w for w in IM._workloads(CS) if w != "rdt"][0]
+    bn = IM.mine(CS, one)
+    hs = bn["hotspots"]
+    scoped_ok = (hs["by_macs"] and all(r["workload"] == one for r in hs["by_macs"])
+                 and hs["n_ops"] == sum(1 for o in ops if o["workload"] == one)
+                 and {r["workload"] for r in bn["canonical_signal"]
+                      if r["workload"] not in ("ALL", "ZOO", "")} == {one})
+    withheld_ok = (not bn["abstraction_coverage"] and not bn["corpus_plan"]
+                   and not bn["family_summary"]["families"])
+    p13check(scoped_ok and withheld_ok,
+             f"[P15] per-network scope '{one}' is network-scoped (hotspots+canonical) with "
+             f"corpus-level artifacts withheld (scoped={scoped_ok}, withheld={withheld_ok})")
     # 5. corpus-expansion plan references only real registry families lacking a recapture
     from merlin.dse_guidance.models import MODEL_ARCH
     cp = bundle["corpus_plan"]

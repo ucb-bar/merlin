@@ -2404,6 +2404,12 @@ def test_p15_hotspots_reference_real_ops_and_recompute():
     # the dominant op carries a real per-workload MAC fraction in (0, 1]
     d = h["dominant_op"]
     assert 0.0 < d["mac_fraction_of_workload"] <= 1.0
+    # a per-network scope reports ONLY that network's ops (not the corpus-wide top)
+    wls = sorted({o["workload"] for o in ops})
+    one = [w for w in wls if w != "rdt"][0]              # a non-rdt workload (rdt dominates corpus)
+    hs = IM.per_operator_hotspots(_CS_DIR, one)
+    assert hs["by_macs"] and all(r["workload"] == one for r in hs["by_macs"])
+    assert hs["n_ops"] == sum(1 for o in ops if o["workload"] == one)
 
 
 @pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
@@ -2459,6 +2465,28 @@ def test_p15_emit_writes_study_deliverables_and_plot_captions(tmp_path):
         assert (tmp_path / f).is_file(), f
     # every non-omit plot carries a non-empty DSE-implication caption
     assert all(p["dse_caption"] for p in b["plots"] if p["recommendation"] != "omit")
-    # the study refuses unbuilt-HW performance claims
+    # the study refuses unbuilt-HW performance claims + carries the devil's-advocate closing note
     blob = (tmp_path / "signal_findings_report.md").read_text().lower()
     assert not any(t in blob for t in ("speedup", "faster", "optimal", "predicted cycles"))
+    assert "robust vs corpus-limited" in blob and "random-init" in blob
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p15_per_network_run_is_scoped_not_corpus_wide(tmp_path):
+    # a per-network folder must contain THAT network's hotspots + canonical only; the corpus-level
+    # cross-workload artifacts (coverage / family / corpus plan) belong to the 'all' run only.
+    from merlin.dse_guidance import insight_mining as IM
+    one = [w for w in IM._workloads(_CS_DIR) if w != "rdt"][0]
+    b = IM.mine(_CS_DIR, one)
+    IM.emit_run(b, tmp_path, [])
+    assert (tmp_path / "per_operator_hotspots.csv").is_file()
+    assert (tmp_path / "canonical_signal_table.csv").is_file()
+    # cross-workload corpus artifacts are NOT dumped into a per-network folder
+    assert not (tmp_path / "abstraction_coverage_table.csv").is_file()
+    assert not (tmp_path / "corpus_expansion_plan.md").is_file()
+    # the per-network canonical table is scoped to that workload
+    import csv as _csv
+    rows = list(_csv.DictReader((tmp_path / "canonical_signal_table.csv").open()))
+    wls = {r["workload"] for r in rows if r["workload"] not in ("ALL", "ZOO", "")}
+    assert wls == {one}
