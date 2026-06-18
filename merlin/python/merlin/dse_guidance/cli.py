@@ -157,8 +157,9 @@ def _insight_mining(args) -> int:
         rendered = PP.render_plots(bundle["plots"], cs_dir, bundle["facts"],
                                    run_dir / "generated_plots")
         IM.emit_run(bundle, run_dir, rendered)
-        passed = all(ok for ok, _ in bundle["consistency_checks"])
         npass = sum(1 for ok, _ in bundle["consistency_checks"] if ok)
+        open_gaps = len(bundle.get("open_avoidable_gaps", []))
+        passed = all(ok for ok, _ in bundle["consistency_checks"]) and open_gaps == 0
         all_ok = all_ok and passed
         s = bundle["evidence_strength"]
         print(f"{scope:14s} -> {run_dir}")
@@ -166,8 +167,8 @@ def _insight_mining(args) -> int:
               f"{s['by_tier'].get('A',0)}/{s['by_tier'].get('B',0)}/{s['by_tier'].get('C',0)}/"
               f"{s['by_tier'].get('D',0)} main_findings="
               f"{sum(1 for f in bundle['findings'] if f['presentation_placement']=='main')} "
-              f"plots={len(rendered)} consistency={npass}/{len(bundle['consistency_checks'])}"
-              f" {'PASS' if passed else 'FAIL'}")
+              f"plots={len(rendered)} consistency={npass}/{len(bundle['consistency_checks'])} "
+              f"open_avoidable_gaps={open_gaps} {'PASS' if passed else 'FAIL'}")
     return 0 if all_ok else 1
 
 
