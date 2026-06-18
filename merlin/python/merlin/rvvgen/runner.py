@@ -176,8 +176,15 @@ def certify_rvv(package_dir: str | Path, model_dir: str | Path, *, runs_root: st
         if k1mod.available():
             try:
                 kr = k1mod.run_on_k1(model_dir, gen, pkg, timeout=timeout)
-                rec["measurement"].append({"target": "k1", "cycle_accurate": True,
-                                           "cycles": kr.get("metrics", {}).get("cycles"),
+                m = kr.get("metrics", {})
+                # K1's Bianbu kernel traps userspace `rdcycle`, so K1 cycles are an estimate
+                # derived from the delegated `rdtime` timebase (cycle_accurate=False); the raw
+                # timebase ticks + wall ns are the real-silicon ground truth. spike/FireSim stay
+                # the cycle-accurate authorities; K1 is the fast real-hardware wall measurement.
+                rec["measurement"].append({"target": "k1", "cycle_accurate": False,
+                                           "cycles": m.get("cycles"),
+                                           "time_ticks": m.get("time_ticks"),
+                                           "wall_ns": m.get("wall_ns"),
                                            "vlen": kr.get("vlen", k1mod.VLEN)})
                 ladder["K5"] = "pass"
             except Exception as e:
