@@ -94,6 +94,21 @@ def test_slice_lowers_and_executes_on_host(tmp_path):
 
 
 @pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang-23 missing")
+def test_parallel_lowering_emits_openmp_and_default_does_not(tmp_path):
+    """The gated multicore path (parallel=True) lowers via OpenMP -> __kmpc_* runtime calls
+    (satisfied at link by the cross-built libomp); the DEFAULT scalar path must NOT — proving
+    the multicore lowering is isolated and cannot leak into the shipping flow."""
+    from merlin.llvmlower.passes_xdsl import preprocess_text
+    from merlin.llvmlower.pipeline import lower_to_llvm_ir
+
+    upstream, _ = preprocess_text(SLICE)
+    par_ll = lower_to_llvm_ir(upstream, workdir=tmp_path / "par", parallel=True)
+    assert "__kmpc_fork_call" in par_ll
+    seq_ll = lower_to_llvm_ir(upstream, workdir=tmp_path / "seq")
+    assert "__kmpc" not in seq_ll
+
+
+@pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang-23 missing")
 def test_slice_compiles_to_rvv_object(tmp_path):
     import subprocess
 
