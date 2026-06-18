@@ -5,3 +5,9 @@ rdt,wide_skinny,14,5045747712,0.128
 openvla,wide_skinny,26,79544320,1.0
 small_llama,wide_skinny,15,3424256,1.0
 tiny_llama,gemv_like,15,614465536,1.0
+rdt2,gemv_like,5,43253760,0.046
+rdt2,projection_like,1,2293760,0.0024
+rdt2,wide_skinny,17,895483904,0.9516
+groot_n1d7,gemv_like,5,16908288,0.0065
+groot_n1d7,wide_skinny,13,2595225600,0.9935
+molmoact,wide_skinny,17,7574913024,1.0

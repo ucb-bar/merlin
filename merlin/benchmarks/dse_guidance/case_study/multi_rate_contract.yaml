@@ -122,3 +122,93 @@ multi_rate_contract:
       state: weights
     workload: tiny_llama
     workload_class: autoregressive_decode
+  - phases:
+    - cadence: once_per_replan
+      invocations: 1
+      phase: backbone
+      role: backbone_once
+    - cadence: K_times_per_replan
+      invocations: 5
+      phase: head
+      role: repeated_head
+    rate_model:
+      H:
+        source: recovered_from_model_config
+        value: 64
+      K:
+        source: recovered_from_model_config
+        value: 5
+      control_rate_hz:
+        source: recovered_from_model_config
+        value: 30.0
+      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
+      replan_deadline_s:
+        source: derived_requirement
+        value: 2.133333
+    states_across_rates:
+    - bytes: 301268992
+      evidence: recovered_from_ir
+      lifetime: loop_invariant
+      state: weights
+    workload: rdt2
+    workload_class: flow_matching_action_head
+  - phases:
+    - cadence: once_per_replan
+      invocations: 1
+      phase: backbone
+      role: backbone_once
+    - cadence: K_times_per_replan
+      invocations: 4
+      phase: head
+      role: repeated_head
+    rate_model:
+      H:
+        source: recovered_from_model_config
+        value: 16
+      K:
+        source: recovered_from_model_config
+        value: 4
+      control_rate_hz:
+        source: recovered_from_model_config
+        value: 30.0
+      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
+      replan_deadline_s:
+        source: derived_requirement
+        value: 0.533333
+    states_across_rates:
+    - bytes: 295698432
+      evidence: recovered_from_ir
+      lifetime: loop_invariant
+      state: weights
+    workload: groot_n1d7
+    workload_class: flow_matching_action_head
+  - phases:
+    - cadence: once_per_replan
+      invocations: 1
+      phase: backbone
+      role: backbone_once
+    - cadence: token_loop
+      invocations: 8
+      phase: head
+      role: repeated_head
+    rate_model:
+      H:
+        source: recovered_from_model_config
+        value: 8
+      K:
+        source: recovered_from_model_config
+        value: 8
+      control_rate_hz:
+        source: recovered_from_model_config
+        value: 5.0
+      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
+      replan_deadline_s:
+        source: derived_requirement
+        value: 1.6
+    states_across_rates:
+    - bytes: 3787456512
+      evidence: recovered_from_ir
+      lifetime: loop_invariant
+      state: weights
+    workload: molmoact
+    workload_class: autoregressive_decode

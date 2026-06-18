@@ -4,3 +4,7 @@ openvla,backbone_once,2,2,yes,yes,466688,516352,15400960,245760,491520,derived_r
 openvla,repeated_head,2,2,yes,yes,235520,409600,3145728,161280,322560,derived_requirement
 small_llama,repeated_head,2,2,yes,yes,75264,93184,1712128,42112,84224,derived_requirement
 tiny_llama,repeated_head,2,2,yes,yes,606208,1085440,614465536,422912,845824,derived_requirement
+rdt2,repeated_head,2,2,yes,yes,2839552,3188928,301268992,1507120,3014240,derived_requirement
+groot_n1d7,repeated_head,2,2,yes,yes,5349376,5021696,295698432,2592768,5185536,derived_requirement
+groot_n1d7,backbone_once,2,2,yes,yes,7168,12288,11010048,4864,9728,derived_requirement
+molmoact,repeated_head,2,2,yes,yes,3915776,6488064,3787456512,2600960,5201920,derived_requirement

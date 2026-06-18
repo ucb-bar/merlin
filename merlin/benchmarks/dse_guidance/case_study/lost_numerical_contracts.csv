@@ -23,3 +23,21 @@ tiny_llama,packed_lowbit_layout,lost,unavailable,weights stored in dense f32 lay
 tiny_llama,dequant_op,unavailable,unavailable,no dequant op in the capture (folded into f32 weights)
 tiny_llama,requant_op,unavailable,unavailable,no requant op in the capture (f32 datapath)
 tiny_llama,sparsity_metadata,unavailable,unavailable,weights dense — no structured-sparsity metadata
+rdt2,low_bit_weight_storage,lost,unavailable,weights are f32 in the capture (dequantized) — native low-bit storage erased
+rdt2,scale_zero_point_metadata,erased,unavailable,scales/zero-points folded away when the capture was dequantized
+rdt2,packed_lowbit_layout,lost,unavailable,weights stored in dense f32 layout — packed sub-byte layout erased
+rdt2,dequant_op,unavailable,unavailable,no dequant op in the capture (folded into f32 weights)
+rdt2,requant_op,unavailable,unavailable,no requant op in the capture (f32 datapath)
+rdt2,sparsity_metadata,unavailable,unavailable,weights dense — no structured-sparsity metadata
+groot_n1d7,low_bit_weight_storage,lost,unavailable,weights are f32 in the capture (dequantized) — native low-bit storage erased
+groot_n1d7,scale_zero_point_metadata,erased,unavailable,scales/zero-points folded away when the capture was dequantized
+groot_n1d7,packed_lowbit_layout,lost,unavailable,weights stored in dense f32 layout — packed sub-byte layout erased
+groot_n1d7,dequant_op,unavailable,unavailable,no dequant op in the capture (folded into f32 weights)
+groot_n1d7,requant_op,unavailable,unavailable,no requant op in the capture (f32 datapath)
+groot_n1d7,sparsity_metadata,unavailable,unavailable,weights dense — no structured-sparsity metadata
+molmoact,low_bit_weight_storage,lost,unavailable,weights are f32 in the capture (dequantized) — native low-bit storage erased
+molmoact,scale_zero_point_metadata,erased,unavailable,scales/zero-points folded away when the capture was dequantized
+molmoact,packed_lowbit_layout,lost,unavailable,weights stored in dense f32 layout — packed sub-byte layout erased
+molmoact,dequant_op,unavailable,unavailable,no dequant op in the capture (folded into f32 weights)
+molmoact,requant_op,unavailable,unavailable,no requant op in the capture (f32 datapath)
+molmoact,sparsity_metadata,unavailable,unavailable,weights dense — no structured-sparsity metadata

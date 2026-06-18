@@ -3898,6 +3898,3113 @@ workload_contract_graph:
         value: 1.066667
     workload: tiny_llama
     workload_class: autoregressive_decode
+  - edges:
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:0
+      target: rdt2:op:1
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:1
+      target: rdt2:op:2
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:2
+      target: rdt2:op:3
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:2
+      target: rdt2:op:4
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:3
+      target: rdt2:op:5
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:4
+      target: rdt2:op:5
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:2
+      target: rdt2:op:6
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:5
+      target: rdt2:op:6
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:6
+      target: rdt2:op:7
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:2
+      target: rdt2:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:5
+      target: rdt2:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:7
+      target: rdt2:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:2
+      target: rdt2:op:9
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:5
+      target: rdt2:op:9
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:7
+      target: rdt2:op:9
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:8
+      target: rdt2:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:9
+      target: rdt2:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:1
+      target: rdt2:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:2
+      target: rdt2:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:5
+      target: rdt2:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:7
+      target: rdt2:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:10
+      target: rdt2:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:11
+      target: rdt2:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:2
+      target: rdt2:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:5
+      target: rdt2:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:7
+      target: rdt2:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:10
+      target: rdt2:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:11
+      target: rdt2:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:12
+      target: rdt2:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:13
+      target: rdt2:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:2
+      target: rdt2:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:5
+      target: rdt2:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:7
+      target: rdt2:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:10
+      target: rdt2:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:11
+      target: rdt2:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:14
+      target: rdt2:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:15
+      target: rdt2:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:2
+      target: rdt2:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:5
+      target: rdt2:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:7
+      target: rdt2:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:10
+      target: rdt2:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:11
+      target: rdt2:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:14
+      target: rdt2:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:16
+      target: rdt2:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:2
+      target: rdt2:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:5
+      target: rdt2:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:7
+      target: rdt2:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:10
+      target: rdt2:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:11
+      target: rdt2:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:14
+      target: rdt2:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:16
+      target: rdt2:op:18
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:17
+      target: rdt2:op:19
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:18
+      target: rdt2:op:19
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:1
+      target: rdt2:op:20
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:2
+      target: rdt2:op:21
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:5
+      target: rdt2:op:21
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:7
+      target: rdt2:op:21
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:10
+      target: rdt2:op:21
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:11
+      target: rdt2:op:21
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:14
+      target: rdt2:op:21
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:16
+      target: rdt2:op:21
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:19
+      target: rdt2:op:21
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:20
+      target: rdt2:op:21
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: rdt2:op:21
+      target: rdt2:op:22
+    - bytes: 301268992
+      can_pipeline: true
+      evidence: recovered_from_ir
+      kind: loop_invariant
+      lifetime: loop_invariant
+      note: read-only across the K-loop; safe to keep resident
+      source: rdt2:state:weights
+      target: rdt2:region:repeated_head
+      tensor: weights
+    - can_pipeline: unknown
+      evidence: recovered_from_prov_fqn
+      kind: control_dependency
+      note: once-per-replan backbone precedes the repeated head (role split recovered from prov.fqn); the specific tensors crossing the boundary are unavailable in the flat capture
+      source: rdt2:phase:backbone
+      target: rdt2:phase:head
+    - can_pipeline: true
+      evidence: derived_requirement
+      kind: pipeline_candidate
+      note: the next replan's backbone shares no loop-carried state with this replan's head, so the two rates are structurally overlappable (async pipelining candidate)
+      source: rdt2:phase:head
+      target: rdt2:phase:backbone
+    nodes:
+    - evidence: recovered_from_prov_fqn
+      id: rdt2:phase:backbone
+      kind: phase
+      parent_region: null
+      rate:
+        cadence: once_per_replan
+        cadence_evidence: recovered_from_prov_fqn
+        invocations: 1
+        invocations_evidence: recovered_from_ir
+        period_evidence: derived_requirement
+        period_s: 2.133333
+      region_role: backbone_once
+      state_summary:
+        consumes: []
+        loop_carried_state: []
+        loop_invariant_state: []
+        produces: []
+    - evidence: recovered_from_prov_fqn
+      id: rdt2:phase:head
+      kind: phase
+      parent_region: null
+      rate:
+        cadence: K_times_per_replan
+        cadence_evidence: recovered_from_prov_fqn
+        invocations: 5
+        invocations_evidence: recovered_from_model_config
+        period_evidence: unavailable
+        period_s: null
+      region_role: repeated_head
+      state_summary:
+        consumes: []
+        loop_carried_state: []
+        loop_invariant_state:
+        - weights
+        produces: []
+    - evidence: recovered_from_prov_fqn
+      id: rdt2:region:repeated_head
+      kind: region
+      numerical_contract_summary:
+        accumulator_dtype: f32
+        dtype: f32
+        evidence: recovered_from_ir
+        n_matmuls: 23
+      operator_refs:
+      - rdt2:op:0
+      - rdt2:op:1
+      - rdt2:op:2
+      - rdt2:op:3
+      - rdt2:op:4
+      - rdt2:op:5
+      - rdt2:op:6
+      - rdt2:op:7
+      - rdt2:op:8
+      - rdt2:op:9
+      - rdt2:op:10
+      - rdt2:op:11
+      - rdt2:op:12
+      - rdt2:op:13
+      - rdt2:op:14
+      - rdt2:op:15
+      - rdt2:op:16
+      - rdt2:op:17
+      - rdt2:op:18
+      - rdt2:op:19
+      - rdt2:op:20
+      - rdt2:op:21
+      - rdt2:op:22
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:phase:head
+      rate:
+        cadence: K_times_per_replan
+        invocations: 5
+        invocations_evidence: recovered_from_model_config
+      region_role: repeated_head
+      work_summary:
+        activation_bytes_per_invocation: 6028480
+        activation_bytes_per_replan: 30142400
+        dispatch_count_proxy: 23
+        evidence: recovered_from_ir
+        macs_per_invocation: 941031424
+        macs_per_replan: 4705157120
+        matmul_count: 23
+        weight_bytes: 301268992
+    - evidence: recovered_from_ir
+      id: rdt2:op:0
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 256
+        M: 1
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 262144
+        op_kind: addmm
+        output_bytes: 4096
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 1048576
+        semantic_class: mlp_projection
+        shape_class: gemv_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 262144
+    - evidence: recovered_from_ir
+      id: rdt2:op:1
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 1
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 1048576
+        op_kind: addmm
+        output_bytes: 4096
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4194304
+        semantic_class: mlp_projection
+        shape_class: gemv_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 1048576
+    - evidence: recovered_from_ir
+      id: rdt2:op:2
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 2048
+        M: 1
+        N: 9216
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 18874368
+        op_kind: addmm
+        output_bytes: 36864
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 75497472
+        semantic_class: unknown
+        shape_class: gemv_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 18874368
+    - evidence: recovered_from_ir
+      id: rdt2:op:3
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 28
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 29360128
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4194304
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 29360128
+    - evidence: recovered_from_ir
+      id: rdt2:op:4
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 28
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 29360128
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4194304
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 29360128
+    - evidence: recovered_from_ir
+      id: rdt2:op:5
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 28
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 29360128
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4194304
+        semantic_class: attention_output_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 29360128
+    - evidence: recovered_from_ir
+      id: rdt2:op:6
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 28
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 29360128
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4194304
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 29360128
+    - evidence: recovered_from_ir
+      id: rdt2:op:7
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 28
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 29360128
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4194304
+        semantic_class: attention_output_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 29360128
+    - evidence: recovered_from_ir
+      id: rdt2:op:8
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 28
+        N: 2816
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 80740352
+        op_kind: matmul
+        output_bytes: 315392
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 11534336
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 80740352
+    - evidence: recovered_from_ir
+      id: rdt2:op:9
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 28
+        N: 2816
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 80740352
+        op_kind: matmul
+        output_bytes: 315392
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 11534336
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 80740352
+    - evidence: recovered_from_ir
+      id: rdt2:op:10
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 2816
+        M: 28
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 80740352
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 11534336
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 80740352
+    - evidence: recovered_from_ir
+      id: rdt2:op:11
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 2048
+        M: 1
+        N: 9216
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 18874368
+        op_kind: addmm
+        output_bytes: 36864
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 75497472
+        semantic_class: unknown
+        shape_class: gemv_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 18874368
+    - evidence: recovered_from_ir
+      id: rdt2:op:12
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 28
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 29360128
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4194304
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 29360128
+    - evidence: recovered_from_ir
+      id: rdt2:op:13
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 28
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 29360128
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4194304
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 29360128
+    - evidence: recovered_from_ir
+      id: rdt2:op:14
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 28
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 29360128
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4194304
+        semantic_class: attention_output_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 29360128
+    - evidence: recovered_from_ir
+      id: rdt2:op:15
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 28
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 29360128
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4194304
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 29360128
+    - evidence: recovered_from_ir
+      id: rdt2:op:16
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 28
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 29360128
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4194304
+        semantic_class: attention_output_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 29360128
+    - evidence: recovered_from_ir
+      id: rdt2:op:17
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 28
+        N: 2816
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 80740352
+        op_kind: matmul
+        output_bytes: 315392
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 11534336
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 80740352
+    - evidence: recovered_from_ir
+      id: rdt2:op:18
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 28
+        N: 2816
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 80740352
+        op_kind: matmul
+        output_bytes: 315392
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 11534336
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 80740352
+    - evidence: recovered_from_ir
+      id: rdt2:op:19
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 2816
+        M: 28
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 80740352
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 11534336
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 80740352
+    - evidence: recovered_from_ir
+      id: rdt2:op:20
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 2048
+        M: 1
+        N: 2048
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 4194304
+        op_kind: addmm
+        output_bytes: 8192
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 16777216
+        semantic_class: unknown
+        shape_class: gemv_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 4194304
+    - evidence: recovered_from_ir
+      id: rdt2:op:21
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 28
+        N: 4096
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 117440512
+        op_kind: addmm
+        output_bytes: 458752
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 16777216
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 117440512
+    - evidence: recovered_from_ir
+      id: rdt2:op:22
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: rdt2:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 4096
+        M: 28
+        N: 20
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 2293760
+        op_kind: addmm
+        output_bytes: 2240
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 327680
+        semantic_class: mlp_projection
+        shape_class: projection_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 2293760
+    - evidence: recovered_from_prov_fqn
+      id: rdt2:loop:repeated_head
+      kind: loop_body
+      operator_refs:
+      - rdt2:op:0
+      - rdt2:op:1
+      - rdt2:op:2
+      - rdt2:op:3
+      - rdt2:op:4
+      - rdt2:op:5
+      - rdt2:op:6
+      - rdt2:op:7
+      - rdt2:op:8
+      - rdt2:op:9
+      - rdt2:op:10
+      - rdt2:op:11
+      - rdt2:op:12
+      - rdt2:op:13
+      - rdt2:op:14
+      - rdt2:op:15
+      - rdt2:op:16
+      - rdt2:op:17
+      - rdt2:op:18
+      - rdt2:op:19
+      - rdt2:op:20
+      - rdt2:op:21
+      - rdt2:op:22
+      parent_region: rdt2:phase:head
+      rate:
+        cadence: K_times_per_replan
+        trip_count: 5
+        trip_count_evidence: recovered_from_model_config
+      region_role: repeated_head
+      work_summary:
+        evidence: recovered_from_ir
+        macs_per_invocation: 941031424
+        macs_per_replan: 4705157120
+    - evidence: recovered_from_prov_fqn
+      id: rdt2:state:weights
+      kind: state_object
+      parent_region: null
+      region_role: null
+      state_summary:
+        bytes: 301268992
+        bytes_evidence: recovered_from_ir
+        consumed_by: null
+        implied_abstraction: resident_weight_object
+        lifetime_scope: loop_invariant
+        produced_by: null
+        reused_times: 5
+    rate_model:
+      H:
+        source: recovered_from_model_config
+        value: 64
+      K:
+        source: recovered_from_model_config
+        value: 5
+      control_rate_hz:
+        source: recovered_from_model_config
+        value: 30.0
+      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
+      replan_deadline_s:
+        source: derived_requirement
+        value: 2.133333
+    workload: rdt2
+    workload_class: flow_matching_action_head
+  - edges:
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:0
+      target: groot_n1d7:op:1
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:1
+      target: groot_n1d7:op:2
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:2
+      target: groot_n1d7:op:3
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:3
+      target: groot_n1d7:op:6
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:4
+      target: groot_n1d7:op:6
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:5
+      target: groot_n1d7:op:6
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:6
+      target: groot_n1d7:op:7
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:7
+      target: groot_n1d7:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:1
+      target: groot_n1d7:op:9
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:6
+      target: groot_n1d7:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:8
+      target: groot_n1d7:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:9
+      target: groot_n1d7:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:6
+      target: groot_n1d7:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:8
+      target: groot_n1d7:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:9
+      target: groot_n1d7:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:6
+      target: groot_n1d7:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:8
+      target: groot_n1d7:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:9
+      target: groot_n1d7:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:10
+      target: groot_n1d7:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:11
+      target: groot_n1d7:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:12
+      target: groot_n1d7:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:6
+      target: groot_n1d7:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:8
+      target: groot_n1d7:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:13
+      target: groot_n1d7:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:14
+      target: groot_n1d7:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:1
+      target: groot_n1d7:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:6
+      target: groot_n1d7:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:8
+      target: groot_n1d7:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:13
+      target: groot_n1d7:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:15
+      target: groot_n1d7:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: groot_n1d7:op:16
+      target: groot_n1d7:op:17
+    - bytes: 295698432
+      can_pipeline: true
+      evidence: recovered_from_ir
+      kind: loop_invariant
+      lifetime: loop_invariant
+      note: read-only across the K-loop; safe to keep resident
+      source: groot_n1d7:state:weights
+      target: groot_n1d7:region:repeated_head
+      tensor: weights
+    - can_pipeline: unknown
+      evidence: recovered_from_prov_fqn
+      kind: control_dependency
+      note: once-per-replan backbone precedes the repeated head (role split recovered from prov.fqn); the specific tensors crossing the boundary are unavailable in the flat capture
+      source: groot_n1d7:phase:backbone
+      target: groot_n1d7:phase:head
+    - can_pipeline: true
+      evidence: derived_requirement
+      kind: pipeline_candidate
+      note: the next replan's backbone shares no loop-carried state with this replan's head, so the two rates are structurally overlappable (async pipelining candidate)
+      source: groot_n1d7:phase:head
+      target: groot_n1d7:phase:backbone
+    nodes:
+    - evidence: recovered_from_prov_fqn
+      id: groot_n1d7:phase:backbone
+      kind: phase
+      parent_region: null
+      rate:
+        cadence: once_per_replan
+        cadence_evidence: recovered_from_prov_fqn
+        invocations: 1
+        invocations_evidence: recovered_from_ir
+        period_evidence: derived_requirement
+        period_s: 0.533333
+      region_role: backbone_once
+      state_summary:
+        consumes: []
+        loop_carried_state: []
+        loop_invariant_state: []
+        produces: []
+    - evidence: recovered_from_prov_fqn
+      id: groot_n1d7:phase:head
+      kind: phase
+      parent_region: null
+      rate:
+        cadence: K_times_per_replan
+        cadence_evidence: recovered_from_prov_fqn
+        invocations: 4
+        invocations_evidence: recovered_from_model_config
+        period_evidence: unavailable
+        period_s: null
+      region_role: repeated_head
+      state_summary:
+        consumes: []
+        loop_carried_state: []
+        loop_invariant_state:
+        - weights
+        produces: []
+    - evidence: recovered_from_prov_fqn
+      id: groot_n1d7:region:backbone_once
+      kind: region
+      numerical_contract_summary:
+        accumulator_dtype: f32
+        dtype: f32
+        evidence: recovered_from_ir
+        n_matmuls: 2
+      operator_refs:
+      - groot_n1d7:op:0
+      - groot_n1d7:op:1
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:phase:backbone
+      rate:
+        cadence: once_per_replan
+        invocations: 1
+        invocations_evidence: recovered_from_ir
+      region_role: backbone_once
+      work_summary:
+        activation_bytes_per_invocation: 19456
+        activation_bytes_per_replan: 19456
+        dispatch_count_proxy: 2
+        evidence: recovered_from_ir
+        macs_per_invocation: 2752512
+        macs_per_replan: 2752512
+        matmul_count: 2
+        weight_bytes: 11010048
+    - evidence: recovered_from_prov_fqn
+      id: groot_n1d7:region:repeated_head
+      kind: region
+      numerical_contract_summary:
+        accumulator_dtype: f32
+        dtype: f32
+        evidence: recovered_from_ir
+        n_matmuls: 16
+      operator_refs:
+      - groot_n1d7:op:2
+      - groot_n1d7:op:3
+      - groot_n1d7:op:4
+      - groot_n1d7:op:5
+      - groot_n1d7:op:6
+      - groot_n1d7:op:7
+      - groot_n1d7:op:8
+      - groot_n1d7:op:9
+      - groot_n1d7:op:10
+      - groot_n1d7:op:11
+      - groot_n1d7:op:12
+      - groot_n1d7:op:13
+      - groot_n1d7:op:14
+      - groot_n1d7:op:15
+      - groot_n1d7:op:16
+      - groot_n1d7:op:17
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:phase:head
+      rate:
+        cadence: K_times_per_replan
+        invocations: 4
+        invocations_evidence: recovered_from_model_config
+      region_role: repeated_head
+      work_summary:
+        activation_bytes_per_invocation: 10371072
+        activation_bytes_per_replan: 41484288
+        dispatch_count_proxy: 16
+        evidence: recovered_from_ir
+        macs_per_invocation: 2609381376
+        macs_per_replan: 10437525504
+        matmul_count: 16
+        weight_bytes: 295698432
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:0
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:backbone_once
+      region_role: backbone_once
+      shape_summary:
+        K: 256
+        M: 1
+        N: 1536
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 393216
+        op_kind: addmm
+        output_bytes: 6144
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 1572864
+        semantic_class: embedding_projection
+        shape_class: gemv_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 393216
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:1
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:backbone_once
+      region_role: backbone_once
+      shape_summary:
+        K: 1536
+        M: 1
+        N: 1536
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 2359296
+        op_kind: addmm
+        output_bytes: 6144
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 9437184
+        semantic_class: embedding_projection
+        shape_class: gemv_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 2359296
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:2
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1536
+        M: 1
+        N: 3072
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 4718592
+        op_kind: addmm
+        output_bytes: 12288
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 18874368
+        semantic_class: unknown
+        shape_class: gemv_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 4718592
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:3
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1536
+        M: 41
+        N: 1536
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 96731136
+        op_kind: addmm
+        output_bytes: 251904
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 9437184
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 96731136
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:4
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 2048
+        M: 64
+        N: 1536
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 201326592
+        op_kind: addmm
+        output_bytes: 393216
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 12582912
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 201326592
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:5
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 2048
+        M: 64
+        N: 1536
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 201326592
+        op_kind: addmm
+        output_bytes: 393216
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 12582912
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 201326592
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:6
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1536
+        M: 41
+        N: 1536
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 96731136
+        op_kind: addmm
+        output_bytes: 251904
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 9437184
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 96731136
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:7
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1536
+        M: 41
+        N: 6144
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 386924544
+        op_kind: addmm
+        output_bytes: 1007616
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 37748736
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 386924544
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:8
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 6144
+        M: 41
+        N: 1536
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 386924544
+        op_kind: addmm
+        output_bytes: 251904
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 37748736
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 386924544
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:9
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1536
+        M: 1
+        N: 3072
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 4718592
+        op_kind: addmm
+        output_bytes: 12288
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 18874368
+        semantic_class: unknown
+        shape_class: gemv_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 4718592
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:10
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1536
+        M: 41
+        N: 1536
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 96731136
+        op_kind: addmm
+        output_bytes: 251904
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 9437184
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 96731136
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:11
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1536
+        M: 41
+        N: 1536
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 96731136
+        op_kind: addmm
+        output_bytes: 251904
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 9437184
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 96731136
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:12
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1536
+        M: 41
+        N: 1536
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 96731136
+        op_kind: addmm
+        output_bytes: 251904
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 9437184
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 96731136
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:13
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1536
+        M: 41
+        N: 1536
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 96731136
+        op_kind: addmm
+        output_bytes: 251904
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 9437184
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 96731136
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:14
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1536
+        M: 41
+        N: 6144
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 386924544
+        op_kind: addmm
+        output_bytes: 1007616
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 37748736
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 386924544
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:15
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 6144
+        M: 41
+        N: 1536
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 386924544
+        op_kind: addmm
+        output_bytes: 251904
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 37748736
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 386924544
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:16
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1536
+        M: 1
+        N: 3072
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 4718592
+        op_kind: addmm
+        output_bytes: 12288
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 18874368
+        semantic_class: unknown
+        shape_class: gemv_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 4718592
+    - evidence: recovered_from_ir
+      id: groot_n1d7:op:17
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: groot_n1d7:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1536
+        M: 41
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 64487424
+        op_kind: addmm
+        output_bytes: 167936
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 6291456
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 64487424
+    - evidence: recovered_from_prov_fqn
+      id: groot_n1d7:loop:repeated_head
+      kind: loop_body
+      operator_refs:
+      - groot_n1d7:op:2
+      - groot_n1d7:op:3
+      - groot_n1d7:op:4
+      - groot_n1d7:op:5
+      - groot_n1d7:op:6
+      - groot_n1d7:op:7
+      - groot_n1d7:op:8
+      - groot_n1d7:op:9
+      - groot_n1d7:op:10
+      - groot_n1d7:op:11
+      - groot_n1d7:op:12
+      - groot_n1d7:op:13
+      - groot_n1d7:op:14
+      - groot_n1d7:op:15
+      - groot_n1d7:op:16
+      - groot_n1d7:op:17
+      parent_region: groot_n1d7:phase:head
+      rate:
+        cadence: K_times_per_replan
+        trip_count: 4
+        trip_count_evidence: recovered_from_model_config
+      region_role: repeated_head
+      work_summary:
+        evidence: recovered_from_ir
+        macs_per_invocation: 2609381376
+        macs_per_replan: 10437525504
+    - evidence: recovered_from_prov_fqn
+      id: groot_n1d7:state:weights
+      kind: state_object
+      parent_region: null
+      region_role: null
+      state_summary:
+        bytes: 295698432
+        bytes_evidence: recovered_from_ir
+        consumed_by: null
+        implied_abstraction: resident_weight_object
+        lifetime_scope: loop_invariant
+        produced_by: null
+        reused_times: 4
+    rate_model:
+      H:
+        source: recovered_from_model_config
+        value: 16
+      K:
+        source: recovered_from_model_config
+        value: 4
+      control_rate_hz:
+        source: recovered_from_model_config
+        value: 30.0
+      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
+      replan_deadline_s:
+        source: derived_requirement
+        value: 0.533333
+    workload: groot_n1d7
+    workload_class: flow_matching_action_head
+  - edges:
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:0
+      target: molmoact:op:1
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:1
+      target: molmoact:op:2
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:2
+      target: molmoact:op:3
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:1
+      target: molmoact:op:4
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:3
+      target: molmoact:op:4
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:4
+      target: molmoact:op:5
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:1
+      target: molmoact:op:6
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:3
+      target: molmoact:op:6
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:5
+      target: molmoact:op:6
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:6
+      target: molmoact:op:7
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:1
+      target: molmoact:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:3
+      target: molmoact:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:5
+      target: molmoact:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:7
+      target: molmoact:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:8
+      target: molmoact:op:9
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:1
+      target: molmoact:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:3
+      target: molmoact:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:5
+      target: molmoact:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:7
+      target: molmoact:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:9
+      target: molmoact:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:10
+      target: molmoact:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:1
+      target: molmoact:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:3
+      target: molmoact:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:5
+      target: molmoact:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:7
+      target: molmoact:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:9
+      target: molmoact:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:11
+      target: molmoact:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:12
+      target: molmoact:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:1
+      target: molmoact:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:3
+      target: molmoact:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:5
+      target: molmoact:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:7
+      target: molmoact:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:9
+      target: molmoact:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:11
+      target: molmoact:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:13
+      target: molmoact:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:14
+      target: molmoact:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:1
+      target: molmoact:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:3
+      target: molmoact:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:5
+      target: molmoact:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:7
+      target: molmoact:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:9
+      target: molmoact:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:11
+      target: molmoact:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:13
+      target: molmoact:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: molmoact:op:15
+      target: molmoact:op:16
+    - bytes: 3787456512
+      can_pipeline: true
+      evidence: recovered_from_ir
+      kind: loop_invariant
+      lifetime: loop_invariant
+      note: read-only across the K-loop; safe to keep resident
+      source: molmoact:state:weights
+      target: molmoact:region:repeated_head
+      tensor: weights
+    - can_pipeline: unknown
+      evidence: recovered_from_prov_fqn
+      kind: control_dependency
+      note: once-per-replan backbone precedes the repeated head (role split recovered from prov.fqn); the specific tensors crossing the boundary are unavailable in the flat capture
+      source: molmoact:phase:backbone
+      target: molmoact:phase:head
+    - can_pipeline: true
+      evidence: derived_requirement
+      kind: pipeline_candidate
+      note: the next replan's backbone shares no loop-carried state with this replan's head, so the two rates are structurally overlappable (async pipelining candidate)
+      source: molmoact:phase:head
+      target: molmoact:phase:backbone
+    nodes:
+    - evidence: recovered_from_prov_fqn
+      id: molmoact:phase:backbone
+      kind: phase
+      parent_region: null
+      rate:
+        cadence: once_per_replan
+        cadence_evidence: recovered_from_prov_fqn
+        invocations: 1
+        invocations_evidence: recovered_from_ir
+        period_evidence: derived_requirement
+        period_s: 1.6
+      region_role: backbone_once
+      state_summary:
+        consumes: []
+        loop_carried_state: []
+        loop_invariant_state: []
+        produces: []
+    - evidence: recovered_from_prov_fqn
+      id: molmoact:phase:head
+      kind: phase
+      parent_region: null
+      rate:
+        cadence: token_loop
+        cadence_evidence: recovered_from_prov_fqn
+        invocations: 8
+        invocations_evidence: recovered_from_model_config
+        period_evidence: unavailable
+        period_s: null
+      region_role: repeated_head
+      state_summary:
+        consumes: []
+        loop_carried_state: []
+        loop_invariant_state:
+        - weights
+        produces: []
+    - evidence: recovered_from_prov_fqn
+      id: molmoact:region:repeated_head
+      kind: region
+      numerical_contract_summary:
+        accumulator_dtype: f32
+        dtype: f32
+        evidence: recovered_from_ir
+        n_matmuls: 17
+      operator_refs:
+      - molmoact:op:0
+      - molmoact:op:1
+      - molmoact:op:2
+      - molmoact:op:3
+      - molmoact:op:4
+      - molmoact:op:5
+      - molmoact:op:6
+      - molmoact:op:7
+      - molmoact:op:8
+      - molmoact:op:9
+      - molmoact:op:10
+      - molmoact:op:11
+      - molmoact:op:12
+      - molmoact:op:13
+      - molmoact:op:14
+      - molmoact:op:15
+      - molmoact:op:16
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:phase:head
+      rate:
+        cadence: token_loop
+        invocations: 8
+        invocations_evidence: recovered_from_model_config
+      region_role: repeated_head
+      work_summary:
+        activation_bytes_per_invocation: 10403840
+        activation_bytes_per_replan: 83230720
+        dispatch_count_proxy: 17
+        evidence: recovered_from_ir
+        macs_per_invocation: 7574913024
+        macs_per_replan: 60599304192
+        matmul_count: 17
+        weight_bytes: 3787456512
+    - evidence: recovered_from_ir
+      id: molmoact:op:0
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 3584
+        M: 8
+        N: 4608
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 132120576
+        op_kind: addmm
+        output_bytes: 147456
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 66060288
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 132120576
+    - evidence: recovered_from_ir
+      id: molmoact:op:1
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 3584
+        M: 8
+        N: 3584
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 102760448
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 51380224
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 102760448
+    - evidence: recovered_from_ir
+      id: molmoact:op:2
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 3584
+        M: 8
+        N: 37888
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 1086324736
+        op_kind: matmul
+        output_bytes: 1212416
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 543162368
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 1086324736
+    - evidence: recovered_from_ir
+      id: molmoact:op:3
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 18944
+        M: 8
+        N: 3584
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 543162368
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 271581184
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 543162368
+    - evidence: recovered_from_ir
+      id: molmoact:op:4
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 3584
+        M: 8
+        N: 4608
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 132120576
+        op_kind: addmm
+        output_bytes: 147456
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 66060288
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 132120576
+    - evidence: recovered_from_ir
+      id: molmoact:op:5
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 3584
+        M: 8
+        N: 3584
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 102760448
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 51380224
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 102760448
+    - evidence: recovered_from_ir
+      id: molmoact:op:6
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 3584
+        M: 8
+        N: 37888
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 1086324736
+        op_kind: matmul
+        output_bytes: 1212416
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 543162368
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 1086324736
+    - evidence: recovered_from_ir
+      id: molmoact:op:7
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 18944
+        M: 8
+        N: 3584
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 543162368
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 271581184
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 543162368
+    - evidence: recovered_from_ir
+      id: molmoact:op:8
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 3584
+        M: 8
+        N: 4608
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 132120576
+        op_kind: addmm
+        output_bytes: 147456
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 66060288
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 132120576
+    - evidence: recovered_from_ir
+      id: molmoact:op:9
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 3584
+        M: 8
+        N: 3584
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 102760448
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 51380224
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 102760448
+    - evidence: recovered_from_ir
+      id: molmoact:op:10
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 3584
+        M: 8
+        N: 37888
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 1086324736
+        op_kind: matmul
+        output_bytes: 1212416
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 543162368
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 1086324736
+    - evidence: recovered_from_ir
+      id: molmoact:op:11
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 18944
+        M: 8
+        N: 3584
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 543162368
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 271581184
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 543162368
+    - evidence: recovered_from_ir
+      id: molmoact:op:12
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 3584
+        M: 8
+        N: 4608
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 132120576
+        op_kind: addmm
+        output_bytes: 147456
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 66060288
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 132120576
+    - evidence: recovered_from_ir
+      id: molmoact:op:13
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 3584
+        M: 8
+        N: 3584
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 102760448
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 51380224
+        semantic_class: unknown
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 102760448
+    - evidence: recovered_from_ir
+      id: molmoact:op:14
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 3584
+        M: 8
+        N: 37888
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 1086324736
+        op_kind: matmul
+        output_bytes: 1212416
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 543162368
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 1086324736
+    - evidence: recovered_from_ir
+      id: molmoact:op:15
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 18944
+        M: 8
+        N: 3584
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 543162368
+        op_kind: matmul
+        output_bytes: 114688
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 271581184
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 543162368
+    - evidence: recovered_from_ir
+      id: molmoact:op:16
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: molmoact:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 3584
+        M: 8
+        N: 4096
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 117440512
+        op_kind: matmul
+        output_bytes: 131072
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 58720256
+        semantic_class: lm_head_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 117440512
+    - evidence: recovered_from_prov_fqn
+      id: molmoact:loop:repeated_head
+      kind: loop_body
+      operator_refs:
+      - molmoact:op:0
+      - molmoact:op:1
+      - molmoact:op:2
+      - molmoact:op:3
+      - molmoact:op:4
+      - molmoact:op:5
+      - molmoact:op:6
+      - molmoact:op:7
+      - molmoact:op:8
+      - molmoact:op:9
+      - molmoact:op:10
+      - molmoact:op:11
+      - molmoact:op:12
+      - molmoact:op:13
+      - molmoact:op:14
+      - molmoact:op:15
+      - molmoact:op:16
+      parent_region: molmoact:phase:head
+      rate:
+        cadence: token_loop
+        trip_count: 8
+        trip_count_evidence: recovered_from_model_config
+      region_role: repeated_head
+      work_summary:
+        evidence: recovered_from_ir
+        macs_per_invocation: 7574913024
+        macs_per_replan: 60599304192
+    - evidence: recovered_from_prov_fqn
+      id: molmoact:state:weights
+      kind: state_object
+      parent_region: null
+      region_role: null
+      state_summary:
+        bytes: 3787456512
+        bytes_evidence: recovered_from_ir
+        consumed_by: null
+        implied_abstraction: resident_weight_object
+        lifetime_scope: loop_invariant
+        produced_by: null
+        reused_times: 8
+    rate_model:
+      H:
+        source: recovered_from_model_config
+        value: 8
+      K:
+        source: recovered_from_model_config
+        value: 8
+      control_rate_hz:
+        source: recovered_from_model_config
+        value: 5.0
+      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
+      replan_deadline_s:
+        source: derived_requirement
+        value: 1.6
+    workload: molmoact
+    workload_class: autoregressive_decode
   node_kinds:
   - operator
   - region

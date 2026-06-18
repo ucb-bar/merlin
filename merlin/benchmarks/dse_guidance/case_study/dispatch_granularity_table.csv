@@ -3,3 +3,6 @@ rdt,20,100,repeated_head,True,unavailable,unavailable
 openvla,15,105,repeated_head,True,unavailable,unavailable
 small_llama,15,480,repeated_head,True,unavailable,unavailable
 tiny_llama,15,480,repeated_head,True,unavailable,unavailable
+rdt2,23,115,repeated_head,True,unavailable,unavailable
+groot_n1d7,16,64,repeated_head,True,unavailable,unavailable
+molmoact,17,136,repeated_head,True,unavailable,unavailable

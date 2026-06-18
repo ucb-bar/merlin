@@ -7,3 +7,9 @@ small_llama,backbone,backbone_or_encoder,once_per_replan,1,1.066667,unavailable,
 small_llama,head,decoder_token_step,token_loop,32,unavailable,skinny_gemm_or_gemv,recovered_from_prov_fqn
 tiny_llama,backbone,backbone_or_encoder,once_per_replan,1,1.066667,unavailable,recovered_from_prov_fqn
 tiny_llama,head,decoder_token_step,token_loop,32,unavailable,skinny_gemm_or_gemv,recovered_from_prov_fqn
+rdt2,backbone,backbone_or_encoder,once_per_replan,1,2.133333,unavailable,recovered_from_prov_fqn
+rdt2,head,repeated_action_head,K_times_per_replan,5,unavailable,skinny_gemm_or_gemv,recovered_from_prov_fqn
+groot_n1d7,backbone,backbone_or_encoder,once_per_replan,1,0.533333,skinny_gemm_or_gemv,recovered_from_prov_fqn
+groot_n1d7,head,repeated_action_head,K_times_per_replan,4,unavailable,skinny_gemm_or_gemv,recovered_from_prov_fqn
+molmoact,backbone,backbone_or_encoder,once_per_replan,1,1.6,unavailable,recovered_from_prov_fqn
+molmoact,head,decoder_token_step,token_loop,8,unavailable,skinny_gemm_or_gemv,recovered_from_prov_fqn

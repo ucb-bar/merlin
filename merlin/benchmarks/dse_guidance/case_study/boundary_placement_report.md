@@ -6,16 +6,16 @@
 
 | abstraction | top level(s) | supporting workloads | pressure (evidence) |
 |---|---|---|---|
-| resident_weight_object | runtime_hal_object, command_buffer_or_command_isa | openvla, rdt, small_llama, tiny_llama | 9 |
-| region_level_dispatch | command_buffer_or_command_isa, device_microcode_or_controller | openvla, rdt, small_llama, tiny_llama | 8 |
-| event_token | runtime_hal_object, command_buffer_or_command_isa | openvla, rdt, small_llama, tiny_llama | 8 |
-| async_queue | runtime_hal_object, command_buffer_or_command_isa | openvla, rdt, small_llama, tiny_llama | 8 |
-| dma_engine | runtime_hal_object, command_buffer_or_command_isa | openvla, rdt, small_llama, tiny_llama | 8 |
-| partial_sum_object | accelerator_isa, device_microcode_or_controller, fixed_hardware_datapath | openvla, rdt, small_llama, tiny_llama | 7 |
-| loop_carried_state_handle | command_buffer_or_command_isa, device_microcode_or_controller | openvla, rdt, small_llama, tiny_llama | 6 |
-| bounded_loop_command | command_buffer_or_command_isa, device_microcode_or_controller | openvla, rdt, small_llama, tiny_llama | 6 |
-| persistent_command_buffer | command_buffer_or_command_isa, device_microcode_or_controller | openvla, rdt, small_llama, tiny_llama | 6 |
-| producer_consumer_queue | runtime_hal_object, command_buffer_or_command_isa | openvla, rdt | 6 |
+| resident_weight_object | runtime_hal_object, command_buffer_or_command_isa | groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama | 12 |
+| region_level_dispatch | command_buffer_or_command_isa, device_microcode_or_controller | groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama | 11 |
+| event_token | runtime_hal_object, command_buffer_or_command_isa | groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama | 11 |
+| async_queue | runtime_hal_object, command_buffer_or_command_isa | groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama | 11 |
+| dma_engine | runtime_hal_object, command_buffer_or_command_isa | groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama | 11 |
+| partial_sum_object | accelerator_isa, device_microcode_or_controller, fixed_hardware_datapath | groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama | 10 |
+| loop_carried_state_handle | command_buffer_or_command_isa, device_microcode_or_controller | groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama | 9 |
+| bounded_loop_command | command_buffer_or_command_isa, device_microcode_or_controller | groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama | 9 |
+| persistent_command_buffer | command_buffer_or_command_isa, device_microcode_or_controller | groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama | 9 |
+| producer_consumer_queue | runtime_hal_object, command_buffer_or_command_isa | groot_n1d7, molmoact, openvla, rdt, rdt2 | 9 |
 
 ## Where all software/hardware placements are plausible (the genuine design axes)
 

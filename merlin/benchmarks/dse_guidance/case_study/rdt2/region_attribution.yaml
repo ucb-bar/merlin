@@ -1,0 +1,33 @@
+# region_attribution (Level-1, prov.fqn): rdt2
+topology_recovery:
+  attribution_status: attributed
+  level: 1
+  regions:
+  - attribution_status: attributed
+    confidence: 0.7
+    facts:
+      activation_bytes_per_invocation: 6028480
+      activation_bytes_total: 30142400
+      invocations: 5
+      macs_per_invocation: 941031424
+      macs_total: 4705157120
+      matmul_count: 23
+      weight_bytes: 301268992
+    invocations: 5
+    matmul_count_attributed: 23
+    reason: 23 matmuls assigned by prov_fqn
+    role: repeated_head
+    source: prov_fqn
+  repeated_shape_signatures:
+  - count: 10
+    signature:
+    - 28
+    - 1024
+    - 1024
+  - count: 4
+    signature:
+    - 28
+    - 1024
+    - 2816
+  unresolved: []
+workload: rdt2

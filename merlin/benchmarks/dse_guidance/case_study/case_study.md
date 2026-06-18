@@ -2,7 +2,7 @@
 
 > Flat model captures are insufficient DSE units. With `prov.fqn` provenance, Merlin recovers region roles from real IR, attaches real compute/memory facts to the repeated action head, and emits structural DSE candidates — while refusing quantitative benefit until calibration exists.
 
-Real recaptured workloads: **4** (rdt, openvla, small_llama, tiny_llama). Captures are real architectures via the `prov.fqn`-enabled model2MLIR at small/random configs — structure & provenance real, magnitudes are small instances.
+Real recaptured workloads: **7** (rdt, openvla, small_llama, tiny_llama, rdt2, groot_n1d7, molmoact). Captures are real architectures via the `prov.fqn`-enabled model2MLIR at small/random configs — structure & provenance real, magnitudes are small instances.
 
 ## Headline: flat capture vs recovered contract
 
@@ -12,6 +12,9 @@ Real recaptured workloads: **4** (rdt, openvla, small_llama, tiny_llama). Captur
 | openvla | weights once, no K-loop | repeated_head + backbone_once split | 15 mm, 3 MB, 0.0 GMAC/step xK=7 | resident_action_head_weights, backbone_head_partition | blocked: missing_calibration |
 | small_llama | weights once, no K-loop | repeated_head | 15 mm, 2 MB, 0.0 GMAC/step xK=32 | resident_action_head_weights | blocked: missing_calibration |
 | tiny_llama | weights once, no K-loop | repeated_head | 15 mm, 614 MB, 0.6 GMAC/step xK=32 | resident_action_head_weights | blocked: missing_calibration |
+| rdt2 | weights once, no K-loop | repeated_head | 23 mm, 301 MB, 0.9 GMAC/step xK=5 | resident_action_head_weights | blocked: missing_calibration |
+| groot_n1d7 | weights once, no K-loop | repeated_head + backbone_once split | 16 mm, 296 MB, 2.6 GMAC/step xK=4 | resident_action_head_weights, backbone_head_partition | blocked: missing_calibration |
+| molmoact | weights once, no K-loop | repeated_head | 17 mm, 3787 MB, 7.6 GMAC/step xK=8 | resident_action_head_weights | blocked: missing_calibration |
 
 ## Per-workload recovery
 
@@ -21,6 +24,9 @@ Real recaptured workloads: **4** (rdt, openvla, small_llama, tiny_llama). Captur
 | openvla | autoregressive_vla/action_token_decode | 26 | backbone_once:11, repeated_head:15 | 15 mm, 3 MB, 0.0 GMAC/step xK=7 | blocked: missing_calibration |
 | small_llama | llm/token_decode | 15 | repeated_head:15 | 15 mm, 2 MB, 0.0 GMAC/step xK=32 | blocked: missing_calibration |
 | tiny_llama | llm/token_decode | 15 | repeated_head:15 | 15 mm, 614 MB, 0.6 GMAC/step xK=32 | blocked: missing_calibration |
+| rdt2 | diffusion/denoise_steps | 23 | repeated_head:23 | 23 mm, 301 MB, 0.9 GMAC/step xK=5 | blocked: missing_calibration |
+| groot_n1d7 | diffusion/denoise_steps | 18 | backbone_once:2, repeated_head:16 | 16 mm, 296 MB, 2.6 GMAC/step xK=4 | blocked: missing_calibration |
+| molmoact | autoregressive_vla/action_token_decode | 17 | repeated_head:17 | 17 mm, 3787 MB, 7.6 GMAC/step xK=8 | blocked: missing_calibration |
 
 ## What flattening hides vs what provenance recovers
 

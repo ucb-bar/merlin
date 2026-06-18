@@ -50,3 +50,39 @@ parallel_region_candidates:
       value: 3
     serialization: mostly_sequential
     workload: tiny_llama
+  - available_parallelism:
+      evidence: derived_requirement
+      value: 1.3486
+    independent_components:
+      evidence: recovered_from_ir
+      value: 1
+    interpretation: deep sequential dependency chain — the parallelism opportunity is intra-op sharding, not inter-op concurrency
+    max_ready_width:
+      evidence: recovered_from_ir
+      value: 3
+    serialization: mostly_sequential
+    workload: rdt2
+  - available_parallelism:
+      evidence: derived_requirement
+      value: 1.2417
+    independent_components:
+      evidence: recovered_from_ir
+      value: 1
+    interpretation: deep sequential dependency chain — the parallelism opportunity is intra-op sharding, not inter-op concurrency
+    max_ready_width:
+      evidence: recovered_from_ir
+      value: 3
+    serialization: mostly_sequential
+    workload: groot_n1d7
+  - available_parallelism:
+      evidence: derived_requirement
+      value: 1.0
+    independent_components:
+      evidence: recovered_from_ir
+      value: 1
+    interpretation: deep sequential dependency chain — the parallelism opportunity is intra-op sharding, not inter-op concurrency
+    max_ready_width:
+      evidence: recovered_from_ir
+      value: 1
+    serialization: mostly_sequential
+    workload: molmoact

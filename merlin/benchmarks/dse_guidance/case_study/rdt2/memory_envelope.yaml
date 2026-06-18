@@ -1,0 +1,33 @@
+# memory_envelope: rdt2
+memory_envelope:
+  note: byte traffic from recovered per-region facts; weight/activation bytes are recovered_from_ir, ×K scaling is derived from an assumed_reference K. intermediate-materialization and layout-conversion traffic are NOT exposed by a flat capture and are marked unavailable. No bandwidth/speedup claimed.
+  regions:
+  - activation_bytes_per_invocation:
+      evidence: recovered_from_ir
+      value: 6028480
+    activation_traffic_total:
+      evidence: derived_requirement
+      value: 30142400
+    avoidable_weight_reload:
+      evidence: derived_requirement
+      value: 1205075968
+    intermediate_materialization_bytes:
+      evidence: unavailable
+      value: null
+    invocations:
+      evidence: assumed_reference
+      value: 5
+    layout_conversion_bytes:
+      evidence: unavailable
+      value: null
+    region: repeated_head
+    reuse_factor:
+      evidence: assumed_reference
+      value: 5
+    weight_bytes:
+      evidence: recovered_from_ir
+      value: 301268992
+    weight_traffic_if_nonresident:
+      evidence: derived_requirement
+      value: 1506344960
+  workload: rdt2

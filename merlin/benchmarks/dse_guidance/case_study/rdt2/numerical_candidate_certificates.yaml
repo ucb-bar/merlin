@@ -1,0 +1,113 @@
+# numerical_candidate_certificates: rdt2
+numerical_candidate_certificates:
+  certificates:
+  - accuracy:
+      evidence: measured
+      source: docs/results.md (W8A8 accuracy table)
+      status: measured_pass
+    candidate: resident_packed_lowbit_weights
+    dse_status: accuracy_legal_structural_candidate
+    dtype: int8_w8a8
+    region: repeated_head
+    required_compiler_proofs:
+    - weights invariant across K
+    - packed layout persists across repeated_head dispatches
+    - scale metadata preserved
+    - dequant/requant placement known
+    required_hw_abstractions: packed_lowbit_tensor + resident_weight_object + scale_object
+    resident_capacity_at_format:
+      bytes: 75317248.0
+      evidence: derived_requirement
+    what_dse_should_explore:
+    - resident_capacity_at_format
+    - packed_layout_support
+    - scale_object
+    - low_bit_matmul_datapath
+    what_is_not_claimed:
+    - speedup
+    - cycle_reduction
+    - energy_reduction
+    - accuracy
+  - accuracy:
+      evidence: unavailable
+      source: null
+      status: unavailable
+    candidate: resident_packed_lowbit_weights
+    dse_status: blocked_by_missing_accuracy
+    dtype: fp8_w8a8
+    region: repeated_head
+    required_compiler_proofs:
+    - weights invariant across K
+    - packed layout persists across repeated_head dispatches
+    - scale metadata preserved
+    - dequant/requant placement known
+    required_hw_abstractions: packed_lowbit_tensor + resident_weight_object + scale_object
+    resident_capacity_at_format:
+      bytes: 75317248.0
+      evidence: derived_requirement
+    what_dse_should_explore:
+    - resident_capacity_at_format
+    - packed_layout_support
+    - scale_object
+    - low_bit_matmul_datapath
+    what_is_not_claimed:
+    - speedup
+    - cycle_reduction
+    - energy_reduction
+    - accuracy
+  - accuracy:
+      evidence: unavailable
+      source: null
+      status: unavailable
+    candidate: resident_packed_lowbit_weights
+    dse_status: blocked_by_missing_accuracy
+    dtype: int4_weight_only
+    region: repeated_head
+    required_compiler_proofs:
+    - weights invariant across K
+    - packed layout persists across repeated_head dispatches
+    - scale metadata preserved
+    - dequant/requant placement known
+    required_hw_abstractions: packed_lowbit_tensor + resident_weight_object + scale_object
+    resident_capacity_at_format:
+      bytes: 37658624.0
+      evidence: derived_requirement
+    what_dse_should_explore:
+    - resident_capacity_at_format
+    - packed_layout_support
+    - scale_object
+    - low_bit_matmul_datapath
+    what_is_not_claimed:
+    - speedup
+    - cycle_reduction
+    - energy_reduction
+    - accuracy
+  - accuracy:
+      evidence: unavailable
+      source: null
+      status: unavailable
+    candidate: resident_packed_lowbit_weights
+    dse_status: blocked_by_missing_accuracy
+    dtype: int4_weight_fp8_activation
+    region: repeated_head
+    required_compiler_proofs:
+    - weights invariant across K
+    - packed layout persists across repeated_head dispatches
+    - scale metadata preserved
+    - dequant/requant placement known
+    required_hw_abstractions: packed_lowbit_tensor + resident_weight_object + scale_object
+    resident_capacity_at_format:
+      bytes: 37658624.0
+      evidence: derived_requirement
+    what_dse_should_explore:
+    - resident_capacity_at_format
+    - packed_layout_support
+    - scale_object
+    - low_bit_matmul_datapath
+    what_is_not_claimed:
+    - speedup
+    - cycle_reduction
+    - energy_reduction
+    - accuracy
+  note: 'accuracy is the only measurable-now leg: int8 (W8A8) measured; fp8/int4 unavailable until a gate is run (NOT assumed). Capacity is dtype-scaled resident size (analytical). No speedup/cycle/area claimed.'
+  workload: rdt2

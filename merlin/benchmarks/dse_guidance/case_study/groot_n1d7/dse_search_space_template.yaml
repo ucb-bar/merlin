@@ -1,0 +1,135 @@
+# dse_search_space_template: groot_n1d7
+dse_search_space_template:
+  name: groot_n1d7
+  note: DSE search-space template, not a ranking. `enabled` reflects whether the recovered workload contract implies the axis; knobs are what a DSE engine would sweep. No speedup, cycle, area, or energy is claimed and no design is chosen.
+  scope: workload
+  search_space:
+    abstractions:
+    - abstraction: resident_weight_object
+      axis: resident_action_head_weights
+      enabled: true
+      evidence: recovered_from_prov_fqn
+      knobs:
+      - local_memory_capacity
+      - packed_weight_format
+      - dma_bandwidth
+      - residency/replacement_policy
+      - weight_prefetch_overlap
+      reason: action-head weights are loop-invariant across K=4 steps; a flat capture sees one use and hides this axis
+    - abstraction: packed_lowbit_tensor + resident_weight_object + scale_object
+      axis: resident_packed_lowbit_weights
+      enabled: true
+      evidence: derived_requirement
+      knobs:
+      - resident_capacity_at_format
+      - packed_layout_support
+      - scale_object
+      - low_bit_matmul_datapath
+      reason: numerical_contract
+    - abstraction: prefix_kv_object
+      axis: resident_prefix_kv
+      enabled: false
+      evidence: unavailable
+      knobs:
+      - resident_kv_capacity
+      - kv_lifetime_policy
+      - kv_quantization
+      reason: axis not implied by this workload
+    - abstraction: bounded_loop_command + loop_carried_state_handle
+      axis: autonomous_K_loop
+      enabled: true
+      evidence: derived_requirement
+      knobs:
+      - device_loop_controller
+      - dependency_tracking
+      - resident_state_handles
+      reason: a bounded K=4 loop with loop-carried state can run device-side
+    - abstraction: command_buffer
+      axis: command_batching
+      enabled: true
+      evidence: derived_requirement
+      knobs:
+      - submission_granularity
+      - persistent_command_graph
+      reason: the K=4 head steps issue repeated host submits a flat capture hides
+    - abstraction: persistent_command_buffer
+      axis: command_buffer_per_replan
+      enabled: false
+      evidence: unavailable
+      knobs:
+      - region_level_dispatch
+      - persistent_graph_submission
+      reason: axis not implied by this workload
+    - abstraction: packed_weight_cache / layout_persistent_buffer
+      axis: packed_layout_preservation
+      enabled: true
+      evidence: recovered_from_prov_fqn
+      knobs:
+      - packed_layout_object
+      - repack_avoidance
+      reason: the same (packed/quantized) weight layout is consumed every step; preserving it across dispatches avoids re-packing
+    - abstraction: low_bit_matmul_datapath + scale_object + accumulator_object
+      axis: native_lowbit_compute
+      enabled: false
+      evidence: unavailable
+      knobs:
+      - compute_precision
+      - accumulator_width
+      - requant_unit
+      reason: axis not implied by this workload
+    - abstraction: dequant_fused_matmul
+      axis: fused_dequant_matmul
+      enabled: false
+      evidence: unavailable
+      knobs:
+      - weight_load_prologue
+      - fused_dequant
+      reason: axis not implied by this workload
+    - abstraction: accumulator_object + requant_epilogue
+      axis: fused_requant_epilogue
+      enabled: true
+      evidence: derived_requirement
+      knobs:
+      - in_hw_epilogue_commit
+      - accumulator_visibility
+      reason: numerical_contract
+    - abstraction: accumulator_object + requant_epilogue
+      axis: accumulator_commit
+      enabled: false
+      evidence: unavailable
+      knobs:
+      - accumulator_capacity
+      - epilogue_fusion
+      reason: axis not implied by this workload
+    - abstraction: resident_KV_cache (quantized)
+      axis: quantized_KV_cache
+      enabled: false
+      evidence: unavailable
+      knobs:
+      - kv_precision
+      - kv_capacity
+      - decode_gemv_datapath
+      reason: axis not implied by this workload
+    - abstraction: phase_boundary / region_handle (slow/fast split)
+      axis: backbone_head_partition
+      enabled: true
+      evidence: derived_requirement
+      knobs:
+      - engine_partition
+      - time_share_vs_split
+      - state_crossing_transport
+      reason: backbone runs once per replan while the head runs K times — the rates differ, so a slow/fast partition is a candidate
+    - abstraction: double_buffered_replan_state + async_queue
+      axis: async_chunk_overlap
+      enabled: true
+      evidence: derived_requirement
+      knobs:
+      - double_buffering
+      - async_scheduling
+      - deadline_slack_use
+      reason: the robot executes H actions at the control rate, opening a window to overlap the next replan with chunk execution
+  what_is_not_claimed:
+  - speedup
+  - cycle_reduction
+  - energy_reduction
+  - accuracy

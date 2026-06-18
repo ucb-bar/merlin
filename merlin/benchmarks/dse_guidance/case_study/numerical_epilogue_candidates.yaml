@@ -10,8 +10,11 @@ numerical_epilogue_candidates:
     evidence: recovered_from_ir
     performance_measurements_needed_later: per-op latency / energy once a backend exists
     present_in_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     required_compiler_proof: the matmul output epilogue (bias detected via addf) can also host a requant; the epilogue slot is recovered_from_ir
     required_hw_runtime_support: epilogue ALU on the matmul output path
     what_is_not_claimed: no speedup, no low-bit performance, no throughput; structural candidate only
@@ -24,8 +27,11 @@ numerical_epilogue_candidates:
     evidence: recovered_from_ir
     performance_measurements_needed_later: per-op latency / energy once a backend exists
     present_in_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     required_compiler_proof: the matmul accumulates in a wider type (i32 for int8 storage; derived)
@@ -40,8 +46,11 @@ numerical_epilogue_candidates:
     evidence: recovered_from_ir
     performance_measurements_needed_later: per-op latency / energy once a backend exists
     present_in_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     required_compiler_proof: the accumulator commits through the epilogue to the output dtype
     required_hw_runtime_support: accumulator->epilogue->store path
     what_is_not_claimed: no speedup, no low-bit performance, no throughput; structural candidate only
@@ -54,7 +63,9 @@ numerical_epilogue_candidates:
     evidence: recovered_from_ir
     performance_measurements_needed_later: per-op latency / energy once a backend exists
     present_in_workloads:
+    - groot_n1d7
     - rdt
+    - rdt2
     required_compiler_proof: an activation/clamp op follows the matmul epilogue (erf/exp/maximumf detected)
     required_hw_runtime_support: activation/clamp ALU on the output path
     what_is_not_claimed: no speedup, no low-bit performance, no throughput; structural candidate only

@@ -8,10 +8,13 @@
 | openvla | 26 | 79,544,320 | 65,470,464 | 1.215× | 3 | 1 | mostly_sequential |
 | small_llama | 15 | 3,424,256 | 2,195,456 | 1.5597× | 3 | 1 | some_parallelism |
 | tiny_llama | 15 | 614,465,536 | 513,802,240 | 1.1959× | 3 | 1 | mostly_sequential |
+| rdt2 | 23 | 941,031,424 | 697,761,792 | 1.3486× | 3 | 1 | mostly_sequential |
+| groot_n1d7 | 18 | 2,612,133,888 | 2,103,705,600 | 1.2417× | 3 | 1 | mostly_sequential |
+| molmoact | 17 | 7,574,913,024 | 7,574,913,024 | 1.0× | 1 | 1 | mostly_sequential |
 
 ## Findings
 
-- **Low inter-op parallelism (rdt, openvla, tiny_llama):** the dependency DAG is a deep near-sequential chain (available parallelism < 1.5×). A future DSE tool should look to **intra-op sharding** of the large GEMMs (see `sharding_table.csv`), not inter-op concurrency.
+- **Low inter-op parallelism (rdt, openvla, tiny_llama, rdt2, groot_n1d7, molmoact):** the dependency DAG is a deep near-sequential chain (available parallelism < 1.5×). A future DSE tool should look to **intra-op sharding** of the large GEMMs (see `sharding_table.csv`), not inter-op concurrency.
 - **Some inter-op parallelism (small_llama):** independent operators (e.g. Q/K/V projections) become ready together — modest concurrency a multi-engine cluster could use.
 - **Ready-set width** peaks at a handful of operators (see `concurrency_windows.csv`) — the workloads do not expose wide inter-op concurrency.
 

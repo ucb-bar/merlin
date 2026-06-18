@@ -1,11 +1,11 @@
 axis,system_abstraction,compiler_proof_needed,status,status_evidence,workloads_suggesting
-async_chunk_overlap,double_buffered_replan_state + async_queue,the next replan is independent of the current chunk's execution,assumed,assumed_reference,rdt; openvla; small_llama; tiny_llama
-autonomous_K_loop,bounded_loop_command + loop_carried_state_handle,bounded K and a loop body expressible as a device-resident program,assumed,assumed_reference,rdt; openvla; small_llama; tiny_llama
-backbone_head_partition,phase_boundary / region_handle (slow/fast split),a clean state boundary between the once-per-replan backbone and the K-times head (the crossing tensors are enumerable),assumed,assumed_reference,rdt; openvla; small_llama; tiny_llama
-command_batching,command_buffer,the K-loop dependency graph is static and known at submit time,assumed,assumed_reference,rdt; openvla; small_llama; tiny_llama
-fused_requant_epilogue,accumulator_object + requant_epilogue,(numerical) fused requant/activation bit-exactness,unknown,unavailable,rdt; openvla; small_llama; tiny_llama
-packed_layout_preservation,packed_weight_cache / layout_persistent_buffer,a packed/quantized weight layout is produced once and consumed by the same op family across the loop without re-pack,unknown,unavailable,rdt; openvla; small_llama; tiny_llama
-resident_action_head_weights,resident_weight_object,action-head weights immutable and live across the K-loop (resident-pack candidate); backbone weights excluded,proven_for_workload,recovered_from_prov_fqn,rdt; openvla; small_llama; tiny_llama
-resident_packed_lowbit_weights,packed_lowbit_tensor + resident_weight_object + scale_object,(numerical) per-format accuracy vs fp32 (cos/argmax) sweep,unknown,unavailable,rdt; openvla; small_llama; tiny_llama
-decode_kv_cache_path,decode_kv_cache_path,autoregressive decode with a growing KV cache and batch=1 GEMV shapes,assumed,assumed_reference,openvla; small_llama; tiny_llama
-quantized_KV_cache,resident_KV_cache (quantized),(numerical) KV-quant accuracy vs fp16 KV,unknown,unavailable,openvla; small_llama; tiny_llama
+async_chunk_overlap,double_buffered_replan_state + async_queue,the next replan is independent of the current chunk's execution,assumed,assumed_reference,rdt; openvla; small_llama; tiny_llama; rdt2; groot_n1d7; molmoact
+autonomous_K_loop,bounded_loop_command + loop_carried_state_handle,bounded K and a loop body expressible as a device-resident program,assumed,assumed_reference,rdt; openvla; small_llama; tiny_llama; rdt2; groot_n1d7; molmoact
+backbone_head_partition,phase_boundary / region_handle (slow/fast split),a clean state boundary between the once-per-replan backbone and the K-times head (the crossing tensors are enumerable),assumed,assumed_reference,rdt; openvla; small_llama; tiny_llama; rdt2; groot_n1d7; molmoact
+command_batching,command_buffer,the K-loop dependency graph is static and known at submit time,assumed,assumed_reference,rdt; openvla; small_llama; tiny_llama; rdt2; groot_n1d7; molmoact
+fused_requant_epilogue,accumulator_object + requant_epilogue,(numerical) fused requant/activation bit-exactness,unknown,unavailable,rdt; openvla; small_llama; tiny_llama; rdt2; groot_n1d7; molmoact
+packed_layout_preservation,packed_weight_cache / layout_persistent_buffer,a packed/quantized weight layout is produced once and consumed by the same op family across the loop without re-pack,unknown,unavailable,rdt; openvla; small_llama; tiny_llama; rdt2; groot_n1d7; molmoact
+resident_action_head_weights,resident_weight_object,action-head weights immutable and live across the K-loop (resident-pack candidate); backbone weights excluded,proven_for_workload,recovered_from_prov_fqn,rdt; openvla; small_llama; tiny_llama; rdt2; groot_n1d7; molmoact
+resident_packed_lowbit_weights,packed_lowbit_tensor + resident_weight_object + scale_object,(numerical) per-format accuracy vs fp32 (cos/argmax) sweep,unknown,unavailable,rdt; openvla; small_llama; tiny_llama; rdt2; groot_n1d7; molmoact
+decode_kv_cache_path,decode_kv_cache_path,autoregressive decode with a growing KV cache and batch=1 GEMV shapes,assumed,assumed_reference,openvla; small_llama; tiny_llama; molmoact
+quantized_KV_cache,resident_KV_cache (quantized),(numerical) KV-quant accuracy vs fp16 KV,unknown,unavailable,openvla; small_llama; tiny_llama; molmoact

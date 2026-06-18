@@ -11,13 +11,14 @@ processing_unit_candidates:
     - pe_array_cols
     evidence: recovered_from_ir
     evidence_against: none
-    evidence_for: 'serves dense_gemm: 86% of MACs across rdt'
+    evidence_for: 'serves dense_gemm: 67% of MACs across rdt, rdt2'
     region_roles_supporting:
     - repeated_head
     unit: matrix_engine
     what_is_not_claimed: no speedup, throughput, cycle, or area is claimed; this is a structural search-space candidate, not a chosen design
     workloads_supporting:
     - rdt
+    - rdt2
   - compiler_proof_needed: the skinny/GEMV operators vectorize along the long output dimension
     dse_knobs_exposed:
     - lane_width
@@ -25,15 +26,18 @@ processing_unit_candidates:
     - accumulator_depth
     evidence: recovered_from_ir
     evidence_against: none
-    evidence_for: 'serves skinny_gemm_or_gemv: 14% of MACs across openvla, rdt, small_llama, tiny_llama'
+    evidence_for: 'serves skinny_gemm_or_gemv: 33% of MACs across groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama'
     region_roles_supporting:
     - backbone_once
     - repeated_head
     unit: vector_gemv_engine
     what_is_not_claimed: no speedup, throughput, cycle, or area is claimed; this is a structural search-space candidate, not a chosen design
     workloads_supporting:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - compiler_proof_needed: requires attention structure (heads / KV) which is not recoverable from the flat capture
@@ -65,13 +69,16 @@ processing_unit_candidates:
     - requant_path
     evidence: recovered_from_ir
     evidence_against: none
-    evidence_for: serves epilogue_or_requant (op_count; 31 across openvla, rdt)
+    evidence_for: serves epilogue_or_requant (op_count; 60 across groot_n1d7, molmoact, openvla, rdt, rdt2)
     region_roles_supporting: []
     unit: epilogue_requant_unit
     what_is_not_claimed: no speedup, throughput, cycle, or area is claimed; this is a structural search-space candidate, not a chosen design
     workloads_supporting:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
   - compiler_proof_needed: loop-invariant weights are read-only across the K-loop and can be made resident
     dse_knobs_exposed:
     - prefetch_depth
@@ -79,13 +86,16 @@ processing_unit_candidates:
     - tiling_of_residency
     evidence: recovered_from_ir
     evidence_against: none
-    evidence_for: serves dma_or_memory (structural; structural across openvla, rdt, small_llama, tiny_llama)
+    evidence_for: serves dma_or_memory (structural; structural across groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama)
     region_roles_supporting: []
     unit: dma_engine
     what_is_not_claimed: no speedup, throughput, cycle, or area is claimed; this is a structural search-space candidate, not a chosen design
     workloads_supporting:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - compiler_proof_needed: the repeated head is a bounded K-loop with loop-invariant weights
@@ -94,13 +104,16 @@ processing_unit_candidates:
     - unroll_factor
     evidence: recovered_from_ir
     evidence_against: none
-    evidence_for: serves control_or_dispatch (structural; structural across openvla, rdt, small_llama, tiny_llama)
+    evidence_for: serves control_or_dispatch (structural; structural across groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama)
     region_roles_supporting: []
     unit: loop_controller
     what_is_not_claimed: no speedup, throughput, cycle, or area is claimed; this is a structural search-space candidate, not a chosen design
     workloads_supporting:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - compiler_proof_needed: host dispatch / control flow drives the per-step command stream
@@ -108,12 +121,15 @@ processing_unit_candidates:
     - dispatch_width
     evidence: recovered_from_ir
     evidence_against: none
-    evidence_for: serves control_or_dispatch (structural; structural across openvla, rdt, small_llama, tiny_llama)
+    evidence_for: serves control_or_dispatch (structural; structural across groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama)
     region_roles_supporting: []
     unit: scalar_control_unit
     what_is_not_claimed: no speedup, throughput, cycle, or area is claimed; this is a structural search-space candidate, not a chosen design
     workloads_supporting:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama

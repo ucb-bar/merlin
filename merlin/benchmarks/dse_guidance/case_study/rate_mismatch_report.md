@@ -10,6 +10,9 @@
 | openvla | once_per_replan | token_loop | 7 | 7 | 5.0 | 1.4 |
 | small_llama | once_per_replan | token_loop | 32 | 32 | 30.0 | 1.066667 |
 | tiny_llama | once_per_replan | token_loop | 32 | 32 | 30.0 | 1.066667 |
+| rdt2 | once_per_replan | K_times_per_replan | 5 | 64 | 30.0 | 2.133333 |
+| groot_n1d7 | once_per_replan | K_times_per_replan | 4 | 16 | 30.0 | 0.533333 |
+| molmoact | once_per_replan | token_loop | 8 | 8 | 5.0 | 1.6 |
 
 ## Provenance of every field
 
@@ -24,5 +27,8 @@
 - **openvla:** 51 `data_dependency` edges recovered from the SSA use-def graph, plus the backbone→head `control_dependency`, the loop-invariant weight edge, and the cross-replan `pipeline_candidate`. Every edge carries a recovered/derived evidence label.
 - **small_llama:** 28 `data_dependency` edges recovered from the SSA use-def graph, plus the backbone→head `control_dependency`, the loop-invariant weight edge, and the cross-replan `pipeline_candidate`. Every edge carries a recovered/derived evidence label.
 - **tiny_llama:** 28 `data_dependency` edges recovered from the SSA use-def graph, plus the backbone→head `control_dependency`, the loop-invariant weight edge, and the cross-replan `pipeline_candidate`. Every edge carries a recovered/derived evidence label.
+- **rdt2:** 64 `data_dependency` edges recovered from the SSA use-def graph, plus the backbone→head `control_dependency`, the loop-invariant weight edge, and the cross-replan `pipeline_candidate`. Every edge carries a recovered/derived evidence label.
+- **groot_n1d7:** 31 `data_dependency` edges recovered from the SSA use-def graph, plus the backbone→head `control_dependency`, the loop-invariant weight edge, and the cross-replan `pipeline_candidate`. Every edge carries a recovered/derived evidence label.
+- **molmoact:** 44 `data_dependency` edges recovered from the SSA use-def graph, plus the backbone→head `control_dependency`, the loop-invariant weight edge, and the cross-replan `pipeline_candidate`. Every edge carries a recovered/derived evidence label.
 
 The graph is a complete **structural** multi-rate contract: every node and edge is recovered from the capture, the model config, or derived from them — what runs at which rate, which state persists, and which operator feeds which. Per-phase wall-clock timing is a runtime *measurement* (orthogonal to this static contract), not a missing structural fact.

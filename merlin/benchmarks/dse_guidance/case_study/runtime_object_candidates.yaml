@@ -6,8 +6,11 @@ runtime_object_candidates:
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: strong_candidate
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: state dtype, shape, update site, lifetime=across_K
@@ -15,8 +18,11 @@ runtime_object_candidates:
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: possible
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: trip_count, body_region_handle, loop_carried/invariant handles, event_in/out
@@ -24,8 +30,11 @@ runtime_object_candidates:
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: possible
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: region_handle, dependency list
@@ -33,8 +42,11 @@ runtime_object_candidates:
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: possible
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: command stream, reusable across replans
@@ -42,8 +54,11 @@ runtime_object_candidates:
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: possible
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: event id, producer, consumer
@@ -51,8 +66,11 @@ runtime_object_candidates:
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: strong_candidate
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: queue id, depth
@@ -60,8 +78,11 @@ runtime_object_candidates:
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: strong_candidate
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: chunk producer, control consumer, depth
@@ -69,22 +90,31 @@ runtime_object_candidates:
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: strong_candidate
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
   - metadata: chunk buffer x2, action_horizon H
     object: double_buffered_action_chunk
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: strong_candidate
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
   - metadata: stream descriptors, directions
     object: dma_engine
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: strong_candidate
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: per-stream descriptor (weight/activation/output)
@@ -92,8 +122,11 @@ runtime_object_candidates:
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: strong_candidate
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: prefetch target, depth, trigger
@@ -101,8 +134,11 @@ runtime_object_candidates:
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: strong_candidate
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: token trip count, kv handle, loop-carried token state
@@ -110,6 +146,7 @@ runtime_object_candidates:
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: possible
     supporting_workloads:
+    - molmoact
     - openvla
     - small_llama
     - tiny_llama

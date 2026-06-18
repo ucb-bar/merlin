@@ -1,0 +1,78 @@
+# numerical_contract: groot_n1d7
+numerical_contract:
+  candidates:
+  - axis: resident_packed_lowbit_weights
+    could_be_wrong_if:
+    - accuracy below the task gate at the chosen format
+    - packed weights exceed resident capacity
+    - dequant/pack cost outweighs the bandwidth saved
+    current_status:
+      benefit: unquantified
+      legality: structural
+      quantification_blocked_by: missing accuracy sweep + low-bit kernel calibration + resident-capacity model
+    evidence:
+      candidate_formats:
+      - fp8_w8a8
+      - int8_w8a8
+      - int4_weight_only
+      - int4_weight_fp8_activation
+      compute_dtype: f32
+      repeated_head_weight_bytes: 295698432
+      weight_storage_dtype: f32
+    required_accuracy_measurements:
+    - per-format accuracy vs fp32 (cos/argmax) sweep
+    required_hw_support: resident packed low-bit weight store + matching matmul datapath
+    required_performance_measurements:
+    - low-bit weight bytes
+    - dequant/pack cost
+    - resident capacity at each format
+  - axis: fused_requant_epilogue
+    could_be_wrong_if:
+    - epilogue already fused
+    - accumulator does not fit
+    current_status:
+      benefit: unquantified
+      legality: structural
+      quantification_blocked_by: missing intermediate-materialization measurement
+    evidence:
+      has_epilogue: true
+      requant_ops: 0
+    required_accuracy_measurements:
+    - fused requant/activation bit-exactness
+    required_hw_support: in-hardware accumulator commit + fused requant/activation
+    required_performance_measurements:
+    - i32 intermediate bytes
+    - epilogue dispatch count
+  expected_contract: null
+  honesty:
+    accumulator_dtype:
+      evidence: recovered_from_ir
+      value: f32
+    note: scale/zero-point/group-size and sparsity metadata are not present in a flat dequantized capture; they are marked unavailable, never invented.
+    scale_metadata:
+      evidence: unavailable
+      value: erased_or_unavailable
+    sparsity_metadata:
+      evidence: unavailable
+      value: erased_or_unavailable
+  lost_structure: []
+  mismatch: null
+  observed:
+    compute_dtype: f32
+    declared_quantization: none
+    dequantize_ops: 0
+    n_matmuls: 18
+    packed_layout_visible: true
+    requant_ops: 0
+    weight_storage_dtype: f32
+  per_region_dtype:
+  - dtype: f32
+    evidence: recovered_from_ir
+    n: 2
+    region: backbone_once
+  - dtype: f32
+    evidence: recovered_from_ir
+    n: 16
+    region: repeated_head
+  severity: low
+  workload: groot_n1d7
