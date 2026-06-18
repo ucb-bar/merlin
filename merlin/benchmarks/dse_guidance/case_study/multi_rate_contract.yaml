@@ -272,3 +272,63 @@ multi_rate_contract:
       state: weights
     workload: pi05
     workload_class: flow_matching_action_head
+  - phases:
+    - cadence: once_per_replan
+      invocations: 1
+      phase: backbone
+      role: backbone_once
+    - cadence: K_times_per_replan
+      invocations: 10
+      phase: head
+      role: repeated_head
+    rate_model:
+      H:
+        source: recovered_from_model_config
+        value: 10
+      K:
+        source: recovered_from_model_config
+        value: 10
+      control_rate_hz:
+        source: recovered_from_model_config
+        value: 30.0
+      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
+      replan_deadline_s:
+        source: derived_requirement
+        value: 0.333333
+    states_across_rates:
+    - bytes: 123080704
+      evidence: recovered_from_ir
+      lifetime: loop_invariant
+      state: weights
+    workload: xr0
+    workload_class: flow_matching_action_head
+  - phases:
+    - cadence: once_per_replan
+      invocations: 1
+      phase: backbone
+      role: backbone_once
+    - cadence: token_loop
+      invocations: 7
+      phase: head
+      role: repeated_head
+    rate_model:
+      H:
+        source: recovered_from_model_config
+        value: 7
+      K:
+        source: recovered_from_model_config
+        value: 7
+      control_rate_hz:
+        source: recovered_from_model_config
+        value: 5.0
+      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
+      replan_deadline_s:
+        source: derived_requirement
+        value: 1.4
+    states_across_rates:
+    - bytes: 5767168
+      evidence: recovered_from_ir
+      lifetime: loop_invariant
+      state: weights
+    workload: bitvla
+    workload_class: autoregressive_decode

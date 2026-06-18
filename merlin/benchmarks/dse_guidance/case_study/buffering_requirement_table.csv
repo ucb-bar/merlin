@@ -44,3 +44,13 @@ pi05,dma_prefetch(resident weights),head,yes,2,async_queue,resident_weight_objec
 pi05,head,head,yes,1,region_level_dispatch,bounded_loop_command; loop_carried_state_handle; resident_weight_object
 pi05,control_tick_consumer,replan_inference(next),yes,2,producer_consumer_queue; event_token,double_buffered_action_chunk; producer_consumer_queue; event_token
 pi05,decode_token_step,kv_cache_movement,unknown,unavailable,—,producer_consumer_queue; loop_carried_state_handle
+xr0,backbone(next replan),action_execution(current chunk),yes,2,async_queue; event_token,double_buffered_action_chunk; async_queue; event_token; prefix_state_object
+xr0,dma_prefetch(resident weights),head,yes,2,async_queue,resident_weight_object; async_queue
+xr0,head,head,yes,1,region_level_dispatch,bounded_loop_command; loop_carried_state_handle; resident_weight_object
+xr0,control_tick_consumer,replan_inference(next),unknown,unavailable,producer_consumer_queue; event_token,double_buffered_action_chunk; producer_consumer_queue; event_token
+xr0,decode_token_step,kv_cache_movement,unknown,unavailable,—,producer_consumer_queue; loop_carried_state_handle
+bitvla,backbone(next replan),action_execution(current chunk),unknown,unavailable,async_queue; event_token,double_buffered_action_chunk; async_queue; event_token; prefix_state_object
+bitvla,dma_prefetch(resident weights),head,yes,2,async_queue,resident_weight_object; async_queue
+bitvla,head,head,yes,1,region_level_dispatch,bounded_loop_command; loop_carried_state_handle; resident_weight_object
+bitvla,control_tick_consumer,replan_inference(next),yes,2,producer_consumer_queue; event_token,double_buffered_action_chunk; producer_consumer_queue; event_token
+bitvla,decode_token_step,kv_cache_movement,unknown,unavailable,—,producer_consumer_queue; loop_carried_state_handle

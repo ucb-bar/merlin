@@ -125267,6 +125267,1853 @@ workload_contract_graph:
         value: 1.0
     workload: pi05
     workload_class: flow_matching_action_head
+  - edges:
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:0
+      target: xr0:op:1
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:2
+      target: xr0:op:3
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:3
+      target: xr0:op:4
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:5
+      target: xr0:op:6
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:1
+      target: xr0:op:7
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:4
+      target: xr0:op:7
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:6
+      target: xr0:op:7
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:7
+      target: xr0:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:1
+      target: xr0:op:9
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:4
+      target: xr0:op:9
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:6
+      target: xr0:op:9
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:8
+      target: xr0:op:9
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:1
+      target: xr0:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:4
+      target: xr0:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:6
+      target: xr0:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:8
+      target: xr0:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:9
+      target: xr0:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:10
+      target: xr0:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:1
+      target: xr0:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:4
+      target: xr0:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:6
+      target: xr0:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:8
+      target: xr0:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:11
+      target: xr0:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:12
+      target: xr0:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:1
+      target: xr0:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:4
+      target: xr0:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:6
+      target: xr0:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:8
+      target: xr0:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:11
+      target: xr0:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:13
+      target: xr0:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:1
+      target: xr0:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:4
+      target: xr0:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:6
+      target: xr0:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:8
+      target: xr0:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:11
+      target: xr0:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:13
+      target: xr0:op:15
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:14
+      target: xr0:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:15
+      target: xr0:op:16
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:1
+      target: xr0:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:4
+      target: xr0:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:6
+      target: xr0:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:8
+      target: xr0:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:11
+      target: xr0:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:13
+      target: xr0:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:16
+      target: xr0:op:17
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: xr0:op:17
+      target: xr0:op:18
+    - bytes: 123080704
+      can_pipeline: true
+      evidence: recovered_from_ir
+      kind: loop_invariant
+      lifetime: loop_invariant
+      note: read-only across the K-loop; safe to keep resident
+      source: xr0:state:weights
+      target: xr0:region:repeated_head
+      tensor: weights
+    - can_pipeline: unknown
+      evidence: recovered_from_prov_fqn
+      kind: control_dependency
+      note: once-per-replan backbone precedes the repeated head (role split recovered from prov.fqn); the specific tensors crossing the boundary are unavailable in the flat capture
+      source: xr0:phase:backbone
+      target: xr0:phase:head
+    - can_pipeline: true
+      evidence: derived_requirement
+      kind: pipeline_candidate
+      note: the next replan's backbone shares no loop-carried state with this replan's head, so the two rates are structurally overlappable (async pipelining candidate)
+      source: xr0:phase:head
+      target: xr0:phase:backbone
+    nodes:
+    - evidence: recovered_from_prov_fqn
+      id: xr0:phase:backbone
+      kind: phase
+      parent_region: null
+      rate:
+        cadence: once_per_replan
+        cadence_evidence: recovered_from_prov_fqn
+        invocations: 1
+        invocations_evidence: recovered_from_ir
+        period_evidence: derived_requirement
+        period_s: 0.333333
+      region_role: backbone_once
+      state_summary:
+        consumes: []
+        loop_carried_state: []
+        loop_invariant_state: []
+        produces: []
+    - evidence: recovered_from_prov_fqn
+      id: xr0:phase:head
+      kind: phase
+      parent_region: null
+      rate:
+        cadence: K_times_per_replan
+        cadence_evidence: recovered_from_prov_fqn
+        invocations: 10
+        invocations_evidence: recovered_from_model_config
+        period_evidence: unavailable
+        period_s: null
+      region_role: repeated_head
+      state_summary:
+        consumes: []
+        loop_carried_state: []
+        loop_invariant_state:
+        - weights
+        produces: []
+    - evidence: recovered_from_prov_fqn
+      id: xr0:region:repeated_head
+      kind: region
+      numerical_contract_summary:
+        accumulator_dtype: f32
+        dtype: f32
+        evidence: recovered_from_ir
+        n_matmuls: 16
+      operator_refs:
+      - xr0:op:0
+      - xr0:op:1
+      - xr0:op:2
+      - xr0:op:3
+      - xr0:op:5
+      - xr0:op:6
+      - xr0:op:8
+      - xr0:op:9
+      - xr0:op:10
+      - xr0:op:11
+      - xr0:op:13
+      - xr0:op:14
+      - xr0:op:15
+      - xr0:op:16
+      - xr0:op:17
+      - xr0:op:18
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:phase:head
+      rate:
+        cadence: K_times_per_replan
+        invocations: 10
+        invocations_evidence: recovered_from_model_config
+      region_role: repeated_head
+      work_summary:
+        activation_bytes_per_invocation: 4989056
+        activation_bytes_per_replan: 49890560
+        dispatch_count_proxy: 16
+        evidence: recovered_from_ir
+        macs_per_invocation: 908261376
+        macs_per_replan: 9082613760
+        matmul_count: 16
+        weight_bytes: 123080704
+    - evidence: recovered_from_prov_fqn
+      id: xr0:region:backbone_once
+      kind: region
+      numerical_contract_summary:
+        accumulator_dtype: f32
+        dtype: f32
+        evidence: recovered_from_ir
+        n_matmuls: 1
+      operator_refs:
+      - xr0:op:4
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:phase:backbone
+      rate:
+        cadence: once_per_replan
+        invocations: 1
+        invocations_evidence: recovered_from_ir
+      region_role: backbone_once
+      work_summary:
+        activation_bytes_per_invocation: 28672
+        activation_bytes_per_replan: 28672
+        dispatch_count_proxy: 1
+        evidence: recovered_from_ir
+        macs_per_invocation: 6291456
+        macs_per_replan: 6291456
+        matmul_count: 1
+        weight_bytes: 25165824
+    - evidence: recovered_from_prov_fqn
+      id: xr0:region:prefix_builder
+      kind: region
+      numerical_contract_summary:
+        accumulator_dtype: f32
+        dtype: f32
+        evidence: recovered_from_ir
+        n_matmuls: 2
+      operator_refs:
+      - xr0:op:7
+      - xr0:op:12
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: null
+      rate:
+        cadence: once_per_replan
+        invocations: 1
+        invocations_evidence: recovered_from_ir
+      region_role: prefix_builder
+      work_summary:
+        activation_bytes_per_invocation: 1048576
+        activation_bytes_per_replan: 1048576
+        dispatch_count_proxy: 2
+        evidence: recovered_from_ir
+        macs_per_invocation: 201326592
+        macs_per_replan: 201326592
+        matmul_count: 2
+        weight_bytes: 25165824
+    - evidence: recovered_from_ir
+      id: xr0:op:0
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 32
+        M: 1
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 32768
+        op_kind: matmul
+        output_bytes: 4096
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 131072
+        semantic_class: mlp_projection
+        shape_class: gemv_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 32768
+    - evidence: recovered_from_ir
+      id: xr0:op:1
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 1
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 1048576
+        op_kind: matmul
+        output_bytes: 4096
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4194304
+        semantic_class: mlp_projection
+        shape_class: gemv_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 1048576
+    - evidence: recovered_from_ir
+      id: xr0:op:2
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 256
+        M: 1
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 262144
+        op_kind: matmul
+        output_bytes: 4096
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 1048576
+        semantic_class: mlp_projection
+        shape_class: gemv_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 262144
+    - evidence: recovered_from_ir
+      id: xr0:op:3
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 1
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 1048576
+        op_kind: matmul
+        output_bytes: 4096
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4194304
+        semantic_class: mlp_projection
+        shape_class: gemv_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 1048576
+    - evidence: recovered_from_ir
+      id: xr0:op:4
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:backbone_once
+      region_role: backbone_once
+      shape_summary:
+        K: 1024
+        M: 1
+        N: 6144
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 6291456
+        op_kind: matmul
+        output_bytes: 24576
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 25165824
+        semantic_class: mlp_projection
+        shape_class: gemv_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 6291456
+    - evidence: recovered_from_ir
+      id: xr0:op:5
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 32
+        M: 30
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 983040
+        op_kind: matmul
+        output_bytes: 122880
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 131072
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 983040
+    - evidence: recovered_from_ir
+      id: xr0:op:6
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 30
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 31457280
+        op_kind: matmul
+        output_bytes: 122880
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4194304
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 31457280
+    - evidence: recovered_from_ir
+      id: xr0:op:7
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:prefix_builder
+      region_role: prefix_builder
+      shape_summary:
+        K: 1024
+        M: 32
+        N: 3072
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 100663296
+        op_kind: matmul
+        output_bytes: 393216
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 12582912
+        semantic_class: attention_qkv_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 100663296
+    - evidence: recovered_from_ir
+      id: xr0:op:8
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 32
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 33554432
+        op_kind: matmul
+        output_bytes: 131072
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4194304
+        semantic_class: attention_output_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 33554432
+    - evidence: recovered_from_ir
+      id: xr0:op:9
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 32
+        N: 4096
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 134217728
+        op_kind: matmul
+        output_bytes: 524288
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 16777216
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 134217728
+    - evidence: recovered_from_ir
+      id: xr0:op:10
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 32
+        N: 4096
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 134217728
+        op_kind: matmul
+        output_bytes: 524288
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 16777216
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 134217728
+    - evidence: recovered_from_ir
+      id: xr0:op:11
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 4096
+        M: 32
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 134217728
+        op_kind: matmul
+        output_bytes: 131072
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 16777216
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 134217728
+    - evidence: recovered_from_ir
+      id: xr0:op:12
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:prefix_builder
+      region_role: prefix_builder
+      shape_summary:
+        K: 1024
+        M: 32
+        N: 3072
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 100663296
+        op_kind: matmul
+        output_bytes: 393216
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 12582912
+        semantic_class: attention_qkv_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 100663296
+    - evidence: recovered_from_ir
+      id: xr0:op:13
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 32
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 33554432
+        op_kind: matmul
+        output_bytes: 131072
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4194304
+        semantic_class: attention_output_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 33554432
+    - evidence: recovered_from_ir
+      id: xr0:op:14
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 32
+        N: 4096
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 134217728
+        op_kind: matmul
+        output_bytes: 524288
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 16777216
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 134217728
+    - evidence: recovered_from_ir
+      id: xr0:op:15
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 32
+        N: 4096
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 134217728
+        op_kind: matmul
+        output_bytes: 524288
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 16777216
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 134217728
+    - evidence: recovered_from_ir
+      id: xr0:op:16
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 4096
+        M: 32
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 134217728
+        op_kind: matmul
+        output_bytes: 131072
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 16777216
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 134217728
+    - evidence: recovered_from_ir
+      id: xr0:op:17
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 1024
+        M: 30
+        N: 32
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 983040
+        op_kind: matmul
+        output_bytes: 3840
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 131072
+        semantic_class: unknown
+        shape_class: projection_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 983040
+    - evidence: recovered_from_ir
+      id: xr0:op:18
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: xr0:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 32
+        M: 30
+        N: 32
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 30720
+        op_kind: matmul
+        output_bytes: 3840
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 4096
+        semantic_class: unknown
+        shape_class: projection_like
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 30720
+    - evidence: recovered_from_prov_fqn
+      id: xr0:loop:repeated_head
+      kind: loop_body
+      operator_refs:
+      - xr0:op:0
+      - xr0:op:1
+      - xr0:op:2
+      - xr0:op:3
+      - xr0:op:5
+      - xr0:op:6
+      - xr0:op:8
+      - xr0:op:9
+      - xr0:op:10
+      - xr0:op:11
+      - xr0:op:13
+      - xr0:op:14
+      - xr0:op:15
+      - xr0:op:16
+      - xr0:op:17
+      - xr0:op:18
+      parent_region: xr0:phase:head
+      rate:
+        cadence: K_times_per_replan
+        trip_count: 10
+        trip_count_evidence: recovered_from_model_config
+      region_role: repeated_head
+      work_summary:
+        evidence: recovered_from_ir
+        macs_per_invocation: 908261376
+        macs_per_replan: 9082613760
+    - evidence: recovered_from_prov_fqn
+      id: xr0:state:weights
+      kind: state_object
+      parent_region: null
+      region_role: null
+      state_summary:
+        bytes: 123080704
+        bytes_evidence: recovered_from_ir
+        consumed_by: null
+        implied_abstraction: resident_weight_object
+        lifetime_scope: loop_invariant
+        produced_by: null
+        reused_times: 10
+    rate_model:
+      H:
+        source: recovered_from_model_config
+        value: 10
+      K:
+        source: recovered_from_model_config
+        value: 10
+      control_rate_hz:
+        source: recovered_from_model_config
+        value: 30.0
+      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
+      replan_deadline_s:
+        source: derived_requirement
+        value: 0.333333
+    workload: xr0
+    workload_class: flow_matching_action_head
+  - edges:
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:0
+      target: bitvla:op:3
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:1
+      target: bitvla:op:3
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:2
+      target: bitvla:op:3
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:3
+      target: bitvla:op:4
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:3
+      target: bitvla:op:5
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:4
+      target: bitvla:op:6
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:5
+      target: bitvla:op:6
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:3
+      target: bitvla:op:7
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:6
+      target: bitvla:op:7
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:3
+      target: bitvla:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:6
+      target: bitvla:op:8
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:3
+      target: bitvla:op:9
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:6
+      target: bitvla:op:9
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:7
+      target: bitvla:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:8
+      target: bitvla:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:9
+      target: bitvla:op:10
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:3
+      target: bitvla:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:6
+      target: bitvla:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:10
+      target: bitvla:op:11
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:3
+      target: bitvla:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:6
+      target: bitvla:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:10
+      target: bitvla:op:12
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:11
+      target: bitvla:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:12
+      target: bitvla:op:13
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:3
+      target: bitvla:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:6
+      target: bitvla:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:10
+      target: bitvla:op:14
+    - can_pipeline: false
+      evidence: recovered_from_ir
+      kind: data_dependency
+      note: result of op feeds this op (recovered from SSA use-def)
+      source: bitvla:op:13
+      target: bitvla:op:14
+    - bytes: 5767168
+      can_pipeline: true
+      evidence: recovered_from_ir
+      kind: loop_invariant
+      lifetime: loop_invariant
+      note: read-only across the K-loop; safe to keep resident
+      source: bitvla:state:weights
+      target: bitvla:region:repeated_head
+      tensor: weights
+    - can_pipeline: unknown
+      evidence: recovered_from_prov_fqn
+      kind: control_dependency
+      note: once-per-replan backbone precedes the repeated head (role split recovered from prov.fqn); the specific tensors crossing the boundary are unavailable in the flat capture
+      source: bitvla:phase:backbone
+      target: bitvla:phase:head
+    - can_pipeline: true
+      evidence: derived_requirement
+      kind: pipeline_candidate
+      note: the next replan's backbone shares no loop-carried state with this replan's head, so the two rates are structurally overlappable (async pipelining candidate)
+      source: bitvla:phase:head
+      target: bitvla:phase:backbone
+    nodes:
+    - evidence: recovered_from_prov_fqn
+      id: bitvla:phase:backbone
+      kind: phase
+      parent_region: null
+      rate:
+        cadence: once_per_replan
+        cadence_evidence: recovered_from_prov_fqn
+        invocations: 1
+        invocations_evidence: recovered_from_ir
+        period_evidence: derived_requirement
+        period_s: 1.4
+      region_role: backbone_once
+      state_summary:
+        consumes: []
+        loop_carried_state: []
+        loop_invariant_state: []
+        produces: []
+    - evidence: recovered_from_prov_fqn
+      id: bitvla:phase:head
+      kind: phase
+      parent_region: null
+      rate:
+        cadence: token_loop
+        cadence_evidence: recovered_from_prov_fqn
+        invocations: 7
+        invocations_evidence: recovered_from_model_config
+        period_evidence: unavailable
+        period_s: null
+      region_role: repeated_head
+      state_summary:
+        consumes: []
+        loop_carried_state: []
+        loop_invariant_state:
+        - weights
+        produces: []
+    - evidence: recovered_from_prov_fqn
+      id: bitvla:region:repeated_head
+      kind: region
+      numerical_contract_summary:
+        accumulator_dtype: f32
+        dtype: f32
+        evidence: recovered_from_ir
+        n_matmuls: 15
+      operator_refs:
+      - bitvla:op:0
+      - bitvla:op:1
+      - bitvla:op:2
+      - bitvla:op:3
+      - bitvla:op:4
+      - bitvla:op:5
+      - bitvla:op:6
+      - bitvla:op:7
+      - bitvla:op:8
+      - bitvla:op:9
+      - bitvla:op:10
+      - bitvla:op:11
+      - bitvla:op:12
+      - bitvla:op:13
+      - bitvla:op:14
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: bitvla:phase:head
+      rate:
+        cadence: token_loop
+        invocations: 7
+        invocations_evidence: recovered_from_model_config
+      region_role: repeated_head
+      work_summary:
+        activation_bytes_per_invocation: 1212416
+        activation_bytes_per_replan: 8486912
+        dispatch_count_proxy: 15
+        evidence: recovered_from_ir
+        macs_per_invocation: 46137344
+        macs_per_replan: 322961408
+        matmul_count: 15
+        weight_bytes: 5767168
+    - evidence: recovered_from_ir
+      id: bitvla:op:0
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: bitvla:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 256
+        M: 32
+        N: 256
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 2097152
+        op_kind: matmul
+        output_bytes: 32768
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 262144
+        semantic_class: attention_qkv_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 2097152
+    - evidence: recovered_from_ir
+      id: bitvla:op:1
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: bitvla:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 256
+        M: 32
+        N: 128
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 1048576
+        op_kind: matmul
+        output_bytes: 16384
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 131072
+        semantic_class: attention_qkv_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 1048576
+    - evidence: recovered_from_ir
+      id: bitvla:op:2
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: bitvla:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 256
+        M: 32
+        N: 128
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 1048576
+        op_kind: matmul
+        output_bytes: 16384
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 131072
+        semantic_class: attention_qkv_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 1048576
+    - evidence: recovered_from_ir
+      id: bitvla:op:3
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: bitvla:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 256
+        M: 32
+        N: 256
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 2097152
+        op_kind: matmul
+        output_bytes: 32768
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 262144
+        semantic_class: attention_output_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 2097152
+    - evidence: recovered_from_ir
+      id: bitvla:op:4
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: bitvla:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 256
+        M: 32
+        N: 512
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 4194304
+        op_kind: matmul
+        output_bytes: 65536
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 524288
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 4194304
+    - evidence: recovered_from_ir
+      id: bitvla:op:5
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: bitvla:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 256
+        M: 32
+        N: 512
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 4194304
+        op_kind: matmul
+        output_bytes: 65536
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 524288
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 4194304
+    - evidence: recovered_from_ir
+      id: bitvla:op:6
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: bitvla:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 512
+        M: 32
+        N: 256
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 4194304
+        op_kind: matmul
+        output_bytes: 32768
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 524288
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 4194304
+    - evidence: recovered_from_ir
+      id: bitvla:op:7
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: bitvla:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 256
+        M: 32
+        N: 256
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 2097152
+        op_kind: matmul
+        output_bytes: 32768
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 262144
+        semantic_class: attention_qkv_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 2097152
+    - evidence: recovered_from_ir
+      id: bitvla:op:8
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: bitvla:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 256
+        M: 32
+        N: 128
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 1048576
+        op_kind: matmul
+        output_bytes: 16384
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 131072
+        semantic_class: attention_qkv_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 1048576
+    - evidence: recovered_from_ir
+      id: bitvla:op:9
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: bitvla:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 256
+        M: 32
+        N: 128
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 1048576
+        op_kind: matmul
+        output_bytes: 16384
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 131072
+        semantic_class: attention_qkv_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 1048576
+    - evidence: recovered_from_ir
+      id: bitvla:op:10
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: bitvla:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 256
+        M: 32
+        N: 256
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 2097152
+        op_kind: matmul
+        output_bytes: 32768
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 262144
+        semantic_class: attention_output_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 2097152
+    - evidence: recovered_from_ir
+      id: bitvla:op:11
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: bitvla:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 256
+        M: 32
+        N: 512
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 4194304
+        op_kind: matmul
+        output_bytes: 65536
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 524288
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 4194304
+    - evidence: recovered_from_ir
+      id: bitvla:op:12
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: bitvla:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 256
+        M: 32
+        N: 512
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 4194304
+        op_kind: matmul
+        output_bytes: 65536
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 524288
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 4194304
+    - evidence: recovered_from_ir
+      id: bitvla:op:13
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: bitvla:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 512
+        M: 32
+        N: 256
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 4194304
+        op_kind: matmul
+        output_bytes: 32768
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 524288
+        semantic_class: mlp_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 4194304
+    - evidence: recovered_from_ir
+      id: bitvla:op:14
+      kind: operator
+      numerical_contract_summary:
+        dtype: f32
+        evidence: recovered_from_ir
+      parallelism_summary:
+        overlap_evidence: unavailable
+        region_overlap: unknown
+        shardable_dim: N
+        shardable_evidence: derived_requirement
+      parent_region: bitvla:region:repeated_head
+      region_role: repeated_head
+      shape_summary:
+        K: 256
+        M: 32
+        N: 1024
+        attention_or_conv: unavailable
+        dtype: f32
+        evidence: recovered_from_ir
+        macs: 8388608
+        op_kind: matmul
+        output_bytes: 131072
+        primitive_coverage_ref: tile_waste_table.csv
+        rhs_weight_bytes: 1048576
+        semantic_class: lm_head_projection
+        shape_class: wide_skinny
+      work_summary:
+        evidence: recovered_from_ir
+        macs: 8388608
+    - evidence: recovered_from_prov_fqn
+      id: bitvla:loop:repeated_head
+      kind: loop_body
+      operator_refs:
+      - bitvla:op:0
+      - bitvla:op:1
+      - bitvla:op:2
+      - bitvla:op:3
+      - bitvla:op:4
+      - bitvla:op:5
+      - bitvla:op:6
+      - bitvla:op:7
+      - bitvla:op:8
+      - bitvla:op:9
+      - bitvla:op:10
+      - bitvla:op:11
+      - bitvla:op:12
+      - bitvla:op:13
+      - bitvla:op:14
+      parent_region: bitvla:phase:head
+      rate:
+        cadence: token_loop
+        trip_count: 7
+        trip_count_evidence: recovered_from_model_config
+      region_role: repeated_head
+      work_summary:
+        evidence: recovered_from_ir
+        macs_per_invocation: 46137344
+        macs_per_replan: 322961408
+    - evidence: recovered_from_prov_fqn
+      id: bitvla:state:weights
+      kind: state_object
+      parent_region: null
+      region_role: null
+      state_summary:
+        bytes: 5767168
+        bytes_evidence: recovered_from_ir
+        consumed_by: null
+        implied_abstraction: resident_weight_object
+        lifetime_scope: loop_invariant
+        produced_by: null
+        reused_times: 7
+    rate_model:
+      H:
+        source: recovered_from_model_config
+        value: 7
+      K:
+        source: recovered_from_model_config
+        value: 7
+      control_rate_hz:
+        source: recovered_from_model_config
+        value: 5.0
+      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
+      replan_deadline_s:
+        source: derived_requirement
+        value: 1.4
+    workload: bitvla
+    workload_class: autoregressive_decode
   node_kinds:
   - operator
   - region

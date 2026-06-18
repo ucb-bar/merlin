@@ -115,3 +115,25 @@ sharding_opportunities:
       M: 128
       N: 0
     workload: pi05
+  - clean_8way_shards:
+      K: 19
+      M: 10
+      N: 19
+    evidence: recovered_from_ir
+    ops: 19
+    tailed_8way_shards:
+      K: 0
+      M: 4
+      N: 0
+    workload: xr0
+  - clean_8way_shards:
+      K: 15
+      M: 15
+      N: 15
+    evidence: recovered_from_ir
+    ops: 15
+    tailed_8way_shards:
+      K: 0
+      M: 0
+      N: 0
+    workload: bitvla

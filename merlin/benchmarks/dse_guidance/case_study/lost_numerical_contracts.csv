@@ -53,3 +53,15 @@ pi05,packed_lowbit_layout,lost,unavailable,weights stored in dense f32 layout �
 pi05,dequant_op,unavailable,unavailable,no dequant op in the capture (folded into f32 weights)
 pi05,requant_op,unavailable,unavailable,no requant op in the capture (f32 datapath)
 pi05,sparsity_metadata,unavailable,unavailable,weights dense — no structured-sparsity metadata
+xr0,low_bit_weight_storage,lost,unavailable,weights are f32 in the capture (dequantized) — native low-bit storage erased
+xr0,scale_zero_point_metadata,erased,unavailable,scales/zero-points folded away when the capture was dequantized
+xr0,packed_lowbit_layout,lost,unavailable,weights stored in dense f32 layout — packed sub-byte layout erased
+xr0,dequant_op,unavailable,unavailable,no dequant op in the capture (folded into f32 weights)
+xr0,requant_op,unavailable,unavailable,no requant op in the capture (f32 datapath)
+xr0,sparsity_metadata,unavailable,unavailable,weights dense — no structured-sparsity metadata
+bitvla,low_bit_weight_storage,lost,unavailable,weights are f32 in the capture (dequantized) — native low-bit storage erased
+bitvla,scale_zero_point_metadata,erased,unavailable,scales/zero-points folded away when the capture was dequantized
+bitvla,packed_lowbit_layout,lost,unavailable,weights stored in dense f32 layout — packed sub-byte layout erased
+bitvla,dequant_op,unavailable,unavailable,no dequant op in the capture (folded into f32 weights)
+bitvla,requant_op,unavailable,unavailable,no requant op in the capture (f32 datapath)
+bitvla,sparsity_metadata,unavailable,unavailable,weights dense — no structured-sparsity metadata

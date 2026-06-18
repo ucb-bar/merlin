@@ -6,6 +6,7 @@ runtime_object_candidates:
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -15,11 +16,13 @@ runtime_object_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - metadata: state dtype, shape, update site, lifetime=across_K
     object: loop_carried_state_handle
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: possible
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -29,11 +32,13 @@ runtime_object_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - metadata: trip_count, body_region_handle, loop_carried/invariant handles, event_in/out
     object: bounded_loop_command
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: possible
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -43,11 +48,13 @@ runtime_object_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - metadata: region_handle, dependency list
     object: region_level_dispatch
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: possible
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -57,11 +64,13 @@ runtime_object_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - metadata: command stream, reusable across replans
     object: persistent_command_buffer
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: possible
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -71,11 +80,13 @@ runtime_object_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - metadata: event id, producer, consumer
     object: event_token
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -85,11 +96,13 @@ runtime_object_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - metadata: queue id, depth
     object: async_queue
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -99,11 +112,13 @@ runtime_object_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - metadata: chunk producer, control consumer, depth
     object: producer_consumer_queue
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -116,6 +131,7 @@ runtime_object_candidates:
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -128,6 +144,7 @@ runtime_object_candidates:
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -137,11 +154,13 @@ runtime_object_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - metadata: per-stream descriptor (weight/activation/output)
     object: multi_stream_dma_descriptor
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -151,11 +170,13 @@ runtime_object_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - metadata: prefetch target, depth, trigger
     object: prefetch_descriptor
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -165,11 +186,13 @@ runtime_object_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - metadata: token trip count, kv handle, loop-carried token state
     object: decode_loop_controller
     required_runtime_support: object ABI + lifetime tracking + metadata
     status: possible
     supporting_workloads:
+    - bitvla
     - molmoact
     - openvla
     - small_llama

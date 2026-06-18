@@ -5,7 +5,7 @@
 ## one_bigger_unit
 
 **Evidence for:**
-- low inter-op parallelism (avg 1.277×, 7/9 workloads near-sequential) — a single large unit is not starved by inter-op concurrency
+- low inter-op parallelism (avg 1.291×, 9/11 workloads near-sequential) — a single large unit is not starved by inter-op concurrency
 - some workloads are dominated by one op
 
 **Evidence against:**
@@ -17,12 +17,12 @@
 
 **Evidence for:**
 - 2 workload(s) expose some inter-op parallelism
-- 1738 (op,axis) M/N shards split with no tail — reduction-free replication
+- 1797 (op,axis) M/N shards split with no tail — reduction-free replication
 
 **Blocked by:**
 - reduction/partial-sum cost for K-sharding is unknown (not measured)
 - memory bandwidth is unknown — replicas may contend for weight reload
-- data dependencies serialize work (avg parallelism only 1.277×)
+- data dependencies serialize work (avg parallelism only 1.291×)
 
 ## multiple_specialized_units
 

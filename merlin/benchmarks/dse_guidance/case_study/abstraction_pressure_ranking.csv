@@ -1,11 +1,11 @@
 axis,system_abstraction,n_workloads,n_regions,evidence_strength,blocked_by
-packed_layout_preservation,packed_weight_cache / layout_persistent_buffer,9,9,strong,missing_calibration
-resident_action_head_weights,resident_weight_object,9,9,strong,missing_calibration
-async_chunk_overlap,double_buffered_replan_state + async_queue,9,0,structural_only,missing_calibration
-autonomous_K_loop,bounded_loop_command + loop_carried_state_handle,9,0,structural_only,missing_calibration
-backbone_head_partition,phase_boundary / region_handle (slow/fast split),9,0,structural_only,missing_calibration
-command_batching,command_buffer,9,0,structural_only,missing_calibration
-fused_requant_epilogue,accumulator_object + requant_epilogue,9,0,structural_only,missing intermediate-materialization measurement
-resident_packed_lowbit_weights,packed_lowbit_tensor + resident_weight_object + scale_object,9,0,structural_only,missing accuracy sweep + low-bit kernel calibration + resident-capacity model
-decode_kv_cache_path,decode_kv_cache_path,4,0,structural_only,missing_calibration
-quantized_KV_cache,resident_KV_cache (quantized),4,0,structural_only,missing KV-size profile + KV-quant accuracy sweep
+packed_layout_preservation,packed_weight_cache / layout_persistent_buffer,11,11,strong,missing_calibration
+resident_action_head_weights,resident_weight_object,11,11,strong,missing_calibration
+async_chunk_overlap,double_buffered_replan_state + async_queue,11,0,structural_only,missing_calibration
+autonomous_K_loop,bounded_loop_command + loop_carried_state_handle,11,0,structural_only,missing_calibration
+backbone_head_partition,phase_boundary / region_handle (slow/fast split),11,0,structural_only,missing_calibration
+command_batching,command_buffer,11,0,structural_only,missing_calibration
+fused_requant_epilogue,accumulator_object + requant_epilogue,11,0,structural_only,missing intermediate-materialization measurement
+resident_packed_lowbit_weights,packed_lowbit_tensor + resident_weight_object + scale_object,11,0,structural_only,missing accuracy sweep + low-bit kernel calibration + resident-capacity model
+decode_kv_cache_path,decode_kv_cache_path,5,0,structural_only,missing_calibration
+quantized_KV_cache,resident_KV_cache (quantized),5,0,structural_only,missing KV-size profile + KV-quant accuracy sweep

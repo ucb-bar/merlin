@@ -12,3 +12,7 @@ smolvla,backbone_once,2,2,yes,yes,346644992,343889664,426246144,172633664,345267
 smolvla,repeated_head,2,2,yes,yes,2049408,2094720,31493120,1036032,2072064,derived_requirement
 pi05,repeated_head,2,2,yes,yes,1944086784,2643781888,9210953728,1146967168,2293934336,derived_requirement
 pi05,backbone_once,2,2,yes,yes,838287360,841039872,4961157120,419831808,839663616,derived_requirement
+xr0,repeated_head,2,2,yes,yes,2097792,2891264,123080704,1247264,2494528,derived_requirement
+xr0,backbone_once,2,2,yes,yes,4096,24576,25165824,7168,14336,derived_requirement
+xr0,prefix_builder,2,2,yes,yes,262144,786432,25165824,262144,524288,derived_requirement
+bitvla,repeated_head,2,2,yes,yes,557056,655360,5767168,303104,606208,derived_requirement

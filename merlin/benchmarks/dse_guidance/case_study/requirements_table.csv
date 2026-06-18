@@ -125,3 +125,31 @@ pi05,repeated_head,resident_capacity_fp8,2302738432,B,recovered_from_ir,dtype-sc
 pi05,repeated_head,resident_capacity_int8,2302738432,B,recovered_from_ir,dtype-scaled from captured element count
 pi05,repeated_head,resident_capacity_int4,1151369216,B,recovered_from_ir,dtype-scaled from captured element count
 pi05,repeated_head,resident_capacity_fp6,1727053824,B,recovered_from_ir,dtype-scaled from captured element count
+xr0,repeated_head,macs_per_replan,9082613760.0,MAC,recovered_from_ir,macs_per_step x K=10
+xr0,repeated_head,resident_capacity_required,123080704.0,B,recovered_from_ir,action-head weights (f32); resident set to avoid reloads
+xr0,repeated_head,weight_reload_bytes_per_replan,1230807040.0,B,recovered_from_ir,naive reload: weight_bytes x K=10
+xr0,repeated_head,avoidable_weight_reload_bytes,1107726336.0,B,recovered_from_ir,"removed by residency (keep 1 load, avoid K-1)"
+xr0,repeated_head,dispatches_per_replan,160.0,dispatch,derived_requirement,dispatches_per_step x K=10
+xr0,repeated_head,required_compute_rate,27247841280.0,MAC/s,derived_requirement,macs_per_replan / deadline
+xr0,repeated_head,required_weight_bandwidth,3692421120.0,B/s,derived_requirement,naive reload bandwidth if non-resident
+xr0,repeated_head,required_activation_bandwidth,149671680.0,B/s,derived_requirement,activation traffic / deadline
+xr0,repeated_head,required_command_rate,480.0,dispatch/s,derived_requirement,host command issue rate to meet deadline
+xr0,repeated_head,resident_capacity_bf16,61540352,B,recovered_from_ir,dtype-scaled from captured element count
+xr0,repeated_head,resident_capacity_fp8,30770176,B,recovered_from_ir,dtype-scaled from captured element count
+xr0,repeated_head,resident_capacity_int8,30770176,B,recovered_from_ir,dtype-scaled from captured element count
+xr0,repeated_head,resident_capacity_int4,15385088,B,recovered_from_ir,dtype-scaled from captured element count
+xr0,repeated_head,resident_capacity_fp6,23077632,B,recovered_from_ir,dtype-scaled from captured element count
+bitvla,repeated_head,macs_per_replan,322961408.0,MAC,recovered_from_ir,macs_per_step x K=7
+bitvla,repeated_head,resident_capacity_required,5767168.0,B,recovered_from_ir,action-head weights (f32); resident set to avoid reloads
+bitvla,repeated_head,weight_reload_bytes_per_replan,40370176.0,B,recovered_from_ir,naive reload: weight_bytes x K=7
+bitvla,repeated_head,avoidable_weight_reload_bytes,34603008.0,B,recovered_from_ir,"removed by residency (keep 1 load, avoid K-1)"
+bitvla,repeated_head,dispatches_per_replan,105.0,dispatch,derived_requirement,dispatches_per_step x K=7
+bitvla,repeated_head,required_compute_rate,230686720.0,MAC/s,derived_requirement,macs_per_replan / deadline
+bitvla,repeated_head,required_weight_bandwidth,28835840.0,B/s,derived_requirement,naive reload bandwidth if non-resident
+bitvla,repeated_head,required_activation_bandwidth,6062080.0,B/s,derived_requirement,activation traffic / deadline
+bitvla,repeated_head,required_command_rate,75.0,dispatch/s,derived_requirement,host command issue rate to meet deadline
+bitvla,repeated_head,resident_capacity_bf16,2883584,B,recovered_from_ir,dtype-scaled from captured element count
+bitvla,repeated_head,resident_capacity_fp8,1441792,B,recovered_from_ir,dtype-scaled from captured element count
+bitvla,repeated_head,resident_capacity_int8,1441792,B,recovered_from_ir,dtype-scaled from captured element count
+bitvla,repeated_head,resident_capacity_int4,720896,B,recovered_from_ir,dtype-scaled from captured element count
+bitvla,repeated_head,resident_capacity_fp6,1081344,B,recovered_from_ir,dtype-scaled from captured element count

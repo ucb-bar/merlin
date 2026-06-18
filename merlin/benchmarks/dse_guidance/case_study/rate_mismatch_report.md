@@ -15,6 +15,8 @@
 | molmoact | once_per_replan | token_loop | 8 | 8 | 5.0 | 1.6 |
 | smolvla | once_per_replan | K_times_per_replan | 10 | 50 | 30.0 | 1.666667 |
 | pi05 | once_per_replan | K_times_per_replan | 10 | 50 | 50.0 | 1.0 |
+| xr0 | once_per_replan | K_times_per_replan | 10 | 10 | 30.0 | 0.333333 |
+| bitvla | once_per_replan | token_loop | 7 | 7 | 5.0 | 1.4 |
 
 ## Provenance of every field
 
@@ -34,5 +36,7 @@
 - **molmoact:** 44 `data_dependency` edges recovered from the SSA use-def graph, plus the backbone→head `control_dependency`, the loop-invariant weight edge, and the cross-replan `pipeline_candidate`. Every edge carries a recovered/derived evidence label.
 - **smolvla:** 695 `data_dependency` edges recovered from the SSA use-def graph, plus the backbone→head `control_dependency`, the loop-invariant weight edge, and the cross-replan `pipeline_candidate`. Every edge carries a recovered/derived evidence label.
 - **pi05:** 14349 `data_dependency` edges recovered from the SSA use-def graph, plus the backbone→head `control_dependency`, the loop-invariant weight edge, and the cross-replan `pipeline_candidate`. Every edge carries a recovered/derived evidence label.
+- **xr0:** 46 `data_dependency` edges recovered from the SSA use-def graph, plus the backbone→head `control_dependency`, the loop-invariant weight edge, and the cross-replan `pipeline_candidate`. Every edge carries a recovered/derived evidence label.
+- **bitvla:** 28 `data_dependency` edges recovered from the SSA use-def graph, plus the backbone→head `control_dependency`, the loop-invariant weight edge, and the cross-replan `pipeline_candidate`. Every edge carries a recovered/derived evidence label.
 
 The graph is a complete **structural** multi-rate contract: every node and edge is recovered from the capture, the model config, or derived from them — what runs at which rate, which state persists, and which operator feeds which. Per-phase wall-clock timing is a runtime *measurement* (orthogonal to this static contract), not a missing structural fact.

@@ -1,0 +1,38 @@
+# region_attribution (Level-1, prov.fqn): bitvla
+topology_recovery:
+  attribution_status: attributed
+  level: 1
+  regions:
+  - attribution_status: attributed
+    confidence: 0.7
+    facts:
+      activation_bytes_per_invocation: 1212416
+      activation_bytes_total: 8486912
+      invocations: 7
+      macs_per_invocation: 46137344
+      macs_total: 322961408
+      matmul_count: 15
+      weight_bytes: 5767168
+    invocations: 7
+    matmul_count_attributed: 15
+    reason: 15 matmuls assigned by prov_fqn
+    role: repeated_head
+    source: prov_fqn
+  repeated_shape_signatures:
+  - count: 4
+    signature:
+    - 32
+    - 256
+    - 256
+  - count: 4
+    signature:
+    - 32
+    - 256
+    - 128
+  - count: 4
+    signature:
+    - 32
+    - 256
+    - 512
+  unresolved: []
+workload: bitvla

@@ -241,3 +241,55 @@ pipeline_envelope:
       - weights
       state_outputs: []
     workload: pi05
+  - phases:
+    - cadence: once_per_replan
+      candidate_resource_class: skinny_gemm_or_gemv
+      deadline_s: 0.333333
+      evidence: recovered_from_prov_fqn
+      invocations: 1
+      missing: []
+      period_s: 0.333333
+      phase: backbone
+      phase_class: backbone_or_encoder
+      state_inputs: []
+      state_outputs: []
+    - cadence: K_times_per_replan
+      candidate_resource_class: skinny_gemm_or_gemv
+      deadline_s: 0.333333
+      evidence: recovered_from_prov_fqn
+      invocations: 10
+      missing:
+      - per-phase wall-clock period (runtime measurement)
+      period_s: unavailable
+      phase: head
+      phase_class: repeated_action_head
+      state_inputs:
+      - weights
+      state_outputs: []
+    workload: xr0
+  - phases:
+    - cadence: once_per_replan
+      candidate_resource_class: unavailable
+      deadline_s: 1.4
+      evidence: recovered_from_prov_fqn
+      invocations: 1
+      missing: []
+      period_s: 1.4
+      phase: backbone
+      phase_class: backbone_or_encoder
+      state_inputs: []
+      state_outputs: []
+    - cadence: token_loop
+      candidate_resource_class: skinny_gemm_or_gemv
+      deadline_s: 1.4
+      evidence: recovered_from_prov_fqn
+      invocations: 7
+      missing:
+      - per-phase wall-clock period (runtime measurement)
+      period_s: unavailable
+      phase: head
+      phase_class: decoder_token_step
+      state_inputs:
+      - weights
+      state_outputs: []
+    workload: bitvla

@@ -34,12 +34,13 @@
     "top_by_evidence_breadth": [
       {
         "abstraction": "resident_weight_object",
-        "boundary_pressure_score": 14,
+        "boundary_pressure_score": 16,
         "strong_levels": [
           "runtime_hal_object",
           "command_buffer_or_command_isa"
         ],
         "supporting_workloads": [
+          "bitvla",
           "groot_n1d7",
           "molmoact",
           "openvla",
@@ -48,17 +49,19 @@
           "rdt2",
           "small_llama",
           "smolvla",
-          "tiny_llama"
+          "tiny_llama",
+          "xr0"
         ]
       },
       {
         "abstraction": "region_level_dispatch",
-        "boundary_pressure_score": 13,
+        "boundary_pressure_score": 15,
         "strong_levels": [
           "command_buffer_or_command_isa",
           "device_microcode_or_controller"
         ],
         "supporting_workloads": [
+          "bitvla",
           "groot_n1d7",
           "molmoact",
           "openvla",
@@ -67,17 +70,19 @@
           "rdt2",
           "small_llama",
           "smolvla",
-          "tiny_llama"
+          "tiny_llama",
+          "xr0"
         ]
       },
       {
         "abstraction": "event_token",
-        "boundary_pressure_score": 13,
+        "boundary_pressure_score": 15,
         "strong_levels": [
           "runtime_hal_object",
           "command_buffer_or_command_isa"
         ],
         "supporting_workloads": [
+          "bitvla",
           "groot_n1d7",
           "molmoact",
           "openvla",
@@ -86,17 +91,19 @@
           "rdt2",
           "small_llama",
           "smolvla",
-          "tiny_llama"
+          "tiny_llama",
+          "xr0"
         ]
       },
       {
         "abstraction": "async_queue",
-        "boundary_pressure_score": 13,
+        "boundary_pressure_score": 15,
         "strong_levels": [
           "runtime_hal_object",
           "command_buffer_or_command_isa"
         ],
         "supporting_workloads": [
+          "bitvla",
           "groot_n1d7",
           "molmoact",
           "openvla",
@@ -105,17 +112,19 @@
           "rdt2",
           "small_llama",
           "smolvla",
-          "tiny_llama"
+          "tiny_llama",
+          "xr0"
         ]
       },
       {
         "abstraction": "dma_engine",
-        "boundary_pressure_score": 13,
+        "boundary_pressure_score": 15,
         "strong_levels": [
           "runtime_hal_object",
           "command_buffer_or_command_isa"
         ],
         "supporting_workloads": [
+          "bitvla",
           "groot_n1d7",
           "molmoact",
           "openvla",
@@ -124,18 +133,20 @@
           "rdt2",
           "small_llama",
           "smolvla",
-          "tiny_llama"
+          "tiny_llama",
+          "xr0"
         ]
       },
       {
         "abstraction": "partial_sum_object",
-        "boundary_pressure_score": 12,
+        "boundary_pressure_score": 14,
         "strong_levels": [
           "accelerator_isa",
           "device_microcode_or_controller",
           "fixed_hardware_datapath"
         ],
         "supporting_workloads": [
+          "bitvla",
           "groot_n1d7",
           "molmoact",
           "openvla",
@@ -144,17 +155,19 @@
           "rdt2",
           "small_llama",
           "smolvla",
-          "tiny_llama"
+          "tiny_llama",
+          "xr0"
         ]
       },
       {
         "abstraction": "loop_carried_state_handle",
-        "boundary_pressure_score": 11,
+        "boundary_pressure_score": 13,
         "strong_levels": [
           "command_buffer_or_command_isa",
           "device_microcode_or_controller"
         ],
         "supporting_workloads": [
+          "bitvla",
           "groot_n1d7",
           "molmoact",
           "openvla",
@@ -163,17 +176,19 @@
           "rdt2",
           "small_llama",
           "smolvla",
-          "tiny_llama"
+          "tiny_llama",
+          "xr0"
         ]
       },
       {
         "abstraction": "bounded_loop_command",
-        "boundary_pressure_score": 11,
+        "boundary_pressure_score": 13,
         "strong_levels": [
           "command_buffer_or_command_isa",
           "device_microcode_or_controller"
         ],
         "supporting_workloads": [
+          "bitvla",
           "groot_n1d7",
           "molmoact",
           "openvla",
@@ -182,7 +197,8 @@
           "rdt2",
           "small_llama",
           "smolvla",
-          "tiny_llama"
+          "tiny_llama",
+          "xr0"
         ]
       }
     ]
@@ -194,6 +210,22 @@
     "real (target) command-submit / sync latency"
   ],
   "per_workload": {
+    "bitvla": {
+      "K": 7,
+      "K_source": "recovered_from_model_config",
+      "accuracy_int8": "pass",
+      "class": "autoregressive_vla/action_token_decode",
+      "head_weight_bytes": 5767168,
+      "missing_before_quantitative_dse": [
+        "real (target) command-submit / sync latency",
+        "K / control-rate from the real deployment (currently reference values)"
+      ],
+      "ready_quantitative_dse": false,
+      "ready_structural_dse": true,
+      "roles": [
+        "repeated_head"
+      ]
+    },
     "groot_n1d7": {
       "K": 4,
       "K_source": "recovered_from_model_config",
@@ -346,6 +378,25 @@
       "roles": [
         "repeated_head"
       ]
+    },
+    "xr0": {
+      "K": 10,
+      "K_source": "recovered_from_model_config",
+      "accuracy_int8": "unavailable",
+      "class": "diffusion/denoise_steps",
+      "head_weight_bytes": 123080704,
+      "missing_before_quantitative_dse": [
+        "quantization accuracy gates (per candidate low-bit format)",
+        "real (target) command-submit / sync latency",
+        "K / control-rate from the real deployment (currently reference values)"
+      ],
+      "ready_quantitative_dse": false,
+      "ready_structural_dse": true,
+      "roles": [
+        "backbone_once",
+        "prefix_builder",
+        "repeated_head"
+      ]
     }
   },
   "schema_version": "1",
@@ -407,6 +458,7 @@
   ],
   "what_is_not_claimed": "no speedup, cycles, area, energy, or a chosen/ranked design; this is a DSE search space + workload contract, not a selection. Magnitudes are small random-init capture instances.",
   "workloads": [
+    "bitvla",
     "groot_n1d7",
     "molmoact",
     "openvla",
@@ -415,6 +467,7 @@
     "rdt2",
     "small_llama",
     "smolvla",
-    "tiny_llama"
+    "tiny_llama",
+    "xr0"
   ]
 }

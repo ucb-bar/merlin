@@ -3,7 +3,7 @@ processing_unit_guidance:
   avg_inter_op_parallelism:
     evidence: derived_requirement
     note: work/span average across workloads — not a speedup
-    value: 1.277
+    value: 1.291
   note: monolithic vs. replicated vs. heterogeneous processing-unit evidence. This emits evidence and search-space implications only — it does NOT select an architecture, and makes no speedup/cycle/area claim.
   options:
   - evidence_against:
@@ -11,16 +11,16 @@ processing_unit_guidance:
     - GEMV/decode shapes (skinny family) are a poor match for a square matrix unit
     - phases run at different cadences (backbone vs head vs control) — pipelineable
     evidence_for:
-    - low inter-op parallelism (avg 1.277×, 7/9 workloads near-sequential) — a single large unit is not starved by inter-op concurrency
+    - low inter-op parallelism (avg 1.291×, 9/11 workloads near-sequential) — a single large unit is not starved by inter-op concurrency
     - some workloads are dominated by one op
     option: one_bigger_unit
   - blocked_by:
     - reduction/partial-sum cost for K-sharding is unknown (not measured)
     - memory bandwidth is unknown — replicas may contend for weight reload
-    - data dependencies serialize work (avg parallelism only 1.277×)
+    - data dependencies serialize work (avg parallelism only 1.291×)
     evidence_for:
     - 2 workload(s) expose some inter-op parallelism
-    - 1738 (op,axis) M/N shards split with no tail — reduction-free replication
+    - 1797 (op,axis) M/N shards split with no tail — reduction-free replication
     option: multiple_identical_units
   - candidate_units:
     - evidence: recovered_from_ir

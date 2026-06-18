@@ -695,3 +695,157 @@ pipeline_candidates:
       what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
       why: attention / KV structure is lowered into the matmul projections and not recoverable
     workload: pi05
+  - candidates:
+    - can_overlap: 'yes'
+      dependency_type: cross_replan_no_shared_state
+      event_queue_support:
+      - async_queue
+      - event_token
+      evidence: derived_requirement
+      missing_evidence: per-phase timing (to size the overlap)
+      required_abstractions:
+      - double_buffered_action_chunk
+      - async_queue
+      - event_token
+      - prefix_state_object
+      required_buffer_count: 2
+      source_phase: backbone(next replan)
+      target_phase: action_execution(current chunk)
+      what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
+      why: backbone of replan n+1 shares no loop-carried state with replan n's head, so the rates decouple
+    - can_overlap: 'yes'
+      dependency_type: read_only_resident_state
+      event_queue_support:
+      - async_queue
+      evidence: recovered_from_prov_fqn
+      missing_evidence: DRAM bandwidth (to size prefetch depth)
+      required_abstractions:
+      - resident_weight_object
+      - async_queue
+      required_buffer_count: 2
+      source_phase: dma_prefetch(resident weights)
+      target_phase: head
+      what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
+      why: loop-invariant weights are read-only across the K-loop, so the next tile can be prefetched while the current step computes
+    - can_overlap: 'yes'
+      dependency_type: bounded_loop
+      event_queue_support:
+      - region_level_dispatch
+      evidence: recovered_from_prov_fqn
+      missing_evidence: host dispatch/sync latency (to value the saved re-dispatches)
+      required_abstractions:
+      - bounded_loop_command
+      - loop_carried_state_handle
+      - resident_weight_object
+      required_buffer_count: 1
+      source_phase: head
+      target_phase: head
+      what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
+      why: the repeated head is a bounded K-loop with loop-invariant weights — representable as a device-side bounded loop command, removing host re-dispatch per step
+    - can_overlap: unknown
+      dependency_type: different_cadence_producer_consumer
+      event_queue_support:
+      - producer_consumer_queue
+      - event_token
+      evidence: unavailable
+      missing_evidence: no control loop in this workload's architecture
+      required_abstractions:
+      - double_buffered_action_chunk
+      - producer_consumer_queue
+      - event_token
+      required_buffer_count: unavailable
+      source_phase: control_tick_consumer
+      target_phase: replan_inference(next)
+      what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
+      why: this workload has no real-time control loop (not a VLA action head) — no control tick to decouple
+    - can_overlap: unknown
+      dependency_type: kv_dependency
+      event_queue_support: []
+      evidence: unavailable
+      missing_evidence: attention/KV structure (a loop-preserving capture would expose it)
+      required_abstractions:
+      - producer_consumer_queue
+      - loop_carried_state_handle
+      required_buffer_count: unavailable
+      source_phase: decode_token_step
+      target_phase: kv_cache_movement
+      what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
+      why: attention / KV structure is lowered into the matmul projections and not recoverable
+    workload: xr0
+  - candidates:
+    - can_overlap: unknown
+      dependency_type: cross_replan_no_shared_state
+      event_queue_support:
+      - async_queue
+      - event_token
+      evidence: unavailable
+      missing_evidence: backbone compute is not in this capture
+      required_abstractions:
+      - double_buffered_action_chunk
+      - async_queue
+      - event_token
+      - prefix_state_object
+      required_buffer_count: unavailable
+      source_phase: backbone(next replan)
+      target_phase: action_execution(current chunk)
+      what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
+      why: no backbone compute is recovered in this capture (the capture is the head only) — the overlap target is not present
+    - can_overlap: 'yes'
+      dependency_type: read_only_resident_state
+      event_queue_support:
+      - async_queue
+      evidence: recovered_from_prov_fqn
+      missing_evidence: DRAM bandwidth (to size prefetch depth)
+      required_abstractions:
+      - resident_weight_object
+      - async_queue
+      required_buffer_count: 2
+      source_phase: dma_prefetch(resident weights)
+      target_phase: head
+      what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
+      why: loop-invariant weights are read-only across the K-loop, so the next tile can be prefetched while the current step computes
+    - can_overlap: 'yes'
+      dependency_type: bounded_loop
+      event_queue_support:
+      - region_level_dispatch
+      evidence: recovered_from_prov_fqn
+      missing_evidence: host dispatch/sync latency (to value the saved re-dispatches)
+      required_abstractions:
+      - bounded_loop_command
+      - loop_carried_state_handle
+      - resident_weight_object
+      required_buffer_count: 1
+      source_phase: head
+      target_phase: head
+      what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
+      why: the repeated head is a bounded K-loop with loop-invariant weights — representable as a device-side bounded loop command, removing host re-dispatch per step
+    - can_overlap: 'yes'
+      dependency_type: different_cadence_producer_consumer
+      event_queue_support:
+      - producer_consumer_queue
+      - event_token
+      evidence: derived_requirement
+      missing_evidence: the control-tick consumer is a runtime phase not in the model-forward capture; its timing is unavailable
+      required_abstractions:
+      - double_buffered_action_chunk
+      - producer_consumer_queue
+      - event_token
+      required_buffer_count: 2
+      source_phase: control_tick_consumer
+      target_phase: replan_inference(next)
+      what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
+      why: the control loop consumes H actions at the control rate while the next replan computes — different cadences, no data dependency
+    - can_overlap: unknown
+      dependency_type: kv_dependency
+      event_queue_support: []
+      evidence: unavailable
+      missing_evidence: attention/KV structure (a loop-preserving capture would expose it)
+      required_abstractions:
+      - producer_consumer_queue
+      - loop_carried_state_handle
+      required_buffer_count: unavailable
+      source_phase: decode_token_step
+      target_phase: kv_cache_movement
+      what_is_not_claimed: no speedup, no schedule, no deadline met; structural overlap candidate only
+      why: attention / KV structure is lowered into the matmul projections and not recoverable
+    workload: bitvla

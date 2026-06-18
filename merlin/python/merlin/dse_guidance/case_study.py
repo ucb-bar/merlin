@@ -66,10 +66,10 @@ RECAP_MODELS: dict[str, dict] = {
     "tiny_llama": {"class": "llm/token_decode", "K": 32,
                    "note": "tiny Llama decoder (2 layers)"},
     # full-corpus recaptures (prov.fqn via model2MLIR; small/random configs, structure real).
-    # Studyable = parses with the ingest xDSL (shared `} -> (T1,T2)` normalizer) AND has plain-2D
-    # linalg.matmul ops with roles. Deferred (captures exist via m2m): xr0 (batched-attention DiT,
-    # only 2/19 matmuls are plain-2D — needs batch_matmul support); bitvla (BitNet ternary lm — its
-    # linears are not plain linalg.matmul).
+    # Studyable = parses with the ingest xDSL (shared `} -> (T1,T2)` normalizer) AND has linear-layer
+    # GEMMs with prov.fqn roles. xr0's linears are batched (3D/4D activation x 2D weight) and bitvla's
+    # are plain 2D -- both handled by extract_matmuls' leading-dim fold (attention bmms stay uncounted,
+    # uniformly with the rest of the corpus, which counts linear-layer GEMMs).
     "rdt2": {"class": "diffusion/denoise_steps", "K": 5,
              "note": "RDT2 diffusion denoise step (depth 2, random init)"},
     "groot_n1d7": {"class": "diffusion/denoise_steps", "K": 4,
@@ -80,6 +80,10 @@ RECAP_MODELS: dict[str, dict] = {
                 "note": "SmolVLA: SmolVLM2 backbone + action expert, denoise step (2 vlm layers)"},
     "pi05": {"class": "flow_matching/denoise_steps", "K": 10,
              "note": "pi0.5: PaliGemma backbone + gemma action expert, flow-matching step"},
+    "xr0": {"class": "diffusion/denoise_steps", "K": 10,
+            "note": "XR-0 batched-attention DiT denoise step (2 dit layers, random init)"},
+    "bitvla": {"class": "autoregressive_vla/action_token_decode", "K": 7,
+               "note": "BitVLA: BitNet ternary LM decode (2 layers, fp32 fake-quant capture)"},
 }
 
 
