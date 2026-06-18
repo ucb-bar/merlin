@@ -1,0 +1,27 @@
+# int8 (W8A8) baseline RVV target-package — the int8 sibling of hand_v0. Same verbatim schedule;
+# the integer datapath (passes_quant_int: dynamic per-row act-quant, i8xi8->i32, integer
+# softmax/gelu/silu/rmsnorm, requant) is selected by dtype_strategy=int8_w8a8.
+target: rvv
+run_id: hand_v0_int8
+family: vector_schedule
+schedule_format: transform_dialect_mlir
+status: spike_verified
+authoring:
+  mode: hand_curated
+  generated_by_agent: false
+  author: human
+reproducibility:
+  certified_execution_reproducible: true
+  package_regenerable_from_source: true
+inputs:
+  source: "pipeline.py:RVV_TRANSFORM_SCHEDULE (verbatim) + int8 datapath llvmlower/passes_quant_int.py"
+outputs:
+  schedule: schedule.mlir
+  knobs: knobs.yaml
+validation:
+  package_loads_isolated: true
+  gate: "_gate multi-tier: T1 W8A8 cos>0.999 & rel<1e-2, T2 fp32 cos>0.99 & argmax"
+notes: >-
+  The int8 baseline for the K1 multicore board int8 capstone. apply_rvv_package(this) and
+  run_on_k1(this) both honor dtype_strategy via int8_compute=True. Schedule is byte-identical to
+  hand_v0 (the regression test allows hand_v0_int8 to differ only by dtype path, not schedule).

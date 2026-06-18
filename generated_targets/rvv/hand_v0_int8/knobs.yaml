@@ -1,0 +1,19 @@
+# int8 (W8A8) baseline RVV package. Schedule is IDENTICAL to hand_v0 (verbatim
+# RVV_TRANSFORM_SCHEDULE) — the integer datapath is selected by dtype_strategy=int8_w8a8
+# (-> int8_compute=True -> passes_quant_int), and the SAME transform schedule vectorizes the
+# resulting integer linalg.matmul/batch_matmul by name (element-type agnostic). So only
+# dtype_strategy + expected_instructions differ from hand_v0.
+schedule_file: schedule.mlir
+op_match:
+  - {op: linalg.matmul,       tile: [4, 8, 1],    vector: [4, 8, 1]}
+  - {op: linalg.batch_matmul, tile: [1, 4, 8, 1], vector: [1, 4, 8, 1]}
+lowering_patterns:
+  - lower_contraction
+  - lower_masked_transfers
+  - lower_transpose
+  - lower_shape_cast
+lmul_policy: m1
+cflags: ["-march=rv64gcv", "-fno-vectorize", "-fno-slp-vectorize"]
+dtype_strategy: int8_w8a8
+# MEASURED int8 instruction set (small_llama_int8): integer multiply/widen + i8 loads, NOT vfmacc.
+expected_instructions: [vsetivli, vle8.v, vmul.vv, vsext.vf4]
