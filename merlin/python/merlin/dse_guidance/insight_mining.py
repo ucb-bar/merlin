@@ -85,9 +85,33 @@ FORBIDDEN = ("speedup", "faster", "optimal", "best design", "predicted cycles", 
 
 FACT_COLUMNS = ["fact_id", "workload", "region", "phase", "op_id", "abstraction", "boundary_level",
                 "metric_name", "metric_value", "metric_unit", "source_artifact", "source_phase",
-                "evidence_type", "derivation_type", "evidence_tier", "verification_status",
-                "verifying_check", "corroborated_by", "caveat", "dse_implication",
-                "presentation_candidate"]
+                "evidence_type", "derivation_type", "evidence_tier", "metric_class",
+                "verification_status", "verifying_check", "corroborated_by", "caveat",
+                "dse_implication", "presentation_candidate"]
+
+# SIGNAL metrics = decision-relevant quantities a DSE engine acts on. Only these can become
+# presentation candidates / findings. Everything else (row counts, provenance, redundant
+# corroboration values) is CONTEXT — kept for traceability/coverage, never promoted to a finding.
+# This is the de-noising gate: it keeps real single-source recovered signal (dense/skinny split,
+# proof distribution, dominant shape) AND excludes "n_X = rows in artifact X" padding.
+SIGNAL_METRICS = {
+    "head_weight_bytes", "total_macs", "n_matmuls", "avoidable_weight_reload", "resident_int8_B",
+    "available_parallelism", "serialization", "boundary_pressure_score", "coverage_under_10pct",
+    "max_regret", "accuracy_int8_w8a8", "measured_dispatch_ratio", "matmul_bias_epilogues",
+    "dominant_shape_class", "mac_fraction_dense_gemm", "mac_fraction_skinny_gemm_or_gemv",
+    "compiler_proofs_proven_for_workload", "compiler_proofs_assumed", "compiler_proofs_unknown",
+    "clean_8way_mn_shards", "head_cadence", "accumulator_dtype", "compute_dtype",
+    "lowbit_storage_dequantized_finding", "unit_multiplicity_implication", "overlap_candidates_yes",
+}
+
+
+def metric_class(metric: str, derivation: str) -> str:
+    if derivation == "measured":
+        return "measured"
+    if metric in SIGNAL_METRICS:
+        return "signal"
+    return "context"   # row counts / provenance / redundant corroboration values (traceability only)
+
 
 # metric_name -> the SPECIFIC verify_implementation.py check that independently re-derives it (the
 # per-metric verification basis, replacing the coarse artifact-membership proxy). A metric here is
@@ -254,12 +278,15 @@ def _fact(fid, workload, metric, value, unit, artifact, phase, evidence, *, regi
         "source_phase": phase, "evidence_type": evidence, "derivation_type": _derivation(evidence),
         "evidence_tier": tier,
         "verification_status": _verification_status(metric, evidence, corroborated_by),
+        "metric_class": metric_class(metric, _derivation(evidence)),
         "verifying_check": _METRIC_CHECK.get(metric, ""), "corroborated_by": corroborated_by,
         "caveat": caveat, "dse_implication": implication,
-        # a fact is presentation-worthy only if independently backed: a specific harness check OR
-        # >=2-artifact corroboration. Single-source facts are context, not headline claims.
-        "presentation_candidate": (tier in ("A", "B") and bool(implication)
-                                   and (metric in _METRIC_CHECK or corroborated_by >= 2))}
+        # presentation-worthy = a SIGNAL metric (decision-relevant, not a row-count) that is tier A/B
+        # with an implication. Corroboration / a harness check are reported as STRENGTH (see
+        # corroborated_by + verifying_check), not the candidacy gate -- so real single-source
+        # recovered signal is kept and count-padding is excluded.
+        "presentation_candidate": (metric in SIGNAL_METRICS and tier in ("A", "B")
+                                   and bool(implication))}
 
 
 _SMALL = "magnitudes are small random-init capture instances (structure real)"
@@ -667,7 +694,10 @@ def _all_facts(cs_dir: Path, man: dict, add) -> None:
         add(workload="ALL", abstraction=r["primitive"], metric="max_regret", value=r["max_regret"],
             unit="MAC-fraction", artifact="primitive_regret_table.csv", phase="P5", evidence=_DERIVED,
             implication="cross-workload coverage spread (overfit risk if high)")
-    for r in _csv_rows(cs_dir / "measurement_priority_table.csv"):
+    # cap: emit the top-5 measurements by candidates-unblocked (not all 35 rows -> de-noise)
+    mp = sorted(_csv_rows(cs_dir / "measurement_priority_table.csv"),
+                key=lambda r: -int(r["n_candidates_unblocked"]))[:5]
+    for r in mp:
         add(workload="ALL", metric="measurement_unblocks", value=r["n_candidates_unblocked"],
             unit="candidates", artifact="measurement_priority_table.csv", phase="P4",
             evidence=_DERIVED, caveat=r["measurement"], implication="measurement that unblocks candidates")
@@ -700,12 +730,17 @@ def evidence_strength(facts: list[dict]) -> dict:
     from collections import Counter
     tier = Counter(f["evidence_tier"] for f in facts)
     deriv = Counter(f["derivation_type"] for f in facts)
+    klass = Counter(f["metric_class"] for f in facts)
     by_wl = Counter(f["workload"] for f in facts)
     by_phase = Counter(f["source_phase"] for f in facts)
     by_art = Counter(f["source_artifact"] for f in facts)
     verified = sum(1 for f in facts if f["verification_status"] == "verified")
+    sig = klass.get("signal", 0) + klass.get("measured", 0)
     return {
         "total_facts": len(facts),
+        "signal_facts": sig, "context_facts": klass.get("context", 0),
+        "signal_to_total": round(sig / len(facts), 3) if facts else 0.0,
+        "by_metric_class": dict(klass),
         "by_tier": dict(tier), "by_derivation": dict(deriv),
         "by_workload": dict(by_wl), "by_phase": dict(by_phase), "by_artifact": dict(by_art),
         "verified_facts": verified,
@@ -1093,11 +1128,14 @@ def gap_audit(cs_dir: Path, scope: str, bundle: dict | None = None) -> list[dict
                 and not (f["verifying_check"] or f["corroborated_by"] >= 2):
             g("coarse_verification", f["fact_id"],
               "verified tier-A/B fact lacks a specific check and <2 corroboration", True, "open")
-    # 5 uncorroborated_fact: a presented (candidate) fact with no check and <2 corroboration
+    # 5 uncorroborated_fact: a candidate that is NOT a SIGNAL metric, or is tier C/D (the real fake
+    # risk). A single-source recovered_from_ir SIGNAL fact is legitimate evidence, not fake -- its
+    # single-source status is reported via corroborated_by, not treated as a gap.
     for f in facts:
-        if f["presentation_candidate"] and not f["verifying_check"] and f["corroborated_by"] < 2:
+        if f["presentation_candidate"] and (f["metric_name"] not in SIGNAL_METRICS
+                                            or f["evidence_tier"] in ("C", "D")):
             g("uncorroborated_fact", f["fact_id"],
-              "presented fact confirmed only by its own artifact", True, "open")
+              "candidate is not a tier-A/B signal metric", True, "open")
     # 6 aggregated_finding: a multi-workload finding without a per-workload spread
     for f in findings:
         if len(f["supporting_workloads"]) > 1 and not f.get("per_workload_spread"):
@@ -1163,9 +1201,12 @@ def _inventory_md(inv) -> str:
 
 def _strength_md(s, scope) -> str:
     L = [f"# Evidence-strength report ({scope})\n",
-         f"Total normalized facts: **{s['total_facts']}**. "
-         "Tiers — A: recovered/measured + verified; B: recovered-unverified or derived+verified; "
-         "C: assumed_reference; D: unavailable/unknown.\n",
+         f"Total normalized facts: **{s['total_facts']}** — **{s['signal_facts']} signal/measured** "
+         f"(decision-relevant; can become findings) + **{s['context_facts']} context** "
+         f"(row counts / provenance / corroboration — traceability only, never a finding). "
+         f"signal ratio = {s['signal_to_total']}.\n",
+         "Tiers — A: IR-recovered/measured + verified; B: recovered-unverified or derived+verified; "
+         "C: assumed_reference / config; D: unavailable/unknown.\n",
          "| tier | facts |", "|---|---|"]
     for t in ("A", "B", "C", "D"):
         L.append(f"| {t} | {s['by_tier'].get(t, 0)} |")
