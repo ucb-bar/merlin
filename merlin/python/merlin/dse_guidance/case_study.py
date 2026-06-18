@@ -65,6 +65,18 @@ RECAP_MODELS: dict[str, dict] = {
                     "note": "small Llama decoder (2 layers)"},
     "tiny_llama": {"class": "llm/token_decode", "K": 32,
                    "note": "tiny Llama decoder (2 layers)"},
+    # full-corpus recaptures (prov.fqn via model2MLIR; small/random configs, structure real).
+    # Studyable now = parses with the ingest xDSL AND has plain-2D linalg.matmul ops with roles.
+    # Deferred (captures exist via m2m, see docs/corpus notes): xr0 (batched-attention DiT, only 2/19
+    # matmuls are plain-2D — needs batch_matmul support); bitvla, smolvla (parse-blocked on
+    # tensor.collapse/expand_shape typed-reassociation syntax); pi05 (full-VLM, too large for the
+    # comparable-config corpus).
+    "rdt2": {"class": "diffusion/denoise_steps", "K": 5,
+             "note": "RDT2 diffusion denoise step (depth 2, random init)"},
+    "groot_n1d7": {"class": "diffusion/denoise_steps", "K": 4,
+                   "note": "GR00T N1.5 flow-matching action head (2 layers, random init)"},
+    "molmoact": {"class": "autoregressive_vla/action_token_decode", "K": 8,
+                 "note": "MolmoAct causal LM forward (4 layers, random init)"},
 }
 
 

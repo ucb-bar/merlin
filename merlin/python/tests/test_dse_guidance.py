@@ -2596,7 +2596,8 @@ def test_p16_primitive_set_frontier_monotone_and_set_union():
         den[w] = den.get(w, 0.0) + m
         if any(op_cover[(w, op)].get(p, False) for p in pset):
             num[w] = num.get(w, 0.0) + m
-    assert abs(min(num.get(w, 0.0) / den[w] for w in den) - by[2]["worst"]) < 1e-6
+    # the extractor rounds coverage to 4 decimals, so round the independent recompute the same way
+    assert round(min(num.get(w, 0.0) / den[w] for w in den), 4) == by[2]["worst"]
 
 
 @pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),

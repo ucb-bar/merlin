@@ -1,4 +1,5 @@
 shape_class,op_count,macs_total,mac_fraction,workloads,semantic_roles
-squareish_gemm,2,34377302016,0.8567,rdt,attention_qkv_projection; mlp_projection
-wide_skinny,55,5128716288,0.1278,openvla; rdt; small_llama,attention_output_projection; attention_qkv_projection; lm_head_projection; mlp_projection
-gemv_like,19,623902720,0.0155,rdt; tiny_llama,attention_output_projection; attention_qkv_projection; lm_head_projection; mlp_projection
+squareish_gemm,2,34377302016,0.6707,rdt,attention_qkv_projection; mlp_projection
+wide_skinny,102,16194338816,0.3159,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama,attention_output_projection; attention_qkv_projection; lm_head_projection; mlp_projection; unknown
+gemv_like,29,684064768,0.0133,groot_n1d7; rdt; rdt2; tiny_llama,attention_output_projection; attention_qkv_projection; embedding_projection; lm_head_projection; mlp_projection; unknown
+projection_like,1,2293760,0.0,rdt2,mlp_projection

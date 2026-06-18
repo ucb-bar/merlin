@@ -3,24 +3,24 @@ processing_unit_guidance:
   avg_inter_op_parallelism:
     evidence: derived_requirement
     note: work/span average across workloads — not a speedup
-    value: 1.27
+    value: 1.239
   note: monolithic vs. replicated vs. heterogeneous processing-unit evidence. This emits evidence and search-space implications only — it does NOT select an architecture, and makes no speedup/cycle/area claim.
   options:
   - evidence_against:
-    - 3 distinct geometry classes coexist (gemv_like, squareish_gemm, wide_skinny)
+    - 4 distinct geometry classes coexist (gemv_like, projection_like, squareish_gemm, wide_skinny)
     - GEMV/decode shapes (skinny family) are a poor match for a square matrix unit
     - phases run at different cadences (backbone vs head vs control) — pipelineable
     evidence_for:
-    - low inter-op parallelism (avg 1.27×, 3/4 workloads near-sequential) — a single large unit is not starved by inter-op concurrency
-    - dense GEMM concentrates 86% of MACs in one shape family
+    - low inter-op parallelism (avg 1.239×, 6/7 workloads near-sequential) — a single large unit is not starved by inter-op concurrency
+    - dense GEMM concentrates 67% of MACs in one shape family
     option: one_bigger_unit
   - blocked_by:
     - reduction/partial-sum cost for K-sharding is unknown (not measured)
     - memory bandwidth is unknown — replicas may contend for weight reload
-    - data dependencies serialize work (avg parallelism only 1.27×)
+    - data dependencies serialize work (avg parallelism only 1.239×)
     evidence_for:
     - 1 workload(s) expose some inter-op parallelism
-    - 96 (op,axis) M/N shards split with no tail — reduction-free replication
+    - 172 (op,axis) M/N shards split with no tail — reduction-free replication
     option: multiple_identical_units
   - candidate_units:
     - evidence: recovered_from_ir
@@ -46,8 +46,8 @@ processing_unit_guidance:
       unit: kv_cache_unit
     evidence_against: []
     evidence_for:
-    - 'distinct operator families coexist: dense GEMM 86% of MACs vs skinny/GEMV 14%'
-    - epilogue/requant appears on 31 ops
+    - 'distinct operator families coexist: dense GEMM 67% of MACs vs skinny/GEMV 33%'
+    - epilogue/requant appears on 60 ops
     - DMA/memory can overlap compute (resident loop-invariant weights)
     - backbone and head run at different rates (multi-rate contract)
     - the control loop decouples from replan inference

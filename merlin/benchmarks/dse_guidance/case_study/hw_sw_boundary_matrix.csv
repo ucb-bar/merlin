@@ -1,28 +1,28 @@
 abstraction,compiler_transform,runtime_hal_object,command_buffer_or_command_isa,accelerator_isa,device_microcode_or_controller,fixed_hardware_datapath,supporting_workloads,boundary_pressure_score
-resident_weight_object,possible,strong_candidate,strong_candidate,weak_candidate,possible,not_applicable,openvla; rdt; small_llama; tiny_llama,9
-region_level_dispatch,possible,possible,strong_candidate,possible,strong_candidate,not_applicable,openvla; rdt; small_llama; tiny_llama,8
-event_token,not_applicable,strong_candidate,strong_candidate,weak_candidate,possible,not_applicable,openvla; rdt; small_llama; tiny_llama,8
-async_queue,not_applicable,strong_candidate,strong_candidate,weak_candidate,possible,not_applicable,openvla; rdt; small_llama; tiny_llama,8
-dma_engine,weak_candidate,strong_candidate,strong_candidate,possible,possible,possible,openvla; rdt; small_llama; tiny_llama,8
-partial_sum_object,not_applicable,weak_candidate,possible,strong_candidate,strong_candidate,strong_candidate,openvla; rdt; small_llama; tiny_llama,7
-loop_carried_state_handle,not_applicable,possible,strong_candidate,possible,strong_candidate,possible,openvla; rdt; small_llama; tiny_llama,6
-bounded_loop_command,not_applicable,possible,strong_candidate,possible,strong_candidate,possible,openvla; rdt; small_llama; tiny_llama,6
-persistent_command_buffer,not_applicable,possible,strong_candidate,weak_candidate,strong_candidate,not_applicable,openvla; rdt; small_llama; tiny_llama,6
-producer_consumer_queue,not_applicable,strong_candidate,strong_candidate,weak_candidate,possible,not_applicable,openvla; rdt,6
-multi_stream_dma_descriptor,not_applicable,strong_candidate,strong_candidate,possible,possible,not_applicable,openvla; rdt; small_llama; tiny_llama,6
-prefetch_descriptor,weak_candidate,strong_candidate,strong_candidate,possible,strong_candidate,possible,openvla; rdt; small_llama; tiny_llama,6
-fused_requant_epilogue,possible,not_applicable,possible,possible,possible,possible,openvla; rdt,6
-decode_loop_controller,not_applicable,possible,strong_candidate,possible,strong_candidate,possible,openvla; small_llama; tiny_llama,6
-resident_packed_weight_object,possible,blocked,blocked,blocked,blocked,blocked,openvla; rdt; small_llama; tiny_llama,5
-packed_lowbit_tensor,possible,blocked,blocked,blocked,blocked,blocked,openvla; rdt; small_llama; tiny_llama,5
-scale_object,possible,blocked,blocked,blocked,blocked,blocked,openvla; rdt; small_llama; tiny_llama,5
-double_buffered_action_chunk,not_applicable,strong_candidate,strong_candidate,not_applicable,possible,not_applicable,openvla; rdt,5
-vector_gemv_engine,possible,not_applicable,possible,strong_candidate,possible,strong_candidate,openvla; rdt; small_llama; tiny_llama,5
-epilogue_requant_unit,possible,not_applicable,possible,strong_candidate,possible,strong_candidate,openvla; rdt,5
-accumulator_merge,not_applicable,weak_candidate,possible,strong_candidate,strong_candidate,strong_candidate,openvla; rdt; small_llama; tiny_llama,5
-accumulator_commit,not_applicable,not_applicable,possible,strong_candidate,possible,strong_candidate,openvla; rdt; small_llama; tiny_llama,5
-fused_dequant_matmul,possible,blocked,blocked,blocked,blocked,blocked,openvla; rdt; small_llama; tiny_llama,5
-native_lowbit_matmul,possible,blocked,blocked,blocked,blocked,blocked,openvla; rdt; small_llama; tiny_llama,5
-prefix_kv_object,not_applicable,unavailable,unavailable,unavailable,unavailable,unavailable,openvla; small_llama; tiny_llama,4
+resident_weight_object,possible,strong_candidate,strong_candidate,weak_candidate,possible,not_applicable,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,12
+region_level_dispatch,possible,possible,strong_candidate,possible,strong_candidate,not_applicable,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,11
+event_token,not_applicable,strong_candidate,strong_candidate,weak_candidate,possible,not_applicable,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,11
+async_queue,not_applicable,strong_candidate,strong_candidate,weak_candidate,possible,not_applicable,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,11
+dma_engine,weak_candidate,strong_candidate,strong_candidate,possible,possible,possible,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,11
+partial_sum_object,not_applicable,weak_candidate,possible,strong_candidate,strong_candidate,strong_candidate,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,10
+loop_carried_state_handle,not_applicable,possible,strong_candidate,possible,strong_candidate,possible,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,9
+bounded_loop_command,not_applicable,possible,strong_candidate,possible,strong_candidate,possible,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,9
+persistent_command_buffer,not_applicable,possible,strong_candidate,weak_candidate,strong_candidate,not_applicable,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,9
+producer_consumer_queue,not_applicable,strong_candidate,strong_candidate,weak_candidate,possible,not_applicable,groot_n1d7; molmoact; openvla; rdt; rdt2,9
+multi_stream_dma_descriptor,not_applicable,strong_candidate,strong_candidate,possible,possible,not_applicable,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,9
+prefetch_descriptor,weak_candidate,strong_candidate,strong_candidate,possible,strong_candidate,possible,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,9
+fused_requant_epilogue,possible,not_applicable,possible,possible,possible,possible,groot_n1d7; molmoact; openvla; rdt; rdt2,9
+resident_packed_weight_object,possible,blocked,blocked,blocked,blocked,blocked,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,8
+packed_lowbit_tensor,possible,blocked,blocked,blocked,blocked,blocked,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,8
+scale_object,possible,blocked,blocked,blocked,blocked,blocked,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,8
+double_buffered_action_chunk,not_applicable,strong_candidate,strong_candidate,not_applicable,possible,not_applicable,groot_n1d7; molmoact; openvla; rdt; rdt2,8
+vector_gemv_engine,possible,not_applicable,possible,strong_candidate,possible,strong_candidate,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,8
+epilogue_requant_unit,possible,not_applicable,possible,strong_candidate,possible,strong_candidate,groot_n1d7; molmoact; openvla; rdt; rdt2,8
+accumulator_merge,not_applicable,weak_candidate,possible,strong_candidate,strong_candidate,strong_candidate,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,8
+accumulator_commit,not_applicable,not_applicable,possible,strong_candidate,possible,strong_candidate,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,8
+fused_dequant_matmul,possible,blocked,blocked,blocked,blocked,blocked,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,8
+native_lowbit_matmul,possible,blocked,blocked,blocked,blocked,blocked,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama,8
+decode_loop_controller,not_applicable,possible,strong_candidate,possible,strong_candidate,possible,molmoact; openvla; small_llama; tiny_llama,7
+prefix_kv_object,not_applicable,unavailable,unavailable,unavailable,unavailable,unavailable,molmoact; openvla; small_llama; tiny_llama,5
+kv_cache_object,not_applicable,unavailable,unavailable,unavailable,unavailable,unavailable,molmoact; openvla; small_llama; tiny_llama,5
 matrix_engine,possible,not_applicable,possible,strong_candidate,possible,strong_candidate,rdt,4
-kv_cache_object,not_applicable,unavailable,unavailable,unavailable,unavailable,unavailable,openvla; small_llama; tiny_llama,4

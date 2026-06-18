@@ -1,0 +1,43 @@
+# region_attribution (Level-1, prov.fqn): molmoact
+topology_recovery:
+  attribution_status: attributed
+  level: 1
+  regions:
+  - attribution_status: attributed
+    confidence: 0.7
+    facts:
+      activation_bytes_per_invocation: 10403840
+      activation_bytes_total: 83230720
+      invocations: 8
+      macs_per_invocation: 7574913024
+      macs_total: 60599304192
+      matmul_count: 17
+      weight_bytes: 3787456512
+    invocations: 8
+    matmul_count_attributed: 17
+    reason: 17 matmuls assigned by prov_fqn
+    role: repeated_head
+    source: prov_fqn
+  repeated_shape_signatures:
+  - count: 4
+    signature:
+    - 8
+    - 3584
+    - 4608
+  - count: 4
+    signature:
+    - 8
+    - 3584
+    - 3584
+  - count: 4
+    signature:
+    - 8
+    - 3584
+    - 37888
+  - count: 4
+    signature:
+    - 8
+    - 18944
+    - 3584
+  unresolved: []
+workload: molmoact

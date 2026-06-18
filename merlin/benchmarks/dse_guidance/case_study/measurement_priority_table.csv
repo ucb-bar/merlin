@@ -1,36 +1,36 @@
 measurement,category,n_candidates_unblocked,workloads
-fused requant/activation bit-exactness,accuracy_measurable_now,4,openvla; rdt; small_llama; tiny_llama
-per-format accuracy vs fp32 (cos/argmax) sweep,accuracy_measurable_now,4,openvla; rdt; small_llama; tiny_llama
-KV-quant accuracy vs fp16 KV,accuracy_measurable_now,3,openvla; small_llama; tiny_llama
-batched_submit_ns,proxy_measured,4,openvla; rdt; small_llama; tiny_llama
-command_encode_ns,proxy_measured,4,openvla; rdt; small_llama; tiny_llama
-dispatches_per_replan,proxy_measured,4,openvla; rdt; small_llama; tiny_llama
-epilogue dispatch count,proxy_measured,4,openvla; rdt; small_llama; tiny_llama
-host_submit_ns,proxy_measured,4,openvla; rdt; small_llama; tiny_llama
-per_step_host_dispatch_ns,proxy_measured,4,openvla; rdt; small_llama; tiny_llama
-per_step_sync_ns,proxy_measured,4,openvla; rdt; small_llama; tiny_llama
-deadline_slack,target_measured,8,openvla; rdt; small_llama; tiny_llama
-K,target_measured,4,openvla; rdt; small_llama; tiny_llama
-action_head_weight_bytes,target_measured,4,openvla; rdt; small_llama; tiny_llama
-backbone_cost,target_measured,4,openvla; rdt; small_llama; tiny_llama
-chunk_execution_time,target_measured,4,openvla; rdt; small_llama; tiny_llama
-dequant/pack cost,target_measured,4,openvla; rdt; small_llama; tiny_llama
-head_cost_per_step,target_measured,4,openvla; rdt; small_llama; tiny_llama
-i32 intermediate bytes,target_measured,4,openvla; rdt; small_llama; tiny_llama
-loop_carried_state_bytes,target_measured,4,openvla; rdt; small_llama; tiny_llama
-low-bit weight bytes,target_measured,4,openvla; rdt; small_llama; tiny_llama
-measured memory bandwidth,target_measured,4,openvla; rdt; small_llama; tiny_llama
-pack_bytes,target_measured,4,openvla; rdt; small_llama; tiny_llama
-pack_cost_per_step,target_measured,4,openvla; rdt; small_llama; tiny_llama
-pack_count_per_replan,target_measured,4,openvla; rdt; small_llama; tiny_llama
-repacks_avoided,target_measured,4,openvla; rdt; small_llama; tiny_llama
-replan_latency,target_measured,4,openvla; rdt; small_llama; tiny_llama
-resident capacity at each format,target_measured,4,openvla; rdt; small_llama; tiny_llama
-resident_capacity_required,target_measured,4,openvla; rdt; small_llama; tiny_llama
-state_crossing_bytes,target_measured,4,openvla; rdt; small_llama; tiny_llama
-weight_reload_bytes_per_step,target_measured,4,openvla; rdt; small_llama; tiny_llama
-KV bytes per step,target_measured,3,openvla; small_llama; tiny_llama
-KV growth over decode,target_measured,3,openvla; small_llama; tiny_llama
-gemv_shape_distribution,target_measured,3,openvla; small_llama; tiny_llama
-kv_growth_bytes,target_measured,3,openvla; small_llama; tiny_llama
-tokens_decoded,target_measured,3,openvla; small_llama; tiny_llama
+fused requant/activation bit-exactness,accuracy_measurable_now,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+per-format accuracy vs fp32 (cos/argmax) sweep,accuracy_measurable_now,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+KV-quant accuracy vs fp16 KV,accuracy_measurable_now,4,molmoact; openvla; small_llama; tiny_llama
+batched_submit_ns,proxy_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+command_encode_ns,proxy_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+dispatches_per_replan,proxy_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+epilogue dispatch count,proxy_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+host_submit_ns,proxy_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+per_step_host_dispatch_ns,proxy_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+per_step_sync_ns,proxy_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+deadline_slack,target_measured,14,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+K,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+action_head_weight_bytes,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+backbone_cost,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+chunk_execution_time,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+dequant/pack cost,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+head_cost_per_step,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+i32 intermediate bytes,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+loop_carried_state_bytes,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+low-bit weight bytes,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+measured memory bandwidth,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+pack_bytes,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+pack_cost_per_step,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+pack_count_per_replan,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+repacks_avoided,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+replan_latency,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+resident capacity at each format,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+resident_capacity_required,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+state_crossing_bytes,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+weight_reload_bytes_per_step,target_measured,7,groot_n1d7; molmoact; openvla; rdt; rdt2; small_llama; tiny_llama
+KV bytes per step,target_measured,4,molmoact; openvla; small_llama; tiny_llama
+KV growth over decode,target_measured,4,molmoact; openvla; small_llama; tiny_llama
+gemv_shape_distribution,target_measured,4,molmoact; openvla; small_llama; tiny_llama
+kv_growth_bytes,target_measured,4,molmoact; openvla; small_llama; tiny_llama
+tokens_decoded,target_measured,4,molmoact; openvla; small_llama; tiny_llama

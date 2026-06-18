@@ -1,0 +1,23 @@
+# region_attribution (Level-1, prov.fqn): xr0
+topology_recovery:
+  attribution_status: attributed
+  level: 1
+  regions:
+  - attribution_status: attributed
+    confidence: 0.7
+    facts:
+      activation_bytes_per_invocation: 13312
+      activation_bytes_total: 133120
+      invocations: 10
+      macs_per_invocation: 1310720
+      macs_total: 13107200
+      matmul_count: 2
+      weight_bytes: 5242880
+    invocations: 10
+    matmul_count_attributed: 2
+    reason: 2 matmuls assigned by prov_fqn
+    role: repeated_head
+    source: prov_fqn
+  repeated_shape_signatures: []
+  unresolved: []
+workload: xr0

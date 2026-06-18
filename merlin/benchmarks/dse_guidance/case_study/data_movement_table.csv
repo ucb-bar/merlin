@@ -4,3 +4,7 @@ openvla,backbone_once,1,15400960,466688,516352,unavailable,unavailable,unavailab
 openvla,repeated_head,7,3145728,235520,409600,unavailable,unavailable,unavailable,4794368,2867200,1.672,18874368,786432,1572864,across_K
 small_llama,repeated_head,32,1712128,75264,93184,unavailable,unavailable,unavailable,4120576,2981888,1.382,53075968,428032,856064,across_K
 tiny_llama,repeated_head,32,614465536,606208,1085440,unavailable,unavailable,unavailable,633864192,34734080,18.249,19048431616,153616384,307232768,across_K
+rdt2,repeated_head,5,301268992,2839552,3188928,unavailable,unavailable,unavailable,315466752,15944640,19.785,1205075968,75317248,150634496,across_K
+groot_n1d7,repeated_head,4,295698432,5349376,5021696,unavailable,unavailable,unavailable,317095936,20086784,15.786,887095296,73924608,147849216,across_K
+groot_n1d7,backbone_once,1,11010048,7168,12288,unavailable,unavailable,unavailable,11017216,12288,896.583,0,2752512,5505024,across_replan
+molmoact,repeated_head,8,3787456512,3915776,6488064,unavailable,unavailable,unavailable,3818782720,51904512,73.573,26512195584,946864128,1893728256,across_K

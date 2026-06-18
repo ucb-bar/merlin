@@ -970,3 +970,734 @@ operator_geometry:
     shape_class_histogram:
       gemv_like: 15
     workload: tiny_llama
+  - n_operators: 23
+    n_small_fragment: 0
+    n_tail_heavy: 23
+    operators:
+    - K: 256
+      M: 1
+      N: 1024
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 262144
+      op_index: 0
+      prov_fqn: model.t_embedder.mlp.0
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: gemv_like
+    - K: 1024
+      M: 1
+      N: 1024
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 1048576
+      op_index: 1
+      prov_fqn: model.t_embedder.mlp.2
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: gemv_like
+    - K: 2048
+      M: 1
+      N: 9216
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 18874368
+      op_index: 2
+      prov_fqn: model.blocks.0.adaLN_modulation.1
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: gemv_like
+    - K: 1024
+      M: 28
+      N: 1024
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 29360128
+      op_index: 3
+      prov_fqn: model.blocks.0.attn.wq
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 1024
+      M: 28
+      N: 1024
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 29360128
+      op_index: 4
+      prov_fqn: model.blocks.0.attn.wkv
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 1024
+      M: 28
+      N: 1024
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 29360128
+      op_index: 5
+      prov_fqn: model.blocks.0.attn.wo
+      region_role: repeated_head
+      semantic_class: attention_output_projection
+      shape_class: wide_skinny
+    - K: 1024
+      M: 28
+      N: 1024
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 29360128
+      op_index: 6
+      prov_fqn: model.blocks.0.cross_attn.wq
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 1024
+      M: 28
+      N: 1024
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 29360128
+      op_index: 7
+      prov_fqn: model.blocks.0.cross_attn.wo
+      region_role: repeated_head
+      semantic_class: attention_output_projection
+      shape_class: wide_skinny
+    - K: 1024
+      M: 28
+      N: 2816
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 80740352
+      op_index: 8
+      prov_fqn: model.blocks.0.ffn.w1
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 1024
+      M: 28
+      N: 2816
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 80740352
+      op_index: 9
+      prov_fqn: model.blocks.0.ffn.w3
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 2816
+      M: 28
+      N: 1024
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 80740352
+      op_index: 10
+      prov_fqn: model.blocks.0.ffn.w2
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 2048
+      M: 1
+      N: 9216
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 18874368
+      op_index: 11
+      prov_fqn: model.blocks.1.adaLN_modulation.1
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: gemv_like
+    - K: 1024
+      M: 28
+      N: 1024
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 29360128
+      op_index: 12
+      prov_fqn: model.blocks.1.attn.wq
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 1024
+      M: 28
+      N: 1024
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 29360128
+      op_index: 13
+      prov_fqn: model.blocks.1.attn.wkv
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 1024
+      M: 28
+      N: 1024
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 29360128
+      op_index: 14
+      prov_fqn: model.blocks.1.attn.wo
+      region_role: repeated_head
+      semantic_class: attention_output_projection
+      shape_class: wide_skinny
+    - K: 1024
+      M: 28
+      N: 1024
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 29360128
+      op_index: 15
+      prov_fqn: model.blocks.1.cross_attn.wq
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 1024
+      M: 28
+      N: 1024
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 29360128
+      op_index: 16
+      prov_fqn: model.blocks.1.cross_attn.wo
+      region_role: repeated_head
+      semantic_class: attention_output_projection
+      shape_class: wide_skinny
+    - K: 1024
+      M: 28
+      N: 2816
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 80740352
+      op_index: 17
+      prov_fqn: model.blocks.1.ffn.w1
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 1024
+      M: 28
+      N: 2816
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 80740352
+      op_index: 18
+      prov_fqn: model.blocks.1.ffn.w3
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 2816
+      M: 28
+      N: 1024
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 80740352
+      op_index: 19
+      prov_fqn: model.blocks.1.ffn.w2
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 2048
+      M: 1
+      N: 2048
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 4194304
+      op_index: 20
+      prov_fqn: model.final_layer.adaLN_modulation.1
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: gemv_like
+    - K: 1024
+      M: 28
+      N: 4096
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 117440512
+      op_index: 21
+      prov_fqn: model.final_layer.ffn.fc1
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 4096
+      M: 28
+      N: 20
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 2293760
+      op_index: 22
+      prov_fqn: model.final_layer.ffn.fc2
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: projection_like
+    semantic_class_histogram:
+      attention_output_projection: 4
+      mlp_projection: 10
+      unknown: 9
+    shape_class_histogram:
+      gemv_like: 5
+      projection_like: 1
+      wide_skinny: 17
+    workload: rdt2
+  - n_operators: 18
+    n_small_fragment: 0
+    n_tail_heavy: 16
+    operators:
+    - K: 256
+      M: 1
+      N: 1536
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 393216
+      op_index: 0
+      prov_fqn: head.model.timestep_encoder.timestep_embedder.linear_1
+      region_role: backbone_once
+      semantic_class: embedding_projection
+      shape_class: gemv_like
+    - K: 1536
+      M: 1
+      N: 1536
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 2359296
+      op_index: 1
+      prov_fqn: head.model.timestep_encoder.timestep_embedder.linear_2
+      region_role: backbone_once
+      semantic_class: embedding_projection
+      shape_class: gemv_like
+    - K: 1536
+      M: 1
+      N: 3072
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 4718592
+      op_index: 2
+      prov_fqn: head.model.transformer_blocks.0.norm1.linear
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: gemv_like
+    - K: 1536
+      M: 41
+      N: 1536
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 96731136
+      op_index: 3
+      prov_fqn: head.model.transformer_blocks.0.attn1.to_q
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 2048
+      M: 64
+      N: 1536
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: false
+      macs: 201326592
+      op_index: 4
+      prov_fqn: head.model.transformer_blocks.0.attn1.to_k
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 2048
+      M: 64
+      N: 1536
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: false
+      macs: 201326592
+      op_index: 5
+      prov_fqn: head.model.transformer_blocks.0.attn1.to_v
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 1536
+      M: 41
+      N: 1536
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 96731136
+      op_index: 6
+      prov_fqn: head.model.transformer_blocks.0.attn1.to_out.0
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 1536
+      M: 41
+      N: 6144
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 386924544
+      op_index: 7
+      prov_fqn: head.model.transformer_blocks.0.ff.net.0.proj
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 6144
+      M: 41
+      N: 1536
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 386924544
+      op_index: 8
+      prov_fqn: head.model.transformer_blocks.0.ff.net.2
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 1536
+      M: 1
+      N: 3072
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 4718592
+      op_index: 9
+      prov_fqn: head.model.transformer_blocks.1.norm1.linear
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: gemv_like
+    - K: 1536
+      M: 41
+      N: 1536
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 96731136
+      op_index: 10
+      prov_fqn: head.model.transformer_blocks.1.attn1.to_q
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 1536
+      M: 41
+      N: 1536
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 96731136
+      op_index: 11
+      prov_fqn: head.model.transformer_blocks.1.attn1.to_k
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 1536
+      M: 41
+      N: 1536
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 96731136
+      op_index: 12
+      prov_fqn: head.model.transformer_blocks.1.attn1.to_v
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 1536
+      M: 41
+      N: 1536
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 96731136
+      op_index: 13
+      prov_fqn: head.model.transformer_blocks.1.attn1.to_out.0
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 1536
+      M: 41
+      N: 6144
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 386924544
+      op_index: 14
+      prov_fqn: head.model.transformer_blocks.1.ff.net.0.proj
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 6144
+      M: 41
+      N: 1536
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 386924544
+      op_index: 15
+      prov_fqn: head.model.transformer_blocks.1.ff.net.2
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 1536
+      M: 1
+      N: 3072
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 4718592
+      op_index: 16
+      prov_fqn: head.model.proj_out_1
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: gemv_like
+    - K: 1536
+      M: 41
+      N: 1024
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 64487424
+      op_index: 17
+      prov_fqn: head.model.proj_out_2
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    semantic_class_histogram:
+      embedding_projection: 2
+      unknown: 16
+    shape_class_histogram:
+      gemv_like: 5
+      wide_skinny: 13
+    workload: groot_n1d7
+  - n_operators: 17
+    n_small_fragment: 0
+    n_tail_heavy: 17
+    operators:
+    - K: 3584
+      M: 8
+      N: 4608
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 132120576
+      op_index: 0
+      prov_fqn: lm.model.blocks.slice(None, 4, None).0.self_attn.att_proj
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 3584
+      M: 8
+      N: 3584
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 102760448
+      op_index: 1
+      prov_fqn: lm.model.blocks.slice(None, 4, None).0.self_attn.attn_out
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 3584
+      M: 8
+      N: 37888
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 1086324736
+      op_index: 2
+      prov_fqn: lm.model.blocks.slice(None, 4, None).0.mlp.ff_proj
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 18944
+      M: 8
+      N: 3584
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 543162368
+      op_index: 3
+      prov_fqn: lm.model.blocks.slice(None, 4, None).0.mlp.ff_out
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 3584
+      M: 8
+      N: 4608
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 132120576
+      op_index: 4
+      prov_fqn: lm.model.blocks.slice(None, 4, None).1.self_attn.att_proj
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 3584
+      M: 8
+      N: 3584
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 102760448
+      op_index: 5
+      prov_fqn: lm.model.blocks.slice(None, 4, None).1.self_attn.attn_out
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 3584
+      M: 8
+      N: 37888
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 1086324736
+      op_index: 6
+      prov_fqn: lm.model.blocks.slice(None, 4, None).1.mlp.ff_proj
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 18944
+      M: 8
+      N: 3584
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 543162368
+      op_index: 7
+      prov_fqn: lm.model.blocks.slice(None, 4, None).1.mlp.ff_out
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 3584
+      M: 8
+      N: 4608
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 132120576
+      op_index: 8
+      prov_fqn: lm.model.blocks.slice(None, 4, None).2.self_attn.att_proj
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 3584
+      M: 8
+      N: 3584
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 102760448
+      op_index: 9
+      prov_fqn: lm.model.blocks.slice(None, 4, None).2.self_attn.attn_out
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 3584
+      M: 8
+      N: 37888
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 1086324736
+      op_index: 10
+      prov_fqn: lm.model.blocks.slice(None, 4, None).2.mlp.ff_proj
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 18944
+      M: 8
+      N: 3584
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 543162368
+      op_index: 11
+      prov_fqn: lm.model.blocks.slice(None, 4, None).2.mlp.ff_out
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 3584
+      M: 8
+      N: 4608
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 132120576
+      op_index: 12
+      prov_fqn: lm.model.blocks.slice(None, 4, None).3.self_attn.att_proj
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 3584
+      M: 8
+      N: 3584
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 102760448
+      op_index: 13
+      prov_fqn: lm.model.blocks.slice(None, 4, None).3.self_attn.attn_out
+      region_role: repeated_head
+      semantic_class: unknown
+      shape_class: wide_skinny
+    - K: 3584
+      M: 8
+      N: 37888
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 1086324736
+      op_index: 14
+      prov_fqn: lm.model.blocks.slice(None, 4, None).3.mlp.ff_proj
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 18944
+      M: 8
+      N: 3584
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 543162368
+      op_index: 15
+      prov_fqn: lm.model.blocks.slice(None, 4, None).3.mlp.ff_out
+      region_role: repeated_head
+      semantic_class: mlp_projection
+      shape_class: wide_skinny
+    - K: 3584
+      M: 8
+      N: 4096
+      evidence: recovered_from_ir
+      is_small_fragment: false
+      is_tail_heavy: true
+      macs: 117440512
+      op_index: 16
+      prov_fqn: lm.lm_head
+      region_role: repeated_head
+      semantic_class: lm_head_projection
+      shape_class: wide_skinny
+    semantic_class_histogram:
+      lm_head_projection: 1
+      mlp_projection: 8
+      unknown: 8
+    shape_class_histogram:
+      wide_skinny: 17
+    workload: molmoact

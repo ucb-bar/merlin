@@ -1,0 +1,42 @@
+# command_graph (honest; loop unrolled): molmoact
+command_graph:
+  allocations_in_loop:
+    evidence: unavailable
+    note: in-loop allocations not recoverable from the flat capture
+    value: null
+  batchable:
+    evidence: recovered_from_ir
+    note: the repeated head is a static subgraph; batchable into one buffer IF the runtime exposes loop-carried state + dependency tracking
+    value: true
+  commands_per_step_matmul_proxy:
+    evidence: recovered_from_ir
+    note: matmul count of the repeated head — a LOWER BOUND on commands/step; measured dispatch granularity is ~12-14x higher (dispatch_coupling_report.md)
+    value: 17
+  dependency_graph:
+    evidence: unavailable
+    note: per-step dependencies erased by loop unrolling
+    value: null
+  dispatches_per_replan_proxy:
+    evidence: derived_requirement
+    note: commands_per_step_matmul_proxy * K (K is assumed_reference)
+    value: 136
+  implied_abstractions:
+  - command_buffer
+  - bounded_loop_command + loop_carried_state_handle
+  - persistent_command_buffer / region_level_dispatch
+  - event_token
+  repeated_subgraph:
+    evidence: recovered_from_ir
+    matmuls: 17
+    note: the K-step head is a repeated, batchable subgraph
+    region: repeated_head
+    reused_times: 8
+  syncs_per_step:
+    evidence: unavailable
+    note: host loop unrolled by torch.export; sync points not recoverable
+    value: null
+  what_is_not_claimed:
+  - speedup
+  - cycle_reduction
+  - real dispatch/sync latency
+  workload: molmoact

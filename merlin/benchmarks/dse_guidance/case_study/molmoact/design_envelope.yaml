@@ -1,0 +1,123 @@
+# design_envelope (requirements, not calibration): molmoact
+design_envelope:
+  K: 8
+  candidate_axes:
+  - axis: resident_bf16_head_weights
+    needed_to_quantify:
+    - target memory hierarchy + bandwidth model
+    - packed-layout support
+    - quantization accuracy
+    requirement:
+      resident_capacity_B: 1893728256
+    structural_evidence:
+      K: 8
+      weight_bytes: 3787456512
+    theoretical_effect:
+      removes_avoidable_weight_reload_B: 26512195584
+  - axis: resident_int8_head_weights
+    needed_to_quantify:
+    - target memory hierarchy + bandwidth model
+    - packed-layout support
+    - quantization accuracy
+    requirement:
+      resident_capacity_B: 946864128
+    structural_evidence:
+      K: 8
+      weight_bytes: 3787456512
+    theoretical_effect:
+      removes_avoidable_weight_reload_B: 26512195584
+  - axis: resident_int4_head_weights
+    needed_to_quantify:
+    - target memory hierarchy + bandwidth model
+    - packed-layout support
+    - quantization accuracy
+    requirement:
+      resident_capacity_B: 473432064
+    structural_evidence:
+      K: 8
+      weight_bytes: 3787456512
+    theoretical_effect:
+      removes_avoidable_weight_reload_B: 26512195584
+  - axis: autonomous_K_loop
+    needed_to_quantify:
+    - actual host/device submit latency
+    - runtime model
+    requirement:
+      bounded_loop: true
+      device_dependency_tracking: true
+      loop_carried_state: true
+    structural_evidence:
+      K: 8
+      dispatches_per_replan: 136
+    theoretical_effect:
+      removes_host_submissions_inside_K_loop: true
+  - axis: command_buffer_per_replan
+    needed_to_quantify:
+    - measured per-dispatch host submit cost
+    requirement:
+      static_dependency_graph: true
+    structural_evidence:
+      dispatches_per_replan: 136
+    theoretical_effect:
+      collapses_per_dispatch_host_submits: true
+  captured_dtype: f32
+  deadline:
+    evidence: assumed_reference
+    seconds: 1.6
+  feasibility: null
+  region: repeated_head
+  requirements:
+  - evidence: recovered_from_ir
+    name: macs_per_replan
+    note: macs_per_step x K=8
+    unit: MAC
+    value: 60599304192.0
+  - evidence: recovered_from_ir
+    name: resident_capacity_required
+    note: action-head weights (f32); resident set to avoid reloads
+    unit: B
+    value: 3787456512.0
+  - evidence: recovered_from_ir
+    name: weight_reload_bytes_per_replan
+    note: 'naive reload: weight_bytes x K=8'
+    unit: B
+    value: 30299652096.0
+  - evidence: recovered_from_ir
+    name: avoidable_weight_reload_bytes
+    note: removed by residency (keep 1 load, avoid K-1)
+    unit: B
+    value: 26512195584.0
+  - evidence: derived_requirement
+    name: dispatches_per_replan
+    note: dispatches_per_step x K=8
+    unit: dispatch
+    value: 136.0
+  - evidence: derived_requirement
+    name: required_compute_rate
+    note: macs_per_replan / deadline
+    unit: MAC/s
+    value: 37874565120.0
+  - evidence: derived_requirement
+    name: required_weight_bandwidth
+    note: naive reload bandwidth if non-resident
+    unit: B/s
+    value: 18937282560.0
+  - evidence: derived_requirement
+    name: required_activation_bandwidth
+    note: activation traffic / deadline
+    unit: B/s
+    value: 52019200.0
+  - evidence: derived_requirement
+    name: required_command_rate
+    note: host command issue rate to meet deadline
+    unit: dispatch/s
+    value: 85.0
+  resident_capacity_by_dtype_B:
+    bf16: 1893728256
+    fp6: 710148096
+    fp8: 946864128
+    int4: 473432064
+    int8: 946864128
+  status:
+    quantitative_speedup: not_claimed
+  workload: molmoact

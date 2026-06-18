@@ -3,6 +3,18 @@
 Explicit, so no later phase obscures what is already defensible. Each limitation names what is
 real, what is *not* claimed because of it, and what would lift it.
 
+## 0. Corpus coverage: 7 of 11 registry models studyable
+The committed study covers **rdt, openvla, small_llama, tiny_llama, rdt2, groot_n1d7, molmoact**.
+Four registry models are captured (via model2MLIR with `prov.fqn`) but **deferred**, each for a
+concrete, named reason — not a silent omission: **xr0** is batched-attention DiT where only 2 of 19
+matmuls are plain-2D, so the 2D-matmul-centric geometry skips it (*lift:* `linalg.batch_matmul`
+support in `extract_matmuls`); **bitvla** and **smolvla** parse-fail in the ingest xDSL on
+`tensor.collapse/expand_shape` with typed-reassociation (`[[0 : i64, …]]` / `output_shape`) syntax
+(*lift:* a reassociation-syntax normalizer or an xDSL bump in `mlir_m2m._parse_module`); **pi05** is
+the full PaliGemma+expert VLM (~13k ops) — too large/imbalanced for the comparable small-config
+corpus (*lift:* a denoise-step-only tap or a layer-reduced variant). All four can be promoted as the
+lift lands; the captures already exist.
+
 ## 1. Magnitudes are small, random-init instances
 The recaptures are small-config / random-init architectures (no weight download). **Structure and
 provenance are real; absolute magnitudes are not the deployed models.** Per-workload weight figures

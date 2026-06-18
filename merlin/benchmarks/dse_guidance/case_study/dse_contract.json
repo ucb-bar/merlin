@@ -34,113 +34,137 @@
     "top_by_evidence_breadth": [
       {
         "abstraction": "resident_weight_object",
-        "boundary_pressure_score": 9,
+        "boundary_pressure_score": 12,
         "strong_levels": [
           "runtime_hal_object",
           "command_buffer_or_command_isa"
         ],
         "supporting_workloads": [
+          "groot_n1d7",
+          "molmoact",
           "openvla",
           "rdt",
+          "rdt2",
           "small_llama",
           "tiny_llama"
         ]
       },
       {
         "abstraction": "region_level_dispatch",
-        "boundary_pressure_score": 8,
+        "boundary_pressure_score": 11,
         "strong_levels": [
           "command_buffer_or_command_isa",
           "device_microcode_or_controller"
         ],
         "supporting_workloads": [
+          "groot_n1d7",
+          "molmoact",
           "openvla",
           "rdt",
+          "rdt2",
           "small_llama",
           "tiny_llama"
         ]
       },
       {
         "abstraction": "event_token",
-        "boundary_pressure_score": 8,
+        "boundary_pressure_score": 11,
         "strong_levels": [
           "runtime_hal_object",
           "command_buffer_or_command_isa"
         ],
         "supporting_workloads": [
+          "groot_n1d7",
+          "molmoact",
           "openvla",
           "rdt",
+          "rdt2",
           "small_llama",
           "tiny_llama"
         ]
       },
       {
         "abstraction": "async_queue",
-        "boundary_pressure_score": 8,
+        "boundary_pressure_score": 11,
         "strong_levels": [
           "runtime_hal_object",
           "command_buffer_or_command_isa"
         ],
         "supporting_workloads": [
+          "groot_n1d7",
+          "molmoact",
           "openvla",
           "rdt",
+          "rdt2",
           "small_llama",
           "tiny_llama"
         ]
       },
       {
         "abstraction": "dma_engine",
-        "boundary_pressure_score": 8,
+        "boundary_pressure_score": 11,
         "strong_levels": [
           "runtime_hal_object",
           "command_buffer_or_command_isa"
         ],
         "supporting_workloads": [
+          "groot_n1d7",
+          "molmoact",
           "openvla",
           "rdt",
+          "rdt2",
           "small_llama",
           "tiny_llama"
         ]
       },
       {
         "abstraction": "partial_sum_object",
-        "boundary_pressure_score": 7,
+        "boundary_pressure_score": 10,
         "strong_levels": [
           "accelerator_isa",
           "device_microcode_or_controller",
           "fixed_hardware_datapath"
         ],
         "supporting_workloads": [
+          "groot_n1d7",
+          "molmoact",
           "openvla",
           "rdt",
+          "rdt2",
           "small_llama",
           "tiny_llama"
         ]
       },
       {
         "abstraction": "loop_carried_state_handle",
-        "boundary_pressure_score": 6,
+        "boundary_pressure_score": 9,
         "strong_levels": [
           "command_buffer_or_command_isa",
           "device_microcode_or_controller"
         ],
         "supporting_workloads": [
+          "groot_n1d7",
+          "molmoact",
           "openvla",
           "rdt",
+          "rdt2",
           "small_llama",
           "tiny_llama"
         ]
       },
       {
         "abstraction": "bounded_loop_command",
-        "boundary_pressure_score": 6,
+        "boundary_pressure_score": 9,
         "strong_levels": [
           "command_buffer_or_command_isa",
           "device_microcode_or_controller"
         ],
         "supporting_workloads": [
+          "groot_n1d7",
+          "molmoact",
           "openvla",
           "rdt",
+          "rdt2",
           "small_llama",
           "tiny_llama"
         ]
@@ -154,6 +178,41 @@
     "real (target) command-submit / sync latency"
   ],
   "per_workload": {
+    "groot_n1d7": {
+      "K": 4,
+      "K_source": "recovered_from_model_config",
+      "accuracy_int8": "unavailable",
+      "class": "diffusion/denoise_steps",
+      "head_weight_bytes": 295698432,
+      "missing_before_quantitative_dse": [
+        "quantization accuracy gates (per candidate low-bit format)",
+        "real (target) command-submit / sync latency",
+        "K / control-rate from the real deployment (currently reference values)"
+      ],
+      "ready_quantitative_dse": false,
+      "ready_structural_dse": true,
+      "roles": [
+        "backbone_once",
+        "repeated_head"
+      ]
+    },
+    "molmoact": {
+      "K": 8,
+      "K_source": "recovered_from_model_config",
+      "accuracy_int8": "unavailable",
+      "class": "autoregressive_vla/action_token_decode",
+      "head_weight_bytes": 3787456512,
+      "missing_before_quantitative_dse": [
+        "quantization accuracy gates (per candidate low-bit format)",
+        "real (target) command-submit / sync latency",
+        "K / control-rate from the real deployment (currently reference values)"
+      ],
+      "ready_quantitative_dse": false,
+      "ready_structural_dse": true,
+      "roles": [
+        "repeated_head"
+      ]
+    },
     "openvla": {
       "K": 7,
       "K_source": "recovered_from_model_config",
@@ -179,6 +238,22 @@
       "head_weight_bytes": 391118848,
       "missing_before_quantitative_dse": [
         "quantization accuracy gates (per candidate low-bit format)",
+        "real (target) command-submit / sync latency",
+        "K / control-rate from the real deployment (currently reference values)"
+      ],
+      "ready_quantitative_dse": false,
+      "ready_structural_dse": true,
+      "roles": [
+        "repeated_head"
+      ]
+    },
+    "rdt2": {
+      "K": 5,
+      "K_source": "recovered_from_model_config",
+      "accuracy_int8": "pass",
+      "class": "diffusion/denoise_steps",
+      "head_weight_bytes": 301268992,
+      "missing_before_quantitative_dse": [
         "real (target) command-submit / sync latency",
         "K / control-rate from the real deployment (currently reference values)"
       ],
@@ -280,8 +355,11 @@
   ],
   "what_is_not_claimed": "no speedup, cycles, area, energy, or a chosen/ranked design; this is a DSE search space + workload contract, not a selection. Magnitudes are small random-init capture instances.",
   "workloads": [
+    "groot_n1d7",
+    "molmoact",
     "openvla",
     "rdt",
+    "rdt2",
     "small_llama",
     "tiny_llama"
   ]

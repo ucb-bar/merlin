@@ -7,7 +7,7 @@ parallel_hierarchy_hints:
     - tile_dims
     evidence: recovered_from_ir
     evidence_against: none
-    evidence_for: 2 ops, 85.7% of MACs, in rdt
+    evidence_for: 2 ops, 67.1% of MACs, in rdt
     hierarchy_options:
     - matrix_tile_engine
     - systolic_array
@@ -25,7 +25,7 @@ parallel_hierarchy_hints:
     - tile_dims
     evidence: recovered_from_ir
     evidence_against: none
-    evidence_for: 55 ops, 12.8% of MACs, in openvla, rdt, small_llama
+    evidence_for: 102 ops, 31.6% of MACs, in groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama
     hierarchy_options:
     - matrix_tile_engine
     - SIMD_vector_lanes
@@ -36,8 +36,11 @@ parallel_hierarchy_hints:
     required_compiler_proof: operator geometry is tile/lane-legal for the option (recovered_from_ir shapes)
     shape_class: wide_skinny
     supported_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
   - dse_knobs_exposed:
     - unit_count
@@ -45,7 +48,7 @@ parallel_hierarchy_hints:
     - tile_dims
     evidence: recovered_from_ir
     evidence_against: very small MAC share
-    evidence_for: 19 ops, 1.6% of MACs, in rdt, tiny_llama
+    evidence_for: 29 ops, 1.3% of MACs, in groot_n1d7, rdt, rdt2, tiny_llama
     hierarchy_options:
     - vector_gemv_engine
     - SIMD_vector_lanes
@@ -56,22 +59,45 @@ parallel_hierarchy_hints:
     required_compiler_proof: operator geometry is tile/lane-legal for the option (recovered_from_ir shapes)
     shape_class: gemv_like
     supported_workloads:
+    - groot_n1d7
     - rdt
+    - rdt2
     - tiny_llama
+  - dse_knobs_exposed:
+    - unit_count
+    - unit_shape
+    - tile_dims
+    evidence: recovered_from_ir
+    evidence_against: very small MAC share
+    evidence_for: 1 ops, 0.0% of MACs, in rdt2
+    hierarchy_options:
+    - matrix_tile_engine
+    - systolic_array
+    missing_measurements:
+    - per-unit throughput
+    - communication latency
+    - energy/area
+    required_compiler_proof: operator geometry is tile/lane-legal for the option (recovered_from_ir shapes)
+    shape_class: projection_like
+    supported_workloads:
+    - rdt2
   note: operator clusters + structural units mapped to candidate hardware-hierarchy options. Structural hints for a future DSE search space — NOT a chosen design, NOT a speedup. compute-shape clusters cover the GEMM/GEMV engines; structural_units cover reduction_tree (K-sharding), epilogue_unit, DMA_engine, loop_controller, and multi_engine_cluster (inter-op parallelism).
   structural_units:
   - dse_knobs_exposed:
     - reduction_radix
     - accumulator_width
     evidence: recovered_from_ir
-    evidence_for: 76 K-shardable ops produce partial sums that must be merged across shards
+    evidence_for: 134 K-shardable ops produce partial sums that must be merged across shards
     hierarchy_option: reduction_tree
     missing_measurements:
     - reduction latency
     required_compiler_proof: K-sharding produces partial sums that a reduction tree merges
     supported_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - dse_knobs_exposed:
@@ -79,14 +105,17 @@ parallel_hierarchy_hints:
     - fused_activation
     - requant_path
     evidence: recovered_from_ir
-    evidence_for: 31 ops carry a fused bias/activation (addmm epilogue)
+    evidence_for: 60 ops carry a fused bias/activation (addmm epilogue)
     hierarchy_option: epilogue_unit
     missing_measurements:
     - epilogue throughput
     required_compiler_proof: the addmm epilogue fuses onto the GEMM output
     supported_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
   - dse_knobs_exposed:
     - prefetch_depth
     - resident_capacity
@@ -97,8 +126,11 @@ parallel_hierarchy_hints:
     - DRAM bandwidth
     required_compiler_proof: loop-invariant weights are read-only across the K-loop
     supported_workloads: &id001
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - dse_knobs_exposed:

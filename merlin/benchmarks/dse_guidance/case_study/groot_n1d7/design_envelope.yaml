@@ -1,0 +1,123 @@
+# design_envelope (requirements, not calibration): groot_n1d7
+design_envelope:
+  K: 4
+  candidate_axes:
+  - axis: resident_bf16_head_weights
+    needed_to_quantify:
+    - target memory hierarchy + bandwidth model
+    - packed-layout support
+    - quantization accuracy
+    requirement:
+      resident_capacity_B: 147849216
+    structural_evidence:
+      K: 4
+      weight_bytes: 295698432
+    theoretical_effect:
+      removes_avoidable_weight_reload_B: 887095296
+  - axis: resident_int8_head_weights
+    needed_to_quantify:
+    - target memory hierarchy + bandwidth model
+    - packed-layout support
+    - quantization accuracy
+    requirement:
+      resident_capacity_B: 73924608
+    structural_evidence:
+      K: 4
+      weight_bytes: 295698432
+    theoretical_effect:
+      removes_avoidable_weight_reload_B: 887095296
+  - axis: resident_int4_head_weights
+    needed_to_quantify:
+    - target memory hierarchy + bandwidth model
+    - packed-layout support
+    - quantization accuracy
+    requirement:
+      resident_capacity_B: 36962304
+    structural_evidence:
+      K: 4
+      weight_bytes: 295698432
+    theoretical_effect:
+      removes_avoidable_weight_reload_B: 887095296
+  - axis: autonomous_K_loop
+    needed_to_quantify:
+    - actual host/device submit latency
+    - runtime model
+    requirement:
+      bounded_loop: true
+      device_dependency_tracking: true
+      loop_carried_state: true
+    structural_evidence:
+      K: 4
+      dispatches_per_replan: 64
+    theoretical_effect:
+      removes_host_submissions_inside_K_loop: true
+  - axis: command_buffer_per_replan
+    needed_to_quantify:
+    - measured per-dispatch host submit cost
+    requirement:
+      static_dependency_graph: true
+    structural_evidence:
+      dispatches_per_replan: 64
+    theoretical_effect:
+      collapses_per_dispatch_host_submits: true
+  captured_dtype: f32
+  deadline:
+    evidence: assumed_reference
+    seconds: 0.5333333333333333
+  feasibility: null
+  region: repeated_head
+  requirements:
+  - evidence: recovered_from_ir
+    name: macs_per_replan
+    note: macs_per_step x K=4
+    unit: MAC
+    value: 10437525504.0
+  - evidence: recovered_from_ir
+    name: resident_capacity_required
+    note: action-head weights (f32); resident set to avoid reloads
+    unit: B
+    value: 295698432.0
+  - evidence: recovered_from_ir
+    name: weight_reload_bytes_per_replan
+    note: 'naive reload: weight_bytes x K=4'
+    unit: B
+    value: 1182793728.0
+  - evidence: recovered_from_ir
+    name: avoidable_weight_reload_bytes
+    note: removed by residency (keep 1 load, avoid K-1)
+    unit: B
+    value: 887095296.0
+  - evidence: derived_requirement
+    name: dispatches_per_replan
+    note: dispatches_per_step x K=4
+    unit: dispatch
+    value: 64.0
+  - evidence: derived_requirement
+    name: required_compute_rate
+    note: macs_per_replan / deadline
+    unit: MAC/s
+    value: 19570360320.0
+  - evidence: derived_requirement
+    name: required_weight_bandwidth
+    note: naive reload bandwidth if non-resident
+    unit: B/s
+    value: 2217738240.0
+  - evidence: derived_requirement
+    name: required_activation_bandwidth
+    note: activation traffic / deadline
+    unit: B/s
+    value: 77783040.0
+  - evidence: derived_requirement
+    name: required_command_rate
+    note: host command issue rate to meet deadline
+    unit: dispatch/s
+    value: 120.0
+  resident_capacity_by_dtype_B:
+    bf16: 147849216
+    fp6: 55443456
+    fp8: 73924608
+    int4: 36962304
+    int8: 73924608
+  status:
+    quantitative_speedup: not_claimed
+  workload: groot_n1d7

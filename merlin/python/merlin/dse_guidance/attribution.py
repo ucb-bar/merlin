@@ -68,6 +68,9 @@ _FQN_ROLE_KEYWORDS: list[tuple[tuple[str, ...], str]] = [
       "decoder", "language_model", "llm", "lm_head",
       "self_attn", "q_proj", "k_proj", "v_proj", "o_proj",
       "gate_proj", "up_proj", "down_proj",
+      # DiT / action-head epilogue projections: final-layer adaLN modulation (rdt2/DiT) and the
+      # action-head output projections (groot proj_out_*) run every denoise step -> repeated head.
+      "final_layer", "adaln", "modulation", "proj_out",
       "blocks", "transformer_block", "cross_attn", "ffn"), "repeated_head"),
 ]
 

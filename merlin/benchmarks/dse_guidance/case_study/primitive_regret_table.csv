@@ -1,9 +1,9 @@
 primitive,primitive_kind,op_count,macs_total,mac_weighted_utilization,coverage_under_5pct,coverage_under_10pct,coverage_under_25pct,worst_workload_coverage_10,best_workload_coverage_10,average_workload_coverage_10,max_regret,clusters_poorly_served,workloads_where_overfit
-tile_8x16,tile,76,40129921024,0.974336,0.86364,0.983124,0.983516,0.0,1.0,0.582329,1.0,gemv_like,rdt; small_llama
-tile_8x8,tile,76,40129921024,0.974337,0.86364,0.983124,0.983516,0.0,1.0,0.582329,1.0,gemv_like,rdt; small_llama
-tile_16x16,tile,76,40129921024,0.931276,0.863555,0.863555,0.983039,0.0,0.878164,0.30193,0.878164,gemv_like; wide_skinny,
-tile_16x32,tile,76,40129921024,0.931276,0.863555,0.863555,0.983039,0.0,0.878164,0.30193,0.878164,gemv_like; wide_skinny,
-tile_32x32,tile,76,40129921024,0.856044,0.862902,0.862902,0.862902,0.0,0.878164,0.219541,0.878164,gemv_like; wide_skinny,
-gemv_lane_64,gemv_lane,76,40129921024,0.999972,0.143315,0.143315,0.14335,0.128198,1.0,0.679179,0.871802,squareish_gemm,openvla; tiny_llama
-gemv_lane_128,gemv_lane,76,40129921024,0.999754,0.14319,0.14319,0.143272,0.128198,1.0,0.663422,0.871802,squareish_gemm,openvla; tiny_llama
-gemv_lane_256,gemv_lane,76,40129921024,0.996874,0.142424,0.142424,0.142612,0.076555,1.0,0.444391,0.923445,squareish_gemm,tiny_llama
+tile_8x16,tile,134,51257999360,0.962767,0.83178,0.925324,0.985876,0.0,1.0,0.497638,1.0,gemv_like; projection_like,molmoact; rdt; small_llama
+tile_8x8,tile,134,51257999360,0.962786,0.83178,0.925324,0.985876,0.0,1.0,0.497638,1.0,gemv_like; projection_like,molmoact; rdt; small_llama
+tile_16x16,tile,134,51257999360,0.811032,0.683933,0.683933,0.837722,0.0,0.878164,0.194553,0.878164,gemv_like; projection_like; wide_skinny,
+tile_16x32,tile,134,51257999360,0.811032,0.683933,0.683933,0.837722,0.0,0.878164,0.194553,0.878164,gemv_like; projection_like; wide_skinny,
+tile_32x32,tile,134,51257999360,0.610534,0.683422,0.683422,0.700892,0.0,0.878164,0.147473,0.878164,gemv_like; projection_like; wide_skinny,
+gemv_lane_64,gemv_lane,134,51257999360,0.99999,0.329256,0.329256,0.329283,0.128198,1.0,0.816325,0.871802,projection_like; squareish_gemm,groot_n1d7; molmoact; openvla; rdt2; tiny_llama
+gemv_lane_128,gemv_lane,134,51257999360,0.999916,0.329158,0.329158,0.329222,0.128198,1.0,0.807321,0.871802,projection_like; squareish_gemm,groot_n1d7; molmoact; openvla; rdt2; tiny_llama
+gemv_lane_256,gemv_lane,134,51257999360,0.998932,0.328559,0.328559,0.328705,0.076555,1.0,0.682161,0.923445,projection_like; squareish_gemm,groot_n1d7; molmoact; rdt2; tiny_llama

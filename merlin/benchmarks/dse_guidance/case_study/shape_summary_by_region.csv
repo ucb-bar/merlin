@@ -6,3 +6,10 @@ openvla,backbone_once,wide_skinny,11,63815680
 openvla,repeated_head,wide_skinny,15,15728640
 small_llama,repeated_head,wide_skinny,15,3424256
 tiny_llama,repeated_head,gemv_like,15,614465536
+rdt2,repeated_head,gemv_like,5,43253760
+rdt2,repeated_head,projection_like,1,2293760
+rdt2,repeated_head,wide_skinny,17,895483904
+groot_n1d7,backbone_once,gemv_like,2,2752512
+groot_n1d7,repeated_head,gemv_like,3,14155776
+groot_n1d7,repeated_head,wide_skinny,13,2595225600
+molmoact,repeated_head,wide_skinny,17,7574913024

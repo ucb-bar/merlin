@@ -7,8 +7,11 @@ isa_candidate_primitives:
     required_compiler_proof: bounded K and a loop body expressible as a device-resident program
     status: possible
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: null
@@ -16,8 +19,11 @@ isa_candidate_primitives:
     required_compiler_proof: bounded K and a loop body expressible as a device-resident program
     status: possible
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: null
@@ -25,8 +31,11 @@ isa_candidate_primitives:
     required_compiler_proof: the K-loop dependency graph is static and known at submit time
     status: possible
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: null
@@ -40,8 +49,11 @@ isa_candidate_primitives:
     required_compiler_proof: unavailable (no compiler_proof_matrix entry)
     status: strong_candidate
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: null
@@ -49,15 +61,21 @@ isa_candidate_primitives:
     required_compiler_proof: (numerical) fused requant/activation bit-exactness
     status: strong_candidate
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
   - metadata: null
     primitive: dma_engine
     required_compiler_proof: unavailable (no compiler_proof_matrix entry)
     status: possible
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: null
@@ -65,8 +83,11 @@ isa_candidate_primitives:
     required_compiler_proof: unavailable (no compiler_proof_matrix entry)
     status: possible
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: null
@@ -74,8 +95,11 @@ isa_candidate_primitives:
     required_compiler_proof: unavailable (no compiler_proof_matrix entry)
     status: possible
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: null
@@ -83,8 +107,11 @@ isa_candidate_primitives:
     required_compiler_proof: unavailable (no compiler_proof_matrix entry)
     status: strong_candidate
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: null
@@ -92,8 +119,11 @@ isa_candidate_primitives:
     required_compiler_proof: unavailable (no compiler_proof_matrix entry)
     status: strong_candidate
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: null
@@ -101,8 +131,11 @@ isa_candidate_primitives:
     required_compiler_proof: (numerical) fused requant/activation bit-exactness
     status: strong_candidate
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
   - metadata: null
@@ -110,13 +143,17 @@ isa_candidate_primitives:
     required_compiler_proof: (numerical) fused requant/activation bit-exactness
     status: possible
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
   - metadata: null
     primitive: decode_loop_controller
     required_compiler_proof: autoregressive decode with a growing KV cache and batch=1 GEMV shapes
     status: possible
     supporting_workloads:
+    - molmoact
     - openvla
     - small_llama
     - tiny_llama

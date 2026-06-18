@@ -10,6 +10,9 @@
 | openvla | autoregressive_decode | 32 | 54 | 2 | 2 | 26 | 1 | 1 | 51 | 54 |
 | small_llama | autoregressive_decode | 20 | 31 | 2 | 1 | 15 | 1 | 1 | 28 | 31 |
 | tiny_llama | autoregressive_decode | 20 | 31 | 2 | 1 | 15 | 1 | 1 | 28 | 31 |
+| rdt2 | flow_matching_action_head | 28 | 67 | 2 | 1 | 23 | 1 | 1 | 64 | 67 |
+| groot_n1d7 | flow_matching_action_head | 24 | 34 | 2 | 2 | 18 | 1 | 1 | 31 | 34 |
+| molmoact | autoregressive_decode | 22 | 47 | 2 | 1 | 17 | 1 | 1 | 44 | 47 |
 
 ## Repeated structure (which workloads have a K-loop / token-loop)
 
@@ -19,6 +22,9 @@
 | openvla | yes | token_loop | 7 | weights |
 | small_llama | yes | token_loop | 32 | weights |
 | tiny_llama | yes | token_loop | 32 | weights |
+| rdt2 | yes | K_times_per_replan | 5 | weights |
+| groot_n1d7 | yes | K_times_per_replan | 4 | weights |
+| molmoact | yes | token_loop | 8 | weights |
 
 ## What downstream DSE phases can now consume
 

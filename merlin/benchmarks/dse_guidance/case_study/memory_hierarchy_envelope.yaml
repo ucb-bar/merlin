@@ -195,3 +195,157 @@ memory_hierarchy_envelope:
         evidence: derived_requirement
         value: 34734080
     workload: tiny_llama
+  - regions:
+    - activation_input_bytes:
+        evidence: recovered_from_ir
+        value: 2839552
+      avoidable_weight_reload:
+        evidence: derived_requirement
+        value: 1205075968
+      intermediate_bytes:
+        evidence: unavailable
+        value: unavailable
+      invocations: 5
+      kv_bytes:
+        evidence: unavailable
+        value: unavailable
+      lifetime: across_K
+      output_bytes:
+        evidence: recovered_from_ir
+        value: 3188928
+      read_bytes_resident:
+        evidence: derived_requirement
+        value: 315466752
+      read_write_ratio: 19.785
+      region: repeated_head
+      resident_by_dtype:
+        bf16: 150634496
+        fp6: 56487936
+        fp8: 75317248
+        int4: 37658624
+        int8: 75317248
+      scale_bytes:
+        evidence: unavailable
+        value: unavailable
+      weight_bytes:
+        evidence: recovered_from_ir
+        value: 301268992
+      write_bytes:
+        evidence: derived_requirement
+        value: 15944640
+    workload: rdt2
+  - regions:
+    - activation_input_bytes:
+        evidence: recovered_from_ir
+        value: 5349376
+      avoidable_weight_reload:
+        evidence: derived_requirement
+        value: 887095296
+      intermediate_bytes:
+        evidence: unavailable
+        value: unavailable
+      invocations: 4
+      kv_bytes:
+        evidence: unavailable
+        value: unavailable
+      lifetime: across_K
+      output_bytes:
+        evidence: recovered_from_ir
+        value: 5021696
+      read_bytes_resident:
+        evidence: derived_requirement
+        value: 317095936
+      read_write_ratio: 15.786
+      region: repeated_head
+      resident_by_dtype:
+        bf16: 147849216
+        fp6: 55443456
+        fp8: 73924608
+        int4: 36962304
+        int8: 73924608
+      scale_bytes:
+        evidence: unavailable
+        value: unavailable
+      weight_bytes:
+        evidence: recovered_from_ir
+        value: 295698432
+      write_bytes:
+        evidence: derived_requirement
+        value: 20086784
+    - activation_input_bytes:
+        evidence: recovered_from_ir
+        value: 7168
+      avoidable_weight_reload:
+        evidence: derived_requirement
+        value: 0
+      intermediate_bytes:
+        evidence: unavailable
+        value: unavailable
+      invocations: 1
+      kv_bytes:
+        evidence: unavailable
+        value: unavailable
+      lifetime: across_replan
+      output_bytes:
+        evidence: recovered_from_ir
+        value: 12288
+      read_bytes_resident:
+        evidence: derived_requirement
+        value: 11017216
+      read_write_ratio: 896.583
+      region: backbone_once
+      resident_by_dtype:
+        bf16: 5505024
+        fp6: 2064384
+        fp8: 2752512
+        int4: 1376256
+        int8: 2752512
+      scale_bytes:
+        evidence: unavailable
+        value: unavailable
+      weight_bytes:
+        evidence: recovered_from_ir
+        value: 11010048
+      write_bytes:
+        evidence: derived_requirement
+        value: 12288
+    workload: groot_n1d7
+  - regions:
+    - activation_input_bytes:
+        evidence: recovered_from_ir
+        value: 3915776
+      avoidable_weight_reload:
+        evidence: derived_requirement
+        value: 26512195584
+      intermediate_bytes:
+        evidence: unavailable
+        value: unavailable
+      invocations: 8
+      kv_bytes:
+        evidence: unavailable
+        value: unavailable
+      lifetime: across_K
+      output_bytes:
+        evidence: recovered_from_ir
+        value: 6488064
+      read_bytes_resident:
+        evidence: derived_requirement
+        value: 3818782720
+      read_write_ratio: 73.573
+      region: repeated_head
+      resident_by_dtype:
+        bf16: 1893728256
+        fp6: 710148096
+        fp8: 946864128
+        int4: 473432064
+        int8: 946864128
+      scale_bytes:
+        evidence: unavailable
+        value: unavailable
+      weight_bytes:
+        evidence: recovered_from_ir
+        value: 3787456512
+      write_bytes:
+        evidence: derived_requirement
+        value: 51904512
+    workload: molmoact

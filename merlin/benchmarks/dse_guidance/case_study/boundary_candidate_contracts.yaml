@@ -76,7 +76,7 @@ boundary_candidate_contracts:
       risk: a hardware cache would hide the semantic lifetime the compiler already knows
       software_manages: none (absorbed into the unit)
       status: not_applicable
-    boundary_pressure_score: 9
+    boundary_pressure_score: 12
     compiler_proof_matrix_axis: resident_action_head_weights
     compiler_proof_status: proven_for_workload
     dse_knobs:
@@ -89,14 +89,14 @@ boundary_candidate_contracts:
     - evidence: recovered_from_ir
       knob: lifetime_scope
       reason: loop-invariant vs replan scope
-    evidence_summary: supported by memory_hierarchy_envelope, state_lifetime, compiler_proof_matrix; suggested in openvla, rdt, small_llama, tiny_llama
+    evidence_summary: supported by memory_hierarchy_envelope, state_lifetime, compiler_proof_matrix; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama
     pressure_components:
       compiler_provable: 1
       crosses_rate_boundary: 1
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 2
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -107,8 +107,11 @@ boundary_candidate_contracts:
     - state_lifetime
     - compiler_proof_matrix
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -180,7 +183,7 @@ boundary_candidate_contracts:
       risk: packed residency overfits a weight layout; needs a low-bit capture
       software_manages: none (absorbed into the unit)
       status: blocked
-    boundary_pressure_score: 5
+    boundary_pressure_score: 8
     compiler_proof_matrix_axis: resident_packed_lowbit_weights
     compiler_proof_status: unknown
     dse_knobs:
@@ -197,7 +200,7 @@ boundary_candidate_contracts:
       in_repeated_loop: 1
       missing_evidence_penalty: -1
       n_region_roles: 1
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -206,8 +209,11 @@ boundary_candidate_contracts:
     - numerical_contract
     - memory_hierarchy_envelope
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -279,7 +285,7 @@ boundary_candidate_contracts:
       risk: format / layout overfit; capture is dequantized f32
       software_manages: none (absorbed into the unit)
       status: blocked
-    boundary_pressure_score: 5
+    boundary_pressure_score: 8
     compiler_proof_matrix_axis: resident_packed_lowbit_weights
     compiler_proof_status: unknown
     dse_knobs:
@@ -296,7 +302,7 @@ boundary_candidate_contracts:
       in_repeated_loop: 1
       missing_evidence_penalty: -1
       n_region_roles: 1
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -305,8 +311,11 @@ boundary_candidate_contracts:
     - numerical_contract
     - dtype_capacity_table
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -378,7 +387,7 @@ boundary_candidate_contracts:
       risk: scales folded away in the capture; needs the source quant metadata
       software_manages: none (absorbed into the unit)
       status: blocked
-    boundary_pressure_score: 5
+    boundary_pressure_score: 8
     compiler_proof_matrix_axis: resident_packed_lowbit_weights
     compiler_proof_status: unknown
     dse_knobs:
@@ -395,7 +404,7 @@ boundary_candidate_contracts:
       in_repeated_loop: 1
       missing_evidence_penalty: -1
       n_region_roles: 1
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -403,8 +412,11 @@ boundary_candidate_contracts:
     source_analyses:
     - numerical_contract
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -476,7 +488,7 @@ boundary_candidate_contracts:
       risk: attention/KV lowered into matmul projections — structure not recovered
       software_manages: none (absorbed into the unit)
       status: unavailable
-    boundary_pressure_score: 4
+    boundary_pressure_score: 5
     compiler_proof_matrix_axis: decode_kv_cache_path
     compiler_proof_status: assumed
     dse_knobs:
@@ -490,7 +502,7 @@ boundary_candidate_contracts:
       in_repeated_loop: 0
       missing_evidence_penalty: -1
       n_region_roles: 1
-      n_supporting_workloads: 3
+      n_supporting_workloads: 4
       overfit_penalty: 0
     region_roles:
     - prefix_builder
@@ -499,6 +511,7 @@ boundary_candidate_contracts:
     - workload_contract_graph
     - state_lifetime
     supporting_workloads:
+    - molmoact
     - openvla
     - small_llama
     - tiny_llama
@@ -571,7 +584,7 @@ boundary_candidate_contracts:
       risk: serializes the loop w.r.t. the carried state; highest overfit risk at a fixed/native level
       software_manages: none (absorbed into the unit)
       status: possible
-    boundary_pressure_score: 6
+    boundary_pressure_score: 9
     compiler_proof_matrix_axis: autonomous_K_loop
     compiler_proof_status: assumed
     dse_knobs:
@@ -581,14 +594,14 @@ boundary_candidate_contracts:
     - evidence: recovered_from_ir
       knob: update_in_loop
       reason: in-loop vs host update
-    evidence_summary: supported by workload_contract_graph, state_lifetime; suggested in openvla, rdt, small_llama, tiny_llama
+    evidence_summary: supported by workload_contract_graph, state_lifetime; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 0
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 1
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -597,8 +610,11 @@ boundary_candidate_contracts:
     - workload_contract_graph
     - state_lifetime
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -670,7 +686,7 @@ boundary_candidate_contracts:
       risk: needs bounded-K semantics + device-side state; highest overfit risk at a fixed/native level
       software_manages: none (absorbed into the unit)
       status: possible
-    boundary_pressure_score: 6
+    boundary_pressure_score: 9
     compiler_proof_matrix_axis: autonomous_K_loop
     compiler_proof_status: assumed
     dse_knobs:
@@ -680,14 +696,14 @@ boundary_candidate_contracts:
     - evidence: recovered_from_ir
       knob: unroll_factor
       reason: loop unroll
-    evidence_summary: supported by workload_contract_graph, command_graph, phase_rate_table; suggested in openvla, rdt, small_llama, tiny_llama
+    evidence_summary: supported by workload_contract_graph, command_graph, phase_rate_table; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 0
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 1
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -697,8 +713,11 @@ boundary_candidate_contracts:
     - command_graph
     - phase_rate_table
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -770,21 +789,21 @@ boundary_candidate_contracts:
       risk: requires a command ISA + device scheduler
       software_manages: none (absorbed into the unit)
       status: not_applicable
-    boundary_pressure_score: 8
+    boundary_pressure_score: 11
     compiler_proof_matrix_axis: command_batching
     compiler_proof_status: assumed
     dse_knobs:
     - evidence: recovered_from_ir
       knob: dispatch_granularity
       reason: op vs region dispatch
-    evidence_summary: supported by command_graph, pipeline_envelope; suggested in openvla, rdt, small_llama, tiny_llama
+    evidence_summary: supported by command_graph, pipeline_envelope; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 1
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 2
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -794,8 +813,11 @@ boundary_candidate_contracts:
     - command_graph
     - pipeline_envelope
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -867,21 +889,21 @@ boundary_candidate_contracts:
       risk: static dependency graph required at submit time
       software_manages: none (absorbed into the unit)
       status: not_applicable
-    boundary_pressure_score: 6
+    boundary_pressure_score: 9
     compiler_proof_matrix_axis: command_batching
     compiler_proof_status: assumed
     dse_knobs:
     - evidence: recovered_from_ir
       knob: buffer_reuse_scope
       reason: per-replan vs persistent
-    evidence_summary: supported by command_graph; suggested in openvla, rdt, small_llama, tiny_llama
+    evidence_summary: supported by command_graph; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 0
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 1
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -889,8 +911,11 @@ boundary_candidate_contracts:
     source_analyses:
     - command_graph
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -962,21 +987,21 @@ boundary_candidate_contracts:
       risk: requires a device synchronization primitive
       software_manages: none (absorbed into the unit)
       status: not_applicable
-    boundary_pressure_score: 8
+    boundary_pressure_score: 11
     compiler_proof_matrix_axis: async_chunk_overlap
     compiler_proof_status: assumed
     dse_knobs:
     - evidence: recovered_from_ir
       knob: event_depth
       reason: in-flight events
-    evidence_summary: supported by pipeline_envelope, command_graph; suggested in openvla, rdt, small_llama, tiny_llama
+    evidence_summary: supported by pipeline_envelope, command_graph; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 1
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 2
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -986,8 +1011,11 @@ boundary_candidate_contracts:
     - pipeline_envelope
     - command_graph
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -1059,21 +1087,21 @@ boundary_candidate_contracts:
       risk: requires async submission + completion signalling
       software_manages: none (absorbed into the unit)
       status: not_applicable
-    boundary_pressure_score: 8
+    boundary_pressure_score: 11
     compiler_proof_matrix_axis: async_chunk_overlap
     compiler_proof_status: assumed
     dse_knobs:
     - evidence: recovered_from_ir
       knob: queue_depth
       reason: async queue depth
-    evidence_summary: supported by pipeline_envelope, dma_stream_table; suggested in openvla, rdt, small_llama, tiny_llama
+    evidence_summary: supported by pipeline_envelope, dma_stream_table; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 1
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 2
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -1083,8 +1111,11 @@ boundary_candidate_contracts:
     - pipeline_envelope
     - dma_stream_table
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -1156,21 +1187,21 @@ boundary_candidate_contracts:
       risk: only meaningful for a real producer/consumer rate split
       software_manages: none (absorbed into the unit)
       status: not_applicable
-    boundary_pressure_score: 6
+    boundary_pressure_score: 9
     compiler_proof_matrix_axis: async_chunk_overlap
     compiler_proof_status: assumed
     dse_knobs:
     - evidence: recovered_from_ir
       knob: pc_queue_depth
       reason: producer/consumer slack
-    evidence_summary: supported by pipeline_envelope; suggested in openvla, rdt
+    evidence_summary: supported by pipeline_envelope; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 1
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 2
-      n_supporting_workloads: 2
+      n_supporting_workloads: 5
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -1179,8 +1210,11 @@ boundary_candidate_contracts:
     source_analyses:
     - pipeline_envelope
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
   - abstraction: double_buffered_action_chunk
     boundary_levels:
@@ -1250,21 +1284,21 @@ boundary_candidate_contracts:
       risk: only applies to a VLA action chunk consumed at a control rate
       software_manages: none (absorbed into the unit)
       status: not_applicable
-    boundary_pressure_score: 5
+    boundary_pressure_score: 8
     compiler_proof_matrix_axis: async_chunk_overlap
     compiler_proof_status: assumed
     dse_knobs:
     - evidence: recovered_from_ir
       knob: buffer_count
       reason: double vs triple buffer
-    evidence_summary: supported by pipeline_envelope, phase_rate_table; suggested in openvla, rdt
+    evidence_summary: supported by pipeline_envelope, phase_rate_table; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 1
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 1
-      n_supporting_workloads: 2
+      n_supporting_workloads: 5
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -1273,8 +1307,11 @@ boundary_candidate_contracts:
     - pipeline_envelope
     - phase_rate_table
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
   - abstraction: matrix_engine
     boundary_levels:
@@ -1445,7 +1482,7 @@ boundary_candidate_contracts:
       risk: GEMV unit under-serves the large dense GEMM; highest overfit risk at a fixed/native level
       software_manages: none (absorbed into the unit)
       status: strong_candidate
-    boundary_pressure_score: 5
+    boundary_pressure_score: 8
     compiler_proof_matrix_axis: null
     compiler_proof_status: unavailable
     dse_knobs:
@@ -1455,14 +1492,14 @@ boundary_candidate_contracts:
     - evidence: recovered_from_ir
       knob: num_lanes
       reason: vector lanes
-    evidence_summary: supported by operator_shape_table, primitive_coverage_matrix; suggested in openvla, rdt, small_llama, tiny_llama
+    evidence_summary: supported by operator_shape_table, primitive_coverage_matrix; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 0
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 1
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: -1
     region_roles:
     - repeated_head
@@ -1471,8 +1508,11 @@ boundary_candidate_contracts:
     - operator_shape_table
     - primitive_coverage_matrix
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -1544,7 +1584,7 @@ boundary_candidate_contracts:
       risk: requant numerics need accuracy measurement (the slot is proven, the math is not); highest overfit risk at a fixed/native level
       software_manages: none (absorbed into the unit)
       status: strong_candidate
-    boundary_pressure_score: 5
+    boundary_pressure_score: 8
     compiler_proof_matrix_axis: fused_requant_epilogue
     compiler_proof_status: unknown
     dse_knobs:
@@ -1554,14 +1594,14 @@ boundary_candidate_contracts:
     - evidence: recovered_from_ir
       knob: requant_path
       reason: requant in epilogue
-    evidence_summary: supported by fusion_epilogue, resource_pressure_table; suggested in openvla, rdt
+    evidence_summary: supported by fusion_epilogue, resource_pressure_table; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 1
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 2
-      n_supporting_workloads: 2
+      n_supporting_workloads: 5
       overfit_penalty: -1
     region_roles:
     - repeated_head
@@ -1571,8 +1611,11 @@ boundary_candidate_contracts:
     - fusion_epilogue
     - resource_pressure_table
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
   - abstraction: dma_engine
     boundary_levels:
@@ -1642,7 +1685,7 @@ boundary_candidate_contracts:
       risk: hardware-managed cache would hide reuse the compiler can express; highest overfit risk at a fixed/native level
       software_manages: none (absorbed into the unit)
       status: possible
-    boundary_pressure_score: 8
+    boundary_pressure_score: 11
     compiler_proof_matrix_axis: null
     compiler_proof_status: unavailable
     dse_knobs:
@@ -1652,14 +1695,14 @@ boundary_candidate_contracts:
     - evidence: recovered_from_ir
       knob: prefetch_depth
       reason: prefetch lookahead
-    evidence_summary: supported by memory_hierarchy_envelope, dma_stream_table; suggested in openvla, rdt, small_llama, tiny_llama
+    evidence_summary: supported by memory_hierarchy_envelope, dma_stream_table; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 1
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 2
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -1669,8 +1712,11 @@ boundary_candidate_contracts:
     - memory_hierarchy_envelope
     - dma_stream_table
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -1742,21 +1788,21 @@ boundary_candidate_contracts:
       risk: requires a descriptor format + multi-channel engine
       software_manages: none (absorbed into the unit)
       status: not_applicable
-    boundary_pressure_score: 6
+    boundary_pressure_score: 9
     compiler_proof_matrix_axis: null
     compiler_proof_status: unavailable
     dse_knobs:
     - evidence: recovered_from_ir
       knob: num_streams
       reason: independent DMA streams
-    evidence_summary: supported by dma_stream_table; suggested in openvla, rdt, small_llama, tiny_llama
+    evidence_summary: supported by dma_stream_table; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 0
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 1
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -1764,8 +1810,11 @@ boundary_candidate_contracts:
     source_analyses:
     - dma_stream_table
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -1837,21 +1886,21 @@ boundary_candidate_contracts:
       risk: device-managed prefetch may diverge from the compiler's reuse plan; highest overfit risk at a fixed/native level
       software_manages: none (absorbed into the unit)
       status: possible
-    boundary_pressure_score: 6
+    boundary_pressure_score: 9
     compiler_proof_matrix_axis: null
     compiler_proof_status: unavailable
     dse_knobs:
     - evidence: recovered_from_ir
       knob: prefetch_depth
       reason: weight/activation prefetch lookahead
-    evidence_summary: supported by dma_stream_table, memory_hierarchy_envelope; suggested in openvla, rdt, small_llama, tiny_llama
+    evidence_summary: supported by dma_stream_table, memory_hierarchy_envelope; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 0
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 1
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -1860,8 +1909,11 @@ boundary_candidate_contracts:
     - dma_stream_table
     - memory_hierarchy_envelope
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -1933,7 +1985,7 @@ boundary_candidate_contracts:
       risk: hardware-internal K-sharding hides the reduction from the compiler; highest overfit risk at a fixed/native level
       software_manages: none (absorbed into the unit)
       status: strong_candidate
-    boundary_pressure_score: 7
+    boundary_pressure_score: 10
     compiler_proof_matrix_axis: null
     compiler_proof_status: unavailable
     dse_knobs:
@@ -1943,14 +1995,14 @@ boundary_candidate_contracts:
     - evidence: recovered_from_ir
       knob: partial_dtype
       reason: accumulator width
-    evidence_summary: supported by sharding_opportunities; suggested in openvla, rdt, small_llama, tiny_llama
+    evidence_summary: supported by sharding_opportunities; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 1
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 2
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: -1
     region_roles:
     - repeated_head
@@ -1959,8 +2011,11 @@ boundary_candidate_contracts:
     source_analyses:
     - sharding_opportunities
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -2032,21 +2087,21 @@ boundary_candidate_contracts:
       risk: reduction network cost unknown (not measured); highest overfit risk at a fixed/native level
       software_manages: none (absorbed into the unit)
       status: strong_candidate
-    boundary_pressure_score: 5
+    boundary_pressure_score: 8
     compiler_proof_matrix_axis: null
     compiler_proof_status: unavailable
     dse_knobs:
     - evidence: recovered_from_ir
       knob: reduction_radix
       reason: merge tree radix
-    evidence_summary: supported by sharding_opportunities; suggested in openvla, rdt, small_llama, tiny_llama
+    evidence_summary: supported by sharding_opportunities; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 0
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 1
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: -1
     region_roles:
     - repeated_head
@@ -2054,8 +2109,11 @@ boundary_candidate_contracts:
     source_analyses:
     - sharding_opportunities
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -2127,21 +2185,21 @@ boundary_candidate_contracts:
       risk: a separate accumulator materialization may exist that the capture hid; highest overfit risk at a fixed/native level
       software_manages: none (absorbed into the unit)
       status: strong_candidate
-    boundary_pressure_score: 5
+    boundary_pressure_score: 8
     compiler_proof_matrix_axis: fused_requant_epilogue
     compiler_proof_status: unknown
     dse_knobs:
     - evidence: recovered_from_ir
       knob: commit_dtype
       reason: output dtype of the commit
-    evidence_summary: supported by fusion_epilogue; suggested in openvla, rdt, small_llama, tiny_llama
+    evidence_summary: supported by fusion_epilogue; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2, small_llama, tiny_llama
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 0
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 1
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: -1
     region_roles:
     - repeated_head
@@ -2149,8 +2207,11 @@ boundary_candidate_contracts:
     source_analyses:
     - fusion_epilogue
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -2222,7 +2283,7 @@ boundary_candidate_contracts:
       risk: needs a low-bit capture; the f32 capture only shows compiler-dequant
       software_manages: none (absorbed into the unit)
       status: blocked
-    boundary_pressure_score: 5
+    boundary_pressure_score: 8
     compiler_proof_matrix_axis: resident_packed_lowbit_weights
     compiler_proof_status: unknown
     dse_knobs:
@@ -2239,7 +2300,7 @@ boundary_candidate_contracts:
       in_repeated_loop: 1
       missing_evidence_penalty: -1
       n_region_roles: 1
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -2248,8 +2309,11 @@ boundary_candidate_contracts:
     - numerical_contract
     - fusion_epilogue
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -2321,7 +2385,7 @@ boundary_candidate_contracts:
       risk: the epilogue slot is proven (bias); requant accuracy is unmeasured; highest overfit risk at a fixed/native level
       software_manages: none (absorbed into the unit)
       status: possible
-    boundary_pressure_score: 6
+    boundary_pressure_score: 9
     compiler_proof_matrix_axis: fused_requant_epilogue
     compiler_proof_status: unknown
     dse_knobs:
@@ -2331,14 +2395,14 @@ boundary_candidate_contracts:
     - evidence: recovered_from_ir
       knob: epilogue_op_set
       reason: bias/activation/requant subset
-    evidence_summary: supported by fusion_epilogue; suggested in openvla, rdt
+    evidence_summary: supported by fusion_epilogue; suggested in groot_n1d7, molmoact, openvla, rdt, rdt2
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 1
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 2
-      n_supporting_workloads: 2
+      n_supporting_workloads: 5
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -2347,8 +2411,11 @@ boundary_candidate_contracts:
     source_analyses:
     - fusion_epilogue
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
   - abstraction: native_lowbit_matmul
     boundary_levels:
@@ -2418,7 +2485,7 @@ boundary_candidate_contracts:
       risk: accuracy + format overfit; needs a low-bit capture + accuracy gate
       software_manages: none (absorbed into the unit)
       status: blocked
-    boundary_pressure_score: 5
+    boundary_pressure_score: 8
     compiler_proof_matrix_axis: resident_packed_lowbit_weights
     compiler_proof_status: unknown
     dse_knobs:
@@ -2435,7 +2502,7 @@ boundary_candidate_contracts:
       in_repeated_loop: 1
       missing_evidence_penalty: -1
       n_region_roles: 1
-      n_supporting_workloads: 4
+      n_supporting_workloads: 7
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -2444,8 +2511,11 @@ boundary_candidate_contracts:
     - numerical_contract
     - accuracy_gated_dtype_candidates
     supporting_workloads:
+    - groot_n1d7
+    - molmoact
     - openvla
     - rdt
+    - rdt2
     - small_llama
     - tiny_llama
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
@@ -2517,7 +2587,7 @@ boundary_candidate_contracts:
       risk: attention/KV not recovered from the flat capture
       software_manages: none (absorbed into the unit)
       status: unavailable
-    boundary_pressure_score: 4
+    boundary_pressure_score: 5
     compiler_proof_matrix_axis: decode_kv_cache_path
     compiler_proof_status: assumed
     dse_knobs:
@@ -2531,7 +2601,7 @@ boundary_candidate_contracts:
       in_repeated_loop: 0
       missing_evidence_penalty: -1
       n_region_roles: 1
-      n_supporting_workloads: 3
+      n_supporting_workloads: 4
       overfit_penalty: 0
     region_roles:
     - prefix_builder
@@ -2539,6 +2609,7 @@ boundary_candidate_contracts:
     source_analyses:
     - workload_contract_graph
     supporting_workloads:
+    - molmoact
     - openvla
     - small_llama
     - tiny_llama
@@ -2611,7 +2682,7 @@ boundary_candidate_contracts:
       risk: needs bounded decode semantics + (unavailable) KV structure; highest overfit risk at a fixed/native level
       software_manages: none (absorbed into the unit)
       status: possible
-    boundary_pressure_score: 6
+    boundary_pressure_score: 7
     compiler_proof_matrix_axis: decode_kv_cache_path
     compiler_proof_status: assumed
     dse_knobs:
@@ -2621,14 +2692,14 @@ boundary_candidate_contracts:
     - evidence: recovered_from_ir
       knob: kv_update_in_loop
       reason: in-loop KV update
-    evidence_summary: supported by workload_contract_graph, command_graph, phase_rate_table; suggested in openvla, small_llama, tiny_llama
+    evidence_summary: supported by workload_contract_graph, command_graph, phase_rate_table; suggested in molmoact, openvla, small_llama, tiny_llama
     pressure_components:
       compiler_provable: 0
       crosses_rate_boundary: 1
       in_repeated_loop: 1
       missing_evidence_penalty: 0
       n_region_roles: 1
-      n_supporting_workloads: 3
+      n_supporting_workloads: 4
       overfit_penalty: 0
     region_roles:
     - repeated_head
@@ -2638,6 +2709,7 @@ boundary_candidate_contracts:
     - command_graph
     - phase_rate_table
     supporting_workloads:
+    - molmoact
     - openvla
     - small_llama
     - tiny_llama

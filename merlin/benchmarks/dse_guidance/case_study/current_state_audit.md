@@ -25,7 +25,11 @@ template, and a prioritized list of what is still unmeasured.
 
 It does **not** run DSE, pick a design, or claim a speedup. That is the thesis, not a gap.
 
-Workloads (real `prov.fqn` recaptures): **rdt, openvla, small_llama, tiny_llama**.
+Workloads (real `prov.fqn` recaptures): **rdt, openvla, small_llama, tiny_llama, rdt2, groot_n1d7,
+molmoact** (7 studyable). Deferred (captures exist via model2MLIR but not in the comparable-config
+corpus yet): **xr0** (batched-attention DiT — only 2/19 matmuls are plain-2D; needs batch_matmul
+support), **bitvla / smolvla** (parse-blocked on `tensor.collapse/expand_shape` typed-reassociation
+syntax in the ingest xDSL), **pi05** (full-VLM, too large for the comparable corpus).
 
 ---
 
