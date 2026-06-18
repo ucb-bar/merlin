@@ -1039,6 +1039,7 @@ def verify_p13() -> dict:
              and any(not r["exists"] for r in part["inventory"]),
              "partial mode: missing artifacts recorded exists=no, no crash")
     verify_p15(IM, bundle)
+    verify_p16(IM, bundle)
     return {"scopes": len(scopes), "facts_all": total_facts}
 
 
@@ -1152,6 +1153,101 @@ def verify_p15(IM, bundle) -> None:
     p13check(not no_cap and not leaked,
              f"[P15] every presented plot has a DSE caption + no forbidden wording "
              f"(no_cap {no_cap[:3]}, leaked {leaked})")
+
+
+def verify_p16(IM, bundle) -> None:
+    """P16 decision-frontier & robustness: independently re-derive the strict necessity, the
+    primitive-set frontier, the operator Pareto, leave-one-out, and the capture-fidelity, and assert
+    they are decision-discriminating (NOT all-permissive) and recompute from source."""
+    import csv as _csv
+    import io as _io
+    import itertools
+
+    def _rows(name):
+        p = CS / name
+        return list(_csv.DictReader(_io.StringIO(p.read_text()))) if p.is_file() else []
+
+    from merlin.dse_guidance.boundary_placement import catalog_rows
+    # 1. necessity is NOT permissive: not everything 'necessary'; blocked == erased/kv catalog set;
+    #    every cell is a valid class; at least one per-workload N/A exists (non-AR workload + decode/kv)
+    nec = bundle["abstraction_necessity"]
+    roll = nec["rollup"]
+    valid = set(IM._NEC_CLASSES)
+    wls = nec["workloads"]
+    all_cells_valid = all(r[w] in valid for r in nec["rows"] for w in wls)
+    not_all_nec = roll["necessary"] < len(nec["rows"]) and roll["blocked"] > 0
+    erased_or_kv = {c["abstraction"] for c in catalog_rows() if c["erased"] or c["kv"]}
+    blocked_macro = {r["abstraction"] for r in nec["rows"] if r["macro_class"] == "blocked"}
+    blocked_ok = blocked_macro <= erased_or_kv and blocked_macro
+    has_na_cell = any(r[w] == "not_applicable" for r in nec["rows"] for w in wls)
+    p13check(all_cells_valid and not_all_nec and blocked_ok and has_na_cell,
+             f"[P16] necessity is discriminating (rollup={roll}, blocked⊆erased/kv={blocked_ok}, "
+             f"has N/A cell={has_na_cell})")
+    # 1b. independent recompute of matrix_engine (dense) necessity from shape_summary
+    shape = _rows("shape_summary_by_workload.csv")
+    dense_by_wl = {}
+    for w in wls:
+        dense_by_wl[w] = sum(float(r["mac_fraction"]) for r in shape
+                             if r["workload"] == w and r["shape_class"] == "squareish_gemm")
+    me = next(r for r in nec["rows"] if r["abstraction"] == "matrix_engine")
+    me_ok = all((me[w] == "necessary") == (dense_by_wl[w] > 0.5) for w in wls)
+    p13check(me_ok, "[P16] matrix_engine necessity == (dense MAC fraction > 0.5) per workload")
+    # 2. primitive-set frontier: best worst-coverage is monotone non-decreasing in set size, and a
+    #    2-set strictly beats the best single (the headline)
+    fr = bundle["primitive_frontier"]["best_by_size"]
+    mono = all(fr[s]["worst"] >= fr[s - 1]["worst"] - 1e-9 for s in fr if s - 1 in fr)
+    beats = fr[2]["worst"] > fr[1]["worst"] if 1 in fr and 2 in fr else False
+    p13check(mono and beats,
+             f"[P16] primitive-set frontier monotone in size and 2-set beats 1-set "
+             f"(1:{fr.get(1,{}).get('worst')} 2:{fr.get(2,{}).get('worst')})")
+    # 2b. set-union recompute: the best 2-set's worst coverage matches an independent op-level union
+    tw = _rows("tile_waste_table.csv")
+    op_macs, op_cover = {}, {}
+    for r in tw:
+        if r.get("applicable") != "True":
+            continue
+        k = (r["workload"], r["op_index"])
+        op_macs[k] = float(r["true_macs"])
+        op_cover.setdefault(k, {})[r["primitive"]] = (r["covered_under_10pct"] == "True")
+    pset = bundle["primitive_frontier"]["best_by_size"][2]["set"]
+    num, den = {}, {}
+    for (w, op), m in op_macs.items():
+        den[w] = den.get(w, 0.0) + m
+        if any(op_cover[(w, op)].get(p, False) for p in pset):
+            num[w] = num.get(w, 0.0) + m
+    worst_indep = round(min(num.get(w, 0.0) / den[w] for w in den), 4)
+    p13check(abs(worst_indep - fr[2]["worst"]) < 1e-6,
+             f"[P16] 2-set worst coverage recomputes by op-level union ({worst_indep})")
+    # 3. operator Pareto: k thresholds monotone, reach within n_ops
+    par = bundle["operator_pareto"]
+    pok = all(r[f"k_macs_{int(t*100)}"] <= r["n_ops"]
+              and r["k_macs_50"] <= r["k_macs_95"] for r in par["rows"] for t in par["thresholds"])
+    rdt = next(r for r in par["rows"] if r["workload"] == "rdt")
+    p13check(pok and rdt["k_macs_50"] == 1,
+             f"[P16] operator Pareto monotone + within n_ops; rdt k@50%MAC={rdt['k_macs_50']}")
+    # 4. leave-one-out: dense-MAC dominance is micro≫macro and collapses when rdt is removed
+    dom = next(f for f in bundle["robustness"]["findings"] if f["finding"] == "dense_gemm_mac_dominance")
+    p13check(dom["micro"] - dom["macro"] > 0.2 and "rdt" in dom["collapses_if_removed"],
+             f"[P16] dense-MAC dominance is micro({dom['micro']})≫macro({dom['macro']}), "
+             f"rdt-driven {dom['collapses_if_removed']}")
+    # 5. capture-fidelity: low-bit erased everywhere; AR workloads hide KV; matches fidelity vocab
+    cf = bundle["capture_fidelity"]
+    lowbit = next(r for r in cf["matrix"] if r["feature"] == "packed_lowbit_layout")
+    erased_all = all(lowbit[w] == "erased" for w in cf["workloads"])
+    ar_hidden = any(cf["per_workload"][w]["hidden_axes"] for w in cf["workloads"])
+    p13check(erased_all and ar_hidden,
+             f"[P16] capture-fidelity: low-bit erased for all, hidden axes present (erased={erased_all})")
+    # 6. new plots carry captions; no forbidden wording in P16 outputs; digest uses necessity
+    new_plots = {"primitive_set_frontier", "operator_cumulative_mac", "boundary_necessity_matrix",
+                 "decision_sharding_per_top_op"}
+    caps = {p["plot_id"]: p.get("dse_caption", "") for p in bundle["plots"]}
+    caps_ok = all(caps.get(pid) for pid in new_plots)
+    blob = (str(nec) + str(bundle["primitive_frontier"]) + str(par) + str(bundle["robustness"])
+            + str(cf) + str(bundle["decision_scorecard"])).lower()
+    leaked = [t for t in ("speedup", "faster", "optimal", "performance improvement",
+                          "predicted cycles", "x speedup") if t in blob]
+    p13check(caps_ok and not leaked,
+             f"[P16] new plots captioned + no forbidden wording (caps_ok={caps_ok}, leaked={leaked})")
 
 
 def main(write: bool = True) -> int:

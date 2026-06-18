@@ -101,7 +101,10 @@ SIGNAL_METRICS = {
     "dominant_shape_class", "mac_fraction_dense_gemm", "mac_fraction_skinny_gemm_or_gemv",
     "compiler_proofs_proven_for_workload", "compiler_proofs_assumed", "compiler_proofs_unknown",
     "clean_8way_mn_shards", "head_cadence", "accumulator_dtype", "compute_dtype",
-    "lowbit_storage_dequantized_finding", "unit_multiplicity_implication", "overlap_candidates_yes",
+    "lowbit_storage_dequantized_finding", "overlap_candidates_yes",
+    # NOTE: unit_multiplicity_implication is deliberately NOT signal — "heterogeneous" is an
+    # interpretation, not a measured fact; it is kept as context and the report derives the
+    # heterogeneity conclusion from the component metrics (dense/skinny split, parallelism, sharding).
 }
 
 
@@ -955,7 +958,7 @@ def presentation_findings(facts: list[dict], answers: list[dict]) -> list[dict]:
 # (plot_id, title, source_artifact, required_columns, x, y, series, kind, rec)
 _PLOTS = [
     ("evidence_type_by_workload", "Evidence type by workload", "unified_fact_table.csv",
-     ["workload", "evidence_type"], "workload", "count", "evidence_type", "stacked_bar", "main"),
+     ["workload", "evidence_type"], "workload", "count", "evidence_type", "stacked_bar", "backup"),
     ("evidence_type_by_phase", "Evidence type by analysis phase", "unified_fact_table.csv",
      ["source_phase", "evidence_type"], "source_phase", "count", "evidence_type", "stacked_bar", "backup"),
     ("shape_class_mac_share", "Shape-class MAC share by workload", "shape_summary_by_workload.csv",
@@ -969,7 +972,7 @@ _PLOTS = [
      "primitive", "coverage_under_10pct", "heatmap", "main"),
     ("primitive_regret_bar", "Primitive coverage + max regret", "primitive_regret_table.csv",
      ["primitive", "coverage_under_10pct", "max_regret"], "primitive", "coverage_under_10pct",
-     "max_regret", "grouped_bar", "main"),
+     "max_regret", "grouped_bar", "backup"),
     ("abstraction_pressure_bar", "Abstraction pressure (workloads supporting)",
      "abstraction_pressure_ranking.csv", ["system_abstraction", "n_workloads"], "system_abstraction",
      "n_workloads", "", "bar", "backup"),
@@ -977,10 +980,10 @@ _PLOTS = [
      "hw_sw_boundary_matrix.csv",
      ["abstraction", "compiler_transform", "runtime_hal_object", "command_buffer_or_command_isa",
       "accelerator_isa", "device_microcode_or_controller", "fixed_hardware_datapath"],
-     "level", "abstraction", "status", "heatmap", "main"),
+     "level", "abstraction", "status", "heatmap", "backup"),
     ("resident_capacity_by_dtype", "Resident capacity by dtype (per region)",
      "data_movement_table.csv", ["workload", "region", "resident_int8_B", "resident_bf16_B"],
-     "workload_region", "bytes", "dtype", "grouped_bar", "main"),
+     "workload_region", "bytes", "dtype", "grouped_bar", "backup"),
     ("avoidable_reload_by_region", "Avoidable weight reload by region", "data_movement_table.csv",
      ["workload", "region", "avoidable_weight_reload"], "workload_region", "avoidable_weight_reload",
      "", "bar", "main"),
@@ -1005,6 +1008,19 @@ _PLOTS = [
      "sharding_table.csv", ["axis", "shardable_2", "shardable_4", "shardable_8",
                             "per_extra_shard_bytes"], "shard_count", "extra_bytes", "axis",
      "decision_bar", "main"),
+    # ---- P16 decision-frontier & robustness plots ----
+    ("primitive_set_frontier", "Primitive-set frontier (worst vs mean coverage)",
+     "tile_waste_table.csv", ["workload", "op_index", "primitive", "covered_under_10pct"],
+     "mean_coverage", "worst_coverage", "set", "scatter", "main"),
+    ("operator_cumulative_mac", "Operator cumulative MAC share (few giant vs many even ops)",
+     "operator_shape_table.csv", ["workload", "macs"], "top_k_ops", "cumulative_mac", "workload",
+     "line", "main"),
+    ("boundary_necessity_matrix", "Abstraction necessity (necessary/useful/possible/blocked)",
+     "hw_sw_boundary_matrix.csv", ["abstraction"], "workload", "abstraction", "necessity_class",
+     "categorical", "main"),
+    ("decision_sharding_per_top_op", "Decision: shard top-MAC ops -> extra bytes / output bytes",
+     "sharding_table.csv", ["workload", "op_index", "axis", "per_extra_shard_bytes"], "top_op",
+     "extra_over_output", "axis", "decision_bar", "main"),
 ]
 
 
@@ -1252,6 +1268,438 @@ def corpus_expansion_plan(cs_dir: Path) -> dict:
 
 
 # one-sentence DSE-search-space implication shown beneath each presentation plot (structural only).
+# =========================================================================== P16 decision-frontier
+# Sharpen results into decision-discriminating form: a metric is useful only if it changes a DSE
+# decision. Strict necessity (not permissive support), primitive-set frontier, operator Pareto,
+# macro/micro + leave-one-workload-out robustness, and capture-fidelity as a first-class result.
+
+_NEC_CLASSES = ("necessary", "useful", "possible", "blocked", "not_applicable")
+
+
+def _signal_by_workload(cs_dir: Path):
+    """Per-workload signal aggregates shared by the necessity classifier + robustness."""
+    cs_dir = Path(cs_dir)
+    ops = _csv_rows(cs_dir / "operator_shape_table.csv")
+    shape = _csv_rows(cs_dir / "shape_summary_by_workload.csv")
+    dm = _csv_rows(cs_dir / "data_movement_table.csv")
+    shard = _csv_rows(cs_dir / "sharding_table.csv")
+    epi = _csv_rows(cs_dir / "epilogue_pattern_table.csv")
+    from merlin.dse_guidance.models import MODEL_ARCH, _base_model
+    wls = sorted({o["workload"] for o in ops})
+    sig = {}
+    for w in wls:
+        srows = [r for r in shape if r["workload"] == w]
+        dense = sum(float(r["mac_fraction"]) for r in srows if r["shape_class"] == "squareish_gemm")
+        gemv = sum(float(r["mac_fraction"]) for r in srows
+                   if r["shape_class"] in ("gemv_like", "wide_skinny", "tall_skinny"))
+        rh = next((r for r in dm if r["workload"] == w and r["region"] == "repeated_head"), None)
+        shrows = [r for r in shard if r["workload"] == w]
+        erows = [r for r in epi if r["workload"] == w]
+        base = _base_model(w)
+        arch = MODEL_ARCH.get(base)
+        sig[w] = {
+            "family": arch.family if arch else "unknown",
+            "K": arch.loop_count if arch else 1,
+            "H": (arch.action_horizon or 0) if arch else 0,
+            "control_rate": (arch.control_rate_hz if arch else None),
+            "dense_mac": round(dense, 4), "gemv_mac": round(gemv, 4),
+            "weight_bytes": int(rh["weight_bytes"]) if rh else 0,
+            "avoidable_reload": int(rh["avoidable_weight_reload"]) if rh else 0,
+            "invocations": int(rh["invocations"]) if rh else 0,
+            "k_shard": any(r["axis"] == "K" and r["reduction_required"] == "True"
+                           and r.get("shardable_8") == "True" for r in shrows),
+            "mn_shard": any(r["axis"] in ("M", "N") and r["reduction_required"] == "False"
+                            and r.get("shardable_8") == "True" for r in shrows),
+            "epi_scale_act": any(r["has_scale"] == "True" and r["has_activation"] == "True"
+                                 for r in erows),
+            "epi_bias": any(r["has_bias"] == "True" for r in erows),
+            "has_backbone": any(o["region_role"] == "backbone_once"
+                                for o in ops if o["workload"] == w),
+            "has_repeated": any(o["region_role"] == "repeated_head"
+                                for o in ops if o["workload"] == w)}
+    return sig, wls
+
+
+def _classify_abstraction(spec: dict, w: str, sig: dict) -> tuple:
+    """Strict per-(abstraction, workload) class + the reason (the predicate that fired)."""
+    s = sig[w]
+    name, sup = spec["abstraction"], spec["support"]
+    is_ar = s["family"] in ("autoregressive_vla", "llm")
+    has_control = s["family"] in ("flow_matching", "diffusion", "autoregressive_vla") \
+        and bool(s["control_rate"])
+    if spec["kv"] and not is_ar:
+        return "not_applicable", "KV abstraction; workload is not autoregressive"
+    if sup == "decode" and not is_ar:
+        return "not_applicable", "decode abstraction; workload is not autoregressive"
+    if sup == "control_loop" and not has_control:
+        return "not_applicable", "no control-rate loop in this workload"
+    if spec["erased"]:
+        return "blocked", "low-bit/packed structure dequantized in the capture"
+    if spec["kv"]:
+        return "blocked", "attention/KV lowered; structure not recovered"
+    if name == "resident_weight_object":
+        if s["invocations"] > 1 and s["weight_bytes"] > 1_000_000 \
+                and s["avoidable_reload"] > s["weight_bytes"]:
+            return "necessary", (f"repeated (K={s['invocations']}), weights "
+                                 f"{s['weight_bytes']/1e6:.1f}MB>1MB, avoidable_reload>weight_bytes")
+        if s["invocations"] > 1:
+            return "useful", f"repeated (K={s['invocations']}) but weights small"
+        return "possible", "no repeated weight reuse recovered"
+    if sup == "dense":
+        d = s["dense_mac"]
+        return (("necessary", f"dense MAC fraction {d:.2f}>0.5") if d > 0.5
+                else ("useful", f"dense MAC fraction {d:.2f}") if d > 0.1
+                else ("possible", f"dense MAC fraction {d:.2f} (low)"))
+    if sup == "gemv":
+        g = s["gemv_mac"]
+        return (("necessary", f"gemv/skinny MAC fraction {g:.2f}>0.5") if g > 0.5
+                else ("useful", f"gemv/skinny MAC fraction {g:.2f}") if g > 0.1
+                else ("possible", f"gemv/skinny MAC fraction {g:.2f} (low)"))
+    if name in ("partial_sum_object", "accumulator_merge"):
+        if s["k_shard"] and not s["mn_shard"]:
+            return "necessary", "K-shard reduction needed; reduction-free M/N insufficient"
+        if s["k_shard"]:
+            return "useful", "K-shard available but reduction-free M/N also possible"
+        return "possible", "no attractive K-shard"
+    if sup == "epilogue":
+        if s["epi_scale_act"]:
+            return "necessary", "epilogue has scale+activation"
+        if s["epi_bias"]:
+            return "useful", "bias-only epilogue (requant slot present)"
+        return "possible", "no fused epilogue detected"
+    if sup == "k_loop":     # bounded_loop_command / loop_carried_state_handle
+        if s["K"] > 1:
+            return "useful", f"K={s['K']} cadence (configured/reference; needs loop-preserving capture)"
+        return "possible", "no loop"
+    return "possible", "available; not gated by a discriminating signal"
+
+
+def _capture_gate(spec: dict) -> str:
+    if spec["erased"]:
+        return "low-bit recapture (packed weights + scales + per-format accuracy)"
+    if spec["kv"]:
+        return "loop-preserving, attention-not-lowered capture"
+    if spec["support"] in ("k_loop", "decode", "control_loop"):
+        return "loop-preserving capture (K/cadence are configured/reference)"
+    return ""
+
+
+def abstraction_necessity(cs_dir: Path) -> dict:
+    """The #1 fix: replace permissive 'supported by 4/4' with a strict necessity classification
+    (necessary/useful/possible/blocked/not_applicable) per abstraction × workload, using the
+    threshold signals already in the committed artifacts. Returns rows + a corpus rollup."""
+    from merlin.dse_guidance.boundary_placement import catalog_rows
+    sig, wls = _signal_by_workload(cs_dir)
+    if not wls:                          # partial mode: no per-workload signal artifacts present
+        return {"workloads": [], "rows": [], "rollup": {k: 0 for k in _NEC_CLASSES}}
+    rows = []
+    for spec in catalog_rows():
+        per = {w: _classify_abstraction(spec, w, sig) for w in wls}
+        classes = {w: c for w, (c, _) in per.items()}
+        counts = {k: sum(1 for c in classes.values() if c == k) for k in _NEC_CLASSES}
+        applicable = sum(counts[k] for k in ("necessary", "useful", "possible"))
+        if counts["blocked"] and applicable == 0:
+            macro = "blocked"
+        elif counts["not_applicable"] == len(wls):
+            macro = "not_applicable"
+        elif counts["necessary"] >= max(1, applicable // 2) and applicable:
+            macro = "necessary"
+        elif counts["necessary"] + counts["useful"] >= 1:
+            macro = "useful"
+        else:
+            macro = "possible"
+        # representative predicate: the reason from a necessary workload, else useful, else any
+        reason = next((r for w, (c, r) in per.items() if c == "necessary"),
+                      next((r for w, (c, r) in per.items() if c == "useful"),
+                           next(iter(per.values()))[1]))
+        row = {"abstraction": spec["abstraction"], "support_tag": spec["support"],
+               "macro_class": macro, "predicate": reason, "capture_gate": _capture_gate(spec)}
+        for w in wls:
+            row[w] = classes[w]
+        for k in _NEC_CLASSES:
+            row[f"n_{k}"] = counts[k]
+        rows.append(row)
+    order = {"necessary": 0, "useful": 1, "possible": 2, "blocked": 3, "not_applicable": 4}
+    rows.sort(key=lambda r: (order[r["macro_class"]], -r["n_necessary"], r["abstraction"]))
+    rollup = {k: sum(1 for r in rows if r["macro_class"] == k) for k in _NEC_CLASSES}
+    return {"workloads": wls, "rows": rows, "rollup": rollup}
+
+
+def _coverage_from_tilewaste(cs_dir: Path):
+    """Per-op covered_under_10pct flags grouped by (workload, primitive) -> set-union frontier base.
+    Returns (op_macs, op_cover) where op_cover[(w, op)][primitive] = bool covered, and a per-workload
+    MAC total — so a primitive SET covers an op if ANY member covers it."""
+    tw = _csv_rows(Path(cs_dir) / "tile_waste_table.csv")
+    op_macs, op_cover, prims = {}, {}, set()
+    for r in tw:
+        if r.get("applicable") != "True":
+            continue
+        key = (r["workload"], r["op_index"])
+        op_macs[key] = float(r["true_macs"])
+        op_cover.setdefault(key, {})[r["primitive"]] = (r["covered_under_10pct"] == "True")
+        prims.add(r["primitive"])
+    return op_macs, op_cover, sorted(prims)
+
+
+def _set_coverage(pset, op_macs, op_cover, drop=None):
+    """MAC-weighted coverage of a primitive SET, per workload (a set covers an op if any member does).
+    Returns {workload: coverage_fraction}."""
+    num, den = {}, {}
+    for (w, op), macs in op_macs.items():
+        if drop and w == drop:
+            continue
+        covered = any(op_cover[(w, op)].get(p, False) for p in pset)
+        den[w] = den.get(w, 0.0) + macs
+        if covered:
+            num[w] = num.get(w, 0.0) + macs
+    return {w: (num.get(w, 0.0) / den[w] if den[w] else 0.0) for w in den}
+
+
+def _frontier_stats(pset, op_macs, op_cover, drop=None):
+    cov = _set_coverage(pset, op_macs, op_cover, drop)
+    if not cov:
+        return None
+    vals = list(cov.values())
+    macro = sum(vals) / len(vals)
+    # micro = MAC-weighted across the corpus
+    tot_macs = sum(m for (w, _), m in op_macs.items() if not (drop and w == drop)) or 1.0
+    micro = sum(_set_coverage(pset, op_macs, op_cover, drop)[w]
+                * sum(m for (ww, _), m in op_macs.items() if ww == w)
+                for w in cov) / tot_macs
+    worst = min(vals)
+    return {"macro": round(macro, 4), "micro": round(micro, 4), "worst": round(worst, 4),
+            "max_regret": round(max(vals) - min(vals), 4), "per_workload": cov}
+
+
+def primitive_set_frontier(cs_dir: Path, max_size: int = 3) -> dict:
+    """Best primitive SET of size 1/2/3 by worst-workload then macro coverage (a set covers an op if
+    ANY member tiles it under 10% waste). The headline search-space result: one primitive is not
+    enough; {one tile + one gemv lane} lifts worst-workload coverage."""
+    import itertools
+    op_macs, op_cover, prims = _coverage_from_tilewaste(cs_dir)
+    best_by_size = {}
+    for size in range(1, max_size + 1):
+        best = None
+        for combo in itertools.combinations(prims, size):
+            st = _frontier_stats(combo, op_macs, op_cover)
+            if st is None:
+                continue
+            key = (st["worst"], st["macro"])
+            if best is None or key > best["key"]:
+                best = {"set": list(combo), "key": key, **st}
+        if best:
+            best.pop("key")
+            best_by_size[size] = best
+    # also per-single-primitive stats (for the frontier scatter)
+    singles = []
+    for p in prims:
+        st = _frontier_stats((p,), op_macs, op_cover)
+        if st:
+            singles.append({"primitive": p, "macro": st["macro"], "worst": st["worst"]})
+    return {"best_by_size": best_by_size, "singles": singles}
+
+
+def operator_pareto(cs_dir: Path, thresholds=(0.5, 0.8, 0.9, 0.95)) -> dict:
+    """Per workload, how many top ops are needed to reach 50/80/90/95% of MACs (and of weight bytes).
+    Shows whether DSE sizes for a few giant ops or many even ones."""
+    ops = _csv_rows(Path(cs_dir) / "operator_shape_table.csv")
+    wls = sorted({o["workload"] for o in ops})
+    out = []
+    for w in wls:
+        wops = [o for o in ops if o["workload"] == w]
+        def _ktoreach(key):
+            vals = sorted((int(o[key]) for o in wops), reverse=True)
+            tot = sum(vals) or 1
+            ks = {}
+            for t in thresholds:
+                acc, k = 0, 0
+                for v in vals:
+                    acc += v
+                    k += 1
+                    if acc / tot >= t:
+                        break
+                ks[t] = k
+            return ks
+        km, kb = _ktoreach("macs"), _ktoreach("rhs_weight_bytes")
+        row = {"workload": w, "n_ops": len(wops)}
+        for t in thresholds:
+            row[f"k_macs_{int(t*100)}"] = km[t]
+            row[f"k_wbytes_{int(t*100)}"] = kb[t]
+        # top op MAC share
+        top = max(wops, key=lambda o: int(o["macs"]))
+        row["top_op"] = top["prov_fqn"]
+        row["top_op_mac_share"] = round(int(top["macs"]) / (sum(int(o["macs"]) for o in wops) or 1), 4)
+        out.append(row)
+    return {"thresholds": thresholds, "rows": out}
+
+
+def robustness(cs_dir: Path) -> dict:
+    """Macro/micro + leave-one-workload-out for the major cross-workload findings, flagging which
+    conclusions flip when a workload is removed (anti-overfitting)."""
+    sig, wls = _signal_by_workload(cs_dir)
+    op_macs, op_cover, prims = _coverage_from_tilewaste(cs_dir)
+    if len(wls) < 1 or len(prims) < 2:           # partial mode: nothing to compare
+        return {"workloads": wls, "findings": []}
+    findings = []
+
+    # (a) best 2-primitive set: does the winner change under leave-one-out?
+    import itertools
+    def best_two(drop=None):
+        best = None
+        for combo in itertools.combinations(prims, 2):
+            st = _frontier_stats(combo, op_macs, op_cover, drop)
+            if st and (best is None or (st["worst"], st["macro"]) > best[0]):
+                best = ((st["worst"], st["macro"]), combo, st)
+        return best
+    full = best_two()
+    loo = {w: best_two(w) for w in wls}
+    flips = sorted(w for w in wls if loo[w] and set(loo[w][1]) != set(full[1]))
+    findings.append({"finding": "best_2_primitive_set", "all": list(full[1]),
+                     "all_worst": full[2]["worst"], "all_macro": full[2]["macro"],
+                     "loo_changes_winner": flips,
+                     "robust": not flips})
+
+    # (b) dense-MAC dominance: macro (equal-weight) vs micro (MAC-weighted); rdt-driven?
+    dense_macro = sum(sig[w]["dense_mac"] for w in wls) / len(wls)
+    tot_mac = {w: 0.0 for w in wls}
+    ops = _csv_rows(Path(cs_dir) / "operator_shape_table.csv")
+    for o in ops:
+        tot_mac[o["workload"]] += int(o["macs"])
+    corpus_mac = sum(tot_mac.values()) or 1.0
+    dense_micro = sum(sig[w]["dense_mac"] * tot_mac[w] for w in wls) / corpus_mac
+    dense_micro_loo = {w: (sum(sig[x]["dense_mac"] * tot_mac[x] for x in wls if x != w)
+                           / (corpus_mac - tot_mac[w] or 1.0)) for w in wls}
+    drop_to_low = sorted(w for w in wls if dense_micro_loo[w] < 0.2 <= dense_micro)
+    findings.append({"finding": "dense_gemm_mac_dominance", "macro": round(dense_macro, 4),
+                     "micro": round(dense_micro, 4),
+                     "micro_loo": {w: round(v, 4) for w, v in dense_micro_loo.items()},
+                     "collapses_if_removed": drop_to_low,
+                     "note": ("MAC-dominant (micro) but corpus-narrow (macro)"
+                              if dense_micro - dense_macro > 0.2 else "consistent across views")})
+
+    # (c) residency pressure ranking: which workload tops avoidable_reload, robust?
+    rank = sorted(wls, key=lambda w: -sig[w]["avoidable_reload"])
+    findings.append({"finding": "residency_pressure_rank", "all": rank,
+                     "top": rank[0] if rank else "",
+                     "note": "absolute bytes are small/random-init; ranking is the robust signal"})
+    return {"workloads": wls, "findings": findings}
+
+
+# capture-fidelity feature rows (reuse fidelity.py vocab); status per workload reconstructed from
+# committed artifacts + MODEL_ARCH (run-folder-only, no live topology object needed).
+_FIDELITY_FEATURES = [
+    ("op_shapes_MNK", "strong"), ("region_roles", "strong"), ("dtype_information", "strong"),
+    ("K_or_decode_loop", "loop"), ("kv_cache_state", "kv"), ("packed_lowbit_layout", "lowbit"),
+    ("scale_metadata", "lowbit"), ("host_dispatch_count", "measured"),
+    ("target_latency_cycles", "not_claimed")]
+
+
+def capture_fidelity(cs_dir: Path) -> dict:
+    """First-class result: which structural features the flat capture preserves vs erased, per
+    workload, reusing fidelity.py's hidden-axis vocab. The flattened captures lose the K-loop / AR
+    loop / KV / packed-layout that the residency & loop conclusions depend on."""
+    from merlin.dse_guidance import fidelity as FID, topology as TOP
+    sig, wls = _signal_by_workload(cs_dir)
+    fam_to_class = {"flow_matching": TOP.CLASS_FLOW_MATCHING, "diffusion": TOP.CLASS_FLOW_MATCHING,
+                    "autoregressive_vla": TOP.CLASS_AUTOREGRESSIVE,
+                    "llm": TOP.CLASS_AUTOREGRESSIVE}
+    per_workload, matrix = {}, []
+    for w in wls:
+        s = sig[w]
+        is_ar = s["family"] in ("autoregressive_vla", "llm")
+        cls = fam_to_class.get(s["family"], TOP.CLASS_UNKNOWN)
+        missing = []
+        if s["has_repeated"]:
+            missing.append("token_decode_loop" if is_ar else "denoise_loop")
+        if is_ar:
+            missing.append("kv_cache_growth")
+        if s["has_backbone"] and s["has_repeated"]:
+            missing.append("prefix_kv_reuse")
+            missing.append("async_backbone_head_overlap")
+        if s["H"] > 1:
+            missing.append("action_chunk_horizon")
+        if s["control_rate"]:
+            missing.append("replan_deadline")
+        seen = set()
+        missing = [m for m in missing if not (m in seen or seen.add(m))]
+        hidden = []
+        for m in missing:
+            for ax in FID.HIDDEN_AXES_BY_STRUCTURE.get(m, []):
+                if ax not in hidden:
+                    hidden.append(ax)
+        severity = TOP.CLASS_SEVERITY.get(cls, "medium")
+        if not s["has_repeated"] and not s["control_rate"]:
+            severity = "low"
+        per_workload[w] = {"family": s["family"], "class": cls, "severity": severity,
+                           "missing": missing, "hidden_axes": hidden,
+                           "preserved": ["matmul_shapes", "dtype_information", "op_mix",
+                                         "weight_sizes"]}
+    for feat, kind in _FIDELITY_FEATURES:
+        row = {"feature": feat}
+        for w in wls:
+            s = sig[w]
+            is_ar = s["family"] in ("autoregressive_vla", "llm")
+            if kind == "strong":
+                st = "strong"
+            elif kind == "loop":
+                st = "assumed (config K)" if s["has_repeated"] else "n/a"
+            elif kind == "kv":
+                st = "erased" if is_ar else "n/a"
+            elif kind == "lowbit":
+                st = "erased"        # all 4 recaptures are dequantized f32
+            elif kind == "measured":
+                st = "measured (host)"
+            else:
+                st = "not_claimed"
+            row[w] = st
+        matrix.append(row)
+    return {"workloads": wls, "per_workload": per_workload, "matrix": matrix}
+
+
+def decision_scorecard(bundle: dict) -> list[dict]:
+    """The 7 DSE decision questions, each answered from the P16 analyses with macro/micro/worst +
+    leave-one-out stability + a capture caveat."""
+    fr = bundle.get("primitive_frontier", {})
+    nec = bundle.get("abstraction_necessity", {})
+    rob = bundle.get("robustness", {})
+    par = bundle.get("operator_pareto", {})
+    by_size = fr.get("best_by_size", {})
+    rob_by = {f["finding"]: f for f in rob.get("findings", [])}
+    q = []
+    s1 = by_size.get(1)
+    q.append({"q": "Q1 best single primitive (worst-workload coverage)?",
+              "answer": (f"{s1['set'][0]} -> worst {s1['worst']:.2f}, macro {s1['macro']:.2f}"
+                         if s1 else "n/a"),
+              "caveat": "no single primitive covers every workload"})
+    s2 = by_size.get(2)
+    q.append({"q": "Q2 best 2-primitive set?",
+              "answer": (f"{'+'.join(s2['set'])} -> worst {s2['worst']:.2f} "
+                         f"(vs {s1['worst']:.2f} single)" if s2 and s1 else "n/a"),
+              "caveat": "search primitive SETS, not one tile"})
+    q.append({"q": "Q3 capacity x dtype residency thresholds?",
+              "answer": "see decision_capacity_dtype plot (int4<int8<bf16 budget to fit)",
+              "caveat": "repeated-head weights only; K is configured/reference"})
+    q.append({"q": "Q4 sharding axis for top-MAC ops?",
+              "answer": "M/N reduction-free vs K partial-sum (see decision_sharding_per_top_op)",
+              "caveat": "communication bytes, not latency"})
+    necd = nec.get("rollup", {})
+    q.append({"q": "Q5 which abstractions are NECESSARY (not just possible)?",
+              "answer": (f"{necd.get('necessary',0)} necessary, {necd.get('useful',0)} useful, "
+                         f"{necd.get('possible',0)} possible, {necd.get('blocked',0)} blocked, "
+                         f"{necd.get('not_applicable',0)} N/A"),
+              "caveat": "strict predicate; low-bit abstractions blocked by capture"})
+    dd = rob_by.get("dense_gemm_mac_dominance", {})
+    q.append({"q": "Q6 which conclusions are driven by one workload (RDT)?",
+              "answer": (f"dense-MAC dominance macro {dd.get('macro','?')} vs micro "
+                         f"{dd.get('micro','?')}; collapses if removed: "
+                         f"{dd.get('collapses_if_removed') or 'none'}"),
+              "caveat": "micro view is biased by RDT's 87%-of-workload op"})
+    q.append({"q": "Q7 which claims depend on configured K (capture fidelity)?",
+              "answer": "all residency / loop / command claims (K is config/reference)",
+              "caveat": "needs a loop-preserving capture; see capture_fidelity_matrix"})
+    return q
+
+
 _PLOT_CAPTION = {
     "evidence_type_by_workload": "How much of each workload's evidence is IR-recovered vs assumed — "
         "where the search space rests on recovered structure vs reference values.",
@@ -1287,6 +1735,18 @@ _PLOT_CAPTION = {
     "decision_sharding_cost": "Extra data-movement bytes added by sharding 2/4/8 ways along M, N, or "
         "K: M/N shards are reduction-free (broadcast only) while K shards add partial-sum traffic — "
         "the cost side of the parallelization decision.",
+    "primitive_set_frontier": "Each point is a primitive (or best set): x=mean coverage, y=worst-"
+        "workload coverage. Upper-right = broadly useful; high-x/low-y = corpus-overfit. The best "
+        "single primitive sits low on y; a {tile + GEMV-lane} set reaches the top-right — DSE should "
+        "search primitive SETS.",
+    "operator_cumulative_mac": "Cumulative MAC share vs top-k operators per workload: a steep curve "
+        "(rdt: 1 op = 87%) means DSE sizes for a few giant ops; a gradual curve means many even ops.",
+    "boundary_necessity_matrix": "Strict necessity per abstraction × workload "
+        "(necessary/useful/possible/blocked/N-A) — what DSE should commit to, not merely what is "
+        "possible; low-bit abstractions are blocked by the dequantized capture.",
+    "decision_sharding_per_top_op": "For the top-MAC ops, extra sharding bytes normalized by the op's "
+        "output bytes, per M/N/K axis — which axis partitions a hot op cheaply (the per-operator view, "
+        "not a corpus aggregate).",
 }
 
 
@@ -1516,6 +1976,14 @@ def mine(cs_dir, scope: str) -> dict:
                                       "cross_family_findings": []})
     bundle["corpus_plan"] = corpus_expansion_plan(cs_dir) if is_all else {}
     bundle["cs_dir"] = str(cs_dir)
+    # P16 decision-frontier & robustness (corpus-level analyses computed at 'all'; the per-network
+    # necessity/fidelity are still meaningful per workload but the frontier/robustness need the corpus)
+    bundle["abstraction_necessity"] = abstraction_necessity(cs_dir)
+    bundle["primitive_frontier"] = primitive_set_frontier(cs_dir)
+    bundle["operator_pareto"] = operator_pareto(cs_dir)
+    bundle["robustness"] = robustness(cs_dir) if is_all else {"workloads": [], "findings": []}
+    bundle["capture_fidelity"] = capture_fidelity(cs_dir)
+    bundle["decision_scorecard"] = decision_scorecard(bundle)
     return bundle
 
 
@@ -1820,6 +2288,152 @@ def _plots_index_md(plots, scope, rendered, folder) -> str:
     return "\n".join(L) + "\n"
 
 
+# --------------------------------------------------------------------------- P16 emitters
+
+def _necessity_cols(wls):
+    return (["abstraction", "support_tag", "macro_class"] + list(wls)
+            + [f"n_{k}" for k in _NEC_CLASSES] + ["predicate", "capture_gate"])
+
+
+def _necessity_md(nec, scope) -> str:
+    wls = nec["workloads"]
+    r = nec["rollup"]
+    L = [f"# Abstraction necessity ({scope})\n",
+         "> Strict replacement for the permissive support table: each abstraction is classified per "
+         "workload as **necessary / useful / possible / blocked / not_applicable** by a threshold "
+         "predicate over the recovered signals (not `any-X` presence). 'possible' = available but not "
+         "gated by a discriminating signal; 'blocked' = the capture erased the needed structure.\n",
+         f"**Corpus rollup:** {r['necessary']} necessary · {r['useful']} useful · {r['possible']} "
+         f"possible · {r['blocked']} blocked · {r['not_applicable']} not-applicable "
+         f"(of {len(nec['rows'])} abstractions).\n",
+         "| abstraction | macro | " + " | ".join(wls) + " | predicate | needs |",
+         "|---|---|" + "|".join(["---"] * len(wls)) + "|---|---|"]
+    for row in nec["rows"]:
+        L.append(f"| {row['abstraction']} | **{row['macro_class']}** | "
+                 + " | ".join(row[w] for w in wls)
+                 + f" | {row['predicate']} | {row['capture_gate'] or '—'} |")
+    return "\n".join(L) + "\n"
+
+
+def _frontier_rows(fr):
+    rows = []
+    for size, b in sorted(fr["best_by_size"].items()):
+        rows.append({"set_size": size, "primitive_set": " + ".join(b["set"]),
+                     "macro_coverage": b["macro"], "micro_coverage": b["micro"],
+                     "worst_workload_coverage": b["worst"], "max_regret": b["max_regret"]})
+    return rows
+
+
+def _frontier_md(fr, scope) -> str:
+    L = [f"# Primitive-set frontier ({scope})\n",
+         "> A primitive SET covers an op if ANY member tiles it under 10% pad waste. The headline "
+         "search-space result: one primitive is not enough — the best single primitive leaves a "
+         "workload badly covered (low worst-workload), while a {tile + GEMV-lane} pair covers the "
+         "corpus. Structural coverage only, no performance.\n",
+         "| set size | best primitive set | worst-workload | macro (mean) | micro (MAC-wt) | max regret |",
+         "|---|---|---|---|---|---|"]
+    for r in _frontier_rows(fr):
+        L.append(f"| {r['set_size']} | {r['primitive_set']} | {r['worst_workload_coverage']:.2f} | "
+                 f"{r['macro_coverage']:.2f} | {r['micro_coverage']:.2f} | {r['max_regret']:.2f} |")
+    return "\n".join(L) + "\n"
+
+
+def _pareto_md(par, scope) -> str:
+    ts = par["thresholds"]
+    L = [f"# Operator Pareto hotspots ({scope})\n",
+         "> How many top ops are needed to reach a MAC threshold — whether DSE should size for a few "
+         "giant ops or many even ones. Structural (MAC/byte share), no performance.\n",
+         "| workload | n_ops | " + " | ".join(f"k@{int(t*100)}%MAC" for t in ts)
+         + " | top-op MAC share |",
+         "|---|---|" + "|".join(["---"] * len(ts)) + "|---|"]
+    for r in par["rows"]:
+        L.append(f"| {r['workload']} | {r['n_ops']} | "
+                 + " | ".join(str(r[f'k_macs_{int(t*100)}']) for t in ts)
+                 + f" | {r['top_op_mac_share']:.0%} |")
+    return "\n".join(L) + "\n"
+
+
+def _robustness_md(rob, scope) -> str:
+    L = [f"# Macro/micro + leave-one-workload-out robustness ({scope})\n",
+         "> Anti-overfitting: each cross-workload finding recomputed dropping one workload. A finding "
+         "that flips is corpus-specific, not general.\n"]
+    for f in rob["findings"]:
+        L.append(f"## {f['finding']}\n")
+        for k, v in f.items():
+            if k == "finding":
+                continue
+            L.append(f"- {k}: {v}")
+        L.append("")
+    return "\n".join(L) + "\n"
+
+
+def _capture_fidelity_md(cf, scope) -> str:
+    wls = cf["workloads"]
+    L = [f"# Capture-fidelity matrix ({scope})\n",
+         "> The likely central result: which structural features the flat capture preserves vs "
+         "erased. `strong`=recovered from IR; `assumed (config K)`=loop count is a reference value, "
+         "not captured; `erased`=lowered/dequantized away; `measured (host)`=real host measurement; "
+         "`not_claimed`=needs a target design. Findings that depend on `assumed`/`erased` rows are "
+         "capture-limited.\n",
+         "| feature | " + " | ".join(wls) + " |",
+         "|---|" + "|".join(["---"] * len(wls)) + "|"]
+    for row in cf["matrix"]:
+        L.append(f"| {row['feature']} | " + " | ".join(row[w] for w in wls) + " |")
+    L.append("\n**Per-workload DSE risk:**\n")
+    for w in wls:
+        d = cf["per_workload"][w]
+        L.append(f"- **{w}** ({d['family']}, severity {d['severity']}): lost "
+                 f"{', '.join(d['missing']) or 'none'}; hides axes "
+                 f"{', '.join(d['hidden_axes']) or 'none'}")
+    return "\n".join(L) + "\n"
+
+
+def _scorecard16_md(qs, scope) -> str:
+    L = [f"# DSE decision-question scorecard ({scope})\n",
+         "> The few decisions a future DSE tool must make, each answered from the workload analysis "
+         "with its caveat. A metric earns its place only by answering one of these.\n",
+         "| # | decision question | answer (from analysis) | caveat |", "|---|---|---|---|"]
+    for q in qs:
+        L.append(f"| {q['q'].split()[0]} | {q['q']} | {q['answer']} | {q['caveat']} |")
+    return "\n".join(L) + "\n"
+
+
+def _slides_md(bundle, scope) -> str:
+    nec = bundle.get("abstraction_necessity", {}).get("rollup", {})
+    fr = bundle.get("primitive_frontier", {}).get("best_by_size", {})
+    s1, s2 = fr.get(1), fr.get(2)
+    L = [f"# Presentation slide candidates ({scope})\n",
+         "> Show these, not the descriptive QA plots. Each slide = one DSE claim + its evidence + "
+         "caveat. Structural only; no speedup/area/energy.\n"]
+    slides = [
+        ("What Merlin does", "flat capture -> workload contract -> DSE search-space axes (it "
+         "enumerates the search space; it does not choose a design)",
+         "dse_search_space_knobs", "no performance claimed"),
+        ("Primitive set is a DSE axis",
+         (f"one primitive worst-cov {s1['worst']:.2f}; {'+'.join(s2['set'])} -> {s2['worst']:.2f}"
+          if s1 and s2 else "best 2-set covers the corpus a single primitive cannot"),
+         "primitive_set_frontier", "set-union coverage, structural"),
+        ("Residency is a loop/rate abstraction",
+         "weight bytes moved grows with K under reload; flat if resident; threshold set by dtype",
+         "decision_weight_residency + decision_capacity_dtype", "K is configured/reference"),
+        ("Inter-op parallelism is low",
+         "work/span ~1.1-1.6 -> pushes DSE to intra-op sharding / pipelining / specialized units",
+         "critical_path_parallelism", "flattened capture may erase loop/pipeline parallelism"),
+        ("HW/SW boundary placement is a search axis",
+         (f"abstraction necessity: {nec.get('necessary',0)} necessary / {nec.get('blocked',0)} "
+          f"blocked -> DSE searches WHERE state/loops/layout/sync/reductions live"),
+         "boundary_necessity_matrix", "categorical, not a score"),
+        ("Capture fidelity is the limiting factor",
+         "the flat capture erases K-loop / KV / packed-layout the loop & residency claims need",
+         "capture_fidelity_matrix", "the central next-step result, not a side note")]
+    for i, (title, claim, art, cav) in enumerate(slides, 1):
+        L.append(f"## Slide {i} — {title}\n")
+        L.append(f"- **claim:** {claim}")
+        L.append(f"- **show:** `{art}`")
+        L.append(f"- **caveat:** {cav}\n")
+    return "\n".join(L) + "\n"
+
+
 def _findings_digest_md(bundle: dict, cs_dir: Path, rendered: list[str]) -> str:
     """ONE self-contained findings document per run: every metric table, the operator hotspots, the
     decision-impact plots, and the DSE-ingest knobs in a single file you can open and evaluate.
@@ -1853,11 +2467,25 @@ def _findings_digest_md(bundle: dict, cs_dir: Path, rendered: list[str]) -> str:
     # 2. operator hotspots (reuse the dedicated builder; replace its H1 with our section header)
     L.append("## 2. Per-operator hotspots\n")
     L.append(_hotspots_md(bundle["hotspots"], scope).split("\n", 1)[1])
-    # 3. abstraction coverage (only meaningful at 'all')
+    # 3. abstraction NECESSITY (strict; the decision-discriminating view) + frontier + pareto
+    L.append("## 3. Abstraction necessity (strict — what DSE should commit to)\n")
+    L.append(_necessity_md(bundle["abstraction_necessity"], scope).split("\n", 1)[1])
+    L.append("## 4. Primitive-set frontier\n")
+    L.append(_frontier_md(bundle["primitive_frontier"], scope).split("\n", 1)[1])
+    L.append("## 5. Operator Pareto hotspots\n")
+    L.append(_pareto_md(bundle["operator_pareto"], scope).split("\n", 1)[1])
+    L.append("## 6. Capture fidelity (what the flat capture erased)\n")
+    L.append(_capture_fidelity_md(bundle["capture_fidelity"], scope).split("\n", 1)[1])
+    L.append("## 7. Decision-question scorecard\n")
+    L.append(_scorecard16_md(bundle["decision_scorecard"], scope).split("\n", 1)[1])
+    if bundle.get("robustness", {}).get("findings"):
+        L.append("## 8. Leave-one-workload-out robustness\n")
+        L.append(_robustness_md(bundle["robustness"], scope).split("\n", 1)[1])
+    # the permissive coverage is kept only as a secondary 'possible-placement' reference
     if bundle["abstraction_coverage"]:
-        L.append("## 3. Abstraction coverage\n")
+        L.append("## Appendix — abstraction support breadth (possible-placement view only)\n")
         L.append(_coverage_md(bundle["abstraction_coverage"], scope).split("\n", 1)[1])
-    # 4. decision-impact plots
+    # decision-impact plots
     L.append("## Decision-impact plots (what changes if DSE picks differently)\n")
     L.append("Structural what-if curves (bytes / coverage / counts — never latency or speedup). "
              "PNGs under `generated_plots/`.\n")
@@ -1958,6 +2586,32 @@ def emit_run(bundle: dict, run_dir, rendered: list[str]) -> None:
     if bundle["corpus_plan"]:
         Artifact("corpus_expansion_plan.md", _corpus_md(bundle["corpus_plan"], scope)).write(run_dir)
     Artifact("signal_findings_report.md", _signal_report_md(bundle, scope)).write(run_dir)
+    # P16 decision-frontier & robustness deliverables
+    nec = bundle["abstraction_necessity"]
+    Artifact("abstraction_necessity_table.csv",
+             _csv_text(nec["rows"], _necessity_cols(nec["workloads"]))).write(run_dir)
+    Artifact("abstraction_necessity.md", _necessity_md(nec, scope)).write(run_dir)
+    Artifact("primitive_set_frontier.csv",
+             _csv_text(_frontier_rows(bundle["primitive_frontier"]),
+                       ["set_size", "primitive_set", "worst_workload_coverage", "macro_coverage",
+                        "micro_coverage", "max_regret"])).write(run_dir)
+    Artifact("primitive_set_frontier.md",
+             _frontier_md(bundle["primitive_frontier"], scope)).write(run_dir)
+    par = bundle["operator_pareto"]
+    _pcols = (["workload", "n_ops"]
+              + [f"k_{m}_{int(t*100)}" for t in par["thresholds"] for m in ("macs", "wbytes")]
+              + ["top_op", "top_op_mac_share"])
+    Artifact("operator_pareto_hotspots.csv", _csv_text(par["rows"], _pcols)).write(run_dir)
+    Artifact("operator_pareto_hotspots.md", _pareto_md(par, scope)).write(run_dir)
+    cf = bundle["capture_fidelity"]
+    Artifact("capture_fidelity_matrix.csv",
+             _csv_text(cf["matrix"], ["feature"] + cf["workloads"])).write(run_dir)
+    Artifact("capture_fidelity_matrix.md", _capture_fidelity_md(cf, scope)).write(run_dir)
+    Artifact("decision_question_scorecard.md",
+             _scorecard16_md(bundle["decision_scorecard"], scope)).write(run_dir)
+    Artifact("presentation_slide_candidates.md", _slides_md(bundle, scope)).write(run_dir)
+    if bundle["robustness"]["findings"]:
+        Artifact("leave_one_workload_out.md", _robustness_md(bundle["robustness"], scope)).write(run_dir)
     Artifact("DSE_FINDINGS.md",
              _findings_digest_md(bundle, bundle.get("cs_dir", run_dir), rendered)).write(run_dir)
     Artifact("presentation_plots_index.md",

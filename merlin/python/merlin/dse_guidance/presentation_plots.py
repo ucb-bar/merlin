@@ -238,7 +238,7 @@ def _r_decision_weight_residency(cs, facts, ax):
         kr = int(r["invocations"])
         ax.scatter([kr], [wb * kr], color=line.get_color(), zorder=5, s=18)
     ax.set_title("Decision: weight residency -> bytes moved vs loop count\n"
-                 "(solid=reload every step, dashed=resident; dot=real K)")
+                 "(solid=reload every step, dashed=resident; dot=configured/reference K)")
     ax.set_xlabel("head loop count K")
     ax.set_ylabel("weight bytes moved")
     ax.set_yscale("log")
@@ -261,9 +261,9 @@ def _r_decision_capacity_dtype(cs, facts, ax):
         sizes = [int(float(r[col])) for r in rows]
         ax.step(budgets, [sum(1 for s in sizes if s <= b) for b in budgets], where="post",
                 label=name)
-    ax.set_title("Decision: on-chip capacity + dtype -> workloads fully weight-resident")
+    ax.set_title("Decision: on-chip capacity + dtype -> repeated-head weights resident")
     ax.set_xlabel("on-chip capacity budget (bytes)")
-    ax.set_ylabel(f"# workloads resident (of {len(rows)})")
+    ax.set_ylabel(f"# workloads w/ repeated-head weights resident (of {len(rows)})")
     ax.set_xscale("log")
     ax.legend(fontsize=7)
     return True
@@ -296,6 +296,106 @@ def _r_decision_sharding_cost(cs, facts, ax):
     return True
 
 
+# ---- P16 decision-frontier & robustness renderers ----
+
+def _r_primitive_set_frontier(cs, facts, ax):
+    from merlin.dse_guidance import insight_mining as IM
+    fr = IM.primitive_set_frontier(cs)
+    singles = fr.get("singles", [])
+    if not singles:
+        return False
+    ax.scatter([s["macro"] for s in singles], [s["worst"] for s in singles],
+               c="#888", label="single primitive", zorder=3)
+    for s in singles:
+        ax.annotate(s["primitive"].replace("_", ""), (s["macro"], s["worst"]), fontsize=5,
+                    xytext=(2, 2), textcoords="offset points")
+    markers = {1: "o", 2: "*", 3: "P"}
+    for size, b in fr.get("best_by_size", {}).items():
+        ax.scatter([b["macro"]], [b["worst"]], marker=markers.get(size, "s"), s=160, zorder=5,
+                   label=f"best {size}-set")
+    ax.plot([0, 1], [0, 1], "--", color="#ccc", zorder=1)
+    ax.set_xlabel("mean (macro) coverage")
+    ax.set_ylabel("worst-workload coverage")
+    ax.set_title("Primitive-set frontier (upper-right = broadly useful)")
+    ax.set_xlim(0, 1.02)
+    ax.set_ylim(-0.02, 1.05)
+    ax.legend(fontsize=6)
+    return True
+
+
+def _r_operator_cumulative_mac(cs, facts, ax):
+    rows = _rows(cs / "operator_shape_table.csv")
+    if not rows:
+        return False
+    for w in sorted({r["workload"] for r in rows}):
+        vals = sorted((int(r["macs"]) for r in rows if r["workload"] == w), reverse=True)
+        tot = sum(vals) or 1
+        cum, acc = [], 0
+        for v in vals:
+            acc += v
+            cum.append(acc / tot)
+        ax.plot(range(1, len(cum) + 1), cum, marker=".", label=w)
+    ax.axhline(0.9, ls="--", color="#ccc")
+    ax.set_xlabel("top-k operators (by MACs)")
+    ax.set_ylabel("cumulative MAC share")
+    ax.set_title("How concentrated is compute? (steep = a few giant ops)")
+    ax.set_ylim(0, 1.02)
+    ax.legend(fontsize=7)
+    return True
+
+
+_NEC_RANK = {"necessary": 4, "useful": 3, "possible": 2, "blocked": 1, "not_applicable": 0}
+_NEC_ABBR = {"necessary": "N", "useful": "U", "possible": "P", "blocked": "B", "not_applicable": "–"}
+
+
+def _r_boundary_necessity_matrix(cs, facts, ax):
+    from merlin.dse_guidance import insight_mining as IM
+    nec = IM.abstraction_necessity(cs)
+    wls = nec["workloads"]
+    rows = nec["rows"][:12]                       # already sorted necessary-first
+    if not rows:
+        return False
+    mat = [[_NEC_RANK[r[w]] for w in wls] for r in rows]
+    im = ax.imshow(mat, aspect="auto", cmap="YlGnBu", vmin=0, vmax=4)
+    ax.set_xticks(range(len(wls)), wls, rotation=20, fontsize=7)
+    ax.set_yticks(range(len(rows)), [r["abstraction"] for r in rows], fontsize=6)
+    for i, r in enumerate(rows):
+        for j, w in enumerate(wls):
+            ax.text(j, i, _NEC_ABBR[r[w]], ha="center", va="center", fontsize=6,
+                    color="white" if mat[i][j] >= 3 else "black")
+    ax.set_title("Abstraction necessity (N=necessary U=useful P=possible B=blocked –=N/A)")
+    return True
+
+
+def _r_decision_sharding_per_top_op(cs, facts, ax):
+    ops = _rows(cs / "operator_shape_table.csv")
+    shard = _rows(cs / "sharding_table.csv")
+    if not ops or not shard:
+        return False
+    top = sorted(ops, key=lambda o: -int(o["macs"]))[:5]
+    by_op = {}
+    for r in shard:
+        by_op.setdefault((r["workload"], r["op_index"]), {})[r["axis"]] = r
+    axes_ = ["M", "N", "K"]
+    labels, data = [], {a: [] for a in axes_}
+    for o in top:
+        key = (o["workload"], o["op_index"])
+        outb = int(o["output_bytes"]) or 1
+        labels.append(o["prov_fqn"].split(".")[-1][:14])
+        for a in axes_:
+            r = by_op.get(key, {}).get(a)
+            extra = (float(r["per_extra_shard_bytes"]) * 7 / outb) if r else 0.0
+            data[a].append(extra)
+    x = range(len(labels))
+    for k, a in enumerate(axes_):
+        ax.bar([i + (k - 1) * 0.25 for i in x], data[a], 0.25, label=f"{a}-shard")
+    ax.set_xticks(list(x), labels, rotation=30, fontsize=6)
+    ax.set_ylabel("8-way extra bytes / output bytes")
+    ax.set_title("Decision: shard top-MAC ops (extra bytes normalized by output)")
+    ax.legend(fontsize=7)
+    return True
+
+
 _RENDERERS = {
     "evidence_type_by_workload": _r_evidence_by_workload,
     "evidence_type_by_phase": _r_evidence_by_phase,
@@ -311,6 +411,10 @@ _RENDERERS = {
     "decision_weight_residency": _r_decision_weight_residency,
     "decision_capacity_dtype": _r_decision_capacity_dtype,
     "decision_sharding_cost": _r_decision_sharding_cost,
+    "primitive_set_frontier": _r_primitive_set_frontier,
+    "operator_cumulative_mac": _r_operator_cumulative_mac,
+    "boundary_necessity_matrix": _r_boundary_necessity_matrix,
+    "decision_sharding_per_top_op": _r_decision_sharding_per_top_op,
 }
 
 

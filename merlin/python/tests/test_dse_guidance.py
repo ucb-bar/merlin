@@ -2471,7 +2471,7 @@ def test_p15_emit_writes_study_deliverables_and_plot_captions(tmp_path):
     assert "robust vs corpus-limited" in blob and "random-init" in blob
     # the consolidated one-file digest exists and embeds every section + the knob catalog
     dig = (tmp_path / "DSE_FINDINGS.md").read_text()
-    for section in ("Headline metrics", "Top ops by MACs", "Abstraction coverage",
+    for section in ("Headline metrics", "Top ops by MACs", "Abstraction necessity (strict",
                     "Decision-impact plots", "What a DSE tool ingests", "How to evaluate this"):
         assert section in dig, section
     assert "compute_primitive_shape" in dig and "total_macs" in dig
@@ -2531,3 +2531,116 @@ def test_p15_per_network_run_is_scoped_not_corpus_wide(tmp_path):
     rows = list(_csv.DictReader((tmp_path / "canonical_signal_table.csv").open()))
     wls = {r["workload"] for r in rows if r["workload"] not in ("ALL", "ZOO", "")}
     assert wls == {one}
+
+
+# --------------------------------------------------------------------------- P16 decision-frontier
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p16_abstraction_necessity_is_discriminating_not_permissive():
+    from merlin.dse_guidance import insight_mining as IM
+    from merlin.dse_guidance.boundary_placement import catalog_rows
+    nec = IM.abstraction_necessity(_CS_DIR)
+    roll = nec["rollup"]
+    # the #1 fix: NOT everything is necessary, and some abstractions are blocked
+    assert roll["necessary"] < len(nec["rows"]) and roll["blocked"] > 0
+    # blocked abstractions are exactly the erased/kv catalog entries (capture-limited)
+    erased_kv = {c["abstraction"] for c in catalog_rows() if c["erased"] or c["kv"]}
+    blocked = {r["abstraction"] for r in nec["rows"] if r["macro_class"] == "blocked"}
+    assert blocked and blocked <= erased_kv
+    # every cell is a valid class and at least one not_applicable cell exists (non-AR + decode/kv)
+    valid = set(IM._NEC_CLASSES)
+    assert all(r[w] in valid for r in nec["rows"] for w in nec["workloads"])
+    assert any(r[w] == "not_applicable" for r in nec["rows"] for w in nec["workloads"])
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p16_necessity_recomputes_from_source():
+    # matrix_engine (dense) necessity must equal (dense MAC fraction > 0.5) per workload
+    from merlin.dse_guidance import insight_mining as IM
+    import csv as _csv
+    import io as _io
+    shape = list(_csv.DictReader(_io.StringIO(
+        (_CS_DIR / "shape_summary_by_workload.csv").read_text())))
+    nec = IM.abstraction_necessity(_CS_DIR)
+    me = next(r for r in nec["rows"] if r["abstraction"] == "matrix_engine")
+    for w in nec["workloads"]:
+        dense = sum(float(r["mac_fraction"]) for r in shape
+                    if r["workload"] == w and r["shape_class"] == "squareish_gemm")
+        assert (me[w] == "necessary") == (dense > 0.5)
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p16_primitive_set_frontier_monotone_and_set_union():
+    from merlin.dse_guidance import insight_mining as IM
+    fr = IM.primitive_set_frontier(_CS_DIR)
+    by = fr["best_by_size"]
+    # worst-workload coverage is monotone non-decreasing in set size; a 2-set beats the best single
+    assert by[2]["worst"] >= by[1]["worst"] and by[2]["worst"] > by[1]["worst"]
+    # independent op-level set-union recompute of the chosen 2-set's worst coverage
+    import csv as _csv
+    import io as _io
+    tw = list(_csv.DictReader(_io.StringIO((_CS_DIR / "tile_waste_table.csv").read_text())))
+    op_macs, op_cover = {}, {}
+    for r in tw:
+        if r.get("applicable") != "True":
+            continue
+        k = (r["workload"], r["op_index"])
+        op_macs[k] = float(r["true_macs"])
+        op_cover.setdefault(k, {})[r["primitive"]] = (r["covered_under_10pct"] == "True")
+    pset = by[2]["set"]
+    num, den = {}, {}
+    for (w, op), m in op_macs.items():
+        den[w] = den.get(w, 0.0) + m
+        if any(op_cover[(w, op)].get(p, False) for p in pset):
+            num[w] = num.get(w, 0.0) + m
+    assert abs(min(num.get(w, 0.0) / den[w] for w in den) - by[2]["worst"]) < 1e-6
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p16_operator_pareto_and_leave_one_out():
+    from merlin.dse_guidance import insight_mining as IM
+    par = IM.operator_pareto(_CS_DIR)
+    for r in par["rows"]:
+        assert r["k_macs_50"] <= r["k_macs_95"] <= r["n_ops"]
+    rdt = next(r for r in par["rows"] if r["workload"] == "rdt")
+    assert rdt["k_macs_50"] == 1 and rdt["top_op_mac_share"] > 0.8     # one giant op dominates
+    rob = IM.robustness(_CS_DIR)
+    dom = next(f for f in rob["findings"] if f["finding"] == "dense_gemm_mac_dominance")
+    # MAC-dominant (micro) but corpus-narrow (macro); collapses when rdt removed
+    assert dom["micro"] - dom["macro"] > 0.2 and "rdt" in dom["collapses_if_removed"]
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p16_capture_fidelity_and_emit(tmp_path):
+    from merlin.dse_guidance import insight_mining as IM
+    cf = IM.capture_fidelity(_CS_DIR)
+    lowbit = next(r for r in cf["matrix"] if r["feature"] == "packed_lowbit_layout")
+    assert all(lowbit[w] == "erased" for w in cf["workloads"])         # dequantized capture
+    kloop = next(r for r in cf["matrix"] if r["feature"] == "K_or_decode_loop")
+    assert all("config" in kloop[w] for w in cf["workloads"])          # K is configured/reference
+    # the digest leads with strict necessity, not the permissive coverage
+    b = IM.mine(_CS_DIR, "all")
+    IM.emit_run(b, tmp_path, [])
+    for f in ("abstraction_necessity_table.csv", "primitive_set_frontier.csv",
+              "operator_pareto_hotspots.csv", "capture_fidelity_matrix.csv",
+              "decision_question_scorecard.md", "leave_one_workload_out.md",
+              "presentation_slide_candidates.md"):
+        assert (tmp_path / f).is_file(), f
+    dig = (tmp_path / "DSE_FINDINGS.md").read_text()
+    assert "Abstraction necessity (strict" in dig
+    assert "possible-placement view only" in dig                       # coverage demoted to appendix
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p16_unit_multiplicity_demoted_to_context():
+    # "heterogeneous" is an interpretation, not a measured fact -> must not be a signal/headline metric
+    from merlin.dse_guidance import insight_mining as IM
+    assert "unit_multiplicity_implication" not in IM.SIGNAL_METRICS
+    canon = IM.canonical_signal_table(IM.unified_facts(_CS_DIR, "all"))
+    assert not any(r["metric"] == "unit_multiplicity_implication" for r in canon)
