@@ -94,10 +94,20 @@ module attributes {transform.with_named_sequence} {
 """
 
 
-def build_rvv_pipeline(sched_path: "str | Path") -> str:
+def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = True) -> str:
     """Whole-module pipeline with the transform vectorization stage spliced in after
     named-op generalization (vectorize on tensors) and before bufferization, plus the
-    vector-lowering passes needed to reach LLVM. ``sched_path`` is the preloaded schedule."""
+    vector-lowering passes needed to reach LLVM. ``sched_path`` is the preloaded schedule.
+
+    ``hoist_static_allocs=False`` drops the ``hoist-static-allocs`` option of
+    buffer-results-to-out-params so static intermediate buffers stay HEAP (memref.alloc) instead
+    of being promoted to stack ``alloca``. Needed for the K1 Linux target: big models' lowered
+    intermediates otherwise overflow even a multi-GB stack; on the heap they use the board RAM.
+    The bare-metal spike/Zephyr targets keep hoisting (default True) — their big linker-reserved
+    stack tolerates it and their malloc arena is bounded."""
+    brop = ("buffer-results-to-out-params{modify-public-functions hoist-static-allocs}"
+            if hoist_static_allocs
+            else "buffer-results-to-out-params{modify-public-functions}")
     return ",".join([
         "canonicalize", "cse",
         # Recover named contraction ops (matmul/batch_matmul) from the capture's generics so
@@ -110,7 +120,7 @@ def build_rvv_pipeline(sched_path: "str | Path") -> str:
         "canonicalize", "cse",
         "func.func(linalg-generalize-named-ops)",   # remaining (non-vectorized) ops -> loops
         "one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map}",
-        "buffer-results-to-out-params{modify-public-functions hoist-static-allocs}",
+        brop,
         "func.func(buffer-hoisting,buffer-loop-hoisting)",
         "func.func(lower-vector-multi-reduction)",
         "func.func(lower-vector-mask)",
@@ -157,21 +167,23 @@ class PipelineError(RuntimeError):
 
 def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
                      pipeline: str | None = None, timeout: int = 7200,
-                     vectorize: bool = False) -> str:
+                     vectorize: bool = False, transform_schedule: str | None = None,
+                     hoist_static_allocs: bool = True) -> str:
     """Lower upstream-MLIR text to LLVM IR text via the m2m venv. Returns .ll text.
 
     ``vectorize=True`` selects the native RVV path: writes the transform schedule into
     ``workdir`` and uses :func:`build_rvv_pipeline` so the IR carries fixed-width vector
-    ops (real RVV under ``-march=rv64gcv``) instead of relying on clang auto-vectorization.
-    An explicit ``pipeline`` overrides both defaults.
+    ops (real RVV under ``-march=rv64gcv``). ``transform_schedule`` overrides the default
+    matmul/batch_matmul schedule (e.g. the elementwise/reduction schedule for the vector
+    family) without disturbing it. An explicit ``pipeline`` overrides both defaults.
     """
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="merlin_lower_"))
     work.mkdir(parents=True, exist_ok=True)
     if pipeline is None:
         if vectorize:
             sched = work / "rvv_schedule.mlir"
-            sched.write_text(RVV_TRANSFORM_SCHEDULE, encoding="utf-8")
-            pipeline = build_rvv_pipeline(sched)
+            sched.write_text(transform_schedule or RVV_TRANSFORM_SCHEDULE, encoding="utf-8")
+            pipeline = build_rvv_pipeline(sched, hoist_static_allocs=hoist_static_allocs)
         else:
             pipeline = UPSTREAM_PIPELINE
     src = work / "model.mlir"

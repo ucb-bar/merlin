@@ -262,8 +262,11 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
 
     # 1. model.mlir -> normalize (same prep passes as the package/spike build) -> model.ll.
     prepared = zm._prepare_model_mlir(model_dir / "model.mlir", work, int8_compute=pkg.is_int8)
+    # hoist_static_allocs=False: keep big intermediate buffers on the HEAP (board RAM) instead of
+    # promoting them to stack alloca — large models otherwise overflow even a multi-GB stack.
     res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
-                           vectorize=True, transform_schedule=pkg.schedule_text)
+                           vectorize=True, transform_schedule=pkg.schedule_text,
+                           hoist_static_allocs=False)
 
     # 2. compile model.ll -> K1 Linux object. The IR is emitted by the repo's clang-23 toolchain
     #    and carries LLVM-23 attribute syntax (e.g. `captures(none)`) the SpacemiT clang-19 can't
