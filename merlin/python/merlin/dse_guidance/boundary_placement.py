@@ -285,6 +285,18 @@ ABSTRACTIONS = tuple(_BOUNDARY_CATALOG)
 REGION_ROLES = {"repeated_head", "backbone_once", "prefix_builder", "unknown"}
 
 
+def catalog_rows() -> list[dict]:
+    """Read-only view of the boundary catalog for downstream analysis (e.g. the strict abstraction
+    necessity classifier). Exposes the discriminating fields without the level/knob detail; does NOT
+    change how certificates or the committed boundary matrix are built."""
+    return [
+        {"abstraction": name, "support": spec["support"],
+         "region_roles": list(spec["region_roles"]),
+         "erased": bool(spec.get("erased", False)), "kv": bool(spec.get("kv", False)),
+         "cp_axis": spec.get("cp_axis")}
+        for name, spec in _BOUNDARY_CATALOG.items()]
+
+
 def _levels_for(spec: dict) -> dict:
     if spec.get("kv"):
         return dict(_KV_LEVELS)
