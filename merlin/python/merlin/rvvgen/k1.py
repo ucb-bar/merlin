@@ -58,6 +58,11 @@ K1_STACK_BYTES = 2 * 1024 * 1024 * 1024
 # `parallel=True` build path references it.
 K1_OPENMP_DIR = _REPO / "build_tools" / "k1_openmp"
 K1_OMP_THREADS = int(os.environ.get("MERLIN_K1_OMP_THREADS", "8"))  # board has 8 cores (2x4)
+# Big mmap'd weight blobs MUST live on real storage, NOT /tmp: the board's /tmp is tmpfs
+# (RAM-backed, only 1.9G) so a multi-GB weights file there both fails to fit and consumes the
+# RAM we are trying to save. The rootfs (/dev/mmcblk2p6, ~12G free) is real flash — mmap from
+# there demand-pages off disk. Binary (small) stays in /tmp; weights go here.
+K1_REMOTE_DIR = os.environ.get("MERLIN_K1_REMOTE_DIR", "/root/merlin_k1")
 
 
 def _toolchain_root() -> Path | None:
@@ -442,7 +447,9 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
         marker = bwork / "USE_MMAP_WEIGHTS"
         wenv, remote_w = "", None
         if marker.is_file():
-            remote_w = f"{remote}.weights.bin"
+            # weights to the rootfs (real flash), NOT /tmp (tmpfs/RAM) — see K1_REMOTE_DIR.
+            _ssh(f"mkdir -p {K1_REMOTE_DIR}", timeout=30)
+            remote_w = f"{K1_REMOTE_DIR}/{Path(remote).name}.weights.bin"
             _run(["scp", "-i", K1_SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
                   marker.read_text().strip(), f"{K1_HOST}:{remote_w}"])
             wenv = f"MERLIN_WEIGHTS={remote_w} "
