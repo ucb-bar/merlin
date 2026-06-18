@@ -22,6 +22,12 @@ from .fork import mint_run_id, write_fork
 from .registry import RvvPackage, load_rvv_package
 
 # Reproduce hand_v0's semantic SSA names so re-rendering its knobs is byte-identical.
+#
+# TARGET-PLUGIN NOTE: `_VARS` and `render_schedule` below are the RVV RENDERER — they emit the
+# RVV transform-dialect schedule (op_match tile/vectorize + vector.* lowering patterns). They are
+# intentionally RVV-specific: a different target reusing the beam engine (rvvgen.beam) supplies its
+# OWN render/generator (a `render_schedule(knobs) -> str` and a `mint_fork(...) -> Path`) rather
+# than these. See rvvgen/TARGET_PLUGIN.md for the full target-plugin contract.
 _VARS = {
     "linalg.matmul": ("mm", "t", "l"),
     "linalg.batch_matmul": ("bm", "bt", "bl"),
