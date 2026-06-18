@@ -85,7 +85,7 @@ FORBIDDEN = ("speedup", "faster", "optimal", "best design", "predicted cycles", 
 
 FACT_COLUMNS = ["fact_id", "workload", "region", "phase", "op_id", "abstraction", "boundary_level",
                 "metric_name", "metric_value", "metric_unit", "source_artifact", "source_phase",
-                "evidence_type", "derivation_type", "evidence_tier", "metric_class",
+                "evidence_type", "derivation_type", "evidence_tier", "metric_class", "dse_question",
                 "verification_status", "verifying_check", "corroborated_by", "caveat",
                 "dse_implication", "presentation_candidate"]
 
@@ -111,6 +111,37 @@ def metric_class(metric: str, derivation: str) -> str:
     if metric in SIGNAL_METRICS:
         return "signal"
     return "context"   # row counts / provenance / redundant corroboration values (traceability only)
+
+
+# every SIGNAL metric must answer ONE DSE-search-space question (the organizing rule). Context
+# metrics get no question (they are traceability, never presented).
+Q_PRIMITIVES = "Q_primitives: what compute primitives should DSE include?"
+Q_HETERO = "Q_heterogeneity: should DSE explore heterogeneous / replicated units?"
+Q_RESIDENCY = "Q_residency: should DSE explore weight residency / packed stores?"
+Q_COMMAND = "Q_command: should DSE explore command/loop/dispatch abstractions?"
+Q_LOWBIT = "Q_lowbit: should DSE explore low-bit formats / numerical placement?"
+Q_BOUNDARY = "Q_boundary: where should the HW/SW boundary sit?"
+Q_READINESS = "Q_readiness: what blocks quantitative ranking?"
+DSE_QUESTIONS = [Q_PRIMITIVES, Q_HETERO, Q_RESIDENCY, Q_COMMAND, Q_LOWBIT, Q_BOUNDARY, Q_READINESS]
+
+_METRIC_QUESTION = {
+    "total_macs": Q_PRIMITIVES, "n_matmuls": Q_PRIMITIVES, "coverage_under_10pct": Q_PRIMITIVES,
+    "max_regret": Q_PRIMITIVES, "dominant_shape_class": Q_PRIMITIVES,
+    "available_parallelism": Q_HETERO, "serialization": Q_HETERO,
+    "mac_fraction_dense_gemm": Q_HETERO, "mac_fraction_skinny_gemm_or_gemv": Q_HETERO,
+    "clean_8way_mn_shards": Q_HETERO, "unit_multiplicity_implication": Q_HETERO,
+    "head_weight_bytes": Q_RESIDENCY, "avoidable_weight_reload": Q_RESIDENCY,
+    "resident_int8_B": Q_RESIDENCY,
+    "measured_dispatch_ratio": Q_COMMAND, "head_cadence": Q_COMMAND,
+    "overlap_candidates_yes": Q_COMMAND,
+    "accuracy_int8_w8a8": Q_LOWBIT, "accuracy_gate_report_present": Q_LOWBIT,
+    "matmul_bias_epilogues": Q_LOWBIT,
+    "accumulator_dtype": Q_LOWBIT, "compute_dtype": Q_LOWBIT,
+    "lowbit_storage_dequantized_finding": Q_LOWBIT,
+    "boundary_pressure_score": Q_BOUNDARY,
+    "compiler_proofs_proven_for_workload": Q_BOUNDARY, "compiler_proofs_assumed": Q_BOUNDARY,
+    "compiler_proofs_unknown": Q_BOUNDARY,
+}
 
 
 # metric_name -> the SPECIFIC verify_implementation.py check that independently re-derives it (the
@@ -279,6 +310,7 @@ def _fact(fid, workload, metric, value, unit, artifact, phase, evidence, *, regi
         "evidence_tier": tier,
         "verification_status": _verification_status(metric, evidence, corroborated_by),
         "metric_class": metric_class(metric, _derivation(evidence)),
+        "dse_question": _METRIC_QUESTION.get(metric, ""),
         "verifying_check": _METRIC_CHECK.get(metric, ""), "corroborated_by": corroborated_by,
         "caveat": caveat, "dse_implication": implication,
         # presentation-worthy = a SIGNAL metric (decision-relevant, not a row-count) that is tier A/B
@@ -897,6 +929,7 @@ def presentation_findings(facts: list[dict], answers: list[dict]) -> list[dict]:
             "supporting_workloads": wls, "per_workload_values": spread,
             "per_workload_spread": spread_summary, "max_corroborated_by": max_corr,
             "relevant_metrics": [metric], "dse_implication": impl, "caveats": caveats,
+            "dse_question": _METRIC_QUESTION.get(metric, ""),
             "suggested_plot": _PLOT_FOR_METRIC.get(metric, ""),
             "presentation_placement": "main" if main else "backup", "forbidden_claim_risk": "low"})
     # an explicit honesty finding (limitation) — useful as backup, never main. Only when there is a
@@ -961,6 +994,258 @@ _PLOTS = [
 ]
 
 
+# =========================================================================== P15 signal study
+# Given ONLY workload artifacts, what changes the future DSE search space? Every output below is
+# recovered/derived from the captures (or a host measurement) — no quantity for unbuilt hardware.
+
+def canonical_signal_table(facts: list[dict]) -> list[dict]:
+    """The one headline table: signal/measured metrics only, with tier, strength, DSE question.
+
+    Context/count metrics (provenance, redundant corroboration, raw row counts) are excluded — they
+    live in the full fact table for traceability but never in the headline."""
+    rows = []
+    for f in facts:
+        if f.get("metric_class") not in ("signal", "measured"):
+            continue
+        cb = f.get("corroborated_by", 1)
+        strength = "measured" if f.get("metric_class") == "measured" else (
+            "verified+corroborated" if (f.get("verifying_check") and int(cb or 1) >= 2)
+            else "verified" if f.get("verifying_check")
+            else "corroborated x%d" % int(cb or 1) if int(cb or 1) >= 2 else "single-source")
+        rows.append({
+            "dse_question": f.get("dse_question", ""), "metric": f["metric_name"],
+            "workload": f.get("workload", ""), "value": f.get("metric_value", ""),
+            "unit": f.get("metric_unit", ""), "evidence_tier": f.get("evidence_tier", ""),
+            "strength": strength, "verification_status": f.get("verification_status", ""),
+            "dse_implication": f.get("dse_implication", "")})
+    rows.sort(key=lambda r: (r["dse_question"], r["metric"], r["workload"]))
+    return rows
+
+
+def per_operator_hotspots(cs_dir: Path, k: int = 10) -> dict:
+    """Deeper-per-operator signal: which few ops dominate compute / weight / tile-waste / reload.
+
+    Reads operator_shape_table (per-op M/N/K, macs, weight bytes, shape class), joins the best
+    achievable tile padding waste per op from tile_waste_table, and the region reload from
+    data_movement_table. Top-k by each axis; structural quantities only."""
+    cs_dir = Path(cs_dir)
+    ops = _csv_rows(cs_dir / "operator_shape_table.csv")
+    tw = _csv_rows(cs_dir / "tile_waste_table.csv")
+    dm = _csv_rows(cs_dir / "data_movement_table.csv")
+    # best (lowest) achievable tile padding waste per op over the *real* applicable tile primitives
+    best: dict[tuple, float] = {}
+    for r in tw:
+        if r.get("primitive_kind") != "tile" or r.get("applicable") != "True":
+            continue
+        key = (r["workload"], r["op_index"])
+        w = float(r["padding_waste"])
+        if key not in best or w < best[key]:
+            best[key] = w
+    mac_total_wl: dict[str, int] = {}
+    for o in ops:
+        mac_total_wl[o["workload"]] = mac_total_wl.get(o["workload"], 0) + int(o["macs"])
+    enriched = []
+    for o in ops:
+        wl = o["workload"]
+        tot = mac_total_wl.get(wl, 0) or 1
+        enriched.append({
+            "workload": wl, "op_index": o["op_index"], "prov_fqn": o["prov_fqn"],
+            "op_kind": o["op_kind"], "shape_class": o["shape_class"],
+            "M": o["M"], "N": o["N"], "K": o["K"], "macs": int(o["macs"]),
+            "mac_fraction_of_workload": round(int(o["macs"]) / tot, 4),
+            "rhs_weight_bytes": int(o["rhs_weight_bytes"]),
+            "best_tile_padding_waste": best.get((wl, o["op_index"])),
+            "is_tail_heavy": o["is_tail_heavy"]})
+    by_macs = sorted(enriched, key=lambda r: -r["macs"])[:k]
+    by_weight = sorted(enriched, key=lambda r: -r["rhs_weight_bytes"])[:k]
+    by_pad = sorted([r for r in enriched if r["best_tile_padding_waste"] is not None],
+                    key=lambda r: -r["best_tile_padding_waste"])[:k]
+    by_reload = sorted(dm, key=lambda r: -int(r["avoidable_weight_reload"]))[:k]
+    reload_rows = [{"workload": r["workload"], "region": r["region"],
+                    "avoidable_weight_reload": int(r["avoidable_weight_reload"]),
+                    "invocations": r["invocations"], "weight_bytes": int(r["weight_bytes"])}
+                   for r in by_reload]
+    # long-form flat table for CSV: one row per (ranking, rank, entity)
+    flat = []
+    for tag, rows_ in (("macs", by_macs), ("weight_bytes", by_weight), ("padding_waste", by_pad)):
+        for i, r in enumerate(rows_, 1):
+            flat.append({"ranking": tag, "rank": i, **r, "region": "",
+                         "avoidable_weight_reload": ""})
+    for i, r in enumerate(reload_rows, 1):
+        flat.append({"ranking": "avoidable_reload", "rank": i, "workload": r["workload"],
+                     "op_index": "", "prov_fqn": "", "op_kind": "", "shape_class": "",
+                     "M": "", "N": "", "K": "", "macs": "", "mac_fraction_of_workload": "",
+                     "rhs_weight_bytes": r["weight_bytes"], "best_tile_padding_waste": "",
+                     "is_tail_heavy": "", "region": r["region"],
+                     "avoidable_weight_reload": r["avoidable_weight_reload"]})
+    dominant = by_macs[0] if by_macs else None
+    return {"n_ops": len(ops), "by_macs": by_macs, "by_weight_bytes": by_weight,
+            "by_padding_waste": by_pad, "by_avoidable_reload": reload_rows,
+            "dominant_op": dominant, "rows": flat}
+
+
+# proof-status conservatism: report the weakest status when an abstraction is referenced by several
+# compiler-proof axes (unknown is worse than assumed, which is worse than proven).
+_PROOF_RANK = {"unknown": 0, "unavailable": 0, "assumed": 1, "suggested": 1, "proven": 2, "": 3}
+
+
+def abstraction_coverage(cs_dir: Path) -> list[dict]:
+    """Replace the noisy ``n_X`` count facts with real coverage: for each candidate system
+    abstraction, what fraction of the corpus (workloads / MACs / weight bytes / regions) implies it,
+    its compiler-proof status, and an overfit/regret flag (single-workload support)."""
+    cs_dir = Path(cs_dir)
+    bm = _csv_rows(cs_dir / "hw_sw_boundary_matrix.csv")
+    proofs = _csv_rows(cs_dir / "compiler_proof_matrix.csv")
+    ops = _csv_rows(cs_dir / "operator_shape_table.csv")
+    dm = _csv_rows(cs_dir / "data_movement_table.csv")
+    all_wls = sorted({o["workload"] for o in ops})
+    mac_by_wl: dict[str, int] = {}
+    byte_by_wl: dict[str, int] = {}
+    for o in ops:
+        mac_by_wl[o["workload"]] = mac_by_wl.get(o["workload"], 0) + int(o["macs"])
+        byte_by_wl[o["workload"]] = byte_by_wl.get(o["workload"], 0) + int(o["rhs_weight_bytes"])
+    total_mac = sum(mac_by_wl.values()) or 1
+    total_byte = sum(byte_by_wl.values()) or 1
+    region_by_wl: dict[str, int] = {}
+    for r in dm:
+        region_by_wl[r["workload"]] = region_by_wl.get(r["workload"], 0) + 1
+    total_regions = len(dm) or 1
+    rows = []
+    for b in bm:
+        supp = [w.strip() for w in b["supporting_workloads"].split(";") if w.strip()]
+        nwl = len(supp)
+        # weakest proof status among compiler-proof axes that reference this atomic abstraction
+        status = ""
+        for p in proofs:
+            if b["abstraction"] in p.get("system_abstraction", ""):
+                if _PROOF_RANK.get(p["status"], 3) < _PROOF_RANK.get(status, 3):
+                    status = p["status"]
+        overfit = ("high" if nwl <= 1 else "medium" if nwl < len(all_wls) else "low")
+        rows.append({
+            "abstraction": b["abstraction"],
+            "workloads_supporting": "; ".join(supp), "n_workloads": nwl,
+            "workload_coverage": round(nwl / (len(all_wls) or 1), 4),
+            "mac_coverage": round(sum(mac_by_wl.get(w, 0) for w in supp) / total_mac, 4),
+            "byte_coverage": round(sum(byte_by_wl.get(w, 0) for w in supp) / total_byte, 4),
+            "region_coverage": round(sum(region_by_wl.get(w, 0) for w in supp) / total_regions, 4),
+            "boundary_pressure_score": int(b["boundary_pressure_score"]),
+            "compiler_proof_status": status or "no_proof_axis",
+            "overfit_risk": overfit})
+    rows.sort(key=lambda r: (-r["mac_coverage"], -r["boundary_pressure_score"], r["abstraction"]))
+    return rows
+
+
+def _family_of(workload: str) -> str:
+    from merlin.dse_guidance.models import MODEL_ARCH, _base_model
+    base = _base_model(workload)
+    if base and base in MODEL_ARCH:
+        return MODEL_ARCH[base].family
+    return "unknown"
+
+
+def workload_family_summary(cs_dir: Path, findings: list[dict] | None = None) -> dict:
+    """Group the recaptured workloads by architecture family and report the per-family signal
+    profile, plus which findings are family-specific vs cross-family."""
+    cs_dir = Path(cs_dir)
+    ops = _csv_rows(cs_dir / "operator_shape_table.csv")
+    shape = _csv_rows(cs_dir / "shape_summary_by_workload.csv")
+    crit = {r["workload"]: r for r in _csv_rows(cs_dir / "critical_path_table.csv")}
+    wls = sorted({o["workload"] for o in ops})
+    from merlin.dse_guidance.models import MODEL_ARCH, _base_model
+    fam: dict[str, dict] = {}
+    for w in wls:
+        f = _family_of(w)
+        fam.setdefault(f, {"workloads": [], "total_macs": 0, "dominant_shape_class": "",
+                           "parallelism": [], "K": []})
+        fam[f]["workloads"].append(w)
+        fam[f]["total_macs"] += sum(int(o["macs"]) for o in ops if o["workload"] == w)
+        if w in crit:
+            fam[f]["parallelism"].append(float(crit[w]["available_parallelism"]))
+        base = _base_model(w)
+        if base and base in MODEL_ARCH:
+            fam[f]["K"].append(MODEL_ARCH[base].loop_count)
+    # dominant shape class per family = max mac_fraction-weighted class across its workloads
+    for f, d in fam.items():
+        agg: dict[str, float] = {}
+        for r in shape:
+            if r["workload"] in d["workloads"]:
+                agg[r["shape_class"]] = agg.get(r["shape_class"], 0.0) + float(r["mac_fraction"])
+        d["dominant_shape_class"] = max(agg, key=agg.get) if agg else ""
+        d["parallelism_range"] = ([round(min(d["parallelism"]), 2),
+                                   round(max(d["parallelism"]), 2)] if d["parallelism"] else [])
+        d["K_range"] = [min(d["K"]), max(d["K"])] if d["K"] else []
+        d.pop("parallelism")
+    fam_specific, cross = [], []
+    for fd in (findings or []):
+        if fd.get("presentation_placement") != "main":
+            continue
+        fams = {_family_of(w) for w in fd.get("supporting_workloads", []) if w not in ("ALL",)}
+        fams.discard("unknown")
+        rec = {"claim": fd.get("title", ""), "families": sorted(fams),
+               "dse_question": fd.get("dse_question", "")}
+        (fam_specific if len(fams) == 1 else cross).append(rec)
+    return {"families": fam, "family_specific_findings": fam_specific,
+            "cross_family_findings": cross}
+
+
+# capture-fidelity asks that would most raise cross-workload confidence (what a recapture must keep).
+_FIDELITY_ASKS = [
+    "preserve the host K-loop (do not unroll the denoise/decode loop into a single pass)",
+    "preserve packed low-bit weight layout + per-channel scales (do not dequantize to bf16)",
+    "preserve the KV-cache / attention region (do not lower attention to dense matmuls)",
+    "tag region roles (backbone-once vs repeated-head) in prov.fqn",
+    "record the real loop count / control cadence (replace the assumed K reference)",
+]
+
+
+def corpus_expansion_plan(cs_dir: Path) -> dict:
+    """Which registry families lack a committed recapture, grouped by family, plus the capture
+    fidelity improvements that would most raise cross-workload confidence. A recommendation — no new
+    data is ingested; this only states what additional captures the search-space study needs."""
+    from merlin.dse_guidance.models import MODEL_ARCH, _base_model
+    cs_dir = Path(cs_dir)
+    ops = _csv_rows(cs_dir / "operator_shape_table.csv")
+    captured = {b for b in (_base_model(w) for w in {o["workload"] for o in ops}) if b}
+    missing = [m for m in MODEL_ARCH if m not in captured]
+    by_family: dict[str, list[dict]] = {}
+    for m in missing:
+        a = MODEL_ARCH[m]
+        by_family.setdefault(a.family, []).append({
+            "model": m, "loop_kind": a.loop_kind, "reference_K": a.loop_count,
+            "note": a.note or ""})
+    return {"captured_models": sorted(captured),
+            "captured_families": sorted({MODEL_ARCH[b].family for b in captured if b in MODEL_ARCH}),
+            "missing_by_family": by_family, "n_missing": len(missing),
+            "fidelity_asks": _FIDELITY_ASKS}
+
+
+# one-sentence DSE-search-space implication shown beneath each presentation plot (structural only).
+_PLOT_CAPTION = {
+    "evidence_type_by_workload": "How much of each workload's evidence is IR-recovered vs assumed — "
+        "where the search space rests on recovered structure vs reference values.",
+    "evidence_type_by_phase": "Evidence provenance per analysis phase (traceability).",
+    "shape_class_mac_share": "MAC mass per shape class — which matmul shapes a DSE primitive set must "
+        "cover to capture most compute.",
+    "shape_class_opcount_share": "Op-count share per shape class (context for the MAC share).",
+    "primitive_coverage_heatmap": "Which candidate primitives tile each workload's shapes under 10% "
+        "pad waste — the primitive search space, not a performance ranking.",
+    "primitive_regret_bar": "Coverage vs worst-case cross-workload regret per primitive — primitives "
+        "with high regret are corpus-overfit candidates DSE should treat cautiously.",
+    "abstraction_pressure_bar": "How many workloads imply each system abstraction (support breadth).",
+    "boundary_placement_heatmap": "At which HW/SW levels each abstraction could sit — the boundary "
+        "search space DSE must explore (Merlin enumerates, does not choose).",
+    "resident_capacity_by_dtype": "Resident weight bytes per region by dtype — the on-chip capacity "
+        "the residency search space is sized against.",
+    "avoidable_reload_by_region": "Weight bytes re-read across the K-loop that residency could avoid "
+        "— where a residency/packed-store axis has the most to act on.",
+    "measurement_priority_bar": "How many blocked candidates each missing input would unblock — what "
+        "to capture/measure next, not a result.",
+    "critical_path_parallelism": "Inter-op work/span per workload — the unit-multiplicity the "
+        "heterogeneity search space could exploit.",
+    "epilogue_pattern_counts": "Epilogue/fusion patterns per workload (numerical-contract context).",
+}
+
+
 def plot_manifest(cs_dir: Path, scope: str) -> list[dict]:
     out = []
     for pid, title, art, cols, x, y, series, kind, rec in _PLOTS:
@@ -984,6 +1269,7 @@ def plot_manifest(cs_dir: Path, scope: str) -> list[dict]:
             "evidence_tier": "B",
             "recommendation": rec if (present and have_cols and n_rows > 0) else "omit",
             "caveat": "structural; axes are counts/bytes/fractions, not a performance metric",
+            "dse_caption": _PLOT_CAPTION.get(pid, ""),
             "why_useful": f"shows {title.lower()} from {art}"})
     return out
 
@@ -1172,6 +1458,12 @@ def mine(cs_dir, scope: str) -> dict:
               "required_inputs": required_inputs(cs_dir, facts)}
     bundle["gaps"] = gap_audit(cs_dir, scope, bundle)
     bundle["open_avoidable_gaps"] = open_avoidable(bundle["gaps"])
+    # P15 signal-first study layer (signal-only, every output answers a DSE question)
+    bundle["canonical_signal"] = canonical_signal_table(facts)
+    bundle["hotspots"] = per_operator_hotspots(cs_dir)
+    bundle["abstraction_coverage"] = abstraction_coverage(cs_dir)
+    bundle["family_summary"] = workload_family_summary(cs_dir, findings)
+    bundle["corpus_plan"] = corpus_expansion_plan(cs_dir)
     return bundle
 
 
@@ -1315,6 +1607,148 @@ def _required_inputs_md(ri, scope) -> str:
     return "\n".join(L) + "\n"
 
 
+# --------------------------------------------------------------------------- P15 emitters
+
+_CANON_COLS = ["dse_question", "metric", "workload", "value", "unit", "evidence_tier", "strength",
+               "verification_status", "dse_implication"]
+_HOTSPOT_COLS = ["ranking", "rank", "workload", "op_index", "prov_fqn", "op_kind", "shape_class",
+                 "M", "N", "K", "macs", "mac_fraction_of_workload", "rhs_weight_bytes",
+                 "best_tile_padding_waste", "is_tail_heavy", "region", "avoidable_weight_reload"]
+_COVER_COLS = ["abstraction", "workloads_supporting", "n_workloads", "workload_coverage",
+               "mac_coverage", "byte_coverage", "region_coverage", "boundary_pressure_score",
+               "compiler_proof_status", "overfit_risk"]
+
+
+def _hotspots_md(h, scope) -> str:
+    d = h.get("dominant_op")
+    L = [f"# Per-operator hotspots ({scope})\n",
+         "> Which few operators dominate the constraints DSE must size for. Structural quantities "
+         "(MACs / weight bytes / tile padding waste / avoidable reload) recovered from the capture — "
+         "no latency, throughput, or performance claim.\n",
+         f"Total operators analyzed: **{h['n_ops']}**.\n"]
+    if d:
+        L.append(f"**Dominant op (by MACs):** `{d['prov_fqn']}` in {d['workload']} — "
+                 f"{d['M']}x{d['N']}x{d['K']} = {d['macs']:,} MACs "
+                 f"({d['mac_fraction_of_workload']:.0%} of its workload), class {d['shape_class']}.\n")
+    L += ["## Top ops by MACs\n", "| workload | op | shape M×N×K | MACs | % of workload | class |",
+          "|---|---|---|---|---|---|"]
+    for r in h["by_macs"]:
+        L.append(f"| {r['workload']} | {r['prov_fqn']} | {r['M']}×{r['N']}×{r['K']} | "
+                 f"{r['macs']:,} | {r['mac_fraction_of_workload']:.0%} | {r['shape_class']} |")
+    L += ["\n## Top ops by tile padding waste (tile-hostility)\n",
+          "| workload | op | shape M×N×K | best tile waste | class |", "|---|---|---|---|---|"]
+    for r in h["by_padding_waste"]:
+        L.append(f"| {r['workload']} | {r['prov_fqn']} | {r['M']}×{r['N']}×{r['K']} | "
+                 f"{r['best_tile_padding_waste']:.3f} | {r['shape_class']} |")
+    L += ["\n## Regions by avoidable weight reload (residency target)\n",
+          "| workload | region | avoidable reload (B) | weight bytes (B) |", "|---|---|---|---|"]
+    for r in h["by_avoidable_reload"]:
+        L.append(f"| {r['workload']} | {r['region']} | {r['avoidable_weight_reload']:,} | "
+                 f"{r['weight_bytes']:,} |")
+    return "\n".join(L) + "\n"
+
+
+def _coverage_md(rows, scope) -> str:
+    L = [f"# Abstraction coverage ({scope})\n",
+         "> Replaces raw support counts with corpus **coverage**: for each candidate system "
+         "abstraction, the fraction of workloads / MACs / weight bytes / regions that imply it, its "
+         "compiler-proof status, and an overfit flag (single-workload support is corpus-overfit "
+         "risk). Support breadth, not a performance ranking.\n",
+         "| abstraction | workloads | MAC cov | byte cov | proof | overfit |",
+         "|---|---|---|---|---|---|"]
+    for r in rows:
+        L.append(f"| {r['abstraction']} | {r['n_workloads']} ({r['workload_coverage']:.0%}) | "
+                 f"{r['mac_coverage']:.0%} | {r['byte_coverage']:.0%} | "
+                 f"{r['compiler_proof_status']} | {r['overfit_risk']} |")
+    return "\n".join(L) + "\n"
+
+
+def _family_md(fs, scope) -> str:
+    L = [f"# Workload-family summary ({scope})\n",
+         "> The recaptured workloads grouped by architecture family, with each family's recovered "
+         "signal profile and which findings are family-specific vs cross-family. Structural only.\n"]
+    for fam, d in sorted(fs["families"].items()):
+        L.append(f"## {fam}\n")
+        L.append(f"- workloads: {', '.join(d['workloads'])}")
+        L.append(f"- total MACs (single-pass capture): {d['total_macs']:,}")
+        L.append(f"- dominant shape class: {d['dominant_shape_class'] or '—'}")
+        L.append(f"- inter-op parallelism (work/span) range: {d.get('parallelism_range') or '—'}")
+        L.append(f"- reference loop count K range: {d.get('K_range') or '—'}\n")
+    L.append("## Family-specific findings (one family only)\n")
+    for f in fs["family_specific_findings"] or [{"claim": "—", "families": [], "dse_question": ""}]:
+        L.append(f"- {f['claim']} _(families: {', '.join(f['families']) or '—'})_")
+    L.append("\n## Cross-family findings (≥2 families)\n")
+    for f in fs["cross_family_findings"] or [{"claim": "—", "families": [], "dse_question": ""}]:
+        L.append(f"- {f['claim']} _(families: {', '.join(f['families']) or '—'})_")
+    return "\n".join(L) + "\n"
+
+
+def _corpus_md(cp, scope) -> str:
+    L = [f"# Corpus-expansion plan ({scope})\n",
+         "> A recommendation only — no new data is ingested here. Which registry model families lack "
+         "a committed recapture, and the capture-fidelity improvements that would most raise "
+         "cross-workload confidence before any quantitative DSE.\n",
+         f"Captured models: {', '.join(cp['captured_models']) or '—'} "
+         f"(families: {', '.join(cp['captured_families']) or '—'}).\n",
+         f"**{cp['n_missing']} registry models lack a recapture.**\n",
+         "## Missing captures by family\n",
+         "| family | model | loop kind | reference K | note |", "|---|---|---|---|---|"]
+    for fam, models in sorted(cp["missing_by_family"].items()):
+        for m in models:
+            L.append(f"| {fam} | {m['model']} | {m['loop_kind']} | {m['reference_K']} | "
+                     f"{m['note']} |")
+    L.append("\n## Capture-fidelity asks (raise confidence on existing + new captures)\n")
+    for a in cp["fidelity_asks"]:
+        L.append(f"- {a}")
+    return "\n".join(L) + "\n"
+
+
+def _signal_report_md(bundle, scope) -> str:
+    canon = bundle["canonical_signal"]
+    findings = [f for f in bundle["findings"] if f["presentation_placement"] == "main"]
+    by_q_find: dict[str, list] = {}
+    for f in findings:
+        by_q_find.setdefault(f.get("dse_question", ""), []).append(f)
+    by_q_metric: dict[str, set] = {}
+    for r in canon:
+        by_q_metric.setdefault(r["dse_question"], set()).add(r["metric"])
+    L = [f"# Signal findings report ({scope})\n",
+         "> Given only workload artifacts: what changes the future DSE search space. Every finding "
+         "is recovered/derived from the captures (or a host measurement); **no quantity is claimed "
+         "for unbuilt hardware** (cycles / area / energy / throughput are refused, not estimated). "
+         "Organized by the DSE question each metric answers.\n"]
+    for q in DSE_QUESTIONS:
+        fs = by_q_find.get(q, [])
+        ms = sorted(by_q_metric.get(q, set()))
+        L.append(f"## {q}\n")
+        if not fs and not ms:
+            L.append("_No signal recovered for this question from the current corpus._\n")
+            continue
+        L.append(f"_Signal metrics: {', '.join(ms) or '—'}_\n")
+        for f in fs:
+            L.append(f"- **{f['title']}** [tier {f['evidence_tier']}] — {f['dse_implication']}  "
+                     f"_(workloads: {', '.join(f['supporting_workloads'])})_")
+        L.append("")
+    # what remains unclaimed
+    L.append("## What remains unclaimed (and the exact input needed)\n")
+    for x in bundle.get("required_inputs", []):
+        L.append(f"- {x['limit']}: {x['required_input']}")
+    return "\n".join(L) + "\n"
+
+
+def _plots_index_md(plots, scope, rendered, folder) -> str:
+    L = [f"# Presentation plots index ({scope})\n",
+         "> Each rendered plot with its one-sentence DSE-search-space implication. Structural axes "
+         "only (counts / bytes / fractions) — none is a performance metric.\n"]
+    for p in plots:
+        if p["plot_id"] not in rendered:
+            continue
+        L.append(f"### {p['title']}\n")
+        L.append(f"![{p['plot_id']}]({folder}/{p['plot_id']}.png)\n")
+        L.append(f"**DSE implication:** {p.get('dse_caption') or '—'}\n")
+    return "\n".join(L) + "\n"
+
+
 def emit_run(bundle: dict, run_dir, rendered: list[str]) -> None:
     """Write all P13 deliverables for one mined scope into the run folder (non-committed)."""
     from merlin.common.artifacts import Artifact, yaml_artifact
@@ -1370,3 +1804,18 @@ def emit_run(bundle: dict, run_dir, rendered: list[str]) -> None:
     cm += [f"- [{'PASS' if ok else 'FAIL'}] {msg}" for ok, msg in checks]
     Artifact("consistency_checks.md", "\n".join(cm) + "\n").write(run_dir)
     Artifact("insight_mining_README.md", _readme_md(bundle, rendered)).write(run_dir)
+    # P15 signal-first study deliverables (signal-only; every output answers a DSE question)
+    Artifact("canonical_signal_table.csv",
+             _csv_text(bundle["canonical_signal"], _CANON_COLS)).write(run_dir)
+    h = bundle["hotspots"]
+    Artifact("per_operator_hotspots.csv", _csv_text(h["rows"], _HOTSPOT_COLS)).write(run_dir)
+    Artifact("per_operator_hotspots.md", _hotspots_md(h, scope)).write(run_dir)
+    Artifact("abstraction_coverage_table.csv",
+             _csv_text(bundle["abstraction_coverage"], _COVER_COLS)).write(run_dir)
+    Artifact("abstraction_coverage.md",
+             _coverage_md(bundle["abstraction_coverage"], scope)).write(run_dir)
+    Artifact("workload_family_summary.md", _family_md(bundle["family_summary"], scope)).write(run_dir)
+    Artifact("corpus_expansion_plan.md", _corpus_md(bundle["corpus_plan"], scope)).write(run_dir)
+    Artifact("signal_findings_report.md", _signal_report_md(bundle, scope)).write(run_dir)
+    Artifact("presentation_plots_index.md",
+             _plots_index_md(bundle["plots"], scope, rendered, "generated_plots")).write(run_dir)
