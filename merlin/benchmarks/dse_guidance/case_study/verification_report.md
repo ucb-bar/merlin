@@ -401,7 +401,7 @@ P12 checks the boundary search space: every candidate references a known abstrac
 - [PASS] presentation findings are deterministic
 - [PASS] no forbidden performance wording in mined findings/answers ([])
 - [PASS] partial mode: missing artifacts recorded exists=no, no crash
-- [PASS] [P15] canonical_signal_table is signal/measured only (90 rows, context leaks: [])
+- [PASS] [P15] canonical_signal_table is signal/measured only (87 rows, context leaks: [])
 - [PASS] [P15] every signal metric/row/main-finding maps to a valid DSE question (unmapped [], canon_noq [], main_noq [])
 - [PASS] [P15] hotspots reference real ops and top-by-MACs recomputes (refs_real=True, macs_match=True, n_ops=76)
 - [PASS] [P15] hotspot padding waste == independent best-tile recompute

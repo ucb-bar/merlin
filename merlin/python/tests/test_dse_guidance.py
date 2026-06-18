@@ -2473,6 +2473,40 @@ def test_p15_emit_writes_study_deliverables_and_plot_captions(tmp_path):
 
 @pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
                     reason="case_study package not present")
+def test_p15_decision_impact_plots_render_with_captions(tmp_path):
+    # the what-if plots show how an outcome changes under a DSE knob choice (structural, no perf)
+    from merlin.dse_guidance import insight_mining as IM, presentation_plots as PP
+    decision_ids = {"decision_primitive_choice", "decision_weight_residency",
+                    "decision_capacity_dtype", "decision_sharding_cost"}
+    plots = IM.plot_manifest(_CS_DIR, "all")
+    dp = [p for p in plots if p["plot_id"] in decision_ids]
+    assert len(dp) == len(decision_ids)
+    assert all(p["available"] and p["dse_caption"] for p in dp)        # data present + captioned
+    b = IM.mine(_CS_DIR, "all")
+    rendered = PP.render_plots(b["plots"], _CS_DIR, b["facts"], tmp_path)
+    # matplotlib may be unavailable in CI -> renderer no-ops; only assert when it ran
+    if rendered:
+        assert decision_ids <= set(rendered)
+        for pid in decision_ids:
+            assert (tmp_path / f"{pid}.png").is_file()
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p15_canonical_table_has_entity_discriminator_and_no_dups(tmp_path):
+    # per-abstraction / per-region metrics share workload=ALL -> entity disambiguates + dedups
+    from merlin.dse_guidance import insight_mining as IM
+    canon = IM.canonical_signal_table(IM.unified_facts(_CS_DIR, "all"))
+    assert canon and all("entity" in r for r in canon)
+    keys = [(r["dse_question"], r["metric"], r["workload"], r["entity"], str(r["value"]))
+            for r in canon]
+    assert len(keys) == len(set(keys))                                # no duplicate headline rows
+    bps = [r for r in canon if r["metric"] == "boundary_pressure_score"]
+    assert bps and len({r["entity"] for r in bps}) == len(bps)        # each names its abstraction
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
 def test_p15_per_network_run_is_scoped_not_corpus_wide(tmp_path):
     # a per-network folder must contain THAT network's hotspots + canonical only; the corpus-level
     # cross-workload artifacts (coverage / family / corpus plan) belong to the 'all' run only.
