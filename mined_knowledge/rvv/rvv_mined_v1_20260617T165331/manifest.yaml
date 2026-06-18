@@ -1,0 +1,28 @@
+# Mined-knowledge artifact (kernels.publish)
+artifacts:
+- policy_rules.yaml
+- abstraction_candidates.yaml
+- kernel_mining_report.md
+git_sha: 4a90c06
+min_kernels_gate: 10
+notes: Durable, versioned kernel-mining artifact. The newest run_id under mined_knowledge/<target>/ is the tuning agent's default evidence input. Forks/policies derive from this; it is itself iterable.
+promoted_policies:
+- packed_rhs_policy
+- accumulator_commit_policy
+- vl_agnostic_loop_policy
+- lmul_grouping_policy
+- fma_broadcast_policy
+- int8_widening_policy
+- vl_tail_policy
+- vector_reduction_policy
+- requant_narrowing_policy
+run_id: rvv_mined_v1_20260617T165331
+sources:
+- kernels: 545
+  source: xnnpack
+- kernels: 130
+  source: openblas
+target: rvv
+timestamp: 20260617T165331
+total_kernels: 675
+version: 1

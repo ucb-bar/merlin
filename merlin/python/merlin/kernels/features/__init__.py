@@ -20,6 +20,7 @@ from .loops import extract_loops
 from .memory import extract_memory
 from .packing import extract_packing
 from .roles import extract_roles
+from .rvv_intrinsics import extract_rvv_intrinsics
 from .shape_regime import extract_shape_regime
 from .target_features import extract_target_features
 from .vector import extract_vector
@@ -28,6 +29,7 @@ _EXTRACTORS = (
     extract_shape_regime,
     extract_packing,
     extract_vector,
+    extract_rvv_intrinsics,
     extract_memory,
     extract_loops,
     extract_epilogue,

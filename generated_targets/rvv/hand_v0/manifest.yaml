@@ -1,0 +1,41 @@
+# Isolated RVV target-package manifest (one codegen iteration). Mirrors the gemmini
+# target-package provenance discipline, but RVV is a transform SCHEDULE + cflags, not a
+# resident-accelerator dialect — payload is schedule.mlir + knobs.yaml, NOT dialect.py/SPEC_OPS.
+target: rvv
+run_id: hand_v0
+family: vector_schedule           # NOT tensor_resident: RVV is a schedule, not a resident dialect
+schedule_format: transform_dialect_mlir
+status: spike_verified            # spike functional == torch; k1/firesim cycle numbers are per-run
+
+# Provenance / authoring mode — HONEST labeling (same Level A/B/C distinction as gemmini).
+#   hand_curated                     : a human wrote/captured the schedule (this package)
+#   deterministic_generated_from_spec: rvvgen.from_strategy emitted schedule.mlir from knobs
+#   agent_generated_from_recipe      : an agent authored the schedule given a recipe
+authoring:
+  mode: hand_curated
+  generated_by_agent: false
+  author: human
+
+reproducibility:
+  # This package is a VERBATIM capture of the shipping codegen constants, so it is regenerable
+  # from source (the regression test asserts schedule.mlir == pipeline.RVV_TRANSFORM_SCHEDULE).
+  certified_execution_reproducible: true
+  package_regenerable_from_source: true
+
+inputs:
+  source: "merlin/python/merlin/llvmlower/pipeline.py:RVV_TRANSFORM_SCHEDULE + runtime/backends/zephyr_model.py:RVV_CFLAGS"
+
+outputs:
+  schedule: schedule.mlir
+  knobs: knobs.yaml
+
+validation:
+  package_loads_isolated: true    # merlin.rvvgen.registry.load_rvv_package
+  gate: "_gate cos/rel/argmax (runtime/backends/zephyr_model.py)"
+  non_perturbation: "schedule.mlir == pipeline.RVV_TRANSFORM_SCHEDULE (test_rvv_package.py)"
+
+notes: >-
+  The frozen baseline. Every variant package is measured against this run's results.yaml for the
+  same (workload, target). Loaded via merlin.rvvgen.registry.load_rvv_package and threaded into
+  build_app(rvv_schedule=, cflags_override=) — NEVER mutating the pipeline.py defaults, so the
+  global compiler flow is untouched by the experiment machinery.

@@ -27,7 +27,7 @@ class LowerResult:
 
 def lower_model(mlir_text: str, workdir: str | Path,
                 targets: tuple[str, ...] = ("host",), textual: bool = False,
-                vectorize: bool = False) -> LowerResult:
+                vectorize: bool = False, transform_schedule: str | None = None) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
     ``textual=True`` uses the pure-text preprocessing (no xDSL round-trip) —
@@ -47,7 +47,8 @@ def lower_model(mlir_text: str, workdir: str | Path,
         upstream_text, stats = preprocess_text(mlir_text)
     (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
 
-    ll_text = lower_to_llvm_ir(upstream_text, workdir=work, vectorize=vectorize)
+    ll_text = lower_to_llvm_ir(upstream_text, workdir=work, vectorize=vectorize,
+                               transform_schedule=transform_schedule)
     ll_path = work / "model.ll"
     ll_path.write_text(ll_text, encoding="utf-8")
 
@@ -61,6 +62,8 @@ def lower_model(mlir_text: str, workdir: str | Path,
 
 def lower_model_file(mlir_path: str | Path, workdir: str | Path,
                      targets: tuple[str, ...] = ("host",),
-                     textual: bool = False, vectorize: bool = False) -> LowerResult:
+                     textual: bool = False, vectorize: bool = False,
+                     transform_schedule: str | None = None) -> LowerResult:
     return lower_model(Path(mlir_path).read_text(encoding="utf-8"), workdir, targets,
-                       textual=textual, vectorize=vectorize)
+                       textual=textual, vectorize=vectorize,
+                       transform_schedule=transform_schedule)

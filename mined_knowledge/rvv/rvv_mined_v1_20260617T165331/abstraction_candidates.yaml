@@ -1,0 +1,32 @@
+- name: resident_packed_tensor
+  kind: memory_state
+  motivation: immutable RHS/weight is packed once and reused across a region; keep
+    it resident to avoid repeated pack/load.
+  evidence:
+  - openblas_rvv_gemm
+  - openblas_rvv_trmm
+  - xnnpack_rvv_gemm
+  interface_features:
+  - resident_pack
+  - resident_tensor_type
+  - evict
+  frequency:
+    kernels: 62
+    sources:
+    - openblas
+    - xnnpack
+- name: accumulator_commit
+  kind: memory_state
+  motivation: on a contraction op the accumulator stays live across a bias/requant/activation
+    epilogue; commit to memory only after the epilogue to avoid extra writes.
+  evidence:
+  - xnnpack_rvv_dwconv
+  - xnnpack_rvv_gemm
+  interface_features:
+  - accumulator_type
+  - commit
+  - keep_accumulator_live
+  frequency:
+    kernels: 73
+    sources:
+    - xnnpack

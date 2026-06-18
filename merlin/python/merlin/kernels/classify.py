@@ -34,6 +34,19 @@ _MOTIF_RULES = {
         and f.get("dispatch_metrics", {}).get("small_dispatch_fraction", 0) >= 0.5
     ),
     "intrinsic_lowering": lambda f, op: bool(f.get("target_specific_config")),
+    # --- RVV intrinsic decisions (from features/rvv_intrinsics.py f["rvv"]) ----------------
+    # These are the codegen choices expert RVV kernels make that our schedule must reproduce;
+    # each promotes to a schedule-level policy_rule consumed by the tuning agent's lever map.
+    "lmul_grouping": lambda f, op: f.get("rvv", {}).get("lmul_class") in {"m2", "m4", "m8"},
+    "scalar_broadcast_fma": lambda f, op: (
+        f.get("rvv", {}).get("fma_form") == "vf" and op in _CONTRACTION_OPS
+    ),
+    "int8_widening_mac": lambda f, op: bool(f.get("rvv", {}).get("int_widening")),
+    "vl_polymorphic_tail": lambda f, op: f.get("rvv", {}).get("vl_strategy") == "vsetvl_loop",
+    "vector_reduction": lambda f, op: f.get("rvv", {}).get("reduction_form", "none") not in (None, "none"),
+    "requant_narrowing": lambda f, op: bool(
+        f.get("rvv", {}).get("requant_epilogue") and f.get("rvv", {}).get("int_widening")
+    ),
 }
 
 
