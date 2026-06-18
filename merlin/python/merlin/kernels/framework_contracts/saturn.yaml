@@ -1,0 +1,27 @@
+# Framework contract for saturn-vectors benchmarks (standalone C, ship their own harness; the
+# closest to "plain" kernels — no framework prepack contract). Hand-authored, agent-refined.
+framework: saturn
+isa: rvv
+layout:
+  lhs: row_major
+  rhs: row_major
+  output: row_major
+operand_prepack:
+  operand: none
+  packed_layout: "none — operands consumed in their natural layout (vec-sgemm/igemm/conv ...)"
+  prepacked_by: null
+  implication: "closest apples-to-apples with naive compiler codegen; no separate pack to model"
+transpose_assumption: "none (kernels read operands directly; some conv variants reshape inline)"
+accumulator:
+  init: zero
+  dtype: "f32 (sgemm) / i32 (igemm)"
+  width: "varies per benchmark; vec-sgemm-v2/v3 explore register blocking"
+dtype_quant:
+  f32: plain
+  i8_i32: "vec-igemm: i8 x i8 -> i32"
+calling_convention:
+  signature: "per-benchmark standalone main(); build via benchmarks/build.sh, run via run.sh"
+  build: "standalone — EASIEST source to compile-to-asm (S8.3 build_asm) and to bench (ceiling)"
+notes: >-
+  EXCLUDE VOPACC benchmarks (user directive). saturn kernels are the best first target for the
+  build-to-asm normalizer and the kernel-performance ceiling since they compile standalone.

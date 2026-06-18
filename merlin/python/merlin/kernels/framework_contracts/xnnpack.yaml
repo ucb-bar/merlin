@@ -1,0 +1,36 @@
+# Framework contract for XNNPACK RVV microkernels — the caller-side assumptions that are NOT
+# visible in the kernel body or its assembly (so unrecoverable by AST/asm analysis alone). This
+# is hand-authored once per framework and refined by the agent (see kernels/agent_mine.py).
+framework: xnnpack
+isa: rvv
+# Operand layout assumed by the GEMM/IGEMM microkernels.
+layout:
+  lhs: row_major                      # activation A: [MR, KC], row-major, streamed scalar-by-scalar
+  rhs: prepacked_panels               # weights W: NOT plain row/col-major
+  output: row_major
+# THE key assumption: weights are PRE-PACKED (by a separate xnn_pack_* step) into the layout the
+# microkernel streams linearly via `w = w + nr`. The bias is prepended into the same packed buffer
+# (loaded as the accumulator init), then KC weight panels of NR lanes each follow.
+operand_prepack:
+  operand: rhs
+  packed_layout: "bias[NR] then KC x [NR] weight panels (NR = vlmax lanes); streamed by pointer-advance"
+  prepacked_by: "xnn_pack_f32_gemm_goi_w / xnn_pack_qs8_* (a SEPARATE pack microkernel, not this one)"
+  implication: "the compiler must either reproduce this prepack+stream, or the layout match is N/A"
+transpose_assumption: "weights are conceptually [N, K] (output-channel-outer, 'goi'); packing
+  transposes/tiles them to the streamed panel layout. No runtime transpose in the GEMM kernel."
+accumulator:
+  init: bias_from_packed_buffer       # accumulator seeded from the packed bias, not zero-filled
+  dtype: "f32 (qd8/qs8 paths accumulate i32 then requant)"
+  width: NR_lanes                     # one vacc register group per MR row; NR = vlmax
+dtype_quant:
+  f32: plain
+  qd8_f32_qc8w: "dynamic per-row act i8, per-channel i8 weights, i32 acc, fp32 requant+minmax"
+  qs8_qc8w: "static i8 act + per-channel i8 weights, i32 acc, requant to i8"
+calling_convention:
+  signature: "mr, nc, kc, a, a_stride, w(packed), c, cm_stride, cn_stride, params(minmax/quant)"
+  epilogue: "vfmax/vfmin clamp (minmax) folded before the store; requant for quantized paths"
+notes: >-
+  The transpose/prepack lives in a SEPARATE pack microkernel — the GEMM kernel only sees the
+  already-packed stream. For our compiler this means: a fair comparison either (a) compares only
+  the inner compute (ignoring pack), or (b) requires the compiler to emit an equivalent
+  pack+resident-weight pass. Record which mode each comparison uses.

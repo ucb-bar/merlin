@@ -19,6 +19,7 @@ from .epilogue import extract_epilogue
 from .loops import extract_loops
 from .memory import extract_memory
 from .packing import extract_packing
+from .ast_struct import extract_ast_struct
 from .roles import extract_roles
 from .rvv_intrinsics import extract_rvv_intrinsics
 from .shape_regime import extract_shape_regime
@@ -30,6 +31,7 @@ _EXTRACTORS = (
     extract_packing,
     extract_vector,
     extract_rvv_intrinsics,
+    extract_ast_struct,
     extract_memory,
     extract_loops,
     extract_epilogue,
