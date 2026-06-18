@@ -27,6 +27,8 @@
 | molmoact | 1 | 3 |
 | smolvla | 2 | 6 |
 | pi05 | 2 | 6 |
+| xr0 | 3 | 9 |
+| bitvla | 1 | 3 |
 
 ## Findings
 

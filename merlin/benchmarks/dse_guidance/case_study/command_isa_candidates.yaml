@@ -5,6 +5,7 @@ command_isa_candidates:
     required_isa_semantics: command opcodes + handles + event/queue
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -14,10 +15,12 @@ command_isa_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - command: loop_carried_state_handle
     required_isa_semantics: command opcodes + handles + event/queue
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -27,10 +30,12 @@ command_isa_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - command: bounded_loop_command
     required_isa_semantics: command opcodes + handles + event/queue
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -40,10 +45,12 @@ command_isa_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - command: region_level_dispatch
     required_isa_semantics: command opcodes + handles + event/queue
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -53,10 +60,12 @@ command_isa_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - command: persistent_command_buffer
     required_isa_semantics: command opcodes + handles + event/queue
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -66,10 +75,12 @@ command_isa_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - command: event_token
     required_isa_semantics: command opcodes + handles + event/queue
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -79,10 +90,12 @@ command_isa_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - command: async_queue
     required_isa_semantics: command opcodes + handles + event/queue
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -92,10 +105,12 @@ command_isa_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - command: producer_consumer_queue
     required_isa_semantics: command opcodes + handles + event/queue
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -107,6 +122,7 @@ command_isa_candidates:
     required_isa_semantics: command opcodes + handles + event/queue
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -125,6 +141,7 @@ command_isa_candidates:
     required_isa_semantics: command opcodes + handles + event/queue
     status: possible
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -134,6 +151,7 @@ command_isa_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - command: epilogue_requant_unit
     required_isa_semantics: command opcodes + handles + event/queue
     status: possible
@@ -145,10 +163,12 @@ command_isa_candidates:
     - rdt
     - rdt2
     - smolvla
+    - xr0
   - command: dma_engine
     required_isa_semantics: command opcodes + handles + event/queue
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -158,10 +178,12 @@ command_isa_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - command: multi_stream_dma_descriptor
     required_isa_semantics: command opcodes + handles + event/queue
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -171,10 +193,12 @@ command_isa_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - command: prefetch_descriptor
     required_isa_semantics: command opcodes + handles + event/queue
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -184,10 +208,12 @@ command_isa_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - command: partial_sum_object
     required_isa_semantics: command opcodes + handles + event/queue
     status: possible
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -197,10 +223,12 @@ command_isa_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - command: accumulator_merge
     required_isa_semantics: command opcodes + handles + event/queue
     status: possible
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -210,10 +238,12 @@ command_isa_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - command: accumulator_commit
     required_isa_semantics: command opcodes + handles + event/queue
     status: possible
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -223,6 +253,7 @@ command_isa_candidates:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - command: fused_requant_epilogue
     required_isa_semantics: command opcodes + handles + event/queue
     status: possible
@@ -234,10 +265,12 @@ command_isa_candidates:
     - rdt
     - rdt2
     - smolvla
+    - xr0
   - command: decode_loop_controller
     required_isa_semantics: command opcodes + handles + event/queue
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - molmoact
     - openvla
     - small_llama

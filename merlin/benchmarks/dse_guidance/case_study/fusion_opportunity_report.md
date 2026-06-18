@@ -6,13 +6,15 @@
 
 | pattern | matmuls |
 |---|---|
-| matmul->bias | 660 |
-| matmul | 350 |
-| matmul->bias->scale->activation | 7 |
+| matmul->bias | 663 |
+| matmul | 369 |
+| matmul->bias->scale->activation | 13 |
+| matmul->bias->scale | 4 |
+| matmul->scale | 2 |
 
 ## Directly-fused vs reshape-separated
 
-- Of the 350 matmuls with **no directly-fused epilogue**, 350 are `reshape_separated_epilogue` — their output is reshaped (collapse/expand/transpose) before any elementwise op, so downstream ops (residual add, rotary, SiLU gating) are **not directly fused**. This is the bias-free LLaMA-style projection pattern. The reshape-distant ops are deliberately **not** labelled bias/scale: a reshape-distant addf/mulf is ambiguous (residual / rotary / gating / norm), so claiming it would over-state the fusion — it is reported as a layout-separated boundary instead.
+- Of the 369 matmuls with **no directly-fused epilogue**, 366 are `reshape_separated_epilogue` — their output is reshaped (collapse/expand/transpose) before any elementwise op, so downstream ops (residual add, rotary, SiLU gating) are **not directly fused**. This is the bias-free LLaMA-style projection pattern. The reshape-distant ops are deliberately **not** labelled bias/scale: a reshape-distant addf/mulf is ambiguous (residual / rotary / gating / norm), so claiming it would over-state the fusion — it is reported as a layout-separated boundary instead.
 
 ## Where numerical structure is preserved vs erased
 

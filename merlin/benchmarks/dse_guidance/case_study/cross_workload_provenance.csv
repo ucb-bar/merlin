@@ -30,3 +30,10 @@ pi05,action-head weight reuse,weights used once (0 contract facts),"repeated_hea
 pi05,K-step loop,absent (loop unrolled by torch.export),"bounded repeated head, K=10",assumed_reference (K) + recovered_from_prov_fqn (head exists),autonomous_K_loop,blocked: missing_calibration
 pi05,backbone vs head split,undifferentiated single forward,backbone_once: 489 matmuls; repeated_head: 288 matmuls,recovered_from_prov_fqn,backbone_head_partition,structural (no magnitude claimed)
 pi05,host dispatch / sync coupling,not represented,not measured,unavailable,command_batching / autonomous_K_loop,blocked: measurement required
+xr0,action-head weight reuse,weights used once (0 contract facts),"repeated_head x10: 16 matmuls, 123.1 MB weights, 0.91 GMAC/step",recovered_from_prov_fqn (role) + recovered_from_ir (facts); K=10 assumed_reference,resident_action_head_weights,blocked: missing_calibration
+xr0,K-step loop,absent (loop unrolled by torch.export),"bounded repeated head, K=10",assumed_reference (K) + recovered_from_prov_fqn (head exists),autonomous_K_loop,blocked: missing_calibration
+xr0,backbone vs head split,undifferentiated single forward,backbone_once: 1 matmuls; repeated_head: 16 matmuls,recovered_from_prov_fqn,backbone_head_partition,structural (no magnitude claimed)
+xr0,host dispatch / sync coupling,not represented,not measured,unavailable,command_batching / autonomous_K_loop,blocked: measurement required
+bitvla,action-head weight reuse,weights used once (0 contract facts),"repeated_head x7: 15 matmuls, 5.8 MB weights, 0.05 GMAC/step",recovered_from_prov_fqn (role) + recovered_from_ir (facts); K=7 assumed_reference,resident_action_head_weights,blocked: missing_calibration
+bitvla,K-step loop,absent (loop unrolled by torch.export),"bounded repeated head, K=7",assumed_reference (K) + recovered_from_prov_fqn (head exists),autonomous_K_loop,blocked: missing_calibration
+bitvla,host dispatch / sync coupling,not represented,not measured,unavailable,command_batching / autonomous_K_loop,blocked: measurement required

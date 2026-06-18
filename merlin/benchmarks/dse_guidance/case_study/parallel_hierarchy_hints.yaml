@@ -7,7 +7,7 @@ parallel_hierarchy_hints:
     - tile_dims
     evidence: recovered_from_ir
     evidence_against: none
-    evidence_for: 778 ops, 63.7% of MACs, in groot_n1d7, molmoact, openvla, pi05, rdt, rdt2, small_llama, smolvla
+    evidence_for: 805 ops, 63.7% of MACs, in bitvla, groot_n1d7, molmoact, openvla, pi05, rdt, rdt2, small_llama, smolvla, xr0
     hierarchy_options:
     - matrix_tile_engine
     - SIMD_vector_lanes
@@ -18,6 +18,7 @@ parallel_hierarchy_hints:
     required_compiler_proof: operator geometry is tile/lane-legal for the option (recovered_from_ir shapes)
     shape_class: wide_skinny
     supported_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -26,13 +27,14 @@ parallel_hierarchy_hints:
     - rdt2
     - small_llama
     - smolvla
+    - xr0
   - dse_knobs_exposed:
     - unit_count
     - unit_shape
     - tile_dims
     evidence: recovered_from_ir
     evidence_against: none
-    evidence_for: 94 ops, 31.0% of MACs, in pi05, rdt2, smolvla
+    evidence_for: 96 ops, 31.0% of MACs, in pi05, rdt2, smolvla, xr0
     hierarchy_options:
     - matrix_tile_engine
     - systolic_array
@@ -46,6 +48,7 @@ parallel_hierarchy_hints:
     - pi05
     - rdt2
     - smolvla
+    - xr0
   - dse_knobs_exposed:
     - unit_count
     - unit_shape
@@ -89,7 +92,7 @@ parallel_hierarchy_hints:
     - tile_dims
     evidence: recovered_from_ir
     evidence_against: very small MAC share
-    evidence_for: 69 ops, 0.0% of MACs, in groot_n1d7, pi05, rdt, rdt2, smolvla, tiny_llama
+    evidence_for: 74 ops, 0.0% of MACs, in groot_n1d7, pi05, rdt, rdt2, smolvla, tiny_llama, xr0
     hierarchy_options:
     - vector_gemv_engine
     - SIMD_vector_lanes
@@ -106,18 +109,20 @@ parallel_hierarchy_hints:
     - rdt2
     - smolvla
     - tiny_llama
+    - xr0
   note: operator clusters + structural units mapped to candidate hardware-hierarchy options. Structural hints for a future DSE search space — NOT a chosen design, NOT a speedup. compute-shape clusters cover the GEMM/GEMV engines; structural_units cover reduction_tree (K-sharding), epilogue_unit, DMA_engine, loop_controller, and multi_engine_cluster (inter-op parallelism).
   structural_units:
   - dse_knobs_exposed:
     - reduction_radix
     - accumulator_width
     evidence: recovered_from_ir
-    evidence_for: 1017 K-shardable ops produce partial sums that must be merged across shards
+    evidence_for: 1051 K-shardable ops produce partial sums that must be merged across shards
     hierarchy_option: reduction_tree
     missing_measurements:
     - reduction latency
     required_compiler_proof: K-sharding produces partial sums that a reduction tree merges
     supported_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -127,6 +132,7 @@ parallel_hierarchy_hints:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - dse_knobs_exposed:
     - fused_bias
     - fused_activation
@@ -155,6 +161,7 @@ parallel_hierarchy_hints:
     - DRAM bandwidth
     required_compiler_proof: loop-invariant weights are read-only across the K-loop
     supported_workloads: &id001
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -164,6 +171,7 @@ parallel_hierarchy_hints:
     - small_llama
     - smolvla
     - tiny_llama
+    - xr0
   - dse_knobs_exposed:
     - loop_bound_K
     - unroll_factor

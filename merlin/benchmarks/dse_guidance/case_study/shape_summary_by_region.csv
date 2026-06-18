@@ -26,3 +26,9 @@ pi05,repeated_head,gemv_like,39,118489088
 pi05,repeated_head,projection_like,87,708485054464
 pi05,repeated_head,squareish_gemm,1,1638400
 pi05,repeated_head,wide_skinny,161,1119916457984
+xr0,backbone_once,gemv_like,1,6291456
+xr0,prefix_builder,wide_skinny,2,201326592
+xr0,repeated_head,gemv_like,4,2392064
+xr0,repeated_head,projection_like,2,1013760
+xr0,repeated_head,wide_skinny,10,904855552
+bitvla,repeated_head,wide_skinny,15,46137344

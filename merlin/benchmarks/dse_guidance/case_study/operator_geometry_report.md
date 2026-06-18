@@ -2,7 +2,7 @@
 
 > The first search-space-formation layer: what matmul-like operator shapes actually appear across the recaptured workloads, classified by deterministic geometry rules and (orthogonally) by semantic role from `prov.fqn`. **Structural geometry only — no speedup, no cycle-count, no performance claim.**
 
-Operators extracted: **1017** across **9** workloads.
+Operators extracted: **1051** across **11** workloads.
 
 ## Per-workload operator counts and dominant geometry
 
@@ -17,24 +17,26 @@ Operators extracted: **1017** across **9** workloads.
 | molmoact | 17 | wide_skinny | 17 | 0 |
 | smolvla | 106 | squareish_gemm | 33 | 1 |
 | pi05 | 777 | wide_skinny | 167 | 0 |
+| xr0 | 19 | wide_skinny | 5 | 2 |
+| bitvla | 15 | wide_skinny | 0 | 0 |
 
 ## Top shape classes by MAC count (geometry)
 
 | shape_class | ops | MACs | MAC share |
 |---|---|---|---|
-| wide_skinny | 778 | 1,457,145,203,200 | 63.7% |
-| projection_like | 94 | 708,649,345,024 | 31.0% |
+| wide_skinny | 805 | 1,458,297,522,688 | 63.7% |
+| projection_like | 96 | 708,650,358,784 | 31.0% |
 | squareish_gemm | 64 | 92,362,150,912 | 4.0% |
 | unknown | 12 | 28,991,029,248 | 1.3% |
-| gemv_like | 69 | 802,584,576 | 0.0% |
+| gemv_like | 74 | 811,268,096 | 0.0% |
 
 ## Top shape classes by op count (geometry)
 
 | shape_class | ops |
 |---|---|
-| wide_skinny | 778 |
-| projection_like | 94 |
-| gemv_like | 69 |
+| wide_skinny | 805 |
+| projection_like | 96 |
+| gemv_like | 74 |
 | squareish_gemm | 64 |
 | unknown | 12 |
 
@@ -42,17 +44,17 @@ Operators extracted: **1017** across **9** workloads.
 
 | semantic_class | ops |
 |---|---|
-| attention_qkv_projection | 424 |
-| mlp_projection | 363 |
-| attention_output_projection | 150 |
-| unknown | 74 |
-| lm_head_projection | 4 |
+| attention_qkv_projection | 432 |
+| mlp_projection | 382 |
+| attention_output_projection | 154 |
+| unknown | 76 |
+| lm_head_projection | 5 |
 | embedding_projection | 2 |
 
 ## Shape-irregularity findings
 
-- **Tail-heavy operators:** 330 op(s) waste >10% against a 32×32 tile (e.g. `rdt` op 0 1×2048, 3100% waste).
-- **Small dispatch fragments:** 1 op(s) below 65,536 MACs (e.g. `smolvla` op 73, 30,720 MACs) — dispatch-bound, not compute-bound.
+- **Tail-heavy operators:** 335 op(s) waste >10% against a 32×32 tile (e.g. `rdt` op 0 1×2048, 3100% waste).
+- **Small dispatch fragments:** 3 op(s) below 65,536 MACs (e.g. `smolvla` op 73, 30,720 MACs) — dispatch-bound, not compute-bound.
 
 ## Not recovered (honest)
 

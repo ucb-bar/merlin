@@ -12,3 +12,7 @@ smolvla,backbone_once,87,f32,f32,f32,f32,unavailable,unavailable,unavailable,epi
 smolvla,repeated_head,19,f32,f32,f32,f32,unavailable,unavailable,unavailable,epilogue_candidate,committed_directly,recovered_from_ir
 pi05,backbone_once,489,f32,f32,f32,f32,unavailable,unavailable,unavailable,epilogue_candidate,committed_directly,recovered_from_ir
 pi05,repeated_head,288,f32,f32,f32,f32,unavailable,unavailable,unavailable,epilogue_candidate,committed_directly,recovered_from_ir
+xr0,repeated_head,16,f32,f32,f32,f32,unavailable,unavailable,unavailable,epilogue_candidate,committed_directly,recovered_from_ir
+xr0,backbone_once,1,f32,f32,f32,f32,unavailable,unavailable,unavailable,epilogue_candidate,committed_directly,recovered_from_ir
+xr0,prefix_builder,2,f32,f32,f32,f32,unavailable,unavailable,unavailable,epilogue_candidate,committed_directly,recovered_from_ir
+bitvla,repeated_head,15,f32,f32,f32,f32,unavailable,unavailable,unavailable,unavailable,committed_directly,recovered_from_ir

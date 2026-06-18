@@ -8,3 +8,5 @@ groot_n1d7,18,2612133888,9,2103705600,1.2417,3,1.5,12,1,mostly_sequential,recove
 molmoact,17,7574913024,17,7574913024,1.0,1,1.0,17,1,mostly_sequential,recovered_from_ir
 smolvla,106,90656617984,59,74759946240,1.2126,5,1.7966,59,1,mostly_sequential,recovered_from_ir
 pi05,777,2146035695616,182,1330911969280,1.6125,40,4.2692,182,1,some_parallelism,recovered_from_ir
+xr0,19,1115879424,12,838760448,1.3304,3,1.4615,13,1,mostly_sequential,recovered_from_ir
+bitvla,15,46137344,9,33554432,1.375,3,1.6667,9,1,mostly_sequential,recovered_from_ir

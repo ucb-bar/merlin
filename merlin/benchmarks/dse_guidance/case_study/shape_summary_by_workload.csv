@@ -20,3 +20,7 @@ pi05,gemv_like,39,118489088,0.0001
 pi05,projection_like,87,708485054464,0.3301
 pi05,squareish_gemm,1,1638400,0.0
 pi05,wide_skinny,650,1437430513664,0.6698
+xr0,gemv_like,5,8683520,0.0078
+xr0,projection_like,2,1013760,0.0009
+xr0,wide_skinny,12,1106182144,0.9913
+bitvla,wide_skinny,15,46137344,1.0

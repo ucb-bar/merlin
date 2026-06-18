@@ -22,6 +22,7 @@ and leaves quantification blocked.
 """
 from __future__ import annotations
 
+import math
 from collections import Counter
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -94,7 +95,7 @@ def role_from_fqn(fqn: str | None) -> str | None:
     # the bare "expert" of the container) — they run every denoise step -> repeated head.
     if any(k in low for k in ("lm_expert", "gemma_expert", "action_expert", "action_in_proj",
                               "action_out_proj", "action_time_mlp", "time_mlp", "state_proj",
-                              "action_proj")):
+                              "action_proj", "action_output_layer", "action_output")):
         return ROLE_REPEATED_HEAD
     for keywords, role in _FQN_ROLE_KEYWORDS:
         if any(k in low for k in keywords):
@@ -137,9 +138,14 @@ def extract_matmuls(capture_dir: str) -> tuple[MatmulRecord, ...]:
     for i, op in enumerate(o for o in module.walk() if o.name == "linalg.matmul"):
         ls, ld = mlir_m2m._shape_dtype(str(op.operands[0].type))
         rs, rd = mlir_m2m._shape_dtype(str(op.operands[1].type))
-        if not (ls and rs and len(ls) == 2 and len(rs) == 2):
+        # A linear-layer GEMM. The activation (LHS) may carry leading batch/sequence dims (3D/4D in
+        # batched-attention DiTs such as xr0); the weight (RHS) is the 2D ``[K, N]`` matrix. Fold the
+        # LHS leading dims into M -- ``M*K*N`` then equals the true MAC count -- and the 2D case (every
+        # other workload) is unchanged because ``prod(ls[:-1]) == ls[0]`` and ``rs[-2:] == [K, N]``.
+        if not (ls and rs and len(ls) >= 2 and len(rs) >= 2):
             continue
-        M, K = ls
+        M = math.prod(ls[:-1])
+        K = ls[-1]
         N = rs[-1]
         op_kind = _read_attr(op, "op")
         out.append(MatmulRecord(
@@ -148,7 +154,7 @@ def extract_matmuls(capture_dir: str) -> tuple[MatmulRecord, ...]:
             op=op_kind,
             epilogue=(op_kind == "addmm"),
             M=M, K=K, N=N,
-            weight_bytes=K * N * R.dtype_bytes(rd),
+            weight_bytes=rs[-2] * rs[-1] * R.dtype_bytes(rd),
             activation_bytes=(M * K + M * N) * R.dtype_bytes(ld),
             dtype=rd,
             fqn=_read_attr(op, "fqn"),
