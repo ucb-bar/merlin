@@ -45,6 +45,9 @@ VLEN = 256  # K1 X60 vector length, bits; the runtime reads vlenb at run time an
 # reported as cycle_accurate=False (spike/FireSim remain the cycle-accurate authorities).
 K1_TIMEBASE_HZ = 24_000_000   # /proc/device-tree/cpus/timebase-frequency (rdtime tick rate)
 K1_CPU_HZ = 1_600_000_000     # X60 scaling_cur_freq (for the rdtime-ticks -> core-cycle estimate)
+# RLIMIT_STACK raised in the harness so alloca'd model intermediates (VLA vision activations)
+# don't overflow the default 8MB stack. Just a LIMIT (grows on demand); board has ~3.5G RAM.
+K1_STACK_BYTES = 3 * 1024 * 1024 * 1024
 
 
 def _toolchain_root() -> Path | None:
@@ -106,6 +109,7 @@ def main_linux_c(dump_cap: int = 4096) -> str:
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <sys/resource.h>
 
 #include "merlin_model.h"
 #include "model_gen.h"
@@ -144,6 +148,12 @@ static uint64_t wall_ns(void) {{
 }}
 
 int main(void) {{
+  /* The lowered model alloca's large intermediate buffers on the stack (vision/VLA activations
+   * overflow the default 8MB Linux stack -> SIGSEGV store-fault). Raise RLIMIT_STACK so the
+   * main-thread stack grows on demand (we run as root on the board, so the hard limit can rise).
+   * The spike/Zephyr bare-metal harness sidesteps this with a large linker-reserved stack/arena. */
+  struct rlimit rl = {{ {K1_STACK_BYTES}ULL, {K1_STACK_BYTES}ULL }};
+  setrlimit(RLIMIT_STACK, &rl);
   printf("=== merlin_k1 vlenb=%llu ===\\n", (unsigned long long)rd_vlenb());
   uint64_t w0 = wall_ns();
   uint64_t t0 = rd_time();
