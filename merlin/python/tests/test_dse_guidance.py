@@ -2321,20 +2321,24 @@ def test_p14_main_findings_corroborated_and_measured_lowbit_surfaced():
     assert any(f["workload"] == "ZOO" or "lowbit" in f["metric_name"] for f in b["facts"])
 
 
-def test_p14_uncorroborated_single_source_fact_not_a_candidate():
+def test_p14_signal_vs_context_candidacy():
     from merlin.dse_guidance import insight_mining as IM
-    # a tier-B recovered fact with no harness check and single source is NOT presentation-worthy
-    f = IM._fact("F0", workload="w", metric="n_runtime_objects", value=3, unit="count",
-                 artifact="runtime_object_candidates.yaml", phase="P12",
-                 evidence="derived_requirement", implication="objects crossing the HAL",
-                 corroborated_by=1)
-    assert f["presentation_candidate"] is False
-    # the same metric corroborated by 2 artifacts becomes a candidate
-    f2 = IM._fact("F1", workload="w", metric="n_runtime_objects", value=3, unit="count",
-                  artifact="runtime_object_candidates.yaml", phase="P12",
-                  evidence="recovered_from_ir", implication="objects crossing the HAL",
-                  corroborated_by=2)
-    assert f2["presentation_candidate"] is True
+    # a CONTEXT metric (a row count) is never presentation-worthy, even corroborated -> de-noise
+    ctx = IM._fact("F0", workload="w", metric="n_runtime_objects", value=3, unit="count",
+                   artifact="runtime_object_candidates.yaml", phase="P12",
+                   evidence="recovered_from_ir", implication="objects crossing the HAL",
+                   corroborated_by=2)
+    assert ctx["metric_class"] == "context" and ctx["presentation_candidate"] is False
+    # a SIGNAL metric, tier A/B, is a candidate even single-source (real recovered evidence)
+    sig = IM._fact("F1", workload="w", metric="avoidable_weight_reload", value=10, unit="bytes",
+                   artifact="data_movement_table.csv", phase="P9", evidence="derived_requirement",
+                   implication="residency benefit", corroborated_by=1)
+    assert sig["metric_class"] == "signal" and sig["presentation_candidate"] is True
+    # measured facts are their own class and presentation-worthy
+    m = IM._fact("F2", workload="w", metric="accuracy_int8_w8a8", value="pass", unit="band",
+                 artifact="accuracy_gate_results.csv", phase="P4", evidence="measured",
+                 implication="int8 accuracy-legal")
+    assert m["metric_class"] == "measured" and m["presentation_candidate"] is True
 
 
 @pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),

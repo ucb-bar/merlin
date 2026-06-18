@@ -998,11 +998,11 @@ def verify_p13() -> dict:
         main = [f for f in b["findings"] if f["presentation_placement"] == "main"]
         p13check(all(f["evidence_tier"] in ("A", "B") for f in main),
                  f"[{scope}] every main finding is tier A/B (no weak/assumed main)")
-        # P14: every main finding is corroborated (a per-metric check OR >=2 artifacts), not fake
-        p13check(all(f["max_corroborated_by"] >= 2 or any(
-                     x["verifying_check"] for m in f["relevant_metrics"]
-                     for x in b["facts"] if x["metric_name"] == m) for f in main),
-                 f"[{scope}] every main finding corroborated (>=2 artifacts or a harness check)")
+        # P14: every main finding is a SIGNAL metric (decision-relevant, not a row-count/context),
+        # tier A/B. Corroboration / a harness check are reported as STRENGTH (corroborated_by,
+        # verifying_check), not the gate -- so real single-source recovered signal is allowed.
+        p13check(all(all(m in IM.SIGNAL_METRICS for m in f["relevant_metrics"]) for f in main),
+                 f"[{scope}] every main finding is a SIGNAL metric (no context/count padding)")
         # P14 devil's-advocate convergence: ZERO open avoidable gaps
         oa = b["open_avoidable_gaps"]
         p13check(not oa, f"[{scope}] gap_audit: 0 open avoidable gaps "
