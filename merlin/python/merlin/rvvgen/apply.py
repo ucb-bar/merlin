@@ -33,4 +33,5 @@ def apply_rvv_package(pkg: "RvvPackage | str | Path", model_dir: str | Path, wor
         rvv_schedule=pkg.schedule_text,
         cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
         int8_compute=int8_compute, arena_mb=arena_mb, cpus=max(harts, 1),
+        features=frozenset(pkg.compiler_features) or None,
         **kw)

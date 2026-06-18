@@ -39,6 +39,9 @@ class RvvPackage:
     lowering_patterns: list[str] = field(default_factory=list)
     lmul_policy: str = "m1"
     expected_instructions: list[str] = field(default_factory=list)
+    # Default-off compiler features this (impr_) fork enables (PASS/HEURISTIC/PATTERN class).
+    # Empty for the baseline hand_v0 -> byte-identical lowering. See llvmlower.impr_features.
+    compiler_features: list[str] = field(default_factory=list)
     manifest: dict[str, Any] = field(default_factory=dict)
     knobs: dict[str, Any] = field(default_factory=dict)
 
@@ -84,6 +87,8 @@ def load_rvv_package(package_dir: str | Path) -> RvvPackage:
         lowering_patterns=list(knobs.get("lowering_patterns", [])),
         lmul_policy=knobs.get("lmul_policy", "m1"),
         expected_instructions=list(knobs.get("expected_instructions", [])),
+        compiler_features=list(knobs.get("compiler_features",
+                                         manifest.get("compiler_features", []))),
         manifest=manifest,
         knobs=knobs,
     )

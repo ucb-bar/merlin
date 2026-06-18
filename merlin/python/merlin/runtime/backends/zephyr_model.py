@@ -384,7 +384,8 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
               backend: str = "rvv", rvv_hart: int = 0, arena_mb: int = 64, cpus: int = 2,
               inputs_npz: str | Path | None = None, ram_bytes_override: int | None = None,
               int8_compute: bool = False, rvv_schedule: str | None = None,
-              cflags_override: list[str] | None = None) -> dict:
+              cflags_override: list[str] | None = None,
+              features: "frozenset[str] | None" = None) -> dict:
     """Lower the model, generate the Zephyr app, and build ``zephyr.elf``.
 
     ``backend``: ``"rvv"`` (vector tile / Saturn) or ``"scalar"`` (scalar tile). The
@@ -416,7 +417,8 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     # For the rvv backend, bake native RVV (fixed-width vector ops on the matmuls) into the
     # IR rather than leaving it to clang's auto-vectorizer — see llvmlower.pipeline.
     res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
-                           vectorize=(backend == "rvv"), transform_schedule=rvv_schedule)
+                           vectorize=(backend == "rvv"), transform_schedule=rvv_schedule,
+                           features=features)
     _run([clang, "--target=riscv64-unknown-elf", *cflags, "-c", res.ll_path,
           "-o", work / "model.o"])
 
