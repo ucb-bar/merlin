@@ -23,19 +23,47 @@ double roundeven(double x) { return rint(x); }
 
 /* bf16 soft-conversion compiler-rt builtins. The Zephyr SDK's libgcc (riscv64,
  * gcc 12.2) does not export them, but models with bf16 activations / casts outside
- * the f32-accumulated matmul path (e.g. smolvla) emit float<->bf16 conversions. __bf16
- * has no hardware FP register on this target, so it is ABI-passed as a 16-bit integer
- * (a0) — `unsigned short` matches. __truncsfbf2 uses round-half-to-even (matches torch). */
-unsigned short __truncsfbf2(float f) {
+ * the f32-accumulated matmul path (e.g. smolvla) emit float<->bf16 conversions.
+ *
+ * CRITICAL: the bf16 value must travel through the SAME register class the *caller*
+ * (clang's `fmul bfloat` legalization) uses, or the call corrupts every bf16 element.
+ * The bf16 ABI register class is target-dependent:
+ *   - x86-64 SysV: `__bf16` is an SSE-class scalar passed/returned in xmm0. Declaring
+ *     these helpers with `unsigned short` (an INTEGER-class type in rdi/ax) silently
+ *     mismatches the convention — the bf16 arg/return goes through the wrong register,
+ *     so `0.066f * 31.0f` came back as ~8.6e9 (host smolvla cos 0.083). Use `__bf16`.
+ *   - riscv64 lp64d / bare-metal soft-bf16: no bf16 FP register; `__bf16` is ABI-passed
+ *     as a 16-bit integer (a0) — `unsigned short` matches, and `__bf16` may be unavailable
+ *     under -ffreestanding, so keep `unsigned short` there.
+ * The conversion math is identical either way (done on a 16-bit pattern via memcpy);
+ * only the declared parameter/return TYPE — hence the register class — differs.
+ * __truncsfbf2 uses round-half-to-even (matches torch). */
+#if defined(__x86_64__) || defined(__i386__)
+typedef __bf16 merlin_bf16_t;
+#else
+typedef unsigned short merlin_bf16_t;
+#endif
+static inline unsigned short merlin_bf16_bits(merlin_bf16_t b) {
+  unsigned short r;
+  __builtin_memcpy(&r, &b, 2);
+  return r;
+}
+static inline merlin_bf16_t merlin_bf16_from_bits(unsigned short r) {
+  merlin_bf16_t b;
+  __builtin_memcpy(&b, &r, 2);
+  return b;
+}
+merlin_bf16_t __truncsfbf2(float f) {
   unsigned int x;
   __builtin_memcpy(&x, &f, 4);
   unsigned int exp = (x >> 23) & 0xFF, man = x & 0x7FFFFF;
-  if (exp == 0xFF) return (unsigned short)((x >> 16) | (man ? 0x0040u : 0u)); /* inf / NaN */
-  unsigned int bias = 0x7FFFu + ((x >> 16) & 1u);                            /* round-half-even */
-  return (unsigned short)((x + bias) >> 16);
+  if (exp == 0xFF)
+    return merlin_bf16_from_bits((unsigned short)((x >> 16) | (man ? 0x0040u : 0u))); /* inf / NaN */
+  unsigned int bias = 0x7FFFu + ((x >> 16) & 1u);                                     /* round-half-even */
+  return merlin_bf16_from_bits((unsigned short)((x + bias) >> 16));
 }
-float __extendbfsf2(unsigned short b) {
-  unsigned int x = (unsigned int)b << 16;
+float __extendbfsf2(merlin_bf16_t b) {
+  unsigned int x = (unsigned int)merlin_bf16_bits(b) << 16;
   float f;
   __builtin_memcpy(&f, &x, 4);
   return f;
