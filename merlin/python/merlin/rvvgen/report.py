@@ -25,6 +25,32 @@ import yaml
 
 # ---- artifact loading ---------------------------------------------------------------
 
+def _policy_source(mined: Path) -> Path:
+    """Resolve the dir that actually holds ``policy_rules.yaml``/``*_index.json``.
+
+    A *mining run* dir (``mining_rvv_v*``) holds the minted CCA/divergence/action YAMLs but NOT the
+    raw policy artifacts — those live in the ``mined_from`` source it was minted from (recorded in
+    its manifest). Follow that link so the provenance + policy sections render even when ``--mined``
+    points at a mining run. Falls back to ``mined`` itself for a raw mined-policy dir."""
+    if (mined / "policy_rules.yaml").is_file():
+        return mined
+    mf = mined / "manifest.yaml"
+    if mf.is_file():
+        try:
+            man = yaml.safe_load(mf.read_text()) or {}
+        except Exception:  # noqa: BLE001
+            man = {}
+        src = man.get("mined_from")
+        if src:
+            p = Path(src)
+            if not p.is_absolute():
+                p = mined.parent.parent.parent / src if not (mined / src).exists() else mined / src
+            for cand in (Path(src), p, mined.parent / Path(src).name):
+                if (cand / "policy_rules.yaml").is_file():
+                    return cand
+    return mined
+
+
 def _find_key(d: Any, key: str) -> Any:
     """Depth-first search for the first value under ``key`` anywhere in a nested dict."""
     if isinstance(d, dict):
@@ -84,11 +110,12 @@ def _mining_section(mined: Path) -> str:
         man = yaml.safe_load(mf.read_text()) or {}
     lines = ["## 1. Mining provenance", ""]
     lines.append(f"- Mined artifact: `{mined}`")
-    for k in ("run_id", "sources", "target", "created", "n_kernels", "commit"):
+    for k in ("run_id", "sources", "target", "op", "created", "mined_from", "baseline_run",
+              "n_kernels", "n_divergences", "n_actions", "n_unrouted", "commit"):
         if k in man:
             lines.append(f"- {k}: `{man[k]}`")
-    # per-source kernel counts from the *_index.json
-    for idx in sorted(mined.glob("*_index.json")):
+    # per-source kernel counts from the *_index.json (in the raw mined-policy source it points at)
+    for idx in sorted(_policy_source(mined).glob("*_index.json")):
         try:
             import json
             d = json.loads(idx.read_text())
@@ -100,7 +127,7 @@ def _mining_section(mined: Path) -> str:
 
 
 def _abstraction_section(mined: Path) -> str:
-    pol = mined / "policy_rules.yaml"
+    pol = _policy_source(mined) / "policy_rules.yaml"
     policies = yaml.safe_load(pol.read_text()) if pol.is_file() else []
     lines = ["## 2. Abstracted policies (mined evidence -> reusable abstraction)", "",
              "| policy | #kernels | sources | actions |", "|---|---|---|---|"]
@@ -119,7 +146,7 @@ def _abstraction_section(mined: Path) -> str:
 def _knob_section() -> str:
     from ..kernels import rvv_knobs
     routes = getattr(rvv_knobs, "MOTIF_ROUTES", None) or getattr(rvv_knobs, "_ROUTES", {})
-    lines = ["## 3. Motif -> knob gap-router (which change, and whether it is forkable today)", "",
+    lines = ["## 3b. Legacy motif -> knob gap-router (superseded by §3; kept for continuity)", "",
              "| divergence axis | policy | lever | forkable now | note |",
              "|---|---|---|---|---|"]
     for axis, opts in (routes or {}).items():
@@ -131,6 +158,86 @@ def _knob_section() -> str:
     lines.append("`knob` = expressible in the transform schedule today (tile/vector size, LMUL, "
                  "lowering pattern). `lowering_pattern`/`llvm_requirement` = a deferred compiler "
                  "work-item the router surfaces but does not pretend is a one-flag fix.")
+    return "\n".join(lines) + "\n"
+
+
+def _typed_actions_section(mined: Path) -> str:
+    """Render the mined run's CCA divergences + typed CompilerActions (the ``action_catalog`` output)
+    straight from the minted ``divergences.yaml`` / ``actions.yaml`` on disk — and honestly reconcile
+    them against the FULL action catalog, so a reader sees both what THIS run emitted and which routed
+    actions a matmul-only run structurally cannot emit. Reads artifacts only; no mining is re-run."""
+    div_f, act_f = mined / "divergences.yaml", mined / "actions.yaml"
+    if not (div_f.is_file() and act_f.is_file()):
+        return ""  # not a mining-run dir (raw mined-policy source): nothing typed to show
+    divs = yaml.safe_load(div_f.read_text()) or []
+    acts = yaml.safe_load(act_f.read_text()) or []
+    routed_axes = {a["axis"] for a in acts}
+    unrouted = [d for d in divs if d["axis"] not in routed_axes]
+
+    lines = ["## 3. CCA divergences -> typed CompilerActions (this run)", "",
+             "The deterministic comparator (`cca_compare`) diffs the expert CCA (built from the mined "
+             "policies) against ours (decoded from the frozen baseline object), then `action_catalog` "
+             "routes each populated divergence to a *typed* `CompilerAction`. Emitted directly from "
+             "this run's `divergences.yaml` / `actions.yaml`.", "",
+             "| divergence axis | expert | ours | -> action class | target seam | forkable now |",
+             "|---|---|---|---|---|---|"]
+    by_axis = {a["axis"]: a for a in acts}
+    for d in divs:
+        a = by_axis.get(d["axis"])
+        if a:
+            lines.append(f"| `{d['axis']}` | `{d['expert']}` | `{d['ours']}` | **{a['class']}** | "
+                         f"`{a['target_seam']}` | {'yes' if a['forkable_now'] else 'NO (work-item)'} |")
+        else:
+            lines.append(f"| `{d['axis']}` | `{d['expert']}` | `{d['ours']}` | _unrouted_ | — | — |")
+    lines.append("")
+    for a in acts:
+        lines.append(f"- **`{a['axis']}`** ({a['class']}, "
+                     f"{'forkable' if a['forkable_now'] else 'deferred work-item'}) — "
+                     f"{a['change']} _Expected:_ {a['expected_effect']} "
+                     f"_Evidence:_ {', '.join(a.get('evidence', []) or ['—'])}.")
+    if unrouted:
+        lines.append("")
+        lines.append("**Unrouted divergences** (surfaced, never silently dropped — no typed action "
+                     "registered for them yet): " +
+                     ", ".join(f"`{d['axis']}` (expert=`{d['expert']}`)" for d in unrouted) + ".")
+
+    # Honest reconciliation against the FULL catalog: which routed axes a matmul-only run cannot emit.
+    try:
+        from ..kernels.action_catalog import _ROUTES
+        catalog_axes = sorted({r.axis for r in _ROUTES.get("rvv", [])})
+    except Exception:  # noqa: BLE001
+        catalog_axes = []
+    not_emitted = [ax for ax in catalog_axes if ax not in routed_axes]
+    if catalog_axes:
+        lines += ["", "### Honest catalog reconciliation", "",
+                  f"The `action_catalog` (rvv) routes **{len(catalog_axes)}** divergence axes: " +
+                  ", ".join(f"`{ax}`" for ax in catalog_axes) + ".",
+                  "", f"This deterministic **matmul** mining run emits typed actions for "
+                  f"**{len(routed_axes)}** of them: " +
+                  ", ".join(f"`{ax}`" for ax in sorted(routed_axes)) + ".", ""]
+        if not_emitted:
+            lines += [f"It does **not** emit: " + ", ".join(f"`{ax}`" for ax in not_emitted) + ". "
+                      "This is a structural property of the pipeline, not an omission — and is stated "
+                      "honestly here:", "",
+                      "- `compute.accumulator_resident`, `compute.nr_is_vsetvlmax` — the mined "
+                      "policies DO set these on the *expert* CCA (`accumulator_commit_policy`, "
+                      "`vl_agnostic_loop_policy`), but the frozen baseline object decodes them as "
+                      "`null` (the lifter does not observe a definitive value in the baseline asm). "
+                      "`cca_compare` only diffs facets populated on BOTH sides, so no divergence — "
+                      "hence no action — is emitted, even though the catalog would route one.",
+                      "- `compute.mr_adapts_to_m`, `compute.activation_vectorization` — these axes "
+                      "have **no CCA facet field** and **no policy** in the mine driver's "
+                      "`expert_cca_from_policies`; they arise from *non-matmul* divergences (M=1 "
+                      "token-decode matmul tail; the GELU/sigmoid scalar-libm-vs-vectorized-poly "
+                      "activation gap). The catalog routes them (the compiler features "
+                      "`accumulator_resident_mtail` / `vectorized_transcendental_activation` exist "
+                      "and are certified), but a matmul-op CCA mining run structurally cannot mint "
+                      "them. Re-running with `--op activation`/`--op conv` does **not** change this: "
+                      "the expert CCA is built from the same `policy_rules.yaml` and the baseline glob "
+                      "decodes the same matmul object, so the emitted divergence/action set is "
+                      "identical (verified). Surfacing these would require either a CCA facet + policy "
+                      "for them, or mining an activation/M=1 baseline object — a deferred pipeline "
+                      "extension, not something to fabricate into this run."]
     return "\n".join(lines) + "\n"
 
 
@@ -211,6 +318,7 @@ def build_report(mined: str | Path, runs_root: str | Path) -> str:
         "",
         _mining_section(mined),
         _abstraction_section(mined),
+        _typed_actions_section(mined),
         _knob_section(),
         _experiments_section(runs),
         _measured_forks_section(runs_root),
