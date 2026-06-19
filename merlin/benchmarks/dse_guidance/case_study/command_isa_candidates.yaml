@@ -137,7 +137,7 @@ command_isa_candidates:
     - pi05
     - rdt
     - smolvla
-  - command: vector_gemv_engine
+  - command: skinny_gemm_or_gemv_engine
     required_isa_semantics: command opcodes + handles + event/queue
     status: possible
     supporting_workloads:

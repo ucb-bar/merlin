@@ -3,4 +3,4 @@ wide_skinny,805,1458297522688,0.6371,matrix_tile_engine; SIMD_vector_lanes,bitvl
 projection_like,96,708650358784,0.3096,matrix_tile_engine; systolic_array,pi05; rdt2; smolvla; xr0,"96 ops, 31.0% of MACs, in pi05, rdt2, smolvla, xr0",—
 squareish_gemm,64,92362150912,0.0403,matrix_tile_engine; systolic_array,pi05; rdt; smolvla,"64 ops, 4.0% of MACs, in pi05, rdt, smolvla",—
 unknown,12,28991029248,0.0127,multi_engine_cluster,smolvla,"12 ops, 1.3% of MACs, in smolvla",very small MAC share
-gemv_like,74,811268096,0.0004,vector_gemv_engine; SIMD_vector_lanes,groot_n1d7; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,"74 ops, 0.0% of MACs, in groot_n1d7, pi05, rdt, rdt2, smolvla, tiny_llama, xr0",very small MAC share
+gemv_like,74,811268096,0.0004,skinny_gemm_or_gemv_engine; SIMD_vector_lanes,groot_n1d7; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,"74 ops, 0.0% of MACs, in groot_n1d7, pi05, rdt, rdt2, smolvla, tiny_llama, xr0",very small MAC share

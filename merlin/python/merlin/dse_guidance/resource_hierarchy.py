@@ -19,7 +19,7 @@ from merlin.dse_guidance import shape_taxonomy as ST
 from merlin.dse_guidance.design_envelope import E_DERIVED, E_FQN, E_IR, E_NA
 
 # The full P7-c hierarchy vocabulary (compute-shape engines + structural units).
-HIER_UNITS = {"matrix_tile_engine", "vector_gemv_engine", "reduction_tree", "systolic_array",
+HIER_UNITS = {"matrix_tile_engine", "skinny_gemm_or_gemv_engine", "reduction_tree", "systolic_array",
               "SIMD_vector_lanes", "multi_engine_cluster", "epilogue_unit", "DMA_engine",
               "loop_controller"}
 
@@ -45,7 +45,7 @@ _SHAPE_HIER = {
     ST.PROJECTION: ["matrix_tile_engine", "systolic_array"],
     ST.WIDE_SKINNY: ["matrix_tile_engine", "SIMD_vector_lanes"],
     ST.TALL_SKINNY: ["matrix_tile_engine", "SIMD_vector_lanes"],
-    ST.GEMV: ["vector_gemv_engine", "SIMD_vector_lanes"],
+    ST.GEMV: ["skinny_gemm_or_gemv_engine", "SIMD_vector_lanes"],
 }
 
 
@@ -134,7 +134,7 @@ _UNIT_CATALOG = [
     ("matrix_engine", [RC_DENSE],
      ["tile_M", "tile_N", "tile_K", "pe_array_rows", "pe_array_cols"],
      "matmul tiling is shape-legal for the dense operators (no cross-tile dependency)"),
-    ("vector_gemv_engine", [RC_SKINNY],
+    ("skinny_gemm_or_gemv_engine", [RC_SKINNY],
      ["lane_width", "num_lanes", "accumulator_depth"],
      "the skinny/GEMV operators vectorize along the long output dimension"),
     ("attention_kv_engine", [RC_ATTN],

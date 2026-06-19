@@ -14,7 +14,7 @@ resident_packed_weight_object,possible,blocked,blocked,blocked,blocked,blocked,b
 packed_lowbit_tensor,possible,blocked,blocked,blocked,blocked,blocked,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,12
 scale_object,possible,blocked,blocked,blocked,blocked,blocked,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,12
 producer_consumer_queue,not_applicable,strong_candidate,strong_candidate,weak_candidate,possible,not_applicable,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla,12
-vector_gemv_engine,possible,not_applicable,possible,strong_candidate,possible,strong_candidate,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,12
+skinny_gemm_or_gemv_engine,possible,not_applicable,possible,strong_candidate,possible,strong_candidate,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,12
 accumulator_merge,not_applicable,weak_candidate,possible,strong_candidate,strong_candidate,strong_candidate,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,12
 accumulator_commit,not_applicable,not_applicable,possible,strong_candidate,possible,strong_candidate,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,12
 fused_dequant_matmul,possible,blocked,blocked,blocked,blocked,blocked,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,12

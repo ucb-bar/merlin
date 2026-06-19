@@ -35,7 +35,7 @@ processing_unit_candidates:
     - backbone_once
     - prefix_builder
     - repeated_head
-    unit: vector_gemv_engine
+    unit: skinny_gemm_or_gemv_engine
     what_is_not_claimed: no speedup, throughput, cycle, or area is claimed; this is a structural search-space candidate, not a chosen design
     workloads_supporting:
     - bitvla

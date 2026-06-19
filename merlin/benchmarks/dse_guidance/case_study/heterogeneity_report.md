@@ -33,7 +33,7 @@
 - backbone and head run at different rates (multi-rate contract)
 - the control loop decouples from replan inference
 
-**Candidate units:** `matrix_engine`, `vector_gemv_engine`, `epilogue_requant_unit`, `dma_engine`, `loop_controller`, `scalar_control_unit`, `kv_cache_unit`
+**Candidate units:** `matrix_engine`, `skinny_gemm_or_gemv_engine`, `epilogue_requant_unit`, `dma_engine`, `loop_controller`, `scalar_control_unit`, `kv_cache_unit`
 
 ## Search-space implication
 

@@ -59,7 +59,7 @@ isa_candidate_primitives:
     - rdt
     - smolvla
   - metadata: null
-    primitive: vector_gemv_engine
+    primitive: skinny_gemm_or_gemv_engine
     required_compiler_proof: unavailable (no compiler_proof_matrix entry)
     status: strong_candidate
     supporting_workloads:

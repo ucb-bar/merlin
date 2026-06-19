@@ -192,7 +192,7 @@ _BOUNDARY_CATALOG: dict[str, dict] = {
                ("pe_array_dims", "PE grid")],
         risk="square matrix engine over-serves the skinny/GEMV decode shapes",
         levels=_lv(S_POSSIBLE, S_NA, S_POSSIBLE, S_STRONG, S_POSSIBLE, S_STRONG)),
-    "vector_gemv_engine": dict(
+    "skinny_gemm_or_gemv_engine": dict(
         sources=["operator_shape_table", "primitive_coverage_matrix"],
         region_roles=["repeated_head"], support="gemv", cp_axis=None, erased=False,
         metadata="lane width, accumulator depth",

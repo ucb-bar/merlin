@@ -1463,7 +1463,7 @@ boundary_candidate_contracts:
     - rdt
     - smolvla
     what_is_not_claimed: no speedup, cycles, area, or energy claim; a boundary search-space candidate, not a chosen design
-  - abstraction: vector_gemv_engine
+  - abstraction: skinny_gemm_or_gemv_engine
     boundary_levels:
     - hardware_manages: none (generic ops)
       level: compiler_transform
