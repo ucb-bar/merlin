@@ -77,16 +77,18 @@ see VLEN/lane utilization) — which is exactly why the board numbers are the au
 | depthwise conv | `not_run` — no depthwise primitive (regular conv only via im2col) |
 | attention bmm (N=8) | ours-vs-ours (no library primitive); vfmacc regresses 4.8× at tiny N (tail dominates) |
 
-### 3d. Activation on silicon — honest negative (the feature has a schedule bug)
-The `vectorized_transcendental_activation` feature vectorizes on **spike** (synthetic isolated op:
-vfmacc>0, 6.2×/3.2× vs our scalar). **On real K1 workloads it does NOT** — its schedule edit raises
-`"too many tiles provided, expected at most 0 found 1"` and falls back to **scalar**:
-- whole-model bitvla: **3.327 s vs 2.528 s baseline = 0.76× (regression)**;
-- isolated GELU/sigmoid: identical to scalar, still **~11–18× behind XNNPACK** (GELU 2929 vs 270; 775349 vs 44718).
-
-So the spike closure does **not** translate — the polynomial math is right but the schedule edit isn't
-robust to real activation generics. A fix (vectorize the elementwise generic without the bogus tile
-spec) is in progress; until it lands this feature is **not a board win** and stays default-off.
+### 3d. Activation on silicon — partial win isolated, regression whole-model (corrected)
+The `vectorized_transcendental_activation` feature, re-measured on K1 (commit 284291c):
+- **Isolated GELU/sigmoid (the op it targets):** the genuine polynomial (feature ON) **vectorizes and is
+  2.3–3.7× faster than our scalar**, but still **~3.6–4.6× behind XNNPACK's hand polynomial** (GELU
+  983 vs 270; sigmoid 559 vs 139) — narrows the gap from a previously-misreported ~11–18× (that column
+  was scalar mislabeled as vectorized), not closed. Accuracy within the approximation band (errors=0 @2e-3).
+- **Residual cause:** our polynomial lowers to separate `vfmul.vv`+`vfadd.vv` (fmuladd=0 — **no fused
+  vfmacc**), more ops/element than XNNPACK's tuned rational kernels. (Fusing to vfmacc is the next lever.)
+- **Whole-model (bitvla/openvla):** the schedule edit tiles *every* `linalg.generic[16]`, which breaks
+  on non-activation generics → **scalar fallback → 0.76× / 0.68× regression**; and it does not compose
+  with the matmul feature (both `schedule_replace` → `CompositionError`). So whole-model it is **not a
+  win** and stays default-off. A fix for the whole-model scalar-fallback is in progress.
 Full detail: `output/rvv_bench/k1_e2e_activation.md`.
 
 ---
