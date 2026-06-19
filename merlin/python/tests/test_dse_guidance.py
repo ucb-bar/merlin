@@ -2836,6 +2836,27 @@ def test_p18_capture_level_ablation():
     assert all(int(r["scf_for"]) == 0 for r in ab["rows"])     # loop-preserving torch.export-blocked
 
 
+@pytest.mark.skipif(not (_CS_DIR / "timeloop_problem_shapes.yaml").is_file(),
+                    reason="mapspace seeds not present")
+def test_p20_timeloop_problem_shapes():
+    # Tool A: Timeloop problem shapes are consistent + DSE-consumable. dims*==macs; 3 GEMM data-spaces;
+    # attention has no stationary weight; linear has a weight; yaml count matches dataflow table.
+    from merlin.common.yaml import load_yaml
+    ts = load_yaml(_CS_DIR / "timeloop_problem_shapes.yaml")["timeloop_problem_shapes"]
+    shapes = ts["shapes"]
+    assert shapes and ts["count"] == len(shapes)
+    for s in shapes:
+        inst = s["problem"]["instance"]
+        assert inst["M"] * inst["N"] * inst["K"] == s["macs_per_instance"]
+        ds = s["problem"]["shape"]["data-spaces"]
+        assert len(ds) == 3 and len(s["problem"]["shape"]["dimensions"]) == 3
+        if s["op_class"] == "attention_contraction":
+            assert "weight_stationary" not in s["dataflow_candidates"]
+            assert all(d.get("operand_identity") != "weight" for d in ds)
+        if s["op_class"] == "linear_gemm":
+            assert any(d.get("operand_identity") == "weight" for d in ds)
+
+
 @pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
                     reason="case_study package not present")
 def test_p17_new_decision_plots_registered_and_available():
