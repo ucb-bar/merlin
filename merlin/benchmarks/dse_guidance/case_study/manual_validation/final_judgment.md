@@ -18,10 +18,13 @@ The "torch.export-blocked" frontier is broken: model2MLIR now lowers `torch.whil
 | **structural-only / tiny-config magnitudes** | **resolved** | deployment-real magnitudes are config-exact compositions (`prefix + per-layer × n_layers`): openVLA 6.74 B / 13.5 GB bf16, pi0.5 2.82 B, smolVLA 0.58 B — `real_config_magnitudes.csv` (weight VALUES irrelevant) |
 | **native low-bit datapath (blocked)** | **resolved (storage+scale)** | bitvla `BITVLA_NATIVE_QUANT=1` recapture shows 391 packed-int2 ternary weight tensors + per-tensor absmean scale — `native_lowbit_datapath.csv` (residual: bit-unpack stays opaque, see note) |
 
-Verified end-to-end: `verify_implementation.py` 679/679 (3 P21 checks re-derive K/KV/params/native-storage
-independently from the IR/config). The matrix cells in the capture-fidelity headline now read
-*recovered (K=N, IR scf.for)* / *recovered (B, IR iter_arg)* for these workloads (the other 8 still
-honestly show assumed/erased — no loop-preserving capture for them yet).
+Verified end-to-end: `verify_implementation.py` 679/679 (P21 checks re-derive K/KV/params/native-storage
+independently from the IR/config). **Corpus-complete:** all **11/11** workloads now have a loop-preserving
+capture (one sub-agent per model, each numerically verified vs the eager unrolled loop), so the
+capture-fidelity headline reads *recovered (K=N, IR scf.for)* / *recovered (B, IR iter_arg)* for the entire
+corpus — K∈{4,5,7,8,10}; the flow/diffusion models carry the action latent (rdt also carries DPM-solver
+state), the autoregressive models carry a static KV cache as an explicit `scf.for` iter_arg. See
+`loop_preserving_recovery.csv` (11 rows) and the per-model wrappers under `p21_loop_preserving/`.
 
 | result / plot | class | what it gets right | what it gets wrong / caveat | answers a DSE decision? |
 |---|---|---|---|---|

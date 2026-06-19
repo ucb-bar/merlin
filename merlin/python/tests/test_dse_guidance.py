@@ -2696,19 +2696,21 @@ def test_p16_capture_fidelity_and_emit(tmp_path):
     lowbit = next(r for r in cf["matrix"] if r["feature"] == "packed_lowbit_layout")
     assert all(lowbit[w] == "erased" for w in cf["workloads"])         # dequantized capture
     kloop = next(r for r in cf["matrix"] if r["feature"] == "K_or_decode_loop")
-    # P21-S1: loop-preserving captures (smolvla/openvla/pi05) recover K from IR (scf.for);
-    # every other workload still reports K from config/reference (or n/a).
-    _LOOP_PRESERVED = {"smolvla", "openvla", "pi05"}
+    # P21: workloads WITH a loop-preserving capture (recaptures_loop/<w>) recover K from IR
+    # (scf.for); any without one still reports K from config/reference (or n/a).
+    _loop_preserved = {d.name for d in (_CS_DIR.parent / "recaptures_loop").glob("*")
+                       if (d / "model.mlir").is_file()}
     for w in cf["workloads"]:
-        if w in _LOOP_PRESERVED:
+        if w in _loop_preserved:
             assert "recovered" in kloop[w] and "IR" in kloop[w], (w, kloop[w])
         else:
             assert ("config" in kloop[w]) or (kloop[w] == "n/a"), (w, kloop[w])
-    # the loop-carried state + KV-state rows are recovered for the loop-preserving captures
+    # the loop-carried state row is recovered for every loop-preserving capture
     lcs = next(r for r in cf["matrix"] if r["feature"] == "loop_carried_state")
-    assert all("recovered" in lcs[w] for w in _LOOP_PRESERVED)
+    assert all("recovered" in lcs[w] for w in _loop_preserved)
+    # openVLA's static KV cache is recovered with bytes from the IR iter_arg
     kv = next(r for r in cf["matrix"] if r["feature"] == "kv_cache_state")
-    assert "recovered" in kv["openvla"] and "B" in kv["openvla"]       # static KV iter_arg, bytes from IR
+    assert "recovered" in kv["openvla"] and "B" in kv["openvla"]
     # the digest leads with strict necessity, not the permissive coverage
     b = IM.mine(_CS_DIR, "all")
     IM.emit_run(b, tmp_path, [])
