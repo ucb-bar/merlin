@@ -1043,6 +1043,7 @@ def verify_p13() -> dict:
     verify_p17_audit(IM, bundle)
     verify_p17_envelope(IM, bundle)
     verify_p20(IM)
+    verify_p21(IM)
     return {"scopes": len(scopes), "facts_all": total_facts}
 
 
@@ -1513,6 +1514,55 @@ def verify_p20(IM) -> None:
                  f"gap recorded ({native_ok})")
     else:
         p13check(True, "[P20] quant metadata: no qdq recaptures present (skipped)")
+
+
+def verify_p21(IM) -> None:
+    """P21-S1 loop-preserving recovery: K and the loop-carried state are RE-DERIVED here directly from
+    the loop-preserving captures (recaptures_loop/<w>/model.mlir) — independently of the emitted
+    artifact — and matched against loop_preserving_recovery.csv + the capture_fidelity matrix flip.
+    If no loop-preserving captures are present, the check is a no-op pass (committed summary stands)."""
+    import csv as _csv
+    import io as _io
+    from pathlib import Path as _P
+    loop_dir = CS.parent / "recaptures_loop"
+    if not loop_dir.is_dir() or not any((loop_dir / w / "model.mlir").is_file()
+                                        for w in ("smolvla", "openvla", "pi05")):
+        p13check(True, "[P21] loop-preserving recovery: no loop-preserving captures present (skipped)")
+        return
+    from merlin.dse_guidance.loop_recovery import recover_loop
+    # 1. independent re-derivation of K + carried state straight from the IR
+    EXPECT = {"smolvla": (10, "latent", None), "openvla": (7, "kv_cache", 221184),
+              "pi05": (10, "latent", None)}
+    re_ok = True
+    for w, (k, role, kvb) in EXPECT.items():
+        mp = loop_dir / w / "model.mlir"
+        if not mp.is_file():
+            continue
+        lr = recover_loop(mp, w)
+        roles = {c.role for c in lr.carried_state}
+        re_ok = re_ok and lr.present and lr.K == k and lr.K_source == "recovered_from_ir" \
+            and role in roles and lr.kv_cache_bytes == kvb and lr.repeated_region_op_count > 50
+    # 2. the emitted artifact matches the re-derivation
+    af = CS / "loop_preserving_recovery.csv"
+    art_ok = False
+    if af.is_file():
+        ar = {r["workload"]: r for r in _csv.DictReader(_io.StringIO(af.read_text()))}
+        art_ok = all(w in ar and int(ar[w]["K"]) == k and ar[w]["K_source"] == "recovered_from_ir"
+                     for w, (k, _r, _b) in EXPECT.items() if (loop_dir / w / "model.mlir").is_file())
+    # 3. the capture_fidelity matrix actually flipped K/KV/loop_carried to recovered-from-IR
+    cf = IM.capture_fidelity(CS)
+    kloop = next(r for r in cf["matrix"] if r["feature"] == "K_or_decode_loop")
+    lcs = next(r for r in cf["matrix"] if r["feature"] == "loop_carried_state")
+    kv = next(r for r in cf["matrix"] if r["feature"] == "kv_cache_state")
+    flip_ok = (all("recovered" in kloop[w] and "IR" in kloop[w] for w in EXPECT)
+               and all("recovered" in lcs[w] for w in EXPECT)
+               and "recovered" in kv["openvla"] and "221184" in kv["openvla"])
+    blob = af.read_text().lower() if af.is_file() else ""
+    leaked = [t for t in ("speedup", "faster", "optimal", "cycles", "throughput") if t in blob]
+    p13check(re_ok and art_ok and flip_ok and not leaked,
+             f"[P21] loop-preserving recovery: K/carried-state re-derived from IR ({re_ok}); artifact "
+             f"matches ({art_ok}); capture_fidelity flipped K/KV/loop_carried->recovered ({flip_ok}); "
+             f"no perf wording ({not leaked})")
 
 
 def main(write: bool = True) -> int:
