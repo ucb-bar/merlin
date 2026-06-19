@@ -113,7 +113,10 @@ def _vfmacc_schedule_edit(text: str) -> str:
 register(ImprFeature(
     name="fused_vfmacc_contraction",
     action_class="PATTERN",
-    description="K-vector tile + outerproduct lowering so the matmul contraction emits fused "
-                "vfmacc instead of separate vfmul.vv+vfadd.vv (mined: fma_broadcast_policy).",
+    description="ATTEMPT (mined: fma_broadcast_policy): K-vector tile + outerproduct lowering aiming "
+                "to emit fused vfmacc. MEASURED NO-OP — certified+decoded (test R7) on a 64^3 matmul: "
+                "vfmacc still 0 (outerproduct expands to separate vfmul; -ffp-contract=fast does not "
+                "fuse the MLIR-emitted chain). Kept as the recorded experiment; the real fix is a "
+                "vector.fma-forming lowering pattern (deferred PASS work-item in action_catalog).",
     edit_schedule=_vfmacc_schedule_edit,
 ))
