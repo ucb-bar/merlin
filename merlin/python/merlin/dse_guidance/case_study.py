@@ -1109,6 +1109,10 @@ def run_case_study(out_dir) -> dict:
     if _qm:
         Artifact("quant_metadata_visibility.csv", _qm).write(out)
         Artifact("lowbit_capture_requirements.md", QM.requirements_md(out)).write(out)
+    # P21-S4: native low-bit datapath (bitvla packed-int2 ternary), when the native capture exists
+    _nat = QM.native_csv(out)
+    if _nat:
+        Artifact("native_lowbit_datapath.csv", _nat).write(out)
     Artifact("reuse_lifetime_table.csv", ME.reuse_lifetime_csv(reuse_by_wl)).write(out)
     yaml_artifact("memory_abstraction_candidates.yaml",
                   ME.memory_abstraction_candidates_yaml(reuse_by_wl),

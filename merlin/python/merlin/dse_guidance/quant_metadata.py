@@ -20,7 +20,57 @@ _QM_COLS = ["workload", "n_dequant_ops", "storage_dtype", "scale_granularity", "
             "compute_dtype", "accumulator_dtype", "native_scheme_gap"]
 
 # native low-bit scheme per workload (from the P19 source audit) vs what the torchao qdq capture exposes.
+# P21-S4: bitvla's native W1.58 ternary is now captured directly (recaptures_native/bitvla); the gap text
+# is overridden to RESOLVED at runtime when that capture is present (see native_quant_rows).
 _NATIVE = {"bitvla": "W1.58 ternary BitLinear (packed int2 + absmean scale) — NOT captured (torchao int8)"}
+
+# P21-S4 native low-bit capture (BitLinear.quantize_weights materialized): the packed-int2 ternary
+# STORAGE + per-tensor absmean scale are captured directly (vs the torchao-int8 qdq stand-in).
+_NATIVE_COLS = ["workload", "native_scheme", "storage", "n_packed_weight_tensors",
+                "scale", "dequant_placement", "compute_dtype", "unpack_visibility", "status"]
+
+
+def native_quant_rows(cs_dir) -> list[dict]:
+    """Read recaptures_native/<wl>/model.mlir (P21-S4) and report the NATIVE low-bit datapath that
+    the default torchao-int8 qdq capture could not: packed-int2 ternary storage + absmean scale.
+    '' / [] when no native capture is present (committed summary stands)."""
+    nat = Path(cs_dir).parent / "recaptures_native"
+    if not nat.is_dir():
+        return []
+    rows = []
+    for d in sorted(nat.glob("*")):
+        p = d / "model.mlir"
+        if not p.is_file():
+            continue
+        txt = p.read_text(errors="ignore")
+        n_i8 = txt.count("xi8>")                     # packed-int2 weights stored in i8 tensors
+        # the unpack bit-ops are opaque func.calls (the model's forward calls .item() on the scale,
+        # graph-breaking the dequant chain) -- the STORAGE + scale + dequant-before-matmul is recovered.
+        n_opaque = txt.count("func.call")
+        rows.append({
+            "workload": d.name,
+            "native_scheme": "W1.58 ternary (BitLinear, packed int2: 4 ternary values per i8 byte)",
+            "storage": "int2_packed_in_i8",
+            "n_packed_weight_tensors": n_i8,
+            "scale": "per_tensor_absmean (w_step buffer)",
+            "dequant_placement": "before_matmul (unpack+scale then GEMM; compute f32)",
+            "compute_dtype": "f32 (dequant-before-matmul; same placement as the int8 path)",
+            "unpack_visibility": f"partial — bit-unpack in opaque func.call ({n_opaque}); "
+                                 "storage+scale recovered (model forward .item()s the scale)",
+            "status": "recovered_storage_and_scale (native ternary datapath visible)",
+        })
+    return rows
+
+
+def native_csv(cs_dir) -> str:
+    rows = native_quant_rows(cs_dir)
+    if not rows:
+        return ""
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=_NATIVE_COLS, extrasaction="ignore")
+    w.writeheader()
+    [w.writerow(x) for x in rows]
+    return buf.getvalue()
 
 
 def quant_rows(cs_dir: Path) -> list[dict]:
