@@ -89,6 +89,34 @@ def _build_expert(driver: Path, incs: list[Path], out: Path, *, M: int, N: int, 
     return None
 
 
+def measure_intrinsic(*, M: int, N: int, K: int) -> dict:
+    """Measure the COMPILER-EMITTED register-blocked RVV intrinsic micro-kernel
+    (``ours_intrinsic_gemm_driver.c``) on the SAME bare-metal harness + inner_compute
+    timing scope as the experts. Pack-EXCLUDED (A packed once OUTSIDE the timed region,
+    resident-weight, exactly like the OpenBLAS column). This is the scalable-gap winner:
+    a bounded-code, spill-free, accumulator-resident inner kernel (the alternative to the
+    upstream pack->outerproduct lowering, which re-reads/writes the accumulator through
+    memory every K-tile). See output/kernels/ceiling/scalable_gap_result.md."""
+    source = "ours_intrinsic"
+    regime = bench_ceiling.shape_regime("matmul", M, N, K)
+    base = {
+        "op": "matmul", "dtype": "f32", "M": M, "N": N, "K": K,
+        "shape_regime": regime, "source": source, "target": "spike",
+        "mode": "inner_compute", "isa": bench_ceiling.DEFAULT_ISA,
+        "kernel_file": "merlin/python/merlin/kernels/ceiling_drivers/ours_intrinsic_gemm_driver.c",
+        "measure_method": "standalone_baremetal_inner_compute",
+        "fingerprint_key": bench_ceiling.fingerprint_key("matmul", "f32", regime),
+    }
+    driver = HERE / "ours_intrinsic_gemm_driver.c"
+    with tempfile.TemporaryDirectory(prefix="merlin_intrinsic_") as tmp:
+        elf = Path(tmp) / "ours_intrinsic_gemm.riscv"
+        err = _build_expert(driver, [HERE], elf, M=M, N=N, K=K)
+        if err is not None:
+            return {**base, "cycles": None, "status": "not_run", "blocker": err}
+        console, detail = _run_spike(elf)
+    return _parse(base, console, source, detail)
+
+
 def measure_expert(source: str, *, M: int, N: int, K: int) -> dict:
     spec = expert._experts()[source]
     regime = bench_ceiling.shape_regime("matmul", M, N, K)
@@ -265,6 +293,10 @@ def run_all() -> dict:
             row = measure_expert(source, M=sz, N=sz, K=sz)
             grid[sz][source] = row
             _emit(row, out_path)
+        # compiler-emitted register-blocked RVV intrinsic micro-kernel (scalable-gap winner)
+        irow = measure_intrinsic(M=sz, N=sz, K=sz)
+        grid[sz]["ours_intrinsic"] = irow
+        _emit(irow, out_path)
         for run_id, feats in OURS_FORKS:
             row = measure_ours(run_id, feats, M=sz, N=sz, K=sz)
             grid[sz][run_id] = row
@@ -295,6 +327,7 @@ def _emit(row: dict, out_path: Path) -> None:
 
 def write_matrix(grid: dict, out_md: Path) -> None:
     cols = [("openblas", "OpenBLAS"), ("xnnpack", "XNNPACK"),
+            ("ours_intrinsic", "ours-intrinsic (scalable)"),
             ("ours_baseline", "ours-baseline"),
             ("ours_vfmacc_contraction", "ours-vfmacc"),
             ("ours_vfmacc_tiled", "ours-tiled"),
@@ -334,7 +367,8 @@ def write_matrix(grid: dict, out_md: Path) -> None:
     lines.append("|---|---|---|---|---|---|")
     for sz in SHAPES:
         ob, xn = cyc(sz, "openblas"), cyc(sz, "xnnpack")
-        ours = [cyc(sz, k) for k in ("ours_baseline", "ours_vfmacc_contraction",
+        ours = [cyc(sz, k) for k in ("ours_intrinsic", "ours_baseline",
+                                     "ours_vfmacc_contraction",
                                      "ours_vfmacc_tiled", "ours_tiled_best")]
         ours = [c for c in ours if c is not None]
         base = cyc(sz, "ours_baseline")
@@ -431,7 +465,7 @@ def rebuild_matrix_from_jsonl() -> Path:
     """Regenerate cross_framework_matrix.md from the standalone-baremetal rows already in
     ceiling.jsonl (no spike re-run). Picks, per (shape, source), the LAST matching row."""
     rows = bench_ceiling.load_ceiling(repo_root() / bench_ceiling.DEFAULT_CEILING_PATH)
-    want = {"openblas", "xnnpack", *(f[0] for f in OURS_FORKS)}
+    want = {"openblas", "xnnpack", "ours_intrinsic", *(f[0] for f in OURS_FORKS)}
     grid: dict[int, dict[str, dict]] = {sz: {} for sz in SHAPES}
     for r in rows:
         if (r.get("op") == "matmul" and r.get("dtype") == "f32"

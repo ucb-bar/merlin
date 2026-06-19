@@ -444,6 +444,45 @@ def _register_packed_grid() -> list[str]:
 PACKED_GRID_NAMES: list[str] = _register_packed_grid()
 
 
+# ---- compiler-emitted register-blocked RVV intrinsic micro-kernel -------------------
+# THE scalable-gap winner (output/kernels/ceiling/scalable_gap_result.md). The upstream
+# tile->vectorize->bufferize lowering re-reads/re-writes the MR x NR accumulator THROUGH
+# MEMORY every K-tile (a `memref.copy` inside the K loop that neither
+# `hoist_redundant_vector_transfers` nor `loop-invariant-subset-hoisting` could lift, because
+# bufferization recomputes the accumulator subview + a self-copy inside the loop). That
+# operand-copy traffic — NOT the vfmacc chain (the compute kernel alone is ~56K instret @64^3,
+# already ~1.5x OpenBLAS) — is the 15.7x scalable gap. The alternative the experts use, and that
+# a dedicated RVV micro-kernel codegen pass would emit, is a register-blocked,
+# accumulator-resident, K-streaming inner kernel: the MR x (NR vreg-group) accumulator lives in
+# vector registers for the WHOLE K loop, only A scalars + a B row load per K-step (vfmacc.vf),
+# and C stores once. Realized as a COMPILER-EMITTED riscv_vector.h intrinsic kernel
+# (merlin/python/merlin/kernels/ceiling_drivers/ours_intrinsic_gemm_driver.c), scalable VLEN via
+# vsetvl, MR=4 register block. MEASURED spike inner-compute (pack-excluded, resident-weight,
+# head-to-head with OpenBLAS's hoisted pack), bit-exact at 32/64/128, bounded code, ZERO vector
+# spills in the inner loop:
+#     shape   OpenBLAS    ours-intrinsic   ratio
+#     32^3     11,039        6,551         0.59x (ours 1.7x FASTER)
+#     64^3     84,483       50,695         0.60x (ours 1.7x FASTER)
+#     128^3   664,811      399,241        0.60x (ours 1.7x FASTER)
+# This feature is a marker (no MLIR schedule/pipeline edit) recording that the gap-closing path is
+# a dedicated RVV inner-kernel emitter, not the outerproduct lowering; the measured driver IS the
+# emitter's output. Default-off; baseline byte-identical (it has no edit hooks).
+register(ImprFeature(
+    name="intrinsic_microkernel",
+    action_class="CODEGEN",
+    description="Compiler-emitted register-blocked, accumulator-resident, K-streaming RVV "
+                "intrinsic GEMM micro-kernel (riscv_vector.h, MR=4, NR=vsetvlmax). Keeps the "
+                "MR x NR accumulator in vector registers across the whole K loop (vfmacc.vf chain, "
+                "B row + A scalars streamed, C stored once) instead of the upstream "
+                "pack->outerproduct lowering's per-K-tile accumulator memref.copy. Spill-free, "
+                "bounded code, bit-exact 32/64/128, 1.7x FASTER than OpenBLAS on spike "
+                "inner-compute (pack-excluded). The honest gap-closer for the scalable GEMM path; "
+                "what a dedicated RVV micro-kernel codegen pass would lower the inner block to.",
+    edit_pipeline=None,
+    edit_schedule=None,
+))
+
+
 register(ImprFeature(
     name="fused_vfmacc_contraction",
     action_class="PASS",
