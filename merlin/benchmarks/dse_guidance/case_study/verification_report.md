@@ -836,7 +836,7 @@ P12 checks the boundary search space: every candidate references a known abstrac
 - [PASS] [P15] per-network scope 'bitvla' is network-scoped (hotspots+canonical) with corpus-level artifacts withheld (scoped=True, withheld=True)
 - [PASS] [P15] corpus plan references only real, uncaptured registry models (2 missing, all real=True)
 - [PASS] [P15] every presented plot has a DSE caption + no forbidden wording (no_cap [], leaked [])
-- [PASS] [P16] necessity is discriminating (rollup={'necessary': 4, 'useful': 5, 'possible': 11, 'blocked': 7, 'not_applicable': 0}, blocked⊆erased/kv={'native_lowbit_matmul', 'prefix_kv_object', 'packed_lowbit_tensor', 'resident_packed_weight_object', 'scale_object', 'fused_dequant_matmul', 'kv_cache_object'}, has N/A cell=True)
+- [PASS] [P16] necessity is discriminating (rollup={'necessary': 4, 'useful': 5, 'possible': 11, 'blocked': 7, 'not_applicable': 0}, blocked⊆erased/kv={'kv_cache_object', 'scale_object', 'fused_dequant_matmul', 'prefix_kv_object', 'resident_packed_weight_object', 'native_lowbit_matmul', 'packed_lowbit_tensor'}, has N/A cell=True)
 - [PASS] [P16] matrix_engine necessity == (dense MAC fraction > 0.5) per workload
 - [PASS] [P16] primitive-set frontier monotone in size and 2-set beats 1-set (1:0.0388 2:0.9976)
 - [PASS] [P16] 2-set worst coverage recomputes by op-level union (0.9976)
