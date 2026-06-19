@@ -775,7 +775,7 @@ P12 checks the boundary search space: every candidate references a known abstrac
 - [PASS] [P15] per-network scope 'bitvla' is network-scoped (hotspots+canonical) with corpus-level artifacts withheld (scoped=True, withheld=True)
 - [PASS] [P15] corpus plan references only real, uncaptured registry models (3 missing, all real=True)
 - [PASS] [P15] every presented plot has a DSE caption + no forbidden wording (no_cap [], leaked [])
-- [PASS] [P16] necessity is discriminating (rollup={'necessary': 4, 'useful': 5, 'possible': 11, 'blocked': 7, 'not_applicable': 0}, blocked⊆erased/kv={'packed_lowbit_tensor', 'kv_cache_object', 'resident_packed_weight_object', 'fused_dequant_matmul', 'scale_object', 'prefix_kv_object', 'native_lowbit_matmul'}, has N/A cell=True)
+- [PASS] [P16] necessity is discriminating (rollup={'necessary': 4, 'useful': 5, 'possible': 11, 'blocked': 7, 'not_applicable': 0}, blocked⊆erased/kv={'native_lowbit_matmul', 'fused_dequant_matmul', 'prefix_kv_object', 'scale_object', 'resident_packed_weight_object', 'kv_cache_object', 'packed_lowbit_tensor'}, has N/A cell=True)
 - [PASS] [P16] matrix_engine necessity == (dense MAC fraction > 0.5) per workload
 - [PASS] [P16] primitive-set frontier monotone in size and 2-set beats 1-set (1:0.1289 2:0.9977)
 - [PASS] [P16] 2-set worst coverage recomputes by op-level union (0.9977)
@@ -804,7 +804,7 @@ P12 checks the boundary search space: every candidate references a known abstrac
 - [PASS] [P21] residency-from-IR: loop-invariant (resident-eligible) operands re-derived from the scf.for region boundary for all 11 captures + artifact matches (True)
 - [PASS] [P22] loop-aware contract: synthesis reconciles with loop_recovery + residency_from_ir (K, repeated region, resident-eligible operands, avoidable_reload=wb*(K-1)) for all 11 captures (True)
 - [PASS] [P21] real-config magnitudes: openVLA params==Llama-2-7B composition (True); KV formula matches IR iter_arg (True) + deployment KV exact (True); artifacts config-evidenced (True)
-- [PASS] [P22] real-config geometry: all 6 entries fully populated, no placeholder (True); param anchors exact (openVLA 6.74B, tiny_llama 1.1B: True)
+- [PASS] [P22] real-config geometry: all 7 entries fully populated, no placeholder (True); param anchors exact (openVLA 6.74B, tiny_llama 1.1B, rdt2 ~473M: True)
 - [PASS] [P21/P22] native low-bit: bitvla packed-int2 ternary storage + absmean scale + the int2 unpack as quant_ext.unpack_int2 (14 ops, opaque chain folded) -> native datapath fully recovered (True)
 
 P13 mines the committed package per network + combined, asserts the 10 cross-artifact consistency checks pass for every scope, mining is deterministic, every main finding is tier A/B with a DSE implication, partial mode degrades cleanly, and no forbidden performance wording leaks. Output is a non-committed `results/` run (regeneratable).
