@@ -1424,6 +1424,15 @@ def verify_p17_envelope(IM, bundle) -> None:
     p13check(ce and no_lowbit and len(loops) <= 1 and fam_ok,
              f"[P18] capture-erasure evidence (no low-bit types={no_lowbit}, loop-captures={loops}); "
              f"per-family fractions valid ({fam_ok})")
+    # P19 attention-classifier fix: SDPA-fused attention is recovered (xr0 had 0 -> now >0), and a
+    # non-attention batch_matmul (groot's CategorySpecificMLP bmm) is separated as batched_matmul, not
+    # mislabeled attention.
+    wc = {r["workload"]: r for r in _rows("work_coverage_table.csv")}
+    xr0_attn = int(wc.get("xr0", {}).get("attention_macs", 0) or 0) > 0
+    groot_bmm = int(wc.get("groot_n1d7", {}).get("n_batched_matmul", 0) or 0) > 0
+    p13check(xr0_attn and groot_bmm,
+             f"[P19] attention classifier: xr0 SDPA attention recovered ({xr0_attn}); groot MLP bmm "
+             f"separated as batched_matmul ({groot_bmm})")
     # 7. Stage B capture-level ablation (only if the multi-level recaptures are present): high-level
     #    captures expose attention/softmax as NAMED linalg_ext ops; qdq captures expose quant_ext
     #    dequant; loops stay absent (torch.export-blocked) at every level.

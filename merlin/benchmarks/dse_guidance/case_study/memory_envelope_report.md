@@ -17,7 +17,7 @@
 
 ## Findings
 
-- **Memory pressure is output-dominated** across the recaptured workloads (weights 20,230,306,816 B, activations 20,969,884,416 B, outputs 28,192,209,088 B).
+- **Memory pressure is output-dominated** across the recaptured workloads (weights 20,230,306,816 B, activations 20,959,395,456 B, outputs 28,177,752,768 B).
 - **Top avoidable-reload candidate:** `pi05/repeated_head` — 82,898,583,552 B avoidable if weights are made resident (= weight_bytes × (reuse − 1)).
 - **Repeatedly implied abstractions:** `resident_weight_object` (weights reused across the loop) and `resident_activation_object` (activations recomputed per step) — see `memory_abstraction_candidates.yaml`.
 

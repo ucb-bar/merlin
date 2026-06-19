@@ -17,7 +17,7 @@ smolvla,backbone,backbone_once,once_per_replan,1,1.666667,derived_requirement,re
 smolvla,head,repeated_head,K_times_per_replan,10,unavailable,unavailable,recovered_from_prov_fqn
 pi05,backbone,backbone_once,once_per_replan,1,1.0,derived_requirement,recovered_from_prov_fqn
 pi05,head,repeated_head,K_times_per_replan,10,unavailable,unavailable,recovered_from_prov_fqn
-xr0,backbone,backbone_once,once_per_replan,1,0.333333,derived_requirement,recovered_from_prov_fqn
-xr0,head,repeated_head,K_times_per_replan,10,unavailable,unavailable,recovered_from_prov_fqn
+xr0,backbone,backbone_once,once_per_replan,1,0.166667,derived_requirement,recovered_from_prov_fqn
+xr0,head,repeated_head,K_times_per_replan,5,unavailable,unavailable,recovered_from_prov_fqn
 bitvla,backbone,backbone_once,once_per_replan,1,1.4,derived_requirement,recovered_from_prov_fqn
 bitvla,head,repeated_head,token_loop,7,unavailable,unavailable,recovered_from_prov_fqn

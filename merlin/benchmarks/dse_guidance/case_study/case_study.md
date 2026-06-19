@@ -17,7 +17,7 @@ Real recaptured workloads: **11** (rdt, openvla, small_llama, tiny_llama, rdt2, 
 | molmoact | weights once, no K-loop | repeated_head | 17 mm, 3787 MB, 7.6 GMAC/step xK=8 | resident_action_head_weights | blocked: missing_calibration |
 | smolvla | weights once, no K-loop | repeated_head + backbone_once split | 19 mm, 31 MB, 0.7 GMAC/step xK=10 | resident_action_head_weights, backbone_head_partition | blocked: missing_calibration |
 | pi05 | weights once, no K-loop | repeated_head + backbone_once split | 288 mm, 9211 MB, 1828.5 GMAC/step xK=10 | resident_action_head_weights, backbone_head_partition | blocked: missing_calibration |
-| xr0 | weights once, no K-loop | repeated_head + backbone_once split | 16 mm, 123 MB, 0.9 GMAC/step xK=10 | resident_action_head_weights, backbone_head_partition | blocked: missing_calibration |
+| xr0 | weights once, no K-loop | repeated_head + backbone_once split | 16 mm, 123 MB, 0.9 GMAC/step xK=5 | resident_action_head_weights, backbone_head_partition | blocked: missing_calibration |
 | bitvla | weights once, no K-loop | repeated_head | 15 mm, 6 MB, 0.0 GMAC/step xK=7 | resident_action_head_weights | blocked: missing_calibration |
 
 ## Per-workload recovery
@@ -33,7 +33,7 @@ Real recaptured workloads: **11** (rdt, openvla, small_llama, tiny_llama, rdt2, 
 | molmoact | autoregressive_vla/action_token_decode | 17 | repeated_head:17 | 17 mm, 3787 MB, 7.6 GMAC/step xK=8 | blocked: missing_calibration |
 | smolvla | flow_matching/denoise_steps | 106 | backbone_once:87, repeated_head:19 | 19 mm, 31 MB, 0.7 GMAC/step xK=10 | blocked: missing_calibration |
 | pi05 | flow_matching/denoise_steps | 777 | backbone_once:489, repeated_head:288 | 288 mm, 9211 MB, 1828.5 GMAC/step xK=10 | blocked: missing_calibration |
-| xr0 | diffusion/denoise_steps | 19 | repeated_head:16, backbone_once:1, prefix_builder:2 | 16 mm, 123 MB, 0.9 GMAC/step xK=10 | blocked: missing_calibration |
+| xr0 | diffusion/denoise_steps | 19 | repeated_head:16, backbone_once:1, prefix_builder:2 | 16 mm, 123 MB, 0.9 GMAC/step xK=5 | blocked: missing_calibration |
 | bitvla | autoregressive_vla/action_token_decode | 15 | repeated_head:15 | 15 mm, 6 MB, 0.0 GMAC/step xK=7 | blocked: missing_calibration |
 
 ## What flattening hides vs what provenance recovers

@@ -244,20 +244,20 @@ pipeline_envelope:
   - phases:
     - cadence: once_per_replan
       candidate_resource_class: skinny_gemm_or_gemv
-      deadline_s: 0.333333
+      deadline_s: 0.166667
       evidence: recovered_from_prov_fqn
       invocations: 1
       missing: []
-      period_s: 0.333333
+      period_s: 0.166667
       phase: backbone
       phase_class: backbone_or_encoder
       state_inputs: []
       state_outputs: []
     - cadence: K_times_per_replan
       candidate_resource_class: skinny_gemm_or_gemv
-      deadline_s: 0.333333
+      deadline_s: 0.166667
       evidence: recovered_from_prov_fqn
-      invocations: 10
+      invocations: 5
       missing:
       - per-phase wall-clock period (runtime measurement)
       period_s: unavailable
