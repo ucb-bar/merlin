@@ -44,6 +44,9 @@ class CaptureFidelity:
     hidden_axes: list[str]
     severity: str
     reasons: list[str] = field(default_factory=list)
+    # P21-S1: recovered-from-IR loop structure (None for a flat capture)
+    recovered_structure: list[str] = field(default_factory=list)
+    loop_recovery: dict | None = None
 
 
 def _missing_structure(topo: VlaRuntimeTopology) -> list[str]:
@@ -67,14 +70,44 @@ def _missing_structure(topo: VlaRuntimeTopology) -> list[str]:
     return [m for m in missing if not (m in seen or seen.add(m))]
 
 
-def assess(topo: VlaRuntimeTopology, capture_facts=None) -> CaptureFidelity:
-    """Audit a capture (optional :class:`models.CaptureFacts`) against its runtime topology."""
+def assess(topo: VlaRuntimeTopology, capture_facts=None, loop_recovery=None) -> CaptureFidelity:
+    """Audit a capture (optional :class:`models.CaptureFacts`) against its runtime topology.
+
+    ``loop_recovery`` (a :class:`loop_recovery.LoopRecovery`, optional) is the
+    P21-S1 IR evidence from a loop-preserving capture: when present, K, the
+    loop-carried state (latent / KV cache) and the repeated region are recovered
+    from ``scf.for`` and the corresponding structure flips missing -> recovered.
+    """
     preserved: list[str] = []
     parsed = bool(capture_facts and getattr(capture_facts, "parsed", False))
     if parsed:
         preserved = ["matmul_shapes", "dtype_information", "op_mix", "weight_sizes"]
 
     missing = _missing_structure(topo)
+
+    # --- P21-S1: a loop-preserving capture recovers loop/K/KV/region from IR ---
+    recovered: list[str] = []
+    lr_present = bool(loop_recovery and getattr(loop_recovery, "present", False))
+    if lr_present:
+        # K + the repeated region are recovered structurally (scf.for body)
+        for tag in ("denoise_loop", "token_decode_loop"):
+            if tag in missing:
+                missing.remove(tag)
+        recovered.append(f"K_loop(recovered K={loop_recovery.K}, source=IR)")
+        recovered.append(
+            f"repeated_region({loop_recovery.repeated_region_op_count} ops, structural)")
+        roles = [c.role for c in loop_recovery.carried_state]
+        if any(r in ("latent", "kv_cache", "token_buffer") for r in roles):
+            recovered.append(
+                f"loop_carried_state({loop_recovery.n_iter_args} iter_args: "
+                f"{','.join(sorted(set(roles)))})")
+        if "kv_cache" in roles:
+            for tag in ("kv_cache_growth", "prefix_kv_reuse"):
+                if tag in missing:
+                    missing.remove(tag)
+            recovered.append(
+                f"kv_cache_state(recovered, {loop_recovery.kv_cache_bytes} bytes)")
+
     hidden: list[str] = []
     for m in missing:
         for ax in HIDDEN_AXES_BY_STRUCTURE.get(m, []):
@@ -101,20 +134,30 @@ def assess(topo: VlaRuntimeTopology, capture_facts=None) -> CaptureFidelity:
     if not parsed and capture_facts is not None:
         reasons.append("the capture did not parse with stock xDSL, so even op-level structure "
                        "is unavailable (head/backbone attribution impossible)")
-    if not missing:
+    if lr_present:
+        severity = "low"
+        reasons.append(
+            f"loop-preserving capture: K={loop_recovery.K}, the loop-carried state "
+            f"({', '.join(sorted({c.role for c in loop_recovery.carried_state}))}) and the "
+            f"{loop_recovery.repeated_region_op_count}-op repeated region are recovered directly "
+            "from scf.for in the IR — the K-loop / KV-state / region-role caveats are closed "
+            "for this capture (no assumed-K, no fqn heuristic)")
+    if not missing and not lr_present:
         reasons.append("no multi-rate structure is implied by this workload; the flat capture is "
                        "an adequate DSE unit")
 
     return CaptureFidelity(
         workload=topo.workload,
         workload_class=topo.workload_class,
-        capture_unit="flat_forward_or_single_step",
+        capture_unit="loop_preserving_while_loop" if lr_present else "flat_forward_or_single_step",
         parsed=parsed,
         preserved_structure=preserved,
         missing_structure=missing,
         hidden_axes=hidden,
         severity=severity,
         reasons=reasons,
+        recovered_structure=recovered,
+        loop_recovery=(loop_recovery.to_dict() if lr_present else None),
     )
 
 
@@ -125,9 +168,11 @@ def to_report_dict(f: CaptureFidelity) -> dict:
             "workload_class": f.workload_class,
             "capture_unit": f.capture_unit,
             "preserved_structure": f.preserved_structure,
+            "recovered_structure": f.recovered_structure,
             "missing_structure": f.missing_structure,
             "hidden_dse_axes": f.hidden_axes,
             "dse_risk": {"severity": f.severity, "reasons": f.reasons},
+            "loop_recovery": f.loop_recovery,
         }
     }
 
@@ -142,6 +187,10 @@ def markdown(f: CaptureFidelity) -> str:
              + (", ".join(f.preserved_structure) if f.preserved_structure
                 else "_nothing usable (capture did not parse)_"))
     L.append("")
+    if f.recovered_structure:
+        L.append("**Recovered from IR (loop-preserving capture):** "
+                 + ", ".join(f.recovered_structure))
+        L.append("")
     L.append("**Lost to flattening:** "
              + (", ".join(f.missing_structure) if f.missing_structure else "_none_"))
     L.append("")

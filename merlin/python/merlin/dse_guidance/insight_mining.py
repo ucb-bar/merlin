@@ -1639,7 +1639,9 @@ _FIDELITY_FEATURES = [
     # (attention with real MACs). Only the KV *state across the decode loop* stays erased.
     ("attention_bmm_qkT_attnV", "recovered_attn"), ("softmax", "recovered_softmax"),
     ("normalization", "recovered_norm"),
-    ("K_or_decode_loop", "loop"), ("kv_cache_state", "kv"), ("packed_lowbit_layout", "lowbit"),
+    ("K_or_decode_loop", "loop"), ("kv_cache_state", "kv"),
+    ("loop_carried_state", "loop_carried"),
+    ("packed_lowbit_layout", "lowbit"),
     ("scale_metadata", "lowbit"), ("host_dispatch_count", "measured"),
     ("target_latency_cycles", "not_claimed")]
 
@@ -1650,8 +1652,19 @@ def capture_fidelity(cs_dir: Path) -> dict:
     what stays erased is the K-loop, the KV *state* across the decode loop, and packed-lowbit/scales —
     the axes the residency & loop conclusions depend on."""
     from merlin.dse_guidance import fidelity as FID, topology as TOP
+    from merlin.dse_guidance.loop_recovery import recover_loop
     sig, wls = _signal_by_workload(cs_dir)
     wc = {r["workload"]: r for r in _csv_rows(Path(cs_dir) / "work_coverage_table.csv")}
+    # P21-S1: loop-preserving captures (recaptures_loop/<w>/model.mlir, if present) recover K, the
+    # loop-carried state and the KV cache directly from scf.for -> flip K/KV from assumed/erased.
+    _loop_dir = Path(cs_dir).parent / "recaptures_loop"
+    lr_by_w = {}
+    for w in wls:
+        mp = _loop_dir / w / "model.mlir"
+        if mp.is_file():
+            lr = recover_loop(mp, w)
+            if lr.present:
+                lr_by_w[w] = lr
     fam_to_class = {"flow_matching": TOP.CLASS_FLOW_MATCHING, "diffusion": TOP.CLASS_FLOW_MATCHING,
                     "autoregressive_vla": TOP.CLASS_AUTOREGRESSIVE,
                     "llm": TOP.CLASS_AUTOREGRESSIVE}
@@ -1682,10 +1695,24 @@ def capture_fidelity(cs_dir: Path) -> dict:
         severity = TOP.CLASS_SEVERITY.get(cls, "medium")
         if not s["has_repeated"] and not s["control_rate"]:
             severity = "low"
+        recovered_loop = []
+        lr = lr_by_w.get(w)
+        if lr is not None:
+            # the loop-preserving capture moves loop/KV out of "missing" -> recovered-from-IR
+            for tag in ("token_decode_loop", "denoise_loop", "kv_cache_growth", "prefix_kv_reuse"):
+                if tag in missing:
+                    missing.remove(tag)
+            severity = "low"
+            recovered_loop = [f"K_loop(K={lr.K},IR)",
+                              f"repeated_region({lr.repeated_region_op_count}ops)",
+                              f"loop_carried_state({lr.n_iter_args} iter_args)"]
+            if lr.kv_cache_bytes:
+                recovered_loop.append(f"kv_cache_state({lr.kv_cache_bytes}B,IR)")
         per_workload[w] = {"family": s["family"], "class": cls, "severity": severity,
                            "missing": missing, "hidden_axes": hidden,
                            "preserved": ["matmul_shapes", "dtype_information", "op_mix",
-                                         "weight_sizes"]}
+                                         "weight_sizes"],
+                           "recovered_from_loop_capture": recovered_loop}
     for feat, kind in _FIDELITY_FEATURES:
         row = {"feature": feat}
         for w in wls:
@@ -1704,9 +1731,26 @@ def capture_fidelity(cs_dir: Path) -> dict:
                 n = int(wcr.get("n_normalization", 0) or 0)
                 st = "recovered" if n else "n/a (norm as elementwise primitives)"
             elif kind == "loop":
-                st = "assumed (config K)" if s["has_repeated"] else "n/a"
+                lr = lr_by_w.get(w)
+                if lr is not None:
+                    st = f"recovered (K={lr.K}, IR scf.for)"
+                else:
+                    st = "assumed (config K)" if s["has_repeated"] else "n/a"
             elif kind == "kv":
-                st = "erased" if is_ar else "n/a"      # KV STATE across the decode loop (not the bmm)
+                lr = lr_by_w.get(w)
+                if lr is not None and lr.kv_cache_bytes:
+                    st = f"recovered ({lr.kv_cache_bytes} B, IR iter_arg)"
+                elif lr is not None:
+                    st = "n/a (prefix-KV invariant, closed-over)"
+                else:
+                    st = "erased" if is_ar else "n/a"  # KV STATE across the decode loop (not the bmm)
+            elif kind == "loop_carried":
+                lr = lr_by_w.get(w)
+                if lr is not None:
+                    roles = sorted({c.role for c in lr.carried_state})
+                    st = f"recovered ({lr.n_iter_args} iter_args: {','.join(roles)})"
+                else:
+                    st = "erased (loop unrolled)" if s["has_repeated"] else "n/a"
             elif kind == "lowbit":
                 st = "erased"        # all recaptures are dequantized f32
             elif kind == "measured":
