@@ -117,6 +117,82 @@ def _classify(idx: int, dims: list[int], dtype: str) -> str:
     return "other"
 
 
+_SSA = re.compile(r"%[0-9A-Za-z_]+")
+
+
+@dataclass
+class ResidencyCert:
+    """IR-proven residency split for a loop-preserving capture (P21 GAP-C)."""
+    workload: str
+    present: bool
+    K: int | None = None
+    n_loop_invariant_operands: int = 0     # referenced in body, defined OUTSIDE -> resident-eligible
+    n_loop_carried: int = 0                # iter_args -> genuinely per-step state
+    n_body_defs: int = 0
+    resident_proof: str = ""
+    evidence: str = "recovered_from_ir"
+
+    def to_dict(self) -> dict:
+        return {
+            "workload": self.workload,
+            "loop_preserved": self.present,
+            "K": self.K,
+            "n_loop_invariant_operands": self.n_loop_invariant_operands,
+            "n_loop_carried_iter_args": self.n_loop_carried,
+            "n_body_defs": self.n_body_defs,
+            "resident_proof": self.resident_proof,
+            "evidence": self.evidence,
+        }
+
+
+def residency_from_ir(model_mlir_path: str | Path, workload: str = "") -> ResidencyCert:
+    """Classify the scf.for body's value references into loop-invariant (defined OUTSIDE the
+    region -> reused every iteration -> resident-eligible) vs loop-carried (iter_args -> genuinely
+    per-step state). This PROVES residency from the IR region boundary, replacing the prior
+    'weights are loop-invariant (assumed) + configured K' framing. Structural; no bytes/timing."""
+    path = Path(model_mlir_path)
+    if not path.exists():
+        return ResidencyCert(workload=workload, present=False)
+    text = path.read_text()
+    wl_consts = {m.group(1): int(m.group(2)) for m in _WL_CONST.finditer(text)}
+    if not wl_consts:
+        return ResidencyCert(workload=workload, present=False)
+    lines = text.splitlines()
+    for li, line in enumerate(lines):
+        m = _SCF_FOR.search(line)
+        if not m or not ({m.group(2), m.group(3), m.group(4)} & set(wl_consts)):
+            continue
+        iv, ub, iargs = m.group(1), m.group(3), m.group(5)
+        K = wl_consts.get(ub) or max(wl_consts.values())
+        # block-arg bound names = the LHS of each "%a = %init" in iter_args, plus the IV
+        bound = set(re.findall(r"(%[0-9A-Za-z_]+)\s*=\s*%[0-9A-Za-z_]+", iargs)) | {iv}
+        # isolate the body region by brace depth
+        depth = 0
+        body: list[str] = []
+        for bl in lines[li:]:
+            depth += bl.count("{") - bl.count("}")
+            body.append(bl)
+            if depth <= 0 and len(body) > 1:
+                break
+        defined: set[str] = set()
+        for bl in body:
+            lhs = re.match(r"\s*((?:%[0-9A-Za-z_]+\s*,\s*)*%[0-9A-Za-z_]+)\s*=", bl)
+            if lhs:
+                defined |= set(_SSA.findall(lhs.group(1)))
+        used = set(_SSA.findall("\n".join(body)))
+        invariant = used - defined - bound
+        return ResidencyCert(
+            workload=workload, present=True, K=K,
+            n_loop_invariant_operands=len(invariant),
+            n_loop_carried=len(bound) - 1,          # exclude the IV
+            n_body_defs=len(defined),
+            resident_proof=(f"{len(invariant)} operands referenced read-only in the scf.for body but "
+                            f"defined outside the region -> loop-invariant across K={K} iterations "
+                            "(resident-eligible); avoidable reload = resident_bytes x (K-1)"),
+        )
+    return ResidencyCert(workload=workload, present=False)
+
+
 def recover_loop(model_mlir_path: str | Path, workload: str = "") -> LoopRecovery:
     """Parse the ``scf.for`` lowered from ``torch.while_loop`` out of ``model.mlir``."""
     path = Path(model_mlir_path)

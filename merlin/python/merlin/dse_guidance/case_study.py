@@ -868,6 +868,26 @@ def loop_recovery_csv() -> str:
     return _csv(rows, _LOOP_RECOVERY_COLS) if rows else ""
 
 
+_RESIDENCY_COLS = ["workload", "loop_preserved", "K", "n_loop_invariant_operands",
+                   "n_loop_carried_iter_args", "n_body_defs", "resident_proof", "evidence"]
+
+
+def residency_from_ir_csv() -> str:
+    """P21 GAP-C: IR-proven residency split (loop-invariant resident-eligible vs loop-carried)
+    for every loop-preserving capture. '' if none present."""
+    from merlin.dse_guidance.loop_recovery import residency_from_ir
+    bench = paths.merlin_dir() / "benchmarks" / "dse_guidance"
+    loop_dir = bench / "recaptures_loop"
+    if not loop_dir.is_dir():
+        return ""
+    rows = []
+    for w in sorted(p.name for p in loop_dir.glob("*") if (p / "model.mlir").is_file()):
+        rc = residency_from_ir(loop_dir / w / "model.mlir", w)
+        if rc.present:
+            rows.append(rc.to_dict())
+    return _csv(rows, _RESIDENCY_COLS) if rows else ""
+
+
 def run_case_study(out_dir) -> dict:
     """Analyze all available recaptured workloads; write the cross-workload artifacts."""
     from pathlib import Path
@@ -994,6 +1014,9 @@ def run_case_study(out_dir) -> dict:
     lrcsv = loop_recovery_csv()              # P21-S1: only when loop-preserving captures exist
     if lrcsv:
         Artifact("loop_preserving_recovery.csv", lrcsv).write(out)
+    rescsv = residency_from_ir_csv()         # P21 GAP-C: IR-proven residency split
+    if rescsv:
+        Artifact("residency_from_ir.csv", rescsv).write(out)
     # P21 S2/S3: deployment-real magnitudes (depth x n_layers, config-exact) + KV sizing
     from merlin.dse_guidance import real_config as RC
     _loopdir = paths.merlin_dir() / "benchmarks" / "dse_guidance" / "recaptures_loop"
