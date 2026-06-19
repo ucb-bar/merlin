@@ -126,6 +126,50 @@ def _vfmacc_schedule_edit(text: str) -> str:
     return _VFMACC_SCHEDULE
 
 
+# Combined / production-scalable variant: TILE the matmul first (controls register block + LMUL
+# and bounds the unroll so it scales past kernel-sized ops), THEN form vfmacc on the tile. The
+# full-unroll fused_vfmacc_contraction picks max LMUL (m8) but unrolls the whole op (explodes on
+# whole models); this tiles [MR=4, NR=16, K-untiled] so the contraction is per-tile.
+_VFMACC_TILED_SCHEDULE = """\
+module attributes {transform.with_named_sequence} {
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {transform.readonly}) {
+    %mm = transform.structured.match ops{["linalg.matmul"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t, %l:2 = transform.structured.tile_using_for %mm tile_sizes [4, 16, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    %f = transform.structured.match ops{["func.func"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %v = transform.structured.vectorize_children_and_apply_patterns %f : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %v {
+      transform.apply_patterns.vector.lower_contraction lowering_strategy = "outerproduct"
+      transform.apply_patterns.vector.lower_outerproduct
+      transform.apply_patterns.vector.lower_masked_transfers
+      transform.apply_patterns.vector.lower_transpose
+      transform.apply_patterns.vector.lower_shape_cast
+    } : !transform.any_op
+    transform.yield
+  }
+}
+"""
+
+
+register(ImprFeature(
+    name="lmul_widen_n",
+    action_class="KNOB",
+    description="mined lmul_grouping_policy: widen the matmul N tile/vector 8->16 so the emitted "
+                "vector group uses a higher LMUL (m2->m4). Composes with other features in autotune.",
+    edit_schedule=lambda t: t.replace("tile_sizes [4, 8, 1]", "tile_sizes [4, 16, 1]").replace(
+        "vector_sizes [4, 8, 1]", "vector_sizes [4, 16, 1]"),
+))
+
+
+register(ImprFeature(
+    name="fused_vfmacc_tiled",
+    action_class="PASS",
+    description="Combined/scalable: tile matmul [4,16,K] then form vfmacc on the tile "
+                "(fused-MAC + controlled LMUL/register-block, bounded unroll). Benchmarked vs the "
+                "full-unroll fused_vfmacc_contraction.",
+    edit_schedule=lambda _t: _VFMACC_TILED_SCHEDULE,
+))
+
+
 register(ImprFeature(
     name="fused_vfmacc_contraction",
     action_class="PASS",
