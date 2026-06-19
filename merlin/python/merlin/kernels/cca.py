@@ -17,6 +17,7 @@ their facets + lifters behind this same schema without a rewrite.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
 
 
@@ -125,6 +126,43 @@ def lift_asm(stream, *, op: str, source: str, backend: str = "rvv") -> CCA:
         vector=VectorFacet(sew=sew, lmul=lmul, vl_strategy=vl_strategy),
         provenance={"level": "asm", "source": source, "confidence": "high"},
     )
+
+
+def lift_spatial(op_counts: dict, *, op: str, source: str,
+                 dataflow: str | None = None, pe_rows: int | None = None,
+                 pe_cols: int | None = None, backend: str = "gemmini") -> CCA:
+    """Spatial/systolic (Gemmini) lifter — fills the SPATIAL facet from decoded accelerator ops
+    (e.g. targetgen.rocc_decode counts of preload/compute/mvin/mvout). Keeps the same CCA schema
+    so a gemmini region compares against a gemmini expert just like RVV does for vector."""
+    return CCA(
+        op=op, backend=[backend],
+        compute=ComputeFacet(op=op, contraction_form="systolic",
+                             accumulator_dtype=op_counts.get("acc_dtype"),
+                             widening=bool(op_counts.get("widening"))),
+        spatial=SpatialFacet(pe_rows=pe_rows, pe_cols=pe_cols, dataflow=dataflow,
+                             accumulator_resident=op_counts.get("acc_resident")),
+        provenance={"level": "asm", "source": source, "confidence": "high"},
+    )
+
+
+def lift_npu(engine_ops: list[str], *, op: str, source: str,
+             dma_pattern: str | None = None, backend: str = "npu") -> CCA:
+    """NPU lifter — fills the DATAFLOW facet (engine ops + DMA). A region may pair this backend
+    with rvv in a composite CCA (backend=['npu','rvv'])."""
+    return CCA(
+        op=op, backend=[backend],
+        compute=ComputeFacet(op=op),
+        dataflow=DataflowFacet(engine_ops=list(engine_ops), dma_pattern=dma_pattern),
+        provenance={"level": "asm", "source": source, "confidence": "medium"},
+    )
+
+
+def particularities() -> dict:
+    """Load the per-target runtime/ABI particularities (bf16 ABI reg class, VLEN, vsetvl
+    semantics, fp-contract default) so the comparator can normalize runtime artifacts out."""
+    import yaml
+    p = Path(__file__).resolve().parent / "runtime_particularities.yaml"
+    return yaml.safe_load(p.read_text()) if p.is_file() else {}
 
 
 def lift_dse(op_shape, *, source: str = "dse") -> CCA:
