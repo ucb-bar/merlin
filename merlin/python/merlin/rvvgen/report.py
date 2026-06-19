@@ -190,9 +190,13 @@ def _measured_forks_section(runs_root: Path) -> str:
     for run, mac, mul, add, top in rows:
         lines.append(f"| `{run}` | {mac} | {mul} | {add} | {top} |")
     lines.append("")
-    lines.append("The fused-`vfmacc` work-item: 3 certified impr forks (outerproduct; K=4 tile; "
-                 "K-tile+`-ffp-contract=fast`) all decode to `vfmacc=0` — the loop measured them as "
-                 "no-ops and demoted the action to a deferred PASS (vector.fma-forming lowering).")
+    lines.append("The fused-`vfmacc` story (the loop measuring its way to a real fix): forks v1–v4 "
+                 "(outerproduct; K=4 tile; +`-ffp-contract=fast`; +`-ffast-math`) all decode to "
+                 "`vfmacc=0` — knobs/flags can't fuse the baseline's K=1-tiled contraction, so the "
+                 "action was demoted to a deferred PASS. The PASS was then implemented "
+                 "(`vectorize_children` -> `vector.contract` -> outerproduct -> `vector.fma` -> "
+                 "`vfmacc`): **v5 certifies correct on spike AND decodes to `vfmacc>0, vfmul=0, "
+                 "vfadd=0` — gap CLOSED**, and the action re-promoted to forkable.")
     return "\n".join(lines) + "\n"
 
 
