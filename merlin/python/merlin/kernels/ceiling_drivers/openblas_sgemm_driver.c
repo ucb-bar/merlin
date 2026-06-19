@@ -24,9 +24,22 @@
 #include "sgemm_kernel_8x8_zvl128b.c"
 
 // ---------------------------------------------------------------------------
-#define M 64
-#define N 64
-#define K 64
+// Shape is injectable via -DGEMM_M= -DGEMM_N= -DGEMM_K= (multishape_compare).
+// We deliberately do NOT inject M/N/K directly: those collide with the kernel's
+// own BLASLONG M,N,K parameter NAMES (the kernel is #included above), turning its
+// signature into garbage. Define them here, AFTER the kernel include, default 64.
+#ifndef GEMM_M
+#define GEMM_M 64
+#endif
+#ifndef GEMM_N
+#define GEMM_N 64
+#endif
+#ifndef GEMM_K
+#define GEMM_K 64
+#endif
+#define M GEMM_M
+#define N GEMM_N
+#define K GEMM_K
 
 static FLOAT A[M * K];        // logical A[m,k], row-major
 static FLOAT B[K * N];        // logical B[k,n], row-major
