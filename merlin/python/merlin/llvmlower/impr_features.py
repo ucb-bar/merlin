@@ -94,29 +94,44 @@ def apply_schedule(schedule_text: str, features: frozenset[str]) -> str:
 # Keep this list small and evidence-justified. Each entry corresponds to a typed CompilerAction
 # (PASS/HEURISTIC/PATTERN) surfaced by the action catalog from a mined kernel divergence.
 
-def _vfmacc_schedule_edit(text: str) -> str:
-    """fma_broadcast_policy (mined from openblas/xnnpack GEMM): recover a fused multiply-add.
+# The vfmacc-forming schedule (developed by MLIR-level iteration, R-cont): vectorize the func's
+# contraction to a real `vector.contract`, lower it via the OUTERPRODUCT strategy to a chain of
+# `vector.outerproduct{kind=add}` (acc + a⊗b — the fused MAC), then `lower_outerproduct` turns each
+# into `vector.fma` -> `llvm.intr.fmuladd` -> the RISC-V backend emits `vfmacc`. The baseline's
+# [4,8,1] K=1 tiling never forms a contraction (so outerproduct/K-tile/fast-math were all measured
+# no-ops); vectorize_children DOES form it. Appropriate for kernel-sized contraction workloads (the
+# mining testbed) — NOT a whole transformer (vectorize_children there explodes vector.extract, per
+# pipeline.py). Gated to the impr fork; baseline schedule untouched.
+_VFMACC_SCHEDULE = """\
+module attributes {transform.with_named_sequence} {
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {transform.readonly}) {
+    %f = transform.structured.match ops{["func.func"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %v = transform.structured.vectorize_children_and_apply_patterns %f : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %v {
+      transform.apply_patterns.vector.lower_contraction lowering_strategy = "outerproduct"
+      transform.apply_patterns.vector.lower_outerproduct
+      transform.apply_patterns.vector.lower_masked_transfers
+      transform.apply_patterns.vector.lower_transpose
+      transform.apply_patterns.vector.lower_shape_cast
+    } : !transform.any_op
+    transform.yield
+  }
+}
+"""
 
-    The baseline schedule tiles the matmul K dim to 1, so the vectorizer never forms a
-    ``vector.contract`` and ``lower_contraction`` cannot fuse — the emitted asm is separate
-    ``vfmul.vv``+``vfadd.vv`` (empirically confirmed). This edit gives the contraction a K-vector
-    (tile/vectorize K=4) so a real contraction forms and lowers (with the outerproduct strategy)
-    to ``vector.fma`` -> ``llvm.fmuladd`` -> ``vfmacc``. Gated to the fork; baseline untouched.
-    """
-    out = text.replace("tile_sizes [4, 8, 1]", "tile_sizes [4, 8, 4]")
-    out = out.replace("vector_sizes [4, 8, 1]", "vector_sizes [4, 8, 4]")
-    out = out.replace("transform.apply_patterns.vector.lower_contraction\n",
-                      'transform.apply_patterns.vector.lower_contraction lowering_strategy = "outerproduct"\n')
-    return out
+
+def _vfmacc_schedule_edit(text: str) -> str:
+    """Replace the baseline schedule with the vfmacc-forming recipe (full replacement — the
+    structure differs fundamentally from the tile+vectorize baseline)."""
+    return _VFMACC_SCHEDULE
 
 
 register(ImprFeature(
     name="fused_vfmacc_contraction",
-    action_class="PATTERN",
-    description="ATTEMPT (mined: fma_broadcast_policy): K-vector tile + outerproduct lowering aiming "
-                "to emit fused vfmacc. MEASURED NO-OP — certified+decoded (test R7) on a 64^3 matmul: "
-                "vfmacc still 0 (outerproduct expands to separate vfmul; -ffp-contract=fast does not "
-                "fuse the MLIR-emitted chain). Kept as the recorded experiment; the real fix is a "
-                "vector.fma-forming lowering pattern (deferred PASS work-item in action_catalog).",
+    action_class="PASS",
+    description="mined fma_broadcast_policy: form a real vector.contract -> outerproduct(kind=add) "
+                "-> vector.fma -> llvm.fmuladd -> vfmacc (vectorize_children + lower_contraction "
+                "outerproduct + lower_outerproduct). Closes the separate-vfmul.vv+vfadd.vv gap. For "
+                "kernel-sized contraction workloads (vectorize_children explodes on whole models).",
     edit_schedule=_vfmacc_schedule_edit,
 ))
