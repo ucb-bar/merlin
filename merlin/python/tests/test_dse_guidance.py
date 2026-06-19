@@ -2787,9 +2787,10 @@ def test_p17_timing_envelope_is_derived_requirement():
 
 @pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
                     reason="case_study package not present")
-def test_p17_omitted_ops_count_only_and_consistent():
-    # count-only: visible MACs == operator_shape_table sum; attention/KV/low-bit are flagged
-    # not-recovered (consistent with capture_fidelity), never estimated.
+def test_p18_operator_recovery_accounting():
+    # P18: attention is RECOVERED (real MACs), not unavailable. linear MACs == named-matmul sum;
+    # visible_linear_fraction in [0,1]; at least one workload has recovered attention MACs; low-bit
+    # stays erased.
     import csv as _csv
     import io as _io
     from merlin.dse_guidance import insight_mining as IM
@@ -2797,12 +2798,13 @@ def test_p17_omitted_ops_count_only_and_consistent():
     mac = {}
     for o in ops:
         mac[o["workload"]] = mac.get(o["workload"], 0) + int(o["macs"])
-    om = IM.omitted_operator_accounting(_CS_DIR)
+    om = IM.operator_recovery_accounting(_CS_DIR)
     assert om["rows"]
     for r in om["rows"]:
-        assert int(r["visible_matmul_macs"]) == mac[r["workload"]]
-        assert "no" in r["attention_bmm_recovered"] and "no" in r["lowbit_packed_recovered"]
-        assert "no" in r["softmax_reduction_recovered"]
+        assert int(r["linear_gemm_macs"]) == mac[r["workload"]]   # named-matmul subset is exact
+        assert 0.0 <= float(r["visible_linear_fraction"]) <= 1.0
+        assert "no" in r["lowbit_packed_recovered"]               # low-bit genuinely erased
+    assert any(int(r["attention_macs"]) > 0 for r in om["rows"])  # attention recovered, not unavailable
 
 
 @pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),

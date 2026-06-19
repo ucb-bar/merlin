@@ -836,7 +836,7 @@ P12 checks the boundary search space: every candidate references a known abstrac
 - [PASS] [P15] per-network scope 'bitvla' is network-scoped (hotspots+canonical) with corpus-level artifacts withheld (scoped=True, withheld=True)
 - [PASS] [P15] corpus plan references only real, uncaptured registry models (2 missing, all real=True)
 - [PASS] [P15] every presented plot has a DSE caption + no forbidden wording (no_cap [], leaked [])
-- [PASS] [P16] necessity is discriminating (rollup={'necessary': 4, 'useful': 5, 'possible': 11, 'blocked': 7, 'not_applicable': 0}, blocked⊆erased/kv={'packed_lowbit_tensor', 'prefix_kv_object', 'fused_dequant_matmul', 'native_lowbit_matmul', 'kv_cache_object', 'resident_packed_weight_object', 'scale_object'}, has N/A cell=True)
+- [PASS] [P16] necessity is discriminating (rollup={'necessary': 4, 'useful': 5, 'possible': 11, 'blocked': 7, 'not_applicable': 0}, blocked⊆erased/kv={'packed_lowbit_tensor', 'native_lowbit_matmul', 'resident_packed_weight_object', 'scale_object', 'fused_dequant_matmul', 'prefix_kv_object', 'kv_cache_object'}, has N/A cell=True)
 - [PASS] [P16] matrix_engine necessity == (dense MAC fraction > 0.5) per workload
 - [PASS] [P16] primitive-set frontier monotone in size and 2-set beats 1-set (1:0.0388 2:0.9976)
 - [PASS] [P16] 2-set worst coverage recomputes by op-level union (0.9976)
@@ -852,7 +852,7 @@ P12 checks the boundary search space: every candidate references a known abstrac
 - [PASS] [P17] adversarial audit references artifacts + verdicts (9); no forbidden wording (leaked=[])
 - [PASS] [P17] envelope rows are derived requirements (recompute_ok=True, provenance-tagged=True, 242 rows)
 - [PASS] [P17] command rate proxy-tagged (ok=True); no measured-hardware label (True)
-- [PASS] [P17] omitted-op: visible MACs == operator_shape sum (match=True); attention/low-bit marked unavailable (True)
+- [PASS] [P17] recovery accounting: linear MACs == named-matmul sum (True); visible_fraction in [0,1] (True); attention recovered (True); low-bit still erased (True)
 - [PASS] [P17] new decision plots available + captioned (['macro_vs_micro_primitive_coverage', 'primitive_frontier_by_threshold', 'required_command_rate_envelope', 'required_compute_envelope', 'required_memory_movement_envelope', 'workload_influence_loo_delta'])
 - [PASS] [P17] requirements/omitted outputs free of forbidden wording ([])
 

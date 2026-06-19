@@ -1041,6 +1041,13 @@ _PLOTS = [
     ("workload_influence_loo_delta", "Workload influence: leave-one-out micro delta",
      "shape_summary_by_workload.csv", ["workload", "shape_class", "mac_fraction"], "metric",
      "max_loo_micro_delta", "", "bar", "main"),
+    # ---- P18 operator-recovery plots ----
+    ("work_coverage_by_workload", "Recovered work: linear-GEMM vs attention MAC mass",
+     "work_coverage_table.csv", ["workload", "linear_gemm_macs", "attention_macs"], "workload",
+     "recovered_macs", "op_class", "stacked_bar", "main"),
+    ("visible_linear_fraction", "Visible linear fraction (linear / (linear+attention))",
+     "work_coverage_table.csv", ["workload", "visible_linear_fraction"], "workload",
+     "visible_linear_fraction", "", "bar", "main"),
 ]
 
 
@@ -1561,6 +1568,13 @@ def operator_pareto(cs_dir: Path, thresholds=(0.5, 0.8, 0.9, 0.95)) -> dict:
         top = max(wops, key=lambda o: int(o["macs"]))
         row["top_op"] = top["prov_fqn"]
         row["top_op_mac_share"] = round(int(top["macs"]) / (sum(int(o["macs"]) for o in wops) or 1), 4)
+        # distinct-shape vs instance-count (Q6): pi05's ~777 ops are a handful of shapes repeated
+        # 100s of times, NOT 777 heterogeneous ops -- so "many ops for 50% MACs" is instance-count
+        # concentration, not shape diversity.
+        from collections import Counter as _C
+        shapes = _C((int(o["M"]), int(o["N"]), int(o["K"])) for o in wops)
+        row["n_distinct_shapes"] = len(shapes)
+        row["top_shape_multiplicity"] = max(shapes.values()) if shapes else 0
         out.append(row)
     return {"thresholds": thresholds, "rows": out}
 
@@ -1621,6 +1635,10 @@ def robustness(cs_dir: Path) -> dict:
 # committed artifacts + MODEL_ARCH (run-folder-only, no live topology object needed).
 _FIDELITY_FEATURES = [
     ("op_shapes_MNK", "strong"), ("region_roles", "strong"), ("dtype_information", "strong"),
+    # P18: attention bmm / softmax / norm are NOT erased — lowered to linalg.generic but re-parsed
+    # (attention with real MACs). Only the KV *state across the decode loop* stays erased.
+    ("attention_bmm_qkT_attnV", "recovered_attn"), ("softmax", "recovered_softmax"),
+    ("normalization", "recovered_norm"),
     ("K_or_decode_loop", "loop"), ("kv_cache_state", "kv"), ("packed_lowbit_layout", "lowbit"),
     ("scale_metadata", "lowbit"), ("host_dispatch_count", "measured"),
     ("target_latency_cycles", "not_claimed")]
@@ -1628,10 +1646,12 @@ _FIDELITY_FEATURES = [
 
 def capture_fidelity(cs_dir: Path) -> dict:
     """First-class result: which structural features the flat capture preserves vs erased, per
-    workload, reusing fidelity.py's hidden-axis vocab. The flattened captures lose the K-loop / AR
-    loop / KV / packed-layout that the residency & loop conclusions depend on."""
+    workload. Attention/softmax/norm are RECOVERED (lowered to linalg.generic but re-parsed; P18);
+    what stays erased is the K-loop, the KV *state* across the decode loop, and packed-lowbit/scales —
+    the axes the residency & loop conclusions depend on."""
     from merlin.dse_guidance import fidelity as FID, topology as TOP
     sig, wls = _signal_by_workload(cs_dir)
+    wc = {r["workload"]: r for r in _csv_rows(Path(cs_dir) / "work_coverage_table.csv")}
     fam_to_class = {"flow_matching": TOP.CLASS_FLOW_MATCHING, "diffusion": TOP.CLASS_FLOW_MATCHING,
                     "autoregressive_vla": TOP.CLASS_AUTOREGRESSIVE,
                     "llm": TOP.CLASS_AUTOREGRESSIVE}
@@ -1671,14 +1691,24 @@ def capture_fidelity(cs_dir: Path) -> dict:
         for w in wls:
             s = sig[w]
             is_ar = s["family"] in ("autoregressive_vla", "llm")
+            wcr = wc.get(w, {})
             if kind == "strong":
                 st = "strong"
+            elif kind == "recovered_attn":
+                n = int(wcr.get("n_attention_ops", 0) or 0)
+                st = f"recovered ({n} ops)" if n else "n/a (attention-free here)"
+            elif kind == "recovered_softmax":
+                n = int(wcr.get("n_softmax", 0) or 0)
+                st = "recovered" if n else "n/a"
+            elif kind == "recovered_norm":
+                n = int(wcr.get("n_normalization", 0) or 0)
+                st = "recovered" if n else "n/a (norm as elementwise primitives)"
             elif kind == "loop":
                 st = "assumed (config K)" if s["has_repeated"] else "n/a"
             elif kind == "kv":
-                st = "erased" if is_ar else "n/a"
+                st = "erased" if is_ar else "n/a"      # KV STATE across the decode loop (not the bmm)
             elif kind == "lowbit":
-                st = "erased"        # all 4 recaptures are dequantized f32
+                st = "erased"        # all recaptures are dequantized f32
             elif kind == "measured":
                 st = "measured (host)"
             else:
@@ -2166,37 +2196,45 @@ def timing_requirement_envelope(cs_dir: Path) -> dict:
     return {"workloads": wls, "rows": rows}
 
 
-_OMIT_COLS = ["workload", "visible_linear_gemm_ops", "visible_matmul_macs",
-              "attention_bmm_recovered", "kv_cache_recovered", "softmax_reduction_recovered",
-              "conv_patch_recovered", "lowbit_packed_recovered", "scale_metadata_recovered",
-              "dse_consequence", "capture_level_needed"]
+_OMIT_COLS = ["workload", "linear_gemm_ops", "linear_gemm_macs", "attention_ops", "attention_macs",
+              "visible_linear_fraction", "softmax_ops", "norm_ops", "conv_ops", "elementwise_ops",
+              "kv_state_recovered", "lowbit_packed_recovered", "scale_metadata_recovered",
+              "still_erased", "capture_level_needed"]
 
 
-def omitted_operator_accounting(cs_dir: Path) -> dict:
-    """Part F (count-only): per workload, the visible linear-GEMM work this study counts, plus
-    explicit yes/no recovery flags for the work it does NOT count (attention bmm, KV state,
-    softmax/reduction, conv/patch, low-bit packed layout, scale metadata). Attention/softmax/KV MACs
-    are marked UNAVAILABLE — not estimated — with the capture level needed. Consistent with the
-    capture_fidelity matrix (attention/KV erased; low-bit dequantized)."""
+def operator_recovery_accounting(cs_dir: Path) -> dict:
+    """Part F (RECOVERED, not count-only): attention bmm / softmax / norm are NOT erased — the flat
+    capture lowered them to ``linalg.generic`` but they are re-parsed. Per workload: linear-GEMM vs
+    attention MAC mass (both recovered from IR shapes — no model-card config) + softmax/norm/conv/
+    elementwise op counts, and what genuinely STAYS erased (KV state across the decode loop, packed
+    low-bit layout, scale metadata). ``visible_linear_fraction`` answers "how much of the recovered
+    MAC work is the linear-GEMM geometry this study analyzes" with real numbers."""
     cs_dir = Path(cs_dir)
-    ops = _csv_rows(cs_dir / "operator_shape_table.csv")
+    wc = {r["workload"]: r for r in _csv_rows(cs_dir / "work_coverage_table.csv")}
     sig, wls = _signal_by_workload(cs_dir)
     rows = []
     for w in wls:
-        wops = [o for o in ops if o["workload"] == w]
+        r = wc.get(w, {})
         is_ar = sig[w]["family"] in ("autoregressive_vla", "llm")
         rows.append({
-            "workload": w, "visible_linear_gemm_ops": len(wops),
-            "visible_matmul_macs": sum(int(o["macs"]) for o in wops),
-            "attention_bmm_recovered": "no (lowered)", "softmax_reduction_recovered": "no (lowered)",
-            "kv_cache_recovered": ("no (lowered)" if is_ar else "n/a (non-autoregressive)"),
-            "conv_patch_recovered": "no (lowered to matmul or absent)",
+            "workload": w,
+            "linear_gemm_ops": int(r.get("n_linear_matmul", 0) or 0),
+            "linear_gemm_macs": int(r.get("linear_gemm_macs", 0) or 0),
+            "attention_ops": int(r.get("n_attention_ops", 0) or 0),
+            "attention_macs": int(r.get("attention_macs", 0) or 0),
+            "visible_linear_fraction": float(r.get("visible_linear_fraction", 1.0) or 1.0),
+            "softmax_ops": int(r.get("n_softmax", 0) or 0),
+            "norm_ops": int(r.get("n_normalization", 0) or 0),
+            "conv_ops": int(r.get("n_conv", 0) or 0),
+            "elementwise_ops": int(r.get("n_elementwise", 0) or 0),
+            # what STAYS erased (genuinely absent in the flat capture, not merely unparsed):
+            "kv_state_recovered": ("no (KV state across decode loop erased)" if is_ar
+                                   else "n/a (non-autoregressive)"),
             "lowbit_packed_recovered": "no (f32 fake-quant capture)",
             "scale_metadata_recovered": "no (dequantized in capture)",
-            "dse_consequence": ("attention/softmax/KV MAC mass, reduction-unit sizing, and "
-                                "KV-capacity axes are NOT sized from this capture (UNAVAILABLE)"),
-            "capture_level_needed": ("attention-preserving (un-lowered q.kT/attn.v) + loop-preserving"
-                                     + (" + KV-state" if is_ar else "")
+            "still_erased": "K-loop trip count; KV state across decode; packed low-bit layout + scales",
+            "capture_level_needed": ("loop-preserving (K / KV state)"
+                                     + ("; KV-cache" if is_ar else "")
                                      + "; low-bit recapture for packed layout + scales")})
     return {"workloads": wls, "rows": rows}
 
@@ -2264,6 +2302,10 @@ _PLOT_CAPTION = {
     "workload_influence_loo_delta": "Largest leave-one-out micro swing per cross-workload metric — "
         "red bars are metrics whose winner is stable but whose magnitude is not (drop one workload "
         "and the number moves sharply).",
+    "work_coverage_by_workload": "Recovered MAC mass split into linear-GEMM vs attention (both from "
+        "IR shapes, no config) — attention is NOT erased, just lowered to generic and re-parsed.",
+    "visible_linear_fraction": "Fraction of recovered MAC work that is the linear-GEMM geometry this "
+        "study analyzes (rest = attention) — answers 'are we analyzing most of the compute?'.",
 }
 
 
@@ -2512,7 +2554,7 @@ def mine(cs_dir, scope: str) -> dict:
     # P17 requirements envelope + omitted-op accounting (Parts E/F; corpus-level at 'all')
     bundle["timing_envelope"] = (timing_requirement_envelope(cs_dir) if is_all
                                  else {"workloads": [], "rows": []})
-    bundle["omitted_ops"] = omitted_operator_accounting(cs_dir)
+    bundle["omitted_ops"] = operator_recovery_accounting(cs_dir)
     return bundle
 
 
@@ -3178,22 +3220,23 @@ def _residency_tradeoff_md(env, scope) -> str:
 
 
 def _omitted_op_md(om, scope) -> str:
-    L = [f"# Omitted-operator accounting ({scope})\n",
-         "> What this study counts (visible linear-layer GEMMs) vs what the flat capture erases. "
-         "Attention bmm / softmax / KV / conv / low-bit MACs are **UNAVAILABLE** — counted as a yes/no "
-         "recovery flag, NOT estimated — with the capture level that would recover them. So the study "
-         "analyzes linear-GEMM geometry, not the full VLA/VLM compute graph.\n",
-         "| workload | visible GEMM ops | visible MACs | attn bmm | KV | softmax | conv | low-bit | "
-         "scales |",
-         "|---|---|---|---|---|---|---|---|---|"]
+    L = [f"# Operator recovery accounting ({scope})\n",
+         "> Attention bmm / softmax / norm are **NOT erased** — the flat capture lowered them to "
+         "`linalg.generic` but they are re-parsed. Linear-GEMM and attention MACs are both recovered "
+         "from IR shapes (no model-card config). `visible_linear_fraction` = linear / (linear+attention) "
+         "answers how much of the recovered MAC work is the linear-GEMM geometry. What genuinely STAYS "
+         "erased: the K-loop, KV state across the decode loop, and packed low-bit layout + scales.\n",
+         "| workload | linear ops | linear MACs | attn ops | attn MACs | **visible_linear_frac** | "
+         "softmax | norm | conv | elementwise |",
+         "|---|---|---|---|---|---|---|---|---|---|"]
     for r in om["rows"]:
-        L.append(f"| {r['workload']} | {r['visible_linear_gemm_ops']} | {r['visible_matmul_macs']} | "
-                 f"{r['attention_bmm_recovered']} | {r['kv_cache_recovered']} | "
-                 f"{r['softmax_reduction_recovered']} | {r['conv_patch_recovered']} | "
-                 f"{r['lowbit_packed_recovered']} | {r['scale_metadata_recovered']} |")
-    L.append("\n**Capture level needed** (uniform): attention-preserving (un-lowered q·kᵀ / attn·v) + "
-             "loop-preserving (+ KV-state for autoregressive) + a low-bit recapture for packed layout "
-             "and scales. Per-workload consequence: `visible_vs_erased_work_table.csv`.\n")
+        L.append(f"| {r['workload']} | {r['linear_gemm_ops']} | {r['linear_gemm_macs']} | "
+                 f"{r['attention_ops']} | {r['attention_macs']} | **{r['visible_linear_fraction']:.3f}** | "
+                 f"{r['softmax_ops']} | {r['norm_ops']} | {r['conv_ops']} | {r['elementwise_ops']} |")
+    L.append("\n**Still erased** (genuinely absent in the flat capture, not merely unparsed): the K-loop "
+             "trip count, KV state across the decode loop, and packed low-bit layout + scales — needing "
+             "a loop-preserving (+ KV) capture and a low-bit recapture. Per-workload: "
+             "`visible_vs_erased_work_table.csv`.\n")
     return "\n".join(L) + "\n"
 
 
@@ -3214,8 +3257,9 @@ def _p17_findings_md(bundle, scope) -> str:
           "1. **Loop-preserving capture** — turns configured/reference K into IR-recovered loop "
           "structure; unblocks `resident_weight_object` / `bounded_loop_command` and grounds the "
           "timing-requirement envelope.",
-          "2. **Attention/KV-preserving capture** (un-lowered q·kᵀ / attn·v / softmax / KV) — recovers "
-          "the attention MAC mass currently UNAVAILABLE (see `omitted_operator_accounting.md`).",
+          "2. **Loop/KV-preserving capture** — attention bmm / softmax / norm are already recovered "
+          "(see `omitted_operator_accounting.md`); what remains is the KV *state* across the decode "
+          "loop and the K-loop trip count.",
           "3. **Low-bit recapture** (packed weights + scales + per-format accuracy) — unblocks the "
           "low-bit abstractions (blocked today by the f32 fake-quant capture).",
           "4. **Measured dispatch counts** beyond small_llama — turns the command-rate envelope from "
@@ -3315,7 +3359,7 @@ def emit_run(bundle: dict, run_dir, rendered: list[str]) -> None:
     par = bundle["operator_pareto"]
     _pcols = (["workload", "n_ops"]
               + [f"k_{m}_{int(t*100)}" for t in par["thresholds"] for m in ("macs", "wbytes")]
-              + ["top_op", "top_op_mac_share"])
+              + ["top_op", "top_op_mac_share", "n_distinct_shapes", "top_shape_multiplicity"])
     Artifact("operator_pareto_hotspots.csv", _csv_text(par["rows"], _pcols)).write(run_dir)
     Artifact("operator_pareto_hotspots.md", _pareto_md(par, scope)).write(run_dir)
     cf = bundle["capture_fidelity"]

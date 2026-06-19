@@ -734,6 +734,61 @@ def zoo_numerical_audit() -> list:
         or contracts
 
 
+_FULL_INV_COLS = ["workload", "source", "op_index", "op_class", "prov_op", "prov_fqn", "role",
+                  "M", "K", "N", "batch", "macs"]
+_WORK_COV_COLS = ["workload", "n_linear_matmul", "linear_gemm_macs", "n_attention_ops",
+                  "attention_macs", "total_recovered_macs", "visible_linear_fraction", "n_softmax",
+                  "n_normalization", "n_conv", "n_activation", "n_elementwise", "n_reduction",
+                  "n_layout", "n_other"]
+
+
+def operator_full_inventory_csv(cases: list[WorkloadCase]) -> str:
+    """Every recovered operator (linear-GEMM `linalg.matmul` + the `linalg.generic` ops the flat
+    capture lowered but kept: attention/softmax/norm/conv/elementwise) with class + MACs where
+    recoverable. The complete op graph the named-matmul view (operator_shape_table) is a subset of."""
+    rows: list[dict] = []
+    for c in cases:
+        cap = str(_recap_dir(c.workload))
+        for r in ATTR.extract_matmuls(cap):
+            rows.append({"workload": c.workload, "source": "linalg.matmul", "op_index": r.index,
+                         "op_class": "linear_gemm", "prov_op": r.op or "", "prov_fqn": r.fqn or "",
+                         "role": ATTR.role_from_fqn(r.fqn) or "", "M": r.M, "K": r.K, "N": r.N,
+                         "batch": 1, "macs": r.macs})
+        for r in ATTR.extract_non_gemm_ops(cap):
+            rows.append({"workload": c.workload, "source": "linalg.generic", "op_index": r.index,
+                         "op_class": r.op_class, "prov_op": r.prov_op or "", "prov_fqn": r.fqn or "",
+                         "role": r.role or "", "M": r.M, "K": r.K, "N": r.N, "batch": r.batch,
+                         "macs": r.macs})
+    return _csv(rows, _FULL_INV_COLS)
+
+
+def work_coverage_csv(cases: list[WorkloadCase]) -> str:
+    """Per-workload MAC accounting: linear-GEMM vs attention MAC mass (both recovered from IR shapes)
+    + op-class counts. `visible_linear_fraction = linear / (linear+attention)` answers "how much of the
+    compute is the linear-GEMM geometry this study analyzes" — attention MACs are real, not estimated;
+    softmax/norm/conv/elementwise are counted (their MACs are memory/elementwise-bound, not reported)."""
+    from collections import Counter
+    rows: list[dict] = []
+    for c in cases:
+        cap = str(_recap_dir(c.workload))
+        mm, ng = ATTR.extract_matmuls(cap), ATTR.extract_non_gemm_ops(cap)
+        lin = sum(r.macs for r in mm)
+        attn = sum(r.macs for r in ng if r.op_class == ATTR.OPC_ATTENTION)
+        cls = Counter(r.op_class for r in ng)
+        tot = lin + attn
+        rows.append({"workload": c.workload, "n_linear_matmul": len(mm), "linear_gemm_macs": lin,
+                     "n_attention_ops": cls.get(ATTR.OPC_ATTENTION, 0), "attention_macs": attn,
+                     "total_recovered_macs": tot,
+                     "visible_linear_fraction": round(lin / tot, 4) if tot else 1.0,
+                     "n_softmax": cls.get(ATTR.OPC_SOFTMAX, 0),
+                     "n_normalization": cls.get(ATTR.OPC_NORM, 0), "n_conv": cls.get(ATTR.OPC_CONV, 0),
+                     "n_activation": cls.get(ATTR.OPC_ACTIVATION, 0),
+                     "n_elementwise": cls.get(ATTR.OPC_ELEMENTWISE, 0),
+                     "n_reduction": cls.get(ATTR.OPC_REDUCTION, 0),
+                     "n_layout": cls.get(ATTR.OPC_LAYOUT, 0), "n_other": cls.get(ATTR.OPC_OTHER, 0)})
+    return _csv(rows, _WORK_COV_COLS)
+
+
 def run_case_study(out_dir) -> dict:
     """Analyze all available recaptured workloads; write the cross-workload artifacts."""
     from pathlib import Path
@@ -849,6 +904,11 @@ def run_case_study(out_dir) -> dict:
                       header=f"dse_search_space_template (family): {fam}").write(out)
     # P5 operator-geometry + primitive-coverage (search-space formation; structural geometry only)
     Artifact("operator_shape_table.csv", OG.operator_shape_csv(all_shapes)).write(out)
+    # P18: the FULL recovered op graph (linear GEMM + attention/softmax/norm/conv/elementwise lowered
+    # to linalg.generic but kept) + the per-workload linear-vs-attention MAC accounting. Additive —
+    # operator_shape_table (the named-matmul subset used by P5-P16) is unchanged.
+    Artifact("operator_full_inventory.csv", operator_full_inventory_csv(cases)).write(out)
+    Artifact("work_coverage_table.csv", work_coverage_csv(cases)).write(out)
     yaml_artifact("operator_geometry.yaml", OG.to_yaml_obj(geom_by_workload, conv_visible),
                   header="operator_geometry (structural; no speedup)").write(out)
     Artifact("shape_summary_by_workload.csv",

@@ -162,6 +162,111 @@ def extract_matmuls(capture_dir: str) -> tuple[MatmulRecord, ...]:
     return tuple(out)
 
 
+# --- non-GEMM op recovery: the compute the flat capture lowered to linalg.generic but kept ---
+# (attention q.kT / attn.v contractions, softmax, normalization, elementwise/activation). These are
+# NOT erased — they carry prov.op/prov.family/prov.fqn + explicit operand shapes, so attention MACs
+# are recoverable from the IR with no model-card config. Disjoint from extract_matmuls (linalg.matmul).
+OPC_ATTENTION = "attention_contraction"   # prov: contraction/batch_matmul (q.kT / attn.v) -> real MACs
+OPC_LINEAR_GENERIC = "linear_generic"      # a genuine 2D-operand matmul/addmm emitted as a generic (rare;
+                                           # the addmm bias-adds are NOT this -> they fail the M/N/K check)
+OPC_CONV = "conv"                          # prov: contraction/conv2d (patch embed); MACs not quantified
+OPC_SOFTMAX = "softmax"                    # prov: normalization/softmax
+OPC_NORM = "normalization"                 # prov: normalization/layer_norm|rms
+OPC_ACTIVATION = "activation_elementwise"  # prov: elementwise/{gelu,silu,erf,tanh,sigmoid,exp}
+OPC_ELEMENTWISE = "elementwise"            # prov: elementwise (add/mul/pow/...) incl. addmm bias-add
+OPC_REDUCTION = "reduction"                # prov: reduce
+OPC_LAYOUT = "layout"                      # prov: layout (expand/transpose) -- no compute
+OPC_OTHER = "other_generic"                # iota/gather_scatter/scan/compare/cast/embedding/untagged
+NON_GEMM_CLASSES = (OPC_ATTENTION, OPC_LINEAR_GENERIC, OPC_CONV, OPC_SOFTMAX, OPC_NORM,
+                    OPC_ACTIVATION, OPC_ELEMENTWISE, OPC_REDUCTION, OPC_LAYOUT, OPC_OTHER)
+
+_ACT_OPS = {"gelu", "silu", "erf", "tanh", "sigmoid", "exp"}
+_CONV_OPS = {"conv2d", "conv1d", "conv3d", "convolution"}
+
+
+@dataclass
+class NonGemmRecord:
+    index: int
+    op_class: str
+    prov_op: str | None
+    region_id: str | None
+    fqn: str | None
+    role: str | None = None
+    M: int = 0
+    K: int = 0
+    N: int = 0
+    batch: int = 1
+    macs: int = 0              # only meaningful for the contraction classes (else 0)
+    dtype: str | None = None
+
+
+def _contraction_mnk(ls, rs):
+    """(B, M, K, N, macs) for a 2-input contraction in batch-matmul form ([..,M,K] x [..,K,N] or the
+    transposed [..,N,K]); None if the operand shapes are not contraction-shaped."""
+    if len(ls) < 2 or len(rs) < 2:
+        return None
+    B = math.prod(ls[:-2]) if len(ls) > 2 else 1
+    M, K = ls[-2], ls[-1]
+    N = rs[-1] if rs[-2] == K else (rs[-2] if rs[-1] == K else rs[-1])
+    return B, M, K, N, B * M * K * N
+
+
+@lru_cache(maxsize=None)
+def extract_non_gemm_ops(capture_dir: str) -> tuple[NonGemmRecord, ...]:
+    """Recover the non-linear-GEMM operators the flat capture lowered to ``linalg.generic`` but did
+    NOT erase: attention contractions (q.kT / attn.v -> real MACs from operand shapes), softmax,
+    normalization, conv, and elementwise/activation. Classified by the reliable ``prov.family`` /
+    ``prov.op`` tags the capture carries (``iterator_types`` is not exposed by the parser). Walks
+    ``linalg.generic`` only, so it is disjoint from :func:`extract_matmuls` (``linalg.matmul``) and
+    there is no double count. Empty tuple if the capture will not parse.
+
+    Note: ``addmm`` generics are bias-add EPILOGUES (1-D bias operand) -- the real GEMM is the
+    separate ``linalg.matmul`` -- so they fail the M/N/K check and fall to ``elementwise``; the
+    named-matmul extractor is therefore NOT under-counting linear work."""
+    path = f"{capture_dir}/model.mlir"
+    try:
+        module = mlir_m2m._parse_module(open(path, encoding="utf-8").read())
+    except Exception:
+        return ()
+    out: list[NonGemmRecord] = []
+    for i, op in enumerate(o for o in module.walk() if o.name == "linalg.generic"):
+        prov_op = _read_attr(op, "op")
+        fam = _read_attr(op, "family")
+        rec = NonGemmRecord(index=i, op_class=OPC_OTHER, prov_op=prov_op,
+                            region_id=_read_attr(op, "region_id"), fqn=_read_attr(op, "fqn"),
+                            role=role_from_fqn(_read_attr(op, "fqn")))
+
+        def _mnk():
+            if len(op.operands) < 2:
+                return False
+            ls, ld = mlir_m2m._shape_dtype(str(op.operands[0].type))
+            rs, _rd = mlir_m2m._shape_dtype(str(op.operands[1].type))
+            cm = _contraction_mnk(ls, rs)
+            if cm:
+                rec.batch, rec.M, rec.K, rec.N, rec.macs = cm
+                rec.dtype = ld
+            return cm is not None
+
+        if fam == "contraction" and prov_op == "batch_matmul" and _mnk():
+            rec.op_class = OPC_ATTENTION                 # q.kT / attn.v -> real MACs
+        elif fam == "contraction" and prov_op in _CONV_OPS:
+            rec.op_class = OPC_CONV                       # patch-embed conv; MACs not quantified
+        elif fam == "contraction" and prov_op in ("matmul", "addmm") and _mnk():
+            rec.op_class = OPC_LINEAR_GENERIC             # genuine 2-D contraction as a generic (rare)
+        elif fam == "normalization" and prov_op == "softmax":
+            rec.op_class = OPC_SOFTMAX
+        elif fam == "normalization":
+            rec.op_class = OPC_NORM                       # layer_norm / rms
+        elif fam == "reduce":
+            rec.op_class = OPC_REDUCTION
+        elif fam == "layout":
+            rec.op_class = OPC_LAYOUT
+        elif fam == "elementwise":
+            rec.op_class = OPC_ACTIVATION if prov_op in _ACT_OPS else OPC_ELEMENTWISE
+        out.append(rec)
+    return tuple(out)
+
+
 @lru_cache(maxsize=None)
 def matmul_dependencies(capture_dir: str) -> tuple[tuple[int, ...], ...]:
     """Real per-matmul data dependencies, recovered from the capture's SSA use-def graph.
