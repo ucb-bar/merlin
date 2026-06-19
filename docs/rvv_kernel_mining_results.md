@@ -110,10 +110,16 @@ genuinely emits it:
 - **Instret (spike inner-compute), the compute kernel (`forward`):** 7,045 / 53,207 / 409,764 @32/64/128³
   vs hand ceiling 6,549 / 50,693 / 399,239 (**~1.05–1.08×**) and **beats OpenBLAS** (11,037 / 84,481 / 664,809).
   The ~19× compute-kernel gap is closed; no hand kernel is linked — the compiler emits it.
-- **Honest residual:** the v3 *total* (~7× ceiling) is dominated by an O(M×N) result-buffer copy-out — an
-  ABI artifact of the single-op workload returning a fresh tensor (`buffer-results-to-out-params` copies
-  C once). Out of scope for kernel codegen; fixed by passing C as an out-param. Whole-model board
-  validation (does this close the §3a 1.49× gap to XNNPACK?) is pending the board.
+- **Honest residual (isolated):** the v3 *total* (~7× ceiling) is dominated by an O(M×N) result-buffer
+  copy-out — an ABI artifact of the single-op workload returning a fresh tensor. Out of scope for kernel codegen.
+- **Whole-model board result (measured): v3 does NOT yet apply whole-model — it falls back to SCALAR.**
+  bitvla 2.528 s → 3.282 s (**0.77×, regression**); openvla 5.881 s → 8.674 s (**0.68×**), cos correct (scalar).
+  The kernel-level codegen is correct, but the v3 schedule is tuned for a lone matmul and breaks on the
+  real model's generic mix → `build_k1_binary` silently falls back to scalar. **Same brittleness class as
+  the activation feature (§3d) and as `fused_vfmacc_tiled` before its N-tail/M-tail/whole-model-safe fixes.**
+  The remaining work is to make v3 whole-model-safe (robust op-matching + tail handling, compose with the
+  baseline for non-matmul ops) so the isolated ceiling-matching win actually reaches the whole model. The
+  current whole-model matmul winner stays `fused_vfmacc_tiled` (9.24× / 3.64×).
 
 ## 4b. What still genuinely doesn't work
 - **Vectorized activation whole-model** — fixed the rank-1-tile scalar-fallback bug (40a8cbc), but it

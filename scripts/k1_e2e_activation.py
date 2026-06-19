@@ -47,6 +47,7 @@ CONFIGS = [
     ("act_alone", ["vectorized_transcendental_activation"]),
     ("matmul_only", ["fused_vfmacc_tiled"]),
     ("act_plus_matmul", ["vectorized_transcendental_activation", "fused_vfmacc_tiled"]),
+    ("microkernel_v3", ["accumulator_resident_microkernel_v3"]),
 ]
 
 
