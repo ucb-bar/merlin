@@ -173,13 +173,15 @@ def plot_op_coverage():
 
     # color per source family
     col = {"xnnpack": C["XNNPACK"],
-           "ours_scalar": C["baseline"], "ours_vectorized": C["vfmacc"],
+           "ours_scalar": C["baseline"], "ours_vectorize_nofeature": C["tiled"],
+           "ours_vectorized": C["vfmacc"],
            "ours_f32_baseline": C["baseline"], "ours_int8_w8a8": C["intrinsic"],
            "ours_conv_baseline": C["baseline"], "ours_conv_vfmacc": C["vfmacc"],
            "ours_bmm_baseline": C["baseline"], "ours_bmm_vfmacc": C["vfmacc"],
            "ours_depthwise": C["tiled"]}
     nice = {"xnnpack": "XNNPACK", "ours_scalar": "ours-scalar",
-            "ours_vectorized": "ours-vectorized", "ours_f32_baseline": "ours-f32",
+            "ours_vectorize_nofeature": "ours-vec (no-feat)",
+            "ours_vectorized": "ours-vectorized (poly)", "ours_f32_baseline": "ours-f32",
             "ours_int8_w8a8": "ours-int8-W8A8", "ours_conv_baseline": "ours-baseline",
             "ours_conv_vfmacc": "ours-vfmacc", "ours_bmm_baseline": "ours-baseline",
             "ours_bmm_vfmacc": "ours-vfmacc", "ours_depthwise": "ours-depthwise"}

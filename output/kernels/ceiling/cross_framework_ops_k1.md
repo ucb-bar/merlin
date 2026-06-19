@@ -24,6 +24,19 @@ spellings (`__riscv_vfmerge`, `__riscv_vse32`, `__riscv_vwmacc`, …) that the s
 rejects but the **K1 SpacemiT clang** accepts. Those rows carry the K1 silicon number and an honest
 `not_run` on spike. GELU uses explicit `_f32m4` spellings and runs on both.
 
+## GELU / sigmoid — ours-scalar AND ours-vectorized (polynomial) vs XNNPACK
+
+`ours-vectorized` is the genuine `vectorized_transcendental_activation` feature (compiler-emitted minimax polynomial → vectorized SIMD, NOT a libm call). `ours-vectorize-nofeature` is the prior column (vectorize pass, NO activation feature → still scalar `erff`/`expf` libm). XNNPACK is its hand-written rational/exp-poly RVV kernel. K1 `rdtime`, N=3 min; cos/abs-verified.
+
+| op | N | XNNPACK | ours-scalar | ours-vectorize-nofeature | ours-vectorized (poly) | poly vs scalar | poly vs XNN |
+|----|---|---------|-------------|--------------------------|------------------------|----------------|-------------|
+| **GELU** | 1K | 270 | 2765 | 2929 | **983** | 2.81× faster | 3.64× slower |
+| gelu | 16K | 2656 | 45171 | 47400 | **12189** | 3.71× faster | 4.59× slower |
+| gelu | 256K | 44718 | 714815 | 775349 | **201720** | 3.54× faster | 4.51× slower |
+| **SIGMOID** | 1K | 139 | 1277 | 1445 | **559** | 2.28× faster | 4.02× slower |
+| sigmoid | 16K | 2111 | 23359 | 25363 | **8097** | 2.88× faster | 3.84× slower |
+| sigmoid | 256K | 35305 | 375784 | 415575 | **139149** | 2.70× faster | 3.94× slower |
+
 ## Per-op results (K1 rdtime ticks, lower = faster)
 
 | op | shape / size | XNNPACK (RVV) | ours-baseline | ours-optimized | attainment | correctness |
