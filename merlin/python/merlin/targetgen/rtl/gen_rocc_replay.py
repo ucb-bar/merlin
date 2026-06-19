@@ -57,16 +57,28 @@ def main(argv=None):
     # (we only need input bytes in DRAM; outputs are written by mvout.)
     placements = []
     inputs = capsule.get("inputs") or []
+    op = (capsule.get("operation") or {}).get("op")
+    attrs = (capsule.get("operation") or {}).get("attributes") or {}
     for i, t in enumerate(inputs):
         name = t.get("name") or t.get("role")
-        arr = None
-        if name in leaves:
-            arr = np.asarray(leaves[name].data if hasattr(leaves[name], "data") else leaves[name])
-        if arr is None:
+        if name not in leaves:
             continue
+        # conv2d: the kernel mvin's the IM2COL'd ifm matrix [P, kh*kw*ci], not the raw NHWC IFM —
+        # place that (col-padded below). Mirrors capsule_golden's conv path exactly.
+        if op in ("conv2d", "conv") and (name == attrs.get("ifm") or t.get("role") == "input"):
+            col = CG.im2col(leaves[name], ci=attrs["ci"], kh=attrs["kh"], kw=attrs["kw"],
+                            stride=attrs["stride"], padding=attrs["padding"],
+                            dilation=attrs["dilation"], layout=attrs.get("layout", "nhwc"))
+            arr = np.asarray(col.data).reshape(col.shape)
+        else:
+            arr = np.asarray(leaves[name].data if hasattr(leaves[name], "data") else leaves[name])
         # The compiler lays each 2D operand in DRAM with its columns padded to a 16-multiple stride
         # (matches the kernel's CONFIG_LD stride; zeros in the pad don't affect the matmul). Naive
         # contiguous placement only works when cols is already a 16-multiple (e.g. A2 16x16). Pad here.
+        # NB: materialized leaves are FLAT — reshape to the declared shape or the 2D padding is skipped.
+        decl = t.get("shape")
+        if decl and int(np.prod(decl)) == arr.size:
+            arr = arr.reshape(decl)
         img = arr.astype(np.int8)
         if img.ndim == 2:
             rows, cols = img.shape
