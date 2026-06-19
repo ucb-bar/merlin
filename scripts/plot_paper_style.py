@@ -331,9 +331,63 @@ def fig_beam_ranking():
     plt.close(fig)
 
 
+# ============================================================================
+# FIGURE F — beam PERFORMANCE + UTILIZATION per candidate (bitvla & openvla).
+# Performance = whole-model speedup (bars). Utilization = % of the expert ceiling
+# reached (speedup / XNNPACK-or-best-expert), with the VPU state (vfmacc-vectorized
+# vs scalar-fallback) encoded by colour — the honest "does it use the vector unit"
+# signal (K1 has no userspace perf counters: rdcycle traps, so this is the proxy).
+# ============================================================================
+def fig_beam_util_perf():
+    import glob, yaml
+    runs = sorted(glob.glob(str(OUT.parents[2] / "mined_knowledge/rvv/beam_rvv_v2_*")))
+    if not runs: print("beam_util: no run; skip"); return
+    run = runs[-1]; V3 = "#b8742a"
+    CEIL = {"bitvla": 13.65, "openvla": 4.97}  # XNNPACK (bitvla) / best achieved (openvla, no lib kernel)
+    CEIL_LBL = {"bitvla": "XNNPACK ceiling", "openvla": "best-achieved ceiling"}
+    fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.8)); fig.patch.set_facecolor("white")
+    for ax, M in zip(axes, ("bitvla", "openvla")):
+        r = yaml.safe_load(open(f"{run}/ranking_{M}.yaml"))
+        rows = [x for x in r["ranked"] if x["speedup"] is not None]
+        rows = sorted(rows, key=lambda x: x["speedup"])  # ascending: baseline low → best high
+        ax.set_facecolor(CREAM)
+        for s in ("top","right"): ax.spines[s].set_visible(False)
+        yb = np.arange(len(rows)); ceil = CEIL[M]
+        for i, x in enumerate(rows):
+            sp = x["speedup"]; scalar = x["lowering"] == "scalar_fallback"
+            best = (i == len(rows)-1)
+            col = SALMON if scalar else (V3 if best else (GREY if sp <= 1.05 else GOLD))
+            ax.barh(i, sp, color=col, edgecolor=CARD_EC, linewidth=0.9, zorder=3)
+            util = 100.0 * sp / ceil
+            note = "  ⛔scalar (0% VPU)" if scalar else f"  · {util:.0f}% of ceiling"
+            ax.text(sp + ceil*0.012, i, f"{sp:.2f}×{note}", va="center", fontsize=8.3,
+                    fontweight="bold", color=(SALMON if scalar else INK))
+        ax.axvline(ceil, color=STEEL, ls=":", lw=1.6)
+        ax.text(ceil, len(rows)-0.4, f"{CEIL_LBL[M]}\n({ceil}× = 100%)", fontsize=8, color=STEEL, ha="center", fontweight="bold")
+        ax.axvline(1.0, color="#999", lw=1, ls="--")
+        ax.set_yticks(yb); ax.set_yticklabels([x["tag"] for x in rows], fontsize=8.6)
+        ax.set_xlabel("performance — whole-model speedup vs baseline (×)")
+        ax.set_xlim(0, ceil*1.35)
+        ax.set_title(f"{M}: performance + VPU utilization per beam candidate", loc="left", color=INK, fontsize=11.5, pad=8)
+    fig.suptitle("Beam candidates — performance (speedup) and utilization (% of ceiling + VPU state), baseline → best",
+                 fontsize=12.5, fontweight="bold", y=1.0)
+    fig.text(0.5, -0.03,
+             "Figure F:  Each beam candidate's PERFORMANCE (bar = whole-model speedup) and UTILIZATION (% of the expert "
+             "ceiling reached; colour = VPU state).  Gold = vfmacc-vectorized, salmon = scalar fallback (0% VPU — a vector\n"
+             "feature that didn't apply whole-model), grey = ~baseline, dark-gold = best.  bitvla's v3 exceeds 100% (beats "
+             "XNNPACK); openvla's best is accum-resident-wholemodel.  Utilization is a ceiling proxy (K1 traps rdcycle — no HW counters).",
+             ha="center", fontsize=9.0, color=INK)
+    fig.tight_layout(rect=[0,0,1,0.96])
+    for ext in ("png","svg"):
+        fig.savefig(OUT / f"beam_util_perf.{ext}", bbox_inches="tight", dpi=160)
+    print("wrote", OUT / "beam_util_perf.png")
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     fig_e2e()
     fig_crossover()
     fig_progression()
     fig_opt_effects()
     fig_beam_ranking()
+    fig_beam_util_perf()
