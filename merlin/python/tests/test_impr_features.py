@@ -54,6 +54,19 @@ def test_packed_feature_inserts_eliminate_empty_tensors():
     assert "eliminate-empty-tensors,one-shot-bufferize" in on
 
 
+def test_intrinsic_microkernel_registered_and_baseline_safe():
+    # The scalable-gap winner: a compiler-emitted register-blocked RVV intrinsic micro-kernel
+    # (1.7x faster than OpenBLAS, pack-excluded, spill-free; see scalable_gap_result.md). It is a
+    # CODEGEN-class marker with no MLIR schedule/pipeline edit, so enabling it must leave the
+    # baseline pipeline AND schedule byte-identical.
+    f = F.get("intrinsic_microkernel")
+    assert f.action_class == "CODEGEN"
+    assert f.edit_pipeline is None and f.edit_schedule is None
+    feats = frozenset(["intrinsic_microkernel"])
+    assert P.build_rvv_pipeline("/tmp/s.mlir", features=feats) == P.build_rvv_pipeline("/tmp/s.mlir")
+    assert F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, feats) == P.RVV_TRANSFORM_SCHEDULE
+
+
 def test_baseline_package_has_no_features():
     # The immutable baseline must carry zero compiler_features -> byte-identical lowering.
     from pathlib import Path
