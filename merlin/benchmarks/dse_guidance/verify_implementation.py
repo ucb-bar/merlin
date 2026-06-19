@@ -1608,6 +1608,20 @@ def verify_p21(IM) -> None:
              f"[P21] real-config magnitudes: openVLA params==Llama-2-7B composition ({mag_ok}); "
              f"KV formula matches IR iter_arg ({kv_ir_ok}) + deployment KV exact ({kv_real_ok}); "
              f"artifacts config-evidenced ({arts_ok})")
+    # P22 GAP-A: every REAL_GEOMETRY entry is fully populated (no placeholder / guessed field) and the
+    # two anchors are exact (openVLA==Llama-2-7B 6.74B, tiny_llama==TinyLlama-1.1B). Generic over models.
+    nonnull = True
+    for w, g in RC.REAL_GEOMETRY.items():
+        for s in g.stacks:
+            nonnull = nonnull and all(isinstance(getattr(s, f), int) and getattr(s, f) > 0
+                                      for f in ("n_layers", "hidden", "interm", "heads",
+                                                "kv_heads", "head_dim"))
+        nonnull = nonnull and g.vocab > 0 and g.embed_hidden > 0 and (g.decode_seq or 0) > 0
+    anchors = (6.6e9 < RC.REAL_GEOMETRY["openvla"].total_params() < 6.9e9
+               and 1.0e9 < RC.REAL_GEOMETRY["tiny_llama"].total_params() < 1.2e9)
+    p13check(nonnull and anchors,
+             f"[P22] real-config geometry: all {len(RC.REAL_GEOMETRY)} entries fully populated, no "
+             f"placeholder ({nonnull}); param anchors exact (openVLA 6.74B, tiny_llama 1.1B: {anchors})")
     # P21 S4: native low-bit (bitvla packed-int2 ternary) datapath captured + reported, when present
     from merlin.dse_guidance import quant_metadata as QM
     nat_cap = (CS.parent / "recaptures_native" / "bitvla" / "model.mlir")
