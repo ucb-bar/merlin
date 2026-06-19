@@ -167,6 +167,35 @@ _RVV_ROUTES: list[_Route] = [
         forkable_now=True,
         expected_effect="i32-accumulating widening MAC instead of dequantize-to-f32"),
     _Route(
+        axis="compute.activation_vectorization",
+        # The mined divergence: the expert activation (GELU/sigmoid/SiLU/tanh) evaluates the
+        # transcendental as a VECTORIZED polynomial (XNNPACK f32-vgelu rational-12-10 / f32-vsigmoid
+        # rr2-p5 — vfmacc chains, no libm call), while OURS lowers math.erf/math.exp through
+        # convert-math-to-libm to a SCALAR libm call loop (the elementwise activation generic is
+        # never vectorized by the baseline schedule). Honest, general: keyed on the structural value
+        # "vectorized_polynomial" vs "scalar_libm_call", not a shape or a single activation.
+        when=lambda d: d.expert == "vectorized_polynomial" and d.ours in ("scalar_libm_call", None),
+        action_class="PASS",
+        target_seam="impr_features:vectorized_transcendental_activation",
+        change="rewrite math.exp/erf/tanh to an inline minimax arith polynomial (range-reduced exp "
+               "+ A&S erf, mul/add/bitcast/shift) BEFORE vectorization AND vectorize the elementwise "
+               "activation linalg.generic, so the activation lowers to vfmacc chains instead of a "
+               "scalar convert-math-to-libm call loop. GENERAL over the math ops: GELU (erf), "
+               "sigmoid/SiLU (exp) and tanh all vectorize from the one rewrite. The XNNPACK "
+               "vectorized-polynomial kernel is the coefficient/structure CEILING REFERENCE only — "
+               "the COMPILER emits the polynomial MLIR, no hand kernel is linked.",
+        # EVIDENCE-DRIVEN: the gap is the measured divergence in cross_framework_ops_k1.md (GELU
+        # ~11-18x, sigmoid ~11-12x slower than XNNPACK, ours-scalar within ~6% of ours-"vectorized"
+        # because BOTH are scalar libm). The PASS (vectorized_transcendental_activation) was then
+        # implemented + MEASURED on spike: the activation vectorizes (vfmacc>0, no scalar libm call
+        # loop) and is accurate (cos=1.0, max-abs-err <~1e-6 vs libm) for GELU/sigmoid/SiLU. A
+        # registered, certified feature expresses it -> forkable_now=True. APPROXIMATION (not
+        # bit-exact): the honest activation accuracy tradeoff, gated on cos/rel error.
+        forkable_now=True,
+        expected_effect="the activation vectorizes to vfmacc chains (no per-element libm call); "
+                        "closes most of the ~11-18x scalar-libm gap; approximation accuracy cos=1.0 "
+                        "/ max-abs-err <~1e-6 vs the libm reference"),
+    _Route(
         axis="compute.epilogue",
         when=lambda d: d.expert == "requant_narrow" and d.ours in ("none", None),
         action_class="PASS", target_seam="pass:fuse-requant-narrowing-store",

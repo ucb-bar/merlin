@@ -200,6 +200,42 @@ def gen_sigmoid_f32(out_root: str | Path, N: int = 16384, seed: int = 0) -> Path
     return _finish(bundle, mlir, manifest, order, {"in0": x}, golden)
 
 
+def gen_silu_f32(out_root: str | Path, N: int = 16384, seed: int = 0) -> Path:
+    """A single f32 SiLU/swish activation over an N-vector: x*sigmoid(x) = x/(1+exp(-x)), emitted
+    as a linalg.generic. Like sigmoid it vectorizes ``math.exp``; included so the activation feature
+    is exercised on a THIRD activation (general, not gelu/sigmoid-overfit). Bandwidth-bound -> sweep N."""
+    bundle = Path(out_root) / f"silu_f32_{N}"
+    sf = bundle / "weights.safetensors"
+    mlir = (
+        f'builtin.module attributes {{prov.weights_file = "{sf}", '
+        'prov.level = "linalg-on-tensors"} {\n'
+        f"  func.func @forward(%x: tensor<{N}xf32>) -> tensor<{N}xf32> {{\n"
+        "    %c1 = arith.constant 1.000000e+00 : f32\n"
+        "    %cn1 = arith.constant -1.000000e+00 : f32\n"
+        f"    %oi = tensor.empty() : tensor<{N}xf32>\n"
+        f"    %r = linalg.generic {{indexing_maps = [affine_map<(d0) -> (d0)>, "
+        "affine_map<(d0) -> (d0)>], iterator_types = [\"parallel\"]} "
+        f"ins(%x : tensor<{N}xf32>) outs(%oi : tensor<{N}xf32>) {{\n"
+        "    ^bb0(%in: f32, %o: f32):\n"
+        "      %nx = arith.mulf %in, %cn1 : f32\n"
+        "      %e = math.exp %nx : f32\n"
+        "      %d = arith.addf %e, %c1 : f32\n"
+        "      %s = arith.divf %c1, %d : f32\n"
+        "      %y = arith.mulf %s, %in : f32\n"
+        "      linalg.yield %y : f32\n"
+        f"    }} -> tensor<{N}xf32>\n"
+        f"    return %r : tensor<{N}xf32>\n"
+        "  }\n}\n"
+    )
+    r = _rng(seed)
+    x = (r.standard_normal((N,)).astype(np.float32) * 3.0)
+    sig = 1.0 / (1.0 + np.exp(-x))
+    golden = (x * sig).astype(np.float32)
+    manifest = {"0": {"kind": "input", "name": "x"}}
+    order = {"x": 0}
+    return _finish(bundle, mlir, manifest, order, {"in0": x}, golden)
+
+
 def gen_batch_matmul_f32(out_root: str | Path, B: int = 4, M: int = 32, N: int = 8, K: int = 32,
                          seed: int = 0) -> Path:
     """A single fp32 ``linalg.batch_matmul`` (B,M,K)x(B,K,N)->(B,M,N) — the attention shape. N can
@@ -276,7 +312,8 @@ def gen_conv2d_as_matmul_f32(out_root: str | Path, M: int = 64, N: int = 16, K: 
 _GENERATORS = {"matmul_f32": gen_matmul_f32, "softmax_f32": gen_softmax_f32,
                "batch_matmul_f32": gen_batch_matmul_f32,
                "conv2d_im2col_f32": gen_conv2d_as_matmul_f32,
-               "gelu_f32": gen_gelu_f32, "sigmoid_f32": gen_sigmoid_f32}
+               "gelu_f32": gen_gelu_f32, "sigmoid_f32": gen_sigmoid_f32,
+               "silu_f32": gen_silu_f32}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -294,6 +331,8 @@ def main(argv: list[str] | None = None) -> int:
         kw = {"B": a.B, "M": a.M, "N": a.N, "K": a.K}
     elif a.op == "softmax_f32":
         kw = {"M": a.M, "N": a.N}
+    elif a.op in ("gelu_f32", "sigmoid_f32", "silu_f32"):  # N-vector elementwise activations
+        kw = {"N": a.N}
     else:                                   # matmul_f32 / conv2d_im2col_f32: M,N,K
         kw = {"M": a.M, "N": a.N, "K": a.K}
     b = fn(a.out_root, **kw)
