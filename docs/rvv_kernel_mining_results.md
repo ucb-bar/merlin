@@ -126,7 +126,12 @@ genuinely emits it:
   cross-run, matched baseline)**. So the §3a 1.49× kernel headroom is not just closed but **reversed**:
   the compiler-emitted accumulator-resident kernel is ~1.23× faster than XNNPACK's hand RVV GEMM
   whole-model on bitvla — consistent with the isolated K1 matrix where ours-intrinsic beats XNNPACK at
-  bitvla's matmul sizes. (openvla post-fix board confirmation in flight.)
+  bitvla's matmul sizes.
+- **Model-dependent (honest):** on openvla, post-fix v3 also applies cleanly (vectorized, cos 1.0) but is
+  **2.38×** — *below* `fused_vfmacc_tiled` (3.65×). v3's MR=4 register-blocked kernel wins on bitvla's
+  small-M decode matmuls; the tiled vfmacc wins on openvla's shapes. So the compiler now holds a
+  **portfolio of correct, whole-model-safe matmul kernels and the best is per-model** — which the
+  autotune/beam layer selects. v3 is the new winner on bitvla (and beats XNNPACK there); not universal.
 
 ## 4b. What still genuinely doesn't work
 - **Vectorized activation whole-model** — fixed the rank-1-tile scalar-fallback bug (40a8cbc), but it
