@@ -1424,6 +1424,21 @@ def verify_p17_envelope(IM, bundle) -> None:
     p13check(ce and no_lowbit and len(loops) <= 1 and fam_ok,
              f"[P18] capture-erasure evidence (no low-bit types={no_lowbit}, loop-captures={loops}); "
              f"per-family fractions valid ({fam_ok})")
+    # 7. Stage B capture-level ablation (only if the multi-level recaptures are present): high-level
+    #    captures expose attention/softmax as NAMED linalg_ext ops; qdq captures expose quant_ext
+    #    dequant; loops stay absent (torch.export-blocked) at every level.
+    ab = bundle["capture_ablation"]
+    if ab["rows"]:
+        hl = [r for r in ab["rows"] if r["level"] == "high_level" and r["available"]]
+        qd = [r for r in ab["rows"] if r["level"] == "quant_qdq" and r["available"]]
+        named_attn = bool(hl) and all(int(r["linalg_ext_softmax"]) > 0 for r in hl)
+        named_quant = bool(qd) and all(int(r["quant_ext_dequantize"]) > 0 for r in qd)
+        no_loops = all(int(r["scf_for"]) == 0 for r in ab["rows"])
+        p13check(named_attn and named_quant and no_loops,
+                 f"[P18] capture-level ablation: high-level=named attention ({named_attn}), "
+                 f"qdq=named dequant ({named_quant}), loops absent every level ({no_loops})")
+    else:
+        p13check(True, "[P18] capture-level ablation: no multi-level recaptures present (skipped)")
 
 
 def main(write: bool = True) -> int:

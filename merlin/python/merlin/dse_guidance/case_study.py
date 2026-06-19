@@ -789,6 +789,40 @@ def work_coverage_csv(cases: list[WorkloadCase]) -> str:
     return _csv(rows, _WORK_COV_COLS)
 
 
+# P18 Stage B: capture-level ablation. The raw multi-level recaptures (recaptures_levels/, ~18 MB)
+# are regenerable via m2m flags and are gitignored; only this SMALL op-count summary is committed.
+_ABLATION_OPS = ["linalg.matmul", "linalg.generic", "linalg_ext.softmax", "linalg_ext.layer_norm",
+                 "quant_ext.dequantize", "scf.for"]
+_ABLATION_LEVELS = [("flat", "recaptures", "model.mlir"),
+                    ("high_level", "recaptures_levels", "model_highlevel.mlir"),
+                    ("quant_qdq", "recaptures_levels", "model_qdq.mlir")]
+_ABLATION_CSV_COLS = (["workload", "level", "available"]
+                      + [o.replace(".", "_") for o in _ABLATION_OPS])
+
+
+def capture_level_ablation_csv() -> str:
+    """Op-vocabulary per (workload, capture level), read from the local recaptures_levels/ (which are
+    gitignored + regenerable via `workloads/capture.py <wl> --level high-level` and `--formats int8`).
+    Returns '' if no multi-level recaptures are present (then the committed summary is left as-is)."""
+    bench = paths.merlin_dir() / "benchmarks" / "dse_guidance"
+    lvl = bench / "recaptures_levels"
+    wls = sorted(p.name for p in lvl.glob("*")
+                 if (p / "model_highlevel.mlir").is_file() or (p / "model_qdq.mlir").is_file()) \
+        if lvl.is_dir() else []
+    if not wls:
+        return ""
+    rows = []
+    for w in wls:
+        for level, sub, fname in _ABLATION_LEVELS:
+            p = bench / sub / w / fname
+            row = {"workload": w, "level": level, "available": p.is_file()}
+            txt = p.read_text(errors="ignore") if p.is_file() else ""
+            for o in _ABLATION_OPS:
+                row[o.replace(".", "_")] = txt.count(o)
+            rows.append(row)
+    return _csv(rows, _ABLATION_CSV_COLS)
+
+
 def run_case_study(out_dir) -> dict:
     """Analyze all available recaptured workloads; write the cross-workload artifacts."""
     from pathlib import Path
@@ -909,6 +943,9 @@ def run_case_study(out_dir) -> dict:
     # operator_shape_table (the named-matmul subset used by P5-P16) is unchanged.
     Artifact("operator_full_inventory.csv", operator_full_inventory_csv(cases)).write(out)
     Artifact("work_coverage_table.csv", work_coverage_csv(cases)).write(out)
+    abl = capture_level_ablation_csv()       # only written when the local level recaptures exist
+    if abl:
+        Artifact("capture_level_ablation.csv", abl).write(out)
     yaml_artifact("operator_geometry.yaml", OG.to_yaml_obj(geom_by_workload, conv_visible),
                   header="operator_geometry (structural; no speedup)").write(out)
     Artifact("shape_summary_by_workload.csv",
