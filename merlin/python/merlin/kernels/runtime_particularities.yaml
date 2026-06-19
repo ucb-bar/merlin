@@ -1,0 +1,45 @@
+# Runtime / ABI particularities per target — so the CCA comparator normalizes them out and never
+# misreads a RUNTIME artifact as an ALGORITHMIC divergence. These are facts about how code is
+# called/encoded on each backend, not about what the kernel computes.
+#
+# Used by the comparator to: (a) annotate CCA provenance, (b) skip/normalize fields that differ
+# only because of a runtime convention. Target-agnostic schema; add a block per backend/target.
+
+rvv:
+  isa: rv64gcv
+  # bf16 soft-conversion helper ABI register class — the exact bug that corrupted smolvla:
+  # x86-64 SSE (xmm) vs riscv64 lp64d. clang-23 (caller) vs SpacemiT clang-19 (helper) DISAGREE
+  # on riscv64 __bf16 (forcing __bf16 there -> NaN), so the helper stays `unsigned short` on
+  # riscv64. A bf16 divergence at asm must be checked against THIS, not called an algo change.
+  bf16_helper_abi:
+    x86_64: __bf16            # SSE/xmm register class
+    riscv64_linux: unsigned_short   # integer reg; __bf16 mismatches clang-23<->clang-19 (NaN)
+    riscv64_baremetal: unsigned_short   # Zephyr gcc 12.2 has no __bf16
+  vlen_bits:
+    spike: 256                # default --isa configured VLEN in this harness
+    k1: 256                   # SpacemiT X60
+    firesim_saturn: 128       # Saturn-OPU tile
+  # the schedule emits FIXED-WIDTH vector<Nxf32>; effective LMUL is VLEN-dependent. So a vtype
+  # (LMUL) divergence between two targets can be a VLEN artifact, not a schedule difference.
+  vl_semantics: fixed_width_no_vsetvl_loop   # our baseline; experts use vsetvl-agnostic loops
+  fp_contract_default: off    # clang .ll->.o: fmul/fadd carry no `contract` flag (vfmacc gap)
+  autovec: disabled           # -fno-vectorize/-fno-slp-vectorize (Saturn fractional-LMUL trap)
+
+scalar:
+  isa: rv64gc
+  vlen_bits: {firesim: 0}     # no vector unit; vector facet must be empty
+  notes: portable FireSim-safe tile-0 path
+
+gemmini:
+  isa: rv64gc_xgemmini        # RoCC custom-3
+  decode_via: targetgen.rocc_decode   # funct/rs operand decoder (sibling of decode.rvv)
+  particularities:
+    - systolic array; accumulator residency + WS/OS dataflow are the spatial facet
+    - RoCC operands (rs1/rs2) carry addresses + config — decode from funct, not mnemonic
+  vlen_bits: {firesim: 0}     # not a vector ISA; spatial facet, not vector facet
+
+npu:
+  isa: vendor_specific
+  particularities:
+    - engine-op + DMA dataflow facet; on-chip buffer residency
+    - may co-exist with rvv in one model (composite backend region via DispatchProgram)
