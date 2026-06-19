@@ -66,3 +66,7 @@ build
 # P18 capture-level ablation: raw multi-level recaptures are regenerable (m2m flags); only the
 # small committed summary case_study/capture_level_ablation.csv is tracked.
 merlin/benchmarks/dse_guidance/recaptures_levels/*/*.mlir
+
+# P19 forensic audit: re-exported FX graph dumps are regenerable via dump_exported_fx.py
+merlin/benchmarks/dse_guidance/case_study/manual_validation/exported_fx/*.txt
+merlin/benchmarks/dse_guidance/case_study/manual_validation/exported_fx/*.FAILED.txt
