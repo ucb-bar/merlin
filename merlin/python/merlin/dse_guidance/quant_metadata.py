@@ -36,6 +36,13 @@ def native_quant_rows(cs_dir) -> list[dict]:
     '' / [] when no native capture is present (committed summary stands)."""
     nat = Path(cs_dir).parent / "recaptures_native"
     if not nat.is_dir():
+        # fall back to the canonical bench location (so it works when cs_dir is a temp out-dir)
+        try:
+            from merlin.common import paths as _paths
+            nat = _paths.merlin_dir() / "benchmarks" / "dse_guidance" / "recaptures_native"
+        except Exception:
+            return []
+    if not nat.is_dir():
         return []
     rows = []
     for d in sorted(nat.glob("*")):
