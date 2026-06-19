@@ -528,6 +528,26 @@ def test_loop_recovery_recovers_K_and_carried_state_from_ir():
         assert lr.kv_cache_bytes is None          # prefix KV invariant (closed-over), not carried
 
 
+def test_real_config_magnitudes_and_kv_sizing():
+    """P21 S2/S3: deployment-real magnitudes are config-exact compositions, and the KV byte
+    formula is validated against the IR-recovered iter_arg then applied at deployment scale."""
+    from merlin.dse_guidance import real_config as RC
+    g = RC.REAL_GEOMETRY["openvla"]
+    # openVLA LM == Llama-2-7B: 32 * (q+k+v+o + gate+up+down) + untied embed/lm_head
+    per_layer = 4 * 4096 * 4096 + 3 * 4096 * 11008
+    assert g.total_params() == per_layer * 32 + 2 * (32064 * 4096)
+    assert 6.6e9 < g.total_params() < 6.9e9                      # ~6.74B (Llama-2-7B)
+    # KV deployment-exact = 2*kv_heads*head_dim*seq*n_layers*dtype
+    assert g.kv_cache_bytes("bf16") == 2 * 32 * 128 * 263 * 32 * 2
+    # the byte formula reproduces the IR-recovered KV iter_arg on the captured (small) config
+    kv = {r["workload"]: r for r in RC.kv_sizing_rows(_RECAP_LOOP)}
+    if (_RECAP_LOOP / "openvla" / "model.mlir").is_file():
+        assert "matches IR iter_arg" in kv["openvla"]["ir_formula_check"]
+        assert kv["openvla"]["loop_carried_in_ir"] is True
+    # weight VALUES are irrelevant: magnitudes are config-determined
+    assert all(r["evidence"] == "recovered_from_model_config" for r in RC.magnitude_rows())
+
+
 # --------------------------------------------- cross-workload case study (multiple real captures)
 
 def _has_recaptures() -> bool:

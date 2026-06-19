@@ -1563,6 +1563,26 @@ def verify_p21(IM) -> None:
              f"[P21] loop-preserving recovery: K/carried-state re-derived from IR ({re_ok}); artifact "
              f"matches ({art_ok}); capture_fidelity flipped K/KV/loop_carried->recovered ({flip_ok}); "
              f"no perf wording ({not leaked})")
+    # P21 S2/S3: deployment-real magnitudes (config-exact composition) + KV sizing with IR cross-check
+    from merlin.dse_guidance import real_config as RC
+    # 1. independent re-derivation of openVLA = Llama-2-7B: 32 * (4*4096^2 + 3*4096*11008) + embeds
+    g = RC.REAL_GEOMETRY["openvla"]
+    per_layer = 4 * 4096 * 4096 + 3 * 4096 * 11008
+    exp_total = per_layer * 32 + 2 * (32064 * 4096)        # untied embed + lm_head
+    mag_ok = (g.total_params() == exp_total) and abs(g.total_params() / 1e9 - 6.74) < 0.1
+    # 2. KV formula is IR-validated on the captured config then applied at deployment scale
+    kv = {r["workload"]: r for r in RC.kv_sizing_rows(loop_dir)}
+    kv_ir_ok = "matches IR iter_arg" in kv.get("openvla", {}).get("ir_formula_check", "")
+    kv_real_ok = RC.REAL_GEOMETRY["openvla"].kv_cache_bytes("bf16") == 2 * 32 * 128 * 263 * 32 * 2
+    # 3. artifacts present + config-evidence labelled
+    mf, kf = CS / "real_config_magnitudes.csv", CS / "kv_cache_sizing.csv"
+    arts_ok = mf.is_file() and kf.is_file() \
+        and all(r["evidence"] == "recovered_from_model_config"
+                for r in _csv.DictReader(_io.StringIO(mf.read_text())))
+    p13check(mag_ok and kv_ir_ok and kv_real_ok and arts_ok,
+             f"[P21] real-config magnitudes: openVLA params==Llama-2-7B composition ({mag_ok}); "
+             f"KV formula matches IR iter_arg ({kv_ir_ok}) + deployment KV exact ({kv_real_ok}); "
+             f"artifacts config-evidenced ({arts_ok})")
 
 
 def main(write: bool = True) -> int:
