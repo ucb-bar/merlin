@@ -364,7 +364,8 @@ def _compile_kernel_so(args: tuple) -> str:
 
 def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             entry: str = "forward", cache_dir: str | Path | None = None,
-            tap=None, qinner: dict | None = None) -> list[np.ndarray]:
+            tap=None, qinner: dict | None = None,
+            kernel_backend: str | None = None) -> list[np.ndarray]:
     """Run the outlined model on bound arguments; return the driver's result arrays.
 
     ``cache_dir`` persists compiled kernel ``.so``s keyed by kernel-body hash, so repeated
@@ -394,6 +395,26 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
     cache: dict[str, Any] = {}      # kernel body text -> HostModel
     compiled: dict[str, Any] = {}   # symbol -> HostModel
     n_unique = 0
+
+    # --- optional XNNPACK kernel-backend routing (default-off) -----------------------------
+    # Classify each kernel func once: if it is a plain 2-D f32 linalg.matmul, record the
+    # block-arg indices of its A/B operands so run_call can compute it through the XNNPACK
+    # host microkernel instead of the Merlin-compiled .so. All other kernels are unaffected.
+    xnn_routes: dict[str, dict] = {}
+    if kernel_backend == "xnnpack":
+        from .backends import xnnpack_host
+
+        if not xnnpack_host.is_available():
+            raise DispatchRuntimeError(
+                "kernel_backend='xnnpack' requested but the XNNPACK host GEMM lib could not "
+                "be built (see MERLIN_XNNPACK_REPO / tmp/kernels/XNNPACK)")
+        kfns = {op.sym_name.data: op for op in module.walk()
+                if op.name == "func.func" and "$kernel_" in op.sym_name.data}
+        for sym, kfn in kfns.items():
+            route = xnnpack_host.classify_matmul_kernel(kfn)
+            if route is not None:
+                xnn_routes[sym] = route
+        execute.last_xnn_routed = len(xnn_routes)
 
     def kernel_model(symbol: str):
         if symbol in compiled:
@@ -454,8 +475,8 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             if op.name != "func.call":
                 continue
             sym, _ = _kernel_io(op)
-            if sym in seen or sym not in kfuncs:
-                continue
+            if sym in seen or sym not in kfuncs or sym in xnn_routes:
+                continue        # xnn-routed kernels are computed by XNNPACK, never compiled
             seen.add(sym)
             ktext = _ktext(sym)
             digest = hashlib.sha1(ktext.encode()).hexdigest()[:16]
@@ -483,6 +504,17 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
 
     def run_call(op):
         symbol, outs = _kernel_io(op)
+        route = xnn_routes.get(symbol)
+        if route is not None:
+            from .backends import xnnpack_host
+
+            a = np.ascontiguousarray(env[id(op.operands[route["a"]])], np.float32)
+            b = np.ascontiguousarray(env[id(op.operands[route["b"]])], np.float32)
+            out = xnnpack_host.gemm_f32(a, b).reshape(outs[0][0]).astype(outs[0][1])
+            env[id(op.results[0])] = out
+            if tap is not None:
+                tap(op, [out])
+            return
         model = kernel_model(symbol)
         args, keep = [], []
         for o in op.operands:
@@ -609,7 +641,8 @@ def _propagate_quant_inner(module) -> int:
 
 def run_model(model_dir: str | Path, workdir: str | Path,
               cache_dir: str | Path | None = None, tap=None,
-              int8_compute: bool = False) -> dict[str, Any]:
+              int8_compute: bool = False,
+              kernel_backend: str | None = None) -> dict[str, Any]:
     """Outline + bind + execute a captured model; gate against ``golden.npy``.
 
     Returns ``{output, golden, cos, rel, ok, n_kernels, n_unique_kernels}``.
@@ -662,14 +695,21 @@ def run_model(model_dir: str | Path, workdir: str | Path,
     if extra_path.is_file():
         ex = np.load(extra_path)
         qinner = {k[len("qinner::"):]: ex[k] for k in ex.files if k.startswith("qinner::")}
-    results = execute(outlined, args, Path(workdir), cache_dir=cache_dir, tap=tap, qinner=qinner)
+    import os as _os
+    if kernel_backend is None and _os.environ.get("MERLIN_XNNPACK_HOST") == "1":
+        kernel_backend = "xnnpack"
+    results = execute(outlined, args, Path(workdir), cache_dir=cache_dir, tap=tap,
+                      qinner=qinner, kernel_backend=kernel_backend)
     # widen bf16 (stored as uint16 bit patterns) to f32 for the golden comparison
     raw = results[0]
     out = (bf16_to_f32(raw) if _elem_str(out_types[0]) == "bf16"
            else np.asarray(raw, dtype=np.float32)).ravel()
 
     res: dict[str, Any] = {"output": results[0], "n_kernels": outlined.n_kernels,
-                           "n_unique_kernels": getattr(execute, "last_unique_kernels", None)}
+                           "n_unique_kernels": getattr(execute, "last_unique_kernels", None),
+                           "kernel_backend": kernel_backend,
+                           "n_xnn_routed": (getattr(execute, "last_xnn_routed", 0)
+                                            if kernel_backend == "xnnpack" else 0)}
     gpath = model_dir / "golden.npy"
     if gpath.is_file():
         gold = np.load(gpath).astype(np.float32).ravel()
