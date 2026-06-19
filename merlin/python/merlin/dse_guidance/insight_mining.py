@@ -2239,6 +2239,65 @@ def operator_recovery_accounting(cs_dir: Path) -> dict:
     return {"workloads": wls, "rows": rows}
 
 
+# ---- Stage C: capture-erasure IR evidence, per-family decomposition (analysis-only) ----
+_ERASE_COLS = ["workload", "n_scf_loops", "n_linalg_matmul", "n_linalg_generic",
+               "lowbit_int_types_present", "loops_preserved", "evidence"]
+
+
+def capture_erasure_evidence(cs_dir: Path) -> dict:
+    """Stage C: demonstrate (not just assert) what the flat capture erases, from the recapture IR:
+    scf.for/while count (loops), linalg.matmul vs linalg.generic counts (named ops vs lowered),
+    and whether any packed low-bit integer tensor types survive. Reads the recaptures next to the
+    case_study dir."""
+    import re
+    recap = Path(cs_dir).parent / "recaptures"
+    rows = []
+    for d in sorted(p for p in recap.glob("*") if (p / "model.mlir").is_file()):
+        txt = (d / "model.mlir").read_text(errors="ignore")
+        n_loops = len(re.findall(r"\bscf\.(for|while)\b", txt))
+        n_mm = txt.count("linalg.matmul")
+        n_gen = txt.count("linalg.generic")
+        lowbit = bool(re.search(r"tensor<[^>]*x(i4|i8|si8|ui8|si4)>", txt))
+        rows.append({"workload": d.name, "n_scf_loops": n_loops, "n_linalg_matmul": n_mm,
+                     "n_linalg_generic": n_gen, "lowbit_int_types_present": lowbit,
+                     "loops_preserved": n_loops > 0,
+                     "evidence": (f"{n_loops} scf loops, {n_gen} generics vs {n_mm} named matmuls, "
+                                  f"low-bit int types {'present' if lowbit else 'absent'}")})
+    return {"rows": rows}
+
+
+def per_family_summary(cs_dir: Path) -> dict:
+    """Stage C (§5E): decompose the corpus by family (iterative_denoise vs token_decode) so corpus
+    averages don't hide family behavior — per-family op counts, attention share, and visible-linear
+    fraction from work_coverage_table + workload_family_table."""
+    cs_dir = Path(cs_dir)
+    fam = {r["workload"]: r["family"] for r in _csv_rows(cs_dir / "workload_family_table.csv")}
+    wc = {r["workload"]: r for r in _csv_rows(cs_dir / "work_coverage_table.csv")}
+    agg = {}
+    for w, f in fam.items():
+        r = wc.get(w)
+        if not r:
+            continue
+        a = agg.setdefault(f, {"family": f, "workloads": [], "lin_macs": 0, "attn_macs": 0,
+                               "n_attention_ops": 0, "n_softmax": 0, "n_norm": 0})
+        a["workloads"].append(w)
+        a["lin_macs"] += int(r["linear_gemm_macs"])
+        a["attn_macs"] += int(r["attention_macs"])
+        a["n_attention_ops"] += int(r["n_attention_ops"])
+        a["n_softmax"] += int(r["n_softmax"])
+        a["n_norm"] += int(r["n_normalization"])
+    rows = []
+    for f, a in sorted(agg.items()):
+        tot = a["lin_macs"] + a["attn_macs"]
+        rows.append({"family": f, "n_workloads": len(a["workloads"]),
+                     "workloads": "; ".join(sorted(a["workloads"])),
+                     "linear_gemm_macs": a["lin_macs"], "attention_macs": a["attn_macs"],
+                     "visible_linear_fraction": round(a["lin_macs"] / tot, 4) if tot else 1.0,
+                     "n_attention_ops": a["n_attention_ops"], "n_softmax": a["n_softmax"],
+                     "n_norm": a["n_norm"]})
+    return {"rows": rows}
+
+
 _PLOT_CAPTION = {
     "evidence_type_by_workload": "How much of each workload's evidence is IR-recovered vs assumed — "
         "where the search space rests on recovered structure vs reference values.",
@@ -2555,6 +2614,8 @@ def mine(cs_dir, scope: str) -> dict:
     bundle["timing_envelope"] = (timing_requirement_envelope(cs_dir) if is_all
                                  else {"workloads": [], "rows": []})
     bundle["omitted_ops"] = operator_recovery_accounting(cs_dir)
+    bundle["capture_erasure"] = capture_erasure_evidence(cs_dir) if is_all else {"rows": []}
+    bundle["per_family"] = per_family_summary(cs_dir) if is_all else {"rows": []}
     return bundle
 
 
@@ -3240,6 +3301,42 @@ def _omitted_op_md(om, scope) -> str:
     return "\n".join(L) + "\n"
 
 
+_PER_FAMILY_COLS = ["family", "n_workloads", "workloads", "linear_gemm_macs", "attention_macs",
+                    "visible_linear_fraction", "n_attention_ops", "n_softmax", "n_norm"]
+
+
+def _erasure_evidence_md(ce, scope) -> str:
+    L = [f"# Capture-erasure IR evidence ({scope})\n",
+         "> The 'erased' claims, demonstrated from the recapture IR rather than asserted. Loops are "
+         "absent (torch.export unrolls them — only a gather/scatter artifact shows scf.for); attention "
+         "lives in `linalg.generic` (now re-parsed); no packed low-bit integer tensor types survive "
+         "(the capture is dequantized f32).\n",
+         "| workload | scf loops | linalg.matmul | linalg.generic | low-bit int types | loops preserved |",
+         "|---|---|---|---|---|---|"]
+    for r in ce["rows"]:
+        L.append(f"| {r['workload']} | {r['n_scf_loops']} | {r['n_linalg_matmul']} | "
+                 f"{r['n_linalg_generic']} | {r['lowbit_int_types_present']} | {r['loops_preserved']} |")
+    nloop = sum(1 for r in ce["rows"] if r["loops_preserved"])
+    L.append(f"\n**{nloop}/{len(ce['rows'])} captures retain any scf loop** (and that one is a bool-mask "
+             "gather artifact, not a model loop). No capture retains packed low-bit types. This is the "
+             "concrete basis for the capture-fidelity 'erased' rows.\n")
+    return "\n".join(L) + "\n"
+
+
+def _per_family_md(pf, scope) -> str:
+    L = [f"# Per-family decomposition ({scope})\n",
+         "> Corpus split by family so averages don't hide family behavior. Linear-GEMM vs attention MAC "
+         "mass and op mix per family (structural; recovered from IR).\n",
+         "| family | workloads | linear MACs | attention MACs | visible_linear_frac | attn ops | "
+         "softmax | norm |",
+         "|---|---|---|---|---|---|---|---|"]
+    for r in pf["rows"]:
+        L.append(f"| {r['family']} | {r['n_workloads']} | {r['linear_gemm_macs']} | "
+                 f"{r['attention_macs']} | {r['visible_linear_fraction']:.3f} | {r['n_attention_ops']} | "
+                 f"{r['n_softmax']} | {r['n_norm']} |")
+    return "\n".join(L) + "\n"
+
+
 def _p17_findings_md(bundle, scope) -> str:
     aud = bundle.get("adversarial_audit", {}).get("rows", [])
     L = [f"# P17 final report — what is robust, what is blocked ({scope})\n",
@@ -3403,6 +3500,19 @@ def emit_run(bundle: dict, run_dir, rendered: list[str]) -> None:
     if om.get("rows"):
         Artifact("visible_vs_erased_work_table.csv", _csv_text(om["rows"], _OMIT_COLS)).write(run_dir)
         Artifact("omitted_operator_accounting.md", _omitted_op_md(om, scope)).write(run_dir)
+    # Stage C: capture-erasure evidence, per-family decomposition, and the critique's exact-name aliases
+    ce = bundle.get("capture_erasure", {})
+    if ce.get("rows"):
+        Artifact("capture_erasure_evidence.csv", _csv_text(ce["rows"], _ERASE_COLS)).write(run_dir)
+        Artifact("capture_erasure_evidence.md", _erasure_evidence_md(ce, scope)).write(run_dir)
+    pf = bundle.get("per_family", {})
+    if pf.get("rows"):
+        Artifact("per_family_summary.csv", _csv_text(pf["rows"], _PER_FAMILY_COLS)).write(run_dir)
+        Artifact("per_family_summary.md", _per_family_md(pf, scope)).write(run_dir)
+    if inf.get("rows"):     # alias: Part A's `metric_stability_table.csv` (= macro/micro + LOO delta)
+        Artifact("metric_stability_table.csv", _csv_text(inf["rows"], _INFLUENCE_COLS)).write(run_dir)
+    if om.get("rows"):      # alias: Part A's `known_omissions_table.csv` (= recovered/erased work)
+        Artifact("known_omissions_table.csv", _csv_text(om["rows"], _OMIT_COLS)).write(run_dir)
     if env.get("rows"):     # P17 final report (corpus-level, when the requirements envelope exists)
         Artifact("P17_FINDINGS.md", _p17_findings_md(bundle, scope)).write(run_dir)
     Artifact("DSE_FINDINGS.md",

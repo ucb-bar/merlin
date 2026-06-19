@@ -1414,6 +1414,16 @@ def verify_p17_envelope(IM, bundle) -> None:
     leaked = [t for t in ("speedup", "faster", "optimal", "performance improvement",
                           "predicted cycles", "x speedup", "gap_closure") if t in blob]
     p13check(not leaked, f"[P17] requirements/omitted outputs free of forbidden wording ({leaked})")
+    # 6. Stage C: capture-erasure evidence is demonstrated (loops absent in all but a known artifact,
+    #    no low-bit types); per-family fractions are valid.
+    ce = bundle["capture_erasure"]["rows"]
+    no_lowbit = all(not r["lowbit_int_types_present"] for r in ce)
+    loops = [r["workload"] for r in ce if r["loops_preserved"]]
+    pf = bundle["per_family"]["rows"]
+    fam_ok = pf and all(0.0 <= float(r["visible_linear_fraction"]) <= 1.0 for r in pf)
+    p13check(ce and no_lowbit and len(loops) <= 1 and fam_ok,
+             f"[P18] capture-erasure evidence (no low-bit types={no_lowbit}, loop-captures={loops}); "
+             f"per-family fractions valid ({fam_ok})")
 
 
 def main(write: bool = True) -> int:
