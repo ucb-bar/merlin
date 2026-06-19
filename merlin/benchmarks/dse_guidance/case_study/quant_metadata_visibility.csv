@@ -1,0 +1,5 @@
+workload,n_dequant_ops,storage_dtype,scale_granularity,dequant_placement,compute_dtype,accumulator_dtype,native_scheme_gap
+bitvla,1,i8,per_channel,before_matmul (weight dequantized then GEMM),f32 (dequantized),f32,W1.58 ternary BitLinear (packed int2 + absmean scale) — NOT captured (torchao int8)
+openvla,26,i8,per_channel,before_matmul (weight dequantized then GEMM),f32 (dequantized),f32,torchao int8 weight-only (capture default)
+pi05,782,i8,per_channel,before_matmul (weight dequantized then GEMM),f32 (dequantized),f32,torchao int8 weight-only (capture default)
+rdt,20,i8,per_channel,before_matmul (weight dequantized then GEMM),f32 (dequantized),f32,torchao int8 weight-only (capture default)
