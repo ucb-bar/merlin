@@ -1,0 +1,20 @@
+# Isolated RVV fork package (rvvgen.fork)
+authoring:
+  author: kernel-policy-mining e2e task
+  generated_by_agent: false
+  mode: deterministic_generated_from_spec
+family: vector_schedule
+lineage:
+  author: kernel-policy-mining e2e task
+  depth: 1
+  lever: PASS:fused_vfmacc_tiled
+  parent_run_id: hand_v0
+  source_evidence: mined scalar_broadcast_fma motif (37 kernels / XNNPACK+OpenBLAS); bounded-code tiled vfmacc [MR=4,NR=16,KC=16], scoped-vectorize, whole-model-safe
+  version: 1
+outputs:
+  knobs: knobs.yaml
+  schedule: schedule.mlir
+run_id: impr_tuned_v1_d1_20260618T212554
+schedule_format: transform_dialect_mlir
+status: proposed
+target: rvv
