@@ -30,29 +30,36 @@ def _save(fig, name):
 
 
 def fig_landscape():
-    # speed (x, log: kernels/sec-ish, higher=faster) vs fidelity (y, 0..4)
-    pts = [  # name, speed(rel, log10 arb), fidelity, color, note
-        ("spike\n(functional)", 5e3, 1.0, S.COLOR["baseline"], "fast, NOT faithful\n(cycles plateau ~120)"),
-        ("static RTL-checks\n(FileCheck)", 5e5, 1.6, S.COLOR["iree_dialect"], "ms; structural only\n(no numerics)"),
-        ("arc middle-tier\n(this work)", 1.3e2, 3.4, S.COLOR["merlin_targetgen"], "RTL-faithful numerics+cyc\nNO SoC boot"),
-        ("verilator (L3)", 6e-3, 3.6, S.COLOR["golden"], "RTL-faithful\nboot-dominated (~178s)"),
-        ("FireSim (L5)", 5e-3, 4.0, S.COLOR["merlin_native"], "RTL-faithful + FPGA\nflash+boot overhead"),
+    # speed (x, log; higher=faster) vs fidelity (y). label placed beside each dot, note below — no overlap.
+    pts = [  # name, speed, fidelity, color, note, (label dx,dy pts), (note dx,dy pts)
+        ("spike (functional)", 5e3, 1.0, S.COLOR["baseline"], "fast, NOT faithful (cyc plateau ~120)", (0, 26), (0, -26)),
+        ("static RTL-checks", 6e5, 2.0, S.COLOR["iree_dialect"], "ms; structural only (no numerics)", (0, 26), (0, -26)),
+        ("arc middle-tier (this work)", 1.3e2, 3.2, S.COLOR["merlin_targetgen"], "RTL-faithful numerics+cycles · NO SoC boot", (0, 28), (0, -28)),
+        ("verilator (L3)", 6e-3, 3.7, S.COLOR["golden"], "RTL-faithful, boot-dominated (~178 s)", (70, 14), (70, -2)),
+        ("FireSim (L5)", 6e-2, 4.4, S.COLOR["merlin_native"], "RTL-faithful + FPGA (flash+boot)", (70, 14), (70, -2)),
     ]
-    fig, ax = plt.subplots(figsize=(9, 5.6))
-    for name, spd, fid, col, note in pts:
-        ax.scatter([spd], [fid], s=900, color=col, edgecolor=S.INK, lw=1.6, zorder=5)
-        ax.annotate(name, (spd, fid), ha="center", va="center", fontsize=8.5, fontweight="bold", zorder=6)
-        ax.annotate(note, (spd, fid), xytext=(0, -34), textcoords="offset points",
-                    ha="center", va="top", fontsize=7.5, color="#5A5A5A")
+    fig, ax = plt.subplots(figsize=(11, 6))
+    ax.axhspan(2.9, 4.7, color=S.COLOR["merlin_targetgen"], alpha=0.06)
+    ax.text(2.5e6, 3.8, "RTL-faithful\nband", ha="right", va="center", fontsize=8.5, color="#9a8f78", style="italic")
+    for name, spd, fid, col, note, (lx, ly), (nx, ny) in pts:
+        ax.scatter([spd], [fid], s=520, color=col, edgecolor=S.INK, lw=1.6, zorder=5)
+        ax.annotate(name, (spd, fid), xytext=(lx, ly), textcoords="offset points",
+                    ha="center", va="bottom", fontsize=9.5, fontweight="bold", zorder=6)
+        ax.annotate(note, (spd, fid), xytext=(nx, ny), textcoords="offset points",
+                    ha="center", va="top", fontsize=8, color="#5A5A5A")
+    # arc -> verilator speedup arrow (both RTL-faithful, arc far faster)
+    ax.annotate("", xy=(1.3e2, 3.25), xytext=(6e-3, 3.55),
+                arrowprops=dict(arrowstyle="->", color=S.COLOR["merlin_targetgen"], lw=2, alpha=.8))
+    ax.text(1.5, 3.62, "~10⁴× faster,\nsame RTL fidelity", ha="center", fontsize=8.5,
+            fontweight="bold", color=S.COLOR["merlin_targetgen"])
     ax.set_xscale("log")
-    ax.set_xlabel("← slower      speed (kernel throughput, log)      faster →")
-    ax.set_yticks([1, 1.6, 3.4, 3.6, 4.0])
-    ax.set_yticklabels(["functional\nnumerics", "structural\n(ISA-legal)", "RTL numerics\n+cycles", "RTL\n(full)", "RTL+FPGA"], fontsize=7.5)
-    ax.set_ylabel("fidelity →")
-    ax.set_ylim(0.4, 4.5); ax.set_xlim(2e-3, 2e6)
-    ax.set_title("Where each Gemmini oracle sits — the arc middle-tier fills the spike↔verilator gap", pad=14)
-    ax.axhspan(2.8, 4.2, color=S.COLOR["merlin_targetgen"], alpha=0.06)
-    S.badge(ax, 1.3e2, 3.4, "RTL-faithful, no boot\n→ ~10⁴× vs verilator", color=S.COLOR["merlin_targetgen"], fontsize=8)
+    ax.set_xlabel("← slower            speed (kernel throughput, log)            faster →", fontsize=10)
+    ax.set_yticks([1.0, 2.0, 3.2, 3.7, 4.4])
+    ax.set_yticklabels(["functional\nnumerics", "structural\n(ISA-legal)", "RTL numerics\n+ cycles",
+                        "RTL (full)", "RTL + FPGA"], fontsize=8)
+    ax.set_ylabel("fidelity  →", fontsize=10)
+    ax.set_ylim(0.3, 4.9); ax.set_xlim(1e-3, 3e6)
+    ax.set_title("Where each Gemmini oracle sits — the arc middle-tier fills the spike↔verilator gap", pad=12)
     _save(fig, "landscape")
 
 
