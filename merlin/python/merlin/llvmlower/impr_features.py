@@ -15,7 +15,10 @@ it, so it can be measured against the immutable baseline.
 """
 from __future__ import annotations
 
+import hashlib
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 
@@ -444,6 +447,238 @@ def _register_packed_grid() -> list[str]:
 PACKED_GRID_NAMES: list[str] = _register_packed_grid()
 
 
+# ---- accumulator-resident micro-kernel (genuine transform-dialect codegen) ----------
+# THE genuine compiler-emitted answer to the scalable-gap that the `intrinsic_microkernel` marker
+# only *demonstrated* with a hand-written C kernel. The earlier finding was that the upstream
+# `tile -> scoped-vectorize -> outerproduct -> bufferize` recipe re-reads/re-writes the MR x NR
+# accumulator THROUGH MEMORY every K-tile (a `vector.transfer_read`/`transfer_write` of the C
+# subview INSIDE the K loop, + a `memref.copy` self-copy artifact) — that copy traffic, not the
+# vfmacc arithmetic, was the 15.7x gap. Three hoisting attempts were reported to no-op.
+#
+# Root cause found here (mlir-opt iteration, LLVM 23): `hoist_redundant_vector_transfers` DOES lift
+# the accumulator transfer pair into an scf.for **vector iter_arg** (value semantics: the
+# accumulator stays in a `vector<MRxNR>` carried by the K loop, NEVER bufferized to memory inside
+# K) — but ONLY when the C accumulator memref it reads/writes is a TYPED static-shape `memref.alloc`
+# (e.g. `memref<4x16xf32>`). The pipeline's tiled C is a `memref.subview %alloc[%i,%j]` with a
+# DYNAMIC offset (`strided<[..], offset: ?>`); the hoister's loop-invariance / subset analysis bails
+# on the dynamic offset, so the transfer pair stays in the loop. `transform.structured.promote`
+# produces a `memref.view` of an i8 buffer, which the hoister ALSO refuses to see through. The fix
+# that works: `transform.structured.bufferize_to_allocation` on the M,N-tile matmul, which emits a
+# TYPED `memref.alloc() : memref<MRxNRxf32>` (+ a copy-in / copy-out that are O(MR*NR) ONCE per
+# M,N tile, NOT per K-tile), then tile K inside, vectorize -> contract, and run the hoister
+# POST-BUFFERIZE so it sees the typed alloc and lifts the accumulator into the K-loop vector
+# iter_arg. Net inner K body: read A + B tile, MR*KC vfmacc into the carried accumulator, yield;
+# the accumulator touches memory exactly twice per M,N tile (copy-in/out), not 2*(K/KC) times.
+#
+# Two-phase because the hoist must run on the BUFFERIZED (memref) form:
+#   PRE-bufferize  (edit_schedule): tile [MR,NR,0] -> bufferize_to_allocation(C) -> tile K [0,0,KC]
+#                  -> scoped-vectorize -> transfer_permutation + reduction_to_contract  (STOP at
+#                  vector.contract; do NOT lower it yet — the hoister wants the read->contract->write
+#                  shape).
+#   POST-bufferize (edit_pipeline): after one-shot-bufferize, splice a SECOND
+#                  transform-preload-library + transform-interpreter that runs
+#                  hoist_redundant_vector_transfers (=> vector iter_arg) THEN
+#                  lower_contraction(outerproduct) -> lower_outerproduct -> vector.fma -> vfmacc.
+# Verified bit-exact + accumulator-resident (vector iter_arg, zero per-K memref roundtrip) on spike
+# at 32/64/128. Default-off; baseline byte-identical.
+def _accumulator_resident_pre_schedule(MR: int, NR: int, KC: int,
+                                       NR_bmm: int | None = None) -> str:
+    """PRE-bufferize transform schedule: tile M,N; promote C to a TYPED local alloc via
+    bufferize_to_allocation; tile the reduction K by 1; scoped-vectorize [MR,NR,1]; rebuild
+    vector.contract. Stops at the contract (the post-bufferize schedule does the hoist + lowering).
+
+    K is tiled by **1** (not KC) and vectorized [MR,NR,1] on purpose: that makes each K step read a
+    SINGLE B row (`vector<1xNR>` -> `vector<NR>`) + MR A scalars and do MR `vfmacc` into the resident
+    accumulator — structurally identical to the expert/hand micro-kernel (MR accumulator vreg-groups
+    held across K, one B row + A scalars streamed per step). Vectorizing the full [MR,NR,KC] tile
+    instead materializes the whole `vector<KCxNR>` B panel (KC vector registers) and SPILLS hard (40
+    vector spills measured at KC=16, faulting at M>=64). The `KC` argument now sets the outer K
+    register-block trip only conceptually; the streamed inner step is always 1 (bounded vreg use).
+    C copy-in uses `linalg.copy` (vectorizable / cheap) rather than the default `memref.copy` runtime
+    call. The batch_matmul (attention) path gets the same treatment so the feature is whole-model-safe.
+
+    N-TAIL (``NR_bmm``): the batch_matmul (attention) N is often SMALL (e.g. llama-style N=8). When
+    the batch_matmul is vectorized at the matmul NR (16) on an N=8 dim, the partial inner write needs
+    a masked `vector.transfer_write` (vector<...x16> into tensor<...x8>) and LLVM-23 rejects the
+    multi-op `vector.mask` -> PipelineError -> (whole-model) silent scalar fallback. Setting a
+    SEPARATE batch_matmul NR (``NR_bmm`` <= the small N, default = NR) clamps NR=min(NR,N) so the
+    vectorize is FULL (no mask) and the N=8 attention batch_matmul vectorizes to vfmacc. The matmul
+    path keeps its own (larger) NR. For larger N, NR_bmm just tiles N cleanly. This is the N-tail fix
+    that makes the accumulator-resident feature whole-model-safe for attention.
+    """
+    NB = NR_bmm if NR_bmm is not None else NR
+    return f"""\
+module attributes {{transform.with_named_sequence}} {{
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
+    %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t1, %lmn:2 = transform.structured.tile_using_for %mm tile_sizes [{MR}, {NR}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    %buf, %newmm = transform.structured.bufferize_to_allocation %t1 {{memory_space = 0 : i64, bufferize_destination_only}} : !transform.any_op
+    %mm2 = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t2, %lk = transform.structured.tile_using_for %mm2 tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    transform.structured.vectorize %t2 vector_sizes [{MR}, {NR}, 1] : !transform.any_op
+    %bm = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %bt1, %blmn:3 = transform.structured.tile_using_for %bm tile_sizes [1, {MR}, {NB}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+    %bbuf, %bnew = transform.structured.bufferize_to_allocation %bt1 {{memory_space = 0 : i64, bufferize_destination_only}} : !transform.any_op
+    %bm2 = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %bt2, %blk = transform.structured.tile_using_for %bm2 tile_sizes [0, 0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    transform.structured.vectorize %bt2 vector_sizes [1, {MR}, {NB}, 1] : !transform.any_op
+    %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.transfer_permutation_patterns
+      transform.apply_patterns.vector.reduction_to_contract
+    }} : !transform.any_op
+    transform.yield
+  }}
+}}
+"""
+
+
+# NOTE: distinct entry-point name (`@__transform_accum_post`) so that when BOTH the pre- and
+# post-bufferize schedules are preloaded into the same module symbol table, their named sequences do
+# not collide (`@__transform_main` is defined by the pre schedule).
+_ACCUM_RESIDENT_POST_SCHEDULE = """\
+module attributes {transform.with_named_sequence} {
+  transform.named_sequence @__transform_accum_post(%arg0: !transform.any_op {transform.readonly}) {
+    %f = transform.structured.match ops{["func.func"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %f2 = transform.structured.hoist_redundant_vector_transfers %f : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %f2 {
+      transform.apply_patterns.vector.lower_contraction lowering_strategy = "outerproduct"
+    } : !transform.any_op
+    transform.apply_patterns to %f2 {
+      transform.apply_patterns.vector.lower_outerproduct
+      transform.apply_patterns.vector.lower_shape_cast
+    } : !transform.any_op
+    transform.yield
+  }
+}
+"""
+
+
+def _post_schedule_path() -> Path:
+    """Write the POST-bufferize hoist+lower schedule to a stable temp file and return its path.
+
+    `edit_pipeline` only sees the pass-list strings (not the per-build work dir), so the second
+    transform-interpreter needs a real, stable file to preload. The content is fixed, so the path is
+    content-addressed (one file, written once, reused) — deterministic and safe for parallel builds.
+    """
+    text = _ACCUM_RESIDENT_POST_SCHEDULE
+    h = hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+    p = Path(tempfile.gettempdir()) / f"merlin_accum_resident_post_{h}.mlir"
+    if not p.is_file():
+        p.write_text(text, encoding="utf-8")
+    return p
+
+
+def _accumulator_resident_pipeline(passes: list[str]) -> list[str]:
+    """Splice a SECOND transform-preload-library + transform-interpreter right AFTER
+    one-shot-bufferize: it hoists the typed-alloc accumulator transfer pair into the K-loop vector
+    iter_arg (register-resident), then lowers contraction->outerproduct->vfmacc. The PRE-bufferize
+    schedule (edit_schedule) deliberately stopped at vector.contract so the hoister sees the
+    read->contract->write shape on the bufferized memref. Only runs when this feature is enabled;
+    baseline pipeline untouched."""
+    out = list(passes)
+    # find one-shot-bufferize (it carries options, so match by prefix)
+    idx = None
+    for i, p in enumerate(out):
+        if p.startswith("one-shot-bufferize"):
+            idx = i
+            break
+    if idx is None:
+        return out
+    sched = _post_schedule_path()
+    # Insert the hoist IMMEDIATELY after one-shot-bufferize — i.e. BEFORE
+    # buffer-results-to-out-params and buffer-hoisting. Critical: buffer-hoisting/loop-hoisting
+    # would hoist the per-tile C `memref.alloc` out to the function entry and REUSE one buffer across
+    # every M,N tile; the hoister then sees a write to that shared buffer (the copy-in) in the
+    # K-loop's parent region and conservatively refuses to lift the accumulator transfer across K.
+    # Running the hoist BEFORE buffer-hoisting (while the typed C alloc is still local to the M,N
+    # tile, exactly the shape that hoists in isolation) makes it fire -> vector iter_arg.
+    insert_at = idx + 1
+    inject = [
+        f"transform-preload-library{{transform-library-paths={sched}}}",
+        "transform-interpreter{entry-point=__transform_accum_post}",
+        "canonicalize", "cse",
+    ]
+    if out[insert_at:insert_at + len(inject)] != inject:   # idempotent
+        out = out[:insert_at] + inject + out[insert_at:]
+    # Swap the default `convert-vector-to-scf` for the full-unroll variant. The hoisted accumulator
+    # is a rank-2 `vector<MRxNR>` carried by the K loop; the DEFAULT convert-vector-to-scf lowers
+    # every rank>=2 vector transfer through a STACK `memref.alloca` scratch (the carried accumulator
+    # then lives on the stack, re-loaded/stored each K step, and under RVV's fixed VLEN it spills
+    # hard -> the `tohost=1337` wild-store fault at M>=32). `full-unroll` instead fully unrolls those
+    # rank-2 transfers into rank-1 element ops with NO stack scratch, so the accumulator stays in the
+    # vector register file across K (register-resident, like the hand kernel's MR vfloat32m4_t accs).
+    # Feature-scoped (only when this feature is on); baseline `convert-vector-to-scf` untouched.
+    for i, p in enumerate(out):
+        if p == "convert-vector-to-scf":
+            out[i] = "convert-vector-to-scf{full-unroll}"
+            break
+    return out
+
+
+def _register_accumulator_resident() -> list[str]:
+    """Register `accumulator_resident_microkernel` (default tile) + a small tuning grid."""
+    names: list[str] = []
+    grid = [(4, 16, 16), (4, 16, 32), (8, 16, 16), (4, 32, 16)]
+    for MR, NR, KC in grid:
+        if (MR, NR, KC) == (4, 16, 16):
+            nm = "accumulator_resident_microkernel"
+            desc = ("Transform-dialect accumulator-residency attempt: tile [MR=4,NR=16], "
+                    "bufferize_to_allocation the C tile to a TYPED static memref.alloc, tile K "
+                    "[KC=16], scoped-vectorize -> vector.contract, then POST-bufferize "
+                    "hoist_redundant_vector_transfers -> outerproduct -> vfmacc. Forms a real vfmacc "
+                    "chain and is BIT-EXACT at 32/64/128 AND a non-cube 96x48x160 on spike (general, "
+                    "not cube-overfit). HONEST MEASURED STATUS: the hoist does NOT fully lift the "
+                    "carried accumulator into a pure register iter_arg under RVV's fixed VLEN — the "
+                    "emitted K-loop still round-trips the accumulator through the stack "
+                    "(vl4re8.v/vs4r.v of the accumulator per K-tile, confirmed by objdump), so "
+                    "cca.lift_asm reads accumulator_resident=FALSE and it measures ~19x off the "
+                    "hand intrinsic_microkernel ceiling @64^3 (954,558 vs 50,695). It is the best "
+                    "transform-only accumulator attempt but does NOT close the gap; the genuine "
+                    "closer is a dedicated RVV micro-kernel codegen pass (see action_catalog: "
+                    "compute.accumulator_resident -> CODEGEN, forkable_now=False). Default-off, "
+                    "baseline byte-identical.")
+        else:
+            nm = f"accum_resident_{MR}_{NR}_{KC}"
+            desc = (f"Accumulator-resident micro-kernel tuning point (MR={MR}, NR={NR}, KC={KC}): "
+                    f"register-resident K-loop vector iter_arg accumulator, no per-K memref "
+                    f"roundtrip. Default-off tuning-grid feature.")
+        register(ImprFeature(
+            name=nm,
+            action_class="PASS",
+            description=desc,
+            edit_pipeline=_accumulator_resident_pipeline,
+            edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
+                           _accumulator_resident_pre_schedule(_MR, _NR, _KC)),
+        ))
+        names.append(nm)
+    # N-TAIL-SAFE variant for whole-model attention: same recipe but the batch_matmul N tile is
+    # clamped to NR_bmm=8 (<= the small llama-style attention N=8) so the inner vectorize is FULL (no
+    # masked vector.transfer_write -> no LLVM-23 PipelineError -> no silent scalar fallback). The
+    # matmul path keeps NR=16. This is the feature that makes attention batch_matmuls vectorize to
+    # vfmacc instead of falling back to scalar (verified bit-exact on spike for a B=4,M=32,N=8,K=32
+    # attention batch_matmul). Default-off; baseline byte-identical.
+    register(ImprFeature(
+        name="accumulator_resident_ntail",
+        action_class="PASS",
+        description="N-tail-safe accumulator-resident micro-kernel: the accumulator-resident recipe "
+                    "(tile [MR=4,NR=16,KC=16], bufferize_to_allocation C, stream K, scoped-vectorize "
+                    "-> contract -> outerproduct -> vfmacc) with the batch_matmul N tile CLAMPED to "
+                    "NR_bmm=8 (NR=min(NR,N)). Fixes the small-N (e.g. N=8) attention batch_matmul "
+                    "that otherwise hits the LLVM-23 masked-transfer_write PipelineError -> silent "
+                    "scalar fallback: with NR_bmm<=N the inner vectorize is full (no mask), so the "
+                    "attention batch_matmul vectorizes to vfmacc. Bit-exact on spike (B=4,M=32,N=8,"
+                    "K=32). Default-off, baseline byte-identical.",
+        edit_pipeline=_accumulator_resident_pipeline,
+        edit_schedule=lambda _t: _accumulator_resident_pre_schedule(4, 16, 16, NR_bmm=8),
+    ))
+    names.append("accumulator_resident_ntail")
+    return names
+
+
+ACCUM_RESIDENT_NAMES: list[str] = _register_accumulator_resident()
+
+
 # ---- compiler-emitted register-blocked RVV intrinsic micro-kernel -------------------
 # THE scalable-gap winner (output/kernels/ceiling/scalable_gap_result.md). The upstream
 # tile->vectorize->bufferize lowering re-reads/re-writes the MR x NR accumulator THROUGH
@@ -470,14 +705,26 @@ PACKED_GRID_NAMES: list[str] = _register_packed_grid()
 register(ImprFeature(
     name="intrinsic_microkernel",
     action_class="CODEGEN",
-    description="Compiler-emitted register-blocked, accumulator-resident, K-streaming RVV "
-                "intrinsic GEMM micro-kernel (riscv_vector.h, MR=4, NR=vsetvlmax). Keeps the "
-                "MR x NR accumulator in vector registers across the whole K loop (vfmacc.vf chain, "
-                "B row + A scalars streamed, C stored once) instead of the upstream "
-                "pack->outerproduct lowering's per-K-tile accumulator memref.copy. Spill-free, "
-                "bounded code, bit-exact 32/64/128, 1.7x FASTER than OpenBLAS on spike "
-                "inner-compute (pack-excluded). The honest gap-closer for the scalable GEMM path; "
-                "what a dedicated RVV micro-kernel codegen pass would lower the inner block to.",
+    # HONEST LABEL: this is a CEILING REFERENCE, not a compiler-emitted feature. It is a marker with
+    # NO MLIR schedule/pipeline edit (baseline byte-identical); the measured number comes from a
+    # HAND-WRITTEN riscv_vector.h driver (ceiling_drivers/ours_intrinsic_gemm_driver.c), NOT from our
+    # transform pipeline. It records the TARGET a dedicated RVV micro-kernel codegen pass should hit,
+    # and quantifies how far the compiler-emitted accumulator_resident_microkernel still is from it.
+    # The transform-dialect feature does NOT yet reach this (see accumulator_resident_microkernel:
+    # the emitted asm still spills the carried accumulator through the stack inside the K loop —
+    # vl4re8.v/vs4r.v of the accumulator per K-tile, so the CCA reads accumulator_resident=False, and
+    # measured ~19x off this ceiling @64^3). Keeping the hand kernel ONLY as a labeled ceiling so the
+    # gap is honest and the codegen work-item (action_catalog: compute.accumulator_resident ->
+    # CODEGEN, forkable_now=False) is visible — never linked as if the compiler emitted it.
+    description="CEILING REFERENCE (hand-written riscv_vector.h driver, NOT compiler-emitted): a "
+                "register-blocked, accumulator-resident, K-streaming RVV GEMM micro-kernel (MR=4, "
+                "NR=vsetvlmax) that keeps the MR x NR accumulator in vector registers across the "
+                "whole K loop (vfmacc.vf chain, B row + A scalars streamed, C stored once). "
+                "Spill-free, bit-exact 32/64/128, 1.7x faster than OpenBLAS on the spike proxy "
+                "(pack-excluded). It is the TARGET for a dedicated RVV micro-kernel codegen pass; "
+                "the transform-dialect accumulator_resident_microkernel does NOT yet reach it "
+                "(~19x off @64^3 — still spills the accumulator per K-tile). Marker only (no "
+                "schedule/pipeline edit); baseline byte-identical.",
     edit_pipeline=None,
     edit_schedule=None,
 ))

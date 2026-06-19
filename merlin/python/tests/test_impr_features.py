@@ -67,6 +67,41 @@ def test_intrinsic_microkernel_registered_and_baseline_safe():
     assert F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, feats) == P.RVV_TRANSFORM_SCHEDULE
 
 
+def test_accumulator_resident_features_baseline_safe():
+    # The accumulator-resident PASS features (+ the N-tail-safe variant) are default-off: enabling
+    # NONE leaves the baseline byte-identical, and each known one is a registered PASS.
+    base_pipe = P.build_rvv_pipeline("/tmp/s.mlir")
+    assert P.build_rvv_pipeline("/tmp/s.mlir", features=frozenset()) == base_pipe
+    for nm in ("accumulator_resident_microkernel", "accumulator_resident_ntail"):
+        f = F.get(nm)
+        assert f.action_class == "PASS"
+        # enabling it DOES change the schedule (forms the accumulator-resident recipe)
+        on = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset([nm]))
+        assert on != P.RVV_TRANSFORM_SCHEDULE
+        assert "bufferize_to_allocation" in on
+
+
+def test_ntail_clamps_batch_matmul_nr():
+    # The N-tail-safe feature differs from the default accumulator-resident schedule ONLY in the
+    # batch_matmul N tile: it clamps NR_bmm to 8 (<= small attention N) so the inner vectorize is
+    # full (no masked transfer_write -> no LLVM-23 PipelineError). The matmul NR stays 16.
+    default = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset(["accumulator_resident_microkernel"]))
+    ntail = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset(["accumulator_resident_ntail"]))
+    assert default != ntail
+    # the batch_matmul tile/vectorize in the n-tail schedule uses NR_bmm=8
+    assert "[1, 4, 8, 0]" in ntail and "[1, 4, 8, 1]" in ntail
+    # but the matmul path keeps NR=16 in both
+    assert "[4, 16, 0]" in ntail and "[4, 16, 1]" in ntail
+
+
+def test_intrinsic_microkernel_labeled_as_ceiling_reference():
+    # Honest labeling: intrinsic_microkernel is a CEILING REFERENCE (hand-written driver), NOT a
+    # compiler-emitted feature. Its description must say so, and it must remain a no-edit marker.
+    f = F.get("intrinsic_microkernel")
+    assert f.edit_pipeline is None and f.edit_schedule is None
+    assert "CEILING REFERENCE" in f.description and "hand-written" in f.description.lower()
+
+
 def test_baseline_package_has_no_features():
     # The immutable baseline must carry zero compiler_features -> byte-identical lowering.
     from pathlib import Path

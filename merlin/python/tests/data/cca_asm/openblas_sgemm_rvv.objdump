@@ -1,0 +1,1266 @@
+
+Disassembly of section .text:
+
+0000000080002000 <openblas_sgemm_kernel>:
+80002000: 714d         	c.addi16sp	sp, -0x150
+80002002: f652         	c.sdsp	s4, 0x128(sp)
+80002004: 8a2e         	c.mv	s4, a1
+80002006: 95fd         	c.srai	a1, 0x3f
+80002008: 899d         	c.andi	a1, 0x7
+8000200a: 95d2         	c.add	a1, s4
+8000200c: 833e         	c.mv	t1, a5
+8000200e: 4035d793     	srai	a5, a1, 0x3
+80002012: f9ee         	c.sdsp	s11, 0xf0(sp)
+80002014: e6a2         	c.sdsp	s0, 0x148(sp)
+80002016: e2a6         	c.sdsp	s1, 0x140(sp)
+80002018: fe4a         	c.sdsp	s2, 0x138(sp)
+8000201a: fa4e         	c.sdsp	s3, 0x130(sp)
+8000201c: f256         	c.sdsp	s5, 0x120(sp)
+8000201e: ee5a         	c.sdsp	s6, 0x118(sp)
+80002020: ea5e         	c.sdsp	s7, 0x110(sp)
+80002022: e662         	c.sdsp	s8, 0x108(sp)
+80002024: 4e1d         	c.li	t3, 0x7
+80002026: e03e         	c.sdsp	a5, 0x0(sp)
+80002028: 20a50753     	fsgnj.s	fa4, fa0, fa0
+8000202c: 83aa         	c.mv	t2, a0
+8000202e: 88b2         	c.mv	a7, a2
+80002030: 8db6         	c.mv	s11, a3
+80002032: 8fba         	c.mv	t6, a4
+80002034: 8f42         	c.mv	t5, a6
+80002036: 7b4e5fe3     	bge	t3, s4, 0x80002ff4 <openblas_sgemm_kernel+0xff4>
+8000203a: 00181793     	slli	a5, a6, 0x1
+8000203e: 43f55e13     	srai	t3, a0, 0x3f
+80002042: 007e7e13     	andi	t3, t3, 0x7
+80002046: fc3e         	c.sdsp	a5, 0x38(sp)
+80002048: 97c2         	c.add	a5, a6
+8000204a: 9e2a         	c.add	t3, a0
+8000204c: e0be         	c.sdsp	a5, 0x40(sp)
+8000204e: 00381513     	slli	a0, a6, 0x3
+80002052: 0786         	c.slli	a5, 0x1
+80002054: ecbe         	c.sdsp	a5, 0x58(sp)
+80002056: 41e507b3     	sub	a5, a0, t5
+8000205a: 00281613     	slli	a2, a6, 0x2
+8000205e: e8be         	c.sdsp	a5, 0x50(sp)
+80002060: 0013f793     	andi	a5, t2, 0x1
+80002064: 01060433     	add	s0, a2, a6
+80002068: 0043f713     	andi	a4, t2, 0x4
+8000206c: ec3e         	c.sdsp	a5, 0x18(sp)
+8000206e: 005f1793     	slli	a5, t5, 0x5
+80002072: e43a         	c.sdsp	a4, 0x8(sp)
+80002074: f03e         	c.sdsp	a5, 0x20(sp)
+80002076: 0023f713     	andi	a4, t2, 0x2
+8000207a: 00241793     	slli	a5, s0, 0x2
+8000207e: 00589813     	slli	a6, a7, 0x5
+80002082: e83a         	c.sdsp	a4, 0x10(sp)
+80002084: e266         	c.sdsp	s9, 0x100(sp)
+80002086: fdea         	c.sdsp	s10, 0xf8(sp)
+80002088: b5a2         	c.fsdsp	fs0, 0xe8(sp)
+8000208a: b1a6         	c.fsdsp	fs1, 0xe0(sp)
+8000208c: adca         	c.fsdsp	fs2, 0xd8(sp)
+8000208e: a9ce         	c.fsdsp	fs3, 0xd0(sp)
+80002090: a5d2         	c.fsdsp	fs4, 0xc8(sp)
+80002092: a1d6         	c.fsdsp	fs5, 0xc0(sp)
+80002094: bd5a         	c.fsdsp	fs6, 0xb8(sp)
+80002096: e4a2         	c.sdsp	s0, 0x48(sp)
+80002098: 0083a593     	slti	a1, t2, 0x8
+8000209c: f43e         	c.sdsp	a5, 0x28(sp)
+8000209e: 403e5e13     	srai	t3, t3, 0x3
+800020a2: 010f86b3     	add	a3, t6, a6
+800020a6: 020f8713     	addi	a4, t6, 0x20
+800020aa: 829a         	c.mv	t0, t1
+800020ac: 4ea1         	c.li	t4, 0x8
+800020ae: 720584e3     	beq	a1, zero, 0x80002fd6 <openblas_sgemm_kernel+0xfd6>
+800020b2: 15fd         	c.addi	a1, -0x1
+800020b4: 00bef4b3     	and	s1, t4, a1
+800020b8: 031485b3     	mul	a1, s1, a7
+800020bc: ed26         	c.sdsp	s1, 0x98(sp)
+800020be: f4a6         	c.sdsp	s1, 0x68(sp)
+800020c0: 00448413     	addi	s0, s1, 0x4
+800020c4: 00458e93     	addi	t4, a1, 0x4
+800020c8: 058a         	c.slli	a1, 0x2
+800020ca: 95ee         	c.add	a1, s11
+800020cc: 0e8a         	c.slli	t4, 0x2
+800020ce: fcae         	c.sdsp	a1, 0x78(sp)
+800020d0: 01dd85b3     	add	a1, s11, t4
+800020d4: e12e         	c.sdsp	a1, 0x80(sp)
+800020d6: 0043f593     	andi	a1, t2, 0x4
+800020da: 6e059be3     	bne	a1, zero, 0x80002fd0 <openblas_sgemm_kernel+0xfd0>
+800020de: 7426         	c.ldsp	s0, 0x68(sp)
+800020e0: 031405b3     	mul	a1, s0, a7
+800020e4: f8a2         	c.sdsp	s0, 0x70(sp)
+800020e6: 00240e93     	addi	t4, s0, 0x2
+800020ea: 058a         	c.slli	a1, 0x2
+800020ec: 95ee         	c.add	a1, s11
+800020ee: e52e         	c.sdsp	a1, 0x88(sp)
+800020f0: 0023f593     	andi	a1, t2, 0x2
+800020f4: 6e0595e3     	bne	a1, zero, 0x80002fde <openblas_sgemm_kernel+0xfde>
+800020f8: 75c6         	c.ldsp	a1, 0x70(sp)
+800020fa: 4481         	c.li	s1, 0x0
+800020fc: 4401         	c.li	s0, 0x0
+800020fe: 03158933     	mul	s2, a1, a7
+80002102: fe080593     	addi	a1, a6, -0x20
+80002106: 4e85         	c.li	t4, 0x1
+80002108: f82e         	c.sdsp	a1, 0x30(sp)
+8000210a: f152         	c.sdsp	s4, 0xa0(sp)
+8000210c: f57e         	c.sdsp	t6, 0xa8(sp)
+8000210e: cd147057     	vsetivli	zero, 0x8, e32, m2, ta, ma
+80002112: 090a         	c.slli	s2, 0x2
+80002114: 996e         	c.add	s2, s11
+80002116: e94a         	c.sdsp	s2, 0x90(sp)
+80002118: 4f9d         	c.li	t6, 0x7
+8000211a: 127fda63     	bge	t6, t2, 0x8000224e <openblas_sgemm_kernel+0x24e>
+8000211e: 7fa2         	c.ldsp	t6, 0x28(sp)
+80002120: 8cee         	c.mv	s9, s11
+80002122: 8916         	c.mv	s2, t0
+80002124: 9f96         	c.add	t6, t0
+80002126: 4d01         	c.li	s10, 0x0
+80002128: fe072107     	flw	ft2, -0x20(a4)
+8000212c: fe472087     	flw	ft1, -0x1c(a4)
+80002130: fe872007     	flw	ft0, -0x18(a4)
+80002134: fec72507     	flw	fa0, -0x14(a4)
+80002138: ff072587     	flw	fa1, -0x10(a4)
+8000213c: ff472607     	flw	fa2, -0xc(a4)
+80002140: ff872687     	flw	fa3, -0x8(a4)
+80002144: ffc72787     	flw	fa5, -0x4(a4)
+80002148: 020ced07     	vle32.v	v26, (s9)
+8000214c: 93a15757     	vfmul.vf	v14, v26, ft2
+80002150: 93a0d657     	vfmul.vf	v12, v26, ft1
+80002154: 93a05557     	vfmul.vf	v10, v26, ft0
+80002158: 93a55457     	vfmul.vf	v8, v26, fa0
+8000215c: 93a5df57     	vfmul.vf	v30, v26, fa1
+80002160: 93a65e57     	vfmul.vf	v28, v26, fa2
+80002164: 93a6d857     	vfmul.vf	v16, v26, fa3
+80002168: 93a7dd57     	vfmul.vf	v26, v26, fa5
+8000216c: 051edd63     	bge	t4, a7, 0x800021c6 <openblas_sgemm_kernel+0x1c6>
+80002170: 020c8a13     	addi	s4, s9, 0x20
+80002174: 89ba         	c.mv	s3, a4
+80002176: 0009a087     	flw	ft1, 0x0(s3)
+8000217a: 0049a007     	flw	ft0, 0x4(s3)
+8000217e: 0089a507     	flw	fa0, 0x8(s3)
+80002182: 00c9a587     	flw	fa1, 0xc(s3)
+80002186: 0109a607     	flw	fa2, 0x10(s3)
+8000218a: 0149a687     	flw	fa3, 0x14(s3)
+8000218e: 0189a407     	flw	fs0, 0x18(s3)
+80002192: 01c9a787     	flw	fa5, 0x1c(s3)
+80002196: 02098993     	addi	s3, s3, 0x20
+8000219a: 020a6c07     	vle32.v	v24, (s4)
+8000219e: 020a0a13     	addi	s4, s4, 0x20
+800021a2: b380d757     	vfmacc.vf	v14, ft1, v24
+800021a6: b3805657     	vfmacc.vf	v12, ft0, v24
+800021aa: b3855557     	vfmacc.vf	v10, fa0, v24
+800021ae: b385d457     	vfmacc.vf	v8, fa1, v24
+800021b2: b3865f57     	vfmacc.vf	v30, fa2, v24
+800021b6: b386de57     	vfmacc.vf	v28, fa3, v24
+800021ba: b3845857     	vfmacc.vf	v16, fs0, v24
+800021be: b387dd57     	vfmacc.vf	v26, fa5, v24
+800021c2: fb369ae3     	bne	a3, s3, 0x80002176 <openblas_sgemm_kernel+0x176>
+800021c6: 01260ab3     	add	s5, a2, s2
+800021ca: 01f609b3     	add	s3, a2, t6
+800021ce: 01560a33     	add	s4, a2, s5
+800021d2: 40af8c33     	sub	s8, t6, a0
+800021d6: 01450bb3     	add	s7, a0, s4
+800021da: 01360b33     	add	s6, a2, s3
+800021de: 02096307     	vle32.v	v6, (s2)
+800021e2: 020fea07     	vle32.v	v20, (t6)
+800021e6: 020ae207     	vle32.v	v4, (s5)
+800021ea: 020a6107     	vle32.v	v2, (s4)
+800021ee: 020c6007     	vle32.v	v0, (s8)
+800021f2: 020beb07     	vle32.v	v22, (s7)
+800021f6: 0209e907     	vle32.v	v18, (s3)
+800021fa: 020b6c07     	vle32.v	v24, (s6)
+800021fe: b2e75357     	vfmacc.vf	v6, fa4, v14
+80002202: b2c75257     	vfmacc.vf	v4, fa4, v12
+80002206: 02096327     	vse32.v	v6, (s2)
+8000220a: b2a75157     	vfmacc.vf	v2, fa4, v10
+8000220e: 020ae227     	vse32.v	v4, (s5)
+80002212: b2875057     	vfmacc.vf	v0, fa4, v8
+80002216: 020a6127     	vse32.v	v2, (s4)
+8000221a: b3e75b57     	vfmacc.vf	v22, fa4, v30
+8000221e: 020c6027     	vse32.v	v0, (s8)
+80002222: b3c75a57     	vfmacc.vf	v20, fa4, v28
+80002226: 020beb27     	vse32.v	v22, (s7)
+8000222a: b3075957     	vfmacc.vf	v18, fa4, v16
+8000222e: 020fea27     	vse32.v	v20, (t6)
+80002232: b3a75c57     	vfmacc.vf	v24, fa4, v26
+80002236: 0209e927     	vse32.v	v18, (s3)
+8000223a: 0d05         	c.addi	s10, 0x1
+8000223c: 020b6c27     	vse32.v	v24, (s6)
+80002240: 9cc2         	c.add	s9, a6
+80002242: 02090913     	addi	s2, s2, 0x20
+80002246: 020f8f93     	addi	t6, t6, 0x20
+8000224a: edcd4fe3     	blt	s10, t3, 0x80002128 <openblas_sgemm_kernel+0x128>
+8000224e: 6fa2         	c.ldsp	t6, 0x8(sp)
+80002250: 420f98e3     	bne	t6, zero, 0x80002e80 <openblas_sgemm_kernel+0xe80>
+80002254: 6fc2         	c.ldsp	t6, 0x10(sp)
+80002256: 1e0f94e3     	bne	t6, zero, 0x80002c3e <openblas_sgemm_kernel+0xc3e>
+8000225a: 6fe2         	c.ldsp	t6, 0x18(sp)
+8000225c: 080f9ce3     	bne	t6, zero, 0x80002af4 <openblas_sgemm_kernel+0xaf4>
+80002260: 7f82         	c.ldsp	t6, 0x20(sp)
+80002262: 0405         	c.addi	s0, 0x1
+80002264: 94aa         	c.add	s1, a0
+80002266: 92fe         	c.add	t0, t6
+80002268: 6f82         	c.ldsp	t6, 0x0(sp)
+8000226a: 96c2         	c.add	a3, a6
+8000226c: 9742         	c.add	a4, a6
+8000226e: ebf445e3     	blt	s0, t6, 0x80002118 <openblas_sgemm_kernel+0x118>
+80002272: 87fe         	c.mv	a5, t6
+80002274: 7a0a         	c.ldsp	s4, 0xa0(sp)
+80002276: 7faa         	c.ldsp	t6, 0xa8(sp)
+80002278: 6c92         	c.ldsp	s9, 0x100(sp)
+8000227a: 7d6e         	c.ldsp	s10, 0xf8(sp)
+8000227c: 342e         	c.fldsp	fs0, 0xe8(sp)
+8000227e: 348e         	c.fldsp	fs1, 0xe0(sp)
+80002280: 296e         	c.fldsp	fs2, 0xd8(sp)
+80002282: 29ce         	c.fldsp	fs3, 0xd0(sp)
+80002284: 2a2e         	c.fldsp	fs4, 0xc8(sp)
+80002286: 2a8e         	c.fldsp	fs5, 0xc0(sp)
+80002288: 3b6a         	c.fldsp	fs6, 0xb8(sp)
+8000228a: 00379593     	slli	a1, a5, 0x3
+8000228e: 004a7793     	andi	a5, s4, 0x4
+80002292: 3e078863     	beq	a5, zero, 0x80002682 <openblas_sgemm_kernel+0x682>
+80002296: 43f3d813     	srai	a6, t2, 0x3f
+8000229a: 00787813     	andi	a6, a6, 0x7
+8000229e: 981e         	c.add	a6, t2
+800022a0: 479d         	c.li	a5, 0x7
+800022a2: 40385813     	srai	a6, a6, 0x3
+800022a6: 5477d4e3     	bge	a5, t2, 0x80002fee <openblas_sgemm_kernel+0xfee>
+800022aa: 02b887b3     	mul	a5, a7, a1
+800022ae: 00289613     	slli	a2, a7, 0x2
+800022b2: 00589b93     	slli	s7, a7, 0x5
+800022b6: 8e6e         	c.mv	t3, s11
+800022b8: 002f1293     	slli	t0, t5, 0x2
+800022bc: 4e81         	c.li	t4, 0x0
+800022be: 4b05         	c.li	s6, 0x1
+800022c0: cd147057     	vsetivli	zero, 0x8, e32, m2, ta, ma
+800022c4: 02bf0533     	mul	a0, t5, a1
+800022c8: 00279413     	slli	s0, a5, 0x2
+800022cc: 00478493     	addi	s1, a5, 0x4
+800022d0: 963e         	c.add	a2, a5
+800022d2: 00440a93     	addi	s5, s0, 0x4
+800022d6: 00840993     	addi	s3, s0, 0x8
+800022da: 00c40913     	addi	s2, s0, 0xc
+800022de: 048a         	c.slli	s1, 0x2
+800022e0: 060a         	c.slli	a2, 0x2
+800022e2: 947e         	c.add	s0, t6
+800022e4: 050a         	c.slli	a0, 0x2
+800022e6: 9afe         	c.add	s5, t6
+800022e8: 99fe         	c.add	s3, t6
+800022ea: 997e         	c.add	s2, t6
+800022ec: 951a         	c.add	a0, t1
+800022ee: 94fe         	c.add	s1, t6
+800022f0: 967e         	c.add	a2, t6
+800022f2: 00042587     	flw	fa1, 0x0(s0)
+800022f6: 000aa607     	flw	fa2, 0x0(s5)
+800022fa: 0009a687     	flw	fa3, 0x0(s3)
+800022fe: 00092787     	flw	fa5, 0x0(s2)
+80002302: 020e6d07     	vle32.v	v26, (t3)
+80002306: 93a5d457     	vfmul.vf	v8, v26, fa1
+8000230a: 93a65f57     	vfmul.vf	v30, v26, fa2
+8000230e: 93a6de57     	vfmul.vf	v28, v26, fa3
+80002312: 93a7dd57     	vfmul.vf	v26, v26, fa5
+80002316: 031b5c63     	bge	s6, a7, 0x8000234e <openblas_sgemm_kernel+0x34e>
+8000231a: 020e0693     	addi	a3, t3, 0x20
+8000231e: 87a6         	c.mv	a5, s1
+80002320: 0007a587     	flw	fa1, 0x0(a5)
+80002324: 0047a607     	flw	fa2, 0x4(a5)
+80002328: 0087a687     	flw	fa3, 0x8(a5)
+8000232c: 00c7a787     	flw	fa5, 0xc(a5)
+80002330: 07c1         	c.addi	a5, 0x10
+80002332: 0206ec07     	vle32.v	v24, (a3)
+80002336: 02068693     	addi	a3, a3, 0x20
+8000233a: b385d457     	vfmacc.vf	v8, fa1, v24
+8000233e: b3865f57     	vfmacc.vf	v30, fa2, v24
+80002342: b386de57     	vfmacc.vf	v28, fa3, v24
+80002346: b387dd57     	vfmacc.vf	v26, fa5, v24
+8000234a: fcf61be3     	bne	a2, a5, 0x80002320 <openblas_sgemm_kernel+0x320>
+8000234e: 00a286b3     	add	a3, t0, a0
+80002352: 005687b3     	add	a5, a3, t0
+80002356: 00578c33     	add	s8, a5, t0
+8000235a: 02056707     	vle32.v	v14, (a0)
+8000235e: 0206e607     	vle32.v	v12, (a3)
+80002362: 0207e507     	vle32.v	v10, (a5)
+80002366: 020c6c07     	vle32.v	v24, (s8)
+8000236a: b2875757     	vfmacc.vf	v14, fa4, v8
+8000236e: b3e75657     	vfmacc.vf	v12, fa4, v30
+80002372: 02056727     	vse32.v	v14, (a0)
+80002376: b3c75557     	vfmacc.vf	v10, fa4, v28
+8000237a: 0206e627     	vse32.v	v12, (a3)
+8000237e: b3a75c57     	vfmacc.vf	v24, fa4, v26
+80002382: 0207e527     	vse32.v	v10, (a5)
+80002386: 0e85         	c.addi	t4, 0x1
+80002388: 020c6c27     	vse32.v	v24, (s8)
+8000238c: 9e5e         	c.add	t3, s7
+8000238e: 02050513     	addi	a0, a0, 0x20
+80002392: f70ec0e3     	blt	t4, a6, 0x800022f2 <openblas_sgemm_kernel+0x2f2>
+80002396: 080e         	c.slli	a6, 0x3
+80002398: 0043f793     	andi	a5, t2, 0x4
+8000239c: cff1         	c.beqz	a5, 0x80002478 <openblas_sgemm_kernel+0x478>
+8000239e: 02b88533     	mul	a0, a7, a1
+800023a2: 4e05         	c.li	t3, 0x1
+800023a4: cd127057     	vsetivli	zero, 0x4, e32, m2, ta, ma
+800023a8: 030886b3     	mul	a3, a7, a6
+800023ac: 00251713     	slli	a4, a0, 0x2
+800023b0: 977e         	c.add	a4, t6
+800023b2: 00072587     	flw	fa1, 0x0(a4)
+800023b6: 00472607     	flw	fa2, 0x4(a4)
+800023ba: 00872687     	flw	fa3, 0x8(a4)
+800023be: 00c72787     	flw	fa5, 0xc(a4)
+800023c2: 00450713     	addi	a4, a0, 0x4
+800023c6: 00269613     	slli	a2, a3, 0x2
+800023ca: 966e         	c.add	a2, s11
+800023cc: 02066c07     	vle32.v	v24, (a2)
+800023d0: 0691         	c.addi	a3, 0x4
+800023d2: 9385d457     	vfmul.vf	v8, v24, fa1
+800023d6: 93865f57     	vfmul.vf	v30, v24, fa2
+800023da: 9386de57     	vfmul.vf	v28, v24, fa3
+800023de: 9387dc57     	vfmul.vf	v24, v24, fa5
+800023e2: 051e5163     	bge	t3, a7, 0x80002424 <openblas_sgemm_kernel+0x424>
+800023e6: 00289613     	slli	a2, a7, 0x2
+800023ea: 962a         	c.add	a2, a0
+800023ec: 070a         	c.slli	a4, 0x2
+800023ee: 068a         	c.slli	a3, 0x2
+800023f0: 060a         	c.slli	a2, 0x2
+800023f2: 977e         	c.add	a4, t6
+800023f4: 96ee         	c.add	a3, s11
+800023f6: 967e         	c.add	a2, t6
+800023f8: 00072587     	flw	fa1, 0x0(a4)
+800023fc: 00472607     	flw	fa2, 0x4(a4)
+80002400: 00872687     	flw	fa3, 0x8(a4)
+80002404: 00c72787     	flw	fa5, 0xc(a4)
+80002408: 0741         	c.addi	a4, 0x10
+8000240a: 0206ed07     	vle32.v	v26, (a3)
+8000240e: 06c1         	c.addi	a3, 0x10
+80002410: b3a5d457     	vfmacc.vf	v8, fa1, v26
+80002414: b3a65f57     	vfmacc.vf	v30, fa2, v26
+80002418: b3a6de57     	vfmacc.vf	v28, fa3, v26
+8000241c: b3a7dc57     	vfmacc.vf	v24, fa5, v26
+80002420: fce61ce3     	bne	a2, a4, 0x800023f8 <openblas_sgemm_kernel+0x3f8>
+80002424: 02bf0733     	mul	a4, t5, a1
+80002428: 9742         	c.add	a4, a6
+8000242a: 00ef0633     	add	a2, t5, a4
+8000242e: 00cf06b3     	add	a3, t5, a2
+80002432: 00df0533     	add	a0, t5, a3
+80002436: 070a         	c.slli	a4, 0x2
+80002438: 060a         	c.slli	a2, 0x2
+8000243a: 068a         	c.slli	a3, 0x2
+8000243c: 050a         	c.slli	a0, 0x2
+8000243e: 971a         	c.add	a4, t1
+80002440: 961a         	c.add	a2, t1
+80002442: 969a         	c.add	a3, t1
+80002444: 951a         	c.add	a0, t1
+80002446: 0811         	c.addi	a6, 0x4
+80002448: 02076707     	vle32.v	v14, (a4)
+8000244c: 02066607     	vle32.v	v12, (a2)
+80002450: 0206e507     	vle32.v	v10, (a3)
+80002454: 02056d07     	vle32.v	v26, (a0)
+80002458: b2875757     	vfmacc.vf	v14, fa4, v8
+8000245c: b3e75657     	vfmacc.vf	v12, fa4, v30
+80002460: 02076727     	vse32.v	v14, (a4)
+80002464: b3c75557     	vfmacc.vf	v10, fa4, v28
+80002468: 02066627     	vse32.v	v12, (a2)
+8000246c: b3875d57     	vfmacc.vf	v26, fa4, v24
+80002470: 0206e527     	vse32.v	v10, (a3)
+80002474: 02056d27     	vse32.v	v26, (a0)
+80002478: 0023f793     	andi	a5, t2, 0x2
+8000247c: 14078163     	beq	a5, zero, 0x800025be <openblas_sgemm_kernel+0x5be>
+80002480: 03180733     	mul	a4, a6, a7
+80002484: 02b887b3     	mul	a5, a7, a1
+80002488: 3b1059e3     	bge	zero, a7, 0x8000303a <openblas_sgemm_kernel+0x103a>
+8000248c: f0000653     	fmv.w.x	fa2, zero
+80002490: 00289693     	slli	a3, a7, 0x2
+80002494: 96be         	c.add	a3, a5
+80002496: 20c605d3     	fsgnj.s	fa1, fa2, fa2
+8000249a: 20c60553     	fsgnj.s	fa0, fa2, fa2
+8000249e: 20c60053     	fsgnj.s	ft0, fa2, fa2
+800024a2: 20c600d3     	fsgnj.s	ft1, fa2, fa2
+800024a6: 20c60153     	fsgnj.s	ft2, fa2, fa2
+800024aa: 20c601d3     	fsgnj.s	ft3, fa2, fa2
+800024ae: 20c60253     	fsgnj.s	ft4, fa2, fa2
+800024b2: 070a         	c.slli	a4, 0x2
+800024b4: 078a         	c.slli	a5, 0x2
+800024b6: 068a         	c.slli	a3, 0x2
+800024b8: 976e         	c.add	a4, s11
+800024ba: 97fe         	c.add	a5, t6
+800024bc: 96fe         	c.add	a3, t6
+800024be: 00072687     	flw	fa3, 0x0(a4)
+800024c2: 00472787     	flw	fa5, 0x4(a4)
+800024c6: 0007a807     	flw	fa6, 0x0(a5)
+800024ca: 0047a387     	flw	ft7, 0x4(a5)
+800024ce: 0087a307     	flw	ft6, 0x8(a5)
+800024d2: 00c7a287     	flw	ft5, 0xc(a5)
+800024d6: 07c1         	c.addi	a5, 0x10
+800024d8: 2106f243     	fmadd.s	ft4, fa3, fa6, ft4, dyn
+800024dc: 18f871c3     	fmadd.s	ft3, fa6, fa5, ft3, dyn
+800024e0: 1076f143     	fmadd.s	ft2, fa3, ft7, ft2, dyn
+800024e4: 0877f0c3     	fmadd.s	ft1, fa5, ft7, ft1, dyn
+800024e8: 0066f043     	fmadd.s	ft0, fa3, ft6, ft0, dyn
+800024ec: 5067f543     	fmadd.s	fa0, fa5, ft6, fa0, dyn
+800024f0: 5856f5c3     	fmadd.s	fa1, fa3, ft5, fa1, dyn
+800024f4: 6057f643     	fmadd.s	fa2, fa5, ft5, fa2, dyn
+800024f8: 0721         	c.addi	a4, 0x8
+800024fa: fcf692e3     	bne	a3, a5, 0x800024be <openblas_sgemm_kernel+0x4be>
+800024fe: 10477253     	fmul.s	ft4, fa4, ft4, dyn
+80002502: 103771d3     	fmul.s	ft3, fa4, ft3, dyn
+80002506: 10277153     	fmul.s	ft2, fa4, ft2, dyn
+8000250a: 101770d3     	fmul.s	ft1, fa4, ft1, dyn
+8000250e: 10077053     	fmul.s	ft0, fa4, ft0, dyn
+80002512: 10a77553     	fmul.s	fa0, fa4, fa0, dyn
+80002516: 10b775d3     	fmul.s	fa1, fa4, fa1, dyn
+8000251a: 10c77653     	fmul.s	fa2, fa4, fa2, dyn
+8000251e: 02bf07b3     	mul	a5, t5, a1
+80002522: 97c2         	c.add	a5, a6
+80002524: 00279713     	slli	a4, a5, 0x2
+80002528: 00e306b3     	add	a3, t1, a4
+8000252c: 0006a787     	flw	fa5, 0x0(a3)
+80002530: 0711         	c.addi	a4, 0x4
+80002532: 00e30633     	add	a2, t1, a4
+80002536: 0047f7d3     	fadd.s	fa5, fa5, ft4, dyn
+8000253a: 97fa         	c.add	a5, t5
+8000253c: 00279713     	slli	a4, a5, 0x2
+80002540: 00e30e33     	add	t3, t1, a4
+80002544: 0711         	c.addi	a4, 0x4
+80002546: 00f6a027     	fsw	fa5, 0x0(a3)
+8000254a: 00062787     	flw	fa5, 0x0(a2)
+8000254e: 00e306b3     	add	a3, t1, a4
+80002552: 97fa         	c.add	a5, t5
+80002554: 0037f7d3     	fadd.s	fa5, fa5, ft3, dyn
+80002558: 00279713     	slli	a4, a5, 0x2
+8000255c: 00e30533     	add	a0, t1, a4
+80002560: 0711         	c.addi	a4, 0x4
+80002562: 971a         	c.add	a4, t1
+80002564: 00f62027     	fsw	fa5, 0x0(a2)
+80002568: 000e2787     	flw	fa5, 0x0(t3)
+8000256c: 97fa         	c.add	a5, t5
+8000256e: 078a         	c.slli	a5, 0x2
+80002570: 0027f7d3     	fadd.s	fa5, fa5, ft2, dyn
+80002574: 00f30633     	add	a2, t1, a5
+80002578: 0791         	c.addi	a5, 0x4
+8000257a: 979a         	c.add	a5, t1
+8000257c: 0809         	c.addi	a6, 0x2
+8000257e: 00fe2027     	fsw	fa5, 0x0(t3)
+80002582: 0006a787     	flw	fa5, 0x0(a3)
+80002586: 0017f7d3     	fadd.s	fa5, fa5, ft1, dyn
+8000258a: 00f6a027     	fsw	fa5, 0x0(a3)
+8000258e: 00052787     	flw	fa5, 0x0(a0)
+80002592: 0007f7d3     	fadd.s	fa5, fa5, ft0, dyn
+80002596: 00f52027     	fsw	fa5, 0x0(a0)
+8000259a: 00072787     	flw	fa5, 0x0(a4)
+8000259e: 00a7f7d3     	fadd.s	fa5, fa5, fa0, dyn
+800025a2: 00f72027     	fsw	fa5, 0x0(a4)
+800025a6: 00062787     	flw	fa5, 0x0(a2)
+800025aa: 00b7f7d3     	fadd.s	fa5, fa5, fa1, dyn
+800025ae: 00f62027     	fsw	fa5, 0x0(a2)
+800025b2: 0007a787     	flw	fa5, 0x0(a5)
+800025b6: 00c7f7d3     	fadd.s	fa5, fa5, fa2, dyn
+800025ba: 00f7a027     	fsw	fa5, 0x0(a5)
+800025be: 0013f793     	andi	a5, t2, 0x1
+800025c2: cfdd         	c.beqz	a5, 0x80002680 <openblas_sgemm_kernel+0x680>
+800025c4: 03180733     	mul	a4, a6, a7
+800025c8: 02b887b3     	mul	a5, a7, a1
+800025cc: 23105ce3     	bge	zero, a7, 0x80003004 <openblas_sgemm_kernel+0x1004>
+800025d0: f00006d3     	fmv.w.x	fa3, zero
+800025d4: 00289693     	slli	a3, a7, 0x2
+800025d8: 96be         	c.add	a3, a5
+800025da: 20d68653     	fsgnj.s	fa2, fa3, fa3
+800025de: 20d685d3     	fsgnj.s	fa1, fa3, fa3
+800025e2: 20d68553     	fsgnj.s	fa0, fa3, fa3
+800025e6: 070a         	c.slli	a4, 0x2
+800025e8: 078a         	c.slli	a5, 0x2
+800025ea: 068a         	c.slli	a3, 0x2
+800025ec: 976e         	c.add	a4, s11
+800025ee: 97fe         	c.add	a5, t6
+800025f0: 96fe         	c.add	a3, t6
+800025f2: 00072787     	flw	fa5, 0x0(a4)
+800025f6: 0007a187     	flw	ft3, 0x0(a5)
+800025fa: 0047a107     	flw	ft2, 0x4(a5)
+800025fe: 0087a087     	flw	ft1, 0x8(a5)
+80002602: 00c7a007     	flw	ft0, 0xc(a5)
+80002606: 07c1         	c.addi	a5, 0x10
+80002608: 5037f543     	fmadd.s	fa0, fa5, ft3, fa0, dyn
+8000260c: 5827f5c3     	fmadd.s	fa1, fa5, ft2, fa1, dyn
+80002610: 6017f643     	fmadd.s	fa2, fa5, ft1, fa2, dyn
+80002614: 6807f6c3     	fmadd.s	fa3, fa5, ft0, fa3, dyn
+80002618: 0711         	c.addi	a4, 0x4
+8000261a: fcf69ce3     	bne	a3, a5, 0x800025f2 <openblas_sgemm_kernel+0x5f2>
+8000261e: 10a77553     	fmul.s	fa0, fa4, fa0, dyn
+80002622: 10b775d3     	fmul.s	fa1, fa4, fa1, dyn
+80002626: 10c77653     	fmul.s	fa2, fa4, fa2, dyn
+8000262a: 10d776d3     	fmul.s	fa3, fa4, fa3, dyn
+8000262e: 02bf07b3     	mul	a5, t5, a1
+80002632: 97c2         	c.add	a5, a6
+80002634: 00279613     	slli	a2, a5, 0x2
+80002638: 961a         	c.add	a2, t1
+8000263a: 00062787     	flw	fa5, 0x0(a2)
+8000263e: 97fa         	c.add	a5, t5
+80002640: 00279693     	slli	a3, a5, 0x2
+80002644: 00a7f7d3     	fadd.s	fa5, fa5, fa0, dyn
+80002648: 969a         	c.add	a3, t1
+8000264a: 97fa         	c.add	a5, t5
+8000264c: 00279713     	slli	a4, a5, 0x2
+80002650: 971a         	c.add	a4, t1
+80002652: 00f62027     	fsw	fa5, 0x0(a2)
+80002656: 0006a787     	flw	fa5, 0x0(a3)
+8000265a: 97fa         	c.add	a5, t5
+8000265c: 078a         	c.slli	a5, 0x2
+8000265e: 00b7f7d3     	fadd.s	fa5, fa5, fa1, dyn
+80002662: 979a         	c.add	a5, t1
+80002664: 00f6a027     	fsw	fa5, 0x0(a3)
+80002668: 00072787     	flw	fa5, 0x0(a4)
+8000266c: 00c7f7d3     	fadd.s	fa5, fa5, fa2, dyn
+80002670: 00f72027     	fsw	fa5, 0x0(a4)
+80002674: 0007a787     	flw	fa5, 0x0(a5)
+80002678: 00d7f7d3     	fadd.s	fa5, fa5, fa3, dyn
+8000267c: 00f7a027     	fsw	fa5, 0x0(a5)
+80002680: 0591         	c.addi	a1, 0x4
+80002682: 002a7793     	andi	a5, s4, 0x2
+80002686: 28078563     	beq	a5, zero, 0x80002910 <openblas_sgemm_kernel+0x910>
+8000268a: 43f3d793     	srai	a5, t2, 0x3f
+8000268e: 8b9d         	c.andi	a5, 0x7
+80002690: 979e         	c.add	a5, t2
+80002692: 469d         	c.li	a3, 0x7
+80002694: 4037de93     	srai	t4, a5, 0x3
+80002698: 1476d6e3     	bge	a3, t2, 0x80002fe4 <openblas_sgemm_kernel+0xfe4>
+8000269c: 031587b3     	mul	a5, a1, a7
+800026a0: 00189613     	slli	a2, a7, 0x1
+800026a4: 00589913     	slli	s2, a7, 0x5
+800026a8: 886e         	c.mv	a6, s11
+800026aa: 002f1493     	slli	s1, t5, 0x2
+800026ae: 4e01         	c.li	t3, 0x0
+800026b0: 4405         	c.li	s0, 0x1
+800026b2: cd147057     	vsetivli	zero, 0x8, e32, m2, ta, ma
+800026b6: 03e58533     	mul	a0, a1, t5
+800026ba: 00279993     	slli	s3, a5, 0x2
+800026be: 00278293     	addi	t0, a5, 0x2
+800026c2: 963e         	c.add	a2, a5
+800026c4: 00498a93     	addi	s5, s3, 0x4
+800026c8: 028a         	c.slli	t0, 0x2
+800026ca: 060a         	c.slli	a2, 0x2
+800026cc: 99fe         	c.add	s3, t6
+800026ce: 9afe         	c.add	s5, t6
+800026d0: 92fe         	c.add	t0, t6
+800026d2: 050a         	c.slli	a0, 0x2
+800026d4: 951a         	c.add	a0, t1
+800026d6: 967e         	c.add	a2, t6
+800026d8: 0009a687     	flw	fa3, 0x0(s3)
+800026dc: 000aa787     	flw	fa5, 0x0(s5)
+800026e0: 02086c07     	vle32.v	v24, (a6)
+800026e4: 9386dd57     	vfmul.vf	v26, v24, fa3
+800026e8: 9387dc57     	vfmul.vf	v24, v24, fa5
+800026ec: 03145463     	bge	s0, a7, 0x80002714 <openblas_sgemm_kernel+0x714>
+800026f0: 02080693     	addi	a3, a6, 0x20
+800026f4: 8796         	c.mv	a5, t0
+800026f6: 0007a687     	flw	fa3, 0x0(a5)
+800026fa: 0047a787     	flw	fa5, 0x4(a5)
+800026fe: 07a1         	c.addi	a5, 0x8
+80002700: 0206ee07     	vle32.v	v28, (a3)
+80002704: 02068693     	addi	a3, a3, 0x20
+80002708: b3c6dd57     	vfmacc.vf	v26, fa3, v28
+8000270c: b3c7dc57     	vfmacc.vf	v24, fa5, v28
+80002710: fef613e3     	bne	a2, a5, 0x800026f6 <openblas_sgemm_kernel+0x6f6>
+80002714: 00a487b3     	add	a5, s1, a0
+80002718: 02056f07     	vle32.v	v30, (a0)
+8000271c: 0207ee07     	vle32.v	v28, (a5)
+80002720: b3a75f57     	vfmacc.vf	v30, fa4, v26
+80002724: b3875e57     	vfmacc.vf	v28, fa4, v24
+80002728: 02056f27     	vse32.v	v30, (a0)
+8000272c: 0e05         	c.addi	t3, 0x1
+8000272e: 0207ee27     	vse32.v	v28, (a5)
+80002732: 984a         	c.add	a6, s2
+80002734: 02050513     	addi	a0, a0, 0x20
+80002738: fbde40e3     	blt	t3, t4, 0x800026d8 <openblas_sgemm_kernel+0x6d8>
+8000273c: 003e9793     	slli	a5, t4, 0x3
+80002740: 0043f713     	andi	a4, t2, 0x4
+80002744: cb51         	c.beqz	a4, 0x800027d8 <openblas_sgemm_kernel+0x7d8>
+80002746: 03158833     	mul	a6, a1, a7
+8000274a: 4e05         	c.li	t3, 0x1
+8000274c: cd127057     	vsetivli	zero, 0x4, e32, m2, ta, ma
+80002750: 02f88633     	mul	a2, a7, a5
+80002754: 00281713     	slli	a4, a6, 0x2
+80002758: 977e         	c.add	a4, t6
+8000275a: 00072687     	flw	fa3, 0x0(a4)
+8000275e: 00472787     	flw	fa5, 0x4(a4)
+80002762: 00280713     	addi	a4, a6, 0x2
+80002766: 00261513     	slli	a0, a2, 0x2
+8000276a: 956e         	c.add	a0, s11
+8000276c: 02056c07     	vle32.v	v24, (a0)
+80002770: 0611         	c.addi	a2, 0x4
+80002772: 9386dd57     	vfmul.vf	v26, v24, fa3
+80002776: 9387dc57     	vfmul.vf	v24, v24, fa5
+8000277a: 031e5963     	bge	t3, a7, 0x800027ac <openblas_sgemm_kernel+0x7ac>
+8000277e: 00189513     	slli	a0, a7, 0x1
+80002782: 9542         	c.add	a0, a6
+80002784: 070a         	c.slli	a4, 0x2
+80002786: 060a         	c.slli	a2, 0x2
+80002788: 050a         	c.slli	a0, 0x2
+8000278a: 977e         	c.add	a4, t6
+8000278c: 966e         	c.add	a2, s11
+8000278e: 957e         	c.add	a0, t6
+80002790: 00072687     	flw	fa3, 0x0(a4)
+80002794: 00472787     	flw	fa5, 0x4(a4)
+80002798: 0721         	c.addi	a4, 0x8
+8000279a: 02066e07     	vle32.v	v28, (a2)
+8000279e: 0641         	c.addi	a2, 0x10
+800027a0: b3c6dd57     	vfmacc.vf	v26, fa3, v28
+800027a4: b3c7dc57     	vfmacc.vf	v24, fa5, v28
+800027a8: fee514e3     	bne	a0, a4, 0x80002790 <openblas_sgemm_kernel+0x790>
+800027ac: 03e58733     	mul	a4, a1, t5
+800027b0: 973e         	c.add	a4, a5
+800027b2: 00ef0633     	add	a2, t5, a4
+800027b6: 060a         	c.slli	a2, 0x2
+800027b8: 070a         	c.slli	a4, 0x2
+800027ba: 971a         	c.add	a4, t1
+800027bc: 961a         	c.add	a2, t1
+800027be: 0791         	c.addi	a5, 0x4
+800027c0: 02076f07     	vle32.v	v30, (a4)
+800027c4: 02066e07     	vle32.v	v28, (a2)
+800027c8: b3a75f57     	vfmacc.vf	v30, fa4, v26
+800027cc: b3875e57     	vfmacc.vf	v28, fa4, v24
+800027d0: 02076f27     	vse32.v	v30, (a4)
+800027d4: 02066e27     	vse32.v	v28, (a2)
+800027d8: 0023f713     	andi	a4, t2, 0x2
+800027dc: cf45         	c.beqz	a4, 0x80002894 <openblas_sgemm_kernel+0x894>
+800027de: 031786b3     	mul	a3, a5, a7
+800027e2: 03158733     	mul	a4, a1, a7
+800027e6: 051051e3     	bge	zero, a7, 0x80003028 <openblas_sgemm_kernel+0x1028>
+800027ea: f00007d3     	fmv.w.x	fa5, zero
+800027ee: 00189613     	slli	a2, a7, 0x1
+800027f2: 963a         	c.add	a2, a4
+800027f4: 20f786d3     	fsgnj.s	fa3, fa5, fa5
+800027f8: 20f78653     	fsgnj.s	fa2, fa5, fa5
+800027fc: 20f785d3     	fsgnj.s	fa1, fa5, fa5
+80002800: 068a         	c.slli	a3, 0x2
+80002802: 070a         	c.slli	a4, 0x2
+80002804: 060a         	c.slli	a2, 0x2
+80002806: 96ee         	c.add	a3, s11
+80002808: 977e         	c.add	a4, t6
+8000280a: 967e         	c.add	a2, t6
+8000280c: 0006a087     	flw	ft1, 0x0(a3)
+80002810: 00072107     	flw	ft2, 0x0(a4)
+80002814: 0046a007     	flw	ft0, 0x4(a3)
+80002818: 00472507     	flw	fa0, 0x4(a4)
+8000281c: 0721         	c.addi	a4, 0x8
+8000281e: 5820f5c3     	fmadd.s	fa1, ft1, ft2, fa1, dyn
+80002822: 60017643     	fmadd.s	fa2, ft2, ft0, fa2, dyn
+80002826: 68a0f6c3     	fmadd.s	fa3, ft1, fa0, fa3, dyn
+8000282a: 78a077c3     	fmadd.s	fa5, ft0, fa0, fa5, dyn
+8000282e: 06a1         	c.addi	a3, 0x8
+80002830: fce61ee3     	bne	a2, a4, 0x8000280c <openblas_sgemm_kernel+0x80c>
+80002834: 10b775d3     	fmul.s	fa1, fa4, fa1, dyn
+80002838: 10c77653     	fmul.s	fa2, fa4, fa2, dyn
+8000283c: 10d776d3     	fmul.s	fa3, fa4, fa3, dyn
+80002840: 10f777d3     	fmul.s	fa5, fa4, fa5, dyn
+80002844: 03e58733     	mul	a4, a1, t5
+80002848: 973e         	c.add	a4, a5
+8000284a: 00271693     	slli	a3, a4, 0x2
+8000284e: 00d30533     	add	a0, t1, a3
+80002852: 00052507     	flw	fa0, 0x0(a0)
+80002856: 0691         	c.addi	a3, 0x4
+80002858: 969a         	c.add	a3, t1
+8000285a: 00b575d3     	fadd.s	fa1, fa0, fa1, dyn
+8000285e: 977a         	c.add	a4, t5
+80002860: 070a         	c.slli	a4, 0x2
+80002862: 00e30633     	add	a2, t1, a4
+80002866: 0711         	c.addi	a4, 0x4
+80002868: 00b52027     	fsw	fa1, 0x0(a0)
+8000286c: 0006a587     	flw	fa1, 0x0(a3)
+80002870: 971a         	c.add	a4, t1
+80002872: 0789         	c.addi	a5, 0x2
+80002874: 00c5f653     	fadd.s	fa2, fa1, fa2, dyn
+80002878: 00c6a027     	fsw	fa2, 0x0(a3)
+8000287c: 00062607     	flw	fa2, 0x0(a2)
+80002880: 00d676d3     	fadd.s	fa3, fa2, fa3, dyn
+80002884: 00d62027     	fsw	fa3, 0x0(a2)
+80002888: 00072687     	flw	fa3, 0x0(a4)
+8000288c: 00f6f7d3     	fadd.s	fa5, fa3, fa5, dyn
+80002890: 00f72027     	fsw	fa5, 0x0(a4)
+80002894: 0013f713     	andi	a4, t2, 0x1
+80002898: cb3d         	c.beqz	a4, 0x8000290e <openblas_sgemm_kernel+0x90e>
+8000289a: 031786b3     	mul	a3, a5, a7
+8000289e: 03158733     	mul	a4, a1, a7
+800028a2: 75105c63     	bge	zero, a7, 0x80002ffa <openblas_sgemm_kernel+0xffa>
+800028a6: f00007d3     	fmv.w.x	fa5, zero
+800028aa: 00189613     	slli	a2, a7, 0x1
+800028ae: 963a         	c.add	a2, a4
+800028b0: 20f786d3     	fsgnj.s	fa3, fa5, fa5
+800028b4: 068a         	c.slli	a3, 0x2
+800028b6: 070a         	c.slli	a4, 0x2
+800028b8: 060a         	c.slli	a2, 0x2
+800028ba: 96ee         	c.add	a3, s11
+800028bc: 977e         	c.add	a4, t6
+800028be: 967e         	c.add	a2, t6
+800028c0: 0006a607     	flw	fa2, 0x0(a3)
+800028c4: 00072507     	flw	fa0, 0x0(a4)
+800028c8: 00472587     	flw	fa1, 0x4(a4)
+800028cc: 0721         	c.addi	a4, 0x8
+800028ce: 68a676c3     	fmadd.s	fa3, fa2, fa0, fa3, dyn
+800028d2: 78b677c3     	fmadd.s	fa5, fa2, fa1, fa5, dyn
+800028d6: 0691         	c.addi	a3, 0x4
+800028d8: fee614e3     	bne	a2, a4, 0x800028c0 <openblas_sgemm_kernel+0x8c0>
+800028dc: 10d776d3     	fmul.s	fa3, fa4, fa3, dyn
+800028e0: 10f777d3     	fmul.s	fa5, fa4, fa5, dyn
+800028e4: 03e58733     	mul	a4, a1, t5
+800028e8: 97ba         	c.add	a5, a4
+800028ea: 00279713     	slli	a4, a5, 0x2
+800028ee: 971a         	c.add	a4, t1
+800028f0: 00072607     	flw	fa2, 0x0(a4)
+800028f4: 97fa         	c.add	a5, t5
+800028f6: 078a         	c.slli	a5, 0x2
+800028f8: 00d676d3     	fadd.s	fa3, fa2, fa3, dyn
+800028fc: 979a         	c.add	a5, t1
+800028fe: 00d72027     	fsw	fa3, 0x0(a4)
+80002902: 0007a687     	flw	fa3, 0x0(a5)
+80002906: 00f6f7d3     	fadd.s	fa5, fa3, fa5, dyn
+8000290a: 00f7a027     	fsw	fa5, 0x0(a5)
+8000290e: 0589         	c.addi	a1, 0x2
+80002910: 001a7a13     	andi	s4, s4, 0x1
+80002914: 1c0a0363     	beq	s4, zero, 0x80002ada <openblas_sgemm_kernel+0xada>
+80002918: 43f3d793     	srai	a5, t2, 0x3f
+8000291c: 8b9d         	c.andi	a5, 0x7
+8000291e: 979e         	c.add	a5, t2
+80002920: 471d         	c.li	a4, 0x7
+80002922: 4037d293     	srai	t0, a5, 0x3
+80002926: 6c775263     	bge	a4, t2, 0x80002fea <openblas_sgemm_kernel+0xfea>
+8000292a: 031587b3     	mul	a5, a1, a7
+8000292e: ffcf8713     	addi	a4, t6, -0x4
+80002932: 00589493     	slli	s1, a7, 0x5
+80002936: 8e6e         	c.mv	t3, s11
+80002938: 4e81         	c.li	t4, 0x0
+8000293a: 4405         	c.li	s0, 0x1
+8000293c: cd147057     	vsetivli	zero, 0x8, e32, m2, ta, ma
+80002940: 03e58533     	mul	a0, a1, t5
+80002944: 01178633     	add	a2, a5, a7
+80002948: 060a         	c.slli	a2, 0x2
+8000294a: 078a         	c.slli	a5, 0x2
+8000294c: 00ff8833     	add	a6, t6, a5
+80002950: 963a         	c.add	a2, a4
+80002952: 050a         	c.slli	a0, 0x2
+80002954: 951a         	c.add	a0, t1
+80002956: 00082787     	flw	fa5, 0x0(a6)
+8000295a: 020e6c07     	vle32.v	v24, (t3)
+8000295e: 9387dc57     	vfmul.vf	v24, v24, fa5
+80002962: 03145063     	bge	s0, a7, 0x80002982 <openblas_sgemm_kernel+0x982>
+80002966: 020e0713     	addi	a4, t3, 0x20
+8000296a: 87c2         	c.mv	a5, a6
+8000296c: 0047a787     	flw	fa5, 0x4(a5)
+80002970: 0791         	c.addi	a5, 0x4
+80002972: 02076d07     	vle32.v	v26, (a4)
+80002976: 02070713     	addi	a4, a4, 0x20
+8000297a: b3a7dc57     	vfmacc.vf	v24, fa5, v26
+8000297e: fef617e3     	bne	a2, a5, 0x8000296c <openblas_sgemm_kernel+0x96c>
+80002982: 02056d07     	vle32.v	v26, (a0)
+80002986: 0e85         	c.addi	t4, 0x1
+80002988: b3875d57     	vfmacc.vf	v26, fa4, v24
+8000298c: 02056d27     	vse32.v	v26, (a0)
+80002990: 9e26         	c.add	t3, s1
+80002992: 02050513     	addi	a0, a0, 0x20
+80002996: fc5ec0e3     	blt	t4, t0, 0x80002956 <openblas_sgemm_kernel+0x956>
+8000299a: 00329713     	slli	a4, t0, 0x3
+8000299e: 0043f793     	andi	a5, t2, 0x4
+800029a2: c7a5         	c.beqz	a5, 0x80002a0a <openblas_sgemm_kernel+0xa0a>
+800029a4: 031587b3     	mul	a5, a1, a7
+800029a8: 4605         	c.li	a2, 0x1
+800029aa: cd127057     	vsetivli	zero, 0x4, e32, m2, ta, ma
+800029ae: 02e88833     	mul	a6, a7, a4
+800029b2: 078a         	c.slli	a5, 0x2
+800029b4: 97fe         	c.add	a5, t6
+800029b6: 0007a787     	flw	fa5, 0x0(a5)
+800029ba: 00281693     	slli	a3, a6, 0x2
+800029be: 96ee         	c.add	a3, s11
+800029c0: 0206ec07     	vle32.v	v24, (a3)
+800029c4: 00480693     	addi	a3, a6, 0x4
+800029c8: 9387dc57     	vfmul.vf	v24, v24, fa5
+800029cc: 03165363     	bge	a2, a7, 0x800029f2 <openblas_sgemm_kernel+0x9f2>
+800029d0: 00289613     	slli	a2, a7, 0x2
+800029d4: 9642         	c.add	a2, a6
+800029d6: 068a         	c.slli	a3, 0x2
+800029d8: 060a         	c.slli	a2, 0x2
+800029da: 96ee         	c.add	a3, s11
+800029dc: 966e         	c.add	a2, s11
+800029de: 0047a787     	flw	fa5, 0x4(a5)
+800029e2: 0206ed07     	vle32.v	v26, (a3)
+800029e6: 06c1         	c.addi	a3, 0x10
+800029e8: 0791         	c.addi	a5, 0x4
+800029ea: b3a7dc57     	vfmacc.vf	v24, fa5, v26
+800029ee: fed618e3     	bne	a2, a3, 0x800029de <openblas_sgemm_kernel+0x9de>
+800029f2: 03e587b3     	mul	a5, a1, t5
+800029f6: 97ba         	c.add	a5, a4
+800029f8: 078a         	c.slli	a5, 0x2
+800029fa: 979a         	c.add	a5, t1
+800029fc: 0711         	c.addi	a4, 0x4
+800029fe: 0207ed07     	vle32.v	v26, (a5)
+80002a02: b3875d57     	vfmacc.vf	v26, fa4, v24
+80002a06: 0207ed27     	vse32.v	v26, (a5)
+80002a0a: 0023f793     	andi	a5, t2, 0x2
+80002a0e: cbbd         	c.beqz	a5, 0x80002a84 <openblas_sgemm_kernel+0xa84>
+80002a10: 031707b3     	mul	a5, a4, a7
+80002a14: 031586b3     	mul	a3, a1, a7
+80002a18: 61105063     	bge	zero, a7, 0x80003018 <openblas_sgemm_kernel+0x1018>
+80002a1c: f00007d3     	fmv.w.x	fa5, zero
+80002a20: 00189613     	slli	a2, a7, 0x1
+80002a24: 963e         	c.add	a2, a5
+80002a26: 20f786d3     	fsgnj.s	fa3, fa5, fa5
+80002a2a: 078a         	c.slli	a5, 0x2
+80002a2c: 068a         	c.slli	a3, 0x2
+80002a2e: 060a         	c.slli	a2, 0x2
+80002a30: 97ee         	c.add	a5, s11
+80002a32: 96fe         	c.add	a3, t6
+80002a34: 966e         	c.add	a2, s11
+80002a36: 0006a607     	flw	fa2, 0x0(a3)
+80002a3a: 0007a507     	flw	fa0, 0x0(a5)
+80002a3e: 0047a587     	flw	fa1, 0x4(a5)
+80002a42: 07a1         	c.addi	a5, 0x8
+80002a44: 68c576c3     	fmadd.s	fa3, fa0, fa2, fa3, dyn
+80002a48: 78b677c3     	fmadd.s	fa5, fa2, fa1, fa5, dyn
+80002a4c: 0691         	c.addi	a3, 0x4
+80002a4e: fef614e3     	bne	a2, a5, 0x80002a36 <openblas_sgemm_kernel+0xa36>
+80002a52: 10d776d3     	fmul.s	fa3, fa4, fa3, dyn
+80002a56: 10f777d3     	fmul.s	fa5, fa4, fa5, dyn
+80002a5a: 03e587b3     	mul	a5, a1, t5
+80002a5e: 97ba         	c.add	a5, a4
+80002a60: 078a         	c.slli	a5, 0x2
+80002a62: 00f306b3     	add	a3, t1, a5
+80002a66: 0006a607     	flw	fa2, 0x0(a3)
+80002a6a: 0791         	c.addi	a5, 0x4
+80002a6c: 979a         	c.add	a5, t1
+80002a6e: 00d676d3     	fadd.s	fa3, fa2, fa3, dyn
+80002a72: 0709         	c.addi	a4, 0x2
+80002a74: 00d6a027     	fsw	fa3, 0x0(a3)
+80002a78: 0007a687     	flw	fa3, 0x0(a5)
+80002a7c: 00f6f7d3     	fadd.s	fa5, fa3, fa5, dyn
+80002a80: 00f7a027     	fsw	fa5, 0x0(a5)
+80002a84: 0013f393     	andi	t2, t2, 0x1
+80002a88: 04038963     	beq	t2, zero, 0x80002ada <openblas_sgemm_kernel+0xada>
+80002a8c: 031706b3     	mul	a3, a4, a7
+80002a90: 03158633     	mul	a2, a1, a7
+80002a94: 59105763     	bge	zero, a7, 0x80003022 <openblas_sgemm_kernel+0x1022>
+80002a98: 00d887b3     	add	a5, a7, a3
+80002a9c: f00007d3     	fmv.w.x	fa5, zero
+80002aa0: 068a         	c.slli	a3, 0x2
+80002aa2: 060a         	c.slli	a2, 0x2
+80002aa4: 078a         	c.slli	a5, 0x2
+80002aa6: 96ee         	c.add	a3, s11
+80002aa8: 9fb2         	c.add	t6, a2
+80002aaa: 97ee         	c.add	a5, s11
+80002aac: 0006a607     	flw	fa2, 0x0(a3)
+80002ab0: 000fa687     	flw	fa3, 0x0(t6)
+80002ab4: 0691         	c.addi	a3, 0x4
+80002ab6: 0f91         	c.addi	t6, 0x4
+80002ab8: 78d677c3     	fmadd.s	fa5, fa2, fa3, fa5, dyn
+80002abc: fef698e3     	bne	a3, a5, 0x80002aac <openblas_sgemm_kernel+0xaac>
+80002ac0: 10f77753     	fmul.s	fa4, fa4, fa5, dyn
+80002ac4: 03e587b3     	mul	a5, a1, t5
+80002ac8: 97ba         	c.add	a5, a4
+80002aca: 078a         	c.slli	a5, 0x2
+80002acc: 933e         	c.add	t1, a5
+80002ace: 00032787     	flw	fa5, 0x0(t1)
+80002ad2: 00e7f7d3     	fadd.s	fa5, fa5, fa4, dyn
+80002ad6: 00f32027     	fsw	fa5, 0x0(t1)
+80002ada: 6436         	c.ldsp	s0, 0x148(sp)
+80002adc: 6496         	c.ldsp	s1, 0x140(sp)
+80002ade: 7972         	c.ldsp	s2, 0x138(sp)
+80002ae0: 79d2         	c.ldsp	s3, 0x130(sp)
+80002ae2: 7a32         	c.ldsp	s4, 0x128(sp)
+80002ae4: 7a92         	c.ldsp	s5, 0x120(sp)
+80002ae6: 6b72         	c.ldsp	s6, 0x118(sp)
+80002ae8: 6bd2         	c.ldsp	s7, 0x110(sp)
+80002aea: 6c32         	c.ldsp	s8, 0x108(sp)
+80002aec: 7dce         	c.ldsp	s11, 0xf0(sp)
+80002aee: 4501         	c.li	a0, 0x0
+80002af0: 6171         	c.addi16sp	sp, 0x150
+80002af2: 8082         	c.jr	ra
+80002af4: f00006d3     	fmv.w.x	fa3, zero
+80002af8: 20d68653     	fsgnj.s	fa2, fa3, fa3
+80002afc: 20d685d3     	fsgnj.s	fa1, fa3, fa3
+80002b00: 20d68553     	fsgnj.s	fa0, fa3, fa3
+80002b04: 20d68053     	fsgnj.s	ft0, fa3, fa3
+80002b08: 20d680d3     	fsgnj.s	ft1, fa3, fa3
+80002b0c: 20d68153     	fsgnj.s	ft2, fa3, fa3
+80002b10: 20d681d3     	fsgnj.s	ft3, fa3, fa3
+80002b14: 07105f63     	bge	zero, a7, 0x80002b92 <openblas_sgemm_kernel+0xb92>
+80002b18: 7942         	c.ldsp	s2, 0x30(sp)
+80002b1a: fe070f93     	addi	t6, a4, -0x20
+80002b1e: 00e909b3     	add	s3, s2, a4
+80002b22: 694a         	c.ldsp	s2, 0x90(sp)
+80002b24: 00092787     	flw	fa5, 0x0(s2)
+80002b28: 000fae87     	flw	ft9, 0x0(t6)
+80002b2c: 004fae07     	flw	ft8, 0x4(t6)
+80002b30: 008fa887     	flw	fa7, 0x8(t6)
+80002b34: 00cfa807     	flw	fa6, 0xc(t6)
+80002b38: 010fa387     	flw	ft7, 0x10(t6)
+80002b3c: 014fa307     	flw	ft6, 0x14(t6)
+80002b40: 018fa287     	flw	ft5, 0x18(t6)
+80002b44: 01cfa207     	flw	ft4, 0x1c(t6)
+80002b48: 020f8f93     	addi	t6, t6, 0x20
+80002b4c: 19d7f1c3     	fmadd.s	ft3, fa5, ft9, ft3, dyn
+80002b50: 11c7f143     	fmadd.s	ft2, fa5, ft8, ft2, dyn
+80002b54: 0917f0c3     	fmadd.s	ft1, fa5, fa7, ft1, dyn
+80002b58: 0107f043     	fmadd.s	ft0, fa5, fa6, ft0, dyn
+80002b5c: 5077f543     	fmadd.s	fa0, fa5, ft7, fa0, dyn
+80002b60: 5867f5c3     	fmadd.s	fa1, fa5, ft6, fa1, dyn
+80002b64: 6057f643     	fmadd.s	fa2, fa5, ft5, fa2, dyn
+80002b68: 6847f6c3     	fmadd.s	fa3, fa5, ft4, fa3, dyn
+80002b6c: 0911         	c.addi	s2, 0x4
+80002b6e: fbf99be3     	bne	s3, t6, 0x80002b24 <openblas_sgemm_kernel+0xb24>
+80002b72: 103771d3     	fmul.s	ft3, fa4, ft3, dyn
+80002b76: 10277153     	fmul.s	ft2, fa4, ft2, dyn
+80002b7a: 101770d3     	fmul.s	ft1, fa4, ft1, dyn
+80002b7e: 10077053     	fmul.s	ft0, fa4, ft0, dyn
+80002b82: 10a77553     	fmul.s	fa0, fa4, fa0, dyn
+80002b86: 10b775d3     	fmul.s	fa1, fa4, fa1, dyn
+80002b8a: 10c77653     	fmul.s	fa2, fa4, fa2, dyn
+80002b8e: 10d776d3     	fmul.s	fa3, fa4, fa3, dyn
+80002b92: 7fc6         	c.ldsp	t6, 0x70(sp)
+80002b94: 7a62         	c.ldsp	s4, 0x38(sp)
+80002b96: 9fa6         	c.add	t6, s1
+80002b98: 002f9993     	slli	s3, t6, 0x2
+80002b9c: 999a         	c.add	s3, t1
+80002b9e: 0009a787     	flw	fa5, 0x0(s3)
+80002ba2: 01ff0933     	add	s2, t5, t6
+80002ba6: 090a         	c.slli	s2, 0x2
+80002ba8: 0037f7d3     	fadd.s	fa5, fa5, ft3, dyn
+80002bac: 991a         	c.add	s2, t1
+80002bae: 01fa0b33     	add	s6, s4, t6
+80002bb2: 0b0a         	c.slli	s6, 0x2
+80002bb4: 9b1a         	c.add	s6, t1
+80002bb6: 00f9a027     	fsw	fa5, 0x0(s3)
+80002bba: 00092787     	flw	fa5, 0x0(s2)
+80002bbe: 6986         	c.ldsp	s3, 0x40(sp)
+80002bc0: 01f60a33     	add	s4, a2, t6
+80002bc4: 0027f7d3     	fadd.s	fa5, fa5, ft2, dyn
+80002bc8: 01f98ab3     	add	s5, s3, t6
+80002bcc: 0a8a         	c.slli	s5, 0x2
+80002bce: 9a9a         	c.add	s5, t1
+80002bd0: 0a0a         	c.slli	s4, 0x2
+80002bd2: 00f92027     	fsw	fa5, 0x0(s2)
+80002bd6: 000b2787     	flw	fa5, 0x0(s6)
+80002bda: 9a1a         	c.add	s4, t1
+80002bdc: 6926         	c.ldsp	s2, 0x48(sp)
+80002bde: 0017f7d3     	fadd.s	fa5, fa5, ft1, dyn
+80002be2: 01f909b3     	add	s3, s2, t6
+80002be6: 098a         	c.slli	s3, 0x2
+80002be8: 999a         	c.add	s3, t1
+80002bea: 00fb2027     	fsw	fa5, 0x0(s6)
+80002bee: 000aa787     	flw	fa5, 0x0(s5)
+80002bf2: 6966         	c.ldsp	s2, 0x58(sp)
+80002bf4: 6b46         	c.ldsp	s6, 0x50(sp)
+80002bf6: 0007f7d3     	fadd.s	fa5, fa5, ft0, dyn
+80002bfa: 997e         	c.add	s2, t6
+80002bfc: 090a         	c.slli	s2, 0x2
+80002bfe: 991a         	c.add	s2, t1
+80002c00: 9fda         	c.add	t6, s6
+80002c02: 00faa027     	fsw	fa5, 0x0(s5)
+80002c06: 000a2787     	flw	fa5, 0x0(s4)
+80002c0a: 0f8a         	c.slli	t6, 0x2
+80002c0c: 9f9a         	c.add	t6, t1
+80002c0e: 00a7f7d3     	fadd.s	fa5, fa5, fa0, dyn
+80002c12: 00fa2027     	fsw	fa5, 0x0(s4)
+80002c16: 0009a787     	flw	fa5, 0x0(s3)
+80002c1a: 00b7f7d3     	fadd.s	fa5, fa5, fa1, dyn
+80002c1e: 00f9a027     	fsw	fa5, 0x0(s3)
+80002c22: 00092787     	flw	fa5, 0x0(s2)
+80002c26: 00c7f7d3     	fadd.s	fa5, fa5, fa2, dyn
+80002c2a: 00f92027     	fsw	fa5, 0x0(s2)
+80002c2e: 000fa787     	flw	fa5, 0x0(t6)
+80002c32: 00d7f7d3     	fadd.s	fa5, fa5, fa3, dyn
+80002c36: 00ffa027     	fsw	fa5, 0x0(t6)
+80002c3a: e26ff06f     	jal	zero, 0x80002260 <openblas_sgemm_kernel+0x260>
+80002c3e: f00002d3     	fmv.w.x	ft5, zero
+80002c42: 20528353     	fsgnj.s	ft6, ft5, ft5
+80002c46: 205283d3     	fsgnj.s	ft7, ft5, ft5
+80002c4a: 20528853     	fsgnj.s	fa6, ft5, ft5
+80002c4e: 205288d3     	fsgnj.s	fa7, ft5, ft5
+80002c52: 20528e53     	fsgnj.s	ft8, ft5, ft5
+80002c56: 20528ed3     	fsgnj.s	ft9, ft5, ft5
+80002c5a: 20528f53     	fsgnj.s	ft10, ft5, ft5
+80002c5e: 20528fd3     	fsgnj.s	ft11, ft5, ft5
+80002c62: 20528453     	fsgnj.s	fs0, ft5, ft5
+80002c66: 205284d3     	fsgnj.s	fs1, ft5, ft5
+80002c6a: 20528953     	fsgnj.s	fs2, ft5, ft5
+80002c6e: 205289d3     	fsgnj.s	fs3, ft5, ft5
+80002c72: 20528a53     	fsgnj.s	fs4, ft5, ft5
+80002c76: 20528ad3     	fsgnj.s	fs5, ft5, ft5
+80002c7a: 20528b53     	fsgnj.s	fs6, ft5, ft5
+80002c7e: 0d105163     	bge	zero, a7, 0x80002d40 <openblas_sgemm_kernel+0xd40>
+80002c82: 7942         	c.ldsp	s2, 0x30(sp)
+80002c84: fe070f93     	addi	t6, a4, -0x20
+80002c88: 00e909b3     	add	s3, s2, a4
+80002c8c: 692a         	c.ldsp	s2, 0x88(sp)
+80002c8e: 00092687     	flw	fa3, 0x0(s2)
+80002c92: 00492787     	flw	fa5, 0x4(s2)
+80002c96: 000fa207     	flw	ft4, 0x0(t6)
+80002c9a: 004fa187     	flw	ft3, 0x4(t6)
+80002c9e: 008fa107     	flw	ft2, 0x8(t6)
+80002ca2: 00cfa087     	flw	ft1, 0xc(t6)
+80002ca6: 010fa007     	flw	ft0, 0x10(t6)
+80002caa: 014fa507     	flw	fa0, 0x14(t6)
+80002cae: 018fa587     	flw	fa1, 0x18(t6)
+80002cb2: 01cfa607     	flw	fa2, 0x1c(t6)
+80002cb6: 020f8f93     	addi	t6, t6, 0x20
+80002cba: b046fb43     	fmadd.s	fs6, fa3, ft4, fs6, dyn
+80002cbe: a8f27ac3     	fmadd.s	fs5, ft4, fa5, fs5, dyn
+80002cc2: a036fa43     	fmadd.s	fs4, fa3, ft3, fs4, dyn
+80002cc6: 9837f9c3     	fmadd.s	fs3, fa5, ft3, fs3, dyn
+80002cca: 9026f943     	fmadd.s	fs2, fa3, ft2, fs2, dyn
+80002cce: 4827f4c3     	fmadd.s	fs1, fa5, ft2, fs1, dyn
+80002cd2: 4016f443     	fmadd.s	fs0, fa3, ft1, fs0, dyn
+80002cd6: f817ffc3     	fmadd.s	ft11, fa5, ft1, ft11, dyn
+80002cda: f006ff43     	fmadd.s	ft10, fa3, ft0, ft10, dyn
+80002cde: e807fec3     	fmadd.s	ft9, fa5, ft0, ft9, dyn
+80002ce2: e0a6fe43     	fmadd.s	ft8, fa3, fa0, ft8, dyn
+80002ce6: 88a7f8c3     	fmadd.s	fa7, fa5, fa0, fa7, dyn
+80002cea: 80b6f843     	fmadd.s	fa6, fa3, fa1, fa6, dyn
+80002cee: 38b7f3c3     	fmadd.s	ft7, fa5, fa1, ft7, dyn
+80002cf2: 30c6f343     	fmadd.s	ft6, fa3, fa2, ft6, dyn
+80002cf6: 28c7f2c3     	fmadd.s	ft5, fa5, fa2, ft5, dyn
+80002cfa: 0921         	c.addi	s2, 0x8
+80002cfc: f9f999e3     	bne	s3, t6, 0x80002c8e <openblas_sgemm_kernel+0xc8e>
+80002d00: 11677b53     	fmul.s	fs6, fa4, fs6, dyn
+80002d04: 11577ad3     	fmul.s	fs5, fa4, fs5, dyn
+80002d08: 11477a53     	fmul.s	fs4, fa4, fs4, dyn
+80002d0c: 113779d3     	fmul.s	fs3, fa4, fs3, dyn
+80002d10: 11277953     	fmul.s	fs2, fa4, fs2, dyn
+80002d14: 109774d3     	fmul.s	fs1, fa4, fs1, dyn
+80002d18: 10877453     	fmul.s	fs0, fa4, fs0, dyn
+80002d1c: 11f77fd3     	fmul.s	ft11, fa4, ft11, dyn
+80002d20: 11e77f53     	fmul.s	ft10, fa4, ft10, dyn
+80002d24: 11d77ed3     	fmul.s	ft9, fa4, ft9, dyn
+80002d28: 11c77e53     	fmul.s	ft8, fa4, ft8, dyn
+80002d2c: 111778d3     	fmul.s	fa7, fa4, fa7, dyn
+80002d30: 11077853     	fmul.s	fa6, fa4, fa6, dyn
+80002d34: 107773d3     	fmul.s	ft7, fa4, ft7, dyn
+80002d38: 10677353     	fmul.s	ft6, fa4, ft6, dyn
+80002d3c: 105772d3     	fmul.s	ft5, fa4, ft5, dyn
+80002d40: 7fa6         	c.ldsp	t6, 0x68(sp)
+80002d42: 9fa6         	c.add	t6, s1
+80002d44: 002f9913     	slli	s2, t6, 0x2
+80002d48: 01230ab3     	add	s5, t1, s2
+80002d4c: 000aa787     	flw	fa5, 0x0(s5)
+80002d50: 0911         	c.addi	s2, 0x4
+80002d52: 991a         	c.add	s2, t1
+80002d54: 0167f7d3     	fadd.s	fa5, fa5, fs6, dyn
+80002d58: 01ff09b3     	add	s3, t5, t6
+80002d5c: 098a         	c.slli	s3, 0x2
+80002d5e: 01330a33     	add	s4, t1, s3
+80002d62: 0991         	c.addi	s3, 0x4
+80002d64: 00faa027     	fsw	fa5, 0x0(s5)
+80002d68: 00092787     	flw	fa5, 0x0(s2)
+80002d6c: 999a         	c.add	s3, t1
+80002d6e: 7ae2         	c.ldsp	s5, 0x38(sp)
+80002d70: 0157f7d3     	fadd.s	fa5, fa5, fs5, dyn
+80002d74: 9afe         	c.add	s5, t6
+80002d76: 0a8a         	c.slli	s5, 0x2
+80002d78: 01530d33     	add	s10, t1, s5
+80002d7c: 00f92027     	fsw	fa5, 0x0(s2)
+80002d80: 000a2787     	flw	fa5, 0x0(s4)
+80002d84: 0a91         	c.addi	s5, 0x4
+80002d86: 01530b33     	add	s6, t1, s5
+80002d8a: 0147f7d3     	fadd.s	fa5, fa5, fs4, dyn
+80002d8e: 6906         	c.ldsp	s2, 0x40(sp)
+80002d90: 997e         	c.add	s2, t6
+80002d92: 00fa2027     	fsw	fa5, 0x0(s4)
+80002d96: 0009a787     	flw	fa5, 0x0(s3)
+80002d9a: 090a         	c.slli	s2, 0x2
+80002d9c: 01230cb3     	add	s9, t1, s2
+80002da0: 0137f7d3     	fadd.s	fa5, fa5, fs3, dyn
+80002da4: 0911         	c.addi	s2, 0x4
+80002da6: 01230ab3     	add	s5, t1, s2
+80002daa: 01f60933     	add	s2, a2, t6
+80002dae: 090a         	c.slli	s2, 0x2
+80002db0: 00f9a027     	fsw	fa5, 0x0(s3)
+80002db4: 000d2787     	flw	fa5, 0x0(s10)
+80002db8: 01230c33     	add	s8, t1, s2
+80002dbc: 0911         	c.addi	s2, 0x4
+80002dbe: 0127f7d3     	fadd.s	fa5, fa5, fs2, dyn
+80002dc2: 01230a33     	add	s4, t1, s2
+80002dc6: 6926         	c.ldsp	s2, 0x48(sp)
+80002dc8: 00fd2027     	fsw	fa5, 0x0(s10)
+80002dcc: 000b2787     	flw	fa5, 0x0(s6)
+80002dd0: 997e         	c.add	s2, t6
+80002dd2: 090a         	c.slli	s2, 0x2
+80002dd4: 0097f7d3     	fadd.s	fa5, fa5, fs1, dyn
+80002dd8: 01230bb3     	add	s7, t1, s2
+80002ddc: 0911         	c.addi	s2, 0x4
+80002dde: 991a         	c.add	s2, t1
+80002de0: f0ca         	c.sdsp	s2, 0x60(sp)
+80002de2: 00fb2027     	fsw	fa5, 0x0(s6)
+80002de6: 000ca787     	flw	fa5, 0x0(s9)
+80002dea: 6966         	c.ldsp	s2, 0x58(sp)
+80002dec: 6d46         	c.ldsp	s10, 0x50(sp)
+80002dee: 0087f7d3     	fadd.s	fa5, fa5, fs0, dyn
+80002df2: 997e         	c.add	s2, t6
+80002df4: 090a         	c.slli	s2, 0x2
+80002df6: 012309b3     	add	s3, t1, s2
+80002dfa: 0911         	c.addi	s2, 0x4
+80002dfc: 00fca027     	fsw	fa5, 0x0(s9)
+80002e00: 000aa787     	flw	fa5, 0x0(s5)
+80002e04: 991a         	c.add	s2, t1
+80002e06: 9fea         	c.add	t6, s10
+80002e08: 01f7f7d3     	fadd.s	fa5, fa5, ft11, dyn
+80002e0c: 0f8a         	c.slli	t6, 0x2
+80002e0e: 01f30d33     	add	s10, t1, t6
+80002e12: 0f91         	c.addi	t6, 0x4
+80002e14: 9f9a         	c.add	t6, t1
+80002e16: 00faa027     	fsw	fa5, 0x0(s5)
+80002e1a: 000c2787     	flw	fa5, 0x0(s8)
+80002e1e: 01e7f7d3     	fadd.s	fa5, fa5, ft10, dyn
+80002e22: 00fc2027     	fsw	fa5, 0x0(s8)
+80002e26: 000a2787     	flw	fa5, 0x0(s4)
+80002e2a: 01d7f7d3     	fadd.s	fa5, fa5, ft9, dyn
+80002e2e: 00fa2027     	fsw	fa5, 0x0(s4)
+80002e32: 000ba787     	flw	fa5, 0x0(s7)
+80002e36: 7a06         	c.ldsp	s4, 0x60(sp)
+80002e38: 01c7f7d3     	fadd.s	fa5, fa5, ft8, dyn
+80002e3c: 00fba027     	fsw	fa5, 0x0(s7)
+80002e40: 000a2787     	flw	fa5, 0x0(s4)
+80002e44: 0117f7d3     	fadd.s	fa5, fa5, fa7, dyn
+80002e48: 00fa2027     	fsw	fa5, 0x0(s4)
+80002e4c: 0009a787     	flw	fa5, 0x0(s3)
+80002e50: 0107f7d3     	fadd.s	fa5, fa5, fa6, dyn
+80002e54: 00f9a027     	fsw	fa5, 0x0(s3)
+80002e58: 00092787     	flw	fa5, 0x0(s2)
+80002e5c: 0077f7d3     	fadd.s	fa5, fa5, ft7, dyn
+80002e60: 00f92027     	fsw	fa5, 0x0(s2)
+80002e64: 000d2787     	flw	fa5, 0x0(s10)
+80002e68: 0067f7d3     	fadd.s	fa5, fa5, ft6, dyn
+80002e6c: 00fd2027     	fsw	fa5, 0x0(s10)
+80002e70: 000fa787     	flw	fa5, 0x0(t6)
+80002e74: 0057f7d3     	fadd.s	fa5, fa5, ft5, dyn
+80002e78: 00ffa027     	fsw	fa5, 0x0(t6)
+80002e7c: bdeff06f     	jal	zero, 0x8000225a <openblas_sgemm_kernel+0x25a>
+80002e80: fe072107     	flw	ft2, -0x20(a4)
+80002e84: fe472087     	flw	ft1, -0x1c(a4)
+80002e88: fe872007     	flw	ft0, -0x18(a4)
+80002e8c: fec72507     	flw	fa0, -0x14(a4)
+80002e90: ff072587     	flw	fa1, -0x10(a4)
+80002e94: ff472607     	flw	fa2, -0xc(a4)
+80002e98: ff872687     	flw	fa3, -0x8(a4)
+80002e9c: ffc72787     	flw	fa5, -0x4(a4)
+80002ea0: 7fe6         	c.ldsp	t6, 0x78(sp)
+80002ea2: cd127057     	vsetivli	zero, 0x4, e32, m2, ta, ma
+80002ea6: 020fed07     	vle32.v	v26, (t6)
+80002eaa: 93a15757     	vfmul.vf	v14, v26, ft2
+80002eae: 93a0d657     	vfmul.vf	v12, v26, ft1
+80002eb2: 93a05557     	vfmul.vf	v10, v26, ft0
+80002eb6: 93a55457     	vfmul.vf	v8, v26, fa0
+80002eba: 93a5df57     	vfmul.vf	v30, v26, fa1
+80002ebe: 93a65e57     	vfmul.vf	v28, v26, fa2
+80002ec2: 93a6d857     	vfmul.vf	v16, v26, fa3
+80002ec6: 93a7dd57     	vfmul.vf	v26, v26, fa5
+80002eca: 051ede63     	bge	t4, a7, 0x80002f26 <openblas_sgemm_kernel+0xf26>
+80002ece: 7fc2         	c.ldsp	t6, 0x30(sp)
+80002ed0: 690a         	c.ldsp	s2, 0x80(sp)
+80002ed2: 00ef89b3     	add	s3, t6, a4
+80002ed6: 8fba         	c.mv	t6, a4
+80002ed8: 000fa107     	flw	ft2, 0x0(t6)
+80002edc: 004fa087     	flw	ft1, 0x4(t6)
+80002ee0: 008fa007     	flw	ft0, 0x8(t6)
+80002ee4: 00cfa507     	flw	fa0, 0xc(t6)
+80002ee8: 010fa587     	flw	fa1, 0x10(t6)
+80002eec: 014fa607     	flw	fa2, 0x14(t6)
+80002ef0: 018fa687     	flw	fa3, 0x18(t6)
+80002ef4: 01cfa787     	flw	fa5, 0x1c(t6)
+80002ef8: 020f8f93     	addi	t6, t6, 0x20
+80002efc: 02096c07     	vle32.v	v24, (s2)
+80002f00: 0941         	c.addi	s2, 0x10
+80002f02: b3815757     	vfmacc.vf	v14, ft2, v24
+80002f06: b380d657     	vfmacc.vf	v12, ft1, v24
+80002f0a: b3805557     	vfmacc.vf	v10, ft0, v24
+80002f0e: b3855457     	vfmacc.vf	v8, fa0, v24
+80002f12: b385df57     	vfmacc.vf	v30, fa1, v24
+80002f16: b3865e57     	vfmacc.vf	v28, fa2, v24
+80002f1a: b386d857     	vfmacc.vf	v16, fa3, v24
+80002f1e: b387dd57     	vfmacc.vf	v26, fa5, v24
+80002f22: fbf99be3     	bne	s3, t6, 0x80002ed8 <openblas_sgemm_kernel+0xed8>
+80002f26: 6fea         	c.ldsp	t6, 0x98(sp)
+80002f28: 01f48bb3     	add	s7, s1, t6
+80002f2c: 017f0b33     	add	s6, t5, s7
+80002f30: 016f0ab3     	add	s5, t5, s6
+80002f34: 015f0a33     	add	s4, t5, s5
+80002f38: 014f09b3     	add	s3, t5, s4
+80002f3c: 013f0933     	add	s2, t5, s3
+80002f40: 012f0fb3     	add	t6, t5, s2
+80002f44: 01ff0c33     	add	s8, t5, t6
+80002f48: 0b8a         	c.slli	s7, 0x2
+80002f4a: 0b0a         	c.slli	s6, 0x2
+80002f4c: 0a8a         	c.slli	s5, 0x2
+80002f4e: 0a0a         	c.slli	s4, 0x2
+80002f50: 098a         	c.slli	s3, 0x2
+80002f52: 090a         	c.slli	s2, 0x2
+80002f54: 0f8a         	c.slli	t6, 0x2
+80002f56: 0c0a         	c.slli	s8, 0x2
+80002f58: 9b9a         	c.add	s7, t1
+80002f5a: 9b1a         	c.add	s6, t1
+80002f5c: 9a9a         	c.add	s5, t1
+80002f5e: 9a1a         	c.add	s4, t1
+80002f60: 999a         	c.add	s3, t1
+80002f62: 991a         	c.add	s2, t1
+80002f64: 9f9a         	c.add	t6, t1
+80002f66: 9c1a         	c.add	s8, t1
+80002f68: 020be307     	vle32.v	v6, (s7)
+80002f6c: 020b6207     	vle32.v	v4, (s6)
+80002f70: 020ae107     	vle32.v	v2, (s5)
+80002f74: 020a6007     	vle32.v	v0, (s4)
+80002f78: 0209eb07     	vle32.v	v22, (s3)
+80002f7c: 02096a07     	vle32.v	v20, (s2)
+80002f80: 020fe907     	vle32.v	v18, (t6)
+80002f84: 020c6c07     	vle32.v	v24, (s8)
+80002f88: b2e75357     	vfmacc.vf	v6, fa4, v14
+80002f8c: b2c75257     	vfmacc.vf	v4, fa4, v12
+80002f90: 020be327     	vse32.v	v6, (s7)
+80002f94: b2a75157     	vfmacc.vf	v2, fa4, v10
+80002f98: 020b6227     	vse32.v	v4, (s6)
+80002f9c: b2875057     	vfmacc.vf	v0, fa4, v8
+80002fa0: 020ae127     	vse32.v	v2, (s5)
+80002fa4: b3e75b57     	vfmacc.vf	v22, fa4, v30
+80002fa8: 020a6027     	vse32.v	v0, (s4)
+80002fac: b3c75a57     	vfmacc.vf	v20, fa4, v28
+80002fb0: 0209eb27     	vse32.v	v22, (s3)
+80002fb4: b3075957     	vfmacc.vf	v18, fa4, v16
+80002fb8: 02096a27     	vse32.v	v20, (s2)
+80002fbc: b3a75c57     	vfmacc.vf	v24, fa4, v26
+80002fc0: 020fe927     	vse32.v	v18, (t6)
+80002fc4: 020c6c27     	vse32.v	v24, (s8)
+80002fc8: cd147057     	vsetivli	zero, 0x8, e32, m2, ta, ma
+80002fcc: a88ff06f     	jal	zero, 0x80002254 <openblas_sgemm_kernel+0x254>
+80002fd0: f4a2         	c.sdsp	s0, 0x68(sp)
+80002fd2: 90cff06f     	jal	zero, 0x800020de <openblas_sgemm_kernel+0xde>
+80002fd6: 003e1e93     	slli	t4, t3, 0x3
+80002fda: 8d8ff06f     	jal	zero, 0x800020b2 <openblas_sgemm_kernel+0xb2>
+80002fde: f8f6         	c.sdsp	t4, 0x70(sp)
+80002fe0: 918ff06f     	jal	zero, 0x800020f8 <openblas_sgemm_kernel+0xf8>
+80002fe4: 4781         	c.li	a5, 0x0
+80002fe6: f5aff06f     	jal	zero, 0x80002740 <openblas_sgemm_kernel+0x740>
+80002fea: 4701         	c.li	a4, 0x0
+80002fec: ba4d         	c.j	0x8000299e <openblas_sgemm_kernel+0x99e>
+80002fee: 4801         	c.li	a6, 0x0
+80002ff0: ba8ff06f     	jal	zero, 0x80002398 <openblas_sgemm_kernel+0x398>
+80002ff4: 4581         	c.li	a1, 0x0
+80002ff6: a98ff06f     	jal	zero, 0x8000228e <openblas_sgemm_kernel+0x28e>
+80002ffa: f00007d3     	fmv.w.x	fa5, zero
+80002ffe: 20f786d3     	fsgnj.s	fa3, fa5, fa5
+80003002: b0cd         	c.j	0x800028e4 <openblas_sgemm_kernel+0x8e4>
+80003004: f00006d3     	fmv.w.x	fa3, zero
+80003008: 20d68653     	fsgnj.s	fa2, fa3, fa3
+8000300c: 20d685d3     	fsgnj.s	fa1, fa3, fa3
+80003010: 20d68553     	fsgnj.s	fa0, fa3, fa3
+80003014: e1aff06f     	jal	zero, 0x8000262e <openblas_sgemm_kernel+0x62e>
+80003018: f00007d3     	fmv.w.x	fa5, zero
+8000301c: 20f786d3     	fsgnj.s	fa3, fa5, fa5
+80003020: bc2d         	c.j	0x80002a5a <openblas_sgemm_kernel+0xa5a>
+80003022: f0000753     	fmv.w.x	fa4, zero
+80003026: bc79         	c.j	0x80002ac4 <openblas_sgemm_kernel+0xac4>
+80003028: f00007d3     	fmv.w.x	fa5, zero
+8000302c: 20f786d3     	fsgnj.s	fa3, fa5, fa5
+80003030: 20f78653     	fsgnj.s	fa2, fa5, fa5
+80003034: 20f785d3     	fsgnj.s	fa1, fa5, fa5
+80003038: b031         	c.j	0x80002844 <openblas_sgemm_kernel+0x844>
+8000303a: f0000653     	fmv.w.x	fa2, zero
+8000303e: 20c605d3     	fsgnj.s	fa1, fa2, fa2
+80003042: 20c60553     	fsgnj.s	fa0, fa2, fa2
+80003046: 20c60053     	fsgnj.s	ft0, fa2, fa2
+8000304a: 20c600d3     	fsgnj.s	ft1, fa2, fa2
+8000304e: 20c60153     	fsgnj.s	ft2, fa2, fa2
+80003052: 20c601d3     	fsgnj.s	ft3, fa2, fa2
+80003056: 20c60253     	fsgnj.s	ft4, fa2, fa2
+8000305a: cc4ff06f     	jal	zero, 0x8000251e <openblas_sgemm_kernel+0x51e>
+

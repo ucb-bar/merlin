@@ -47,6 +47,37 @@ def test_no_divergence_when_equal():
     assert cca_compare.compare(expert, expert) == []
 
 
+def test_accumulator_residency_routes_to_deferred_pass():
+    # expert keeps the accumulator resident, ours does not -> a PASS action at the impr feature
+    # seam. forkable_now is HONEST: the transform-dialect feature does not yet fully close it (still
+    # spills the accumulator per K-tile), so it is a deferred work-item, not a green fork.
+    d = cca_compare.Divergence(axis="compute.accumulator_resident", expert=True, ours=False,
+                               backend="rvv", evidence=["openblas_rvv_gemm"])
+    a = ac.route(d)
+    assert a is not None and a.action_class == "PASS"
+    assert a.target_seam == "impr_features:accumulator_resident_microkernel"
+    assert a.forkable_now is False                       # deferred: transform path doesn't close it
+
+
+def test_accumulator_residency_codegen_when_ours_unknown():
+    # when ours can't even be judged (no fma loop), route to the dedicated micro-kernel CODEGEN
+    # closer (the intrinsic_microkernel ceiling target), also a deferred work-item.
+    d = cca_compare.Divergence(axis="compute.accumulator_resident", expert=True, ours=None,
+                               backend="rvv")
+    a = ac.route(d)
+    assert a is not None and a.action_class == "CODEGEN" and a.forkable_now is False
+
+
+def test_vl_nr_routes_to_forkable_heuristic():
+    # NR=vsetvlmax (VL-adaptive output tile + N-tail) is expressible today (the N-tail-safe feature
+    # vectorizes small-N attention), so it is a forkable HEURISTIC.
+    d = cca_compare.Divergence(axis="compute.nr_is_vsetvlmax", expert=True, ours=False,
+                               backend="rvv")
+    a = ac.route(d)
+    assert a is not None and a.action_class == "HEURISTIC" and a.forkable_now is True
+    assert "vsetvlmax" in a.target_seam
+
+
 def test_unrouted_reported_not_dropped():
     # an axis with no route is returned as unrouted, never silently dropped
     d = cca_compare.Divergence(axis="compute.made_up_axis", expert="x", ours="y", backend="rvv")

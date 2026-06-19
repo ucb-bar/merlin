@@ -56,6 +56,32 @@ class InsnStream:
         return sum(1 for i in self.insns
                    if any(i.raw.mnemonic.startswith(p) for p in mnemonic_prefixes))
 
+    def loop_spans(self) -> list[tuple[int, int]]:
+        """[(start_addr, backedge_addr), ...] for every back-edge: the half-open address range a
+        loop body covers (its target up to and including the branch). Read structurally from the
+        decoded branch target, never from a mnemonic substring. Used by the CCA accumulator-
+        residency / register-block inference to scope "inside the K loop"."""
+        spans: list[tuple[int, int]] = []
+        for i in self.insns:
+            tgt = _branch_target(i.raw)
+            if tgt is not None and tgt < i.raw.addr:
+                spans.append((tgt, i.raw.addr))
+        return spans
+
+    def innermost_loop(self) -> tuple[int, int] | None:
+        """The innermost (smallest-span) back-edge range, or None if straight-line. The innermost
+        loop of a tiled GEMM is the K-reduction loop — where accumulator residency is decided."""
+        spans = self.loop_spans()
+        return min(spans, key=lambda s: s[1] - s[0]) if spans else None
+
+    def insns_in(self, span: tuple[int, int]) -> list["VInsn"]:
+        lo, hi = span
+        return [i for i in self.insns if lo <= i.raw.addr <= hi]
+
+    def count_in(self, span: tuple[int, int], *mnemonic_prefixes: str) -> int:
+        return sum(1 for i in self.insns_in(span)
+                   if any(i.raw.mnemonic.startswith(p) for p in mnemonic_prefixes))
+
 
 # vsetvl operand tokens carry the canonical vtype: e<SEW>, m<LMUL>|mf<frac>, ta|tu, ma|mu.
 def _parse_vtype(operands: list[str]) -> VType:
@@ -79,15 +105,28 @@ _BRANCH = ("beq", "bne", "blt", "bge", "bltu", "bgeu", "beqz", "bnez", "bgez", "
            "bgtz", "bltz", "j", "jal")
 
 
+def _branch_target(insn: RawInsn) -> int | None:
+    """Resolve a branch/jump's target byte-address from its operands, robustly.
+
+    llvm-objdump renders the target operand as either a bare hex (``0x1dc``) or a hex with a symbol
+    annotation (``0x1dc <forward+0x1dc>``). The OLD code did ``int(operands[-1], 16)`` which silently
+    failed on the annotated form (the last comma-split token is the whole ``0x1dc <forward+0x1dc>``),
+    so ``has_loop`` reported False for any real disassembled loop. Here we scan the LAST operand for
+    its first ``0x…`` token, so both spellings resolve. Non-branch / unresolved -> None."""
+    if not insn.mnemonic.startswith(_BRANCH) or not insn.operands:
+        return None
+    for tok in insn.operands[-1].split():
+        try:
+            return int(tok, 16)
+        except ValueError:
+            continue
+    return None
+
+
 def _is_backedge(insn: RawInsn) -> bool:
     """A branch/jump whose target address is < its own address = a loop back-edge."""
-    if not insn.mnemonic.startswith(_BRANCH) or not insn.operands:
-        return False
-    tgt = insn.operands[-1]
-    try:
-        return int(tgt, 16) < insn.addr
-    except ValueError:
-        return False
+    tgt = _branch_target(insn)
+    return tgt is not None and tgt < insn.addr
 
 
 def decode(obj_path, triple: str = "riscv64") -> InsnStream:

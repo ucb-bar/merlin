@@ -35,6 +35,8 @@ _AXIS_POLICY = {
     "compute.widening": "int8_widening_policy",
     "compute.epilogue": "requant_narrowing_policy",
     "compute.reduction_form": "vector_reduction_policy",
+    "compute.accumulator_resident": "accumulator_commit_policy",
+    "compute.nr_is_vsetvlmax": "vl_agnostic_loop_policy",
     "vector.lmul": "lmul_grouping_policy",
     "vector.vl_strategy": "vl_tail_policy",
 }
@@ -57,6 +59,12 @@ def expert_cca_from_policies(policies: list[dict], op: str,
         compute.epilogue = "requant_narrow"
     if "vector_reduction_policy" in names:
         compute.reduction_form = "vredsum_tree"
+    if "accumulator_commit_policy" in names:
+        # the mined accumulator_commit_policy (keep_accumulator_resident / single_commit_store) =
+        # the expert keeps the C accumulator resident across the reduction and commits once.
+        compute.accumulator_resident = True
+    if "vl_agnostic_loop_policy" in names:
+        compute.nr_is_vsetvlmax = True          # NR tracks vsetvlmax (VL-adaptive expert)
     if "lmul_grouping_policy" in names:
         vector.lmul = 4.0                       # prefer_high_lmul -> m4 (mined target)
     if "vl_tail_policy" in names or "vl_agnostic_loop_policy" in names:

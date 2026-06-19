@@ -1,0 +1,30 @@
+
+Disassembly of section .text:
+
+0000000080002000 <xnn_f32_gemm_ukernel_1x4v__rvv>:
+80002000: 6e82         	c.ldsp	t4, 0x0(sp)
+80002002: 05207e57     	vsetvli	t3, zero, e32, m4, ta, mu
+80002006: 002e1313     	slli	t1, t3, 0x2
+8000200a: 8572         	c.mv	a0, t3
+8000200c: 03c5ed63     	bltu	a1, t3, 0x80002046 <xnn_f32_gemm_ukernel_1x4v__rvv+0x46>
+80002010: 0d257057     	vsetvli	zero, a0, e32, m4, ta, ma
+80002014: 8d89         	c.sub	a1, a0
+80002016: 0207ec07     	vle32.v	v24, (a5)
+8000201a: 8736         	c.mv	a4, a3
+8000201c: 979a         	c.add	a5, t1
+8000201e: 0d257057     	vsetvli	zero, a0, e32, m4, ta, ma
+80002022: 00072787     	flw	fa5, 0x0(a4)
+80002026: 0711         	c.addi	a4, 0x4
+80002028: 40c708b3     	sub	a7, a4, a2
+8000202c: 0207ee07     	vle32.v	v28, (a5)
+80002030: 979a         	c.add	a5, t1
+80002032: b3c7dc57     	vfmacc.vf	v24, fa5, v28
+80002036: fed896e3     	bne	a7, a3, 0x80002022 <xnn_f32_gemm_ukernel_1x4v__rvv+0x22>
+8000203a: 02086c27     	vse32.v	v24, (a6)
+8000203e: 86c6         	c.mv	a3, a7
+80002040: 9876         	c.add	a6, t4
+80002042: f5e9         	c.bnez	a1, 0x8000200c <xnn_f32_gemm_ukernel_1x4v__rvv+0xc>
+80002044: 8082         	c.jr	ra
+80002046: 0525f557     	vsetvli	a0, a1, e32, m4, ta, mu
+8000204a: b7d9         	c.j	0x80002010 <xnn_f32_gemm_ukernel_1x4v__rvv+0x10>
+
