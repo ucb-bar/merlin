@@ -32,6 +32,7 @@ from merlin.dse_guidance import design_envelope as DE
 from merlin.dse_guidance import dma_buffer_analysis as DMA
 from merlin.dse_guidance import dtype_certificates as DC
 from merlin.dse_guidance import fusion_epilogue as FE
+from merlin.dse_guidance import mapspace as MS
 from merlin.dse_guidance import memory_envelope as ME
 from merlin.dse_guidance import numerical_contract as NC
 from merlin.dse_guidance import operator_geometry as OG
@@ -950,6 +951,12 @@ def run_case_study(out_dir) -> dict:
     abl = capture_level_ablation_csv()       # only written when the local level recaptures exist
     if abl:
         Artifact("capture_level_ablation.csv", abl).write(out)
+    # P20 Tool A: Timeloop-native mapspace seeds from the recovered contraction ops (structural; no perf)
+    _wl_caps = [(c.workload, str(_recap_dir(c.workload))) for c in cases]
+    Artifact("dataflow_candidate_table.csv",
+             _csv(MS.dataflow_rows(_wl_caps), MS._DATAFLOW_COL)).write(out)
+    yaml_artifact("timeloop_problem_shapes.yaml", MS.problem_shapes(_wl_caps),
+                  header="timeloop_problem_shapes (structural search-space seeds; no perf claim)").write(out)
     yaml_artifact("operator_geometry.yaml", OG.to_yaml_obj(geom_by_workload, conv_visible),
                   header="operator_geometry (structural; no speedup)").write(out)
     Artifact("shape_summary_by_workload.csv",

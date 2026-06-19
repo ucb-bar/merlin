@@ -1042,6 +1042,7 @@ def verify_p13() -> dict:
     verify_p16(IM, bundle)
     verify_p17_audit(IM, bundle)
     verify_p17_envelope(IM, bundle)
+    verify_p20(IM)
     return {"scopes": len(scopes), "facts_all": total_facts}
 
 
@@ -1448,6 +1449,37 @@ def verify_p17_envelope(IM, bundle) -> None:
                  f"qdq=named dequant ({named_quant}), loops absent every level ({no_loops})")
     else:
         p13check(True, "[P18] capture-level ablation: no multi-level recaptures present (skipped)")
+
+
+def verify_p20(IM) -> None:
+    """P20 Tool A: the Timeloop problem shapes are internally consistent and DSE-consumable — each
+    instance's M*N*K equals the recorded macs; every problem has the 3 GEMM data-spaces with every
+    dimension projected; attention shapes carry no stationary weight (operand_identity=activation,
+    weight_stationary excluded); the yaml count matches the dataflow table; no perf wording."""
+    import csv as _csv
+    import io as _io
+    from merlin.common.yaml import load_yaml
+    ts = load_yaml(CS / "timeloop_problem_shapes.yaml").get("timeloop_problem_shapes", {})
+    shapes = ts.get("shapes", [])
+    df = list(_csv.DictReader(_io.StringIO((CS / "dataflow_candidate_table.csv").read_text())))
+    dims_ok = all(int(s["problem"]["instance"]["M"]) * int(s["problem"]["instance"]["N"])
+                  * int(s["problem"]["instance"]["K"]) == int(s["macs_per_instance"]) for s in shapes)
+    ds_ok = all(len(s["problem"]["shape"]["data-spaces"]) == 3
+                and len(s["problem"]["shape"]["dimensions"]) == 3 for s in shapes)
+    attn_ok = all(("weight_stationary" not in s["dataflow_candidates"]
+                   and all(d.get("operand_identity") != "weight"
+                           for d in s["problem"]["shape"]["data-spaces"]))
+                  for s in shapes if s["op_class"] == "attention_contraction")
+    lin_ok = all(any(d.get("operand_identity") == "weight"
+                     for d in s["problem"]["shape"]["data-spaces"])
+                 for s in shapes if s["op_class"] == "linear_gemm")
+    cnt_ok = bool(shapes) and len(df) == ts.get("count") == len(shapes)
+    blob = str(shapes).lower()
+    leaked = [t for t in ("speedup", "faster", "optimal", "cycles", "throughput") if t in blob]
+    p13check(dims_ok and ds_ok and attn_ok and lin_ok and cnt_ok and not leaked,
+             f"[P20] Timeloop problem shapes consistent: dims==macs ({dims_ok}), 3 dataspaces ({ds_ok}), "
+             f"attention no-weight ({attn_ok}), linear has-weight ({lin_ok}), count=={len(shapes)} "
+             f"({cnt_ok}), no perf wording ({not leaked})")
 
 
 def main(write: bool = True) -> int:
