@@ -1573,6 +1573,21 @@ def verify_p21(IM) -> None:
              f"[P21] loop-preserving recovery: K/carried-state re-derived from IR ({re_ok}); artifact "
              f"matches ({art_ok}); capture_fidelity flipped K/KV/loop_carried->recovered ({flip_ok}); "
              f"no perf wording ({not leaked})")
+    # P21 GAP-C: IR-proven residency split — every present capture has loop-invariant (resident-eligible)
+    # operands referenced in the body but defined outside the region, re-derived here and matched to the artifact.
+    from merlin.dse_guidance.loop_recovery import residency_from_ir
+    rf = CS / "residency_from_ir.csv"
+    res_ok = rf.is_file()
+    if res_ok:
+        rar = {r["workload"]: r for r in _csv.DictReader(_io.StringIO(rf.read_text()))}
+        for w in present:
+            rc = residency_from_ir(loop_dir / w / "model.mlir", w)
+            res_ok = res_ok and rc.present and rc.n_loop_invariant_operands > 0 \
+                and rc.n_loop_carried >= 1 and w in rar \
+                and int(rar[w]["n_loop_invariant_operands"]) == rc.n_loop_invariant_operands
+    p13check(res_ok,
+             f"[P21] residency-from-IR: loop-invariant (resident-eligible) operands re-derived from the "
+             f"scf.for region boundary for all {len(present)} captures + artifact matches ({res_ok})")
     # P21 S2/S3: deployment-real magnitudes (config-exact composition) + KV sizing with IR cross-check
     from merlin.dse_guidance import real_config as RC
     # 1. independent re-derivation of openVLA = Llama-2-7B: 32 * (4*4096^2 + 3*4096*11008) + embeds

@@ -548,6 +548,20 @@ def test_real_config_magnitudes_and_kv_sizing():
     assert all(r["evidence"] == "recovered_from_model_config" for r in RC.magnitude_rows())
 
 
+@pytest.mark.skipif(not (_RECAP_LOOP / "openvla" / "model.mlir").is_file(),
+                    reason="no loop-preserving capture")
+def test_residency_from_ir_proves_loop_invariant_operands():
+    """P21 GAP-C: the scf.for region boundary proves which operands are loop-invariant
+    (referenced in the body, defined outside -> resident-eligible across K) vs loop-carried."""
+    from merlin.dse_guidance.loop_recovery import residency_from_ir
+    rc = residency_from_ir(_RECAP_LOOP / "openvla" / "model.mlir", "openvla")
+    assert rc.present and rc.K == 7
+    assert rc.n_loop_invariant_operands > 100        # weights referenced read-only every iteration
+    assert rc.n_loop_carried == 5                    # the 5 iter_args (counter/tok/out/k/v)
+    assert "loop-invariant" in rc.resident_proof and "resident-eligible" in rc.resident_proof
+    assert rc.evidence == "recovered_from_ir"
+
+
 _RECAP_NATIVE = Path(__file__).resolve().parents[2] / "benchmarks" / "dse_guidance" / "recaptures_native"
 
 
