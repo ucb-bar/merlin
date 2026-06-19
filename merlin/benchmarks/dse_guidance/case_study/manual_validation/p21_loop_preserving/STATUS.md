@@ -1,3 +1,36 @@
+# P21-S1 — Loop-preserving capture: DONE end-to-end (torch + m2m → linalg-on-tensors)
+
+## RESOLVED (the m2m gap is closed) — all three target models verified
+
+The `while_loop → scf.for` lowering is implemented in the CompGen FXImporter
+(`m2m/ir/import_fx.py`, commit `aec234b`) and the full loop-preserving capture now
+lowers to a **verifying** `linalg-on-tensors` module for all three:
+
+| model | family | IR result (via `m2m.convert`, module verifies) | numerics |
+|---|---|---|---|
+| **smolVLA** | flow-matching | `scf.for(0,10,1)` iter_args=`(i, latent[1,50,32])`, K=10 | cos 0.9999994 |
+| **openVLA** | autoregressive | `scf.for(0,7,1)` iter_args=`(i, tok, out[1,7], k$, v$)`, K=7 — **static KV cache is a carried iter_arg** | bit-exact |
+| **pi0.5** | flow-matching | `scf.for(0,10,1)` iter_args=`(i, x_t[1,50,32])`, K=10, prefix KV closed-over | cos 1.0 (max |Δ| 1.3e-6) |
+
+K, the loop body (repeated region), and the loop-carried state (latent / KV) are now
+recoverable directly from the IR. `_lower_while_loop` recursively imports the body,
+transplants its ops into the `scf.for` region (carried→iter_args, closed-over weights/KV
+referenced directly from the region — sidestepping the torch-mlir additional_inputs defect),
+yields the new carry tuple, and merges body-emitted opaque externs under collision-free names
+rebuilt from live post-remap types. All 91 m2m tests still pass.
+
+**pi0.5 wrapper lessons (beyond smolVLA's):** the body must be free of (a) out-of-scope
+mutations — `denoise_step` sets `config._attn_implementation` each call (hoisted out);
+(b) in-body tensor constants — the sinusoidal time basis (`torch.linspace`), the suffix
+attention/pad masks + 4-d mask (`torch.where(-2.38e38)`), and Gemma's dead
+`torch.tensor(hidden_size**0.5)` normalizer (already-disabled dead line in the openpi
+transformers fork) all become invalid get_attr constants inside the HOP subgraph → all
+hoisted/removed. KV here is **prefix-only/invariant** (closed-over), not a carried growing
+cache like openVLA.
+
+---
+
+## (historical) The original gap analysis — now closed
 # P21-S1 — Loop-preserving capture: proven at the torch level; one m2m gap to linalg
 
 Target: openVLA, pi0.5, smolVLA (the user's chosen three). Goal: capture the K-step denoise/decode loop as
