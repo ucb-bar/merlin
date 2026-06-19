@@ -30,6 +30,18 @@ class ComputeFacet:
     reduction_form: str | None = None         # tree | vredsum | vfredusum | none
     register_block: tuple | None = None       # (mr, nr) or tile dims
     epilogue: str | None = None               # requant_narrow | none
+    # SHARED, TARGET-AGNOSTIC accumulator-residency concept. "Does the output accumulator stay in
+    # the fastest storage (vector regs / PE array / on-chip buffer) across the WHOLE reduction, and
+    # commit ONCE after it?" — the property that distinguishes an expert micro-kernel from a lowering
+    # that round-trips the accumulator through memory every reduction tile. It is the same question
+    # on every backend, so it lives on ComputeFacet (RVV reads it from the asm via a vfmacc-chain /
+    # no-in-loop-accumulator-spill analysis; SpatialFacet.accumulator_resident is the Gemmini-PE
+    # view of the SAME concept; an NPU lifter reads it from on-chip-buffer residency). None = the
+    # lifter could not determine it (e.g. a straight-line / fully-unrolled region with no loop).
+    accumulator_resident: bool | None = None
+    # Does the inner output width (NR) track the runtime vsetvlmax (VL-adaptive, scalable) rather
+    # than a compile-time-fixed tile? True iff the kernel uses a vsetvli VL-loop (vl_strategy).
+    nr_is_vsetvlmax: bool | None = None
 
 
 @dataclass
@@ -96,6 +108,83 @@ def _dominant_vtype(stream) -> tuple[int | None, float | None]:
     return sew, lmul
 
 
+# --- asm-level structural inference of the expert-win properties (no regex; read from the stream) -
+
+# Whole-vector-register spill ops: vsNr.v stores / vlNre.v loads of a whole vector register group.
+# When one of these touches the ACCUMULATOR inside the reduction loop, the accumulator is being
+# round-tripped through (stack) memory each iteration — the opposite of register-resident.
+_ACC_SPILL_STORE = ("vs1r", "vs2r", "vs4r", "vs8r")
+_ACC_SPILL_LOAD = ("vl1re", "vl2re", "vl4re", "vl8re")
+_FMA = ("vfmacc", "vmacc", "vfwmacc", "vwmacc")
+
+
+def _fma_loop(stream):
+    """The reduction loop where the MAC chain lives: among back-edge spans that contain at least one
+    fma, the one with the MOST fma (the register-blocked MR-accumulator chain), breaking ties toward
+    the TIGHTEST span (the innermost K-reduction loop, not an enclosing M/N loop). A register block
+    of MR=1 (e.g. XNNPACK 1x4v) legitimately has one fma per K step, so the threshold is >=1, not
+    >=2. Returns the (lo, hi) span or None if the region is straight-line (no loop with an fma)."""
+    spans = stream.loop_spans()
+    fma_spans = [(sp, stream.count_in(sp, *_FMA)) for sp in spans]
+    fma_spans = [(sp, n) for sp, n in fma_spans if n >= 1]
+    if not fma_spans:
+        return None
+    # most fma first, then tightest span (the register-block kernel loop)
+    fma_spans.sort(key=lambda x: (-x[1], x[0][1] - x[0][0]))
+    return fma_spans[0][0]
+
+
+def _infer_accumulator_resident(stream) -> bool | None:
+    """Read accumulator-residency from the decoded stream, target-agnostic in spirit, RVV in detail.
+
+    RESIDENT (True): a vfmacc MAC chain runs in the reduction loop and the accumulator is NEVER
+    spilled inside it — no whole-register acc store (vsNr.v) and no acc element-store (vse) of the
+    MAC destination inside the loop body. The C accumulator stays in the vreg group across the whole
+    reduction and commits once AFTER the loop (the expert micro-kernel shape).
+    NOT RESIDENT (False): the MAC loop contains a whole-register acc spill-store/-load pair, i.e. the
+    accumulator is loaded+stored THROUGH memory every reduction tile (the lowering's per-K roundtrip).
+    None: no multi-fma reduction loop to judge (straight-line / fully-unrolled region).
+    """
+    sp = _fma_loop(stream)
+    if sp is None:
+        return None
+    # accumulator round-trip = a whole-register spill store INSIDE the fma loop. (The expert stores
+    # the accumulator once AFTER the loop; the non-resident lowering stores it inside, every step.)
+    spill_store = stream.count_in(sp, *_ACC_SPILL_STORE)
+    spill_load = stream.count_in(sp, *_ACC_SPILL_LOAD)
+    return not (spill_store > 0 and spill_load > 0)
+
+
+def _infer_register_block(stream, sew, lmul) -> tuple | None:
+    """(MR, NR) register block read from the asm. MR = number of DISTINCT accumulator vregs fed by
+    the broadcast MAC (vfmacc.vf — the register-blocking idiom: MR rows broadcast as scalars into MR
+    accumulators). NR = effective vector lanes of the MAC's vtype (VLEN unknown at decode -> the
+    LMUL-scaled width relative to SEW, expressed as a *lane* count via the standard VLEN guess). If
+    there is no vfmacc.vf register block, MR falls back to the count of distinct accumulator dests of
+    any fma in the loop. Returns None when there is no fma loop."""
+    sp = _fma_loop(stream)
+    if sp is None:
+        return None
+    acc_dests_vf: set[str] = set()
+    acc_dests_any: set[str] = set()
+    for i in stream.insns_in(sp):
+        m = i.raw.mnemonic
+        if any(m.startswith(p) for p in _FMA) and i.raw.operands:
+            dest = i.raw.operands[0]
+            acc_dests_any.add(dest)
+            if m.startswith(("vfmacc.vf", "vmacc.vx")):   # broadcast (register-blocking) form
+                acc_dests_vf.add(dest)
+    mr = len(acc_dests_vf) or len(acc_dests_any) or None
+    # NR = lanes in the accumulator vreg group = VLEN/SEW * LMUL. VLEN is a target constant not in
+    # the asm; we report NR as the LMUL-relative lane multiplier (the shape the comparator/action
+    # consume) rather than a fabricated absolute, keyed by SEW. With VLEN=256 (the mined K1 target)
+    # and SEW given, callers can resolve NR = 256/sew*lmul; here we leave NR symbolic as lmul-scaled.
+    nr = None
+    if sew and lmul:
+        nr = ("vsetvlmax", lmul)  # lane group is lmul-scaled vsetvlmax (VLEN-dependent, scalable)
+    return (mr, nr) if mr else None
+
+
 def lift_asm(stream, *, op: str, source: str, backend: str = "rvv") -> CCA:
     """Primary lifter: RVV/vector ``InsnStream`` (from ``decode.rvv``) -> CCA.
 
@@ -115,6 +204,12 @@ def lift_asm(stream, *, op: str, source: str, backend: str = "rvv") -> CCA:
     contraction = ("fused_fma" if vfmacc > 0
                    else "mul_add" if (vfmul > 0 and vfadd > 0)
                    else None)
+    # The expert-win properties, inferred structurally from the InsnStream (the gap the CCA used to
+    # be blind to on the RVV path):
+    acc_resident = _infer_accumulator_resident(stream)
+    reg_block = _infer_register_block(stream, sew, lmul)
+    # NR tracks vsetvlmax exactly when the kernel uses a polymorphic vsetvli VL-loop (VL-adaptive).
+    nr_is_vsetvlmax = (vl_strategy == "vsetvl_loop") if contraction == "fused_fma" else None
     return CCA(
         op=op, backend=[backend],
         compute=ComputeFacet(
@@ -122,6 +217,9 @@ def lift_asm(stream, *, op: str, source: str, backend: str = "rvv") -> CCA:
             widening=widening,
             reduction_form=("vredsum_tree" if reduce_n > 0 else "none"),
             epilogue=("requant_narrow" if narrow > 0 else "none"),
+            register_block=reg_block,
+            accumulator_resident=acc_resident,
+            nr_is_vsetvlmax=nr_is_vsetvlmax,
         ),
         vector=VectorFacet(sew=sew, lmul=lmul, vl_strategy=vl_strategy),
         provenance={"level": "asm", "source": source, "confidence": "high"},

@@ -127,7 +127,82 @@ def gen_softmax_f32(out_root: str | Path, M: int = 64, N: int = 64, seed: int = 
     return _finish(bundle, mlir, manifest, order, {"in0": x}, golden)
 
 
-_GENERATORS = {"matmul_f32": gen_matmul_f32, "softmax_f32": gen_softmax_f32}
+def gen_batch_matmul_f32(out_root: str | Path, B: int = 4, M: int = 32, N: int = 8, K: int = 32,
+                         seed: int = 0) -> Path:
+    """A single fp32 ``linalg.batch_matmul`` (B,M,K)x(B,K,N)->(B,M,N) — the attention shape. N can
+    be SMALL (e.g. 8, a llama-style attention batch_matmul) to exercise the NR<=N / N-tail path."""
+    bundle = Path(out_root) / f"bmm_f32_{B}x{M}x{N}x{K}"
+    sf = bundle / "weights.safetensors"
+    # Emit as a linalg.generic with batch-matmul indexing maps (b,m,n,k): (b,m,k)x(b,k,n)->(b,m,n).
+    # The xdsl frontend has no custom format for linalg.batch_matmul (only matmul/generic), and this
+    # generic IS the form attention batch_matmuls take after linalg generalization — the comparator's
+    # reduction_to_contract rebuilds the vector.contract from it just like the named op.
+    bm = (f"affine_map<(b, m, n, k) -> (b, m, k)>, "
+          f"affine_map<(b, m, n, k) -> (b, k, n)>, "
+          f"affine_map<(b, m, n, k) -> (b, m, n)>")
+    mlir = (
+        f'builtin.module attributes {{prov.weights_file = "{sf}", '
+        'prov.level = "linalg-on-tensors"} {\n'
+        f"  func.func @forward(%a: tensor<{B}x{M}x{K}xf32>, %b: tensor<{B}x{K}x{N}xf32>) "
+        f"-> tensor<{B}x{M}x{N}xf32> {{\n"
+        "    %cst = arith.constant 0.000000e+00 : f32\n"
+        f"    %0 = tensor.empty() : tensor<{B}x{M}x{N}xf32>\n"
+        f"    %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<{B}x{M}x{N}xf32>) "
+        f"-> tensor<{B}x{M}x{N}xf32>\n"
+        f"    %2 = linalg.generic {{indexing_maps = [{bm}], "
+        'iterator_types = ["parallel", "parallel", "parallel", "reduction"]} '
+        f"ins(%a, %b : tensor<{B}x{M}x{K}xf32>, tensor<{B}x{K}x{N}xf32>) "
+        f"outs(%1 : tensor<{B}x{M}x{N}xf32>) {{\n"
+        "    ^bb0(%in: f32, %in_0: f32, %out: f32):\n"
+        "      %m = arith.mulf %in, %in_0 : f32\n"
+        "      %a2 = arith.addf %out, %m : f32\n"
+        "      linalg.yield %a2 : f32\n"
+        f"    }} -> tensor<{B}x{M}x{N}xf32>\n"
+        f"    return %2 : tensor<{B}x{M}x{N}xf32>\n"
+        "  }\n}\n"
+    )
+    r = _rng(seed)
+    a = r.standard_normal((B, M, K)).astype(np.float32)
+    b = r.standard_normal((B, K, N)).astype(np.float32)
+    manifest = {"0": {"kind": "input", "name": "a"}, "1": {"kind": "input", "name": "b"}}
+    order = {"a": 0, "b": 1}
+    return _finish(bundle, mlir, manifest, order, {"in0": a, "in1": b},
+                   np.matmul(a, b))
+
+
+def gen_conv2d_as_matmul_f32(out_root: str | Path, M: int = 64, N: int = 16, K: int = 27,
+                             seed: int = 0) -> Path:
+    """A conv2d expressed (already im2col'd) as a single ``linalg.matmul`` whose K is the
+    patch-volume (Cin*Kh*Kw) — the conv contraction the RVV path sees after im2col. M = output
+    spatial positions, N = output channels, K = Cin*Kh*Kw (e.g. 3*3*3=27). Bundle name marks it as
+    a conv-origin contraction so the coverage test knows what it is exercising."""
+    bundle = Path(out_root) / f"conv2d_im2col_f32_{M}x{N}x{K}"
+    sf = bundle / "weights.safetensors"
+    mlir = (
+        f'builtin.module attributes {{prov.weights_file = "{sf}", '
+        'prov.level = "linalg-on-tensors"} {\n'
+        f"  func.func @forward(%a: tensor<{M}x{K}xf32>, %b: tensor<{K}x{N}xf32>) "
+        f"-> tensor<{M}x{N}xf32> {{\n"
+        "    %cst = arith.constant 0.000000e+00 : f32\n"
+        f"    %0 = tensor.empty() : tensor<{M}x{N}xf32>\n"
+        f"    %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<{M}x{N}xf32>) "
+        f"-> tensor<{M}x{N}xf32>\n"
+        f"    %2 = linalg.matmul ins(%a, %b : tensor<{M}x{K}xf32>, tensor<{K}x{N}xf32>) "
+        f"outs(%1 : tensor<{M}x{N}xf32>) -> tensor<{M}x{N}xf32>\n"
+        f"    return %2 : tensor<{M}x{N}xf32>\n"
+        "  }\n}\n"
+    )
+    r = _rng(seed)
+    a = r.standard_normal((M, K)).astype(np.float32)
+    b = r.standard_normal((K, N)).astype(np.float32)
+    manifest = {"0": {"kind": "input", "name": "a"}, "1": {"kind": "input", "name": "b"}}
+    order = {"a": 0, "b": 1}
+    return _finish(bundle, mlir, manifest, order, {"in0": a, "in1": b}, (a @ b))
+
+
+_GENERATORS = {"matmul_f32": gen_matmul_f32, "softmax_f32": gen_softmax_f32,
+               "batch_matmul_f32": gen_batch_matmul_f32,
+               "conv2d_im2col_f32": gen_conv2d_as_matmul_f32}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -138,9 +213,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("-M", type=int, default=64)
     ap.add_argument("-N", type=int, default=64)
     ap.add_argument("-K", type=int, default=64)
+    ap.add_argument("-B", type=int, default=4, help="batch dim (batch_matmul_f32)")
     a = ap.parse_args(argv)
     fn = _GENERATORS[a.op]
-    kw = {"M": a.M, "N": a.N} | ({"K": a.K} if a.op == "matmul_f32" else {})
+    if a.op == "batch_matmul_f32":
+        kw = {"B": a.B, "M": a.M, "N": a.N, "K": a.K}
+    elif a.op == "softmax_f32":
+        kw = {"M": a.M, "N": a.N}
+    else:                                   # matmul_f32 / conv2d_im2col_f32: M,N,K
+        kw = {"M": a.M, "N": a.N, "K": a.K}
     b = fn(a.out_root, **kw)
     print(f"wrote {b}")
     return 0

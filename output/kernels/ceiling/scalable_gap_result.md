@@ -121,6 +121,64 @@ Registered as the default-off impr feature `intrinsic_microkernel` (action_class
 `merlin/python/merlin/llvmlower/impr_features.py`. It is a marker with no MLIR schedule/pipeline edit
 (baseline byte-identical, `test_impr_features` green); the measured driver IS the codegen pass's output.
 
+## UPDATE (kernel-policy-mining): the win is NOT compiler-emitted — honest relabel
+
+The earlier section above implied the `intrinsic_microkernel` was the gap-closer. It is a **HAND-WRITTEN
+CEILING REFERENCE, not a compiler-emitted feature** — relabeled honestly in `impr_features.py`. The
+question this branch set out to answer — *can the compiler's transform-dialect path GENUINELY emit an
+accumulator-resident kernel?* — was answered by building the `accumulator_resident_microkernel` feature
+through the real RVV pipeline and MEASURING the emitted asm + spike instret across a spread of shapes
+(incl. a non-cube, to prove it is not cube-overfit):
+
+| shape         | ours `accumulator_resident_microkernel` (compiler-emitted) | hand ceiling `intrinsic_microkernel` | OpenBLAS |
+|---|---|---|---|
+| 32^3          | 199,422   | 6,551   | 11,039  |
+| 64^3          | 954,558   | 50,695  | 84,483  |
+| 128^3         | 5,078,423 | 399,241 | 664,811 |
+| 96x48x160 (non-cube) | 1,606,327 | — | — |
+
+All `accumulator_resident_microkernel` cells are **bit-exact** on spike (incl. the non-cube), so the
+feature is correct and general — but it is **~19x off the hand ceiling @64^3** and does NOT close the
+gap. The CCA abstraction now reads WHY, structurally from the emitted objdump (no regex,
+`cca.lift_asm` over `decode.rvv`): the feature's K-loop still **round-trips the accumulator through the
+stack every K-tile** — a whole-register `vl4re8.v` load + `vs4r.v` store of the accumulator INSIDE the
+loop body:
+
+```
+forward+0x1dc .. +0x302  (the K-reduction loop)
+  vl4re8.v  v12, (a2)     <- RELOAD accumulator each K step
+  vfmacc.vv v12, v8, v4
+  vs4r.v    v12, (a2)     <- RESTORE accumulator each K step
+  ...
+  bne a2, s6, +0x1dc
+```
+
+`hoist_redundant_vector_transfers` did NOT lift the carried accumulator into a pure register iter_arg
+under RVV's fixed VLEN, so `cca.lift_asm` reads `accumulator_resident = False` on it (vs `= True` on the
+OpenBLAS/XNNPACK expert asm). **The abstraction can now SEE the gap.**
+
+### Verdict (this branch)
+
+- **Can the transform-dialect path genuinely emit the accumulator-resident kernel? NO** (measured, with
+  emitted-objdump evidence above). It forms `vfmacc` and is bit-exact and general, but still spills the
+  accumulator per K-tile, so it is ~19x off the hand ceiling.
+- **Honest disposition:** the hand kernel stays a **labeled ceiling reference only** (relabeled in
+  `impr_features.py`); the gap is expressed as a `forkable_now=False` action in the catalog
+  (`compute.accumulator_resident` -> PASS at `impr_features:accumulator_resident_microkernel`, plus a
+  CODEGEN closer "needs a dedicated RVV micro-kernel codegen pass"). Never linked the hand kernel as a
+  compiler win.
+- **Abstraction (the real deliverable):** `accumulator_resident` is promoted onto the target-agnostic
+  `ComputeFacet`; `cca.lift_asm` now infers accumulator-residency, the (MR,NR) register block, and
+  whether NR tracks vsetvlmax — verified faithful on real OpenBLAS/XNNPACK GEMM asm (resident=True) vs
+  ours (resident=False) in `test_cca.py`. The comparator emits `compute.accumulator_resident` and
+  `compute.nr_is_vsetvlmax` divergences, routed by `action_catalog.py`.
+- **Generalization + N-tail:** the feature forms `vfmacc` on a conv2d (im2col->matmul) contraction
+  (spike gate_ok, cos 0.99999994) and on attention `batch_matmul`s. The new N-tail-safe variant
+  `accumulator_resident_ntail` (NR_bmm = min(NR, N) = 8) makes a llama-style N=8 attention batch_matmul
+  VECTORIZE to `vfmacc` (spike gate_ok, cos 1.0000001) where the un-clamped variant hits the LLVM-23
+  masked-`transfer_write` PipelineError -> silent scalar fallback. Fixes the "not universally
+  whole-model-safe" caveat for small-N attention.
+
 ## Verdict
 
 - **Did the upstream tile/outerproduct lowering close the gap? No.** It emits a spill-free inner vfmacc

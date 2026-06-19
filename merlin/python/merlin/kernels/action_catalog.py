@@ -70,6 +70,55 @@ _RVV_ROUTES: list[_Route] = [
         expected_effect="vfmacc replaces vfmul+vfadd; MEASURED 7.9x faster on K1 silicon (64^3 f32 "
                         "matmul, N=5, cos=1.0) vs the frozen baseline"),
     _Route(
+        axis="compute.accumulator_resident",
+        when=lambda d: bool(d.expert) and d.ours is False,
+        action_class="PASS",
+        target_seam="impr_features:accumulator_resident_microkernel",
+        change="carry the MR x NR C-accumulator across the K reduction in scf.for vector iter_args "
+               "(value semantics — stays in the vector register file, never bufferizes to memory "
+               "per K-tile) and commit C once after the loop, instead of the per-K-tile "
+               "transfer_read/transfer_write+memref.copy accumulator roundtrip the tile->vectorize-> "
+               "bufferize lowering emits. The general accumulator-residency capability behind the "
+               "experts' MR vfmacc.vf accumulator-vreg block.",
+        # HONEST forkable status: the transform-dialect feature (accumulator_resident_microkernel)
+        # forms vfmacc and is bit-exact, but the EMITTED asm still spills the carried accumulator
+        # through the stack inside the K loop (whole-register vsNr/vlNre measured in-loop), so the
+        # CCA reads it back as accumulator_resident=False — the transform path does NOT yet fully
+        # close the gap. The genuine register-resident closer is the dedicated micro-kernel codegen
+        # (intrinsic_microkernel, CODEGEN action below). Recorded as a deferred codegen work-item.
+        forkable_now=False,
+        expected_effect="accumulator never touches memory across the reduction; removes the "
+                        "accumulator/result memref.copy traffic that is the measured ~15.7x "
+                        "scalable gap (compute kernel alone is already ~1.5x OpenBLAS)"),
+    _Route(
+        axis="compute.accumulator_resident",
+        # CODEGEN closer: when no impr PASS expresses residency, route to the dedicated RVV
+        # micro-kernel emitter that the intrinsic_microkernel marker + driver demonstrate (the only
+        # path measured to actually keep the accumulator register-resident across K).
+        when=lambda d: bool(d.expert) and d.ours is None,
+        action_class="CODEGEN",
+        target_seam="pass:rvv-microkernel-emitter (intrinsic_microkernel ceiling)",
+        change="lower the inner MR x NR x K block to a register-blocked, accumulator-resident, "
+               "K-streaming RVV micro-kernel (MR accumulator vreg-groups held across K, A scalars + "
+               "B row streamed via vfmacc.vf, C stored once) — what a dedicated micro-kernel codegen "
+               "pass would emit; demonstrated bit-exact + spill-free by intrinsic_microkernel.",
+        forkable_now=False,
+        expected_effect="register-resident accumulator with zero per-K memref roundtrip; measured "
+                        "1.7x faster than OpenBLAS pack-excluded on the spike proxy (hand ceiling)"),
+    _Route(
+        axis="compute.nr_is_vsetvlmax",
+        when=lambda d: bool(d.expert) and not d.ours,
+        action_class="HEURISTIC",
+        target_seam="schedule:NR=vsetvlmax (VL-adaptive output tile + N-tail clamp)",
+        change="set the inner output width NR = vsetvlmax (the runtime VLEN lane count) via a "
+               "polymorphic vsetvli VL-loop with an N-tail (clamp NR=min(NR,N)), instead of a "
+               "compile-time-fixed NR tile — VL-adaptive like the XNNPACK 1xNv / OpenBLAS scalable "
+               "kernels, and the lever that lets a small-N (e.g. N=8 attention) batch_matmul "
+               "vectorize instead of falling back to scalar.",
+        forkable_now=True,
+        expected_effect="one kernel adapts NR to any VLEN; small-N contractions vectorize (N-tail) "
+                        "instead of hitting the masked-transfer_write fallback to scalar"),
+    _Route(
         axis="vector.lmul",
         when=_is_higher,
         action_class="KNOB", target_seam="schedule:vector_sizes (widen N to raise LMUL)",
