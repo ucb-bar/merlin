@@ -1,0 +1,5 @@
+metric,macro,micro,macro_micro_gap,worst_workload,worst,best_workload,best,most_influential,loo_micro_at_influential,max_loo_micro_delta,winner_stable_magnitude_unstable
+dense_gemm_mac_fraction,0.1395,0.0397,0.0999,bitvla,0.0,rdt,0.8711,pi05,0.5076,0.4679,yes
+gemv_skinny_mac_fraction,0.7998,0.643,0.1567,rdt,0.1289,bitvla,1.0,pi05,0.326,0.3171,yes
+true_gemv_mac_fraction,0.0506,0.0007,0.05,smolvla,0.0,tiny_llama,0.2372,pi05,0.0073,0.0066,no
+skinny_gemm_mac_fraction,0.7491,0.6424,0.1068,rdt,0.1287,groot_n1d7,0.9959,pi05,0.3187,0.3237,yes

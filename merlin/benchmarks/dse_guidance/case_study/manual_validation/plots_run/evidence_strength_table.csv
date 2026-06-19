@@ -1,0 +1,13 @@
+metric,value
+total_facts,346
+signal_facts,185
+context_facts,161
+signal_to_total,0.535
+verified_facts,144
+measured_facts,11
+derived_facts,170
+assumed_facts,0
+unavailable_facts,7
+high_confidence_findings,221
+assumption_heavy_claims,118
+weak_findings,7

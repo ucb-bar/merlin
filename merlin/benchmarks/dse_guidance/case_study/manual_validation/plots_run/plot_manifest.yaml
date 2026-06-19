@@ -1,0 +1,559 @@
+# plot_manifest: all
+plot_manifest:
+  plots:
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: How much of each workload's evidence is IR-recovered vs assumed — where the search space rests on recovered structure vs reference values.
+    evidence_tier: B
+    n_source_rows: 346
+    plot_id: evidence_type_by_workload
+    plot_type: stacked_bar
+    recommendation: backup
+    required_columns:
+    - workload
+    - evidence_type
+    series: evidence_type
+    source_artifact: unified_fact_table.csv
+    title: Evidence type by workload
+    why_useful: shows evidence type by workload from unified_fact_table.csv
+    x_axis: workload
+    y_axis: count
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Evidence provenance per analysis phase (traceability).
+    evidence_tier: B
+    n_source_rows: 346
+    plot_id: evidence_type_by_phase
+    plot_type: stacked_bar
+    recommendation: backup
+    required_columns:
+    - source_phase
+    - evidence_type
+    series: evidence_type
+    source_artifact: unified_fact_table.csv
+    title: Evidence type by analysis phase
+    why_useful: shows evidence type by analysis phase from unified_fact_table.csv
+    x_axis: source_phase
+    y_axis: count
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: MAC mass per shape class — which matmul shapes a DSE primitive set must cover to capture most compute.
+    evidence_tier: B
+    n_source_rows: 28
+    plot_id: shape_class_mac_share
+    plot_type: stacked_bar
+    recommendation: main
+    required_columns:
+    - workload
+    - shape_class
+    - mac_fraction
+    series: shape_class
+    source_artifact: shape_summary_by_workload.csv
+    title: Shape-class MAC share by workload
+    why_useful: shows shape-class mac share by workload from shape_summary_by_workload.csv
+    x_axis: workload
+    y_axis: mac_fraction
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Op-count share per shape class (context for the MAC share).
+    evidence_tier: B
+    n_source_rows: 28
+    plot_id: shape_class_opcount_share
+    plot_type: stacked_bar
+    recommendation: backup
+    required_columns:
+    - workload
+    - shape_class
+    - op_count
+    series: shape_class
+    source_artifact: shape_summary_by_workload.csv
+    title: Shape-class op-count share by workload
+    why_useful: shows shape-class op-count share by workload from shape_summary_by_workload.csv
+    x_axis: workload
+    y_axis: op_count
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Which candidate primitives tile each workload's shapes under 10% pad waste — the primitive search space, not a performance ranking.
+    evidence_tier: B
+    n_source_rows: 80
+    plot_id: primitive_coverage_heatmap
+    plot_type: heatmap
+    recommendation: main
+    required_columns:
+    - primitive
+    - workload
+    - coverage_under_10pct
+    series: coverage_under_10pct
+    source_artifact: primitive_coverage_matrix.csv
+    title: Primitive x workload structural coverage
+    why_useful: shows primitive x workload structural coverage from primitive_coverage_matrix.csv
+    x_axis: workload
+    y_axis: primitive
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Coverage vs worst-case cross-workload regret per primitive — primitives with high regret are corpus-overfit candidates DSE should treat cautiously.
+    evidence_tier: B
+    n_source_rows: 8
+    plot_id: primitive_regret_bar
+    plot_type: grouped_bar
+    recommendation: backup
+    required_columns:
+    - primitive
+    - coverage_under_10pct
+    - max_regret
+    series: max_regret
+    source_artifact: primitive_regret_table.csv
+    title: Primitive coverage + max regret
+    why_useful: shows primitive coverage + max regret from primitive_regret_table.csv
+    x_axis: primitive
+    y_axis: coverage_under_10pct
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: How many workloads imply each system abstraction (support breadth).
+    evidence_tier: B
+    n_source_rows: 10
+    plot_id: abstraction_pressure_bar
+    plot_type: bar
+    recommendation: backup
+    required_columns:
+    - system_abstraction
+    - n_workloads
+    series: ''
+    source_artifact: abstraction_pressure_ranking.csv
+    title: Abstraction pressure (workloads supporting)
+    why_useful: shows abstraction pressure (workloads supporting) from abstraction_pressure_ranking.csv
+    x_axis: system_abstraction
+    y_axis: n_workloads
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: At which HW/SW levels each abstraction could sit — the boundary search space DSE must explore (Merlin enumerates, does not choose).
+    evidence_tier: B
+    n_source_rows: 27
+    plot_id: boundary_placement_heatmap
+    plot_type: heatmap
+    recommendation: backup
+    required_columns:
+    - abstraction
+    - compiler_transform
+    - runtime_hal_object
+    - command_buffer_or_command_isa
+    - accelerator_isa
+    - device_microcode_or_controller
+    - fixed_hardware_datapath
+    series: status
+    source_artifact: hw_sw_boundary_matrix.csv
+    title: 'Boundary placement: abstraction x level'
+    why_useful: 'shows boundary placement: abstraction x level from hw_sw_boundary_matrix.csv'
+    x_axis: level
+    y_axis: abstraction
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Resident weight bytes per region by dtype — the on-chip capacity the residency search space is sized against.
+    evidence_tier: B
+    n_source_rows: 17
+    plot_id: resident_capacity_by_dtype
+    plot_type: grouped_bar
+    recommendation: backup
+    required_columns:
+    - workload
+    - region
+    - resident_int8_B
+    - resident_bf16_B
+    series: dtype
+    source_artifact: data_movement_table.csv
+    title: Resident capacity by dtype (per region)
+    why_useful: shows resident capacity by dtype (per region) from data_movement_table.csv
+    x_axis: workload_region
+    y_axis: bytes
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Weight bytes re-read across the K-loop that residency could avoid — where a residency/packed-store axis has the most to act on.
+    evidence_tier: B
+    n_source_rows: 17
+    plot_id: avoidable_reload_by_region
+    plot_type: bar
+    recommendation: main
+    required_columns:
+    - workload
+    - region
+    - avoidable_weight_reload
+    series: ''
+    source_artifact: data_movement_table.csv
+    title: Avoidable weight reload by region
+    why_useful: shows avoidable weight reload by region from data_movement_table.csv
+    x_axis: workload_region
+    y_axis: avoidable_weight_reload
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: How many blocked candidates each missing input would unblock — what to capture/measure next, not a result.
+    evidence_tier: B
+    n_source_rows: 35
+    plot_id: measurement_priority_bar
+    plot_type: bar
+    recommendation: main
+    required_columns:
+    - measurement
+    - n_candidates_unblocked
+    series: ''
+    source_artifact: measurement_priority_table.csv
+    title: Candidates unblocked per measurement
+    why_useful: shows candidates unblocked per measurement from measurement_priority_table.csv
+    x_axis: measurement
+    y_axis: n_candidates_unblocked
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Inter-op work/span per workload — the unit-multiplicity the heterogeneity search space could exploit.
+    evidence_tier: B
+    n_source_rows: 10
+    plot_id: critical_path_parallelism
+    plot_type: bar
+    recommendation: main
+    required_columns:
+    - workload
+    - available_parallelism
+    series: ''
+    source_artifact: critical_path_table.csv
+    title: Available parallelism by workload
+    why_useful: shows available parallelism by workload from critical_path_table.csv
+    x_axis: workload
+    y_axis: available_parallelism
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Epilogue/fusion patterns per workload (numerical-contract context).
+    evidence_tier: B
+    n_source_rows: 1385
+    plot_id: epilogue_pattern_counts
+    plot_type: stacked_bar
+    recommendation: backup
+    required_columns:
+    - workload
+    - pattern
+    series: pattern
+    source_artifact: epilogue_pattern_table.csv
+    title: Epilogue patterns by workload
+    why_useful: shows epilogue patterns by workload from epilogue_pattern_table.csv
+    x_axis: workload
+    y_axis: count
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: If DSE builds only ONE compute primitive, how much of each workload's MACs it can tile under 10% waste — the worst-case bar shows no single primitive covers every workload, so the search space needs both a tile and a GEMV lane.
+    evidence_tier: B
+    n_source_rows: 80
+    plot_id: decision_primitive_choice
+    plot_type: decision_bar
+    recommendation: main
+    required_columns:
+    - primitive
+    - workload
+    - coverage_under_10pct
+    series: workload
+    source_artifact: primitive_coverage_matrix.csv
+    title: 'Decision: single primitive choice -> coverage'
+    why_useful: 'shows decision: single primitive choice -> coverage from primitive_coverage_matrix.csv'
+    x_axis: primitive
+    y_axis: coverage_under_10pct
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: 'Weight bytes moved as the head loop count grows: reload-every-step (linear) vs keep-resident (flat). The vertical gap at each workload''s real K is the avoidable reload a residency knob removes (bytes, not bandwidth).'
+    evidence_tier: B
+    n_source_rows: 17
+    plot_id: decision_weight_residency
+    plot_type: decision_curve
+    recommendation: main
+    required_columns:
+    - workload
+    - region
+    - weight_bytes
+    - invocations
+    series: policy
+    source_artifact: data_movement_table.csv
+    title: 'Decision: weight residency -> bytes moved vs loop count'
+    why_useful: 'shows decision: weight residency -> bytes moved vs loop count from data_movement_table.csv'
+    x_axis: loop_count
+    y_axis: bytes_moved
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: How many workloads become fully weight-resident as the on-chip capacity budget grows, per storage dtype — low-bit dtypes reach full residency at a smaller budget, quantifying the capacity-vs-dtype trade in the search space.
+    evidence_tier: B
+    n_source_rows: 10
+    plot_id: decision_capacity_dtype
+    plot_type: decision_curve
+    recommendation: main
+    required_columns:
+    - workload
+    - bf16_B
+    - int8_B
+    - int4_B
+    series: dtype
+    source_artifact: dtype_capacity_table.csv
+    title: 'Decision: on-chip capacity + dtype -> weights resident'
+    why_useful: 'shows decision: on-chip capacity + dtype -> weights resident from dtype_capacity_table.csv'
+    x_axis: capacity_budget
+    y_axis: workloads_resident
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: 'Extra data-movement bytes added by sharding 2/4/8 ways along M, N, or K: M/N shards are reduction-free (broadcast only) while K shards add partial-sum traffic — the cost side of the parallelization decision.'
+    evidence_tier: B
+    n_source_rows: 4155
+    plot_id: decision_sharding_cost
+    plot_type: decision_bar
+    recommendation: main
+    required_columns:
+    - axis
+    - shardable_2
+    - shardable_4
+    - shardable_8
+    - per_extra_shard_bytes
+    series: axis
+    source_artifact: sharding_table.csv
+    title: 'Decision: shard axis + count -> extra data-movement bytes'
+    why_useful: 'shows decision: shard axis + count -> extra data-movement bytes from sharding_table.csv'
+    x_axis: shard_count
+    y_axis: extra_bytes
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: 'Each point is a primitive (or best set): x=mean coverage, y=worst-workload coverage. Upper-right = broadly useful; high-x/low-y = corpus-overfit. The best single primitive sits low on y; a {tile + GEMV-lane} set reaches the top-right — DSE should search primitive SETS.'
+    evidence_tier: B
+    n_source_rows: 11080
+    plot_id: primitive_set_frontier
+    plot_type: scatter
+    recommendation: main
+    required_columns:
+    - workload
+    - op_index
+    - primitive
+    - covered_under_10pct
+    series: set
+    source_artifact: tile_waste_table.csv
+    title: Primitive-set frontier (worst vs mean coverage)
+    why_useful: shows primitive-set frontier (worst vs mean coverage) from tile_waste_table.csv
+    x_axis: mean_coverage
+    y_axis: worst_coverage
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: 'Cumulative MAC share vs top-k operators per workload: a steep curve (rdt: 1 op = 87%) means DSE sizes for a few giant ops; a gradual curve means many even ops.'
+    evidence_tier: B
+    n_source_rows: 1385
+    plot_id: operator_cumulative_mac
+    plot_type: line
+    recommendation: main
+    required_columns:
+    - workload
+    - macs
+    series: workload
+    source_artifact: operator_shape_table.csv
+    title: Operator cumulative MAC share (few giant vs many even ops)
+    why_useful: shows operator cumulative mac share (few giant vs many even ops) from operator_shape_table.csv
+    x_axis: top_k_ops
+    y_axis: cumulative_mac
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Strict necessity per abstraction × workload (necessary/useful/possible/blocked/N-A) — what DSE should commit to, not merely what is possible; low-bit abstractions are blocked by the dequantized capture.
+    evidence_tier: B
+    n_source_rows: 27
+    plot_id: boundary_necessity_matrix
+    plot_type: categorical
+    recommendation: main
+    required_columns:
+    - abstraction
+    series: necessity_class
+    source_artifact: hw_sw_boundary_matrix.csv
+    title: Abstraction necessity (necessary/useful/possible/blocked)
+    why_useful: shows abstraction necessity (necessary/useful/possible/blocked) from hw_sw_boundary_matrix.csv
+    x_axis: workload
+    y_axis: abstraction
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: For the top-MAC ops, extra sharding bytes normalized by the op's output bytes, per M/N/K axis — which axis partitions a hot op cheaply (the per-operator view, not a corpus aggregate).
+    evidence_tier: B
+    n_source_rows: 4155
+    plot_id: decision_sharding_per_top_op
+    plot_type: decision_bar
+    recommendation: main
+    required_columns:
+    - workload
+    - op_index
+    - axis
+    - per_extra_shard_bytes
+    series: axis
+    source_artifact: sharding_table.csv
+    title: 'Decision: shard top-MAC ops -> extra bytes / output bytes'
+    why_useful: 'shows decision: shard top-mac ops -> extra bytes / output bytes from sharding_table.csv'
+    x_axis: top_op
+    y_axis: extra_over_output
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Worst-workload coverage vs primitive-set size at 5/10/20% pad waste — whether the 'a 2-set suffices' claim survives threshold perturbation (the specific pair may shift; structural coverage only).
+    evidence_tier: B
+    n_source_rows: 11080
+    plot_id: primitive_frontier_by_threshold
+    plot_type: line
+    recommendation: main
+    required_columns:
+    - workload
+    - op_index
+    - primitive
+    - covered_under_10pct
+    series: threshold
+    source_artifact: tile_waste_table.csv
+    title: 'Frontier robustness: worst coverage vs set size by threshold'
+    why_useful: 'shows frontier robustness: worst coverage vs set size by threshold from tile_waste_table.csv'
+    x_axis: set_size
+    y_axis: worst_coverage
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Macro (equal-weight) vs micro (MAC-weighted) vs worst coverage as the primitive set grows — the second primitive is where worst-workload coverage jumps; structural, no performance.
+    evidence_tier: B
+    n_source_rows: 11080
+    plot_id: macro_vs_micro_primitive_coverage
+    plot_type: line
+    recommendation: main
+    required_columns:
+    - workload
+    - op_index
+    - primitive
+    - covered_under_10pct
+    series: aggregation
+    source_artifact: tile_waste_table.csv
+    title: Macro vs micro vs worst primitive coverage
+    why_useful: shows macro vs micro vs worst primitive coverage from tile_waste_table.csv
+    x_axis: set_size
+    y_axis: coverage
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Required compute rate (= configured-K replan MACs / deadline) vs replan deadline — a REQUIREMENT a future accelerator must exceed, not a measured rate.
+    evidence_tier: B
+    n_source_rows: 140
+    plot_id: required_compute_envelope
+    plot_type: line
+    recommendation: main
+    required_columns:
+    - workload
+    - region
+    - requirement
+    - value
+    series: workload
+    source_artifact: requirements_table.csv
+    title: Required compute envelope (requirement, not measured)
+    why_useful: shows required compute envelope (requirement, not measured) from requirements_table.csv
+    x_axis: deadline_ms
+    y_axis: required_GMAC_per_s
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Required weight bandwidth at a 100 ms deadline, weights reloaded every step vs kept resident — residency removes a K× bandwidth requirement (the residency search axis); a requirement, not a measured rate.
+    evidence_tier: B
+    n_source_rows: 140
+    plot_id: required_memory_movement_envelope
+    plot_type: grouped_bar
+    recommendation: main
+    required_columns:
+    - workload
+    - region
+    - requirement
+    - value
+    series: residency
+    source_artifact: requirements_table.csv
+    title: Required memory-movement envelope (residency removes Kx)
+    why_useful: shows required memory-movement envelope (residency removes kx) from requirements_table.csv
+    x_axis: workload
+    y_axis: required_weight_B_per_s
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Required dispatch rate vs deadline — a PROXY (matmul-count, ~12× undercount), measured only for small_llama; not a hardware command rate.
+    evidence_tier: B
+    n_source_rows: 140
+    plot_id: required_command_rate_envelope
+    plot_type: line
+    recommendation: backup
+    required_columns:
+    - workload
+    - region
+    - requirement
+    - value
+    series: workload
+    source_artifact: requirements_table.csv
+    title: Required command-rate envelope (proxy; not measured)
+    why_useful: shows required command-rate envelope (proxy; not measured) from requirements_table.csv
+    x_axis: deadline_ms
+    y_axis: required_dispatch_per_s
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Largest leave-one-out micro swing per cross-workload metric — red bars are metrics whose winner is stable but whose magnitude is not (drop one workload and the number moves sharply).
+    evidence_tier: B
+    n_source_rows: 28
+    plot_id: workload_influence_loo_delta
+    plot_type: bar
+    recommendation: main
+    required_columns:
+    - workload
+    - shape_class
+    - mac_fraction
+    series: ''
+    source_artifact: shape_summary_by_workload.csv
+    title: 'Workload influence: leave-one-out micro delta'
+    why_useful: 'shows workload influence: leave-one-out micro delta from shape_summary_by_workload.csv'
+    x_axis: metric
+    y_axis: max_loo_micro_delta
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Recovered MAC mass split into linear-GEMM vs attention (both from IR shapes, no config) — attention is NOT erased, just lowered to generic and re-parsed.
+    evidence_tier: B
+    n_source_rows: 10
+    plot_id: work_coverage_by_workload
+    plot_type: stacked_bar
+    recommendation: main
+    required_columns:
+    - workload
+    - linear_gemm_macs
+    - attention_macs
+    series: op_class
+    source_artifact: work_coverage_table.csv
+    title: 'Recovered work: linear-GEMM vs attention MAC mass'
+    why_useful: 'shows recovered work: linear-gemm vs attention mac mass from work_coverage_table.csv'
+    x_axis: workload
+    y_axis: recovered_macs
+  - available: true
+    caveat: structural; axes are counts/bytes/fractions, not a performance metric
+    dse_caption: Fraction of recovered MAC work that is the linear-GEMM geometry this study analyzes (rest = attention) — answers 'are we analyzing most of the compute?'.
+    evidence_tier: B
+    n_source_rows: 10
+    plot_id: visible_linear_fraction
+    plot_type: bar
+    recommendation: main
+    required_columns:
+    - workload
+    - visible_linear_fraction
+    series: ''
+    source_artifact: work_coverage_table.csv
+    title: Visible linear fraction (linear / (linear+attention))
+    why_useful: shows visible linear fraction (linear / (linear+attention)) from work_coverage_table.csv
+    x_axis: workload
+    y_axis: visible_linear_fraction
+  rendered:
+  - evidence_type_by_workload
+  - evidence_type_by_phase
+  - shape_class_mac_share
+  - primitive_coverage_heatmap
+  - primitive_regret_bar
+  - boundary_placement_heatmap
+  - resident_capacity_by_dtype
+  - avoidable_reload_by_region
+  - measurement_priority_bar
+  - critical_path_parallelism
+  - decision_primitive_choice
+  - decision_weight_residency
+  - decision_capacity_dtype
+  - decision_sharding_cost
+  - primitive_set_frontier
+  - operator_cumulative_mac
+  - boundary_necessity_matrix
+  - decision_sharding_per_top_op
+  - primitive_frontier_by_threshold
+  - macro_vs_micro_primitive_coverage
+  - required_compute_envelope
+  - required_memory_movement_envelope
+  - required_command_rate_envelope
+  - workload_influence_loo_delta
+  - work_coverage_by_workload
+  - visible_linear_fraction
+  scope: all
