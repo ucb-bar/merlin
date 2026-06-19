@@ -346,6 +346,28 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
                                            f"-march={K1_MARCH}", f"-mabi={K1_MABI}", "-O3",
                                            "-ffast-math", "-DNDEBUG"],
                                       n_sigs, work / "xnn")
+    # OpenBLAS kernel-backend (default-off, additive): the OpenBLAS analogue of the XNNPACK path
+    # above. Routes the SAME routable f32 linalg.matmul ops to OpenBLAS's RVV 8x8 GEMM ukernel
+    # (@merlin_openblas_gemm_f32); everything else lowers unchanged. n_openblas_routed records the
+    # count; the shim .o is built + linked below.
+    openblas_obj = None
+    n_openblas_routed = 0
+    if kernel_backend == "openblas":
+        from ..runtime.backends import openblas_board as ob
+
+        if not ob.is_available():
+            raise K1Error("kernel_backend='openblas' but the OpenBLAS RVV ukernel/shim is "
+                          "unavailable (see MERLIN_OPENBLAS_REPO / tmp/kernels/OpenBLAS)")
+        if pkg.is_int8:
+            raise K1Error("kernel_backend='openblas' is an f32 GEMM path; int8 datapath not supported")
+        rewritten, n_openblas_routed = ob.rewrite_matmuls_to_openblas(prepared.read_text())
+        prepared = work / "model.prepared.openblas.mlir"
+        prepared.write_text(rewritten)
+        n_sigs = rewritten.count("func.func private @merlin_openblas_gemm_f32_")
+        openblas_obj = ob.build_openblas_object(cc, ["--target=riscv64-unknown-linux-gnu",
+                                                     f"-march={K1_MARCH}", f"-mabi={K1_MABI}", "-O3",
+                                                     "-ffast-math", "-DNDEBUG"],
+                                                n_sigs, work / "openblas")
     # hoist_static_allocs=False: keep big intermediate buffers on the HEAP (board RAM) instead of
     # promoting them to stack alloca — large models otherwise overflow even a multi-GB stack.
     from ..llvmlower.pipeline import PipelineError
@@ -418,6 +440,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
             "-O2", f"-I{rt}", f"-I{cgen}", *srcs, model_o]
     if xnn_obj is not None:                       # XNNPACK RVV GEMM ukernel shim
         base += [str(xnn_obj)]
+    if openblas_obj is not None:                  # OpenBLAS RVV GEMM ukernel shim
+        base += [str(openblas_obj)]
     if not mmap_weights:
         base += [str(weights_o)]
     if parallel:
@@ -436,6 +460,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
         raise K1Error(f"K1 cross-compile produced no binary at {binary}")
     if kernel_backend == "xnnpack":
         (work / "N_XNN_ROUTED").write_text(str(n_xnn_routed))
+    if kernel_backend == "openblas":
+        (work / "N_OPENBLAS_ROUTED").write_text(str(n_openblas_routed))
     return binary
 
 
@@ -466,10 +492,11 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
     the board reports — vlenb*8, falling back to the :data:`VLEN` constant). The K1 ``cycles`` from
     ``rdcycle`` are real silicon cycles (``cycle_accurate`` in the runner's measurement record).
 
-    ``kernel_backend="xnnpack"`` (default-off): route the f32 matmul dispatches to XNNPACK's RVV
-    GEMM ukernel. Surfaced as ``n_xnn_routed`` in the result. This is the vectorized path only —
-    it does NOT fall back to scalar/omp (those would drop the XNNPACK routing and silently lie
-    about what ran), so a build/run failure surfaces as an honest exception, not a fallback.
+    ``kernel_backend="xnnpack"`` / ``"openblas"`` (default-off): route the f32 matmul dispatches
+    to XNNPACK's / OpenBLAS's RVV GEMM ukernel. Surfaced as ``n_xnn_routed`` / ``n_openblas_routed``
+    in the result. These are the vectorized path only — they do NOT fall back to scalar/omp (those
+    would drop the routing and silently lie about what ran), so a build/run failure surfaces as an
+    honest exception, not a fallback.
     """
     from ..runtime.backends import zephyr_model as zm
 
@@ -507,6 +534,9 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
             nx = bwork / "N_XNN_ROUTED"
             if nx.is_file():
                 r["n_xnn_routed"] = int(nx.read_text().strip())
+            no = bwork / "N_OPENBLAS_ROUTED"
+            if no.is_file():
+                r["n_openblas_routed"] = int(no.read_text().strip())
             return r
         finally:
             try:
@@ -514,9 +544,9 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
             except Exception:  # noqa: BLE001
                 pass
 
-    if kernel_backend == "xnnpack":
-        # XNNPACK is the vectorized f32 path; NO scalar/omp fallback (those drop the routing and
-        # would silently misreport what ran). Any failure is an honest exception.
+    if kernel_backend in ("xnnpack", "openblas"):
+        # XNNPACK/OpenBLAS are the vectorized f32 paths; NO scalar/omp fallback (those drop the
+        # routing and would silently misreport what ran). Any failure is an honest exception.
         res = _build_deploy_run("v", "v")
     else:
         try:
