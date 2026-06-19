@@ -830,6 +830,44 @@ def capture_level_ablation_csv() -> str:
     return _csv(rows, _ABLATION_CSV_COLS)
 
 
+# P21-S1: loop-preserving recovery (scf.for from torch.while_loop). Reads the
+# loop-preserving captures (recaptures_loop/<w>/model.mlir) and reports K, the
+# loop-carried state and the KV cache RECOVERED FROM IR — the before/after that
+# closes the assumed-K / KV-state / loop-carried / region-role caveats.
+_LOOP_RECOVERY_COLS = ["workload", "loop_preserved", "K", "K_source", "n_iter_args",
+                       "loop_carried_roles", "kv_cache_bytes", "repeated_region_op_count",
+                       "flat_view", "recovered_view", "evidence"]
+
+
+def loop_recovery_csv() -> str:
+    """'' if no loop-preserving captures are present (committed summary left as-is)."""
+    from merlin.dse_guidance.loop_recovery import recover_loop
+    bench = paths.merlin_dir() / "benchmarks" / "dse_guidance"
+    loop_dir = bench / "recaptures_loop"
+    if not loop_dir.is_dir():
+        return ""
+    wls = sorted(p.name for p in loop_dir.glob("*") if (p / "model.mlir").is_file())
+    if not wls:
+        return ""
+    rows = []
+    for w in wls:
+        lr = recover_loop(loop_dir / w / "model.mlir", w)
+        if not lr.present:
+            continue
+        roles = ",".join(c.role for c in lr.carried_state)
+        rows.append({
+            "workload": w, "loop_preserved": True, "K": lr.K, "K_source": lr.K_source,
+            "n_iter_args": lr.n_iter_args, "loop_carried_roles": roles,
+            "kv_cache_bytes": lr.kv_cache_bytes if lr.kv_cache_bytes else "n/a",
+            "repeated_region_op_count": lr.repeated_region_op_count,
+            "flat_view": "loop unrolled by torch.export; K assumed (config); KV/latent erased",
+            "recovered_view": f"scf.for(0,{lr.K},1); {lr.n_iter_args} iter_args carried "
+                              f"({roles}); repeated region = {lr.repeated_region_op_count} ops",
+            "evidence": "recovered_from_ir (scf.for, prov.op=while_loop)",
+        })
+    return _csv(rows, _LOOP_RECOVERY_COLS) if rows else ""
+
+
 def run_case_study(out_dir) -> dict:
     """Analyze all available recaptured workloads; write the cross-workload artifacts."""
     from pathlib import Path
@@ -953,6 +991,9 @@ def run_case_study(out_dir) -> dict:
     abl = capture_level_ablation_csv()       # only written when the local level recaptures exist
     if abl:
         Artifact("capture_level_ablation.csv", abl).write(out)
+    lrcsv = loop_recovery_csv()              # P21-S1: only when loop-preserving captures exist
+    if lrcsv:
+        Artifact("loop_preserving_recovery.csv", lrcsv).write(out)
     # P20 Tool A: Timeloop-native mapspace seeds from the recovered contraction ops (structural; no perf)
     _wl_caps = [(c.workload, str(_recap_dir(c.workload))) for c in cases]
     Artifact("dataflow_candidate_table.csv",
