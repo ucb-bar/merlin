@@ -23,9 +23,20 @@
 #include "f32-gemm/gen/f32-gemm-1x4v-rvv.c"
 
 // ---------------------------------------------------------------------------
-#define M 64
-#define N 64
-#define K 64
+// Shape is injectable via -DGEMM_M= -DGEMM_N= -DGEMM_K= (multishape_compare);
+// default 64^3. (Same scheme as the OpenBLAS driver, for symmetry.)
+#ifndef GEMM_M
+#define GEMM_M 64
+#endif
+#ifndef GEMM_N
+#define GEMM_N 64
+#endif
+#ifndef GEMM_K
+#define GEMM_K 64
+#endif
+#define M GEMM_M
+#define N GEMM_N
+#define K GEMM_K
 
 static float A[M * K];          // activation A[m,k], row-major
 static float W[N * K];          // weights W[n,k] ("goi": output-channel outer)
