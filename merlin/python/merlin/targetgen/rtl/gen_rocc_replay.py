@@ -64,9 +64,25 @@ def main(argv=None):
             arr = np.asarray(leaves[name].data if hasattr(leaves[name], "data") else leaves[name])
         if arr is None:
             continue
-        b = arr.astype(np.int8).tobytes()
-        placements.append({"arg_index": i, "name": name, "addr": arg_addr[i],
-                           "bytes_hex": b.hex(), "shape": list(arr.shape), "dtype": "i8"})
+        # The compiler lays each 2D operand in DRAM with its columns padded to a 16-multiple stride
+        # (matches the kernel's CONFIG_LD stride; zeros in the pad don't affect the matmul). Naive
+        # contiguous placement only works when cols is already a 16-multiple (e.g. A2 16x16). Pad here.
+        img = arr.astype(np.int8)
+        if img.ndim == 2:
+            rows, cols = img.shape
+            pstride = ((cols + 15) // 16) * 16
+            if pstride != cols:
+                padded = np.zeros((rows, pstride), dtype=np.int8)
+                padded[:, :cols] = img
+                img = padded
+            b = img.tobytes()
+            placements.append({"arg_index": i, "name": name, "addr": arg_addr[i],
+                               "bytes_hex": b.hex(), "shape": [rows, cols],
+                               "row_stride": pstride, "dtype": "i8"})
+        else:
+            b = img.tobytes()  # non-2D (e.g. conv IFM pre-im2col) — placed raw; conv needs im2col image
+            placements.append({"arg_index": i, "name": name, "addr": arg_addr[i],
+                               "bytes_hex": b.hex(), "shape": list(img.shape), "dtype": "i8"})
 
     # output arg(s): the kernel args after the inputs are the outputs; their names = golden keys
     # (the capsule may not declare `outputs` explicitly — the command buffer's commit dst is the output).
