@@ -2809,6 +2809,19 @@ def test_p18_operator_recovery_accounting():
 
 @pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
                     reason="case_study package not present")
+def test_p18_capture_erasure_and_per_family():
+    # capture-erasure evidence is demonstrated from the IR (loops absent except a known gather
+    # artifact; no low-bit int types); per-family fractions are valid.
+    from merlin.dse_guidance import insight_mining as IM
+    ce = IM.capture_erasure_evidence(_CS_DIR)["rows"]
+    assert ce and all(not r["lowbit_int_types_present"] for r in ce)
+    assert sum(1 for r in ce if r["loops_preserved"]) <= 1     # only the smolvla gather artifact
+    pf = IM.per_family_summary(_CS_DIR)["rows"]
+    assert pf and all(0.0 <= float(r["visible_linear_fraction"]) <= 1.0 for r in pf)
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
 def test_p17_new_decision_plots_registered_and_available():
     from merlin.dse_guidance import insight_mining as IM
     from merlin.dse_guidance import presentation_plots as PP
