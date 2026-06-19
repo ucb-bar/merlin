@@ -1387,19 +1387,21 @@ def verify_p17_envelope(IM, bundle) -> None:
     no_hw = "measured hardware" not in blob and "measured performance" not in blob
     p13check(cmd_ok and no_hw,
              f"[P17] command rate proxy-tagged (ok={cmd_ok}); no measured-hardware label ({no_hw})")
-    # 3. omitted-op accounting: visible MACs == operator_shape_table sum; attention/KV NOT recovered
-    #    (consistent with capture_fidelity); low-bit not recovered
+    # 3. operator-recovery accounting (P18): linear MACs == named-matmul sum; visible_linear_fraction
+    #    in [0,1]; attention RECOVERED where present; low-bit still erased.
     ops = _rows("operator_shape_table.csv")
     mac_by_wl = {}
     for o in ops:
         mac_by_wl[o["workload"]] = mac_by_wl.get(o["workload"], 0) + int(o["macs"])
     om = bundle["omitted_ops"]["rows"]
-    macs_match = all(int(r["visible_matmul_macs"]) == mac_by_wl.get(r["workload"], -1) for r in om)
-    attn_unrec = all("no" in r["attention_bmm_recovered"] and "no" in r["lowbit_packed_recovered"]
-                     for r in om)
-    p13check(om and macs_match and attn_unrec,
-             f"[P17] omitted-op: visible MACs == operator_shape sum (match={macs_match}); "
-             f"attention/low-bit marked unavailable ({attn_unrec})")
+    macs_match = all(int(r["linear_gemm_macs"]) == mac_by_wl.get(r["workload"], -1) for r in om)
+    frac_ok = all(0.0 <= float(r["visible_linear_fraction"]) <= 1.0 for r in om)
+    lowbit_erased = all("no" in r["lowbit_packed_recovered"] for r in om)
+    attn_recovered = any(int(r["attention_macs"]) > 0 for r in om)
+    p13check(om and macs_match and frac_ok and lowbit_erased and attn_recovered,
+             f"[P17] recovery accounting: linear MACs == named-matmul sum ({macs_match}); "
+             f"visible_fraction in [0,1] ({frac_ok}); attention recovered ({attn_recovered}); "
+             f"low-bit still erased ({lowbit_erased})")
     # 4. the new decision plots are available (not omit) and captioned
     new_plots = {"primitive_frontier_by_threshold", "macro_vs_micro_primitive_coverage",
                  "required_compute_envelope", "required_memory_movement_envelope",

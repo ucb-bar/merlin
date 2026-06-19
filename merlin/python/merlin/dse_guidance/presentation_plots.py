@@ -495,6 +495,40 @@ def _r_required_command_rate_envelope(cs, facts, ax):
     return True
 
 
+def _r_work_coverage_by_workload(cs, facts, ax):
+    rows = _rows(cs / "work_coverage_table.csv")
+    if not rows:
+        return False
+    rows.sort(key=lambda r: -float(r["visible_linear_fraction"]))
+    wl = [r["workload"] for r in rows]
+    lin = [float(r["linear_gemm_macs"]) for r in rows]
+    att = [float(r["attention_macs"]) for r in rows]
+    x = range(len(wl))
+    ax.bar(x, lin, 0.7, label="linear GEMM MACs")
+    ax.bar(x, att, 0.7, bottom=lin, label="attention MACs (recovered)")
+    ax.set_yscale("log")
+    ax.set_xticks(list(x), wl, rotation=30, fontsize=6)
+    ax.set_ylabel("recovered MACs (log)")
+    ax.set_title("Recovered work: linear-GEMM vs attention MAC mass (no config; from IR shapes)")
+    ax.legend(fontsize=7)
+    return True
+
+
+def _r_visible_linear_fraction(cs, facts, ax):
+    rows = _rows(cs / "work_coverage_table.csv")
+    if not rows:
+        return False
+    rows.sort(key=lambda r: float(r["visible_linear_fraction"]))
+    wl = [r["workload"] for r in rows]
+    frac = [float(r["visible_linear_fraction"]) for r in rows]
+    ax.barh(range(len(wl)), frac, color="#1f77b4")
+    ax.set_yticks(range(len(wl)), wl, fontsize=6)
+    ax.set_xlabel("visible_linear_fraction = linear / (linear + attention)")
+    ax.set_xlim(0, 1.02)
+    ax.set_title("How much recovered MAC work is linear-GEMM geometry (rest = attention)")
+    return True
+
+
 def _r_workload_influence_loo_delta(cs, facts, ax):
     from merlin.dse_guidance import insight_mining as IM
     inf = IM.macro_micro_influence(cs)
@@ -538,6 +572,8 @@ _RENDERERS = {
     "required_memory_movement_envelope": _r_required_memory_movement_envelope,
     "required_command_rate_envelope": _r_required_command_rate_envelope,
     "workload_influence_loo_delta": _r_workload_influence_loo_delta,
+    "work_coverage_by_workload": _r_work_coverage_by_workload,
+    "visible_linear_fraction": _r_visible_linear_fraction,
 }
 
 
