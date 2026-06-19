@@ -34,6 +34,8 @@ from merlin.dse_guidance import dtype_certificates as DC
 from merlin.dse_guidance import fusion_epilogue as FE
 from merlin.dse_guidance import mapspace as MS
 from merlin.dse_guidance import memory_envelope as ME
+from merlin.dse_guidance import operand_locality as OL
+from merlin.dse_guidance import quant_metadata as QM
 from merlin.dse_guidance import numerical_contract as NC
 from merlin.dse_guidance import operator_geometry as OG
 from merlin.dse_guidance import parallelism as PAR
@@ -1052,6 +1054,15 @@ def run_case_study(out_dir) -> dict:
                   ME.memory_hierarchy_yaml(region_mem_by_wl),
                   header="memory_hierarchy_envelope (structural; no bandwidth)").write(out)
     Artifact("data_movement_table.csv", ME.data_movement_csv(region_mem_by_wl)).write(out)
+    # P20 Tool B: per-operand locality + resident-capacity-by-dtype (reads the data_movement just written)
+    Artifact("operand_locality_table.csv", OL.locality_csv(out)).write(out)
+    Artifact("capacity_requirement_table.csv", OL.capacity_csv(out)).write(out)
+    Artifact("cache_vs_scratchpad_boundary.md", OL.boundary_md(out)).write(out)
+    # P20 Tool E: low-bit quant metadata from the qdq recaptures (only when present); committed summary
+    _qm = QM.quant_csv(out)
+    if _qm:
+        Artifact("quant_metadata_visibility.csv", _qm).write(out)
+        Artifact("lowbit_capture_requirements.md", QM.requirements_md(out)).write(out)
     Artifact("reuse_lifetime_table.csv", ME.reuse_lifetime_csv(reuse_by_wl)).write(out)
     yaml_artifact("memory_abstraction_candidates.yaml",
                   ME.memory_abstraction_candidates_yaml(reuse_by_wl),

@@ -1480,6 +1480,39 @@ def verify_p20(IM) -> None:
              f"[P20] Timeloop problem shapes consistent: dims==macs ({dims_ok}), 3 dataspaces ({ds_ok}), "
              f"attention no-weight ({attn_ok}), linear has-weight ({lin_ok}), count=={len(shapes)} "
              f"({cnt_ok}), no perf wording ({not leaked})")
+    # P20 Tool B: operand locality bytes reconcile with data_movement; reuse scopes valid; weights resident.
+    dm = {(r["workload"], r["region"]): r for r in
+          _csv.DictReader(_io.StringIO((CS / "data_movement_table.csv").read_text()))}
+    loc = list(_csv.DictReader(_io.StringIO((CS / "operand_locality_table.csv").read_text())))
+    SCOPES = {"within_op", "across_ops", "across_K", "across_decode", "across_replan"}
+    scope_ok = all(r["reuse_scope"] in SCOPES for r in loc)
+
+    def _i(x):
+        try:
+            return int(float(x))
+        except (TypeError, ValueError):
+            return 0
+    wb_ok = all(_i(r["bytes"]) == _i(dm.get((r["workload"], r["region"]), {}).get("weight_bytes"))
+                for r in loc if r["operand"] == "weight")
+    wt_resident = all(r["resident_candidate"].startswith("yes") for r in loc
+                      if r["operand"] == "weight" and _i(r["bytes"]) > 0)
+    p13check(loc and scope_ok and wb_ok and wt_resident,
+             f"[P20] operand-locality: reuse scopes valid ({scope_ok}); weight bytes reconcile with "
+             f"data_movement ({wb_ok}); weights are resident candidates ({wt_resident})")
+    # P20 Tool E: quant metadata traces to qdq dequant ops; granularity valid; native gap recorded.
+    qmf = CS / "quant_metadata_visibility.csv"
+    if qmf.is_file():
+        qm = list(_csv.DictReader(_io.StringIO(qmf.read_text())))
+        GRAN = {"per_channel", "per_tensor", "per_group", "unspecified"}
+        qm_ok = bool(qm) and all(_i(r["n_dequant_ops"]) > 0 and r["scale_granularity"] in GRAN
+                                 and r["storage_dtype"] for r in qm)
+        native_ok = any("ternary" in r["native_scheme_gap"].lower()
+                        for r in qm if r["workload"] == "bitvla")
+        p13check(qm_ok and native_ok,
+                 f"[P20] quant metadata: every row traces to qdq dequant ({qm_ok}); bitvla native-ternary "
+                 f"gap recorded ({native_ok})")
+    else:
+        p13check(True, "[P20] quant metadata: no qdq recaptures present (skipped)")
 
 
 def main(write: bool = True) -> int:

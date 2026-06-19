@@ -2857,6 +2857,36 @@ def test_p20_timeloop_problem_shapes():
             assert any(d.get("operand_identity") == "weight" for d in ds)
 
 
+@pytest.mark.skipif(not (_CS_DIR / "operand_locality_table.csv").is_file(),
+                    reason="operand locality not present")
+def test_p20_operand_locality_and_quant_metadata():
+    # Tool B: weight bytes reconcile with data_movement; reuse scopes valid; weights resident. Tool E:
+    # quant rows trace to qdq dequant ops; bitvla native-ternary gap recorded.
+    import csv as _csv
+    import io as _io
+    dm = {(r["workload"], r["region"]): r for r in _csv.DictReader(_io.StringIO(
+        (_CS_DIR / "data_movement_table.csv").read_text()))}
+    loc = list(_csv.DictReader(_io.StringIO((_CS_DIR / "operand_locality_table.csv").read_text())))
+    scopes = {"within_op", "across_ops", "across_K", "across_decode", "across_replan"}
+    assert loc and all(r["reuse_scope"] in scopes for r in loc)
+
+    def _i(x):
+        try:
+            return int(float(x))
+        except (TypeError, ValueError):
+            return 0
+    for r in loc:
+        if r["operand"] == "weight":
+            assert _i(r["bytes"]) == _i(dm.get((r["workload"], r["region"]), {}).get("weight_bytes"))
+            if _i(r["bytes"]) > 0:
+                assert r["resident_candidate"].startswith("yes")
+    qmf = _CS_DIR / "quant_metadata_visibility.csv"
+    if qmf.is_file():
+        qm = list(_csv.DictReader(_io.StringIO(qmf.read_text())))
+        assert qm and all(int(r["n_dequant_ops"]) > 0 for r in qm)
+        assert any("ternary" in r["native_scheme_gap"].lower() for r in qm if r["workload"] == "bitvla")
+
+
 @pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
                     reason="case_study package not present")
 def test_p17_new_decision_plots_registered_and_available():
