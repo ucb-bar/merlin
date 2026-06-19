@@ -148,6 +148,14 @@ and PTW (address-translation) requests. E.g. A2: `rocc_cmds=9, resp_to_host=0, b
 (=W+A0), mvout 1024 B (=16x16xi32), PTW=0 (bare-metal physical addressing)`; C0 MLP: `72 cmds, 99% busy,
 9216 B in / 8192 B out`. Self-consistent with the declared shapes — a free visibility win of the tier.
 
+Follow-on attempt (col-padding fix, committed 02dd3c4): operands are now placed with 16-multiple column
+stride (matches CONFIG_LD) — necessary, no regression, still 17/20. The 3 misses need *more*, precisely
+diagnosed: **A7** produces uniformly **0.75× golden** (= 18/24, K=24) → a partial-K-tile accumulation-
+coverage bug (needs per-tile spad/acc state tracing); **B3/B4** need the **im2col'd** image placed in DRAM
+rather than the raw IFM. Both are deep per-case layout/tracing follow-ons. (Aside: an attempt to give the
+IREE arm a cycle-accurate column on the small matmuls is blocked by a post-reboot env regression — the IREE
+build's cmake can't load libidn.so.11; low value since IREE already has its L5 column on the big kernels.)
+
 The 3 misses are **harness DRAM-layout edge cases** (non-16-aligned dims → partial-tile padding; conv
 im2col input stride), NOT arc-sim infidelity — the arc model runs the same RTL, but my generic contiguous
 input placement + matmul-stride readback don't match those layouts yet. Bounded follow-on (per-shape
