@@ -584,6 +584,54 @@ module attributes {{transform.with_named_sequence}} {{
 """
 
 
+def _accumulator_resident_v3_pre_schedule(MR: int, NR: int, KC: int,
+                                          NR_bmm: int | None = None,
+                                          MR_mm: int | None = None) -> str:
+    """PRE-bufferize schedule for the v3 (vfmacc.vf) micro-kernel — SAME as the v1/v2 pre-schedule
+    but WITHOUT ``bufferize_to_allocation``.
+
+    The v1/v2 pre-schedule promoted the C tile to a TYPED local ``memref.alloc`` (via
+    ``bufferize_to_allocation``) because v1 ran ``hoist_redundant_vector_transfers`` POST-bufferize
+    and that pass needed a typed alloc to (try to) see. v3 runs ``loop-invariant-subset-hoisting`` on
+    the TENSOR form (before bufferize), where the K-loop carries the C tile as a value-semantic
+    ``tensor<MRxNR>`` iter_arg directly (a ``tensor.extract_slice`` of the output) — no local alloc
+    needed. Dropping ``bufferize_to_allocation`` removes the per-M,N-tile C copy-in/copy-out
+    (``materialize_in_destination`` -> ``memref.copy``) that otherwise dominated the timed region
+    (measured: ~634K of the 692K instret @64^3 was ``memrefCopy``/``memcpy`` from that promotion,
+    while the actual ``forward`` compute kernel was only ~57K — at the hand ceiling). Without it the
+    accumulator write lands in-place on the output buffer, so the compute kernel stands alone.
+
+    Otherwise identical to the v1 pre-schedule: tile [MR,NR]; tile K by 1; scoped-vectorize [MR,NR,1]
+    (one B row + MR A scalars per K step -> the resident-accumulator micro-kernel shape); rebuild
+    ``vector.contract``; STOP (the v3 pipeline does subset-hoist + contract-lower + A-scalarize). The
+    M-tail (``MR_mm``) / N-tail (``NR_bmm``) clamps carry over unchanged for whole-model safety.
+    """
+    NB = NR_bmm if NR_bmm is not None else NR
+    MM = MR_mm if MR_mm is not None else MR
+    return f"""\
+module attributes {{transform.with_named_sequence}} {{
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
+    %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t1, %lmn:2 = transform.structured.tile_using_for %mm tile_sizes [{MM}, {NR}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    %mm2 = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t2, %lk = transform.structured.tile_using_for %mm2 tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    transform.structured.vectorize %t2 vector_sizes [{MM}, {NR}, 1] : !transform.any_op
+    %bm = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %bt1, %blmn:3 = transform.structured.tile_using_for %bm tile_sizes [1, {MR}, {NB}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+    %bm2 = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %bt2, %blk = transform.structured.tile_using_for %bm2 tile_sizes [0, 0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    transform.structured.vectorize %bt2 vector_sizes [1, {MR}, {NB}, 1] : !transform.any_op
+    %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.transfer_permutation_patterns
+      transform.apply_patterns.vector.reduction_to_contract
+    }} : !transform.any_op
+    transform.yield
+  }}
+}}
+"""
+
+
 # NOTE: distinct entry-point name (`@__transform_accum_post`) so that when BOTH the pre- and
 # post-bufferize schedules are preloaded into the same module symbol table, their named sequences do
 # not collide (`@__transform_main` is defined by the pre schedule).
@@ -779,6 +827,254 @@ def _register_accumulator_resident() -> list[str]:
 
 
 ACCUM_RESIDENT_NAMES: list[str] = _register_accumulator_resident()
+
+
+# ---- accumulator-resident micro-kernel v2 (PRE-bufferize subset hoist) --------------
+# The genuine gap-closer the prior `accumulator_resident_microkernel` could NOT reach. That
+# feature ran `hoist_redundant_vector_transfers` POST-bufferize; on the bufferized memref form the
+# accumulator transfer pair is on an scf.for **memref iter_arg** (`%arg7`), and BOTH
+# `hoist_redundant_vector_transfers` AND `loop-invariant-subset-hoisting` no-op on it (the carried
+# memref aliases the per-tile alloc, defeating the loop-invariance / subset analysis) — so the
+# emitted K-loop round-tripped the `vector<MRxNR>` accumulator through the stack every K step
+# (`vl4re8.v`/`vs4r.v` per K-tile, ~19x off the hand ceiling). MEASURED, with objdump evidence.
+#
+# Root cause found here (mlir-opt iteration, LLVM 23): the hoist MUST run on the TENSOR form, BEFORE
+# one-shot-bufferize, where the K-loop carries the accumulator as a value-semantic
+# `tensor<MRxNR>` iter_arg and the accumulator transfer pair reads/writes that tensor iter_arg at
+# loop-invariant indices. On THAT form `loop-invariant-subset-hoisting` fires cleanly: it lifts the
+# `vector.transfer_read` above the K-loop and the `vector.transfer_write` below it, threading a pure
+# `vector<MRxNR>` through the loop as a SECOND iter_arg — the accumulator now lives in SSA vector
+# values across K, never bufferized to memory inside the loop (verified in the emitted IR: the
+# K-loop carries `iter_args(%acc_tensor, %acc_vector)`, body is read-A + read-B-row + MR `vector.fma`
+# into `%acc_vector`, yield; the accumulator transfer pair is GONE from the loop body). After bufferize
+# the carried `vector<MRxNR>` lowers to an `!llvm.array<MR x vector<NRxf32>>` loop-carried value (the
+# K-loop block argument), which the RISC-V backend keeps in the vector register file across K — the
+# accumulator-RESIDENT structure the hand kernel has (MR accumulator vreg-groups held across K).
+#
+# Because the hoist runs PRE-bufferize, the contract must NOT be lowered until AFTER the hoist (the
+# subset analysis wants the read->contract->write shape). So the recipe is:
+#   PRE-bufferize  (edit_schedule): the SAME `_accumulator_resident_pre_schedule` — tile [MR,NR]; tile
+#                  K by 1; scoped-vectorize [MR,NR,1]; transfer_permutation + reduction_to_contract;
+#                  STOP at vector.contract.
+#   edit_pipeline: right after the first transform-interpreter (still on TENSORS), splice
+#                  `loop-invariant-subset-hoisting` (=> the accumulator becomes a vector iter_arg)
+#                  THEN a second transform-interpreter that lowers contraction->outerproduct->fma
+#                  (drop-unit-dims first so the B-row/acc extracts are clean). One-shot-bufferize then
+#                  sees the value-semantic vector iter_arg and keeps it register-resident.
+# NOTE: this still emits `vfmacc.vv` (the A column is read as `vector<MRx1>` -> per-lane `<1xf32>`
+# loads + a lane-broadcast the backend builds with a vmv/vslideup ladder), NOT the hand kernel's
+# `vfmacc.vf` (A scalar straight from an FP reg). That residual A-broadcast pressure forces a small
+# constant number of accumulator spills. So this CLOSES the accumulator-residency structure (the
+# documented #1 gap) and a large fraction of the instret gap, but does not fully reach the hand
+# ceiling — the remaining delta is the `.vf` A-operand form, recorded honestly. Default-off;
+# baseline byte-identical.
+_ACCUM_RESIDENT_V2_LOWER_SCHEDULE = """\
+module attributes {transform.with_named_sequence} {
+  transform.named_sequence @__transform_accum_v2_lower(%arg0: !transform.any_op {transform.readonly}) {
+    %f = transform.structured.match ops{["func.func"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %f {
+      transform.apply_patterns.vector.drop_inner_most_unit_dims_from_xfer_ops
+      transform.apply_patterns.vector.cast_away_vector_leading_one_dim
+      transform.apply_patterns.vector.drop_unit_dims_with_shape_cast
+    } : !transform.any_op
+    transform.apply_patterns to %f {
+      transform.apply_patterns.vector.lower_contraction lowering_strategy = "outerproduct"
+    } : !transform.any_op
+    transform.apply_patterns to %f {
+      transform.apply_patterns.vector.lower_outerproduct
+      transform.apply_patterns.vector.lower_shape_cast
+    } : !transform.any_op
+    transform.yield
+  }
+}
+"""
+
+
+def _accum_v2_lower_schedule_path() -> Path:
+    """Stable temp path for the PRE-bufferize contract-lowering schedule (content-addressed)."""
+    text = _ACCUM_RESIDENT_V2_LOWER_SCHEDULE
+    h = hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+    p = Path(tempfile.gettempdir()) / f"merlin_accum_v2_lower_{h}.mlir"
+    if not p.is_file():
+        p.write_text(text, encoding="utf-8")
+    return p
+
+
+def _accumulator_resident_v2_pipeline(passes: list[str]) -> list[str]:
+    """Splice the PRE-bufferize subset-hoist + contract-lower right after the FIRST
+    transform-interpreter (still on tensors), before one-shot-bufferize.
+
+    The pre-schedule (edit_schedule) stops at `vector.contract`; here we (1) run
+    `loop-invariant-subset-hoisting` on the tensor form so the accumulator transfer pair becomes a
+    `vector<MRxNR>` scf.for iter_arg (register-resident across K), then (2) run a second
+    transform-interpreter that lowers the now-hoisted contraction -> outerproduct -> vector.fma.
+    Running BEFORE bufferize is the whole point: post-bufferize the carried accumulator is a memref
+    iter_arg the hoist cannot lift (the prior feature's measured blocker). Only runs when this feature
+    is enabled; baseline pipeline untouched."""
+    out = list(passes)
+    # Locate the first transform-interpreter (the pre-schedule's __transform_main) and the
+    # canonicalize,cse that follow it; splice after that cse (still on tensors, pre-bufferize).
+    ti = None
+    for i, p in enumerate(out):
+        if p.startswith("transform-interpreter{entry-point=__transform_main}"):
+            ti = i
+            break
+    if ti is None:
+        return out
+    # after ti come canonicalize, cse (then linalg-generalize-named-ops, one-shot-bufferize)
+    insert_at = ti + 1
+    # skip the canonicalize, cse pair that the pipeline puts right after the interpreter
+    while insert_at < len(out) and out[insert_at] in ("canonicalize", "cse"):
+        insert_at += 1
+    sched = _accum_v2_lower_schedule_path()
+    inject = [
+        "loop-invariant-subset-hoisting",
+        f"transform-preload-library{{transform-library-paths={sched}}}",
+        "transform-interpreter{entry-point=__transform_accum_v2_lower}",
+        "canonicalize", "cse",
+    ]
+    if out[insert_at:insert_at + len(inject)] != inject:   # idempotent
+        out = out[:insert_at] + inject + out[insert_at:]
+    # Same convert-vector-to-scf{full-unroll} swap as the v1 feature: the hoisted accumulator is a
+    # rank-2 `vector<MRxNR>` carried by the K loop; the default convert-vector-to-scf would lower
+    # rank>=2 transfers through a stack alloca scratch (re-introducing the per-K stack round-trip).
+    # full-unroll lowers them to rank-1 element ops with NO stack scratch, so the carried accumulator
+    # stays in the vector register file across K. Feature-scoped; baseline untouched.
+    for i, p in enumerate(out):
+        if p == "convert-vector-to-scf":
+            out[i] = "convert-vector-to-scf{full-unroll}"
+            break
+    return out
+
+
+def _register_accumulator_resident_v2() -> list[str]:
+    """Register `accumulator_resident_v2` (default tile) + a small tuning grid. Reuses the v1
+    PRE-bufferize schedule (forms the contract, stops there); the v2 pipeline does the PRE-bufferize
+    subset hoist + contract lowering that makes the accumulator a genuine vector iter_arg."""
+    names: list[str] = []
+    grid = [(4, 16, 16), (4, 16, 32), (8, 16, 16), (4, 32, 16)]
+    for MR, NR, KC in grid:
+        if (MR, NR, KC) == (4, 16, 16):
+            nm = "accumulator_resident_v2"
+            desc = ("PRE-bufferize accumulator-resident micro-kernel (the genuine residency the v1 "
+                    "feature could not reach): tile [MR=4,NR=16], tile K by 1, scoped-vectorize -> "
+                    "vector.contract, then on the TENSOR form (before bufferize) run "
+                    "loop-invariant-subset-hoisting so the accumulator transfer pair becomes a "
+                    "vector<MRxNR> scf.for iter_arg (register-resident across K, NO per-K memref "
+                    "roundtrip), then lower contraction -> outerproduct -> vfmacc. Verified by "
+                    "objdump: the K-loop carries the accumulator as an llvm.array<MR x vector<NR>> "
+                    "loop value with NO accumulator load/store inside the loop (unlike v1's per-K "
+                    "vl4re8.v/vs4r.v). Bit-exact at 32/64/128 + a non-cube on spike. Residual: emits "
+                    "vfmacc.vv (A read as vector<MRx1> -> lane-broadcast) not the hand kernel's "
+                    "vfmacc.vf, so a small constant accumulator-spill from A-broadcast pressure "
+                    "remains; closes the residency structure + most of the instret gap but not the "
+                    "full hand ceiling. Default-off, baseline byte-identical.")
+        else:
+            nm = f"accum_resident_v2_{MR}_{NR}_{KC}"
+            desc = (f"PRE-bufferize accumulator-resident tuning point (MR={MR}, NR={NR}, KC={KC}): "
+                    f"tensor-level subset-hoisted vector<MRxNR> K-loop iter_arg accumulator (no "
+                    f"per-K memref roundtrip). Default-off tuning-grid feature.")
+        register(ImprFeature(
+            name=nm,
+            action_class="PASS",
+            description=desc,
+            edit_pipeline=_accumulator_resident_v2_pipeline,
+            edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
+                           _accumulator_resident_pre_schedule(_MR, _NR, _KC)),
+            schedule_replace=True,
+        ))
+        names.append(nm)
+    return names
+
+
+ACCUM_RESIDENT_V2_NAMES: list[str] = _register_accumulator_resident_v2()
+
+
+# ---- accumulator-resident micro-kernel v3 (resident accumulator + vfmacc.vf) --------
+# v2 made the accumulator register-resident (PRE-bufferize subset hoist -> vector iter_arg) but the
+# emitted K-loop still used `vfmacc.vv`: the A operand was read as `vector<MRx1xf32>` and each row
+# extracted `[i,0]:f32`, and the RISC-V backend cannot cheaply move a vector LANE into the `.vf`
+# scalar FP operand, so it rebuilt the broadcast with a vmv/vslideup ladder (that ladder, NOT a
+# spill, was the residual instret — v2 measured ~19x off the hand ceiling even though the
+# accumulator was resident). v3 adds the A-operand SCALARIZATION rewrite (accum_microkernel.py):
+# after the contraction is lowered to `vector.fma` with f32 A-extracts (but before bufferize), each
+# `vector.transfer_read -> vector<MRx1xf32>` whose only uses are `vector.extract [i,0]:f32` is
+# replaced with per-row scalar `tensor.extract`/`memref.load` (the SAME `a[i]` scalar the hand kernel
+# loads). clang-23 then selects the clean `vfmacc.vf` (flw -> vfmacc.vf), and the emitted K-loop is
+# the hand kernel's structure exactly: ONE B-row vle32, MR scalar A flw, MR `vfmacc.vf` into the
+# resident accumulator, C stored once — 0 in-loop accumulator spills, 0 vfmacc.vv (verified by
+# objdump). Numerically identical to v2 (scalar load of [i,0] == lane [i,0] of the vector read), so
+# BIT-EXACT. The rewrite runs via a two-stage runner (pipeline._accum_microkernel_v3_features); the
+# pipeline edit splices the SCALARIZE_MARKER where the split happens. Default-off; baseline
+# byte-identical.
+def _accumulator_resident_v3_pipeline(passes: list[str]) -> list[str]:
+    """v2 pipeline (PRE-bufferize subset hoist + contract lower) PLUS the SCALARIZE_MARKER sentinel
+    spliced immediately AFTER the contract-lowering transform-interpreter (still on tensors, before
+    one-shot-bufferize). The two-stage runner splits the pipeline at the marker and runs the
+    A-scalarization rewrite there. Only runs when a v3 feature is enabled; baseline untouched."""
+    from .accum_microkernel import SCALARIZE_MARKER
+    out = _accumulator_resident_v2_pipeline(passes)
+    # The v2 edit spliced: loop-invariant-subset-hoisting, transform-preload-library{...v2_lower},
+    # transform-interpreter{entry-point=__transform_accum_v2_lower}, canonicalize, cse. Put the
+    # marker right AFTER that interpreter's canonicalize,cse (contract is now vector.fma w/ f32
+    # A-extracts; bufferize has not run).
+    idx = None
+    for i, p in enumerate(out):
+        if p.startswith("transform-interpreter{entry-point=__transform_accum_v2_lower}"):
+            idx = i
+            break
+    if idx is None:
+        return out
+    insert_at = idx + 1
+    while insert_at < len(out) and out[insert_at] in ("canonicalize", "cse"):
+        insert_at += 1
+    if SCALARIZE_MARKER not in out:
+        out = out[:insert_at] + [SCALARIZE_MARKER] + out[insert_at:]
+    return out
+
+
+def _register_accumulator_resident_v3() -> list[str]:
+    """Register `accumulator_resident_microkernel_v3` (default tile) + a small tuning grid. Reuses
+    the v1 PRE-bufferize schedule (forms the contract); the v3 pipeline does the v2 PRE-bufferize
+    subset hoist + contract lowering AND splices the SCALARIZE_MARKER so the runner scalarizes the A
+    operand -> the K-loop emits the hand kernel's accumulator-resident vfmacc.vf structure."""
+    names: list[str] = []
+    grid = [(4, 16, 16), (4, 16, 32), (8, 16, 16), (4, 32, 16)]
+    for MR, NR, KC in grid:
+        if (MR, NR, KC) == (4, 16, 16):
+            nm = "accumulator_resident_microkernel_v3"
+            desc = ("COMPILER-EMITTED accumulator-resident, register-blocked, vfmacc.vf RVV GEMM "
+                    "micro-kernel — the genuine answer to the #1 scalable-gap the transform-only "
+                    "v1/v2 features could not reach. Recipe: tile [MR=4,NR=16], tile K by 1, "
+                    "scoped-vectorize -> vector.contract; PRE-bufferize loop-invariant-subset-"
+                    "hoisting makes the accumulator a vector<MRxNR> scf.for iter_arg (register-"
+                    "resident across K); lower contraction -> outerproduct -> vector.fma; then the "
+                    "A-operand scalarization rewrite (accum_microkernel.py) replaces the A "
+                    "vector<MRx1> read + extract:f32 with per-row scalar loads so the backend emits "
+                    "vfmacc.vf (flw) not vfmacc.vv (vmv/vslideup). Emitted K-loop (objdump): ONE B "
+                    "vle32 + MR A flw + MR vfmacc.vf into the resident accumulator + C stored once, "
+                    "0 in-loop accumulator spills, 0 vfmacc.vv — the hand ceiling's structure, "
+                    "compiler-emitted. BIT-EXACT vs scalar ref at 32/64/128 + non-cube on spike "
+                    "(scalar load of A[i,0] == lane [i,0]). Default-off, baseline byte-identical.")
+        else:
+            nm = f"accum_resident_v3_{MR}_{NR}_{KC}"
+            desc = (f"Accumulator-resident vfmacc.vf micro-kernel tuning point (MR={MR}, NR={NR}, "
+                    f"KC={KC}): resident vector<MRxNR> K-loop iter_arg accumulator + scalar-A "
+                    f"vfmacc.vf. Default-off tuning-grid feature.")
+        register(ImprFeature(
+            name=nm,
+            action_class="PASS",
+            description=desc,
+            edit_pipeline=_accumulator_resident_v3_pipeline,
+            edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
+                           _accumulator_resident_v3_pre_schedule(_MR, _NR, _KC)),
+            schedule_replace=True,
+        ))
+        names.append(nm)
+    return names
+
+
+ACCUM_RESIDENT_V3_NAMES: list[str] = _register_accumulator_resident_v3()
 
 
 # ---- compiler-emitted register-blocked RVV intrinsic micro-kernel -------------------
