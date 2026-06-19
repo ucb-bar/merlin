@@ -284,7 +284,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
                     inputs_npz: str | Path | None = None,
                     force_scalar: bool | None = None,
                     parallel: bool = False,
-                    mmap_weights: bool | None = None) -> Path:
+                    mmap_weights: bool | None = None,
+                    kernel_backend: str | None = None) -> Path:
     """Cross-compile a K1 Linux RVV binary from the workload + RVV package.
 
     Reuses the EXACT spike/Zephyr lowering (``zephyr_model._prepare_model_mlir`` ->
@@ -298,7 +299,13 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     (>= :data:`_MMAP_WEIGHTS_THRESHOLD` -> mmap). When mmap is used a marker file
     ``<work>/USE_MMAP_WEIGHTS`` records the weights.bin path so :func:`run_on_k1` deploys it.
     Returns the path to the built ELF.
-    """
+
+    ``kernel_backend="xnnpack"`` (default-off, additive): route the routable plain 2-D f32
+    ``linalg.matmul`` dispatches to XNNPACK's RVV GEMM ukernel instead of the Merlin-emitted RVV.
+    The prepared MLIR's matmuls are rewritten to ``call @merlin_xnn_gemm_f32`` (see
+    ``runtime.backends.xnnpack_board``); the rest of the model lowers UNCHANGED through the same
+    RVV pipeline, and the XNNPACK ukernel shim ``.o`` is linked in. With ``None`` (default) the
+    binary is byte-for-byte the existing path."""
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
     inputs_npz = inputs_npz or (model_dir / "inputs.npz")
@@ -317,6 +324,28 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
 
     # 1. model.mlir -> normalize (same prep passes as the package/spike build) -> model.ll.
     prepared = zm._prepare_model_mlir(model_dir / "model.mlir", work, int8_compute=pkg.is_int8)
+    # XNNPACK kernel-backend (default-off, additive): rewrite the routable f32 linalg.matmul ops
+    # in the PREPARED MLIR to external calls (@merlin_xnn_gemm_f32). Everything else lowers
+    # unchanged. n_xnn_routed records the count; the shim .o is built + linked below.
+    xnn_obj = None
+    n_xnn_routed = 0
+    if kernel_backend == "xnnpack":
+        from ..runtime.backends import xnnpack_board as xb
+
+        if not xb.is_available():
+            raise K1Error("kernel_backend='xnnpack' but the XNNPACK RVV ukernel/shim is unavailable "
+                          "(see MERLIN_XNNPACK_REPO / tmp/kernels/XNNPACK)")
+        if pkg.is_int8:
+            raise K1Error("kernel_backend='xnnpack' is an f32 GEMM path; int8 datapath not supported")
+        rewritten, n_xnn_routed = xb.rewrite_matmuls_to_xnn(prepared.read_text())
+        prepared = work / "model.prepared.xnn.mlir"
+        prepared.write_text(rewritten)
+        # one numbered alias per distinct matmul signature (private decl per signature).
+        n_sigs = rewritten.count("func.func private @merlin_xnn_gemm_f32_")
+        xnn_obj = xb.build_xnn_object(cc, ["--target=riscv64-unknown-linux-gnu",
+                                           f"-march={K1_MARCH}", f"-mabi={K1_MABI}", "-O3",
+                                           "-ffast-math", "-DNDEBUG"],
+                                      n_sigs, work / "xnn")
     # hoist_static_allocs=False: keep big intermediate buffers on the HEAP (board RAM) instead of
     # promoting them to stack alloca — large models otherwise overflow even a multi-GB stack.
     from ..llvmlower.pipeline import PipelineError
@@ -387,6 +416,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     srcs = [main_c, cgen / "model_call.c", rt / "merlin_model.c", abi / "mlir_runtime.c"]
     base = [cc, f"--target=riscv64-unknown-linux-gnu", f"-march={K1_MARCH}", f"-mabi={K1_MABI}",
             "-O2", f"-I{rt}", f"-I{cgen}", *srcs, model_o]
+    if xnn_obj is not None:                       # XNNPACK RVV GEMM ukernel shim
+        base += [str(xnn_obj)]
     if not mmap_weights:
         base += [str(weights_o)]
     if parallel:
@@ -403,6 +434,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
         _run(base)
     if not binary.is_file():
         raise K1Error(f"K1 cross-compile produced no binary at {binary}")
+    if kernel_backend == "xnnpack":
+        (work / "N_XNN_ROUTED").write_text(str(n_xnn_routed))
     return binary
 
 
@@ -425,12 +458,18 @@ def board_vlenb() -> int | None:
     return None
 
 
-def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 600) -> dict[str, Any]:
+def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 600,
+              kernel_backend: str | None = None) -> dict[str, Any]:
     """Cross-compile the workload for K1, deploy over scp, run, and parse OUT/METRIC/DONE.
 
     Returns the ``zephyr_model._parse_console`` result dict augmented with ``vlen`` (the bit-width
     the board reports — vlenb*8, falling back to the :data:`VLEN` constant). The K1 ``cycles`` from
     ``rdcycle`` are real silicon cycles (``cycle_accurate`` in the runner's measurement record).
+
+    ``kernel_backend="xnnpack"`` (default-off): route the f32 matmul dispatches to XNNPACK's RVV
+    GEMM ukernel. Surfaced as ``n_xnn_routed`` in the result. This is the vectorized path only —
+    it does NOT fall back to scalar/omp (those would drop the XNNPACK routing and silently lie
+    about what ran), so a build/run failure surfaces as an honest exception, not a fallback.
     """
     from ..runtime.backends import zephyr_model as zm
 
@@ -442,7 +481,8 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
         # "scalar" single-core scalar int8 (last-resort correctness).
         bwork = Path(work) / tag
         binary = build_k1_binary(model_dir, bwork, pkg,
-                                 force_scalar=(mode == "scalar"), parallel=(mode == "omp"))
+                                 force_scalar=(mode == "scalar"), parallel=(mode == "omp"),
+                                 kernel_backend=kernel_backend)
         remote = f"/tmp/{Path(model_dir).name}_{pkg.run_id}_{tag}_merlin_k1"
         _run(["scp", "-i", K1_SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
               str(binary), f"{K1_HOST}:{remote}"])
@@ -463,24 +503,34 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
         try:
             _ssh(f"chmod +x {remote}", timeout=30)
             proc = _ssh(f"{wenv}{env}{remote}", timeout=timeout)
-            return zm._parse_console(proc.stdout + proc.stderr, proc.returncode)
+            r = zm._parse_console(proc.stdout + proc.stderr, proc.returncode)
+            nx = bwork / "N_XNN_ROUTED"
+            if nx.is_file():
+                r["n_xnn_routed"] = int(nx.read_text().strip())
+            return r
         finally:
             try:
                 _ssh(f"rm -f {remote}" + (f" {remote_w}" if remote_w else ""), timeout=30)
             except Exception:  # noqa: BLE001
                 pass
 
-    try:
+    if kernel_backend == "xnnpack":
+        # XNNPACK is the vectorized f32 path; NO scalar/omp fallback (those drop the routing and
+        # would silently misreport what ran). Any failure is an honest exception.
         res = _build_deploy_run("v", "v")
-    except zm.ZephyrModelError:
-        # The vectorized int8 lowering OOB-stores / crashes for some shapes (e.g. rdt's diffusion
-        # transformer) while smaller models vectorize fine. Retry with the MULTICORE lowering
-        # (scalar int8 datapath + OpenMP parallel loops) — correct AND fast enough to finish on
-        # the 8-core board, where single-core scalar times out. Final fall-back: single-core scalar.
+    else:
         try:
-            res = _build_deploy_run("omp", "omp")
-        except (zm.ZephyrModelError, K1Error):
-            res = _build_deploy_run("scalar", "scalar")
+            res = _build_deploy_run("v", "v")
+        except zm.ZephyrModelError:
+            # The vectorized int8 lowering OOB-stores / crashes for some shapes (e.g. rdt's
+            # diffusion transformer) while smaller models vectorize fine. Retry with the MULTICORE
+            # lowering (scalar int8 datapath + OpenMP parallel loops) — correct AND fast enough to
+            # finish on the 8-core board, where single-core scalar times out. Final fall-back:
+            # single-core scalar.
+            try:
+                res = _build_deploy_run("omp", "omp")
+            except (zm.ZephyrModelError, K1Error):
+                res = _build_deploy_run("scalar", "scalar")
 
     # Prefer the vlenb the harness printed (=== merlin_k1 vlenb=N ===); else probe; else constant.
     vlen_bits = VLEN

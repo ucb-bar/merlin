@@ -1,0 +1,116 @@
+{
+  "model": "output/bitvla_fp32_consistent",
+  "n": 3,
+  "board": "k1_spacemit",
+  "vlen": 256,
+  "timer": "CLOCK_MONOTONIC wall_ns (rdtime ticks alongside); cycle_accurate=false",
+  "note": "Third e2e column. xnnpack-kernels routes the f32 linalg.matmul dispatches to XNNPACK's xnn_f32_gemm_ukernel_1x4v__rvv; rest on the Merlin runtime. cos gated vs the same host golden before any wall is reported.",
+  "baseline": {
+    "tag": "baseline",
+    "run_id": "hand_v0",
+    "compiler_features": [],
+    "kernel_backend": null,
+    "n_xnn_routed": 0,
+    "min_wall_ns": 2516602405,
+    "fp32_cos": 0.9999945759773254,
+    "ok": true,
+    "blocker": null,
+    "runs": [
+      {
+        "wall_ns": 2527225161,
+        "time_ticks": 60652813,
+        "cycles_est": 4003085658,
+        "fp32_cos": 0.9999945759773254,
+        "vlen": 256
+      },
+      {
+        "wall_ns": 2516602405,
+        "time_ticks": 60397884,
+        "cycles_est": 3986260344,
+        "fp32_cos": 0.9999945759773254,
+        "vlen": 256
+      },
+      {
+        "wall_ns": 2529169594,
+        "time_ticks": 60699488,
+        "cycles_est": 4006166208,
+        "fp32_cos": 0.9999945759773254,
+        "vlen": 256
+      }
+    ]
+  },
+  "ours_optimized": {
+    "tag": "ours_vfmacc_tiled",
+    "run_id": "ours_vfmacc_tiled",
+    "compiler_features": [
+      "fused_vfmacc_tiled"
+    ],
+    "kernel_backend": null,
+    "n_xnn_routed": 0,
+    "min_wall_ns": 274157629,
+    "fp32_cos": 0.9999945759773254,
+    "ok": true,
+    "blocker": null,
+    "runs": [
+      {
+        "wall_ns": 276194137,
+        "time_ticks": 6628568,
+        "cycles_est": 437485488,
+        "fp32_cos": 0.9999945759773254,
+        "vlen": 256
+      },
+      {
+        "wall_ns": 274157629,
+        "time_ticks": 6579679,
+        "cycles_est": 434258814,
+        "fp32_cos": 0.9999945759773254,
+        "vlen": 256
+      },
+      {
+        "wall_ns": 277230625,
+        "time_ticks": 6653434,
+        "cycles_est": 439126644,
+        "fp32_cos": 0.9999945759773254,
+        "vlen": 256
+      }
+    ]
+  },
+  "xnnpack_kernels": {
+    "tag": "xnnpack_kernels",
+    "run_id": "xnnpack_kernels",
+    "compiler_features": [],
+    "kernel_backend": "xnnpack",
+    "n_xnn_routed": 15,
+    "min_wall_ns": 184397050,
+    "fp32_cos": 0.9999926686286926,
+    "ok": true,
+    "blocker": null,
+    "runs": [
+      {
+        "wall_ns": 186428854,
+        "time_ticks": 4474219,
+        "cycles_est": 295298454,
+        "fp32_cos": 0.9999926686286926,
+        "vlen": 256
+      },
+      {
+        "wall_ns": 184397050,
+        "time_ticks": 4425454,
+        "cycles_est": 292079964,
+        "fp32_cos": 0.9999926686286926,
+        "vlen": 256
+      },
+      {
+        "wall_ns": 184433514,
+        "time_ticks": 4426332,
+        "cycles_est": 292137912,
+        "fp32_cos": 0.9999926686286926,
+        "vlen": 256
+      }
+    ]
+  },
+  "speedup_baseline_over_ours": 9.179399508886181,
+  "speedup_baseline_over_xnnpack": 13.647736799476998,
+  "speedup_ours_over_xnnpack": 1.486778823197009,
+  "xnnpack_kernel": "xnn_f32_gemm_ukernel_1x4v__rvv"
+}
