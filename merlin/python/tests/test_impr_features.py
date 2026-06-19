@@ -37,6 +37,23 @@ def test_registered_feature_is_typed():
     assert f.action_class in ("PASS", "HEURISTIC", "PATTERN")
 
 
+def test_activation_schedule_has_no_rank1_tile_spec():
+    # REGRESSION (k1_e2e_activation.md "too many tiles, expected at most 0 found 1"): the activation
+    # feature must vectorize the elementwise generic WITHOUT a hard-coded rank-1 `tile_sizes [16]` /
+    # `vector_sizes [16]` spec. That spec assumed every activation generic is rank-1; a real model
+    # carries rank-0 (iterator_types=[]) generics (56 in bitvla) on which a 1-element tile spec raises
+    # "too many tiles provided, expected at most 0 found 1" -> PipelineError -> whole-model scalar
+    # fallback. The fix `foreach`-vectorizes each generic (rank-agnostic, failure-suppressed) so this
+    # can't recur. Assert the brittle spec is gone and the robust form is present.
+    on = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE,
+                          frozenset(["vectorized_transcendental_activation"]))
+    assert "tile_sizes [16]" not in on        # the rank-1 tile that broke real (rank-0/rank-N) models
+    assert "vector_sizes [16]" not in on
+    assert "transform.foreach" in on          # per-op vectorize so one un-vectorizable op can't abort
+    assert "failures(suppress)" in on         # tolerate generics that genuinely don't vectorize
+    assert "transform.structured.vectorize %g" in on   # bare (rank-agnostic) vectorize of the generic
+
+
 def test_packed_feature_packs_and_forms_vfmacc():
     on = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset(["vfmacc_packed"]))
     assert on != P.RVV_TRANSFORM_SCHEDULE
