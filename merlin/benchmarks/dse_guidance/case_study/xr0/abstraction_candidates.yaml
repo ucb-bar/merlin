@@ -27,19 +27,19 @@ abstraction_candidates:
   why_this_exists:
     attributed_facts: &id001
       activation_bytes_per_invocation: 4989056
-      activation_bytes_total: 49890560
-      invocations: 10
+      activation_bytes_total: 24945280
+      invocations: 5
       macs_per_invocation: 908261376
-      macs_total: 9082613760
+      macs_total: 4541306880
       matmul_count: 16
       weight_bytes: 123080704
     evidence:
-      K: 10
+      K: 5
       head_phases:
       - head
       loop_invariant_state:
       - weights
-    reason: action-head weights are loop-invariant across K=10 steps; a flat capture sees one use and hides this axis
+    reason: action-head weights are loop-invariant across K=5 steps; a flat capture sees one use and hides this axis
     signal: temporal_reuse
 - axis: autonomous_K_loop
   compiler_proof: bounded K and a loop body expressible as a device-resident program
@@ -65,9 +65,9 @@ abstraction_candidates:
   why_this_exists:
     attributed_facts: null
     evidence:
-      K: 10
+      K: 5
       loop_carried_state: []
-    reason: a bounded K=10 loop with loop-carried state can run device-side
+    reason: a bounded K=5 loop with loop-carried state can run device-side
     signal: temporal_reuse
 - axis: backbone_head_partition
   compiler_proof: a clean state boundary between the once-per-replan backbone and the K-times head (the crossing tensors are enumerable)
@@ -93,14 +93,14 @@ abstraction_candidates:
   why_this_exists:
     attributed_facts: null
     evidence:
-      H: 10
-      K: 10
+      H: 5
+      K: 5
       backbone_phases:
       - backbone
       control_rate_hz: 30.0
       head_phases:
       - head
-      replan_deadline_ms: 333.3333333333333
+      replan_deadline_ms: 166.66666666666666
     reason: backbone runs once per replan while the head runs K times — the rates differ, so a slow/fast partition is a candidate
     signal: rate_mismatch
 - axis: async_chunk_overlap
@@ -126,9 +126,9 @@ abstraction_candidates:
   why_this_exists:
     attributed_facts: null
     evidence:
-      H: 10
+      H: 5
       control_rate_hz: 30.0
-      replan_deadline_ms: 333.3333333333333
+      replan_deadline_ms: 166.66666666666666
     reason: the robot executes H actions at the control rate, opening a window to overlap the next replan with chunk execution
     signal: rate_mismatch
 - axis: command_batching
@@ -154,9 +154,9 @@ abstraction_candidates:
   why_this_exists:
     attributed_facts: null
     evidence:
-      K: 10
+      K: 5
       note: K per-step submits are collapsible to one buffer
-    reason: the K=10 head steps issue repeated host submits a flat capture hides
+    reason: the K=5 head steps issue repeated host submits a flat capture hides
     signal: cpu_coupling
 - axis: packed_layout_preservation
   compiler_proof: a packed/quantized weight layout is produced once and consumed by the same op family across the loop without re-pack
@@ -180,7 +180,7 @@ abstraction_candidates:
   why_this_exists:
     attributed_facts: *id001
     evidence:
-      K: 10
+      K: 5
       quantized: false
     reason: the same (packed/quantized) weight layout is consumed every step; preserving it across dispatches avoids re-packing
     signal: layout_packing

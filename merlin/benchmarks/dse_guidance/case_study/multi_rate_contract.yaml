@@ -278,23 +278,23 @@ multi_rate_contract:
       phase: backbone
       role: backbone_once
     - cadence: K_times_per_replan
-      invocations: 10
+      invocations: 5
       phase: head
       role: repeated_head
     rate_model:
       H:
         source: recovered_from_model_config
-        value: 10
+        value: 5
       K:
         source: recovered_from_model_config
-        value: 10
+        value: 5
       control_rate_hz:
         source: recovered_from_model_config
         value: 30.0
       deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
       replan_deadline_s:
         source: derived_requirement
-        value: 0.333333
+        value: 0.166667
     states_across_rates:
     - bytes: 123080704
       evidence: recovered_from_ir

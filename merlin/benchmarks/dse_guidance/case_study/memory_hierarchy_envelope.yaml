@@ -507,11 +507,11 @@ memory_hierarchy_envelope:
         value: 2097792
       avoidable_weight_reload:
         evidence: derived_requirement
-        value: 1107726336
+        value: 492322816
       intermediate_bytes:
         evidence: unavailable
         value: unavailable
-      invocations: 10
+      invocations: 5
       kv_bytes:
         evidence: unavailable
         value: unavailable
@@ -521,8 +521,8 @@ memory_hierarchy_envelope:
         value: 2891264
       read_bytes_resident:
         evidence: derived_requirement
-        value: 144058624
-      read_write_ratio: 4.983
+        value: 133569664
+      read_write_ratio: 9.24
       region: repeated_head
       resident_by_dtype:
         bf16: 61540352
@@ -538,7 +538,7 @@ memory_hierarchy_envelope:
         value: 123080704
       write_bytes:
         evidence: derived_requirement
-        value: 28912640
+        value: 14456320
     - activation_input_bytes:
         evidence: recovered_from_ir
         value: 4096

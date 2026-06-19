@@ -7,13 +7,13 @@ topology_recovery:
     confidence: 0.7
     facts:
       activation_bytes_per_invocation: 4989056
-      activation_bytes_total: 49890560
-      invocations: 10
+      activation_bytes_total: 24945280
+      invocations: 5
       macs_per_invocation: 908261376
-      macs_total: 9082613760
+      macs_total: 4541306880
       matmul_count: 16
       weight_bytes: 123080704
-    invocations: 10
+    invocations: 5
     matmul_count_attributed: 16
     reason: 16 matmuls assigned by prov_fqn
     role: repeated_head

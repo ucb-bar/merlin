@@ -2,11 +2,11 @@
 
 > Merlin recovers the HW/SW contract a flat capture erases and hands a future DSE engine the abstractions the workload needs, the requirements any design must meet, and what is still missing. It does **not** pick a design or claim a speedup.
 
-- class: **flow_matching_action_head**  ·  K=10, H=10, control_rate=30.0 Hz
+- class: **flow_matching_action_head**  ·  K=5, H=5, control_rate=30.0 Hz
 
 ## 1. Recovered structure
 
-- repeated head (prov_fqn): 16 matmuls, 123 MB weights, 0.9 GMAC/step, reused x10
+- repeated head (prov_fqn): 16 matmuls, 123 MB weights, 0.9 GMAC/step, reused x5
 - backbone (once/replan): 1 matmuls
 
 ## 2. Numerical contract
@@ -15,9 +15,9 @@
 
 ## 3. Requirements (hardware-independent)
 
-- macs_per_replan = 9.083e+09 MAC (recovered_from_ir)
+- macs_per_replan = 4.541e+09 MAC (recovered_from_ir)
 - resident_capacity_required = 1.231e+08 B (recovered_from_ir)
-- avoidable_weight_reload_bytes = 1.108e+09 B (recovered_from_ir)
+- avoidable_weight_reload_bytes = 4.923e+08 B (recovered_from_ir)
 - required_compute_rate = 2.725e+10 MAC/s (derived_requirement)
 - required_weight_bandwidth = 3.692e+09 B/s (derived_requirement)
 - required_command_rate = 4.800e+02 dispatch/s (derived_requirement)

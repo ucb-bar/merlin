@@ -8,7 +8,7 @@ state_lifetime:
     implied_abstraction: resident_weight_object
     lifetime_scope: loop_invariant
     produced_by: null
-    reused_times: 10
+    reused_times: 5
     scope_evidence: recovered_from_prov_fqn
     state: weights
   workload: xr0

@@ -125576,7 +125576,7 @@ workload_contract_graph:
         invocations: 1
         invocations_evidence: recovered_from_ir
         period_evidence: derived_requirement
-        period_s: 0.333333
+        period_s: 0.166667
       region_role: backbone_once
       state_summary:
         consumes: []
@@ -125590,7 +125590,7 @@ workload_contract_graph:
       rate:
         cadence: K_times_per_replan
         cadence_evidence: recovered_from_prov_fqn
-        invocations: 10
+        invocations: 5
         invocations_evidence: recovered_from_model_config
         period_evidence: unavailable
         period_s: null
@@ -125634,16 +125634,16 @@ workload_contract_graph:
       parent_region: xr0:phase:head
       rate:
         cadence: K_times_per_replan
-        invocations: 10
+        invocations: 5
         invocations_evidence: recovered_from_model_config
       region_role: repeated_head
       work_summary:
         activation_bytes_per_invocation: 4989056
-        activation_bytes_per_replan: 49890560
+        activation_bytes_per_replan: 24945280
         dispatch_count_proxy: 16
         evidence: recovered_from_ir
         macs_per_invocation: 908261376
-        macs_per_replan: 9082613760
+        macs_per_replan: 4541306880
         matmul_count: 16
         weight_bytes: 123080704
     - evidence: recovered_from_prov_fqn
@@ -126300,13 +126300,13 @@ workload_contract_graph:
       parent_region: xr0:phase:head
       rate:
         cadence: K_times_per_replan
-        trip_count: 10
+        trip_count: 5
         trip_count_evidence: recovered_from_model_config
       region_role: repeated_head
       work_summary:
         evidence: recovered_from_ir
         macs_per_invocation: 908261376
-        macs_per_replan: 9082613760
+        macs_per_replan: 4541306880
     - evidence: recovered_from_prov_fqn
       id: xr0:state:weights
       kind: state_object
@@ -126319,21 +126319,21 @@ workload_contract_graph:
         implied_abstraction: resident_weight_object
         lifetime_scope: loop_invariant
         produced_by: null
-        reused_times: 10
+        reused_times: 5
     rate_model:
       H:
         source: recovered_from_model_config
-        value: 10
+        value: 5
       K:
         source: recovered_from_model_config
-        value: 10
+        value: 5
       control_rate_hz:
         source: recovered_from_model_config
         value: 30.0
       deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
       replan_deadline_s:
         source: derived_requirement
-        value: 0.333333
+        value: 0.166667
     workload: xr0
     workload_class: flow_matching_action_head
   - edges:

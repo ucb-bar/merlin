@@ -80,8 +80,9 @@ RECAP_MODELS: dict[str, dict] = {
                 "note": "SmolVLA: SmolVLM2 backbone + action expert, denoise step (2 vlm layers)"},
     "pi05": {"class": "flow_matching/denoise_steps", "K": 10,
              "note": "pi0.5: PaliGemma backbone + gemma action expert, flow-matching step"},
-    "xr0": {"class": "diffusion/denoise_steps", "K": 10,
-            "note": "XR-0 batched-attention DiT denoise step (2 dit layers, random init)"},
+    "xr0": {"class": "diffusion/denoise_steps", "K": 5,
+            "note": "XR-0 batched-attention DiT denoise step (2 dit layers, random init); "
+                    "K=5 from source num_steps (P19 config-drift fix; was 10)"},
     "bitvla": {"class": "autoregressive_vla/action_token_decode", "K": 7,
                "note": "BitVLA: BitNet ternary LM decode (2 layers, fp32 fake-quant capture)"},
 }
@@ -737,7 +738,8 @@ def zoo_numerical_audit() -> list:
 _FULL_INV_COLS = ["workload", "source", "op_index", "op_class", "prov_op", "prov_fqn", "role",
                   "M", "K", "N", "batch", "macs"]
 _WORK_COV_COLS = ["workload", "n_linear_matmul", "linear_gemm_macs", "n_attention_ops",
-                  "attention_macs", "total_recovered_macs", "visible_linear_fraction", "n_softmax",
+                  "attention_macs", "n_batched_matmul", "batched_matmul_macs",
+                  "total_recovered_macs", "visible_linear_fraction", "n_softmax",
                   "n_normalization", "n_conv", "n_activation", "n_elementwise", "n_reduction",
                   "n_layout", "n_other"]
 
@@ -774,10 +776,12 @@ def work_coverage_csv(cases: list[WorkloadCase]) -> str:
         mm, ng = ATTR.extract_matmuls(cap), ATTR.extract_non_gemm_ops(cap)
         lin = sum(r.macs for r in mm)
         attn = sum(r.macs for r in ng if r.op_class == ATTR.OPC_ATTENTION)
+        bmm = sum(r.macs for r in ng if r.op_class == ATTR.OPC_BATCHED_MATMUL)
         cls = Counter(r.op_class for r in ng)
-        tot = lin + attn
+        tot = lin + attn + bmm
         rows.append({"workload": c.workload, "n_linear_matmul": len(mm), "linear_gemm_macs": lin,
                      "n_attention_ops": cls.get(ATTR.OPC_ATTENTION, 0), "attention_macs": attn,
+                     "n_batched_matmul": cls.get(ATTR.OPC_BATCHED_MATMUL, 0), "batched_matmul_macs": bmm,
                      "total_recovered_macs": tot,
                      "visible_linear_fraction": round(lin / tot, 4) if tot else 1.0,
                      "n_softmax": cls.get(ATTR.OPC_SOFTMAX, 0),

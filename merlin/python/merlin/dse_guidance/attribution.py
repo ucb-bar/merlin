@@ -166,7 +166,10 @@ def extract_matmuls(capture_dir: str) -> tuple[MatmulRecord, ...]:
 # (attention q.kT / attn.v contractions, softmax, normalization, elementwise/activation). These are
 # NOT erased — they carry prov.op/prov.family/prov.fqn + explicit operand shapes, so attention MACs
 # are recoverable from the IR with no model-card config. Disjoint from extract_matmuls (linalg.matmul).
-OPC_ATTENTION = "attention_contraction"   # prov: contraction/batch_matmul (q.kT / attn.v) -> real MACs
+OPC_ATTENTION = "attention_contraction"   # q.kT / attn.v: SDPA-fused (prov.op=sdpa/family=attention, e.g.
+                                           # xr0) OR batch_matmul under an attention fqn -> real MACs
+OPC_BATCHED_MATMUL = "batched_matmul"      # a batch_matmul that is NOT attention (no attn fqn) -- e.g.
+                                           # groot's CategorySpecificMLP bmm; matmul-engine work, not attn
 OPC_LINEAR_GENERIC = "linear_generic"      # a genuine 2D-operand matmul/addmm emitted as a generic (rare;
                                            # the addmm bias-adds are NOT this -> they fail the M/N/K check)
 OPC_CONV = "conv"                          # prov: contraction/conv2d (patch embed); MACs not quantified
@@ -177,11 +180,12 @@ OPC_ELEMENTWISE = "elementwise"            # prov: elementwise (add/mul/pow/...)
 OPC_REDUCTION = "reduction"                # prov: reduce
 OPC_LAYOUT = "layout"                      # prov: layout (expand/transpose) -- no compute
 OPC_OTHER = "other_generic"                # iota/gather_scatter/scan/compare/cast/embedding/untagged
-NON_GEMM_CLASSES = (OPC_ATTENTION, OPC_LINEAR_GENERIC, OPC_CONV, OPC_SOFTMAX, OPC_NORM,
-                    OPC_ACTIVATION, OPC_ELEMENTWISE, OPC_REDUCTION, OPC_LAYOUT, OPC_OTHER)
+NON_GEMM_CLASSES = (OPC_ATTENTION, OPC_BATCHED_MATMUL, OPC_LINEAR_GENERIC, OPC_CONV, OPC_SOFTMAX,
+                    OPC_NORM, OPC_ACTIVATION, OPC_ELEMENTWISE, OPC_REDUCTION, OPC_LAYOUT, OPC_OTHER)
 
 _ACT_OPS = {"gelu", "silu", "erf", "tanh", "sigmoid", "exp"}
 _CONV_OPS = {"conv2d", "conv1d", "conv3d", "convolution"}
+_ATTN_FQN = ("attn", "attention")          # an attention module fqn (self_attn/cross_attn/...attn1 match)
 
 
 @dataclass
@@ -247,8 +251,18 @@ def extract_non_gemm_ops(capture_dir: str) -> tuple[NonGemmRecord, ...]:
                 rec.dtype = ld
             return cm is not None
 
-        if fam == "contraction" and prov_op == "batch_matmul" and _mnk():
-            rec.op_class = OPC_ATTENTION                 # q.kT / attn.v -> real MACs
+        # Attention recovery (two real failure modes the P19 audit found):
+        #  - SDPA-fused attention lowered to generic(s) tagged prov.family="attention"/op="sdpa" (xr0)
+        #    was MISSED -> recover the contraction-shaped ones (q.kT / attn.v) as attention.
+        #  - a batch_matmul whose fqn is NOT an attention module (groot's CategorySpecificMLP bmm) was
+        #    OVER-counted as attention -> route to OPC_BATCHED_MATMUL instead.
+        attn_fqn = any(t in (rec.fqn or "").lower() for t in _ATTN_FQN)
+        if (fam == "attention" or prov_op == "sdpa") and _mnk():
+            rec.op_class = OPC_ATTENTION
+        elif fam == "attention" or prov_op == "sdpa":
+            rec.op_class = OPC_SOFTMAX                    # the softmax/scale part of a lowered SDPA
+        elif fam == "contraction" and prov_op == "batch_matmul" and _mnk():
+            rec.op_class = OPC_ATTENTION if attn_fqn else OPC_BATCHED_MATMUL
         elif fam == "contraction" and prov_op in _CONV_OPS:
             rec.op_class = OPC_CONV                       # patch-embed conv; MACs not quantified
         elif fam == "contraction" and prov_op in ("matmul", "addmm") and _mnk():

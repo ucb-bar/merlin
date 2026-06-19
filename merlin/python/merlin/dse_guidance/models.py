@@ -58,9 +58,10 @@ MODEL_ARCH: dict[str, ModelArch] = {
                       note="RDT-style diffusion policy."),
     "groot_n1d7": ModelArch("groot_n1d7", "diffusion", "denoise_steps", 4, 30.0, 16,
                             note="GR00T N1.5 diffusion action head."),
-    "xr0": ModelArch("xr0", "diffusion", "denoise_steps", 10, None, None,
+    "xr0": ModelArch("xr0", "diffusion", "denoise_steps", 5, None, None,
                      measured_cycles=146.2e9, loop_count_source="assumed",
-                     note="DiT timestep model; FireSim fp32 measured 146.2 G cycles."),
+                     note="DiT timestep model; num_steps=5 in source (was 10 — P19 config-drift fix); "
+                          "FireSim fp32 measured 146.2 G cycles."),
     "openvla": ModelArch("openvla", "autoregressive_vla", "action_token_decode", 7, 5.0, 7,
                          note="OpenVLA decodes a 7-DoF action as 7 autoregressive tokens."),
     "molmoact": ModelArch("molmoact", "autoregressive_vla", "action_token_decode", 8, 5.0, 8,

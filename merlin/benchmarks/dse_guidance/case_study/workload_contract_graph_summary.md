@@ -31,7 +31,7 @@
 | molmoact | yes | token_loop | 8 | weights |
 | smolvla | yes | K_times_per_replan | 10 | weights |
 | pi05 | yes | K_times_per_replan | 10 | weights |
-| xr0 | yes | K_times_per_replan | 10 | weights |
+| xr0 | yes | K_times_per_replan | 5 | weights |
 | bitvla | yes | token_loop | 7 | weights |
 
 ## What downstream DSE phases can now consume

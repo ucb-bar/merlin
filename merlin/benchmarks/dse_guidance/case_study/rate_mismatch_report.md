@@ -15,7 +15,7 @@
 | molmoact | once_per_replan | token_loop | 8 | 8 | 5.0 | 1.6 |
 | smolvla | once_per_replan | K_times_per_replan | 10 | 50 | 30.0 | 1.666667 |
 | pi05 | once_per_replan | K_times_per_replan | 10 | 50 | 50.0 | 1.0 |
-| xr0 | once_per_replan | K_times_per_replan | 10 | 10 | 30.0 | 0.333333 |
+| xr0 | once_per_replan | K_times_per_replan | 5 | 5 | 30.0 | 0.166667 |
 | bitvla | once_per_replan | token_loop | 7 | 7 | 5.0 | 1.4 |
 
 ## Provenance of every field

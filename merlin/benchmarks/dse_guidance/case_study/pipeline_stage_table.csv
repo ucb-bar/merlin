@@ -17,7 +17,7 @@ smolvla,backbone,backbone_or_encoder,once_per_replan,1,1.666667,dense_gemm,recov
 smolvla,head,repeated_action_head,K_times_per_replan,10,unavailable,skinny_gemm_or_gemv,recovered_from_prov_fqn
 pi05,backbone,backbone_or_encoder,once_per_replan,1,1.0,skinny_gemm_or_gemv,recovered_from_prov_fqn
 pi05,head,repeated_action_head,K_times_per_replan,10,unavailable,skinny_gemm_or_gemv,recovered_from_prov_fqn
-xr0,backbone,backbone_or_encoder,once_per_replan,1,0.333333,skinny_gemm_or_gemv,recovered_from_prov_fqn
-xr0,head,repeated_action_head,K_times_per_replan,10,unavailable,skinny_gemm_or_gemv,recovered_from_prov_fqn
+xr0,backbone,backbone_or_encoder,once_per_replan,1,0.166667,skinny_gemm_or_gemv,recovered_from_prov_fqn
+xr0,head,repeated_action_head,K_times_per_replan,5,unavailable,skinny_gemm_or_gemv,recovered_from_prov_fqn
 bitvla,backbone,backbone_or_encoder,once_per_replan,1,1.4,unavailable,recovered_from_prov_fqn
 bitvla,head,decoder_token_step,token_loop,7,unavailable,skinny_gemm_or_gemv,recovered_from_prov_fqn
