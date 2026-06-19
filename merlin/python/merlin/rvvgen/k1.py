@@ -320,6 +320,10 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     # hoist_static_allocs=False: keep big intermediate buffers on the HEAP (board RAM) instead of
     # promoting them to stack alloca — large models otherwise overflow even a multi-GB stack.
     from ..llvmlower.pipeline import PipelineError
+    # impr-fork compiler features (PASS/HEURISTIC/PATTERN). Without threading these the K1 build
+    # silently used the BASELINE codegen for any feature-bearing fork — invalidating its
+    # benchmark. Pass through so the K1 binary matches what spike certified.
+    feats = frozenset(getattr(pkg, "compiler_features", []) or []) or None
     if force_scalar is None:
         force_scalar = bool(os.environ.get("MERLIN_K1_FORCE_SCALAR"))
     if parallel:
@@ -334,7 +338,7 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
                 raise PipelineError("forced scalar (MERLIN_K1_FORCE_SCALAR)")
             res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
                                    vectorize=True, transform_schedule=pkg.schedule_text,
-                                   hoist_static_allocs=False)
+                                   hoist_static_allocs=False, features=feats)
         except PipelineError:
             # Some models (e.g. xr0's rank-4 two-batch attention) hit a vectorize-path
             # specialization (linalg-specialize-generic-ops) that emits an invalid rank-4
