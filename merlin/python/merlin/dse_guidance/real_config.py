@@ -38,9 +38,16 @@ class Stack:
     head_dim: int
     role: str                     # prefix_once | repeated_head | decode_lm
     carries_decode_kv: bool = False
+    # For NON-standard layers (e.g. a DiT block = self-attn + cross-attn + FFN + adaLN) where the
+    # standard q/k/v/o+gate/up/down formula does not apply, set raw_layer_gemm_params to the per-layer
+    # GEMM param count READ from the real model's nn.Linear shapes (not a formula/guess). The standard
+    # path is used when this is None.
+    raw_layer_gemm_params: int | None = None
 
     # ---- per-LAYER GEMM parameter counts (== MACs per token for that GEMM) ----
     def gemm_params(self) -> dict[str, int]:
+        if self.raw_layer_gemm_params is not None:
+            return {"dit_layer_gemms": self.raw_layer_gemm_params}   # read from real Linear shapes
         qd = self.heads * self.head_dim
         kvd = self.kv_heads * self.head_dim
         return {
@@ -148,6 +155,20 @@ REAL_GEOMETRY: dict[str, RealGeometry] = {
         stacks=[Stack("small_llama_lm", 2, 128, 344, 4, 4, 32, "decode_lm", carries_decode_kv=True)],
         vocab=256, embed_hidden=128, decode_seq=64, K=7, tied_embeddings=False,
         note="SYNTHETIC toy decoder (random init); included for completeness, not deployment-real."),
+    # P24: the one DiT/diffusion model whose per-layer config (incl FFN) is fully sourced from the real
+    # config (RDT2 post_train.yaml: hidden 1024, multiple_of 256 -> SwiGLU 2816; depth 14). Per-layer
+    # GEMM params READ from the real model's nn.Linear shapes (self+cross-attn + SwiGLU FFN + adaLN);
+    # 33,816,576/layer. Action-space head -> no vocab embedding; cross-attn KV is prefix-invariant (not
+    # a carried decode cache). rdt / groot_n1d7 / xr0 are OMITTED from deployment magnitudes: their real
+    # FFN dim is not published in a composable config (the loaders use a reduced/default ratio) -> would
+    # require a guess (see threats_to_validity T1/T9). bitvla omitted (real config not in repo).
+    "rdt2": RealGeometry(
+        "rdt2", "RDT2 post_train.yaml (hidden 1024, multiple_of 256, depth 14); per-layer GEMM params "
+                "read from the real instantiated nn.Linear shapes (no formula guess)",
+        stacks=[Stack("rdt2_dit", 14, 1024, 2816, 8, 4, 128, "repeated_head",
+                      carries_decode_kv=False, raw_layer_gemm_params=33_816_576)],
+        vocab=0, embed_hidden=0, decode_seq=24, K=5, tied_embeddings=True,
+        note="DiT flow-matching action head (self+cross-attn+SwiGLU+adaLN); action-space (no vocab)."),
 }
 
 _MAGNITUDE_COLS = ["workload", "source", "n_stacks", "total_layers", "per_layer_gemm_macs_top_stack",
