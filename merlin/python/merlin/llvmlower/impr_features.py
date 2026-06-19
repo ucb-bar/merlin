@@ -1158,33 +1158,28 @@ module attributes {transform.with_named_sequence} {
     %bm = transform.structured.match ops{["linalg.batch_matmul"]} in %arg0 : (!transform.any_op) -> !transform.any_op
     %bt, %bl:4 = transform.structured.tile_using_for %bm tile_sizes [1, 4, 8, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
     transform.structured.vectorize %bt vector_sizes [1, 4, 8, 1] : !transform.any_op
-    // Vectorize the elementwise activation linalg.generic DIRECTLY (no tile, no fixed vector_sizes).
-    // The activation poly rewriter has already lowered math.erf/exp/tanh into an arith mul/add/fma
-    // chain inside the generic body; static-shape vectorize hoists that chain into a vector.fma /
-    // vfmacc chain. A bare `transform.structured.vectorize` (sizes inferred from the op's static
-    // iteration space) is RANK-AGNOSTIC: it vectorizes a rank-1 isolated activation, a rank-4
-    // attention softmax-exp generic (tensor<1x8x32x32xf32>), AND a rank-0 scalar generic alike.
+    // Vectorize PRECISELY the activation generics — and ONLY those — the poly rewriter targeted.
+    // The rewriter (act_poly.apply_activation_polynomial) replaces math.erf/exp/tanh with an arith
+    // mul/add/fma chain ONLY inside a generic the PROVENANCE marks as an elementwise activation
+    // (gelu/silu/sigmoid/tanh), and tags each such generic with a `merlin.act_vectorize` unit attr.
+    // We match exactly those tagged generics and vectorize them (bare vectorize = rank-agnostic,
+    // sizes inferred from the static iteration space) so the poly chain becomes a vector.fma/vfmacc
+    // chain. A softmax-exp / normalization / any other generic is NOT tagged (its exp stayed on
+    // libm), so it is NOT matched here and lowers exactly as in the baseline.
     //
-    // The previous `tile_using_for [16] + vectorize [16]` was a hard-coded RANK-1 spec; on real
-    // models it hit a rank-0 (iterator_types=[]) generic and raised "too many tiles provided,
-    // expected at most 0 found 1" (PipelineError -> whole-model scalar fallback), and would have
-    // mis-vectorized any rank!=1 activation generic.
-    //
-    // We `foreach` over each matched generic and vectorize it inside a `failures(suppress)` sequence:
-    // a single op `transform.structured.vectorize` aborts the WHOLE schedule on the first op it
-    // cannot vectorize (real models carry generics that genuinely don't statically vectorize, e.g.
-    // certain linalg.index / gather shapes), which would re-introduce the scalar-fallback regression.
-    // Per-op suppression vectorizes every activation/elementwise generic that CAN vectorize and
-    // leaves the rest scalar (lowered via convert-linalg-to-loops, exactly as in the baseline) — no
-    // tile, no per-shape spec, no whole-schedule abort. The matmul/batch_matmul named ops are already
-    // tiled+vectorized above and are not linalg.generic, so they are unaffected.
-    %eg = transform.structured.match ops{["linalg.generic"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+    // This drops the previous BLANKET design (foreach over EVERY linalg.generic + failures(suppress)
+    // + a hard-coded rank-1 tile). That design (a) rewrote+vectorized the softmax exp too, which
+    // amplified the minimax error through the row-sum normalization -> openvla whole-model cos 0.541;
+    // (b) used failures(suppress), which HID any vectorize miscompile; and (c) vectorized every
+    // generic in the model, blowing clang -O2 compile time to 6+ min/config. Matching only the tagged
+    // activation generics fixes all three: correct (softmax stays libm), no suppression (a genuine
+    // vectorize failure surfaces), and bounded compile time (only the few activation generics
+    // vectorize). No `failures(suppress)` — these tagged generics are static-shape elementwise and
+    // always statically vectorize; if one ever didn't, we WANT the error, not a silent scalar fallback.
+    %eg = transform.structured.match ops{["linalg.generic"]} attributes{"merlin.act_vectorize"} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.foreach %eg : !transform.any_op {
     ^bb_eg(%one_eg: !transform.any_op):
-      transform.sequence %one_eg : !transform.any_op failures(suppress) {
-      ^bb_v(%g: !transform.any_op):
-        transform.structured.vectorize %g : !transform.any_op
-      }
+      transform.structured.vectorize %one_eg : !transform.any_op
     }
     %f = transform.structured.match ops{["func.func"]} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.apply_patterns to %f {
@@ -1199,41 +1194,33 @@ module attributes {transform.with_named_sequence} {
 """
 
 
-def _act_poly_math_before_libm(passes: list[str]) -> list[str]:
-    """Insert ``convert-math-to-llvm`` immediately BEFORE ``convert-math-to-libm``.
-
-    The polynomial rewrite leaves vector ``math.absf``/``math.roundeven`` (the erf |x| and the exp
-    range-reduction round) in the IR. ``convert-vector-to-llvm`` does NOT lower these, so if
-    ``convert-math-to-libm`` runs first it SCALARIZES each vector math op lane-by-lane
-    (vector.extract -> scalar libm call -> the un-translatable vector.extract that breaks lowering,
-    and it would defeat the vectorization). ``math.absf``/``math.roundeven`` DO have LLVM intrinsics
-    (llvm.intr.fabs / llvm.intr.roundeven) that stay vector, so running ``convert-math-to-llvm``
-    first lowers them as vector intrinsics; the remaining ``convert-math-to-libm`` then has no
-    transcendental left to scalarize (they were rewritten to the arith polynomial). Only runs when
-    this feature is enabled; baseline pipeline untouched."""
-    out = list(passes)
-    try:
-        i = out.index("convert-math-to-libm")
-    except ValueError:
-        return out
-    if out[i - 1] == "convert-math-to-llvm":     # idempotent
-        return out
-    out.insert(i, "convert-math-to-llvm")
-    return out
+# NOTE: the feature no longer edits the pass list. The earlier `_act_poly_math_before_libm` inserted
+# `convert-math-to-llvm` BEFORE `convert-math-to-libm` because the OLD poly emitted vector
+# `math.fma`/`math.absf`/`math.roundeven` that libm would scalarize. But that same pass ALSO converted
+# the (correctly un-rewritten) softmax `math.exp` to `llvm.intr.exp` (`llvm.exp.f32`), which the
+# freestanding spike/RVV runtime cannot legalize -> a wild instruction -> the openvla whole-model
+# "bad syscall" CRASH (run produced no OUT/DONE -> certify status=fail). The activation poly is now
+# PURE ARITH (act_poly._ap_fma = arith mul+add, _ap_absf = max(x,-x), _ap_roundeven = add/sub-magic),
+# so it carries NO math.* op; the only remaining transcendental is the softmax exp, which takes the
+# baseline `convert-math-to-libm` -> scalar `expf` path (exact, crash-free). No pipeline edit needed.
 
 
 register(ImprFeature(
     name="vectorized_transcendental_activation",
     action_class="PASS",
-    edit_pipeline=_act_poly_math_before_libm,
-    description="GENERAL vectorized-activation lowering: rewrite math.exp/erf/tanh to an inline "
-                "minimax arith polynomial (act_poly.py, spliced into the lowering runner before the "
-                "pass manager) AND vectorize the elementwise activation linalg.generic, so GELU "
-                "(erf), sigmoid/SiLU (exp) and tanh vectorize to vfmacc chains instead of a scalar "
-                "convert-math-to-libm call loop. Closes the ~11-18x activation gap vs XNNPACK's "
-                "vectorized polynomial RVV kernels (the coefficient/structure CEILING REFERENCE; we "
-                "emit the MLIR). APPROXIMATION: cos=1.0 / max-abs-err <~1e-6 vs libm (gated on "
-                "cos/rel error, not bit-exact). Default-off; baseline byte-identical.",
+    description="GENERAL vectorized-activation lowering, PRECISELY TARGETED by provenance: the "
+                "act_poly rewriter (spliced into the lowering runner before the pass manager) "
+                "replaces math.erf/exp/tanh with an inline minimax ARITH polynomial ONLY inside a "
+                "linalg.generic the provenance marks as an elementwise ACTIVATION (gelu/silu/sigmoid/"
+                "tanh) — NOT a softmax/normalization (whose exp stays on the exact libm path; "
+                "blanket-rewriting it drove openvla whole-model cos to 0.541). It TAGS each targeted "
+                "generic (merlin.act_vectorize) and the schedule vectorizes exactly those (no blanket "
+                "foreach over every generic, no failures(suppress) -> no masked miscompile, no "
+                "6+min/config compile blowup). So GELU (erf) and sigmoid/SiLU (exp) vectorize to a "
+                "vector fmul/fadd (vfmacc) chain while softmax stays correct. Closes the activation "
+                "gap vs XNNPACK's polynomial RVV kernels (coefficient/structure CEILING REFERENCE; we "
+                "emit the MLIR). APPROXIMATION: cos>0.999 / max-abs-err <~6e-7 vs libm on REALISTIC "
+                "ranges (gated on cos/rel error, not bit-exact). Default-off; baseline byte-identical.",
     edit_schedule=lambda _t: _ACT_POLY_SCHEDULE,
     schedule_replace=True,
 ))

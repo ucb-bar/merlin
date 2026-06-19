@@ -37,21 +37,22 @@ def test_registered_feature_is_typed():
     assert f.action_class in ("PASS", "HEURISTIC", "PATTERN")
 
 
-def test_activation_schedule_has_no_rank1_tile_spec():
-    # REGRESSION (k1_e2e_activation.md "too many tiles, expected at most 0 found 1"): the activation
-    # feature must vectorize the elementwise generic WITHOUT a hard-coded rank-1 `tile_sizes [16]` /
-    # `vector_sizes [16]` spec. That spec assumed every activation generic is rank-1; a real model
-    # carries rank-0 (iterator_types=[]) generics (56 in bitvla) on which a 1-element tile spec raises
-    # "too many tiles provided, expected at most 0 found 1" -> PipelineError -> whole-model scalar
-    # fallback. The fix `foreach`-vectorizes each generic (rank-agnostic, failure-suppressed) so this
-    # can't recur. Assert the brittle spec is gone and the robust form is present.
+def test_activation_schedule_targets_tagged_generics_no_blanket_no_suppress():
+    # PRECISE TARGETING (the openvla cos-0.541 fix): the activation schedule must vectorize ONLY the
+    # generics the poly rewriter tagged (merlin.act_vectorize) — not blanket-foreach over EVERY
+    # linalg.generic — and must NOT use failures(suppress) (which masked a miscompile). It also must
+    # carry no hard-coded rank-1 tile (the earlier "too many tiles, expected at most 0" regression).
     on = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE,
                           frozenset(["vectorized_transcendental_activation"]))
     assert "tile_sizes [16]" not in on        # the rank-1 tile that broke real (rank-0/rank-N) models
     assert "vector_sizes [16]" not in on
-    assert "transform.foreach" in on          # per-op vectorize so one un-vectorizable op can't abort
-    assert "failures(suppress)" in on         # tolerate generics that genuinely don't vectorize
-    assert "transform.structured.vectorize %g" in on   # bare (rank-agnostic) vectorize of the generic
+    # match ONLY the tagged activation generics (precise), not every generic...
+    assert 'attributes{"merlin.act_vectorize"}' in on
+    # ...and NO failures(suppress) transform op (no masked miscompile). The comment may mention the
+    # word; assert the actual op-construct `transform.sequence ... failures(suppress)` is absent.
+    assert "transform.sequence" not in on
+    assert "failures(suppress) {" not in on
+    assert "transform.structured.vectorize %one_eg" in on
 
 
 def test_packed_feature_packs_and_forms_vfmacc():
@@ -197,17 +198,23 @@ def test_activation_feature_baseline_safe_and_typed():
     assert F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset()) == P.RVV_TRANSFORM_SCHEDULE
     f = F.get("vectorized_transcendental_activation")
     assert f.action_class == "PASS"
-    assert f.edit_pipeline is not None and f.edit_schedule is not None
+    # the feature is a SCHEDULE edit only; it adds NO pipeline-pass edit (the pure-arith poly needs no
+    # convert-math-to-llvm, and adding one converted the softmax exp to llvm.intr.exp -> spike crash).
+    assert f.edit_pipeline is None and f.edit_schedule is not None
 
 
-def test_activation_feature_inserts_math_to_llvm_before_libm():
-    # When enabled, the pipeline edit must splice convert-math-to-llvm IMMEDIATELY before
-    # convert-math-to-libm so the polynomial's vector math.absf/roundeven/fma lower as vector LLVM
-    # intrinsics (not scalarized lane-by-lane by libm). Baseline pipeline does NOT have that order.
+def test_activation_feature_adds_no_pipeline_edit_softmax_keeps_libm():
+    # The activation feature must NOT edit the pass list. The earlier version spliced
+    # convert-math-to-llvm before convert-math-to-libm (to vector-lower the poly's math.fma/absf/
+    # roundeven); that same pass converted the un-rewritten SOFTMAX math.exp to llvm.intr.exp
+    # (llvm.exp.f32), which the freestanding spike/RVV runtime cannot legalize -> the openvla
+    # whole-model 'bad syscall' CRASH. The poly is now pure arith, so no math-to-llvm pass is needed
+    # and the softmax exp keeps the baseline convert-math-to-libm -> scalar expf path. Assert the
+    # pipeline is byte-identical to the baseline when the feature is on (only the schedule changes).
     base = P.build_rvv_pipeline("/tmp/s.mlir")
     on = P.build_rvv_pipeline("/tmp/s.mlir", features=frozenset(["vectorized_transcendental_activation"]))
-    assert "convert-math-to-llvm,convert-math-to-libm" not in base
-    assert "convert-math-to-llvm,convert-math-to-libm" in on
+    assert on == base
+    assert "convert-math-to-llvm,convert-math-to-libm" not in on
 
 
 def test_activation_feature_vectorizes_elementwise_generic_in_schedule():
