@@ -116,6 +116,7 @@ class MatmulRecord:
     activation_bytes: int
     dtype: str | None
     fqn: str | None = None     # prov.fqn (deepest module path), when the capture carries it
+    in_loop_body: bool = False  # inside the while_loop-derived scf.for region (structural repeated head)
 
     @property
     def macs(self) -> int:
@@ -126,6 +127,43 @@ class MatmulRecord:
         return (self.M, self.K, self.N)
 
 
+def _while_loop_fors(module) -> set:
+    """The scf.for ops lowered from torch.while_loop, identified by a bound operand that is an
+    arith.constant tagged ``prov.op="while_loop"`` (the loop's K/0/1 constants; the tag round-trips
+    through serialize/parse whereas the scf.for's own discardable attrs do not)."""
+    from xdsl.dialects.builtin import StringAttr
+    out = set()
+    for f in module.walk():
+        if getattr(f, "name", "") != "scf.for":
+            continue
+        for opnd in f.operands:
+            ow = getattr(opnd, "owner", None)
+            if ow is not None and getattr(ow, "name", "") == "arith.constant":
+                po = ow.attributes.get("prov.op")
+                if isinstance(po, StringAttr) and po.data == "while_loop":
+                    out.add(f)
+                    break
+    return out
+
+
+def _in_loop_body(op, wl_fors: set) -> bool:
+    """True if ``op`` lies inside one of the while_loop scf.for regions (walk the parent chain)."""
+    if not wl_fors:
+        return False
+    blk = getattr(op, "parent", None)
+    for _ in range(64):
+        if blk is None:
+            return False
+        region = getattr(blk, "parent", None)
+        owner = getattr(region, "parent", None) if region is not None else None
+        if owner is None:
+            return False
+        if owner in wl_fors:
+            return True
+        blk = getattr(owner, "parent", None)
+    return False
+
+
 @lru_cache(maxsize=None)
 def extract_matmuls(capture_dir: str) -> tuple[MatmulRecord, ...]:
     """Per-matmul records read from a capture's ``model.mlir`` (empty tuple if it won't parse)."""
@@ -134,6 +172,7 @@ def extract_matmuls(capture_dir: str) -> tuple[MatmulRecord, ...]:
         module = mlir_m2m._parse_module(open(path, encoding="utf-8").read())
     except Exception:
         return ()
+    wl_fors = _while_loop_fors(module)               # while_loop scf.for region(s), if any
     out: list[MatmulRecord] = []
     for i, op in enumerate(o for o in module.walk() if o.name == "linalg.matmul"):
         ls, ld = mlir_m2m._shape_dtype(str(op.operands[0].type))
@@ -158,6 +197,7 @@ def extract_matmuls(capture_dir: str) -> tuple[MatmulRecord, ...]:
             activation_bytes=(M * K + M * N) * R.dtype_bytes(ld),
             dtype=rd,
             fqn=_read_attr(op, "fqn"),
+            in_loop_body=_in_loop_body(op, wl_fors),
         ))
     return tuple(out)
 
@@ -424,6 +464,8 @@ def attribute_records(records, topo: VlaRuntimeTopology,
 
     K = topo.K
     rules = (mapping_rules or {}).get("rules", [])
+    # A loop-preserving capture: the scf.for boundary partitions repeated (in-loop) vs once (outside).
+    is_loop_capture = any(getattr(r, "in_loop_body", False) for r in records)
     assigned: dict[str, RoleFacts] = {}
     assigned_idx: dict[str, list[int]] = {}
     sources: dict[str, set] = {}
@@ -437,11 +479,15 @@ def attribute_records(records, topo: VlaRuntimeTopology,
             if _match(rule, rec):
                 role, source = rule["role"], "explicit_mapping"
                 break
-        if role is None:                          # 2) prov.fqn module-path inference (from IR)
+        if role is None and rec.in_loop_body:     # 2) STRUCTURAL: inside the while_loop scf.for region
+            role, source = ROLE_REPEATED_HEAD, "structural_scf_for"  # = the repeated head, from IR
+        if role is None:                          # 3) prov.fqn module-path inference (from IR)
             role = role_from_fqn(rec.fqn)
             if role is not None:
                 source = "prov_fqn"
-        if role is None:                          # 3) unattributed (role not recoverable)
+        if role is None and is_loop_capture:      # 3b) STRUCTURAL: outside the loop in a loop capture
+            role, source = ROLE_BACKBONE, "structural_prefix"  # = the once-per-replan prefix
+        if role is None:                          # 4) unattributed (role not recoverable)
             unknown.add(rec)
             unknown_idx.append(rec.index)
             continue
@@ -449,7 +495,8 @@ def attribute_records(records, topo: VlaRuntimeTopology,
         assigned_idx.setdefault(role, []).append(rec.index)
         sources.setdefault(role, set()).add(source)
 
-    _SRC_CONF = {"explicit_mapping": 0.9, "prov_fqn": 0.7}
+    _SRC_CONF = {"explicit_mapping": 0.9, "structural_scf_for": 0.85,
+                 "structural_prefix": 0.8, "prov_fqn": 0.7}
     regions: list[RegionRoleAttribution] = []
     for role, facts in assigned.items():
         invs = K if role == ROLE_REPEATED_HEAD else 1   # head ×K; backbone ×1 — never ×K backbone
