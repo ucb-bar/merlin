@@ -1,9 +1,9 @@
 primitive,primitive_kind,op_count,macs_total,mac_weighted_utilization,coverage_under_5pct,coverage_under_10pct,coverage_under_25pct,worst_workload_coverage_10,best_workload_coverage_10,average_workload_coverage_10,max_regret,clusters_poorly_served,workloads_where_overfit
-tile_8x16,tile,1051,2289112329728,0.997836,0.98808,0.99117,0.999628,0.0,1.0,0.678257,1.0,gemv_like,bitvla; molmoact; pi05; rdt; small_llama; smolvla; xr0
-tile_8x8,tile,1051,2289112329728,0.997836,0.98808,0.99117,0.999628,0.0,1.0,0.678257,1.0,gemv_like,bitvla; molmoact; pi05; rdt; small_llama; smolvla; xr0
-tile_16x16,tile,1051,2289112329728,0.985498,0.984769,0.984784,0.989208,0.0,1.0,0.483134,1.0,gemv_like,bitvla; pi05; smolvla; xr0
-tile_16x32,tile,1051,2289112329728,0.985332,0.984769,0.984784,0.989208,0.0,1.0,0.483134,1.0,gemv_like,bitvla; pi05; smolvla; xr0
-tile_32x32,tile,1051,2289112329728,0.963454,0.984758,0.984772,0.986144,0.0,1.0,0.453174,1.0,gemv_like,bitvla; pi05; smolvla; xr0
-gemv_lane_64,gemv_lane,1051,2289112329728,0.999201,0.637283,0.637412,0.637412,0.038832,1.0,0.765642,0.961168,projection_like; squareish_gemm; unknown,bitvla; groot_n1d7; molmoact; openvla; rdt2; tiny_llama; xr0
-gemv_lane_128,gemv_lane,1051,2289112329728,0.999115,0.636486,0.6374,0.637411,0.038578,1.0,0.759889,0.961422,projection_like; squareish_gemm; unknown,bitvla; groot_n1d7; molmoact; openvla; rdt2; tiny_llama; xr0
-gemv_lane_256,gemv_lane,1051,2289112329728,0.98317,0.54347,0.544384,0.637388,0.038578,1.0,0.662959,0.961422,projection_like; squareish_gemm; unknown,bitvla; groot_n1d7; molmoact; rdt2; tiny_llama; xr0
+tile_8x16,tile,1385,2327996210688,0.992707,0.973059,0.982847,0.999378,0.0,0.999761,0.675484,0.999761,gemv_like,bitvla; pi05; rdt; smolvla; xr0
+tile_8x8,tile,1385,2327996210688,0.992707,0.973059,0.982847,0.999378,0.0,0.999761,0.675484,0.999761,gemv_like,bitvla; pi05; rdt; smolvla; xr0
+tile_16x16,tile,1385,2327996210688,0.976117,0.969531,0.969546,0.987045,0.0,0.992687,0.477117,0.992687,gemv_like,bitvla; pi05; xr0
+tile_16x32,tile,1385,2327996210688,0.975939,0.969531,0.969546,0.987045,0.0,0.992687,0.477117,0.992687,gemv_like,bitvla; pi05; xr0
+tile_32x32,tile,1385,2327996210688,0.945329,0.969531,0.969546,0.977644,0.0,0.992687,0.477117,0.992687,gemv_like,bitvla; pi05; xr0
+gemv_lane_64,gemv_lane,1385,2327996210688,0.999154,0.642203,0.642982,0.642982,0.12894,1.0,0.799745,0.87106,projection_like; squareish_gemm; unknown,bitvla; groot_n1d7; molmoact; openvla; rdt2; tiny_llama; xr0
+gemv_lane_128,gemv_lane,1385,2327996210688,0.998726,0.638222,0.642902,0.642982,0.12894,1.0,0.799578,0.87106,projection_like; squareish_gemm; unknown,bitvla; groot_n1d7; molmoact; openvla; rdt2; tiny_llama; xr0
+gemv_lane_256,gemv_lane,1385,2327996210688,0.983155,0.546771,0.551452,0.642899,0.12894,1.0,0.751656,0.87106,projection_like; squareish_gemm; unknown,groot_n1d7; molmoact; rdt2; tiny_llama; xr0

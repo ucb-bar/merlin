@@ -4,25 +4,26 @@ topology_recovery:
   level: 1
   regions:
   - attribution_status: attributed
-    confidence: 0.7
+    confidence: 0.85
     facts:
-      activation_bytes_per_invocation: 118550016
-      activation_bytes_total: 592750080
+      activation_bytes_per_invocation: 119139840
+      activation_bytes_total: 595699200
       invocations: 5
-      macs_per_invocation: 39432486912
-      macs_total: 197162434560
-      matmul_count: 20
-      weight_bytes: 391118848
+      macs_per_invocation: 39466041344
+      macs_total: 197330206720
+      matmul_count: 21
+      weight_bytes: 393216000
     invocations: 5
-    matmul_count_attributed: 20
-    reason: 20 matmuls assigned by prov_fqn
+    matmul_count_attributed: 21
+    reason: 21 matmuls assigned by structural_scf_for
     role: repeated_head
-    source: prov_fqn
+    source: structural_scf_for
   repeated_shape_signatures:
   - count: 11
     signature:
     - 67
     - 2048
     - 2048
-  unresolved: []
+  unresolved:
+  - no prov.fqn and no mapping rules; role recovery unavailable — loop/role-preserving capture is the Level-2 fix
 workload: rdt

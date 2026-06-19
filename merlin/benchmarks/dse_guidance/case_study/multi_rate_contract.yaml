@@ -26,7 +26,7 @@ multi_rate_contract:
         source: derived_requirement
         value: 2.133333
     states_across_rates:
-    - bytes: 391118848
+    - bytes: 393216000
       evidence: recovered_from_ir
       lifetime: loop_invariant
       state: weights
@@ -68,53 +68,23 @@ multi_rate_contract:
       phase: backbone
       role: backbone_once
     - cadence: token_loop
-      invocations: 32
+      invocations: 7
       phase: head
       role: repeated_head
     rate_model:
       H:
         source: recovered_from_model_config
-        value: 32
+        value: 7
       K:
         source: recovered_from_model_config
-        value: 32
+        value: 7
       control_rate_hz:
         source: recovered_from_model_config
         value: 30.0
       deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
       replan_deadline_s:
         source: derived_requirement
-        value: 1.066667
-    states_across_rates:
-    - bytes: 1712128
-      evidence: recovered_from_ir
-      lifetime: loop_invariant
-      state: weights
-    workload: small_llama
-    workload_class: autoregressive_decode
-  - phases:
-    - cadence: once_per_replan
-      invocations: 1
-      phase: backbone
-      role: backbone_once
-    - cadence: token_loop
-      invocations: 32
-      phase: head
-      role: repeated_head
-    rate_model:
-      H:
-        source: recovered_from_model_config
-        value: 32
-      K:
-        source: recovered_from_model_config
-        value: 32
-      control_rate_hz:
-        source: recovered_from_model_config
-        value: 30.0
-      deadline_equation: t_backbone + K * t_head_step <= H / control_rate_hz
-      replan_deadline_s:
-        source: derived_requirement
-        value: 1.066667
+        value: 0.233333
     states_across_rates:
     - bytes: 614465536
       evidence: recovered_from_ir
@@ -146,7 +116,7 @@ multi_rate_contract:
         source: derived_requirement
         value: 2.133333
     states_across_rates:
-    - bytes: 301268992
+    - bytes: 309739520
       evidence: recovered_from_ir
       lifetime: loop_invariant
       state: weights
@@ -176,7 +146,7 @@ multi_rate_contract:
         source: derived_requirement
         value: 0.533333
     states_across_rates:
-    - bytes: 295698432
+    - bytes: 2200436736
       evidence: recovered_from_ir
       lifetime: loop_invariant
       state: weights
@@ -236,7 +206,7 @@ multi_rate_contract:
         source: derived_requirement
         value: 1.666667
     states_across_rates:
-    - bytes: 31493120
+    - bytes: 206126080
       evidence: recovered_from_ir
       lifetime: loop_invariant
       state: weights
@@ -266,7 +236,7 @@ multi_rate_contract:
         source: derived_requirement
         value: 1.0
     states_across_rates:
-    - bytes: 9210953728
+    - bytes: 1719926784
       evidence: recovered_from_ir
       lifetime: loop_invariant
       state: weights
@@ -296,7 +266,7 @@ multi_rate_contract:
         source: derived_requirement
         value: 0.166667
     states_across_rates:
-    - bytes: 123080704
+    - bytes: 169086976
       evidence: recovered_from_ir
       lifetime: loop_invariant
       state: weights

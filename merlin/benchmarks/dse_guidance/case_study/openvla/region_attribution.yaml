@@ -4,37 +4,42 @@ topology_recovery:
   level: 1
   regions:
   - attribution_status: attributed
-    confidence: 0.7
+    confidence: 0.8
     facts:
-      activation_bytes_per_invocation: 983040
-      activation_bytes_total: 983040
+      activation_bytes_per_invocation: 596480
+      activation_bytes_total: 596480
       invocations: 1
-      macs_per_invocation: 63815680
-      macs_total: 63815680
-      matmul_count: 11
-      weight_bytes: 15400960
+      macs_per_invocation: 14483456
+      macs_total: 14483456
+      matmul_count: 15
+      weight_bytes: 3145728
     invocations: 1
-    matmul_count_attributed: 11
-    reason: 11 matmuls assigned by prov_fqn
+    matmul_count_attributed: 15
+    reason: 15 matmuls assigned by structural_prefix
     role: backbone_once
-    source: prov_fqn
+    source: structural_prefix
   - attribution_status: attributed
-    confidence: 0.7
+    confidence: 0.85
     facts:
-      activation_bytes_per_invocation: 645120
-      activation_bytes_total: 4515840
+      activation_bytes_per_invocation: 32256
+      activation_bytes_total: 225792
       invocations: 7
-      macs_per_invocation: 15728640
-      macs_total: 110100480
+      macs_per_invocation: 786432
+      macs_total: 5505024
       matmul_count: 15
       weight_bytes: 3145728
     invocations: 7
     matmul_count_attributed: 15
-    reason: 15 matmuls assigned by prov_fqn
+    reason: 15 matmuls assigned by structural_scf_for
     role: repeated_head
-    source: prov_fqn
+    source: structural_scf_for
   repeated_shape_signatures:
-  - count: 7
+  - count: 8
+    signature:
+    - 1
+    - 128
+    - 512
+  - count: 6
     signature:
     - 20
     - 128
@@ -42,6 +47,11 @@ topology_recovery:
   - count: 4
     signature:
     - 20
+    - 128
+    - 256
+  - count: 4
+    signature:
+    - 1
     - 128
     - 256
   unresolved: []

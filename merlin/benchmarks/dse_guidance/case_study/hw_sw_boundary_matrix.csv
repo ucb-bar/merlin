@@ -1,28 +1,28 @@
 abstraction,compiler_transform,runtime_hal_object,command_buffer_or_command_isa,accelerator_isa,device_microcode_or_controller,fixed_hardware_datapath,supporting_workloads,boundary_pressure_score
-resident_weight_object,possible,strong_candidate,strong_candidate,weak_candidate,possible,not_applicable,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,16
-region_level_dispatch,possible,possible,strong_candidate,possible,strong_candidate,not_applicable,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,15
-event_token,not_applicable,strong_candidate,strong_candidate,weak_candidate,possible,not_applicable,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,15
-async_queue,not_applicable,strong_candidate,strong_candidate,weak_candidate,possible,not_applicable,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,15
-dma_engine,weak_candidate,strong_candidate,strong_candidate,possible,possible,possible,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,15
-partial_sum_object,not_applicable,weak_candidate,possible,strong_candidate,strong_candidate,strong_candidate,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,14
-loop_carried_state_handle,not_applicable,possible,strong_candidate,possible,strong_candidate,possible,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,13
-bounded_loop_command,not_applicable,possible,strong_candidate,possible,strong_candidate,possible,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,13
-persistent_command_buffer,not_applicable,possible,strong_candidate,weak_candidate,strong_candidate,not_applicable,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,13
-multi_stream_dma_descriptor,not_applicable,strong_candidate,strong_candidate,possible,possible,not_applicable,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,13
-prefetch_descriptor,weak_candidate,strong_candidate,strong_candidate,possible,strong_candidate,possible,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,13
-resident_packed_weight_object,possible,blocked,blocked,blocked,blocked,blocked,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,12
-packed_lowbit_tensor,possible,blocked,blocked,blocked,blocked,blocked,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,12
-scale_object,possible,blocked,blocked,blocked,blocked,blocked,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,12
+resident_weight_object,possible,strong_candidate,strong_candidate,weak_candidate,possible,not_applicable,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,15
+region_level_dispatch,possible,possible,strong_candidate,possible,strong_candidate,not_applicable,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,14
+event_token,not_applicable,strong_candidate,strong_candidate,weak_candidate,possible,not_applicable,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,14
+async_queue,not_applicable,strong_candidate,strong_candidate,weak_candidate,possible,not_applicable,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,14
+dma_engine,weak_candidate,strong_candidate,strong_candidate,possible,possible,possible,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,14
+partial_sum_object,not_applicable,weak_candidate,possible,strong_candidate,strong_candidate,strong_candidate,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,13
+fused_requant_epilogue,possible,not_applicable,possible,possible,possible,possible,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; xr0,13
+loop_carried_state_handle,not_applicable,possible,strong_candidate,possible,strong_candidate,possible,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,12
+bounded_loop_command,not_applicable,possible,strong_candidate,possible,strong_candidate,possible,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,12
+persistent_command_buffer,not_applicable,possible,strong_candidate,weak_candidate,strong_candidate,not_applicable,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,12
 producer_consumer_queue,not_applicable,strong_candidate,strong_candidate,weak_candidate,possible,not_applicable,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla,12
-skinny_gemm_or_gemv_engine,possible,not_applicable,possible,strong_candidate,possible,strong_candidate,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,12
-accumulator_merge,not_applicable,weak_candidate,possible,strong_candidate,strong_candidate,strong_candidate,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,12
-accumulator_commit,not_applicable,not_applicable,possible,strong_candidate,possible,strong_candidate,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,12
-fused_dequant_matmul,possible,blocked,blocked,blocked,blocked,blocked,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,12
-fused_requant_epilogue,possible,not_applicable,possible,possible,possible,possible,groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; xr0,12
-native_lowbit_matmul,possible,blocked,blocked,blocked,blocked,blocked,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0,12
+epilogue_requant_unit,possible,not_applicable,possible,strong_candidate,possible,strong_candidate,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; xr0,12
+multi_stream_dma_descriptor,not_applicable,strong_candidate,strong_candidate,possible,possible,not_applicable,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,12
+prefetch_descriptor,weak_candidate,strong_candidate,strong_candidate,possible,strong_candidate,possible,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,12
+resident_packed_weight_object,possible,blocked,blocked,blocked,blocked,blocked,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,11
+packed_lowbit_tensor,possible,blocked,blocked,blocked,blocked,blocked,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,11
+scale_object,possible,blocked,blocked,blocked,blocked,blocked,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,11
 double_buffered_action_chunk,not_applicable,strong_candidate,strong_candidate,not_applicable,possible,not_applicable,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla,11
-epilogue_requant_unit,possible,not_applicable,possible,strong_candidate,possible,strong_candidate,groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; xr0,11
-decode_loop_controller,not_applicable,possible,strong_candidate,possible,strong_candidate,possible,bitvla; molmoact; openvla; small_llama; tiny_llama,8
-prefix_kv_object,not_applicable,unavailable,unavailable,unavailable,unavailable,unavailable,bitvla; molmoact; openvla; small_llama; tiny_llama,6
+skinny_gemm_or_gemv_engine,possible,not_applicable,possible,strong_candidate,possible,strong_candidate,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,11
+accumulator_merge,not_applicable,weak_candidate,possible,strong_candidate,strong_candidate,strong_candidate,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,11
+accumulator_commit,not_applicable,not_applicable,possible,strong_candidate,possible,strong_candidate,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,11
+fused_dequant_matmul,possible,blocked,blocked,blocked,blocked,blocked,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,11
+native_lowbit_matmul,possible,blocked,blocked,blocked,blocked,blocked,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,11
+decode_loop_controller,not_applicable,possible,strong_candidate,possible,strong_candidate,possible,bitvla; molmoact; openvla; tiny_llama,7
 matrix_engine,possible,not_applicable,possible,strong_candidate,possible,strong_candidate,pi05; rdt; smolvla,6
-kv_cache_object,not_applicable,unavailable,unavailable,unavailable,unavailable,unavailable,bitvla; molmoact; openvla; small_llama; tiny_llama,6
+prefix_kv_object,not_applicable,unavailable,unavailable,unavailable,unavailable,unavailable,bitvla; molmoact; openvla; tiny_llama,5
+kv_cache_object,not_applicable,unavailable,unavailable,unavailable,unavailable,unavailable,bitvla; molmoact; openvla; tiny_llama,5

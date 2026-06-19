@@ -69,9 +69,11 @@ MODEL_ARCH: dict[str, ModelArch] = {
     "bitvla": ModelArch("bitvla", "autoregressive_vla", "action_token_decode", 7, 5.0, 7,
                         note="BitNet ternary VLA."),
     "openvla_oft": ModelArch("openvla_oft", "autoregressive_vla", "action_token_decode", 7, 5.0, 7),
-    "small_llama": ModelArch("small_llama", "llm", "token_decode", 32, None, None,
-                             note="LLaMA-style decoder; weights reused across decode tokens."),
-    "tiny_llama": ModelArch("tiny_llama", "llm", "token_decode", 32, None, None),
+    "small_llama": ModelArch("small_llama", "llm", "token_decode", 7, None, None,
+                             loop_count_source="recovered_from_ir",
+                             note="LLaMA-style decoder; K=7 captured decode length (IR-recovered)."),
+    "tiny_llama": ModelArch("tiny_llama", "llm", "token_decode", 7, None, None,
+                            loop_count_source="recovered_from_ir"),
     "small": ModelArch("small", "llm", "token_decode", 32, None, None),
 }
 

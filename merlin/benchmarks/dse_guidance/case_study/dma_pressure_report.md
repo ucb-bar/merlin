@@ -20,15 +20,14 @@
 |---|---|---|
 | rdt | 1 | 3 |
 | openvla | 2 | 6 |
-| small_llama | 1 | 3 |
-| tiny_llama | 1 | 3 |
+| tiny_llama | 2 | 6 |
 | rdt2 | 1 | 3 |
-| groot_n1d7 | 2 | 6 |
-| molmoact | 1 | 3 |
+| groot_n1d7 | 1 | 3 |
+| molmoact | 2 | 6 |
 | smolvla | 2 | 6 |
 | pi05 | 2 | 6 |
-| xr0 | 3 | 9 |
-| bitvla | 1 | 3 |
+| xr0 | 2 | 6 |
+| bitvla | 2 | 6 |
 
 ## Findings
 

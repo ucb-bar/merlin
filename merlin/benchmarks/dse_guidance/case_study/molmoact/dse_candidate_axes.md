@@ -10,7 +10,7 @@
 - **needs (compiler)**: action-head weights immutable and live across the K-loop (resident-pack candidate); backbone weights excluded
 - **needs (hw/runtime)**: resident weight store + pack-once/use-many interface
 - **measure first**: action_head_weight_bytes, weight_reload_bytes_per_step, pack_cost_per_step, resident_capacity_required, measured memory bandwidth
-- **attributed IR facts (Level-1)**: `{'matmul_count': 17, 'macs_per_invocation': 7574913024, 'weight_bytes': 3787456512, 'activation_bytes_per_invocation': 10403840, 'invocations': 8, 'macs_total': 60599304192, 'activation_bytes_total': 83230720}`
+- **attributed IR facts (Level-1)**: `{'matmul_count': 17, 'macs_per_invocation': 946864128, 'weight_bytes': 3787456512, 'activation_bytes_per_invocation': 1300480, 'invocations': 8, 'macs_total': 7574913024, 'activation_bytes_total': 10403840}`
 - **status**: legality=structural, benefit=unquantified (blocked by: missing_calibration)
 - **could be wrong if**: weights exceed resident capacity; packing already hoisted out of the loop; DMA/weight traffic is not the bottleneck; host dispatch dominates total latency
 
@@ -56,7 +56,7 @@
 - **needs (compiler)**: a packed/quantized weight layout is produced once and consumed by the same op family across the loop without re-pack
 - **needs (hw/runtime)**: packed layout as a first-class, dispatch-crossing object
 - **measure first**: pack_count_per_replan, pack_bytes, repacks_avoided
-- **attributed IR facts (Level-1)**: `{'matmul_count': 17, 'macs_per_invocation': 7574913024, 'weight_bytes': 3787456512, 'activation_bytes_per_invocation': 10403840, 'invocations': 8, 'macs_total': 60599304192, 'activation_bytes_total': 83230720}`
+- **attributed IR facts (Level-1)**: `{'matmul_count': 17, 'macs_per_invocation': 946864128, 'weight_bytes': 3787456512, 'activation_bytes_per_invocation': 1300480, 'invocations': 8, 'macs_total': 7574913024, 'activation_bytes_total': 10403840}`
 - **status**: legality=structural, benefit=unquantified (blocked by: missing_calibration)
 - **could be wrong if**: packing is not repeated; the op family changes layout between uses; dequant happens upstream regardless
 

@@ -7,7 +7,7 @@ parallel_hierarchy_hints:
     - tile_dims
     evidence: recovered_from_ir
     evidence_against: none
-    evidence_for: 805 ops, 63.7% of MACs, in bitvla, groot_n1d7, molmoact, openvla, pi05, rdt, rdt2, small_llama, smolvla, xr0
+    evidence_for: 1032 ops, 64.2% of MACs, in bitvla, groot_n1d7, molmoact, openvla, pi05, rdt, rdt2, smolvla, tiny_llama, xr0
     hierarchy_options:
     - matrix_tile_engine
     - SIMD_vector_lanes
@@ -25,8 +25,8 @@ parallel_hierarchy_hints:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
+    - tiny_llama
     - xr0
   - dse_knobs_exposed:
     - unit_count
@@ -34,7 +34,7 @@ parallel_hierarchy_hints:
     - tile_dims
     evidence: recovered_from_ir
     evidence_against: none
-    evidence_for: 96 ops, 31.0% of MACs, in pi05, rdt2, smolvla, xr0
+    evidence_for: 138 ops, 30.5% of MACs, in pi05, rdt2, smolvla, xr0
     hierarchy_options:
     - matrix_tile_engine
     - systolic_array
@@ -75,7 +75,7 @@ parallel_hierarchy_hints:
     - tile_dims
     evidence: recovered_from_ir
     evidence_against: very small MAC share
-    evidence_for: 12 ops, 1.3% of MACs, in smolvla
+    evidence_for: 12 ops, 1.2% of MACs, in smolvla
     hierarchy_options:
     - multi_engine_cluster
     missing_measurements:
@@ -92,7 +92,7 @@ parallel_hierarchy_hints:
     - tile_dims
     evidence: recovered_from_ir
     evidence_against: very small MAC share
-    evidence_for: 74 ops, 0.0% of MACs, in groot_n1d7, pi05, rdt, rdt2, smolvla, tiny_llama, xr0
+    evidence_for: 139 ops, 0.1% of MACs, in bitvla, groot_n1d7, molmoact, openvla, pi05, rdt, rdt2, smolvla, tiny_llama, xr0
     hierarchy_options:
     - skinny_gemm_or_gemv_engine
     - SIMD_vector_lanes
@@ -103,7 +103,10 @@ parallel_hierarchy_hints:
     required_compiler_proof: operator geometry is tile/lane-legal for the option (recovered_from_ir shapes)
     shape_class: gemv_like
     supported_workloads:
+    - bitvla
     - groot_n1d7
+    - molmoact
+    - openvla
     - pi05
     - rdt
     - rdt2
@@ -116,7 +119,7 @@ parallel_hierarchy_hints:
     - reduction_radix
     - accumulator_width
     evidence: recovered_from_ir
-    evidence_for: 1051 K-shardable ops produce partial sums that must be merged across shards
+    evidence_for: 1385 K-shardable ops produce partial sums that must be merged across shards
     hierarchy_option: reduction_tree
     missing_measurements:
     - reduction latency
@@ -129,7 +132,6 @@ parallel_hierarchy_hints:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -138,7 +140,7 @@ parallel_hierarchy_hints:
     - fused_activation
     - requant_path
     evidence: recovered_from_ir
-    evidence_for: 667 ops carry a fused bias/activation (addmm epilogue)
+    evidence_for: 654 ops carry a fused bias/activation (addmm epilogue)
     hierarchy_option: epilogue_unit
     missing_measurements:
     - epilogue throughput
@@ -146,11 +148,7 @@ parallel_hierarchy_hints:
     supported_workloads:
     - groot_n1d7
     - molmoact
-    - openvla
     - pi05
-    - rdt
-    - rdt2
-    - smolvla
   - dse_knobs_exposed:
     - prefetch_depth
     - resident_capacity
@@ -168,7 +166,6 @@ parallel_hierarchy_hints:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -184,11 +181,13 @@ parallel_hierarchy_hints:
   - dse_knobs_exposed:
     - num_engines
     evidence: derived_requirement
-    evidence_for: inter-op parallelism in small_llama, pi05 (independent ops become ready together)
+    evidence_for: inter-op parallelism in openvla, tiny_llama, pi05, bitvla (independent ops become ready together)
     hierarchy_option: multi_engine_cluster
     missing_measurements:
     - scheduling / communication latency
     required_compiler_proof: independent operators in the DAG can occupy separate engines
     supported_workloads:
-    - small_llama
+    - openvla
+    - tiny_llama
     - pi05
+    - bitvla

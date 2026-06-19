@@ -34,7 +34,7 @@
     "top_by_evidence_breadth": [
       {
         "abstraction": "resident_weight_object",
-        "boundary_pressure_score": 16,
+        "boundary_pressure_score": 15,
         "strong_levels": [
           "runtime_hal_object",
           "command_buffer_or_command_isa"
@@ -47,7 +47,6 @@
           "pi05",
           "rdt",
           "rdt2",
-          "small_llama",
           "smolvla",
           "tiny_llama",
           "xr0"
@@ -55,7 +54,7 @@
       },
       {
         "abstraction": "region_level_dispatch",
-        "boundary_pressure_score": 15,
+        "boundary_pressure_score": 14,
         "strong_levels": [
           "command_buffer_or_command_isa",
           "device_microcode_or_controller"
@@ -68,7 +67,6 @@
           "pi05",
           "rdt",
           "rdt2",
-          "small_llama",
           "smolvla",
           "tiny_llama",
           "xr0"
@@ -76,7 +74,7 @@
       },
       {
         "abstraction": "event_token",
-        "boundary_pressure_score": 15,
+        "boundary_pressure_score": 14,
         "strong_levels": [
           "runtime_hal_object",
           "command_buffer_or_command_isa"
@@ -89,7 +87,6 @@
           "pi05",
           "rdt",
           "rdt2",
-          "small_llama",
           "smolvla",
           "tiny_llama",
           "xr0"
@@ -97,7 +94,7 @@
       },
       {
         "abstraction": "async_queue",
-        "boundary_pressure_score": 15,
+        "boundary_pressure_score": 14,
         "strong_levels": [
           "runtime_hal_object",
           "command_buffer_or_command_isa"
@@ -110,7 +107,6 @@
           "pi05",
           "rdt",
           "rdt2",
-          "small_llama",
           "smolvla",
           "tiny_llama",
           "xr0"
@@ -118,7 +114,7 @@
       },
       {
         "abstraction": "dma_engine",
-        "boundary_pressure_score": 15,
+        "boundary_pressure_score": 14,
         "strong_levels": [
           "runtime_hal_object",
           "command_buffer_or_command_isa"
@@ -131,7 +127,6 @@
           "pi05",
           "rdt",
           "rdt2",
-          "small_llama",
           "smolvla",
           "tiny_llama",
           "xr0"
@@ -139,7 +134,7 @@
       },
       {
         "abstraction": "partial_sum_object",
-        "boundary_pressure_score": 14,
+        "boundary_pressure_score": 13,
         "strong_levels": [
           "accelerator_isa",
           "device_microcode_or_controller",
@@ -153,15 +148,30 @@
           "pi05",
           "rdt",
           "rdt2",
-          "small_llama",
           "smolvla",
           "tiny_llama",
+          "xr0"
+        ]
+      },
+      {
+        "abstraction": "fused_requant_epilogue",
+        "boundary_pressure_score": 13,
+        "strong_levels": [],
+        "supporting_workloads": [
+          "bitvla",
+          "groot_n1d7",
+          "molmoact",
+          "openvla",
+          "pi05",
+          "rdt",
+          "rdt2",
+          "smolvla",
           "xr0"
         ]
       },
       {
         "abstraction": "loop_carried_state_handle",
-        "boundary_pressure_score": 13,
+        "boundary_pressure_score": 12,
         "strong_levels": [
           "command_buffer_or_command_isa",
           "device_microcode_or_controller"
@@ -174,28 +184,6 @@
           "pi05",
           "rdt",
           "rdt2",
-          "small_llama",
-          "smolvla",
-          "tiny_llama",
-          "xr0"
-        ]
-      },
-      {
-        "abstraction": "bounded_loop_command",
-        "boundary_pressure_score": 13,
-        "strong_levels": [
-          "command_buffer_or_command_isa",
-          "device_microcode_or_controller"
-        ],
-        "supporting_workloads": [
-          "bitvla",
-          "groot_n1d7",
-          "molmoact",
-          "openvla",
-          "pi05",
-          "rdt",
-          "rdt2",
-          "small_llama",
           "smolvla",
           "tiny_llama",
           "xr0"
@@ -223,6 +211,7 @@
       "ready_quantitative_dse": false,
       "ready_structural_dse": true,
       "roles": [
+        "backbone_once",
         "repeated_head"
       ]
     },
@@ -231,7 +220,7 @@
       "K_source": "recovered_from_model_config",
       "accuracy_int8": "unavailable",
       "class": "diffusion/denoise_steps",
-      "head_weight_bytes": 295698432,
+      "head_weight_bytes": 2200436736,
       "missing_before_quantitative_dse": [
         "quantization accuracy gates (per candidate low-bit format)",
         "real (target) command-submit / sync latency",
@@ -240,7 +229,6 @@
       "ready_quantitative_dse": false,
       "ready_structural_dse": true,
       "roles": [
-        "backbone_once",
         "repeated_head"
       ]
     },
@@ -258,6 +246,7 @@
       "ready_quantitative_dse": false,
       "ready_structural_dse": true,
       "roles": [
+        "backbone_once",
         "repeated_head"
       ]
     },
@@ -283,7 +272,7 @@
       "K_source": "recovered_from_model_config",
       "accuracy_int8": "unavailable",
       "class": "flow_matching/denoise_steps",
-      "head_weight_bytes": 9210953728,
+      "head_weight_bytes": 1719926784,
       "missing_before_quantitative_dse": [
         "quantization accuracy gates (per candidate low-bit format)",
         "real (target) command-submit / sync latency",
@@ -301,7 +290,7 @@
       "K_source": "recovered_from_model_config",
       "accuracy_int8": "unavailable",
       "class": "diffusion/denoise_steps",
-      "head_weight_bytes": 391118848,
+      "head_weight_bytes": 393216000,
       "missing_before_quantitative_dse": [
         "quantization accuracy gates (per candidate low-bit format)",
         "real (target) command-submit / sync latency",
@@ -318,23 +307,7 @@
       "K_source": "recovered_from_model_config",
       "accuracy_int8": "pass",
       "class": "diffusion/denoise_steps",
-      "head_weight_bytes": 301268992,
-      "missing_before_quantitative_dse": [
-        "real (target) command-submit / sync latency",
-        "K / control-rate from the real deployment (currently reference values)"
-      ],
-      "ready_quantitative_dse": false,
-      "ready_structural_dse": true,
-      "roles": [
-        "repeated_head"
-      ]
-    },
-    "small_llama": {
-      "K": 32,
-      "K_source": "recovered_from_model_config",
-      "accuracy_int8": "pass",
-      "class": "llm/token_decode",
-      "head_weight_bytes": 1712128,
+      "head_weight_bytes": 309739520,
       "missing_before_quantitative_dse": [
         "real (target) command-submit / sync latency",
         "K / control-rate from the real deployment (currently reference values)"
@@ -350,7 +323,7 @@
       "K_source": "recovered_from_model_config",
       "accuracy_int8": "unavailable",
       "class": "flow_matching/denoise_steps",
-      "head_weight_bytes": 31493120,
+      "head_weight_bytes": 206126080,
       "missing_before_quantitative_dse": [
         "quantization accuracy gates (per candidate low-bit format)",
         "real (target) command-submit / sync latency",
@@ -364,7 +337,7 @@
       ]
     },
     "tiny_llama": {
-      "K": 32,
+      "K": 7,
       "K_source": "recovered_from_model_config",
       "accuracy_int8": "pass",
       "class": "llm/token_decode",
@@ -376,6 +349,7 @@
       "ready_quantitative_dse": false,
       "ready_structural_dse": true,
       "roles": [
+        "backbone_once",
         "repeated_head"
       ]
     },
@@ -384,7 +358,7 @@
       "K_source": "recovered_from_model_config",
       "accuracy_int8": "unavailable",
       "class": "diffusion/denoise_steps",
-      "head_weight_bytes": 123080704,
+      "head_weight_bytes": 169086976,
       "missing_before_quantitative_dse": [
         "quantization accuracy gates (per candidate low-bit format)",
         "real (target) command-submit / sync latency",
@@ -394,7 +368,6 @@
       "ready_structural_dse": true,
       "roles": [
         "backbone_once",
-        "prefix_builder",
         "repeated_head"
       ]
     }
@@ -465,7 +438,6 @@
     "pi05",
     "rdt",
     "rdt2",
-    "small_llama",
     "smolvla",
     "tiny_llama",
     "xr0"

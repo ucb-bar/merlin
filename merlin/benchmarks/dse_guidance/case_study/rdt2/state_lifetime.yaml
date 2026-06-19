@@ -2,7 +2,7 @@
 state_lifetime:
   note: lifetime scopes recovered from prov.fqn topology; only weight bytes are known from IR — other sizes are 'unavailable', never invented. No speedup/capacity claimed.
   states:
-  - bytes: 301268992
+  - bytes: 309739520
     bytes_evidence: recovered_from_ir
     consumed_by: null
     implied_abstraction: resident_weight_object

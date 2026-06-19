@@ -2,20 +2,20 @@
 
 > Requirements derived from the workload contract — NOT calibrated to any hardware. No speedup is claimed.
 
-- K = 32  ·  replan deadline = 1066.7 ms (assumed_reference)  ·  captured dtype = f32
+- K = 7  ·  replan deadline = 233.3 ms (assumed_reference)  ·  captured dtype = f32
 
 ## Requirements
 
 | requirement | value | unit | evidence |
 |-------------|-------|------|----------|
-| macs_per_replan | 1.966e+10 | MAC | recovered_from_ir |
+| macs_per_replan | 1.075e+09 | MAC | recovered_from_ir |
 | resident_capacity_required | 586.0 MB | B | recovered_from_ir |
-| weight_reload_bytes_per_replan | 18.3 GB | B | recovered_from_ir |
-| avoidable_weight_reload_bytes | 17.7 GB | B | recovered_from_ir |
-| dispatches_per_replan | 4.800e+02 | dispatch | derived_requirement |
-| required_compute_rate | 1.843e+10 | MAC/s | derived_requirement |
+| weight_reload_bytes_per_replan | 4.0 GB | B | recovered_from_ir |
+| avoidable_weight_reload_bytes | 3.4 GB | B | recovered_from_ir |
+| dispatches_per_replan | 1.050e+02 | dispatch | derived_requirement |
+| required_compute_rate | 4.608e+09 | MAC/s | derived_requirement |
 | required_weight_bandwidth | 1.843e+10 | B/s | derived_requirement |
-| required_activation_bandwidth | 5.075e+07 | B/s | derived_requirement |
+| required_activation_bandwidth | 1.269e+07 | B/s | derived_requirement |
 | required_command_rate | 4.500e+02 | dispatch/s | derived_requirement |
 
 ## Resident capacity by storage format

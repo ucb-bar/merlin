@@ -26,11 +26,11 @@ abstraction_candidates:
   - accuracy
   why_this_exists:
     attributed_facts: &id001
-      activation_bytes_per_invocation: 10403840
-      activation_bytes_total: 83230720
+      activation_bytes_per_invocation: 1300480
+      activation_bytes_total: 10403840
       invocations: 8
-      macs_per_invocation: 7574913024
-      macs_total: 60599304192
+      macs_per_invocation: 946864128
+      macs_total: 7574913024
       matmul_count: 17
       weight_bytes: 3787456512
     evidence:

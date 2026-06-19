@@ -4,10 +4,10 @@ memory_envelope:
   regions:
   - activation_bytes_per_invocation:
       evidence: recovered_from_ir
-      value: 690534656
+      value: 744200064
     activation_traffic_total:
       evidence: derived_requirement
-      value: 690534656
+      value: 744200064
     avoidable_weight_reload:
       evidence: derived_requirement
       value: 0
@@ -26,19 +26,19 @@ memory_envelope:
       value: 1
     weight_bytes:
       evidence: recovered_from_ir
-      value: 426246144
+      value: 701620224
     weight_traffic_if_nonresident:
       evidence: derived_requirement
-      value: 426246144
+      value: 701620224
   - activation_bytes_per_invocation:
       evidence: recovered_from_ir
-      value: 4144128
+      value: 25975680
     activation_traffic_total:
       evidence: derived_requirement
-      value: 41441280
+      value: 259756800
     avoidable_weight_reload:
       evidence: derived_requirement
-      value: 283438080
+      value: 1855134720
     intermediate_materialization_bytes:
       evidence: unavailable
       value: null
@@ -54,8 +54,8 @@ memory_envelope:
       value: 10
     weight_bytes:
       evidence: recovered_from_ir
-      value: 31493120
+      value: 206126080
     weight_traffic_if_nonresident:
       evidence: derived_requirement
-      value: 314931200
+      value: 2061260800
   workload: smolvla

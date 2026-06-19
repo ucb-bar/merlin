@@ -77,11 +77,15 @@ numerical_contract:
     compute_dtype: f32
     declared_quantization: none
     dequantize_ops: 0
-    n_matmuls: 15
+    n_matmuls: 30
     packed_layout_visible: true
     requant_ops: 0
     weight_storage_dtype: f32
   per_region_dtype:
+  - dtype: f32
+    evidence: recovered_from_ir
+    n: 15
+    region: backbone_once
   - dtype: f32
     evidence: recovered_from_ir
     n: 15

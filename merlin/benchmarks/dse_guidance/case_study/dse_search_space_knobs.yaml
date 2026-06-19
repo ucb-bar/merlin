@@ -17,7 +17,7 @@ dse_search_space_knobs:
     source_phase: P5
   - enabled: true
     evidence: derived_requirement
-    gated_by: 1797 reduction-free M/N shards available; K-sharding needs partial-sum reduction
+    gated_by: 2143 reduction-free M/N shards available; K-sharding needs partial-sum reduction
     group: intra_op_sharding
     knobs:
     - shard_axis in {M,N,K}
@@ -25,7 +25,7 @@ dse_search_space_knobs:
     source_phase: P7
   - enabled: false
     evidence: derived_requirement
-    gated_by: avg inter-op parallelism 1.291x (low -> limited; favors intra-op sharding)
+    gated_by: avg inter-op parallelism 1.426x (low -> limited; favors intra-op sharding)
     group: inter_op_parallelism
     knobs:
     - num_engines
@@ -79,7 +79,7 @@ dse_search_space_knobs:
     gated_by: directly-fused epilogue slot proven (addmm bias); low-bit/scale gated by a low-bit capture + accuracy
     group: epilogue_fusion
     knobs:
-    - epilogue_op_set subset of ['bias', 'activation', 'scale']
+    - epilogue_op_set subset of ['bias', 'activation', 'scale', 'clamp', 'cast']
     - accumulator_dtype
     - requant_in_epilogue
     source_phase: P10

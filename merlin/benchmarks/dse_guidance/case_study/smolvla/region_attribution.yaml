@@ -4,70 +4,100 @@ topology_recovery:
   level: 1
   regions:
   - attribution_status: attributed
-    confidence: 0.7
+    confidence: 0.8
     facts:
-      activation_bytes_per_invocation: 690534656
-      activation_bytes_total: 690534656
+      activation_bytes_per_invocation: 744200064
+      activation_bytes_total: 744200064
       invocations: 1
-      macs_per_invocation: 89949732864
-      macs_total: 89949732864
-      matmul_count: 87
-      weight_bytes: 426246144
+      macs_per_invocation: 105501456384
+      macs_total: 105501456384
+      matmul_count: 186
+      weight_bytes: 701620224
     invocations: 1
-    matmul_count_attributed: 87
-    reason: 87 matmuls assigned by prov_fqn
+    matmul_count_attributed: 186
+    reason: 186 matmuls assigned by structural_prefix
     role: backbone_once
-    source: prov_fqn
+    source: structural_prefix
   - attribution_status: attributed
-    confidence: 0.7
+    confidence: 0.85
     facts:
-      activation_bytes_per_invocation: 4144128
-      activation_bytes_total: 41441280
+      activation_bytes_per_invocation: 25975680
+      activation_bytes_total: 259756800
       invocations: 10
-      macs_per_invocation: 706885120
-      macs_total: 7068851200
-      matmul_count: 19
-      weight_bytes: 31493120
+      macs_per_invocation: 5094387200
+      macs_total: 50943872000
+      matmul_count: 116
+      weight_bytes: 206126080
     invocations: 10
-    matmul_count_attributed: 19
-    reason: 19 matmuls assigned by prov_fqn
+    matmul_count_attributed: 116
+    reason: 116 matmuls assigned by structural_scf_for
     role: repeated_head
-    source: prov_fqn
+    source: structural_scf_for
   repeated_shape_signatures:
   - count: 48
     signature:
     - 1024
     - 768
     - 768
-  - count: 12
-    signature:
-    - 1024
-    - 768
-    - 3072
-  - count: 12
-    signature:
-    - 1024
-    - 3072
-    - 768
-  - count: 4
+  - count: 32
     signature:
     - 113
     - 960
     - 960
-  - count: 4
+  - count: 32
     signature:
     - 113
     - 960
     - 320
-  - count: 4
+  - count: 32
     signature:
     - 113
     - 960
     - 2560
-  - count: 4
+  - count: 32
     signature:
     - 50
     - 720
     - 2048
+  - count: 16
+    signature:
+    - 113
+    - 2560
+    - 960
+  - count: 16
+    signature:
+    - 50
+    - 720
+    - 960
+  - count: 16
+    signature:
+    - 50
+    - 720
+    - 320
+  - count: 16
+    signature:
+    - 50
+    - 960
+    - 720
+  - count: 16
+    signature:
+    - 50
+    - 2048
+    - 720
+  - count: 16
+    signature:
+    - 113
+    - 320
+    - 320
+  - count: 12
+    signature:
+    - 1024
+    - 768
+    - 3072
+  - count: 12
+    signature:
+    - 1024
+    - 3072
+    - 768
   unresolved: []
 workload: smolvla

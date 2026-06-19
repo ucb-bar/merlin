@@ -1,8 +1,27 @@
-# Final judgment (P19 Phase 6 · updated P21)
+# Final judgment (P19 Phase 6 · updated P21 · P23 corpus switch)
 
 Source-grounded verdict on every current result/plot, after the 11-workload forensic audit (S1) and the
 correctness fixes (S3). Classification ∈ {main-slide, backup, QA-only, needs-fix, invalid}. All structural;
 no perf claims. "Evidence" = source/MLIR audit status.
+
+## P23 UPDATE — the whole study now runs on the loop-preserving corpus (full e2e)
+
+The DSE-formation analysis (operator geometry, Timeloop seeds, contract graph, sharding, memory/DMA,
+fusion, residency) was rebuilt on the **loop-preserving captures** (`recaptures_loop/`, now the primary
+corpus; the flat `recaptures/` are retained, set `MERLIN_DSE_CORPUS=flat` to use them). Net effect:
+- **Role attribution is now structural** — the `scf.for` boundary partitions the work, so it cleanly
+  separates the **once-per-replan prefix (backbone_once)** from the **repeated decode/denoise step
+  (repeated_head ×K)**. This is a *correctness gain the flat capture could not make*: e.g. openVLA is now
+  `backbone_once:15 + repeated_head:15` (the 15 prefill matmuls run once), not 30 repeated ×K; smolVLA is
+  `backbone_once:186 (VLM) + repeated_head:116 (expert)`. K is IR-recovered from the trip count (the
+  llamas' captured K=7, superseding the old assumed K=32).
+- **10 workloads** (the synthetic small_llama toy is excluded — its functional-weight loop wrapper lowered
+  GEMMs to `linalg.generic`, 0 `linalg.matmul`; its flat capture is unaffected).
+- Verifier **628/628** on the loop corpus (the per-workload K/count checks re-derive against the structural
+  split + IR K); see `manual_validation/loop_corpus_dryrun_audit.md` for the go/no-go gate.
+- All P21/P22 results (loop recovery, residency-from-IR, deployment magnitudes, native low-bit) are
+  unchanged (they read the loop captures directly). The pre-switch flat-corpus state is tagged
+  `pre-loop-corpus-e2e` (recoverable).
 
 ## P21 UPDATE — every caveat / blocked item resolved with IR or config evidence
 

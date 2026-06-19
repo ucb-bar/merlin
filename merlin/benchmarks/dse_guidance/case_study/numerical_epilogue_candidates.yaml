@@ -10,6 +10,7 @@ numerical_epilogue_candidates:
     evidence: recovered_from_ir
     performance_measurements_needed_later: per-op latency / energy once a backend exists
     present_in_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -37,7 +38,6 @@ numerical_epilogue_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -53,6 +53,7 @@ numerical_epilogue_candidates:
     evidence: recovered_from_ir
     performance_measurements_needed_later: per-op latency / energy once a backend exists
     present_in_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -73,10 +74,13 @@ numerical_epilogue_candidates:
     evidence: recovered_from_ir
     performance_measurements_needed_later: per-op latency / energy once a backend exists
     present_in_workloads:
+    - bitvla
     - groot_n1d7
+    - openvla
     - pi05
     - rdt
     - rdt2
+    - smolvla
     - xr0
     required_compiler_proof: an activation/clamp op follows the matmul epilogue (erf/exp/maximumf detected)
     required_hw_runtime_support: activation/clamp ALU on the output path

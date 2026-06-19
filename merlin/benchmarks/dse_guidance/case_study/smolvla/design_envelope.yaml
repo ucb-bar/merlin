@@ -8,36 +8,36 @@ design_envelope:
     - packed-layout support
     - quantization accuracy
     requirement:
-      resident_capacity_B: 15746560
+      resident_capacity_B: 206126080
     structural_evidence:
       K: 10
-      weight_bytes: 31493120
+      weight_bytes: 206126080
     theoretical_effect:
-      removes_avoidable_weight_reload_B: 283438080
+      removes_avoidable_weight_reload_B: 1855134720
   - axis: resident_int8_head_weights
     needed_to_quantify:
     - target memory hierarchy + bandwidth model
     - packed-layout support
     - quantization accuracy
     requirement:
-      resident_capacity_B: 7873280
+      resident_capacity_B: 103063040
     structural_evidence:
       K: 10
-      weight_bytes: 31493120
+      weight_bytes: 206126080
     theoretical_effect:
-      removes_avoidable_weight_reload_B: 283438080
+      removes_avoidable_weight_reload_B: 1855134720
   - axis: resident_int4_head_weights
     needed_to_quantify:
     - target memory hierarchy + bandwidth model
     - packed-layout support
     - quantization accuracy
     requirement:
-      resident_capacity_B: 3936640
+      resident_capacity_B: 51531520
     structural_evidence:
       K: 10
-      weight_bytes: 31493120
+      weight_bytes: 206126080
     theoretical_effect:
-      removes_avoidable_weight_reload_B: 283438080
+      removes_avoidable_weight_reload_B: 1855134720
   - axis: autonomous_K_loop
     needed_to_quantify:
     - actual host/device submit latency
@@ -48,7 +48,7 @@ design_envelope:
       loop_carried_state: true
     structural_evidence:
       K: 10
-      dispatches_per_replan: 190
+      dispatches_per_replan: 1160
     theoretical_effect:
       removes_host_submissions_inside_K_loop: true
   - axis: command_buffer_per_replan
@@ -57,10 +57,10 @@ design_envelope:
     requirement:
       static_dependency_graph: true
     structural_evidence:
-      dispatches_per_replan: 190
+      dispatches_per_replan: 1160
     theoretical_effect:
       collapses_per_dispatch_host_submits: true
-  captured_dtype: f32
+  captured_dtype: bf16
   deadline:
     evidence: assumed_reference
     seconds: 1.6666666666666667
@@ -71,53 +71,53 @@ design_envelope:
     name: macs_per_replan
     note: macs_per_step x K=10
     unit: MAC
-    value: 7068851200.0
+    value: 50943872000.0
   - evidence: recovered_from_ir
     name: resident_capacity_required
-    note: action-head weights (f32); resident set to avoid reloads
+    note: action-head weights (bf16); resident set to avoid reloads
     unit: B
-    value: 31493120.0
+    value: 206126080.0
   - evidence: recovered_from_ir
     name: weight_reload_bytes_per_replan
     note: 'naive reload: weight_bytes x K=10'
     unit: B
-    value: 314931200.0
+    value: 2061260800.0
   - evidence: recovered_from_ir
     name: avoidable_weight_reload_bytes
     note: removed by residency (keep 1 load, avoid K-1)
     unit: B
-    value: 283438080.0
+    value: 1855134720.0
   - evidence: derived_requirement
     name: dispatches_per_replan
     note: dispatches_per_step x K=10
     unit: dispatch
-    value: 190.0
+    value: 1160.0
   - evidence: derived_requirement
     name: required_compute_rate
     note: macs_per_replan / deadline
     unit: MAC/s
-    value: 4241310720.0
+    value: 30566323200.0
   - evidence: derived_requirement
     name: required_weight_bandwidth
     note: naive reload bandwidth if non-resident
     unit: B/s
-    value: 188958720.0
+    value: 1236756480.0
   - evidence: derived_requirement
     name: required_activation_bandwidth
     note: activation traffic / deadline
     unit: B/s
-    value: 24864768.0
+    value: 155854080.0
   - evidence: derived_requirement
     name: required_command_rate
     note: host command issue rate to meet deadline
     unit: dispatch/s
-    value: 114.0
+    value: 696.0
   resident_capacity_by_dtype_B:
-    bf16: 15746560
-    fp6: 5904960
-    fp8: 7873280
-    int4: 3936640
-    int8: 7873280
+    bf16: 206126080
+    fp6: 77297280
+    fp8: 103063040
+    int4: 51531520
+    int8: 103063040
   status:
     quantitative_speedup: not_claimed
   workload: smolvla

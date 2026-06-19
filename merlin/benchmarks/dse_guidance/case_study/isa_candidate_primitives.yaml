@@ -14,7 +14,6 @@ isa_candidate_primitives:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -30,7 +29,6 @@ isa_candidate_primitives:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -46,7 +44,6 @@ isa_candidate_primitives:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -70,7 +67,6 @@ isa_candidate_primitives:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -79,6 +75,7 @@ isa_candidate_primitives:
     required_compiler_proof: (numerical) fused requant/activation bit-exactness
     status: strong_candidate
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -99,7 +96,6 @@ isa_candidate_primitives:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -115,7 +111,6 @@ isa_candidate_primitives:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -131,7 +126,6 @@ isa_candidate_primitives:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -147,7 +141,6 @@ isa_candidate_primitives:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -163,7 +156,6 @@ isa_candidate_primitives:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -179,7 +171,6 @@ isa_candidate_primitives:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -188,6 +179,7 @@ isa_candidate_primitives:
     required_compiler_proof: (numerical) fused requant/activation bit-exactness
     status: possible
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -204,5 +196,4 @@ isa_candidate_primitives:
     - bitvla
     - molmoact
     - openvla
-    - small_llama
     - tiny_llama

@@ -84,11 +84,11 @@ distinction between blocked-by-capture and blocked-by-proof, is itself the contr
 </div>
 
 <div class="grid">
-  <div class="stat"><b>11</b><span>workloads (VLA / VLM / LLM)</span></div>
-  <div class="stat"><b>679/679</b><span>independent verifier checks</span></div>
-  <div class="stat hl"><b>6 / 6</b><span>open caveats &amp; blocked items now resolved (P21)</span></div>
-  <div class="stat hl"><b>11 / 11</b><span>loop-preserving captures — K/KV/loop recovered from IR</span></div>
-  <div class="stat"><b>8,194</b><span>operators recovered (full graph)</span></div>
+  <div class="stat"><b>10</b><span>workloads analyzed on the loop-preserving corpus (toy small_llama excluded)</span></div>
+  <div class="stat"><b>628/628</b><span>independent verifier checks (loop corpus)</span></div>
+  <div class="stat hl"><b>6 / 6</b><span>open caveats &amp; blocked items resolved (P21/P22)</span></div>
+  <div class="stat hl"><b>structural</b><span>role split from the scf.for boundary: prefix(once) vs decode/denoise(×K)</span></div>
+  <div class="stat"><b>10,651</b><span>operators recovered (full graph, loop corpus)</span></div>
   <div class="stat"><b>0</b><span>perf/cycle/area/energy claims</span></div>
 </div>
 
@@ -299,7 +299,7 @@ captured natively (<code>BITVLA_NATIVE_QUANT</code>), not the torchao-int8 stand
 </ul>
 
 <p class="foot">
-Verification: <b>679/679</b> independent checks (<code>verify_implementation.py</code>, incl. P21 re-derivation
+Verification: <b>628/628</b> independent checks on the loop corpus (<code>verify_implementation.py</code>, incl. P21 re-derivation
 of K/KV/params/native-storage from the IR) + pytest mechanism tests; every recovered MAC traces to an IR shape;
 no perf/cycles/area/energy/best-design wording anywhere. Deliverables under
 <code>merlin/benchmarks/dse_guidance/case_study/</code> (committed artifacts) and

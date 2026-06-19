@@ -13,7 +13,6 @@ runtime_object_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -29,7 +28,6 @@ runtime_object_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -45,7 +43,6 @@ runtime_object_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -61,7 +58,6 @@ runtime_object_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -77,7 +73,6 @@ runtime_object_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -93,7 +88,6 @@ runtime_object_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -109,7 +103,6 @@ runtime_object_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -151,7 +144,6 @@ runtime_object_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -167,7 +159,6 @@ runtime_object_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -183,7 +174,6 @@ runtime_object_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -195,6 +185,5 @@ runtime_object_candidates:
     - bitvla
     - molmoact
     - openvla
-    - small_llama
     - tiny_llama
   note: abstractions whose runtime/HAL-object placement is a candidate (lifetime + layout managed by the runtime). Sketch only — no speedup claimed.

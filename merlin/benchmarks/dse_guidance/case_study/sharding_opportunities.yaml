@@ -17,91 +17,80 @@ sharding_opportunities:
   - weight_broadcast
   workloads:
   - clean_8way_shards:
-      K: 20
-      M: 2
-      N: 20
+      K: 21
+      M: 3
+      N: 21
     evidence: recovered_from_ir
-    ops: 20
+    ops: 21
     tailed_8way_shards:
       K: 0
       M: 14
       N: 0
     workload: rdt
   - clean_8way_shards:
-      K: 26
-      M: 3
-      N: 26
+      K: 30
+      M: 0
+      N: 30
     evidence: recovered_from_ir
-    ops: 26
+    ops: 30
     tailed_8way_shards:
       K: 0
-      M: 23
+      M: 14
       N: 0
     workload: openvla
   - clean_8way_shards:
-      K: 15
-      M: 15
-      N: 15
+      K: 30
+      M: 14
+      N: 30
     evidence: recovered_from_ir
-    ops: 15
-    tailed_8way_shards:
-      K: 0
-      M: 0
-      N: 0
-    workload: small_llama
-  - clean_8way_shards:
-      K: 15
-      M: 0
-      N: 15
-    evidence: recovered_from_ir
-    ops: 15
+    ops: 30
     tailed_8way_shards:
       K: 0
       M: 0
       N: 0
     workload: tiny_llama
   - clean_8way_shards:
-      K: 23
-      M: 0
-      N: 22
+      K: 25
+      M: 3
+      N: 25
     evidence: recovered_from_ir
-    ops: 23
+    ops: 26
     tailed_8way_shards:
-      K: 0
+      K: 1
       M: 18
       N: 1
     workload: rdt2
   - clean_8way_shards:
-      K: 18
-      M: 2
-      N: 18
+      K: 116
+      M: 16
+      N: 116
     evidence: recovered_from_ir
-    ops: 18
+    ops: 116
     tailed_8way_shards:
       K: 0
-      M: 11
+      M: 81
       N: 0
     workload: groot_n1d7
   - clean_8way_shards:
-      K: 17
-      M: 17
-      N: 17
+      K: 34
+      M: 16
+      N: 34
     evidence: recovered_from_ir
-    ops: 17
+    ops: 34
     tailed_8way_shards:
       K: 0
       M: 0
       N: 0
     workload: molmoact
   - clean_8way_shards:
-      K: 106
+      K: 302
       M: 73
-      N: 106
+      N: 302
     evidence: recovered_from_ir
-    ops: 106
+    ops: 302
     tailed_8way_shards:
       K: 0
-      M: 32
+      M: 228
       N: 0
     workload: smolvla
   - clean_8way_shards:
@@ -127,11 +116,11 @@ sharding_opportunities:
       N: 0
     workload: xr0
   - clean_8way_shards:
-      K: 15
-      M: 15
-      N: 15
+      K: 30
+      M: 14
+      N: 30
     evidence: recovered_from_ir
-    ops: 15
+    ops: 30
     tailed_8way_shards:
       K: 0
       M: 0

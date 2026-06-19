@@ -12,7 +12,6 @@ command_isa_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -27,7 +26,6 @@ command_isa_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -42,7 +40,6 @@ command_isa_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -57,7 +54,6 @@ command_isa_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -72,7 +68,6 @@ command_isa_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -87,7 +82,6 @@ command_isa_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -102,7 +96,6 @@ command_isa_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -148,7 +141,6 @@ command_isa_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -156,6 +148,7 @@ command_isa_candidates:
     required_isa_semantics: command opcodes + handles + event/queue
     status: possible
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -175,7 +168,6 @@ command_isa_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -190,7 +182,6 @@ command_isa_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -205,7 +196,6 @@ command_isa_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -220,7 +210,6 @@ command_isa_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -235,7 +224,6 @@ command_isa_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -250,7 +238,6 @@ command_isa_candidates:
     - pi05
     - rdt
     - rdt2
-    - small_llama
     - smolvla
     - tiny_llama
     - xr0
@@ -258,6 +245,7 @@ command_isa_candidates:
     required_isa_semantics: command opcodes + handles + event/queue
     status: possible
     supporting_workloads:
+    - bitvla
     - groot_n1d7
     - molmoact
     - openvla
@@ -273,6 +261,5 @@ command_isa_candidates:
     - bitvla
     - molmoact
     - openvla
-    - small_llama
     - tiny_llama
   note: abstractions whose command-buffer / command-ISA placement is a candidate. Sketch only — no speedup claimed.

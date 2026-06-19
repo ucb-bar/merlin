@@ -6,57 +6,12 @@ timeloop_problem_shapes:
       Inputs: possible
       Outputs: possible
       Weights: possible
-    dataflow_candidates: &id002
-    - output_stationary
-    - input_stationary
-    evidence:
-      fqn: vla.language_model.model.layers.0.self_attn
-      source: operator_full_inventory.csv
-    id: bitvla__attention_contraction__32x32x32
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 32768
-    multiplicity: 4
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: attention_contraction
-    problem:
-      instance:
-        K: 32
-        M: 32
-        N: 32
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: activation
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: bitvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
     dataflow_candidates: &id001
     - weight_stationary
     - output_stationary
     - input_stationary
     evidence:
-      fqn: vla.language_model.model.layers.0.mlp.gate_proj
+      fqn: layers.0.mlp.gate_proj
       source: operator_full_inventory.csv
     id: bitvla__linear_gemm__32x512x256
     k_reduction_needs_partial_sum: true
@@ -99,7 +54,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: vla.language_model.model.layers.0.self_attn.q_proj
+      fqn: layers.0.self_attn.q_proj
       source: operator_full_inventory.csv
     id: bitvla__linear_gemm__32x256x256
     k_reduction_needs_partial_sum: true
@@ -142,7 +97,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: vla.language_model.model.layers.0.mlp.down_proj
+      fqn: layers.0.mlp.down_proj
       source: operator_full_inventory.csv
     id: bitvla__linear_gemm__32x256x512
     k_reduction_needs_partial_sum: true
@@ -185,50 +140,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: vla.language_model.lm_head
-      source: operator_full_inventory.csv
-    id: bitvla__linear_gemm__32x1024x256
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 8388608
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 256
-        M: 32
-        N: 1024
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: bitvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: vla.language_model.model.layers.0.self_attn.k_proj
+      fqn: layers.0.self_attn.k_proj
       source: operator_full_inventory.csv
     id: bitvla__linear_gemm__32x128x256
     k_reduction_needs_partial_sum: true
@@ -269,14 +181,231 @@ timeloop_problem_shapes:
       Inputs: possible
       Outputs: possible
       Weights: possible
-    dataflow_candidates: *id002
+    dataflow_candidates: *id001
+    evidence:
+      fqn: lm_head
+      source: operator_full_inventory.csv
+    id: bitvla__linear_gemm__1x1024x256
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 262144
+    multiplicity: 2
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 256
+        M: 1
+        N: 1024
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: bitvla
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: bitvla__linear_gemm__1x512x256
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 131072
+    multiplicity: 4
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 256
+        M: 1
+        N: 512
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: bitvla
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: bitvla__linear_gemm__1x256x256
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 65536
+    multiplicity: 4
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 256
+        M: 1
+        N: 256
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: bitvla
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: bitvla__linear_gemm__1x256x512
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 131072
+    multiplicity: 2
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 512
+        M: 1
+        N: 256
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: bitvla
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: bitvla__linear_gemm__1x128x256
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 32768
+    multiplicity: 4
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 256
+        M: 1
+        N: 128
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: bitvla
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: &id002
+    - output_stationary
+    - input_stationary
     evidence:
       fqn: head.model.transformer_blocks.0.attn1
       source: operator_full_inventory.csv
     id: groot_n1d7__attention_contraction__41x64x48
     k_reduction_needs_partial_sum: true
     macs_per_instance: 125952
-    multiplicity: 1
+    multiplicity: 8
     note: structural search-space seed; no mapping/perf chosen
     op_class: attention_contraction
     problem:
@@ -319,7 +448,7 @@ timeloop_problem_shapes:
     id: groot_n1d7__attention_contraction__41x48x64
     k_reduction_needs_partial_sum: true
     macs_per_instance: 125952
-    multiplicity: 1
+    multiplicity: 8
     note: structural search-space seed; no mapping/perf chosen
     op_class: attention_contraction
     problem:
@@ -362,7 +491,7 @@ timeloop_problem_shapes:
     id: groot_n1d7__attention_contraction__41x41x48
     k_reduction_needs_partial_sum: true
     macs_per_instance: 80688
-    multiplicity: 1
+    multiplicity: 8
     note: structural search-space seed; no mapping/perf chosen
     op_class: attention_contraction
     problem:
@@ -405,7 +534,7 @@ timeloop_problem_shapes:
     id: groot_n1d7__attention_contraction__41x48x41
     k_reduction_needs_partial_sum: true
     macs_per_instance: 80688
-    multiplicity: 1
+    multiplicity: 8
     note: structural search-space seed; no mapping/perf chosen
     op_class: attention_contraction
     problem:
@@ -752,7 +881,7 @@ timeloop_problem_shapes:
     id: groot_n1d7__linear_gemm__41x6144x1536
     k_reduction_needs_partial_sum: true
     macs_per_instance: 386924544
-    multiplicity: 2
+    multiplicity: 16
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
@@ -795,7 +924,7 @@ timeloop_problem_shapes:
     id: groot_n1d7__linear_gemm__41x1536x6144
     k_reduction_needs_partial_sum: true
     macs_per_instance: 386924544
-    multiplicity: 2
+    multiplicity: 16
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
@@ -838,7 +967,7 @@ timeloop_problem_shapes:
     id: groot_n1d7__linear_gemm__41x1536x1536
     k_reduction_needs_partial_sum: true
     macs_per_instance: 96731136
-    multiplicity: 6
+    multiplicity: 48
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
@@ -881,7 +1010,7 @@ timeloop_problem_shapes:
     id: groot_n1d7__linear_gemm__64x1536x2048
     k_reduction_needs_partial_sum: true
     macs_per_instance: 201326592
-    multiplicity: 2
+    multiplicity: 16
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
@@ -889,6 +1018,49 @@ timeloop_problem_shapes:
         K: 2048
         M: 64
         N: 1536
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: groot_n1d7
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: head.model.transformer_blocks.0.norm1.linear
+      source: operator_full_inventory.csv
+    id: groot_n1d7__linear_gemm__1x3072x1536
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 4718592
+    multiplicity: 17
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 1536
+        M: 1
+        N: 3072
       shape:
         data-spaces:
         - name: Weights
@@ -932,49 +1104,6 @@ timeloop_problem_shapes:
         K: 1536
         M: 41
         N: 1024
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: groot_n1d7
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: head.model.transformer_blocks.0.norm1.linear
-      source: operator_full_inventory.csv
-    id: groot_n1d7__linear_gemm__1x3072x1536
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 4718592
-    multiplicity: 3
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 1536
-        M: 1
-        N: 3072
       shape:
         data-spaces:
         - name: Weights
@@ -1089,25 +1218,25 @@ timeloop_problem_shapes:
       Inputs: possible
       Outputs: possible
       Weights: possible
-    dataflow_candidates: *id002
+    dataflow_candidates: *id003
     evidence:
-      fqn: lm.model.blocks.slice(None, 4, None).0.self_attn
+      fqn: ''
       source: operator_full_inventory.csv
-    id: molmoact__attention_contraction__8x8x128
+    id: molmoact__batched_matmul__8x16x128
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 8192
+    macs_per_instance: 16384
     multiplicity: 4
     note: structural search-space seed; no mapping/perf chosen
-    op_class: attention_contraction
+    op_class: batched_matmul
     problem:
       instance:
         K: 128
         M: 8
-        N: 8
+        N: 16
       shape:
         data-spaces:
         - name: Weights
-          operand_identity: activation
+          operand_identity: batched_weight_or_state
           projection:
           - - - K
           - - - N
@@ -1132,25 +1261,111 @@ timeloop_problem_shapes:
       Inputs: possible
       Outputs: possible
       Weights: possible
-    dataflow_candidates: *id002
+    dataflow_candidates: *id003
     evidence:
-      fqn: lm.model.blocks.slice(None, 4, None).0.self_attn
+      fqn: ''
       source: operator_full_inventory.csv
-    id: molmoact__attention_contraction__8x128x8
+    id: molmoact__batched_matmul__8x128x16
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 8192
+    macs_per_instance: 16384
     multiplicity: 4
     note: structural search-space seed; no mapping/perf chosen
-    op_class: attention_contraction
+    op_class: batched_matmul
     problem:
       instance:
-        K: 8
+        K: 16
         M: 8
         N: 128
       shape:
         data-spaces:
         - name: Weights
+          operand_identity: batched_weight_or_state
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
           operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: molmoact
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id003
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: molmoact__batched_matmul__1x16x128
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 2048
+    multiplicity: 4
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: batched_matmul
+    problem:
+      instance:
+        K: 128
+        M: 1
+        N: 16
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: batched_weight_or_state
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: molmoact
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id003
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: molmoact__batched_matmul__1x128x16
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 2048
+    multiplicity: 4
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: batched_matmul
+    problem:
+      instance:
+        K: 16
+        M: 1
+        N: 128
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: batched_weight_or_state
           projection:
           - - - K
           - - - N
@@ -1218,9 +1433,52 @@ timeloop_problem_shapes:
       Inputs: possible
       Outputs: possible
       Weights: possible
+    dataflow_candidates: *id003
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: molmoact__batched_matmul__64x1x1
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 64
+    multiplicity: 1
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: batched_matmul
+    problem:
+      instance:
+        K: 1
+        M: 64
+        N: 1
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: batched_weight_or_state
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: molmoact
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: lm.model.blocks.slice(None, 4, None).0.mlp.ff_proj
+      fqn: blocks.0.mlp.ff_proj
       source: operator_full_inventory.csv
     id: molmoact__linear_gemm__8x37888x3584
     k_reduction_needs_partial_sum: true
@@ -1263,7 +1521,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: lm.model.blocks.slice(None, 4, None).0.mlp.ff_out
+      fqn: blocks.0.mlp.ff_out
       source: operator_full_inventory.csv
     id: molmoact__linear_gemm__8x3584x18944
     k_reduction_needs_partial_sum: true
@@ -1306,7 +1564,50 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: lm.model.blocks.slice(None, 4, None).0.self_attn.att_proj
+      fqn: blocks.0.mlp.ff_proj
+      source: operator_full_inventory.csv
+    id: molmoact__linear_gemm__1x37888x3584
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 135790592
+    multiplicity: 4
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 3584
+        M: 1
+        N: 37888
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: molmoact
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: blocks.0.self_attn.att_proj
       source: operator_full_inventory.csv
     id: molmoact__linear_gemm__8x4608x3584
     k_reduction_needs_partial_sum: true
@@ -1349,7 +1650,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: lm.model.blocks.slice(None, 4, None).0.self_attn.attn_out
+      fqn: blocks.0.self_attn.attn_out
       source: operator_full_inventory.csv
     id: molmoact__linear_gemm__8x3584x3584
     k_reduction_needs_partial_sum: true
@@ -1392,18 +1693,147 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: lm.lm_head
+      fqn: blocks.0.mlp.ff_out
       source: operator_full_inventory.csv
-    id: molmoact__linear_gemm__8x4096x3584
+    id: molmoact__linear_gemm__1x3584x18944
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 117440512
-    multiplicity: 1
+    macs_per_instance: 67895296
+    multiplicity: 4
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 18944
+        M: 1
+        N: 3584
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: molmoact
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: blocks.0.self_attn.att_proj
+      source: operator_full_inventory.csv
+    id: molmoact__linear_gemm__1x4608x3584
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 16515072
+    multiplicity: 4
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
       instance:
         K: 3584
-        M: 8
+        M: 1
+        N: 4608
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: molmoact
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: blocks.0.self_attn.attn_out
+      source: operator_full_inventory.csv
+    id: molmoact__linear_gemm__1x3584x3584
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 12845056
+    multiplicity: 4
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 3584
+        M: 1
+        N: 3584
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: molmoact
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: lm_head
+      source: operator_full_inventory.csv
+    id: molmoact__linear_gemm__1x4096x3584
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 14680064
+    multiplicity: 2
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 3584
+        M: 1
         N: 4096
       shape:
         data-spaces:
@@ -1433,358 +1863,14 @@ timeloop_problem_shapes:
       Inputs: possible
       Outputs: possible
       Weights: possible
-    dataflow_candidates: *id002
-    evidence:
-      fqn: vla.language_model.model.layers.0.self_attn
-      source: operator_full_inventory.csv
-    id: openvla__attention_contraction__20x20x128
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 51200
-    multiplicity: 2
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: attention_contraction
-    problem:
-      instance:
-        K: 128
-        M: 20
-        N: 20
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: activation
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: openvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id002
-    evidence:
-      fqn: vla.language_model.model.layers.0.self_attn
-      source: operator_full_inventory.csv
-    id: openvla__attention_contraction__20x128x20
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 51200
-    multiplicity: 2
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: attention_contraction
-    problem:
-      instance:
-        K: 20
-        M: 20
-        N: 128
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: activation
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: openvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id002
-    evidence:
-      fqn: vla.vision_backbone.featurizer.blocks.0.attn
-      source: operator_full_inventory.csv
-    id: openvla__attention_contraction__17x17x64
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 18496
-    multiplicity: 2
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: attention_contraction
-    problem:
-      instance:
-        K: 64
-        M: 17
-        N: 17
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: activation
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: openvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id002
-    evidence:
-      fqn: vla.vision_backbone.featurizer.blocks.0.attn
-      source: operator_full_inventory.csv
-    id: openvla__attention_contraction__17x64x17
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 18496
-    multiplicity: 2
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: attention_contraction
-    problem:
-      instance:
-        K: 17
-        M: 17
-        N: 64
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: activation
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: openvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id003
-    evidence:
-      fqn: vla.language_model.model.rotary_emb
-      source: operator_full_inventory.csv
-    id: openvla__batched_matmul__64x20x1
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 1280
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: batched_matmul
-    problem:
-      instance:
-        K: 1
-        M: 64
-        N: 20
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: batched_weight_or_state
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: openvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: vla.projector.fc1
-      source: operator_full_inventory.csv
-    id: openvla__linear_gemm__16x2304x576
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 21233664
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 576
-        M: 16
-        N: 2304
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: openvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: vla.vision_backbone.fused_featurizer.blocks.0.mlp.fc1
-      source: operator_full_inventory.csv
-    id: openvla__linear_gemm__17x1536x384
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 10027008
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 384
-        M: 17
-        N: 1536
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: openvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: vla.vision_backbone.fused_featurizer.blocks.0.mlp.fc2
-      source: operator_full_inventory.csv
-    id: openvla__linear_gemm__17x384x1536
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 10027008
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 1536
-        M: 17
-        N: 384
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: openvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: vla.language_model.model.layers.0.self_attn.q_proj
+      fqn: layers.0.self_attn.q_proj
       source: operator_full_inventory.csv
     id: openvla__linear_gemm__20x512x128
     k_reduction_needs_partial_sum: true
     macs_per_instance: 1310720
-    multiplicity: 7
+    multiplicity: 6
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
@@ -1822,93 +1908,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: vla.vision_backbone.fused_featurizer.blocks.0.attn.qkv
-      source: operator_full_inventory.csv
-    id: openvla__linear_gemm__17x1152x384
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 7520256
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 384
-        M: 17
-        N: 1152
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: openvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: vla.projector.fc2
-      source: operator_full_inventory.csv
-    id: openvla__linear_gemm__16x128x2304
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 4718592
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 2304
-        M: 16
-        N: 128
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: openvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: vla.language_model.model.layers.0.self_attn.o_proj
+      fqn: layers.0.self_attn.o_proj
       source: operator_full_inventory.csv
     id: openvla__linear_gemm__20x128x512
     k_reduction_needs_partial_sum: true
@@ -1951,7 +1951,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: vla.language_model.model.layers.0.mlp.gate_proj
+      fqn: layers.0.mlp.gate_proj
       source: operator_full_inventory.csv
     id: openvla__linear_gemm__20x256x128
     k_reduction_needs_partial_sum: true
@@ -1994,179 +1994,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: vla.vision_backbone.featurizer.blocks.0.mlp.fc1
-      source: operator_full_inventory.csv
-    id: openvla__linear_gemm__17x768x192
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 2506752
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 192
-        M: 17
-        N: 768
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: openvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: vla.vision_backbone.featurizer.blocks.0.mlp.fc2
-      source: operator_full_inventory.csv
-    id: openvla__linear_gemm__17x192x768
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 2506752
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 768
-        M: 17
-        N: 192
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: openvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: vla.vision_backbone.fused_featurizer.blocks.0.attn.proj
-      source: operator_full_inventory.csv
-    id: openvla__linear_gemm__17x384x384
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 2506752
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 384
-        M: 17
-        N: 384
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: openvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: vla.vision_backbone.featurizer.blocks.0.attn.qkv
-      source: operator_full_inventory.csv
-    id: openvla__linear_gemm__17x576x192
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 1880064
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 192
-        M: 17
-        N: 576
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: openvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: vla.language_model.model.layers.0.mlp.down_proj
+      fqn: layers.0.mlp.down_proj
       source: operator_full_inventory.csv
     id: openvla__linear_gemm__20x128x256
     k_reduction_needs_partial_sum: true
@@ -2209,19 +2037,19 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: vla.vision_backbone.featurizer.blocks.0.attn.proj
+      fqn: lm_head
       source: operator_full_inventory.csv
-    id: openvla__linear_gemm__17x192x192
+    id: openvla__linear_gemm__1x512x128
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 626688
-    multiplicity: 1
+    macs_per_instance: 65536
+    multiplicity: 8
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
       instance:
-        K: 192
-        M: 17
-        N: 192
+        K: 128
+        M: 1
+        N: 512
       shape:
         data-spaces:
         - name: Weights
@@ -2252,18 +2080,104 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: vla.projector.fc3
+      fqn: ''
       source: operator_full_inventory.csv
-    id: openvla__linear_gemm__16x128x128
+    id: openvla__linear_gemm__1x128x512
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 262144
-    multiplicity: 1
+    macs_per_instance: 65536
+    multiplicity: 2
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 512
+        M: 1
+        N: 128
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: openvla
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: openvla__linear_gemm__1x256x128
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 32768
+    multiplicity: 4
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
       instance:
         K: 128
-        M: 16
+        M: 1
+        N: 256
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: openvla
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: openvla__linear_gemm__1x128x256
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 32768
+    multiplicity: 2
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 256
+        M: 1
         N: 128
       shape:
         data-spaces:
@@ -3370,7 +3284,50 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id002
     evidence:
-      fqn: model.blocks.1.cross_attn
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: rdt__attention_contraction__67x67x4096
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 18386944
+    multiplicity: 2
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: attention_contraction
+    problem:
+      instance:
+        K: 4096
+        M: 67
+        N: 67
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: activation
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: rdt
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id002
+    evidence:
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt__attention_contraction__67x4096x64
     k_reduction_needs_partial_sum: true
@@ -3413,7 +3370,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id002
     evidence:
-      fqn: model.blocks.1.cross_attn
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt__attention_contraction__67x64x4096
     k_reduction_needs_partial_sum: true
@@ -3456,7 +3413,50 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id002
     evidence:
-      fqn: model.blocks.0.attn
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: rdt__attention_contraction__67x67x67
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 300763
+    multiplicity: 4
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: attention_contraction
+    problem:
+      instance:
+        K: 67
+        M: 67
+        N: 67
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: activation
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: rdt
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id002
+    evidence:
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt__attention_contraction__67x67x64
     k_reduction_needs_partial_sum: true
@@ -3499,7 +3499,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id002
     evidence:
-      fqn: model.blocks.0.attn
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt__attention_contraction__67x64x67
     k_reduction_needs_partial_sum: true
@@ -3542,7 +3542,93 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id002
     evidence:
-      fqn: model.blocks.0.cross_attn
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: rdt__attention_contraction__67x1x4096
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 274432
+    multiplicity: 2
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: attention_contraction
+    problem:
+      instance:
+        K: 4096
+        M: 67
+        N: 1
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: activation
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: rdt
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id002
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: rdt__attention_contraction__67x67x32
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 143648
+    multiplicity: 3
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: attention_contraction
+    problem:
+      instance:
+        K: 32
+        M: 67
+        N: 67
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: activation
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: rdt
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id002
+    evidence:
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt__attention_contraction__67x32x64
     k_reduction_needs_partial_sum: true
@@ -3585,7 +3671,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id002
     evidence:
-      fqn: model.blocks.0.cross_attn
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt__attention_contraction__67x64x32
     k_reduction_needs_partial_sum: true
@@ -3626,9 +3712,95 @@ timeloop_problem_shapes:
       Inputs: possible
       Outputs: possible
       Weights: possible
+    dataflow_candidates: *id002
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: rdt__attention_contraction__67x1x67
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 4489
+    multiplicity: 4
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: attention_contraction
+    problem:
+      instance:
+        K: 67
+        M: 67
+        N: 1
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: activation
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: rdt
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id002
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: rdt__attention_contraction__67x1x32
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 2144
+    multiplicity: 2
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: attention_contraction
+    problem:
+      instance:
+        K: 32
+        M: 67
+        N: 1
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: activation
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: rdt
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.blocks.1.cross_attn.kv
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt__linear_gemm__4096x4096x2048
     k_reduction_needs_partial_sum: true
@@ -3671,7 +3843,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.blocks.0.attn.proj
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt__linear_gemm__67x2048x2048
     k_reduction_needs_partial_sum: true
@@ -3714,7 +3886,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.blocks.0.attn.qkv
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt__linear_gemm__67x6144x2048
     k_reduction_needs_partial_sum: true
@@ -3757,7 +3929,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.blocks.0.cross_attn.kv
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt__linear_gemm__32x4096x2048
     k_reduction_needs_partial_sum: true
@@ -3800,7 +3972,50 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.final_layer.ffn_final.fc2
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: rdt__linear_gemm__64x2048x256
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 33554432
+    multiplicity: 1
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 256
+        M: 64
+        N: 2048
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: rdt
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt__linear_gemm__67x128x2048
     k_reduction_needs_partial_sum: true
@@ -3843,7 +4058,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.t_embedder.mlp.2
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt__linear_gemm__1x2048x2048
     k_reduction_needs_partial_sum: true
@@ -3886,7 +4101,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.t_embedder.mlp.0
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt__linear_gemm__1x2048x256
     k_reduction_needs_partial_sum: true
@@ -3927,181 +4142,9 @@ timeloop_problem_shapes:
       Inputs: possible
       Outputs: possible
       Weights: possible
-    dataflow_candidates: *id002
-    evidence:
-      fqn: model.blocks.0.cross_attn
-      source: operator_full_inventory.csv
-    id: rdt2__attention_contraction__28x64x128
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 229376
-    multiplicity: 2
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: attention_contraction
-    problem:
-      instance:
-        K: 128
-        M: 28
-        N: 64
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: activation
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: rdt2
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id002
-    evidence:
-      fqn: model.blocks.0.cross_attn
-      source: operator_full_inventory.csv
-    id: rdt2__attention_contraction__28x128x64
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 229376
-    multiplicity: 2
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: attention_contraction
-    problem:
-      instance:
-        K: 64
-        M: 28
-        N: 128
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: activation
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: rdt2
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id002
-    evidence:
-      fqn: model.blocks.0.attn
-      source: operator_full_inventory.csv
-    id: rdt2__attention_contraction__28x28x128
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 100352
-    multiplicity: 2
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: attention_contraction
-    problem:
-      instance:
-        K: 128
-        M: 28
-        N: 28
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: activation
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: rdt2
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id002
-    evidence:
-      fqn: model.blocks.0.attn
-      source: operator_full_inventory.csv
-    id: rdt2__attention_contraction__28x128x28
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 100352
-    multiplicity: 2
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: attention_contraction
-    problem:
-      instance:
-        K: 28
-        M: 28
-        N: 128
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: activation
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: rdt2
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.blocks.0.ffn.w1
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt2__linear_gemm__28x2816x1024
     k_reduction_needs_partial_sum: true
@@ -4144,7 +4187,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.blocks.0.attn.wq
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt2__linear_gemm__28x1024x1024
     k_reduction_needs_partial_sum: true
@@ -4187,7 +4230,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.blocks.0.ffn.w2
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt2__linear_gemm__28x1024x2816
     k_reduction_needs_partial_sum: true
@@ -4230,7 +4273,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.final_layer.ffn.fc1
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt2__linear_gemm__28x4096x1024
     k_reduction_needs_partial_sum: true
@@ -4273,7 +4316,50 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.blocks.0.adaLN_modulation.1
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: rdt2__linear_gemm__24x1024x1024
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 25165824
+    multiplicity: 2
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 1024
+        M: 24
+        N: 1024
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: rdt2
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt2__linear_gemm__1x9216x2048
     k_reduction_needs_partial_sum: true
@@ -4316,7 +4402,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.final_layer.adaLN_modulation.1
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt2__linear_gemm__1x2048x2048
     k_reduction_needs_partial_sum: true
@@ -4359,7 +4445,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.final_layer.ffn.fc2
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt2__linear_gemm__28x20x4096
     k_reduction_needs_partial_sum: true
@@ -4402,7 +4488,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.t_embedder.mlp.2
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt2__linear_gemm__1x1024x1024
     k_reduction_needs_partial_sum: true
@@ -4445,7 +4531,50 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.t_embedder.mlp.0
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: rdt2__linear_gemm__24x1024x20
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 491520
+    multiplicity: 1
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 20
+        M: 24
+        N: 1024
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: rdt2
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: ''
       source: operator_full_inventory.csv
     id: rdt2__linear_gemm__1x1024x256
     k_reduction_needs_partial_sum: true
@@ -4488,19 +4617,19 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id002
     evidence:
-      fqn: blocks.0.attn
+      fqn: model.vlm_with_expert.vlm.model.vision_model.encoder.layers.0.self_attn
       source: operator_full_inventory.csv
-    id: small_llama__attention_contraction__8x8x32
+    id: smolvla__attention_contraction__1024x1024x1024
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 2048
-    multiplicity: 2
+    macs_per_instance: 1073741824
+    multiplicity: 36
     note: structural search-space seed; no mapping/perf chosen
     op_class: attention_contraction
     problem:
       instance:
-        K: 32
-        M: 8
-        N: 8
+        K: 1024
+        M: 1024
+        N: 1024
       shape:
         data-spaces:
         - name: Weights
@@ -4524,222 +4653,7 @@ timeloop_problem_shapes:
         - N
         - K
         name: matmul
-    workload: small_llama
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id002
-    evidence:
-      fqn: blocks.0.attn
-      source: operator_full_inventory.csv
-    id: small_llama__attention_contraction__8x32x8
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 2048
-    multiplicity: 2
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: attention_contraction
-    problem:
-      instance:
-        K: 8
-        M: 8
-        N: 32
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: activation
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: small_llama
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: blocks.0.mlp.g
-      source: operator_full_inventory.csv
-    id: small_llama__linear_gemm__8x344x128
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 352256
-    multiplicity: 4
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 128
-        M: 8
-        N: 344
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: small_llama
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: blocks.0.attn.q
-      source: operator_full_inventory.csv
-    id: small_llama__linear_gemm__8x128x128
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 131072
-    multiplicity: 8
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 128
-        M: 8
-        N: 128
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: small_llama
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: blocks.0.mlp.dn
-      source: operator_full_inventory.csv
-    id: small_llama__linear_gemm__8x128x344
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 352256
-    multiplicity: 2
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 344
-        M: 8
-        N: 128
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: small_llama
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: lm
-      source: operator_full_inventory.csv
-    id: small_llama__linear_gemm__8x256x128
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 262144
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 128
-        M: 8
-        N: 256
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: small_llama
+    workload: smolvla
   - bypass_candidates:
       Inputs: possible
       Outputs: possible
@@ -4830,240 +4744,25 @@ timeloop_problem_shapes:
       Inputs: possible
       Outputs: possible
       Weights: possible
-    dataflow_candidates: *id003
+    dataflow_candidates: *id002
     evidence:
-      fqn: ''
+      fqn: model.vlm_with_expert.vlm.model.vision_model.encoder.layers.0.self_attn
       source: operator_full_inventory.csv
-    id: smolvla__batched_matmul__113x113x64
+    id: smolvla__attention_contraction__1024x1x1024
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 817216
-    multiplicity: 2
+    macs_per_instance: 1048576
+    multiplicity: 24
     note: structural search-space seed; no mapping/perf chosen
-    op_class: batched_matmul
+    op_class: attention_contraction
     problem:
       instance:
-        K: 64
-        M: 113
-        N: 113
+        K: 1024
+        M: 1024
+        N: 1
       shape:
         data-spaces:
         - name: Weights
-          operand_identity: batched_weight_or_state
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
           operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: smolvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id003
-    evidence:
-      fqn: ''
-      source: operator_full_inventory.csv
-    id: smolvla__batched_matmul__113x64x113
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 817216
-    multiplicity: 2
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: batched_matmul
-    problem:
-      instance:
-        K: 113
-        M: 113
-        N: 64
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: batched_weight_or_state
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: smolvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id003
-    evidence:
-      fqn: ''
-      source: operator_full_inventory.csv
-    id: smolvla__batched_matmul__50x163x64
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 521600
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: batched_matmul
-    problem:
-      instance:
-        K: 64
-        M: 50
-        N: 163
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: batched_weight_or_state
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: smolvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id003
-    evidence:
-      fqn: ''
-      source: operator_full_inventory.csv
-    id: smolvla__batched_matmul__50x64x163
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 521600
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: batched_matmul
-    problem:
-      instance:
-        K: 163
-        M: 50
-        N: 64
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: batched_weight_or_state
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: smolvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id003
-    evidence:
-      fqn: ''
-      source: operator_full_inventory.csv
-    id: smolvla__batched_matmul__50x113x64
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 361600
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: batched_matmul
-    problem:
-      instance:
-        K: 64
-        M: 50
-        N: 113
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: batched_weight_or_state
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: smolvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id003
-    evidence:
-      fqn: ''
-      source: operator_full_inventory.csv
-    id: smolvla__batched_matmul__50x64x113
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 361600
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: batched_matmul
-    problem:
-      instance:
-        K: 113
-        M: 50
-        N: 64
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: batched_weight_or_state
           projection:
           - - - K
           - - - N
@@ -5224,7 +4923,7 @@ timeloop_problem_shapes:
     id: smolvla__linear_gemm__113x2560x960
     k_reduction_needs_partial_sum: true
     macs_per_instance: 277708800
-    multiplicity: 4
+    multiplicity: 32
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
@@ -5232,6 +4931,221 @@ timeloop_problem_shapes:
         K: 960
         M: 113
         N: 2560
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: smolvla
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: model.vlm_with_expert.vlm.model.text_model.layers.0.mlp.down_proj
+      source: operator_full_inventory.csv
+    id: smolvla__linear_gemm__113x960x2560
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 277708800
+    multiplicity: 16
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 2560
+        M: 113
+        N: 960
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: smolvla
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: model.vlm_with_expert.vlm.model.text_model.layers.0.self_attn.q_proj
+      source: operator_full_inventory.csv
+    id: smolvla__linear_gemm__113x960x960
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 104140800
+    multiplicity: 32
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 960
+        M: 113
+        N: 960
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: smolvla
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: smolvla__linear_gemm__50x2048x720
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 73728000
+    multiplicity: 32
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 720
+        M: 50
+        N: 2048
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: smolvla
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: smolvla__linear_gemm__50x720x2048
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 73728000
+    multiplicity: 16
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 2048
+        M: 50
+        N: 720
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: smolvla
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: model.vlm_with_expert.vlm.model.text_model.layers.0.self_attn.k_proj
+      source: operator_full_inventory.csv
+    id: smolvla__linear_gemm__113x320x960
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 34713600
+    multiplicity: 32
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 960
+        M: 113
+        N: 320
       shape:
         data-spaces:
         - name: Weights
@@ -5305,105 +5219,19 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.vlm_with_expert.vlm.model.text_model.layers.0.mlp.down_proj
+      fqn: ''
       source: operator_full_inventory.csv
-    id: smolvla__linear_gemm__113x960x2560
+    id: smolvla__linear_gemm__50x960x720
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 277708800
-    multiplicity: 2
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 2560
-        M: 113
-        N: 960
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: smolvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: model.vlm_with_expert.vlm.model.text_model.layers.0.self_attn.q_proj
-      source: operator_full_inventory.csv
-    id: smolvla__linear_gemm__113x960x960
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 104140800
-    multiplicity: 4
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 960
-        M: 113
-        N: 960
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: smolvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: model.vlm_with_expert.lm_expert.layers.0.mlp.gate_proj
-      source: operator_full_inventory.csv
-    id: smolvla__linear_gemm__50x2048x720
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 73728000
-    multiplicity: 4
+    macs_per_instance: 34560000
+    multiplicity: 16
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
       instance:
         K: 720
         M: 50
-        N: 2048
+        N: 960
       shape:
         data-spaces:
         - name: Weights
@@ -5434,17 +5262,17 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.vlm_with_expert.lm_expert.layers.0.mlp.down_proj
+      fqn: ''
       source: operator_full_inventory.csv
-    id: smolvla__linear_gemm__50x720x2048
+    id: smolvla__linear_gemm__50x720x960
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 73728000
-    multiplicity: 2
+    macs_per_instance: 34560000
+    multiplicity: 16
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
       instance:
-        K: 2048
+        K: 960
         M: 50
         N: 720
       shape:
@@ -5477,17 +5305,17 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.vlm_with_expert.vlm.model.text_model.layers.0.self_attn.k_proj
+      fqn: ''
       source: operator_full_inventory.csv
-    id: smolvla__linear_gemm__113x320x960
+    id: smolvla__linear_gemm__113x320x320
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 34713600
-    multiplicity: 4
+    macs_per_instance: 11571200
+    multiplicity: 16
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
       instance:
-        K: 960
+        K: 320
         M: 113
         N: 320
       shape:
@@ -5520,19 +5348,19 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.vlm_with_expert.lm_expert.layers.0.self_attn.q_proj
+      fqn: ''
       source: operator_full_inventory.csv
-    id: smolvla__linear_gemm__50x960x720
+    id: smolvla__linear_gemm__50x320x720
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 34560000
-    multiplicity: 2
+    macs_per_instance: 11520000
+    multiplicity: 16
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
       instance:
         K: 720
         M: 50
-        N: 960
+        N: 320
       shape:
         data-spaces:
         - name: Weights
@@ -5563,50 +5391,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.vlm_with_expert.lm_expert.layers.0.self_attn.o_proj
-      source: operator_full_inventory.csv
-    id: smolvla__linear_gemm__50x720x960
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 34560000
-    multiplicity: 2
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 960
-        M: 50
-        N: 720
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: smolvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: model.action_time_mlp_in
+      fqn: ''
       source: operator_full_inventory.csv
     id: smolvla__linear_gemm__50x720x1440
     k_reduction_needs_partial_sum: true
@@ -5649,7 +5434,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.action_time_mlp_out
+      fqn: ''
       source: operator_full_inventory.csv
     id: smolvla__linear_gemm__50x720x720
     k_reduction_needs_partial_sum: true
@@ -5692,93 +5477,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.vlm_with_expert.lm_expert.layers.1.self_attn.k_proj
-      source: operator_full_inventory.csv
-    id: smolvla__linear_gemm__113x320x320
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 11571200
-    multiplicity: 2
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 320
-        M: 113
-        N: 320
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: smolvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: model.vlm_with_expert.lm_expert.layers.0.self_attn.k_proj
-      source: operator_full_inventory.csv
-    id: smolvla__linear_gemm__50x320x720
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 11520000
-    multiplicity: 2
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 720
-        M: 50
-        N: 320
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: smolvla
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: model.action_in_proj
+      fqn: ''
       source: operator_full_inventory.csv
     id: smolvla__linear_gemm__50x720x32
     k_reduction_needs_partial_sum: true
@@ -5821,7 +5520,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.action_out_proj
+      fqn: ''
       source: operator_full_inventory.csv
     id: smolvla__linear_gemm__50x32x720
     k_reduction_needs_partial_sum: true
@@ -5905,68 +5604,25 @@ timeloop_problem_shapes:
       Inputs: possible
       Outputs: possible
       Weights: possible
-    dataflow_candidates: *id002
+    dataflow_candidates: *id003
     evidence:
-      fqn: lm.model.layers.0.self_attn
+      fqn: ''
       source: operator_full_inventory.csv
-    id: tiny_llama__attention_contraction__4x4x64
+    id: tiny_llama__batched_matmul__8x15x64
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 1024
+    macs_per_instance: 7680
     multiplicity: 2
     note: structural search-space seed; no mapping/perf chosen
-    op_class: attention_contraction
+    op_class: batched_matmul
     problem:
       instance:
         K: 64
-        M: 4
-        N: 4
+        M: 8
+        N: 15
       shape:
         data-spaces:
         - name: Weights
-          operand_identity: activation
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: tiny_llama
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id002
-    evidence:
-      fqn: lm.model.layers.0.self_attn
-      source: operator_full_inventory.csv
-    id: tiny_llama__attention_contraction__4x64x4
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 1024
-    multiplicity: 2
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: attention_contraction
-    problem:
-      instance:
-        K: 4
-        M: 4
-        N: 64
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: activation
+          operand_identity: batched_weight_or_state
           projection:
           - - - K
           - - - N
@@ -5993,11 +5649,140 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id003
     evidence:
-      fqn: lm.model.rotary_emb
+      fqn: ''
       source: operator_full_inventory.csv
-    id: tiny_llama__batched_matmul__32x4x1
+    id: tiny_llama__batched_matmul__8x64x15
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 128
+    macs_per_instance: 7680
+    multiplicity: 2
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: batched_matmul
+    problem:
+      instance:
+        K: 15
+        M: 8
+        N: 64
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: batched_weight_or_state
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: tiny_llama
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id003
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: tiny_llama__batched_matmul__1x15x64
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 960
+    multiplicity: 2
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: batched_matmul
+    problem:
+      instance:
+        K: 64
+        M: 1
+        N: 15
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: batched_weight_or_state
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: tiny_llama
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id003
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: tiny_llama__batched_matmul__1x64x15
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 960
+    multiplicity: 2
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: batched_matmul
+    problem:
+      instance:
+        K: 15
+        M: 1
+        N: 64
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: batched_weight_or_state
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: tiny_llama
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id003
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: tiny_llama__batched_matmul__32x8x1
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 256
     multiplicity: 1
     note: structural search-space seed; no mapping/perf chosen
     op_class: batched_matmul
@@ -6005,7 +5790,50 @@ timeloop_problem_shapes:
       instance:
         K: 1
         M: 32
-        N: 4
+        N: 8
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: batched_weight_or_state
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: tiny_llama
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id003
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: tiny_llama__batched_matmul__32x1x1
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 32
+    multiplicity: 1
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: batched_matmul
+    problem:
+      instance:
+        K: 1
+        M: 32
+        N: 1
       shape:
         data-spaces:
         - name: Weights
@@ -6036,61 +5864,18 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: lm.lm_head
+      fqn: ''
       source: operator_full_inventory.csv
-    id: tiny_llama__linear_gemm__4x32000x2048
+    id: tiny_llama__linear_gemm__8x5632x2048
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 262144000
-    multiplicity: 1
-    note: structural search-space seed; no mapping/perf chosen
-    op_class: linear_gemm
-    problem:
-      instance:
-        K: 2048
-        M: 4
-        N: 32000
-      shape:
-        data-spaces:
-        - name: Weights
-          operand_identity: weight
-          projection:
-          - - - K
-          - - - N
-        - name: Inputs
-          operand_identity: activation
-          projection:
-          - - - M
-          - - - K
-        - name: Outputs
-          operand_identity: output
-          projection:
-          - - - M
-          - - - N
-          read-write: true
-        dimensions:
-        - M
-        - N
-        - K
-        name: matmul
-    workload: tiny_llama
-  - bypass_candidates:
-      Inputs: possible
-      Outputs: possible
-      Weights: possible
-    dataflow_candidates: *id001
-    evidence:
-      fqn: lm.model.layers.0.mlp.gate_proj
-      source: operator_full_inventory.csv
-    id: tiny_llama__linear_gemm__4x5632x2048
-    k_reduction_needs_partial_sum: true
-    macs_per_instance: 46137344
+    macs_per_instance: 92274688
     multiplicity: 4
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
       instance:
         K: 2048
-        M: 4
+        M: 8
         N: 5632
       shape:
         data-spaces:
@@ -6122,18 +5907,18 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: lm.model.layers.0.mlp.down_proj
+      fqn: ''
       source: operator_full_inventory.csv
-    id: tiny_llama__linear_gemm__4x2048x5632
+    id: tiny_llama__linear_gemm__8x2048x5632
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 46137344
+    macs_per_instance: 92274688
     multiplicity: 2
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
       instance:
         K: 5632
-        M: 4
+        M: 8
         N: 2048
       shape:
         data-spaces:
@@ -6165,18 +5950,18 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: lm.model.layers.0.self_attn.q_proj
+      fqn: ''
       source: operator_full_inventory.csv
-    id: tiny_llama__linear_gemm__4x2048x2048
+    id: tiny_llama__linear_gemm__8x2048x2048
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 16777216
+    macs_per_instance: 33554432
     multiplicity: 4
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
       instance:
         K: 2048
-        M: 4
+        M: 8
         N: 2048
       shape:
         data-spaces:
@@ -6208,18 +5993,233 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: lm.model.layers.0.self_attn.k_proj
+      fqn: ''
       source: operator_full_inventory.csv
-    id: tiny_llama__linear_gemm__4x256x2048
+    id: tiny_llama__linear_gemm__1x32000x2048
     k_reduction_needs_partial_sum: true
-    macs_per_instance: 2097152
+    macs_per_instance: 65536000
+    multiplicity: 2
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 2048
+        M: 1
+        N: 32000
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: tiny_llama
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: tiny_llama__linear_gemm__1x5632x2048
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 11534336
     multiplicity: 4
     note: structural search-space seed; no mapping/perf chosen
     op_class: linear_gemm
     problem:
       instance:
         K: 2048
-        M: 4
+        M: 1
+        N: 5632
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: tiny_llama
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: tiny_llama__linear_gemm__1x2048x5632
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 11534336
+    multiplicity: 2
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 5632
+        M: 1
+        N: 2048
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: tiny_llama
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: tiny_llama__linear_gemm__8x256x2048
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 4194304
+    multiplicity: 4
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 2048
+        M: 8
+        N: 256
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: tiny_llama
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: tiny_llama__linear_gemm__1x2048x2048
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 4194304
+    multiplicity: 4
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 2048
+        M: 1
+        N: 2048
+      shape:
+        data-spaces:
+        - name: Weights
+          operand_identity: weight
+          projection:
+          - - - K
+          - - - N
+        - name: Inputs
+          operand_identity: activation
+          projection:
+          - - - M
+          - - - K
+        - name: Outputs
+          operand_identity: output
+          projection:
+          - - - M
+          - - - N
+          read-write: true
+        dimensions:
+        - M
+        - N
+        - K
+        name: matmul
+    workload: tiny_llama
+  - bypass_candidates:
+      Inputs: possible
+      Outputs: possible
+      Weights: possible
+    dataflow_candidates: *id001
+    evidence:
+      fqn: ''
+      source: operator_full_inventory.csv
+    id: tiny_llama__linear_gemm__1x256x2048
+    k_reduction_needs_partial_sum: true
+    macs_per_instance: 524288
+    multiplicity: 4
+    note: structural search-space seed; no mapping/perf chosen
+    op_class: linear_gemm
+    problem:
+      instance:
+        K: 2048
+        M: 1
         N: 256
       shape:
         data-spaces:
@@ -6251,7 +6251,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id002
     evidence:
-      fqn: model.dit.layers.0.attn
+      fqn: ''
       source: operator_full_inventory.csv
     id: xr0__attention_contraction__32x48x128
     k_reduction_needs_partial_sum: true
@@ -6294,7 +6294,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id002
     evidence:
-      fqn: model.dit.layers.0.attn
+      fqn: ''
       source: operator_full_inventory.csv
     id: xr0__attention_contraction__32x128x48
     k_reduction_needs_partial_sum: true
@@ -6337,7 +6337,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id002
     evidence:
-      fqn: model.dit.layers.0.attn
+      fqn: ''
       source: operator_full_inventory.csv
     id: xr0__attention_contraction__32x32x48
     k_reduction_needs_partial_sum: true
@@ -6380,7 +6380,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id002
     evidence:
-      fqn: model.dit.layers.0.attn
+      fqn: ''
       source: operator_full_inventory.csv
     id: xr0__attention_contraction__32x1x48
     k_reduction_needs_partial_sum: true
@@ -6423,7 +6423,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.dit.layers.0.mlp.gate_proj
+      fqn: ''
       source: operator_full_inventory.csv
     id: xr0__linear_gemm__32x4096x1024
     k_reduction_needs_partial_sum: true
@@ -6466,7 +6466,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.dit.layers.0.mlp.down_proj
+      fqn: ''
       source: operator_full_inventory.csv
     id: xr0__linear_gemm__32x1024x4096
     k_reduction_needs_partial_sum: true
@@ -6509,7 +6509,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.dit.layers.0.attn.qkv_proj
+      fqn: ''
       source: operator_full_inventory.csv
     id: xr0__linear_gemm__32x3072x1024
     k_reduction_needs_partial_sum: true
@@ -6552,7 +6552,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.dit.layers.0.attn.o_proj
+      fqn: ''
       source: operator_full_inventory.csv
     id: xr0__linear_gemm__32x1024x1024
     k_reduction_needs_partial_sum: true
@@ -6595,7 +6595,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.action_projector.layers.2
+      fqn: ''
       source: operator_full_inventory.csv
     id: xr0__linear_gemm__30x1024x1024
     k_reduction_needs_partial_sum: true
@@ -6638,7 +6638,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.t_projector.layers.0
+      fqn: ''
       source: operator_full_inventory.csv
     id: xr0__linear_gemm__1x6144x1024
     k_reduction_needs_partial_sum: true
@@ -6681,7 +6681,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.state_projector.layers.2
+      fqn: model.model.state_projector.layers.2
       source: operator_full_inventory.csv
     id: xr0__linear_gemm__1x1024x1024
     k_reduction_needs_partial_sum: true
@@ -6724,7 +6724,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.action_projector.layers.0
+      fqn: ''
       source: operator_full_inventory.csv
     id: xr0__linear_gemm__30x1024x32
     k_reduction_needs_partial_sum: true
@@ -6767,7 +6767,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.action_output_layer.layers.0
+      fqn: ''
       source: operator_full_inventory.csv
     id: xr0__linear_gemm__30x32x1024
     k_reduction_needs_partial_sum: true
@@ -6810,7 +6810,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.t_embedder.mlp.0
+      fqn: ''
       source: operator_full_inventory.csv
     id: xr0__linear_gemm__1x1024x256
     k_reduction_needs_partial_sum: true
@@ -6853,7 +6853,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.state_projector.layers.0
+      fqn: model.model.state_projector.layers.0
       source: operator_full_inventory.csv
     id: xr0__linear_gemm__1x1024x32
     k_reduction_needs_partial_sum: true
@@ -6896,7 +6896,7 @@ timeloop_problem_shapes:
       Weights: possible
     dataflow_candidates: *id001
     evidence:
-      fqn: model.action_output_layer.layers.2
+      fqn: ''
       source: operator_full_inventory.csv
     id: xr0__linear_gemm__30x32x32
     k_reduction_needs_partial_sum: true

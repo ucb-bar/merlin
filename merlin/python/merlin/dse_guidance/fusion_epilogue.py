@@ -174,10 +174,13 @@ def accumulator_contract(records, attribution, nc, patterns) -> list[Accumulator
         if not recs:
             continue
         storage = compute = output = (recs[0].dtype or "f32")
-        acc = nc.accumulator_dtype if nc else compute
         # dequant: no low-bit storage in the capture -> no dequant present (f32). Fused candidate
         # only when storage is actually low-bit (it is not here) -> unavailable.
         is_lowbit = storage.lower() in ("int8", "i8", "int4", "i4", "fp8", "f8")
+        # accumulator is derived PER REGION from the region's own dtype (not the global-dominant
+        # nc.accumulator_dtype, which disagrees for a mixed-dtype model such as bf16 smolvla):
+        # integer low-bit storage accumulates in i32; float storage accumulates in its compute dtype.
+        acc = "i32" if storage.lower() in ("int8", "i8", "int4", "i4") else compute
         dequant = DEQ_FUSED if is_lowbit else DEQ_NA
         # requant: an epilogue slot exists iff a bias epilogue was detected (it fuses like requant)
         any_bias = any(has_bias_by_idx.get(i, False) for i in idxs)

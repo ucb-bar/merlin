@@ -4,30 +4,58 @@ memory_envelope:
   regions:
   - activation_bytes_per_invocation:
       evidence: recovered_from_ir
-      value: 1691648
+      value: 2429952
     activation_traffic_total:
       evidence: derived_requirement
-      value: 54132736
+      value: 2429952
     avoidable_weight_reload:
       evidence: derived_requirement
-      value: 19048431616
+      value: 0
+    intermediate_materialization_bytes:
+      evidence: unavailable
+      value: null
+    invocations:
+      evidence: recovered_from_ir
+      value: 1
+    layout_conversion_bytes:
+      evidence: unavailable
+      value: null
+    region: backbone_once
+    reuse_factor:
+      evidence: assumed_reference
+      value: 1
+    weight_bytes:
+      evidence: recovered_from_ir
+      value: 614465536
+    weight_traffic_if_nonresident:
+      evidence: derived_requirement
+      value: 614465536
+  - activation_bytes_per_invocation:
+      evidence: recovered_from_ir
+      value: 422912
+    activation_traffic_total:
+      evidence: derived_requirement
+      value: 2960384
+    avoidable_weight_reload:
+      evidence: derived_requirement
+      value: 3686793216
     intermediate_materialization_bytes:
       evidence: unavailable
       value: null
     invocations:
       evidence: assumed_reference
-      value: 32
+      value: 7
     layout_conversion_bytes:
       evidence: unavailable
       value: null
     region: repeated_head
     reuse_factor:
       evidence: assumed_reference
-      value: 32
+      value: 7
     weight_bytes:
       evidence: recovered_from_ir
       value: 614465536
     weight_traffic_if_nonresident:
       evidence: derived_requirement
-      value: 19662897152
+      value: 4301258752
   workload: tiny_llama

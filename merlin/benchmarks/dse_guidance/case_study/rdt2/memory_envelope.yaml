@@ -4,13 +4,13 @@ memory_envelope:
   regions:
   - activation_bytes_per_invocation:
       evidence: recovered_from_ir
-      value: 6028480
+      value: 6521920
     activation_traffic_total:
       evidence: derived_requirement
-      value: 30142400
+      value: 32609600
     avoidable_weight_reload:
       evidence: derived_requirement
-      value: 1205075968
+      value: 1238958080
     intermediate_materialization_bytes:
       evidence: unavailable
       value: null
@@ -26,8 +26,8 @@ memory_envelope:
       value: 5
     weight_bytes:
       evidence: recovered_from_ir
-      value: 301268992
+      value: 309739520
     weight_traffic_if_nonresident:
       evidence: derived_requirement
-      value: 1506344960
+      value: 1548697600
   workload: rdt2

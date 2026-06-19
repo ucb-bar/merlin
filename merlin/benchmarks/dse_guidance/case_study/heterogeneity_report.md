@@ -5,7 +5,7 @@
 ## one_bigger_unit
 
 **Evidence for:**
-- low inter-op parallelism (avg 1.291×, 9/11 workloads near-sequential) — a single large unit is not starved by inter-op concurrency
+- low inter-op parallelism (avg 1.426×, 6/10 workloads near-sequential) — a single large unit is not starved by inter-op concurrency
 - some workloads are dominated by one op
 
 **Evidence against:**
@@ -16,19 +16,19 @@
 ## multiple_identical_units
 
 **Evidence for:**
-- 2 workload(s) expose some inter-op parallelism
-- 1797 (op,axis) M/N shards split with no tail — reduction-free replication
+- 4 workload(s) expose some inter-op parallelism
+- 2143 (op,axis) M/N shards split with no tail — reduction-free replication
 
 **Blocked by:**
 - reduction/partial-sum cost for K-sharding is unknown (not measured)
 - memory bandwidth is unknown — replicas may contend for weight reload
-- data dependencies serialize work (avg parallelism only 1.291×)
+- data dependencies serialize work (avg parallelism only 1.426×)
 
 ## multiple_specialized_units
 
 **Evidence for:**
-- distinct operator families coexist: dense GEMM 35% of MACs vs skinny/GEMV 64%
-- epilogue/requant appears on 667 ops
+- distinct operator families coexist: dense GEMM 34% of MACs vs skinny/GEMV 64%
+- epilogue/requant appears on 654 ops
 - DMA/memory can overlap compute (resident loop-invariant weights)
 - backbone and head run at different rates (multi-rate contract)
 - the control loop decouples from replan inference

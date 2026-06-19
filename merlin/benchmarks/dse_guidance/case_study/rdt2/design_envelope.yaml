@@ -8,36 +8,36 @@ design_envelope:
     - packed-layout support
     - quantization accuracy
     requirement:
-      resident_capacity_B: 150634496
+      resident_capacity_B: 154869760
     structural_evidence:
       K: 5
-      weight_bytes: 301268992
+      weight_bytes: 309739520
     theoretical_effect:
-      removes_avoidable_weight_reload_B: 1205075968
+      removes_avoidable_weight_reload_B: 1238958080
   - axis: resident_int8_head_weights
     needed_to_quantify:
     - target memory hierarchy + bandwidth model
     - packed-layout support
     - quantization accuracy
     requirement:
-      resident_capacity_B: 75317248
+      resident_capacity_B: 77434880
     structural_evidence:
       K: 5
-      weight_bytes: 301268992
+      weight_bytes: 309739520
     theoretical_effect:
-      removes_avoidable_weight_reload_B: 1205075968
+      removes_avoidable_weight_reload_B: 1238958080
   - axis: resident_int4_head_weights
     needed_to_quantify:
     - target memory hierarchy + bandwidth model
     - packed-layout support
     - quantization accuracy
     requirement:
-      resident_capacity_B: 37658624
+      resident_capacity_B: 38717440
     structural_evidence:
       K: 5
-      weight_bytes: 301268992
+      weight_bytes: 309739520
     theoretical_effect:
-      removes_avoidable_weight_reload_B: 1205075968
+      removes_avoidable_weight_reload_B: 1238958080
   - axis: autonomous_K_loop
     needed_to_quantify:
     - actual host/device submit latency
@@ -48,7 +48,7 @@ design_envelope:
       loop_carried_state: true
     structural_evidence:
       K: 5
-      dispatches_per_replan: 115
+      dispatches_per_replan: 130
     theoretical_effect:
       removes_host_submissions_inside_K_loop: true
   - axis: command_buffer_per_replan
@@ -57,7 +57,7 @@ design_envelope:
     requirement:
       static_dependency_graph: true
     structural_evidence:
-      dispatches_per_replan: 115
+      dispatches_per_replan: 130
     theoretical_effect:
       collapses_per_dispatch_host_submits: true
   captured_dtype: f32
@@ -71,53 +71,53 @@ design_envelope:
     name: macs_per_replan
     note: macs_per_step x K=5
     unit: MAC
-    value: 4705157120.0
+    value: 4959272960.0
   - evidence: recovered_from_ir
     name: resident_capacity_required
     note: action-head weights (f32); resident set to avoid reloads
     unit: B
-    value: 301268992.0
+    value: 309739520.0
   - evidence: recovered_from_ir
     name: weight_reload_bytes_per_replan
     note: 'naive reload: weight_bytes x K=5'
     unit: B
-    value: 1506344960.0
+    value: 1548697600.0
   - evidence: recovered_from_ir
     name: avoidable_weight_reload_bytes
     note: removed by residency (keep 1 load, avoid K-1)
     unit: B
-    value: 1205075968.0
+    value: 1238958080.0
   - evidence: derived_requirement
     name: dispatches_per_replan
     note: dispatches_per_step x K=5
     unit: dispatch
-    value: 115.0
+    value: 130.0
   - evidence: derived_requirement
     name: required_compute_rate
     note: macs_per_replan / deadline
     unit: MAC/s
-    value: 2205542400.0
+    value: 2324659200.0
   - evidence: derived_requirement
     name: required_weight_bandwidth
     note: naive reload bandwidth if non-resident
     unit: B/s
-    value: 706099200.0
+    value: 725952000.0
   - evidence: derived_requirement
     name: required_activation_bandwidth
     note: activation traffic / deadline
     unit: B/s
-    value: 14129250.0
+    value: 15285750.0
   - evidence: derived_requirement
     name: required_command_rate
     note: host command issue rate to meet deadline
     unit: dispatch/s
-    value: 53.90625
+    value: 60.9375
   resident_capacity_by_dtype_B:
-    bf16: 150634496
-    fp6: 56487936
-    fp8: 75317248
-    int4: 37658624
-    int8: 75317248
+    bf16: 154869760
+    fp6: 58076160
+    fp8: 77434880
+    int4: 38717440
+    int8: 77434880
   status:
     quantitative_speedup: not_claimed
   workload: rdt2

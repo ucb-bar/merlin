@@ -4,20 +4,35 @@ topology_recovery:
   level: 1
   regions:
   - attribution_status: attributed
-    confidence: 0.7
+    confidence: 0.8
     facts:
-      activation_bytes_per_invocation: 10403840
-      activation_bytes_total: 83230720
+      activation_bytes_per_invocation: 10188800
+      activation_bytes_total: 10188800
+      invocations: 1
+      macs_per_invocation: 7472152576
+      macs_total: 7472152576
+      matmul_count: 17
+      weight_bytes: 3787456512
+    invocations: 1
+    matmul_count_attributed: 17
+    reason: 17 matmuls assigned by structural_prefix
+    role: backbone_once
+    source: structural_prefix
+  - attribution_status: attributed
+    confidence: 0.85
+    facts:
+      activation_bytes_per_invocation: 1300480
+      activation_bytes_total: 10403840
       invocations: 8
-      macs_per_invocation: 7574913024
-      macs_total: 60599304192
+      macs_per_invocation: 946864128
+      macs_total: 7574913024
       matmul_count: 17
       weight_bytes: 3787456512
     invocations: 8
     matmul_count_attributed: 17
-    reason: 17 matmuls assigned by prov_fqn
+    reason: 17 matmuls assigned by structural_scf_for
     role: repeated_head
-    source: prov_fqn
+    source: structural_scf_for
   repeated_shape_signatures:
   - count: 4
     signature:
@@ -37,6 +52,26 @@ topology_recovery:
   - count: 4
     signature:
     - 8
+    - 18944
+    - 3584
+  - count: 4
+    signature:
+    - 1
+    - 3584
+    - 4608
+  - count: 4
+    signature:
+    - 1
+    - 3584
+    - 3584
+  - count: 4
+    signature:
+    - 1
+    - 3584
+    - 37888
+  - count: 4
+    signature:
+    - 1
     - 18944
     - 3584
   unresolved: []
