@@ -94,7 +94,7 @@ parallel_hierarchy_hints:
     evidence_against: very small MAC share
     evidence_for: 74 ops, 0.0% of MACs, in groot_n1d7, pi05, rdt, rdt2, smolvla, tiny_llama, xr0
     hierarchy_options:
-    - vector_gemv_engine
+    - skinny_gemm_or_gemv_engine
     - SIMD_vector_lanes
     missing_measurements:
     - per-unit throughput

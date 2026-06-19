@@ -28,7 +28,7 @@ processing_unit_guidance:
       unit: matrix_engine
     - evidence: recovered_from_ir
       for: skinny_gemm_or_gemv
-      unit: vector_gemv_engine
+      unit: skinny_gemm_or_gemv_engine
     - evidence: recovered_from_ir
       for: epilogue_or_requant
       unit: epilogue_requant_unit

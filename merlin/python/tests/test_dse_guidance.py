@@ -1546,7 +1546,7 @@ def test_resource_hierarchy_schema_and_unavailable_units():
     dags = [PAR.analyze_graph(_toy_graph())]
     clusters = RH.cluster_hierarchy(shapes)
     hints = RH.hierarchy_hints_yaml(clusters)["parallel_hierarchy_hints"]["clusters"]
-    known = set(("matrix_tile_engine", "vector_gemv_engine", "reduction_tree", "systolic_array",
+    known = set(("matrix_tile_engine", "skinny_gemm_or_gemv_engine", "reduction_tree", "systolic_array",
                  "SIMD_vector_lanes", "multi_engine_cluster", "epilogue_unit", "DMA_engine",
                  "loop_controller"))
     for h in hints:
@@ -2026,7 +2026,7 @@ def test_boundary_grounded_supporting_workloads():
     certs = _bp_certs()
     # matrix engine only where dense GEMM exists (rdt); GEMV everywhere; requant where epilogue
     assert certs["matrix_engine"].supporting_workloads == ["rdt"]
-    assert certs["vector_gemv_engine"].supporting_workloads == \
+    assert certs["skinny_gemm_or_gemv_engine"].supporting_workloads == \
         ["openvla", "rdt", "small_llama", "tiny_llama"]
     assert certs["fused_requant_epilogue"].supporting_workloads == ["openvla", "rdt"]
     # decode controller only for autoregressive workloads (not rdt flow-matching)
@@ -2651,6 +2651,173 @@ def test_p16_unit_multiplicity_demoted_to_context():
     assert "unit_multiplicity_implication" not in IM.SIGNAL_METRICS
     canon = IM.canonical_signal_table(IM.unified_facts(_CS_DIR, "all"))
     assert not any(r["metric"] == "unit_multiplicity_implication" for r in canon)
+
+
+# --------------------------------------------------------------------------- P17 adversarial audit
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p17_k_rollup_fixed_and_predicate_audit():
+    # the K=7 reporting bug: the necessity rollup predicate must NOT embed a literal per-workload K;
+    # the per-workload K lives in predicate_audit, flagged as configured-K (and thus suspicious when
+    # it drives necessity).
+    import re
+    from merlin.dse_guidance import insight_mining as IM
+    nec = IM.abstraction_necessity(_CS_DIR)
+    assert not [r["abstraction"] for r in nec["rows"] if re.search(r"K=\d", r["predicate"])]
+    pa = IM.predicate_audit(_CS_DIR)
+    assert pa["rows"] and all(r["predicate_inputs"] and r["thresholds"] for r in pa["rows"])
+    rwo = [r for r in pa["rows"] if r["abstraction"] == "resident_weight_object"]
+    assert rwo and all(re.search(r"K=\d", r["predicate_inputs"]) for r in rwo)
+    assert all(r["uses_configured_K"] == "yes" for r in rwo)
+    # necessity resting on configured K is flagged suspicious
+    assert any(r["suspicious"] for r in rwo if r["classification"] == "necessary")
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p17_gemv_abstraction_renamed_and_split():
+    # vector_gemv_engine -> skinny_gemm_or_gemv_engine everywhere it surfaces; the true_gemv vs
+    # skinny-GEMM split (the user's correctness concern) is exposed per workload in predicate_audit.
+    from merlin.dse_guidance import insight_mining as IM
+    from merlin.dse_guidance.boundary_placement import catalog_rows
+    names = {c["abstraction"] for c in catalog_rows()}
+    assert "vector_gemv_engine" not in names and "skinny_gemm_or_gemv_engine" in names
+    pa = IM.predicate_audit(_CS_DIR)
+    cells = [r for r in pa["rows"] if r["abstraction"] == "skinny_gemm_or_gemv_engine"]
+    assert cells and all("true_gemv=" in r["predicate_inputs"] and "skinny_gemm=" in r["predicate_inputs"]
+                         for r in cells)
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p17_frontier_robustness_recompute_monotone_and_extra_tiles():
+    # the pad-waste recompute (needed for thresholds + extra candidate tiles) must match the
+    # committed tile_waste at 10%, the extra tiles must be in the candidate set, and best worst-
+    # coverage must be monotone non-decreasing in set size at each threshold.
+    import csv as _csv
+    import io as _io
+    from merlin.dse_guidance import insight_mining as IM
+    ops = {(o["workload"], o["op_index"]): o for o in _csv.DictReader(_io.StringIO(
+        (_CS_DIR / "operator_shape_table.csv").read_text()))}
+    mism = 0
+    for r in _csv.DictReader(_io.StringIO((_CS_DIR / "tile_waste_table.csv").read_text())):
+        if r.get("applicable") != "True":
+            continue
+        o = ops.get((r["workload"], r["op_index"]))
+        if not o:
+            continue
+        M, N, K = int(o["M"]), int(o["N"]), int(o["K"])
+        if M <= 0 or N <= 0 or K <= 0:
+            continue
+        ap, wv = IM._prim_waste(r["primitive"], M, N, K, o["shape_class"])
+        if ap and (wv <= 0.10) != (r["covered_under_10pct"] == "True"):
+            mism += 1
+    assert mism == 0
+    fro = IM.primitive_frontier_robustness(_CS_DIR)
+    assert all(t in fro["primitives"] for t in IM._EXTRA_TILES)
+    by_thr = {}
+    for row in fro["rows"]:
+        by_thr.setdefault(row["threshold_pct"], {})[row["set_size"]] = row["worst"]
+    assert by_thr and all(s[sz] >= s[sz - 1] - 1e-9 for s in by_thr.values() for sz in s if sz - 1 in s)
+    # threshold-robustness is a real boolean (the claim "a 2-set suffices" vs "this exact pair")
+    assert isinstance(fro["two_set_threshold_robust"], bool)
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p17_influence_winner_stable_vs_magnitude_unstable():
+    # the dense-GEMM fraction keeps its (losing) winner but its MAGNITUDE swings hard when the most
+    # influential workload is dropped -> must be flagged; LOO delta table is complete.
+    from merlin.dse_guidance import insight_mining as IM
+    inf = IM.macro_micro_influence(_CS_DIR)
+    dense = next(r for r in inf["rows"] if r["metric"] == "dense_gemm_mac_fraction")
+    assert dense["winner_stable_magnitude_unstable"] == "yes"
+    assert dense["max_loo_micro_delta"] > 0.2
+    assert all(isinstance(r["macro"], float) and isinstance(r["micro"], float) for r in inf["rows"])
+    assert len(inf["loo_rows"]) == len(inf["rows"]) * len(inf["workloads"])
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p17_adversarial_audit_and_emit(tmp_path):
+    # every audited conclusion references an artifact + carries a verdict; the P17 files are emitted.
+    from merlin.dse_guidance import insight_mining as IM
+    b = IM.mine(_CS_DIR, "all")
+    aud = b["adversarial_audit"]["rows"]
+    vocab = ("recovered", "derived", "measured", "assumed", "unavailable")
+    assert aud and all(r["conclusion"] and r["supporting_artifact"] and r["verdict"]
+                       and any(v in r["metric_class"] for v in vocab) for r in aud)
+    IM.emit_run(b, tmp_path, [])
+    for f in ("predicate_audit_table.csv", "predicate_audit_table.md", "conclusion_validity_table.csv",
+              "adversarial_audit_report.md", "primitive_frontier_robustness.csv",
+              "primitive_frontier_robustness.md", "uncovered_ops_by_primitive_set.csv",
+              "macro_micro_influence_table.csv", "leave_one_out_delta_table.csv",
+              "workload_influence_report.md"):
+        assert (tmp_path / f).is_file(), f
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p17_timing_envelope_is_derived_requirement():
+    # every envelope row is a REQUIREMENT recomputed as work/deadline (not measured); the command rate
+    # is proxy-tagged except for the one workload with a measured dispatch count.
+    import csv as _csv
+    import io as _io
+    from merlin.dse_guidance import insight_mining as IM
+    from merlin.dse_guidance.models import MODEL_ARCH, _base_model
+    env = IM.timing_requirement_envelope(_CS_DIR)
+    assert env["rows"]
+    req = {(r["workload"], r["region"], r["requirement"]): r["value"] for r in _csv.DictReader(
+        _io.StringIO((_CS_DIR / "requirements_table.csv").read_text()))}
+    for r in env["rows"]:
+        assert r["K_basis"] in ("configured", "sweep")
+        assert "sweep" in r["deadline_basis"] or "derived" in r["deadline_basis"]
+        Kcfg = MODEL_ARCH[_base_model(r["workload"])].loop_count
+        mpr = float(req[(r["workload"], "repeated_head", "macs_per_replan")])
+        expect = (mpr / Kcfg) * r["K"] / (r["deadline_ms"] / 1000.0)
+        assert abs(expect - r["required_compute_MAC_per_s"]) <= max(1.0, expect * 1e-6)
+        # residency removes exactly a K x weight-bandwidth requirement
+        if r["required_weight_B_per_s_resident"]:
+            ratio = r["required_weight_B_per_s_nonresident"] / r["required_weight_B_per_s_resident"]
+            assert abs(ratio - r["K"]) < 1e-3
+    assert all(("proxy_only" in r["command_rate_basis"]) or (r["workload"] in IM._MEASURED_DISPATCH)
+               for r in env["rows"])
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p17_omitted_ops_count_only_and_consistent():
+    # count-only: visible MACs == operator_shape_table sum; attention/KV/low-bit are flagged
+    # not-recovered (consistent with capture_fidelity), never estimated.
+    import csv as _csv
+    import io as _io
+    from merlin.dse_guidance import insight_mining as IM
+    ops = list(_csv.DictReader(_io.StringIO((_CS_DIR / "operator_shape_table.csv").read_text())))
+    mac = {}
+    for o in ops:
+        mac[o["workload"]] = mac.get(o["workload"], 0) + int(o["macs"])
+    om = IM.omitted_operator_accounting(_CS_DIR)
+    assert om["rows"]
+    for r in om["rows"]:
+        assert int(r["visible_matmul_macs"]) == mac[r["workload"]]
+        assert "no" in r["attention_bmm_recovered"] and "no" in r["lowbit_packed_recovered"]
+        assert "no" in r["softmax_reduction_recovered"]
+
+
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
+                    reason="case_study package not present")
+def test_p17_new_decision_plots_registered_and_available():
+    from merlin.dse_guidance import insight_mining as IM
+    from merlin.dse_guidance import presentation_plots as PP
+    pm = {p["plot_id"]: p for p in IM.plot_manifest(_CS_DIR, "all")}
+    for pid in ("primitive_frontier_by_threshold", "macro_vs_micro_primitive_coverage",
+                "required_compute_envelope", "required_memory_movement_envelope",
+                "required_command_rate_envelope", "workload_influence_loo_delta"):
+        assert pid in pm, pid
+        assert pm[pid]["recommendation"] != "omit", pid          # source artifact + columns exist
+        assert pm[pid]["dse_caption"], pid
+        assert pid in PP._RENDERERS, pid
 
 
 # --------------------------------------------------------------------------- agent devil's-advocate

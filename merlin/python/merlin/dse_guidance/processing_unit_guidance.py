@@ -77,7 +77,7 @@ def guidance(all_shapes, dags, pressure, all_axes) -> dict:
         evidence_against=[],
         candidate_units=[
             {"unit": "matrix_engine", "for": "dense_gemm", "evidence": "recovered_from_ir"},
-            {"unit": "vector_gemv_engine", "for": "skinny_gemm_or_gemv",
+            {"unit": "skinny_gemm_or_gemv_engine", "for": "skinny_gemm_or_gemv",
              "evidence": "recovered_from_ir"},
             {"unit": "epilogue_requant_unit", "for": "epilogue_or_requant",
              "evidence": "recovered_from_ir"},

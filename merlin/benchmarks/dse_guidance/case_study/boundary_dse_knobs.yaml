@@ -116,12 +116,12 @@ boundary_dse_knobs:
     evidence: recovered_from_ir
     knob: pe_array_dims
     reason: PE grid
-  - abstraction: vector_gemv_engine
+  - abstraction: skinny_gemm_or_gemv_engine
     boundary_level: accelerator_isa
     evidence: recovered_from_ir
     knob: lane_width
     reason: GEMV lane width
-  - abstraction: vector_gemv_engine
+  - abstraction: skinny_gemm_or_gemv_engine
     boundary_level: accelerator_isa
     evidence: recovered_from_ir
     knob: num_lanes

@@ -27,7 +27,7 @@
 | unit | evidence_for | supporting workloads |
 |---|---|---|
 | matrix_engine | serves dense_gemm: 35% of MACs across pi05, rdt, rdt2, smolvla, xr0 | pi05, rdt, rdt2, smolvla, xr0 |
-| vector_gemv_engine | serves skinny_gemm_or_gemv: 64% of MACs across bitvla, groot_n1d7, molmoact, openvla, pi05, rdt, rdt2, small_llama, smolvla, tiny_llama, xr0 | bitvla, groot_n1d7, molmoact, openvla, pi05, rdt, rdt2, small_llama, smolvla, tiny_llama, xr0 |
+| skinny_gemm_or_gemv_engine | serves skinny_gemm_or_gemv: 64% of MACs across bitvla, groot_n1d7, molmoact, openvla, pi05, rdt, rdt2, small_llama, smolvla, tiny_llama, xr0 | bitvla, groot_n1d7, molmoact, openvla, pi05, rdt, rdt2, small_llama, smolvla, tiny_llama, xr0 |
 | attention_kv_engine | no supporting operators in the captures | — |
 | conv_engine | no supporting operators in the captures | — |
 | epilogue_requant_unit | serves epilogue_or_requant (op_count; 667 across groot_n1d7, molmoact, openvla, pi05, rdt, rdt2, smolvla) | groot_n1d7, molmoact, openvla, pi05, rdt, rdt2, smolvla |

@@ -396,6 +396,123 @@ def _r_decision_sharding_per_top_op(cs, facts, ax):
     return True
 
 
+# --------------------------------------------------------------------------- P17 decision plots
+
+def _r_primitive_frontier_by_threshold(cs, facts, ax):
+    from merlin.dse_guidance import insight_mining as IM
+    fro = IM.primitive_frontier_robustness(cs)
+    if not fro["rows"]:
+        return False
+    by_thr = {}
+    for r in fro["rows"]:
+        by_thr.setdefault(r["threshold_pct"], []).append((r["set_size"], r["worst"]))
+    for thr in sorted(by_thr):
+        pts = sorted(by_thr[thr])
+        ax.plot([s for s, _ in pts], [w for _, w in pts], marker="o", label=f"{thr}% pad waste")
+    ax.set_xlabel("primitive set size")
+    ax.set_ylabel("worst-workload coverage")
+    ax.set_title("Frontier robustness: worst coverage vs set size, by threshold")
+    ax.set_ylim(0, 1.05)
+    ax.legend(fontsize=7)
+    return True
+
+
+def _r_macro_vs_micro_primitive_coverage(cs, facts, ax):
+    from merlin.dse_guidance import insight_mining as IM
+    fro = IM.primitive_frontier_robustness(cs)
+    rows = sorted((r for r in fro["rows"] if r["threshold_pct"] == 10), key=lambda r: r["set_size"])
+    if not rows:
+        return False
+    sz = [r["set_size"] for r in rows]
+    ax.plot(sz, [r["macro"] for r in rows], marker="o", label="macro (mean)")
+    ax.plot(sz, [r["micro"] for r in rows], marker="s", label="micro (MAC-weighted)")
+    ax.plot(sz, [r["worst"] for r in rows], marker="^", label="worst-workload")
+    ax.set_xlabel("primitive set size (10% pad waste)")
+    ax.set_ylabel("coverage")
+    ax.set_title("Macro vs micro vs worst primitive coverage")
+    ax.set_ylim(0, 1.05)
+    ax.legend(fontsize=7)
+    return True
+
+
+def _r_required_compute_envelope(cs, facts, ax):
+    from merlin.dse_guidance import insight_mining as IM
+    env = IM.timing_requirement_envelope(cs)
+    rows = [r for r in env["rows"] if r["K_basis"] == "configured" and r["deadline_basis"] == "sweep"]
+    if not rows:
+        return False
+    for w in env["workloads"]:
+        pts = sorted((r["deadline_ms"], r["required_compute_MAC_per_s"]) for r in rows
+                     if r["workload"] == w)
+        if pts:
+            ax.plot([d for d, _ in pts], [v / 1e9 for _, v in pts], marker=".", label=w)
+    ax.set_xlabel("replan deadline (ms)")
+    ax.set_ylabel("required GMAC/s (configured K)")
+    ax.set_yscale("log")
+    ax.set_title("Required compute envelope (a requirement, not measured performance)")
+    ax.legend(fontsize=6, ncol=2)
+    return True
+
+
+def _r_required_memory_movement_envelope(cs, facts, ax):
+    from merlin.dse_guidance import insight_mining as IM
+    env = IM.timing_requirement_envelope(cs)
+    rows = [r for r in env["rows"] if r["K_basis"] == "configured" and r["deadline_basis"] == "sweep"
+            and int(r["deadline_ms"]) == 100]
+    if not rows:
+        return False
+    rows.sort(key=lambda r: -r["required_weight_B_per_s_nonresident"])
+    w = [r["workload"] for r in rows]
+    nr = [r["required_weight_B_per_s_nonresident"] for r in rows]
+    rs = [r["required_weight_B_per_s_resident"] for r in rows]
+    x = range(len(w))
+    ax.bar([i - 0.2 for i in x], nr, 0.4, label="non-resident (reload x K)")
+    ax.bar([i + 0.2 for i in x], rs, 0.4, label="resident (load once)")
+    ax.set_yscale("log")
+    ax.set_xticks(list(x), w, rotation=30, fontsize=6)
+    ax.set_ylabel("required weight B/s @ 100 ms")
+    ax.set_title("Required memory-movement envelope: residency removes a K x requirement")
+    ax.legend(fontsize=7)
+    return True
+
+
+def _r_required_command_rate_envelope(cs, facts, ax):
+    from merlin.dse_guidance import insight_mining as IM
+    env = IM.timing_requirement_envelope(cs)
+    rows = [r for r in env["rows"] if r["K_basis"] == "configured" and r["deadline_basis"] == "sweep"]
+    if not rows:
+        return False
+    for w in env["workloads"]:
+        pts = sorted((r["deadline_ms"], r["required_command_rate_per_s"]) for r in rows
+                     if r["workload"] == w)
+        if pts:
+            ax.plot([d for d, _ in pts], [v for _, v in pts], marker=".", label=w)
+    ax.set_xlabel("replan deadline (ms)")
+    ax.set_ylabel("required dispatch/s (PROXY, ~12x undercount)")
+    ax.set_yscale("log")
+    ax.set_title("Required command-rate envelope (proxy; measured only for small_llama)")
+    ax.legend(fontsize=6, ncol=2)
+    return True
+
+
+def _r_workload_influence_loo_delta(cs, facts, ax):
+    from merlin.dse_guidance import insight_mining as IM
+    inf = IM.macro_micro_influence(cs)
+    rows = inf["rows"]
+    if not rows:
+        return False
+    labels = [r["metric"].replace("_mac_fraction", "").replace("_", " ") for r in rows]
+    vals = [r["max_loo_micro_delta"] for r in rows]
+    cols = ["#d62728" if r["winner_stable_magnitude_unstable"] == "yes" else "#1f77b4" for r in rows]
+    ax.bar(range(len(rows)), vals, color=cols)
+    ax.axhline(0.2, ls="--", color="#888", label="magnitude-unstable threshold")
+    ax.set_xticks(range(len(rows)), labels, rotation=20, fontsize=6)
+    ax.set_ylabel("max leave-one-out micro change")
+    ax.set_title("Workload influence (red = winner-stable but magnitude-unstable)")
+    ax.legend(fontsize=7)
+    return True
+
+
 _RENDERERS = {
     "evidence_type_by_workload": _r_evidence_by_workload,
     "evidence_type_by_phase": _r_evidence_by_phase,
@@ -415,6 +532,12 @@ _RENDERERS = {
     "operator_cumulative_mac": _r_operator_cumulative_mac,
     "boundary_necessity_matrix": _r_boundary_necessity_matrix,
     "decision_sharding_per_top_op": _r_decision_sharding_per_top_op,
+    "primitive_frontier_by_threshold": _r_primitive_frontier_by_threshold,
+    "macro_vs_micro_primitive_coverage": _r_macro_vs_micro_primitive_coverage,
+    "required_compute_envelope": _r_required_compute_envelope,
+    "required_memory_movement_envelope": _r_required_memory_movement_envelope,
+    "required_command_rate_envelope": _r_required_command_rate_envelope,
+    "workload_influence_loo_delta": _r_workload_influence_loo_delta,
 }
 
 

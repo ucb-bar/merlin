@@ -40,7 +40,7 @@ dse_search_space_knobs:
     - loop_controller
     - matrix_engine
     - scalar_control_unit
-    - vector_gemv_engine
+    - skinny_gemm_or_gemv_engine
     source_phase: P7/P8
   - enabled: true
     evidence: derived_requirement

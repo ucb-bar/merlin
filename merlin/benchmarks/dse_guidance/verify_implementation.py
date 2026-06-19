@@ -1040,6 +1040,8 @@ def verify_p13() -> dict:
              "partial mode: missing artifacts recorded exists=no, no crash")
     verify_p15(IM, bundle)
     verify_p16(IM, bundle)
+    verify_p17_audit(IM, bundle)
+    verify_p17_envelope(IM, bundle)
     return {"scopes": len(scopes), "facts_all": total_facts}
 
 
@@ -1255,6 +1257,161 @@ def verify_p16(IM, bundle) -> None:
                           "predicted cycles", "x speedup") if t in blob]
     p13check(caps_ok and not leaked,
              f"[P16] new plots captioned + no forbidden wording (caps_ok={caps_ok}, leaked={leaked})")
+
+
+def verify_p17_audit(IM, bundle) -> None:
+    """P17 adversarial audit (commit 1): the predicate audit carries the per-workload scalars and
+    flags configured-K necessity; the necessity rollup is now K-free (the reporting bug is fixed);
+    the gemv abstraction is renamed; the primitive-frontier robustness recompute matches the
+    committed tile_waste at 10% and is monotone in set size; the influence table flags
+    winner-stable/magnitude-unstable metrics; every audited conclusion references an artifact."""
+    import csv as _csv
+    import io as _io
+    import re as _re
+
+    def _rows(name):
+        p = CS / name
+        return list(_csv.DictReader(_io.StringIO(p.read_text()))) if p.is_file() else []
+
+    # 1. K-rollup reporting bug is FIXED: no necessity rollup predicate embeds a literal per-workload
+    #    K (e.g. "K=7"); the per-workload K lives in the predicate audit instead.
+    nec = bundle["abstraction_necessity"]
+    k_leak = [r["abstraction"] for r in nec["rows"] if _re.search(r"K=\d", r["predicate"])]
+    pa = bundle["predicate_audit"]
+    rwo = [r for r in pa["rows"] if r["abstraction"] == "resident_weight_object"]
+    rwo_has_k = all(_re.search(r"K=\d", r["predicate_inputs"]) for r in rwo) and rwo
+    rwo_uses_k = all(r["uses_configured_K"] == "yes" for r in rwo)
+    p13check(not k_leak and rwo_has_k and rwo_uses_k,
+             f"[P17] K-rollup fixed: no literal K in rollup predicates (leaks={k_leak}); "
+             f"per-workload K in predicate_audit (uses_K={rwo_uses_k})")
+    # 1b. predicate audit is well-formed: every cell has inputs+thresholds, and at least one
+    #     suspicious cell (necessity resting on configured K) is flagged
+    cells_ok = all(r["predicate_inputs"] and r["thresholds"] and r["classification"] in IM._NEC_CLASSES
+                   for r in pa["rows"])
+    susp = [r for r in pa["rows"] if r["suspicious"]]
+    p13check(cells_ok and susp,
+             f"[P17] predicate audit well-formed ({len(pa['rows'])} cells); suspicious flagged "
+             f"({len(susp)})")
+    # 2. gemv rename: the old name is gone everywhere in the necessity output; the honest umbrella
+    #    name is present; the true_gemv vs skinny split is exposed in the predicate audit inputs
+    names = {r["abstraction"] for r in nec["rows"]}
+    gemv_cells = [r for r in pa["rows"] if r["abstraction"] == "skinny_gemm_or_gemv_engine"]
+    split_ok = all("true_gemv=" in r["predicate_inputs"] and "skinny_gemm=" in r["predicate_inputs"]
+                   for r in gemv_cells) and gemv_cells
+    p13check("vector_gemv_engine" not in names and "skinny_gemm_or_gemv_engine" in names and split_ok,
+             "[P17] gemv abstraction renamed (skinny_gemm_or_gemv_engine) + true/skinny split exposed")
+    # 3. primitive-frontier robustness: 10% recompute matches the committed tile_waste boolean
+    #    (the regression gate), worst-coverage is monotone in set size per threshold
+    ops = {(o["workload"], o["op_index"]): o for o in _rows("operator_shape_table.csv")}
+    mism = 0
+    for r in _rows("tile_waste_table.csv"):
+        if r.get("applicable") != "True":
+            continue
+        o = ops.get((r["workload"], r["op_index"]))
+        if not o:
+            continue
+        M, N, K = int(o["M"]), int(o["N"]), int(o["K"])
+        if M <= 0 or N <= 0 or K <= 0:
+            continue
+        ap, wv = IM._prim_waste(r["primitive"], M, N, K, o["shape_class"])
+        if ap and (wv <= 0.10) != (r["covered_under_10pct"] == "True"):
+            mism += 1
+    fro = bundle["primitive_frontier_robustness"]
+    by_thr = {}
+    for row in fro["rows"]:
+        by_thr.setdefault(row["threshold_pct"], {})[row["set_size"]] = row["worst"]
+    mono = all(s[sz] >= s[sz - 1] - 1e-9 for s in by_thr.values() for sz in s if sz - 1 in s)
+    p13check(mism == 0 and mono and fro["rows"],
+             f"[P17] frontier-robustness 10% recompute matches committed tile_waste (mismatch={mism}) "
+             f"+ monotone in set size")
+    # 4. influence: macro & micro present per metric, dense-GEMM is winner-stable/magnitude-unstable
+    inf = bundle["macro_micro_influence"]
+    rows_ok = all(isinstance(r["macro"], float) and isinstance(r["micro"], float) for r in inf["rows"])
+    dense = next((r for r in inf["rows"] if r["metric"] == "dense_gemm_mac_fraction"), {})
+    flagged = dense.get("winner_stable_magnitude_unstable") == "yes"
+    loo_complete = len(inf["loo_rows"]) == len(inf["rows"]) * len(inf["workloads"])
+    p13check(rows_ok and flagged and loo_complete,
+             f"[P17] influence table: macro+micro present, dense-GEMM magnitude-unstable={flagged}, "
+             f"LOO delta complete={loo_complete}")
+    # 5. adversarial audit: every conclusion references an artifact + carries a verdict; metric_class
+    #    is in the allowed vocabulary; no forbidden wording in any P17 output
+    aud = bundle["adversarial_audit"]["rows"]
+    vocab = ("recovered", "derived", "measured", "assumed", "unavailable")
+    aud_ok = all(r["conclusion"] and r["supporting_artifact"] and r["verdict"]
+                 and any(v in r["metric_class"] for v in vocab) for r in aud)
+    blob = (str(pa) + str(fro) + str(inf) + str(bundle["adversarial_audit"])).lower()
+    leaked = [t for t in ("speedup", "faster", "optimal", "performance improvement",
+                          "predicted cycles", "x speedup", "gap_closure") if t in blob]
+    p13check(aud_ok and not leaked,
+             f"[P17] adversarial audit references artifacts + verdicts ({len(aud)}); no forbidden "
+             f"wording (leaked={leaked})")
+
+
+def verify_p17_envelope(IM, bundle) -> None:
+    """P17 requirements envelope + omitted-op accounting + plots (commit 2): every envelope row is a
+    derived requirement (work / deadline) recomputed from workload facts + scenario inputs, never a
+    measured-hardware label; command rate is proxy-tagged except for the measured workload; the
+    omitted-op flags are consistent with the capture-fidelity matrix; the new decision plots are
+    available and captioned; no forbidden wording."""
+    import csv as _csv
+    import io as _io
+
+    def _rows(name):
+        p = CS / name
+        return list(_csv.DictReader(_io.StringIO(p.read_text()))) if p.is_file() else []
+
+    env = bundle["timing_envelope"]
+    # 1. every row tags K + deadline provenance, and required_compute recomputes as work/deadline
+    req = {(r["workload"], r["region"], r["requirement"]): r["value"] for r in
+           _rows("requirements_table.csv")}
+    from merlin.dse_guidance.models import MODEL_ARCH, _base_model
+    tagged = all(r["K_basis"] in ("configured", "sweep")
+                 and ("sweep" in r["deadline_basis"] or "derived" in r["deadline_basis"])
+                 for r in env["rows"])
+    recompute_ok = True
+    for r in env["rows"][:200]:
+        arch = MODEL_ARCH.get(_base_model(r["workload"]))
+        Kcfg = arch.loop_count if arch else 1
+        mpr = float(req.get((r["workload"], "repeated_head", "macs_per_replan"), 0) or 0)
+        expect = (mpr / Kcfg) * r["K"] / (r["deadline_ms"] / 1000.0)
+        if abs(expect - r["required_compute_MAC_per_s"]) > max(1.0, expect * 1e-6):
+            recompute_ok = False
+            break
+    p13check(env["rows"] and tagged and recompute_ok,
+             f"[P17] envelope rows are derived requirements (recompute_ok={recompute_ok}, "
+             f"provenance-tagged={tagged}, {len(env['rows'])} rows)")
+    # 2. command rate is proxy-only except the measured workload; no measured-HARDWARE label anywhere
+    cmd_ok = all(("proxy_only" in r["command_rate_basis"]) or (r["workload"] in IM._MEASURED_DISPATCH)
+                 for r in env["rows"])
+    blob = (str(env) + str(bundle["omitted_ops"])).lower()
+    no_hw = "measured hardware" not in blob and "measured performance" not in blob
+    p13check(cmd_ok and no_hw,
+             f"[P17] command rate proxy-tagged (ok={cmd_ok}); no measured-hardware label ({no_hw})")
+    # 3. omitted-op accounting: visible MACs == operator_shape_table sum; attention/KV NOT recovered
+    #    (consistent with capture_fidelity); low-bit not recovered
+    ops = _rows("operator_shape_table.csv")
+    mac_by_wl = {}
+    for o in ops:
+        mac_by_wl[o["workload"]] = mac_by_wl.get(o["workload"], 0) + int(o["macs"])
+    om = bundle["omitted_ops"]["rows"]
+    macs_match = all(int(r["visible_matmul_macs"]) == mac_by_wl.get(r["workload"], -1) for r in om)
+    attn_unrec = all("no" in r["attention_bmm_recovered"] and "no" in r["lowbit_packed_recovered"]
+                     for r in om)
+    p13check(om and macs_match and attn_unrec,
+             f"[P17] omitted-op: visible MACs == operator_shape sum (match={macs_match}); "
+             f"attention/low-bit marked unavailable ({attn_unrec})")
+    # 4. the new decision plots are available (not omit) and captioned
+    new_plots = {"primitive_frontier_by_threshold", "macro_vs_micro_primitive_coverage",
+                 "required_compute_envelope", "required_memory_movement_envelope",
+                 "required_command_rate_envelope", "workload_influence_loo_delta"}
+    pm = {p["plot_id"]: p for p in bundle["plots"]}
+    plots_ok = all(pid in pm and pm[pid]["recommendation"] != "omit" and pm[pid].get("dse_caption")
+                   for pid in new_plots)
+    p13check(plots_ok, f"[P17] new decision plots available + captioned ({sorted(new_plots)})")
+    # 5. no forbidden performance wording in the P17 commit-2 outputs
+    leaked = [t for t in ("speedup", "faster", "optimal", "performance improvement",
+                          "predicted cycles", "x speedup", "gap_closure") if t in blob]
+    p13check(not leaked, f"[P17] requirements/omitted outputs free of forbidden wording ({leaked})")
 
 
 def main(write: bool = True) -> int:
