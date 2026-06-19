@@ -93,46 +93,38 @@ ax.set_ylabel("retired instructions (IPC=1 proxy)")
 ax.set_title("② Single GEMM · spike\n(proxy — ranks OUR approaches)", fontsize=11)
 ax.grid(True, axis="y", ls=":", alpha=0.35); ax.legend(fontsize=7.6, ncol=2)
 
-# ---- Panel 3: e2e speedup bars ----
-# Measured XNNPACK-kernels whole-model speedup vs the SAME frozen baseline (third e2e column;
-# output/rvv_bench/k1_e2e_xnnpack_bitvla.{json,md}). Only bitvla has the XNNPACK column today.
-# (model -> speedup of XNNPACK-kernels over baseline). XNNPACK swaps ONLY the f32 GEMM kernel;
-# graph/weights/runtime are identical to ours-optimized, so the bitvla gap (13.65 vs 9.18)
-# isolates kernel-level headroom: XNNPACK's hand RVV GEMM is ~1.49x our vfmacc whole-model.
-e2e_xnn = {"bitvla": 13.65}
+# ---- Panel 3: e2e speedup bars (whole-model K1, vs frozen baseline) ----
+# Per model, the bars present (label,value,color): ours-tiled vfmacc, XNNPACK hand-kernel swap,
+# and ours-v3 (compiler accumulator-resident microkernel, whole-model-safe). v3 is the bitvla
+# winner (16.83x) — beating BOTH ours-tiled (9.16x) and XNNPACK's hand GEMM (13.65x): the
+# compiler-emitted kernel reverses the earlier ~1.49x XNNPACK headroom. Best kernel is per-model
+# (v3 wins bitvla; tiled wins openvla 3.65x) — sources: output/rvv_bench/k1_e2e_*{,_postfix_*}.json.
+C_TILED, C_XNN, C_V3 = "#e0a72e", "#c1467a", "#b8742a"
+e2e_bars = {  # model -> list of (label, speedup, color)
+    "bitvla":  [("ours-tiled", 9.16, C_TILED), ("XNNPACK", 13.65, C_XNN), ("ours-v3", 16.83, C_V3)],
+    "openvla": [("ours-tiled", 3.65, C_TILED), ("ours-v3", 2.38, C_V3)],
+    "rdt2":    [("ours-tiled", 2.35, C_TILED)],
+}
+order = ["rdt2", "openvla", "bitvla"]
 ax = fig.add_subplot(gs[2])
-names = [r[0] for r in e2e][::-1]
-sp_v = [r[3] for r in e2e][::-1]
-y = np.arange(len(names))
-has_xnn = [e2e_xnn.get(n) is not None for n in names]
-# Where an XNNPACK column exists, render the ours-optimized bar slimmer + above the XNNPACK bar.
-h_full, h_pair = 0.55, 0.26
-for i, n in enumerate(names):
-    if has_xnn[i]:
-        ax.barh(i + 0.16, sp_v[i], color="#e0a72e", height=h_pair, label=None)
-        ax.barh(i - 0.16, e2e_xnn[n], color="#c1467a", height=h_pair, label=None)
-    else:
-        ax.barh(i, sp_v[i], color="#e0a72e", height=h_full)
-for i, r in enumerate(e2e[::-1]):
-    n = names[i]
-    if has_xnn[i]:
-        ax.text(r[3] + 0.15, i + 0.16, f"ours {r[3]}×", va="center", fontsize=8.5,
-                fontweight="bold", color="#9c7415")
-        ax.text(e2e_xnn[n] + 0.15, i - 0.16, f"XNNPACK {e2e_xnn[n]}×", va="center",
-                fontsize=8.5, fontweight="bold", color="#a03062")
-        ax.text(0.15, i + 0.16, f"{r[1]}s→{r[2]}s", va="center", fontsize=7, color="#222")
-    else:
-        ax.text(r[3] + 0.12, i, f"{r[3]}×", va="center", fontsize=11, fontweight="bold",
-                color="#9c7415")
-        ax.text(0.15, i, f"{r[1]}s→{r[2]}s", va="center", fontsize=8, color="#222")
-ax.axvline(1.0, color="#999", lw=1)
-ax.set_yticks(y); ax.set_yticklabels(names)
-ax.set_xlim(0, 16); ax.set_xlabel("whole-model speedup vs frozen baseline")
-ax.set_title("③ Whole-model e2e · K1\n(wall s; cos≥0.9999; ours vs XNNPACK kernel)", fontsize=11)
+y = np.arange(len(order))
+for i, m in enumerate(order):
+    bars = e2e_bars[m]; n = len(bars)
+    offs = np.linspace(0.22, -0.22, n) if n > 1 else [0.0]
+    h = 0.5 / max(n, 1) if n > 1 else 0.5
+    for off, (lab, sp, col) in zip(offs, bars):
+        ax.barh(i + off, sp, color=col, height=h, edgecolor="#33312b", linewidth=0.8, zorder=3)
+        ax.text(sp + 0.2, i + off, f"{lab} {sp}×", va="center", fontsize=8.2,
+                fontweight="bold", color=col if col != C_TILED else "#9c7415")
+ax.axvline(1.0, color="#999", lw=1, ls="--")
+ax.set_yticks(y); ax.set_yticklabels(order, fontsize=11)
+ax.set_xlim(0, 21); ax.set_xlabel("whole-model speedup vs frozen baseline")
+ax.set_title("③ Whole-model e2e · K1\n(cos≥0.9999; ours-v3 beats XNNPACK on bitvla)", fontsize=11)
 ax.grid(True, axis="x", ls=":", alpha=0.35)
 from matplotlib.patches import Patch
-ax.legend(handles=[Patch(color="#e0a72e", label="ours-tiled (vfmacc)"),
-                   Patch(color="#c1467a", label="XNNPACK RVV GEMM")],
+ax.legend(handles=[Patch(color=C_TILED, label="ours-tiled (vfmacc)"),
+                   Patch(color=C_XNN, label="XNNPACK RVV GEMM"),
+                   Patch(color=C_V3, label="ours-v3 (accum-resident, compiler)")],
           fontsize=7.6, loc="lower right")
 
 fig.suptitle("RVV GEMM — every measured comparison  (baseline · OpenBLAS · XNNPACK · ours)",
