@@ -1650,15 +1650,21 @@ def verify_p21(IM) -> None:
         bv = nrows.get("bitvla", {})
         # re-derive: the native capture must carry packed-int2 (i8-stored) weights and the absmean scale
         cap_txt = nat_cap.read_text(errors="ignore")
+        # P22 GAP-D: the int2 unpack is now a named quant_ext.unpack_int2 op (opt-in recognizer).
+        n_unpack = cap_txt.count("quant_ext.unpack_int2")
         s4_ok = (bv.get("storage") == "int2_packed_in_i8"
                  and int(bv.get("n_packed_weight_tensors", 0)) > 0
                  and cap_txt.count("xi8>") == int(bv.get("n_packed_weight_tensors", 0))
                  and "absmean" in bv.get("scale", "")
                  and "recovered" in bv.get("status", "")
+                 and n_unpack > 0                                  # named unpack op present
+                 and "named op" in bv.get("unpack_visibility", "")
+                 and "func.call @aten_stack" not in cap_txt        # opaque unpack call-sites folded away
                  and (CS / "native_lowbit_datapath.csv").is_file())
         p13check(s4_ok,
-                 f"[P21] native low-bit: bitvla packed-int2 ternary storage + absmean scale captured "
-                 f"(i8 tensors={bv.get('n_packed_weight_tensors')}) -> native datapath recovered ({s4_ok})")
+                 f"[P21/P22] native low-bit: bitvla packed-int2 ternary storage + absmean scale + the "
+                 f"int2 unpack as quant_ext.unpack_int2 ({n_unpack} ops, opaque chain folded) -> native "
+                 f"datapath fully recovered ({s4_ok})")
     else:
         p13check(True, "[P21] native low-bit: no native bitvla capture present (skipped)")
 

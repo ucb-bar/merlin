@@ -16,7 +16,7 @@ The "torch.export-blocked" frontier is broken: model2MLIR now lowers `torch.whil
 | **loop-carried state (erased)** | **resolved** | the denoise latent `[1,50,32]` (smolVLA/pi0.5) and the KV cache (openVLA) are explicit `iter_args` — `loop_preserving_recovery.csv` |
 | **region roles low-confidence** | **resolved (structural)** | the `scf.for` body IS the repeated head (597–6208 ops), recovered structurally, not by fqn heuristic |
 | **structural-only / tiny-config magnitudes** | **resolved** | deployment-real magnitudes are config-exact compositions (`prefix + per-layer × n_layers`): openVLA 6.74 B / 13.5 GB bf16, pi0.5 2.82 B, smolVLA 0.58 B — `real_config_magnitudes.csv` (weight VALUES irrelevant) |
-| **native low-bit datapath (blocked)** | **resolved (storage+scale)** | bitvla `BITVLA_NATIVE_QUANT=1` recapture shows 391 packed-int2 ternary weight tensors + per-tensor absmean scale — `native_lowbit_datapath.csv` (residual: bit-unpack stays opaque, see note) |
+| **native low-bit datapath (blocked)** | **resolved (full: storage+scale+unpack)** | bitvla `BITVLA_NATIVE_QUANT=1` recapture shows 391 packed-int2 ternary weight tensors + per-tensor absmean scale, and the int2 unpack folded to the named `quant_ext.unpack_int2` op (opt-in `fuse_int2_unpack`, GAP-D) — `native_lowbit_datapath.csv` |
 
 Verified end-to-end: `verify_implementation.py` 679/679 (P21 checks re-derive K/KV/params/native-storage
 independently from the IR/config). **Corpus-complete:** all **11/11** workloads now have a loop-preserving
