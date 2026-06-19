@@ -2820,6 +2820,22 @@ def test_p18_capture_erasure_and_per_family():
     assert pf and all(0.0 <= float(r["visible_linear_fraction"]) <= 1.0 for r in pf)
 
 
+@pytest.mark.skipif(not (_CS_DIR / "capture_level_ablation.csv").is_file(),
+                    reason="capture-level ablation summary not present")
+def test_p18_capture_level_ablation():
+    # Stage B: high-level captures expose attention/softmax as NAMED linalg_ext ops; qdq captures
+    # expose quant_ext.dequantize; loops stay absent (torch.export-blocked) at every level. Reads the
+    # committed op-count summary (the raw multi-level recaptures are gitignored + regenerable).
+    from merlin.dse_guidance import insight_mining as IM
+    ab = IM.capture_level_ablation(_CS_DIR)
+    assert ab["rows"] and ab["unlock"]
+    hl = [r for r in ab["rows"] if r["level"] == "high_level" and r["available"]]
+    qd = [r for r in ab["rows"] if r["level"] == "quant_qdq" and r["available"]]
+    assert hl and all(int(r["linalg_ext_softmax"]) > 0 for r in hl)
+    assert qd and all(int(r["quant_ext_dequantize"]) > 0 for r in qd)
+    assert all(int(r["scf_for"]) == 0 for r in ab["rows"])     # loop-preserving torch.export-blocked
+
+
 @pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
                     reason="case_study package not present")
 def test_p17_new_decision_plots_registered_and_available():

@@ -2298,6 +2298,58 @@ def per_family_summary(cs_dir: Path) -> dict:
     return {"rows": rows}
 
 
+# ---- Stage B: capture-level ablation over REAL multi-level recaptures (m2m flags) ----
+# Level 0 = flat (committed recaptures/), high_level = m2m level="high-level" (linalg_ext.softmax),
+# quant_qdq = m2m preserve_qdq int8 (quant_ext.dequantize). Loop-preserving is torch.export-blocked.
+_ABLATION_LEVELS = [("flat", "recaptures", "model.mlir"),
+                    ("high_level", "recaptures_levels", "model_highlevel.mlir"),
+                    ("quant_qdq", "recaptures_levels", "model_qdq.mlir")]
+_ABLATION_OPS = ["linalg.matmul", "linalg.generic", "linalg_ext.softmax", "linalg_ext.layer_norm",
+                 "quant_ext.dequantize", "scf.for"]
+_ABLATION_COLS = (["workload", "level", "available"] + [o.replace(".", "_") for o in _ABLATION_OPS])
+# DSE axes and how each becomes decidable as the capture level rises (categorical).
+_ABLATION_AXES = ["attention_primitive", "softmax_reduction_unit", "packed_lowbit_weights",
+                  "scale_metadata", "bounded_loop_command", "kv_cache_object"]
+
+
+def capture_level_ablation(cs_dir: Path) -> dict:
+    """Stage B: real capture-level ablation. Reads the committed op-count summary
+    ``capture_level_ablation.csv`` (the raw multi-level recaptures are gitignored + regenerable) and
+    derives which DSE axes move blocked -> decidable. Levels: flat (attention recovered by re-parsing
+    generics, P18-A), high_level (attention/softmax as NAMED linalg_ext ops), quant_qdq (packed-lowbit
+    + scales via quant_ext.dequantize). Loop/KV stay blocked at every level (torch.export unrolls
+    loops). Empty if the summary is absent (no recaptures were generated)."""
+    raw = _csv_rows(Path(cs_dir) / "capture_level_ablation.csv")
+    if not raw:
+        return {"workloads": [], "rows": [], "unlock": []}
+    rows = []
+    for r in raw:
+        row = {"workload": r["workload"], "level": r["level"], "available": r["available"] == "True"}
+        for o in _ABLATION_OPS:
+            k = o.replace(".", "_")
+            row[k] = int(r.get(k, 0) or 0)
+        rows.append(row)
+    wls = sorted({r["workload"] for r in rows})
+    unlock = []
+    for w in wls:
+        by = {r["level"]: r for r in rows if r["workload"] == w}
+        hl, qd = by.get("high_level", {}), by.get("quant_qdq", {})
+        any_loop = any(by.get(lv, {}).get("scf_for") for lv in ("flat", "high_level", "quant_qdq"))
+        unlock.append({
+            "workload": w,
+            "attention_primitive": ("named (linalg_ext) @high_level" if hl.get("linalg_ext_softmax")
+                                    else "recovered (generic) @flat"),
+            "softmax_reduction_unit": ("named @high_level" if hl.get("linalg_ext_softmax")
+                                       else "recovered (generic) @flat"),
+            "packed_lowbit_weights": ("decidable @quant_qdq" if qd.get("quant_ext_dequantize")
+                                      else "blocked (no qdq capture)"),
+            "scale_metadata": ("decidable @quant_qdq" if qd.get("quant_ext_dequantize")
+                               else "blocked (no qdq capture)"),
+            "bounded_loop_command": ("partial" if any_loop else "blocked (torch.export unrolls loops)"),
+            "kv_cache_object": ("partial" if any_loop else "blocked (torch.export unrolls loops)")})
+    return {"workloads": wls, "rows": rows, "unlock": unlock}
+
+
 _PLOT_CAPTION = {
     "evidence_type_by_workload": "How much of each workload's evidence is IR-recovered vs assumed — "
         "where the search space rests on recovered structure vs reference values.",
@@ -2616,6 +2668,8 @@ def mine(cs_dir, scope: str) -> dict:
     bundle["omitted_ops"] = operator_recovery_accounting(cs_dir)
     bundle["capture_erasure"] = capture_erasure_evidence(cs_dir) if is_all else {"rows": []}
     bundle["per_family"] = per_family_summary(cs_dir) if is_all else {"rows": []}
+    bundle["capture_ablation"] = (capture_level_ablation(cs_dir) if is_all
+                                  else {"rows": [], "unlock": []})
     return bundle
 
 
@@ -3337,6 +3391,32 @@ def _per_family_md(pf, scope) -> str:
     return "\n".join(L) + "\n"
 
 
+def _ablation_md(ab, scope) -> str:
+    L = [f"# Capture-level ablation ({scope})\n",
+         "> REAL multi-level recaptures (m2m flags). **flat** = the committed capture (attention "
+         "recovered by re-parsing generics, P18-A); **high_level** (`level=\"high-level\"`) emits "
+         "attention/softmax as NAMED `linalg_ext` ops; **quant_qdq** (`preserve_qdq` int8) emits "
+         "`quant_ext.dequantize` (packed-lowbit + scales). **Loop-preserving is torch.export-blocked** "
+         "(no Level — the named frontier a TorchDynamo/`torch.cond` frontend would unlock).\n",
+         "## Op vocabulary per level\n",
+         "| workload | level | available | matmul | generic | linalg_ext.softmax | "
+         "quant_ext.dequantize | scf.for |",
+         "|---|---|---|---|---|---|---|---|"]
+    for r in ab["rows"]:
+        L.append(f"| {r['workload']} | {r['level']} | {r['available']} | {r['linalg_matmul']} | "
+                 f"{r['linalg_generic']} | {r['linalg_ext_softmax']} | {r['quant_ext_dequantize']} | "
+                 f"{r['scf_for']} |")
+    L += ["\n## Axis-unlock matrix (which DSE axes become decidable at which level)\n",
+          "| workload | " + " | ".join(_ABLATION_AXES) + " |",
+          "|---|" + "|".join(["---"] * len(_ABLATION_AXES)) + "|"]
+    for u in ab["unlock"]:
+        L.append(f"| {u['workload']} | " + " | ".join(u[a] for a in _ABLATION_AXES) + " |")
+    L.append("\n**Loop-preserving capture is the blocked frontier**: `scf.for` is absent at every level "
+             "(torch.export unrolls Python loops), so `bounded_loop_command` / `kv_cache_object` stay "
+             "blocked — the one axis a richer (TorchDynamo / torch.cond) frontend would unlock.\n")
+    return "\n".join(L) + "\n"
+
+
 def _p17_findings_md(bundle, scope) -> str:
     aud = bundle.get("adversarial_audit", {}).get("rows", [])
     L = [f"# P17 final report — what is robust, what is blocked ({scope})\n",
@@ -3513,6 +3593,10 @@ def emit_run(bundle: dict, run_dir, rendered: list[str]) -> None:
         Artifact("metric_stability_table.csv", _csv_text(inf["rows"], _INFLUENCE_COLS)).write(run_dir)
     if om.get("rows"):      # alias: Part A's `known_omissions_table.csv` (= recovered/erased work)
         Artifact("known_omissions_table.csv", _csv_text(om["rows"], _OMIT_COLS)).write(run_dir)
+    ab = bundle.get("capture_ablation", {})     # Stage B: real capture-level ablation
+    if ab.get("rows"):
+        Artifact("capture_level_ablation.csv", _csv_text(ab["rows"], _ABLATION_COLS)).write(run_dir)
+        Artifact("capture_level_ablation.md", _ablation_md(ab, scope)).write(run_dir)
     if env.get("rows"):     # P17 final report (corpus-level, when the requirements envelope exists)
         Artifact("P17_FINDINGS.md", _p17_findings_md(bundle, scope)).write(run_dir)
     Artifact("DSE_FINDINGS.md",

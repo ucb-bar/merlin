@@ -46,8 +46,23 @@ CMakeFiles/
 *.so
 compile_commands.json
 
+# --- Vendored LLVM/MLIR toolchain build + install (Phase 0; never committed) ---
+/third_party/llvm-build/
+/third_party/llvm-install/
+/third_party/llvm-build.log
+# Out-of-tree package build trees (gemmini-opt etc.)
+/generated_targets/**/mlir_oot/build/
+/generated_targets/*
+results
+runs
+build
+
 # --- Editor / OS ---
 .DS_Store
 *.swp
 .idea/
 .vscode/
+
+# P18 capture-level ablation: raw multi-level recaptures are regenerable (m2m flags); only the
+# small committed summary case_study/capture_level_ablation.csv is tracked.
+merlin/benchmarks/dse_guidance/recaptures_levels/*/*.mlir
