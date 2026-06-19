@@ -1,0 +1,13 @@
+{
+  "tiny_llama_fp8_consistent": {
+    "note": "fp8_consistent capture is all-f32 in the graph (the fp32 vectorized matmul path).",
+    "optimized_lowering": "scalar_fallback",
+    "reason": "fused_vfmacc_tiled raises PipelineError: batch_matmul attention dim N=8 tiled NR=16 -> masked vector<1x4x16>->tensor<1x4x8> transfer_write that LLVM-23 lowering rejects (vector.mask op expects only one operation to mask).",
+    "k1_run": "not_run: whole-model embedded-fp32 binary (~420MB, RW LOAD ~398MB) SIGSEGVs on the board (store fault just past BSS) even on the frozen baseline; board CommitLimit ~1.9GB. fp32 whole-model embedded path exceeds the board memory policy."
+  },
+  "small_llama_fp8_consistent": {
+    "optimized_lowering": "scalar_fallback",
+    "reason": "same vector.mask N=8 batch_matmul failure as tiny_llama.",
+    "k1_run": "ran (small, 577KB weights) but produced ALL-NaN on BOTH the board and spike for the frozen baseline -> this fp8->f32 capture is numerically broken on the RVV path; not a usable correctness target."
+  }
+}

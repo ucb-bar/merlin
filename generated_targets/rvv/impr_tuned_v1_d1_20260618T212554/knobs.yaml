@@ -1,0 +1,41 @@
+# RVV fork knobs (rvvgen.from_strategy)
+cflags:
+- -march=rv64gcv
+- -fno-vectorize
+- -fno-slp-vectorize
+compiler_features:
+- fused_vfmacc_tiled
+dtype_strategy: fp32
+expected_instructions:
+- vsetivli
+- vle32.v
+- vfmul.vv
+- vfadd.vv
+lmul_policy: m1
+lowering_patterns:
+- lower_contraction
+- lower_masked_transfers
+- lower_transpose
+- lower_shape_cast
+op_match:
+- op: linalg.matmul
+  tile:
+  - 4
+  - 8
+  - 1
+  vector:
+  - 4
+  - 8
+  - 1
+- op: linalg.batch_matmul
+  tile:
+  - 1
+  - 4
+  - 8
+  - 1
+  vector:
+  - 1
+  - 4
+  - 8
+  - 1
+schedule_file: schedule.mlir
