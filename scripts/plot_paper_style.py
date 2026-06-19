@@ -270,8 +270,70 @@ def fig_opt_effects():
     plt.close(fig)
 
 
+# ============================================================================
+# FIGURE E — beam_rvv_v2 RESULT: faithful whole-model beam ranking per model.
+# Reads the versioned run dir (mined_knowledge/rvv/beam_rvv_v2_*/ranking_*.yaml).
+# ============================================================================
+def fig_beam_ranking():
+    import glob, yaml
+    runs = sorted(glob.glob(str(OUT.parents[2] / "mined_knowledge/rvv/beam_rvv_v2_*")))
+    if not runs:
+        print("beam_ranking: no beam_rvv_v2 run; skipping"); return
+    run = runs[-1]; V3 = "#b8742a"
+    fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.6)); fig.patch.set_facecolor("white")
+    XNN = {"bitvla": 13.65, "openvla": None}
+    for ax, M in zip(axes, ("bitvla", "openvla")):
+        r = yaml.safe_load(open(f"{run}/ranking_{M}.yaml"))
+        rows = [x for x in r["ranked"]]
+        rows = sorted(rows, key=lambda x: (x["speedup"] is None, -(x["speedup"] or 0)))
+        labs, vals, cols = [], [], []
+        for x in rows:
+            sp = x["speedup"]; tag = x["tag"]
+            if sp is None:
+                labs.append(f"{tag} (blocked)"); vals.append(0.0); cols.append("#cfcfcf")
+            else:
+                labs.append(tag); vals.append(sp)
+                if x["lowering"] == "scalar_fallback": cols.append(SALMON)
+                elif tag == rows[0]["tag"]: cols.append(V3 if "v3" in tag or "accum" in tag else GOLD)
+                elif sp <= 1.05: cols.append(GREY)
+                else: cols.append(GOLD)
+        V3LOCAL = "#b8742a"
+        yb = np.arange(len(labs))
+        ax.set_facecolor(CREAM)
+        for s in ("top","right"): ax.spines[s].set_visible(False)
+        ax.barh(yb, vals, color=cols, edgecolor=CARD_EC, linewidth=0.9, zorder=3)
+        for i, (x, v) in enumerate(zip(rows, vals)):
+            t = "blocked" if x["speedup"] is None else (f"{v:.2f}×" + ("  (scalar)" if x["lowering"]=="scalar_fallback" else ""))
+            ax.text((v if v else 0)+0.15, i, t, va="center", fontsize=8.4, fontweight="bold",
+                    color=("#999" if x["speedup"] is None else (SALMON if x["lowering"]=="scalar_fallback" else INK)))
+        if XNN[M]:
+            ax.axvline(XNN[M], color=STEEL, ls=":", lw=1.5)
+            ax.text(XNN[M], len(labs)-0.4, "XNNPACK\n13.65×", fontsize=8, color=STEEL, ha="center", fontweight="bold")
+        ax.axvline(1.0, color="#999", lw=1, ls="--")
+        ax.set_yticks(yb); ax.set_yticklabels(labs, fontsize=8.6); ax.invert_yaxis()
+        ax.set_xlabel("whole-model speedup vs baseline (×)")
+        win = rows[0]
+        ax.set_title(f"{M} — winner: {win['tag']} ({win['speedup']:.2f}×)", loc="left", color=INK, fontsize=12, pad=8)
+        ax.set_xlim(0, max(max(vals)*1.18, 2))
+    B = "beam_rvv_v2"
+    fig.suptitle(f"Faithful whole-model beam ({B}) — every candidate optimization ranked per model on K1",
+                 fontsize=13, fontweight="bold", y=1.0)
+    fig.text(0.5, -0.03,
+             "Figure E:  The beam re-run on REAL driving examples (not the stale single-64³ v1).  Each candidate "
+             "optimization measured whole-model on K1 (cos-gated).  The best kernel is per-model — v3 wins bitvla\n"
+             "(16.77×, beats XNNPACK), accum-resident-wholemodel wins openvla (4.97×).  vfmacc_contraction regresses "
+             "(scalar fallback, not whole-model-safe); lmul is ~no-op; v3+activation is composition-blocked.",
+             ha="center", fontsize=9.2, color=INK)
+    fig.tight_layout(rect=[0,0,1,0.97])
+    for ext in ("png","svg"):
+        fig.savefig(OUT / f"beam_rvv_v2_ranking.{ext}", bbox_inches="tight", dpi=160)
+    print("wrote", OUT / "beam_rvv_v2_ranking.png")
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     fig_e2e()
     fig_crossover()
     fig_progression()
     fig_opt_effects()
+    fig_beam_ranking()

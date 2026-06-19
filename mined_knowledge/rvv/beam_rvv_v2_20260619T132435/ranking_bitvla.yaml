@@ -1,0 +1,119 @@
+model: bitvla_fp32_consistent
+ranked:
+- tag: v3_plus_lmul
+  features:
+  - accumulator_resident_microkernel_v3
+  - lmul_widen_n
+  speedup: 16.771
+  lowering: vectorized
+  cos: 0.9999945759773254
+  min_wall_s: 0.1506
+  status: pass
+  blocker: null
+- tag: microkernel_v3
+  features:
+  - accumulator_resident_microkernel_v3
+  speedup: 16.734
+  lowering: vectorized
+  cos: 0.9999945759773254
+  min_wall_s: 0.1509
+  status: pass
+  blocker: null
+- tag: tiled_plus_lmul
+  features:
+  - fused_vfmacc_tiled
+  - lmul_widen_n
+  speedup: 9.202
+  lowering: vectorized
+  cos: 0.9999945759773254
+  min_wall_s: 0.2744
+  status: pass
+  blocker: null
+- tag: matmul_only
+  features:
+  - fused_vfmacc_tiled
+  speedup: 9.115
+  lowering: vectorized
+  cos: 0.9999945759773254
+  min_wall_s: 0.277
+  status: pass
+  blocker: null
+- tag: accum_wholemodel
+  features:
+  - accumulator_resident_wholemodel
+  speedup: 8.103
+  lowering: vectorized
+  cos: 0.9999945759773254
+  min_wall_s: 0.3116
+  status: pass
+  blocker: null
+- tag: accum_ntail
+  features:
+  - accumulator_resident_ntail
+  speedup: 7.755
+  lowering: vectorized
+  cos: 0.9999945759773254
+  min_wall_s: 0.3256
+  status: pass
+  blocker: null
+- tag: lmul_widen
+  features:
+  - lmul_widen_n
+  speedup: 1.038
+  lowering: vectorized
+  cos: 0.9999945759773254
+  min_wall_s: 2.4335
+  status: pass
+  blocker: null
+- tag: baseline
+  features: []
+  speedup: 1.0
+  lowering: vectorized
+  cos: 0.9999945759773254
+  min_wall_s: 2.5249
+  status: pass
+  blocker: null
+- tag: act_alone
+  features:
+  - vectorized_transcendental_activation
+  speedup: 0.998
+  lowering: vectorized
+  cos: 0.9999945759773254
+  min_wall_s: 2.5304
+  status: pass
+  blocker: null
+- tag: vfmacc_contraction
+  features:
+  - fused_vfmacc_contraction
+  speedup: 0.754
+  lowering: scalar_fallback
+  cos: 0.9999945759773254
+  min_wall_s: 3.3495
+  status: pass
+  blocker: null
+- tag: act_plus_matmul
+  features:
+  - vectorized_transcendental_activation
+  - fused_vfmacc_tiled
+  speedup: null
+  lowering: null
+  cos: null
+  min_wall_s: null
+  status: not_run
+  blocker: 'composition_error: cannot compose multiple full-schedule-replacement features
+    [''fused_vfmacc_tiled'', ''vectorized_transcendental_activation'']: each emits
+    a complete transform schedule and would clobber the others. Enable the single
+    composed feature that carries all clamps inherent (e.g. accumulator_resident_wholemodel)'
+- tag: v3_plus_act
+  features:
+  - accumulator_resident_microkernel_v3
+  - vectorized_transcendental_activation
+  speedup: null
+  lowering: null
+  cos: null
+  min_wall_s: null
+  status: not_run
+  blocker: 'composition_error: cannot compose multiple full-schedule-replacement features
+    [''accumulator_resident_microkernel_v3'', ''vectorized_transcendental_activation'']:
+    each emits a complete transform schedule and would clobber the others. Enable
+    the single composed feature that carries all clamps inherent (e.g. accumulator_res'
