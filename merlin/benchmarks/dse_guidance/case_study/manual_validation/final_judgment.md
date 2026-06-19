@@ -26,6 +26,14 @@ corpus — K∈{4,5,7,8,10}; the flow/diffusion models carry the action latent (
 state), the autoregressive models carry a static KV cache as an explicit `scf.for` iter_arg. See
 `loop_preserving_recovery.csv` (11 rows) and the per-model wrappers under `p21_loop_preserving/`.
 
+**P22 follow-on (additive, flat corpus untouched):** (A) deployment-real magnitudes extended to the
+standard decoder-LLMs whose config is fully sourced — `real_config_magnitudes.csv` now covers 6 models
+(tiny_llama composes to exactly 1.1 B = TinyLlama-1.1B; DiT/diffusion + bitvla omitted, no guessed
+fields). (B) `loop_aware_contract.csv` joins the IR loop facts (K, repeated region, resident-eligible vs
+loop-carried operands) with the flat-capture weight bytes into one per-workload contract — the avoidable
+reload (`resident_weight_bytes × (K−1)`) is now IR-backed (K from `scf.for`, weights proven
+loop-invariant). (C) `residency_from_ir.csv` (all 11). Verifier 682/682.
+
 | result / plot | class | what it gets right | what it gets wrong / caveat | answers a DSE decision? |
 |---|---|---|---|---|
 | **capture-fidelity matrix** (+ erasure evidence) | **main-slide** | the central result: what export/lowering erase (loop/KV/low-bit) vs preserve (shapes/dtype); now demonstrated from IR (scf.for only in smolvla = gather artifact; no low-bit types) | attention row must say "recovered (re-parsed from generics)", not erased | yes — sets which axes a DSE tool can even ask about |

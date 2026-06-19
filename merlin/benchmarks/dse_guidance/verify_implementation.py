@@ -1588,6 +1588,26 @@ def verify_p21(IM) -> None:
     p13check(res_ok,
              f"[P21] residency-from-IR: loop-invariant (resident-eligible) operands re-derived from the "
              f"scf.for region boundary for all {len(present)} captures + artifact matches ({res_ok})")
+    # P22 GAP-B: the loop-aware contract synthesis reconciles with loop_recovery + residency_from_ir
+    # (additive; the flat artifacts are untouched). Re-derive each joined field independently.
+    laf = CS / "loop_aware_contract.csv"
+    la_ok = laf.is_file()
+    if la_ok:
+        lar = {r["workload"]: r for r in _csv.DictReader(_io.StringIO(laf.read_text()))}
+        for w in present:
+            lr = residency_from_ir(loop_dir / w / "model.mlir", w)
+            lrec = __import__("merlin.dse_guidance.loop_recovery", fromlist=["recover_loop"]).recover_loop(
+                loop_dir / w / "model.mlir", w)
+            r = lar.get(w, {})
+            wb = int(r.get("resident_weight_bytes", -1))
+            la_ok = la_ok and r and int(r["K_ir"]) == lrec.K \
+                and int(r["repeated_region_ops"]) == lrec.repeated_region_op_count \
+                and int(r["n_resident_eligible_operands"]) == lr.n_loop_invariant_operands \
+                and int(r["avoidable_reload_bytes"]) == wb * max((lrec.K or 0) - 1, 0)
+    p13check(la_ok,
+             f"[P22] loop-aware contract: synthesis reconciles with loop_recovery + residency_from_ir "
+             f"(K, repeated region, resident-eligible operands, avoidable_reload=wb*(K-1)) for all "
+             f"{len(present)} captures ({la_ok})")
     # P21 S2/S3: deployment-real magnitudes (config-exact composition) + KV sizing with IR cross-check
     from merlin.dse_guidance import real_config as RC
     # 1. independent re-derivation of openVLA = Llama-2-7B: 32 * (4*4096^2 + 3*4096*11008) + embeds

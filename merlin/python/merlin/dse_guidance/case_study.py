@@ -888,6 +888,47 @@ def residency_from_ir_csv() -> str:
     return _csv(rows, _RESIDENCY_COLS) if rows else ""
 
 
+_LOOP_AWARE_COLS = ["workload", "K_ir", "repeated_region_ops", "loop_carried_roles",
+                    "n_resident_eligible_operands", "n_loop_carried", "flat_n_matmuls",
+                    "resident_weight_bytes", "avoidable_reload_bytes", "kv_cache_bytes_ir",
+                    "evidence"]
+
+
+def loop_aware_contract_csv() -> str:
+    """P22 GAP-B: ADDITIVE synthesis joining the IR-recovered loop facts (K, repeated region,
+    loop-carried state from loop_recovery; resident-eligible vs carried operands from
+    residency_from_ir) with the flat-capture contract facts (matmul count + resident weight bytes
+    from attribution). The avoidable reload (resident_weight_bytes x (K-1)) is now IR-BACKED: K is the
+    scf.for trip count and the weights are proven loop-invariant. Does NOT touch any flat artifact.
+    '' when no loop-preserving captures are present."""
+    from merlin.dse_guidance.loop_recovery import recover_loop, residency_from_ir
+    bench = paths.merlin_dir() / "benchmarks" / "dse_guidance"
+    loop_dir = bench / "recaptures_loop"
+    if not loop_dir.is_dir():
+        return ""
+    rows = []
+    for w in sorted(p.name for p in loop_dir.glob("*") if (p / "model.mlir").is_file()):
+        lr = recover_loop(loop_dir / w / "model.mlir", w)
+        rc = residency_from_ir(loop_dir / w / "model.mlir", w)
+        if not lr.present:
+            continue
+        flat = _recap_dir(w)
+        recs = ATTR.extract_matmuls(str(flat)) if (flat / "model.mlir").is_file() else ()
+        resident_wb = sum(r.weight_bytes for r in recs)
+        k = lr.K or 0
+        rows.append({
+            "workload": w, "K_ir": k, "repeated_region_ops": lr.repeated_region_op_count,
+            "loop_carried_roles": ",".join(c.role for c in lr.carried_state),
+            "n_resident_eligible_operands": rc.n_loop_invariant_operands,
+            "n_loop_carried": rc.n_loop_carried, "flat_n_matmuls": len(recs),
+            "resident_weight_bytes": resident_wb,
+            "avoidable_reload_bytes": resident_wb * max(k - 1, 0),
+            "kv_cache_bytes_ir": lr.kv_cache_bytes if lr.kv_cache_bytes else "n/a",
+            "evidence": "recovered_from_ir (loop facts + residency) x attribution (weight bytes)",
+        })
+    return _csv(rows, _LOOP_AWARE_COLS) if rows else ""
+
+
 def run_case_study(out_dir) -> dict:
     """Analyze all available recaptured workloads; write the cross-workload artifacts."""
     from pathlib import Path
@@ -1017,6 +1058,9 @@ def run_case_study(out_dir) -> dict:
     rescsv = residency_from_ir_csv()         # P21 GAP-C: IR-proven residency split
     if rescsv:
         Artifact("residency_from_ir.csv", rescsv).write(out)
+    lacsv = loop_aware_contract_csv()        # P22 GAP-B: loop facts x flat contract (additive synthesis)
+    if lacsv:
+        Artifact("loop_aware_contract.csv", lacsv).write(out)
     # P21 S2/S3: deployment-real magnitudes (depth x n_layers, config-exact) + KV sizing
     from merlin.dse_guidance import real_config as RC
     _loopdir = paths.merlin_dir() / "benchmarks" / "dse_guidance" / "recaptures_loop"

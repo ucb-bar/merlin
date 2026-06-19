@@ -1,0 +1,12 @@
+workload,K_ir,repeated_region_ops,loop_carried_roles,n_resident_eligible_operands,n_loop_carried,flat_n_matmuls,resident_weight_bytes,avoidable_reload_bytes,kv_cache_bytes_ir,evidence
+bitvla,7,742,"counter,counter,token_buffer,kv_cache,kv_cache",369,5,15,5767168,34603008,79872,recovered_from_ir (loop facts + residency) x attribution (weight bytes)
+groot_n1d7,4,5107,"counter,latent",2459,2,18,306708480,920125440,n/a,recovered_from_ir (loop facts + residency) x attribution (weight bytes)
+molmoact,8,1256,"counter,counter,token_buffer,kv_cache,kv_cache",572,5,17,3787456512,26512195584,262144,recovered_from_ir (loop facts + residency) x attribution (weight bytes)
+openvla,7,597,"counter,counter,token_buffer,kv_cache,kv_cache",276,5,26,18546688,111280128,221184,recovered_from_ir (loop facts + residency) x attribution (weight bytes)
+pi05,10,6208,"counter,latent",2674,2,777,14172110848,127548997632,n/a,recovered_from_ir (loop facts + residency) x attribution (weight bytes)
+rdt,5,641,"counter,latent,latent",324,3,20,391118848,1564475392,n/a,recovered_from_ir (loop facts + residency) x attribution (weight bytes)
+rdt2,5,1155,"counter,latent",581,2,23,301268992,1205075968,n/a,recovered_from_ir (loop facts + residency) x attribution (weight bytes)
+small_llama,7,557,"counter,counter,token_buffer,kv_cache,kv_cache",297,5,15,1712128,10272768,30720,recovered_from_ir (loop facts + residency) x attribution (weight bytes)
+smolvla,10,5179,"counter,latent",2437,2,106,457739264,4119653376,n/a,recovered_from_ir (loop facts + residency) x attribution (weight bytes)
+tiny_llama,7,754,"counter,counter,token_buffer,kv_cache,kv_cache",327,5,15,614465536,3686793216,61440,recovered_from_ir (loop facts + residency) x attribution (weight bytes)
+xr0,5,849,"counter,latent",476,2,19,173412352,693649408,n/a,recovered_from_ir (loop facts + residency) x attribution (weight bytes)
