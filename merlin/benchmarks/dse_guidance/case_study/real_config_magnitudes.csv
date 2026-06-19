@@ -1,4 +1,7 @@
 workload,source,n_stacks,total_layers,per_layer_gemm_macs_top_stack,total_gemm_params,weight_bytes_bf16,weight_bytes_int8,gemm_macs_per_token,kv_cache_bytes_bf16,kv_seq,K,evidence
+molmoact,extracted from MolmoActLlmConfig() defaults,1,48,233046016,12276203520,24552407040,12276203520,11186208768,402653184,4096,8,recovered_from_model_config
 openvla,published Llama-2-7B LM (recapture reduces to 2L/128),1,32,202375168,6738673664,13477347328,6738673664,6476005376,137887744,263,7,recovered_from_model_config
 pi05,extracted from Pi0Config(pi05=True) instantiated model,2,36,110100480,2819883008,5639766016,2819883008,311427072,3686400,200,10,recovered_from_model_config
+small_llama,synthetic toy config (fully known; not a deployment-scale model),1,2,197632,460800,921600,460800,395264,65536,64,7,recovered_from_model_config
 smolvla,extracted from SmolVLA instantiated model config,3,60,9830400,575397888,1150795776,575397888,100270080,2048000,50,10,recovered_from_model_config
+tiny_llama,extracted from AutoConfig TinyLlama/TinyLlama-1.1B-Chat-v1.0,1,22,44040192,1099956224,2199912448,1099956224,968884224,46137344,2048,7,recovered_from_model_config

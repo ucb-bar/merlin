@@ -129,6 +129,25 @@ REAL_GEOMETRY: dict[str, RealGeometry] = {
         vocab=32064, embed_hidden=4096, decode_seq=263, K=7,
         tied_embeddings=False,
         note="autoregressive: 7 action tokens decoded; prompt ~256 vision+text tokens."),
+    # --- P22 GAP-A: standard decoder-LLM stacks, geometry extracted from the real config object
+    # (no guessed fields). Only models the standard q/k/v/o+gate/up/down Stack represents exactly are
+    # added; DiT/diffusion (rdt/rdt2/groot/xr0) and bitvla (real deployment config not sourceable) are
+    # intentionally omitted rather than misrepresented. decode_seq = real max_position_embeddings.
+    "tiny_llama": RealGeometry(
+        "tiny_llama", "extracted from AutoConfig TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        stacks=[Stack("tinyllama_lm", 22, 2048, 5632, 32, 4, 64, "decode_lm", carries_decode_kv=True)],
+        vocab=32000, embed_hidden=2048, decode_seq=2048, K=7, tied_embeddings=False,
+        note="TinyLlama-1.1B decoder; decode_seq = max_position_embeddings (2048)."),
+    "molmoact": RealGeometry(
+        "molmoact", "extracted from MolmoActLlmConfig() defaults",
+        stacks=[Stack("molmoact_lm", 48, 3584, 18944, 28, 4, 128, "decode_lm", carries_decode_kv=True)],
+        vocab=152064, embed_hidden=3584, decode_seq=4096, K=8, tied_embeddings=False,
+        note="MolmoAct LLM; decode_seq = max_position_embeddings (4096)."),
+    "small_llama": RealGeometry(
+        "small_llama", "synthetic toy config (fully known; not a deployment-scale model)",
+        stacks=[Stack("small_llama_lm", 2, 128, 344, 4, 4, 32, "decode_lm", carries_decode_kv=True)],
+        vocab=256, embed_hidden=128, decode_seq=64, K=7, tied_embeddings=False,
+        note="SYNTHETIC toy decoder (random init); included for completeness, not deployment-real."),
 }
 
 _MAGNITUDE_COLS = ["workload", "source", "n_stacks", "total_layers", "per_layer_gemm_macs_top_stack",
