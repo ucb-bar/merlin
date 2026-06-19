@@ -20,7 +20,7 @@ for d in "$RUNS"/*/; do
   unk=$(echo "$meta" | grep -oE 'unknown_operands=[0-9]+' | cut -d= -f2)
   if ! clang -O2 -w -I"$OUT" "$OUT/gemmini_arc_replay.c" "$OUT/gemmini.o" -o "$OUT/rbin" 2>/tmp/cc.e; then
     printf "%-32s %-14s\n" "$cap" "CC-ERR"; continue; fi
-  out=$(timeout 120 "$OUT/rbin" 2>&1 | tail -1)
+  out=$(timeout 120 "$OUT/rbin" 2>&1)   # full output (verdict line is no longer last — telemetry follows)
   cyc=$(echo "$out" | grep -oE 'cycles=[0-9]+' | cut -d= -f2)
   if echo "$out" | grep -q 'BIT-EXACT PASS'; then verd=PASS; pass=$((pass+1));
   elif echo "$out" | grep -q MISMATCH; then verd=MISMATCH;
