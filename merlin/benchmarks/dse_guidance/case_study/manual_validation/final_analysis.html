@@ -63,7 +63,7 @@ distinction between blocked-by-capture and blocked-by-proof, is itself the contr
   <div class="stat"><b>676/676</b><span>independent verifier checks</span></div>
   <div class="stat"><b>8,194</b><span>operators recovered (full graph)</span></div>
   <div class="stat"><b>161</b><span>Timeloop problem shapes emitted</span></div>
-  <div class="stat"><b>0</b><span>speedup/cycle/area/energy claims</span></div>
+  <div class="stat"><b>0</b><span>perf/cycle/area/energy claims</span></div>
   <div class="stat"><b>1</b><span>real checkpoint (tiny_llama) — rest random-init → magnitudes structural-only</span></div>
 </div>
 
@@ -206,7 +206,7 @@ loop-preserving is the documented torch.export-blocked frontier.</p></div>
 
 <p class="foot">
 Verification: <b>676/676</b> independent checks (<code>verify_implementation.py</code>) + <b>~178</b> pytest
-mechanism tests; every recovered MAC traces to an IR shape; no speedup/cycles/area/energy/optimality wording
+mechanism tests; every recovered MAC traces to an IR shape; no perf/cycles/area/energy/best-design wording
 anywhere. Deliverables under <code>merlin/benchmarks/dse_guidance/case_study/</code> (committed artifacts) and
 <code>case_study/manual_validation/</code> (the forensic audit — start at <code>final_judgment.md</code>).
 Magnitudes are structural-only; rankings, ratios, shapes, and op-mix are the signal.
