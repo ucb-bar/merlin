@@ -1,0 +1,41 @@
+ranking,rank,workload,op_index,prov_fqn,op_kind,shape_class,M,N,K,macs,mac_fraction_of_workload,rhs_weight_bytes,best_tile_padding_waste,is_tail_heavy,region,avoidable_weight_reload
+macs,1,rdt,15,,matmul,squareish_gemm,4096,4096,2048,34359738368,0.8706,33554432,0.0,False,,
+macs,2,pi05,493,"model.paligemma_with_expert.paligemma.model.language_model.layers.slice(None, 18, None).0.mlp.gate_proj",matmul,wide_skinny,968,16384,2048,32480690176,0.0151,134217728,0.0,False,,
+macs,3,pi05,494,"model.paligemma_with_expert.paligemma.model.language_model.layers.slice(None, 18, None).0.mlp.up_proj",matmul,wide_skinny,968,16384,2048,32480690176,0.0151,134217728,0.0,False,,
+macs,4,pi05,495,"model.paligemma_with_expert.paligemma.model.language_model.layers.slice(None, 18, None).0.mlp.down_proj",matmul,projection_like,968,2048,16384,32480690176,0.0151,134217728,0.0,False,,
+macs,5,pi05,500,"model.paligemma_with_expert.paligemma.model.language_model.layers.slice(None, 18, None).1.mlp.gate_proj",matmul,wide_skinny,968,16384,2048,32480690176,0.0151,134217728,0.0,False,,
+macs,6,pi05,501,"model.paligemma_with_expert.paligemma.model.language_model.layers.slice(None, 18, None).1.mlp.up_proj",matmul,wide_skinny,968,16384,2048,32480690176,0.0151,134217728,0.0,False,,
+macs,7,pi05,502,"model.paligemma_with_expert.paligemma.model.language_model.layers.slice(None, 18, None).1.mlp.down_proj",matmul,projection_like,968,2048,16384,32480690176,0.0151,134217728,0.0,False,,
+macs,8,pi05,507,"model.paligemma_with_expert.paligemma.model.language_model.layers.slice(None, 18, None).2.mlp.gate_proj",matmul,wide_skinny,968,16384,2048,32480690176,0.0151,134217728,0.0,False,,
+macs,9,pi05,508,"model.paligemma_with_expert.paligemma.model.language_model.layers.slice(None, 18, None).2.mlp.up_proj",matmul,wide_skinny,968,16384,2048,32480690176,0.0151,134217728,0.0,False,,
+macs,10,pi05,509,"model.paligemma_with_expert.paligemma.model.language_model.layers.slice(None, 18, None).2.mlp.down_proj",matmul,projection_like,968,2048,16384,32480690176,0.0151,134217728,0.0,False,,
+weight_bytes,1,molmoact,2,blocks.0.mlp.ff_proj,matmul,wide_skinny,8,37888,3584,1086324736,0.129,543162368,0.0,True,,
+weight_bytes,2,molmoact,6,blocks.1.mlp.ff_proj,matmul,wide_skinny,8,37888,3584,1086324736,0.129,543162368,0.0,True,,
+weight_bytes,3,molmoact,10,blocks.2.mlp.ff_proj,matmul,wide_skinny,8,37888,3584,1086324736,0.129,543162368,0.0,True,,
+weight_bytes,4,molmoact,14,blocks.3.mlp.ff_proj,matmul,wide_skinny,8,37888,3584,1086324736,0.129,543162368,0.0,True,,
+weight_bytes,5,molmoact,19,blocks.0.mlp.ff_proj,matmul,gemv_like,1,37888,3584,135790592,0.0161,543162368,7.0,True,,
+weight_bytes,6,molmoact,23,blocks.1.mlp.ff_proj,matmul,gemv_like,1,37888,3584,135790592,0.0161,543162368,7.0,True,,
+weight_bytes,7,molmoact,27,blocks.2.mlp.ff_proj,matmul,gemv_like,1,37888,3584,135790592,0.0161,543162368,7.0,True,,
+weight_bytes,8,molmoact,31,blocks.3.mlp.ff_proj,matmul,gemv_like,1,37888,3584,135790592,0.0161,543162368,7.0,True,,
+weight_bytes,9,molmoact,3,blocks.0.mlp.ff_out,matmul,wide_skinny,8,3584,18944,543162368,0.0645,271581184,0.0,True,,
+weight_bytes,10,molmoact,7,blocks.1.mlp.ff_out,matmul,wide_skinny,8,3584,18944,543162368,0.0645,271581184,0.0,True,,
+padding_waste,1,rdt,1,,matmul,gemv_like,1,2048,256,524288,0.0,2097152,7.0,True,,
+padding_waste,2,rdt,2,,matmul,gemv_like,1,2048,2048,4194304,0.0001,16777216,7.0,True,,
+padding_waste,3,rdt,3,,matmul,gemv_like,1,2048,256,524288,0.0,2097152,7.0,True,,
+padding_waste,4,rdt,4,,matmul,gemv_like,1,2048,2048,4194304,0.0001,16777216,7.0,True,,
+padding_waste,5,openvla,14,lm_head,matmul,gemv_like,1,512,128,65536,0.0043,262144,7.0,True,,
+padding_waste,6,openvla,15,,matmul,gemv_like,1,512,128,65536,0.0043,262144,7.0,True,,
+padding_waste,7,openvla,16,,matmul,gemv_like,1,512,128,65536,0.0043,262144,7.0,True,,
+padding_waste,8,openvla,17,,matmul,gemv_like,1,512,128,65536,0.0043,262144,7.0,True,,
+padding_waste,9,openvla,18,,matmul,gemv_like,1,128,512,65536,0.0043,262144,7.0,True,,
+padding_waste,10,openvla,19,,matmul,gemv_like,1,256,128,32768,0.0021,131072,7.0,True,,
+avoidable_reload,1,molmoact,,,,,,,,,,3787456512,,,repeated_head,26512195584
+avoidable_reload,2,pi05,,,,,,,,,,1719926784,,,repeated_head,15479341056
+avoidable_reload,3,groot_n1d7,,,,,,,,,,2200436736,,,repeated_head,6601310208
+avoidable_reload,4,tiny_llama,,,,,,,,,,614465536,,,repeated_head,3686793216
+avoidable_reload,5,smolvla,,,,,,,,,,206126080,,,repeated_head,1855134720
+avoidable_reload,6,rdt,,,,,,,,,,393216000,,,repeated_head,1572864000
+avoidable_reload,7,rdt2,,,,,,,,,,309739520,,,repeated_head,1238958080
+avoidable_reload,8,xr0,,,,,,,,,,169086976,,,repeated_head,676347904
+avoidable_reload,9,bitvla,,,,,,,,,,5767168,,,repeated_head,34603008
+avoidable_reload,10,openvla,,,,,,,,,,3145728,,,repeated_head,18874368

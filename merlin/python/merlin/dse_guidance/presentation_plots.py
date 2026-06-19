@@ -30,10 +30,29 @@ def _rows(p: Path) -> list[dict]:
     return list(csv.DictReader(io.StringIO(p.read_text()))) if p.is_file() else []
 
 
+# muted academic pastel palette (matches final_analysis.html / the user's reference plots)
+PALETTE = ["#5e8db4", "#cf8a82", "#8fa674", "#d2a23f", "#9d7fae", "#7c9aa6", "#b08968"]
+_BG = "#faf7f1"
+
+
+def _pastel_cmap():
+    """A soft cream->sage->deep sequential colormap (replaces viridis/YlGnBu)."""
+    from matplotlib.colors import LinearSegmentedColormap
+    return LinearSegmentedColormap.from_list(
+        "merlin_pastel", ["#f4efe6", "#d9d2bd", "#9caf88", "#5e8db4", "#3a5f7c"])
+
+
 def _style():
     import matplotlib.pyplot as plt
-    plt.rcParams.update({"figure.figsize": (8, 4.5), "font.size": 9, "axes.grid": True,
-                         "grid.alpha": 0.3, "axes.spines.top": False, "axes.spines.right": False})
+    from cycler import cycler
+    plt.rcParams.update({
+        "figure.figsize": (8, 4.5), "font.size": 9, "font.family": "serif",
+        "figure.facecolor": _BG, "axes.facecolor": _BG, "savefig.facecolor": _BG,
+        "axes.grid": True, "grid.alpha": 0.25, "grid.color": "#b9ad97",
+        "axes.spines.top": False, "axes.spines.right": False,
+        "axes.edgecolor": "#b9ad97", "axes.labelcolor": "#2f2a23", "axes.titlecolor": "#2f2a23",
+        "text.color": "#2f2a23", "xtick.color": "#5c5446", "ytick.color": "#5c5446",
+        "axes.prop_cycle": cycler(color=PALETTE)})
 
 
 def _save(fig, out: Path):
@@ -103,7 +122,7 @@ def _r_primitive_coverage(cs, facts, ax):
     widx = {w: j for j, w in enumerate(wls)}
     for r in rows:
         mat[idx[r["primitive"]]][widx[r["workload"]]] = float(r["coverage_under_10pct"])
-    im = ax.imshow(mat, aspect="auto", cmap="viridis", vmin=0, vmax=1)
+    im = ax.imshow(mat, aspect="auto", cmap=_pastel_cmap(), vmin=0, vmax=1)
     ax.set_xticks(range(len(wls)), wls, rotation=20)
     ax.set_yticks(range(len(prims)), prims, fontsize=7)
     ax.set_title("Primitive x workload coverage (<=10% pad waste)")
@@ -138,7 +157,7 @@ def _r_boundary_heatmap(cs, facts, ax):
     rows = sorted(rows, key=lambda r: -int(r["boundary_pressure_score"]))[:14]
     abst = [r["abstraction"] for r in rows]
     mat = [[score.get(r[lv], 0) for lv in levels] for r in rows]
-    im = ax.imshow(mat, aspect="auto", cmap="YlGnBu", vmin=0, vmax=4)
+    im = ax.imshow(mat, aspect="auto", cmap=_pastel_cmap(), vmin=0, vmax=4)
     ax.set_xticks(range(len(levels)), [lv.replace("_", "\n") for lv in levels], fontsize=6)
     ax.set_yticks(range(len(abst)), abst, fontsize=6)
     ax.set_title("Boundary placement: abstraction x level (status)")
@@ -238,7 +257,7 @@ def _r_decision_weight_residency(cs, facts, ax):
         kr = int(r["invocations"])
         ax.scatter([kr], [wb * kr], color=line.get_color(), zorder=5, s=18)
     ax.set_title("Decision: weight residency -> bytes moved vs loop count\n"
-                 "(solid=reload every step, dashed=resident; dot=configured/reference K)")
+                 "(solid=reload every step, dashed=resident; dot=IR-recovered K (scf.for trip count))")
     ax.set_xlabel("head loop count K")
     ax.set_ylabel("weight bytes moved")
     ax.set_yscale("log")
@@ -313,7 +332,7 @@ def _r_primitive_set_frontier(cs, facts, ax):
     for size, b in fr.get("best_by_size", {}).items():
         ax.scatter([b["macro"]], [b["worst"]], marker=markers.get(size, "s"), s=160, zorder=5,
                    label=f"best {size}-set")
-    ax.plot([0, 1], [0, 1], "--", color="#ccc", zorder=1)
+    ax.plot([0, 1], [0, 1], "--", color="#b9ad97", zorder=1)
     ax.set_xlabel("mean (macro) coverage")
     ax.set_ylabel("worst-workload coverage")
     ax.set_title("Primitive-set frontier (upper-right = broadly useful)")
@@ -335,7 +354,7 @@ def _r_operator_cumulative_mac(cs, facts, ax):
             acc += v
             cum.append(acc / tot)
         ax.plot(range(1, len(cum) + 1), cum, marker=".", label=w)
-    ax.axhline(0.9, ls="--", color="#ccc")
+    ax.axhline(0.9, ls="--", color="#b9ad97")
     ax.set_xlabel("top-k operators (by MACs)")
     ax.set_ylabel("cumulative MAC share")
     ax.set_title("How concentrated is compute? (steep = a few giant ops)")
@@ -356,7 +375,7 @@ def _r_boundary_necessity_matrix(cs, facts, ax):
     if not rows:
         return False
     mat = [[_NEC_RANK[r[w]] for w in wls] for r in rows]
-    im = ax.imshow(mat, aspect="auto", cmap="YlGnBu", vmin=0, vmax=4)
+    im = ax.imshow(mat, aspect="auto", cmap=_pastel_cmap(), vmin=0, vmax=4)
     ax.set_xticks(range(len(wls)), wls, rotation=20, fontsize=7)
     ax.set_yticks(range(len(rows)), [r["abstraction"] for r in rows], fontsize=6)
     for i, r in enumerate(rows):
@@ -521,7 +540,7 @@ def _r_visible_linear_fraction(cs, facts, ax):
     rows.sort(key=lambda r: float(r["visible_linear_fraction"]))
     wl = [r["workload"] for r in rows]
     frac = [float(r["visible_linear_fraction"]) for r in rows]
-    ax.barh(range(len(wl)), frac, color="#1f77b4")
+    ax.barh(range(len(wl)), frac, color=PALETTE[0])
     ax.set_yticks(range(len(wl)), wl, fontsize=6)
     ax.set_xlabel("visible_linear_fraction = linear / (linear + attention)")
     ax.set_xlim(0, 1.02)
@@ -537,9 +556,9 @@ def _r_workload_influence_loo_delta(cs, facts, ax):
         return False
     labels = [r["metric"].replace("_mac_fraction", "").replace("_", " ") for r in rows]
     vals = [r["max_loo_micro_delta"] for r in rows]
-    cols = ["#d62728" if r["winner_stable_magnitude_unstable"] == "yes" else "#1f77b4" for r in rows]
+    cols = [PALETTE[1] if r["winner_stable_magnitude_unstable"] == "yes" else PALETTE[0] for r in rows]
     ax.bar(range(len(rows)), vals, color=cols)
-    ax.axhline(0.2, ls="--", color="#888", label="magnitude-unstable threshold")
+    ax.axhline(0.2, ls="--", color="#b9ad97", label="magnitude-unstable threshold")
     ax.set_xticks(range(len(rows)), labels, rotation=20, fontsize=6)
     ax.set_ylabel("max leave-one-out micro change")
     ax.set_title("Workload influence (red = winner-stable but magnitude-unstable)")

@@ -1,0 +1,28 @@
+abstraction,workloads_supporting,n_workloads,workload_coverage,mac_coverage,byte_coverage,region_coverage,boundary_pressure_score,compiler_proof_status,overfit_risk
+resident_weight_object,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,15,unknown,low
+async_queue,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,14,assumed,low
+dma_engine,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,14,no_proof_axis,low
+event_token,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,14,no_proof_axis,low
+region_level_dispatch,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,14,no_proof_axis,low
+partial_sum_object,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,13,no_proof_axis,low
+bounded_loop_command,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,12,assumed,low
+loop_carried_state_handle,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,12,assumed,low
+multi_stream_dma_descriptor,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,12,no_proof_axis,low
+persistent_command_buffer,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,12,no_proof_axis,low
+prefetch_descriptor,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,12,no_proof_axis,low
+accumulator_commit,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,11,no_proof_axis,low
+accumulator_merge,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,11,no_proof_axis,low
+fused_dequant_matmul,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,11,no_proof_axis,low
+native_lowbit_matmul,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,11,no_proof_axis,low
+packed_lowbit_tensor,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,11,unknown,low
+resident_packed_weight_object,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,11,no_proof_axis,low
+scale_object,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,11,unknown,low
+skinny_gemm_or_gemv_engine,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0,10,1.0,1.0,1.0,1.0,11,no_proof_axis,low
+fused_requant_epilogue,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; xr0,9,0.9,0.9996,0.9544,0.8824,13,no_proof_axis,medium
+epilogue_requant_unit,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; xr0,9,0.9,0.9996,0.9544,0.8824,12,no_proof_axis,medium
+producer_consumer_queue,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla,8,0.8,0.9991,0.948,0.7647,12,no_proof_axis,medium
+double_buffered_action_chunk,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla,8,0.8,0.9991,0.948,0.7647,11,no_proof_axis,medium
+matrix_engine,pi05; rdt; smolvla,3,0.3,0.9863,0.5735,0.2941,6,no_proof_axis,medium
+decode_loop_controller,bitvla; molmoact; openvla; tiny_llama,4,0.4,0.004,0.327,0.4706,7,no_proof_axis,medium
+kv_cache_object,bitvla; molmoact; openvla; tiny_llama,4,0.4,0.004,0.327,0.4706,5,no_proof_axis,medium
+prefix_kv_object,bitvla; molmoact; openvla; tiny_llama,4,0.4,0.004,0.327,0.4706,5,no_proof_axis,medium

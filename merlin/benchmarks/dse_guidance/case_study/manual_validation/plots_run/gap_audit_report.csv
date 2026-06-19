@@ -1,0 +1,7 @@
+gap_id,scope,category,target,description,avoidable,status,required_input
+G000,all,inherent_limit,real deployment K + control rate,K/control are published config reference values (recovered_from_model_config),False,scoped,a deployment/runtime trace giving actual loop counts + control frequency
+G001,all,inherent_limit,per-unit throughput / latency / area / energy,Merlin refuses to estimate these for unbuilt hardware,False,scoped,a candidate design YAML (unit shapes + a cost model); then the future DSE tool computes them
+G002,all,inherent_limit,KV / attention structure + true data deps at loop level,attention is lowered into matmul projections; KV unavailable,False,scoped,"a Level-2 loop-preserving, attention-not-lowered capture"
+G003,all,inherent_limit,packed low-bit layout + scales for the recaptured models,the recaptures are dequantized f32; the quantized zoo has low-bit storage for OTHER models,False,scoped,a low-bit (packed weights + scale metadata) capture of the recaptured models
+G004,all,inherent_limit,fp8 / int4 accuracy gates,int8 W8A8 is measured (real); fp8/int4 are unavailable,False,scoped,per-format accuracy runs (W8A8 already done) for fp8 / int4
+G005,all,inherent_limit,real-magnitude weights,"captures are small random-init instances (structure real, magnitudes small)",False,scoped,full-size (non-random-init) captures of the same architectures

@@ -1,0 +1,3 @@
+family,n_workloads,workloads,linear_gemm_macs,attention_macs,visible_linear_fraction,n_attention_ops,n_softmax,n_norm
+iterative_denoise,6,groot_n1d7; pi05; rdt; rdt2; smolvla; xr0,2318598675968,567247468032,0.8034,387,504,1950
+token_decode,4,bitvla; molmoact; openvla; tiny_llama,9397534720,0,1.0,0,60,0
