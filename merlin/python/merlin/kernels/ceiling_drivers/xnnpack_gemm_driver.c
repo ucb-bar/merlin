@@ -68,9 +68,15 @@ int main(int argc, char* argv[]) {
       Cref[m * N + n] = acc;
     }
 
-  // ---- PRE-PACK weights (goi -> streamed panels) -- OUTSIDE timing -------
+  // ---- PRE-PACK weights (goi -> streamed panels) -------------------------
+  // Default (inner-compute): pack is OUTSIDE timing. With -DPACK_INCLUDED the
+  // pack is moved INSIDE the timed region (realistic end-use: pack + compute).
   // For each N-tile of NR lanes: bias[NR], then for each k a panel of NR
   // weights W[tile*NR + lane, k]. (N % NR == 0 here: N=64, NR=16.)
+#ifdef PACK_INCLUDED
+  unsigned long c0 = read_csr(mcycle);
+  unsigned long i0 = read_csr(minstret);
+#endif
   {
     size_t off = 0;
     for (size_t n0 = 0; n0 < (size_t)N; n0 += NR) {
@@ -93,8 +99,10 @@ int main(int argc, char* argv[]) {
   const size_t cn_stride = NR * sizeof(float);
 
   // ---- TIMED region: M kernel calls (mr=1 each), packing already done ----
+#ifndef PACK_INCLUDED
   unsigned long c0 = read_csr(mcycle);
   unsigned long i0 = read_csr(minstret);
+#endif
   for (int m = 0; m < M; m++) {
     xnn_f32_gemm_ukernel_1x4v__rvv(
         1, (size_t)N, (size_t)K * sizeof(float),

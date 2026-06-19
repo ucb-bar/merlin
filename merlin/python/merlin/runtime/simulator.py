@@ -87,6 +87,8 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
                         t = t.add_bias(env[bias_name])
                 elif stage == "requant":
                     t = t.requant(shift)
+                elif stage == "acc_scale":
+                    t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
                 elif stage == "relu":
                     t = t.relu()
                 else:
@@ -108,8 +110,49 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
             metrics.cycles += 4
             trace.append({"name": "eviction", "object": handle, "count": 1})
 
+        elif op == "VECTOR_MAP":
+            # Elementwise combine of two equal-shape vectors + optional activation (SIMD family),
+            # or an identity copy (combine="identity") for pure data movement.
+            combine = attrs.get("combine", "add")
+            dst = ops["dst"]
+            if combine == "identity":
+                a = env[ops["lhs"]]
+                b = a
+                t = Tensor(a.shape, list(a.data), a.dtype)
+            else:
+                a, b = env[ops["lhs"]], env[ops["rhs"]]
+                t = a.ew_add(b) if combine == "add" else a.ew_mul(b)
+            for stage in attrs.get("activation", []):
+                if stage == "relu":
+                    t = t.relu()
+                else:
+                    raise SimulationError(f"unknown vector activation '{stage}'")
+            env[dst] = t
+            metrics.bytes_read += a.nbytes + b.nbytes
+            metrics.bytes_written += t.nbytes
+            metrics.bytes_moved += a.nbytes + b.nbytes + t.nbytes
+            metrics.cycles += len(t.data)
+            trace.append({"name": "vector_map", "object": dst, "count": len(t.data)})
+
+        elif op == "VREDUCE":
+            src, dst = env[ops["src"]], ops["dst"]
+            rop = attrs.get("op", "sum")
+            if rop != "sum":
+                raise SimulationError(f"unknown vector reduce '{rop}'")
+            t = src.reduce_sum()
+            env[dst] = t
+            metrics.bytes_read += src.nbytes
+            metrics.cycles += len(src.data)
+            trace.append({"name": "vector_reduce", "object": dst, "count": len(src.data)})
+
         else:
             raise SimulationError(f"unknown opcode '{op}'")
+
+    # Vector-family outputs are tensors declared with role "output" (matmul outputs come from
+    # COMMIT and are already collected above; this sweep is a no-op for those).
+    for name, spec in cb.get("tensors", {}).items():
+        if spec.get("role") == "output" and name in env and name not in outputs:
+            outputs[name] = env[name].to_list()
 
     return {"outputs": outputs, "metrics": metrics.as_dict(), "trace": trace}
 

@@ -112,6 +112,12 @@ def resolve_forward_args(model_dir: str | Path) -> list[np.ndarray]:
     for i, (shape, dt) in enumerate(sig):
         meta = man[str(i)]
         if meta["kind"] == "param":
+            # Quantized-subclass weights are stubbed in the blob (the fused fp32 weight ARG is
+            # dead -- the matmul consumes int8 int_data/scale via the qinner channel). Synthesize
+            # a zero buffer of the arg's true shape/dtype for the dead descriptor.
+            if meta.get("stub"):
+                args.append(np.zeros(shape, dtype=_np_dtype(dt)))
+                continue
             begin, end = hdr[meta["weight"]]["data_offsets"]
             store_dt = hdr[meta["weight"]].get("dtype")            # safetensors storage dtype
             if store_dt == "F8_E4M3":

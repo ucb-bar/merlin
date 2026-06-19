@@ -57,6 +57,11 @@ OURS_FORKS = (
     # pack cost — a microbench; the resident-weight/prepack-hoisted = pack-excluded number is in
     # output/kernels/ceiling/packing_result.md). Bit-exact at 32^3; faults at M>=48 (see notrun).
     ("ours_vfmacc_packed", ["vfmacc_packed"]),
+    # GENUINE transform-dialect accumulator-resident micro-kernel: the K-loop carries the C
+    # accumulator as a `vector` scf.for iter_arg (register-resident across K, NO per-K-tile
+    # memref.transfer/copy roundtrip) — the compiler-emitted answer to the gap the hand-written
+    # intrinsic_microkernel only demonstrated. Tile [MR=4,NR=16,KC=16].
+    ("ours_accum_resident", ["accumulator_resident_microkernel"]),
 )
 
 

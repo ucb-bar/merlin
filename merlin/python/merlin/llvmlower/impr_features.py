@@ -30,12 +30,21 @@ class ImprFeature:
     ``edit_schedule`` rewrites the transform-dialect schedule text (PATTERN at the schedule level
     that goes beyond what a hand-written ``schedule.mlir`` knob expresses). Either may be None.
     Both are pure functions (input -> new value); they must be deterministic.
+
+    ``schedule_replace`` flags an ``edit_schedule`` that IGNORES its input text and emits a full
+    replacement schedule (e.g. the tiled-vfmacc / accumulator-resident recipes whose structure
+    differs fundamentally from the tile+vectorize baseline). Two such features cannot COMPOSE — the
+    last one in sorted order would silently clobber the other's clamp — so ``apply_schedule`` refuses
+    to apply more than one full-replacement schedule feature at once (the composed, whole-model-safe
+    config is a SINGLE feature with all the clamps inherent). Additive edits (``schedule_replace`` =
+    False, e.g. ``lmul_widen_n``'s string substitution) layer freely on top of a replacement.
     """
     name: str
     action_class: str  # "PASS" | "HEURISTIC" | "PATTERN"
     description: str
     edit_pipeline: Callable[[list[str]], list[str]] | None = None
     edit_schedule: Callable[[str], str] | None = None
+    schedule_replace: bool = False
 
 
 _REGISTRY: dict[str, ImprFeature] = {}
@@ -81,14 +90,37 @@ def apply_pipeline(passes: list[str], features: frozenset[str]) -> list[str]:
     return out
 
 
+class CompositionError(ValueError):
+    """Two features both fully REPLACE the transform schedule -> they cannot compose (one would
+    silently clobber the other). The whole-model-safe composed config is a SINGLE feature with all
+    clamps inherent; raise instead of letting sorted order pick a winner."""
+
+
 def apply_schedule(schedule_text: str, features: frozenset[str]) -> str:
-    """Apply each enabled feature's schedule edit, in stable order. Empty -> unchanged text."""
+    """Apply each enabled feature's schedule edit so features COMPOSE rather than clobber.
+
+    Full-schedule-REPLACEMENT features (``schedule_replace=True``, e.g. the tiled-vfmacc /
+    accumulator-resident recipes whose ``edit_schedule`` ignores its input) are applied FIRST, and
+    at most ONE is allowed — two would make the result depend on sorted order, silently discarding
+    the other's clamp (the bug WORK-ITEM 2 fixes). Additive edits (``schedule_replace=False``, pure
+    text transforms like ``lmul_widen_n``) then layer on top in stable order. Empty -> unchanged text.
+    """
     if not features:
         return schedule_text
+    replacers = [get(n) for n in sorted(features)
+                 if get(n).edit_schedule is not None and get(n).schedule_replace]
+    if len(replacers) > 1:
+        raise CompositionError(
+            "cannot compose multiple full-schedule-replacement features "
+            f"{[f.name for f in replacers]}: each emits a complete transform schedule and would "
+            "clobber the others. Enable the single composed feature that carries all clamps "
+            "inherent (e.g. accumulator_resident_wholemodel) instead of stacking replacements.")
     out = schedule_text
-    for name in sorted(features):
+    if replacers:                              # the one replacement runs first (input ignored)
+        out = replacers[0].edit_schedule(out)
+    for name in sorted(features):              # then additive edits layer on top
         f = get(name)
-        if f.edit_schedule is not None:
+        if f.edit_schedule is not None and not f.schedule_replace:
             out = f.edit_schedule(out)
     return out
 
@@ -214,6 +246,7 @@ register(ImprFeature(
                 "M/N/K => .text bounded (no JAL +-1MB wall) and applicable to whole models. "
                 "Benchmarked vs the full-unroll fused_vfmacc_contraction.",
     edit_schedule=lambda _t: _VFMACC_TILED_SCHEDULE,
+    schedule_replace=True,
 ))
 
 
@@ -227,6 +260,7 @@ register(ImprFeature(
                 "body), K-as-loop, scoped-vectorize (whole-model-safe) tiled vfmacc. Correct + "
                 "bit-exact at 32/64/128; the whole-model-safe vfmacc for e2e.",
     edit_schedule=lambda _t: _VFMACC_TILED_SCHEDULE,
+    schedule_replace=True,
 ))
 
 
@@ -293,6 +327,7 @@ def _register_tiled_grid() -> list[str]:
                                 f"tile (inner body = MR*KC fma). Default-off tuning-grid feature.",
                     edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
                                    vfmacc_tiled_schedule(_MR, _NR, _KC)),
+                    schedule_replace=True,
                 ))
                 names.append(nm)
     return names
@@ -419,6 +454,7 @@ register(ImprFeature(
                 "transfers are UNIT-STRIDE contiguous (no strided vector.transfer). Register-tile "
                 "[4,16,16]. Default-off; baseline byte-identical.",
     edit_schedule=lambda _t: vfmacc_packed_schedule(4, 16, 16),
+    schedule_replace=True,
 ))
 
 
@@ -439,6 +475,7 @@ def _register_packed_grid() -> list[str]:
                     edit_pipeline=_packed_eliminate_empties,
                     edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
                                    vfmacc_packed_schedule(_MR, _NR, _KC)),
+                    schedule_replace=True,
                 ))
                 names.append(nm)
     return names
@@ -482,7 +519,8 @@ PACKED_GRID_NAMES: list[str] = _register_packed_grid()
 # Verified bit-exact + accumulator-resident (vector iter_arg, zero per-K memref roundtrip) on spike
 # at 32/64/128. Default-off; baseline byte-identical.
 def _accumulator_resident_pre_schedule(MR: int, NR: int, KC: int,
-                                       NR_bmm: int | None = None) -> str:
+                                       NR_bmm: int | None = None,
+                                       MR_mm: int | None = None) -> str:
     """PRE-bufferize transform schedule: tile M,N; promote C to a TYPED local alloc via
     bufferize_to_allocation; tile the reduction K by 1; scoped-vectorize [MR,NR,1]; rebuild
     vector.contract. Stops at the contract (the post-bufferize schedule does the hoist + lowering).
@@ -505,17 +543,30 @@ def _accumulator_resident_pre_schedule(MR: int, NR: int, KC: int,
     vectorize is FULL (no mask) and the N=8 attention batch_matmul vectorizes to vfmacc. The matmul
     path keeps its own (larger) NR. For larger N, NR_bmm just tiles N cleanly. This is the N-tail fix
     that makes the accumulator-resident feature whole-model-safe for attention.
+
+    M-TAIL (``MR_mm``): the M-side analog of the N-tail. A whole-model decode step is dominated by
+    matmuls whose LEADING dim is M=1 (one token row); the schedule's MR=4 register tile then tries to
+    write a `vector<4xNR>` into a `tensor<1xNR>` C tile -> a masked `vector.transfer_write` LLVM-23
+    rejects with the SAME multi-op `vector.mask` PipelineError as the N-tail (silent scalar fallback,
+    no vfmacc). Setting a SEPARATE matmul MR (``MR_mm`` <= the small M, default = MR) clamps
+    MR=min(MR,M) on the matmul path so the inner vectorize is FULL (no mask) and the M=1 token-decode
+    matmul vectorizes to vfmacc. ``MR_mm=1`` is whole-model-safe by construction: M=1 ops fit exactly
+    (no mask) and any larger-M matmul just tiles M into single-row register tiles (still a real vfmacc
+    chain, bit-exact). Only the matmul M tile is affected; the batch_matmul keeps its own MR. Combined
+    with ``NR_bmm`` the tiled vectorize is tail-aware on BOTH the M side (matmul M<MR) and the N side
+    (batch_matmul N<NR) generally — a tile that adapts MR=min(MR,M), NR=min(NR,N), not a memorized shape.
     """
     NB = NR_bmm if NR_bmm is not None else NR
+    MM = MR_mm if MR_mm is not None else MR
     return f"""\
 module attributes {{transform.with_named_sequence}} {{
   transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
     %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
-    %t1, %lmn:2 = transform.structured.tile_using_for %mm tile_sizes [{MR}, {NR}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    %t1, %lmn:2 = transform.structured.tile_using_for %mm tile_sizes [{MM}, {NR}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
     %buf, %newmm = transform.structured.bufferize_to_allocation %t1 {{memory_space = 0 : i64, bufferize_destination_only}} : !transform.any_op
     %mm2 = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %t2, %lk = transform.structured.tile_using_for %mm2 tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-    transform.structured.vectorize %t2 vector_sizes [{MR}, {NR}, 1] : !transform.any_op
+    transform.structured.vectorize %t2 vector_sizes [{MM}, {NR}, 1] : !transform.any_op
     %bm = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %bt1, %blmn:3 = transform.structured.tile_using_for %bm tile_sizes [1, {MR}, {NB}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
     %bbuf, %bnew = transform.structured.bufferize_to_allocation %bt1 {{memory_space = 0 : i64, bufferize_destination_only}} : !transform.any_op
@@ -650,6 +701,7 @@ def _register_accumulator_resident() -> list[str]:
             edit_pipeline=_accumulator_resident_pipeline,
             edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
                            _accumulator_resident_pre_schedule(_MR, _NR, _KC)),
+            schedule_replace=True,
         ))
         names.append(nm)
     # N-TAIL-SAFE variant for whole-model attention: same recipe but the batch_matmul N tile is
@@ -671,8 +723,58 @@ def _register_accumulator_resident() -> list[str]:
                     "K=32). Default-off, baseline byte-identical.",
         edit_pipeline=_accumulator_resident_pipeline,
         edit_schedule=lambda _t: _accumulator_resident_pre_schedule(4, 16, 16, NR_bmm=8),
+        schedule_replace=True,
     ))
     names.append("accumulator_resident_ntail")
+
+    # M-TAIL-SAFE variant: the M-side analog of accumulator_resident_ntail. The whole-model decode
+    # step is dominated by matmuls with leading M=1 (one token row); the MR=4 register tile then
+    # writes a vector<4xNR> into a tensor<1xNR> C tile -> the SAME multi-op vector.mask PipelineError
+    # the N-tail hit (LLVM-23 rejects it -> silent scalar fallback, no vfmacc). Clamping the matmul
+    # MR to MR_mm=1 (MR=min(MR,M)) makes the inner vectorize FULL on the M=1 matmul (no mask) so it
+    # vectorizes to vfmacc; for any larger-M matmul MR_mm=1 just tiles M into single-row register
+    # tiles (still a real vfmacc chain, bit-exact) — general, not M=1-overfit. Default-off.
+    register(ImprFeature(
+        name="accumulator_resident_mtail",
+        action_class="PASS",
+        description="M-tail-safe accumulator-resident micro-kernel: the accumulator-resident recipe "
+                    "with the matmul M tile CLAMPED to MR_mm=1 (MR=min(MR,M)). Fixes the M=1 "
+                    "token-decode matmul (smolVLA/rdt2 leading-M=1) that otherwise hits the LLVM-23 "
+                    "masked-transfer_write multi-op vector.mask PipelineError -> silent scalar "
+                    "fallback: with MR_mm<=M the inner vectorize is full (no mask), so the M=1 matmul "
+                    "vectorizes to vfmacc. The M-side analog of accumulator_resident_ntail; the "
+                    "batch_matmul keeps its own MR. Default-off, baseline byte-identical.",
+        edit_pipeline=_accumulator_resident_pipeline,
+        edit_schedule=lambda _t: _accumulator_resident_pre_schedule(4, 16, 16, MR_mm=1),
+        schedule_replace=True,
+    ))
+    names.append("accumulator_resident_mtail")
+
+    # WHOLE-MODEL-SAFE COMPOSED variant (WORK-ITEM 2 by the inherent-clamp design): a SINGLE feature
+    # whose schedule has BOTH tail clamps inherent — matmul MR_mm=1 (M-tail) AND batch_matmul NR_bmm=8
+    # (N-tail) — on top of the bit-exact tiled-vfmacc accumulator-resident recipe. Because both clamps
+    # live in ONE full-schedule feature (not two separate full-schedule replacements that would clobber
+    # each other when apply_schedule picks one), enabling THIS one feature applies the tiled vfmacc +
+    # M-tail + N-tail together whole-model. It vectorizes a normal matmul, an M=1 token-decode matmul,
+    # AND a small-N (N=8) attention batch_matmul in ONE schedule with no scalar fallback / no
+    # vector.mask PipelineError. This is the config a whole-model fork enables. Default-off.
+    register(ImprFeature(
+        name="accumulator_resident_wholemodel",
+        action_class="PASS",
+        description="Whole-model-safe composed accumulator-resident micro-kernel: the tiled-vfmacc "
+                    "accumulator-resident recipe with BOTH tail clamps inherent in one schedule — "
+                    "matmul MR_mm=1 (M-tail: M=1 token-decode) AND batch_matmul NR_bmm=8 (N-tail: "
+                    "small-N attention). Composes the tiled vfmacc + M-tail + N-tail so the best "
+                    "single config is whole-model-safe by construction (no full-schedule feature "
+                    "clobbers another's clamp). Vectorizes a normal matmul, an M=1 matmul, and an "
+                    "N=8 batch_matmul to vfmacc in ONE schedule (no scalar fallback, no vector.mask "
+                    "PipelineError). Bit-exact on spike across the shape spread. Default-off, "
+                    "baseline byte-identical.",
+        edit_pipeline=_accumulator_resident_pipeline,
+        edit_schedule=lambda _t: _accumulator_resident_pre_schedule(4, 16, 16, NR_bmm=8, MR_mm=1),
+        schedule_replace=True,
+    ))
+    names.append("accumulator_resident_wholemodel")
     return names
 
 
@@ -738,4 +840,5 @@ register(ImprFeature(
                 "outerproduct + lower_outerproduct). Closes the separate-vfmul.vv+vfadd.vv gap. For "
                 "kernel-sized contraction workloads (vectorize_children explodes on whole models).",
     edit_schedule=_vfmacc_schedule_edit,
+    schedule_replace=True,
 ))

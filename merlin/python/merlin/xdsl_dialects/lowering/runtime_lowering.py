@@ -24,6 +24,9 @@ TARGET_OPCODES = {
     "saturn.commit": "COMMIT",
     "saturn.release": "EVICT",
 }
+# Generated targets (e.g. gemmini) supply their own target-op -> opcode map from their isolated
+# package (merlin.targetgen.registry); it is merged in via the ``opcodes`` arg of
+# lower_to_runtime rather than hardcoded here.
 
 METRICS_TO_CAPTURE = ["cycles", "bytes_moved", "command_count", "pack_count",
                       "resident_hits", "evictions", "accumulator_commits"]
@@ -42,10 +45,16 @@ def _shape_str(t) -> str:
     return "x".join(str(d) for d in t.get_shape()) + ":" + _dtype_str(t)
 
 
-def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"):
-    """Rebuild the target module as runtime command-buffer IR."""
+def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator",
+                     opcodes: dict | None = None):
+    """Rebuild the target module as runtime command-buffer IR.
+
+    ``opcodes`` (target-op name -> command-buffer opcode) is merged over the built-in map so an
+    isolated/generated target package can supply its own encoding without editing this module.
+    """
     if not HAS_XDSL:
         return module
+    opcode_map = {**TARGET_OPCODES, **(opcodes or {})}
     from xdsl.ir import Block, Region
     from xdsl.dialects.builtin import (ArrayAttr, DictionaryAttr, FunctionType,
                                        ModuleOp, StringAttr, TensorType)
@@ -60,8 +69,8 @@ def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator"
     src_block = fn.body.blocks[0]
 
     def kind(op) -> str | None:
-        """Merlin opcode for a target op (both reference dialects share field names)."""
-        return TARGET_OPCODES.get(op.name)
+        """Merlin opcode for a target op (reference + generated dialects share field names)."""
+        return opcode_map.get(op.name)
 
     # Deterministic tensor names. Pack sources are weights; other args activations.
     pack_srcs = [op.src for op in src_block.ops if kind(op) == "RES_PACK"]

@@ -4,11 +4,11 @@ All columns measured on **spike** (functional, ISA `rv64gcv_zfh_zvfh`), `mode=in
 
 ## Cycles
 
-| shape (M=N=K) | OpenBLAS | XNNPACK | ours-baseline | ours-vfmacc | ours-tiled | ours-tiled-best | ours-packed (pack-incl) |
-|---|---|---|---|---|---|---|---|
-| 32^3 | 11,039 | 13,289 | 2,804,206 | 11,883 | 166,251 | 26,753 | 68,563 |
-| 64^3 | 84,483 | 101,705 | 22,430,926 | 123,094 | 1,328,219 | 1,318,708 | not_run |
-| 128^3 | 664,811 | 798,857 | 179,441,453 | not_run | 10,665,305 | 10,530,662 | not_run |
+| shape (M=N=K) | OpenBLAS | XNNPACK | ours-intrinsic (scalable) | ours-baseline | ours-vfmacc | ours-tiled | ours-tiled-best | ours-packed (pack-incl) |
+|---|---|---|---|---|---|---|---|---|
+| 32^3 | 11,039 | 13,289 | 6,551 | 2,804,206 | 11,883 | 166,251 | 26,753 | 68,563 |
+| 64^3 | 84,483 | 101,705 | 50,695 | 22,430,926 | 123,094 | 1,328,219 | 1,318,708 | not_run |
+| 128^3 | 664,811 | 798,857 | 399,241 | 179,441,453 | not_run | 10,665,305 | 10,530,662 | not_run |
 
 ## Attainment
 
@@ -16,14 +16,14 @@ All columns measured on **spike** (functional, ISA `rv64gcv_zfh_zvfh`), `mode=in
 
 | shape | OpenBLAS/ours-base | XNNPACK/ours-base | best-expert | ours-best | best-expert / ours-best |
 |---|---|---|---|---|---|
-| 32^3 | 3.94e-03x | 4.74e-03x | 11,039 | 11,883 | 0.93x (ours 1.1x slower) |
-| 64^3 | 3.77e-03x | 4.53e-03x | 84,483 | 123,094 | 0.69x (ours 1.5x slower) |
-| 128^3 | 3.70e-03x | 4.45e-03x | 664,811 | 10,530,662 | 0.06x (ours 15.8x slower) |
+| 32^3 | 3.94e-03x | 4.74e-03x | 11,039 | 6,551 | 1.69x |
+| 64^3 | 3.77e-03x | 4.53e-03x | 84,483 | 50,695 | 1.67x |
+| 128^3 | 3.70e-03x | 4.45e-03x | 664,811 | 399,241 | 1.67x |
 
 ## not_run (honest blockers)
 
 - **ours_vfmacc_packed @ 64^3**: spike run failed: spike faulted rc=57; stderr: *** FAILED *** (tohost = 1337); stdout tail:
-- **ours_vfmacc_contraction @ 128^3**: /scratch/agustin/projects/oscar-merlin/tmp/kernels/saturn-vectors/benchmarks/common/crt.S:136:(.text.init+0x124): relocation truncated to fit: R_RISCV_JAL against symbol `_init' defined in .text section in /tmp/ccplUuf9.o
+- **ours_vfmacc_contraction @ 128^3**: /scratch/agustin/projects/oscar-merlin/tmp/kernels/saturn-vectors/benchmarks/common/crt.S:136:(.text.init+0x124): relocation truncated to fit: R_RISCV_JAL against symbol `_init' defined in .text section in /tmp/ccXF4awz.o
 - **ours_vfmacc_packed @ 128^3**: spike run failed: spike faulted rc=57; stderr: *** FAILED *** (tohost = 1337); stdout tail:
 
 Reading the blockers: the only remaining not_run is **`ours_vfmacc_contraction @ 128^3`**, which hits an `R_RISCV_JAL relocation truncated` — the FULLY-UNROLLED 128^3 `model.o` `.text` (16,384 fma, code that grows with M·N·K) exceeds the ±1 MB JAL reach of the shared Saturn `crt.S`/`test.ld` bare-metal layout (a harness link limit, NOT a numerical/codegen-quality result; the full-unroll fork builds, runs and verifies at 32^3 and 64^3). It is exactly the unbounded-code failure that the new **`ours_vfmacc_tiled`** (scalable) column fixes: ours-tiled's inner body is a CONSTANT 64 fma at every shape (K is a loop), so its .text is bounded and it builds, runs and verifies bit-exact at 32^3, 64^3 AND 128^3 (no JAL wall, and no more `tohost=1337` spike fault — that fault was an oversized vector<64x16>/<4x64> regalloc spill overrunning the stack into BSS, removed by bounding the K tile). Nothing is faked into a cycle number.

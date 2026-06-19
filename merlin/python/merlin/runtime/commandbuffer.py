@@ -34,11 +34,60 @@ def validate_command_buffer(cb: dict[str, Any]) -> list[str]:
     return problems
 
 
+def conv_out_dims(H: int, W: int, kh: int, kw: int, stride, padding, dilation) -> tuple[int, int]:
+    sh, sw = stride
+    pt, pl, pb, pr = padding
+    dh, dw = dilation
+    Ho = (H + pt + pb - (dh * (kh - 1) + 1)) // sh + 1
+    Wo = (W + pl + pr - (dw * (kw - 1) + 1)) // sw + 1
+    return Ho, Wo
+
+
+def conv_im2col(ifm: Tensor, *, kh: int, kw: int, ci: int, stride, padding, dilation,
+                layout: str = "nhwc") -> Tensor:
+    """Build the [N*Ho*Wo, Kh*Kw*Ci] im2col matrix from an NHWC activation (zero-pad OOB taps).
+
+    This is the single source of truth shared by the runner harness/reference/simulate (via
+    :func:`materialize_inputs`) and the capsule golden. Column order = (kh, kw, ci), matching the
+    weight packing [Kh*Kw*Ci, Co].
+    """
+    if layout != "nhwc":
+        raise ValueError(f"conv_im2col layout {layout!r} unsupported (nhwc only)")
+    N, H, W, C = ifm.shape
+    if C != ci:
+        raise ValueError(f"conv_im2col channel mismatch: ifm C={C} != ci={ci}")
+    sh, sw = stride
+    pt, pl, _, _ = padding
+    dh, dw = dilation
+    Ho, Wo = conv_out_dims(H, W, kh, kw, stride, padding, dilation)
+    a = ifm.data
+    rows: list[int] = []
+
+    def at(n, y, x, c):
+        if 0 <= y < H and 0 <= x < W:
+            return a[((n * H + y) * W + x) * C + c]
+        return 0
+
+    for n in range(N):
+        for oy in range(Ho):
+            for ox in range(Wo):
+                by, bx = oy * sh - pt, ox * sw - pl
+                for ky in range(kh):
+                    for kx in range(kw):
+                        for c in range(ci):
+                            rows.append(at(n, by + ky * dh, bx + kx * dw, c))
+    return Tensor((N * Ho * Wo, kh * kw * ci), rows, ifm.dtype)
+
+
 def materialize_inputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[str, Tensor]:
     """Create the leaf input tensors declared in the command buffer's ``tensors`` table.
 
     A tensor is a *leaf* (materialized here) when its role is input/weight/bias, i.e. it is
     not produced by a command. ``inputs`` may supply explicit nested-list data per name.
+
+    If the command buffer declares ``params.im2col_recipes``, each derived activation is built by
+    gathering conv windows from its source leaf (so a compiler-lowered conv2d's im2col activation is
+    materialized identically for the reference, the simulator, and the device harness).
     """
     inputs = inputs or {}
     produced = set()
@@ -58,6 +107,13 @@ def materialize_inputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None)
             env[name] = Tensor(shape, flat, dtype)
         else:
             env[name] = Tensor.deterministic(name, shape, dtype)
+    # additive: overwrite derived im2col activations from their source leaf
+    for r in cb.get("params", {}).get("im2col_recipes", []):
+        src = env[r["source"]]
+        env[r["target"]] = conv_im2col(
+            src, kh=int(r["kh"]), kw=int(r["kw"]), ci=int(r["ci"]),
+            stride=tuple(r.get("stride", [1, 1])), padding=tuple(r.get("padding", [0, 0, 0, 0])),
+            dilation=tuple(r.get("dilation", [1, 1])), layout=r.get("layout", "nhwc"))
     return env
 
 

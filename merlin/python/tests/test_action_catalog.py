@@ -78,6 +78,17 @@ def test_vl_nr_routes_to_forkable_heuristic():
     assert "vsetvlmax" in a.target_seam
 
 
+def test_mtail_routes_to_forkable_heuristic():
+    # MR=min(MR,M) (matmul M-tail clamp) is the M-side analog of nr_is_vsetvlmax: a forkable
+    # HEURISTIC (the accumulator_resident_mtail feature vectorizes the M=1 token-decode matmul).
+    d = cca_compare.Divergence(axis="compute.mr_adapts_to_m", expert=True, ours=False,
+                               backend="rvv")
+    a = ac.route(d)
+    assert a is not None and a.action_class == "HEURISTIC" and a.forkable_now is True
+    assert "MR=min(MR,M)" in a.target_seam
+    assert "accumulator_resident_mtail" in a.target_seam
+
+
 def test_unrouted_reported_not_dropped():
     # an axis with no route is returned as unrouted, never silently dropped
     d = cca_compare.Divergence(axis="compute.made_up_axis", expert="x", ours="y", backend="rvv")
