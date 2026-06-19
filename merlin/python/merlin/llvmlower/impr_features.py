@@ -862,9 +862,34 @@ module attributes {transform.with_named_sequence} {
     %bm = transform.structured.match ops{["linalg.batch_matmul"]} in %arg0 : (!transform.any_op) -> !transform.any_op
     %bt, %bl:4 = transform.structured.tile_using_for %bm tile_sizes [1, 4, 8, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
     transform.structured.vectorize %bt vector_sizes [1, 4, 8, 1] : !transform.any_op
+    // Vectorize the elementwise activation linalg.generic DIRECTLY (no tile, no fixed vector_sizes).
+    // The activation poly rewriter has already lowered math.erf/exp/tanh into an arith mul/add/fma
+    // chain inside the generic body; static-shape vectorize hoists that chain into a vector.fma /
+    // vfmacc chain. A bare `transform.structured.vectorize` (sizes inferred from the op's static
+    // iteration space) is RANK-AGNOSTIC: it vectorizes a rank-1 isolated activation, a rank-4
+    // attention softmax-exp generic (tensor<1x8x32x32xf32>), AND a rank-0 scalar generic alike.
+    //
+    // The previous `tile_using_for [16] + vectorize [16]` was a hard-coded RANK-1 spec; on real
+    // models it hit a rank-0 (iterator_types=[]) generic and raised "too many tiles provided,
+    // expected at most 0 found 1" (PipelineError -> whole-model scalar fallback), and would have
+    // mis-vectorized any rank!=1 activation generic.
+    //
+    // We `foreach` over each matched generic and vectorize it inside a `failures(suppress)` sequence:
+    // a single op `transform.structured.vectorize` aborts the WHOLE schedule on the first op it
+    // cannot vectorize (real models carry generics that genuinely don't statically vectorize, e.g.
+    // certain linalg.index / gather shapes), which would re-introduce the scalar-fallback regression.
+    // Per-op suppression vectorizes every activation/elementwise generic that CAN vectorize and
+    // leaves the rest scalar (lowered via convert-linalg-to-loops, exactly as in the baseline) — no
+    // tile, no per-shape spec, no whole-schedule abort. The matmul/batch_matmul named ops are already
+    // tiled+vectorized above and are not linalg.generic, so they are unaffected.
     %eg = transform.structured.match ops{["linalg.generic"]} in %arg0 : (!transform.any_op) -> !transform.any_op
-    %et, %el = transform.structured.tile_using_for %eg tile_sizes [16] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-    transform.structured.vectorize %et vector_sizes [16] : !transform.any_op
+    transform.foreach %eg : !transform.any_op {
+    ^bb_eg(%one_eg: !transform.any_op):
+      transform.sequence %one_eg : !transform.any_op failures(suppress) {
+      ^bb_v(%g: !transform.any_op):
+        transform.structured.vectorize %g : !transform.any_op
+      }
+    }
     %f = transform.structured.match ops{["func.func"]} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.apply_patterns to %f {
       transform.apply_patterns.vector.lower_contraction
