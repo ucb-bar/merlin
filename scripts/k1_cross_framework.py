@@ -38,6 +38,7 @@ OURS_FORKS = (
     ("ours_baseline", []),
     ("ours_vfmacc_contraction", ["fused_vfmacc_contraction"]),
     ("ours_vfmacc_tiled", ["fused_vfmacc_tiled"]),
+    ("ours_v3", ["accumulator_resident_microkernel_v3"]),  # the current compiler kernel (real K1 ticks)
 )
 
 # K1 Linux compile flags (glibc hosted; NOT medany/nostdlib). riscv_vector.h + the kernel
