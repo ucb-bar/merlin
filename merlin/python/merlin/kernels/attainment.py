@@ -61,10 +61,17 @@ def _our_cycles(runs_root: Path) -> dict[str, int]:
             continue
 
         def find(d, key):
+            # Recurse dicts AND lists: the runner nests cycles/target inside a
+            # ``measurement:`` LIST, so a dict-only walk silently drops them.
             if isinstance(d, dict):
                 if key in d:
                     return d[key]
                 for v in d.values():
+                    f = find(v, key)
+                    if f is not None:
+                        return f
+            elif isinstance(d, (list, tuple)):
+                for v in d:
                     f = find(v, key)
                     if f is not None:
                         return f
@@ -76,7 +83,13 @@ def _our_cycles(runs_root: Path) -> dict[str, int]:
         op = parts[0] if parts else "?"
         dtype = parts[1] if len(parts) > 1 else "?"
         shape = tuple(parts[2].split("x")) if len(parts) > 2 and "x" in parts[2] else ()
-        target = find(r, "target") or ("spike" if not find(r, "vlen") else "k1")
+        # Run target lives in the measurement entry ("spike"/"k1"); the top-level
+        # ``target`` is the backend family ("rvv"), which is NOT the join axis.
+        meas = r.get("measurement") if isinstance(r, dict) else None
+        target = None
+        if isinstance(meas, list) and meas and isinstance(meas[0], dict):
+            target = meas[0].get("target")
+        target = target or find(r, "target") or ("spike" if not find(r, "vlen") else "k1")
         if cyc is not None:
             out[cca_key(op, dtype, shape, target)] = int(cyc)
     return out
