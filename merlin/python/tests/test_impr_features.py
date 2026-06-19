@@ -37,6 +37,23 @@ def test_registered_feature_is_typed():
     assert f.action_class in ("PASS", "HEURISTIC", "PATTERN")
 
 
+def test_packed_feature_packs_and_forms_vfmacc():
+    on = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset(["vfmacc_packed"]))
+    assert on != P.RVV_TRANSFORM_SCHEDULE
+    assert "transform.structured.pack" in on        # operands packed into contiguous panels
+    assert "pack_transpose" in on                   # B pre-transposed (no runtime vector.transpose)
+    assert "lower_outerproduct" in on               # outerproduct -> vector.fma -> vfmacc
+
+
+def test_packed_feature_inserts_eliminate_empty_tensors():
+    # The packed pipeline edit must insert eliminate-empty-tensors right before bufferize (so the
+    # A-pack and C-pack dests do not CSE-alias onto one buffer); baseline pipeline is untouched.
+    base = P.build_rvv_pipeline("/tmp/s.mlir")
+    on = P.build_rvv_pipeline("/tmp/s.mlir", features=frozenset(["vfmacc_packed"]))
+    assert "eliminate-empty-tensors" not in base
+    assert "eliminate-empty-tensors,one-shot-bufferize" in on
+
+
 def test_baseline_package_has_no_features():
     # The immutable baseline must carry zero compiler_features -> byte-identical lowering.
     from pathlib import Path

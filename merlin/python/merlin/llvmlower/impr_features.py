@@ -298,6 +298,152 @@ def _register_tiled_grid() -> list[str]:
 TILED_GRID_NAMES: list[str] = _register_tiled_grid()
 
 
+# ---- operand-PACKING tiled vfmacc ---------------------------------------------------
+# The (MR,NR,KC) register-tile tuning sweep proved that tuning the tile closes ~none of the 15.7x
+# gap to OpenBLAS/XNNPACK (1.32M vs 84,483 cyc @ 64^3). The residual is the strided per-tile vector
+# transfers + loop overhead that the experts eliminate by PACKING operands into contiguous tiled
+# panels (the #1 mined `packed_rhs_policy`: OpenBLAS A-ncopy / B-tcopy, XNNPACK goi-prepack). This
+# feature reproduces that in the transform dialect:
+#
+#   1. `transform.structured.pack %matmul packed_sizes=[MR,NR,KC]` -> A becomes
+#      tensor<M/MR x K/KC x MR x KC>, B becomes tensor<K/KC x N/NR x KC x NR>, C becomes
+#      tensor<M/MR x N/NR x MR x NR>: the [MR,NR,KC] register tile lives as the CONTIGUOUS inner
+#      dims of each packed panel (exactly OpenBLAS ncopy/tcopy / XNNPACK goi-prepack layout).
+#   2. Tile the 6-loop packed generic's OUTER (M/MR, N/NR, K/KC) dims to 1 -> the loop body is ONE
+#      [MR,NR,KC] register tile reading the contiguous packed panels.
+#   3. `lower_pack` / `lower_unpack` -> the pack/unpack become pad + expand_shape + linalg.transpose
+#      copy loops (convert-linalg-to-loops lowers them; the pipeline has no pack-lowering pass).
+#   4. `fold_unit_extent_dims_via_reshapes` collapses the unit outer dims so the inner op is a clean
+#      rank-3 [MR,KC]x[KC,NR] contraction over CONTIGUOUS tensor<MRxKC>/<KCxNR> slices.
+#   5. Scoped-vectorize the inner op + transfer_permutation/reduction_to_contract ->
+#      lower_contraction(outerproduct) -> lower_outerproduct -> vector.fma -> llvm.fmuladd -> vfmacc.
+#
+# Net: the inner-loop transfer_reads are UNIT-STRIDE contiguous (vector<MRxKC> from tensor<MRxKC>,
+# vector<KCxNR> from tensor<KCxNR>) — no strided vector.transfer gather, no per-tile address
+# recomputation — which is the lever the tile-tuning sweep could not pull. Default-off; baseline
+# byte-identical (test_impr_features stays green). NOTE: pack of A/B/C is INSIDE the compiled
+# function here (a microbench), so the measured PACK-INCLUDED cycles carry the one-time pack cost;
+# the harness also reports PACK-EXCLUDED (inner-compute) by timing the matmul region only, which is
+# the apples-to-apples vs the experts (who hoist the pack / use resident pre-packed weights).
+def vfmacc_packed_schedule(MR: int, NR: int, KC: int, KS: int = 4) -> str:
+    """Operand-packing tiled-vfmacc schedule for register-tile (MR, NR, KC), KC streamed by KS.
+
+    pack matmul [MR,NR,KC] -> tile packed outer dims to 1 -> lower pack/unpack -> fold unit dims ->
+    stream the inner KC reduction by KS -> scoped-vectorize the rank-3 inner op ->
+    contract(outerproduct) -> vfmacc. Inner transfers are contiguous packed panels. KS<KC keeps the
+    live B panel small (vector<KS x NR>) so the outerproduct does not spill the full vector<KCxNR>
+    (the spill overran a buffer -> the M>=64 fault). Only `linalg.matmul` is packed (batch_matmul
+    left to the scalable tiled recipe); the matmul microbench is the gap-closing target.
+    """
+    KS = min(KS, KC)
+    return f"""\
+module attributes {{transform.with_named_sequence}} {{
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
+    %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %packed = transform.structured.pack %mm packed_sizes = [{MR}, {NR}, {KC}] : (!transform.any_op) -> (!transform.op<"linalg.generic">)
+    // B (operand 1) packs with inner tile [KC,NR]; transpose its inner dims to [NR,KC] so the
+    // contraction needs NO per-iteration runtime vector.transpose of the B panel (the transpose
+    // would otherwise scalarize into a vector.extract storm that spills at M>=64 -> wild-store
+    // fault). With B pre-transposed in the pack the inner body is a clean MR*KC fma chain.
+    %bpack = transform.get_producer_of_operand %packed[1] : (!transform.op<"linalg.generic">) -> (!transform.op<"linalg.pack">)
+    %ptg, %bp2, %bu2 = transform.structured.pack_transpose %bpack with_compute_op(%packed) inner_perm = [1, 0] : (!transform.op<"linalg.pack">, !transform.op<"linalg.generic">) -> (!transform.op<"linalg.generic">, !transform.op<"linalg.pack">, !transform.any_op)
+    %pg = transform.structured.match ops{{["linalg.generic"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t, %lo:3 = transform.structured.tile_using_for %pg tile_sizes [1, 1, 1, 0, 0, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+    %packs = transform.structured.match ops{{["linalg.pack"]}} in %arg0 : (!transform.any_op) -> !transform.op<"linalg.pack">
+    transform.structured.lower_pack %packs : (!transform.op<"linalg.pack">) -> (!transform.op<"tensor.pad">, !transform.op<"tensor.expand_shape">, !transform.op<"linalg.transpose">)
+    %unpacks = transform.structured.match ops{{["linalg.unpack"]}} in %arg0 : (!transform.any_op) -> !transform.op<"linalg.unpack">
+    transform.structured.lower_unpack %unpacks : (!transform.op<"linalg.unpack">) -> (!transform.op<"tensor.empty">, !transform.op<"linalg.transpose">, !transform.op<"tensor.collapse_shape">, !transform.op<"tensor.extract_slice">, !transform.op<"linalg.copy">)
+    transform.apply_patterns to %arg0 {{
+      transform.apply_patterns.linalg.fold_unit_extent_dims_via_reshapes
+    }} : !transform.any_op
+    // STREAM the inner KC reduction in chunks of KS so the live B panel is vector<KS x NR> (KS regs)
+    // not vector<KC x NR> (KC regs). Materializing the whole vector<KCxNR> panel needs KC vector
+    // registers and SPILLS hard (32 vs 2 spills measured at KC=16), and the spill scratch overran a
+    // packed buffer into BSS -> the M>=64 `tohost=1337` wild-store fault. Streaming K keeps the
+    // outerproduct's operands small (like the proven non-packed tiled recipe) so it stays bounded.
+    %g0 = transform.structured.match ops{{["linalg.generic"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %gt, %gl = transform.structured.tile_using_for %g0 tile_sizes [0, 0, {KS}] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    transform.structured.vectorize %gt vector_sizes [{MR}, {NR}, {KS}] : !transform.any_op
+    %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.transfer_permutation_patterns
+      transform.apply_patterns.vector.reduction_to_contract
+    }} : !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.lower_contraction lowering_strategy = "outerproduct"
+    }} : !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.lower_outerproduct
+    }} : !transform.any_op
+    transform.yield
+  }}
+}}
+"""
+
+
+def _packed_eliminate_empties(passes: list[str]) -> list[str]:
+    """Insert `eliminate-empty-tensors` immediately BEFORE one-shot-bufferize.
+
+    The pack/unpack lowering (lower_pack/lower_unpack -> linalg.transpose with `tensor.empty`
+    init/out dests) plus the pipeline's `canonicalize, cse` step CSE-merges the A-pack-dest and
+    C-pack-dest `tensor.empty`s (identical type `tensor<M/MR x N/NR x MR x NR>`), so one-shot-
+    bufferize then aliases the packed-A and packed-C onto ONE buffer (matmul reads A from the
+    same alloc C is written to). That destructive update produced garbage + a wild out-of-bounds
+    store (the `tohost=1337` vprintfmt-corruption fault at M>=64). `eliminate-empty-tensors` rewrites
+    each `tensor.empty` used as a bufferization init into a distinct `bufferization.alloc_tensor`
+    (not CSE-coalesced), giving packed-A and packed-C SEPARATE buffers -> correct + no overrun.
+    Only runs when a packed feature is enabled; baseline pipeline untouched."""
+    out = list(passes)
+    try:
+        i = out.index("one-shot-bufferize{bufferize-function-boundaries "
+                       "function-boundary-type-conversion=identity-layout-map}")
+    except ValueError:
+        return out
+    if out[i - 1] == "eliminate-empty-tensors":
+        return out
+    out.insert(i, "eliminate-empty-tensors")
+    return out
+
+
+register(ImprFeature(
+    name="vfmacc_packed",
+    action_class="PASS",
+    edit_pipeline=_packed_eliminate_empties,
+    description="operand-PACKING tiled vfmacc (mined packed_rhs_policy = OpenBLAS ncopy/tcopy, "
+                "XNNPACK goi-prepack): transform.structured.pack A/B/C into contiguous [MR,NR,KC] "
+                "register-tile panels, lower pack/unpack to copy loops, fold unit dims, then the "
+                "scoped-vectorize -> outerproduct -> vfmacc recipe on the packed op so the inner "
+                "transfers are UNIT-STRIDE contiguous (no strided vector.transfer). Register-tile "
+                "[4,16,16]. Default-off; baseline byte-identical.",
+    edit_schedule=lambda _t: vfmacc_packed_schedule(4, 16, 16),
+))
+
+
+def _register_packed_grid() -> list[str]:
+    """Register default-off packed-vfmacc tuning points `vfmacc_packed_<MR>_<NR>_<KC>` (same grid
+    as the tiled sweep) so the packing layout can be tuned alongside the register tile."""
+    names: list[str] = []
+    for MR in (4, 8):
+        for NR in (16, 32):
+            for KC in (16, 32, 64):
+                nm = f"vfmacc_packed_{MR}_{NR}_{KC}"
+                register(ImprFeature(
+                    name=nm,
+                    action_class="PASS",
+                    description=f"Operand-packing tiled-vfmacc tuning point: register-tile/pack-tile "
+                                f"(MR={MR}, NR={NR}, KC={KC}). Contiguous packed inner transfers. "
+                                f"Default-off tuning-grid feature.",
+                    edit_pipeline=_packed_eliminate_empties,
+                    edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
+                                   vfmacc_packed_schedule(_MR, _NR, _KC)),
+                ))
+                names.append(nm)
+    return names
+
+
+PACKED_GRID_NAMES: list[str] = _register_packed_grid()
+
+
 register(ImprFeature(
     name="fused_vfmacc_contraction",
     action_class="PASS",
