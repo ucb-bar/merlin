@@ -1542,13 +1542,23 @@ def verify_p21(IM) -> None:
         roles = {c.role for c in lr.carried_state}
         re_ok = re_ok and lr.present and lr.K == k and lr.K_source == "recovered_from_ir" \
             and role in roles and lr.kv_cache_bytes == kvb and lr.repeated_region_op_count > 50
-    # 2. the emitted artifact matches the re-derivation
+    # 1b. corpus-wide: EVERY present loop-preserving capture re-derives a valid loop from the IR
+    present = sorted(d.name for d in loop_dir.glob("*") if (d / "model.mlir").is_file())
+    corpus_ok = True
+    for w in present:
+        lr = recover_loop(loop_dir / w / "model.mlir", w)
+        corpus_ok = corpus_ok and lr.present and (lr.K or 0) > 0 \
+            and lr.K_source == "recovered_from_ir" and lr.repeated_region_op_count > 50 \
+            and any(c.role in ("latent", "kv_cache", "token_buffer") for c in lr.carried_state)
+    # 2. the emitted artifact matches the re-derivation (for every present capture)
     af = CS / "loop_preserving_recovery.csv"
     art_ok = False
     if af.is_file():
         ar = {r["workload"]: r for r in _csv.DictReader(_io.StringIO(af.read_text()))}
-        art_ok = all(w in ar and int(ar[w]["K"]) == k and ar[w]["K_source"] == "recovered_from_ir"
-                     for w, (k, _r, _b) in EXPECT.items() if (loop_dir / w / "model.mlir").is_file())
+        art_ok = all(w in ar and ar[w]["K_source"] == "recovered_from_ir"
+                     and int(ar[w]["K"]) == (recover_loop(loop_dir / w / "model.mlir", w).K or -1)
+                     for w in present)
+    re_ok = re_ok and corpus_ok
     # 3. the capture_fidelity matrix actually flipped K/KV/loop_carried to recovered-from-IR
     cf = IM.capture_fidelity(CS)
     kloop = next(r for r in cf["matrix"] if r["feature"] == "K_or_decode_loop")

@@ -87,8 +87,8 @@ distinction between blocked-by-capture and blocked-by-proof, is itself the contr
   <div class="stat"><b>11</b><span>workloads (VLA / VLM / LLM)</span></div>
   <div class="stat"><b>679/679</b><span>independent verifier checks</span></div>
   <div class="stat hl"><b>6 / 6</b><span>open caveats &amp; blocked items now resolved (P21)</span></div>
+  <div class="stat hl"><b>11 / 11</b><span>loop-preserving captures — K/KV/loop recovered from IR</span></div>
   <div class="stat"><b>8,194</b><span>operators recovered (full graph)</span></div>
-  <div class="stat"><b>161</b><span>Timeloop problem shapes emitted</span></div>
   <div class="stat"><b>0</b><span>perf/cycle/area/energy claims</span></div>
 </div>
 
@@ -96,9 +96,10 @@ distinction between blocked-by-capture and blocked-by-proof, is itself the contr
 <div class="callout win">
 <b>model2MLIR now lowers <code>torch.while_loop → scf.for</code></b> (commit <code>aec234b</code>), so the K-step
 denoise/decode loop is <b>preserved in the IR</b>. With shape-invariant <code>torch.while_loop</code> wrappers,
-smolVLA / openVLA / pi0.5 each lower to a verifying <code>linalg-on-tensors</code> module that carries the loop
+<b>all 11 workloads</b> lower to a verifying <code>linalg-on-tensors</code> module that carries the loop
 — and K, the loop-carried state (latent / KV cache), and the repeated region are now <b>recovered directly from
-the IR</b>, not assumed. Every previously-open caveat and blocked item moves to <b>resolved-with-evidence</b>.
+the IR</b>, not assumed. The result is <b>corpus-complete</b>: every caveat and blocked item moves to
+<b>resolved-with-evidence</b> across the entire VLA/VLM/LLM corpus, not just a few examples.
 </div>
 
 <div class="tablewrap"><table>
@@ -114,23 +115,35 @@ the IR</b>, not assumed. Every previously-open caveat and blocked item moves to 
 </tbody>
 </table></div>
 
-<div class="two">
-<div class="card">
-<h3>What the loop-preserving capture recovers (per model)</h3>
-<div class="barrow"><span class="barlbl">smolVLA (flow)</span><span class="bar rec" style="width:200px"></span><span>K=10 · latent[1,50,32] · 5179-op body</span></div>
-<div class="barrow"><span class="barlbl">openVLA (autoregr.)</span><span class="bar rec" style="width:140px"></span><span>K=7 · static KV iter_arg ×2 · 597-op body</span></div>
-<div class="barrow"><span class="barlbl">pi0.5 (flow)</span><span class="bar rec" style="width:200px"></span><span>K=10 · latent[1,50,32] · 6208-op body</span></div>
-<p class="k">All three lower to verifying MLIR; numerically exact vs the eager unrolled loop
-(cos 0.9999994 / bit-exact / 1.0). Solid bars = recovered from IR.</p>
-</div>
+<div class="tablewrap"><table>
+<caption>All 11 workloads — K, loop-carried state, and repeated region recovered from <code>scf.for</code> in the IR (one agent per model, each numerically verified vs the eager unrolled loop).</caption>
+<thead><tr><th>workload</th><th>family</th><th class="num">K (IR)</th><th>loop-carried state</th><th class="num">body ops</th><th>numeric</th></tr></thead>
+<tbody>
+<tr><td>smolvla</td><td>flow-matching</td><td class="num">10</td><td>counter + latent[1,50,32]</td><td class="num">5179</td><td class="v-ok">cos 0.99999</td></tr>
+<tr><td>pi05</td><td>flow-matching</td><td class="num">10</td><td>counter + latent[1,50,32]</td><td class="num">6208</td><td class="v-ok">cos 1.0</td></tr>
+<tr><td>xr0</td><td>flow (DiT)</td><td class="num">5</td><td>counter + latent[1,30,32]</td><td class="num">849</td><td class="v-ok">cos 1.0</td></tr>
+<tr><td>groot_n1d7</td><td>flow (DiT)</td><td class="num">4</td><td>counter + latent[1,40,132]</td><td class="num">5107</td><td class="v-ok">cos 1.0</td></tr>
+<tr><td>rdt</td><td>diffusion (DPM)</td><td class="num">5</td><td>counter + latent[1,64,128] + solver state</td><td class="num">641</td><td class="v-ok">cos 1.0</td></tr>
+<tr><td>rdt2</td><td>diffusion</td><td class="num">5</td><td>counter + latent[1,24,20]</td><td class="num">1155</td><td class="v-ok">cos 1.0</td></tr>
+<tr><td>openvla</td><td>autoregressive</td><td class="num">7</td><td>counter + static KV ×2 + token buf</td><td class="num">597</td><td class="v-ok">bit-exact</td></tr>
+<tr><td>molmoact</td><td>autoregressive</td><td class="num">8</td><td>counter + static KV ×2 + token buf</td><td class="num">1256</td><td class="v-ok">bit-exact</td></tr>
+<tr><td>bitvla</td><td>autoregressive</td><td class="num">7</td><td>counter + static KV ×2 + token buf</td><td class="num">742</td><td class="v-ok">bit-exact</td></tr>
+<tr><td>small_llama</td><td>LLM</td><td class="num">7</td><td>counter + static KV ×2 + token buf</td><td class="num">557</td><td class="v-ok">bit-exact</td></tr>
+<tr><td>tiny_llama</td><td>LLM</td><td class="num">7</td><td>counter + static KV ×2 + token buf</td><td class="num">754</td><td class="v-ok">bit-exact</td></tr>
+</tbody>
+</table></div>
+<div class="callout"><b>How:</b> one sub-agent per model authored a <code>torch.while_loop</code> wrapper from the same
+three reference wrappers + shared rules; the compiler capability (<code>while_loop→scf.for</code>) is universal,
+so each model needed only its wrapper. The flow/diffusion models carry the action latent; the autoregressive
+models carry a static KV cache written in-place (the KV cache <b>is</b> an explicit <code>scf.for</code> iter_arg).
+The diffusion family needed the per-step re-embed + scheduler pulled into the loop body (rdt carries the
+DPM-solver state as a 3rd iter_arg).</div>
 <div class="card">
 <h3>KV formula — validated on the IR, applied at scale</h3>
 <p>KV bytes <code>= 2·kv_heads·head_dim·seq·n_layers·dtype</code>. On openVLA’s captured config the formula
 reproduces the IR iter_arg <b>exactly</b> (<code>2·4·128·27·2·4 = 221,184 B</code>), then the same formula at
-the Llama-2-7B deployment config gives <b>137.9 MB</b> (bf16).</p>
-<p class="k">The byte formula is anchored to the IR, not asserted — then composed to deployment scale
-(weight values are irrelevant to the shape contract).</p>
-</div>
+the Llama-2-7B deployment config gives <b>137.9 MB</b> (bf16). The byte formula is anchored to the IR, not
+asserted — then composed to deployment scale (weight values are irrelevant to the shape contract).</p>
 </div>
 
 <h2>1 · The corpus &amp; how much of it we actually analyze</h2>
@@ -204,7 +217,7 @@ resolved, §0); <code>matrix_engine</code> necessary for only 2/11 (corpus-narro
 <h3>Capture fidelity — the central result</h3>
 <p>Preserved: op shapes, region roles, dtype, attention/softmax/norm (re-parsed from generics).
 <b>Now also recovered (P21):</b> the K-loop, KV-state, loop-carried state — from <code>scf.for</code> in the
-loop-preserving captures (the other 8 workloads still honestly show assumed/erased until wrapped).</p>
+loop-preserving captures — now <b>all 11 workloads</b> read <i>recovered (K=N, IR scf.for)</i>.</p>
 <p class="k">Demonstrated from IR, not asserted: the matrix cells read <i>recovered (K=N, IR scf.for)</i> /
 <i>recovered (B, IR iter_arg)</i> for smolVLA / openVLA / pi0.5.</p>
 </div>
@@ -243,7 +256,7 @@ deadline) over deadline/K/H grids — a <b>requirement</b>, never measured.</p>
 
 <h3><span class="chip c-cav">True, but state the caveat</span></h3>
 <ul>
-<li>The 8 workloads without a loop-preserving wrapper yet still rest on <b>configured K</b> (smolVLA / openVLA / pi0.5 are now IR-recovered).</li>
+<li>K is now <b>IR-recovered for all 11 workloads</b>; the small-capture depth is reduced (the loop <i>structure</i> is depth-invariant — only the body's layer count scales, and §2 gives the deployment-real composition).</li>
 <li>Magnitudes for the small captures are structural-only; the <b>deployment-real</b> magnitudes (§2) are the config-exact composition.</li>
 <li>The bitvla native bit-unpack arithmetic is still in opaque <code>func.call</code> (the model forward <code>.item()</code>s the scale); the packed-int2 storage + scale + placement are recovered.</li>
 </ul>
@@ -278,9 +291,9 @@ captured natively (<code>BITVLA_NATIVE_QUANT</code>), not the torchao-int8 stand
 </table></div>
 
 <h2>7 · What’s next</h2>
-<p>The compiler capability is universal (zero per-model work); the remaining effort is per-model wrapper authoring:</p>
+<p>The compiler capability is universal (zero per-model work) and the loop-preserving wrappers are now done for all 11; what remains is polish, not capability:</p>
 <ul>
-<li><b>Loop-preserving wrappers for the other 8</b> — the 2 LLMs + molmoact + bitvla + xr0 are mechanical (clean shape-invariant step); the RDT-family diffusion models need the sampler re-embed pulled into the loop body (their denoise step is not a clean round-trip).</li>
+<li><b>Loop-preserving wrappers — DONE for all 11</b> (one sub-agent per model). Remaining polish: name the bitvla bit-unpack op; full-depth recapture (the composition in §2 already gives deployment-real magnitudes).</li>
 <li><b>Native bit-unpack op</b> — name the bitvla shift/and unpack (avoid the <code>.item()</code> scale graph-break) so the int2→ternary arithmetic is no longer opaque.</li>
 <li><b>Runtime/physical frontier</b> — per-K-step wall-clock, area/energy from a design YAML — orthogonal to the static contract, out of scope by design.</li>
 </ul>
