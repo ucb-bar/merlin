@@ -228,10 +228,19 @@ def _parse(base: dict, console: str | None, source: str, detail: str = "") -> di
     mi = re.search(r"INSTRET\s+(\d+)", console)
     if not mc:
         return {**base, "cycles": None, "status": "not_run", "blocker": "no CYCLES line"}
-    row = {**base, "cycles": int(mc.group(1)), "status": "pass",
-           "note": f"{source} f32 GEMM on spike; inner-compute timed; verified vs scalar ref"}
+    note = f"{source} f32 GEMM on spike; inner-compute timed; verified vs scalar ref"
+    row = {**base, "cycles": int(mc.group(1)), "status": "pass", "note": note}
     if mi:
         row["instructions"] = int(mi.group(1))
+    # ours driver reports the fill-only baseline + the fill-inclusive total so the matmul-only
+    # `cycles` above is exactly comparable to the experts' kernel-only timing (caveat #1 fix).
+    mcf = re.search(r"CYCLES_FULL\s+(\d+)", console)
+    mfc = re.search(r"FILL_CYCLES\s+(\d+)", console)
+    if mcf:
+        row["cycles_full"] = int(mcf.group(1))
+        row["note"] = note + "; CYCLES=matmul-only (fill-only baseline subtracted)"
+    if mfc:
+        row["fill_cycles"] = int(mfc.group(1))
     return row
 
 
