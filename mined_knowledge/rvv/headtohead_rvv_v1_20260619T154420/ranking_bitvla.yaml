@@ -1,0 +1,22 @@
+model: bitvla
+ranked:
+- tag: ours_v3
+  wall_s: 0.1486
+  speedup: 16.968
+  cos: 0.9999945759773254
+  src: same
+- tag: xnnpack_kernels
+  wall_s: 0.1912
+  speedup: 13.19
+  cos: 0.9999926686286926
+  src: same
+- tag: ours_tiled
+  wall_s: 0.2761
+  speedup: 9.134
+  cos: 0.9999945759773254
+  src: same
+- tag: baseline
+  wall_s: 2.5216
+  speedup: 1.0
+  cos: 0.9999945759773254
+  src: same

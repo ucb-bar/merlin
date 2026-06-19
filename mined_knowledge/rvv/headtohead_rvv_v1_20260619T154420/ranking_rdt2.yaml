@@ -1,0 +1,27 @@
+model: rdt2
+ranked:
+- tag: xnnpack_kernels
+  wall_s: 18.9552
+  speedup: 3.892
+  cos: 1.0000001192092896
+  src: fair
+- tag: ours_wholemodel
+  wall_s: 30.7949
+  speedup: 2.395
+  cos: 1.0
+  src: fair
+- tag: baseline
+  wall_s: 73.7762
+  speedup: 1.0
+  cos: 1.0000001192092896
+  src: same
+- tag: ours_tiled
+  wall_s: 226.4586
+  speedup: 0.326
+  cos: 1.0000001192092896
+  src: same
+- tag: ours_v3
+  wall_s: 226.4031
+  speedup: 0.326
+  cos: 1.0000001192092896
+  src: same
