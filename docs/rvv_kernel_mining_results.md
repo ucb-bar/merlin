@@ -53,18 +53,25 @@ other (raises `CompositionError`); additive edits still layer.
 Figures: `output/kernels/ceiling/paper_e2e.png`, `paper_crossover.png`, `op_coverage.png`,
 `all_comparisons.png`.
 
-### 3a. Whole-model e2e on real K1 silicon (wall seconds, cos-gated)
-| model | baseline | ours-tiled (vfmacc) | XNNPACK kernel-swap | **ours-v3 (accum-resident, compiler)** |
-|---|---|---|---|---|
-| bitvla | 2.521 s | 0.275 s (9.16×) | 0.184 s (13.65×) | **0.150 s (16.83×)** ← best |
-| openvla | 5.868 s | 1.607 s (**3.65×**) ← best | — | 2.469 s (2.38×) |
-| rdt2 | 73.71 s | 31.41 s (**2.35×**) ← best | — | — |
+### 3a. Whole-model e2e on K1 — SAME-PASS, fair (N=5/3, cos-gated) — XNNPACK wins 2 of 3
+Measured in one pass vs the same baseline; XNNPACK uses a **resident-weight pack** (excluded from the
+timed path, matching ours' pack-free scope) and was measured on **all three** models for the first time.
+Speedups vs baseline (higher = better); **best-ours** is the fastest of {tiled, v3, wholemodel}:
 
-All cos ≥ 0.99999. **The compiler-emitted accumulator-resident micro-kernel (ours-v3) wins bitvla at
-16.83×, beating XNNPACK's hand RVV GEMM (13.65×)** — the earlier ~1.49× XNNPACK headroom is *reversed*
-(ours ~1.23× faster). The best kernel is **per-model** (v3 on bitvla; tiled vfmacc on openvla/rdt2) — a
-portfolio the autotune layer selects from. smolVLA e2e is an honest `not_run` (SpacemiT clang backend
-crash, hits the frozen baseline too).
+| model | baseline | best ours | XNNPACK | winner |
+|---|---|---|---|---|
+| **bitvla** | 2.522 s | **v3 16.97×** (0.149 s) | 13.19× (0.191 s) | **ours +1.29×** |
+| **openvla** | 5.864 s | wholemodel ~4.97× (tiled 3.62×, v3 2.38×) | **8.98×** (0.653 s) | **XNNPACK ~1.8×** |
+| **rdt2** | 73.78 s | wholemodel ~2.35× (**tiled/v3 REGRESS to 0.33×**) | **3.89×** (18.96 s) | **XNNPACK ~1.65×** |
+
+All cos ≥ 0.99999. **Honest verdict:** XNNPACK's hand RVV GEMM is the **robust** winner (3.9–13× across
+*all* three models) and beats our best kernel on **openvla and rdt2**. Our compiler-emitted **v3 beats
+XNNPACK only on bitvla** (1.29×). Our kernels are **shape-brittle**: v3 is 16.97× on bitvla, 2.38× on
+openvla, and tiled/v3 *regress rdt2 by 3×* (only `accumulator_resident_wholemodel` avoids it). This is
+exactly why the **per-model beam is essential** — picking the wrong kernel is catastrophic. (openvla/rdt2
+best-ours numbers above are the beam's; a same-pass fair re-measure of `ours-wholemodel` vs XNNPACK on
+those two models is in flight to finalize the exact figures.) smolVLA e2e is an honest `not_run`
+(SpacemiT clang backend crash, hits the frozen baseline too).
 
 ### 3b. Single-GEMM ceiling on K1 (rdtime ticks, inner-compute) — the crossover
 `ours-intrinsic` (hand ceiling) beats **both** experts 32³→384³, then **OpenBLAS retakes the lead at
