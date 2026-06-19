@@ -1,0 +1,4 @@
+workload,decode_stack,n_kv_heads,head_dim,seq,n_layers,kv_bytes_f32,kv_bytes_bf16,kv_bytes_int8,loop_carried_in_ir,ir_formula_check,evidence
+openvla,llama2_7b_lm,32,128,263,32,275775488,137887744,68943872,True,formula matches IR iter_arg (221184==221184),recovered_from_model_config+recovered_from_ir
+pi05,paligemma_lm_gemma_2b,1,256,200,18,7372800,3686400,1843200,False,n/a (no loop capture),recovered_from_model_config
+smolvla,vlm_text_smollm2,5,64,50,32,4096000,2048000,1024000,False,n/a (no loop capture),recovered_from_model_config

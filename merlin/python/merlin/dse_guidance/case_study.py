@@ -994,6 +994,11 @@ def run_case_study(out_dir) -> dict:
     lrcsv = loop_recovery_csv()              # P21-S1: only when loop-preserving captures exist
     if lrcsv:
         Artifact("loop_preserving_recovery.csv", lrcsv).write(out)
+    # P21 S2/S3: deployment-real magnitudes (depth x n_layers, config-exact) + KV sizing
+    from merlin.dse_guidance import real_config as RC
+    _loopdir = paths.merlin_dir() / "benchmarks" / "dse_guidance" / "recaptures_loop"
+    Artifact("real_config_magnitudes.csv", RC.magnitudes_csv()).write(out)
+    Artifact("kv_cache_sizing.csv", RC.kv_sizing_csv(_loopdir)).write(out)
     # P20 Tool A: Timeloop-native mapspace seeds from the recovered contraction ops (structural; no perf)
     _wl_caps = [(c.workload, str(_recap_dir(c.workload))) for c in cases]
     Artifact("dataflow_candidate_table.csv",
