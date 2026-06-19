@@ -79,18 +79,22 @@ see VLEN/lane utilization) — which is exactly why the board numbers are the au
 | depthwise conv | `not_run` — no depthwise primitive (regular conv only via im2col) |
 | attention bmm (N=8) | ours-vs-ours (no library primitive); vfmacc regresses 4.8× at tiny N (tail dominates) |
 
-### 3d. Activation on silicon — partial win isolated, regression whole-model (corrected)
-The `vectorized_transcendental_activation` feature, re-measured on K1 (commit 284291c):
-- **Isolated GELU/sigmoid (the op it targets):** the genuine polynomial (feature ON) **vectorizes and is
-  2.3–3.7× faster than our scalar**, but still **~3.6–4.6× behind XNNPACK's hand polynomial** (GELU
-  983 vs 270; sigmoid 559 vs 139) — narrows the gap from a previously-misreported ~11–18× (that column
-  was scalar mislabeled as vectorized), not closed. Accuracy within the approximation band (errors=0 @2e-3).
-- **Residual cause:** our polynomial lowers to separate `vfmul.vv`+`vfadd.vv` (fmuladd=0 — **no fused
-  vfmacc**), more ops/element than XNNPACK's tuned rational kernels. (Fusing to vfmacc is the next lever.)
-- **Whole-model (bitvla/openvla):** the schedule edit tiles *every* `linalg.generic[16]`, which breaks
-  on non-activation generics → **scalar fallback → 0.76× / 0.68× regression**; and it does not compose
-  with the matmul feature (both `schedule_replace` → `CompositionError`). So whole-model it is **not a
-  win** and stays default-off. A fix for the whole-model scalar-fallback is in progress.
+### 3d. Activation on silicon — FIXED (c1cf6cc): correct + vectorized whole-model
+The first whole-model run regressed (bitvla 0.76× / openvla cos=0.541). Root cause was **not** low
+accuracy — it was a **crash**: the blanket rewrite replaced *every* `math.exp` including softmax's, and
+the pipeline turned it into `llvm.intr.exp` which the freestanding RVV runtime can't legalize (`bad
+syscall`). Fix = **provenance-targeted** rewrite (only generics the abstraction marks gelu/silu/sigmoid/
+tanh; softmax/normalization `exp` stays on the exact libm path), tag-and-match only those (no blanket
+`foreach`, no `failures(suppress)`), and a pure-arith polynomial so no `convert-math-to-llvm` edit is
+needed (feature is now schedule-only, pipeline byte-identical).
+- **Post-fix bitvla K1: vectorized, cos 0.99999, no crash, no regression** (2.525 s ≈ baseline — activations
+  are negligible vs matmul in bitvla, so whole-model wall is neutral; the point is it's now *correct and
+  vectorized*, not a 0.76× scalar-fallback regression). openvla post-fix confirmation in flight.
+- **Isolated GELU/sigmoid:** vectorizes, ~2.3–3.7× over our scalar, accuracy cos≈1.0 / max-abs ~5e-7 over
+  realistic ranges; still **~3.6–4.6× behind XNNPACK's hand polynomial**.
+- **Honest residual:** activations lower to `vfmul`+`vfadd` (no fused `vfmacc`) — fusing needs `math.fma`,
+  which forces the `convert-math-to-llvm` pass that re-introduces the softmax `llvm.intr.exp` crash. So
+  fusion was traded for whole-model correctness; the activation still vectorizes (replaces the scalar libm loop).
 Full detail: `output/rvv_bench/k1_e2e_activation.md`.
 
 ---
@@ -112,14 +116,17 @@ genuinely emits it:
   The ~19× compute-kernel gap is closed; no hand kernel is linked — the compiler emits it.
 - **Honest residual (isolated):** the v3 *total* (~7× ceiling) is dominated by an O(M×N) result-buffer
   copy-out — an ABI artifact of the single-op workload returning a fresh tensor. Out of scope for kernel codegen.
-- **Whole-model board result (measured): v3 does NOT yet apply whole-model — it falls back to SCALAR.**
-  bitvla 2.528 s → 3.282 s (**0.77×, regression**); openvla 5.881 s → 8.674 s (**0.68×**), cos correct (scalar).
-  The kernel-level codegen is correct, but the v3 schedule is tuned for a lone matmul and breaks on the
-  real model's generic mix → `build_k1_binary` silently falls back to scalar. **Same brittleness class as
-  the activation feature (§3d) and as `fused_vfmacc_tiled` before its N-tail/M-tail/whole-model-safe fixes.**
-  The remaining work is to make v3 whole-model-safe (robust op-matching + tail handling, compose with the
-  baseline for non-matmul ops) so the isolated ceiling-matching win actually reaches the whole model. The
-  current whole-model matmul winner stays `fused_vfmacc_tiled` (9.24× / 3.64×).
+- **Whole-model board result — FIXED (a35d37b), v3 now applies whole-model and is the new winner.**
+  The first whole-model run fell back to SCALAR (bitvla 0.77×, openvla 0.68× regression): the v3
+  A-operand scalarization rewrite over-matched a non-matmul `vector<…x1>` read → `PipelineError` →
+  silent scalar fallback. Fix = restrict the matcher to the matmul register-tile read (statically-ranked
+  source, extract-position length == source rank, identity permutation_map); leave other reads on the
+  baseline (compose, don't replace-and-fail). **Post-fix bitvla K1 (cos 0.99999, vectorized, 60 vfmacc.vf):
+  0.1498 s = 16.83×** — beating `fused_vfmacc_tiled` (9.16×) **and the XNNPACK-kernel swap (13.65× / 0.184 s,
+  cross-run, matched baseline)**. So the §3a 1.49× kernel headroom is not just closed but **reversed**:
+  the compiler-emitted accumulator-resident kernel is ~1.23× faster than XNNPACK's hand RVV GEMM
+  whole-model on bitvla — consistent with the isolated K1 matrix where ours-intrinsic beats XNNPACK at
+  bitvla's matmul sizes. (openvla post-fix board confirmation in flight.)
 
 ## 4b. What still genuinely doesn't work
 - **Vectorized activation whole-model** — fixed the rank-1-tile scalar-fallback bug (40a8cbc), but it
