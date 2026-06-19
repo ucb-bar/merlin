@@ -152,6 +152,66 @@ def fig_crossover():
     plt.close(fig)
 
 
+# ============================================================================
+# FIGURE C — BEAM PROGRESSION: how the improved RVV path advances iteration by
+# iteration, vs OpenBLAS / XNNPACK references. Left = whole-model bitvla e2e
+# (the clean monotone story, ending above XNNPACK); right = single-GEMM @64^3
+# spike instret kernel trajectory. Sources: cross_framework_matrix*, k1_e2e_*.json.
+# ============================================================================
+def fig_progression():
+    V3 = "#b8742a"
+    fig = plt.figure(figsize=(13, 5.4)); fig.patch.set_facecolor("white")
+    gs = fig.add_gridspec(1, 2, width_ratios=[1.0, 1.0], wspace=0.26)
+
+    # -- left: whole-model bitvla e2e progression (speedup vs baseline; higher=better) --
+    ax = fig.add_subplot(gs[0]); card(ax, "Beam progression — bitvla whole-model on K1")
+    steps = [("baseline\nhand_v0", 1.00, SALMON),
+             ("+ ntail\n(attn vfmacc)", 7.73, "#e8c98a"),
+             ("+ tiled\nvfmacc", 9.16, GOLD),
+             ("+ v3 accum-\nresident", 16.83, V3)]
+    xs = np.arange(len(steps))
+    vals = [s[1] for s in steps]
+    ax.plot(xs, vals, "-", color="#9a9a9a", lw=1.6, zorder=2)
+    for xi, (lab, v, col) in zip(xs, steps):
+        ax.scatter([xi], [v], s=170, color=col, edgecolor=CARD_EC, linewidth=1.4, zorder=4)
+        ax.text(xi, v + 0.7, f"{v}×", ha="center", fontsize=11, fontweight="bold", color=col if col != "#e8c98a" else "#9c7415")
+    ax.axhline(13.65, color=STEEL, ls="--", lw=1.6, zorder=1)
+    ax.text(0.05, 13.65 + 0.35, "XNNPACK hand kernel (13.65×)", fontsize=9, color=STEEL, fontweight="bold")
+    callout(ax, (3, 16.83), "compiler-emitted v3\ncrosses ABOVE XNNPACK", (1.75, 17.6), fc="#f7efe2", ec=V3)
+    ax.set_xticks(xs); ax.set_xticklabels([s[0] for s in steps], fontsize=9)
+    ax.set_ylim(0, 19.5); ax.set_ylabel("whole-model speedup vs baseline (×)")
+    ax.set_xlabel("beam iteration (each adds one mined capability)")
+
+    # -- right: single-GEMM @64^3 spike instret kernel trajectory (lower=better, log) --
+    ax = fig.add_subplot(gs[1]); card(ax, "Beam progression — single GEMM 64³ (spike instret)")
+    k = [("baseline", 22430926, SALMON), ("vfmacc\ncontraction", 123094, "#e8c98a"),
+         ("tiled\n(bounded)", 1328219, GOLD), ("v3 compute\nkernel", 53207, V3)]
+    xs = np.arange(len(k)); vals = [s[1] for s in k]
+    ax.plot(xs, vals, "-", color="#9a9a9a", lw=1.6, zorder=2)
+    for xi, (lab, v, col) in zip(xs, k):
+        ax.scatter([xi], [v], s=170, color=col, edgecolor=CARD_EC, linewidth=1.4, zorder=4)
+        ax.text(xi, v*1.5, f"{v:,}", ha="center", fontsize=8.5, fontweight="bold", color=INK)
+    for yv, lab, col in [(84483, "OpenBLAS", SAGE), (101705, "XNNPACK", STEEL), (50695, "hand ceiling", TEAL)]:
+        ax.axhline(yv, color=col, ls="--", lw=1.3, zorder=1)
+        ax.text(3.05, yv, lab, fontsize=8, color=col, va="center", fontweight="bold")
+    ax.set_yscale("log"); ax.set_ylim(2.5e4, 2.5e8)
+    ax.set_xticks(xs); ax.set_xticklabels([s[0] for s in k], fontsize=9)
+    ax.set_ylabel("retired instructions (log; lower = faster)")
+    ax.set_xlabel("beam iteration"); ax.set_xlim(-0.4, 4.0)
+
+    fig.text(0.5, -0.03,
+             "Figure C:  Beam progression of the improved RVV compilation path.  Left — whole-model bitvla on K1: each "
+             "mined capability (attention vfmacc → tiled → accumulator-resident v3) advances the speedup, the final v3\n"
+             "crossing ABOVE XNNPACK's hand kernel (13.65×).  Right — single-GEMM 64³ kernel trajectory (spike instret): "
+             "v3's compute kernel reaches the hand ceiling and beats both experts.  Baseline RVV is frozen; each step is a default-off fork.",
+             ha="center", fontsize=9.3, color=INK)
+    for ext in ("png", "svg"):
+        fig.savefig(OUT / f"paper_progression.{ext}", bbox_inches="tight", dpi=160)
+    print("wrote", OUT / "paper_progression.png")
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     fig_e2e()
     fig_crossover()
+    fig_progression()
