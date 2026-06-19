@@ -72,9 +72,73 @@ def scalarize_a_reads(module, ctx):
     of a reconstructed vector lane (vmv/vslideup -> vfmacc.vv). Returns the count rewritten.
 
     Numerically identical: element [i,0] of the slice == lane [i,0] of the vector read of the slice.
+
+    WHOLE-MODEL SAFETY: the rewrite must only fire on the matmul register-tile A read it was designed
+    for; on a real model the IR carries OTHER `vector<...x1xf32>` transfer_reads consumed only by
+    scalar `vector.extract` (e.g. an attention / elementwise read with a permuting or rank-reducing
+    permutation_map, or a higher-rank source). For those the naive index reconstruction (one index
+    per extract `static_position` entry) emits a `tensor.extract` whose index COUNT does not match the
+    source rank -> ``'tensor.extract' op incorrect number of indices`` -> the whole pipeline aborts
+    (PipelineError) -> the whole-model build silently falls back to SCALAR. So the matcher is
+    restricted to the reads where the per-row scalar load is PROVABLY sound and value-identical:
+      * the source is a STATICALLY-ranked tensor/memref;
+      * every extract's `static_position` length == the source rank (so reconstruction produces
+        exactly ``rank`` indices, one per source dim — the failure mode is a higher-rank source read
+        into a lower-rank vector, where poslen < rank and the emitted `tensor.extract` is malformed);
+      * the read has an IDENTITY permutation_map whose output rank == the source rank (no transpose /
+        broadcast / rank-reduction that would make lane[i,0] of the read != element[pos] of the
+        source). A read with no permutation_map attr is the implicit minor-identity; we still require
+        the equal-rank identity below via the poslen==rank gate. NOTE: `transfer_read` carries trailing
+        non-index operands (the padding scalar, an optional mask), so the index COUNT is NOT
+        ``len(operands)-1``; we key the gate on the source rank + extract position length instead.
+    Every read that fails these gates is LEFT on the correct (un-rewritten) baseline lowering — it
+    still lowers to a valid vfmacc.vv, just not the .vf form. This composes the .vf micro-kernel onto
+    the matched matmuls without ever breaking the rest of the model.
     """
     from torch_mlir import ir
     targets = []
+
+    def _src_rank(ty_str):
+        # rank of a static ranked tensor<...>/memref<...> from its printed type; -1 if not static.
+        if not (ty_str.startswith("tensor<") or ty_str.startswith("memref<")):
+            return -1
+        inner = ty_str[ty_str.index("<") + 1: ty_str.rindex(">")]
+        # drop a memref layout/space suffix after the element type (", strided<...>"/", #space")
+        dims = inner.split("x")
+        # the last token is the element type (+ optional layout); everything before are dim sizes.
+        rank = 0
+        for d in dims[:-1]:
+            if d == "?":
+                return -1  # dynamic dim -> reconstruction not provably 1:1, leave it alone
+            try:
+                int(d)
+            except ValueError:
+                return -1
+            rank += 1
+        return rank
+
+    def _is_identity_perm(op, rank):
+        # accept a missing permutation_map (implicit minor-identity == identity for an equal-rank
+        # read) OR an explicit identity affine map `(d0,...) -> (d0,...)`. Anything else (transpose,
+        # broadcast, rank-reduction) is rejected so we never mis-map a lane to the wrong element.
+        try:
+            pm = op.attributes["permutation_map"]
+        except KeyError:
+            return True
+        s = str(pm)               # e.g. `affine_map<(d0, d1) -> (d0, d1)>`
+        if "->" not in s:
+            return False
+        lhs, rhs = s.split("->", 1)
+        # take the dim list inside the LAST parens on each side (skips the `affine_map<` prefix).
+        def _dims(part):
+            if "(" not in part or ")" not in part:
+                return None
+            inner = part[part.index("(") + 1: part.index(")")]
+            return [t.strip() for t in inner.split(",") if t.strip()]
+        ins, outs = _dims(lhs), _dims(rhs)
+        if ins is None or outs is None:
+            return False
+        return ins == outs and len(outs) == rank
 
     def visit(o):
         if o.operation.name != "vector.transfer_read":
@@ -88,11 +152,19 @@ def scalarize_a_reads(module, ctx):
         # only the register-tile lhs read: rank>=2 with a TRAILING unit dim (vector<MR x 1>).
         if len(dims) < 2 or dims[-1] != "1":
             return
+        src_ty = str(o.operands[0].type)
+        rank = _src_rank(src_ty)
+        # source must be statically ranked and identity-mapped (no transpose/broadcast/rank-reduce).
+        if rank < 0 or not _is_identity_perm(o.operation, rank):
+            return
         exs = []
         for u in res.uses:
             owner = u.owner
             if owner.name != "vector.extract" or str(owner.results[0].type) != "f32":
                 return  # a non-scalar use -> leave this read alone (keep it correct/general)
+            poslen = len(list(owner.attributes["static_position"]))
+            if poslen != rank:
+                return  # extract position rank != source rank -> reconstruction would be malformed
             exs.append(owner)
         if exs:
             targets.append((o, exs))

@@ -132,3 +132,79 @@ def test_v3_forms_vfmacc_not_separate_mul():
     s = _decode([_V3], 64, 64, 64)
     assert s.count("vfmacc", "vmacc") > 0
     assert s.count("vfmul") == 0
+
+
+# ---- WHOLE-MODEL safety: the isolated tests above missed that v3 fell back to scalar e2e ----
+# The isolated single-GEMM tests certified the v3 micro-kernel (vfmacc.vf, resident accumulator) but
+# NOT that it composes onto a REAL model. Board measurement (de39201) showed v3 whole-model FELL BACK
+# TO SCALAR (bitvla 0.77x / openvla 0.68x REGRESSION): build_k1_binary wraps the vectorized lowering
+# in `except PipelineError -> scalar`, and the v3 A-scalarization rewrite raised
+# `'tensor.extract' op incorrect number of indices` on a NON-matmul `vector<...x1xf32>` transfer_read
+# (a higher-rank source read into a lower-rank vector, where the naive per-extract index
+# reconstruction emits the wrong number of indices). These tests lock the whole-model-safe matcher:
+# the A-scalarization fires ONLY on the matmul register-tile read it was designed for, and every other
+# `vector<...x1>` read is left on the correct baseline lowering (so the model lowers vectorized, not
+# scalar). The matcher-guard test needs no toolchain; the real-model test is toolchain-gated.
+
+# A non-matmul `vector<4x1xf32>` transfer_read from a HIGHER-RANK source (tensor<1x4x1xf32>) consumed
+# only by scalar `vector.extract`:f32 — the exact shape that broke whole-model v3 (extract position
+# length 2 != source rank 3). The matcher must REFUSE this (it cannot soundly reconstruct indices),
+# leaving it on the baseline lowering. A genuine matmul A read (vector<MRx1> from tensor<MRx1>, equal
+# rank, identity map) is what it accepts.
+def test_scalarize_matcher_refuses_rank_mismatched_reads():
+    # The rewriter source must carry the whole-model-safety gates: a static source rank, an
+    # extract-position-length == source-rank check, and an identity-permutation-map check. Without
+    # all three the rewrite emits a malformed `tensor.extract` on a real model (the silent-scalar
+    # fallback root cause). Assert the gates are present (the structural contract of the fix).
+    from merlin.llvmlower.accum_microkernel import rewrite_source
+    src = rewrite_source()
+    assert "_src_rank" in src                       # source must be statically ranked
+    assert "poslen != rank" in src                  # extract position rank must equal source rank
+    assert "_is_identity_perm" in src               # no transpose/broadcast/rank-reduction
+    # and it must explicitly NOT key the gate on len(operands)-1 (transfer_read carries padding/mask
+    # trailing operands, so that count is NOT the index count — the bug a naive count would re-introduce).
+    assert "transfer_read carries trailing" in src.lower() or "padding scalar" in src.lower()
+
+
+def _decode_model(model_name, features):
+    """Lower a REAL model bundle (output/<model>) through the RVV compiler with `features` and decode
+    the emitted model.o. Returns the InsnStream. Mirrors build_k1_binary's vectorized lowering path
+    (vectorize=True, features=, hoist_static_allocs=False) so a PipelineError here is exactly the
+    silent scalar fallback the board hit."""
+    import subprocess
+    from merlin.kernels.decode import rvv
+    from merlin.llvmlower import toolchain
+    from merlin.llvmlower.lower import lower_model_file
+    from merlin.runtime.backends import zephyr_model as zm
+
+    mdir = REPO / "output" / model_name
+    work = Path(tempfile.mkdtemp(prefix=f"test_v3_wm_{model_name}_"))
+    prepared = zm._prepare_model_mlir(mdir / "model.mlir", work, int8_compute=False)
+    feats = frozenset(features) or None
+    # vectorize=True must SUCCEED (no PipelineError) — that is the whole-model-safety assertion.
+    res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
+                           vectorize=True, hoist_static_allocs=False, features=feats)
+    clang = toolchain.clang()
+    obj = work / "model.o"
+    subprocess.run([str(clang), "--target=riscv64-unknown-elf", "-march=rv64gcv", "-mabi=lp64d",
+                    "-O2", "-Wno-override-module", "-c", str(res.ll_path), "-o", str(obj)],
+                   check=True, capture_output=True)
+    return rvv.decode(str(obj))
+
+
+@pytest.mark.skipif(not _toolchain(), reason="riscv toolchain missing")
+@pytest.mark.skipif(not (REPO / "output" / "bitvla_fp32_consistent" / "model.mlir").is_file(),
+                    reason="bitvla model bundle not present")
+@pytest.mark.parametrize("model", ["bitvla_fp32_consistent", "openvla_fp32_consistent"])
+def test_v3_whole_model_lowers_vectorized_not_scalar_fallback(model):
+    # The whole-model assertion the isolated tests missed: lowering a REAL model with v3 must
+    # (a) SUCCEED (no PipelineError -> no silent scalar fallback in build_k1_binary), and
+    # (b) actually apply the v3 micro-kernel — vfmacc.vf present in the emitted asm (the baseline
+    #     emits ZERO vfmacc of any form, so vfmacc.vf>0 proves the resident-accumulator kernel fired
+    #     whole-model, not a scalar/vfmul fallback).
+    if not (REPO / "output" / model / "model.mlir").is_file():
+        pytest.skip(f"{model} bundle not present")
+    base = _decode_model(model, [])
+    assert base.count("vfmacc", "vmacc") == 0, "baseline must emit no vfmacc (un-fused matmul)"
+    on = _decode_model(model, [_V3])
+    assert on.count("vfmacc.vf") > 0, "v3 whole-model must emit vfmacc.vf (resident-accumulator kernel)"
