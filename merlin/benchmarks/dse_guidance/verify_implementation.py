@@ -1660,6 +1660,27 @@ def verify_p21(IM) -> None:
     p13check(nonnull and anchors,
              f"[P22] real-config geometry: all {len(RC.REAL_GEOMETRY)} entries fully populated, no "
              f"placeholder ({nonnull}); param anchors exact (openVLA 6.74B, tiny_llama 1.1B, rdt2 ~473M: {anchors})")
+    # P24: hardware-INDEPENDENT roofline — AI is a workload property (no peak/bandwidth/latency assumed).
+    from merlin.dse_guidance import arithmetic_intensity as AI
+    air = AI.ai_rows("bf16")
+    db = RC._DTYPE_BYTES["bf16"]
+    ai_ok = bool(air)
+    for r in air:
+        # non-resident AI is exactly 1/dtype_bytes (every MAC reloads its weight = the floor)
+        ai_ok = ai_ok and abs(r["ai_nonresident_mac_per_byte"] - 1.0 / db) < 1e-6
+        # residency strictly raises AI; gain == (prefix + repeated*K)/(prefix+repeated), re-derived
+        p, rep, K = r["prefix_params"], r["repeated_params"], r["K"]
+        exp_gain = (p + rep * K) / (p + rep)
+        ai_ok = ai_ok and r["ai_resident_mac_per_byte"] > r["ai_nonresident_mac_per_byte"] \
+            and abs(r["residency_gain"] - exp_gain) < 0.01
+    artf = CS / "arithmetic_intensity.csv"
+    blob = artf.read_text().lower() if artf.is_file() else ""
+    # the roofline must NOT smuggle in a chip: no peak/bandwidth/latency/cycle numbers
+    hw_free = artf.is_file() and not any(t in blob for t in
+                                         ("peak_mac", "bandwidth_gb", "latency_ms", "ghz", "cycles"))
+    p13check(ai_ok and hw_free,
+             f"[P24] HW-independent roofline: AI_nonres==1/dtype, residency raises AI by "
+             f"(prefix+rep*K)/(prefix+rep) re-derived ({ai_ok}); no chip assumed in artifact ({hw_free})")
     # P21 S4: native low-bit (bitvla packed-int2 ternary) datapath captured + reported, when present
     from merlin.dse_guidance import quant_metadata as QM
     nat_cap = (CS.parent / "recaptures_native" / "bitvla" / "model.mlir")
