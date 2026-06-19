@@ -1,0 +1,131 @@
+{
+  "model": "output/openvla_fp32_consistent",
+  "n": 3,
+  "golden_shape": [
+    1,
+    20,
+    512
+  ],
+  "baseline": {
+    "tag": "baseline",
+    "run_id": "hand_v0",
+    "compiler_features": [],
+    "lowering_path": "vectorized",
+    "pipeline_error_op": null,
+    "ll_fmuladd": 0,
+    "ll_fixedvec": 5512,
+    "attn_vectorized": "fixedwidth_simd_no_fma",
+    "status": "pass",
+    "blocker": null,
+    "min_wall_ns": 5847975474,
+    "min_time_ticks": 140350866,
+    "fp32_cos": 0.9999999403953552,
+    "runs": [
+      {
+        "wall_ns": 5907378461,
+        "time_ticks": 141776549,
+        "cycles_est": 9357252234,
+        "fp32_cos": 0.9999999403953552,
+        "vlen": 256
+      },
+      {
+        "wall_ns": 5847975474,
+        "time_ticks": 140350866,
+        "cycles_est": 9263157156,
+        "fp32_cos": 0.9999999403953552,
+        "vlen": 256
+      },
+      {
+        "wall_ns": 5885162666,
+        "time_ticks": 141243329,
+        "cycles_est": 9322059714,
+        "fp32_cos": 0.9999999403953552,
+        "vlen": 256
+      }
+    ]
+  },
+  "optimized": [
+    {
+      "tag": "optimized_ntail",
+      "run_id": "e2e_optimized_ntail",
+      "compiler_features": [
+        "accumulator_resident_ntail"
+      ],
+      "lowering_path": "vectorized",
+      "pipeline_error_op": null,
+      "ll_fmuladd": 239,
+      "ll_fixedvec": 5508,
+      "attn_vectorized": "vfmacc",
+      "status": "pass",
+      "blocker": null,
+      "min_wall_ns": 4408921075,
+      "min_time_ticks": 105813632,
+      "fp32_cos": 1.0,
+      "runs": [
+        {
+          "wall_ns": 4421653274,
+          "time_ticks": 106119225,
+          "cycles_est": 7003868850,
+          "fp32_cos": 1.0,
+          "vlen": 256
+        },
+        {
+          "wall_ns": 4408921075,
+          "time_ticks": 105813632,
+          "cycles_est": 6983699712,
+          "fp32_cos": 1.0,
+          "vlen": 256
+        },
+        {
+          "wall_ns": 4439277126,
+          "time_ticks": 106542166,
+          "cycles_est": 7031782956,
+          "fp32_cos": 1.0,
+          "vlen": 256
+        }
+      ],
+      "speedup_vs_baseline": 1.3263960444109333
+    },
+    {
+      "tag": "opt_tiled_only",
+      "run_id": "e2e_opt_tiled_only",
+      "compiler_features": [
+        "fused_vfmacc_tiled"
+      ],
+      "lowering_path": "vectorized",
+      "pipeline_error_op": null,
+      "ll_fmuladd": 3330,
+      "ll_fixedvec": 42337,
+      "attn_vectorized": "vfmacc",
+      "status": "pass",
+      "blocker": null,
+      "min_wall_ns": 1618507426,
+      "min_time_ticks": 38843982,
+      "fp32_cos": 0.9999999403953552,
+      "runs": [
+        {
+          "wall_ns": 1618507426,
+          "time_ticks": 38843982,
+          "cycles_est": 2563702812,
+          "fp32_cos": 0.9999999403953552,
+          "vlen": 256
+        },
+        {
+          "wall_ns": 1626129141,
+          "time_ticks": 39026894,
+          "cycles_est": 2575775004,
+          "fp32_cos": 0.9999999403953552,
+          "vlen": 256
+        },
+        {
+          "wall_ns": 1618826071,
+          "time_ticks": 38851619,
+          "cycles_est": 2564206854,
+          "fp32_cos": 0.9999999403953552,
+          "vlen": 256
+        }
+      ],
+      "speedup_vs_baseline": 3.613190387672648
+    }
+  ]
+}
