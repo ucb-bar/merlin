@@ -61,43 +61,45 @@ def fig_e2e():
     fig.patch.set_facecolor("white")
     gs = fig.add_gridspec(1, 2, width_ratios=[1.15, 1.0], wspace=0.22)
 
-    # -- left: bitvla three-way, horizontal gold-bar card (latency ms) --
+    # -- left: bitvla latency card — baseline / ours-vfmacc / XNNPACK / ours-v3 (the winner) --
     ax = fig.add_subplot(gs[0]); card(ax, "bitvla — whole-model latency on K1 silicon")
-    rows = [("baseline\n(hand_v0)", 2517, SALMON, "1.00×", False),
-            ("ours\n(vfmacc)", 274, GOLD, "9.18×", False),
-            ("xnnpack\nkernels", 184, STEEL, "13.65×", True)]
+    V3 = "#b8742a"  # ours accumulator-resident microkernel (compiler) — the winner
+    rows = [("baseline\n(hand_v0)", 2521, SALMON, "1.00×", False),
+            ("ours-vfmacc\n(tiled, compiler)", 275, GOLD, "9.16×", False),
+            ("XNNPACK\n(hand kernel)", 184, STEEL, "13.65×", False),
+            ("ours-v3\n(accum-resident, compiler)", 150, V3, "16.83×", True)]
     y = np.arange(len(rows))[::-1]
     for yi, (lab, ms, col, sp, fast) in zip(y, rows):
-        ax.barh(yi, ms, height=0.62, color=col, edgecolor=CARD_EC, linewidth=1.6, zorder=3)
+        ax.barh(yi, ms, height=0.6, color=col, edgecolor=CARD_EC, linewidth=1.6, zorder=3)
         tag = f"{ms} ms   ({sp})" + ("   ← fastest" if fast else "")
-        ax.text(ms + 70, yi, tag, va="center", ha="left", fontsize=11,
-                fontweight="bold", color=(STEEL if fast else INK))
-    ax.set_yticks(y); ax.set_yticklabels([r[0] for r in rows], fontsize=10.5)
+        ax.text(ms + 70, yi, tag, va="center", ha="left", fontsize=10.5,
+                fontweight="bold", color=(V3 if fast else INK))
+    ax.set_yticks(y); ax.set_yticklabels([r[0] for r in rows], fontsize=9.8)
     ax.set_xlim(0, 4200); ax.set_xlabel("latency (ms / forward) — lower is better")
     ax.set_xticks([0, 1000, 2000, 3000])
-    callout(ax, (184, y[2]+0.30), "same graph + weights,\nonly GEMM kernel swapped → 1.49× over ours",
-            (1950, y[2]+0.30), fc="#eef3f7", ec=STEEL)
+    callout(ax, (150, y[3]+0.32), "compiler-emitted v3 BEATS XNNPACK's\nhand kernel — 1.23× faster, cos 0.99999",
+            (2050, y[3]+0.30), fc="#f7efe2", ec=V3)
     ax.set_ylim(-0.6, len(rows)-0.35)
 
-    # -- right: per-model compiler speedup (gold bars) --
-    ax = fig.add_subplot(gs[1]); card(ax, "compiler-emitted speedup vs frozen baseline")
-    models = [("rdt2", 2.35, "73.7 → 31.4 s"), ("openvla", 3.61, "5.85 → 1.62 s"),
-              ("bitvla", 9.18, "2.52 → 0.274 s")]
+    # -- right: best whole-model compiler speedup PER MODEL (portfolio: best kernel is per-model) --
+    ax = fig.add_subplot(gs[1]); card(ax, "best compiler-emitted speedup vs baseline (per model)")
+    models = [("rdt2", 2.35, "accum-resident", GOLD), ("openvla", 3.65, "tiled vfmacc", GOLD),
+              ("bitvla", 16.83, "accum-resident v3", V3)]
     y = np.arange(len(models))
-    for yi, (m, sp, lab) in zip(y, models):
-        ax.barh(yi, sp, height=0.6, color=GOLD, edgecolor=CARD_EC, linewidth=1.6, zorder=3)
-        ax.text(sp + 0.15, yi, f"{sp}×", va="center", fontsize=12, fontweight="bold", color=INK)
-        ax.text(0.2, yi, lab, va="center", fontsize=9, color=INK)
+    for yi, (m, sp, feat, col) in zip(y, models):
+        ax.barh(yi, sp, height=0.6, color=col, edgecolor=CARD_EC, linewidth=1.6, zorder=3)
+        ax.text(sp + 0.25, yi, f"{sp}×", va="center", fontsize=12, fontweight="bold", color=INK)
+        ax.text(0.3, yi, feat, va="center", fontsize=8.5, color="white", fontweight="bold")
     ax.axvline(1.0, color=GREY, lw=1, ls="--")
     ax.set_yticks(y); ax.set_yticklabels([m[0] for m in models], fontsize=11)
-    ax.set_xlim(0, 10.5); ax.set_xlabel("whole-model speedup (×) — higher is better")
+    ax.set_xlim(0, 19); ax.set_xlabel("whole-model speedup (×) — higher is better")
     ax.set_ylim(-0.6, len(models)-0.4)
 
-    fig.text(0.5, -0.02,
-             "Figure A:  Whole-model RVV speedups on real K1 silicon.  Compiler-emitted vfmacc lowering "
-             "gives 2.4–9.2× over the frozen baseline across three VLA models (cos ≥ 0.99999).  Swapping in\n"
-             "XNNPACK's hand-written RVV GEMM for bitvla's matmuls reaches 13.65×, isolating ~1.49× of "
-             "remaining matmul-codegen headroom; the rest of the win is shared runtime.",
+    fig.text(0.5, -0.04,
+             "Figure A:  Whole-model RVV speedups on real K1 silicon (cos ≥ 0.99999).  The compiler-emitted "
+             "accumulator-resident micro-kernel (ours-v3) reaches 16.83× on bitvla — beating both the tiled-vfmacc\n"
+             "lowering (9.16×) and XNNPACK's hand-written RVV GEMM (13.65×).  Best kernel is per-model (right): v3 wins "
+             "bitvla; tiled vfmacc wins openvla (3.65×) — a portfolio the autotune layer selects from.",
              ha="center", fontsize=9.3, color=INK)
     for ext in ("png", "svg"):
         fig.savefig(OUT / f"paper_e2e.{ext}", bbox_inches="tight", dpi=160)

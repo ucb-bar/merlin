@@ -1,0 +1,179 @@
+{
+  "openvla_fp32_consistent": {
+    "model": "output/openvla_fp32_consistent",
+    "golden_shape": [
+      1,
+      20,
+      512
+    ],
+    "n": 3,
+    "rows": [
+      {
+        "tag": "baseline",
+        "run_id": "act_e2e_openvla_fp32_consistent_baseline",
+        "compiler_features": [],
+        "lowering_path": "vectorized",
+        "pipeline_error_op": null,
+        "ll_fmuladd": 0,
+        "ll_fixedvec": 5512,
+        "attn_vectorized": "fixedwidth_simd_no_fma",
+        "status": "pass",
+        "blocker": null,
+        "min_wall_ns": 5868330142,
+        "min_time_ticks": 140838681,
+        "fp32_cos": 0.9999999403953552,
+        "runs": [
+          {
+            "wall_ns": 5868950008,
+            "time_ticks": 140853551,
+            "cycles_est": 9296334366,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 5868330142,
+            "time_ticks": 140838681,
+            "cycles_est": 9295352946,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 5900379099,
+            "time_ticks": 141607839,
+            "cycles_est": 9346117374,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          }
+        ],
+        "composes": true,
+        "speedup_vs_baseline": 1.0
+      },
+      {
+        "tag": "act_alone",
+        "run_id": "act_e2e_openvla_fp32_consistent_act_alone",
+        "compiler_features": [
+          "vectorized_transcendental_activation"
+        ],
+        "lowering_path": "vectorized",
+        "pipeline_error_op": null,
+        "ll_fmuladd": 0,
+        "ll_fixedvec": 10856,
+        "attn_vectorized": "fixedwidth_simd_no_fma",
+        "status": "pass",
+        "blocker": null,
+        "min_wall_ns": 6154553834,
+        "min_time_ticks": 147703760,
+        "fp32_cos": 0.9999999403953552,
+        "runs": [
+          {
+            "wall_ns": 6169478468,
+            "time_ticks": 148066146,
+            "cycles_est": 9772365636,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 6154553834,
+            "time_ticks": 147703760,
+            "cycles_est": 9748448160,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 6193497610,
+            "time_ticks": 148639713,
+            "cycles_est": 9810221058,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          }
+        ],
+        "composes": true,
+        "speedup_vs_baseline": 0.9534939981483636
+      },
+      {
+        "tag": "matmul_only",
+        "run_id": "act_e2e_openvla_fp32_consistent_matmul_only",
+        "compiler_features": [
+          "fused_vfmacc_tiled"
+        ],
+        "lowering_path": "vectorized",
+        "pipeline_error_op": null,
+        "ll_fmuladd": 3330,
+        "ll_fixedvec": 42337,
+        "attn_vectorized": "vfmacc",
+        "status": "pass",
+        "blocker": null,
+        "min_wall_ns": 1606864582,
+        "min_time_ticks": 38563689,
+        "fp32_cos": 0.9999999403953552,
+        "runs": [
+          {
+            "wall_ns": 1627896036,
+            "time_ticks": 39068382,
+            "cycles_est": 2578513212,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 1619326281,
+            "time_ticks": 38862735,
+            "cycles_est": 2564940510,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 1606864582,
+            "time_ticks": 38563689,
+            "cycles_est": 2545203474,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          }
+        ],
+        "composes": true,
+        "speedup_vs_baseline": 3.652037768295275
+      },
+      {
+        "tag": "microkernel_v3",
+        "run_id": "act_e2e_openvla_fp32_consistent_microkernel_v3",
+        "compiler_features": [
+          "accumulator_resident_microkernel_v3"
+        ],
+        "lowering_path": "vectorized",
+        "pipeline_error_op": null,
+        "ll_fmuladd": 254,
+        "ll_fixedvec": 6609,
+        "attn_vectorized": "vfmacc",
+        "status": "pass",
+        "blocker": null,
+        "min_wall_ns": 2468632521,
+        "min_time_ticks": 59245619,
+        "fp32_cos": 1.0,
+        "runs": [
+          {
+            "wall_ns": 2473951282,
+            "time_ticks": 59373226,
+            "cycles_est": 3918632916,
+            "fp32_cos": 1.0,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 2495592841,
+            "time_ticks": 59892637,
+            "cycles_est": 3952914042,
+            "fp32_cos": 1.0,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 2468632521,
+            "time_ticks": 59245619,
+            "cycles_est": 3910210854,
+            "fp32_cos": 1.0,
+            "vlen": 256
+          }
+        ],
+        "composes": true,
+        "speedup_vs_baseline": 2.377158241285277
+      }
+    ]
+  }
+}
