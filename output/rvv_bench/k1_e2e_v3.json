@@ -1,0 +1,272 @@
+{
+  "bitvla_fp32_consistent": {
+    "model": "output/bitvla_fp32_consistent",
+    "golden_shape": [
+      1,
+      32,
+      1024
+    ],
+    "n": 3,
+    "rows": [
+      {
+        "tag": "baseline",
+        "run_id": "act_e2e_bitvla_fp32_consistent_baseline",
+        "compiler_features": [],
+        "lowering_path": "vectorized",
+        "pipeline_error_op": null,
+        "ll_fmuladd": 0,
+        "ll_fixedvec": 2907,
+        "attn_vectorized": "fixedwidth_simd_no_fma",
+        "status": "pass",
+        "blocker": null,
+        "min_wall_ns": 2528054769,
+        "min_time_ticks": 60671985,
+        "fp32_cos": 0.9999945759773254,
+        "runs": [
+          {
+            "wall_ns": 2531450045,
+            "time_ticks": 60753443,
+            "cycles_est": 4009727238,
+            "fp32_cos": 0.9999945759773254,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 2533903487,
+            "time_ticks": 60812339,
+            "cycles_est": 4013614374,
+            "fp32_cos": 0.9999945759773254,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 2528054769,
+            "time_ticks": 60671985,
+            "cycles_est": 4004351010,
+            "fp32_cos": 0.9999945759773254,
+            "vlen": 256
+          }
+        ],
+        "composes": true,
+        "speedup_vs_baseline": 1.0
+      },
+      {
+        "tag": "matmul_only",
+        "run_id": "act_e2e_bitvla_fp32_consistent_matmul_only",
+        "compiler_features": [
+          "fused_vfmacc_tiled"
+        ],
+        "lowering_path": "vectorized",
+        "pipeline_error_op": null,
+        "ll_fmuladd": 1217,
+        "ll_fixedvec": 10728,
+        "attn_vectorized": "vfmacc",
+        "status": "pass",
+        "blocker": null,
+        "min_wall_ns": 273683981,
+        "min_time_ticks": 6568229,
+        "fp32_cos": 0.9999945759773254,
+        "runs": [
+          {
+            "wall_ns": 277475982,
+            "time_ticks": 6659247,
+            "cycles_est": 439510302,
+            "fp32_cos": 0.9999945759773254,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 273683981,
+            "time_ticks": 6568229,
+            "cycles_est": 433503114,
+            "fp32_cos": 0.9999945759773254,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 278650083,
+            "time_ticks": 6687433,
+            "cycles_est": 441370578,
+            "fp32_cos": 0.9999945759773254,
+            "vlen": 256
+          }
+        ],
+        "composes": true,
+        "speedup_vs_baseline": 9.237130941178469
+      },
+      {
+        "tag": "microkernel_v3",
+        "run_id": "act_e2e_bitvla_fp32_consistent_microkernel_v3",
+        "compiler_features": [
+          "accumulator_resident_microkernel_v3"
+        ],
+        "lowering_path": "scalar_fallback",
+        "pipeline_error_op": "tensor.extract",
+        "ll_fmuladd": 0,
+        "ll_fixedvec": 0,
+        "attn_vectorized": "scalar (vfmacc path fell back whole-model)",
+        "status": "pass",
+        "blocker": null,
+        "min_wall_ns": 3282030787,
+        "min_time_ticks": 78767095,
+        "fp32_cos": 0.9999945759773254,
+        "runs": [
+          {
+            "wall_ns": 3288566298,
+            "time_ticks": 78923918,
+            "cycles_est": 5208978588,
+            "fp32_cos": 0.9999945759773254,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 3282030787,
+            "time_ticks": 78767095,
+            "cycles_est": 5198628270,
+            "fp32_cos": 0.9999945759773254,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 3341793583,
+            "time_ticks": 80201367,
+            "cycles_est": 5293290222,
+            "fp32_cos": 0.9999945759773254,
+            "vlen": 256
+          }
+        ],
+        "composes": true,
+        "speedup_vs_baseline": 0.7702714974562486
+      }
+    ]
+  },
+  "openvla_fp32_consistent": {
+    "model": "output/openvla_fp32_consistent",
+    "golden_shape": [
+      1,
+      20,
+      512
+    ],
+    "n": 3,
+    "rows": [
+      {
+        "tag": "baseline",
+        "run_id": "act_e2e_openvla_fp32_consistent_baseline",
+        "compiler_features": [],
+        "lowering_path": "vectorized",
+        "pipeline_error_op": null,
+        "ll_fmuladd": 0,
+        "ll_fixedvec": 5512,
+        "attn_vectorized": "fixedwidth_simd_no_fma",
+        "status": "pass",
+        "blocker": null,
+        "min_wall_ns": 5881332827,
+        "min_time_ticks": 141149141,
+        "fp32_cos": 0.9999999403953552,
+        "runs": [
+          {
+            "wall_ns": 5906850995,
+            "time_ticks": 141761535,
+            "cycles_est": 9356261310,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 5881332827,
+            "time_ticks": 141149141,
+            "cycles_est": 9315843306,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 5916554607,
+            "time_ticks": 141994490,
+            "cycles_est": 9371636340,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          }
+        ],
+        "composes": true,
+        "speedup_vs_baseline": 1.0
+      },
+      {
+        "tag": "matmul_only",
+        "run_id": "act_e2e_openvla_fp32_consistent_matmul_only",
+        "compiler_features": [
+          "fused_vfmacc_tiled"
+        ],
+        "lowering_path": "vectorized",
+        "pipeline_error_op": null,
+        "ll_fmuladd": 3330,
+        "ll_fixedvec": 42337,
+        "attn_vectorized": "vfmacc",
+        "status": "pass",
+        "blocker": null,
+        "min_wall_ns": 1615411719,
+        "min_time_ticks": 38769114,
+        "fp32_cos": 0.9999999403953552,
+        "runs": [
+          {
+            "wall_ns": 1623088925,
+            "time_ticks": 38953350,
+            "cycles_est": 2570921100,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 1619092708,
+            "time_ticks": 38857457,
+            "cycles_est": 2564592162,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 1615411719,
+            "time_ticks": 38769114,
+            "cycles_est": 2558761524,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          }
+        ],
+        "composes": true,
+        "speedup_vs_baseline": 3.640763997082282
+      },
+      {
+        "tag": "microkernel_v3",
+        "run_id": "act_e2e_openvla_fp32_consistent_microkernel_v3",
+        "compiler_features": [
+          "accumulator_resident_microkernel_v3"
+        ],
+        "lowering_path": "scalar_fallback",
+        "pipeline_error_op": "tensor.extract",
+        "ll_fmuladd": 0,
+        "ll_fixedvec": 0,
+        "attn_vectorized": "scalar (vfmacc path fell back whole-model)",
+        "status": "pass",
+        "blocker": null,
+        "min_wall_ns": 8674303628,
+        "min_time_ticks": 208179443,
+        "fp32_cos": 0.9999999403953552,
+        "runs": [
+          {
+            "wall_ns": 8717817931,
+            "time_ticks": 209223682,
+            "cycles_est": 13808763012,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 8811183802,
+            "time_ticks": 211464459,
+            "cycles_est": 13956654294,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          },
+          {
+            "wall_ns": 8674303628,
+            "time_ticks": 208179443,
+            "cycles_est": 13739843238,
+            "fp32_cos": 0.9999999403953552,
+            "vlen": 256
+          }
+        ],
+        "composes": true,
+        "speedup_vs_baseline": 0.6780178650901151
+      }
+    ]
+  }
+}
