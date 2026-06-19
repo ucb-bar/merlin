@@ -479,14 +479,20 @@ def attribute_records(records, topo: VlaRuntimeTopology,
             if _match(rule, rec):
                 role, source = rule["role"], "explicit_mapping"
                 break
-        if role is None and rec.in_loop_body:     # 2) STRUCTURAL: inside the while_loop scf.for region
-            role, source = ROLE_REPEATED_HEAD, "structural_scf_for"  # = the repeated head, from IR
-        if role is None:                          # 3) prov.fqn module-path inference (from IR)
+        if role is None and is_loop_capture:
+            # 2) STRUCTURAL (authoritative for the once-vs-repeated axis): the while_loop scf.for
+            # boundary partitions the work — in-loop ops are the repeated head (xK), out-of-loop ops
+            # are the once-per-replan prefix (x1). This OVERRIDES the fqn heuristic, which can't tell
+            # a prefill pass (runs once, outside the loop) from the decode step (its fqn also says
+            # self_attn) — exactly the prefill/decode separation the flat capture could not make.
+            if rec.in_loop_body:
+                role, source = ROLE_REPEATED_HEAD, "structural_scf_for"
+            else:
+                role, source = ROLE_BACKBONE, "structural_prefix"
+        if role is None:                          # 3) prov.fqn module-path inference (flat captures)
             role = role_from_fqn(rec.fqn)
             if role is not None:
                 source = "prov_fqn"
-        if role is None and is_loop_capture:      # 3b) STRUCTURAL: outside the loop in a loop capture
-            role, source = ROLE_BACKBONE, "structural_prefix"  # = the once-per-replan prefix
         if role is None:                          # 4) unattributed (role not recoverable)
             unknown.add(rec)
             unknown_idx.append(rec.index)

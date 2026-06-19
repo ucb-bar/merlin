@@ -1,5 +1,10 @@
 # Current-state audit (V0 freeze)
 
+> **SUPERSEDED (P21–P23).** This is a historical V0 freeze (flat-capture corpus, pre-loop). The current
+> state — loop-preserving corpus, structural role attribution (prefix/decode split), IR-recovered K,
+> deployment magnitudes, native low-bit, residency-from-IR — is in `manual_validation/final_judgment.md`
+> (P21/P22/P23 UPDATE sections) and `final_analysis.html`. Verifier is now 628/628 on the loop corpus.
+
 **Date:** 2026-06-16 · **Branch:** `feature/kernel-policy-mining` · **Package commit:** `81ff6c9`
 
 This is a freeze checkpoint. It answers, from this folder alone: can a reader understand and

@@ -4,35 +4,66 @@ topology_recovery:
   level: 1
   regions:
   - attribution_status: attributed
-    confidence: 0.7
+    confidence: 0.8
     facts:
-      activation_bytes_per_invocation: 1691648
-      activation_bytes_total: 54132736
-      invocations: 32
-      macs_per_invocation: 614465536
-      macs_total: 19662897152
+      activation_bytes_per_invocation: 2429952
+      activation_bytes_total: 2429952
+      invocations: 1
+      macs_per_invocation: 770179072
+      macs_total: 770179072
       matmul_count: 15
       weight_bytes: 614465536
-    invocations: 32
+    invocations: 1
     matmul_count_attributed: 15
-    reason: 15 matmuls assigned by prov_fqn
+    reason: 15 matmuls assigned by structural_prefix
+    role: backbone_once
+    source: structural_prefix
+  - attribution_status: attributed
+    confidence: 0.85
+    facts:
+      activation_bytes_per_invocation: 422912
+      activation_bytes_total: 2960384
+      invocations: 7
+      macs_per_invocation: 153616384
+      macs_total: 1075314688
+      matmul_count: 15
+      weight_bytes: 614465536
+    invocations: 7
+    matmul_count_attributed: 15
+    reason: 15 matmuls assigned by structural_scf_for
     role: repeated_head
-    source: prov_fqn
+    source: structural_scf_for
   repeated_shape_signatures:
   - count: 4
     signature:
-    - 4
+    - 8
     - 2048
     - 2048
   - count: 4
     signature:
-    - 4
+    - 8
     - 2048
     - 256
   - count: 4
     signature:
-    - 4
+    - 8
     - 2048
     - 5632
-  unresolved: []
+  - count: 4
+    signature:
+    - 1
+    - 2048
+    - 2048
+  - count: 4
+    signature:
+    - 1
+    - 2048
+    - 256
+  - count: 4
+    signature:
+    - 1
+    - 2048
+    - 5632
+  unresolved:
+  - no prov.fqn and no mapping rules; role recovery unavailable — loop/role-preserving capture is the Level-2 fix
 workload: tiny_llama

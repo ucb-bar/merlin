@@ -4,45 +4,45 @@ topology_recovery:
   level: 1
   regions:
   - attribution_status: attributed
-    confidence: 0.7
+    confidence: 0.85
     facts:
-      activation_bytes_per_invocation: 19456
-      activation_bytes_total: 19456
-      invocations: 1
-      macs_per_invocation: 2752512
-      macs_total: 2752512
-      matmul_count: 2
-      weight_bytes: 11010048
-    invocations: 1
-    matmul_count_attributed: 2
-    reason: 2 matmuls assigned by prov_fqn
-    role: backbone_once
-    source: prov_fqn
-  - attribution_status: attributed
-    confidence: 0.7
-    facts:
-      activation_bytes_per_invocation: 10371072
-      activation_bytes_total: 41484288
+      activation_bytes_per_invocation: 79920128
+      activation_bytes_total: 319680512
       invocations: 4
-      macs_per_invocation: 2609381376
-      macs_total: 10437525504
-      matmul_count: 16
-      weight_bytes: 295698432
+      macs_per_invocation: 20393361408
+      macs_total: 81573445632
+      matmul_count: 116
+      weight_bytes: 2200436736
     invocations: 4
-    matmul_count_attributed: 16
-    reason: 16 matmuls assigned by prov_fqn
+    matmul_count_attributed: 116
+    reason: 116 matmuls assigned by structural_scf_for
     role: repeated_head
-    source: prov_fqn
+    source: structural_scf_for
   repeated_shape_signatures:
-  - count: 6
+  - count: 48
     signature:
     - 41
     - 1536
     - 1536
-  - count: 3
+  - count: 17
     signature:
     - 1
     - 1536
     - 3072
+  - count: 16
+    signature:
+    - 64
+    - 2048
+    - 1536
+  - count: 16
+    signature:
+    - 41
+    - 1536
+    - 6144
+  - count: 16
+    signature:
+    - 41
+    - 6144
+    - 1536
   unresolved: []
 workload: groot_n1d7

@@ -4,10 +4,38 @@ memory_envelope:
   regions:
   - activation_bytes_per_invocation:
       evidence: recovered_from_ir
-      value: 10403840
+      value: 10188800
     activation_traffic_total:
       evidence: derived_requirement
-      value: 83230720
+      value: 10188800
+    avoidable_weight_reload:
+      evidence: derived_requirement
+      value: 0
+    intermediate_materialization_bytes:
+      evidence: unavailable
+      value: null
+    invocations:
+      evidence: recovered_from_ir
+      value: 1
+    layout_conversion_bytes:
+      evidence: unavailable
+      value: null
+    region: backbone_once
+    reuse_factor:
+      evidence: assumed_reference
+      value: 1
+    weight_bytes:
+      evidence: recovered_from_ir
+      value: 3787456512
+    weight_traffic_if_nonresident:
+      evidence: derived_requirement
+      value: 3787456512
+  - activation_bytes_per_invocation:
+      evidence: recovered_from_ir
+      value: 1300480
+    activation_traffic_total:
+      evidence: derived_requirement
+      value: 10403840
     avoidable_weight_reload:
       evidence: derived_requirement
       value: 26512195584

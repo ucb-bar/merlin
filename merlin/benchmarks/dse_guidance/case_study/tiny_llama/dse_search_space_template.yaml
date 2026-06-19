@@ -15,7 +15,7 @@ dse_search_space_template:
       - dma_bandwidth
       - residency/replacement_policy
       - weight_prefetch_overlap
-      reason: action-head weights are loop-invariant across K=32 steps; a flat capture sees one use and hides this axis
+      reason: action-head weights are loop-invariant across K=7 steps; a flat capture sees one use and hides this axis
     - abstraction: packed_lowbit_tensor + resident_weight_object + scale_object
       axis: resident_packed_lowbit_weights
       enabled: true
@@ -43,7 +43,7 @@ dse_search_space_template:
       - device_loop_controller
       - dependency_tracking
       - resident_state_handles
-      reason: a bounded K=32 loop with loop-carried state can run device-side
+      reason: a bounded K=7 loop with loop-carried state can run device-side
     - abstraction: command_buffer
       axis: command_batching
       enabled: true
@@ -51,7 +51,7 @@ dse_search_space_template:
       knobs:
       - submission_granularity
       - persistent_command_graph
-      reason: the K=32 head steps issue repeated host submits a flat capture hides
+      reason: the K=7 head steps issue repeated host submits a flat capture hides
     - abstraction: persistent_command_buffer
       axis: command_buffer_per_replan
       enabled: false

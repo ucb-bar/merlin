@@ -17,7 +17,7 @@ numerical_contract:
       - int4_weight_only
       - int4_weight_fp8_activation
       compute_dtype: f32
-      repeated_head_weight_bytes: 123080704
+      repeated_head_weight_bytes: 169086976
       weight_storage_dtype: f32
     required_accuracy_measurements:
     - per-format accuracy vs fp32 (cos/argmax) sweep
@@ -68,15 +68,11 @@ numerical_contract:
   per_region_dtype:
   - dtype: f32
     evidence: recovered_from_ir
-    n: 16
-    region: repeated_head
-  - dtype: f32
-    evidence: recovered_from_ir
-    n: 1
+    n: 2
     region: backbone_once
   - dtype: f32
     evidence: recovered_from_ir
-    n: 2
-    region: prefix_builder
+    n: 17
+    region: repeated_head
   severity: low
   workload: xr0

@@ -4,50 +4,35 @@ topology_recovery:
   level: 1
   regions:
   - attribution_status: attributed
-    confidence: 0.7
+    confidence: 0.8
     facts:
-      activation_bytes_per_invocation: 4989056
-      activation_bytes_total: 24945280
-      invocations: 5
-      macs_per_invocation: 908261376
-      macs_total: 4541306880
-      matmul_count: 16
-      weight_bytes: 123080704
-    invocations: 5
-    matmul_count_attributed: 16
-    reason: 16 matmuls assigned by prov_fqn
-    role: repeated_head
-    source: prov_fqn
-  - attribution_status: attributed
-    confidence: 0.7
-    facts:
-      activation_bytes_per_invocation: 28672
-      activation_bytes_total: 28672
+      activation_bytes_per_invocation: 12416
+      activation_bytes_total: 12416
       invocations: 1
-      macs_per_invocation: 6291456
-      macs_total: 6291456
-      matmul_count: 1
-      weight_bytes: 25165824
-    invocations: 1
-    matmul_count_attributed: 1
-    reason: 1 matmuls assigned by prov_fqn
-    role: backbone_once
-    source: prov_fqn
-  - attribution_status: attributed
-    confidence: 0.7
-    facts:
-      activation_bytes_per_invocation: 1048576
-      activation_bytes_total: 1048576
-      invocations: 1
-      macs_per_invocation: 201326592
-      macs_total: 201326592
+      macs_per_invocation: 1081344
+      macs_total: 1081344
       matmul_count: 2
-      weight_bytes: 25165824
+      weight_bytes: 4325376
     invocations: 1
     matmul_count_attributed: 2
-    reason: 2 matmuls assigned by prov_fqn
-    role: prefix_builder
-    source: prov_fqn
+    reason: 2 matmuls assigned by structural_prefix
+    role: backbone_once
+    source: structural_prefix
+  - attribution_status: attributed
+    confidence: 0.85
+    facts:
+      activation_bytes_per_invocation: 6053888
+      activation_bytes_total: 30269440
+      invocations: 5
+      macs_per_invocation: 1114798080
+      macs_total: 5573990400
+      matmul_count: 17
+      weight_bytes: 169086976
+    invocations: 5
+    matmul_count_attributed: 17
+    reason: 17 matmuls assigned by structural_scf_for
+    role: repeated_head
+    source: structural_scf_for
   repeated_shape_signatures:
   - count: 4
     signature:

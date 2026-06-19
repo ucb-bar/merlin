@@ -8,25 +8,25 @@
 
 | requirement | value | unit | evidence |
 |-------------|-------|------|----------|
-| macs_per_replan | 4.541e+09 | MAC | recovered_from_ir |
-| resident_capacity_required | 117.4 MB | B | recovered_from_ir |
-| weight_reload_bytes_per_replan | 586.9 MB | B | recovered_from_ir |
-| avoidable_weight_reload_bytes | 469.5 MB | B | recovered_from_ir |
-| dispatches_per_replan | 8.000e+01 | dispatch | derived_requirement |
-| required_compute_rate | 2.725e+10 | MAC/s | derived_requirement |
-| required_weight_bandwidth | 3.692e+09 | B/s | derived_requirement |
-| required_activation_bandwidth | 1.497e+08 | B/s | derived_requirement |
-| required_command_rate | 4.800e+02 | dispatch/s | derived_requirement |
+| macs_per_replan | 5.574e+09 | MAC | recovered_from_ir |
+| resident_capacity_required | 161.3 MB | B | recovered_from_ir |
+| weight_reload_bytes_per_replan | 806.3 MB | B | recovered_from_ir |
+| avoidable_weight_reload_bytes | 645.0 MB | B | recovered_from_ir |
+| dispatches_per_replan | 8.500e+01 | dispatch | derived_requirement |
+| required_compute_rate | 3.344e+10 | MAC/s | derived_requirement |
+| required_weight_bandwidth | 5.073e+09 | B/s | derived_requirement |
+| required_activation_bandwidth | 1.816e+08 | B/s | derived_requirement |
+| required_command_rate | 5.100e+02 | dispatch/s | derived_requirement |
 
 ## Resident capacity by storage format
 
 | format | resident set |
 |--------|--------------|
-| bf16 | 58.7 MB |
-| fp8 | 29.3 MB |
-| int8 | 29.3 MB |
-| int4 | 14.7 MB |
-| fp6 | 22.0 MB |
+| bf16 | 80.6 MB |
+| fp8 | 40.3 MB |
+| int8 | 40.3 MB |
+| int4 | 20.2 MB |
+| fp6 | 30.2 MB |
 
 ## Candidate design axes (structural; quantification gated)
 

@@ -16,9 +16,9 @@ numerical_contract:
       - int8_w8a8
       - int4_weight_only
       - int4_weight_fp8_activation
-      compute_dtype: f32
-      repeated_head_weight_bytes: 31493120
-      weight_storage_dtype: f32
+      compute_dtype: bf16
+      repeated_head_weight_bytes: 206126080
+      weight_storage_dtype: bf16
     required_accuracy_measurements:
     - per-format accuracy vs fp32 (cos/argmax) sweep
     required_hw_support: resident packed low-bit weight store + matching matmul datapath
@@ -47,7 +47,7 @@ numerical_contract:
   honesty:
     accumulator_dtype:
       evidence: recovered_from_ir
-      value: f32
+      value: bf16
     note: scale/zero-point/group-size and sparsity metadata are not present in a flat dequantized capture; they are marked unavailable, never invented.
     scale_metadata:
       evidence: unavailable
@@ -58,21 +58,21 @@ numerical_contract:
   lost_structure: []
   mismatch: null
   observed:
-    compute_dtype: f32
+    compute_dtype: bf16
     declared_quantization: none
     dequantize_ops: 0
-    n_matmuls: 106
+    n_matmuls: 302
     packed_layout_visible: true
     requant_ops: 0
-    weight_storage_dtype: f32
+    weight_storage_dtype: bf16
   per_region_dtype:
-  - dtype: f32
+  - dtype: bf16
     evidence: recovered_from_ir
-    n: 87
+    n: 186
     region: backbone_once
   - dtype: bf16
     evidence: recovered_from_ir
-    n: 19
+    n: 116
     region: repeated_head
   severity: low
   workload: smolvla

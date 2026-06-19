@@ -1,7 +1,6 @@
 workload,topology_recovered,role_attribution,K_source,deadline_source,dtype_contract,accuracy_status,cpu_coupling,ready_structural_DSE,ready_quantitative_DSE,missing_before_ranking
 rdt,True,True,assumed_reference,assumed_reference,True,unavailable,unavailable,True,False,quantization accuracy gates (per candidate low-bit format); real (target) command-submit / sync latency; K / control-rate from the real deployment (currently reference values)
 openvla,True,True,assumed_reference,assumed_reference,True,pass,unavailable,True,False,real (target) command-submit / sync latency; K / control-rate from the real deployment (currently reference values)
-small_llama,True,True,assumed_reference,assumed_reference,True,pass,unavailable,True,False,real (target) command-submit / sync latency; K / control-rate from the real deployment (currently reference values)
 tiny_llama,True,True,assumed_reference,assumed_reference,True,pass,unavailable,True,False,real (target) command-submit / sync latency; K / control-rate from the real deployment (currently reference values)
 rdt2,True,True,assumed_reference,assumed_reference,True,pass,unavailable,True,False,real (target) command-submit / sync latency; K / control-rate from the real deployment (currently reference values)
 groot_n1d7,True,True,assumed_reference,assumed_reference,True,unavailable,unavailable,True,False,quantization accuracy gates (per candidate low-bit format); real (target) command-submit / sync latency; K / control-rate from the real deployment (currently reference values)

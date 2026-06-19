@@ -6,7 +6,7 @@
 
 ## 1. Recovered structure
 
-- repeated head (prov_fqn): 23 matmuls, 301 MB weights, 0.9 GMAC/step, reused x5
+- repeated head (structural_scf_for): 26 matmuls, 310 MB weights, 1.0 GMAC/step, reused x5
 
 ## 2. Numerical contract
 
@@ -14,13 +14,13 @@
 
 ## 3. Requirements (hardware-independent)
 
-- macs_per_replan = 4.705e+09 MAC (recovered_from_ir)
-- resident_capacity_required = 3.013e+08 B (recovered_from_ir)
-- avoidable_weight_reload_bytes = 1.205e+09 B (recovered_from_ir)
-- required_compute_rate = 2.206e+09 MAC/s (derived_requirement)
-- required_weight_bandwidth = 7.061e+08 B/s (derived_requirement)
-- required_command_rate = 5.391e+01 dispatch/s (derived_requirement)
-- resident capacity by format: bf16=151MB, fp8=75MB, int8=75MB, int4=38MB, fp6=56MB
+- macs_per_replan = 4.959e+09 MAC (recovered_from_ir)
+- resident_capacity_required = 3.097e+08 B (recovered_from_ir)
+- avoidable_weight_reload_bytes = 1.239e+09 B (recovered_from_ir)
+- required_compute_rate = 2.325e+09 MAC/s (derived_requirement)
+- required_weight_bandwidth = 7.260e+08 B/s (derived_requirement)
+- required_command_rate = 6.094e+01 dispatch/s (derived_requirement)
+- resident capacity by format: bf16=155MB, fp8=77MB, int8=77MB, int4=39MB, fp6=58MB
 
 ## 4. HW/SW abstraction candidates
 

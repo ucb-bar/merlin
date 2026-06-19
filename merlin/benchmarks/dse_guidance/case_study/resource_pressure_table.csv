@@ -1,9 +1,9 @@
 resource_class,present,op_count,macs,mac_fraction,basis,workloads
-dense_gemm,True,160,801012509696,0.3499,compute_macs,pi05; rdt; rdt2; smolvla; xr0
-skinny_gemm_or_gemv,True,879,1459108790784,0.6374,compute_macs,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0
-epilogue_or_requant,True,667,447488910848,0.1955,op_count,groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla
-dma_or_memory,True,0,0,0.0,structural,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0
-control_or_dispatch,True,0,0,0.0,structural,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; small_llama; smolvla; tiny_llama; xr0
+dense_gemm,True,202,802146487296,0.3446,compute_macs,pi05; rdt; rdt2; smolvla; xr0
+skinny_gemm_or_gemv,True,1171,1496858694144,0.643,compute_macs,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0
+epilogue_or_requant,True,654,338623725568,0.1455,op_count,groot_n1d7; molmoact; pi05
+dma_or_memory,True,0,0,0.0,structural,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0
+control_or_dispatch,True,0,0,0.0,structural,bitvla; groot_n1d7; molmoact; openvla; pi05; rdt; rdt2; smolvla; tiny_llama; xr0
 attention_softmax_or_reduction,False,0,0,0.0,unavailable,—
 conv_or_patch_embed,False,0,0,0.0,unavailable,—
 sparse_or_skip,False,0,0,0.0,unavailable,—

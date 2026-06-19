@@ -4,35 +4,35 @@ topology_recovery:
   level: 1
   regions:
   - attribution_status: attributed
-    confidence: 0.7
+    confidence: 0.8
     facts:
-      activation_bytes_per_invocation: 1679327232
-      activation_bytes_total: 1679327232
+      activation_bytes_per_invocation: 6179520512
+      activation_bytes_total: 6179520512
       invocations: 1
-      macs_per_invocation: 317514055680
-      macs_total: 317514055680
-      matmul_count: 489
-      weight_bytes: 4961157120
+      macs_per_invocation: 2130342576128
+      macs_total: 2130342576128
+      matmul_count: 610
+      weight_bytes: 12452184064
     invocations: 1
-    matmul_count_attributed: 489
-    reason: 489 matmuls assigned by prov_fqn
+    matmul_count_attributed: 610
+    reason: 610 matmuls assigned by structural_prefix
     role: backbone_once
-    source: prov_fqn
+    source: structural_prefix
   - attribution_status: attributed
-    confidence: 0.7
+    confidence: 0.85
     facts:
-      activation_bytes_per_invocation: 4587868672
-      activation_bytes_total: 45878686720
+      activation_bytes_per_invocation: 87675392
+      activation_bytes_total: 876753920
       invocations: 10
-      macs_per_invocation: 1828521639936
-      macs_total: 18285216399360
-      matmul_count: 288
-      weight_bytes: 9210953728
+      macs_per_invocation: 15693119488
+      macs_total: 156931194880
+      matmul_count: 167
+      weight_bytes: 1719926784
     invocations: 10
-    matmul_count_attributed: 288
-    reason: 288 matmuls assigned by prov_fqn
+    matmul_count_attributed: 167
+    reason: 167 matmuls assigned by structural_scf_for
     role: repeated_head
-    source: prov_fqn
+    source: structural_scf_for
   repeated_shape_signatures:
   - count: 324
     signature:

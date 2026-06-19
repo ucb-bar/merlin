@@ -11,7 +11,7 @@ command_graph:
   commands_per_step_matmul_proxy:
     evidence: recovered_from_ir
     note: matmul count of the repeated head — a LOWER BOUND on commands/step; measured dispatch granularity is ~12-14x higher (dispatch_coupling_report.md)
-    value: 20
+    value: 21
   dependency_graph:
     evidence: unavailable
     note: per-step dependencies erased by loop unrolling
@@ -19,7 +19,7 @@ command_graph:
   dispatches_per_replan_proxy:
     evidence: derived_requirement
     note: commands_per_step_matmul_proxy * K (K is assumed_reference)
-    value: 100
+    value: 105
   implied_abstractions:
   - command_buffer
   - bounded_loop_command + loop_carried_state_handle
@@ -27,7 +27,7 @@ command_graph:
   - event_token
   repeated_subgraph:
     evidence: recovered_from_ir
-    matmuls: 20
+    matmuls: 21
     note: the K-step head is a repeated, batchable subgraph
     region: repeated_head
     reused_times: 5

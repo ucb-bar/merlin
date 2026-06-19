@@ -6,7 +6,7 @@
 
 Merlin is a compiler-based **workload-contract analysis** tool for accelerator DSE. It does not pick a design and does not calibrate against existing hardware. It recovers the temporal + numerical workload contract a flat capture erases and emits a DSE-ready package: region facts, hardware-independent requirements, HW/SW abstraction candidates, a measurement plan, and a readiness report.
 
-Workloads (real `prov.fqn` recaptures): **rdt, openvla, small_llama, tiny_llama, rdt2, groot_n1d7, molmoact, smolvla, pi05, xr0, bitvla**.
+Workloads (real `prov.fqn` recaptures): **rdt, openvla, tiny_llama, rdt2, groot_n1d7, molmoact, smolvla, pi05, xr0, bitvla**.
 
 ## Read this folder
 - `current_state_audit.md` — V0 freeze audit (standalone); `claim_evidence_matrix.csv`, `known_limitations.md`, `reproducibility_check.log` are its companions.

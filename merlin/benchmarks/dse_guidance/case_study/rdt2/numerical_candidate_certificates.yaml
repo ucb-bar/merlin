@@ -16,7 +16,7 @@ numerical_candidate_certificates:
     - dequant/requant placement known
     required_hw_abstractions: packed_lowbit_tensor + resident_weight_object + scale_object
     resident_capacity_at_format:
-      bytes: 75317248.0
+      bytes: 77434880.0
       evidence: derived_requirement
     what_dse_should_explore:
     - resident_capacity_at_format
@@ -43,7 +43,7 @@ numerical_candidate_certificates:
     - dequant/requant placement known
     required_hw_abstractions: packed_lowbit_tensor + resident_weight_object + scale_object
     resident_capacity_at_format:
-      bytes: 75317248.0
+      bytes: 77434880.0
       evidence: derived_requirement
     what_dse_should_explore:
     - resident_capacity_at_format
@@ -70,7 +70,7 @@ numerical_candidate_certificates:
     - dequant/requant placement known
     required_hw_abstractions: packed_lowbit_tensor + resident_weight_object + scale_object
     resident_capacity_at_format:
-      bytes: 37658624.0
+      bytes: 38717440.0
       evidence: derived_requirement
     what_dse_should_explore:
     - resident_capacity_at_format
@@ -97,7 +97,7 @@ numerical_candidate_certificates:
     - dequant/requant placement known
     required_hw_abstractions: packed_lowbit_tensor + resident_weight_object + scale_object
     resident_capacity_at_format:
-      bytes: 37658624.0
+      bytes: 38717440.0
       evidence: derived_requirement
     what_dse_should_explore:
     - resident_capacity_at_format

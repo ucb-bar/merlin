@@ -29,12 +29,15 @@ from merlin.common.yaml import load_yaml
 from merlin.dse_guidance import accuracy_gate as AG
 from merlin.dse_guidance import attribution as ATTR
 from merlin.dse_guidance import shape_taxonomy as ST
-from merlin.dse_guidance.case_study import RECAP_MODELS
+from merlin.dse_guidance.case_study import RECAP_MODELS, _CORPUS_SUBDIR, available_models
 from merlin.dse_guidance.design_envelope import ELEMENT_BYTES
 
 HERE = Path(__file__).resolve().parent
 CS = HERE / "case_study"
-RECAP = HERE / "recaptures"
+# P23: verify against the SAME corpus the study analyzes (loop-preserving by default; the studyable
+# model set excludes the small_llama toy whose loop wrapper produced no linalg.matmul).
+RECAP = HERE / _CORPUS_SUBDIR
+_MODELS = set(available_models())
 CS_SHAPE = CS / "operator_shape_table.csv"
 CS_TILE = CS / "tile_waste_table.csv"
 CS_COVMAT = CS / "primitive_coverage_matrix.csv"
@@ -80,11 +83,17 @@ def _eq(a, b, tol=1) -> bool:
 
 
 def _head_facts_from_raw(workload: str) -> dict:
-    """Recompute per-role facts straight from the IR primitive (independent of the YAML)."""
+    """Recompute per-role facts straight from the IR primitive (independent of the YAML), mirroring
+    attribution: on a loop capture the scf.for boundary is authoritative (in-loop -> repeated_head,
+    out-of-loop -> backbone_once); on a flat capture the prov.fqn heuristic is used."""
     recs = ATTR.extract_matmuls(str(RECAP / workload))
+    is_loop = any(getattr(r, "in_loop_body", False) for r in recs)
     roles: dict[str, dict] = {}
     for r in recs:
-        role = ATTR.role_from_fqn(r.fqn)
+        if is_loop:
+            role = ATTR.ROLE_REPEATED_HEAD if r.in_loop_body else ATTR.ROLE_BACKBONE
+        else:
+            role = ATTR.role_from_fqn(r.fqn)
         if role is None:
             continue
         d = roles.setdefault(role, {"matmul_count": 0, "weight_bytes": 0, "macs": 0})
@@ -131,7 +140,10 @@ def verify_workload(w: str) -> dict:
 
     # --- D: dtype_capacity scaled from captured-f32 element count ---
     cap = next(r for r in _csv_rows(CS / "dtype_capacity_table.csv") if r["workload"] == w)
-    n_elem = WB / ELEMENT_BYTES["f32"]
+    # n_elem from the CAPTURED dtype (most captures are f32; smolvla's real VLM is bf16) — the
+    # weight-byte count divided by the captured element size gives the parameter count.
+    _capt = cap.get("captured_dtype", "f32")
+    n_elem = WB / ELEMENT_BYTES.get(_capt, ELEMENT_BYTES["f32"])
     exp = {f: n_elem * ELEMENT_BYTES[f] for f in ("bf16", "fp8", "int8", "fp6", "int4")}
     ok_cap = all(_eq(cap[f"{f}_B"], exp[f]) for f in exp)
     check(ok_cap and _eq(cap["avoidable_reload_B"], WB * (K - 1)),
@@ -181,7 +193,7 @@ def verify_global() -> None:
     gate_models = {p.model for p in AG.load()}
     int8_pass = {r["workload"] for r in gated
                  if r["dtype"] == "int8_w8a8" and r["accuracy_status"] == "measured_pass"}
-    expected_pass = {w for w in RECAP_MODELS if w in gate_models}
+    expected_pass = {w for w in RECAP_MODELS if w in gate_models and w in _MODELS}
     check(int8_pass == expected_pass,
           f"accuracy gating: int8 measured_pass workloads {sorted(int8_pass)} == "
           f"gated recaptures {sorted(expected_pass)} (rdt absent: recapture != rdt2 gate entry)")
@@ -247,7 +259,7 @@ def verify_global() -> None:
                 "measurements_needed_before_quantitative_dse", "artifacts_index",
                 "what_is_not_claimed"}
     wl_ok = set(man.get("workloads", [])) == {w for w in RECAP_MODELS
-                                              if (RECAP / w / "model.mlir").is_file()}
+                                              if w in _MODELS}
     idx_ok = all((CS / v).is_file() for v in man.get("artifacts_index", {}).values())
     man_low = (CS / "dse_contract.json").read_text().lower()
     clean = not any(t in man_low for t in DANGEROUS + ("optimal",))
@@ -516,7 +528,7 @@ def verify_p6_workload(w: str, graphs: dict) -> dict:
 
 
 def verify_p6_global(graphs: dict) -> None:
-    present = set(graphs) == {w for w in RECAP_MODELS if (RECAP / w / "model.mlir").is_file()}
+    present = set(graphs) == {w for w in RECAP_MODELS if w in _MODELS}
     p6check(present, f"graph contains all workloads ({sorted(graphs)})")
     p6_files = ["workload_contract_graph.yaml", "workload_contract_graph_summary.md",
                 "phase_rate_table.csv", "multi_rate_contract.yaml", "rate_mismatch_report.md"]
@@ -740,14 +752,11 @@ def p9check(ok: bool, msg: str) -> None:
 
 
 def verify_p9_workload(w: str) -> dict:
-    recs = ATTR.extract_matmuls(str(RECAP / w))
-    # independent per-role weight bytes + invocations from the IR primitive
+    # independent per-role weight bytes from the IR primitive, via the SAME role logic as
+    # attribution (structural scf.for boundary on a loop capture; prov.fqn on a flat capture).
     K = int(RECAP_MODELS[w]["K"])
-    role_weight: dict[str, int] = {}
-    for r in recs:
-        role = ATTR.role_from_fqn(r.fqn)
-        if role:
-            role_weight[role] = role_weight.get(role, 0) + r.weight_bytes
+    role_weight = {role: facts["weight_bytes"]
+                   for role, facts in _head_facts_from_raw(w)["roles"].items()}
     dm = {r["region"]: r for r in _csv_rows(CS_DATAMOVE) if r["workload"] == w}
 
     # P9-A: region weight bytes match the independent recompute
@@ -907,7 +916,7 @@ def verify_p12() -> dict:
     contracts = load_yaml(CS / "boundary_candidate_contracts.yaml")["boundary_candidate_contracts"]
     certs = contracts["certificates"]
     cp_axes = {r["axis"] for r in _csv_rows(CS / "compiler_proof_matrix.csv")}
-    valid_wl = {w for w in RECAP_MODELS if (RECAP / w / "model.mlir").is_file()}
+    valid_wl = {w for w in RECAP_MODELS if w in _MODELS}
     ALL_ABS = set(ABSTRACTIONS)
 
     # (1) every candidate references a known abstraction
@@ -1670,25 +1679,25 @@ def verify_p21(IM) -> None:
 
 
 def main(write: bool = True) -> int:
-    rows = [verify_workload(w) for w in RECAP_MODELS if (RECAP / w / "model.mlir").is_file()]
+    rows = [verify_workload(w) for w in RECAP_MODELS if w in _MODELS]
     verify_global()
-    p5_rows = [verify_p5_workload(w) for w in RECAP_MODELS if (RECAP / w / "model.mlir").is_file()]
+    p5_rows = [verify_p5_workload(w) for w in RECAP_MODELS if w in _MODELS]
     verify_p5_global()
     _graphs = _graphs_by_workload()
     p6_rows = [verify_p6_workload(w, _graphs) for w in RECAP_MODELS
-               if (RECAP / w / "model.mlir").is_file()]
+               if w in _MODELS]
     verify_p6_global(_graphs)
     p7_rows = [verify_p7_workload(w, _graphs) for w in RECAP_MODELS
-               if (RECAP / w / "model.mlir").is_file()]
+               if w in _MODELS]
     verify_p7_global()
     p8_rows = [verify_p8_workload(w, _graphs) for w in RECAP_MODELS
-               if (RECAP / w / "model.mlir").is_file()]
+               if w in _MODELS]
     verify_p8_global()
     p9_rows = [verify_p9_workload(w) for w in RECAP_MODELS
-               if (RECAP / w / "model.mlir").is_file()]
+               if w in _MODELS]
     verify_p9_global()
     p10_rows = [verify_p10_workload(w) for w in RECAP_MODELS
-                if (RECAP / w / "model.mlir").is_file()]
+                if w in _MODELS]
     verify_p10_global()
     p12_summary = verify_p12()
     p13_summary = verify_p13()

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import csv
 import io
+import os
 from dataclasses import dataclass
 
 from merlin.common import paths
@@ -64,10 +65,10 @@ RECAP_MODELS: dict[str, dict] = {
             "note": "RDT denoise step (depth 2, random init)"},
     "openvla": {"class": "autoregressive_vla/action_token_decode", "K": 7,
                 "note": "OpenVLA: fused ViT vision backbone + Llama decode head (small config)"},
-    "small_llama": {"class": "llm/token_decode", "K": 32,
-                    "note": "small Llama decoder (2 layers)"},
-    "tiny_llama": {"class": "llm/token_decode", "K": 32,
-                   "note": "tiny Llama decoder (2 layers)"},
+    "small_llama": {"class": "llm/token_decode", "K": 7,
+                    "note": "small Llama decoder (2 layers); flat-corpus only (loop capture is generic-only)"},
+    "tiny_llama": {"class": "llm/token_decode", "K": 7,
+                   "note": "tiny Llama decoder; K=7 captured decode length (IR-recovered from scf.for)"},
     # full-corpus recaptures (prov.fqn via model2MLIR; small/random configs, structure real).
     # Studyable = parses with the ingest xDSL (shared `} -> (T1,T2)` normalizer) AND has linear-layer
     # GEMMs with prov.fqn roles. xr0's linears are batched (3D/4D activation x 2D weight) and bitvla's
@@ -91,12 +92,31 @@ RECAP_MODELS: dict[str, dict] = {
 }
 
 
+# P23: the PRIMARY corpus is the loop-preserving captures (recaptures_loop/) — K, KV, the repeated
+# region, and residency are all IR-exact, and role attribution is structural (the scf.for boundary).
+# The flat single-forward captures remain on disk at recaptures/ (recoverable; the pre-loop-corpus
+# state is also tagged `pre-loop-corpus-e2e`). Set MERLIN_DSE_CORPUS=flat to analyze the flat captures.
+_CORPUS_SUBDIR = "recaptures" if os.environ.get("MERLIN_DSE_CORPUS") == "flat" else "recaptures_loop"
+
+
 def _recap_dir(workload: str):
-    return paths.merlin_dir() / "benchmarks" / "dse_guidance" / "recaptures" / workload
+    return paths.merlin_dir() / "benchmarks" / "dse_guidance" / _CORPUS_SUBDIR / workload
 
 
 def available_models() -> list[str]:
-    return [w for w in RECAP_MODELS if (_recap_dir(w) / "model.mlir").is_file()]
+    """Workloads with a studyable capture. On the loop corpus, a model must have >=1 linalg.matmul
+    (excludes the synthetic small_llama toy, whose functional-weight loop wrapper lowered its GEMMs
+    to linalg.generic -> 0 matmuls; its flat capture is unaffected)."""
+    from merlin.dse_guidance import attribution as _ATTR
+    out = []
+    for w in RECAP_MODELS:
+        d = _recap_dir(w)
+        if not (d / "model.mlir").is_file():
+            continue
+        if _CORPUS_SUBDIR == "recaptures_loop" and len(_ATTR.extract_matmuls(str(d))) == 0:
+            continue
+        out.append(w)
+    return out
 
 
 @dataclass
@@ -118,6 +138,13 @@ def analyze(workload: str) -> WorkloadCase:
     # model registry (the model card / config), not a bare assumption (recovered_from_model_config).
     arch = M.MODEL_ARCH.get(workload)
     K = int(arch.loop_count) if (arch and arch.loop_count) else int(spec["K"])
+    # P23: on the loop corpus, K is recovered EXACTLY from the scf.for trip count (the IR is the
+    # authority — supersedes the assumed/reference K, e.g. the llamas captured K=7 not the assumed 32).
+    if _CORPUS_SUBDIR == "recaptures_loop":
+        from merlin.dse_guidance.loop_recovery import recover_loop
+        _lr = recover_loop(str(_recap_dir(workload) / "model.mlir"), workload)
+        if _lr.present and _lr.K:
+            K = int(_lr.K)
     H = int(arch.action_horizon) if (arch and arch.action_horizon) else K
     control = float(arch.control_rate_hz) if (arch and arch.control_rate_hz) else 30.0
     temporal = T.parse({

@@ -6,17 +6,16 @@
 
 | workload | class | nodes | edges | phase | region | operator | loop_body | state | data-dep edges | edges w/ recovered evidence |
 |---|---|---|---|---|---|---|---|---|---|---|
-| rdt | flow_matching_action_head | 25 | 49 | 2 | 1 | 20 | 1 | 1 | 46 | 49 |
-| openvla | autoregressive_decode | 32 | 54 | 2 | 2 | 26 | 1 | 1 | 51 | 54 |
-| small_llama | autoregressive_decode | 20 | 31 | 2 | 1 | 15 | 1 | 1 | 28 | 31 |
-| tiny_llama | autoregressive_decode | 20 | 31 | 2 | 1 | 15 | 1 | 1 | 28 | 31 |
-| rdt2 | flow_matching_action_head | 28 | 67 | 2 | 1 | 23 | 1 | 1 | 64 | 67 |
-| groot_n1d7 | flow_matching_action_head | 24 | 34 | 2 | 2 | 18 | 1 | 1 | 31 | 34 |
-| molmoact | autoregressive_decode | 22 | 47 | 2 | 1 | 17 | 1 | 1 | 44 | 47 |
-| smolvla | flow_matching_action_head | 112 | 698 | 2 | 2 | 106 | 1 | 1 | 695 | 698 |
+| rdt | flow_matching_action_head | 26 | 56 | 2 | 1 | 21 | 1 | 1 | 53 | 56 |
+| openvla | autoregressive_decode | 36 | 59 | 2 | 2 | 30 | 1 | 1 | 56 | 59 |
+| tiny_llama | autoregressive_decode | 36 | 59 | 2 | 2 | 30 | 1 | 1 | 56 | 59 |
+| rdt2 | flow_matching_action_head | 31 | 80 | 2 | 1 | 26 | 1 | 1 | 77 | 80 |
+| groot_n1d7 | flow_matching_action_head | 121 | 902 | 2 | 1 | 116 | 1 | 1 | 899 | 902 |
+| molmoact | autoregressive_decode | 40 | 91 | 2 | 2 | 34 | 1 | 1 | 88 | 91 |
+| smolvla | flow_matching_action_head | 308 | 3202 | 2 | 2 | 302 | 1 | 1 | 3199 | 3202 |
 | pi05 | flow_matching_action_head | 783 | 14352 | 2 | 2 | 777 | 1 | 1 | 14349 | 14352 |
-| xr0 | flow_matching_action_head | 26 | 49 | 2 | 3 | 19 | 1 | 1 | 46 | 49 |
-| bitvla | autoregressive_decode | 20 | 31 | 2 | 1 | 15 | 1 | 1 | 28 | 31 |
+| xr0 | flow_matching_action_head | 25 | 49 | 2 | 2 | 19 | 1 | 1 | 46 | 49 |
+| bitvla | autoregressive_decode | 36 | 51 | 2 | 2 | 30 | 1 | 1 | 48 | 51 |
 
 ## Repeated structure (which workloads have a K-loop / token-loop)
 
@@ -24,8 +23,7 @@
 |---|---|---|---|---|
 | rdt | yes | K_times_per_replan | 5 | weights |
 | openvla | yes | token_loop | 7 | weights |
-| small_llama | yes | token_loop | 32 | weights |
-| tiny_llama | yes | token_loop | 32 | weights |
+| tiny_llama | yes | token_loop | 7 | weights |
 | rdt2 | yes | K_times_per_replan | 5 | weights |
 | groot_n1d7 | yes | K_times_per_replan | 4 | weights |
 | molmoact | yes | token_loop | 8 | weights |

@@ -2714,10 +2714,12 @@ def test_p16_capture_fidelity_and_emit(tmp_path):
     lowbit = next(r for r in cf["matrix"] if r["feature"] == "packed_lowbit_layout")
     assert all(lowbit[w] == "erased" for w in cf["workloads"])         # dequantized capture
     kloop = next(r for r in cf["matrix"] if r["feature"] == "K_or_decode_loop")
-    # P21: workloads WITH a loop-preserving capture (recaptures_loop/<w>) recover K from IR
-    # (scf.for); any without one still reports K from config/reference (or n/a).
-    _loop_preserved = {d.name for d in (_CS_DIR.parent / "recaptures_loop").glob("*")
-                       if (d / "model.mlir").is_file()}
+    # P21/P23: workloads WITH a loop-preserving capture recover K from IR (scf.for); any without one
+    # still reports K from config/reference (or n/a). Restrict to the ANALYZED corpus (cf["workloads"])
+    # — small_llama has a loop model.mlir but is excluded from the corpus (functional-weight wrapper ->
+    # 0 linalg.matmul), so it is not a column in the matrix.
+    _loop_preserved = {w for w in cf["workloads"]
+                       if (_CS_DIR.parent / "recaptures_loop" / w / "model.mlir").is_file()}
     for w in cf["workloads"]:
         if w in _loop_preserved:
             assert "recovered" in kloop[w] and "IR" in kloop[w], (w, kloop[w])

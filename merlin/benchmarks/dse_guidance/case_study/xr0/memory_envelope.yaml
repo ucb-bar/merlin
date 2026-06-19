@@ -4,38 +4,10 @@ memory_envelope:
   regions:
   - activation_bytes_per_invocation:
       evidence: recovered_from_ir
-      value: 4989056
+      value: 12416
     activation_traffic_total:
       evidence: derived_requirement
-      value: 24945280
-    avoidable_weight_reload:
-      evidence: derived_requirement
-      value: 492322816
-    intermediate_materialization_bytes:
-      evidence: unavailable
-      value: null
-    invocations:
-      evidence: assumed_reference
-      value: 5
-    layout_conversion_bytes:
-      evidence: unavailable
-      value: null
-    region: repeated_head
-    reuse_factor:
-      evidence: assumed_reference
-      value: 5
-    weight_bytes:
-      evidence: recovered_from_ir
-      value: 123080704
-    weight_traffic_if_nonresident:
-      evidence: derived_requirement
-      value: 615403520
-  - activation_bytes_per_invocation:
-      evidence: recovered_from_ir
-      value: 28672
-    activation_traffic_total:
-      evidence: derived_requirement
-      value: 28672
+      value: 12416
     avoidable_weight_reload:
       evidence: derived_requirement
       value: 0
@@ -54,36 +26,36 @@ memory_envelope:
       value: 1
     weight_bytes:
       evidence: recovered_from_ir
-      value: 25165824
+      value: 4325376
     weight_traffic_if_nonresident:
       evidence: derived_requirement
-      value: 25165824
+      value: 4325376
   - activation_bytes_per_invocation:
       evidence: recovered_from_ir
-      value: 1048576
+      value: 6053888
     activation_traffic_total:
       evidence: derived_requirement
-      value: 1048576
+      value: 30269440
     avoidable_weight_reload:
       evidence: derived_requirement
-      value: 0
+      value: 676347904
     intermediate_materialization_bytes:
       evidence: unavailable
       value: null
     invocations:
-      evidence: recovered_from_ir
-      value: 1
+      evidence: assumed_reference
+      value: 5
     layout_conversion_bytes:
       evidence: unavailable
       value: null
-    region: prefix_builder
+    region: repeated_head
     reuse_factor:
       evidence: assumed_reference
-      value: 1
+      value: 5
     weight_bytes:
       evidence: recovered_from_ir
-      value: 25165824
+      value: 169086976
     weight_traffic_if_nonresident:
       evidence: derived_requirement
-      value: 25165824
+      value: 845434880
   workload: xr0

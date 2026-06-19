@@ -4,7 +4,43 @@ parallel_region_candidates:
   workloads:
   - available_parallelism:
       evidence: derived_requirement
-      value: 1.1107
+      value: 1.1117
+    independent_components:
+      evidence: recovered_from_ir
+      value: 1
+    interpretation: deep sequential dependency chain — the parallelism opportunity is intra-op sharding, not inter-op concurrency
+    max_ready_width:
+      evidence: recovered_from_ir
+      value: 5
+    serialization: mostly_sequential
+    workload: rdt
+  - available_parallelism:
+      evidence: derived_requirement
+      value: 1.9256
+    independent_components:
+      evidence: recovered_from_ir
+      value: 2
+    interpretation: some independent operators per level — modest inter-op concurrency exists
+    max_ready_width:
+      evidence: recovered_from_ir
+      value: 6
+    serialization: some_parallelism
+    workload: openvla
+  - available_parallelism:
+      evidence: derived_requirement
+      value: 1.624
+    independent_components:
+      evidence: recovered_from_ir
+      value: 2
+    interpretation: some independent operators per level — modest inter-op concurrency exists
+    max_ready_width:
+      evidence: recovered_from_ir
+      value: 6
+    serialization: some_parallelism
+    workload: tiny_llama
+  - available_parallelism:
+      evidence: derived_requirement
+      value: 1.3617
     independent_components:
       evidence: recovered_from_ir
       value: 1
@@ -13,89 +49,41 @@ parallel_region_candidates:
       evidence: recovered_from_ir
       value: 4
     serialization: mostly_sequential
-    workload: rdt
-  - available_parallelism:
-      evidence: derived_requirement
-      value: 1.215
-    independent_components:
-      evidence: recovered_from_ir
-      value: 1
-    interpretation: deep sequential dependency chain — the parallelism opportunity is intra-op sharding, not inter-op concurrency
-    max_ready_width:
-      evidence: recovered_from_ir
-      value: 3
-    serialization: mostly_sequential
-    workload: openvla
-  - available_parallelism:
-      evidence: derived_requirement
-      value: 1.5597
-    independent_components:
-      evidence: recovered_from_ir
-      value: 1
-    interpretation: some independent operators per level — modest inter-op concurrency exists
-    max_ready_width:
-      evidence: recovered_from_ir
-      value: 3
-    serialization: some_parallelism
-    workload: small_llama
-  - available_parallelism:
-      evidence: derived_requirement
-      value: 1.1959
-    independent_components:
-      evidence: recovered_from_ir
-      value: 1
-    interpretation: deep sequential dependency chain — the parallelism opportunity is intra-op sharding, not inter-op concurrency
-    max_ready_width:
-      evidence: recovered_from_ir
-      value: 3
-    serialization: mostly_sequential
-    workload: tiny_llama
-  - available_parallelism:
-      evidence: derived_requirement
-      value: 1.3486
-    independent_components:
-      evidence: recovered_from_ir
-      value: 1
-    interpretation: deep sequential dependency chain — the parallelism opportunity is intra-op sharding, not inter-op concurrency
-    max_ready_width:
-      evidence: recovered_from_ir
-      value: 3
-    serialization: mostly_sequential
     workload: rdt2
   - available_parallelism:
       evidence: derived_requirement
-      value: 1.2417
+      value: 1.3034
     independent_components:
       evidence: recovered_from_ir
       value: 1
     interpretation: deep sequential dependency chain — the parallelism opportunity is intra-op sharding, not inter-op concurrency
     max_ready_width:
       evidence: recovered_from_ir
-      value: 3
+      value: 17
     serialization: mostly_sequential
     workload: groot_n1d7
   - available_parallelism:
       evidence: derived_requirement
-      value: 1.0
+      value: 1.1267
     independent_components:
       evidence: recovered_from_ir
-      value: 1
+      value: 2
     interpretation: deep sequential dependency chain — the parallelism opportunity is intra-op sharding, not inter-op concurrency
     max_ready_width:
       evidence: recovered_from_ir
-      value: 1
+      value: 2
     serialization: mostly_sequential
     workload: molmoact
   - available_parallelism:
       evidence: derived_requirement
-      value: 1.2126
+      value: 1.3113
     independent_components:
       evidence: recovered_from_ir
       value: 1
     interpretation: deep sequential dependency chain — the parallelism opportunity is intra-op sharding, not inter-op concurrency
     max_ready_width:
       evidence: recovered_from_ir
-      value: 5
+      value: 13
     serialization: mostly_sequential
     workload: smolvla
   - available_parallelism:
@@ -124,13 +112,13 @@ parallel_region_candidates:
     workload: xr0
   - available_parallelism:
       evidence: derived_requirement
-      value: 1.375
+      value: 1.5515
     independent_components:
       evidence: recovered_from_ir
-      value: 1
-    interpretation: deep sequential dependency chain — the parallelism opportunity is intra-op sharding, not inter-op concurrency
+      value: 2
+    interpretation: some independent operators per level — modest inter-op concurrency exists
     max_ready_width:
       evidence: recovered_from_ir
-      value: 3
-    serialization: mostly_sequential
+      value: 10
+    serialization: some_parallelism
     workload: bitvla

@@ -8,14 +8,14 @@
 
 | requirement | value | unit | evidence |
 |-------------|-------|------|----------|
-| macs_per_replan | 1.101e+08 | MAC | recovered_from_ir |
+| macs_per_replan | 5.505e+06 | MAC | recovered_from_ir |
 | resident_capacity_required | 3.0 MB | B | recovered_from_ir |
 | weight_reload_bytes_per_replan | 21.0 MB | B | recovered_from_ir |
 | avoidable_weight_reload_bytes | 18.0 MB | B | recovered_from_ir |
 | dispatches_per_replan | 1.050e+02 | dispatch | derived_requirement |
-| required_compute_rate | 7.864e+07 | MAC/s | derived_requirement |
+| required_compute_rate | 3.932e+06 | MAC/s | derived_requirement |
 | required_weight_bandwidth | 1.573e+07 | B/s | derived_requirement |
-| required_activation_bandwidth | 3.226e+06 | B/s | derived_requirement |
+| required_activation_bandwidth | 1.613e+05 | B/s | derived_requirement |
 | required_command_rate | 7.500e+01 | dispatch/s | derived_requirement |
 
 ## Resident capacity by storage format

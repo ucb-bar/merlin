@@ -6,19 +6,19 @@
 
 | workload | region | weight B | act-in B/inv | output B/inv | reuse | avoidable reload B | dominant class |
 |---|---|---|---|---|---|---|---|
-| pi05 | repeated_head | 9,210,953,728 | 1,944,086,784 | 2,643,781,888 | 10× | 82,898,583,552 | output-dominated |
-| pi05 | backbone_once | 4,961,157,120 | 838,287,360 | 841,039,872 | 1× | 0 | weight-dominated |
-| molmoact | repeated_head | 3,787,456,512 | 3,915,776 | 6,488,064 | 8× | 26,512,195,584 | weight-dominated |
-| tiny_llama | repeated_head | 614,465,536 | 606,208 | 1,085,440 | 32× | 19,048,431,616 | weight-dominated |
-| smolvla | backbone_once | 426,246,144 | 346,644,992 | 343,889,664 | 1× | 0 | weight-dominated |
-| rdt | repeated_head | 391,118,848 | 41,519,104 | 77,030,912 | 5× | 1,564,475,392 | weight-dominated |
-| rdt2 | repeated_head | 301,268,992 | 2,839,552 | 3,188,928 | 5× | 1,205,075,968 | weight-dominated |
-| groot_n1d7 | repeated_head | 295,698,432 | 5,349,376 | 5,021,696 | 4× | 887,095,296 | weight-dominated |
+| pi05 | backbone_once | 12,452,184,064 | 2,741,452,800 | 3,438,067,712 | 1× | 0 | weight-dominated |
+| molmoact | backbone_once | 3,787,456,512 | 3,815,424 | 6,373,376 | 1× | 0 | weight-dominated |
+| molmoact | repeated_head | 3,787,456,512 | 489,472 | 811,008 | 8× | 26,512,195,584 | weight-dominated |
+| groot_n1d7 | repeated_head | 2,200,436,736 | 40,995,840 | 38,924,288 | 4× | 6,601,310,208 | weight-dominated |
+| pi05 | repeated_head | 1,719,926,784 | 40,921,344 | 46,754,048 | 10× | 15,479,341,056 | weight-dominated |
+| smolvla | backbone_once | 701,620,224 | 372,969,600 | 371,230,464 | 1× | 0 | weight-dominated |
+| tiny_llama | backbone_once | 614,465,536 | 1,155,072 | 1,274,880 | 1× | 0 | weight-dominated |
+| tiny_llama | repeated_head | 614,465,536 | 151,552 | 271,360 | 7× | 3,686,793,216 | weight-dominated |
 
 ## Findings
 
-- **Memory pressure is output-dominated** across the recaptured workloads (weights 20,230,306,816 B, activations 20,959,395,456 B, outputs 28,177,752,768 B).
-- **Top avoidable-reload candidate:** `pi05/repeated_head` — 82,898,583,552 B avoidable if weights are made resident (= weight_bytes × (reuse − 1)).
+- **Memory pressure is weight-dominated** across the recaptured workloads (weights 26,978,331,648 B, activations 4,056,612,992 B, outputs 5,010,013,632 B).
+- **Top avoidable-reload candidate:** `pi05/backbone_once` — 0 B avoidable if weights are made resident (= weight_bytes × (reuse − 1)).
 - **Repeatedly implied abstractions:** `resident_weight_object` (weights reused across the loop) and `resident_activation_object` (activations recomputed per step) — see `memory_abstraction_candidates.yaml`.
 
 ## Missing for real bandwidth feasibility

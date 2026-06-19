@@ -61,47 +61,21 @@ pipeline_envelope:
     workload: openvla
   - phases:
     - cadence: once_per_replan
-      candidate_resource_class: unavailable
-      deadline_s: 1.066667
+      candidate_resource_class: skinny_gemm_or_gemv
+      deadline_s: 0.233333
       evidence: recovered_from_prov_fqn
       invocations: 1
       missing: []
-      period_s: 1.066667
+      period_s: 0.233333
       phase: backbone
       phase_class: backbone_or_encoder
       state_inputs: []
       state_outputs: []
     - cadence: token_loop
       candidate_resource_class: skinny_gemm_or_gemv
-      deadline_s: 1.066667
+      deadline_s: 0.233333
       evidence: recovered_from_prov_fqn
-      invocations: 32
-      missing:
-      - per-phase wall-clock period (runtime measurement)
-      period_s: unavailable
-      phase: head
-      phase_class: decoder_token_step
-      state_inputs:
-      - weights
-      state_outputs: []
-    workload: small_llama
-  - phases:
-    - cadence: once_per_replan
-      candidate_resource_class: unavailable
-      deadline_s: 1.066667
-      evidence: recovered_from_prov_fqn
-      invocations: 1
-      missing: []
-      period_s: 1.066667
-      phase: backbone
-      phase_class: backbone_or_encoder
-      state_inputs: []
-      state_outputs: []
-    - cadence: token_loop
-      candidate_resource_class: skinny_gemm_or_gemv
-      deadline_s: 1.066667
-      evidence: recovered_from_prov_fqn
-      invocations: 32
+      invocations: 7
       missing:
       - per-phase wall-clock period (runtime measurement)
       period_s: unavailable
@@ -139,7 +113,7 @@ pipeline_envelope:
     workload: rdt2
   - phases:
     - cadence: once_per_replan
-      candidate_resource_class: skinny_gemm_or_gemv
+      candidate_resource_class: unavailable
       deadline_s: 0.533333
       evidence: recovered_from_prov_fqn
       invocations: 1
@@ -165,7 +139,7 @@ pipeline_envelope:
     workload: groot_n1d7
   - phases:
     - cadence: once_per_replan
-      candidate_resource_class: unavailable
+      candidate_resource_class: skinny_gemm_or_gemv
       deadline_s: 1.6
       evidence: recovered_from_prov_fqn
       invocations: 1
@@ -269,7 +243,7 @@ pipeline_envelope:
     workload: xr0
   - phases:
     - cadence: once_per_replan
-      candidate_resource_class: unavailable
+      candidate_resource_class: skinny_gemm_or_gemv
       deadline_s: 1.4
       evidence: recovered_from_prov_fqn
       invocations: 1

@@ -22,7 +22,7 @@ dse_readiness:
       source: recovered_from_ir
     role_attribution:
       available: true
-      source: prov_fqn
+      source: structural_scf_for
     state_lifetimes:
       available: true
       source: recovered_from_prov_fqn

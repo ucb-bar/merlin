@@ -71,7 +71,7 @@ design_envelope:
     name: macs_per_replan
     note: macs_per_step x K=8
     unit: MAC
-    value: 60599304192.0
+    value: 7574913024.0
   - evidence: recovered_from_ir
     name: resident_capacity_required
     note: action-head weights (f32); resident set to avoid reloads
@@ -96,7 +96,7 @@ design_envelope:
     name: required_compute_rate
     note: macs_per_replan / deadline
     unit: MAC/s
-    value: 37874565120.0
+    value: 4734320640.0
   - evidence: derived_requirement
     name: required_weight_bandwidth
     note: naive reload bandwidth if non-resident
@@ -106,7 +106,7 @@ design_envelope:
     name: required_activation_bandwidth
     note: activation traffic / deadline
     unit: B/s
-    value: 52019200.0
+    value: 6502400.0
   - evidence: derived_requirement
     name: required_command_rate
     note: host command issue rate to meet deadline

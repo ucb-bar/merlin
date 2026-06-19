@@ -5,10 +5,10 @@ memory_hierarchy_envelope:
   - regions:
     - activation_input_bytes:
         evidence: recovered_from_ir
-        value: 41519104
+        value: 41584640
       avoidable_weight_reload:
         evidence: derived_requirement
-        value: 1564475392
+        value: 1572864000
       intermediate_bytes:
         evidence: unavailable
         value: unavailable
@@ -19,32 +19,32 @@ memory_hierarchy_envelope:
       lifetime: across_K
       output_bytes:
         evidence: recovered_from_ir
-        value: 77030912
+        value: 77555200
       read_bytes_resident:
         evidence: derived_requirement
-        value: 598714368
-      read_write_ratio: 1.554
+        value: 601139200
+      read_write_ratio: 1.55
       region: repeated_head
       resident_by_dtype:
-        bf16: 195559424
-        fp6: 73334784
-        fp8: 97779712
-        int4: 48889856
-        int8: 97779712
+        bf16: 196608000
+        fp6: 73728000
+        fp8: 98304000
+        int4: 49152000
+        int8: 98304000
       scale_bytes:
         evidence: unavailable
         value: unavailable
       weight_bytes:
         evidence: recovered_from_ir
-        value: 391118848
+        value: 393216000
       write_bytes:
         evidence: derived_requirement
-        value: 385154560
+        value: 387776000
     workload: rdt
   - regions:
     - activation_input_bytes:
         evidence: recovered_from_ir
-        value: 466688
+        value: 225792
       avoidable_weight_reload:
         evidence: derived_requirement
         value: 0
@@ -58,30 +58,30 @@ memory_hierarchy_envelope:
       lifetime: across_replan
       output_bytes:
         evidence: recovered_from_ir
-        value: 516352
+        value: 370688
       read_bytes_resident:
         evidence: derived_requirement
-        value: 15867648
-      read_write_ratio: 30.73
+        value: 3371520
+      read_write_ratio: 9.095
       region: backbone_once
       resident_by_dtype:
-        bf16: 7700480
-        fp6: 2887680
-        fp8: 3850240
-        int4: 1925120
-        int8: 3850240
+        bf16: 1572864
+        fp6: 589824
+        fp8: 786432
+        int4: 393216
+        int8: 786432
       scale_bytes:
         evidence: unavailable
         value: unavailable
       weight_bytes:
         evidence: recovered_from_ir
-        value: 15400960
+        value: 3145728
       write_bytes:
         evidence: derived_requirement
-        value: 516352
+        value: 370688
     - activation_input_bytes:
         evidence: recovered_from_ir
-        value: 235520
+        value: 11776
       avoidable_weight_reload:
         evidence: derived_requirement
         value: 18874368
@@ -95,11 +95,11 @@ memory_hierarchy_envelope:
       lifetime: across_K
       output_bytes:
         evidence: recovered_from_ir
-        value: 409600
+        value: 20480
       read_bytes_resident:
         evidence: derived_requirement
-        value: 4794368
-      read_write_ratio: 1.672
+        value: 3228160
+      read_write_ratio: 22.518
       region: repeated_head
       resident_by_dtype:
         bf16: 1572864
@@ -115,69 +115,67 @@ memory_hierarchy_envelope:
         value: 3145728
       write_bytes:
         evidence: derived_requirement
-        value: 2867200
+        value: 143360
     workload: openvla
   - regions:
     - activation_input_bytes:
         evidence: recovered_from_ir
-        value: 75264
+        value: 1155072
       avoidable_weight_reload:
         evidence: derived_requirement
-        value: 53075968
+        value: 0
       intermediate_bytes:
         evidence: unavailable
         value: unavailable
-      invocations: 32
+      invocations: 1
       kv_bytes:
         evidence: unavailable
         value: unavailable
-      lifetime: across_K
+      lifetime: across_replan
       output_bytes:
         evidence: recovered_from_ir
-        value: 93184
+        value: 1274880
       read_bytes_resident:
         evidence: derived_requirement
-        value: 4120576
-      read_write_ratio: 1.382
-      region: repeated_head
+        value: 615620608
+      read_write_ratio: 482.885
+      region: backbone_once
       resident_by_dtype:
-        bf16: 856064
-        fp6: 321024
-        fp8: 428032
-        int4: 214016
-        int8: 428032
+        bf16: 307232768
+        fp6: 115212288
+        fp8: 153616384
+        int4: 76808192
+        int8: 153616384
       scale_bytes:
         evidence: unavailable
         value: unavailable
       weight_bytes:
         evidence: recovered_from_ir
-        value: 1712128
+        value: 614465536
       write_bytes:
         evidence: derived_requirement
-        value: 2981888
-    workload: small_llama
-  - regions:
+        value: 1274880
     - activation_input_bytes:
         evidence: recovered_from_ir
-        value: 606208
+        value: 151552
       avoidable_weight_reload:
         evidence: derived_requirement
-        value: 19048431616
+        value: 3686793216
       intermediate_bytes:
         evidence: unavailable
         value: unavailable
-      invocations: 32
+      invocations: 7
       kv_bytes:
         evidence: unavailable
         value: unavailable
       lifetime: across_K
       output_bytes:
         evidence: recovered_from_ir
-        value: 1085440
+        value: 271360
       read_bytes_resident:
         evidence: derived_requirement
-        value: 633864192
-      read_write_ratio: 18.249
+        value: 615526400
+      read_write_ratio: 324.043
       region: repeated_head
       resident_by_dtype:
         bf16: 307232768
@@ -193,15 +191,15 @@ memory_hierarchy_envelope:
         value: 614465536
       write_bytes:
         evidence: derived_requirement
-        value: 34734080
+        value: 1899520
     workload: tiny_llama
   - regions:
     - activation_input_bytes:
         evidence: recovered_from_ir
-        value: 2839552
+        value: 3038080
       avoidable_weight_reload:
         evidence: derived_requirement
-        value: 1205075968
+        value: 1238958080
       intermediate_bytes:
         evidence: unavailable
         value: unavailable
@@ -212,35 +210,35 @@ memory_hierarchy_envelope:
       lifetime: across_K
       output_bytes:
         evidence: recovered_from_ir
-        value: 3188928
+        value: 3483840
       read_bytes_resident:
         evidence: derived_requirement
-        value: 315466752
-      read_write_ratio: 19.785
+        value: 324929920
+      read_write_ratio: 18.654
       region: repeated_head
       resident_by_dtype:
-        bf16: 150634496
-        fp6: 56487936
-        fp8: 75317248
-        int4: 37658624
-        int8: 75317248
+        bf16: 154869760
+        fp6: 58076160
+        fp8: 77434880
+        int4: 38717440
+        int8: 77434880
       scale_bytes:
         evidence: unavailable
         value: unavailable
       weight_bytes:
         evidence: recovered_from_ir
-        value: 301268992
+        value: 309739520
       write_bytes:
         evidence: derived_requirement
-        value: 15944640
+        value: 17419200
     workload: rdt2
   - regions:
     - activation_input_bytes:
         evidence: recovered_from_ir
-        value: 5349376
+        value: 40995840
       avoidable_weight_reload:
         evidence: derived_requirement
-        value: 887095296
+        value: 6601310208
       intermediate_bytes:
         evidence: unavailable
         value: unavailable
@@ -251,30 +249,32 @@ memory_hierarchy_envelope:
       lifetime: across_K
       output_bytes:
         evidence: recovered_from_ir
-        value: 5021696
+        value: 38924288
       read_bytes_resident:
         evidence: derived_requirement
-        value: 317095936
-      read_write_ratio: 15.786
+        value: 2364420096
+      read_write_ratio: 15.186
       region: repeated_head
       resident_by_dtype:
-        bf16: 147849216
-        fp6: 55443456
-        fp8: 73924608
-        int4: 36962304
-        int8: 73924608
+        bf16: 1100218368
+        fp6: 412581888
+        fp8: 550109184
+        int4: 275054592
+        int8: 550109184
       scale_bytes:
         evidence: unavailable
         value: unavailable
       weight_bytes:
         evidence: recovered_from_ir
-        value: 295698432
+        value: 2200436736
       write_bytes:
         evidence: derived_requirement
-        value: 20086784
+        value: 155697152
+    workload: groot_n1d7
+  - regions:
     - activation_input_bytes:
         evidence: recovered_from_ir
-        value: 7168
+        value: 3815424
       avoidable_weight_reload:
         evidence: derived_requirement
         value: 0
@@ -288,32 +288,30 @@ memory_hierarchy_envelope:
       lifetime: across_replan
       output_bytes:
         evidence: recovered_from_ir
-        value: 12288
+        value: 6373376
       read_bytes_resident:
         evidence: derived_requirement
-        value: 11017216
-      read_write_ratio: 896.583
+        value: 3791271936
+      read_write_ratio: 594.861
       region: backbone_once
       resident_by_dtype:
-        bf16: 5505024
-        fp6: 2064384
-        fp8: 2752512
-        int4: 1376256
-        int8: 2752512
+        bf16: 1893728256
+        fp6: 710148096
+        fp8: 946864128
+        int4: 473432064
+        int8: 946864128
       scale_bytes:
         evidence: unavailable
         value: unavailable
       weight_bytes:
         evidence: recovered_from_ir
-        value: 11010048
+        value: 3787456512
       write_bytes:
         evidence: derived_requirement
-        value: 12288
-    workload: groot_n1d7
-  - regions:
+        value: 6373376
     - activation_input_bytes:
         evidence: recovered_from_ir
-        value: 3915776
+        value: 489472
       avoidable_weight_reload:
         evidence: derived_requirement
         value: 26512195584
@@ -327,11 +325,11 @@ memory_hierarchy_envelope:
       lifetime: across_K
       output_bytes:
         evidence: recovered_from_ir
-        value: 6488064
+        value: 811008
       read_bytes_resident:
         evidence: derived_requirement
-        value: 3818782720
-      read_write_ratio: 73.573
+        value: 3791372288
+      read_write_ratio: 584.361
       region: repeated_head
       resident_by_dtype:
         bf16: 1893728256
@@ -347,12 +345,12 @@ memory_hierarchy_envelope:
         value: 3787456512
       write_bytes:
         evidence: derived_requirement
-        value: 51904512
+        value: 6488064
     workload: molmoact
   - regions:
     - activation_input_bytes:
         evidence: recovered_from_ir
-        value: 346644992
+        value: 372969600
       avoidable_weight_reload:
         evidence: derived_requirement
         value: 0
@@ -366,33 +364,33 @@ memory_hierarchy_envelope:
       lifetime: across_replan
       output_bytes:
         evidence: recovered_from_ir
-        value: 343889664
+        value: 371230464
       read_bytes_resident:
         evidence: derived_requirement
-        value: 772891136
-      read_write_ratio: 2.247
+        value: 1074589824
+      read_write_ratio: 2.895
       region: backbone_once
       resident_by_dtype:
-        bf16: 213123072
-        fp6: 79921152
-        fp8: 106561536
-        int4: 53280768
-        int8: 106561536
+        bf16: 350810112
+        fp6: 131553792
+        fp8: 175405056
+        int4: 87702528
+        int8: 175405056
       scale_bytes:
         evidence: unavailable
         value: unavailable
       weight_bytes:
         evidence: recovered_from_ir
-        value: 426246144
+        value: 701620224
       write_bytes:
         evidence: derived_requirement
-        value: 343889664
+        value: 371230464
     - activation_input_bytes:
         evidence: recovered_from_ir
-        value: 2049408
+        value: 12317440
       avoidable_weight_reload:
         evidence: derived_requirement
-        value: 283438080
+        value: 1855134720
       intermediate_bytes:
         evidence: unavailable
         value: unavailable
@@ -403,69 +401,32 @@ memory_hierarchy_envelope:
       lifetime: across_K
       output_bytes:
         evidence: recovered_from_ir
-        value: 2094720
+        value: 13658240
       read_bytes_resident:
         evidence: derived_requirement
-        value: 51987200
-      read_write_ratio: 2.482
+        value: 329300480
+      read_write_ratio: 2.411
       region: repeated_head
       resident_by_dtype:
-        bf16: 15746560
-        fp6: 5904960
-        fp8: 7873280
-        int4: 3936640
-        int8: 7873280
+        bf16: 103063040
+        fp6: 38648640
+        fp8: 51531520
+        int4: 25765760
+        int8: 51531520
       scale_bytes:
         evidence: unavailable
         value: unavailable
       weight_bytes:
         evidence: recovered_from_ir
-        value: 31493120
+        value: 206126080
       write_bytes:
         evidence: derived_requirement
-        value: 20947200
+        value: 136582400
     workload: smolvla
   - regions:
     - activation_input_bytes:
         evidence: recovered_from_ir
-        value: 1944086784
-      avoidable_weight_reload:
-        evidence: derived_requirement
-        value: 82898583552
-      intermediate_bytes:
-        evidence: unavailable
-        value: unavailable
-      invocations: 10
-      kv_bytes:
-        evidence: unavailable
-        value: unavailable
-      lifetime: across_K
-      output_bytes:
-        evidence: recovered_from_ir
-        value: 2643781888
-      read_bytes_resident:
-        evidence: derived_requirement
-        value: 28651821568
-      read_write_ratio: 1.084
-      region: repeated_head
-      resident_by_dtype:
-        bf16: 4605476864
-        fp6: 1727053824
-        fp8: 2302738432
-        int4: 1151369216
-        int8: 2302738432
-      scale_bytes:
-        evidence: unavailable
-        value: unavailable
-      weight_bytes:
-        evidence: recovered_from_ir
-        value: 9210953728
-      write_bytes:
-        evidence: derived_requirement
-        value: 26437818880
-    - activation_input_bytes:
-        evidence: recovered_from_ir
-        value: 838287360
+        value: 2741452800
       avoidable_weight_reload:
         evidence: derived_requirement
         value: 0
@@ -479,35 +440,72 @@ memory_hierarchy_envelope:
       lifetime: across_replan
       output_bytes:
         evidence: recovered_from_ir
-        value: 841039872
+        value: 3438067712
       read_bytes_resident:
         evidence: derived_requirement
-        value: 5799444480
-      read_write_ratio: 6.896
+        value: 15193636864
+      read_write_ratio: 4.419
       region: backbone_once
       resident_by_dtype:
-        bf16: 2480578560
-        fp6: 930216960
-        fp8: 1240289280
-        int4: 620144640
-        int8: 1240289280
+        bf16: 6226092032
+        fp6: 2334784512
+        fp8: 3113046016
+        int4: 1556523008
+        int8: 3113046016
       scale_bytes:
         evidence: unavailable
         value: unavailable
       weight_bytes:
         evidence: recovered_from_ir
-        value: 4961157120
+        value: 12452184064
       write_bytes:
         evidence: derived_requirement
-        value: 841039872
+        value: 3438067712
+    - activation_input_bytes:
+        evidence: recovered_from_ir
+        value: 40921344
+      avoidable_weight_reload:
+        evidence: derived_requirement
+        value: 15479341056
+      intermediate_bytes:
+        evidence: unavailable
+        value: unavailable
+      invocations: 10
+      kv_bytes:
+        evidence: unavailable
+        value: unavailable
+      lifetime: across_K
+      output_bytes:
+        evidence: recovered_from_ir
+        value: 46754048
+      read_bytes_resident:
+        evidence: derived_requirement
+        value: 2129140224
+      read_write_ratio: 4.554
+      region: repeated_head
+      resident_by_dtype:
+        bf16: 859963392
+        fp6: 322486272
+        fp8: 429981696
+        int4: 214990848
+        int8: 429981696
+      scale_bytes:
+        evidence: unavailable
+        value: unavailable
+      weight_bytes:
+        evidence: recovered_from_ir
+        value: 1719926784
+      write_bytes:
+        evidence: derived_requirement
+        value: 467540480
     workload: pi05
   - regions:
     - activation_input_bytes:
         evidence: recovered_from_ir
-        value: 2097792
+        value: 2359808
       avoidable_weight_reload:
         evidence: derived_requirement
-        value: 492322816
+        value: 676347904
       intermediate_bytes:
         evidence: unavailable
         value: unavailable
@@ -518,30 +516,30 @@ memory_hierarchy_envelope:
       lifetime: across_K
       output_bytes:
         evidence: recovered_from_ir
-        value: 2891264
+        value: 3694080
       read_bytes_resident:
         evidence: derived_requirement
-        value: 133569664
-      read_write_ratio: 9.24
+        value: 180886016
+      read_write_ratio: 9.793
       region: repeated_head
       resident_by_dtype:
-        bf16: 61540352
-        fp6: 23077632
-        fp8: 30770176
-        int4: 15385088
-        int8: 30770176
+        bf16: 84543488
+        fp6: 31703808
+        fp8: 42271744
+        int4: 21135872
+        int8: 42271744
       scale_bytes:
         evidence: unavailable
         value: unavailable
       weight_bytes:
         evidence: recovered_from_ir
-        value: 123080704
+        value: 169086976
       write_bytes:
         evidence: derived_requirement
-        value: 14456320
+        value: 18470400
     - activation_input_bytes:
         evidence: recovered_from_ir
-        value: 4096
+        value: 4224
       avoidable_weight_reload:
         evidence: derived_requirement
         value: 0
@@ -555,69 +553,69 @@ memory_hierarchy_envelope:
       lifetime: across_replan
       output_bytes:
         evidence: recovered_from_ir
-        value: 24576
+        value: 8192
       read_bytes_resident:
         evidence: derived_requirement
-        value: 25169920
-      read_write_ratio: 1024.167
+        value: 4329600
+      read_write_ratio: 528.516
       region: backbone_once
       resident_by_dtype:
-        bf16: 12582912
-        fp6: 4718592
-        fp8: 6291456
-        int4: 3145728
-        int8: 6291456
+        bf16: 2162688
+        fp6: 811008
+        fp8: 1081344
+        int4: 540672
+        int8: 1081344
       scale_bytes:
         evidence: unavailable
         value: unavailable
       weight_bytes:
         evidence: recovered_from_ir
-        value: 25165824
+        value: 4325376
       write_bytes:
         evidence: derived_requirement
-        value: 24576
-    - activation_input_bytes:
-        evidence: recovered_from_ir
-        value: 262144
-      avoidable_weight_reload:
-        evidence: derived_requirement
-        value: 0
-      intermediate_bytes:
-        evidence: unavailable
-        value: unavailable
-      invocations: 1
-      kv_bytes:
-        evidence: unavailable
-        value: unavailable
-      lifetime: across_replan
-      output_bytes:
-        evidence: recovered_from_ir
-        value: 786432
-      read_bytes_resident:
-        evidence: derived_requirement
-        value: 25427968
-      read_write_ratio: 32.333
-      region: prefix_builder
-      resident_by_dtype:
-        bf16: 12582912
-        fp6: 4718592
-        fp8: 6291456
-        int4: 3145728
-        int8: 6291456
-      scale_bytes:
-        evidence: unavailable
-        value: unavailable
-      weight_bytes:
-        evidence: recovered_from_ir
-        value: 25165824
-      write_bytes:
-        evidence: derived_requirement
-        value: 786432
+        value: 8192
     workload: xr0
   - regions:
     - activation_input_bytes:
         evidence: recovered_from_ir
-        value: 557056
+        value: 525312
+      avoidable_weight_reload:
+        evidence: derived_requirement
+        value: 0
+      intermediate_bytes:
+        evidence: unavailable
+        value: unavailable
+      invocations: 1
+      kv_bytes:
+        evidence: unavailable
+        value: unavailable
+      lifetime: across_replan
+      output_bytes:
+        evidence: recovered_from_ir
+        value: 528384
+      read_bytes_resident:
+        evidence: derived_requirement
+        value: 6292480
+      read_write_ratio: 11.909
+      region: backbone_once
+      resident_by_dtype:
+        bf16: 2883584
+        fp6: 1081344
+        fp8: 1441792
+        int4: 720896
+        int8: 1441792
+      scale_bytes:
+        evidence: unavailable
+        value: unavailable
+      weight_bytes:
+        evidence: recovered_from_ir
+        value: 5767168
+      write_bytes:
+        evidence: derived_requirement
+        value: 528384
+    - activation_input_bytes:
+        evidence: recovered_from_ir
+        value: 17408
       avoidable_weight_reload:
         evidence: derived_requirement
         value: 34603008
@@ -631,11 +629,11 @@ memory_hierarchy_envelope:
       lifetime: across_K
       output_bytes:
         evidence: recovered_from_ir
-        value: 655360
+        value: 20480
       read_bytes_resident:
         evidence: derived_requirement
-        value: 9666560
-      read_write_ratio: 2.107
+        value: 5889024
+      read_write_ratio: 41.079
       region: repeated_head
       resident_by_dtype:
         bf16: 2883584
@@ -651,5 +649,5 @@ memory_hierarchy_envelope:
         value: 5767168
       write_bytes:
         evidence: derived_requirement
-        value: 4587520
+        value: 143360
     workload: bitvla

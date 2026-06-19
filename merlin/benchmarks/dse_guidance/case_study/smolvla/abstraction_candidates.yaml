@@ -26,13 +26,13 @@ abstraction_candidates:
   - accuracy
   why_this_exists:
     attributed_facts: &id001
-      activation_bytes_per_invocation: 4144128
-      activation_bytes_total: 41441280
+      activation_bytes_per_invocation: 25975680
+      activation_bytes_total: 259756800
       invocations: 10
-      macs_per_invocation: 706885120
-      macs_total: 7068851200
-      matmul_count: 19
-      weight_bytes: 31493120
+      macs_per_invocation: 5094387200
+      macs_total: 50943872000
+      matmul_count: 116
+      weight_bytes: 206126080
     evidence:
       K: 10
       head_phases:
@@ -213,9 +213,9 @@ abstraction_candidates:
       - int8_w8a8
       - int4_weight_only
       - int4_weight_fp8_activation
-      compute_dtype: f32
-      repeated_head_weight_bytes: 31493120
-      weight_storage_dtype: f32
+      compute_dtype: bf16
+      repeated_head_weight_bytes: 206126080
+      weight_storage_dtype: bf16
     signal: numerical_contract
 - axis: fused_requant_epilogue
   compiler_proof: (numerical) fused requant/activation bit-exactness
