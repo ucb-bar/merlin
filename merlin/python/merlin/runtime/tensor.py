@@ -100,15 +100,65 @@ class Tensor:
         return Tensor((m, n), out, self.dtype)
 
     def requant(self, shift: int) -> "Tensor":
-        """Rounding arithmetic right shift by ``shift`` (a fixed-point requantization)."""
+        """Rounding arithmetic right shift by ``shift`` (a fixed-point requantization).
+
+        merlin's native integer requant: round-half-UP. Distinct from Gemmini's float
+        acc_scale (see ``requant_acc_scale``) — kept for the host/runtime-side path.
+        """
         if shift <= 0:
             return Tensor(self.shape, list(self.data), self.dtype)
         half = 1 << (shift - 1)
         out = [(x + half) >> shift for x in self.data]
         return Tensor(self.shape, out, self.dtype)
 
+    def requant_acc_scale(self, scale: float) -> "Tensor":
+        """Gemmini-faithful float acc_scale: round-to-nearest-EVEN of ``x * scale`` in
+        float32, matching ``gemmini_params.h`` ``ACC_SCALE``/``ROUND_NEAR_EVEN`` exactly.
+
+        The i8 saturation that ACC_SCALE folds in is applied separately by ``to_i8`` (via
+        ``output_dtype: i8``), so the composition is bit-identical to the macro. This is an
+        ADDITIVE second requant format alongside the integer ``requant`` — Gemmini's i8
+        accumulator-readout path uses this, not the round-half-up shift."""
+        import struct
+
+        def f32(v: float) -> float:                       # round a Python float to IEEE-754 single
+            return struct.unpack("<f", struct.pack("<f", v))[0]
+
+        s = f32(scale)
+        out = []
+        for x in self.data:
+            prod = f32(f32(float(x)) * s)                 # float32 product, as the C macro computes it
+            i = int(prod)                                 # trunc toward zero
+            nxt = i - 1 if prod < 0 else i + 1
+            rem = abs(prod - i)
+            if rem < 0.5:
+                y = i
+            elif rem > 0.5:
+                y = nxt
+            else:                                         # exact tie -> round to even
+                y = i if i % 2 == 0 else nxt
+            out.append(int(y))
+        return Tensor(self.shape, out, self.dtype)
+
     def relu(self) -> "Tensor":
         return Tensor(self.shape, [x if x > 0 else 0 for x in self.data], self.dtype)
+
+    # -- vector-family (SIMD) ops: elementwise over equal-shape vectors + reduction --
+    def ew_add(self, other: "Tensor") -> "Tensor":
+        """Elementwise add of two equal-shape tensors."""
+        if self.shape != other.shape:
+            raise ValueError(f"ew_add shape mismatch: {self.shape} vs {other.shape}")
+        return Tensor(self.shape, [a + b for a, b in zip(self.data, other.data)], self.dtype)
+
+    def ew_mul(self, other: "Tensor") -> "Tensor":
+        """Elementwise multiply of two equal-shape tensors."""
+        if self.shape != other.shape:
+            raise ValueError(f"ew_mul shape mismatch: {self.shape} vs {other.shape}")
+        return Tensor(self.shape, [a * b for a, b in zip(self.data, other.data)], self.dtype)
+
+    def reduce_sum(self) -> "Tensor":
+        """Sum all elements -> a length-1 tensor."""
+        return Tensor((1,), [sum(self.data)], self.dtype)
 
     def to_i8(self) -> "Tensor":
         return Tensor(self.shape, [_i8_clamp(x) for x in self.data], "i8")

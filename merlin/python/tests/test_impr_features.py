@@ -102,6 +102,76 @@ def test_intrinsic_microkernel_labeled_as_ceiling_reference():
     assert "CEILING REFERENCE" in f.description and "hand-written" in f.description.lower()
 
 
+def test_mtail_clamps_matmul_mr():
+    # The M-tail-safe feature differs from the default accumulator-resident schedule ONLY in the
+    # matmul M tile: it clamps MR_mm to 1 (<= a small leading M, e.g. the M=1 token-decode matmul)
+    # so the inner vectorize is full (no masked transfer_write -> no LLVM-23 PipelineError). The
+    # batch_matmul MR stays 4. This is the M-side analog of the N-tail clamp.
+    default = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset(["accumulator_resident_microkernel"]))
+    mtail = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset(["accumulator_resident_mtail"]))
+    assert default != mtail
+    # the matmul tile/vectorize in the m-tail schedule uses MR_mm=1
+    assert "[1, 16, 0]" in mtail and "[1, 16, 1]" in mtail
+    # but the batch_matmul path keeps MR=4 (the m-tail clamp only touches the matmul M tile)
+    assert "[1, 4, 16, 0]" in mtail and "[1, 4, 16, 1]" in mtail
+
+
+def test_wholemodel_composes_mtail_and_ntail_in_one_schedule():
+    # The whole-model-safe composed feature carries BOTH clamps inherent in ONE schedule: matmul
+    # MR_mm=1 (M-tail) AND batch_matmul NR_bmm=8 (N-tail). This is the inherent-clamp answer to the
+    # composition problem (two full-schedule replacements would clobber each other).
+    wm = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset(["accumulator_resident_wholemodel"]))
+    assert wm != P.RVV_TRANSFORM_SCHEDULE
+    assert "bufferize_to_allocation" in wm
+    # matmul M-tail clamp (MR_mm=1)
+    assert "[1, 16, 0]" in wm and "[1, 16, 1]" in wm
+    # batch_matmul N-tail clamp (NR_bmm=8)
+    assert "[1, 4, 8, 0]" in wm and "[1, 4, 8, 1]" in wm
+
+
+def test_two_full_schedule_replacements_refuse_to_compose():
+    # WORK-ITEM 2: two features that each FULLY REPLACE the transform schedule cannot compose — the
+    # last in sorted order would silently clobber the other's clamp. apply_schedule must refuse
+    # (raise CompositionError) rather than pick a winner. The whole-model-safe config is ONE feature.
+    with pytest.raises(F.CompositionError):
+        F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE,
+                         frozenset(["fused_vfmacc_tiled", "accumulator_resident_ntail"]))
+    with pytest.raises(F.CompositionError):
+        F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE,
+                         frozenset(["accumulator_resident_mtail", "accumulator_resident_ntail"]))
+
+
+def test_additive_edit_layers_on_full_replacement():
+    # An additive schedule edit (schedule_replace=False, e.g. lmul_widen_n's text substitution) must
+    # layer cleanly on top of a single full-replacement feature, not be rejected by the guard.
+    assert F.get("lmul_widen_n").schedule_replace is False
+    out = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE,
+                           frozenset(["fused_vfmacc_tiled", "lmul_widen_n"]))
+    assert "lower_outerproduct" in out   # the full replacement applied
+    # (lmul_widen_n's substitution targets the baseline [4,8,1] tile, absent in the tiled recipe,
+    # so it is a no-op here; the point is the guard does NOT raise on replacement + additive.)
+
+
+def test_single_full_replacement_still_allowed():
+    # The guard must only fire on >1 full replacement; a single one (the common case) is fine.
+    for nm in ("fused_vfmacc_tiled", "accumulator_resident_mtail",
+               "accumulator_resident_wholemodel"):
+        on = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset([nm]))
+        assert on != P.RVV_TRANSFORM_SCHEDULE
+
+
+def test_mtail_wholemodel_features_baseline_safe():
+    # The new M-tail + composed features are default-off: enabling NONE leaves baseline byte-identical.
+    base_pipe = P.build_rvv_pipeline("/tmp/s.mlir")
+    base_sched = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset())
+    assert P.build_rvv_pipeline("/tmp/s.mlir", features=frozenset()) == base_pipe
+    assert base_sched == P.RVV_TRANSFORM_SCHEDULE
+    for nm in ("accumulator_resident_mtail", "accumulator_resident_wholemodel"):
+        f = F.get(nm)
+        assert f.action_class == "PASS"
+        assert f.schedule_replace is True
+
+
 def test_baseline_package_has_no_features():
     # The immutable baseline must carry zero compiler_features -> byte-identical lowering.
     from pathlib import Path

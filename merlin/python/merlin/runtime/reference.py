@@ -50,11 +50,38 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
                     t = t.add_bias(env[bias_name])
             elif stage == "requant":
                 t = t.requant(shift)
+            elif stage == "acc_scale":
+                t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
             elif stage == "relu":
                 t = t.relu()
         if attrs.get("output_dtype", "i8") == "i8":
             t = t.to_i8()
         outputs[ops["dst"]] = t.to_list()
+
+    # Vector-family ops: recompute directly (no residency optimization to bypass, so the
+    # reference is the same elementwise math — the meaningful gate for this family is
+    # merlin == RTL oracle, not the residency-bypass cross-check that matmul has).
+    for cmd in cb.get("commands", []):
+        op = cmd["opcode"]
+        ops = cmd.get("operands", {})
+        attrs = cmd.get("attributes", {})
+        if op == "VECTOR_MAP":
+            combine = attrs.get("combine", "add")
+            if combine == "identity":            # data movement: dst is a copy of lhs (layout move)
+                a = env[ops["lhs"]]
+                t = Tensor(a.shape, list(a.data), a.dtype)
+            else:
+                a, b = env[ops["lhs"]], env[ops["rhs"]]
+                t = a.ew_add(b) if combine == "add" else a.ew_mul(b)
+            for stage in attrs.get("activation", []):
+                if stage == "relu":
+                    t = t.relu()
+            env[ops["dst"]] = t
+        elif op == "VREDUCE":
+            env[ops["dst"]] = env[ops["src"]].reduce_sum()
+    for name, spec in cb.get("tensors", {}).items():
+        if spec.get("role") == "output" and name in env and name not in outputs:
+            outputs[name] = env[name].to_list()
 
     return outputs
 

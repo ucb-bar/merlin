@@ -64,13 +64,28 @@ def lower_repeated_rhs_matmul(
     target_contract: dict[str, Any] | None = None,
     dialect_plan: dict[str, Any] | None = None,
     backend: str | None = None,
+    target_package: Any | None = None,
 ) -> LoweringResult:
-    """Lower the MVP workload end to end; verify every intermediate module."""
+    """Lower the MVP workload end to end; verify every intermediate module.
+
+    ``target_package`` (a merlin.targetgen.registry.TargetPackage) lowers through an ISOLATED,
+    dynamically-loaded target dialect instead of a built-in reference target — no core edits,
+    plug-and-play. Built-in reference targets (toy_npu, saturn) still work via ``target``.
+    """
     if not HAS_XDSL:
         raise LoweringError("xDSL is required for the lowering pipeline")
 
-    tc = target_contract or load_curated_contract(target)
-    backend = backend or DEFAULT_BACKEND.get(target, "simulator")
+    spec = opcodes = None
+    if target_package is not None:
+        tc = target_contract or target_package.contract or load_curated_contract(target_package.name)
+        dialect_plan = dialect_plan or target_package.dialect_plan()
+        spec = target_package.spec
+        opcodes = target_package.opcode_table
+        name = target_package.name
+    else:
+        tc = target_contract or load_curated_contract(target)
+        name = tc["name"]
+    backend = backend or DEFAULT_BACKEND.get(name, "simulator")
     input_module = build_input_module(reuse=reuse, m=m, k=k, n=n)
     input_module.verify()
     contract_module = lower_to_contract(input_module, tc)
@@ -79,9 +94,9 @@ def lower_repeated_rhs_matmul(
     schedule_module.verify()
     interface_module = lower_to_interface(schedule_module)
     interface_module.verify()
-    target_module = lower_to_target(interface_module, dialect_plan, target=tc["name"])
+    target_module = lower_to_target(interface_module, dialect_plan, target=name, spec=spec)
     target_module.verify()
-    runtime_module = lower_to_runtime(target_module, target=tc["name"], backend=backend)
+    runtime_module = lower_to_runtime(target_module, target=name, backend=backend, opcodes=opcodes)
     runtime_module.verify()
     cb = emit_command_buffer(runtime_module)
 

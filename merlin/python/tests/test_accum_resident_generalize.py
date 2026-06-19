@@ -54,6 +54,11 @@ def _attn_bundle(N: int):
     return workloads.gen_batch_matmul_f32(tempfile.mkdtemp(), B=4, M=32, N=N, K=32)
 
 
+def _matmul_bundle(M: int, N: int = 64, K: int = 64):
+    from merlin.rvvgen import workloads
+    return workloads.gen_matmul_f32(tempfile.mkdtemp(), M=M, N=N, K=K)
+
+
 @pytest.mark.skipif(not _toolchain(), reason="riscv toolchain missing")
 def test_conv_contraction_forms_vfmacc():
     # A conv2d expressed as its im2col matmul: the accumulator-resident feature must form a fused
@@ -82,3 +87,41 @@ def test_attention_large_n_unaffected_by_ntail():
     # special-case for N=8.
     s = _build(["accumulator_resident_ntail"], _attn_bundle(32))
     assert s.count("vfmacc", "vmacc") > 0
+
+
+@pytest.mark.skipif(not _toolchain(), reason="riscv toolchain missing")
+def test_m1_matmul_needs_mtail():
+    # WORK-ITEM 1: the M=1 token-decode matmul. The default accumulator-resident feature (MR=4 over
+    # the M=1 tile) hits the LLVM-23 masked vector.transfer_write PipelineError (vector<4xNR> into
+    # tensor<1xNR>). The M-tail-safe variant clamps MR_mm<=M so the inner vectorize is full -> it
+    # builds AND forms vfmacc.
+    bundle = _matmul_bundle(M=1)
+    with pytest.raises(Exception):                          # masked-transfer_write PipelineError
+        _build(["accumulator_resident_microkernel"], bundle)
+    s = _build(["accumulator_resident_mtail"], bundle)      # the M-tail fix
+    assert s.count("vfmacc", "vmacc") > 0
+    assert s.count("vfmul") == 0
+
+
+@pytest.mark.skipif(not _toolchain(), reason="riscv toolchain missing")
+def test_mtail_general_not_m1_overfit():
+    # The M-tail clamp must vectorize NORMAL matmuls too (not a special-case for M=1): a cube and a
+    # non-cube both form vfmacc with the M-tail feature -> general.
+    for M, N, K in ((64, 64, 64), (96, 48, 160)):
+        s = _build(["accumulator_resident_mtail"], _matmul_bundle(M=M, N=N, K=K))
+        assert s.count("vfmacc", "vmacc") > 0
+        assert s.count("vfmul") == 0
+
+
+@pytest.mark.skipif(not _toolchain(), reason="riscv toolchain missing")
+def test_wholemodel_vectorizes_m1_and_n8_in_one_schedule():
+    # WORK-ITEM 2: the composed whole-model-safe feature carries BOTH tail clamps (M-tail + N-tail)
+    # in ONE schedule, so it vectorizes an M=1 token-decode matmul AND a small-N (N=8) attention
+    # batch_matmul with the SAME feature enabled (no scalar fallback, no vector.mask PipelineError).
+    s_m1 = _build(["accumulator_resident_wholemodel"], _matmul_bundle(M=1))
+    assert s_m1.count("vfmacc", "vmacc") > 0 and s_m1.count("vfmul") == 0
+    s_n8 = _build(["accumulator_resident_wholemodel"], _attn_bundle(8))
+    assert s_n8.count("vfmacc", "vmacc") > 0 and s_n8.count("vfmul") == 0
+    # and a normal cube still vectorizes -> general
+    s_cube = _build(["accumulator_resident_wholemodel"], _matmul_bundle(M=64))
+    assert s_cube.count("vfmacc", "vmacc") > 0 and s_cube.count("vfmul") == 0

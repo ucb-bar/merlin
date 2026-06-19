@@ -119,6 +119,32 @@ _RVV_ROUTES: list[_Route] = [
         expected_effect="one kernel adapts NR to any VLEN; small-N contractions vectorize (N-tail) "
                         "instead of hitting the masked-transfer_write fallback to scalar"),
     _Route(
+        axis="compute.mr_adapts_to_m",
+        # The M-side analog of nr_is_vsetvlmax. A whole-model decode step is dominated by matmuls
+        # whose LEADING dim is M=1 (one token row); our fixed MR=4 register tile does NOT adapt to
+        # M<MR, so it writes a vector<4xNR> into a tensor<1xNR> C tile -> a masked vector.transfer_write
+        # LLVM-23 rejects (multi-op vector.mask PipelineError) -> silent scalar fallback (no vfmacc).
+        # The expert kernels clamp the register block to the actual M (MR=min(MR,M)); ours did not.
+        when=lambda d: bool(d.expert) and not d.ours,
+        action_class="HEURISTIC",
+        target_seam="schedule:MR=min(MR,M) (matmul M-tail clamp; impr_features:accumulator_resident_mtail)",
+        change="clamp the matmul register-block MR to the actual leading dim, MR=min(MR,M) (M-tail), "
+               "so an M=1 token-decode matmul vectorizes FULL (no masked transfer_write) instead of "
+               "MR=4 over the M=1 tile -> the LLVM-23 multi-op vector.mask PipelineError -> scalar "
+               "fallback. The M-side analog of the batch_matmul N-tail clamp (NR=min(NR,N)); both "
+               "compose in accumulator_resident_wholemodel so a whole model with mixed M (M=1 decode "
+               "+ larger-M prefill) and small-N attention vectorizes in ONE schedule.",
+        # EVIDENCE-DRIVEN, RESOLVED: the M=1 matmul reproduced the masked-transfer_write PipelineError
+        # on spike (vector<4x16> into tensor<1x16>); the MR=min(MR,M) clamp (accumulator_resident_mtail)
+        # builds + is bit-exact (cos~1.0) and forms vfmacc on M=1, cube AND non-cube matmuls; the
+        # composed accumulator_resident_wholemodel adds the N-tail and vectorizes M=1 + cube + non-cube
+        # + N=8 attention in one schedule (all vfmacc>0, vfmul=0, gate_ok). A registered feature
+        # expresses it -> forkable_now=True.
+        forkable_now=True,
+        expected_effect="the M=1 token-decode matmul (smolVLA/rdt2 leading-M=1) vectorizes to vfmacc "
+                        "instead of the masked-transfer_write scalar fallback; larger-M matmuls "
+                        "unaffected (tile into single-row register tiles, still vfmacc, bit-exact)"),
+    _Route(
         axis="vector.lmul",
         when=_is_higher,
         action_class="KNOB", target_seam="schedule:vector_sizes (widen N to raise LMUL)",

@@ -67,8 +67,15 @@ int main(int argc, char* argv[]) {
       Cref[n * M + m] = acc;
     }
 
-  // ---- PACK A (ncopy_8) and B (tcopy_8) -- OUTSIDE the timed region -------
+  // ---- PACK A (ncopy_8) and B (tcopy_8) ----------------------------------
+  // Default (inner-compute scope): pack is OUTSIDE the timed region (the
+  // head-to-head kernel-only number). With -DPACK_INCLUDED the pack is moved
+  // INSIDE the timed region (the realistic end-use cost: pack + compute).
   const int MR = 8, NR = 8;
+#ifdef PACK_INCLUDED
+  unsigned long c0 = read_csr(mcycle);
+  unsigned long i0 = read_csr(minstret);
+#endif
   for (int mp = 0; mp < M / MR; mp++)
     for (int k = 0; k < K; k++)
       for (int mr = 0; mr < MR; mr++)
@@ -82,8 +89,10 @@ int main(int argc, char* argv[]) {
   for (int i = 0; i < N * M; i++) C[i] = 0.0f;
 
   // ---- TIMED region: only the kernel compute call ------------------------
+#ifndef PACK_INCLUDED
   unsigned long c0 = read_csr(mcycle);
   unsigned long i0 = read_csr(minstret);
+#endif
   openblas_sgemm_kernel(M, N, K, 1.0f, Apack, Bpack, C, M);
   unsigned long i1 = read_csr(minstret);
   unsigned long c1 = read_csr(mcycle);

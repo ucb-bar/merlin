@@ -105,19 +105,28 @@ int main(int argc, char* argv[]) {
       Cref[m * N + n] = acc;
     }
 
-  // PACK A into MR-row panels (col-major within panel) OUTSIDE the timed region
-  // (resident-weight scenario, exactly like OpenBLAS's hoisted ncopy). B is used
+  // PACK A into MR-row panels (col-major within panel). Default scope is
+  // inner-compute: pack is OUTSIDE the timed region (resident-weight scenario,
+  // exactly like OpenBLAS's hoisted ncopy). With -DPACK_INCLUDED the pack is
+  // moved INSIDE the timed region (realistic end-use: pack + compute). B is used
   // row-major directly (already contiguous per K row).
+  for (int i = 0; i < M * N; i++) C[i] = 0.0f;
+
+#ifdef PACK_INCLUDED
+  unsigned long c0 = read_csr(mcycle);
+  unsigned long i0 = read_csr(minstret);
+#endif
   for (int mp = 0; mp < M / MR; mp++)
     for (int k = 0; k < K; k++)
       for (int mr = 0; mr < MR; mr++)
         Apack[(mp * K + k) * MR + mr] = A[(mp * MR + mr) * K + k];
 
-  for (int i = 0; i < M * N; i++) C[i] = 0.0f;
-
-  // TIMED region: only the register-blocked micro-kernel compute (pack excluded).
+  // TIMED region: only the register-blocked micro-kernel compute (pack excluded
+  // unless -DPACK_INCLUDED).
+#ifndef PACK_INCLUDED
   unsigned long c0 = read_csr(mcycle);
   unsigned long i0 = read_csr(minstret);
+#endif
   gemm_micro(Apack, B, C);
   unsigned long i1 = read_csr(minstret);
   unsigned long c1 = read_csr(mcycle);

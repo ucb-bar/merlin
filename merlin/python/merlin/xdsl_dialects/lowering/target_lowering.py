@@ -31,6 +31,11 @@ LOWERING_TABLES = {
     },
 }
 
+# The interface ops a tensor-resident target must lower (used to check coverage for both
+# built-in reference targets and isolated/generated target packages).
+EXPECTED_INTERFACE_OPS = ("interface.resident_pack", "interface.matmul",
+                          "interface.commit", "interface.resident_evict")
+
 
 def load_lowering_table(dialect_plan: dict[str, Any] | None = None,
                         target: str = "toy_npu") -> dict[str, str]:
@@ -70,6 +75,9 @@ if HAS_XDSL:
         accumulator_type: type
 
     def _specs() -> dict[str, "TargetSpec"]:
+        # Built-in REFERENCE targets only. Generated targets (e.g. gemmini) are NOT hardcoded
+        # here — they load from isolated per-run packages via merlin.targetgen.registry and are
+        # passed in through the ``spec`` argument of lower_to_target.
         from ..targets import saturn as sat
         from ..targets import toynpu as toy
 
@@ -84,8 +92,14 @@ if HAS_XDSL:
 
 
 def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
-                    target: str = "toy_npu"):
-    """Rebuild the interface module in the target dialect."""
+                    target: str = "toy_npu", spec=None):
+    """Rebuild the interface module in the target dialect.
+
+    ``spec`` (a :class:`TargetSpec`) overrides the built-in reference lookup — this is how an
+    isolated/generated target package (loaded via merlin.targetgen.registry) supplies its own
+    dialect, without the target being hardcoded in this module. When ``spec`` is given,
+    ``dialect_plan`` carries the package's interface->target lowering table.
+    """
     if not HAS_XDSL:
         return module
     from xdsl.ir import Block, Region
@@ -94,12 +108,14 @@ def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
 
     from .. import interface as i
 
-    specs = _specs()
-    if target not in specs:
-        raise LoweringError(f"no in-tree reference target dialect for {target!r}")
-    spec = specs[target]
-    table = load_lowering_table(dialect_plan, target)
-    missing = [op for op in LOWERING_TABLES[target] if op not in table]
+    if spec is None:
+        specs = _specs()
+        if target not in specs:
+            raise LoweringError(f"no in-tree reference target for {target!r}; pass a loaded "
+                                f"target package's spec (merlin.targetgen.registry.load_target)")
+        spec = specs[target]
+    table = load_lowering_table(dialect_plan, target if dialect_plan is None else None)
+    missing = [op for op in EXPECTED_INTERFACE_OPS if op not in table]
     if missing:
         raise LoweringError("dialect plan does not lower: %s" % ", ".join(missing))
 

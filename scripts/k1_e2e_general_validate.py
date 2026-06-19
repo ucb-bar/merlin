@@ -113,6 +113,14 @@ CONFIGS = [
     ("optimized_ntail", ["accumulator_resident_ntail"]),
     ("opt_tiled_only", ["fused_vfmacc_tiled"]),
     ("opt_combined_clobbered", ["fused_vfmacc_tiled", "accumulator_resident_ntail"]),
+    # WHOLE-MODEL-SAFE composed config (the fix): a SINGLE feature carrying BOTH tail clamps inherent
+    # (matmul MR_mm=1 M-tail + batch_matmul NR_bmm=8 N-tail) on the accumulator-resident tiled-vfmacc
+    # recipe. Unlike opt_combined_clobbered (two full-schedule replacements that clobber), this one
+    # feature composes by construction, so the M=1 token-decode matmuls (rdt2/smolVLA leading-M=1)
+    # and small-N attention vectorize to vfmacc whole-model. This is the config the payoff measures.
+    ("wholemodel_composed", ["accumulator_resident_wholemodel"]),
+    # M-tail alone (no batch_matmul in rdt2, so this is equivalent for rdt2 — isolates the M-tail fix).
+    ("mtail_only", ["accumulator_resident_mtail"]),
 ]
 
 
