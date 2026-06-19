@@ -38,8 +38,10 @@ read SEW/LMUL/vtype/loops/residency off the asm via a vtype state machine, **no 
 | `accumulator_resident_ntail` | PASS | clamps batch_matmul `NR=min(NR,N)` → llama-style N=8 attention vectorizes instead of scalar fallback | whole-model-safe attention |
 | `accumulator_resident_mtail` | HEURISTIC | clamps matmul `MR=min(MR,M)` → M=1 token-decode matmuls vectorize | fixes decode matmuls |
 | `accumulator_resident_wholemodel` | PASS | both tail clamps inherent in one schedule + composition guard | **rdt2 2.35× e2e** |
-| `vectorized_transcendental_activation` | PASS | `erf`/`exp`/`tanh` → compiler-emitted minimax polynomial (vfmacc Horner) instead of scalar libm | GELU 6.2× / sigmoid 3.2× vs our scalar (spike) |
-| `intrinsic_microkernel` | CODEGEN | *ceiling reference only* — see §4 | honest: not compiler-emitted |
+| `vectorized_transcendental_activation` | PASS | `erf`/`exp`/`tanh` → compiler-emitted minimax polynomial (vfmacc Horner) instead of scalar libm | isolated only (§3d); whole-model still falls back |
+| `accumulator_resident_v2` | PASS | hoist accumulator to a value-semantic `vector<MR×NR>` `scf.for` iter_arg (pre-bufferize) → register-resident across K | residency achieved (§4) |
+| `accumulator_resident_microkernel_v3` | PASS | v2 + scalarize A reads → emits `vfmacc.vf` K-loop; **compute kernel matches the hand ceiling, beats OpenBLAS** | **closes the §4 gap** |
+| `intrinsic_microkernel` | CODEGEN | *hand-written ceiling reference* — superseded by v3 (compiler now emits the real thing) | cross-check only |
 
 A **composition guard** prevents two full-schedule-replacement features from silently clobbering each
 other (raises `CompositionError`); additive edits still layer.
@@ -93,13 +95,29 @@ Full detail: `output/rvv_bench/k1_e2e_activation.md`.
 
 ---
 
-## 4. What we honestly cannot (yet) do
+## 4. The microkernel gap — now CLOSED (compiler-emitted)
 
-- **Accumulator-resident GEMM micro-kernel via the transform-dialect compiler.** The schedule path is
-  ~19× off the hand ceiling on the spike proxy (the K-loop still spills the accumulator to stack). So
-  `intrinsic_microkernel` is a **labeled hand-written ceiling reference**, and the gap is recorded as a
-  `forkable_now=False` CODEGEN work-item ("needs a dedicated micro-kernel codegen pass"). On real silicon
-  whole-model this gap is only ~1.49× (matmul is one component) — see §3a.
+The earlier honest verdict ("the transform-dialect compiler cannot emit the accumulator-resident
+kernel; ~19× off; needs a dedicated pass") is **superseded** (commit 68137e2). The compiler now
+genuinely emits it:
+- **Root cause of the old 19×:** the residency hoist ran *post*-bufferize, where the K-loop carries the
+  accumulator as a *memref* iter_arg and the hoist no-ops. Fix = run `loop-invariant-subset-hoisting` on
+  the **tensor** form *before* one-shot-bufferize → the accumulator becomes a value-semantic
+  `vector<MR×NR>` loop iter_arg held in vregs across K (feature `accumulator_resident_v2`). A second
+  rewrite scalarizes the A reads so clang emits `vfmacc.vf` (feature `accumulator_resident_microkernel_v3`).
+- **Decode-confirmed** (structured `decode.rvv`, asserted in tests): the innermost K-loop is **4 `vfmacc.vf`,
+  0 `vfmacc.vv`, 0 in-loop accumulator spills** — on cubes and non-cubes; bit-exact (32³/64³/128³ + 96×48×160).
+- **Instret (spike inner-compute), the compute kernel (`forward`):** 7,045 / 53,207 / 409,764 @32/64/128³
+  vs hand ceiling 6,549 / 50,693 / 399,239 (**~1.05–1.08×**) and **beats OpenBLAS** (11,037 / 84,481 / 664,809).
+  The ~19× compute-kernel gap is closed; no hand kernel is linked — the compiler emits it.
+- **Honest residual:** the v3 *total* (~7× ceiling) is dominated by an O(M×N) result-buffer copy-out — an
+  ABI artifact of the single-op workload returning a fresh tensor (`buffer-results-to-out-params` copies
+  C once). Out of scope for kernel codegen; fixed by passing C as an out-param. Whole-model board
+  validation (does this close the §3a 1.49× gap to XNNPACK?) is pending the board.
+
+## 4b. What still genuinely doesn't work
+- **Vectorized activation whole-model** — fixed the rank-1-tile scalar-fallback bug (40a8cbc), but it
+  does not compose with the matmul feature (both `schedule_replace`); see §3d.
 - **smolVLA whole-model on the board** — blocked by a SpacemiT clang backend crash (not our feature).
 
 ---
