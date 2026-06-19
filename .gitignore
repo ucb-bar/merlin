@@ -70,3 +70,7 @@ merlin/benchmarks/dse_guidance/recaptures_levels/*/*.mlir
 # P19 forensic audit: re-exported FX graph dumps are regenerable via dump_exported_fx.py
 merlin/benchmarks/dse_guidance/case_study/manual_validation/exported_fx/*.txt
 merlin/benchmarks/dse_guidance/case_study/manual_validation/exported_fx/*.FAILED.txt
+
+# P20-S3 caveat-resolving variant recaptures (regenerable via variant_capture.py)
+merlin/benchmarks/dse_guidance/recaptures_decode/*/*.mlir
+merlin/benchmarks/dse_guidance/recaptures_decode/*/FAILED.txt

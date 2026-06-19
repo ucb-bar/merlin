@@ -30,10 +30,15 @@ K/dtype; requirements envelope; capture-level ablation. **The methodology contri
 can recover from a flat capture, and which DSE axes are blocked-by-capture vs blocked-by-proof" — is the
 headline and is fully source-grounded.
 
-**True but needs a caveat on the slide:** rdt's giant op (depth-2, non-generalizing); "GEMV-like"
-(capture-M, prefill-vs-decode); all K/residency/loop claims (configured/assumed K); region roles in
+**True but needs a caveat on the slide:** all K/residency/loop claims (configured/assumed K); region roles in
 single-step captures (low-confidence). Magnitudes everywhere are structural-only (only tiny_llama is a real
 checkpoint, and even it is truncated to 2 random layers).
+
+**Resolved with evidence (P20-S3, see capture_shape_sensitivity.md):** rdt "one giant op" — confirmed a
+**depth-2 artifact**: at depth=6 the top-op share drops 0.871→0.292 (cross-attn-to-image is the dominant op
+*class* ~88%, distributed, not one op). "GEMV-like is capture-M" — tiny_llama at **true decode M=1** is also
+`gemv_like` (= the committed M=4), so the GEMV finding genuinely holds in the decode regime (it is not a
+small-M artifact; only a large *prefill* M would change the class).
 
 **Fixed this pass (were wrong):** xr0 attention under-count (SDPA-fused, now recovered); groot attention
 over-count (MLP bmm now batched_matmul); xr0 K drift (10→5). pi05 "17 shapes" confirmed CORRECT.
@@ -44,9 +49,10 @@ torch.export-blocked); native low-bit datapath (qdq capture is torchao-int8, not
 are captured as prefill (use_cache=False) — re-capture as true single-token decode (M=1) to get the real
 GEMV regime instead of the M=4/8 prefill artifact.
 
-**Next tools (see next_tools.md):** Tool A mapspace_seed_extractor (highest new value), Tool E
-quant_metadata_capture (unblocks low-bit, qdq capture exists), Tool B operand_locality_analyzer; C/D/F are
-extensions of existing P17/P18 tools.
+**Next tools (see next_tools.md):** ✅ BUILT in P20 — Tool A mapspace_seed_extractor → timeloop_problem_
+shapes.yaml + dataflow_candidate_table.csv (P20-S1); Tool E quant_metadata → quant_metadata_visibility.csv
+(P20-S2); Tool B operand_locality → operand_locality_table.csv + capacity_requirement_table.csv (P20-S2).
+C/D/F remain extensions of existing P17/P18 tools.
 
 **Next captures (highest leverage):** (1) loop/decode-preserving capture (unblocks K, KV-state, residency
 proof, region roles — the single biggest unlock); (2) true-decode (M=1) re-capture of the LLMs/VLAs; (3)
