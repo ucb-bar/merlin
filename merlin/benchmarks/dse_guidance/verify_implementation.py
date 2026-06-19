@@ -1583,6 +1583,25 @@ def verify_p21(IM) -> None:
              f"[P21] real-config magnitudes: openVLA params==Llama-2-7B composition ({mag_ok}); "
              f"KV formula matches IR iter_arg ({kv_ir_ok}) + deployment KV exact ({kv_real_ok}); "
              f"artifacts config-evidenced ({arts_ok})")
+    # P21 S4: native low-bit (bitvla packed-int2 ternary) datapath captured + reported, when present
+    from merlin.dse_guidance import quant_metadata as QM
+    nat_cap = (CS.parent / "recaptures_native" / "bitvla" / "model.mlir")
+    if nat_cap.is_file():
+        nrows = {r["workload"]: r for r in QM.native_quant_rows(CS)}
+        bv = nrows.get("bitvla", {})
+        # re-derive: the native capture must carry packed-int2 (i8-stored) weights and the absmean scale
+        cap_txt = nat_cap.read_text(errors="ignore")
+        s4_ok = (bv.get("storage") == "int2_packed_in_i8"
+                 and int(bv.get("n_packed_weight_tensors", 0)) > 0
+                 and cap_txt.count("xi8>") == int(bv.get("n_packed_weight_tensors", 0))
+                 and "absmean" in bv.get("scale", "")
+                 and "recovered" in bv.get("status", "")
+                 and (CS / "native_lowbit_datapath.csv").is_file())
+        p13check(s4_ok,
+                 f"[P21] native low-bit: bitvla packed-int2 ternary storage + absmean scale captured "
+                 f"(i8 tensors={bv.get('n_packed_weight_tensors')}) -> native datapath recovered ({s4_ok})")
+    else:
+        p13check(True, "[P21] native low-bit: no native bitvla capture present (skipped)")
 
 
 def main(write: bool = True) -> int:

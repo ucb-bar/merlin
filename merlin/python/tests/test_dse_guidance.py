@@ -548,6 +548,28 @@ def test_real_config_magnitudes_and_kv_sizing():
     assert all(r["evidence"] == "recovered_from_model_config" for r in RC.magnitude_rows())
 
 
+_RECAP_NATIVE = Path(__file__).resolve().parents[2] / "benchmarks" / "dse_guidance" / "recaptures_native"
+
+
+@pytest.mark.skipif(not (_RECAP_NATIVE / "bitvla" / "model.mlir").is_file(),
+                    reason="no native low-bit bitvla capture")
+def test_native_lowbit_bitvla_datapath_recovered():
+    """P21-S4: the bitvla native W1.58 ternary datapath (packed-int2 storage + absmean scale) is
+    captured directly — the storage that the torchao-int8 qdq stand-in could not expose."""
+    from merlin.dse_guidance import quant_metadata as QM
+    cs = Path(__file__).resolve().parents[2] / "benchmarks" / "dse_guidance" / "case_study"
+    rows = {r["workload"]: r for r in QM.native_quant_rows(cs)}
+    assert "bitvla" in rows
+    bv = rows["bitvla"]
+    assert bv["storage"] == "int2_packed_in_i8"
+    assert int(bv["n_packed_weight_tensors"]) > 0          # packed-int2 weights present
+    assert "absmean" in bv["scale"]                        # per-tensor absmean scale recovered
+    assert "recovered" in bv["status"]
+    # the count matches the actual i8-stored tensors in the capture
+    cap = (_RECAP_NATIVE / "bitvla" / "model.mlir").read_text()
+    assert cap.count("xi8>") == int(bv["n_packed_weight_tensors"])
+
+
 # --------------------------------------------- cross-workload case study (multiple real captures)
 
 def _has_recaptures() -> bool:
