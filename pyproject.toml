@@ -31,6 +31,7 @@ merlin-design-pressure = "merlin.design_pressure.cli:main"
 merlin-dse = "merlin.dse.cli:main"
 merlin-dse-guidance = "merlin.dse_guidance.cli:main"
 merlin-rvv-report = "merlin.rvvgen.report:main"
+merlin-rvv-mine = "merlin.rvvgen.mine:main"
 
 [tool.setuptools]
 package-dir = { "" = "merlin/python" }
