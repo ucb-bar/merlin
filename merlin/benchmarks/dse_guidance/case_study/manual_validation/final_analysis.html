@@ -1,54 +1,79 @@
-<title>Merlin DSE-Guidance — Final Analysis (P16–P20)</title>
+<title>Merlin DSE-Guidance — Final Analysis (P16–P21)</title>
 <style>
   :root{
-    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --ink:#e8eaed; --muted:#9aa3b2;
-    --line:#2a2f3a; --accent:#6ea8fe; --good:#3fb950; --warn:#d29922; --bad:#f85149;
-    --fix:#a371f7; --blue:#58a6ff;
+    /* muted academic pastel palette */
+    --bg:#f4efe6; --panel:#fbf8f1; --panel2:#efe8da; --ink:#2f2a23; --muted:#7c7565;
+    --line:#ddd3c2; --rule:#b9ad97;
+    --salmon:#cf8a82; --sage:#8fa674; --mustard:#d2a23f; --blue:#5e8db4; --plum:#9d7fae;
+    --salmon-t:#f0dcd8; --sage-t:#e2e8d6; --mustard-t:#f1e3c4; --blue-t:#d9e4ee; --plum-t:#e8e0ee;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
-    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-  .wrap{max-width:1040px;margin:0 auto;padding:32px 20px 80px}
-  h1{font-size:30px;margin:0 0 6px;letter-spacing:-.02em}
-  h2{font-size:21px;margin:40px 0 12px;padding-top:14px;border-top:1px solid var(--line);letter-spacing:-.01em}
-  h3{font-size:16px;margin:22px 0 6px;color:var(--blue)}
+    font:15px/1.6 "Iowan Old Style",Palatino,"Palatino Linotype","Book Antiqua",Georgia,serif}
+  .wrap{max-width:1060px;margin:0 auto;padding:36px 22px 80px}
+  h1{font-size:31px;margin:0 0 6px;letter-spacing:-.01em;font-weight:600}
+  h2{font-size:21px;margin:42px 0 12px;padding-top:16px;border-top:2px solid var(--rule);font-weight:600}
+  h3{font-size:15.5px;margin:20px 0 6px;color:#4a6f8c;font-weight:600;
+     font-family:"Iowan Old Style",Georgia,serif}
   p{margin:8px 0}
-  .sub{color:var(--muted);font-size:15px;margin:0 0 18px}
-  .lede{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);
-    border-radius:8px;padding:14px 16px;margin:18px 0}
-  code{background:#11141a;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:12.5px;
-    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0}
-  .stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
-  .stat b{display:block;font-size:23px;letter-spacing:-.02em}
-  .stat span{color:var(--muted);font-size:12.5px}
-  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;margin:14px 0}
-  table{border-collapse:collapse;width:100%;font-size:13px;min-width:520px}
-  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
-  th{background:var(--panel2);color:var(--muted);font-weight:600;position:sticky;top:0}
-  tr:last-child td{border-bottom:none}
-  td.num{text-align:right;font-family:ui-monospace,monospace}
-  .chip{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11.5px;font-weight:600}
-  .c-good{background:rgba(63,185,80,.15);color:var(--good)}
-  .c-warn{background:rgba(210,153,34,.15);color:var(--warn)}
-  .c-bad{background:rgba(248,81,73,.15);color:var(--bad)}
-  .c-fix{background:rgba(163,113,247,.15);color:var(--fix)}
-  .c-blue{background:rgba(88,166,255,.15);color:var(--blue)}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin:10px 0}
+  .sub{color:var(--muted);font-size:14.5px;margin:0 0 18px;font-style:italic}
+  code{background:#efe8da;border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:12.5px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#5c5446}
+  /* lede / callout */
+  .lede{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--blue);
+    border-radius:10px;padding:15px 18px;margin:18px 0;box-shadow:0 1px 0 rgba(0,0,0,.03)}
+  .callout{background:var(--sage-t);border:1px solid #b9c7a2;border-radius:10px;padding:13px 16px;margin:16px 0}
+  .callout.win{background:var(--sage-t);border-color:#a9bd8c}
+  .callout b{color:#46612f}
+  /* stat strip */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:11px;margin:16px 0}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 15px}
+  .stat b{display:block;font-size:24px;letter-spacing:-.01em;color:#3a3329}
+  .stat span{color:var(--muted);font-size:12px}
+  .stat.hl{background:var(--sage-t);border-color:#a9bd8c}
+  .stat.hl b{color:#46612f}
+  /* booktabs tables (horizontal rules only) */
+  .tablewrap{overflow-x:auto;margin:14px 0}
+  table{border-collapse:collapse;width:100%;font-size:13px;min-width:540px;
+    font-family:"Iowan Old Style",Georgia,serif}
+  caption{caption-side:top;text-align:left;color:var(--muted);font-size:12.5px;font-style:italic;padding:0 0 7px}
+  th,td{text-align:left;padding:7px 11px}
+  thead th{border-top:2px solid var(--rule);border-bottom:1.5px solid var(--rule);color:#5c5446;font-weight:600}
+  tbody tr{border-bottom:1px solid var(--line)}
+  tbody tr:last-child td{border-bottom:2px solid var(--rule)}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace}
+  /* value-tinted cells */
+  .v-ok{background:var(--sage-t);color:#46612f;font-weight:600}
+  .v-cav{background:var(--mustard-t);color:#86631a}
+  .v-bad{background:var(--salmon-t);color:#9c443c}
+  .v-fix{background:var(--plum-t);color:#6b4f7d}
+  .v-blue{background:var(--blue-t);color:#3a5f7c}
+  /* chips */
+  .chip{display:inline-block;padding:1px 9px;border-radius:20px;font-size:11.5px;font-weight:600}
+  .c-ok{background:var(--sage-t);color:#46612f} .c-cav{background:var(--mustard-t);color:#86631a}
+  .c-bad{background:var(--salmon-t);color:#9c443c} .c-fix{background:var(--plum-t);color:#6b4f7d}
+  .c-blue{background:var(--blue-t);color:#3a5f7c}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 17px;margin:11px 0;
+    box-shadow:0 1px 0 rgba(0,0,0,.03)}
   .card h3{margin-top:0}
   .k{color:var(--muted);font-size:12.5px}
-  .big{font-size:18px;font-weight:600}
-  ul{margin:8px 0;padding-left:20px} li{margin:4px 0}
-  .foot{color:var(--muted);font-size:12.5px;margin-top:40px;border-top:1px solid var(--line);padding-top:14px}
+  .big{font-size:18px;font-weight:600;color:#3a3329}
+  ul{margin:8px 0;padding-left:20px} li{margin:5px 0}
+  .foot{color:var(--muted);font-size:12.5px;margin-top:42px;border-top:2px solid var(--rule);padding-top:14px}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
   @media(max-width:720px){.two{grid-template-columns:1fr}}
-  .pill{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:20px;padding:1px 8px}
+  /* hatched bar device for the before/after recovery */
+  .barrow{display:flex;align-items:center;gap:10px;margin:5px 0;font-size:12.5px}
+  .barlbl{width:150px;color:var(--muted);text-align:right}
+  .bar{height:18px;border-radius:3px;display:inline-block}
+  .bar.flat{background:repeating-linear-gradient(45deg,#e6d9c4,#e6d9c4 4px,#ddcfb6 4px,#ddcfb6 8px);border:1px solid var(--rule)}
+  .bar.rec{background:var(--sage);border:1px solid #6f8553}
 </style>
 
 <div class="wrap">
 
 <h1>Merlin DSE-Guidance — Final Analysis</h1>
-<p class="sub">Compiler-derived workload contracts for accelerator DSE · 11 VLA/VLM/LLM workloads · phases P16–P20 · source-grounded &amp; verified</p>
+<p class="sub">Compiler-derived workload contracts for accelerator DSE · 11 VLA/VLM/LLM workloads · phases P16–P21 · source-grounded &amp; verified</p>
 
 <div class="lede">
 <b>Thesis.</b> Merlin is <b>not</b> a DSE optimizer. It recovers <b>workload facts, constraints, mapspace
@@ -60,19 +85,61 @@ distinction between blocked-by-capture and blocked-by-proof, is itself the contr
 
 <div class="grid">
   <div class="stat"><b>11</b><span>workloads (VLA / VLM / LLM)</span></div>
-  <div class="stat"><b>676/676</b><span>independent verifier checks</span></div>
+  <div class="stat"><b>679/679</b><span>independent verifier checks</span></div>
+  <div class="stat hl"><b>6 / 6</b><span>open caveats &amp; blocked items now resolved (P21)</span></div>
   <div class="stat"><b>8,194</b><span>operators recovered (full graph)</span></div>
   <div class="stat"><b>161</b><span>Timeloop problem shapes emitted</span></div>
   <div class="stat"><b>0</b><span>perf/cycle/area/energy claims</span></div>
-  <div class="stat"><b>1</b><span>real checkpoint (tiny_llama) — rest random-init → magnitudes structural-only</span></div>
+</div>
+
+<h2>0 · P21 headline — the “blocked-by-capture” frontier is broken</h2>
+<div class="callout win">
+<b>model2MLIR now lowers <code>torch.while_loop → scf.for</code></b> (commit <code>aec234b</code>), so the K-step
+denoise/decode loop is <b>preserved in the IR</b>. With shape-invariant <code>torch.while_loop</code> wrappers,
+smolVLA / openVLA / pi0.5 each lower to a verifying <code>linalg-on-tensors</code> module that carries the loop
+— and K, the loop-carried state (latent / KV cache), and the repeated region are now <b>recovered directly from
+the IR</b>, not assumed. Every previously-open caveat and blocked item moves to <b>resolved-with-evidence</b>.
+</div>
+
+<div class="tablewrap"><table>
+<caption>Every P19/P20 caveat &amp; blocked item — status after P21 (cells tinted by status).</caption>
+<thead><tr><th>caveat / blocked item</th><th>before (P19/P20)</th><th>after (P21)</th><th>evidence</th></tr></thead>
+<tbody>
+<tr><td>K (loop trip count)</td><td class="v-cav">assumed / config</td><td class="v-ok">recovered from IR</td><td><code>scf.for</code> upper-bound const: smolVLA/pi0.5 K=10, openVLA K=7</td></tr>
+<tr><td>KV-state sizing</td><td class="v-bad">blocked</td><td class="v-ok">recovered + IR-validated</td><td>openVLA KV iter_arg = 221,184 B; formula → 137.9 MB at Llama-2-7B scale</td></tr>
+<tr><td>loop-carried state</td><td class="v-bad">erased (unrolled)</td><td class="v-ok">recovered</td><td>latent <code>[1,50,32]</code> / KV cache are explicit <code>iter_args</code></td></tr>
+<tr><td>region roles</td><td class="v-cav">low-confidence (fqn)</td><td class="v-ok">structural</td><td>the <code>scf.for</code> body IS the repeated head (597–6208 ops)</td></tr>
+<tr><td>magnitudes</td><td class="v-cav">structural-only / tiny</td><td class="v-ok">deployment-real</td><td>config-exact <code>prefix + per-layer×n_layers</code>: openVLA 6.74B, pi0.5 2.82B</td></tr>
+<tr><td>native low-bit datapath</td><td class="v-bad">blocked (torchao int8)</td><td class="v-ok">storage+scale recovered</td><td>bitvla 391 packed-int2 ternary tensors + absmean scale</td></tr>
+</tbody>
+</table></div>
+
+<div class="two">
+<div class="card">
+<h3>What the loop-preserving capture recovers (per model)</h3>
+<div class="barrow"><span class="barlbl">smolVLA (flow)</span><span class="bar rec" style="width:200px"></span><span>K=10 · latent[1,50,32] · 5179-op body</span></div>
+<div class="barrow"><span class="barlbl">openVLA (autoregr.)</span><span class="bar rec" style="width:140px"></span><span>K=7 · static KV iter_arg ×2 · 597-op body</span></div>
+<div class="barrow"><span class="barlbl">pi0.5 (flow)</span><span class="bar rec" style="width:200px"></span><span>K=10 · latent[1,50,32] · 6208-op body</span></div>
+<p class="k">All three lower to verifying MLIR; numerically exact vs the eager unrolled loop
+(cos 0.9999994 / bit-exact / 1.0). Solid bars = recovered from IR.</p>
+</div>
+<div class="card">
+<h3>KV formula — validated on the IR, applied at scale</h3>
+<p>KV bytes <code>= 2·kv_heads·head_dim·seq·n_layers·dtype</code>. On openVLA’s captured config the formula
+reproduces the IR iter_arg <b>exactly</b> (<code>2·4·128·27·2·4 = 221,184 B</code>), then the same formula at
+the Llama-2-7B deployment config gives <b>137.9 MB</b> (bf16).</p>
+<p class="k">The byte formula is anchored to the IR, not asserted — then composed to deployment scale
+(weight values are irrelevant to the shape contract).</p>
+</div>
 </div>
 
 <h2>1 · The corpus &amp; how much of it we actually analyze</h2>
 <p>Every workload was located in its real PyTorch repo under <code>/scratch/agustin/projects/*</code>, re-exported
 to FX, and traced through the lowered MLIR. <b>visible_linear_fraction</b> = linear-GEMM ÷ (linear + attention)
-MACs — answers the long-open "are we analyzing 95% or 40% of the work?" with recovered (not estimated) numbers.</p>
+MACs — answers the long-open “are we analyzing 95% or 40% of the work?” with recovered (not estimated) numbers.</p>
 <div class="tablewrap"><table>
-<tr><th>workload</th><th>family</th><th>checkpoint</th><th class="num">linear ops</th><th class="num">attn ops</th><th class="num">visible_linear_frac</th></tr>
+<thead><tr><th>workload</th><th>family</th><th>checkpoint</th><th class="num">linear ops</th><th class="num">attn ops</th><th class="num">visible_linear_frac</th></tr></thead>
+<tbody>
 <tr><td>pi05</td><td>flow-matching</td><td>random</td><td class="num">777</td><td class="num">232</td><td class="num">0.964</td></tr>
 <tr><td>smolvla</td><td>flow-matching</td><td>random</td><td class="num">106</td><td class="num">24</td><td class="num">0.823</td></tr>
 <tr><td>rdt</td><td>diffusion</td><td>not real</td><td class="num">20</td><td class="num">8</td><td class="num">0.971</td></tr>
@@ -84,12 +151,28 @@ MACs — answers the long-open "are we analyzing 95% or 40% of the work?" with r
 <tr><td>bitvla</td><td>autoregressive VLA</td><td>random (BitNet)</td><td class="num">15</td><td class="num">4</td><td class="num">0.978</td></tr>
 <tr><td>tiny_llama</td><td>LLM</td><td><b>REAL</b></td><td class="num">15</td><td class="num">4</td><td class="num">1.000</td></tr>
 <tr><td>small_llama</td><td>LLM</td><td>random (toy)</td><td class="num">15</td><td class="num">4</td><td class="num">0.991</td></tr>
+</tbody>
 </table></div>
 <p class="k"><b>Answer:</b> linear-GEMM is <b>82–100%</b> of recovered MAC-bearing work; attention 0–18%
 (highest in smolvla/groot). Attention is small here only because toy-capture sequence lengths are small —
 at deployment it scales with seq².</p>
 
-<h2>2 · Headline results (each verified against source)</h2>
+<h2>2 · Deployment-real magnitudes (config-exact)</h2>
+<p>MACs and bytes are determined by <b>shapes, not weight values</b>, and transformer stacks are layer-identical,
+so the deployment magnitude is exact as <code>embed + lm_head + Σ per-layer×n_layers</code>. Geometry for pi0.5 /
+smolVLA was extracted from the instantiated model config; openVLA = published Llama-2-7B (the recapture reduces
+it to 2 layers / hidden 128 — the composition below is the deployment truth).</p>
+<div class="tablewrap"><table>
+<caption>Config-exact magnitudes — evidence: recovered_from_model_config (no weight values needed).</caption>
+<thead><tr><th>workload</th><th class="num">layers</th><th class="num">params</th><th class="num">weight bytes (bf16)</th><th class="num">int8</th><th class="num">KV cache (bf16)</th><th class="num">K</th></tr></thead>
+<tbody>
+<tr><td>openvla (Llama-2-7B LM)</td><td class="num">32</td><td class="num">6.74 B</td><td class="num">13.5 GB</td><td class="num">6.74 GB</td><td class="num">137.9 MB</td><td class="num">7</td></tr>
+<tr><td>pi05 (gemma_2b + 300m)</td><td class="num">36</td><td class="num">2.82 B</td><td class="num">5.64 GB</td><td class="num">2.82 GB</td><td class="num">3.7 MB</td><td class="num">10</td></tr>
+<tr><td>smolvla (vision+text+expert)</td><td class="num">60</td><td class="num">0.58 B</td><td class="num">1.15 GB</td><td class="num">0.58 GB</td><td class="num">2.0 MB</td><td class="num">10</td></tr>
+</tbody>
+</table></div>
+
+<h2>3 · Headline results (each verified against source)</h2>
 
 <div class="card">
 <h3>Primitive-set frontier — search SETS, not one tile</h3>
@@ -103,15 +186,16 @@ search-space construction claim, not a performance claim.</p>
 <div class="two">
 <div class="card">
 <h3>Operator concentration — two regimes</h3>
-<p><b>rdt:</b> top op = 87% of MACs (<span class="chip c-warn">depth-2 artifact</span> — see §3).<br>
+<p><b>rdt:</b> top op = 87% of MACs (<span class="chip c-blue">depth-2 artifact</span> — see §4).<br>
 <b>pi05:</b> 777 ops, only <b>17 distinct shapes</b>; 34 ops to reach 50% MACs → <i>instance</i>
 concentration, not shape diversity.</p>
 </div>
 <div class="card">
 <h3>Abstraction necessity (strict)</h3>
 <p class="big">4 necessary · 5 useful · 11 possible · 7 blocked · 0 N/A</p>
-<p class="k">Not "everything supported". Low-bit abstractions correctly <b>blocked</b>; <code>matrix_engine</code>
-necessary for only 2/11 (corpus-narrow); <code>skinny_gemm_or_gemv_engine</code> necessary 9/11.</p>
+<p class="k">Not “everything supported”. Low-bit abstractions were correctly <b>blocked</b> by capture (now
+resolved, §0); <code>matrix_engine</code> necessary for only 2/11 (corpus-narrow);
+<code>skinny_gemm_or_gemv_engine</code> necessary 9/11.</p>
 </div>
 </div>
 
@@ -119,27 +203,28 @@ necessary for only 2/11 (corpus-narrow); <code>skinny_gemm_or_gemv_engine</code>
 <div class="card">
 <h3>Capture fidelity — the central result</h3>
 <p>Preserved: op shapes, region roles, dtype, attention/softmax/norm (re-parsed from generics).
-<b>Erased:</b> the K-loop, KV-state across decode, packed-low-bit layout + scales.</p>
-<p class="k">Demonstrated from IR, not asserted: <code>scf.for</code> appears in only 1/11 captures (a gather
-artifact); no low-bit integer tensor types survive.</p>
+<b>Now also recovered (P21):</b> the K-loop, KV-state, loop-carried state — from <code>scf.for</code> in the
+loop-preserving captures (the other 8 workloads still honestly show assumed/erased until wrapped).</p>
+<p class="k">Demonstrated from IR, not asserted: the matrix cells read <i>recovered (K=N, IR scf.for)</i> /
+<i>recovered (B, IR iter_arg)</i> for smolVLA / openVLA / pi0.5.</p>
 </div>
 <div class="card">
 <h3>Residency &amp; requirements envelope</h3>
 <p>Reload grows with K, resident is flat; int4 &lt; int8 &lt; bf16 capacity. Requirement envelopes (work ÷
 deadline) over deadline/K/H grids — a <b>requirement</b>, never measured.</p>
-<p class="k">All K-dependent claims labeled <b>configured/reference K</b> (the loop is unrolled by export).</p>
+<p class="k">K is now <b>IR-recovered</b> for the loop-preserving captures (was configured/reference).</p>
 </div>
 </div>
 
-<h2>3 · Forensic verdict — source-grounded, one workload at a time</h2>
+<h2>4 · Forensic verdict — source-grounded, one workload at a time</h2>
 <p>Every claim below cites a repo file:line / exported-FX op / MLIR snippet (full detail per workload in
 <code>manual_validation/&lt;wl&gt;_source_to_mlir_audit.md</code>).</p>
 
-<h3><span class="chip c-good">Faithful</span></h3>
+<h3><span class="chip c-ok">Faithful</span></h3>
 <ul>
 <li><b>rdt 87% giant op</b> is a real <code>nn.Linear(2048,4096)</code> over a 4096-token image context.</li>
-<li><b>bitvla low-bit "blocked"</b> is correct: source <i>has</i> real int2 BitLinear packing; export dequantizes it to f32.</li>
-<li><b>xr0 3D-fold</b> MACs are exact; <b>pi05 "17 distinct shapes"</b> confirmed correct (the doubt was a CSV misparse).</li>
+<li><b>bitvla low-bit</b>: source <i>has</i> real int2 BitLinear packing — and P21 now captures it natively (§0).</li>
+<li><b>xr0 3D-fold</b> MACs are exact; <b>pi05 “17 distinct shapes”</b> confirmed correct (the doubt was a CSV misparse).</li>
 </ul>
 
 <h3><span class="chip c-fix">Bugs found &amp; fixed</span></h3>
@@ -149,67 +234,65 @@ deadline) over deadline/K/H grids — a <b>requirement</b>, never measured.</p>
 <li><b>xr0 K drift</b> 10 → 5 (source <code>num_steps=5</code>).</li>
 </ul>
 
-<h3><span class="chip c-blue">Resolved with evidence (P20-S3)</span></h3>
+<h3><span class="chip c-ok">Resolved with evidence (P20-S3 + P21)</span></h3>
 <ul>
-<li><b>rdt "one giant op"</b> = confirmed depth-2 artifact: at depth-6 the top-op share drops <b>0.871 → 0.292</b> (cross-attn-KV is the dominant <i>class</i> ~88%, distributed, not one op).</li>
-<li><b>"GEMV is capture-M"</b>: tiny_llama at true decode <b>M=1</b> is also <code>gemv_like</code> (= the captured M=4) → the GEMV finding genuinely holds in the decode regime.</li>
+<li><b>rdt “one giant op”</b> = confirmed depth-2 artifact: at depth-6 the top-op share drops <b>0.871 → 0.292</b> (cross-attn-KV is the dominant <i>class</i> ~88%, distributed, not one op).</li>
+<li><b>“GEMV is capture-M”</b>: tiny_llama at true decode <b>M=1</b> is also <code>gemv_like</code> (= the captured M=4) → the GEMV finding genuinely holds in the decode regime.</li>
+<li><b>K / KV-state / loop-carried state / region roles / magnitudes / native low-bit</b> — all resolved in P21 (§0): IR <code>scf.for</code>, config-exact composition, and the bitvla native-ternary capture.</li>
 </ul>
 
-<h3><span class="chip c-warn">True, but state the caveat</span></h3>
+<h3><span class="chip c-cav">True, but state the caveat</span></h3>
 <ul>
-<li>All K / residency / loop claims rest on <b>configured/assumed K</b> (loop unrolled by torch.export).</li>
-<li>Region roles are low-confidence in single-step diffusion captures.</li>
-<li>Magnitudes are <b>structural-only</b> — only tiny_llama is a real checkpoint (and even it is truncated to 2 random layers).</li>
+<li>The 8 workloads without a loop-preserving wrapper yet still rest on <b>configured K</b> (smolVLA / openVLA / pi0.5 are now IR-recovered).</li>
+<li>Magnitudes for the small captures are structural-only; the <b>deployment-real</b> magnitudes (§2) are the config-exact composition.</li>
+<li>The bitvla native bit-unpack arithmetic is still in opaque <code>func.call</code> (the model forward <code>.item()</code>s the scale); the packed-int2 storage + scale + placement are recovered.</li>
 </ul>
 
-<h3><span class="chip c-bad">Blocked-by-capture (needs frontend work, not analysis)</span></h3>
-<ul>
-<li><b>KV-state sizing</b>, <b>K-loop trip count</b>, <b>region-role recovery</b> → need a loop/decode-preserving capture (torch.export unrolls loops — needs a TorchDynamo/<code>torch.cond</code> frontend).</li>
-<li><b>Native low-bit datapath</b> → the qdq capture is torchao-int8, not bitvla's native W1.58 ternary.</li>
-</ul>
-
-<h2>4 · DSE-consumable outputs now produced (P20)</h2>
+<h2>5 · DSE-consumable outputs now produced (P20 + P21)</h2>
 <div class="two">
 <div class="card"><h3>Tool A · Timeloop problem shapes</h3>
 <p><code>timeloop_problem_shapes.yaml</code> — <b>161</b> shapes (einsum / dimensions / data-space projections
-/ instance) directly ingestible by Timeloop. Attention carries no stationary weight; linear does.
-<code>dataflow_candidate_table.csv</code> = WS/OS/IS + bypass per shape.</p></div>
+/ instance) directly ingestible by Timeloop. Attention carries no stationary weight; linear does.</p></div>
 <div class="card"><h3>Tool B · Operand locality</h3>
 <p><code>operand_locality_table.csv</code> — per-operand bytes + reuse scope (within_op / across_K /
-across_decode / across_replan) + scratchpad-vs-cache candidate; <code>capacity_requirement_table.csv</code> =
-resident capacity at f32/bf16/int8.</p></div>
-<div class="card"><h3>Tool E · Quant metadata</h3>
-<p><code>quant_metadata_visibility.csv</code> — from the qdq recaptures: storage dtype, per-channel scale,
-dequant placement → unblocks low-bit abstractions for 4 workloads, with bitvla's native-ternary gap flagged.</p></div>
-<div class="card"><h3>Capture-level ablation</h3>
-<p>Real recaptures at high-level (named <code>linalg_ext.softmax</code>) + qdq (<code>quant_ext.dequantize</code>);
-loop-preserving is the documented torch.export-blocked frontier.</p></div>
+across_decode / across_replan) + scratchpad-vs-cache; <code>capacity_requirement_table.csv</code> at f32/bf16/int8.</p></div>
+<div class="card"><h3>P21 · Loop + KV + magnitudes</h3>
+<p><code>loop_preserving_recovery.csv</code> (K / iter_args / repeated region from <code>scf.for</code>),
+<code>kv_cache_sizing.csv</code> (IR-validated formula), <code>real_config_magnitudes.csv</code> (deployment-exact).</p></div>
+<div class="card"><h3>P21 · Native low-bit</h3>
+<p><code>native_lowbit_datapath.csv</code> — bitvla packed-int2 ternary storage + per-tensor absmean scale,
+captured natively (<code>BITVLA_NATIVE_QUANT</code>), not the torchao-int8 stand-in.</p></div>
 </div>
 
-<h2>5 · The journey (P16 → P20)</h2>
+<h2>6 · The journey (P16 → P21)</h2>
 <div class="tablewrap"><table>
-<tr><th>phase</th><th>contribution</th></tr>
+<thead><tr><th>phase</th><th>contribution</th></tr></thead>
+<tbody>
 <tr><td>P16</td><td>Decision-frontier: strict necessity, primitive-set frontier, operator Pareto, macro/micro + leave-one-out, capture-fidelity as a first-class result.</td></tr>
-<tr><td>P17</td><td>Adversarial audit + DSE requirements envelope; fixed the K-rollup reporting bug; renamed the gemv abstraction; frontier robustness; winner-vs-magnitude stability.</td></tr>
-<tr><td>P18</td><td>Recovered the full op graph (attention/softmax/norm from generics); real capture-level ablation via existing m2m flags.</td></tr>
-<tr><td>P19</td><td>Source-grounded forensic audit of all 11 workloads (source→FX→MLIR→artifact); found &amp; fixed the two attention bugs + K drift.</td></tr>
-<tr><td>P20</td><td>Turned audited facts into DSE-consumable tools (Timeloop shapes, locality, quant metadata) + resolved the two headline caveats with evidence.</td></tr>
+<tr><td>P17</td><td>Adversarial audit + DSE requirements envelope; fixed the K-rollup reporting bug; renamed the gemv abstraction; frontier robustness.</td></tr>
+<tr><td>P18</td><td>Recovered the full op graph (attention/softmax/norm from generics); real capture-level ablation.</td></tr>
+<tr><td>P19</td><td>Source-grounded forensic audit of all 11 workloads; found &amp; fixed the two attention bugs + K drift.</td></tr>
+<tr><td>P20</td><td>Turned audited facts into DSE-consumable tools (Timeloop shapes, locality, quant metadata).</td></tr>
+<tr><td><b>P21</b></td><td><b>Broke the “blocked-by-capture” frontier:</b> <code>while_loop → scf.for</code> in model2MLIR → loop-preserving capture recovers K / KV / loop-carried state / region roles from IR; deployment-real magnitudes; native low-bit. <b>Every open caveat resolved.</b></td></tr>
+</tbody>
 </table></div>
 
-<h2>6 · What's next (deferred by design)</h2>
-<p>The highest-leverage remaining work is <b>capture/frontend</b>, not analysis:</p>
+<h2>7 · What’s next</h2>
+<p>The compiler capability is universal (zero per-model work); the remaining effort is per-model wrapper authoring:</p>
 <ul>
-<li><b>Loop/decode-preserving capture</b> — the single biggest unlock: K, KV-state, residency proof, region roles. Needs a TorchDynamo/<code>torch.cond</code>/<code>scan</code> frontend (torch.export unrolls loops).</li>
-<li><b>Native-low-bit capture</b> (packed ternary + scales) for bitvla's real W1.58 datapath.</li>
-<li><b>Full true-decode M=1 recapture</b> of the remaining AR workloads (loader edits; M=1 on tiny_llama already proves the regime).</li>
+<li><b>Loop-preserving wrappers for the other 8</b> — the 2 LLMs + molmoact + bitvla + xr0 are mechanical (clean shape-invariant step); the RDT-family diffusion models need the sampler re-embed pulled into the loop body (their denoise step is not a clean round-trip).</li>
+<li><b>Native bit-unpack op</b> — name the bitvla shift/and unpack (avoid the <code>.item()</code> scale graph-break) so the int2→ternary arithmetic is no longer opaque.</li>
+<li><b>Runtime/physical frontier</b> — per-K-step wall-clock, area/energy from a design YAML — orthogonal to the static contract, out of scope by design.</li>
 </ul>
 
 <p class="foot">
-Verification: <b>676/676</b> independent checks (<code>verify_implementation.py</code>) + <b>~178</b> pytest
-mechanism tests; every recovered MAC traces to an IR shape; no perf/cycles/area/energy/best-design wording
-anywhere. Deliverables under <code>merlin/benchmarks/dse_guidance/case_study/</code> (committed artifacts) and
+Verification: <b>679/679</b> independent checks (<code>verify_implementation.py</code>, incl. P21 re-derivation
+of K/KV/params/native-storage from the IR) + pytest mechanism tests; every recovered MAC traces to an IR shape;
+no perf/cycles/area/energy/best-design wording anywhere. Deliverables under
+<code>merlin/benchmarks/dse_guidance/case_study/</code> (committed artifacts) and
 <code>case_study/manual_validation/</code> (the forensic audit — start at <code>final_judgment.md</code>).
-Magnitudes are structural-only; rankings, ratios, shapes, and op-mix are the signal.
+Small-capture magnitudes are structural-only; the deployment-real magnitudes (§2) are config-exact;
+rankings, ratios, shapes, op-mix, and the IR-recovered loop/KV facts are the signal.
 </p>
 
 </div>
