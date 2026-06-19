@@ -211,7 +211,67 @@ def fig_progression():
     plt.close(fig)
 
 
+# ============================================================================
+# FIGURE D — OPTIMIZATION EFFECTS BY DRIVING EXAMPLE: how each distinct mined
+# optimization (the beam's candidates) affected the RVV dialect, and how that
+# RANKING DEPENDS on the driving example. Shows the headline gap: the recorded
+# beam ran on GEMM 64^3 only (predating v3); the real winner is example-dependent.
+# Sources: autotune ranking.yaml (GEMM 64^3) + k1_e2e_*.json (whole-model bitvla/openvla).
+# ============================================================================
+def fig_opt_effects():
+    V3 = "#b8742a"
+    EX = [("GEMM 64³ (autotune)", "#9aa0aa"), ("bitvla (whole-model)", GOLD),
+          ("openvla (whole-model)", TEAL)]
+    # feature -> {example_index: speedup}.  None = not measured on that example.
+    feats = [
+        ("baseline (hand_v0)",        [1.0, 1.0, 1.0]),
+        ("lmul_widen_n",              [1.05, None, None]),
+        ("vfmacc_contraction",        [8.05, None, None]),
+        ("vfmacc_tiled",              [8.04, 9.16, 3.65]),
+        ("accum_resident_ntail",      [None, 7.73, None]),
+        ("vectorized_activation",     [None, 1.00, 0.95]),
+        ("accum_resident_v3",         [None, 16.83, 2.38]),
+    ]
+    fig, ax = plt.subplots(figsize=(11, 6)); ax.set_facecolor(CREAM)
+    for s in ("top", "right"): ax.spines[s].set_visible(False)
+    n_ex = len(EX); bh = 0.78 / n_ex
+    yb = np.arange(len(feats))
+    for fi, (fname, vals) in enumerate(feats):
+        for ei, v in enumerate(vals):
+            if v is None: continue
+            yy = fi + (n_ex/2 - ei - 0.5) * bh
+            col = EX[ei][1]
+            ax.barh(yy, v, height=bh*0.92, color=col, edgecolor=CARD_EC, linewidth=0.7, zorder=3)
+            star = "  ★" if (fname == "accum_resident_v3" and ei == 1) else ""
+            ax.text(v + 0.15, yy, f"{v}×{star}", va="center", fontsize=8.3,
+                    fontweight="bold", color=(V3 if star else INK))
+    ax.axvline(1.0, color="#999", lw=1, ls="--")
+    ax.axvline(13.65, color=STEEL, lw=1.4, ls=":")
+    ax.text(13.65, len(feats)-0.4, "XNNPACK\n(bitvla)", fontsize=8, color=STEEL, ha="center", fontweight="bold")
+    ax.set_yticks(yb); ax.set_yticklabels([f[0] for f in feats], fontsize=10)
+    ax.set_xlim(0, 19); ax.set_xlabel("speedup vs frozen baseline (×) — per driving example")
+    ax.set_title("How each mined optimization affects the RVV dialect — and how the ranking depends on the example",
+                 loc="left", color=INK, fontsize=12, pad=10)
+    ax.invert_yaxis()
+    from matplotlib.patches import Patch
+    ax.legend(handles=[Patch(color=c, label=lab) for lab, c in EX], fontsize=9, loc="lower right",
+              framealpha=0.95, facecolor="white")
+    callout(ax, (16.83, 6 - 0.26), "v3 wins bitvla (beats XNNPACK)\nbut is 2.38× on openvla — best\nkernel is per-model",
+            (10.5, 4.3), fc="#f7efe2", ec=V3)
+    fig.text(0.5, -0.02,
+             "Figure D:  Per-optimization effect on the RVV dialect, by driving example.  The recorded beam/autotune ran "
+             "on GEMM 64³ ONLY (7 candidates, best tiled+lmul 8.16×) and predates v3 — so it never saw the real\n"
+             "whole-model winner.  On real models the ranking flips: accum-resident v3 wins bitvla (16.83×, beats XNNPACK) "
+             "while tiled-vfmacc wins openvla (3.65×).  The beam must be driven by whole-model examples to rank faithfully.",
+             ha="center", fontsize=9.2, color=INK)
+    for ext in ("png", "svg"):
+        fig.savefig(OUT / f"paper_opt_effects.{ext}", bbox_inches="tight", dpi=160)
+    print("wrote", OUT / "paper_opt_effects.png")
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     fig_e2e()
     fig_crossover()
     fig_progression()
+    fig_opt_effects()
