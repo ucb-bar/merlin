@@ -24,7 +24,7 @@ def test_empty_features_schedule_byte_identical():
 def test_feature_changes_only_when_enabled():
     on = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset(["fused_vfmacc_contraction"]))
     assert on != P.RVV_TRANSFORM_SCHEDULE
-    assert "[4, 8, 4]" in on  # K-vector tile injected
+    assert "lower_outerproduct" in on   # the vfmacc-forming recipe (outerproduct -> vector.fma)
 
 
 def test_unknown_feature_rejected():

@@ -57,16 +57,17 @@ _RVV_ROUTES: list[_Route] = [
     _Route(
         axis="compute.contraction_form",
         when=lambda d: d.expert == "fused_fma" and d.ours in ("mul_add", None),
-        action_class="PASS", target_seam="pass:vector.fma-forming contraction lowering",
-        change="emit a vector.fma / llvm.fmuladd for the contraction so it lowers to fused vfmacc "
-               "instead of separate vfmul.vv+vfadd.vv",
-        # EVIDENCE-DRIVEN: certified+decoded 3 attempts (outerproduct lowering; K=4-vector tile;
-        # K-tile + -ffp-contract=fast) — ALL measured as no-op (vfmacc still 0). So no current
-        # fork expresses this; it is a genuine deferred PASS work-item (needs a pattern that
-        # builds vector.fma in the IR, not a schedule knob/flag). The loop demoted it from the
-        # hypothesised forkable=True after measuring.
-        forkable_now=False,
-        expected_effect="vfmacc replaces vfmul+vfadd; fewer ops, higher FLOP/insn"),
+        action_class="PASS", target_seam="impr_features:fused_vfmacc_contraction",
+        change="form a real vector.contract -> outerproduct(kind=add) -> vector.fma -> "
+               "llvm.fmuladd -> vfmacc (vectorize_children + lower_contraction outerproduct + "
+               "lower_outerproduct), instead of separate vfmul.vv+vfadd.vv",
+        # EVIDENCE-DRIVEN, RESOLVED: 4 knob/flag attempts (outerproduct-only, K=4 tile, +fp-contract,
+        # +ffast-math) ALL measured vfmacc=0 -> demoted to deferred PASS. The PASS was then
+        # implemented (impr_features.fused_vfmacc_contraction) and MEASURED: impr_rvv_v5 certifies
+        # correct on spike AND decodes to vfmacc=8065, vfmul=0, vfadd=0 -> gap CLOSED. Re-promoted to
+        # forkable_now=True (a registered, certified feature now expresses it).
+        forkable_now=True,
+        expected_effect="vfmacc replaces vfmul+vfadd (measured 0 vfmul/vfadd); fewer ops, higher FLOP/insn"),
     _Route(
         axis="vector.lmul",
         when=_is_higher,
