@@ -172,6 +172,47 @@ def test_mtail_wholemodel_features_baseline_safe():
         assert f.schedule_replace is True
 
 
+def test_activation_feature_baseline_safe_and_typed():
+    # vectorized_transcendental_activation is default-off: enabling NONE leaves the pipeline AND
+    # schedule byte-identical; it is a registered PASS with both an edit_pipeline and edit_schedule.
+    base_pipe = P.build_rvv_pipeline("/tmp/s.mlir")
+    assert P.build_rvv_pipeline("/tmp/s.mlir", features=frozenset()) == base_pipe
+    assert F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset()) == P.RVV_TRANSFORM_SCHEDULE
+    f = F.get("vectorized_transcendental_activation")
+    assert f.action_class == "PASS"
+    assert f.edit_pipeline is not None and f.edit_schedule is not None
+
+
+def test_activation_feature_inserts_math_to_llvm_before_libm():
+    # When enabled, the pipeline edit must splice convert-math-to-llvm IMMEDIATELY before
+    # convert-math-to-libm so the polynomial's vector math.absf/roundeven/fma lower as vector LLVM
+    # intrinsics (not scalarized lane-by-lane by libm). Baseline pipeline does NOT have that order.
+    base = P.build_rvv_pipeline("/tmp/s.mlir")
+    on = P.build_rvv_pipeline("/tmp/s.mlir", features=frozenset(["vectorized_transcendental_activation"]))
+    assert "convert-math-to-llvm,convert-math-to-libm" not in base
+    assert "convert-math-to-llvm,convert-math-to-libm" in on
+
+
+def test_activation_feature_vectorizes_elementwise_generic_in_schedule():
+    # The schedule edit must add an elementwise linalg.generic tile+vectorize on top of the baseline
+    # matmul/batch_matmul vectorization (so the activation generic — carrying the rewritten polynomial
+    # — vectorizes to vector ops instead of falling through convert-linalg-to-loops to a scalar loop).
+    on = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset(["vectorized_transcendental_activation"]))
+    assert on != P.RVV_TRANSFORM_SCHEDULE
+    assert 'ops{["linalg.generic"]}' in on        # the activation generic is matched + vectorized
+    assert 'ops{["linalg.matmul"]}' in on          # baseline matmul vectorization preserved
+    assert "tile_using_for" in on and "vectorize" in on
+
+
+def test_activation_runner_embeds_polynomial_rewriter():
+    # The lowering runner used when the feature is on must embed the math.exp/erf/tanh -> arith
+    # polynomial rewriter (act_poly). The plain baseline runner must NOT (byte-identical lowering).
+    runner = P._activation_poly_runner()
+    assert "apply_activation_polynomial" in runner
+    assert "math.exp" in runner and "math.erf" in runner and "math.tanh" in runner
+    assert "apply_activation_polynomial" not in P._RUNNER   # baseline runner unchanged
+
+
 def test_baseline_package_has_no_features():
     # The immutable baseline must carry zero compiler_features -> byte-identical lowering.
     from pathlib import Path

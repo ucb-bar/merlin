@@ -209,6 +209,42 @@ with open(out_path, "w") as f:
 print("OK")
 '''
 
+
+# Runner variant for the vectorized_transcendental_activation feature: BEFORE the pass manager runs,
+# rewrite every math.exp/erf/tanh into its inline arith polynomial (so the subsequent transform
+# schedule vectorizes the activation generic's polynomial to vfmacc chains, instead of
+# convert-math-to-libm scalarizing the math op to a libm call loop). The rewriter source is spliced
+# in from act_poly.rewrite_source(); `_ir` is the alias the rewriter uses for the MLIR ir module.
+# Default-off: only used when the feature is enabled (the baseline keeps the plain _RUNNER above).
+_RUNNER_ACT_POLY_HEAD = r'''
+import sys
+
+from torch_mlir import ir
+from torch_mlir import ir as _ir
+from torch_mlir.passmanager import PassManager
+from torch_mlir.dialects import llvm
+'''
+
+_RUNNER_ACT_POLY_TAIL = r'''
+src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
+ctx = ir.Context()
+with open(src_path) as f:
+    module = ir.Module.parse(f.read(), ctx)
+with ctx, ir.Location.unknown():
+    _n = apply_activation_polynomial(module, ctx)
+PassManager.parse("builtin.module(" + pipeline + ")", ctx).run(module.operation)
+with open(out_path, "w") as f:
+    f.write(str(llvm.translate_module_to_llvmir(module.operation)))
+print("OK act_poly rewrote", _n)
+'''
+
+
+def _activation_poly_runner() -> str:
+    """The lowering runner with the transcendental->polynomial rewriter spliced in (default-off
+    feature). Imported here (not at module top) so importing pipeline never pulls act_poly."""
+    from .act_poly import rewrite_source
+    return _RUNNER_ACT_POLY_HEAD + rewrite_source() + _RUNNER_ACT_POLY_TAIL
+
 # Parallel/OpenMP path: run the passes in the m2m venv (full LLVM-23 registry), but DUMP the
 # LLVM-dialect module instead of translating in-process — the torch-mlir wheel's
 # translate_module_to_llvmir segfaults on whole-model OpenMP IR (its OpenMPIRBuilder). The
@@ -286,7 +322,12 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
             raise PipelineError(f"mlir-translate (parallel) failed:\n{tproc.stdout}\n{tproc.stderr}")
         return _fix_float_literals(out.read_text(encoding="utf-8"))
 
-    runner.write_text(_RUNNER, encoding="utf-8")
+    # The vectorized_transcendental_activation feature splices a math.exp/erf/tanh -> arith
+    # polynomial rewriter into the runner (run before the pass manager). Default-off; with the
+    # feature absent the plain _RUNNER is used and the lowering is byte-identical to the baseline.
+    runner_src = (_activation_poly_runner()
+                  if "vectorized_transcendental_activation" in feats else _RUNNER)
+    runner.write_text(runner_src, encoding="utf-8")
     proc = subprocess.run(
         [str(m2m_python()), str(runner), str(src), str(out), pipeline],
         capture_output=True, text=True, timeout=timeout)

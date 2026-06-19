@@ -832,6 +832,92 @@ register(ImprFeature(
 ))
 
 
+# ---- vectorized transcendental activation (GELU/sigmoid/SiLU/tanh) ------------------
+# THE coverage gap from output/kernels/ceiling/cross_framework_ops_k1.md: our GELU (math.erf) and
+# sigmoid/SiLU (math.exp) activations lower through convert-math-to-libm to a SCALAR libm call
+# (erff/expf) in a loop, and the baseline transform schedule never vectorizes the elementwise
+# activation generic — so the activation runs scalar and is ~11-18x behind XNNPACK's vectorized
+# polynomial RVV kernels (f32-vgelu rational-12-10, f32-vsigmoid rr2-p5).
+#
+# This feature is the GENERAL compiler answer, in TWO composed parts (both default-off):
+#   1. A math.exp/erf/tanh -> inline arith-POLYNOMIAL rewrite (act_poly.py), spliced into the
+#      lowering runner BEFORE the pass manager (pipeline._activation_poly_runner, keyed on this
+#      feature name). It replaces the transcendental with a minimax polynomial of mul/add/sub/div/
+#      bitcast/shift ops — NOT a libm call. General over the math ops, so GELU (erf), sigmoid/SiLU
+#      (exp via 1/(1+exp(-x)) / x*sigmoid(x)) and tanh (2/(1+exp(-2x))-1) all get it from ONE rewrite.
+#   2. This schedule: the baseline matmul/batch_matmul vectorization PLUS vectorizing the
+#      elementwise activation linalg.generic ([16] tile) — so the polynomial (now in the generic
+#      body) vectorizes to vfmacc chains (the mul+add Horner pairs fuse) instead of a scalar loop.
+#
+# Accuracy is an APPROXIMATION (f32 minimax, ceiling-referenced to XNNPACK's exp rr2-p5 + the A&S
+# 7.1.26 erf): cos=1.0 / max-abs-err <~1e-6 vs libm across gelu/sigmoid/silu/tanh — gated on cos/rel
+# error, NOT bit-exact (the explicit activation accuracy tradeoff). Default-off; baseline
+# byte-identical (the runner uses the plain _RUNNER and the schedule is unchanged when off).
+_ACT_POLY_SCHEDULE = """\
+module attributes {transform.with_named_sequence} {
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {transform.readonly}) {
+    %mm = transform.structured.match ops{["linalg.matmul"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t, %l:3 = transform.structured.tile_using_for %mm tile_sizes [4, 8, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+    transform.structured.vectorize %t vector_sizes [4, 8, 1] : !transform.any_op
+    %bm = transform.structured.match ops{["linalg.batch_matmul"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %bt, %bl:4 = transform.structured.tile_using_for %bm tile_sizes [1, 4, 8, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+    transform.structured.vectorize %bt vector_sizes [1, 4, 8, 1] : !transform.any_op
+    %eg = transform.structured.match ops{["linalg.generic"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %et, %el = transform.structured.tile_using_for %eg tile_sizes [16] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    transform.structured.vectorize %et vector_sizes [16] : !transform.any_op
+    %f = transform.structured.match ops{["func.func"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %f {
+      transform.apply_patterns.vector.lower_contraction
+      transform.apply_patterns.vector.lower_masked_transfers
+      transform.apply_patterns.vector.lower_transpose
+      transform.apply_patterns.vector.lower_shape_cast
+    } : !transform.any_op
+    transform.yield
+  }
+}
+"""
+
+
+def _act_poly_math_before_libm(passes: list[str]) -> list[str]:
+    """Insert ``convert-math-to-llvm`` immediately BEFORE ``convert-math-to-libm``.
+
+    The polynomial rewrite leaves vector ``math.absf``/``math.roundeven`` (the erf |x| and the exp
+    range-reduction round) in the IR. ``convert-vector-to-llvm`` does NOT lower these, so if
+    ``convert-math-to-libm`` runs first it SCALARIZES each vector math op lane-by-lane
+    (vector.extract -> scalar libm call -> the un-translatable vector.extract that breaks lowering,
+    and it would defeat the vectorization). ``math.absf``/``math.roundeven`` DO have LLVM intrinsics
+    (llvm.intr.fabs / llvm.intr.roundeven) that stay vector, so running ``convert-math-to-llvm``
+    first lowers them as vector intrinsics; the remaining ``convert-math-to-libm`` then has no
+    transcendental left to scalarize (they were rewritten to the arith polynomial). Only runs when
+    this feature is enabled; baseline pipeline untouched."""
+    out = list(passes)
+    try:
+        i = out.index("convert-math-to-libm")
+    except ValueError:
+        return out
+    if out[i - 1] == "convert-math-to-llvm":     # idempotent
+        return out
+    out.insert(i, "convert-math-to-llvm")
+    return out
+
+
+register(ImprFeature(
+    name="vectorized_transcendental_activation",
+    action_class="PASS",
+    edit_pipeline=_act_poly_math_before_libm,
+    description="GENERAL vectorized-activation lowering: rewrite math.exp/erf/tanh to an inline "
+                "minimax arith polynomial (act_poly.py, spliced into the lowering runner before the "
+                "pass manager) AND vectorize the elementwise activation linalg.generic, so GELU "
+                "(erf), sigmoid/SiLU (exp) and tanh vectorize to vfmacc chains instead of a scalar "
+                "convert-math-to-libm call loop. Closes the ~11-18x activation gap vs XNNPACK's "
+                "vectorized polynomial RVV kernels (the coefficient/structure CEILING REFERENCE; we "
+                "emit the MLIR). APPROXIMATION: cos=1.0 / max-abs-err <~1e-6 vs libm (gated on "
+                "cos/rel error, not bit-exact). Default-off; baseline byte-identical.",
+    edit_schedule=lambda _t: _ACT_POLY_SCHEDULE,
+    schedule_replace=True,
+))
+
+
 register(ImprFeature(
     name="fused_vfmacc_contraction",
     action_class="PASS",
