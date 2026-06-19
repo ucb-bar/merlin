@@ -4,11 +4,11 @@ All columns measured on **spike** (functional, ISA `rv64gcv_zfh_zvfh`), `mode=in
 
 ## Cycles
 
-| shape (M=N=K) | OpenBLAS | XNNPACK | ours-baseline | ours-vfmacc | ours-tiled |
-|---|---|---|---|---|---|
-| 32^3 | 11,039 | 13,289 | 2,804,206 | 11,883 | 166,251 |
-| 64^3 | 84,483 | 101,705 | 22,430,926 | 123,094 | 1,328,219 |
-| 128^3 | 664,811 | 798,857 | 179,441,453 | not_run | 10,665,305 |
+| shape (M=N=K) | OpenBLAS | XNNPACK | ours-baseline | ours-vfmacc | ours-tiled | ours-tiled-best |
+|---|---|---|---|---|---|---|
+| 32^3 | 11,039 | 13,289 | 2,804,206 | 11,883 | 166,251 | 26,753 |
+| 64^3 | 84,483 | 101,705 | 22,430,926 | 123,094 | 1,328,219 | 1,318,708 |
+| 128^3 | 664,811 | 798,857 | 179,441,453 | not_run | 10,665,305 | 10,530,662 |
 
 ## Attainment
 
@@ -18,7 +18,7 @@ All columns measured on **spike** (functional, ISA `rv64gcv_zfh_zvfh`), `mode=in
 |---|---|---|---|---|---|
 | 32^3 | 3.94e-03x | 4.74e-03x | 11,039 | 11,883 | 0.93x (ours 1.1x slower) |
 | 64^3 | 3.77e-03x | 4.53e-03x | 84,483 | 123,094 | 0.69x (ours 1.5x slower) |
-| 128^3 | 3.70e-03x | 4.45e-03x | 664,811 | 10,665,305 | 0.06x (ours 16.0x slower) |
+| 128^3 | 3.70e-03x | 4.45e-03x | 664,811 | 10,530,662 | 0.06x (ours 15.8x slower) |
 
 ## not_run (honest blockers)
 

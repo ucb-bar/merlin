@@ -47,6 +47,10 @@ OURS_FORKS = (
     ("ours_baseline", []),                          # hand_v0, byte-identical baseline lowering
     ("ours_vfmacc_contraction", ["fused_vfmacc_contraction"]),
     ("ours_vfmacc_tiled", ["fused_vfmacc_tiled"]),
+    # winner of the (MR,NR,KC) tuning sweep (output/kernels/ceiling/tiled_vfmacc_tuning.md):
+    # register-tile [8,32,16]. Bounded (inner body = MR*KC=128 fma at any shape), bit-exact at
+    # 32/64/128. Marginally (~0.7%) faster than the [4,16,16] ours_vfmacc_tiled column.
+    ("ours_tiled_best", ["vfmacc_t_8_32_16"]),
 )
 
 
@@ -287,7 +291,8 @@ def write_matrix(grid: dict, out_md: Path) -> None:
     cols = [("openblas", "OpenBLAS"), ("xnnpack", "XNNPACK"),
             ("ours_baseline", "ours-baseline"),
             ("ours_vfmacc_contraction", "ours-vfmacc"),
-            ("ours_vfmacc_tiled", "ours-tiled")]
+            ("ours_vfmacc_tiled", "ours-tiled"),
+            ("ours_tiled_best", "ours-tiled-best")]
 
     def cyc(sz, key):
         r = grid[sz].get(key, {})
@@ -322,7 +327,8 @@ def write_matrix(grid: dict, out_md: Path) -> None:
     lines.append("|---|---|---|---|---|---|")
     for sz in SHAPES:
         ob, xn = cyc(sz, "openblas"), cyc(sz, "xnnpack")
-        ours = [cyc(sz, k) for k in ("ours_baseline", "ours_vfmacc_contraction", "ours_vfmacc_tiled")]
+        ours = [cyc(sz, k) for k in ("ours_baseline", "ours_vfmacc_contraction",
+                                     "ours_vfmacc_tiled", "ours_tiled_best")]
         ours = [c for c in ours if c is not None]
         base = cyc(sz, "ours_baseline")
         best_exp = min([c for c in (ob, xn) if c is not None], default=None)

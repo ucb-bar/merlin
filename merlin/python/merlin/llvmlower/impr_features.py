@@ -227,6 +227,77 @@ register(ImprFeature(
 ))
 
 
+# ---- parameterized tiled-vfmacc tuning grid -----------------------------------------
+# The fixed recipe above hard-codes the tile (MR=4, NR=16, KC=16). To CLOSE the gap to the expert
+# GEMMs (OpenBLAS/XNNPACK) by tuning the register-tile, this factory emits the SAME bounded-code,
+# whole-model-safe recipe with an arbitrary (MR, NR, KC) tile. Larger MR amortizes the A-reload
+# across the K loop; larger KC cuts K-loop trip count (fewer loop-overhead instructions retired);
+# both are bounded as long as the MR*NR accumulator + the tile vectors stay in the vector register
+# file (register-pressure ceiling) — past it the allocator spills and faults, recorded not_run.
+def vfmacc_tiled_schedule(MR: int, NR: int, KC: int) -> str:
+    """Return the bounded tiled-vfmacc transform schedule for register-tile (MR, NR, KC).
+
+    matmul       -> tile_sizes [MR, NR, KC]      + scoped vectorize [MR, NR, KC]
+    batch_matmul -> tile_sizes [1, MR, NR, KC]   + scoped vectorize [1, MR, NR, KC]
+    Identical structure to _VFMACC_TILED_SCHEDULE (transfer_permutation + reduction_to_contract ->
+    lower_contraction(outerproduct) -> lower_outerproduct -> vector.fma -> vfmacc) so the only
+    variable is the tile.
+    """
+    return f"""\
+module attributes {{transform.with_named_sequence}} {{
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
+    %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t, %l:3 = transform.structured.tile_using_for %mm tile_sizes [{MR}, {NR}, {KC}] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+    transform.structured.vectorize %t vector_sizes [{MR}, {NR}, {KC}] : !transform.any_op
+    %bm = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %bt, %bl:4 = transform.structured.tile_using_for %bm tile_sizes [1, {MR}, {NR}, {KC}] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+    transform.structured.vectorize %bt vector_sizes [1, {MR}, {NR}, {KC}] : !transform.any_op
+    %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.transfer_permutation_patterns
+      transform.apply_patterns.vector.reduction_to_contract
+    }} : !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.lower_contraction lowering_strategy = "outerproduct"
+    }} : !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.lower_outerproduct
+    }} : !transform.any_op
+    transform.yield
+  }}
+}}
+"""
+
+
+def _register_tiled_grid() -> list[str]:
+    """Register a GRID of default-off tuning features `vfmacc_t_<MR>_<NR>_<KC>`.
+
+    Grid: MR in {4,8}, NR in {16,32}, KC in {16,32,64}. Every tile divides 64 cleanly (the sweep
+    shape), so no tail path. Each is its own ImprFeature whose edit_schedule emits
+    vfmacc_tiled_schedule(MR,NR,KC); all default-off, so the baseline stays byte-identical.
+    Returns the list of registered names (sweep order).
+    """
+    names: list[str] = []
+    for MR in (4, 8):
+        for NR in (16, 32):
+            for KC in (16, 32, 64):
+                nm = f"vfmacc_t_{MR}_{NR}_{KC}"
+                register(ImprFeature(
+                    name=nm,
+                    action_class="PASS",
+                    description=f"Tiled-vfmacc tuning point: register-tile (MR={MR}, NR={NR}, "
+                                f"KC={KC}). Bounded-code, whole-model-safe tiled vfmacc with this "
+                                f"tile (inner body = MR*KC fma). Default-off tuning-grid feature.",
+                    edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
+                                   vfmacc_tiled_schedule(_MR, _NR, _KC)),
+                ))
+                names.append(nm)
+    return names
+
+
+TILED_GRID_NAMES: list[str] = _register_tiled_grid()
+
+
 register(ImprFeature(
     name="fused_vfmacc_contraction",
     action_class="PASS",
