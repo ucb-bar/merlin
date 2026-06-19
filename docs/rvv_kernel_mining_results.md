@@ -77,8 +77,17 @@ see VLEN/lane utilization) — which is exactly why the board numbers are the au
 | depthwise conv | `not_run` — no depthwise primitive (regular conv only via im2col) |
 | attention bmm (N=8) | ours-vs-ours (no library primitive); vfmacc regresses 4.8× at tiny N (tail dominates) |
 
-### 3d. Activation on silicon — does the vectorized polynomial match XNNPACK?
-_(filled from the K1 head-to-head + whole-model activation-lift run — pending board completion.)_
+### 3d. Activation on silicon — honest negative (the feature has a schedule bug)
+The `vectorized_transcendental_activation` feature vectorizes on **spike** (synthetic isolated op:
+vfmacc>0, 6.2×/3.2× vs our scalar). **On real K1 workloads it does NOT** — its schedule edit raises
+`"too many tiles provided, expected at most 0 found 1"` and falls back to **scalar**:
+- whole-model bitvla: **3.327 s vs 2.528 s baseline = 0.76× (regression)**;
+- isolated GELU/sigmoid: identical to scalar, still **~11–18× behind XNNPACK** (GELU 2929 vs 270; 775349 vs 44718).
+
+So the spike closure does **not** translate — the polynomial math is right but the schedule edit isn't
+robust to real activation generics. A fix (vectorize the elementwise generic without the bogus tile
+spec) is in progress; until it lands this feature is **not a board win** and stays default-off.
+Full detail: `output/rvv_bench/k1_e2e_activation.md`.
 
 ---
 
