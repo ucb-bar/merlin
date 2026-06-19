@@ -51,6 +51,12 @@ OURS_FORKS = (
     # register-tile [8,32,16]. Bounded (inner body = MR*KC=128 fma at any shape), bit-exact at
     # 32/64/128. Marginally (~0.7%) faster than the [4,16,16] ours_vfmacc_tiled column.
     ("ours_tiled_best", ["vfmacc_t_8_32_16"]),
+    # operand-PACKING tiled vfmacc (mined packed_rhs_policy). Packs A/B/C into contiguous [MR,NR,KC]
+    # panels so the inner transfers are unit-stride (no strided vector.transfer). PACK-INCLUDED here
+    # (the pack of A/B/C is INSIDE the compiled forward, so the timed compute carries the one-time
+    # pack cost — a microbench; the resident-weight/prepack-hoisted = pack-excluded number is in
+    # output/kernels/ceiling/packing_result.md). Bit-exact at 32^3; faults at M>=48 (see notrun).
+    ("ours_vfmacc_packed", ["vfmacc_packed"]),
 )
 
 
@@ -292,7 +298,8 @@ def write_matrix(grid: dict, out_md: Path) -> None:
             ("ours_baseline", "ours-baseline"),
             ("ours_vfmacc_contraction", "ours-vfmacc"),
             ("ours_vfmacc_tiled", "ours-tiled"),
-            ("ours_tiled_best", "ours-tiled-best")]
+            ("ours_tiled_best", "ours-tiled-best"),
+            ("ours_vfmacc_packed", "ours-packed (pack-incl)")]
 
     def cyc(sz, key):
         r = grid[sz].get(key, {})
