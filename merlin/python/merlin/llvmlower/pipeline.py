@@ -239,6 +239,14 @@ print("OK act_poly rewrote", _n)
 '''
 
 
+def _accum_microkernel_v3_features() -> frozenset[str]:
+    """Names of the accumulator-resident micro-kernel v3 features (the ones whose pipeline splices the
+    SCALARIZE_MARKER and need the two-stage A-scalarization runner). Imported lazily so importing
+    pipeline never pulls accum_microkernel / impr_features at module load."""
+    from .impr_features import ACCUM_RESIDENT_V3_NAMES
+    return frozenset(ACCUM_RESIDENT_V3_NAMES)
+
+
 def _activation_poly_runner() -> str:
     """The lowering runner with the transcendental->polynomial rewriter spliced in (default-off
     feature). Imported here (not at module top) so importing pipeline never pulls act_poly."""
@@ -323,10 +331,17 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
         return _fix_float_literals(out.read_text(encoding="utf-8"))
 
     # The vectorized_transcendental_activation feature splices a math.exp/erf/tanh -> arith
-    # polynomial rewriter into the runner (run before the pass manager). Default-off; with the
+    # polynomial rewriter into the runner (run before the pass manager). The accumulator-resident
+    # micro-kernel v3 feature splices a two-stage runner that runs the A-operand scalarization rewrite
+    # BETWEEN two pass-manager stages (split at the SCALARIZE_MARKER pass name). Default-off; with the
     # feature absent the plain _RUNNER is used and the lowering is byte-identical to the baseline.
-    runner_src = (_activation_poly_runner()
-                  if "vectorized_transcendental_activation" in feats else _RUNNER)
+    if "vectorized_transcendental_activation" in feats:
+        runner_src = _activation_poly_runner()
+    elif any(f in feats for f in _accum_microkernel_v3_features()):
+        from .accum_microkernel import run_source
+        runner_src = run_source()
+    else:
+        runner_src = _RUNNER
     runner.write_text(runner_src, encoding="utf-8")
     proc = subprocess.run(
         [str(m2m_python()), str(runner), str(src), str(out), pipeline],

@@ -204,3 +204,99 @@ weight) exactly like OpenBLAS/XNNPACK pre-pack — apples-to-apples pack-exclude
 RTL run would re-rank vector-heavy kernels (the proxy is IPC=1, instruction-count), but the
 register-blocked structure that removes the accumulator memory traffic is the architecturally correct
 win on any RVV target.
+
+---
+
+## UPDATE 2 (kernel-policy-mining): the COMPILER now emits the accumulator-resident vfmacc.vf kernel
+
+The prior UPDATE concluded the transform-dialect path **cannot** emit an accumulator-resident kernel
+(the v1 `accumulator_resident_microkernel` was ~19x off, still spilling the accumulator per K-tile).
+That conclusion was **wrong about the ceiling** — it was right that *that recipe* fails, but a
+corrected recipe + one small codegen rewrite makes the COMPILER emit the hand kernel's exact K-loop
+structure. SPIKE + HOST only; K1 board untouched. Baseline FROZEN, `test_impr_features` green
+(byte-identical with `features=frozenset()`).
+
+### What the v1 recipe actually got wrong (root-caused with objdump + dumped IR)
+
+1. **The hoist ran POST-bufferize.** On the bufferized memref form the K-loop carries the accumulator
+   as an scf.for **memref iter_arg**; BOTH `hoist_redundant_vector_transfers` AND
+   `loop-invariant-subset-hoisting` **no-op** on it (verified: ran each in isolation via mlir-opt —
+   the accumulator transfer pair stays in the loop body). The fix: run `loop-invariant-subset-hoisting`
+   on the **TENSOR** form, BEFORE one-shot-bufferize, where the K-loop carries the accumulator as a
+   value-semantic `tensor<MRxNR>` iter_arg. On that form the pass FIRES: it lifts the
+   `vector.transfer_read` above the K-loop and the `vector.transfer_write` below it, threading a pure
+   `vector<MRxNR>` as a second iter_arg → after bufferize an `!llvm.array<MR x vector<NRxf32>>`
+   loop-carried value the RISC-V backend keeps in vregs across K (register-resident). This alone is the
+   new feature **`accumulator_resident_v2`** (bit-exact, accumulator now resident).
+
+2. **`v2` still emitted `vfmacc.vv`, not `vfmacc.vf`.** Even with the accumulator resident the K-loop
+   was full of a `vmv`/`vslideup` ladder + `vfmacc.vv` — that ladder, NOT a spill, was the residual
+   (`v2` measured ~19x off too, 901,636 @64^3). Root cause (minimal repro): the contraction's A operand
+   was read as `vector<MRx1xf32>` and each row extracted `[i,0]:f32`; the RISC-V backend cannot cheaply
+   move a vector LANE into the `.vf` scalar FP operand, so it reconstructs the broadcast. A minimal
+   repro proved clang-23 selects a clean `vfmacc.vf` from `fma(splat(load float), vec, acc)` — the A
+   must be a **scalar load**, not a vector lane. Fix: a small, general codegen rewrite
+   (`llvmlower/accum_microkernel.py`, `scalarize_a_reads`) that replaces each
+   `vector.transfer_read -> vector<MRx1xf32>` whose only uses are `vector.extract [i,0]:f32` with
+   per-row scalar `tensor.extract`/`memref.load` — the SAME `a[i]` scalar the hand kernel loads.
+   Numerically identical (element `[i,0]` == lane `[i,0]`), so still **bit-exact**. This is the feature
+   **`accumulator_resident_microkernel_v3`**.
+
+### v3 emitted K-loop (objdump of the COMPILER's `model.o`, 64^3) — the hand kernel's structure
+
+```
+forward+0x1d2 .. bne  (the K-reduction loop, 12 instructions, NO accumulator spill)
+  vle32.v   v24,(a1)        <- ONE contiguous B row
+  flw       fa5,-512(a0)    <- A scalars into FP regs (a[0..3], stride = A column)
+  flw       fa4,-256(a0)
+  flw       fa3,0(a0)
+  vfmacc.vf v20,fa5,v24     <- MR accumulator vreg-groups, register-RESIDENT across K
+  flw       fa5,256(a0)
+  vfmacc.vf v16,fa4,v24
+  vfmacc.vf v12,fa3,v24
+  vfmacc.vf v8, fa5,v24
+  addi a1,a1,256 ; addi a0,a0,4 ; bne a1,s5,1d2
+... (after the loop) vse32.v v20/v16/v12/v8  <- C stored ONCE
+```
+
+Decoder confirms (structured `decode.rvv`, asserted in `test_accum_resident_v3.py`): innermost loop =
+**4 `vfmacc.vf`, 0 `vfmacc.vv`, 0 in-loop accumulator spills** (`vlNre`/`vsNr`), on a cube AND a
+non-cube — the accumulator-RESIDENT structural success criterion, compiler-emitted (no hand kernel).
+
+### Measured spike instret (inner_compute, same harness as the table above)
+
+| shape | v1 (post-buf hoist) | **v3 total** | **v3 `forward` (compute kernel)** | hand ceiling | OpenBLAS |
+|---|---|---|---|---|---|
+| 32^3  | 199,422   | 86,416    | **7,045**   | 6,549   | 11,037  |
+| 64^3  | 954,558   | 370,466   | **53,207**  | 50,693  | 84,481  |
+| 128^3 | 5,078,423 | 1,678,317 | **409,764** | 399,239 | 664,809 |
+
+Non-cube bit-exact too (96x48x160 → 499,837; 96x64x32 → 518,770; spike `VERIFY PASS`).
+
+**The compiler-emitted compute kernel `forward` now matches the hand ceiling (within ~1.05–1.08x) and
+beats OpenBLAS at every shape.** A spike `-g` per-function instret histogram attributes the v3 total:
+`forward` (the vfmacc.vf kernel) = 53,207 @64^3 (= the ceiling), and the residual
+(`memrefCopy`+`memcpy` = 319,340 @64^3) is the **O(M×N) result-buffer copy-out** — the workload returns
+a fresh tensor and `buffer-results-to-out-params` copies it to the caller's out-param once (the hand
+driver writes C in-place into a pre-allocated buffer, so its pack-excluded number has no such copy).
+That is an ABI/workload artifact, the same O(MN) class as any GEMM's C write, NOT a kernel deficiency —
+the inner micro-kernel is at the ceiling. (Dropping the v1 `bufferize_to_allocation` C-tile promotion in
+the v3 pre-schedule already removed the *per-tile* copy traffic: 692,832 → 370,466 @64^3.)
+
+### Verdict (this branch, corrected)
+
+- **Can the transform-dialect path + a small codegen rewrite GENUINELY emit the accumulator-resident,
+  register-blocked, vfmacc.vf micro-kernel? YES.** `accumulator_resident_microkernel_v3` emits exactly
+  the hand kernel's K-loop (decode-confirmed: vfmacc.vf, spill-free, accumulator-resident), is bit-exact
+  across cubes + non-cubes, and its compute kernel is AT the hand ceiling and faster than OpenBLAS. The
+  hand kernel stays a labeled CEILING REFERENCE only; it is never linked or called as the result.
+- **The two compiler changes (both default-off, baseline byte-identical):** (1) PRE-bufferize
+  tensor-level `loop-invariant-subset-hoisting` (the residency); (2) the A-operand scalarization rewrite
+  `scalarize_a_reads` (the `vfmacc.vf`). Registered as `accumulator_resident_v2` (residency only) and
+  `accumulator_resident_microkernel_v3` (residency + vfmacc.vf) in `impr_features.py`; the rewrite is a
+  general structural pattern (any MR, any contraction with a trailing-unit lhs tile), not a shape/op
+  overfit. Tests: `test_accum_resident_v3.py` (guards + decode-confirm). `test_impr_features` green.
+- **Remaining honest gap:** the v3 *total* (370,466 @64^3) is still ~7x the ceiling because of the
+  result-buffer copy-out, which is an ABI artifact of the single-op microbench workload (fresh-tensor
+  return), not the kernel. Eliminating it needs the matmul to bufferize in-place into a caller-provided
+  output — a workload/ABI change (pass C as an out-param), out of scope for the kernel codegen here.
