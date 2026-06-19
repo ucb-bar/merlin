@@ -63,12 +63,20 @@ def run_cfg(model_dir: Path, pkg, golden: np.ndarray, n: int, tag: str,
                      "fp32_cos": cos, "vlen": res.get("vlen")})
         print(f"  [{tag}] run {i}: wall_ns={runs[-1]['wall_ns']} cos={cos:.6f} "
               f"vlen={res.get('vlen')} n_xnn={n_xnn}")
-    walls = [r["wall_ns"] for r in runs if r["wall_ns"]]
+    walls = sorted(r["wall_ns"] for r in runs if r["wall_ns"])
+    spread = None
+    if walls:
+        mn = walls[0]; mx = walls[-1]; med = walls[len(walls)//2]
+        mean = sum(walls)/len(walls)
+        std = (sum((w-mean)**2 for w in walls)/len(walls))**0.5
+        spread = {"min_ns": mn, "max_ns": mx, "median_ns": med,
+                  "stdev_ns": round(std), "range_pct": round(100.0*(mx-mn)/mn, 2), "n": len(walls)}
     return {"tag": tag, "run_id": pkg.run_id,
             "compiler_features": list(pkg.compiler_features or []),
             "kernel_backend": kernel_backend,
             "n_xnn_routed": n_xnn,
-            "min_wall_ns": min(walls) if walls else None,
+            "min_wall_ns": walls[0] if walls else None,
+            "spread": spread,
             "fp32_cos": cos, "ok": (cos is not None and cos >= 0.9999),
             "blocker": blocker, "runs": runs}
 
@@ -88,15 +96,20 @@ def main() -> None:
     # scripts/k1_cross_framework.py constructs the ours forks).
     ours = replace(base, run_id="ours_vfmacc_tiled",
                    compiler_features=["fused_vfmacc_tiled"])
+    # ours-v3 = the compiler-emitted accumulator-resident microkernel (the headline kernel).
+    ours_v3 = replace(base, run_id="ours_v3",
+                      compiler_features=["accumulator_resident_microkernel_v3"])
     # xnnpack-kernels reuses the BASELINE package (frozen schedule) — the only difference is the
     # matmul dispatches route to XNNPACK; everything else is the baseline lowering.
     xnn_pkg = replace(base, run_id="xnnpack_kernels")
 
     print("=== baseline (hand_v0) ===")
     rb = run_cfg(md, base, golden, a.n, "baseline", None)
-    print("=== ours-optimized (fused_vfmacc_tiled) ===")
+    print("=== ours-tiled (fused_vfmacc_tiled) ===")
     ro = run_cfg(md, ours, golden, a.n, "ours_vfmacc_tiled", None)
-    print("=== xnnpack-kernels (f32 matmuls -> XNNPACK RVV ukernel) ===")
+    print("=== ours-v3 (accumulator_resident_microkernel_v3) ===")
+    rv = run_cfg(md, ours_v3, golden, a.n, "ours_v3", None)
+    print("=== xnnpack-kernels (f32 matmuls -> XNNPACK RVV ukernel, resident-weight pack) ===")
     rx = run_cfg(md, xnn_pkg, golden, a.n, "xnnpack_kernels", "xnnpack")
 
     def spd(a_ns, b_ns):
@@ -104,14 +117,17 @@ def main() -> None:
 
     summary = {
         "model": str(md), "n": a.n, "board": "k1_spacemit", "vlen": k1.VLEN,
+        "same_pass": True,
         "timer": "CLOCK_MONOTONIC wall_ns (rdtime ticks alongside); cycle_accurate=false",
-        "note": ("Third e2e column. xnnpack-kernels routes the f32 linalg.matmul dispatches to "
-                 "XNNPACK's xnn_f32_gemm_ukernel_1x4v__rvv; rest on the Merlin runtime. cos "
-                 "gated vs the same host golden before any wall is reported."),
-        "baseline": rb, "ours_optimized": ro, "xnnpack_kernels": rx,
-        "speedup_baseline_over_ours": spd(rb["min_wall_ns"], ro["min_wall_ns"]),
-        "speedup_baseline_over_xnnpack": spd(rb["min_wall_ns"], rx["min_wall_ns"]),
-        "speedup_ours_over_xnnpack": spd(ro["min_wall_ns"], rx["min_wall_ns"]),
+        "note": ("Same-pass head-to-head: baseline / ours-tiled / ours-v3 / xnnpack-kernels built+run "
+                 "in ONE invocation vs the SAME baseline. xnnpack-kernels routes f32 linalg.matmul to "
+                 "XNNPACK's xnn_f32_gemm_ukernel_1x4v__rvv with RESIDENT-WEIGHT pack (pack excluded from "
+                 "the timed path, matching v3's pack-free scope). cos gated vs host golden before any wall."),
+        "baseline": rb, "ours_tiled": ro, "ours_v3": rv, "xnnpack_kernels": rx,
+        "speedup_ours_tiled": spd(rb["min_wall_ns"], ro["min_wall_ns"]),
+        "speedup_ours_v3": spd(rb["min_wall_ns"], rv["min_wall_ns"]),
+        "speedup_xnnpack": spd(rb["min_wall_ns"], rx["min_wall_ns"]),
+        "v3_over_xnnpack": spd(rx["min_wall_ns"], rv["min_wall_ns"]),  # >1 ⇒ v3 faster than XNNPACK
         "xnnpack_kernel": "xnn_f32_gemm_ukernel_1x4v__rvv",
     }
     outp = Path(a.out)
@@ -132,30 +148,36 @@ def _fmt(v, prec=4):
 
 
 def _write_md(path: Path, s: dict) -> None:
-    rows = [("baseline (hand_v0)", s["baseline"]),
-            ("ours-optimized (fused_vfmacc_tiled)", s["ours_optimized"]),
-            ("xnnpack-kernels (RVV ukernel)", s["xnnpack_kernels"])]
+    rows = [("baseline (hand_v0)", s["baseline"], s.get("speedup_baseline")),
+            ("ours-tiled (fused_vfmacc_tiled)", s["ours_tiled"], s["speedup_ours_tiled"]),
+            ("ours-v3 (accum-resident microkernel)", s["ours_v3"], s["speedup_ours_v3"]),
+            ("xnnpack-kernels (RVV ukernel, resident pack)", s["xnnpack_kernels"], s["speedup_xnnpack"])]
     lines = [
-        f"# K1 whole-model e2e: XNNPACK kernels vs baseline vs ours — {Path(s['model']).name}",
+        f"# K1 whole-model SAME-PASS head-to-head — {Path(s['model']).name}",
         "",
-        f"Board: SpacemiT K1 (real RVV silicon, VLEN={s['vlen']}). "
-        f"N={s['n']} runs/config, min CLOCK_MONOTONIC wall. Timer: {s['timer']}.",
-        f"XNNPACK kernel: `{s['xnnpack_kernel']}`. cos gated vs host golden before any wall.",
+        f"Board: SpacemiT K1 (real RVV silicon, VLEN={s['vlen']}). N={s['n']} runs/config, ONE pass, "
+        f"min CLOCK_MONOTONIC wall + spread. Timer: {s['timer']}.",
+        f"XNNPACK kernel: `{s['xnnpack_kernel']}` (resident-weight pack, excluded from timed path). "
+        "cos gated vs host golden before any wall.",
         "",
-        "| config | min wall (ns) | fp32 cos | #dispatch via XNNPACK | ok | blocker |",
-        "|---|---|---|---|---|---|",
+        "| config | min wall (ns) | range % (N) | fp32 cos | speedup | #xnn | ok | blocker |",
+        "|---|---|---|---|---|---|---|---|",
     ]
-    for name, r in rows:
+    for name, r, sp in rows:
+        spr = r.get("spread") or {}
+        rng = f"{spr.get('range_pct','—')}% ({spr.get('n','—')})" if spr else "—"
         lines.append(
-            f"| {name} | {_fmt(r['min_wall_ns'])} | {_fmt(r['fp32_cos'], 7)} | "
-            f"{r['n_xnn_routed']} | {'yes' if r['ok'] else 'NO'} | {r.get('blocker') or '—'} |")
+            f"| {name} | {_fmt(r['min_wall_ns'])} | {rng} | {_fmt(r['fp32_cos'], 7)} | "
+            f"{_fmt(sp)}x | {r['n_xnn_routed']} | {'yes' if r['ok'] else 'NO'} | {r.get('blocker') or '—'} |")
+    v3x = s.get("v3_over_xnnpack")
+    verdict = ("ours-v3 FASTER than XNNPACK" if (v3x and v3x > 1) else
+               "XNNPACK faster than ours-v3" if v3x else "—")
     lines += [
         "",
-        "## Speedups (min wall)",
-        f"- baseline / ours-optimized = {_fmt(s['speedup_baseline_over_ours'])}x",
-        f"- baseline / xnnpack-kernels = {_fmt(s['speedup_baseline_over_xnnpack'])}x",
-        f"- ours-optimized / xnnpack-kernels = {_fmt(s['speedup_ours_over_xnnpack'])}x "
-        "(>1 ⇒ XNNPACK faster than our vfmacc; <1 ⇒ our vfmacc faster)",
+        "## Headline (same-pass, fair resident-weight pack)",
+        f"- **ours-v3 / xnnpack = {_fmt(v3x)}x** — {verdict} (>1 ⇒ our compiler kernel faster).",
+        f"- speedups vs baseline: ours-tiled {_fmt(s['speedup_ours_tiled'])}x · "
+        f"ours-v3 {_fmt(s['speedup_ours_v3'])}x · xnnpack {_fmt(s['speedup_xnnpack'])}x.",
         "",
         "## Takeaway",
         s["note"],

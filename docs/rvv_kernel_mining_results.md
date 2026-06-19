@@ -153,3 +153,28 @@ merlin-rvv-report --mined <run> --out report.md                 # auditable evid
 
 Board runs: `scripts/k1_e2e_*.py`, `scripts/k1_cross_framework*.py` (SpacemiT clang, riscv64, rdtime).
 Baseline immutability guarded by `tests/test_impr_features.py` (byte-identical when features=∅).
+
+---
+
+## 6. Limits (scope boundaries, stated honestly)
+
+These are deliberate boundaries of the current results, not defects — listed so the claims aren't over-read:
+
+- **No cycle-accurate confirmation.** All board numbers are K1 `rdtime`/wall (`cycle_accurate=false`; the K1
+  traps userspace `rdcycle`, so there are no hardware perf counters). Spike is an IPC=1 instruction-count
+  proxy. The whole-model wins are real-silicon wall measurements, but they have NOT been confirmed on a
+  cycle-accurate model (FireSim/VCS) — that path is queue-gated (priority 5, never escalated) and out of
+  scope here. "Utilization" in the figures is therefore a *ceiling proxy* (% of the expert reached + VPU
+  state), not measured VPU occupancy.
+- **Workload scope.** The comparison covers fp32, matmul-dominated VLA inference on three models
+  (bitvla, openvla, rdt2) on one board (K1). It does not cover int8 end-to-end (separate datapath),
+  conv-heavy or attention-heavy models, or other RVV silicon. The beam evaluated the distinct named
+  optimizations + composable combos whole-model; it did NOT sweep the 33 MR/NR/KC grid points whole-model
+  (those were tuned single-op) — a future-work item.
+- **Beyond GEMM we are not yet competitive.** Activation vectorization is correct but neutral whole-model
+  (activations are negligible vs matmul here) and still ~3.6–4.6× behind XNNPACK isolated; isolated int8
+  GEMM is far off (the vwmacc win is e2e-amortized); depthwise conv has no primitive; small-N attention
+  regresses. These are honest gaps, scoped as separate efforts — the headline win is the fp32 GEMM path.
+- **Composition limit.** The matmul features and the activation feature are full-schedule replacements,
+  so they cannot currently compose (`CompositionError`). Getting matmul-v3 AND vectorized activation in one
+  whole-model lowering needs a unified schedule (future work).

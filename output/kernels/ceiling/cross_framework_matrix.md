@@ -34,3 +34,25 @@ Reading the blockers: the only remaining not_run is **`ours_vfmacc_contraction @
 - **Inner-compute scope; the fill asymmetry is now SUBTRACTED (caveat #1 fixed).** For all columns the one-time setup is hoisted OUT of the timed region (experts: operand pack; ours: memref-descriptor build). The experts time ONLY the GEMM microkernel call. Ours' compiled `_mlir_ciface_forward` is `linalg.fill` (zeroing C) + `linalg.matmul`; to make ours head-to-head with the experts' kernel-only timing, the ours driver now also times a **fill-only baseline** (a tight store loop zeroing the same M×N output, the exact traffic `linalg.fill` does, on the same `mcycle` CSR) and the `ours-*` cycles above are MATMUL-ONLY = (fill+matmul) − (fill-only). The fill is a small fraction (~3K/12K/49K cycles at 32/64/128); the driver also records `CYCLES_FULL` (fill+matmul). So the columns now compare GEMM-compute to GEMM-compute, no fill bias.
 - **We deliberately do NOT use the runner's whole-model spike `cycles`.** That number (e.g. ~27.1 M cycles for hand_v0 at 64^3) is the entire Zephyr SMP image — boot, thread-create, cpu-pin, `merlin_run`, reboot — and is NOT comparable to an inner-compute kernel measurement. Using it would invalidate the comparison; this matrix uses the bare-metal inner-compute path for ours instead, on identical footing.
 - **Kernel notes.** OpenBLAS `sgemm_kernel_8x8_zvl128b` (MR=NR=8, A ncopy / B tcopy pre-packed). XNNPACK `xnn_f32_gemm_ukernel_1x4v__rvv` (mr=1, called M times; weights goi-pre-packed; NR=`vsetvlmax_e32m4`=16 @ vlen128). Shapes 32/64/128 are divisible by both 8 and 16, so neither kernel takes a tail path. Ours = the frozen `hand_v0` RVV transform schedule (tile/vector [4,8,1]) with the named default-off impr feature.
+
+---
+
+## RECONCILIATION (2026-06-19): the CURRENT compiler path = `accumulator_resident_microkernel_v3`
+
+The `ours-tiled` / `ours-baseline` columns above are the **older** compiler paths (tiled is ~10–16× the
+expert instret; baseline never forms vfmacc). They predate the v3 accumulator-resident microkernel and
+must NOT be read as "our compiler's best". `ours-intrinsic (scalable)` was a **hand-written ceiling
+reference**, not compiler output. The **current compiler-emitted** kernel is v3 — and on this same
+spike inner-compute proxy it nearly matches the hand ceiling and **beats both experts on instret**:
+
+| shape | OpenBLAS | XNNPACK | hand ceiling (ours-intrinsic) | **ours-v3 (COMPILER-emitted)** | v3 vs OpenBLAS |
+|---|---|---|---|---|---|
+| 32^3  | 11,039  | 13,289  | 6,551   | **7,045**   | 1.57× faster |
+| 64^3  | 84,483  | 101,705 | 50,695  | **53,207**  | 1.59× faster |
+| 128^3 | 664,811 | 798,857 | 399,241 | **409,764** | 1.62× faster |
+
+So the headline is consistent across levels: the compiler-emitted v3 kernel is ~1.05–1.08× the hand
+ceiling and ~1.6× fewer instructions than OpenBLAS **isolated** (spike proxy), and on real K1 silicon it
+wins **whole-model** (bitvla, beating XNNPACK — see `docs/rvv_kernel_mining_results.md` / `RESULTS.html`).
+The spike proxy is instruction-count only (`cycle_accurate=false`); the K1 whole-model wall is the
+authority. v3 isolated K1 ticks: see `cross_framework_matrix_k1.md`.
