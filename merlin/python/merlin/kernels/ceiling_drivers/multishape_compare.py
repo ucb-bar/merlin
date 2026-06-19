@@ -364,13 +364,18 @@ def write_matrix(grid: dict, out_md: Path) -> None:
             lines.append(f"- **{key} @ {sz}^3**: {_distill(blk)}")
         lines.append("")
         lines.append(
-            "Reading the blockers: **`ours_vfmacc_tiled` faults on spike (tohost=1337) at "
-            "M≥64** — a genuine codegen bug in that experimental fork feature at larger shapes "
-            "(it passes and verifies at 32^3). **`ours_vfmacc_contraction @ 128^3` hits an "
-            "`R_RISCV_JAL relocation truncated`** — the heavily-unrolled 128^3 `model.o` `.text` "
-            "exceeds the ±1 MB JAL reach of the shared Saturn `crt.S`/`test.ld` bare-metal "
-            "layout (a harness link limit, NOT a numerical/codegen-quality result; the fork "
-            "builds, runs and verifies at 32^3 and 64^3). Neither is faked into a cycle number.\n")
+            "Reading the blockers: the only remaining not_run is "
+            "**`ours_vfmacc_contraction @ 128^3`**, which hits an `R_RISCV_JAL relocation "
+            "truncated` — the FULLY-UNROLLED 128^3 `model.o` `.text` (16,384 fma, code that grows "
+            "with M·N·K) exceeds the ±1 MB JAL reach of the shared Saturn `crt.S`/`test.ld` "
+            "bare-metal layout (a harness link limit, NOT a numerical/codegen-quality result; the "
+            "full-unroll fork builds, runs and verifies at 32^3 and 64^3). It is exactly the "
+            "unbounded-code failure that the new **`ours_vfmacc_tiled`** (scalable) column fixes: "
+            "ours-tiled's inner body is a CONSTANT 64 fma at every shape (K is a loop), so its "
+            ".text is bounded and it builds, runs and verifies bit-exact at 32^3, 64^3 AND 128^3 "
+            "(no JAL wall, and no more `tohost=1337` spike fault — that fault was an oversized "
+            "vector<64x16>/<4x64> regalloc spill overrunning the stack into BSS, removed by "
+            "bounding the K tile). Nothing is faked into a cycle number.\n")
 
     lines.append("## Comparability caveats (read before trusting the numbers)\n")
     lines.append(
@@ -384,13 +389,16 @@ def write_matrix(grid: dict, out_md: Path) -> None:
         "**instruction count**, not by RTL timing — a real Saturn would re-rank vector-heavy "
         "kernels, but the cross-framework ORDERING here is robust because all columns share it.")
     lines.append(
-        "- **Inner-compute scope, with one honest asymmetry.** For all columns the one-time "
-        "setup is hoisted OUT of the timed region (experts: operand pack; ours: memref-"
-        "descriptor build). The experts time ONLY the GEMM microkernel call. **Ours times "
-        "`_mlir_ciface_forward`**, which for this single-op workload is the compiler-emitted "
-        "`linalg.fill` (zeroing C) **plus** `linalg.matmul` — i.e. the GEMM plus a thin "
-        "compiler wrapper, no multi-op model and no Zephyr/threading. So the columns are "
-        "directly comparable up to that extra `fill` of the M×N output.")
+        "- **Inner-compute scope; the fill asymmetry is now SUBTRACTED (caveat #1 fixed).** For "
+        "all columns the one-time setup is hoisted OUT of the timed region (experts: operand "
+        "pack; ours: memref-descriptor build). The experts time ONLY the GEMM microkernel call. "
+        "Ours' compiled `_mlir_ciface_forward` is `linalg.fill` (zeroing C) + `linalg.matmul`; to "
+        "make ours head-to-head with the experts' kernel-only timing, the ours driver now also "
+        "times a **fill-only baseline** (a tight store loop zeroing the same M×N output, the "
+        "exact traffic `linalg.fill` does, on the same `mcycle` CSR) and the `ours-*` cycles "
+        "above are MATMUL-ONLY = (fill+matmul) − (fill-only). The fill is a small fraction "
+        "(~3K/12K/49K cycles at 32/64/128); the driver also records `CYCLES_FULL` (fill+matmul). "
+        "So the columns now compare GEMM-compute to GEMM-compute, no fill bias.")
     lines.append(
         "- **We deliberately do NOT use the runner's whole-model spike `cycles`.** That number "
         "(e.g. ~27.1 M cycles for hand_v0 at 64^3) is the entire Zephyr SMP image — boot, "
