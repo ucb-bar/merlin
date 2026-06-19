@@ -1,0 +1,61 @@
+{
+  "model": "output/smolvla_fp32_consistent",
+  "n": 3,
+  "golden_shape": [
+    1,
+    50,
+    32
+  ],
+  "baseline": {
+    "tag": "baseline",
+    "run_id": "hand_v0",
+    "compiler_features": [],
+    "lowering_path": "vectorized",
+    "pipeline_error_op": null,
+    "ll_fmuladd": 0,
+    "ll_fixedvec": 56975,
+    "attn_vectorized": "fixedwidth_simd_no_fma",
+    "status": "not_run",
+    "blocker": "K1Error: command failed: /scratch2/agustin/merlin/build_tools/riscv-tools-spacemit/spacemit-toolchain-linux-glibc-x86_64-v1.1.2/bin/clang --target=riscv64-unknown-linux-gnu -march=rv64gcv -mabi=lp64d -O2 -I/scratch/agustin/projects/oscar-merlin/merlin/runtime/c -I/tmp/k1_baseline_0_v3820wpq/v/cgen /tmp/k1_ba",
+    "min_wall_ns": null,
+    "fp32_cos": null,
+    "runs": []
+  },
+  "optimized": [
+    {
+      "tag": "optimized_ntail",
+      "run_id": "e2e_optimized_ntail",
+      "compiler_features": [
+        "accumulator_resident_ntail"
+      ],
+      "lowering_path": "scalar_fallback",
+      "pipeline_error_op": "vector.mask",
+      "ll_fmuladd": 0,
+      "ll_fixedvec": 0,
+      "attn_vectorized": "scalar (vfmacc path fell back whole-model)",
+      "status": "not_run",
+      "blocker": "K1Error: command failed: /scratch2/agustin/merlin/build_tools/riscv-tools-spacemit/spacemit-toolchain-linux-glibc-x86_64-v1.1.2/bin/clang --target=riscv64-unknown-linux-gnu -march=rv64gcv -mabi=lp64d -O2 -I/scratch/agustin/projects/oscar-merlin/merlin/runtime/c -I/tmp/k1_optimized_ntail_0_mx6a0gik/v/cgen /tm",
+      "min_wall_ns": null,
+      "fp32_cos": null,
+      "runs": []
+    },
+    {
+      "tag": "opt_combined_clobbered",
+      "run_id": "e2e_opt_combined_clobbered",
+      "compiler_features": [
+        "fused_vfmacc_tiled",
+        "accumulator_resident_ntail"
+      ],
+      "lowering_path": "scalar_fallback",
+      "pipeline_error_op": "vector.mask",
+      "ll_fmuladd": 0,
+      "ll_fixedvec": 0,
+      "attn_vectorized": "scalar (vfmacc path fell back whole-model)",
+      "status": "not_run",
+      "blocker": "K1Error: command failed: /scratch2/agustin/merlin/build_tools/riscv-tools-spacemit/spacemit-toolchain-linux-glibc-x86_64-v1.1.2/bin/clang --target=riscv64-unknown-linux-gnu -march=rv64gcv -mabi=lp64d -O2 -I/scratch/agustin/projects/oscar-merlin/merlin/runtime/c -I/tmp/k1_opt_combined_clobbered_0_s8l965ss/v/c",
+      "min_wall_ns": null,
+      "fp32_cos": null,
+      "runs": []
+    }
+  ]
+}

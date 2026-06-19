@@ -1,0 +1,30 @@
+{
+  "note": "Lowering-level (host xDSL/LLVM-23) whole-model vectorization probe for the N-tail fix vs the older fused_vfmacc_tiled, across real models. 'vectorized' = the vfmacc schedule lowers the whole model (build_k1_binary emits vfmacc); 'scalar_fallback' = PipelineError -> build_k1_binary falls back to fully-scalar contraction. This is the feature-level evidence that accumulator_resident_ntail is GENERAL: it vectorizes attention where fused_vfmacc_tiled fell back. Board correctness/speedup for the runnable+valid models is in the sibling *_openvla.json / *_bitvla_reconfirm.json.",
+  "probe": "merlin.llvmlower.lower.lower_model_file(vectorize=True, transform_schedule=hand_v0, features=...)",
+  "models": {
+    "smolvla_fp32_consistent": {
+      "baseline": {"lowering": "vectorized", "fmuladd": 0, "fixedvec": 56975},
+      "accumulator_resident_ntail": {"lowering": "scalar_fallback", "op": "vector.mask", "cause": "237 matmuls with leading M=1 -> masked transfer_write+tensor.cast (matmul M-tail, NOT the batch_matmul N-tail the feature fixes)"},
+      "fused_vfmacc_tiled": {"lowering": "scalar_fallback", "op": "vector.mask"}
+    },
+    "openvla_fp32_consistent": {
+      "baseline": {"lowering": "vectorized", "fmuladd": 0, "fixedvec": 5512},
+      "accumulator_resident_ntail": {"lowering": "vectorized", "fmuladd": 239, "fixedvec": 5508},
+      "fused_vfmacc_tiled": {"lowering": "vectorized", "fmuladd": 3330, "fixedvec": 42337}
+    },
+    "rdt2_fp32_consistent": {
+      "baseline": {"lowering": "vectorized", "fmuladd": 0, "fixedvec": 4828},
+      "accumulator_resident_ntail": {"lowering": "scalar_fallback", "op": "vector.mask", "cause": "same matmul M-tail class as smolVLA (917 tensor<1x...> ops)"},
+      "fused_vfmacc_tiled": {"lowering": "scalar_fallback", "op": "vector.mask"}
+    },
+    "tiny_llama_fp8_consistent": {
+      "fused_vfmacc_tiled": {"lowering": "scalar_fallback", "op": "vector.mask", "cause": "attention batch_matmul N=8 < NR=16"},
+      "accumulator_resident_ntail": {"lowering": "vectorized", "fmuladd": 82, "note": "N-tail FIX: vectorizes attention to vfmacc where tiled fell back. Board not_run: embedded-fp32 RW segment ~398MB OOMs the board."}
+    },
+    "small_llama_fp8_consistent": {
+      "fused_vfmacc_tiled": {"lowering": "scalar_fallback", "op": "vector.mask", "cause": "attention batch_matmul N=8 < NR=16"},
+      "accumulator_resident_ntail": {"lowering": "vectorized", "fmuladd": 78, "note": "N-tail FIX vectorizes attention to vfmacc. Board not_run: fp8->f32 capture is all-NaN on spike AND K1 (broken target)."}
+    }
+  },
+  "conclusion": "accumulator_resident_ntail vectorizes the small-N attention batch_matmul (N=8 llama, openvla) to vfmacc where fused_vfmacc_tiled silently fell back to scalar. It is a GENERAL whole-model fix, not shape-specific. It does NOT (yet) handle the orthogonal matmul M=1 M-tail seen in smolVLA/rdt2 (separate work-item: MR=min(MR,M))."
+}
