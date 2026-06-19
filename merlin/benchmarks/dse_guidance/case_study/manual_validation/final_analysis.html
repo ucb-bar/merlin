@@ -258,7 +258,7 @@ deadline) over deadline/K/H grids — a <b>requirement</b>, never measured.</p>
 <ul>
 <li>K is now <b>IR-recovered for all 11 workloads</b>; the small-capture depth is reduced (the loop <i>structure</i> is depth-invariant — only the body's layer count scales, and §2 gives the deployment-real composition).</li>
 <li>Magnitudes for the small captures are structural-only; the <b>deployment-real</b> magnitudes (§2) are the config-exact composition.</li>
-<li>The bitvla native bit-unpack arithmetic is still in opaque <code>func.call</code> (the model forward <code>.item()</code>s the scale); the packed-int2 storage + scale + placement are recovered.</li>
+<li>The bitvla native int2 unpack is now a named <code>quant_ext.unpack_int2</code> op (the opt-in <code>fuse_int2_unpack</code> recognizer folds the <code>&amp; 0x03 / &gt;&gt; 2,4,6 / stack</code> chain) — storage + scale + unpack are all first-class; magnitudes for the small captures remain structural-only (deployment-real composition in §2).</li>
 </ul>
 
 <h2>5 · DSE-consumable outputs now produced (P20 + P21)</h2>
@@ -293,8 +293,8 @@ captured natively (<code>BITVLA_NATIVE_QUANT</code>), not the torchao-int8 stand
 <h2>7 · What’s next</h2>
 <p>The compiler capability is universal (zero per-model work) and the loop-preserving wrappers are now done for all 11; what remains is polish, not capability:</p>
 <ul>
-<li><b>Loop-preserving wrappers — DONE for all 11</b> (one sub-agent per model). Remaining polish: name the bitvla bit-unpack op; full-depth recapture (the composition in §2 already gives deployment-real magnitudes).</li>
-<li><b>Native bit-unpack op</b> — name the bitvla shift/and unpack (avoid the <code>.item()</code> scale graph-break) so the int2→ternary arithmetic is no longer opaque.</li>
+<li><b>Loop-preserving wrappers — DONE for all 11</b> (one sub-agent per model). The bitvla int2 unpack is now a named op (GAP-D). Remaining polish: full-depth recapture (the composition in §2 already gives deployment-real magnitudes).</li>
+<li><b>Native bit-unpack op — DONE (GAP-D):</b> bitvla's int2 unpack is folded to <code>quant_ext.unpack_int2</code> by an opt-in, verify-guarded recognizer that touches no other model.</li>
 <li><b>Runtime/physical frontier</b> — per-K-step wall-clock, area/energy from a design YAML — orthogonal to the static contract, out of scope by design.</li>
 </ul>
 

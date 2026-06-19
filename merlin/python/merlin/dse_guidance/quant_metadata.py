@@ -51,9 +51,19 @@ def native_quant_rows(cs_dir) -> list[dict]:
             continue
         txt = p.read_text(errors="ignore")
         n_i8 = txt.count("xi8>")                     # packed-int2 weights stored in i8 tensors
-        # the unpack bit-ops are opaque func.calls (the model's forward calls .item() on the scale,
-        # graph-breaking the dequant chain) -- the STORAGE + scale + dequant-before-matmul is recovered.
-        n_opaque = txt.count("func.call")
+        # P22 GAP-D: the int2 bit-unpack chain is folded to the named quant_ext.unpack_int2 op
+        # (opt-in fuse_int2_unpack recognizer). When present, the unpack is RECOVERED as a named op;
+        # otherwise it falls back to the opaque func.call form.
+        n_unpack = txt.count("quant_ext.unpack_int2")
+        if n_unpack:
+            unpack_vis = (f"recovered (quant_ext.unpack_int2 named op x{n_unpack}); "
+                          "storage + scale + unpack all first-class")
+            status = "recovered_full (native ternary datapath: storage + scale + named unpack op)"
+        else:
+            n_opaque = txt.count("func.call")
+            unpack_vis = (f"partial — bit-unpack in opaque func.call ({n_opaque}); "
+                          "storage+scale recovered (model forward .item()s the scale)")
+            status = "recovered_storage_and_scale (native ternary datapath visible)"
         rows.append({
             "workload": d.name,
             "native_scheme": "W1.58 ternary (BitLinear, packed int2: 4 ternary values per i8 byte)",
@@ -62,9 +72,8 @@ def native_quant_rows(cs_dir) -> list[dict]:
             "scale": "per_tensor_absmean (w_step buffer)",
             "dequant_placement": "before_matmul (unpack+scale then GEMM; compute f32)",
             "compute_dtype": "f32 (dequant-before-matmul; same placement as the int8 path)",
-            "unpack_visibility": f"partial — bit-unpack in opaque func.call ({n_opaque}); "
-                                 "storage+scale recovered (model forward .item()s the scale)",
-            "status": "recovered_storage_and_scale (native ternary datapath visible)",
+            "unpack_visibility": unpack_vis,
+            "status": status,
         })
     return rows
 

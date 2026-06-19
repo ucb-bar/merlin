@@ -582,6 +582,10 @@ def test_native_lowbit_bitvla_datapath_recovered():
     # the count matches the actual i8-stored tensors in the capture
     cap = (_RECAP_NATIVE / "bitvla" / "model.mlir").read_text()
     assert cap.count("xi8>") == int(bv["n_packed_weight_tensors"])
+    # P22 GAP-D: the int2 unpack is a named quant_ext.unpack_int2 op (opaque chain folded)
+    assert cap.count("quant_ext.unpack_int2") > 0
+    assert "named op" in bv["unpack_visibility"]
+    assert "call @aten_stack" not in cap
 
 
 # --------------------------------------------- cross-workload case study (multiple real captures)
