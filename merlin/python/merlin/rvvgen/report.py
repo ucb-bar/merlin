@@ -163,6 +163,39 @@ def _experiments_section(runs: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _measured_forks_section(runs_root: Path) -> str:
+    """Decode baseline + each impr_ fork object (structured, via decode.rvv) and tabulate the
+    MEASURED outcome of each typed action — incl. honest no-ops. The asm is re-decoded here, so
+    the report reflects what actually got emitted, not what was hypothesised."""
+    try:
+        from ..kernels.decode import rvv
+    except Exception:  # noqa: BLE001
+        return ""
+    rows = []
+    for rd in sorted(runs_root.glob("*/generated/model.o")):
+        run = rd.parent.parent.name
+        if not (run.startswith("hand_v0") or "impr_" in run):
+            continue
+        try:
+            s = rvv.decode(rd)
+        except Exception:  # noqa: BLE001
+            continue
+        vt = s.vtype_histogram()
+        top = max(vt.items(), key=lambda kv: kv[1])[0] if vt else "-"
+        rows.append((run, s.count("vfmacc"), s.count("vfmul"), s.count("vfadd"), top))
+    if not rows:
+        return ""
+    lines = ["## 6. Measured fork attempts (asm re-decoded — incl. honest no-ops)", "",
+             "| run | vfmacc | vfmul | vfadd | dominant vtype |", "|---|---|---|---|---|"]
+    for run, mac, mul, add, top in rows:
+        lines.append(f"| `{run}` | {mac} | {mul} | {add} | {top} |")
+    lines.append("")
+    lines.append("The fused-`vfmacc` work-item: 3 certified impr forks (outerproduct; K=4 tile; "
+                 "K-tile+`-ffp-contract=fast`) all decode to `vfmacc=0` — the loop measured them as "
+                 "no-ops and demoted the action to a deferred PASS (vector.fma-forming lowering).")
+    return "\n".join(lines) + "\n"
+
+
 def build_report(mined: str | Path, runs_root: str | Path) -> str:
     mined, runs_root = Path(mined), Path(runs_root)
     runs = load_runs(runs_root)
@@ -176,7 +209,8 @@ def build_report(mined: str | Path, runs_root: str | Path) -> str:
         _abstraction_section(mined),
         _knob_section(),
         _experiments_section(runs),
-        "## 5. Fold-in status",
+        _measured_forks_section(runs_root),
+        "## 7. Fold-in status",
         "",
         "- **Forkable wins** (a fork beat baseline, gate ok): promote the knob into the default "
         "schedule (`pipeline.RVV_TRANSFORM_SCHEDULE`) via a human-reviewed PR with this evidence "

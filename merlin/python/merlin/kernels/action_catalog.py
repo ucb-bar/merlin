@@ -57,10 +57,15 @@ _RVV_ROUTES: list[_Route] = [
     _Route(
         axis="compute.contraction_form",
         when=lambda d: d.expert == "fused_fma" and d.ours in ("mul_add", None),
-        action_class="PASS", target_seam="impr_features:fused_vfmacc_contraction",
-        change="K-vector tile + outerproduct lowering so the contraction emits fused vfmacc "
+        action_class="PASS", target_seam="pass:vector.fma-forming contraction lowering",
+        change="emit a vector.fma / llvm.fmuladd for the contraction so it lowers to fused vfmacc "
                "instead of separate vfmul.vv+vfadd.vv",
-        forkable_now=True,   # registered impr feature exists (R1)
+        # EVIDENCE-DRIVEN: certified+decoded 3 attempts (outerproduct lowering; K=4-vector tile;
+        # K-tile + -ffp-contract=fast) — ALL measured as no-op (vfmacc still 0). So no current
+        # fork expresses this; it is a genuine deferred PASS work-item (needs a pattern that
+        # builds vector.fma in the IR, not a schedule knob/flag). The loop demoted it from the
+        # hypothesised forkable=True after measuring.
+        forkable_now=False,
         expected_effect="vfmacc replaces vfmul+vfadd; fewer ops, higher FLOP/insn"),
     _Route(
         axis="vector.lmul",

@@ -26,8 +26,10 @@ def test_divergences_route_to_typed_actions():
     assert unrouted == []
     by_axis = {a.divergence_axis: a for a in actions}
     cf = by_axis["compute.contraction_form"]
-    assert cf.action_class == "PASS" and cf.forkable_now
-    assert cf.target_seam == "impr_features:fused_vfmacc_contraction"   # the R1 feature
+    # Evidence-driven: 3 certified+decoded attempts measured no-op, so the loop demoted this to a
+    # deferred PASS work-item (needs a vector.fma-forming lowering, not a knob/flag).
+    assert cf.action_class == "PASS" and not cf.forkable_now
+    assert "vector.fma" in cf.target_seam
     assert by_axis["vector.lmul"].action_class == "KNOB" and by_axis["vector.lmul"].forkable_now
     vl = by_axis["vector.vl_strategy"]
     assert vl.action_class == "PASS" and not vl.forkable_now            # deferred work-item
