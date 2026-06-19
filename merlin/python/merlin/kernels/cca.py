@@ -128,6 +128,24 @@ def lift_asm(stream, *, op: str, source: str, backend: str = "rvv") -> CCA:
     )
 
 
+def lift_source(facts, *, op: str, source: str, backend: str = "rvv") -> CCA:
+    """Source-level lift from typed C-intrinsic facts (decode.clang_ast.SourceFacts) — the
+    cross-check for the asm lift. Reads decisions from RESOLVED intrinsic types, not substrings."""
+    sew, lmul = facts.dominant_vtype()
+    contraction = ("fused_fma" if facts.has("vfmacc", "vmacc", "vfwmacc", "vwmacc")
+                   else "mul_add" if (facts.has("vfmul", "vmul") and facts.has("vfadd", "vadd"))
+                   else None)
+    return CCA(
+        op=op, backend=[backend],
+        compute=ComputeFacet(op=op, contraction_form=contraction,
+                             widening=facts.has("vwmacc", "vfwmacc") > 0,
+                             reduction_form=("vredsum_tree" if facts.has("vredsum", "vfredusum") else None),
+                             epilogue=("requant_narrow" if facts.has("vnclip", "vfncvt") else None)),
+        vector=VectorFacet(sew=sew, lmul=lmul) if backend == "rvv" else None,
+        provenance={"level": "source_ast", "source": source, "confidence": "medium"},
+    )
+
+
 def lift_spatial(op_counts: dict, *, op: str, source: str,
                  dataflow: str | None = None, pe_rows: int | None = None,
                  pe_cols: int | None = None, backend: str = "gemmini") -> CCA:
