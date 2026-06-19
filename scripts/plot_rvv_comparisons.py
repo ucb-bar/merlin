@@ -94,19 +94,46 @@ ax.set_title("② Single GEMM · spike\n(proxy — ranks OUR approaches)", fonts
 ax.grid(True, axis="y", ls=":", alpha=0.35); ax.legend(fontsize=7.6, ncol=2)
 
 # ---- Panel 3: e2e speedup bars ----
+# Measured XNNPACK-kernels whole-model speedup vs the SAME frozen baseline (third e2e column;
+# output/rvv_bench/k1_e2e_xnnpack_bitvla.{json,md}). Only bitvla has the XNNPACK column today.
+# (model -> speedup of XNNPACK-kernels over baseline). XNNPACK swaps ONLY the f32 GEMM kernel;
+# graph/weights/runtime are identical to ours-optimized, so the bitvla gap (13.65 vs 9.18)
+# isolates kernel-level headroom: XNNPACK's hand RVV GEMM is ~1.49x our vfmacc whole-model.
+e2e_xnn = {"bitvla": 13.65}
 ax = fig.add_subplot(gs[2])
 names = [r[0] for r in e2e][::-1]
 sp_v = [r[3] for r in e2e][::-1]
 y = np.arange(len(names))
-ax.barh(y, sp_v, color="#e0a72e", height=0.55)
+has_xnn = [e2e_xnn.get(n) is not None for n in names]
+# Where an XNNPACK column exists, render the ours-optimized bar slimmer + above the XNNPACK bar.
+h_full, h_pair = 0.55, 0.26
+for i, n in enumerate(names):
+    if has_xnn[i]:
+        ax.barh(i + 0.16, sp_v[i], color="#e0a72e", height=h_pair, label=None)
+        ax.barh(i - 0.16, e2e_xnn[n], color="#c1467a", height=h_pair, label=None)
+    else:
+        ax.barh(i, sp_v[i], color="#e0a72e", height=h_full)
 for i, r in enumerate(e2e[::-1]):
-    ax.text(r[3] + 0.12, i, f"{r[3]}×", va="center", fontsize=11, fontweight="bold", color="#9c7415")
-    ax.text(0.15, i, f"{r[1]}s→{r[2]}s", va="center", fontsize=8, color="#222")
+    n = names[i]
+    if has_xnn[i]:
+        ax.text(r[3] + 0.15, i + 0.16, f"ours {r[3]}×", va="center", fontsize=8.5,
+                fontweight="bold", color="#9c7415")
+        ax.text(e2e_xnn[n] + 0.15, i - 0.16, f"XNNPACK {e2e_xnn[n]}×", va="center",
+                fontsize=8.5, fontweight="bold", color="#a03062")
+        ax.text(0.15, i + 0.16, f"{r[1]}s→{r[2]}s", va="center", fontsize=7, color="#222")
+    else:
+        ax.text(r[3] + 0.12, i, f"{r[3]}×", va="center", fontsize=11, fontweight="bold",
+                color="#9c7415")
+        ax.text(0.15, i, f"{r[1]}s→{r[2]}s", va="center", fontsize=8, color="#222")
 ax.axvline(1.0, color="#999", lw=1)
 ax.set_yticks(y); ax.set_yticklabels(names)
-ax.set_xlim(0, 11); ax.set_xlabel("whole-model speedup vs frozen baseline")
-ax.set_title("③ Whole-model e2e · K1\n(wall s; cos≥0.99999)", fontsize=11)
+ax.set_xlim(0, 16); ax.set_xlabel("whole-model speedup vs frozen baseline")
+ax.set_title("③ Whole-model e2e · K1\n(wall s; cos≥0.9999; ours vs XNNPACK kernel)", fontsize=11)
 ax.grid(True, axis="x", ls=":", alpha=0.35)
+from matplotlib.patches import Patch
+ax.legend(handles=[Patch(color="#e0a72e", label="ours-tiled (vfmacc)"),
+                   Patch(color="#c1467a", label="XNNPACK RVV GEMM")],
+          fontsize=7.6, loc="lower right")
 
 fig.suptitle("RVV GEMM — every measured comparison  (baseline · OpenBLAS · XNNPACK · ours)",
              fontsize=13, fontweight="bold", y=1.02)
