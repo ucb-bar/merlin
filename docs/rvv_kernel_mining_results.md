@@ -64,8 +64,10 @@ experts with resident-weight pack (fair vs ours' pack-free path), cos-gated:
 | model | baseline | best ours | XNNPACK | OpenBLAS | ours vs best expert |
 |---|---|---|---|---|---|
 | **bitvla** | 2.524 s | **v3 16.88×** (0.150 s) | 13.19× (0.191 s) | 13.39× (0.189 s) | **ours WINS (+1.26×)** |
-| **openvla** | 5.860 s | wholemodel 4.90× (1.195 s) | 8.93× (0.656 s) | 8.60× (0.682 s) | ours **55%** (XNN 1.82×) |
-| **rdt2** | 73.83 s | wholemodel 2.40× (30.78 s) | 3.89× (18.98 s) | 3.63× (20.32 s) | ours **62%** (XNN 1.62×) |
+| **openvla** | 5.855 s | wholemodel-**vf** 5.38× (1.089 s) | 8.92× (0.657 s) | 8.53× (0.686 s) | ours **60%** (XNN 1.66×) |
+| **rdt2** | 74.04 s | wholemodel-**vf** 2.45× (30.27 s) | 3.90× (18.97 s) | 3.64× (20.32 s) | ours **63%** (XNN 1.59×) |
+
+(openvla/rdt2 best-ours is the `.vf` kernel from iteration 2 of the loop — see §7 — which lifted ours 55%→60% / 62%→63%. The canonical, reproducible version of this whole table + the structural attribution is now produced by `merlin-compare` → `mined_knowledge/rvv/compare_*/`.)
 
 All cos ≥ 0.99999 (figure `paper_fourway.png`: all-4 with baseline + zoomed contest). **Honest verdict:
 ours is competitive with BOTH hand-tuned vendor libraries.** It **beats both** XNNPACK *and* OpenBLAS on
@@ -199,3 +201,29 @@ These are deliberate boundaries of the current results, not defects — listed s
 - **Composition limit.** The matmul features and the activation feature are full-schedule replacements,
   so they cannot currently compose (`CompositionError`). Getting matmul-v3 AND vectorized activation in one
   whole-model lowering needs a unified schedule (future work).
+
+---
+
+## 7. The iterative loop (and `merlin-compare`, the tool that drives it)
+
+The comparison is not a one-shot — it's a closed loop: **measure on real workloads → lift the residual
+divergence from asm (CCA) → route to a typed action → implement a default-off feature → re-measure → feed
+the new residual back.** Turns so far on the fp32 GEMM path:
+
+| turn | action (mined) | result |
+|---|---|---|
+| 1 | vfmacc forming (fused_vfmacc) → tiled → accumulator-residency (v3 / wholemodel) | bitvla beats both experts; openvla/rdt2 reach 55–62% |
+| 2 | `.vf` A-scalarize (kill the `vfmacc.vv` broadcast ladder, 20→6 insns/FMA) — `accumulator_resident_wholemodel_vf` | openvla 55→**60%**, rdt2 62→**63%** — a *modest* whole-model bump (1.04–1.09×) |
+
+**Turn 2's honest lesson:** the kernel-level 6.7× inner-loop reduction dampens to ~1.05× whole-model — the
+matmul *compute* is not the openvla/rdt2 bottleneck; **memory/packing is**. So the loop has surfaced the
+**next residual = packing/cache-blocking** (the breakdown's secondary factor), which is turn 3's input. This
+is the loop working: each turn closes part of the gap and reveals the next thing to abstract — diminishing
+per-turn returns, honestly measured, not overclaimed.
+
+**The tool:** `merlin-compare` makes one turn's measurement+comparison a single repeatable command — a spec
+(`configs × workloads × target × metric`) → a versioned `compare_<ts>/` artifact with the measured table,
+per-config CCA, **auto-attribution** (measured gap × structural divergence × routed action — it
+auto-identifies the `.vf`-vs-`.vv` driver), and figures. Target-agnostic spec (RVV/K1 impl now). So the loop
+is now: `merlin-compare` → read the routed actions → implement → `merlin-compare` again. Reproducible,
+scalable (add a model/target/candidate = a spec line), not me hand-stitching agents.
