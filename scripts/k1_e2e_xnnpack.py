@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import tempfile
 import traceback
 from dataclasses import replace
@@ -50,19 +51,23 @@ def run_cfg(model_dir: Path, pkg, golden: np.ndarray, n: int, tag: str,
         work = Path(tempfile.mkdtemp(prefix=f"k1xnn_{tag}_{i}_"))
         try:
             res = k1.run_on_k1(model_dir, work, pkg, timeout=900, kernel_backend=kernel_backend)
+            g = zm._gate(res["prefix"], {"fp32": golden})
+            cos = g["fp32_cos"]
+            n_xnn = res.get("n_xnn_routed", 0)
+            runs.append({"wall_ns": res["metrics"].get("wall_ns"),
+                         "time_ticks": res["metrics"].get("time_ticks"),
+                         "cycles_est": res["metrics"].get("cycles"),
+                         "fp32_cos": cos, "vlen": res.get("vlen")})
+            print(f"  [{tag}] run {i}: wall_ns={runs[-1]['wall_ns']} cos={cos:.6f} "
+                  f"vlen={res.get('vlen')} n_xnn={n_xnn}")
         except Exception as e:  # noqa: BLE001
             blocker = f"{type(e).__name__}: {str(e)[:400]}"
             print(f"  [{tag}] run {i}: BLOCKED — {blocker}")
             break
-        g = zm._gate(res["prefix"], {"fp32": golden})
-        cos = g["fp32_cos"]
-        n_xnn = res.get("n_xnn_routed", 0)
-        runs.append({"wall_ns": res["metrics"].get("wall_ns"),
-                     "time_ticks": res["metrics"].get("time_ticks"),
-                     "cycles_est": res["metrics"].get("cycles"),
-                     "fp32_cos": cos, "vlen": res.get("vlen")})
-        print(f"  [{tag}] run {i}: wall_ns={runs[-1]['wall_ns']} cos={cos:.6f} "
-              f"vlen={res.get('vlen')} n_xnn={n_xnn}")
+        finally:
+            # Each build tempdir holds an ~897 MB copy of the model weights; clean it after the
+            # run so a multi-config/N-rep campaign doesn't fill the root fs (the ENOSPC we just hit).
+            shutil.rmtree(work, ignore_errors=True)
     walls = sorted(r["wall_ns"] for r in runs if r["wall_ns"])
     spread = None
     if walls:
