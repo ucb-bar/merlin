@@ -93,7 +93,12 @@ _PLOT_META = {
     "work_coverage_by_workload": ("A", _CAPTURED, "Recovered linear-GEMM vs attention MAC mass per workload (IR shapes; captured-config; log)."),
     "visible_linear_fraction": ("A", _NOSCALE, "Share of recovered MAC work that is linear-GEMM geometry (rest = attention)."),
     "deployment_magnitude": ("B", _DEPLOY, "Deployment params & MACs/replan by config-composition (embed + per-layer x real n_layers)."),
-    "arithmetic_intensity_roofline": ("A/B", _DEPLOY, "HW-INDEPENDENT roofline: arithmetic intensity (MAC/byte) resident vs reload-every-step. No chip assumed."),
+    "arithmetic_intensity_roofline": ("A/B", _DEPLOY, "HW-INDEPENDENT roofline: AI (MAC/byte) on x; ridge is a parametric band, not a chip; arrows = residency moving each workload toward compute-bound."),
+    "capture_fidelity": ("A/B", _NOSCALE, "Per feature x workload: structural contract recovered from IR (S/R/M) vs erased (x) vs intentionally not-claimed (—). The contribution, made visual."),
+    "table_capture_summary": ("A", _NOSCALE, "Recovered loop contract per workload: K, repeated-region ops, loop-carried operands, KV cache — all Tier-A from scf.for."),
+    "table_low_bit_tiers": ("A/B", _NOSCALE, "Low-bit tier per workload; int8 accuracy ratified by the measured gate; fp8/int4 never assumed."),
+    "table_deployment_magnitudes": ("B", _DEPLOY, "Deployment params/MACs by config-composition; openVLA & tiny_llama are exact external anchors."),
+    "table_arithmetic_intensity": ("A/B", _DEPLOY, "Arithmetic intensity resident vs reload + residency gain per workload (HW-independent)."),
 }
 
 
@@ -310,18 +315,30 @@ def _r_decision_weight_residency(cs, facts, ax):
         return False
     kmax = max(max(int(r["invocations"]), 2) for r in rows)
     ks = list(range(1, kmax + 1))
+    import matplotlib.lines as mlines
+    # declutter: highlight the 3 heaviest-reload workloads in color + label; the rest stay light grey.
+    rows = sorted(rows, key=lambda r: -int(r["weight_bytes"]))
+    top = {r["workload"] for r in rows[:3]}
+    ci = 0
     for r in rows:
-        wb = int(r["weight_bytes"])
-        line, = ax.plot(ks, [wb * k for k in ks], label=f"{r['workload']} reload")
-        ax.plot(ks, [wb] * len(ks), "--", color=line.get_color(), alpha=0.6)
-        kr = int(r["invocations"])
-        ax.scatter([kr], [wb * kr], color=line.get_color(), zorder=5, s=18)
-    ax.set_title("Decision: weight residency -> bytes moved vs loop count\n"
-                 "(solid=reload every step, dashed=resident; dot=IR-recovered K (scf.for trip count))")
+        wb, kr, hot = int(r["weight_bytes"]), int(r["invocations"]), r["workload"] in top
+        col = PALETTE[ci % len(PALETTE)] if hot else "#cdc3ad"
+        if hot:
+            ci += 1
+        ax.plot(ks, [wb * k for k in ks], color=col, lw=1.8 if hot else 1.0, zorder=3 if hot else 1)
+        ax.plot(ks, [wb] * len(ks), "--", color=col, alpha=0.7 if hot else 0.4)
+        ax.scatter([kr], [wb * kr], color=col, zorder=5, s=26 if hot else 14)
+        if hot:
+            ax.annotate(f"{r['workload']} (K={kr})", (kr, wb * kr), fontsize=8,
+                        xytext=(4, 3), textcoords="offset points", color=col)
+    ax.set_title("Decision: weight residency -> bytes moved vs loop count K (IR-recovered, scf.for)")
     ax.set_xlabel("head loop count K")
-    ax.set_ylabel("weight bytes moved")
+    ax.set_ylabel("weight bytes moved (log10)")
     ax.set_yscale("log")
-    ax.legend(fontsize=8, ncol=2)
+    ax.legend(handles=[mlines.Line2D([], [], color="#5c5446", label="reload every step (x K)"),
+                       mlines.Line2D([], [], color="#5c5446", ls="--", label="resident (load once)"),
+                       mlines.Line2D([], [], color="#5c5446", marker="o", ls="", label="IR-recovered K")],
+              fontsize=8, loc="upper left")
     return True
 
 
@@ -442,7 +459,19 @@ def _r_boundary_necessity_matrix(cs, facts, ax):
         for j, w in enumerate(wls):
             ax.text(j, i, _NEC_ABBR[r[w]], ha="center", va="center", fontsize=8,
                     color="white" if mat[i][j] >= 3 else "black")
-    ax.set_title("Abstraction necessity (N=necessary U=useful P=possible B=blocked –=N/A)")
+    # right-margin summary: # workloads for which the abstraction is necessary-or-useful (rank >= 3)
+    strong = [sum(1 for w in wls if _NEC_RANK[r[w]] >= 3) for r in rows]
+    iax = ax.inset_axes([1.03, 0.0, 0.16, 1.0])
+    iax.barh(range(len(rows)), strong, color=PALETTE[2], height=0.7)
+    iax.set_ylim(ax.get_ylim())
+    iax.set_yticks([])
+    iax.set_xlim(0, len(wls))
+    iax.tick_params(labelsize=8)
+    iax.set_xlabel(f"# need N/U\n(of {len(wls)})", fontsize=8)
+    for i, v in enumerate(strong):
+        iax.text(v + 0.1, i, str(v), va="center", fontsize=8, color="#5c5446")
+    ax.set_title("Abstraction necessity (N=necessary U=useful P=possible B=blocked –=N/A) — "
+                 "build top rows first")
     return True
 
 
@@ -629,13 +658,13 @@ def _r_workload_influence_loo_delta(cs, facts, ax):
 
 def _r_deployment_magnitude(cs, facts, ax):
     """Deployment-scale params & MACs/replan by config-composition (the T1 magnitude fix)."""
-    rows = _rows(cs / "real_config_magnitudes.csv")
+    rows = [r for r in _rows(cs / "real_config_magnitudes.csv") if r["workload"] != "small_llama"]
     if not rows:
         return False
     rows = sorted(rows, key=lambda r: -float(r["total_gemm_params"]))
     wl = [r["workload"] for r in rows]
     params = [float(r["total_gemm_params"]) for r in rows]
-    macs = [float(r["gemm_macs_per_token"]) for r in rows]
+    macs = [float(r["gemm_macs_per_token"] or 0) for r in rows]
     x = range(len(wl))
     ax.bar([i - 0.2 for i in x], params, 0.4, label="GEMM params")
     ax.bar([i + 0.2 for i in x], macs, 0.4, label="GEMM MACs / token")
@@ -648,29 +677,190 @@ def _r_deployment_magnitude(cs, facts, ax):
 
 
 def _r_arithmetic_intensity_roofline(cs, facts, ax):
-    """HW-INDEPENDENT roofline: arithmetic intensity (MAC/byte), resident vs reload-every-step."""
-    rows = _rows(cs / "arithmetic_intensity.csv")
+    """HW-INDEPENDENT roofline DIAGRAM: AI on x (log), normalized attainable throughput on y; the ridge
+    is a PARAMETRIC band over plausible machine balances (no chip). Each workload sits at its AI; an arrow
+    shows residency moving it rightward (reload-every-step -> resident) toward compute-bound."""
+    import math
+    rows = [r for r in _rows(cs / "arithmetic_intensity.csv") if r["workload"] != "small_llama"]
     if not rows:
         return False
-    rows = sorted(rows, key=lambda r: -float(r["ai_resident_mac_per_byte"]))
-    wl = [r["workload"] for r in rows]
-    res = [float(r["ai_resident_mac_per_byte"]) for r in rows]
-    non = [float(r["ai_nonresident_mac_per_byte"]) for r in rows]
-    gain = [float(r["residency_gain"]) for r in rows]
-    x = range(len(wl))
-    ax.bar([i - 0.2 for i in x], non, 0.4, label="reload every step (floor = 1/dtype)")
-    ax.bar([i + 0.2 for i in x], res, 0.4, label="weights resident")
-    for i, g in zip(x, gain):
-        ax.annotate(f"{g:.1f}x", (i + 0.2, res[i]), fontsize=8, ha="center", va="bottom",
-                    color="#5c5446")
-    ax.set_xticks(list(x), wl, rotation=25, fontsize=8)
-    ax.set_ylabel("arithmetic intensity (MAC / byte)")
-    ax.set_title("HW-independent roofline x-axis: AI resident vs reload (label = residency gain)")
-    ax.legend(fontsize=8)
+    rows = sorted(rows, key=lambda r: float(r["ai_resident_mac_per_byte"]))
+    B0, Blo, Bhi = 2.0, 1.0, 4.0                       # illustrative ridge + plausible band (MAC/byte)
+    xs = [0.3 * (10 ** (i * math.log10(8 / 0.3) / 200)) for i in range(201)]
+    roof = lambda ai, B: min(1.0, ai / B)             # noqa: E731  normalized attainable (peak=1)
+    ax.fill_between(xs, [roof(a, Bhi) for a in xs], [roof(a, Blo) for a in xs],
+                    color=PALETTE[0], alpha=0.13, label=f"ridge band (machine balance {Blo:.0f}-{Bhi:.0f})")
+    ax.plot(xs, [roof(a, B0) for a in xs], color="#5c5446", lw=1.6,
+            label=f"roofline @ illustrative balance B={B0:.0f} MAC/byte")
+    import matplotlib.lines as mlines
+    nonres = float(rows[0]["ai_nonresident_mac_per_byte"])     # 0.5 at bf16, shared by all
+    ax.scatter([nonres], [roof(nonres, B0)], color="#b9ad97", zorder=4, s=44, edgecolor="#5c5446")
+    ax.annotate("all workloads if\nreloaded every step\n(AI=1/dtype)", (nonres, roof(nonres, B0)),
+                fontsize=8, xytext=(6, -32), textcoords="offset points", color="#5c5446")
+    wl_handles = []
+    for i, r in enumerate(rows):
+        res, g = float(r["ai_resident_mac_per_byte"]), float(r["residency_gain"])
+        y, col = roof(res, B0), PALETTE[i % len(PALETTE)]
+        ax.annotate("", xy=(res, y), xytext=(nonres, roof(nonres, B0)),
+                    arrowprops=dict(arrowstyle="->", color=col, alpha=0.65, lw=1.2))
+        ax.scatter([res], [y], color=col, zorder=5, s=48)
+        wl_handles.append(mlines.Line2D([], [], color=col, marker="o", ls="",
+                                        label=f"{r['workload']} ({g:.1f}x)"))
+    ax.set_xscale("log")
+    ax.set_xlim(0.3, 8)
+    ax.set_ylim(0, 1.18)
+    ax.set_xlabel("arithmetic intensity (MAC / byte) — a WORKLOAD property, no HW assumed")
+    ax.set_ylabel("attainable throughput / peak (normalized; HW-independent)")
+    ax.set_title("HW-independent roofline: residency moves each workload toward compute-bound")
+    # two legends: the roofline/band, and the workloads (with residency gain) — keeps labels off the curve
+    band_leg = ax.legend(fontsize=8, loc="upper left")
+    ax.add_artist(band_leg)
+    ax.legend(handles=wl_handles, fontsize=8, loc="lower right", ncol=2, title="workload (residency gain)",
+              title_fontsize=8)
     return True
 
 
+# ---- capture fidelity (the thesis figure) + slide tables ------------------------------------------
+_FID_ORDER = ["strong", "recovered", "measured", "assumed", "erased", "not_claimed", "na"]
+_FID_COLOR = {"strong": "#5e8db4", "recovered": "#8fa674", "measured": "#7c9aa6",
+              "assumed": "#d2a23f", "erased": "#cf8a82", "not_claimed": "#c9bfa8", "na": "#efe7d6"}
+_FID_GLYPH = {"strong": "S", "recovered": "R", "measured": "M", "assumed": "A",
+              "erased": "x", "not_claimed": "—", "na": ""}
+
+
+def _fid_state(s: str) -> str:
+    s = str(s).lower()
+    for k in ("strong", "recovered", "measured", "assumed", "erased", "not_claimed"):
+        if s.startswith(k):
+            return k
+    return "na"
+
+
+def _r_capture_fidelity(cs, facts, ax):
+    """THE thesis figure: per feature x workload, what the loop-preserving capture recovers from IR
+    (S=structural, R=recovered, M=measured-host) vs erased (x) vs intentionally not-claimed (-)."""
+    from merlin.dse_guidance import insight_mining as IM
+    import matplotlib.patches as mpatches
+    from matplotlib.colors import ListedColormap
+    cf = IM.capture_fidelity(cs)
+    wls, matrix = cf.get("workloads", []), cf.get("matrix", [])
+    if not matrix:
+        return False
+    feats = [row["feature"] for row in matrix]
+    states = [[_fid_state(row.get(w, "")) for w in wls] for row in matrix]
+    cidx = {s: i for i, s in enumerate(_FID_ORDER)}
+    cmap = ListedColormap([_FID_COLOR[s] for s in _FID_ORDER])
+    grid = [[cidx[s] for s in row] for row in states]
+    ax.imshow(grid, aspect="auto", cmap=cmap, vmin=0, vmax=len(_FID_ORDER) - 1)
+    ax.set_xticks(range(len(wls)), wls, rotation=30, fontsize=8)
+    ax.set_yticks(range(len(feats)), [f.replace("_", " ") for f in feats], fontsize=8)
+    for i, row in enumerate(states):
+        for j, s in enumerate(row):
+            if _FID_GLYPH[s]:
+                ax.text(j, i, _FID_GLYPH[s], ha="center", va="center", fontsize=8,
+                        color="white" if s in ("strong", "erased", "measured") else "#2f2a23")
+    # right-margin summary: # workloads recovered (S/R/M) per feature
+    rec = [sum(1 for s in row if s in ("strong", "recovered", "measured")) for row in states]
+    iax = ax.inset_axes([1.03, 0.0, 0.15, 1.0])
+    iax.barh(range(len(feats)), rec, color=PALETTE[2], height=0.7)
+    iax.set_ylim(ax.get_ylim())
+    iax.set_yticks([])
+    iax.set_xlim(0, len(wls))
+    iax.tick_params(labelsize=8)
+    iax.set_xlabel(f"# recov\n(of {len(wls)})", fontsize=8)
+    for i, v in enumerate(rec):
+        iax.text(v + 0.1, i, str(v), va="center", fontsize=8, color="#5c5446")
+    handles = [mpatches.Patch(color=_FID_COLOR[s], label=lbl) for s, lbl in
+               [("strong", "structural (S)"), ("recovered", "recovered-from-IR (R)"),
+                ("measured", "measured-host (M)"), ("erased", "erased (x)"),
+                ("not_claimed", "not-claimed (—)"), ("na", "n/a")]]
+    ax.legend(handles=handles, fontsize=8, ncol=3, loc="upper center", bbox_to_anchor=(0.5, -0.16))
+    ax.set_title("Capture fidelity: loop-preserving capture recovers the structural contract from IR")
+    return True
+
+
+def _h(n: float) -> str:
+    n = float(n)
+    for d, suf in ((1e9, "B"), (1e6, "M"), (1e3, "k")):
+        if abs(n) >= d:
+            return f"{n / d:.2f}{suf}"
+    return f"{n:.0f}"
+
+
+def _render_table(ax, columns, rows, title):
+    ax.axis("off")
+    tbl = ax.table(cellText=rows, colLabels=columns, loc="center", cellLoc="center")
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(8.5)
+    tbl.scale(1, 1.5)
+    for (r, c), cell in tbl.get_celld().items():
+        cell.set_edgecolor("#b9ad97")
+        if r == 0:
+            cell.set_facecolor(PALETTE[0])
+            cell.set_text_props(color="white", fontweight="bold")
+        else:
+            cell.set_facecolor("#fbf8f1" if r % 2 else "#efe7d6")
+    ax.set_title(title, pad=14)
+    return True
+
+
+def _r_table_capture_summary(cs, facts, ax):
+    rows = [r for r in _rows(cs / "loop_aware_contract.csv") if r["workload"] != "small_llama"]
+    if not rows:
+        return False
+    rows = sorted(rows, key=lambda r: r["workload"])
+    body = [[r["workload"], r["K_ir"], r["repeated_region_ops"], r["n_loop_carried"],
+             (r["kv_cache_bytes_ir"] if r["kv_cache_bytes_ir"] not in ("", "n/a")
+              else "n/a (prefix-KV)")] for r in rows]
+    return _render_table(ax, ["workload", "K (IR)", "repeated\nregion ops", "loop-carried\noperands",
+                              "KV cache (IR)"], body,
+                         "Recovered loop contract (all Tier-A, from scf.for)")
+
+
+def _r_table_low_bit_tiers(cs, facts, ax):
+    rows = _rows(cs / "low_bit_visibility.csv")
+    if not rows:
+        return False
+    order = {"native": 0, "qdq_int8": 1, "dequant_only": 2}
+    rows = sorted(rows, key=lambda r: (order.get(r["tier"], 9), r["workload"]))
+    body = [[r["workload"], r["tier"], r["storage"], r["scale"],
+             r["accuracy_status"].split(" (")[0]] for r in rows]
+    return _render_table(ax, ["workload", "tier", "storage", "scale", "int8 accuracy"], body,
+                         "Low-bit visibility (int8 ratified by measured gate; fp8/int4 never assumed)")
+
+
+def _r_table_deployment_magnitudes(cs, facts, ax):
+    rows = [r for r in _rows(cs / "real_config_magnitudes.csv") if r["workload"] != "small_llama"]
+    if not rows:
+        return False
+    rows = sorted(rows, key=lambda r: -float(r["total_gemm_params"]))
+    body = [[r["workload"], r["total_layers"], _h(r["total_gemm_params"]),
+             (_h(r["gemm_macs_per_token"]) if r["gemm_macs_per_token"] else "n/a"),
+             ("anchor" if r["workload"] in ("openvla", "tiny_llama") else "composed")]
+            for r in rows]
+    return _render_table(ax, ["workload", "layers", "GEMM params", "MACs/token", "source"], body,
+                         "Deployment magnitudes by config-composition (exact for layer-identical stacks)")
+
+
+def _r_table_arithmetic_intensity(cs, facts, ax):
+    rows = [r for r in _rows(cs / "arithmetic_intensity.csv") if r["workload"] != "small_llama"]
+    if not rows:
+        return False
+    rows = sorted(rows, key=lambda r: -float(r["residency_gain"]))
+    body = [[r["workload"], r["K"], f"{float(r['ai_resident_mac_per_byte']):.2f}",
+             f"{float(r['ai_nonresident_mac_per_byte']):.2f}",
+             f"{float(r['residency_gain']):.1f}x"] for r in rows]
+    return _render_table(ax, ["workload", "K", "AI resident\n(MAC/byte)", "AI reload\n(MAC/byte)",
+                              "residency\ngain"], body,
+                         "Arithmetic intensity (HW-independent; residency gain = (prefix+rep*K)/(prefix+rep))")
+
+
 _RENDERERS = {
+    "capture_fidelity": _r_capture_fidelity,
+    "table_capture_summary": _r_table_capture_summary,
+    "table_low_bit_tiers": _r_table_low_bit_tiers,
+    "table_deployment_magnitudes": _r_table_deployment_magnitudes,
+    "table_arithmetic_intensity": _r_table_arithmetic_intensity,
     "deployment_magnitude": _r_deployment_magnitude,
     "arithmetic_intensity_roofline": _r_arithmetic_intensity_roofline,
     "evidence_type_by_workload": _r_evidence_by_workload,
@@ -715,8 +905,10 @@ def render_plots(plot_manifest, cs_dir, facts, out_dir) -> list[str]:
     manifest_ids = {p["plot_id"] for p in plot_manifest}
     # always-on headline figures (deployment-scale + HW-independent roofline) even if the manifest
     # predates them — they are the reviewer-facing magnitude/roofline figures (Phase B/C).
-    extra = [{"plot_id": pid} for pid in ("deployment_magnitude", "arithmetic_intensity_roofline")
-             if pid not in manifest_ids]
+    extra = [{"plot_id": pid} for pid in (
+        "capture_fidelity", "deployment_magnitude", "arithmetic_intensity_roofline",
+        "table_capture_summary", "table_low_bit_tiers", "table_deployment_magnitudes",
+        "table_arithmetic_intensity") if pid not in manifest_ids]
     for p in list(plot_manifest) + extra:
         r = _RENDERERS.get(p["plot_id"])
         if r is None or p.get("recommendation") == "omit":
