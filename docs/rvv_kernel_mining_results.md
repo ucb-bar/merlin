@@ -78,6 +78,15 @@ is essential**: with the right kernel ours is in the experts' league everywhere 
 with the wrong one it is catastrophic. smolVLA e2e is an honest `not_run` (SpacemiT clang backend crash,
 hits the frozen baseline too).
 
+**Why ours is ~55–62% on openvla/rdt2 (decoded — `output/kernels/ceiling/kernel_breakdown.md`):** NOT lane-width
+and NOT residency — `ours_wholemodel` is already NR=32/LMUL=m4/vsetvlmax + accumulator-resident with 0 spills
+(identical lane-width to XNNPACK, wider than OpenBLAS m2). The dominant residual is the **`vfmacc.vv`
+A-broadcast ladder**: lacking `vfmacc.vf`, the kernel rebuilds each A scalar into a `vector<32>` via a
+vslideup/vmv ladder every K-step → **~20 inner-loop insns/FMA vs XNNPACK's ~3** (6.7× inflation). Fix (next
+iteration): carry v3's `scalarize_a_reads` (emits `.vf`) into `accumulator_resident_wholemodel` keeping its
+M/N-tail clamps so it survives the small-M openvla/rdt2 matmuls. This is the loop's value — a *measured*
+residual corrected a wrong lane-width hypothesis.
+
 ### 3b. Single-GEMM ceiling on K1 (rdtime ticks, inner-compute) — the crossover
 `ours-intrinsic` (hand ceiling) beats **both** experts 32³→384³, then **OpenBLAS retakes the lead at
 512³** (cache-blocking amortizes). The shipped compiler path (`ours-tiled`) trails the experts ~10×;
