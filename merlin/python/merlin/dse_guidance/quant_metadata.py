@@ -78,6 +78,65 @@ def native_quant_rows(cs_dir) -> list[dict]:
     return rows
 
 
+_LOWBIT_TIER_COLS = ["workload", "tier", "storage", "scale", "compute", "accuracy_status",
+                     "honest_gap", "evidence"]
+
+
+def low_bit_visibility_rows(cs_dir) -> list[dict]:
+    """P24: corpus-wide HONEST low-bit tiering per studyable workload:
+      - **native**       : a native packed-low-bit capture exists (bitvla: packed int2 + absmean scale
+                           + the named quant_ext.unpack_int2 op).
+      - **qdq_int8**     : a torchao-int8 qdq capture exposes storage dtype + per-channel scale
+                           (dequant-before-matmul; compute f32). A stand-in, not the model's native scheme.
+      - **dequant_only** : only the f32 capture — low-bit abstractions blocked (honest).
+    int8 candidates are ratified by the MEASURED W8A8 accuracy gate; fp8/int4 stay unavailable (never
+    assumed). Native packed fp8/int4 for the rest needs model-specific quant exports (scoped, not faked)."""
+    from merlin.common import paths as _paths
+    from merlin.dse_guidance.case_study import available_models
+    bench = _paths.merlin_dir() / "benchmarks" / "dse_guidance"
+    nat_dir, lvl_dir = bench / "recaptures_native", bench / "recaptures_levels"
+    # measured W8A8 accuracy gate (which int8 variants pass/fail/were-not-measured)
+    try:
+        from merlin.dse_guidance import accuracy_gate as AG
+        _pts = AG.load()
+    except Exception:  # noqa: BLE001
+        AG, _pts = None, []
+    def _acc(w):
+        if AG is None:
+            return "unavailable (int8 not measured for this model)"
+        st = AG.status_for(w, "int8_w8a8", _pts)
+        return ({"pass": "measured_pass", "fail": "measured_fail"}.get(st)
+                or "unavailable (int8 not measured for this model)")
+    rows = []
+    for w in available_models():
+        nat = (nat_dir / w / "model.mlir")
+        qdq = (lvl_dir / w / "model_qdq.mlir")
+        if nat.is_file() and "quant_ext.unpack_int2" in nat.read_text(errors="ignore"):
+            tier, storage, scale, gap = ("native", "int2_packed_in_i8",
+                                         "per_tensor_absmean", "none (native ternary fully recovered)")
+        elif qdq.is_file():
+            tier, storage, scale, gap = ("qdq_int8", "i8", "per_channel",
+                                         "torchao int8 stand-in — model's native scheme (fp8/int4/ternary) "
+                                         "needs a model-specific capture")
+        else:
+            tier, storage, scale, gap = ("dequant_only", "f32 (dequantized at load)", "erased",
+                                         "low-bit abstractions blocked; needs a qdq/native capture")
+        rows.append({
+            "workload": w, "tier": tier, "storage": storage, "scale": scale,
+            "compute": "f32 (dequant-before-matmul)" if tier != "native"
+                       else "f32 (native unpack+scale, dequant-before-matmul)",
+            "accuracy_status": _acc(w),
+            "honest_gap": gap,
+            "evidence": "recovered_from_ir" if tier != "dequant_only" else "n/a (f32 capture)",
+        })
+    return rows
+
+
+def low_bit_visibility_csv(cs_dir) -> str:
+    from merlin.dse_guidance.case_study import _csv
+    return _csv(low_bit_visibility_rows(cs_dir), _LOWBIT_TIER_COLS)
+
+
 def native_csv(cs_dir) -> str:
     rows = native_quant_rows(cs_dir)
     if not rows:

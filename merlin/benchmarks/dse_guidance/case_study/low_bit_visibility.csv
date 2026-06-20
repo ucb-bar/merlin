@@ -1,0 +1,11 @@
+workload,tier,storage,scale,compute,accuracy_status,honest_gap,evidence
+rdt,qdq_int8,i8,per_channel,f32 (dequant-before-matmul),unavailable (int8 not measured for this model),torchao int8 stand-in — model's native scheme (fp8/int4/ternary) needs a model-specific capture,recovered_from_ir
+openvla,qdq_int8,i8,per_channel,f32 (dequant-before-matmul),measured_pass,torchao int8 stand-in — model's native scheme (fp8/int4/ternary) needs a model-specific capture,recovered_from_ir
+tiny_llama,dequant_only,f32 (dequantized at load),erased,f32 (dequant-before-matmul),measured_pass,low-bit abstractions blocked; needs a qdq/native capture,n/a (f32 capture)
+rdt2,dequant_only,f32 (dequantized at load),erased,f32 (dequant-before-matmul),measured_pass,low-bit abstractions blocked; needs a qdq/native capture,n/a (f32 capture)
+groot_n1d7,dequant_only,f32 (dequantized at load),erased,f32 (dequant-before-matmul),unavailable (int8 not measured for this model),low-bit abstractions blocked; needs a qdq/native capture,n/a (f32 capture)
+molmoact,dequant_only,f32 (dequantized at load),erased,f32 (dequant-before-matmul),unavailable (int8 not measured for this model),low-bit abstractions blocked; needs a qdq/native capture,n/a (f32 capture)
+smolvla,dequant_only,f32 (dequantized at load),erased,f32 (dequant-before-matmul),unavailable (int8 not measured for this model),low-bit abstractions blocked; needs a qdq/native capture,n/a (f32 capture)
+pi05,qdq_int8,i8,per_channel,f32 (dequant-before-matmul),unavailable (int8 not measured for this model),torchao int8 stand-in — model's native scheme (fp8/int4/ternary) needs a model-specific capture,recovered_from_ir
+xr0,dequant_only,f32 (dequantized at load),erased,f32 (dequant-before-matmul),unavailable (int8 not measured for this model),low-bit abstractions blocked; needs a qdq/native capture,n/a (f32 capture)
+bitvla,native,int2_packed_in_i8,per_tensor_absmean,"f32 (native unpack+scale, dequant-before-matmul)",measured_pass,none (native ternary fully recovered),recovered_from_ir
