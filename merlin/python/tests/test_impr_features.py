@@ -190,6 +190,95 @@ def test_mtail_wholemodel_features_baseline_safe():
         assert f.schedule_replace is True
 
 
+def test_wholemodel_vf_mr4_register_block_for_a_reuse():
+    # ITERATION-3 packing/memory residual feature: the MR=4 register-block variant of the vf kernel
+    # for A-operand REUSE (the OpenBLAS lever). It must be registered, default-off-safe, and its
+    # schedule must clamp the matmul M tile to MR_mm=4 (4 accumulator rows -> 1 B-load shared across
+    # 4 vfmacc.vf) while keeping the batch_matmul N-tail clamp NR_bmm=8. The MR=1 sibling
+    # (accumulator_resident_wholemodel_vf) keeps the M=1 tile for the small-M VLA matmuls.
+    f = F.get("accumulator_resident_wholemodel_vf_mr4")
+    assert f.action_class == "PASS" and f.schedule_replace is True
+    # default-off: baseline byte-identical
+    base_pipe = P.build_rvv_pipeline("/tmp/s.mlir")
+    assert P.build_rvv_pipeline("/tmp/s.mlir", features=frozenset()) == base_pipe
+    assert F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset()) == P.RVV_TRANSFORM_SCHEDULE
+    mr4 = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset(["accumulator_resident_wholemodel_vf_mr4"]))
+    mr1 = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset(["accumulator_resident_wholemodel_vf"]))
+    assert mr4 != mr1 and mr4 != P.RVV_TRANSFORM_SCHEDULE
+    # MR=4 register block on the matmul path (4 output rows -> 4 accumulators, A-reuse)
+    assert "[4, 16, 0]" in mr4 and "[4, 16, 1]" in mr4
+    # the MR=1 sibling clamps the matmul M tile to 1 (small-M VLA safe, no A-reuse)
+    assert "[1, 16, 0]" in mr1 and "[1, 16, 1]" in mr1
+    # both keep the batch_matmul N-tail clamp NR_bmm=8
+    assert "[1, 4, 8, 0]" in mr4 and "[1, 4, 8, 0]" in mr1
+    # it rides the v3 (vfmacc.vf) runner so the A-scalarization rewrite fires
+    assert "accumulator_resident_wholemodel_vf_mr4" in F.ACCUM_RESIDENT_V3_NAMES
+
+
+def test_memory_traffic_facet_quantifies_loads_per_fma():
+    # The iteration-3 memory-traffic decode facet (decode/memory.analyze_memory) must structurally
+    # classify K-loop loads (unit-stride vle vs strided vlse vs scalar flw) over the FMA loop and
+    # compute loads/useful-FMA — the data-movement metric the CCA vector/compute facets are blind to.
+    # Synthetic stream is built straight from RawInsn (no toolchain needed) so the test is hermetic.
+    from merlin.kernels.decode.objdump import RawInsn
+    from merlin.kernels.decode.rvv import VInsn, VType, InsnStream
+    from merlin.kernels.decode.memory import analyze_memory
+
+    vt = VType(sew=32, lmul=4.0, tail="ta", mask="ma")
+
+    def vi(addr, mn, *ops):
+        is_vec = mn.startswith("v")
+        return VInsn(raw=RawInsn(addr=addr, mnemonic=mn, operands=list(ops)),
+                     is_vector=is_vec, vtype=vt if is_vec else None)
+
+    # An MR=1 .vf K-loop (the XNNPACK / wholemodel_vf shape): 1 unit-stride B load (vle32.v) + 1
+    # scalar A load (flw) + 1 vfmacc.vf + a back-edge branch to the loop top.
+    mr1 = InsnStream(insns=[
+        vi(0x100, "vle32.v", "v12", "(a3)"),
+        vi(0x104, "flw", "fa5", "0x0(s1)"),
+        vi(0x108, "vfmacc.vf", "v8", "fa5", "v12"),
+        vi(0x10c, "bne", "s1", "a5", "0x100"),   # back-edge (target < addr)
+    ])
+    m = analyze_memory(mr1)
+    assert m is not None
+    assert m.fma_in_loop == 1
+    assert m.vec_unit_loads == 1 and m.scalar_loads == 1
+    assert m.vec_strided_loads == 0 and m.broadcast_ladder_ops == 0
+    assert m.loads_per_fma == 2.0 and m.unit_stride_only is True
+
+    # An MR=4 register block (the vf_mr4 A-reuse shape): ONE B-row load shared across 4 vfmacc.vf
+    # (4 A scalars) -> loads/FMA drops to (1 vle + 4 flw)/4 = 1.25.
+    mr4 = InsnStream(insns=[
+        vi(0x200, "vle32.v", "v12", "(a3)"),
+        vi(0x204, "flw", "fa0", "0x0(s1)"),
+        vi(0x208, "flw", "fa1", "0x4(s1)"),
+        vi(0x20c, "flw", "fa2", "0x8(s1)"),
+        vi(0x210, "flw", "fa3", "0xc(s1)"),
+        vi(0x214, "vfmacc.vf", "v8", "fa0", "v12"),
+        vi(0x218, "vfmacc.vf", "v12", "fa1", "v12"),
+        vi(0x21c, "vfmacc.vf", "v16", "fa2", "v12"),
+        vi(0x220, "vfmacc.vf", "v20", "fa3", "v12"),
+        vi(0x224, "bne", "s1", "a5", "0x200"),
+    ])
+    m4 = analyze_memory(mr4)
+    assert m4.fma_in_loop == 4
+    assert m4.vec_unit_loads == 1 and m4.scalar_loads == 4
+    assert m4.loads_per_fma == 1.25   # the A-reuse win: 1 B-load amortized over MR=4 FMAs
+
+    # A strided / vfmacc.vv broadcast-ladder loop (the pre-iteration-2 .vv shape) must be flagged:
+    # vlse32.v (strided) + a vslideup/vmv broadcast ladder, NOT unit_stride_only.
+    vv = InsnStream(insns=[
+        vi(0x300, "vlse32.v", "v12", "(a3)", "a1"),
+        vi(0x304, "vslideup.vi", "v4", "v2", "0x1"),
+        vi(0x308, "vmv1r.v", "v6", "v4"),
+        vi(0x30c, "vfmacc.vv", "v8", "v6", "v12"),
+        vi(0x310, "bne", "s1", "a5", "0x300"),
+    ])
+    mv = analyze_memory(vv)
+    assert mv.vec_strided_loads == 1 and mv.unit_stride_only is False
+    assert mv.broadcast_ladder_ops == 2 and mv.a_broadcast_per_fma == 2.0
+
+
 def test_activation_feature_baseline_safe_and_typed():
     # vectorized_transcendental_activation is default-off: enabling NONE leaves the pipeline AND
     # schedule byte-identical; it is a registered PASS with both an edit_pipeline and edit_schedule.

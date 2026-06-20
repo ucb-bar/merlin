@@ -1116,6 +1116,58 @@ def _register_accumulator_resident_v3() -> list[str]:
         schedule_replace=True,
     ))
     names.append("accumulator_resident_wholemodel_vf")
+
+    # ITERATION-3 (packing/memory residual): MR>1 register-block variant of the vf kernel for
+    # A-OPERAND REUSE — the OpenBLAS lever. The memory-traffic decode (output/kernels/ceiling/
+    # packing_residual.md) established that the iteration-2 `accumulator_resident_wholemodel_vf`
+    # kernel ALREADY ties XNNPACK's inner-loop DATA MOVEMENT at every openvla/rdt2 shape: 1
+    # unit-stride B load + 1 scalar A load = 2.0 loads/useful-FMA, unit_stride_only, 0 broadcast
+    # ladder (the .vv vslideup/vmv ladder is gone). So vs XNNPACK there is NO per-FMA memory residual
+    # left. The ONE remaining data-movement lever is the OpenBLAS MR>1 register block: holding MR
+    # output rows in MR accumulator vreg-groups so ONE B-row load is shared across MR FMAs, dropping
+    # loads/FMA from 2.0 (MR=1) toward 1+1/MR. This feature is that register block: matmul MR_mm=MR
+    # (A-reuse) on the v3 vfmacc.vf path, with the batch_matmul NR_bmm=8 N-tail clamp retained.
+    #
+    # MEASURED (decode, this iteration): on a LARGE-M, MR-divisible matmul (M=20=5*4, M=64, M=128) the
+    # MR=4 kernel emits MR=4 vfmacc.vf sharing 1 unit-stride B load => loads/FMA = 1.25 (1 B-load + 4
+    # A-scalars over 4 FMAs), 0 spills, accumulator-resident — the OpenBLAS A-reuse shape, bit-exact.
+    #
+    # HONEST WHOLE-MODEL SCOPE (the reason this is a SEPARATE feature, not folded into wholemodel_vf):
+    # MR>1 needs M >= MR with a CLEAN M-tile. The openvla/rdt2 matmuls are ALL small-M (the token/
+    # batch dim: openvla M in {16,17,20}, rdt2 M in {1,28}); they have NO large-M matmul. On those
+    # shapes MR=4 either has no clean tile (M=17,1 not divisible by 4 -> the M-tail trips the LLVM-23
+    # masked-transfer_write PipelineError -> NR=8/non-resident/118-spill, MEASURED) or silently
+    # scalar-falls-back (M=16,28 -> 0 vfmacc emitted, MEASURED). So MR>1 is NOT whole-model-safe for
+    # the VLA decode/prefill matmuls and would REGRESS them — it is correct + a genuine A-reuse win
+    # only on large-M GEMM (M>=MR, M%MR==0). It is therefore DEFAULT-OFF and intended for a large-M
+    # workload; for the small-M openvla/rdt2 whole-model the safe config remains
+    # `accumulator_resident_wholemodel_vf` (MR=1, already at XNNPACK's per-FMA traffic floor). The
+    # residual A-reuse the VLAs leave on the table is a STRUCTURAL property of their small token dim,
+    # not a matmul-kernel defect — closing it would need a dispatch-level layout/batching pass (group
+    # multiple small-M matmuls into one large-M GEMM), out of scope for the matmul-kernel feature.
+    register(ImprFeature(
+        name="accumulator_resident_wholemodel_vf_mr4",
+        action_class="PASS",
+        description="MR=4 register-block variant of accumulator_resident_wholemodel_vf for A-operand "
+                    "REUSE (the OpenBLAS MR>1 lever): matmul MR_mm=4 so ONE unit-stride B-row load is "
+                    "shared across 4 vfmacc.vf into 4 resident accumulators, dropping K-loop "
+                    "loads/useful-FMA from 2.0 (MR=1) to 1.25 (1 B-load + 4 A-scalars / 4 FMAs) — "
+                    "MEASURED by the memory-traffic decode on large-M cube/M=20. batch_matmul NR_bmm=8 "
+                    "N-tail clamp retained. CORRECT + bit-exact + A-reuse ONLY on large-M GEMM "
+                    "(M>=MR and M%MR==0); on the small-M openvla/rdt2 matmuls (token dim 1-28) it has "
+                    "no clean M-tile (M=17,1) -> LLVM-23 masked-write PipelineError, or scalar-falls-"
+                    "back (M=16,28) -> would regress the whole model, so it is NOT whole-model-safe "
+                    "for VLAs (use wholemodel_vf, already at XNNPACK's per-FMA traffic floor, there). "
+                    "The openvla/rdt2 A-reuse residual is structural (small token dim), not a "
+                    "matmul-kernel defect; closing it needs a dispatch-level large-M batching/layout "
+                    "pass (output/kernels/ceiling/packing_residual.md). Default-off; baseline "
+                    "byte-identical.",
+        edit_pipeline=_accumulator_resident_v3_pipeline,
+        edit_schedule=lambda _t: _accumulator_resident_v3_pre_schedule(4, 16, 16,
+                                                                       NR_bmm=8, MR_mm=4),
+        schedule_replace=True,
+    ))
+    names.append("accumulator_resident_wholemodel_vf_mr4")
     return names
 
 
