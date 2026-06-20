@@ -33,6 +33,8 @@ from merlin.llvmlower import pipeline as P
 REPO = Path(__file__).resolve().parents[3]
 
 _V3 = "accumulator_resident_microkernel_v3"
+# Whole-model-safe vfmacc.vf variant: v3 (.vf) + the wholemodel MR_mm=1 / NR_bmm=8 tail clamps.
+_WMVF = "accumulator_resident_wholemodel_vf"
 
 # spill ops that would indicate the accumulator is NOT register-resident (whole-vreg-group
 # load/store the backend emits to round-trip a spilled accumulator through the stack).
@@ -134,6 +136,65 @@ def test_v3_forms_vfmacc_not_separate_mul():
     assert s.count("vfmul") == 0
 
 
+# ---- whole-model-safe vfmacc.vf: the .vf micro-kernel SURVIVES small-M (the openvla/rdt2 gap) ----
+# The decode-level assertion the breakdown (output/kernels/ceiling/kernel_breakdown.md) used. The
+# whole-model headline kernel `accumulator_resident_wholemodel` emits `vfmacc.vv` + a per-K
+# vslideup/vmv broadcast ladder (~20 inner-loop insns/FMA — the measured openvla/rdt2 residual).
+# Bare v3 emits the clean `vfmacc.vf` but its MR=4 M-tiling trips the LLVM-23 masked-transfer_write
+# PipelineError on the small-M openvla/rdt2 matmuls (M=17/20/28) -> degrades to NR=8 / non-resident /
+# 118 spills. `accumulator_resident_wholemodel_vf` merges the two: v3's `.vf` A-scalarization on the
+# wholemodel schedule WITH the MR_mm=1 / NR_bmm=8 clamps, so the `.vf` kernel SURVIVES small-M at
+# NR=32, accumulator-resident, 0 spills. These shapes are the actual small-M openvla/rdt2 matmul dims
+# the breakdown decoded (17×192×576, 20×128×512) plus a cube and an M=1 token-decode shape.
+@pytest.mark.skipif(not _toolchain(), reason="riscv toolchain missing")
+@pytest.mark.parametrize("M,N,K", [
+    (64, 64, 64),       # cube
+    (17, 192, 576),     # openvla attn/MLP proj, small-M=17 (bare v3 degrades here; wholemodel_vf must not)
+    (20, 128, 512),     # openvla action-head MLP up, M=20
+    (28, 1024, 1024),   # rdt2 workhorse attn proj, M=28
+    (1, 256, 256),      # M=1 token-decode (the MR_mm=1 clamp's design point)
+])
+def test_wholemodel_vf_vfmacc_vf_survives_small_M(M, N, K):
+    from merlin.kernels import cca
+    s = _decode([_WMVF], M, N, K)
+    il = s.innermost_loop()
+    assert il is not None, "no innermost loop decoded"
+    # the .vf micro-kernel fired (scalar-broadcast vfmacc, NOT the vslideup-ladder vfmacc.vv) ...
+    assert s.count_in(il, "vfmacc.vf") > 0, "K-loop must emit vfmacc.vf (the .vf micro-kernel)"
+    assert s.count_in(il, "vfmacc.vv") == 0, "no vfmacc.vv (the ~20-insn broadcast-ladder form)"
+    # ... it SURVIVED small-M at the wide lane group: NR=32 lanes @ VLEN=256 (e32, m4) ...
+    c = cca.lift_asm(s, op="matmul", source="ours_wholemodel_vf")
+    assert c.vector is not None and c.vector.sew == 32 and c.vector.lmul == 4.0, \
+        f"expected e32,m4 (NR=32@VLEN256); got sew={c.vector and c.vector.sew} lmul={c.vector and c.vector.lmul}"
+    # ... accumulator register-resident with ZERO in-loop spills (unlike bare v3's 118-spill M-tail
+    # degradation on M=17) ...
+    assert c.compute is not None and c.compute.accumulator_resident is True
+    assert sum(s.count_in(il, op) for op in _SPILL_OPS) == 0, "no in-loop accumulator spills (resident)"
+    # ... and the inner loop is MUCH tighter than the .vv broadcast ladder (~20 insns/FMA): the .vf
+    # form is a handful of insns per FMA. Assert a real reduction (well under the .vv ladder's 20).
+    fma = s.count_in(il, "vfmacc.vf")
+    assert len(s.insns_in(il)) / fma < 12, "vfmacc.vf inner loop should be far tighter than the .vv ladder"
+
+
+def test_wholemodel_vf_default_off_guards():
+    # The new feature is default-off: empty features => baseline byte-identical (pipeline + schedule).
+    assert P.build_rvv_pipeline("/tmp/s.mlir", features=frozenset()) == P.build_rvv_pipeline("/tmp/s.mlir")
+    assert F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset()) == P.RVV_TRANSFORM_SCHEDULE
+    # it is a v3-class feature (selects the two-stage A-scalarization runner) ...
+    assert _WMVF in P._accum_microkernel_v3_features()
+    # ... carries the wholemodel tail clamps inherent (matmul M-tile=1, batch_matmul N-tile=8) ...
+    sch = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset([_WMVF]))
+    assert "tile_sizes [1, 16, 0]" in sch        # matmul MR_mm=1
+    assert "tile_sizes [1, 4, 8, 0]" in sch      # batch_matmul NR_bmm=8
+    # ... and uses the v3 TENSOR-level hoist (no bufferize_to_allocation C promotion).
+    assert "bufferize_to_allocation" not in sch
+    # splices the subset-hoist + scalarize marker (the .vf path) when enabled.
+    from merlin.llvmlower.accum_microkernel import SCALARIZE_MARKER
+    on = F.apply_pipeline(P.build_rvv_pipeline("/tmp/s.mlir").split(","), frozenset([_WMVF]))
+    assert any("loop-invariant-subset-hoisting" in p for p in on)
+    assert SCALARIZE_MARKER in on
+
+
 # ---- WHOLE-MODEL safety: the isolated tests above missed that v3 fell back to scalar e2e ----
 # The isolated single-GEMM tests certified the v3 micro-kernel (vfmacc.vf, resident accumulator) but
 # NOT that it composes onto a REAL model. Board measurement (de39201) showed v3 whole-model FELL BACK
@@ -152,15 +213,23 @@ def test_v3_forms_vfmacc_not_separate_mul():
 # leaving it on the baseline lowering. A genuine matmul A read (vector<MRx1> from tensor<MRx1>, equal
 # rank, identity map) is what it accepts.
 def test_scalarize_matcher_refuses_rank_mismatched_reads():
-    # The rewriter source must carry the whole-model-safety gates: a static source rank, an
-    # extract-position-length == source-rank check, and an identity-permutation-map check. Without
-    # all three the rewrite emits a malformed `tensor.extract` on a real model (the silent-scalar
-    # fallback root cause). Assert the gates are present (the structural contract of the fix).
+    # The rewriter source must carry the whole-model-safety gates: a static source rank/dims, a
+    # bound on the extract-position length vs the source rank, and a (rank-reducing-allowed) identity-
+    # permutation gate. The MR_mm=1 whole-model clamp collapses the A read `vector<1x1>` -> `vector<1>`
+    # with a rank-reducing minor-identity map, so the matcher now ACCEPTS a read that DROPS leading
+    # source dims — but ONLY when each dropped leading dim has extent 1 (so the per-row scalar load is
+    # provably value-identical) and the projection keeps the trailing dims in order. A position length
+    # ABOVE the source rank, or a dropped leading dim with extent>1, is still refused (it would emit a
+    # malformed / mis-mapped `tensor.extract` -> the silent-scalar fallback root cause). Assert the
+    # gates are present (the structural contract of the fix).
     from merlin.llvmlower.accum_microkernel import rewrite_source
     src = rewrite_source()
     assert "_src_rank" in src                       # source must be statically ranked
-    assert "poslen != rank" in src                  # extract position rank must equal source rank
-    assert "_is_identity_perm" in src               # no transpose/broadcast/rank-reduction
+    assert "_src_dims" in src                       # ...and its dim EXTENTS known (unit-leading check)
+    assert "poslen > rank" in src                   # extract position length above source rank -> refuse
+    # dropped LEADING dims (poslen < rank) must each have extent 1, else the lane != element mapping
+    assert "poslen < rank" in src and "src_dims[:rank - poslen]" in src
+    assert "_is_identity_perm" in src               # identity OR sound minor-identity projection only
     # and it must explicitly NOT key the gate on len(operands)-1 (transfer_read carries padding/mask
     # trailing operands, so that count is NOT the index count — the bug a naive count would re-introduce).
     assert "transfer_read carries trailing" in src.lower() or "padding scalar" in src.lower()

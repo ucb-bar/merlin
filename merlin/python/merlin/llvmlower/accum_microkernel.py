@@ -98,29 +98,38 @@ def scalarize_a_reads(module, ctx):
     from torch_mlir import ir
     targets = []
 
-    def _src_rank(ty_str):
-        # rank of a static ranked tensor<...>/memref<...> from its printed type; -1 if not static.
+    def _src_dims(ty_str):
+        # static dim extents of a ranked tensor<...>/memref<...> from its printed type; None if not
+        # static. e.g. "tensor<1x16xf32>" -> [1, 16].
         if not (ty_str.startswith("tensor<") or ty_str.startswith("memref<")):
-            return -1
+            return None
         inner = ty_str[ty_str.index("<") + 1: ty_str.rindex(">")]
         # drop a memref layout/space suffix after the element type (", strided<...>"/", #space")
         dims = inner.split("x")
         # the last token is the element type (+ optional layout); everything before are dim sizes.
-        rank = 0
+        out = []
         for d in dims[:-1]:
             if d == "?":
-                return -1  # dynamic dim -> reconstruction not provably 1:1, leave it alone
+                return None  # dynamic dim -> reconstruction not provably 1:1, leave it alone
             try:
-                int(d)
+                out.append(int(d))
             except ValueError:
-                return -1
-            rank += 1
-        return rank
+                return None
+        return out
+
+    def _src_rank(ty_str):
+        # rank of a static ranked tensor<...>/memref<...>; -1 if not static.
+        d = _src_dims(ty_str)
+        return -1 if d is None else len(d)
 
     def _is_identity_perm(op, rank):
         # accept a missing permutation_map (implicit minor-identity == identity for an equal-rank
-        # read) OR an explicit identity affine map `(d0,...) -> (d0,...)`. Anything else (transpose,
-        # broadcast, rank-reduction) is rejected so we never mis-map a lane to the wrong element.
+        # read), an explicit identity affine map `(d0,...) -> (d0,...)`, OR a rank-reducing MINOR-
+        # IDENTITY PROJECTION `(d0,...,dk) -> (dj,...,dk)` whose outputs are the TRAILING inputs in
+        # order (the read drops some LEADING source dims but keeps the rest in order — the form the
+        # drop-unit-dims patterns emit when MR=1 collapses `vector<1x1>` to `vector<1>`). Soundness of
+        # dropping those leading dims is enforced separately in `visit` (each dropped leading dim must
+        # have extent 1). A genuine transpose / broadcast / out-of-order projection is still rejected.
         try:
             pm = op.attributes["permutation_map"]
         except KeyError:
@@ -136,9 +145,12 @@ def scalarize_a_reads(module, ctx):
             inner = part[part.index("(") + 1: part.index(")")]
             return [t.strip() for t in inner.split(",") if t.strip()]
         ins, outs = _dims(lhs), _dims(rhs)
-        if ins is None or outs is None:
+        if ins is None or outs is None or len(ins) != rank:
             return False
-        return ins == outs and len(outs) == rank
+        if ins == outs:
+            return True                       # full identity (equal-rank read)
+        # minor-identity projection: outputs are the trailing `len(outs)` inputs, in order.
+        return len(outs) < len(ins) and outs == ins[len(ins) - len(outs):]
 
     def visit(o):
         if o.operation.name != "vector.transfer_read":
@@ -149,13 +161,21 @@ def scalarize_a_reads(module, ctx):
             return
         shape = ts[len("vector<"):ts.index("xf32>")]
         dims = shape.split("x")
-        # only the register-tile lhs read: rank>=2 with a TRAILING unit dim (vector<MR x 1>).
-        if len(dims) < 2 or dims[-1] != "1":
+        # The register-tile lhs A read, in EITHER of the two equivalent forms the lowering can leave:
+        #   (a) rank>=2 with a TRAILING unit dim, `vector<MR x 1>` (the MR>1 register tile); or
+        #   (b) the rank-1 single-lane `vector<1>` the drop-unit-dims patterns collapse `vector<1x1>`
+        #       to when MR=1 (the whole-model MR_mm=1 M-tail clamp). Both extract a SCALAR A element;
+        #       (b) is what made the MR=1 token-decode matmul keep vfmacc.vv (scalarize rewrote 0)
+        #       even though the read is just as soundly a scalar A[i] load.
+        if dims[-1] != "1":
             return
+        if len(dims) < 2 and dims != ["1"]:
+            return  # rank-1 only accepted when it is the single-lane `vector<1>` form
         src_ty = str(o.operands[0].type)
         rank = _src_rank(src_ty)
+        src_dims = _src_dims(src_ty)
         # source must be statically ranked and identity-mapped (no transpose/broadcast/rank-reduce).
-        if rank < 0 or not _is_identity_perm(o.operation, rank):
+        if rank < 0 or src_dims is None or not _is_identity_perm(o.operation, rank):
             return
         exs = []
         for u in res.uses:
@@ -163,8 +183,15 @@ def scalarize_a_reads(module, ctx):
             if owner.name != "vector.extract" or str(owner.results[0].type) != "f32":
                 return  # a non-scalar use -> leave this read alone (keep it correct/general)
             poslen = len(list(owner.attributes["static_position"]))
-            if poslen != rank:
-                return  # extract position rank != source rank -> reconstruction would be malformed
+            # The extract position addresses the TRAILING `poslen` source dims; the read may have
+            # dropped `rank - poslen` LEADING (minor-identity) dims. The per-row scalar load is
+            # provably value-identical ONLY when every dropped leading dim has extent 1 (so its sole
+            # valid index is the read's base offset). poslen>rank can never be sound; poslen==rank is
+            # the original MR>1 case (no dropped dim). Otherwise (poslen<rank) require leading unit.
+            if poslen > rank:
+                return  # extract position rank > source rank -> reconstruction would be malformed
+            if poslen < rank and any(e != 1 for e in src_dims[:rank - poslen]):
+                return  # a dropped leading dim with extent>1 -> lane[pos] != element[base..,pos]
             exs.append(owner)
         if exs:
             targets.append((o, exs))
@@ -176,6 +203,7 @@ def scalarize_a_reads(module, ctx):
     for read, exs in targets:
         src_val = read.operands[0]
         base_idx = list(read.operands[1:])
+        rank = _src_rank(str(src_val.type))
         src_is_tensor = str(src_val.type).startswith("tensor")
         opname = "tensor.extract" if src_is_tensor else "memref.load"
         for ex in exs:
@@ -186,6 +214,10 @@ def scalarize_a_reads(module, ctx):
                     pos.append(ir.IntegerAttr(a).value)
                 except Exception:  # noqa: BLE001
                     pos.append(int(str(a)))
+            # The extract position addresses the TRAILING dims; if the read dropped leading
+            # (unit-extent) dims, prepend a zero offset for each so we emit exactly `rank` indices.
+            # (gated above: every dropped leading dim has extent 1, so the only index is base+0.)
+            pos = [0] * (rank - len(pos)) + pos
             ip = ir.InsertionPoint(ex.operation)
             new_idx = []
             for d, p in enumerate(pos):

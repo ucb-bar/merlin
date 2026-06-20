@@ -1071,6 +1071,51 @@ def _register_accumulator_resident_v3() -> list[str]:
             schedule_replace=True,
         ))
         names.append(nm)
+
+    # WHOLE-MODEL-SAFE vfmacc.vf composed variant (this iteration's gap-closer). The
+    # `accumulator_resident_wholemodel` feature carries BOTH tail clamps (matmul MR_mm=1, batch_matmul
+    # NR_bmm=8) so the resident-accumulator micro-kernel SURVIVES the small-M openvla/rdt2 matmuls
+    # (M=17/20/28) and small-N attention — but it rides the v1 POST-bufferize hoist path, which still
+    # emits `vfmacc.vv` + a per-K vslideup/vmv broadcast ladder (~20 inner-loop insns/FMA; the
+    # measured openvla/rdt2 residual, see output/kernels/ceiling/kernel_breakdown.md). The
+    # `accumulator_resident_microkernel_v3` feature emits the clean `vfmacc.vf` (~3 insns/FMA, at the
+    # hand ceiling) via the PRE-bufferize subset hoist + A-scalarization — but its bare MR=4 M-tiling
+    # trips the LLVM-23 masked-transfer_write PipelineError on small-M (M=17), degrading to
+    # NR=8/non-resident/118-spill (the `ours_v3 @ openvla 17×192×576` breakdown row).
+    #
+    # THIS feature is the merge of the two proven pieces: the v3 PRE-bufferize subset-hoist +
+    # contract-lower + A-scalarization (`_accumulator_resident_v3_pipeline`, emits vfmacc.vf) on top of
+    # the v3 PRE-bufferize schedule WITH the wholemodel tail clamps inherent (MR_mm=1 + NR_bmm=8). The
+    # clamps make MR=min(MR,M)=1 on the matmul path, so the small-M matmul vectorizes FULL (no masked
+    # write -> no PipelineError -> no scalar fallback) AT NR=32, accumulator-resident; the A-scalarize
+    # then turns the A `vector<MRx1>` lane-rebuild into per-row scalar loads so the K-loop emits
+    # `vfmacc.vf` not `vfmacc.vv`. Net: the whole-model kernel's K-loop goes from ~20 ops/FMA
+    # (vfmacc.vv + broadcast ladder) to ~3 ops/FMA (flw + vle32 + vfmacc.vf) while KEEPING the NR=32 +
+    # residency it already had — closing the dominant share of the openvla/rdt2 gap. Both pieces are
+    # proven separately (wholemodel = small-M survival at NR=32; v3 = vfmacc.vf at the hand ceiling);
+    # this composes them in ONE schedule. Default-off; baseline byte-identical.
+    register(ImprFeature(
+        name="accumulator_resident_wholemodel_vf",
+        action_class="PASS",
+        description="Whole-model-safe vfmacc.vf accumulator-resident micro-kernel: the v3 "
+                    "PRE-bufferize subset-hoist + A-scalarization recipe (emits vfmacc.vf, ~3 "
+                    "inner-loop insns/FMA, at the hand ceiling) WITH the wholemodel tail clamps "
+                    "inherent (matmul MR_mm=1, batch_matmul NR_bmm=8). The clamps make the small-M "
+                    "openvla/rdt2 matmuls (M=17/20/28) vectorize FULL at NR=32 (no masked "
+                    "transfer_write -> no LLVM-23 PipelineError -> no scalar fallback, unlike bare "
+                    "v3 which degrades to NR=8/non-resident), and the A-scalarization turns the A "
+                    "lane-rebuild into per-row scalar loads so the K-loop emits vfmacc.vf not "
+                    "vfmacc.vv + the ~20-insn vslideup/vmv broadcast ladder. Net: takes the "
+                    "whole-model kernel's K-loop from ~20 to ~3 ops/FMA while keeping NR=32 + "
+                    "accumulator residency it already had — the openvla/rdt2 gap-closer "
+                    "(output/kernels/ceiling/kernel_breakdown.md). Bit-exact (scalar A[i,0] == lane "
+                    "[i,0]). Default-off; baseline byte-identical.",
+        edit_pipeline=_accumulator_resident_v3_pipeline,
+        edit_schedule=lambda _t: _accumulator_resident_v3_pre_schedule(4, 16, 16,
+                                                                       NR_bmm=8, MR_mm=1),
+        schedule_replace=True,
+    ))
+    names.append("accumulator_resident_wholemodel_vf")
     return names
 
 
