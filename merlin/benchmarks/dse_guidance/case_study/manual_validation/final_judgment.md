@@ -1,8 +1,26 @@
-# Final judgment (P19 Phase 6 · updated P21 · P23 corpus switch)
+# Final judgment (P19 Phase 6 · updated P21 · P23 corpus switch · P24 conference round)
 
 Source-grounded verdict on every current result/plot, after the 11-workload forensic audit (S1) and the
 correctness fixes (S3). Classification ∈ {main-slide, backup, QA-only, needs-fix, invalid}. All structural;
 no perf claims. "Evidence" = source/MLIR audit status.
+
+## P24 UPDATE — conference round (read [`final_report.md`](final_report.md) first)
+
+The canonical, renders-anywhere summary is now [`final_report.md`](final_report.md); the adversarial
+self-critique is [`threats_to_validity.md`](threats_to_validity.md); publication figures are in
+[`figures/`](figures/). The non-rendering `final_analysis.html` is retired to a stub that redirects to the md.
+Net additions this round, all additive to the verified contract:
+- **Decoupled magnitudes**: absolute params/MACs/bytes come from a **deployment config-composition**
+  (`real_config_magnitudes.csv`, exact for layer-identical stacks; anchored openVLA=Llama-2-7B,
+  tiny_llama=1.1B), separated on every figure from the reduced-config captures (`captured-config` tag).
+- **Hardware-INDEPENDENT roofline** (`arithmetic_intensity.csv`): arithmetic intensity resident vs
+  reload-every-step + residency gain (molmoact 7.4× … pi05 2.0×) + a ridge-point regime partition over
+  possible machine balances. No peak/bandwidth/latency assumed — verifier asserts the artifact is chip-free.
+- **Low-bit corpus-wide tiering** (`low_bit_visibility.csv`): native (bitvla) / qdq_int8 (openvla,pi05,rdt) /
+  dequant_only, int8 ratified by the measured accuracy gate; fp8/int4 never assumed.
+- **Conference-grade figures**: fonts ≥ 8 pt, evidence-tier + scale-source badges, per-figure captions,
+  grouped (not stacked) bars on log, dense heatmaps trimmed to top-N.
+- Verifier **630/630**; perf remains intentionally absent (requirements only; measured legs = sanity anchors).
 
 ## P23 UPDATE — the whole study now runs on the loop-preserving corpus (full e2e)
 
