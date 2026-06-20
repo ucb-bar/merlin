@@ -1215,6 +1215,11 @@ def run_case_study(out_dir) -> dict:
     _lbv = QM.low_bit_visibility_csv(out)
     if _lbv:
         Artifact("low_bit_visibility.csv", _lbv).write(out)
+    # P25: real-time deployment requirements (HW-independent) grounded in named VLA/VLM regimes
+    from merlin.dse_guidance import realtime_requirement as RT
+    _rt = RT.realtime_csv(out)
+    if _rt:
+        Artifact("realtime_requirement.csv", _rt).write(out)
     Artifact("reuse_lifetime_table.csv", ME.reuse_lifetime_csv(reuse_by_wl)).write(out)
     yaml_artifact("memory_abstraction_candidates.yaml",
                   ME.memory_abstraction_candidates_yaml(reuse_by_wl),

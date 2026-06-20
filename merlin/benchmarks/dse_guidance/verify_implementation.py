@@ -1746,6 +1746,37 @@ def verify_p21(IM) -> None:
     else:
         p13check(True, "[P24] low-bit tiering: low_bit_visibility.csv absent (skipped)")
 
+    # P25: real-time requirement is a HW-INDEPENDENT requirement, not a perf claim. Re-derive one VLA
+    # row's required compute from the recovered structure and assert the artifact claims no chip behaviour.
+    rtf = CS / "realtime_requirement.csv"
+    if rtf.is_file():
+        from merlin.dse_guidance import models as _M
+        ai = {r["workload"]: r for r in _csv_mod.DictReader((CS / "arithmetic_intensity.csv").read_text().splitlines())}
+        rt = list(_csv_mod.DictReader(rtf.read_text().splitlines()))
+        der_ok = True
+        for r in rt:
+            if not r["regime"].startswith("VLA 30Hz"):
+                continue
+            arch = _M.MODEL_ARCH.get(r["workload"])
+            a = ai.get(r["workload"])
+            if not arch or not a:
+                continue
+            window_s = (arch.action_horizon or 1) / 30.0
+            exp = round(float(a["macs_per_replan"]) / window_s / 1e9, 4)
+            der_ok &= abs(exp - float(r["required_GMAC_per_s"])) <= max(1e-3, 0.001 * exp)
+        txt = rtf.read_text().lower()
+        # requirement language only — every regime must be a design_target, never a met/achieved claim
+        no_perf = not any(t in txt for t in ("speedup", "achieves", "meets the", "faster", "outperform"))
+        all_req = all("required_from_recovered_structure" in r["evidence"]
+                      and "design_target" in r["evidence"] for r in rt)
+        e_ok = der_ok and no_perf and all_req and len(rt) > 0
+        p13check(e_ok,
+                 f"[P25] real-time requirement: {len(rt)} regime rows; required compute re-derived from "
+                 f"macs_per_replan/(H/rate) ({der_ok}); every row is a HW-independent requirement w/ "
+                 f"design_target regime ({all_req}); no chip-performance claim ({no_perf}) -> {e_ok}")
+    else:
+        p13check(True, "[P25] real-time requirement: realtime_requirement.csv absent (skipped)")
+
 
 def main(write: bool = True) -> int:
     rows = [verify_workload(w) for w in RECAP_MODELS if w in _MODELS]
