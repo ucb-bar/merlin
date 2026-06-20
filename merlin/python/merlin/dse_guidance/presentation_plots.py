@@ -101,6 +101,10 @@ _PLOT_META = {
     "table_arithmetic_intensity": ("A/B", _DEPLOY, "Arithmetic intensity resident vs reload + residency gain per workload (HW-independent)."),
     "realtime_requirement": ("A/B", _DEPLOY, "Weight-bandwidth a machine MUST provide to hit 30Hz real-time (resident vs reload); regime=design target, not a chip's performance."),
     "table_realtime_requirement": ("A/B", _DEPLOY, "Per VLA/VLM real-time regime: required compute + weight bandwidth (HW-independent floor; chunking/H & residency/K levers)."),
+    "realtime_requirement_surface": ("A/B", _DEPLOY, "3D feasibility frontier: required compute (z) over target rate (x) x VLA workload (y). HW-independent floor, computed from recovered structure."),
+    "primitive_coverage_surface": ("A", _NOSCALE, "3D ablation: worst-workload MAC coverage over primitive-set size x pad-waste tolerance — 'accelerate N primitives -> cover this much math.'"),
+    "lever_ablation": ("A/B", _DEPLOY, "Ablation: action-chunking (/H) then residency (/~K) each cut the weight bandwidth needed for 30Hz. A requirement reduction, not a speedup."),
+    "capture_level_ablation": ("A", _NOSCALE, "Progressive capture-level ablation: flat (nothing named) -> high_level (attention/softmax/norm named) -> quant_qdq (low-bit dequant) across the corpus."),
 }
 
 
@@ -120,7 +124,11 @@ def _stamp(fig, plot_id):
 
 def _save(fig, out: Path, plot_id=None):
     # leave headroom for the top badges + a footer caption, then stamp.
-    fig.tight_layout(rect=(0, 0.06, 1, 0.95))
+    is_3d = any(getattr(a, "name", "") == "3d" for a in fig.axes)
+    if is_3d:
+        fig.subplots_adjust(left=0.02, right=0.98, top=0.92, bottom=0.10)  # tight_layout breaks on 3d
+    else:
+        fig.tight_layout(rect=(0, 0.06, 1, 0.95))
     if plot_id is not None:
         _stamp(fig, plot_id)
     fig.savefig(out)
@@ -894,10 +902,135 @@ def _r_realtime_requirement(cs, facts, ax):
     return True
 
 
+# ---- ablation studies + honest 3D surfaces (P25) -------------------------------------------------
+def _ax3d(ax):
+    """Swap the 2D ax the render loop made for a 3D ax on the same figure (so _stamp still works)."""
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (registers the '3d' projection)
+    fig = ax.figure
+    ax.remove()
+    return fig.add_subplot(111, projection="3d")
+
+
+def _r_realtime_requirement_surface(cs, facts, ax):
+    """3D (honest): required compute (z, log) over target rate (x, 10-100Hz) x VLA workload (y). The
+    real-time feasibility frontier — a HW-independent requirement, computed from recovered structure."""
+    import math
+    import numpy as np
+    from merlin.dse_guidance import models as M
+    vfam = ("flow_matching", "diffusion", "autoregressive_vla")
+    vla = [(r["workload"], float(r["macs_per_replan"]), (M.MODEL_ARCH[r["workload"]].action_horizon or 1))
+           for r in _rows(cs / "arithmetic_intensity.csv")
+           if r["workload"] != "small_llama" and M.MODEL_ARCH.get(r["workload"])
+           and M.MODEL_ARCH[r["workload"]].family in vfam]
+    if not vla:
+        return False
+    vla.sort(key=lambda t: t[1] / t[2])                  # by per-action work
+    ax3 = _ax3d(ax)
+    rates = list(range(10, 101, 5))
+    X, Y = np.meshgrid(rates, range(len(vla)))
+    Z = np.array([[math.log10(macs * r / H / 1e9) for r in rates] for (_, macs, H) in vla])
+    surf = ax3.plot_surface(X, Y, Z, cmap=_pastel_cmap(), edgecolor="#5c5446", lw=0.25, alpha=0.92)
+    ax3.set_yticks(range(len(vla)))
+    ax3.set_yticklabels([w for w, _, _ in vla], fontsize=8)
+    ax3.set_xlabel("target rate (Hz)", fontsize=9, labelpad=6)
+    ax3.set_zlabel("required GMAC/s (log10)", fontsize=9, labelpad=4)
+    ax3.set_title("Required compute vs real-time rate (HW-independent floor)")
+    ax3.figure.colorbar(surf, ax=ax3, fraction=0.025, pad=0.10, label="log10 GMAC/s")
+    ax3.view_init(elev=22, azim=-62)
+    return True
+
+
+def _r_primitive_coverage_surface(cs, facts, ax):
+    """3D ablation (honest): worst-workload MAC coverage (z) over primitive-set size (x) x pad-waste
+    tolerance (y). 'Accelerate N primitives at tolerance T -> cover this fraction of the corpus' math.'"""
+    import numpy as np
+    from merlin.dse_guidance import insight_mining as IM
+    fr = IM.primitive_frontier_robustness(cs)["rows"]
+    if not fr:
+        return False
+    sizes = sorted({int(r["set_size"]) for r in fr})
+    thr = sorted({int(r["threshold_pct"]) for r in fr})
+    cov = {(int(r["set_size"]), int(r["threshold_pct"])): float(r["worst"]) for r in fr}
+    X, Y = np.meshgrid(sizes, thr)
+    Z = np.array([[cov.get((s, t), np.nan) for s in sizes] for t in thr])
+    ax3 = _ax3d(ax)
+    surf = ax3.plot_surface(X, Y, Z, cmap=_pastel_cmap(), edgecolor="#5c5446", lw=0.3, vmin=0, vmax=1)
+    ax3.set_xlabel("primitive-set size", fontsize=9, labelpad=6)
+    ax3.set_ylabel("pad-waste tolerance (%)", fontsize=9, labelpad=6)
+    ax3.set_zlabel("worst-workload coverage", fontsize=9, labelpad=4)
+    ax3.set_xticks(sizes)
+    ax3.set_yticks(thr)
+    ax3.set_zlim(0, 1)
+    ax3.set_title("Coverage ablation: accelerate N primitives -> worst-workload MAC coverage")
+    ax3.figure.colorbar(surf, ax=ax3, fraction=0.025, pad=0.10, label="coverage")
+    ax3.view_init(elev=24, azim=-58)
+    return True
+
+
+def _r_lever_ablation(cs, facts, ax):
+    """Ablation: how action-chunking (/H) then residency (/~K) each cut the weight bandwidth a machine
+    must provide to hit 30Hz, for the two demanding VLAs. A REQUIREMENT reduction, not a speedup."""
+    from merlin.dse_guidance import models as M
+    rows = [r for r in _rows(cs / "arithmetic_intensity.csv") if r["workload"] in ("molmoact", "openvla")]
+    if not rows:
+        return False
+    stages = ["reload,\nno chunk", "+ action\nchunk (/H)", "+ residency\n(/~K)"]
+    width = 0.38
+    for k, r in enumerate(sorted(rows, key=lambda r: r["workload"])):
+        w = r["workload"]
+        H = M.MODEL_ARCH[w].action_horizon or 1
+        wb_non, wb_res = float(r["weight_bytes_nonresident"]), float(r["weight_bytes_resident"])
+        vals = [wb_non / (1 / 30) / 1e9, wb_non / (H / 30) / 1e9, wb_res / (H / 30) / 1e9]
+        xs = [i + (k - 0.5) * width for i in range(3)]
+        ax.bar(xs, vals, width, label=w, color=PALETTE[k])
+        for x, v in zip(xs, vals):
+            ax.annotate(f"{v:,.0f}", (x, v), fontsize=8, ha="center", va="bottom", color="#5c5446")
+    ax.set_yscale("log")
+    ax.set_xticks(range(3), stages, fontsize=8)
+    ax.set_ylabel("required weight bandwidth @30Hz (GB/s, log10)")
+    ax.set_title("Lever ablation: chunking + residency cut the 30Hz bandwidth requirement")
+    ax.legend(fontsize=8)
+    return True
+
+
+def _r_capture_level_ablation(cs, facts, ax):
+    """Progressive capture-level ablation: what each capture LEVEL unlocks across the corpus —
+    flat (nothing named) -> high_level (attention/softmax/norm named) -> quant_qdq (low-bit metadata)."""
+    from collections import defaultdict
+    from merlin.dse_guidance import insight_mining as IM
+    rows = IM.capture_level_ablation(cs)["rows"]
+    if not rows:
+        return False
+    feats = [("linalg_ext_softmax", "softmax/attention"), ("linalg_ext_layer_norm", "normalization"),
+             ("quant_ext_dequantize", "low-bit dequant")]
+    levels = ["flat", "high_level", "quant_qdq"]
+    agg = defaultdict(lambda: defaultdict(int))
+    for r in rows:
+        for key, _ in feats:
+            agg[r["level"]][key] += int(r.get(key, 0) or 0)
+    levels = [lv for lv in levels if lv in agg]
+    if not levels:
+        return False
+    x = range(len(levels))
+    width = 0.26
+    for k, (key, lbl) in enumerate(feats):
+        vals = [agg[lv][key] for lv in levels]
+        ax.bar([i + (k - 1) * width for i in x], vals, width, label=lbl)
+    ax.set_xticks(list(x), [lv.replace("_", "\n") for lv in levels], fontsize=8)
+    ax.set_ylabel("named structures recovered (corpus total)")
+    ax.set_title("Capture-level ablation: what each capture level unlocks (named ops across the corpus)")
+    ax.legend(fontsize=8)
+    return True
+
+
 _RENDERERS = {
     "capture_fidelity": _r_capture_fidelity,
     "realtime_requirement": _r_realtime_requirement,
     "table_realtime_requirement": _r_table_realtime_requirement,
+    "realtime_requirement_surface": _r_realtime_requirement_surface,
+    "primitive_coverage_surface": _r_primitive_coverage_surface,
+    "lever_ablation": _r_lever_ablation,
+    "capture_level_ablation": _r_capture_level_ablation,
     "table_capture_summary": _r_table_capture_summary,
     "table_low_bit_tiers": _r_table_low_bit_tiers,
     "table_deployment_magnitudes": _r_table_deployment_magnitudes,
@@ -950,7 +1083,9 @@ def render_plots(plot_manifest, cs_dir, facts, out_dir) -> list[str]:
         "capture_fidelity", "deployment_magnitude", "arithmetic_intensity_roofline",
         "realtime_requirement", "table_capture_summary", "table_low_bit_tiers",
         "table_deployment_magnitudes", "table_arithmetic_intensity",
-        "table_realtime_requirement") if pid not in manifest_ids]
+        "table_realtime_requirement", "realtime_requirement_surface",
+        "primitive_coverage_surface", "lever_ablation", "capture_level_ablation")
+        if pid not in manifest_ids]
     for p in list(plot_manifest) + extra:
         r = _RENDERERS.get(p["plot_id"])
         if r is None or p.get("recommendation") == "omit":
