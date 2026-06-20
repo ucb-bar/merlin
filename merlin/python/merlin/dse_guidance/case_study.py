@@ -1211,6 +1211,10 @@ def run_case_study(out_dir) -> dict:
     _nat = QM.native_csv(out)
     if _nat:
         Artifact("native_lowbit_datapath.csv", _nat).write(out)
+    # P24-D: corpus-wide HONEST low-bit tiering (native / qdq_int8 / dequant_only) + accuracy ratification
+    _lbv = QM.low_bit_visibility_csv(out)
+    if _lbv:
+        Artifact("low_bit_visibility.csv", _lbv).write(out)
     Artifact("reuse_lifetime_table.csv", ME.reuse_lifetime_csv(reuse_by_wl)).write(out)
     yaml_artifact("memory_abstraction_candidates.yaml",
                   ME.memory_abstraction_candidates_yaml(reuse_by_wl),

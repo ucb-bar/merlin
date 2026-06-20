@@ -1707,6 +1707,45 @@ def verify_p21(IM) -> None:
     else:
         p13check(True, "[P21] native low-bit: no native bitvla capture present (skipped)")
 
+    # P24-D: corpus-wide HONEST low-bit tiering — re-derive each tier from capture-file presence (not the
+    # artifact), confirm the artifact matches, and assert it never over-claims (only bitvla=native) nor
+    # smuggles a perf word; int8 accuracy_status must echo the MEASURED gate, never assume fp8/int4.
+    lbv = CS / "low_bit_visibility.csv"
+    if lbv.is_file():
+        import csv as _csv_mod
+        from merlin.dse_guidance import accuracy_gate as _AG
+        nat_d = CS.parent / "recaptures_native"
+        lvl_d = CS.parent / "recaptures_levels"
+        _pts = _AG.load()
+        got = {r["workload"]: r for r in _csv_mod.DictReader(lbv.read_text().splitlines())}
+        tier_ok, acc_ok = True, True
+        for w, r in got.items():
+            natf = nat_d / w / "model.mlir"
+            qdqf = lvl_d / w / "model_qdq.mlir"
+            if natf.is_file() and "quant_ext.unpack_int2" in natf.read_text(errors="ignore"):
+                exp = "native"
+            elif qdqf.is_file():
+                exp = "qdq_int8"
+            else:
+                exp = "dequant_only"
+            tier_ok &= (r["tier"] == exp)
+            st = _AG.status_for(w, "int8_w8a8", _pts)
+            exp_acc = {"pass": "measured_pass", "fail": "measured_fail"}.get(st, "unavailable")
+            acc_ok &= r["accuracy_status"].startswith(exp_acc)
+        only_bitvla_native = {w for w, r in got.items() if r["tier"] == "native"} == {"bitvla"}
+        no_perf = not any(t in lbv.read_text().lower()
+                          for t in ("speedup", "faster", "latency", "throughput", "cycles"))
+        no_assumed_lowbit = not any("int4" in r["accuracy_status"] or "fp8" in r["accuracy_status"]
+                                    for r in got.values())
+        d_ok = tier_ok and acc_ok and only_bitvla_native and no_perf and no_assumed_lowbit
+        p13check(d_ok,
+                 f"[P24] low-bit tiering: {len(got)} workloads tiered native/qdq_int8/dequant_only from "
+                 f"capture presence (re-derived match={tier_ok}); int8 accuracy echoes measured gate "
+                 f"({acc_ok}); only bitvla=native ({only_bitvla_native}); no fp8/int4 assumed, no perf "
+                 f"wording ({d_ok})")
+    else:
+        p13check(True, "[P24] low-bit tiering: low_bit_visibility.csv absent (skipped)")
+
 
 def main(write: bool = True) -> int:
     rows = [verify_workload(w) for w in RECAP_MODELS if w in _MODELS]
