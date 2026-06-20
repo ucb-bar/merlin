@@ -16,12 +16,37 @@ fork. Hand kernels are ceiling references only. Figures are PNGs in this directo
 | **rdt2** | 74.04 s | wholemodel-vf — 30.27 s (2.45×) | **18.97 s (3.90×)** | 20.32 s (3.64×) | ours **63%** |
 
 **Honest verdict:** ours is **competitive with both hand-tuned vendor libraries** — it **beats both XNNPACK
-and OpenBLAS on bitvla** (compiler-emitted v3, +1.26–1.28×) and reaches **55–66%** of the fastest expert on
-openvla/rdt2 (geomean ≈ 76%). The two experts are neck-and-neck (within ~5%). Our kernels are shape-brittle
-(v3: 16.88× bitvla → 2.38× openvla; tiled/v3 regress rdt2 3×) — so the **per-model beam is essential**.
-Same-pass (one campaign vs the same baseline), N=5/3, experts with resident-weight pack.
+and OpenBLAS on bitvla** (compiler-emitted v3, +1.26–1.28×) and reaches **60% (openvla) / 63% (rdt2)** of the
+fastest expert (geomean ≈ 76%). The two experts are **neck-and-neck (within ~5%; OpenBLAS actually edges
+XNNPACK on bitvla, 13.39× vs 13.19×)** — there is no single "expert" to beat, which is why we plot both.
+Our kernels are shape-brittle (v3: 16.88× bitvla → 2.38× openvla; tiled/v3 regress rdt2 3×) — so the
+**per-model beam is essential**. Same-pass (one campaign vs the same baseline), N=5/3, experts with
+resident-weight pack.
 
 ![Whole-model four-way: left = all four incl. baseline (log latency); right = zoomed speedup contest, ours beats both experts on bitvla, 60% (openvla) / 63% (rdt2) of the best expert.](paper_fourway.png)
+
+---
+
+## Structural parity — the residual gap is **not** compute (merlin-compare CCA)
+
+The `merlin-compare` tool decodes each kernel's Common Compute Abstraction from the **emitted asm** (no
+regex, no source). It shows our compiler-emitted kernels have **already abstracted the compute facets the
+experts use** — the residual 60–63% gap is *not* a missing vectorization idiom:
+
+| config | contraction | acc-resident | NR=vsetvlmax | sew/lmul | vfmacc (.vf/.vv) |
+|---|---|---|---|---|---|
+| baseline | *(scalar — no vector matmul)* | — | — | — | — |
+| **ours_v3** | fused_fma | ✓ | — | 32 / m4 | **vf=4, vv=0** |
+| **ours_wholemodel_vf** | fused_fma | ✓ | — | 32 / m4 | **vf=4, vv=0** |
+| XNNPACK | fused_fma | ✓ | ✓ | 32 / m4 | vf=1, vv=0 |
+| OpenBLAS | fused_fma | ✓ | — | 32 / **m2** | vf=60, vv=0 |
+
+Ours matches XNNPACK on **contraction form, accumulator-residency, lane width (SEW=32) and LMUL=m4**, and
+emits the **same `vfmacc.vf` broadcast form** (iteration-2 `.vf` fix — it eliminated the `vfmacc.vv`
+A-broadcast ladder, 20→6 insns/FMA). So the abstraction *worked*; the remaining gap is **data movement
+(packing / cache-blocking / A-reuse)**, which the kernel-compute CCA does not capture — that is the
+**iteration-3 residual** (analysis in `packing_residual.md`). Reproducible artifact + figures:
+`mined_knowledge/rvv/compare_20260619_182411/` (`compare.md`, `fig2_speedup_contest.png`).
 
 ---
 
@@ -40,6 +65,11 @@ Same-pass (one campaign vs the same baseline), N=5/3, experts with resident-weig
 ![Performance + utilization per beam candidate (baseline→best): bar = speedup, % = fraction of the expert ceiling, colour = VPU state (gold = vfmacc, red = scalar fallback = 0% VPU). Utilization is a ceiling proxy — K1 traps rdcycle.](beam_util_perf.png)
 
 ![beam_rvv_v2 faithful whole-model ranking (versioned experiment): new openvla winner accum_wholemodel; vfmacc_contraction regresses (scalar fallback).](beam_rvv_v2_ranking.png)
+
+> **Beam coverage (honest):** the per-model beam was run on **bitvla + openvla** (the two driving examples).
+> **rdt2 was not beam-searched** — it uses the `accumulator_resident_wholemodel(_vf)` kernel directly (the
+> openvla winner), which is why rdt2 is absent from the beam panels. Broadening the beam to rdt2 + the 33-point
+> MR/NR/KC grid is future scope (see Limits).
 
 ![Beam progression — baseline → +ntail → +tiled → +v3, the final step crossing above XNNPACK.](paper_progression.png)
 
