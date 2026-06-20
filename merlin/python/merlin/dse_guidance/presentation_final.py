@@ -77,7 +77,7 @@ def _title(ax, title, subtitle=None):
                     fontstyle="italic", color=_GOLD)
 
 
-_SHADOW = "#B7AD9B"   # solid taupe-grey extrusion block (matches the reference 3D-bar look)
+_SHADOW = _INK        # solid ash-black extrusion block (the reference 3D-bar look)
 
 
 def _shadow():
@@ -210,8 +210,8 @@ def _r_realtime_requirement(cs, ax):
     res = [float(r["required_weight_GBps_resident"]) for r in rows]
     x = list(range(len(wl)))
     w = 0.38
-    _bars(ax, [i - w / 2 for i in x], rel, w, _PALETTE[3], _HATCHES[1], "reload every step")
-    _bars(ax, [i + w / 2 for i in x], res, w, _PALETTE[4], _HATCHES[2], "weights resident")
+    _bars(ax, [i - w / 2 for i in x], rel, w, _PALETTE[3], "", "reload every step")
+    _bars(ax, [i + w / 2 for i in x], res, w, _PALETTE[4], "", "weights resident")
     ax.set_yscale("log")
     ax.set_xticks(x, wl, fontsize=11)
     ax.set_ylabel("required weight bandwidth (GB/s, log)")
@@ -359,7 +359,7 @@ def _r_visible_linear_fraction(cs, ax):
     wl = [r["workload"] for r in rows]
     frac = [float(r["visible_linear_fraction"]) for r in rows]
     y = list(range(len(wl)))
-    bars = ax.barh(y, frac, color=_PALETTE[1], edgecolor=_INK, linewidth=1.1, hatch=_HATCHES[1])
+    bars = ax.barh(y, frac, color=_PALETTE[1], edgecolor=_INK, linewidth=1.1)
     _extrude(ax, bars)
     for yi, f in zip(y, frac):
         ax.annotate(f"{f:.2f}", (f, yi), xytext=(5, 0), textcoords="offset points", va="center",
@@ -382,8 +382,8 @@ def _r_work_coverage_by_workload(cs, ax):
     att = [float(r["attention_macs"]) for r in rows]
     x = list(range(len(wl)))
     w = 0.4
-    _bars(ax, [i - w / 2 for i in x], lin, w, _PALETTE[0], _HATCHES[1], "linear GEMM")
-    _bars(ax, [i + w / 2 for i in x], att, w, _PALETTE[4], _HATCHES[2], "attention (recovered)")
+    _bars(ax, [i - w / 2 for i in x], lin, w, _PALETTE[0], "", "linear GEMM")
+    _bars(ax, [i + w / 2 for i in x], att, w, _PALETTE[4], "", "attention (recovered)")
     ax.set_yscale("log")
     ax.set_xticks(x, wl, rotation=30)
     ax.set_ylabel("recovered MACs (log)")
@@ -403,8 +403,8 @@ def _r_deployment_magnitude(cs, ax):
     macs = [float(r["gemm_macs_per_token"] or 0) for r in rows]
     x = list(range(len(wl)))
     w = 0.4
-    _bars(ax, [i - w / 2 for i in x], params, w, _PALETTE[1], _HATCHES[1], "GEMM params")
-    _bars(ax, [i + w / 2 for i in x], macs, w, _PALETTE[5], _HATCHES[2], "GEMM MACs / token")
+    _bars(ax, [i - w / 2 for i in x], params, w, _PALETTE[1], "", "GEMM params")
+    _bars(ax, [i + w / 2 for i in x], macs, w, _PALETTE[5], "", "GEMM MACs / token")
     ax.set_yscale("log")
     ax.set_xticks(x, wl, rotation=25)
     ax.set_ylabel("count (log)")
@@ -614,9 +614,10 @@ def _r_capture_level_ablation(cs, ax):
     levels = [lv for lv in order if lv in agg]
     x = list(range(len(levels)))
     w = 0.26
+    cols = [_PALETTE[3], _PALETTE[4], _PALETTE[2]]          # mauve / sage / slate — distinct, no pattern
     for k, (key, lbl) in enumerate(feats):
         vals = [agg[lv][key] for lv in levels]
-        _bars(ax, [i + (k - 1) * w for i in x], vals, w, _PALETTE[k], _HATCHES[k + 1], lbl)
+        _bars(ax, [i + (k - 1) * w for i in x], vals, w, cols[k], "", lbl)
     ax.set_xticks(x, [lv.replace("_", "\n") for lv in levels])
     ax.set_ylabel("named structures recovered (corpus total)")
     _title(ax, "Capture-level ablation: what each capture level unlocks")
