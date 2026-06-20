@@ -43,8 +43,20 @@ experts use** — the residual 60–63% gap is *not* a missing vectorization idi
 
 Ours matches XNNPACK on **contraction form, accumulator-residency, lane width (SEW=32) and LMUL=m4**, and
 emits the **same `vfmacc.vf` broadcast form** (iteration-2 `.vf` fix — it eliminated the `vfmacc.vv`
-A-broadcast ladder). So the abstraction *worked*. Reproducible artifact:
-`mined_knowledge/rvv/compare_20260619_182411/` (`compare.md`, `fig2_speedup_contest.png`).
+A-broadcast ladder). So the abstraction *worked*.
+
+**Reproducible, tool-generated views.** The figures below are emitted by `merlin-compare` directly from a
+spec (`configs × workloads × target × metric`) into a versioned `compare_<ts>/` artifact — not hand-drawn.
+Re-running the spec regenerates them identically; adding a model/candidate is one spec line. This is the
+methodological, repeatable comparison layer (the hand-styled figures elsewhere in this doc are the
+presentation layer over the same measured data). Source: `mined_knowledge/rvv/compare_20260619_182411/`
+(`compare.md` + `fig{1,2,3}`).
+
+![merlin-compare fig1 — all configs, absolute whole-model latency per workload (log), auto-generated from the spec.](merlin_compare_fig1.png)
+
+![merlin-compare fig2 — zoomed speedup contest, ours vs experts per workload (baseline dropped); bitvla wins, gemm:64 ours ≫ experts.](merlin_compare_fig2.png)
+
+![merlin-compare fig3 — perf + structural form on bitvla: each bar annotated with its CCA form (.vf/.vv, resident); ours_v3 .vf/resident ties the experts. (wholemodel/_vf show ~0 = not_measured for bitvla, whose best-ours is v3.)](merlin_compare_fig3.png)
 
 ### Iteration 3 — the memory-traffic decode **refutes the packing hypothesis** (and pins the real blocker)
 
