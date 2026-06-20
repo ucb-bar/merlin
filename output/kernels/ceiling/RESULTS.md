@@ -85,6 +85,27 @@ analysis: `packing_residual.md` (+ `packing_residual_decode.json`).
 
 ![Memory-traffic decode (iter 1→2→3): left = .vf collapses the 8-op A-broadcast ladder to XNNPACK's 0; right = ours-.vf ties XNNPACK at 2.0 loads/FMA (residual closed), MR>1 A-reuse the only lever and unreachable on small-M.](paper_gap_attribution.png)
 
+### Iteration 3, confirmed on silicon — the dispatch-level gap is now **measured, not inferred**
+
+A K1 board run (per-dispatch `rdtime` split, cos ≥ 0.99999, N=5/3) localizes the gap directly. The
+matmul kernel — decode-proven identical to XNNPACK — is only **8.0% (openvla) / 3.3% (rdt2)** of XNNPACK's
+whole-model wall, and is **equal across configs** (ours pays the same ~53 ms / 622 ms GEMM cost). The entire
+ours-vs-XNNPACK delta — **434 ms (openvla, 1.66×)** and **11.27 s (rdt2, 1.59×)** — sits **100% in the
+dispatch / non-matmul bucket** (attention/norm/softmax/activation on the un-tuned RVV path + per-dispatch
+glue). The shared matmul work cancels exactly *and* is small, so this is genuine localization, not a tautology.
+
+| model | config | whole-model | matmul-bucket (shared) | dispatch-bucket | matmul % |
+|---|---|---|---|---|---|
+| openvla | ours-.vf | 1094 ms | 53 ms | **1042 ms** | 4.8% |
+| openvla | XNNPACK | 661 ms | 53 ms | **608 ms** | **8.0%** |
+| rdt2 | ours-.vf | 30 242 ms | 622 ms | **29 620 ms** | 2.1% |
+| rdt2 | XNNPACK | 18 970 ms | 622 ms | **18 348 ms** | **3.3%** |
+
+**⇒ the next win is a dispatch-level effort (fuse/vectorize the non-matmul ops + large-M batching), not the
+matmul kernel — which is done.** Source: `dispatch_breakdown.md` (+ `../rvv_bench/dispatch_breakdown.json`).
+
+![Whole-model time split on K1 (measured): matmul kernel (shared, = XNNPACK by decode) is 8%/3% of wall; the entire 1.66×/1.59× gap is the dispatch / non-matmul bucket.](paper_dispatch_breakdown.png)
+
 ---
 
 ## 1 · Every measured comparison
