@@ -397,9 +397,13 @@ def fig_fourway():
     models = ["bitvla", "openvla", "rdt2"]
     data = {}
     for m in models:
+        # Prefer the .vf re-measure (has ours_wholemodel_vf = the final best-ours) where it exists;
+        # else the four-way (bitvla, whose best-ours is v3, lives only in k1_4way).
+        vf = OUT.parents[1] / "rvv_bench" / f"k1_vf_{m}.json"
         p = OUT.parents[1] / "rvv_bench" / f"k1_4way_{m}.json"
-        if p.is_file():
-            data[m] = json.load(open(p))
+        src = vf if vf.is_file() else p
+        if src.is_file():
+            data[m] = json.load(open(src))
     if not data:
         print("fourway: no k1_4way_*.json yet; skipping"); return
     models = [m for m in models if m in data]
@@ -408,10 +412,10 @@ def fig_fourway():
         r = s.get(key) or {}
         if r.get("skipped") or not r.get("min_wall_ns"): return None
         return (r["min_wall_ns"]/1e9, (r.get("spread") or {}).get("range_pct", 0.0))
-    def ours_key(s):  # whichever ours-* config ran
-        for k in ("ours_v3", "ours_wholemodel", "ours_tiled"):
-            if (s.get(k) or {}).get("min_wall_ns"): return k
-        return None
+    def ours_key(s):  # the BEST ours-* config that ran (vf > v3 > wholemodel > tiled)
+        cands = [k for k in ("ours_wholemodel_vf", "ours_v3", "ours_wholemodel", "ours_tiled")
+                 if (s.get(k) or {}).get("min_wall_ns")]
+        return min(cands, key=lambda k: s[k]["min_wall_ns"]) if cands else None
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5.6)); fig.patch.set_facecolor("white")
     # -- left: ALL-4 absolute latency (log) --

@@ -12,8 +12,8 @@ fork. Hand kernels are ceiling references only. Figures are PNGs in this directo
 | model | baseline | best ours (beam-picked) | XNNPACK | OpenBLAS | ours vs best expert |
 |---|---|---|---|---|---|
 | **bitvla** | 2.524 s | **v3 — 0.150 s (16.88×)** | 0.191 s (13.19×) | 0.189 s (13.39×) | **ours WINS +1.26×** |
-| **openvla** | 5.860 s | wholemodel — 1.195 s (4.90×) | **0.656 s (8.93×)** | 0.682 s (8.60×) | ours **55%** |
-| **rdt2** | 73.83 s | wholemodel — 30.78 s (2.40×) | **18.98 s (3.89×)** | 20.32 s (3.63×) | ours **62%** |
+| **openvla** | 5.855 s | wholemodel-vf — 1.089 s (5.38×) | **0.657 s (8.92×)** | 0.686 s (8.53×) | ours **60%** |
+| **rdt2** | 74.04 s | wholemodel-vf — 30.27 s (2.45×) | **18.97 s (3.90×)** | 20.32 s (3.64×) | ours **63%** |
 
 **Honest verdict:** ours is **competitive with both hand-tuned vendor libraries** — it **beats both XNNPACK
 and OpenBLAS on bitvla** (compiler-emitted v3, +1.26–1.28×) and reaches **55–66%** of the fastest expert on

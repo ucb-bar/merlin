@@ -48,6 +48,14 @@ CONFIGS = [
     ("matmul_only", ["fused_vfmacc_tiled"]),
     ("act_plus_matmul", ["vectorized_transcendental_activation", "fused_vfmacc_tiled"]),
     ("microkernel_v3", ["accumulator_resident_microkernel_v3"]),
+    # --- faithful whole-model beam candidate set (distinct mined ideas + composable combos) ---
+    ("vfmacc_contraction", ["fused_vfmacc_contraction"]),
+    ("accum_wholemodel", ["accumulator_resident_wholemodel"]),
+    ("accum_ntail", ["accumulator_resident_ntail"]),
+    ("lmul_widen", ["lmul_widen_n"]),
+    ("v3_plus_act", ["accumulator_resident_microkernel_v3", "vectorized_transcendental_activation"]),
+    ("v3_plus_lmul", ["accumulator_resident_microkernel_v3", "lmul_widen_n"]),
+    ("tiled_plus_lmul", ["fused_vfmacc_tiled", "lmul_widen_n"]),
 ]
 
 
