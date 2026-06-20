@@ -100,6 +100,9 @@ def main() -> None:
     # ours-wholemodel = the beam's best kernel on openvla/rdt2 (whole-model-safe tail clamps).
     ours_wm = replace(base, run_id="ours_wholemodel",
                       compiler_features=["accumulator_resident_wholemodel"])
+    # ours-wholemodel-vf = wholemodel tail clamps + v3's .vf scalarize (kills the .vv broadcast ladder).
+    ours_wm_vf = replace(base, run_id="ours_wholemodel_vf",
+                         compiler_features=["accumulator_resident_wholemodel_vf"])
     xnn_pkg = replace(base, run_id="xnnpack_kernels")
     ob_pkg = replace(base, run_id="openblas_kernels")
 
@@ -115,6 +118,7 @@ def main() -> None:
     ro = maybe("ours_tiled", ours, None)
     rv = maybe("ours_v3", ours_v3, None)
     rw = maybe("ours_wholemodel", ours_wm, None)
+    rwv = maybe("ours_wholemodel_vf", ours_wm_vf, None)
     rx = maybe("xnnpack_kernels", xnn_pkg, "xnnpack")
     rob = maybe("openblas_kernels", ob_pkg, "openblas")
 
@@ -122,7 +126,7 @@ def main() -> None:
         return (a_ns / b_ns) if (a_ns and b_ns) else None
 
     # best ours config that actually ran (highest speedup vs baseline)
-    ours_cands = {"ours_tiled": ro, "ours_v3": rv, "ours_wholemodel": rw}
+    ours_cands = {"ours_tiled": ro, "ours_v3": rv, "ours_wholemodel": rw, "ours_wholemodel_vf": rwv}
     ours_best_tag = max((t for t, r in ours_cands.items() if r.get("min_wall_ns")),
                         key=lambda t: spd(rb["min_wall_ns"], ours_cands[t]["min_wall_ns"]) or 0,
                         default=None)
@@ -135,10 +139,11 @@ def main() -> None:
                  "from the timed path, matching ours' pack-free scope). cos gated before any wall."),
         "configs_run": sorted(want),
         "baseline": rb, "ours_tiled": ro, "ours_v3": rv, "ours_wholemodel": rw,
-        "xnnpack_kernels": rx, "openblas_kernels": rob,
+        "ours_wholemodel_vf": rwv, "xnnpack_kernels": rx, "openblas_kernels": rob,
         "speedup_ours_tiled": spd(rb["min_wall_ns"], ro["min_wall_ns"]),
         "speedup_ours_v3": spd(rb["min_wall_ns"], rv["min_wall_ns"]),
         "speedup_ours_wholemodel": spd(rb["min_wall_ns"], rw["min_wall_ns"]),
+        "speedup_ours_wholemodel_vf": spd(rb["min_wall_ns"], rwv["min_wall_ns"]),
         "speedup_xnnpack": spd(rb["min_wall_ns"], rx["min_wall_ns"]),
         "speedup_openblas": spd(rb["min_wall_ns"], rob["min_wall_ns"]),
         "v3_over_xnnpack": spd(rx["min_wall_ns"], rv["min_wall_ns"]),
@@ -170,6 +175,7 @@ def _write_md(path: Path, s: dict) -> None:
             ("ours-tiled (fused_vfmacc_tiled)", s["ours_tiled"], s["speedup_ours_tiled"]),
             ("ours-v3 (accum-resident microkernel)", s["ours_v3"], s["speedup_ours_v3"]),
             ("ours-wholemodel (accum-resident, tail-safe)", s["ours_wholemodel"], s["speedup_ours_wholemodel"]),
+            ("ours-wholemodel-vf (.vf, no broadcast ladder)", s.get("ours_wholemodel_vf", {}), s.get("speedup_ours_wholemodel_vf")),
             ("xnnpack-kernels (RVV ukernel, resident pack)", s["xnnpack_kernels"], s["speedup_xnnpack"]),
             ("openblas-kernels (sgemm 8x8, resident pack)", s.get("openblas_kernels", {}), s.get("speedup_openblas"))]
     rows = [(n, r, sp) for (n, r, sp) in rows if r and not r.get("skipped")]
