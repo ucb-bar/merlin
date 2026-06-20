@@ -161,8 +161,8 @@ PLOTS = {
  # ---- drop / backup-only ----
  "realtime_requirement_surface": ("arithmetic_intensity.csv", "A/B", "deployment-composition", "medium", "drop",
    "3D required compute vs rate × workload?",
-   "3D is hard to read; the 2D realtime_requirement + lever_ablation carry the message.",
-   "backup-only; requirement floor, not a chip", False),
+   "On a live slide; restyled clean. 2D realtime_requirement + lever_ablation carry the same message more legibly.",
+   "backup-only; requirement floor under the workload model, not a chip", True),
  "decision_sharding_cost": ("sharding_table.csv", "A", "captured-config", "low", "drop",
    "Absolute extra sharding bytes?",
    "Log axis wastes space; superseded by sharding_scalability (normalized).",

@@ -4,9 +4,9 @@
 
 ## realtime_requirement_surface
 - **DSE question:** 3D required compute vs rate × workload?
-- **Say (claim):** 3D is hard to read; the 2D realtime_requirement + lever_ablation carry the message.
-- **Evidence tier / scale:** A/B / deployment-composition  ·  **source:** `arithmetic_intensity.csv`
-- **Required caveat:** backup-only; requirement floor, not a chip
+- **Say (claim):** On a live slide; restyled clean. 2D realtime_requirement + lever_ablation carry the same message more legibly.
+- **Evidence tier / scale:** A/B / deployment-composition  ·  **source:** `arithmetic_intensity.csv`  ·  restyled (clean) ✓
+- **Required caveat:** backup-only; requirement floor under the workload model, not a chip
 
 ## decision_sharding_cost
 - **DSE question:** Absolute extra sharding bytes?
