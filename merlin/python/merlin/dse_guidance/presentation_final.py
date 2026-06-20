@@ -423,6 +423,7 @@ def _r_boundary_necessity_matrix(cs, ax, full=False):
     if not rows:
         return False
     mat = [[_NEC_RANK[r[w]] for w in wls] for r in rows]
+    ax.grid(False)                                          # no grid over heatmap cells
     ax.imshow(mat, aspect="auto", cmap=_nec_cmap(), vmin=0, vmax=4)
     ax.set_xticks(range(len(wls)), wls, rotation=30, fontsize=10)
     ax.set_yticks(range(len(rows)), [r["abstraction"].replace("_", " ") for r in rows], fontsize=10)
@@ -432,6 +433,7 @@ def _r_boundary_necessity_matrix(cs, ax, full=False):
                     color=_BG if mat[i][j] >= 3 else _INK)
     strong = [sum(1 for w in wls if _NEC_RANK[r[w]] >= 3) for r in rows]
     iax = ax.inset_axes([1.04, 0.0, 0.15, 1.0])
+    iax.grid(False)
     ib = iax.barh(range(len(rows)), strong, color=_PALETTE[4], height=0.66, edgecolor=_INK, lw=0.8)
     iax.set_ylim(ax.get_ylim())
     iax.set_yticks([])
@@ -507,6 +509,7 @@ def _r_capture_fidelity(cs, ax):
     states = [[_fid_state(row.get(w, "")) for w in wls] for row in matrix]
     cidx = {s: i for i, s in enumerate(_FID_ORDER)}
     cmap = ListedColormap([_FID_COLOR[s] for s in _FID_ORDER])
+    ax.grid(False)                                          # no grid over heatmap cells
     ax.imshow([[cidx[s] for s in row] for row in states], aspect="auto", cmap=cmap,
               vmin=0, vmax=len(_FID_ORDER) - 1)
     ax.set_xticks(range(len(wls)), wls, rotation=30, fontsize=10)
@@ -720,6 +723,7 @@ def emit_boundary_simplified(cs_dir, fp_dir):
             crow[col] = _BND_MAP.get(st, ("—",))[0]
         grid.append(row)
         csv_rows.append(crow)
+    ax.grid(False)                                          # no grid over heatmap cells
     ax.imshow(grid, aspect="auto", cmap=cmap, vmin=0, vmax=len(cats) - 1)
     ax.set_xticks(range(len(_BND_LEVELS)), [lbl for _, lbl in _BND_LEVELS], fontsize=10)
     ax.set_yticks(range(len(absts)), [a.replace("_", " ") for a in absts], fontsize=10)
