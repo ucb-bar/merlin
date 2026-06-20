@@ -21,7 +21,7 @@ openvla/rdt2 (geomean ≈ 76%). The two experts are neck-and-neck (within ~5%). 
 (v3: 16.88× bitvla → 2.38× openvla; tiled/v3 regress rdt2 3×) — so the **per-model beam is essential**.
 Same-pass (one campaign vs the same baseline), N=5/3, experts with resident-weight pack.
 
-![Whole-model four-way: left = all four incl. baseline (log latency); right = zoomed speedup contest, ours beats both experts on bitvla, 55–62% on the others.](paper_fourway.png)
+![Whole-model four-way: left = all four incl. baseline (log latency); right = zoomed speedup contest, ours beats both experts on bitvla, 60% (openvla) / 63% (rdt2) of the best expert.](paper_fourway.png)
 
 ---
 

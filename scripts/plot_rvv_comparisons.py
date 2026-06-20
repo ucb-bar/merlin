@@ -99,32 +99,45 @@ ax.grid(True, axis="y", ls=":", alpha=0.35); ax.legend(fontsize=7.6, ncol=2)
 # winner (16.83x) — beating BOTH ours-tiled (9.16x) and XNNPACK's hand GEMM (13.65x): the
 # compiler-emitted kernel reverses the earlier ~1.49x XNNPACK headroom. Best kernel is per-model
 # (v3 wins bitvla; tiled wins openvla 3.65x) — sources: output/rvv_bench/k1_e2e_*{,_postfix_*}.json.
-C_TILED, C_XNN, C_V3 = "#e0a72e", "#c1467a", "#b8742a"
-e2e_bars = {  # model -> list of (label, speedup, color)
-    "bitvla":  [("ours-tiled", 9.16, C_TILED), ("XNNPACK", 13.65, C_XNN), ("ours-v3", 16.83, C_V3)],
-    "openvla": [("ours-tiled", 3.65, C_TILED), ("ours-v3", 2.38, C_V3)],
-    "rdt2":    [("ours-tiled", 2.35, C_TILED)],
-}
+# DATA-DRIVEN (no hardcoded numbers) — reads the SAME fresh four-way / .vf JSONs as the headline,
+# so panel 3 can never drift out of sync. Per model: ours-best (compiler), XNNPACK, OpenBLAS.
+import json as _json
+C_OURS, C_XNN, C_OB = "#b8742a", "#c1467a", "#7a9e7a"
+def _load(m):
+    vf = OUT.parents[1] / "rvv_bench" / f"k1_vf_{m}.json"
+    fw = OUT.parents[1] / "rvv_bench" / f"k1_4way_{m}.json"
+    src = vf if vf.is_file() else fw
+    return _json.load(open(src)) if src.is_file() else None
+def _wall(s, k):
+    r = (s or {}).get(k) or {}
+    return r["min_wall_ns"] / 1e9 if r.get("min_wall_ns") else None
+def _ours_best(s):
+    cands = [k for k in ("ours_wholemodel_vf", "ours_v3", "ours_wholemodel", "ours_tiled")
+             if (s.get(k) or {}).get("min_wall_ns")]
+    return min(cands, key=lambda k: s[k]["min_wall_ns"]) if cands else None
 order = ["rdt2", "openvla", "bitvla"]
 ax = fig.add_subplot(gs[2])
 y = np.arange(len(order))
 for i, m in enumerate(order):
-    bars = e2e_bars[m]; n = len(bars)
-    offs = np.linspace(0.22, -0.22, n) if n > 1 else [0.0]
-    h = 0.5 / max(n, 1) if n > 1 else 0.5
+    s = _load(m); base = _wall(s, "baseline"); bk = _ours_best(s)
+    if not (s and base and bk): continue
+    bars = [("ours", base/_wall(s, bk), C_OURS)]
+    for lab, k, col in [("XNNPACK", "xnnpack_kernels", C_XNN), ("OpenBLAS", "openblas_kernels", C_OB)]:
+        if _wall(s, k): bars.append((lab, base/_wall(s, k), col))
+    n = len(bars); offs = np.linspace(0.24, -0.24, n) if n > 1 else [0.0]; h = 0.5/max(n, 1)
     for off, (lab, sp, col) in zip(offs, bars):
         ax.barh(i + off, sp, color=col, height=h, edgecolor="#33312b", linewidth=0.8, zorder=3)
-        ax.text(sp + 0.2, i + off, f"{lab} {sp}×", va="center", fontsize=8.2,
-                fontweight="bold", color=col if col != C_TILED else "#9c7415")
+        ax.text(sp + 0.2, i + off, f"{lab} {sp:.2f}×", va="center", fontsize=8.0,
+                fontweight="bold", color=col)
 ax.axvline(1.0, color="#999", lw=1, ls="--")
 ax.set_yticks(y); ax.set_yticklabels(order, fontsize=11)
 ax.set_xlim(0, 21); ax.set_xlabel("whole-model speedup vs frozen baseline")
-ax.set_title("③ Whole-model e2e · K1\n(cos≥0.9999; ours-v3 beats XNNPACK on bitvla)", fontsize=11)
+ax.set_title("③ Whole-model e2e · K1\n(cos≥0.9999; ours beats both experts on bitvla)", fontsize=11)
 ax.grid(True, axis="x", ls=":", alpha=0.35)
 from matplotlib.patches import Patch
-ax.legend(handles=[Patch(color=C_TILED, label="ours-tiled (vfmacc)"),
+ax.legend(handles=[Patch(color=C_OURS, label="ours-best (compiler)"),
                    Patch(color=C_XNN, label="XNNPACK RVV GEMM"),
-                   Patch(color=C_V3, label="ours-v3 (accum-resident, compiler)")],
+                   Patch(color=C_OB, label="OpenBLAS RVV GEMM")],
           fontsize=7.6, loc="lower right")
 
 fig.suptitle("RVV GEMM — every measured comparison  (baseline · OpenBLAS · XNNPACK · ours)",
