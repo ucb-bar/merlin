@@ -58,20 +58,25 @@ Measured in one pass vs the same baseline; XNNPACK uses a **resident-weight pack
 timed path, matching ours' pack-free scope) and was measured on **all three** models for the first time.
 Speedups vs baseline (higher = better); **best-ours** is the fastest of {tiled, v3, wholemodel}:
 
-| model | baseline | best ours | XNNPACK | ours reaches | winner |
-|---|---|---|---|---|---|
-| **bitvla** | 2.522 s | **v3 16.97×** (0.149 s) | 13.19× (0.191 s) | **129%** | **ours +1.29×** |
-| **openvla** | 5.864 s | wholemodel 4.95× (1.185 s) | 8.92× (0.657 s) | **55%** | XNNPACK 1.80× |
-| **rdt2** | 73.77 s | wholemodel 2.40× (30.79 s) | 3.89× (18.96 s) | **62%** | XNNPACK 1.62× |
+Full **four-way** (baseline · best-ours · XNNPACK · OpenBLAS), one same-pass campaign per model, N=5/3,
+experts with resident-weight pack (fair vs ours' pack-free path), cos-gated:
 
-All cos = 1.0, same-pass (one campaign vs the same baseline), N=5/3, XNNPACK with resident-weight pack
-(pack excluded — fair vs ours' pack-free path). **Honest verdict: ours is competitive with hand-tuned
-XNNPACK — it reaches 55–129% of XNNPACK (geomean ≈ 76%), beats it on bitvla, and is within ~1.6–1.8× on
-the other two.** XNNPACK is the more *robust* kernel (3.9–13× across all three); our compiler-emitted
-kernels are **shape-brittle** — v3 is 16.97× on bitvla but only 2.38× on openvla, and tiled/v3 *regress
+| model | baseline | best ours | XNNPACK | OpenBLAS | ours vs best expert |
+|---|---|---|---|---|---|
+| **bitvla** | 2.524 s | **v3 16.88×** (0.150 s) | 13.19× (0.191 s) | 13.39× (0.189 s) | **ours WINS (+1.26×)** |
+| **openvla** | 5.860 s | wholemodel 4.90× (1.195 s) | 8.93× (0.656 s) | 8.60× (0.682 s) | ours **55%** (XNN 1.82×) |
+| **rdt2** | 73.83 s | wholemodel 2.40× (30.78 s) | 3.89× (18.98 s) | 3.63× (20.32 s) | ours **62%** (XNN 1.62×) |
+
+All cos ≥ 0.99999 (figure `paper_fourway.png`: all-4 with baseline + zoomed contest). **Honest verdict:
+ours is competitive with BOTH hand-tuned vendor libraries.** It **beats both** XNNPACK *and* OpenBLAS on
+bitvla (the compiler-emitted v3 kernel, +1.26–1.28×), and reaches **55–66%** of the fastest expert on
+openvla/rdt2 (~1.6–1.8× behind) — geomean ≈ 76% across the three. Two clean findings: (1) **XNNPACK and
+OpenBLAS are neck-and-neck** whole-model (within ~5%), so "the expert ceiling" is well-defined; (2) our
+kernels are **shape-brittle** — v3 is 16.88× on bitvla but only 2.38× on openvla, and tiled/v3 *regress
 rdt2 by 3×* (only `accumulator_resident_wholemodel` avoids that). This is exactly why the **per-model beam
-is essential**: with the right kernel ours is in XNNPACK's league everywhere; with the wrong one it is
-catastrophic. smolVLA e2e is an honest `not_run` (SpacemiT clang backend crash, hits the frozen baseline too).
+is essential**: with the right kernel ours is in the experts' league everywhere and beats them on one;
+with the wrong one it is catastrophic. smolVLA e2e is an honest `not_run` (SpacemiT clang backend crash,
+hits the frozen baseline too).
 
 ### 3b. Single-GEMM ceiling on K1 (rdtime ticks, inner-compute) — the crossover
 `ours-intrinsic` (hand ceiling) beats **both** experts 32³→384³, then **OpenBLAS retakes the lead at

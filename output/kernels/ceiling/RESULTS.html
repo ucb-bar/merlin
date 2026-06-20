@@ -23,16 +23,22 @@
 correctness-gated (bit-exact on spike / cos ≥ 0.99999 on the board). Baseline is frozen; every improvement
 is a default-off fork. Hand kernels are ceiling references only. <span class="tag">open RESULTS.html in a browser</span></p>
 
-<h2>Headline table — whole-model on K1 (per-model best kernel)</h2>
+<h2>Headline — whole-model FOUR-WAY on K1 (same-pass, fair, cos-gated)</h2>
 <table>
-<thead><tr><th>model</th><th>baseline</th><th>ours-tiled</th><th>ours best (beam-picked)</th><th>XNNPACK kernel-swap</th></tr></thead>
+<thead><tr><th>model</th><th>baseline</th><th>best ours (beam-picked)</th><th>XNNPACK</th><th>OpenBLAS</th><th>ours vs best expert</th></tr></thead>
 <tbody>
-<tr><td>bitvla</td><td>2.52 s (1.00×)</td><td>0.275 s (9.16×)</td><td class="win">0.150 s · v3 — 16.8×</td><td>0.184 s (13.65×)</td></tr>
-<tr><td>openvla</td><td>5.87 s (1.00×)</td><td>1.61 s (3.63×)</td><td class="win">accum-wholemodel — 4.97×</td><td class="mut">— (BLAS/lib n/a)</td></tr>
-<tr><td>rdt2</td><td>73.7 s (1.00×)</td><td class="win">31.4 s (2.35×)</td><td>tiled (best)</td><td class="mut">—</td></tr>
+<tr><td>bitvla</td><td>2.524 s</td><td class="win">v3 — 0.150 s (16.88×)</td><td>0.191 s (13.19×)</td><td>0.189 s (13.39×)</td><td class="win">ours WINS +1.26×</td></tr>
+<tr><td>openvla</td><td>5.860 s</td><td>wholemodel — 1.195 s (4.90×)</td><td class="win">0.656 s (8.93×)</td><td>0.682 s (8.60×)</td><td>ours 55%</td></tr>
+<tr><td>rdt2</td><td>73.83 s</td><td>wholemodel — 30.78 s (2.40×)</td><td class="win">18.98 s (3.89×)</td><td>20.32 s (3.63×)</td><td>ours 62%</td></tr>
 </tbody></table>
-<p class="cap"><b>The win:</b> on bitvla the compiler-emitted accumulator-resident kernel (v3) reaches 16.8× —
-<b>beating XNNPACK's hand RVV GEMM (13.65×)</b>. Best kernel is per-model (the beam selects it); cos ≥ 0.99999 throughout.</p>
+<p class="cap"><b>Honest verdict:</b> ours is <b>competitive with both hand-tuned vendor libraries</b> — it
+<b>beats both XNNPACK and OpenBLAS on bitvla</b> (compiler-emitted v3, +1.26–1.28×) and reaches <b>55–66%</b>
+of the fastest expert on openvla/rdt2 (geomean ≈ 76%). The two experts are neck-and-neck (within ~5%). Our
+kernels are shape-brittle (v3: 16.88× bitvla → 2.38× openvla; tiled/v3 regress rdt2 3×) — so the
+<b>per-model beam is essential</b>. cos ≥ 0.99999 throughout. (Same-pass, N=5/3, experts resident-weight pack.)</p>
+<div class="card"><img src="paper_fourway.png" alt="four-way whole-model">
+<p class="cap">Whole-model four-way: <b>left</b> = all four incl. the baseline starting point (log latency);
+<b>right</b> = zoomed contest (drop baseline) — ours beats both experts on bitvla, 55–62% on the others.</p></div>
 
 <h2>1 · Every measured comparison</h2>
 <div class="card"><img src="all_comparisons.png" alt="all comparisons">

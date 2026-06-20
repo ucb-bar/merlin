@@ -384,6 +384,101 @@ def fig_beam_util_perf():
     plt.close(fig)
 
 
+# ============================================================================
+# FIGURE G — FOUR-WAY whole-model on K1: baseline / ours-best / XNNPACK / OpenBLAS.
+# Left = ALL-4 (absolute latency, log y — baseline = the starting point, visible).
+# Right = ZOOMED (drop baseline; ours vs XNNPACK vs OpenBLAS, the competitive contest,
+# linear, with "ours reaches X% of best expert"). Reads output/rvv_bench/k1_4way_*.json.
+# ============================================================================
+def fig_fourway():
+    import json, glob
+    V3 = "#b8742a"; OB = "#7a9e7a"
+    COL = {"baseline": SALMON, "ours": V3, "xnnpack_kernels": STEEL, "openblas_kernels": OB}
+    models = ["bitvla", "openvla", "rdt2"]
+    data = {}
+    for m in models:
+        p = OUT.parents[1] / "rvv_bench" / f"k1_4way_{m}.json"
+        if p.is_file():
+            data[m] = json.load(open(p))
+    if not data:
+        print("fourway: no k1_4way_*.json yet; skipping"); return
+    models = [m for m in models if m in data]
+
+    def cfg(s, key):  # (wall_s, range_pct) or None
+        r = s.get(key) or {}
+        if r.get("skipped") or not r.get("min_wall_ns"): return None
+        return (r["min_wall_ns"]/1e9, (r.get("spread") or {}).get("range_pct", 0.0))
+    def ours_key(s):  # whichever ours-* config ran
+        for k in ("ours_v3", "ours_wholemodel", "ours_tiled"):
+            if (s.get(k) or {}).get("min_wall_ns"): return k
+        return None
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5.6)); fig.patch.set_facecolor("white")
+    # -- left: ALL-4 absolute latency (log) --
+    ax = axes[0]; ax.set_facecolor(CREAM)
+    for s in ("top", "right"): ax.spines[s].set_visible(False)
+    series = ["baseline", "ours", "xnnpack_kernels", "openblas_kernels"]
+    labs = {"baseline": "baseline", "ours": "ours (best)", "xnnpack_kernels": "XNNPACK", "openblas_kernels": "OpenBLAS"}
+    x = np.arange(len(models)); bw = 0.2
+    for i, ser in enumerate(series):
+        ys, errs = [], []
+        for m in models:
+            s = data[m]; key = ours_key(s) if ser == "ours" else ser
+            c = cfg(s, key)
+            ys.append(c[0] if c else 0); errs.append((c[0]*c[1]/100.0) if c else 0)
+        ax.bar(x + (i-1.5)*bw, ys, bw*0.9, yerr=errs, capsize=2,
+               color=COL[ser], edgecolor=CARD_EC, linewidth=0.8, label=labs[ser], zorder=3)
+    ax.set_yscale("log"); ax.set_xticks(x); ax.set_xticklabels(models, fontsize=11)
+    ax.set_ylabel("whole-model latency (s, log) — lower = faster")
+    ax.set_title("① All four — incl. baseline (the starting point)", loc="left", color=INK, fontsize=12, pad=8)
+    ax.legend(fontsize=9, ncol=2); ax.grid(True, axis="y", ls=":", alpha=0.35)
+
+    # -- right: ZOOMED contenders (drop baseline), absolute latency linear, with %-of-best-expert --
+    ax = axes[1]; ax.set_facecolor(CREAM)
+    for s in ("top", "right"): ax.spines[s].set_visible(False)
+    # Zoom plots SPEEDUP (×) so models of different absolute magnitude are comparable; baseline excluded.
+    zser = ["ours", "xnnpack_kernels", "openblas_kernels"]
+    def spdup(s, key):  # (speedup×, abs_err×) from walls, or None
+        c = cfg(s, key); b = cfg(s, "baseline")
+        if not (c and b): return None
+        v = b[0] / c[0]; return (v, v * c[1] / 100.0)
+    for i, ser in enumerate(zser):
+        ys, errs = [], []
+        for m in models:
+            s = data[m]; key = ours_key(s) if ser == "ours" else ser
+            v = spdup(s, key)
+            ys.append(v[0] if v else np.nan); errs.append(v[1] if v else 0)
+        ax.bar(x + (i-1)*bw, ys, bw*0.9, yerr=errs, capsize=2,
+               color=COL[ser], edgecolor=CARD_EC, linewidth=0.8, label=labs[ser], zorder=3)
+    # annotate ours-reaches-% of the faster expert per model (speedup space)
+    for j, m in enumerate(models):
+        s = data[m]; o = spdup(s, ours_key(s)); xn = spdup(s, "xnnpack_kernels"); ob = spdup(s, "openblas_kernels")
+        exps = [e[0] for e in (xn, ob) if e]
+        if o and exps:
+            best_exp = max(exps)  # fastest expert = highest speedup
+            pct = round(100*o[0]/best_exp)
+            tag = "ours WINS" if o[0] >= best_exp else f"ours {pct}% of best expert"
+            ax.text(j, max(o[0], *exps)*1.06, tag, ha="center", fontsize=8.5,
+                    fontweight="bold", color=(V3 if o[0] >= best_exp else INK))
+    ax.set_xticks(x); ax.set_xticklabels(models, fontsize=11)
+    ax.set_ylabel("speedup vs baseline (×) — higher = faster")
+    ax.set_title("② Zoomed: ours vs XNNPACK vs OpenBLAS (no baseline)", loc="left", color=INK, fontsize=12, pad=8)
+    ax.legend(fontsize=9); ax.grid(True, axis="y", ls=":", alpha=0.35)
+
+    fig.suptitle("Whole-model four-way on real K1 silicon — baseline · ours-best · XNNPACK · OpenBLAS (same-pass, cos-gated)",
+                 fontsize=12.5, fontweight="bold", y=1.0)
+    fig.text(0.5, -0.03,
+             "Figure G:  Same-pass four-way (one campaign vs the same baseline; experts use resident-weight pack). "
+             "LEFT shows all four incl. the baseline starting point (log).  RIGHT drops baseline to zoom into the "
+             "competitive contest: ours is within ~1.6–1.8× of the experts and BEATS them on bitvla.",
+             ha="center", fontsize=9.0, color=INK)
+    fig.tight_layout(rect=[0,0,1,0.96])
+    for ext in ("png", "svg"):
+        fig.savefig(OUT / f"paper_fourway.{ext}", bbox_inches="tight", dpi=160)
+    print("wrote", OUT / "paper_fourway.png")
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     fig_e2e()
     fig_crossover()
@@ -391,3 +486,4 @@ if __name__ == "__main__":
     fig_opt_effects()
     fig_beam_ranking()
     fig_beam_util_perf()
+    fig_fourway()

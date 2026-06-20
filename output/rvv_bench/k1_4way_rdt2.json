@@ -1,0 +1,224 @@
+{
+  "model": "output/rdt2_fp32_consistent",
+  "n": 3,
+  "board": "k1_spacemit",
+  "vlen": 256,
+  "same_pass": true,
+  "timer": "CLOCK_MONOTONIC wall_ns; cycle_accurate=false",
+  "note": "Same-pass head-to-head vs the SAME baseline in ONE pass. xnnpack-kernels routes f32 linalg.matmul to xnn_f32_gemm_ukernel_1x4v__rvv with RESIDENT-WEIGHT pack (excluded from the timed path, matching ours' pack-free scope). cos gated before any wall.",
+  "configs_run": [
+    "baseline",
+    "openblas_kernels",
+    "ours_wholemodel",
+    "xnnpack_kernels"
+  ],
+  "baseline": {
+    "tag": "baseline",
+    "run_id": "hand_v0",
+    "compiler_features": [],
+    "kernel_backend": null,
+    "n_xnn_routed": 0,
+    "min_wall_ns": 73826570943,
+    "spread": {
+      "min_ns": 73826570943,
+      "max_ns": 74121218408,
+      "median_ns": 73966200111,
+      "stdev_ns": 120344000,
+      "range_pct": 0.4,
+      "n": 3
+    },
+    "fp32_cos": 1.0000001192092896,
+    "ok": true,
+    "blocker": null,
+    "runs": [
+      {
+        "wall_ns": 73966200111,
+        "time_ticks": 1775168063,
+        "cycles_est": 117161092158,
+        "fp32_cos": 1.0000001192092896,
+        "vlen": 256
+      },
+      {
+        "wall_ns": 74121218408,
+        "time_ticks": 1778888500,
+        "cycles_est": 117406641000,
+        "fp32_cos": 1.0000001192092896,
+        "vlen": 256
+      },
+      {
+        "wall_ns": 73826570943,
+        "time_ticks": 1771817078,
+        "cycles_est": 116939927148,
+        "fp32_cos": 1.0000001192092896,
+        "vlen": 256
+      }
+    ]
+  },
+  "ours_tiled": {
+    "tag": "ours_tiled",
+    "skipped": true,
+    "min_wall_ns": null,
+    "fp32_cos": null,
+    "ok": false,
+    "n_xnn_routed": 0,
+    "spread": null,
+    "blocker": "not in --configs",
+    "compiler_features": [
+      "fused_vfmacc_tiled"
+    ],
+    "runs": []
+  },
+  "ours_v3": {
+    "tag": "ours_v3",
+    "skipped": true,
+    "min_wall_ns": null,
+    "fp32_cos": null,
+    "ok": false,
+    "n_xnn_routed": 0,
+    "spread": null,
+    "blocker": "not in --configs",
+    "compiler_features": [
+      "accumulator_resident_microkernel_v3"
+    ],
+    "runs": []
+  },
+  "ours_wholemodel": {
+    "tag": "ours_wholemodel",
+    "run_id": "ours_wholemodel",
+    "compiler_features": [
+      "accumulator_resident_wholemodel"
+    ],
+    "kernel_backend": null,
+    "n_xnn_routed": 0,
+    "min_wall_ns": 30777172805,
+    "spread": {
+      "min_ns": 30777172805,
+      "max_ns": 31424768227,
+      "median_ns": 30879408182,
+      "stdev_ns": 284263079,
+      "range_pct": 2.1,
+      "n": 3
+    },
+    "fp32_cos": 1.0,
+    "ok": true,
+    "blocker": null,
+    "runs": [
+      {
+        "wall_ns": 30879408182,
+        "time_ticks": 741097160,
+        "cycles_est": 48912412560,
+        "fp32_cos": 1.0,
+        "vlen": 256
+      },
+      {
+        "wall_ns": 30777172805,
+        "time_ticks": 738643550,
+        "cycles_est": 48750474300,
+        "fp32_cos": 1.0,
+        "vlen": 256
+      },
+      {
+        "wall_ns": 31424768227,
+        "time_ticks": 754185658,
+        "cycles_est": 49776253428,
+        "fp32_cos": 1.0,
+        "vlen": 256
+      }
+    ]
+  },
+  "xnnpack_kernels": {
+    "tag": "xnnpack_kernels",
+    "run_id": "xnnpack_kernels",
+    "compiler_features": [],
+    "kernel_backend": "xnnpack",
+    "n_xnn_routed": 23,
+    "min_wall_ns": 18980039197,
+    "spread": {
+      "min_ns": 18980039197,
+      "max_ns": 19026989677,
+      "median_ns": 18995224399,
+      "stdev_ns": 19561785,
+      "range_pct": 0.25,
+      "n": 3
+    },
+    "fp32_cos": 1.0000001192092896,
+    "ok": true,
+    "blocker": null,
+    "runs": [
+      {
+        "wall_ns": 18980039197,
+        "time_ticks": 455515637,
+        "cycles_est": 30064032042,
+        "fp32_cos": 1.0000001192092896,
+        "vlen": 256
+      },
+      {
+        "wall_ns": 18995224399,
+        "time_ticks": 455880075,
+        "cycles_est": 30088084950,
+        "fp32_cos": 1.0000001192092896,
+        "vlen": 256
+      },
+      {
+        "wall_ns": 19026989677,
+        "time_ticks": 456642429,
+        "cycles_est": 30138400314,
+        "fp32_cos": 1.0000001192092896,
+        "vlen": 256
+      }
+    ]
+  },
+  "openblas_kernels": {
+    "tag": "openblas_kernels",
+    "run_id": "openblas_kernels",
+    "compiler_features": [],
+    "kernel_backend": "openblas",
+    "n_xnn_routed": 0,
+    "min_wall_ns": 20316302335,
+    "spread": {
+      "min_ns": 20316302335,
+      "max_ns": 20469864485,
+      "median_ns": 20327127135,
+      "stdev_ns": 69978140,
+      "range_pct": 0.76,
+      "n": 3
+    },
+    "fp32_cos": 1.0000001192092896,
+    "ok": true,
+    "blocker": null,
+    "runs": [
+      {
+        "wall_ns": 20316302335,
+        "time_ticks": 487585581,
+        "cycles_est": 32180648346,
+        "fp32_cos": 1.0000001192092896,
+        "vlen": 256
+      },
+      {
+        "wall_ns": 20469864485,
+        "time_ticks": 491271034,
+        "cycles_est": 32423888244,
+        "fp32_cos": 1.0000001192092896,
+        "vlen": 256
+      },
+      {
+        "wall_ns": 20327127135,
+        "time_ticks": 487845377,
+        "cycles_est": 32197794882,
+        "fp32_cos": 1.0000001192092896,
+        "vlen": 256
+      }
+    ]
+  },
+  "speedup_ours_tiled": null,
+  "speedup_ours_v3": null,
+  "speedup_ours_wholemodel": 2.398744400947909,
+  "speedup_xnnpack": 3.889695388757105,
+  "speedup_openblas": 3.6338586483729842,
+  "v3_over_xnnpack": null,
+  "ours_best_tag": "ours_wholemodel",
+  "ours_best_over_xnnpack": 0.6166920957053125,
+  "ours_best_over_openblas": 0.6601094409717664,
+  "xnnpack_kernel": "xnn_f32_gemm_ukernel_1x4v__rvv",
+  "openblas_kernel": "sgemm_kernel_8x8_zvl128b"
+}

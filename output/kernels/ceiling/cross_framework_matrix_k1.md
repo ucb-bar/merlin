@@ -53,3 +53,18 @@ The prior session showed XNNPACK overtakes OpenBLAS on K1 at 32/64. At **128^3 t
 - **rdtime is coarse + noisy at small counts.** At 24 MHz one tick ≈ 41.7 ns, so the small counts (200–390 ticks @ 32^3) carry quantization + Linux-scheduler noise; the table reports the **min of N=3** to suppress scheduler tails (per-rep spreads: ours 229/200/211, 1449/1415/1406, 14136/14261/14318; OB 409/395/390, 2279/2292/2298, 18349/17659/20037; XNN 284/240/270, 1964/1962/1960, 31927/32017/31882). The ours-vs-expert margins (1.2–2.3x) are larger than the rep spread, so the *ordering* (ours fastest) is robust; do not over-read a single tick at 32^3. `INSTRET` is 0 on K1 (userspace `minstret` not delegated).
 - **Same substrate / scope for all columns.** Every column is a standalone `riscv64-linux` binary, inner-compute timed with the same `rdtime` path, operand pack hoisted OUT of the timed region (ours-intrinsic packs A into MR-row panels before the timed region, exactly like OpenBLAS's ncopy), bit-exact verified vs a scalar reference.
 - **K1 real-silicon vs the spike PROXY.** On the functional spike, the cycle proxy is retired-instruction count (IPC=1); this matrix is the real-VPU companion. Where they disagree (e.g. the expert flip; the OB↔XNN re-flip at 128), the K1 is the silicon truth for wall-time ordering and spike is only an instruction-count proxy. The intrinsic kernel's win over OpenBLAS is the one ranking that is **stable across both substrates** — the strongest evidence it is a real codegen win and not a proxy artifact.
+
+---
+
+## v3 (current compiler kernel) on this isolated K1 matrix — honest `not_run`
+
+The `accumulator_resident_microkernel_v3` kernel is the current compiler path and the whole-model
+winner on bitvla (16.97× on K1, beating XNNPACK 13.19× — see `docs/rvv_kernel_mining_results.md` §3a).
+Its **isolated single-GEMM** measurement via the standalone `ours_gemm_driver.c` path here **did not run**
+(`Traceback` at 64³): the v3 codegen (the `accum_microkernel` A-scalarize + two-stage runner) is wired
+into the **whole-model** `build_k1_binary` lowering, not the single-op ceiling-driver path. So v3's
+isolated number on real K1 silicon is **not available via this harness** (a tooling gap, not a kernel
+defect). v3's isolated evidence is therefore the **spike instret** proxy (7,045/53,207/409,764 @32/64/128³
+— beats OpenBLAS; see `cross_framework_matrix.md`), and its **real-silicon** evidence is the whole-model
+K1 result. The `ours-tiled` / `ours-baseline` columns above remain the older compiler paths and should not
+be read as the current best.
