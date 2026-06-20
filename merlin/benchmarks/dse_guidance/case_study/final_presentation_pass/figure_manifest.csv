@@ -1,0 +1,20 @@
+plot_id,class,evidence_tier,scale,title,caveat,source_artifact,file
+table_capture_summary,main,A,structural,Recovered loop / region / state contract (all from scf.for),,loop_aware_contract.csv,figures/table_capture_summary.png
+capture_fidelity,main,A/B,structural,Capture fidelity: what the loop-preserving capture recovers vs erases,,IM.capture_fidelity,figures/capture_fidelity.png
+capture_level_ablation,main,A,structural,Capture-level ablation: what each capture level unlocks,,IM.capture_level_ablation,figures/capture_level_ablation.png
+primitive_set_frontier,main,A,structural,Primitive-set frontier: one primitive is not robust across workloads,structural pad-waste coverage; not hardware performance,IM.primitive_set_frontier,figures/primitive_set_frontier.png
+operator_cumulative_mac,main,A,structural,Compute concentration: hot-op-dominated vs diffuse workloads,,operator_shape_table.csv,figures/operator_cumulative_mac.png
+decision_weight_residency,main,A,captured-config,Loop-visible residency: non-resident weight traffic grows with K,"bytes moved, not bandwidth; captured-config scale",data_movement_table.csv,figures/decision_weight_residency.png
+decision_capacity_dtype,main,A,captured-config,Capacity × dtype: when repeated-head weights fit on-chip,captured-config weight sizes,dtype_capacity_table.csv,figures/decision_capacity_dtype.png
+realtime_requirement,main,A/B,deployment-composition,30 Hz requirement envelope: residency lowers required weight bandwidth,"requirement floor, not a chip measurement",realtime_requirement.csv,figures/realtime_requirement.png
+lever_ablation,main,A/B,deployment-composition,System levers reduce the 30 Hz weight-bandwidth requirement,"requirement reduction (H, K from source/config), not a speedup",arithmetic_intensity.csv,figures/lever_ablation.png
+boundary_necessity_matrix,main,B,structural,Abstraction necessity across workloads — search the necessary axes first,blocked = capture/evidence blocked,IM.abstraction_necessity,figures/boundary_necessity_matrix.png
+arithmetic_intensity_roofline,main,A/B,deployment-composition,Residency shifts weight-stream arithmetic intensity across machine-balance regimes,requirement/modeling view; not measured performance; not full-memory AI; hypothetical machine balance,arithmetic_intensity.csv,figures/arithmetic_intensity_roofline.png
+visible_linear_fraction,main,A,structural,Recovered MAC work: linear-GEMM vs attention geometry,excludes erased/unmodeled work,work_coverage_table.csv,figures/visible_linear_fraction.png
+work_coverage_by_workload,backup,A,captured-config,Recovered work: linear-GEMM vs attention MAC mass,captured-config; not deployment scale,work_coverage_table.csv,figures/work_coverage_by_workload.png
+deployment_magnitude,backup,B,deployment-composition,Deployment magnitudes by config-composition,,real_config_magnitudes.csv,figures/deployment_magnitude.png
+sharding_scalability,backup,A,structural,"Transfer effect of parallelism: comm overhead per unit work, by shard axis",structural comm bytes; not a performance result,sharding_table.csv,figures/sharding_scalability.png
+boundary_necessity_full_backup,backup,B,structural,Abstraction necessity across workloads — search the necessary axes first,blocked = capture/evidence blocked,IM.abstraction_necessity,figures/boundary_necessity_full_backup.png
+table_low_bit_tiers,backup,A/B,structural,Low-bit visibility per workload,fp8/int4 never assumed,low_bit_visibility.csv,figures/table_low_bit_tiers.png
+table_deployment_magnitudes,backup,B,deployment-composition,Deployment magnitudes by config-composition,,real_config_magnitudes.csv,figures/table_deployment_magnitudes.png
+table_arithmetic_intensity,backup,A/B,deployment-composition,Weight-stream arithmetic intensity,"modeling view, not full-memory AI",arithmetic_intensity.csv,figures/table_arithmetic_intensity.png

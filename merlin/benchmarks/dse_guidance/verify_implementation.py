@@ -214,11 +214,13 @@ def verify_global() -> None:
     # --- K: dangerous terms absent from GENERATED artifacts (V0/verification docs excluded) ---
     found = {}
     for f in CS.rglob("*"):
-        # guard the AUTO-GENERATED structural artifacts; the manual_validation/ subtree is
-        # hand-curated narrative (threats-to-validity, final_report, audits, the insight-mining
-        # digest) that legitimately uses these words in disclaimer/meta context (e.g. "no speedup",
-        # "corpus expansion improvement plan") and is reviewed by hand.
-        if not f.is_file() or f.name in V0_DOCS or "manual_validation" in f.parts:
+        # guard the AUTO-GENERATED structural artifacts; the manual_validation/ and
+        # final_presentation_pass/ subtrees are hand-curated narrative (threats-to-validity,
+        # final_report, audits, the methodology doc, and the wording-CHECKER itself, which by design
+        # contains the forbidden-word list) that legitimately uses these words in disclaimer/meta
+        # context (e.g. "no speedup") and is reviewed by hand.
+        if not f.is_file() or f.name in V0_DOCS or "manual_validation" in f.parts \
+                or "final_presentation_pass" in f.parts:
             continue
         low = f.read_text(errors="ignore").lower()
         for t in DANGEROUS:
@@ -229,7 +231,8 @@ def verify_global() -> None:
     # --- L: speedup appears in generated artifacts only inside disclaimers / not_claimed fields ---
     affirmative = []
     for f in CS.rglob("*"):
-        if not f.is_file() or f.name in V0_DOCS or "manual_validation" in f.parts:
+        if not f.is_file() or f.name in V0_DOCS or "manual_validation" in f.parts \
+                or "final_presentation_pass" in f.parts:
             continue
         for ln in f.read_text(errors="ignore").splitlines():
             if "speedup" not in ln.lower():

@@ -1,0 +1,11 @@
+abstraction,compiler_transform,runtime_hal_object,command_buffer_or_command_isa,accelerator_isa,device_microcode_or_controller,fixed_hardware_datapath
+resident_weight_object,possible,strong,strong,weak,possible,—
+skinny_gemm_or_gemv_engine,possible,—,possible,strong,possible,strong
+partial_sum_object,—,weak,possible,strong,strong,strong
+fused_requant_epilogue,possible,—,possible,possible,possible,possible
+loop_carried_state_handle,—,possible,strong,possible,strong,possible
+bounded_loop_command,—,possible,strong,possible,strong,possible
+packed_lowbit_tensor,possible,blocked,blocked,blocked,blocked,blocked
+scale_object,possible,blocked,blocked,blocked,blocked,blocked
+dma_engine,weak,strong,strong,possible,possible,possible
+async_queue,—,strong,strong,weak,possible,—
