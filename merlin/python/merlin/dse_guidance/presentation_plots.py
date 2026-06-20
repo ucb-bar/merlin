@@ -99,6 +99,8 @@ _PLOT_META = {
     "table_low_bit_tiers": ("A/B", _NOSCALE, "Low-bit tier per workload; int8 accuracy ratified by the measured gate; fp8/int4 never assumed."),
     "table_deployment_magnitudes": ("B", _DEPLOY, "Deployment params/MACs by config-composition; openVLA & tiny_llama are exact external anchors."),
     "table_arithmetic_intensity": ("A/B", _DEPLOY, "Arithmetic intensity resident vs reload + residency gain per workload (HW-independent)."),
+    "realtime_requirement": ("A/B", _DEPLOY, "Weight-bandwidth a machine MUST provide to hit 30Hz real-time (resident vs reload); regime=design target, not a chip's performance."),
+    "table_realtime_requirement": ("A/B", _DEPLOY, "Per VLA/VLM real-time regime: required compute + weight bandwidth (HW-independent floor; chunking/H & residency/K levers)."),
 }
 
 
@@ -855,8 +857,47 @@ def _r_table_arithmetic_intensity(cs, facts, ax):
                          "Arithmetic intensity (HW-independent; residency gain = (prefix+rep*K)/(prefix+rep))")
 
 
+def _r_table_realtime_requirement(cs, facts, ax):
+    rows = _rows(cs / "realtime_requirement.csv")
+    if not rows:
+        return False
+    body = [[r["workload"], r["regime"], r["budget_ms"], r["required_GMAC_per_s"],
+             r["required_weight_GBps_resident"], r["required_weight_GBps_reload"]] for r in rows]
+    return _render_table(ax, ["workload", "real-time regime", "budget\n(ms)", "req\nGMAC/s",
+                              "weight GB/s\nresident", "weight GB/s\nreload"], body,
+                         "Real-time requirements (HW-independent floor; regime=design target, not a chip)")
+
+
+def _r_realtime_requirement(cs, facts, ax):
+    """Per VLA workload @ the 30Hz real-time baseline: required weight bandwidth resident vs reload
+    (residency lever) with the required compute rate annotated. A REQUIREMENT, not a chip's performance."""
+    rows = [r for r in _rows(cs / "realtime_requirement.csv")
+            if r["regime"].startswith("VLA 30Hz")]
+    if not rows:
+        return False
+    rows.sort(key=lambda r: -float(r["required_weight_GBps_reload"]))
+    wl = [r["workload"] for r in rows]
+    res = [float(r["required_weight_GBps_resident"]) for r in rows]
+    rel = [float(r["required_weight_GBps_reload"]) for r in rows]
+    gm = [float(r["required_GMAC_per_s"]) for r in rows]
+    x = range(len(wl))
+    ax.bar([i - 0.2 for i in x], rel, 0.4, label="reload every step")
+    ax.bar([i + 0.2 for i in x], res, 0.4, label="weights resident")
+    for i, g in zip(x, gm):
+        ax.annotate(f"{g:.0f}\nGMAC/s", (i, max(res[i], rel[i])), fontsize=8, ha="center",
+                    va="bottom", color="#5c5446")
+    ax.set_yscale("log")
+    ax.set_xticks(list(x), wl, rotation=20, fontsize=8)
+    ax.set_ylabel("required weight bandwidth (GB/s, log10)")
+    ax.set_title("Requirement to hit 30Hz real-time: weight bandwidth (residency removes a ~Kx factor)")
+    ax.legend(fontsize=8)
+    return True
+
+
 _RENDERERS = {
     "capture_fidelity": _r_capture_fidelity,
+    "realtime_requirement": _r_realtime_requirement,
+    "table_realtime_requirement": _r_table_realtime_requirement,
     "table_capture_summary": _r_table_capture_summary,
     "table_low_bit_tiers": _r_table_low_bit_tiers,
     "table_deployment_magnitudes": _r_table_deployment_magnitudes,
@@ -907,8 +948,9 @@ def render_plots(plot_manifest, cs_dir, facts, out_dir) -> list[str]:
     # predates them — they are the reviewer-facing magnitude/roofline figures (Phase B/C).
     extra = [{"plot_id": pid} for pid in (
         "capture_fidelity", "deployment_magnitude", "arithmetic_intensity_roofline",
-        "table_capture_summary", "table_low_bit_tiers", "table_deployment_magnitudes",
-        "table_arithmetic_intensity") if pid not in manifest_ids]
+        "realtime_requirement", "table_capture_summary", "table_low_bit_tiers",
+        "table_deployment_magnitudes", "table_arithmetic_intensity",
+        "table_realtime_requirement") if pid not in manifest_ids]
     for p in list(plot_manifest) + extra:
         r = _RENDERERS.get(p["plot_id"])
         if r is None or p.get("recommendation") == "omit":
