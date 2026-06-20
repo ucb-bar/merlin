@@ -166,10 +166,26 @@ def _booktable(ax, cols, rows, title, shade=None, subtitle=None):
 
 
 def _save_clean(fig, out: Path):
-    fig.tight_layout()
+    if any(getattr(a, "name", "") == "3d" for a in fig.axes):
+        fig.subplots_adjust(left=0.02, right=0.98, top=0.90, bottom=0.10)  # tight_layout breaks on 3d
+    else:
+        fig.tight_layout()
     fig.savefig(out, bbox_inches="tight", facecolor=_BG)
     import matplotlib.pyplot as plt
     plt.close(fig)
+
+
+def _ax3d(ax):
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (registers the '3d' projection)
+    fig = ax.figure
+    ax.remove()
+    return fig.add_subplot(111, projection="3d")
+
+
+def _surf_cmap():
+    from matplotlib.colors import LinearSegmentedColormap
+    return LinearSegmentedColormap.from_list("merlin_surf",
+                                             ["#EFE6D6", "#AB9A89", "#8B93A6", "#0F3759", "#333351"])
 
 
 def _legend(ax, **kw):
@@ -232,6 +248,45 @@ def _r_lever_ablation(cs, ax):
     _title(ax, "System levers reduce the 30 Hz weight-bandwidth requirement",
            "requirement reduction (action horizon H, loop K from source/config) — not a speedup")
     _legend(ax, loc="upper right", ncol=2)
+    return True
+
+
+def _r_realtime_requirement_surface(cs, ax):
+    """3D feasibility surface: required compute (z, log) over target rate (x) x VLA workload (y). A
+    requirement floor under the workload model — not a chip measurement. (Slide plot; restyled clean.)"""
+    import math
+    import numpy as np
+    from merlin.dse_guidance import models as M
+    vfam = ("flow_matching", "diffusion", "autoregressive_vla")
+    vla = [(r["workload"], float(r["macs_per_replan"]), (M.MODEL_ARCH[r["workload"]].action_horizon or 1))
+           for r in _rows(cs / "arithmetic_intensity.csv")
+           if r["workload"] != "small_llama" and M.MODEL_ARCH.get(r["workload"])
+           and M.MODEL_ARCH[r["workload"]].family in vfam]
+    if not vla:
+        return False
+    vla.sort(key=lambda t: t[1] / t[2])
+    ax3 = _ax3d(ax)
+    rates = list(range(10, 101, 5))
+    X, Y = np.meshgrid(rates, range(len(vla)))
+    Z = np.array([[math.log10(macs * r / H / 1e9) for r in rates] for (_, macs, H) in vla])
+    surf = ax3.plot_surface(X, Y, Z, cmap=_surf_cmap(), edgecolor=_INK, lw=0.25, alpha=0.96,
+                            rstride=1, cstride=1)
+    ax3.set_yticks(range(len(vla)))
+    ax3.set_yticklabels([w for w, _, _ in vla], fontsize=9)
+    ax3.set_xlabel("target rate (Hz)", fontsize=11, labelpad=8, color=_INK)
+    ax3.set_zlabel("required GMAC/s (log10)", fontsize=11, labelpad=8, color=_INK)
+    for axis in (ax3.xaxis, ax3.yaxis, ax3.zaxis):
+        axis.set_pane_color((0.992, 0.969, 0.937, 1.0))    # cream panes
+        axis.pane.set_edgecolor(_GRID)
+    ax3.grid(True, color=_GRID, alpha=0.5)
+    ax3.tick_params(colors=_INK, labelsize=9)
+    serif, _ = _fonts()
+    ax3.set_title("Required compute vs target real-time rate", fontfamily=serif, fontsize=15,
+                  color=_INK, fontweight="bold", pad=18)
+    ax3.figure.colorbar(surf, ax=ax3, fraction=0.024, pad=0.10, label="required GMAC/s (log10)")
+    ax3.view_init(elev=24, azim=-58)
+    ax3.figure.text(0.5, 0.025, "requirement floor under the workload model — not a chip measurement",
+                    ha="center", fontsize=10.5, fontstyle="italic", color=_GOLD)
     return True
 
 
@@ -691,6 +746,7 @@ _FINAL_META = {
     "deployment_magnitude": (_r_deployment_magnitude, "B", "deployment-composition", "", "real_config_magnitudes.csv", "backup"),
     "sharding_scalability": (_r_sharding_scalability, "A", "structural", "structural comm bytes; not a performance result", "sharding_table.csv", "backup"),
     "boundary_necessity_full_backup": (_r_boundary_necessity_full_backup, "B", "structural", "blocked = capture/evidence blocked", "IM.abstraction_necessity", "backup"),
+    "realtime_requirement_surface": (_r_realtime_requirement_surface, "A/B", "deployment-composition", "requirement floor under the workload model; not a chip measurement", "arithmetic_intensity.csv", "backup"),
     "table_low_bit_tiers": (_bt_low_bit, "A/B", "structural", "fp8/int4 never assumed", "low_bit_visibility.csv", "backup"),
     "table_deployment_magnitudes": (_bt_deploy, "B", "deployment-composition", "", "real_config_magnitudes.csv", "backup"),
     "table_arithmetic_intensity": (_bt_arith, "A/B", "deployment-composition", "modeling view, not full-memory AI", "arithmetic_intensity.csv", "backup"),
@@ -786,9 +842,15 @@ def render_final(cs_dir, out_dir) -> list[str]:
             print(f"  [{pid}] FAILED: {type(e).__name__}: {e}")
             ok = False
         if ok:
+            # capture the title BEFORE _save_clean closes the figure; 3D renderers swap the ax.
+            title = ax.get_title(loc="left") or ax.get_title()
+            if not title:
+                for a in fig.axes:
+                    title = a.get_title(loc="left") or a.get_title()
+                    if title:
+                        break
             _save_clean(fig, out_dir / f"{pid}.png")
             done.append(pid)
-            title = ax.get_title(loc="left") or ax.get_title()
             manifest.append({"plot_id": pid, "class": klass, "evidence_tier": tier, "scale": scale,
                              "title": title, "caveat": caveat, "source_artifact": src,
                              "file": f"figures/{pid}.png"})

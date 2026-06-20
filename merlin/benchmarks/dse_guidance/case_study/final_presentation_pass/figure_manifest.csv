@@ -15,6 +15,7 @@ work_coverage_by_workload,backup,A,captured-config,Recovered work: linear-GEMM v
 deployment_magnitude,backup,B,deployment-composition,Deployment magnitudes by config-composition,,real_config_magnitudes.csv,figures/deployment_magnitude.png
 sharding_scalability,backup,A,structural,"Transfer effect of parallelism: comm overhead per unit work, by shard axis",structural comm bytes; not a performance result,sharding_table.csv,figures/sharding_scalability.png
 boundary_necessity_full_backup,backup,B,structural,Abstraction necessity across workloads — search the necessary axes first,blocked = capture/evidence blocked,IM.abstraction_necessity,figures/boundary_necessity_full_backup.png
+realtime_requirement_surface,backup,A/B,deployment-composition,Required compute vs target real-time rate,requirement floor under the workload model; not a chip measurement,arithmetic_intensity.csv,figures/realtime_requirement_surface.png
 table_low_bit_tiers,backup,A/B,structural,Low-bit visibility per workload,fp8/int4 never assumed,low_bit_visibility.csv,figures/table_low_bit_tiers.png
 table_deployment_magnitudes,backup,B,deployment-composition,Deployment magnitudes by config-composition,,real_config_magnitudes.csv,figures/table_deployment_magnitudes.png
 table_arithmetic_intensity,backup,A/B,deployment-composition,Weight-stream arithmetic intensity,"modeling view, not full-memory AI",arithmetic_intensity.csv,figures/table_arithmetic_intensity.png
