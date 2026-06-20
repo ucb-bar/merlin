@@ -69,8 +69,7 @@ _PLOT_META = {
     "evidence_type_by_workload": ("A/B/C", _NOSCALE, "Provenance mix of recovered facts per workload; bar = fact count by evidence tier."),
     "evidence_type_by_phase": ("A/B/C", _NOSCALE, "Provenance mix of recovered facts per analysis phase."),
     "shape_class_mac_share": ("A", _CAPTURED, "Per-workload MAC split by GEMM shape class (from IR shapes); composition to 1."),
-    "primitive_coverage_heatmap": ("A", _NOSCALE, "Fraction of each workload's MACs a primitive covers at <=10% pad waste (top primitives)."),
-    "primitive_regret_bar": ("A", _NOSCALE, "Per-primitive coverage and worst-case cross-workload regret (shape geometry only)."),
+    "primitive_regret_bar": ("A", _NOSCALE, "If you build ONE primitive: fraction of MACs covered (<=10% pad waste), mean across the corpus vs the worst single workload."),
     "boundary_placement_heatmap": ("B", _NOSCALE, "HW/SW-boundary placement status per abstraction x level (top by boundary pressure)."),
     "resident_capacity_by_dtype": ("A", _CAPTURED, "Resident weight bytes per region by dtype. Scale is captured-config, not deployment."),
     "avoidable_reload_by_region": ("A", _CAPTURED, "Weight bytes re-loaded across the loop if non-resident (captured-config scale; log axis)."),
@@ -102,7 +101,8 @@ _PLOT_META = {
     "realtime_requirement": ("A/B", _DEPLOY, "Weight-bandwidth a machine MUST provide to hit 30Hz real-time (resident vs reload); regime=design target, not a chip's performance."),
     "table_realtime_requirement": ("A/B", _DEPLOY, "Per VLA/VLM real-time regime: required compute + weight bandwidth (HW-independent floor; chunking/H & residency/K levers)."),
     "realtime_requirement_surface": ("A/B", _DEPLOY, "3D feasibility frontier: required compute (z) over target rate (x) x VLA workload (y). HW-independent floor, computed from recovered structure."),
-    "primitive_coverage_surface": ("A", _NOSCALE, "3D ablation: worst-workload MAC coverage over primitive-set size x pad-waste tolerance — 'accelerate N primitives -> cover this much math.'"),
+    "sharding_scalability": ("A", _NOSCALE, "Transfer effect of parallelism: extra comm bytes per unit of useful output as PU count grows, by shard axis. Splitting rows (M) broadcasts weights (priciest); cols (N) cheapest; K needs a partial-sum reduction."),
+    "sharding_comm_tradeoff": ("A", _CAPTURED, "Absolute extra communication (GB) added per shard count, by axis — the cost side of sharding (M broadcasts weights; K needs a partial-sum reduction). HW-independent bytes."),
     "lever_ablation": ("A/B", _DEPLOY, "Ablation: action-chunking (/H) then residency (/~K) each cut the weight bandwidth needed for 30Hz. A requirement reduction, not a speedup."),
     "capture_level_ablation": ("A", _NOSCALE, "Progressive capture-level ablation: flat (nothing named) -> high_level (attention/softmax/norm named) -> quant_qdq (low-bit dequant) across the corpus."),
 }
@@ -205,17 +205,26 @@ def _r_primitive_coverage(cs, facts, ax):
 
 
 def _r_primitive_regret(cs, facts, ax):
-    rows = _rows(cs / "primitive_regret_table.csv")
+    """If you build ONE primitive: the fraction of MACs it covers (<=10% pad waste), mean across the
+    corpus vs the WORST single workload. Plain-language replacement for the 'regret' framing — the
+    mean-vs-worst gap IS the cross-workload regret of committing to that one primitive."""
+    from collections import defaultdict
+    rows = _rows(cs / "primitive_coverage_matrix.csv")
     if not rows:
         return False
-    prims = [r["primitive"] for r in rows]
+    cov = defaultdict(list)
+    for r in rows:
+        cov[r["primitive"]].append(float(r["coverage_under_10pct"]))
+    prims = sorted(cov, key=lambda p: -sum(cov[p]) / len(cov[p]))
+    mean = [sum(cov[p]) / len(cov[p]) for p in prims]
+    worst = [min(cov[p]) for p in prims]
     x = range(len(prims))
-    ax.bar([i - 0.2 for i in x], [float(r["coverage_under_10pct"]) for r in rows], 0.4,
-           label="coverage <=10%")
-    ax.bar([i + 0.2 for i in x], [float(r["max_regret"]) for r in rows], 0.4, label="max regret")
+    ax.bar([i - 0.2 for i in x], mean, 0.4, label="mean across workloads")
+    ax.bar([i + 0.2 for i in x], worst, 0.4, label="worst single workload")
     ax.set_xticks(list(x), prims, rotation=35, fontsize=8)
-    ax.set_title("Primitive coverage + cross-workload regret")
-    ax.set_ylabel("MAC fraction")
+    ax.set_ylim(0, 1.02)
+    ax.set_ylabel("fraction of MACs covered (<=10% pad waste)")
+    ax.set_title("If you build ONE primitive: MAC coverage, mean vs worst workload")
     ax.legend(fontsize=8)
     return True
 
@@ -326,28 +335,25 @@ def _r_decision_weight_residency(cs, facts, ax):
     kmax = max(max(int(r["invocations"]), 2) for r in rows)
     ks = list(range(1, kmax + 1))
     import matplotlib.lines as mlines
-    # declutter: highlight the 3 heaviest-reload workloads in color + label; the rest stay light grey.
+    # every workload gets a colour: solid = reload-every-step (grows x K), dashed = resident (flat),
+    # the dot marks the model's ACTUAL K recovered from the scf.for trip count.
     rows = sorted(rows, key=lambda r: -int(r["weight_bytes"]))
-    top = {r["workload"] for r in rows[:3]}
-    ci = 0
-    for r in rows:
-        wb, kr, hot = int(r["weight_bytes"]), int(r["invocations"]), r["workload"] in top
-        col = PALETTE[ci % len(PALETTE)] if hot else "#cdc3ad"
-        if hot:
-            ci += 1
-        ax.plot(ks, [wb * k for k in ks], color=col, lw=1.8 if hot else 1.0, zorder=3 if hot else 1)
-        ax.plot(ks, [wb] * len(ks), "--", color=col, alpha=0.7 if hot else 0.4)
-        ax.scatter([kr], [wb * kr], color=col, zorder=5, s=26 if hot else 14)
-        if hot:
+    for i, r in enumerate(rows):
+        wb, kr = int(r["weight_bytes"]), int(r["invocations"])
+        col = PALETTE[i % len(PALETTE)]
+        ax.plot(ks, [wb * k for k in ks], color=col, lw=1.6, zorder=3)
+        ax.plot(ks, [wb] * len(ks), "--", color=col, alpha=0.55, zorder=2)
+        ax.scatter([kr], [wb * kr], color=col, zorder=5, s=30, edgecolor="white", lw=0.6)
+        if i < 4:                                          # label the heaviest few inline
             ax.annotate(f"{r['workload']} (K={kr})", (kr, wb * kr), fontsize=8,
-                        xytext=(4, 3), textcoords="offset points", color=col)
-    ax.set_title("Decision: weight residency -> bytes moved vs loop count K (IR-recovered, scf.for)")
+                        xytext=(4, 4), textcoords="offset points", color=col)
+    ax.set_title("Decision: weight residency -> bytes moved vs loop count K (dot = the model's actual K)")
     ax.set_xlabel("head loop count K")
     ax.set_ylabel("weight bytes moved (log10)")
     ax.set_yscale("log")
-    ax.legend(handles=[mlines.Line2D([], [], color="#5c5446", label="reload every step (x K)"),
-                       mlines.Line2D([], [], color="#5c5446", ls="--", label="resident (load once)"),
-                       mlines.Line2D([], [], color="#5c5446", marker="o", ls="", label="IR-recovered K")],
+    ax.legend(handles=[mlines.Line2D([], [], color="#5c5446", label="reload every step (grows x K)"),
+                       mlines.Line2D([], [], color="#5c5446", ls="--", label="resident (load once, flat)"),
+                       mlines.Line2D([], [], color="#5c5446", marker="o", ls="", label="model's actual K (IR scf.for)")],
               fontsize=8, loc="upper left")
     return True
 
@@ -940,56 +946,94 @@ def _r_realtime_requirement_surface(cs, facts, ax):
     return True
 
 
-def _r_primitive_coverage_surface(cs, facts, ax):
-    """3D ablation (honest): worst-workload MAC coverage (z) over primitive-set size (x) x pad-waste
-    tolerance (y). 'Accelerate N primitives at tolerance T -> cover this fraction of the corpus' math.'"""
-    import numpy as np
-    from merlin.dse_guidance import insight_mining as IM
-    fr = IM.primitive_frontier_robustness(cs)["rows"]
-    if not fr:
+def _r_sharding_scalability(cs, facts, ax):
+    """The transfer effect of parallelism: extra communication bytes added per UNIT of useful output,
+    as PU count grows, by shard axis. The whole corpus is shardable on every axis, so the real cost is
+    here: splitting rows (M) / cols (N) is ~free; splitting the contraction (K) needs a partial-sum
+    reduction every step -> the ratio climbs. HW-independent (structural bytes), not a perf claim."""
+    sh = _rows(cs / "sharding_table.csv")
+    ops = {(r["workload"], r["op_index"]): r for r in _rows(cs / "operator_shape_table.csv")}
+    if not sh or not ops:
         return False
-    sizes = sorted({int(r["set_size"]) for r in fr})
-    thr = sorted({int(r["threshold_pct"]) for r in fr})
-    cov = {(int(r["set_size"]), int(r["threshold_pct"])): float(r["worst"]) for r in fr}
-    X, Y = np.meshgrid(sizes, thr)
-    Z = np.array([[cov.get((s, t), np.nan) for s in sizes] for t in thr])
-    ax3 = _ax3d(ax)
-    surf = ax3.plot_surface(X, Y, Z, cmap=_pastel_cmap(), edgecolor="#5c5446", lw=0.3, vmin=0, vmax=1)
-    ax3.set_xlabel("primitive-set size", fontsize=9, labelpad=6)
-    ax3.set_ylabel("pad-waste tolerance (%)", fontsize=9, labelpad=6)
-    ax3.set_zlabel("worst-workload coverage", fontsize=9, labelpad=4)
-    ax3.set_xticks(sizes)
-    ax3.set_yticks(thr)
-    ax3.set_zlim(0, 1)
-    ax3.set_title("Coverage ablation: accelerate N primitives -> worst-workload MAC coverage")
-    ax3.figure.colorbar(surf, ax=ax3, fraction=0.025, pad=0.10, label="coverage")
-    ax3.view_init(elev=24, azim=-58)
+    counts = [2, 4, 8]
+    out_tot = sum(int(o.get("output_bytes", 0) or 0) for o in ops.values()) or 1
+    ratio = {a: [] for a in ("M", "N", "K")}
+    for a in ("M", "N", "K"):
+        for n in counts:
+            comm = sum(float(r["per_extra_shard_bytes"]) * (n - 1) for r in sh
+                       if r["axis"] == a and r.get(f"shardable_{n}") == "True")
+            ratio[a].append(comm / out_tot)
+    labels = {"M": "M (split output rows; broadcast weights)",
+              "N": "N (split output cols; partition weights)",
+              "K": "K (split contraction; partial-sum reduction)"}
+    for i, key in enumerate(("M", "N", "K")):
+        ax.plot(counts, ratio[key], marker="o", lw=1.8, color=PALETTE[i], label=labels[key])
+    ax.set_xticks(counts)
+    ax.set_xlabel("number of processing units (shard count)")
+    ax.set_ylabel("extra comm bytes / useful output bytes")
+    ax.set_title("Transfer effect of parallelism: comm overhead per unit work, by shard axis")
+    ax.legend(fontsize=8, title="shard axis (how the GEMM is split)", title_fontsize=8)
+    return True
+
+
+def _r_sharding_comm_tradeoff(cs, facts, ax):
+    """The cost side of sharding: extra communication bytes (partial-sum reductions / broadcasts) added
+    per shard count, by axis. Read with sharding_scalability: M/N split cheaply (no reduction), K-axis
+    needs a partial-sum reduction -> higher comm. HW-independent (structural bytes), not a perf claim."""
+    from collections import defaultdict
+    sh = _rows(cs / "sharding_table.csv")
+    if not sh:
+        return False
+    counts = [2, 4, 8]
+    comm = {a: [0.0, 0.0, 0.0] for a in ("M", "N", "K")}
+    for r in sh:
+        a = r["axis"]
+        if a not in comm:
+            continue
+        per = float(r["per_extra_shard_bytes"])
+        for j, n in enumerate(counts):
+            if r.get(f"shardable_{n}") == "True":
+                comm[a][j] += per * (n - 1)
+    for i, a in enumerate(("M", "N", "K")):
+        ax.plot(counts, [c / 1e9 for c in comm[a]], marker="o", lw=1.8, color=PALETTE[i],
+                label=f"{a}-axis")
+    ax.set_xticks(counts)
+    ax.set_yscale("log")
+    ax.set_xlabel("number of processing units (shard count)")
+    ax.set_ylabel("extra communication (GB, log10)")
+    ax.set_title("Sharding cost: extra comm bytes vs PU count, by axis (K needs partial-sum reduction)")
+    ax.legend(fontsize=8, title="shard axis", title_fontsize=8)
     return True
 
 
 def _r_lever_ablation(cs, facts, ax):
     """Ablation: how action-chunking (/H) then residency (/~K) each cut the weight bandwidth a machine
-    must provide to hit 30Hz, for the two demanding VLAs. A REQUIREMENT reduction, not a speedup."""
+    must provide to hit 30Hz, for EVERY VLA workload. A REQUIREMENT reduction, not a speedup. Each line
+    descends across the two levers; the spread shows chunk size (H) dominates the starting point."""
     from merlin.dse_guidance import models as M
-    rows = [r for r in _rows(cs / "arithmetic_intensity.csv") if r["workload"] in ("molmoact", "openvla")]
+    vfam = ("flow_matching", "diffusion", "autoregressive_vla")
+    rows = [r for r in _rows(cs / "arithmetic_intensity.csv")
+            if r["workload"] != "small_llama" and M.MODEL_ARCH.get(r["workload"])
+            and M.MODEL_ARCH[r["workload"]].family in vfam]
     if not rows:
         return False
     stages = ["reload,\nno chunk", "+ action\nchunk (/H)", "+ residency\n(/~K)"]
-    width = 0.38
-    for k, r in enumerate(sorted(rows, key=lambda r: r["workload"])):
+    rows.sort(key=lambda r: -float(r["weight_bytes_nonresident"]))
+    for k, r in enumerate(rows):
         w = r["workload"]
         H = M.MODEL_ARCH[w].action_horizon or 1
         wb_non, wb_res = float(r["weight_bytes_nonresident"]), float(r["weight_bytes_resident"])
         vals = [wb_non / (1 / 30) / 1e9, wb_non / (H / 30) / 1e9, wb_res / (H / 30) / 1e9]
-        xs = [i + (k - 0.5) * width for i in range(3)]
-        ax.bar(xs, vals, width, label=w, color=PALETTE[k])
-        for x, v in zip(xs, vals):
-            ax.annotate(f"{v:,.0f}", (x, v), fontsize=8, ha="center", va="bottom", color="#5c5446")
+        col = PALETTE[k % len(PALETTE)]
+        ax.plot(range(3), vals, marker="o", color=col, lw=1.8, label=f"{w} (H={H})")
+        ax.annotate(f"{vals[-1]:,.0f}", (2, vals[-1]), fontsize=8, color=col,
+                    xytext=(5, 0), textcoords="offset points", va="center")
     ax.set_yscale("log")
     ax.set_xticks(range(3), stages, fontsize=8)
+    ax.set_xlim(-0.2, 2.6)
     ax.set_ylabel("required weight bandwidth @30Hz (GB/s, log10)")
-    ax.set_title("Lever ablation: chunking + residency cut the 30Hz bandwidth requirement")
-    ax.legend(fontsize=8)
+    ax.set_title("Lever ablation: chunking + residency cut the 30Hz bandwidth requirement (all VLAs)")
+    ax.legend(fontsize=8, ncol=2)
     return True
 
 
@@ -1028,7 +1072,8 @@ _RENDERERS = {
     "realtime_requirement": _r_realtime_requirement,
     "table_realtime_requirement": _r_table_realtime_requirement,
     "realtime_requirement_surface": _r_realtime_requirement_surface,
-    "primitive_coverage_surface": _r_primitive_coverage_surface,
+    "sharding_scalability": _r_sharding_scalability,
+    "sharding_comm_tradeoff": _r_sharding_comm_tradeoff,
     "lever_ablation": _r_lever_ablation,
     "capture_level_ablation": _r_capture_level_ablation,
     "table_capture_summary": _r_table_capture_summary,
@@ -1040,7 +1085,6 @@ _RENDERERS = {
     "evidence_type_by_workload": _r_evidence_by_workload,
     "evidence_type_by_phase": _r_evidence_by_phase,
     "shape_class_mac_share": _r_shape_mac_share,
-    "primitive_coverage_heatmap": _r_primitive_coverage,
     "primitive_regret_bar": _r_primitive_regret,
     "boundary_placement_heatmap": _r_boundary_heatmap,
     "resident_capacity_by_dtype": _r_resident_capacity,
@@ -1084,8 +1128,8 @@ def render_plots(plot_manifest, cs_dir, facts, out_dir) -> list[str]:
         "realtime_requirement", "table_capture_summary", "table_low_bit_tiers",
         "table_deployment_magnitudes", "table_arithmetic_intensity",
         "table_realtime_requirement", "realtime_requirement_surface",
-        "primitive_coverage_surface", "lever_ablation", "capture_level_ablation")
-        if pid not in manifest_ids]
+        "sharding_scalability", "sharding_comm_tradeoff", "lever_ablation",
+        "capture_level_ablation") if pid not in manifest_ids]
     for p in list(plot_manifest) + extra:
         r = _RENDERERS.get(p["plot_id"])
         if r is None or p.get("recommendation") == "omit":

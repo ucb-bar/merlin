@@ -43,10 +43,35 @@ experts use** — the residual 60–63% gap is *not* a missing vectorization idi
 
 Ours matches XNNPACK on **contraction form, accumulator-residency, lane width (SEW=32) and LMUL=m4**, and
 emits the **same `vfmacc.vf` broadcast form** (iteration-2 `.vf` fix — it eliminated the `vfmacc.vv`
-A-broadcast ladder, 20→6 insns/FMA). So the abstraction *worked*; the remaining gap is **data movement
-(packing / cache-blocking / A-reuse)**, which the kernel-compute CCA does not capture — that is the
-**iteration-3 residual** (analysis in `packing_residual.md`). Reproducible artifact + figures:
+A-broadcast ladder). So the abstraction *worked*. Reproducible artifact:
 `mined_knowledge/rvv/compare_20260619_182411/` (`compare.md`, `fig2_speedup_contest.png`).
+
+### Iteration 3 — the memory-traffic decode **refutes the packing hypothesis** (and pins the real blocker)
+
+I had assumed the residual was data movement (the experts stream pre-packed panels, ours streams the
+model layout). **Iteration 3 measured it and that is wrong vs XNNPACK.** A new memory-traffic decode facet
+(`kernels/decode/memory.py`, structural mnemonic classification of every K-loop load — no regex) shows:
+
+- **vs XNNPACK the per-FMA memory residual is already CLOSED.** At *every* openvla/rdt2 matmul shape the
+  iteration-2 `.vf` kernel decodes **identically** to XNNPACK: MR=1, **2.0 loads / useful-FMA**, unit-stride
+  only, **0 broadcast-ladder ops**. (The iteration-1 `.vv` kernel carried an **8-op** A-broadcast ladder per
+  FMA — that was the gap, and `.vf` removed it.) The hypothesised "strided model-layout stream" **does not
+  exist** (`vec_strided_loads = 0` everywhere). Ours matches XNNPACK on compute **and** memory.
+- **The one lever left is OpenBLAS's MR>1 A-reuse** (MR=16 register block → ~1.06 amortized loads/FMA). The
+  iteration-3 feature `accumulator_resident_wholemodel_vf_mr4` (default-off) reproduces it: **loads/FMA
+  2.0 → 1.25**, decode-confirmed, spike bit-exact on large-M.
+- **But it is structurally unreachable on these models.** openvla/rdt2 have **no large-M matmul** (leading dim
+  = token count: openvla M∈{16,17,20}, rdt2 M∈{1,28}); MR>1 needs M≥MR with a clean tile, so it trips the
+  LLVM-23 mask PipelineError or scalar-falls-back and *regresses* them. The A-reuse they leave on the table
+  is a **structural property of the small token dim, not a kernel defect** — closable only by a
+  **dispatch-level large-M batching pass** (group the 11 separate M=20 projections / per-head attention into
+  one GEMM). That is the precise, bounded blocker.
+
+**⇒ Conclusion:** since the matmul kernel already matches XNNPACK on both compute and memory, the whole-model
+**60/63% gap is dispatch-level overhead (everything around the matmuls), not the matmul kernel.** Full
+analysis: `packing_residual.md` (+ `packing_residual_decode.json`).
+
+![Memory-traffic decode (iter 1→2→3): left = .vf collapses the 8-op A-broadcast ladder to XNNPACK's 0; right = ours-.vf ties XNNPACK at 2.0 loads/FMA (residual closed), MR>1 A-reuse the only lever and unreachable on small-M.](paper_gap_attribution.png)
 
 ---
 

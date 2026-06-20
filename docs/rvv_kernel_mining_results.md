@@ -84,10 +84,13 @@ hits the frozen baseline too).
 and NOT residency — `ours_wholemodel` is already NR=32/LMUL=m4/vsetvlmax + accumulator-resident with 0 spills
 (identical lane-width to XNNPACK, wider than OpenBLAS m2). The dominant residual is the **`vfmacc.vv`
 A-broadcast ladder**: lacking `vfmacc.vf`, the kernel rebuilds each A scalar into a `vector<32>` via a
-vslideup/vmv ladder every K-step → **~20 inner-loop insns/FMA vs XNNPACK's ~3** (6.7× inflation). Fix (next
-iteration): carry v3's `scalarize_a_reads` (emits `.vf`) into `accumulator_resident_wholemodel` keeping its
-M/N-tail clamps so it survives the small-M openvla/rdt2 matmuls. This is the loop's value — a *measured*
-residual corrected a wrong lane-width hypothesis.
+vslideup/vmv ladder every K-step → **8 broadcast-ladder ops/FMA vs XNNPACK's 0**. **This was fixed in turn 2**
+(`scalarize_a_reads` → `.vf`, carried into `accumulator_resident_wholemodel` with M/N-tail clamps so it
+survives the small-M openvla/rdt2 matmuls). **Turn 3 then decoded the memory traffic and showed the `.vf`
+kernel now ties XNNPACK exactly (2.0 loads/FMA, 0 ladder) — so the matmul-kernel residual vs XNNPACK is
+closed, and the remaining whole-model gap is dispatch-level overhead, not the kernel (see §7).** This is the
+loop's value — a *measured* residual corrected a wrong lane-width hypothesis, then corrected a wrong packing
+hypothesis.
 
 ### 3b. Single-GEMM ceiling on K1 (rdtime ticks, inner-compute) — the crossover
 `ours-intrinsic` (hand ceiling) beats **both** experts 32³→384³, then **OpenBLAS retakes the lead at
@@ -213,13 +216,23 @@ the new residual back.** Turns so far on the fp32 GEMM path:
 | turn | action (mined) | result |
 |---|---|---|
 | 1 | vfmacc forming (fused_vfmacc) → tiled → accumulator-residency (v3 / wholemodel) | bitvla beats both experts; openvla/rdt2 reach 55–62% |
-| 2 | `.vf` A-scalarize (kill the `vfmacc.vv` broadcast ladder, 20→6 insns/FMA) — `accumulator_resident_wholemodel_vf` | openvla 55→**60%**, rdt2 62→**63%** — a *modest* whole-model bump (1.04–1.09×) |
+| 2 | `.vf` A-scalarize (kill the `vfmacc.vv` broadcast ladder, 8→0 ladder ops/FMA) — `accumulator_resident_wholemodel_vf` | openvla 55→**60%**, rdt2 62→**63%** — a *modest* whole-model bump (1.04–1.09×) |
+| 3 | **memory-traffic decode facet** + MR>1 A-reuse register block (`..._vf_mr4`) — *to test the packing hypothesis* | **packing hypothesis REFUTED**: ours-`.vf` already ties XNNPACK (2.0 loads/FMA); MR>1 lever structurally unreachable on small-M VLAs → blocker is dispatch-level, not the kernel |
 
-**Turn 2's honest lesson:** the kernel-level 6.7× inner-loop reduction dampens to ~1.05× whole-model — the
-matmul *compute* is not the openvla/rdt2 bottleneck; **memory/packing is**. So the loop has surfaced the
-**next residual = packing/cache-blocking** (the breakdown's secondary factor), which is turn 3's input. This
-is the loop working: each turn closes part of the gap and reveals the next thing to abstract — diminishing
-per-turn returns, honestly measured, not overclaimed.
+**Turn 2's honest lesson:** the kernel-level inner-loop reduction dampens to ~1.05× whole-model — the matmul
+*compute* is not the openvla/rdt2 bottleneck. I assumed **memory/packing** was the next residual and made
+turn 3 *test* it with a new memory-traffic decode facet (`kernels/decode/memory.py`).
+
+**Turn 3's honest lesson (the loop correcting a wrong assumption — again):** the decode **refuted the packing
+hypothesis vs XNNPACK**. At every openvla/rdt2 shape the `.vf` kernel decodes *identically* to XNNPACK — MR=1,
+**2.0 loads/useful-FMA, unit-stride, 0 broadcast ladder** — so the matmul kernel matches XNNPACK on memory as
+well as compute. The only data-movement lever left is OpenBLAS's MR>1 A-reuse (reproduced as `..._vf_mr4`,
+loads/FMA 2.0→1.25, bit-exact), but it is **structurally unreachable**: these VLAs have only small-M matmuls
+(token dim 1–28), where MR>1 has no clean tile and regresses. **⇒ the whole-model gap is dispatch-level
+overhead (everything around the matmuls / no large-M batching), not the matmul kernel** — closable only by a
+dispatch-level large-M batching pass, the precise bounded blocker. Full analysis: `packing_residual.md`.
+Two turns in a row (lane-width, then packing) the measurement loop overturned a plausible human hypothesis —
+that is the loop earning its keep.
 
 **The tool:** `merlin-compare` makes one turn's measurement+comparison a single repeatable command — a spec
 (`configs × workloads × target × metric`) → a versioned `compare_<ts>/` artifact with the measured table,
