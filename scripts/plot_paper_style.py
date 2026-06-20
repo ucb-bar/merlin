@@ -607,6 +607,70 @@ def fig_gap_attribution():
     plt.close(fig)
 
 
+# ============================================================================
+# FIGURE I — DISPATCH BREAKDOWN: MEASURED proof that the whole-model gap is
+# dispatch-level, not the matmul kernel. Stacked wall = matmul-bucket (shared,
+# decode-equal) + dispatch-bucket. Source: output/rvv_bench/dispatch_breakdown.json
+# (K1 board, rdtime matmul ticks + wall, cos-gated).
+# ============================================================================
+def fig_dispatch_breakdown():
+    import json
+    MATMUL = "#6f93b0"; DISP = "#cf8b7d"  # matmul = steel (shared); dispatch = salmon (the gap)
+    d = json.load(open(OUT.parents[1] / "rvv_bench" / "dispatch_breakdown.json"))
+    panels = [("openvla", "openvla_fp32_consistent"), ("rdt2", "rdt2_fp32_consistent")]
+    panels = [(nm, k) for nm, k in panels if k in d]
+    fig, axes = plt.subplots(1, len(panels), figsize=(13.5, 4.8)); fig.patch.set_facecolor("white")
+    if len(panels) == 1: axes = [axes]
+    for ax, (nm, key) in zip(axes, panels):
+        ax.set_facecolor(CREAM)
+        for s in ("top", "right"): ax.spines[s].set_visible(False)
+        loc = d[key]["localize_ours_wholemodel_vf"]
+        mm = loc["shared_matmul_bucket_ns"] / 1e6  # ms (shared, equal across configs)
+        bars = [("ours .vf", mm, loc["ours_dispatch_bucket_ns"] / 1e6, True),
+                ("XNNPACK",  mm, loc["xnnpack_dispatch_bucket_ns"] / 1e6, False)]
+        y = np.arange(len(bars))[::-1]
+        for yi, (lab, mmms, dispms, is_ours) in zip(y, bars):
+            ax.barh(yi, mmms, height=0.52, color=MATMUL, edgecolor=CARD_EC, linewidth=1.3, zorder=3)
+            ax.barh(yi, dispms, left=mmms, height=0.52, color=DISP, edgecolor=CARD_EC, linewidth=1.3, zorder=3)
+            ax.text(mmms + dispms + (mmms+dispms)*0.012, yi, f"{(mmms+dispms):.0f} ms",
+                    va="center", ha="left", fontsize=10.5, fontweight="bold", color=INK)
+            ax.text(mmms + dispms/2, yi, f"dispatch {dispms:.0f} ms", va="center", ha="center",
+                    fontsize=8.6, color="#5b3a32", fontweight="bold")
+        ax.set_yticks(y); ax.set_yticklabels([b[0] for b in bars], fontsize=11)
+        frac = d[key]["results"]["xnnpack_kernels"]["matmul_frac"] * 100
+        delta = loc["delta_wall_ns"] / 1e6; over = loc["ours_over_xnnpack"]
+        ax.set_xlim(0, (mm + loc["ours_dispatch_bucket_ns"]/1e6) * 1.22)
+        ax.set_title(f"{nm} — matmul is {frac:.0f}% of wall; the {over:.2f}× gap is all dispatch",
+                     loc="left", color=INK, fontsize=11.5, pad=8)
+        ax.set_xlabel("whole-model wall (ms) — matmul-bucket (shared, decode-equal) + dispatch-bucket")
+        # callout: the delta between the two bar ends is entirely dispatch
+        ax.annotate("", xy=(mm + loc["ours_dispatch_bucket_ns"]/1e6, y[0]-0.34),
+                    xytext=(mm + loc["xnnpack_dispatch_bucket_ns"]/1e6, y[0]-0.34),
+                    arrowprops=dict(arrowstyle="<->", color="#9c4f3f", lw=1.6))
+        ax.text((mm + (loc["ours_dispatch_bucket_ns"]+loc["xnnpack_dispatch_bucket_ns"])/2e6), y[0]-0.52,
+                f"Δ {delta:.0f} ms = 100% dispatch", ha="center", fontsize=8.4,
+                color="#9c4f3f", fontweight="bold")
+        ax.set_ylim(-0.95, len(bars)-0.45)
+    from matplotlib.patches import Patch
+    axes[0].legend(handles=[Patch(color=MATMUL, label="matmul kernel (shared, = XNNPACK by decode)"),
+                            Patch(color=DISP, label="dispatch / non-matmul (the gap)")],
+                   fontsize=8.4, loc="lower right")
+    fig.suptitle("Where the whole-model time goes — matmul kernel vs dispatch (K1 silicon, measured)",
+                 fontsize=12.5, fontweight="bold", y=1.0)
+    fig.text(0.5, -0.04,
+             "Figure I:  K1 board, per-dispatch rdtime split (cos ≥ 0.99999, N=5/3).  The matmul kernel — proven to "
+             "decode identically to XNNPACK — is only 8 % (openvla) / 3 % (rdt2) of whole-model wall and is EQUAL "
+             "across configs (steel).  The entire 1.66× / 1.59× ours-vs-XNNPACK gap lives in the dispatch / non-matmul "
+             "bucket (salmon): attention/norm/softmax/activation on the un-tuned RVV path + per-dispatch glue.  ⇒ the "
+             "next win is a dispatch-level effort, not the matmul kernel.",
+             ha="center", fontsize=9.0, color=INK)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    for ext in ("png", "svg"):
+        fig.savefig(OUT / f"paper_dispatch_breakdown.{ext}", bbox_inches="tight", dpi=160)
+    print("wrote", OUT / "paper_dispatch_breakdown.png")
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     fig_e2e()
     fig_crossover()
@@ -616,3 +680,4 @@ if __name__ == "__main__":
     fig_beam_util_perf()
     fig_fourway()
     fig_gap_attribution()
+    fig_dispatch_breakdown()

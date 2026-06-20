@@ -231,8 +231,15 @@ loads/FMA 2.0→1.25, bit-exact), but it is **structurally unreachable**: these 
 (token dim 1–28), where MR>1 has no clean tile and regresses. **⇒ the whole-model gap is dispatch-level
 overhead (everything around the matmuls / no large-M batching), not the matmul kernel** — closable only by a
 dispatch-level large-M batching pass, the precise bounded blocker. Full analysis: `packing_residual.md`.
-Two turns in a row (lane-width, then packing) the measurement loop overturned a plausible human hypothesis —
-that is the loop earning its keep.
+
+**Confirmed on silicon (not just inferred):** a K1 board run (`dispatch_breakdown.md`, per-dispatch `rdtime`
+split, cos ≥ 0.99999, N=5/3) measured the matmul kernel at only **8.0% (openvla) / 3.3% (rdt2)** of XNNPACK's
+whole-model wall — *equal across configs* — so the entire **434 ms (1.66×) / 11.27 s (1.59×)** ours-vs-XNNPACK
+delta is **100% in the dispatch / non-matmul bucket**. The matmul kernel is done; the next win is a
+dispatch-level effort (fuse + vectorize attention/norm/softmax/activation, large-M batching).
+
+Two turns in a row (lane-width, then packing) the measurement loop overturned a plausible human hypothesis,
+and the board breakdown then *measured* where the real gap is — that is the loop earning its keep.
 
 **The tool:** `merlin-compare` makes one turn's measurement+comparison a single repeatable command — a spec
 (`configs × workloads × target × metric`) → a versioned `compare_<ts>/` artifact with the measured table,
