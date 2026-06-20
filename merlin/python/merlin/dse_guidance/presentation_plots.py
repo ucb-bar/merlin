@@ -45,8 +45,12 @@ def _pastel_cmap():
 def _style():
     import matplotlib.pyplot as plt
     from cycler import cycler
+    # conference-grade legibility: every text element >= 8 pt at the rendered dpi.
     plt.rcParams.update({
-        "figure.figsize": (8, 4.5), "font.size": 9, "font.family": "serif",
+        "figure.figsize": (8.6, 5.0), "figure.dpi": 150, "savefig.dpi": 150,
+        "font.size": 10, "font.family": "serif",
+        "axes.titlesize": 11, "axes.labelsize": 10,
+        "xtick.labelsize": 8.5, "ytick.labelsize": 8.5, "legend.fontsize": 8.5,
         "figure.facecolor": _BG, "axes.facecolor": _BG, "savefig.facecolor": _BG,
         "axes.grid": True, "grid.alpha": 0.25, "grid.color": "#b9ad97",
         "axes.spines.top": False, "axes.spines.right": False,
@@ -55,9 +59,64 @@ def _style():
         "axes.prop_cycle": cycler(color=PALETTE)})
 
 
-def _save(fig, out: Path):
-    fig.tight_layout()
-    fig.savefig(out, dpi=110)
+# ---- honesty annotations: every figure carries its evidence tier + magnitude-scale source -----------
+# tier: A = IR/measured exact, B = recovered + recompute-checked, C = config/assumed.
+# scale: how to read any absolute magnitude on the axes (the reviewer-facing T1 separation).
+_DEPLOY = "deployment-composition (real config; exact for layer-identical stacks)"
+_CAPTURED = "captured-config (structural ratios/shapes; NOT deployment scale)"
+_NOSCALE = "structural (counts/fractions; no absolute magnitude)"
+_PLOT_META = {
+    "evidence_type_by_workload": ("A/B/C", _NOSCALE, "Provenance mix of recovered facts per workload; bar = fact count by evidence tier."),
+    "evidence_type_by_phase": ("A/B/C", _NOSCALE, "Provenance mix of recovered facts per analysis phase."),
+    "shape_class_mac_share": ("A", _CAPTURED, "Per-workload MAC split by GEMM shape class (from IR shapes); composition to 1."),
+    "primitive_coverage_heatmap": ("A", _NOSCALE, "Fraction of each workload's MACs a primitive covers at <=10% pad waste (top primitives)."),
+    "primitive_regret_bar": ("A", _NOSCALE, "Per-primitive coverage and worst-case cross-workload regret (shape geometry only)."),
+    "boundary_placement_heatmap": ("B", _NOSCALE, "HW/SW-boundary placement status per abstraction x level (top by boundary pressure)."),
+    "resident_capacity_by_dtype": ("A", _CAPTURED, "Resident weight bytes per region by dtype. Scale is captured-config, not deployment."),
+    "avoidable_reload_by_region": ("A", _CAPTURED, "Weight bytes re-loaded across the loop if non-resident (captured-config scale; log axis)."),
+    "measurement_priority_bar": ("B", _NOSCALE, "How many abstraction candidates each missing measurement would unblock."),
+    "critical_path_parallelism": ("A", _NOSCALE, "Inter-op available parallelism (work/span) from the IR dependency graph."),
+    "decision_primitive_choice": ("A", _NOSCALE, "If DSE commits to one primitive: worst vs mean MAC coverage (<=10% waste)."),
+    "decision_weight_residency": ("A", _CAPTURED, "Weight bytes moved vs loop count K (IR-recovered); reload-every-step vs resident. Captured-config bytes."),
+    "decision_capacity_dtype": ("A", _CAPTURED, "# workloads weight-resident as on-chip budget grows, per dtype (captured-config bytes)."),
+    "decision_sharding_cost": ("A", _CAPTURED, "Extra data-movement bytes from 2/4/8-way sharding along M/N/K (captured-config bytes)."),
+    "primitive_set_frontier": ("A", _NOSCALE, "Primitive-set frontier: mean vs worst-workload coverage (upper-right = broadly useful)."),
+    "operator_cumulative_mac": ("A", _NOSCALE, "Compute concentration: cumulative MAC share vs top-k operators (shape ratio)."),
+    "boundary_necessity_matrix": ("B", _NOSCALE, "Abstraction necessity per workload (N/U/P/B/-); analysis over recovered facts."),
+    "decision_sharding_per_top_op": ("A", _CAPTURED, "Sharding extra bytes for the top-MAC ops, normalized by output bytes."),
+    "primitive_frontier_by_threshold": ("A", _NOSCALE, "Frontier robustness: worst coverage vs set size across pad-waste thresholds."),
+    "macro_vs_micro_primitive_coverage": ("A", _NOSCALE, "Macro (mean) vs micro (MAC-weighted) vs worst coverage by primitive-set size."),
+    "required_compute_envelope": ("A/C", _CAPTURED, "Required GMAC/s vs replan deadline (configured K). A REQUIREMENT, not measured perf."),
+    "required_memory_movement_envelope": ("A/C", _CAPTURED, "Required weight B/s @100ms: residency removes a Kx factor. Requirement, not perf."),
+    "required_command_rate_envelope": ("C", _CAPTURED, "Required dispatch/s vs deadline. PROXY (~12x undercount); measured only for small_llama."),
+    "workload_influence_loo_delta": ("B", _NOSCALE, "Leave-one-out stability of corpus metrics (red = winner-stable, magnitude-unstable)."),
+    "work_coverage_by_workload": ("A", _CAPTURED, "Recovered linear-GEMM vs attention MAC mass per workload (IR shapes; captured-config; log)."),
+    "visible_linear_fraction": ("A", _NOSCALE, "Share of recovered MAC work that is linear-GEMM geometry (rest = attention)."),
+    "deployment_magnitude": ("B", _DEPLOY, "Deployment params & MACs/replan by config-composition (embed + per-layer x real n_layers)."),
+    "arithmetic_intensity_roofline": ("A/B", _DEPLOY, "HW-INDEPENDENT roofline: arithmetic intensity (MAC/byte) resident vs reload-every-step. No chip assumed."),
+}
+
+
+def _stamp(fig, plot_id):
+    """Stamp the evidence-tier + scale-source badge and a one-line caption on a figure."""
+    tier, scale, caption = _PLOT_META.get(
+        plot_id, ("B", _NOSCALE, ""))
+    fig.text(0.008, 0.985, f"evidence: Tier {tier}", fontsize=8.5, va="top", ha="left",
+             family="monospace", color="#2f2a23",
+             bbox=dict(boxstyle="round,pad=0.3", fc="#efe7d6", ec="#b9ad97", lw=0.6))
+    fig.text(0.992, 0.985, f"scale: {scale}", fontsize=8.0, va="top", ha="right",
+             style="italic", color="#5c5446")
+    if caption:
+        fig.text(0.5, 0.012, caption, fontsize=8.0, va="bottom", ha="center",
+                 style="italic", color="#3a352c", wrap=True)
+
+
+def _save(fig, out: Path, plot_id=None):
+    # leave headroom for the top badges + a footer caption, then stamp.
+    fig.tight_layout(rect=(0, 0.06, 1, 0.95))
+    if plot_id is not None:
+        _stamp(fig, plot_id)
+    fig.savefig(out)
     import matplotlib.pyplot as plt
     plt.close(fig)
 
@@ -78,7 +137,7 @@ def _stacked_count(ax, facts, key, series_key, title):
     ax.set_title(title)
     ax.set_ylabel("fact count")
     ax.tick_params(axis="x", rotation=30)
-    ax.legend(fontsize=6, ncol=2)
+    ax.legend(fontsize=8, ncol=2)
     return True
 
 
@@ -107,7 +166,7 @@ def _r_shape_mac_share(cs, facts, ax):
     ax.set_title("Shape-class MAC share by workload")
     ax.set_ylabel("MAC fraction")
     ax.tick_params(axis="x", rotation=20)
-    ax.legend(fontsize=6)
+    ax.legend(fontsize=8)
     return True
 
 
@@ -115,17 +174,17 @@ def _r_primitive_coverage(cs, facts, ax):
     rows = _rows(cs / "primitive_coverage_matrix.csv")
     if not rows:
         return False
-    prims = sorted({r["primitive"] for r in rows})
     wls = sorted({r["workload"] for r in rows})
-    mat = [[0.0] * len(wls) for _ in prims]
-    idx = {p: i for i, p in enumerate(prims)}
-    widx = {w: j for j, w in enumerate(wls)}
+    cov = defaultdict(dict)
     for r in rows:
-        mat[idx[r["primitive"]]][widx[r["workload"]]] = float(r["coverage_under_10pct"])
+        cov[r["primitive"]][r["workload"]] = float(r["coverage_under_10pct"])
+    # top-N primitives by mean coverage (keeps the figure legible at print size)
+    prims = sorted(cov, key=lambda p: -sum(cov[p].values()) / max(len(cov[p]), 1))[:16]
+    mat = [[cov[p].get(w, 0.0) for w in wls] for p in prims]
     im = ax.imshow(mat, aspect="auto", cmap=_pastel_cmap(), vmin=0, vmax=1)
     ax.set_xticks(range(len(wls)), wls, rotation=20)
-    ax.set_yticks(range(len(prims)), prims, fontsize=7)
-    ax.set_title("Primitive x workload coverage (<=10% pad waste)")
+    ax.set_yticks(range(len(prims)), prims, fontsize=8)
+    ax.set_title(f"Primitive x workload coverage (<=10% pad waste; top {len(prims)} primitives)")
     ax.figure.colorbar(im, ax=ax, fraction=0.046)
     return True
 
@@ -139,10 +198,10 @@ def _r_primitive_regret(cs, facts, ax):
     ax.bar([i - 0.2 for i in x], [float(r["coverage_under_10pct"]) for r in rows], 0.4,
            label="coverage <=10%")
     ax.bar([i + 0.2 for i in x], [float(r["max_regret"]) for r in rows], 0.4, label="max regret")
-    ax.set_xticks(list(x), prims, rotation=35, fontsize=7)
+    ax.set_xticks(list(x), prims, rotation=35, fontsize=8)
     ax.set_title("Primitive coverage + cross-workload regret")
     ax.set_ylabel("MAC fraction")
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=8)
     return True
 
 
@@ -158,8 +217,8 @@ def _r_boundary_heatmap(cs, facts, ax):
     abst = [r["abstraction"] for r in rows]
     mat = [[score.get(r[lv], 0) for lv in levels] for r in rows]
     im = ax.imshow(mat, aspect="auto", cmap=_pastel_cmap(), vmin=0, vmax=4)
-    ax.set_xticks(range(len(levels)), [lv.replace("_", "\n") for lv in levels], fontsize=6)
-    ax.set_yticks(range(len(abst)), abst, fontsize=6)
+    ax.set_xticks(range(len(levels)), [lv.replace("_", "\n") for lv in levels], fontsize=8)
+    ax.set_yticks(range(len(abst)), abst, fontsize=8)
     ax.set_title("Boundary placement: abstraction x level (status)")
     ax.figure.colorbar(im, ax=ax, fraction=0.046)
     return True
@@ -173,11 +232,11 @@ def _r_resident_capacity(cs, facts, ax):
     x = range(len(labels))
     ax.bar([i - 0.2 for i in x], [int(r["resident_int8_B"]) for r in rows], 0.4, label="int8")
     ax.bar([i + 0.2 for i in x], [int(r["resident_bf16_B"]) for r in rows], 0.4, label="bf16")
-    ax.set_xticks(list(x), labels, rotation=30, fontsize=6)
+    ax.set_xticks(list(x), labels, rotation=30, fontsize=8)
     ax.set_title("Resident weight capacity by dtype (per region)")
     ax.set_ylabel("bytes")
     ax.set_yscale("log")
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=8)
     return True
 
 
@@ -187,7 +246,7 @@ def _r_avoidable_reload(cs, facts, ax):
         return False
     labels = [f"{r['workload']}/{r['region']}" for r in rows]
     ax.bar(labels, [int(r["avoidable_weight_reload"]) for r in rows])
-    ax.set_xticks(range(len(labels)), labels, rotation=30, fontsize=6)
+    ax.set_xticks(range(len(labels)), labels, rotation=30, fontsize=8)
     ax.set_title("Avoidable weight reload by region")
     ax.set_ylabel("bytes")
     ax.set_yscale("log")
@@ -198,12 +257,13 @@ def _r_measurement_priority(cs, facts, ax):
     rows = _rows(cs / "measurement_priority_table.csv")
     if not rows:
         return False
-    rows = sorted(rows, key=lambda r: -int(r["n_candidates_unblocked"]))
-    ax.barh([r["measurement"][:34] for r in rows][::-1],
+    # top-N only — the full table has ~30 rows and is unreadable at print size.
+    rows = sorted(rows, key=lambda r: -int(r["n_candidates_unblocked"]))[:14]
+    ax.barh([r["measurement"][:40] for r in rows][::-1],
             [int(r["n_candidates_unblocked"]) for r in rows][::-1])
-    ax.set_title("Candidates unblocked per measurement")
+    ax.set_title(f"Candidates unblocked per measurement (top {len(rows)})")
     ax.set_xlabel("candidates")
-    ax.tick_params(axis="y", labelsize=6)
+    ax.tick_params(axis="y", labelsize=8)
     return True
 
 
@@ -234,11 +294,11 @@ def _r_decision_primitive_choice(cs, facts, ax):
     x = range(len(prims))
     ax.bar([i - 0.2 for i in x], worst, 0.4, label="worst workload")
     ax.bar([i + 0.2 for i in x], mean, 0.4, label="mean workload")
-    ax.set_xticks(list(x), prims, rotation=35, fontsize=6)
+    ax.set_xticks(list(x), prims, rotation=35, fontsize=8)
     ax.set_title("Decision: single primitive choice -> MAC coverage (<=10% waste)")
     ax.set_ylabel("MAC fraction covered")
     ax.set_ylim(0, 1.02)
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=8)
     return True
 
 
@@ -261,7 +321,7 @@ def _r_decision_weight_residency(cs, facts, ax):
     ax.set_xlabel("head loop count K")
     ax.set_ylabel("weight bytes moved")
     ax.set_yscale("log")
-    ax.legend(fontsize=6, ncol=2)
+    ax.legend(fontsize=8, ncol=2)
     return True
 
 
@@ -284,7 +344,7 @@ def _r_decision_capacity_dtype(cs, facts, ax):
     ax.set_xlabel("on-chip capacity budget (bytes)")
     ax.set_ylabel(f"# workloads w/ repeated-head weights resident (of {len(rows)})")
     ax.set_xscale("log")
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=8)
     return True
 
 
@@ -311,7 +371,7 @@ def _r_decision_sharding_cost(cs, facts, ax):
     ax.set_title("Decision: shard axis + count -> extra data-movement bytes")
     ax.set_ylabel("extra bytes (partial-sum / broadcast)")
     ax.set_yscale("symlog")
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=8)
     return True
 
 
@@ -326,7 +386,7 @@ def _r_primitive_set_frontier(cs, facts, ax):
     ax.scatter([s["macro"] for s in singles], [s["worst"] for s in singles],
                c="#888", label="single primitive", zorder=3)
     for s in singles:
-        ax.annotate(s["primitive"].replace("_", ""), (s["macro"], s["worst"]), fontsize=5,
+        ax.annotate(s["primitive"].replace("_", ""), (s["macro"], s["worst"]), fontsize=8,
                     xytext=(2, 2), textcoords="offset points")
     markers = {1: "o", 2: "*", 3: "P"}
     for size, b in fr.get("best_by_size", {}).items():
@@ -338,7 +398,7 @@ def _r_primitive_set_frontier(cs, facts, ax):
     ax.set_title("Primitive-set frontier (upper-right = broadly useful)")
     ax.set_xlim(0, 1.02)
     ax.set_ylim(-0.02, 1.05)
-    ax.legend(fontsize=6)
+    ax.legend(fontsize=8)
     return True
 
 
@@ -359,7 +419,7 @@ def _r_operator_cumulative_mac(cs, facts, ax):
     ax.set_ylabel("cumulative MAC share")
     ax.set_title("How concentrated is compute? (steep = a few giant ops)")
     ax.set_ylim(0, 1.02)
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=8)
     return True
 
 
@@ -376,11 +436,11 @@ def _r_boundary_necessity_matrix(cs, facts, ax):
         return False
     mat = [[_NEC_RANK[r[w]] for w in wls] for r in rows]
     im = ax.imshow(mat, aspect="auto", cmap=_pastel_cmap(), vmin=0, vmax=4)
-    ax.set_xticks(range(len(wls)), wls, rotation=20, fontsize=7)
-    ax.set_yticks(range(len(rows)), [r["abstraction"] for r in rows], fontsize=6)
+    ax.set_xticks(range(len(wls)), wls, rotation=20, fontsize=8)
+    ax.set_yticks(range(len(rows)), [r["abstraction"] for r in rows], fontsize=8)
     for i, r in enumerate(rows):
         for j, w in enumerate(wls):
-            ax.text(j, i, _NEC_ABBR[r[w]], ha="center", va="center", fontsize=6,
+            ax.text(j, i, _NEC_ABBR[r[w]], ha="center", va="center", fontsize=8,
                     color="white" if mat[i][j] >= 3 else "black")
     ax.set_title("Abstraction necessity (N=necessary U=useful P=possible B=blocked –=N/A)")
     return True
@@ -408,10 +468,10 @@ def _r_decision_sharding_per_top_op(cs, facts, ax):
     x = range(len(labels))
     for k, a in enumerate(axes_):
         ax.bar([i + (k - 1) * 0.25 for i in x], data[a], 0.25, label=f"{a}-shard")
-    ax.set_xticks(list(x), labels, rotation=30, fontsize=6)
+    ax.set_xticks(list(x), labels, rotation=30, fontsize=8)
     ax.set_ylabel("8-way extra bytes / output bytes")
     ax.set_title("Decision: shard top-MAC ops (extra bytes normalized by output)")
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=8)
     return True
 
 
@@ -432,7 +492,7 @@ def _r_primitive_frontier_by_threshold(cs, facts, ax):
     ax.set_ylabel("worst-workload coverage")
     ax.set_title("Frontier robustness: worst coverage vs set size, by threshold")
     ax.set_ylim(0, 1.05)
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=8)
     return True
 
 
@@ -450,7 +510,7 @@ def _r_macro_vs_micro_primitive_coverage(cs, facts, ax):
     ax.set_ylabel("coverage")
     ax.set_title("Macro vs micro vs worst primitive coverage")
     ax.set_ylim(0, 1.05)
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=8)
     return True
 
 
@@ -469,7 +529,7 @@ def _r_required_compute_envelope(cs, facts, ax):
     ax.set_ylabel("required GMAC/s (configured K)")
     ax.set_yscale("log")
     ax.set_title("Required compute envelope (a requirement, not measured performance)")
-    ax.legend(fontsize=6, ncol=2)
+    ax.legend(fontsize=8, ncol=2)
     return True
 
 
@@ -488,10 +548,10 @@ def _r_required_memory_movement_envelope(cs, facts, ax):
     ax.bar([i - 0.2 for i in x], nr, 0.4, label="non-resident (reload x K)")
     ax.bar([i + 0.2 for i in x], rs, 0.4, label="resident (load once)")
     ax.set_yscale("log")
-    ax.set_xticks(list(x), w, rotation=30, fontsize=6)
+    ax.set_xticks(list(x), w, rotation=30, fontsize=8)
     ax.set_ylabel("required weight B/s @ 100 ms")
     ax.set_title("Required memory-movement envelope: residency removes a K x requirement")
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=8)
     return True
 
 
@@ -510,7 +570,7 @@ def _r_required_command_rate_envelope(cs, facts, ax):
     ax.set_ylabel("required dispatch/s (PROXY, ~12x undercount)")
     ax.set_yscale("log")
     ax.set_title("Required command-rate envelope (proxy; measured only for small_llama)")
-    ax.legend(fontsize=6, ncol=2)
+    ax.legend(fontsize=8, ncol=2)
     return True
 
 
@@ -523,13 +583,14 @@ def _r_work_coverage_by_workload(cs, facts, ax):
     lin = [float(r["linear_gemm_macs"]) for r in rows]
     att = [float(r["attention_macs"]) for r in rows]
     x = range(len(wl))
-    ax.bar(x, lin, 0.7, label="linear GEMM MACs")
-    ax.bar(x, att, 0.7, bottom=lin, label="attention MACs (recovered)")
+    # grouped (NOT stacked) on a log axis — stacked bars on log mislead (heights don't add on log).
+    ax.bar([i - 0.2 for i in x], lin, 0.4, label="linear GEMM MACs")
+    ax.bar([i + 0.2 for i in x], att, 0.4, label="attention MACs (recovered)")
     ax.set_yscale("log")
-    ax.set_xticks(list(x), wl, rotation=30, fontsize=6)
-    ax.set_ylabel("recovered MACs (log)")
+    ax.set_xticks(list(x), wl, rotation=30, fontsize=8)
+    ax.set_ylabel("recovered MACs (log10)")
     ax.set_title("Recovered work: linear-GEMM vs attention MAC mass (no config; from IR shapes)")
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=8)
     return True
 
 
@@ -541,7 +602,7 @@ def _r_visible_linear_fraction(cs, facts, ax):
     wl = [r["workload"] for r in rows]
     frac = [float(r["visible_linear_fraction"]) for r in rows]
     ax.barh(range(len(wl)), frac, color=PALETTE[0])
-    ax.set_yticks(range(len(wl)), wl, fontsize=6)
+    ax.set_yticks(range(len(wl)), wl, fontsize=8)
     ax.set_xlabel("visible_linear_fraction = linear / (linear + attention)")
     ax.set_xlim(0, 1.02)
     ax.set_title("How much recovered MAC work is linear-GEMM geometry (rest = attention)")
@@ -559,14 +620,59 @@ def _r_workload_influence_loo_delta(cs, facts, ax):
     cols = [PALETTE[1] if r["winner_stable_magnitude_unstable"] == "yes" else PALETTE[0] for r in rows]
     ax.bar(range(len(rows)), vals, color=cols)
     ax.axhline(0.2, ls="--", color="#b9ad97", label="magnitude-unstable threshold")
-    ax.set_xticks(range(len(rows)), labels, rotation=20, fontsize=6)
+    ax.set_xticks(range(len(rows)), labels, rotation=20, fontsize=8)
     ax.set_ylabel("max leave-one-out micro change")
     ax.set_title("Workload influence (red = winner-stable but magnitude-unstable)")
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=8)
+    return True
+
+
+def _r_deployment_magnitude(cs, facts, ax):
+    """Deployment-scale params & MACs/replan by config-composition (the T1 magnitude fix)."""
+    rows = _rows(cs / "real_config_magnitudes.csv")
+    if not rows:
+        return False
+    rows = sorted(rows, key=lambda r: -float(r["total_gemm_params"]))
+    wl = [r["workload"] for r in rows]
+    params = [float(r["total_gemm_params"]) for r in rows]
+    macs = [float(r["gemm_macs_per_token"]) for r in rows]
+    x = range(len(wl))
+    ax.bar([i - 0.2 for i in x], params, 0.4, label="GEMM params")
+    ax.bar([i + 0.2 for i in x], macs, 0.4, label="GEMM MACs / token")
+    ax.set_yscale("log")
+    ax.set_xticks(list(x), wl, rotation=25, fontsize=8)
+    ax.set_ylabel("count (log10)")
+    ax.set_title("Deployment magnitudes by config-composition (params, MACs/token)")
+    ax.legend(fontsize=8)
+    return True
+
+
+def _r_arithmetic_intensity_roofline(cs, facts, ax):
+    """HW-INDEPENDENT roofline: arithmetic intensity (MAC/byte), resident vs reload-every-step."""
+    rows = _rows(cs / "arithmetic_intensity.csv")
+    if not rows:
+        return False
+    rows = sorted(rows, key=lambda r: -float(r["ai_resident_mac_per_byte"]))
+    wl = [r["workload"] for r in rows]
+    res = [float(r["ai_resident_mac_per_byte"]) for r in rows]
+    non = [float(r["ai_nonresident_mac_per_byte"]) for r in rows]
+    gain = [float(r["residency_gain"]) for r in rows]
+    x = range(len(wl))
+    ax.bar([i - 0.2 for i in x], non, 0.4, label="reload every step (floor = 1/dtype)")
+    ax.bar([i + 0.2 for i in x], res, 0.4, label="weights resident")
+    for i, g in zip(x, gain):
+        ax.annotate(f"{g:.1f}x", (i + 0.2, res[i]), fontsize=8, ha="center", va="bottom",
+                    color="#5c5446")
+    ax.set_xticks(list(x), wl, rotation=25, fontsize=8)
+    ax.set_ylabel("arithmetic intensity (MAC / byte)")
+    ax.set_title("HW-independent roofline x-axis: AI resident vs reload (label = residency gain)")
+    ax.legend(fontsize=8)
     return True
 
 
 _RENDERERS = {
+    "deployment_magnitude": _r_deployment_magnitude,
+    "arithmetic_intensity_roofline": _r_arithmetic_intensity_roofline,
     "evidence_type_by_workload": _r_evidence_by_workload,
     "evidence_type_by_phase": _r_evidence_by_phase,
     "shape_class_mac_share": _r_shape_mac_share,
@@ -606,7 +712,12 @@ def render_plots(plot_manifest, cs_dir, facts, out_dir) -> list[str]:
     out_dir.mkdir(parents=True, exist_ok=True)
     cs_dir = Path(cs_dir)
     rendered = []
-    for p in plot_manifest:
+    manifest_ids = {p["plot_id"] for p in plot_manifest}
+    # always-on headline figures (deployment-scale + HW-independent roofline) even if the manifest
+    # predates them — they are the reviewer-facing magnitude/roofline figures (Phase B/C).
+    extra = [{"plot_id": pid} for pid in ("deployment_magnitude", "arithmetic_intensity_roofline")
+             if pid not in manifest_ids]
+    for p in list(plot_manifest) + extra:
         r = _RENDERERS.get(p["plot_id"])
         if r is None or p.get("recommendation") == "omit":
             continue
@@ -616,7 +727,7 @@ def render_plots(plot_manifest, cs_dir, facts, out_dir) -> list[str]:
         except Exception:
             ok = False
         if ok:
-            _save(fig, out_dir / f"{p['plot_id']}.png")
+            _save(fig, out_dir / f"{p['plot_id']}.png", plot_id=p["plot_id"])
             rendered.append(p["plot_id"])
         else:
             plt.close(fig)
