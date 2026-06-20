@@ -40,6 +40,33 @@ def test_main_linux_template_has_markers():
     assert "rdcycle %0" not in src
 
 
+def test_dispatch_timing_default_off_is_byte_identical():
+    # The per-dispatch matmul-bucket timer (dispatch_timing) is default-OFF. When off the harness
+    # must carry NONE of the timing surface (byte-identical baseline path); when on it declares the
+    # accessor externs + prints the two extra METRIC lines the breakdown harness reads.
+    off = k1.main_linux_c()
+    on = k1.main_linux_c(dispatch_timing=True)
+    for tok in ("matmul_ticks", "matmul_calls", "merlin_matmul"):
+        assert tok not in off, f"OFF path leaked timing token {tok!r}"
+    assert "METRIC matmul_ticks" in on and "METRIC matmul_calls" in on
+    assert "extern unsigned long long merlin_matmul_ticks(void);" in on
+
+
+def test_dispatch_timing_requires_routed_backend():
+    # The matmul-bucket timer lives in the routed GEMM shim, so dispatch_timing without a
+    # kernel_backend must fail loud (never silently no-op into a bucket that is always zero).
+    with pytest.raises(k1.K1Error):
+        k1.build_k1_binary("output/nonexistent", "/tmp/k1_dt_guard", pkg=_DummyPkg(),
+                           kernel_backend=None, dispatch_timing=True)
+
+
+class _DummyPkg:
+    run_id = "guard"
+    is_int8 = False
+    schedule_text = ""
+    compiler_features = ()
+
+
 def test_main_linux_is_glibc_hosted():
     # The K1 harness is glibc Linux userspace: it uses stdio, NOT the bare-metal HTIF path.
     src = k1.main_linux_c()

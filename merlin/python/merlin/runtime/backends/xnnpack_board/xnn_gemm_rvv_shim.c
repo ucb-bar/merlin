@@ -35,6 +35,25 @@
 // the expert RVV microkernel, verbatim from the vendored XNNPACK checkout.
 #include "f32-gemm/gen/f32-gemm-1x4v-rvv.c"
 
+// --- Per-dispatch matmul-bucket timing (default-OFF, gated by -DMERLIN_DISPATCH_TIMING) ----------
+// When the macro is undefined the symbols below are NOT emitted and the timed region is
+// byte-identical to the un-instrumented kernel loop (the gate guards every line). When defined,
+// the time spent inside the routed GEMM ukernel loop is accumulated (rdtime ticks) across all
+// dispatches into a global counter the harness reads at the end of the run, so total wall MINUS
+// this bucket localizes the non-matmul / dispatch cost. rdtime is the same fixed-freq platform
+// counter the K1 harness already uses (see rvvgen.k1).
+#ifdef MERLIN_DISPATCH_TIMING
+unsigned long long g_merlin_matmul_ticks = 0ULL;
+unsigned long long g_merlin_matmul_calls = 0ULL;
+static inline unsigned long long merlin_rd_time(void) {
+  unsigned long long t;
+  __asm__ volatile("rdtime %0" : "=r"(t));
+  return t;
+}
+unsigned long long merlin_matmul_ticks(void) { return g_merlin_matmul_ticks; }
+unsigned long long merlin_matmul_calls(void) { return g_merlin_matmul_calls; }
+#endif
+
 // 2-D memref descriptor (matches MLIR's MemRefDescriptor for rank 2 / lp64d).
 typedef struct {
   float *allocated;
@@ -129,6 +148,9 @@ merlin_memref_2d_f32 merlin_xnn_gemm_f32(
   const size_t cn_stride = NR * sizeof(float);
 
   // The 1x4v kernel does ONE activation row (mr=1) per call; call M times, weights shared.
+#ifdef MERLIN_DISPATCH_TIMING
+  const unsigned long long _mm_t0 = merlin_rd_time();
+#endif
   for (size_t m = 0; m < M; m++) {
     xnn_f32_gemm_ukernel_1x4v__rvv(
         1, N, K * sizeof(float),
@@ -137,5 +159,9 @@ merlin_memref_2d_f32 merlin_xnn_gemm_f32(
         &C[m * N], cm_stride, cn_stride,
         &params);
   }
+#ifdef MERLIN_DISPATCH_TIMING
+  g_merlin_matmul_ticks += merlin_rd_time() - _mm_t0;
+  g_merlin_matmul_calls += 1ULL;
+#endif
   return ret;  // w is cached (resident weight) — not freed
 }
