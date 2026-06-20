@@ -238,6 +238,15 @@ def plot_op_coverage():
         axh.set_title(op_titles.get(op, op), fontsize=10)
         axh.grid(True, axis="y", ls=":", alpha=0.35)
         axh.legend(fontsize=6.8, ncol=2)
+        # honesty annotations — say WHY ours is absent / how far behind, so a gap never reads as an omission
+        notes = {"dwconv": "ours: not implemented\n(XNNPACK-only — honest gap)",
+                 "attention_bmm": "no library attn primitive\n→ ours-vfmacc vs ours-baseline",
+                 "gelu": "ours-vectorized poly:\n~3.6–4.6× behind XNNPACK",
+                 "sigmoid": "ours-vectorized poly:\n~3.6–4.6× behind XNNPACK"}
+        if op in notes:
+            axh.text(0.97, 0.04, notes[op], transform=axh.transAxes, ha="right", va="bottom",
+                     fontsize=6.5, color="#8a7a5a", style="italic",
+                     bbox=dict(boxstyle="round,pad=0.25", fc="#faf6ec", ec="#d8c89a", lw=0.6))
     figh.suptitle("Cross-framework op coverage on real K1 silicon — GEMM + GELU + sigmoid + "
                   "int8-GEMM + conv + depthwise + attention\n(inner-compute rdtime ticks, "
                   "bit-exact/cos-verified; attention is ours-vs-ours — no library primitive)",

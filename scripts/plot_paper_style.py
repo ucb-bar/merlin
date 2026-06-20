@@ -198,19 +198,29 @@ def fig_progression():
 
     # -- left: whole-model bitvla e2e progression (speedup vs baseline; higher=better) --
     ax = fig.add_subplot(gs[0]); card(ax, "Beam progression — bitvla whole-model on K1")
+    # XNNPACK reference + v3 endpoint read from the fresh four-way JSON (no stale literals).
+    import json as _j
+    _b = _j.load(open(OUT.parents[1] / "rvv_bench" / "k1_4way_bitvla.json"))
+    _base = _b["baseline"]["min_wall_ns"]; _xnn = _base / _b["xnnpack_kernels"]["min_wall_ns"]
+    _v3 = _base / _b["ours_v3"]["min_wall_ns"]
     steps = [("baseline\nhand_v0", 1.00, SALMON),
              ("+ ntail\n(attn vfmacc)", 7.73, "#e8c98a"),
              ("+ tiled\nvfmacc", 9.16, GOLD),
-             ("+ v3 accum-\nresident", 16.83, V3)]
+             ("+ v3 accum-\nresident", round(_v3, 2), V3)]
     xs = np.arange(len(steps))
     vals = [s[1] for s in steps]
     ax.plot(xs, vals, "-", color="#9a9a9a", lw=1.6, zorder=2)
     for xi, (lab, v, col) in zip(xs, steps):
         ax.scatter([xi], [v], s=170, color=col, edgecolor=CARD_EC, linewidth=1.4, zorder=4)
         ax.text(xi, v + 0.7, f"{v}×", ha="center", fontsize=11, fontweight="bold", color=col if col != "#e8c98a" else "#9c7415")
-    ax.axhline(13.65, color=STEEL, ls="--", lw=1.6, zorder=1)
-    ax.text(0.05, 13.65 + 0.35, "XNNPACK hand kernel (13.65×)", fontsize=9, color=STEEL, fontweight="bold")
-    callout(ax, (3, 16.83), "compiler-emitted v3\ncrosses ABOVE XNNPACK", (1.75, 17.6), fc="#f7efe2", ec=V3)
+    ax.axhline(_xnn, color=STEEL, ls="--", lw=1.6, zorder=1)
+    ax.text(0.05, _xnn + 0.35, f"XNNPACK hand kernel ({_xnn:.2f}×)", fontsize=9, color=STEEL, fontweight="bold")
+    callout(ax, (3, _v3), "compiler-emitted v3\ncrosses ABOVE XNNPACK", (1.75, 17.6), fc="#f7efe2", ec=V3)
+    # iteration-2 note: .vf A-scalarize was a SEPARATE turn targeting the openvla/rdt2 residual.
+    ax.text(0.05, 2.6,
+            "iteration 2 (.vf A-scalarize) → openvla/rdt2:\nmemory-bound, modest 55→60% / 62→63%\n→ surfaces packing as the turn-3 residual",
+            fontsize=7.6, color="#7a6a4a", style="italic",
+            bbox=dict(boxstyle="round,pad=0.3", fc="#faf6ec", ec="#d8c89a", lw=0.8))
     ax.set_xticks(xs); ax.set_xticklabels([s[0] for s in steps], fontsize=9)
     ax.set_ylim(0, 19.5); ax.set_ylabel("whole-model speedup vs baseline (×)")
     ax.set_xlabel("beam iteration (each adds one mined capability)")
@@ -235,7 +245,7 @@ def fig_progression():
     fig.text(0.5, -0.03,
              "Figure C:  Beam progression of the improved RVV compilation path.  Left — whole-model bitvla on K1: each "
              "mined capability (attention vfmacc → tiled → accumulator-resident v3) advances the speedup, the final v3\n"
-             "crossing ABOVE XNNPACK's hand kernel (13.65×).  Right — single-GEMM 64³ kernel trajectory (spike instret): "
+             "crossing ABOVE XNNPACK's hand kernel (13.19×).  Right — single-GEMM 64³ kernel trajectory (spike instret): "
              "v3's compute kernel reaches the hand ceiling and beats both experts.  Baseline RVV is frozen; each step is a default-off fork.",
              ha="center", fontsize=9.3, color=INK)
     for ext in ("png", "svg"):
@@ -263,7 +273,7 @@ def fig_opt_effects():
         ("vfmacc_tiled",              [8.04, 9.16, 3.65]),
         ("accum_resident_ntail",      [None, 7.73, None]),
         ("vectorized_activation",     [None, 1.00, 0.95]),
-        ("accum_resident_v3",         [None, 16.83, 2.38]),
+        ("accum_resident_v3",         [None, 16.88, 2.38]),
     ]
     fig, ax = plt.subplots(figsize=(11, 6)); ax.set_facecolor(CREAM)
     for s in ("top", "right"): ax.spines[s].set_visible(False)
@@ -279,8 +289,8 @@ def fig_opt_effects():
             ax.text(v + 0.15, yy, f"{v}×{star}", va="center", fontsize=8.3,
                     fontweight="bold", color=(V3 if star else INK))
     ax.axvline(1.0, color="#999", lw=1, ls="--")
-    ax.axvline(13.65, color=STEEL, lw=1.4, ls=":")
-    ax.text(13.65, len(feats)-0.4, "XNNPACK\n(bitvla)", fontsize=8, color=STEEL, ha="center", fontweight="bold")
+    ax.axvline(13.19, color=STEEL, lw=1.4, ls=":")
+    ax.text(13.19, len(feats)-0.4, "XNNPACK\n(bitvla)", fontsize=8, color=STEEL, ha="center", fontweight="bold")
     ax.set_yticks(yb); ax.set_yticklabels([f[0] for f in feats], fontsize=10)
     ax.set_xlim(0, 19); ax.set_xlabel("speedup vs frozen baseline (×) — per driving example")
     ax.set_title("How each mined optimization affects the RVV dialect — and how the ranking depends on the example",
@@ -289,12 +299,12 @@ def fig_opt_effects():
     from matplotlib.patches import Patch
     ax.legend(handles=[Patch(color=c, label=lab) for lab, c in EX], fontsize=9, loc="lower right",
               framealpha=0.95, facecolor="white")
-    callout(ax, (16.83, 6 - 0.26), "v3 wins bitvla (beats XNNPACK)\nbut is 2.38× on openvla — best\nkernel is per-model",
+    callout(ax, (16.88, 6 - 0.26), "v3 wins bitvla (beats XNNPACK)\nbut is 2.38× on openvla — best\nkernel is per-model",
             (10.5, 4.3), fc="#f7efe2", ec=V3)
     fig.text(0.5, -0.02,
              "Figure D:  Per-optimization effect on the RVV dialect, by driving example.  The recorded beam/autotune ran "
              "on GEMM 64³ ONLY (7 candidates, best tiled+lmul 8.16×) and predates v3 — so it never saw the real\n"
-             "whole-model winner.  On real models the ranking flips: accum-resident v3 wins bitvla (16.83×, beats XNNPACK) "
+             "whole-model winner.  On real models the ranking flips: accum-resident v3 wins bitvla (16.88×, beats XNNPACK) "
              "while tiled-vfmacc wins openvla (3.65×).  The beam must be driven by whole-model examples to rank faithfully.",
              ha="center", fontsize=9.2, color=INK)
     for ext in ("png", "svg"):
@@ -314,7 +324,7 @@ def fig_beam_ranking():
         print("beam_ranking: no beam_rvv_v2 run; skipping"); return
     run = runs[-1]; V3 = "#b8742a"
     fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.6)); fig.patch.set_facecolor("white")
-    XNN = {"bitvla": 13.65, "openvla": None}
+    XNN = {"bitvla": 13.19, "openvla": None}
     for ax, M in zip(axes, ("bitvla", "openvla")):
         r = yaml.safe_load(open(f"{run}/ranking_{M}.yaml"))
         rows = [x for x in r["ranked"]]
@@ -341,7 +351,7 @@ def fig_beam_ranking():
                     color=("#999" if x["speedup"] is None else (SALMON if x["lowering"]=="scalar_fallback" else INK)))
         if XNN[M]:
             ax.axvline(XNN[M], color=STEEL, ls=":", lw=1.5)
-            ax.text(XNN[M], len(labs)-0.4, "XNNPACK\n13.65×", fontsize=8, color=STEEL, ha="center", fontweight="bold")
+            ax.text(XNN[M], len(labs)-0.4, "XNNPACK\n13.19×", fontsize=8, color=STEEL, ha="center", fontweight="bold")
         ax.axvline(1.0, color="#999", lw=1, ls="--")
         ax.set_yticks(yb); ax.set_yticklabels(labs, fontsize=8.6); ax.invert_yaxis()
         ax.set_xlabel("whole-model speedup vs baseline (×)")
@@ -376,7 +386,7 @@ def fig_beam_util_perf():
     runs = sorted(glob.glob(str(OUT.parents[2] / "mined_knowledge/rvv/beam_rvv_v2_*")))
     if not runs: print("beam_util: no run; skip"); return
     run = runs[-1]; V3 = "#b8742a"
-    CEIL = {"bitvla": 13.65, "openvla": 4.97}  # XNNPACK (bitvla) / best achieved (openvla, no lib kernel)
+    CEIL = {"bitvla": 13.19, "openvla": 4.97}  # XNNPACK (bitvla) / best achieved (openvla, no lib kernel)
     CEIL_LBL = {"bitvla": "XNNPACK ceiling", "openvla": "best-achieved ceiling"}
     fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.8)); fig.patch.set_facecolor("white")
     for ax, M in zip(axes, ("bitvla", "openvla")):
