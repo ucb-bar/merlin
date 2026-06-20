@@ -526,6 +526,87 @@ def fig_fourway():
     plt.close(fig)
 
 
+# ============================================================================
+# FIGURE H — STRUCTURAL GAP ATTRIBUTION (iteration 1→2→3): where the matmul-kernel
+# residual actually is, from the memory-traffic decode facet. Refutes the "packing"
+# hypothesis: iter-2 .vf already TIES XNNPACK on data movement; the only lever left
+# (OpenBLAS MR>1 A-reuse) is structurally unreachable on the small-M VLAs.
+# Source: output/kernels/ceiling/packing_residual_decode.json (+ packing_residual.md).
+# ============================================================================
+def fig_gap_attribution():
+    import json
+    V3 = "#b8742a"; OB = "#7a9e7a"
+    d = json.load(open(OUT / "packing_residual_decode.json"))
+    def pick(name):  # representative entry (all shapes agree for ours/xnnpack)
+        es = [e for e in d if e["kernel"] == name]
+        return es[0]["memory"] if es else None
+    vv = pick("ours_wholemodel"); vf = pick("ours_wholemodel_vf"); xn = pick("xnnpack")
+    MR4_LPF = 1.25         # decode-confirmed (packing_residual.md table; large-M only)
+    OB_AMORT = 1.06        # OpenBLAS MR=16 amortized loads/FMA (packing_residual.md finding 2)
+
+    fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.4)); fig.patch.set_facecolor("white")
+
+    # -- LEFT: the iteration-2 win — A-broadcast ladder per FMA collapses to XNNPACK's 0 --
+    ax = axes[0]; ax.set_facecolor(CREAM)
+    for s in ("top", "right"): ax.spines[s].set_visible(False)
+    bars = [("ours iter-1\n(.vv wholemodel)", vv["a_broadcast_per_fma"], SALMON),
+            ("ours iter-2\n(.vf wholemodel)", vf["a_broadcast_per_fma"], V3),
+            ("XNNPACK\n(1x4v)", xn["a_broadcast_per_fma"], STEEL)]
+    xb = np.arange(len(bars))
+    ax.bar(xb, [b[1] for b in bars], 0.6, color=[b[2] for b in bars],
+           edgecolor=CARD_EC, linewidth=1.4, zorder=3)
+    for xi, (lab, v, c) in zip(xb, bars):
+        ax.text(xi, v + 0.18, f"{v:.0f}", ha="center", fontsize=12, fontweight="bold", color=c)
+    ax.set_xticks(xb); ax.set_xticklabels([b[0] for b in bars], fontsize=9.5)
+    ax.set_ylabel("A-broadcast ladder ops / FMA  (lower = better)")
+    ax.set_ylim(0, 9.4)
+    ax.set_title("1 · Iteration-2 .vf collapses the A-broadcast ladder", loc="left", color=INK, fontsize=12, pad=8)
+    callout(ax, (1, 0.2), "iter-2 .vf ties XNNPACK\n(0 ladder ops)", (1.55, 4.6), fc="#f7efe2", ec=V3)
+    ax.text(0, vv["a_broadcast_per_fma"] - 1.4, "the .vv\nbroadcast\npenalty", ha="center",
+            fontsize=8.2, color=SALMON, style="italic")
+    ax.grid(True, axis="y", ls=":", alpha=0.35)
+
+    # -- RIGHT: loads / useful-FMA — ours-.vf == XNNPACK (residual CLOSED); MR>1 A-reuse is the only lever --
+    ax = axes[1]; ax.set_facecolor(CREAM)
+    for s in ("top", "right"): ax.spines[s].set_visible(False)
+    rows = [("ours iter-2 (.vf)", vf["loads_per_fma"], V3, False),
+            ("XNNPACK", xn["loads_per_fma"], STEEL, False),
+            ("ours iter-3 (.vf MR4)\nlarge-M only", MR4_LPF, GOLD, True),
+            ("OpenBLAS (MR=16)\namortized", OB_AMORT, OB, True)]
+    xb = np.arange(len(rows))
+    for xi, (lab, v, c, hatch) in zip(xb, rows):
+        ax.bar(xi, v, 0.6, color=c, edgecolor=CARD_EC, linewidth=1.4, zorder=3,
+               hatch="//" if hatch else None)
+        ax.text(xi, v + 0.05, f"{v:.2f}", ha="center", fontsize=11.5, fontweight="bold", color=c)
+    ax.axhline(vf["loads_per_fma"], color=STEEL, ls="--", lw=1.3, zorder=1)
+    ax.set_xticks(xb); ax.set_xticklabels([r[0] for r in rows], fontsize=8.8)
+    ax.set_ylabel("loads / useful-FMA  (lower = better)")
+    ax.set_ylim(0, 2.55)
+    ax.set_title("2 · Per-FMA loads: residual vs XNNPACK is CLOSED", loc="left", color=INK, fontsize=12, pad=8)
+    callout(ax, (0.5, vf["loads_per_fma"]), "ours .vf == XNNPACK (2.0)\nkernel residual closed",
+            (1.4, 2.32), fc="#f7efe2", ec=V3)
+    ax.text(2.5, 0.45, "MR>1 A-reuse: the only lever left,\nbut needs large-M — openvla/rdt2 are\nall small-M (token dim 1–28) → unreachable",
+            ha="center", fontsize=7.8, color="#7a6a4a", style="italic",
+            bbox=dict(boxstyle="round,pad=0.3", fc="#faf6ec", ec="#d8c89a", lw=0.8))
+    ax.grid(True, axis="y", ls=":", alpha=0.35)
+
+    fig.suptitle("Where the matmul-kernel residual is — memory-traffic decode (iteration 1→2→3)",
+                 fontsize=12.5, fontweight="bold", y=1.0)
+    fig.text(0.5, -0.05,
+             "Figure H:  Static memory-traffic decode of the emitted RVV asm.  LEFT: iteration-2 .vf eliminates the "
+             "8-op A-broadcast ladder of the .vv kernel, tying XNNPACK at 0.  RIGHT: ours-.vf already matches XNNPACK's "
+             "2.0 loads/useful-FMA at every openvla/rdt2 shape — the matmul-kernel residual vs XNNPACK is CLOSED.  The "
+             "only data-movement lever left is OpenBLAS's MR>1 A-reuse register block (iter-3 MR4 reaches 1.25), which "
+             "is structurally unreachable on the small-M VLA matmuls.  ⇒ the whole-model 60/63% gap is DISPATCH-LEVEL "
+             "(non-matmul / no large-M batching), not the kernel.",
+             ha="center", fontsize=9.0, color=INK)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    for ext in ("png", "svg"):
+        fig.savefig(OUT / f"paper_gap_attribution.{ext}", bbox_inches="tight", dpi=160)
+    print("wrote", OUT / "paper_gap_attribution.png")
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     fig_e2e()
     fig_crossover()
@@ -534,3 +615,4 @@ if __name__ == "__main__":
     fig_beam_ranking()
     fig_beam_util_perf()
     fig_fourway()
+    fig_gap_attribution()
