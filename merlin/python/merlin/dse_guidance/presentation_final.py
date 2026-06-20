@@ -77,9 +77,25 @@ def _title(ax, title, subtitle=None):
                     fontstyle="italic", color=_GOLD)
 
 
+_SHADOW = "#B7AD9B"   # solid taupe-grey extrusion block (matches the reference 3D-bar look)
+
+
 def _shadow():
     import matplotlib.patheffects as pe
     return [pe.withSimplePatchShadow(offset=(2.0, -2.0), shadow_rgbFace=_INK, alpha=0.22)]
+
+
+def _extrude(ax, bars, dx=4.5, dy=-4.5):
+    """Give bars a 3D-block look: a SOLID offset rectangle behind each bar (corner meets corner),
+    like the reference figures — not a soft/blurry drop shadow. Offset is in points (scale/log safe)."""
+    import matplotlib.transforms as mt
+    from matplotlib.patches import Rectangle
+    off = mt.offset_copy(ax.transData, fig=ax.figure, x=dx, y=dy, units="points")
+    z = (bars[0].get_zorder() if len(bars) else 3) - 0.2
+    for b in bars:
+        bb = b.get_bbox()
+        ax.add_patch(Rectangle((bb.x0, bb.y0), bb.width, bb.height, transform=off, facecolor=_SHADOW,
+                               edgecolor=_INK, linewidth=0.8, joinstyle="miter", zorder=z))
 
 
 def _nice_limits(values, pad=0.10, force_zero=False):
@@ -95,11 +111,10 @@ def _nice_limits(values, pad=0.10, force_zero=False):
 
 
 def _bars(ax, x, heights, width, color, hatch="", label=None, shadow=True, zorder=3):
-    bars = ax.bar(x, heights, width, color=color, edgecolor=_INK, linewidth=1.0, hatch=hatch,
+    bars = ax.bar(x, heights, width, color=color, edgecolor=_INK, linewidth=1.1, hatch=hatch,
                   label=label, zorder=zorder)
     if shadow:
-        for b in bars:
-            b.set_path_effects(_shadow())
+        _extrude(ax, bars)
     return bars
 
 
@@ -289,9 +304,8 @@ def _r_visible_linear_fraction(cs, ax):
     wl = [r["workload"] for r in rows]
     frac = [float(r["visible_linear_fraction"]) for r in rows]
     y = list(range(len(wl)))
-    bars = ax.barh(y, frac, color=_PALETTE[1], edgecolor=_INK, linewidth=1.0, hatch=_HATCHES[1])
-    for b in bars:
-        b.set_path_effects(_shadow())
+    bars = ax.barh(y, frac, color=_PALETTE[1], edgecolor=_INK, linewidth=1.1, hatch=_HATCHES[1])
+    _extrude(ax, bars)
     for yi, f in zip(y, frac):
         ax.annotate(f"{f:.2f}", (f, yi), xytext=(5, 0), textcoords="offset points", va="center",
                     fontsize=10, color=_INK)
