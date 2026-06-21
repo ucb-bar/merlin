@@ -48,6 +48,14 @@ The fatal gap for VLA/VLM accelerators specifically: the interesting cost is a *
 loop** (action chunking, diffusion steps). A flat trace **erases the loop** — so K, the loop-carried KV/latent,
 and the once-vs-repeated region split simply aren't there to analyze.
 
+**A fair caveat (this is not bias against existing work):** the mature DSE *engines* — Timeloop/Accelergy,
+MAESTRO, Interstellar, CoSA, dMazeRunner — are good, and we do **not** replace them. Each one *consumes* a
+workload spec (layer/loop-nest shapes, tensor sizes, reuse) and searches mappings or architectures over it.
+Their chronic weak point is upstream of the search: **producing a faithful spec from a real model**, and
+especially one whose true cost is a multi-rate decode/denoise loop that a flat export has already destroyed.
+We are a **front-end** that produces that spec — not a competing mapper. §3A is an honest accounting of how
+much of that spec you can already get *without* us, and exactly where the afternoon-of-PyTorch approach stops.
+
 ## 3. Why a compiler — why not just analyze the torch model?
 
 Because the facts DSE needs are **only well-defined after lowering**, and a flat `torch.export` **destroys the
@@ -70,6 +78,77 @@ you cannot get from the eager torch model:
 
 > Short answer for the slide: **"a flat torch graph has already thrown away the loop, the roles, and the
 > typed shapes we need; the compiler is what keeps them."**
+
+---
+
+## 3A. The honest baseline: what trivially-buildable PyTorch tooling already gives you
+
+A fair yardstick is a small, well-made *"understand this model"* repo built only with PyTorch's own tooling.
+**[`ucb-bar/Understanding-PI0`](https://github.com/ucb-bar/Understanding-PI0)** is exactly that: a few scripts
+to understand the π0 VLA policy. It reports the parameter breakdown (≈ **3.5 B**: SigLIP vision 412 M, Gemma LM
+2.5 B, flow-matching action expert 575 M), the full module tree, a single aggregate **4.35 TFLOP / inference
+step** number, and ships `run_torch_profiler.py`, `run_torch_memory_snapshot.py`, and `run_quantization.py`.
+That is genuinely useful and took roughly an afternoon. **We have to be honest about how much of "workload
+analysis" that already covers — because it covers a lot.**
+
+What an afternoon of `torch.fx` + a FLOP counter + `torch.profiler` actually gives you, with **no** custom
+compiler:
+- **Param & FLOP/MAC totals** — `fvcore` / `ptflops` / manual. (PI0's 4.35 T.)
+- **Module tree / op inventory** — `print(model)`, `torchinfo`.
+- **Per-op shapes `(M,N,K)` for one forward** — `torch.fx.symbolic_trace` + `ShapeProp` annotates every
+  matmul's operand shapes. **This is the key concession: you do *not* need our compiler to get per-op GEMM
+  shapes for a single pass.**
+- **Real, *measured* per-kernel time & peak memory** — `torch.profiler`, memory snapshot. On the GPU you ran on.
+- **Quantization storage deltas** — `torchao` / `bitsandbytes`.
+
+So the brutally honest position is: **a large fraction of what any "workload analysis for DSE" tool emits is
+reproducible in an afternoon, and the PI0 repo already does most of it.** If our pitch were "we count FLOPs and
+list shapes," there would be no story, and we should not pretend otherwise.
+
+### Where the afternoon stops — the only part that genuinely needs a compiler
+
+Two things the PyTorch-only baseline **cannot** give you, and they are the entire reason this tooling exists:
+
+1. **The multi-rate loop kept as *structure*, not erased.** PI0's headline is "4.35 TFLOP per **one** inference
+   step." But the real cost of a VLA/VLM is a *prefill that runs once* followed by a *decode/denoise head that
+   runs ×K* (action chunking, diffusion steps), carrying a KV cache or action latent across all K steps.
+   `torch.export` / `torch.fx` **unroll or flatten** this — you get one step, or K identical copies, and in
+   both cases **K, the loop-carried state, and the once-vs-repeated split are gone as first-class objects.** Our
+   loop-preserving capture lowers `torch.while_loop → scf.for(0,K,1)` so that K is an IR constant, the carried
+   KV/latent are `iter_args`, and the repeated region *is* the loop body — one verified, value-independent,
+   cross-model object.
+   > **Caveat, stated plainly:** K itself is often just a config constant a human could look up
+   > (`num_inference_steps`, `max_new_tokens`). The non-trivial part is **not** "discovering K" — it is
+   > *binding K structurally to the exact repeated region and its byte/MAC cost, automatically, the same way
+   > across 10 model families, with no per-model glue and no dependence on weight values* — which a flat trace
+   > fundamentally cannot represent.
+
+2. **A disciplined translation of that structure into DSE *search axes*, with provenance.** Counting FLOPs is
+   not a search space. The value-add is turning the recovered structure into the axes a DSE actually sweeps —
+   primitive set, residency/capacity/dtype, sharding communication, real-time **requirement floors** — each
+   tagged with an evidence tier (IR-recovered / derived / assumed), a **no-guess** rule (omit rather than
+   fabricate), and an **independent re-derivation** (`verify_implementation.py`, 631 checks). This is **rigor**,
+   not a capability PyTorch lacks — but it is the difference between a number on a slide and a number you can
+   defend in a tape-out review.
+
+### Value ledger (brutally honest)
+
+| Capability | Afternoon in pure PyTorch? | What our tooling actually adds | Honest verdict |
+|---|---|---|---|
+| Param / FLOP / MAC totals | **Yes** (fvcore/ptflops) | nothing material | **No added value** — PyTorch is equal/better |
+| Module tree / op inventory | **Yes** (torchinfo) | nothing material | **No added value** |
+| Per-op `(M,N,K)` for one forward | **Yes** (fx `ShapeProp`) | same numbers, value-independent, uniform across models | **Marginal** — convenience/uniformity only |
+| Measured latency / throughput / memory | **Yes** (`torch.profiler`) — and it's *real* | we deliberately **don't** measure | **PyTorch wins**; we must never claim this |
+| Quantization storage deltas | **Yes** (`torchao`) | name unpack/scale ops *iff* the capture preserves them | **Marginal** |
+| **K + loop-carried KV/latent + once-vs-×K split as structure** | **No** — export erases it | recovered from `scf.for` as one verified object | **Real, defensible value** |
+| **Region-attributed bytes/MACs (prefill vs ×K head)** | Only by hand, per model | structural from the loop boundary, corpus-wide | **Real value at scale** |
+| **DSE axes + requirement envelopes + evidence tiers + no-guess + re-derivation** | Possible, but nobody does it rigorously | the disciplined, re-derivable contract | **Real value as rigor** (not capability) |
+| Roofline / sharding / boundary search-space framing | Possible by hand | systematized, caveated, target-agnostic | **Real value as framing** |
+
+**Bottom line for the talk:** *strip away everything PyTorch already does well, and what is left — the only
+thing that actually justifies a compiler — is (1) keeping the K-step loop and its carried state as recoverable
+structure instead of an unrolled blur, and (2) translating that structure into a provenance-tracked DSE search
+space we can independently re-derive. We claim exactly that, and nothing more.*
 
 ---
 
@@ -97,6 +176,28 @@ Key directories (committed):
 - `recaptures/` (flat), `recaptures_levels/<w>/model_qdq.mlir` (int8 qdq), `recaptures_native/bitvla/` (packed
   int2) — capture-level variants used for the fidelity/low-bit story.
 - `case_study/*.csv` — the mined facts. `case_study/final_presentation_pass/` — this pass.
+
+### 4.1 What information is *born* at each stage (answers "which analysis happens where")
+
+The compiler produces **only** the typed, loop-preserving IR plus provenance tags (Tier-A facts). **Every** DSE
+interpretation happens *after* lowering, in the mining modules — never inside the compiler.
+
+| Stage | Tool (file) | Information first created here | Tier |
+|---|---|---|---|
+| Loop wrapper | `*_whileloop_wrapper.py` | *what to trace*: which step repeats, what is carried (KV/latent), K as the cond bound | input (not a fact) |
+| m2m compile | `model2MLIR` FXImporter (`import_fx.py`) | typed op graph; `(M,N,K)`, dtypes, byte counts; `prov.op`/`prov.family`/`prov.fqn` tags | A (IR) |
+| `while_loop→scf.for` | `import_fx.py::_lower_while_loop` (≈L349–482) | **K** (loop bound), `iter_args` (carried KV/latent), repeated region = loop body | A (IR) |
+| numeric gate | `dispatch_measure.py::measure` | cos vs eager golden (= 1.0 ⇒ capture faithful) | A (measured) |
+| attribution | `attribution.py` | per-matmul MACs/bytes; region role (backbone_once / repeated_head) from scf.for ancestry | A (IR) |
+| loop recovery | `loop_recovery.py` | K, loop-carried list, KV-cache bytes, residency eligibility (invariant vs carried) | A (IR) |
+| operator geometry | `operator_geometry.py` | shape_class (gemv / wide_skinny / square), aspect ratios, primitive coverage | A (IR) |
+| sharding | `sharding.py` | M/N/K shardable axes, comm bytes, reduction-required | B (derived) |
+| capacity / dtype | `real_config.py` | deployment magnitudes (× real `n_layers`), KV sizing at bf16/int8 | A (config) |
+| numeric contract | `quant_metadata.py` / `numerical_contract.py` | storage / scale / compute dtype, low-bit visibility | A (IR) where present |
+| requirement envelopes | `case_study.py` | required GMAC/s, required GB/s **floors** (resident vs reload) | B (A + stated rate/H) |
+| boundary | `boundary_placement.py` | candidate HW/SW placement per abstraction; necessity N/U/P/B | C (search space) |
+| critic (agent) | `agent/critic.py` | proposed over-claims in the *prose*, citation-gated | interpretation only |
+| verifier | `verify_implementation.py` | re-derives 631 facts independently; divergence fails the build | gate |
 
 ---
 
@@ -161,6 +262,60 @@ Why: DSE should search **which** abstractions matter and **where** they live. (`
 
 ---
 
+## 5A. One workload end to end — the input snippets and the output they become
+
+**(1) Input — the loop wrapper.** The only hand/agent-authored artifact in the path. It chooses *what to
+trace*; it never produces a number. The human-specified rules (carry only evolving state; static shape-invariant
+KV; `cond` returns `i < K`) live in `p21_loop_preserving/STATUS.md`:
+
+```python
+# tiny_llama_whileloop_wrapper.py — static-KV K-step decode (K = 7)
+class StaticKVDecodeWrapper(nn.Module):
+    def cond(self, i, cur_tok, out_toks, k_cache, v_cache):
+        return i < K                                   # K=7 → becomes the scf.for upper bound
+    def body(self, i, cur_tok, out_toks, k_cache, v_cache):
+        ...                                            # one manual Llama decode step (RMSNorm→QKV→
+                                                       #   RoPE→static-KV write→attn→MLP→lm_head→argmax)
+        return i + 1, next_tok, out_toks, k_cache, v_cache    # the carried tuple (shape-invariant)
+```
+
+**(2) After m2m — the loop survives as IR** (the object a flat export cannot produce):
+
+```mlir
+%out = scf.for %i = %c0 to %c7 step %c1                         // K = 7, recovered (Tier A)
+       iter_args(%tok = %t0, %o = %o0, %k = %k0, %v = %v0) -> (...) {
+  ... repeated decode head (linalg.matmul / generic, runs ×7) ...   // region = repeated_head
+  scf.yield %tok', %o', %k', %v'                                // carried KV = iter_args
+}   // everything OUTSIDE scf.for = backbone_once (prefill, runs ×1)
+```
+
+`import_fx.py` logs `Lowered while_loop → scf.for(0,7,1); 4 iter_args, N additional`. The capture is then
+**gated**: openVLA decode is **bit-exact** vs HF `generate(max_new_tokens=7)`; smolVLA cos **0.9999994**; pi0.5
+cos **1.0** (max |Δ| 1.3e-6). A wrong wrapper fails this gate and never reaches the mining.
+
+**(3) Output — the mined facts (real committed rows).** The IR becomes provenance-tracked CSV. Each cell carries
+an `evidence_*` column; anything unsourced is **omitted, not guessed** (e.g. bitvla deployment config). From
+`operator_shape_table.csv`:
+
+```
+workload,region_role,M,N,K,macs,rhs_weight_bytes,dtype,shape_class,evidence_shape
+rdt,repeated_head,64,2048,256,33554432,2097152,f32,wide_skinny,recovered_from_ir
+```
+
+and the residency story in `data_movement_table.csv` (**bytes moved**, not bandwidth):
+
+```
+workload,region,invocations,weight_bytes,avoidable_weight_reload,resident_int8_B
+rdt,repeated_head,5,393216000,1572864000,98304000
+openvla,backbone_once,1,3145728,0,786432
+```
+
+`invocations` is K straight from the `scf.for` trip count; `avoidable_weight_reload = weight_bytes × (K−1)` is
+the reload a resident strategy removes. That single number — the K× weight-traffic gap, attributed to the exact
+repeated region — is the thing the PI0-style "4.35 TFLOP / one step" headline structurally cannot express.
+
+---
+
 ## 6. How the mining tooling works (and stays generalizable)
 
 ```mermaid
@@ -194,9 +349,17 @@ flowchart LR
 
 We are **explicit** about every place a model-in-the-loop touches the pipeline, because a reviewer will ask.
 
+**Two distinct kinds of AI use, never conflated:** (a) **dev-time authoring** — an AI assistant (Claude Code)
+helped write code *and* the per-model loop wrappers during development, exactly as it helped write the rest of
+the repo; this is gated by tests, numeric checks, and human review, and produces no runtime fact. (b) **one
+runtime agent in the pipeline** — a devil's-advocate *critic* (`merlin/dse_guidance/agent/`) that reads the
+emitted findings and proposes over-claims, disposed by a deterministic citation gate. **Neither kind ever
+produces a number.**
+
 | Stage | LLM/agent used? | What it does | How its output is verified (the part that matters) |
 |---|---|---|---|
-| **Loop-wrapper authoring** (write the per-model `torch.while_loop` step) | **Yes** — an agent wrote one wrapper per model | produces *source code* for the capture step | **Not trusted as truth.** Each wrapper is gated by a **numeric check**: the captured loop must reproduce the eager unrolled loop to **cos ≈ 1.0 / bit-exact**. A wrong wrapper fails the gate and is rejected. The wrapper only chooses *what to trace*; the **compiler** produces the facts. |
+| **Loop-wrapper authoring** (write the per-model `torch.while_loop` step) | **Yes — dev-time** (an AI assistant wrote one wrapper per model; one was left unfinished when it "hit a limit", per `STATUS.md`) | produces *source code* for the capture step | **Not trusted as truth.** Each wrapper is gated by a **numeric check**: the captured loop must reproduce the eager unrolled loop to **cos ≈ 1.0 / bit-exact**. A wrong wrapper fails the gate and is rejected. The wrapper only chooses *what to trace*; the **compiler** produces the facts. |
+| **Runtime critic** (`agent/critic.py` + `claude_cli.py`) | **Yes — the only agent *in* the pipeline** | reads `DSE_FINDINGS.md`, returns JSON `{claim, severity, cite, suggested_fix}` flagging over-claims / hidden caveats in the *interpretation* | **Citation gate** (`citation_gate()`): every critique must quote a verbatim ≥8-char substring of a committed artifact or it is mechanically **rejected**; it can flag prose only, never edit a number. |
 | **m2m compilation** (torch→MLIR) | **No** | deterministic compiler passes | n/a — deterministic; same input → byte-identical MLIR. |
 | **Mining → CSV facts** | **No** | deterministic Python over the IR | re-derived by `verify_implementation.py` (631 checks) + byte-stable regeneration. |
 | **Deployment magnitudes** | **No** | arithmetic from real config objects | anchored to exact external values (openVLA = Llama-2-7B = 6.74 B; tiny_llama = 1.10 B). |
@@ -208,6 +371,19 @@ a number**. Numbers come from the compiler + deterministic mining, and are indep
 verifier. Anything an agent produced that *could* be wrong (the wrappers) passes a **numeric correctness gate**
 before it is used. If a result depended on an unverified model output, that is called out as a limitation, not
 presented as a fact.
+
+**How the agents interact with the deterministic core (propose → dispose).** The pattern is identical in both
+directions: *the model proposes, a deterministic check disposes, and the number always comes from the compiler.*
+- **Runtime critic** runs *after* the facts exist. `claude_cli.py::run_agent` calls headless `claude -p … --output-format json`;
+  the critic is handed the findings digest and returns its JSON list; `critic.py::citation_gate` drops any item
+  whose `cite` is not a real substring of the committed artifacts. Accepted critiques surface as caveats to fix —
+  they **cannot mutate a CSV**. (Design note in `agent/__init__.py`: *"the LLM proposes into a typed slot; the
+  deterministic gate disposes … Agents NEVER produce numbers."*)
+- **Loop wrappers** (dev-time) interact with the core only through the **numeric gate**: a wrapper that
+  mis-traces the model yields a capture whose cos ≠ 1.0 and is rejected before any fact is mined.
+
+This mirrors the same `targetgen/agent` runtime contract used elsewhere in the repo, so the discipline is
+consistent rather than bolted on for this one study.
 
 ---
 
