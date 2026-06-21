@@ -1,0 +1,51 @@
+name: B1_linear_relu_i8
+kind: layer
+source_role: pytorch_model_slice
+source_reference: nn.Linear + ReLU
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 16
+  dtype: i8
+- name: X
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: X
+    weight: W
+    out: Y0
+    epilogue:
+    - relu
+    output_dtype: i32
+    semantic: linear_relu
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    relu: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional

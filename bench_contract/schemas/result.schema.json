@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin/bench_contract/result.schema.json",
+  "title": "Per-run results.yaml (experiment ABI v0.1)",
+  "description": "The runner writes one results.yaml per run summarizing the K-ladder outcome.",
+  "type": "object",
+  "required": ["status", "artifact_type", "target", "contract", "entrypoints", "semantic_checks", "oracle", "artifacts_recorded"],
+  "properties": {
+    "status": {"type": "string", "enum": ["pass", "fail", "error"]},
+    "artifact_type": {"type": "string"},
+    "target": {"type": "string"},
+    "rung": {"type": ["string", "null"]},
+    "run_id": {"type": "string"},
+    "contract": {
+      "type": "object",
+      "required": ["version", "package_valid"],
+      "properties": {
+        "version": {"type": "string"},
+        "package_valid": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
+    "entrypoints": {
+      "type": "object",
+      "description": "per-entrypoint outcome: pass | fail | skipped",
+      "additionalProperties": {"type": "string", "enum": ["pass", "fail", "skipped"]}
+    },
+    "semantic_checks": {
+      "type": "object",
+      "required": ["reference_outputs_vs_simulate"],
+      "properties": {
+        "reference_outputs_vs_simulate": {"type": "string", "enum": ["pass", "fail", "skipped"]}
+      },
+      "additionalProperties": {"type": "string"}
+    },
+    "oracle": {
+      "type": "object",
+      "required": ["kind", "derived_from_rtl", "cycle_accurate"],
+      "properties": {
+        "kind": {"type": "string"},
+        "derived_from_rtl": {"type": "boolean"},
+        "cycle_accurate": {"type": "boolean"},
+        "result": {"type": "string", "enum": ["pass", "fail", "skipped", "none"]},
+        "cycles": {"type": ["integer", "null"]}
+      },
+      "additionalProperties": true
+    },
+    "artifacts_recorded": {
+      "type": "object",
+      "additionalProperties": {"type": "boolean"}
+    },
+    "failure": {"type": ["object", "null"]}
+  },
+  "additionalProperties": true
+}

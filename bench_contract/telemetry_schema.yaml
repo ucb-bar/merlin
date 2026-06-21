@@ -1,0 +1,38 @@
+# Telemetry / recorded-run contract (experiment ABI v0.1)
+# Human-readable companion to schemas/telemetry.schema.json. Every run the runner records MUST
+# carry enough to (a) regenerate the headline table from manifests alone and (b) attribute every
+# cell to a toolchain + oracle.
+version: "0.1"
+schema: schemas/telemetry.schema.json
+
+recorded_per_run:
+  run_dir: "runs/<suite>/<run_id>/"
+  files:
+    run_manifest.yaml: "top-level metadata (below)"
+    artifact_manifest.json: "content-addressed artifact records with origin tags"
+    results.yaml: "K-ladder summary (schemas/result.schema.json)"
+    logs/failures.jsonl: "FailureRecord(s) on any failure (plane-routed)"
+
+run_manifest_metadata:
+  required:
+    - oracle: {kind: string, derived_from_rtl: bool}
+    - toolchain_shas: {merlin: sha, chipyard: sha, gemmini: sha, llvm: "commit (optional)"}
+    - cycle_accurate: bool
+  recommended:
+    - cycles: int
+    - package_id: string
+    - package_language: "python | cpp"
+    - contract_version: "0.1"
+
+artifact_origins:
+  # origin tags (aet ArtifactOrigin) the runner uses
+  input.interface.mlir: GENERATED
+  lowered.target.mlir: COMPILER_GENERATED
+  command_buffer.json: COMPILER_GENERATED
+  lowered.llvm.mlir: COMPILER_GENERATED
+  object_or_elf: COMPILER_GENERATED
+  console.log: ORACLE_OUTPUT
+
+acceptance: >-
+  python -m merlin.eval.gemmini_dispatcher --summary-only --runs-root <runs> must regenerate the
+  full table from these manifests alone, with derived_from_rtl/cycle_accurate per oracle level.

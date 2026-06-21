@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin/bench_contract/command_buffer.schema.json",
+  "title": "Merlin command buffer (experiment ABI v0.1)",
+  "description": "Strict JSON Schema for the target-independent command buffer a package must emit. Mirrors merlin/schemas/command_buffer.schema.yaml but validated programmatically and fail-closed.",
+  "type": "object",
+  "required": ["abi_version", "target", "commands"],
+  "properties": {
+    "abi_version": {"type": "string"},
+    "target": {"type": "string"},
+    "backend": {"type": "string"},
+    "tensors": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["shape", "dtype"],
+        "properties": {
+          "shape": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1},
+          "dtype": {"type": "string", "enum": ["i8", "i16", "i32"]},
+          "role": {"type": "string", "enum": ["input", "weight", "bias", "output"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["opcode"],
+        "properties": {
+          "opcode": {
+            "type": "string",
+            "enum": ["RES_PACK", "MATMUL_RESIDENT", "MATMUL", "COMMIT", "EVICT", "VECTOR_MAP", "VREDUCE"]
+          },
+          "operands": {"type": "object", "additionalProperties": {"type": "string"}},
+          "attributes": {
+            "type": "object",
+            "properties": {
+              "layout": {"type": "string"},
+              "epilogue": {"type": "array", "items": {"type": "string", "enum": ["bias_add", "bias", "requant", "acc_scale", "relu"]}},
+              "output_dtype": {"type": "string", "enum": ["i8", "i16", "i32"]},
+              "acc_scale": {"type": "number"},
+              "requant_shift": {"type": "integer"},
+              "combine": {"type": "string"},
+              "activation": {"type": "array", "items": {"type": "string"}},
+              "op": {"type": "string"}
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "params": {"type": "object"},
+    "metrics_requested": {"type": "array", "items": {"type": "string"}},
+    "resources": {"type": "object"}
+  },
+  "additionalProperties": true
+}

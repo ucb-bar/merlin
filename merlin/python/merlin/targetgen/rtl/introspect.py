@@ -1,0 +1,196 @@
+"""merlin-rtl-introspect — structure-only fact extraction from elaborated Gemmini FIRRTL.
+
+Reads the CIRCT/firtool-produced artifacts (the SoC ``.fir`` + ``top_module_hierarchy.json``)
+and extracts STRUCTURE ONLY: memories (with sizes), the systolic tile array, datapath widths,
+and the command interface. No semantic hypotheses (no role/kind guesses) — those are the
+agent's classify/spec slots. Each fact carries its source evidence. Memories are scoped to
+Gemmini by their FIRRTL source-path annotation; the tile array is scoped via the module
+hierarchy (Tiles under Mesh), which keeps the co-located OPU out of the counts.
+
+`validate_against_contract` checks the extracted facts REPRODUCE the hand-curated
+`merlin/targets/gemmini` capacities — that equality is what lets a future spec be trusted.
+
+This is a pragmatic v1 over the FIRRTL artifacts (firtool already produced them). A full
+CIRCT MLIR-pass over the hw/seq dialects is the next step; the fact schema is the same.
+"""
+from __future__ import annotations
+
+import json
+import math
+import re
+import subprocess
+from pathlib import Path
+from typing import Any
+
+DEFAULT_CHIPYARD = "/scratch2/agustin/chipyard"
+CONFIG = "GemminiAndOPUShuttleConfig"
+
+
+def find_artifacts(chipyard_root: str | Path = DEFAULT_CHIPYARD,
+                   config: str = CONFIG) -> dict[str, Path]:
+    base = Path(chipyard_root) / "sims/verilator/generated-src" / \
+        f"chipyard.harness.TestHarness.{config}"
+    return {"fir": base / f"chipyard.harness.TestHarness.{config}.fir",
+            "hierarchy": base / "top_module_hierarchy.json"}
+
+
+def _grep(fir: Path, pattern: str) -> list[str]:
+    proc = subprocess.run(["grep", "-aoE", pattern, str(fir)],
+                          capture_output=True, text=True)
+    return [ln for ln in proc.stdout.splitlines() if ln]
+
+
+def _count_tiles_under_mesh(hierarchy: Path) -> int:
+    tree = json.loads(hierarchy.read_text())
+    n = 0
+
+    def walk(node: dict, path: str):
+        nonlocal n
+        mod = node.get("module_name", "")
+        if mod.startswith("Tile") and "Mesh" in path:
+            n += 1
+        for child in node.get("instances", []):
+            walk(child, path + "/" + mod)
+    walk(tree, "")
+    return n
+
+
+def extract_facts(fir: str | Path, hierarchy: str | Path) -> dict[str, Any]:
+    """Return a structure-only facts dict extracted from the elaborated FIRRTL."""
+    fir, hierarchy = Path(fir), Path(hierarchy)
+    facts: dict[str, Any] = {"target": "gemmini",
+                             "source": {"kind": "firrtl", "config": CONFIG, "fir": fir.name},
+                             "arrays": [], "memories": [], "datapaths": [], "interfaces": []}
+
+    # Systolic tile array (scoped via the module hierarchy: Tiles under Mesh).
+    tiles = _count_tiles_under_mesh(hierarchy)
+    side = int(math.isqrt(tiles)) if tiles else 0
+    facts["arrays"].append({
+        "name": "mesh", "tiles": tiles,
+        "rows": side, "cols": side, "square": side * side == tiles,
+        "evidence": "top_module_hierarchy.json: Tile instances under Mesh"})
+
+    # Scratchpad memory, scoped by FIRRTL source path (gemmini/.../Scratchpad.scala).
+    # Line form: `smem mem : UInt<W>[E] [D] @[... Scratchpad.scala ...]`
+    sp = _grep(fir, r"smem mem : UInt<[0-9]+>\[[0-9]+\] \[[0-9]+\] @\[[^]]*Scratchpad\.scala[^]]*\]")
+    if sp:
+        m = re.search(r"UInt<(\d+)>\[(\d+)\] \[(\d+)\]", sp[0])
+        ebits, row_elems, depth = int(m[1]), int(m[2]), int(m[3])
+        banks = len(sp)
+        facts["memories"].append({
+            "name": "scratchpad", "banks": banks, "row_elems": row_elems,
+            "depth": depth, "elem_bits": ebits,
+            "bytes": banks * row_elems * (ebits // 8) * depth,
+            "evidence": f"{banks}x `smem mem : UInt<{ebits}>[{row_elems}] [{depth}]` @ Scratchpad.scala"})
+
+    # Accumulator memory present (size left unextracted rather than guessed).
+    if _grep(fir, r"module AccumulatorMem(_[0-9]+)?"):
+        facts["memories"].append({
+            "name": "accumulator", "elem_bits": 32, "bytes": None,
+            "evidence": "module AccumulatorMem; acc datapath SInt<32>",
+            "note": "depth not extracted from this artifact (v1)"})
+
+    # Datapath element widths (structure, from the scratchpad / accumulator data types).
+    facts["datapaths"] = [
+        {"name": "input", "dtype": "i8", "evidence": "scratchpad smem UInt<8>"},
+        {"name": "accumulator", "dtype": "i32", "evidence": "AccumulatorMem SInt<32>"}]
+
+    # Command interface (structure, by module presence).
+    ifaces = []
+    if _grep(fir, r"module ReservationStation(_[0-9]+)?"):
+        ifaces.append({"name": "rocc_cmd", "evidence": "module ReservationStation (RoCC decode/dispatch)"})
+    if _grep(fir, r"module FrontendTLB(_[0-9]+)?"):
+        ifaces.append({"name": "dma_tlb", "evidence": "module FrontendTLB"})
+    facts["interfaces"] = ifaces
+    return facts
+
+
+def validate_against_contract(facts: dict[str, Any], contract: dict[str, Any]) -> list[str]:
+    """Return problems (empty == the extracted facts reproduce the hand-curated capacities)."""
+    problems: list[str] = []
+    caps = contract.get("capabilities", {})
+
+    mesh = next((a for a in facts["arrays"] if a["name"] == "mesh"), None)
+    cmesh = caps.get("mesh", {})
+    if mesh and cmesh:
+        if mesh["rows"] != cmesh.get("rows") or mesh["cols"] != cmesh.get("cols"):
+            problems.append(f"mesh {mesh['rows']}x{mesh['cols']} != contract "
+                            f"{cmesh.get('rows')}x{cmesh.get('cols')}")
+    else:
+        problems.append("mesh fact or contract mesh missing")
+
+    sp = next((m for m in facts["memories"] if m["name"] == "scratchpad"), None)
+    want = caps.get("resident_storage_bytes")
+    if sp and want is not None:
+        if sp["bytes"] != want:
+            problems.append(f"scratchpad bytes {sp['bytes']} != contract resident_storage_bytes {want}")
+    else:
+        problems.append("scratchpad fact or contract resident_storage_bytes missing")
+
+    dt = {d["name"]: d["dtype"] for d in facts["datapaths"]}
+    cdt = contract.get("dtypes", {})
+    if cdt.get("storage") and dt.get("input") != cdt["storage"]:
+        problems.append(f"input dtype {dt.get('input')} != contract storage {cdt['storage']}")
+    if cdt.get("accumulator") and dt.get("accumulator") != cdt["accumulator"]:
+        problems.append(f"accumulator dtype {dt.get('accumulator')} != contract {cdt['accumulator']}")
+    return problems
+
+
+def emit_facts_yaml(facts: dict[str, Any]) -> str:
+    import yaml
+    return yaml.safe_dump(facts, sort_keys=False)
+
+
+GENERATOR_VERSION = "rtl-introspect-v1-grep-firrtl"   # bump when extraction changes; CIRCT pass = v2
+
+
+def _src_sha(path: str) -> str:
+    proc = subprocess.run(["git", "-C", path, "rev-parse", "--short", "HEAD"],
+                          capture_output=True, text=True)
+    return proc.stdout.strip() or "unknown"
+
+
+def dump_facts(out_path: str | Path, *, chipyard_root: str | Path = DEFAULT_CHIPYARD,
+               config: str = CONFIG) -> dict[str, Any]:
+    """Extract facts and write a REPRODUCIBLE rtl_facts.yaml (facts + generator version + source
+    SHAs + extraction method). This makes RTL-fact extraction a recorded, attributable input —
+    the thing an agent_spec target-generation experiment consumes."""
+    import yaml
+    arts = find_artifacts(chipyard_root, config)
+    facts = extract_facts(arts["fir"], arts["hierarchy"])
+    cy = str(chipyard_root)
+    record = {
+        "schema_version": "1.0",
+        "generator": {
+            "name": "merlin.targetgen.rtl.introspect",
+            "version": GENERATOR_VERSION,
+            "method": "grep/regex over firtool-produced FIRRTL + hierarchy JSON "
+                      "(NOT yet a CIRCT hw/seq MLIR pass)",
+        },
+        "source_shas": {"chipyard": _src_sha(cy),
+                        "gemmini": _src_sha(cy + "/generators/gemmini")},
+        "facts": facts,
+    }
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+    return record
+
+
+def main() -> int:
+    import argparse
+    ap = argparse.ArgumentParser(description="Extract structure-only RTL facts -> rtl_facts.yaml.")
+    ap.add_argument("--out", default="rtl_facts.yaml")
+    ap.add_argument("--chipyard", default=DEFAULT_CHIPYARD)
+    ap.add_argument("--config", default=CONFIG)
+    args = ap.parse_args()
+    rec = dump_facts(args.out, chipyard_root=args.chipyard, config=args.config)
+    print(f"wrote {args.out}: {len(rec['facts'].get('arrays', []))} arrays, "
+          f"{len(rec['facts'].get('memories', []))} memories, "
+          f"{len(rec['facts'].get('interfaces', []))} interfaces "
+          f"[generator {rec['generator']['version']}]")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

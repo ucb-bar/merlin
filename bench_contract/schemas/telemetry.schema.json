@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin/bench_contract/telemetry.schema.json",
+  "title": "Recorded run manifest metadata (experiment ABI v0.1)",
+  "description": "The minimum metadata every recorded run (run_manifest.yaml) must carry so the headline table is reproducible from manifests alone and every cell is attributable.",
+  "type": "object",
+  "required": ["schema_version", "run_id", "status", "metadata"],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "project": {"type": "string"},
+    "suite": {"type": "string"},
+    "method": {"type": "string"},
+    "run_id": {"type": "string"},
+    "target": {"type": "string"},
+    "benchmark": {"type": ["string", "null"]},
+    "status": {"type": "string", "enum": ["pass", "fail", "error"]},
+    "codegen_backend": {"type": "string"},
+    "metadata": {
+      "type": "object",
+      "required": ["oracle", "toolchain_shas", "cycle_accurate"],
+      "properties": {
+        "oracle": {
+          "type": "object",
+          "required": ["kind", "derived_from_rtl"],
+          "properties": {
+            "kind": {"type": "string"},
+            "derived_from_rtl": {"type": "boolean"}
+          },
+          "additionalProperties": true
+        },
+        "toolchain_shas": {
+          "type": "object",
+          "description": "merlin + chipyard + gemmini (+ llvm commit for the C++ path)",
+          "additionalProperties": {"type": ["string", "null"]}
+        },
+        "cycle_accurate": {"type": "boolean"},
+        "cycles": {"type": ["integer", "null"]},
+        "package_id": {"type": "string"},
+        "package_language": {"type": "string"},
+        "contract_version": {"type": "string"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

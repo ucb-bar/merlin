@@ -1,0 +1,62 @@
+name: A6_resident_reuse
+kind: isa
+source_role: handauthored_compiler_test
+source_reference: resident weight reuse across two matmuls
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 16
+  - 16
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: i8
+- name: A1
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: i8
+operation:
+  op: resident_reuse
+  attributes:
+    weight: W
+    matmuls:
+    - lhs: A0
+      out: Y0
+      epilogue: []
+      output_dtype: i32
+    - lhs: A1
+      out: Y1
+      epilogue:
+      - relu
+      output_dtype: i32
+    semantic: resident_reuse
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    resident_reuse: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional

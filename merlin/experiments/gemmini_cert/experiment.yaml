@@ -1,0 +1,13 @@
+# Gemmini conformance sweep (resumable). Drives merlin.eval.gemmini_dispatcher.run_sweep.
+name: gemmini_cert
+description: >-
+  RTL-grounded conformance certification of the Gemmini target. Each (rung x oracle) cell
+  lowers a Merlin command buffer, generates the Gemmini kernel, runs it on the oracle, and
+  gates three-way bit-exact equality (reference == simulator == oracle output). Resumable via
+  a jsonl ledger keyed by run_id; only Verilator/FireSim results are RTL-certified.
+rungs: [C0, C1, C4, C4e, C5]  # certifiable (bit-exact) rungs; see eval/gemmini_conformance.py
+oracles:
+  - {simulator: spike,     level: 1, derived_from_rtl: false, role: bootstrap}
+  - {simulator: verilator, level: 2, derived_from_rtl: true,  role: certification}
+runs_root: runs/gemmini_cert
+ledger: runs/gemmini_cert/ledger.jsonl

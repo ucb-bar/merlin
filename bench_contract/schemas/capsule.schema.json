@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin/bench_contract/capsule.schema.json",
+  "title": "Workload capsule (capsule_bench_v0)",
+  "description": "A compiler-input workload capsule: describes what to compile, the numeric golden policy, the expected Gemmini instruction coverage, the required oracle tiers, and the public/dev/hidden label. A capsule is an INPUT to the backend-under-test, never a kernel.",
+  "type": "object",
+  "required": ["name", "kind", "source_role", "label", "operation", "numeric_policy", "expected", "required_oracle_tiers"],
+  "properties": {
+    "name": {"type": "string", "pattern": "^[A-Za-z0-9_]+$"},
+    "kind": {"type": "string", "enum": ["isa", "layer", "model_slice"]},
+    "source_role": {
+      "type": "string",
+      "enum": ["behavioral_specimen", "pytorch_model_slice", "handauthored_compiler_test", "uplifted_from_bareMetalC"]
+    },
+    "source_reference": {"type": "string", "description": "bareMetalC path / torch module slice / ISA section / local spec id"},
+    "label": {"type": "string", "enum": ["public", "dev", "hidden"]},
+    "interface_mlir": {"type": "string", "description": "relative path to capsule.interface.mlir"},
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "role", "shape", "dtype"],
+        "properties": {
+          "name": {"type": "string"},
+          "role": {"type": "string", "enum": ["input", "weight", "bias", "output"]},
+          "shape": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1},
+          "dtype": {"type": "string", "enum": ["i8", "i16", "i32"]},
+          "layout": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "operation": {
+      "type": "object",
+      "required": ["op"],
+      "properties": {
+        "op": {"type": "string", "enum": ["matmul", "linear", "conv2d", "movement", "attention_qk", "attention_pv", "resident_reuse"]},
+        "attributes": {"type": "object", "additionalProperties": true}
+      },
+      "additionalProperties": false
+    },
+    "numeric_policy": {
+      "type": "object",
+      "required": ["compare", "dtype"],
+      "properties": {
+        "compare": {"type": "string", "enum": ["exact_int", "tolerance_float"]},
+        "dtype": {"type": "string", "enum": ["i8", "i16", "i32"]},
+        "acc_scale": {"type": "number"},
+        "requant_shift": {"type": "integer"},
+        "rtol": {"type": "number"},
+        "atol": {"type": "number"}
+      },
+      "additionalProperties": false
+    },
+    "expected": {
+      "type": "object",
+      "required": ["instruction_classes"],
+      "properties": {
+        "instruction_classes": {
+          "type": "array",
+          "items": {"type": "string", "enum": [
+            "CONFIG_EX", "CONFIG_LD", "CONFIG_ST", "MVIN", "MVOUT", "PRELOAD",
+            "COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE", "FLUSH", "FENCE", "LOOP_WS", "LOOP_CONV"
+          ]}
+        },
+        "forbidden_classes": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "modes": {
+          "type": "object",
+          "properties": {
+            "i8": {"type": "boolean"},
+            "relu": {"type": "boolean"},
+            "acc_scale": {"type": "boolean"},
+            "k_accumulate": {"type": "boolean"},
+            "resident_reuse": {"type": "boolean"},
+            "conv2d": {"type": "boolean"},
+            "movement": {"type": "boolean"},
+            "padded_edge": {"type": "boolean"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "required_oracle_tiers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "enum": ["L0", "L1", "L2", "L3", "L4", "L5"]}
+    },
+    "vcs": {"type": "string", "enum": ["required", "optional", "unavailable"]},
+    "firesim": {"type": "string", "enum": ["required", "optional", "unavailable"]}
+  },
+  "additionalProperties": true
+}

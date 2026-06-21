@@ -1,0 +1,55 @@
+name: B0_quantized_linear_i8
+kind: layer
+source_role: pytorch_model_slice
+source_reference: nn.Linear + per-tensor requant
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 16
+  dtype: i8
+- name: X
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: X
+    weight: W
+    out: Y0
+    epilogue:
+    - acc_scale
+    output_dtype: i8
+    acc_scale: 0.0625
+    semantic: quantized_linear
+numeric_policy:
+  compare: exact_int
+  dtype: i8
+  acc_scale: 0.0625
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    i8: true
+    acc_scale: true
+    k_accumulate: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional

@@ -1,0 +1,43 @@
+# Interface dialect contract (experiment ABI v0.1)
+# The merlin_iface input grammar a package MUST accept. Canonical prose spec: interface_grammar.md.
+version: "0.1"
+dialect:
+  namespace: merlin_iface
+  module_attributes:
+    - {name: merlin_iface.version, type: string, must_equal: "0.1", note: "reject unknown versions"}
+    - {name: merlin_iface.target, type: string}
+    - {name: merlin_iface.abi_version, type: string}
+  types:
+    - {name: resident, syntax: "!merlin_iface.resident", note: "opaque resident/stationary weight handle"}
+    - {name: acc, syntax: "!merlin_iface.acc<i32>", note: "opaque integer accumulator handle"}
+    - {name: tensor, syntax: "tensor<RxCxDT>", note: "builtin; DT in {i8,i32}"}
+  required_ops:
+    - name: merlin_iface.tensor
+      result: "tensor<RxCxDT>"
+      attrs: {name: string, role: "enum[weight,input,bias]"}
+      maps_to: "leaf tensor declaration (materialized deterministically by name)"
+    - name: merlin_iface.resident_pack
+      operands: ["tensor<RxCxDT>"]
+      result: "!merlin_iface.resident"
+      attrs: {layout: string}
+      maps_to: RES_PACK
+    - name: merlin_iface.matmul
+      operands: ["tensor<MxKxi8>", "!merlin_iface.resident"]
+      result: "!merlin_iface.acc<i32>"
+      maps_to: MATMUL_RESIDENT
+    - name: merlin_iface.commit
+      operands: ["!merlin_iface.acc<i32>"]
+      result: "tensor<MxNxDT>"
+      attrs:
+        name: string
+        epilogue: "ordered subset of [bias_add, requant, acc_scale, relu]"
+        output_dtype: "enum[i32,i8]"
+        acc_scale: "f32 (required iff acc_scale in epilogue)"
+      maps_to: COMMIT
+    - name: merlin_iface.evict
+      operands: ["!merlin_iface.resident"]
+      result: "()"
+      maps_to: EVICT
+acceptance:
+  - "A package must parse every examples/*.interface.mlir without error (K2)."
+  - "An unknown merlin_iface.version must be rejected (fail-closed)."

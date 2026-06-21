@@ -74,3 +74,9 @@ merlin/benchmarks/dse_guidance/case_study/manual_validation/exported_fx/*.FAILED
 # P20-S3 caveat-resolving variant recaptures (regenerable via variant_capture.py)
 merlin/benchmarks/dse_guidance/recaptures_decode/*/*.mlir
 merlin/benchmarks/dse_guidance/recaptures_decode/*/FAILED.txt
+
+# Transient agentic-experiment workspaces: per-run bwrap workspaces full of absolute symlinks +
+# live-written state (never want these tracked; durable artifacts live in runs/ and reports/).
+**/_qa_ws/
+# cross-arm verilator slot semaphore (runtime only)
+/tmp/oscar_merlin_veril_slots/

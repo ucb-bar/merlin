@@ -1,0 +1,28 @@
+bad_command_buffer_schema:
+  category: protocol_violation
+  plane: abi_schema
+  status: fail
+bad_output_format:
+  category: protocol_violation
+  plane: abi_schema
+  status: fail
+c_compute_kernel_only:
+  category: protocol_violation
+  plane: abi_schema
+  status: fail
+cheating_import_reference:
+  category: forbidden_pattern
+  plane: integrity
+  status: fail
+missing_entrypoint:
+  category: structural_invariant_violation
+  plane: contract
+  status: fail
+missing_manifest:
+  category: structural_invariant_violation
+  plane: contract
+  status: fail
+target_mlir_but_no_command_buffer:
+  category: structural_invariant_violation
+  plane: artifact_class
+  status: fail
