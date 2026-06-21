@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin/bench_contract/coverage.schema.json",
+  "title": "Capsule + instruction coverage aggregate (capsule_bench_v0)",
+  "description": "Aggregated coverage across all capsule_result.json. Records explicit 'not covered' accounting; nothing is implied covered.",
+  "type": "object",
+  "required": ["total", "by_kind", "by_label", "instruction_class_coverage"],
+  "properties": {
+    "total": {"type": "integer", "minimum": 0},
+    "by_kind": {
+      "type": "object",
+      "properties": {
+        "isa": {"type": "integer"},
+        "layer": {"type": "integer"},
+        "model_slice": {"type": "integer"}
+      },
+      "additionalProperties": true
+    },
+    "by_label": {
+      "type": "object",
+      "properties": {
+        "public": {"type": "integer"},
+        "dev": {"type": "integer"},
+        "hidden": {"type": "integer"}
+      },
+      "additionalProperties": true
+    },
+    "by_tier_reached": {
+      "type": "object",
+      "description": "how many capsules PASSED at each tier",
+      "additionalProperties": {"type": "integer"}
+    },
+    "mode_coverage": {
+      "type": "object",
+      "additionalProperties": {"type": "integer"}
+    },
+    "instruction_class_coverage": {
+      "type": "object",
+      "description": "instruction class -> count of capsules exercising it; classes with 0 are explicit 'not covered' rows",
+      "additionalProperties": {"type": "integer"}
+    },
+    "unavailable": {
+      "type": "object",
+      "properties": {
+        "vcs": {"type": "integer"},
+        "firesim": {"type": "integer"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

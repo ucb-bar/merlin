@@ -1,0 +1,71 @@
+name: K_conv_1x1_16x16x32_32
+kind: layer
+source_role: uplifted_from_bareMetalC
+source_reference: bareMetalC/conv.c
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 32
+  dtype: i8
+- name: IFM
+  role: input
+  shape:
+  - 1
+  - 16
+  - 16
+  - 32
+  dtype: i8
+operation:
+  op: conv2d
+  attributes:
+    ifm: IFM
+    weight: W
+    out: Y0
+    ci: 32
+    kh: 1
+    kw: 1
+    stride:
+    - 1
+    - 1
+    padding:
+    - 0
+    - 0
+    - 0
+    - 0
+    dilation:
+    - 1
+    - 1
+    layout: nhwc
+    epilogue: []
+    output_dtype: i32
+    semantic: conv2d_im2col
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    conv2d: true
+    i8: false
+    relu: false
+    acc_scale: false
+    k_accumulate: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional

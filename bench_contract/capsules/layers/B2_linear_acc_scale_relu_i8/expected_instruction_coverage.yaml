@@ -1,0 +1,13 @@
+instruction_classes:
+- FLUSH
+- CONFIG_EX
+- CONFIG_LD
+- MVIN
+- CONFIG_ST
+- PRELOAD
+- COMPUTE_PRELOADED
+- MVOUT
+modes:
+  i8: true
+  acc_scale: true
+  relu: true

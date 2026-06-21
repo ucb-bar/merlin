@@ -3,102 +3,122 @@
     {
       "capsule": "A0_config_smoke",
       "cycles": 238,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.00281
     },
     {
       "capsule": "A1_mvin_mvout",
       "cycles": 98,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.00156
     },
     {
       "capsule": "A2_single_tile_matmul",
       "cycles": 238,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.0028
     },
     {
       "capsule": "A3_k_accumulation",
       "cycles": 322,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.00352
     },
     {
       "capsule": "A4_acc_scale_i8",
       "cycles": 199,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.0024
     },
     {
       "capsule": "A5_relu_epilogue",
       "cycles": 238,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.00262
     },
     {
       "capsule": "A6_resident_reuse",
       "cycles": 351,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.00384
     },
     {
       "capsule": "A7_edge_padding",
       "cycles": 502,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.00504
     },
     {
       "capsule": "B0_quantized_linear_i8",
       "cycles": 283,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.00326
     },
     {
       "capsule": "B1_linear_relu_i8",
       "cycles": 322,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.00369
     },
     {
       "capsule": "B2_linear_acc_scale_relu_i8",
       "cycles": 283,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.00329
     },
     {
       "capsule": "B3_conv2d_im2col_i8",
       "cycles": 899,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.00838
     },
     {
       "capsule": "B4_conv2d_relu_i8",
       "cycles": 899,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.00876
     },
     {
       "capsule": "C0_mlp_linear1",
       "cycles": 2047,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.01854
     },
     {
       "capsule": "C1_mlp_activation_linear2",
       "cycles": 2047,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.0182
     },
     {
       "capsule": "C2_attention_q_projection",
       "cycles": 488,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.00509
     },
     {
       "capsule": "C3_attention_k_projection",
       "cycles": 488,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.00487
     },
     {
       "capsule": "C4_attention_v_projection",
       "cycles": 488,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.00492
     },
     {
       "capsule": "C5_attention_qk_matmul",
       "cycles": 238,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.0028
     },
     {
       "capsule": "C6_attention_pv_matmul",
       "cycles": 238,
-      "bitexact": true
+      "bitexact": true,
+      "wall_s": 0.00282
     }
   ],
   "latency_sweep": [
@@ -144,5 +164,11 @@
   "summary": {
     "n": 20,
     "bitexact": 20
+  },
+  "rtl_wall_ref": {
+    "verilator_wall_s_median": 654.8,
+    "verilator_wall_s_n": 6,
+    "firesim_per_run_s_typ": 210,
+    "note": "verilator = measured per-kernel sim wall (boot+kernel); firesim = measured per-run"
   }
 }

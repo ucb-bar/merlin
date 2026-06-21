@@ -1,0 +1,457 @@
+{
+ "openvla_fp32_consistent": {
+  "model": "output/openvla_fp32_consistent",
+  "golden_shape": [
+   1,
+   20,
+   512
+  ],
+  "n": 3,
+  "rows": [
+   {
+    "tag": "baseline",
+    "run_id": "act_e2e_openvla_fp32_consistent_baseline",
+    "compiler_features": [],
+    "lowering_path": "vectorized",
+    "pipeline_error_op": null,
+    "ll_fmuladd": 0,
+    "ll_fixedvec": 5512,
+    "attn_vectorized": "fixedwidth_simd_no_fma",
+    "status": "pass",
+    "blocker": null,
+    "min_wall_ns": 5903216021,
+    "min_time_ticks": 141676227,
+    "fp32_cos": 0.9999999403953552,
+    "runs": [
+     {
+      "wall_ns": 5903216021,
+      "time_ticks": 141676227,
+      "cycles_est": 9350630982,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 5915578329,
+      "time_ticks": 141972920,
+      "cycles_est": 9370212720,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 5958862504,
+      "time_ticks": 143011704,
+      "cycles_est": 9438772464,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     }
+    ],
+    "composes": true,
+    "speedup_vs_baseline": 1.0
+   },
+   {
+    "tag": "act_alone",
+    "run_id": "act_e2e_openvla_fp32_consistent_act_alone",
+    "compiler_features": [
+     "vectorized_transcendental_activation"
+    ],
+    "lowering_path": "vectorized",
+    "pipeline_error_op": null,
+    "ll_fmuladd": 0,
+    "ll_fixedvec": 10856,
+    "attn_vectorized": "fixedwidth_simd_no_fma",
+    "status": "pass",
+    "blocker": null,
+    "min_wall_ns": 6160393994,
+    "min_time_ticks": 147848282,
+    "fp32_cos": 0.9999999403953552,
+    "runs": [
+     {
+      "wall_ns": 6179659928,
+      "time_ticks": 148310745,
+      "cycles_est": 9788509170,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 6172043159,
+      "time_ticks": 148127880,
+      "cycles_est": 9776440080,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 6160393994,
+      "time_ticks": 147848282,
+      "cycles_est": 9757986612,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     }
+    ],
+    "composes": true,
+    "speedup_vs_baseline": 0.9582529991993236
+   },
+   {
+    "tag": "matmul_only",
+    "run_id": "act_e2e_openvla_fp32_consistent_matmul_only",
+    "compiler_features": [
+     "fused_vfmacc_tiled"
+    ],
+    "lowering_path": "vectorized",
+    "pipeline_error_op": null,
+    "ll_fmuladd": 3330,
+    "ll_fixedvec": 42337,
+    "attn_vectorized": "vfmacc",
+    "status": "pass",
+    "blocker": null,
+    "min_wall_ns": 1627275110,
+    "min_time_ticks": 39054270,
+    "fp32_cos": 0.9999999403953552,
+    "runs": [
+     {
+      "wall_ns": 1631540460,
+      "time_ticks": 39156629,
+      "cycles_est": 2584337514,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 1627275110,
+      "time_ticks": 39054270,
+      "cycles_est": 2577581820,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 1633023880,
+      "time_ticks": 39192231,
+      "cycles_est": 2586687246,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     }
+    ],
+    "composes": true,
+    "speedup_vs_baseline": 3.627669337976908
+   },
+   {
+    "tag": "act_plus_matmul",
+    "compiler_features": [
+     "vectorized_transcendental_activation",
+     "fused_vfmacc_tiled"
+    ],
+    "status": "not_run",
+    "blocker": "composition_error: cannot compose multiple full-schedule-replacement features ['fused_vfmacc_tiled', 'vectorized_transcendental_activation']: each emits a complete transform schedule and would clobber the others. Enable the single composed feature that carries all clamps inherent (e.g. accumulator_resident_wholemodel)",
+    "composes": false,
+    "min_wall_ns": null,
+    "fp32_cos": null
+   },
+   {
+    "tag": "microkernel_v3",
+    "run_id": "act_e2e_openvla_fp32_consistent_microkernel_v3",
+    "compiler_features": [
+     "accumulator_resident_microkernel_v3"
+    ],
+    "lowering_path": "vectorized",
+    "pipeline_error_op": null,
+    "ll_fmuladd": 254,
+    "ll_fixedvec": 6609,
+    "attn_vectorized": "vfmacc",
+    "status": "pass",
+    "blocker": null,
+    "min_wall_ns": 2474734762,
+    "min_time_ticks": 59393125,
+    "fp32_cos": 1.0,
+    "runs": [
+     {
+      "wall_ns": 2513335836,
+      "time_ticks": 60319551,
+      "cycles_est": 3981090366,
+      "fp32_cos": 1.0,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 2474734762,
+      "time_ticks": 59393125,
+      "cycles_est": 3919946250,
+      "fp32_cos": 1.0,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 2474850824,
+      "time_ticks": 59395920,
+      "cycles_est": 3920130720,
+      "fp32_cos": 1.0,
+      "vlen": 256
+     }
+    ],
+    "composes": true,
+    "speedup_vs_baseline": 2.3853934214061847
+   },
+   {
+    "tag": "vfmacc_contraction",
+    "run_id": "act_e2e_openvla_fp32_consistent_vfmacc_contraction",
+    "compiler_features": [
+     "fused_vfmacc_contraction"
+    ],
+    "lowering_path": "scalar_fallback",
+    "pipeline_error_op": "upstream lowering failed:  error: LLVM Translation failed for operation: builtin.unrealized_conversion_cast ",
+    "ll_fmuladd": 0,
+    "ll_fixedvec": 0,
+    "attn_vectorized": "scalar (vfmacc path fell back whole-model)",
+    "status": "pass",
+    "blocker": null,
+    "min_wall_ns": 8692536636,
+    "min_time_ticks": 208617924,
+    "fp32_cos": 0.9999999403953552,
+    "runs": [
+     {
+      "wall_ns": 8692536636,
+      "time_ticks": 208617924,
+      "cycles_est": 13768782984,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 8850808322,
+      "time_ticks": 212416999,
+      "cycles_est": 14019521934,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 8705910132,
+      "time_ticks": 208939738,
+      "cycles_est": 13790022708,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     }
+    ],
+    "composes": true,
+    "speedup_vs_baseline": 0.6791131597365867
+   },
+   {
+    "tag": "accum_wholemodel",
+    "run_id": "act_e2e_openvla_fp32_consistent_accum_wholemodel",
+    "compiler_features": [
+     "accumulator_resident_wholemodel"
+    ],
+    "lowering_path": "vectorized",
+    "pipeline_error_op": null,
+    "ll_fmuladd": 65,
+    "ll_fixedvec": 1447,
+    "attn_vectorized": "vfmacc",
+    "status": "pass",
+    "blocker": null,
+    "min_wall_ns": 1188840969,
+    "min_time_ticks": 28531862,
+    "fp32_cos": 1.0,
+    "runs": [
+     {
+      "wall_ns": 1197615076,
+      "time_ticks": 28742443,
+      "cycles_est": 1897001238,
+      "fp32_cos": 1.0,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 1188840969,
+      "time_ticks": 28531862,
+      "cycles_est": 1883102892,
+      "fp32_cos": 1.0,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 1191619728,
+      "time_ticks": 28598556,
+      "cycles_est": 1887504696,
+      "fp32_cos": 1.0,
+      "vlen": 256
+     }
+    ],
+    "composes": true,
+    "speedup_vs_baseline": 4.96552202938087
+   },
+   {
+    "tag": "accum_ntail",
+    "run_id": "act_e2e_openvla_fp32_consistent_accum_ntail",
+    "compiler_features": [
+     "accumulator_resident_ntail"
+    ],
+    "lowering_path": "vectorized",
+    "pipeline_error_op": null,
+    "ll_fmuladd": 239,
+    "ll_fixedvec": 5508,
+    "attn_vectorized": "vfmacc",
+    "status": "pass",
+    "blocker": null,
+    "min_wall_ns": 4367216682,
+    "min_time_ticks": 104812138,
+    "fp32_cos": 1.0,
+    "runs": [
+     {
+      "wall_ns": 4367216682,
+      "time_ticks": 104812138,
+      "cycles_est": 6917601108,
+      "fp32_cos": 1.0,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 4392892968,
+      "time_ticks": 105428357,
+      "cycles_est": 6958271562,
+      "fp32_cos": 1.0,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 4421659203,
+      "time_ticks": 106118748,
+      "cycles_est": 7003837368,
+      "fp32_cos": 1.0,
+      "vlen": 256
+     }
+    ],
+    "composes": true,
+    "speedup_vs_baseline": 1.3517112730702836
+   },
+   {
+    "tag": "lmul_widen",
+    "run_id": "act_e2e_openvla_fp32_consistent_lmul_widen",
+    "compiler_features": [
+     "lmul_widen_n"
+    ],
+    "lowering_path": "vectorized",
+    "pipeline_error_op": null,
+    "ll_fmuladd": 0,
+    "ll_fixedvec": 8427,
+    "attn_vectorized": "fixedwidth_simd_no_fma",
+    "status": "pass",
+    "blocker": null,
+    "min_wall_ns": 5621605447,
+    "min_time_ticks": 134917179,
+    "fp32_cos": 0.9999999403953552,
+    "runs": [
+     {
+      "wall_ns": 5622958079,
+      "time_ticks": 134949647,
+      "cycles_est": 8906676702,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 5621605447,
+      "time_ticks": 134917179,
+      "cycles_est": 8904533814,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 5636955442,
+      "time_ticks": 135285573,
+      "cycles_est": 8928847818,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     }
+    ],
+    "composes": true,
+    "speedup_vs_baseline": 1.0500943327764638
+   },
+   {
+    "tag": "v3_plus_act",
+    "compiler_features": [
+     "accumulator_resident_microkernel_v3",
+     "vectorized_transcendental_activation"
+    ],
+    "status": "not_run",
+    "blocker": "composition_error: cannot compose multiple full-schedule-replacement features ['accumulator_resident_microkernel_v3', 'vectorized_transcendental_activation']: each emits a complete transform schedule and would clobber the others. Enable the single composed feature that carries all clamps inherent (e.g. accumulator_res",
+    "composes": false,
+    "min_wall_ns": null,
+    "fp32_cos": null
+   },
+   {
+    "tag": "v3_plus_lmul",
+    "run_id": "act_e2e_openvla_fp32_consistent_v3_plus_lmul",
+    "compiler_features": [
+     "accumulator_resident_microkernel_v3",
+     "lmul_widen_n"
+    ],
+    "lowering_path": "vectorized",
+    "pipeline_error_op": null,
+    "ll_fmuladd": 254,
+    "ll_fixedvec": 6609,
+    "attn_vectorized": "vfmacc",
+    "status": "pass",
+    "blocker": null,
+    "min_wall_ns": 2472400106,
+    "min_time_ticks": 59336986,
+    "fp32_cos": 1.0,
+    "runs": [
+     {
+      "wall_ns": 2474962835,
+      "time_ticks": 59398487,
+      "cycles_est": 3920300142,
+      "fp32_cos": 1.0,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 2472400106,
+      "time_ticks": 59336986,
+      "cycles_est": 3916241076,
+      "fp32_cos": 1.0,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 2482655210,
+      "time_ticks": 59583115,
+      "cycles_est": 3932485590,
+      "fp32_cos": 1.0,
+      "vlen": 256
+     }
+    ],
+    "composes": true,
+    "speedup_vs_baseline": 2.3876459180996332
+   },
+   {
+    "tag": "tiled_plus_lmul",
+    "run_id": "act_e2e_openvla_fp32_consistent_tiled_plus_lmul",
+    "compiler_features": [
+     "fused_vfmacc_tiled",
+     "lmul_widen_n"
+    ],
+    "lowering_path": "vectorized",
+    "pipeline_error_op": null,
+    "ll_fmuladd": 3330,
+    "ll_fixedvec": 42337,
+    "attn_vectorized": "vfmacc",
+    "status": "pass",
+    "blocker": null,
+    "min_wall_ns": 1619552664,
+    "min_time_ticks": 38868844,
+    "fp32_cos": 0.9999999403953552,
+    "runs": [
+     {
+      "wall_ns": 1619552664,
+      "time_ticks": 38868844,
+      "cycles_est": 2565343704,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 1641411387,
+      "time_ticks": 39393465,
+      "cycles_est": 2599968690,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     },
+     {
+      "wall_ns": 1623064016,
+      "time_ticks": 38953126,
+      "cycles_est": 2570906316,
+      "fp32_cos": 0.9999999403953552,
+      "vlen": 256
+     }
+    ],
+    "composes": true,
+    "speedup_vs_baseline": 3.6449670036787394
+   }
+  ]
+ }
+}

@@ -1,0 +1,57 @@
+target: rvv
+op_dir: output/rvv_workloads/matmul_f32_64x64x64
+width: 2
+depth: 3
+created: 20260618T185525
+generations:
+- gen: 0
+  survivors:
+  - &id001
+    - fused_vfmacc_tiled
+  - &id003
+    - fused_vfmacc_contraction
+- gen: 1
+  survivors:
+  - *id001
+  - &id002
+    - fused_vfmacc_contraction
+    - fused_vfmacc_tiled
+n_evaluated: 7
+best:
+  features: *id001
+  min_wall: 1550420
+  speedup: 8.291
+ranked:
+- features: *id001
+  min_wall: 1550420
+  speedup: 8.291
+  cos: 1.0
+- features: *id002
+  min_wall: 1556879
+  speedup: 8.256
+  cos: 1.0
+- features:
+  - fused_vfmacc_tiled
+  - lmul_widen_n
+  min_wall: 1601546
+  speedup: 8.026
+  cos: 1.0
+- features: *id003
+  min_wall: 1610295
+  speedup: 7.983
+  cos: 1.0
+- features:
+  - fused_vfmacc_contraction
+  - lmul_widen_n
+  min_wall: 1646046
+  speedup: 7.809
+  cos: 1.0
+- features:
+  - lmul_widen_n
+  min_wall: 12258904
+  speedup: 1.049
+  cos: 1.0
+- features: []
+  min_wall: 12854195
+  speedup: 1.0
+  cos: 1.0

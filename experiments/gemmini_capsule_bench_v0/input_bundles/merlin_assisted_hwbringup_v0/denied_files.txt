@@ -1,0 +1,10 @@
+merlin/python/merlin/runtime/reference.py
+merlin/python/merlin/runtime/simulator.py
+merlin/python/merlin/targetgen/generate/runtime_adapter.py
+merlin/python/merlin/xdsl_dialects/lowering/
+generated_targets/gemmini/merlin_native_v0/
+generated_targets/gemmini/agent_spec_v0_mlir_oot/
+generated_targets/gemmini/agent_spec_v1_mlir_oot/
+bench_contract/capsules/hidden/
+experiments/gemmini_capsule_bench_v0/input_bundles/grader_private_v0/
+experiments/gemmini_capsule_bench_v0/runs/

@@ -1,0 +1,54 @@
+# Out-of-tree MLIR backend contract (experiment ABI v0.1)
+# The artifact a package IS, and the four CLI entrypoints the runner invokes (subprocess only).
+version: "0.1"
+artifact_type: mlir_oot_target_backend
+
+manifest:
+  file: manifest.yaml
+  schema: schemas/manifest.schema.json
+  required: [artifact_type, target, language, authoring, integrity_exempt, entrypoints, commands]
+
+llvm_pin:
+  # C++ packages build a real out-of-tree gemmini-opt against this exact LLVM/MLIR.
+  version: "23.0.0git"
+  commit: "a47bddccec30"
+  source: third_party/llvm-project
+  install: third_party/llvm-install            # override with MERLIN_MLIR_INSTALL
+  cmake: "find_package(MLIR REQUIRED CONFIG) with MLIR_DIR=$install/lib/cmake/mlir"
+  rv64_compiler: clang-23 (MERLIN_CLANG)        # same LLVM 23; .ll -> rv64 object
+
+argv_templates:
+  # placeholders the runner substitutes: {tool} {input_mlir} {output_json}
+  notes: "{tool} resolves to entrypoints.tool inside the package (or build.tool_output if built)."
+
+entrypoints:
+  parse:
+    purpose: "parse + verify the interface.mlir; nonzero exit on diagnostics"
+    example_argv: ["{tool}", "--verify-diagnostics", "{input_mlir}"]
+    output: "exit code (0 = ok)"
+  lower_interface_to_target:
+    purpose: "merlin_iface -> target dialect MLIR"
+    example_argv: ["{tool}", "--convert-iface-to-gemmini", "{input_mlir}"]
+    output: "target MLIR on stdout"
+  emit_command_buffer:
+    purpose: "interface -> command_buffer.json"
+    example_argv: ["{tool}", "--convert-iface-to-gemmini", "--emit-command-buffer={output_json}", "{input_mlir}"]
+    output: "writes {output_json} (schema-valid command buffer)"
+  lower_target_to_llvm:
+    purpose: "target dialect -> LLVM/RoCC MLIR"
+    example_argv: ["{tool}", "--convert-iface-to-gemmini", "--convert-gemmini-to-llvm-rocc", "{input_mlir}"]
+    output: "LLVM-dialect MLIR on stdout (translatable to LLVM IR via mlir-translate)"
+
+kernel_abi:
+  # The lowered LLVM module MUST define this entry the runner-owned harness calls. The harness
+  # embeds the deterministic leaf tensors (by name) and the output buffers, then prints
+  # OUT/METRIC/DONE. The package only emits the kernel; the harness + link are the runner's.
+  symbol: gemmini_kernel
+  signature: "void gemmini_kernel(ptr weight, ptr lhs_0 .. ptr lhs_{R-1}, ptr out_0 .. ptr out_{R-1})"
+  arg_order: "[the single resident weight] ++ [matmul lhs in command order] ++ [commit outputs in command order]"
+  pointee_layout: "row-major, edge tiles zero-padded to a multiple of 16 (DIM); weight/out as packed per the i8/i32 readout"
+
+build:
+  optional: true
+  purpose: "C++ packages declare a build block; the runner builds before first use"
+  fields: {configure: "[argv]", command: "[argv]", tool_output: "relative path to built tool"}

@@ -1,0 +1,20 @@
+run_id: mining_rvv_v3_20260619T092631
+target: rvv
+op: matmul
+version: 3
+created: 20260619T092631
+mined_from: mined_knowledge/rvv/rvv_mined_v1_20260617T165331
+baseline_run: hand_v0_matmul_f32_64x64x64
+policies_used:
+- packed_rhs_policy
+- accumulator_commit_policy
+- vl_agnostic_loop_policy
+- lmul_grouping_policy
+- fma_broadcast_policy
+- int8_widening_policy
+- vl_tail_policy
+- vector_reduction_policy
+- requant_narrowing_policy
+n_divergences: 6
+n_actions: 5
+n_unrouted: 1

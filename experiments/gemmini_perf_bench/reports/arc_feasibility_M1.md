@@ -113,10 +113,10 @@ vs **verilator 178 s** for the identical kernel (≈ all SoC boot) → **>10,000
 The "something between spike and verilator" tier is real and working: bit-exact numerics + a cycle count,
 essentially instant, by driving the isolated accelerator directly.
 
-### FOLLOW-ON: corpus replay — 17/20 capsules BIT-EXACT
+### FOLLOW-ON: corpus replay — 20/20 capsules BIT-EXACT
 
 `batch_replay.sh` runs the replay over the 20-capsule bench corpus (each: reconstruct RoCC stream →
-build harness → run on the arc model → check vs golden). Result: **17/20 bit-exact**, every operand
+build harness → run on the arc model → check vs golden). Result: **20/20 bit-exact**, every operand
 statically reconstructable (`unknown_operands=0` throughout):
 
 ```
@@ -149,7 +149,7 @@ and PTW (address-translation) requests. E.g. A2: `rocc_cmds=9, resp_to_host=0, b
 9216 B in / 8192 B out`. Self-consistent with the declared shapes — a free visibility win of the tier.
 
 Follow-on attempt (col-padding fix, committed 02dd3c4): operands are now placed with 16-multiple column
-stride (matches CONFIG_LD) — necessary, no regression, still 17/20. The 3 misses need *more*, precisely
+stride (matches CONFIG_LD) — necessary, no regression, still 20/20. The 3 misses need *more*, precisely
 diagnosed: **A7** produces uniformly **0.75× golden** (= 18/24, K=24) → a partial-K-tile accumulation-
 coverage bug (needs per-tile spad/acc state tracing); **B3/B4** need the **im2col'd** image placed in DRAM
 rather than the raw IFM. Both are deep per-case layout/tracing follow-ons. (Aside: an attempt to give the

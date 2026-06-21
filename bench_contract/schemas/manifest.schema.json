@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin/bench_contract/manifest.schema.json",
+  "title": "Out-of-tree target-backend package manifest (experiment ABI v0.1)",
+  "description": "A package satisfying the experiment ABI declares this manifest. The runner validates it fail-closed before invoking anything. Same shape for Python and C++ packages — only `language`, `build`, and the entrypoint argv differ.",
+  "type": "object",
+  "required": ["artifact_type", "target", "language", "authoring", "integrity_exempt", "entrypoints", "commands"],
+  "properties": {
+    "artifact_type": {"const": "mlir_oot_target_backend"},
+    "target": {"type": "string"},
+    "package_id": {"type": "string"},
+    "language": {"type": "string", "enum": ["python", "cpp"]},
+    "authoring": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": {"type": "string", "enum": ["hand_curated", "agent_generated_from_recipe", "agent_generated_from_rtl_facts", "deterministic_generated_from_spec"]},
+        "author": {"type": "string"},
+        "generated_by_agent": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
+    "integrity_exempt": {
+      "type": "boolean",
+      "description": "true ONLY for the Merlin reference backend, which legitimately imports Merlin internals. Agent/independent packages MUST be false and pass the integrity scan."
+    },
+    "llvm": {
+      "type": "object",
+      "properties": {
+        "version": {"type": "string"},
+        "commit": {"type": "string"}
+      }
+    },
+    "build": {
+      "type": "object",
+      "description": "Optional. If present, the runner builds the package before use (C++ gemmini-opt).",
+      "required": ["command", "tool_output"],
+      "properties": {
+        "command": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "configure": {"type": "array", "items": {"type": "string"}},
+        "tool_output": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "entrypoints": {
+      "type": "object",
+      "required": ["tool"],
+      "properties": {"tool": {"type": "string"}},
+      "additionalProperties": true
+    },
+    "commands": {
+      "type": "object",
+      "required": ["parse", "lower_interface_to_target", "emit_command_buffer", "lower_target_to_llvm"],
+      "additionalProperties": {
+        "type": "object",
+        "required": ["argv"],
+        "properties": {
+          "argv": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": true
+}

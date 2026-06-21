@@ -19,26 +19,35 @@ import perf_style as S
 
 RF = PB.REPO / "merlin/targets/gemmini/contracts/rtl_facts"
 ARC = json.loads((RF / "arc_results.json").read_text())
-ARC_RATE = 0.133e6           # measured full-@Gemmini arc cycle rate (cyc/s), unoptimized
-VERILATOR_WALL = 178.0       # measured A2 verilator wall (≈ all SoC boot), ~constant per kernel
+# MEASURED wall references (no hardcoded estimates): arc per-capsule wall_s from measure_arc_wall.py;
+# verilator median per-kernel wall + firesim per-run from arc_results.rtl_wall_ref.
+_aw = [c["wall_s"] for c in ARC["capsules"] if c.get("wall_s")]
+ARC_WALL_MED = sorted(_aw)[len(_aw) // 2] if _aw else None
+_ref = ARC.get("rtl_wall_ref", {})
+VERILATOR_WALL = _ref.get("verilator_wall_s_median")     # measured, median over perf kernels
+FIRESIM_WALL = _ref.get("firesim_per_run_s_typ")          # measured per-run machinery
+import numpy as _np  # noqa
 
 
 def _save(fig, name):
     out = PB.REPORTS / f"fig_arc_{name}.png"
-    fig.tight_layout(); fig.savefig(out, dpi=150, bbox_inches="tight"); plt.close(fig)
+    S.save_fig(fig, out)
     print(f"wrote {out}")
 
 
 def fig_landscape():
-    # speed (x, log; higher=faster) vs fidelity (y). label placed beside each dot, note below — no overlap.
-    pts = [  # name, speed, fidelity, color, note, (label dx,dy pts), (note dx,dy pts)
-        ("spike (functional)", 5e3, 1.0, S.COLOR["baseline"], "fast, NOT faithful (cyc plateau ~120)", (0, 26), (0, -26)),
-        ("static RTL-checks", 6e5, 2.0, S.COLOR["iree_dialect"], "ms; structural only (no numerics)", (0, 26), (0, -26)),
-        ("arc middle-tier (this work)", 1.3e2, 3.2, S.COLOR["merlin_targetgen"], "RTL-faithful numerics+cycles · NO SoC boot", (0, 28), (0, -28)),
-        ("verilator (L3)", 6e-3, 3.7, S.COLOR["golden"], "RTL-faithful, boot-dominated (~178 s)", (70, 14), (70, -2)),
-        ("FireSim (L5)", 6e-2, 4.4, S.COLOR["merlin_native"], "RTL-faithful + FPGA (flash+boot)", (70, 14), (70, -2)),
+    # speed (x, log; throughput = 1/measured-wall, higher=faster) vs fidelity (y). MEASURED where possible.
+    arc_thru = 1.0 / ARC_WALL_MED if ARC_WALL_MED else 2.7e2
+    veri_thru = 1.0 / VERILATOR_WALL if VERILATOR_WALL else 1.5e-3
+    fsim_thru = 1.0 / FIRESIM_WALL if FIRESIM_WALL else 5e-3
+    pts = [  # name, throughput(kernels/s), fidelity, color, note, (label dx,dy), (note dx,dy)
+        ("spike (functional)", 1e3, 1.0, S.COLOR["baseline"], "fast, NOT faithful (cyc plateau ~120)", (0, 26), (0, -26)),
+        ("static RTL-checks", 3e2, 2.0, S.COLOR["iree_dialect"], "~3 ms; structural only (no numerics)", (0, 26), (0, -26)),
+        ("arc middle-tier (this work)", arc_thru, 3.2, S.COLOR["merlin_targetgen"], f"RTL numerics+cycles · NO boot · {ARC_WALL_MED*1e3:.0f} ms median", (0, 28), (0, -28)),
+        ("verilator (L3)", veri_thru, 3.7, S.COLOR["golden"], f"RTL-faithful, boot-dominated (~{VERILATOR_WALL:.0f} s median)", (78, 14), (78, -2)),
+        ("FireSim (L5)", fsim_thru, 4.4, S.COLOR["merlin_native"], f"RTL + FPGA (~{FIRESIM_WALL:.0f} s/run)", (78, 14), (78, -2)),
     ]
-    fig, ax = plt.subplots(figsize=(11, 6))
+    fig, ax = plt.subplots(figsize=(11, 6.2))
     ax.axhspan(2.9, 4.7, color=S.COLOR["merlin_targetgen"], alpha=0.06)
     ax.text(2.5e6, 3.8, "RTL-faithful\nband", ha="right", va="center", fontsize=8.5, color="#9a8f78", style="italic")
     for name, spd, fid, col, note, (lx, ly), (nx, ny) in pts:
@@ -47,35 +56,51 @@ def fig_landscape():
                     ha="center", va="bottom", fontsize=9.5, fontweight="bold", zorder=6)
         ax.annotate(note, (spd, fid), xytext=(nx, ny), textcoords="offset points",
                     ha="center", va="top", fontsize=8, color="#5A5A5A")
-    # arc -> verilator speedup arrow (both RTL-faithful, arc far faster)
-    ax.annotate("", xy=(1.3e2, 3.25), xytext=(6e-3, 3.55),
+    # arc -> verilator speedup arrow (both RTL-faithful, arc far faster). ratio is MEASURED.
+    ratio = (arc_thru / veri_thru) if (ARC_WALL_MED and VERILATOR_WALL) else 1e5
+    ax.annotate("", xy=(arc_thru, 3.25), xytext=(veri_thru, 3.6),
                 arrowprops=dict(arrowstyle="->", color=S.COLOR["merlin_targetgen"], lw=2, alpha=.8))
-    ax.text(1.5, 3.62, "~10⁴× faster,\nsame RTL fidelity", ha="center", fontsize=8.5,
-            fontweight="bold", color=S.COLOR["merlin_targetgen"])
+    ax.text(arc_thru ** 0.5 * veri_thru ** 0.5, 3.66, f"~{ratio:,.0f}× faster\nsame RTL fidelity",
+            ha="center", fontsize=8.5, fontweight="bold", color=S.COLOR["merlin_targetgen"])
     ax.set_xscale("log")
-    ax.set_xlabel("← slower            speed (kernel throughput, log)            faster →", fontsize=10)
+    ax.set_xlabel("← slower            throughput = 1 / measured wall  (kernels/s, log)            faster →", fontsize=10)
     ax.set_yticks([1.0, 2.0, 3.2, 3.7, 4.4])
     ax.set_yticklabels(["functional\nnumerics", "structural\n(ISA-legal)", "RTL numerics\n+ cycles",
                         "RTL (full)", "RTL + FPGA"], fontsize=8)
     ax.set_ylabel("fidelity  →", fontsize=10)
-    ax.set_ylim(0.3, 4.9); ax.set_xlim(1e-3, 3e6)
+    ax.set_ylim(0.3, 4.9); ax.set_xlim(min(veri_thru, fsim_thru) / 3, 1e4)
     ax.set_title("Where each Gemmini oracle sits — the arc middle-tier fills the spike↔verilator gap", pad=12)
+    S.caption(fig, f"MEASURED: arc wall median {ARC_WALL_MED*1e3:.1f} ms (20 capsules); verilator wall "
+              f"median {VERILATOR_WALL:.0f} s ({_ref.get('verilator_wall_s_n','?')} perf-kernel runs); "
+              f"FireSim {FIRESIM_WALL:.0f} s/run. spike/static-checks placed qualitatively. Fidelity axis "
+              f"is ordinal. Single run per point.")
     _save(fig, "landscape")
 
 
 def fig_speed():
-    caps = [c for c in ARC["capsules"] if c["cycles"]]
+    # MEASURED arc wall per capsule (bars) + measured RTL-sim reference lines. arc & RTL are different
+    # corpora, so RTL is shown as a measured reference band/line (median), not falsely paired per kernel.
+    caps = [c for c in ARC["capsules"] if c.get("wall_s")]
     names = [c["capsule"].split("_")[0] for c in caps]
-    arc_wall = [c["cycles"] / ARC_RATE for c in caps]
-    x = np.arange(len(caps)); w = 0.4
-    fig, ax = plt.subplots(figsize=(max(9, len(caps) * 0.5), 4.8))
-    ax.bar(x - w / 2, [VERILATOR_WALL] * len(caps), w, label="verilator (boot-dominated)", color=S.COLOR["golden"], edgecolor=S.INK, lw=0.8)
-    ax.bar(x + w / 2, arc_wall, w, label="arc middle-tier (est)", color=S.COLOR["merlin_targetgen"], edgecolor=S.INK, lw=0.8)
+    arc_wall = [c["wall_s"] for c in caps]
+    x = np.arange(len(caps))
+    fig, ax = plt.subplots(figsize=(max(9, len(caps) * 0.5), 5.0))
+    bars = ax.bar(x, arc_wall, 0.62, label="arc middle-tier (measured)", color=S.COLOR["merlin_targetgen"], edgecolor=S.INK, lw=0.8)
+    if VERILATOR_WALL:
+        ax.axhline(VERILATOR_WALL, color=S.COLOR["golden"], lw=2, ls="--", label=f"verilator median (measured, {VERILATOR_WALL:.0f} s)")
+    if FIRESIM_WALL:
+        ax.axhline(FIRESIM_WALL, color=S.COLOR["merlin_native"], lw=2, ls=":", label=f"FireSim per-run (measured, {FIRESIM_WALL:.0f} s)")
     ax.set_yscale("log"); ax.set_xticks(x); ax.set_xticklabels(names, rotation=90, fontsize=7)
-    ax.set_ylabel("wall time per kernel (s, log)")
-    ax.set_title("arc middle-tier vs verilator wall time — RTL-faithful at ~10⁴× the speed (no SoC boot)", pad=28)
-    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.005), ncol=2, fontsize=9)
-    S.badge(ax, len(caps) - 1, arc_wall[-1], "arc ≈ ms\nverilator ≈ 178 s", color=S.COLOR["merlin_targetgen"], fontsize=8)
+    ax.set_ylabel("wall time per run (s, log)")
+    ax.set_title("Arc middle-tier wall time (measured) vs RTL-sim references — no SoC boot", pad=28)
+    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.005), ncol=3, fontsize=8)
+    ratio = VERILATOR_WALL / ARC_WALL_MED if (VERILATOR_WALL and ARC_WALL_MED) else None
+    if ratio:
+        S.badge(ax, len(caps) * 0.5, (ARC_WALL_MED * VERILATOR_WALL) ** 0.5,
+                f"~{ratio:,.0f}× faster\nthan verilator", color=S.COLOR["merlin_targetgen"], fontsize=9)
+    S.caption(fig, f"arc wall = MEASURED min-of-5 per capsule (isolated @Gemmini, ideal memory). verilator/"
+              f"FireSim = MEASURED wall references (median / per-run); different corpora, so shown as "
+              f"reference lines not per-kernel pairs. arc bit-exact on all 20 (see bit-exact figure).")
     _save(fig, "speed")
 
 
@@ -97,6 +122,7 @@ def fig_bitexact():
     axc.set_yticks(range(len(cc))); axc.set_yticklabels([c["capsule"][:22] for c in cc], fontsize=7)
     axc.invert_yaxis(); axc.set_xlabel("arc cycles (accelerator, ideal memory)")
     axc.set_title("per-capsule arc cycle count", fontsize=10, pad=8)
+    S.caption(fig, "20 bench capsules · arc output vs exact-int golden · isolated @Gemmini, ideal memory · single run. ✓ = bit-exact (0 mismatches).")
     _save(fig, "bitexact")
 
 
@@ -110,6 +136,7 @@ def fig_latency():
     ax.set_xlabel("modelled memory read latency (cycles)"); ax.set_ylabel("A2 matmul cycles")
     ax.set_title("Timing realism: arc cycles scale with memory latency (knob closes the ideal-mem gap)", pad=12)
     S.badge(ax, L[0], C[0], "latency 0 = ideal mem\n(238 cyc, bit-exact at every point)", color=S.COLOR["merlin_targetgen"], fontsize=8)
+    S.caption(fig, "A2 single-tile matmul only (illustrative); x = simulator memory-read latency (an arc knob, not measured DRAM). Output bit-exact at every latency.")
     _save(fig, "latency")
 
 
@@ -133,6 +160,7 @@ def fig_checks():
         axr.text(i, v / 141 * 100 + 1.5, f"{v}/141\n{v/141*100:.0f}%", ha="center", fontsize=9, fontweight="bold")
     axr.set_ylim(0, 100); axr.set_ylabel("recall on real RTL-tier-class failures (%)")
     axr.set_title("recall lift from added general invariants\n(FP stays 0)", fontsize=10, pad=10)
+    S.caption(fig, "383 REAL agent-run traces (biased sample, not random). 0/242 false positives. FN=17 = 9 numerical functional_mismatch (out of static-check scope by design) + 8 other (tool-crash / mode-specific).")
     _save(fig, "checks")
 
 
@@ -153,6 +181,7 @@ def fig_mutation():
     for i, r in enumerate(rows):
         tag = "caught" if r["caught_before_rtl"] else ("pass" if r["verilator"] == "pass" else "MISS\n(numeric)")
         ax.text(i, max(vs) * 1.3, tag, ha="center", fontsize=7, color="#5A5A5A")
+    S.caption(fig, "5 mutants on ONE capsule (A2), illustrative not statistical. verilator wall is boot-dominated + noisy (110-198 s). pre-screen ms is the static-check time. 1 numerical mutant missed by design.")
     _save(fig, "mutation")
 
 
@@ -172,6 +201,7 @@ def fig_hostcomm():
     ax.set_xticks(x); ax.set_xticklabels([m[0] for m in metrics], fontsize=8.5)
     ax.set_ylabel("value"); ax.legend(fontsize=9, title="capsule")
     ax.set_title("Host↔accelerator telemetry the arc tier exposes (RoCC control + DMA traffic + utilization)", pad=12)
+    S.caption(fig, "Measured from the arc harness on 2 capsules (A2 single-tile, C0 MLP). Bytes/cmds are exact; busy% = accelerator-active cycles / total.")
     _save(fig, "hostcomm")
 
 

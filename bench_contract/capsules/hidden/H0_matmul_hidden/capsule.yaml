@@ -1,0 +1,48 @@
+name: H0_matmul_hidden
+kind: isa
+source_role: handauthored_compiler_test
+source_reference: hidden matmul variant
+label: hidden
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: Wh
+  role: weight
+  shape:
+  - 16
+  - 16
+  dtype: i8
+- name: Ah
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: Ah
+    weight: Wh
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional

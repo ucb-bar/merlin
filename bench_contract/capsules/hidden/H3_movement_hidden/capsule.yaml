@@ -1,0 +1,40 @@
+name: H3_movement_hidden
+kind: isa
+source_role: handauthored_compiler_test
+source_reference: hidden movement variant
+label: hidden
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: Xh
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: i8
+operation:
+  op: movement
+  attributes:
+    src: Xh
+    out: Y0
+numeric_policy:
+  compare: exact_int
+  dtype: i8
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_LD
+  - CONFIG_ST
+  - MVIN
+  - MVOUT
+  forbidden_classes:
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  modes:
+    movement: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional

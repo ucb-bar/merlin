@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin/bench_contract/iteration.schema.json",
+  "title": "Repair-iteration record (capsule_bench_v0)",
+  "description": "One iteration of the repair loop. The iteration history is first-class evidence: it shows not only the final pass/fail but how the backend got there.",
+  "type": "object",
+  "required": ["index", "status_before", "status_after"],
+  "properties": {
+    "index": {"type": "integer", "minimum": 0},
+    "phase": {"type": "string", "enum": ["repair", "hidden", "hidden_repair"]},
+    "started_at": {"type": ["string", "null"]},
+    "ended_at": {"type": ["string", "null"]},
+    "status_before": {"type": "object", "additionalProperties": {"type": "string"}},
+    "status_after": {"type": "object", "additionalProperties": {"type": "string"}},
+    "first_failure": {"type": ["object", "null"]},
+    "files_changed": {"type": ["string", "null"], "description": "path to files_changed.patch"},
+    "numeric_diff": {"type": "object", "additionalProperties": true},
+    "instruction_trace_diff": {"type": "object", "additionalProperties": true},
+    "profile": {"type": "object", "additionalProperties": true},
+    "cost_time_toolcalls": {"type": ["object", "null"], "additionalProperties": true},
+    "regressions": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": ["string", "null"]},
+    "frozen": {"type": "boolean"}
+  },
+  "additionalProperties": true
+}

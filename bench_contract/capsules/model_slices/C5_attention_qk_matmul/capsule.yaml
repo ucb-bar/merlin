@@ -1,0 +1,52 @@
+name: C5_attention_qk_matmul
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: attn.q@k^T (Kt = K transposed leaf)
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: Kt
+  role: weight
+  shape:
+  - 16
+  - 16
+  dtype: i8
+- name: Q
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: Q
+    weight: Kt
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+    semantic: attn_qk
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    i8: false
+    relu: false
+    acc_scale: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional

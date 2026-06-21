@@ -1,0 +1,7 @@
+allowed_tree_sha256:
+  bench_contract/: 56af44b78f063c2ab5def859ef24fafa38d13616d559b339b606df722f9ca720
+  bench_contract/capsules/isa/: 0216c0fecf270a5139c5ef088b5500c496fe902062337d22b89765296eb329e7
+  bench_contract/capsules/layers/: 08a2969d2b84e35162475ec0b034efdcee5414fbbf9f240792d3802ed51ea420
+  bench_contract/capsules/model_slices/: 7f95e5324a4ec3cea712bb1ddeb685c4449fe703f4bcc517d6779227e89a7d2e
+  experiments/gemmini_capsule_bench_v0/task/: 84965ee9fe6b7c7dac947ff02a3eb6a89620770695663d70e1bae6e940f25e97
+  third_party/llvm-install/: 213a332cf31b8bfbc31e4245ee094e1d4091167fa1c6fd236df52195013f172a

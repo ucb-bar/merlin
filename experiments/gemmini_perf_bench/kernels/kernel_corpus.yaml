@@ -1,0 +1,310 @@
+golden_kernels:
+- id: G00_single_tile_16x16x16
+  op: matmul
+  dtype: i8
+  M: 16
+  K: 16
+  N: 16
+  epilogue: []
+  output_dtype: i32
+  source: baremetalc:matmul.c
+  note: one DIM tile
+  macs: 4096
+  sim_hint: L2+L3
+- id: G01_multitile_sq_64x64x64
+  op: matmul
+  dtype: i8
+  M: 64
+  K: 64
+  N: 64
+  epilogue: []
+  output_dtype: i32
+  source: baremetalc:tiled_matmul_ws.c
+  note: multi-tile square (classic WS)
+  macs: 262144
+  sim_hint: L2_only
+- id: G02_rect_32x64x16
+  op: matmul
+  dtype: i8
+  M: 32
+  K: 64
+  N: 16
+  epilogue: []
+  output_dtype: i32
+  source: baremetalc:tiled_matmul_ws.c
+  note: rectangular tiles
+  macs: 32768
+  sim_hint: L2+L3
+- id: G03_kaccum_16x128x16
+  op: matmul
+  dtype: i8
+  M: 16
+  K: 128
+  N: 16
+  epilogue: []
+  output_dtype: i32
+  source: baremetalc:tiled_matmul_ws.c
+  note: deep-K accumulation (8 K-tiles)
+  macs: 32768
+  sim_hint: L2+L3
+- id: G04_wideN_16x16x128
+  op: matmul
+  dtype: i8
+  M: 16
+  K: 16
+  N: 128
+  epilogue: []
+  output_dtype: i32
+  source: baremetalc:tiled_matmul_ws.c
+  note: wide N
+  macs: 32768
+  sim_hint: L2+L3
+- id: G05_tallM_128x16x16
+  op: matmul
+  dtype: i8
+  M: 128
+  K: 16
+  N: 16
+  epilogue: []
+  output_dtype: i32
+  source: baremetalc:tiled_matmul_ws.c
+  note: tall M
+  macs: 32768
+  sim_hint: L2+L3
+- id: G06_acc_scale_i8_64x64x64
+  op: matmul
+  dtype: i8
+  M: 64
+  K: 64
+  N: 64
+  epilogue:
+  - acc_scale
+  output_dtype: i8
+  acc_scale: 0.0625
+  source: baremetalc:tiled_matmul_ws.c
+  note: requant acc->i8
+  macs: 262144
+  sim_hint: L2_only
+- id: G07_relu_i8_64x64x64
+  op: matmul
+  dtype: i8
+  M: 64
+  K: 64
+  N: 64
+  epilogue:
+  - acc_scale
+  - relu
+  output_dtype: i8
+  acc_scale: 0.0625
+  source: baremetalc:tiled_matmul_ws.c
+  note: requant+relu->i8
+  macs: 262144
+  sim_hint: L2_only
+- id: G08_large_sq_128x128x128
+  op: matmul
+  dtype: i8
+  M: 128
+  K: 128
+  N: 128
+  epilogue: []
+  output_dtype: i32
+  source: baremetalc:tiled_matmul_ws.c
+  note: larger square (util headroom)
+  macs: 2097152
+  sim_hint: L2_only
+model_kernels:
+- id: M00_smolvla_model_16x32x960_i8
+  op: matmul
+  dtype: i8
+  M: 16
+  K: 32
+  N: 960
+  epilogue:
+  - acc_scale
+  output_dtype: i8
+  acc_scale: 0.0625
+  source: model:smolvla/model/matmul_97
+  orig_shape: 1x32x960
+  macs: 491520
+  sim_hint: L2_only
+- id: M01_smolvla_model_64x720x32_i8
+  op: matmul
+  dtype: i8
+  M: 64
+  K: 720
+  N: 32
+  epilogue:
+  - acc_scale
+  output_dtype: i8
+  acc_scale: 0.0625
+  source: model:smolvla/model/matmul_389
+  orig_shape: 50x720x32
+  macs: 1474560
+  sim_hint: L2_only
+- id: M02_smolvla_model_64x32x720_i8
+  op: matmul
+  dtype: i8
+  M: 64
+  K: 32
+  N: 720
+  epilogue:
+  - acc_scale
+  output_dtype: i8
+  acc_scale: 0.0625
+  source: model:smolvla/model/matmul_242
+  orig_shape: 50x32x720
+  macs: 1474560
+  sim_hint: L2_only
+- id: M03_openvla_vla_32x256x128_i8
+  op: matmul
+  dtype: i8
+  M: 32
+  K: 256
+  N: 128
+  epilogue:
+  - acc_scale
+  output_dtype: i8
+  acc_scale: 0.0625
+  source: model:openvla/vla/matmul_24
+  orig_shape: 20x256x128
+  macs: 1048576
+  sim_hint: L2_only
+- id: M04_openvla_vla_32x128x256_i8
+  op: matmul
+  dtype: i8
+  M: 32
+  K: 128
+  N: 256
+  epilogue:
+  - acc_scale
+  output_dtype: i8
+  acc_scale: 0.0625
+  source: model:openvla/vla/matmul_22
+  orig_shape: 20x128x256
+  macs: 1048576
+  sim_hint: L2_only
+- id: M05_tiny_llama_lm_16x2048x32000_i8
+  op: matmul
+  dtype: i8
+  M: 16
+  K: 2048
+  N: 32000
+  epilogue:
+  - acc_scale
+  output_dtype: i8
+  acc_scale: 0.0625
+  source: model:tiny_llama/lm/matmul_19
+  orig_shape: 8x2048x32000
+  macs: 1048576000
+  sim_hint: L2_only
+- id: M06_tiny_llama_lm_16x5632x2048_i8
+  op: matmul
+  dtype: i8
+  M: 16
+  K: 5632
+  N: 2048
+  epilogue:
+  - acc_scale
+  output_dtype: i8
+  acc_scale: 0.0625
+  source: model:tiny_llama/lm/matmul_9
+  orig_shape: 8x5632x2048
+  macs: 184549376
+  sim_hint: L2_only
+- id: M07_tiny_llama_lm_16x2048x5632_i8
+  op: matmul
+  dtype: i8
+  M: 16
+  K: 2048
+  N: 5632
+  epilogue:
+  - acc_scale
+  output_dtype: i8
+  acc_scale: 0.0625
+  source: model:tiny_llama/lm/matmul_7
+  orig_shape: 8x2048x5632
+  macs: 184549376
+  sim_hint: L2_only
+conv_kernels:
+- id: K_conv_std_3x3_8x8x4_8
+  op: conv2d
+  dtype: i8
+  shape: 1x8x8x4_k3x3x8s1
+  macs: 10368
+  sim_hint: L2+L3
+  source: baremetalc:conv.c
+  note: standard 3x3 conv (capsule B3 shape)
+- id: K_conv_3x3_16x16x16_16
+  op: conv2d
+  dtype: i8
+  shape: 1x16x16x16_k3x3x16s1
+  macs: 451584
+  sim_hint: L2_only
+  source: baremetalc:conv.c
+  note: 16ch 3x3 conv (one-tile weight)
+- id: K_conv_1x1_16x16x32_32
+  op: conv2d
+  dtype: i8
+  shape: 1x16x16x32_k1x1x32s1
+  macs: 262144
+  sim_hint: L2_only
+  source: baremetalc:conv.c
+  note: 1x1 conv (pointwise = matmul-like)
+- id: K_conv_3x3_stride2_16x16x16_32
+  op: conv2d
+  dtype: i8
+  shape: 1x16x16x16_k3x3x32s2
+  macs: 225792
+  sim_hint: L2_only
+  source: baremetalc:conv.c
+  note: strided 3x3 (downsample)
+movement_kernels:
+- id: K_move_16x16
+  op: movement
+  dtype: i8
+  shape: 16x16
+  macs: 0
+  sim_hint: L2+L3
+  source: baremetalc:mvin_mvout.c
+  note: single DIM tile movement (capsule A1 shape)
+- id: K_move_64x64
+  op: movement
+  dtype: i8
+  shape: 64x64
+  macs: 0
+  sim_hint: L2+L3
+  source: baremetalc:mvin_mvout.c
+  note: multi-tile movement
+- id: K_move_16x128
+  op: movement
+  dtype: i8
+  shape: 16x128
+  macs: 0
+  sim_hint: L2+L3
+  source: baremetalc:mvin_mvout.c
+  note: wide movement
+attention_kernels:
+- id: K_attn_qk_64x64x64
+  op: matmul
+  dtype: i8
+  shape: 64x64x64
+  macs: 262144
+  sim_hint: L2_only
+  source: model_attention:attn_qk
+  note: QK^T (seq64, head64)
+- id: K_attn_pv_64x64x64
+  op: matmul
+  dtype: i8
+  shape: 64x64x64
+  macs: 262144
+  sim_hint: L2_only
+  source: model_attention:attn_pv
+  note: PV (seq64, head64)
+- id: K_attn_qk_128x64x128
+  op: matmul
+  dtype: i8
+  shape: 128x64x128
+  macs: 1048576
+  sim_hint: L2_only
+  source: model_attention:attn_qk
+  note: QK^T (seq128, head64)

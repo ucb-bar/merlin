@@ -1,0 +1,31 @@
+artifact_type: mlir_oot_target_backend
+target: gemmini
+package_id: cheating_import_reference
+language: python
+authoring:
+  mode: hand_curated
+  author: fixture
+integrity_exempt: false
+entrypoints:
+  tool: tool.py
+commands:
+  parse:
+    argv:
+    - '{tool}'
+    - --verify-diagnostics
+    - '{input_mlir}'
+  lower_interface_to_target:
+    argv:
+    - '{tool}'
+    - --convert-iface-to-gemmini
+    - '{input_mlir}'
+  emit_command_buffer:
+    argv:
+    - '{tool}'
+    - --emit-command-buffer={output_json}
+    - '{input_mlir}'
+  lower_target_to_llvm:
+    argv:
+    - '{tool}'
+    - --convert-gemmini-to-llvm-rocc
+    - '{input_mlir}'

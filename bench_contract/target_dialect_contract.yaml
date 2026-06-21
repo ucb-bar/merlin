@@ -1,0 +1,25 @@
+# Target dialect contract (experiment ABI v0.1)
+# A package lowers merlin_iface to its OWN target dialect, then to a command buffer + LLVM/RoCC.
+# This contract fixes only the OBSERVABLE outputs (target MLIR is inspected, not semantically
+# constrained); correctness is proven by the command-buffer + oracle gates, not by op names.
+version: "0.1"
+target_dialect:
+  recommended_namespace: gemmini
+  recommended_ops: [gemmini.pack, gemmini.matmul, gemmini.commit, gemmini.release]
+  recommended_types: ["!gemmini.resident_tensor", "!gemmini.accumulator"]
+  note: >-
+    Op/type names are a recommendation, not a gate. The runner records lowered.target.mlir as
+    evidence but does not assert specific ops — a package is free to choose its own target IR.
+required_outputs:
+  - id: lowered_target_mlir
+    produced_by: lower_interface_to_target
+    form: "MLIR text on stdout"
+    gate: "must be non-empty and parseable MLIR (K3)"
+  - id: command_buffer
+    produced_by: emit_command_buffer
+    form: "command_buffer.json conforming to schemas/command_buffer.schema.json"
+    gate: "schema-valid AND reference_outputs(cb) == simulate(cb) (K4, K5)"
+  - id: lowered_llvm
+    produced_by: lower_target_to_llvm
+    form: "LLVM-dialect (or llvm+rocc inline-asm) MLIR on stdout; translatable to LLVM IR"
+    gate: "compiles to an RV64 object/ELF (K6)"

@@ -1,0 +1,15 @@
+run_id: headtohead_rvv_v1_20260619T154420
+target: rvv
+experiment: same-pass fair head-to-head (baseline / ours-tiled / ours-v3 / XNNPACK) whole-model on K1
+created: 20260619T154420
+git_commit: 6ac2162
+why: close the review caveats — v3-vs-XNNPACK was cross-run (not same-pass) and the XNNPACK shim packed
+     per-call (unfair vs v3's pack-free path). This run measures all four configs in ONE pass vs the SAME
+     baseline, XNNPACK with RESIDENT-WEIGHT pack (excluded from timed path), N>=5 with spread.
+baseline: generated_targets/rvv/hand_v0   # FROZEN
+configs: [baseline, ours_vfmacc_tiled, ours_v3(accumulator_resident_microkernel_v3), xnnpack_kernels]
+driving_examples: [bitvla(N=5), openvla(N=5), rdt2(N=3)]
+measurement: {device: SpacemiT K1 VLEN=256, metric: min CLOCK_MONOTONIC wall + range%/stdev, cos_gate: ">=0.9999", cycle_accurate: false}
+shim_fairness: xnn_gemm_rvv_shim.c packs each weight ONCE (resident cache), pack excluded from timed path
+status: rankings pending — from output/rvv_bench/k1_h2h_{bitvla,openvla,rdt2}.json
+preliminary_bitvla: {baseline_s: 2.5216, ours_tiled: "0.2761 (9.13x)", ours_v3: "0.1486 (16.97x)", xnnpack: "0.1912 (13.19x)", v3_over_xnnpack: 1.286}

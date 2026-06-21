@@ -1,0 +1,431 @@
+{
+  "qa_gate": "capsule_bench_v0_pilot",
+  "labels_graded": [
+    "dev",
+    "public"
+  ],
+  "all_pass": false,
+  "n_passed": 18,
+  "n_capsules": 20,
+  "integrity_status": "clean",
+  "highest_tier": "L1",
+  "first_failure_planes": {
+    "trace_check": 2
+  },
+  "per_capsule": [
+    {
+      "capsule": "A0_config_smoke",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 49
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "A1_mvin_mvout",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 33
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "A2_single_tile_matmul",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 49
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "A3_k_accumulation",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 60
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "A4_acc_scale_i8",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 50
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "A5_relu_epilogue",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 49
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "A6_resident_reuse",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 61
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "A7_edge_padding",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 73
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "B0_quantized_linear_i8",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 61
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "B1_linear_relu_i8",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 60
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "B2_linear_acc_scale_relu_i8",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 61
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "B3_conv2d_im2col_i8",
+      "label": "public",
+      "status": "fail",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "fail",
+      "trace_violations": [
+        "required instruction class missing: CONFIG_LD",
+        "required instruction class missing: MVIN",
+        "required instruction class missing: CONFIG_ST",
+        "required instruction class missing: PRELOAD",
+        "required instruction class missing: COMPUTE_PRELOADED",
+        "required instruction class missing: MVOUT",
+        "mode k_accumulate declared but no accumulate-onto PRELOAD / COMPUTE_ACCUMULATE found",
+        "MVOUT count 0 != expected Mt*Nt=3 (M=36,N=8)"
+      ],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass"
+      },
+      "tier_cycles": {},
+      "failure_plane": "trace_check",
+      "failure_category": "protocol_violation",
+      "failure_detail": "trace_check failed: ['required instruction class missing: CONFIG_LD', 'required instruction class missing: MVIN', 'required instruction class missing: CONFIG_ST', 'required instruction class missing: PRELOAD', 'required instruction class mi"
+    },
+    {
+      "capsule": "B4_conv2d_relu_i8",
+      "label": "public",
+      "status": "fail",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "fail",
+      "trace_violations": [
+        "required instruction class missing: CONFIG_LD",
+        "required instruction class missing: MVIN",
+        "required instruction class missing: CONFIG_ST",
+        "required instruction class missing: PRELOAD",
+        "required instruction class missing: COMPUTE_PRELOADED",
+        "required instruction class missing: MVOUT",
+        "mode relu declared but no CONFIG_ST sets relu activation",
+        "mode k_accumulate declared but no accumulate-onto PRELOAD / COMPUTE_ACCUMULATE found",
+        "MVOUT count 0 != expected Mt*Nt=3 (M=36,N=8)"
+      ],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass"
+      },
+      "tier_cycles": {},
+      "failure_plane": "trace_check",
+      "failure_category": "protocol_violation",
+      "failure_detail": "trace_check failed: ['required instruction class missing: CONFIG_LD', 'required instruction class missing: MVIN', 'required instruction class missing: CONFIG_ST', 'required instruction class missing: PRELOAD', 'required instruction class mi"
+    },
+    {
+      "capsule": "C0_mlp_linear1",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 188
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "C1_mlp_activation_linear2",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 188
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "C2_attention_q_projection",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 79
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "C3_attention_k_projection",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 79
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "C4_attention_v_projection",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 79
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "C5_attention_qk_matmul",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 49
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    },
+    {
+      "capsule": "C6_attention_pv_matmul",
+      "label": "public",
+      "status": "pass",
+      "numeric_status": "pass",
+      "mismatch_count": 0,
+      "trace_status": "pass",
+      "trace_violations": [],
+      "tiers": {
+        "L0": "pass",
+        "L1": "pass",
+        "L2": "pass"
+      },
+      "tier_cycles": {
+        "L2": 49
+      },
+      "failure_plane": null,
+      "failure_category": null,
+      "failure_detail": null
+    }
+  ],
+  "note": "This is a QA pass/fail signal only. It contains NO expected/golden values. Fix failures by capsule + failure_plane + trace_violations; never hardcode outputs."
+}

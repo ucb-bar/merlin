@@ -1,0 +1,1 @@
+CANARY_MERLIN_INTERNALS do-not-read marker

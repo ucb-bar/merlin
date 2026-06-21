@@ -1,0 +1,9 @@
+mutant                              verilator   sim_s   pre-screen     ms  caught_first
+original                                 pass  178.16           ok    2.3  n/a(pass)
+illegal_funct                            fail   110.1       reject    3.2  YES
+drop_compute                             fail   112.0       reject    3.2  YES
+drop_mvout                               fail 165.499       reject    3.7  YES
+swap_compute_operands(numerical)         fail 198.117           ok    2.4  MISS(numeric)
+
+summary: {'structural_failures_caught_pre_RTL': 3, 'verilator_seconds_saved_est': 387.6, 'false_positive_on_original': 0, 'numerical_miss_by_design': ['swap_compute_operands(numerical)']}
+wrote /scratch/agustin/projects/oscar-merlin/experiments/gemmini_perf_bench/reports/prescreen_mutation_demo.json

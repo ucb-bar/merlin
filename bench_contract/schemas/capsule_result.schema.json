@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin/bench_contract/capsule_result.schema.json",
+  "title": "Per-capsule result (capsule_bench_v0)",
+  "description": "The capsule_runner writes one capsule_result.json per capsule run. status=incomplete when a mandatory oracle tier was not_run (never silently pass).",
+  "type": "object",
+  "required": ["capsule", "status", "contract_version", "tiers", "trace_check", "numeric"],
+  "properties": {
+    "capsule": {"type": "string"},
+    "kind": {"type": "string", "enum": ["isa", "layer", "model_slice"]},
+    "label": {"type": "string", "enum": ["public", "dev", "hidden"]},
+    "status": {"type": "string", "enum": ["pass", "fail", "incomplete", "error"]},
+    "contract_version": {"type": "string"},
+    "tiers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["status", "not_run_is_not_pass"],
+        "properties": {
+          "status": {"type": "string", "enum": ["pass", "fail", "skipped", "unavailable"]},
+          "reason": {"type": ["string", "null"]},
+          "not_run_is_not_pass": {"type": "boolean"},
+          "mandatory": {"type": "boolean"},
+          "cycles": {"type": ["integer", "null"]},
+          "derived_from_rtl": {"type": "boolean"},
+          "cycle_accurate": {"type": "boolean"},
+          "evidence": {"type": ["string", "null"]}
+        },
+        "additionalProperties": true
+      }
+    },
+    "trace_check": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {"type": "string", "enum": ["pass", "fail", "skipped"]},
+        "violations": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": true
+    },
+    "numeric": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {"type": "string", "enum": ["pass", "fail", "skipped"]},
+        "policy": {"type": "string"},
+        "max_abs_diff": {"type": ["number", "null"]},
+        "max_rel_error": {"type": ["number", "null"]},
+        "mismatch_count": {"type": ["integer", "null"]},
+        "first_mismatch": {"type": ["object", "array", "null"]}
+      },
+      "additionalProperties": true
+    },
+    "failure": {"type": ["object", "null"]},
+    "toolchain_shas": {"type": "object", "additionalProperties": true}
+  },
+  "additionalProperties": true
+}

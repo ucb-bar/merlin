@@ -1,0 +1,52 @@
+name: C2_attention_q_projection
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: attn.q_proj
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: Wq
+  role: weight
+  shape:
+  - 64
+  - 16
+  dtype: i8
+- name: X
+  role: input
+  shape:
+  - 16
+  - 64
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: X
+    weight: Wq
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+    semantic: attn_q_proj
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    i8: false
+    relu: false
+    acc_scale: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional

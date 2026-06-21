@@ -1,0 +1,21 @@
+op: matmul
+backend:
+- rvv
+compute:
+  op: matmul
+  contraction_form: fused_fma
+  accumulator_dtype: null
+  widening: true
+  reduction_form: vredsum_tree
+  register_block: null
+  epilogue: requant_narrow
+vector:
+  sew: null
+  lmul: 4.0
+  vl_strategy: vsetvl_loop
+  tail: null
+spatial: null
+dataflow: null
+provenance:
+  level: policy
+  source: mined_policies

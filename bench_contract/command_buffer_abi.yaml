@@ -1,0 +1,36 @@
+# Command-buffer ABI (experiment ABI v0.1)
+# The target-independent command buffer a package emits from emit_command_buffer. Strict schema:
+# schemas/command_buffer.schema.json. Interpreted by merlin's reference + simulator (the L0 gate).
+version: "0.1"
+schema: schemas/command_buffer.schema.json
+top_level:
+  required: [abi_version, target, commands]
+  optional: [backend, tensors, params, metrics_requested, resources]
+tensors:
+  description: "name -> {shape:[..], dtype: i8|i16|i32, role: input|weight|bias|output}"
+  note: "leaf inputs only; outputs are produced by COMMIT and need not appear here"
+opcodes:
+  RES_PACK:
+    operands: {src: leaf_or_handle, dst: handle}
+    attributes: {layout: string}
+    semantics: "make src resident (packed/stationary) under handle dst"
+  MATMUL_RESIDENT:
+    operands: {lhs: tensor, rhs: resident_handle, dst: acc_handle}
+    semantics: "dst = lhs @ resolve(rhs); i8 x i8 -> i32 accumulate"
+  MATMUL:
+    operands: {lhs: tensor, rhs: tensor, dst: acc_handle}
+    semantics: "non-resident matmul (residency optimization absent)"
+  COMMIT:
+    operands: {src: acc_handle, dst: output_tensor, bias: "tensor (optional)"}
+    attributes:
+      epilogue: "ordered subset of [bias_add, requant, acc_scale, relu]"
+      output_dtype: "i32 (full readout) | i8 (scaled/clamped readout)"
+      acc_scale: "f32; applied as clamp_i8(round_near_even(acc * scale)); required iff acc_scale in epilogue"
+      requant_shift: "int; only for the integer requant stage (round-half-up arithmetic shift)"
+    semantics: "apply epilogue stages in listed order, then cast to output_dtype"
+  EVICT:
+    operands: {handle: resident_handle}
+    semantics: "release the resident weight's working-set budget"
+correctness_gate: >-
+  Integer workloads => exact equality (==), never a tolerance. reference_outputs(cb) and
+  simulate(cb)["outputs"] MUST be equal (L0), and equal to the oracle output (L1/L2).

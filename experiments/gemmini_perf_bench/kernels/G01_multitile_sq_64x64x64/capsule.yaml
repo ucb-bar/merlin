@@ -1,0 +1,52 @@
+name: G01_multitile_sq_64x64x64
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: baremetalc:tiled_matmul_ws.c
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 64
+  - 64
+  dtype: i8
+- name: X
+  role: input
+  shape:
+  - 64
+  - 64
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: X
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+    semantic: golden_matmul_baremetalc:tiled_matmul_ws.c
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    i8: false
+    relu: false
+    acc_scale: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional

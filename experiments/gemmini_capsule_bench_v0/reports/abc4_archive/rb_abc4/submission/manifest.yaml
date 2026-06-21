@@ -1,0 +1,44 @@
+artifact_type: mlir_oot_target_backend
+target: gemmini
+package_id: gemmini_oot_cpp_v0
+language: cpp
+authoring:
+  mode: deterministic_generated_from_spec
+  author: compiler-engineer
+  generated_by_agent: true
+integrity_exempt: false
+llvm:
+  version: "23.0.0git"
+  commit: "a47bddccec30"
+build:
+  configure:
+    - /scratch2/agustin/chipyard/.conda-env/bin/cmake
+    - -G
+    - Ninja
+    - -S
+    - "{package}/mlir_oot"
+    - -B
+    - "{package}/mlir_oot/build"
+    - "-DMLIR_DIR={mlir_dir}"
+    - "-DLLVM_DIR={llvm_dir}"
+    - -DCMAKE_BUILD_TYPE=Release
+    - -DCMAKE_C_COMPILER=/usr/bin/gcc
+    - -DCMAKE_CXX_COMPILER=/usr/bin/g++
+  command:
+    - /scratch2/agustin/chipyard/.conda-env/bin/cmake
+    - --build
+    - "{package}/mlir_oot/build"
+    - --target
+    - gemmini-opt
+  tool_output: mlir_oot/build/gemmini-opt
+entrypoints:
+  tool: mlir_oot/build/gemmini-opt
+commands:
+  parse:
+    argv: ["{tool}", "--verify-diagnostics", "{input_mlir}"]
+  lower_interface_to_target:
+    argv: ["{tool}", "--convert-iface-to-gemmini", "{input_mlir}"]
+  emit_command_buffer:
+    argv: ["{tool}", "--convert-iface-to-gemmini", "--emit-command-buffer={output_json}", "{input_mlir}"]
+  lower_target_to_llvm:
+    argv: ["{tool}", "--convert-iface-to-gemmini", "--convert-gemmini-to-llvm-rocc", "{input_mlir}"]

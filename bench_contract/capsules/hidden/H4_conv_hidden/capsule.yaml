@@ -1,0 +1,67 @@
+name: H4_conv_hidden
+kind: layer
+source_role: uplifted_from_bareMetalC
+source_reference: hidden conv variant
+label: hidden
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: Wc
+  role: weight
+  shape:
+  - 36
+  - 8
+  dtype: i8
+- name: IFMh
+  role: input
+  shape:
+  - 1
+  - 8
+  - 8
+  - 4
+  dtype: i8
+operation:
+  op: conv2d
+  attributes:
+    ifm: IFMh
+    weight: Wc
+    out: Y0
+    ci: 4
+    kh: 3
+    kw: 3
+    stride:
+    - 1
+    - 1
+    padding:
+    - 0
+    - 0
+    - 0
+    - 0
+    dilation:
+    - 1
+    - 1
+    layout: nhwc
+    epilogue: []
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    conv2d: true
+    k_accumulate: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional

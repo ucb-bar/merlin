@@ -1,0 +1,24 @@
+# Scoring / conformance ladder (experiment ABI v0.1)
+# The K0-K10 ladder a package climbs. The runner records the highest rung reached per (package,
+# input). Mandatory rungs gate "pass"; oracle rungs are gated on simulator availability.
+version: "0.1"
+
+ladder:
+  - {k: K0,  name: schema_validates,        mandatory: true,  gate: "contract schemas load + self-validate; manifest schema-valid"}
+  - {k: K1,  name: package_builds,          mandatory: true,  gate: "package present/buildable (C++: build block succeeds; Python: tool executable)"}
+  - {k: K2,  name: entrypoints_callable,    mandatory: true,  gate: "parse(interface.mlir) exits 0"}
+  - {k: K3,  name: interface_to_target,     mandatory: true,  gate: "lower_interface_to_target emits non-empty parseable MLIR"}
+  - {k: K4,  name: command_buffer_valid,    mandatory: true,  gate: "emit_command_buffer -> schema-valid command_buffer.json"}
+  - {k: K5,  name: reference_eq_simulate,   mandatory: true,  gate: "reference_outputs(cb) == simulate(cb)['outputs']"}
+  - {k: K6,  name: lower_to_llvm_object,    mandatory: true,  gate: "lower_target_to_llvm -> RV64 object/ELF"}
+  - {k: K7,  name: spike_bootstrap,         mandatory: false, gated_on: spike,     gate: "oracle == reference == simulate (derived_from_rtl=false)"}
+  - {k: K8,  name: verilator_certification, mandatory: false, gated_on: verilator, gate: "oracle == reference == simulate (derived_from_rtl=true, cycle_accurate)"}
+  - {k: K9,  name: telemetry_complete,      mandatory: true,  gate: "run_manifest + artifact_manifest + results.yaml present; artifacts origin-tagged"}
+  - {k: K10, name: fails_closed,            mandatory: true,  scope: negative, gate: "broken packages are rejected with a FailureCategory; never status: pass"}
+
+pass_definition: "K0-K6, K9, K10 all satisfied (mandatory); K7/K8 contribute when their simulator is available."
+
+rung_weights:   # for cross-package comparison (baseline vs merlin-assisted)
+  g0: 1
+  g1: 1
+  g2: 2          # acc_scale float requant -> i8 is the harder semantic

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin/bench_contract/instruction_trace.schema.json",
+  "title": "Decoded Gemmini RoCC instruction trace (capsule_bench_v0)",
+  "description": "Runner-owned decode of the package's emitted lowered.llvm.mlir (custom-3 .insn r RoCC inline-asm). The trace is an OBSERVATION of what the backend emitted, not a package artifact.",
+  "type": "object",
+  "required": ["source", "abi", "instructions"],
+  "properties": {
+    "source": {"type": "string", "description": "path to the decoded lowered.llvm.mlir"},
+    "abi": {
+      "type": "object",
+      "required": ["custom_opcode", "funct3"],
+      "properties": {
+        "custom_opcode": {"type": "string"},
+        "funct3": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "instructions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["index", "class"],
+        "properties": {
+          "index": {"type": "integer", "minimum": 0},
+          "class": {"type": "string", "enum": [
+            "CONFIG_EX", "CONFIG_LD", "CONFIG_ST", "MVIN", "MVOUT", "PRELOAD",
+            "COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE", "FLUSH", "FENCE", "LOOP_WS", "LOOP_CONV", "UNKNOWN"
+          ]},
+          "funct": {"type": ["integer", "null"]},
+          "raw": {"type": "string"},
+          "rs1": {"$ref": "#/$defs/operand"},
+          "rs2": {"$ref": "#/$defs/operand"},
+          "decoded": {"type": "object", "additionalProperties": true},
+          "source_op": {"type": ["string", "null"]}
+        },
+        "additionalProperties": true
+      }
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "class_histogram": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "jobs": {"type": "array", "items": {"type": "object", "additionalProperties": true}}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "operand": {
+      "type": "object",
+      "properties": {
+        "raw": {"type": ["integer", "null"]},
+        "kind": {"type": "string", "enum": ["const", "argbase", "unknown"]},
+        "arg_index": {"type": ["integer", "null"]},
+        "offset": {"type": ["integer", "null"]}
+      },
+      "additionalProperties": true
+    }
+  }
+}
