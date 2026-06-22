@@ -18,6 +18,82 @@ condition reused every step.
 
 ---
 
+## The one graph that encompasses them all (parametric multi-rate template)
+
+Yes — every multi-rate model below is the **same skeleton**. A slow **conditioning** stage runs **once per
+replan** and produces a **condition context C**; a fast **kernel** runs **×K** over a **carried state S**,
+reading C read-only each step; a **readout** turns the final state into an action chunk. The "two shapes" are
+just two ways of filling four slots — *what C is*, *what S is*, *what the kernel is*, *how it updates S*.
+
+```mermaid
+flowchart LR
+  classDef once fill:#0F3759,color:#fff,stroke:#2E2D2C
+  classDef loop fill:#815E5E,color:#fff,stroke:#2E2D2C
+  classDef state fill:#7D886C,color:#fff,stroke:#2E2D2C
+  classDef io fill:#EFE6D6,color:#2E2D2C,stroke:#2E2D2C
+  OBS["observations<br/>images · language · state"]:::io --> ENC
+  subgraph S2["CONDITIONING — runs ONCE per replan (slow / System 2)"]
+    ENC["encoders / VLM"]:::once --> C["condition context C<br/>{prefix KV | condition tokens | frozen VLM KV}"]:::once
+  end
+  subgraph S1["INNER KERNEL — runs ×K (fast / System 1)"]
+    ST["carried state S<br/>{KV+token | action latent x_t}"]:::state --> KER["repeated kernel<br/>{1 decode step | 1 denoiser pass}"]:::loop
+    C -. "read-only, invariant" .-> KER
+    KER -->|"update S: {argmax/sample | integrator step}"| ST
+  end
+  C --> ST
+  KER --> RO["readout → action chunk"]:::io
+  RO -. "next control tick (replan)" .-> OBS
+```
+
+```
+        ┌─────────── outer: once per control tick (replan) ───────────┐
+        ▼                                                              │
+ observations ─▶ [ CONDITIONING (once, slow) ] ─▶ condition C ─────────┤ (invariant)
+                                                                       │
+  carried state S₀ ─▶ ╔══════════════════════════════╗                │
+                      ║  repeated kernel   (×K)        ║◀── C (read-only)
+                      ║  {decode step | denoiser pass} ║
+                      ╚══════════════┬═══════════════╝
+                       S_{t+1} ──────┘   {KV+token | action latent x_t}
+                                     ▼
+                               readout ─▶ action chunk
+```
+
+**The four slots — and the only two ways they get filled:**
+
+| slot | ① autoregressive | ② flow-matching / diffusion |
+|---|---|---|
+| condition context **C** | prefix KV (same LLM stack) | condition tokens / frozen VLM KV (separate) |
+| carried state **S** | KV cache (**grows** +1/step) + current token | **fixed-shape** action latent x_t |
+| repeated **kernel** | one LLM decode step | one denoiser pass (DiT / action expert) |
+| **update** rule | argmax / sample → next token | Euler / DPM integrator step |
+| **K** = | # action tokens | # denoise steps |
+
+**Why this single graph IS the argument:** a flat `torch.export` keeps only the **CONDITIONING** box (it's a
+plain DAG) and **deletes the entire INNER-KERNEL box** — the ×K loop, the carried state S, and the C-reuse edge.
+Everything that makes these models multi-rate lives in exactly the box flat capture throws away.
+
+### Filling the slots for every model (no guesses)
+
+| model | shape | conditioning C (once) | C invariant? | carried state S | kernel | update | K |
+|---|---|---|---|---|---|---|---|
+| smolVLA | ② | SmolVLM2 → prefix KV | yes | action latent 50×32 | action expert | Euler | 10 |
+| π0.5 | ② | SigLIP+Gemma-2B → prefix KV | yes | action latent 50×32 | Gemma-300M expert | Euler | 10 |
+| RDT | ② | T5-XXL + SigLIP+DINOv2 → cond tokens | yes | noisy action 64×128 (+m_prev) | DiT ×28 | DPM-solver | 5 |
+| RDT2 | ② | frozen Qwen2.5-VL-7B KV | yes | action latent 24×20 | DiT ×14 | Euler | 5 |
+| GR00T N1.7 | ② | Cosmos-2B VLM → VL embeds | yes | action latent 40×dim | action enc + DiT ×16 | flow Euler | 4 |
+| xr0 | ② | Qwen3-VL-4B KV | yes | latent 30×32 (+t) | DiT ×16 | rectified-flow Euler | 5 |
+| OpenVLA | ① | DINOv2+SigLIP + Llama-2-7B prefill | grows | KV cache + token | 1 Llama decode step | argmax | 7 |
+| MolmoAct | ① | SigLIP2 + Qwen2 LLM prefill | grows | KV cache + token | 1 LLM decode step (48L) | argmax | 8 |
+| tiny_llama | ① | Llama prefill | grows | KV cache + token | 1 decode step | argmax | 7 |
+| BitVLA | (real = single pass; no inner loop — readout straight off conditioning) | SigLIP + ternary BitNet LLM | — | — | — | — | 1 |
+
+> BitVLA is the one exception: its real `predict_action` is the **conditioning stage with the readout attached
+> directly — no inner loop** (the ×K=7 loop exists only in the capture wrapper). In template terms it is the
+> degenerate **K=1** case.
+
+---
+
 ## The three shapes
 
 ### Shape ① — Autoregressive VLA (prefill once → ×K token decode, KV grows)
