@@ -1,0 +1,2941 @@
+# loop_aware_mapspace_seeds (P21: outer K loop + region split + KV state; structural search-space seed, no perf claim)
+loop_aware_mapspace_seeds:
+  count_shapes: 115
+  count_workloads: 10
+  note: 'P21-aware: repeated-head shapes carry the IR-recovered outer K loop (instances_per_replan = layers x K) + the loop-carried KV state node; once-prefix shapes run x1. Structural search-space seed; no mapping/cycles/perf chosen.'
+  workloads:
+  - K_source: recovered_from_ir
+    kv_state_bytes: '79872'
+    loop_carried_roles: counter,counter,token_buffer,kv_cache,kv_cache
+    outer_loop_K: 7
+    shapes:
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: bitvla__linear_gemm__backbone_once__32x512x256
+      instances_per_replan: 4
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 16777216
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 256
+          M: 32
+          N: 512
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: bitvla__linear_gemm__backbone_once__32x256x512
+      instances_per_replan: 2
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 8388608
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 512
+          M: 32
+          N: 256
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: bitvla__linear_gemm__backbone_once__32x256x256
+      instances_per_replan: 4
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 8388608
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 256
+          M: 32
+          N: 256
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: bitvla__linear_gemm__backbone_once__32x128x256
+      instances_per_replan: 4
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 4194304
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 256
+          M: 32
+          N: 128
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: bitvla__linear_gemm__backbone_once__1x1024x256
+      instances_per_replan: 1
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 262144
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 256
+          M: 1
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: bitvla__linear_gemm__repeated_head__1x1024x256
+      instances_per_replan: 7
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 1835008
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 7
+      problem:
+        instance:
+          K: 256
+          M: 1
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: bitvla__linear_gemm__repeated_head__1x512x256
+      instances_per_replan: 28
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 3670016
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 7
+      problem:
+        instance:
+          K: 256
+          M: 1
+          N: 512
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: bitvla__linear_gemm__repeated_head__1x256x512
+      instances_per_replan: 14
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 1835008
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 7
+      problem:
+        instance:
+          K: 512
+          M: 1
+          N: 256
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: bitvla__linear_gemm__repeated_head__1x256x256
+      instances_per_replan: 28
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 1835008
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 7
+      problem:
+        instance:
+          K: 256
+          M: 1
+          N: 256
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: bitvla__linear_gemm__repeated_head__1x128x256
+      instances_per_replan: 28
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 917504
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 7
+      problem:
+        instance:
+          K: 256
+          M: 1
+          N: 128
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    workload: bitvla
+  - K_source: recovered_from_ir
+    kv_state_bytes: n/a
+    loop_carried_roles: counter,latent
+    outer_loop_K: 4
+    shapes:
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: groot_n1d7__linear_gemm__repeated_head__41x6144x1536
+      instances_per_replan: 64
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 16
+      macs_per_replan: 24763170816
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 4
+      problem:
+        instance:
+          K: 1536
+          M: 41
+          N: 6144
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: groot_n1d7__linear_gemm__repeated_head__41x1536x6144
+      instances_per_replan: 64
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 16
+      macs_per_replan: 24763170816
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 4
+      problem:
+        instance:
+          K: 6144
+          M: 41
+          N: 1536
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: groot_n1d7__linear_gemm__repeated_head__64x1536x2048
+      instances_per_replan: 64
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 16
+      macs_per_replan: 12884901888
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 4
+      problem:
+        instance:
+          K: 2048
+          M: 64
+          N: 1536
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: groot_n1d7__linear_gemm__repeated_head__41x1536x1536
+      instances_per_replan: 192
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 48
+      macs_per_replan: 18572378112
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 4
+      problem:
+        instance:
+          K: 1536
+          M: 41
+          N: 1536
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: groot_n1d7__linear_gemm__repeated_head__41x1024x1536
+      instances_per_replan: 4
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 257949696
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 4
+      problem:
+        instance:
+          K: 1536
+          M: 41
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: groot_n1d7__linear_gemm__repeated_head__1x3072x1536
+      instances_per_replan: 68
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 17
+      macs_per_replan: 320864256
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 4
+      problem:
+        instance:
+          K: 1536
+          M: 1
+          N: 3072
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: groot_n1d7__linear_gemm__repeated_head__1x1536x1536
+      instances_per_replan: 4
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 9437184
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 4
+      problem:
+        instance:
+          K: 1536
+          M: 1
+          N: 1536
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: groot_n1d7__linear_gemm__repeated_head__1x1536x256
+      instances_per_replan: 4
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 1572864
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 4
+      problem:
+        instance:
+          K: 256
+          M: 1
+          N: 1536
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    workload: groot_n1d7
+  - K_source: recovered_from_ir
+    kv_state_bytes: '262144'
+    loop_carried_roles: counter,counter,token_buffer,kv_cache,kv_cache
+    outer_loop_K: 8
+    shapes:
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: molmoact__linear_gemm__backbone_once__8x37888x3584
+      instances_per_replan: 4
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 4345298944
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 3584
+          M: 8
+          N: 37888
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: molmoact__linear_gemm__backbone_once__8x3584x18944
+      instances_per_replan: 4
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 2172649472
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 18944
+          M: 8
+          N: 3584
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: molmoact__linear_gemm__backbone_once__8x4608x3584
+      instances_per_replan: 4
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 528482304
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 3584
+          M: 8
+          N: 4608
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: molmoact__linear_gemm__backbone_once__8x3584x3584
+      instances_per_replan: 4
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 411041792
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 3584
+          M: 8
+          N: 3584
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: molmoact__linear_gemm__backbone_once__1x4096x3584
+      instances_per_replan: 1
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 14680064
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 3584
+          M: 1
+          N: 4096
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: molmoact__linear_gemm__repeated_head__1x37888x3584
+      instances_per_replan: 32
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 4345298944
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 8
+      problem:
+        instance:
+          K: 3584
+          M: 1
+          N: 37888
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: molmoact__linear_gemm__repeated_head__1x3584x18944
+      instances_per_replan: 32
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 2172649472
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 8
+      problem:
+        instance:
+          K: 18944
+          M: 1
+          N: 3584
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: molmoact__linear_gemm__repeated_head__1x4608x3584
+      instances_per_replan: 32
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 528482304
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 8
+      problem:
+        instance:
+          K: 3584
+          M: 1
+          N: 4608
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: molmoact__linear_gemm__repeated_head__1x4096x3584
+      instances_per_replan: 8
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 117440512
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 8
+      problem:
+        instance:
+          K: 3584
+          M: 1
+          N: 4096
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: molmoact__linear_gemm__repeated_head__1x3584x3584
+      instances_per_replan: 32
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 411041792
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 8
+      problem:
+        instance:
+          K: 3584
+          M: 1
+          N: 3584
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    workload: molmoact
+  - K_source: recovered_from_ir
+    kv_state_bytes: '221184'
+    loop_carried_roles: counter,counter,token_buffer,kv_cache,kv_cache
+    outer_loop_K: 7
+    shapes:
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: openvla__linear_gemm__backbone_once__20x512x128
+      instances_per_replan: 6
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 6
+      macs_per_replan: 7864320
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 128
+          M: 20
+          N: 512
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: openvla__linear_gemm__backbone_once__20x128x512
+      instances_per_replan: 2
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 2621440
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 512
+          M: 20
+          N: 128
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: openvla__linear_gemm__backbone_once__20x256x128
+      instances_per_replan: 4
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 2621440
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 128
+          M: 20
+          N: 256
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: openvla__linear_gemm__backbone_once__20x128x256
+      instances_per_replan: 2
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 1310720
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 256
+          M: 20
+          N: 128
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: openvla__linear_gemm__backbone_once__1x512x128
+      instances_per_replan: 1
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 65536
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 128
+          M: 1
+          N: 512
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: openvla__linear_gemm__repeated_head__1x512x128
+      instances_per_replan: 49
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 7
+      macs_per_replan: 3211264
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 7
+      problem:
+        instance:
+          K: 128
+          M: 1
+          N: 512
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: openvla__linear_gemm__repeated_head__1x128x512
+      instances_per_replan: 14
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 917504
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 7
+      problem:
+        instance:
+          K: 512
+          M: 1
+          N: 128
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: openvla__linear_gemm__repeated_head__1x256x128
+      instances_per_replan: 28
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 917504
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 7
+      problem:
+        instance:
+          K: 128
+          M: 1
+          N: 256
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: openvla__linear_gemm__repeated_head__1x128x256
+      instances_per_replan: 14
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 458752
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 7
+      problem:
+        instance:
+          K: 256
+          M: 1
+          N: 128
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    workload: openvla
+  - K_source: recovered_from_ir
+    kv_state_bytes: n/a
+    loop_carried_roles: counter,latent
+    outer_loop_K: 10
+    shapes:
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__backbone_once__968x16384x2048
+      instances_per_replan: 34
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 34
+      macs_per_replan: 1104343465984
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 2048
+          M: 968
+          N: 16384
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__backbone_once__968x2048x16384
+      instances_per_replan: 17
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 17
+      macs_per_replan: 552171732992
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 16384
+          M: 968
+          N: 2048
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__backbone_once__968x2048x2048
+      instances_per_replan: 34
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 34
+      macs_per_replan: 138042933248
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 2048
+          M: 968
+          N: 2048
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__backbone_once__256x4304x1152
+      instances_per_replan: 81
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 81
+      macs_per_replan: 102813401088
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 1152
+          M: 256
+          N: 4304
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__backbone_once__256x1152x4304
+      instances_per_replan: 81
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 81
+      macs_per_replan: 102813401088
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 4304
+          M: 256
+          N: 1152
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__backbone_once__256x2048x1152
+      instances_per_replan: 3
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 3
+      macs_per_replan: 1811939328
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 1152
+          M: 256
+          N: 2048
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__backbone_once__968x256x2048
+      instances_per_replan: 36
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 36
+      macs_per_replan: 18270388224
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 2048
+          M: 968
+          N: 256
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__backbone_once__256x1152x1152
+      instances_per_replan: 324
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 324
+      macs_per_replan: 110075314176
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 1152
+          M: 256
+          N: 1152
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__repeated_head__50x4096x1024
+      instances_per_replan: 360
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 36
+      macs_per_replan: 75497472000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 1024
+          M: 50
+          N: 4096
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__repeated_head__50x1024x4096
+      instances_per_replan: 180
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 18
+      macs_per_replan: 37748736000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 4096
+          M: 50
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__repeated_head__50x2048x1024
+      instances_per_replan: 180
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 18
+      macs_per_replan: 18874368000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 1024
+          M: 50
+          N: 2048
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__repeated_head__50x1024x2048
+      instances_per_replan: 180
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 18
+      macs_per_replan: 18874368000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 2048
+          M: 50
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__repeated_head__50x256x1024
+      instances_per_replan: 360
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 36
+      macs_per_replan: 4718592000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 1024
+          M: 50
+          N: 256
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__repeated_head__1x3072x1024
+      instances_per_replan: 370
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 37
+      macs_per_replan: 1163919360
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 1024
+          M: 1
+          N: 3072
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__repeated_head__50x1024x32
+      instances_per_replan: 10
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 16384000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 32
+          M: 50
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__repeated_head__50x32x1024
+      instances_per_replan: 10
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 16384000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 1024
+          M: 50
+          N: 32
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: pi05__linear_gemm__repeated_head__1x1024x1024
+      instances_per_replan: 20
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 20971520
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 1024
+          M: 1
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    workload: pi05
+  - K_source: recovered_from_ir
+    kv_state_bytes: n/a
+    loop_carried_roles: counter,latent,latent
+    outer_loop_K: 5
+    shapes:
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt__linear_gemm__repeated_head__4096x4096x2048
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 171798691840
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 2048
+          M: 4096
+          N: 4096
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt__linear_gemm__repeated_head__67x6144x2048
+      instances_per_replan: 10
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 8430551040
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 2048
+          M: 67
+          N: 6144
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt__linear_gemm__repeated_head__67x2048x2048
+      instances_per_replan: 55
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 11
+      macs_per_replan: 15456010240
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 2048
+          M: 67
+          N: 2048
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt__linear_gemm__repeated_head__32x4096x2048
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 1342177280
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 2048
+          M: 32
+          N: 4096
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt__linear_gemm__repeated_head__64x2048x256
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 167772160
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 256
+          M: 64
+          N: 2048
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt__linear_gemm__repeated_head__67x128x2048
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 87818240
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 2048
+          M: 67
+          N: 128
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt__linear_gemm__repeated_head__1x2048x2048
+      instances_per_replan: 10
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 41943040
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 2048
+          M: 1
+          N: 2048
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt__linear_gemm__repeated_head__1x2048x256
+      instances_per_replan: 10
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 5242880
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 256
+          M: 1
+          N: 2048
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    workload: rdt
+  - K_source: recovered_from_ir
+    kv_state_bytes: n/a
+    loop_carried_roles: counter,latent
+    outer_loop_K: 5
+    shapes:
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt2__linear_gemm__repeated_head__28x4096x1024
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 587202560
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 1024
+          M: 28
+          N: 4096
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt2__linear_gemm__repeated_head__28x2816x1024
+      instances_per_replan: 20
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 1614807040
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 1024
+          M: 28
+          N: 2816
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt2__linear_gemm__repeated_head__28x1024x2816
+      instances_per_replan: 10
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 807403520
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 2816
+          M: 28
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt2__linear_gemm__repeated_head__28x1024x1024
+      instances_per_replan: 50
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 10
+      macs_per_replan: 1468006400
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 1024
+          M: 28
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt2__linear_gemm__repeated_head__24x1024x1024
+      instances_per_replan: 10
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 251658240
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 1024
+          M: 24
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt2__linear_gemm__repeated_head__1x9216x2048
+      instances_per_replan: 10
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 188743680
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 2048
+          M: 1
+          N: 9216
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt2__linear_gemm__repeated_head__1x2048x2048
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 20971520
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 2048
+          M: 1
+          N: 2048
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt2__linear_gemm__repeated_head__28x20x4096
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 11468800
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 4096
+          M: 28
+          N: 20
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt2__linear_gemm__repeated_head__1x1024x1024
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 5242880
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 1024
+          M: 1
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt2__linear_gemm__repeated_head__24x1024x20
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 2457600
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 20
+          M: 24
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: rdt2__linear_gemm__repeated_head__1x1024x256
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 1310720
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 256
+          M: 1
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    workload: rdt2
+  - K_source: recovered_from_ir
+    kv_state_bytes: n/a
+    loop_carried_roles: counter,latent
+    outer_loop_K: 10
+    shapes:
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__backbone_once__1024x3072x768
+      instances_per_replan: 12
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 12
+      macs_per_replan: 28991029248
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 768
+          M: 1024
+          N: 3072
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__backbone_once__1024x768x3072
+      instances_per_replan: 12
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 12
+      macs_per_replan: 28991029248
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 3072
+          M: 1024
+          N: 768
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__backbone_once__64x960x12288
+      instances_per_replan: 1
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 754974720
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 12288
+          M: 64
+          N: 960
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__backbone_once__1024x768x768
+      instances_per_replan: 48
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 48
+      macs_per_replan: 28991029248
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 768
+          M: 1024
+          N: 768
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__backbone_once__113x2560x960
+      instances_per_replan: 32
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 32
+      macs_per_replan: 8886681600
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 960
+          M: 113
+          N: 2560
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__backbone_once__113x960x2560
+      instances_per_replan: 16
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 16
+      macs_per_replan: 4443340800
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 2560
+          M: 113
+          N: 960
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__backbone_once__113x960x960
+      instances_per_replan: 32
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 32
+      macs_per_replan: 3332505600
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 960
+          M: 113
+          N: 960
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__backbone_once__113x320x960
+      instances_per_replan: 32
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 32
+      macs_per_replan: 1110835200
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 960
+          M: 113
+          N: 320
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__backbone_once__1x960x32
+      instances_per_replan: 1
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 30720
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 32
+          M: 1
+          N: 960
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__repeated_head__50x2048x720
+      instances_per_replan: 320
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 32
+      macs_per_replan: 23592960000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 720
+          M: 50
+          N: 2048
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__repeated_head__50x720x2048
+      instances_per_replan: 160
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 16
+      macs_per_replan: 11796480000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 2048
+          M: 50
+          N: 720
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__repeated_head__50x720x1440
+      instances_per_replan: 10
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 518400000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 1440
+          M: 50
+          N: 720
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__repeated_head__50x960x720
+      instances_per_replan: 160
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 16
+      macs_per_replan: 5529600000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 720
+          M: 50
+          N: 960
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__repeated_head__50x720x960
+      instances_per_replan: 160
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 16
+      macs_per_replan: 5529600000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 960
+          M: 50
+          N: 720
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__repeated_head__50x720x720
+      instances_per_replan: 10
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 259200000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 720
+          M: 50
+          N: 720
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__repeated_head__113x320x320
+      instances_per_replan: 160
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 16
+      macs_per_replan: 1851392000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 320
+          M: 113
+          N: 320
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__repeated_head__50x320x720
+      instances_per_replan: 160
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 16
+      macs_per_replan: 1843200000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 720
+          M: 50
+          N: 320
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__repeated_head__50x720x32
+      instances_per_replan: 10
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 11520000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 32
+          M: 50
+          N: 720
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: smolvla__linear_gemm__repeated_head__50x32x720
+      instances_per_replan: 10
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 11520000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 10
+      problem:
+        instance:
+          K: 720
+          M: 50
+          N: 32
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    workload: smolvla
+  - K_source: recovered_from_ir
+    kv_state_bytes: '61440'
+    loop_carried_roles: counter,counter,token_buffer,kv_cache,kv_cache
+    outer_loop_K: 7
+    shapes:
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: tiny_llama__linear_gemm__backbone_once__8x5632x2048
+      instances_per_replan: 4
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 369098752
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 2048
+          M: 8
+          N: 5632
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: tiny_llama__linear_gemm__backbone_once__8x2048x5632
+      instances_per_replan: 2
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 184549376
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 5632
+          M: 8
+          N: 2048
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: tiny_llama__linear_gemm__backbone_once__1x32000x2048
+      instances_per_replan: 1
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 65536000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 2048
+          M: 1
+          N: 32000
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: tiny_llama__linear_gemm__backbone_once__8x2048x2048
+      instances_per_replan: 4
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 134217728
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 2048
+          M: 8
+          N: 2048
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: tiny_llama__linear_gemm__backbone_once__8x256x2048
+      instances_per_replan: 4
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 16777216
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 2048
+          M: 8
+          N: 256
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: tiny_llama__linear_gemm__repeated_head__1x32000x2048
+      instances_per_replan: 7
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 458752000
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 7
+      problem:
+        instance:
+          K: 2048
+          M: 1
+          N: 32000
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: tiny_llama__linear_gemm__repeated_head__1x5632x2048
+      instances_per_replan: 28
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 322961408
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 7
+      problem:
+        instance:
+          K: 2048
+          M: 1
+          N: 5632
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: tiny_llama__linear_gemm__repeated_head__1x2048x5632
+      instances_per_replan: 14
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 161480704
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 7
+      problem:
+        instance:
+          K: 5632
+          M: 1
+          N: 2048
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: tiny_llama__linear_gemm__repeated_head__1x2048x2048
+      instances_per_replan: 28
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 117440512
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 7
+      problem:
+        instance:
+          K: 2048
+          M: 1
+          N: 2048
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: tiny_llama__linear_gemm__repeated_head__1x256x2048
+      instances_per_replan: 28
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 14680064
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 7
+      problem:
+        instance:
+          K: 2048
+          M: 1
+          N: 256
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    workload: tiny_llama
+  - K_source: recovered_from_ir
+    kv_state_bytes: n/a
+    loop_carried_roles: counter,latent
+    outer_loop_K: 5
+    shapes:
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: xr0__linear_gemm__backbone_once__1x1024x1024
+      instances_per_replan: 1
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 1048576
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 1024
+          M: 1
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: xr0__linear_gemm__backbone_once__1x1024x32
+      instances_per_replan: 1
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 32768
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 1
+      problem:
+        instance:
+          K: 32
+          M: 1
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: once_per_replan
+      region_role: backbone_once
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: xr0__linear_gemm__repeated_head__32x4096x1024
+      instances_per_replan: 20
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 4
+      macs_per_replan: 2684354560
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 1024
+          M: 32
+          N: 4096
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: xr0__linear_gemm__repeated_head__32x1024x4096
+      instances_per_replan: 10
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 1342177280
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 4096
+          M: 32
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: xr0__linear_gemm__repeated_head__32x3072x1024
+      instances_per_replan: 10
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 1006632960
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 1024
+          M: 32
+          N: 3072
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: xr0__linear_gemm__repeated_head__32x1024x1024
+      instances_per_replan: 10
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 2
+      macs_per_replan: 335544320
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 1024
+          M: 32
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: xr0__linear_gemm__repeated_head__30x1024x1024
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 157286400
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 1024
+          M: 30
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: xr0__linear_gemm__repeated_head__1x6144x1024
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 31457280
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 1024
+          M: 1
+          N: 6144
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: xr0__linear_gemm__repeated_head__1x1024x1024
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 5242880
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 1024
+          M: 1
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: xr0__linear_gemm__repeated_head__30x1024x32
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 4915200
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 32
+          M: 30
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: xr0__linear_gemm__repeated_head__30x32x1024
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 4915200
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 1024
+          M: 30
+          N: 32
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: xr0__linear_gemm__repeated_head__1x1024x256
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 1310720
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 256
+          M: 1
+          N: 1024
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    - dataflow_candidates:
+      - weight_stationary
+      - output_stationary
+      - input_stationary
+      id: xr0__linear_gemm__repeated_head__30x32x32
+      instances_per_replan: 5
+      k_reduction_needs_partial_sum: true
+      layers_in_capture: 1
+      macs_per_replan: 153600
+      op_class: linear_gemm
+      operand_b_identity: weight
+      outer_loop_K: 5
+      problem:
+        instance:
+          K: 32
+          M: 30
+          N: 32
+        shape:
+          dimensions:
+          - M
+          - N
+          - K
+          name: matmul
+      reduction_reuse_scope: across_K (resident-eligible)
+      region_role: repeated_head
+    workload: xr0

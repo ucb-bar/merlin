@@ -729,6 +729,75 @@ def _bt_arith(cs, ax):
                       subtitle="MAC per repeated-head weight byte — modeling view, not full-memory AI")
 
 
+def _r_horizon_capacity_frontier(cs, ax):
+    """2D design tension only the loop contract can draw: the action-horizon H trades the required
+    COMPUTE floor (action chunking gives H/rate seconds, not 1/rate) against the resident KV STATE
+    that must stay on-chip across the horizon. Two regimes fall out of the recovered structure:
+      * flow-matching (prefix KV is loop-INVARIANT): larger H lowers the compute floor at ~constant
+        KV  -> a (near) free compute reduction;
+      * autoregressive (KV GROWS with decoded tokens): the per-replan work grows with H so the
+        compute floor SATURATES at the per-token decode rate, while KV residency keeps growing.
+    Requirement floors + config-composition magnitudes — not a chip measurement."""
+    from merlin.dse_guidance import models as M, real_config as RC
+    air = {r["workload"]: r for r in _rows(cs / "arithmetic_intensity.csv")}
+    db = 2  # bf16
+    order = [("smolvla", "flow_matching"), ("pi05", "flow_matching"),
+             ("openvla", "autoregressive_vla"), ("molmoact", "autoregressive_vla")]
+    cols = {"smolvla": _PALETTE[4], "pi05": _PALETTE[5], "openvla": _PALETTE[0], "molmoact": _PALETTE[1]}
+    Hs = [1, 2, 4, 8, 16, 32, 64]
+    drew = 0
+    for w, _fam in order:
+        arch, geo, row = M.MODEL_ARCH.get(w), RC.REAL_GEOMETRY.get(w), air.get(w)
+        if not (arch and geo and row and arch.control_rate_hz):
+            continue
+        s = geo.decode_stack()
+        if s is None:
+            continue
+        rate = arch.control_rate_hz
+        prefix, repeated = float(row["prefix_params"]), float(row["repeated_params"])
+        K = int(row["K"])
+        ar = arch.family == "autoregressive_vla"
+        per_tok_kv = 2 * s.kv_heads * s.head_dim * s.n_layers * db
+        prompt = max(geo.decode_seq - K, 0)
+        xs, ys = [], []
+        for H in Hs:
+            # compute floor (GMAC/s): AR work grows with the decoded H tokens; flow-matching work is
+            # fixed per replan (one forward emits the chunk) — both get the H/rate window.
+            work = (prefix + repeated * H) if ar else (prefix + repeated * K)
+            ys.append(rate * work / H / 1e9)
+            # resident KV state (MB): AR grows with the horizon; flow-matching prefix KV is invariant.
+            kv = per_tok_kv * (prompt + H) if ar else per_tok_kv * geo.decode_seq
+            xs.append(kv / 1e6)
+        ax.plot(xs, ys, "-o", color=cols[w], lw=2.2, ms=5, zorder=3,
+                label=f"{w} ({'AR, KV grows' if ar else 'flow-match, KV fixed'})")
+        # mark the model's actual horizon H
+        Hstar = arch.action_horizon or K
+        work = (prefix + repeated * Hstar) if ar else (prefix + repeated * K)
+        kv = per_tok_kv * (prompt + Hstar) if ar else per_tok_kv * geo.decode_seq
+        ax.scatter([kv / 1e6], [rate * work / Hstar / 1e9], marker="*", s=240, color=cols[w],
+                   edgecolor=_INK, lw=1.0, zorder=6)
+        drew += 1
+    if drew < 2:
+        return False
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlim(1.5, 1500)                    # right margin so the AR cluster + callout stay in frame
+    ax.set_xlabel("required resident KV state (MB, log) — grows with horizon")
+    ax.set_ylabel("required compute floor @ control rate (GMAC/s, log)")
+    # AR callout: anchor on the AR cluster (right), text placed down-left into the empty mid-band
+    _callout(ax, (xs[-1], ys[-1]),
+             "autoregressive: bigger horizon barely\ncuts compute, but grows resident KV", _PALETTE[1],
+             xytext=(-205, -66))
+    # flow-matching callout: the left vertical descents
+    ax.annotate("flow-matching: chunking lowers the\ncompute floor at ~fixed KV (prefix-invariant)",
+                xy=(0.015, 0.40), xycoords="axes fraction", fontsize=10, color=_INK, va="center",
+                bbox=dict(boxstyle="round,pad=0.35", fc="#FBF6EC", ec=_PALETTE[4], lw=1.2))
+    _title(ax, "Action-horizon vs on-chip state: where chunking helps and where it only costs KV",
+           "★ = model's horizon H · required compute floor vs resident capacity (config-composition) — not a chip measurement")
+    _legend(ax, loc="lower right", fontsize=9.5)
+    return True
+
+
 # plot_id -> (renderer, evidence_tier, scale, caveat, source_artifact, presentation_class)
 _FINAL_META = {
     "table_capture_summary": (_r_table_capture_summary, "A", "structural", "", "loop_aware_contract.csv", "main"),
@@ -743,6 +812,7 @@ _FINAL_META = {
     "boundary_necessity_matrix": (_r_boundary_necessity_matrix, "B", "structural", "blocked = capture/evidence blocked", "IM.abstraction_necessity", "main"),
     "arithmetic_intensity_roofline": (_r_arithmetic_intensity_roofline, "A/B", "deployment-composition", "requirement/modeling view; not measured performance; not full-memory AI; hypothetical machine balance", "arithmetic_intensity.csv", "main"),
     "visible_linear_fraction": (_r_visible_linear_fraction, "A", "structural", "excludes erased/unmodeled work", "work_coverage_table.csv", "main"),
+    "horizon_capacity_frontier": (_r_horizon_capacity_frontier, "A/B", "deployment-composition", "requirement compute floor vs resident KV capacity; config-composition; not a chip measurement", "arithmetic_intensity.csv + real_config", "main"),
     "work_coverage_by_workload": (_r_work_coverage_by_workload, "A", "captured-config", "captured-config; not deployment scale", "work_coverage_table.csv", "backup"),
     "deployment_magnitude": (_r_deployment_magnitude, "B", "deployment-composition", "", "real_config_magnitudes.csv", "backup"),
     "sharding_scalability": (_r_sharding_scalability, "A", "structural", "structural comm bytes; not a performance result", "sharding_table.csv", "backup"),
