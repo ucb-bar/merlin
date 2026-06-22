@@ -3053,3 +3053,25 @@ def test_agent_unavailable_is_honest_not_fabricated():
         pytest.skip("claude CLI present; cannot test the unavailable path")
     with pytest.raises(claude_cli.AgentError):
         claude_cli.run_agent("hello", cache_bust=False)
+
+
+@pytest.mark.skipif(not (_CS_DIR / "loop_aware_contract.csv").is_file(),
+                    reason="case_study package not present")
+def test_loop_aware_seeds_multiply_repeated_head_by_recovered_K():
+    # P21-aware mapspace seeds: a repeated-head shape's per-replan instance count is layers x K
+    # (K from the IR scf.for, via loop_aware_contract.csv); a once-prefix shape stays layers x 1.
+    from merlin.dse_guidance import mapspace as MS
+    rows = MS.loop_aware_seed_rows(_CS_DIR)
+    assert rows, "no loop-aware seed rows from the committed case_study artifacts"
+    facts = MS._loop_facts(_CS_DIR)
+    for r in rows:
+        outer = facts.get(r["workload"], {}).get("K", 1) \
+            if r["region_role"] in ("repeated_head", "decode_lm") else 1
+        assert int(r["outer_loop_K"]) == outer
+        assert int(r["instances_per_replan"]) == int(r["layers_in_capture"]) * int(r["outer_loop_K"])
+        assert int(r["macs_per_replan"]) == int(r["macs_per_instance"]) * int(r["instances_per_replan"])
+    # openvla decode loop K=7 is IR-recovered and applied to its repeated head; prefix stays x1
+    ov = [r for r in rows if r["workload"] == "openvla" and r["region_role"] == "repeated_head"]
+    assert ov and all(int(r["outer_loop_K"]) == 7 and r["K_source"] == "recovered_from_ir" for r in ov)
+    assert all(int(r["outer_loop_K"]) == 1 for r in rows
+               if r["workload"] == "openvla" and r["region_role"] == "backbone_once")

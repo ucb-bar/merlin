@@ -112,3 +112,131 @@ def dataflow_rows(workloads) -> list[dict]:
             "bypass_candidates": "Weights|Inputs|Outputs", "k_reduction_needs_partial_sum": "True",
             "fqn": s["fqn"]})
     return rows
+
+
+# ======================================================================================
+# P21-aware mapspace seeds: the SAME problem shapes, but enriched with the loop facts the
+# flat seed could not carry (see mapspace_seed_gaps.md). The loop-preserving capture gives
+# us, per shape: the region role (prefix-once vs the x K repeated head), the IR-recovered
+# trip count K (so the TRUE per-replan instance count is layers x K, not layers), and the
+# loop-carried KV state as a resident-state node. Built from the committed artifacts
+# (operator_shape_table.csv + loop_aware_contract.csv), so it is re-derivable + verifiable.
+# Structural search-space seed only: no mapping / cycles / perf is chosen.
+# ======================================================================================
+_OPCLASS_FROM_KIND = {"matmul": "linear_gemm", "addmm": "linear_gemm", "linear": "linear_gemm",
+                      "mm": "linear_gemm", "bmm": "batched_matmul", "baddbmm": "batched_matmul"}
+_LOOP_SEED_COLS = ["workload", "op_class", "region_role", "M", "N", "K", "layers_in_capture",
+                   "outer_loop_K", "K_source", "instances_per_replan", "macs_per_instance",
+                   "macs_per_replan", "operand_b_identity", "dataflow_candidates",
+                   "reduction_reuse_scope", "kv_state_bytes_workload", "k_reduction_needs_partial_sum",
+                   "evidence"]
+
+
+def _read_csv(path):
+    import csv as _c
+    from pathlib import Path
+    p = Path(path)
+    return list(_c.DictReader(p.read_text().splitlines())) if p.is_file() else []
+
+
+def _loop_facts(cs_dir):
+    """workload -> {K, K_source, kv_bytes, roles} from loop_aware_contract.csv (P21 IR facts)."""
+    from pathlib import Path
+    facts = {}
+    for r in _read_csv(Path(cs_dir) / "loop_aware_contract.csv"):
+        try:
+            K = int(r.get("K_ir") or 0)
+        except (TypeError, ValueError):
+            K = 0
+        kv = (r.get("kv_cache_bytes_ir") or "").strip()
+        facts[r["workload"]] = {
+            "K": max(K, 1), "K_present": K > 0,
+            "kv_bytes": "" if kv in ("", "n/a") else kv,
+            "roles": r.get("loop_carried_roles", ""),
+        }
+    return facts
+
+
+def loop_aware_seed_rows(cs_dir) -> list[dict]:
+    """Flat loop-aware seed: one row per (workload, op_class, region_role, distinct shape). The
+    repeated-head shapes are multiplied by the IR-recovered K (instances_per_replan = layers x K);
+    the once-prefix shapes keep layers x 1. KV state is attached per workload."""
+    from collections import defaultdict
+    from pathlib import Path
+    facts = _loop_facts(cs_dir)
+    acc = defaultdict(lambda: {"layers": 0, "fqn": ""})
+    for r in _read_csv(Path(cs_dir) / "operator_shape_table.csv"):
+        try:
+            M, N, Kd = int(r["M"]), int(r["N"]), int(r["K"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        if M <= 0 or N <= 0 or Kd <= 0:
+            continue
+        oc = _OPCLASS_FROM_KIND.get((r.get("op_kind") or "").lower(), "linear_gemm")
+        key = (r["workload"], oc, r.get("region_role") or "unknown", M, N, Kd)
+        a = acc[key]
+        a["layers"] += 1
+        a["fqn"] = a["fqn"] or (r.get("prov_fqn") or "")
+    rows = []
+    for (w, oc, role, M, N, Kd), a in sorted(acc.items(),
+                                             key=lambda kv: (kv[0][0], kv[0][2], -kv[0][3] * kv[0][4] * kv[0][5])):
+        f = facts.get(w, {"K": 1, "K_present": False, "kv_bytes": "", "roles": ""})
+        repeated = role in ("repeated_head", "decode_lm")
+        outer = f["K"] if repeated else 1
+        layers = a["layers"]
+        mac_inst = M * N * Kd
+        opb_id, dataflow = _OPB.get(oc, ("weight", ["output_stationary"]))
+        rows.append({
+            "workload": w, "op_class": oc, "region_role": role, "M": M, "N": N, "K": Kd,
+            "layers_in_capture": layers, "outer_loop_K": outer,
+            "K_source": "recovered_from_ir" if (repeated and f["K_present"]) else
+                        ("not_repeated" if not repeated else "assumed_or_config"),
+            "instances_per_replan": layers * outer,
+            "macs_per_instance": mac_inst, "macs_per_replan": mac_inst * layers * outer,
+            "operand_b_identity": opb_id, "dataflow_candidates": "|".join(dataflow),
+            "reduction_reuse_scope": ("across_K (resident-eligible)" if repeated else "once_per_replan"),
+            "kv_state_bytes_workload": f["kv_bytes"], "k_reduction_needs_partial_sum": "True",
+            "evidence": "operator_shape_table.csv (shape+role) x loop_aware_contract.csv (K, KV; "
+                        "recovered_from_ir scf.for)",
+        })
+    return rows
+
+
+def loop_aware_problem_shapes(cs_dir) -> dict:
+    """Timeloop-ingestible problem shapes, grouped per workload with the recovered OUTER K loop +
+    the loop-carried KV state node — the structure a full Timeloop problem needs that the flat
+    one-step seed lacked. Structural search-space seed; no mapping/perf chosen."""
+    rows = loop_aware_seed_rows(cs_dir)
+    facts = _loop_facts(cs_dir)
+    by_w = {}
+    for r in rows:
+        w = r["workload"]
+        wobj = by_w.setdefault(w, {
+            "workload": w,
+            "outer_loop_K": facts.get(w, {}).get("K", 1),
+            "K_source": "recovered_from_ir" if facts.get(w, {}).get("K_present") else "assumed_or_config",
+            "loop_carried_roles": facts.get(w, {}).get("roles", ""),
+            "kv_state_bytes": facts.get(w, {}).get("kv_bytes", "") or "n/a",
+            "shapes": [],
+        })
+        wobj["shapes"].append({
+            "id": f"{w}__{r['op_class']}__{r['region_role']}__{r['M']}x{r['N']}x{r['K']}",
+            "op_class": r["op_class"], "region_role": r["region_role"],
+            "problem": {"shape": {"name": "matmul", "dimensions": ["M", "N", "K"]},
+                        "instance": {"M": r["M"], "N": r["N"], "K": r["K"]}},
+            "layers_in_capture": r["layers_in_capture"],
+            "outer_loop_K": r["outer_loop_K"],
+            "instances_per_replan": r["instances_per_replan"],
+            "macs_per_replan": r["macs_per_replan"],
+            "operand_b_identity": r["operand_b_identity"],
+            "dataflow_candidates": r["dataflow_candidates"].split("|"),
+            "reduction_reuse_scope": r["reduction_reuse_scope"],
+            "k_reduction_needs_partial_sum": True,
+        })
+    workloads = [by_w[w] for w in sorted(by_w)]
+    return {"loop_aware_mapspace_seeds": {
+        "note": "P21-aware: repeated-head shapes carry the IR-recovered outer K loop (instances_per_"
+                "replan = layers x K) + the loop-carried KV state node; once-prefix shapes run x1. "
+                "Structural search-space seed; no mapping/cycles/perf chosen.",
+        "count_workloads": len(workloads), "count_shapes": len(rows),
+        "workloads": workloads}}

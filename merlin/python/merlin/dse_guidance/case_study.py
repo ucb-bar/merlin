@@ -1103,6 +1103,14 @@ def run_case_study(out_dir) -> dict:
              _csv(MS.dataflow_rows(_wl_caps), MS._DATAFLOW_COL)).write(out)
     yaml_artifact("timeloop_problem_shapes.yaml", MS.problem_shapes(_wl_caps),
                   header="timeloop_problem_shapes (structural search-space seeds; no perf claim)").write(out)
+    # P21-aware seeds: re-derive the seeds FROM the loop-preserving contract (real K + region split +
+    # KV state), not the flat one-step capture. Reads the just-written operator_shape_table.csv (l.1073)
+    # + loop_aware_contract.csv (l.1090) from `out`, so it is re-derivable + verifiable.
+    Artifact("mapspace_seeds_loop.csv",
+             _csv(MS.loop_aware_seed_rows(out), MS._LOOP_SEED_COLS)).write(out)
+    yaml_artifact("mapspace_seeds_loop.yaml", MS.loop_aware_problem_shapes(out),
+                  header="loop_aware_mapspace_seeds (P21: outer K loop + region split + KV state; "
+                         "structural search-space seed, no perf claim)").write(out)
     yaml_artifact("operator_geometry.yaml", OG.to_yaml_obj(geom_by_workload, conv_visible),
                   header="operator_geometry (structural; no speedup)").write(out)
     Artifact("shape_summary_by_workload.csv",
