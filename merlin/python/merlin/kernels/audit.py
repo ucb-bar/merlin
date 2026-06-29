@@ -205,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     motifs = args.motif or [m for m, _ in observed.most_common()]
     md, summary = audit(pairs, motifs, args.n, args.seed, args.context, args.llm_judge)
 
-    out = Path(args.out) if args.out else Path("output/kernels/audit_samples.md")
+    out = Path(args.out) if args.out else Path("artifacts/kernel-index/audit_samples.md")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(md, encoding="utf-8")
     summary.update({"kernels": len(pairs), "out": str(out), "seed": args.seed, "n": args.n})

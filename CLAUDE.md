@@ -28,8 +28,13 @@ per-experiment `runs/`/`reports/` locations are retired and gitignored).
 - **`runs/<target>/<suite>/<run-id>/`** — aet-managed experiment runs. Create via
   `merlin.common.artifacts.start_run(..., target=...)` (never hand-build a run path). Query with
   `aet runs`.
-- **`artifacts/`** — every other generated product:
-  - versioned products at `artifacts/<topic>/<target>/v<ver>/<topic>_<target>_v<ver>_<TS>_<sha7>/`
+- **`artifacts/`** — every other generated product, organized **concern-first** (each tool/concern
+  owns a subtree and uses ITS OWN axis — target for compiler/mining/experiments, workload for the
+  three DSE tools, model for recaptures/measurements, framework for kernel-index, cross-cutting for
+  ceiling/compare). Concerns: `dse-guidance/`, `dse/`, `design-pressure/`, `kernel-mining/<target>/`,
+  `kernel-index/<framework>/`, `ceiling/`, `compare/`, `measurements/<model>/`, `recaptures/`,
+  `perf-bench/<target>/`, `capsule-bench/<target>/`, `presentation/`, `cache/`, `selfcheck/`.
+  - versioned products at `artifacts/<concern>/<axis>/v<ver>/<concern>_<axis>_v<ver>_<TS>_<sha7>/`
     (+ `manifest.yaml`, relative `latest` symlink) via `new_product(..., target=...)`;
   - regenerable caches under `artifacts/cache/<ns>/` via `cache_dir(...)` (PURGEABLE);
   - the 130 GB model recaptures under `artifacts/recaptures/` (PURGEABLE) via `recaptures_dir()`.
