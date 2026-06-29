@@ -12,8 +12,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[3]
 EXP = REPO / "experiments" / "gemmini_perf_bench"
 KERNELS = EXP / "kernels"            # one capsule dir per kernel + kernel_corpus.yaml
-REPORTS = EXP / "reports"
-RUNS = EXP / "runs"
+# Generated outputs live under the canonical three-root layout (see CLAUDE.md
+# "Generated-output convention"): runs under runs/, figures under artifacts/plots/.
+RUNS = REPO / "runs" / "gemmini" / "perf-bench"
+REPORTS = REPO / "artifacts" / "plots" / "gemmini" / "perf-bench"
 MODEL2MLIR = Path("/scratch/agustin/projects/model2MLIR/workloads")
 
 # Gemmini systolic array dimension (16x16 PE) -> peak 256 MACs/cycle. Used for utilization.

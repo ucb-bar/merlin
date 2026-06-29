@@ -7,7 +7,24 @@
 !/build/**/README.md
 !/build/**/.gitkeep
 
-# --- Produced artifacts (structured, gitignored) ---
+# --- Three-root generated-output convention (see CLAUDE.md) ---
+# runs/ = aet experiment runs; artifacts/ = all other generated products.
+# Keep only the tracked skeletons (AGENT.md / README.md / .gitkeep); ignore all contents.
+/runs/**
+!/runs/
+!/runs/**/
+!/runs/**/AGENT.md
+!/runs/**/README.md
+!/runs/**/.gitkeep
+/artifacts/**
+!/artifacts/
+!/artifacts/**/
+!/artifacts/**/AGENT.md
+!/artifacts/**/README.md
+!/artifacts/**/.gitkeep
+
+# --- Legacy produced-artifacts root (retired; physical home for 130 GB recaptures via
+#     the artifacts/recaptures symlink, so kept ignored until recaptures are consolidated) ---
 /output/**
 !/output/
 !/output/**/
@@ -53,9 +70,10 @@ compile_commands.json
 # Out-of-tree package build trees (gemmini-opt etc.)
 /generated_targets/**/mlir_oot/build/
 /generated_targets/*
-results
-runs
-build
+# legacy retired dse-analysis root (dse now writes under artifacts/dse/)
+/results/
+# legacy compat symlink (transition): mined_knowledge -> artifacts/mined_knowledge
+/mined_knowledge
 
 # --- Editor / OS ---
 .DS_Store

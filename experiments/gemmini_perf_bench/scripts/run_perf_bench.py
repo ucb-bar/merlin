@@ -37,6 +37,11 @@ APPROACH_PKG = {
     "baseline": PB.REPO / "generated_targets" / "gemmini" / "agent_spec_v0_mlir_oot",
     "merlin_targetgen": PB.REPO / "generated_targets" / "gemmini" / "agent_spec_v1_mlir_oot",
     "merlin_native": PB.REPO / "generated_targets" / "gemmini" / "merlin_native_v0",
+    # --- the 4 agentic capsule-bench backends (abc11/abc9), profiled for perf ---
+    "agentic_raw_cpp":      PB.REPO / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "raw_baseline" / "rb_abc11" / "submission",
+    "agentic_scaffold_cpp": PB.REPO / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "cpp_merlininfra" / "rbinfra_abc11" / "submission",
+    "agentic_python":       PB.REPO / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "merlin_assisted" / "merlin_abc9" / "submission",
+    "agentic_circt":        PB.REPO / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "merlin_assisted" / "merlincirct_abc9" / "submission",
 }
 CONTRACT = str(PB.REPO / "bench_contract")
 
@@ -218,6 +223,8 @@ def main(argv: list[str] | None = None) -> int:
         corpus = [k for k in corpus if k["id"] in want]
     approaches = [s.strip() for s in a.approaches.split(",") if s.strip()]
 
+    # Runs live under the canonical runs/ root (PB.RUNS is re-rooted in _pbcommon.py); the
+    # whole perf-bench pipeline (firesim/iree arms, assemble, report) shares PB.RUNS / run_id.
     out_dir = PB.RUNS / a.run_id
     out_dir.mkdir(parents=True, exist_ok=True)
     work = out_dir / "_work"
@@ -238,10 +245,19 @@ def main(argv: list[str] | None = None) -> int:
                 "sim_hint": k.get("sim_hint"), "approaches": {}}
         for ap_name in approaches:
             t0 = time.time()
-            if ap_name == "golden":
-                r = run_golden(k, kdir, sims, work / k["id"], a.timeout)
-            else:
-                r = run_mlir(ap_name, k, kdir, sims, out_dir / "_capsule_runs", a.timeout)
+            # FAULT-TOLERANT: a crash in one approach/kernel records an error cell and continues
+            # (the user's "if something crashes the run shouldn't stop"). Never aborts the batch.
+            try:
+                if ap_name == "golden":
+                    r = run_golden(k, kdir, sims, work / k["id"], a.timeout)
+                else:
+                    r = run_mlir(ap_name, k, kdir, sims, out_dir / "_capsule_runs", a.timeout)
+            except Exception as e:
+                import traceback
+                r = {"approach": ap_name, "ok_build": False, "status": "error",
+                     "error": f"{type(e).__name__}: {str(e)[:300]}",
+                     "traceback": traceback.format_exc()[-1200:], "per_sim": {}}
+                print(f"  [{ap_name:16s}] CRASHED (recorded, continuing): {type(e).__name__}: {str(e)[:160]}", flush=True)
             cell["approaches"][ap_name] = r
             summ = {s: (v.get("cycles"), v.get("util_pct"), v.get("correct"))
                     for s, v in r.get("per_sim", {}).items()}

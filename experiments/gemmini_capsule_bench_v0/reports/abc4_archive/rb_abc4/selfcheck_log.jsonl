@@ -1,1 +1,0 @@
-{"wall_offset_s": 1612.5, "sim": "spike", "barrier_tier": "L2", "capsules": "A2_single_tile_matmul", "n_passed": 1, "n_capsules": 1, "all_pass": true, "failing": []}

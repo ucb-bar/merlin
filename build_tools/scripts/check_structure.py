@@ -106,7 +106,10 @@ REQUIRED_BENCHMARKS = [
 ]
 
 # Directories whose contents are gitignored / exempt from the AGENT.md walk.
-SKIP_DIRS = {".git", "build", "output", "tmp", "__pycache__",
+# runs/ and artifacts/ are the gitignored generated-output roots (see CLAUDE.md
+# "Generated-output convention"); only their top-level AGENT.md is tracked.
+SKIP_DIRS = {".git", "build", "output", "runs", "artifacts", "results",
+             "generated_targets", "_qa_ws", "tmp", "__pycache__",
              ".venv", "venv", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 
 
