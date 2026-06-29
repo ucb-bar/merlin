@@ -56,7 +56,7 @@ def _single(args) -> int:
 
     result = run_guidance(temporal, baseline, region=region, coupling=coupling)
     out = Path(args.out) if args.out else (
-        paths.repo_root() / "output" / "dse_guidance" / wl)
+        paths.repo_root() / "artifacts" / "dse" / wl)
     write_artifacts(result, out)
 
     for wmsg in result.warnings:
@@ -84,7 +84,7 @@ def _design_envelope(args) -> int:
     from merlin.common.yaml import load_yaml
     design = load_yaml(args.design_candidate) if args.design_candidate else None
     out = Path(args.out) if args.out else (
-        paths.repo_root() / "output" / "dse_guidance" / "design_envelope")
+        paths.repo_root() / "artifacts" / "dse" / "design_envelope")
 
     envs = []
     if args.capture_dir and args.temporal_metadata:
@@ -127,7 +127,7 @@ def _study(args) -> int:
     if not specs:
         raise SystemExit(f"no workloads discovered for the study ({kind})")
     out = Path(args.out) if args.out else (
-        paths.repo_root() / "output" / "dse_guidance" / default_sub)
+        paths.repo_root() / "artifacts" / "dse" / default_sub)
     summary = run_model_study(out) if args.models else run_study(specs, out)
     print(f"studied {summary['n_workloads']} workloads ({kind}): "
           f"{', '.join(summary['workloads'])}")
@@ -146,7 +146,7 @@ def _insight_mining(args) -> int:
         paths.merlin_dir() / "benchmarks" / "dse_guidance" / "case_study")
     if not (cs_dir / "dse_contract.json").is_file() and not (cs_dir / "critical_path_table.csv").is_file():
         raise SystemExit(f"no case-study artifacts under {cs_dir} (run --case-study first)")
-    base = Path(args.out) if args.out else (paths.repo_root() / "results")
+    base = Path(args.out) if args.out else (paths.repo_root() / "artifacts" / "dse")
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     nets = IM._workloads(cs_dir)
     scopes = [args.workload] if args.workload else (nets + ["all"])
@@ -314,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.case_study:
         from merlin.dse_guidance.case_study import run_case_study
         out = Path(args.out) if args.out else (
-            paths.repo_root() / "output" / "dse_guidance" / "case_study")
+            paths.repo_root() / "artifacts" / "dse" / "case_study")
         summary = run_case_study(out)
         print(f"cross-workload case study over {len(summary['workloads'])} real captures: "
               f"{', '.join(summary['workloads'])}")

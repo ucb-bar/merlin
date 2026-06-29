@@ -110,7 +110,8 @@ def _base_model(dirname: str) -> str | None:
 
 def discover_model_captures() -> dict[str, list[str]]:
     """Map base model -> list of capture dirs (absolute) that have a model.mlir."""
-    out_root = paths.repo_root() / "output"
+    from merlin.common.artifacts import recaptures_dir
+    out_root = recaptures_dir()  # artifacts/recaptures/ (symlinked to legacy output/ in transition)
     found: dict[str, list[str]] = {}
     if not out_root.is_dir():
         return found
