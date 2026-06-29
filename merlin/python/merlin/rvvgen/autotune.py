@@ -87,7 +87,7 @@ def autotune(target: str, base_pkg_dir: str | Path, model_dir: str | Path, featu
     model_dir = Path(model_dir)
     golden = np.load(model_dir / "golden.npy")
     fork_root = Path(fork_root) if fork_root else _REPO / "generated_targets" / target
-    out_root = Path(out_root) if out_root else _REPO / "mined_knowledge" / target
+    out_root = Path(out_root) if out_root else _REPO / "artifacts" / "kernel-mining" / target
     ts = time.strftime("%Y%m%dT%H%M%S")
     cands = enumerate_candidates(features, max_combo=max_combo)
     results = []
@@ -139,7 +139,7 @@ def beam_search(target: str, base_pkg_dir: str | Path, model_dir: str | Path, fe
     base_dir = Path(base_pkg_dir); model_dir = Path(model_dir)
     golden = np.load(model_dir / "golden.npy")
     fork_root = Path(fork_root) if fork_root else _REPO / "generated_targets" / target
-    out_root = Path(out_root) if out_root else _REPO / "mined_knowledge" / target
+    out_root = Path(out_root) if out_root else _REPO / "artifacts" / "kernel-mining" / target
     ts = time.strftime("%Y%m%dT%H%M%S")
     evaluated: dict[frozenset, dict] = {}
     counter = [0]

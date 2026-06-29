@@ -23,10 +23,29 @@ lints them.
 | `artifacts/recaptures/` | 130 GB model recaptures (PURGEABLE) | `merlin.common.artifacts.recaptures_dir()` |
 | `build/` | compiled / CMake / codegen scaffolds | build system |
 
-**Target at folder level.** Pass `target=` to `start_run`/`new_product`; the target becomes a
-folder component (`runs/<target>/<suite>/...`, `artifacts/<topic>/<target>/...`) so everything for
-a target groups together. Keep the **inner file names identical across targets** (e.g. always
-`perf_results.json`, `findings.csv`, `manifest.yaml`) so you can diff target A vs target B directly.
+**Concern-first.** `artifacts/` is organized by **tool/concern**, and EACH concern uses ITS OWN
+natural axis — do not force a hardware target where it doesn't apply:
+
+| Concern | Axis | Tools |
+|---|---|---|
+| `dse-guidance/<workload>/` | workload/model | `merlin-dse-guidance` |
+| `dse/<workload>/<feature>/` | workload | `merlin-dse` |
+| `design-pressure/<workload>/` | workload | `merlin-design-pressure` |
+| `kernel-mining/<target>/<op>/` | **target** backend | `merlin-rvv-mine/-autotune/-report` |
+| `kernel-index/<framework>/` | source framework | `kernel-index/-extract/-audit` |
+| `ceiling/` | cross-framework | `kernel-bench` |
+| `compare/<ts>/` | config×workload | `merlin-compare` |
+| `measurements/<model>/` | model (on K1) | `scripts/k1_*` |
+| `recaptures/<model>_<dtype>/` | model+dtype (PURGEABLE) | capture harness |
+| `perf-bench/<target>/`, `capsule-bench/<target>/` | target | experiment reports |
+| `presentation/`, `cache/`, `selfcheck/` | topic / ns / target | misc |
+
+`runs/<target>/<suite>/<run-id>/` is for aet experiment runs (target-centric). `build/` for compiler output.
+
+**Target at folder level (where target IS the axis).** Pass `target=` to `start_run`/`new_product`
+so the target becomes a folder component. Keep **inner file names identical across the axis** (always
+`perf_results.json`, `findings.csv`, `manifest.yaml`) so A-vs-B diffs are trivial. DSE is NOT
+target-axis — it keys by workload/model.
 
 ## Naming convention ("sortable + provenance")
 

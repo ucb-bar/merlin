@@ -338,7 +338,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--mined", required=True, help="mined_knowledge/rvv/<run>/ dir")
     ap.add_argument("--runs-root", default="runs/rvv_experiment")
-    ap.add_argument("--out", default="output/rvv_tuning_evidence_report.md")
+    ap.add_argument("--out", default="artifacts/kernel-mining/rvv/tuning_evidence_report.md")
     a = ap.parse_args(argv)
     md = build_report(a.mined, a.runs_root)
     out = Path(a.out)

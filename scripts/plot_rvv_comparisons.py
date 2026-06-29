@@ -21,7 +21,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-OUT = Path(__file__).resolve().parents[1] / "artifacts" / "plots" / "kernels" / "ceiling"
+OUT = Path(__file__).resolve().parents[1] / "artifacts" / "ceiling"
 plt.rcParams.update({"font.size": 10, "axes.edgecolor": "#888", "savefig.facecolor": "white"})
 
 C = {"OpenBLAS": "#e8893b", "XNNPACK": "#d4564a", "intrinsic": "#2596be",

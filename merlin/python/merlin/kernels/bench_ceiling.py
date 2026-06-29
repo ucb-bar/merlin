@@ -46,7 +46,7 @@ from . import build_asm
 # spike run conventions, lifted from the saturn benchmarks/Makefile RISCV_SIM line.
 DEFAULT_ISA = "rv64gcv_zfh_zvfh"
 SPIKE_MEM = "-m0x70020000:0x20000,0x80000000:0x10000000"
-DEFAULT_CEILING_PATH = "output/kernels/ceiling/ceiling.jsonl"
+DEFAULT_CEILING_PATH = "artifacts/ceiling/ceiling.jsonl"
 
 # The saturn Makefile cflags (RISCV_GCC_OPTS) verbatim, minus the per-bench -I flags
 # (build_asm/the recipe add those). The empty benchmarks/env/ dir is missing encoding.h,

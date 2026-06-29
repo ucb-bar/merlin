@@ -320,7 +320,7 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description="Generate kernel-sized RVV workload bundles.")
     ap.add_argument("op", choices=sorted(_GENERATORS), help="workload op")
-    ap.add_argument("--out-root", default="output/rvv_workloads")
+    ap.add_argument("--out-root", default="artifacts/kernel-mining/rvv/workloads")
     ap.add_argument("-M", type=int, default=64)
     ap.add_argument("-N", type=int, default=64)
     ap.add_argument("-K", type=int, default=64)

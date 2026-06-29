@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch
 import numpy as np
 
-OUT = Path(__file__).resolve().parents[1] / "artifacts" / "plots" / "kernels" / "ceiling"
+OUT = Path(__file__).resolve().parents[1] / "artifacts" / "ceiling"
 
 # ---- palette ----
 INK     = "#2b2b2b"

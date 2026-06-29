@@ -29,8 +29,8 @@ from merlin_plotstyle import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-BENCH = ROOT / "artifacts" / "plots" / "rvv_bench"
-CEIL = ROOT / "artifacts" / "plots" / "kernels" / "ceiling"
+BENCH = ROOT / "artifacts" / "kernel-mining" / "rvv" / "bench"
+CEIL = ROOT / "artifacts" / "ceiling"
 OUT = ROOT / "artifacts" / "presentation"
 OUT.mkdir(parents=True, exist_ok=True)
 
