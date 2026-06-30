@@ -750,7 +750,8 @@ def zoo_numerical_audit() -> list:
     These predate prov.fqn but still carry prov.quantization + dtypes — enough to show the
     cross-zoo finding that low-bit weights are dequantized to f32 before compute.
     """
-    root = paths.repo_root() / "output"
+    from merlin.common.artifacts import recaptures_dir
+    root = recaptures_dir()  # artifacts/recaptures/ (symlinked to legacy output/ in transition)
     contracts = []
     seen = set()
     for d in sorted(root.glob("*_consistent")):
