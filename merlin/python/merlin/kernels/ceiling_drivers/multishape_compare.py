@@ -158,7 +158,7 @@ def _ours_package(run_id: str, features: list[str]):
 
 def _gen_matmul_bundle(M: int, N: int, K: int) -> Path:
     from ...rvvgen import workloads
-    out_root = repo_root() / "output" / "rvv_workloads"
+    out_root = repo_root() / "artifacts" / "cache" / "rvv_workloads"
     return workloads.gen_matmul_f32(out_root, M=M, N=N, K=K)
 
 
@@ -310,7 +310,7 @@ def run_all() -> dict:
 
 
 def _notrun_path() -> Path:
-    return repo_root() / "output" / "kernels" / "ceiling" / "cross_framework_notrun.jsonl"
+    return repo_root() / "artifacts" / "ceiling" / "cross_framework_notrun.jsonl"
 
 
 def _emit(row: dict, out_path: Path) -> None:
@@ -490,7 +490,7 @@ def rebuild_matrix_from_jsonl() -> Path:
                     and r.get("source") in want
                     and r["source"] not in grid.get(r["M"], {})):  # a pass wins over a stale not_run
                 grid[r["M"]][r["source"]] = r
-    out_md = repo_root() / "output" / "kernels" / "ceiling" / "cross_framework_matrix.md"
+    out_md = repo_root() / "artifacts" / "ceiling" / "cross_framework_matrix.md"
     out_md.parent.mkdir(parents=True, exist_ok=True)
     write_matrix(grid, out_md)
     return out_md
@@ -508,7 +508,7 @@ def main() -> int:
         return 2
     print(f"shapes={SHAPES}  experts=(openblas,xnnpack)  ours={[f[0] for f in OURS_FORKS]}")
     grid = run_all()
-    out_md = repo_root() / "output" / "kernels" / "ceiling" / "cross_framework_matrix.md"
+    out_md = repo_root() / "artifacts" / "ceiling" / "cross_framework_matrix.md"
     out_md.parent.mkdir(parents=True, exist_ok=True)
     write_matrix(grid, out_md)
     print(f"matrix -> {out_md}")

@@ -68,7 +68,7 @@ def test_each_kernel_compiles_and_matches_numpy(tmp_path):
     assert all(c.ok for c in checks), [(c.symbol, c.max_abs) for c in checks]
 
 
-@pytest.mark.skipif(not (REPO / "output/small_consistent/model.mlir").is_file(),
+@pytest.mark.skipif(not (REPO / "artifacts/recaptures/small_consistent/model.mlir").is_file(),
                     reason="small_llama capture not present")
 @pytest.mark.skipif(not _toolchain(), reason="m2m venv / clang-23 missing")
 def test_real_small_llama_matmul_kernels_all_pass(tmp_path):
@@ -77,7 +77,7 @@ def test_real_small_llama_matmul_kernels_all_pass(tmp_path):
     from merlin.llvmlower.kernel_backend import check_matmul_kernels
     from merlin.xdsl_dialects.lowering.outline import outline_dispatches
 
-    res = outline_dispatches(parse_mlir_file(REPO / "output/small_consistent/model.mlir"))
+    res = outline_dispatches(parse_mlir_file(REPO / "artifacts/recaptures/small_consistent/model.mlir"))
     checks = check_matmul_kernels(res, tmp_path)
     assert len(checks) == 15
     failures = [(c.symbol, c.shapes, c.max_abs) for c in checks if not c.ok]

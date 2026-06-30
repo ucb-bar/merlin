@@ -144,7 +144,7 @@ def write_manifest(out_dir: Path, *, spec, measurements, ccas, figures, root: Pa
     import yaml
     out_dir = Path(out_dir)
     sources = sorted({m.source for m in measurements.values() if m.source})
-    decode_src = "output/kernels/ceiling/kernel_breakdown_decode.json"
+    decode_src = "artifacts/ceiling/kernel_breakdown_decode.json"
     cells = {}
     for (cn, wn), m in measurements.items():
         cells[f"{cn}|{wn}"] = {

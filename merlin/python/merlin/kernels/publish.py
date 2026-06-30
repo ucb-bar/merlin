@@ -41,7 +41,7 @@ def _index_summary(index_path: Path) -> dict:
 
 def publish_mining(index_paths: list[str | Path], target: str, *, version: int,
                    timestamp: str, out_root: str | Path = "mined_knowledge",
-                   extract_dir: str | Path = "output/kernels",
+                   extract_dir: str | Path = "artifacts/kernel-index",
                    min_kernels: int = 10) -> Path:
     """Assemble a versioned mined-knowledge artifact from the kernel-extract outputs.
 

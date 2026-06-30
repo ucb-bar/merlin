@@ -115,7 +115,7 @@ def test_more_harts_never_slower():
     assert spans[0] == partition_dispatches(prog, n_harts=1).schedule.serial_cost
 
 
-@pytest.mark.skipif(not (REPO / "output/small_consistent/model.mlir").is_file(),
+@pytest.mark.skipif(not (REPO / "artifacts/recaptures/small_consistent/model.mlir").is_file(),
                     reason="small_llama capture not present")
 def test_real_model_schedule_is_valid_and_parallel():
     from merlin.frontends.linalg_mlir import parse_mlir_file
@@ -124,7 +124,7 @@ def test_real_model_schedule_is_valid_and_parallel():
     from merlin.xdsl_dialects.lowering.schedule_dispatch import partition_dispatches, validate
 
     _, prog = lower_model_to_dispatch_program(
-        parse_mlir_file(REPO / "output/small_consistent/model.mlir"))
+        parse_mlir_file(REPO / "artifacts/recaptures/small_consistent/model.mlir"))
     pr = partition_dispatches(prog, n_harts=4)
     assert validate(prog, pr.schedule) == []      # dependency-safe across barriers
     assert pr.schedule.max_width > 1              # real intra-layer parallelism exists

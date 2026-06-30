@@ -86,7 +86,7 @@ def main() -> int:
         if not a.force and already(ledger, bundle):
             print(f"SKIP {bundle} (done)", flush=True)
             continue
-        mdir = ROOT / "output" / bundle
+        mdir = ROOT / "artifacts" / "recaptures" / bundle
         rec = {"bundle": bundle, "t": time.strftime("%Y-%m-%dT%H:%M:%S"), "target": "k1"}
         if not (mdir / "model.mlir").is_file():
             rec.update(ran=False, error="bundle missing")

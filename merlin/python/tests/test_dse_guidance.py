@@ -810,7 +810,7 @@ def test_per_component_calibration_reports_unidentifiable():
         or "not identifiable" in CC.multifeature_report_md(mf)
 
 
-_OUTPUT = Path(__file__).resolve().parents[3] / "output"
+_OUTPUT = Path(__file__).resolve().parents[3] / "artifacts" / "recaptures"
 
 
 @pytest.mark.skipif(not (_OUTPUT / "small_llama_int8_consistent" / "model.mlir").exists(),
@@ -832,7 +832,7 @@ def test_measure_reproduces_dispatch_count_if_runtime_available():
 def test_numerical_contract_flags_lost_lowbit():
     from merlin.dse_guidance import numerical_contract as NC
     import os
-    cap = "output/rdt2_int8_consistent"
+    cap = "artifacts/recaptures/rdt2_int8_consistent"
     if not os.path.isfile(f"{cap}/model.mlir"):
         pytest.skip("no int8 zoo capture")
     c = NC.audit(cap, workload="rdt2_int8", has_epilogue=True)

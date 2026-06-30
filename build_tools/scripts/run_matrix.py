@@ -13,7 +13,7 @@ from pathlib import Path
 from merlin.runtime.dispatch_runtime import run_model
 
 REPO = Path(__file__).resolve().parents[2]
-OUT = REPO / "output"
+OUT = REPO / "artifacts" / "recaptures"
 
 
 def main(names):

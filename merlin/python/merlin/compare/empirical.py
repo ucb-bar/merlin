@@ -39,11 +39,11 @@ def _repo_root() -> Path:
 # Whole-model JSONs, in PREFERENCE order per workload. A vf-bearing file is preferred when a config
 # needs ours_wholemodel_vf (only k1_vf_*.json carries it); otherwise the 4-way file is canonical.
 _MODEL_SOURCES = {
-    "openvla": ["output/rvv_bench/k1_vf_openvla.json", "output/rvv_bench/k1_4way_openvla.json"],
-    "rdt2": ["output/rvv_bench/k1_4way_rdt2.json"],
-    "bitvla": ["output/rvv_bench/k1_4way_bitvla.json"],
+    "openvla": ["artifacts/measurements/k1_spacemit/k1_vf_openvla.json", "artifacts/measurements/k1_spacemit/k1_4way_openvla.json"],
+    "rdt2": ["artifacts/measurements/k1_spacemit/k1_4way_rdt2.json"],
+    "bitvla": ["artifacts/measurements/k1_spacemit/k1_4way_bitvla.json"],
 }
-_GEMM_SOURCE = "output/kernels/ceiling/cross_framework_matrix_k1.jsonl"
+_GEMM_SOURCE = "artifacts/measurements/k1_spacemit/gemm/cross_framework_matrix_k1.jsonl"
 
 # spec config name -> whole-model JSON key
 _MODEL_KEY = {

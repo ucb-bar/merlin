@@ -338,14 +338,9 @@ def cache_dir(namespace: str, *, ensure: bool = True) -> Path:
 
 
 def recaptures_dir() -> Path:
-    """Model-recapture root ``artifacts/recaptures/`` (PURGEABLE; 130 GB, physical-in-place).
+    """Model-recapture root ``artifacts/recaptures/`` (PURGEABLE; ~150 GB, regenerable via m2m).
 
-    During the transition this is a relative symlink to the legacy ``output/`` tree; the
-    migration creates it. If neither exists yet, falls back to legacy ``output/`` so readers
-    keep working before the symlink is in place.
+    Holds model captures (``<model>_<dtype>_<variant>/model.mlir`` + weights/io) and golden
+    reference outputs, consumed by every target backend. The legacy ``output/`` tree is retired.
     """
-    d = repo_root() / "artifacts" / "recaptures"
-    if d.exists():
-        return d
-    legacy = repo_root() / "output"
-    return legacy if legacy.exists() else d
+    return repo_root() / "artifacts" / "recaptures"

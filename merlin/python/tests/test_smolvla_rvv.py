@@ -25,8 +25,8 @@ from merlin.xdsl_dialects import _common
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
 
 REPO = Path(__file__).resolve().parents[3]
-PREFIX = REPO / "output/smolvla_prefix_consistent"
-FULL = REPO / "output/smolvla_int8_consistent"
+PREFIX = REPO / "artifacts/recaptures/smolvla_prefix_consistent"
+FULL = REPO / "artifacts/recaptures/smolvla_int8_consistent"
 
 
 def _toolchain():
@@ -44,7 +44,7 @@ def test_smolvla_prefix_exact(tmp_path):
     """Vision encoder + conv + int8 dequant + embeddings (f32) reproduce torch exactly."""
     from merlin.runtime.dispatch_runtime import run_model
 
-    res = run_model(PREFIX, tmp_path, cache_dir=REPO / "output/.kc_smolvla_prefix")
+    res = run_model(PREFIX, tmp_path, cache_dir=REPO / "artifacts/cache/kc_smolvla_prefix")
     assert res["cos"] > 0.9999 and res["rel"] < 1e-2, (res["cos"], res["rel"])
 
 
@@ -57,6 +57,6 @@ def test_smolvla_full_runs_at_bf16_fidelity(tmp_path):
     """Whole int8+bf16 VLA executes end to end; bf16 flow-matching head -> cos ~0.978."""
     from merlin.runtime.dispatch_runtime import run_model
 
-    res = run_model(FULL, tmp_path, cache_dir=REPO / "output/.kc_smolvla")
-    assert res["output"].shape == (1, 50, 32)
+    res = run_model(FULL, tmp_path, cache_dir=REPO / "artifacts/cache/kc_smolvla")
+    assert res["artifacts" / "recaptures"].shape == (1, 50, 32)
     assert res["cos"] > 0.97, res["cos"]          # bf16 fidelity through the denoise head
