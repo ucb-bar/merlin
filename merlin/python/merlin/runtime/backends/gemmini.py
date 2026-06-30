@@ -11,7 +11,7 @@ bare-metal harness -> run on an oracle:
 :func:`merlin.runtime.reference.reference_outputs` (the same oracle the Python simulator
 backend is held to). Spike and Verilator run the *exact same ELF*.
 
-Toolchain resolution mirrors ``tools/probe_gemmini_oracle.py``:
+Toolchain resolution mirrors ``build_tools/scripts/probe_gemmini_oracle.py``:
 ``MERLIN_CHIPYARD`` (default ``/scratch2/agustin/chipyard``), plus optional
 ``MERLIN_RISCV_GCC`` / ``MERLIN_GEMMINI_SPIKE`` / ``MERLIN_GEMMINI_VERILATOR`` /
 ``MERLIN_GEMMINI_HARNESS_DIR`` overrides.

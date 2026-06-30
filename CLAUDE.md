@@ -57,8 +57,8 @@ together. Keep inner file names identical across targets (e.g. `perf_results.jso
 `manifest.yaml`) so target-vs-target diffs are trivial.
 
 **Enforcement** (do not bypass without cause): a PreToolUse hook
-(`scripts/hooks/guard_artifact_writes.py`) blocks generated writes outside the three roots;
-`scripts/check_artifact_layout.py` lints tracked-file violations (pre-commit / Stop hook). Helper
-API and examples: `.claude/skills/artifact-layout/SKILL.md` and `merlin/python/merlin/common/artifacts.py`.
+(`.claude/hooks/guard_artifact_writes.py`) blocks generated writes outside the three roots;
+`build_tools/scripts/check_artifact_layout.py` lints tracked-file violations (pre-commit / Stop hook).
+Helper API and examples: `.claude/skills/artifact-layout/SKILL.md` and `merlin/python/merlin/common/artifacts.py`.
 Escape hatch for a genuine one-off: `export MERLIN_ALLOW_ARTIFACT_WRITE=1` or add a prefix to
-`scripts/hooks/artifact_allowlist.txt`.
+`.claude/hooks/artifact_allowlist.txt`.

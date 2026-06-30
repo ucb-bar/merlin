@@ -7,8 +7,8 @@ Repository root for **merlin**, a compiler-centered framework for exploring whic
 ## What belongs here
 
 - Top-level config: `README.md`, `pyproject.toml`, `CMakeLists.txt`, `.gitignore`.
-- `build_tools/`, `docs/`, `third_party/`, `tools/`, and the internal `merlin/` tree.
-- Generated `build/` and produced `output/` dirs (gitignored) and local `tmp/` scratch.
+- `build_tools/`, `docs/`, `third_party/`, and the internal `merlin/` tree.
+- Generated `runs/`, `artifacts/`, `build/` (gitignored; see CLAUDE.md "Generated-output convention") and local `tmp/` scratch.
 
 ## What does not belong here
 
@@ -18,7 +18,7 @@ Repository root for **merlin**, a compiler-centered framework for exploring whic
 
 ## Interfaces
 
-`tools/` exposes thin CLI entrypoints that call into `merlin/python/merlin/`. `merlin/schemas/` is the cross-workstream contract. See `docs/repo_structure.md` and `docs/parallel_workstreams.md`.
+The CLI surface is the console-scripts declared in `pyproject.toml [project.scripts]` (each a thin entrypoint into `merlin/python/merlin/`), documented in the generated `docs/cli.md`. `merlin/schemas/` is the cross-workstream contract. See `docs/repo_structure.md` and `docs/parallel_workstreams.md`.
 
 ## Invariants
 

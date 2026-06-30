@@ -12,7 +12,7 @@ description: >-
 Generated output in this repo lives in **exactly three top-level roots**. Never write
 generated files anywhere else (no `output/`, `results/`, `selfcheck_out/`, `docs/presentation/`,
 or per-experiment `runs/`/`reports/` — those are retired). A PreToolUse hook
-(`scripts/hooks/guard_artifact_writes.py`) blocks violations; `scripts/check_artifact_layout.py`
+(`.claude/hooks/guard_artifact_writes.py`) blocks violations; `build_tools/scripts/check_artifact_layout.py`
 lints them.
 
 | Root | Holds | How to create |
@@ -87,4 +87,4 @@ via the m2m exporter), so `output/` can be deleted once readers migrate to `reca
 ## Escape hatch
 
 For a genuine one-off outside the roots: `export MERLIN_ALLOW_ARTIFACT_WRITE=1`, or add a path
-prefix to `scripts/hooks/artifact_allowlist.txt`. Query past runs with `aet runs` / `aet show`.
+prefix to `.claude/hooks/artifact_allowlist.txt`. Query past runs with `aet runs` / `aet show`.

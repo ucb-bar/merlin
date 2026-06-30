@@ -2,18 +2,21 @@
 
 ## Purpose
 
-Repo-level tests (integration, conformance, golden, data).
+The single pytest suite for merlin (~754 tests): unit + integration across kernels, MLIR/xDSL
+compilation, DSE, runtime/backends, model bringup, validation. This is the sole `testpaths` entry
+in `pyproject.toml`. Test fixtures/data live in `fixtures/` and `data/` here.
 
 ## What belongs here
 
-- Files appropriate to the purpose above.
+- `test_*.py` (the suite), shared `fixtures/` and `data/` consumed by tests.
 
 ## What does not belong here
 
-- Unrelated code or artifacts.
-- Generated outputs (use gitignored `build/`/`output/`).
+- Library/application source (lives under `merlin/python/merlin/`).
+- Generated outputs (those are gitignored under `runs/` / `artifacts/`).
 
 ## Invariants
 
-- Keep this directory focused on its stated purpose.
-- Every subdirectory must also contain an AGENT.md.
+- Resolve repo paths via `merlin.common.paths.repo_root()` / `merlin_dir()`, never `__file__` parents
+  (so tests are location-independent).
+- Run: `.venv/bin/python -m pytest merlin/tests`.

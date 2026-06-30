@@ -20,18 +20,12 @@ from .empirical import Measurement
 
 
 def _load_style():
-    """Import scripts/plot_paper_style.py for its palette + helpers (no side effects on import)."""
-    root = Path(__file__).resolve().parents[4]
-    p = root / "scripts" / "plot_paper_style.py"
-    if not p.is_file():
-        return None
-    spec = importlib.util.spec_from_file_location("_merlin_plot_paper_style", p)
-    mod = importlib.util.module_from_spec(spec)
+    """Import merlin.plotting.plot_paper_style for its palette + helpers (no side effects on import)."""
     try:
-        spec.loader.exec_module(mod)
+        from merlin.plotting import plot_paper_style as mod
+        return mod
     except Exception:
         return None
-    return mod
 
 
 def _have_mpl() -> bool:

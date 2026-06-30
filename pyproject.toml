@@ -42,7 +42,7 @@ package-dir = { "" = "merlin/python" }
 where = ["merlin/python"]
 
 [tool.pytest.ini_options]
-testpaths = ["merlin/python/tests", "merlin/tests"]
+testpaths = ["merlin/tests"]
 
 [tool.uv]
 # Default dev environment includes the dev tools and the xdsl prototyping plane.
