@@ -3,12 +3,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from merlin.common.paths import merlin_dir
+
 import pytest
 
 from merlin.kernels import cca
 from merlin.kernels.decode import objdump, rvv
 
-_ASM_DIR = Path(__file__).resolve().parent / "data" / "cca_asm"
+_ASM_DIR = merlin_dir() / "tests" / "data" / "cca_asm"
 
 # matmul-ish stream: mul_add (vfmul+vfadd), no vfmacc, fixed vsetivli, e32m2.
 _MUL_ADD = """\

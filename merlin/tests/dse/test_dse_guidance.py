@@ -19,7 +19,7 @@ from merlin.dse_guidance import (aet_ingest, attribution as ATTR, axes, baseline
                                  calibration, candidates as CAND, fidelity as FID, pipeline,
                                  representation, study, synth, temporal as T, topology as TOP)
 
-FIX = Path(__file__).parent / "fixtures" / "dse_guidance"
+FIX = merlin_dir() / "tests" / "fixtures" / "dse_guidance"
 
 
 def _smolvla():
