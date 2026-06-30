@@ -156,6 +156,27 @@ def check_benchmarks(errors):
             errors.append(f"missing benchmark: merlin/benchmarks/semantic_memory/{b}.yaml")
 
 
+TEST_BUCKETS = {"kernels", "rvv", "dse", "gemmini", "targetgen", "ir", "runtime", "infra"}
+
+
+def check_test_layout(errors):
+    """Every test lives in merlin/tests/<bucket>/test_*.py (bucket in the fixed set); none at root."""
+    tdir = os.path.join(ROOT, "merlin", "tests")
+    if not os.path.isdir(tdir):
+        return
+    for name in os.listdir(tdir):
+        if name.startswith("test_") and name.endswith(".py"):
+            errors.append(f"test at merlin/tests/ root (must be in a subsystem bucket): {name}")
+    for b in sorted(os.listdir(tdir)):
+        bp = os.path.join(tdir, b)
+        if not os.path.isdir(bp) or b in {"fixtures", "data", "__pycache__"}:
+            continue
+        if b not in TEST_BUCKETS:
+            has_tests = any(f.startswith("test_") and f.endswith(".py") for f in os.listdir(bp))
+            if has_tests:
+                errors.append(f"unknown test bucket merlin/tests/{b} (allowed: {sorted(TEST_BUCKETS)})")
+
+
 def check_cli_docs(errors):
     """docs/cli.md must be in sync with pyproject [project.scripts] (single CLI source of truth)."""
     import subprocess
@@ -174,6 +195,7 @@ def main():
         ("docs", check_docs),
         ("benchmarks", check_benchmarks),
         ("cli docs", check_cli_docs),
+        ("test layout", check_test_layout),
     ]
     for label, fn in checks:
         before = len(errors)

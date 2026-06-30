@@ -62,3 +62,16 @@ together. Keep inner file names identical across targets (e.g. `perf_results.jso
 Helper API and examples: `.claude/skills/artifact-layout/SKILL.md` and `merlin/python/merlin/common/artifacts.py`.
 Escape hatch for a genuine one-off: `export MERLIN_ALLOW_ARTIFACT_WRITE=1` or add a prefix to
 `.claude/hooks/artifact_allowlist.txt`.
+
+# Test layout — one suite, organized by subsystem
+
+All tests live in **`merlin/tests/`** (the sole pytest `testpaths`), organized into **subsystem
+buckets**: `kernels/ rvv/ dse/ gemmini/ targetgen/ ir/ runtime/ infra/`. Rules (enforced by
+`build_tools/scripts/check_structure.py` "test layout"; see `.claude/skills/test-layout`):
+
+- A test file is `merlin/tests/<bucket>/test_<area>.py` — **never at the `merlin/tests/` root**, and
+  `<bucket>` must be one of the eight above. Place a new test in the subsystem it exercises.
+- Shared inputs live in `merlin/tests/fixtures/` and `merlin/tests/data/`.
+- Resolve repo paths via `merlin.common.paths.repo_root()` / `merlin_dir()` — **never** `Path(__file__).parents[N]`
+  (so tests are location-independent and survive moves).
+- Run the suite: `.venv/bin/python -m pytest merlin/tests`.
