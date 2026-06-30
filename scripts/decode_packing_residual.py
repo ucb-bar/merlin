@@ -78,7 +78,7 @@ def main():
             rows.append({"kernel": run_id, "shape": sname, "MNK": (M, N, K),
                          "symbol": fsym, "packed": False, **_mem_row(stream)})
 
-    out = REPO / "output" / "kernels" / "ceiling" / "packing_residual_decode.json"
+    out = REPO / "artifacts" / "ceiling" / "packing_residual_decode.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(rows, indent=2, default=str))
     print(json.dumps(rows, indent=2, default=str))

@@ -43,7 +43,7 @@ def run_ours_vectorized(op: str, sizes: list[int], reps: int) -> list[dict]:
     gen = workloads.gen_gelu_f32 if op == "gelu" else workloads.gen_sigmoid_f32
     rows = []
     for Nsz in sizes:
-        bundle = gen(REPO / "output" / "rvv_workloads", N=Nsz)
+        bundle = gen(REPO / "artifacts" / "cache" / "rvv_workloads", N=Nsz)
         base = {"op": op, "dtype": "f32", "size_n": Nsz, "source": "ours_vectorized",
                 "target": "k1", "mode": "inner_compute", "timer": "rdtime",
                 "timebase_hz": k1.K1_TIMEBASE_HZ, "vectorize": True,
@@ -64,7 +64,7 @@ def main():
     ap.add_argument("--ops", default="gelu,sigmoid")
     ap.add_argument("--sizes", default="1024,16384,262144")
     ap.add_argument("--reps", type=int, default=3)
-    ap.add_argument("--out", default="output/kernels/ceiling/ours_vectorized_ops_k1.jsonl")
+    ap.add_argument("--out", default="artifacts/measurements/k1_spacemit/gemm/ours_vectorized_ops_k1.jsonl")
     a = ap.parse_args()
     sizes = [int(s) for s in a.sizes.split(",")]
     rows = []

@@ -210,7 +210,7 @@ def main():
             rows.append({"kernel": run_id, "shape": sname, "MNK": (M, N, K),
                          "symbol": fsym, "n_insns": n, "packed": False, **a})
 
-    out = REPO / "output" / "kernels" / "ceiling" / "kernel_breakdown_decode.json"
+    out = REPO / "artifacts" / "ceiling" / "kernel_breakdown_decode.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(rows, indent=2, default=str))
     print(json.dumps(rows, indent=2, default=str))

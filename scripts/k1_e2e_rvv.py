@@ -84,7 +84,7 @@ def main():
     ap.add_argument("--baseline", default="generated_targets/rvv/hand_v0")
     ap.add_argument("--optimized", required=True)
     ap.add_argument("-n", type=int, default=3)
-    ap.add_argument("--out", default="output/rvv_bench/k1_e2e_tiny_llama.json")
+    ap.add_argument("--out", default="artifacts/measurements/k1_spacemit/k1_e2e_tiny_llama.json")
     a = ap.parse_args()
 
     md = Path(a.model)
