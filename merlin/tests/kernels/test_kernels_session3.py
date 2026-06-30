@@ -1,6 +1,7 @@
 """Session-3 coverage: OpenBLAS ingest, content-hash dedup, shape regimes + regime matrix,
 L6/L8 emission, invariants, audit, plots, and --json CLI output."""
 import json
+from merlin.common.paths import merlin_dir
 import os
 
 import pytest
@@ -11,7 +12,7 @@ from merlin.kernels.ingest.generic import ingest_generic
 from merlin.kernels.ingest.openblas import ingest_openblas
 from merlin.kernels.types import NormalizedKernel
 
-DATA = os.path.join(os.path.dirname(__file__), "data", "kernels")
+DATA = str(merlin_dir() / "tests" / "data" / "kernels")
 OPENBLAS = os.path.join(DATA, "openblas")
 
 

@@ -1,9 +1,10 @@
 """Ingest adapters parse op/dtype/target from real-shaped fixtures."""
 import os
+from merlin.common.paths import merlin_dir
 
 from merlin.kernels.ingest.generic import ingest_generic
 
-DATA = os.path.join(os.path.dirname(__file__), "data", "kernels")
+DATA = str(merlin_dir() / "tests" / "data" / "kernels")
 
 
 def _one(path, **kw):

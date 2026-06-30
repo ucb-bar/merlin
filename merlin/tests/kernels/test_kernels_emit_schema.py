@@ -1,5 +1,6 @@
 """Emitted records/candidates/rules validate against the shared schemas."""
 import os
+from merlin.common.paths import merlin_dir
 
 from merlin.common import schemas
 from merlin.kernels.emit.abstraction_candidate import emit_abstraction_candidate
@@ -7,7 +8,7 @@ from merlin.kernels.emit.kernel_record import emit_kernel_record
 from merlin.kernels.emit.policy_rule import emit_policy_rule
 from merlin.kernels.ingest.generic import ingest_generic
 
-DATA = os.path.join(os.path.dirname(__file__), "data", "kernels")
+DATA = str(merlin_dir() / "tests" / "data" / "kernels")
 
 
 def test_kernel_record_valid():
