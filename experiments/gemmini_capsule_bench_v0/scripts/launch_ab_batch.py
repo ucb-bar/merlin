@@ -41,6 +41,7 @@ ARMS = {
     "baseline":         (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "raw_baseline"], "rb", "raw_baseline", "raw_baseline_hwbringup_v0"),
     "merlin":           (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "merlin_assisted"], "merlin", "merlin_assisted", "merlin_assisted_hwbringup_v0"),
     "merlin_rtlchecks": (SCRIPTS / "run_rtlchecks_qa_loop.py", [], "merlincirct", "merlin_assisted", "merlin_assisted_rtlchecks_hwbringup_v0"),
+    "cpp_merlininfra":  (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "cpp_merlininfra"], "rbinfra", "cpp_merlininfra", "cpp_merlininfra_hwbringup_v0"),
 }
 
 
@@ -79,7 +80,7 @@ def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
 ANSWER_SURFACES = [
     "generated_targets/gemmini",
     "bench_contract/capsules/hidden",
-    "results/gemmini",
+    "artifacts/capsule-bench/gemmini",
 ]
 
 
@@ -104,8 +105,8 @@ def _run_preflight() -> int:
 def _arm_env(arm: str, a, base_env: dict) -> dict:
     """Per-arm env. Realistic baseline = status-quo C++ OOT MLIR (PILOT_LANG=cpp); merlin arms = xDSL."""
     env = dict(base_env)
-    if a.experiment == "realistic" and arm == "baseline":
-        env["PILOT_LANG"] = "cpp"
+    if a.experiment == "realistic" and arm in ("baseline", "cpp_merlininfra"):
+        env["PILOT_LANG"] = "cpp"   # both C++ arms author a C++ OOT package (status-quo vs infra-assisted)
     return env
 
 
@@ -225,7 +226,7 @@ def main(argv=None):
         for arm, rid, rd, cond in planned:
             rd.parent.mkdir(parents=True, exist_ok=True)
             log = rd.parent / f"{rid}.launch.log"
-            prefix = "PILOT_LANG=cpp " if (a.experiment == "realistic" and arm == "baseline") else ""
+            prefix = "PILOT_LANG=cpp " if (a.experiment == "realistic" and arm in ("baseline", "cpp_merlininfra")) else ""
             parts.append(f"{prefix}{' '.join(_arm_cmd(arm, rid, a, cond))} > {log} 2>&1")
             manifest["runs"].append({"arm": arm, "run_id": rid, "condition": cond, "pid": None, "log": str(log)})
         chain = " ; ".join(parts)

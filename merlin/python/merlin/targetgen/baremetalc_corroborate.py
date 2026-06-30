@@ -266,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--workdir", default="/tmp/bmc_corro")
     ap.add_argument("--simulators", default="spike")
-    ap.add_argument("--report", default="results/gemmini/bareMetalC_corroboration_report.md")
+    ap.add_argument("--report", default="artifacts/capsule-bench/gemmini/bareMetalC_corroboration_report.md")
     a = ap.parse_args(argv)
     sims = tuple(a.simulators.split(","))
     rows = corroborate_all(Path(a.workdir), simulators=sims, out_report=Path(a.report))

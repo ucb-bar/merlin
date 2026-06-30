@@ -17,14 +17,14 @@ from pathlib import Path
 import yaml
 
 REPO = Path(__file__).resolve().parents[3]
-OUT = REPO / "results" / "gemmini" / "capsule_bench_v0_freeze_manifest.yaml"
+OUT = REPO / "artifacts" / "capsule-bench" / "gemmini" / "capsule_bench_v0_freeze_manifest.yaml"
 
 # artifact trees to hash (relative to repo); build/ and __pycache__ excluded
 ARTIFACTS = {
     "bench_contract": "bench_contract",
     "targetgen_modules": "merlin/python/merlin/targetgen",
     "agent_spec_v1": "generated_targets/gemmini/agent_spec_v1_mlir_oot",
-    "results_gemmini": "results/gemmini",
+    "results_gemmini": "artifacts/capsule-bench/gemmini",
     "runs_public": "runs/capsule_bench_v1",
     "runs_hidden": "runs/capsule_bench_v1_hidden",
 }

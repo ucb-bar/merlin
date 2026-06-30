@@ -33,7 +33,7 @@ CANARIES = [
     "generated_targets/gemmini/hand_smoke_oot/CANARY_FORBIDDEN.txt",
     "generated_targets/gemmini/merlin_native_v0/CANARY_FORBIDDEN.txt",
     "bench_contract/capsules/hidden/CANARY_HIDDEN.txt",
-    "results/gemmini/CANARY_RESULTS.txt",
+    "artifacts/capsule-bench/gemmini/CANARY_RESULTS.txt",
     "merlin/python/merlin/runtime/CANARY_FORBIDDEN.txt",
 ]
 G0 = "generated_targets/gemmini/agent_spec_v0_mlir_oot/certification/g0_matmul/lowered.llvm.mlir"
@@ -285,7 +285,7 @@ def main() -> int:
     if not blocking:
         L += ["Recommended next: a SMALL real pilot (reduced capsule set, real Opus, "
               "`--sandbox bwrap`, no hidden-repair) on each arm — not the full comparison."]
-    out = C.REPO / "results" / "gemmini" / "experiment_preflight_report.md"
+    out = C.REPO / "artifacts" / "capsule-bench" / "gemmini" / "experiment_preflight_report.md"
     out.write_text("\n".join(L) + "\n", encoding="utf-8")
     print(f"wrote {out}")
     print(verdict)

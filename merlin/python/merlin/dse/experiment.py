@@ -69,7 +69,7 @@ def phase_transition(axes: dict | None = None, cost_model: dict | None = None,
     result = {"rows": rows, "exploitability": expl, "csv": csv_text}
 
     if out_dir is None:
-        out_dir = paths.repo_root() / "output" / "dse" / workload
+        out_dir = paths.repo_root() / "artifacts" / "dse" / workload
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     (out / "phase_transition.csv").write_text(csv_text, encoding="utf-8")

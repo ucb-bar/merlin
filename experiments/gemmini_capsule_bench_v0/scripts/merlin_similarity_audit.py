@@ -31,7 +31,7 @@ PRIOR_BACKENDS = [
     C.REPO / "generated_targets" / "gemmini" / "hand_smoke_oot",
     C.REPO / "generated_targets" / "gemmini" / "merlin_native_v0",
 ]
-PRIOR_REPORTS = C.REPO / "results" / "gemmini"
+PRIOR_REPORTS = C.REPO / "artifacts" / "capsule-bench" / "gemmini"
 
 _SKIP = {"build", "__pycache__", ".git", "CANARY_FORBIDDEN.txt"}
 _SRC_EXT = {".py", ".td", ".cpp", ".h", ".hpp", ".cc", ".mlir", ".yaml", ".yml", ".json", ".txt",
