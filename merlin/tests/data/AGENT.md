@@ -1,19 +1,19 @@
-# AGENT.md — merlin/tests/data
+# AGENT.md — merlin/python/tests/data
 
 ## Purpose
 
-Shared test fixtures and data.
+Small, checked-in fixture inputs for kernel-mining unit tests.
 
 ## What belongs here
 
-- Files appropriate to the purpose above.
+- Tiny (≤~60 line) trimmed kernel snippets used as deterministic test inputs.
 
 ## What does not belong here
 
-- Unrelated code or artifacts.
-- Generated outputs (use gitignored `build/`/`output/`).
+- Full external kernels or large corpora (those are passed by path/env at runtime).
+- Generated outputs (use gitignored `output/`).
 
 ## Invariants
 
-- Keep this directory focused on its stated purpose.
+- Fixtures are minimal and self-explanatory; they exist to pin extractor behavior.
 - Every subdirectory must also contain an AGENT.md.

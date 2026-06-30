@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".venv/bin/python scripts/hooks/guard_artifact_writes.py"
+            "command": ".venv/bin/python .claude/hooks/guard_artifact_writes.py"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".venv/bin/python scripts/check_artifact_layout.py --stop-hook"
+            "command": ".venv/bin/python build_tools/scripts/check_artifact_layout.py --stop-hook"
           }
         ]
       }

@@ -1,7 +1,7 @@
 # Gemmini oracle status (Step 0)
 
 Proof that the Gemmini execution oracles exist and run a known-good binary. Re-run with
-`python tools/probe_gemmini_oracle.py [--run spike] [--run verilator]`.
+`python build_tools/scripts/probe_gemmini_oracle.py [--run spike] [--run verilator]`.
 
 ## Environment (probed, all present)
 

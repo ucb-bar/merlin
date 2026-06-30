@@ -2,19 +2,20 @@
 
 ## Purpose
 
-Build and developer tooling for merlin (cmake helpers, scripts, docker).
+Build & developer tooling for merlin: `scripts/` (build/sweep/capture orchestration, K1/board
+measurement & analysis harnesses, repo linters `check_structure.py` / `check_artifact_layout.py` /
+`gen_cli_docs.py`), `cmake/`, `docker/`, toolchain setup.
 
 ## What belongs here
 
-- Files appropriate to the purpose above.
+- Tracked Python/shell automation, measurement/analysis runners, and repo linters.
 
 ## What does not belong here
 
-- Hand-authored source or schemas.
-- Anything that should be tracked in git.
+- Generated build *output* (that is gitignored under `build/`).
+- Application/library source (lives under `merlin/`) or schemas (`merlin/schemas/`).
 
 ## Invariants
 
-- Contents are gitignored; only AGENT.md/README.md are tracked.
-- Never commit generated artifacts here.
-- Use the documented subfolder structure.
+- Scripts/helpers here **ARE tracked in git** (committed automation, not generated output).
+- Generated build artifacts go under `build/` (gitignored), never here.

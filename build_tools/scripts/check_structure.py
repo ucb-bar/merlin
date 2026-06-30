@@ -24,7 +24,6 @@ REQUIRED_DIRS = [
     "build_tools/scripts",
     "docs",
     "third_party",
-    "tools",
     "merlin/compiler/include/merlin/Dialect/Contract",
     "merlin/compiler/include/merlin/Dialect/Schedule",
     "merlin/compiler/include/merlin/Dialect/Interface",
@@ -32,8 +31,7 @@ REQUIRED_DIRS = [
     "merlin/compiler/lib/Dialect",
     "merlin/compiler/tools/merlin-opt",
     "merlin/compiler/tools/merlin-translate",
-    "merlin/compiler/tests/lit",
-    "merlin/compiler/tests/unit",
+    "merlin/tests",
     "merlin/python/merlin/contracts",
     "merlin/python/merlin/xdsl_dialects",
     "merlin/python/merlin/targetgen",
@@ -62,7 +60,6 @@ REQUIRED_DIRS = [
     "merlin/targets/toy_npu/contracts",
     "merlin/targets/toy_npu/examples",
     "merlin/targets/toy_npu/generated",
-    "merlin/targets/toy_npu/tests",
     "merlin/targets/example_vector",
     "merlin/schemas",
     "merlin/benchmarks/kernels",
@@ -73,9 +70,6 @@ REQUIRED_DIRS = [
     "merlin/experiments/kernel_policy",
     "merlin/experiments/semantic_memory",
     "merlin/experiments/interface_dse",
-    "merlin/tests/integration",
-    "merlin/tests/conformance",
-    "merlin/tests/golden",
     "merlin/tests/data",
 ]
 
@@ -162,6 +156,15 @@ def check_benchmarks(errors):
             errors.append(f"missing benchmark: merlin/benchmarks/semantic_memory/{b}.yaml")
 
 
+def check_cli_docs(errors):
+    """docs/cli.md must be in sync with pyproject [project.scripts] (single CLI source of truth)."""
+    import subprocess
+    gen = os.path.join(ROOT, "build_tools", "scripts", "gen_cli_docs.py")
+    r = subprocess.run([sys.executable, gen, "--check"], capture_output=True, text=True)
+    if r.returncode != 0:
+        errors.append("docs/cli.md stale vs pyproject — run python build_tools/scripts/gen_cli_docs.py")
+
+
 def main():
     errors: list[str] = []
     checks = [
@@ -170,6 +173,7 @@ def main():
         ("schemas", check_schemas),
         ("docs", check_docs),
         ("benchmarks", check_benchmarks),
+        ("cli docs", check_cli_docs),
     ]
     for label, fn in checks:
         before = len(errors)
