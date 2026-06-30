@@ -13,7 +13,7 @@ REPO = Path(__file__).resolve().parents[2]
 t = time.time()
 try:
     r = run_model(REPO / "output" / name, Path(tempfile.mkdtemp()),
-                  cache_dir=REPO / "output" / f".kc_{name}")
+                  cache_dir=REPO / "artifacts" / "cache" / f"kc_{name}")
     rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6
     cos = r.get("cos")
     cs = f"{cos:.7f}" if cos == cos else "nan"
