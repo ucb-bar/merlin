@@ -43,6 +43,10 @@ where = ["merlin/python"]
 
 [tool.pytest.ini_options]
 testpaths = ["merlin/tests"]
+cache_dir = "build/cache/pytest"
+
+[tool.mypy]
+cache_dir = "build/cache/mypy"
 
 [tool.uv]
 # Default dev environment includes the dev tools and the xdsl prototyping plane.

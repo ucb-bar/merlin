@@ -93,3 +93,6 @@ merlin/benchmarks/dse_guidance/recaptures_decode/*/FAILED.txt
 **/_qa_ws/
 # cross-arm verilator slot semaphore (runtime only)
 /tmp/oscar_merlin_veril_slots/
+
+# Firecrawl tool-state (web-scrape cache; not repo content)
+/.firecrawl/
