@@ -26,7 +26,7 @@ hart = 0 if backend == "scalar" else 1
 bundles = sys.argv[1:] or DEFAULT
 print(f"available={zm.available()}  backend={backend}  bundles={bundles}", flush=True)
 for name in bundles:
-    b = REPO / "output" / name
+    b = REPO / "artifacts" / "recaptures" / name
     if not (b / "model.mlir").is_file():
         print(f"SKIP {name} (not captured)", flush=True)
         continue

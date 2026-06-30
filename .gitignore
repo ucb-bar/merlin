@@ -23,14 +23,9 @@
 !/artifacts/**/README.md
 !/artifacts/**/.gitkeep
 
-# --- Legacy produced-artifacts root (retired; physical home for 130 GB recaptures via
-#     the artifacts/recaptures symlink, so kept ignored until recaptures are consolidated) ---
-/output/**
-!/output/
-!/output/**/
-!/output/**/AGENT.md
-!/output/**/README.md
-!/output/**/.gitkeep
+# --- output/ is DELETED/retired: recaptures now live in artifacts/recaptures/. Keep this
+#     ignore as a backstop so a stray re-created output/ is never committed. ---
+/output/
 
 # --- Per-target generated scaffolds ---
 /merlin/targets/*/generated/**

@@ -42,7 +42,7 @@ def test_small_llama_on_zephyr_spike(rvv_hart, tmp_path):
     board where only tile 1 carries the Saturn vector unit (so the RVV worker MUST land
     on hart 1 there). Gate is the host==torch threshold (cos>0.9999, rel<1e-3)."""
     zm = _zm()
-    bundle = REPO / "output" / "small_consistent"
+    bundle = REPO / "artifacts" / "recaptures" / "small_consistent"
     if not (bundle / "model.mlir").is_file():
         pytest.skip("small_consistent not captured")
     golden = np.load(bundle / "golden.npy")
@@ -60,7 +60,7 @@ def test_zephyr_app_builds_for_chipyard_board(tmp_path):
     builds — the disable-cpu@2..7 overlay applies and the rv64gcv model object links into
     the rv64gc Zephyr image. Build-only (no FPGA); the run is driven by run_on_firesim."""
     zm = _zm()
-    bundle = REPO / "output" / "small_consistent"
+    bundle = REPO / "artifacts" / "recaptures" / "small_consistent"
     if not (bundle / "model.mlir").is_file():
         pytest.skip("small_consistent not captured")
     b = zm.build_app(bundle, tmp_path, board="chipyard_riscv64", rvv_hart=1, arena_mb=64,

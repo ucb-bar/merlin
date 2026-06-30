@@ -37,7 +37,7 @@ def _cos(a: np.ndarray, b: np.ndarray) -> float:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="output/bitvla_fp32_consistent")
+    ap.add_argument("--model", default="artifacts/recaptures/bitvla_fp32_consistent")
     ap.add_argument("--out", default="artifacts/measurements/host/host_e2e_xnnpack_bitvla.json")
     a = ap.parse_args()
     md = Path(a.model)

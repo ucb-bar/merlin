@@ -2,7 +2,7 @@
 
 REUSES ``kernels.cca`` (the CCA dataclasses + ``lift_asm``) and ``kernels.decode.rvv`` (the decoder).
 
-v1 ingests the cached per-(kernel, shape) decode from ``output/kernels/ceiling/
+v1 ingests the cached per-(kernel, shape) decode from ``artifacts/ceiling/
 kernel_breakdown_decode.json`` and lifts each row into a real ``cca.CCA`` (so the comparator and
 action catalog consume genuine CCA objects, identical to the live path). The live path —
 ``decode(model_o)`` then ``cca.lift_asm(stream, ...)`` over a host-clang-built .o — is wired behind
@@ -27,7 +27,7 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[4]
 
 
-_DECODE_SOURCE = "output/kernels/ceiling/kernel_breakdown_decode.json"
+_DECODE_SOURCE = "artifacts/ceiling/kernel_breakdown_decode.json"
 
 # spec config name -> kernel-breakdown-decode "kernel" field value.
 _DECODE_KERNEL = {

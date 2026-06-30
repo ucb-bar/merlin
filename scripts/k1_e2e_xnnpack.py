@@ -88,7 +88,7 @@ def run_cfg(model_dir: Path, pkg, golden: np.ndarray, n: int, tag: str,
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="output/bitvla_fp32_consistent")
+    ap.add_argument("--model", default="artifacts/recaptures/bitvla_fp32_consistent")
     ap.add_argument("--baseline", default="generated_targets/rvv/hand_v0")
     ap.add_argument("-n", type=int, default=3)
     ap.add_argument("--configs", default="baseline,ours_tiled,ours_v3,xnnpack_kernels",

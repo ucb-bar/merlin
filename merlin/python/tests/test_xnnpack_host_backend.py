@@ -32,7 +32,7 @@ def test_xnn_gemm_matches_numpy(M, N, K):
 
 
 def _bitvla_dir() -> Path | None:
-    d = Path(repo_root()) / "output" / "bitvla_fp32_consistent"
+    d = Path(repo_root()) / "artifacts" / "recaptures" / "bitvla_fp32_consistent"
     return d if (d / "model.mlir").is_file() else None
 
 

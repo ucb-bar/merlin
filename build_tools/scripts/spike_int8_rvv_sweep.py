@@ -77,7 +77,7 @@ def main() -> int:
         if not args.force and already_done(ledger, bundle):
             print(f"SKIP {bundle} (already ran)", flush=True)
             continue
-        mdir = ROOT / "output" / bundle
+        mdir = ROOT / "artifacts" / "recaptures" / bundle
         rec = {"bundle": bundle, "t": time.strftime("%Y-%m-%dT%H:%M:%S"), "backend": "rvv"}
         work = Path(args.workroot) / bundle
         try:

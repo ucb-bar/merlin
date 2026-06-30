@@ -135,14 +135,14 @@ def test_missing_forward_raises():
 
 # --- scales to a real whole model ------------------------------------------------------
 
-@pytest.mark.skipif(not (REPO / "output/small_consistent/model.mlir").is_file(),
+@pytest.mark.skipif(not (REPO / "artifacts/recaptures/small_consistent/model.mlir").is_file(),
                     reason="small_llama capture not present")
 def test_outline_scales_to_small_llama():
     """The outliner forms a verified dispatch table from the real small LLaMA model."""
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.xdsl_dialects.lowering.outline import outline_dispatches
 
-    m = parse_mlir_file(REPO / "output/small_consistent/model.mlir")
+    m = parse_mlir_file(REPO / "artifacts/recaptures/small_consistent/model.mlir")
     res = outline_dispatches(m)            # verifies internally (IsolatedFromAbove etc.)
     roots = [d.root_op for d in res.dispatches]
     assert res.n_kernels == len(roots) > 100
@@ -154,14 +154,14 @@ def test_outline_scales_to_small_llama():
     assert all(list(op.body.blocks[0].ops)[-1].name == "func.return" for op in kfuncs)
 
 
-@pytest.mark.skipif(not (REPO / "output/tiny_consistent/model.mlir").is_file(),
+@pytest.mark.skipif(not (REPO / "artifacts/recaptures/tiny_consistent/model.mlir").is_file(),
                     reason="tiny_llama capture not present")
 def test_outline_scales_to_tiny_llama():
     """Real TinyLlama-1.1B: 155 matmul dispatches, all region-captures parameterized."""
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.xdsl_dialects.lowering.outline import outline_dispatches
 
-    m = parse_mlir_file(REPO / "output/tiny_consistent/model.mlir")
+    m = parse_mlir_file(REPO / "artifacts/recaptures/tiny_consistent/model.mlir")
     res = outline_dispatches(m)
     roots = [d.root_op for d in res.dispatches]
     assert roots.count("linalg.matmul") == 155
