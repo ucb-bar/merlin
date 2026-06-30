@@ -32,8 +32,14 @@ per-experiment `runs/`/`reports/` locations are retired and gitignored).
   owns a subtree and uses ITS OWN axis — target for compiler/mining/experiments, workload for the
   three DSE tools, model for recaptures/measurements, framework for kernel-index, cross-cutting for
   ceiling/compare). Concerns: `dse-guidance/`, `dse/`, `design-pressure/`, `kernel-mining/<target>/`,
-  `kernel-index/<framework>/`, `ceiling/`, `compare/`, `measurements/<model>/`, `recaptures/`,
-  `perf-bench/<target>/`, `capsule-bench/<target>/`, `presentation/`, `cache/`, `selfcheck/`.
+  `kernel-index/<framework>/`, `ceiling/`, `compare/`,
+  `measurements/<substrate>/<model>/<exp>_v<ver>_<TS>_<sha>/` (substrate = `k1_spacemit` /
+  `firesim_<bitstream>` / `baremetal_<verilator-design>` / `zephyr_<design>` / `spike_<config>`,
+  via `new_measurement(...)`), `recaptures/`, `perf-bench/<target>/`, `capsule-bench/<target>/`,
+  `presentation/`, `cache/`, `selfcheck/`.
+
+  **`output/` is DEPRECATED** — it holds only the regenerable model recaptures (via
+  `recaptures_dir()`); never write new generated content there (the guard hook blocks it).
   - versioned products at `artifacts/<concern>/<axis>/v<ver>/<concern>_<axis>_v<ver>_<TS>_<sha7>/`
     (+ `manifest.yaml`, relative `latest` symlink) via `new_product(..., target=...)`;
   - regenerable caches under `artifacts/cache/<ns>/` via `cache_dir(...)` (PURGEABLE);

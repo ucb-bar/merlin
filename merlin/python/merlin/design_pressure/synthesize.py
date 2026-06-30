@@ -59,7 +59,7 @@ CONTRACTS = [
 
 def load_policies(path: str | Path | None = None) -> list[dict]:
     """Load the mined policy rules (defaults to ``output/kernels/policy_rules.yaml``)."""
-    p = Path(path) if path else paths.repo_root() / "output" / "kernels" / "policy_rules.yaml"
+    p = Path(path) if path else paths.repo_root() / "artifacts" / "kernel-index" / "policy_rules.yaml"
     data = load_yaml(p)
     return list(data or [])
 

@@ -35,7 +35,7 @@ natural axis — do not force a hardware target where it doesn't apply:
 | `kernel-index/<framework>/` | source framework | `kernel-index/-extract/-audit` |
 | `ceiling/` | cross-framework | `kernel-bench` |
 | `compare/<ts>/` | config×workload | `merlin-compare` |
-| `measurements/<model>/` | model (on K1) | `scripts/k1_*` |
+| `measurements/<substrate>/<model>/<exp>_v<ver>_<TS>_<sha>/` | substrate→model→experiment | `scripts/k1_*`, firesim/zephyr/baremetal sweeps |
 | `recaptures/<model>_<dtype>/` | model+dtype (PURGEABLE) | capture harness |
 | `perf-bench/<target>/`, `capsule-bench/<target>/` | target | experiment reports |
 | `presentation/`, `cache/`, `selfcheck/` | topic / ns / target | misc |
@@ -70,7 +70,19 @@ out = prod.add_artifact("findings.csv"); out.write_text(...)
 prod.write_manifest()
 
 tmp = cache_dir("kernel_cache")                        # artifacts/cache/kernel_cache/
+
+# hardware measurements: substrate -> model -> experiment (versioned + timestamped)
+m = new_measurement("k1_spacemit", "bitvla", "cross_framework")   # also: firesim_<bitstream>,
+out = m.add_artifact("cross_framework_k1.jsonl"); out.write_text(...)  # baremetal_<verilator-design>,
+m.write_manifest()                                                #   zephyr_<design>, spike_<config>
 ```
+
+## Deprecation: `output/` is going away
+
+The legacy `output/` root is **deprecated**. It now holds ONLY the regenerable model recaptures
+(accessed via `recaptures_dir()`); everything else has moved to `artifacts/`. **Never write new
+generated content to `output/`** — the guard hook blocks it. Recaptures are PURGEABLE (regenerate
+via the m2m exporter), so `output/` can be deleted once readers migrate to `recaptures_dir()`.
 
 ## Escape hatch
 

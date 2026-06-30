@@ -253,6 +253,79 @@ def new_product(
                       target=target, sources=sources, notes=notes, _artifacts=[])
 
 
+# ---- measurements: artifacts/measurements/<substrate>/<model>/<experiment>_v<ver>_<TS>_<sha7>/ ----
+
+
+@dataclass
+class MeasurementDir:
+    """A versioned hardware-measurement run dir + manifest. Use :func:`new_measurement`."""
+
+    path: Path
+    manifest_path: Path
+    run_id: str
+    substrate: str
+    model: str
+    experiment: str
+    version: int
+    git_sha: str
+    timestamp: str
+    notes: str = ""
+    _artifacts: list | None = None
+
+    def add_artifact(self, relpath: str) -> Path:
+        if self._artifacts is None:
+            self._artifacts = []
+        self._artifacts.append(relpath)
+        out = self.path / relpath
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def write_manifest(self) -> Path:
+        manifest = {
+            "run_id": self.run_id, "timestamp": self.timestamp, "git_sha": self.git_sha,
+            "substrate": self.substrate, "model": self.model, "experiment": self.experiment,
+            "version": self.version, "artifacts": sorted(self._artifacts or []), "notes": self.notes,
+        }
+        self.manifest_path.write_text(dump_yaml(manifest), encoding="utf-8")
+        return self.manifest_path
+
+
+def new_measurement(
+    substrate: str,
+    model: str,
+    experiment: str,
+    *,
+    version: int = 1,
+    notes: str = "",
+    update_latest: bool = True,
+) -> MeasurementDir:
+    """Create a hardware-measurement run dir under
+    ``artifacts/measurements/<substrate>/<model>/<experiment>_v<ver>_<TS>_<sha7>/``.
+
+    **substrate** = the execution environment that produced the numbers, named
+    ``<kind>_<design>`` so identical kernels measured on different bitstreams/designs never
+    collide — e.g. ``firesim_<bitstream>``, ``baremetal_<verilator-design>``,
+    ``zephyr_<design-or-bitstream>``, ``k1_<board>``, ``spike_<config>``. **model** is the
+    workload (bitvla/openvla/…). **experiment** is the campaign (cross_framework/e2e/…).
+    Keep inner file names identical across substrates/models so cross-substrate diffs are trivial.
+    """
+    ts = utc_stamp()
+    sha = git_sha7()
+    base = repo_root() / "artifacts" / "measurements" / substrate / model
+    base.mkdir(parents=True, exist_ok=True)
+    leaf = f"{experiment}_v{version}_{ts}_{sha}"
+    mdir = _unique_dir(base, leaf)
+    mdir.mkdir(parents=True, exist_ok=True)
+    if update_latest:
+        link = base / f"{experiment}_latest"
+        tmp = base / f".{experiment}_latest.{os.urandom(3).hex()}"
+        os.symlink(mdir.name, tmp)   # RELATIVE target (bwrap-safe)
+        os.replace(tmp, link)
+    return MeasurementDir(path=mdir, manifest_path=mdir / "manifest.yaml", run_id=mdir.name,
+                          substrate=substrate, model=model, experiment=experiment,
+                          version=version, git_sha=sha, timestamp=ts, notes=notes, _artifacts=[])
+
+
 # ---- caches & recaptures: artifacts/cache/<ns>/, artifacts/recaptures/ -----
 
 
