@@ -93,7 +93,7 @@ def main() -> None:
     ap.add_argument("-n", type=int, default=3)
     ap.add_argument("--configs", default="baseline,ours_tiled,ours_v3,xnnpack_kernels",
                     help="comma list of: baseline,ours_tiled,ours_v3,ours_wholemodel,xnnpack_kernels")
-    ap.add_argument("--out", default="output/rvv_bench/k1_e2e_xnnpack_bitvla.json")
+    ap.add_argument("--out", default="artifacts/measurements/k1_spacemit/k1_e2e_xnnpack_bitvla.json")
     a = ap.parse_args()
 
     md = Path(a.model)

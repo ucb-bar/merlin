@@ -225,7 +225,7 @@ def run_activation(op: str, sizes: list[int], reps: int) -> list[dict]:
         print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
         rows.append(r)
         # OURS scalar baseline vs RVV-vectorized
-        bundle = gen(REPO / "output" / "rvv_workloads", N=Nsz)
+        bundle = gen(REPO / "artifacts" / "cache" / "rvv_workloads", N=Nsz)
         for vec, sid in ((False, "ours_scalar"), (True, "ours_vectorized")):
             base = {"op": op, "dtype": "f32", "size_n": Nsz, "source": sid, "target": "k1",
                     "mode": "inner_compute", "timer": "rdtime", "timebase_hz": k1.K1_TIMEBASE_HZ,
@@ -253,7 +253,7 @@ def run_int8_gemm(shapes: list[int], reps: int) -> list[dict]:
         print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
         rows.append(r)
         # OURS: W8A8 vwmacc datapath (int8_compute=True) vs ours f32 baseline matmul (vectorized)
-        bundle = workloads.gen_matmul_f32(REPO / "output" / "rvv_workloads", M=S, N=S, K=S)
+        bundle = workloads.gen_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", M=S, N=S, K=S)
         for int8, sid in ((False, "ours_f32_baseline"), (True, "ours_int8_w8a8")):
             base = {"op": "int8_gemm", "dtype": "i8xi8->i32" if int8 else "f32",
                     "M": S, "N": S, "K": S, "source": sid, "target": "k1", "mode": "inner_compute",
@@ -301,7 +301,7 @@ def run_conv2d(reps: int) -> list[dict]:
     from merlin.rvvgen import workloads
     rows = []
     M, N, K = 64, 16, 27
-    bundle = workloads.gen_conv2d_as_matmul_f32(REPO / "output" / "rvv_workloads", M=M, N=N, K=K)
+    bundle = workloads.gen_conv2d_as_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", M=M, N=N, K=K)
     for feats, sid in (([], "ours_conv_baseline"), (["fused_vfmacc_contraction"], "ours_conv_vfmacc")):
         base = {"op": "conv2d", "dtype": "f32", "M": M, "N": N, "K": K, "via": "im2col->matmul",
                 "source": sid, "target": "k1", "mode": "inner_compute", "timer": "rdtime",
@@ -322,7 +322,7 @@ def run_attention(reps: int) -> list[dict]:
     from merlin.rvvgen import workloads
     rows = []
     B, M, Nn, K = 4, 32, 8, 32   # llama-style attention bmm (small N -> N-tail path)
-    bundle = workloads.gen_batch_matmul_f32(REPO / "output" / "rvv_workloads", B=B, M=M, N=Nn, K=K)
+    bundle = workloads.gen_batch_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", B=B, M=M, N=Nn, K=K)
     for feats, sid in (([], "ours_bmm_baseline"),
                        (["fused_vfmacc_contraction"], "ours_bmm_vfmacc")):
         base = {"op": "attention_bmm", "dtype": "f32", "B": B, "M": M, "N": Nn, "K": K,
@@ -347,7 +347,7 @@ def main():
     ap.add_argument("--act-sizes", default="1024,16384,262144")
     ap.add_argument("--int8-shapes", default="32,64,128")
     ap.add_argument("--reps", type=int, default=3)
-    ap.add_argument("--out", default="output/kernels/ceiling/cross_framework_ops_k1.jsonl")
+    ap.add_argument("--out", default="artifacts/measurements/k1_spacemit/gemm/cross_framework_ops_k1.jsonl")
     a = ap.parse_args()
     ops = a.ops.split(",")
     act_sizes = [int(s) for s in a.act_sizes.split(",")]
