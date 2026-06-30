@@ -1,12 +1,13 @@
 """Feature extraction fires the right motifs on positive fixtures and stays silent on
 negative controls."""
 import os
+from merlin.common.paths import merlin_dir
 
 from merlin.kernels.classify import classify_motifs
 from merlin.kernels.features import extract_all
 from merlin.kernels.ingest.generic import ingest_generic
 
-DATA = os.path.join(os.path.dirname(__file__), "data", "kernels")
+DATA = str(merlin_dir() / "tests" / "data" / "kernels")
 
 
 def _kernel(name, **kw):

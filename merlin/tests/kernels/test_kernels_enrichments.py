@@ -1,12 +1,13 @@
 """Enrichment coverage: per-tensor roles + measured reuse, op_sequence, dispatch metrics,
 interface candidates (4 variants), runtime candidates, Stage-D validation, Exo schedule mining."""
 import os
+from merlin.common.paths import merlin_dir
 
 from merlin.kernels import policy, validate
 from merlin.kernels.emit.kernel_record import emit_kernel_record
 from merlin.kernels.ingest.generic import ingest_generic
 
-DATA = os.path.join(os.path.dirname(__file__), "data", "kernels")
+DATA = str(merlin_dir() / "tests" / "data" / "kernels")
 
 
 def _rec(name, source, target, op, dtype):
