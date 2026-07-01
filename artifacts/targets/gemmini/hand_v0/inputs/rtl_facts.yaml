@@ -1,0 +1,47 @@
+schema_version: '1.0'
+generator:
+  name: merlin.targetgen.rtl.introspect
+  version: rtl-introspect-v1-grep-firrtl
+  method: grep/regex over firtool-produced FIRRTL + hierarchy JSON (NOT yet a CIRCT
+    hw/seq MLIR pass)
+source_shas:
+  chipyard: 6a9b4cd9
+  gemmini: 8c3f992
+facts:
+  target: gemmini
+  source:
+    kind: firrtl
+    config: GemminiAndOPUShuttleConfig
+    fir: chipyard.harness.TestHarness.GemminiAndOPUShuttleConfig.fir
+  arrays:
+  - name: mesh
+    tiles: 256
+    rows: 16
+    cols: 16
+    square: true
+    evidence: 'top_module_hierarchy.json: Tile instances under Mesh'
+  memories:
+  - name: scratchpad
+    banks: 4
+    row_elems: 16
+    depth: 4096
+    elem_bits: 8
+    bytes: 262144
+    evidence: '4x `smem mem : UInt<8>[16] [4096]` @ Scratchpad.scala'
+  - name: accumulator
+    elem_bits: 32
+    bytes: null
+    evidence: module AccumulatorMem; acc datapath SInt<32>
+    note: depth not extracted from this artifact (v1)
+  datapaths:
+  - name: input
+    dtype: i8
+    evidence: scratchpad smem UInt<8>
+  - name: accumulator
+    dtype: i32
+    evidence: AccumulatorMem SInt<32>
+  interfaces:
+  - name: rocc_cmd
+    evidence: module ReservationStation (RoCC decode/dispatch)
+  - name: dma_tlb
+    evidence: module FrontendTLB

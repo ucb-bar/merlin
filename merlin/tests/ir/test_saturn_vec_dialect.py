@@ -1,7 +1,7 @@
 """SV2: the isolated saturn_vec xDSL dialect + lowering descends to the certified command buffer.
 
 The vector family has its own dialect (vector.map / vector.reduce), in an isolated package
-(generated_targets/saturn_vec/hand_v0/), loaded dynamically — not in the core tree. The dialect
+(artifacts/targets/saturn_vec/hand_v0/), loaded dynamically — not in the core tree. The dialect
 verifies, round-trips, and lowers to the target-independent command buffer, which then runs
 through the Merlin reference/simulator (and, gated, merlin's MLIR→LLVM host compiler).
 """
@@ -16,7 +16,7 @@ import pytest
 from merlin.runtime import outputs_match, reference_outputs, simulate
 
 REPO = repo_root()
-PKG = REPO / "generated_targets/saturn_vec/hand_v0"
+PKG = REPO / "artifacts/targets/saturn_vec/hand_v0"
 
 try:
     from merlin.xdsl_dialects import _common

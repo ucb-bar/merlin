@@ -7,7 +7,7 @@ from merlin.rvvgen import load_rvv_package
 from merlin.kernels.rvv_knobs import propose_forks
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-HAND_V0 = os.path.join(ROOT, "generated_targets", "rvv", "hand_v0")
+HAND_V0 = os.path.join(ROOT, "artifacts/targets", "rvv", "hand_v0")
 
 _DIVS = ["lmul_class: expert='m4' vs ours='m2'",
          "fma_form: expert='vf' vs ours=None",

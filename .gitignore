@@ -23,6 +23,25 @@
 !/artifacts/**/README.md
 !/artifacts/**/.gitkeep
 
+# --- artifacts/targets/ : generated target packages (codegen products). Forks/OOT builds are
+#     regenerable and stay ignored; the hand-authored reference baselines + promoted champions
+#     are the only tracked packages (re-included via the negations below). ---
+# Override the skeleton idiom's global README/AGENT un-ignore inside targets/ so fork docs are NOT
+# picked up (they are regenerable); tracking is re-granted only by the explicit negations after.
+/artifacts/targets/**/README.md
+/artifacts/targets/**/AGENT.md
+!/artifacts/targets/AGENT.md
+!/artifacts/targets/rvv/hand_v0/**
+!/artifacts/targets/rvv/hand_v0_int8/**
+!/artifacts/targets/rvv/impr_tuned_*/**
+# hand-authored reference baselines for other targets that tests load (keep suite reproducible)
+!/artifacts/targets/gemmini/hand_v0/**
+!/artifacts/targets/saturn_vec/hand_v0/**
+!/artifacts/targets/muon/reference_v0/**
+# never track compiled OOT build trees or bytecode even under a negated baseline (these win: last match)
+/artifacts/targets/**/mlir_oot/build/
+/artifacts/targets/**/__pycache__/
+
 # --- output/ is DELETED/retired: recaptures now live in artifacts/recaptures/. Keep this
 #     ignore as a backstop so a stray re-created output/ is never committed. ---
 /output/
@@ -62,9 +81,9 @@ compile_commands.json
 /third_party/llvm-build/
 /third_party/llvm-install/
 /third_party/llvm-build.log
-# Out-of-tree package build trees (gemmini-opt etc.)
-/generated_targets/**/mlir_oot/build/
-/generated_targets/*
+# legacy transition symlink: generated_targets -> artifacts/targets (target packages now live
+# under artifacts/targets/; the symlink keeps pre-migration references resolving). Never commit it.
+/generated_targets
 # legacy retired dse-analysis root (dse now writes under artifacts/dse/)
 /results/
 # legacy compat symlink (transition): mined_knowledge -> artifacts/mined_knowledge
@@ -88,6 +107,9 @@ merlin/benchmarks/dse_guidance/case_study/manual_validation/exported_fx/*.FAILED
 merlin/benchmarks/dse_guidance/recaptures_decode/*/*.mlir
 merlin/benchmarks/dse_guidance/recaptures_decode/*/FAILED.txt
 
+# Experiment run outputs are generated: new runs route to runs/<target>/<suite>/ (see CLAUDE.md).
+# Any legacy per-experiment runs/ dir is regenerable and never tracked.
+experiments/**/runs/
 # Transient agentic-experiment workspaces: per-run bwrap workspaces full of absolute symlinks +
 # live-written state (never want these tracked; durable artifacts live in runs/ and reports/).
 **/_qa_ws/

@@ -43,7 +43,7 @@ def test_packages_declare_honest_authoring_mode():
     """The hand-authored packages MUST be labeled hand_curated with target_generation NOT
     reproducible — so they are never implicitly presented as RTL-derived/generated targets."""
     for pkg in ("gemmini", "saturn_vec"):
-        man = yaml.safe_load((REPO / "generated_targets" / pkg / "hand_v0" / "manifest.yaml").read_text())
+        man = yaml.safe_load((REPO / "artifacts/targets" / pkg / "hand_v0" / "manifest.yaml").read_text())
         assert man["authoring"]["mode"] == "hand_curated"
         assert man["authoring"]["generated_from_rtl_facts"] is False
         assert man["reproducibility"]["target_generation_reproducible"] is False

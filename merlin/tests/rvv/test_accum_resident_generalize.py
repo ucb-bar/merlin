@@ -38,7 +38,7 @@ def _build(features, bundle):
     from merlin.rvvgen.apply import apply_rvv_package
     from merlin.rvvgen.registry import load_rvv_package
 
-    pkg = load_rvv_package(REPO / "generated_targets" / "rvv" / "hand_v0")
+    pkg = load_rvv_package(REPO / "artifacts/targets" / "rvv" / "hand_v0")
     pkg = replace(pkg, run_id="test_general", compiler_features=list(features))
     work = Path(tempfile.mkdtemp(prefix="test_general_"))
     apply_rvv_package(pkg, bundle, work, board="spike_riscv64", harts=1, arena_mb=64)

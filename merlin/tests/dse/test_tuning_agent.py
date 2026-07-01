@@ -13,7 +13,7 @@ from merlin.kernels.rvv_knobs import ForkProposal
 
 # Reuse the divergences + mock-certify from the beam test (replicated, kept identical).
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-HAND_V0 = os.path.join(ROOT, "generated_targets", "rvv", "hand_v0")
+HAND_V0 = os.path.join(ROOT, "artifacts/targets", "rvv", "hand_v0")
 
 _DIVS = ["lmul_class: expert='m4' vs ours='m2'",
          "fma_form: expert='vf' vs ours=None",

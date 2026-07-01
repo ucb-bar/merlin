@@ -11,7 +11,7 @@ from merlin.rvvgen.fork import mint_run_id
 from merlin.rvvgen.from_strategy import render_schedule, mint_fork
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-HAND_V0 = os.path.join(ROOT, "generated_targets", "rvv", "hand_v0")
+HAND_V0 = os.path.join(ROOT, "artifacts/targets", "rvv", "hand_v0")
 
 
 def test_render_reproduces_hand_v0_verbatim():

@@ -38,6 +38,7 @@ natural axis — do not force a hardware target where it doesn't apply:
 | `measurements/<substrate>/<model>/<exp>_v<ver>_<TS>_<sha>/` | substrate→model→experiment | `scripts/k1_*`, firesim/zephyr/baremetal sweeps |
 | `recaptures/<model>_<dtype>/` | model+dtype (PURGEABLE) | capture harness |
 | `perf-bench/<target>/`, `capsule-bench/<target>/` | target | experiment reports |
+| `targets/<target>/<package_id>/` | **target** backend | `merlin-rvv-mine/-autotune`, `merlin-targetgen` (codegen packages) |
 | `presentation/`, `cache/`, `selfcheck/` | topic / ns / target | misc |
 
 `runs/<target>/<suite>/<run-id>/` is for aet experiment runs (target-centric). `build/` for compiler output.

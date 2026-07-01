@@ -1,0 +1,69 @@
+# Gemmini target contract (prototype).
+#
+# Gemmini (Berkeley systolic-array accelerator, chipyard generators/gemmini) modeled at
+# the Merlin compiler level as a tensor-resident target: a weight-stationary matrix kept
+# resident in the array/scratchpad and reused across the region, with an i32 accumulator
+# committed via mvout. This is a PROTOTYPE contract for the C0 certification path
+# (i8 x i8 -> i32, matmul only); it is not yet RTL-certified.
+#
+# Capacities below are provenance-tagged to their generator source and must be confirmed
+# against the concrete config (GemminiAndOPUShuttleConfig) before any RTL-level claim.
+name: gemmini
+version: 0.1
+family: tensor_resident
+status: prototype
+features: [systolic_array, resident_packed_tensor, accumulator_commit, command_buffer, metrics]
+ops: [pack, matmul, commit, release]
+types: [resident_tensor, accumulator]
+runtime:
+  backends: [simulator, spike_gemmini, verilator]
+dtypes:
+  storage: i8
+  accumulator: i32
+capabilities:
+  ops: [matmul, bias_add, requant, relu]   # C0 exercises matmul only; rest are future rungs
+  layouts: [packed_rhs]
+  mesh: {rows: 16, cols: 16}               # DIM x DIM systolic array
+  resident_storage_bytes: 262144           # scratchpad
+  accumulator_storage_bytes: 65536         # acc SRAM
+# Provenance for the capacity numbers above (hand-curated, pending confirmation). A future
+# merlin-rtl-introspect (CIRCT facts) pass replaces these and must reproduce them.
+provenance:
+  source: "generators/gemmini/src/main/scala/gemmini/Configs.scala (GemminiAndOPUShuttleConfig)"
+  confirmed: false
+  fields: [mesh.rows, mesh.cols, resident_storage_bytes, accumulator_storage_bytes]
+memory_model:
+  resident: true
+  accumulators: true
+prototype_scope:
+  workload: repeated_rhs_matmul
+  conformance_level: C0
+  epilogue: none
+  output_dtype: i32
+oracle_ladder:
+  level_0: {name: merlin_reference_and_command_buffer_sim, derived_from_rtl: false}
+  level_1: {name: spike_gemmini_functional, derived_from_rtl: false}
+  level_2: {name: gemmini_verilator_rtl, derived_from_rtl: true}
+  level_3: {name: firesim, derived_from_rtl: true}
+compiler_obligations:
+  - must_prove_rhs_immutable_for_residency
+  - must_tile_to_mesh_shape
+  - must_commit_accumulator_before_reuse
+  - must_respect_scratchpad_capacity
+hardware_promises:
+  - weight_stationary_resident_array
+  - widening_integer_accumulate
+  - cycle_counter
+runtime_promises:
+  - command_buffer
+  - metrics
+certification:
+  status: uncertified
+confidence: medium
+requires_human_review: true
+notes: >-
+  Hand-curated prototype contract for the Gemmini C0 RTL-certification path. Capacities are
+  provenance-tagged and pending confirmation against the concrete chipyard config. Spike-Gemmini
+  is a functional bootstrap model (derived_from_rtl: false); only Verilator/FireSim count as
+  RTL-certified. A future merlin-rtl-introspect pass will replace these hand-curated capacities
+  with extracted RTL facts and must reproduce them.

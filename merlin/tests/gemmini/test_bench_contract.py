@@ -60,10 +60,10 @@ def test_command_buffer_schema_fails_closed():
 def test_manifest_schema_accepts_real_packages_and_rejects_missing_entrypoint():
     import yaml
     for pkg in ("merlin_native_v0", "hand_smoke_oot"):
-        man = yaml.safe_load((REPO / "generated_targets" / "gemmini" / pkg / "manifest.yaml").read_text())
+        man = yaml.safe_load((REPO / "artifacts/targets" / "gemmini" / pkg / "manifest.yaml").read_text())
         schemas.validate_manifest(man)
     # drop a required entrypoint -> fail closed
-    man = yaml.safe_load((REPO / "generated_targets" / "gemmini" / "merlin_native_v0" / "manifest.yaml").read_text())
+    man = yaml.safe_load((REPO / "artifacts/targets" / "gemmini" / "merlin_native_v0" / "manifest.yaml").read_text())
     del man["commands"]["emit_command_buffer"]
     with pytest.raises(schemas.ContractViolation):
         schemas.validate_manifest(man)

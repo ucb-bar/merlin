@@ -1,4 +1,4 @@
-"""Versioned fork minting + lineage — forks ACCUMULATE under generated_targets/<target>/, never
+"""Versioned fork minting + lineage — forks ACCUMULATE under artifacts/targets/<target>/, never
 replace a parent. Each tuning step mints a new package dir named
 ``<target>_tuned_v{version}_d{depth}_{timestamp}`` with a manifest recording its parent and the
 evidence that justified it, so the whole beam-search tree is inspectable and reproducible.

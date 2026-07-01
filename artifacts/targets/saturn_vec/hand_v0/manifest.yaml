@@ -1,0 +1,25 @@
+# Isolated vector/SIMD target-package manifest (one generation round).
+target: saturn_vec
+run_id: hand_v0
+family: vector_simd               # NON-matmul family — distinct from the resident-matmul family
+origin: hand_curated              # legacy alias of authoring.mode (kept for back-compat)
+dialect_format: xdsl_prototype    # xDSL-first; export C++/ODS to artifacts/ once stable
+status: certified
+authoring:                        # HONEST labeling — see gemmini/hand_v0 for the Level A/B/C modes
+  mode: hand_curated
+  generated_by_agent: false
+  generated_from_rtl_facts: false
+  author: human
+reproducibility:
+  certified_execution_reproducible: true
+  target_generation_reproducible: false
+oracles:
+  - {name: merlin_mlir_host, derived_from_rtl: false}    # compute via merlin's MLIR->LLVM compiler
+  - {name: spike_rv64gcv, derived_from_rtl: false}        # RVV functional
+  - {name: opu_verilator_rtl, derived_from_rtl: true}     # Saturn-OPU RTL (VEC0 202cyc, VEC2 743cyc)
+ops: [map, reduce]                # vector.map (elementwise combine+activation), vector.reduce (sum)
+notes: >-
+  The contract/schedule "decision" layers in the core pipeline are matmul-residency-specific,
+  so this family lowers DIRECTLY from its interface dialect to the command buffer (no residency
+  decisions). Loaded dynamically; not hardcoded in core. Multiple rounds coexist under
+  generated_targets/saturn_vec/<run_id>/.

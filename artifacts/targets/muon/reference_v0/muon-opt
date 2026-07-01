@@ -1,0 +1,94 @@
+#!/scratch/agustin/projects/oscar-merlin/.venv/bin/python
+"""muon_reference_v0 / muon-opt -- the Merlin Muon reference backend as a contract tool.
+
+A self-contained CLI exposing the four experiment-ABI entrypoints over the `merlin_iface` grammar,
+the Muon analog of generated_targets/gemmini/merlin_native_v0/gemmini-opt:
+  --verify-diagnostics            parse + verify the interface.mlir (exit 0/1)
+  --convert-iface-to-muon         print a muon target-dialect view (generic-form MLIR)
+  --emit-command-buffer=OUT       write the reconstructed command_buffer.json to OUT
+  --emit-simt-cpp                 print the lowered Muon SIMT C++ kernel (clang-muon compiles it)
+
+It is integrity_exempt (it imports Merlin internals) because it is the reference backend, not a
+competitor. Invoked only as a subprocess by the parallel Muon runner.
+"""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+# make `merlin` importable regardless of how the script is launched
+_REPO = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(_REPO / "merlin" / "python"))
+
+from merlin.targetgen.contract.interface_emit import parse_interface_mlir, GRAMMAR_VERSION
+from merlin.targetgen.contract import schemas
+
+
+def _die(msg: str, code: int = 1) -> "None":
+    sys.stderr.write(f"muon-opt: {msg}\n")
+    raise SystemExit(code)
+
+
+def _load_cb(input_mlir: str) -> dict:
+    text = Path(input_mlir).read_text(encoding="utf-8")
+    if f'merlin_iface.version = "{GRAMMAR_VERSION}"' not in text:
+        _die(f"unsupported or missing merlin_iface.version (expect {GRAMMAR_VERSION})")
+    cb = parse_interface_mlir(text)
+    if not cb.get("commands"):
+        _die("no commands parsed from interface.mlir")
+    return cb
+
+
+def _render_target_mlir(cb: dict) -> str:
+    """A faithful generic-form muon target-dialect view (parseable, evidentiary)."""
+    lines = ['module attributes {muon.from = "muon_reference_v0"} {']
+    for c in cb["commands"]:
+        op, o = c["opcode"], c.get("operands", {})
+        a = c.get("attributes", {})
+        if op == "RES_PACK":
+            lines.append(f'  "muon.smem_stage"() {{src = "{o["src"]}", dst = "{o["dst"]}", '
+                         f'layout = "{a.get("layout", "packed_rhs")}"}} : () -> ()')
+        elif op in ("MATMUL_RESIDENT", "MATMUL"):
+            lines.append(f'  "muon.simt_gemm"() {{lhs = "{o["lhs"]}", rhs = "{o["rhs"]}", '
+                         f'dst = "{o["dst"]}"}} : () -> ()')
+        elif op == "COMMIT":
+            epi = json.dumps(a.get("epilogue", []))
+            lines.append(f'  "muon.commit"() {{src = "{o["src"]}", dst = "{o["dst"]}", '
+                         f'epilogue = "{epi}", output_dtype = "{a.get("output_dtype", "f32")}"}} : () -> ()')
+        elif op == "EVICT":
+            lines.append(f'  "muon.smem_free"() {{handle = "{o["handle"]}"}} : () -> ()')
+    lines.append("}")
+    return "\n".join(lines) + "\n"
+
+
+def main(argv: list[str]) -> int:
+    flags = [a for a in argv if a.startswith("-")]
+    positional = [a for a in argv if not a.startswith("-")]
+    emit_cb_path = None
+    for f in flags:
+        if f.startswith("--emit-command-buffer="):
+            emit_cb_path = f.split("=", 1)[1]
+    if not positional:
+        _die("no input.interface.mlir given")
+    input_mlir = positional[-1]
+
+    cb = _load_cb(input_mlir)
+
+    if "--emit-simt-cpp" in flags:
+        from merlin.runtime.backends.muon_codegen import emit_kernel_cpp
+        sys.stdout.write(emit_kernel_cpp(cb))
+        return 0
+    if emit_cb_path is not None:
+        schemas.validate_command_buffer(cb)          # fail-closed before writing
+        Path(emit_cb_path).write_text(json.dumps(cb, indent=2) + "\n", encoding="utf-8")
+        return 0
+    if "--convert-iface-to-muon" in flags:
+        sys.stdout.write(_render_target_mlir(cb))
+        return 0
+    # bare --verify-diagnostics: parsed OK above
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

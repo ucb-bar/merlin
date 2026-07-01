@@ -3,7 +3,7 @@
 Each package is a self-contained directory (one per codegen iteration), loaded dynamically and
 NEVER hardcoded into the core lowering tables:
 
-    generated_targets/rvv/<run_id>/
+    artifacts/targets/rvv/<run_id>/
         manifest.yaml     # target, run_id, family, authoring/provenance, status
         schedule.mlir     # the transform-dialect SCHEDULE (authoritative codegen artifact)
         knobs.yaml        # the tunable surface AS DATA describing schedule.mlir + the cflags

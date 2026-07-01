@@ -1,7 +1,7 @@
 """RVV target-package loader + non-perturbation regression.
 
 The whole RVV experiment machinery must NOT change the shipping codegen. The baseline package
-generated_targets/rvv/hand_v0/ is a VERBATIM capture of pipeline.RVV_TRANSFORM_SCHEDULE +
+artifacts/targets/rvv/hand_v0/ is a VERBATIM capture of pipeline.RVV_TRANSFORM_SCHEDULE +
 RVV_CFLAGS; this test asserts the capture is exact (so it cannot silently rot) and that the
 loader + cflags-allowlist integrity behave.
 """
@@ -14,7 +14,7 @@ from merlin.runtime.backends import zephyr_model as zm
 from merlin.rvvgen import load_rvv_package
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-HAND_V0 = os.path.join(ROOT, "generated_targets", "rvv", "hand_v0")
+HAND_V0 = os.path.join(ROOT, "artifacts/targets", "rvv", "hand_v0")
 
 
 def test_hand_v0_schedule_is_verbatim_capture():
