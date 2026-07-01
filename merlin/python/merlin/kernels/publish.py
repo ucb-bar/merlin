@@ -2,7 +2,7 @@
 *input* the tuning agent / beam-search iterate on (like the experiment packages), so it must be
 persisted with provenance, not left in gitignored ``output/``.
 
-Layout (mirrors generated_targets/<target>/<run_id>/):
+Layout (mirrors artifacts/targets/<target>/<run_id>/):
 
     mined_knowledge/<target>/<target>_mined_v{V}_{timestamp}/
         manifest.yaml             # provenance: sources, repo paths, per-source counts, git sha,

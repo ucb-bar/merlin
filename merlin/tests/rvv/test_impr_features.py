@@ -332,7 +332,7 @@ def test_baseline_package_has_no_features():
     from pathlib import Path
 
     from merlin.rvvgen.registry import load_rvv_package
-    base = repo_root() / "generated_targets" / "rvv" / "hand_v0"
+    base = repo_root() / "artifacts/targets" / "rvv" / "hand_v0"
     if not base.is_dir():
         pytest.skip("hand_v0 package not present")
     assert load_rvv_package(base).compiler_features == []

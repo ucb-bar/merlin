@@ -86,7 +86,7 @@ def autotune(target: str, base_pkg_dir: str | Path, model_dir: str | Path, featu
     base_dir = Path(base_pkg_dir)
     model_dir = Path(model_dir)
     golden = np.load(model_dir / "golden.npy")
-    fork_root = Path(fork_root) if fork_root else _REPO / "generated_targets" / target
+    fork_root = Path(fork_root) if fork_root else _REPO / "artifacts/targets" / target
     out_root = Path(out_root) if out_root else _REPO / "artifacts" / "kernel-mining" / target
     ts = time.strftime("%Y%m%dT%H%M%S")
     cands = enumerate_candidates(features, max_combo=max_combo)
@@ -138,7 +138,7 @@ def beam_search(target: str, base_pkg_dir: str | Path, model_dir: str | Path, fe
     """
     base_dir = Path(base_pkg_dir); model_dir = Path(model_dir)
     golden = np.load(model_dir / "golden.npy")
-    fork_root = Path(fork_root) if fork_root else _REPO / "generated_targets" / target
+    fork_root = Path(fork_root) if fork_root else _REPO / "artifacts/targets" / target
     out_root = Path(out_root) if out_root else _REPO / "artifacts" / "kernel-mining" / target
     ts = time.strftime("%Y%m%dT%H%M%S")
     evaluated: dict[frozenset, dict] = {}
@@ -211,7 +211,7 @@ def beam_search(target: str, base_pkg_dir: str | Path, model_dir: str | Path, fe
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target", default="rvv")
-    ap.add_argument("--base", default="generated_targets/rvv/hand_v0")
+    ap.add_argument("--base", default="artifacts/targets/rvv/hand_v0")
     ap.add_argument("--workload", required=True)
     ap.add_argument("--features", required=True, help="comma list of registered impr features")
     ap.add_argument("--max-combo", type=int, default=2)

@@ -1,7 +1,7 @@
 """Beam-search of forks — the engine that replaces hand-hunting levers. Each generation: expand
 every surviving parent into forks (via a proposer over the S4 divergences), certify the whole
 generation IN PARALLEL + isolated, rank (correctness -> structural_match toward the expert ->
-cycles), keep top-k as parents for the next depth. Forks accumulate under generated_targets/; the
+cycles), keep top-k as parents for the next depth. Forks accumulate under artifacts/targets/; the
 full lineage + scores are written to beam_tree.yaml (inspectable, resumable).
 
 Target-agnostic by construction: parameterized by a `proposer` (deterministic gap-router by
@@ -41,7 +41,7 @@ def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict) -
 
 
 def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_key: dict, *,
-             runs_root: str | Path, out_root: str | Path = "generated_targets",
+             runs_root: str | Path, out_root: str | Path = "artifacts/targets",
              width: int = 3, depth: int = 2, top_k: int = 2, target: str = "rvv",
              timestamp: str = "run", targets: tuple[str, ...] = ("spike",),
              baseline_run_dir: str | Path | None = None,

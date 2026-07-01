@@ -22,7 +22,7 @@ a vector/SIMD family (`vector.map` elementwise, `vector.reduce`) all the way to 
   the **Saturn-OPU Verilator RTL** (`derived_from_rtl=true`: VEC0 202 cyc, VEC2 743 cyc) — full
   RTL parity with the Gemmini story, on a different oracle / ISA / op family.
 - **Isolation + plug-and-play:** the family is an **isolated package**
-  (`generated_targets/saturn_vec/hand_v0/`) with its own xDSL dialect + lowering, loaded
+  (`artifacts/targets/saturn_vec/hand_v0/`) with its own xDSL dialect + lowering, loaded
   dynamically — not hardcoded in core. Same isolation as Gemmini (which was un-baked from core).
 
 ### What did NOT generalize cleanly (honest caveats — findings, not failures)

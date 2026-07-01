@@ -51,11 +51,11 @@ Integer workloads ⇒ exact `==` gates (no tolerance); the cert is three-way:
 
 ## Two package classes
 
-- **`generated_targets/gemmini/merlin_native_v0/`** (Python) — the **reference backend**. It
+- **`artifacts/targets/gemmini/merlin_native_v0/`** (Python) — the **reference backend**. It
   wraps Merlin's certified MLIR-faithful path; it is the *one* `integrity_exempt` package (it
   legitimately imports Merlin internals) and is the vehicle that migrates the existing battery
   through the contract. It is **not** a competitor entry.
-- **`generated_targets/gemmini/hand_smoke_oot/`** (C++ MLIR) — a genuine out-of-tree `gemmini-opt`
+- **`artifacts/targets/gemmini/hand_smoke_oot/`** (C++ MLIR) — a genuine out-of-tree `gemmini-opt`
   built against the pinned LLVM/MLIR 23 install (`third_party/llvm-install`, commit
   `a47bddccec30`) using the standalone OOT template. It registers a real `merlin_iface` ODS
   dialect (parses the grammar natively), reconstructs the command buffer by walking the IR, and
@@ -68,7 +68,7 @@ Running
 
 ```
 python -m merlin.targetgen.oot_runner --contract bench_contract \
-  --package generated_targets/gemmini/hand_smoke_oot \
+  --package artifacts/targets/gemmini/hand_smoke_oot \
   --input bench_contract/examples/g0_matmul.interface.mlir \
   --run-id contract_smoke_g0 --simulator verilator
 ```

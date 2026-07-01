@@ -84,7 +84,7 @@ def test_real_k1_matmul_end_to_end(tmp_path):
 
     repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     bundle = gen_matmul_f32(tmp_path, M=64, N=64, K=64)
-    pkg = load_rvv_package(os.path.join(repo, "generated_targets", "rvv", "hand_v0"))
+    pkg = load_rvv_package(os.path.join(repo, "artifacts/targets", "rvv", "hand_v0"))
     res = k1.run_on_k1(bundle, tmp_path / "build", pkg, timeout=600)
     m = res["metrics"]
     assert m.get("cycles") and m["cycles"] > 0

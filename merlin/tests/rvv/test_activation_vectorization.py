@@ -37,7 +37,7 @@ def _toolchain() -> bool:
 
 def _pkg(features):
     from merlin.rvvgen.registry import load_rvv_package
-    pkg = load_rvv_package(REPO / "generated_targets" / "rvv" / "hand_v0")
+    pkg = load_rvv_package(REPO / "artifacts/targets" / "rvv" / "hand_v0")
     return replace(pkg, run_id="test_act", compiler_features=list(features))
 
 

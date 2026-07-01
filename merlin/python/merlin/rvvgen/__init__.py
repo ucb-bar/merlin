@@ -4,7 +4,7 @@ SCHEDULE + cflags, captured as data), build it in isolation, measure it on coupl
 WITHOUT perturbing the global compiler flow.
 
 This mirrors the gemmini ``targetgen`` isolation/certification PATTERN (per-run package dirs
-under ``generated_targets/<target>/<run_id>/``, a provenance manifest, a K-ladder runner that
+under ``artifacts/targets/<target>/<run_id>/``, a provenance manifest, a K-ladder runner that
 never raises and records ``not_run`` rather than a false pass) but treats RVV as a
 schedule-package, not a resident-accelerator dialect — so there is no ``dialect.py`` /
 ``SPEC_OPS`` / command-buffer here. The plug-back-in seam is the existing

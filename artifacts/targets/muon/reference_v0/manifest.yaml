@@ -1,0 +1,27 @@
+# Merlin Muon reference backend, as an experiment-ABI package.
+#
+# The Muon analog of generated_targets/gemmini/merlin_native_v0: it wraps a hand-curated, correct
+# (unoptimized) merlin_iface -> Muon SIMT lowering behind the four contract entrypoints, so (a) the
+# parallel Muon runner is exercised end-to-end and (b) it is the GFLOP/s ceiling the agentic
+# merlin+CIRCT backend must re-derive and beat. It is the ONE integrity-exempt Muon package (it
+# imports Merlin internals); every agent package must be integrity_exempt: false.
+artifact_type: mlir_oot_target_backend
+target: muon
+package_id: muon_reference_v0
+language: python
+authoring:
+  mode: hand_curated
+  author: human
+  generated_by_agent: false
+integrity_exempt: true
+entrypoints:
+  tool: muon-opt
+commands:
+  parse:
+    argv: ["{tool}", "--verify-diagnostics", "{input_mlir}"]
+  lower_interface_to_target:
+    argv: ["{tool}", "--convert-iface-to-muon", "{input_mlir}"]
+  emit_command_buffer:
+    argv: ["{tool}", "--convert-iface-to-muon", "--emit-command-buffer={output_json}", "{input_mlir}"]
+  lower_target_to_llvm:
+    argv: ["{tool}", "--convert-iface-to-muon", "--emit-simt-cpp", "{input_mlir}"]

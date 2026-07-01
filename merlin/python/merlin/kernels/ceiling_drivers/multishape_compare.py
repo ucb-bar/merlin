@@ -152,7 +152,7 @@ def _ours_package(run_id: str, features: list[str]):
     auto-fork directories; baseline (features==[]) is byte-identical to hand_v0.
     """
     from ...rvvgen.registry import load_rvv_package
-    base = load_rvv_package(repo_root() / "generated_targets" / "rvv" / "hand_v0")
+    base = load_rvv_package(repo_root() / "artifacts/targets" / "rvv" / "hand_v0")
     return replace(base, run_id=run_id, compiler_features=list(features))
 
 

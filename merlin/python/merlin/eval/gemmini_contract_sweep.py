@@ -21,7 +21,7 @@ from ..targetgen.contract.interface_emit import emit_interface_mlir
 from ..targetgen.oot_runner import certify
 
 ALL_RUNGS = list(RUNGS) + list(QUANT_RUNGS)
-NATIVE_PKG = "generated_targets/gemmini/merlin_native_v0"
+NATIVE_PKG = "artifacts/targets/gemmini/merlin_native_v0"
 
 
 def emit_rung_interface(rung: str, out_dir: str | Path) -> Path:

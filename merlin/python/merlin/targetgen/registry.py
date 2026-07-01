@@ -4,7 +4,7 @@ Generated target dialects do NOT live in the core merlin tree and are NOT hardco
 shared lowering tables. Each is a self-contained directory (one per generation round), loaded
 dynamically and registered for a run:
 
-    generated_targets/<target>/<run_id>/
+    artifacts/targets/<target>/<run_id>/
         manifest.yaml                         # target, run_id, provenance, status
         dialect.py                            # self-contained xDSL dialect; exposes SPEC_OPS + DIALECT_NAME
         lowering.yaml                         # interface->target + target->opcode tables (data)

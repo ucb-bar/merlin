@@ -7,7 +7,8 @@ build_tools/   build/dev tooling + measurement/analysis/sweep runners + repo lin
 docs/          this documentation (incl. generated cli.md = CLI surface)
 third_party/   hard build/test deps only (no analysis repos)
 runs/          aet experiment runs (gitignored)   ── see CLAUDE.md "Generated-output convention"
-artifacts/     all other generated products (gitignored)
+artifacts/     all other generated products (gitignored); artifacts/targets/ = codegen packages
+               (replaces retired generated_targets/; tracked baselines/champions via .gitignore negations)
 merlin/
   compiler/    stable MLIR/C++ plane (scaffold)
   python/      Python plane (xDSL prototyping + workstream pipelines)
