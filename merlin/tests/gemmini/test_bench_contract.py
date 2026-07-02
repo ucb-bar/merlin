@@ -17,7 +17,7 @@ from merlin.targetgen.contract import schemas
 from merlin.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
 
 REPO = repo_root()
-BC = REPO / "bench_contract"
+BC = REPO / "merlin/contract"
 CORE = ("abi_version", "target", "tensors", "commands")
 ALL_RUNGS = list(RUNGS) + list(QUANT_RUNGS)
 

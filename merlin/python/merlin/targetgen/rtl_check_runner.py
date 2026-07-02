@@ -35,7 +35,7 @@ from . import rtl_checks as RC
 
 _REPO = Path(__file__).resolve().parents[4]
 _FACTS = _REPO / "merlin/targets/gemmini/contracts/rtl_facts/facts.json"
-_CAPSULE_ROOTS = [_REPO / "bench_contract" / "capsules",
+_CAPSULE_ROOTS = [_REPO / "merlin/contract" / "capsules",
                   _REPO / "experiments" / "gemmini_perf_bench" / "kernels"]
 _FILECHECK_CANDIDATES = [
     "/scratch2/agustin/LHWIR/third_party/circt/install/bin/FileCheck",

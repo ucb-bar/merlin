@@ -35,7 +35,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-SCHEMA = "rtl_checks/v0"  # advisory artifact tag — deliberately NOT a frozen bench_contract schema
+SCHEMA = "rtl_checks/v0"  # advisory artifact tag — deliberately NOT a frozen merlin/contract schema
 
 # RTL-grounded defaults (mesh + scratchpad capacity) mirroring the hand-curated, provenance-tagged
 # capacities in merlin/targets/gemmini/contracts/target_contract.yaml, which rtl/introspect.py

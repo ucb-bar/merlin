@@ -4,7 +4,7 @@ The C++ OOT backend and the Merlin/xDSL infra must agree on ONE dialect spec. Ra
 (and hand-sync) a C++ ODS dialect, this emits the canonical **IRDL** description of `merlin_iface` —
 which `mlir-opt --irdl-file=...` registers DYNAMICALLY, so a C++ OOT tool parses the frozen
 `*.interface.mlir` grammar with zero hand-written dialect code. The same IRDL is the portable spec the
-xDSL side already mirrors (the contract grammar in `bench_contract/interface_grammar.md`).
+xDSL side already mirrors (the contract grammar in `merlin/contract/interface_grammar.md`).
 
 Pipeline (stock LLVM-23 tools, no custom C++):
   ODS (.td, the contract's reference dialect)  --tblgen-to-irdl-->  raw IRDL
@@ -28,10 +28,10 @@ _REPO = Path(__file__).resolve().parents[5]
 _LLVM = _REPO / "third_party" / "llvm-install"
 _T2I = _LLVM / "bin" / "tblgen-to-irdl"
 _MLIROPT = _LLVM / "bin" / "mlir-opt"
-# the contract's reference ODS (mirrors bench_contract/interface_grammar.md); used only to DERIVE the IRDL
+# the contract's reference ODS (mirrors merlin/contract/interface_grammar.md); used only to DERIVE the IRDL
 _REF_ODS_INC = _REPO / "artifacts/targets/gemmini/agent_spec_v1_mlir_oot/mlir_oot/include"
 _DEFAULT_OUT = _REPO / "merlin/targets/gemmini/contracts/irdl/merlin_iface.irdl.mlir"
-_CAPSULES = _REPO / "bench_contract" / "capsules"
+_CAPSULES = _REPO / "merlin/contract" / "capsules"
 
 
 def generate(out: Path) -> Path:

@@ -18,7 +18,7 @@ from merlin.targetgen.oot_runner import certify
 REPO = repo_root()
 NATIVE = REPO / "artifacts/targets" / "gemmini" / "merlin_native_v0"
 CPP = REPO / "artifacts/targets" / "gemmini" / "hand_smoke_oot"
-EX = REPO / "bench_contract" / "examples"
+EX = REPO / "merlin/contract" / "examples"
 
 _HAVE_SPIKE = gem.available("spike")
 _HAVE_VERILATOR = gem.available("verilator")

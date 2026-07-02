@@ -1,4 +1,4 @@
-"""Fail-closed JSON-Schema validation against the ``bench_contract/schemas/`` bundle.
+"""Fail-closed JSON-Schema validation against the ``merlin/contract/schemas/`` bundle.
 
 A single place to load + validate the contract schemas so the runner, the tests, and the
 packages all enforce the same rules. Validation raises :class:`ContractViolation` with a concise
@@ -14,7 +14,9 @@ import jsonschema
 
 # repo root = .../oscar-merlin (this file: merlin/python/merlin/targetgen/contract/schemas.py)
 _REPO = Path(__file__).resolve().parents[5]
-DEFAULT_CONTRACT_DIR = _REPO / "bench_contract"
+# The experiment ABI (contract + capsule corpus). Lives under merlin/ as core infra; a root
+# `bench_contract -> merlin/contract` compat symlink keeps external/legacy references resolving.
+DEFAULT_CONTRACT_DIR = _REPO / "merlin" / "contract"
 
 
 class ContractViolation(ValueError):
@@ -22,7 +24,12 @@ class ContractViolation(ValueError):
 
 
 def contract_dir(override: str | Path | None = None) -> Path:
-    return Path(override) if override else DEFAULT_CONTRACT_DIR
+    """Resolve the contract dir: explicit override > $MERLIN_CONTRACT_DIR > default merlin/contract."""
+    if override:
+        return Path(override)
+    import os
+    env = os.environ.get("MERLIN_CONTRACT_DIR")
+    return Path(env) if env else DEFAULT_CONTRACT_DIR
 
 
 def load_schema(name: str, *, contract: str | Path | None = None) -> dict[str, Any]:
