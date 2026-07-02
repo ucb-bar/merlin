@@ -17,7 +17,12 @@ file contract + integrity scan**: a package is invoked only through CLI entrypoi
 import the harness internals. This is language-agnostic — proven by a Python and a C++ package
 passing the identical runner.
 
-## The contract (`bench_contract/`)
+## The contract (`merlin/contract/`, symlinked as `bench_contract/`)
+
+> The contract bundle lives at `merlin/contract/` (core infra). A root `bench_contract ->
+> merlin/contract` compat symlink keeps external package bundles and the `--contract bench_contract`
+> examples below resolving unchanged; either path works.
+
 
 A package consumes an `*.interface.mlir` in the frozen `merlin_iface` grammar
 (`interface_grammar.md`) and exposes four CLI entrypoints:
@@ -115,7 +120,7 @@ plane-routed `FailureCategory`. The seven `tests/fixtures/broken_packages/` fixt
 
 ## Tests
 
-- `merlin/python/tests/test_bench_contract.py` — schemas, grammar round-trip, golden examples (K0).
+- `merlin/tests/gemmini/test_bench_contract.py` — schemas, grammar round-trip, golden examples (K0).
 - `merlin/python/tests/test_oot_runner_smoke.py` — native g0/g1/g2 + C++ g0/g1 through the runner
   (K1–K9); oracle gates skip-if-unavailable.
 - `merlin/python/tests/test_oot_runner_negative.py` — every broken fixture fails closed (K10).
