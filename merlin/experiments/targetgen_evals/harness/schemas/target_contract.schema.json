@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "target_contract.schema.json",
+  "title": "TargetContract",
+  "description": "High-level contract describing the hardware target's concepts and capabilities.",
+  "type": "object",
+  "required": ["target", "concepts"],
+  "properties": {
+    "target":   {"type": "string"},
+    "version":  {"type": "string"},
+    "concepts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name":        {"type": "string"},
+          "description": {"type": "string"},
+          "evidence":    {"type": "array", "items": {"type": "string"}},
+          "claims":      {"type": "array"}
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

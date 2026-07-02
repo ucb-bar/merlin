@@ -1,0 +1,34 @@
+method: v0_naive_claude
+display_name: "Naive Claude (unconstrained)"
+version: "0.1"
+
+description: >
+  Direct LLM-assisted generation baseline. Claude Code inspects the frozen
+  source snapshot and directly writes the gemmini-mlir repository with no
+  structured intermediate artifacts. Measures the ceiling of unconstrained
+  repo-editing.
+
+allowed_artifacts:
+  - contracts/target_contract.yaml
+  - contracts/dialect_plan.yaml
+  - contracts/lowering_plan.yaml
+  - contracts/runtime_adapter_plan.yaml
+  - generated/gemmini-mlir/**
+
+forbidden_modifications:
+  - datasets/
+  - methods/
+  - configs/
+  - harness/
+  - reports/
+  - ../merlin/
+  - ../gemmini/
+
+scoring_dimensions:
+  - schema_valid
+  - xdsl_files
+  - arch_rules_passed
+  - evidence_coverage
+  - pass_tests_pass
+  - cost_usd
+  - human_interventions

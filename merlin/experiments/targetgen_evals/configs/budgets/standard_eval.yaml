@@ -1,0 +1,18 @@
+name: standard_eval
+description: >
+  Standard development-cycle evaluation. Runs all structural validators.
+  Does not run held-out shape execution (requires MLIR toolchain).
+
+token_limit_usd: 20.00
+
+validators:
+  - schema
+  - naming
+  - xdsl
+  - evidence
+  - design
+  - merlin_integration
+
+notes: >
+  Use for: iterative development, comparing drafts of a method, and regression checks.
+  Suitable for rapid iteration without requiring a full MLIR toolchain installation.

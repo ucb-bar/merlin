@@ -1,0 +1,26 @@
+{
+  "description": "Golden runtime command sequence for a 16x16x16 i8→i32 matmul.",
+  "test": "matmul_exact_i8_i32",
+  "version": "0.1",
+  "input": {
+    "shape": [16, 16, 16],
+    "dtype_in": "i8",
+    "dtype_out": "i32",
+    "dataflow": "WS",
+    "tile_m": 16,
+    "tile_n": 16,
+    "tile_k": 16
+  },
+  "expected_commands": [
+    {"cmd": "config_ld", "stride": 16, "scale": 1.0},
+    {"cmd": "mvin",      "src": "A_DRAM", "dst": "scratchpad:0",  "rows": 16, "cols": 16},
+    {"cmd": "mvin",      "src": "B_DRAM", "dst": "scratchpad:16", "rows": 16, "cols": 16},
+    {"cmd": "config_ex", "dataflow": "WS", "act": 0, "shift": 0},
+    {"cmd": "preload",   "B_addr": "scratchpad:16", "C_addr": "accumulator:0"},
+    {"cmd": "compute",   "A_addr": "scratchpad:0",  "D_addr": "accumulator:0", "accumulate": false},
+    {"cmd": "config_st", "stride": 16, "scale": 1.0},
+    {"cmd": "mvout",     "src": "accumulator:0", "dst": "C_DRAM", "rows": 16, "cols": 16},
+    {"cmd": "fence"}
+  ],
+  "notes": "Command sequence is approximate; exact encoding depends on config_ld/config_ex settings at dispatch time."
+}

@@ -1,0 +1,17 @@
+method: v4_rtl_tools
+version: "0.1"
+description: "Placeholder — see prompt.md for details."
+allowed_artifacts:
+  - contracts/target_contract.yaml
+  - contracts/dialect_plan.yaml
+  - contracts/lowering_plan.yaml
+  - contracts/runtime_adapter_plan.yaml
+  - generated/gemmini-mlir/**
+forbidden_modifications:
+  - datasets/
+  - methods/
+  - configs/
+  - harness/
+  - reports/
+  - ../merlin/
+  - ../gemmini/

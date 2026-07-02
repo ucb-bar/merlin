@@ -1,0 +1,103 @@
+{
+  "status": "validated",
+  "validated_at": "2026-06-08T20:03:34.409836+00:00",
+  "run_id": "2026-06-08_v0_naive_claude_seed001",
+  "is_smoke_test": true,
+  "architecture_rules": {
+    "passed": 8,
+    "failed": 2,
+    "results": [
+      {
+        "rule_id": "R1",
+        "name": "generated-repo-naming",
+        "passed": true,
+        "severity": "info",
+        "message": "generated/gemmini-mlir/ exists"
+      },
+      {
+        "rule_id": "R2",
+        "name": "xdsl-before-tablegen",
+        "passed": false,
+        "severity": "warning",
+        "message": "xdsl/ directory is absent or empty; xDSL artifacts must exist before TableGen/C++ promotion"
+      },
+      {
+        "rule_id": "R3",
+        "name": "no-premature-tablegen",
+        "passed": true,
+        "severity": "info",
+        "message": "No TableGen/C++ files found (correct for xDSL-first workflow)"
+      },
+      {
+        "rule_id": "R4",
+        "name": "merlin-core-immutable",
+        "passed": false,
+        "severity": "error",
+        "message": "Merlin core files modified since init: merlin/benchmarks/semantic_memory/capacity_stress_reuse.yaml, merlin/benchmarks/semantic_memory/matmul_bias_requant_relu.yaml, merlin/benchmarks/semantic_memory/no_reuse_matmul.yaml, merlin/benchmarks/semantic_memory/repeated_rhs_matmul.yaml, merlin/compiler/include/merlin/Dialect/Contract/AGENT.md"
+      },
+      {
+        "rule_id": "R5",
+        "name": "op-evidence",
+        "passed": true,
+        "severity": "info",
+        "message": "dialect_plan.yaml not present; skipping op-level checks (OK for empty run)"
+      },
+      {
+        "rule_id": "R6",
+        "name": "op-verifier-coverage",
+        "passed": true,
+        "severity": "info",
+        "message": "dialect_plan.yaml not present; skipping op-level checks (OK for empty run)"
+      },
+      {
+        "rule_id": "R7",
+        "name": "op-lowering-exit",
+        "passed": true,
+        "severity": "info",
+        "message": "dialect_plan.yaml not present; skipping op-level checks (OK for empty run)"
+      },
+      {
+        "rule_id": "R8",
+        "name": "no-scheduling-in-semantics",
+        "passed": true,
+        "severity": "info",
+        "message": "dialect_plan.yaml not present; skipping op-level checks (OK for empty run)"
+      },
+      {
+        "rule_id": "R9",
+        "name": "no-runtime-in-types",
+        "passed": true,
+        "severity": "info",
+        "message": "dialect_plan.yaml not present; skipping op-level checks (OK for empty run)"
+      },
+      {
+        "rule_id": "R10",
+        "name": "unsupported-fails-early",
+        "passed": true,
+        "severity": "info",
+        "message": "dialect_plan.yaml not present; skipping op-level checks (OK for empty run)"
+      }
+    ]
+  },
+  "validator_results": {
+    "schema": {
+      "validator": "schema",
+      "schema_valid": true,
+      "files_checked": 1,
+      "errors": []
+    },
+    "xdsl": {
+      "validator": "xdsl",
+      "xdsl_dir_exists": false,
+      "xdsl_files": 0,
+      "xdsl_op_estimate": 0,
+      "errors": [
+        "xdsl/ directory does not exist under generated/gemmini-mlir/; no xDSL artifacts produced yet"
+      ]
+    }
+  },
+  "errors": [
+    "xdsl/ directory does not exist under generated/gemmini-mlir/; no xDSL artifacts produced yet"
+  ],
+  "overall": "fail"
+}

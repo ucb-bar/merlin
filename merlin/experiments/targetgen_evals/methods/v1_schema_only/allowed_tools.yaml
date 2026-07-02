@@ -1,0 +1,6 @@
+method: v1_schema_only
+allowed_tools: [Read, Write, Edit, Bash]
+forbidden_tools: [WebFetch, WebSearch]
+bash_restrictions:
+  - No writes outside <run_dir>/
+  - No network operations
