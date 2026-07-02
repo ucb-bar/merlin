@@ -1,0 +1,77 @@
+dialect_name: gemmini
+namespace: gemmini
+version: "0.1"
+
+description: >
+  Expected ops, types, attrs, and lowering exits for a correct gemmini dialect.
+  Evaluated against the method's dialect_plan.yaml.
+
+# Required high-level ops (every method must produce these)
+high_level_ops:
+  - gemmini.pack       # DMA-load tile into scratchpad; marks tensor as resident
+  - gemmini.matmul     # Tiled matrix multiply; decomposes to low-level ISA
+  - gemmini.commit     # Flush accumulator to DRAM with optional requantisation
+  - gemmini.fence      # CPU–accelerator synchronisation barrier
+
+# Optional low-level ops (present in full ISA-faithful dialects; not required for v0)
+optional_low_level_ops:
+  - gemmini.config_ld  # Configure DMA load stride/scale
+  - gemmini.config_st  # Configure DMA store stride/requant
+  - gemmini.config_ex  # Configure execute: dataflow, tile dims, accumulate mode
+  - gemmini.mvin       # DMA transfer DRAM → scratchpad
+  - gemmini.preload    # Load weight tile into systolic array (WS mode)
+  - gemmini.compute    # Trigger one systolic accumulation
+  - gemmini.mvout      # DMA transfer accumulator → DRAM
+
+# Types
+types:
+  - name: resident_tensor
+    description: >
+      A ranked tensor that resides in the scratchpad. Carries scratchpad address,
+      layout, and tile-shape attributes. Must not be passed across fence boundaries.
+    element_types: [i8, ui8]
+
+  - name: accumulator
+    description: >
+      A ranked tensor in the accumulator SRAM. Element type is i32 or f32.
+      Produced by gemmini.matmul, consumed by gemmini.commit.
+    element_types: [i32, f32]
+
+# Attributes
+attrs:
+  - name: dataflow
+    description: Enum attr; WS (weight-stationary) or OS (output-stationary).
+    values: [WS, OS]
+
+  - name: layout
+    description: Row-major or col-major tile layout for scratchpad addressing.
+    values: [row_major, col_major]
+
+  - name: tile_m
+    description: Tile size along the M dimension. Must be a multiple of DIM (16).
+    type: i64
+
+  - name: tile_n
+    description: Tile size along the N dimension. Must be a multiple of DIM (16).
+    type: i64
+
+  - name: tile_k
+    description: Tile size along the K dimension. Must be a multiple of DIM (16).
+    type: i64
+
+# Lowering exits (paths from dialect ops to backend)
+lowering_exits:
+  - name: runtime_command
+    description: >
+      Lower gemmini.* ops to a sequence of RoCC command structs dispatched
+      through the Merlin runtime command buffer. Primary path for Zephyr/baremetal.
+
+  - name: low_level_isa
+    description: >
+      Lower high-level ops (matmul, pack) to the low-level ISA ops
+      (config_ld, mvin, preload, compute, mvout). Then lower ISA ops to runtime_command.
+
+  - name: llvm_inline_asm_stub
+    description: >
+      Lower to LLVM IR with inline assembly stubs for direct RISC-V emission.
+      Used for standalone baremetal compilation without the runtime library.

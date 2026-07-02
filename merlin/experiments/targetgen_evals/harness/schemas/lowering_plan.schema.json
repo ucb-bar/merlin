@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "lowering_plan.schema.json",
+  "title": "LoweringPlan",
+  "description": "Maps dialect ops to lowering exit targets.",
+  "type": "object",
+  "required": ["source_dialect", "passes"],
+  "properties": {
+    "source_dialect": {"type": "string"},
+    "passes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "from_op", "to_exit"],
+        "properties": {
+          "name":     {"type": "string"},
+          "from_op":  {"type": "string"},
+          "to_exit":  {"type": "string"},
+          "pattern":  {"type": "string"},
+          "notes":    {"type": "string"}
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

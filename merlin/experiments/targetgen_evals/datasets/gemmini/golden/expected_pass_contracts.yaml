@@ -1,0 +1,28 @@
+target: gemmini
+version: "0.1"
+
+description: >
+  Expected pass pipeline contracts: which MLIR passes must exist and in what order.
+
+passes:
+  - name: ConvertGemminiToRuntimeCommands
+    input_dialect: gemmini
+    output_dialect: runtime_command
+    required: true
+    notes: Primary lowering exit. High-level ops → command buffer dispatch calls.
+
+  - name: GemminiTileShapeVerification
+    kind: verifier
+    required: true
+    notes: Fails if any tile dimension is not a multiple of DIM.
+
+  - name: GemminiResidentTensorAnalysis
+    kind: analysis
+    required: false
+    notes: Identifies resident_tensor values that can be packed once and reused.
+
+  - name: ConvertGemminiHighToLowLevel
+    input_ops: [gemmini.pack, gemmini.matmul, gemmini.commit]
+    output_ops: [gemmini.config_ld, gemmini.mvin, gemmini.preload, gemmini.compute, gemmini.config_st, gemmini.mvout]
+    required: false
+    notes: Optional decomposition pass for ISA-faithful lowering.

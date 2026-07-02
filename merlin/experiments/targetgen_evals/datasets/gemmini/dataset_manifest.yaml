@@ -1,0 +1,45 @@
+target: gemmini
+dataset_version: "0.1"
+frozen: false
+
+description: >
+  Evaluation dataset for Gemmini target-dialect generation.
+  source_snapshot/ must be frozen before any official method run.
+  golden/ files define expected capabilities and serve as the evaluation ground truth.
+  tests/ contains skeletal MLIR tests (positive, negative, lowering, runtime_mock).
+
+contents:
+  source_snapshot:
+    status: empty
+    notes: >
+      Populate with a frozen subset of chipyard/generators/gemmini/ before running v0.
+      Treat as read-only once frozen.
+
+  selected_docs:
+    status: empty
+    notes: Human-selected documentation excerpts (README, paper sections, ISA table)
+
+  selected_rtl:
+    status: empty
+    notes: Selected RTL snippets relevant to dialect design (ExecuteController, LoadController, etc.)
+
+  selected_kernels:
+    status: empty
+    notes: Gemmini kernel source files (baremetal matmul, conv, im2col)
+
+  selected_traces:
+    status: empty
+    notes: Spike commit-log traces for representative kernels
+
+  golden:
+    status: populated
+    files:
+      - expected_contract.yaml
+      - expected_dialect_features.yaml
+      - expected_kernel_patterns.yaml
+      - expected_pass_contracts.yaml
+      - heldout_shapes.yaml
+
+  tests:
+    status: skeletal
+    notes: Placeholder MLIR files. Not executed until mlir-opt/xdsl-opt is wired in.
