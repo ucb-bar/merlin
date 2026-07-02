@@ -1,6 +1,0 @@
-method: v2_schema_generator
-allowed_tools: [Read, Write, Edit, Bash]
-forbidden_tools: [WebFetch, WebSearch]
-bash_restrictions:
-  - No writes outside <run_dir>/
-  - No network operations

@@ -28,9 +28,8 @@ FORBIDDEN_ROOTS = ("output/", "results/", "selfcheck_out/", "mined_knowledge/", 
 FORBIDDEN_RE = re.compile(r"(^|/)experiments/[^/]+/runs/")
 # genuinely-tracked source images, if any (verify with `git ls-files '*.png'` before adding).
 ALLOW_TRACKED_GEN: set[str] = set()
-# Self-contained nested aet projects with their own runs/ lifecycle — out of the main
-# tree's three-root scope (they are initialized via `aet init-project`).
-SKIP_PREFIXES = ("targetgen-evals/",)
+# (targetgen-evals/ was relocated to the aet repo — no nested-project exemptions remain.)
+SKIP_PREFIXES: tuple[str, ...] = ()
 
 
 def _repo_root() -> Path:

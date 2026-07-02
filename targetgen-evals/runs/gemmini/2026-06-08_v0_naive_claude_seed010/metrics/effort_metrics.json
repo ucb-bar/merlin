@@ -1,9 +1,0 @@
-{
-  "human_interventions": null,
-  "cost_usd": null,
-  "wall_clock_seconds": 0.037,
-  "tokens_input": null,
-  "tokens_output": null,
-  "agent_turns": null,
-  "tool_calls": null
-}
