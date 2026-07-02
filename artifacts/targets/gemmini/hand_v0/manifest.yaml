@@ -19,7 +19,7 @@ authoring:
 reproducibility:
   # The CERTIFICATION is reproducible (re-run the recorded dispatcher sweep); the PACKAGE itself
   # is NOT regenerable from recorded inputs yet — it was hand-authored. This is the gap that
-  # generated_targets/gemmini/agent_spec_v0 is meant to close.
+  # artifacts/targets/gemmini/agent_spec_v0 is meant to close.
   certified_execution_reproducible: true
   target_generation_reproducible: false
 
@@ -40,6 +40,6 @@ artifacts:
   exported: []                  # C++/TableGen final artifacts go here once the design settles
 notes: >-
   Loaded via merlin.targetgen.registry.load_target — NOT hardcoded into the core lowering tables.
-  Multiple rounds coexist under generated_targets/gemmini/<run_id>/. This is the Level A
+  Multiple rounds coexist under artifacts/targets/gemmini/<run_id>/. This is the Level A
   (RTL-certified backend) + weak Level B (RTL-constrained) package; Level C (RTL-derived,
   agent-proposed spec) is the agent_spec_v0 milestone.

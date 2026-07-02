@@ -1,6 +1,6 @@
 # Merlin Muon reference backend, as an experiment-ABI package.
 #
-# The Muon analog of generated_targets/gemmini/merlin_native_v0: it wraps a hand-curated, correct
+# The Muon analog of artifacts/targets/gemmini/merlin_native_v0: it wraps a hand-curated, correct
 # (unoptimized) merlin_iface -> Muon SIMT lowering behind the four contract entrypoints, so (a) the
 # parallel Muon runner is exercised end-to-end and (b) it is the GFLOP/s ceiling the agentic
 # merlin+CIRCT backend must re-derive and beat. It is the ONE integrity-exempt Muon package (it

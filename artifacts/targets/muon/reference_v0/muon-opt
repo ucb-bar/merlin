@@ -1,8 +1,8 @@
-#!/scratch/agustin/projects/oscar-merlin/.venv/bin/python
+#!/usr/bin/env python3
 """muon_reference_v0 / muon-opt -- the Merlin Muon reference backend as a contract tool.
 
 A self-contained CLI exposing the four experiment-ABI entrypoints over the `merlin_iface` grammar,
-the Muon analog of generated_targets/gemmini/merlin_native_v0/gemmini-opt:
+the Muon analog of artifacts/targets/gemmini/merlin_native_v0/gemmini-opt:
   --verify-diagnostics            parse + verify the interface.mlir (exit 0/1)
   --convert-iface-to-muon         print a muon target-dialect view (generic-form MLIR)
   --emit-command-buffer=OUT       write the reconstructed command_buffer.json to OUT
