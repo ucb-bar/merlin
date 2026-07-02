@@ -17,7 +17,7 @@ from pathlib import Path
 import qa_check as _base  # the real, untouched QA gate
 
 import sys
-_PKG = Path(__file__).resolve().parents[3] / "merlin" / "python"
+_PKG = Path(__file__).resolve().parents[4] / "merlin" / "python"
 if str(_PKG) not in sys.path:
     sys.path.insert(0, str(_PKG))
 from merlin.targetgen import rtl_check_runner as RUN  # noqa: E402

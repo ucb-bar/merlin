@@ -38,10 +38,10 @@ APPROACH_PKG = {
     "merlin_targetgen": PB.REPO / "generated_targets" / "gemmini" / "agent_spec_v1_mlir_oot",
     "merlin_native": PB.REPO / "generated_targets" / "gemmini" / "merlin_native_v0",
     # --- the 4 agentic capsule-bench backends (abc11/abc9), profiled for perf ---
-    "agentic_raw_cpp":      PB.REPO / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "raw_baseline" / "rb_abc11" / "submission",
-    "agentic_scaffold_cpp": PB.REPO / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "cpp_merlininfra" / "rbinfra_abc11" / "submission",
-    "agentic_python":       PB.REPO / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "merlin_assisted" / "merlin_abc9" / "submission",
-    "agentic_circt":        PB.REPO / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "merlin_assisted" / "merlincirct_abc9" / "submission",
+    "agentic_raw_cpp":      PB.REPO / "merlin" / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "raw_baseline" / "rb_abc11" / "submission",
+    "agentic_scaffold_cpp": PB.REPO / "merlin" / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "cpp_merlininfra" / "rbinfra_abc11" / "submission",
+    "agentic_python":       PB.REPO / "merlin" / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "merlin_assisted" / "merlin_abc9" / "submission",
+    "agentic_circt":        PB.REPO / "merlin" / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "merlin_assisted" / "merlincirct_abc9" / "submission",
 }
 CONTRACT = str(PB.REPO / "bench_contract")
 

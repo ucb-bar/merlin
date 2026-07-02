@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[2]
+REPO = HERE.parents[3]
 PY = sys.executable
 REF = REPO / "generated_targets/gemmini/agent_spec_v1_mlir_oot"
 CE = "/scratch2/agustin/chipyard/.conda-env"

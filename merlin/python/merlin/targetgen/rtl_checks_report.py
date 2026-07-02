@@ -10,7 +10,7 @@ to skip the expensive oracle on ``verdict == "reject"`` (the saving is realised 
 runner is never consulted about it).
 
 This is design Phase "advisory surfacing" + the opt-in pre-screen helper from
-``experiments/gemmini_perf_bench/reports/rtl_checks_layer_design.md``. The deeper phases (feed into the
+``merlin/experiments/gemmini_perf_bench/reports/rtl_checks_layer_design.md``. The deeper phases (feed into the
 agent loop, label runs checks-active, T1 spike-byproduct checks) remain follow-ups.
 
 CLI::

@@ -5,8 +5,8 @@ import hashlib
 import subprocess
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[3]
-EXP = REPO / "experiments" / "gemmini_capsule_bench_v0"
+REPO = Path(__file__).resolve().parents[4]
+EXP = REPO / "merlin" / "experiments" / "gemmini_capsule_bench_v0"
 # Generated runs live under the canonical runs/ root (see CLAUDE.md "Generated-output
 # convention"); input bundles remain tracked source under the experiment dir.
 RUNS = REPO / "runs" / "gemmini" / "capsule-bench"

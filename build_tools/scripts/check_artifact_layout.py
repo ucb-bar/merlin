@@ -3,7 +3,7 @@
 
 Fails (exit 1) if any of:
   * a TRACKED file lives under an old/forbidden root (output/, results/, selfcheck_out/,
-    mined_knowledge/, docs/presentation/, experiments/*/runs/);
+    mined_knowledge/, docs/presentation/, merlin/experiments/*/runs/);
   * a TRACKED file has a generated extension (.png/.svg/.pdf/.zip/.jsonl) outside artifacts/
     (and not allowlisted);
   * a versioned product dir artifacts/<topic>/v*/<leaf>/ is missing manifest.yaml;

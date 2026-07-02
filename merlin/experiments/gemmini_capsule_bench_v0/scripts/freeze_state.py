@@ -16,7 +16,7 @@ from pathlib import Path
 
 import yaml
 
-REPO = Path(__file__).resolve().parents[3]
+REPO = Path(__file__).resolve().parents[4]
 OUT = REPO / "artifacts" / "capsule-bench" / "gemmini" / "capsule_bench_v0_freeze_manifest.yaml"
 
 # artifact trees to hash (relative to repo); build/ and __pycache__ excluded

@@ -9,8 +9,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[3]
-EXP = REPO / "experiments" / "gemmini_perf_bench"
+REPO = Path(__file__).resolve().parents[4]
+EXP = REPO / "merlin" / "experiments" / "gemmini_perf_bench"
 KERNELS = EXP / "kernels"            # one capsule dir per kernel + kernel_corpus.yaml
 # Generated outputs live under the canonical three-root layout (see CLAUDE.md
 # "Generated-output convention"): runs under runs/, figures under artifacts/plots/.

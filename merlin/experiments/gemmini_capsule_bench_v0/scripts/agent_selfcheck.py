@@ -27,7 +27,7 @@ from pathlib import Path
 # operator-side modules (this tool is NOT part of the graded submission; the submission must stay
 # integrity-clean and never import merlin — but this harness may, exactly like a vendor's test rig)
 _HERE = Path(__file__).resolve().parent
-_REPO = _HERE.parents[2]
+_REPO = _HERE.parents[3]
 sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_REPO / "merlin" / "python"))
 import qa_check as _qc                                   # redaction helper (no golden leak)

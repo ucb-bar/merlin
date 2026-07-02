@@ -108,7 +108,7 @@ merlin/benchmarks/dse_guidance/recaptures_decode/*/FAILED.txt
 
 # Experiment run outputs are generated: new runs route to runs/<target>/<suite>/ (see CLAUDE.md).
 # Any legacy per-experiment runs/ dir is regenerable and never tracked.
-experiments/**/runs/
+merlin/experiments/**/runs/
 # Transient agentic-experiment workspaces: per-run bwrap workspaces full of absolute symlinks +
 # live-written state (never want these tracked; durable artifacts live in runs/ and reports/).
 **/_qa_ws/
