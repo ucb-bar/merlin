@@ -35,7 +35,7 @@ def emit_rung_interface(rung: str, out_dir: str | Path) -> Path:
 
 
 def run_sweep(rungs: list[str], simulators: list[str], *, runs_root: str | Path,
-              package: str | Path = NATIVE_PKG, contract: str = "bench_contract",
+              package: str | Path = NATIVE_PKG, contract: str = "merlin/contract",
               force: bool = False, timeout: int = 600) -> list[dict[str, Any]]:
     """Cartesian rung x simulator sweep through oot_runner. Returns per-run summaries."""
     runs_root = Path(runs_root)

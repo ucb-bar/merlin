@@ -10,7 +10,7 @@ still only invoked via its 4 CLI entrypoints (subprocess) — never imported.
 
 Usage:
     python -m merlin.targetgen.capsule_grade --package <pkg_dir> \
-        --capsules bench_contract/capsules --runs-root <out> [--hidden] [--labels public,dev] \
+        --capsules merlin/contract/capsules --runs-root <out> [--hidden] [--labels public,dev] \
         [--score <out.json>] [--no-oracle]
 """
 from __future__ import annotations
@@ -157,9 +157,9 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Grade a backend package through capsule_bench_v0")
     ap.add_argument("--package", required=True)
-    ap.add_argument("--capsules", default="bench_contract/capsules")
+    ap.add_argument("--capsules", default="merlin/contract/capsules")
     ap.add_argument("--runs-root", required=True)
-    ap.add_argument("--contract", default="bench_contract")
+    ap.add_argument("--contract", default="merlin/contract")
     ap.add_argument("--labels", default="public,dev")
     ap.add_argument("--hidden", action="store_true", help="grade ONLY hidden capsules (post-freeze)")
     ap.add_argument("--no-oracle", action="store_true", help="L0/L1/trace only (skip spike/verilator)")

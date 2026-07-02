@@ -11,7 +11,7 @@ from merlin.targetgen.oot_runner import certify
 
 REPO = repo_root()
 FIXTURES = merlin_dir() / "tests" / "fixtures" / "broken_packages"
-G0 = REPO / "bench_contract" / "examples" / "g0_matmul.interface.mlir"
+G0 = REPO / "merlin/contract" / "examples" / "g0_matmul.interface.mlir"
 EXPECTED = yaml.safe_load((FIXTURES / "EXPECTED.yaml").read_text())
 
 

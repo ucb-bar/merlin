@@ -4,7 +4,7 @@ Wires :mod:`merlin.targetgen.rtl_checks` *around* the frozen runner without touc
 capsule-bench run directory, it reads the already-decoded ``generated/instruction_trace.json``,
 resolves the declared capsule + the target's RTL facts, calls :func:`rtl_checks.screen`, and writes a
 sibling ``rtl_checks.json`` next to ``capsule_result.json``. Pure advisory — it imports nothing from
-``capsule_runner`` / ``capsule_grade`` / the bench_contract schemas, mutates no existing artifact, and
+``capsule_runner`` / ``capsule_grade`` / the merlin/contract schemas, mutates no existing artifact, and
 changes no pass/fail verdict. Callers that want a cost pre-screen can use :func:`prescreen` and choose
 to skip the expensive oracle on ``verdict == "reject"`` (the saving is realised caller-side; the frozen
 runner is never consulted about it).
@@ -32,10 +32,10 @@ from . import rtl_checks
 
 _REPO = Path(__file__).resolve().parents[4]  # .../oscar-merlin
 _GEMMINI_CONTRACT = _REPO / "merlin" / "targets" / "gemmini" / "contracts" / "target_contract.yaml"
-# capsule.yaml definitions live in these roots (bench_contract corpus + the perf-bench kernels);
+# capsule.yaml definitions live in these roots (merlin/contract corpus + the perf-bench kernels);
 # every capsule dir is named after the capsule, matching the run dir name.
 _CAPSULE_ROOTS = [
-    _REPO / "bench_contract" / "capsules",
+    _REPO / "merlin/contract" / "capsules",
     _REPO / "experiments" / "gemmini_perf_bench" / "kernels",
 ]
 
