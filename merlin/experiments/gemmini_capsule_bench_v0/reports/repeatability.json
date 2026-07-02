@@ -1,0 +1,108 @@
+{
+  "arm": "raw_baseline",
+  "n_total": 3,
+  "n_valid": 1,
+  "rate_limit_aware": true,
+  "runs": [
+    {
+      "run_id": "rb_pilot_rep_01",
+      "outcome": "pass",
+      "public": "4/4",
+      "hidden": "3/3",
+      "tier": "L3",
+      "numeric_all_exact": true,
+      "integrity": "clean",
+      "n_rounds": 2,
+      "converged": true,
+      "rounds_rejected": 0,
+      "rounds_worked": 2,
+      "answer_access": "attempted_blocked",
+      "answer_access_raw_clean": false,
+      "wall_s": 2977.692,
+      "cost_usd": 18.1395,
+      "tokens_total": 7900180,
+      "tool_calls": 87
+    },
+    {
+      "run_id": "rb_pilot_rep_02",
+      "outcome": "blocked_rate_limit",
+      "public": "0/0",
+      "hidden": "0/0",
+      "tier": null,
+      "numeric_all_exact": null,
+      "integrity": "FAIL[contract]: no manifest.yaml in package /scratch/agustin/projects/oscar-merlin/experiments/gemmini_capsule_bench_v0/runs/raw_baseline/rb_pilot_rep_02/submission",
+      "n_rounds": 8,
+      "converged": false,
+      "rounds_rejected": 7,
+      "rounds_worked": 1,
+      "answer_access": "attempted_blocked",
+      "answer_access_raw_clean": false,
+      "wall_s": 334.287,
+      "cost_usd": 3.1187,
+      "tokens_total": 1048771,
+      "tool_calls": 19
+    },
+    {
+      "run_id": "rb_pilot_rep_03",
+      "outcome": "blocked_rate_limit",
+      "public": "0/0",
+      "hidden": "0/0",
+      "tier": null,
+      "numeric_all_exact": null,
+      "integrity": "FAIL[contract]: no manifest.yaml in package /scratch/agustin/projects/oscar-merlin/experiments/gemmini_capsule_bench_v0/runs/raw_baseline/rb_pilot_rep_03/submission",
+      "n_rounds": 8,
+      "converged": false,
+      "rounds_rejected": 8,
+      "rounds_worked": 0,
+      "answer_access": "clean",
+      "answer_access_raw_clean": true,
+      "wall_s": 11.416,
+      "cost_usd": 0.0,
+      "tokens_total": 0,
+      "tool_calls": 0
+    }
+  ],
+  "aggregate": {
+    "valid_pass_rate": "1/1",
+    "n_total": 3,
+    "n_valid": 1,
+    "n_blocked_rate_limit": 2,
+    "all_integrity_clean_valid": true,
+    "answer_access_leak_any": false,
+    "answer_access_by_run": {
+      "rb_pilot_rep_01": "attempted_blocked",
+      "rb_pilot_rep_02": "attempted_blocked",
+      "rb_pilot_rep_03": "clean"
+    },
+    "all_numeric_exact_valid": true,
+    "rounds_to_converge_valid": {
+      "min": 2,
+      "max": 2,
+      "mean": 2,
+      "median": 2,
+      "stdev": 0.0
+    },
+    "wall_seconds_valid": {
+      "min": 2977.692,
+      "max": 2977.692,
+      "mean": 2977.69,
+      "median": 2977.692,
+      "stdev": 0.0
+    },
+    "cost_usd_valid": {
+      "min": 18.1395,
+      "max": 18.1395,
+      "mean": 18.14,
+      "median": 18.1395,
+      "stdev": 0.0
+    },
+    "tool_calls_valid": {
+      "min": 87,
+      "max": 87,
+      "mean": 87,
+      "median": 87,
+      "stdev": 0.0
+    },
+    "raw_full_pass": "1/3"
+  }
+}

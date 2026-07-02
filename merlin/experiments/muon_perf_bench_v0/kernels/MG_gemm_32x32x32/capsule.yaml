@@ -1,0 +1,16 @@
+name: MG_gemm_32x32x32
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: simt:gemm_fp32
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- {name: W, role: weight, shape: [32, 32], dtype: f32}
+- {name: X, role: input, shape: [32, 32], dtype: f32}
+operation:
+  op: matmul
+  attributes: {lhs: X, weight: W, out: Y0, epilogue: [], output_dtype: f32}
+numeric_policy: {compare: tolerance_float, dtype: f32, rtol: 0.0, atol: 0.001}
+expected:
+  instruction_classes: [SMEM_LD, FMA, BARRIER, GMEM_ST]
+required_oracle_tiers: [L0, L1, L2]

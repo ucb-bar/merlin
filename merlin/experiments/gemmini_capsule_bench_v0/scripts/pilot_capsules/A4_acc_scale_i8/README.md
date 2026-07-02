@@ -1,0 +1,1 @@
+/scratch/agustin/projects/oscar-merlin/bench_contract/capsules/isa/A4_acc_scale_i8/README.md

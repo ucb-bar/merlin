@@ -1,0 +1,16 @@
+# Grader-private bundle — used ONLY in the post-agent grading phase (full access, never mounted into
+# the agent workspace). Lists the resources the grader needs that the agent must never see.
+bundle_id: grader_private_v0
+arm: grader
+task: gemmini-mlir-oot-capsule
+description: "Grader-private: hidden capsules + goldens + integrity scanner + oracle adapters."
+grader_inputs:
+  - {path: "bench_contract/capsules/hidden/", note: "hidden capsules + goldens (installed at grade time)"}
+  - {path: "merlin/python/merlin/targetgen/capsule_grade.py", note: "the grader (capsule_bench_v0 over a submission)"}
+  - {path: "merlin/python/merlin/targetgen/capsule_runner.py", note: "tier ladder L0-L5 + integrity scan"}
+  - {path: "merlin/python/merlin/targetgen/heavy_oracles.py", note: "VCS/FireSim adapters (currently unavailable)"}
+  - {path: "merlin/python/merlin/runtime/", note: "reference/simulator/backends (oracle side)"}
+phase: post_agent_only
+note: >-
+  The grader runs OUTSIDE the agent sandbox (it needs spike/verilator under /scratch* and the hidden
+  goldens). Hidden capsules are graded only AFTER the submission is frozen + hashed.

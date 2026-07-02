@@ -1,0 +1,39 @@
+name: K_move_16x16
+kind: isa
+source_role: uplifted_from_bareMetalC
+source_reference: bareMetalC/mvin_mvout.c
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: i8
+operation:
+  op: movement
+  attributes:
+    src: X
+    out: Y0
+    semantic: mvin_mvout
+numeric_policy:
+  compare: exact_int
+  dtype: i8
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - MVOUT
+  modes:
+    movement: true
+    i8: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional

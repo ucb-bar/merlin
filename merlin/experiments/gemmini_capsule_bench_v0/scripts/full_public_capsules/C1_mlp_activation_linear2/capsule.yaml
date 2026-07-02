@@ -1,0 +1,52 @@
+name: C1_mlp_activation_linear2
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: mlp.relu+fc2
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W2
+  role: weight
+  shape:
+  - 64
+  - 64
+  dtype: i8
+- name: H
+  role: input
+  shape:
+  - 16
+  - 64
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: H
+    weight: W2
+    out: Y0
+    epilogue:
+    - relu
+    output_dtype: i32
+    semantic: mlp_relu_linear2
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    i8: false
+    relu: true
+    acc_scale: false
+required_oracle_tiers:
+  - L0
+  - L1
+  - L2
+vcs: optional
+firesim: optional

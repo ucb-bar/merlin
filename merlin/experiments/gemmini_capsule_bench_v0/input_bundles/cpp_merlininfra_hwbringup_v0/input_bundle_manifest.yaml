@@ -1,0 +1,72 @@
+# C++ OOT + Merlin-infra input bundle for the gemmini-mlir-oot-capsule task.
+# A 4th arm that isolates INFRASTRUCTURE value at fixed language: the agent authors its OWN C++ out-of-tree
+# MLIR dialect + passes plugin (like raw_baseline), but is allowed to stand it up WITH Merlin's GENERIC C++
+# OOT scaffolding (mlir_scaffold / target_repo / llvm_plan) — rather than writing the package/CMake/entry-
+# point boilerplate from scratch. It plugs into the SAME shared runtime + grading every arm uses, via the
+# frozen merlin_iface text contract + command_buffer ABI.
+#
+# FAIRNESS INVARIANT: the allowed merlin/* set is a STRICT SUBSET of the merlin arm's. It does NOT get the
+# Python authoring kit (oot_starterkit/synthesize/xdsl_dialects — what the merlin run had), a pre-built
+# merlin_iface input dialect, the IRDL spec/generator (net-new; prior arms lacked it), the CIRCT RTL moat,
+# or the oracle. "Imagine you built your own dialect and want to integrate it into our scaffold/runtime":
+# you supply the dialect(s) + lowering; the scaffold gives only generic package plumbing.
+bundle_id: cpp_merlininfra_hwbringup_v0
+arm: cpp_merlininfra
+task: gemmini-mlir-oot-capsule
+description: >-
+  C++ OOT MLIR dialect+passes plugged into Merlin's compiler/runtime infra: stand up the package with the
+  generic Merlin C++ OOT scaffold (you supply the dialect + lowering), compile capsule interface MLIR
+  through your Gemmini target dialect to command_buffer.json + LLVM/RoCC, graded by capsule_bench_v0.
+  NO CIRCT, NO Python authoring kit, NO pre-built input dialect / IRDL, NO oracle.
+allowed:
+  - {path: "bench_contract/", mode: ro, note: "frozen ABI v0.1: schemas, grammar, command_buffer_abi, integrity_policy"}
+  - {path: "bench_contract/capsules/isa/", mode: ro}
+  - {path: "bench_contract/capsules/layers/", mode: ro}
+  - {path: "bench_contract/capsules/model_slices/", mode: ro}
+  - {path: "tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h", mode: ro, note: "public Gemmini ISA header"}
+  - {path: "tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h", mode: ro, note: "public Gemmini params"}
+  - {path: "experiments/gemmini_capsule_bench_v0/task/", mode: ro}
+  - {path: "third_party/llvm-install/", mode: ro, note: "LLVM/MLIR 23 toolchain (build the OOT package)"}
+  - {path: "experiments/gemmini_capsule_bench_v0/contracts/hwbringup_gemmini_v0", as: "gemmini", mode: ro, note: "HW-BRINGUP info set: RTL + ISA headers + README + ONE example kernel"}
+  - {path: "experiments/gemmini_capsule_bench_v0/scripts/agent_selfcheck.py", as: "agent_selfcheck.py", mode: ro, note: "redacted self-check (spike/verilator)"}
+  # --- the Merlin C++ OOT infrastructure this arm is allowed (and SHOULD use) ---
+  - {path: "merlin/python/merlin/targetgen/generate/mlir_scaffold.py", mode: ro, note: "ALLOWED infra: generates a C++ OOT MLIR dialect + passes + CMake + the 4-entrypoint skeleton"}
+  - {path: "merlin/python/merlin/targetgen/generate/llvm_plan.py", mode: ro, note: "ALLOWED infra: LLVM/RoCC lowering plan helper"}
+  - {path: "merlin/python/merlin/targetgen/generate/target_repo.py", mode: ro, note: "ALLOWED infra: assembles the OOT package layout"}
+  # NOTE: the agent gets the merlin_iface INPUT dialect from the scaffold's generated ODS (mlir_scaffold).
+  # The IRDL spec + gen_iface_irdl are deliberately NOT granted — they are net-new tooling the prior
+  # merlin / merlin+CIRCT runs did NOT have, so granting them would be an unfair advantage / break
+  # comparability. (FAIRNESS INVARIANT: this arm's merlin/* allow-set is a STRICT SUBSET of the merlin arm's.)
+denied:
+  # net-new IRDL tooling prior arms lacked — denied to keep this arm a strict subset of merlin
+  - {path: "merlin/python/merlin/targetgen/rtl/gen_iface_irdl.py", reason: "net-new (prior arms lacked) — unfair; scaffold's ODS covers the input dialect"}
+  - {path: "merlin/targets/gemmini/contracts/irdl/", reason: "net-new IRDL spec prior arms lacked — denied for comparability"}
+  # CIRCT moat — this arm does NOT get RTL-derived facts/generators
+  - {path: "merlin/python/merlin/targetgen/rtl/gen_isa_module.py", reason: "CIRCT RTL-derived encoder (moat) — denied"}
+  - {path: "merlin/python/merlin/targetgen/rtl/gen_rtl_digest.py", reason: "CIRCT RTL digest (moat) — denied"}
+  - {path: "merlin/python/merlin/targetgen/rtl/gen_numeric_facts.py", reason: "CIRCT numeric facts (moat) — denied"}
+  - {path: "merlin/targets/gemmini/contracts/rtl_facts/", reason: "CIRCT RTL facts.json (the moat) — denied"}
+  # Python authoring kit — this arm authors in C++, not via the xDSL framework
+  - {path: "merlin/python/merlin/targetgen/oot_starterkit/", reason: "Python authoring kit — denied (C++ arm)"}
+  - {path: "merlin/python/merlin/targetgen/synthesize/", reason: "Python synthesis tooling — denied"}
+  - {path: "merlin/python/merlin/xdsl_dialects/", reason: "xDSL dialect framework — denied (C++ arm)"}
+  - {path: "merlin/python/merlin/targetgen/generate/xdsl.py", reason: "xDSL scaffold generator — denied (C++ arm)"}
+  - {path: "merlin/python/merlin/targetgen/generate/runtime_adapter.py", reason: "emits a semantics.py that imports the reference oracle — callable oracle route"}
+  # the oracle + answers (denied to every arm)
+  - {path: "merlin/python/merlin/runtime/reference.py", reason: "the reference oracle (cheat surface)"}
+  - {path: "merlin/python/merlin/runtime/simulator.py", reason: "the simulator oracle (cheat surface)"}
+  - {path: "merlin/python/merlin/xdsl_dialects/lowering/", reason: "pipeline.execute() calls the oracle — callable oracle route"}
+  - {path: "generated_targets/gemmini/merlin_native_v0/", reason: "exempt reference backend"}
+  - {path: "generated_targets/gemmini/hand_smoke_oot/", reason: "hand exemplar"}
+  - {path: "generated_targets/gemmini/agent_spec_v0_mlir_oot/", reason: "prior backend"}
+  - {path: "generated_targets/gemmini/agent_spec_v1_mlir_oot/", reason: "prior backend"}
+  - {path: "bench_contract/capsules/hidden/", reason: "hidden capsules + goldens"}
+  - {path: "experiments/gemmini_capsule_bench_v0/input_bundles/grader_private_v0/", reason: "grader-private"}
+  - {path: "experiments/gemmini_capsule_bench_v0/runs/", reason: "prior submissions"}
+integrity_required: true
+note: >-
+  The agent authors a C++ OOT MLIR dialect+passes (language: cpp) using the Merlin C++ scaffold + the
+  merlin_iface IRDL spec, plugged into the shared runtime via the 4 CLI entrypoints + command_buffer ABI.
+  Allowed Merlin paths are the C++-OOT INFRASTRUCTURE only; CIRCT (rtl/ + rtl_facts), the Python authoring
+  kit (oot_starterkit/synthesize/xdsl_dialects), the oracle, and prior backends are denied. Under bwrap the
+  denied paths are masked; the submitted package must still pass the non-exempt integrity scan.

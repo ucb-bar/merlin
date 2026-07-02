@@ -1,0 +1,23 @@
+artifact_type: mlir_oot_target_backend
+target: gemmini
+package_id: gemmini_oot_xdsl_v0
+language: python
+authoring:
+  mode: agent_generated_from_rtl_facts
+  author: merlin_assisted_agent
+  generated_by_agent: true
+integrity_exempt: false
+llvm:
+  version: 23.0.0git
+  commit: a47bddccec30
+entrypoints:
+  tool: gemmini_backend/cli.py
+commands:
+  parse:
+    argv: ["/scratch/agustin/projects/oscar-merlin/.venv/bin/python", "{tool}", "parse", "{input_mlir}"]
+  lower_interface_to_target:
+    argv: ["/scratch/agustin/projects/oscar-merlin/.venv/bin/python", "{tool}", "lower-target", "{input_mlir}"]
+  emit_command_buffer:
+    argv: ["/scratch/agustin/projects/oscar-merlin/.venv/bin/python", "{tool}", "emit-cb", "{input_mlir}", "{output_json}"]
+  lower_target_to_llvm:
+    argv: ["/scratch/agustin/projects/oscar-merlin/.venv/bin/python", "{tool}", "lower-llvm", "{input_mlir}"]

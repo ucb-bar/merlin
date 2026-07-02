@@ -1,0 +1,445 @@
+{
+  "arms": {
+    "baseline": [
+      {
+        "run_id": "dry_0002",
+        "valid": false,
+        "converged": false,
+        "wall_s": 0.005,
+        "cost_usd": 0.1718,
+        "tokens_total": 20950,
+        "tokens_input": 5000,
+        "tokens_cached": 15000,
+        "tokens_output": 950,
+        "tool_calls": 2,
+        "thinking_blocks": 1,
+        "n_rounds": 0,
+        "rounds": [],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null
+      },
+      {
+        "run_id": "rb_pilot_0001",
+        "valid": false,
+        "converged": false,
+        "wall_s": 2645.199,
+        "cost_usd": 24.3505,
+        "tokens_total": 11114773,
+        "tokens_input": 445727,
+        "tokens_cached": 10667049,
+        "tokens_output": 1997,
+        "tool_calls": 134,
+        "thinking_blocks": 96,
+        "n_rounds": 5,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 38,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 28,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 34,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 34,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null
+      },
+      {
+        "run_id": "rb_pilot_0002",
+        "valid": true,
+        "converged": true,
+        "wall_s": 2475.014,
+        "cost_usd": 19.1746,
+        "tokens_total": 8977359,
+        "tokens_input": 328589,
+        "tokens_cached": 8646690,
+        "tokens_output": 2080,
+        "tool_calls": 106,
+        "thinking_blocks": 64,
+        "n_rounds": 3,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 41,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 29,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 4,
+            "tool_calls": 36,
+            "all_pass": true
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": {
+          "all": {
+            "passed": 19,
+            "total": 25
+          },
+          "public": {
+            "passed": 16,
+            "total": 20
+          },
+          "hidden": {
+            "passed": 3,
+            "total": 5
+          },
+          "first_failure_planes": {
+            "command_buffer_schema": 2,
+            "parse": 3,
+            "trace_check": 1
+          },
+          "language": "python"
+        }
+      },
+      {
+        "run_id": "rb_pilot_cpp_01",
+        "valid": true,
+        "converged": true,
+        "wall_s": 5639.071,
+        "cost_usd": 46.9808,
+        "tokens_total": 23679058,
+        "tokens_input": 657397,
+        "tokens_cached": 23017105,
+        "tokens_output": 4556,
+        "tool_calls": 225,
+        "thinking_blocks": 143,
+        "n_rounds": 4,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 96,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 39,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 46,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 4,
+            "tool_calls": 36,
+            "all_pass": true
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": {
+          "all": {
+            "passed": 18,
+            "total": 25
+          },
+          "public": {
+            "passed": 15,
+            "total": 20
+          },
+          "hidden": {
+            "passed": 3,
+            "total": 5
+          },
+          "first_failure_planes": {
+            "parse": 5,
+            "trace_check": 1,
+            "spike": 1
+          },
+          "language": "cpp"
+        }
+      },
+      {
+        "run_id": "rb_pilot_rep_01",
+        "valid": true,
+        "converged": true,
+        "wall_s": 2977.692,
+        "cost_usd": 18.1395,
+        "tokens_total": 7900180,
+        "tokens_input": 363327,
+        "tokens_cached": 7535056,
+        "tokens_output": 1797,
+        "tool_calls": 87,
+        "thinking_blocks": 51,
+        "n_rounds": 2,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 56,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 4,
+            "tool_calls": 25,
+            "all_pass": true
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null
+      },
+      {
+        "run_id": "rb_pilot_rep_02",
+        "valid": false,
+        "converged": false,
+        "wall_s": 334.287,
+        "cost_usd": 3.1187,
+        "tokens_total": 1048771,
+        "tokens_input": 90306,
+        "tokens_cached": 958140,
+        "tokens_output": 325,
+        "tool_calls": 19,
+        "thinking_blocks": 13,
+        "n_rounds": 8,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 19,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 6,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 7,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null
+      },
+      {
+        "run_id": "rb_pilot_rep_03",
+        "valid": false,
+        "converged": false,
+        "wall_s": 11.416,
+        "cost_usd": 0.0,
+        "tokens_total": 0,
+        "tokens_input": 0,
+        "tokens_cached": 0,
+        "tokens_output": 0,
+        "tool_calls": 0,
+        "thinking_blocks": 0,
+        "n_rounds": 8,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 6,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 7,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null
+      }
+    ],
+    "merlin": [
+      {
+        "run_id": "pilot_merlin_0001",
+        "valid": true,
+        "converged": true,
+        "wall_s": 2783.269,
+        "cost_usd": 16.6637,
+        "tokens_total": 6901059,
+        "tokens_input": 367029,
+        "tokens_cached": 6532507,
+        "tokens_output": 1523,
+        "tool_calls": 85,
+        "thinking_blocks": 49,
+        "n_rounds": 2,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 43,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 4,
+            "tool_calls": 35,
+            "all_pass": true
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null
+      }
+    ],
+    "merlin_rtlchecks": []
+  },
+  "n_valid": {
+    "baseline": 3,
+    "merlin": 1,
+    "merlin_rtlchecks": 0
+  },
+  "arm_order": [
+    "baseline",
+    "merlin",
+    "merlin_rtlchecks"
+  ],
+  "coverage": {
+    "class_coverage": {
+      "attention": {
+        "n": 5,
+        "rb_pilot_cpp_01": 5,
+        "rb_pilot_0002": 5
+      },
+      "conv": {
+        "n": 3,
+        "rb_pilot_cpp_01": 0,
+        "rb_pilot_0002": 0
+      },
+      "matmul": {
+        "n": 7,
+        "rb_pilot_cpp_01": 5,
+        "rb_pilot_0002": 6
+      },
+      "matmul+acc_scale": {
+        "n": 3,
+        "rb_pilot_cpp_01": 3,
+        "rb_pilot_0002": 3
+      },
+      "matmul+relu": {
+        "n": 3,
+        "rb_pilot_cpp_01": 3,
+        "rb_pilot_0002": 3
+      },
+      "mlp": {
+        "n": 2,
+        "rb_pilot_cpp_01": 2,
+        "rb_pilot_0002": 2
+      },
+      "movement": {
+        "n": 2,
+        "rb_pilot_cpp_01": 0,
+        "rb_pilot_0002": 0
+      }
+    },
+    "n_capsules": 25,
+    "backends": [
+      "rb_pilot_cpp_01",
+      "rb_pilot_0002"
+    ]
+  },
+  "caveat": "3-arm A/B/C. valid converged runs: baseline=3, merlin=1, merlin_rtlchecks=0. full-suite completeness present where full_suite_audit has been run."
+}

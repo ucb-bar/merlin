@@ -1,0 +1,154 @@
+{
+  "source": "/tmp/selfcheck_24d1u8uy/runs/gemmini-capsule-bench/A1_mvin_mvout/generated/lowered.llvm.mlir",
+  "abi": {
+    "custom_opcode": "0x7b",
+    "funct3": "0x3"
+  },
+  "instructions": [
+    {
+      "index": 0,
+      "class": "FENCE",
+      "funct": null,
+      "decoded": {}
+    },
+    {
+      "index": 1,
+      "class": "FLUSH",
+      "funct": 7,
+      "rs1": {
+        "raw": 0,
+        "kind": "const",
+        "arg_index": null,
+        "offset": null
+      },
+      "rs2": {
+        "raw": 0,
+        "kind": "const",
+        "arg_index": null,
+        "offset": null
+      },
+      "decoded": {}
+    },
+    {
+      "index": 2,
+      "class": "CONFIG_LD",
+      "funct": 0,
+      "rs1": {
+        "raw": 4575657221409472769,
+        "kind": "const",
+        "arg_index": null,
+        "offset": null
+      },
+      "rs2": {
+        "raw": 16,
+        "kind": "const",
+        "arg_index": null,
+        "offset": null
+      },
+      "decoded": {
+        "subtype": "LD",
+        "stride": 16
+      }
+    },
+    {
+      "index": 3,
+      "class": "CONFIG_ST",
+      "funct": 0,
+      "rs1": {
+        "raw": 2,
+        "kind": "const",
+        "arg_index": null,
+        "offset": null
+      },
+      "rs2": {
+        "raw": 4575657221408423952,
+        "kind": "const",
+        "arg_index": null,
+        "offset": null
+      },
+      "decoded": {
+        "subtype": "ST",
+        "acc_act": 0,
+        "relu": false,
+        "acc_scale": 1.0,
+        "acc_scale_bits": 1065353216,
+        "out_stride_bytes": 16
+      }
+    },
+    {
+      "index": 4,
+      "class": "MVIN",
+      "funct": 2,
+      "rs1": {
+        "raw": null,
+        "kind": "argbase",
+        "arg_index": 0,
+        "offset": 0
+      },
+      "rs2": {
+        "raw": 4503668346847232,
+        "kind": "const",
+        "arg_index": null,
+        "offset": null
+      },
+      "decoded": {
+        "dram": {
+          "raw": null,
+          "kind": "argbase",
+          "arg_index": 0,
+          "offset": 0
+        },
+        "rows": 16,
+        "cols": 16,
+        "addr": 0,
+        "spad_addr": 0
+      }
+    },
+    {
+      "index": 5,
+      "class": "MVOUT",
+      "funct": 3,
+      "rs1": {
+        "raw": null,
+        "kind": "argbase",
+        "arg_index": 1,
+        "offset": 0
+      },
+      "rs2": {
+        "raw": 4503668346847232,
+        "kind": "const",
+        "arg_index": null,
+        "offset": null
+      },
+      "decoded": {
+        "dram": {
+          "raw": null,
+          "kind": "argbase",
+          "arg_index": 1,
+          "offset": 0
+        },
+        "rows": 16,
+        "cols": 16,
+        "addr": 0,
+        "acc_addr": 0,
+        "readout": "i8"
+      }
+    },
+    {
+      "index": 6,
+      "class": "FENCE",
+      "funct": null,
+      "decoded": {}
+    }
+  ],
+  "summary": {
+    "class_histogram": {
+      "FENCE": 2,
+      "FLUSH": 1,
+      "CONFIG_LD": 1,
+      "CONFIG_ST": 1,
+      "MVIN": 1,
+      "MVOUT": 1
+    }
+  }
+}

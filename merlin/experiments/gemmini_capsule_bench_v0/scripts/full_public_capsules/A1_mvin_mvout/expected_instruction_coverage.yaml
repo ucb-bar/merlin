@@ -1,0 +1,12 @@
+instruction_classes:
+- FLUSH
+- CONFIG_LD
+- CONFIG_ST
+- MVIN
+- MVOUT
+forbidden_classes:
+- PRELOAD
+- COMPUTE_PRELOADED
+- COMPUTE_ACCUMULATE
+modes:
+  movement: true

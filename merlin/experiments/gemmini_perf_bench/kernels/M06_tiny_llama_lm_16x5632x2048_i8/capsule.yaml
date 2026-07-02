@@ -1,0 +1,55 @@
+name: M06_tiny_llama_lm_16x5632x2048_i8
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: model:tiny_llama/lm/matmul_9
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 5632
+  - 2048
+  dtype: i8
+- name: X
+  role: input
+  shape:
+  - 16
+  - 5632
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: X
+    weight: W
+    out: Y0
+    epilogue:
+    - acc_scale
+    output_dtype: i8
+    semantic: model_matmul_model:tiny_llama/lm/matmul_9
+    acc_scale: 0.0625
+numeric_policy:
+  compare: exact_int
+  dtype: i8
+  acc_scale: 0.0625
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    i8: true
+    relu: false
+    acc_scale: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional

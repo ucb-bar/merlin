@@ -1,0 +1,1204 @@
+{
+  "confusion": {
+    "true_neg": 98,
+    "true_pos": 21,
+    "false_clean": 0,
+    "false_alarm": 0
+  },
+  "n_points": 119,
+  "false_clean_count": 0,
+  "false_clean_cases": [],
+  "circt_safe_gate": true,
+  "rows": [
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "A0_config_smoke",
+      "class": "config",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "A1_mvin_mvout",
+      "class": "movement",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "A2_single_tile_matmul",
+      "class": "matmul",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "A3_k_accumulation",
+      "class": "k_accum",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "A4_acc_scale_i8",
+      "class": "acc_scale",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "A5_relu_epilogue",
+      "class": "relu",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "A6_resident_reuse",
+      "class": "resident",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "A7_edge_padding",
+      "class": "padding",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "B0_quantized_linear_i8",
+      "class": "linear",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "B1_linear_relu_i8",
+      "class": "relu",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "B2_linear_acc_scale_relu_i8",
+      "class": "relu",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "B3_conv2d_im2col_i8",
+      "class": "conv",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "B4_conv2d_relu_i8",
+      "class": "conv",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "C0_mlp_linear1",
+      "class": "mlp",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "C1_mlp_activation_linear2",
+      "class": "mlp",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "C2_attention_q_projection",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "C3_attention_k_projection",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "C4_attention_v_projection",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "C5_attention_qk_matmul",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 1,
+      "capsule": "C6_attention_pv_matmul",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "A0_config_smoke",
+      "class": "config",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "A1_mvin_mvout",
+      "class": "movement",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "A2_single_tile_matmul",
+      "class": "matmul",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "A3_k_accumulation",
+      "class": "k_accum",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "A4_acc_scale_i8",
+      "class": "acc_scale",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "A5_relu_epilogue",
+      "class": "relu",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "A6_resident_reuse",
+      "class": "resident",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "A7_edge_padding",
+      "class": "padding",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "B0_quantized_linear_i8",
+      "class": "linear",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "B1_linear_relu_i8",
+      "class": "relu",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "B2_linear_acc_scale_relu_i8",
+      "class": "relu",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "B3_conv2d_im2col_i8",
+      "class": "conv",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "B4_conv2d_relu_i8",
+      "class": "conv",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "C0_mlp_linear1",
+      "class": "mlp",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "C1_mlp_activation_linear2",
+      "class": "mlp",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "C2_attention_q_projection",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "C3_attention_k_projection",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "C4_attention_v_projection",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "C5_attention_qk_matmul",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "baseline-C++",
+      "round": 90,
+      "capsule": "C6_attention_pv_matmul",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "A0_config_smoke",
+      "class": "config",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "A1_mvin_mvout",
+      "class": "movement",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "A2_single_tile_matmul",
+      "class": "matmul",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "A3_k_accumulation",
+      "class": "k_accum",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "A4_acc_scale_i8",
+      "class": "acc_scale",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "A5_relu_epilogue",
+      "class": "relu",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "A6_resident_reuse",
+      "class": "resident",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "A7_edge_padding",
+      "class": "padding",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "B0_quantized_linear_i8",
+      "class": "linear",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "B1_linear_relu_i8",
+      "class": "relu",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "B2_linear_acc_scale_relu_i8",
+      "class": "relu",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "B3_conv2d_im2col_i8",
+      "class": "conv",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "B4_conv2d_relu_i8",
+      "class": "conv",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "C0_mlp_linear1",
+      "class": "mlp",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "C1_mlp_activation_linear2",
+      "class": "mlp",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "C2_attention_q_projection",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "C3_attention_k_projection",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "C4_attention_v_projection",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "C5_attention_qk_matmul",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 1,
+      "capsule": "C6_attention_pv_matmul",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "A0_config_smoke",
+      "class": "config",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "A1_mvin_mvout",
+      "class": "movement",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "A2_single_tile_matmul",
+      "class": "matmul",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "A3_k_accumulation",
+      "class": "k_accum",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "A4_acc_scale_i8",
+      "class": "acc_scale",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "A5_relu_epilogue",
+      "class": "relu",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "A6_resident_reuse",
+      "class": "resident",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "A7_edge_padding",
+      "class": "padding",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "B0_quantized_linear_i8",
+      "class": "linear",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "B1_linear_relu_i8",
+      "class": "relu",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "B2_linear_acc_scale_relu_i8",
+      "class": "relu",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "B3_conv2d_im2col_i8",
+      "class": "conv",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "B4_conv2d_relu_i8",
+      "class": "conv",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "C0_mlp_linear1",
+      "class": "mlp",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "C1_mlp_activation_linear2",
+      "class": "mlp",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "C2_attention_q_projection",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "C3_attention_k_projection",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "C4_attention_v_projection",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "C5_attention_qk_matmul",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin-xDSL",
+      "round": 2,
+      "capsule": "C6_attention_pv_matmul",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "A0_config_smoke",
+      "class": "config",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "A2_single_tile_matmul",
+      "class": "matmul",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "A3_k_accumulation",
+      "class": "k_accum",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "A4_acc_scale_i8",
+      "class": "acc_scale",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "A5_relu_epilogue",
+      "class": "relu",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "A6_resident_reuse",
+      "class": "resident",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "A7_edge_padding",
+      "class": "padding",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "B0_quantized_linear_i8",
+      "class": "linear",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "B1_linear_relu_i8",
+      "class": "relu",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "B2_linear_acc_scale_relu_i8",
+      "class": "relu",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "B3_conv2d_im2col_i8",
+      "class": "conv",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "B4_conv2d_relu_i8",
+      "class": "conv",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "C0_mlp_linear1",
+      "class": "mlp",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "C1_mlp_activation_linear2",
+      "class": "mlp",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "C2_attention_q_projection",
+      "class": "attention",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "C3_attention_k_projection",
+      "class": "attention",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "C4_attention_v_projection",
+      "class": "attention",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "C5_attention_qk_matmul",
+      "class": "attention",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 1,
+      "capsule": "C6_attention_pv_matmul",
+      "class": "attention",
+      "circt_verdict": "reject",
+      "circt_ok": false,
+      "sim_pass": false,
+      "cell": "true_pos"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "A0_config_smoke",
+      "class": "config",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "A1_mvin_mvout",
+      "class": "movement",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "A2_single_tile_matmul",
+      "class": "matmul",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "A3_k_accumulation",
+      "class": "k_accum",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "A4_acc_scale_i8",
+      "class": "acc_scale",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "A5_relu_epilogue",
+      "class": "relu",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "A6_resident_reuse",
+      "class": "resident",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "A7_edge_padding",
+      "class": "padding",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "B0_quantized_linear_i8",
+      "class": "linear",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "B1_linear_relu_i8",
+      "class": "relu",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "B2_linear_acc_scale_relu_i8",
+      "class": "relu",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "B3_conv2d_im2col_i8",
+      "class": "conv",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "B4_conv2d_relu_i8",
+      "class": "conv",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "C0_mlp_linear1",
+      "class": "mlp",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "C1_mlp_activation_linear2",
+      "class": "mlp",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "C2_attention_q_projection",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "C3_attention_k_projection",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "C4_attention_v_projection",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "C5_attention_qk_matmul",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    },
+    {
+      "arm": "merlin+CIRCT",
+      "round": 2,
+      "capsule": "C6_attention_pv_matmul",
+      "class": "attention",
+      "circt_verdict": "ok",
+      "circt_ok": true,
+      "sim_pass": true,
+      "cell": "true_neg"
+    }
+  ]
+}
