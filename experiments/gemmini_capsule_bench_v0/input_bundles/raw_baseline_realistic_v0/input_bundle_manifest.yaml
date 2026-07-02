@@ -26,6 +26,10 @@ denied:
   - {path: "generated_targets/gemmini/hand_smoke_oot/", reason: "hand exemplar"}
   - {path: "generated_targets/gemmini/agent_spec_v0_mlir_oot/", reason: "prior Merlin-assisted backend"}
   - {path: "generated_targets/gemmini/agent_spec_v1_mlir_oot/", reason: "prior Merlin-assisted backend"}
+  - {path: "artifacts/targets/gemmini/merlin_native_v0/", reason: "exempt reference backend (real path; generated_targets is a symlink here)"}
+  - {path: "artifacts/targets/gemmini/hand_smoke_oot/", reason: "hand exemplar (real path)"}
+  - {path: "artifacts/targets/gemmini/agent_spec_v0_mlir_oot/", reason: "prior Merlin-assisted backend (real path)"}
+  - {path: "artifacts/targets/gemmini/agent_spec_v1_mlir_oot/", reason: "prior Merlin-assisted backend (real path)"}
   - {path: "bench_contract/capsules/hidden/", reason: "hidden capsules + goldens"}
   - {path: "experiments/gemmini_capsule_bench_v0/input_bundles/grader_private_v0/", reason: "grader-private (hidden goldens, oracle adapters)"}
   - {path: "experiments/gemmini_capsule_bench_v0/runs/", reason: "prior submissions / run history"}

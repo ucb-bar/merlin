@@ -81,9 +81,8 @@ compile_commands.json
 /third_party/llvm-build/
 /third_party/llvm-install/
 /third_party/llvm-build.log
-# legacy transition symlink: generated_targets -> artifacts/targets (target packages now live
-# under artifacts/targets/; the symlink keeps pre-migration references resolving). Never commit it.
-/generated_targets
+# transition symlink generated_targets -> artifacts/targets is COMMITTED (tracked as a symlink
+# object) so pre-migration references resolve in every clone, not just this disk. Do not ignore it.
 # legacy retired dse-analysis root (dse now writes under artifacts/dse/)
 /results/
 # legacy compat symlink (transition): mined_knowledge -> artifacts/mined_knowledge

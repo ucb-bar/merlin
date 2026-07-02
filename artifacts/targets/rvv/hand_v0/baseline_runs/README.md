@@ -18,7 +18,7 @@ python -m merlin.rvvgen.workloads softmax_f32 -M 64 -N 64        --out-root <roo
 ```
 Re-measure the baseline (only if the toolchain/target changes — cycles are target-specific):
 ```
-python -m merlin.rvvgen.runner --package generated_targets/rvv/hand_v0 \
+python -m merlin.rvvgen.runner --package artifacts/targets/rvv/hand_v0 \
     --workload <root>/matmul_f32_64x64x64 --targets spike \
     --run-id hand_v0_matmul_f32_64 --runs-root <tmp>
 # then copy <tmp>/hand_v0_matmul_f32_64/results.yaml here.

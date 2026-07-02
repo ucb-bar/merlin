@@ -44,9 +44,9 @@ CONTAMINANTS = {
 # HARD CHEATS (realistic experiment): copying a pre-existing backend or reading golden outputs is
 # disqualifying. These are detected on top of the chmod-000 lockdown (defence-in-depth).
 CHEAT_PATTERNS = {
-    "prior_backend_copy": re.compile(r"(generated_targets/gemmini/|agent_spec_v[01]|merlin_native_v0|"
-                                     r"hand_smoke_oot|runs/[^ \"']*/submission|agent_bench|/preflight/|"
-                                     r"baseline_ws|rb_pilot|_qa_work|qa_history)"),
+    "prior_backend_copy": re.compile(r"((?:generated_targets|artifacts/targets)/gemmini/|agent_spec_v[01]|"
+                                     r"merlin_native_v0|hand_smoke_oot|runs/[^ \"']*/submission|agent_bench|"
+                                     r"/preflight/|baseline_ws|rb_pilot|_qa_work|qa_history)"),
     "golden_read":        re.compile(r"(cat|head|less|read|open)\b[^\n\"']*golden\.yaml"),
     # oracle USE = an actual import/exec, not a doc/README mention. Require import/call syntax, and the
     # caller filters to agent-authored code (tool_use input), so README quotes ("== reference_outputs(cb)")
