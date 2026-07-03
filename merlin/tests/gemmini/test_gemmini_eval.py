@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from merlin.eval.gemmini_suite import record_gemmini_run
+from merlin.targetgen.eval.gemmini_suite import record_gemmini_run
 
 
 def _result(correct: bool) -> dict:
@@ -79,7 +79,7 @@ def test_record_fail_writes_failure_record(tmp_path):
 
 
 # --- resumable dispatcher ---
-from merlin.eval.gemmini_dispatcher import run_sweep, summarize  # noqa: E402
+from merlin.targetgen.eval.gemmini_dispatcher import run_sweep, summarize  # noqa: E402
 
 
 def _fake_result_fn(correct=True):

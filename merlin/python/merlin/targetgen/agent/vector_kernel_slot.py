@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from . import claude_cli
-from ...eval.saturn_vec_conformance import build
+from ..eval.saturn_vec_conformance import build
 from ...runtime.backends import saturn_vec
 
 RVV_ISA = r"""

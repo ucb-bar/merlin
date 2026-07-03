@@ -12,7 +12,7 @@ from pathlib import Path
 import jsonschema
 import pytest
 
-from merlin.eval.gemmini_conformance import RUNGS, QUANT_RUNGS, build
+from merlin.targetgen.eval.gemmini_conformance import RUNGS, QUANT_RUNGS, build
 from merlin.targetgen.contract import schemas
 from merlin.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
 

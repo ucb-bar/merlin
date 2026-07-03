@@ -34,5 +34,5 @@ artifact_origins:
   console.log: ORACLE_OUTPUT
 
 acceptance: >-
-  python -m merlin.eval.gemmini_dispatcher --summary-only --runs-root <runs> must regenerate the
+  python -m merlin.targetgen.eval.gemmini_dispatcher --summary-only --runs-root <runs> must regenerate the
   full table from these manifests alone, with derived_from_rtl/cycle_accurate per oracle level.

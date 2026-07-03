@@ -9,7 +9,7 @@ import pytest
 
 from merlin.runtime import outputs_match, reference_outputs, simulate
 from merlin.runtime.commandbuffer import materialize_inputs
-from merlin.eval.saturn_vec_conformance import RUNGS, build
+from merlin.targetgen.eval.saturn_vec_conformance import RUNGS, build
 
 
 def _expected(rung: str, cb: dict) -> dict:

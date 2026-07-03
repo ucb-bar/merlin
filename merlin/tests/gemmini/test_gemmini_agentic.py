@@ -18,7 +18,7 @@ import pytest
 
 from merlin.runtime import outputs_match, reference_outputs, simulate
 from merlin.runtime.backends import gemmini
-from merlin.eval.gemmini_conformance import build
+from merlin.targetgen.eval.gemmini_conformance import build
 from merlin.targetgen.agent import kernel_slot
 
 REPO = repo_root()

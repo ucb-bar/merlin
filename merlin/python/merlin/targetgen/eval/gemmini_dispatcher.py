@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
-from .gemmini_suite import record_gemmini_run
+from merlin.targetgen.eval.gemmini_suite import record_gemmini_run
 
 
 def _load_ledger(ledger_path: Path) -> dict[str, dict]:
