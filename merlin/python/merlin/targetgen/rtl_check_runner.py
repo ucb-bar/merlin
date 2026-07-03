@@ -32,15 +32,16 @@ import yaml
 
 from . import rtl_check_compiler as CC
 from . import rtl_checks as RC
+from merlin.common.paths import ext_path
 
 _REPO = Path(__file__).resolve().parents[4]
 _FACTS = _REPO / "merlin/targets/gemmini/contracts/rtl_facts/facts.json"
 _CAPSULE_ROOTS = [_REPO / "merlin/contract" / "capsules",
                   _REPO / "experiments" / "gemmini_perf_bench" / "kernels"]
 _FILECHECK_CANDIDATES = [
-    "/scratch2/agustin/LHWIR/third_party/circt/install/bin/FileCheck",
+    f"{ext_path("lhwir")}/third_party/circt/install/bin/FileCheck",
     str(_REPO / "third_party/llvm-build/bin/FileCheck"),
-    "/scratch2/agustin/chipyard/.conda-env/riscv-tools/bin/FileCheck",
+    f"{ext_path("chipyard")}/.conda-env/riscv-tools/bin/FileCheck",
 ]
 _COMPUTE_CLASSES = {"COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE"}
 

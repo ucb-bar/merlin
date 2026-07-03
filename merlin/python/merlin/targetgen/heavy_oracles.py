@@ -17,9 +17,10 @@ from typing import Any, Callable
 
 from .capsule_runner import OracleUnavailable
 from .contract import compile as oot_compile
+from merlin.common.paths import ext_path
 
 # Default Gemmini VCS sim (overridable via MERLIN_GEMMINI_SIMV / MERLIN_SATURN_SIMV).
-_DEFAULT_VCS = "/scratch2/agustin/chipyard/sims/vcs/simv-chipyard.harness-RadianceGemminiOnlyConfig"
+_DEFAULT_VCS = f"{ext_path("chipyard")}/sims/vcs/simv-chipyard.harness-RadianceGemminiOnlyConfig"
 
 
 def gemmini_simv() -> Path | None:
@@ -95,13 +96,13 @@ def run_vcs_parallel(capsules: list[dict], package_dir: str | Path, *, runs_root
 
 # ------------------------------------------------------------------ L5 FireSim
 def firesim_root() -> Path | None:
-    r = os.environ.get("FIRESIM_ROOT", "/scratch2/agustin/chipyard/sims/firesim")
+    r = os.environ.get("FIRESIM_ROOT", f"{ext_path("chipyard")}/sims/firesim")
     return Path(r) if Path(r).is_dir() else None
 
 
 def firesim_queue_alive() -> bool:
     """Best-effort check that the shared FireSim queue daemon is reachable."""
-    q = Path(os.environ.get("FIRESIM_QUEUE", "/scratch2/agustin/firesim_queue"))
+    q = Path(os.environ.get("FIRESIM_QUEUE", f"{ext_path("firesim_queue")}"))
     return q.is_dir() and (q / "daemon.pid").is_file()
 
 
