@@ -37,9 +37,8 @@ from merlin.common.paths import ext_path
 _REPO = Path(__file__).resolve().parents[4]
 _FACTS = _REPO / "merlin/targets/gemmini/contracts/rtl_facts/facts.json"
 _CAPSULE_ROOTS = [_REPO / "merlin/contract" / "capsules",
-                  _REPO / "experiments" / "gemmini_perf_bench" / "kernels"]
+                  _REPO / "merlin" / "experiments" / "gemmini_perf_bench" / "kernels"]
 _FILECHECK_CANDIDATES = [
-    f"{ext_path("lhwir")}/third_party/circt/install/bin/FileCheck",
     str(_REPO / "third_party/llvm-build/bin/FileCheck"),
     f"{ext_path("chipyard")}/.conda-env/riscv-tools/bin/FileCheck",
 ]
