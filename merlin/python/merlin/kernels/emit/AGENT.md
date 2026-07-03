@@ -11,7 +11,7 @@ Emit kernel_record / abstraction_candidate / policy_rule artifacts.
 ## What does not belong here
 
 - Vendored external kernel repos (pass by path / `MERLIN_<SRC>_REPO`, never vendor).
-- Generated artifacts (write those to `output/`).
+- Generated artifacts (write those to `runs/` or `artifacts/`).
 
 ## Invariants
 

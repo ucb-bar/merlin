@@ -13,7 +13,7 @@ Merlin-owned bare-metal runtime backend. `spike/` holds the harness (crt, HTIF, 
 
 - Generated per-command-buffer drivers (emitted into work dirs by `rvv_codegen.py`).
 - Target-specific runtime models — targets implement adapters only.
-- Generated outputs (use gitignored `build/`/`output/`).
+- Generated outputs (write to `runs/`/`artifacts/`; compiled trees to `build/`).
 
 ## Interfaces
 

@@ -13,7 +13,7 @@ The search layer. Explores candidate compiler artifacts to find what is worth ke
 
 - A `merlin.search` dialect — search is orchestration/experiment logic, not IR.
 - Beam search, MCTS, Bayesian opt, or a generic AutoML framework (deliberately out of scope).
-- Generated artifacts (write to `output/`).
+- Generated artifacts (write to `runs/` or `artifacts/`).
 
 ## Interfaces
 
@@ -24,7 +24,6 @@ Scores candidates via `evaluator.py`, which delegates compilation+measurement to
 - Three methods only: grid (explicit sweeps), evolutionary (improve a candidate), MAP-Elites (preserve many good families). Do not add other search methods without justification.
 - Scoring prioritizes correctness > compile_success > coverage > exploitability > speedup.
 - LLMs may be mutation/repair operators, never 'the search method'.
-- No real logic yet — TODO stubs only.
 
 ## Testing expectations
 

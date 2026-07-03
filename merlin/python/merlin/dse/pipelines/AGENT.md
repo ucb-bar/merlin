@@ -17,4 +17,3 @@ xDSL pass registry + pipeline builder. Turns a compilation strategy's `lowering_
 
 - Passes are referenced by name so compilation approaches stay data, not code.
 - Keep pass names aligned with the eventual MLIR/C++ pass names for clean promotion.
-- No real passes yet — TODO stubs only.

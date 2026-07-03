@@ -12,7 +12,7 @@ In-tree **toy / reference targets** used for TargetGen development and conforman
 ## What does not belong here
 
 - Serious production targets — those become external repos / MLIR plugins.
-- Large generated artifacts (those go to gitignored `build/`/`output/`).
+- Large generated artifacts (those go to `artifacts/` or `build/`).
 
 ## Interfaces
 

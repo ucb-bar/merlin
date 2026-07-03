@@ -11,7 +11,7 @@ Shared utilities: schema loading/validation, IO, common types.
 ## What does not belong here
 
 - Workstream-specific logic (this is shared infrastructure only).
-- Generated artifacts (write those to `output/`).
+- Generated artifacts (write those to `runs/` or `artifacts/`).
 
 ## Invariants
 
