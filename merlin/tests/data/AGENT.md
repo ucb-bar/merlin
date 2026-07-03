@@ -11,7 +11,7 @@ Small, checked-in fixture inputs for kernel-mining unit tests.
 ## What does not belong here
 
 - Full external kernels or large corpora (those are passed by path/env at runtime).
-- Generated outputs (use gitignored `output/`).
+- Generated outputs (write to `runs/` or `artifacts/`).
 
 ## Invariants
 

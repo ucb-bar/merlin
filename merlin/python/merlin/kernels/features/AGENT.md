@@ -11,7 +11,7 @@ Feature extractors (loops, vector, memory, packing, epilogue, async, target).
 ## What does not belong here
 
 - Vendored external kernel repos (pass by path / `MERLIN_<SRC>_REPO`, never vendor).
-- Generated artifacts (write those to `output/`).
+- Generated artifacts (write those to `runs/` or `artifacts/`).
 
 ## Invariants
 

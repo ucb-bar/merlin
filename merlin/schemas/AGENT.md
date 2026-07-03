@@ -11,7 +11,7 @@ The cross-workstream **coordination contract**. All artifacts exchanged between 
 
 ## What does not belong here
 
-- Instances/data (those go under `output/`, `merlin/benchmarks/`, or target dirs).
+- Instances/data (those go under `artifacts/`, `merlin/benchmarks/`, or target dirs).
 - Tool or analysis code.
 - Undocumented JSON/YAML blobs that tools secretly depend on.
 

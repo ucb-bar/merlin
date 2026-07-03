@@ -11,7 +11,7 @@ ToyNPU reference target: docs, contracts, examples, generated, tests.
 ## What does not belong here
 
 - Unrelated code or artifacts.
-- Generated outputs (use gitignored `build/`/`output/`).
+- Generated outputs (write to `runs/`/`artifacts/`; compiled trees to `build/`).
 
 ## Invariants
 

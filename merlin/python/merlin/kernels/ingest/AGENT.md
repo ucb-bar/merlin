@@ -11,7 +11,7 @@ Ingest kernels from XNNPACK/Autocomp/Triton/Exo/generic sources.
 ## What does not belong here
 
 - Vendored external kernel repos (pass by path / `MERLIN_<SRC>_REPO`, never vendor).
-- Generated artifacts (write those to `output/`).
+- Generated artifacts (write those to `runs/` or `artifacts/`).
 
 ## Invariants
 
