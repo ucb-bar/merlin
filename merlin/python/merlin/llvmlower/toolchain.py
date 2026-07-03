@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from merlin.common.paths import ext_path
 
 DEFAULT_M2M_DIR = "/scratch/agustin/projects/model2MLIR"
-DEFAULT_IREE_BIN = "/scratch2/agustin/merlin/build/host-merlin-release/install/bin"
+DEFAULT_IREE_BIN = f"{ext_path("merlin_iree")}/build/host-merlin-release/install/bin"
 # Standalone LLVM-23 install (mlir-opt/mlir-translate) used where the torch-mlir wheel's
 # in-process translate bridge is unreliable (its OpenMPIRBuilder segfaults on whole-model
 # omp IR, whereas this build's mlir-translate handles it cleanly).

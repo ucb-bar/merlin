@@ -21,8 +21,9 @@ import re
 import subprocess
 from pathlib import Path
 from typing import Any
+from merlin.common.paths import ext_path
 
-DEFAULT_CHIPYARD = "/scratch2/agustin/chipyard"
+DEFAULT_CHIPYARD = f"{ext_path("chipyard")}"
 CONFIG = "GemminiAndOPUShuttleConfig"
 
 
