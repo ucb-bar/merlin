@@ -48,7 +48,6 @@ REQUIRED_DIRS = [
     "merlin/experiments/targetgen_toy",
     "merlin/experiments/kernel_policy",
     "merlin/experiments/semantic_memory",
-    "merlin/experiments/interface_dse",
     "merlin/tests/data",
 ]
 
