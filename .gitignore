@@ -113,3 +113,11 @@ merlin/experiments/**/runs/
 
 # Firecrawl tool-state (web-scrape cache; not repo content)
 /.firecrawl/
+
+
+# External machine-specific dep config — NEVER commit the active files (real paths).
+# Only .env.example (the template) is tracked. See merlin.common.paths.ext_path().
+/.env
+/config.json
+/config.local.json
+!/.env.example
