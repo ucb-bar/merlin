@@ -13,7 +13,7 @@ import json
 import os
 import sys
 
-sys.path.insert(0, "/scratch/agustin/projects/oscar-merlin/scripts")
+sys.path.insert(0, str(_ROOT / "scripts"))
 import matplotlib
 matplotlib.use("Agg")
 from merlin.plotting.merlin_plotstyle import *          # palette, helpers
@@ -25,8 +25,16 @@ from matplotlib.lines import Line2D
 # reuse MX per-iteration segmentation + paths from the MX script (import is side-effect-safe)
 from plot_mx_autocomp import segment_cost as mx_segment, BUNDLE as MX_BUNDLE
 
-RAD = "/scratch/agustin/projects/oscar-merlin/tmp/kernels/radiance_only_kernels"
-OUT = "/scratch/agustin/projects/oscar-merlin/artifacts/presentation/combined"
+def _repo_root():
+    from pathlib import Path as _P
+    p = _P(__file__).resolve()
+    while p != p.parent and not (p / "merlin" / "python").is_dir():
+        p = p.parent
+    return p
+_ROOT = _repo_root()
+
+RAD = str(_ROOT / "tmp/kernels/radiance_only_kernels")
+OUT = str(_ROOT / "artifacts/presentation/combined")
 os.makedirs(OUT, exist_ok=True)
 
 MX_TOTAL = json.load(open(f"{MX_BUNDLE}/cost/project-spend-total.json"))

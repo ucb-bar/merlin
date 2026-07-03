@@ -11,7 +11,7 @@ import json
 import os
 import sys
 
-sys.path.insert(0, "/scratch/agustin/projects/oscar-merlin/scripts")
+sys.path.insert(0, str(_ROOT / "scripts"))
 import matplotlib
 matplotlib.use("Agg")
 from merlin.plotting.merlin_plotstyle import *          # palette, vbars/hbars, style_ax, title, suptitle, emph, SHADOW
@@ -19,10 +19,18 @@ import numpy as np
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
+def _repo_root():
+    from pathlib import Path as _P
+    p = _P(__file__).resolve()
+    while p != p.parent and not (p / "merlin" / "python").is_dir():
+        p = p.parent
+    return p
+_ROOT = _repo_root()
+
 use_merlin_style()
 
 BUNDLE = "/scratch/agustin/projects/chipyard-mx/generators/gemmini/mx-autocomp/bundle"
-OUT = "/scratch/agustin/projects/oscar-merlin/artifacts/presentation/mx_autocomp"
+OUT = str(_ROOT / "artifacts/presentation/mx_autocomp")
 os.makedirs(OUT, exist_ok=True)
 
 # pipeline identity (consistent colour across every figure)
