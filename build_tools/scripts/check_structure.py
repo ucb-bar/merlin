@@ -94,23 +94,33 @@ def check_required_dirs(errors):
 
 
 def check_agent_md(errors):
-    for dirpath, dirnames, _ in os.walk(ROOT):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS
-                       and not d.endswith(".egg-info")
-                       and not (d.startswith(".") and d != ".")]
-        rel = os.path.relpath(dirpath, ROOT)
-        if rel == "." or rel.split(os.sep)[0] in SKIP_DIRS:
-            top = os.path.join(ROOT, "AGENT.md")
-            if rel == "." and not os.path.isfile(top):
-                errors.append("missing AGENT.md: (root)")
-            continue
-        # third_party/ holds pinned external dependencies (e.g. the llvm-project
-        # submodule). Require an AGENT.md at third_party/ itself, but do not descend
-        # into vendored dependency trees — they don't carry Merlin AGENT.md files.
-        if rel == "third_party":
-            dirnames[:] = []
-        if not os.path.isfile(os.path.join(dirpath, "AGENT.md")):
+    # AGENT.md is required at MEANINGFUL levels only:
+    #   - the repo root,
+    #   - each top-level area  merlin/<area>,
+    #   - each experiment      merlin/experiments/<exp>,
+    #   - each test bucket      merlin/tests/<bucket>.
+    # The importable package tree (merlin/python/merlin/<pkg>) is owned by gen_package_docs.py
+    # (--check enforces AGENT.md coverage + freshness there). Everything deeper — experiment
+    # scripts/inputs, test fixtures, frozen archives, capsule/schema data — is exempt.
+    root_md = os.path.join(ROOT, "AGENT.md")
+    if not os.path.isfile(root_md):
+        errors.append("missing AGENT.md: (root)")
+
+    def require(rel):
+        if not os.path.isfile(os.path.join(ROOT, rel, "AGENT.md")):
             errors.append(f"missing AGENT.md: {rel}")
+
+    merlin = os.path.join(ROOT, "merlin")
+    for area in sorted(os.listdir(merlin)):
+        ap = os.path.join(merlin, area)
+        if not os.path.isdir(ap) or area in SKIP_DIRS or area == "python":
+            continue
+        require(f"merlin/{area}")
+        if area in ("experiments", "tests"):
+            for sub in sorted(os.listdir(ap)):
+                sp = os.path.join(ap, sub)
+                if os.path.isdir(sp) and sub not in SKIP_DIRS and sub not in ("fixtures", "data"):
+                    require(f"merlin/{area}/{sub}")
 
 
 def check_schemas(errors):
@@ -166,6 +176,19 @@ def check_cli_docs(errors):
         errors.append("docs/cli.md stale vs pyproject — run python build_tools/scripts/gen_cli_docs.py")
 
 
+def check_package_docs(errors):
+    """docs/module_index.md fresh + every package has a non-stale AGENT.md (living package docs)."""
+    import subprocess
+    gen = os.path.join(ROOT, "build_tools", "scripts", "gen_package_docs.py")
+    r = subprocess.run([sys.executable, gen, "--check"], capture_output=True, text=True)
+    if r.returncode != 0:
+        for ln in (r.stderr or "").splitlines():
+            if ln.strip().startswith("- "):
+                errors.append(ln.strip()[2:])
+        if not any("package" in e or "module_index" in e for e in errors):
+            errors.append("package docs stale — run python build_tools/scripts/gen_package_docs.py")
+
+
 def main():
     errors: list[str] = []
     checks = [
@@ -175,6 +198,7 @@ def main():
         ("docs", check_docs),
         ("benchmarks", check_benchmarks),
         ("cli docs", check_cli_docs),
+        ("package docs", check_package_docs),
         ("test layout", check_test_layout),
     ]
     for label, fn in checks:
