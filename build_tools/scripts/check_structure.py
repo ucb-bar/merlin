@@ -25,7 +25,6 @@ REQUIRED_DIRS = [
     "docs",
     "third_party",
     "merlin/tests",
-    "merlin/python/merlin/contracts",
     "merlin/python/merlin/xdsl_dialects",
     "merlin/python/merlin/targetgen",
     "merlin/python/merlin/kernels",
