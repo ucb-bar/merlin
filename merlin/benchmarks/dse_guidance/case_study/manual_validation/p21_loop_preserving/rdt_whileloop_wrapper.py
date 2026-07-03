@@ -58,6 +58,14 @@ import os
 import sys
 
 import torch
+
+def _repo_root():
+    from pathlib import Path as _P
+    p = _P(__file__).resolve()
+    while p != p.parent and not (p / "merlin" / "python").is_dir():
+        p = p.parent
+    return p
+_ROOT = _repo_root()
 from torch import nn
 
 # diffusers 0.27.2 imports a symbol removed from modern huggingface_hub; shim it.
@@ -338,7 +346,7 @@ if __name__ == "__main__":
     if res.diagnostics:
         print("  diag[-1]:", str(res.diagnostics[-1]).splitlines()[0][:240])
     if s and "scf.for" in s:
-        out_path = ("/scratch/agustin/projects/oscar-merlin/merlin/benchmarks/"
+        out_path = (f"{_ROOT}/merlin/benchmarks/"
                     "dse_guidance/recaptures_loop/rdt/model.mlir")
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         with open(out_path, "w") as f:

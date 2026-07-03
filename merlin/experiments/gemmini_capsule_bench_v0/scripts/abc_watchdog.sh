@@ -7,8 +7,9 @@
 # Usage: abc_watchdog.sh <tag>     e.g. abc_watchdog.sh abc4
 set -u
 TAG="${1:?usage: abc_watchdog.sh <tag>}"
-ROOT=/scratch/agustin/projects/oscar-merlin/experiments/gemmini_capsule_bench_v0
-PY=/scratch/agustin/projects/oscar-merlin/.venv/bin/python
+REPO="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+ROOT="$REPO/merlin/experiments/gemmini_capsule_bench_v0"
+PY="$REPO"/.venv/bin/python
 CRED=/home/agustin/.claude/.credentials.json
 F="--model claude-opus-4-8 --effort high --max-rounds 12 --max-rate-limit-waits 8 --round-timeout 14400 --experiment realistic"
 cd "$ROOT"

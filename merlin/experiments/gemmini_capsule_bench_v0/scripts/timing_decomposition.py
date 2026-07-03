@@ -15,11 +15,19 @@ from __future__ import annotations
 import json, glob, sys, time
 from pathlib import Path
 
-EXP = Path("/scratch/agustin/projects/oscar-merlin/experiments/gemmini_capsule_bench_v0")
+EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
 OUT = EXP / "reports" / "abc4_analysis"
-sys.path.insert(0, "/scratch/agustin/projects/oscar-merlin/merlin/python")
+sys.path.insert(0, f"{_ROOT}/merlin/python")
 from merlin.targetgen import rtl_check_runner as RCR
 import yaml
+
+def _repo_root():
+    from pathlib import Path as _P
+    p = _P(__file__).resolve()
+    while p != p.parent and not (p / "merlin" / "python").is_dir():
+        p = p.parent
+    return p
+_ROOT = _repo_root()
 
 ARMS = {"rb_abc4": ("raw_baseline", "baseline-C++"),
         "merlin_abc4": ("merlin_assisted", "merlin-xDSL"),

@@ -44,6 +44,14 @@ sys.path.insert(0, "/scratch/agustin/projects/model2MLIR/workloads/xr0")
 import loader as xr0_loader  # noqa: E402
 from torch._higher_order_ops.while_loop import while_loop  # noqa: E402
 
+def _repo_root():
+    from pathlib import Path as _P
+    p = _P(__file__).resolve()
+    while p != p.parent and not (p / "merlin" / "python").is_dir():
+        p = p.parent
+    return p
+_ROOT = _repo_root()
+
 K = 5  # num_steps (XR0 default; registry K=5)
 
 
@@ -220,7 +228,7 @@ if __name__ == "__main__":
     if mod is not None:
         mod.verify()
         print("module.verify() OK")
-    out = "/scratch/agustin/projects/oscar-merlin/merlin/benchmarks/dse_guidance/recaptures_loop/xr0/model.mlir"
+    out = f"{_ROOT}/merlin/benchmarks/dse_guidance/recaptures_loop/xr0/model.mlir"
     os.makedirs(os.path.dirname(out), exist_ok=True)
     if s:
         open(out, "w").write(s)

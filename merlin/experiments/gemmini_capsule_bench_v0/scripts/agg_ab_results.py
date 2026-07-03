@@ -27,7 +27,15 @@ import yaml
 
 import agg_agentic_results as AAR  # reuse arm detection + per-run loader
 
-EXP = Path("/scratch/agustin/projects/oscar-merlin/experiments/gemmini_capsule_bench_v0")
+def _repo_root():
+    from pathlib import Path as _P
+    p = _P(__file__).resolve()
+    while p != p.parent and not (p / "merlin" / "python").is_dir():
+        p = p.parent
+    return p
+_ROOT = _repo_root()
+
+EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
 ARM_ORDER = ["baseline", "merlin", "merlin_rtlchecks"]
 ARM_LABEL = {"baseline": "baseline (C++)", "merlin": "merlin (xDSL)",
              "merlin_rtlchecks": "merlin+CIRCT"}

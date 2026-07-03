@@ -3,7 +3,7 @@
 # Usage: grade.sh <submission_dir> <public|hidden|g0|g1|g2> [spike|verilator]
 # Agents use this against PUBLIC only to iterate; HIDDEN scoring is operator-only.
 set -euo pipefail
-REPO=/scratch/agustin/projects/oscar-merlin
+REPO="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 SUB="${1:?usage: grade.sh <submission_dir> <public|hidden|g0|g1|g2> [spike|verilator]}"
 SET="${2:-public}"
 SIM="${3:-spike}"

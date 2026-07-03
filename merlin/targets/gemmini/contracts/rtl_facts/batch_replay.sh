@@ -2,7 +2,7 @@
 # Batch the arc replay across a capsule run tree: for each capsule, reconstruct the RoCC stream,
 # build the harness, run on the isolated @Gemmini arc model, report bit-exact vs golden.
 set -u
-ROOT=/scratch/agustin/projects/oscar-merlin
+ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 PY="$ROOT/.venv/bin/python"; [ -x "$PY" ] || PY=python3
 OUT="$ROOT/merlin/targets/gemmini/contracts/rtl_facts"
 RUNS="${1:-$ROOT/runs/capsule_bench_v1/runs/gemmini-capsule-bench}"
