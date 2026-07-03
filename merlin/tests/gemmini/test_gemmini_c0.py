@@ -130,7 +130,7 @@ def test_gemmini_codegen_emits_real_driver():
 
 # --- oracle-gated: compile + run on real Gemmini, three-way bit-exact, per conformance rung ---
 from merlin.runtime.backends import gemmini  # noqa: E402  (import-safe without toolchain)
-from merlin.eval.gemmini_conformance import RUNGS, build  # noqa: E402
+from merlin.targetgen.eval.gemmini_conformance import RUNGS, build  # noqa: E402
 
 RUNG_IDS = sorted(RUNGS)
 

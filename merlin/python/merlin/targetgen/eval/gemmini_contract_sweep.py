@@ -7,7 +7,7 @@ merlin_iface grammar), then certifies it through merlin.targetgen.oot_runner aga
 run_manifest.yaml is skipped unless --force.
 
 The recorded runs are summarizable by the SAME manifest reader as the original battery
-(merlin.eval.gemmini_dispatcher.summarize_from_manifests), which is the acceptance test: the
+(merlin.targetgen.eval.gemmini_dispatcher.summarize_from_manifests), which is the acceptance test: the
 headline table regenerates from contract-runner manifests alone.
 """
 from __future__ import annotations
@@ -16,9 +16,9 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from .gemmini_conformance import build, RUNGS, QUANT_RUNGS
-from ..targetgen.contract.interface_emit import emit_interface_mlir
-from ..targetgen.oot_runner import certify
+from merlin.targetgen.eval.gemmini_conformance import build, RUNGS, QUANT_RUNGS
+from merlin.targetgen.contract.interface_emit import emit_interface_mlir
+from merlin.targetgen.oot_runner import certify
 
 ALL_RUNGS = list(RUNGS) + list(QUANT_RUNGS)
 NATIVE_PKG = "artifacts/targets/gemmini/merlin_native_v0"

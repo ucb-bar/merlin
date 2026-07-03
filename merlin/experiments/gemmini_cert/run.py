@@ -13,7 +13,7 @@ from pathlib import Path
 
 import yaml
 
-from merlin.eval.gemmini_dispatcher import run_sweep, summarize
+from merlin.targetgen.eval.gemmini_dispatcher import run_sweep, summarize
 
 HERE = Path(__file__).resolve().parent
 

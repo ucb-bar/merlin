@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import claude_cli
-from ...eval.gemmini_conformance import build
+from ..eval.gemmini_conformance import build
 from ...runtime.backends import gemmini
 
 ISA_REFERENCE = r"""

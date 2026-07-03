@@ -2,7 +2,7 @@
 
 Hooks ANY contract-satisfying package into Merlin through the subprocess + file boundary, runs the
 K-ladder certification flow, and records each run through the same aet substrate as
-``merlin.eval.gemmini_suite`` (RunSpec / RunPaths / EvalRunLogger / ArtifactStore / FailureRecord).
+``merlin.targetgen.eval.gemmini_suite`` (RunSpec / RunPaths / EvalRunLogger / ArtifactStore / FailureRecord).
 
 A package is invoked ONLY via its CLI entrypoints (it is never imported). Non-exempt packages are
 integrity-scanned (no harness imports). Every gate failure is fail-closed and plane-routed.

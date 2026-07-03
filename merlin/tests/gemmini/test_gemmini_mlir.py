@@ -8,7 +8,7 @@ import pytest
 from merlin.runtime import reference_outputs, simulate
 from merlin.runtime.backends import gemmini_codegen_mlir as gm
 from merlin.runtime.backends import gemmini as gem
-from merlin.eval.gemmini_conformance import build
+from merlin.targetgen.eval.gemmini_conformance import build
 
 
 NONREQUANT = ["C0", "C1", "C4", "C4e", "C5"]

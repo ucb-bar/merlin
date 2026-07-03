@@ -1,4 +1,4 @@
-# Gemmini conformance sweep (resumable). Drives merlin.eval.gemmini_dispatcher.run_sweep.
+# Gemmini conformance sweep (resumable). Drives merlin.targetgen.eval.gemmini_dispatcher.run_sweep.
 name: gemmini_cert
 description: >-
   RTL-grounded conformance certification of the Gemmini target. Each (rung x oracle) cell
