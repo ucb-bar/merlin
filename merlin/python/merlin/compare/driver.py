@@ -1,5 +1,5 @@
 """The merlin-compare DRIVER — one repeatable command stitching the five layers into a VERSIONED
-``mined_knowledge/rvv/compare_<ts>/`` artifact.
+``artifacts/kernel-mining/rvv/compare_<ts>/`` artifact.
 
 Orchestration (all five layers REUSE existing tools; this module is glue only):
   1. EMPIRICAL  — empirical.measure_all (ingest cached harness JSONs)            -> measured table

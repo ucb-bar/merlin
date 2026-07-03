@@ -17,7 +17,7 @@ Sandbox:
 Usage:
   run_agent_experiment.py --arm raw_baseline --run-id rb_0001 --model opus [--sandbox bwrap]
   run_agent_experiment.py --arm raw_baseline --run-id dry_0001 --dummy-agent \
-      --dummy-submission generated_targets/gemmini/agent_spec_v1_mlir_oot --no-oracle-grade \
+      --dummy-submission artifacts/targets/gemmini/agent_spec_v1_mlir_oot --no-oracle-grade \
       --grade-capsules /tmp/grade_subset
 """
 from __future__ import annotations
@@ -108,9 +108,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dummy-agent", action="store_true",
                     help="copy a known-good submission instead of launching an LLM (pipeline test)")
     ap.add_argument("--dummy-submission",
-                    default="generated_targets/gemmini/agent_spec_v1_mlir_oot")
+                    default="artifacts/targets/gemmini/agent_spec_v1_mlir_oot")
     ap.add_argument("--no-oracle-grade", action="store_true")
-    ap.add_argument("--grade-capsules", default=str(C.REPO / "bench_contract" / "capsules"))
+    ap.add_argument("--grade-capsules", default=str(C.REPO / "merlin/contract" / "capsules"))
     ap.add_argument("--skip-hidden", action="store_true")
     a = ap.parse_args(argv)
 
@@ -225,7 +225,7 @@ def bwrap_argv(ws: Path, bundle: dict) -> list[str]:
         if _kind(p) != "missing":
             parts += ["--ro-bind", str(p), str(p)]
     # Deny wins: tmpfs-mask every denied path AFTER the allowed binds, so a broad allow (e.g. all of
-    # bench_contract/) cannot expose a denied sub-path (e.g. capsules/hidden/). A masked dir becomes
+    # merlin/contract/) cannot expose a denied sub-path (e.g. capsules/hidden/). A masked dir becomes
     # an empty tmpfs; a masked file is hidden by masking its parent only if listed — so we mask dirs.
     for d in bundle.get("denied", []):
         p = C.REPO / d["path"]

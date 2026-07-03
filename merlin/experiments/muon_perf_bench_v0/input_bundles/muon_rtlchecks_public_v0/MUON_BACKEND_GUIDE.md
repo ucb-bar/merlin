@@ -40,7 +40,7 @@ module attributes {merlin_iface.version = "0.1", merlin_iface.target = "muon", m
 }
 ```
 Parse: `tensor` (name/role/shape/dtype), `resident_pack` (dst←src), `matmul` (lhs, rhs, dst-acc),
-`commit` (src-acc → named output, epilogue list, output_dtype). `bench_contract/` has the full grammar +
+`commit` (src-acc → named output, epilogue list, output_dtype). `merlin/contract/` has the full grammar +
 the `command_buffer.json` schema your `--emit-command-buffer` must satisfy.
 
 ## Input materialization (so your output matches the grader, who uses the SAME rule)

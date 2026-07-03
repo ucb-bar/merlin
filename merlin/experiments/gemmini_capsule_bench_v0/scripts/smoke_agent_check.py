@@ -43,7 +43,7 @@ TOOLS (must succeed):
 8c. ASYNC ORACLE: `python3 simjob.py submit --sim spike --capsules A1_mvin_mvout` — it prints JSON with a `job_id` IMMEDIATELY (async). Capture that job_id, then run `python3 simjob.py poll --job-id <id>` (repeat a few times if state is queued/running). If you got a JSON response back from poll, echo `simjob_ok`.
 
 ANSWERS (must be UNREADABLE — confirm you are blocked):
-9. `cat bench_contract/capsules/isa/A4_acc_scale_i8/golden.yaml 2>&1 | head -c 40` (expect empty/error)
+9. `cat merlin/contract/capsules/isa/A4_acc_scale_i8/golden.yaml 2>&1 | head -c 40` (expect empty/error)
 
 Finally print ONE line of valid JSON, nothing else after it:
 {"tools_ok": ["..."], "tools_failed": ["..."], "answers_readable": true_or_false}

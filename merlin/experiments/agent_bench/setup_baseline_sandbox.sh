@@ -19,7 +19,7 @@ done
 cp -r "$REPO/third_party/llvm-project/mlir/examples/standalone" "$WS/docs/standalone_template" 2>/dev/null \
   || echo "WARN: standalone template not found" >&2
 
-# explicitly NOT copied: the Merlin source tree, generated_targets/ reference packages, hidden/.
+# explicitly NOT copied: the Merlin source tree, artifacts/targets/ reference packages, hidden/.
 echo "baseline sandbox staged at: $WS"
 echo "contents:"; ls -1 "$WS"
 echo

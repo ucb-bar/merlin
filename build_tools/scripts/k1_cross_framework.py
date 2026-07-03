@@ -136,7 +136,7 @@ def measure_ours_k1(run_id: str, features: list[str], *, M: int, N: int, K: int,
             "kernel_file": f"merlin RVV codegen fork (features={features or 'baseline'})",
             "measure_method": "standalone_linux_inner_compute"}
     bundle = workloads.gen_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", M=M, N=N, K=K)
-    hb = load_rvv_package(REPO / "generated_targets" / "rvv" / "hand_v0")
+    hb = load_rvv_package(REPO / "artifacts/targets" / "rvv" / "hand_v0")
     pkg = replace(hb, run_id=run_id, compiler_features=list(features))
     cc = _cc()
 

@@ -14,7 +14,7 @@ capabilities**, then measures every change against the frozen baseline and the e
 ## 1. The pipeline (the research contribution)
 
 Not a one-off tuning session — a deterministic, auditable chain. Each `merlin-rvv-mine` run mints a
-versioned, immutable folder `mined_knowledge/rvv/mining_rvv_v{V}_{ts}/` with five YAML artifacts:
+versioned, immutable folder `artifacts/kernel-mining/rvv/mining_rvv_v{V}_{ts}/` with five YAML artifacts:
 
 | artifact | content |
 |---|---|
@@ -67,7 +67,7 @@ experts with resident-weight pack (fair vs ours' pack-free path), cos-gated:
 | **openvla** | 5.855 s | wholemodel-**vf** 5.38× (1.089 s) | 8.92× (0.657 s) | 8.53× (0.686 s) | ours **60%** (XNN 1.66×) |
 | **rdt2** | 74.04 s | wholemodel-**vf** 2.45× (30.27 s) | 3.90× (18.97 s) | 3.64× (20.32 s) | ours **63%** (XNN 1.59×) |
 
-(openvla/rdt2 best-ours is the `.vf` kernel from iteration 2 of the loop — see §7 — which lifted ours 55%→60% / 62%→63%. The canonical, reproducible version of this whole table + the structural attribution is now produced by `merlin-compare` → `mined_knowledge/rvv/compare_*/`.)
+(openvla/rdt2 best-ours is the `.vf` kernel from iteration 2 of the loop — see §7 — which lifted ours 55%→60% / 62%→63%. The canonical, reproducible version of this whole table + the structural attribution is now produced by `merlin-compare` → `artifacts/kernel-mining/rvv/compare_*/`.)
 
 All cos ≥ 0.99999 (figure `paper_fourway.png`: all-4 with baseline + zoomed contest). **Honest verdict:
 ours is competitive with BOTH hand-tuned vendor libraries.** It **beats both** XNNPACK *and* OpenBLAS on

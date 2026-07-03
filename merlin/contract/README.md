@@ -1,4 +1,4 @@
-# `bench_contract/` — the experiment ABI (v0.1)
+# `merlin/contract/` — the experiment ABI (v0.1)
 
 This is a **repo-independent contract**: the fixed interface against which an *out-of-tree target
 backend package* is built, invoked, certified, and scored. It exists so two agents — a raw

@@ -72,7 +72,7 @@ def composition_probe(feats: list[str]) -> dict:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", default="artifacts/recaptures/bitvla_fp32_consistent,artifacts/recaptures/openvla_fp32_consistent")
-    ap.add_argument("--baseline", default="generated_targets/rvv/hand_v0")
+    ap.add_argument("--baseline", default="artifacts/targets/rvv/hand_v0")
     ap.add_argument("-n", type=int, default=3)
     ap.add_argument("--timeout", type=int, default=1800)
     ap.add_argument("--configs", default="baseline,act_alone,matmul_only,act_plus_matmul")

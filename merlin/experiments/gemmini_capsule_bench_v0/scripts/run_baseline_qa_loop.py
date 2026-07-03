@@ -81,11 +81,11 @@ MERLIN_WS_DOCS = ("TASK_ADDENDUM.md", "ALLOWED_MERLIN_TOOLS.md", "MERLIN_PROVENA
 def answer_files() -> list[Path]:
     """Every answer-bearing file the agent must NOT see (public goldens + the example golden cb).
     Hidden capsules live under a denied dir already tmpfs-masked by the bundle."""
-    caps = C.REPO / "bench_contract" / "capsules"
+    caps = C.REPO / "merlin/contract" / "capsules"
     files = []
     for sub in ("isa", "layers", "model_slices"):
         files += sorted((caps / sub).glob("*/golden.yaml"))
-    ex = C.REPO / "bench_contract" / "examples" / "expected_command_buffer_g0.json"
+    ex = C.REPO / "merlin/contract" / "examples" / "expected_command_buffer_g0.json"
     if ex.exists():
         files.append(ex)
     return [f for f in files if f.exists()]
@@ -143,10 +143,10 @@ def assemble_copy_workspace(bundle: dict, ws: Path) -> dict:
         # have no `as:` so their behavior is unchanged.
         dst_rel = (entry.get("as") or rel).lstrip("/")
         # The bench_contract tree is the ONLY answer-bearing input: copy it ONCE minus answers and
-        # skip every redundant bench_contract/... sub-entry (those symlink straight at real goldens).
-        if rel.startswith("bench_contract"):
-            dst = ws / "bench_contract"
-            if rel == "bench_contract" and not dst.exists():
+        # skip every redundant merlin/contract/... sub-entry (those symlink straight at real goldens).
+        if rel.startswith("merlin/contract"):
+            dst = ws / "merlin/contract"
+            if rel == "merlin/contract" and not dst.exists():
                 shutil.copytree(src, dst, ignore=_ignore, symlinks=False)
                 report["copied"].append(rel)
             continue
@@ -329,18 +329,18 @@ def mask_selftest(ws: Path, bundle: dict, sandbox: str) -> dict:
     """Confirm the agent's view withholds answers. bwrap: probe the masked golden. none: confirm the
     COPIED workspace has no golden.yaml and no hidden capsules anywhere under it."""
     if sandbox == "bwrap":
-        target = C.REPO / "bench_contract" / "capsules" / "isa" / "A4_acc_scale_i8" / "golden.yaml"
+        target = C.REPO / "merlin/contract" / "capsules" / "isa" / "A4_acc_scale_i8" / "golden.yaml"
         probe = f'if test -s {target}; then echo LEAK; else echo OK; fi'
         out = subprocess.run(["bash", "-c", bwrap_cmd(probe, ws, bundle)],
                              capture_output=True, text=True).stdout.strip()
         return {"pilot_golden_visible_to_agent": out, "n_answer_files_masked": len(answer_files())}
     # sandbox == none: assert no answer is reachable. (1) the bench_contract COPY (small) holds no
-    # golden/hidden; (2) no workspace symlink resolves into the real bench_contract/capsules tree
+    # golden/hidden; (2) no workspace symlink resolves into the real merlin/contract/capsules tree
     # (which would re-expose goldens). Avoid walking the symlinked 307MB toolchain.
-    bc = ws / "bench_contract"
+    bc = ws / "merlin/contract"
     goldens = [str(p) for p in bc.rglob("golden.yaml")] if bc.exists() else []
     hidden = [str(p) for p in bc.rglob("hidden") if "capsules" in str(p)] if bc.exists() else []
-    real_caps = str((C.REPO / "bench_contract" / "capsules").resolve())
+    real_caps = str((C.REPO / "merlin/contract" / "capsules").resolve())
     bad_links = []
     for root, dirs, _files in os.walk(ws):  # followlinks=False: inspect, don't descend, symlinks
         for d in dirs:
@@ -891,7 +891,7 @@ def main(argv: list[str] | None = None) -> int:
             _glog = None
         try:
             _CG.grade(str(vcand), capsules_root=str(PILOT_SUBSET), runs_root=str(vruns),
-                      labels={"public", "dev"}, contract=str(C.REPO / "bench_contract"),
+                      labels={"public", "dev"}, contract=str(C.REPO / "merlin/contract"),
                       oracle_adapters=adapters, timeout=_verilator_per_capsule_timeout(), max_workers=8)
         except Exception as e:
             print(f"[verilator attempt {attempt}] grade error: {str(e)[:200]}")

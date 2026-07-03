@@ -4,12 +4,12 @@ _Auditable chain from curated RVV kernels to certified compiler changes. Generat
 
 ## 1. Mining provenance
 
-- Mined artifact: `mined_knowledge/rvv/mining_rvv_v3_20260619T092631`
+- Mined artifact: `artifacts/kernel-mining/rvv/mining_rvv_v3_20260619T092631`
 - run_id: `mining_rvv_v3_20260619T092631`
 - target: `rvv`
 - op: `matmul`
 - created: `20260619T092631`
-- mined_from: `mined_knowledge/rvv/rvv_mined_v1_20260617T165331`
+- mined_from: `artifacts/kernel-mining/rvv/rvv_mined_v1_20260617T165331`
 - baseline_run: `hand_v0_matmul_f32_64x64x64`
 - n_divergences: `6`
 - n_actions: `5`

@@ -16,7 +16,7 @@ possible** (high % of the FP peak).
 - **`MUON_BACKEND_GUIDE.md`** — the 4 entrypoints, the `merlin_iface` grammar, the **input-materialization
   rule** (so your numerics match the grader), the **console helper** to paste into every kernel, and the
   intrinsics surface.
-- **`bench_contract/`** — the command-buffer ABI, schemas, grammar, and the **public capsule inputs**.
+- **`merlin/contract/`** — the command-buffer ABI, schemas, grammar, and the **public capsule inputs**.
 - **`capsules/`** — the public benchmark capsules to solve (each is a `capsule.interface.mlir` +
   `capsule.yaml`). No golden outputs are provided; you compute them from the documented materialization
   rule and your own matmul, then build a backend that EMITS a kernel that reproduces them on hardware.

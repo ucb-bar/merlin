@@ -7,14 +7,14 @@ reference behavior. This is a **compiler/backend** task, not a kernel-writing ta
 
 ## Pilot scope (do these first; do not implement the full suite until these pass)
 
-Make these four PUBLIC capsules pass (under `bench_contract/capsules/`):
+Make these four PUBLIC capsules pass (under `merlin/contract/capsules/`):
 
 - `A0_config_smoke` (isa) · `A2_single_tile_matmul` (isa) · `A4_acc_scale_i8` (isa) ·
   `B0_quantized_linear_i8` (layer).
 
 Read each capsule's `capsule.yaml` + `capsule.interface.mlir` for its exact op, shapes, dtypes, and
-epilogue, and read `bench_contract/command_buffer_abi.yaml` for the precise epilogue/`acc_scale`
-semantics and `bench_contract/interface_grammar.md` for the input grammar. Derive everything you need
+epilogue, and read `merlin/contract/command_buffer_abi.yaml` for the precise epilogue/`acc_scale`
+semantics and `merlin/contract/interface_grammar.md` for the input grammar. Derive everything you need
 (rounding rule, tiling, dtypes) from the contract and the public Gemmini header — they are not
 restated here. Each capsule dir gives you `capsule.yaml`, `capsule.interface.mlir`, and
 `expected_instruction_coverage.yaml`. (The numeric `golden.yaml` is intentionally withheld — you do
@@ -39,7 +39,7 @@ submission/
 - `emit_command_buffer`: `{tool} --emit-command-buffer={output_json} {input_mlir}` — schema-valid `command_buffer.json`
 - `lower_target_to_llvm`: `{tool} --convert-iface-to-gemmini --convert-gemmini-to-llvm-rocc {input_mlir}` — `llvm.func @gemmini_kernel` of RoCC `.insn r 0x7b` instructions
 
-Declare these in `manifest.yaml` exactly as the runner expects (see `bench_contract/
+Declare these in `manifest.yaml` exactly as the runner expects (see `merlin/contract/
 mlir_oot_backend_contract.yaml` and `schemas/manifest.schema.json`).
 
 ## How you are graded, and your QA signal
@@ -60,7 +60,7 @@ capsules by their `failure_plane` + `trace_violations`. You are relaunched acros
 
 Useful self-checks you CAN run locally (no oracle needed): build your tool, run the 4 entrypoints on
 each `capsule.interface.mlir`, and confirm the command_buffer validates against
-`bench_contract/schemas/command_buffer.schema.json` and your lowered LLVM/RoCC text looks right.
+`merlin/contract/schemas/command_buffer.schema.json` and your lowered LLVM/RoCC text looks right.
 
 ## Hard rules (integrity — your submission must satisfy these)
 

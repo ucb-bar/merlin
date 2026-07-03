@@ -34,16 +34,16 @@ from merlin.targetgen import capsule_golden as CG  # noqa: E402
 from merlin.targetgen import capsule_runner as CR  # noqa: E402
 
 APPROACH_PKG = {
-    "baseline": PB.REPO / "generated_targets" / "gemmini" / "agent_spec_v0_mlir_oot",
-    "merlin_targetgen": PB.REPO / "generated_targets" / "gemmini" / "agent_spec_v1_mlir_oot",
-    "merlin_native": PB.REPO / "generated_targets" / "gemmini" / "merlin_native_v0",
+    "baseline": PB.REPO / "artifacts/targets" / "gemmini" / "agent_spec_v0_mlir_oot",
+    "merlin_targetgen": PB.REPO / "artifacts/targets" / "gemmini" / "agent_spec_v1_mlir_oot",
+    "merlin_native": PB.REPO / "artifacts/targets" / "gemmini" / "merlin_native_v0",
     # --- the 4 agentic capsule-bench backends (abc11/abc9), profiled for perf ---
     "agentic_raw_cpp":      PB.REPO / "merlin" / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "raw_baseline" / "rb_abc11" / "submission",
     "agentic_scaffold_cpp": PB.REPO / "merlin" / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "cpp_merlininfra" / "rbinfra_abc11" / "submission",
     "agentic_python":       PB.REPO / "merlin" / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "merlin_assisted" / "merlin_abc9" / "submission",
     "agentic_circt":        PB.REPO / "merlin" / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "merlin_assisted" / "merlincirct_abc9" / "submission",
 }
-CONTRACT = str(PB.REPO / "bench_contract")
+CONTRACT = str(PB.REPO / "merlin/contract")
 
 # ---- golden approach (a): cycle-instrumented tiled_matmul_auto (hardware-loop WS) ----------------
 _GOLDEN_C = r"""

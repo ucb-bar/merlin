@@ -21,7 +21,7 @@ touched.
 
 `target` (str) names the dialect; it only flows into `mint_run_id` (`<target>_tuned_v{v}_d{d}_{ts}`)
 and the manifest, so fork packages for different targets accumulate under
-`generated_targets/<target>/` without collision.
+`artifacts/targets/<target>/` without collision.
 
 ## ForkProposal (the proposer's return type)
 

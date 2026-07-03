@@ -33,8 +33,8 @@ from merlin.targetgen import capsule_grade as CG          # noqa: E402
 from merlin.targetgen import capsule_runner as CR          # noqa: E402
 from merlin.targetgen import heavy_oracles as HO           # noqa: E402
 
-CORPUS = C.REPO / "bench_contract" / "capsules"
-CONTRACT = C.REPO / "bench_contract"
+CORPUS = C.REPO / "merlin/contract" / "capsules"
+CONTRACT = C.REPO / "merlin/contract"
 
 
 def _capsule_class(cap_dir: Path) -> str:

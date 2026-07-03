@@ -4,7 +4,7 @@ persisted with provenance, not left in gitignored ``output/``.
 
 Layout (mirrors artifacts/targets/<target>/<run_id>/):
 
-    mined_knowledge/<target>/<target>_mined_v{V}_{timestamp}/
+    artifacts/kernel-mining/<target>/<target>_mined_v{V}_{timestamp}/
         manifest.yaml             # provenance: sources, repo paths, per-source counts, git sha,
                                   #   min_kernels gate, promoted policies + their (kernels, sources)
         policy_rules.yaml         # the promoted policies (the tuning-agent's lever evidence)
@@ -12,7 +12,7 @@ Layout (mirrors artifacts/targets/<target>/<run_id>/):
         kernel_mining_report.md
         *_index.json              # the per-source indexes the run aggregated (reproducibility)
 
-The newest dir under mined_knowledge/<target>/ is the one the tuning agent reads by default.
+The newest dir under artifacts/kernel-mining/<target>/ is the one the tuning agent reads by default.
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def _index_summary(index_path: Path) -> dict:
 
 
 def publish_mining(index_paths: list[str | Path], target: str, *, version: int,
-                   timestamp: str, out_root: str | Path = "mined_knowledge",
+                   timestamp: str, out_root: str | Path = "artifacts/kernel-mining",
                    extract_dir: str | Path = "artifacts/kernel-index",
                    min_kernels: int = 10) -> Path:
     """Assemble a versioned mined-knowledge artifact from the kernel-extract outputs.
@@ -89,7 +89,7 @@ def publish_mining(index_paths: list[str | Path], target: str, *, version: int,
         "promoted_policies": [p for p in promoted if p],
         "artifacts": copied,
         "notes": ("Durable, versioned kernel-mining artifact. The newest run_id under "
-                  "mined_knowledge/<target>/ is the tuning agent's default evidence input. "
+                  "artifacts/kernel-mining/<target>/ is the tuning agent's default evidence input. "
                   "Forks/policies derive from this; it is itself iterable."),
     }
     write_yaml(art / "manifest.yaml", manifest, header="Mined-knowledge artifact (kernels.publish)")

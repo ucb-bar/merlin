@@ -7,7 +7,7 @@ reference behavior. This is a **compiler/backend** task, not a kernel-writing ta
 
 ## Scope: ALL public/dev capsules
 
-Make **every** public/dev capsule under `bench_contract/capsules/` pass. These span the full ISA,
+Make **every** public/dev capsule under `merlin/contract/capsules/` pass. These span the full ISA,
 layer, and model-slice families:
 
 - **ISA (`isa/`):** config, mvin/mvout **movement**, single-tile **matmul**, **K-accumulation**,
@@ -18,8 +18,8 @@ layer, and model-slice families:
   projections**, attention **QK^T** matmul, attention **PV** matmul.
 
 Read each capsule's `capsule.yaml` + `capsule.interface.mlir` for its exact op, shapes, dtypes, and
-epilogue; read `bench_contract/command_buffer_abi.yaml` for precise epilogue/`acc_scale` semantics,
-`bench_contract/interface_grammar.md` for the input grammar, and `schemas/command_buffer.schema.json`
+epilogue; read `merlin/contract/command_buffer_abi.yaml` for precise epilogue/`acc_scale` semantics,
+`merlin/contract/interface_grammar.md` for the input grammar, and `schemas/command_buffer.schema.json`
 for the command-buffer schema. Derive everything (rounding rule, tiling, dtypes, im2col, padding) from
 the contract + the public Gemmini header — nothing is restated here. Each capsule dir gives you
 `capsule.yaml`, `capsule.interface.mlir`, and `expected_instruction_coverage.yaml`. The numeric
@@ -45,7 +45,7 @@ submission/
 - `emit_command_buffer`: `{tool} --emit-command-buffer={output_json} {input_mlir}` — schema-valid `command_buffer.json`
 - `lower_target_to_llvm`: `{tool} --convert-iface-to-gemmini --convert-gemmini-to-llvm-rocc {input_mlir}` — `llvm.func @gemmini_kernel` of RoCC `.insn r 0x7b` instructions
 
-Declare these in `manifest.yaml` exactly as the runner expects (see `bench_contract/
+Declare these in `manifest.yaml` exactly as the runner expects (see `merlin/contract/
 mlir_oot_backend_contract.yaml` and `schemas/manifest.schema.json`).
 
 ## How you are graded, and your QA signal
@@ -67,7 +67,7 @@ Iterate until `all_pass: true` across all public/dev capsules.
 
 Useful self-checks you CAN run locally (no oracle needed): build your tool, run the 4 entrypoints on
 each `capsule.interface.mlir`, and confirm the command_buffer validates against
-`bench_contract/schemas/command_buffer.schema.json` and your lowered LLVM/RoCC text looks right.
+`merlin/contract/schemas/command_buffer.schema.json` and your lowered LLVM/RoCC text looks right.
 
 ## Hard rules (integrity — your submission must satisfy these)
 

@@ -395,11 +395,11 @@ versioned directory with a manifest whose `lineage` records `parent_run_id: hand
 justified it):
 
 ```
-generated_targets/rvv/
+artifacts/targets/rvv/
   hand_v0/                       # immutable baseline; status=shipped; features=[]
   impr_auto_1_<ts>/              # fork; parent_run_id=hand_v0; features=[fused_vfmacc_contraction,…]
   rvv_tuned_v1_d1_<ts>/          # beam fork: v=generation, d=beam depth
-mined_knowledge/rvv/
+artifacts/kernel-mining/rvv/
   mining_rvv_v{V}_{ts}/          # CCAs, agreement report, divergences, action catalog
 ```
 

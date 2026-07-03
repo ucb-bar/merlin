@@ -5,7 +5,7 @@ both arms stay apples-to-apples.
 Why a wrapper instead of editing run_baseline_qa_loop.py: that driver is shared and concurrently edited
 (the raw-baseline operator session is actively running + modifying it). To avoid clobbering live work,
 this wrapper reuses `run_baseline_qa_loop.main()` verbatim and only OVERRIDES, at the module level:
-  - the capsule set  -> `bench_contract/capsules` (all 20 public/dev + 5 hidden), via L.PILOT_SUBSET
+  - the capsule set  -> `merlin/contract/capsules` (all 20 public/dev + 5 hidden), via L.PILOT_SUBSET
   - the served task  -> `task/TASK_full.md` (+ merlin addendum), via L._build_task
   - per-round timing -> wraps L.launch_agent / L.qa_grade to record ACTIVE (agent) vs SIM-WAIT
     (oracle = spike+verilator) wall, then appends the split to qa_loop_summary.yaml.
@@ -33,7 +33,7 @@ import _common as C
 import run_agent_experiment as RX
 import run_baseline_qa_loop as L
 
-FULL_CAPSULES = C.REPO / "bench_contract" / "capsules"
+FULL_CAPSULES = C.REPO / "merlin/contract" / "capsules"
 TASK_FULL = C.EXP / "task" / "TASK_full.md"
 
 _walls: dict[str, list[float]] = {"agent": [], "qa": []}

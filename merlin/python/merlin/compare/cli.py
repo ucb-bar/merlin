@@ -45,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--reps", type=int, default=5)
     ap.add_argument("--label", default="compare")
     ap.add_argument("--out-root", type=Path, default=None,
-                    help="artifact root (default mined_knowledge/rvv)")
+                    help="artifact root (default artifacts/kernel-mining/rvv)")
     ap.add_argument("--run", action="store_true",
                     help="LIVE board measurement (declared seam; not implemented in v1)")
     args = ap.parse_args(argv)

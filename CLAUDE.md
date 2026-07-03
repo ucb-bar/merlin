@@ -40,8 +40,8 @@ per-experiment `runs/`/`reports/` locations are retired and gitignored).
 
   **`targets/<target>/<package_id>/`** is the codegen-package home (schedules/knobs/dialects minted by
   `merlin-rvv-mine` / `merlin-rvv-autotune` / `merlin-targetgen`). It **replaces the retired top-level
-  `generated_targets/`** (a transition symlink `generated_targets → artifacts/targets` keeps old
-  references resolving; never commit it). Packages are **tool-generated**: only the hand-authored
+  `generated_targets/`** — all references point at `artifacts/targets/` directly (no compat symlink;
+  paths are repo-root-relative). Packages are **tool-generated**: only the hand-authored
   reference baselines + promoted champions are tracked (`rvv/hand_v0`, `rvv/hand_v0_int8`,
   `rvv/impr_tuned_*`, via `.gitignore` negations); forks and `mlir_oot/build/` trees stay ignored.
   Full buildable OOT repos live under `build/generated/`, not here.

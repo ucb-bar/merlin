@@ -189,7 +189,7 @@ def measure_ours_compiler(run_id: str, features: list[str], *, S: int, reps: int
             "kernel_file": f"merlin RVV codegen fork (features={features or 'baseline'})",
             "measure_method": "standalone_linux_compiler_fused"}
     bundle = workloads.gen_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", M=S, N=S, K=S)
-    hb = load_rvv_package(REPO / "generated_targets" / "rvv" / "hand_v0")
+    hb = load_rvv_package(REPO / "artifacts/targets" / "rvv" / "hand_v0")
     pkg = replace(hb, run_id=run_id, compiler_features=list(features))
     cc = _cc()
     with tempfile.TemporaryDirectory(prefix="k1_ours_") as tmp:

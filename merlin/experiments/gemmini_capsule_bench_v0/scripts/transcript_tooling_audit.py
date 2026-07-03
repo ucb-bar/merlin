@@ -50,7 +50,7 @@ CHEAT_PATTERNS = {
     "golden_read":        re.compile(r"(cat|head|less|read|open)\b[^\n\"']*golden\.yaml"),
     # oracle USE = an actual import/exec, not a doc/README mention. Require import/call syntax, and the
     # caller filters to agent-authored code (tool_use input), so README quotes ("== reference_outputs(cb)")
-    # don't trip it. (bench_contract/README legitimately describes the grading pipeline in prose.)
+    # don't trip it. (merlin/contract/README legitimately describes the grading pipeline in prose.)
     "oracle_import":      re.compile(r"(from\s+merlin\.runtime\s+import\s+\w|import\s+merlin\.runtime\.(reference|simulator)\b)"),
     # ANSWER KERNELS: the bundle grants exactly 4 example kernels (matmul_ws/conv/mvin_mvout/padded). Any
     # read of ANOTHER .c kernel from the gemmini-rocc-tests suite (the other ~68: transformer/mlp/resnet/…)

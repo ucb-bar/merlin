@@ -173,7 +173,7 @@ def _ours_tiled_mnk(*, M, N, K, reps):
             "compiler_features": ["fused_vfmacc_tiled"],
             "measure_method": "standalone_linux_compiler_fused"}
     bundle = workloads.gen_matmul_f32(L.REPO / "artifacts" / "cache" / "rvv_workloads", M=M, N=N, K=K)
-    hb = load_rvv_package(L.REPO / "generated_targets" / "rvv" / "hand_v0")
+    hb = load_rvv_package(L.REPO / "artifacts/targets" / "rvv" / "hand_v0")
     pkg = replace(hb, run_id="ours_tiled", compiler_features=["fused_vfmacc_tiled"])
     cc = L._cc()
     with tempfile.TemporaryDirectory(prefix="k1_ours_") as tmp:

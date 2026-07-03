@@ -52,7 +52,7 @@ def assemble_workspace(ws: Path) -> None:
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "submission").mkdir(exist_ok=True)
     # the contract is answer-free (goldens live with the capsules, not in the contract)
-    _link(ws / "bench_contract", _REPO / "bench_contract")
+    _link(ws / "merlin/contract", _REPO / "merlin/contract")
     # public capsule inputs, minus golden.yaml
     caps = ws / "capsules"
     caps.mkdir(exist_ok=True)

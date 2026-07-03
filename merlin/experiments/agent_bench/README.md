@@ -1,6 +1,6 @@
 # Agent benchmark — baseline vs Merlin-assisted (experiment ABI v0.1)
 
-The substrate (`bench_contract/`, `oot_runner.py`, reference packages, AET recording, 18-cell
+The substrate (`merlin/contract/`, `oot_runner.py`, reference packages, AET recording, 18-cell
 sweep) is frozen. This directory holds the **task packet** for the two-agent comparison. Nothing
 here launches an agent; launch is a human-triggered step.
 
@@ -15,8 +15,8 @@ here launches an agent; launch is a human-triggered step.
 
 ## Public vs hidden
 
-- **Public** (in the sandbox): `bench_contract/examples/{g0,g1,g2}.interface.mlir` + the whole
-  `bench_contract/` bundle.
+- **Public** (in the sandbox): `merlin/contract/examples/{g0,g1,g2}.interface.mlir` + the whole
+  `merlin/contract/` bundle.
 - **Hidden** (NOT in the sandbox; scored by the operator): `experiments/agent_bench/hidden/
   {h0_matmul,h1_relu,h2_acc_scale}.interface.mlir` — same single-tile structure as g0/g1/g2 but
   RENAMED tensors → different deterministic data. A package that hardcodes the public answer
@@ -26,7 +26,7 @@ here launches an agent; launch is a human-triggered step.
 
 | | baseline | merlin-assisted |
 |---|---|---|
-| `bench_contract/` (grammar, schemas, examples, integrity policy) | ✅ | ✅ |
+| `merlin/contract/` (grammar, schemas, examples, integrity policy) | ✅ | ✅ |
 | the grader (`oot_runner` via `grade.sh`) + LLVM/MLIR 23 install + RISCV gcc + spike/verilator | ✅ | ✅ |
 | public Gemmini ISA headers (`software/libgemmini/gemmini.h`, `gemmini_params.h`) | ✅ | ✅ |
 | MLIR `examples/standalone` OOT template | ✅ | ✅ |

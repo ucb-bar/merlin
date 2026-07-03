@@ -20,7 +20,7 @@ pass/fail**.
 
 ## 2. The two arms — the ONLY allowed difference
 
-Both arms get: the frozen `bench_contract/`, the public/dev capsules (`isa/`, `layers/`,
+Both arms get: the frozen `merlin/contract/`, the public/dev capsules (`isa/`, `layers/`,
 `model_slices/`), public Gemmini headers (`gemmini.h`, `gemmini_params.h`), the task, and the
 LLVM/MLIR-23 toolchain. Both are denied: the Merlin runtime **reference/simulator** (the oracle/cheat
 surface), `capsules/hidden/`, all prior backends (`merlin_native_v0`, `agent_spec_v0/v1`,
@@ -40,7 +40,7 @@ false` for both.
 
 ## 3. SHARED FROZEN CONTRACT — both backends MUST satisfy these identically
 
-This is the agreement surface. Source of truth: `$REPO/bench_contract/`. Do **not** redesign any of it.
+This is the agreement surface. Source of truth: `$REPO/merlin/contract/`. Do **not** redesign any of it.
 
 ### 3.1 Package manifest + the 4 CLI entrypoints (`schemas/manifest.schema.json`, `mlir_oot_backend_contract.yaml`)
 `submission/manifest.yaml` required keys: `artifact_type: mlir_oot_target_backend`, `target: gemmini`,
@@ -111,7 +111,7 @@ address/stride → wrong output → numeric fail), which is a stronger guarantee
 **CONTRACT REFINEMENT (both arms must adopt):** `B0_quantized_linear_i8` is K=32 (two K-tiles) but
 previously declared modes `{i8, acc_scale}` only — so the accumulate check never fired on the one
 K>16 pilot capsule (inconsistent with `H2_k_accum_hidden`, which declares `k_accumulate: true`). Fixed
-in `bench_contract/capsules/generate_corpus.py` (B0 `modes += k_accumulate:True`) and the two generated
+in `merlin/contract/capsules/generate_corpus.py` (B0 `modes += k_accumulate:True`) and the two generated
 B0 files. Effect: B0's trace must now show an accumulate-onto PRELOAD for the 2nd K-tile. This is free
 for a correct WS K-tiling backend (the raw_baseline rb_pilot_0002 submission already satisfied it).
 **Both arms must grade B0 with this refinement present.**
@@ -202,7 +202,7 @@ capsules, same tier set) — only its input bundle differs.
 5. **Cycles are diagnostic only** on both sides — do not optimize for them, do not rank on them.
 
 ### Must-be-IDENTICAL vs MAY-differ
-- **Identical:** contract (`bench_contract/`), 4 entrypoints + manifest schema, merlin_iface input,
+- **Identical:** contract (`merlin/contract/`), 4 entrypoints + manifest schema, merlin_iface input,
   command-buffer ABI, kernel ABI, RoCC decode expectations, oracle ladder + pass rule, trace-class
   check, integrity policy, grader (patched) + capsule subset, launch/telemetry/freeze/hidden/table,
   QA-gate redaction, sandbox mode.
