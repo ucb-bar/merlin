@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..contracts.validate import validate_target_repo
+from .validate import validate_target_repo
 
 # Files/dirs every generated target repo must contain.
 REQUIRED_TARGET_PATHS: list[str] = [

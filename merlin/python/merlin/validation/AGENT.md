@@ -19,7 +19,7 @@ check scripts and the `targetgen inspect` command.
 
 ## Interfaces
 
-- Consumes the five plan artifacts via `merlin.contracts.load`/`validate` and the shared
+- Consumes the five plan artifacts via `merlin.validation.load`/`validate` and the shared
   schemas via `merlin.common.schemas`.
 - `check_generated_target(repo)` is the entry point used by
   `build_tools/scripts/check_generated_target.py`.
