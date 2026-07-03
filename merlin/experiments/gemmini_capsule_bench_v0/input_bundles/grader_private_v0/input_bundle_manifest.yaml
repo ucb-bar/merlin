@@ -5,7 +5,7 @@ arm: grader
 task: gemmini-mlir-oot-capsule
 description: "Grader-private: hidden capsules + goldens + integrity scanner + oracle adapters."
 grader_inputs:
-  - {path: "bench_contract/capsules/hidden/", note: "hidden capsules + goldens (installed at grade time)"}
+  - {path: "merlin/contract/capsules/hidden/", note: "hidden capsules + goldens (installed at grade time)"}
   - {path: "merlin/python/merlin/targetgen/capsule_grade.py", note: "the grader (capsule_bench_v0 over a submission)"}
   - {path: "merlin/python/merlin/targetgen/capsule_runner.py", note: "tier ladder L0-L5 + integrity scan"}
   - {path: "merlin/python/merlin/targetgen/heavy_oracles.py", note: "VCS/FireSim adapters (currently unavailable)"}

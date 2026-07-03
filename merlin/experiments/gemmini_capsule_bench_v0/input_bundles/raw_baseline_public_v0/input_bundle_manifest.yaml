@@ -10,21 +10,21 @@ description: >-
   that compiles capsule interface MLIR through a Gemmini target dialect to command_buffer.json and
   LLVM/RoCC MLIR, graded by capsule_bench_v0. No Merlin tooling.
 allowed:
-  - {path: "bench_contract/", mode: ro, note: "frozen ABI v0.1: schemas, grammar, command_buffer_abi, integrity_policy"}
-  - {path: "bench_contract/capsules/isa/", mode: ro, note: "public/dev ISA capsules"}
-  - {path: "bench_contract/capsules/layers/", mode: ro, note: "public/dev layer capsules"}
-  - {path: "bench_contract/capsules/model_slices/", mode: ro, note: "public/dev model-slice capsules"}
+  - {path: "merlin/contract/", mode: ro, note: "frozen ABI v0.1: schemas, grammar, command_buffer_abi, integrity_policy"}
+  - {path: "merlin/contract/capsules/isa/", mode: ro, note: "public/dev ISA capsules"}
+  - {path: "merlin/contract/capsules/layers/", mode: ro, note: "public/dev layer capsules"}
+  - {path: "merlin/contract/capsules/model_slices/", mode: ro, note: "public/dev model-slice capsules"}
   - {path: "tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h", mode: ro, note: "public Gemmini ISA header (spike model)"}
   - {path: "tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h", mode: ro, note: "public Gemmini params (DIM, dtypes)"}
   - {path: "experiments/gemmini_capsule_bench_v0/task/", mode: ro, note: "TASK.md + runner-interface docs + public Gemmini facts"}
   - {path: "third_party/llvm-install/", mode: ro, note: "LLVM/MLIR 23 toolchain (build the OOT package)"}
 denied:
   - {path: "merlin/", reason: "Merlin internals (targetgen/runtime/reference/simulator)"}
-  - {path: "generated_targets/gemmini/merlin_native_v0/", reason: "exempt reference backend"}
-  - {path: "generated_targets/gemmini/hand_smoke_oot/", reason: "hand exemplar"}
-  - {path: "generated_targets/gemmini/agent_spec_v0_mlir_oot/", reason: "prior Merlin-assisted backend"}
-  - {path: "generated_targets/gemmini/agent_spec_v1_mlir_oot/", reason: "prior Merlin-assisted backend"}
-  - {path: "bench_contract/capsules/hidden/", reason: "hidden capsules + goldens"}
+  - {path: "artifacts/targets/gemmini/merlin_native_v0/", reason: "exempt reference backend"}
+  - {path: "artifacts/targets/gemmini/hand_smoke_oot/", reason: "hand exemplar"}
+  - {path: "artifacts/targets/gemmini/agent_spec_v0_mlir_oot/", reason: "prior Merlin-assisted backend"}
+  - {path: "artifacts/targets/gemmini/agent_spec_v1_mlir_oot/", reason: "prior Merlin-assisted backend"}
+  - {path: "merlin/contract/capsules/hidden/", reason: "hidden capsules + goldens"}
   - {path: "experiments/gemmini_capsule_bench_v0/input_bundles/grader_private_v0/", reason: "grader-private (hidden goldens, oracle adapters)"}
   - {path: "experiments/gemmini_capsule_bench_v0/runs/", reason: "prior submissions / run history"}
 integrity_required: true   # submitted package must pass the non-exempt integrity scan

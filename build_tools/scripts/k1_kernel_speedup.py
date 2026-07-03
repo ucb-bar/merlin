@@ -83,7 +83,7 @@ def _run_cfg(model_dir, pkg, golden, n, tag, kernel_backend, ours_mr):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="artifacts/recaptures/bitvla_fp32_consistent")
-    ap.add_argument("--baseline", default="generated_targets/rvv/hand_v0")
+    ap.add_argument("--baseline", default="artifacts/targets/rvv/hand_v0")
     ap.add_argument("--mrs", default="1,4,7", help="ours register-block MR values to sweep")
     ap.add_argument("-n", type=int, default=3)
     ap.add_argument("--out", default="artifacts/measurements/k1_spacemit/k1_kernel_speedup.json")

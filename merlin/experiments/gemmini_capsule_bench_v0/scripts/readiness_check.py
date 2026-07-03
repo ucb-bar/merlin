@@ -47,7 +47,7 @@ def test_starter_kit():
     from merlin.targetgen.oot_starterkit.verify import validate, structural_checks
 
     # parse a REAL interface capsule from the contract corpus
-    cap = next((REPO / "bench_contract/capsules").rglob("capsule.interface.mlir"), None)
+    cap = next((REPO / "merlin/contract/capsules").rglob("capsule.interface.mlir"), None)
     if cap and cap.is_file():
         try:
             model = parse_interface(cap.read_text())
@@ -210,7 +210,7 @@ def test_oracles_endtoend():
     import tempfile as _tf
     import time as _time
     section("G. oracles RUN end-to-end (real verdict, not just present)")
-    ref = REPO / "generated_targets/gemmini/agent_spec_v1_mlir_oot"
+    ref = REPO / "artifacts/targets/gemmini/agent_spec_v1_mlir_oot"
     if not (ref / "manifest.yaml").is_file():
         _ok("reference backend agent_spec_v1 present", False, "missing"); return
     CE = "/scratch2/agustin/chipyard/.conda-env"

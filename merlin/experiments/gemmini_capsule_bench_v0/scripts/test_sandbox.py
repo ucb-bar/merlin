@@ -68,8 +68,8 @@ def main(argv=None):
         # --- MASKING: answers must be invisible ---
         print("\n-- masking (answers must be invisible) --")
         masks = {
-            "public golden": C.REPO / "bench_contract/capsules/isa/A4_acc_scale_i8/golden.yaml",
-            "hidden capsules": C.REPO / "bench_contract/capsules/hidden",
+            "public golden": C.REPO / "merlin/contract/capsules/isa/A4_acc_scale_i8/golden.yaml",
+            "hidden capsules": C.REPO / "merlin/contract/capsules/hidden",
             "oracle reference.py": C.REPO / "merlin/python/merlin/runtime/reference.py",
             "oracle simulator.py": C.REPO / "merlin/python/merlin/runtime/simulator.py",
             "kernel suite (conv.c)": "/scratch2/agustin/chipyard/generators/gemmini/software/gemmini-rocc-tests/bareMetalC/conv.c",
@@ -136,7 +136,7 @@ def main(argv=None):
                 d.unlink()
             _sh.copy(SCRIPTS_DIR / src, d)
         # real known-good submission so the broker grades a genuine L2 pass (not just a channel ping)
-        ref = C.REPO / "generated_targets/gemmini/agent_spec_v1_mlir_oot"
+        ref = C.REPO / "artifacts/targets/gemmini/agent_spec_v1_mlir_oot"
         sub = ws / "submission"
         if sub.exists() or sub.is_symlink():
             sub.unlink() if sub.is_symlink() else _sh.rmtree(sub)

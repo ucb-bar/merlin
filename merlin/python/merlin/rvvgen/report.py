@@ -9,7 +9,7 @@ loop is trustworthy and inspectable rather than session-dependent:
         ->  certified fork results (baseline vs fork: instruction-histogram delta, correctness
             gate, measured cycles)  ->  fold-in recommendations.
 
-Inputs are all on disk (no model/agent in the loop): a ``mined_knowledge/rvv/<run>/`` dir
+Inputs are all on disk (no model/agent in the loop): a ``artifacts/kernel-mining/rvv/<run>/`` dir
 (manifest + policy_rules.yaml + *_index.json) and a ``runs/rvv_experiment/`` tree of
 ``results.yaml`` (one per certified package x workload). Re-running on the same artifacts is
 deterministic. Emits Markdown.
@@ -336,7 +336,7 @@ def build_report(mined: str | Path, runs_root: str | Path) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--mined", required=True, help="mined_knowledge/rvv/<run>/ dir")
+    ap.add_argument("--mined", required=True, help="artifacts/kernel-mining/rvv/<run>/ dir")
     ap.add_argument("--runs-root", default="runs/rvv_experiment")
     ap.add_argument("--out", default="artifacts/kernel-mining/rvv/tuning_evidence_report.md")
     a = ap.parse_args(argv)

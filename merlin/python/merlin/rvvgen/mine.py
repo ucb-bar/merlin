@@ -1,7 +1,7 @@
 """``merlin-rvv-mine`` — the deterministic mining driver that mints a versioned run.
 
 Orchestrates the robust chain into ONE reproducible artifact, per the run discipline
-(`mined_knowledge/<target>/mining_<target>_v{V}_{ts}/`):
+(`artifacts/kernel-mining/<target>/mining_<target>_v{V}_{ts}/`):
 
   our codegen object (from a certified target package)  --decode.rvv-->  CCA(ours, asm)
   mined policies (mining artifact)                        --------------->  CCA(expert)
@@ -132,11 +132,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--target", default="rvv")
     ap.add_argument("--op", default="matmul")
     ap.add_argument("--runs-root", default="runs/rvv_experiment")
-    ap.add_argument("--mined", required=True, help="mined_knowledge/<target>/<mining run> dir")
-    ap.add_argument("--out-root", default=None, help="default mined_knowledge/<target>/")
+    ap.add_argument("--mined", required=True, help="artifacts/kernel-mining/<target>/<mining run> dir")
+    ap.add_argument("--out-root", default=None, help="default artifacts/kernel-mining/<target>/")
     ap.add_argument("--baseline-glob", default="hand_v0_*")
     a = ap.parse_args(argv)
-    out_root = Path(a.out_root) if a.out_root else _REPO / "mined_knowledge" / a.target
+    out_root = Path(a.out_root) if a.out_root else _REPO / "artifacts/kernel-mining" / a.target
     run_dir = mine_run(a.target, a.op, Path(a.runs_root), Path(a.mined), out_root,
                        baseline_run_glob=a.baseline_glob)
     man = yaml.safe_load((run_dir / "manifest.yaml").read_text())

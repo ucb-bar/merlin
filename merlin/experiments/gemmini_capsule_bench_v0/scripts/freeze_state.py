@@ -21,9 +21,9 @@ OUT = REPO / "artifacts" / "capsule-bench" / "gemmini" / "capsule_bench_v0_freez
 
 # artifact trees to hash (relative to repo); build/ and __pycache__ excluded
 ARTIFACTS = {
-    "bench_contract": "bench_contract",
+    "merlin/contract": "merlin/contract",
     "targetgen_modules": "merlin/python/merlin/targetgen",
-    "agent_spec_v1": "generated_targets/gemmini/agent_spec_v1_mlir_oot",
+    "agent_spec_v1": "artifacts/targets/gemmini/agent_spec_v1_mlir_oot",
     "results_gemmini": "artifacts/capsule-bench/gemmini",
     "runs_public": "runs/capsule_bench_v1",
     "runs_hidden": "runs/capsule_bench_v1_hidden",
@@ -96,7 +96,7 @@ def main() -> int:
 
     pub_pass, pub_total = _count_pass(REPO / "runs/capsule_bench_v1")
     hid_pass, hid_total = _count_pass(REPO / "runs/capsule_bench_v1_hidden")
-    n_caps = len(list((REPO / "bench_contract/capsules").rglob("capsule.yaml")))
+    n_caps = len(list((REPO / "merlin/contract/capsules").rglob("capsule.yaml")))
     status = _sh(["git", "status", "--short"])
     untracked = [ln[3:] for ln in status.splitlines() if ln.startswith("??")]
 

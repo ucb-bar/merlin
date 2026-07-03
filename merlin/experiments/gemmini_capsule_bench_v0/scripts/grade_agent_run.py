@@ -23,7 +23,7 @@ import freeze_run  # noqa: E402
 
 def _score(pkg, capsules, runs_root, labels, no_oracle):
     return CG.grade(pkg, capsules_root=capsules, runs_root=runs_root, labels=labels,
-                    contract=str(C.REPO / "bench_contract"),
+                    contract=str(C.REPO / "merlin/contract"),
                     oracle_adapters={} if no_oracle else None, timeout=900)
 
 
@@ -32,7 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--run-dir", required=True)
     ap.add_argument("--arm", required=True)
     ap.add_argument("--model", default="unknown")
-    ap.add_argument("--capsules", default=str(C.REPO / "bench_contract" / "capsules"))
+    ap.add_argument("--capsules", default=str(C.REPO / "merlin/contract" / "capsules"))
     ap.add_argument("--no-oracle", action="store_true")
     ap.add_argument("--skip-hidden", action="store_true")
     a = ap.parse_args(argv)

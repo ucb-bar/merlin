@@ -369,10 +369,10 @@ def fig_crossover():
 
 # ============================================================================
 #  FIGURE 6 — REPRESENTATIVE BEAM TREE  (the literal search tree)
-#  Transcribed verbatim from mined_knowledge/rvv/beam_rvv_v2_*/ranking_bitvla.yaml
+#  Transcribed verbatim from artifacts/kernel-mining/rvv/beam_rvv_v2_*/ranking_bitvla.yaml
 # ============================================================================
 def fig_beam_tree():
-    # Verbatim from mined_knowledge/rvv/beam_rvv_v2_20260619T132435/ranking_bitvla.yaml
+    # Verbatim from artifacts/kernel-mining/rvv/beam_rvv_v2_20260619T132435/ranking_bitvla.yaml
     # (all 12 nodes: baseline + 7 single features + 4 combinations). Names are the
     # scope-qualified ("Acc …") presentation labels; depth-2 = first + second feature.
     PAPER = "#F4ECE0"          # off-white — EVERY in-bubble string uses this
@@ -826,11 +826,11 @@ def fig_beam_gates():
 #  FIGURE 8 — BEAM CANDIDATES: per-candidate performance + VPU utilization.
 #  Every beam candidate's whole-model speedup, its % of the expert ceiling, and
 #  its VPU state (vectorized vs scalar-fallback). Reads the versioned beam run
-#  (mined_knowledge/rvv/beam_rvv_v2_*/ranking_<model>.yaml).
+#  (artifacts/kernel-mining/rvv/beam_rvv_v2_*/ranking_<model>.yaml).
 # ============================================================================
 def fig_beam_candidates():
     import yaml
-    runs = sorted(ROOT.glob("mined_knowledge/rvv/beam_rvv_v2_*"))
+    runs = sorted(ROOT.glob("artifacts/kernel-mining/rvv/beam_rvv_v2_*"))
     if not runs:
         print("beam_candidates: no beam_rvv_v2 run; skipping"); return
     run = runs[-1]
@@ -1092,7 +1092,7 @@ def fig_dual_dse():
 # ============================================================================
 #  FIGURES 20-23 — THE KERNEL-MINING "DRIVING EXAMPLE" JOURNEY.
 #  One real f32 64x64x64 GEMM walked end-to-end. All snippets/numbers transcribed
-#  from committed artifacts (output/rvv_workloads/, runs/rvv_bench/, mined_knowledge/rvv/).
+#  from committed artifacts (output/rvv_workloads/, runs/rvv_bench/, artifacts/kernel-mining/rvv/).
 # ============================================================================
 def _code_card(ax, x, y, w, h, header, headcol, lines, sub=None, hfs=11.0, lfs=9.0,
                lh=0.30, z=4):

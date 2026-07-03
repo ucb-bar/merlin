@@ -88,7 +88,7 @@ def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
     # The cycle-accurate L3 pass is the separate bounded verilator-checkpoint (run_baseline_qa_loop).
     _loop_adapters = {} if no_oracle else {"L2": CR._spike_verilator_adapter("spike")}
     score = CG.grade(submission, capsules_root=capsules_root, runs_root=str(runs_root),
-                     labels=labels, contract=str(C.REPO / "bench_contract"),
+                     labels=labels, contract=str(C.REPO / "merlin/contract"),
                      oracle_adapters=_loop_adapters, timeout=timeout)
     redacted = _per_capsule_from_results(runs_root)
 

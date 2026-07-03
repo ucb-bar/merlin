@@ -1,12 +1,12 @@
 # Refreshed for the merlin_assisted pilot prep. Tool-dir hashes pin the independent
-# variable; bench_contract/task are the shared frozen contract (identical for both arms).
+# variable; merlin/contract/task are the shared frozen contract (identical for both arms).
 # Denied sub-paths (generate/runtime_adapter.py, xdsl_dialects/lowering/) live INSIDE these
 # allowed trees; the launcher stages them MINUS those sub-paths (see denied_files.txt).
 allowed_tree_sha256:
-  bench_contract/: 321a66dd7d57b8a16847bbaa746ff61c373137a74521dd184a254b7f00294991
-  bench_contract/capsules/isa/: 0216c0fecf270a5139c5ef088b5500c496fe902062337d22b89765296eb329e7
-  bench_contract/capsules/layers/: 76ecded8b478de07d144a3bf5dccb137624e6613fb898c6a8981d1b402f5b4c1
-  bench_contract/capsules/model_slices/: 7f95e5324a4ec3cea712bb1ddeb685c4449fe703f4bcc517d6779227e89a7d2e
+  merlin/contract/: 321a66dd7d57b8a16847bbaa746ff61c373137a74521dd184a254b7f00294991
+  merlin/contract/capsules/isa/: 0216c0fecf270a5139c5ef088b5500c496fe902062337d22b89765296eb329e7
+  merlin/contract/capsules/layers/: 76ecded8b478de07d144a3bf5dccb137624e6613fb898c6a8981d1b402f5b4c1
+  merlin/contract/capsules/model_slices/: 7f95e5324a4ec3cea712bb1ddeb685c4449fe703f4bcc517d6779227e89a7d2e
   experiments/gemmini_capsule_bench_v0/task/: 5e01935eb4212d795fafb4f234f2794638319c30e3805b756cc2b2a154621983
   merlin/python/merlin/targetgen/generate/: 44419113a4400835df66630727523cb5990b62268f2953a4d421cf23facea00a
   merlin/python/merlin/targetgen/synthesize/: 9001fde4b9531e68f184904aa0a9438957e4aa0266e6ff302bce16d054cdd1ad

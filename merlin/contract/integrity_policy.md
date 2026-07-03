@@ -31,7 +31,7 @@ agent-generated or independent package MUST set `integrity_exempt: false` and pa
 
 ## What is fair game
 
-- Reading the contract bundle (`bench_contract/**`) — grammar, schemas, the single `g0` example.
+- Reading the contract bundle (`merlin/contract/**`) — grammar, schemas, the single `g0` example.
 - Public ISA docs, the LLVM/MLIR headers, the standalone OOT template.
 - Iterating against the oracle's pass/fail (the package author may run the runner) — but the
   package is finally scored on **held-out** inputs it has not seen.

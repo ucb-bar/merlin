@@ -11,7 +11,7 @@ pass=0; tot=0
 for d in "$RUNS"/*/; do
   cap=$(basename "$d"); T="$d/generated/instruction_trace.json"
   [ -f "$T" ] || continue
-  CAP=$(find "$ROOT/bench_contract/capsules" -type d -name "$cap" | head -1)/capsule.yaml
+  CAP=$(find "$ROOT/merlin/contract/capsules" -type d -name "$cap" | head -1)/capsule.yaml
   [ -f "$CAP" ] || { printf "%-32s %-14s\n" "$cap" "no-capsule"; continue; }
   tot=$((tot+1))
   if ! "$PY" -m merlin.targetgen.rtl.gen_rocc_replay "$CAP" "$T" --out "$OUT/r.json" >/dev/null 2>/tmp/g.e; then

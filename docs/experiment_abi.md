@@ -17,11 +17,10 @@ file contract + integrity scan**: a package is invoked only through CLI entrypoi
 import the harness internals. This is language-agnostic — proven by a Python and a C++ package
 passing the identical runner.
 
-## The contract (`merlin/contract/`, symlinked as `bench_contract/`)
+## The contract (`merlin/contract/`)
 
-> The contract bundle lives at `merlin/contract/` (core infra). A root `bench_contract ->
-> merlin/contract` compat symlink keeps external package bundles and the `--contract bench_contract`
-> examples below resolving unchanged; either path works.
+> The contract bundle lives at `merlin/contract/` (core infra). External package bundles and the
+> `--contract merlin/contract` examples below reference it by that repo-root-relative path.
 
 
 A package consumes an `*.interface.mlir` in the frozen `merlin_iface` grammar
@@ -72,9 +71,9 @@ Integer workloads ⇒ exact `==` gates (no tolerance); the cert is three-way:
 Running
 
 ```
-python -m merlin.targetgen.oot_runner --contract bench_contract \
+python -m merlin.targetgen.oot_runner --contract merlin/contract \
   --package artifacts/targets/gemmini/hand_smoke_oot \
-  --input bench_contract/examples/g0_matmul.interface.mlir \
+  --input merlin/contract/examples/g0_matmul.interface.mlir \
   --run-id contract_smoke_g0 --simulator verilator
 ```
 

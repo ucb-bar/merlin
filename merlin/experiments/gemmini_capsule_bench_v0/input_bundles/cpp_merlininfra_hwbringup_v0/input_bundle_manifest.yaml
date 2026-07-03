@@ -19,10 +19,10 @@ description: >-
   through your Gemmini target dialect to command_buffer.json + LLVM/RoCC, graded by capsule_bench_v0.
   NO CIRCT, NO Python authoring kit, NO pre-built input dialect / IRDL, NO oracle.
 allowed:
-  - {path: "bench_contract/", mode: ro, note: "frozen ABI v0.1: schemas, grammar, command_buffer_abi, integrity_policy"}
-  - {path: "bench_contract/capsules/isa/", mode: ro}
-  - {path: "bench_contract/capsules/layers/", mode: ro}
-  - {path: "bench_contract/capsules/model_slices/", mode: ro}
+  - {path: "merlin/contract/", mode: ro, note: "frozen ABI v0.1: schemas, grammar, command_buffer_abi, integrity_policy"}
+  - {path: "merlin/contract/capsules/isa/", mode: ro}
+  - {path: "merlin/contract/capsules/layers/", mode: ro}
+  - {path: "merlin/contract/capsules/model_slices/", mode: ro}
   - {path: "tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h", mode: ro, note: "public Gemmini ISA header"}
   - {path: "tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h", mode: ro, note: "public Gemmini params"}
   - {path: "experiments/gemmini_capsule_bench_v0/task/", mode: ro}
@@ -56,11 +56,11 @@ denied:
   - {path: "merlin/python/merlin/runtime/reference.py", reason: "the reference oracle (cheat surface)"}
   - {path: "merlin/python/merlin/runtime/simulator.py", reason: "the simulator oracle (cheat surface)"}
   - {path: "merlin/python/merlin/xdsl_dialects/lowering/", reason: "pipeline.execute() calls the oracle — callable oracle route"}
-  - {path: "generated_targets/gemmini/merlin_native_v0/", reason: "exempt reference backend"}
-  - {path: "generated_targets/gemmini/hand_smoke_oot/", reason: "hand exemplar"}
-  - {path: "generated_targets/gemmini/agent_spec_v0_mlir_oot/", reason: "prior backend"}
-  - {path: "generated_targets/gemmini/agent_spec_v1_mlir_oot/", reason: "prior backend"}
-  - {path: "bench_contract/capsules/hidden/", reason: "hidden capsules + goldens"}
+  - {path: "artifacts/targets/gemmini/merlin_native_v0/", reason: "exempt reference backend"}
+  - {path: "artifacts/targets/gemmini/hand_smoke_oot/", reason: "hand exemplar"}
+  - {path: "artifacts/targets/gemmini/agent_spec_v0_mlir_oot/", reason: "prior backend"}
+  - {path: "artifacts/targets/gemmini/agent_spec_v1_mlir_oot/", reason: "prior backend"}
+  - {path: "merlin/contract/capsules/hidden/", reason: "hidden capsules + goldens"}
   - {path: "experiments/gemmini_capsule_bench_v0/input_bundles/grader_private_v0/", reason: "grader-private"}
   - {path: "experiments/gemmini_capsule_bench_v0/runs/", reason: "prior submissions"}
 integrity_required: true

@@ -9,11 +9,11 @@ SET="${2:-public}"
 SIM="${3:-spike}"
 
 case "$SET" in
-  public) NAMES="g0_matmul g1_relu g2_acc_scale"; BASE="$REPO/bench_contract/examples";;
+  public) NAMES="g0_matmul g1_relu g2_acc_scale"; BASE="$REPO/merlin/contract/examples";;
   hidden) NAMES="h0_matmul h1_relu h2_acc_scale"; BASE="$REPO/experiments/agent_bench/hidden";;
-  g0)     NAMES="g0_matmul"; BASE="$REPO/bench_contract/examples";;
-  g1)     NAMES="g1_relu";   BASE="$REPO/bench_contract/examples";;
-  g2)     NAMES="g2_acc_scale"; BASE="$REPO/bench_contract/examples";;
+  g0)     NAMES="g0_matmul"; BASE="$REPO/merlin/contract/examples";;
+  g1)     NAMES="g1_relu";   BASE="$REPO/merlin/contract/examples";;
+  g2)     NAMES="g2_acc_scale"; BASE="$REPO/merlin/contract/examples";;
   *) echo "unknown set: $SET" >&2; exit 2;;
 esac
 

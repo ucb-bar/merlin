@@ -24,7 +24,7 @@ helpers are scaffolding, not a runtime dependency you import into the submission
   only via its CLI entrypoints and is integrity-scanned. (Using Merlin tools to *author* it is
   fine; shipping a package that imports them is not, unless you legitimately vendor self-contained
   code.)
-- You must NOT read the reference solution packages (`generated_targets/gemmini/
+- You must NOT read the reference solution packages (`artifacts/targets/gemmini/
   {merlin_native_v0,hand_smoke_oot}`) or the hidden tests.
 
 ## Success criteria

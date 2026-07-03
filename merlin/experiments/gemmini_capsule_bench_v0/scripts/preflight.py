@@ -29,14 +29,14 @@ from merlin.targetgen import baremetalc_corroborate as BMC  # noqa: E402
 from merlin.targetgen.contract import schemas as S  # noqa: E402
 
 CANARIES = [
-    "generated_targets/gemmini/agent_spec_v1_mlir_oot/CANARY_FORBIDDEN.txt",
-    "generated_targets/gemmini/hand_smoke_oot/CANARY_FORBIDDEN.txt",
-    "generated_targets/gemmini/merlin_native_v0/CANARY_FORBIDDEN.txt",
-    "bench_contract/capsules/hidden/CANARY_HIDDEN.txt",
+    "artifacts/targets/gemmini/agent_spec_v1_mlir_oot/CANARY_FORBIDDEN.txt",
+    "artifacts/targets/gemmini/hand_smoke_oot/CANARY_FORBIDDEN.txt",
+    "artifacts/targets/gemmini/merlin_native_v0/CANARY_FORBIDDEN.txt",
+    "merlin/contract/capsules/hidden/CANARY_HIDDEN.txt",
     "artifacts/capsule-bench/gemmini/CANARY_RESULTS.txt",
     "merlin/python/merlin/runtime/CANARY_FORBIDDEN.txt",
 ]
-G0 = "generated_targets/gemmini/agent_spec_v0_mlir_oot/certification/g0_matmul/lowered.llvm.mlir"
+G0 = "artifacts/targets/gemmini/agent_spec_v0_mlir_oot/certification/g0_matmul/lowered.llvm.mlir"
 
 
 def check_canary_isolation() -> dict:
@@ -73,7 +73,7 @@ def check_canary_isolation() -> dict:
     return out
 
 
-def _mk_pkg_with(text_file: dict, base="generated_targets/gemmini/agent_spec_v1_mlir_oot") -> Path:
+def _mk_pkg_with(text_file: dict, base="artifacts/targets/gemmini/agent_spec_v1_mlir_oot") -> Path:
     """Copy the known-good package and inject a file (for integrity/contract negative fixtures)."""
     import shutil
     d = Path(tempfile.mkdtemp(dir="/tmp", prefix="negfix_"))
@@ -89,12 +89,12 @@ def _mk_pkg_with(text_file: dict, base="generated_targets/gemmini/agent_spec_v1_
 
 def check_negative_fixtures() -> dict:
     res = {"grader_endtoend": [], "trace": [], "numeric": [], "cb_schema": []}
-    contract = str(C.REPO / "bench_contract")
+    contract = str(C.REPO / "merlin/contract")
 
     # --- end-to-end through capsule_grade (no-oracle; integrity/contract run first, fail fast) ---
     # (1) import-merlin injected -> integrity FORBIDDEN_PATTERN
     pkg = _mk_pkg_with({"mlir_oot/CANARY_import.py": "import merlin.runtime.reference\n"})
-    g = CGRADE.grade(str(pkg), capsules_root=str(C.REPO / "bench_contract/capsules"),
+    g = CGRADE.grade(str(pkg), capsules_root=str(C.REPO / "merlin/contract/capsules"),
                      runs_root=tempfile.mkdtemp(dir="/tmp"), labels={"public"}, contract=contract,
                      oracle_adapters={})
     res["grader_endtoend"].append({"case": "import_merlin_injected", "functional_pass": g["functional_pass"],
@@ -102,7 +102,7 @@ def check_negative_fixtures() -> dict:
                                    "fails_closed": g["functional_pass"] == 0 and "FAIL" in str(g["integrity_status"])})
     # (2) missing manifest -> contract fail
     pkg2 = _mk_pkg_with({"manifest.yaml": None})
-    g2 = CGRADE.grade(str(pkg2), capsules_root=str(C.REPO / "bench_contract/capsules"),
+    g2 = CGRADE.grade(str(pkg2), capsules_root=str(C.REPO / "merlin/contract/capsules"),
                       runs_root=tempfile.mkdtemp(dir="/tmp"), labels={"public"}, contract=contract,
                       oracle_adapters={})
     res["grader_endtoend"].append({"case": "missing_manifest", "functional_pass": g2["functional_pass"],
@@ -150,7 +150,7 @@ def check_freeze_enforcement() -> dict:
     """Mutating a frozen submission must change its hash (so the hidden-phase recheck catches it)."""
     import shutil
     d = Path(tempfile.mkdtemp(dir="/tmp", prefix="freeze_"))
-    shutil.copytree(C.REPO / "bench_contract/schemas", d / "sub")
+    shutil.copytree(C.REPO / "merlin/contract/schemas", d / "sub")
     h1 = C.hash_tree(d / "sub")["sha256"]
     (d / "sub" / "INJECTED.txt").write_text("post-freeze tamper")
     h2 = C.hash_tree(d / "sub")["sha256"]

@@ -92,7 +92,7 @@ def main(argv=None):
     # build + run + compare (parallel); CG.grade handles the agent's 4 entrypoints + the tier ladder
     try:
         CG.grade(str(sub), capsules_root=str(caps_root), runs_root=str(runs_root),
-                 labels={"public", "dev"}, contract=str(_REPO / "bench_contract"),
+                 labels={"public", "dev"}, contract=str(_REPO / "merlin/contract"),
                  oracle_adapters=adapters, timeout=a.timeout, max_workers=a.workers)
     except Exception as e:
         print(json.dumps({"error": f"grade failed: {str(e)[:300]}"})); return 1

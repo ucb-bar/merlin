@@ -6,7 +6,7 @@ README); nothing here is a kernel. Re-runnable: same output every time. Model sl
 ``model_slice_export``; the matmul-family ISA/layer capsules are emitted here; movement (A1) and
 conv (B3/B4) capsules are emitted by their own generators once the v1 backend supports them.
 
-Usage:  .venv/bin/python bench_contract/capsules/generate_corpus.py
+Usage:  .venv/bin/python merlin/contract/capsules/generate_corpus.py
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from merlin.targetgen import capsule_golden as CG          # noqa: E402
 from merlin.targetgen import model_slice_export as MSE      # noqa: E402
 from merlin.targetgen.contract import schemas as S          # noqa: E402
 
-CAP_ROOT = REPO / "bench_contract" / "capsules"
+CAP_ROOT = REPO / "merlin/contract" / "capsules"
 COMMON = ["FLUSH", "CONFIG_EX", "CONFIG_LD", "MVIN", "CONFIG_ST",
           "PRELOAD", "COMPUTE_PRELOADED", "MVOUT"]
 

@@ -78,8 +78,8 @@ def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
 # answer surfaces locked (chmod 000) right before any spend — prior backends, hidden capsules, goldens,
 # results, the experimenter's agent memory. Defence-in-depth on top of the per-bundle workspace assembly.
 ANSWER_SURFACES = [
-    "generated_targets/gemmini",
-    "bench_contract/capsules/hidden",
+    "artifacts/targets/gemmini",
+    "merlin/contract/capsules/hidden",
     "artifacts/capsule-bench/gemmini",
 ]
 

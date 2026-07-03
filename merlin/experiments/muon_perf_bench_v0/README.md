@@ -39,7 +39,7 @@ Run one capsule directly:
 
 ```bash
 .venv/bin/python -m merlin.targetgen.muon_capsule_runner \
-  --package generated_targets/muon/reference_v0 \
+  --package artifacts/targets/muon/reference_v0 \
   --capsule experiments/muon_perf_bench_v0/kernels/MG00_gemm_16x16x16 \
   --runs-root /tmp/muon_runs
 ```
@@ -63,7 +63,7 @@ agentic Merlin+CIRCT backend's job is to close this gap toward the 32 GFLOP/s pe
 | SIMT codegen | `merlin/python/merlin/runtime/backends/muon_codegen.py` | command buffer → fp32 SIMT C++ kernel (reference emitter) |
 | oracle adapters | `merlin/python/merlin/targetgen/muon_oracles.py` | cyclotron (L2) + VCS (L3) adapters |
 | parallel runner | `merlin/python/merlin/targetgen/muon_capsule_runner.py` | Muon tier ladder; reuses generic helpers, zero Gemmini coupling |
-| reference backend | `generated_targets/muon/reference_v0/` | `muon-opt` (4 entrypoints) — integrity-exempt ceiling |
+| reference backend | `artifacts/targets/muon/reference_v0/` | `muon-opt` (4 entrypoints) — integrity-exempt ceiling |
 | corpus + report | `experiments/muon_perf_bench_v0/{kernels,scripts}/` | fp32 GEMM capsules + GFLOP/s-vs-peak table |
 
 ## Toolchain (env overridable)

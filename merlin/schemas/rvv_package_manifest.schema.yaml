@@ -3,7 +3,7 @@
 title: RVV Target-Package Manifest
 purpose: >-
   Provenance + identity for one isolated RVV codegen package under
-  generated_targets/rvv/<run_id>/. RVV is a transform-dialect SCHEDULE + cflags, not a
+  artifacts/targets/rvv/<run_id>/. RVV is a transform-dialect SCHEDULE + cflags, not a
   resident-accelerator dialect, so the package payload is schedule.mlir + knobs.yaml (NOT a
   dialect.py with SPEC_OPS). Mirrors the gemmini target-package manifest provenance fields so
   the same isolation/certification discipline applies. Loaded via merlin.rvvgen.registry.

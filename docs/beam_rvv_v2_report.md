@@ -1,6 +1,6 @@
 # Experiment `beam_rvv_v2` — faithful whole-model beam re-run
 
-**Run:** `mined_knowledge/rvv/beam_rvv_v2_20260619T132435/` (manifest + per-model rankings + summary + raw).
+**Run:** `artifacts/kernel-mining/rvv/beam_rvv_v2_20260619T132435/` (manifest + per-model rankings + summary + raw).
 **Supersedes** `beam_rvv_v1` (single-op `matmul_f32_64x64x64`, 7 candidates, predated v3 — a single small
 GEMM mis-ranks whole-model winners). This run ranks the **current** candidate optimizations **whole-model**
 on real driving examples (bitvla, openvla) on the **SpacemiT K1**, by min wall (N=3) + fp32 cos vs host

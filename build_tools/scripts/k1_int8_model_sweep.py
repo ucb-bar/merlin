@@ -30,7 +30,7 @@ from merlin.llvmlower import custom_isa                 # noqa: E402
 # small -> large (bundle sizes from inventory); pi05 excluded.
 DEFAULT_ORDER = ["small_llama", "bitvla", "openvla", "rdt2", "rdt", "xr0",
                  "tiny_llama", "smolvla", "molmoact", "groot_n1d7"]
-PKG = ROOT / "generated_targets" / "rvv" / "hand_v0_int8"
+PKG = ROOT / "artifacts/targets" / "rvv" / "hand_v0_int8"
 RVV_INT = ("vmul.vv", "vwmacc", "vmacc", "vsext", "vle8", "vadd.vv")
 
 

@@ -31,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--kernels-root", default="experiments/muon_perf_bench_v0/kernels")
     ap.add_argument("--run-id", default="ref_v0")
     ap.add_argument("--labels", default="public,dev")
-    ap.add_argument("--contract", default="bench_contract")
+    ap.add_argument("--contract", default="merlin/contract")
     ap.add_argument("--timeout", type=int, default=300)
     ap.add_argument("--out", default=None, help="output dir (default runs/muon/perf-bench/<run-id>)")
     a = ap.parse_args(argv)

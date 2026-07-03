@@ -26,10 +26,10 @@ import _common as C
 
 # Forbidden prior backends the merlin agent must not have copied (operator-visible only).
 PRIOR_BACKENDS = [
-    C.REPO / "generated_targets" / "gemmini" / "agent_spec_v0_mlir_oot",
-    C.REPO / "generated_targets" / "gemmini" / "agent_spec_v1_mlir_oot",
-    C.REPO / "generated_targets" / "gemmini" / "hand_smoke_oot",
-    C.REPO / "generated_targets" / "gemmini" / "merlin_native_v0",
+    C.REPO / "artifacts/targets" / "gemmini" / "agent_spec_v0_mlir_oot",
+    C.REPO / "artifacts/targets" / "gemmini" / "agent_spec_v1_mlir_oot",
+    C.REPO / "artifacts/targets" / "gemmini" / "hand_smoke_oot",
+    C.REPO / "artifacts/targets" / "gemmini" / "merlin_native_v0",
 ]
 PRIOR_REPORTS = C.REPO / "artifacts" / "capsule-bench" / "gemmini"
 

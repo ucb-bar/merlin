@@ -26,7 +26,7 @@ hard fail.
 | **xDSL dialect patterns** | `merlin/python/merlin/xdsl_dialects/` **except `lowering/`** | Reference IRDL op/type/verifier patterns for prototyping your input + target dialects. |
 | **Interface grammar emit/parse** | `merlin/python/merlin/targetgen/contract/interface_emit.py` | Serialize/parse the `merlin_iface` v0.1 grammar (clean; imports only `re`/`typing`). |
 | Public Gemmini facts | `tmp/.../gemmini-rocc-tests/include/gemmini.h`, `gemmini_params.h` | ISA encoding, DIM, dtypes. |
-| Public capsule contract | `bench_contract/` (schemas, grammar, command-buffer ABI, integrity policy) + public/dev capsule inputs | The interface you compile and the schemas you must satisfy. |
+| Public capsule contract | `merlin/contract/` (schemas, grammar, command-buffer ABI, integrity policy) + public/dev capsule inputs | The interface you compile and the schemas you must satisfy. |
 | Toolchain | `third_party/llvm-install/` | LLVM/MLIR 23 to build the OOT package. |
 
 ## FORBIDDEN (would break comparability or integrity)

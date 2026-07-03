@@ -8,7 +8,7 @@ A0-A7/B0-B4/C0-C6 suite. We assemble a curated capsules_root containing ONLY:
   hidden:      H0_matmul_hidden, H1_acc_scale_hidden, H2_k_accum_hidden   (post-freeze phase)
 
 Each pilot entry is a REAL directory whose files are symlinks into the frozen
-bench_contract/capsules tree (so `capsule_runner.discover_capsules`, which rglobs for
+merlin/contract/capsules tree (so `capsule_runner.discover_capsules`, which rglobs for
 `capsule.yaml`, finds them — pathlib does not necessarily descend into symlinked dirs, so we
 symlink files, not dirs). This root is used ONLY by the operator-side grader (qa_check / the
 hidden phase); it includes golden.yaml. The AGENT never sees this root — its workspace is
@@ -21,7 +21,7 @@ from pathlib import Path
 
 import _common as C
 
-CAPS = C.REPO / "bench_contract" / "capsules"
+CAPS = C.REPO / "merlin/contract" / "capsules"
 OUT = C.EXP / "scripts" / "pilot_capsules"
 
 # (subset_name, source_capsule_dir)

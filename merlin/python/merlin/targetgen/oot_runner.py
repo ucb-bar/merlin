@@ -8,9 +8,9 @@ A package is invoked ONLY via its CLI entrypoints (it is never imported). Non-ex
 integrity-scanned (no harness imports). Every gate failure is fail-closed and plane-routed.
 
 CLI:
-    python -m merlin.targetgen.oot_runner --contract bench_contract \\
-        --package generated_targets/gemmini/merlin_native_v0 \\
-        --input bench_contract/examples/g0_matmul.interface.mlir \\
+    python -m merlin.targetgen.oot_runner --contract merlin/contract \\
+        --package artifacts/targets/gemmini/merlin_native_v0 \\
+        --input merlin/contract/examples/g0_matmul.interface.mlir \\
         --run-id contract_smoke_g0 [--simulator spike|verilator] [--runs-root runs/gemmini_contract]
 """
 from __future__ import annotations
@@ -40,7 +40,7 @@ SUITE = "gemmini-contract"
 CONTRACT_VERSION = "0.1"
 
 # Forbidden substrings in a non-exempt package's tool sources (integrity scan; see
-# bench_contract/integrity_policy.md).
+# merlin/contract/integrity_policy.md).
 _FORBIDDEN = (
     "merlin.runtime.reference", "merlin.runtime.simulator", "reference_outputs",
     "import merlin", "from merlin",
@@ -388,7 +388,7 @@ def _record(paths: RunPaths, run_id: str, rung: str, simulator: str, status: str
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Out-of-tree target-backend package runner")
-    ap.add_argument("--contract", default="bench_contract")
+    ap.add_argument("--contract", default="merlin/contract")
     ap.add_argument("--package", required=True)
     ap.add_argument("--input", required=True, help="path to an *.interface.mlir")
     ap.add_argument("--run-id", required=True)

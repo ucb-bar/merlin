@@ -137,7 +137,7 @@ def run_cfg(model_dir: Path, pkg, golden: np.ndarray, n: int, tag: str,
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="artifacts/recaptures/openvla_fp32_consistent")
-    ap.add_argument("--baseline", default="generated_targets/rvv/hand_v0")
+    ap.add_argument("--baseline", default="artifacts/targets/rvv/hand_v0")
     ap.add_argument("-n", type=int, default=5)
     ap.add_argument("--configs", default="ours_wholemodel_vf,xnnpack_kernels,baseline",
                     help="ours_wholemodel_vf,ours_wholemodel,xnnpack_kernels,ours_kernels,baseline")

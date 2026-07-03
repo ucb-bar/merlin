@@ -14,7 +14,7 @@ outputs that match the expected result exactly.
   get — you must **generalize from it + the RTL + the ISA headers** to every benchmark op (matmul,
   movement, conv, attention, …). This mirrors real bring-up: you have the hardware and one smoke test,
   not a library of finished kernels.
-- The bench contract (`bench_contract/`): the command-buffer ABI, schemas, grammar, integrity policy, and
+- The bench contract (`merlin/contract/`): the command-buffer ABI, schemas, grammar, integrity policy, and
   the **public capsule inputs** (the problems to solve).
 - The LLVM/MLIR-23 toolchain to build your package.
 - **A self-check tool** (`agent_selfcheck.py`) — see below.
@@ -58,7 +58,7 @@ Fire several per-capsule jobs and collect results; do **NOT** `--sim verilator -
 ## Integrity (DISQUALIFYING if violated)
 **Author the dialect yourself.** You may read the vanilla Gemmini repo, its docs, and its example
 *kernels* (C code showing ISA usage) — that is the point. You may NOT copy or adapt a pre-existing MLIR
-*backend/dialect/package* (e.g. anything under `generated_targets/`, prior `runs/*/submission`, or any
+*backend/dialect/package* (e.g. anything under `artifacts/targets/`, prior `runs/*/submission`, or any
 other ready-made `gemmini-opt`/dialect you find on the filesystem), and you may NOT read capsule
 `golden.yaml` files or any reference-oracle to obtain expected outputs and hardcode them. Your package is
 graded only through its 4 entrypoints and is scanned for these violations; a submission that copies a

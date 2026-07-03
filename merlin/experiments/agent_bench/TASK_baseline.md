@@ -9,14 +9,14 @@ outside this sandbox except the toolchains explicitly listed below.
 A self-contained package in `submission/` that the grader can build and invoke **only through CLI
 entrypoints** (it is never imported). Read the contract first:
 
-- `bench_contract/README.md`, `interface_grammar.md` — the `merlin_iface` input grammar.
-- `bench_contract/mlir_oot_backend_contract.yaml` — the manifest + the four entrypoints + the
+- `merlin/contract/README.md`, `interface_grammar.md` — the `merlin_iface` input grammar.
+- `merlin/contract/mlir_oot_backend_contract.yaml` — the manifest + the four entrypoints + the
   `gemmini_kernel` ABI.
-- `bench_contract/command_buffer_abi.yaml` + `schemas/command_buffer.schema.json` — the cb you emit.
-- `bench_contract/oracle_runner_contract.yaml` — how your lowered kernel is run + the `OUT/METRIC/
+- `merlin/contract/command_buffer_abi.yaml` + `schemas/command_buffer.schema.json` — the cb you emit.
+- `merlin/contract/oracle_runner_contract.yaml` — how your lowered kernel is run + the `OUT/METRIC/
   DONE` output the runner-owned harness prints (you do NOT write the harness).
-- `bench_contract/integrity_policy.md` — the rules below, enforced by an integrity scan.
-- `bench_contract/examples/{g0_matmul,g1_relu,g2_acc_scale}.interface.mlir` — public inputs;
+- `merlin/contract/integrity_policy.md` — the rules below, enforced by an integrity scan.
+- `merlin/contract/examples/{g0_matmul,g1_relu,g2_acc_scale}.interface.mlir` — public inputs;
   `expected_command_buffer_g0.json` — the golden cb for g0.
 
 Your `submission/manifest.yaml` declares `artifact_type: mlir_oot_target_backend`, `language`
