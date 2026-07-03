@@ -17,7 +17,7 @@ merlin/
   targets/     toy/reference targets (toy_npu, example_vector)
   schemas/     cross-workstream coordination contract
   benchmarks/  shared workload descriptions
-  experiments/ throwaway/bookkeeping experiments
+  experiments/ workstream experiments + benchmark harnesses (agent/capsule/perf-bench, targetgen_evals)
   tests/       integration/conformance/golden/data
 build/         gitignored generated build outputs (structured)
 output/        gitignored produced artifacts (structured)
