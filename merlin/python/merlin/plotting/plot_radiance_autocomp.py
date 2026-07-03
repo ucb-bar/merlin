@@ -16,9 +16,17 @@ use_merlin_style()
 import numpy as np
 import matplotlib.pyplot as plt
 
-BUNDLE = Path("/scratch/agustin/projects/oscar-merlin/tmp/kernels/radiance_only_kernels")
+def _repo_root():
+    from pathlib import Path as _P
+    p = _P(__file__).resolve()
+    while p != p.parent and not (p / "merlin" / "python").is_dir():
+        p = p.parent
+    return p
+_ROOT = _repo_root()
+
+BUNDLE = (_ROOT / "tmp/kernels/radiance_only_kernels")
 IDX = BUNDLE / "index"
-OUT = Path("/scratch/agustin/projects/oscar-merlin/artifacts/presentation/radiance_autocomp")
+OUT = (_ROOT / "artifacts/presentation/radiance_autocomp")
 OUT.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------- problem identity

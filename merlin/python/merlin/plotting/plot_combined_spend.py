@@ -17,7 +17,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
-ROOT = Path("/scratch/agustin/projects/oscar-merlin")
+def _repo_root():
+    from pathlib import Path as _P
+    p = _P(__file__).resolve()
+    while p != p.parent and not (p / "merlin" / "python").is_dir():
+        p = p.parent
+    return p
+_ROOT = _repo_root()
+
+ROOT = _ROOT
 MUON = ROOT / "tmp/kernels/radiance_only_kernels/index/muon-spend_total.json"
 MX   = ROOT / "tmp/kernels/mx_gemmini_only_kernels/cost/project-spend-total.json"
 OUT  = ROOT / "artifacts/presentation/combined"
