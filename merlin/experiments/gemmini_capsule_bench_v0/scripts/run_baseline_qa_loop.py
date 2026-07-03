@@ -44,6 +44,13 @@ SCRIPTS = Path(__file__).resolve().parent  # this scripts/ dir (selfcheck_broker
 sys.path.insert(0, str(C.REPO / "merlin" / "python"))
 from merlin.targetgen import experiment_tokens as ET  # noqa: E402
 
+def _repo_root():
+    from pathlib import Path as _P
+    p=_P(__file__).resolve()
+    while p!=p.parent and not (p/"merlin"/"python").is_dir(): p=p.parent
+    return p
+_ROOT=_repo_root()
+
 ARM = "raw_baseline"  # default arm; overridable via --arm (the QA loop is arm-agnostic)
 # Loop+gate capsule set: the FULL 20 PUBLIC capsules (isa+layers+model_slices). The agent iterates to
 # pass all of them (aiming for all 25; the 5 hidden are held-out, graded only in the final audit).
@@ -669,7 +676,7 @@ def main(argv: list[str] | None = None) -> int:
         # subprocess UNDER ANY python the agent's manifest invokes (even bare system python3). The
         # grader spawns the entrypoint inheriting this env, so prepend the .venv site-packages.
         import sysconfig as _sc
-        _site = "/scratch/agustin/projects/oscar-merlin/.venv/lib/python3.13/site-packages"
+        _site = f"{_ROOT}/.venv/lib/python3.13/site-packages"
         os.environ["PYTHONPATH"] = _site + (":" + os.environ["PYTHONPATH"] if os.environ.get("PYTHONPATH") else "")
         # sanity: confirm xdsl is importable in this env right now (fail LOUD if the framework is broken)
         import importlib.util as _u

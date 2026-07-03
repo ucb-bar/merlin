@@ -5,10 +5,18 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-EXP = Path("/scratch/agustin/projects/oscar-merlin/experiments/gemmini_capsule_bench_v0")
+EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
 A = EXP / "reports" / "abc4_analysis"
 sys.path.insert(0, str(EXP.parent / "gemmini_perf_bench" / "scripts"))
 import perf_style as S
+
+def _repo_root():
+    from pathlib import Path as _P
+    p = _P(__file__).resolve()
+    while p != p.parent and not (p / "merlin" / "python").is_dir():
+        p = p.parent
+    return p
+_ROOT = _repo_root()
 S.use_style()
 COL = {"baseline-C++": S.COLOR["golden"], "merlin-xDSL": S.COLOR["merlin_targetgen"],
        "merlin+CIRCT": S.COLOR["iree_dialect"]}

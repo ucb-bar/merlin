@@ -2,7 +2,7 @@
 # Stage a CLEAN baseline sandbox containing ONLY public materials. Does NOT launch an agent.
 # After this, launch your agent runtime with cwd = the sandbox and TASK.md as the prompt.
 set -euo pipefail
-REPO=/scratch/agustin/projects/oscar-merlin
+REPO="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 WS="${1:-/scratch/agustin/agent_bench/baseline_ws}"
 CHIPYARD="${MERLIN_CHIPYARD:-/scratch2/agustin/chipyard}"
 GEM="$CHIPYARD/generators/gemmini/software/libgemmini"

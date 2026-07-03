@@ -5,7 +5,7 @@
 # Skips bundles that already have a model.mlir. Prints one __DONE__ line per combo.
 set -u
 M2M=/scratch/agustin/projects/model2MLIR
-OUT=/scratch/agustin/projects/oscar-merlin/output
+OUT="$REPO"/output
 WORKER="$M2M/workloads/capture_consistent.py"
 
 declare -A VENV=(

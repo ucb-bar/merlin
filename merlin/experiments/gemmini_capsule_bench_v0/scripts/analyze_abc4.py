@@ -14,11 +14,19 @@ from __future__ import annotations
 import json, os, sys, glob
 from pathlib import Path
 
-EXP = Path("/scratch/agustin/projects/oscar-merlin/experiments/gemmini_capsule_bench_v0")
+EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
 sys.path.insert(0, str(EXP / "scripts"))
-sys.path.insert(0, "/scratch/agustin/projects/oscar-merlin/merlin/python")
+sys.path.insert(0, f"{_ROOT}/merlin/python")
 from merlin.targetgen import rtl_check_runner as RCR  # the EXACT live screen
 import yaml
+
+def _repo_root():
+    from pathlib import Path as _P
+    p = _P(__file__).resolve()
+    while p != p.parent and not (p / "merlin" / "python").is_dir():
+        p = p.parent
+    return p
+_ROOT = _repo_root()
 
 OUT = EXP / "reports" / "abc4_analysis"
 ARMS = {"rb_abc4": ("raw_baseline", "baseline-C++"),

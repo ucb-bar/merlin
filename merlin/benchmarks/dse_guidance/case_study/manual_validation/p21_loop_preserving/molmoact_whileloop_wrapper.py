@@ -27,6 +27,7 @@ Architecture deltas vs openVLA's Llama (handled below):
 
 K=8 from the dse_guidance registry (autoregressive_vla/action_token_decode).
 """
+from merlin.common.paths import repo_root as _RR
 from __future__ import annotations
 
 import os
@@ -257,7 +258,7 @@ if __name__ == "__main__":
     print("scf.for count:", mt.count("scf.for"))
     print("diagnostics:", res.diagnostics[:5])
 
-    out_path = "/scratch/agustin/projects/oscar-merlin/merlin/benchmarks/dse_guidance/recaptures_loop/molmoact/model.mlir"
+    out_path = str(_RR() / "merlin/benchmarks/dse_guidance/recaptures_loop/molmoact/model.mlir")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w") as f:
         f.write(mt)

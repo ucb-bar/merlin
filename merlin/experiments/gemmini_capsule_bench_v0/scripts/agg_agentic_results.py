@@ -20,7 +20,15 @@ import json
 from pathlib import Path
 import yaml
 
-EXP = Path("/scratch/agustin/projects/oscar-merlin/experiments/gemmini_capsule_bench_v0")
+def _repo_root():
+    from pathlib import Path as _P
+    p = _P(__file__).resolve()
+    while p != p.parent and not (p / "merlin" / "python").is_dir():
+        p = p.parent
+    return p
+_ROOT = _repo_root()
+
+EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
 RUN_DIRS = ["raw_baseline", "merlin_assisted"]   # both scanned; arm decided by bundle_id
 BUNDLE_ARM = {
     "raw_baseline_public_v0": "baseline",

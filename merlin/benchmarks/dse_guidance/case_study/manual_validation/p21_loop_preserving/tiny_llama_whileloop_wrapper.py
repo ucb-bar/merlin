@@ -28,6 +28,7 @@ WRAPPER RULES followed (from STATUS.md / openVLA reference):
      no linspace/arange-of-constants/torch.tensor literals that become get_attr.
   5. cond returns i < K (K an int constant); body returns the new carry tuple.
 """
+from merlin.common.paths import repo_root as _RR
 from __future__ import annotations
 
 import os
@@ -291,7 +292,7 @@ if __name__ == "__main__":
     print("ok:", getattr(res, "ok", "?"))
     print("scf.for count        :", mt.count("scf.for"))
     print("func.call @while_loop:", mt.count("while_loop"))
-    out_path = "/scratch/agustin/projects/oscar-merlin/merlin/benchmarks/dse_guidance/recaptures_loop/tiny_llama/model.mlir"
+    out_path = str(_RR() / "merlin/benchmarks/dse_guidance/recaptures_loop/tiny_llama/model.mlir")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w") as f:
         f.write(mt)

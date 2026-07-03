@@ -50,6 +50,14 @@ from loader import get_model_and_inputs  # noqa: E402
 # BitNet's own apply_rotary_pos_emb (signature differs from Llama's: takes position_ids).
 from transformers.models.llava.modeling_bitnet import apply_rotary_pos_emb  # noqa: E402
 
+def _repo_root():
+    from pathlib import Path as _P
+    p = _P(__file__).resolve()
+    while p != p.parent and not (p / "merlin" / "python").is_dir():
+        p = p.parent
+    return p
+_ROOT = _repo_root()
+
 K = 7  # action-token chunk to decode (IR loop constant)
 
 
@@ -266,7 +274,7 @@ if __name__ == "__main__":
     mt = res.mlir_text or ""
     print("scf.for count:", mt.count("scf.for"))
     print("func.call @while_loop count:", mt.count("while_loop"))
-    out_dir = "/scratch/agustin/projects/oscar-merlin/merlin/benchmarks/dse_guidance/recaptures_loop/bitvla"
+    out_dir = f"{_ROOT}/merlin/benchmarks/dse_guidance/recaptures_loop/bitvla"
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "model.mlir"), "w") as f:
         f.write(mt)
