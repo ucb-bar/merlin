@@ -25,7 +25,7 @@ import yaml
 from ..runtime.backends import zephyr_model as zm
 from . import k1 as k1mod
 from .registry import load_rvv_package
-from merlin.common.paths import ext_path
+from merlin.common.paths import repo_root
 
 _REPO = Path(__file__).resolve().parents[4]
 
@@ -95,7 +95,7 @@ def autotune(target: str, base_pkg_dir: str | Path, model_dir: str | Path, featu
     for i, feats in enumerate(cands):
         fork = _mint_fork(base_dir, fork_root, feats, ts, i)
         pkg = load_rvv_package(fork)
-        work = Path(f"{ext_path("scratch_tmp")}") / f"autotune_{target}_{i}_{ts}"
+        work = repo_root() / "build" / "tmp" / f"autotune_{target}_{i}_{ts}"
         shutil.rmtree(work, ignore_errors=True)
         b = _bench_k1(pkg, model_dir, work, golden, n_runs)
         b["features"] = sorted(feats)
@@ -150,7 +150,7 @@ def beam_search(target: str, base_pkg_dir: str | Path, model_dir: str | Path, fe
             return evaluated[feats]
         fork = _mint_fork(base_dir, fork_root, feats, ts, counter[0]); counter[0] += 1
         pkg = load_rvv_package(fork)
-        work = Path(f"{ext_path("scratch_tmp")}") / f"beam_{target}_{counter[0]}_{ts}"
+        work = repo_root() / "build" / "tmp" / f"beam_{target}_{counter[0]}_{ts}"
         shutil.rmtree(work, ignore_errors=True)
         r = _bench_k1(pkg, model_dir, work, golden, n_runs)
         r["features"] = sorted(feats); r["fork"] = fork.name
