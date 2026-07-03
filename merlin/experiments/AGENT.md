@@ -5,7 +5,7 @@
 In-repo experiments and benchmark harnesses for the workstreams. Two flavors live here:
 
 - **Small workstream experiments** (configs, notes, small drivers): `targetgen_toy/`,
-  `kernel_policy/`, `semantic_memory/`, `interface_dse/`, `gemmini_cert/`.
+  `kernel_policy/`, `semantic_memory/`, `gemmini_cert/`.
 - **Benchmark harnesses** (relocated off the repo root): `agent_bench/`,
   `gemmini_capsule_bench_v0/`, `gemmini_perf_bench/`, `muon_perf_bench_v0/`,
   `targetgen_evals/`. These *consume* merlin (add `merlin/python` to `sys.path`); nothing in
