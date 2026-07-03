@@ -11,7 +11,7 @@ import io
 from pathlib import Path
 
 from merlin.dse.pareto import compute_pareto
-from merlin.search.archive import archive_rows
+from merlin.dse.search.archive import archive_rows
 
 
 def _csv(rows: list[dict], columns: list[str]) -> str:

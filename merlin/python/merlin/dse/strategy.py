@@ -18,7 +18,7 @@ from merlin.common.yaml import load_yaml
 from merlin.dse.cost_model import evaluate_cost
 from merlin.dse.hardware_space import default_cost_model
 from merlin.dse.variants import contract_plans
-from merlin.pipelines.builder import build_pipeline
+from merlin.dse.pipelines.builder import build_pipeline
 
 
 @dataclass(frozen=True)
@@ -159,7 +159,7 @@ def strategy_from_passes(effect_passes, target: str = "toy_npu",
 
 def effect_passes(strategy: Strategy) -> list[str]:
     """The effect passes in a strategy's pipeline (drops the structural lowering passes)."""
-    from merlin.pipelines.builder import parse_spec
+    from merlin.dse.pipelines.builder import parse_spec
     return [p for p in parse_spec(strategy.lowering_pipeline) if p in _EFFECT_ORDER]
 
 

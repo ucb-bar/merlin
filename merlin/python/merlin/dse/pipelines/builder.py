@@ -2,7 +2,7 @@
 
 The spec is a comma-separated list of pass names (e.g.
 ``"merlin-contract,make-resident,defer-commit,toynpu-lower"``). ``build_pipeline`` resolves
-each against ``merlin.pipelines.registry`` and returns a :class:`Pipeline` that applies them in
+each against ``merlin.dse.pipelines.registry`` and returns a :class:`Pipeline` that applies them in
 order to a starting cost-model plan. Unknown names default to identity (``strict=False``) so a
 forward-looking xDSL pass spec still runs; pass ``strict=True`` to require every pass to exist.
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from merlin.pipelines import registry
+from merlin.dse.pipelines import registry
 
 
 @dataclass(frozen=True)

@@ -4,12 +4,12 @@ from merlin.common.yaml import load_yaml
 from merlin.design_pressure.pressure_vector import compute_rpv
 from merlin.design_pressure.workloads.vla_action_chunk_decode import build_region
 from merlin.dse.strategy import strategy_from_passes
-from merlin.search import evolutionary, grid, map_elites
-from merlin.search.archive import archive_rows
-from merlin.search.candidate import make_candidate, seed_candidates
-from merlin.search.evaluator import make_evaluator
-from merlin.search.mutations import mutate, neighbours
-from merlin.search.reports import build_report
+from merlin.dse.search import evolutionary, grid, map_elites
+from merlin.dse.search.archive import archive_rows
+from merlin.dse.search.candidate import make_candidate, seed_candidates
+from merlin.dse.search.evaluator import make_evaluator
+from merlin.dse.search.mutations import mutate, neighbours
+from merlin.dse.search.reports import build_report
 
 BENCH = paths.merlin_dir() / "benchmarks" / "semantic_memory"
 

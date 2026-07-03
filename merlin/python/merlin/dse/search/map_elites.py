@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import random
 
-from merlin.search.archive import best_overall, update_archive
-from merlin.search.mutations import mutate
+from merlin.dse.search.archive import best_overall, update_archive
+from merlin.dse.search.mutations import mutate
 
 
 def map_elites_search(seeds, evaluator, iterations: int = 40, seed: int = 0,
