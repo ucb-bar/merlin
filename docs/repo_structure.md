@@ -10,11 +10,9 @@ runs/          aet experiment runs (gitignored)   ── see CLAUDE.md "Generate
 artifacts/     all other generated products (gitignored); artifacts/targets/ = codegen packages
                (replaces retired generated_targets/; tracked baselines/champions via .gitignore negations)
 merlin/
-  compiler/    stable MLIR/C++ plane (scaffold)
-  python/      Python plane (xDSL prototyping + workstream pipelines)
-  runtime/     target-independent runtime substrate
-  integrations/adapters to external projects (not vendored)
-  targets/     toy/reference targets (toy_npu, example_vector)
+  python/      Python + xDSL compiler plane + workstream packages (the active compiler)
+  runtime/     target-independent C runtime substrate (c/ + baremetal/ + abi/)
+  targets/     reference targets (toy_npu, saturn, gemmini)
   schemas/     cross-workstream coordination contract
   benchmarks/  shared workload descriptions
   experiments/ workstream experiments + benchmark harnesses (agent/capsule/perf-bench, targetgen_evals)
