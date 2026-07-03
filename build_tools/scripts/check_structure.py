@@ -31,8 +31,6 @@ REQUIRED_DIRS = [
     "merlin/python/merlin/kernels",
     "merlin/python/merlin/design_pressure",
     "merlin/python/merlin/dse",
-    "merlin/python/merlin/search",
-    "merlin/python/merlin/pipelines",
     "merlin/python/merlin/runtime",
     "merlin/python/merlin/common",
     "merlin/python/merlin/validation",

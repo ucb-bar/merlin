@@ -67,10 +67,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run_search(rpv: dict, workload: str, out: Path) -> None:
-    from merlin.search import grid, map_elites
-    from merlin.search.candidate import seed_candidates
-    from merlin.search.evaluator import make_evaluator
-    from merlin.search.reports import build_report as build_search_report
+    from merlin.dse.search import grid, map_elites
+    from merlin.dse.search.candidate import seed_candidates
+    from merlin.dse.search.evaluator import make_evaluator
+    from merlin.dse.search.reports import build_report as build_search_report
 
     ev = make_evaluator([(workload, rpv)])
     grid_rows = grid.grid_search_strategies(seed_candidates(), ev)

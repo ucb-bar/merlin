@@ -1,6 +1,6 @@
 """Pipeline registry + builder: named passes compose into a runnable plan transform."""
-from merlin.pipelines import registry
-from merlin.pipelines.builder import build_pipeline, parse_spec
+from merlin.dse.pipelines import registry
+from merlin.dse.pipelines.builder import build_pipeline, parse_spec
 
 
 def _plan():

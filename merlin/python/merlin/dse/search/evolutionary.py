@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import random
 
-from merlin.search.mutations import mutate
+from merlin.dse.search.mutations import mutate
 
 
 def evolutionary_search(seeds, evaluator, generations: int = 10, population: int = 6,
