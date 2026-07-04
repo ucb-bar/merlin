@@ -12,18 +12,19 @@ merlin's own **core dialects** in xDSL. This is the default, fast Python plane f
 
 ## What does not belong here
 
-- Stable production dialects (those get promoted to `merlin/compiler/`).
-- Adapters to external xDSL tooling (that is `merlin/integrations/xdsl/`).
+- Stable production dialects (those would graduate to a future MLIR/C++ plane — not built; see
+  `docs/design/compiler_plane.md`).
+- Adapters to external xDSL tooling (implement in-package; see `docs/design/integrations.md`).
 - Target dialects (generated into target repos by TargetGen).
 
 ## Interfaces
 
-Prototypes the dialects scaffolded in `merlin/compiler/include/merlin/Dialect/`. Consumes/produces `merlin/schemas/` artifacts. `lowering/emit_command_buffer.py` emits dicts conforming to `command_buffer.schema.yaml`, executed by the `merlin.runtime` Python engine.
+Prototypes the five core dialects (contract/schedule/interface/runtime/dse) in Python. Consumes/produces `merlin/schemas/` artifacts. `lowering/emit_command_buffer.py` emits dicts conforming to `command_buffer.schema.yaml`, executed by the `merlin.runtime` Python engine.
 
 ## Invariants
 
 - These are rapid prototypes — expect churn, but keep `module.verify()` green.
-- Stable dialects may be promoted to MLIR/C++ under `merlin/compiler/`; keep names aligned.
+- Stable dialects may later graduate to a future MLIR/C++ plane (see `docs/design/compiler_plane.md`); keep names aligned.
 - `dse` is a real (minimal) dialect by explicit decision — it mirrors the `interface_candidate`/`dse_result`/`exploitability_report` schemas and never participates in lowering. `kernel`/`search` stay schemas-first.
 - Local single-op checks live in `verify_`; cross-op checks (use-after-evict, placement legality, command-buffer consistency) live in `lowering/analyses.py`.
 

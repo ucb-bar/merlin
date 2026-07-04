@@ -1,0 +1,4 @@
+# Allowlist for check_doc_paths.py — genuine exceptions where a retired path may appear.
+# One entry per line:  <repo-relative-doc-path>:<substring that must be on the flagged line>
+# Prefer fixing the doc (point at the real location / docs/design/ note) over allowlisting.
+# (empty — no exceptions currently needed)

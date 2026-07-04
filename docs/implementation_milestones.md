@@ -65,7 +65,7 @@ gated against PyTorch:
 - **TinyLlama-1.1B** (real 1.1B-parameter model): runs end to end on spike; **all 8
   next-token argmax predictions identical to PyTorch**, prefix logits **cos 1.0000000,
   rel 1.05e-5** (241.7 G cycles, ~104 min on the functional ISS;
-  `output/tiny_spike_result.txt`).
+  `artifacts/tiny_spike_result.txt`).
 
 Pipeline: `model.mlir` → LLVM IR (`llvmlower`) → rv64gcv object (clang-23) + the **Merlin
 C runtime** (`merlin/runtime/c/`: generic descriptor builder + generated arg table +

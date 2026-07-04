@@ -10,7 +10,7 @@ repos or MLIR plugins.
 2. Write `contracts/target_contract.yaml` (validate against
    `merlin/schemas/target_contract.schema.yaml`).
 3. Run TargetGen to produce `contracts/dialect_plan.yaml` and a dialect scaffold
-   (`tools/targetgen/`, writing to `output/targetgen/<name>/`).
+   (the `merlin-targetgen` CLI, writing the codegen package to `artifacts/targets/<name>/`).
 4. Prototype the dialect in xDSL first (`merlin/python/merlin/xdsl_dialects/` /
    `targetgen/backends/xdsl_backend.py`); promote to MLIR/C++ only when stable.
 5. Add conformance tests under `merlin/tests/conformance/` and per-target `tests/`.

@@ -14,7 +14,8 @@ It lets us iterate on dialects and lowerings in Python without a full LLVM/MLIR 
 ## What xDSL is NOT
 
 The single production plane. External compatibility (Hexagon-MLIR, CUDA Tile, IREE, production
-target plugins, long-term C++ pipelines) lives in the MLIR/C++ plane (`merlin/compiler/`).
+target plugins, long-term C++ pipelines) would live in a stable MLIR/C++ plane — **not yet built**;
+see `docs/design/compiler_plane.md`.
 
 ## Two-plane summary
 
@@ -23,6 +24,6 @@ Python/xDSL plane:  fast prototypes, generated dialect experiments, design-press
 MLIR/C++ plane:     stable dialects, real target plugins, external MLIR integration, production lowering
 ```
 
-Promote a stable xDSL dialect to MLIR/C++ under `merlin/compiler/` only when needed; keep names
-aligned. xDSL is installed as an optional dependency: `uv sync --extra xdsl` (or
+Promote a stable xDSL dialect to a future MLIR/C++ plane only when needed (see
+`docs/design/compiler_plane.md` — create `merlin/compiler/` with real TableGen/CMake then); keep names aligned. xDSL is installed as an optional dependency: `uv sync --extra xdsl` (or
 `pip install -e '.[xdsl]'`).

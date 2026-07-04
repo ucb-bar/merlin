@@ -35,5 +35,5 @@ Then each real target has its own dialect (e.g. `toynpu`, gemmini, saturn, radia
 | Which command buffer / queue runs it?   | runtime               |
 | Was software-visible residency worth it? | dse                  |
 
-Prototype all five in `merlin/python/merlin/xdsl_dialects/`; promote stable ones to
-`merlin/compiler/include/merlin/Dialect/` + `lib/Dialect/`.
+Prototype all five in `merlin/python/merlin/xdsl_dialects/`; promote stable ones to a future
+MLIR/C++ plane (**not yet built** — see `docs/design/compiler_plane.md`).

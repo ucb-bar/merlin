@@ -59,16 +59,16 @@ Sources are external repos passed by path / `MERLIN_<SOURCE>_REPO` env var, neve
 ```bash
 kernel-index   --source {xnnpack|autocomp|exo|openblas|triton|triton_cpu} \
                --repo <path> [--target T] [--json] --out <index.json>
-kernel-extract --inputs "output/kernels/*_index.json" \
+kernel-extract --inputs "artifacts/kernel-index/*_index.json" \
                --out abstraction_candidates.yaml --policies policy_rules.yaml \
                --report kernel_mining_report.md \
                [--plots] [--json] [--strict] [--min-kernels 10] [--parquet] [--llm-summary]
-kernel-audit   --inputs "output/kernels/*_index.json" [--motif M] [--n 8] [--seed 0] \
+kernel-audit   --inputs "artifacts/kernel-index/*_index.json" [--motif M] [--n 8] [--seed 0] \
                [--llm-judge] [--json] --out audit_samples.md
 ```
 
 Installed via `[project.scripts]`. Extras: `.[kernels-exo]` (Exo ingest), `.[kernels-parquet]`
-(columnar table), `.[kernels-plots]` (matplotlib). Artifacts land in `output/kernels/`
+(columnar table), `.[kernels-plots]` (matplotlib). Artifacts land in `artifacts/kernel-mining/`
 (gitignored). All CLIs support `--json` (machine-readable summary on stdout, human text on
 stderr) so agents and CI can compose them.
 

@@ -21,7 +21,7 @@ merlin/python/merlin/dse/harness.py    parallel runner over (workload x strategy
 ```
 workloads (benchmarks/*)  x  strategies (registry)
    -> per-cell xDSL pipeline -> simulator/cost model -> dse_result.json   (parallel, independent)
-   -> collect -> scoreboard.csv + decision_report.md   (output/dse/<exp>/)
+   -> collect -> scoreboard.csv + decision_report.md   (artifacts/dse/<workload>/)
 ```
 
 Runs are keyed by strategy id (hash) so they are reproducible and cacheable. The `search/` layer
@@ -36,5 +36,6 @@ sits on top to *generate* the strategy set rather than hand-listing it.
 | Cross-workload stability | robust wins graduate; narrow wins stay experimental |
 | Cost of exposure (area/complexity proxy) | Pareto-filter; keep non-dominated |
 
-**Promotion gate:** an approach stays an xDSL prototype while being compared; it graduates to the
-stable MLIR/C++ plane (`merlin/compiler/`) only when it consistently survives the scoreboard.
+**Promotion gate:** an approach stays an xDSL prototype while being compared; it graduates to a
+stable MLIR/C++ plane (**not yet built** — see `docs/design/compiler_plane.md`) only when it
+consistently survives the scoreboard.

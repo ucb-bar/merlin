@@ -12,4 +12,5 @@ The **agentic A/B capsule-bench harness** for the Gemmini compiler: bwrap-isolat
   `scripts/_common.py`); per-experiment `runs/` + `_qa_ws/` are gitignored.
 - **Isolation note**: the bwrap sandbox masks all of `/scratch`; answer-bearing reference
   backends are additionally listed in `denied_files.txt` / bundle manifests / the
-  `transcript_tooling_audit` cheat regex under BOTH `generated_targets/` and `artifacts/targets/`.
+  `transcript_tooling_audit` cheat regex under BOTH the former `generated_targets/` and the current
+  `artifacts/targets/` name (defensive: the deny-list keeps matching the retired path too).

@@ -50,7 +50,7 @@ other (raises `CompositionError`); additive edits still layer.
 
 ## 3. Measured comparisons (three metric families — kept separate)
 
-Figures: `output/kernels/ceiling/paper_e2e.png`, `paper_crossover.png`, `op_coverage.png`,
+Figures: `artifacts/ceiling/paper_e2e.png`, `paper_crossover.png`, `op_coverage.png`,
 `all_comparisons.png`.
 
 ### 3a. Whole-model e2e on K1 — SAME-PASS, fair (N=5/3, cos-gated) — XNNPACK wins 2 of 3
@@ -80,7 +80,7 @@ is essential**: with the right kernel ours is in the experts' league everywhere 
 with the wrong one it is catastrophic. smolVLA e2e is an honest `not_run` (SpacemiT clang backend crash,
 hits the frozen baseline too).
 
-**Why ours is ~55–62% on openvla/rdt2 (decoded — `output/kernels/ceiling/kernel_breakdown.md`):** NOT lane-width
+**Why ours is ~55–62% on openvla/rdt2 (decoded — `artifacts/ceiling/kernel_breakdown.md`):** NOT lane-width
 and NOT residency — `ours_wholemodel` is already NR=32/LMUL=m4/vsetvlmax + accumulator-resident with 0 spills
 (identical lane-width to XNNPACK, wider than OpenBLAS m2). The dominant residual is the **`vfmacc.vv`
 A-broadcast ladder**: lacking `vfmacc.vf`, the kernel rebuilds each A scalar into a `vector<32>` via a
@@ -123,7 +123,7 @@ needed (feature is now schedule-only, pipeline byte-identical).
 - **Honest residual:** activations lower to `vfmul`+`vfadd` (no fused `vfmacc`) — fusing needs `math.fma`,
   which forces the `convert-math-to-llvm` pass that re-introduces the softmax `llvm.intr.exp` crash. So
   fusion was traded for whole-model correctness; the activation still vectorizes (replaces the scalar libm loop).
-Full detail: `output/rvv_bench/k1_e2e_activation.md`.
+Full detail: `artifacts/perf-bench/k1_e2e_activation.md`.
 
 ---
 

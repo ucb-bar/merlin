@@ -4,7 +4,7 @@
 **Supersedes** `beam_rvv_v1` (single-op `matmul_f32_64x64x64`, 7 candidates, predated v3 — a single small
 GEMM mis-ranks whole-model winners). This run ranks the **current** candidate optimizations **whole-model**
 on real driving examples (bitvla, openvla) on the **SpacemiT K1**, by min wall (N=3) + fp32 cos vs host
-golden. Baseline = frozen `hand_v0`. Figure: `output/kernels/ceiling/beam_rvv_v2_ranking.png`.
+golden. Baseline = frozen `hand_v0`. Figure: `artifacts/ceiling/beam_rvv_v2_ranking.png`.
 
 ## Result — best kernel is per-model
 
