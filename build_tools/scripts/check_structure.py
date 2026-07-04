@@ -189,6 +189,19 @@ def check_package_docs(errors):
             errors.append("package docs stale — run python build_tools/scripts/gen_package_docs.py")
 
 
+def check_doc_paths(errors):
+    """No doc/AGENT.md references a RETIRED repo path (deny-list; see check_doc_paths.py)."""
+    import subprocess
+    chk = os.path.join(ROOT, "build_tools", "scripts", "check_doc_paths.py")
+    r = subprocess.run([sys.executable, chk, "--check"], capture_output=True, text=True)
+    if r.returncode != 0:
+        for ln in (r.stderr or "").splitlines():
+            if ln.strip().startswith("- "):
+                errors.append(ln.strip()[2:])
+        if not any("retired" in e or "deprecated output" in e for e in errors):
+            errors.append("docs reference retired paths — run python build_tools/scripts/check_doc_paths.py")
+
+
 def main():
     errors: list[str] = []
     checks = [
@@ -199,6 +212,7 @@ def main():
         ("benchmarks", check_benchmarks),
         ("cli docs", check_cli_docs),
         ("package docs", check_package_docs),
+        ("doc paths", check_doc_paths),
         ("test layout", check_test_layout),
     ]
     for label, fn in checks:

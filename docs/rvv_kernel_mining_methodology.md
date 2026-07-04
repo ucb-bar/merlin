@@ -5,7 +5,7 @@ concrete compiler knobs, search the knob space with beam search, and certify eve
 frozen baseline — with the split between deterministic tooling and LLM/agent stages made explicit.*
 
 > Scope. This document is the **methodology and architecture** companion to the results writeups
-> (`docs/rvv_kernel_mining_results.md`, `output/kernels/ceiling/RESULTS.md`). It describes *how the
+> (`docs/rvv_kernel_mining_results.md`, `artifacts/ceiling/RESULTS.md`). It describes *how the
 > system works and how the artifacts interact*, not the measured numbers. RVV is the testbed; every
 > abstraction is target-agnostic by construction (§9).
 

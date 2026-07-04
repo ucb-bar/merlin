@@ -6,8 +6,8 @@ Three Claude Code sessions work in parallel. **They coordinate through schemas, 
 
 | Session | Branch                          | Owns                                                                 |
 | ------- | ------------------------------- | -------------------------------------------------------------------- |
-| 1. TargetGen | `feature/targetgen-scaffold`     | `merlin/python/merlin/targetgen/`, `merlin/targets/`, `merlin/compiler/.../Dialect/Contract/` |
-| 2. Kernel mining | `feature/kernel-policy-mining` | `merlin/python/merlin/kernels/`, `merlin/integrations/*`, `merlin/experiments/kernel_policy/` |
+| 1. TargetGen | `feature/targetgen-scaffold`     | `merlin/python/merlin/targetgen/`, `merlin/targets/`, `merlin/python/merlin/xdsl_dialects/contract.py` |
+| 2. Kernel mining | `feature/kernel-policy-mining` | `merlin/python/merlin/kernels/` (external-tool adapters live in-package — see `docs/design/integrations.md`), `merlin/experiments/kernel_policy/` |
 | 3. Design-pressure / DSE | `feature/design-pressure-dse` | `merlin/python/merlin/design_pressure/`, `merlin/python/merlin/dse/`, `merlin/benchmarks/semantic_memory/` |
 
 ## Shared artifacts (ownership)

@@ -30,4 +30,4 @@ conversions, intermediate write bytes, dispatch count, work per dispatch
 
 ## Tool
 
-`tools/design-pressure/` (writes to `output/dse/<workload>/`).
+the `merlin-design-pressure` CLI (writes to `artifacts/design-pressure/<workload>/`).

@@ -36,7 +36,7 @@ pipeline: it records candidates and measured variant results; it never lowers.
 
 Each core dialect is prototyped first in xDSL under
 `merlin/python/merlin/xdsl_dialects/{contract,schedule,interface,runtime,dse}.py` and
-promoted to the stable MLIR/C++ plane under `merlin/compiler/include/merlin/Dialect/...`
+promoted to a stable MLIR/C++ plane (**not yet built** — see `docs/design/compiler_plane.md`)
 once the syntax is stable, has verifier tests, and has at least one lowering. See
 `docs/xdsl.md`.
 
