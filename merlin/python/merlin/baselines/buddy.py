@@ -91,9 +91,20 @@ def mlir_runner() -> Path | None:
     return _tool(llvm_build_dir(), "mlir-runner") or _tool(llvm_build_dir(), "mlir-cpu-runner")
 
 
+def llvm_opt() -> Path | None:
+    """LLVM IR optimizer (``opt``) from buddy's LLVM fork — runs the loop/SLP vectorizer."""
+    return _tool(buddy_build_dir(), "opt") or _tool(llvm_build_dir(), "opt")
+
+
 def buddy_available() -> bool:
-    """True iff the minimum lowering toolchain (opt + translate) is built."""
-    return buddy_opt() is not None and mlir_translate() is not None
+    """True iff the minimum lowering + codegen toolchain is built.
+
+    We lower with buddy-opt/mlir-opt + mlir-translate and generate the rv64gcv object with the
+    SAME LLVM fork's ``llc`` (not the repo's IREE clang-23, whose IR parser rejects the fork's
+    ``float f0x…`` hex-float literals — a version-skew we sidestep by staying inside one build).
+    """
+    return (buddy_opt() is not None and mlir_translate() is not None
+            and llvm_llc() is not None)
 
 
 def buddy_commit() -> str:
@@ -135,10 +146,18 @@ def resolve_bundle(model: str, variant: str = "fp32") -> _bundle.CaptureBundle:
 
 # --- lowering -----------------------------------------------------------------------------------
 
-# The standard buddy/upstream linalg-on-tensors -> LLVM dialect pipeline (mirrors
-# examples/BuddyMatmul's *-vectorization-run recipe). One-shot bufferize turns the tensor program
-# into memrefs; the vectorization/loop passes emit RVV-vectorizable vector ops; c-wrappers export
-# the ``_mlir_ciface_forward`` symbol merlin's runtime calls.
+# rv64gcv codegen target for llc/opt (K1 X60, VLEN=256). We drive RVV via the LLVM backend's
+# loop/SLP vectorizer (opt -O3 on the lowered IR) rather than affine-super-vectorize — the latter
+# NYI's on the non-trivial memref layout maps the whole-model bufferizer produces. The vector width
+# hint (--riscv-v-vector-bits-min=256) matches the K1's 256-bit vector registers.
+_RVV_MATTR = "+m,+a,+f,+d,+c,+v"
+_RVV_VBITS = 256
+
+# The buddy/upstream linalg-on-tensors -> LLVM dialect pipeline. One-shot bufferize turns the tensor
+# program into memrefs; ``-convert-linalg-to-loops`` gives a scalar loop nest that lowers cleanly
+# for the WHOLE captured model (affine-super-vectorize NYI's on strided layouts), then the LLVM
+# backend vectorizer (opt -O3, see compile_rv64gcv_object) turns the hot loops into RVV. c-wrappers
+# export the ``_mlir_ciface_forward`` symbol merlin's runtime calls.
 _LOWER_PASSES = [
     "-eliminate-empty-tensors",
     "-empty-tensor-to-alloc-tensor",
@@ -154,10 +173,13 @@ _LOWER_PASSES = [
     "-convert-math-to-llvm",
     "-convert-math-to-libm",
     "-finalize-memref-to-llvm",
+    # c-wrappers MUST precede -convert-func-to-llvm: the pass wraps `func.func` to export the
+    # `_mlir_ciface_forward` bare-pointer/descriptor entry merlin_invoke calls; run after func
+    # lowering it no-ops (funcs are already llvm.func) and the ciface symbol never appears.
+    "-llvm-request-c-wrappers",
     "-convert-func-to-llvm=use-bare-ptr-memref-call-conv=false",
     "-convert-arith-to-llvm",
     "-convert-cf-to-llvm",
-    "-llvm-request-c-wrappers",
     "-reconcile-unrealized-casts",
     "-canonicalize",
 ]
@@ -190,21 +212,30 @@ def lower_to_llvmir(mlir_path: Path, work: Path, *, timeout: int = 1200) -> Path
     return ll
 
 
-def compile_rv64gcv_object(ll_path: Path, work: Path, *, timeout: int = 1200) -> Path:
-    """LLVM IR -> rv64gcv object via the repo's clang-23 (re-targeted linux-gnu).
+def compile_rv64gcv_object(ll_path: Path, work: Path, *, timeout: int = 2400) -> Path:
+    """LLVM IR -> rv64gcv object via buddy's LLVM fork (``opt -O3`` vectorize, then ``llc``).
 
-    Enforces ``-march=rv64gcv`` (``rvv_audit.enforce_rvv_march``) — no scalar-only binary slips
-    through. clang-23 (not the SpacemiT clang-19) lowers the IR because it carries LLVM-23 attribute
-    syntax; this is exactly what ``merlin.rvvgen.k1.build_k1_binary`` does for merlin's own IR.
+    Enforces ``-march=rv64gcv`` (``rvv_audit.enforce_rvv_march``) — no scalar-only build slips
+    through. We stay INSIDE buddy's LLVM-23 fork for both steps (its ``mlir-translate`` emits
+    ``float f0x…`` hex-float literals the repo's IREE clang-23 parser rejects — a version-skew we
+    avoid by using the fork's own ``opt``+``llc``). ``opt -O3`` with the RVV target features runs
+    the loop/SLP vectorizer that turns the scalar loop nest into RVV; ``llc`` emits the object.
     """
-    from merlin.llvmlower import toolchain
-
     rvv_audit.enforce_rvv_march(k1.K1_MARCH)
-    clang23 = toolchain.clang()
+    opt, llc = llvm_opt(), llvm_llc()
+    if llc is None:
+        raise BuddyError("no llc in buddy's LLVM build (need build/baselines/buddy/llvm-build/bin/llc)")
+    triple = "riscv64-unknown-linux-gnu"
+    vec_ll = ll_path
+    if opt is not None:
+        vec_ll = work / "model.opt.ll"
+        _run([opt, "-O3", f"-mtriple={triple}", f"-mattr={_RVV_MATTR}",
+              f"--riscv-v-vector-bits-min={_RVV_VBITS}", str(ll_path), "-o", str(vec_ll)],
+             timeout=timeout)
     obj = work / "model.o"
-    _run([clang23, "--target=riscv64-unknown-linux-gnu", f"-march={k1.K1_MARCH}",
-          f"-mabi={k1.K1_MABI}", "-O2", "-Wno-override-module", "-c", str(ll_path), "-o", str(obj)],
-         timeout=timeout)
+    _run([llc, f"-mtriple={triple}", f"-mattr={_RVV_MATTR}", f"--target-abi={k1.K1_MABI}",
+          f"--riscv-v-vector-bits-min={_RVV_VBITS}", "-O3", "-filetype=obj",
+          str(vec_ll), "-o", str(obj)], timeout=timeout)
     return obj
 
 
@@ -429,16 +460,25 @@ def _run_on_board(res: BaselineResult, elf: Path, b: _bundle.CaptureBundle, work
         wenv = ""
         remote_w = None
         if marker.is_file():
-            remote_w = f"{k1_exec.K1_REMOTE_DIR}/{Path(remote).name}.weights.bin"
-            k1_exec.push(marker.read_text().strip(), remote_w)
+            wpath = Path(marker.read_text().strip())
+            # Big-weights path (multi-GB): deploy to a STABLE, content-keyed remote name and reuse it
+            # if a same-size copy is already on the board (idempotent -> re-runs skip the slow scp).
+            # Weights live on the rootfs (real flash), NOT /tmp (tmpfs). Generous timeout: a 4.4 GB
+            # blob over the DHCP link far exceeds the default 300 s.
+            wsize = wpath.stat().st_size if wpath.is_file() else 0
+            remote_w = f"{k1_exec.K1_REMOTE_DIR}/{b.model}_{b.variant}_{wsize}.weights.bin"
+            probe = k1_exec.run(["stat", "-c%s", remote_w, "2>/dev/null", "||", "echo", "0"])
+            already = probe.stdout.strip().isdigit() and int(probe.stdout.strip()) == wsize
+            if not already:
+                k1_exec.push(str(wpath), remote_w, timeout=3600)
             wenv = f"MERLIN_WEIGHTS={remote_w} "
         try:
             k1_exec.run(["chmod", "+x", remote])
-            proc = k1_exec.run([f"{wenv}{remote}"])
+            proc = k1_exec.run([f"{wenv}{remote}"], timeout=1800)
         finally:
-            rm = [remote] + ([remote_w] if remote_w else [])
+            # remove only the (small) binary; KEEP the big weights blob for re-runs.
             try:
-                k1_exec.run(["rm", "-f", *rm])
+                k1_exec.run(["rm", "-f", remote])
             except Exception:  # noqa: BLE001
                 pass
 
