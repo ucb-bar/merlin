@@ -1,3 +1,18 @@
 [submodule "third_party/llvm-project"]
 	path = third_party/llvm-project
 	url = https://github.com/llvm/llvm-project.git
+[submodule "third_party/baselines/buddy-mlir"]
+	path = third_party/baselines/buddy-mlir
+	url = https://github.com/buddy-compiler/buddy-mlir
+[submodule "third_party/baselines/exo"]
+	path = third_party/baselines/exo
+	url = https://github.com/exo-lang/exo
+[submodule "third_party/baselines/llama.cpp"]
+	path = third_party/baselines/llama.cpp
+	url = https://github.com/ggml-org/llama.cpp
+[submodule "third_party/baselines/tvm"]
+	path = third_party/baselines/tvm
+	url = https://github.com/apache/tvm
+[submodule "third_party/baselines/executorch"]
+	path = third_party/baselines/executorch
+	url = https://github.com/pytorch/executorch
