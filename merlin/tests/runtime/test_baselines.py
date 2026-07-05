@@ -157,6 +157,63 @@ def test_spec_external_framework_kind():
 
 # --- matrix rendering -------------------------------------------------------------------------
 
+# --- TVM arm (board-free: target string, region mapping, availability gating, RVV enforce) ------
+
+def test_tvm_target_enables_rvv():
+    from merlin.baselines import tvm as tvm_arm
+    # The plan-locked target string must pass the same march enforcement every arm uses.
+    assert rvv_audit.enforce_rvv_march(tvm_arm.TVM_TARGET) == tvm_arm.TVM_TARGET
+    assert "+v" in tvm_arm.TVM_TARGET and "riscv64" in tvm_arm.TVM_TARGET
+
+
+def test_tvm_region_of_symbol():
+    from merlin.baselines import tvm as tvm_arm
+    assert tvm_arm._region_of_symbol("tvmgen_default_fused_matmul_add") == "gemm"
+    assert tvm_arm._region_of_symbol("tvmgen_default_fused_softmax") == "attention"
+    assert tvm_arm._region_of_symbol("tvmgen_default_fused_rms_norm") == "norm"
+    assert tvm_arm._region_of_symbol("tvmgen_default_fused_add_multiply") == "elementwise"
+    assert tvm_arm._region_of_symbol("tvmgen_default_transpose") == "other"
+
+
+def test_tvm_audit_ignores_runtime_symbols():
+    # A synthetic .so-style dump: one vectorized TVM kernel + a scalar TVM-runtime shim that must
+    # NOT be reported as a model scalar-fallback (it's plumbing, filtered by _AUDIT_IGNORE).
+    from merlin.baselines import tvm as tvm_arm
+    disasm = (
+        "0000000000010120 <tvmgen_default_fused_matmul>:\n"
+        "   10120:\t02008557          \tvsetvli\ta0,a1,e32,m1,ta,ma\n"
+        "   10124:\t0205f007          \tvfmacc.vv\tv8,v0,v4\n"
+        "   10128:\t00008067          \tret\n"
+        "0000000000010200 <__tvm_set_device>:\n"
+        "   10200:\t00b50533          \tadd\ta0,a0,a1\n"
+        "   10204:\t00008067          \tret\n"
+    )
+    rep = rvv_audit.classify_disasm(disasm)
+    fb = rep.scalar_fallback_symbols(ignore=tvm_arm._AUDIT_IGNORE)
+    assert fb == []  # the __tvm_ runtime shim is ignored, not labeled a model fallback
+
+
+def test_tvm_not_built_when_lib_absent(monkeypatch, tmp_path):
+    # With no built lib, run_model must produce an honest not_built gap (never a fabricated pass).
+    from merlin.baselines import bundle as _bundle
+    from merlin.baselines import tvm as tvm_arm
+    # Fake a resolvable bundle (golden + loader present) so the gate we exercise is TVM availability,
+    # not a missing capture — keeps the test independent of what's on disk.
+    fake = tmp_path / "bundle"
+    fake.mkdir()
+    (fake / "golden.npy").write_bytes(b"\x00")
+    b = _bundle.CaptureBundle(model="tiny_llama", variant="fp32", root=fake)
+    monkeypatch.setattr(tvm_arm, "resolve_bundle", lambda m, v="fp32": b)
+    monkeypatch.setattr(_bundle.CaptureBundle, "torch_loader",
+                        property(lambda self: None))  # skip the loader-missing gate
+    monkeypatch.setattr(tvm_arm, "tvm_built", lambda: False)
+    monkeypatch.setattr(tvm_arm, "m2m_python", lambda: None)
+    r = tvm_arm.run_model("tiny_llama", "fp32", work_root=tmp_path, write=False, run_board=False)
+    assert r.status() == "not_built"
+    assert r.gap_reason and "unavailable" in r.gap_reason.lower()
+    r.validate()
+
+
 def test_render_matrix_shows_gaps_and_coverage():
     results = [
         BaselineResult(framework="buddy", model="tiny_llama", built=True, ran=True,
