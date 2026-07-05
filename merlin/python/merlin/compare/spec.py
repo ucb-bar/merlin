@@ -13,9 +13,14 @@ from typing import Any
 
 
 # The comparison-point kinds. A config is EITHER an "ours" feature-set, OR a kernel backend
-# (xnnpack/openblas), OR the frozen baseline.
+# (xnnpack/openblas), OR an EXTERNAL baseline framework (its own end-to-end compiler/runtime), OR
+# the frozen baseline.
 _OURS_PREFIX = "ours"
 _KERNEL_BACKENDS = ("xnnpack", "openblas")
+# Independent external compilers/runtimes (see merlin.baselines.contract.FRAMEWORKS and
+# third_party/baselines/). Unlike kernel backends, these run the whole model on their OWN stack;
+# their measurements are produced by the merlin.baselines harness and ingested from its result JSON.
+_EXTERNAL_FRAMEWORKS = ("tvm", "executorch", "buddy", "exo", "ggml")
 _BASELINE = "baseline"
 
 # Targets we know about. Only k1 is implemented in v1; the rest are declared seams.
@@ -29,7 +34,7 @@ _METRICS = ("wall", "instret")
 class Config:
     """One comparison point.
 
-    kind: ``baseline`` | ``ours`` | ``kernel_backend``.
+    kind: ``baseline`` | ``ours`` | ``kernel_backend`` | ``external``.
     name: the spec-facing name (e.g. ``ours_wholemodel_vf``, ``xnnpack``, ``baseline``).
     compiler_features: for ``ours`` configs, the feature-set (informational here; the ingest layer
         maps the spec name to the cached JSON key). For non-ours, empty.
@@ -53,12 +58,14 @@ class Config:
             kind = "baseline"
         elif name in _KERNEL_BACKENDS:
             kind = "kernel_backend"
+        elif name in _EXTERNAL_FRAMEWORKS:
+            kind = "external"
         elif name.startswith(_OURS_PREFIX):
             kind = "ours"
         else:
             raise ValueError(
                 f"unknown config '{name}': must be 'baseline', one of {_KERNEL_BACKENDS}, "
-                f"or start with '{_OURS_PREFIX}'")
+                f"one of {_EXTERNAL_FRAMEWORKS}, or start with '{_OURS_PREFIX}'")
         return Config(name=name, kind=kind, compiler_features=feats)
 
 
