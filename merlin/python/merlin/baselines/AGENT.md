@@ -7,6 +7,7 @@ External-baseline K1-RVV comparison harness.
 ## Modules
 
 - `aggregate.py` — Collect per-framework results into the cross-framework matrix (merlin vs the 5 baselines).
+- `buddy.py` — Buddy (buddy-mlir) baseline arm — ingest OUR ``model.mlir`` and run it on the K1 with RVV.
 - `bundle.py` — Resolve a ``(model, variant)`` to its capture bundle — the shared input every baseline ingests.
 - `contract.py` — Result contract for external-baseline K1-RVV runs (the shared honesty schema).
 - `k1_exec.py` — Generic K1 deploy/run for external baselines + a board lock (single physical board).
