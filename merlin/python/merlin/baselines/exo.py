@@ -248,15 +248,30 @@ def run(model: str = "tiny_llama", variant: str = "fp32") -> BaselineResult:
     res.board_vlenb = k1_exec.board_vlenb()
 
     # On-board run — serialize behind the board lock (single physical K1 shared with 4 agents).
+    # The fp32 weights blob is multi-GB; scp is slow, so it is cached on the board's rootfs (real
+    # flash, not /tmp tmpfs) and only re-pushed when absent or size-mismatched. The binary is small.
     try:
         with k1_exec.board_lock():
             remote = k1_exec.push(elf, f"/tmp/{model}_{variant}_exo_llama_k1")
             remote_w = f"{k1.K1_REMOTE_DIR}/{model}_{variant}.weights.bin"
-            k1_exec.push(b.weights, remote_w)
+            want = b.weights.stat().st_size
+            have = k1_exec.run([f"stat -c %s {remote_w} 2>/dev/null || echo 0"], timeout=60)
+            if have.stdout.strip() != str(want):
+                # generous timeout for the multi-GB blob (slow, contended board network); retry
+                # once on a stall since scp cannot resume (a killed/hung transfer leaves a partial).
+                for attempt in range(2):
+                    try:
+                        k1_exec.push(b.weights, remote_w, timeout=3600)
+                        chk = k1_exec.run([f"stat -c %s {remote_w} 2>/dev/null || echo 0"], timeout=60)
+                        if chk.stdout.strip() == str(want):
+                            break
+                    except Exception:  # noqa: BLE001
+                        if attempt == 1:
+                            raise
             k1_exec.run([f"chmod +x {remote}"], timeout=60)
-            proc = k1_exec.run([f"MERLIN_WEIGHTS={remote_w} {remote}"], timeout=900)
+            proc = k1_exec.run([f"MERLIN_WEIGHTS={remote_w} {remote}"], timeout=1800)
             try:
-                k1_exec.run([f"rm -f {remote} {remote_w}"], timeout=60)
+                k1_exec.run([f"rm -f {remote}"], timeout=60)  # keep cached weights for reruns
             except Exception:  # noqa: BLE001
                 pass
     except Exception as e:  # noqa: BLE001
