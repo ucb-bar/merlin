@@ -7,6 +7,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | package | purpose |
 |---|---|
 | `merlin` | merlin: compiler-centered HW/SW abstraction exploration. |
+| `merlin.baselines` | External-baseline K1-RVV comparison harness. |
 | `merlin.common` | Shared utilities: schema loading/validation, IO, common types. |
 | `merlin.compare` | merlin.compare — unified, spec-driven, versioned comparison driver. |
 | `merlin.cost_model` | Standalone Gemmini hardware cost model + calibration (GemminiCostModel, calibrate CLI). |
