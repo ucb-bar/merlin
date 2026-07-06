@@ -143,17 +143,19 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
   (`export_env={'M2M_LLAMA_LAYERS':'1'}` + `compute_golden=True`, gate = eager-torch-vs-ExecuTorch)
   proves the ExecuTorch+XNNPACK-RVV path end-to-end on real K1 silicon (cos 0.9999999999, rel 2.7e-6,
   217 ms wall).
-- **int8 W8A8 path (`int8_subgraph=True`, XNNPACK qs8 RVV):** full-model PT2E FAILS on HF Llama —
-  `prepare_pt2e`'s inserted observer corrupts an integer-index dtype at CALIBRATION (the position/
-  causal-mask `aten.index.Tensor` on a `cumsum`); the raw exported graph runs fine, so it is the
-  observer insertion, not the annotation — no `set_module_type`/`set_operator_type`/`filter_fn`
-  toggle avoids it (matches the upstream `aot_riscv.py` note that HF Llama trips the quantizer).
-  The working fallback quantizes the model's REAL linear-heavy subgraph (layer-0 SwiGLU MLP:
-  gate/up/down Linears + SiLU, actual trained weights, seeded fp32 hidden-state input), keeping
-  embeddings/attention/mask fp32 and OUT of quantization. Static W8A8 fuses the whole int8 MLP into
-  ONE XNNPACK qs8 delegate (**delegated 1/2 nodes**, vs the fp32 arm's 10/93), dispatching to
-  `xnn_qs8_qc8w_gemm_minmax_fp32_ukernel_4x4v__rvv` (int8 GEMM inner loop is RVV; requantize/clamp
-  tail scalar; 15 int8 qs8/qd8/qc8w RVV GEMM ukernels linked). **On-board PASS: cos=0.99909 (int8
-  vs fp32), rel=0.043, 10.9 ms** (int8 gate 0.99/0.05 — W8A8 loses precision vs the fp32 golden; cos
-  is the MEASURED int8-vs-fp32 cosine, not faked). Full-model int8 honestly labeled not-exportable;
-  the subgraph is a genuine tiny_llama slice, not a toy.
+- **int8 W8A8 path (`int8_subgraph=True`, XNNPACK qs8 RVV):** whole-model PT2E is IMPOSSIBLE on HF
+  Llama here — `prepare_pt2e`'s `transform_for_annotation` pass corrupts an integer-index dtype (the
+  position/causal-mask `aten.index.Tensor` on a `cumsum`) at CALIBRATION. It fails **even with an
+  EMPTY quantizer** (no annotations), so it is the transform pass, NOT the observers/annotation — no
+  `set_module_type`/`set_module_name`/`set_operator_type`/`filter_fn` exclusion can dodge it (the
+  raw exported graph runs fine; matches the upstream `aot_riscv.py` note that HF Llama trips the
+  quantizer). So `_linear_subgraph` quantizes the maximal self-contained pure-Linear region: **ALL
+  of a decoder layer's Linears — attention q/k/v/o projections + SwiGLU MLP gate/up/down (7 Linears,
+  actual trained weights)**, seeded fp32 hidden-state input, with the non-linear glue (embedding,
+  RoPE index, causal mask, softmax, RMSNorm) kept fp32 and OUT of quantization. Static W8A8 fuses
+  the 7 Linears into **2 XNNPACK qs8 delegates (delegated 2/8 nodes)**, dispatching to
+  `xnn_qs8_qc8w_gemm_..._4x4v__rvv` (int8 GEMM inner loop RVV; requantize/clamp tail scalar; 8+
+  qs8/qc8w RVV GEMM ukernels linked). **On-board PASS: cos=0.99987 (int8 vs fp32), rel=0.017,
+  13.7 ms** (int8 gate 0.99/0.05 — W8A8 loses precision vs the fp32 golden; cos is the MEASURED
+  int8-vs-fp32 cosine, not faked). This is the maximal int8 an HF-Llama export allows on this
+  ExecuTorch/PT2E; `subgraph_note` records exactly which ops forced fp32.
