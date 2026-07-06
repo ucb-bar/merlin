@@ -115,3 +115,54 @@ def test_default_models_llm_subset_first():
     assert set(buddy.DEFAULT_MODELS) == {
         "tiny_llama", "small_llama", "bitvla", "rdt2", "rdt", "openvla",
         "molmoact", "groot_n1d7", "xr0", "pi05", "smolvla"}
+
+
+# --- int8 prioritization + golden selection ---------------------------------------------------
+
+def test_variant_order_int8_first():
+    # int8 must be attempted before fp32 (smaller weights, integer RVV datapath).
+    assert buddy.VARIANT_ORDER == ("int8", "fp32")
+
+
+def test_golden_for_int8_prefers_w8a8(tmp_path):
+    import merlin.baselines.bundle as _bundle
+
+    root = tmp_path / "m_int8_consistent"
+    root.mkdir()
+    (root / "golden.npy").write_bytes(b"x")
+    (root / "golden_w8a8.npy").write_bytes(b"y")
+    b = _bundle.CaptureBundle(model="m", variant="int8", root=root)
+    assert buddy._golden_for(b).name == "golden_w8a8.npy"
+
+
+def test_golden_for_int8_falls_back_to_fp32_golden(tmp_path):
+    import merlin.baselines.bundle as _bundle
+
+    root = tmp_path / "m_int8_consistent"
+    root.mkdir()
+    (root / "golden.npy").write_bytes(b"x")            # no golden_w8a8.npy
+    b = _bundle.CaptureBundle(model="m", variant="int8", root=root)
+    assert buddy._golden_for(b).name == "golden.npy"
+
+
+def test_golden_for_fp32_uses_fp32_golden(tmp_path):
+    import merlin.baselines.bundle as _bundle
+
+    root = tmp_path / "m_fp32_consistent"
+    root.mkdir()
+    (root / "golden.npy").write_bytes(b"x")
+    (root / "golden_w8a8.npy").write_bytes(b"y")        # present but ignored for fp32
+    b = _bundle.CaptureBundle(model="m", variant="fp32", root=root)
+    assert buddy._golden_for(b).name == "golden.npy"
+
+
+def test_run_all_variants_int8_first_order(monkeypatch):
+    # run_all_variants must attempt int8 before fp32 for the whole model set.
+    calls = []
+    monkeypatch.setattr(buddy, "_run_one_safe",
+                        lambda m, v, write: calls.append((m, v)) or
+                        buddy.BaselineResult(framework="buddy", model=m, variant=v,
+                                             gap_reason="stub"))
+    buddy.run_all_variants(models=("tiny_llama", "bitvla"), write=False)
+    assert calls == [("tiny_llama", "int8"), ("bitvla", "int8"),
+                     ("tiny_llama", "fp32"), ("bitvla", "fp32")]
