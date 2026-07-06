@@ -188,6 +188,18 @@ def test_glue_ops_lower_to_rvv():
     assert "rvv256_vfmul" in str(go.ewise_mul_rvv)
 
 
+def test_transpose_free_dot_gemm_is_native_nk_and_used():
+    # the int8 glue must call the transpose-free dot GEMM and NOT materialize a transposed weight
+    # buffer (no strided vsse16 scatter). The winning kernel is igemm_nk_dot (native [N,K]).
+    from merlin.common.paths import repo_root
+    glue = (repo_root() / "merlin/python/merlin/baselines/exo_kernels/llama_glue_int8.c").read_text()
+    assert "igemm_nk_dot(" in glue            # glue calls the transpose-free dot GEMM
+    assert "transpose_widen_rvv" not in glue  # the transpose scatter is gone
+    assert "widen_nk_rvv" in glue             # replaced by a contiguous i8->i16 widen (no scatter)
+    nk = (repo_root() / "merlin/python/merlin/baselines/exo_kernels/igemm_nk.c").read_text()
+    assert "vwmacc_vv" in nk and "vredsum" in nk   # k-reduction dot: vector MAC + reduction tail
+
+
 def test_notes_disclose_glue_and_not_whole_model_compiler():
     # The disclosure that this is EXO-kernels-in-a-glue-runtime is mandatory and lives in notes.
     r = BaselineResult(framework="exo", model="tiny_llama")

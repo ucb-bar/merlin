@@ -320,8 +320,13 @@ def build_glue_binary(bundle_root: Path, work: Path, variant: str = "fp32",
     rvv_audit.enforce_rvv_march(MARCH)
     extra_c: list[str] = []
     if variant == "int8":
+        # The whole-model glue calls the TRANSPOSE-FREE dot GEMM (igemm_nk.c: igemm_nk_dot), which
+        # measured ~32x faster end-to-end than transpose+EXO-vwmacc on-board (K1 strided loads are
+        # catastrophic; the k-reduction dot is contiguous and M is tiny). The EXO vwmacc GEMM
+        # (igemm_nt_ref) is still compiled+linked as the EXO-authored kernel for the RVV audit.
         kernel_c = compile_exo_igemm(work, ku, u)
-        extra_c = [str(compile_glue_ops(work))]   # residual-add + ewise-mul RVV kernels
+        extra_c = [str(compile_glue_ops(work)),                  # residual-add + ewise-mul RVV
+                   str(_exo_dir() / "igemm_nk.c")]               # transpose-free dot GEMM (used)
         glue_c = _exo_dir() / "llama_glue_int8.c"
         elf = work / "exo_llama_int8_k1"
     else:
@@ -442,16 +447,18 @@ def run(model: str = "tiny_llama", variant: str = "fp32", *, autotune: bool = Tr
     res = BaselineResult(framework=FRAMEWORK, model=model, variant=variant, substrate="k1_spacemit",
                          march=MARCH, toolchain="spacemit-clang-19+exo-1.0.0",
                          framework_commit=commit, timestamp=ts, cycle_accurate=False)
-    kdesc = ("int8 vwmacc i16xi16->i32 widening MAC (igemm_nt_ref)" if variant == "int8"
-             else "f32 vfmacc.vf GEMM (gemm_nt_ref)")
+    kdesc = ("TRANSPOSE-FREE int8 dot GEMM (igemm_nk_dot: [N,K]-native, vwmacc.vv + vredsum) — "
+             "hand-RVV, replaces the transpose+EXO-vwmacc path (EXO vwmacc kernel kept + audited)"
+             if variant == "int8" else "f32 vfmacc.vf GEMM (gemm_nt_ref, EXO)")
     if variant == "int8":
-        glue_note = ("EXO RVV kernels: the vwmacc GEMM + residual-add (vfadd) + SwiGLU product "
-                     "(vfmul); scalar glue: RMSNorm/RoPE/attention-softmax/SiLU-sigmoid-exp/embed + "
-                     "activation-quant/requant (labeled).")
+        glue_note = ("RVV kernels: transpose-free dot GEMM (hand-RVV) + residual-add (vfadd, EXO) "
+                     "+ SwiGLU product (vfmul, EXO) + activation-quant (RVV) + contiguous i8->i16 "
+                     "widen (RVV, no transpose); scalar glue: RMSNorm/RoPE/attention-softmax/"
+                     "SiLU-sigmoid-exp/embed + requant (labeled).")
     else:
         glue_note = ("Only the nn.Linear GEMM is an EXO kernel; RMSNorm/RoPE/attention-softmax/"
                      "SwiGLU/residual/embed are scalar C glue (labeled).")
-    res.notes = (f"whole-model = EXO RVV GEMM kernel [{kdesc}] + hand C glue runtime; EXO is a "
+    res.notes = (f"whole-model = RVV GEMM kernel [{kdesc}] + hand C glue runtime; EXO is a "
                  f"kernel DSL/scheduler, NOT a whole-model compiler. {glue_note}")
     res.scalar_fallbacks = _scalar_fallbacks(variant)
     if variant == "int8":
@@ -485,21 +492,24 @@ def run(model: str = "tiny_llama", variant: str = "fp32", *, autotune: bool = Tr
         return res.validate()
 
     work = repo_root() / "build/baselines/exo/work" / f"{model}_{variant}"
-    # int8: bounded on-board autotune of the vwmacc GEMM output-register-blocking U (the RVV-ceiling
-    # lever). Needs the board; skipped -> U=1. Done up front under its own board_lock so the picked
-    # U feeds the whole-model build.
-    u = 1
+    # int8: bounded on-board autotune of the EXO vwmacc GEMM's output-register-blocking U. NOTE: the
+    # whole-model glue now calls the TRANSPOSE-FREE dot GEMM (igemm_nk_dot), which measured ~32x
+    # faster end-to-end than transpose+EXO-vwmacc (K1 strided loads are catastrophic; the dot is
+    # contiguous, M tiny). The autotune still runs to pick + report the best-measured U for the
+    # EXO-authored kernel (compiled + RVV-audited), but that kernel is not on the glue's hot path.
+    u = 8
     u_ticks: dict[int, int] = {}
     if variant == "int8" and autotune and k1_exec.board_available():
         try:
             emit_weights_header(b.root, work, variant)  # ensure work dir + header exist first
             with k1_exec.board_lock():
                 u, u_ticks = autotune_igemm_ku(work / "autotune")
-            res.notes += (f" | igemm autotune: U_ticks={u_ticks} -> best U={u}"
-                          if u_ticks else " | igemm autotune: no candidate ran, U=1")
+            res.notes += (f" | EXO-igemm U autotune (audit only; glue uses dot GEMM): "
+                          f"U_ticks={u_ticks} -> best U={u}"
+                          if u_ticks else " | EXO-igemm autotune: no candidate ran, U=8")
         except Exception as e:  # noqa: BLE001
             res.notes += f" | autotune skipped: {str(e)[:80]}"
-            u = 1
+            u = 8
     try:
         elf, flags = build_glue_binary(b.root, work, variant, u=u)
         res.built = True
@@ -515,12 +525,15 @@ def run(model: str = "tiny_llama", variant: str = "fp32", *, autotune: bool = Tr
     try:
         rep = rvv_audit.audit_binary(elf, objdump=_llvm_objdump())
         res.rvv_coverage_overall = rep.coverage_overall
-        ksym = "igemm_nt_ref" if variant == "int8" else "gemm_nt_ref"
-        gk = rep.by_symbol.get(ksym)
-        if gk is not None and gk.coverage is not None:
-            res.notes += (f" | EXO-GEMM kernel RVV coverage={gk.coverage:.2f} "
-                          f"(vec={gk.vector} scalar={gk.scalar_compute}); whole-ELF coverage is "
-                          f"libc-dominated ({res.rvv_coverage_overall:.3f}).")
+        # int8: audit BOTH the runtime dot GEMM (igemm_nk_dot, the hot path) and the EXO vwmacc
+        # kernel (igemm_nt_ref, kept for the EXO-authored story). fp32: the EXO f32 GEMM.
+        ksyms = (("igemm_nk_dot", "igemm_nt_ref") if variant == "int8" else ("gemm_nt_ref",))
+        for ksym in ksyms:
+            gk = rep.by_symbol.get(ksym)
+            if gk is not None and gk.coverage is not None:
+                res.notes += (f" | {ksym} RVV coverage={gk.coverage:.2f} "
+                              f"(vec={gk.vector} scalar={gk.scalar_compute})")
+        res.notes += f"; whole-ELF coverage libc-dominated ({res.rvv_coverage_overall:.3f})."
     except Exception as e:  # noqa: BLE001
         res.notes += f" | rvv_audit unavailable: {e}"
 
