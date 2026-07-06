@@ -26,6 +26,7 @@
 #include <pthread.h>
 
 #include "exo_igemm.h"      /* void igemm_nt_ref(void*, M, N, K, int32_t* Y, const uint16_t* X, const uint16_t* Wt) */
+#include "exo_glue_ops.h"   /* residual_add_ref / ewise_mul_ref: 8-wide RVV vfadd/vfmul (f32) */
 #include "llama_weights.h"  /* NL,H,NH,NKV,HD,FF,V,S, EPS, WOFF_*, INPUT_IDS[], INV_FREQ[], + int8 tables */
 
 static inline uint64_t rd_time(void){ uint64_t t; __asm__ volatile("rdtime %0":"=r"(t)); return t; }
@@ -125,14 +126,17 @@ int main(void){
             for(int t=0;t<HD;t++) oi[t]+=a*vj[t]; } } }
       T_ATTN+=rd_time()-t0; C_ATTN++; }
     linear_i8(tmp,attn,lo->o_proj_w,lo->o_proj_s,H,H,S);
-    { uint64_t t0=rd_time(); for(int i=0;i<S*H;i++) h[i]+=tmp[i]; T_ELEM+=rd_time()-t0; C_ELEM++; }
+    { uint64_t t0=rd_time(); residual_add_ref(0, S*H, h, h, tmp); T_ELEM+=rd_time()-t0; C_ELEM++; }  /* RVV vfadd */
     rmsnorm(r,h,lo->post_ln,S,H);
     linear_i8(gate,r,lo->gate_w,lo->gate_s,FF,H,S);
     linear_i8(up,  r,lo->up_w,  lo->up_s,  FF,H,S);
-    { uint64_t t0=rd_time(); for(int i=0;i<S*FF;i++){ float g=gate[i]; ff[i]=(g/(1.0f+expf(-g)))*up[i]; }
+    { uint64_t t0=rd_time();
+      /* SiLU: sigmoid keeps scalar expf (no RVV transcendental); the silu(g)*u product is RVV. */
+      for(int i=0;i<S*FF;i++){ float g=gate[i]; gate[i]=g/(1.0f+expf(-g)); }
+      ewise_mul_ref(0, S*FF, ff, gate, up);   /* RVV vfmul: ff = silu(gate) * up */
       T_ELEM+=rd_time()-t0; C_ELEM++; }
     linear_i8(tmp,ff,lo->down_w,lo->down_s,H,FF,S);
-    { uint64_t t0=rd_time(); for(int i=0;i<S*H;i++) h[i]+=tmp[i]; T_ELEM+=rd_time()-t0; C_ELEM++; }
+    { uint64_t t0=rd_time(); residual_add_ref(0, S*H, h, h, tmp); T_ELEM+=rd_time()-t0; C_ELEM++; }  /* RVV vfadd */
   }
   rmsnorm(r,h,WOFF_FINAL_NORM,S,H);
   linear_i8(logits,r,WOFF_LM_HEAD_W,WOFF_LM_HEAD_S,V,H,S);

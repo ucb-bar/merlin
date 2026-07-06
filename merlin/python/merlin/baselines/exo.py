@@ -136,6 +136,30 @@ def compile_exo_gemm(out_dir: Path) -> Path:
     return c
 
 
+def compile_glue_ops(out_dir: Path) -> Path:
+    """Lower the elementwise glue RVV kernels (residual add, ewise mul) to C via exocc.
+
+    Emits exo_glue_ops.c defining ``residual_add_ref`` (vfadd.vv) + ``ewise_mul_ref`` (vfmul.vv),
+    which the int8 glue calls to vectorise its residual-add and SwiGLU product."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    exocc = _exocc()
+    if exocc is None:
+        raise RuntimeError("EXO venv/exocc missing")
+    lib = out_dir / "exo_glue_ops_lib.py"
+    lib.write_text("from __future__ import annotations\n"
+                   "from merlin.baselines.exo_kernels.glue_ops import residual_add_rvv, ewise_mul_rvv\n")
+    env = dict(os.environ, PYTHONPATH=str(repo_root() / "merlin/python"))
+    r = subprocess.run([str(exocc), "-o", str(out_dir), "-p", str(repo_root() / "merlin/python"),
+                        "-s", "exo_glue_ops", str(lib)],
+                       capture_output=True, text=True, env=env, timeout=180)
+    if r.returncode != 0:
+        raise RuntimeError(f"exocc (glue_ops) failed: {r.stdout[-500:]}\n{r.stderr[-500:]}")
+    c = out_dir / "exo_glue_ops.c"
+    if not c.is_file():
+        raise RuntimeError(f"exocc produced no {c}")
+    return c
+
+
 def _safetensors_offsets(weights: Path) -> tuple[int, dict]:
     with open(weights, "rb") as f:
         n = struct.unpack("<Q", f.read(8))[0]
@@ -143,15 +167,21 @@ def _safetensors_offsets(weights: Path) -> tuple[int, dict]:
     return 8 + n, hdr
 
 
-def compile_exo_igemm(out_dir: Path) -> Path:
-    """Lower the int8 EXO GEMM (vwmacc) to C via exocc. Returns the generated exo_igemm.c path."""
+def compile_exo_igemm(out_dir: Path, ku: int = 1) -> Path:
+    """Lower the int8 EXO GEMM (vwmacc) to C via exocc, unrolling the k-reduction by ``ku``.
+
+    The emitted C function is always named ``igemm_nt_ref`` (the glue's declared symbol), so the
+    autotuner can swap in any ``ku`` transparently. Returns the generated exo_igemm.c path."""
     out_dir.mkdir(parents=True, exist_ok=True)
     exocc = _exocc()
     if exocc is None:
         raise RuntimeError("EXO venv/exocc missing")
     lib = out_dir / "exo_igemm_lib.py"
+    # build_igemm schedules the proc named 'igemm_nt_ref' (scheduling preserves the name), so the
+    # emitted C function is 'igemm_nt_ref' for any ku — the glue's declared symbol.
     lib.write_text("from __future__ import annotations\n"
-                   "from merlin.baselines.exo_kernels.igemm import igemm_nt_rvv\n")
+                   "from merlin.baselines.exo_kernels.igemm import build_igemm\n"
+                   f"igemm_nt_ref = build_igemm({int(ku)})\n")
     env = dict(os.environ, PYTHONPATH=str(repo_root() / "merlin/python"))
     r = subprocess.run([str(exocc), "-o", str(out_dir), "-p", str(repo_root() / "merlin/python"),
                         "-s", "exo_igemm", str(lib)],
@@ -273,12 +303,13 @@ def emit_weights_header(bundle_root: Path, out_dir: Path, variant: str = "fp32")
     return h
 
 
-def build_glue_binary(bundle_root: Path, work: Path, variant: str = "fp32") -> tuple[Path, list[str]]:
+def build_glue_binary(bundle_root: Path, work: Path, variant: str = "fp32",
+                      ku: int = 1) -> tuple[Path, list[str]]:
     """Compile the EXO GEMM + C glue into a K1 rv64gcv ELF. Returns (elf, march_flags).
 
     fp32 -> the f32 vfmacc GEMM (gemm.py) + llama_glue.c. int8 -> the vwmacc widening GEMM
-    (igemm.py) + llama_glue_int8.c. Raises with a specific reason if the capture is not a runnable
-    llama decoder (surfaced by the caller as a not_built gap)."""
+    (igemm.py, k-unrolled by ``ku``) + llama_glue_int8.c. Raises with a specific reason if the
+    capture is not a runnable llama decoder (surfaced by the caller as a not_built gap)."""
     work.mkdir(parents=True, exist_ok=True)
     cc = k1.toolchain_cc()
     if cc is None:
@@ -286,8 +317,10 @@ def build_glue_binary(bundle_root: Path, work: Path, variant: str = "fp32") -> t
     emit_weights_header(bundle_root, work, variant)   # raises if not a llama stack
     flags = [f"-march={MARCH}", f"-mabi={MABI}"]
     rvv_audit.enforce_rvv_march(MARCH)
+    extra_c: list[str] = []
     if variant == "int8":
-        kernel_c = compile_exo_igemm(work)
+        kernel_c = compile_exo_igemm(work, ku)
+        extra_c = [str(compile_glue_ops(work))]   # residual-add + ewise-mul RVV kernels
         glue_c = _exo_dir() / "llama_glue_int8.c"
         elf = work / "exo_llama_int8_k1"
     else:
@@ -295,7 +328,7 @@ def build_glue_binary(bundle_root: Path, work: Path, variant: str = "fp32") -> t
         glue_c = _exo_dir() / "llama_glue.c"
         elf = work / "exo_llama_k1"
     cmd = [str(cc), "--target=riscv64-unknown-linux-gnu", *flags, "-O3", "-ffast-math",
-           f"-I{work}", str(glue_c), str(kernel_c), "-lm", "-lpthread", "-o", str(elf)]
+           f"-I{work}", str(glue_c), str(kernel_c), *extra_c, "-lm", "-lpthread", "-o", str(elf)]
     try:
         _run(cmd + ["-static"])
     except RuntimeError:
@@ -303,6 +336,49 @@ def build_glue_binary(bundle_root: Path, work: Path, variant: str = "fp32") -> t
     if not elf.is_file():
         raise RuntimeError("glue link produced no binary")
     return elf, flags
+
+
+# Bounded k-unroll search space for the int8 vwmacc GEMM autotune (VLEN=256). Small so the shared
+# board is not hogged: 3 candidates, one quick micro-bench run each under the caller's board_lock.
+IGEMM_KU_CANDIDATES: tuple[int, ...] = (1, 4, 8)
+
+
+def autotune_igemm_ku(work: Path, *, shape=(8, 4096, 2048),
+                      candidates=IGEMM_KU_CANDIDATES) -> tuple[int, dict[int, int]]:
+    """Bounded on-board search for the best k-unroll of the int8 vwmacc GEMM.
+
+    For each ku candidate: exocc -> C, cross-compile a standalone micro-bench (igemm_bench.c) for
+    the representative ``shape``, run it once on the board, parse BENCH_TICKS. Returns
+    (best_ku, {ku: ticks}). MUST be called inside a ``k1_exec.board_lock()`` (it runs on-board).
+    Fail-closed: a candidate that won't build/run is skipped; if none run, returns (1, {})."""
+    cc = k1.toolchain_cc()
+    if cc is None:
+        raise RuntimeError("SpacemiT toolchain not found")
+    bm, bn, bk = shape
+    bench_c = _exo_dir() / "igemm_bench.c"
+    ticks: dict[int, int] = {}
+    for ku in candidates:
+        d = work / f"ku{ku}"
+        try:
+            kernel_c = compile_exo_igemm(d, ku)
+            elf = d / "igemm_bench"
+            _run([str(cc), "--target=riscv64-unknown-linux-gnu", f"-march={MARCH}", f"-mabi={MABI}",
+                  "-O3", "-ffast-math", f"-DBM={bm}", f"-DBN={bn}", f"-DBK={bk}", f"-I{d}",
+                  str(bench_c), str(kernel_c), "-lm", "-o", str(elf)] + (["-static"]))
+            remote = k1_exec.push(elf, f"/tmp/igemm_bench_ku{ku}")
+            k1_exec.run([f"chmod +x {remote}"], timeout=30)
+            proc = k1_exec.run([remote], timeout=300)
+            k1_exec.run([f"rm -f {remote}"], timeout=30)
+            for line in (proc.stdout + proc.stderr).splitlines():
+                if line.startswith("BENCH_TICKS "):
+                    ticks[ku] = int(line.split()[1])
+                    break
+        except Exception:  # noqa: BLE001 - skip a candidate that won't build/run (fail-closed)
+            continue
+    if not ticks:
+        return 1, {}
+    best = min(ticks, key=ticks.get)
+    return best, ticks
 
 
 def _run(cmd: list[str]) -> None:
@@ -340,12 +416,22 @@ def _parse_outfile(stdout: str) -> tuple[str, int] | None:
     return None
 
 
-def _scalar_fallbacks() -> list[ScalarFallback]:
+def _scalar_fallbacks(variant: str = "fp32") -> list[ScalarFallback]:
+    """The ops still on the scalar path (honest labeling). For int8, residual-add + the SwiGLU
+    product are now RVV (glue_ops vfadd/vfmul), so they drop off; only the SiLU sigmoid exp stays
+    scalar. fp32 keeps all elementwise ops scalar (only its GEMM is an EXO kernel)."""
+    if variant == "int8":
+        ops = [("rmsnorm", "norm"), ("rope", "elementwise"),
+               ("attention_softmax", "attention"),
+               ("silu_sigmoid_exp", "elementwise"),   # exp is scalar; the *u product is RVV
+               ("embed_gather", "elementwise")]
+    else:
+        ops = list(_SCALAR_GLUE)
     return [ScalarFallback(symbol=sym, reason="no EXO RVV kernel — scalar glue", region=reg)
-            for sym, reg in _SCALAR_GLUE]
+            for sym, reg in ops]
 
 
-def run(model: str = "tiny_llama", variant: str = "fp32") -> BaselineResult:
+def run(model: str = "tiny_llama", variant: str = "fp32", *, autotune: bool = True) -> BaselineResult:
     """Build + (board-locked) run the EXO-glue whole-model on the K1; return a BaselineResult."""
     ts = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     commit = _submodule_sha()
@@ -354,11 +440,16 @@ def run(model: str = "tiny_llama", variant: str = "fp32") -> BaselineResult:
                          framework_commit=commit, timestamp=ts, cycle_accurate=False)
     kdesc = ("int8 vwmacc i16xi16->i32 widening MAC (igemm_nt_ref)" if variant == "int8"
              else "f32 vfmacc.vf GEMM (gemm_nt_ref)")
+    if variant == "int8":
+        glue_note = ("EXO RVV kernels: the vwmacc GEMM + residual-add (vfadd) + SwiGLU product "
+                     "(vfmul); scalar glue: RMSNorm/RoPE/attention-softmax/SiLU-sigmoid-exp/embed + "
+                     "activation-quant/requant (labeled).")
+    else:
+        glue_note = ("Only the nn.Linear GEMM is an EXO kernel; RMSNorm/RoPE/attention-softmax/"
+                     "SwiGLU/residual/embed are scalar C glue (labeled).")
     res.notes = (f"whole-model = EXO RVV GEMM kernel [{kdesc}] + hand C glue runtime; EXO is a "
-                 "kernel DSL/scheduler, NOT a whole-model compiler. Only the nn.Linear GEMM is an "
-                 "EXO kernel; RMSNorm/RoPE/attention-softmax/SwiGLU/residual/embed + (int8) "
-                 "activation-quant/requant are scalar C glue (labeled).")
-    res.scalar_fallbacks = _scalar_fallbacks()
+                 f"kernel DSL/scheduler, NOT a whole-model compiler. {glue_note}")
+    res.scalar_fallbacks = _scalar_fallbacks(variant)
     if variant == "int8":
         res.scalar_fallbacks.append(
             ScalarFallback("activation_quant_requant", "no EXO RVV kernel — scalar glue", "other"))
@@ -390,8 +481,22 @@ def run(model: str = "tiny_llama", variant: str = "fp32") -> BaselineResult:
         return res.validate()
 
     work = repo_root() / "build/baselines/exo/work" / f"{model}_{variant}"
+    # int8: bounded on-board autotune of the vwmacc GEMM k-unroll (needs the board; skipped if
+    # unavailable -> ku=1). Done up front under its own board_lock so the picked ku feeds the build.
+    ku = 1
+    ku_ticks: dict[int, int] = {}
+    if variant == "int8" and autotune and k1_exec.board_available():
+        try:
+            emit_weights_header(b.root, work, variant)  # ensure work dir + header exist first
+            with k1_exec.board_lock():
+                ku, ku_ticks = autotune_igemm_ku(work / "autotune")
+            res.notes += (f" | igemm autotune: ku_ticks={ku_ticks} -> best ku={ku}"
+                          if ku_ticks else " | igemm autotune: no candidate ran, ku=1")
+        except Exception as e:  # noqa: BLE001
+            res.notes += f" | autotune skipped: {str(e)[:80]}"
+            ku = 1
     try:
-        elf, flags = build_glue_binary(b.root, work, variant)
+        elf, flags = build_glue_binary(b.root, work, variant, ku=ku)
         res.built = True
     except Exception as e:  # noqa: BLE001
         res.gap_reason = f"build failed: {type(e).__name__}: {str(e)[:300]}"

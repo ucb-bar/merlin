@@ -157,6 +157,22 @@ def test_int8_gemm_lowers_to_vwmacc():
     assert "rvv256_vld_i16" in src and "rvv256_vst_i32" in src
 
 
+def test_igemm_k_unroll_scales_vwmacc():
+    # the autotune knob: k-unroll KU issues KU widening MACs per branch (more vector per scalar).
+    import merlin.baselines.exo_kernels.igemm as ig
+    n1 = str(ig.build_igemm(1)).count("rvv256_vwmacc_vx")
+    n4 = str(ig.build_igemm(4)).count("rvv256_vwmacc_vx")
+    assert n4 > n1                              # KU=4 body has more vwmaccs than KU=1
+    assert exo.IGEMM_KU_CANDIDATES[0] == 1      # baseline first in the bounded search
+
+
+def test_glue_ops_lower_to_rvv():
+    # residual-add + ewise-mul move from scalar C to RVV vfadd.vv / vfmul.vv.
+    import merlin.baselines.exo_kernels.glue_ops as go
+    assert "rvv256_vfadd" in str(go.residual_add_rvv)
+    assert "rvv256_vfmul" in str(go.ewise_mul_rvv)
+
+
 def test_notes_disclose_glue_and_not_whole_model_compiler():
     # The disclosure that this is EXO-kernels-in-a-glue-runtime is mandatory and lives in notes.
     r = BaselineResult(framework="exo", model="tiny_llama")

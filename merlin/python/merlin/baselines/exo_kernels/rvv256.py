@@ -94,6 +94,30 @@ def rvv256_vfmacc_vf(dst: [f32][8] @ RVV256, lhs: [f32][1] @ DRAM, rhs: [f32][8]
         dst[i] += lhs[0] * rhs[i]
 
 
+@instr("{dst_data} = __riscv_vfadd_vv_f32m1({lhs_data}, {rhs_data}, {vl});")
+def rvv256_vfadd(dst: [f32][8] @ RVV256, lhs: [f32][8] @ RVV256, rhs: [f32][8] @ RVV256, vl: size):
+    # dst[i] = lhs[i] + rhs[i]  (element-wise vector add — residual add)
+    assert stride(dst, 0) == 1
+    assert stride(lhs, 0) == 1
+    assert stride(rhs, 0) == 1
+    assert vl >= 0
+    assert vl <= 8
+    for i in seq(0, vl):
+        dst[i] = lhs[i] + rhs[i]
+
+
+@instr("{dst_data} = __riscv_vfmul_vv_f32m1({lhs_data}, {rhs_data}, {vl});")
+def rvv256_vfmul(dst: [f32][8] @ RVV256, lhs: [f32][8] @ RVV256, rhs: [f32][8] @ RVV256, vl: size):
+    # dst[i] = lhs[i] * rhs[i]  (element-wise vector multiply — SwiGLU gate*up)
+    assert stride(dst, 0) == 1
+    assert stride(lhs, 0) == 1
+    assert stride(rhs, 0) == 1
+    assert vl >= 0
+    assert vl <= 8
+    for i in seq(0, vl):
+        dst[i] = lhs[i] * rhs[i]
+
+
 # --------------------------------------------------------------------------------------------- #
 #   int8 widening path (vwmacc): i16 x i16 -> i32 accumulate, VLEN=256
 #
