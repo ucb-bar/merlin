@@ -128,22 +128,27 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
     4. **relax VM over RPC needs `set_input`/`invoke_stateful`/`get_outputs`** — the direct
        `vm["main"](*args)` closure call mis-marshals remote NDArrays (`ArrayHandle` vs `Object`).
   Use our own port range (9193-9199); the other 4 agents' servers hold 9090/9091.
-- **MetaSchedule on-device tuning — nearly closed, deadlocks at session matchmaking (honest gap).**
-  The board firewall blocks the direct **board→host** tracker callback, so an **ssh reverse tunnel**
-  (`ssh -R 9190:localhost:9190`, host tracker) is required. Everything up to the final handshake is
-  now solved and reproducible: (1) host tracker binds (tracker `--port-end` is EXCLUSIVE — use
-  `--port=9190 --port-end=9195`); (2) a **systemd unit** on the board
-  (`/etc/systemd/system/tvmrpc.service`, `Restart=always`) runs `tvm_rpc … --tracker=localhost:9190
-  --key=k1 --custom-addr=10.44.97.186` — survives ssh sessions AND the `--custom-addr` makes the
-  tracker advertise the board's **real IP** `10.44.97.186:9294` (host-reachable, confirmed OPEN),
-  not `127.0.0.1`; (3) the server **registers** (`summary()` → `server:k1 @ 10.44.97.186:9294`);
-  (4) 45 tunable TIR tasks extract after `LegalizeOps`; (5) `xgboost` cost model installed.
-  **Remaining blocker:** `tracker.request('k1')` / MetaSchedule `RPCRunner` **hangs** — the tracker
-  sits at `free 0 pending 1` with the server idle (0 % CPU); the tracker↔server session-allocation
-  handshake over the reverse tunnel never completes. Real, repeated attempts made; recorded as an
-  honest gap rather than retried indefinitely. So **tuned RVV/latency are NOT measured; untuned RVV
-  stays ~9–16 %.** The board systemd unit is removed on cleanup. Fail-closed `not_run` when the
-  on-board run doesn't complete; big .so's / weights > ~3 GB (pi05) are labeled gaps.
+- **MetaSchedule on-device tuning — tracker deadlock BYPASSED via a direct-RPC runner; tuning runs
+  and measures on-board but STALLS mid-run (honest gap).** The tracker path deadlocks (board→host
+  firewalled; even with an `ssh -R 9190` reverse tunnel + a board systemd `tvm_rpc
+  --tracker=localhost:9190 --key=k1 --custom-addr=10.44.97.186` that registers correctly as
+  `server:k1 @ 10.44.97.186:9294`, `tracker.request('k1')` hangs at `free 0 pending 1` — the
+  tracker↔server session handshake over the tunnel never completes). **The working angle is to skip
+  the tracker entirely:** pass `RPCRunner(f_create_session=<callable>)` a picklable session-creator
+  that does `rpc.connect(board_ip, 9193)` DIRECTLY (the proven host→board channel). Key API details:
+  `f_create_session` must be a **top-level picklable callable** (a `@register_func` name is NOT
+  resolvable in the PopenPool worker — `get_global_func_with_default_on_worker` returns a Callable
+  as-is); reads host/port from env so it needs no closure. With this, `tune_relax` **runs and
+  measures candidates on the K1** — the scheduler sent 64-sample batches to the runner and finished
+  tasks #0/#1 (`extract_tasks`=45 after `LegalizeOps`; `xgboost` cost model installed). **Remaining
+  blocker:** it **stalls after ~2 tasks** — task #2's on-board measurement RPC hangs (worker in
+  `futex_wait_queue`, board idle, ~5 min no progress), the same sustained-RPC-load instability that
+  hangs the big-.so load. So the tune does not complete → **no tuned .so built; tuned RVV/latency
+  NOT measured; untuned stays ~9–16 %.** A real attempt was made (direct-RPC runner is the closest
+  path — it measures on-board where the tracker path measured nothing); recorded honestly, not
+  retried forever. Needs a more robust board RPC transport (per-measurement fresh session already
+  used; likely the C++ tvm_rpc server's stability under repeated large uploads). Fail-closed
+  `not_run` when a run doesn't complete; big .so's / weights > ~3 GB (pi05) are labeled gaps.
 
 ## ExecuTorch + XNNPACK arm build (`executorch.py`)
 
