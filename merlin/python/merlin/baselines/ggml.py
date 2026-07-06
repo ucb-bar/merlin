@@ -458,8 +458,17 @@ def run_model(model: str, variant: str = "fp32", *, quant: str | None = None,
             reason = ("small_llama is a bespoke random-init toy transformer (vocab 256, 2 layers) — "
                       "no HF/GGUF architecture; llama.cpp cannot ingest it")
         elif model == "bitvla":
-            reason = ("bitvla capture unit is an inputs_embeds forward of a small random "
-                      "BitNet+SigLIP config — not a token-in GGUF causal LM; no llama.cpp arch")
+            # llama.cpp DOES support BitnetForCausalLM (standalone BitNet-b1.58 LM) + the ternary
+            # TQ1_0/TQ2_0 RVV kernels — which our audit shows are ggml's MOST-vectorized path
+            # (TQ2_0 ~51%, TQ1_0 ~39%). But our bitvla capture is BitVLAForActionPrediction, a
+            # Llava-style VLA (BitNet LM + SigLIP vision + action head) whose capture unit is an
+            # inputs_embeds forward — NOT a standalone BitnetForCausalLM, and no standalone BitNet
+            # LLM checkpoint is available locally to run as a token-in proxy.
+            reason = ("bitvla is BitVLAForActionPrediction (Llava-style BitNet LM + SigLIP + action "
+                      "head, captured as an inputs_embeds forward) — not a standalone "
+                      "BitnetForCausalLM; llama.cpp supports the BitNet arch + ternary TQ RVV "
+                      "kernels but has no VLA arch, and no standalone BitNet LLM checkpoint is "
+                      "available locally to run as a proxy")
         else:
             reason = f"{model}: no GGUF-convertible checkpoint"
         # built stays False: we have the RVV artifact but no runnable GGUF for this model.
