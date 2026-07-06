@@ -129,6 +129,34 @@ def test_missing_bundle_is_not_built_gap(monkeypatch, tmp_path):
     r.validate()
 
 
+def test_int8_scalar_glue_labels_activation_quant():
+    from merlin.baselines.contract import ScalarFallback
+    fbs = exo._scalar_fallbacks()
+    fbs.append(ScalarFallback("activation_quant_requant", "no EXO RVV kernel — scalar glue", "other"))
+    assert any(f.symbol == "activation_quant_requant" for f in fbs)
+
+
+def test_detect_llama_config_int8_and_fp32(tmp_path):
+    root = _fake_bundle(tmp_path)
+    _, hdr = exo._safetensors_offsets(root / "weights.safetensors")
+    cfg = exo.detect_llama_config(hdr, "fp32")
+    assert cfg is not None
+    assert cfg["NL"] == 22 and cfg["H"] == 2048 and cfg["V"] == 32000 and cfg["FF"] == 5632
+    # int8 detection on an fp32-named header returns None (no .parametrizations.original0).
+    assert exo.detect_llama_config(hdr, "int8") is None
+
+
+def test_detect_llama_config_none_for_non_llama():
+    assert exo.detect_llama_config({"some.random.weight": {"shape": [4, 4]}}, "fp32") is None
+
+
+def test_int8_gemm_lowers_to_vwmacc():
+    import merlin.baselines.exo_kernels.igemm as ig
+    src = str(ig.igemm_nt_rvv)
+    assert "rvv256_vwmacc_vx" in src           # the RVV widening MAC (integer datapath)
+    assert "rvv256_vld_i16" in src and "rvv256_vst_i32" in src
+
+
 def test_notes_disclose_glue_and_not_whole_model_compiler():
     # The disclosure that this is EXO-kernels-in-a-glue-runtime is mandatory and lives in notes.
     r = BaselineResult(framework="exo", model="tiny_llama")
