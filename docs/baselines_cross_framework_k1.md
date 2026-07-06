@@ -116,6 +116,29 @@ patch (RMSNorm) for tiny_llama; **Buddy** an instrumented whole-model op-bisecti
 **ExecuTorch** would need patching PyTorch's PT2E to go beyond decoder-linears. No fabricated numbers
 anywhere — blocked cells stay `not_run` with a specific reason.
 
+## Phase 2 — native per-framework flow, full-fidelity, fp32-gated (final)
+
+**Methodology (user-directed):** the shared source of truth is the **PyTorch model** (real/full-fidelity
+recaptures at `artifacts/recaptures/<model>_{int8,fp32}_full/`); each framework ingests it via its **own
+documented flow** and its **own int8 quantization** (not our torchAO scheme); int8 is gated against the
+**fp32 golden**. Fair because merlin also lowers from torch — and, decisively, **using each framework's
+native flow knocked down walls that our imposed formats had created:**
+
+| Framework | Native flow used | What it broke (vs the imposed-format result) |
+|---|---|---|
+| **ExecuTorch** | `examples/models/llama` `WeightOnlyInt8QuantHandler` (eager module swap) | **whole-model int8 now exports** (cos=1.0 host) — sidesteps the generic PT2E `transform_for_annotation` bug entirely. On-board: 2-layer whole-model int8 **PASS cos=0.99954 vs fp32**, 259 s (fp32 glue is scalar); full-22L RAM-gaps (4.25 GB activation buffer). |
+| **Buddy** | its own `DynamoCompiler` torch importer (not m2m linalg) | **native IR RUNS on-board** — small_llama int8 completed (**38 ms, 11.8% RVV**); tiny_llama ran the full forward **~28 min with no SIGSEGV**. The m2m-linalg SIGSEGV was an IR-path bug, not fundamental. Remaining: Buddy materializes int8→fp32 → params OOM the board. |
+| **ggml** | real checkpoint → GGUF Q8_0, matched input_ids | **comparable cos** (was `None`): Q8_0 **0.9986** on real TinyLlama-1.1B. |
+| **EXO** | (kernel DSL — no model import) | ran the real full 22-layer TinyLlama int8 (**9.86 s**). |
+| **TVM** | `from_exported_program` (torch→Relax) | **falsified** — TVM's torch frontend can't build our graphs (torchAO subclass / op-coverage); ONNX stays. tiny_llama cos confirmed a TVM ONNX broadcast-`Mul` bug. |
+
+**Coverage:** on-board execution expanded from ~1 model to **6+ framework×model cells**; Buddy builds
+**8/11** via native import. **Remaining walls are hardware/framework limits, not effort:** the 3.8 GB board
+RAM (Buddy's int8→fp32 materialization, ExecuTorch's whole-model activation buffer, the three 7B-class
+VLAs), framework-venv loader deps for some VLAs (mmengine/tyro/lerobot/openpi), TVM's ONNX `Mul` bug, and
+correctness on the random-init VLAs is uncorrelated by construction (only tiny_llama + smolvla carry
+pretrained weights). Full machine matrix: `artifacts/compare/v1/…/matrix.{md,csv}`.
+
 ## Where things live
 
 - Runners: `merlin/python/merlin/baselines/{buddy,exo,ggml,executorch,tvm}.py` (+ shared
