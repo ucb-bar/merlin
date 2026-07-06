@@ -158,10 +158,19 @@ _RVV_VBITS = 256
 # for the WHOLE captured model (affine-super-vectorize NYI's on strided layouts), then the LLVM
 # backend vectorizer (opt -O3, see compile_rv64gcv_object) turns the hot loops into RVV. c-wrappers
 # export the ``_mlir_ciface_forward`` symbol merlin's runtime calls.
+#
+# MEMORY PLANNING (the OOM fix): after bufferization, EVERY intermediate is a live ``memref.alloc``
+# with no free — so a whole VLA/LLM keeps all ~290 buffers resident and OOMs the 3.8GB K1. We insert
+# ``-buffer-deallocation-pipeline`` (frees each buffer after its LAST use) + hoisting so peak resident
+# memory is the live-set, not the sum of all intermediates. This is buddy's own upstream MLIR
+# deallocation, not a merlin trick.
 _LOWER_PASSES = [
     "-eliminate-empty-tensors",
     "-empty-tensor-to-alloc-tensor",
     "-one-shot-bufferize=bufferize-function-boundaries",
+    "-buffer-hoisting",
+    "-buffer-loop-hoisting",
+    "-buffer-deallocation-pipeline",
     "-convert-linalg-to-loops",
     "-lower-affine",
     "-convert-scf-to-cf",
