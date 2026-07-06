@@ -88,6 +88,26 @@ small_llama = a toy vocab-256 arch), **not** the real checkpoints. Consequences:
   activation-quant scheme in `golden_w8a8` couldn't be reproduced, so it's an honest near-miss at the
   0.999/1e-2 int8 tier, not a fabricated pass.
 
+## Best-effort int8-RVV tuning pass
+
+A dedicated pass pushed each arm toward its *best* int8-RVV (autotuners run, runtimes cross-built,
+memory-planning added). Honest before→after — we made real gains but did **not** reach every
+framework's ceiling; the remaining blockers are now precisely characterized:
+
+| Arm | Before | After tuning | Reached best? |
+|---|---|---|---|
+| **ExecuTorch** | int8 `not_built` | int8 **PASS on-board — 10.9 ms**, cos=0.999; MLP fused into **one XNNPACK qs8 delegate** (int8 GEMM 33–47% RVV) | **subgraph yes** — whole-model int8 blocked: PT2E observer corrupts an int-index dtype at calibration on HF Llama (no quantizer toggle avoids it) |
+| **EXO** | int8 44.5 s, GEMM RVV 17% | autotuned k-unroll (ku=4) → GEMM −7%, RVV 18–19%; residual/elementwise now RVV (`vfadd`/`vfmul`); **42.5 s** | **near its approach's limit** — GEMM bottleneck is the per-MAC *scalar A-load* (needs output-tile blocking EXO couldn't stage); quant/transpose pre-pass co-dominant; glue ops are <0.1% of wall so vectorizing them is latency-neutral |
+| **Buddy** | int8 OOM (10.1 GB) | **OOM fixed** (buffer-deallocation-pipeline: 0→290 deallocs) | **no on-board run** — OOM solved, but int8 now SIGSEGVs in the integer datapath (weights-region fault; a deep memref/ABI bug, *not* dealloc-related; fp32 runs but is too slow) |
+| **TVM** | 5 int8 build, `not_run` | riscv64 **runtime + `tvm_rpc` cross-built** | **no tuned/on-board result** — MetaSchedule + on-board runs blocked by *infra*: board→host firewall (kills tracker tuning) + unstable ssh-launched `tvm_rpc` (kills direct RPC). Needs a persistent board-side RPC service + open board→host path |
+| **ggml** | Q8_0 20.3/5.8 tok/s, 18% RVV | (unchanged — already near best) | **closest to best** — hand-optimized kernels are ggml's real capability |
+
+**Verdict:** these are best-*effort*, not proven-best. Only **ggml** is at its real ceiling; **ExecuTorch**
+has a genuine tuned int8 on-board number (subgraph); **EXO** is near its kernel-approach limit with an
+honest bottleneck; **Buddy** and **TVM** build real int8 RVV but are blocked from a full on-board int8 run
+(codegen SIGSEGV / RPC-infra respectively). No fabricated numbers anywhere — blocked cells stay `not_run`
+with a specific reason.
+
 ## Where things live
 
 - Runners: `merlin/python/merlin/baselines/{buddy,exo,ggml,executorch,tvm}.py` (+ shared
@@ -97,9 +117,12 @@ small_llama = a toy vocab-256 arch), **not** the real checkpoints. Consequences:
 
 ## Open follow-ups
 
-- **TVM on-board execution**: the ONNX path now builds 5 models with RVV (small_llama int8 cos≈1.0).
-  Remaining — cross-build the TVM riscv64 runtime + `tvm_rpc` (or a C harness linking `libtvm_runtime`)
-  to run the `.so` on the K1; MetaSchedule tuning to lift RVV above ~16%; fix the tiny_llama TVM
-  attention-op divergence (cos=0.80).
-- Buddy on-board completion would require arena planning (or int8 + streamed weights) to fit 3.8 GB.
-- ExecuTorch int8 needs a PT2E path that tolerates HF Llama's index/mask tensors.
+- **TVM on-board + MetaSchedule**: runtime + `tvm_rpc` are cross-built; needs a *persistent* board-side
+  RPC service (systemd, not ssh-launched) + an open board→host path for the tuning tracker. Then lift
+  RVV above the untuned ~16% and fix the tiny_llama attention-op divergence (cos=0.80).
+- **Buddy int8 on-board**: OOM is fixed; the remaining blocker is the int8-datapath SIGSEGV — debug the
+  memref/weight-arg stride mismatch between merlin's arg table and buddy's `i8×i8→i32` kernel indexing.
+- **ExecuTorch whole-model int8**: needs a PT2E path (or a different quantizer) that keeps HF Llama's
+  index/mask tensors out of observation — currently only the linear-heavy subgraph quantizes.
+- **EXO GEMM**: output-tile blocking to reuse one scalar A-load across tiles (the real RVV ceiling), and
+  an RVV int8 quant/transpose pre-pass (co-dominant with the GEMM).
