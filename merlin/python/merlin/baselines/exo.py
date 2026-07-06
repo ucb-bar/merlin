@@ -312,12 +312,31 @@ def _run(cmd: list[str]) -> None:
 
 
 def _parse_out(stdout: str) -> np.ndarray | None:
+    """Parse the ASCII OUT fallback stream (small-V only). Robust to a truncated final token: an
+    SSH drop mid-stream leaves garbage, so we keep only clean integer tokens and drop the rest
+    rather than crash (the caller then sees a short array and records an honest gap)."""
     for line in stdout.splitlines():
         if line.startswith("OUT "):
-            parts = line.split()
-            k = int(parts[1])
-            bits = np.array([int(x) for x in parts[2:2 + k]], dtype=np.uint32)
-            return bits.view(np.float32)
+            parts = line.split()[2:]
+            vals = []
+            for tok in parts:
+                if tok.isdigit():
+                    vals.append(int(tok))
+                else:
+                    break  # truncated / connection-noise token: stop cleanly
+            if not vals:
+                return None
+            return np.array(vals, dtype=np.uint32).view(np.float32)
+    return None
+
+
+def _parse_outfile(stdout: str) -> tuple[str, int] | None:
+    """Parse the OUTFILE marker: 'OUTFILE <remote_path> <n_floats>'."""
+    for line in stdout.splitlines():
+        if line.startswith("OUTFILE "):
+            p = line.split()
+            if len(p) >= 3 and p[2].isdigit():
+                return p[1], int(p[2])
     return None
 
 
@@ -422,9 +441,19 @@ def run(model: str = "tiny_llama", variant: str = "fp32") -> BaselineResult:
                         if attempt == 1:
                             raise
             k1_exec.run([f"chmod +x {remote}"], timeout=60)
-            proc = k1_exec.run([f"MERLIN_WEIGHTS={remote_w} {remote}"], timeout=1800)
+            # Write the S*V logits to a binary file on-board (robust vs streaming ~2MB ASCII over a
+            # contended SSH link, which truncates on a connection drop); scp it back.
+            remote_out = f"/tmp/{model}_{variant}_exo_out.bin"
+            proc = k1_exec.run(
+                [f"MERLIN_WEIGHTS={remote_w} MERLIN_OUTFILE={remote_out} {remote}"], timeout=1800)
+            local_out = work / "exo_out.bin"
             try:
-                k1_exec.run([f"rm -f {remote}"], timeout=60)  # keep cached weights for reruns
+                subprocess.run(["scp", *k1_exec._SSH_OPTS, f"{k1.K1_HOST}:{remote_out}",
+                                str(local_out)], capture_output=True, timeout=300)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                k1_exec.run([f"rm -f {remote} {remote_out}"], timeout=60)  # keep cached weights
             except Exception:  # noqa: BLE001
                 pass
     except Exception as e:  # noqa: BLE001
@@ -432,9 +461,18 @@ def run(model: str = "tiny_llama", variant: str = "fp32") -> BaselineResult:
         return res.validate()
 
     stdout = proc.stdout + proc.stderr
-    out = _parse_out(stdout)
+    # prefer the binary output file (robust); fall back to the ASCII OUT stream.
+    out = None
+    of = _parse_outfile(stdout)
+    if of is not None and local_out.is_file():
+        raw = np.fromfile(local_out, dtype=np.float32)
+        if raw.size >= of[1]:
+            out = raw[:of[1]]
     if out is None:
-        res.gap_reason = f"no OUT marker in board console (rc={proc.returncode}): {stdout[-300:]}"
+        out = _parse_out(stdout)
+    if out is None:
+        res.gap_reason = (f"no usable output (rc={proc.returncode}); OUTFILE={of}; "
+                          f"console tail: {stdout[-200:]}")
         return res.validate()
     res.ran = True
 
