@@ -13,10 +13,11 @@ from merlin.baselines import buddy
 # --- bundle resolution (legacy fp32-LLM fallback) ---------------------------------------------
 
 def test_resolve_bundle_convention_path():
-    # bitvla follows the <model>_fp32_consistent convention.
+    # bitvla resolves to a fp32 recapture — the full-fidelity `_full` (Phase 2) when present, else
+    # the older `_consistent` bundle. bundle.resolve prefers `_full`.
     b = buddy.resolve_bundle("bitvla", "fp32")
     assert b.model == "bitvla" and b.variant == "fp32"
-    assert b.root.name == "bitvla_fp32_consistent"
+    assert b.root.name in ("bitvla_fp32_full", "bitvla_fp32_consistent")
 
 
 def test_resolve_bundle_legacy_fp32_llm_fallback(tmp_path, monkeypatch):
@@ -166,3 +167,31 @@ def test_run_all_variants_int8_first_order(monkeypatch):
     buddy.run_all_variants(models=("tiny_llama", "bitvla"), write=False)
     assert calls == [("tiny_llama", "int8"), ("bitvla", "int8"),
                      ("tiny_llama", "fp32"), ("bitvla", "fp32")]
+
+
+# --- native (buddy DynamoCompiler) import path ------------------------------------------------
+
+def test_native_import_accessors_return_paths_or_none():
+    # These must not raise even when the buddy python packages aren't built (return None/Path).
+    assert buddy._torch_venv_python() is None or buddy._torch_venv_python().name == "python"
+    bpp = buddy.buddy_python_packages()
+    assert bpp is None or bpp.name == "python_packages"
+    mpp = buddy.mlir_python_packages()
+    assert mpp is None or mpp.name == "mlir_core"
+    assert isinstance(buddy.native_import_available(), bool)
+
+
+def test_native_harness_c_has_ciface_and_markers():
+    # The generated buddy-native harness must call the result/params/input ciface and print markers.
+    c = buddy._native_harness_c(out_elems=256000, out_lastdim=32000, in_elems=8,
+                                param_elems=1100048416, input_vals=[1, 2, 3])
+    assert "_mlir_ciface_forward(MR *res, MR *params, MR *input)" in c
+    assert "MERLIN_WEIGHTS" in c            # params mmap'd from arg0.data
+    assert 'printf("DONE' in c and "METRIC time_ticks" in c
+    assert "int64_t IN[IN_ELEMS] = {1,2,3}" in c
+
+
+def test_native_tosa_to_linalg_pipeline_constant():
+    # The tosa->linalg conversion pipeline must be the buddy-canonical one.
+    assert "tosa-to-linalg-named" in buddy._TOSA_TO_LINALG
+    assert "tosa-to-arith" in buddy._TOSA_TO_LINALG
