@@ -8,6 +8,7 @@ External-baseline K1-RVV comparison harness.
 
 - `aggregate.py` — Collect per-framework results into the cross-framework matrix (merlin vs the 5 baselines).
 - `buddy.py` — Buddy (buddy-mlir) baseline arm — ingest OUR ``model.mlir`` and run it on the K1 with RVV.
+- `buddy_native_import.py` — Buddy NATIVE torch importer helper (DynamoCompiler; runs under the torch venv).
 - `bundle.py` — Resolve a ``(model, variant)`` to its capture bundle — the shared input every baseline ingests.
 - `contract.py` — Result contract for external-baseline K1-RVV runs (the shared honesty schema).
 - `k1_exec.py` — Generic K1 deploy/run for external baselines + a board lock (single physical board).
@@ -53,6 +54,27 @@ External-baseline K1-RVV comparison harness.
   RVV (the SCALAR rv64gc build also segfaults — NOT a vector-tail bug); dealloc/opt-O3. It is a buddy
   bufferization/lowering bug for some whole-model op (bad dynamic buffer size/offset) not triggered by
   the isolated pattern; pinpointing needs whole-model op bisection. fp32 runs but is ~18 min/forward.
+
+## Buddy Phase 2 — NATIVE torch importer (bypass m2m linalg)
+
+Instead of m2m's linalg ``model.mlir``, use buddy's OWN ``DynamoCompiler`` (``buddy_native_import.py``)
+so the arm runs the IR buddy's own users get — DIFFERENT IR that may bypass the m2m-path SIGSEGV.
+
+- **Build (one-time, heavy)**: rebuild LLVM with ``-DMLIR_ENABLE_BINDINGS_PYTHON=ON`` (needs
+  ``nanobind``+``pybind11`` in the torch venv) → ``ninja MLIRPythonModules``; configure buddy-mlir with
+  ``-DBUDDY_MLIR_ENABLE_PYTHON_PACKAGES=ON -DBUDDY_ENABLE_TESTS=OFF -DFLATC_EXECUTABLE=<flatc>
+  -DFLATBUFFERS_INCLUDE_DIR=<inc>`` → ``ninja BuddyMLIRPythonModules python-package-buddy``. The
+  DynamoCompiler runs under the **model2MLIR torch venv** (has torch/dynamo), NOT oscar-merlin's.
+- **Import**: ``buddy.native_import(model, variant, out)`` spawns the helper under the torch venv with
+  ``PYTHONPATH=<buddy python_packages>:<mlir python_packages>``, sets ``bundle.full_env(model)`` (full-
+  fidelity loader), loads via the m2m loader's ``get_model_and_inputs``, runs ``DynamoCompiler.importer``
+  (fallback from ``importer_by_export``), emits ``subgraph0.mlir`` + ``forward.mlir`` + ``arg0.data``
+  (flat f32 params). Use the **tosa** registry — buddy's ``linalg`` registry has an ``expand_op`` bug on
+  the LLM graph.
+- **Lower + run**: ``compile_native_objects`` runs the tosa→linalg pass-pipeline then the standard
+  lowering (STOCK mlir-opt, single-thread scf-to-cf — no libomp on K1) → rv64gcv PIC objects.
+  ``link_native_k1_elf`` links them + a buddy-native harness (``_mlir_ciface_forward(result*, params*,
+  input*)``; params mmap'd from ``arg0.data``) + merlin's ``mlir_runtime.c`` (provides ``memrefCopy``).
 
 ## Adding a per-framework runner (Part C)
 

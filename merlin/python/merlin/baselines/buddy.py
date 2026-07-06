@@ -116,6 +116,81 @@ def buddy_commit() -> str:
         return ""
 
 
+# --- native torch importer (Phase 2: buddy's OWN DynamoCompiler, not m2m linalg) ----------------
+
+# buddy.compiler.frontend needs torch + torch._dynamo + the buddy_mlir python bindings, none of
+# which live in oscar-merlin's venv — so the native import runs as a SUBPROCESS under the model2MLIR
+# torch venv with PYTHONPATH pointing at buddy's python_packages + the MLIR bindings.
+def _torch_venv_python() -> Path | None:
+    """The model2MLIR torch venv python (has torch/dynamo + our installed nanobind bindings)."""
+    p = _bundle.model2mlir_root() / ".venv" / "bin" / "python"
+    override = os.environ.get("MERLIN_BUDDY_TORCH_PYTHON")
+    cand = Path(override) if override else p
+    return cand if cand.is_file() else None
+
+
+def buddy_python_packages() -> Path | None:
+    """buddy-mlir's built ``python_packages`` dir (holds ``buddy/compiler/frontend.py``)."""
+    d = buddy_build_dir() / "python_packages"
+    return d if (d / "buddy" / "compiler" / "frontend.py").is_file() else None
+
+
+def mlir_python_packages() -> Path | None:
+    """The MLIR python bindings dir (``mlir/_mlir_libs``) from the LLVM build."""
+    d = llvm_build_dir() / "tools" / "mlir" / "python_packages" / "mlir_core"
+    return d if (d / "mlir" / "_mlir_libs").is_dir() else None
+
+
+def native_import_available() -> bool:
+    """True iff the native torch-importer path is usable (torch venv + both python packages built)."""
+    return (_torch_venv_python() is not None and buddy_python_packages() is not None
+            and mlir_python_packages() is not None)
+
+
+def native_import(model: str, variant: str, out_dir: Path, *, registry: str = "linalg",
+                  timeout: int = 1800) -> Path:
+    """Run buddy's DynamoCompiler over the REAL torch model → ``subgraph0.mlir`` + params.
+
+    Sets the full-fidelity loader env (``bundle.full_env``) so the SAME native-architecture model the
+    golden was captured on is ingested, then spawns :mod:`.buddy_native_import` under the torch venv.
+    Returns the ``subgraph0.mlir`` path. Raises :class:`BuddyError` on any failure (fail-closed).
+    """
+    py = _torch_venv_python()
+    bpp = buddy_python_packages()
+    mpp = mlir_python_packages()
+    if py is None or bpp is None or mpp is None:
+        raise BuddyError("native importer unavailable (need torch venv + buddy/MLIR python packages; "
+                         "build with -DMLIR_ENABLE_BINDINGS_PYTHON=ON + -DBUDDY_MLIR_ENABLE_PYTHON_PACKAGES=ON)")
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    b = resolve_bundle(model, variant)
+    loader = b.torch_loader
+    if not loader.is_file():
+        raise BuddyError(f"m2m loader missing for {model}: {loader}")
+
+    env = dict(os.environ)
+    # full-fidelity capture env: the exact loader settings the recapture (and golden) used.
+    env.update(_bundle.full_env(model))
+    # find the repo's merlin python package so `-m merlin.baselines.buddy_native_import` resolves,
+    # + buddy python_packages + MLIR bindings.
+    merlin_py = str(repo_root() / "merlin" / "python")
+    env["PYTHONPATH"] = os.pathsep.join([str(bpp), str(mpp), merlin_py,
+                                         env.get("PYTHONPATH", "")]).rstrip(os.pathsep)
+    # buddy frontend also reads these to locate its runtime libs.
+    env["BUDDY_MLIR_BUILD_DIR"] = str(buddy_build_dir())
+    env["LLVM_MLIR_BUILD_DIR"] = str(llvm_build_dir())
+
+    cmd = [str(py), "-m", "merlin.baselines.buddy_native_import",
+           "--model", model, "--variant", variant, "--out-dir", str(out_dir),
+           "--loader", str(loader), "--registry", registry]
+    r = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
+    sub = out_dir / "subgraph0.mlir"
+    if r.returncode != 0 or not sub.is_file():
+        raise BuddyError(f"native import failed for {model}/{variant}:\n"
+                         f"STDOUT:{r.stdout[-1000:]}\nSTDERR:{r.stderr[-1500:]}")
+    return sub
+
+
 # --- capture-bundle resolution (robust to legacy dir names) -------------------------------------
 
 # The fp32 LLM captures predate the ``<model>_fp32_consistent`` convention and live under legacy
@@ -276,6 +351,186 @@ def compile_rv64gcv_object(ll_path: Path, work: Path, *, timeout: int = 2400) ->
           f"--riscv-v-vector-bits-min={_RVV_VBITS}", "-O3", "-filetype=obj",
           str(vec_ll), "-o", str(obj)], timeout=timeout)
     return obj
+
+
+# --- native (buddy DynamoCompiler) lowering: tosa/linalg -> rv64gcv --------------------------------
+
+# The native ``forward.mlir``/``subgraph0.mlir`` from buddy's importer are tosa-on-tensors; the
+# canonical buddy recipe first runs the tosa->linalg conversion pass-pipeline, then the standard
+# lowering. We do it with STOCK mlir-opt (single-threaded scf-to-cf, NOT scf-to-openmp — no libomp
+# on the K1) + the OOM-fixing buffer-deallocation-pipeline + c-wrappers.
+_TOSA_TO_LINALG = ("builtin.module(func.func(tosa-to-linalg-named),func.func(tosa-to-linalg),"
+                   "func.func(tosa-to-tensor),func.func(tosa-to-arith))")
+
+
+def lower_native_to_llvmir(mlir_path: Path, out_ll: Path, *, timeout: int = 1800) -> Path:
+    """Lower one native buddy MLIR file (forward/subgraph, tosa-on-tensors) to LLVM IR text."""
+    opt, xlate = buddy_opt(), mlir_translate()
+    if opt is None or xlate is None:
+        raise BuddyError("buddy lowering toolchain not built")
+    out_ll.parent.mkdir(parents=True, exist_ok=True)
+    tosa_out = out_ll.with_suffix(".tosa2linalg.mlir")
+    _run([opt, str(mlir_path), "-pass-pipeline", _TOSA_TO_LINALG, "-o", str(tosa_out)], timeout=timeout)
+    llvm_out = out_ll.with_suffix(".llvm.mlir")
+    _run([opt, str(tosa_out),
+          "-convert-elementwise-to-linalg",
+          "-eliminate-empty-tensors", "-empty-tensor-to-alloc-tensor",
+          "-one-shot-bufferize=bufferize-function-boundaries",
+          "-buffer-deallocation-pipeline",
+          "-convert-linalg-to-loops", "-lower-affine", "-convert-scf-to-cf",
+          "-expand-strided-metadata", "-lower-affine", "-convert-vector-to-scf", "-convert-scf-to-cf",
+          "-convert-vector-to-llvm", "-convert-math-to-llvm", "-convert-math-to-libm",
+          "-finalize-memref-to-llvm", "-llvm-request-c-wrappers", "-convert-func-to-llvm",
+          "-convert-arith-to-llvm", "-convert-cf-to-llvm", "-reconcile-unrealized-casts",
+          "-canonicalize", "-o", str(llvm_out)], timeout=timeout)
+    _run([xlate, "--mlir-to-llvmir", str(llvm_out), "-o", str(out_ll)], timeout=timeout)
+    return out_ll
+
+
+def compile_native_objects(native_dir: Path, work: Path, *, timeout: int = 2400) -> list[Path]:
+    """Lower + compile the native forward.mlir + subgraph0.mlir to rv64gcv objects (PIC)."""
+    rvv_audit.enforce_rvv_march(k1.K1_MARCH)
+    opt, llc = llvm_opt(), llvm_llc()
+    triple = "riscv64-unknown-linux-gnu"
+    objs = []
+    for name in ("forward", "subgraph0"):
+        src = native_dir / f"{name}.mlir"
+        if not src.is_file():
+            raise BuddyError(f"native import missing {src}")
+        ll = lower_native_to_llvmir(src, work / f"nat_{name}.ll", timeout=timeout)
+        vec = ll
+        if opt is not None:
+            vec = work / f"nat_{name}.opt.ll"
+            big = ll.stat().st_size > _O3_IR_SIZE_LIMIT
+            passes = (["-passes=function(loop-vectorize,slp-vectorizer,instcombine,simplifycfg)"]
+                      if big else ["-O3"])
+            _run([opt, *passes, f"-mtriple={triple}", f"-mattr={_RVV_MATTR}",
+                  f"--riscv-v-vector-bits-min={_RVV_VBITS}", str(ll), "-o", str(vec)], timeout=timeout)
+        obj = work / f"nat_{name}.o"
+        _run([llc, f"-mtriple={triple}", f"-mattr={_RVV_MATTR}", f"--target-abi={k1.K1_MABI}",
+              f"--riscv-v-vector-bits-min={_RVV_VBITS}", "-O3", "-relocation-model=pic",
+              "-filetype=obj", str(vec), "-o", str(obj)], timeout=timeout)
+        objs.append(obj)
+    return objs
+
+
+# The buddy-native ABI is `_mlir_ciface_forward(result*, params*, input*)` where each arg is a
+# pointer to a MemRef descriptor {allocated, aligned, offset, sizes[rank], strides[rank]}. This
+# harness mmap's the flat f32 param blob (arg0.data), reads the seeded int64 input from a header,
+# calls forward once, times it with rdtime, and prints OUT/METRIC/DONE (same markers profile.py +
+# zephyr_model._parse_console consume).
+def _native_harness_c(out_elems: int, out_lastdim: int, in_elems: int, param_elems: int,
+                       input_vals: list[int]) -> str:
+    dump_cap = min(out_elems, 4096)
+    in_init = ",".join(str(int(v)) for v in input_vals) or "0"
+    return f"""/* Generated by merlin.baselines.buddy — buddy-native K1 harness. Do not edit. */
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <pthread.h>
+
+typedef struct {{ void *a; void *al; int64_t off; int64_t sz[8]; int64_t st[8]; }} MR;
+/* result (rank3), params (rank1), input (rank2) */
+extern void _mlir_ciface_forward(MR *res, MR *params, MR *input);
+
+#define OUT_ELEMS {out_elems}
+#define OUT_LASTDIM {out_lastdim}
+#define IN_ELEMS {in_elems}
+#define PARAM_ELEMS {param_elems}L
+#define DUMP_CAP {dump_cap}
+#define K1_TIMEBASE_HZ {k1.K1_TIMEBASE_HZ}ULL
+#define K1_CPU_HZ {k1.K1_CPU_HZ}ULL
+
+static float OUT[OUT_ELEMS];
+static int64_t IN[IN_ELEMS] = {{{in_init}}};
+
+static inline uint64_t rd_time(void) {{ uint64_t t; __asm__ volatile("rdtime %0":"=r"(t)); return t; }}
+static inline uint64_t rd_vlenb(void){{ uint64_t v; __asm__ volatile("csrr %0, vlenb":"=r"(v)); return v; }}
+static uint64_t wall_ns(void){{ struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
+  return (uint64_t)ts.tv_sec*1000000000ULL+(uint64_t)ts.tv_nsec; }}
+
+static const float *PARAMS;
+
+static void *worker(void *arg){{
+  (void)arg;
+  printf("=== buddy_native vlenb=%llu ===\\n",(unsigned long long)rd_vlenb()); fflush(stdout);
+  MR res={{0}}, par={{0}}, inp={{0}};
+  res.a=res.al=OUT; res.off=0; res.sz[0]=1; res.sz[1]=OUT_ELEMS/OUT_LASTDIM; res.sz[2]=OUT_LASTDIM;
+  res.st[0]=OUT_ELEMS; res.st[1]=OUT_LASTDIM; res.st[2]=1;
+  par.a=par.al=(void*)PARAMS; par.off=0; par.sz[0]=PARAM_ELEMS; par.st[0]=1;
+  inp.a=inp.al=IN; inp.off=0; inp.sz[0]=1; inp.sz[1]=IN_ELEMS; inp.st[0]=IN_ELEMS; inp.st[1]=1;
+  uint64_t w0=wall_ns(), t0=rd_time();
+  _mlir_ciface_forward(&res,&par,&inp);
+  uint64_t t1=rd_time(), w1=wall_ns();
+  int k = OUT_ELEMS<DUMP_CAP?OUT_ELEMS:DUMP_CAP;
+  printf("OUT %d",k);
+  for(int i=0;i<k;i++){{ uint32_t b; memcpy(&b,&OUT[i],4); printf(" %u",(unsigned)b); }}
+  printf("\\n");
+  if(OUT_ELEMS>DUMP_CAP){{
+    int rows=OUT_ELEMS/OUT_LASTDIM; printf("ARGMAX %d",rows);
+    for(int r=0;r<rows;r++){{ const float*row=&OUT[(long)r*OUT_LASTDIM]; int bi=0; float bv=row[0];
+      for(int j=1;j<OUT_LASTDIM;j++) if(row[j]>bv){{bv=row[j];bi=j;}} printf(" %d",bi); }}
+    printf("\\n");
+    float s=0; for(int i=0;i<OUT_ELEMS;i++) s+=OUT[i]; uint32_t sb; memcpy(&sb,&s,4);
+    printf("SUM %u\\n",(unsigned)sb);
+  }}
+  uint64_t ticks=t1-t0, est=ticks*(K1_CPU_HZ/K1_TIMEBASE_HZ);
+  printf("METRIC cycles %llu\\n",(unsigned long long)est);
+  printf("METRIC time_ticks %llu\\n",(unsigned long long)ticks);
+  printf("METRIC wall_ns %llu\\n",(unsigned long long)(w1-w0));
+  printf("DONE\\n"); fflush(stdout);
+  return NULL;
+}}
+
+int main(int argc,char**argv){{
+  const char*wp=getenv("MERLIN_WEIGHTS"); if(!wp&&argc>1) wp=argv[1];
+  if(!wp){{ fprintf(stderr,"FAIL no MERLIN_WEIGHTS (arg0.data)\\n"); return 2; }}
+  int fd=open(wp,O_RDONLY); if(fd<0){{ fprintf(stderr,"FAIL open %s\\n",wp); return 2; }}
+  struct stat st; fstat(fd,&st);
+  void*m=mmap(NULL,(size_t)st.st_size,PROT_READ,MAP_PRIVATE,fd,0);
+  if(m==MAP_FAILED){{ fprintf(stderr,"FAIL mmap params\\n"); return 2; }}
+  PARAMS=(const float*)m;
+  pthread_attr_t at; pthread_t th;
+  if(pthread_attr_init(&at)==0 && pthread_attr_setstacksize(&at,(size_t){k1.K1_STACK_BYTES}ULL)==0
+     && pthread_create(&th,&at,worker,NULL)==0) pthread_join(th,NULL);
+  else worker(NULL);
+  return 0;
+}}
+"""
+
+
+def link_native_k1_elf(native_dir: Path, objs: list[Path], work: Path, input_vals: list[int],
+                       out_elems: int, out_lastdim: int, in_elems: int, param_elems: int,
+                       *, timeout: int = 600) -> Path:
+    """Link the native rv64gcv objects + the buddy-native harness into a K1 Linux ELF.
+
+    Weights (arg0.data) are mmap'd at run time (MERLIN_WEIGHTS), so the binary is small.
+    """
+    cc = k1.toolchain_cc()
+    if cc is None:
+        raise BuddyError("SpacemiT toolchain not found (set MERLIN_K1_TOOLCHAIN)")
+    main_c = work / "native_main.c"
+    main_c.write_text(_native_harness_c(out_elems, out_lastdim, in_elems, param_elems, input_vals))
+    binary = work / "buddy_native_k1"
+    # buddy's tosa lowering emits memref.copy -> a call to `memrefCopy`; merlin's mlir_runtime.c
+    # provides it (normally MLIR's C runner utils would).
+    abi_rt = repo_root() / "merlin/runtime/abi" / "mlir_runtime.c"
+    base = [cc, "--target=riscv64-unknown-linux-gnu", f"-march={k1.K1_MARCH}",
+            f"-mabi={k1.K1_MABI}", "-O2", "-fPIC", str(main_c), str(abi_rt),
+            *[str(o) for o in objs], "-lm", "-lpthread", "-o", str(binary)]
+    try:
+        _run([*base, "-static"], timeout=timeout)
+    except BuddyError:
+        _run(base, timeout=timeout)
+    if not binary.is_file():
+        raise BuddyError(f"native link produced no binary at {binary}")
+    return binary
 
 
 def link_k1_elf(model_dir: Path, obj: Path, work: Path, *, inputs_npz: Path | None = None,
