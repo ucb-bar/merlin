@@ -32,6 +32,28 @@ External-baseline K1-RVV comparison harness.
 - **Cycles are estimates** — K1 `rdtime` → est core cycles (`cycle_accurate=False`); spike/FireSim
   remain the cycle authorities.
 
+## Buddy (buddy.py) — build + int8 SIGSEGV diagnosis
+
+- **Build**: `git submodule update --init llvm` in `third_party/baselines/buddy-mlir`, then build the
+  LLVM fork tools (`mlir-opt mlir-translate llc opt mlir-runner`) into
+  `build/baselines/buddy/llvm-build/`. Codegen stays INSIDE the fork (`opt`+`llc`), NOT the IREE
+  clang-23 — its IR parser rejects the fork's `float f0x…` hex-float literals.
+- **Pipeline** (`_LOWER_PASSES`): `-llvm-request-c-wrappers` MUST precede `-convert-func-to-llvm`
+  (else no `_mlir_ciface_forward` export). `-buffer-deallocation-pipeline` (+ hoisting) after
+  bufferize is REQUIRED or every intermediate stays live → K1 OOM. For IR > 64 MB (pi05), a bounded
+  `-passes=function(loop-vectorize,slp-vectorizer,…)` replaces superlinear whole-function `-O3`.
+- **int8** = a real W8A8 integer datapath via `prepare_model_mlir` (merlin's
+  `_prepare_model_mlir(int8_compute=True)`): i8×i8→i32 (`arith.extsi`+MAC), which `opt` vectorizes to
+  `vwmacc.vv`. Gate int8 vs `golden_w8a8.npy` (`_golden_for`) when present.
+- **int8 on-board SIGSEGV (open, buddy bug)**: 8/11 int8 models BUILD with real integer RVV but every
+  one segfaults on the K1. Diagnosed (micro-case + scalar/RVV bisection): fault is a scalar `flw` on a
+  malloc'd f32 buffer at a bad offset in an f32-elementwise region of `forward`. RULED OUT — the
+  isolated int8 matmul+dequant micro-case RUNS CORRECTLY on the K1 (so NOT the dequant pattern); the
+  descriptor/stride ABI (merlin's own lowering uses the identical packed rank-N ciface and runs int8);
+  RVV (the SCALAR rv64gc build also segfaults — NOT a vector-tail bug); dealloc/opt-O3. It is a buddy
+  bufferization/lowering bug for some whole-model op (bad dynamic buffer size/offset) not triggered by
+  the isolated pattern; pinpointing needs whole-model op bisection. fp32 runs but is ~18 min/forward.
+
 ## Adding a per-framework runner (Part C)
 
 Create `baselines/<framework>.py` that: resolves the bundle (`bundle.resolve`), cross-compiles for
