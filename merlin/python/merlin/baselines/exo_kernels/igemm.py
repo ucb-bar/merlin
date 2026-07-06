@@ -80,22 +80,87 @@ def _schedule_base(p):
     return simplify(p)
 
 
-def build_igemm(KU: int = 1):
-    """Emit an int8 vwmacc GEMM proc with the k-reduction unrolled by ``KU``.
-
-    KU=1 is the baseline (1 vle16+vwmacc per k branch). KU>1 issues KU×(vle16+vwmacc) per branch,
-    amortising the scalar loop bookkeeping (index bump + branch) over KU widening MACs — raising the
-    vector:scalar ratio (RVV%) and cutting per-MAC overhead. The i32 accumulator + e16/e32 SEW
-    structure is unchanged, so it stays a single-SEW k-loop with no per-MAC ``vsetvli`` re-toggle.
+def _make_uref(U: int):
+    """Metaprogram an int8 GEMM reference with an explicit U-tile block whose tile loop ``nu`` lives
+    INSIDE the k reduction — so once ``nu`` is unrolled the single scalar A-load ``X[m,k]`` is
+    reused across the U widening MACs (the output-register-blocking that lifts the RVV ceiling).
+    The block width ``16*U`` must be a compile-time literal (EXO folds div/mod only on constants).
     """
-    p = _schedule_base(igemm_nt_ref)   # vectorise the single-tile body first (robust patterns)
+    BW = 16 * U
+
+    @proc
+    def igemm_nt_ref(M: size, N: size, K: size, Y: i32[M, N] @ DRAM, X: ui16[M, K] @ DRAM,
+                     Wt: ui16[K, N] @ DRAM):
+        # pragma: no cover
+        assert N % {BW} == 0
+        for m in seq(0, M):
+            for nb in seq(0, N / {BW}):
+                for nu in seq(0, {U}):
+                    for ni in seq(0, 16):
+                        Y[m, ni + 16 * ({U} * nb + nu)] = 0.0
+                for k in seq(0, K):
+                    for nu in seq(0, {U}):
+                        for ni in seq(0, 16):
+                            Y[m, ni + 16 * ({U} * nb + nu)] += X[m, k] * Wt[k, ni + 16 * ({U} * nb + nu)]
+
+    return igemm_nt_ref
+
+
+def _schedule_u(U: int):
+    """Vectorise the U-tile-blocked reference into U *distinct* i32 accumulator registers resident
+    across k, each fed by one shared A[m,k] broadcast per k (U vwmacc.vx per scalar A-load).
+
+    EXO note: RVV vector C types are *sizeless*, so ``vint32m2_t Yb[U]`` (one arrayed register
+    buffer) is illegal C — EXO's default Memory would emit exactly that and fail to compile. So we
+    do NOT reshape into one ``[U,16]`` buffer; instead we unroll ``nu`` first (U separate tile
+    bodies sharing one k-loop) then stage EACH tile into its own named 16-wide register (``Yr{j}``),
+    which emits U separate ``vint32m2_t`` declarations. That is the schedule EXO *can* express; the
+    thing it can't is arraying the sizeless register type."""
+    BW = 16 * U
+    p = _make_uref(U)
+    p = unroll_loop(p, "nu")   # init tile loop -> U init loops
+    p = unroll_loop(p, "nu")   # k-body tile loop -> U accumulate loops inside the shared k-loop
+    p = simplify(p)
+    # stage each tile j into its own 16-wide i32 register across the whole nb-body (U inits + k);
+    # the per-tile window only redirects that tile's 16 columns.
+    for j in range(U):
+        base = f"16*{j}+{BW}*nb" if j else f"{BW}*nb"
+        first_init = p.find("for ni in _: Y[m,_] = 0.0 #0")
+        blk = first_init.as_block().expand(0, U)   # U init loops (incl this) ... incl the k-loop
+        p = stage_mem(p, blk, f"Y[m, {base}:{base}+16]", f"Yr{j}")
+        p = simplify(p)
+        p = set_memory(p, f"Yr{j}", RVV256_I32)
+    # stage each tile's per-k weight slab into its own i16 register (one W load per tile per k).
+    for j in range(U):
+        base = f"16*{j}+{BW}*nb" if j else f"{BW}*nb"
+        p = stage_mem(p, f"for ni in _: Yr{j}[ni] += _", f"Wt[k, {base}:{base}+16]", f"Wr{j}")
+        p = simplify(p)
+        p = set_memory(p, f"Wr{j}", RVV256_I16)
+    p = replace_all(p, [rvv256_vld_i32, rvv256_zero_i32, rvv256_vld_i16, rvv256_vwmacc_vx,
+                        rvv256_vst_i32])
+    return simplify(p)
+
+
+def build_igemm(KU: int = 1, U: int = 1):
+    """Emit an int8 vwmacc GEMM proc, autotune knobs:
+
+    * ``U`` (output-register blocking) — U 16-wide i32 accumulators live across k; each k issues ONE
+      scalar A[m,k] load reused across U ``vwmacc.vx``. This is the RVV-ceiling lever: it amortises
+      the per-MAC scalar A-load that otherwise bounds GEMM RVV at ~0.19.
+    * ``KU`` (k-unroll) — only for U=1 (the single-tile path): KU vle16+vwmacc per branch, amortising
+      loop bookkeeping.
+
+    U>1 uses the metaprogrammed U-blocked schedule (``_schedule_u``); U=1 uses the single-tile
+    ``_schedule_base`` (optionally k-unrolled). The emitted C function is always ``igemm_nt_ref``.
+    """
+    if U > 1:
+        return _schedule_u(U)
+    p = _schedule_base(igemm_nt_ref)
     if KU > 1:
-        # unroll the vectorised k-loop: KU copies of {vld_i16 W_reg; vwmacc Y_reg} per branch.
-        # requires K % KU == 0 for these workloads (K in {2048, 5632} — divisible by 2,4,8,16).
         p = divide_loop(p, "k", KU, ["ko", "ki"], tail="cut")
         p = unroll_loop(p, "ki")
     return simplify(p)
 
 
-# Default kernel = KU=1 (baseline); the autotuner rebuilds with the best KU and re-lowers via exocc.
-igemm_nt_rvv = build_igemm(1)
+# Default kernel = baseline (U=1, KU=1); the autotuner rebuilds with the best (U,KU) via exocc.
+igemm_nt_rvv = build_igemm(1, 1)

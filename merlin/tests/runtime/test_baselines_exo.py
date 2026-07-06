@@ -158,12 +158,23 @@ def test_int8_gemm_lowers_to_vwmacc():
 
 
 def test_igemm_k_unroll_scales_vwmacc():
-    # the autotune knob: k-unroll KU issues KU widening MACs per branch (more vector per scalar).
+    # k-unroll KU issues KU widening MACs per branch (more vector per scalar).
     import merlin.baselines.exo_kernels.igemm as ig
     n1 = str(ig.build_igemm(1)).count("rvv256_vwmacc_vx")
     n4 = str(ig.build_igemm(4)).count("rvv256_vwmacc_vx")
     assert n4 > n1                              # KU=4 body has more vwmaccs than KU=1
-    assert exo.IGEMM_KU_CANDIDATES[0] == 1      # baseline first in the bounded search
+    assert exo.IGEMM_U_CANDIDATES[0] == 1       # baseline first in the bounded search
+
+
+def test_igemm_output_blocking_shares_one_A_load():
+    # U-blocking (the RVV-ceiling lever): U 16-wide i32 accumulators share ONE scalar A[m,k] load
+    # per k. U distinct accumulator registers (Yr0..Yr{U-1}, NOT an illegal array of RVV types).
+    import merlin.baselines.exo_kernels.igemm as ig
+    p = str(ig.build_igemm(1, 4))               # U=4
+    assert p.count("rvv256_vwmacc_vx") == 4     # 4 tiles -> 4 vwmaccs in the k-body
+    assert "Yr0" in p and "Yr3" in p            # 4 distinct accumulator registers (not an array)
+    # all vwmaccs read the same A element X[m, k] — one CSE'd scalar load feeds the U macs.
+    assert "X[m:1 + m, k]" in p and "Yr4" not in p
 
 
 def test_glue_ops_lower_to_rvv():

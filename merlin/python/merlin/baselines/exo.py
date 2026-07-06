@@ -167,21 +167,22 @@ def _safetensors_offsets(weights: Path) -> tuple[int, dict]:
     return 8 + n, hdr
 
 
-def compile_exo_igemm(out_dir: Path, ku: int = 1) -> Path:
-    """Lower the int8 EXO GEMM (vwmacc) to C via exocc, unrolling the k-reduction by ``ku``.
+def compile_exo_igemm(out_dir: Path, ku: int = 1, u: int = 1) -> Path:
+    """Lower the int8 EXO GEMM (vwmacc) to C via exocc with the given schedule knobs.
 
-    The emitted C function is always named ``igemm_nt_ref`` (the glue's declared symbol), so the
-    autotuner can swap in any ``ku`` transparently. Returns the generated exo_igemm.c path."""
+    ``u`` = output-register blocking (U 16-wide accumulators sharing one A[m,k] load per k — the RVV
+    ceiling lever); ``ku`` = k-unroll (only meaningful for u=1). The emitted C function is always
+    ``igemm_nt_ref`` (the glue's declared symbol), so the autotuner can swap knobs transparently."""
     out_dir.mkdir(parents=True, exist_ok=True)
     exocc = _exocc()
     if exocc is None:
         raise RuntimeError("EXO venv/exocc missing")
     lib = out_dir / "exo_igemm_lib.py"
     # build_igemm schedules the proc named 'igemm_nt_ref' (scheduling preserves the name), so the
-    # emitted C function is 'igemm_nt_ref' for any ku — the glue's declared symbol.
+    # emitted C function is 'igemm_nt_ref' for any (ku,u) — the glue's declared symbol.
     lib.write_text("from __future__ import annotations\n"
                    "from merlin.baselines.exo_kernels.igemm import build_igemm\n"
-                   f"igemm_nt_ref = build_igemm({int(ku)})\n")
+                   f"igemm_nt_ref = build_igemm({int(ku)}, {int(u)})\n")
     env = dict(os.environ, PYTHONPATH=str(repo_root() / "merlin/python"))
     r = subprocess.run([str(exocc), "-o", str(out_dir), "-p", str(repo_root() / "merlin/python"),
                         "-s", "exo_igemm", str(lib)],
@@ -304,12 +305,12 @@ def emit_weights_header(bundle_root: Path, out_dir: Path, variant: str = "fp32")
 
 
 def build_glue_binary(bundle_root: Path, work: Path, variant: str = "fp32",
-                      ku: int = 1) -> tuple[Path, list[str]]:
+                      ku: int = 1, u: int = 1) -> tuple[Path, list[str]]:
     """Compile the EXO GEMM + C glue into a K1 rv64gcv ELF. Returns (elf, march_flags).
 
     fp32 -> the f32 vfmacc GEMM (gemm.py) + llama_glue.c. int8 -> the vwmacc widening GEMM
-    (igemm.py, k-unrolled by ``ku``) + llama_glue_int8.c. Raises with a specific reason if the
-    capture is not a runnable llama decoder (surfaced by the caller as a not_built gap)."""
+    (igemm.py; output-register-blocked by ``u``, k-unrolled by ``ku``) + llama_glue_int8.c. Raises
+    with a specific reason if the capture is not a runnable llama decoder (a not_built gap)."""
     work.mkdir(parents=True, exist_ok=True)
     cc = k1.toolchain_cc()
     if cc is None:
@@ -319,7 +320,7 @@ def build_glue_binary(bundle_root: Path, work: Path, variant: str = "fp32",
     rvv_audit.enforce_rvv_march(MARCH)
     extra_c: list[str] = []
     if variant == "int8":
-        kernel_c = compile_exo_igemm(work, ku)
+        kernel_c = compile_exo_igemm(work, ku, u)
         extra_c = [str(compile_glue_ops(work))]   # residual-add + ewise-mul RVV kernels
         glue_c = _exo_dir() / "llama_glue_int8.c"
         elf = work / "exo_llama_int8_k1"
@@ -338,40 +339,43 @@ def build_glue_binary(bundle_root: Path, work: Path, variant: str = "fp32",
     return elf, flags
 
 
-# Bounded k-unroll search space for the int8 vwmacc GEMM autotune (VLEN=256). Small so the shared
-# board is not hogged: 3 candidates, one quick micro-bench run each under the caller's board_lock.
-IGEMM_KU_CANDIDATES: tuple[int, ...] = (1, 4, 8)
+# Bounded output-register-blocking (U) search for the int8 vwmacc GEMM autotune (VLEN=256). U is
+# the RVV-ceiling lever: U 16-wide i32 accumulators share one scalar A[m,k] load per k. Candidates
+# kept small so the shared K1 isn't hogged (one quick micro-bench run each under board_lock). All U
+# here divide N/16 for every Linear (smallest N=256 -> N/16=16, divisible by 1,2,4,8).
+IGEMM_U_CANDIDATES: tuple[int, ...] = (1, 2, 4, 8)
+IGEMM_KU_CANDIDATES: tuple[int, ...] = IGEMM_U_CANDIDATES  # back-comat alias (tests/history)
 
 
 def autotune_igemm_ku(work: Path, *, shape=(8, 4096, 2048),
-                      candidates=IGEMM_KU_CANDIDATES) -> tuple[int, dict[int, int]]:
-    """Bounded on-board search for the best k-unroll of the int8 vwmacc GEMM.
+                      candidates=IGEMM_U_CANDIDATES) -> tuple[int, dict[int, int]]:
+    """Bounded on-board search for the best output-register-blocking ``U`` of the int8 vwmacc GEMM.
 
-    For each ku candidate: exocc -> C, cross-compile a standalone micro-bench (igemm_bench.c) for
-    the representative ``shape``, run it once on the board, parse BENCH_TICKS. Returns
-    (best_ku, {ku: ticks}). MUST be called inside a ``k1_exec.board_lock()`` (it runs on-board).
-    Fail-closed: a candidate that won't build/run is skipped; if none run, returns (1, {})."""
+    For each U candidate: build_igemm(1, U) -> exocc C, cross-compile the standalone micro-bench
+    (igemm_bench.c) at the representative ``shape``, run once on the board, parse BENCH_TICKS.
+    Returns (best_U, {U: ticks}). MUST be called inside a ``k1_exec.board_lock()``. Fail-closed: a
+    candidate that won't build/run is skipped; if none run, returns (1, {})."""
     cc = k1.toolchain_cc()
     if cc is None:
         raise RuntimeError("SpacemiT toolchain not found")
     bm, bn, bk = shape
     bench_c = _exo_dir() / "igemm_bench.c"
     ticks: dict[int, int] = {}
-    for ku in candidates:
-        d = work / f"ku{ku}"
+    for u in candidates:
+        d = work / f"u{u}"
         try:
-            kernel_c = compile_exo_igemm(d, ku)
+            kernel_c = compile_exo_igemm(d, 1, u)
             elf = d / "igemm_bench"
             _run([str(cc), "--target=riscv64-unknown-linux-gnu", f"-march={MARCH}", f"-mabi={MABI}",
                   "-O3", "-ffast-math", f"-DBM={bm}", f"-DBN={bn}", f"-DBK={bk}", f"-I{d}",
                   str(bench_c), str(kernel_c), "-lm", "-o", str(elf)] + (["-static"]))
-            remote = k1_exec.push(elf, f"/tmp/igemm_bench_ku{ku}")
+            remote = k1_exec.push(elf, f"/tmp/igemm_bench_u{u}")
             k1_exec.run([f"chmod +x {remote}"], timeout=30)
             proc = k1_exec.run([remote], timeout=300)
             k1_exec.run([f"rm -f {remote}"], timeout=30)
             for line in (proc.stdout + proc.stderr).splitlines():
                 if line.startswith("BENCH_TICKS "):
-                    ticks[ku] = int(line.split()[1])
+                    ticks[u] = int(line.split()[1])
                     break
         except Exception:  # noqa: BLE001 - skip a candidate that won't build/run (fail-closed)
             continue
@@ -481,22 +485,23 @@ def run(model: str = "tiny_llama", variant: str = "fp32", *, autotune: bool = Tr
         return res.validate()
 
     work = repo_root() / "build/baselines/exo/work" / f"{model}_{variant}"
-    # int8: bounded on-board autotune of the vwmacc GEMM k-unroll (needs the board; skipped if
-    # unavailable -> ku=1). Done up front under its own board_lock so the picked ku feeds the build.
-    ku = 1
-    ku_ticks: dict[int, int] = {}
+    # int8: bounded on-board autotune of the vwmacc GEMM output-register-blocking U (the RVV-ceiling
+    # lever). Needs the board; skipped -> U=1. Done up front under its own board_lock so the picked
+    # U feeds the whole-model build.
+    u = 1
+    u_ticks: dict[int, int] = {}
     if variant == "int8" and autotune and k1_exec.board_available():
         try:
             emit_weights_header(b.root, work, variant)  # ensure work dir + header exist first
             with k1_exec.board_lock():
-                ku, ku_ticks = autotune_igemm_ku(work / "autotune")
-            res.notes += (f" | igemm autotune: ku_ticks={ku_ticks} -> best ku={ku}"
-                          if ku_ticks else " | igemm autotune: no candidate ran, ku=1")
+                u, u_ticks = autotune_igemm_ku(work / "autotune")
+            res.notes += (f" | igemm autotune: U_ticks={u_ticks} -> best U={u}"
+                          if u_ticks else " | igemm autotune: no candidate ran, U=1")
         except Exception as e:  # noqa: BLE001
             res.notes += f" | autotune skipped: {str(e)[:80]}"
-            ku = 1
+            u = 1
     try:
-        elf, flags = build_glue_binary(b.root, work, variant, ku=ku)
+        elf, flags = build_glue_binary(b.root, work, variant, u=u)
         res.built = True
     except Exception as e:  # noqa: BLE001
         res.gap_reason = f"build failed: {type(e).__name__}: {str(e)[:300]}"

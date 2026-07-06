@@ -25,6 +25,7 @@
 #include <sys/stat.h>
 #include <pthread.h>
 
+#include <riscv_vector.h>   /* RVV intrinsics for the hand-vectorised quant + transpose+widen */
 #include "exo_igemm.h"      /* void igemm_nt_ref(void*, M, N, K, int32_t* Y, const uint16_t* X, const uint16_t* Wt) */
 #include "exo_glue_ops.h"   /* residual_add_ref / ewise_mul_ref: 8-wide RVV vfadd/vfmul (f32) */
 #include "llama_weights.h"  /* NL,H,NH,NKV,HD,FF,V,S, EPS, WOFF_*, INPUT_IDS[], INV_FREQ[], + int8 tables */
@@ -34,8 +35,8 @@ static inline uint64_t rd_vlenb(void){ uint64_t v; __asm__ volatile("csrr %0, vl
 static uint64_t wall_ns(void){ struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
   return (uint64_t)ts.tv_sec*1000000000ULL + (uint64_t)ts.tv_nsec; }
 
-static uint64_t T_GEMM=0,T_NORM=0,T_ATTN=0,T_ELEM=0,T_QUANT=0;
-static uint64_t C_GEMM=0,C_NORM=0,C_ATTN=0,C_ELEM=0,C_QUANT=0;
+static uint64_t T_GEMM=0,T_NORM=0,T_ATTN=0,T_ELEM=0,T_QUANT=0,T_TRANS=0;
+static uint64_t C_GEMM=0,C_NORM=0,C_ATTN=0,C_ELEM=0,C_QUANT=0,C_TRANS=0;
 
 static const uint8_t *WBLOB;
 static const float  *wf(size_t off){ return (const float  *)(WBLOB+off); }
@@ -44,24 +45,54 @@ static const int8_t *wi(size_t off){ return (const int8_t *)(WBLOB+off); }
 /* scratch: transposed+widened i16 weight [K,N]; quantized i16 activation [S,K]; i32 acc [S,N]. */
 static int16_t *WT16; static int16_t *X16; static int32_t *ACC;
 
+/* Vectorized per-token activation quant: RVV abs-max reduction over the row, then RVV
+ * scale-multiply + f32->i32 convert + narrow to i16 (holds the i8 range). Returns the per-row
+ * scale. #include <riscv_vector.h> comes via exo_igemm.h. */
+static float quant_row_rvv(const float *xr, int16_t *xo, int IN){
+  vfloat32m1_t vmax = __riscv_vfmv_v_f_f32m1(0.0f, __riscv_vsetvlmax_e32m1());
+  for(int i=0;i<IN;){ size_t vl=__riscv_vsetvl_e32m1(IN-i);
+    vfloat32m1_t v=__riscv_vle32_v_f32m1(&xr[i], vl);
+    vfloat32m1_t va=__riscv_vfabs_v_f32m1(v, vl);
+    vmax=__riscv_vfmax_vv_f32m1(vmax, va, vl); i+=vl; }
+  vfloat32m1_t z=__riscv_vfmv_v_f_f32m1(0.0f, __riscv_vsetvlmax_e32m1());
+  float amax=__riscv_vfmv_f_s_f32m1_f32(__riscv_vfredmax_vs_f32m1_f32m1(vmax, z, __riscv_vsetvlmax_e32m1()));
+  float sc = amax>0.0f ? amax/127.0f : 1.0f; float inv=1.0f/sc;
+  for(int i=0;i<IN;){ size_t vl=__riscv_vsetvl_e32m1(IN-i);
+    vfloat32m1_t v=__riscv_vle32_v_f32m1(&xr[i], vl);
+    vfloat32m1_t q=__riscv_vfmul_vf_f32m1(v, inv, vl);
+    vint32m1_t qi=__riscv_vfcvt_x_f_v_i32m1(q, vl);              /* round-to-nearest f32->i32 */
+    vint16mf2_t q16=__riscv_vncvt_x_x_w_i16mf2(qi, vl);         /* narrow i32->i16 (i8 range fits) */
+    __riscv_vse16_v_i16mf2(&xo[i], q16, vl); i+=vl; }
+  return sc;
+}
+
+/* Vectorized weight transpose+widen: i8 W[OUT,IN] -> i16 Wt[IN,OUT]. Read a contiguous 16-wide i8
+ * slab of a weight row (widen i8->i16), strided-store it down a Wt column (stride OUT). The
+ * widening load is RVV; the transpose is inherently a strided scatter (bandwidth-bound). */
+static void transpose_widen_rvv(const int8_t *W8, int16_t *Wt, int OUT, int IN){
+  for(int o=0;o<OUT;o++){ const int8_t *wr=W8+(size_t)o*IN; int16_t *wc=Wt+o;
+    for(int i=0;i<IN;){ size_t vl=__riscv_vsetvl_e8mf2(IN-i);
+      vint8mf2_t v8=__riscv_vle8_v_i8mf2(&wr[i], vl);
+      vint16m1_t v16=__riscv_vwadd_vx_i16m1(v8, 0, vl);          /* widen i8->i16 (sign-extend) */
+      __riscv_vsse16_v_i16m1(&wc[(size_t)i*OUT], (ptrdiff_t)(OUT*(int)sizeof(int16_t)), v16, vl);
+      i+=vl; }
+  }
+}
+
 /* int8 W8A8 Linear via the EXO vwmacc kernel. woff_w8=i8 weight[OUT,IN], woff_s=f32 scale[OUT]. */
 static void linear_i8(float *Y, const float *X, size_t woff_w8, size_t woff_s,
                       int OUT, int IN, int rows){
   const int8_t *W8 = wi(woff_w8);
   const float  *WS = wf(woff_s);
-  /* 1. per-token activation quant -> i16 (holds i8 range) + per-row scale */
-  uint64_t tq=rd_time();
+  /* 1. per-token activation quant -> i16 (RVV: abs-max reduce + scale + convert + narrow). */
+  uint64_t tqa=rd_time();
   static float ASCALE[64];          /* rows <= 64 for these workloads (S=8) */
-  for(int r=0;r<rows;r++){
-    const float *xr=X+(size_t)r*IN; float amax=0.0f;
-    for(int i=0;i<IN;i++){ float a=fabsf(xr[i]); if(a>amax)amax=a; }
-    float sc = amax>0.0f ? amax/127.0f : 1.0f; ASCALE[r]=sc;
-    int16_t *xo=X16+(size_t)r*IN; float inv=1.0f/sc;
-    for(int i=0;i<IN;i++){ int q=(int)lrintf(xr[i]*inv); if(q>127)q=127; if(q<-128)q=-128; xo[i]=(int16_t)q; }
-  }
-  /* 2. transpose + widen weight i8[OUT,IN] -> i16[IN,OUT] */
-  for(int o=0;o<OUT;o++){ const int8_t *wr=W8+(size_t)o*IN; for(int i=0;i<IN;i++) WT16[(size_t)i*OUT+o]=(int16_t)wr[i]; }
-  T_QUANT+=rd_time()-tq; C_QUANT++;
+  for(int r=0;r<rows;r++) ASCALE[r]=quant_row_rvv(X+(size_t)r*IN, X16+(size_t)r*IN, IN);
+  T_QUANT+=rd_time()-tqa; C_QUANT++;
+  /* 2. transpose + widen weight i8[OUT,IN] -> i16[IN,OUT] (RVV widening load + strided store). */
+  uint64_t tqt=rd_time();
+  transpose_widen_rvv(W8, WT16, OUT, IN);
+  T_TRANS+=rd_time()-tqt; C_TRANS++;
   /* 3. EXO RVV int8 GEMM: ACC_i32 = X16 @ WT16 */
   uint64_t t0=rd_time();
   igemm_nt_ref(NULL, rows, OUT, IN, ACC, (const uint16_t*)X16, (const uint16_t*)WT16);
@@ -153,7 +184,9 @@ int main(void){
   printf("MERLIN_REGION name=norm ticks=%llu calls=%llu\n",(unsigned long long)T_NORM,(unsigned long long)C_NORM);
   printf("MERLIN_REGION name=attention ticks=%llu calls=%llu\n",(unsigned long long)T_ATTN,(unsigned long long)C_ATTN);
   printf("MERLIN_REGION name=elementwise ticks=%llu calls=%llu\n",(unsigned long long)T_ELEM,(unsigned long long)C_ELEM);
-  printf("MERLIN_REGION name=other ticks=%llu calls=%llu\n",(unsigned long long)T_QUANT,(unsigned long long)C_QUANT);
+  printf("MERLIN_REGION name=other ticks=%llu calls=%llu\n",(unsigned long long)(T_QUANT+T_TRANS),(unsigned long long)C_QUANT);
+  printf("MERLIN_REGION name=quant ticks=%llu calls=%llu\n",(unsigned long long)T_QUANT,(unsigned long long)C_QUANT);
+  printf("MERLIN_REGION name=transpose ticks=%llu calls=%llu\n",(unsigned long long)T_TRANS,(unsigned long long)C_TRANS);
   printf("DONE\n"); fflush(stdout);
   return 0;
 }
