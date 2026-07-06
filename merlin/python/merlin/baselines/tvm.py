@@ -600,7 +600,11 @@ def run_model(model: str, variant: str = "int8", *, work_root: Path | None = Non
 # riscv64 TVM runtime + tvm_rpc, cross-built with SpacemiT clang (rv64gcv). See tvm-rv64/ build.
 _RV64_RUNTIME_DIR = repo_root() / "build" / "baselines" / "tvm-rv64"
 _BOARD_RPC_DIR = "/root/tvm_rpc"
-_BOARD_RPC_PORT = 9090
+# The board /root rootfs is small (~14 G, often full from other agents' weights); the RPC work dir
+# MUST be on tmpfs (/tmp, ~1.9 G free) or uploads fail with ENOSPC.
+_BOARD_RPC_WORKDIR = "/tmp/tvm_work"
+# Our own port range (9193-9199), distinct from the default 9090/9091 the other agents' servers use.
+_BOARD_RPC_PORT = int(os.environ.get("MERLIN_TVM_RPC_PORT", "9193"))
 
 
 def rv64_runtime_built() -> bool:
@@ -609,8 +613,13 @@ def rv64_runtime_built() -> bool:
             and (_RV64_RUNTIME_DIR / "tvm_rpc").is_file())
 
 
-# m2m-venv driver: deploy the riscv64 runtime + server to the board, connect host->board directly,
-# upload the .so, run the relax VM, time (wall) + gate cos/rel vs the torch reference. Fail-closed.
+# m2m-venv driver: deploy the riscv64 runtime, start a persistent tvm_rpc server on the board,
+# connect host->board directly, upload the .so, run the relax VM, time (wall) + gate cos/rel.
+# Hard-won fixes baked in (see AGENT.md): the C++ tvm_rpc parses ONLY ``--opt=value`` (space form is
+# silently ignored -> defaults); it EXITS on stdin EOF, so the server is launched from the HOST with
+# an ssh whose stdin is a never-closing FIFO (a plain nohup/setsid over ssh dies); the work dir is
+# on tmpfs (board /root is often full); and the relax VM over RPC needs set_input/invoke_stateful/
+# get_outputs (the direct ``vm["main"](*args)`` closure call mis-marshals remote NDArrays). Fail-closed.
 _RPC_RUN_TEMPLATE = r'''
 import json, os, subprocess, sys, time
 import numpy as np
@@ -621,28 +630,40 @@ def emit(**kw):
     with open(os.environ["MERLIN_RPC_STATUS"], "w") as f:
         json.dump(OUT, f, default=str)
 
+fifo = None
+holder = None
+sshsrv = None
 try:
     so = os.environ["MERLIN_RPC_SO"]
     host = os.environ["MERLIN_RPC_HOST"]; port = int(os.environ["MERLIN_RPC_PORT"])
+    port_end = port + 6
     rtdir = os.environ["MERLIN_RPC_RTDIR"]; bdir = os.environ["MERLIN_RPC_BOARDDIR"]
+    wdir = os.environ["MERLIN_RPC_WORKDIR"]
     key = os.environ["MERLIN_RPC_SSH_KEY"]; sshhost = os.environ["MERLIN_RPC_SSH_HOST"]
     ssh = ["ssh", "-i", key, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
            "-o", "ConnectTimeout=10", sshhost]
     scp = ["scp", "-i", key, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no"]
-    # deploy runtime + server (idempotent)
-    subprocess.run(ssh + ["mkdir -p " + bdir], capture_output=True, timeout=60)
+    # deploy runtime + server binary (idempotent) + tmpfs work dir
+    subprocess.run(ssh + ["mkdir -p %s %s" % (bdir, wdir)], capture_output=True, timeout=60)
     for fn in ("libtvm_runtime.so", "tvm_rpc"):
         subprocess.run(scp + [os.path.join(rtdir, fn), sshhost + ":" + bdir + "/" + fn],
                        capture_output=True, timeout=300)
-    # start a keepalive server if not already listening
-    subprocess.run(ssh + [
-        "chmod +x %s/tvm_rpc; printf '#!/bin/sh\\ncd %s\\nwhile true; do env LD_LIBRARY_PATH=%s "
-        "./tvm_rpc server --host 0.0.0.0 --port %d --port-end %d >>%s/server.log 2>&1; sleep 1; "
-        "done\\n' %s %s %s %d %d %s > %s/keepalive.sh; chmod +x %s/keepalive.sh; "
-        "pgrep -f keepalive.sh >/dev/null || setsid %s/keepalive.sh </dev/null >/dev/null 2>&1 &"
-        % (bdir, bdir, bdir, port, port+1, bdir, bdir, bdir, bdir, port, port+1, bdir, bdir, bdir, bdir)],
-        capture_output=True, timeout=60)
-    time.sleep(4)
+    subprocess.run(ssh + ["chmod +x %s/tvm_rpc" % bdir], capture_output=True, timeout=30)
+    # Start the server held open by a never-closing FIFO on this host feeding the ssh stdin, so the
+    # remote server never sees EOF and stays up (foreground under ssh; ssh backgrounded here).
+    fifo = os.path.join(os.environ["MERLIN_RPC_TMP"], "rpc_fifo_%d" % port)
+    try:
+        os.remove(fifo)
+    except OSError:
+        pass
+    os.mkfifo(fifo)
+    holder = subprocess.Popen(["bash", "-c", "sleep 7200 > %s" % fifo])
+    srv_cmd = ("cd %s && LD_LIBRARY_PATH=%s exec ./tvm_rpc server --host=0.0.0.0 --port=%d "
+               "--port-end=%d --work-dir=%s" % (bdir, bdir, port, port_end, wdir))
+    fin = open(fifo, "rb", buffering=0)
+    sshsrv = subprocess.Popen(ssh + [srv_cmd], stdin=fin,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(6)
     import tvm
     from tvm import relax, rpc
     sess = rpc.connect(host, port, session_timeout=120)
@@ -652,10 +673,14 @@ try:
     vm = relax.VirtualMachine(rmod, dev)
     npz = np.load(os.environ["MERLIN_RPC_INPUTS"])
     args = [tvm.nd.array(npz[k], dev) for k in sorted(npz.files)]
-    out = vm["main"](*args)
+    # relax VM over RPC: set_input/invoke_stateful/get_outputs (marshals remote NDArrays correctly).
+    vm.set_input("main", *args)
+    vm.invoke_stateful("main")
+    out = vm.get_outputs("main")
     got = out.numpy() if hasattr(out, "numpy") else np.asarray(out[0].numpy())
     n = 10; t0 = time.time()
-    for _ in range(n): vm["main"](*args)
+    for _ in range(n):
+        vm.set_input("main", *args); vm.invoke_stateful("main"); vm.get_outputs("main")
     wall_ns = int((time.time() - t0) / n * 1e9)
     cos = rel = None
     ref = os.environ.get("MERLIN_RPC_REF", "")
@@ -669,6 +694,25 @@ except Exception as e:
     import traceback
     emit(ok=False, error=str(e)[:300], tb=traceback.format_exc()[-800:])
     sys.exit(1)
+finally:
+    # tear down the server + FIFO holder (be a good board citizen: release between phases)
+    for pr in (sshsrv, holder):
+        try:
+            pr and pr.terminate()
+        except Exception:
+            pass
+    try:
+        subprocess.run(["ssh", "-i", os.environ["MERLIN_RPC_SSH_KEY"], "-o", "BatchMode=yes",
+                        "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10",
+                        os.environ["MERLIN_RPC_SSH_HOST"],
+                        "pkill -f 'tvm_rpc server --host=0.0.0.0 --port=%d' 2>/dev/null || true"
+                        % int(os.environ["MERLIN_RPC_PORT"])], capture_output=True, timeout=30)
+    except Exception:
+        pass
+    try:
+        fifo and os.path.exists(fifo) and os.remove(fifo)
+    except Exception:
+        pass
 '''
 
 
@@ -716,13 +760,10 @@ def _run_on_board(res: BaselineResult, so: Path, b: _bundle.CaptureBundle, work:
     else:
         res.ran = False
         res.gap_reason = res.gap_reason or (
-            "on-board RPC run not completed: " + str(info.get("error", ""))[:200] +
-            " (riscv64 runtime cross-built + tvm_rpc runs on the K1; direct-RPC relax-VM execution "
-            "unstable on this board/network, and board->host is firewalled so the tracker-based "
-            "MetaSchedule RPCRunner for on-device autotuning is unavailable)")
+            "on-board RPC run not completed: " + str(info.get("error", ""))[:220])
 
 
-def _rpc_run_driver(so: Path, b: _bundle.CaptureBundle, work: Path, *, timeout: int = 300) -> tuple[bool, dict]:
+def _rpc_run_driver(so: Path, b: _bundle.CaptureBundle, work: Path, *, timeout: int = 600) -> tuple[bool, dict]:
     """Run the TVM ``.so`` on the K1 via direct RPC, in an m2m-venv subprocess (has ``tvm``).
 
     Manages the board ``tvm_rpc`` server, connects host->board, runs the relax VM, times it (wall),
@@ -751,21 +792,25 @@ def _rpc_run_driver(so: Path, b: _bundle.CaptureBundle, work: Path, *, timeout: 
         "MERLIN_RPC_REF": str(work / "torch_ref.npy"),
         "MERLIN_RPC_RTDIR": str(_RV64_RUNTIME_DIR),
         "MERLIN_RPC_BOARDDIR": _BOARD_RPC_DIR,
+        "MERLIN_RPC_WORKDIR": _BOARD_RPC_WORKDIR,
+        "MERLIN_RPC_TMP": str(work),
         "MERLIN_RPC_SSH_KEY": k1.K1_SSH_KEY,
         "MERLIN_RPC_SSH_HOST": k1.K1_HOST,
         "MERLIN_RPC_STATUS": str(status),
     })
+    timed_out = False
     try:
         subprocess.run([str(m2m), str(driver)], capture_output=True, text=True,
                        timeout=timeout, env=env)
     except subprocess.TimeoutExpired:
-        return False, {"error": "rpc run timed out"}
+        timed_out = True  # the run itself may have SUCCEEDED (status written) before a slow teardown
     if not status.is_file():
-        return False, {"error": "rpc driver wrote no status"}
+        return False, {"error": "rpc run timed out" if timed_out else "rpc driver wrote no status"}
     try:
         info = json.loads(status.read_text())
     except Exception:  # noqa: BLE001
         return False, {"error": "rpc status unparseable"}
+    # A written status with ok=True is authoritative even if the parent timed out during teardown.
     return bool(info.get("ok")), info
 
 

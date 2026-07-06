@@ -80,17 +80,26 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
   pi05/smolvla miss python deps (`tyro`/`mmengine`/`openpi`/`lerobot`); pi05 16 GB (K1 fit gap).
 - **RVV coverage** on the default `relax.build` lowering is ~9–16% (LLVM vectorizes some loops for
   the `+v,+zvl256b` target). Higher RVV needs **MetaSchedule autotuning** — but see the network note.
-- **riscv64 runtime IS cross-built** (`build/baselines/tvm-rv64/`, SpacemiT clang rv64gcv, via
-  `riscv64-toolchain.cmake`; `ninja tvm_runtime tvm_rpc`). `libtvm_runtime.so` + `tvm_rpc` are real
-  RISC-V ELFs; `tvm_rpc` **runs on the K1** and host→board direct connect is confirmed. `_run_on_board`
-  deploys them + runs the relax VM over direct RPC in an m2m-venv subprocess (`_rpc_run_driver`).
-- **On-board execution + MetaSchedule tuning are BLOCKED by the board/network, honestly recorded:**
-  (1) the board's firewall blocks the **board→host** tracker callback (`No route to host` to the
-  host public IP), so the tracker-based MetaSchedule `RPCRunner` (on-device autotuning) is
-  unavailable on this net; (2) the C++ `tvm_rpc` direct-server socket lifecycle is unstable across
-  sessions (`Connect ... failed` after the first session), so the direct-RPC relax-VM run is
-  flaky. Result is fail-closed `not_run` with these specific reasons — never a fabricated timing.
-  Weights > ~3 GB (pi05) are a labeled fit gap.
+- **On-board execution WORKS** (`build/baselines/tvm-rv64/`: riscv64 runtime + `tvm_rpc` cross-built
+  with SpacemiT clang rv64gcv via `riscv64-toolchain.cmake`, `ninja tvm_runtime tvm_rpc`).
+  `_run_on_board`→`_rpc_run_driver` (m2m-venv subprocess) deploys them, starts a persistent server,
+  connects host→board directly, runs the relax VM, wall-times, gates cos/rel. **small_llama int8
+  ran on the K1: ~61 ms, cos 1.0.** Four non-obvious fixes were required (all in `_RPC_RUN_TEMPLATE`):
+    1. **`tvm_rpc` parses only `--opt=value`** (space form is silently ignored → defaults); pass
+       `--port=… --port-end=… --work-dir=…` with `=`.
+    2. **The server EXITS on stdin EOF** — a plain `nohup`/`setsid` over ssh dies. Launch it from the
+       host via an ssh whose stdin is a never-closing **FIFO**, so the remote server never sees EOF.
+    3. **Work dir on tmpfs** (`/tmp/tvm_work`) — the board `/root` (~14 G) is often 100% full from
+       other agents' weights, so uploads ENOSPC; `/tmp` (1.9 G tmpfs) has room.
+    4. **relax VM over RPC needs `set_input`/`invoke_stateful`/`get_outputs`** — the direct
+       `vm["main"](*args)` closure call mis-marshals remote NDArrays (`ArrayHandle` vs `Object`).
+  Use our own port range (9193-9199); the other 4 agents' servers hold 9090/9091.
+- **MetaSchedule on-device tuning remains blocked:** the board firewall blocks the **board→host**
+  tracker callback (`No route to host` to the host IP), and the board python has no TVM for a
+  board-side tracker — so the tracker-based `RPCRunner` can't measure on-device. An **ssh reverse
+  tunnel** (`ssh -R 9190:localhost:9190`) is the intended workaround (host tracker reachable at the
+  board's localhost) — not yet landed. So RVV stays at the untuned ~9–16%; higher needs this tunnel.
+  Fail-closed `not_run` when the on-board run doesn't complete; weights > ~3 GB (pi05) are a fit gap.
 
 ## ExecuTorch + XNNPACK arm build (`executorch.py`)
 
