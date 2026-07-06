@@ -13,6 +13,7 @@
 [submodule "third_party/baselines/tvm"]
 	path = third_party/baselines/tvm
 	url = https://github.com/apache/tvm
+	branch = v0.19.0
 [submodule "third_party/baselines/executorch"]
 	path = third_party/baselines/executorch
 	url = https://github.com/pytorch/executorch
