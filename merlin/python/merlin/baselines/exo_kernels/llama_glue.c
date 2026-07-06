@@ -150,12 +150,17 @@ int main(void){
 
   uint64_t e1=rd_time(), w1=wall_ns();
 
-  /* emit first min(V, 4096) logits of position 0..S-1 as float bits (correctness). Dump the full
-   * S*V so the runner cos/rel-gates against golden.npy (1,S,V). */
+  /* Write the full S*V logits to a binary file (MERLIN_OUTFILE) — the runner scp's it back and
+   * cos/rel-gates vs golden.npy. Streaming ~2MB of ASCII over a contended SSH link truncates when
+   * the connection drops; a small binary file is robust. Print OUTFILE + OUT (count) markers. */
   int total=S*V;
-  printf("OUT %d", total);
-  for(int i=0;i<total;i++){ uint32_t b; memcpy(&b,&logits[i],4); printf(" %u",(unsigned)b); }
-  printf("\n");
+  const char *ofp=getenv("MERLIN_OUTFILE");
+  if(ofp){ FILE *of=fopen(ofp,"wb"); if(of){ fwrite(logits,sizeof(float),(size_t)total,of); fclose(of);
+    printf("OUTFILE %s %d\n", ofp, total); } }
+  else { /* fallback: stream (small V only) */
+    printf("OUT %d", total);
+    for(int i=0;i<total;i++){ uint32_t b; memcpy(&b,&logits[i],4); printf(" %u",(unsigned)b); }
+    printf("\n"); }
 
   printf("MERLIN_E2E ticks=%llu wall_ns=%llu\n",(unsigned long long)(e1-e0),(unsigned long long)(w1-w0));
   printf("MERLIN_REGION name=gemm ticks=%llu calls=%llu\n",(unsigned long long)T_GEMM,(unsigned long long)C_GEMM);
