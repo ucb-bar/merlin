@@ -129,9 +129,17 @@ def test_parse_profile_markers():
 def test_bundle_resolve_paths():
     b = bundle.resolve("bitvla", "int8")
     assert b.model == "bitvla" and b.variant == "int8"
-    assert b.root.name == "bitvla_int8_consistent"
+    # prefers the full-fidelity recapture when present, else the legacy _consistent bundle
+    assert b.root.name in ("bitvla_int8_full", "bitvla_int8_consistent")
     assert b.mlir.name == "model.mlir" and b.golden.name == "golden.npy"
     assert b.tolerance == (0.999, 5e-3)
+
+
+def test_k1_runnable_and_full_env():
+    assert "tiny_llama" in bundle.K1_RUNNABLE and "openvla" not in bundle.K1_RUNNABLE
+    assert bundle.K1_RUNNABLE.isdisjoint(bundle.K1_RAM_INFEASIBLE)
+    assert bundle.full_env("bitvla") == {"BITVLA_LLM_LAYERS": "30"}
+    assert bundle.full_env("tiny_llama") == {}
 
 
 def test_bundle_default_tolerance():
