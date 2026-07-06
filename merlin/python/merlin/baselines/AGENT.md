@@ -233,10 +233,19 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
   `examples/models/llama/source_transformation/quantize.py` **`WeightOnlyInt8QuantHandler`**:
   weight-only int8 per-channel by **eager MODULE SWAP** (every `nn.Linear` → `WeightOnlyInt8Linear`).
   Because it is a module swap it NEVER runs `transform_for_annotation`, so it **fully sidesteps the
-  index corruption** — **all layers quantize + the whole model exports**. tiny_llama (full 22 layers
-  + lm_head, 155 Linears): whole-model int8 exports, **cos=1.0000 (weight-only int8 is near-lossless
-  vs fp32)**, delegated ~23/216 nodes to XNNPACK qs8 RVV. Gate 0.99/0.05 (cos is the MEASURED
-  int8-vs-fp32 cosine). The fp32 glue (embedding/RoPE/mask/softmax/RMSNorm) stays fp32.
-- **`int8_subgraph=True` is the FALLBACK** (only if whole-model won't export): quantizes the decoder
-  layer's linear set (q/k/v/o + gate/up/down) on a seeded hidden state, 2 qs8 delegates, cos 0.99987,
-  13.7 ms — superseded by the whole-model path for Llama-family models.
+  index corruption** — **all layers quantize + the whole model exports**. tiny_llama full 22 layers
+  + lm_head (155 Linears): whole-model int8 **exports cleanly, cos=1.0000 host** (weight-only int8 is
+  near-lossless), **delegated 203/1796 nodes** to XNNPACK qs8 RVV. This is the Phase-2 breakthrough:
+  whole-model int8, not just the decoder-linear subgraph.
+- **On-board reality (whole-model int8, honest):** the ExecuTorch memory planner's activation buffer
+  scales with depth — L2→730 MB, L8→1.78 GB, **full 22-layer→4.25 GB** (`std::bad_alloc` on the
+  3.8 GB board) → the full model is a **RAM gap** (`K1_RAM` labeled), exported+audited off-board. A
+  fits-on-board whole-model int8 config RUNS end-to-end on the K1: **tiny_llama 2-layer whole-model
+  int8 — PASS, cos=0.99958 (vs fp32 golden), rel=0.029, argmax 7/8, 257 s** (delegated 23/216). It
+  is SLOW because the fp32 glue (embedding, lm_head over 32 k vocab, RMSNorm, softmax, RoPE) runs on
+  ExecuTorch's PORTABLE SCALAR kernels — the delegated int8 GEMMs are RVV but are a minority of the
+  wall time. So whole-model int8 is proven exportable + on-board-runnable; latency is dominated by
+  the non-delegated fp32 scalar glue (the arm's structural "most scalar fallback" outcome).
+- **`int8_subgraph=True` is the FALLBACK** (decoder-linear set only, seeded hidden state): 2 qs8
+  delegates, cos 0.99987, **13.7 ms** — the FAST int8-RVV proof (no fp32 embedding/lm_head glue),
+  complementary to the slow-but-complete whole-model path.

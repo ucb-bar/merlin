@@ -145,15 +145,22 @@ def main() -> int:
                          "--compute-golden (gate = eager-vs-ExecuTorch for THIS config).")
     ap.add_argument("--m2m-root", default="/scratch/agustin/projects/model2MLIR",
                     help="model2MLIR repo root (added to sys.path for its deps)")
+    ap.add_argument("--int8-whole-model", action="store_true",
+                    help="WHOLE-MODEL int8 via ExecuTorch's OFFICIAL llama recipe: source-transform "
+                         "weight-only int8 per-channel (WeightOnlyInt8QuantHandler — an eager "
+                         "MODULE SWAP, replacing every nn.Linear with a WeightOnlyInt8Linear). "
+                         "Because it is a module swap it NEVER runs PT2E's transform_for_annotation "
+                         "pass, so it SIDESTEPS the cumsum->index.Tensor dtype corruption that "
+                         "blocks generic full-model PT2E on HF Llama — all layers quantize + export "
+                         "cleanly. Forces --compute-golden (int8-vs-fp32 gate).")
     ap.add_argument("--int8-subgraph", action="store_true",
-                    help="int8 fallback path: the FULL-model PT2E quantizer trips on HF Llama's "
-                         "position/causal-mask integer-index ops (observer corrupts an index "
-                         "dtype at calibration; upstream aot_riscv.py documents this). Instead, "
-                         "quantize the model's REAL linear-heavy subgraph (layer-0 SwiGLU MLP: "
-                         "gate/up/down Linears + SiLU, actual weights) W8A8 on a seeded "
-                         "hidden-state input, keeping embeddings/attention/mask fp32 and OUT of "
-                         "quantization. Forces --quantize + --compute-golden. Honestly labeled.")
+                    help="int8 FALLBACK path (only if whole-model won't export): quantize the REAL "
+                         "decoder-layer linear subgraph (q/k/v/o + gate/up/down) W8A8 on a seeded "
+                         "hidden-state input, embeddings/mask fp32. Honestly labeled.")
     args = ap.parse_args()
+    if args.int8_whole_model:
+        args.quantize = True
+        args.compute_golden = True
     if args.int8_subgraph:
         args.quantize = True
         args.compute_golden = True
@@ -182,9 +189,10 @@ def main() -> int:
     subgraph_note = ""
     if args.int8_subgraph:
         # Replace the whole model with its REAL linear-heavy subgraph (a genuine slice, actual
-        # weights) — the only int8-exportable part of an HF Llama for this PT2E quantizer.
+        # weights) — the FALLBACK if whole-model int8 won't export.
         model, captured, keys, subgraph_note = _linear_subgraph(model)
 
+    # Golden is the FP32 reference — compute it BEFORE any int8 module swap.
     if args.compute_golden:
         with torch.no_grad():
             eager = model(*captured)
@@ -194,11 +202,27 @@ def main() -> int:
     else:
         golden_np = np.load(args.golden_npy)
 
-    # 2. Optional PT2E W8A8 quantization (int8 path). Quantize the exported graph with the XNNPACK
-    #    symmetric config, calibrate on the captured input, convert. This is ExecuTorch's OWN int8
-    #    (distinct from merlin's int8 datapath), so it exercises XNNPACK's qs8/qd8 RVV ukernels.
     quantized = False
-    if args.quantize:
+
+    # 2a. WHOLE-MODEL int8 via ExecuTorch's OFFICIAL llama recipe (source-transform weight-only int8
+    #     per-channel). This is an eager MODULE SWAP (every nn.Linear -> WeightOnlyInt8Linear), so it
+    #     never runs PT2E's transform_for_annotation pass and SIDESTEPS the cumsum->index.Tensor
+    #     corruption that blocks generic full-model PT2E on HF Llama. ALL layers quantize + export.
+    if args.int8_whole_model:
+        from executorch.examples.models.llama.source_transformation.quantize import (
+            WeightOnlyInt8QuantHandler,
+        )
+
+        n_lin = sum(1 for _ in model.modules() if isinstance(_, torch.nn.Linear))
+        model = WeightOnlyInt8QuantHandler(model).quantized_model().eval()
+        quantized = True
+        subgraph_note = (subgraph_note + " " if subgraph_note else "") + (
+            f"int8-whole-model=official-llama-recipe(WeightOnlyInt8QuantHandler, weight-only int8 "
+            f"per-channel, ALL {n_lin} nn.Linear swapped -> WeightOnlyInt8Linear); embeddings/mask/"
+            "softmax/norm fp32; module-swap sidesteps PT2E transform_for_annotation index-corruption")
+
+    # 2b. PT2E W8A8 quantization (int8 subgraph path). Only when NOT whole-model int8.
+    if args.quantize and not args.int8_whole_model:
         try:
             from executorch.backends.xnnpack.quantizer.xnnpack_quantizer import (
                 XNNPACKQuantizer, get_symmetric_quantization_config)
@@ -277,6 +301,7 @@ def main() -> int:
         "xnnpack": not args.no_xnnpack,
         "quantized": quantized,
         "int8_subgraph": bool(args.int8_subgraph),
+        "int8_whole_model": bool(args.int8_whole_model),
         "subgraph_note": subgraph_note,
         "delegated_nodes": delegated,
         "total_call_nodes": total_calls,
