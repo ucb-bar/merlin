@@ -114,15 +114,23 @@ def classify_disasm(text: str, *, source: str = "<text>") -> AuditReport:
 
 
 def _objdump() -> str | None:
-    """Find an objdump that can disassemble rv64 (prefer the SpacemiT/riscv cross tool)."""
+    """Find an objdump that decodes rv64gcv CORRECTLY, preferring ``llvm-objdump``.
+
+    Hard-won lesson (confirmed independently by the EXO and ExecuTorch arms): the SpacemiT / GNU
+    ``riscv64-unknown-linux-gnu-objdump`` silently MIS-DECODES rv64gcv in bulk ``-d`` mode — it emits
+    bare ``.insn`` words (or only a handful of vector mnemonics) for a vector-heavy binary, which
+    would fabricate a false ~0% RVV coverage. ``llvm-objdump`` decodes the V extension correctly, so
+    we prefer it everywhere (toolchain bin first, then PATH). GNU objdump remains a last resort.
+    """
     from merlin.rvvgen import k1
     root = k1._toolchain_root()
+    cands = ("llvm-objdump", "riscv64-unknown-linux-gnu-objdump", "objdump")
     if root:
-        for cand in ("riscv64-unknown-linux-gnu-objdump", "llvm-objdump", "objdump"):
+        for cand in cands:
             p = root / "bin" / cand
             if p.is_file():
                 return str(p)
-    for cand in ("riscv64-unknown-linux-gnu-objdump", "llvm-objdump", "objdump"):
+    for cand in cands:
         if shutil.which(cand):
             return shutil.which(cand)
     return None
