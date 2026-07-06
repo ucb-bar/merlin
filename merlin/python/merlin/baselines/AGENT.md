@@ -43,28 +43,37 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
 
 ## TVM arm build (`tvm.py`)
 
-- **Build TVM against LLVM 18, NOT LLVM 23.** The repo's `third_party/llvm-install` (LLVM 23) does
-  NOT compile this pinned TVM (`ff937ff`): its `src/target/llvm/*` uses APIs removed in LLVM 23
-  (`TargetOptions::NoInfsFPMath`, `Intrinsic::matchIntrinsicSignature`, the ORC `ObjectLinkingLayer`
-  ctor). The system `/usr/bin/llvm-config-18` (18.1.3, RISC-V + `+v` present) builds it clean.
-  Config: `build/baselines/tvm/config.cmake` sets `USE_LLVM=/usr/bin/llvm-config-18`, `USE_RPC=ON`;
-  `cmake -G Ninja -C config.cmake <tvm-src>` then `ninja` → libs land in `build/baselines/tvm/lib/`.
-- **`tvm_ffi` must be pip-installed** (its `core` cython extension can't run from a source dir). It
-  is installed editable into the model2MLIR venv: `uv pip install --no-build-isolation -e
-  third_party/baselines/tvm/3rdparty/tvm-ffi` (needs cython + scikit-build-core).
+- **Pinned to TVM v0.19.0** (submodule gitlink `c4dc0c2`, tag pinned in `.gitmodules`
+  `branch = v0.19.0`). Re-pinned FROM the `main` snapshot `ff937ff`, which (a) wouldn't compile
+  against LLVM 23, (b) shipped no MetaSchedule, and (c) had a bool-op LLVM-codegen bug. v0.19.0 has
+  MetaSchedule + AutoTVM + the classic `tvm.contrib.cc`, and its codegen lowers our graphs.
+- **Build against system LLVM 18** (`/usr/bin/llvm-config-18`, 18.1.3, RISC-V + `+v`) — NOT the
+  repo's LLVM 23. `build/baselines/tvm/config.cmake` sets `USE_LLVM=/usr/bin/llvm-config-18`,
+  `USE_RPC=ON`; `cmake -G Ninja -C config.cmake <tvm-src>` then `ninja`. v0.19.0 puts the libs in
+  the **build root** (`build/baselines/tvm/libtvm.so`), not a `lib/` subdir — `tvm_lib_dir()` handles
+  both. v0.19.0 needs NO separate tvm_ffi cython install (self-contained `_ffi`).
 - **Runs in the model2MLIR venv** (`$MERLIN_MODEL2MLIR/.venv`, torch 2.x + transformers) — the main
   `.venv` has no torch and TVM's Relax torch frontend needs it. `tvm.py` drives a subprocess there
-  with `PYTHONPATH=<tvm>/python` and `LD_LIBRARY_PATH=<lib>` (tvm_ffi's libinfo searches
-  `LD_LIBRARY_PATH`, not `TVM_LIBRARY_PATH`).
-- **Target is a JSON dict, not a CLI string** (this TVM dropped `"llvm -mcpu=..."`); `mattr` is a
-  list. See `TVM_TARGET_CONFIG` (`+v,+zvl256b` for the K1's 256b VLEN). `cc` moved to
-  `tvm.support.cc` (was `tvm.contrib.cc`).
-- **Known blocker (honest gap):** this pinned TVM snapshot can't lower the LLM/VLA graphs — the LLVM
-  codegen asserts on non-int/non-float (bool) binary ops (`CreateAdd`: `MatchesCode(kDLFloat)`), and
-  `small_llama` hits a Python-side `'PrimType' is not iterable`. A trivial float MLP compiles +
-  cross-links + RVV-audits fine (harness proven), so these are TVM-snapshot defects recorded as
-  `not_built` with specific reasons, not harness bugs. Coverage on unscheduled TVM kernels is low
-  (no MetaSchedule tensorize in this TVM; TIR→LLVM emits scalar loops) — the audit records that.
+  with `PYTHONPATH=<tvm>/python` + `LD_LIBRARY_PATH=<libdir>`. That venv needs a few TVM runtime
+  deps: `uv pip install decorator tornado cloudpickle attrs` (numpy/ml_dtypes/psutil already there).
+- **Target = JSON dict** `TVM_TARGET_CONFIG` (`+v,+zvl256b` for the K1's 256b VLEN, `num-cores=8`).
+- **int8-first** (`variant="int8"` default): reproduces the capture's torchao quant (`_quant_for`),
+  gates vs `golden_w8a8.npy` when present (`golden_path`). Non-persistent buffers are re-registered
+  persistent before export (torch 2.10 lifts rope `inv_freq` into constants typed BUFFER, which the
+  v0.19.0 frontend looks up only in `state_dict` → KeyError). A compat shim aliases missing op
+  overloads (`arange.default`, `mm.default`, …) + adds comparison ops.
+- **Known blocker (honest gap — the dominant result today):** TVM v0.19.0's Relax **exported-program
+  torch frontend is materially incomplete for HF transformer/VLA graphs**. Even after the compat
+  shim, each model hits an unimplemented op: fp32 → `full.default` (tiny_llama), `pow.Scalar`
+  (small_llama), `convolution.default` (openvla), `squeeze.dims` (rdt2), `add.Scalar` (rdt); int8 →
+  torchao's quantized tensor subclass is unsupported (`input_type ...`) for the 5 loadable models;
+  bitvla/molmoact fail in their loader (`'BitNet'` / `'default'`); groot/xr0/pi05/smolvla lack their
+  Python deps (`tyro`/`mmengine`/`openpi`/`lerobot`) in the m2m venv; pi05 is also 16 GB (K1 fit gap).
+  A control float MLP compiles → cross-links → RVV-audits as a real riscv64 ELF (harness proven), so
+  these are frontend/loader gaps recorded as `not_built` with specific reasons, NOT harness bugs.
+- **RVV coverage** on the default `relax.build` lowering is ~0 (LLVM does not auto-RVV-vectorize the
+  scalar TIR loops; no dlight-cpu in v0.19.0). Real RVV needs **MetaSchedule autotuning**
+  (`MERLIN_TVM_TUNE=1` + a K1 RPC runner) — opt-in because on-device tuning queues on the one board.
 
 ## ExecuTorch + XNNPACK arm build (`executorch.py`)
 

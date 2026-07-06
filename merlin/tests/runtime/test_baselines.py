@@ -166,6 +166,19 @@ def test_tvm_target_enables_rvv():
     assert "+v" in tvm_arm.TVM_TARGET and "riscv64" in tvm_arm.TVM_TARGET
 
 
+def test_tvm_golden_prefers_w8a8(tmp_path):
+    # int8-first: when a W8A8 golden is present it must be the correctness reference, else golden.npy.
+    from merlin.baselines import bundle as _bundle
+    from merlin.baselines import tvm as tvm_arm
+    root = tmp_path / "m_int8_consistent"
+    root.mkdir()
+    (root / "golden.npy").write_bytes(b"\x00")
+    b = _bundle.CaptureBundle(model="m", variant="int8", root=root)
+    assert tvm_arm.golden_path(b).name == "golden.npy"      # only fp golden present
+    (root / "golden_w8a8.npy").write_bytes(b"\x00")
+    assert tvm_arm.golden_path(b).name == "golden_w8a8.npy"  # W8A8 golden preferred once present
+
+
 def test_tvm_region_of_symbol():
     from merlin.baselines import tvm as tvm_arm
     assert tvm_arm._region_of_symbol("tvmgen_default_fused_matmul_add") == "gemm"

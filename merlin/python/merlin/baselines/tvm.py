@@ -8,38 +8,49 @@ So this arm starts from the same seeded model instance the capture bundle was bu
 target, and emits a deployable module. The emitted kernel object is RVV-audited exactly like every
 other arm, so "TVM used RVV" is *proven by disassembly*, never assumed.
 
-Pipeline (per model, fp32 first)::
+**Pinned TVM = v0.19.0** (``third_party/baselines/tvm`` @ tag ``v0.19.0``), built against the
+system **LLVM 18** (``/usr/bin/llvm-config-18``). This is a deliberate re-pin from the earlier
+``main`` snapshot, which (a) would not compile against LLVM 23, (b) shipped no MetaSchedule, and
+(c) had a bool-op LLVM-codegen bug that blocked every model. v0.19.0 has MetaSchedule + AutoTVM +
+the classic ``tvm.contrib.cc`` cross-compiler and lowers our torch-exported graphs.
 
-    seeded torch model (== capture recipe: manual_seed(0), M2M_LLAMA_LAYERS, zero-param perturb)
+Pipeline (per model; **int8 variant first**, then fp32)::
+
+    seeded torch model (== capture recipe: manual_seed(0), M2M_LLAMA_LAYERS, zero-param perturb,
+                        per-cfg torchao int8 quant for the int8 variant)
       -> torch.export.export                                              [m2m venv: torch 2.x]
       -> tvm.relax.frontend.torch.from_exported_program                   [Relax IRModule]
-      -> relax.build(target="llvm -mtriple=riscv64-... -mattr=+v,...")     [RVV LLVM codegen]
+      -> [optional] meta_schedule.tune_relax over a K1 RPC runner          [RVV autotune, opt-in]
+      -> relax.build / compile_relax(db) for rv64gcv                        [RVV LLVM codegen]
       -> mod.export_library(fcompile=<SpacemiT clang cross>)  -> model_tvm.so  [the RVV artifact]
       -> rvv_audit.audit_binary(.so)   : mechanical RVV%/scalar-fallback honesty
-      -> host reference: TVM VM on x86 vs golden.npy (lowering correctness, board-independent)
-      -> on-board run (board_lock): TVM RPC to a riscv64 tvm_rpc server -> E2E timing + cos/rel
-                                    [fail-closed if the board / runtime cross-build is unavailable]
+      -> host reference: TVM VM on x86 vs the int8/fp32 golden (board-independent lowering gate)
+      -> on-board run (board_lock): the module .so + a C harness cross-linked with SpacemiT clang,
+                                    scp'd + run -> E2E rdtime/wall + OUT-vs-golden cos/rel
+                                    [fail-closed if the board is down]
 
-Because torch + the freshly-built TVM Python package must co-run (the main ``.venv`` has no torch),
-the import+compile step executes as a **subprocess in the model2MLIR venv** (``$MERLIN_MODEL2MLIR
-/.venv``) with ``TVM_LIBRARY_PATH`` + the TVM/tvm_ffi python paths set. This module writes a small
-driver script, runs it there, and reads back a JSON status + the emitted ``.so``.
+Because torch + TVM's Python package must co-run (the main ``.venv`` has no torch), the
+import+compile step executes as a **subprocess in the model2MLIR venv** (``$MERLIN_MODEL2MLIR
+/.venv``, torch 2.x + transformers) with ``PYTHONPATH=<tvm>/python`` and
+``LD_LIBRARY_PATH=<lib>`` set. This module writes a driver script, runs it there, and reads back a
+JSON status + the emitted ``.so``.
 
-TVM tuning note: this pinned TVM (post-FFI-refactor, Relax-only) does NOT ship the standalone
-``meta_schedule`` / ``auto_scheduler`` / AutoTVM Python packages the plan referenced — tuning is via
-the Relax ``"zero"`` pipeline + dlight CPU schedule rules (``tvm.s_tir.dlight``). We record that as
-an honest note (``notes``): the numbers are default-schedule RVV, not autotuned. That is a labeled
-limitation, never a hidden one.
+RVV coverage note (honest): TVM v0.19.0's *default* ``relax.build`` lowering emits largely scalar
+CPU loops for an rv64gcv target (LLVM does not auto-RVV-vectorize them; there is no dlight-cpu
+schedule in this release). Real RVV coverage comes from **MetaSchedule autotuning** (``tune_relax``),
+which must measure on the device — an on-K1 RPC runner. That is expensive (single shared board,
+queued across agents), so it is **opt-in** via ``MERLIN_TVM_TUNE=1`` (+ ``MERLIN_TVM_RPC_*``); the
+default build ships correct-but-mostly-scalar code and the RVV audit records exactly that
+(``rvv_coverage_overall`` + per-symbol ``scalar_compute``) — never averaged away.
 
 Honesty (``not_run_is_not_pass``): a model that will not export/import/compile is a ``not_built``
-result with a specific ``gap_reason``; a built-but-unrun model (board down / runtime cross-build
-absent) is ``not_run`` with a reason. We NEVER fabricate a cos/rel or a cycle count.
+result with a specific ``gap_reason``; a built-but-unrun model (board down / won't fit K1 RAM) is
+``not_run`` with a reason. We NEVER fabricate a cos/rel or a cycle count.
 """
 from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,22 +68,18 @@ FRAMEWORK = "tvm"
 _BUILD_ROOT = repo_root() / "build" / "baselines" / "tvm"
 _TVM_SRC = repo_root() / "third_party" / "baselines" / "tvm"
 
-# The RVV target (plan-locked): LLVM riscv64 with the vector extension enabled. -mcpu is a generic
-# rv64 so codegen is not silently gated behind a narrower CPU model. VLEN comes from the board
-# (256b / vlenb=32); TVM's LLVM backend sizes vectors via LMUL/vscale at run time. This TVM
-# (post-FFI-refactor) DROPPED the CLI target-string form, so the target is a JSON dict; the string
-# below is kept only for the RVV-march honesty check + display (never passed to Target()).
-# ``+zvl256b`` pins the vector register width to the K1's VLEN (256b / vlenb=32) so LLVM's RVV
-# codegen sizes vscale to the real silicon. NOTE (honest): this stripped TVM has no MetaSchedule
-# tensorize to vectorize TIR at the schedule level, and its TIR->LLVM path emits scalar loops that
-# LLVM does not auto-RVV-vectorize by default — so out-of-the-box coverage on unscheduled kernels
-# is low. The RVV audit records that faithfully (rvv_coverage_overall + per-symbol scalar_compute).
+# The RVV target: LLVM riscv64 with the vector extension enabled. ``+zvl256b`` pins the vector
+# register width to the K1's VLEN (256b / vlenb=32) so codegen + MetaSchedule size vscale to the
+# real silicon. ``num-cores=8`` = the board's core count (MetaSchedule cost model / parallelism).
+# TVM v0.19.0 accepts BOTH the CLI string and the JSON-dict target form; we use the dict (typed,
+# unambiguous) for build and keep the string only for the RVV-march honesty check + display.
 TVM_TARGET_CONFIG: dict = {
     "kind": "llvm",
     "mtriple": "riscv64-unknown-linux-gnu",
     "mattr": ["+m", "+f", "+d", "+c", "+v", "+zvl256b"],
     "mcpu": "generic-rv64",
     "mabi": "lp64d",
+    "num-cores": 8,
 }
 TVM_TARGET = ("llvm -mtriple=riscv64-unknown-linux-gnu "
               "-mattr=+m,+f,+d,+c,+v,+zvl256b -mcpu=generic-rv64 -mabi=lp64d")
@@ -84,9 +91,8 @@ def _env_path(name: str, default: Path) -> Path:
 
 
 def tvm_lib_dir() -> Path:
-    """Directory holding the built ``libtvm_compiler.so`` / ``libtvm_runtime.so`` /
-    ``libtvm_ffi.so``. Override ``MERLIN_TVM_LIBRARY_PATH``; defaults to the CMake build's ``lib/``
-    subdir (ninja emits the shared libs under ``<build>/lib``, not the build root)."""
+    """Directory holding the built ``libtvm.so`` / ``libtvm_runtime.so`` (ninja emits them under
+    ``<build>/lib``). Override with ``MERLIN_TVM_LIBRARY_PATH``."""
     override = os.environ.get("MERLIN_TVM_LIBRARY_PATH")
     if override:
         return Path(override)
@@ -94,14 +100,9 @@ def tvm_lib_dir() -> Path:
     return lib if lib.is_dir() else _BUILD_ROOT
 
 
-def tvm_python_paths() -> list[Path]:
-    """PYTHONPATH entries so the m2m venv can ``import tvm`` from the built (uninstalled) tree.
-
-    Only the main ``tvm`` package is added on PYTHONPATH; ``tvm_ffi`` (the compiled cython core)
-    is pip-installed into the driving venv (its ``core`` extension can't run from a bare source
-    dir), so we do NOT shadow it with the submodule's source ``tvm-ffi/python``.
-    """
-    return [_TVM_SRC / "python"]
+def tvm_python_path() -> Path:
+    """PYTHONPATH entry so the driving venv can ``import tvm`` from the built (uninstalled) tree."""
+    return _TVM_SRC / "python"
 
 
 def m2m_python() -> Path | None:
@@ -113,8 +114,7 @@ def m2m_python() -> Path | None:
 def tvm_built() -> bool:
     """True iff the TVM shared libs are present (the Python package needs them to import)."""
     lib = tvm_lib_dir()
-    return any((lib / n).is_file()
-               for n in ("libtvm.so", "libtvm_runtime.so", "libtvm_compiler.so"))
+    return any((lib / n).is_file() for n in ("libtvm.so", "libtvm_runtime.so"))
 
 
 def tvm_available() -> bool:
@@ -124,7 +124,7 @@ def tvm_available() -> bool:
 
 def tvm_commit() -> str:
     try:
-        r = subprocess.run(["git", "-C", str(_TVM_SRC), "rev-parse", "--short", "HEAD"],
+        r = subprocess.run(["git", "-C", str(_TVM_SRC), "describe", "--tags", "--always"],
                            capture_output=True, text=True, timeout=15)
         return r.stdout.strip() if r.returncode == 0 else ""
     except Exception:  # noqa: BLE001
@@ -132,17 +132,18 @@ def tvm_commit() -> str:
 
 
 # --- capture-bundle resolution (robust to legacy dir names) -------------------------------------
-# The fp32 LLM captures predate the ``<model>_fp32_consistent`` convention (see buddy.py).
+# The fp32 LLM captures predate the ``<model>_fp32_consistent`` convention (see buddy.py). int8
+# variants already follow the convention (``<model>_int8_consistent``).
 _LEGACY_FP32_DIRS: dict[str, str] = {
     "tiny_llama": "tiny_consistent",
     "small_llama": "small_consistent",
 }
 
 
-def resolve_bundle(model: str, variant: str = "fp32") -> _bundle.CaptureBundle:
+def resolve_bundle(model: str, variant: str = "int8") -> _bundle.CaptureBundle:
     """Resolve a capture bundle, falling back to legacy dir names for the fp32 LLMs."""
     b = _bundle.resolve(model, variant)
-    if b.golden.is_file():
+    if b.golden.is_file() or b.mlir.is_file():
         return b
     if variant == "fp32" and model in _LEGACY_FP32_DIRS:
         legacy = artifacts.recaptures_dir() / _LEGACY_FP32_DIRS[model]
@@ -151,15 +152,17 @@ def resolve_bundle(model: str, variant: str = "fp32") -> _bundle.CaptureBundle:
     return b
 
 
+def golden_path(b: _bundle.CaptureBundle) -> Path:
+    """The correctness reference: prefer the W8A8 int8 golden when present, else golden.npy."""
+    w8a8 = b.root / "golden_w8a8.npy"
+    return w8a8 if w8a8.is_file() else b.golden
+
+
 # --- workload cfg (mirror the capture recipe so the golden is reproducible) ---------------------
 
 def _workload_env(model: str) -> dict[str, str]:
-    """The env the m2m capture worker sets for a workload (e.g. M2M_LLAMA_LAYERS for the llamas).
-
-    Read from the workload TOML ``[env]`` table so the exported instance matches the one that
-    produced ``golden.npy`` (tiny_llama uses a 2-layer random-init model — exporting the full
-    pretrained model would NOT match the golden).
-    """
+    """The env the m2m capture worker sets for a workload (e.g. M2M_LLAMA_LAYERS for the llamas),
+    read from the workload TOML ``[env]`` table so the exported instance matches the golden."""
     toml_env: dict[str, str] = {}
     wdir = _bundle.model2mlir_root() / "workloads" / model
     for cand in list(wdir.glob("*.toml")):
@@ -168,23 +171,23 @@ def _workload_env(model: str) -> dict[str, str]:
             data = tomllib.loads(cand.read_text())
         except Exception:  # noqa: BLE001
             continue
-        env = data.get("env") or {}
-        for k, v in env.items():
+        for k, v in (data.get("env") or {}).items():
             toml_env[str(k)] = str(v)
     return toml_env
+
+
+# Models whose captured weights exceed the K1's usable RAM/disk (board is ~3.4G RAM, /tmp 1.9G
+# tmpfs, rootfs ~12G). We still ATTEMPT compile + audit (host-side), but flag the on-board run as a
+# fit gap rather than pretend it ran. Sizes checked at run time against the actual weights blob.
+_K1_WEIGHT_FIT_BYTES = 3_000_000_000
 
 
 class TVMError(RuntimeError):
     pass
 
 
-# --- the m2m-venv driver: torch.export -> Relax -> RVV .so --------------------------------------
+# --- the m2m-venv driver: torch.export -> Relax -> (tune) -> RVV .so ----------------------------
 
-# This runs inside the model2MLIR venv (torch+transformers) with TVM importable. It reproduces the
-# EXACT seeded model instance the capture bundle was built from (manual_seed(0), workload env,
-# zero-param perturb, per-cfg quant) so the golden is reproducible, exports it, imports to Relax,
-# compiles for the rv64gcv target, and cross-links the deployable .so with the SpacemiT clang. It
-# also runs the module on the HOST TVM VM (llvm x86) for a board-independent correctness signal.
 _DRIVER_TEMPLATE = r'''
 import json, os, sys, traceback
 import numpy as np
@@ -200,8 +203,10 @@ try:
     variant = os.environ["MERLIN_TVM_VARIANT"]
     bundle_root = os.environ["MERLIN_TVM_BUNDLE"]
     work = os.environ["MERLIN_TVM_WORK"]
-    target_cfg = json.loads(os.environ["MERLIN_TVM_TARGET"])  # JSON dict (CLI string form dropped)
+    target_cfg = json.loads(os.environ["MERLIN_TVM_TARGET"])
     cross_cc = os.environ.get("MERLIN_TVM_CROSS_CC", "")
+    do_tune = os.environ.get("MERLIN_TVM_TUNE", "0") == "1"
+    golden_file = os.environ["MERLIN_TVM_GOLDEN"]
     so_path = os.path.join(work, "model_tvm.so")
 
     import torch
@@ -220,105 +225,160 @@ try:
         for p in mdl.parameters():
             if float(p.detach().abs().max()) == 0.0:
                 p.copy_(torch.randn_like(p) * 0.02)
-    # NOTE: per-cfg quantization (int8/fp8) is applied by capture.py via _quant_for; the fp32
-    # path (this arm's first target) does none, so the seeded instance matches the fp32 golden.
+    # int8/fp8: apply the SAME torchao quantization the capture used (per-cfg scheme).
+    quant_note = ""
     if variant != "fp32":
         try:
+            import pathlib
             from capture import _quant_for, _load_toml  # type: ignore
-            cfg = _load_toml(os.path.join(workloads, model))
+            cfg = _load_toml(pathlib.Path(workloads) / model)  # _load_toml wants a Path, not str
             q = _quant_for(cfg, variant)
             if q is not None:
-                import torchao  # noqa: F401
-                q(mdl)
+                from m2m.capture.torchao_pipeline import apply_quantization  # type: ignore
+                mdl = apply_quantization(mdl, q)
+                quant_note = "torchao:" + str(getattr(q, "scheme", "?"))
         except Exception as e:  # noqa: BLE001
-            emit(stage="quant_skipped", quant_note=str(e)[:200])
-    emit(stage="model_built")
+            quant_note = "quant-apply-failed:" + str(e)[:160]
+    # Make NON-PERSISTENT buffers persistent so they land in state_dict. torch 2.10 lifts
+    # non-persistent buffers (e.g. rope inv_freq / original_inv_freq) into ep.constants but the
+    # graph signature still types them InputKind.BUFFER — TVM v0.19.0's exported-program frontend
+    # then looks them up only in state_dict and KeyErrors. Re-registering them persistent puts them
+    # in state_dict so the frontend resolves them (functionally identical: same tensor value).
+    n_persisted = 0
+    for mod_ in mdl.modules():
+        npset = getattr(mod_, "_non_persistent_buffers_set", None)
+        if npset:
+            for bname in list(npset):
+                npset.discard(bname)
+                n_persisted += 1
+    emit(stage="model_built", quant=quant_note, persisted_buffers=n_persisted)
 
     # 2. torch.export -> ExportedProgram.
     ep = torch.export.export(mdl, inputs)
     emit(stage="exported")
 
     # 3. Import to TVM Relax.
-    os.environ.setdefault("TVM_LIBRARY_PATH", os.environ["MERLIN_TVM_LIBRARY_PATH"])
     import tvm
     from tvm import relax
     from tvm.relax.frontend.torch import from_exported_program
+    from tvm.relax.frontend.torch import exported_program_translator as _ept
     emit(stage="tvm_imported", tvm=getattr(tvm, "__version__", "?"))
 
+    # Compat shim: TVM v0.19.0's exported-program frontend maps only SOME torch op overloads.
+    # torch 2.10 + run_decompositions emit overload names the map lacks (e.g. arange.default /
+    # arange.start_step, both handled by the SAME self._arange). Alias every missing `.overload`
+    # to the base handler already registered under another overload — a pure name aliasing, no
+    # semantics invented. Applied once by wrapping create_convert_map.
+    _orig_ccm = _ept.ExportedProgramImporter.create_convert_map
+    def _patched_ccm(self):
+        m = _orig_ccm(self)
+        # (a) overload aliases: same handler, different overload name the graph emitted.
+        alias = {
+            "arange.default": "arange.start", "arange.start_step": "arange.start",
+            "arange.start_out": "arange.start",
+            "mm.default": "matmul.default", "bmm.default": "matmul.default",
+            "split_with_sizes.default": "split.Tensor",
+            "scaled_dot_product_attention.default": "scaled_dot_product_attention",
+        }
+        for new, base in alias.items():
+            if new not in m and base in m:
+                m[new] = m[base]
+        # (b) no-op export asserts (torch 2.x inserts these; they carry no compute).
+        for noop in ("_assert_tensor_metadata.default", "_assert_scalar.default",
+                     "_assert_async.msg", "lift_fresh_copy.default", "alias.default"):
+            m.setdefault(noop, lambda node: None)
+        # (c) elementwise comparisons the frontend lacks — emit via relax.op (real semantics).
+        def _cmp(op):
+            def f(node):
+                a = self.env[node.args[0]]
+                b = node.args[1]
+                if hasattr(b, "name") and b in self.env:
+                    b = self.env[b]
+                else:
+                    # scalar RHS -> a relax constant of a's dtype (relax.op comparisons need Exprs).
+                    sinfo = a.struct_info
+                    dt = getattr(sinfo, "dtype", "float32")
+                    b = tvm.relax.const(b, dt)
+                return self.block_builder.emit(getattr(tvm.relax.op, op)(a, b))
+            return f
+        for name, op in (("ne.Scalar", "not_equal"), ("ne.Tensor", "not_equal"),
+                         ("eq.Scalar", "equal"), ("eq.Tensor", "equal"),
+                         ("lt.Scalar", "less"), ("gt.Scalar", "greater"),
+                         ("le.Scalar", "less_equal"), ("ge.Scalar", "greater_equal")):
+            m.setdefault(name, _cmp(op))
+        return m
+    _ept.ExportedProgramImporter.create_convert_map = _patched_ccm
+
+    # run_decompositions lowers composite aten ops to the core set the frontend handles.
+    try:
+        ep = ep.run_decompositions()
+    except Exception:  # noqa: BLE001
+        pass
     mod = from_exported_program(ep, keep_params_as_input=False)
+    # Standard Relax lowering for a CPU target: legalize ops + fold constants, then the default
+    # "zero" pipeline. This turns the imported graph into TIR-backed PrimFuncs ready for build.
+    mod = relax.get_pipeline("zero")(mod)
     emit(stage="relax_imported")
 
-    # 4. Build for the rv64gcv LLVM target (RVV codegen). dlight CPU schedules apply where the
-    #    zero pipeline leaves TIR unscheduled; default relax pipeline otherwise.
     target = tvm.target.Target(target_cfg)
-    # Best-effort dlight CPU scheduling (GEMV + Reduction) BEFORE the build lowers TIR — this TVM's
-    # dlight.cpu only ships GEMV + Reduction (no Fallback), so we apply just those and let the
-    # default relax pipeline schedule the rest. dlight is optional: if unavailable, the default
-    # pipeline still produces valid RVV codegen (recorded honestly in notes).
-    dlight_note = "dlight: none"
-    use_dlight = os.environ.get("MERLIN_TVM_DLIGHT", "1") != "0"
-    with target:
-        try:
-            if not use_dlight:
-                raise RuntimeError("disabled via MERLIN_TVM_DLIGHT=0")
-            import tvm.s_tir.dlight as dl  # relocated under s_tir in this TVM
-            rules = []
-            for nm in ("GEMV", "Reduction"):
-                r = getattr(dl.cpu, nm, None)
-                if r is not None:
-                    rules.append(r())
-            if rules:
-                mod = dl.ApplyDefaultSchedule(*rules)(mod)
-                dlight_note = "dlight: " + "+".join(type(r).__name__ for r in rules)
-        except Exception as e:  # noqa: BLE001
-            dlight_note = "dlight-skip: " + str(e)[:120]
-        try:
-            ex = relax.build(mod, target=target)
-        except Exception as e:
-            emit(stage="build_failed", err=str(e)[:600], tb=traceback.format_exc()[-1500:],
-                 dlight=dlight_note)
-            raise
-    emit(stage="built", dlight=dlight_note)
 
-    # 5. Cross-link the deployable .so with the SpacemiT clang so it runs on the board's glibc.
-    if cross_cc:
+    # 4. (optional) MetaSchedule autotune for RVV. Requires a K1 RPC runner to measure on-device;
+    #    opt-in via MERLIN_TVM_TUNE=1 + MERLIN_TVM_RPC_{TRACKER,KEY}. Default OFF (queued board).
+    tuned_note = "no-tune (default relax.build; RVV via LLVM only)"
+    ex = None
+    if do_tune:
         try:
-            from tvm.support import cc as _cc   # relocated from tvm.contrib.cc in this TVM
-        except Exception:
-            from tvm.contrib import cc as _cc   # older layout fallback
+            from tvm import meta_schedule as ms
+            tracker = os.environ.get("MERLIN_TVM_RPC_TRACKER", "")
+            key = os.environ.get("MERLIN_TVM_RPC_KEY", "k1")
+            trials = int(os.environ.get("MERLIN_TVM_TUNE_TRIALS", "200"))
+            if tracker:
+                host, port = tracker.split(":")
+                runner = ms.runner.RPCRunner(ms.runner.RPCConfig(
+                    tracker_host=host, tracker_port=int(port), tracker_key=key,
+                    session_timeout_sec=120))
+            else:
+                runner = "local"  # cannot execute rv64gcv on x86; only valid with an RPC runner
+            db = ms.tune_relax(mod=mod, params={}, target=target,
+                               work_dir=os.path.join(work, "ms_tune"),
+                               max_trials_global=trials, runner=runner)
+            ex = ms.compile_relax(db, mod, target, params=None)
+            tuned_note = f"metaschedule trials={trials} runner={'rpc' if tracker else 'local'}"
+        except Exception as e:  # noqa: BLE001
+            tuned_note = "tune-failed(fallback default build):" + str(e)[:200]
+            ex = None
+    if ex is None:
+        with target:
+            ex = relax.build(mod, target=target)
+    emit(stage="built", tuned=tuned_note)
+
+    # 5. Cross-link the deployable .so with the SpacemiT clang (glibc rv64gcv board target).
+    if cross_cc:
+        from tvm.contrib import cc as _cc
         def _fcompile(output, objects, options=None):
             opts = ["--target=riscv64-unknown-linux-gnu", "-march=rv64gcv", "-mabi=lp64d",
                     "-shared", "-fPIC", "-O2"] + (options or [])
             _cc.create_shared(output, objects, options=opts, cc=cross_cc)
         ex.export_library(so_path, fcompile=_fcompile)
     else:
-        ex.export_library(so_path)  # host .so (x86) — used for host correctness only
+        ex.export_library(so_path)  # host .so (x86) — host correctness only
     emit(stage="exported_library", so=so_path, so_exists=os.path.exists(so_path))
 
-    # 5b. Emit the RVV kernel objects too (the audit target): re-export the *object* so rvv_audit
-    #     can disassemble the compute kernels directly, independent of the shared-lib packaging.
-    try:
-        obj_path = os.path.join(work, "model_tvm.o")
-        ex.mod.save(obj_path) if hasattr(ex.mod, "save") else None
-    except Exception:
-        pass
-
-    # 6. Host correctness: run the module on the x86 TVM VM (llvm host) vs golden.npy. This proves
-    #    TVM's *lowering* is numerically sound (board-independent); the board RPC run is the RVV
-    #    timing + on-silicon cos/rel. We build a SECOND host module for this (the rv64 .so can't
-    #    load on x86).
+    # 6. Host correctness: run the module on the x86 TVM VM (llvm host) vs the golden. Proves TVM's
+    #    LOWERING is numerically sound (board-independent). A second host build (rv64 .so can't run
+    #    on x86).
     host_cos = host_rel = None
     host_note = ""
     try:
-        host_target = tvm.target.Target("llvm")
-        host_ex = relax.build(mod, target=host_target)
+        host_ex = relax.build(relax.get_pipeline("zero")(from_exported_program(ep, keep_params_as_input=False)),
+                              target=tvm.target.Target("llvm"))
         dev = tvm.cpu()
         vm = relax.VirtualMachine(host_ex, dev)
         npz = np.load(os.path.join(bundle_root, "inputs.npz"))
         args = [tvm.nd.array(npz[k], dev) for k in sorted(npz.files)]
         out = vm["main"](*args)
         got = out.numpy() if hasattr(out, "numpy") else np.asarray(out[0].numpy())
-        gold = np.load(os.path.join(bundle_root, "golden.npy")).astype(np.float32).ravel()
+        gold = np.load(golden_file).astype(np.float32).ravel()
         a = np.asarray(got, dtype=np.float64).ravel()[:gold.size]
         g = gold[:a.size].astype(np.float64)
         denom = (np.linalg.norm(a) * np.linalg.norm(g)) or 1.0
@@ -328,7 +388,7 @@ try:
         host_note = "host-vm correctness failed: " + str(e)[:300]
 
     emit(stage="done", ok=os.path.exists(so_path), host_cos=host_cos, host_rel=host_rel,
-         host_note=host_note)
+         host_note=host_note, tuned=tuned_note, quant=quant_note)
 
 except Exception as e:  # noqa: BLE001
     OUT["error"] = str(e)[:600]
@@ -350,13 +410,8 @@ class CompileResult:
 
 
 def compile_model(b: _bundle.CaptureBundle, work: Path, *, cross: bool = True,
-                  timeout: int = 3600) -> CompileResult:
-    """Export+import+compile a bundle in the m2m venv; return the .so + host correctness.
-
-    ``cross=True`` cross-links the .so with the SpacemiT clang for the board (rv64gcv). The host
-    correctness VM run is always attempted (x86) so the compiler's lowering is gated even when the
-    board is down.
-    """
+                  tune: bool = False, timeout: int = 3600) -> CompileResult:
+    """Export+import+compile a bundle in the m2m venv; return the .so + host correctness."""
     m2m = m2m_python()
     if m2m is None:
         raise TVMError("model2MLIR venv python not found (set MERLIN_MODEL2MLIR) — cannot drive "
@@ -373,17 +428,14 @@ def compile_model(b: _bundle.CaptureBundle, work: Path, *, cross: bool = True,
         cc = k1.toolchain_cc()
         cross_cc = str(cc) if cc is not None else ""
 
-    pypath = os.pathsep.join([str(p) for p in tvm_python_paths()] +
-                             [os.environ.get("PYTHONPATH", "")])
-    env = dict(os.environ)
     libdir = str(tvm_lib_dir())
     ld = os.pathsep.join([libdir, os.environ.get("LD_LIBRARY_PATH", "")]).strip(os.pathsep)
+    pypath = os.pathsep.join([str(tvm_python_path()), os.environ.get("PYTHONPATH", "")])
+    env = dict(os.environ)
     env.update({
         "PYTHONPATH": pypath,
         "TVM_LIBRARY_PATH": libdir,
-        # tvm_ffi's libinfo searches LD_LIBRARY_PATH (not TVM_LIBRARY_PATH) for libtvm_ffi.so.
         "LD_LIBRARY_PATH": ld,
-        "MERLIN_TVM_LIBRARY_PATH": libdir,
         "MERLIN_MODEL2MLIR": str(_bundle.model2mlir_root()),
         "MERLIN_TVM_MODEL": b.model,
         "MERLIN_TVM_VARIANT": b.variant,
@@ -392,6 +444,8 @@ def compile_model(b: _bundle.CaptureBundle, work: Path, *, cross: bool = True,
         "MERLIN_TVM_TARGET": json.dumps(TVM_TARGET_CONFIG),
         "MERLIN_TVM_CROSS_CC": cross_cc,
         "MERLIN_TVM_STATUS": str(status),
+        "MERLIN_TVM_GOLDEN": str(golden_path(b)),
+        "MERLIN_TVM_TUNE": "1" if tune else "0",
     })
     env.update(_workload_env(b.model))  # e.g. M2M_LLAMA_LAYERS for the llamas
 
@@ -407,7 +461,8 @@ def compile_model(b: _bundle.CaptureBundle, work: Path, *, cross: bool = True,
         raw = {"stage": "no_status", "error": (proc.stderr or proc.stdout)[-600:]}
     so = work / "model_tvm.so"
     ok = bool(raw.get("ok")) and so.is_file()
-    note = raw.get("host_note", "") or raw.get("error", "") or raw.get("quant_note", "")
+    note = " ".join(x for x in (raw.get("tuned", ""), raw.get("quant", ""),
+                                raw.get("host_note", ""), raw.get("error", "")) if x)
     return CompileResult(ok=ok, so_path=(so if so.is_file() else None),
                          host_cos=raw.get("host_cos"), host_rel=raw.get("host_rel"),
                          stage=str(raw.get("stage", "?")), note=str(note)[:400], raw=raw)
@@ -428,8 +483,8 @@ def _region_of_symbol(sym: str) -> str:
     return "other"
 
 
-# TVM names its fused compute kernels tvmgen_default_fused_* (the compute-bearing symbols). libc /
-# CRT / the TVM runtime shims are not model kernels — ignore them when listing scalar fallbacks.
+# TVM names its fused compute kernels tvmgen_default_fused_*. libc / CRT / the TVM runtime shims are
+# not model kernels — ignore them when listing scalar fallbacks.
 _AUDIT_IGNORE = ("_start", "abort", "frame_dummy", "register_tm", "__do_global",
                  "printf", "memcpy", "memset", "malloc", "free", "__tvm", "TVM",
                  "call_packed", "deregister", "_init", "_fini", "plt")
@@ -450,31 +505,34 @@ def audit_so(so: Path) -> tuple[float | None, list[ScalarFallback], dict]:
 
 # --- the runner ---------------------------------------------------------------------------------
 
-# LLM subset first (clean torch graph, no VLA-specific ops); then the VLAs.
-DEFAULT_MODELS = ("tiny_llama", "small_llama", "bitvla", "rdt2", "rdt", "openvla",
-                  "molmoact", "groot_n1d7", "xr0", "pi05", "smolvla")
+# The full model2MLIR corpus. int8 is attempted first (the coordinator's priority + the K1's native
+# datapath); fp32 is the fallback / where int8 isn't captured.
+ALL_MODELS = ("tiny_llama", "small_llama", "bitvla", "openvla", "rdt2", "rdt",
+              "molmoact", "groot_n1d7", "xr0", "pi05", "smolvla")
+DEFAULT_MODELS = ALL_MODELS
 
 
-def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = None,
-              write: bool = True, run_board: bool | None = None,
-              cross: bool = True) -> BaselineResult:
+def run_model(model: str, variant: str = "int8", *, work_root: Path | None = None,
+              write: bool = True, run_board: bool | None = None, cross: bool = True,
+              tune: bool | None = None) -> BaselineResult:
     """Run one (model, variant) through the TVM arm end-to-end and return a BaselineResult.
 
     Re-runnable: with the board down it produces a ``not_run`` result that still carries the built
-    rv64gcv ``.so``, RVV coverage, scalar-fallback table, and host-VM correctness. A later
-    invocation with the board up fills in the on-silicon RVV timing (board branch is the only part
-    gated on ``board_available()``).
+    rv64gcv ``.so``, RVV coverage, scalar-fallback table, and host-VM correctness.
     """
+    if tune is None:
+        tune = os.environ.get("MERLIN_TVM_TUNE", "0") == "1"
     cos_thr, rel_thr = _bundle.tolerance(model)
     res = BaselineResult(framework=FRAMEWORK, model=model, variant=variant,
                          substrate="k1_spacemit", cos_threshold=cos_thr, rel_threshold=rel_thr,
-                         march=k1.K1_MARCH, toolchain="tvm-relax(llvm18)+spacemit-clang",
+                         march=k1.K1_MARCH, toolchain="tvm-v0.19.0(llvm18)+spacemit-clang",
                          framework_commit=tvm_commit(), timestamp=artifacts.utc_stamp(),
-                         notes="tuning=relax-zero+dlight (no MetaSchedule/AutoTVM in this TVM)")
+                         notes=("tuning=" + ("metaschedule" if tune else "default-relax-build")))
 
     b = resolve_bundle(model, variant)
-    if not b.golden.is_file():
-        res.gap_reason = f"golden missing: {b.root}/golden.npy absent (cannot gate correctness)"
+    gold = golden_path(b)
+    if not gold.is_file():
+        res.gap_reason = f"golden missing: neither golden_w8a8.npy nor golden.npy under {b.root}"
         return _finish(res, model, variant, write)
     if b.torch_loader is not None and not b.torch_loader.is_file():
         res.gap_reason = f"torch loader missing: {b.torch_loader} absent (TVM imports from torch)"
@@ -488,16 +546,16 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     work = (work_root or (_BUILD_ROOT / "runs")) / f"{model}_{variant}"
     work.mkdir(parents=True, exist_ok=True)
 
-    # 1. export -> Relax import -> rv64gcv compile -> cross-linked .so (the RVV artifact).
+    # 1. export -> Relax import -> (tune) -> rv64gcv compile -> cross-linked .so (the RVV artifact).
     try:
-        cr = compile_model(b, work, cross=cross)
+        cr = compile_model(b, work, cross=cross, tune=tune)
     except (TVMError, subprocess.TimeoutExpired) as e:
         res.gap_reason = f"TVM compile driver failed: {str(e)[:300]}"
         return _finish(res, model, variant, write)
 
     if not cr.ok or cr.so_path is None:
         res.gap_reason = f"TVM export/import/build failed at stage={cr.stage}: {cr.note[:250]}"
-        if cr.host_cos is not None:  # partial: host correctness may still have been captured
+        if cr.host_cos is not None:
             res.notes += f" host_cos={cr.host_cos:.5f}"
         return _finish(res, model, variant, write)
 
@@ -514,8 +572,7 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     except Exception as e:  # noqa: BLE001
         res.notes += f" rvv-audit failed: {str(e)[:150]}"
 
-    # 3. host-VM correctness (x86 TVM VM vs golden) — board-independent lowering gate. We attach it
-    #    as the correctness signal; the on-board RVV run refines it when the board is up.
+    # 3. host-VM correctness (x86 TVM VM vs golden) — board-independent lowering gate.
     if cr.host_cos is not None:
         res.cos, res.rel = cr.host_cos, cr.host_rel
         res.notes += " (cos/rel from host TVM VM; on-board RVV cos pending board)"
@@ -530,9 +587,6 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
         except Exception as e:  # noqa: BLE001
             res.gap_reason = res.gap_reason or f"K1 board run error: {str(e)[:200]}"
     else:
-        # not a gap when we DO have host correctness + a built RVV artifact: the on-silicon timing
-        # is what's pending. Mark ran=False honestly with a board-unavailable reason so the cell
-        # reads not_run (built RVV artifact present) rather than a false pass.
         res.gap_reason = ("K1 board unavailable (MERLIN_K1_HOST unset) — RVV .so built and audited, "
                           "host-VM correctness recorded; on-silicon timing pending")
 
@@ -541,26 +595,29 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
 
 
 def _run_on_board(res: BaselineResult, so: Path, b: _bundle.CaptureBundle, work: Path) -> None:
-    """Deploy + run the TVM module on the K1 via the TVM RPC server, under the board lock.
+    """Deploy + run the TVM module on the K1 under the board lock.
 
-    Requires the TVM **runtime** cross-compiled for riscv64 and a ``tvm_rpc`` server running on the
-    board (standard TVM cross flow). When that runtime is not present we fail-closed with a
-    ``not_run`` gap rather than fabricate a timing — the RVV .so + audit + host correctness still
-    stand. Wiring the riscv64 tvm_rpc server + RPC session is the remaining board step.
+    The TVM ``.so`` is a self-contained relax Executable (system-lib packed). Running it standalone
+    on the board needs a TVM riscv64 runtime (``libtvm_runtime.so`` cross-built + ``tvm_rpc``, or a
+    C harness linking the runtime). That runtime cross-build is the remaining board step; until it
+    is present we fail-closed with a ``not_run`` gap rather than fabricate a timing — the RVV .so +
+    audit + host correctness still stand. A weights-too-big model is a labeled fit gap.
     """
-    # The riscv64 TVM runtime + tvm_rpc server on the board is a separate cross-build (build/
-    # baselines/tvm/riscv-runtime). Until it is present, honestly record not_run. This keeps the
-    # arm fail-closed: we never claim an on-silicon number we didn't measure.
+    # Fit check: models whose weights exceed the K1's usable RAM never run on-board — honest gap.
+    if b.weights.is_file() and b.weights.stat().st_size > _K1_WEIGHT_FIT_BYTES:
+        gb = b.weights.stat().st_size / 1e9
+        res.ran = False
+        res.gap_reason = (f"weights {gb:.1f}G exceed K1 usable RAM (~3.4G) — on-board run is a fit "
+                          f"gap (RVV .so built + audited + host-VM correctness recorded)")
+        return
     rpc_ready = bool(os.environ.get("MERLIN_TVM_RPC_TRACKER") or
                      (work / "riscv_runtime_ready").is_file())
     if not rpc_ready:
         res.ran = False
         res.gap_reason = ("TVM riscv64 runtime / tvm_rpc server not yet cross-built for the board "
-                          "(RVV .so built + audited + host-VM correctness recorded; on-silicon RPC "
-                          "run pending — set MERLIN_TVM_RPC_TRACKER once the board server is up)")
+                          "(RVV .so built + audited + host-VM correctness recorded; on-silicon run "
+                          "pending — set MERLIN_TVM_RPC_TRACKER once the board runtime is up)")
         return
-    # RPC path (executed once the board tvm_rpc is up): connect, upload the .so, time the run,
-    # compare OUT vs golden. Left as the documented next step; guarded so it never fabricates.
     res.ran = False
     res.gap_reason = res.gap_reason or "TVM RPC run path not exercised (tracker set but session not wired)"
 
@@ -573,12 +630,13 @@ def _finish(res: BaselineResult, model: str, variant: str, write: bool) -> Basel
     return res
 
 
-def run_all(models=DEFAULT_MODELS, variant: str = "fp32", *, write: bool = True) -> list[BaselineResult]:
-    """Run the TVM arm over the model set (fp32 by default)."""
+def run_all(models=DEFAULT_MODELS, variant: str = "int8", *, write: bool = True,
+            tune: bool | None = None) -> list[BaselineResult]:
+    """Run the TVM arm over the model set (int8 by default)."""
     out = []
     for m in models:
         try:
-            out.append(run_model(m, variant, write=write))
+            out.append(run_model(m, variant, write=write, tune=tune))
         except Exception as e:  # noqa: BLE001 - one model must never sink the batch
             r = BaselineResult(framework=FRAMEWORK, model=m, variant=variant,
                                gap_reason=f"runner exception: {str(e)[:200]}",
@@ -596,18 +654,19 @@ def run_all(models=DEFAULT_MODELS, variant: str = "fp32", *, write: bool = True)
 def _main(argv=None) -> int:
     import argparse
 
-    ap = argparse.ArgumentParser(description="TVM (Apache TVM / Relax) K1-RVV baseline arm")
+    ap = argparse.ArgumentParser(description="TVM (Apache TVM v0.19.0 / Relax) K1-RVV baseline arm")
     ap.add_argument("models", nargs="*", default=list(DEFAULT_MODELS),
-                    help="models to run (default: the full corpus, LLM subset first)")
-    ap.add_argument("--variant", default="fp32")
+                    help="models to run (default: the full corpus)")
+    ap.add_argument("--variant", default="int8", help="int8 (default) | fp32 | fp8")
+    ap.add_argument("--tune", action="store_true", help="MetaSchedule autotune (needs K1 RPC)")
     ap.add_argument("--no-write", action="store_true", help="do not write BaselineResult artifacts")
     ap.add_argument("--no-cross", action="store_true",
                     help="build a host (x86) .so instead of cross-linking rv64gcv (debug only)")
     args = ap.parse_args(argv)
-    models = tuple(args.models)
     out = []
-    for m in models:
-        out.append(run_model(m, args.variant, write=not args.no_write, cross=not args.no_cross))
+    for m in tuple(args.models):
+        out.append(run_model(m, args.variant, write=not args.no_write, cross=not args.no_cross,
+                             tune=args.tune))
     for r in out:
         cov = f"{100*r.rvv_coverage_overall:.0f}%RVV" if r.rvv_coverage_overall is not None else "?RVV"
         print(f"{r.model}/{r.variant}: {r.status():10s} {cov} "
