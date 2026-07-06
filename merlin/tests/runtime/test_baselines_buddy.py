@@ -195,3 +195,16 @@ def test_native_tosa_to_linalg_pipeline_constant():
     # The tosa->linalg conversion pipeline must be the buddy-canonical one.
     assert "tosa-to-linalg-named" in buddy._TOSA_TO_LINALG
     assert "tosa-to-arith" in buddy._TOSA_TO_LINALG
+
+
+def test_fp32_golden_for_int8_prefers_fp32_recapture(tmp_path, monkeypatch):
+    # int8-via-native gates vs the FP32 golden ("what did int8 cost"), not the W8A8 ref.
+    import merlin.baselines.bundle as _bundle
+    (tmp_path / "m_int8_full").mkdir()
+    (tmp_path / "m_int8_full" / "golden.npy").write_bytes(b"x")
+    (tmp_path / "m_fp32_full").mkdir()
+    (tmp_path / "m_fp32_full" / "golden.npy").write_bytes(b"y")
+    monkeypatch.setattr(_bundle, "recaptures_dir", lambda: tmp_path)
+    b = _bundle.CaptureBundle(model="m", variant="int8", root=tmp_path / "m_int8_full")
+    gp = buddy._fp32_golden_for(b)
+    assert gp.parent.name == "m_fp32_full"        # the fp32 recapture, not the int8 one
