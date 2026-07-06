@@ -147,9 +147,13 @@ def native_import_available() -> bool:
             and mlir_python_packages() is not None)
 
 
-def native_import(model: str, variant: str, out_dir: Path, *, registry: str = "linalg",
+def native_import(model: str, variant: str, out_dir: Path, *, registry: str = "tosa",
                   timeout: int = 1800) -> Path:
     """Run buddy's DynamoCompiler over the REAL torch model → ``subgraph0.mlir`` + params.
+
+    Uses the **tosa** registry by default — buddy's ``linalg`` registry has an ``expand_op``
+    UnboundLocalError on the LLM/VLA graphs; tosa lowers robustly (then stock mlir-opt does
+    tosa→linalg).
 
     Sets the full-fidelity loader env (``bundle.full_env``) so the SAME native-architecture model the
     golden was captured on is ingested, then spawns :mod:`.buddy_native_import` under the torch venv.
@@ -777,8 +781,8 @@ def run_model_native(model: str, variant: str = "int8", *, work_root: Path | Non
         res.gap_reason = f"native lower/compile failed: {str(e)[:300]}"
         return _finish(res, model, variant, write)
 
-    # 3. link the native K1 ELF.
-    gold = np.load(_golden_for(b))
+    # 3. link the native K1 ELF (output shape from the fp32 golden — the native gate reference).
+    gold = np.load(_fp32_golden_for(b))
     out_elems = int(np.prod(gold.shape))
     out_lastdim = int(gold.shape[-1]) if gold.ndim else 1
     iv = []
@@ -861,7 +865,10 @@ def _run_native_on_board(res: BaselineResult, elf: Path, arg0: Path, b: _bundle.
     out = parsed.get("outputs")
     if out is not None and res.ran:
         try:
-            g = np.load(_golden_for(b)).astype(np.float64).ravel()
+            # int8-via-native gates vs the FP32 golden ("what did int8 cost").
+            gp = _fp32_golden_for(b)
+            res.notes += f" gold={gp.name}"
+            g = np.load(gp).astype(np.float64).ravel()
             a = np.asarray(out, dtype=np.float64).ravel()[:g.size]
             g = g[:a.size]
             if a.size:
@@ -986,6 +993,17 @@ def _golden_for(b: _bundle.CaptureBundle) -> Path:
         if w8a8.is_file():
             return w8a8
     return b.golden
+
+
+def _fp32_golden_for(b: _bundle.CaptureBundle) -> Path:
+    """The FP32 golden for a model — the "what did int8 cost" reference the native path gates on.
+
+    Buddy's native importer materializes int8->fp32, so its output is naturally compared to the fp32
+    golden (``bundle.resolve(model,'fp32').golden``) rather than the W8A8 reference. Falls back to
+    the (int8) bundle's own golden if the fp32 recapture is absent.
+    """
+    fp = _bundle.resolve(b.model, "fp32")
+    return fp.golden if fp.golden.is_file() else _golden_for(b)
 
 
 def _finish(res: BaselineResult, model: str, variant: str, write: bool) -> BaselineResult:
