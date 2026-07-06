@@ -128,6 +128,7 @@ class ExportResult:
 
 def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
                xnnpack: bool = True, quantize: bool = False, compute_golden: bool = False,
+               int8_subgraph: bool = False,
                extra_env: dict[str, str] | None = None, timeout: int = 3600) -> ExportResult:
     """Run the AOT export helper under the ET venv to produce ``model.pte`` (+ ``.ptd`` weights).
 
@@ -146,6 +147,9 @@ def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
     if not loader.is_file():
         raise ExecuTorchError(f"model2MLIR torch loader missing at {loader} "
                               "(ExecuTorch ingests torch; no loader -> cannot export)")
+    # int8-subgraph forces compute-golden (the subgraph has its own fp32 reference).
+    if int8_subgraph:
+        compute_golden = True
     work = work.resolve()   # the subprocess runs with cwd=work, so all paths must be absolute
     work.mkdir(parents=True, exist_ok=True)
     out = work / "model.pte"
@@ -161,6 +165,8 @@ def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
         cmd.append("--quantize")
     if compute_golden:
         cmd.append("--compute-golden")
+    if int8_subgraph:
+        cmd.append("--int8-subgraph")
     env = dict(os.environ)
     if extra_env:
         env.update(extra_env)
@@ -454,6 +460,7 @@ DEFAULT_MODELS = ("tiny_llama", "small_llama", "bitvla", "rdt2", "rdt", "openvla
 def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = None,
               write: bool = True, run_board: bool | None = None,
               xnnpack: bool = True, quantize: bool | None = None, compute_golden: bool = False,
+              int8_subgraph: bool = False,
               export_env: dict[str, str] | None = None,
               runner_override: Path | None = None) -> BaselineResult:
     """Run one (model, variant) through the ExecuTorch+XNNPACK arm end-to-end -> BaselineResult.
@@ -471,7 +478,14 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     # int8 variant defaults to PT2E W8A8 quantization (ExecuTorch's own int8) unless overridden.
     if quantize is None:
         quantize = (variant == "int8")
+    if int8_subgraph:
+        quantize = True
     cos_thr, rel_thr = _bundle.tolerance(model)
+    # W8A8 quantization loses precision vs the fp32 golden — the fp32 gate (cos>=0.9999) is not the
+    # right bar for an int8 result. Use an int8-appropriate gate so a genuinely-correct int8 run is
+    # not spuriously marked fail (still honest: cos is the MEASURED int8-vs-fp32 cosine, not faked).
+    if quantize:
+        cos_thr, rel_thr = 0.99, 5e-2
     res = BaselineResult(framework=FRAMEWORK, model=model, variant=variant,
                          substrate="k1_spacemit", cos_threshold=cos_thr, rel_threshold=rel_thr,
                          march=k1.K1_MARCH,
@@ -498,7 +512,10 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     #    failures -> not_built with a specific reason.
     try:
         exp = export_pte(model, b, work, xnnpack=xnnpack, quantize=quantize,
-                         compute_golden=compute_golden, extra_env=export_env)
+                         compute_golden=compute_golden, int8_subgraph=int8_subgraph,
+                         extra_env=export_env)
+        if exp.summary and exp.summary.get("subgraph_note"):
+            res.notes += " " + exp.summary["subgraph_note"]
         if exp.delegated_nodes is not None:
             res.notes += (f" xnnpack_delegated_nodes={exp.delegated_nodes}"
                           f"/{exp.total_call_nodes}")
