@@ -220,12 +220,47 @@ def _is_kernel(sym: str) -> bool:
 # fairest "did the benchmarked compute vectorize" number — the q4_K_M GEMM/GEMV inner kernels).
 _ACTIVE_QUANT_KERNELS = ("q4_K", "q8_K", "q4_k", "q8_k")
 
+# Per-quant inner-kernel token sets, so we can report the RVV% of the SPECIFIC path a given GGUF
+# runs. int8 (Q8_0) activations flow through the q8_0 + q8_K reduction dot-products; the K-quant
+# weight paths (q4_K/q8_K) share the q8_K activation dot; the BitNet/ternary path is TQ1_0/TQ2_0.
+_QUANT_KERNEL_TOKENS: dict[str, tuple[str, ...]] = {
+    "q8_0": ("q8_0", "q8_K"),          # int8: Q8_0 weights + q8_K activation dot
+    "q8_K": ("q8_K",),
+    "q4_K": ("q4_K", "q8_K"),          # q4_K weights dot against q8_K-quantized activations
+    "tq1_0": ("tq1_0",),               # BitNet 1.58-bit ternary (1.6875 bpw)
+    "tq2_0": ("tq2_0",),               # BitNet ternary (2.0625 bpw)
+}
+
+
+def _quant_path_coverage(report, quant: str) -> float | None:
+    """RVV% over the inner gemm/gemv/vec_dot kernels of a specific quant path (int8/ternary/etc.)."""
+    toks = _QUANT_KERNEL_TOKENS.get(quant.lower().replace("_m", "").replace("_s", ""))
+    if not toks:
+        # normalize e.g. "q4_K_M" -> "q4_K", "Q8_0" -> "q8_0"
+        base = quant.lower()
+        for k in _QUANT_KERNEL_TOKENS:
+            if base.startswith(k.lower()):
+                toks = _QUANT_KERNEL_TOKENS[k]
+                break
+    if not toks:
+        return None
+    v = s = 0
+    for name, sc in report.by_symbol.items():
+        if name.endswith("@plt"):
+            continue
+        if any(t in name for t in ("ggml_gemm", "ggml_gemv", "ggml_vec_dot")) and any(t in name for t in toks):
+            v += sc.vector
+            s += sc.scalar_compute
+    return (v / (v + s)) if (v + s) else None
+
 
 @dataclass
 class RvvAudit:
     coverage_overall: float | None = None          # whole-.so compute-insn coverage (diluted by glue)
     coverage_kernels: float | None = None          # coverage over ggml COMPUTE kernels only
     coverage_active_quant: float | None = None      # inner gemm/gemv/vec_dot for the q4_K/q8_K path
+    coverage_int8: float | None = None              # Q8_0 (int8) inner-kernel path (q8_0 + q8_K)
+    coverage_ternary: float | None = None           # BitNet TQ2_0 ternary inner-kernel path
     fallbacks: list[ScalarFallback] = None          # compute kernels that stayed fully scalar
     region_coverage: dict[str, float] = None        # per-REGIONS-bucket RVV coverage over kernels
 
@@ -268,7 +303,10 @@ def audit_cpu_so(so: Path) -> RvvAudit:
     region_cov = {r: (region_v[r] / (region_v[r] + region_s.get(r, 0)))
                   for r in region_v if (region_v[r] + region_s.get(r, 0))}
     return RvvAudit(coverage_overall=report.coverage_overall, coverage_kernels=cov_kernels,
-                    coverage_active_quant=cov_aq, fallbacks=fallbacks, region_coverage=region_cov)
+                    coverage_active_quant=cov_aq,
+                    coverage_int8=_quant_path_coverage(report, "q8_0"),
+                    coverage_ternary=_quant_path_coverage(report, "tq2_0"),
+                    fallbacks=fallbacks, region_coverage=region_cov)
 
 
 # --- board run ----------------------------------------------------------------------------------
@@ -361,14 +399,24 @@ def run_on_board(gguf_remote: str, *, n_threads: int = 8, pp: int = 64, tg: int 
 
 # --- the runner ---------------------------------------------------------------------------------
 
-def run_model(model: str, variant: str = "fp32", *, quant: str = "q4_K_M",
+# int8 first (Q8_0 = faithful int8, ggml's home turf), then the 4-bit K-quant. Both exercise the
+# vectorized RVV integer dot-products (q8_K / q4_K); Q8_0 is the int8 comparison the coordinator asked
+# for, Q4_K_M is the standard deployment quant.
+DEFAULT_QUANTS: tuple[str, ...] = ("Q8_0", "q4_K_M")
+
+
+def run_model(model: str, variant: str = "fp32", *, quant: str | None = None,
+              quants: tuple[str, ...] | None = None,
               write: bool = True, run_board: bool | None = None) -> BaselineResult:
     """Run one model through the ggml arm end-to-end and return a BaselineResult.
 
-    Re-runnable and fail-closed: builds/audits happen regardless of the board; the on-board
-    llama-bench is the only board-gated step. Correctness vs our golden is UNCOMPARABLE (see module
-    docstring) so ``cos`` stays None with an explicit note — never a fabricated pass.
+    Benchmarks each quant in ``quants`` (default int8 ``Q8_0`` first, then ``q4_K_M``) on the board;
+    the int8 path is the headline E2E. Re-runnable and fail-closed: builds/audits happen regardless
+    of the board; the on-board llama-bench is the only board-gated step. Correctness vs our golden is
+    UNCOMPARABLE (see module docstring) so ``cos`` stays None with an explicit note.
     """
+    if quants is None:
+        quants = (quant,) if quant else DEFAULT_QUANTS
     cos_thr, rel_thr = _bundle.tolerance(model)
     res = BaselineResult(framework=FRAMEWORK, model=model, variant=variant,
                          substrate="k1_spacemit", cos_threshold=cos_thr, rel_threshold=rel_thr,
@@ -396,7 +444,9 @@ def run_model(model: str, variant: str = "fp32", *, quant: str = "q4_K_M",
         # broader kernel coverage if the active-quant kernels weren't found.
         res.rvv_coverage_overall = aud.coverage_active_quant or aud.coverage_kernels
         res.scalar_fallbacks = aud.fallbacks
-        res.notes += (f" rvv_active_quant_cov(q4_K/q8_K)={aud.coverage_active_quant} "
+        res.notes += (f" rvv_int8_cov(Q8_0:q8_0+q8_K)={aud.coverage_int8} "
+                      f"rvv_ternary_cov(TQ2_0)={aud.coverage_ternary} "
+                      f"rvv_active_quant_cov(q4_K/q8_K)={aud.coverage_active_quant} "
                       f"rvv_all_kernels_cov={aud.coverage_kernels} rvv_whole_so={aud.coverage_overall} "
                       f"region_cov={aud.region_coverage} so={so.name};")
     except Exception as e:  # noqa: BLE001
@@ -436,7 +486,7 @@ def run_model(model: str, variant: str = "fp32", *, quant: str = "q4_K_M",
     do_board = k1_exec.board_available() if run_board is None else run_board
     if do_board:
         try:
-            _run_bench_on_board(res, model, gguf_f16, quant)
+            _run_bench_on_board(res, model, gguf_f16, quants)
         except k1_exec.BoardUnavailable as e:
             res.gap_reason = res.gap_reason or f"K1 board run failed: {str(e)[:200]}"
         except Exception as e:  # noqa: BLE001
@@ -448,11 +498,31 @@ def run_model(model: str, variant: str = "fp32", *, quant: str = "q4_K_M",
     return _finish(res, model, variant, write)
 
 
-def _run_bench_on_board(res: BaselineResult, model: str, gguf_f16: Path, quant: str) -> None:
-    """Deploy + quantize (on-board) + llama-bench under the board lock; fill E2E + region profile."""
+def _quant_path_cov_for(so: Path | None, quant: str) -> float | None:
+    """RVV% of the inner-kernel path a given quant runs (int8 Q8_0, q4_K, ternary...)."""
+    if so is None:
+        return None
+    try:
+        rep = rvv_audit.audit_binary(so)
+        return _quant_path_coverage(rep, quant)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _run_bench_on_board(res: BaselineResult, model: str, gguf_f16: Path,
+                        quants: tuple[str, ...]) -> None:
+    """Deploy once, then quantize + llama-bench EACH quant under one board lock.
+
+    Runs all quants inside a single ``board_lock()`` acquisition (fair to the shared board — one
+    hold, not one-per-quant). int8 ``Q8_0`` is benchmarked first and becomes the headline E2E; each
+    quant's per-phase throughput + its specific int8/ternary RVV% are recorded.
+    """
+    ld = f"LD_LIBRARY_PATH={_BOARD_DIR}/lib:/usr/lib/riscv64-linux-gnu"
+    so = ggml_cpu_so()
+    per_quant: dict[str, dict] = {}
     with k1_exec.board_lock():
         deploy_runtime()
-        # Push the f16 GGUF (idempotent-ish: skip if already present with matching size).
+        # Push the f16 GGUF (idempotent: skip if already present with matching size).
         remote_f16 = f"{_BOARD_DIR}/{gguf_f16.name}"
         want = gguf_f16.stat().st_size
         chk = _board_sh(f"stat -c %s {remote_f16} 2>/dev/null || echo 0", timeout=60)
@@ -460,46 +530,53 @@ def _run_bench_on_board(res: BaselineResult, model: str, gguf_f16: Path, quant: 
         if have != want:
             subprocess.run(["scp", *_ssh_opts(), str(gguf_f16), f"{k1_exec.K1_HOST}:{remote_f16}"],
                            check=True, capture_output=True, timeout=1800)
-        # Quantize on-board to a q4_K model (exercises the well-vectorized q4_K RVV GEMM kernels)
-        # so the benchmark stays comfortably within the 3.4G board RAM. q4_K also matches ggml's
-        # BitNet-adjacent low-bit story for the (out-of-scope) ternary models.
-        remote_q = f"{_BOARD_DIR}/{model}-{quant}.gguf"
-        ld = f"LD_LIBRARY_PATH={_BOARD_DIR}/lib:/usr/lib/riscv64-linux-gnu"
-        qchk = _board_sh(f"test -s {remote_q} && echo yes || echo no", timeout=60)
-        run_gguf = remote_q
-        if "yes" not in qchk.stdout:
-            qz = _board_sh(f"{ld} {_BOARD_DIR}/llama-quantize {remote_f16} {remote_q} {quant}",
-                           timeout=1800)
-            if "yes" not in _board_sh(f"test -s {remote_q} && echo yes || echo no").stdout:
-                res.notes += f" on-board quantize->{quant} failed, benchmarking f16;"
-                run_gguf = remote_f16
-        bench, raw = run_on_board(run_gguf, n_threads=k1.K1_OMP_THREADS)
+        for quant in quants:
+            remote_q = f"{_BOARD_DIR}/{model}-{quant}.gguf"
+            run_gguf = remote_q
+            if "yes" not in _board_sh(f"test -s {remote_q} && echo yes || echo no", timeout=60).stdout:
+                _board_sh(f"{ld} {_BOARD_DIR}/llama-quantize {remote_f16} {remote_q} {quant}",
+                          timeout=1800)
+                if "yes" not in _board_sh(f"test -s {remote_q} && echo yes || echo no").stdout:
+                    per_quant[quant] = {"tps": {}, "wall_ns": None, "rc": 1,
+                                        "note": f"on-board quantize->{quant} failed"}
+                    continue
+            bench, raw = run_on_board(run_gguf, n_threads=k1.K1_OMP_THREADS)
+            bench["cov"] = _quant_path_cov_for(so, quant)
+            bench["gguf"] = Path(run_gguf).name
+            per_quant[quant] = bench
 
-    res.notes += f" bench_gguf={Path(run_gguf).name};"
-    res.ran = bench["rc"] == 0 and bool(bench["tps"])
-    if not res.ran:
-        res.gap_reason = res.gap_reason or f"llama-bench produced no throughput (rc={bench['rc']}): {raw[-200:]}"
-        return
-    if bench.get("wall_ns"):
-        res.e2e_wall_ns = int(bench["wall_ns"])
-    # Region profile from llama-bench's two phases: prompt-processing (pp, GEMM-bound) and
-    # token-generation (tg, GEMV/attention-bound). We record throughput (tokens/s) as the region
-    # metric via note (contract has no tps field); rdtime cycles stay None (llama-bench times
-    # internally; we do not have an rdtime asm bracket around it — honest, not fabricated).
-    kcov = None
-    for tok in res.notes.split():
-        if tok.startswith("rvv_kernels_cov="):
-            v = tok.split("=", 1)[1].rstrip(";")
-            kcov = float(v) if v not in ("None", "") else None
-    regions = []
-    for test, tps in bench["tps"].items():
-        reg = "gemm" if test.startswith("pp") else "attention"
-        regions.append(RegionProfile(name=reg, rvv_coverage=kcov, calls=None,
-                                     note=f"llama-bench {test}: {tps} tokens/s (rdtime cycles n/a — "
-                                          f"llama-bench times internally)"))
+    # Headline = the FIRST quant that actually produced throughput (Q8_0 int8 by default).
+    ran_any = False
+    regions: list[RegionProfile] = []
+    tps_summ: list[str] = []
+    for quant in quants:
+        b = per_quant.get(quant, {})
+        if b.get("rc") == 0 and b.get("tps"):
+            ran_any = True
+            cov = b.get("cov")
+            tps_summ.append(f"{quant}[" + ", ".join(f"{t}={v}tok/s" for t, v in b["tps"].items())
+                            + f", rvv={cov}]")
+            # first successful quant fills the E2E + region profile
+            if res.e2e_wall_ns is None and b.get("wall_ns"):
+                res.e2e_wall_ns = int(b["wall_ns"])
+            if not regions:
+                for test, v in b["tps"].items():
+                    reg = "gemm" if test.startswith("pp") else "attention"
+                    regions.append(RegionProfile(name=reg, rvv_coverage=cov, calls=None,
+                        note=f"{quant} llama-bench {test}: {v} tokens/s "
+                             f"(int8 path rvv={cov}; rdtime cycles n/a — llama-bench times internally)"))
+                # headline RVV% = the benchmarked int8 path's inner-kernel coverage
+                if cov is not None:
+                    res.rvv_coverage_overall = cov
+        elif b.get("note"):
+            tps_summ.append(f"{quant}[{b['note']}]")
+
     res.regions = regions
-    tps_str = ", ".join(f"{t}={v}tok/s" for t, v in bench["tps"].items())
-    res.notes += f" llama_bench_throughput[{tps_str}];"
+    res.ran = ran_any
+    if not ran_any:
+        res.gap_reason = res.gap_reason or f"llama-bench produced no throughput for any of {quants}"
+        return
+    res.notes += " llama_bench_throughput{" + " | ".join(tps_summ) + "};"
 
 
 def _finish(res: BaselineResult, model: str, variant: str, write: bool) -> BaselineResult:
@@ -537,12 +614,14 @@ def _main(argv=None) -> int:
     ap.add_argument("models", nargs="*", default=list(DEFAULT_MODELS),
                     help="models to run (default: LLM subset then VLA out-of-scope gaps)")
     ap.add_argument("--variant", default="fp32")
-    ap.add_argument("--quant", default="q4_K_M", help="on-board quantization (default q4_K_M)")
+    ap.add_argument("--quants", default=",".join(DEFAULT_QUANTS),
+                    help="comma-separated on-board quants, int8 first (default Q8_0,q4_K_M)")
     ap.add_argument("--no-write", action="store_true", help="do not write BaselineResult artifacts")
     args = ap.parse_args(argv)
+    quants = tuple(q.strip() for q in args.quants.split(",") if q.strip())
     results = []
     for m in (args.models or list(DEFAULT_MODELS)):
-        results.append(run_model(m, args.variant, quant=args.quant, write=not args.no_write))
+        results.append(run_model(m, args.variant, quants=quants, write=not args.no_write))
     for r in results:
         cov = f"{100*r.rvv_coverage_overall:.0f}%RVV" if r.rvv_coverage_overall is not None else "?RVV"
         print(f"{r.model}/{r.variant}: {r.status():10s} {cov} "

@@ -65,6 +65,40 @@ def test_audit_cpu_so_separates_kernel_and_active_quant(tmp_path, monkeypatch):
     assert fbs["ggml_vec_dot_q4_K_q8_K"] == "gemm"
     # gemm region coverage is present.
     assert "gemm" in aud.region_coverage
+    # int8 (Q8_0 = q8_0+q8_K) and ternary (TQ2_0) per-quant path fields exist.
+    assert hasattr(aud, "coverage_int8")
+    assert hasattr(aud, "coverage_ternary")
+
+
+def test_quant_path_coverage_selects_right_kernels():
+    # Synthetic .so: a mixed q8_0 int8 dot + a fully-vector tq2_0 ternary dot. The int8 path
+    # (q8_0+q8_K) and ternary path (tq2_0) must be scored independently, and an absent quant -> None.
+    import merlin.baselines.rvv_audit as ra
+    disasm = (
+        "0000000000010000 <ggml_vec_dot_q8_0_q8_K>:\n"
+        "   10000:\t02008557          \tvsetvli\ta0,a1,e32,m1,ta,ma\n"
+        "   10004:\t0205f007          \tvfmacc.vv\tv8,v0,v4\n"
+        "   10008:\t00b50533          \tadd\ta0,a0,a1\n"
+        "   1000c:\t00008067          \tret\n"
+        "0000000000010100 <ggml_vec_dot_tq2_0_q8_K>:\n"
+        "   10100:\t02008557          \tvsetvli\ta0,a1,e32,m1,ta,ma\n"
+        "   10104:\t0205f007          \tvmul.vv\tv8,v0,v4\n"
+        "   10108:\t00008067          \tret\n"
+    )
+    rep = ra.classify_disasm(disasm)
+    cov_int8 = ggml._quant_path_coverage(rep, "Q8_0")
+    cov_tern = ggml._quant_path_coverage(rep, "tq2_0")
+    assert cov_int8 is not None and 0.0 < cov_int8 <= 1.0
+    assert cov_tern == 1.0                                    # tq2_0 dot fully vector here
+    # tq1_0 kernels are absent from this dump -> None (not fabricated). (q4_K would match via the
+    # shared q8_K activation dot, which is the CORRECT semantics, so we probe an absent quant.)
+    assert ggml._quant_path_coverage(rep, "tq1_0") is None
+
+
+def test_default_quants_int8_first():
+    # int8 (Q8_0) must lead so it's the headline E2E the coordinator asked for.
+    assert ggml.DEFAULT_QUANTS[0] == "Q8_0"
+    assert "q4_K_M" in ggml.DEFAULT_QUANTS
 
 
 # --- llama-bench output parsing ---------------------------------------------------------------
