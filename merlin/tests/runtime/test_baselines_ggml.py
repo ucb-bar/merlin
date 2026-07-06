@@ -7,6 +7,8 @@ gate stays green regardless of the ggml build state.
 """
 from __future__ import annotations
 
+import pytest
+
 from merlin.baselines import ggml
 
 
@@ -153,11 +155,12 @@ def test_ggml_not_built_when_toolchain_absent(monkeypatch):
     r.validate()
 
 
-# --- correctness is uncomparable: never a fabricated pass -------------------------------------
+# --- correctness gate: comparable for tiny_llama, uncomparable elsewhere ----------------------
 
-def test_tiny_llama_correctness_uncomparable(monkeypatch, tmp_path):
-    # With the toolchain available and a (mocked) GGUF, tiny_llama runs but correctness vs our
-    # golden is uncomparable -> cos stays None, so it can NEVER be a pass (not_run_is_not_pass).
+def test_tiny_llama_offboard_cos_none_board_gated(monkeypatch, tmp_path):
+    # tiny_llama now HAS a real-checkpoint correctness bundle, so the "uncomparable" note is NOT
+    # emitted; but off-board (run_board=False) the logits-dump gate is skipped, so cos stays None
+    # -> never a fabricated pass. The board branch is where cos gets filled.
     monkeypatch.setattr(ggml, "ggml_available", lambda: True)
     monkeypatch.setattr(ggml, "ggml_cpu_so", lambda: None)
     fake_gguf = tmp_path / "tiny_llama-f16.gguf"
@@ -166,8 +169,33 @@ def test_tiny_llama_correctness_uncomparable(monkeypatch, tmp_path):
     r = ggml.run_model("tiny_llama", "fp32", write=False, run_board=False)
     assert r.cos is None
     assert r.passed is False
-    assert "UNCOMPARABLE" in r.notes
+    assert "UNCOMPARABLE" not in r.notes   # a comparable bundle exists -> no uncomparable claim
     r.validate()
+
+
+def test_correctness_bundle_resolution():
+    # tiny_llama resolves to the real full checkpoint (int8_full); toy/VLA models do not.
+    cb = ggml._correctness_bundle("tiny_llama")
+    assert cb is not None and cb.golden.is_file() and "full" in cb.root.name
+    assert ggml._correctness_bundle("small_llama") is None
+    assert ggml._correctness_bundle("openvla") is None
+
+
+def test_compare_logits_to_golden(tmp_path):
+    # A synthetic logits blob equal to golden -> cos ~1.0, rel ~0 (the comparator is sound).
+    import struct
+
+    import numpy as np
+    gold = np.random.RandomState(0).randn(1, 4, 16).astype(np.float32)
+    gp = tmp_path / "golden.npy"
+    np.save(gp, gold)
+    lp = tmp_path / "logits.f32"
+    with open(lp, "wb") as f:
+        f.write(struct.pack("ii", 16, 4))
+        gold.astype(np.float32).ravel().tofile(f)
+    cos, rel = ggml._compare_logits_to_golden(lp, gp)
+    assert cos == pytest.approx(1.0, abs=1e-5)
+    assert rel == pytest.approx(0.0, abs=1e-5)
 
 
 def test_default_models_llm_subset_first():
