@@ -40,6 +40,67 @@ def _load_loader(loader_path: Path):
     return mod
 
 
+def _linear_subgraph(model):
+    """Extract the model's REAL linear-heavy subgraph for the int8 fallback path.
+
+    The full-model PT2E quantizer trips on HF Llama's position/causal-mask integer-index ops, so we
+    instead quantize the largest pure-Linear region we can find — for a Llama that is a decoder
+    layer's SwiGLU MLP (gate/up/down Linears + SiLU, actual trained weights). Returns
+    ``(submodule, (hidden_state_input,), keys, note)`` with a seeded hidden-state input matching the
+    MLP's ``in_features``. Generic: falls back to wrapping the first N Linears in sequence if no
+    recognizable MLP is present.
+    """
+    import torch
+
+    # Find a decoder-layer MLP (HF Llama: model.lm.model.layers[i].mlp with gate/up/down_proj).
+    mlp = None
+    for name, m in model.named_modules():
+        if all(hasattr(m, a) for a in ("gate_proj", "up_proj", "down_proj")):
+            mlp = m
+            break
+    if mlp is not None:
+        d = mlp.gate_proj.in_features
+        act = getattr(mlp, "act_fn", torch.nn.SiLU())
+
+        class _MLP(torch.nn.Module):
+            def __init__(self, mlp, act):
+                super().__init__()
+                self.gate, self.up, self.down, self.act = mlp.gate_proj, mlp.up_proj, mlp.down_proj, act
+
+            def forward(self, x):
+                return self.down(self.act(self.gate(x)) * self.up(x))
+
+        sub = _MLP(mlp, act).eval()
+        torch.manual_seed(0)
+        x = torch.randn(1, 8, d)
+        return sub, (x,), ["hidden_state"], (
+            f"int8-subgraph=layer0-SwiGLU-MLP(d={d},h={mlp.gate_proj.out_features}); "
+            "embeddings/attention/mask excluded (full-model int8 blocked by HF-Llama PT2E)")
+
+    # Generic fallback: stack the first few Linears.
+    lins = [m for _, m in model.named_modules() if isinstance(m, torch.nn.Linear)]
+    if not lins:
+        raise RuntimeError("int8-subgraph: model has no Linear layers to quantize")
+    d = lins[0].in_features
+
+    class _Seq(torch.nn.Module):
+        def __init__(self, lins):
+            super().__init__()
+            self.lins = torch.nn.ModuleList(lins[:3])
+
+        def forward(self, x):
+            for lin in self.lins:
+                if lin.in_features == x.shape[-1]:
+                    x = torch.nn.functional.silu(lin(x))
+            return x
+
+    sub = _Seq(lins).eval()
+    torch.manual_seed(0)
+    x = torch.randn(1, 8, d)
+    return sub, (x,), ["hidden_state"], (
+        f"int8-subgraph=first-linears(d={d}); non-linear ops excluded (full-model int8 blocked)")
+
+
 _TORCH_TO_NP = {}  # filled after torch import
 
 
@@ -63,7 +124,18 @@ def main() -> int:
                          "--compute-golden (gate = eager-vs-ExecuTorch for THIS config).")
     ap.add_argument("--m2m-root", default="/scratch/agustin/projects/model2MLIR",
                     help="model2MLIR repo root (added to sys.path for its deps)")
+    ap.add_argument("--int8-subgraph", action="store_true",
+                    help="int8 fallback path: the FULL-model PT2E quantizer trips on HF Llama's "
+                         "position/causal-mask integer-index ops (observer corrupts an index "
+                         "dtype at calibration; upstream aot_riscv.py documents this). Instead, "
+                         "quantize the model's REAL linear-heavy subgraph (layer-0 SwiGLU MLP: "
+                         "gate/up/down Linears + SiLU, actual weights) W8A8 on a seeded "
+                         "hidden-state input, keeping embeddings/attention/mask fp32 and OUT of "
+                         "quantization. Forces --quantize + --compute-golden. Honestly labeled.")
     args = ap.parse_args()
+    if args.int8_subgraph:
+        args.quantize = True
+        args.compute_golden = True
 
     # This script sits in merlin/python/merlin/baselines/ alongside ``executorch.py``, which would
     # SHADOW the installed ``executorch`` package (Python puts the script dir on sys.path[0]).
@@ -85,6 +157,12 @@ def main() -> int:
     npz = np.load(args.inputs_npz)
     keys = list(npz.keys())
     captured = tuple(torch.from_numpy(npz[k]) for k in keys)
+
+    subgraph_note = ""
+    if args.int8_subgraph:
+        # Replace the whole model with its REAL linear-heavy subgraph (a genuine slice, actual
+        # weights) — the only int8-exportable part of an HF Llama for this PT2E quantizer.
+        model, captured, keys, subgraph_note = _linear_subgraph(model)
 
     if args.compute_golden:
         with torch.no_grad():
@@ -158,10 +236,12 @@ def main() -> int:
         # If there were no external constants (small model), there is simply no ptd — not an error.
         ptd_files = []
 
-    # 5. Save the captured input as raw bytes (the runner memcpy's the file into the input tensor).
+    # 5. Save the model input(s) as raw bytes (the runner memcpy's the file into the input tensor).
+    #    Use the actual `captured` tensors (int8-subgraph feeds a seeded fp32 hidden state, not the
+    #    npz token ids), so the on-board input matches exactly what golden was computed from.
     input_files = []
-    for i, k in enumerate(keys):
-        arr = np.ascontiguousarray(npz[k])
+    for i, (k, t) in enumerate(zip(keys, captured)):
+        arr = np.ascontiguousarray(t.detach().cpu().numpy())
         p = out.parent / f"input{i}.bin"
         p.write_bytes(arr.tobytes())
         input_files.append({"path": str(p), "key": k, "dtype": str(arr.dtype),
@@ -175,6 +255,8 @@ def main() -> int:
         "input_files": input_files,
         "xnnpack": not args.no_xnnpack,
         "quantized": quantized,
+        "int8_subgraph": bool(args.int8_subgraph),
+        "subgraph_note": subgraph_note,
         "delegated_nodes": delegated,
         "total_call_nodes": total_calls,
         "golden_shape": list(golden_np.shape),

@@ -128,3 +128,34 @@ def test_run_model_gap_when_inputs_missing(monkeypatch, tmp_path):
     assert r.gap_reason  # non-empty
     assert not r.passed
     r.validate()
+
+
+# --- int8: quantize + int8-subgraph flags, and the int8-appropriate gate ----------------------
+
+def test_int8_variant_defaults_quantize_and_loosens_gate(monkeypatch, tmp_path):
+    # An int8 run must (a) default quantize=True and (b) use an int8 gate (not the fp32 0.9999),
+    # else a genuinely-correct W8A8 result would be spuriously failed. We capture the thresholds the
+    # runner sets by stubbing export to fail fast AFTER the gate is chosen.
+    from merlin.baselines import bundle as _bundle
+
+    # A bundle with golden+inputs present so we get past the pre-export guards.
+    (tmp_path / "golden.npy").write_bytes(b"\x00" * 8)
+    (tmp_path / "inputs.npz").write_bytes(b"\x00" * 8)
+    bnd = _bundle.CaptureBundle(model="tiny_llama", variant="int8", root=tmp_path)
+    monkeypatch.setattr(et, "resolve_bundle", lambda m, v="fp32": bnd)
+    monkeypatch.setattr(et, "et_venv_available", lambda: True)
+
+    captured = {}
+
+    def _fake_export(model, b, work, **kw):
+        captured.update(kw)
+        raise et.ExecuTorchError("stub: stop after gate is set")
+
+    monkeypatch.setattr(et, "export_pte", _fake_export)
+    r = et.run_model("tiny_llama", "int8", write=False, run_board=False, int8_subgraph=True)
+    # int8 gate, not the fp32 (0.9999, 1e-3)
+    assert r.cos_threshold == 0.99 and r.rel_threshold == 5e-2
+    # quantize + int8_subgraph threaded to the exporter
+    assert captured.get("quantize") is True
+    assert captured.get("int8_subgraph") is True
+    assert r.status() == "not_built" and r.gap_reason  # stubbed export -> honest gap

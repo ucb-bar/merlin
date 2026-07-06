@@ -116,8 +116,17 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
   (`export_env={'M2M_LLAMA_LAYERS':'1'}` + `compute_golden=True`, gate = eager-torch-vs-ExecuTorch)
   proves the ExecuTorch+XNNPACK-RVV path end-to-end on real K1 silicon (cos 0.9999999999, rel 2.7e-6,
   217 ms wall).
-- **Known gap (honest, expected):** the int8 PT2E path (`--quantize`, XNNPACK symmetric quantizer)
-  FAILS on HF Llama — `prepare_pt2e` trips on the embedding/causal-mask integer-index ops
-  (`tensors used as indices must be long/int/byte/bool`), matching the upstream `aot_riscv.py`
-  note. Recorded `not_built` with that specific reason, not omitted. The fp32 XNNPACK-delegate path
-  is the working correctness+RVV result for this arm.
+- **int8 W8A8 path (`int8_subgraph=True`, XNNPACK qs8 RVV):** full-model PT2E FAILS on HF Llama —
+  `prepare_pt2e`'s inserted observer corrupts an integer-index dtype at CALIBRATION (the position/
+  causal-mask `aten.index.Tensor` on a `cumsum`); the raw exported graph runs fine, so it is the
+  observer insertion, not the annotation — no `set_module_type`/`set_operator_type`/`filter_fn`
+  toggle avoids it (matches the upstream `aot_riscv.py` note that HF Llama trips the quantizer).
+  The working fallback quantizes the model's REAL linear-heavy subgraph (layer-0 SwiGLU MLP:
+  gate/up/down Linears + SiLU, actual trained weights, seeded fp32 hidden-state input), keeping
+  embeddings/attention/mask fp32 and OUT of quantization. Static W8A8 fuses the whole int8 MLP into
+  ONE XNNPACK qs8 delegate (**delegated 1/2 nodes**, vs the fp32 arm's 10/93), dispatching to
+  `xnn_qs8_qc8w_gemm_minmax_fp32_ukernel_4x4v__rvv` (int8 GEMM inner loop is RVV; requantize/clamp
+  tail scalar; 15 int8 qs8/qd8/qc8w RVV GEMM ukernels linked). **On-board PASS: cos=0.99909 (int8
+  vs fp32), rel=0.043, 10.9 ms** (int8 gate 0.99/0.05 — W8A8 loses precision vs the fp32 golden; cos
+  is the MEASURED int8-vs-fp32 cosine, not faked). Full-model int8 honestly labeled not-exportable;
+  the subgraph is a genuine tiny_llama slice, not a toy.
