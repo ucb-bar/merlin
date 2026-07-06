@@ -93,18 +93,19 @@ def test_cos_rel_matches_golden(tmp_path):
 
 # --- bundle resolution (legacy fp32 LLM dir names) --------------------------------------------
 
-def test_resolve_bundle_legacy_tiny_llama():
-    # tiny_llama fp32 lives at the legacy tiny_consistent dir; resolve_bundle must find it if the
-    # convention dir is absent. We only assert the fallback logic, not that the capture exists.
+def test_resolve_bundle_tiny_llama():
+    # resolve_bundle finds a plausible tiny_llama fp32 recaptures dir: the full-fidelity
+    # <model>_fp32_full, the convention _consistent, or the legacy tiny_consistent.
     b = et.resolve_bundle("tiny_llama", "fp32")
     assert b.model == "tiny_llama"
-    # Either the convention dir or the legacy dir, but always a plausible recaptures path.
-    assert "consistent" in b.root.name
+    assert b.root.name in ("tiny_llama_fp32_full", "tiny_llama_fp32_consistent", "tiny_consistent")
 
 
-def test_resolve_bundle_int8_uses_convention():
+def test_resolve_bundle_int8_prefers_full_fidelity():
+    # bundle.resolve prefers the full-fidelity <model>_int8_full recapture (real/native arch) over
+    # the older truncated _consistent bundle when present.
     b = et.resolve_bundle("bitvla", "int8")
-    assert b.root.name == "bitvla_int8_consistent"
+    assert b.root.name in ("bitvla_int8_full", "bitvla_int8_consistent")
 
 
 # --- march enforcement is wired into cross-compile --------------------------------------------
@@ -159,3 +160,61 @@ def test_int8_variant_defaults_quantize_and_loosens_gate(monkeypatch, tmp_path):
     assert captured.get("quantize") is True
     assert captured.get("int8_subgraph") is True
     assert r.status() == "not_built" and r.gap_reason  # stubbed export -> honest gap
+
+
+def test_int8_variant_defaults_to_whole_model(monkeypatch, tmp_path):
+    # The int8 variant defaults to the OFFICIAL llama whole-model recipe (int8_whole_model=True),
+    # NOT the subgraph — the path that unblocks full-model int8 on HF Llama.
+    from merlin.baselines import bundle as _bundle
+
+    (tmp_path / "golden.npy").write_bytes(b"\x00" * 8)
+    (tmp_path / "inputs.npz").write_bytes(b"\x00" * 8)
+    bnd = _bundle.CaptureBundle(model="tiny_llama", variant="int8", root=tmp_path)
+    monkeypatch.setattr(et, "resolve_bundle", lambda m, v="fp32": bnd)
+    monkeypatch.setattr(et, "et_venv_available", lambda: True)
+    captured = {}
+
+    def _fake_export(model, b, work, **kw):
+        captured.update(kw)
+        raise et.ExecuTorchError("stub")
+
+    monkeypatch.setattr(et, "export_pte", _fake_export)
+    r = et.run_model("tiny_llama", "int8", write=False, run_board=False)  # no int8_subgraph
+    assert captured.get("int8_whole_model") is True
+    assert captured.get("int8_subgraph") is False
+    assert r.cos_threshold == 0.99  # int8 gate
+
+
+def test_ram_infeasible_models_are_built_not_run(monkeypatch, tmp_path):
+    # openvla/molmoact/pi05 are RAM-infeasible whole-model on the K1: they must be BUILT (export +
+    # audit) but recorded not_run with a specific RAM gap, never a false fit. We stub past export +
+    # cross-compile + audit so the RAM short-circuit is what sets the gap.
+    from merlin.baselines import bundle as _bundle
+
+    (tmp_path / "golden.npy").write_bytes(b"\x00" * 8)
+    (tmp_path / "inputs.npz").write_bytes(b"\x00" * 8)
+    bnd = _bundle.CaptureBundle(model="openvla", variant="int8", root=tmp_path)
+    monkeypatch.setattr(et, "resolve_bundle", lambda m, v="fp32": bnd)
+    monkeypatch.setattr(et, "et_venv_available", lambda: True)
+
+    class _Exp:
+        summary = {}
+        delegated_nodes = None
+        total_call_nodes = None
+        pte = tmp_path / "model.pte"
+        ptd_files = []
+        input_files = []
+        golden = tmp_path / "golden.npy"
+
+    monkeypatch.setattr(et, "export_pte", lambda *a, **k: _Exp())
+    fake_runner = tmp_path / "executor_runner"
+    fake_runner.write_bytes(b"\x7fELF")
+    monkeypatch.setattr(et, "audit_binary", lambda r: (0.1, [], {}))
+    monkeypatch.setattr(et.k1_exec, "board_vlenb", lambda: 32)
+    r = et.run_model("openvla", "int8", write=False, run_board=True,
+                     runner_override=fake_runner)
+    assert r.built is True          # export + audit happened
+    assert r.status() == "not_run"  # but not run on-board
+    assert "RAM-infeasible" in r.gap_reason
+    assert not r.passed
+    r.validate()

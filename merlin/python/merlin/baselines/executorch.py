@@ -128,7 +128,7 @@ class ExportResult:
 
 def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
                xnnpack: bool = True, quantize: bool = False, compute_golden: bool = False,
-               int8_subgraph: bool = False,
+               int8_subgraph: bool = False, int8_whole_model: bool = False,
                extra_env: dict[str, str] | None = None, timeout: int = 3600) -> ExportResult:
     """Run the AOT export helper under the ET venv to produce ``model.pte`` (+ ``.ptd`` weights).
 
@@ -147,8 +147,9 @@ def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
     if not loader.is_file():
         raise ExecuTorchError(f"model2MLIR torch loader missing at {loader} "
                               "(ExecuTorch ingests torch; no loader -> cannot export)")
-    # int8-subgraph forces compute-golden (the subgraph has its own fp32 reference).
-    if int8_subgraph:
+    # int8-subgraph / whole-model int8 force compute-golden (the fp32 reference is recomputed from
+    # THIS exact loaded model, so the int8-vs-fp32 cosine is measured against the right baseline).
+    if int8_subgraph or int8_whole_model:
         compute_golden = True
     work = work.resolve()   # the subprocess runs with cwd=work, so all paths must be absolute
     work.mkdir(parents=True, exist_ok=True)
@@ -167,6 +168,8 @@ def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
         cmd.append("--compute-golden")
     if int8_subgraph:
         cmd.append("--int8-subgraph")
+    if int8_whole_model:
+        cmd.append("--int8-whole-model")
     env = dict(os.environ)
     if extra_env:
         env.update(extra_env)
@@ -460,7 +463,8 @@ DEFAULT_MODELS = ("tiny_llama", "small_llama", "bitvla", "rdt2", "rdt", "openvla
 def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = None,
               write: bool = True, run_board: bool | None = None,
               xnnpack: bool = True, quantize: bool | None = None, compute_golden: bool = False,
-              int8_subgraph: bool = False,
+              int8_subgraph: bool = False, int8_whole_model: bool | None = None,
+              full_fidelity: bool = True,
               export_env: dict[str, str] | None = None,
               runner_override: Path | None = None) -> BaselineResult:
     """Run one (model, variant) through the ExecuTorch+XNNPACK arm end-to-end -> BaselineResult.
@@ -475,11 +479,21 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     ExecuTorch+XNNPACK-RVV path end-to-end on real silicon; the full-config attempt is recorded as a
     board-fit gap. ``runner_override`` reuses an already-built executor_runner (it is model-agnostic).
     """
-    # int8 variant defaults to PT2E W8A8 quantization (ExecuTorch's own int8) unless overridden.
+    # int8 variant defaults to ExecuTorch's OFFICIAL whole-model llama recipe (source-transform
+    # weight-only int8 per-channel) — the path that unblocks full-model int8 on HF Llama. Falls back
+    # to the decoder-linear subgraph only if explicitly requested.
+    if int8_whole_model is None:
+        int8_whole_model = (variant == "int8") and not int8_subgraph
     if quantize is None:
         quantize = (variant == "int8")
-    if int8_subgraph:
+    if int8_subgraph or int8_whole_model:
         quantize = True
+    # Full-fidelity: load the model with the exact loader env the golden was captured on (so we
+    # ingest the IDENTICAL architecture). Merged UNDER any explicit export_env override.
+    if full_fidelity:
+        ff = _bundle.full_env(model)
+        if ff:
+            export_env = {**ff, **(export_env or {})}
     cos_thr, rel_thr = _bundle.tolerance(model)
     # W8A8 quantization loses precision vs the fp32 golden — the fp32 gate (cos>=0.9999) is not the
     # right bar for an int8 result. Use an int8-appropriate gate so a genuinely-correct int8 run is
@@ -513,7 +527,7 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     try:
         exp = export_pte(model, b, work, xnnpack=xnnpack, quantize=quantize,
                          compute_golden=compute_golden, int8_subgraph=int8_subgraph,
-                         extra_env=export_env)
+                         int8_whole_model=int8_whole_model, extra_env=export_env)
         if exp.summary and exp.summary.get("subgraph_note"):
             res.notes += " " + exp.summary["subgraph_note"]
         if exp.delegated_nodes is not None:
@@ -553,6 +567,16 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
         res.notes += f" rvv-audit failed: {str(e)[:150]}"
 
     # 4. K1 on-board run — the ONLY board-gated step. Fail-closed when the board is down / too full.
+    #    RAM-infeasible models (7B-class VLAs: openvla/molmoact/pi05) are BUILT (export succeeds) but
+    #    NOT run on-board — their fp32 embeddings alone exceed the 3.8 GB board. Honest not_run gap,
+    #    never a false fit. (The _run_on_board free-space guard also fail-closes if the .pte is too
+    #    big, but we short-circuit the known-infeasible set to avoid a pointless multi-GB transfer.)
+    if model in _bundle.K1_RAM_INFEASIBLE:
+        res.gap_reason = (f"{model} is RAM-infeasible whole-model on the K1 (3.8 GB board): a "
+                          "7B-class VLA whose fp32 embeddings/weights exceed board RAM even at int8. "
+                          "Exported + RVV-audited off-board; not run on-board (no false fit).")
+        res.board_vlenb = k1_exec.board_vlenb()
+        return _finish(res, model, variant, write)
     do_board = k1_exec.board_available() if run_board is None else run_board
     if do_board:
         try:
@@ -600,11 +624,11 @@ def _finish(res: BaselineResult, model: str, variant: str, write: bool) -> Basel
 
 
 def run_all(models=DEFAULT_MODELS, variant: str = "fp32", *, write: bool = True,
-            xnnpack: bool = True) -> list[BaselineResult]:
+            xnnpack: bool = True, **kw) -> list[BaselineResult]:
     out = []
     for m in models:
         try:
-            out.append(run_model(m, variant, write=write, xnnpack=xnnpack))
+            out.append(run_model(m, variant, write=write, xnnpack=xnnpack, **kw))
         except Exception as e:  # noqa: BLE001 - one model must never sink the batch
             r = BaselineResult(framework=FRAMEWORK, model=m, variant=variant,
                                gap_reason=f"runner exception: {str(e)[:200]}",
@@ -617,6 +641,23 @@ def run_all(models=DEFAULT_MODELS, variant: str = "fp32", *, write: bool = True,
                     pass
             out.append(r)
     return out
+
+
+# All 11 m2m models: the 8 K1-runnable + the 3 RAM-infeasible VLAs (attempted, RAM-gapped).
+ALL_MODELS = tuple(sorted(_bundle.K1_RUNNABLE | _bundle.K1_RAM_INFEASIBLE))
+
+
+def run_all_int8(models=ALL_MODELS, *, write: bool = True, runner_override: Path | None = None,
+                 run_board: bool | None = None) -> list[BaselineResult]:
+    """Whole-model int8 (ExecuTorch official llama recipe) across the full corpus.
+
+    Llama-family models use the source-transform whole-model int8 path; the RAM-infeasible VLAs
+    (openvla/molmoact/pi05) are attempted-and-RAM-gapped; non-llama archs that won't torch.export
+    (dynamic control flow) surface an honest ``not_built`` with the specific op. Full-fidelity
+    loader env is applied automatically (``bundle.full_env``).
+    """
+    return run_all(models, "int8", write=write, int8_whole_model=True,
+                   runner_override=runner_override, run_board=run_board)
 
 
 def _main(argv=None) -> int:
