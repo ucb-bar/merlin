@@ -726,6 +726,153 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     return _finish(res, model, variant, write)
 
 
+def run_model_native(model: str, variant: str = "int8", *, work_root: Path | None = None,
+                     write: bool = True, run_board: bool | None = None) -> BaselineResult:
+    """Phase-2 NATIVE path: import via buddy's DynamoCompiler, lower + run on the K1.
+
+    Ingests the REAL torch model (buddy's own importer, full-fidelity ``bundle.full_env``) instead of
+    m2m's linalg ``model.mlir`` — DIFFERENT IR that may bypass the m2m-path SIGSEGV. Records honest
+    gaps: RAM-infeasible 7B VLAs (``bundle.K1_RAM_INFEASIBLE``) are ``not_run`` (attempt build, never
+    a false fit); import/lower/link failures are ``not_built``.
+    """
+    import numpy as np
+
+    cos_thr, rel_thr = _bundle.tolerance(model)
+    res = BaselineResult(framework=FRAMEWORK, model=model, variant=variant, substrate="k1_spacemit",
+                         cos_threshold=cos_thr, rel_threshold=rel_thr, march=k1.K1_MARCH,
+                         toolchain="buddy-mlir(native-dynamo)+llvm23", framework_commit=buddy_commit(),
+                         timestamp=artifacts.utc_stamp(), notes="native=dynamo-importer")
+
+    b = resolve_bundle(model, variant)
+    if not b.golden.is_file():
+        res.gap_reason = f"golden missing: {b.golden} (cannot gate correctness)"
+        return _finish(res, model, variant, write)
+    if not native_import_available():
+        res.gap_reason = ("buddy native importer unavailable (need MLIR python bindings + buddy "
+                          "python packages built, and the model2MLIR torch venv)")
+        return _finish(res, model, variant, write)
+
+    work = (work_root or (_BUILD_ROOT / "native")) / f"{model}_{variant}"
+    work.mkdir(parents=True, exist_ok=True)
+    nat = work / "import"
+
+    # 1. native import (buddy DynamoCompiler over the real torch model).
+    try:
+        native_import(model, variant, nat)
+    except BuddyError as e:
+        res.gap_reason = f"native import failed: {str(e)[:300]}"
+        return _finish(res, model, variant, write)
+
+    import json
+    meta = json.loads((nat / "import_meta.json").read_text())
+    res.notes += f" registry={meta.get('registry')} n_params={meta.get('n_params')}"
+
+    # 2. lower + compile to rv64gcv objects + RVV audit.
+    try:
+        objs = compile_native_objects(nat, work)
+        cov, fbs, _ = audit_object(work / "nat_subgraph0.o")
+        res.rvv_coverage_overall = cov
+        res.scalar_fallbacks = fbs
+    except BuddyError as e:
+        res.gap_reason = f"native lower/compile failed: {str(e)[:300]}"
+        return _finish(res, model, variant, write)
+
+    # 3. link the native K1 ELF.
+    gold = np.load(_golden_for(b))
+    out_elems = int(np.prod(gold.shape))
+    out_lastdim = int(gold.shape[-1]) if gold.ndim else 1
+    iv = []
+    if b.inputs.is_file():
+        npz = np.load(b.inputs)
+        key = next((k for k in npz.files), None)
+        if key is not None:
+            iv = np.asarray(npz[key]).astype(np.int64).ravel().tolist()
+    param_elems = int(meta.get("param_bytes", 0)) // 4
+    try:
+        elf = link_native_k1_elf(nat, objs, work, iv, out_elems=out_elems, out_lastdim=out_lastdim,
+                                 in_elems=max(1, len(iv)), param_elems=param_elems)
+        res.built = True
+        res.notes += f" elf={elf}"
+    except BuddyError as e:
+        res.gap_reason = f"native link failed: {str(e)[:300]}"
+        return _finish(res, model, variant, write)
+
+    # 4. RAM-infeasible 7B VLAs: attempt build (done) but never fit on the 3.8 GB board.
+    if model in _bundle.K1_RAM_INFEASIBLE:
+        res.gap_reason = (f"{model} is 7B-class — {param_elems*4/1e9:.1f} GB params exceed the 3.8 GB "
+                          "K1 RAM even at int8 (built + RVV audited; on-board run RAM-infeasible)")
+        return _finish(res, model, variant, write)
+
+    # 5. on-board run (native harness; params mmap'd from arg0.data).
+    do_board = k1_exec.board_available() if run_board is None else run_board
+    if do_board:
+        try:
+            _run_native_on_board(res, elf, nat / "arg0.data", b, work)
+        except Exception as e:  # noqa: BLE001
+            res.gap_reason = res.gap_reason or f"K1 native run error: {str(e)[:200]}"
+    else:
+        res.gap_reason = "K1 board unavailable (MERLIN_K1_HOST unset)"
+    res.board_vlenb = k1_exec.board_vlenb()
+    return _finish(res, model, variant, write)
+
+
+def _run_native_on_board(res: BaselineResult, elf: Path, arg0: Path, b: _bundle.CaptureBundle,
+                         work: Path) -> None:
+    """Push the native ELF + arg0.data (mmap'd), run under board_lock, parse OUT/METRIC + gate."""
+    import numpy as np
+
+    from merlin.runtime.backends import zephyr_model as zm
+
+    with k1_exec.board_lock():
+        remote = k1_exec.push(str(elf))
+        # arg0.data -> stable size-keyed name on the rootfs (idempotent: skip re-scp if present).
+        wsize = arg0.stat().st_size
+        remote_w = f"{k1_exec.K1_REMOTE_DIR}/{b.model}_{b.variant}_native_{wsize}.arg0.data"
+        probe = k1_exec.run(["stat", "-c%s", remote_w, "2>/dev/null", "||", "echo", "0"])
+        if not (probe.stdout.strip().isdigit() and int(probe.stdout.strip()) == wsize):
+            k1_exec.push(str(arg0), remote_w, timeout=3600)
+        try:
+            k1_exec.run(["chmod", "+x", remote])
+            proc = k1_exec.run([f"MERLIN_WEIGHTS={remote_w} {remote}"], timeout=1800)
+        finally:
+            try:
+                k1_exec.run(["rm", "-f", remote])
+            except Exception:  # noqa: BLE001
+                pass
+
+    console = proc.stdout + proc.stderr
+    try:
+        parsed = zm._parse_console(console, proc.returncode)
+    except zm.ZephyrModelError as e:
+        res.ran = False
+        res.gap_reason = res.gap_reason or f"K1 native run no OUT/DONE: {str(e)[-200:]}"
+        return
+    res.ran = "DONE" in console
+    metrics = parsed.get("metrics", {}) if isinstance(parsed.get("metrics"), dict) else {}
+    if metrics.get("time_ticks") is not None:
+        res.e2e_rdtime_ticks = int(metrics["time_ticks"])
+        res.e2e_cycles = profile.ticks_to_cycles(int(metrics["time_ticks"]))
+    if metrics.get("wall_ns") is not None:
+        res.e2e_wall_ns = int(metrics["wall_ns"])
+    if res.e2e_rdtime_ticks is not None:
+        res.regions = [RegionProfile(name="other", rdtime_ticks=res.e2e_rdtime_ticks,
+                                     cycles=res.e2e_cycles, rvv_coverage=res.rvv_coverage_overall,
+                                     note="whole-forward (buddy native)")]
+    out = parsed.get("outputs")
+    if out is not None and res.ran:
+        try:
+            g = np.load(_golden_for(b)).astype(np.float64).ravel()
+            a = np.asarray(out, dtype=np.float64).ravel()[:g.size]
+            g = g[:a.size]
+            if a.size:
+                res.cos = float(np.dot(a, g) / ((np.linalg.norm(a) * np.linalg.norm(g)) or 1.0))
+                res.rel = float(np.linalg.norm(a - g) / (np.linalg.norm(g) or 1.0))
+        except Exception as e:  # noqa: BLE001
+            res.notes += f" gold-compare failed: {str(e)[:120]}"
+    if not res.ran and not res.gap_reason:
+        res.gap_reason = f"K1 native run no DONE (rc={proc.returncode}): {console[-200:]}"
+
+
 def _offboard_correctness(b: _bundle.CaptureBundle, work: Path) -> Correctness:
     """Numerically verify buddy's lowering off the board via host JIT (mlir-runner).
 
