@@ -152,6 +152,11 @@ def resolve_bundle(model: str, variant: str = "fp32") -> _bundle.CaptureBundle:
 # hint (--riscv-v-vector-bits-min=256) matches the K1's 256-bit vector registers.
 _RVV_MATTR = "+m,+a,+f,+d,+c,+v"
 _RVV_VBITS = 256
+# LLVM IR (text) byte size above which full ``opt -O3`` is intractable on a whole-model monolithic
+# function; use a bounded loop/SLP-vectorize recipe instead so huge models (pi05 ~200 MB) still
+# build + emit RVV rather than timing out. 64 MB comfortably clears tiny/small LLMs + VLAs (<6 MB
+# lowered) while catching pi05.
+_O3_IR_SIZE_LIMIT = 64 * 1024 * 1024
 
 # The buddy/upstream linalg-on-tensors -> LLVM dialect pipeline. One-shot bufferize turns the tensor
 # program into memrefs; ``-convert-linalg-to-loops`` gives a scalar loop nest that lowers cleanly
@@ -256,9 +261,16 @@ def compile_rv64gcv_object(ll_path: Path, work: Path, *, timeout: int = 2400) ->
     vec_ll = ll_path
     if opt is not None:
         vec_ll = work / "model.opt.ll"
-        _run([opt, "-O3", f"-mtriple={triple}", f"-mattr={_RVV_MATTR}",
-              f"--riscv-v-vector-bits-min={_RVV_VBITS}", str(ll_path), "-o", str(vec_ll)],
-             timeout=timeout)
+        common = [f"-mtriple={triple}", f"-mattr={_RVV_MATTR}",
+                  f"--riscv-v-vector-bits-min={_RVV_VBITS}"]
+        # Full ``-O3`` is superlinear on a whole-model MONOLITHIC forward function; for a very large
+        # IR (e.g. pi05 ~200 MB) it never finishes. Above a size threshold, fall back to a BOUNDED
+        # vectorization recipe (loop+SLP vectorize + cleanup) — seconds instead of tens of minutes,
+        # and still emits RVV (measured ~9% vs ~17% at O3 on tiny_llama) rather than timing out.
+        big = ll_path.stat().st_size > _O3_IR_SIZE_LIMIT
+        passes = (["-passes=function(loop-vectorize,slp-vectorizer,instcombine,simplifycfg)"]
+                  if big else ["-O3"])
+        _run([opt, *passes, *common, str(ll_path), "-o", str(vec_ll)], timeout=timeout)
     obj = work / "model.o"
     _run([llc, f"-mtriple={triple}", f"-mattr={_RVV_MATTR}", f"--target-abi={k1.K1_MABI}",
           f"--riscv-v-vector-bits-min={_RVV_VBITS}", "-O3", "-filetype=obj",
