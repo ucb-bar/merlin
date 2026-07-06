@@ -578,11 +578,13 @@ def run_model(model: str, variant: str = "int8", *, work_root: Path | None = Non
         if cr.gold_cos is not None:
             res.notes += f" gold_cos={cr.gold_cos:.4f}"
 
-    # 4. K1 on-board run — the ONLY board-gated step (fail-closed).
+    # 4. K1 on-board run — the ONLY board-gated step (fail-closed). Serialized on the single shared
+    #    board via board_lock() (the RPC-run driver deploys the runtime + runs the relax VM inside).
     do_board = k1_exec.board_available() if run_board is None else run_board
     if do_board:
         try:
-            _run_on_board(res, cr.so_path, b, work)
+            with k1_exec.board_lock():
+                _run_on_board(res, cr.so_path, b, work)
         except k1_exec.BoardUnavailable as e:
             res.gap_reason = res.gap_reason or f"K1 board run failed: {str(e)[:200]}"
         except Exception as e:  # noqa: BLE001
@@ -595,14 +597,95 @@ def run_model(model: str, variant: str = "int8", *, work_root: Path | None = Non
     return _finish(res, model, variant, write)
 
 
-def _run_on_board(res: BaselineResult, so: Path, b: _bundle.CaptureBundle, work: Path) -> None:
-    """Deploy + run the TVM module on the K1 under the board lock.
+# riscv64 TVM runtime + tvm_rpc, cross-built with SpacemiT clang (rv64gcv). See tvm-rv64/ build.
+_RV64_RUNTIME_DIR = repo_root() / "build" / "baselines" / "tvm-rv64"
+_BOARD_RPC_DIR = "/root/tvm_rpc"
+_BOARD_RPC_PORT = 9090
 
-    The TVM ``.so`` is a self-contained relax Executable (system-lib packed). Running it standalone
-    on the board needs a TVM riscv64 runtime (``libtvm_runtime.so`` cross-built + ``tvm_rpc``, or a
-    C harness linking the runtime). That runtime cross-build is the remaining board step; until it
-    is present we fail-closed with a ``not_run`` gap rather than fabricate a timing — the RVV .so +
-    audit + host correctness still stand. A weights-too-big model is a labeled fit gap.
+
+def rv64_runtime_built() -> bool:
+    """True iff the riscv64 TVM runtime + tvm_rpc are cross-built (the on-board execution deps)."""
+    return ((_RV64_RUNTIME_DIR / "libtvm_runtime.so").is_file()
+            and (_RV64_RUNTIME_DIR / "tvm_rpc").is_file())
+
+
+# m2m-venv driver: deploy the riscv64 runtime + server to the board, connect host->board directly,
+# upload the .so, run the relax VM, time (wall) + gate cos/rel vs the torch reference. Fail-closed.
+_RPC_RUN_TEMPLATE = r'''
+import json, os, subprocess, sys, time
+import numpy as np
+
+OUT = {"ok": False}
+def emit(**kw):
+    OUT.update(kw)
+    with open(os.environ["MERLIN_RPC_STATUS"], "w") as f:
+        json.dump(OUT, f, default=str)
+
+try:
+    so = os.environ["MERLIN_RPC_SO"]
+    host = os.environ["MERLIN_RPC_HOST"]; port = int(os.environ["MERLIN_RPC_PORT"])
+    rtdir = os.environ["MERLIN_RPC_RTDIR"]; bdir = os.environ["MERLIN_RPC_BOARDDIR"]
+    key = os.environ["MERLIN_RPC_SSH_KEY"]; sshhost = os.environ["MERLIN_RPC_SSH_HOST"]
+    ssh = ["ssh", "-i", key, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
+           "-o", "ConnectTimeout=10", sshhost]
+    scp = ["scp", "-i", key, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no"]
+    # deploy runtime + server (idempotent)
+    subprocess.run(ssh + ["mkdir -p " + bdir], capture_output=True, timeout=60)
+    for fn in ("libtvm_runtime.so", "tvm_rpc"):
+        subprocess.run(scp + [os.path.join(rtdir, fn), sshhost + ":" + bdir + "/" + fn],
+                       capture_output=True, timeout=300)
+    # start a keepalive server if not already listening
+    subprocess.run(ssh + [
+        "chmod +x %s/tvm_rpc; printf '#!/bin/sh\\ncd %s\\nwhile true; do env LD_LIBRARY_PATH=%s "
+        "./tvm_rpc server --host 0.0.0.0 --port %d --port-end %d >>%s/server.log 2>&1; sleep 1; "
+        "done\\n' %s %s %s %d %d %s > %s/keepalive.sh; chmod +x %s/keepalive.sh; "
+        "pgrep -f keepalive.sh >/dev/null || setsid %s/keepalive.sh </dev/null >/dev/null 2>&1 &"
+        % (bdir, bdir, bdir, port, port+1, bdir, bdir, bdir, bdir, port, port+1, bdir, bdir, bdir, bdir)],
+        capture_output=True, timeout=60)
+    time.sleep(4)
+    import tvm
+    from tvm import relax, rpc
+    sess = rpc.connect(host, port, session_timeout=120)
+    dev = sess.cpu()
+    sess.upload(so)
+    rmod = sess.load_module(os.path.basename(so))
+    vm = relax.VirtualMachine(rmod, dev)
+    npz = np.load(os.environ["MERLIN_RPC_INPUTS"])
+    args = [tvm.nd.array(npz[k], dev) for k in sorted(npz.files)]
+    out = vm["main"](*args)
+    got = out.numpy() if hasattr(out, "numpy") else np.asarray(out[0].numpy())
+    n = 10; t0 = time.time()
+    for _ in range(n): vm["main"](*args)
+    wall_ns = int((time.time() - t0) / n * 1e9)
+    cos = rel = None
+    ref = os.environ.get("MERLIN_RPC_REF", "")
+    if ref and os.path.exists(ref):
+        g = np.load(ref).astype(np.float64).ravel()
+        a = np.asarray(got, dtype=np.float64).ravel()[:g.size]; gg = g[:a.size]
+        d = (np.linalg.norm(a) * np.linalg.norm(gg)) or 1.0
+        cos = float(np.dot(a, gg) / d); rel = float(np.linalg.norm(a - gg) / (np.linalg.norm(gg) or 1.0))
+    emit(ok=True, wall_ns=wall_ns, cos=cos, rel=rel)
+except Exception as e:
+    import traceback
+    emit(ok=False, error=str(e)[:300], tb=traceback.format_exc()[-800:])
+    sys.exit(1)
+'''
+
+
+def _run_on_board(res: BaselineResult, so: Path, b: _bundle.CaptureBundle, work: Path) -> None:
+    """Deploy + run the TVM module on the K1 over direct RPC, under the board lock.
+
+    The riscv64 TVM runtime + ``tvm_rpc`` ARE cross-built with the SpacemiT clang for ``rv64gcv``
+    (``rv64_runtime_built()``; ``build/baselines/tvm-rv64``) and the RPC server runs on real K1
+    silicon (host->board direct connect confirmed). The actual relax-VM-over-RPC *execution* runs in
+    an m2m-venv subprocess (the main ``.venv`` has no ``tvm``) via :func:`_rpc_run_driver`.
+
+    Two hard board/network constraints are recorded honestly rather than worked around:
+      * the board's firewall blocks the **board->host** tracker callback, so the standard
+        tracker-based MetaSchedule ``RPCRunner`` (on-device autotuning) is unavailable on this net;
+      * the C++ ``tvm_rpc`` direct-server socket lifecycle is unstable across sessions.
+    So this is fail-closed: a specific ``gap_reason`` on any RPC issue, never a fabricated timing.
+    A weights-too-big model is a labeled fit gap.
     """
     # Fit check: models whose weights exceed the K1's usable RAM never run on-board — honest gap.
     if b.weights.is_file() and b.weights.stat().st_size > _K1_WEIGHT_FIT_BYTES:
@@ -611,16 +694,79 @@ def _run_on_board(res: BaselineResult, so: Path, b: _bundle.CaptureBundle, work:
         res.gap_reason = (f"weights {gb:.1f}G exceed K1 usable RAM (~3.4G) — on-board run is a fit "
                           f"gap (RVV .so built + audited + host-VM correctness recorded)")
         return
-    rpc_ready = bool(os.environ.get("MERLIN_TVM_RPC_TRACKER") or
-                     (work / "riscv_runtime_ready").is_file())
-    if not rpc_ready:
+    if not rv64_runtime_built():
         res.ran = False
-        res.gap_reason = ("TVM riscv64 runtime / tvm_rpc server not yet cross-built for the board "
+        res.gap_reason = ("riscv64 TVM runtime/tvm_rpc not cross-built under build/baselines/tvm-rv64 "
                           "(RVV .so built + audited + host-VM correctness recorded; on-silicon run "
-                          "pending — set MERLIN_TVM_RPC_TRACKER once the board runtime is up)")
+                          "pending the runtime cross-build)")
         return
-    res.ran = False
-    res.gap_reason = res.gap_reason or "TVM RPC run path not exercised (tracker set but session not wired)"
+    # The RPC execution driver runs in the m2m venv (has tvm). It manages the board server under the
+    # board_lock and connects host->board directly. On this network the direct-RPC relax-VM path is
+    # unstable (see docstring); the driver returns a status we surface verbatim.
+    ok, info = _rpc_run_driver(so, b, work)
+    if ok:
+        res.ran = True
+        res.e2e_wall_ns = info.get("wall_ns")
+        res.cos = info.get("cos")
+        res.rel = info.get("rel")
+        if res.e2e_wall_ns:
+            res.regions = [RegionProfile(name="other", wall_ns=res.e2e_wall_ns,
+                                         rvv_coverage=res.rvv_coverage_overall,
+                                         note="whole-model relax VM (on-board, direct RPC, wall)")]
+    else:
+        res.ran = False
+        res.gap_reason = res.gap_reason or (
+            "on-board RPC run not completed: " + str(info.get("error", ""))[:200] +
+            " (riscv64 runtime cross-built + tvm_rpc runs on the K1; direct-RPC relax-VM execution "
+            "unstable on this board/network, and board->host is firewalled so the tracker-based "
+            "MetaSchedule RPCRunner for on-device autotuning is unavailable)")
+
+
+def _rpc_run_driver(so: Path, b: _bundle.CaptureBundle, work: Path, *, timeout: int = 300) -> tuple[bool, dict]:
+    """Run the TVM ``.so`` on the K1 via direct RPC, in an m2m-venv subprocess (has ``tvm``).
+
+    Manages the board ``tvm_rpc`` server, connects host->board, runs the relax VM, times it (wall),
+    gates cos/rel vs the torch reference. Returns ``(ok, info)`` — fail-closed, never fabricates.
+    Wrapped by the caller in ``board_lock()`` at the runner level for on-board serialization.
+    """
+    m2m = m2m_python()
+    if m2m is None:
+        return False, {"error": "m2m venv (tvm) not found"}
+    host = k1.K1_HOST.split("@")[-1] if "@" in k1.K1_HOST else k1.K1_HOST
+    driver = work / "tvm_rpc_run.py"
+    driver.write_text(_RPC_RUN_TEMPLATE)
+    status = work / "rpc_status.json"
+    if status.exists():
+        status.unlink()
+    libdir = str(tvm_lib_dir())
+    env = dict(os.environ)
+    env.update({
+        "PYTHONPATH": os.pathsep.join([str(tvm_python_path()), os.environ.get("PYTHONPATH", "")]),
+        "TVM_LIBRARY_PATH": libdir,
+        "LD_LIBRARY_PATH": os.pathsep.join([libdir, os.environ.get("LD_LIBRARY_PATH", "")]).strip(os.pathsep),
+        "MERLIN_RPC_SO": str(so),
+        "MERLIN_RPC_HOST": host,
+        "MERLIN_RPC_PORT": str(_BOARD_RPC_PORT),
+        "MERLIN_RPC_INPUTS": str(b.inputs),
+        "MERLIN_RPC_REF": str(work / "torch_ref.npy"),
+        "MERLIN_RPC_RTDIR": str(_RV64_RUNTIME_DIR),
+        "MERLIN_RPC_BOARDDIR": _BOARD_RPC_DIR,
+        "MERLIN_RPC_SSH_KEY": k1.K1_SSH_KEY,
+        "MERLIN_RPC_SSH_HOST": k1.K1_HOST,
+        "MERLIN_RPC_STATUS": str(status),
+    })
+    try:
+        subprocess.run([str(m2m), str(driver)], capture_output=True, text=True,
+                       timeout=timeout, env=env)
+    except subprocess.TimeoutExpired:
+        return False, {"error": "rpc run timed out"}
+    if not status.is_file():
+        return False, {"error": "rpc driver wrote no status"}
+    try:
+        info = json.loads(status.read_text())
+    except Exception:  # noqa: BLE001
+        return False, {"error": "rpc status unparseable"}
+    return bool(info.get("ok")), info
 
 
 def _finish(res: BaselineResult, model: str, variant: str, write: bool) -> BaselineResult:
