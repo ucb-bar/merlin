@@ -167,9 +167,15 @@ def golden_path(b: _bundle.CaptureBundle) -> Path:
 
 # --- workload cfg (mirror the capture recipe so the golden is reproducible) ---------------------
 
-def _workload_env(model: str) -> dict[str, str]:
-    """The env the m2m capture worker sets for a workload (e.g. M2M_LLAMA_LAYERS for the llamas),
-    read from the workload TOML ``[env]`` table so the exported instance matches the golden."""
+def _workload_env(model: str, *, full: bool = False) -> dict[str, str]:
+    """The loader env for a workload so the exported instance matches the golden.
+
+    ``full=True`` (a ``_full`` recapture): use ``bundle.full_env`` — the full-fidelity/native
+    architecture the ``<model>_int8_full`` golden was computed on (e.g. real 22-layer TinyLlama,
+    30-layer BitNet), NOT the TOML truncation defaults. ``full=False``: the TOML ``[env]`` (the
+    truncated ``_consistent`` recapture, e.g. ``M2M_LLAMA_LAYERS=2``)."""
+    if full:
+        return _bundle.full_env(model)
     toml_env: dict[str, str] = {}
     wdir = _bundle.model2mlir_root() / "workloads" / model
     for cand in list(wdir.glob("*.toml")):
@@ -443,7 +449,11 @@ def compile_model(b: _bundle.CaptureBundle, work: Path, *, cross: bool = True,
         "MERLIN_TVM_GOLDEN": str(golden_path(b)),
         "MERLIN_TVM_TUNE": "1" if tune else "0",
     })
-    env.update(_workload_env(b.model))  # e.g. M2M_LLAMA_LAYERS for the llamas
+    # For a full-fidelity ``_full`` recapture, load the REAL/native architecture (bundle.full_env),
+    # not the TOML truncation defaults — otherwise we export a truncated model but gate vs the full
+    # golden. Detected by the resolved bundle dir suffix.
+    _is_full = b.root.name.endswith("_full")
+    env.update(_workload_env(b.model, full=_is_full))
 
     proc = subprocess.run([str(m2m), str(driver)], capture_output=True, text=True,
                           timeout=timeout, env=env)
