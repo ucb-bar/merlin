@@ -178,6 +178,16 @@ def test_tvm_driver_uses_onnx_path():
     assert "torch_ref" in d and "gold_cos" in d
 
 
+def test_tvm_rpc_run_driver_wired():
+    # The on-board execution path: a riscv64-runtime detector + an m2m-venv RPC-run driver that
+    # deploys the runtime, connects host->board directly, runs the relax VM, times + gates cos.
+    from merlin.baselines import tvm as tvm_arm
+    assert hasattr(tvm_arm, "rv64_runtime_built") and hasattr(tvm_arm, "_rpc_run_driver")
+    d = tvm_arm._RPC_RUN_TEMPLATE
+    assert "rpc.connect" in d and "VirtualMachine" in d and "tvm_rpc server" in d
+    assert "wall_ns" in d and "cos" in d and "rel" in d
+
+
 def test_tvm_golden_prefers_w8a8(tmp_path):
     # int8-first: when a W8A8 golden is present it must be the correctness reference, else golden.npy.
     from merlin.baselines import bundle as _bundle

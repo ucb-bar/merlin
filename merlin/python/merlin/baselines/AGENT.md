@@ -71,19 +71,26 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
   are re-registered persistent before export (torch 2.10 lifts rope `inv_freq` into buffers the
   frontend can't resolve). Correctness is gated vs a **torch reference for the exact instance**
   (`host_cos`); `gold_cos` (vs the capture golden) is also reported.
-- **Status (this session):** the ONNX path gets tiny_llama int8 **built** — Relax import → rv64gcv
-  `relax.build` → SpacemiT cross-link → real riscv64 RVV `.so` → RVV-audit (**~16% RVV**, 61 scalar
-  fallbacks), torchao int8 quant applied. **Remaining blocker: correctness cos ≈ 0.80** — TVM
-  v0.19.0 mis-lowers an attention-block op (same mean/std as ORT but positionally scrambled, argmax
-  2/8; **ORT on the identical ONNX matches torch at cos 1.0**, so it is a TVM ONNX-frontend bug, not
-  ours). Per-model gaps: bitvla/molmoact loader (`'BitNet'`/`'default'`), groot/xr0/pi05/smolvla miss
-  python deps (`tyro`/`mmengine`/`openpi`/`lerobot`), pi05 16 GB (K1 fit gap).
-- **RVV coverage** on the default `relax.build` lowering is ~16% (LLVM vectorizes some loops for the
-  `+v,+zvl256b` target). Higher RVV needs **MetaSchedule autotuning** (`MERLIN_TVM_TUNE=1` + a K1 RPC
-  runner) — opt-in because on-device tuning queues on the one shared board.
-- **On-board run** (`_run_on_board`) is still fail-closed: a standalone TVM riscv64 runtime +
-  `tvm_rpc` (or a C harness linking `libtvm_runtime`) must be cross-built for the board — the
-  remaining board step. Weights > ~3 GB (pi05) are a labeled fit gap.
+- **Status: 5 int8 models BUILD via ONNX** (Relax import → rv64gcv `relax.build` → SpacemiT
+  cross-link → real riscv64 RVV `.so` → RVV-audit), torchao int8 quant applied. **small_llama int8
+  is numerically correct on host (cos 0.99999999)**; rdt 0.9992, openvla 0.9916 (near-pass);
+  **tiny_llama cos ≈ 0.80** — TVM v0.19.0 mis-lowers an attention-block op (same mean/std as ORT but
+  positionally scrambled, argmax 2/8; **ORT on the identical ONNX matches torch at cos 1.0**, so a
+  TVM ONNX-frontend bug, model-specific). Gaps: rdt2 ONNX-export; bitvla/molmoact loader; groot/xr0/
+  pi05/smolvla miss python deps (`tyro`/`mmengine`/`openpi`/`lerobot`); pi05 16 GB (K1 fit gap).
+- **RVV coverage** on the default `relax.build` lowering is ~9–16% (LLVM vectorizes some loops for
+  the `+v,+zvl256b` target). Higher RVV needs **MetaSchedule autotuning** — but see the network note.
+- **riscv64 runtime IS cross-built** (`build/baselines/tvm-rv64/`, SpacemiT clang rv64gcv, via
+  `riscv64-toolchain.cmake`; `ninja tvm_runtime tvm_rpc`). `libtvm_runtime.so` + `tvm_rpc` are real
+  RISC-V ELFs; `tvm_rpc` **runs on the K1** and host→board direct connect is confirmed. `_run_on_board`
+  deploys them + runs the relax VM over direct RPC in an m2m-venv subprocess (`_rpc_run_driver`).
+- **On-board execution + MetaSchedule tuning are BLOCKED by the board/network, honestly recorded:**
+  (1) the board's firewall blocks the **board→host** tracker callback (`No route to host` to the
+  host public IP), so the tracker-based MetaSchedule `RPCRunner` (on-device autotuning) is
+  unavailable on this net; (2) the C++ `tvm_rpc` direct-server socket lifecycle is unstable across
+  sessions (`Connect ... failed` after the first session), so the direct-RPC relax-VM run is
+  flaky. Result is fail-closed `not_run` with these specific reasons — never a fabricated timing.
+  Weights > ~3 GB (pi05) are a labeled fit gap.
 
 ## ExecuTorch + XNNPACK arm build (`executorch.py`)
 
