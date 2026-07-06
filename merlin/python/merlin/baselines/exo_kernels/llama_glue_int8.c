@@ -66,20 +66,19 @@ static float quant_row_rvv(const float *xr, int16_t *xo, int IN){
   return sc;
 }
 
-/* Vectorized weight transpose+widen: i8 W[OUT,IN] -> i16 Wt[IN,OUT]. Read a contiguous 16-wide i8
- * slab of a weight row (widen i8->i16), strided-store it down a Wt column (stride OUT). The
- * widening load is RVV; the transpose is inherently a strided scatter (bandwidth-bound). */
-static void transpose_widen_rvv(const int8_t *W8, int16_t *Wt, int OUT, int IN){
-  for(int o=0;o<OUT;o++){ const int8_t *wr=W8+(size_t)o*IN; int16_t *wc=Wt+o;
-    for(int i=0;i<IN;){ size_t vl=__riscv_vsetvl_e8mf2(IN-i);
-      vint8mf2_t v8=__riscv_vle8_v_i8mf2(&wr[i], vl);
-      vint16m1_t v16=__riscv_vwadd_vx_i16m1(v8, 0, vl);          /* widen i8->i16 (sign-extend) */
-      __riscv_vsse16_v_i16m1(&wc[(size_t)i*OUT], (ptrdiff_t)(OUT*(int)sizeof(int16_t)), v16, vl);
-      i+=vl; }
-  }
+/* Contiguous i8->i16 widen of the weight, KEEPING the native [OUT,IN] layout (NO transpose scatter
+ * — the 461M-tick pre-pass is gone). A streaming RVV widening load/store; bandwidth-friendly. The
+ * transpose-free dot GEMM (igemm_nk_dot) consumes W in this [OUT,IN] layout directly. */
+extern void igemm_nk_dot(void*, int, int, int, int32_t*, const uint16_t*, const uint16_t*);
+static void widen_nk_rvv(const int8_t *W8, int16_t *W16, size_t n){
+  for(size_t i=0;i<n;){ size_t vl=__riscv_vsetvl_e8m1(n-i);
+    vint8m1_t v8=__riscv_vle8_v_i8m1(&W8[i], vl);
+    vint16m2_t v16=__riscv_vwadd_vx_i16m2(v8, 0, vl);           /* widen i8->i16 (sign-extend) */
+    __riscv_vse16_v_i16m2(&W16[i], v16, vl); i+=vl; }
 }
 
-/* int8 W8A8 Linear via the EXO vwmacc kernel. woff_w8=i8 weight[OUT,IN], woff_s=f32 scale[OUT]. */
+/* int8 W8A8 Linear, TRANSPOSE-FREE: weight stays [OUT,IN] (contiguous widen), the dot GEMM reduces
+ * over the k-contiguous rows. woff_w8=i8 weight[OUT,IN], woff_s=f32 scale[OUT]. */
 static void linear_i8(float *Y, const float *X, size_t woff_w8, size_t woff_s,
                       int OUT, int IN, int rows){
   const int8_t *W8 = wi(woff_w8);
@@ -89,13 +88,14 @@ static void linear_i8(float *Y, const float *X, size_t woff_w8, size_t woff_s,
   static float ASCALE[64];          /* rows <= 64 for these workloads (S=8) */
   for(int r=0;r<rows;r++) ASCALE[r]=quant_row_rvv(X+(size_t)r*IN, X16+(size_t)r*IN, IN);
   T_QUANT+=rd_time()-tqa; C_QUANT++;
-  /* 2. transpose + widen weight i8[OUT,IN] -> i16[IN,OUT] (RVV widening load + strided store). */
+  /* 2. contiguous widen i8[OUT,IN] -> i16[OUT,IN] (NO transpose). WT16 reused as the [OUT,IN] i16
+   *    buffer (its N*K capacity is sufficient). */
   uint64_t tqt=rd_time();
-  transpose_widen_rvv(W8, WT16, OUT, IN);
+  widen_nk_rvv(W8, WT16, (size_t)OUT*IN);
   T_TRANS+=rd_time()-tqt; C_TRANS++;
-  /* 3. EXO RVV int8 GEMM: ACC_i32 = X16 @ WT16 */
+  /* 3. transpose-free RVV int8 dot GEMM: ACC_i32[r,o] = sum_k X16[r,k]*W16[o,k]. */
   uint64_t t0=rd_time();
-  igemm_nt_ref(NULL, rows, OUT, IN, ACC, (const uint16_t*)X16, (const uint16_t*)WT16);
+  igemm_nk_dot(NULL, rows, OUT, IN, ACC, (const uint16_t*)X16, (const uint16_t*)WT16);
   T_GEMM+=rd_time()-t0; C_GEMM++;
   /* 4. requant: Y = a_scale[r]*w_scale[o]*acc (scalar glue) */
   uint64_t tr=rd_time();
@@ -186,7 +186,9 @@ int main(void){
   printf("MERLIN_REGION name=elementwise ticks=%llu calls=%llu\n",(unsigned long long)T_ELEM,(unsigned long long)C_ELEM);
   printf("MERLIN_REGION name=other ticks=%llu calls=%llu\n",(unsigned long long)(T_QUANT+T_TRANS),(unsigned long long)C_QUANT);
   printf("MERLIN_REGION name=quant ticks=%llu calls=%llu\n",(unsigned long long)T_QUANT,(unsigned long long)C_QUANT);
-  printf("MERLIN_REGION name=transpose ticks=%llu calls=%llu\n",(unsigned long long)T_TRANS,(unsigned long long)C_TRANS);
+  /* 'widen' = the contiguous i8->i16 weight widen that REPLACED the transpose scatter (which is
+   * gone entirely in the transpose-free [N,K] dot GEMM path). */
+  printf("MERLIN_REGION name=widen ticks=%llu calls=%llu\n",(unsigned long long)T_TRANS,(unsigned long long)C_TRANS);
   printf("DONE\n"); fflush(stdout);
   return 0;
 }

@@ -25,11 +25,17 @@ EXO kernel sources for the K1-RVV whole-model baseline arm.
 ## Non-Python kernel sources
 
 - `llama_glue.c` — fp32 whole-model TinyLlama glue runtime (calls `gemm_nt_ref` per Linear).
-- `llama_glue_int8.c` — int8 W8A8 whole-model glue. Hand-RVV pre-pass: `quant_row_rvv` (per-token
-  abs-max reduce + scale + f32→i32 convert + narrow-to-i16) and `transpose_widen_rvv` (widening i8→
-  i16 load + strided `vsse16` store) — the previously-scalar "other" region. GEMM via `igemm_nt_ref`
-  vwmacc; residual-add + SwiGLU product via the `glue_ops` RVV kernels; scalar requant. Emits
-  `MERLIN_E2E`/`MERLIN_REGION` (incl. separate `quant`/`transpose` regions); norm/RoPE/attention/
+- `llama_glue_int8.c` — int8 W8A8 whole-model glue, **TRANSPOSE-FREE**. Hand-RVV pre-pass:
+  `quant_row_rvv` (per-token abs-max reduce + scale + f32→i32 convert + narrow-to-i16) and
+  `widen_nk_rvv` (contiguous i8→i16 streaming widen, **no transpose scatter** — the 461M-tick
+  scatter is gone). GEMM via `igemm_nk_dot` (native [N,K]); residual-add + SwiGLU product via the
+  `glue_ops` RVV kernels; scalar requant. Emits `MERLIN_E2E`/`MERLIN_REGION`; norm/RoPE/attention/
   SiLU-sigmoid-exp + requant remain scalar glue, labeled as `ScalarFallback`.
+- `igemm_nk.c` — **transpose-free** int8 GEMMs consuming weight in native [N,K] (no repack):
+  `igemm_nk_dot` (k-reduction dot: contiguous `vwmacc.vv` + `vredsum` tail — the on-board WINNER,
+  ~32× faster end-to-end than transpose+EXO-vwmacc) and `igemm_nk_strided` (output-blocked
+  strided-`vlse16` vwmacc — measured a dead end: K1 strided loads are ~22× slower than contiguous).
+- `igemm_nk_bench.c` — on-board correctness+timing bench comparing transpose+EXO-vwmacc vs the two
+  transpose-free forms (verifies integer-exact match + reports prep/GEMM ticks for each).
 - `igemm_bench.c` — standalone int8-GEMM micro-benchmark for the on-board U-blocking autotune (one
   `BENCH_TICKS` line per candidate U).
