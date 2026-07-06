@@ -31,10 +31,18 @@ Full machine-generated matrix (all 5 frameworks × 11 models × {fp32,int8}) + C
 | **ExecuTorch** | tiny_llama fp32 **PASS** — cos=0.99999999, 217 ms | int8 `not_built` (PT2E W8A8 fails on HF Llama index tensors) | full `.pte` 4.1 GB > 3.8 GB board (ran layer-reduced); XNNPACK delegated 10/93 nodes |
 | **Buddy** | compiles **8/11 int8** to genuine integer RVV (`vwmacc.vv`) | ✅ builds; int8 RVV > fp32 RVV | **OOM on every model** — whole-model lowering has *no arena planning* (every intermediate live) |
 | **ggml** | tiny_llama int8 **ran** — Q8_0 20.3/5.8 tok/s, Q4_K_M 33/10 tok/s | ✅ native low-bit | correctness **uncomparable** (runs the real checkpoint; our capture is a 2-layer random-init graph) |
-| **TVM** | control MLP → RVV ELF (harness proven) | — | re-pin **solved** (v0.19.0 + MetaSchedule); torch-Relax frontend can't ingest our HF/VLA graphs → **ONNX path in progress** |
+| **TVM** | **small_llama int8 compile-correct** (cos=0.99999999, 15.7% RVV) — on-board timing pending | 5 models build via **ONNX→Relax** (small_llama/tiny_llama/openvla/rdt int8) | on-board TVM riscv64 runtime not cross-built yet (`not_run`); tiny_llama cos=0.80 = a TVM v0.19.0 ONNX attn-op bug (ORT matches torch at 1.0) |
 
-Two clean whole-model passes on our captured graph (EXO, ExecuTorch — both tiny_llama fp32, on
-reduced/small configs). Everything else is an explicit, reasoned gap.
+Two clean whole-model passes *ran on-board* on our captured graph (EXO, ExecuTorch — both tiny_llama
+fp32, reduced/small configs). TVM now **builds numerically-correct RVV** for small_llama int8 (cos≈1.0)
+but its on-board runtime isn't cross-built, so it's `not_run` rather than a fabricated pass. Everything
+else is an explicit, reasoned gap.
+
+**TVM's ONNX pivot.** Its torch-exported-program frontend couldn't ingest our HF/VLA graphs, so it was
+switched to `relax.frontend.onnx.from_onnx` (opset-17 ONNX export). That unblocked real builds: 5 models
+compile with RVV; small_llama int8 is numerically correct end-to-end (ONNX→Relax→rv64gcv→RVV-audit).
+rdt int8 cos=0.9992 and openvla int8 cos=0.9916 are near-passes; tiny_llama's cos=0.80 is a localized TVM
+attention-op mis-lowering (positionally scrambled with identical mean/std; ORT is correct on the same ONNX).
 
 ## Kernel-level / active-path RVV coverage
 
@@ -48,7 +56,7 @@ coverage, per arm (source in parentheses):
 | **ggml** | 7.5% (`.so`) / 9.3% (all kernels) | active-quant **Q8_0 18.4%**, **Q4_K 23.3%**; **ternary TQ2_0 51%, TQ1_0 39%** | ternary is ggml's most-vectorized path (BitNet home turf); 153 scalar kernels labeled |
 | **EXO** | 0.9% (whole ELF, libc-dominated) | GEMM kernel **~17%** (`vfmacc.vf` fp32 / `vwmacc.vx` int8) | whole-model = EXO GEMM kernel + hand C glue; norm/rope/softmax/swiglu are labeled scalar glue |
 | **ExecuTorch** | **11.7%** | delegated subgraph only — **10/93** graph nodes to XNNPACK RVV | 2185 labeled scalar fallbacks ("no XNNPACK RVV ukernel") — the expected most-scalar arm |
-| **TVM** | ~0% (untuned control) | — (needs on-device MetaSchedule) | no model built yet (frontend gap); ONNX path in progress |
+| **TVM** | 9–16% (ONNX→Relax, untuned `+v`) | small_llama/tiny_llama int8 **16%**, openvla 10%, rdt 9% | default LLVM `+v` lowering; MetaSchedule tuning needed to lift; on-board timing pending |
 
 ## The headline finding
 
@@ -89,7 +97,9 @@ small_llama = a toy vocab-256 arch), **not** the real checkpoints. Consequences:
 
 ## Open follow-ups
 
-- **TVM via ONNX** (in progress): torch→ONNX (QDQ int8) → `relax.frontend.onnx` → MetaSchedule autotune
-  for rv64gcv → on-board — the realistic path past the torch-frontend op-coverage gap.
+- **TVM on-board execution**: the ONNX path now builds 5 models with RVV (small_llama int8 cos≈1.0).
+  Remaining — cross-build the TVM riscv64 runtime + `tvm_rpc` (or a C harness linking `libtvm_runtime`)
+  to run the `.so` on the K1; MetaSchedule tuning to lift RVV above ~16%; fix the tiny_llama TVM
+  attention-op divergence (cos=0.80).
 - Buddy on-board completion would require arena planning (or int8 + streamed weights) to fit 3.8 GB.
 - ExecuTorch int8 needs a PT2E path that tolerates HF Llama's index/mask tensors.
