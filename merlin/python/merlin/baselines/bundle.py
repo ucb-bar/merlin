@@ -109,15 +109,48 @@ def _dirname(model: str, variant: str) -> str:
     return f"{model}_{variant}_consistent"
 
 
+# K1-runnable set: models whose int8 footprint fits the 3.8 GB board (~3.4 GB usable). The three
+# 7B-class VLAs (openvla, molmoact, pi05) are RAM-infeasible for whole-model on-board runs even at int8
+# (fp32 embeddings dominate) — attempt+RAM-gap, never a false fit. From the full-fidelity recapture.
+K1_RUNNABLE: frozenset[str] = frozenset(
+    {"tiny_llama", "smolvla", "bitvla", "groot_n1d7", "rdt", "rdt2", "xr0", "small_llama"})
+K1_RAM_INFEASIBLE: frozenset[str] = frozenset({"openvla", "molmoact", "pi05"})
+
+# Full-fidelity capture env (the exact loader settings the recapture used to build the REAL/native
+# architecture, dropping the truncation defaults). A Phase-2 arm that live-loads the torch model via
+# the m2m loader MUST set these first so it ingests the IDENTICAL model the golden was computed on.
+FULL_FIDELITY_ENV: dict[str, dict[str, str]] = {
+    "tiny_llama": {},                                   # real TinyLlama-1.1B, full 22 layers (no truncation)
+    "smolvla": {},                                      # real smolvla_base bf16, native 16 layers
+    "bitvla": {"BITVLA_LLM_LAYERS": "30"},              # real BitNet depth (hidden loader-fixed at 256)
+    "groot_n1d7": {},                                   # native 16 DiT layers (no M2M_GROOT_LAYERS truncation)
+    "rdt": {"M2M_RDT_DEPTH": "28"},                     # real RDT-1B depth
+    "rdt2": {"M2M_RDT2_DEPTH": "14"},                   # native depth
+    "xr0": {"XR0_DIT_LAYERS": "16"},                    # real DiT-head depth
+    "small_llama": {},                                  # synthetic toy reference (no real counterpart)
+    "openvla": {},                                      # real Llama-2-7B+ViT config (RAM-infeasible on K1)
+    "molmoact": {"M2M_MOLMOACT_LAYERS": "48", "M2M_MOLMOACT_VOCAB": "152064"},  # real 7B (RAM-infeasible)
+    "pi05": {},                                         # full PaliGemma+expert 3.6B (RAM-infeasible)
+}
+
+
+def full_env(model: str) -> dict[str, str]:
+    """Loader env that reproduces the full-fidelity model the golden was captured on (may be empty)."""
+    return dict(FULL_FIDELITY_ENV.get(model, {}))
+
+
 def resolve(model: str, variant: str = "fp32") -> CaptureBundle:
     """Locate the capture bundle for a model+variant under artifacts/recaptures/.
 
-    Does not require the bundle to exist yet (call ``.require()`` to gate); this keeps discovery
-    and validation separate so a runner can report a clean ``gap_reason`` if a capture is absent.
+    Prefers the full-fidelity recapture (``<model>_<variant>_full``, real/native architecture) over the
+    older truncated ``<model>_<variant>_consistent`` bundle when present. Does not require the bundle to
+    exist yet (call ``.require()`` to gate) so a runner can report a clean ``gap_reason`` if it's absent.
     """
     if variant not in _VARIANTS:
         raise ValueError(f"unknown variant {variant!r}; expected one of {_VARIANTS}")
-    root = recaptures_dir() / _dirname(model, variant)
+    rd = recaptures_dir()
+    full = rd / f"{model}_{variant}_full"
+    root = full if full.is_dir() else rd / _dirname(model, variant)
     return CaptureBundle(model=model, variant=variant, root=root)
 
 
