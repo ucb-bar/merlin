@@ -75,6 +75,18 @@ so the arm runs the IR buddy's own users get — DIFFERENT IR that may bypass th
   lowering (STOCK mlir-opt, single-thread scf-to-cf — no libomp on K1) → rv64gcv PIC objects.
   ``link_native_k1_elf`` links them + a buddy-native harness (``_mlir_ciface_forward(result*, params*,
   input*)``; params mmap'd from ``arg0.data``) + merlin's ``mlir_runtime.c`` (provides ``memrefCopy``).
+  NB: buddy's ``forward`` ALLOCATES the result internally and the ciface stores the returned
+  descriptor into ``&res`` — read the output from ``res.al`` (aligned ptr) AFTER the call, NOT the
+  pre-passed buffer. Gate int8 vs the FP32 golden (``_fp32_golden_for``).
+
+- **PHASE-2 RESULT — native RUNS where m2m-linalg SIGSEGV'd**: ``small_llama`` int8 native RAN to
+  completion on the K1 (38 ms, 11.8% RVV, OUT/DONE); ``tiny_llama`` int8 native executed the whole
+  forward ~28 min (RSS 85 MB→3.4 GB) with NO SIGSEGV. So the whole-model scalar-lowering fault is an
+  m2m-linalg-IR bug, not fundamental — buddy's own IR runs. Remaining native walls: (a) buddy's
+  importer materializes int8→**fp32** params, so big models (tiny_llama 4.4 GB) OOM the 3.8 GB board;
+  (b) some model **loaders** need deps absent from the torch venv (xr0=``mmengine``, bitvla=BitNet
+  config) — loader gaps, not buddy. Correctness for random-init synthetic/VLA models (small_llama
+  cos≈0) is meaningless vs the capture golden (different init); real-weight models would gate.
 
 ## Adding a per-framework runner (Part C)
 
