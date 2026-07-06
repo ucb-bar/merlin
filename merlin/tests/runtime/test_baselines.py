@@ -166,6 +166,18 @@ def test_tvm_target_enables_rvv():
     assert "+v" in tvm_arm.TVM_TARGET and "riscv64" in tvm_arm.TVM_TARGET
 
 
+def test_tvm_driver_uses_onnx_path():
+    # The import path must be ONNX (torch-exported-program frontend lacks HF-transformer ops), with
+    # the onnx.mapping + isnan/isinf legalize compat shims wired into the driver.
+    from merlin.baselines import tvm as tvm_arm
+    d = tvm_arm._DRIVER_TEMPLATE
+    assert "torch.onnx.export" in d and "from_onnx" in d
+    assert "onnx.mapping" in d and "TENSOR_TYPE_TO_NP_TYPE" in d
+    assert "relax.isnan" in d and "register_legalize" in d
+    # correctness is gated vs the torch reference for the exported instance, gold_cos reported too.
+    assert "torch_ref" in d and "gold_cos" in d
+
+
 def test_tvm_golden_prefers_w8a8(tmp_path):
     # int8-first: when a W8A8 golden is present it must be the correctness reference, else golden.npy.
     from merlin.baselines import bundle as _bundle

@@ -1,33 +1,40 @@
 """TVM (Apache TVM / Relax) baseline arm — ingest OUR models and run them on the K1 with RVV.
 
 TVM is the second external-framework arm. Unlike Buddy (which ingests our ``model.mlir``
-directly), TVM does **not** consume linalg-on-tensors MLIR: it imports from the *PyTorch* graph.
-So this arm starts from the same seeded model instance the capture bundle was built from, runs
-``torch.export``, imports the exported program into TVM **Relax**
-(``tvm.relax.frontend.torch.from_exported_program``), lowers it for a RISC-V ``rv64gcv`` LLVM
-target, and emits a deployable module. The emitted kernel object is RVV-audited exactly like every
-other arm, so "TVM used RVV" is *proven by disassembly*, never assumed.
+directly), TVM imports from the *PyTorch* graph — but via **ONNX**, not the torch-exported-program
+frontend. TVM v0.19.0's ``relax.frontend.torch.from_exported_program`` lacks ops for HF
+transformer/VLA graphs (``full``/``where``/``masked_fill``/``convolution``/…); its **ONNX**
+frontend (``relax.frontend.onnx.from_onnx``) has far broader coverage. So this arm exports the
+seeded instance to ONNX (``torch.onnx.export``), imports that into Relax, lowers for ``rv64gcv``,
+and emits a deployable module. The emitted kernel object is RVV-audited exactly like every other
+arm, so "TVM used RVV" is *proven by disassembly*, never assumed.
 
 **Pinned TVM = v0.19.0** (``third_party/baselines/tvm`` @ tag ``v0.19.0``), built against the
 system **LLVM 18** (``/usr/bin/llvm-config-18``). This is a deliberate re-pin from the earlier
 ``main`` snapshot, which (a) would not compile against LLVM 23, (b) shipped no MetaSchedule, and
 (c) had a bool-op LLVM-codegen bug that blocked every model. v0.19.0 has MetaSchedule + AutoTVM +
-the classic ``tvm.contrib.cc`` cross-compiler and lowers our torch-exported graphs.
+the classic ``tvm.contrib.cc`` cross-compiler and an ONNX frontend that lowers our graphs.
 
 Pipeline (per model; **int8 variant first**, then fp32)::
 
     seeded torch model (== capture recipe: manual_seed(0), M2M_LLAMA_LAYERS, zero-param perturb,
                         per-cfg torchao int8 quant for the int8 variant)
-      -> torch.export.export                                              [m2m venv: torch 2.x]
-      -> tvm.relax.frontend.torch.from_exported_program                   [Relax IRModule]
+      -> torch.onnx.export (classic opset17, dynamo opset18 fallback)      [m2m venv: torch 2.x]
+      -> tvm.relax.frontend.onnx.from_onnx                                 [Relax IRModule]
       -> [optional] meta_schedule.tune_relax over a K1 RPC runner          [RVV autotune, opt-in]
       -> relax.build / compile_relax(db) for rv64gcv                        [RVV LLVM codegen]
       -> mod.export_library(fcompile=<SpacemiT clang cross>)  -> model_tvm.so  [the RVV artifact]
       -> rvv_audit.audit_binary(.so)   : mechanical RVV%/scalar-fallback honesty
-      -> host reference: TVM VM on x86 vs the int8/fp32 golden (board-independent lowering gate)
+      -> host reference: TVM VM on x86 vs the torch reference for THIS instance (gate) + vs the
+                         capture golden (reported)                          [board-independent]
       -> on-board run (board_lock): the module .so + a C harness cross-linked with SpacemiT clang,
                                     scp'd + run -> E2E rdtime/wall + OUT-vs-golden cos/rel
                                     [fail-closed if the board is down]
+
+Two compat shims are needed against onnx 1.22 / TVM v0.19.0: (1) a reconstructed ``onnx.mapping``
+module (removed in onnx 1.22, still imported by TVM's ONNX frontend), (2) registered
+``relax.isnan``/``isinf`` legalizations (missing from the base set, else VM codegen rejects the
+un-lowered intrinsic). Both are pure/faithful (dtype table; topi TIR) — no invented semantics.
 
 Because torch + TVM's Python package must co-run (the main ``.venv`` has no torch), the
 import+compile step executes as a **subprocess in the model2MLIR venv** (``$MERLIN_MODEL2MLIR
@@ -253,71 +260,57 @@ try:
                 n_persisted += 1
     emit(stage="model_built", quant=quant_note, persisted_buffers=n_persisted)
 
-    # 2. torch.export -> ExportedProgram.
-    ep = torch.export.export(mdl, inputs)
-    emit(stage="exported")
-
-    # 3. Import to TVM Relax.
-    import tvm
-    from tvm import relax
-    from tvm.relax.frontend.torch import from_exported_program
-    from tvm.relax.frontend.torch import exported_program_translator as _ept
-    emit(stage="tvm_imported", tvm=getattr(tvm, "__version__", "?"))
-
-    # Compat shim: TVM v0.19.0's exported-program frontend maps only SOME torch op overloads.
-    # torch 2.10 + run_decompositions emit overload names the map lacks (e.g. arange.default /
-    # arange.start_step, both handled by the SAME self._arange). Alias every missing `.overload`
-    # to the base handler already registered under another overload — a pure name aliasing, no
-    # semantics invented. Applied once by wrapping create_convert_map.
-    _orig_ccm = _ept.ExportedProgramImporter.create_convert_map
-    def _patched_ccm(self):
-        m = _orig_ccm(self)
-        # (a) overload aliases: same handler, different overload name the graph emitted.
-        alias = {
-            "arange.default": "arange.start", "arange.start_step": "arange.start",
-            "arange.start_out": "arange.start",
-            "mm.default": "matmul.default", "bmm.default": "matmul.default",
-            "split_with_sizes.default": "split.Tensor",
-            "scaled_dot_product_attention.default": "scaled_dot_product_attention",
-        }
-        for new, base in alias.items():
-            if new not in m and base in m:
-                m[new] = m[base]
-        # (b) no-op export asserts (torch 2.x inserts these; they carry no compute).
-        for noop in ("_assert_tensor_metadata.default", "_assert_scalar.default",
-                     "_assert_async.msg", "lift_fresh_copy.default", "alias.default"):
-            m.setdefault(noop, lambda node: None)
-        # (c) elementwise comparisons the frontend lacks — emit via relax.op (real semantics).
-        def _cmp(op):
-            def f(node):
-                a = self.env[node.args[0]]
-                b = node.args[1]
-                if hasattr(b, "name") and b in self.env:
-                    b = self.env[b]
-                else:
-                    # scalar RHS -> a relax constant of a's dtype (relax.op comparisons need Exprs).
-                    sinfo = a.struct_info
-                    dt = getattr(sinfo, "dtype", "float32")
-                    b = tvm.relax.const(b, dt)
-                return self.block_builder.emit(getattr(tvm.relax.op, op)(a, b))
-            return f
-        for name, op in (("ne.Scalar", "not_equal"), ("ne.Tensor", "not_equal"),
-                         ("eq.Scalar", "equal"), ("eq.Tensor", "equal"),
-                         ("lt.Scalar", "less"), ("gt.Scalar", "greater"),
-                         ("le.Scalar", "less_equal"), ("ge.Scalar", "greater_equal")):
-            m.setdefault(name, _cmp(op))
-        return m
-    _ept.ExportedProgramImporter.create_convert_map = _patched_ccm
-
-    # run_decompositions lowers composite aten ops to the core set the frontend handles.
+    # 2. Export to ONNX (the import path). ONNX has FAR broader op coverage than TVM v0.19.0's
+    #    torch-exported-program frontend (which lacks full/where/masked_fill/convolution/... for HF
+    #    transformer/VLA graphs). torch.onnx dynamo=True handles rope's aten::diff etc. that the
+    #    classic tracer rejects.
+    onnx_path = os.path.join(work, "model.onnx")
+    input_names = [f"in{i}" for i in range(len(inputs))]
     try:
-        ep = ep.run_decompositions()
-    except Exception:  # noqa: BLE001
-        pass
-    mod = from_exported_program(ep, keep_params_as_input=False)
-    # Standard Relax lowering for a CPU target: legalize ops + fold constants, then the default
-    # "zero" pipeline. This turns the imported graph into TIR-backed PrimFuncs ready for build.
-    mod = relax.get_pipeline("zero")(mod)
+        torch.onnx.export(mdl, inputs, onnx_path, opset_version=17,
+                          input_names=input_names, dynamo=False)
+        onnx_note = "onnx:classic-opset17"
+    except Exception as e_classic:  # noqa: BLE001
+        torch.onnx.export(mdl, inputs, onnx_path, opset_version=18, dynamo=True)
+        onnx_note = "onnx:dynamo-opset18 (classic failed: " + str(e_classic)[:80] + ")"
+    emit(stage="exported", onnx=onnx_note)
+
+    # Torch reference on THESE inputs — the true correctness reference for what we compiled (the
+    # capture goldens were seeded/quantized differently, so we ALSO report vs them but gate here).
+    with torch.no_grad():
+        _r = mdl(*inputs)
+    torch_ref = (_r[0] if isinstance(_r, (tuple, list)) else _r).detach().float().cpu().numpy()
+    np.save(os.path.join(work, "torch_ref.npy"), torch_ref)
+
+    # 3. Import ONNX -> TVM Relax.
+    import onnx as _onnx
+    import types as _types
+    # onnx 1.22 removed onnx.mapping; TVM v0.19.0's onnx frontend still imports it. Reconstruct the
+    # TENSOR_TYPE_TO_NP_TYPE map from onnx.helper (pure dtype table, no semantics invented).
+    if not hasattr(_onnx, "mapping"):
+        from onnx import helper as _oh
+        _mm = _types.ModuleType("onnx.mapping")
+        _mm.TENSOR_TYPE_TO_NP_TYPE = {dt: _oh.tensor_dtype_to_np_dtype(dt)
+                                      for dt in _oh.get_all_tensor_dtypes()}
+        sys.modules["onnx.mapping"] = _mm
+        _onnx.mapping = _mm
+    import tvm
+    from tvm import relax, topi
+    from tvm.relax.frontend.onnx import from_onnx
+    # Register legalizations the base set lacks (isnan/isinf) so LegalizeOps -> TIR PrimFunc instead
+    # of leaving a relax intrinsic the VM codegen rejects. Real semantics via topi.
+    from tvm.relax.transform.legalize_ops.common import _call_topi_without_attr, register_legalize
+    for _nm, _fn in (("relax.isnan", getattr(topi, "isnan", None)),
+                     ("relax.isinf", getattr(topi, "isinf", None))):
+        if _fn is not None:
+            try:
+                register_legalize(_nm, _call_topi_without_attr(_fn, _nm.replace("relax.", "tir_")))
+            except Exception:  # noqa: BLE001 - already registered on a re-run
+                pass
+    emit(stage="tvm_imported", tvm=getattr(tvm, "__version__", "?"), onnx=onnx_note)
+
+    onnx_model = _onnx.load(onnx_path)
+    mod = from_onnx(onnx_model, keep_params_in_input=False)
     emit(stage="relax_imported")
 
     target = tvm.target.Target(target_cfg)
@@ -364,13 +357,19 @@ try:
         ex.export_library(so_path)  # host .so (x86) — host correctness only
     emit(stage="exported_library", so=so_path, so_exists=os.path.exists(so_path))
 
-    # 6. Host correctness: run the module on the x86 TVM VM (llvm host) vs the golden. Proves TVM's
-    #    LOWERING is numerically sound (board-independent). A second host build (rv64 .so can't run
-    #    on x86).
-    host_cos = host_rel = None
+    # 6. Host correctness: run the ONNX module on the x86 TVM VM (llvm host). This proves TVM's
+    #    LOWERING/execution is numerically sound (board-independent; the rv64 .so can't run on x86).
+    #    Gate vs the torch reference for THIS instance (host_cos), and ALSO report vs the capture
+    #    golden (gold_cos) — the latter can differ if the capture was seeded/quantized differently.
+    def _cos_rel(a, b):
+        a = np.asarray(a, dtype=np.float64).ravel(); b = np.asarray(b, dtype=np.float64).ravel()
+        n = min(a.size, b.size); a = a[:n]; b = b[:n]
+        d = (np.linalg.norm(a) * np.linalg.norm(b)) or 1.0
+        return (float(np.dot(a, b) / d), float(np.linalg.norm(a - b) / (np.linalg.norm(b) or 1.0)))
+    host_cos = host_rel = gold_cos = None
     host_note = ""
     try:
-        host_ex = relax.build(relax.get_pipeline("zero")(from_exported_program(ep, keep_params_as_input=False)),
+        host_ex = relax.build(from_onnx(_onnx.load(onnx_path), keep_params_in_input=False),
                               target=tvm.target.Target("llvm"))
         dev = tvm.cpu()
         vm = relax.VirtualMachine(host_ex, dev)
@@ -378,17 +377,13 @@ try:
         args = [tvm.nd.array(npz[k], dev) for k in sorted(npz.files)]
         out = vm["main"](*args)
         got = out.numpy() if hasattr(out, "numpy") else np.asarray(out[0].numpy())
-        gold = np.load(golden_file).astype(np.float32).ravel()
-        a = np.asarray(got, dtype=np.float64).ravel()[:gold.size]
-        g = gold[:a.size].astype(np.float64)
-        denom = (np.linalg.norm(a) * np.linalg.norm(g)) or 1.0
-        host_cos = float(np.dot(a, g) / denom)
-        host_rel = float(np.linalg.norm(a - g) / (np.linalg.norm(g) or 1.0))
+        host_cos, host_rel = _cos_rel(got, torch_ref)          # gate: TVM vs torch (this instance)
+        gold_cos, _ = _cos_rel(got, np.load(golden_file))       # report: TVM vs capture golden
     except Exception as e:  # noqa: BLE001
         host_note = "host-vm correctness failed: " + str(e)[:300]
 
     emit(stage="done", ok=os.path.exists(so_path), host_cos=host_cos, host_rel=host_rel,
-         host_note=host_note, tuned=tuned_note, quant=quant_note)
+         gold_cos=gold_cos, host_note=host_note, tuned=tuned_note, quant=quant_note, onnx=onnx_note)
 
 except Exception as e:  # noqa: BLE001
     OUT["error"] = str(e)[:600]
@@ -404,6 +399,7 @@ class CompileResult:
     so_path: Path | None
     host_cos: float | None
     host_rel: float | None
+    gold_cos: float | None
     stage: str
     note: str
     raw: dict
@@ -461,10 +457,11 @@ def compile_model(b: _bundle.CaptureBundle, work: Path, *, cross: bool = True,
         raw = {"stage": "no_status", "error": (proc.stderr or proc.stdout)[-600:]}
     so = work / "model_tvm.so"
     ok = bool(raw.get("ok")) and so.is_file()
-    note = " ".join(x for x in (raw.get("tuned", ""), raw.get("quant", ""),
+    note = " ".join(x for x in (raw.get("onnx", ""), raw.get("tuned", ""), raw.get("quant", ""),
                                 raw.get("host_note", ""), raw.get("error", "")) if x)
     return CompileResult(ok=ok, so_path=(so if so.is_file() else None),
                          host_cos=raw.get("host_cos"), host_rel=raw.get("host_rel"),
+                         gold_cos=raw.get("gold_cos"),
                          stage=str(raw.get("stage", "?")), note=str(note)[:400], raw=raw)
 
 
@@ -572,10 +569,14 @@ def run_model(model: str, variant: str = "int8", *, work_root: Path | None = Non
     except Exception as e:  # noqa: BLE001
         res.notes += f" rvv-audit failed: {str(e)[:150]}"
 
-    # 3. host-VM correctness (x86 TVM VM vs golden) — board-independent lowering gate.
+    # 3. host-VM correctness — board-independent lowering gate. host_cos = TVM-vs-torch (this
+    #    instance, the true reference for what we compiled); gold_cos = TVM-vs-capture-golden
+    #    (reported for continuity, may differ if the capture was seeded/quantized differently).
     if cr.host_cos is not None:
         res.cos, res.rel = cr.host_cos, cr.host_rel
-        res.notes += " (cos/rel from host TVM VM; on-board RVV cos pending board)"
+        res.notes += " (cos/rel=TVM-vs-torch host VM; on-board RVV cos pending board)"
+        if cr.gold_cos is not None:
+            res.notes += f" gold_cos={cr.gold_cos:.4f}"
 
     # 4. K1 on-board run — the ONLY board-gated step (fail-closed).
     do_board = k1_exec.board_available() if run_board is None else run_board

@@ -57,23 +57,33 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
   with `PYTHONPATH=<tvm>/python` + `LD_LIBRARY_PATH=<libdir>`. That venv needs a few TVM runtime
   deps: `uv pip install decorator tornado cloudpickle attrs` (numpy/ml_dtypes/psutil already there).
 - **Target = JSON dict** `TVM_TARGET_CONFIG` (`+v,+zvl256b` for the K1's 256b VLEN, `num-cores=8`).
-- **int8-first** (`variant="int8"` default): reproduces the capture's torchao quant (`_quant_for`),
-  gates vs `golden_w8a8.npy` when present (`golden_path`). Non-persistent buffers are re-registered
-  persistent before export (torch 2.10 lifts rope `inv_freq` into constants typed BUFFER, which the
-  v0.19.0 frontend looks up only in `state_dict` → KeyError). A compat shim aliases missing op
-  overloads (`arange.default`, `mm.default`, …) + adds comparison ops.
-- **Known blocker (honest gap — the dominant result today):** TVM v0.19.0's Relax **exported-program
-  torch frontend is materially incomplete for HF transformer/VLA graphs**. Even after the compat
-  shim, each model hits an unimplemented op: fp32 → `full.default` (tiny_llama), `pow.Scalar`
-  (small_llama), `convolution.default` (openvla), `squeeze.dims` (rdt2), `add.Scalar` (rdt); int8 →
-  torchao's quantized tensor subclass is unsupported (`input_type ...`) for the 5 loadable models;
-  bitvla/molmoact fail in their loader (`'BitNet'` / `'default'`); groot/xr0/pi05/smolvla lack their
-  Python deps (`tyro`/`mmengine`/`openpi`/`lerobot`) in the m2m venv; pi05 is also 16 GB (K1 fit gap).
-  A control float MLP compiles → cross-links → RVV-audits as a real riscv64 ELF (harness proven), so
-  these are frontend/loader gaps recorded as `not_built` with specific reasons, NOT harness bugs.
-- **RVV coverage** on the default `relax.build` lowering is ~0 (LLVM does not auto-RVV-vectorize the
-  scalar TIR loops; no dlight-cpu in v0.19.0). Real RVV needs **MetaSchedule autotuning**
-  (`MERLIN_TVM_TUNE=1` + a K1 RPC runner) — opt-in because on-device tuning queues on the one board.
+- **Import via ONNX, NOT the torch-exported-program frontend.** TVM v0.19.0's
+  `relax.frontend.torch.from_exported_program` lacks ops for HF transformer/VLA graphs
+  (`full`/`where`/`masked_fill`/`convolution`/…, plus torchao int8 subclasses). Its **ONNX** frontend
+  (`relax.frontend.onnx.from_onnx`) has far broader coverage. So the driver does
+  `torch.onnx.export` (classic opset17; dynamo opset18 fallback for rope's `aten::diff`) → `from_onnx`.
+  Two compat shims: (1) reconstruct `onnx.mapping` (removed in onnx 1.22, still imported by the TVM
+  frontend) from `onnx.helper`; (2) register `relax.isnan`/`isinf` legalizations (missing → VM
+  codegen rejects the un-lowered intrinsic). m2m venv needs `onnx onnxruntime onnxscript` +
+  `decorator tornado cloudpickle attrs`.
+- **int8-first** (`variant="int8"` default): reproduces the capture's torchao quant (`apply_quantization`
+  via `_quant_for`), gates vs `golden_w8a8.npy` when present (`golden_path`). Non-persistent buffers
+  are re-registered persistent before export (torch 2.10 lifts rope `inv_freq` into buffers the
+  frontend can't resolve). Correctness is gated vs a **torch reference for the exact instance**
+  (`host_cos`); `gold_cos` (vs the capture golden) is also reported.
+- **Status (this session):** the ONNX path gets tiny_llama int8 **built** — Relax import → rv64gcv
+  `relax.build` → SpacemiT cross-link → real riscv64 RVV `.so` → RVV-audit (**~16% RVV**, 61 scalar
+  fallbacks), torchao int8 quant applied. **Remaining blocker: correctness cos ≈ 0.80** — TVM
+  v0.19.0 mis-lowers an attention-block op (same mean/std as ORT but positionally scrambled, argmax
+  2/8; **ORT on the identical ONNX matches torch at cos 1.0**, so it is a TVM ONNX-frontend bug, not
+  ours). Per-model gaps: bitvla/molmoact loader (`'BitNet'`/`'default'`), groot/xr0/pi05/smolvla miss
+  python deps (`tyro`/`mmengine`/`openpi`/`lerobot`), pi05 16 GB (K1 fit gap).
+- **RVV coverage** on the default `relax.build` lowering is ~16% (LLVM vectorizes some loops for the
+  `+v,+zvl256b` target). Higher RVV needs **MetaSchedule autotuning** (`MERLIN_TVM_TUNE=1` + a K1 RPC
+  runner) — opt-in because on-device tuning queues on the one shared board.
+- **On-board run** (`_run_on_board`) is still fail-closed: a standalone TVM riscv64 runtime +
+  `tvm_rpc` (or a C harness linking `libtvm_runtime`) must be cross-built for the board — the
+  remaining board step. Weights > ~3 GB (pi05) are a labeled fit gap.
 
 ## ExecuTorch + XNNPACK arm build (`executorch.py`)
 
