@@ -96,10 +96,15 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
 - **Status: 5 int8 models BUILD via ONNX** (Relax import → rv64gcv `relax.build` → SpacemiT
   cross-link → real riscv64 RVV `.so` → RVV-audit), torchao int8 quant applied. **small_llama int8
   is numerically correct on host (cos 0.99999999)**; rdt 0.9992, openvla 0.9916 (near-pass);
-  **tiny_llama cos ≈ 0.80** — TVM v0.19.0 mis-lowers an attention-block op (same mean/std as ORT but
-  positionally scrambled, argmax 2/8; **ORT on the identical ONNX matches torch at cos 1.0**, so a
-  TVM ONNX-frontend bug, model-specific). Gaps: rdt2 ONNX-export; bitvla/molmoact loader; groot/xr0/
-  pi05/smolvla miss python deps (`tyro`/`mmengine`/`openpi`/`lerobot`); pi05 16 GB (K1 fit gap).
+  **tiny_llama cos ≈ 0.80 — root-caused by per-op bisection:** the first diverging op (topological,
+  float output, inputs still correct) is the **RMSNorm broadcast `Mul([1,8,2048] × [1,8,1])`** —
+  TVM gives cos 0.968 there while `numpy(a*b) == ORT` = cos 1.0 with the SAME inputs, so it is a
+  genuine **TVM v0.19.0 ONNX broadcast-multiply defect**, not ours; the 0.968 compounds through the
+  layers to 0.80 at the logits. (The topo-first raw diverger `IsNaN` cos 0.0 is a red herring — its
+  `Where(IsNaN(x),y,x)` guard resolves to `x` on finite data; forcing IsNaN→all-False leaves cos
+  0.80.) Fixing needs a TVM broadcast-Mul patch (C++/TIR) — left as an honest fail/0.80.
+  Gaps: rdt2 ONNX-export; bitvla/molmoact loader; groot/xr0/pi05/smolvla miss python deps
+  (`tyro`/`mmengine`/`openpi`/`lerobot`); pi05 16 GB (K1 fit gap).
 - **RVV coverage** on the default `relax.build` lowering is ~9–16% (LLVM vectorizes some loops for
   the `+v,+zvl256b` target). Higher RVV needs **MetaSchedule autotuning** — but see the network note.
 - **On-board execution WORKS** (`build/baselines/tvm-rv64/`: riscv64 runtime + `tvm_rpc` cross-built
@@ -107,8 +112,12 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
   `_run_on_board`→`_rpc_run_driver` (m2m-venv subprocess) deploys them, starts a persistent server,
   connects host→board directly, runs the relax VM, wall-times, gates cos/rel. **On-board results
   (untuned): small_llama int8 = 52.7 ms cos 1.0 (PASS); openvla int8 = 6514 ms cos 0.9916 (fail —
-  ran but under the 0.9999 gate).** rdt (435 MB .so) / tiny_llama (877 MB .so) exceed practical RPC
-  upload on this board channel (honest gap). Four non-obvious fixes were required
+  ran but under the 0.9999 gate).** rdt (435 MB) / tiny_llama (877 MB) .so's: the RPC-channel
+  `sess.upload` is impractically slow, so we scp the .so **directly** to the board tmpfs (rdt 435 MB
+  in ~32 s) and `load_module` it from the server work-dir without re-upload — BUT loading a 435 MB
+  relax executable over the RPC session then **hangs** (the child blocks on the socket read). So the
+  big-.so on-board run is an honest gap (direct scp works; the on-board relax-VM load of a
+  hundreds-of-MB module over RPC does not complete). Four non-obvious fixes were required
   (all in `_RPC_RUN_TEMPLATE`):
     1. **`tvm_rpc` parses only `--opt=value`** (space form is silently ignored → defaults); pass
        `--port=… --port-end=… --work-dir=…` with `=`.
@@ -119,20 +128,22 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
     4. **relax VM over RPC needs `set_input`/`invoke_stateful`/`get_outputs`** — the direct
        `vm["main"](*args)` closure call mis-marshals remote NDArrays (`ArrayHandle` vs `Object`).
   Use our own port range (9193-9199); the other 4 agents' servers hold 9090/9091.
-- **MetaSchedule on-device tuning — reverse tunnel PROVEN, full tune not landed (honest gap).** The
-  board firewall blocks the direct **board→host** tracker callback, so an **ssh reverse tunnel**
-  (`ssh -R 9190:localhost:9190`, host tracker) is required. Confirmed working: the board `tvm_rpc
-  --tracker=localhost:9190 --key=k1` **registers to the host tracker via the tunnel** (`summary()`
-  showed `server:k1`), 45 tunable TIR tasks extract after `LegalizeOps` (raw from_onnx = 0), and a
-  tune run reached the MetaSchedule cost-model step (measurement round-trip worked) — the missing
-  `xgboost` there is now installed. Remaining blockers, honestly recorded: (a) the tracker hands the
-  host runner the server's self-advertised addr `127.0.0.1:9294`, which is not host-reachable —
-  needs `--custom-addr=<board-ip>` or a forward tunnel for the RPC port; (b) tracker/tunnel/server
-  process lifecycle is fragile to launch from a transient shell (the tracker `--port-end` is
-  EXCLUSIVE — use `--port=9190 --port-end=9195`, not `=9190`). A persistent daemon (systemd on the
-  board) would make this robust. So tuned RVV/latency are NOT yet measured; untuned RVV stays ~9–16%.
-  Fail-closed `not_run` when the on-board run doesn't complete; weights too big for RPC upload / >3 GB
-  (pi05) are labeled gaps.
+- **MetaSchedule on-device tuning — nearly closed, deadlocks at session matchmaking (honest gap).**
+  The board firewall blocks the direct **board→host** tracker callback, so an **ssh reverse tunnel**
+  (`ssh -R 9190:localhost:9190`, host tracker) is required. Everything up to the final handshake is
+  now solved and reproducible: (1) host tracker binds (tracker `--port-end` is EXCLUSIVE — use
+  `--port=9190 --port-end=9195`); (2) a **systemd unit** on the board
+  (`/etc/systemd/system/tvmrpc.service`, `Restart=always`) runs `tvm_rpc … --tracker=localhost:9190
+  --key=k1 --custom-addr=10.44.97.186` — survives ssh sessions AND the `--custom-addr` makes the
+  tracker advertise the board's **real IP** `10.44.97.186:9294` (host-reachable, confirmed OPEN),
+  not `127.0.0.1`; (3) the server **registers** (`summary()` → `server:k1 @ 10.44.97.186:9294`);
+  (4) 45 tunable TIR tasks extract after `LegalizeOps`; (5) `xgboost` cost model installed.
+  **Remaining blocker:** `tracker.request('k1')` / MetaSchedule `RPCRunner` **hangs** — the tracker
+  sits at `free 0 pending 1` with the server idle (0 % CPU); the tracker↔server session-allocation
+  handshake over the reverse tunnel never completes. Real, repeated attempts made; recorded as an
+  honest gap rather than retried indefinitely. So **tuned RVV/latency are NOT measured; untuned RVV
+  stays ~9–16 %.** The board systemd unit is removed on cleanup. Fail-closed `not_run` when the
+  on-board run doesn't complete; big .so's / weights > ~3 GB (pi05) are labeled gaps.
 
 ## ExecuTorch + XNNPACK arm build (`executorch.py`)
 
