@@ -198,6 +198,24 @@ def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
     return proc
 
 
+def prepare_model_mlir(bundle: _bundle.CaptureBundle, work: Path) -> Path:
+    """Normalize a raw capture ``model.mlir`` into a buddy-lowerable module.
+
+    Buddy can't lower the raw ``quant.*`` dialect (int8 captures) or the over-rank ``aten.linear``
+    matmuls / bf16 accumulation some captures carry. We reuse merlin's OWN normalization
+    (``zephyr_model._prepare_model_mlir``) so the buddy arm ingests the SAME prepared IR merlin's
+    runtime does — apples-to-apples — and so the int8 path is a REAL W8A8 integer datapath (i8*i8
+    -> i32 via ``arith.extsi`` + integer MAC, which ``opt -O3`` vectorizes to ``vwmacc.vv`` on
+    rv64gcv), not an f32 dequant. ``int8_compute=True`` only for the int8 variant.
+    """
+    from merlin.runtime.backends import zephyr_model as zm
+
+    work.mkdir(parents=True, exist_ok=True)
+    int8 = bundle.variant == "int8"
+    prepared = zm._prepare_model_mlir(bundle.mlir, work, int8_compute=int8)
+    return prepared
+
+
 def lower_to_llvmir(mlir_path: Path, work: Path, *, timeout: int = 1200) -> Path:
     """buddy-opt (linalg->llvm) -> mlir-translate -> LLVM IR text. Returns the ``model.ll`` path."""
     opt, xlate = buddy_opt(), mlir_translate()
@@ -373,10 +391,19 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
 
     work = (work_root or (_BUILD_ROOT / "runs")) / f"{model}_{variant}"
     work.mkdir(parents=True, exist_ok=True)
+    res.notes += f" datapath={'w8a8-int' if variant == 'int8' else 'f32'}"
+
+    # 0. normalize the capture (quant.* / over-rank matmul / bf16) into buddy-lowerable IR. int8 ->
+    #    a real i8*i8->i32 integer datapath (opt -O3 vectorizes the MACs to vwmacc.vv on rv64gcv).
+    try:
+        prepared = prepare_model_mlir(b, work)
+    except Exception as e:  # noqa: BLE001 — a capture that won't even normalize is a hard not_built
+        res.gap_reason = f"MLIR normalization failed (variant={variant}): {str(e)[:280]}"
+        return _finish(res, model, variant, write)
 
     # 1. lower + cross-compile to the rv64gcv object (the RVV artifact).
     try:
-        ll = lower_to_llvmir(b.mlir, work)
+        ll = lower_to_llvmir(prepared, work)
         obj = compile_rv64gcv_object(ll, work)
     except BuddyError as e:
         res.gap_reason = f"buddy lower/compile failed: {str(e)[:300]}"
@@ -506,11 +533,15 @@ def _run_on_board(res: BaselineResult, elf: Path, b: _bundle.CaptureBundle, work
         res.regions = [RegionProfile(name="other", rdtime_ticks=res.e2e_rdtime_ticks,
                                      cycles=res.e2e_cycles, rvv_coverage=res.rvv_coverage_overall,
                                      note="whole-forward (buddy lowers to one monolithic function)")]
-    # correctness vs golden.npy from the OUT marker (parsed 'outputs' float array).
+    # correctness from the OUT marker (parsed 'outputs' float array). int8 gates against the W8A8
+    # reference (golden_w8a8.npy) when present — that is the math the integer datapath INTENDS to
+    # run; falling back to the fp32 golden only when no W8A8 ref exists.
     out = parsed.get("outputs")
     if out is not None and res.ran:
         try:
-            gold = np.load(b.golden).astype(np.float32).ravel()
+            gold_path = _golden_for(b)
+            res.notes += f" gold={gold_path.name}"
+            gold = np.load(gold_path).astype(np.float32).ravel()
             got = np.asarray(out, dtype=np.float32).ravel()[:gold.size]
             if got.size and got.size == min(gold.size, got.size):
                 g = gold[:got.size].astype(np.float64)
@@ -524,6 +555,16 @@ def _run_on_board(res: BaselineResult, elf: Path, b: _bundle.CaptureBundle, work
         res.gap_reason = f"K1 run produced no DONE marker (rc={proc.returncode}): {console[-200:]}"
 
 
+def _golden_for(b: _bundle.CaptureBundle) -> Path:
+    """Pick the correctness reference: the W8A8 golden for int8 (the math the integer datapath
+    intends to run) when present, else the fp32 golden. Falls back to golden.npy always existing."""
+    if b.variant == "int8":
+        w8a8 = b.root / "golden_w8a8.npy"
+        if w8a8.is_file():
+            return w8a8
+    return b.golden
+
+
 def _finish(res: BaselineResult, model: str, variant: str, write: bool) -> BaselineResult:
     res.validate()
     if write:
@@ -532,23 +573,41 @@ def _finish(res: BaselineResult, model: str, variant: str, write: bool) -> Basel
     return res
 
 
+def _run_one_safe(model: str, variant: str, *, write: bool) -> BaselineResult:
+    """run_model with a hard exception guard so one model never sinks the batch."""
+    try:
+        return run_model(model, variant, write=write)
+    except Exception as e:  # noqa: BLE001
+        r = BaselineResult(framework=FRAMEWORK, model=model, variant=variant,
+                           gap_reason=f"runner exception: {str(e)[:200]}",
+                           timestamp=artifacts.utc_stamp())
+        if write:
+            try:
+                md = artifacts.new_measurement("k1_spacemit", model, "cross_framework")
+                r.write(md.path)
+            except Exception:  # noqa: BLE001
+                pass
+        return r
+
+
 def run_all(models=DEFAULT_MODELS, variant: str = "fp32", *, write: bool = True) -> list[BaselineResult]:
-    """Run the buddy arm over the model set (fp32 by default). Returns the BaselineResults."""
+    """Run the buddy arm over the model set for a single variant. Returns the BaselineResults."""
+    return [_run_one_safe(m, variant, write=write) for m in models]
+
+
+# int8 is prioritized: ~4x smaller weights (fits the K1 RAM/disk better) and a real integer RVV
+# datapath (vwmacc.vv), so it both fits more models and runs faster than the slow fp32 path.
+VARIANT_ORDER: tuple[str, ...] = ("int8", "fp32")
+
+
+def run_all_variants(models=DEFAULT_MODELS, variants=VARIANT_ORDER, *,
+                     write: bool = True) -> list[BaselineResult]:
+    """Attempt every (model, variant) — int8 FIRST, then fp32. Every attempt yields a BaselineResult
+    (pass / fail / not_built / not_run with a gap_reason); nothing is omitted or fabricated."""
     out = []
-    for m in models:
-        try:
-            out.append(run_model(m, variant, write=write))
-        except Exception as e:  # noqa: BLE001 - one model must never sink the batch
-            r = BaselineResult(framework=FRAMEWORK, model=m, variant=variant,
-                               gap_reason=f"runner exception: {str(e)[:200]}",
-                               timestamp=artifacts.utc_stamp())
-            if write:
-                try:
-                    md = artifacts.new_measurement("k1_spacemit", m, "cross_framework")
-                    r.write(md.path)
-                except Exception:  # noqa: BLE001
-                    pass
-            out.append(r)
+    for variant in variants:
+        for m in models:
+            out.append(_run_one_safe(m, variant, write=write))
     return out
 
 
@@ -558,14 +617,19 @@ def _main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Buddy (buddy-mlir) K1-RVV baseline arm")
     ap.add_argument("models", nargs="*", default=list(DEFAULT_MODELS),
                     help="models to run (default: the full corpus, LLM subset first)")
-    ap.add_argument("--variant", default="fp32")
+    ap.add_argument("--variant", default=None,
+                    help="single variant (int8|fp32); default runs BOTH, int8 first")
     ap.add_argument("--no-write", action="store_true", help="do not write BaselineResult artifacts")
     args = ap.parse_args(argv)
-    results = run_all(tuple(args.models), args.variant, write=not args.no_write)
+    if args.variant:
+        results = run_all(tuple(args.models), args.variant, write=not args.no_write)
+    else:
+        results = run_all_variants(tuple(args.models), write=not args.no_write)
     for r in results:
         cov = f"{100*r.rvv_coverage_overall:.0f}%RVV" if r.rvv_coverage_overall is not None else "?RVV"
-        print(f"{r.model}/{r.variant}: {r.status():10s} {cov} "
-              f"fallbacks={len(r.scalar_fallbacks)} {r.gap_reason}")
+        cc = f"cos={r.cos:.4f}" if r.cos is not None else "cos=?"
+        print(f"{r.model}/{r.variant}: {r.status():10s} {cov} {cc} "
+              f"fallbacks={len(r.scalar_fallbacks)} {r.gap_reason[:80]}")
     return 0
 
 
