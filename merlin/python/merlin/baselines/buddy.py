@@ -472,16 +472,22 @@ static void *worker(void *arg){{
   uint64_t w0=wall_ns(), t0=rd_time();
   _mlir_ciface_forward(&res,&par,&inp);
   uint64_t t1=rd_time(), w1=wall_ns();
+  /* buddy's forward ALLOCATES the result internally and the ciface stores the returned descriptor
+   * into &res — so the data lives at res.al (buddy's aligned ptr), NOT our pre-passed OUT[]. Read
+   * from res.al + res.off. */
+  const float *R = (const float *)res.al;
+  if (!R) {{ fprintf(stderr,"FAIL null result ptr\\n"); R = OUT; }}
+  R += res.off;
   int k = OUT_ELEMS<DUMP_CAP?OUT_ELEMS:DUMP_CAP;
   printf("OUT %d",k);
-  for(int i=0;i<k;i++){{ uint32_t b; memcpy(&b,&OUT[i],4); printf(" %u",(unsigned)b); }}
+  for(int i=0;i<k;i++){{ uint32_t b; memcpy(&b,&R[i],4); printf(" %u",(unsigned)b); }}
   printf("\\n");
   if(OUT_ELEMS>DUMP_CAP){{
     int rows=OUT_ELEMS/OUT_LASTDIM; printf("ARGMAX %d",rows);
-    for(int r=0;r<rows;r++){{ const float*row=&OUT[(long)r*OUT_LASTDIM]; int bi=0; float bv=row[0];
+    for(int r=0;r<rows;r++){{ const float*row=&R[(long)r*OUT_LASTDIM]; int bi=0; float bv=row[0];
       for(int j=1;j<OUT_LASTDIM;j++) if(row[j]>bv){{bv=row[j];bi=j;}} printf(" %d",bi); }}
     printf("\\n");
-    float s=0; for(int i=0;i<OUT_ELEMS;i++) s+=OUT[i]; uint32_t sb; memcpy(&sb,&s,4);
+    float s=0; for(int i=0;i<OUT_ELEMS;i++) s+=R[i]; uint32_t sb; memcpy(&sb,&s,4);
     printf("SUM %u\\n",(unsigned)sb);
   }}
   uint64_t ticks=t1-t0, est=ticks*(K1_CPU_HZ/K1_TIMEBASE_HZ);
