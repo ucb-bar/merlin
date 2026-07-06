@@ -83,8 +83,11 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
 - **On-board execution WORKS** (`build/baselines/tvm-rv64/`: riscv64 runtime + `tvm_rpc` cross-built
   with SpacemiT clang rv64gcv via `riscv64-toolchain.cmake`, `ninja tvm_runtime tvm_rpc`).
   `_run_on_board`→`_rpc_run_driver` (m2m-venv subprocess) deploys them, starts a persistent server,
-  connects host→board directly, runs the relax VM, wall-times, gates cos/rel. **small_llama int8
-  ran on the K1: ~61 ms, cos 1.0.** Four non-obvious fixes were required (all in `_RPC_RUN_TEMPLATE`):
+  connects host→board directly, runs the relax VM, wall-times, gates cos/rel. **On-board results
+  (untuned): small_llama int8 = 52.7 ms cos 1.0 (PASS); openvla int8 = 6514 ms cos 0.9916 (fail —
+  ran but under the 0.9999 gate).** rdt (435 MB .so) / tiny_llama (877 MB .so) exceed practical RPC
+  upload on this board channel (honest gap). Four non-obvious fixes were required
+  (all in `_RPC_RUN_TEMPLATE`):
     1. **`tvm_rpc` parses only `--opt=value`** (space form is silently ignored → defaults); pass
        `--port=… --port-end=… --work-dir=…` with `=`.
     2. **The server EXITS on stdin EOF** — a plain `nohup`/`setsid` over ssh dies. Launch it from the
@@ -94,12 +97,20 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
     4. **relax VM over RPC needs `set_input`/`invoke_stateful`/`get_outputs`** — the direct
        `vm["main"](*args)` closure call mis-marshals remote NDArrays (`ArrayHandle` vs `Object`).
   Use our own port range (9193-9199); the other 4 agents' servers hold 9090/9091.
-- **MetaSchedule on-device tuning remains blocked:** the board firewall blocks the **board→host**
-  tracker callback (`No route to host` to the host IP), and the board python has no TVM for a
-  board-side tracker — so the tracker-based `RPCRunner` can't measure on-device. An **ssh reverse
-  tunnel** (`ssh -R 9190:localhost:9190`) is the intended workaround (host tracker reachable at the
-  board's localhost) — not yet landed. So RVV stays at the untuned ~9–16%; higher needs this tunnel.
-  Fail-closed `not_run` when the on-board run doesn't complete; weights > ~3 GB (pi05) are a fit gap.
+- **MetaSchedule on-device tuning — reverse tunnel PROVEN, full tune not landed (honest gap).** The
+  board firewall blocks the direct **board→host** tracker callback, so an **ssh reverse tunnel**
+  (`ssh -R 9190:localhost:9190`, host tracker) is required. Confirmed working: the board `tvm_rpc
+  --tracker=localhost:9190 --key=k1` **registers to the host tracker via the tunnel** (`summary()`
+  showed `server:k1`), 45 tunable TIR tasks extract after `LegalizeOps` (raw from_onnx = 0), and a
+  tune run reached the MetaSchedule cost-model step (measurement round-trip worked) — the missing
+  `xgboost` there is now installed. Remaining blockers, honestly recorded: (a) the tracker hands the
+  host runner the server's self-advertised addr `127.0.0.1:9294`, which is not host-reachable —
+  needs `--custom-addr=<board-ip>` or a forward tunnel for the RPC port; (b) tracker/tunnel/server
+  process lifecycle is fragile to launch from a transient shell (the tracker `--port-end` is
+  EXCLUSIVE — use `--port=9190 --port-end=9195`, not `=9190`). A persistent daemon (systemd on the
+  board) would make this robust. So tuned RVV/latency are NOT yet measured; untuned RVV stays ~9–16%.
+  Fail-closed `not_run` when the on-board run doesn't complete; weights too big for RPC upload / >3 GB
+  (pi05) are labeled gaps.
 
 ## ExecuTorch + XNNPACK arm build (`executorch.py`)
 
