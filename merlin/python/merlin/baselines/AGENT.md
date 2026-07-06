@@ -118,6 +118,15 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
   0.80.) Fixing needs a TVM broadcast-Mul patch (C++/TIR) — left as an honest fail/0.80.
   Gaps: rdt2 ONNX-export; bitvla/molmoact loader; groot/xr0/pi05/smolvla miss python deps
   (`tyro`/`mmengine`/`openpi`/`lerobot`); pi05 16 GB (K1 fit gap).
+- **Phase-2 full-fidelity breadth (partial — full models are heavy):** on the `_full` recaptures the
+  full 22-layer tiny_llama int8 builds via ONNX (RVV 15.8 %) but cos = **0.219** (the RMSNorm
+  broadcast-Mul error compounds across 22 layers vs 0.80 at 2 layers). Full-fidelity ONNX
+  export + the second host-VM `relax.build` are ~5 min PER model, so a synchronous 11-model host-cos
+  sweep is impractical (and contends with the concurrent ExecuTorch arm on the shared board). The
+  runner + `bundle.full_env`/`K1_RUNNABLE`/`K1_RAM_INFEASIBLE` wiring are in place; the definitive
+  Phase-2 conclusion (torch path can't build → ONNX only; RMSNorm-Mul defect confirmed on the real
+  model) stands. Per-model full-fidelity build/cos/latency for all 8 K1-runnable models is a
+  follow-up sweep (each model is an independent `run_model(m, "int8")`), not a blocker.
 - **RVV coverage** on the default `relax.build` lowering is ~9–16% (LLVM vectorizes some loops for
   the `+v,+zvl256b` target). Higher RVV needs **MetaSchedule autotuning** — but see the network note.
 - **On-board execution WORKS** (`build/baselines/tvm-rv64/`: riscv64 runtime + `tvm_rpc` cross-built
