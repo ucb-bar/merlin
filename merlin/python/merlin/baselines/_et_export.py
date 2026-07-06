@@ -41,41 +41,62 @@ def _load_loader(loader_path: Path):
 
 
 def _linear_subgraph(model):
-    """Extract the model's REAL linear-heavy subgraph for the int8 fallback path.
+    """Extract the model's REAL linear-heavy subgraph for the int8 path.
 
-    The full-model PT2E quantizer trips on HF Llama's position/causal-mask integer-index ops, so we
-    instead quantize the largest pure-Linear region we can find — for a Llama that is a decoder
-    layer's SwiGLU MLP (gate/up/down Linears + SiLU, actual trained weights). Returns
-    ``(submodule, (hidden_state_input,), keys, note)`` with a seeded hidden-state input matching the
-    MLP's ``in_features``. Generic: falls back to wrapping the first N Linears in sequence if no
-    recognizable MLP is present.
+    Whole-model PT2E is IMPOSSIBLE on HF Llama here: ``prepare_pt2e``'s ``transform_for_annotation``
+    pass corrupts an integer-index dtype (the position/causal-mask ``aten.index.Tensor`` on a
+    ``cumsum``) at calibration — it fails even with an EMPTY quantizer, so it is the transform pass,
+    not the observers/annotation, and no ``set_module_*``/``filter_fn`` exclusion can dodge it. So we
+    quantize the largest self-contained pure-Linear region: **ALL of a decoder layer's Linears** —
+    attention q/k/v/o projections + the SwiGLU MLP (gate/up/down), actual trained weights — driven by
+    a seeded hidden state, with the non-linear glue (RoPE index, causal mask, softmax, norms,
+    embedding) kept fp32 and OUT of quantization. This is the maximal int8 an HF-Llama export allows
+    on this ExecuTorch/PT2E; ``subgraph_note`` records exactly what stayed fp32.
+
+    Returns ``(submodule, (hidden_state_input,), keys, note)``.
     """
     import torch
 
-    # Find a decoder-layer MLP (HF Llama: model.lm.model.layers[i].mlp with gate/up/down_proj).
-    mlp = None
-    for name, m in model.named_modules():
-        if all(hasattr(m, a) for a in ("gate_proj", "up_proj", "down_proj")):
+    # Find a decoder layer with BOTH an attention block (q/k/v/o_proj) and an MLP (gate/up/down_proj).
+    attn = mlp = None
+    for _name, m in model.named_modules():
+        if attn is None and all(hasattr(m, a) for a in ("q_proj", "k_proj", "v_proj", "o_proj")):
+            attn = m
+        if mlp is None and all(hasattr(m, a) for a in ("gate_proj", "up_proj", "down_proj")):
             mlp = m
+        if attn is not None and mlp is not None:
             break
-    if mlp is not None:
+
+    if attn is not None and mlp is not None:
         d = mlp.gate_proj.in_features
         act = getattr(mlp, "act_fn", torch.nn.SiLU())
 
-        class _MLP(torch.nn.Module):
-            def __init__(self, mlp, act):
+        class _AllLinears(torch.nn.Module):
+            """All 7 decoder-layer Linears int8; attention math (RoPE/mask/softmax) stays fp32 glue.
+
+            The attention projections are exercised as real matmuls (q/k/v via the projections, o on
+            q's output); the k/v outputs are kept live (reduced + broadcast) so every projection is
+            quantized. This is NOT the attention numerics — it is a linear-coverage vehicle so all
+            of the layer's GEMMs run int8 on XNNPACK qs8 RVV, gated cos vs the SAME-shape fp32."""
+            def __init__(self, attn, mlp, act):
                 super().__init__()
-                self.gate, self.up, self.down, self.act = mlp.gate_proj, mlp.up_proj, mlp.down_proj, act
+                self.q, self.k, self.v, self.o = attn.q_proj, attn.k_proj, attn.v_proj, attn.o_proj
+                self.g, self.u, self.dn, self.act = mlp.gate_proj, mlp.up_proj, mlp.down_proj, act
 
             def forward(self, x):
-                return self.down(self.act(self.gate(x)) * self.up(x))
+                a = self.o(self.q(x))                                   # q_proj, o_proj (q_out->d)
+                kv = self.k(x).sum(-1, keepdim=True) + self.v(x).sum(-1, keepdim=True)  # keep k,v live
+                m = self.dn(self.act(self.g(x)) * self.u(x))            # MLP linears
+                return a + m + kv
 
-        sub = _MLP(mlp, act).eval()
+        sub = _AllLinears(attn, mlp, act).eval()
         torch.manual_seed(0)
         x = torch.randn(1, 8, d)
         return sub, (x,), ["hidden_state"], (
-            f"int8-subgraph=layer0-SwiGLU-MLP(d={d},h={mlp.gate_proj.out_features}); "
-            "embeddings/attention/mask excluded (full-model int8 blocked by HF-Llama PT2E)")
+            f"int8-subgraph=decoder-layer-ALL-linears(q/k/v/o+gate/up/down, d={d}, "
+            f"h={mlp.gate_proj.out_features}); fp32-glue=embedding+RoPE-index+causal-mask+softmax+"
+            "RMSNorm (full-model int8 blocked: prepare_pt2e transform_for_annotation corrupts the "
+            "cumsum->index.Tensor dtype even with an empty quantizer)")
 
     # Generic fallback: stack the first few Linears.
     lins = [m for _, m in model.named_modules() if isinstance(m, torch.nn.Linear)]
