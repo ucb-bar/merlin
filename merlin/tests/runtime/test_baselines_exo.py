@@ -170,11 +170,15 @@ def test_igemm_output_blocking_shares_one_A_load():
     # U-blocking (the RVV-ceiling lever): U 16-wide i32 accumulators share ONE scalar A[m,k] load
     # per k. U distinct accumulator registers (Yr0..Yr{U-1}, NOT an illegal array of RVV types).
     import merlin.baselines.exo_kernels.igemm as ig
+    import re
     p = str(ig.build_igemm(1, 4))               # U=4
-    assert p.count("rvv256_vwmacc_vx") == 4     # 4 tiles -> 4 vwmaccs in the k-body
-    assert "Yr0" in p and "Yr3" in p            # 4 distinct accumulator registers (not an array)
-    # all vwmaccs read the same A element X[m, k] — one CSE'd scalar load feeds the U macs.
-    assert "X[m:1 + m, k]" in p and "Yr4" not in p
+    flat = re.sub(r"\s+", " ", p)               # collapse the pretty-printer's line wrapping
+    assert flat.count("rvv256_vwmacc_vx") == 4  # 4 tiles -> 4 vwmaccs in the k-body
+    assert "Yr0" in flat and "Yr3" in flat and "Yr4" not in flat  # exactly 4 distinct registers
+    # every vwmacc's A operand is the single element X[m, k] (one CSE'd scalar load feeds U macs).
+    # stage_mem may spell the 1-wide window as X[m, k:1+k] or X[m:1+m, k] — both are X[m,k].
+    a_windows = re.findall(r"X\[m[^\]]*k[^\]]*\]", flat)
+    assert len(a_windows) == 4 and all(("k:1 + k" in w or "m:1 + m" in w) for w in a_windows)
 
 
 def test_glue_ops_lower_to_rvv():
