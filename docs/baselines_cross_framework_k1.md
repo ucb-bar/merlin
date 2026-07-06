@@ -27,14 +27,14 @@ Full machine-generated matrix (all 5 frameworks × 11 models × {fp32,int8}) + C
 
 | Arm | Best on-K1 whole-model result | int8-on-RVV | The wall it hit |
 |---|---|---|---|
-| **EXO** | tiny_llama fp32 **PASS** — cos=1.0, rel=8.7e-6 (~784 G cyc) | real `vwmacc.vx` i16→i32; int8 ran **cos=0.9981** vs `golden_w8a8` → near-miss at the 0.999 tier | glue is Llama-family only → 9 models `not_built` |
-| **ExecuTorch** | tiny_llama fp32 **PASS** — cos=0.99999999, 217 ms | int8 `not_built` (PT2E W8A8 fails on HF Llama index tensors) | full `.pte` 4.1 GB > 3.8 GB board (ran layer-reduced); XNNPACK delegated 10/93 nodes |
-| **Buddy** | compiles **8/11 int8** to genuine integer RVV (`vwmacc.vv`) | ✅ builds; int8 RVV > fp32 RVV | **OOM on every model** — whole-model lowering has *no arena planning* (every intermediate live) |
+| **EXO** | tiny_llama fp32 **PASS** cos=1.0; int8 ran **24.6 s** (−45% after tuning), cos=0.9981 near-miss | real `vwmacc.vx` i16→i32; GEMM RVV 17→**31%** (output-tile blocking) | glue is Llama-family only → 9 models `not_built`; transpose scatter now the bottleneck |
+| **ExecuTorch** | tiny_llama fp32 **PASS** cos=0.99999999 (217 ms); **int8 PASS — 10.9 ms**, cos=0.999 | int8 GEMM 33–47% RVV in one XNNPACK qs8 delegate | int8 runs on the real linear/MLP subgraph; whole-model int8 blocked (PT2E quantizer on HF Llama) |
+| **Buddy** | compiles **8/11 int8** to genuine integer RVV (`vwmacc.vv`, up to 34%) | ✅ builds; int8 RVV > fp32 | **0 on-board** — OOM fixed, but a **Buddy bufferizer bug** (bad ptr in the i32→f32 dequant) SIGSEGVs int8; *not* our ABI |
 | **ggml** | tiny_llama int8 **ran** — Q8_0 20.3/5.8 tok/s, Q4_K_M 33/10 tok/s | ✅ native low-bit | correctness **uncomparable** (runs the real checkpoint; our capture is a 2-layer random-init graph) |
-| **TVM** | **small_llama int8 compile-correct** (cos=0.99999999, 15.7% RVV) — on-board timing pending | 5 models build via **ONNX→Relax** (small_llama/tiny_llama/openvla/rdt int8) | on-board TVM riscv64 runtime not cross-built yet (`not_run`); tiny_llama cos=0.80 = a TVM v0.19.0 ONNX attn-op bug (ORT matches torch at 1.0) |
+| **TVM** | **small_llama int8 PASS on-board — 52.7 ms, cos=1.0**; openvla int8 ran 6.5 s (cos 0.9916, fail) | 5 models build via **ONNX→Relax** (9–16% untuned RVV) | MetaSchedule tunnel proven past firewall but round-trip needs `--custom-addr`+daemon (tuned RVV pending); big `.so` exceed RPC upload; tiny_llama cos=0.80 attn-op bug |
 
-Two clean whole-model passes *ran on-board* on our captured graph (EXO, ExecuTorch — both tiny_llama
-fp32, reduced/small configs). TVM now **builds numerically-correct RVV** for small_llama int8 (cos≈1.0)
+Four on-board passes now: EXO & ExecuTorch tiny_llama fp32, ExecuTorch tiny_llama int8, and **TVM
+small_llama int8** (52.7 ms, cos=1.0). TVM also **builds numerically-correct RVV** for small_llama int8
 but its on-board runtime isn't cross-built, so it's `not_run` rather than a fabricated pass. Everything
 else is an explicit, reasoned gap.
 
@@ -97,16 +97,19 @@ framework's ceiling; the remaining blockers are now precisely characterized:
 | Arm | Before | After tuning | Reached best? |
 |---|---|---|---|
 | **ExecuTorch** | int8 `not_built` | int8 **PASS on-board — 10.9 ms**, cos=0.999; MLP fused into **one XNNPACK qs8 delegate** (int8 GEMM 33–47% RVV) | **subgraph yes** — whole-model int8 blocked: PT2E observer corrupts an int-index dtype at calibration on HF Llama (no quantizer toggle avoids it) |
-| **EXO** | int8 44.5 s, GEMM RVV 17% | autotuned k-unroll (ku=4) → GEMM −7%, RVV 18–19%; residual/elementwise now RVV (`vfadd`/`vfmul`); **42.5 s** | **near its approach's limit** — GEMM bottleneck is the per-MAC *scalar A-load* (needs output-tile blocking EXO couldn't stage); quant/transpose pre-pass co-dominant; glue ops are <0.1% of wall so vectorizing them is latency-neutral |
-| **Buddy** | int8 OOM (10.1 GB) | **OOM fixed** (buffer-deallocation-pipeline: 0→290 deallocs) | **no on-board run** — OOM solved, but int8 now SIGSEGVs in the integer datapath (weights-region fault; a deep memref/ABI bug, *not* dealloc-related; fp32 runs but is too slow) |
-| **TVM** | 5 int8 build, `not_run` | riscv64 **runtime + `tvm_rpc` cross-built** | **no tuned/on-board result** — MetaSchedule + on-board runs blocked by *infra*: board→host firewall (kills tracker tuning) + unstable ssh-launched `tvm_rpc` (kills direct RPC). Needs a persistent board-side RPC service + open board→host path |
+| **EXO** | int8 44.5 s, GEMM RVV 17% | **output-tile blocking (U=8)** → GEMM region 558M→**128M ticks (−77%)**, GEMM RVV **17%→31%**; RVV quant pre-pass 461M→**18.7K ticks**; **whole-model 44.5 s → 24.6 s (−45%)** | **near its approach's limit** — the *weight-transpose scatter* (461M ticks, bandwidth-bound) is now THE bottleneck; killing it needs an `[N,K]`-native reduction GEMM (no transpose). EXO can't array a sizeless RVV reg type (worked around with U named registers) |
+| **Buddy** | int8 OOM (10.1 GB) | **OOM fixed** (buffer-deallocation: 0→290 deallocs); pi05 opt-timeout fixed (size-adaptive vectorize) | **no on-board run** — root-caused: a **Buddy bufferizer bug** (bad base pointer in the i32→f32 dequant generic), *conclusively not our ABI* (merlin's byte-identical ABI runs int8 fine; TVM ran small_llama int8 on-board). Unfixable without patching the buddy submodule |
+| **TVM** | 5 int8 build, `not_run` | riscv64 runtime + persistent `tvm_rpc` (FIFO-stdin) → **small_llama int8 PASS on-board — 52.7 ms, cos=1.0**; openvla int8 ran 6.5 s (cos 0.9916, fail gate) | **on-board yes (small_llama)** — reverse-tunnel MetaSchedule *proven past the firewall* (board registered to host tracker, 45 tasks, cost model reached) but the last round-trip needs `--custom-addr` + a persistent daemon, so **tuned RVV not yet measured**; big `.so` (rdt/tiny_llama) exceed RPC upload; tiny_llama cos=0.80 TVM attn-op bug |
 | **ggml** | Q8_0 20.3/5.8 tok/s, 18% RVV | (unchanged — already near best) | **closest to best** — hand-optimized kernels are ggml's real capability |
 
-**Verdict:** these are best-*effort*, not proven-best. Only **ggml** is at its real ceiling; **ExecuTorch**
-has a genuine tuned int8 on-board number (subgraph); **EXO** is near its kernel-approach limit with an
-honest bottleneck; **Buddy** and **TVM** build real int8 RVV but are blocked from a full on-board int8 run
-(codegen SIGSEGV / RPC-infra respectively). No fabricated numbers anywhere — blocked cells stay `not_run`
-with a specific reason.
+**Verdict (after the "double-down" pass):** best-*effort*, not proven-best — but four arms now have real
+on-board int8/fp32 numbers. **TVM** and **ExecuTorch** each land a genuine on-board int8 **PASS**
+(small_llama 52.7 ms cos=1.0; tiny_llama-MLP 10.9 ms cos=0.999). **EXO** cut its whole-model int8 wall
+**−45%** (44.5→24.6 s) and nearly doubled GEMM RVV, hitting a clean bandwidth-bound bottleneck. **Buddy**
+is the one arm still blocked from any on-board run — now *conclusively* attributed to a Buddy bufferizer
+bug, not our integration. **ggml** stays at its hand-tuned ceiling. The remaining gaps (TVM tuning
+round-trip, TVM big-`.so` upload + attn-op, Buddy's bufferizer patch, ExecuTorch whole-model quant) are
+each a single, named next step. No fabricated numbers anywhere — blocked cells stay `not_run` with a reason.
 
 ## Where things live
 
@@ -117,11 +120,13 @@ with a specific reason.
 
 ## Open follow-ups
 
-- **TVM on-board + MetaSchedule**: runtime + `tvm_rpc` are cross-built; needs a *persistent* board-side
-  RPC service (systemd, not ssh-launched) + an open board→host path for the tuning tracker. Then lift
-  RVV above the untuned ~16% and fix the tiny_llama attention-op divergence (cos=0.80).
-- **Buddy int8 on-board**: OOM is fixed; the remaining blocker is the int8-datapath SIGSEGV — debug the
-  memref/weight-arg stride mismatch between merlin's arg table and buddy's `i8×i8→i32` kernel indexing.
+- **TVM MetaSchedule tuning**: on-board execution works (small_llama int8 52.7 ms). The reverse-tunnel
+  tracker is proven (board registers past the firewall, 45 tasks, cost model reached); the last round-trip
+  needs `--custom-addr=<board-ip>` (tracker advertises `127.0.0.1`) + a persistent RPC daemon (systemd).
+  Also: chunk/stream the big `.so` (rdt/tiny_llama > RPC upload limit) and fix the tiny_llama attn-op (cos=0.80).
+- **Buddy int8 on-board**: OOM fixed; the sole blocker is a **Buddy bufferizer bug** — a bad memref base
+  pointer in the mixed i32+f32 dequant generic (our ABI is proven correct). Needs a patch to the buddy
+  submodule's bufferizer (a fork-and-fix), not an integration change.
 - **ExecuTorch whole-model int8**: needs a PT2E path (or a different quantizer) that keeps HF Llama's
   index/mask tensors out of observation — currently only the linear-heavy subgraph quantizes.
 - **EXO GEMM**: output-tile blocking to reuse one scalar A-load across tiles (the real RVV ceiling), and
