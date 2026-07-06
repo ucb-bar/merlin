@@ -79,11 +79,18 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
   with `PYTHONPATH=<tvm>/python` + `LD_LIBRARY_PATH=<libdir>`. That venv needs a few TVM runtime
   deps: `uv pip install decorator tornado cloudpickle attrs` (numpy/ml_dtypes/psutil already there).
 - **Target = JSON dict** `TVM_TARGET_CONFIG` (`+v,+zvl256b` for the K1's 256b VLEN, `num-cores=8`).
-- **Import via ONNX, NOT the torch-exported-program frontend.** TVM v0.19.0's
-  `relax.frontend.torch.from_exported_program` lacks ops for HF transformer/VLA graphs
-  (`full`/`where`/`masked_fill`/`convolution`/…, plus torchao int8 subclasses). Its **ONNX** frontend
-  (`relax.frontend.onnx.from_onnx`) has far broader coverage. So the driver does
-  `torch.onnx.export` (classic opset17; dynamo opset18 fallback for rope's `aten::diff`) → `from_onnx`.
+- **Import via ONNX, NOT the torch-exported-program frontend (re-confirmed Phase 2).** TVM v0.19.0's
+  `relax.frontend.torch.from_exported_program` **cannot build these graphs** — verified directly on
+  the full-fidelity tiny_llama: int8 fails at `access_subclass_inner_tensor.default` (torchao int8
+  tensor subclass unsupported); fp32 fails at `arange.default`, and even with an arange/mm/split
+  op-alias shim + `run_decompositions` it hits `ne.Scalar` (comparison ops missing) — an unbounded
+  op-coverage whack-a-mole. So the Phase-2 hypothesis "the torch path fixes tiny_llama cos=0.80" is
+  **falsified: the torch path never reaches codegen**. The **ONNX** frontend
+  (`relax.frontend.onnx.from_onnx`) has far broader coverage and is the only path that builds. Driver
+  does `torch.onnx.export` (classic opset17; dynamo opset18 fallback for rope's `aten::diff`) →
+  `from_onnx`. (Full-fidelity confirms the RMSNorm broadcast-Mul defect: full 22-layer tiny_llama int8
+  builds but cos **0.219** — worse than the truncated 2-layer 0.80 because the per-layer Mul error
+  compounds across 22 layers.)
   Two compat shims: (1) reconstruct `onnx.mapping` (removed in onnx 1.22, still imported by the TVM
   frontend) from `onnx.helper`; (2) register `relax.isnan`/`isinf` legalizations (missing → VM
   codegen rejects the un-lowered intrinsic). m2m venv needs `onnx onnxruntime onnxscript` +
@@ -93,6 +100,12 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
   are re-registered persistent before export (torch 2.10 lifts rope `inv_freq` into buffers the
   frontend can't resolve). Correctness is gated vs a **torch reference for the exact instance**
   (`host_cos`); `gold_cos` (vs the capture golden) is also reported.
+- **Full-fidelity recaptures (Phase 2):** `bundle.resolve` prefers the `<model>_int8_full` bundle
+  (real/native architecture) over the truncated `_consistent`. When the resolved dir ends `_full`,
+  `_workload_env(model, full=True)` uses `bundle.full_env(model)` (real depths, e.g. 22-layer
+  TinyLlama / 30-layer BitNet) so the exported instance matches the full golden — NOT the TOML
+  truncation defaults. `bundle.K1_RUNNABLE` = 8 models that fit the ~3.4 GB board;
+  `bundle.K1_RAM_INFEASIBLE` = {openvla, molmoact, pi05} (7B-class, attempt-build then RAM-gap).
 - **Status: 5 int8 models BUILD via ONNX** (Relax import → rv64gcv `relax.build` → SpacemiT
   cross-link → real riscv64 RVV `.so` → RVV-audit), torchao int8 quant applied. **small_llama int8
   is numerically correct on host (cos 0.99999999)**; rdt 0.9992, openvla 0.9916 (near-pass);
@@ -181,19 +194,18 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
   (`export_env={'M2M_LLAMA_LAYERS':'1'}` + `compute_golden=True`, gate = eager-torch-vs-ExecuTorch)
   proves the ExecuTorch+XNNPACK-RVV path end-to-end on real K1 silicon (cos 0.9999999999, rel 2.7e-6,
   217 ms wall).
-- **int8 W8A8 path (`int8_subgraph=True`, XNNPACK qs8 RVV):** whole-model PT2E is IMPOSSIBLE on HF
-  Llama here — `prepare_pt2e`'s `transform_for_annotation` pass corrupts an integer-index dtype (the
-  position/causal-mask `aten.index.Tensor` on a `cumsum`) at CALIBRATION. It fails **even with an
-  EMPTY quantizer** (no annotations), so it is the transform pass, NOT the observers/annotation — no
-  `set_module_type`/`set_module_name`/`set_operator_type`/`filter_fn` exclusion can dodge it (the
-  raw exported graph runs fine; matches the upstream `aot_riscv.py` note that HF Llama trips the
-  quantizer). So `_linear_subgraph` quantizes the maximal self-contained pure-Linear region: **ALL
-  of a decoder layer's Linears — attention q/k/v/o projections + SwiGLU MLP gate/up/down (7 Linears,
-  actual trained weights)**, seeded fp32 hidden-state input, with the non-linear glue (embedding,
-  RoPE index, causal mask, softmax, RMSNorm) kept fp32 and OUT of quantization. Static W8A8 fuses
-  the 7 Linears into **2 XNNPACK qs8 delegates (delegated 2/8 nodes)**, dispatching to
-  `xnn_qs8_qc8w_gemm_..._4x4v__rvv` (int8 GEMM inner loop RVV; requantize/clamp tail scalar; 8+
-  qs8/qc8w RVV GEMM ukernels linked). **On-board PASS: cos=0.99987 (int8 vs fp32), rel=0.017,
-  13.7 ms** (int8 gate 0.99/0.05 — W8A8 loses precision vs the fp32 golden; cos is the MEASURED
-  int8-vs-fp32 cosine, not faked). This is the maximal int8 an HF-Llama export allows on this
-  ExecuTorch/PT2E; `subgraph_note` records exactly which ops forced fp32.
+- **WHOLE-MODEL int8 (`int8_whole_model`, the default for `variant="int8"`) — ExecuTorch's OFFICIAL
+  llama recipe:** generic PT2E is IMPOSSIBLE on HF Llama (`prepare_pt2e`'s `transform_for_annotation`
+  pass corrupts an integer-index dtype — the position/causal-mask `aten.index.Tensor` on a `cumsum`
+  — at calibration; fails **even with an EMPTY quantizer**, so it is the transform pass, not the
+  observers, and no `set_module_*`/`filter_fn` exclusion dodges it). The fix is the official
+  `examples/models/llama/source_transformation/quantize.py` **`WeightOnlyInt8QuantHandler`**:
+  weight-only int8 per-channel by **eager MODULE SWAP** (every `nn.Linear` → `WeightOnlyInt8Linear`).
+  Because it is a module swap it NEVER runs `transform_for_annotation`, so it **fully sidesteps the
+  index corruption** — **all layers quantize + the whole model exports**. tiny_llama (full 22 layers
+  + lm_head, 155 Linears): whole-model int8 exports, **cos=1.0000 (weight-only int8 is near-lossless
+  vs fp32)**, delegated ~23/216 nodes to XNNPACK qs8 RVV. Gate 0.99/0.05 (cos is the MEASURED
+  int8-vs-fp32 cosine). The fp32 glue (embedding/RoPE/mask/softmax/RMSNorm) stays fp32.
+- **`int8_subgraph=True` is the FALLBACK** (only if whole-model won't export): quantizes the decoder
+  layer's linear set (q/k/v/o + gate/up/down) on a seeded hidden state, 2 qs8 delegates, cos 0.99987,
+  13.7 ms — superseded by the whole-model path for Llama-family models.
