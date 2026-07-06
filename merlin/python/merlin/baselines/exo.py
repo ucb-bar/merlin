@@ -67,8 +67,11 @@ VARIANT_ORDER: tuple[str, ...] = ("int8", "fp32")
 # SwiGLU} -> norm -> lm_head) keyed on the ``lm.model.layers.N.self_attn.{q,k,v,o}_proj`` +
 # ``mlp.{gate,up,down}_proj`` naming. These captures do not fit that shape:
 _GLUE_GAP: dict[str, str] = {
-    "small_llama": "renamed Llama (blocks.N.attn.{q,k,v,o}, emb/norm.w) and no rotary_emb.inv_freq "
-                   "in extra.npz — glue needs the lm.model.layers naming + RoPE inv_freq buffer",
+    "small_llama": "IS Llama-family but the capture doesn't fit the glue: terse naming "
+                   "(blocks.N.attn.{q,k,v,o} / mlp.{g,u,dn} / n1,n2 / emb / norm.w), quant weights "
+                   "stored as qinner:: keys in extra.npz (not the parametrizations layout the "
+                   "int8 path reads), no rotary_emb.inv_freq buffer, AND hidden=344 is not a "
+                   "multiple of the 16-wide GEMM tile — each is a bespoke adapter (out of scope)",
     "molmoact": "OLMo-style backbone (lm.model.blocks.N with attn_norm/ff_norm, mlp.ff_proj/ff_out "
                 "fused-gate MLP + wte.embedding) — not the Llama q/k/v/o + gate/up/down decoder the "
                 "glue runs",
@@ -565,16 +568,27 @@ def run(model: str = "tiny_llama", variant: str = "fp32", *, autotune: bool = Tr
                             raise
             k1_exec.run([f"chmod +x {remote}"], timeout=60)
             # Write the S*V logits to a binary file on-board (robust vs streaming ~2MB ASCII over a
-            # contended SSH link, which truncates on a connection drop); scp it back.
-            remote_out = f"/tmp/{model}_{variant}_exo_out.bin"
+            # contended SSH link); scp it back (to the board's rootfs, NOT /tmp tmpfs). A partial/
+            # failed scp must NOT be mistaken for a stale prior file, so we delete any stale
+            # local_out first and verify the scp succeeded + the returned file has the EXACT
+            # expected size before gating (else -> honest not_run gap).
+            remote_out = f"{k1.K1_REMOTE_DIR}/{model}_{variant}_exo_out.bin"
+            local_out = work / "exo_out.bin"
+            if local_out.exists():
+                local_out.unlink()
             proc = k1_exec.run(
                 [f"MERLIN_WEIGHTS={remote_w} MERLIN_OUTFILE={remote_out} {remote}"], timeout=1800)
-            local_out = work / "exo_out.bin"
-            try:
-                subprocess.run(["scp", *k1_exec._SSH_OPTS, f"{k1.K1_HOST}:{remote_out}",
-                                str(local_out)], capture_output=True, timeout=300)
-            except Exception:  # noqa: BLE001
-                pass
+            import time as _time
+            _time.sleep(1)  # let the on-board file flush before scp
+            scp_ok = False
+            for _att in range(2):
+                r = subprocess.run(["scp", *k1_exec._SSH_OPTS, f"{k1.K1_HOST}:{remote_out}",
+                                    str(local_out)], capture_output=True, timeout=300)
+                if r.returncode == 0 and local_out.is_file():
+                    scp_ok = True
+                    break
+                if local_out.exists():
+                    local_out.unlink()
             try:
                 k1_exec.run([f"rm -f {remote} {remote_out}"], timeout=60)  # keep cached weights
             except Exception:  # noqa: BLE001
@@ -584,17 +598,22 @@ def run(model: str = "tiny_llama", variant: str = "fp32", *, autotune: bool = Tr
         return res.validate()
 
     stdout = proc.stdout + proc.stderr
-    # prefer the binary output file (robust); fall back to the ASCII OUT stream.
+    # prefer the binary output file (robust); require the EXACT expected element count so a
+    # truncated/failed transfer becomes an honest gap, never a false-low cos on partial/stale data.
     out = None
     of = _parse_outfile(stdout)
-    if of is not None and local_out.is_file():
+    if of is not None and scp_ok and local_out.is_file():
         raw = np.fromfile(local_out, dtype=np.float32)
-        if raw.size >= of[1]:
-            out = raw[:of[1]]
+        if raw.size == of[1]:            # exact match only (not >=; guards stale/partial files)
+            out = raw
+        else:
+            res.gap_reason = (f"output file truncated: got {raw.size} floats, expected {of[1]} "
+                              f"(scp_ok={scp_ok}) — transfer incomplete, not gating on partial data")
+            return res.validate()
     if out is None:
         out = _parse_out(stdout)
     if out is None:
-        res.gap_reason = (f"no usable output (rc={proc.returncode}); OUTFILE={of}; "
+        res.gap_reason = (f"no usable output (rc={proc.returncode}); OUTFILE={of} scp_ok={scp_ok}; "
                           f"console tail: {stdout[-200:]}")
         return res.validate()
     res.ran = True
