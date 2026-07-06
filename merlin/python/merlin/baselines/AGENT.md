@@ -65,3 +65,40 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
   cross-links + RVV-audits fine (harness proven), so these are TVM-snapshot defects recorded as
   `not_built` with specific reasons, not harness bugs. Coverage on unscheduled TVM kernels is low
   (no MetaSchedule tensorize in this TVM; TIR→LLVM emits scalar loops) — the audit records that.
+
+## ExecuTorch + XNNPACK arm build (`executorch.py`)
+
+- **The forced-whole-model, most-scalar-fallback arm.** ExecuTorch delegates only what the XNNPACK
+  partitioner claims to XNNPACK's RVV microkernels and runs everything else on its **portable
+  (scalar) reference kernels**. This is labeled, not hidden: the runner-binary RVV audit + a
+  `ScalarFallback` per portable compute symbol carry it. tiny_llama fp32 delegated only 10/93 graph
+  nodes → **~11.7% binary RVV coverage, 2185 labeled scalar fallbacks** (real, on-board).
+- **Export runs in a dedicated venv** (`build/baselines/executorch/et-venv`, gitignored) built via
+  `third_party/baselines/executorch/install_executorch.sh` — it pulls ExecuTorch's pinned torch
+  (2.12) + the ET pip package; `transformers` is added on top for the HF loaders. The main `.venv`
+  has none of these. `executorch.py` shells `_et_export.py` into that venv (must strip its own dir
+  from `sys.path` first, else the sibling `executorch.py` shadows the installed `executorch` pkg).
+- **Cross-compile via the source tree's `riscv64-linux` cmake preset**, overriding the toolchain
+  file with `executorch_spacemit_toolchain.cmake` (SpacemiT clang-19, `-march=rv64gcv -mabi=lp64d`
+  on the WHOLE build) + `-DEXECUTORCH_BUILD_XNNPACK=ON` (XNNPACK's 380 RVV ukernels, compiled
+  `-march=rv64gcv`). `PYTHON_EXECUTABLE` MUST be the ET venv python (host codegen: gen_oplist).
+- **RVV audit uses `llvm-objdump`, NOT the SpacemiT GNU objdump.** The GNU
+  `riscv64-unknown-linux-gnu-objdump` silently mis-decodes rv64gcv in bulk `-d` (emits ~3 vector
+  insns for a binary with ~85k) → would fabricate a false 0% RVV. `_preferred_objdump()` pins
+  `llvm-objdump` and passes it to `rvv_audit.audit_binary(objdump=...)` (the shared `rvv_audit` is
+  NOT patched — other arms depend on it).
+- **`.pte` + external `.ptd`**: a whole fp32 LLM's weights blow past flatbuffer's 2 GB program
+  limit, so `to_executorch(external_constants=True)` splits weights into a `.ptd`
+  (`--data_path`). Input fed as raw bytes (`--inputs=input0.bin`); output dumped
+  (`--output_file`) and cos/rel computed OFF-DEVICE vs golden (never fabricated).
+- **Board is shared + disk-constrained** (~14 GB rootfs, often >90% full from concurrent arms). The
+  full fp32 tiny_llama `.pte` (~4.1 GB) does NOT fit → `_run_on_board` checks free space and
+  fail-closes as a `not_run` board-fit gap. A layer-reduced fit-on-board config
+  (`export_env={'M2M_LLAMA_LAYERS':'1'}` + `compute_golden=True`, gate = eager-torch-vs-ExecuTorch)
+  proves the ExecuTorch+XNNPACK-RVV path end-to-end on real K1 silicon (cos 0.9999999999, rel 2.7e-6,
+  217 ms wall).
+- **Known gap (honest, expected):** the int8 PT2E path (`--quantize`, XNNPACK symmetric quantizer)
+  FAILS on HF Llama — `prepare_pt2e` trips on the embedding/causal-mask integer-index ops
+  (`tensors used as indices must be long/int/byte/bool`), matching the upstream `aot_riscv.py`
+  note. Recorded `not_built` with that specific reason, not omitted. The fp32 XNNPACK-delegate path
+  is the working correctness+RVV result for this arm.
