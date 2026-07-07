@@ -175,17 +175,33 @@ deserializing the emitted `.pte`). On the board the runner's `make_unique<uint8_
    resident) would re-blow the RAM ceiling. `--mmap_model` loads the program and `.ptd` via
    `MmapDataLoader`/`NoMlock`, demand-paging read-only weight pages that the OS evicts under pressure.
 
+A second runner bug surfaced at full depth: the runner is built `-DET_BUNDLE_IO_ENABLED`, whose
+`try_load_file` slurps the **whole `.pte` into a resident `std::vector`** before bundle detection —
+re-blowing RAM for a multi-GB program even with `--mmap_model`. The runner patch now **skips that
+resident read when `--mmap_model` is set** (bundle-IO and mmap are mutually exclusive here), so the
+program is loaded only lazily via `MmapDataLoader`.
+
 **On-board proof (K1, rv64gcv, VLEN=256).** small_llama int8 whole-model **PASS 4.26 ms cos=0.999989
 rel=0.0047**; an 8-layer real-arch TinyLlama int8 whole-model **PASS 918 ms cos=0.99910 rel=0.0425**,
 with the runner reporting a **1.35 MB** planned buffer (vs the 4.25 GB `bad_alloc`) and a 17.6 s mmap
 load of the 1.67 GB `.pte`. Correctness is gated against the fp32 eager-torch golden for the same config
-(weight-only int8 vs fp32). The full-22L `.pte` (4.14 GB) is export-verified with the identical 2.41 MB
-arena; its on-board run is currently blocked **only** by concurrent-agent disk contention on the shared
-14 GB board (4.14 GB `.pte` vs ~1.9 GB free) — a resource-sharing issue, not a RAM/arena/codegen wall.
-XNNPACK still runs fp32 GEMM on the dequantized weights, so whole-binary RVV remains 11.7%; a genuine
-int8 XNNPACK `qd8` path is still blocked by the PT2E `transform_for_annotation` cumsum→`index.Tensor`
-dtype corruption (re-confirmed here: it fires at PT2E calibration on the full HF-Llama graph, so
-dynamic-quant int8 GEMM would need a PyTorch/torchao patch).
+(weight-only int8 vs fp32).
+
+**Full-22L (155-Linear) whole-model int8.** Export is verified with the identical **2.41 MB** planned
+arena (4.14 GB `.pte`, const-folded fp32 weights, 115 delegated nodes). With the fixed runner the board
+**mmap-LOADED the full 4.14 GB `.pte`** — the log shows `Model file … is loaded` at 0.013 s (lazy, not
+resident) and `Setting up CPU planned buffer 0, size 2405952`, i.e. the 4.25 GB arena wall **and** the
+resident-slurp are both gone at full depth. The remaining wall is now purely **hardware**: the forward
+pass has to demand-page 4.14 GB of fp32 weights through the board's 3.4 GB RAM with **no swap**, which
+thrashed the K1 until SSH died, and the board then went externally unreachable (port 22 timeout) — a
+board-availability / RAM-headroom limit, not a code/arena/codegen wall. Recorded `not_run` with that
+exact reason (`artifacts/measurements/k1_spacemit/tiny_llama/…`). Closing it needs board swap/zram, or
+the genuine int8 GEMM path so weights stay int8 (~1 GB, fits) rather than fp32-dequant.
+
+XNNPACK still runs fp32 GEMM on the dequantized weights, so whole-binary RVV remains 11.7%; that
+genuine int8 XNNPACK `qd8` path is blocked by the PT2E `transform_for_annotation` cumsum→`index.Tensor`
+dtype corruption (re-confirmed here: it fires at PT2E calibration on the full HF-Llama graph, both
+static and dynamic quantizers, so int8 GEMM would need a PyTorch/torchao patch).
 
 ## Where things live
 
