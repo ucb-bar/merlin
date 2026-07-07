@@ -10,6 +10,8 @@ EXP = REPO / "merlin" / "experiments" / "gemmini_capsule_bench_v0"
 # Generated runs live under the canonical runs/ root (see CLAUDE.md "Generated-output
 # convention"); input bundles remain tracked source under the experiment dir.
 RUNS = REPO / "runs" / "gemmini" / "capsule-bench"
+# Generated reports/analyses live under artifacts/ (never in the source tree).
+REPORTS = REPO / "artifacts" / "capsule-bench" / "gemmini"
 BUNDLES = EXP / "input_bundles"
 _SKIP = {"build", "__pycache__", ".git"}
 

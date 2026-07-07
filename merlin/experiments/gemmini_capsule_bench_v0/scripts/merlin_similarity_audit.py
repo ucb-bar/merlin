@@ -201,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"submission not found: {submission}", file=__import__("sys").stderr)
         return 2
     res = audit(submission)
-    out = Path(a.out) if a.out else (C.EXP / "reports" / f"merlin_similarity_audit_{a.run_id}.md")
+    out = Path(a.out) if a.out else (C.REPORTS / f"merlin_similarity_audit_{a.run_id}.md")
     out.parent.mkdir(parents=True, exist_ok=True)
     _write_report(res, a.run_id, submission, out)
     verdict, _ = _verdict(res)

@@ -16,7 +16,8 @@ import json, glob, sys, time
 from pathlib import Path
 
 EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
-OUT = EXP / "reports" / "abc4_analysis"
+REPORTS = EXP.parents[2] / "artifacts" / "capsule-bench" / "gemmini"
+OUT = REPORTS / "abc4_analysis"
 sys.path.insert(0, f"{_ROOT}/merlin/python")
 from merlin.targetgen import rtl_check_runner as RCR
 import yaml
@@ -101,7 +102,7 @@ def harvest(rid: str) -> dict:
 
 def operator_barrier() -> dict:
     """The expensive verilator the agents did NOT pay in-session — barrier + full audit (separate)."""
-    fa = EXP / "reports" / "full_suite_audit.json"
+    fa = REPORTS / "full_suite_audit.json"
     out = {}
     if fa.is_file():
         d = json.loads(fa.read_text())

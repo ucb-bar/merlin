@@ -33,11 +33,11 @@ def main() -> int:
     for r in rows:
         idx.append(f"| {r['run_id']} | {r['arm']} | {r['model']} | {r.get('integrity_status')} | "
                    f"{r['public_dev']['passed']} | {r['hidden']['passed']} | {r.get('oracle_mode')} |")
-    (C.EXP / "reports" / "run_index.md").write_text("\n".join(idx) + "\n")
+    (C.REPORTS / "run_index.md").write_text("\n".join(idx) + "\n")
 
     # full-suite audit results (all 25 capsules) keyed by run_id, if the audit has been run
     full_suite = {}
-    fsa = C.EXP / "reports" / "full_suite_audit.json"
+    fsa = C.REPORTS / "full_suite_audit.json"
     if fsa.exists():
         try:
             full_suite = (json.loads(fsa.read_text()).get("backends") or {})
@@ -78,7 +78,7 @@ def main() -> int:
             "produced by `run_baseline_qa_loop.py`. Both arms must be graded by the same (patched) "
             "grader and the same task file — see COORDINATION.md. Cycles are diagnostic-only and never "
             "gate pass/fail._"]
-    (C.EXP / "reports" / "comparison_table.md").write_text("\n".join(cmp) + "\n")
+    (C.REPORTS / "comparison_table.md").write_text("\n".join(cmp) + "\n")
     print(f"wrote run_index.md + comparison_table.md ({len(rows)} runs)")
     return 0
 

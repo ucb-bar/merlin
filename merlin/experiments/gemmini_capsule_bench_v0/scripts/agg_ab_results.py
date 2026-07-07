@@ -36,6 +36,7 @@ def _repo_root():
 _ROOT = _repo_root()
 
 EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
+REPORTS = EXP.parents[2] / "artifacts" / "capsule-bench" / "gemmini"
 ARM_ORDER = ["baseline", "merlin", "merlin_rtlchecks"]
 ARM_LABEL = {"baseline": "baseline (C++)", "merlin": "merlin (xDSL)",
              "merlin_rtlchecks": "merlin+CIRCT"}
@@ -84,7 +85,7 @@ METRICS = {
 
 
 def collect(tag: str | None) -> dict:
-    fa = EXP / "reports/full_suite_audit.json"
+    fa = REPORTS / "full_suite_audit.json"
     audit = json.loads(fa.read_text()) if fa.is_file() else {}
     # cells[(arm, cond)] = list of per-run records
     cells: dict[tuple, list] = {(a, c): [] for a in ARM_ORDER for c in COND_ORDER}
@@ -172,10 +173,10 @@ def main(argv=None):
     cells = collect(a.tag)
     agg = aggregate(cells)
     agg["tag_filter"] = a.tag
-    p = EXP / "reports/ab_results.json"
+    p = REPORTS / "ab_results.json"
     p.write_text(json.dumps(agg, indent=2))
     print(f"wrote {p}")
-    figs = plot(agg, EXP / "reports/figs")
+    figs = plot(agg, REPORTS / "figs")
     for f in figs:
         print(f"  fig: {f}")
     # console summary

@@ -200,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     out = {"arm": a.arm, "n_total": len(results), "n_valid": len(valid),
            "rate_limit_aware": True, "runs": results, "aggregate": agg}
-    (C.EXP / "reports" / "repeatability.json").write_text(json.dumps(out, indent=2))
+    (C.REPORTS / "repeatability.json").write_text(json.dumps(out, indent=2))
 
     md = [f"# Repeatability — {a.arm} (claude-opus-4-8), rate-limit-aware", "",
           "> **Why this matters.** Each full pilot run costs ~$18 / ~50 min and exhausts the org's "
@@ -230,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
            "by the rate-limit / rounds that did real tool work. answer-access: clean / attempted_blocked "
            "(tried to read a masked-absent answer file => got nothing) / leak (real answer read). "
            "Only `leak` is disqualifying; masking-defeated attempts confirm the isolation held."]
-    (C.EXP / "reports" / "repeatability.md").write_text("\n".join(md) + "\n")
+    (C.REPORTS / "repeatability.md").write_text("\n".join(md) + "\n")
     print(f"reclassified {len(results)} runs: valid_pass_rate={agg['valid_pass_rate']} "
           f"({agg['n_blocked_rate_limit']} blocked); answer-access leak any={agg['answer_access_leak_any']}")
     for r in results:

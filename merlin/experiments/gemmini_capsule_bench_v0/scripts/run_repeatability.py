@@ -115,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
            "tool_calls": _agg([r["tool_calls"] for r in results]),
            "tokens_total": _agg([r["tokens_total"] for r in results])}
     out = {"arm": a.arm, "model": a.model, "n": len(results), "runs": results, "aggregate": agg}
-    (C.EXP / "reports" / "repeatability.json").write_text(json.dumps(out, indent=2))
+    (C.REPORTS / "repeatability.json").write_text(json.dumps(out, indent=2))
 
     md = [f"# Repeatability — {a.arm} ({a.model}), n={len(results)}", "",
           f"- **Full pass (public 4/4 AND hidden 3/3): {agg['public_4of4_AND_hidden_3of3']}**",
@@ -130,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
     for r in results:
         md.append(f"| {r['run_id']} | {r['public']} | {r['hidden']} | {r['tier']} | {r['n_rounds']} | "
                   f"{r['wall_s']} | {r['cost_usd']} | {r['tool_calls']} | {r['answer_access_clean']} |")
-    (C.EXP / "reports" / "repeatability.md").write_text("\n".join(md) + "\n")
+    (C.REPORTS / "repeatability.md").write_text("\n".join(md) + "\n")
     print(f"\nwrote reports/repeatability.{{md,json}} — full pass {agg['public_4of4_AND_hidden_3of3']}")
     return 0
 

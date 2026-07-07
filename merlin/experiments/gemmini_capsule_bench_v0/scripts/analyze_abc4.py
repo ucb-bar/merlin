@@ -15,6 +15,7 @@ import json, os, sys, glob
 from pathlib import Path
 
 EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
+REPORTS = EXP.parents[2] / "artifacts" / "capsule-bench" / "gemmini"
 sys.path.insert(0, str(EXP / "scripts"))
 sys.path.insert(0, f"{_ROOT}/merlin/python")
 from merlin.targetgen import rtl_check_runner as RCR  # the EXACT live screen
@@ -28,7 +29,7 @@ def _repo_root():
     return p
 _ROOT = _repo_root()
 
-OUT = EXP / "reports" / "abc4_analysis"
+OUT = REPORTS / "abc4_analysis"
 ARMS = {"rb_abc4": ("raw_baseline", "baseline-C++"),
         "merlin_abc4": ("merlin_assisted", "merlin-xDSL"),
         "merlincirct_abc4": ("merlin_assisted", "merlin+CIRCT")}
