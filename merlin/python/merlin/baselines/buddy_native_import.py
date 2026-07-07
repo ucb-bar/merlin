@@ -101,10 +101,22 @@ def main(argv=None) -> int:
     (out / "subgraph0.mlir").write_text(str(driver.subgraphs[0]._imported_module))
     (out / "forward.mlir").write_text(str(driver.construct_main_graph(True)))
 
-    # Flat float32 param blob (buddy's arg0.data convention).
+    # Flat float32 param blob (buddy's arg0.data convention), written by STREAMING each param to
+    # disk in turn. The previous `np.concatenate([... for p in params])` materialized the ENTIRE
+    # model as one contiguous fp32 array in RAM before writing — peak host memory ≈ 2× the blob
+    # (the per-param fp32 copies + the concatenated result), which OOMs on the multi-GB VLAs
+    # (rdt arg0.data is ~4.8 GB fp32; concatenating it needs ~10 GB transient). Writing param-by-
+    # param to an open file keeps peak RAM at ONE param's fp32 copy, not the whole model, so the
+    # blob is producible for any model that fits on disk. (The on-board harness already MMAPs this
+    # blob read-only, so board-resident RAM is the demand-paged working set, not the whole file.)
+    param_bytes = 0
     if params:
-        flat = np.concatenate([p.detach().float().numpy().reshape([-1]) for p in params])
-        flat.tofile(out / "arg0.data")
+        with open(out / "arg0.data", "wb") as fh:
+            for p in params:
+                a = np.ascontiguousarray(p.detach().float().numpy().reshape([-1]))
+                a.tofile(fh)
+                param_bytes += a.nbytes
+                del a  # free the per-param fp32 copy before the next param
     else:
         (out / "arg0.data").write_bytes(b"")
 
