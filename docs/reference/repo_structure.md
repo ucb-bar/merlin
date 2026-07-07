@@ -1,3 +1,13 @@
+---
+title: Repository structure
+kind: reference
+status: current
+owner: core
+last_verified: 2026-07-07
+related: [architecture]
+code_refs: [.]
+---
+
 # Repository structure
 
 XLA-style: a small root, almost everything under the internal `merlin/` tree.

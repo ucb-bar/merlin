@@ -1,3 +1,13 @@
+---
+title: Parallel workstreams
+kind: design
+status: current
+owner: core
+last_verified: 2026-07-07
+related: [architecture, kernel_mining, dse, targetgen]
+code_refs: [merlin/python/merlin]
+---
+
 # Parallel workstreams
 
 Three Claude Code sessions work in parallel. **They coordinate through schemas, not prose.**

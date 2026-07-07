@@ -1,3 +1,13 @@
+---
+title: Generated target repositories
+kind: reference
+status: current
+owner: targetgen
+last_verified: 2026-07-07
+related: [targetgen, adding_a_target]
+code_refs: [merlin/python/merlin/targetgen/generate]
+---
+
 # Generated target repositories
 
 TargetGen generates a `merlin-target-<name>/` repository per target. Only the reference

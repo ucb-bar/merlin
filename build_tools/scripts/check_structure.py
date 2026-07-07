@@ -63,13 +63,17 @@ REQUIRED_SCHEMAS = [
 ]
 
 REQUIRED_DOCS = [
-    "architecture", "repo_structure", "contracts", "dialects", "targetgen",
-    "kernel_mining", "design_pressure", "dse", "runtime", "integrations",
-    "xdsl", "parallel_workstreams", "adding_a_target",
-    "compilation_strategies", "search",
-    # Core-dialect + runtime + generated-target documentation.
-    "core_dialects", "zephyr", "llvm_integration", "generated_target_repos",
-    "implementation_milestones",
+    # reference/ — durable, code-derived facts
+    "reference/architecture", "reference/repo_structure", "reference/contracts",
+    "reference/dialects", "reference/core_dialects", "reference/runtime", "reference/xdsl",
+    "reference/generated_target_repos",
+    # guides/ — task-oriented how-tos
+    "guides/getting_started",
+    "guides/targetgen", "guides/kernel_mining", "guides/design_pressure", "guides/dse",
+    "guides/integrations", "guides/adding_a_target", "guides/compilation_strategies",
+    "guides/search", "guides/zephyr", "guides/llvm_integration",
+    # design/ — rationale
+    "design/parallel_workstreams",
 ]
 
 REQUIRED_BENCHMARKS = [

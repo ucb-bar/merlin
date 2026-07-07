@@ -1,3 +1,13 @@
+---
+title: Compilation strategies
+kind: guide
+status: current
+owner: dse
+last_verified: 2026-07-07
+related: [dse, lowering_pipeline]
+code_refs: [merlin/python/merlin/dse/pipelines]
+---
+
 # Parallel compilation strategies
 
 A **compilation strategy** is a first-class, hashable object describing ONE way of compiling a

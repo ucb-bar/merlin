@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Generate docs/cli.md from pyproject.toml [project.scripts] (single source of truth).
+"""Generate docs/reference/cli.md from pyproject.toml [project.scripts] (single source of truth).
 
 The repo's CLI surface is the console-scripts declared in pyproject; there is no separate tools/
 mirror to drift. This emits one table row per console-script -> backing merlin.* module.
 
 Usage:
-  python build_tools/scripts/gen_cli_docs.py           # (re)write docs/cli.md
-  python build_tools/scripts/gen_cli_docs.py --check    # exit 1 if docs/cli.md is stale vs pyproject
+  python build_tools/scripts/gen_cli_docs.py           # (re)write docs/reference/cli.md
+  python build_tools/scripts/gen_cli_docs.py --check    # exit 1 if docs/reference/cli.md is stale vs pyproject
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 PYPROJECT = REPO / "pyproject.toml"
-OUT = REPO / "docs" / "cli.md"
+OUT = REPO / "docs" / "reference" / "cli.md"
 
 HEADER = (
     "# CLI reference\n\n"
@@ -40,10 +40,10 @@ def main(argv: list[str]) -> int:
     if "--check" in argv:
         cur = OUT.read_text(encoding="utf-8") if OUT.exists() else ""
         if cur != new:
-            sys.stderr.write("docs/cli.md is stale vs pyproject [project.scripts]; "
+            sys.stderr.write("docs/reference/cli.md is stale vs pyproject [project.scripts]; "
                              "run: python build_tools/scripts/gen_cli_docs.py\n")
             return 1
-        print("docs/cli.md: up to date")
+        print("docs/reference/cli.md: up to date")
         return 0
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(new, encoding="utf-8")

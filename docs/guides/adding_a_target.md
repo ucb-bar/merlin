@@ -1,3 +1,13 @@
+---
+title: Adding a target
+kind: guide
+status: current
+owner: targetgen
+last_verified: 2026-07-07
+related: [targetgen, generated_target_repos]
+code_refs: [merlin/python/merlin/targetgen]
+---
+
 # Adding a target
 
 Toy/reference targets live in-tree under `merlin/targets/`. Serious targets should become external

@@ -1,3 +1,13 @@
+---
+title: LLVM integration
+kind: guide
+status: current
+owner: runtime
+last_verified: 2026-07-07
+related: [lowering_pipeline]
+code_refs: [merlin/python/merlin/llvmlower]
+---
+
 # LLVM integration
 
 LLVM-project modifications are **optional and late-stage**. The MVP requires no LLVM backend

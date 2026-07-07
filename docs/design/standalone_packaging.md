@@ -1,3 +1,13 @@
+---
+title: Design audit: standalone merlin wheel
+kind: design
+status: current
+owner: core
+last_verified: 2026-07-07
+related: [repo_structure]
+code_refs: [merlin/python, pyproject.toml]
+---
+
 # Design audit: making the `merlin` wheel standalone
 
 **Status: audit only — no refactor has been applied.** This enumerates *every* change needed for

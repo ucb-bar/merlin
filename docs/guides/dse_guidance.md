@@ -1,3 +1,13 @@
+---
+title: DSE guidance
+kind: guide
+status: current
+owner: dse
+last_verified: 2026-07-07
+related: [dse, design_pressure]
+code_refs: [merlin/python/merlin/dse_guidance]
+---
+
 # DSE Guidance — Workload-Contract Analysis
 
 ## Framing

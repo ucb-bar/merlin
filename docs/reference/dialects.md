@@ -1,3 +1,13 @@
+---
+title: Dialects
+kind: reference
+status: current
+owner: ir
+last_verified: 2026-07-07
+related: [core_dialects, xdsl]
+code_refs: [merlin/python/merlin/xdsl_dialects]
+---
+
 # Dialects
 
 Rule: create a dialect only when information must **survive passes, be verified, be transformed,

@@ -1,3 +1,13 @@
+---
+title: Experiment ABI
+kind: reference
+status: current
+owner: targetgen
+last_verified: 2026-07-07
+related: [targetgen, adding_a_target]
+code_refs: [merlin/python/merlin/targetgen/contract]
+---
+
 # The Experiment ABI — a fair, repo-independent benchmark for target-backend generation
 
 ## Why this exists

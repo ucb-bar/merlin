@@ -1,3 +1,13 @@
+---
+title: Core dialects
+kind: reference
+status: current
+owner: ir
+last_verified: 2026-07-07
+related: [dialects, contracts, lowering_pipeline]
+code_refs: [merlin/python/merlin/xdsl_dialects]
+---
+
 # Core dialects
 
 Merlin owns five core dialects. Target dialects (gemmini, saturn, radiance, toynpu) are

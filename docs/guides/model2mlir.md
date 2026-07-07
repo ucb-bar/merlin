@@ -1,3 +1,13 @@
+---
+title: model2MLIR frontend
+kind: guide
+status: current
+owner: frontends
+last_verified: 2026-07-07
+related: [lowering_pipeline]
+code_refs: [merlin/python/merlin/frontends]
+---
+
 # model2MLIR frontend (smolVLA)
 
 [model2MLIR](https://github.com/ucb-bar/model2MLIR) (`m2m`) converts PyTorch models to

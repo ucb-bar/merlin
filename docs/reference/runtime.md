@@ -1,3 +1,13 @@
+---
+title: Runtime
+kind: reference
+status: current
+owner: runtime
+last_verified: 2026-07-07
+related: [zephyr]
+code_refs: [merlin/python/merlin/runtime, merlin/runtime]
+---
+
 # Runtime
 
 Merlin **owns** the runtime abstraction: the runtime ABI, the command-buffer format, the
