@@ -31,7 +31,7 @@ Full machine-generated matrix (all 5 frameworks × 11 models × {fp32,int8}) + C
 | **ExecuTorch** | tiny_llama fp32 **PASS** cos=0.99999999 (217 ms); **int8 PASS — 13.7 ms**, cos=0.99987 (**all 7 decoder layers' linears**) | int8 GEMM 33–47% RVV in 2 XNNPACK qs8 delegates | whole-model int8 **proven impossible** (PT2E transform corrupts int-index even with empty quantizer) |
 | **Buddy** | **m2m int8 now RUNS CORRECTLY on-board** — small_llama int8 **cos=0.99993** (bit-matches merlin's numpy W8A8 reference); 8/11 build genuine integer RVV (`vwmacc.vv`, up to 34%) | ✅ builds; int8 RVV > fp32; W8A8 datapath | the old "0 on-board / scalar-lowering bug" was **misdiagnosed**: it was an ABI-marshalling bug in OUR K1 runner glue, not buddy — buddy takes `strided<[?,?]>` **dynamic-strided** operands + a **sret-first** tensor return, and our harness fed it merlin's fixed-8 `sizes/strides` DPS descriptor → inputs read as zeros. Fixed (rank-exact packed descriptors + sret-first call). Residual: W8A8-vs-weight-only-golden rel≈0.012 near-miss at the strict 1e-3 int8 tier |
 | **ggml** | tiny_llama int8 **ran** — Q8_0 20.3/5.8 tok/s, Q4_K_M 33/10 tok/s | ✅ native low-bit | correctness **uncomparable** (runs the real checkpoint; our capture is a 2-layer random-init graph) |
-| **TVM** | **small_llama int8 PASS on-board — 52.7 ms, cos=1.0**; openvla int8 ran 6.5 s (cos 0.9916, fail) | 5 models build via **ONNX→Relax** (9–16% untuned RVV) | tuning *one handshake from done* (tracker↔server deadlock over tunnel); big `.so` on-board load hangs; tiny_llama cos=0.80 = a TVM ONNX broadcast-`Mul` defect (RMSNorm) |
+| **TVM** | **small_llama int8 PASS on-board — cos=1.0**; openvla int8 ran (cos 0.9916, fail) | 5 models build via **ONNX→Relax** (9–16% untuned RVV) | tuning *one handshake from done* (tracker↔server deadlock over tunnel); big `.so` on-board load hangs; tiny_llama cos=0.22 was a TVM **ONNX `ReduceMean` opset-18 axes-as-input** frontend bug (NOT the "broadcast-Mul" earlier folklore) — **root-caused + fixed → host cos=0.99999999999**; apache/tvm PR prepared (see Phase 4) |
 
 On-board passes now include the **EXO arm's four**: tiny_llama fp32 (cos=1.0) + **int8 (cos=1.0, 7.3 s)**
 and small_llama fp32 (cos=1.0) + int8 (cos=1.0). The EXO int8 was fixed by switching from a lossy full
@@ -47,8 +47,10 @@ else is an explicit, reasoned gap.
 **TVM's ONNX pivot.** Its torch-exported-program frontend couldn't ingest our HF/VLA graphs, so it was
 switched to `relax.frontend.onnx.from_onnx` (opset-17 ONNX export). That unblocked real builds: 5 models
 compile with RVV; small_llama int8 is numerically correct end-to-end (ONNX→Relax→rv64gcv→RVV-audit).
-rdt int8 cos=0.9992 and openvla int8 cos=0.9916 are near-passes; tiny_llama's cos=0.80 is a localized TVM
-attention-op mis-lowering (positionally scrambled with identical mean/std; ORT is correct on the same ONNX).
+rdt int8 cos=0.9992 and openvla int8 cos=0.9916 are near-passes; tiny_llama's low cos was **root-caused
+and fixed** (see Phase 4): a TVM Relax-ONNX frontend bug that only read reducer `axes` from attributes,
+missing the opset-18 axes-as-*input* form → `ReduceMean` collapsed per-token RMSNorm to a scalar mean.
+Fixed → host cos=0.99999999999; small_llama int8 verified on-board cos=1.0 with the fixed frontend.
 
 ## Kernel-level / active-path RVV coverage
 
@@ -192,17 +194,59 @@ dynamic-quant int8 GEMM would need a PyTorch/torchao patch).
 - Raw results: `artifacts/measurements/k1_spacemit/<model>/cross_framework_*/baseline_result.json`.
 - Matrix: `artifacts/compare/v1/…/matrix.{md,csv}`. Framework builds: `build/baselines/<fw>/`.
 
-## Open follow-ups
+## Phase 4 — final consolidation (authoritative; supersedes earlier text where they conflict)
 
-- **TVM MetaSchedule tuning**: everything works except the tracker↔server session-allocation handshake
-  over the reverse tunnel, which **deadlocks** (`free 0 pending 1`). Closing it needs debugging TVM's
-  matchmaking over the tunnel or a same-subnet host. Also: the big `.so` (rdt/tiny_llama) scp's to the
-  board but the on-board VM *load* hangs, and tiny_llama's cos=0.80 needs a TVM patch for the ONNX
-  broadcast-`Mul` (RMSNorm) defect — both TVM-internal fixes.
-- **Buddy int8 on-board**: OOM fixed; blocker is a **whole-model-scale Buddy scalar-lowering bug** (the
-  earlier dequant-bufferizer theory was disproved — isolated pattern + scalar-only build both reproduce/run
-  as expected). Needs instrumented whole-model op-bisection to find the culprit op, then a submodule patch.
-- **ExecuTorch whole-model int8**: proven impossible without patching PyTorch's PT2E (`transform_for_annotation`
-  corrupts int-index dtypes even with an empty quantizer). Current best = all decoder-layer linears int8.
+Directive for this pass: **RAM is not a valid gap** (the board runs these models; nothing has to be
+resident all at once — stream/mmap), and **every bug fix must be shaped as an upstream PR**. Five arms
+ran concurrently against the live K1 (on-board execution serialized via `board_lock`).
+
+**Authoritative matrix**: regenerate with `.venv/bin/python -m merlin.baselines.aggregate` →
+`artifacts/compare/v1/…/matrix.{md,csv}`. Current: **8/79 pass** (EXO ×4, ExecuTorch ×3, TVM ×1),
+deduped **latest-executed-per-cell** (`aggregate.dedupe_latest`: an executed pass/fail always beats a
+`not_run`/`not_built`, so a timed-out re-verification cannot erase a genuine on-board result).
+
+**The pattern that emerged — most "framework walls" were our own harness bugs, misattributed:**
+
+| Fix | Where the bug actually was | Upstream PR? |
+|---|---|---|
+| **TVM `ReduceMean` opset-18 axes-as-input** — read `axes` only from attributes, so opset-18 dynamo graphs reduced over all axes → RMSNorm collapse → tiny_llama cos 0.22. Fixed → 0.99999999999; small_llama int8 on-board cos=1.0. | **Genuinely upstream** (apache/tvm Relax ONNX frontend, live on `main`) | ✅ `_patches/tvm/0001-onnx-reduce-axes-input.patch` |
+| **ExecuTorch 4.25 GB whole-model int8 arena** — `WeightOnlyInt8Linear`'s `int8→fp32` dequant is a *planned activation* tensor; planner laid every layer's fp32 weight at a distinct offset. `constant_prop_pass` folds it → arena **4.25 GB → 2.41 MB (~1770×)**; new `executor_runner --mmap_model` demand-loads the multi-GB `.pte`. | Our export config + a genuinely-useful runner flag | ✅ `_patches/executorch/0001-executor_runner-add-mmap_model.patch` |
+| **Buddy "never runs on-board / scalar-lowering bug"** — MISDIAGNOSED. It was an **ABI-marshalling bug in our K1 glue**: buddy takes `strided<[?,?]>` dynamic-strided operands + a **sret-first** tensor return; our harness fed merlin's fixed-8 `sizes/strides` DPS descriptor → inputs read as zeros (cos≈0). Fixed (rank-exact packed descriptors + sret-first). small_llama int8 on-board cos=0.99993. | **Ours** (`baselines/buddy.py`), proven by host-JIT + K1 micro-repros — buddy is numerically correct | ❌ correctly none (a speculative buddy patch would be wrong) |
+| **EXO int8 `fail`** — glue did W8A8; the capture's int8 golden is **weight-only (W8A16)**. Switched to weight-only dequant-on-the-fly → cos=1.0. Also a small-vocab fp32 scratch-overflow SIGSEGV. | Ours (glue), not an EXO compiler bug | ❌ correctly none |
+| **ggml tiny_llama `no_gold` + small_llama `not_built`** — golden wired (cos 0.9986); small_llama built via stock `gguf-py` (llama-arch, HF Q/K RoPE permute). | Converter-scope/glue, stock `gguf-py` unmodified | ❌ correctly none |
+
+**Honest reading of the coarse matrix** (do not read cells at face value):
+- Most `fail` cells are **quantization near-misses**, not defects: buddy small_llama int8 cos=0.99993
+  (W8A8 `rel≈0.012`), ggml 0.9986–0.9991 (Q8_0/Q4_K_M) — real quant error vs the strict weight-only
+  0.9999 gate. Frameworks using native W8A8 or their own low-bit near-miss a weight-only golden *by
+  construction*; a quant-scheme-aware gate is the honest follow-up.
+- EXO's whole-ELF `1%RVV` is libc-dominated; its **compute kernels are 29–31% RVV**. The whole-binary
+  figure understates vectorized compute — a known `rvv_audit` artifact. Read per-kernel coverage for the
+  compute story.
+
+**Residual gaps — all precise, none "RAM" or "effort":**
+- **Board outage (external).** The K1 went SSH-unreachable at the end of this pass (DHCP; IP may change
+  on reboot — needs UART/physical recovery). Two on-board items are now **hardware-availability gaps**,
+  not code: ExecuTorch's **full-22L** run (export verified: 2.41 MB arena + 4.14 GB `.pte`; execution
+  pending a live board) and Buddy's remaining K1-runnable int8 models (bitvla/xr0/rdt2/groot/smolvla).
+  Both runners are fail-closed + re-runnable the moment the board returns.
+- **Loader-dep wall (the dominant model-coverage gap).** 7 models fail at *torch-load* before any
+  framework sees them: `tyro` (groot), `openpi` (pi05), `lerobot` (smolvla), `mmengine` (xr0), and
+  custom classes (bitvla BitNet, molmoact, rdt2 numpy-type). These deps exist in each model's own venv
+  (per `dev-model-and-m2m-access`); the harness runs in oscar-merlin's `.venv`. Closing it (point the
+  export step at each model's venv) unblocks the same models across all arms — but correctness gating is
+  only meaningful for smolvla + bitvla (pretrained); the other five are random-init, so run them for
+  honest perf/RVV/coverage, not a cos gate.
+- **Buddy big-VLA whole-model**: import-time OOM fixed (streamed param write) + on-board weight mmap;
+  the standing limit is the **resident activation working set** — buddy's `linalg-to-loops` has no arena
+  planning (all intermediates simultaneously live). This validates merlin's arena-runtime thesis.
+- **ExecuTorch int8-GEMM RVV**: weight-only int8 → XNNPACK runs fp32 GEMM (11.7% RVV). The int8
+  `qd8`/`qs8` RVV ukernel path is blocked by a real PT2E `transform_for_annotation` cumsum→`index.Tensor`
+  dtype-corruption bug — a PyTorch/torchao fix, not ours.
+- **ggml VLA scope**: structural, not RAM — ggml runs token-in→causal→vocab-logits; the VLA captured
+  forwards are inputs_embeds/bi-attn (bitvla), multimodal fusion (openvla), or diffusion/flow action
+  heads (rdt/rdt2/xr0/pi05/groot/smolvla) with no token/logit surface.
+- **TVM**: MetaSchedule tuning still one handshake from done (tracker↔server deadlock over the tunnel);
+  big-`.so` on-board VM-load hang (108 MB) → tiny_llama on-board is `not_run` (host cos=1.0 recorded).
 - **EXO**: at its limit for this workload (1.44 s, no dominant cost center). Further gains would need
   RVV rmsnorm/softmax (currently small) or EXO-schedulable stride-1 reduction support (the dot GEMM is hand-RVV).
