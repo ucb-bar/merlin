@@ -802,6 +802,13 @@ def _rpc_run_driver(so: Path, b: _bundle.CaptureBundle, work: Path, *, timeout: 
     if status.exists():
         status.unlink()
     libdir = str(tvm_lib_dir())
+    # The default work dir is tmpfs (/tmp, ~1.9 G) — fast but small. A big const-folded ``.so``
+    # (diffusion graphs bake ~GB of code) won't fit there and the scp fails with ENOSPC. When the
+    # ``.so`` is larger than a safe fraction of the tmpfs budget, upload to the SD rootfs instead
+    # (~5 G free), which fits; the VM-load may then be slow/OOM on the 3.4 G board, but that is a
+    # separate honest gap surfaced by the RPC timeout (never a fabricated pass).
+    so_bytes = so.stat().st_size if so.is_file() else 0
+    board_workdir = "/root/tvm_work" if so_bytes > 1_500_000_000 else _BOARD_RPC_WORKDIR
     env = dict(os.environ)
     env.update({
         "PYTHONPATH": os.pathsep.join([str(tvm_python_path()), os.environ.get("PYTHONPATH", "")]),
@@ -814,7 +821,7 @@ def _rpc_run_driver(so: Path, b: _bundle.CaptureBundle, work: Path, *, timeout: 
         "MERLIN_RPC_REF": str(work / "torch_ref.npy"),
         "MERLIN_RPC_RTDIR": str(_RV64_RUNTIME_DIR),
         "MERLIN_RPC_BOARDDIR": _BOARD_RPC_DIR,
-        "MERLIN_RPC_WORKDIR": _BOARD_RPC_WORKDIR,
+        "MERLIN_RPC_WORKDIR": board_workdir,
         "MERLIN_RPC_TMP": str(work),
         "MERLIN_RPC_SSH_KEY": k1.K1_SSH_KEY,
         "MERLIN_RPC_SSH_HOST": k1.K1_HOST,
