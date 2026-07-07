@@ -27,14 +27,20 @@ Full machine-generated matrix (all 5 frameworks × 11 models × {fp32,int8}) + C
 
 | Arm | Best on-K1 whole-model result | int8-on-RVV | The wall it hit |
 |---|---|---|---|
-| **EXO** | tiny_llama fp32 **PASS** cos=1.0; int8 **1.44 s** (44.5→24.6→1.44, **31×**), cos=0.9981 near-miss | real `vwmacc` i16→i32; **transpose-free `[N,K]` dot GEMM** killed the scatter (461M→17.6M) | fast GEMM is hand-RVV C (EXO can't schedule stride-1+`vredsum`); glue Llama-only → 9 models `not_built` |
+| **EXO** | **4 on-board PASSes**: tiny_llama fp32 cos=1.0 + **int8 cos=1.0** (7.3 s), small_llama fp32 cos=1.0 + int8 cos=1.0 | int8 = **weight-only (W8A16)** matching the capture's weight-only golden (per-channel int8 weight dequantized on the fly inside a transpose-free `[N,K]` f32 dot); EXO `vwmacc`/`vfmacc` kernels compiled + audited | fast dot is hand-RVV C (EXO can't schedule stride-1+`vredsum`); glue Llama-only (hf+terse schemas) → VLAs `not_built` (no isolated LLM-backbone golden; BitNet sub-norms) |
 | **ExecuTorch** | tiny_llama fp32 **PASS** cos=0.99999999 (217 ms); **int8 PASS — 13.7 ms**, cos=0.99987 (**all 7 decoder layers' linears**) | int8 GEMM 33–47% RVV in 2 XNNPACK qs8 delegates | whole-model int8 **proven impossible** (PT2E transform corrupts int-index even with empty quantizer) |
 | **Buddy** | compiles **8/11 int8** to genuine integer RVV (`vwmacc.vv`, up to 34%) | ✅ builds; int8 RVV > fp32 | **0 on-board** — whole-model-scale **Buddy scalar-lowering bug** (dequant/ABI/RVV theories all *disproved*); needs op-bisection + submodule patch |
 | **ggml** | tiny_llama int8 **ran** — Q8_0 20.3/5.8 tok/s, Q4_K_M 33/10 tok/s | ✅ native low-bit | correctness **uncomparable** (runs the real checkpoint; our capture is a 2-layer random-init graph) |
 | **TVM** | **small_llama int8 PASS on-board — 52.7 ms, cos=1.0**; openvla int8 ran 6.5 s (cos 0.9916, fail) | 5 models build via **ONNX→Relax** (9–16% untuned RVV) | tuning *one handshake from done* (tracker↔server deadlock over tunnel); big `.so` on-board load hangs; tiny_llama cos=0.80 = a TVM ONNX broadcast-`Mul` defect (RMSNorm) |
 
-Four on-board passes now: EXO & ExecuTorch tiny_llama fp32, ExecuTorch tiny_llama int8, and **TVM
-small_llama int8** (52.7 ms, cos=1.0). TVM also **builds numerically-correct RVV** for small_llama int8
+On-board passes now include the **EXO arm's four**: tiny_llama fp32 (cos=1.0) + **int8 (cos=1.0, 7.3 s)**
+and small_llama fp32 (cos=1.0) + int8 (cos=1.0). The EXO int8 was fixed by switching from a lossy full
+W8A8 activation-quant path (cos=0.949 / 0.998 near-miss vs the wrong reference) to **weight-only int8
+(W8A16)** — this full-fidelity capture's int8 `golden.npy` is a weight-only reference (per-channel int8
+weight dequantized to f32, activations f32; all zero-points 0; numpy repro matches golden cos=1.000000),
+so the glue dequantizes the native int8 weight on the fly inside a transpose-free f32 dot GEMM. Plus
+ExecuTorch tiny_llama fp32/int8 and **TVM small_llama int8** (52.7 ms, cos=1.0). TVM also **builds
+numerically-correct RVV** for small_llama int8
 but its on-board runtime isn't cross-built, so it's `not_run` rather than a fabricated pass. Everything
 else is an explicit, reasoned gap.
 
