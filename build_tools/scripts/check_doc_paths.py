@@ -12,6 +12,9 @@ Retired tokens (see CLAUDE.md "Generated-output convention" + docs/design/):
   - ``generated_targets/``     -> folded into artifacts/targets/
   - ``mined_knowledge/``       -> folded into artifacts/kernel-mining/
   - ``output/<sub>/`` write targets -> deprecated; use artifacts/ or runs/
+  - ``results/<sub>/`` write targets -> retired; use artifacts/ or runs/
+  - ``selfcheck_out/``         -> folded into artifacts/selfcheck/
+  - ``docs/presentation/``     -> folded into artifacts/presentation/
 
 A line is EXEMPT if it documents the retirement itself (contains one of the
 allow-words below) — that's how the design notes + repo_structure.md legitimately
@@ -39,6 +42,9 @@ RETIRED = [
     (re.compile(r"\bgenerated_targets/"), "retired generated_targets/ -> artifacts/targets/"),
     (re.compile(r"\bmined_knowledge/"), "retired mined_knowledge/ -> artifacts/kernel-mining/"),
     (re.compile(r"(?<![\w./])output/\w"), "deprecated output/ write target -> artifacts/ or runs/"),
+    (re.compile(r"(?<![\w./])results/\w"), "retired results/ write target -> artifacts/ or runs/"),
+    (re.compile(r"\bselfcheck_out/"), "retired selfcheck_out/ -> artifacts/selfcheck/"),
+    (re.compile(r"\bdocs/presentation/"), "retired docs/presentation/ -> artifacts/presentation/"),
 ]
 
 # A line naming a retired path only to say it's retired is fine.

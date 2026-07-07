@@ -43,7 +43,7 @@ Do not edit by hand — run the generator (it's `--check`ed by `check_structure.
   the [CLI reference](reference/cli.md) → the relevant guide below.
 - **Writing generated output?** See `CLAUDE.md` "Generated-output convention" and the
   `artifact-layout` skill (three roots only: `runs/`, `artifacts/`, `build/`).
-- **Point-in-time results/reports** do not live here — they live under `artifacts/`.
+- **Point-in-time reports** (results, findings, status snapshots) do not live here — they live under `artifacts/`.
 
 Each entry shows **status** and **last-verified** date; `⚠` flags a doc whose `last_verified`
 predates the newest change to the code it documents (see `check_docs_freshness.py`).
