@@ -1,3 +1,9 @@
+# --- Stray/cruft guards (repo root stays clean; generated logs/keys never tracked) ---
+/*.log
+*.key
+*.err
+/.compat_lib/
+
 # --- Generated build outputs (structured, gitignored) ---
 # Keep the tracked skeleton files (AGENT.md / README.md / .gitkeep), ignore the rest.
 /build/**
