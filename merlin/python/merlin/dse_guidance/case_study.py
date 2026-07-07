@@ -100,7 +100,18 @@ _CORPUS_SUBDIR = "recaptures" if os.environ.get("MERLIN_DSE_CORPUS") == "flat" e
 
 
 def _recap_dir(workload: str):
-    return paths.merlin_dir() / "benchmarks" / "dse_guidance" / _CORPUS_SUBDIR / workload
+    # Small reduced-config captures are committed under merlin/benchmarks/; oversized ones
+    # (pi05/smolvla/groot) live out-of-git under artifacts/recaptures/ (regenerable via m2m) to keep
+    # git lean. Prefer the committed copy, fall back to the artifacts overflow, else the committed
+    # path (absent -> available_models()/callers skip it via the model.mlir is_file() check).
+    committed = paths.merlin_dir() / "benchmarks" / "dse_guidance" / _CORPUS_SUBDIR / workload
+    if (committed / "model.mlir").is_file():
+        return committed
+    from merlin.common.artifacts import recaptures_dir
+    overflow = recaptures_dir() / "dse_guidance" / _CORPUS_SUBDIR / workload
+    if (overflow / "model.mlir").is_file():
+        return overflow
+    return committed
 
 
 def available_models() -> list[str]:
