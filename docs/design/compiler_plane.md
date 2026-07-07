@@ -1,3 +1,13 @@
+---
+title: Design note: the future MLIR/C++ compiler plane
+kind: design
+status: current
+owner: core
+last_verified: 2026-07-07
+related: [architecture]
+code_refs: [merlin/python/merlin/xdsl_dialects]
+---
+
 # Design note: the (future) stable MLIR/C++ compiler plane
 
 **Status: not built. The active compiler plane is Python + xDSL** under

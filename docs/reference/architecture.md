@@ -1,3 +1,13 @@
+---
+title: Architecture
+kind: reference
+status: current
+owner: core
+last_verified: 2026-07-07
+related: [repo_structure, core_dialects, lowering_pipeline]
+code_refs: [merlin/python/merlin]
+---
+
 # Architecture
 
 merlin studies which hardware/software abstractions are worth exposing to the compiler. The

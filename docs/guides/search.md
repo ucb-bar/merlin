@@ -1,3 +1,13 @@
+---
+title: Search policy
+kind: guide
+status: current
+owner: dse
+last_verified: 2026-07-07
+related: [dse]
+code_refs: [merlin/python/merlin/dse/search]
+---
+
 # Search policy
 
 Deliberately small. Three methods only:

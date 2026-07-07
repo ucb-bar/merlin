@@ -1,3 +1,13 @@
+---
+title: Kernel abstraction mining
+kind: guide
+status: current
+owner: kernels
+last_verified: 2026-07-07
+related: [integrations, dse]
+code_refs: [merlin/python/merlin/kernels]
+---
+
 # Kernel abstraction mining (Workstream 2)
 
 Extract optimization **decisions** (not constants) from existing kernels and turn the ones that

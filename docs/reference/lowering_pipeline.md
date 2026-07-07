@@ -1,3 +1,13 @@
+---
+title: Lowering pipeline
+kind: reference
+status: current
+owner: ir
+last_verified: 2026-07-07
+related: [core_dialects, llvm_integration]
+code_refs: [merlin/python/merlin/xdsl_dialects/lowering, merlin/python/merlin/llvmlower]
+---
+
 # The Merlin lowering pipeline, phase by phase
 
 Merlin's dialects (`contract`, `schedule`, `interface`, `runtime`, `dse`, and target

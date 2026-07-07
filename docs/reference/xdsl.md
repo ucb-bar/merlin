@@ -1,3 +1,13 @@
+---
+title: xDSL prototyping plane
+kind: reference
+status: current
+owner: ir
+last_verified: 2026-07-07
+related: [dialects, core_dialects]
+code_refs: [merlin/python/merlin/xdsl_dialects]
+---
+
 # xDSL — the default prototyping plane
 
 xDSL is merlin's **default way of handling MLIR-style IR** until a specific pipeline is chosen.

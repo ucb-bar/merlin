@@ -18,7 +18,7 @@ Repository root for **merlin**, a compiler-centered framework for exploring whic
 
 ## Interfaces
 
-The CLI surface is the console-scripts declared in `pyproject.toml [project.scripts]` (each a thin entrypoint into `merlin/python/merlin/`), documented in the generated `docs/cli.md`. `merlin/schemas/` is the cross-workstream contract. See `docs/repo_structure.md` and `docs/parallel_workstreams.md`.
+The CLI surface is the console-scripts declared in `pyproject.toml [project.scripts]` (each a thin entrypoint into `merlin/python/merlin/`), documented in the generated `docs/reference/cli.md`. `merlin/schemas/` is the cross-workstream contract. Start at the docs hub `docs/README.md`; see `docs/reference/repo_structure.md` and `docs/design/parallel_workstreams.md`.
 
 ## Invariants
 

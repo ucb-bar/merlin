@@ -1,3 +1,13 @@
+---
+title: Design-space exploration
+kind: guide
+status: current
+owner: dse
+last_verified: 2026-07-07
+related: [search, compilation_strategies, design_pressure]
+code_refs: [merlin/python/merlin/dse]
+---
+
 # Design-space exploration (Workstream 3, part B)
 
 Compare variants for a candidate feature using a **measurable** cost model.

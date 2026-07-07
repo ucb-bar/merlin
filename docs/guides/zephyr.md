@@ -1,3 +1,13 @@
+---
+title: Zephyr runtime backend
+kind: guide
+status: current
+owner: runtime
+last_verified: 2026-07-07
+related: [runtime]
+code_refs: [merlin/python/merlin/runtime/backends/zephyr_model.py]
+---
+
 # Zephyr runtime backend
 
 Zephyr is a **runtime backend** for Merlin, not part of the core compiler model. Merlin owns

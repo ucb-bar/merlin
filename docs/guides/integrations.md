@@ -1,3 +1,13 @@
+---
+title: Integrations
+kind: guide
+status: current
+owner: kernels
+last_verified: 2026-07-07
+related: [kernel_mining]
+code_refs: [merlin/python/merlin/kernels/ingest]
+---
+
 # Integrations
 
 Integrations are **adapters**, never vendored repositories. Adapters live **in-package** under

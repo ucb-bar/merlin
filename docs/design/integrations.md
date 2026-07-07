@@ -1,3 +1,13 @@
+---
+title: Design note: integration adapters
+kind: design
+status: current
+owner: kernels
+last_verified: 2026-07-07
+related: [integrations]
+code_refs: [merlin/python/merlin/kernels/ingest]
+---
+
 # Design note: external-tool integration adapters
 
 **Status: not built. Implement an adapter in-package (`merlin/python/merlin/…`) when a concrete

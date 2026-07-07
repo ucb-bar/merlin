@@ -1,3 +1,13 @@
+---
+title: Contracts
+kind: reference
+status: current
+owner: ir
+last_verified: 2026-07-07
+related: [core_dialects]
+code_refs: [merlin/python/merlin/xdsl_dialects, merlin/schemas]
+---
+
 # Contracts
 
 A **contract** captures what is true about a workload, what the compiler must prove, and what the

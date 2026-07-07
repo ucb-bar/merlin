@@ -1,3 +1,13 @@
+---
+title: Design pressure
+kind: guide
+status: current
+owner: design_pressure
+last_verified: 2026-07-07
+related: [dse]
+code_refs: [merlin/python/merlin/design_pressure]
+---
+
 # Design pressure (Workstream 3, part A)
 
 Pipeline:

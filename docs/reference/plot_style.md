@@ -1,3 +1,13 @@
+---
+title: Plotting house style
+kind: reference
+status: current
+owner: plotting
+last_verified: 2026-07-07
+related: []
+code_refs: [merlin/python/merlin/plotting]
+---
+
 # Merlin plotting style — the house style for every figure in this repo
 
 **All plots in this repository should follow this style.** It is implemented once, in

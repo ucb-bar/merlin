@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Living package docs: derive docs/module_index.md from the merlin package's __init__ docstrings,
+"""Living package docs: derive docs/reference/module_index.md from the merlin package's __init__ docstrings,
 and lint package AGENT.md for staleness. Single source of truth = the code (mirrors gen_cli_docs.py).
 
 Usage:
-  gen_package_docs.py            # (re)generate docs/module_index.md
+  gen_package_docs.py            # (re)generate docs/reference/module_index.md
   gen_package_docs.py --check    # exit 1 if the index is stale, or an AGENT.md is missing/stale
 """
 from __future__ import annotations
@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PKG = ROOT / "merlin" / "python" / "merlin"
-INDEX = ROOT / "docs" / "module_index.md"
+INDEX = ROOT / "docs" / "reference" / "module_index.md"
 
 # Phrases that were copy-pasted boilerplate and misrepresent live code — must never reappear.
 STALE_PHRASES = ("no real logic yet", "no real algorithms", "no real passes yet",
@@ -91,7 +91,7 @@ def main(argv: list[str]) -> int:
         errors: list[str] = []
         cur = INDEX.read_text(encoding="utf-8") if INDEX.is_file() else ""
         if cur != idx:
-            errors.append("docs/module_index.md is stale — run build_tools/scripts/gen_package_docs.py")
+            errors.append("docs/reference/module_index.md is stale — run build_tools/scripts/gen_package_docs.py")
         _check_agent_md(errors)
         if errors:
             sys.stderr.write("package-docs check FAILED:\n")
