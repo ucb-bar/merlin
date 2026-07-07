@@ -135,7 +135,7 @@ native flow knocked down walls that our imposed formats had created:**
 
 | Framework | Native flow used | What it broke (vs the imposed-format result) |
 |---|---|---|
-| **ExecuTorch** | `examples/models/llama` `WeightOnlyInt8QuantHandler` (eager module swap) | **whole-model int8 now exports** (cos=1.0 host) — sidesteps the generic PT2E `transform_for_annotation` bug entirely. On-board: 2-layer whole-model int8 **PASS cos=0.99954 vs fp32**, 259 s (fp32 glue is scalar); full-22L RAM-gaps (4.25 GB activation buffer). |
+| **ExecuTorch** | `examples/models/llama` `WeightOnlyInt8QuantHandler` (eager module swap) | **whole-model int8 exports & the 4.25 GB arena wall is FIXED** — see the dedicated section below. small_llama int8 **PASS on-board 4.26 ms cos=0.999989**; 8-layer real-arch TinyLlama int8 **PASS on-board 918 ms cos=0.99910** (1.35 MB arena, mmap-loaded). Full-22L is export-verified (2.41 MB arena) but its 4.14 GB fp32-const `.pte` currently disk-contends on the shared 14 GB board — no longer a RAM/arena wall. |
 | **Buddy** | its own `DynamoCompiler` torch importer (not m2m linalg) | **native IR RUNS on-board** — small_llama int8 completed (**38 ms, 11.8% RVV**); tiny_llama ran the full forward **~28 min with no SIGSEGV**. The m2m-linalg SIGSEGV was an IR-path bug, not fundamental. Remaining: Buddy materializes int8→fp32 → params OOM the board. |
 | **ggml** | real checkpoint → GGUF Q8_0, matched input_ids | **comparable cos** (was `None`): Q8_0 **0.9986** on real TinyLlama-1.1B. |
 | **EXO** | (kernel DSL — no model import) | ran the real full 22-layer TinyLlama int8 (**9.86 s**). |
@@ -147,6 +147,43 @@ RAM (Buddy's int8→fp32 materialization, ExecuTorch's whole-model activation bu
 VLAs), framework-venv loader deps for some VLAs (mmengine/tyro/lerobot/openpi), TVM's ONNX `Mul` bug, and
 correctness on the random-init VLAs is uncorrelated by construction (only tiny_llama + smolvla carry
 pretrained weights). Full machine matrix: `artifacts/compare/v1/…/matrix.{md,csv}`.
+
+## Phase 3 — ExecuTorch: the 4.25 GB whole-model int8 arena wall, root-caused and fixed
+
+The prior "full-22L RAM-gaps (4.25 GB activation buffer)" limiter was **not** a fundamental RAM wall —
+it was a memory-planner artifact of the weight-only int8 recipe, and it is now fixed.
+
+**Root cause.** `WeightOnlyInt8Linear.forward` is `F.linear(x, weight.to(fp32)) * scales`. That
+`int8_weight.to(fp32)` dequant is a *graph op* whose output is a **planned activation tensor**, so
+ExecuTorch's greedy planner laid every layer's dequantized fp32 weight at a distinct offset — a
+**4,250,738,736-byte non-const arena** for full-depth (22-layer, 155-Linear) TinyLlama (measured by
+deserializing the emitted `.pte`). On the board the runner's `make_unique<uint8_t[]>(4.25e9)` throws
+`std::bad_alloc` at load. Because the dequant output was seen as co-live across layers, `allow_overlap`
+/ greedy reuse could not coalesce it; the XNNPACK delegate boundaries also meant XNNPACK ingested the
+**fp32** dequantized weight (so there was no int8 GEMM — the whole-binary RVV stayed ~11.7%).
+
+**Fix (two parts).**
+1. **`constant_prop_pass` on the int8-whole-model export** (`_et_export.py`): the dequant's inputs are
+   all frozen constants, so folding it turns each fp32 weight into a **program constant**. The planned
+   non-const arena collapses **4,250,738,736 → 2,405,952 bytes (~1770×)** at full depth (measured), so a
+   layer-reduced or lm-head-trimmed activation buffer is no longer needed to fit.
+2. **`executor_runner --mmap_model`** (new flag; ExecuTorch submodule branch `merlin/rv64gcv-mmap-runner`,
+   patch under `artifacts/measurements/k1_spacemit/_patches/executorch/`): the const-folded fp32 weights
+   now live in the (multi-GB) `.pte` program data, so the stock `FileDataLoader` (reads the whole file
+   resident) would re-blow the RAM ceiling. `--mmap_model` loads the program and `.ptd` via
+   `MmapDataLoader`/`NoMlock`, demand-paging read-only weight pages that the OS evicts under pressure.
+
+**On-board proof (K1, rv64gcv, VLEN=256).** small_llama int8 whole-model **PASS 4.26 ms cos=0.999989
+rel=0.0047**; an 8-layer real-arch TinyLlama int8 whole-model **PASS 918 ms cos=0.99910 rel=0.0425**,
+with the runner reporting a **1.35 MB** planned buffer (vs the 4.25 GB `bad_alloc`) and a 17.6 s mmap
+load of the 1.67 GB `.pte`. Correctness is gated against the fp32 eager-torch golden for the same config
+(weight-only int8 vs fp32). The full-22L `.pte` (4.14 GB) is export-verified with the identical 2.41 MB
+arena; its on-board run is currently blocked **only** by concurrent-agent disk contention on the shared
+14 GB board (4.14 GB `.pte` vs ~1.9 GB free) — a resource-sharing issue, not a RAM/arena/codegen wall.
+XNNPACK still runs fp32 GEMM on the dequantized weights, so whole-binary RVV remains 11.7%; a genuine
+int8 XNNPACK `qd8` path is still blocked by the PT2E `transform_for_annotation` cumsum→`index.Tensor`
+dtype corruption (re-confirmed here: it fires at PT2E calibration on the full HF-Llama graph, so
+dynamic-quant int8 GEMM would need a PyTorch/torchao patch).
 
 ## Where things live
 
