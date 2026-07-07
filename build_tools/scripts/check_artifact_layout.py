@@ -3,7 +3,9 @@
 
 Fails (exit 1) if any of:
   * a TRACKED file lives under an old/forbidden root (output/, results/, selfcheck_out/,
-    mined_knowledge/, docs/presentation/, merlin/experiments/*/runs/);
+    mined_knowledge/, docs/presentation/) or a GENERATED output dir inside merlin/
+    (experiments/*/runs/, experiments/*/reports/, benchmarks/*/case_study/) — those belong
+    under artifacts/ (see the docs/experiment migrations);
   * a TRACKED file has a generated extension (.png/.svg/.pdf/.zip/.jsonl) outside artifacts/
     (and not allowlisted);
   * a versioned product dir artifacts/<topic>/v*/<leaf>/ is missing manifest.yaml;
@@ -25,7 +27,11 @@ from pathlib import Path
 
 GENERATED_EXTS = {".png", ".svg", ".pdf", ".zip", ".jsonl"}
 FORBIDDEN_ROOTS = ("output/", "results/", "selfcheck_out/", "mined_knowledge/", "docs/presentation/")
-FORBIDDEN_RE = re.compile(r"(^|/)experiments/[^/]+/runs/")
+# Generated OUTPUT dirs that must NOT live inside the source tree (runs/ reports/ = experiment
+# output; case_study/ = dse-guidance generated analysis). They belong under artifacts/ or runs/.
+# (Curated INPUT corpora — benchmarks/*/recaptures*, region_maps, methods/, observability/,
+# input_bundles/ — are not matched and legitimately stay in-tree.)
+FORBIDDEN_RE = re.compile(r"(^|/)(experiments/[^/]+/(runs|reports)|benchmarks/[^/]+/case_study)/")
 # genuinely-tracked source images, if any (verify with `git ls-files '*.png'` before adding).
 ALLOW_TRACKED_GEN: set[str] = set()
 # Self-contained, import-isolated eval project with its own runs/ lifecycle (aet-style) — out of
