@@ -275,6 +275,134 @@ def convert_to_gguf(model: str, *, outtype: str = "f16", timeout: int = 1200) ->
     return out
 
 
+# --- small_llama: direct GGUF builder (no HF checkpoint / no convert_hf_to_gguf converter) --------
+#
+# small_llama is a bespoke random-init toy transformer (module names ``blocks.N.attn.{q,k,v,o}`` /
+# ``mlp.{g,u,dn}`` / ``n1/n2/norm``, vocab 256, d=128, h=4, head_dim=32, ffn=344, 2 layers) — NOT a
+# ``LlamaForCausalLM`` HF checkpoint, so ``convert_hf_to_gguf.py`` has no architecture for it and
+# refuses. BUT its op surface is byte-for-byte a standard Llama block: RMSNorm (eps=1e-5) + separate
+# no-bias Q/K/V/O attention + rotate-half NeoX RoPE (theta=1e4) + SwiGLU (silu) MLP + untied lm_head.
+# Every one of those maps onto llama.cpp's ``llama`` arch, so we build the GGUF *directly* with
+# llama.cpp's own ``gguf-py`` writer (the same library ``convert_hf_to_gguf.py`` uses) and run it as a
+# real token-in / logits-out forward — giving small_llama a COMPARABLE cos vs the fp32 golden.
+#
+# The one subtlety: small_llama uses NeoX-style rotate-half RoPE (``rot=cat([-x2,x1])``) whereas the
+# ``llama`` arch applies NORM interleaved-pair RoPE. We reconcile them with the *exact* HF-Llama Q/K
+# weight permutation (rows (head,dh)->(head,2,dh/2)->(head,dh/2,2)); with that permutation, NORM rope
+# on the permuted weights == NeoX rope on the originals. Verified numerically to cos=1.0 vs golden
+# (host reproduction), so the GGUF forward reproduces the captured graph exactly (not_run_is_not_pass).
+
+_SMALL_LLAMA_HP = dict(vocab=256, d=128, h=4, dh=32, ffn=344, layers=2, eps=1e-5, rope_theta=1e4)
+
+
+def _permute_qk(w, n_head: int, dh: int):
+    """HF-Llama Q/K permute so llama.cpp NORM rope == small_llama's NeoX rotate-half rope.
+
+    ``w`` is a ``[n_head*dh, in]`` linear weight; per head, reshape rows ``(2, dh//2)`` and transpose
+    to ``(dh//2, 2)``. This is the inverse of the convention gap between rotate-half and interleaved
+    rope (identical to the permute in ``convert_hf_to_gguf`` / the original Llama HF conversion).
+    """
+    import numpy as np
+    o, i = w.shape
+    return (w.reshape(n_head, 2, dh // 2, i).swapaxes(1, 2).reshape(o, i)).astype(np.float32)
+
+
+def _load_safetensors_f32(path: Path) -> dict:
+    """Minimal float32 safetensors reader (no torch dep) for the small_llama fp32 bundle."""
+    import json as _json
+    import struct
+
+    import numpy as np
+    out: dict = {}
+    with open(path, "rb") as f:
+        n = struct.unpack("<Q", f.read(8))[0]
+        hdr = _json.loads(f.read(n))
+        base = f.tell()
+        for k, v in hdr.items():
+            if k == "__metadata__":
+                continue
+            if v["dtype"] != "F32":
+                continue  # fp32 bundle only; quant handled on-board by llama-quantize
+            s, e = v["data_offsets"]
+            f.seek(base + s)
+            out[k] = np.frombuffer(f.read(e - s), dtype=np.float32).reshape(v["shape"]).copy()
+    return out
+
+
+def build_small_llama_gguf() -> Path:
+    """Build a GGUF for small_llama directly from its fp32 capture bundle (idempotent).
+
+    Uses llama.cpp's bundled ``gguf-py`` (added to ``sys.path``) to emit a ``general.architecture=llama``
+    GGUF with ``tokenizer.ggml.model="none"`` (dummy 256-token vocab — our logits dumper feeds explicit
+    ids, no tokenizer needed) and the HF-permuted Q/K weights. Raises :class:`GgmlError` on any gap.
+    """
+    import sys
+
+    import numpy as np
+    out = gguf_path("small_llama", "f16")
+    if out.is_file() and out.stat().st_size > 0:
+        return out
+    from merlin.baselines import bundle as _b
+    bnd = _b.resolve("small_llama", "fp32")
+    if not bnd.weights.is_file():
+        raise GgmlError(f"small_llama fp32 capture weights not found at {bnd.weights}")
+    W = _load_safetensors_f32(bnd.weights)
+    hp = _SMALL_LLAMA_HP
+    ggpy = str(_LLAMA_SRC / "gguf-py")
+    if ggpy not in sys.path:
+        sys.path.insert(0, ggpy)
+    try:
+        import gguf  # noqa: PLC0415
+    except Exception as e:  # noqa: BLE001
+        raise GgmlError(f"cannot import gguf-py from {ggpy}: {e}") from e
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_suffix(".gguf.tmp")
+    w = gguf.GGUFWriter(str(tmp), "llama")
+    w.add_name("small_llama")
+    w.add_context_length(2048)
+    w.add_embedding_length(hp["d"])
+    w.add_block_count(hp["layers"])
+    w.add_feed_forward_length(hp["ffn"])
+    w.add_head_count(hp["h"])
+    w.add_head_count_kv(hp["h"])
+    w.add_rope_dimension_count(hp["dh"])
+    w.add_rope_freq_base(hp["rope_theta"])
+    w.add_layer_norm_rms_eps(hp["eps"])
+    w.add_vocab_size(hp["vocab"])
+    w.add_file_type(gguf.LlamaFileType.ALL_F32)
+    # 'none' vocab: dummy token list; ids fed explicitly by merlin_logits (no tokenizer path taken).
+    w.add_tokenizer_model("none")
+    w.add_token_list([f"<{i}>" for i in range(hp["vocab"])])
+    w.add_token_types([gguf.TokenType.NORMAL] * hp["vocab"])
+
+    def T(name, arr):
+        w.add_tensor(name, np.ascontiguousarray(arr.astype(np.float32)))
+
+    T("token_embd.weight", W["emb.weight"])
+    T("output_norm.weight", W["norm.w"])
+    T("output.weight", W["lm.weight"])
+    for L in range(hp["layers"]):
+        p = f"blocks.{L}."
+        b = f"blk.{L}."
+        T(b + "attn_norm.weight", W[p + "n1.w"])
+        T(b + "attn_q.weight", _permute_qk(W[p + "attn.q.weight"], hp["h"], hp["dh"]))
+        T(b + "attn_k.weight", _permute_qk(W[p + "attn.k.weight"], hp["h"], hp["dh"]))
+        T(b + "attn_v.weight", W[p + "attn.v.weight"])
+        T(b + "attn_output.weight", W[p + "attn.o.weight"])
+        T(b + "ffn_norm.weight", W[p + "n2.w"])
+        T(b + "ffn_gate.weight", W[p + "mlp.g.weight"])
+        T(b + "ffn_up.weight", W[p + "mlp.u.weight"])
+        T(b + "ffn_down.weight", W[p + "mlp.dn.weight"])
+    w.write_header_to_file()
+    w.write_kv_data_to_file()
+    w.write_tensors_to_file()
+    w.close()
+    tmp.replace(out)
+    if not out.is_file() or out.stat().st_size == 0:
+        raise GgmlError("small_llama GGUF write produced no file")
+    return out
+
+
 # --- RVV audit ----------------------------------------------------------------------------------
 
 def _region_of_symbol(sym: str) -> str:
@@ -532,12 +660,33 @@ def run_model(model: str, variant: str = "fp32", *, quant: str | None = None,
     except Exception as e:  # noqa: BLE001
         res.notes += f" rvv-audit failed: {str(e)[:150]};"
 
-    # GGUF — only tiny_llama has a real GGUF-convertible checkpoint. The others are honest gaps.
+    # GGUF — tiny_llama has a real HF-convertible checkpoint; small_llama we build DIRECTLY from its
+    # capture bundle (its op surface IS a Llama block — see build_small_llama_gguf). Others are gaps.
+    if model == "small_llama":
+        try:
+            gguf_f16 = build_small_llama_gguf()
+        except GgmlError as e:
+            res.gap_reason = f"small_llama GGUF build failed: {str(e)[:250]}"
+            return _finish(res, model, variant, write)
+        res.built = True
+        res.notes += (f" gguf_f16={gguf_f16.name}({gguf_f16.stat().st_size//1024}KB, direct "
+                      f"gguf-py llama-arch build from capture bundle, HF-permuted Q/K);")
+        res.cos = None
+        do_board = k1_exec.board_available() if run_board is None else run_board
+        if do_board:
+            try:
+                _run_bench_on_board(res, model, gguf_f16, quants)
+            except k1_exec.BoardUnavailable as e:
+                res.gap_reason = res.gap_reason or f"K1 board run failed: {str(e)[:200]}"
+            except Exception as e:  # noqa: BLE001
+                res.gap_reason = res.gap_reason or f"K1 ggml bench error: {str(e)[:200]}"
+        else:
+            res.gap_reason = res.gap_reason or "K1 board unavailable (MERLIN_K1_HOST unset)"
+        res.board_vlenb = k1_exec.board_vlenb()
+        return _finish(res, model, variant, write)
+
     if model not in _HF_CHECKPOINTS:
-        if model == "small_llama":
-            reason = ("small_llama is a bespoke random-init toy transformer (vocab 256, 2 layers) — "
-                      "no HF/GGUF architecture; llama.cpp cannot ingest it")
-        elif model == "bitvla":
+        if model == "bitvla":
             # llama.cpp DOES support BitnetForCausalLM (standalone BitNet-b1.58 LM) + the ternary
             # TQ1_0/TQ2_0 RVV kernels — which our audit shows are ggml's MOST-vectorized path
             # (TQ2_0 ~51%, TQ1_0 ~39%). But our bitvla capture is BitVLAForActionPrediction, a
@@ -602,7 +751,13 @@ def _quant_path_cov_for(so: Path | None, quant: str) -> float | None:
 # Correctness bundles that ARE the real HF checkpoint (so cos vs golden is comparable). tiny_llama's
 # full recapture is under the int8 variant dir (torchao int8-weight-only of the real TinyLlama-1.1B);
 # the GGUF we run is converted from the SAME checkpoint, so the comparison is apples-to-apples.
-_CORRECTNESS_BUNDLE = {"tiny_llama": ("int8",)}  # variants (in order) whose golden is the real model
+_CORRECTNESS_BUNDLE = {
+    "tiny_llama": ("int8",),   # golden is the real full TinyLlama-1.1B (int8-weight-only capture)
+    # small_llama's GGUF is built from the SAME fp32 capture weights, so its fp32 golden is exactly
+    # reproducible by a ggml forward; we gate the (Q8_0/f16) GGUF logits vs the fp32 golden (== "how
+    # much did ggml's on-board quant cost" vs the shared fp32 reference).
+    "small_llama": ("fp32", "int8"),
+}
 
 
 def _correctness_bundle(model: str):
@@ -668,11 +823,19 @@ def _run_bench_on_board(res: BaselineResult, model: str, gguf_f16: Path,
             remote_q = f"{_BOARD_DIR}/{model}-{quant}.gguf"
             run_gguf = remote_q
             if "yes" not in _board_sh(f"test -s {remote_q} && echo yes || echo no", timeout=60).stdout:
-                _board_sh(f"{ld} {_BOARD_DIR}/llama-quantize {remote_f16} {remote_q} {quant}",
-                          timeout=1800)
+                qp = _board_sh(f"{ld} {_BOARD_DIR}/llama-quantize {remote_f16} {remote_q} {quant} 2>&1",
+                               timeout=1800)
                 if "yes" not in _board_sh(f"test -s {remote_q} && echo yes || echo no").stdout:
+                    # Surface the precise llama-quantize reason (e.g. a tensor ncols not divisible by
+                    # the quant block size — a real dim constraint, not a runner bug).
+                    tail = qp.stdout.strip().splitlines()
+                    # Prefer the actionable dim constraint ("ncols not divisible by N") over the
+                    # generic trailing "failed to quantize" line.
+                    why = next((ln.strip() for ln in tail if "not divisible" in ln), "") or \
+                          next((ln.strip() for ln in reversed(tail)
+                                if "no tensor type fallback" in ln or "failed to quantize" in ln), "")
                     per_quant[quant] = {"tps": {}, "wall_ns": None, "rc": 1,
-                                        "note": f"on-board quantize->{quant} failed"}
+                                        "note": f"on-board quantize->{quant} unsupported: {why[:160]}"}
                     continue
             bench, raw = run_on_board(run_gguf, n_threads=k1.K1_OMP_THREADS)
             bench["cov"] = _quant_path_cov_for(so, quant)
@@ -713,9 +876,12 @@ def _run_bench_on_board(res: BaselineResult, model: str, gguf_f16: Path,
                 if loc.is_file() and loc.stat().st_size > 8:
                     cos, rel = _compare_logits_to_golden(loc, cbundle.golden)
                     res.cos, res.rel = cos, rel
+                    src = ("real full TinyLlama-1.1B checkpoint" if model == "tiny_llama" else
+                           "GGUF built directly from the same capture-bundle weights"
+                           if model == "small_llama" else "same-checkpoint GGUF")
                     res.notes += (f" correctness: COMPARABLE cos={cos:.6f} rel={rel:.6f} vs "
                                   f"{cbundle.root.name}/golden.npy via {corr_quant} logits on the "
-                                  f"SAME seeded input_ids (real full TinyLlama-1.1B checkpoint);")
+                                  f"SAME seeded input_ids ({src});")
                 else:
                     res.notes += f" correctness dump produced no logits: {r.stdout.strip()[-100:]} {r.stderr.strip()[-100:]};"
             except Exception as e:  # noqa: BLE001

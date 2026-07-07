@@ -128,14 +128,36 @@ def test_vla_models_are_out_of_scope_not_built():
         r.validate()
 
 
-def test_small_llama_no_gguf_arch(monkeypatch):
-    # Even with the toolchain "available", small_llama has no HF/GGUF arch -> honest not_built gap.
+def test_small_llama_gguf_built_directly(monkeypatch):
+    # small_llama's op surface IS a Llama block, so we build its GGUF DIRECTLY from the capture
+    # bundle (gguf-py, HF-permuted Q/K). It is therefore `built`; off-board it stops at `not_run`
+    # (board skipped) with the board-unavailable reason — never a fabricated pass.
     monkeypatch.setattr(ggml, "ggml_available", lambda: True)
     monkeypatch.setattr(ggml, "ggml_cpu_so", lambda: None)  # skip the audit path cleanly
     r = ggml.run_model("small_llama", "fp32", write=False, run_board=False)
-    assert r.status() == "not_built"
-    assert "no HF/GGUF architecture" in r.gap_reason or "no GGUF" in r.gap_reason
+    assert r.built is True
+    assert r.status() == "not_run"          # built, but board skipped off-board
+    assert "gguf-py llama-arch build" in r.notes and "HF-permuted Q/K" in r.notes
+    assert r.gap_reason                      # board-unavailable reason present
     r.validate()
+
+
+def test_small_llama_gguf_writer_is_llama_arch():
+    # The direct GGUF builder emits a valid `llama`-arch GGUF with the right hparams + none-vocab.
+    import sys
+    p = ggml.build_small_llama_gguf()
+    assert p.is_file() and p.stat().st_size > 0
+    sys.path.insert(0, str(ggml._LLAMA_SRC / "gguf-py"))
+    import gguf  # noqa: PLC0415
+    r = gguf.GGUFReader(str(p))
+    kv = {f.name: f for f in r.fields.values()}
+    assert kv["general.architecture"].contents() == "llama"
+    assert kv["llama.embedding_length"].contents() == 128
+    assert kv["llama.attention.head_count"].contents() == 4
+    assert kv["tokenizer.ggml.model"].contents() == "none"
+    names = {t.name for t in r.tensors}
+    assert "token_embd.weight" in names and "output.weight" in names
+    assert "blk.0.ffn_gate.weight" in names  # SwiGLU present
 
 
 def test_bitvla_inputs_embeds_out_of_gguf_shape(monkeypatch):
@@ -174,10 +196,13 @@ def test_tiny_llama_offboard_cos_none_board_gated(monkeypatch, tmp_path):
 
 
 def test_correctness_bundle_resolution():
-    # tiny_llama resolves to the real full checkpoint (int8_full); toy/VLA models do not.
+    # tiny_llama resolves to the real full checkpoint (int8_full); small_llama resolves to its
+    # fp32 capture (the GGUF is built from the SAME weights, so its golden IS reproducible); VLA
+    # models have no ggml-reproducible golden.
     cb = ggml._correctness_bundle("tiny_llama")
     assert cb is not None and cb.golden.is_file() and "full" in cb.root.name
-    assert ggml._correctness_bundle("small_llama") is None
+    sm = ggml._correctness_bundle("small_llama")
+    assert sm is not None and sm.golden.is_file() and sm.inputs.is_file()
     assert ggml._correctness_bundle("openvla") is None
 
 
