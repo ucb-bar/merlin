@@ -243,6 +243,19 @@ deduped **latest-executed-per-cell** (`aggregate.dedupe_latest`: an executed pas
 - **ExecuTorch int8-GEMM RVV**: weight-only int8 → XNNPACK runs fp32 GEMM (11.7% RVV). The int8
   `qd8`/`qs8` RVV ukernel path is blocked by a real PT2E `transform_for_annotation` cumsum→`index.Tensor`
   dtype-corruption bug — a PyTorch/torchao fix, not ours.
+- **ExecuTorch whole-model int8 beyond llama (Phase-4 follow-through).** The loader-dep wall is now
+  *closed for this arm* by installing the loader deps into the ExecuTorch export venv + two faithful
+  non-numeric loader compat shims (`BitNet` capitalized-key config alias; `torch_compilable_check`
+  no-op for lerobot-0.6/transformers-5), and the llama-only int8 recipe is generalized by a
+  **bias-preserving** per-channel weight-only int8 swap in `_et_export.py` (the official
+  `WeightOnlyInt8Linear` drops bias, so its `load_state_dict` rejects the DiT/VLA biased qkv/proj/ffn
+  Linears; same math, keeps fp32 bias; bias-free llama path unchanged). Whole-model int8 now **exports**
+  for **7/8** K1-runnable models (was 2/8): tiny_llama, small_llama, rdt2, xr0, bitvla, smolvla, rdt
+  (rdt's 4.79 GB fp32-const `.pte` RAM/disk-gaps the board; groot's int8 `torch.export` hits a
+  model-specific `StopIteration` in dynamo — its fp32 exports). rdt2 int8 confirmed **loading on-board**
+  (2.41 MB planned buffer, const-fold verified at full depth) before the shared board went unreachable;
+  on-board cos/timing for the newly-exportable set is a hardware-availability gap (fail-closed, re-runnable),
+  never fabricated.
 - **ggml VLA scope**: structural, not RAM — ggml runs token-in→causal→vocab-logits; the VLA captured
   forwards are inputs_embeds/bi-attn (bitvla), multimodal fusion (openvla), or diffusion/flow action
   heads (rdt/rdt2/xr0/pi05/groot/smolvla) with no token/logit surface.
