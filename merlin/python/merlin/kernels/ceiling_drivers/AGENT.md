@@ -2,7 +2,7 @@
 
 ## Purpose
 
-(no module docstring — add one)
+Expert-kernel ceiling drivers: measure the performance bar our RVV codegen is ranked against.
 
 ## Modules
 

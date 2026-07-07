@@ -25,7 +25,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.dse_guidance.agent` | Agent slots for dse_guidance — LLM proposes, a deterministic gate disposes. |
 | `merlin.frontends` | Merlin frontends: ingest external IR into the core-dialect pipeline. |
 | `merlin.kernels` | Kernel abstraction mining: ingest -> features -> emit. |
-| `merlin.kernels.ceiling_drivers` | (no module docstring — add one) |
+| `merlin.kernels.ceiling_drivers` | Expert-kernel ceiling drivers: measure the performance bar our RVV codegen is ranked against. |
 | `merlin.kernels.decode` | Robust, non-regex decoders for the kernel-mining pipeline. |
 | `merlin.kernels.emit` | Emit kernel_record / abstraction_candidate / policy_rule artifacts. |
 | `merlin.kernels.features` | Feature extraction: NormalizedKernel -> typed feature dict + fired markers. |

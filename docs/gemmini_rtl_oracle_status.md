@@ -69,7 +69,7 @@ riscv64-unknown-elf-gcc -DBAREMETAL=1 -mcmodel=medany -march=rv64gc -std=gnu99 -
 
 Both oracles run, and the C0 path is complete: the generated Gemmini kernel runs on the
 Verilator RTL sim with **three-way bit-exact equality** (RTL == reference == simulator),
-**cycles = 241** (gemmini_region), in ~3 min wall. See `results/gemmini/certification_c0.yaml`
+**cycles = 241** (gemmini_region), in ~3 min wall. See `artifacts/capsule-bench/gemmini/certification_c0.yaml`
 and `docs/gemmini_target_prototype.md`. The Verilator memory model is not characterized
 (recorded as `unknown`; FireSim/FASED is where memory timing becomes realistic).
 

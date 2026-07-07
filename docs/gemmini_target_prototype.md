@@ -11,7 +11,7 @@ execution. This is the gate that will later certify *generated* targets.
   `i8 × i8 → i32` matmul **bit-exactly** on the Gemmini **Verilator RTL** sim:
   `RTL output == reference_outputs(cb) == simulate(cb)`.
 - The execution oracle is real and reproducible (see `gemmini_rtl_oracle_status.md`), and a
-  measured cycle anchor is recorded (`results/gemmini/certification_c0.yaml`, cycles = 241).
+  measured cycle anchor is recorded (`artifacts/capsule-bench/gemmini/certification_c0.yaml`, cycles = 241).
 
 ## What this does NOT prove
 

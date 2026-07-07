@@ -325,7 +325,7 @@ LM-decode split is recovered; every candidate stays `blocked_by: missing_calibra
 copy lives at `merlin/benchmarks/dse_guidance/case_study/`.
 
 Exhaustive study across the **real model zoo** — every captured workload under
-`output/<model>_<dtype>_consistent/model.mlir` (smolvla, openvla, pi05, rdt/rdt2, groot,
+`artifacts/recaptures/<model>_<dtype>_consistent/model.mlir` (smolvla, openvla, pi05, rdt/rdt2, groot,
 molmoact, bitvla, xr0, the llama LMs):
 
 ```bash

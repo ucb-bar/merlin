@@ -3,8 +3,11 @@
 A compiler-centered framework for studying **which hardware/software abstractions are worth
 exposing to the compiler**.
 
-> Status: **scaffold**. This repository currently provides structure, schemas, docs, and
-> placeholder modules — not working compiler functionality. See `docs/` before adding code.
+> Status: **active**. Working end-to-end pipelines — kernel-mining → compiler improvement (RVV),
+> design-space exploration + DSE guidance, target generation, the Gemmini capsule/perf benchmarks
+> (RTL-certified), whole-model bring-up on real substrates (SpacemiT K1, spike, FireSim, Zephyr),
+> and cross-framework baselines. Start at [`docs/`](docs/) — see [`docs/architecture.md`](docs/architecture.md)
+> and [`docs/repo_structure.md`](docs/repo_structure.md).
 
 ## Three workstreams
 
