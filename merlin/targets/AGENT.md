@@ -1,32 +1,26 @@
 # AGENT.md — merlin/targets
 
 ## Purpose
+Hand-authored **reference target DEFINITIONS** — the small, curated contracts/docs/examples that
+describe a target to TargetGen + the lowering pipeline. `toy_npu` is the generic canonical example;
+`gemmini` and `saturn` are reference instances. Reference instances are fine; keep target-specifics
+out of general machinery.
 
-In-tree **toy / reference targets** used for TargetGen development and conformance testing. `toy_npu` is the canonical reference target.
+## What lives here (per target: toy_npu / gemmini / saturn)
+- `contracts/` — `target_contract.yaml`, `dialect_plan.yaml` (validate against `merlin/schemas/`).
+- `docs/` — architecture/isa/runtime reference notes. `examples/` — small `.mlir` inputs.
+- `contracts/rtl_facts/facts.json` (gemmini) — curated RTL-derived fact table read by the RTL checks.
 
-## What belongs here
+## What does NOT belong here
+- **Generated codegen packages** (schedules/dialects/OOT builds) → `artifacts/targets/<target>/`.
+- Generated RTL scratch (`rtl_facts/*.hw.mlir`, `*.ll`, arcilator bins) — **gitignored**; only the
+  curated `facts.json` + small derived headers are tracked. `generated/` holds only `.gitkeep`/AGENT.md.
+- Serious production targets → external repos / MLIR plugins.
 
-- Toy/reference targets: `toy_npu/`, `example_vector/`.
-- Per-target docs, contracts, examples, generated scaffolds, and tests.
-
-## What does not belong here
-
-- Serious production targets — those become external repos / MLIR plugins.
-- Large generated artifacts (those go to `artifacts/` or `build/`).
-
-## Interfaces
-
-Target contracts/plans validate against `merlin/schemas/target_contract.schema.yaml` and `dialect_plan.schema.yaml`. Consumed by `targetgen`.
+## Used by
+`merlin.xdsl_dialects.targets.{toynpu,saturn}`, `merlin.xdsl_dialects.lowering`,
+`merlin.targetgen` (+ RTL checks read gemmini `facts.json`; override via `MERLIN_RTL_FACTS`).
 
 ## Invariants
-
-- Only toy/reference targets belong in-tree.
-- Serious targets should become external repos or plugins.
-
-## Testing expectations
-
-Conformance tests under `merlin/tests/conformance/` and per-target `tests/`.
-
-## Notes for future agents
-
-ToyNPU eventually exposes `toynpu.{res_pack,matmul,commit,evict}` and `!toynpu.{resident_tensor,accumulator}`. See `docs/adding_a_target.md`.
+Only curated reference definitions in-tree; generated products live under `artifacts/targets/`.
+See `docs/guides/adding_a_target.md`. Every subdirectory has an AGENT.md.

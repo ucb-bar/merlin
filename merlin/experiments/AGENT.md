@@ -1,39 +1,30 @@
 # AGENT.md — merlin/experiments
 
 ## Purpose
+In-repo experiments + benchmark harnesses. They **consume** merlin (add `merlin/python` to
+`sys.path`); **nothing in the library depends on them** (one-way — safe to move/prune).
 
-In-repo experiments and benchmark harnesses for the workstreams. Two flavors live here:
+- Small workstream experiments: `kernel_policy/`, `gemmini_cert/`.
+- Benchmark harnesses: `agent_bench/` (target-agnostic reference scaffold), `gemmini_capsule_bench_v0/`,
+  `gemmini_perf_bench/`, `muon_perf_bench_v0/`, `targetgen_evals/` (import-isolated eval project).
 
-- **Small workstream experiments** (configs, notes, small drivers): `targetgen_toy/`,
-  `kernel_policy/`, `semantic_memory/`, `gemmini_cert/`.
-- **Benchmark harnesses** (relocated off the repo root): `agent_bench/`,
-  `gemmini_capsule_bench_v0/`, `gemmini_perf_bench/`, `muon_perf_bench_v0/`,
-  `targetgen_evals/`. These *consume* merlin (add `merlin/python` to `sys.path`); nothing in
-  the library depends on them.
+## What lives here (curated inputs only)
+- Task specs, `input_bundles/`, method specs, per-target guides, and the harness drivers that run them.
+- Kernel/capsule corpora that are experiment-specific inputs.
 
-Each dir has a `README.md`/`AGENT.md` (and often a `reports/METHODOLOGY.md`) describing its
-question and how to reproduce it.
-
-## What belongs here
-
-- Experiment configs, task specs, input bundles, kernel corpora, methodology writeups, and the
-  harness drivers that run them.
-
-## What does not belong here
-
-- **Reusable library code** — lift it into `merlin/python/merlin/`.
-- **Generated output** — runs go to `runs/<target>/<suite>/`; other products to `artifacts/`
-  (three-root convention, see CLAUDE.md). Never `output/` (deprecated). Per-experiment `runs/`
-  dirs are gitignored.
+## What does NOT belong here
+- **Reusable library code** → lift into `merlin/python/merlin/`.
+- **Generated output** → `runs/<target>/<suite>/` (runs) or `artifacts/` (products). Never in-tree —
+  the `check_artifact_layout` gate forbids `experiments/*/reports/` and `experiments/*/runs/`.
 
 ## Invariants
+- Resolve the repo root by discovery (`git rev-parse --show-toplevel` / walk to `merlin/python`),
+  never hardcoded `parents[N]` or absolute paths.
+- `targetgen_evals/` is import-isolated by design (zero `merlin.*` imports) — keep it that way.
+- `agent_bench/` is the clean target-agnostic model the other benches should converge toward.
 
-- Resolve the repo root by discovery (walk up to `merlin/python`, or `git rev-parse
-  --show-toplevel`), never a hardcoded `parents[N]` (harnesses live several levels deep).
-- `targetgen_evals/` is import-isolated by design (zero `merlin.*` imports — it evaluates merlin
-  as an external subject); keep it that way.
-
-## Notes for future agents
-
-Keep experiments self-describing so other sessions can rerun them; lift any logic that becomes
-reusable into the library.
+## In progress
+The gemmini/muon/perf harnesses are being unified onto a shared, target-parametric
+`merlin.benchharness` package (WS2) — the cloned `_common.py`/`_pbcommon.py`/`run_muon_*` collapse to
+one harness + thin per-target config; the sandbox capsule view will be materialized from
+`merlin/contract/capsules` instead of the committed `full_public_capsules/` copy.
