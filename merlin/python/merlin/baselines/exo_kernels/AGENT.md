@@ -25,13 +25,21 @@ EXO kernel sources for the K1-RVV whole-model baseline arm.
 ## Non-Python kernel sources
 
 - `llama_glue.c` — fp32 whole-model TinyLlama glue runtime (calls `gemm_nt_ref` per Linear).
-- `llama_glue_int8.c` — int8 W8A8 whole-model glue, **TRANSPOSE-FREE**. Hand-RVV pre-pass:
-  `quant_row_rvv` (per-token abs-max reduce + scale + f32→i32 convert + narrow-to-i16) and
-  `widen_nk_rvv` (contiguous i8→i16 streaming widen, **no transpose scatter** — the 461M-tick
-  scatter is gone). GEMM via `igemm_nk_dot` (native [N,K]); residual-add + SwiGLU product via the
-  `glue_ops` RVV kernels; scalar requant. Emits `MERLIN_E2E`/`MERLIN_REGION`; norm/RoPE/attention/
-  SiLU-sigmoid-exp + requant remain scalar glue, labeled as `ScalarFallback`.
-- `igemm_nk.c` — **transpose-free** int8 GEMMs consuming weight in native [N,K] (no repack):
+- `llama_glue_int8.c` — **WEIGHT-ONLY int8 (W8A16)** whole-model glue, **TRANSPOSE-FREE**. This
+  capture's int8 golden.npy is a weight-only int8 reference (per-output-channel int8 weights
+  dequantized to f32, activations f32 — all zero-points 0; numpy repro matches golden cos 1.000000,
+  vs cos 0.949 for full W8A8 activation-quant). So each Linear dequantizes the native `[OUT,IN]`
+  int8 weight **on the fly** inside `fgemm_nk_dot_i8` (no transpose, no strided scatter, no
+  activation quant). Residual-add + SwiGLU product via the `glue_ops` RVV kernels; norm/RoPE/
+  attention/SiLU-sigmoid-exp/embed remain scalar glue, labeled as `ScalarFallback`. Emits
+  `MERLIN_E2E`/`MERLIN_REGION`. Supports the "hf" (TinyLlama) and "terse" (small_llama) schemas via
+  the generated `llama_weights.h`.
+- `fgemm_nk.c` — **transpose-free WEIGHT-ONLY int8** GEMM: `fgemm_nk_dot_i8` — k-reduction f32 dot
+  that dequantizes the native `[OUT,IN]` int8 weight inline (`Y[m,o]=WS[o]·Σ_i X[m,i]·(float)W_i8[o,i]`,
+  contiguous `vle8`+widen+`vfmacc.vv` + `vfredusum` tail, `* per-output scale`). On the int8 hot path;
+  the EXO `gemm_nt_ref`/`igemm_nt_ref` kernels stay compiled + RVV-audited (EXO-authored story).
+- `igemm_nk.c` — the retired full-W8A8 int8 GEMMs consuming weight in native [N,K] (no repack),
+  kept for reference/bench (replaced on the hot path by the weight-only `fgemm_nk_dot_i8`):
   `igemm_nk_dot` (k-reduction dot: contiguous `vwmacc.vv` + `vredsum` tail — the on-board WINNER,
   ~32× faster end-to-end than transpose+EXO-vwmacc) and `igemm_nk_strided` (output-blocked
   strided-`vlse16` vwmacc — measured a dead end: K1 strided loads are ~22× slower than contiguous).

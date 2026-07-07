@@ -9,6 +9,15 @@ kernel does NOT cover — RMSNorm, RoPE, GQA softmax attention, SwiGLU/SiLU, res
 embedding gather — is **scalar C glue**, recorded here as an explicit :class:`ScalarFallback`
 (reason ``"no EXO RVV kernel — scalar glue"``), never hidden.
 
+Two naming schemas are supported so the same decoder-only glue runs multiple Llama-family captures
+(``_schema_names``): "hf" (HuggingFace TinyLlama ``lm.model.layers.N...``) and "terse" (the
+synthetic small_llama toy ``blocks.N...``). int8 is WEIGHT-ONLY (W8A16): this capture's int8
+golden.npy is a weight-only int8 reference (per-output-channel int8 weights dequantized to f32,
+activations f32 — verified: all zero-points 0, numpy repro matches golden at cos 1.000000), so the
+int8 glue dequantizes the native int8 weight on the fly inside a transpose-free k-reduction f32 dot
+(``fgemm_nk.c`` -> ``fgemm_nk_dot_i8``) — NOT a lossy W8A8 activation-quant path (that gates against
+a W8A8 golden this full-fidelity capture does not carry).
+
 Honesty mechanics (contract + AGENT.md invariants):
   * ``rvv_audit.enforce_rvv_march`` on the build flags, then ``rvv_audit.audit_binary`` on the
     linked ELF -> ``rvv_coverage_overall`` + the scalar-fallback table.
@@ -54,8 +63,9 @@ _SCALAR_GLUE = [
 # TinyLlama-1.1B config (matches the tiny_llama capture: 22 layers, GQA 32/4 heads, HD=64).
 _CFG = dict(NL=22, H=2048, NH=32, NKV=4, HD=64, FF=5632, V=32000, EPS=1e-5, THETA=10000.0)
 
-# All model2MLIR models. int8 first (coordinator priority): ~4x smaller weights (fits the K1
-# faster) and the real integer RVV vwmacc datapath.
+# All model2MLIR models. int8 first (coordinator priority): ~4x smaller int8 weights (fit the K1
+# faster). This capture's int8 golden is a WEIGHT-ONLY int8 reference (per-channel int8 weights
+# dequantized to f32, activations f32), so the int8 glue dequantizes and runs the EXO f32 GEMM.
 ALL_MODELS: tuple[str, ...] = (
     "tiny_llama", "small_llama", "molmoact", "bitvla", "openvla",
     "rdt", "rdt2", "groot_n1d7", "pi05", "smolvla", "xr0",
@@ -64,14 +74,9 @@ VARIANT_ORDER: tuple[str, ...] = ("int8", "fp32")
 
 # Models the C glue's Llama-family forward CANNOT run yet, with a SPECIFIC reason (never omitted /
 # fabricated). The glue is a decoder-only Llama forward (embed -> N x {RMSNorm, GQA-attn+RoPE,
-# SwiGLU} -> norm -> lm_head) keyed on the ``lm.model.layers.N.self_attn.{q,k,v,o}_proj`` +
-# ``mlp.{gate,up,down}_proj`` naming. These captures do not fit that shape:
+# SwiGLU} -> norm -> lm_head) supporting two naming schemas ("hf" TinyLlama + "terse" small_llama,
+# see ``_schema_names``). These captures do not fit that decoder-only shape at all:
 _GLUE_GAP: dict[str, str] = {
-    "small_llama": "IS Llama-family but the capture doesn't fit the glue: terse naming "
-                   "(blocks.N.attn.{q,k,v,o} / mlp.{g,u,dn} / n1,n2 / emb / norm.w), quant weights "
-                   "stored as qinner:: keys in extra.npz (not the parametrizations layout the "
-                   "int8 path reads), no rotary_emb.inv_freq buffer, AND hidden=344 is not a "
-                   "multiple of the 16-wide GEMM tile — each is a bespoke adapter (out of scope)",
     "molmoact": "OLMo-style backbone (lm.model.blocks.N with attn_norm/ff_norm, mlp.ff_proj/ff_out "
                 "fused-gate MLP + wte.embedding) — not the Llama q/k/v/o + gate/up/down decoder the "
                 "glue runs",
@@ -198,13 +203,36 @@ def compile_exo_igemm(out_dir: Path, ku: int = 1, u: int = 1) -> Path:
     return c
 
 
-# A Llama-family capture the glue can run: a decoder-only stack with these per-layer weights. Detect
-# by tensor-name presence so the glue only claims models it actually reproduces (else honest gap).
-def detect_llama_config(hdr: dict, variant: str) -> dict | None:
-    """Derive (NL, H, NH, NKV, HD, FF, V) from the safetensors header for a Llama-family capture.
+# Tensor-naming schemas the glue understands. A schema maps the glue's canonical per-layer roles
+# (input_ln/q/k/v/o/post_ln/gate/up/down) + globals (embed/final_norm/lm_head) onto a capture's
+# actual tensor names, so the SAME decoder-only glue runs multiple Llama-family captures without
+# per-model C. Two are supported:
+#   * "hf"    — HuggingFace TinyLlama-1.1B layout (lm.model.layers.N.self_attn.q_proj / mlp.gate_proj
+#               / input_layernorm; lm.model.embed_tokens / lm.model.norm / lm.lm_head), rope inv_freq
+#               from the extra.npz buffer.
+#   * "terse" — the synthetic small_llama toy (blocks.N.attn.{q,k,v,o} / mlp.{g,u,dn} / n1,n2;
+#               emb / norm / lm), MHA (NKV==NH), rope inv_freq SYNTHESIZED (theta=10000, no buffer).
+# Detection is by tensor-name presence so the glue only claims captures it actually reproduces.
+def _schema_names(schema: str) -> dict:
+    if schema == "terse":
+        return dict(embed="emb.weight", final_norm="norm.w", lm_head="lm",
+                    layer_prefix="blocks.{L}", input_ln="{p}.n1.w", post_ln="{p}.n2.w",
+                    q="{p}.attn.q", k="{p}.attn.k", v="{p}.attn.v", o="{p}.attn.o",
+                    gate="{p}.mlp.g", up="{p}.mlp.u", down="{p}.mlp.dn")
+    return dict(embed="lm.model.embed_tokens.weight", final_norm="lm.model.norm.weight",
+                lm_head="lm.lm_head", layer_prefix="lm.model.layers.{L}",
+                input_ln="{p}.input_layernorm.weight", post_ln="{p}.post_attention_layernorm.weight",
+                q="{p}.self_attn.q_proj", k="{p}.self_attn.k_proj", v="{p}.self_attn.v_proj",
+                o="{p}.self_attn.o_proj", gate="{p}.mlp.gate_proj", up="{p}.mlp.up_proj",
+                down="{p}.mlp.down_proj")
 
-    Returns None if the capture is NOT a runnable llama decoder (missing embed/norm/lm_head or the
-    per-layer q/k/v/o + gate/up/down set) — the caller then records an honest not_built gap.
+
+def detect_llama_config(hdr: dict, variant: str) -> dict | None:
+    """Derive (NL, H, NH, NKV, HD, FF, V, schema, NH_hint) from the safetensors header.
+
+    Tries each supported naming schema ("hf" then "terse"); returns the config for the first that
+    matches, or None if the capture is NOT a runnable llama decoder (missing embed/norm/lm_head or
+    the per-layer q/k/v/o + gate/up/down set) — the caller then records an honest not_built gap.
     """
     q8 = variant == "int8"
     suffix = ".parametrizations.weight.original0" if q8 else ".weight"
@@ -212,37 +240,40 @@ def detect_llama_config(hdr: dict, variant: str) -> dict | None:
     def shp(name: str):
         return hdr[name]["shape"] if name in hdr else None
 
-    emb = shp("lm.model.embed_tokens.weight")
-    if emb is None:
-        return None
-    V, H = int(emb[0]), int(emb[1])
-    # count contiguous layers 0..NL-1 that have the full attention+mlp weight set.
-    NL = 0
-    while True:
-        p = f"lm.model.layers.{NL}"
-        need = [f"{p}.self_attn.q_proj{suffix}", f"{p}.self_attn.k_proj{suffix}",
-                f"{p}.self_attn.v_proj{suffix}", f"{p}.self_attn.o_proj{suffix}",
-                f"{p}.mlp.gate_proj{suffix}", f"{p}.mlp.up_proj{suffix}",
-                f"{p}.mlp.down_proj{suffix}", f"{p}.input_layernorm.weight",
-                f"{p}.post_attention_layernorm.weight"]
-        if not all(n in hdr for n in need):
-            break
-        NL += 1
-    if NL == 0 or "lm.model.norm.weight" not in hdr:
-        return None
-    kv = shp(f"lm.model.layers.0.self_attn.k_proj{suffix}")   # [NKV*HD, H]
-    ff = shp(f"lm.model.layers.0.mlp.gate_proj{suffix}")       # [FF, H]
-    kv_out, FF = int(kv[0]), int(ff[0])
-    # head_dim from rope inv_freq length (HD = 2*len(inv_freq)); NH = H/HD; NKV = kv_out/HD.
-    return dict(NL=NL, H=H, V=V, FF=FF, KV_OUT=kv_out)
+    for schema in ("hf", "terse"):
+        nm = _schema_names(schema)
+        emb = shp(nm["embed"])
+        if emb is None:
+            continue
+        V, H = int(emb[0]), int(emb[1])
+        NL = 0
+        while True:
+            p = nm["layer_prefix"].format(L=NL)
+            need = [nm[r].format(p=p) + suffix for r in ("q", "k", "v", "o", "gate", "up", "down")]
+            need += [nm["input_ln"].format(p=p), nm["post_ln"].format(p=p)]
+            if not all(n in hdr for n in need):
+                break
+            NL += 1
+        if NL == 0 or nm["final_norm"] not in hdr:
+            continue
+        p0 = nm["layer_prefix"].format(L=0)
+        kv_out = int(shp(nm["k"].format(p=p0) + suffix)[0])       # [NKV*HD, H]
+        FF = int(shp(nm["gate"].format(p=p0) + suffix)[0])        # [FF, H]
+        # NH: for the terse toy, q_proj is [H,H] (MHA) so NH is not derivable from shapes; carry a
+        # hint (small_llama uses h=4). For hf, NH = H/HD is derived from the rope inv_freq length.
+        return dict(NL=NL, H=H, V=V, FF=FF, KV_OUT=kv_out, schema=schema,
+                    NH_hint=(4 if schema == "terse" else None))
+    return None
 
 
 def emit_weights_header(bundle_root: Path, out_dir: Path, variant: str = "fp32") -> Path:
     """Emit llama_weights.h — config + safetensors offset table + input ids + rope inv_freq.
 
-    Auto-detects NL/dims from the header (captures are truncated to a few layers), and for int8
-    emits the (i8 weight offset, f32 scale offset) pair per Linear so the int8 glue can run the
-    W8A8 vwmacc path. Returns the header path; raises if the capture is not a runnable llama stack.
+    Auto-detects NL/dims + the naming schema ("hf" TinyLlama or "terse" small_llama) from the header,
+    and for int8 emits the (i8 weight offset, f32 scale offset) pair per Linear so the int8 glue can
+    dequantize per-channel (weight-only int8). The rope inv_freq is read from the extra.npz buffer
+    when present, else synthesized (theta=10000, HD=H/NH) for captures that compute rope inline.
+    Returns the header path; raises if the capture is not a runnable llama stack.
     """
     data0, hdr = _safetensors_offsets(bundle_root / "weights.safetensors")
     cfg = detect_llama_config(hdr, variant)
@@ -253,54 +284,68 @@ def emit_weights_header(bundle_root: Path, out_dir: Path, variant: str = "fp32")
     def off(name: str) -> int:
         return int(hdr[name]["data_offsets"][0])
 
+    nm = _schema_names(cfg["schema"])
     ids = np.load(bundle_root / "inputs.npz")["in0"][0].astype(np.int64)
-    inv_freq = np.load(bundle_root / "extra.npz")["buf::lm.model.rotary_emb.inv_freq"].astype(np.float32)
     S = int(ids.shape[0])
-    HD = 2 * int(inv_freq.shape[0])
     NL, H, V, FF, KV_OUT = cfg["NL"], cfg["H"], cfg["V"], cfg["FF"], cfg["KV_OUT"]
+
+    # rope inv_freq: prefer the captured buffer (hf); else SYNTHESIZE it (the terse toy computes rope
+    # inline with theta=10000, HD = H/NH). HD then fixes NH/NKV.
+    extra = np.load(bundle_root / "extra.npz")
+    ivkey = "buf::lm.model.rotary_emb.inv_freq"
+    if ivkey in extra.files:
+        inv_freq = extra[ivkey].astype(np.float32)
+        HD = 2 * int(inv_freq.shape[0])
+    else:
+        NH = int(cfg["NH_hint"] or (H // 64))     # toy: NH from the loader hint (small_llama h=4)
+        HD = H // NH
+        half = HD // 2
+        inv_freq = (1.0 / (_CFG["THETA"] ** (np.arange(0, half, dtype=np.float32) / half))
+                    ).astype(np.float32)
     NH, NKV = H // HD, KV_OUT // HD
     q8 = variant == "int8"
     sfx = ".parametrizations.weight.original0" if q8 else ".weight"
     scl = ".parametrizations.weight.original1"
+
+    def lm_head_name(part: str) -> str:
+        return nm["lm_head"] + part
 
     lines = ["/* generated by merlin.baselines.exo.emit_weights_header — do not edit. */",
              "#pragma once", "#include <stddef.h>", "#include <stdint.h>",
              f"#define NL {NL}", f"#define H {H}", f"#define NH {NH}", f"#define NKV {NKV}",
              f"#define HD {HD}", f"#define FF {FF}", f"#define V {V}", f"#define S {S}",
              f"#define EPS {_CFG['EPS']}f", f"#define WDATA0 {data0}UL",
-             f"#define WOFF_EMBED {off('lm.model.embed_tokens.weight')}UL",
-             f"#define WOFF_FINAL_NORM {off('lm.model.norm.weight')}UL",
+             f"#define WOFF_EMBED {off(nm['embed'])}UL",
+             f"#define WOFF_FINAL_NORM {off(nm['final_norm'])}UL",
              "static const long INPUT_IDS[S] = {" + ",".join(str(int(i)) for i in ids) + "};",
              "static const float INV_FREQ[HD/2] = {" + ",".join(repr(float(x)) for x in inv_freq) + "};"]
     if q8:
-        lines += [f"#define WOFF_LM_HEAD_W {off('lm.lm_head' + sfx)}UL",
-                  f"#define WOFF_LM_HEAD_S {off('lm.lm_head' + scl)}UL",
+        lines += [f"#define WOFF_LM_HEAD_W {off(lm_head_name(sfx))}UL",
+                  f"#define WOFF_LM_HEAD_S {off(lm_head_name(scl))}UL",
                   "struct layer_off { size_t input_ln, q_proj_w,q_proj_s, k_proj_w,k_proj_s,"
                   " v_proj_w,v_proj_s, o_proj_w,o_proj_s, post_ln,"
                   " gate_w,gate_s, up_w,up_s, down_w,down_s; };",
                   "static const struct layer_off LAYERS[NL] = {"]
         for L in range(NL):
-            p = f"lm.model.layers.{L}"
-            fields = [f"{p}.input_layernorm.weight"]
-            for proj in ("self_attn.q_proj", "self_attn.k_proj", "self_attn.v_proj",
-                         "self_attn.o_proj"):
-                fields += [f"{p}.{proj}{sfx}", f"{p}.{proj}{scl}"]
-            fields += [f"{p}.post_attention_layernorm.weight"]
-            for proj in ("mlp.gate_proj", "mlp.up_proj", "mlp.down_proj"):
-                fields += [f"{p}.{proj}{sfx}", f"{p}.{proj}{scl}"]
+            p = nm["layer_prefix"].format(L=L)
+            fields = [nm["input_ln"].format(p=p)]
+            for role in ("q", "k", "v", "o"):
+                fields += [nm[role].format(p=p) + sfx, nm[role].format(p=p) + scl]
+            fields += [nm["post_ln"].format(p=p)]
+            for role in ("gate", "up", "down"):
+                fields += [nm[role].format(p=p) + sfx, nm[role].format(p=p) + scl]
             lines.append("  {" + ",".join(str(off(f)) + "UL" for f in fields) + "},")
     else:
-        lines += [f"#define WOFF_LM_HEAD {off('lm.lm_head.weight')}UL",
+        lines += [f"#define WOFF_LM_HEAD {off(lm_head_name('.weight'))}UL",
                   "struct layer_off { size_t input_ln, q_proj, k_proj, v_proj, o_proj,"
                   " post_ln, gate_proj, up_proj, down_proj; };",
                   "static const struct layer_off LAYERS[NL] = {"]
         for L in range(NL):
-            p = f"lm.model.layers.{L}"
-            lines.append("  {" + ",".join(str(off(f"{p}.{s}")) + "UL" for s in (
-                "input_layernorm.weight", "self_attn.q_proj.weight", "self_attn.k_proj.weight",
-                "self_attn.v_proj.weight", "self_attn.o_proj.weight",
-                "post_attention_layernorm.weight", "mlp.gate_proj.weight", "mlp.up_proj.weight",
-                "mlp.down_proj.weight")) + "},")
+            p = nm["layer_prefix"].format(L=L)
+            roles = ("input_ln", "q", "k", "v", "o", "post_ln", "gate", "up", "down")
+            names = [nm[r].format(p=p) + ("" if r in ("input_ln", "post_ln") else ".weight")
+                     for r in roles]
+            lines.append("  {" + ",".join(str(off(n)) + "UL" for n in names) + "},")
     lines += ["};", ""]
     h = out_dir / "llama_weights.h"
     h.write_text("\n".join(lines))
@@ -323,13 +368,18 @@ def build_glue_binary(bundle_root: Path, work: Path, variant: str = "fp32",
     rvv_audit.enforce_rvv_march(MARCH)
     extra_c: list[str] = []
     if variant == "int8":
-        # The whole-model glue calls the TRANSPOSE-FREE dot GEMM (igemm_nk.c: igemm_nk_dot), which
-        # measured ~32x faster end-to-end than transpose+EXO-vwmacc on-board (K1 strided loads are
-        # catastrophic; the k-reduction dot is contiguous and M is tiny). The EXO vwmacc GEMM
-        # (igemm_nt_ref) is still compiled+linked as the EXO-authored kernel for the RVV audit.
-        kernel_c = compile_exo_igemm(work, ku, u)
+        # WEIGHT-ONLY int8 (W8A16): this capture's int8 golden.npy is a weight-only int8 reference
+        # (int8 per-output-channel weights dequantized to f32, activations kept f32 — verified: all
+        # 155 zero-points are exactly 0, and a numpy weight-only repro matches golden.npy at cos
+        # 1.000000 / rel 0.0000, whereas full W8A8 activation-quant gives cos 0.949 / rel 0.958
+        # against it). So the glue dequant+transposes each int8 weight and runs the EXO *f32* RVV
+        # GEMM (gemm_nt_ref) — the same kernel/reference the passing ExecuTorch/TVM int8 cells use.
+        # The EXO int8 vwmacc GEMM (igemm_nt_ref) is still compiled+linked below for the RVV audit
+        # (EXO-authored-kernel story), but it is NOT on the weight-only glue's hot path.
+        kernel_c = compile_exo_gemm(work)                        # EXO f32 vfmacc GEMM (compiled+audited)
         extra_c = [str(compile_glue_ops(work)),                  # residual-add + ewise-mul RVV
-                   str(_exo_dir() / "igemm_nk.c")]               # transpose-free dot GEMM (used)
+                   str(_exo_dir() / "fgemm_nk.c"),               # transpose-free weight-only dot (hot path)
+                   str(compile_exo_igemm(work, ku, u))]          # EXO int8 vwmacc GEMM (audit only)
         glue_c = _exo_dir() / "llama_glue_int8.c"
         elf = work / "exo_llama_int8_k1"
     else:
@@ -433,6 +483,8 @@ def _scalar_fallbacks(variant: str = "fp32") -> list[ScalarFallback]:
     product are now RVV (glue_ops vfadd/vfmul), so they drop off; only the SiLU sigmoid exp stays
     scalar. fp32 keeps all elementwise ops scalar (only its GEMM is an EXO kernel)."""
     if variant == "int8":
+        # weight-only int8: residual-add + the SwiGLU product are RVV (glue_ops vfadd/vfmul); only
+        # the SiLU sigmoid exp stays scalar. NO activation-quant/requant (activations stay f32).
         ops = [("rmsnorm", "norm"), ("rope", "elementwise"),
                ("attention_softmax", "attention"),
                ("silu_sigmoid_exp", "elementwise"),   # exp is scalar; the *u product is RVV
@@ -450,23 +502,25 @@ def run(model: str = "tiny_llama", variant: str = "fp32", *, autotune: bool = Tr
     res = BaselineResult(framework=FRAMEWORK, model=model, variant=variant, substrate="k1_spacemit",
                          march=MARCH, toolchain="spacemit-clang-19+exo-1.0.0",
                          framework_commit=commit, timestamp=ts, cycle_accurate=False)
-    kdesc = ("TRANSPOSE-FREE int8 dot GEMM (igemm_nk_dot: [N,K]-native, vwmacc.vv + vredsum) — "
-             "hand-RVV, replaces the transpose+EXO-vwmacc path (EXO vwmacc kernel kept + audited)"
+    kdesc = ("WEIGHT-ONLY int8 (W8A16), TRANSPOSE-FREE: native [OUT,IN] int8 weights dequantized "
+             "on the fly inside a k-reduction f32 dot GEMM (fgemm_nk_dot_i8, hand-RVV vfmacc.vv + "
+             "vfredusum) — matches the capture's weight-only int8 golden (activations stay f32). The "
+             "EXO f32 GEMM (gemm_nt_ref) + EXO int8 vwmacc GEMM (igemm_nt_ref) are compiled + "
+             "RVV-audited (EXO-authored-kernel story) but off the hot path"
              if variant == "int8" else "f32 vfmacc.vf GEMM (gemm_nt_ref, EXO)")
     if variant == "int8":
-        glue_note = ("RVV kernels: transpose-free dot GEMM (hand-RVV) + residual-add (vfadd, EXO) "
-                     "+ SwiGLU product (vfmul, EXO) + activation-quant (RVV) + contiguous i8->i16 "
-                     "widen (RVV, no transpose); scalar glue: RMSNorm/RoPE/attention-softmax/"
-                     "SiLU-sigmoid-exp/embed + requant (labeled).")
+        glue_note = ("RVV kernels: transpose-free weight-only int8 dot GEMM (fgemm_nk_dot_i8, "
+                     "hand-RVV) + residual-add (vfadd, EXO) + SwiGLU product (vfmul, EXO); scalar "
+                     "glue: RMSNorm/RoPE/attention-softmax/SiLU-sigmoid-exp/embed (labeled). "
+                     "Activations are NOT quantized (weight-only int8, matching golden.npy — full "
+                     "W8A8 would gate against a W8A8 golden this full-fidelity capture doesn't "
+                     "carry: cos 0.949 vs weight-only's cos 1.0).")
     else:
         glue_note = ("Only the nn.Linear GEMM is an EXO kernel; RMSNorm/RoPE/attention-softmax/"
                      "SwiGLU/residual/embed are scalar C glue (labeled).")
     res.notes = (f"whole-model = RVV GEMM kernel [{kdesc}] + hand C glue runtime; EXO is a "
                  f"kernel DSL/scheduler, NOT a whole-model compiler. {glue_note}")
     res.scalar_fallbacks = _scalar_fallbacks(variant)
-    if variant == "int8":
-        res.scalar_fallbacks.append(
-            ScalarFallback("activation_quant_requant", "no EXO RVV kernel — scalar glue", "other"))
 
     # Honest not_built gap for captures the Llama-family glue cannot run (specific reason each).
     if model in _GLUE_GAP:
@@ -530,7 +584,8 @@ def run(model: str = "tiny_llama", variant: str = "fp32", *, autotune: bool = Tr
         res.rvv_coverage_overall = rep.coverage_overall
         # int8: audit BOTH the runtime dot GEMM (igemm_nk_dot, the hot path) and the EXO vwmacc
         # kernel (igemm_nt_ref, kept for the EXO-authored story). fp32: the EXO f32 GEMM.
-        ksyms = (("igemm_nk_dot", "igemm_nt_ref") if variant == "int8" else ("gemm_nt_ref",))
+        ksyms = (("fgemm_nk_dot_i8", "gemm_nt_ref", "igemm_nt_ref") if variant == "int8"
+                 else ("gemm_nt_ref",))
         for ksym in ksyms:
             gk = rep.by_symbol.get(ksym)
             if gk is not None and gk.coverage is not None:
