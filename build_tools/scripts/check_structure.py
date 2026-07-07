@@ -206,16 +206,71 @@ def check_doc_paths(errors):
             errors.append("docs reference retired paths — run python build_tools/scripts/check_doc_paths.py")
 
 
+# Misleading "scaffold-era" phrasing that must never reappear in the top-level entry docs
+# (the repo has working end-to-end pipelines; see Phase-0 of the docs restructure).
+ROOT_STALE_PHRASES = ("placeholder modules", "not working compiler",
+                      "do not implement major algorithms", "currently a scaffold",
+                      "status: **scaffold**")
+
+
+def check_root_docs(errors):
+    """Root README.md/AGENT.md must not describe the repo as an empty scaffold."""
+    for name in ("README.md", "AGENT.md"):
+        p = os.path.join(ROOT, name)
+        if not os.path.isfile(p):
+            continue
+        with open(p, encoding="utf-8") as fh:
+            low = fh.read().lower()
+        for ph in ROOT_STALE_PHRASES:
+            if ph in low:
+                errors.append(f"{name}: stale scaffold-era phrase {ph!r} (the repo is active)")
+
+
+def check_docs_freshness(errors):
+    """docs/ front-matter is schema-valid (drift is a soft signal; see check_docs_freshness.py)."""
+    import subprocess
+    chk = os.path.join(ROOT, "build_tools", "scripts", "check_docs_freshness.py")
+    r = subprocess.run([sys.executable, chk, "--check"], capture_output=True, text=True)
+    if r.returncode != 0:
+        for ln in (r.stderr or "").splitlines():
+            if ln.strip().startswith("- "):
+                errors.append(ln.strip()[2:])
+        if not any("front-matter" in e for e in errors):
+            errors.append("docs front-matter invalid — run python build_tools/scripts/check_docs_freshness.py")
+
+
+def check_schema_docs(errors):
+    """docs/reference/schemas.md is in sync with merlin/schemas/ (see gen_schema_docs.py)."""
+    import subprocess
+    gen = os.path.join(ROOT, "build_tools", "scripts", "gen_schema_docs.py")
+    r = subprocess.run([sys.executable, gen, "--check"], capture_output=True, text=True)
+    if r.returncode != 0:
+        errors.append("docs/reference/schemas.md stale — run python build_tools/scripts/gen_schema_docs.py")
+
+
+def check_docs_index(errors):
+    """docs/README.md hub is in sync with doc front-matter (see gen_docs_index.py)."""
+    import subprocess
+    gen = os.path.join(ROOT, "build_tools", "scripts", "gen_docs_index.py")
+    r = subprocess.run([sys.executable, gen, "--check"], capture_output=True, text=True)
+    if r.returncode != 0:
+        errors.append("docs/README.md hub stale — run python build_tools/scripts/gen_docs_index.py")
+
+
 def main():
     errors: list[str] = []
     checks = [
         ("required directories", check_required_dirs),
         ("AGENT.md coverage", check_agent_md),
+        ("root docs", check_root_docs),
         ("schemas", check_schemas),
         ("docs", check_docs),
         ("benchmarks", check_benchmarks),
         ("cli docs", check_cli_docs),
         ("package docs", check_package_docs),
+        ("schema docs", check_schema_docs),
+        ("docs index", check_docs_index),
+        ("docs freshness", check_docs_freshness),
         ("doc paths", check_doc_paths),
         ("test layout", check_test_layout),
     ]

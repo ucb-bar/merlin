@@ -11,7 +11,7 @@ Do not edit by hand — run the generator (it's `--check`ed by `check_structure.
   the [CLI reference](reference/cli.md) → the relevant guide below.
 - **Writing generated output?** See `CLAUDE.md` "Generated-output convention" and the
   `artifact-layout` skill (three roots only: `runs/`, `artifacts/`, `build/`).
-- **Point-in-time results/reports** do not live here — they live under `artifacts/`.
+- **Point-in-time reports** (results, findings, status snapshots) do not live here — they live under `artifacts/`.
 
 Each entry shows **status** and **last-verified** date; `⚠` flags a doc whose `last_verified`
 predates the newest change to the code it documents (see `check_docs_freshness.py`).
@@ -30,6 +30,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - [Plotting house style](reference/plot_style.md) — `current`, verified 2026-07-07 · owner: plotting
 - [Repository structure](reference/repo_structure.md) — `current`, verified 2026-07-07 · owner: core — see also: [architecture](reference/architecture.md)
 - [Runtime](reference/runtime.md) — `current`, verified 2026-07-07 · owner: runtime — see also: [zephyr](guides/zephyr.md)
+- [Schema reference](reference/schemas.md) — `generated` · owner: tooling
 - [xDSL prototyping plane](reference/xdsl.md) — `current`, verified 2026-07-07 · owner: ir — see also: [dialects](reference/dialects.md), [core_dialects](reference/core_dialects.md)
 
 ## Guides
@@ -66,7 +67,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - **plotting** — [Plotting house style](reference/plot_style.md)
 - **runtime** — [LLVM integration](guides/llvm_integration.md), [Runtime](reference/runtime.md), [Zephyr runtime backend](guides/zephyr.md)
 - **targetgen** — [Adding a target](guides/adding_a_target.md), [Experiment ABI](reference/experiment_abi.md), [Generated target repositories](reference/generated_target_repos.md), [Target generation](guides/targetgen.md)
-- **tooling** — [CLI reference](reference/cli.md), [Package module index](reference/module_index.md)
+- **tooling** — [CLI reference](reference/cli.md), [Package module index](reference/module_index.md), [Schema reference](reference/schemas.md)
 
 ## Uncategorized (needs front-matter or relocation to artifacts/)
 
