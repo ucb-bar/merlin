@@ -1,0 +1,30 @@
+name: docs
+
+# Anti-drift gate for documentation: fails if any generated doc is stale, front-matter is
+# invalid, or a doc references a retired path. Mirrors the local Stop/pre-commit hooks.
+on:
+  push:
+    paths:
+      - 'docs/**'
+      - 'merlin/schemas/**'
+      - 'pyproject.toml'
+      - 'build_tools/scripts/**'
+      - 'merlin/python/merlin/**/__init__.py'
+      - '**/AGENT.md'
+      - '.github/workflows/docs.yml'
+  pull_request:
+
+jobs:
+  docs-freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # check_docs_freshness uses git log dates for drift
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: docs anti-drift (generators + linters, --check only)
+        run: python build_tools/scripts/check_docs.py
+      - name: full structure check
+        run: python build_tools/scripts/check_structure.py
