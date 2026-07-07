@@ -19,7 +19,6 @@ The schemas are the cross-workstream coordination contract (see [Contracts](cont
 | `evidence_report` | Evidence Report Index | Machine-readable index of the source evidence TargetGen collected for a target: the files discovered (docs, Scala/Chisel, examples) with short filename/first… |
 | `exploitability_report` | Exploitability Report | How much of the oracle benefit a compiler can actually capture for a feature across a parameter sweep (the 'compiler exploitability' of an abstraction). Owne… |
 | `interface_candidate` | Interface Candidate | A concrete target-independent interface abstraction proposed for the interface dialect, with the design pressure that justifies it. Owned by design-pressure/… |
-| `kernel_ceiling` | Kernel Performance Ceiling Row | One measured performance ceiling for a single (op, dtype, M, N, K, shape_regime, source) compiled standalone from a CURATED expert kernel and run on a real t… |
 | `kernel_record` | Kernel Record | Normalized record of a single mined kernel from an external source. Owned by the kernel-mining workstream; consumed by design-pressure/DSE. |
 | `llvm_extension_plan` | LLVM Extension Plan | Records whether and how a target needs LLVM-project changes. The default posture is out-of-tree (TableGen fragments / intrinsic headers / runtime calls) with… |
 | `llvm_requirement` | LLVM Requirement | Whether a mined abstraction needs LLVM-project (backend/MC) support — the L8 record. Emitted by kernel mining per interface candidate, feeding TargetGen's ll… |

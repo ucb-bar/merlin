@@ -41,13 +41,8 @@ REQUIRED_DIRS = [
     "merlin/targets/toy_npu/examples",
     "merlin/targets/toy_npu/generated",
     "merlin/schemas",
-    "merlin/benchmarks/kernels",
     "merlin/benchmarks/semantic_memory",
-    "merlin/benchmarks/design_pressure",
-    "merlin/benchmarks/models",
-    "merlin/experiments/targetgen_toy",
     "merlin/experiments/kernel_policy",
-    "merlin/experiments/semantic_memory",
     "merlin/tests/data",
 ]
 

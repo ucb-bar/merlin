@@ -1,1 +1,0 @@
-/scratch/agustin/projects/oscar-merlin/bench_contract/capsules/hidden/H1_acc_scale_hidden/README.md
