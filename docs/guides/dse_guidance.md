@@ -236,7 +236,7 @@ must therefore be charged component-specifically:
 
 ## Calibration finding (read this before trusting magnitudes)
 
-Calibrating against the real FireSim FASED cycle sweep (6 models, `docs/results.md`) gives a
+Calibrating against the real FireSim FASED cycle sweep (6 models, `artifacts/compare/results.md`) gives a
 fitted **≈ 99 cycles/MAC** (median over the 4 parseable, consistent models — tiny_llama, rdt2,
 openvla, small_llama), at **MAPE ≈ 32 %**. See
 `artifacts/dse-guidance/study_models/cost_calibration.md`. Two honest takeaways:
@@ -284,7 +284,7 @@ executor), not the deployable C runtime — so no speedup is claimed.
 | Quantity | Status |
 |---|---|
 | Which axes flat hides (legality flip) | structural — robust, definitional given the K-loop |
-| FASED cycle totals (6 models) | **measured** (FireSim, `results.md`) |
+| FASED cycle totals (6 models) | **measured** (FireSim, `artifacts/compare/results.md`) |
 | cycles/MAC fit (≈99, MAPE 32%) | **calibrated** — crude whole-model anchor; xr0 a 1123× outlier |
 | Per-model cost components | analytical (placeholder constants, uncalibrated) |
 | Region roles (backbone/head) | **recovered from `prov.fqn`** for freshly-captured models; operator-mapped or `unknown` for pre-`prov.fqn` captures |
@@ -342,7 +342,7 @@ molmoact, bitvla, xr0, the llama LMs):
 merlin-dse-guidance --study --models --out artifacts/dse-guidance/study_models/
 ```
 
-This is the headline demonstration. `docs/results.md` records that **whole-model captures use
+This is the headline demonstration. `artifacts/compare/results.md` records that **whole-model captures use
 each weight once — they emit 0 contract facts**: the capture is flat and hides the host-side
 decode/denoise loop. The model study reads each `model.mlir` for aggregate structural facts
 (matmul count, MACs, weight vs activation bytes — `analytical`), applies the architecture's

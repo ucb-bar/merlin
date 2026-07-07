@@ -70,15 +70,4 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 
 ## Uncategorized (needs front-matter or relocation to artifacts/)
 
-- [baselines_cross_framework_k1.md](baselines_cross_framework_k1.md)
-- [beam_rvv_v2_report.md](beam_rvv_v2_report.md)
-- [gemmini_requant_reconciliation.md](gemmini_requant_reconciliation.md)
-- [gemmini_rtl_oracle_status.md](gemmini_rtl_oracle_status.md)
-- [gemmini_target_prototype.md](gemmini_target_prototype.md)
-- [implementation_milestones.md](implementation_milestones.md)
-- [results.md](results.md)
 - [rvv_kernel_mining_methodology.md](rvv_kernel_mining_methodology.md)
-- [rvv_kernel_mining_results.md](rvv_kernel_mining_results.md)
-- [rvv_mining_report.md](rvv_mining_report.md)
-- [saturn_vec_findings.md](saturn_vec_findings.md)
-- [validation_plan.md](validation_plan.md)
