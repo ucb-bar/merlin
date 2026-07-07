@@ -84,6 +84,26 @@ def test_linter_flags_planted_stray(tmp_path):
     assert r.returncode == 1 and "stray.png" in (r.stdout + r.stderr)
 
 
+def test_linter_flags_generated_output_inside_merlin(tmp_path):
+    # generated output dirs must not live in the source tree; curated inputs may.
+    _run(["git", "init", "-q"], cwd=tmp_path)
+    for rel in ("merlin/experiments/e/reports/r.md",
+                "merlin/benchmarks/b/case_study/c.yaml"):
+        p = tmp_path / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("x")
+    # an INPUT corpus path that must NOT be flagged
+    ok = tmp_path / "merlin/benchmarks/b/recaptures/m/model.mlir"
+    ok.parent.mkdir(parents=True, exist_ok=True)
+    ok.write_text("mlir")
+    _run(["git", "add", "-A", "-f"], cwd=tmp_path)
+    r = _run([sys.executable, str(LINT)], cwd=tmp_path)
+    out = r.stdout + r.stderr
+    assert r.returncode == 1
+    assert "reports/r.md" in out and "case_study/c.yaml" in out
+    assert "recaptures" not in out  # curated input corpus is allowed to stay
+
+
 # ----------------------------------------------------------------- guard hook
 
 
