@@ -1,6 +1,0 @@
-{
-  "abi_version": "0.1",
-  "target": "gemmini",
-  "tensors": {"X": {"shape": [16, 16], "dtype": "i8", "role": "input"}, "Y0": {"shape": [16, 16], "dtype": "i8", "role": "output"}},
-  "commands": [{"opcode": "VECTOR_MAP", "operands": {"lhs": "X", "dst": "Y0"}, "attributes": {"combine": "identity"}}]
-}

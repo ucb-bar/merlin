@@ -22,7 +22,7 @@ from merlin.targetgen.eval.gemmini_conformance import build
 from merlin.targetgen.agent import kernel_slot
 
 REPO = repo_root()
-AGENT_KERNEL = REPO / "merlin/experiments/gemmini_cert/agent_generated/kernel_codegen.py"
+AGENT_KERNEL = REPO / "merlin/tests/data/gemmini_cert/agent_generated/kernel_codegen.py"
 
 VISIBLE = ("C0", "C1")
 HELDOUT = ("C4", "C4e", "C5")

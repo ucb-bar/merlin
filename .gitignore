@@ -3,6 +3,7 @@
 *.key
 *.err
 /.compat_lib/
+selfcheck_out/
 
 # --- Generated build outputs (structured, gitignored) ---
 # Keep the tracked skeleton files (AGENT.md / README.md / .gitkeep), ignore the rest.
