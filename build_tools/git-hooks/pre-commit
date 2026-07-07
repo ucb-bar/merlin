@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Repo-managed pre-commit hook (docs + artifact-layout anti-drift).
+# Enable per clone with:  python build_tools/scripts/install_git_hooks.py
+# (git hooks are not tracked/auto-installed; this file is, and the installer points
+#  core.hooksPath here.)
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+PY=.venv/bin/python
+[ -x "$PY" ] || PY=python
+
+echo "[pre-commit] artifact layout (staged)…"
+"$PY" build_tools/scripts/check_artifact_layout.py --staged
+
+echo "[pre-commit] docs freshness…"
+"$PY" build_tools/scripts/check_docs.py
+
+echo "[pre-commit] OK"
