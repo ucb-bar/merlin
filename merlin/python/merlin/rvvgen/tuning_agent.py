@@ -26,7 +26,9 @@ from typing import Any, Callable
 
 from ..kernels.rvv_knobs import ForkProposal
 
-_PROMPT_DIR = Path(__file__).resolve().parents[3] / "prompts"
+from merlin.common.paths import merlin_dir
+
+_PROMPT_DIR = merlin_dir() / "prompts"
 
 # The knob vocabulary the RVV generator (from_strategy.render_schedule) can actually render. Any
 # override key outside this set is dropped with a note (we never emit a knob the generator can't
