@@ -208,6 +208,18 @@ def main() -> int:
     print(f"wrote {len(written)} capsules:")
     for d in written:
         print(f"  {d.relative_to(REPO)}")
+
+    # Provenance manifest: capsules this generator emits (regenerable) vs the hand-authored remainder
+    # (movement A1, conv B3/B4, hidden H*). Keeps "what's generated vs curated" machine-readable.
+    gen_rel = sorted(str(d.relative_to(CAP_ROOT)) for d in written)
+    all_caps = sorted(str(p.parent.relative_to(CAP_ROOT)) for p in CAP_ROOT.rglob("capsule.yaml"))
+    hand = [c for c in all_caps if c not in set(gen_rel)]
+    (CAP_ROOT / "MANIFEST.yaml").write_text(
+        "# Capsule corpus provenance — regenerable (generate_corpus.py) vs hand-authored.\n"
+        "# Rewritten by generate_corpus.py; do not hand-edit. See AGENT.md.\n"
+        + yaml.safe_dump({"generated_by": "merlin/contract/capsules/generate_corpus.py",
+                          "generated": gen_rel, "hand_authored": hand}, sort_keys=False))
+    print(f"wrote MANIFEST.yaml ({len(gen_rel)} generated, {len(hand)} hand-authored)")
     return 0
 
 
