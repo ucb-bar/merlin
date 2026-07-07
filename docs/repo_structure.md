@@ -18,9 +18,11 @@ merlin/
   experiments/ workstream experiments + benchmark harnesses (agent/capsule/perf-bench, targetgen_evals)
   tests/       integration/conformance/golden/data
 build/         gitignored generated build outputs (structured)
-output/        gitignored produced artifacts (structured)
+output/        DEPRECATED — holds only the regenerable model recaptures (via recaptures_dir());
+               never write new generated content here (folded into artifacts/; the guard hook blocks it)
 tmp/           gitignored local scratch (cross-session notes in tmp/help/)
 ```
 
-Every directory contains an `AGENT.md`. `build/`, `output/`, and `tmp/` are gitignored; only
-their `AGENT.md` / `README.md` / `.gitkeep` are tracked.
+The three generated-output roots are `runs/`, `artifacts/`, and `build/` (see CLAUDE.md
+"Generated-output convention"). Every directory contains an `AGENT.md`. `build/`, `output/`, and
+`tmp/` are gitignored; only their `AGENT.md` / `README.md` / `.gitkeep` are tracked.

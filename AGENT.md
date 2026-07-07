@@ -32,4 +32,8 @@ Run `python build_tools/scripts/check_structure.py` after structural changes.
 
 ## Notes for future agents
 
-This repo is currently a scaffold. Do not implement major algorithms yet — create structure, schemas, placeholder modules, and docs. See the three workstreams in `docs/parallel_workstreams.md`.
+This is an active codebase with working end-to-end pipelines (kernel-mining → compiler, DSE,
+targetgen, capsule/perf benchmarks, whole-model board bring-up, baselines). Land real changes, keep
+the root clean, and default new work under the internal `merlin/` tree. Read `CLAUDE.md` (shared-tree
++ generated-output conventions), the directory's own `AGENT.md`, and `docs/` before working. See the
+three workstreams in `docs/parallel_workstreams.md`.
