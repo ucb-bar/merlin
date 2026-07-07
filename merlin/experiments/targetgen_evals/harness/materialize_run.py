@@ -78,7 +78,9 @@ def materialize(
     date_str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
     run_id = f"{date_str}_{method}_seed{seed:03d}"
 
-    run_dir = root / "runs" / target / run_id
+    # Runs live under the canonical top-level runs/ root (never inside merlin/); root is the
+    # targetgen-evals dir (merlin/experiments/targetgen_evals), so root.parents[2] == repo root.
+    run_dir = root.parents[2] / "runs" / "targetgen-evals" / target / run_id
 
     if run_dir.exists():
         if force:

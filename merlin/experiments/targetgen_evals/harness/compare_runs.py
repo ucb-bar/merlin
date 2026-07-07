@@ -42,7 +42,7 @@ def _fmt(mean, std) -> str:
 
 
 def compare(root: Path, target: str, output_dir: Path) -> int:
-    runs_dir = root / "runs" / target
+    runs_dir = root.parents[2] / "runs" / "targetgen-evals" / target
     if not runs_dir.exists():
         print(f"ERROR: no runs directory for target {target}: {runs_dir}", file=sys.stderr)
         return 1
