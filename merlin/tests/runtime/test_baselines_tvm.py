@@ -105,3 +105,24 @@ def test_onnx_opset18_reducer_reads_axes_input(op, axis, keepdims):
     got = out.numpy() if hasattr(out, "numpy") else np.asarray(out[0].numpy())
     # The bug reduced over ALL axes -> shape (1,1,1); the fix keeps the requested axis only.
     assert got.shape == exp.shape, f"{op}: axes-from-input ignored (shape {got.shape} != {exp.shape})"
+
+
+@pytest.mark.parametrize("op_name", ["Add", "Sub", "Mul", "Div"])
+def test_onnx_binary_primvalue_broadcast_to_array(op_name):
+    """A scalar PrimValue combined with a constant *array* must fold to a Constant tensor, not crash
+    the FFI ('Don't know how to handle type numpy.ndarray'). Guards the BinaryBase PrimValue
+    fast-path (unblocked RDT2 int8 ONNX import). Skips when the built TVM tree isn't importable."""
+    if _import_built_tvm() is None:
+        pytest.skip("built TVM tree not importable (no build/baselines/tvm)")
+    import tvm
+    from tvm import relax, tir
+    from tvm.relax.frontend.onnx.onnx_frontend import Add, Sub, Mul, Div
+
+    conv = {"Add": Add, "Sub": Sub, "Mul": Mul, "Div": Div}[op_name]
+    scalar = relax.PrimValue(tir.IntImm("int64", 3))
+    arr = relax.const(np.array([1.0, 2.0, 3.0, 4.0], dtype="float32"))
+    out = conv.base_impl(None, [scalar, arr], {}, [{}, {}])
+    assert isinstance(out, relax.Constant), f"{op_name}: expected folded Constant, got {type(out)}"
+    ref = {"Add": np.add, "Sub": np.subtract, "Mul": np.multiply, "Div": np.divide}[op_name](
+        np.array(3), np.array([1.0, 2.0, 3.0, 4.0], dtype="float32"))
+    np.testing.assert_allclose(out.data.numpy(), ref, rtol=1e-6)
