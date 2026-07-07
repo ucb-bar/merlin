@@ -26,6 +26,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - [Experiment ABI](reference/experiment_abi.md) — `current`, verified 2026-07-07 · owner: targetgen — see also: [targetgen](guides/targetgen.md), [adding_a_target](guides/adding_a_target.md)
 - [Generated target repositories](reference/generated_target_repos.md) — `current`, verified 2026-07-07 · owner: targetgen — see also: [targetgen](guides/targetgen.md), [adding_a_target](guides/adding_a_target.md)
 - [Lowering pipeline](reference/lowering_pipeline.md) — `current`, verified 2026-07-07 · owner: ir — see also: [core_dialects](reference/core_dialects.md), [llvm_integration](guides/llvm_integration.md)
+- [merlin/ layout — what goes where](reference/merlin_layout.md) — `current`, verified 2026-07-07 · owner: core — see also: [repo_structure](reference/repo_structure.md), [architecture](reference/architecture.md)
 - [Package module index](reference/module_index.md) — `generated` · owner: tooling
 - [Plotting house style](reference/plot_style.md) — `current`, verified 2026-07-07 · owner: plotting
 - [Repository structure](reference/repo_structure.md) — `current`, verified 2026-07-07 · owner: core — see also: [architecture](reference/architecture.md)
@@ -58,7 +59,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 
 ## By area
 
-- **core** — [Architecture](reference/architecture.md), [Design audit: standalone merlin wheel](design/standalone_packaging.md), [Design note: the future MLIR/C++ compiler plane](design/compiler_plane.md), [Getting started](guides/getting_started.md), [Parallel workstreams](design/parallel_workstreams.md), [Repository structure](reference/repo_structure.md)
+- **core** — [Architecture](reference/architecture.md), [Design audit: standalone merlin wheel](design/standalone_packaging.md), [Design note: the future MLIR/C++ compiler plane](design/compiler_plane.md), [Getting started](guides/getting_started.md), [merlin/ layout — what goes where](reference/merlin_layout.md), [Parallel workstreams](design/parallel_workstreams.md), [Repository structure](reference/repo_structure.md)
 - **design_pressure** — [Design pressure](guides/design_pressure.md)
 - **dse** — [Compilation strategies](guides/compilation_strategies.md), [Design-space exploration](guides/dse.md), [DSE guidance](guides/dse_guidance.md), [Search policy](guides/search.md)
 - **frontends** — [model2MLIR frontend](guides/model2mlir.md)
