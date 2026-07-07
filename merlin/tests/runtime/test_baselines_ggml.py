@@ -121,11 +121,20 @@ def test_parse_llama_bench_extracts_tps():
 # --- honesty gaps: VLA out-of-scope + non-convertible LLMs -------------------------------------
 
 def test_vla_models_are_out_of_scope_not_built():
+    # Each VLA carries a PRECISE per-model reason (backbone-arch support vs captured-forward
+    # reproducibility), not a blanket "out of scope". The two whose backbone IS a supported arch
+    # (openvla=Llama-2, molmoact=Qwen2-style) say so explicitly; the rest are diffusion/action heads.
     for m in ("openvla", "rdt", "rdt2", "molmoact", "groot_n1d7", "xr0", "pi05", "smolvla"):
         r = ggml.run_model(m, "fp32", write=False, run_board=False)
         assert r.status() == "not_built"
-        assert "out of ggml scope" in r.gap_reason
+        assert r.gap_reason and len(r.gap_reason) > 40   # a specific, non-empty reason
         r.validate()
+    # backbone-supported cases name the supported arch explicitly (honest scope boundary)
+    assert "Llama-2" in ggml.run_model("openvla", "fp32", write=False, run_board=False).gap_reason
+    assert "Qwen2" in ggml.run_model("molmoact", "fp32", write=False, run_board=False).gap_reason
+    # diffusion/flow cases say they are not a causal LM
+    for m in ("rdt", "rdt2", "xr0", "pi05", "smolvla", "groot_n1d7"):
+        assert "causal LM" in ggml.run_model(m, "fp32", write=False, run_board=False).gap_reason
 
 
 def test_small_llama_gguf_built_directly(monkeypatch):

@@ -32,12 +32,27 @@ than claim a pass we cannot verify. The arm's honest value is the *RVV-coverage 
 latency on real K1 silicon* for a genuinely-vectorized foreign LLM runtime; whole-model output
 fidelity is out of reach for this comparison and is labeled as such.
 
-VLA models are OUT of ggml scope
---------------------------------
-The VLA-specific models (``openvla``, ``rdt``, ``rdt2``, ``molmoact``, ``groot_n1d7``, ``xr0``,
-``pi05``, ``smolvla``) have no GGUF converter / no llama.cpp architecture — they are diffusion /
-action-head / multi-modal graphs, not causal LMs. They are recorded as explicit ``not_built`` gaps
-with that reason, never forced or omitted.
+VLA models — precise per-model scope boundary
+---------------------------------------------
+The VLA models are recorded as explicit ``not_built`` gaps, but each with a PRECISE reason
+(``_VLA_SCOPE_REASON``) that honestly separates *backbone-arch support* from *captured-forward
+reproducibility*:
+
+* ``openvla`` — LLM backbone IS Llama-2 (a supported ggml arch), but the captured unit is the
+  *multimodal* ``forward(input_ids, pixel_values)->logits`` (DINOv2+SigLIP ViT + projector + image-
+  token splice feed the LM); llama.cpp has no vision/projector/splice path, so the captured forward
+  is not reproducible (only a text-only LM sub-forward would be — not the captured unit).
+* ``molmoact`` — the captured unit IS a clean causal-LM ``input_ids->logits`` forward with a Qwen2-
+  style backbone (a supported family), but it is a custom ``MolmoActForCausalLM`` with no
+  ``convert_hf_to_gguf.py`` architecture entry (and random-init weights → no correlated golden).
+* ``rdt``/``rdt2``/``xr0``/``pi05``/``smolvla``/``groot_n1d7`` — NOT causal LMs at all: diffusion /
+  flow-matching action heads taking ``noisy_action``/``x``/``state``/``noise``/cached-``kv_*`` inputs
+  and emitting small action tensors, with no token-in path and no vocab-logits output.
+
+``bitvla`` sits between: its LLM backbone is a genuine ``BitNetForCausalLM`` (a supported ggml arch,
+whose ternary TQ RVV kernels are ggml's most-vectorized path), but its captured unit is an
+``inputs_embeds`` forward with bi-directional attention returning hidden states — none of which
+llama.cpp's token-in / causal / vocab-logits API can reproduce (see the ``bitvla`` branch below).
 """
 from __future__ import annotations
 
@@ -221,8 +236,43 @@ _HF_CHECKPOINTS: dict[str, str] = {
     "tiny_llama": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
 }
 
-# VLA-specific models: no llama.cpp architecture / no GGUF converter. Explicit gaps, never forced.
+# VLA-specific models: no runnable llama.cpp GGUF for the CAPTURED forward. Explicit gaps, never
+# forced. The reasons are per-model and PRECISE about the scope boundary — specifically whether the
+# LLM backbone is a supported ggml arch, and (if so) exactly why the captured unit still isn't a
+# token-in / vocab-logits-out causal forward llama.cpp can reproduce.
 VLA_OUT_OF_SCOPE = ("openvla", "rdt", "rdt2", "molmoact", "groot_n1d7", "xr0", "pi05", "smolvla")
+
+_VLA_SCOPE_REASON: dict[str, str] = {
+    # LLM backbone IS a supported arch, but the CAPTURED forward is multimodal / not token-in-only:
+    "openvla": ("openvla's LLM backbone is Llama-2 (a supported ggml arch), but the captured unit is "
+                "the MULTIMODAL forward(input_ids, pixel_values)->logits: a fused DINOv2+SigLIP ViT + "
+                "MLP projector + image-token splice feed the LM, and the golden [1,200,32064] is that "
+                "vision-conditioned output. llama.cpp has no vision tower / projector / image-splice "
+                "path, so this forward is not reproducible (only a text-only LM sub-forward would be, "
+                "and that is not the captured unit; weights are random-init)"),
+    "molmoact": ("molmoact's captured unit IS a clean causal-LM input_ids->logits forward and its "
+                 "backbone is Qwen2-style (a supported ggml arch family), but it is a custom "
+                 "MolmoActForCausalLM (Molmo/OLMo lineage) with no convert_hf_to_gguf.py architecture "
+                 "entry and non-standard module naming — no GGUF converter path exists, and the "
+                 "weights are random-init so a hand-built GGUF would have no correlated golden"),
+    # NOT causal LMs at all — diffusion / flow-matching action heads (no token-in, no vocab logits):
+    "rdt":  ("rdt is an RDT diffusion action expert: the captured forward takes (x, freq, t, lang_c, "
+             "img_c, lang_mask) and returns an action tensor [1,64,128] — a denoising step, not a "
+             "token-in causal LM; no llama.cpp arch and no vocab-logits output"),
+    "rdt2": ("rdt2 is an RDT2 flow-matching action head over cached cross-attention KV (inputs "
+             "x,t,state_c,kv_0..27 -> action [1,24,20]) — a diffusion/flow step, not a causal LM; "
+             "no llama.cpp arch / no token-in / no vocab logits"),
+    "xr0":  ("xr0 is a diffusion action head (noisy_action,t,state,cos,sin,attn_mask,kv_0..31 -> "
+             "[1,30,32]) — a denoising step over cached KV, not a token-in causal LM; no ggml arch"),
+    "pi05": ("pi05 is a pi-0.5 flow-matching VLA denoiser (multi-image + lang_tokens + state + noise "
+             "-> action [1,50,32]) — a diffusion step, not a token-in / vocab-logits causal LM; no "
+             "ggml arch"),
+    "smolvla": ("smolvla is a SmolVLA flow-matching denoiser (img + lang_tokens + state + noise -> "
+                "action [1,50,32]) — a diffusion step, not a token-in causal LM; no ggml arch"),
+    "groot_n1d7": ("groot_n1d7 is a GR00T-N1 action head over precomputed backbone_features (+ state, "
+                   "actions, embodiment_id, timesteps -> [1,40,132]) — a flow-matching action model, "
+                   "not a token-in causal LM; no ggml arch / no vocab logits"),
+}
 
 DEFAULT_MODELS = LLM_SUBSET + VLA_OUT_OF_SCOPE
 
@@ -631,10 +681,11 @@ def run_model(model: str, variant: str = "fp32", *, quant: str | None = None,
                          march=GGML_MARCH, toolchain="llama.cpp+ggml(RVV) / spacemit-gcc-14.3",
                          framework_commit=ggml_commit(), timestamp=artifacts.utc_stamp())
 
-    # VLA models are out of ggml scope — explicit not_built gap, never forced.
+    # VLA models are out of ggml scope — explicit not_built gap with a PER-MODEL precise reason
+    # (backbone-arch support vs captured-forward reproducibility), never forced.
     if model in VLA_OUT_OF_SCOPE:
-        res.gap_reason = (f"{model} is a VLA/diffusion/multimodal graph with no llama.cpp "
-                          f"architecture / no GGUF converter — out of ggml scope")
+        res.gap_reason = _VLA_SCOPE_REASON.get(
+            model, f"{model}: VLA/diffusion/multimodal graph with no llama.cpp arch — out of ggml scope")
         return _finish(res, model, variant, write)
 
     if not ggml_available():
@@ -687,17 +738,27 @@ def run_model(model: str, variant: str = "fp32", *, quant: str | None = None,
 
     if model not in _HF_CHECKPOINTS:
         if model == "bitvla":
-            # llama.cpp DOES support BitnetForCausalLM (standalone BitNet-b1.58 LM) + the ternary
-            # TQ1_0/TQ2_0 RVV kernels — which our audit shows are ggml's MOST-vectorized path
-            # (TQ2_0 ~51%, TQ1_0 ~39%). But our bitvla capture is BitVLAForActionPrediction, a
-            # Llava-style VLA (BitNet LM + SigLIP vision + action head) whose capture unit is an
-            # inputs_embeds forward — NOT a standalone BitnetForCausalLM, and no standalone BitNet
-            # LLM checkpoint is available locally to run as a token-in proxy.
-            reason = ("bitvla is BitVLAForActionPrediction (Llava-style BitNet LM + SigLIP + action "
-                      "head, captured as an inputs_embeds forward) — not a standalone "
-                      "BitnetForCausalLM; llama.cpp supports the BitNet arch + ternary TQ RVV "
-                      "kernels but has no VLA arch, and no standalone BitNet LLM checkpoint is "
-                      "available locally to run as a proxy")
+            # PRECISE scope boundary. bitvla's LLM backbone IS a genuine BitNet arch — the capture
+            # weights carry `vla.language_model.model.layers.N.self_attn.{q,k,v,o}_proj`,
+            # `mlp.{gate,up,down}_proj` AND BitNet's `attn_sub_norm`/`ffn_sub_norm` sub-norms, i.e.
+            # exactly `BitNetForCausalLM`, which llama.cpp DOES support (LLM_ARCH_BITNET) and whose
+            # ternary TQ2_0/TQ1_0 RVV kernels are ggml's MOST-vectorized path (~51%/39% in our audit).
+            # But the CAPTURED FORWARD is not expressible through llama.cpp's token-in/logits-out
+            # causal API, for three concrete reasons: (1) the capture unit is
+            # `forward(inputs_embeds=[1,32,256])` — raw embeddings, not token ids — and llama.cpp has
+            # NO public inputs_embeds injection path (llama_decode/merlin_logits take ids only);
+            # (2) it runs with `use_bi_attn=True` (BI-directional attention over the assembled
+            # multimodal prefix), whereas llama.cpp's bitnet is strictly CAUSAL; (3) the golden is
+            # `[1,32,1024]` HIDDEN STATES, not vocab logits (1024 != the 256 vocab), so even the
+            # output tensor llama.cpp exposes (logits) is not comparable. The weights are also
+            # random-init (no pretrained correlation). So: BitNet ARCH supported by ggml, but THIS
+            # embeds-in / bidirectional / hidden-states-out VLA forward is not reproducible.
+            reason = ("bitvla's LLM backbone is a genuine BitNetForCausalLM (llama.cpp supports the "
+                      "BitNet arch + ternary TQ RVV kernels), but the captured unit is an "
+                      "inputs_embeds forward with bi-directional attention returning hidden states "
+                      "[1,32,1024] — llama.cpp has no inputs_embeds injection path, is causal-only, "
+                      "and exposes vocab logits (256) not hidden states, so this exact forward is "
+                      "not reproducible through ggml (arch supported; captured forward is not)")
         else:
             reason = f"{model}: no GGUF-convertible checkpoint"
         # built stays False: we have the RVV artifact but no runnable GGUF for this model.
