@@ -34,10 +34,9 @@ FORBIDDEN_ROOTS = ("output/", "results/", "selfcheck_out/", "mined_knowledge/", 
 FORBIDDEN_RE = re.compile(r"(^|/)(experiments/[^/]+/(runs|reports)|benchmarks/[^/]+/case_study)/")
 # genuinely-tracked source images, if any (verify with `git ls-files '*.png'` before adding).
 ALLOW_TRACKED_GEN: set[str] = set()
-# Self-contained, import-isolated eval project with its own runs/ lifecycle (aet-style) — out of
-# the main tree's three-root scope. It evaluates merlin as an external subject; lives off root but
-# in-repo so its R4 check can `git diff -- merlin/` against this checkout.
-SKIP_PREFIXES = ("merlin/experiments/targetgen_evals/",)
+# No blanket exemptions: every tracked path (incl. targetgen_evals) obeys the three-root rule.
+# targetgen_evals runs now live under the canonical top-level runs/targetgen-evals/ (gitignored).
+SKIP_PREFIXES: tuple[str, ...] = ()
 
 
 def _repo_root() -> Path:
