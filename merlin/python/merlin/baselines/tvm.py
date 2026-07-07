@@ -372,6 +372,13 @@ try:
         n = min(a.size, b.size); a = a[:n]; b = b[:n]
         d = (np.linalg.norm(a) * np.linalg.norm(b)) or 1.0
         return (float(np.dot(a, b) / d), float(np.linalg.norm(a - b) / (np.linalg.norm(b) or 1.0)))
+    # Feed inputs in the GRAPH's positional order. The npz keys are in0,in1,...,inN; a plain
+    # sorted() is LEXICAL (in0,in1,in10,in11,in2,...) which mis-orders >=10-input models (rdt2/xr0)
+    # and silently misfeeds the VM. Sort by the trailing integer instead (natural order).
+    import re as _re
+    def _natkey(k):
+        m = _re.search(r"(\d+)$", k)
+        return (int(m.group(1)) if m else 0, k)
     host_cos = host_rel = gold_cos = None
     host_note = ""
     try:
@@ -380,7 +387,7 @@ try:
         dev = tvm.cpu()
         vm = relax.VirtualMachine(host_ex, dev)
         npz = np.load(os.path.join(bundle_root, "inputs.npz"))
-        args = [tvm.nd.array(npz[k], dev) for k in sorted(npz.files)]
+        args = [tvm.nd.array(npz[k], dev) for k in sorted(npz.files, key=_natkey)]
         out = vm["main"](*args)
         got = out.numpy() if hasattr(out, "numpy") else np.asarray(out[0].numpy())
         host_cos, host_rel = _cos_rel(got, torch_ref)          # gate: TVM vs torch (this instance)
@@ -682,7 +689,12 @@ try:
     rmod = sess.load_module(os.path.basename(so))
     vm = relax.VirtualMachine(rmod, dev)
     npz = np.load(os.environ["MERLIN_RPC_INPUTS"])
-    args = [tvm.nd.array(npz[k], dev) for k in sorted(npz.files)]
+    import re as _re
+    def _natkey(k):
+        m = _re.search(r"(\d+)$", k)
+        return (int(m.group(1)) if m else 0, k)
+    # natural (not lexical) order so >=10-input models feed in graph-positional order (see driver).
+    args = [tvm.nd.array(npz[k], dev) for k in sorted(npz.files, key=_natkey)]
     # relax VM over RPC: set_input/invoke_stateful/get_outputs (marshals remote NDArrays correctly).
     vm.set_input("main", *args)
     vm.invoke_stateful("main")
