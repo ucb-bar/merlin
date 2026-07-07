@@ -6,7 +6,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
-A = EXP / "reports" / "abc4_analysis"
+REPORTS = EXP.parents[2] / "artifacts" / "capsule-bench" / "gemmini"
+A = REPORTS / "abc4_analysis"
 sys.path.insert(0, str(EXP.parent / "gemmini_perf_bench" / "scripts"))
 import perf_style as S
 

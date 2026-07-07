@@ -121,7 +121,7 @@ def main() -> int:
     L += ["", "_`active`+`quota_wait` = `wall` (cumulative across resume invocations). `agent`+`sim` "
           "split `active` (the rest of active is harness/finalize overhead). `—` = a run predating "
           "this instrumentation (e.g. pilot runs launched before run_fullsuite.py)._"]
-    (C.EXP / "reports" / "fullsuite_comparison.md").write_text("\n".join(L) + "\n")
+    (C.REPORTS / "fullsuite_comparison.md").write_text("\n".join(L) + "\n")
 
     # ---------------- cycles_by_capsule.md ----------------
     full_runs = [r for r in runs if r["caps"]]
@@ -158,7 +158,7 @@ def main() -> int:
         for name in sorted(r["caps"], key=lambda n: (ORDER.index(_short(n)) if _short(n) in ORDER else 99, n)):
             d = r["caps"][name]
             M.append(f"| {name} | {d['phase']} | {d['status']} | {d['L2']} | {d['L3']} |")
-    (C.EXP / "reports" / "cycles_by_capsule.md").write_text("\n".join(M) + "\n")
+    (C.REPORTS / "cycles_by_capsule.md").write_text("\n".join(M) + "\n")
 
     print(f"wrote fullsuite_comparison.md + cycles_by_capsule.md ({len(runs)} runs, "
           f"{len(full_runs)} with per-capsule cycles)")

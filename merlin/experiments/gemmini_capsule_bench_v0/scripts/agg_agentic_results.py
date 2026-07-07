@@ -29,6 +29,7 @@ def _repo_root():
 _ROOT = _repo_root()
 
 EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
+REPORTS = EXP.parents[2] / "artifacts" / "capsule-bench" / "gemmini"
 RUN_DIRS = ["raw_baseline", "merlin_assisted"]   # both scanned; arm decided by bundle_id
 BUNDLE_ARM = {
     "raw_baseline_public_v0": "baseline",
@@ -103,7 +104,7 @@ def load_run(d: Path, audit: dict) -> dict | None:
 
 
 def main():
-    fa = EXP / "reports/full_suite_audit.json"
+    fa = REPORTS / "full_suite_audit.json"
     audit = json.loads(fa.read_text()) if fa.is_file() else {}
     out = {"arms": {a: [] for a in ARM_ORDER}, "n_valid": {}, "arm_order": ARM_ORDER}
     for sub in RUN_DIRS:
@@ -127,7 +128,7 @@ def main():
     out["caveat"] = ("3-arm A/B/C. valid converged runs: " +
                      ", ".join(f"{a}={out['n_valid'][a]}" for a in ARM_ORDER) +
                      ". full-suite completeness present where full_suite_audit has been run.")
-    p = EXP / "reports/agentic_results.json"
+    p = REPORTS / "agentic_results.json"
     p.write_text(json.dumps(out, indent=2))
     print(f"wrote {p}")
     for a in ARM_ORDER:

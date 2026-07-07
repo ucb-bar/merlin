@@ -152,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
             row[f"{rid}__cycles"] = cyc.get(rid, {}).get(n)
         out["matrix"].append(row)
 
-    (C.EXP / "reports" / "full_suite_audit.json").write_text(json.dumps(out, indent=2))
+    (C.REPORTS / "full_suite_audit.json").write_text(json.dumps(out, indent=2))
     _write_md(out, scores)
     print(f"\nwrote reports/full_suite_audit.{{md,json}} ({len(cap_names)} capsules x {len(scores)} backends)")
     return 0
@@ -192,7 +192,7 @@ def _write_md(out: dict, scores: dict) -> None:
     md += ["", "_Legend: cycles = L3 verilator RTL cycles (rdcycle-bracketed). oracle_wait(s) is time "
            "blocked on a queue/FPGA slot (≈0 for local verilator; nonzero only for queued VCS/FireSim). "
            "speedup = sum(active_sim)/wall under parallel workers._"]
-    (C.EXP / "reports" / "full_suite_audit.md").write_text("\n".join(md) + "\n")
+    (C.REPORTS / "full_suite_audit.md").write_text("\n".join(md) + "\n")
 
 
 if __name__ == "__main__":
