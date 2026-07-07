@@ -143,7 +143,7 @@ def _insight_mining(args) -> int:
     from merlin.dse_guidance import insight_mining as IM
     from merlin.dse_guidance import presentation_plots as PP
     cs_dir = Path(args.case_study_dir) if args.case_study_dir else (
-        paths.merlin_dir() / "benchmarks" / "dse_guidance" / "case_study")
+        paths.repo_root() / "artifacts" / "dse-guidance" / "case_study")
     if not (cs_dir / "dse_contract.json").is_file() and not (cs_dir / "critical_path_table.csv").is_file():
         raise SystemExit(f"no case-study artifacts under {cs_dir} (run --case-study first)")
     base = Path(args.out) if args.out else (paths.repo_root() / "artifacts" / "dse-guidance")
@@ -199,7 +199,7 @@ def _query(args) -> int:
     import json
     from merlin.common import paths
     base = Path(args.out) if args.out else (
-        paths.merlin_dir() / "benchmarks" / "dse_guidance" / "case_study")
+        paths.repo_root() / "artifacts" / "dse-guidance" / "case_study")
     manifest_path = base / "dse_contract.json"
     if not manifest_path.is_file():
         raise SystemExit(f"no dse_contract.json under {base}; run --case-study first")

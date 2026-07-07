@@ -38,6 +38,18 @@
 !/artifacts/presentation/gemmini_target_prototype.md
 !/artifacts/presentation/saturn_vec_findings.md
 
+# --- dse-guidance case_study GOLDEN: the committed reference the tests + --consume/--meta read.
+#     It's generated analysis (regenerable via `merlin-dse-guidance --case-study`) but tracked as
+#     the byte-stable golden. Track the data/source files; keep regenerable binaries untracked. ---
+!/artifacts/dse-guidance/case_study/**
+/artifacts/dse-guidance/case_study/**/*.png
+/artifacts/dse-guidance/case_study/**/*.svg
+/artifacts/dse-guidance/case_study/**/*.pdf
+/artifacts/dse-guidance/case_study/**/*.jpg
+/artifacts/dse-guidance/case_study/**/*.jpeg
+/artifacts/dse-guidance/case_study/**/*.html
+/artifacts/dse-guidance/case_study/**/*.log
+
 # --- artifacts/targets/ : generated target packages (codegen products). Forks/OOT builds are
 #     regenerable and stay ignored; the hand-authored reference baselines + promoted champions
 #     are the only tracked packages (re-included via the negations below). ---
