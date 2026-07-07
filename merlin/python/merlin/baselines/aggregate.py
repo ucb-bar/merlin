@@ -27,6 +27,26 @@ def collect_dir(root: str | Path) -> list[BaselineResult]:
     return out
 
 
+def dedupe_latest(results: list[BaselineResult]) -> list[BaselineResult]:
+    """Collapse many historical measurements to ONE per (framework, model, variant) cell.
+
+    Honest rule: a result that actually **executed** (``ran=True``: pass OR fail) always beats one
+    that did not (``not_run`` / ``not_built``). ``not_run`` is the *absence* of a run on that pass —
+    a timed-out or skipped re-verification must never erase an earlier genuine on-board pass/fail.
+    Among executed results the latest timestamp wins (so a real later ``fail`` correctly supersedes a
+    stale pass); among non-executed results the latest wins too. Rank key = ``(ran, timestamp)``.
+    """
+    best: dict[tuple[str, str, str], BaselineResult] = {}
+    for r in results:
+        key = (r.framework, r.model, r.variant)
+        cur = best.get(key)
+        rank = (1 if r.ran else 0, r.timestamp or "")
+        crank = (1 if cur.ran else 0, cur.timestamp or "") if cur is not None else (-1, "")
+        if rank >= crank:
+            best[key] = r
+    return list(best.values())
+
+
 def _cell(r: BaselineResult | None) -> str:
     if r is None:
         return "—"
@@ -84,3 +104,40 @@ def render_csv(results: list[BaselineResult]) -> str:
             (r.gap_reason or "").replace(",", ";"),
         ]))
     return "\n".join(rows)
+
+
+def main() -> None:
+    """Regenerate the cross-framework K1 matrix product from the measurements tree.
+
+    Reproducible: ``.venv/bin/python -m merlin.baselines.aggregate`` collects every
+    ``baseline_result.json`` under ``artifacts/measurements/k1_spacemit/``, dedupes to the latest
+    executed result per cell, and writes ``matrix.{md,csv}`` as a versioned ``compare`` product.
+    """
+    import argparse
+
+    from merlin.common.artifacts import new_product
+    from merlin.common.paths import repo_root
+
+    ap = argparse.ArgumentParser(description="Cross-framework K1-RVV matrix (merlin vs baselines)")
+    ap.add_argument("--measurements", default=None,
+                    help="measurements root (default artifacts/measurements/k1_spacemit)")
+    args = ap.parse_args()
+
+    root = Path(args.measurements) if args.measurements else \
+        repo_root() / "artifacts" / "measurements" / "k1_spacemit"
+    results = dedupe_latest(collect_dir(root))
+    md, csv = render_markdown(results), render_csv(results)
+
+    prod = new_product("compare", version=1,
+                       notes="cross-framework K1-RVV matrix (deduped latest executed per cell)")
+    (prod.path / "matrix.md").write_text(md)
+    (prod.path / "matrix.csv").write_text(csv)
+    prod.add_artifact("matrix.md")
+    prod.add_artifact("matrix.csv")
+    prod.write_manifest()
+    print(prod.path)
+    print(md)
+
+
+if __name__ == "__main__":
+    main()
