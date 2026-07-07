@@ -33,9 +33,48 @@ import sys
 from pathlib import Path
 
 
+def _apply_loader_compat_shims() -> list[str]:
+    """Faithful compat shims for loader/framework version drift (NOT numeric changes).
+
+    The m2m loaders were written against older dep versions than the ExecuTorch export venv
+    ships. Each shim just re-exposes a symbol under the name the loader expects; none change
+    model math. Returns the list of shims that actually applied (recorded in the notes).
+
+      * ``BitNet`` config alias — bitvla's loader builds a Llava config with the (old)
+        capitalized ``text_config['model_type']='BitNet'``; current transformers registers
+        BitNet under the lowercase key ``'bitnet'``, so ``CONFIG_MAPPING['BitNet']`` KeyErrors
+        (fails identically in the m2m venv too — loader-inherent drift). Register the alias.
+    """
+    applied: list[str] = []
+    try:  # torch_compilable_check no-op (lerobot 0.6 eo1 policy vs transformers>=5)
+        import transformers.utils as _tu
+        if not hasattr(_tu, "torch_compilable_check"):
+            # lerobot.policies.__init__ eagerly imports eo1, which imports this compile-guard
+            # util removed in transformers>=5. It is a torch.compile guard, a no-op for eager
+            # export; stub it so the smolvla policy module (an eo1 sibling) can be imported.
+            _tu.torch_compilable_check = lambda *a, **k: None  # noqa: E731
+            applied.append("torch_compilable_check-noop")
+    except Exception:  # noqa: BLE001
+        pass
+    try:  # BitNet capitalized-key alias (bitvla)
+        from transformers.models.auto.configuration_auto import CONFIG_MAPPING
+        if "BitNet" not in CONFIG_MAPPING:
+            from transformers.models.bitnet.configuration_bitnet import BitNetConfig
+            CONFIG_MAPPING.register("BitNet", BitNetConfig, exist_ok=True)
+            applied.append("bitnet-config-alias")
+    except Exception:  # noqa: BLE001 - shim is best-effort; loader failure surfaces the real reason
+        pass
+    return applied
+
+
 def _load_loader(loader_path: Path):
+    _apply_loader_compat_shims()
     spec = importlib.util.spec_from_file_location("_m2m_loader", loader_path)
     mod = importlib.util.module_from_spec(spec)
+    # Register under the module name BEFORE exec so a strict torch.export (dynamo) that
+    # re-imports the defining module of a traced nn.Module class finds it (otherwise the
+    # strict fallback dies with ModuleNotFoundError: No module named '_m2m_loader').
+    sys.modules["_m2m_loader"] = mod
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     return mod
 
@@ -123,6 +162,68 @@ def _linear_subgraph(model):
 
 
 _TORCH_TO_NP = {}  # filled after torch import
+
+
+def _int8_whole_model_bias_preserving(model):
+    """Whole-model weight-only int8 (per-channel) that PRESERVES nn.Linear bias.
+
+    ExecuTorch's official ``WeightOnlyInt8QuantHandler`` is llama-specific: its
+    ``WeightOnlyInt8Linear`` never carries a bias (forward is just
+    ``F.linear(x, weight)*scales``) and its ``load_state_dict`` in ``quantized_model()``
+    therefore REJECTS any model whose Linears have bias (rdt/rdt2 DiT blocks: qkv/proj/ffn
+    all bias=True) with an "Unexpected key(s) ... .bias" error. That is a pure packaging
+    limitation, not a quantization-feasibility one.
+
+    This does the SAME math (symmetric per-output-channel int8, fp32 scale) via an eager
+    module swap, but keeps the original ``bias`` on the replacement module and adds it back
+    in forward. For a bias=False Linear the result is byte-identical to the official handler
+    (so llama models are unchanged); for a biased Linear it is the correct int8-weight +
+    fp32-bias GEMM. Like the official path it is a module swap, so it never runs PT2E's
+    ``transform_for_annotation`` (sidestepping the index-dtype corruption), and its
+    ``int8_weight.to(fp32)*scales`` dequant const-folds into a fp32 const weight that
+    XNNPACK partitions as a normal fp32 GEMM — arena-collapsing exactly like the llama path.
+
+    Returns ``(model, n_linear, n_biased)``.
+    """
+    import torch
+    import torch.nn.functional as F
+
+    class _Int8LinearBias(torch.nn.Module):
+        """int8 weight-only per-channel Linear that carries its original fp32 bias."""
+
+        def __init__(self, lin: torch.nn.Linear):
+            super().__init__()
+            self.in_features = lin.in_features
+            self.out_features = lin.out_features
+            w = lin.weight.detach().float()                     # [out, in]
+            amax = w.abs().amax(dim=1, keepdim=True)            # per-output-channel
+            scales = (amax / 127.0).clamp(min=1e-12)            # symmetric int8
+            q = torch.round(w / scales).clamp(-128, 127).to(torch.int8)
+            self.register_buffer("weight", q)
+            self.register_buffer("scales", scales.squeeze(-1).float())
+            if lin.bias is not None:
+                self.register_buffer("bias", lin.bias.detach().float())
+            else:
+                self.bias = None
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            y = F.linear(x, self.weight.to(dtype=x.dtype)) * self.scales
+            if self.bias is not None:
+                y = y + self.bias.to(dtype=x.dtype)
+            return y
+
+    def _swap(module):
+        for name, child in module.named_children():
+            if isinstance(child, torch.nn.Linear):
+                setattr(module, name, _Int8LinearBias(child))
+            else:
+                _swap(child)
+
+    n_lin = sum(1 for m in model.modules() if isinstance(m, torch.nn.Linear))
+    n_biased = sum(1 for m in model.modules()
+                   if isinstance(m, torch.nn.Linear) and m.bias is not None)
+    _swap(model)
+    return model.eval(), n_lin, n_biased
 
 
 def main() -> int:
@@ -214,12 +315,27 @@ def main() -> int:
         )
 
         n_lin = sum(1 for _ in model.modules() if isinstance(_, torch.nn.Linear))
-        model = WeightOnlyInt8QuantHandler(model).quantized_model().eval()
+        n_biased = sum(1 for m in model.modules()
+                       if isinstance(m, torch.nn.Linear) and m.bias is not None)
+        # The official llama handler is bias-free (its WeightOnlyInt8Linear drops bias and its
+        # load_state_dict rejects any leftover .bias key). Use it verbatim for the bias-free
+        # llama family (identical attribution/numbers as before). For a model with ANY biased
+        # Linear (rdt/rdt2 DiT: qkv/proj/ffn all bias=True), the official handler raises
+        # "Unexpected key(s) ... .bias" -> use OUR bias-preserving per-channel int8 swap, which
+        # does the same math but keeps the fp32 bias. Same const-fold/arena behavior either way.
+        if n_biased == 0:
+            model = WeightOnlyInt8QuantHandler(model).quantized_model().eval()
+            recipe = ("official-llama-recipe(WeightOnlyInt8QuantHandler, weight-only int8 "
+                      f"per-channel, ALL {n_lin} nn.Linear swapped -> WeightOnlyInt8Linear)")
+        else:
+            model, n_lin, n_biased = _int8_whole_model_bias_preserving(model)
+            recipe = (f"bias-preserving-int8(weight-only int8 per-channel, ALL {n_lin} nn.Linear "
+                      f"swapped, {n_biased} carry fp32 bias; official handler drops bias/rejects "
+                      "biased state_dict so this superset is used)")
         quantized = True
         subgraph_note = (subgraph_note + " " if subgraph_note else "") + (
-            f"int8-whole-model=official-llama-recipe(WeightOnlyInt8QuantHandler, weight-only int8 "
-            f"per-channel, ALL {n_lin} nn.Linear swapped -> WeightOnlyInt8Linear); embeddings/mask/"
-            "softmax/norm fp32; module-swap sidesteps PT2E transform_for_annotation index-corruption")
+            f"int8-whole-model={recipe}; embeddings/mask/softmax/norm fp32; "
+            "module-swap sidesteps PT2E transform_for_annotation index-corruption")
 
     # 2b. PT2E W8A8 quantization (int8 subgraph path). Only when NOT whole-model int8.
     if args.quantize and not args.int8_whole_model:
