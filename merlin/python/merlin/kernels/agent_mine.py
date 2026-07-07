@@ -23,7 +23,9 @@ from typing import Any, Callable
 from .cluster import cluster_dossiers
 from .dossier import KernelDossier
 
-_PROMPT_DIR = Path(__file__).resolve().parents[3] / "prompts"
+from merlin.common.paths import merlin_dir
+
+_PROMPT_DIR = merlin_dir() / "prompts"
 
 
 def prompt_path(version: int = 1) -> Path:

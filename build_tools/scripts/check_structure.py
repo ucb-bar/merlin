@@ -55,6 +55,9 @@ REQUIRED_SCHEMAS = [
     "target_source_manifest", "command_buffer", "runtime_abi", "metrics", "trace",
     # Kernel-mining L6/L8 outputs (feed TargetGen's dialect_plan / llvm_extension_plan).
     "runtime_candidate", "dialect_requirement", "llvm_requirement",
+    # DSE-guidance + rvvgen subsystem schemas (were used but unlisted).
+    "baseline_cost", "cpu_coupling", "dse_axis_triage", "temporal_workload_metadata",
+    "rvv_package_manifest", "rvv_result",
 ]
 
 REQUIRED_DOCS = [

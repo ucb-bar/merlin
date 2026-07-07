@@ -25,11 +25,13 @@ example: |
   abi_version: "0.1"
   target: toy_npu
   backend: simulator
+  tensors: {A0: {dtype: i8, shape: [16, 16]}, W: {dtype: i8, shape: [16, 16]}}
   commands:
     - {opcode: RES_PACK, operands: {src: W, dst: W_res}, attributes: {layout: packed_rhs}}
     - {opcode: MATMUL_RESIDENT, operands: {lhs: A0, rhs: W_res, dst: acc0}}
     - {opcode: COMMIT, operands: {src: acc0, dst: Y0}, attributes: {epilogue: [requant, relu]}}
     - {opcode: EVICT, operands: {handle: W_res}}
+  params: {acc_scale: 0.5}
   resources:
     buffers: []
     handles: [W_res, acc0]

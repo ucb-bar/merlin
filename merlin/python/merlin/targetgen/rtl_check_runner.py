@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -35,7 +36,10 @@ from . import rtl_checks as RC
 from merlin.common.paths import ext_path
 
 _REPO = Path(__file__).resolve().parents[4]
-_FACTS = _REPO / "merlin/targets/gemmini/contracts/rtl_facts/facts.json"
+# RTL facts are target-specific; gemmini is the reference default. General callers should pass the
+# facts path (or set MERLIN_RTL_FACTS) rather than rely on the gemmini default.
+_FACTS = Path(os.environ.get("MERLIN_RTL_FACTS")
+              or _REPO / "merlin/targets/gemmini/contracts/rtl_facts/facts.json")
 _CAPSULE_ROOTS = [_REPO / "merlin/contract" / "capsules",
                   _REPO / "merlin" / "experiments" / "gemmini_perf_bench" / "kernels"]
 _FILECHECK_CANDIDATES = [
