@@ -241,10 +241,17 @@ deduped **latest-executed-per-cell** (`aggregate.dedupe_latest`: an executed pas
   compute story.
 
 **Residual gaps — all precise, none "RAM" or "effort":**
-- **Board outage (external).** The K1 went SSH-unreachable at the end of this pass (DHCP; IP may change
-  on reboot — needs UART/physical recovery). Two on-board items are now **hardware-availability gaps**,
-  not code: ExecuTorch's **full-22L** run (export verified: 2.41 MB arena + 4.14 GB `.pte`; execution
-  pending a live board) and Buddy's remaining K1-runnable int8 models (bitvla/xr0/rdt2/groot/smolvla).
+- **Board outage (likely thrash-induced, needs reboot).** The K1 went SSH-unreachable at the end of the
+  pass (DHCP; IP may change on reboot — needs UART/physical recovery). It was **not** a clean external
+  outage: the full-22L forward demand-paged 4.14 GB of fp32 weights through a **no-swap 3.4 GB** board,
+  which thrashed it until SSH died. Two on-board items are now **hardware-availability gaps, not code**:
+  (1) ExecuTorch **full-22L** execution — note the arena wall is *proven solved on silicon* (the board
+  mmap-**loaded** the full 4.14 GB `.pte` at 22 layers, `size 2405952` = 2.41 MB arena confirmed on-board);
+  the remaining blocker is purely that weight-only int8 dequants to **fp32**, so 4.14 GB pages through a
+  no-swap 3.4 GB board. Real fixes (all outside this arm's code): board **swap/zram**, or keep weights
+  **int8-resident** (~1 GB, fits) with per-tile dequant (as the EXO arm does), or the true int8-GEMM path
+  (blocked by the PT2E cumsum bug below). (2) Buddy's remaining K1-runnable int8 models
+  (bitvla/xr0/rdt2/groot/smolvla). ExecuTorch also now **exports 7/8** K1-runnable models host-side.
   Both runners are fail-closed + re-runnable the moment the board returns.
 - **Loader-dep wall (the dominant model-coverage gap).** 7 models fail at *torch-load* before any
   framework sees them: `tyro` (groot), `openpi` (pi05), `lerobot` (smolvla), `mmengine` (xr0), and
