@@ -1,17 +1,30 @@
-/* Whole-model int8 (W8A8) glue runtime for TinyLlama on the SpacemiT K1 (rv64gcv, glibc Linux).
+/* Whole-model WEIGHT-ONLY int8 (W8A16) glue runtime for TinyLlama on the SpacemiT K1 (rv64gcv).
  *
- * Same "EXO kernels + hand C glue" posture as llama_glue.c, on the INTEGER datapath: the dominant
- * op (nn.Linear) is the EXO int8 RVV GEMM (exo_kernels/igemm.py -> igemm_nt_ref, a vwmacc
- * i16xi16->i32 widening MAC at VLEN=256). Per Linear:
- *   1. quantize the activation row per-token to i8 (symmetric, per-row max-abs scale), stored i16;
- *   2. load the i8 weight, transpose to [K,N] and sign-extend to i16 (glue pre-pass, off timing);
- *   3. igemm_nt_ref: acc_i32[m,o] = sum_i A_i16[m,i]*Wt_i16[i,o]  (EXO RVV vwmacc);
- *   4. requantize: Y_f32[m,o] = a_scale[m] * w_scale[o] * acc_i32[m,o]   (scalar glue).
- * Weights are symmetric per-output-channel int8 (zero-point = 0 in this capture).
+ * Same "EXO kernels + hand C glue" posture as llama_glue.c, on the int8-weight datapath. This
+ * capture's int8 reference (golden.npy) is a WEIGHT-ONLY int8 model: the nn.Linear weights are
+ * quantized to symmetric per-output-channel int8 (zero-point == 0 in every tensor of this capture,
+ * verified), the ACTIVATIONS stay fp32. So the correct math the golden encodes is:
+ *
+ *     Y[m,o] = sum_i  X_f32[m,i] * (W_i8[o,i] * w_scale[o])            (weight-only int8)
+ *
+ * NOT a full W8A8 integer path (quantizing the activation to int8 too is a *different*, lossier
+ * scheme: measured cos 0.949 / rel 0.958 vs this golden — it gates against a W8A8 golden, which this
+ * full-fidelity capture does not carry). Weight-only int8 is exactly what the passing cross-framework
+ * int8 cells use (ExecuTorch WeightOnlyInt8QuantHandler, TVM), and it matches golden.npy bit-for-bit
+ * in fp32 (numpy repro cos 1.000000, rel 0.0000). The int8 weight is the compression that matters;
+ * the EXO-authored f32 RVV GEMM (gemm_nt_ref) does the actual multiply-accumulate.
+ *
+ * Per Linear (weight-only int8), TRANSPOSE-FREE: the int8 weight stays in its native [OUT,IN]
+ * layout and is dequantized on the fly inside a k-reduction dot GEMM (fgemm_nk_dot_i8):
+ *   Y_f32[m,o] = w_scale[o] * sum_i X_f32[m,i] * (float)W_i8[o,i].
+ * No transpose/repack and no strided scatter (K1 strided loads/stores are catastrophic). The EXO
+ * f32 GEMM (gemm_nt_ref) is still compiled + RVV-audited (EXO-authored-kernel story) but the
+ * transpose-free dot is on the hot path so the whole 22-layer run is fast.
  *
  * Everything else (RMSNorm/RoPE/GQA-softmax/SwiGLU/residual/embed) is scalar C glue, labeled as a
- * ScalarFallback by the runner. Config (NL, dims, S) and the int8 offset table come from
- * llama_weights.h (emitted by exo.py). Prints OUT / MERLIN_E2E / MERLIN_REGION / DONE.
+ * ScalarFallback by the runner; residual-add + the SwiGLU product are the EXO glue_ops RVV kernels
+ * (vfadd/vfmul). Config (NL, dims, S) and the int8 offset table come from llama_weights.h. Prints
+ * OUTFILE/OUT / MERLIN_E2E / MERLIN_REGION / DONE.
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -25,83 +38,37 @@
 #include <sys/stat.h>
 #include <pthread.h>
 
-#include <riscv_vector.h>   /* RVV intrinsics for the hand-vectorised quant + transpose+widen */
-#include "exo_igemm.h"      /* void igemm_nt_ref(void*, M, N, K, int32_t* Y, const uint16_t* X, const uint16_t* Wt) */
+#include <riscv_vector.h>   /* RVV intrinsics (fgemm_nk_dot_i8 lives in fgemm_nk.c) */
+#include "exo_gemm.h"       /* void gemm_nt_ref(void*, M, N, K, float* Y, const float* X, const float* Wt) — audited */
 #include "exo_glue_ops.h"   /* residual_add_ref / ewise_mul_ref: 8-wide RVV vfadd/vfmul (f32) */
 #include "llama_weights.h"  /* NL,H,NH,NKV,HD,FF,V,S, EPS, WOFF_*, INPUT_IDS[], INV_FREQ[], + int8 tables */
+
+/* transpose-free weight-only int8 dot GEMM (fgemm_nk.c): Y=WS[o]*sum_i X[m,i]*(float)W_i8[o,i]. */
+extern void fgemm_nk_dot_i8(int M, int N, int K, float *Y,
+                            const float *X, const int8_t *W, const float *WS);
 
 static inline uint64_t rd_time(void){ uint64_t t; __asm__ volatile("rdtime %0":"=r"(t)); return t; }
 static inline uint64_t rd_vlenb(void){ uint64_t v; __asm__ volatile("csrr %0, vlenb":"=r"(v)); return v; }
 static uint64_t wall_ns(void){ struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
   return (uint64_t)ts.tv_sec*1000000000ULL + (uint64_t)ts.tv_nsec; }
 
-static uint64_t T_GEMM=0,T_NORM=0,T_ATTN=0,T_ELEM=0,T_QUANT=0,T_TRANS=0;
-static uint64_t C_GEMM=0,C_NORM=0,C_ATTN=0,C_ELEM=0,C_QUANT=0,C_TRANS=0;
+static uint64_t T_GEMM=0,T_NORM=0,T_ATTN=0,T_ELEM=0;
+static uint64_t C_GEMM=0,C_NORM=0,C_ATTN=0,C_ELEM=0;
 
 static const uint8_t *WBLOB;
 static const float  *wf(size_t off){ return (const float  *)(WBLOB+off); }
 static const int8_t *wi(size_t off){ return (const int8_t *)(WBLOB+off); }
 
-/* scratch: transposed+widened i16 weight [K,N]; quantized i16 activation [S,K]; i32 acc [S,N]. */
-static int16_t *WT16; static int16_t *X16; static int32_t *ACC;
-
-/* Vectorized per-token activation quant: RVV abs-max reduction over the row, then RVV
- * scale-multiply + f32->i32 convert + narrow to i16 (holds the i8 range). Returns the per-row
- * scale. #include <riscv_vector.h> comes via exo_igemm.h. */
-static float quant_row_rvv(const float *xr, int16_t *xo, int IN){
-  vfloat32m1_t vmax = __riscv_vfmv_v_f_f32m1(0.0f, __riscv_vsetvlmax_e32m1());
-  for(int i=0;i<IN;){ size_t vl=__riscv_vsetvl_e32m1(IN-i);
-    vfloat32m1_t v=__riscv_vle32_v_f32m1(&xr[i], vl);
-    vfloat32m1_t va=__riscv_vfabs_v_f32m1(v, vl);
-    vmax=__riscv_vfmax_vv_f32m1(vmax, va, vl); i+=vl; }
-  vfloat32m1_t z=__riscv_vfmv_v_f_f32m1(0.0f, __riscv_vsetvlmax_e32m1());
-  float amax=__riscv_vfmv_f_s_f32m1_f32(__riscv_vfredmax_vs_f32m1_f32m1(vmax, z, __riscv_vsetvlmax_e32m1()));
-  float sc = amax>0.0f ? amax/127.0f : 1.0f; float inv=1.0f/sc;
-  for(int i=0;i<IN;){ size_t vl=__riscv_vsetvl_e32m1(IN-i);
-    vfloat32m1_t v=__riscv_vle32_v_f32m1(&xr[i], vl);
-    vfloat32m1_t q=__riscv_vfmul_vf_f32m1(v, inv, vl);
-    vint32m1_t qi=__riscv_vfcvt_x_f_v_i32m1(q, vl);              /* round-to-nearest f32->i32 */
-    vint16mf2_t q16=__riscv_vncvt_x_x_w_i16mf2(qi, vl);         /* narrow i32->i16 (i8 range fits) */
-    __riscv_vse16_v_i16mf2(&xo[i], q16, vl); i+=vl; }
-  return sc;
-}
-
-/* Contiguous i8->i16 widen of the weight, KEEPING the native [OUT,IN] layout (NO transpose scatter
- * — the 461M-tick pre-pass is gone). A streaming RVV widening load/store; bandwidth-friendly. The
- * transpose-free dot GEMM (igemm_nk_dot) consumes W in this [OUT,IN] layout directly. */
-extern void igemm_nk_dot(void*, int, int, int, int32_t*, const uint16_t*, const uint16_t*);
-static void widen_nk_rvv(const int8_t *W8, int16_t *W16, size_t n){
-  for(size_t i=0;i<n;){ size_t vl=__riscv_vsetvl_e8m1(n-i);
-    vint8m1_t v8=__riscv_vle8_v_i8m1(&W8[i], vl);
-    vint16m2_t v16=__riscv_vwadd_vx_i16m2(v8, 0, vl);           /* widen i8->i16 (sign-extend) */
-    __riscv_vse16_v_i16m2(&W16[i], v16, vl); i+=vl; }
-}
-
-/* int8 W8A8 Linear, TRANSPOSE-FREE: weight stays [OUT,IN] (contiguous widen), the dot GEMM reduces
- * over the k-contiguous rows. woff_w8=i8 weight[OUT,IN], woff_s=f32 scale[OUT]. */
+/* Weight-only int8 Linear, TRANSPOSE-FREE: the native [OUT,IN] int8 weight is dequantized on the
+ * fly inside the k-reduction dot GEMM (fgemm_nk_dot_i8) — no transpose, no strided scatter.
+ * woff_w8 = i8 weight[OUT,IN], woff_s = f32 per-output-channel scale[OUT]. */
 static void linear_i8(float *Y, const float *X, size_t woff_w8, size_t woff_s,
                       int OUT, int IN, int rows){
   const int8_t *W8 = wi(woff_w8);
   const float  *WS = wf(woff_s);
-  /* 1. per-token activation quant -> i16 (RVV: abs-max reduce + scale + convert + narrow). */
-  uint64_t tqa=rd_time();
-  static float ASCALE[64];          /* rows <= 64 for these workloads (S=8) */
-  for(int r=0;r<rows;r++) ASCALE[r]=quant_row_rvv(X+(size_t)r*IN, X16+(size_t)r*IN, IN);
-  T_QUANT+=rd_time()-tqa; C_QUANT++;
-  /* 2. contiguous widen i8[OUT,IN] -> i16[OUT,IN] (NO transpose). WT16 reused as the [OUT,IN] i16
-   *    buffer (its N*K capacity is sufficient). */
-  uint64_t tqt=rd_time();
-  widen_nk_rvv(W8, WT16, (size_t)OUT*IN);
-  T_TRANS+=rd_time()-tqt; C_TRANS++;
-  /* 3. transpose-free RVV int8 dot GEMM: ACC_i32[r,o] = sum_k X16[r,k]*W16[o,k]. */
   uint64_t t0=rd_time();
-  igemm_nk_dot(NULL, rows, OUT, IN, ACC, (const uint16_t*)X16, (const uint16_t*)WT16);
+  fgemm_nk_dot_i8(rows, OUT, IN, Y, X, W8, WS);   /* Y[m,o]=WS[o]*sum_i X[m,i]*(float)W_i8[o,i] */
   T_GEMM+=rd_time()-t0; C_GEMM++;
-  /* 4. requant: Y = a_scale[r]*w_scale[o]*acc (scalar glue) */
-  uint64_t tr=rd_time();
-  for(int r=0;r<rows;r++){ float as=ASCALE[r]; const int32_t *ar=ACC+(size_t)r*OUT; float *yr=Y+(size_t)r*OUT;
-    for(int o=0;o<OUT;o++) yr[o]=as*WS[o]*(float)ar[o]; }
-  T_ELEM+=rd_time()-tr; C_ELEM++;
 }
 
 static void rmsnorm(float *out,const float *x,size_t woff,int rows,int dim){
@@ -126,14 +93,10 @@ int main(void){
   void *mp=mmap(NULL,(size_t)st.st_size,PROT_READ,MAP_PRIVATE,fd,0);
   if(mp==MAP_FAILED){ fprintf(stderr,"FAIL mmap\n"); return 2; }
   WBLOB=(const uint8_t*)mp+WDATA0;
-  printf("=== exo_glue_int8 vlenb=%llu ===\n",(unsigned long long)rd_vlenb());
+  printf("=== exo_glue_int8(weight-only) vlenb=%llu ===\n",(unsigned long long)rd_vlenb());
 
   static float h[S*H],r[S*H],q[S*H],kk[S*NKV*HD],vv[S*NKV*HD];
   static float attn[S*H],gate[S*FF],up[S*FF],ff[S*FF],tmp[S*H],logits[S*V];
-  WT16=(int16_t*)malloc((size_t)V*H*sizeof(int16_t));
-  X16 =(int16_t*)malloc((size_t)S*(FF>H?FF:H)*sizeof(int16_t));
-  ACC =(int32_t*)malloc((size_t)S*V*sizeof(int32_t));
-  if(!WT16||!X16||!ACC){ fprintf(stderr,"FAIL scratch\n"); return 2; }
 
   uint64_t w0=wall_ns(),e0=rd_time();
   { uint64_t t0=rd_time(); const float *E=wf(WOFF_EMBED);
@@ -184,11 +147,6 @@ int main(void){
   printf("MERLIN_REGION name=norm ticks=%llu calls=%llu\n",(unsigned long long)T_NORM,(unsigned long long)C_NORM);
   printf("MERLIN_REGION name=attention ticks=%llu calls=%llu\n",(unsigned long long)T_ATTN,(unsigned long long)C_ATTN);
   printf("MERLIN_REGION name=elementwise ticks=%llu calls=%llu\n",(unsigned long long)T_ELEM,(unsigned long long)C_ELEM);
-  printf("MERLIN_REGION name=other ticks=%llu calls=%llu\n",(unsigned long long)(T_QUANT+T_TRANS),(unsigned long long)C_QUANT);
-  printf("MERLIN_REGION name=quant ticks=%llu calls=%llu\n",(unsigned long long)T_QUANT,(unsigned long long)C_QUANT);
-  /* 'widen' = the contiguous i8->i16 weight widen that REPLACED the transpose scatter (which is
-   * gone entirely in the transpose-free [N,K] dot GEMM path). */
-  printf("MERLIN_REGION name=widen ticks=%llu calls=%llu\n",(unsigned long long)T_TRANS,(unsigned long long)C_TRANS);
   printf("DONE\n"); fflush(stdout);
   return 0;
 }

@@ -129,11 +129,16 @@ def test_missing_bundle_is_not_built_gap(monkeypatch, tmp_path):
     r.validate()
 
 
-def test_int8_scalar_glue_labels_activation_quant():
-    from merlin.baselines.contract import ScalarFallback
-    fbs = exo._scalar_fallbacks()
-    fbs.append(ScalarFallback("activation_quant_requant", "no EXO RVV kernel — scalar glue", "other"))
-    assert any(f.symbol == "activation_quant_requant" for f in fbs)
+def test_int8_weight_only_has_no_activation_quant_fallback():
+    # Weight-only int8 keeps activations in f32, so there is NO activation-quant/requant op — the
+    # int8 fallback list must NOT carry one (that belonged to the retired W8A8 path). RMSNorm/RoPE/
+    # attention-softmax/SiLU-exp/embed stay scalar; residual-add + SwiGLU product are RVV glue_ops.
+    fbs = exo._scalar_fallbacks("int8")
+    syms = {f.symbol for f in fbs}
+    assert "activation_quant_requant" not in syms
+    assert {"rmsnorm", "rope", "attention_softmax", "silu_sigmoid_exp", "embed_gather"} <= syms
+    for f in fbs:
+        assert f.reason == "no EXO RVV kernel — scalar glue"
 
 
 def test_detect_llama_config_int8_and_fp32(tmp_path):
@@ -188,16 +193,24 @@ def test_glue_ops_lower_to_rvv():
     assert "rvv256_vfmul" in str(go.ewise_mul_rvv)
 
 
-def test_transpose_free_dot_gemm_is_native_nk_and_used():
-    # the int8 glue must call the transpose-free dot GEMM and NOT materialize a transposed weight
-    # buffer (no strided vsse16 scatter). The winning kernel is igemm_nk_dot (native [N,K]).
+def test_int8_glue_is_weight_only_and_uses_exo_f32_gemm():
+    # This capture's int8 golden is a WEIGHT-ONLY int8 reference (int8 per-channel weights dequant
+    # to f32, activations f32 — verified: all zero-points 0, numpy repro matches golden cos 1.0).
+    # So the int8 glue dequant+transposes the int8 weight (RVV i8->f32 * scale) and runs the EXO
+    # *f32* GEMM (gemm_nt_ref) — NOT a full W8A8 activation-quant path (that gates against a W8A8
+    # golden this full-fidelity capture doesn't carry: cos 0.949 vs weight-only's cos 1.0).
     from merlin.common.paths import repo_root
     glue = (repo_root() / "merlin/python/merlin/baselines/exo_kernels/llama_glue_int8.c").read_text()
-    assert "igemm_nk_dot(" in glue            # glue calls the transpose-free dot GEMM
-    assert "transpose_widen_rvv" not in glue  # the transpose scatter is gone
-    assert "widen_nk_rvv" in glue             # replaced by a contiguous i8->i16 widen (no scatter)
-    nk = (repo_root() / "merlin/python/merlin/baselines/exo_kernels/igemm_nk.c").read_text()
-    assert "vwmacc_vv" in nk and "vredsum" in nk   # k-reduction dot: vector MAC + reduction tail
+    assert "fgemm_nk_dot_i8(" in glue              # transpose-free weight-only int8 dot GEMM (hot path)
+    assert "quant_row_rvv" not in glue             # NO activation quantization (weight-only)
+    assert "vsse32" not in glue                    # NO strided scatter (transpose-free)
+    assert "weight-only" in glue.lower()           # the honest label is in the source
+    # the transpose-free dot dequantizes the native int8 weight inside a contiguous k-reduction.
+    fnk = (repo_root() / "merlin/python/merlin/baselines/exo_kernels/fgemm_nk.c").read_text()
+    assert "vfmacc_vv" in fnk and "vfredusum" in fnk
+    # the EXO f32 + int8 vwmacc kernels are still authored + compiled + RVV-audited (EXO story).
+    import merlin.baselines.exo_kernels.igemm as ig
+    assert "rvv256_vwmacc_vx" in str(ig.igemm_nt_rvv)
 
 
 def test_notes_disclose_glue_and_not_whole_model_compiler():
