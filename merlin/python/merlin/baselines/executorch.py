@@ -354,7 +354,8 @@ def _board_free_bytes() -> int | None:
 
 
 def _run_on_board(res: BaselineResult, runner: Path, exp: "ExportResult",
-                  *, num_executions: int = 1, timeout: int = 1200) -> BoardRun:
+                  *, num_executions: int = 1, timeout: int = 1200,
+                  mmap_model: bool = False) -> BoardRun:
     """Push runner + .pte + .ptd + input(s) to the K1, run under the board lock, dump the output.
 
     Uses the stock executor_runner's ``--model_path`` / ``--data_path`` (external weights) /
@@ -390,6 +391,10 @@ def _run_on_board(res: BaselineResult, runner: Path, exp: "ExportResult",
         argv = [remote_runner, f"--model_path={remote_pte}",
                 f"--num_executions={num_executions}",
                 f"--output_file={remote_out}", "--print_output=none"]
+        if mmap_model:
+            # mmap the (multi-GB) program so its const weight pages demand-load and stay evictable
+            # under the board RAM ceiling instead of being read fully-resident by FileDataLoader.
+            argv.append("--mmap_model=true")
         if remote_ptds:
             argv.append(f"--data_path={remote_ptds[0]}")
         if remote_inputs:
@@ -577,10 +582,14 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
                           "Exported + RVV-audited off-board; not run on-board (no false fit).")
         res.board_vlenb = k1_exec.board_vlenb()
         return _finish(res, model, variant, write)
+    # Whole-model int8 is const-folded (dequant weights -> fp32 program constants), giving a
+    # multi-GB .pte whose weight pages must demand-load; mmap it so the board's RAM ceiling is not
+    # blown by a fully-resident read. The layer-reduced/subgraph paths have small .ptes -> no mmap.
+    mmap_model = bool(int8_whole_model)
     do_board = k1_exec.board_available() if run_board is None else run_board
     if do_board:
         try:
-            _do_board(res, runner, exp)
+            _do_board(res, runner, exp, mmap_model=mmap_model)
         except k1_exec.BoardUnavailable as e:
             res.gap_reason = res.gap_reason or f"K1 board run failed: {str(e)[:250]}"
         except Exception as e:  # noqa: BLE001
@@ -592,9 +601,10 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     return _finish(res, model, variant, write)
 
 
-def _do_board(res: BaselineResult, runner: Path, exp: "ExportResult") -> None:
+def _do_board(res: BaselineResult, runner: Path, exp: "ExportResult",
+              *, mmap_model: bool = False) -> None:
     """Run on the board and fill correctness + E2E/region profile from the executor_runner run."""
-    br = _run_on_board(res, runner, exp)
+    br = _run_on_board(res, runner, exp, mmap_model=mmap_model)
     res.ran = br.ran
     if br.wall_ns is not None:
         res.e2e_wall_ns = br.wall_ns

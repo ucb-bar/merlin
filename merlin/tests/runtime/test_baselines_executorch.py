@@ -79,6 +79,46 @@ def test_no_success_line_means_not_ran():
     assert et._TIME_RE.search(log) is None
 
 
+def test_mmap_model_adds_runner_flag(tmp_path, monkeypatch):
+    """--mmap_model=true is passed to executor_runner iff mmap_model=True (whole-model int8 path).
+
+    The const-folded whole-model int8 .pte carries the dequantized fp32 weights as program
+    constants (multi-GB), so the board must mmap it (MmapDataLoader, NoMlock) to demand-page the
+    weight pages under its RAM ceiling instead of reading them fully resident.
+    """
+    captured_argv = {}
+
+    class _Proc:
+        stdout = "Model executed successfully 1 time(s) in 5.0 ms\n"
+        stderr = ""
+
+    import contextlib
+
+    monkeypatch.setattr(et.k1_exec, "board_lock", lambda *a, **k: contextlib.nullcontext())
+    monkeypatch.setattr(et, "_board_free_bytes", lambda: 10 * 1024**3)
+    monkeypatch.setattr(et.k1_exec, "push", lambda p, r=None, **k: r or f"/remote/{p.name}")
+
+    def _fake_run(argv, **kw):
+        if any("--model_path" in str(a) for a in argv):
+            captured_argv["argv"] = argv
+        return _Proc()
+
+    monkeypatch.setattr(et.k1_exec, "run", _fake_run)
+    monkeypatch.setattr(et, "_scp_from_board", lambda *a, **k: None)
+
+    pte = tmp_path / "model.pte"
+    pte.write_bytes(b"x" * 16)
+    exp = et.ExportResult(pte=pte, ptd_files=[], input_files=[], golden=tmp_path / "g.npy")
+    res = et.BaselineResult(framework="executorch", model="tiny_llama", variant="int8")
+
+    et._run_on_board(res, pte, exp, mmap_model=True)
+    assert any("--mmap_model=true" == str(a) for a in captured_argv["argv"])
+
+    captured_argv.clear()
+    et._run_on_board(res, pte, exp, mmap_model=False)
+    assert not any("mmap_model" in str(a) for a in captured_argv["argv"])
+
+
 def test_cos_rel_matches_golden(tmp_path):
     import numpy as np
 

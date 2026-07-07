@@ -247,6 +247,25 @@ def main() -> int:
     except Exception:  # noqa: BLE001
         exported = export(model, captured, strict=True)
 
+    # 3b. WHOLE-MODEL int8 arena fix: WeightOnlyInt8Linear.forward is
+    #     `F.linear(x, weight.to(fp32)) * scales`. That `int8_weight.to(fp32)` dequant is a graph
+    #     op whose output is a PLANNED ACTIVATION tensor, so the memory planner lays every layer's
+    #     dequantized fp32 weight at a distinct offset -> a 4.25 GB non-const arena for full-depth
+    #     TinyLlama (measured), which `std::make_unique<uint8_t[]>(4.25e9)` throws bad_alloc on at
+    #     load on the 3.4 GB board. Const-folding the dequant (its inputs are all frozen constants)
+    #     turns those fp32 weights into program CONSTANTS: the planned arena collapses from 4.25 GB
+    #     to ~2 MB (measured 4250738736 -> 2405952 bytes, ~1770x). The fp32 weights now live in the
+    #     .pte program data, which the board mmaps (executor_runner --mmap_model) so their pages
+    #     demand-load and stay evictable under the board's RAM ceiling. This is what unblocks the
+    #     FULL-DEPTH (not layer-reduced) whole-model int8 on-board run.
+    if args.int8_whole_model:
+        try:
+            from executorch.exir.passes.constant_prop_pass import constant_prop_pass
+            exported = constant_prop_pass(exported)
+            subgraph_note += " +const-prop(dequant-weights-folded->const, arena 4.25GB->2MB)"
+        except Exception as e:  # noqa: BLE001
+            subgraph_note += f" const-prop-skipped({str(e)[:80]})"
+
     # 4. XNNPACK partitioner (the RVV-microkernel delegate path).
     partitioners = []
     if not args.no_xnnpack:
