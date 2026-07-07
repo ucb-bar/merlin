@@ -83,3 +83,21 @@ buckets**: `kernels/ rvv/ dse/ gemmini/ targetgen/ ir/ runtime/ infra/`. Rules (
 - Resolve repo paths via `merlin.common.paths.repo_root()` / `merlin_dir()` — **never** `Path(__file__).parents[N]`
   (so tests are location-independent and survive moves).
 - Run the suite: `.venv/bin/python -m pytest merlin/tests`.
+
+# Documentation convention — durable docs vs reports
+
+Start at the generated hub **`docs/README.md`**. Durable documentation lives in **`docs/`** under
+three kind-subdirs — **`reference/`** (code-derived facts), **`guides/`** (how-tos), **`design/`**
+(rationale) — each file carrying YAML front-matter (`title, kind, status, owner, last_verified,
+related, code_refs`). **Point-in-time reports** (results/findings/status/presentations) are NOT docs
+— they live under `artifacts/` (concern-first; see "Generated-output convention"). Rules (see
+`.claude/skills/docs-layout`; enforced by `check_structure.py` + the `check_docs.py` Stop/pre-commit/CI gates):
+
+- Generated docs are regenerated, never hand-edited: `gen_cli_docs.py` (`reference/cli.md`),
+  `gen_package_docs.py` (`reference/module_index.md`), `gen_schema_docs.py` (`reference/schemas.md`),
+  `gen_docs_index.py` (`README.md` hub). Run them after touching CLIs/schemas/packages/docs.
+- Front-matter must be schema-valid; `check_doc_paths.py` blocks retired paths; the root README/AGENT.md
+  may not carry scaffold-era phrasing.
+- **Semantic drift** (a doc whose `code_refs` moved past its `last_verified`) is surfaced by
+  `check_docs_freshness.py --json` and fixed by the **`docs-doctor`** skill (reconcile, then bump the date).
+- Enable the pre-commit gate per clone: `python build_tools/scripts/install_git_hooks.py`.
