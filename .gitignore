@@ -4,6 +4,8 @@
 *.err
 /.compat_lib/
 selfcheck_out/
+.qa_channel/
+.oracle_timing.json
 
 # --- Generated build outputs (structured, gitignored) ---
 # Keep the tracked skeleton files (AGENT.md / README.md / .gitkeep), ignore the rest.

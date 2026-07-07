@@ -1,1 +1,0 @@
-/scratch/agustin/projects/oscar-merlin/bench_contract/capsules/isa/A0_config_smoke/capsule.interface.mlir
