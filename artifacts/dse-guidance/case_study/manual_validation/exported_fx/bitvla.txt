@@ -1,0 +1,1135 @@
+siglip attention, weight bits: 32, weight quant method: absmean, act bits: 32, act quant method: absmax_per_token
+siglip mlp, weight bits: 32, weight quant method: absmean, act bits: 32, act quant method: absmax_per_token
+siglip attention, weight bits: 32, weight quant method: absmean, act bits: 32, act quant method: absmax_per_token
+siglip mlp, weight bits: 32, weight quant method: absmean, act bits: 32, act quant method: absmax_per_token
+siglip mlp, weight bits: 32, weight quant method: absmean, act bits: 32, act quant method: absmax_per_token
+=== OP HISTOGRAM (exported ATen graph, pre-lowering) ===
+    86  aten._assert_tensor_metadata.default
+    85  aten.to.dtype
+    84  aten.mul.Tensor
+    38  aten.slice.Tensor
+    30  aten.div.Tensor
+    28  aten.abs.default
+    28  <built-in function getitem>
+    28  aten.clamp_.default
+    28  aten.reciprocal.default
+    28  aten.round.default
+    28  aten.clamp.default
+    20  aten.add.Tensor
+    15  aten.unsqueeze.default
+    15  aten.linear.default
+    14  aten.max.dim
+    14  aten.mean.default
+    11  aten.pow.Tensor_Scalar
+    10  aten.transpose.int
+     9  aten.mean.dim
+     9  aten.rsqrt.default
+     8  aten.expand.default
+     7  aten.view.default
+     6  aten.reshape.default
+     4  aten.index.Tensor
+     4  aten.neg.default
+     4  aten.cat.default
+     4  aten.matmul.default
+     2  aten.masked_fill.Scalar
+     2  aten.select.int
+     2  aten.clone.default
+     2  aten.softmax.int
+     2  aten.dropout.default
+     2  aten.contiguous.default
+     2  aten.relu.default
+     1  aten.arange.start
+     1  aten.full.default
+     1  aten.arange.default
+     1  aten.lt.Tensor
+     1  aten.masked_fill_.Scalar
+     1  aten.rsub.Scalar
+     1  aten.to.dtype_layout
+=== GRAPH ===
+class GraphModule(torch.nn.Module):
+    def forward(self, p_vla_vision_tower_vision_model_embeddings_patch_embedding_weight: "f32[128, 3, 16, 16]", p_vla_vision_tower_vision_model_embeddings_patch_embedding_bias: "f32[128]", p_vla_vision_tower_vision_model_embeddings_position_embedding_weight: "f32[196, 128]", p_vla_vision_tower_vision_model_encoder_layers_0_self_attn_k_proj_weight: "f32[128, 128]", p_vla_vision_tower_vision_model_encoder_layers_0_self_attn_k_proj_bias: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_0_self_attn_v_proj_weight: "f32[128, 128]", p_vla_vision_tower_vision_model_encoder_layers_0_self_attn_v_proj_bias: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_0_self_attn_q_proj_weight: "f32[128, 128]", p_vla_vision_tower_vision_model_encoder_layers_0_self_attn_q_proj_bias: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_0_self_attn_out_proj_weight: "f32[128, 128]", p_vla_vision_tower_vision_model_encoder_layers_0_self_attn_out_proj_bias: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_0_layer_norm1_weight: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_0_layer_norm1_bias: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_0_mlp_fc1_weight: "f32[256, 128]", p_vla_vision_tower_vision_model_encoder_layers_0_mlp_fc1_bias: "f32[256]", p_vla_vision_tower_vision_model_encoder_layers_0_mlp_fc2_weight: "f32[128, 256]", p_vla_vision_tower_vision_model_encoder_layers_0_mlp_fc2_bias: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_0_layer_norm2_weight: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_0_layer_norm2_bias: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_1_self_attn_k_proj_weight: "f32[128, 128]", p_vla_vision_tower_vision_model_encoder_layers_1_self_attn_k_proj_bias: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_1_self_attn_v_proj_weight: "f32[128, 128]", p_vla_vision_tower_vision_model_encoder_layers_1_self_attn_v_proj_bias: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_1_self_attn_q_proj_weight: "f32[128, 128]", p_vla_vision_tower_vision_model_encoder_layers_1_self_attn_q_proj_bias: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_1_self_attn_out_proj_weight: "f32[128, 128]", p_vla_vision_tower_vision_model_encoder_layers_1_self_attn_out_proj_bias: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_1_layer_norm1_weight: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_1_layer_norm1_bias: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_1_mlp_fc1_weight: "f32[256, 128]", p_vla_vision_tower_vision_model_encoder_layers_1_mlp_fc1_bias: "f32[256]", p_vla_vision_tower_vision_model_encoder_layers_1_mlp_fc2_weight: "f32[128, 256]", p_vla_vision_tower_vision_model_encoder_layers_1_mlp_fc2_bias: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_1_layer_norm2_weight: "f32[128]", p_vla_vision_tower_vision_model_encoder_layers_1_layer_norm2_bias: "f32[128]", p_vla_vision_tower_vision_model_post_layernorm_weight: "f32[128]", p_vla_vision_tower_vision_model_post_layernorm_bias: "f32[128]", p_vla_vision_tower_vision_model_head_probe: "f32[1, 1, 128]", p_vla_vision_tower_vision_model_head_attention_in_proj_weight: "f32[384, 128]", p_vla_vision_tower_vision_model_head_attention_in_proj_bias: "f32[384]", p_vla_vision_tower_vision_model_head_attention_out_proj_weight: "f32[128, 128]", p_vla_vision_tower_vision_model_head_attention_out_proj_bias: "f32[128]", p_vla_vision_tower_vision_model_head_layernorm_weight: "f32[128]", p_vla_vision_tower_vision_model_head_layernorm_bias: "f32[128]", p_vla_vision_tower_vision_model_head_mlp_fc1_weight: "f32[256, 128]", p_vla_vision_tower_vision_model_head_mlp_fc1_bias: "f32[256]", p_vla_vision_tower_vision_model_head_mlp_fc2_weight: "f32[128, 256]", p_vla_vision_tower_vision_model_head_mlp_fc2_bias: "f32[128]", p_vla_multi_modal_projector_linear_1_weight: "f32[256, 128]", p_vla_multi_modal_projector_linear_1_bias: "f32[256]", p_vla_multi_modal_projector_linear_2_weight: "f32[256, 256]", p_vla_multi_modal_projector_linear_2_bias: "f32[256]", p_vla_language_model_model_embed_tokens_weight: "f32[1024, 256]", p_vla_language_model_model_layers_0_self_attn_q_proj_weight: "f32[256, 256]", p_vla_language_model_model_layers_0_self_attn_k_proj_weight: "f32[128, 256]", p_vla_language_model_model_layers_0_self_attn_v_proj_weight: "f32[128, 256]", p_vla_language_model_model_layers_0_self_attn_o_proj_weight: "f32[256, 256]", p_vla_language_model_model_layers_0_self_attn_attn_sub_norm_weight: "f32[256]", p_vla_language_model_model_layers_0_mlp_gate_proj_weight: "f32[512, 256]", p_vla_language_model_model_layers_0_mlp_up_proj_weight: "f32[512, 256]", p_vla_language_model_model_layers_0_mlp_down_proj_weight: "f32[256, 512]", p_vla_language_model_model_layers_0_mlp_ffn_sub_norm_weight: "f32[512]", p_vla_language_model_model_layers_0_input_layernorm_weight: "f32[256]", p_vla_language_model_model_layers_0_post_attention_layernorm_weight: "f32[256]", p_vla_language_model_model_layers_1_self_attn_q_proj_weight: "f32[256, 256]", p_vla_language_model_model_layers_1_self_attn_k_proj_weight: "f32[128, 256]", p_vla_language_model_model_layers_1_self_attn_v_proj_weight: "f32[128, 256]", p_vla_language_model_model_layers_1_self_attn_o_proj_weight: "f32[256, 256]", p_vla_language_model_model_layers_1_self_attn_attn_sub_norm_weight: "f32[256]", p_vla_language_model_model_layers_1_mlp_gate_proj_weight: "f32[512, 256]", p_vla_language_model_model_layers_1_mlp_up_proj_weight: "f32[512, 256]", p_vla_language_model_model_layers_1_mlp_down_proj_weight: "f32[256, 512]", p_vla_language_model_model_layers_1_mlp_ffn_sub_norm_weight: "f32[512]", p_vla_language_model_model_layers_1_input_layernorm_weight: "f32[256]", p_vla_language_model_model_layers_1_post_attention_layernorm_weight: "f32[256]", p_vla_language_model_model_norm_weight: "f32[256]", p_vla_language_model_lm_head_weight: "f32[1024, 256]", b_vla_vision_tower_vision_model_embeddings_position_ids: "i64[1, 196]", b_vla_language_model_model_layers_0_self_attn_rotary_emb_inv_freq: "f32[16]", b_vla_language_model_model_layers_0_self_attn_rotary_emb_cos_cached: "f32[2048, 32]", b_vla_language_model_model_layers_0_self_attn_rotary_emb_sin_cached: "f32[2048, 32]", b_vla_language_model_model_layers_1_self_attn_rotary_emb_inv_freq: "f32[16]", b_vla_language_model_model_layers_1_self_attn_rotary_emb_cos_cached: "f32[2048, 32]", b_vla_language_model_model_layers_1_self_attn_rotary_emb_sin_cached: "f32[2048, 32]", inputs_embeds: "f32[1, 32, 256]", attention_mask: "i64[1, 32]"):
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:981 in forward, code: position_ids = torch.arange(
+        arange: "i64[32]" = torch.ops.aten.arange.start(0, 32, dtype = torch.int64, device = device(type='cpu'), pin_memory = False)
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:984 in forward, code: position_ids = position_ids.unsqueeze(0)
+        unsqueeze: "i64[1, 32]" = torch.ops.aten.unsqueeze.default(arange, 0);  arange = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:1003 in forward, code: attention_mask = _prepare_4d_causal_attention_mask(
+        full: "f32[32, 32]" = torch.ops.aten.full.default([32, 32], -3.4028234663852886e+38, device = device(type='cpu'), pin_memory = False)
+        arange_1: "i64[32]" = torch.ops.aten.arange.default(32, device = device(type='cpu'), pin_memory = False)
+        add: "i64[32]" = torch.ops.aten.add.Tensor(arange_1, 1)
+        view: "i64[32, 1]" = torch.ops.aten.view.default(add, [32, 1]);  add = None
+        lt: "b8[32, 32]" = torch.ops.aten.lt.Tensor(arange_1, view);  arange_1 = view = None
+        masked_fill_: "f32[32, 32]" = torch.ops.aten.masked_fill_.Scalar(full, lt, 0);  full = lt = None
+        _assert_tensor_metadata_default = torch.ops.aten._assert_tensor_metadata.default(masked_fill_, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default = None
+        to: "f32[32, 32]" = torch.ops.aten.to.dtype(masked_fill_, torch.float32);  masked_fill_ = None
+        unsqueeze_1: "f32[1, 32, 32]" = torch.ops.aten.unsqueeze.default(to, 0);  to = None
+        unsqueeze_2: "f32[1, 1, 32, 32]" = torch.ops.aten.unsqueeze.default(unsqueeze_1, 1);  unsqueeze_1 = None
+        slice_1: "f32[1, 1, 32, 32]" = torch.ops.aten.slice.Tensor(unsqueeze_2, 2, 0, 9223372036854775807);  unsqueeze_2 = None
+        slice_2: "f32[1, 1, 32, 32]" = torch.ops.aten.slice.Tensor(slice_1, 3, 0, 9223372036854775807);  slice_1 = None
+        expand: "f32[1, 1, 32, 32]" = torch.ops.aten.expand.default(slice_2, [1, 1, 32, 32]);  slice_2 = None
+        slice_3: "i64[1, 32]" = torch.ops.aten.slice.Tensor(attention_mask, 0, 0, 9223372036854775807);  attention_mask = None
+        unsqueeze_3: "i64[1, 1, 32]" = torch.ops.aten.unsqueeze.default(slice_3, 1);  slice_3 = None
+        unsqueeze_4: "i64[1, 1, 1, 32]" = torch.ops.aten.unsqueeze.default(unsqueeze_3, 2);  unsqueeze_3 = None
+        slice_4: "i64[1, 1, 1, 32]" = torch.ops.aten.slice.Tensor(unsqueeze_4, 3, 0, 9223372036854775807);  unsqueeze_4 = None
+        expand_1: "i64[1, 1, 32, 32]" = torch.ops.aten.expand.default(slice_4, [1, 1, 32, 32]);  slice_4 = None
+        _assert_tensor_metadata_default_1 = torch.ops.aten._assert_tensor_metadata.default(expand_1, dtype = torch.int64, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_1 = None
+        to_1: "f32[1, 1, 32, 32]" = torch.ops.aten.to.dtype(expand_1, torch.float32);  expand_1 = None
+        rsub: "f32[1, 1, 32, 32]" = torch.ops.aten.rsub.Scalar(to_1, 1.0);  to_1 = None
+        _assert_tensor_metadata_default_2 = torch.ops.aten._assert_tensor_metadata.default(rsub, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_2 = None
+        to_2: "b8[1, 1, 32, 32]" = torch.ops.aten.to.dtype(rsub, torch.bool)
+        masked_fill: "f32[1, 1, 32, 32]" = torch.ops.aten.masked_fill.Scalar(rsub, to_2, -3.4028234663852886e+38);  rsub = to_2 = None
+        _assert_tensor_metadata_default_3 = torch.ops.aten._assert_tensor_metadata.default(masked_fill, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_3 = None
+        to_3: "f32[1, 1, 32, 32]" = torch.ops.aten.to.dtype_layout(masked_fill, dtype = torch.float32, layout = torch.strided, device = device(type='cpu'));  masked_fill = None
+        _assert_tensor_metadata_default_4 = torch.ops.aten._assert_tensor_metadata.default(to_3, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_4 = None
+        to_4: "b8[1, 1, 32, 32]" = torch.ops.aten.to.dtype(to_3, torch.bool);  to_3 = None
+        masked_fill_1: "f32[1, 1, 32, 32]" = torch.ops.aten.masked_fill.Scalar(expand, to_4, -3.4028234663852886e+38);  expand = to_4 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:207 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_5 = torch.ops.aten._assert_tensor_metadata.default(inputs_embeds, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_5 = None
+        to_5: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(inputs_embeds, torch.float32);  inputs_embeds = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:208 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_1: "f32[1, 32, 256]" = torch.ops.aten.pow.Tensor_Scalar(to_5, 2)
+        mean: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_1, [-1], True);  pow_1 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:209 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_1: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean, 1e-05);  mean = None
+        rsqrt: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_1);  add_1 = None
+        mul: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_5, rsqrt);  rsqrt = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:210 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_6 = torch.ops.aten._assert_tensor_metadata.default(mul, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_6 = None
+        to_6: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(mul, torch.float32);  mul = None
+        mul_1: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(p_vla_language_model_model_layers_0_input_layernorm_weight, to_6);  p_vla_language_model_model_layers_0_input_layernorm_weight = to_6 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:107 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_7 = torch.ops.aten._assert_tensor_metadata.default(mul_1, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_7 = None
+        to_7: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(mul_1, torch.float32);  mul_1 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:108 in forward, code: s = 127 / x.abs().max(dim=-1, keepdim=True).values.clamp_(min=1e-5)
+        abs_1: "f32[1, 32, 256]" = torch.ops.aten.abs.default(to_7)
+        max_1 = torch.ops.aten.max.dim(abs_1, -1, True);  abs_1 = None
+        getitem: "f32[1, 32, 1]" = max_1[0]
+        getitem_1: "i64[1, 32, 1]" = max_1[1];  max_1 = getitem_1 = None
+        clamp_: "f32[1, 32, 1]" = torch.ops.aten.clamp_.default(getitem, 1e-05);  getitem = None
+        reciprocal: "f32[1, 32, 1]" = torch.ops.aten.reciprocal.default(clamp_);  clamp_ = None
+        mul_2: "f32[1, 32, 1]" = torch.ops.aten.mul.Tensor(reciprocal, 127);  reciprocal = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:109 in forward, code: x = (x * s).round().clamp(-128, 127) / s
+        mul_3: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_7, mul_2)
+        round_1: "f32[1, 32, 256]" = torch.ops.aten.round.default(mul_3);  mul_3 = None
+        clamp: "f32[1, 32, 256]" = torch.ops.aten.clamp.default(round_1, -128, 127);  round_1 = None
+        div: "f32[1, 32, 256]" = torch.ops.aten.div.Tensor(clamp, mul_2);  clamp = mul_2 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:110 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_8 = torch.ops.aten._assert_tensor_metadata.default(div, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_8 = None
+        to_8: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(div, torch.float32);  div = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:91 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_9 = torch.ops.aten._assert_tensor_metadata.default(p_vla_language_model_model_layers_0_self_attn_q_proj_weight, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_9 = None
+        to_9: "f32[256, 256]" = torch.ops.aten.to.dtype(p_vla_language_model_model_layers_0_self_attn_q_proj_weight, torch.float32);  p_vla_language_model_model_layers_0_self_attn_q_proj_weight = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:92 in forward, code: s = 1.0 / x.abs().mean().clamp_(min=1e-5)
+        abs_2: "f32[256, 256]" = torch.ops.aten.abs.default(to_9)
+        mean_1: "f32[]" = torch.ops.aten.mean.default(abs_2);  abs_2 = None
+        clamp__1: "f32[]" = torch.ops.aten.clamp_.default(mean_1, 1e-05);  mean_1 = None
+        reciprocal_1: "f32[]" = torch.ops.aten.reciprocal.default(clamp__1);  clamp__1 = None
+        mul_4: "f32[]" = torch.ops.aten.mul.Tensor(reciprocal_1, 1.0);  reciprocal_1 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:93 in forward, code: x = (x * s).round().clamp(-1, 1) / s
+        mul_5: "f32[256, 256]" = torch.ops.aten.mul.Tensor(to_9, mul_4);  to_9 = None
+        round_2: "f32[256, 256]" = torch.ops.aten.round.default(mul_5);  mul_5 = None
+        clamp_1: "f32[256, 256]" = torch.ops.aten.clamp.default(round_2, -1, 1);  round_2 = None
+        div_1: "f32[256, 256]" = torch.ops.aten.div.Tensor(clamp_1, mul_4);  clamp_1 = mul_4 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:94 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_10 = torch.ops.aten._assert_tensor_metadata.default(div_1, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_10 = None
+        to_10: "f32[256, 256]" = torch.ops.aten.to.dtype(div_1, torch.float32);  div_1 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:193 in forward, code: return F.linear(input, weight, self.bias)
+        linear: "f32[1, 32, 256]" = torch.ops.aten.linear.default(to_8, to_10);  to_8 = to_10 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:107 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_11 = torch.ops.aten._assert_tensor_metadata.default(to_7, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_11 = None
+        to_11: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(to_7, torch.float32);  to_7 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:108 in forward, code: s = 127 / x.abs().max(dim=-1, keepdim=True).values.clamp_(min=1e-5)
+        abs_3: "f32[1, 32, 256]" = torch.ops.aten.abs.default(to_11)
+        max_2 = torch.ops.aten.max.dim(abs_3, -1, True);  abs_3 = None
+        getitem_2: "f32[1, 32, 1]" = max_2[0]
+        getitem_3: "i64[1, 32, 1]" = max_2[1];  max_2 = getitem_3 = None
+        clamp__2: "f32[1, 32, 1]" = torch.ops.aten.clamp_.default(getitem_2, 1e-05);  getitem_2 = None
+        reciprocal_2: "f32[1, 32, 1]" = torch.ops.aten.reciprocal.default(clamp__2);  clamp__2 = None
+        mul_6: "f32[1, 32, 1]" = torch.ops.aten.mul.Tensor(reciprocal_2, 127);  reciprocal_2 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:109 in forward, code: x = (x * s).round().clamp(-128, 127) / s
+        mul_7: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_11, mul_6)
+        round_3: "f32[1, 32, 256]" = torch.ops.aten.round.default(mul_7);  mul_7 = None
+        clamp_2: "f32[1, 32, 256]" = torch.ops.aten.clamp.default(round_3, -128, 127);  round_3 = None
+        div_2: "f32[1, 32, 256]" = torch.ops.aten.div.Tensor(clamp_2, mul_6);  clamp_2 = mul_6 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:110 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_12 = torch.ops.aten._assert_tensor_metadata.default(div_2, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_12 = None
+        to_12: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(div_2, torch.float32);  div_2 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:91 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_13 = torch.ops.aten._assert_tensor_metadata.default(p_vla_language_model_model_layers_0_self_attn_k_proj_weight, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_13 = None
+        to_13: "f32[128, 256]" = torch.ops.aten.to.dtype(p_vla_language_model_model_layers_0_self_attn_k_proj_weight, torch.float32);  p_vla_language_model_model_layers_0_self_attn_k_proj_weight = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:92 in forward, code: s = 1.0 / x.abs().mean().clamp_(min=1e-5)
+        abs_4: "f32[128, 256]" = torch.ops.aten.abs.default(to_13)
+        mean_2: "f32[]" = torch.ops.aten.mean.default(abs_4);  abs_4 = None
+        clamp__3: "f32[]" = torch.ops.aten.clamp_.default(mean_2, 1e-05);  mean_2 = None
+        reciprocal_3: "f32[]" = torch.ops.aten.reciprocal.default(clamp__3);  clamp__3 = None
+        mul_8: "f32[]" = torch.ops.aten.mul.Tensor(reciprocal_3, 1.0);  reciprocal_3 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:93 in forward, code: x = (x * s).round().clamp(-1, 1) / s
+        mul_9: "f32[128, 256]" = torch.ops.aten.mul.Tensor(to_13, mul_8);  to_13 = None
+        round_4: "f32[128, 256]" = torch.ops.aten.round.default(mul_9);  mul_9 = None
+        clamp_3: "f32[128, 256]" = torch.ops.aten.clamp.default(round_4, -1, 1);  round_4 = None
+        div_3: "f32[128, 256]" = torch.ops.aten.div.Tensor(clamp_3, mul_8);  clamp_3 = mul_8 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:94 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_14 = torch.ops.aten._assert_tensor_metadata.default(div_3, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_14 = None
+        to_14: "f32[128, 256]" = torch.ops.aten.to.dtype(div_3, torch.float32);  div_3 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:193 in forward, code: return F.linear(input, weight, self.bias)
+        linear_1: "f32[1, 32, 128]" = torch.ops.aten.linear.default(to_12, to_14);  to_12 = to_14 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:107 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_15 = torch.ops.aten._assert_tensor_metadata.default(to_11, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_15 = None
+        to_15: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(to_11, torch.float32);  to_11 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:108 in forward, code: s = 127 / x.abs().max(dim=-1, keepdim=True).values.clamp_(min=1e-5)
+        abs_5: "f32[1, 32, 256]" = torch.ops.aten.abs.default(to_15)
+        max_3 = torch.ops.aten.max.dim(abs_5, -1, True);  abs_5 = None
+        getitem_4: "f32[1, 32, 1]" = max_3[0]
+        getitem_5: "i64[1, 32, 1]" = max_3[1];  max_3 = getitem_5 = None
+        clamp__4: "f32[1, 32, 1]" = torch.ops.aten.clamp_.default(getitem_4, 1e-05);  getitem_4 = None
+        reciprocal_4: "f32[1, 32, 1]" = torch.ops.aten.reciprocal.default(clamp__4);  clamp__4 = None
+        mul_10: "f32[1, 32, 1]" = torch.ops.aten.mul.Tensor(reciprocal_4, 127);  reciprocal_4 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:109 in forward, code: x = (x * s).round().clamp(-128, 127) / s
+        mul_11: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_15, mul_10);  to_15 = None
+        round_5: "f32[1, 32, 256]" = torch.ops.aten.round.default(mul_11);  mul_11 = None
+        clamp_4: "f32[1, 32, 256]" = torch.ops.aten.clamp.default(round_5, -128, 127);  round_5 = None
+        div_4: "f32[1, 32, 256]" = torch.ops.aten.div.Tensor(clamp_4, mul_10);  clamp_4 = mul_10 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:110 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_16 = torch.ops.aten._assert_tensor_metadata.default(div_4, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_16 = None
+        to_16: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(div_4, torch.float32);  div_4 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:91 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_17 = torch.ops.aten._assert_tensor_metadata.default(p_vla_language_model_model_layers_0_self_attn_v_proj_weight, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_17 = None
+        to_17: "f32[128, 256]" = torch.ops.aten.to.dtype(p_vla_language_model_model_layers_0_self_attn_v_proj_weight, torch.float32);  p_vla_language_model_model_layers_0_self_attn_v_proj_weight = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:92 in forward, code: s = 1.0 / x.abs().mean().clamp_(min=1e-5)
+        abs_6: "f32[128, 256]" = torch.ops.aten.abs.default(to_17)
+        mean_3: "f32[]" = torch.ops.aten.mean.default(abs_6);  abs_6 = None
+        clamp__5: "f32[]" = torch.ops.aten.clamp_.default(mean_3, 1e-05);  mean_3 = None
+        reciprocal_5: "f32[]" = torch.ops.aten.reciprocal.default(clamp__5);  clamp__5 = None
+        mul_12: "f32[]" = torch.ops.aten.mul.Tensor(reciprocal_5, 1.0);  reciprocal_5 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:93 in forward, code: x = (x * s).round().clamp(-1, 1) / s
+        mul_13: "f32[128, 256]" = torch.ops.aten.mul.Tensor(to_17, mul_12);  to_17 = None
+        round_6: "f32[128, 256]" = torch.ops.aten.round.default(mul_13);  mul_13 = None
+        clamp_5: "f32[128, 256]" = torch.ops.aten.clamp.default(round_6, -1, 1);  round_6 = None
+        div_5: "f32[128, 256]" = torch.ops.aten.div.Tensor(clamp_5, mul_12);  clamp_5 = mul_12 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:94 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_18 = torch.ops.aten._assert_tensor_metadata.default(div_5, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_18 = None
+        to_18: "f32[128, 256]" = torch.ops.aten.to.dtype(div_5, torch.float32);  div_5 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:193 in forward, code: return F.linear(input, weight, self.bias)
+        linear_2: "f32[1, 32, 128]" = torch.ops.aten.linear.default(to_16, to_18);  to_16 = to_18 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:383 in forward, code: query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        view_1: "f32[1, 32, 8, 32]" = torch.ops.aten.view.default(linear, [1, 32, 8, 32]);  linear = None
+        transpose: "f32[1, 8, 32, 32]" = torch.ops.aten.transpose.int(view_1, 1, 2);  view_1 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:384 in forward, code: key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        view_2: "f32[1, 32, 4, 32]" = torch.ops.aten.view.default(linear_1, [1, 32, 4, 32]);  linear_1 = None
+        transpose_1: "f32[1, 4, 32, 32]" = torch.ops.aten.transpose.int(view_2, 1, 2);  view_2 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:385 in forward, code: value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        view_3: "f32[1, 32, 4, 32]" = torch.ops.aten.view.default(linear_2, [1, 32, 4, 32]);  linear_2 = None
+        transpose_2: "f32[1, 4, 32, 32]" = torch.ops.aten.transpose.int(view_3, 1, 2);  view_3 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:247 in forward, code: self.cos_cached[:seq_len].to(dtype=x.dtype),
+        slice_5: "f32[32, 32]" = torch.ops.aten.slice.Tensor(b_vla_language_model_model_layers_0_self_attn_rotary_emb_cos_cached, 0, None, 32);  b_vla_language_model_model_layers_0_self_attn_rotary_emb_cos_cached = None
+        _assert_tensor_metadata_default_19 = torch.ops.aten._assert_tensor_metadata.default(slice_5, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_19 = None
+        to_19: "f32[32, 32]" = torch.ops.aten.to.dtype(slice_5, torch.float32);  slice_5 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:248 in forward, code: self.sin_cached[:seq_len].to(dtype=x.dtype),
+        slice_6: "f32[32, 32]" = torch.ops.aten.slice.Tensor(b_vla_language_model_model_layers_0_self_attn_rotary_emb_sin_cached, 0, None, 32);  b_vla_language_model_model_layers_0_self_attn_rotary_emb_sin_cached = None
+        _assert_tensor_metadata_default_20 = torch.ops.aten._assert_tensor_metadata.default(slice_6, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_20 = None
+        to_20: "f32[32, 32]" = torch.ops.aten.to.dtype(slice_6, torch.float32);  slice_6 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:397 in forward, code: query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        index: "f32[1, 32, 32]" = torch.ops.aten.index.Tensor(to_19, [unsqueeze]);  to_19 = None
+        unsqueeze_5: "f32[1, 1, 32, 32]" = torch.ops.aten.unsqueeze.default(index, 1);  index = None
+        index_1: "f32[1, 32, 32]" = torch.ops.aten.index.Tensor(to_20, [unsqueeze]);  to_20 = None
+        unsqueeze_6: "f32[1, 1, 32, 32]" = torch.ops.aten.unsqueeze.default(index_1, 1);  index_1 = None
+        mul_14: "f32[1, 8, 32, 32]" = torch.ops.aten.mul.Tensor(transpose, unsqueeze_5)
+        slice_7: "f32[1, 8, 32, 16]" = torch.ops.aten.slice.Tensor(transpose, 3, 0, 16)
+        slice_8: "f32[1, 8, 32, 16]" = torch.ops.aten.slice.Tensor(transpose, 3, 16, 9223372036854775807);  transpose = None
+        neg: "f32[1, 8, 32, 16]" = torch.ops.aten.neg.default(slice_8);  slice_8 = None
+        cat: "f32[1, 8, 32, 32]" = torch.ops.aten.cat.default([neg, slice_7], -1);  neg = slice_7 = None
+        mul_15: "f32[1, 8, 32, 32]" = torch.ops.aten.mul.Tensor(cat, unsqueeze_6);  cat = None
+        add_2: "f32[1, 8, 32, 32]" = torch.ops.aten.add.Tensor(mul_14, mul_15);  mul_14 = mul_15 = None
+        mul_16: "f32[1, 4, 32, 32]" = torch.ops.aten.mul.Tensor(transpose_1, unsqueeze_5);  unsqueeze_5 = None
+        slice_9: "f32[1, 4, 32, 16]" = torch.ops.aten.slice.Tensor(transpose_1, 3, 0, 16)
+        slice_10: "f32[1, 4, 32, 16]" = torch.ops.aten.slice.Tensor(transpose_1, 3, 16, 9223372036854775807);  transpose_1 = None
+        neg_1: "f32[1, 4, 32, 16]" = torch.ops.aten.neg.default(slice_10);  slice_10 = None
+        cat_1: "f32[1, 4, 32, 32]" = torch.ops.aten.cat.default([neg_1, slice_9], -1);  neg_1 = slice_9 = None
+        mul_17: "f32[1, 4, 32, 32]" = torch.ops.aten.mul.Tensor(cat_1, unsqueeze_6);  cat_1 = unsqueeze_6 = None
+        add_3: "f32[1, 4, 32, 32]" = torch.ops.aten.add.Tensor(mul_16, mul_17);  mul_16 = mul_17 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:403 in forward, code: key_states = repeat_kv(key_states, self.num_key_value_groups)
+        slice_11: "f32[1, 4, 32, 32]" = torch.ops.aten.slice.Tensor(add_3, 0, 0, 9223372036854775807);  add_3 = None
+        slice_12: "f32[1, 4, 32, 32]" = torch.ops.aten.slice.Tensor(slice_11, 1, 0, 9223372036854775807);  slice_11 = None
+        unsqueeze_7: "f32[1, 4, 1, 32, 32]" = torch.ops.aten.unsqueeze.default(slice_12, 2);  slice_12 = None
+        slice_13: "f32[1, 4, 1, 32, 32]" = torch.ops.aten.slice.Tensor(unsqueeze_7, 3, 0, 9223372036854775807);  unsqueeze_7 = None
+        slice_14: "f32[1, 4, 1, 32, 32]" = torch.ops.aten.slice.Tensor(slice_13, 4, 0, 9223372036854775807);  slice_13 = None
+        expand_2: "f32[1, 4, 2, 32, 32]" = torch.ops.aten.expand.default(slice_14, [1, 4, 2, 32, 32]);  slice_14 = None
+        reshape: "f32[1, 8, 32, 32]" = torch.ops.aten.reshape.default(expand_2, [1, 8, 32, 32]);  expand_2 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:404 in forward, code: value_states = repeat_kv(value_states, self.num_key_value_groups)
+        slice_15: "f32[1, 4, 32, 32]" = torch.ops.aten.slice.Tensor(transpose_2, 0, 0, 9223372036854775807);  transpose_2 = None
+        slice_16: "f32[1, 4, 32, 32]" = torch.ops.aten.slice.Tensor(slice_15, 1, 0, 9223372036854775807);  slice_15 = None
+        unsqueeze_8: "f32[1, 4, 1, 32, 32]" = torch.ops.aten.unsqueeze.default(slice_16, 2);  slice_16 = None
+        slice_17: "f32[1, 4, 1, 32, 32]" = torch.ops.aten.slice.Tensor(unsqueeze_8, 3, 0, 9223372036854775807);  unsqueeze_8 = None
+        slice_18: "f32[1, 4, 1, 32, 32]" = torch.ops.aten.slice.Tensor(slice_17, 4, 0, 9223372036854775807);  slice_17 = None
+        expand_3: "f32[1, 4, 2, 32, 32]" = torch.ops.aten.expand.default(slice_18, [1, 4, 2, 32, 32]);  slice_18 = None
+        reshape_1: "f32[1, 8, 32, 32]" = torch.ops.aten.reshape.default(expand_3, [1, 8, 32, 32]);  expand_3 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:406 in forward, code: attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+        transpose_3: "f32[1, 8, 32, 32]" = torch.ops.aten.transpose.int(reshape, 2, 3);  reshape = None
+        matmul: "f32[1, 8, 32, 32]" = torch.ops.aten.matmul.default(add_2, transpose_3);  add_2 = transpose_3 = None
+        div_6: "f32[1, 8, 32, 32]" = torch.ops.aten.div.Tensor(matmul, 5.656854249492381);  matmul = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:469 in forward, code: last_row = attention_mask[:, :, -1, :].clone()
+        slice_19: "f32[1, 1, 32, 32]" = torch.ops.aten.slice.Tensor(masked_fill_1)
+        slice_20: "f32[1, 1, 32, 32]" = torch.ops.aten.slice.Tensor(slice_19, 1);  slice_19 = None
+        select: "f32[1, 1, 32]" = torch.ops.aten.select.int(slice_20, 2, -1);  slice_20 = None
+        slice_21: "f32[1, 1, 32]" = torch.ops.aten.slice.Tensor(select, 2);  select = None
+        clone: "f32[1, 1, 32]" = torch.ops.aten.clone.default(slice_21);  slice_21 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:470 in forward, code: new_mask = last_row.unsqueeze(2).expand(-1, -1, D, -1)
+        unsqueeze_9: "f32[1, 1, 1, 32]" = torch.ops.aten.unsqueeze.default(clone, 2);  clone = None
+        expand_4: "f32[1, 1, 32, 32]" = torch.ops.aten.expand.default(unsqueeze_9, [-1, -1, 32, -1]);  unsqueeze_9 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:472 in forward, code: attn_weights = attn_weights + attention_mask
+        add_4: "f32[1, 8, 32, 32]" = torch.ops.aten.add.Tensor(div_6, expand_4);  div_6 = expand_4 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:475 in forward, code: attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+        softmax: "f32[1, 8, 32, 32]" = torch.ops.aten.softmax.int(add_4, -1, torch.float32);  add_4 = None
+        _assert_tensor_metadata_default_21 = torch.ops.aten._assert_tensor_metadata.default(softmax, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_21 = None
+        to_21: "f32[1, 8, 32, 32]" = torch.ops.aten.to.dtype(softmax, torch.float32);  softmax = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:476 in forward, code: attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+        dropout: "f32[1, 8, 32, 32]" = torch.ops.aten.dropout.default(to_21, 0.0, False);  to_21 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:477 in forward, code: attn_output = torch.matmul(attn_weights, value_states)
+        matmul_1: "f32[1, 8, 32, 32]" = torch.ops.aten.matmul.default(dropout, reshape_1);  dropout = reshape_1 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:485 in forward, code: attn_output = attn_output.transpose(1, 2).contiguous()
+        transpose_4: "f32[1, 32, 8, 32]" = torch.ops.aten.transpose.int(matmul_1, 1, 2);  matmul_1 = None
+        contiguous: "f32[1, 32, 8, 32]" = torch.ops.aten.contiguous.default(transpose_4);  transpose_4 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:487 in forward, code: attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+        reshape_2: "f32[1, 32, 256]" = torch.ops.aten.reshape.default(contiguous, [1, 32, 256]);  contiguous = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:207 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_22 = torch.ops.aten._assert_tensor_metadata.default(reshape_2, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_22 = None
+        to_22: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(reshape_2, torch.float32);  reshape_2 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:208 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_2: "f32[1, 32, 256]" = torch.ops.aten.pow.Tensor_Scalar(to_22, 2)
+        mean_4: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_2, [-1], True);  pow_2 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:209 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_5: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean_4, 1e-05);  mean_4 = None
+        rsqrt_1: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_5);  add_5 = None
+        mul_18: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_22, rsqrt_1);  to_22 = rsqrt_1 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:210 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_23 = torch.ops.aten._assert_tensor_metadata.default(mul_18, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_23 = None
+        to_23: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(mul_18, torch.float32);  mul_18 = None
+        mul_19: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(p_vla_language_model_model_layers_0_self_attn_attn_sub_norm_weight, to_23);  p_vla_language_model_model_layers_0_self_attn_attn_sub_norm_weight = to_23 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:107 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_24 = torch.ops.aten._assert_tensor_metadata.default(mul_19, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_24 = None
+        to_24: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(mul_19, torch.float32);  mul_19 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:108 in forward, code: s = 127 / x.abs().max(dim=-1, keepdim=True).values.clamp_(min=1e-5)
+        abs_7: "f32[1, 32, 256]" = torch.ops.aten.abs.default(to_24)
+        max_4 = torch.ops.aten.max.dim(abs_7, -1, True);  abs_7 = None
+        getitem_6: "f32[1, 32, 1]" = max_4[0]
+        getitem_7: "i64[1, 32, 1]" = max_4[1];  max_4 = getitem_7 = None
+        clamp__6: "f32[1, 32, 1]" = torch.ops.aten.clamp_.default(getitem_6, 1e-05);  getitem_6 = None
+        reciprocal_6: "f32[1, 32, 1]" = torch.ops.aten.reciprocal.default(clamp__6);  clamp__6 = None
+        mul_20: "f32[1, 32, 1]" = torch.ops.aten.mul.Tensor(reciprocal_6, 127);  reciprocal_6 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:109 in forward, code: x = (x * s).round().clamp(-128, 127) / s
+        mul_21: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_24, mul_20);  to_24 = None
+        round_7: "f32[1, 32, 256]" = torch.ops.aten.round.default(mul_21);  mul_21 = None
+        clamp_6: "f32[1, 32, 256]" = torch.ops.aten.clamp.default(round_7, -128, 127);  round_7 = None
+        div_7: "f32[1, 32, 256]" = torch.ops.aten.div.Tensor(clamp_6, mul_20);  clamp_6 = mul_20 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:110 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_25 = torch.ops.aten._assert_tensor_metadata.default(div_7, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_25 = None
+        to_25: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(div_7, torch.float32);  div_7 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:91 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_26 = torch.ops.aten._assert_tensor_metadata.default(p_vla_language_model_model_layers_0_self_attn_o_proj_weight, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_26 = None
+        to_26: "f32[256, 256]" = torch.ops.aten.to.dtype(p_vla_language_model_model_layers_0_self_attn_o_proj_weight, torch.float32);  p_vla_language_model_model_layers_0_self_attn_o_proj_weight = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:92 in forward, code: s = 1.0 / x.abs().mean().clamp_(min=1e-5)
+        abs_8: "f32[256, 256]" = torch.ops.aten.abs.default(to_26)
+        mean_5: "f32[]" = torch.ops.aten.mean.default(abs_8);  abs_8 = None
+        clamp__7: "f32[]" = torch.ops.aten.clamp_.default(mean_5, 1e-05);  mean_5 = None
+        reciprocal_7: "f32[]" = torch.ops.aten.reciprocal.default(clamp__7);  clamp__7 = None
+        mul_22: "f32[]" = torch.ops.aten.mul.Tensor(reciprocal_7, 1.0);  reciprocal_7 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:93 in forward, code: x = (x * s).round().clamp(-1, 1) / s
+        mul_23: "f32[256, 256]" = torch.ops.aten.mul.Tensor(to_26, mul_22);  to_26 = None
+        round_8: "f32[256, 256]" = torch.ops.aten.round.default(mul_23);  mul_23 = None
+        clamp_7: "f32[256, 256]" = torch.ops.aten.clamp.default(round_8, -1, 1);  round_8 = None
+        div_8: "f32[256, 256]" = torch.ops.aten.div.Tensor(clamp_7, mul_22);  clamp_7 = mul_22 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:94 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_27 = torch.ops.aten._assert_tensor_metadata.default(div_8, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_27 = None
+        to_27: "f32[256, 256]" = torch.ops.aten.to.dtype(div_8, torch.float32);  div_8 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:193 in forward, code: return F.linear(input, weight, self.bias)
+        linear_3: "f32[1, 32, 256]" = torch.ops.aten.linear.default(to_25, to_27);  to_25 = to_27 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:765 in forward, code: hidden_states = residual + hidden_states
+        add_6: "f32[1, 32, 256]" = torch.ops.aten.add.Tensor(to_5, linear_3);  to_5 = linear_3 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:207 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_28 = torch.ops.aten._assert_tensor_metadata.default(add_6, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_28 = None
+        to_28: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(add_6, torch.float32);  add_6 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:208 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_3: "f32[1, 32, 256]" = torch.ops.aten.pow.Tensor_Scalar(to_28, 2)
+        mean_6: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_3, [-1], True);  pow_3 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:209 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_7: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean_6, 1e-05);  mean_6 = None
+        rsqrt_2: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_7);  add_7 = None
+        mul_24: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_28, rsqrt_2);  rsqrt_2 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:210 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_29 = torch.ops.aten._assert_tensor_metadata.default(mul_24, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_29 = None
+        to_29: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(mul_24, torch.float32);  mul_24 = None
+        mul_25: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(p_vla_language_model_model_layers_0_post_attention_layernorm_weight, to_29);  p_vla_language_model_model_layers_0_post_attention_layernorm_weight = to_29 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:107 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_30 = torch.ops.aten._assert_tensor_metadata.default(mul_25, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_30 = None
+        to_30: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(mul_25, torch.float32);  mul_25 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:108 in forward, code: s = 127 / x.abs().max(dim=-1, keepdim=True).values.clamp_(min=1e-5)
+        abs_9: "f32[1, 32, 256]" = torch.ops.aten.abs.default(to_30)
+        max_5 = torch.ops.aten.max.dim(abs_9, -1, True);  abs_9 = None
+        getitem_8: "f32[1, 32, 1]" = max_5[0]
+        getitem_9: "i64[1, 32, 1]" = max_5[1];  max_5 = getitem_9 = None
+        clamp__8: "f32[1, 32, 1]" = torch.ops.aten.clamp_.default(getitem_8, 1e-05);  getitem_8 = None
+        reciprocal_8: "f32[1, 32, 1]" = torch.ops.aten.reciprocal.default(clamp__8);  clamp__8 = None
+        mul_26: "f32[1, 32, 1]" = torch.ops.aten.mul.Tensor(reciprocal_8, 127);  reciprocal_8 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:109 in forward, code: x = (x * s).round().clamp(-128, 127) / s
+        mul_27: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_30, mul_26)
+        round_9: "f32[1, 32, 256]" = torch.ops.aten.round.default(mul_27);  mul_27 = None
+        clamp_8: "f32[1, 32, 256]" = torch.ops.aten.clamp.default(round_9, -128, 127);  round_9 = None
+        div_9: "f32[1, 32, 256]" = torch.ops.aten.div.Tensor(clamp_8, mul_26);  clamp_8 = mul_26 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:110 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_31 = torch.ops.aten._assert_tensor_metadata.default(div_9, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_31 = None
+        to_31: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(div_9, torch.float32);  div_9 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:91 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_32 = torch.ops.aten._assert_tensor_metadata.default(p_vla_language_model_model_layers_0_mlp_gate_proj_weight, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_32 = None
+        to_32: "f32[512, 256]" = torch.ops.aten.to.dtype(p_vla_language_model_model_layers_0_mlp_gate_proj_weight, torch.float32);  p_vla_language_model_model_layers_0_mlp_gate_proj_weight = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:92 in forward, code: s = 1.0 / x.abs().mean().clamp_(min=1e-5)
+        abs_10: "f32[512, 256]" = torch.ops.aten.abs.default(to_32)
+        mean_7: "f32[]" = torch.ops.aten.mean.default(abs_10);  abs_10 = None
+        clamp__9: "f32[]" = torch.ops.aten.clamp_.default(mean_7, 1e-05);  mean_7 = None
+        reciprocal_9: "f32[]" = torch.ops.aten.reciprocal.default(clamp__9);  clamp__9 = None
+        mul_28: "f32[]" = torch.ops.aten.mul.Tensor(reciprocal_9, 1.0);  reciprocal_9 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:93 in forward, code: x = (x * s).round().clamp(-1, 1) / s
+        mul_29: "f32[512, 256]" = torch.ops.aten.mul.Tensor(to_32, mul_28);  to_32 = None
+        round_10: "f32[512, 256]" = torch.ops.aten.round.default(mul_29);  mul_29 = None
+        clamp_9: "f32[512, 256]" = torch.ops.aten.clamp.default(round_10, -1, 1);  round_10 = None
+        div_10: "f32[512, 256]" = torch.ops.aten.div.Tensor(clamp_9, mul_28);  clamp_9 = mul_28 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:94 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_33 = torch.ops.aten._assert_tensor_metadata.default(div_10, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_33 = None
+        to_33: "f32[512, 256]" = torch.ops.aten.to.dtype(div_10, torch.float32);  div_10 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:193 in forward, code: return F.linear(input, weight, self.bias)
+        linear_4: "f32[1, 32, 512]" = torch.ops.aten.linear.default(to_31, to_33);  to_31 = to_33 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:302 in forward, code: down_proj = self.down_proj(self.ffn_sub_norm(self.act_fn(self.gate_proj(x)) * self.up_proj(x)))
+        relu: "f32[1, 32, 512]" = torch.ops.aten.relu.default(linear_4);  linear_4 = None
+        pow_4: "f32[1, 32, 512]" = torch.ops.aten.pow.Tensor_Scalar(relu, 2);  relu = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:107 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_34 = torch.ops.aten._assert_tensor_metadata.default(to_30, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_34 = None
+        to_34: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(to_30, torch.float32);  to_30 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:108 in forward, code: s = 127 / x.abs().max(dim=-1, keepdim=True).values.clamp_(min=1e-5)
+        abs_11: "f32[1, 32, 256]" = torch.ops.aten.abs.default(to_34)
+        max_6 = torch.ops.aten.max.dim(abs_11, -1, True);  abs_11 = None
+        getitem_10: "f32[1, 32, 1]" = max_6[0]
+        getitem_11: "i64[1, 32, 1]" = max_6[1];  max_6 = getitem_11 = None
+        clamp__10: "f32[1, 32, 1]" = torch.ops.aten.clamp_.default(getitem_10, 1e-05);  getitem_10 = None
+        reciprocal_10: "f32[1, 32, 1]" = torch.ops.aten.reciprocal.default(clamp__10);  clamp__10 = None
+        mul_30: "f32[1, 32, 1]" = torch.ops.aten.mul.Tensor(reciprocal_10, 127);  reciprocal_10 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:109 in forward, code: x = (x * s).round().clamp(-128, 127) / s
+        mul_31: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_34, mul_30);  to_34 = None
+        round_11: "f32[1, 32, 256]" = torch.ops.aten.round.default(mul_31);  mul_31 = None
+        clamp_10: "f32[1, 32, 256]" = torch.ops.aten.clamp.default(round_11, -128, 127);  round_11 = None
+        div_11: "f32[1, 32, 256]" = torch.ops.aten.div.Tensor(clamp_10, mul_30);  clamp_10 = mul_30 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:110 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_35 = torch.ops.aten._assert_tensor_metadata.default(div_11, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_35 = None
+        to_35: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(div_11, torch.float32);  div_11 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:91 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_36 = torch.ops.aten._assert_tensor_metadata.default(p_vla_language_model_model_layers_0_mlp_up_proj_weight, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_36 = None
+        to_36: "f32[512, 256]" = torch.ops.aten.to.dtype(p_vla_language_model_model_layers_0_mlp_up_proj_weight, torch.float32);  p_vla_language_model_model_layers_0_mlp_up_proj_weight = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:92 in forward, code: s = 1.0 / x.abs().mean().clamp_(min=1e-5)
+        abs_12: "f32[512, 256]" = torch.ops.aten.abs.default(to_36)
+        mean_8: "f32[]" = torch.ops.aten.mean.default(abs_12);  abs_12 = None
+        clamp__11: "f32[]" = torch.ops.aten.clamp_.default(mean_8, 1e-05);  mean_8 = None
+        reciprocal_11: "f32[]" = torch.ops.aten.reciprocal.default(clamp__11);  clamp__11 = None
+        mul_32: "f32[]" = torch.ops.aten.mul.Tensor(reciprocal_11, 1.0);  reciprocal_11 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:93 in forward, code: x = (x * s).round().clamp(-1, 1) / s
+        mul_33: "f32[512, 256]" = torch.ops.aten.mul.Tensor(to_36, mul_32);  to_36 = None
+        round_12: "f32[512, 256]" = torch.ops.aten.round.default(mul_33);  mul_33 = None
+        clamp_11: "f32[512, 256]" = torch.ops.aten.clamp.default(round_12, -1, 1);  round_12 = None
+        div_12: "f32[512, 256]" = torch.ops.aten.div.Tensor(clamp_11, mul_32);  clamp_11 = mul_32 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:94 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_37 = torch.ops.aten._assert_tensor_metadata.default(div_12, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_37 = None
+        to_37: "f32[512, 256]" = torch.ops.aten.to.dtype(div_12, torch.float32);  div_12 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:193 in forward, code: return F.linear(input, weight, self.bias)
+        linear_5: "f32[1, 32, 512]" = torch.ops.aten.linear.default(to_35, to_37);  to_35 = to_37 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:302 in forward, code: down_proj = self.down_proj(self.ffn_sub_norm(self.act_fn(self.gate_proj(x)) * self.up_proj(x)))
+        mul_34: "f32[1, 32, 512]" = torch.ops.aten.mul.Tensor(pow_4, linear_5);  pow_4 = linear_5 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:207 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_38 = torch.ops.aten._assert_tensor_metadata.default(mul_34, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_38 = None
+        to_38: "f32[1, 32, 512]" = torch.ops.aten.to.dtype(mul_34, torch.float32);  mul_34 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:208 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_5: "f32[1, 32, 512]" = torch.ops.aten.pow.Tensor_Scalar(to_38, 2)
+        mean_9: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_5, [-1], True);  pow_5 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:209 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_8: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean_9, 1e-05);  mean_9 = None
+        rsqrt_3: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_8);  add_8 = None
+        mul_35: "f32[1, 32, 512]" = torch.ops.aten.mul.Tensor(to_38, rsqrt_3);  to_38 = rsqrt_3 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:210 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_39 = torch.ops.aten._assert_tensor_metadata.default(mul_35, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_39 = None
+        to_39: "f32[1, 32, 512]" = torch.ops.aten.to.dtype(mul_35, torch.float32);  mul_35 = None
+        mul_36: "f32[1, 32, 512]" = torch.ops.aten.mul.Tensor(p_vla_language_model_model_layers_0_mlp_ffn_sub_norm_weight, to_39);  p_vla_language_model_model_layers_0_mlp_ffn_sub_norm_weight = to_39 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:107 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_40 = torch.ops.aten._assert_tensor_metadata.default(mul_36, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_40 = None
+        to_40: "f32[1, 32, 512]" = torch.ops.aten.to.dtype(mul_36, torch.float32);  mul_36 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:108 in forward, code: s = 127 / x.abs().max(dim=-1, keepdim=True).values.clamp_(min=1e-5)
+        abs_13: "f32[1, 32, 512]" = torch.ops.aten.abs.default(to_40)
+        max_7 = torch.ops.aten.max.dim(abs_13, -1, True);  abs_13 = None
+        getitem_12: "f32[1, 32, 1]" = max_7[0]
+        getitem_13: "i64[1, 32, 1]" = max_7[1];  max_7 = getitem_13 = None
+        clamp__12: "f32[1, 32, 1]" = torch.ops.aten.clamp_.default(getitem_12, 1e-05);  getitem_12 = None
+        reciprocal_12: "f32[1, 32, 1]" = torch.ops.aten.reciprocal.default(clamp__12);  clamp__12 = None
+        mul_37: "f32[1, 32, 1]" = torch.ops.aten.mul.Tensor(reciprocal_12, 127);  reciprocal_12 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:109 in forward, code: x = (x * s).round().clamp(-128, 127) / s
+        mul_38: "f32[1, 32, 512]" = torch.ops.aten.mul.Tensor(to_40, mul_37);  to_40 = None
+        round_13: "f32[1, 32, 512]" = torch.ops.aten.round.default(mul_38);  mul_38 = None
+        clamp_12: "f32[1, 32, 512]" = torch.ops.aten.clamp.default(round_13, -128, 127);  round_13 = None
+        div_13: "f32[1, 32, 512]" = torch.ops.aten.div.Tensor(clamp_12, mul_37);  clamp_12 = mul_37 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:110 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_41 = torch.ops.aten._assert_tensor_metadata.default(div_13, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_41 = None
+        to_41: "f32[1, 32, 512]" = torch.ops.aten.to.dtype(div_13, torch.float32);  div_13 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:91 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_42 = torch.ops.aten._assert_tensor_metadata.default(p_vla_language_model_model_layers_0_mlp_down_proj_weight, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_42 = None
+        to_42: "f32[256, 512]" = torch.ops.aten.to.dtype(p_vla_language_model_model_layers_0_mlp_down_proj_weight, torch.float32);  p_vla_language_model_model_layers_0_mlp_down_proj_weight = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:92 in forward, code: s = 1.0 / x.abs().mean().clamp_(min=1e-5)
+        abs_14: "f32[256, 512]" = torch.ops.aten.abs.default(to_42)
+        mean_10: "f32[]" = torch.ops.aten.mean.default(abs_14);  abs_14 = None
+        clamp__13: "f32[]" = torch.ops.aten.clamp_.default(mean_10, 1e-05);  mean_10 = None
+        reciprocal_13: "f32[]" = torch.ops.aten.reciprocal.default(clamp__13);  clamp__13 = None
+        mul_39: "f32[]" = torch.ops.aten.mul.Tensor(reciprocal_13, 1.0);  reciprocal_13 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:93 in forward, code: x = (x * s).round().clamp(-1, 1) / s
+        mul_40: "f32[256, 512]" = torch.ops.aten.mul.Tensor(to_42, mul_39);  to_42 = None
+        round_14: "f32[256, 512]" = torch.ops.aten.round.default(mul_40);  mul_40 = None
+        clamp_13: "f32[256, 512]" = torch.ops.aten.clamp.default(round_14, -1, 1);  round_14 = None
+        div_14: "f32[256, 512]" = torch.ops.aten.div.Tensor(clamp_13, mul_39);  clamp_13 = mul_39 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:94 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_43 = torch.ops.aten._assert_tensor_metadata.default(div_14, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_43 = None
+        to_43: "f32[256, 512]" = torch.ops.aten.to.dtype(div_14, torch.float32);  div_14 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:193 in forward, code: return F.linear(input, weight, self.bias)
+        linear_6: "f32[1, 32, 256]" = torch.ops.aten.linear.default(to_41, to_43);  to_41 = to_43 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:771 in forward, code: hidden_states = residual + hidden_states
+        add_9: "f32[1, 32, 256]" = torch.ops.aten.add.Tensor(to_28, linear_6);  to_28 = linear_6 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:207 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_44 = torch.ops.aten._assert_tensor_metadata.default(add_9, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_44 = None
+        to_44: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(add_9, torch.float32);  add_9 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:208 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_6: "f32[1, 32, 256]" = torch.ops.aten.pow.Tensor_Scalar(to_44, 2)
+        mean_11: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_6, [-1], True);  pow_6 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:209 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_10: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean_11, 1e-05);  mean_11 = None
+        rsqrt_4: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_10);  add_10 = None
+        mul_41: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_44, rsqrt_4);  rsqrt_4 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:210 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_45 = torch.ops.aten._assert_tensor_metadata.default(mul_41, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_45 = None
+        to_45: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(mul_41, torch.float32);  mul_41 = None
+        mul_42: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(p_vla_language_model_model_layers_1_input_layernorm_weight, to_45);  p_vla_language_model_model_layers_1_input_layernorm_weight = to_45 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:107 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_46 = torch.ops.aten._assert_tensor_metadata.default(mul_42, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_46 = None
+        to_46: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(mul_42, torch.float32);  mul_42 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:108 in forward, code: s = 127 / x.abs().max(dim=-1, keepdim=True).values.clamp_(min=1e-5)
+        abs_15: "f32[1, 32, 256]" = torch.ops.aten.abs.default(to_46)
+        max_8 = torch.ops.aten.max.dim(abs_15, -1, True);  abs_15 = None
+        getitem_14: "f32[1, 32, 1]" = max_8[0]
+        getitem_15: "i64[1, 32, 1]" = max_8[1];  max_8 = getitem_15 = None
+        clamp__14: "f32[1, 32, 1]" = torch.ops.aten.clamp_.default(getitem_14, 1e-05);  getitem_14 = None
+        reciprocal_14: "f32[1, 32, 1]" = torch.ops.aten.reciprocal.default(clamp__14);  clamp__14 = None
+        mul_43: "f32[1, 32, 1]" = torch.ops.aten.mul.Tensor(reciprocal_14, 127);  reciprocal_14 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:109 in forward, code: x = (x * s).round().clamp(-128, 127) / s
+        mul_44: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_46, mul_43)
+        round_15: "f32[1, 32, 256]" = torch.ops.aten.round.default(mul_44);  mul_44 = None
+        clamp_14: "f32[1, 32, 256]" = torch.ops.aten.clamp.default(round_15, -128, 127);  round_15 = None
+        div_15: "f32[1, 32, 256]" = torch.ops.aten.div.Tensor(clamp_14, mul_43);  clamp_14 = mul_43 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:110 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_47 = torch.ops.aten._assert_tensor_metadata.default(div_15, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_47 = None
+        to_47: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(div_15, torch.float32);  div_15 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:91 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_48 = torch.ops.aten._assert_tensor_metadata.default(p_vla_language_model_model_layers_1_self_attn_q_proj_weight, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_48 = None
+        to_48: "f32[256, 256]" = torch.ops.aten.to.dtype(p_vla_language_model_model_layers_1_self_attn_q_proj_weight, torch.float32);  p_vla_language_model_model_layers_1_self_attn_q_proj_weight = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:92 in forward, code: s = 1.0 / x.abs().mean().clamp_(min=1e-5)
+        abs_16: "f32[256, 256]" = torch.ops.aten.abs.default(to_48)
+        mean_12: "f32[]" = torch.ops.aten.mean.default(abs_16);  abs_16 = None
+        clamp__15: "f32[]" = torch.ops.aten.clamp_.default(mean_12, 1e-05);  mean_12 = None
+        reciprocal_15: "f32[]" = torch.ops.aten.reciprocal.default(clamp__15);  clamp__15 = None
+        mul_45: "f32[]" = torch.ops.aten.mul.Tensor(reciprocal_15, 1.0);  reciprocal_15 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:93 in forward, code: x = (x * s).round().clamp(-1, 1) / s
+        mul_46: "f32[256, 256]" = torch.ops.aten.mul.Tensor(to_48, mul_45);  to_48 = None
+        round_16: "f32[256, 256]" = torch.ops.aten.round.default(mul_46);  mul_46 = None
+        clamp_15: "f32[256, 256]" = torch.ops.aten.clamp.default(round_16, -1, 1);  round_16 = None
+        div_16: "f32[256, 256]" = torch.ops.aten.div.Tensor(clamp_15, mul_45);  clamp_15 = mul_45 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:94 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_49 = torch.ops.aten._assert_tensor_metadata.default(div_16, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_49 = None
+        to_49: "f32[256, 256]" = torch.ops.aten.to.dtype(div_16, torch.float32);  div_16 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:193 in forward, code: return F.linear(input, weight, self.bias)
+        linear_7: "f32[1, 32, 256]" = torch.ops.aten.linear.default(to_47, to_49);  to_47 = to_49 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:107 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_50 = torch.ops.aten._assert_tensor_metadata.default(to_46, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_50 = None
+        to_50: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(to_46, torch.float32);  to_46 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:108 in forward, code: s = 127 / x.abs().max(dim=-1, keepdim=True).values.clamp_(min=1e-5)
+        abs_17: "f32[1, 32, 256]" = torch.ops.aten.abs.default(to_50)
+        max_9 = torch.ops.aten.max.dim(abs_17, -1, True);  abs_17 = None
+        getitem_16: "f32[1, 32, 1]" = max_9[0]
+        getitem_17: "i64[1, 32, 1]" = max_9[1];  max_9 = getitem_17 = None
+        clamp__16: "f32[1, 32, 1]" = torch.ops.aten.clamp_.default(getitem_16, 1e-05);  getitem_16 = None
+        reciprocal_16: "f32[1, 32, 1]" = torch.ops.aten.reciprocal.default(clamp__16);  clamp__16 = None
+        mul_47: "f32[1, 32, 1]" = torch.ops.aten.mul.Tensor(reciprocal_16, 127);  reciprocal_16 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:109 in forward, code: x = (x * s).round().clamp(-128, 127) / s
+        mul_48: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_50, mul_47)
+        round_17: "f32[1, 32, 256]" = torch.ops.aten.round.default(mul_48);  mul_48 = None
+        clamp_16: "f32[1, 32, 256]" = torch.ops.aten.clamp.default(round_17, -128, 127);  round_17 = None
+        div_17: "f32[1, 32, 256]" = torch.ops.aten.div.Tensor(clamp_16, mul_47);  clamp_16 = mul_47 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:110 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_51 = torch.ops.aten._assert_tensor_metadata.default(div_17, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_51 = None
+        to_51: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(div_17, torch.float32);  div_17 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:91 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_52 = torch.ops.aten._assert_tensor_metadata.default(p_vla_language_model_model_layers_1_self_attn_k_proj_weight, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_52 = None
+        to_52: "f32[128, 256]" = torch.ops.aten.to.dtype(p_vla_language_model_model_layers_1_self_attn_k_proj_weight, torch.float32);  p_vla_language_model_model_layers_1_self_attn_k_proj_weight = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:92 in forward, code: s = 1.0 / x.abs().mean().clamp_(min=1e-5)
+        abs_18: "f32[128, 256]" = torch.ops.aten.abs.default(to_52)
+        mean_13: "f32[]" = torch.ops.aten.mean.default(abs_18);  abs_18 = None
+        clamp__17: "f32[]" = torch.ops.aten.clamp_.default(mean_13, 1e-05);  mean_13 = None
+        reciprocal_17: "f32[]" = torch.ops.aten.reciprocal.default(clamp__17);  clamp__17 = None
+        mul_49: "f32[]" = torch.ops.aten.mul.Tensor(reciprocal_17, 1.0);  reciprocal_17 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:93 in forward, code: x = (x * s).round().clamp(-1, 1) / s
+        mul_50: "f32[128, 256]" = torch.ops.aten.mul.Tensor(to_52, mul_49);  to_52 = None
+        round_18: "f32[128, 256]" = torch.ops.aten.round.default(mul_50);  mul_50 = None
+        clamp_17: "f32[128, 256]" = torch.ops.aten.clamp.default(round_18, -1, 1);  round_18 = None
+        div_18: "f32[128, 256]" = torch.ops.aten.div.Tensor(clamp_17, mul_49);  clamp_17 = mul_49 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:94 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_53 = torch.ops.aten._assert_tensor_metadata.default(div_18, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_53 = None
+        to_53: "f32[128, 256]" = torch.ops.aten.to.dtype(div_18, torch.float32);  div_18 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:193 in forward, code: return F.linear(input, weight, self.bias)
+        linear_8: "f32[1, 32, 128]" = torch.ops.aten.linear.default(to_51, to_53);  to_51 = to_53 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:107 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_54 = torch.ops.aten._assert_tensor_metadata.default(to_50, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_54 = None
+        to_54: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(to_50, torch.float32);  to_50 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:108 in forward, code: s = 127 / x.abs().max(dim=-1, keepdim=True).values.clamp_(min=1e-5)
+        abs_19: "f32[1, 32, 256]" = torch.ops.aten.abs.default(to_54)
+        max_10 = torch.ops.aten.max.dim(abs_19, -1, True);  abs_19 = None
+        getitem_18: "f32[1, 32, 1]" = max_10[0]
+        getitem_19: "i64[1, 32, 1]" = max_10[1];  max_10 = getitem_19 = None
+        clamp__18: "f32[1, 32, 1]" = torch.ops.aten.clamp_.default(getitem_18, 1e-05);  getitem_18 = None
+        reciprocal_18: "f32[1, 32, 1]" = torch.ops.aten.reciprocal.default(clamp__18);  clamp__18 = None
+        mul_51: "f32[1, 32, 1]" = torch.ops.aten.mul.Tensor(reciprocal_18, 127);  reciprocal_18 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:109 in forward, code: x = (x * s).round().clamp(-128, 127) / s
+        mul_52: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_54, mul_51);  to_54 = None
+        round_19: "f32[1, 32, 256]" = torch.ops.aten.round.default(mul_52);  mul_52 = None
+        clamp_18: "f32[1, 32, 256]" = torch.ops.aten.clamp.default(round_19, -128, 127);  round_19 = None
+        div_19: "f32[1, 32, 256]" = torch.ops.aten.div.Tensor(clamp_18, mul_51);  clamp_18 = mul_51 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:110 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_55 = torch.ops.aten._assert_tensor_metadata.default(div_19, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_55 = None
+        to_55: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(div_19, torch.float32);  div_19 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:91 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_56 = torch.ops.aten._assert_tensor_metadata.default(p_vla_language_model_model_layers_1_self_attn_v_proj_weight, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_56 = None
+        to_56: "f32[128, 256]" = torch.ops.aten.to.dtype(p_vla_language_model_model_layers_1_self_attn_v_proj_weight, torch.float32);  p_vla_language_model_model_layers_1_self_attn_v_proj_weight = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:92 in forward, code: s = 1.0 / x.abs().mean().clamp_(min=1e-5)
+        abs_20: "f32[128, 256]" = torch.ops.aten.abs.default(to_56)
+        mean_14: "f32[]" = torch.ops.aten.mean.default(abs_20);  abs_20 = None
+        clamp__19: "f32[]" = torch.ops.aten.clamp_.default(mean_14, 1e-05);  mean_14 = None
+        reciprocal_19: "f32[]" = torch.ops.aten.reciprocal.default(clamp__19);  clamp__19 = None
+        mul_53: "f32[]" = torch.ops.aten.mul.Tensor(reciprocal_19, 1.0);  reciprocal_19 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:93 in forward, code: x = (x * s).round().clamp(-1, 1) / s
+        mul_54: "f32[128, 256]" = torch.ops.aten.mul.Tensor(to_56, mul_53);  to_56 = None
+        round_20: "f32[128, 256]" = torch.ops.aten.round.default(mul_54);  mul_54 = None
+        clamp_19: "f32[128, 256]" = torch.ops.aten.clamp.default(round_20, -1, 1);  round_20 = None
+        div_20: "f32[128, 256]" = torch.ops.aten.div.Tensor(clamp_19, mul_53);  clamp_19 = mul_53 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:94 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_57 = torch.ops.aten._assert_tensor_metadata.default(div_20, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_57 = None
+        to_57: "f32[128, 256]" = torch.ops.aten.to.dtype(div_20, torch.float32);  div_20 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:193 in forward, code: return F.linear(input, weight, self.bias)
+        linear_9: "f32[1, 32, 128]" = torch.ops.aten.linear.default(to_55, to_57);  to_55 = to_57 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:383 in forward, code: query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        view_4: "f32[1, 32, 8, 32]" = torch.ops.aten.view.default(linear_7, [1, 32, 8, 32]);  linear_7 = None
+        transpose_5: "f32[1, 8, 32, 32]" = torch.ops.aten.transpose.int(view_4, 1, 2);  view_4 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:384 in forward, code: key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        view_5: "f32[1, 32, 4, 32]" = torch.ops.aten.view.default(linear_8, [1, 32, 4, 32]);  linear_8 = None
+        transpose_6: "f32[1, 4, 32, 32]" = torch.ops.aten.transpose.int(view_5, 1, 2);  view_5 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:385 in forward, code: value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        view_6: "f32[1, 32, 4, 32]" = torch.ops.aten.view.default(linear_9, [1, 32, 4, 32]);  linear_9 = None
+        transpose_7: "f32[1, 4, 32, 32]" = torch.ops.aten.transpose.int(view_6, 1, 2);  view_6 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:247 in forward, code: self.cos_cached[:seq_len].to(dtype=x.dtype),
+        slice_22: "f32[32, 32]" = torch.ops.aten.slice.Tensor(b_vla_language_model_model_layers_1_self_attn_rotary_emb_cos_cached, 0, None, 32);  b_vla_language_model_model_layers_1_self_attn_rotary_emb_cos_cached = None
+        _assert_tensor_metadata_default_58 = torch.ops.aten._assert_tensor_metadata.default(slice_22, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_58 = None
+        to_58: "f32[32, 32]" = torch.ops.aten.to.dtype(slice_22, torch.float32);  slice_22 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:248 in forward, code: self.sin_cached[:seq_len].to(dtype=x.dtype),
+        slice_23: "f32[32, 32]" = torch.ops.aten.slice.Tensor(b_vla_language_model_model_layers_1_self_attn_rotary_emb_sin_cached, 0, None, 32);  b_vla_language_model_model_layers_1_self_attn_rotary_emb_sin_cached = None
+        _assert_tensor_metadata_default_59 = torch.ops.aten._assert_tensor_metadata.default(slice_23, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_59 = None
+        to_59: "f32[32, 32]" = torch.ops.aten.to.dtype(slice_23, torch.float32);  slice_23 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:397 in forward, code: query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        index_2: "f32[1, 32, 32]" = torch.ops.aten.index.Tensor(to_58, [unsqueeze]);  to_58 = None
+        unsqueeze_10: "f32[1, 1, 32, 32]" = torch.ops.aten.unsqueeze.default(index_2, 1);  index_2 = None
+        index_3: "f32[1, 32, 32]" = torch.ops.aten.index.Tensor(to_59, [unsqueeze]);  to_59 = unsqueeze = None
+        unsqueeze_11: "f32[1, 1, 32, 32]" = torch.ops.aten.unsqueeze.default(index_3, 1);  index_3 = None
+        mul_55: "f32[1, 8, 32, 32]" = torch.ops.aten.mul.Tensor(transpose_5, unsqueeze_10)
+        slice_24: "f32[1, 8, 32, 16]" = torch.ops.aten.slice.Tensor(transpose_5, 3, 0, 16)
+        slice_25: "f32[1, 8, 32, 16]" = torch.ops.aten.slice.Tensor(transpose_5, 3, 16, 9223372036854775807);  transpose_5 = None
+        neg_2: "f32[1, 8, 32, 16]" = torch.ops.aten.neg.default(slice_25);  slice_25 = None
+        cat_2: "f32[1, 8, 32, 32]" = torch.ops.aten.cat.default([neg_2, slice_24], -1);  neg_2 = slice_24 = None
+        mul_56: "f32[1, 8, 32, 32]" = torch.ops.aten.mul.Tensor(cat_2, unsqueeze_11);  cat_2 = None
+        add_11: "f32[1, 8, 32, 32]" = torch.ops.aten.add.Tensor(mul_55, mul_56);  mul_55 = mul_56 = None
+        mul_57: "f32[1, 4, 32, 32]" = torch.ops.aten.mul.Tensor(transpose_6, unsqueeze_10);  unsqueeze_10 = None
+        slice_26: "f32[1, 4, 32, 16]" = torch.ops.aten.slice.Tensor(transpose_6, 3, 0, 16)
+        slice_27: "f32[1, 4, 32, 16]" = torch.ops.aten.slice.Tensor(transpose_6, 3, 16, 9223372036854775807);  transpose_6 = None
+        neg_3: "f32[1, 4, 32, 16]" = torch.ops.aten.neg.default(slice_27);  slice_27 = None
+        cat_3: "f32[1, 4, 32, 32]" = torch.ops.aten.cat.default([neg_3, slice_26], -1);  neg_3 = slice_26 = None
+        mul_58: "f32[1, 4, 32, 32]" = torch.ops.aten.mul.Tensor(cat_3, unsqueeze_11);  cat_3 = unsqueeze_11 = None
+        add_12: "f32[1, 4, 32, 32]" = torch.ops.aten.add.Tensor(mul_57, mul_58);  mul_57 = mul_58 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:403 in forward, code: key_states = repeat_kv(key_states, self.num_key_value_groups)
+        slice_28: "f32[1, 4, 32, 32]" = torch.ops.aten.slice.Tensor(add_12, 0, 0, 9223372036854775807);  add_12 = None
+        slice_29: "f32[1, 4, 32, 32]" = torch.ops.aten.slice.Tensor(slice_28, 1, 0, 9223372036854775807);  slice_28 = None
+        unsqueeze_12: "f32[1, 4, 1, 32, 32]" = torch.ops.aten.unsqueeze.default(slice_29, 2);  slice_29 = None
+        slice_30: "f32[1, 4, 1, 32, 32]" = torch.ops.aten.slice.Tensor(unsqueeze_12, 3, 0, 9223372036854775807);  unsqueeze_12 = None
+        slice_31: "f32[1, 4, 1, 32, 32]" = torch.ops.aten.slice.Tensor(slice_30, 4, 0, 9223372036854775807);  slice_30 = None
+        expand_5: "f32[1, 4, 2, 32, 32]" = torch.ops.aten.expand.default(slice_31, [1, 4, 2, 32, 32]);  slice_31 = None
+        reshape_3: "f32[1, 8, 32, 32]" = torch.ops.aten.reshape.default(expand_5, [1, 8, 32, 32]);  expand_5 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:404 in forward, code: value_states = repeat_kv(value_states, self.num_key_value_groups)
+        slice_32: "f32[1, 4, 32, 32]" = torch.ops.aten.slice.Tensor(transpose_7, 0, 0, 9223372036854775807);  transpose_7 = None
+        slice_33: "f32[1, 4, 32, 32]" = torch.ops.aten.slice.Tensor(slice_32, 1, 0, 9223372036854775807);  slice_32 = None
+        unsqueeze_13: "f32[1, 4, 1, 32, 32]" = torch.ops.aten.unsqueeze.default(slice_33, 2);  slice_33 = None
+        slice_34: "f32[1, 4, 1, 32, 32]" = torch.ops.aten.slice.Tensor(unsqueeze_13, 3, 0, 9223372036854775807);  unsqueeze_13 = None
+        slice_35: "f32[1, 4, 1, 32, 32]" = torch.ops.aten.slice.Tensor(slice_34, 4, 0, 9223372036854775807);  slice_34 = None
+        expand_6: "f32[1, 4, 2, 32, 32]" = torch.ops.aten.expand.default(slice_35, [1, 4, 2, 32, 32]);  slice_35 = None
+        reshape_4: "f32[1, 8, 32, 32]" = torch.ops.aten.reshape.default(expand_6, [1, 8, 32, 32]);  expand_6 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:406 in forward, code: attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+        transpose_8: "f32[1, 8, 32, 32]" = torch.ops.aten.transpose.int(reshape_3, 2, 3);  reshape_3 = None
+        matmul_2: "f32[1, 8, 32, 32]" = torch.ops.aten.matmul.default(add_11, transpose_8);  add_11 = transpose_8 = None
+        div_21: "f32[1, 8, 32, 32]" = torch.ops.aten.div.Tensor(matmul_2, 5.656854249492381);  matmul_2 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:469 in forward, code: last_row = attention_mask[:, :, -1, :].clone()
+        slice_36: "f32[1, 1, 32, 32]" = torch.ops.aten.slice.Tensor(masked_fill_1);  masked_fill_1 = None
+        slice_37: "f32[1, 1, 32, 32]" = torch.ops.aten.slice.Tensor(slice_36, 1);  slice_36 = None
+        select_1: "f32[1, 1, 32]" = torch.ops.aten.select.int(slice_37, 2, -1);  slice_37 = None
+        slice_38: "f32[1, 1, 32]" = torch.ops.aten.slice.Tensor(select_1, 2);  select_1 = None
+        clone_1: "f32[1, 1, 32]" = torch.ops.aten.clone.default(slice_38);  slice_38 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:470 in forward, code: new_mask = last_row.unsqueeze(2).expand(-1, -1, D, -1)
+        unsqueeze_14: "f32[1, 1, 1, 32]" = torch.ops.aten.unsqueeze.default(clone_1, 2);  clone_1 = None
+        expand_7: "f32[1, 1, 32, 32]" = torch.ops.aten.expand.default(unsqueeze_14, [-1, -1, 32, -1]);  unsqueeze_14 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:472 in forward, code: attn_weights = attn_weights + attention_mask
+        add_13: "f32[1, 8, 32, 32]" = torch.ops.aten.add.Tensor(div_21, expand_7);  div_21 = expand_7 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:475 in forward, code: attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+        softmax_1: "f32[1, 8, 32, 32]" = torch.ops.aten.softmax.int(add_13, -1, torch.float32);  add_13 = None
+        _assert_tensor_metadata_default_60 = torch.ops.aten._assert_tensor_metadata.default(softmax_1, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_60 = None
+        to_60: "f32[1, 8, 32, 32]" = torch.ops.aten.to.dtype(softmax_1, torch.float32);  softmax_1 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:476 in forward, code: attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+        dropout_1: "f32[1, 8, 32, 32]" = torch.ops.aten.dropout.default(to_60, 0.0, False);  to_60 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:477 in forward, code: attn_output = torch.matmul(attn_weights, value_states)
+        matmul_3: "f32[1, 8, 32, 32]" = torch.ops.aten.matmul.default(dropout_1, reshape_4);  dropout_1 = reshape_4 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:485 in forward, code: attn_output = attn_output.transpose(1, 2).contiguous()
+        transpose_9: "f32[1, 32, 8, 32]" = torch.ops.aten.transpose.int(matmul_3, 1, 2);  matmul_3 = None
+        contiguous_1: "f32[1, 32, 8, 32]" = torch.ops.aten.contiguous.default(transpose_9);  transpose_9 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:487 in forward, code: attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+        reshape_5: "f32[1, 32, 256]" = torch.ops.aten.reshape.default(contiguous_1, [1, 32, 256]);  contiguous_1 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:207 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_61 = torch.ops.aten._assert_tensor_metadata.default(reshape_5, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_61 = None
+        to_61: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(reshape_5, torch.float32);  reshape_5 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:208 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_7: "f32[1, 32, 256]" = torch.ops.aten.pow.Tensor_Scalar(to_61, 2)
+        mean_15: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_7, [-1], True);  pow_7 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:209 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_14: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean_15, 1e-05);  mean_15 = None
+        rsqrt_5: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_14);  add_14 = None
+        mul_59: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_61, rsqrt_5);  to_61 = rsqrt_5 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:210 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_62 = torch.ops.aten._assert_tensor_metadata.default(mul_59, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_62 = None
+        to_62: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(mul_59, torch.float32);  mul_59 = None
+        mul_60: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(p_vla_language_model_model_layers_1_self_attn_attn_sub_norm_weight, to_62);  p_vla_language_model_model_layers_1_self_attn_attn_sub_norm_weight = to_62 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:107 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_63 = torch.ops.aten._assert_tensor_metadata.default(mul_60, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_63 = None
+        to_63: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(mul_60, torch.float32);  mul_60 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:108 in forward, code: s = 127 / x.abs().max(dim=-1, keepdim=True).values.clamp_(min=1e-5)
+        abs_21: "f32[1, 32, 256]" = torch.ops.aten.abs.default(to_63)
+        max_11 = torch.ops.aten.max.dim(abs_21, -1, True);  abs_21 = None
+        getitem_20: "f32[1, 32, 1]" = max_11[0]
+        getitem_21: "i64[1, 32, 1]" = max_11[1];  max_11 = getitem_21 = None
+        clamp__20: "f32[1, 32, 1]" = torch.ops.aten.clamp_.default(getitem_20, 1e-05);  getitem_20 = None
+        reciprocal_20: "f32[1, 32, 1]" = torch.ops.aten.reciprocal.default(clamp__20);  clamp__20 = None
+        mul_61: "f32[1, 32, 1]" = torch.ops.aten.mul.Tensor(reciprocal_20, 127);  reciprocal_20 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:109 in forward, code: x = (x * s).round().clamp(-128, 127) / s
+        mul_62: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_63, mul_61);  to_63 = None
+        round_21: "f32[1, 32, 256]" = torch.ops.aten.round.default(mul_62);  mul_62 = None
+        clamp_20: "f32[1, 32, 256]" = torch.ops.aten.clamp.default(round_21, -128, 127);  round_21 = None
+        div_22: "f32[1, 32, 256]" = torch.ops.aten.div.Tensor(clamp_20, mul_61);  clamp_20 = mul_61 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:110 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_64 = torch.ops.aten._assert_tensor_metadata.default(div_22, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_64 = None
+        to_64: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(div_22, torch.float32);  div_22 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:91 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_65 = torch.ops.aten._assert_tensor_metadata.default(p_vla_language_model_model_layers_1_self_attn_o_proj_weight, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_65 = None
+        to_65: "f32[256, 256]" = torch.ops.aten.to.dtype(p_vla_language_model_model_layers_1_self_attn_o_proj_weight, torch.float32);  p_vla_language_model_model_layers_1_self_attn_o_proj_weight = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:92 in forward, code: s = 1.0 / x.abs().mean().clamp_(min=1e-5)
+        abs_22: "f32[256, 256]" = torch.ops.aten.abs.default(to_65)
+        mean_16: "f32[]" = torch.ops.aten.mean.default(abs_22);  abs_22 = None
+        clamp__21: "f32[]" = torch.ops.aten.clamp_.default(mean_16, 1e-05);  mean_16 = None
+        reciprocal_21: "f32[]" = torch.ops.aten.reciprocal.default(clamp__21);  clamp__21 = None
+        mul_63: "f32[]" = torch.ops.aten.mul.Tensor(reciprocal_21, 1.0);  reciprocal_21 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:93 in forward, code: x = (x * s).round().clamp(-1, 1) / s
+        mul_64: "f32[256, 256]" = torch.ops.aten.mul.Tensor(to_65, mul_63);  to_65 = None
+        round_22: "f32[256, 256]" = torch.ops.aten.round.default(mul_64);  mul_64 = None
+        clamp_21: "f32[256, 256]" = torch.ops.aten.clamp.default(round_22, -1, 1);  round_22 = None
+        div_23: "f32[256, 256]" = torch.ops.aten.div.Tensor(clamp_21, mul_63);  clamp_21 = mul_63 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:94 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_66 = torch.ops.aten._assert_tensor_metadata.default(div_23, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_66 = None
+        to_66: "f32[256, 256]" = torch.ops.aten.to.dtype(div_23, torch.float32);  div_23 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:193 in forward, code: return F.linear(input, weight, self.bias)
+        linear_10: "f32[1, 32, 256]" = torch.ops.aten.linear.default(to_64, to_66);  to_64 = to_66 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:765 in forward, code: hidden_states = residual + hidden_states
+        add_15: "f32[1, 32, 256]" = torch.ops.aten.add.Tensor(to_44, linear_10);  to_44 = linear_10 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:207 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_67 = torch.ops.aten._assert_tensor_metadata.default(add_15, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_67 = None
+        to_67: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(add_15, torch.float32);  add_15 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:208 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_8: "f32[1, 32, 256]" = torch.ops.aten.pow.Tensor_Scalar(to_67, 2)
+        mean_17: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_8, [-1], True);  pow_8 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:209 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_16: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean_17, 1e-05);  mean_17 = None
+        rsqrt_6: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_16);  add_16 = None
+        mul_65: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_67, rsqrt_6);  rsqrt_6 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:210 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_68 = torch.ops.aten._assert_tensor_metadata.default(mul_65, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_68 = None
+        to_68: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(mul_65, torch.float32);  mul_65 = None
+        mul_66: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(p_vla_language_model_model_layers_1_post_attention_layernorm_weight, to_68);  p_vla_language_model_model_layers_1_post_attention_layernorm_weight = to_68 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:107 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_69 = torch.ops.aten._assert_tensor_metadata.default(mul_66, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_69 = None
+        to_69: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(mul_66, torch.float32);  mul_66 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:108 in forward, code: s = 127 / x.abs().max(dim=-1, keepdim=True).values.clamp_(min=1e-5)
+        abs_23: "f32[1, 32, 256]" = torch.ops.aten.abs.default(to_69)
+        max_12 = torch.ops.aten.max.dim(abs_23, -1, True);  abs_23 = None
+        getitem_22: "f32[1, 32, 1]" = max_12[0]
+        getitem_23: "i64[1, 32, 1]" = max_12[1];  max_12 = getitem_23 = None
+        clamp__22: "f32[1, 32, 1]" = torch.ops.aten.clamp_.default(getitem_22, 1e-05);  getitem_22 = None
+        reciprocal_22: "f32[1, 32, 1]" = torch.ops.aten.reciprocal.default(clamp__22);  clamp__22 = None
+        mul_67: "f32[1, 32, 1]" = torch.ops.aten.mul.Tensor(reciprocal_22, 127);  reciprocal_22 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:109 in forward, code: x = (x * s).round().clamp(-128, 127) / s
+        mul_68: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_69, mul_67)
+        round_23: "f32[1, 32, 256]" = torch.ops.aten.round.default(mul_68);  mul_68 = None
+        clamp_22: "f32[1, 32, 256]" = torch.ops.aten.clamp.default(round_23, -128, 127);  round_23 = None
+        div_24: "f32[1, 32, 256]" = torch.ops.aten.div.Tensor(clamp_22, mul_67);  clamp_22 = mul_67 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:110 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_70 = torch.ops.aten._assert_tensor_metadata.default(div_24, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_70 = None
+        to_70: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(div_24, torch.float32);  div_24 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:91 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_71 = torch.ops.aten._assert_tensor_metadata.default(p_vla_language_model_model_layers_1_mlp_gate_proj_weight, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_71 = None
+        to_71: "f32[512, 256]" = torch.ops.aten.to.dtype(p_vla_language_model_model_layers_1_mlp_gate_proj_weight, torch.float32);  p_vla_language_model_model_layers_1_mlp_gate_proj_weight = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:92 in forward, code: s = 1.0 / x.abs().mean().clamp_(min=1e-5)
+        abs_24: "f32[512, 256]" = torch.ops.aten.abs.default(to_71)
+        mean_18: "f32[]" = torch.ops.aten.mean.default(abs_24);  abs_24 = None
+        clamp__23: "f32[]" = torch.ops.aten.clamp_.default(mean_18, 1e-05);  mean_18 = None
+        reciprocal_23: "f32[]" = torch.ops.aten.reciprocal.default(clamp__23);  clamp__23 = None
+        mul_69: "f32[]" = torch.ops.aten.mul.Tensor(reciprocal_23, 1.0);  reciprocal_23 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:93 in forward, code: x = (x * s).round().clamp(-1, 1) / s
+        mul_70: "f32[512, 256]" = torch.ops.aten.mul.Tensor(to_71, mul_69);  to_71 = None
+        round_24: "f32[512, 256]" = torch.ops.aten.round.default(mul_70);  mul_70 = None
+        clamp_23: "f32[512, 256]" = torch.ops.aten.clamp.default(round_24, -1, 1);  round_24 = None
+        div_25: "f32[512, 256]" = torch.ops.aten.div.Tensor(clamp_23, mul_69);  clamp_23 = mul_69 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:94 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_72 = torch.ops.aten._assert_tensor_metadata.default(div_25, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_72 = None
+        to_72: "f32[512, 256]" = torch.ops.aten.to.dtype(div_25, torch.float32);  div_25 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:193 in forward, code: return F.linear(input, weight, self.bias)
+        linear_11: "f32[1, 32, 512]" = torch.ops.aten.linear.default(to_70, to_72);  to_70 = to_72 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:302 in forward, code: down_proj = self.down_proj(self.ffn_sub_norm(self.act_fn(self.gate_proj(x)) * self.up_proj(x)))
+        relu_1: "f32[1, 32, 512]" = torch.ops.aten.relu.default(linear_11);  linear_11 = None
+        pow_9: "f32[1, 32, 512]" = torch.ops.aten.pow.Tensor_Scalar(relu_1, 2);  relu_1 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:107 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_73 = torch.ops.aten._assert_tensor_metadata.default(to_69, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_73 = None
+        to_73: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(to_69, torch.float32);  to_69 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:108 in forward, code: s = 127 / x.abs().max(dim=-1, keepdim=True).values.clamp_(min=1e-5)
+        abs_25: "f32[1, 32, 256]" = torch.ops.aten.abs.default(to_73)
+        max_13 = torch.ops.aten.max.dim(abs_25, -1, True);  abs_25 = None
+        getitem_24: "f32[1, 32, 1]" = max_13[0]
+        getitem_25: "i64[1, 32, 1]" = max_13[1];  max_13 = getitem_25 = None
+        clamp__24: "f32[1, 32, 1]" = torch.ops.aten.clamp_.default(getitem_24, 1e-05);  getitem_24 = None
+        reciprocal_24: "f32[1, 32, 1]" = torch.ops.aten.reciprocal.default(clamp__24);  clamp__24 = None
+        mul_71: "f32[1, 32, 1]" = torch.ops.aten.mul.Tensor(reciprocal_24, 127);  reciprocal_24 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:109 in forward, code: x = (x * s).round().clamp(-128, 127) / s
+        mul_72: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_73, mul_71);  to_73 = None
+        round_25: "f32[1, 32, 256]" = torch.ops.aten.round.default(mul_72);  mul_72 = None
+        clamp_24: "f32[1, 32, 256]" = torch.ops.aten.clamp.default(round_25, -128, 127);  round_25 = None
+        div_26: "f32[1, 32, 256]" = torch.ops.aten.div.Tensor(clamp_24, mul_71);  clamp_24 = mul_71 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:110 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_74 = torch.ops.aten._assert_tensor_metadata.default(div_26, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_74 = None
+        to_74: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(div_26, torch.float32);  div_26 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:91 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_75 = torch.ops.aten._assert_tensor_metadata.default(p_vla_language_model_model_layers_1_mlp_up_proj_weight, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_75 = None
+        to_75: "f32[512, 256]" = torch.ops.aten.to.dtype(p_vla_language_model_model_layers_1_mlp_up_proj_weight, torch.float32);  p_vla_language_model_model_layers_1_mlp_up_proj_weight = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:92 in forward, code: s = 1.0 / x.abs().mean().clamp_(min=1e-5)
+        abs_26: "f32[512, 256]" = torch.ops.aten.abs.default(to_75)
+        mean_19: "f32[]" = torch.ops.aten.mean.default(abs_26);  abs_26 = None
+        clamp__25: "f32[]" = torch.ops.aten.clamp_.default(mean_19, 1e-05);  mean_19 = None
+        reciprocal_25: "f32[]" = torch.ops.aten.reciprocal.default(clamp__25);  clamp__25 = None
+        mul_73: "f32[]" = torch.ops.aten.mul.Tensor(reciprocal_25, 1.0);  reciprocal_25 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:93 in forward, code: x = (x * s).round().clamp(-1, 1) / s
+        mul_74: "f32[512, 256]" = torch.ops.aten.mul.Tensor(to_75, mul_73);  to_75 = None
+        round_26: "f32[512, 256]" = torch.ops.aten.round.default(mul_74);  mul_74 = None
+        clamp_25: "f32[512, 256]" = torch.ops.aten.clamp.default(round_26, -1, 1);  round_26 = None
+        div_27: "f32[512, 256]" = torch.ops.aten.div.Tensor(clamp_25, mul_73);  clamp_25 = mul_73 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:94 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_76 = torch.ops.aten._assert_tensor_metadata.default(div_27, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_76 = None
+        to_76: "f32[512, 256]" = torch.ops.aten.to.dtype(div_27, torch.float32);  div_27 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:193 in forward, code: return F.linear(input, weight, self.bias)
+        linear_12: "f32[1, 32, 512]" = torch.ops.aten.linear.default(to_74, to_76);  to_74 = to_76 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:302 in forward, code: down_proj = self.down_proj(self.ffn_sub_norm(self.act_fn(self.gate_proj(x)) * self.up_proj(x)))
+        mul_75: "f32[1, 32, 512]" = torch.ops.aten.mul.Tensor(pow_9, linear_12);  pow_9 = linear_12 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:207 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_77 = torch.ops.aten._assert_tensor_metadata.default(mul_75, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_77 = None
+        to_77: "f32[1, 32, 512]" = torch.ops.aten.to.dtype(mul_75, torch.float32);  mul_75 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:208 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_10: "f32[1, 32, 512]" = torch.ops.aten.pow.Tensor_Scalar(to_77, 2)
+        mean_20: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_10, [-1], True);  pow_10 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:209 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_17: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean_20, 1e-05);  mean_20 = None
+        rsqrt_7: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_17);  add_17 = None
+        mul_76: "f32[1, 32, 512]" = torch.ops.aten.mul.Tensor(to_77, rsqrt_7);  to_77 = rsqrt_7 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:210 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_78 = torch.ops.aten._assert_tensor_metadata.default(mul_76, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_78 = None
+        to_78: "f32[1, 32, 512]" = torch.ops.aten.to.dtype(mul_76, torch.float32);  mul_76 = None
+        mul_77: "f32[1, 32, 512]" = torch.ops.aten.mul.Tensor(p_vla_language_model_model_layers_1_mlp_ffn_sub_norm_weight, to_78);  p_vla_language_model_model_layers_1_mlp_ffn_sub_norm_weight = to_78 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:107 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_79 = torch.ops.aten._assert_tensor_metadata.default(mul_77, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_79 = None
+        to_79: "f32[1, 32, 512]" = torch.ops.aten.to.dtype(mul_77, torch.float32);  mul_77 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:108 in forward, code: s = 127 / x.abs().max(dim=-1, keepdim=True).values.clamp_(min=1e-5)
+        abs_27: "f32[1, 32, 512]" = torch.ops.aten.abs.default(to_79)
+        max_14 = torch.ops.aten.max.dim(abs_27, -1, True);  abs_27 = None
+        getitem_26: "f32[1, 32, 1]" = max_14[0]
+        getitem_27: "i64[1, 32, 1]" = max_14[1];  max_14 = getitem_27 = None
+        clamp__26: "f32[1, 32, 1]" = torch.ops.aten.clamp_.default(getitem_26, 1e-05);  getitem_26 = None
+        reciprocal_26: "f32[1, 32, 1]" = torch.ops.aten.reciprocal.default(clamp__26);  clamp__26 = None
+        mul_78: "f32[1, 32, 1]" = torch.ops.aten.mul.Tensor(reciprocal_26, 127);  reciprocal_26 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:109 in forward, code: x = (x * s).round().clamp(-128, 127) / s
+        mul_79: "f32[1, 32, 512]" = torch.ops.aten.mul.Tensor(to_79, mul_78);  to_79 = None
+        round_27: "f32[1, 32, 512]" = torch.ops.aten.round.default(mul_79);  mul_79 = None
+        clamp_26: "f32[1, 32, 512]" = torch.ops.aten.clamp.default(round_27, -128, 127);  round_27 = None
+        div_28: "f32[1, 32, 512]" = torch.ops.aten.div.Tensor(clamp_26, mul_78);  clamp_26 = mul_78 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:110 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_80 = torch.ops.aten._assert_tensor_metadata.default(div_28, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_80 = None
+        to_80: "f32[1, 32, 512]" = torch.ops.aten.to.dtype(div_28, torch.float32);  div_28 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:91 in forward, code: x = x.float()
+        _assert_tensor_metadata_default_81 = torch.ops.aten._assert_tensor_metadata.default(p_vla_language_model_model_layers_1_mlp_down_proj_weight, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_81 = None
+        to_81: "f32[256, 512]" = torch.ops.aten.to.dtype(p_vla_language_model_model_layers_1_mlp_down_proj_weight, torch.float32);  p_vla_language_model_model_layers_1_mlp_down_proj_weight = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:92 in forward, code: s = 1.0 / x.abs().mean().clamp_(min=1e-5)
+        abs_28: "f32[256, 512]" = torch.ops.aten.abs.default(to_81)
+        mean_21: "f32[]" = torch.ops.aten.mean.default(abs_28);  abs_28 = None
+        clamp__27: "f32[]" = torch.ops.aten.clamp_.default(mean_21, 1e-05);  mean_21 = None
+        reciprocal_27: "f32[]" = torch.ops.aten.reciprocal.default(clamp__27);  clamp__27 = None
+        mul_80: "f32[]" = torch.ops.aten.mul.Tensor(reciprocal_27, 1.0);  reciprocal_27 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:93 in forward, code: x = (x * s).round().clamp(-1, 1) / s
+        mul_81: "f32[256, 512]" = torch.ops.aten.mul.Tensor(to_81, mul_80);  to_81 = None
+        round_28: "f32[256, 512]" = torch.ops.aten.round.default(mul_81);  mul_81 = None
+        clamp_27: "f32[256, 512]" = torch.ops.aten.clamp.default(round_28, -1, 1);  round_28 = None
+        div_29: "f32[256, 512]" = torch.ops.aten.div.Tensor(clamp_27, mul_80);  clamp_27 = mul_80 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:94 in forward, code: return x.to(dtype)
+        _assert_tensor_metadata_default_82 = torch.ops.aten._assert_tensor_metadata.default(div_29, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_82 = None
+        to_82: "f32[256, 512]" = torch.ops.aten.to.dtype(div_29, torch.float32);  div_29 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:193 in forward, code: return F.linear(input, weight, self.bias)
+        linear_13: "f32[1, 32, 256]" = torch.ops.aten.linear.default(to_80, to_82);  to_80 = to_82 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:771 in forward, code: hidden_states = residual + hidden_states
+        add_18: "f32[1, 32, 256]" = torch.ops.aten.add.Tensor(to_67, linear_13);  to_67 = linear_13 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:207 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_83 = torch.ops.aten._assert_tensor_metadata.default(add_18, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_83 = None
+        to_83: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(add_18, torch.float32);  add_18 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:208 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_11: "f32[1, 32, 256]" = torch.ops.aten.pow.Tensor_Scalar(to_83, 2)
+        mean_22: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_11, [-1], True);  pow_11 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:209 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_19: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean_22, 1e-05);  mean_22 = None
+        rsqrt_8: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_19);  add_19 = None
+        mul_82: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(to_83, rsqrt_8);  to_83 = rsqrt_8 = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:210 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_84 = torch.ops.aten._assert_tensor_metadata.default(mul_82, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_84 = None
+        to_84: "f32[1, 32, 256]" = torch.ops.aten.to.dtype(mul_82, torch.float32);  mul_82 = None
+        mul_83: "f32[1, 32, 256]" = torch.ops.aten.mul.Tensor(p_vla_language_model_model_norm_weight, to_84);  p_vla_language_model_model_norm_weight = to_84 = None
+        
+         # File: /scratch/agustin/projects/bitvla_capture/.venv/lib/python3.11/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_14: "f32[1, 32, 1024]" = torch.ops.aten.linear.default(mul_83, p_vla_language_model_lm_head_weight);  mul_83 = p_vla_language_model_lm_head_weight = None
+        
+         # File: /scratch/agustin/projects/BitVLA/transformers/src/transformers/models/llava/modeling_bitnet.py:1163 in forward, code: logits = logits.float()
+        _assert_tensor_metadata_default_85 = torch.ops.aten._assert_tensor_metadata.default(linear_14, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_85 = None
+        to_85: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(linear_14, torch.float32);  linear_14 = None
+        return (to_85,)
+        

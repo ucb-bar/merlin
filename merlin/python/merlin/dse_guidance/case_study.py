@@ -733,7 +733,7 @@ def _readme_md(packages) -> str:
         "- `numerical_contract_fidelity_report.md`, `dispatch_coupling_report.md`, "
         "`cost_calibration.md` — supporting evidence (calibration is a demoted existing-target anchor).\n\n"
         "## Regenerate\n```\nmerlin-dse-guidance --case-study \\\n"
-        "  --out merlin/benchmarks/dse_guidance/case_study\n```\n\n"
+        "  --out artifacts/dse-guidance/case_study\n```\n\n"
         "Every number carries an evidence label (`recovered_from_ir` / `recovered_from_prov_fqn` / "
         "`assumed_reference` / `derived_requirement` / `design_assumption` / `measured` / "
         "`proxy_measured` / `unavailable`). No file claims a speedup for unbuilt hardware.\n")

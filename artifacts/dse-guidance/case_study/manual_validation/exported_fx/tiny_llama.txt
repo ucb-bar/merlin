@@ -1,0 +1,383 @@
+=== OP HISTOGRAM (exported ATen graph, pre-lowering) ===
+    21  aten.unsqueeze.default
+    20  aten.mul.Tensor
+    16  aten.add.Tensor
+    15  aten.linear.default
+    12  aten._assert_tensor_metadata.default
+    10  aten.to.dtype
+     9  aten.slice.Tensor
+     8  aten.transpose.int
+     6  aten.view.default
+     6  aten.reshape.default
+     5  aten.arange.default
+     5  aten.expand.default
+     5  aten.pow.Tensor_Scalar
+     5  aten.mean.dim
+     5  aten.rsqrt.default
+     4  aten.neg.default
+     4  aten.cat.default
+     2  aten.to.dtype_layout
+     2  aten.__and__.Tensor
+     2  aten.index.Tensor
+     2  <built-in function getitem>
+     2  aten.scaled_dot_product_attention.default
+     2  aten.silu.default
+     1  aten.embedding.default
+     1  aten.sub.Tensor
+     1  aten.diff.default
+     1  aten.ne.Scalar
+     1  aten.cumsum.default
+     1  aten.new_ones.default
+     1  aten.le.Tensor
+     1  aten.eq.Tensor
+     1  wrap_with_set_grad_enabled
+     1  aten.alias.default
+=== GRAPH ===
+class GraphModule(torch.nn.Module):
+    def forward(self, p_lm_model_embed_tokens_weight: "f32[32000, 2048]", p_lm_model_layers_0_self_attn_q_proj_weight: "f32[2048, 2048]", p_lm_model_layers_0_self_attn_k_proj_weight: "f32[256, 2048]", p_lm_model_layers_0_self_attn_v_proj_weight: "f32[256, 2048]", p_lm_model_layers_0_self_attn_o_proj_weight: "f32[2048, 2048]", p_lm_model_layers_0_mlp_gate_proj_weight: "f32[5632, 2048]", p_lm_model_layers_0_mlp_up_proj_weight: "f32[5632, 2048]", p_lm_model_layers_0_mlp_down_proj_weight: "f32[2048, 5632]", p_lm_model_layers_0_input_layernorm_weight: "f32[2048]", p_lm_model_layers_0_post_attention_layernorm_weight: "f32[2048]", p_lm_model_layers_1_self_attn_q_proj_weight: "f32[2048, 2048]", p_lm_model_layers_1_self_attn_k_proj_weight: "f32[256, 2048]", p_lm_model_layers_1_self_attn_v_proj_weight: "f32[256, 2048]", p_lm_model_layers_1_self_attn_o_proj_weight: "f32[2048, 2048]", p_lm_model_layers_1_mlp_gate_proj_weight: "f32[5632, 2048]", p_lm_model_layers_1_mlp_up_proj_weight: "f32[5632, 2048]", p_lm_model_layers_1_mlp_down_proj_weight: "f32[2048, 5632]", p_lm_model_layers_1_input_layernorm_weight: "f32[2048]", p_lm_model_layers_1_post_attention_layernorm_weight: "f32[2048]", p_lm_model_norm_weight: "f32[2048]", p_lm_lm_head_weight: "f32[32000, 2048]", b_lm_model_rotary_emb_inv_freq: "f32[32]", b_lm_model_rotary_emb_original_inv_freq: "f32[32]", input_ids: "i64[1, 8]"):
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/torch/nn/modules/sparse.py:191 in forward, code: return F.embedding(
+        embedding: "f32[1, 8, 2048]" = torch.ops.aten.embedding.default(p_lm_model_embed_tokens_weight, input_ids);  p_lm_model_embed_tokens_weight = input_ids = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:396 in forward, code: position_ids = torch.arange(inputs_embeds.shape[1], device=inputs_embeds.device) + past_seen_tokens
+        arange: "i64[8]" = torch.ops.aten.arange.default(8, device = device(type='cpu'), pin_memory = False)
+        add: "i64[8]" = torch.ops.aten.add.Tensor(arange, 0);  arange = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:397 in forward, code: position_ids = position_ids.unsqueeze(0)
+        unsqueeze: "i64[1, 8]" = torch.ops.aten.unsqueeze.default(add, 0);  add = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:399 in forward, code: causal_mask = create_causal_mask(
+        slice_1: "i64[1, 1]" = torch.ops.aten.slice.Tensor(unsqueeze, 1, 0, 1)
+        sub: "i64[1, 1]" = torch.ops.aten.sub.Tensor(slice_1, 1);  slice_1 = None
+        diff: "i64[1, 8]" = torch.ops.aten.diff.default(unsqueeze, 1, -1, sub);  sub = None
+        ne: "b8[1, 8]" = torch.ops.aten.ne.Scalar(diff, 1);  diff = None
+        cumsum: "i64[1, 8]" = torch.ops.aten.cumsum.default(ne, -1);  ne = None
+        arange_1: "i64[1]" = torch.ops.aten.arange.default(1, device = device(type='cpu'), pin_memory = False)
+        arange_2: "i64[1]" = torch.ops.aten.arange.default(1, device = device(type='cpu'), pin_memory = False)
+        arange_3: "i64[8]" = torch.ops.aten.arange.default(8, device = device(type='cpu'), pin_memory = False)
+        add_1: "i64[8]" = torch.ops.aten.add.Tensor(arange_3, 0);  arange_3 = None
+        arange_4: "i64[8]" = torch.ops.aten.arange.default(8, device = device(type='cpu'), pin_memory = False)
+        add_2: "i64[8]" = torch.ops.aten.add.Tensor(arange_4, 0);  arange_4 = None
+        unsqueeze_1: "i64[1, 1]" = torch.ops.aten.unsqueeze.default(arange_1, 1);  arange_1 = None
+        unsqueeze_2: "i64[1, 1, 1]" = torch.ops.aten.unsqueeze.default(unsqueeze_1, 2);  unsqueeze_1 = None
+        unsqueeze_3: "i64[1, 1, 1, 1]" = torch.ops.aten.unsqueeze.default(unsqueeze_2, 3);  unsqueeze_2 = None
+        unsqueeze_4: "i64[1, 1]" = torch.ops.aten.unsqueeze.default(arange_2, 0);  arange_2 = None
+        unsqueeze_5: "i64[1, 1, 1]" = torch.ops.aten.unsqueeze.default(unsqueeze_4, 2);  unsqueeze_4 = None
+        unsqueeze_6: "i64[1, 1, 1, 1]" = torch.ops.aten.unsqueeze.default(unsqueeze_5, 3);  unsqueeze_5 = unsqueeze_6 = None
+        unsqueeze_7: "i64[1, 8]" = torch.ops.aten.unsqueeze.default(add_1, 0);  add_1 = None
+        unsqueeze_8: "i64[1, 1, 8]" = torch.ops.aten.unsqueeze.default(unsqueeze_7, 1);  unsqueeze_7 = None
+        unsqueeze_9: "i64[1, 1, 8, 1]" = torch.ops.aten.unsqueeze.default(unsqueeze_8, 3);  unsqueeze_8 = None
+        unsqueeze_10: "i64[1, 8]" = torch.ops.aten.unsqueeze.default(add_2, 0);  add_2 = None
+        unsqueeze_11: "i64[1, 1, 8]" = torch.ops.aten.unsqueeze.default(unsqueeze_10, 1);  unsqueeze_10 = None
+        unsqueeze_12: "i64[1, 1, 1, 8]" = torch.ops.aten.unsqueeze.default(unsqueeze_11, 2);  unsqueeze_11 = None
+        new_ones: "b8[]" = torch.ops.aten.new_ones.default(unsqueeze_9, [], dtype = torch.bool, pin_memory = False)
+        le: "b8[1, 1, 8, 8]" = torch.ops.aten.le.Tensor(unsqueeze_12, unsqueeze_9)
+        _assert_tensor_metadata_default = torch.ops.aten._assert_tensor_metadata.default(le, dtype = torch.bool, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default = None
+        to: "b8[1, 1, 8, 8]" = torch.ops.aten.to.dtype_layout(le, dtype = torch.bool, layout = torch.strided, device = device(type='cpu'));  le = None
+        and_1: "b8[1, 1, 8, 8]" = torch.ops.aten.__and__.Tensor(new_ones, to);  new_ones = to = None
+        index: "i64[1, 1, 8, 1]" = torch.ops.aten.index.Tensor(cumsum, [unsqueeze_3, unsqueeze_9]);  unsqueeze_9 = None
+        index_1: "i64[1, 1, 1, 8]" = torch.ops.aten.index.Tensor(cumsum, [unsqueeze_3, unsqueeze_12]);  cumsum = unsqueeze_3 = unsqueeze_12 = None
+        eq: "b8[1, 1, 8, 8]" = torch.ops.aten.eq.Tensor(index, index_1);  index = index_1 = None
+        _assert_tensor_metadata_default_1 = torch.ops.aten._assert_tensor_metadata.default(eq, dtype = torch.bool, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_1 = None
+        to_1: "b8[1, 1, 8, 8]" = torch.ops.aten.to.dtype_layout(eq, dtype = torch.bool, layout = torch.strided, device = device(type='cpu'));  eq = None
+        and_2: "b8[1, 1, 8, 8]" = torch.ops.aten.__and__.Tensor(and_1, to_1);  and_1 = to_1 = None
+        expand: "b8[1, 1, 8, 8]" = torch.ops.aten.expand.default(and_2, [1, -1, 8, 8]);  and_2 = None
+        
+        # No stacktrace found for following nodes
+        submod_3 = self.submod_1
+        wrap_with_set_grad_enabled = torch.ops.higher_order.wrap_with_set_grad_enabled(False, submod_3, b_lm_model_rotary_emb_inv_freq, unsqueeze);  submod_3 = b_lm_model_rotary_emb_inv_freq = unsqueeze = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:135 in forward, code: return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
+        to_7: "f32[1, 8, 64]" = wrap_with_set_grad_enabled[0]
+        to_8: "f32[1, 8, 64]" = wrap_with_set_grad_enabled[1];  wrap_with_set_grad_enabled = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:64 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_9 = torch.ops.aten._assert_tensor_metadata.default(embedding, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_9 = None
+        to_9: "f32[1, 8, 2048]" = torch.ops.aten.to.dtype(embedding, torch.float32);  embedding = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:65 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_1: "f32[1, 8, 2048]" = torch.ops.aten.pow.Tensor_Scalar(to_9, 2)
+        mean: "f32[1, 8, 1]" = torch.ops.aten.mean.dim(pow_1, [-1], True);  pow_1 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:66 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_3: "f32[1, 8, 1]" = torch.ops.aten.add.Tensor(mean, 1e-05);  mean = None
+        rsqrt: "f32[1, 8, 1]" = torch.ops.aten.rsqrt.default(add_3);  add_3 = None
+        mul_2: "f32[1, 8, 2048]" = torch.ops.aten.mul.Tensor(to_9, rsqrt);  rsqrt = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:67 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_10 = torch.ops.aten._assert_tensor_metadata.default(mul_2, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_10 = None
+        to_10: "f32[1, 8, 2048]" = torch.ops.aten.to.dtype(mul_2, torch.float32);  mul_2 = None
+        mul_3: "f32[1, 8, 2048]" = torch.ops.aten.mul.Tensor(p_lm_model_layers_0_input_layernorm_weight, to_10);  p_lm_model_layers_0_input_layernorm_weight = to_10 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:134 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear: "f32[1, 8, 2048]" = torch.ops.aten.linear.default(mul_3, p_lm_model_layers_0_self_attn_q_proj_weight);  p_lm_model_layers_0_self_attn_q_proj_weight = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:262 in forward, code: query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        view: "f32[1, 8, 32, 64]" = torch.ops.aten.view.default(linear, [1, 8, -1, 64]);  linear = None
+        transpose_1: "f32[1, 32, 8, 64]" = torch.ops.aten.transpose.int(view, 1, 2);  view = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:134 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_1: "f32[1, 8, 256]" = torch.ops.aten.linear.default(mul_3, p_lm_model_layers_0_self_attn_k_proj_weight);  p_lm_model_layers_0_self_attn_k_proj_weight = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:263 in forward, code: key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        view_1: "f32[1, 8, 4, 64]" = torch.ops.aten.view.default(linear_1, [1, 8, -1, 64]);  linear_1 = None
+        transpose_2: "f32[1, 4, 8, 64]" = torch.ops.aten.transpose.int(view_1, 1, 2);  view_1 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:134 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_2: "f32[1, 8, 256]" = torch.ops.aten.linear.default(mul_3, p_lm_model_layers_0_self_attn_v_proj_weight);  mul_3 = p_lm_model_layers_0_self_attn_v_proj_weight = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:264 in forward, code: value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        view_2: "f32[1, 8, 4, 64]" = torch.ops.aten.view.default(linear_2, [1, 8, -1, 64]);  linear_2 = None
+        transpose_3: "f32[1, 4, 8, 64]" = torch.ops.aten.transpose.int(view_2, 1, 2);  view_2 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:267 in forward, code: query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        unsqueeze_16: "f32[1, 1, 8, 64]" = torch.ops.aten.unsqueeze.default(to_7, 1)
+        unsqueeze_17: "f32[1, 1, 8, 64]" = torch.ops.aten.unsqueeze.default(to_8, 1)
+        mul_4: "f32[1, 32, 8, 64]" = torch.ops.aten.mul.Tensor(transpose_1, unsqueeze_16)
+        slice_2: "f32[1, 32, 8, 32]" = torch.ops.aten.slice.Tensor(transpose_1, 3, 0, 32)
+        slice_3: "f32[1, 32, 8, 32]" = torch.ops.aten.slice.Tensor(transpose_1, 3, 32, 9223372036854775807);  transpose_1 = None
+        neg: "f32[1, 32, 8, 32]" = torch.ops.aten.neg.default(slice_3);  slice_3 = None
+        cat_1: "f32[1, 32, 8, 64]" = torch.ops.aten.cat.default([neg, slice_2], -1);  neg = slice_2 = None
+        mul_5: "f32[1, 32, 8, 64]" = torch.ops.aten.mul.Tensor(cat_1, unsqueeze_17);  cat_1 = None
+        add_4: "f32[1, 32, 8, 64]" = torch.ops.aten.add.Tensor(mul_4, mul_5);  mul_4 = mul_5 = None
+        mul_6: "f32[1, 4, 8, 64]" = torch.ops.aten.mul.Tensor(transpose_2, unsqueeze_16);  unsqueeze_16 = None
+        slice_4: "f32[1, 4, 8, 32]" = torch.ops.aten.slice.Tensor(transpose_2, 3, 0, 32)
+        slice_5: "f32[1, 4, 8, 32]" = torch.ops.aten.slice.Tensor(transpose_2, 3, 32, 9223372036854775807);  transpose_2 = None
+        neg_1: "f32[1, 4, 8, 32]" = torch.ops.aten.neg.default(slice_5);  slice_5 = None
+        cat_2: "f32[1, 4, 8, 64]" = torch.ops.aten.cat.default([neg_1, slice_4], -1);  neg_1 = slice_4 = None
+        mul_7: "f32[1, 4, 8, 64]" = torch.ops.aten.mul.Tensor(cat_2, unsqueeze_17);  cat_2 = unsqueeze_17 = None
+        add_5: "f32[1, 4, 8, 64]" = torch.ops.aten.add.Tensor(mul_6, mul_7);  mul_6 = mul_7 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:276 in forward, code: attn_output, attn_weights = attention_interface(
+        unsqueeze_18: "f32[1, 4, 1, 8, 64]" = torch.ops.aten.unsqueeze.default(add_5, 2);  add_5 = None
+        expand_2: "f32[1, 4, 8, 8, 64]" = torch.ops.aten.expand.default(unsqueeze_18, [1, 4, 8, 8, 64]);  unsqueeze_18 = None
+        reshape: "f32[1, 32, 8, 64]" = torch.ops.aten.reshape.default(expand_2, [1, 32, 8, 64]);  expand_2 = None
+        unsqueeze_19: "f32[1, 4, 1, 8, 64]" = torch.ops.aten.unsqueeze.default(transpose_3, 2);  transpose_3 = None
+        expand_3: "f32[1, 4, 8, 8, 64]" = torch.ops.aten.expand.default(unsqueeze_19, [1, 4, 8, 8, 64]);  unsqueeze_19 = None
+        reshape_1: "f32[1, 32, 8, 64]" = torch.ops.aten.reshape.default(expand_3, [1, 32, 8, 64]);  expand_3 = None
+        scaled_dot_product_attention: "f32[1, 32, 8, 64]" = torch.ops.aten.scaled_dot_product_attention.default(add_4, reshape, reshape_1, expand, scale = 0.125);  add_4 = reshape = reshape_1 = None
+        transpose_4: "f32[1, 8, 32, 64]" = torch.ops.aten.transpose.int(scaled_dot_product_attention, 1, 2);  scaled_dot_product_attention = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:287 in forward, code: attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+        reshape_2: "f32[1, 8, 2048]" = torch.ops.aten.reshape.default(transpose_4, [1, 8, -1]);  transpose_4 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:134 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_3: "f32[1, 8, 2048]" = torch.ops.aten.linear.default(reshape_2, p_lm_model_layers_0_self_attn_o_proj_weight);  reshape_2 = p_lm_model_layers_0_self_attn_o_proj_weight = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:325 in forward, code: hidden_states = residual + hidden_states
+        add_6: "f32[1, 8, 2048]" = torch.ops.aten.add.Tensor(to_9, linear_3);  to_9 = linear_3 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:64 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_11 = torch.ops.aten._assert_tensor_metadata.default(add_6, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_11 = None
+        to_11: "f32[1, 8, 2048]" = torch.ops.aten.to.dtype(add_6, torch.float32);  add_6 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:65 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_2: "f32[1, 8, 2048]" = torch.ops.aten.pow.Tensor_Scalar(to_11, 2)
+        mean_1: "f32[1, 8, 1]" = torch.ops.aten.mean.dim(pow_2, [-1], True);  pow_2 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:66 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_7: "f32[1, 8, 1]" = torch.ops.aten.add.Tensor(mean_1, 1e-05);  mean_1 = None
+        rsqrt_1: "f32[1, 8, 1]" = torch.ops.aten.rsqrt.default(add_7);  add_7 = None
+        mul_8: "f32[1, 8, 2048]" = torch.ops.aten.mul.Tensor(to_11, rsqrt_1);  rsqrt_1 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:67 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_12 = torch.ops.aten._assert_tensor_metadata.default(mul_8, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_12 = None
+        to_12: "f32[1, 8, 2048]" = torch.ops.aten.to.dtype(mul_8, torch.float32);  mul_8 = None
+        mul_9: "f32[1, 8, 2048]" = torch.ops.aten.mul.Tensor(p_lm_model_layers_0_post_attention_layernorm_weight, to_12);  p_lm_model_layers_0_post_attention_layernorm_weight = to_12 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:134 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_4: "f32[1, 8, 5632]" = torch.ops.aten.linear.default(mul_9, p_lm_model_layers_0_mlp_gate_proj_weight);  p_lm_model_layers_0_mlp_gate_proj_weight = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/activations.py:103 in forward, code: return nn.functional.silu(input)
+        silu: "f32[1, 8, 5632]" = torch.ops.aten.silu.default(linear_4);  linear_4 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:134 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_5: "f32[1, 8, 5632]" = torch.ops.aten.linear.default(mul_9, p_lm_model_layers_0_mlp_up_proj_weight);  mul_9 = p_lm_model_layers_0_mlp_up_proj_weight = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:183 in forward, code: down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+        mul_10: "f32[1, 8, 5632]" = torch.ops.aten.mul.Tensor(silu, linear_5);  silu = linear_5 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:134 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_6: "f32[1, 8, 2048]" = torch.ops.aten.linear.default(mul_10, p_lm_model_layers_0_mlp_down_proj_weight);  mul_10 = p_lm_model_layers_0_mlp_down_proj_weight = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:331 in forward, code: hidden_states = residual + hidden_states
+        add_8: "f32[1, 8, 2048]" = torch.ops.aten.add.Tensor(to_11, linear_6);  to_11 = linear_6 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:64 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_13 = torch.ops.aten._assert_tensor_metadata.default(add_8, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_13 = None
+        to_13: "f32[1, 8, 2048]" = torch.ops.aten.to.dtype(add_8, torch.float32);  add_8 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:65 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_3: "f32[1, 8, 2048]" = torch.ops.aten.pow.Tensor_Scalar(to_13, 2)
+        mean_2: "f32[1, 8, 1]" = torch.ops.aten.mean.dim(pow_3, [-1], True);  pow_3 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:66 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_9: "f32[1, 8, 1]" = torch.ops.aten.add.Tensor(mean_2, 1e-05);  mean_2 = None
+        rsqrt_2: "f32[1, 8, 1]" = torch.ops.aten.rsqrt.default(add_9);  add_9 = None
+        mul_11: "f32[1, 8, 2048]" = torch.ops.aten.mul.Tensor(to_13, rsqrt_2);  rsqrt_2 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:67 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_14 = torch.ops.aten._assert_tensor_metadata.default(mul_11, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_14 = None
+        to_14: "f32[1, 8, 2048]" = torch.ops.aten.to.dtype(mul_11, torch.float32);  mul_11 = None
+        mul_12: "f32[1, 8, 2048]" = torch.ops.aten.mul.Tensor(p_lm_model_layers_1_input_layernorm_weight, to_14);  p_lm_model_layers_1_input_layernorm_weight = to_14 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:134 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_7: "f32[1, 8, 2048]" = torch.ops.aten.linear.default(mul_12, p_lm_model_layers_1_self_attn_q_proj_weight);  p_lm_model_layers_1_self_attn_q_proj_weight = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:262 in forward, code: query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        view_3: "f32[1, 8, 32, 64]" = torch.ops.aten.view.default(linear_7, [1, 8, -1, 64]);  linear_7 = None
+        transpose_5: "f32[1, 32, 8, 64]" = torch.ops.aten.transpose.int(view_3, 1, 2);  view_3 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:134 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_8: "f32[1, 8, 256]" = torch.ops.aten.linear.default(mul_12, p_lm_model_layers_1_self_attn_k_proj_weight);  p_lm_model_layers_1_self_attn_k_proj_weight = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:263 in forward, code: key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        view_4: "f32[1, 8, 4, 64]" = torch.ops.aten.view.default(linear_8, [1, 8, -1, 64]);  linear_8 = None
+        transpose_6: "f32[1, 4, 8, 64]" = torch.ops.aten.transpose.int(view_4, 1, 2);  view_4 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:134 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_9: "f32[1, 8, 256]" = torch.ops.aten.linear.default(mul_12, p_lm_model_layers_1_self_attn_v_proj_weight);  mul_12 = p_lm_model_layers_1_self_attn_v_proj_weight = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:264 in forward, code: value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        view_5: "f32[1, 8, 4, 64]" = torch.ops.aten.view.default(linear_9, [1, 8, -1, 64]);  linear_9 = None
+        transpose_7: "f32[1, 4, 8, 64]" = torch.ops.aten.transpose.int(view_5, 1, 2);  view_5 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:267 in forward, code: query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        unsqueeze_20: "f32[1, 1, 8, 64]" = torch.ops.aten.unsqueeze.default(to_7, 1);  to_7 = None
+        unsqueeze_21: "f32[1, 1, 8, 64]" = torch.ops.aten.unsqueeze.default(to_8, 1);  to_8 = None
+        mul_13: "f32[1, 32, 8, 64]" = torch.ops.aten.mul.Tensor(transpose_5, unsqueeze_20)
+        slice_6: "f32[1, 32, 8, 32]" = torch.ops.aten.slice.Tensor(transpose_5, 3, 0, 32)
+        slice_7: "f32[1, 32, 8, 32]" = torch.ops.aten.slice.Tensor(transpose_5, 3, 32, 9223372036854775807);  transpose_5 = None
+        neg_2: "f32[1, 32, 8, 32]" = torch.ops.aten.neg.default(slice_7);  slice_7 = None
+        cat_3: "f32[1, 32, 8, 64]" = torch.ops.aten.cat.default([neg_2, slice_6], -1);  neg_2 = slice_6 = None
+        mul_14: "f32[1, 32, 8, 64]" = torch.ops.aten.mul.Tensor(cat_3, unsqueeze_21);  cat_3 = None
+        add_10: "f32[1, 32, 8, 64]" = torch.ops.aten.add.Tensor(mul_13, mul_14);  mul_13 = mul_14 = None
+        mul_15: "f32[1, 4, 8, 64]" = torch.ops.aten.mul.Tensor(transpose_6, unsqueeze_20);  unsqueeze_20 = None
+        slice_8: "f32[1, 4, 8, 32]" = torch.ops.aten.slice.Tensor(transpose_6, 3, 0, 32)
+        slice_9: "f32[1, 4, 8, 32]" = torch.ops.aten.slice.Tensor(transpose_6, 3, 32, 9223372036854775807);  transpose_6 = None
+        neg_3: "f32[1, 4, 8, 32]" = torch.ops.aten.neg.default(slice_9);  slice_9 = None
+        cat_4: "f32[1, 4, 8, 64]" = torch.ops.aten.cat.default([neg_3, slice_8], -1);  neg_3 = slice_8 = None
+        mul_16: "f32[1, 4, 8, 64]" = torch.ops.aten.mul.Tensor(cat_4, unsqueeze_21);  cat_4 = unsqueeze_21 = None
+        add_11: "f32[1, 4, 8, 64]" = torch.ops.aten.add.Tensor(mul_15, mul_16);  mul_15 = mul_16 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:276 in forward, code: attn_output, attn_weights = attention_interface(
+        unsqueeze_22: "f32[1, 4, 1, 8, 64]" = torch.ops.aten.unsqueeze.default(add_11, 2);  add_11 = None
+        expand_4: "f32[1, 4, 8, 8, 64]" = torch.ops.aten.expand.default(unsqueeze_22, [1, 4, 8, 8, 64]);  unsqueeze_22 = None
+        reshape_3: "f32[1, 32, 8, 64]" = torch.ops.aten.reshape.default(expand_4, [1, 32, 8, 64]);  expand_4 = None
+        unsqueeze_23: "f32[1, 4, 1, 8, 64]" = torch.ops.aten.unsqueeze.default(transpose_7, 2);  transpose_7 = None
+        expand_5: "f32[1, 4, 8, 8, 64]" = torch.ops.aten.expand.default(unsqueeze_23, [1, 4, 8, 8, 64]);  unsqueeze_23 = None
+        reshape_4: "f32[1, 32, 8, 64]" = torch.ops.aten.reshape.default(expand_5, [1, 32, 8, 64]);  expand_5 = None
+        scaled_dot_product_attention_1: "f32[1, 32, 8, 64]" = torch.ops.aten.scaled_dot_product_attention.default(add_10, reshape_3, reshape_4, expand, scale = 0.125);  add_10 = reshape_3 = reshape_4 = expand = None
+        transpose_8: "f32[1, 8, 32, 64]" = torch.ops.aten.transpose.int(scaled_dot_product_attention_1, 1, 2);  scaled_dot_product_attention_1 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:287 in forward, code: attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+        reshape_5: "f32[1, 8, 2048]" = torch.ops.aten.reshape.default(transpose_8, [1, 8, -1]);  transpose_8 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:134 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_10: "f32[1, 8, 2048]" = torch.ops.aten.linear.default(reshape_5, p_lm_model_layers_1_self_attn_o_proj_weight);  reshape_5 = p_lm_model_layers_1_self_attn_o_proj_weight = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:325 in forward, code: hidden_states = residual + hidden_states
+        add_12: "f32[1, 8, 2048]" = torch.ops.aten.add.Tensor(to_13, linear_10);  to_13 = linear_10 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:64 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_15 = torch.ops.aten._assert_tensor_metadata.default(add_12, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_15 = None
+        to_15: "f32[1, 8, 2048]" = torch.ops.aten.to.dtype(add_12, torch.float32);  add_12 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:65 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_4: "f32[1, 8, 2048]" = torch.ops.aten.pow.Tensor_Scalar(to_15, 2)
+        mean_3: "f32[1, 8, 1]" = torch.ops.aten.mean.dim(pow_4, [-1], True);  pow_4 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:66 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_13: "f32[1, 8, 1]" = torch.ops.aten.add.Tensor(mean_3, 1e-05);  mean_3 = None
+        rsqrt_3: "f32[1, 8, 1]" = torch.ops.aten.rsqrt.default(add_13);  add_13 = None
+        mul_17: "f32[1, 8, 2048]" = torch.ops.aten.mul.Tensor(to_15, rsqrt_3);  rsqrt_3 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:67 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_16 = torch.ops.aten._assert_tensor_metadata.default(mul_17, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_16 = None
+        to_16: "f32[1, 8, 2048]" = torch.ops.aten.to.dtype(mul_17, torch.float32);  mul_17 = None
+        mul_18: "f32[1, 8, 2048]" = torch.ops.aten.mul.Tensor(p_lm_model_layers_1_post_attention_layernorm_weight, to_16);  p_lm_model_layers_1_post_attention_layernorm_weight = to_16 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:134 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_11: "f32[1, 8, 5632]" = torch.ops.aten.linear.default(mul_18, p_lm_model_layers_1_mlp_gate_proj_weight);  p_lm_model_layers_1_mlp_gate_proj_weight = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/activations.py:103 in forward, code: return nn.functional.silu(input)
+        silu_1: "f32[1, 8, 5632]" = torch.ops.aten.silu.default(linear_11);  linear_11 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:134 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_12: "f32[1, 8, 5632]" = torch.ops.aten.linear.default(mul_18, p_lm_model_layers_1_mlp_up_proj_weight);  mul_18 = p_lm_model_layers_1_mlp_up_proj_weight = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:183 in forward, code: down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+        mul_19: "f32[1, 8, 5632]" = torch.ops.aten.mul.Tensor(silu_1, linear_12);  silu_1 = linear_12 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:134 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_13: "f32[1, 8, 2048]" = torch.ops.aten.linear.default(mul_19, p_lm_model_layers_1_mlp_down_proj_weight);  mul_19 = p_lm_model_layers_1_mlp_down_proj_weight = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:331 in forward, code: hidden_states = residual + hidden_states
+        add_14: "f32[1, 8, 2048]" = torch.ops.aten.add.Tensor(to_15, linear_13);  to_15 = linear_13 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:64 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_17 = torch.ops.aten._assert_tensor_metadata.default(add_14, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_17 = None
+        to_17: "f32[1, 8, 2048]" = torch.ops.aten.to.dtype(add_14, torch.float32);  add_14 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:65 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_5: "f32[1, 8, 2048]" = torch.ops.aten.pow.Tensor_Scalar(to_17, 2)
+        mean_4: "f32[1, 8, 1]" = torch.ops.aten.mean.dim(pow_5, [-1], True);  pow_5 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:66 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_15: "f32[1, 8, 1]" = torch.ops.aten.add.Tensor(mean_4, 1e-05);  mean_4 = None
+        rsqrt_4: "f32[1, 8, 1]" = torch.ops.aten.rsqrt.default(add_15);  add_15 = None
+        mul_20: "f32[1, 8, 2048]" = torch.ops.aten.mul.Tensor(to_17, rsqrt_4);  to_17 = rsqrt_4 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:67 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_18 = torch.ops.aten._assert_tensor_metadata.default(mul_20, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_18 = None
+        to_18: "f32[1, 8, 2048]" = torch.ops.aten.to.dtype(mul_20, torch.float32);  mul_20 = None
+        mul_21: "f32[1, 8, 2048]" = torch.ops.aten.mul.Tensor(p_lm_model_norm_weight, to_18);  p_lm_model_norm_weight = to_18 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:487 in forward, code: logits = self.lm_head(hidden_states[:, slice_indices, :])
+        alias: "f32[1, 8, 2048]" = torch.ops.aten.alias.default(mul_21);  mul_21 = None
+        
+        # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:134 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_14: "f32[1, 8, 32000]" = torch.ops.aten.linear.default(alias, p_lm_lm_head_weight);  alias = p_lm_lm_head_weight = None
+        return (linear_14,)
+        
+    class submod_1(torch.nn.Module):
+        def forward(self, b_lm_model_rotary_emb_inv_freq: "f32[32]", unsqueeze: "i64[1, 8]"):
+            # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:125 in forward, code: inv_freq_expanded = self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1).to(x.device)
+            unsqueeze_13: "f32[1, 32]" = torch.ops.aten.unsqueeze.default(b_lm_model_rotary_emb_inv_freq, 0);  b_lm_model_rotary_emb_inv_freq = None
+            unsqueeze_14: "f32[1, 32, 1]" = torch.ops.aten.unsqueeze.default(unsqueeze_13, 2);  unsqueeze_13 = None
+            _assert_tensor_metadata_default_2 = torch.ops.aten._assert_tensor_metadata.default(unsqueeze_14, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_2 = None
+            to_2: "f32[1, 32, 1]" = torch.ops.aten.to.dtype(unsqueeze_14, torch.float32);  unsqueeze_14 = None
+            expand_1: "f32[1, 32, 1]" = torch.ops.aten.expand.default(to_2, [1, -1, 1]);  to_2 = None
+            _assert_tensor_metadata_default_3 = torch.ops.aten._assert_tensor_metadata.default(expand_1, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_3 = None
+            to_3: "f32[1, 32, 1]" = torch.ops.aten.to.dtype_layout(expand_1, dtype = torch.float32, layout = torch.strided, device = device(type='cpu'));  expand_1 = None
+            
+            # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:126 in forward, code: position_ids_expanded = position_ids[:, None, :].float()
+            unsqueeze_15: "i64[1, 1, 8]" = torch.ops.aten.unsqueeze.default(unsqueeze, 1);  unsqueeze = None
+            _assert_tensor_metadata_default_4 = torch.ops.aten._assert_tensor_metadata.default(unsqueeze_15, dtype = torch.int64, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_4 = None
+            to_4: "f32[1, 1, 8]" = torch.ops.aten.to.dtype(unsqueeze_15, torch.float32);  unsqueeze_15 = None
+            
+            # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:130 in forward, code: freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(1, 2)
+            _assert_tensor_metadata_default_5 = torch.ops.aten._assert_tensor_metadata.default(to_3, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_5 = None
+            to_5: "f32[1, 32, 1]" = torch.ops.aten.to.dtype(to_3, torch.float32);  to_3 = None
+            _assert_tensor_metadata_default_6 = torch.ops.aten._assert_tensor_metadata.default(to_4, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_6 = None
+            to_6: "f32[1, 1, 8]" = torch.ops.aten.to.dtype(to_4, torch.float32);  to_4 = None
+            matmul: "f32[1, 32, 8]" = torch.ops.aten.matmul.default(to_5, to_6);  to_5 = to_6 = None
+            transpose: "f32[1, 8, 32]" = torch.ops.aten.transpose.int(matmul, 1, 2);  matmul = None
+            
+            # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:131 in forward, code: emb = torch.cat((freqs, freqs), dim=-1)
+            cat: "f32[1, 8, 64]" = torch.ops.aten.cat.default([transpose, transpose], -1);  transpose = None
+            
+            # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:132 in forward, code: cos = emb.cos() * self.attention_scaling
+            cos: "f32[1, 8, 64]" = torch.ops.aten.cos.default(cat)
+            mul: "f32[1, 8, 64]" = torch.ops.aten.mul.Tensor(cos, 1.0);  cos = None
+            
+            # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:133 in forward, code: sin = emb.sin() * self.attention_scaling
+            sin: "f32[1, 8, 64]" = torch.ops.aten.sin.default(cat);  cat = None
+            mul_1: "f32[1, 8, 64]" = torch.ops.aten.mul.Tensor(sin, 1.0);  sin = None
+            
+            # File: /scratch/agustin/projects/model2MLIR/.venv/lib/python3.12/site-packages/transformers/models/llama/modeling_llama.py:135 in forward, code: return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
+            _assert_tensor_metadata_default_7 = torch.ops.aten._assert_tensor_metadata.default(mul, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_7 = None
+            to_7: "f32[1, 8, 64]" = torch.ops.aten.to.dtype(mul, torch.float32);  mul = None
+            _assert_tensor_metadata_default_8 = torch.ops.aten._assert_tensor_metadata.default(mul_1, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_8 = None
+            to_8: "f32[1, 8, 64]" = torch.ops.aten.to.dtype(mul_1, torch.float32);  mul_1 = None
+            return (to_7, to_8)
+            

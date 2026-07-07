@@ -1,0 +1,537 @@
+=== OP HISTOGRAM (exported ATen graph, pre-lowering) ===
+    46  aten.mul.Tensor
+    30  aten.add.Tensor
+    26  aten._assert_tensor_metadata.default
+    26  aten.to.dtype
+    19  aten.linear.default
+    18  <built-in function getitem>
+    13  aten.slice.Tensor
+    12  aten.pow.Tensor_Scalar
+    12  aten.mean.dim
+    12  aten.rsqrt.default
+    10  aten.unsqueeze.default
+    10  aten.cat.default
+     8  aten.transpose.int
+     5  aten.view.default
+     4  aten.neg.default
+     4  aten.repeat_interleave.self_int
+     3  aten.gelu.default
+     3  aten.silu.default
+     2  aten.chunk.default
+     2  aten.unbind.int
+     2  aten.scaled_dot_product_attention.default
+     1  aten.reshape.default
+     1  aten.arange.start
+     1  aten.div.Tensor
+     1  aten.exp.default
+     1  aten.cos.default
+     1  aten.sin.default
+     1  aten.repeat.default
+=== GRAPH ===
+class GraphModule(torch.nn.Module):
+    def forward(self, p_model_dit_layers_0_adaln_table: "f32[6, 1024]", p_model_dit_layers_0_attn_qkv_proj_weight: "f32[3072, 1024]", p_model_dit_layers_0_attn_qkv_proj_bias: "f32[3072]", p_model_dit_layers_0_attn_o_proj_weight: "f32[1024, 1024]", p_model_dit_layers_0_attn_q_norm_weight: "f32[128]", p_model_dit_layers_0_attn_k_norm_weight: "f32[128]", p_model_dit_layers_0_mlp_gate_proj_weight: "f32[4096, 1024]", p_model_dit_layers_0_mlp_up_proj_weight: "f32[4096, 1024]", p_model_dit_layers_0_mlp_down_proj_weight: "f32[1024, 4096]", p_model_dit_layers_0_input_layernorm_weight: "f32[1024]", p_model_dit_layers_0_middle_layernorm_weight: "f32[1024]", p_model_dit_layers_0_post_layernorm_weight: "f32[1024]", p_model_dit_layers_0_final_layernorm_weight: "f32[1024]", p_model_dit_layers_1_adaln_table: "f32[6, 1024]", p_model_dit_layers_1_attn_qkv_proj_weight: "f32[3072, 1024]", p_model_dit_layers_1_attn_qkv_proj_bias: "f32[3072]", p_model_dit_layers_1_attn_o_proj_weight: "f32[1024, 1024]", p_model_dit_layers_1_attn_q_norm_weight: "f32[128]", p_model_dit_layers_1_attn_k_norm_weight: "f32[128]", p_model_dit_layers_1_mlp_gate_proj_weight: "f32[4096, 1024]", p_model_dit_layers_1_mlp_up_proj_weight: "f32[4096, 1024]", p_model_dit_layers_1_mlp_down_proj_weight: "f32[1024, 4096]", p_model_dit_layers_1_input_layernorm_weight: "f32[1024]", p_model_dit_layers_1_middle_layernorm_weight: "f32[1024]", p_model_dit_layers_1_post_layernorm_weight: "f32[1024]", p_model_dit_layers_1_final_layernorm_weight: "f32[1024]", p_model_state_projector_layers_0_weight: "f32[1024, 32]", p_model_state_projector_layers_2_weight: "f32[1024, 1024]", p_model_action_projector_layers_0_weight: "f32[1024, 32]", p_model_action_projector_layers_2_weight: "f32[1024, 1024]", p_model_action_output_layer_layers_0_weight: "f32[32, 1024]", p_model_action_output_layer_layers_2_weight: "f32[32, 32]", p_model_t_embedder_mlp_0_weight: "f32[1024, 256]", p_model_t_embedder_mlp_2_weight: "f32[1024, 1024]", p_model_t_projector_layers_0_weight: "f32[6144, 1024]", p_model_t_projector_layers_0_bias: "f32[6144]", p_model_sink_weight: "f32[1, 1024]", b_model_rotary_emb_inv_freq: "f32[64]", noisy_action: "f32[1, 30, 32]", t: "f32[1, 1, 1]", action_mask: "f32[1, 30, 32]", state: "f32[1, 1, 32]", cos: "f32[1, 32, 128]", sin: "f32[1, 32, 128]", attn_mask: "b8[1, 1, 32, 48]", kv_0: "f32[1, 8, 16, 128]", kv_1: "f32[1, 8, 16, 128]", kv_2: "f32[1, 8, 16, 128]", kv_3: "f32[1, 8, 16, 128]"):
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear: "f32[1, 1, 1024]" = torch.ops.aten.linear.default(state, p_model_state_projector_layers_0_weight);  state = p_model_state_projector_layers_0_weight = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/activation.py:738 in forward, code: return F.gelu(input, approximate=self.approximate)
+        gelu: "f32[1, 1, 1024]" = torch.ops.aten.gelu.default(linear, approximate = 'tanh');  linear = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_1: "f32[1, 1, 1024]" = torch.ops.aten.linear.default(gelu, p_model_state_projector_layers_2_weight);  gelu = p_model_state_projector_layers_2_weight = None
+        
+         # File: /scratch/agustin/projects/model2MLIR/workloads/xr0/loader.py:123 in forward, code: return m.dit_forward(
+        reshape: "f32[1]" = torch.ops.aten.reshape.default(t, [1]);  t = None
+        mul: "f32[1]" = torch.ops.aten.mul.Tensor(reshape, 1000);  reshape = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:163 in forward, code: t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
+        arange: "f32[128]" = torch.ops.aten.arange.start(0, 128, dtype = torch.float32, device = device(type='cpu'), pin_memory = False)
+        mul_1: "f32[128]" = torch.ops.aten.mul.Tensor(arange, -9.210340371976184);  arange = None
+        div: "f32[128]" = torch.ops.aten.div.Tensor(mul_1, 128);  mul_1 = None
+        exp: "f32[128]" = torch.ops.aten.exp.default(div);  div = None
+        slice_1: "f32[1]" = torch.ops.aten.slice.Tensor(mul, 0, 0, 9223372036854775807);  mul = None
+        unsqueeze: "f32[1, 1]" = torch.ops.aten.unsqueeze.default(slice_1, 1);  slice_1 = None
+        _assert_tensor_metadata_default = torch.ops.aten._assert_tensor_metadata.default(unsqueeze, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default = None
+        to: "f32[1, 1]" = torch.ops.aten.to.dtype(unsqueeze, torch.float32);  unsqueeze = None
+        unsqueeze_1: "f32[1, 128]" = torch.ops.aten.unsqueeze.default(exp, 0);  exp = None
+        mul_2: "f32[1, 128]" = torch.ops.aten.mul.Tensor(to, unsqueeze_1);  to = unsqueeze_1 = None
+        cos_1: "f32[1, 128]" = torch.ops.aten.cos.default(mul_2)
+        sin_1: "f32[1, 128]" = torch.ops.aten.sin.default(mul_2);  mul_2 = None
+        cat: "f32[1, 256]" = torch.ops.aten.cat.default([cos_1, sin_1], -1);  cos_1 = sin_1 = None
+        _assert_tensor_metadata_default_1 = torch.ops.aten._assert_tensor_metadata.default(cat, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_1 = None
+        to_1: "f32[1, 256]" = torch.ops.aten.to.dtype(cat, torch.float32);  cat = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_2: "f32[1, 1024]" = torch.ops.aten.linear.default(to_1, p_model_t_embedder_mlp_0_weight);  to_1 = p_model_t_embedder_mlp_0_weight = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/activation.py:434 in forward, code: return F.silu(input, inplace=self.inplace)
+        silu: "f32[1, 1024]" = torch.ops.aten.silu.default(linear_2);  linear_2 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_3: "f32[1, 1024]" = torch.ops.aten.linear.default(silu, p_model_t_embedder_mlp_2_weight);  silu = p_model_t_embedder_mlp_2_weight = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:166 in forward, code: return t_emb[:, None]
+        slice_2: "f32[1, 1024]" = torch.ops.aten.slice.Tensor(linear_3, 0, 0, 9223372036854775807);  linear_3 = None
+        unsqueeze_2: "f32[1, 1, 1024]" = torch.ops.aten.unsqueeze.default(slice_2, 1);  slice_2 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_4: "f32[1, 1, 6144]" = torch.ops.aten.linear.default(unsqueeze_2, p_model_t_projector_layers_0_weight, p_model_t_projector_layers_0_bias);  unsqueeze_2 = p_model_t_projector_layers_0_weight = p_model_t_projector_layers_0_bias = None
+        
+         # File: /scratch/agustin/projects/model2MLIR/workloads/xr0/loader.py:123 in forward, code: return m.dit_forward(
+        view: "f32[1, 6, 1024]" = torch.ops.aten.view.default(linear_4, [1, 6, -1]);  linear_4 = None
+        mul_3: "f32[1, 30, 32]" = torch.ops.aten.mul.Tensor(noisy_action, action_mask);  noisy_action = action_mask = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_5: "f32[1, 30, 1024]" = torch.ops.aten.linear.default(mul_3, p_model_action_projector_layers_0_weight);  mul_3 = p_model_action_projector_layers_0_weight = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/activation.py:738 in forward, code: return F.gelu(input, approximate=self.approximate)
+        gelu_1: "f32[1, 30, 1024]" = torch.ops.aten.gelu.default(linear_5, approximate = 'tanh');  linear_5 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_6: "f32[1, 30, 1024]" = torch.ops.aten.linear.default(gelu_1, p_model_action_projector_layers_2_weight);  gelu_1 = p_model_action_projector_layers_2_weight = None
+        
+         # File: /scratch/agustin/projects/model2MLIR/workloads/xr0/loader.py:123 in forward, code: return m.dit_forward(
+        unsqueeze_3: "f32[1, 1, 1024]" = torch.ops.aten.unsqueeze.default(p_model_sink_weight, 0);  p_model_sink_weight = None
+        repeat: "f32[1, 1, 1024]" = torch.ops.aten.repeat.default(unsqueeze_3, [1, 1, 1]);  unsqueeze_3 = None
+        cat_1: "f32[1, 32, 1024]" = torch.ops.aten.cat.default([repeat, linear_1, linear_6], 1);  repeat = linear_1 = linear_6 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:325 in forward, code: shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (self.adaln_table[None] + t_embeds).chunk(
+        unsqueeze_4: "f32[1, 6, 1024]" = torch.ops.aten.unsqueeze.default(p_model_dit_layers_0_adaln_table, 0);  p_model_dit_layers_0_adaln_table = None
+        add: "f32[1, 6, 1024]" = torch.ops.aten.add.Tensor(unsqueeze_4, view);  unsqueeze_4 = None
+        chunk = torch.ops.aten.chunk.default(add, 6, 1);  add = None
+        getitem: "f32[1, 1, 1024]" = chunk[0]
+        getitem_1: "f32[1, 1, 1024]" = chunk[1]
+        getitem_2: "f32[1, 1, 1024]" = chunk[2]
+        getitem_3: "f32[1, 1, 1024]" = chunk[3]
+        getitem_4: "f32[1, 1, 1024]" = chunk[4]
+        getitem_5: "f32[1, 1, 1024]" = chunk[5];  chunk = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:198 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_2 = torch.ops.aten._assert_tensor_metadata.default(cat_1, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_2 = None
+        to_2: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(cat_1, torch.float32);  cat_1 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:199 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_1: "f32[1, 32, 1024]" = torch.ops.aten.pow.Tensor_Scalar(to_2, 2)
+        mean: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_1, [-1], True);  pow_1 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:200 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_1: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean, 1e-06);  mean = None
+        rsqrt: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_1);  add_1 = None
+        mul_4: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(to_2, rsqrt);  rsqrt = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:201 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_3 = torch.ops.aten._assert_tensor_metadata.default(mul_4, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_3 = None
+        to_3: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(mul_4, torch.float32);  mul_4 = None
+        mul_5: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(p_model_dit_layers_0_input_layernorm_weight, to_3);  p_model_dit_layers_0_input_layernorm_weight = to_3 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:332 in forward, code: hidden_states = modulate(hidden_states, shift_msa, scale_msa)
+        add_2: "f32[1, 1, 1024]" = torch.ops.aten.add.Tensor(getitem_1, 1);  getitem_1 = None
+        mul_6: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(mul_5, add_2);  mul_5 = add_2 = None
+        add_3: "f32[1, 32, 1024]" = torch.ops.aten.add.Tensor(mul_6, getitem);  mul_6 = getitem = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_7: "f32[1, 32, 3072]" = torch.ops.aten.linear.default(add_3, p_model_dit_layers_0_attn_qkv_proj_weight, p_model_dit_layers_0_attn_qkv_proj_bias);  add_3 = p_model_dit_layers_0_attn_qkv_proj_weight = p_model_dit_layers_0_attn_qkv_proj_bias = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:221 in forward, code: qkv = qkv.view(bsz, q_len, 3, self.num_heads, self.head_dim)
+        view_1: "f32[1, 32, 3, 8, 128]" = torch.ops.aten.view.default(linear_7, [1, 32, 3, 8, 128]);  linear_7 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:222 in forward, code: query_states, key_states, value_states = qkv.unbind(2)
+        unbind = torch.ops.aten.unbind.int(view_1, 2);  view_1 = None
+        getitem_6: "f32[1, 32, 8, 128]" = unbind[0]
+        getitem_7: "f32[1, 32, 8, 128]" = unbind[1]
+        getitem_8: "f32[1, 32, 8, 128]" = unbind[2];  unbind = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:198 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_4 = torch.ops.aten._assert_tensor_metadata.default(getitem_6, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_4 = None
+        to_4: "f32[1, 32, 8, 128]" = torch.ops.aten.to.dtype(getitem_6, torch.float32);  getitem_6 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:199 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_2: "f32[1, 32, 8, 128]" = torch.ops.aten.pow.Tensor_Scalar(to_4, 2)
+        mean_1: "f32[1, 32, 8, 1]" = torch.ops.aten.mean.dim(pow_2, [-1], True);  pow_2 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:200 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_4: "f32[1, 32, 8, 1]" = torch.ops.aten.add.Tensor(mean_1, 1e-06);  mean_1 = None
+        rsqrt_1: "f32[1, 32, 8, 1]" = torch.ops.aten.rsqrt.default(add_4);  add_4 = None
+        mul_7: "f32[1, 32, 8, 128]" = torch.ops.aten.mul.Tensor(to_4, rsqrt_1);  to_4 = rsqrt_1 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:201 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_5 = torch.ops.aten._assert_tensor_metadata.default(mul_7, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_5 = None
+        to_5: "f32[1, 32, 8, 128]" = torch.ops.aten.to.dtype(mul_7, torch.float32);  mul_7 = None
+        mul_8: "f32[1, 32, 8, 128]" = torch.ops.aten.mul.Tensor(p_model_dit_layers_0_attn_q_norm_weight, to_5);  p_model_dit_layers_0_attn_q_norm_weight = to_5 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:198 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_6 = torch.ops.aten._assert_tensor_metadata.default(getitem_7, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_6 = None
+        to_6: "f32[1, 32, 8, 128]" = torch.ops.aten.to.dtype(getitem_7, torch.float32);  getitem_7 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:199 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_3: "f32[1, 32, 8, 128]" = torch.ops.aten.pow.Tensor_Scalar(to_6, 2)
+        mean_2: "f32[1, 32, 8, 1]" = torch.ops.aten.mean.dim(pow_3, [-1], True);  pow_3 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:200 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_5: "f32[1, 32, 8, 1]" = torch.ops.aten.add.Tensor(mean_2, 1e-06);  mean_2 = None
+        rsqrt_2: "f32[1, 32, 8, 1]" = torch.ops.aten.rsqrt.default(add_5);  add_5 = None
+        mul_9: "f32[1, 32, 8, 128]" = torch.ops.aten.mul.Tensor(to_6, rsqrt_2);  to_6 = rsqrt_2 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:201 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_7 = torch.ops.aten._assert_tensor_metadata.default(mul_9, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_7 = None
+        to_7: "f32[1, 32, 8, 128]" = torch.ops.aten.to.dtype(mul_9, torch.float32);  mul_9 = None
+        mul_10: "f32[1, 32, 8, 128]" = torch.ops.aten.mul.Tensor(p_model_dit_layers_0_attn_k_norm_weight, to_7);  p_model_dit_layers_0_attn_k_norm_weight = to_7 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:227 in forward, code: query_states = query_states.transpose(1, 2)
+        transpose: "f32[1, 8, 32, 128]" = torch.ops.aten.transpose.int(mul_8, 1, 2);  mul_8 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:228 in forward, code: key_states = key_states.transpose(1, 2)
+        transpose_1: "f32[1, 8, 32, 128]" = torch.ops.aten.transpose.int(mul_10, 1, 2);  mul_10 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:229 in forward, code: value_states = value_states.transpose(1, 2)
+        transpose_2: "f32[1, 8, 32, 128]" = torch.ops.aten.transpose.int(getitem_8, 1, 2);  getitem_8 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:236 in forward, code: query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        unsqueeze_5: "f32[1, 1, 32, 128]" = torch.ops.aten.unsqueeze.default(cos, 1)
+        unsqueeze_6: "f32[1, 1, 32, 128]" = torch.ops.aten.unsqueeze.default(sin, 1)
+        mul_11: "f32[1, 8, 32, 128]" = torch.ops.aten.mul.Tensor(transpose, unsqueeze_5)
+        slice_3: "f32[1, 8, 32, 64]" = torch.ops.aten.slice.Tensor(transpose, 3, 0, 64)
+        slice_4: "f32[1, 8, 32, 64]" = torch.ops.aten.slice.Tensor(transpose, 3, 64, 9223372036854775807);  transpose = None
+        neg: "f32[1, 8, 32, 64]" = torch.ops.aten.neg.default(slice_4);  slice_4 = None
+        cat_2: "f32[1, 8, 32, 128]" = torch.ops.aten.cat.default([neg, slice_3], -1);  neg = slice_3 = None
+        mul_12: "f32[1, 8, 32, 128]" = torch.ops.aten.mul.Tensor(cat_2, unsqueeze_6);  cat_2 = None
+        add_6: "f32[1, 8, 32, 128]" = torch.ops.aten.add.Tensor(mul_11, mul_12);  mul_11 = mul_12 = None
+        mul_13: "f32[1, 8, 32, 128]" = torch.ops.aten.mul.Tensor(transpose_1, unsqueeze_5);  unsqueeze_5 = None
+        slice_5: "f32[1, 8, 32, 64]" = torch.ops.aten.slice.Tensor(transpose_1, 3, 0, 64)
+        slice_6: "f32[1, 8, 32, 64]" = torch.ops.aten.slice.Tensor(transpose_1, 3, 64, 9223372036854775807);  transpose_1 = None
+        neg_1: "f32[1, 8, 32, 64]" = torch.ops.aten.neg.default(slice_6);  slice_6 = None
+        cat_3: "f32[1, 8, 32, 128]" = torch.ops.aten.cat.default([neg_1, slice_5], -1);  neg_1 = slice_5 = None
+        mul_14: "f32[1, 8, 32, 128]" = torch.ops.aten.mul.Tensor(cat_3, unsqueeze_6);  cat_3 = unsqueeze_6 = None
+        add_7: "f32[1, 8, 32, 128]" = torch.ops.aten.add.Tensor(mul_13, mul_14);  mul_13 = mul_14 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:240 in forward, code: k_cache = repeat_kv(k_cache, self.kv_group)
+        repeat_interleave: "f32[1, 8, 16, 128]" = torch.ops.aten.repeat_interleave.self_int(kv_0, 1, 1);  kv_0 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:241 in forward, code: v_cache = repeat_kv(v_cache, self.kv_group)
+        repeat_interleave_1: "f32[1, 8, 16, 128]" = torch.ops.aten.repeat_interleave.self_int(kv_1, 1, 1);  kv_1 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:243 in forward, code: key_states = torch.cat([k_cache, key_states], dim=-2)
+        cat_4: "f32[1, 8, 48, 128]" = torch.ops.aten.cat.default([repeat_interleave, add_7], -2);  repeat_interleave = add_7 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:244 in forward, code: value_states = torch.cat([v_cache, value_states], dim=-2)
+        cat_5: "f32[1, 8, 48, 128]" = torch.ops.aten.cat.default([repeat_interleave_1, transpose_2], -2);  repeat_interleave_1 = transpose_2 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:246 in forward, code: attn_output = F.scaled_dot_product_attention(
+        scaled_dot_product_attention: "f32[1, 8, 32, 128]" = torch.ops.aten.scaled_dot_product_attention.default(add_6, cat_4, cat_5, attn_mask);  add_6 = cat_4 = cat_5 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:253 in forward, code: attn_output = attn_output.transpose(1, 2).contiguous().view(bsz, q_len, -1)
+        transpose_3: "f32[1, 32, 8, 128]" = torch.ops.aten.transpose.int(scaled_dot_product_attention, 1, 2);  scaled_dot_product_attention = None
+        view_2: "f32[1, 32, 1024]" = torch.ops.aten.view.default(transpose_3, [1, 32, -1]);  transpose_3 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_8: "f32[1, 32, 1024]" = torch.ops.aten.linear.default(view_2, p_model_dit_layers_0_attn_o_proj_weight);  view_2 = p_model_dit_layers_0_attn_o_proj_weight = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:334 in forward, code: hidden_states = residual + gate_msa * hidden_states
+        mul_15: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(getitem_2, linear_8);  getitem_2 = linear_8 = None
+        add_8: "f32[1, 32, 1024]" = torch.ops.aten.add.Tensor(to_2, mul_15);  to_2 = mul_15 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:198 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_8 = torch.ops.aten._assert_tensor_metadata.default(add_8, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_8 = None
+        to_8: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(add_8, torch.float32);  add_8 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:199 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_4: "f32[1, 32, 1024]" = torch.ops.aten.pow.Tensor_Scalar(to_8, 2)
+        mean_3: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_4, [-1], True);  pow_4 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:200 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_9: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean_3, 1e-06);  mean_3 = None
+        rsqrt_3: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_9);  add_9 = None
+        mul_16: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(to_8, rsqrt_3);  to_8 = rsqrt_3 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:201 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_9 = torch.ops.aten._assert_tensor_metadata.default(mul_16, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_9 = None
+        to_9: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(mul_16, torch.float32);  mul_16 = None
+        mul_17: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(p_model_dit_layers_0_middle_layernorm_weight, to_9);  p_model_dit_layers_0_middle_layernorm_weight = to_9 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:198 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_10 = torch.ops.aten._assert_tensor_metadata.default(mul_17, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_10 = None
+        to_10: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(mul_17, torch.float32);  mul_17 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:199 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_5: "f32[1, 32, 1024]" = torch.ops.aten.pow.Tensor_Scalar(to_10, 2)
+        mean_4: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_5, [-1], True);  pow_5 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:200 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_10: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean_4, 1e-06);  mean_4 = None
+        rsqrt_4: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_10);  add_10 = None
+        mul_18: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(to_10, rsqrt_4);  rsqrt_4 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:201 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_11 = torch.ops.aten._assert_tensor_metadata.default(mul_18, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_11 = None
+        to_11: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(mul_18, torch.float32);  mul_18 = None
+        mul_19: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(p_model_dit_layers_0_post_layernorm_weight, to_11);  p_model_dit_layers_0_post_layernorm_weight = to_11 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:340 in forward, code: hidden_states = modulate(hidden_states, shift_mlp, scale_mlp)
+        add_11: "f32[1, 1, 1024]" = torch.ops.aten.add.Tensor(getitem_4, 1);  getitem_4 = None
+        mul_20: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(mul_19, add_11);  mul_19 = add_11 = None
+        add_12: "f32[1, 32, 1024]" = torch.ops.aten.add.Tensor(mul_20, getitem_3);  mul_20 = getitem_3 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_9: "f32[1, 32, 4096]" = torch.ops.aten.linear.default(add_12, p_model_dit_layers_0_mlp_gate_proj_weight);  p_model_dit_layers_0_mlp_gate_proj_weight = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/activations.py:99 in forward, code: return nn.functional.silu(input)
+        silu_1: "f32[1, 32, 4096]" = torch.ops.aten.silu.default(linear_9);  linear_9 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_10: "f32[1, 32, 4096]" = torch.ops.aten.linear.default(add_12, p_model_dit_layers_0_mlp_up_proj_weight);  add_12 = p_model_dit_layers_0_mlp_up_proj_weight = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:275 in forward, code: return self.down_proj(self.act_fn(self.gate_proj(hidden_state)) * self.up_proj(hidden_state))
+        mul_21: "f32[1, 32, 4096]" = torch.ops.aten.mul.Tensor(silu_1, linear_10);  silu_1 = linear_10 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_11: "f32[1, 32, 1024]" = torch.ops.aten.linear.default(mul_21, p_model_dit_layers_0_mlp_down_proj_weight);  mul_21 = p_model_dit_layers_0_mlp_down_proj_weight = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:342 in forward, code: hidden_states = residual + gate_mlp * hidden_states
+        mul_22: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(getitem_5, linear_11);  getitem_5 = linear_11 = None
+        add_13: "f32[1, 32, 1024]" = torch.ops.aten.add.Tensor(to_10, mul_22);  to_10 = mul_22 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:198 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_12 = torch.ops.aten._assert_tensor_metadata.default(add_13, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_12 = None
+        to_12: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(add_13, torch.float32);  add_13 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:199 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_6: "f32[1, 32, 1024]" = torch.ops.aten.pow.Tensor_Scalar(to_12, 2)
+        mean_5: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_6, [-1], True);  pow_6 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:200 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_14: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean_5, 1e-06);  mean_5 = None
+        rsqrt_5: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_14);  add_14 = None
+        mul_23: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(to_12, rsqrt_5);  to_12 = rsqrt_5 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:201 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_13 = torch.ops.aten._assert_tensor_metadata.default(mul_23, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_13 = None
+        to_13: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(mul_23, torch.float32);  mul_23 = None
+        mul_24: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(p_model_dit_layers_0_final_layernorm_weight, to_13);  p_model_dit_layers_0_final_layernorm_weight = to_13 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:325 in forward, code: shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (self.adaln_table[None] + t_embeds).chunk(
+        unsqueeze_7: "f32[1, 6, 1024]" = torch.ops.aten.unsqueeze.default(p_model_dit_layers_1_adaln_table, 0);  p_model_dit_layers_1_adaln_table = None
+        add_15: "f32[1, 6, 1024]" = torch.ops.aten.add.Tensor(unsqueeze_7, view);  unsqueeze_7 = view = None
+        chunk_1 = torch.ops.aten.chunk.default(add_15, 6, 1);  add_15 = None
+        getitem_9: "f32[1, 1, 1024]" = chunk_1[0]
+        getitem_10: "f32[1, 1, 1024]" = chunk_1[1]
+        getitem_11: "f32[1, 1, 1024]" = chunk_1[2]
+        getitem_12: "f32[1, 1, 1024]" = chunk_1[3]
+        getitem_13: "f32[1, 1, 1024]" = chunk_1[4]
+        getitem_14: "f32[1, 1, 1024]" = chunk_1[5];  chunk_1 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:198 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_14 = torch.ops.aten._assert_tensor_metadata.default(mul_24, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_14 = None
+        to_14: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(mul_24, torch.float32);  mul_24 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:199 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_7: "f32[1, 32, 1024]" = torch.ops.aten.pow.Tensor_Scalar(to_14, 2)
+        mean_6: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_7, [-1], True);  pow_7 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:200 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_16: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean_6, 1e-06);  mean_6 = None
+        rsqrt_6: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_16);  add_16 = None
+        mul_25: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(to_14, rsqrt_6);  rsqrt_6 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:201 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_15 = torch.ops.aten._assert_tensor_metadata.default(mul_25, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_15 = None
+        to_15: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(mul_25, torch.float32);  mul_25 = None
+        mul_26: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(p_model_dit_layers_1_input_layernorm_weight, to_15);  p_model_dit_layers_1_input_layernorm_weight = to_15 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:332 in forward, code: hidden_states = modulate(hidden_states, shift_msa, scale_msa)
+        add_17: "f32[1, 1, 1024]" = torch.ops.aten.add.Tensor(getitem_10, 1);  getitem_10 = None
+        mul_27: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(mul_26, add_17);  mul_26 = add_17 = None
+        add_18: "f32[1, 32, 1024]" = torch.ops.aten.add.Tensor(mul_27, getitem_9);  mul_27 = getitem_9 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_12: "f32[1, 32, 3072]" = torch.ops.aten.linear.default(add_18, p_model_dit_layers_1_attn_qkv_proj_weight, p_model_dit_layers_1_attn_qkv_proj_bias);  add_18 = p_model_dit_layers_1_attn_qkv_proj_weight = p_model_dit_layers_1_attn_qkv_proj_bias = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:221 in forward, code: qkv = qkv.view(bsz, q_len, 3, self.num_heads, self.head_dim)
+        view_3: "f32[1, 32, 3, 8, 128]" = torch.ops.aten.view.default(linear_12, [1, 32, 3, 8, 128]);  linear_12 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:222 in forward, code: query_states, key_states, value_states = qkv.unbind(2)
+        unbind_1 = torch.ops.aten.unbind.int(view_3, 2);  view_3 = None
+        getitem_15: "f32[1, 32, 8, 128]" = unbind_1[0]
+        getitem_16: "f32[1, 32, 8, 128]" = unbind_1[1]
+        getitem_17: "f32[1, 32, 8, 128]" = unbind_1[2];  unbind_1 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:198 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_16 = torch.ops.aten._assert_tensor_metadata.default(getitem_15, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_16 = None
+        to_16: "f32[1, 32, 8, 128]" = torch.ops.aten.to.dtype(getitem_15, torch.float32);  getitem_15 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:199 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_8: "f32[1, 32, 8, 128]" = torch.ops.aten.pow.Tensor_Scalar(to_16, 2)
+        mean_7: "f32[1, 32, 8, 1]" = torch.ops.aten.mean.dim(pow_8, [-1], True);  pow_8 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:200 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_19: "f32[1, 32, 8, 1]" = torch.ops.aten.add.Tensor(mean_7, 1e-06);  mean_7 = None
+        rsqrt_7: "f32[1, 32, 8, 1]" = torch.ops.aten.rsqrt.default(add_19);  add_19 = None
+        mul_28: "f32[1, 32, 8, 128]" = torch.ops.aten.mul.Tensor(to_16, rsqrt_7);  to_16 = rsqrt_7 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:201 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_17 = torch.ops.aten._assert_tensor_metadata.default(mul_28, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_17 = None
+        to_17: "f32[1, 32, 8, 128]" = torch.ops.aten.to.dtype(mul_28, torch.float32);  mul_28 = None
+        mul_29: "f32[1, 32, 8, 128]" = torch.ops.aten.mul.Tensor(p_model_dit_layers_1_attn_q_norm_weight, to_17);  p_model_dit_layers_1_attn_q_norm_weight = to_17 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:198 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_18 = torch.ops.aten._assert_tensor_metadata.default(getitem_16, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_18 = None
+        to_18: "f32[1, 32, 8, 128]" = torch.ops.aten.to.dtype(getitem_16, torch.float32);  getitem_16 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:199 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_9: "f32[1, 32, 8, 128]" = torch.ops.aten.pow.Tensor_Scalar(to_18, 2)
+        mean_8: "f32[1, 32, 8, 1]" = torch.ops.aten.mean.dim(pow_9, [-1], True);  pow_9 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:200 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_20: "f32[1, 32, 8, 1]" = torch.ops.aten.add.Tensor(mean_8, 1e-06);  mean_8 = None
+        rsqrt_8: "f32[1, 32, 8, 1]" = torch.ops.aten.rsqrt.default(add_20);  add_20 = None
+        mul_30: "f32[1, 32, 8, 128]" = torch.ops.aten.mul.Tensor(to_18, rsqrt_8);  to_18 = rsqrt_8 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:201 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_19 = torch.ops.aten._assert_tensor_metadata.default(mul_30, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_19 = None
+        to_19: "f32[1, 32, 8, 128]" = torch.ops.aten.to.dtype(mul_30, torch.float32);  mul_30 = None
+        mul_31: "f32[1, 32, 8, 128]" = torch.ops.aten.mul.Tensor(p_model_dit_layers_1_attn_k_norm_weight, to_19);  p_model_dit_layers_1_attn_k_norm_weight = to_19 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:227 in forward, code: query_states = query_states.transpose(1, 2)
+        transpose_4: "f32[1, 8, 32, 128]" = torch.ops.aten.transpose.int(mul_29, 1, 2);  mul_29 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:228 in forward, code: key_states = key_states.transpose(1, 2)
+        transpose_5: "f32[1, 8, 32, 128]" = torch.ops.aten.transpose.int(mul_31, 1, 2);  mul_31 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:229 in forward, code: value_states = value_states.transpose(1, 2)
+        transpose_6: "f32[1, 8, 32, 128]" = torch.ops.aten.transpose.int(getitem_17, 1, 2);  getitem_17 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:236 in forward, code: query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        unsqueeze_8: "f32[1, 1, 32, 128]" = torch.ops.aten.unsqueeze.default(cos, 1);  cos = None
+        unsqueeze_9: "f32[1, 1, 32, 128]" = torch.ops.aten.unsqueeze.default(sin, 1);  sin = None
+        mul_32: "f32[1, 8, 32, 128]" = torch.ops.aten.mul.Tensor(transpose_4, unsqueeze_8)
+        slice_7: "f32[1, 8, 32, 64]" = torch.ops.aten.slice.Tensor(transpose_4, 3, 0, 64)
+        slice_8: "f32[1, 8, 32, 64]" = torch.ops.aten.slice.Tensor(transpose_4, 3, 64, 9223372036854775807);  transpose_4 = None
+        neg_2: "f32[1, 8, 32, 64]" = torch.ops.aten.neg.default(slice_8);  slice_8 = None
+        cat_6: "f32[1, 8, 32, 128]" = torch.ops.aten.cat.default([neg_2, slice_7], -1);  neg_2 = slice_7 = None
+        mul_33: "f32[1, 8, 32, 128]" = torch.ops.aten.mul.Tensor(cat_6, unsqueeze_9);  cat_6 = None
+        add_21: "f32[1, 8, 32, 128]" = torch.ops.aten.add.Tensor(mul_32, mul_33);  mul_32 = mul_33 = None
+        mul_34: "f32[1, 8, 32, 128]" = torch.ops.aten.mul.Tensor(transpose_5, unsqueeze_8);  unsqueeze_8 = None
+        slice_9: "f32[1, 8, 32, 64]" = torch.ops.aten.slice.Tensor(transpose_5, 3, 0, 64)
+        slice_10: "f32[1, 8, 32, 64]" = torch.ops.aten.slice.Tensor(transpose_5, 3, 64, 9223372036854775807);  transpose_5 = None
+        neg_3: "f32[1, 8, 32, 64]" = torch.ops.aten.neg.default(slice_10);  slice_10 = None
+        cat_7: "f32[1, 8, 32, 128]" = torch.ops.aten.cat.default([neg_3, slice_9], -1);  neg_3 = slice_9 = None
+        mul_35: "f32[1, 8, 32, 128]" = torch.ops.aten.mul.Tensor(cat_7, unsqueeze_9);  cat_7 = unsqueeze_9 = None
+        add_22: "f32[1, 8, 32, 128]" = torch.ops.aten.add.Tensor(mul_34, mul_35);  mul_34 = mul_35 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:240 in forward, code: k_cache = repeat_kv(k_cache, self.kv_group)
+        repeat_interleave_2: "f32[1, 8, 16, 128]" = torch.ops.aten.repeat_interleave.self_int(kv_2, 1, 1);  kv_2 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:241 in forward, code: v_cache = repeat_kv(v_cache, self.kv_group)
+        repeat_interleave_3: "f32[1, 8, 16, 128]" = torch.ops.aten.repeat_interleave.self_int(kv_3, 1, 1);  kv_3 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:243 in forward, code: key_states = torch.cat([k_cache, key_states], dim=-2)
+        cat_8: "f32[1, 8, 48, 128]" = torch.ops.aten.cat.default([repeat_interleave_2, add_22], -2);  repeat_interleave_2 = add_22 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:244 in forward, code: value_states = torch.cat([v_cache, value_states], dim=-2)
+        cat_9: "f32[1, 8, 48, 128]" = torch.ops.aten.cat.default([repeat_interleave_3, transpose_6], -2);  repeat_interleave_3 = transpose_6 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:246 in forward, code: attn_output = F.scaled_dot_product_attention(
+        scaled_dot_product_attention_1: "f32[1, 8, 32, 128]" = torch.ops.aten.scaled_dot_product_attention.default(add_21, cat_8, cat_9, attn_mask);  add_21 = cat_8 = cat_9 = attn_mask = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:253 in forward, code: attn_output = attn_output.transpose(1, 2).contiguous().view(bsz, q_len, -1)
+        transpose_7: "f32[1, 32, 8, 128]" = torch.ops.aten.transpose.int(scaled_dot_product_attention_1, 1, 2);  scaled_dot_product_attention_1 = None
+        view_4: "f32[1, 32, 1024]" = torch.ops.aten.view.default(transpose_7, [1, 32, -1]);  transpose_7 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_13: "f32[1, 32, 1024]" = torch.ops.aten.linear.default(view_4, p_model_dit_layers_1_attn_o_proj_weight);  view_4 = p_model_dit_layers_1_attn_o_proj_weight = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:334 in forward, code: hidden_states = residual + gate_msa * hidden_states
+        mul_36: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(getitem_11, linear_13);  getitem_11 = linear_13 = None
+        add_23: "f32[1, 32, 1024]" = torch.ops.aten.add.Tensor(to_14, mul_36);  to_14 = mul_36 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:198 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_20 = torch.ops.aten._assert_tensor_metadata.default(add_23, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_20 = None
+        to_20: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(add_23, torch.float32);  add_23 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:199 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_10: "f32[1, 32, 1024]" = torch.ops.aten.pow.Tensor_Scalar(to_20, 2)
+        mean_9: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_10, [-1], True);  pow_10 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:200 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_24: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean_9, 1e-06);  mean_9 = None
+        rsqrt_9: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_24);  add_24 = None
+        mul_37: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(to_20, rsqrt_9);  to_20 = rsqrt_9 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:201 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_21 = torch.ops.aten._assert_tensor_metadata.default(mul_37, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_21 = None
+        to_21: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(mul_37, torch.float32);  mul_37 = None
+        mul_38: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(p_model_dit_layers_1_middle_layernorm_weight, to_21);  p_model_dit_layers_1_middle_layernorm_weight = to_21 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:198 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_22 = torch.ops.aten._assert_tensor_metadata.default(mul_38, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_22 = None
+        to_22: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(mul_38, torch.float32);  mul_38 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:199 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_11: "f32[1, 32, 1024]" = torch.ops.aten.pow.Tensor_Scalar(to_22, 2)
+        mean_10: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_11, [-1], True);  pow_11 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:200 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_25: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean_10, 1e-06);  mean_10 = None
+        rsqrt_10: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_25);  add_25 = None
+        mul_39: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(to_22, rsqrt_10);  rsqrt_10 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:201 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_23 = torch.ops.aten._assert_tensor_metadata.default(mul_39, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_23 = None
+        to_23: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(mul_39, torch.float32);  mul_39 = None
+        mul_40: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(p_model_dit_layers_1_post_layernorm_weight, to_23);  p_model_dit_layers_1_post_layernorm_weight = to_23 = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:340 in forward, code: hidden_states = modulate(hidden_states, shift_mlp, scale_mlp)
+        add_26: "f32[1, 1, 1024]" = torch.ops.aten.add.Tensor(getitem_13, 1);  getitem_13 = None
+        mul_41: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(mul_40, add_26);  mul_40 = add_26 = None
+        add_27: "f32[1, 32, 1024]" = torch.ops.aten.add.Tensor(mul_41, getitem_12);  mul_41 = getitem_12 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_14: "f32[1, 32, 4096]" = torch.ops.aten.linear.default(add_27, p_model_dit_layers_1_mlp_gate_proj_weight);  p_model_dit_layers_1_mlp_gate_proj_weight = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/activations.py:99 in forward, code: return nn.functional.silu(input)
+        silu_2: "f32[1, 32, 4096]" = torch.ops.aten.silu.default(linear_14);  linear_14 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_15: "f32[1, 32, 4096]" = torch.ops.aten.linear.default(add_27, p_model_dit_layers_1_mlp_up_proj_weight);  add_27 = p_model_dit_layers_1_mlp_up_proj_weight = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:275 in forward, code: return self.down_proj(self.act_fn(self.gate_proj(hidden_state)) * self.up_proj(hidden_state))
+        mul_42: "f32[1, 32, 4096]" = torch.ops.aten.mul.Tensor(silu_2, linear_15);  silu_2 = linear_15 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_16: "f32[1, 32, 1024]" = torch.ops.aten.linear.default(mul_42, p_model_dit_layers_1_mlp_down_proj_weight);  mul_42 = p_model_dit_layers_1_mlp_down_proj_weight = None
+        
+         # File: /scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py:342 in forward, code: hidden_states = residual + gate_mlp * hidden_states
+        mul_43: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(getitem_14, linear_16);  getitem_14 = linear_16 = None
+        add_28: "f32[1, 32, 1024]" = torch.ops.aten.add.Tensor(to_22, mul_43);  to_22 = mul_43 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:198 in forward, code: hidden_states = hidden_states.to(torch.float32)
+        _assert_tensor_metadata_default_24 = torch.ops.aten._assert_tensor_metadata.default(add_28, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_24 = None
+        to_24: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(add_28, torch.float32);  add_28 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:199 in forward, code: variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        pow_12: "f32[1, 32, 1024]" = torch.ops.aten.pow.Tensor_Scalar(to_24, 2)
+        mean_11: "f32[1, 32, 1]" = torch.ops.aten.mean.dim(pow_12, [-1], True);  pow_12 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:200 in forward, code: hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        add_29: "f32[1, 32, 1]" = torch.ops.aten.add.Tensor(mean_11, 1e-06);  mean_11 = None
+        rsqrt_11: "f32[1, 32, 1]" = torch.ops.aten.rsqrt.default(add_29);  add_29 = None
+        mul_44: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(to_24, rsqrt_11);  to_24 = rsqrt_11 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py:201 in forward, code: return self.weight * hidden_states.to(input_dtype)
+        _assert_tensor_metadata_default_25 = torch.ops.aten._assert_tensor_metadata.default(mul_44, dtype = torch.float32, device = device(type='cpu'), layout = torch.strided);  _assert_tensor_metadata_default_25 = None
+        to_25: "f32[1, 32, 1024]" = torch.ops.aten.to.dtype(mul_44, torch.float32);  mul_44 = None
+        mul_45: "f32[1, 32, 1024]" = torch.ops.aten.mul.Tensor(p_model_dit_layers_1_final_layernorm_weight, to_25);  p_model_dit_layers_1_final_layernorm_weight = to_25 = None
+        
+         # File: /scratch/agustin/projects/model2MLIR/workloads/xr0/loader.py:123 in forward, code: return m.dit_forward(
+        slice_11: "f32[1, 32, 1024]" = torch.ops.aten.slice.Tensor(mul_45);  mul_45 = None
+        slice_12: "f32[1, 30, 1024]" = torch.ops.aten.slice.Tensor(slice_11, 1, -30);  slice_11 = None
+        slice_13: "f32[1, 30, 1024]" = torch.ops.aten.slice.Tensor(slice_12, 2);  slice_12 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_17: "f32[1, 30, 32]" = torch.ops.aten.linear.default(slice_13, p_model_action_output_layer_layers_0_weight);  slice_13 = p_model_action_output_layer_layers_0_weight = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/activation.py:738 in forward, code: return F.gelu(input, approximate=self.approximate)
+        gelu_2: "f32[1, 30, 32]" = torch.ops.aten.gelu.default(linear_17, approximate = 'tanh');  linear_17 = None
+        
+         # File: /scratch/agustin/projects/xr0_capture/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py:125 in forward, code: return F.linear(input, self.weight, self.bias)
+        linear_18: "f32[1, 30, 32]" = torch.ops.aten.linear.default(gelu_2, p_model_action_output_layer_layers_2_weight);  gelu_2 = p_model_action_output_layer_layers_2_weight = None
+        return (linear_18,)
+        

@@ -572,7 +572,7 @@ def test_native_lowbit_bitvla_datapath_recovered():
     """P21-S4: the bitvla native W1.58 ternary datapath (packed-int2 storage + absmean scale) is
     captured directly — the storage that the torchao-int8 qdq stand-in could not expose."""
     from merlin.dse_guidance import quant_metadata as QM
-    cs = merlin_dir() / "benchmarks" / "dse_guidance" / "case_study"
+    cs = repo_root() / "artifacts" / "dse-guidance" / "case_study"
     rows = {r["workload"]: r for r in QM.native_quant_rows(cs)}
     assert "bitvla" in rows
     bv = rows["bitvla"]
@@ -2255,7 +2255,7 @@ def test_case_study_emits_p12_artifacts(tmp_path):
 
 # ============================================================ P13 evidence mining / insight extract
 
-_CS_DIR = merlin_dir() / "benchmarks" / "dse_guidance" / "case_study"
+_CS_DIR = repo_root() / "artifacts" / "dse-guidance" / "case_study"
 
 
 def test_insight_evidence_tier_classification():
