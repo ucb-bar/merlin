@@ -100,7 +100,11 @@ int main(void){
   static float h[S*H], r[S*H], q[S*H], kk[S*NKV*HD], vv[S*NKV*HD];
   static float attn[S*H], gate[S*FF], up[S*FF], ff[S*FF], tmp[S*H];
   static float logits[S*V];
-  WT_SCRATCH=(float*)malloc((size_t)V*H*sizeof(float));
+  /* WT_SCRATCH holds a transposed weight [IN,OUT]; size it to the LARGEST Linear = max(IN*OUT) over
+   * {lm_head V*H, mlp down_proj FF*H, gate/up FF*H, qkvo H*H}. For a small vocab, FF*H can exceed
+   * V*H (small_llama: FF*H=44032 > V*H=32768), so max over both — else down_proj overflows. */
+  size_t wt_max=(size_t)V*H; if((size_t)FF*H>wt_max) wt_max=(size_t)FF*H;
+  WT_SCRATCH=(float*)malloc(wt_max*sizeof(float));
   if(!WT_SCRATCH){ fprintf(stderr,"FAIL scratch\n"); return 2; }
 
   uint64_t w0=wall_ns(), e0=rd_time();

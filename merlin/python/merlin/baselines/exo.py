@@ -80,8 +80,14 @@ _GLUE_GAP: dict[str, str] = {
     "molmoact": "OLMo-style backbone (lm.model.blocks.N with attn_norm/ff_norm, mlp.ff_proj/ff_out "
                 "fused-gate MLP + wte.embedding) — not the Llama q/k/v/o + gate/up/down decoder the "
                 "glue runs",
-    "bitvla": "multimodal VLA (vla.vision_tower + vla.multi_modal_projector + vla.language_model) — "
-              "glue has no vision encoder / cross-modal path (decoder-only text stack only)",
+    "bitvla": "multimodal VLA (vla.vision_tower + vla.multi_modal_projector + vla.language_model). "
+              "The vla.language_model.model IS a Llama-style decoder the glue's schema would match, "
+              "BUT (a) its golden is the whole-VLA output — there is NO isolated LLM-backbone golden "
+              "to gate the backbone against, and (b) each BitNet layer adds attn_sub_norm + "
+              "mlp.ffn_sub_norm (RMSNorm inside attn/MLP) the standard Llama glue does not apply, so "
+              "a backbone-only run would be silently wrong with nothing to catch it. Running it "
+              "honestly needs the vision tower + projector + cross-modal prefix + the two sub-norms "
+              "(out of scope for the decoder-only glue) — attempted-run would be ungatable, not a pass",
     "openvla": "multimodal VLA (vla.vision_backbone + vla.projector + vla.language_model) — glue "
                "has no vision backbone / projector path",
     "rdt": "diffusion transformer action head (model.blocks + freq/pos embedders + final_layer, no "
@@ -92,8 +98,13 @@ _GLUE_GAP: dict[str, str] = {
                   "not a decoder-only LM",
     "pi05": "PaliGemma-with-expert + action/time MLPs (model.paligemma_with_expert, "
             "action_in/out_proj) — multimodal, not the Llama decoder the glue runs",
-    "smolvla": "VLA with action/time MLPs + state proj (model.action_*_proj, action_time_mlp) — not "
-               "a decoder-only LM",
+    "smolvla": "VLA: SmolLM2 text backbone (vlm.model.text_model.layers.N, a clean Llama the glue's "
+               "schema matches) + a vision tower + connector + lm_expert action head + diffusion "
+               "denoise. Its golden is the action output (1,50,32) from noise+state+image+lang — "
+               "NOT the text-backbone logits, so the backbone alone is UNGATABLE against this "
+               "capture (no isolated backbone golden). Running the whole VLA needs the ViT + "
+               "connector + cross-modal prefix + action-expert cross-attention + diffusion loop, "
+               "none of which the decoder-only glue has — attempted-run would be ungatable, not a pass",
     "xr0": "diffusion action head (model.dit + action_projector/output_layer + state_projector) — "
            "not a decoder-only LM",
 }
