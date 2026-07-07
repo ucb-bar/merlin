@@ -271,3 +271,23 @@ def test_render_matrix_shows_gaps_and_coverage():
     assert "not_built" in md            # the gap is shown, not blank
     csv = aggregate.render_csv(results)
     assert "no gguf converter" in csv
+
+
+def test_dedupe_latest_executed_beats_absence():
+    """A timed-out re-verification (not_run, later ts) must NOT erase an earlier real on-board pass."""
+    early_pass = BaselineResult(
+        framework="exo", model="tiny_llama", variant="int8", built=True, ran=True,
+        cos=1.0, rel=1e-6, cos_threshold=0.9999, rel_threshold=1e-3,
+        e2e_cycles=11_680_000_000, timestamp="20260707T013739Z")
+    later_notrun = BaselineResult(
+        framework="exo", model="tiny_llama", variant="int8", built=True, ran=False,
+        gap_reason="re-verification batch timed out", timestamp="20260707T014259Z")
+    kept = aggregate.dedupe_latest([early_pass, later_notrun])
+    assert len(kept) == 1
+    assert kept[0].ran and kept[0].passed          # the real pass survives the later not_run
+    # but a genuine later FAIL (ran=True) DOES supersede an earlier pass
+    later_fail = BaselineResult(
+        framework="exo", model="tiny_llama", variant="int8", built=True, ran=True,
+        cos=0.5, rel=1.0, cos_threshold=0.9999, rel_threshold=1e-3, timestamp="20260707T020000Z")
+    kept2 = aggregate.dedupe_latest([early_pass, later_fail])
+    assert len(kept2) == 1 and kept2[0].ran and not kept2[0].passed
