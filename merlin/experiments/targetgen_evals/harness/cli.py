@@ -56,7 +56,8 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 def cmd_compare(args: argparse.Namespace) -> int:
     from harness.compare_runs import compare
-    output_dir = Path(args.output_dir) if args.output_dir else _root() / "reports" / args.target
+    output_dir = Path(args.output_dir) if args.output_dir else (
+        _root().parents[2] / "artifacts" / "targetgen-evals" / args.target)
     return compare(root=_root(), target=args.target, output_dir=output_dir)
 
 
