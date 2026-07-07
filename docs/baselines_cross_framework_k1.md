@@ -29,7 +29,7 @@ Full machine-generated matrix (all 5 frameworks × 11 models × {fp32,int8}) + C
 |---|---|---|---|
 | **EXO** | **4 on-board PASSes**: tiny_llama fp32 cos=1.0 + **int8 cos=1.0** (7.3 s), small_llama fp32 cos=1.0 + int8 cos=1.0 | int8 = **weight-only (W8A16)** matching the capture's weight-only golden (per-channel int8 weight dequantized on the fly inside a transpose-free `[N,K]` f32 dot); EXO `vwmacc`/`vfmacc` kernels compiled + audited | fast dot is hand-RVV C (EXO can't schedule stride-1+`vredsum`); glue Llama-only (hf+terse schemas) → VLAs `not_built` (no isolated LLM-backbone golden; BitNet sub-norms) |
 | **ExecuTorch** | tiny_llama fp32 **PASS** cos=0.99999999 (217 ms); **int8 PASS — 13.7 ms**, cos=0.99987 (**all 7 decoder layers' linears**) | int8 GEMM 33–47% RVV in 2 XNNPACK qs8 delegates | whole-model int8 **proven impossible** (PT2E transform corrupts int-index even with empty quantizer) |
-| **Buddy** | compiles **8/11 int8** to genuine integer RVV (`vwmacc.vv`, up to 34%) | ✅ builds; int8 RVV > fp32 | **0 on-board** — whole-model-scale **Buddy scalar-lowering bug** (dequant/ABI/RVV theories all *disproved*); needs op-bisection + submodule patch |
+| **Buddy** | **m2m int8 now RUNS CORRECTLY on-board** — small_llama int8 **cos=0.99993** (bit-matches merlin's numpy W8A8 reference); 8/11 build genuine integer RVV (`vwmacc.vv`, up to 34%) | ✅ builds; int8 RVV > fp32; W8A8 datapath | the old "0 on-board / scalar-lowering bug" was **misdiagnosed**: it was an ABI-marshalling bug in OUR K1 runner glue, not buddy — buddy takes `strided<[?,?]>` **dynamic-strided** operands + a **sret-first** tensor return, and our harness fed it merlin's fixed-8 `sizes/strides` DPS descriptor → inputs read as zeros. Fixed (rank-exact packed descriptors + sret-first call). Residual: W8A8-vs-weight-only-golden rel≈0.012 near-miss at the strict 1e-3 int8 tier |
 | **ggml** | tiny_llama int8 **ran** — Q8_0 20.3/5.8 tok/s, Q4_K_M 33/10 tok/s | ✅ native low-bit | correctness **uncomparable** (runs the real checkpoint; our capture is a 2-layer random-init graph) |
 | **TVM** | **small_llama int8 PASS on-board — 52.7 ms, cos=1.0**; openvla int8 ran 6.5 s (cos 0.9916, fail) | 5 models build via **ONNX→Relax** (9–16% untuned RVV) | tuning *one handshake from done* (tracker↔server deadlock over tunnel); big `.so` on-board load hangs; tiny_llama cos=0.80 = a TVM ONNX broadcast-`Mul` defect (RMSNorm) |
 
@@ -70,10 +70,13 @@ Only **EXO** and **ExecuTorch** complete a whole-model run on our graph, both on
 The dominant limiter for "all models" is the **K1's 3.8 GB RAM + whole-model working set**, not RVV
 codegen:
 
-- **Buddy** compiles genuine int8 RVV for 8/11 models but **OOM-kills every one** — its whole-model
-  `linalg-to-loops` has **no buffer reuse / arena planning**, so every intermediate tensor is a
-  simultaneously-live allocation (tiny_llama int8: 10.1 GB total-vm on a 3.8 GB board). `built=True` +
-  RVV verified, `not_run` with an OOM reason — never a fabricated cos.
+- **Buddy** compiles genuine int8 RVV for 8/11 models and **now runs the fitting ones correctly**
+  (small_llama int8 cos=0.99993 on-board) after the K1 runner-glue ABI bug was fixed. The earlier
+  "OOM-kills every one" claim conflated two things: (a) a real RAM wall for the multi-GB VLAs
+  (whole-model `linalg-to-loops` has no arena planning, so every intermediate is simultaneously live),
+  and (b) an ABI-marshalling bug in OUR harness that made *every* model — even the small ones that fit
+  — print zeros. (b) is fixed; (a) remains real for the big VLAs and still validates merlin's arena
+  runtime. Never a fabricated cos.
 - **ExecuTorch**'s full fp32 `.pte` is 4.1 GB — over the board — so it ran a layer-reduced config.
 
 This directly **validates merlin's lean, arena-planned runtime direction**: the differentiator on a
