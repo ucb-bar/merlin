@@ -316,3 +316,42 @@ module on this kernel) as an OOM overflow valve. Then the built→ran cells were
   Buddy rdt builds + 12.4% RVV but the on-board run returns rc=255. This is the one place the
   "stream, don't hold resident" principle meets a real framework limit (relax VM / whole-model lowering
   want the module resident) — a documented candidate for graph-splitting/streaming work, not effort.
+
+## Phase 4 — ExecuTorch/XNNPACK compute-vs-runtime-overhead decomposition (ETDump)
+
+For **smolvla + bitvla** via the XNNPACK delegate, a full profile with an ETDump-based split of
+whole-model e2e into (a) XNNPACK kernel/delegate **compute** vs (b) ExecuTorch **runtime overhead**
+(method dispatch, tensor alloc, delegate-boundary crossings, non-delegated portable ops). The headline
+e2e is the **clean, tracer-OFF** run; the split comes from a separate ETDump-ON run, and the tracer
+overhead is measured (clean vs traced) to prove the headline is unperturbed.
+
+**smolvla op-coverage fix.** smolvla previously `not_run` — method-load failed with "instructions
+don't have corresponding operator registered" (status 0x14). Root cause: exactly **one** op,
+`aten::empty_permuted.out` (55 instances, SmolVLA's SDPA attention buffers), had **no portable kernel**
+(the portable lib has `empty.out` but not `empty_permuted`, and the dim-order pass only rewrites
+`empty.memory_format`). Fix: a portable `empty_permuted.out` kernel (mirrors `empty.out` — resizes the
+pre-planned `out` and returns it; the physical layout is already encoded in `out`'s AOT allocation).
+All 55 call sites use the **trivial** `physical_layout=[0,1,2,3]`, so this is provably correct; bitvla
+(same runner, cos=0.99946) confirms the pipeline. smolvla now **runs the full whole-model forward**.
+
+| Model | cos vs fp32 | clean e2e | load | XNNPACK-delegated (nodes / by-time) | RVV% | **XNNPACK compute** | **portable scalar** | **runtime overhead** | tracer overhead |
+|---|---|---|---|---|---|---|---|---|---|
+| **bitvla** (BitNet ternary int8) | **0.99946** ✓ | **142 ms** | 340 ms | 215/978 = 22% / **62.2%** | 11.7% | **62.2%** | 36.3% (where/expand/mean) | **1.5%** | +40.8 ms (+29%) |
+| **smolvla** (VLA diffusion) | 0.081 ✗ | **93.6 s** | 10.8 s | 220/1995 = 11% / **12.7%** | 11.7% | 12.7% | **87.3%** | **0.0%** | +1.7 s (+1.8%) |
+
+**Findings.**
+- **ExecuTorch's own runtime overhead is negligible** — 1.5% (bitvla) and **0.0%** (smolvla) of e2e is
+  framework dispatch/alloc/boundary. The runtime is not the cost; *compute placement* is.
+- **bitvla is well-delegated**: XNNPACK owns 62% of compute time (BitNet ternary GEMMs), the rest is
+  scalar `where`/`expand`/`mean` glue. cos passes — a genuine XNNPACK-RVV whole-model int8 pass.
+- **smolvla is compute-bound on NON-delegated scalar `mm`**: `native_call_mm.out` alone is **62.2 s
+  (66% of the 93.6 s)** — 126 batched attention matmuls (`[1,113,15,64]`) that the XNNPACK partitioner
+  does not claim, so they fall to the portable scalar kernel. XNNPACK compute is only 12.7%. So the
+  headline latency is *scalar matmul*, not runtime overhead. The next lever is routing those batched
+  matmuls through XNNPACK (BMM) or an RVV `mm` kernel, not runtime tuning.
+- **Tracer is honest**: ETDump adds +1.8% (smolvla) / +29% (bitvla, small-model fixed per-event cost);
+  the reported e2e is the tracer-OFF run, so the headline is unperturbed.
+- **smolvla correctness** (cos=0.081) fails the int8 gate: the op-fix and pipeline are verified correct
+  (trivial `empty_permuted` layouts; bitvla passes), so the residual is smolvla-int8-specific numerical
+  loss — weight-only int8 on its documented quant-fragile diffusion/flow head. An fp32-on-board run
+  would separate int8 loss from any deeper lowering issue; recorded `fail` with that reasoning.
