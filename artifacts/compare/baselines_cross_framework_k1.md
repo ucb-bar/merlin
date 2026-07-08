@@ -384,3 +384,39 @@ instability, not RAM); the compute/overhead *structure* is board-stable, the abs
 3. **smolvla** (compute-bound on non-delegated scalar `mm`, 66% of e2e) is the (a) failure mode; **Buddy
    bitvla** (high RVV%, unoptimized kernels) is the (b) failure mode. ExecuTorch/XNNPACK bitvla hits both
    right → 142 ms.
+
+## Phase 5 — real VLAs on ExecuTorch/XNNPACK (openvla, pi05, smolvla fp32)
+
+**smolvla fp32 export unblocked.** The fp32 whole-model export hit two walls the int8 path had
+bypassed: (1) the advisory core-ATen IR-validity verifier rejects `aten.bucketize.Tensor` (not in the
+strict core opset) though a runtime kernel exists; (2) `to_executorch` failed with an unbacked-symint
+data-dependent error in `dim_order_from_stride` (a bucketize-derived stride). Fix (commit `80dca9e`):
+disable the advisory IR check for all models (op coverage is audited separately against the runner)
+and run `constant_prop_pass` on the fp32 whole-model path too (concretizes the constant bucketize
+boundaries, as it already did implicitly for int8). smolvla fp32 now exports (403 MB `.pte` + 606 MB
+`.ptd`). (Board run driven separately.)
+
+**openvla — AOT export FIXED (was `not_built`).** Root cause was NOT a missing op — it was the same
+core-ATen IR-validity verifier rejecting openvla's multimodal (ViT + projector + Llama) forward. The
+unconditional `EdgeCompileConfig(_check_ir_validity=False)` (commit `80dca9e`) unblocks it; no
+`empty_permuted`/`bucketize` kernel needed. Export scales to the **real 32-layer Llama-2-7B + 24-layer
+ViT + vocab 32064 → a 14.7 GB fp32 `.pte`** (186 delegated / 1367 nodes). That exceeds the 14 GB board
+SD outright, so the real-scale model is **board-size-gated** — the `.pte` can't even be held on the SD
+for `--mmap_model` streaming, and RAM (3.4 GB) ≪ 14.7 GB. The **2-layer proxy** (20 MB) **runs
+on-board**: clean e2e **16.4 ms**, load 142 ms, proving the multimodal ViT+projector+Llama pipeline
+executes end-to-end on the K1. Correctness is **uncorrelated by construction** (the loader is
+random-init: config `from_pretrained`, `torch.randn` inputs — no pretrained openvla checkpoint), so
+cos=0.009 vs the recapture golden is expected; a `--compute-golden` gate would validate the numerics
+but the weights are random. TVM runs openvla via ONNX (expressible); ExecuTorch now exports+runs it too
+(proxy), real-scale blocked only by board SD/RAM.
+
+**pi05 — `not_built`, dual-venv incompatibility (precise).** pi05's loader builds `openpi.PI0Pytorch`
+(PaliGemma gemma_2b + gemma_300m expert), which **requires openpi's patched transformers** —
+`transformers==4.53.2` PLUS openpi's `transformers_replace` source overlay copied into site-packages
+(the loader raises "transformers_replace is not installed correctly") — alongside the JAX stack (flax,
+`jaxtyping==0.2.36`, `beartype==0.19.0`, augmax). The ExecuTorch export venv pins transformers 5.0.0rc1
++ torch 2.11 (required by the pinned executorch build); installing transformers==4.53.2 + the overlay
+there would break executorch. openpi's own capture venv has the patched transformers + JAX (torch 2.7)
+but **lacks executorch**, and executorch's build is torch-2.11-specific. No single venv satisfies both,
+so `torch.export → .pte` cannot run without a dedicated venv carrying BOTH. Distinct from TVM
+(`onnx.export` OOM) and Buddy (built via linalg) — this is a Python-env wall, not an op/lowering wall.
