@@ -418,8 +418,14 @@ def compile_rv64gcv_object(ll_path: Path, work: Path, *, timeout: int = 2400) ->
                   if big else ["-O3"])
         _run([opt, *passes, *common, str(ll_path), "-o", str(vec_ll)], timeout=timeout)
     obj = work / "model.o"
+    # llc -O3 on a whole-model MONOLITHIC forward function is memory-explosive: its regalloc /
+    # instruction-scheduling on a single 3.6B-op function OOM-killed the host at ~57 GB RSS for pi05.
+    # Above the size threshold, drop to llc -O1 (linear-scan regalloc, no aggressive scheduling) — the
+    # RVV was already emitted by the opt bounded-vectorize pass above, so -O1 preserves the vector
+    # instructions while keeping llc's memory tractable. Small models keep -O3 (best scalar codegen).
+    llc_opt = "-O1" if ll_path.stat().st_size > _O3_IR_SIZE_LIMIT else "-O3"
     _run([llc, f"-mtriple={triple}", f"-mattr={_RVV_MATTR}", f"--target-abi={k1.K1_MABI}",
-          f"--riscv-v-vector-bits-min={_RVV_VBITS}", "-O3", "-filetype=obj",
+          f"--riscv-v-vector-bits-min={_RVV_VBITS}", llc_opt, "-filetype=obj",
           str(vec_ll), "-o", str(obj)], timeout=timeout)
     return obj
 
