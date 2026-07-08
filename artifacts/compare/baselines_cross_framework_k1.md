@@ -137,7 +137,7 @@ native flow knocked down walls that our imposed formats had created:**
 
 | Framework | Native flow used | What it broke (vs the imposed-format result) |
 |---|---|---|
-| **ExecuTorch** | `examples/models/llama` `WeightOnlyInt8QuantHandler` (eager module swap) | **whole-model int8 exports & the 4.25 GB arena wall is FIXED** — see the dedicated section below. small_llama int8 **PASS on-board 4.26 ms cos=0.999989**; 8-layer real-arch TinyLlama int8 **PASS on-board 918 ms cos=0.99910** (1.35 MB arena, mmap-loaded). Full-22L is export-verified (2.41 MB arena) but its 4.14 GB fp32-const `.pte` currently disk-contends on the shared 14 GB board — no longer a RAM/arena wall. |
+| **ExecuTorch** | `examples/models/llama` `WeightOnlyInt8QuantHandler` (eager module swap) | **whole-model int8 exports & the 4.25 GB arena wall is FIXED** — see the dedicated section below. small_llama int8 **PASS 4.26 ms cos=0.999989**; bitvla (30L) **PASS 154 ms cos=0.99946**; xr0 (16L) **PASS 1.25 s cos=0.99997**; 8-layer TinyLlama **PASS 918 ms cos=0.99910**. **Full-22L TinyLlama int8 RAN end-to-end on-board** (2.41 MB arena, 84 s mmap load + 78 s inference over RAM+swap, cos=0.99736, rel=0.074 near-miss on the 0.05 int8 gate). |
 | **Buddy** | its own `DynamoCompiler` torch importer (not m2m linalg) | **native IR RUNS on-board** — small_llama int8 completed (**38 ms, 11.8% RVV**); tiny_llama ran the full forward **~28 min with no SIGSEGV**. The m2m-linalg SIGSEGV was an IR-path bug, not fundamental. Remaining: Buddy materializes int8→fp32 → params OOM the board. |
 | **ggml** | real checkpoint → GGUF Q8_0, matched input_ids | **comparable cos** (was `None`): Q8_0 **0.9986** on real TinyLlama-1.1B. |
 | **EXO** | (kernel DSL — no model import) | ran the real full 22-layer TinyLlama int8 (**9.86 s**). |
@@ -187,16 +187,20 @@ with the runner reporting a **1.35 MB** planned buffer (vs the 4.25 GB `bad_allo
 load of the 1.67 GB `.pte`. Correctness is gated against the fp32 eager-torch golden for the same config
 (weight-only int8 vs fp32).
 
-**Full-22L (155-Linear) whole-model int8.** Export is verified with the identical **2.41 MB** planned
-arena (4.14 GB `.pte`, const-folded fp32 weights, 115 delegated nodes). With the fixed runner the board
-**mmap-LOADED the full 4.14 GB `.pte`** — the log shows `Model file … is loaded` at 0.013 s (lazy, not
-resident) and `Setting up CPU planned buffer 0, size 2405952`, i.e. the 4.25 GB arena wall **and** the
-resident-slurp are both gone at full depth. The remaining wall is now purely **hardware**: the forward
-pass has to demand-page 4.14 GB of fp32 weights through the board's 3.4 GB RAM with **no swap**, which
-thrashed the K1 until SSH died, and the board then went externally unreachable (port 22 timeout) — a
-board-availability / RAM-headroom limit, not a code/arena/codegen wall. Recorded `not_run` with that
-exact reason (`artifacts/measurements/k1_spacemit/tiny_llama/…`). Closing it needs board swap/zram, or
-the genuine int8 GEMM path so weights stay int8 (~1 GB, fits) rather than fp32-dequant.
+**Full-22L (155-Linear) whole-model int8 — RAN end-to-end on-board.** Export is verified with the
+identical **2.41 MB** planned arena (4.14 GB `.pte`, const-folded fp32 weights, 115 delegated nodes).
+With the fixed runner and a **2 GB swapfile** added to the board (the overflow valve for the fp32
+demand-paging that OOM-crashed it before), the full 22-layer whole-model int8 **completed on-board**:
+`Setting up CPU planned buffer 0, size 2405952` (**2.41 MB arena at full depth**), **mmap load 84.3 s**
+of the 4.14 GB `.pte`, **inference 78.4 s** (demand-paging the fp32 weights through 3.4 GB RAM + 2 GB
+swap; clean `BOARD_RC=0`, well inside the 40-min hard cap). Correctness vs the fp32 eager golden
+(weight-only int8 vs fp32): **cos=0.99736** (passes the 0.99 cos gate) with **rel=0.0738**, a near-miss
+on the 0.05 int8 L2 gate — the weight-only-int8 error accumulates with depth (2L rel=0.033, 8L=0.043,
+**22L=0.074**), an honest quantization outcome, not a code/arena/codegen failure. So the arena wall,
+the resident-slurp, and the earlier no-swap thrash-crash are **all resolved**: full-depth whole-model
+int8 now runs on the 3.4 GB board. (Recorded status `fail`-by-rel with that exact context in
+`artifacts/measurements/k1_spacemit/tiny_llama/…`; tightening rel would need the genuine int8 GEMM path
+so weights stay int8 — ~4× less quant round-off and ~1 GB resident, no paging.)
 
 XNNPACK still runs fp32 GEMM on the dequantized weights, so whole-binary RVV remains 11.7%; that
 genuine int8 XNNPACK `qd8` path is blocked by the PT2E `transform_for_annotation` cumsum→`index.Tensor`
