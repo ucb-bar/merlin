@@ -118,6 +118,27 @@ def m2m_python() -> Path | None:
     return p if p.is_file() else None
 
 
+# Some VLA loaders need per-model framework deps the generic m2m venv lacks (smolvla -> lerobot;
+# bitvla -> the vendored BitNet transformers fork). Each ships a dedicated capture venv beside the
+# repo (``<model>_capture/.venv``) that CAN torch-load the model; we prep those venvs with the TVM
+# python deps (onnx/decorator/attrs/...) so the same driver can run there. Override the base dir
+# with ``MERLIN_CAPTURE_VENVS_ROOT``.
+_CAPTURE_VENVS_ROOT = Path(os.environ.get("MERLIN_CAPTURE_VENVS_ROOT",
+                                         "/scratch/agustin/projects"))
+_MODEL_CAPTURE_VENV = {"smolvla": "smolvla_capture", "bitvla": "bitvla_capture"}
+
+
+def driver_python(model: str) -> Path | None:
+    """Python that can BOTH torch-load ``model`` and import the built TVM. Prefer a model-specific
+    capture venv (has the model's framework deps) when present, else the m2m venv."""
+    name = _MODEL_CAPTURE_VENV.get(model)
+    if name:
+        p = _CAPTURE_VENVS_ROOT / name / ".venv" / "bin" / "python"
+        if p.is_file():
+            return p
+    return m2m_python()
+
+
 def tvm_built() -> bool:
     """True iff the TVM shared libs are present (the Python package needs them to import)."""
     lib = tvm_lib_dir()
@@ -420,11 +441,14 @@ class CompileResult:
 
 def compile_model(b: _bundle.CaptureBundle, work: Path, *, cross: bool = True,
                   tune: bool = False, timeout: int = 3600) -> CompileResult:
-    """Export+import+compile a bundle in the m2m venv; return the .so + host correctness."""
-    m2m = m2m_python()
+    """Export+import+compile a bundle in the driver venv; return the .so + host correctness.
+
+    The driver venv is the model-specific capture venv when one exists (it carries the model's
+    framework deps, e.g. lerobot / the BitNet transformers fork), else the m2m venv."""
+    m2m = driver_python(b.model)
     if m2m is None:
-        raise TVMError("model2MLIR venv python not found (set MERLIN_MODEL2MLIR) — cannot drive "
-                       "torch.export + TVM Relax import")
+        raise TVMError("no driver venv python found (set MERLIN_MODEL2MLIR / capture venv) — cannot "
+                       "drive torch.export + TVM Relax import")
     work.mkdir(parents=True, exist_ok=True)
     driver = work / "tvm_compile_driver.py"
     driver.write_text(_DRIVER_TEMPLATE)
