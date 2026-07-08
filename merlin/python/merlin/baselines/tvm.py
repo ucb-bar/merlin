@@ -259,6 +259,17 @@ try:
         for p in mdl.parameters():
             if float(p.detach().abs().max()) == 0.0:
                 p.copy_(torch.randn_like(p) * 0.02)
+    # bf16 -> f32 UPCAST (lossless), BEFORE quant/export. The real SmolVLA checkpoint runs in
+    # bfloat16, and relax/ONNX lack bf16 support for several ops (e.g. relax.sigmoid rejects bf16).
+    # Cast the base model + its floating inputs to f32 so activations flow as f32 (weight-only int8
+    # is then applied on the f32 base). Guarded: only fires when the model actually carries bf16, so
+    # the already-f32 models are untouched.
+    bf16_note = ""
+    if (any(p.dtype == torch.bfloat16 for p in mdl.parameters())
+            or any(b.dtype == torch.bfloat16 for b in mdl.buffers())):
+        mdl = mdl.to(torch.float32)
+        inputs = tuple(x.to(torch.float32) if x.is_floating_point() else x for x in inputs)
+        bf16_note = "bf16->f32 upcast"
     # int8/fp8: apply the SAME torchao quantization the capture used (per-cfg scheme).
     quant_note = ""
     if variant != "fp32":
@@ -285,7 +296,7 @@ try:
             for bname in list(npset):
                 npset.discard(bname)
                 n_persisted += 1
-    emit(stage="model_built", quant=quant_note, persisted_buffers=n_persisted)
+    emit(stage="model_built", quant=quant_note, persisted_buffers=n_persisted, bf16=bf16_note)
 
     # 2. Export to ONNX (the import path). ONNX has FAR broader op coverage than TVM v0.19.0's
     #    torch-exported-program frontend (which lacks full/where/masked_fill/convolution/... for HF
