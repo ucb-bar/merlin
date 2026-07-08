@@ -46,6 +46,11 @@ from merlin.rvvgen import k1
 
 FRAMEWORK = "buddy"
 
+# buddy embeds weights via `ld -r -b binary`; blobs at/above this size are mmap'd (demand-paged) from
+# a file instead — keeps the ELF small and resident RAM to the working set. Lower than merlin's 1.5 GB
+# default because buddy's embedded-blob link fails/OOMs earlier (smolvla/rdt2 ~0.5 GB).
+_BUDDY_MMAP_WEIGHTS_THRESHOLD = 256 * 1024 * 1024
+
 # --- buddy-mlir build layout (gitignored; built by this arm) ------------------------------------
 _BUILD_ROOT = repo_root() / "build" / "baselines" / "buddy"
 _BUDDY_SRC = repo_root() / "third_party" / "baselines" / "buddy-mlir"
@@ -640,9 +645,15 @@ static uint64_t wall_ns(void){{ struct timespec ts; clock_gettime(CLOCK_MONOTONI
 static void *worker(void *arg) {{
   (void)arg;
   printf("=== buddy_m2m vlenb=%llu ===\\n",(unsigned long long)rd_vlenb());
-  /* per-operand rank-exact descriptors + a pointer table in signature order. */
+  /* COMPUTE-vs-OVERHEAD split. The buddy ELF is a monolithic forward (all GEMM/attention/norm compute
+   * + its own intermediate allocs) plus this thin harness. The only "runtime overhead" outside the
+   * compute is our descriptor-pack loop (building rank-exact memref descriptors for the N operands);
+   * there is NO merlin dispatch/per-op runtime here. We bracket the descriptor pack (overhead_region)
+   * with cheap rdtime, then the forward (compute_region) — reported alongside the clean whole-forward
+   * e2e (the headline). rdtime brackets are ~near-zero cost, so they don't perturb the e2e. */
   static unsigned char DBUF[MERLIN_N_ARGS][24 + 16 * MERLIN_MAX_RANK];
   static void *DPTR[MERLIN_N_ARGS];
+  uint64_t ov0 = rd_time();
   for (int i = 0; i < MERLIN_N_ARGS; i++) {{
     const merlin_arg_t *a = &MERLIN_ARGS[i];
     void *data = 0;
@@ -651,8 +662,9 @@ static void *worker(void *arg) {{
     else /* MERLIN_OUTPUT */           data = OUT;   /* placeholder; buddy overwrites this descriptor */
     DPTR[i] = pack_desc(DBUF[i], a, data);
   }}
+  uint64_t ov1 = rd_time();          /* descriptor-pack overhead = ov1-ov0 */
   uint64_t w0=wall_ns(), t0=rd_time();
-  merlin_buddy_invoke(DPTR);
+  merlin_buddy_invoke(DPTR);          /* the compute region (whole monolithic forward) */
   uint64_t t1=rd_time(), w1=wall_ns();
 
   /* read the output from buddy's RETURNED (sret) descriptor's aligned pointer + offset. */
@@ -675,9 +687,15 @@ static void *worker(void *arg) {{
     printf("SUM %u\\n",(unsigned)sb);
   }}
   uint64_t ticks=t1-t0, est=ticks*(MERLIN_CPU_HZ/MERLIN_TIMEBASE_HZ);
+  uint64_t ov=ov1-ov0;               /* descriptor-pack overhead ticks */
   printf("METRIC cycles %llu\\n",(unsigned long long)est);
   printf("METRIC time_ticks %llu\\n",(unsigned long long)ticks);
   printf("METRIC wall_ns %llu\\n",(unsigned long long)(w1-w0));
+  /* compute-vs-overhead split (rdtime ticks): compute = the whole forward; overhead = descriptor pack.
+   * MERLIN_REGION name=<> ticks=<> is the format profile.parse_profile consumes. */
+  printf("MERLIN_REGION name=compute ticks=%llu\\n",(unsigned long long)ticks);
+  printf("MERLIN_REGION name=overhead ticks=%llu\\n",(unsigned long long)ov);
+  printf("METRIC overhead_ticks %llu\\n",(unsigned long long)ov);
   printf("DONE\\n"); fflush(stdout);
   return NULL;
 }}
@@ -741,7 +759,12 @@ def link_k1_elf(model_dir: Path, obj: Path, work: Path, *, inputs_npz: Path | No
     meta = c_runtime.generate(model_dir, cgen, inputs_npz)
 
     weights_bin = cgen / "weights.bin"
-    mmap_weights = (weights_bin.stat().st_size >= k1._MMAP_WEIGHTS_THRESHOLD
+    # buddy embeds the weight blob via `ld -r -b binary`; a ~0.5 GB+ embedded blob makes an ELF that
+    # both blows up the static link (relocation/size) and forces all weights resident on the 3.4 GB
+    # board. Use a LOWER buddy-local threshold (256 MB) than merlin's default so mid/big models
+    # (smolvla 506 MB, rdt2 488 MB, rdt 1.2 GB) mmap the blob (demand-paged) instead — smaller binary,
+    # resident RAM = working set.
+    mmap_weights = (weights_bin.stat().st_size >= _BUDDY_MMAP_WEIGHTS_THRESHOLD
                     if weights_bin.is_file() else False)
     weights_o = work / "weights_blob.o"
     if not mmap_weights:
@@ -1143,12 +1166,21 @@ def _run_on_board(res: BaselineResult, elf: Path, b: _bundle.CaptureBundle, work
         res.e2e_wall_ns = int(metrics["wall_ns"])
     if metrics.get("cycles") is not None and res.e2e_cycles is None:
         res.e2e_cycles = int(metrics["cycles"])
-    # whole-model region bracket (buddy lowers to a single monolithic forward; the region split is
-    # available only with per-op brackets — recorded as one 'other' region for now, honest).
+    # compute-vs-overhead split from the harness MERLIN_REGION brackets (compute = whole monolithic
+    # forward; overhead = the descriptor-pack loop — the only runtime cost outside buddy's compute).
+    _wm, _regions = profile.parse_profile(console)
+    ov_ticks = next((int(r.rdtime_ticks) for r in _regions
+                     if r.name == "overhead" and r.rdtime_ticks is not None), None)
     if res.e2e_rdtime_ticks is not None:
-        res.regions = [RegionProfile(name="other", rdtime_ticks=res.e2e_rdtime_ticks,
+        res.regions = [RegionProfile(name="compute", rdtime_ticks=res.e2e_rdtime_ticks,
                                      cycles=res.e2e_cycles, rvv_coverage=res.rvv_coverage_overall,
-                                     note="whole-forward (buddy lowers to one monolithic function)")]
+                                     note="whole monolithic forward (all GEMM/attn/norm compute)")]
+        if ov_ticks is not None:
+            res.regions.append(RegionProfile(
+                name="overhead", rdtime_ticks=ov_ticks, cycles=profile.ticks_to_cycles(ov_ticks),
+                rvv_coverage=0.0, note="descriptor-pack (runtime dispatch overhead; near-zero)"))
+            frac = ov_ticks / res.e2e_rdtime_ticks if res.e2e_rdtime_ticks else 0.0
+            res.notes += f" overhead={ov_ticks}t({100*frac:.3f}%) compute={res.e2e_rdtime_ticks}t"
     # correctness from the OUT marker (parsed 'outputs' float array). int8 gates against the W8A8
     # reference (golden_w8a8.npy) when present — that is the math the integer datapath INTENDS to
     # run; falling back to the fp32 golden only when no W8A8 ref exists.
