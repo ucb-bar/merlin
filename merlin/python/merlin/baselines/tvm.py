@@ -762,6 +762,122 @@ finally:
 '''
 
 
+def board_runner_bin() -> Path:
+    """The cross-built board-LOCAL relax-VM runner (build via tvm_board/build_board_runner.sh)."""
+    return _RV64_RUNTIME_DIR / "board_runner" / "board_runner"
+
+
+_BOARD_LOCAL_DIR = "/root/tvm_local"  # board SD (~8G free) — big const-folded .so lives here
+
+
+def _dl_dtype(dt) -> tuple[int, int]:
+    """numpy dtype -> DLDataType (code, bits). TVM bool == UInt(1)."""
+    import numpy as _np
+    dt = _np.dtype(dt)
+    table = {_np.float32: (2, 32), _np.float64: (2, 64), _np.int64: (0, 64),
+             _np.int32: (0, 32), _np.int8: (0, 8), _np.uint8: (1, 8), _np.bool_: (1, 1)}
+    if dt.type not in table:
+        raise ValueError(f"unmapped input dtype {dt}")
+    return table[dt.type]
+
+
+def _run_board_local(res: BaselineResult, so: Path, b: _bundle.CaptureBundle, work: Path,
+                     *, iters: int = 10, timeout: int = 1800) -> bool:
+    """Run the module BOARD-LOCALLY (no tvm_rpc): scp the .so + cross-built runner + inputs to the
+    board SD, run the relax VM locally over plain ssh, pull the output, gate cos/rel vs torch_ref.
+
+    This bypasses the ``tvm_rpc`` ``kShutdown`` that kills large-``.so`` RPC sessions (the RPC layer
+    is the flaky part, not board RAM). Returns True iff it produced a gated on-board result.
+    """
+    import numpy as np
+    runner = board_runner_bin()
+    rt = _RV64_RUNTIME_DIR / "libtvm_runtime.so"
+    if not runner.is_file() or not rt.is_file():
+        res.gap_reason = ("board-local runner/libtvm_runtime.so not cross-built "
+                          "(tvm_board/build_board_runner.sh); on-board pending")
+        return False
+    ref = work / "torch_ref.npy"
+    if not ref.is_file():
+        res.gap_reason = "torch_ref.npy missing (needed to gate the on-board output)"
+        return False
+    host = k1.K1_HOST
+    ssh = ["ssh", "-i", k1.K1_SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
+           "-o", "ConnectTimeout=10", host]
+    scp = ["scp", "-i", k1.K1_SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no"]
+    bdir = _BOARD_LOCAL_DIR
+
+    # prep inputs (graph-positional / natural order) as raw bins + a manifest the runner parses.
+    npz = np.load(b.inputs)
+    keys = sorted(npz.files, key=lambda k: (int("".join(filter(str.isdigit, k)) or 0), k))
+    indir = work / "board_inputs"
+    indir.mkdir(parents=True, exist_ok=True)
+    manifest = work / "board_manifest.txt"
+    with open(manifest, "w") as mf:
+        for i, k in enumerate(keys):
+            a = np.ascontiguousarray(npz[k])
+            code, bits = _dl_dtype(a.dtype)
+            a.tofile(indir / f"in{i}.bin")
+            mf.write(f"{code} {bits} {a.ndim} " + " ".join(str(x) for x in a.shape) + f" in{i}.bin\n")
+
+    try:
+        subprocess.run(ssh + [f"mkdir -p {bdir}/inputs"], capture_output=True, timeout=60)
+        for src, dst in [(rt, "libtvm_runtime.so"), (runner, "board_runner"),
+                         (so, "model.so"), (manifest, "manifest.txt")]:
+            r = subprocess.run(scp + [str(src), f"{host}:{bdir}/{dst}"], capture_output=True,
+                               timeout=timeout, text=True)
+            if r.returncode:
+                res.gap_reason = f"board scp {dst} failed: {r.stderr[:150]}"
+                return False
+        for i in range(len(keys)):
+            subprocess.run(scp + [str(indir / f"in{i}.bin"), f"{host}:{bdir}/inputs/in{i}.bin"],
+                           capture_output=True, timeout=600)
+        subprocess.run(ssh + [f"chmod +x {bdir}/board_runner"], capture_output=True, timeout=30)
+        cmd = (f"cd {bdir} && LD_LIBRARY_PATH={bdir} ./board_runner model.so manifest.txt inputs "
+               f"out.bin {iters}")
+        rr = subprocess.run(ssh + [cmd], capture_output=True, timeout=timeout, text=True)
+        stderr = rr.stderr or ""
+        if rr.returncode != 0:
+            res.ran = False
+            res.gap_reason = ("board-LOCAL run failed (rc=%d): %s"
+                              % (rr.returncode, stderr.strip().splitlines()[-1][:200] if stderr.strip() else "?"))
+            return True  # a real, characterized on-board attempt (honest not_run reason recorded)
+        # pull output + meta
+        subprocess.run(scp + [f"{host}:{bdir}/out.bin", str(work / "board_out.bin")],
+                       capture_output=True, timeout=120)
+        subprocess.run(scp + [f"{host}:{bdir}/out.bin.meta", str(work / "board_out.meta")],
+                       capture_output=True, timeout=60)
+        meta = (work / "board_out.meta").read_text().split()
+        code, bits, ndim = int(meta[0]), int(meta[1]), int(meta[2])
+        shape = [int(x) for x in meta[3:3 + ndim]]
+        npdt = {(2, 32): np.float32, (2, 64): np.float64, (0, 64): np.int64,
+                (0, 32): np.int32}[(code, bits)]
+        out = np.fromfile(work / "board_out.bin", dtype=npdt).reshape(shape)
+        e2e_ns = None
+        for line in stderr.splitlines():
+            if line.startswith("E2E_NS"):
+                e2e_ns = int(float(line.split()[1]))
+        tref = np.load(ref).astype(np.float64).ravel()
+        a = out.astype(np.float64).ravel()[:tref.size]
+        gg = tref[:a.size]
+        d = (np.linalg.norm(a) * np.linalg.norm(gg)) or 1.0
+        res.ran = True
+        res.cos = float(np.dot(a, gg) / d)
+        res.rel = float(np.linalg.norm(a - gg) / (np.linalg.norm(gg) or 1.0))
+        res.e2e_wall_ns = e2e_ns
+        if e2e_ns:
+            res.regions = [RegionProfile(name="other", wall_ns=e2e_ns,
+                                         rvv_coverage=res.rvv_coverage_overall,
+                                         note="whole-model relax VM (board-LOCAL, no tvm_rpc, wall)")]
+        return True
+    except subprocess.TimeoutExpired:
+        res.ran = False
+        res.gap_reason = f"board-LOCAL run timed out after {timeout}s (large .so load/exec)"
+        return True
+    finally:
+        subprocess.run(ssh + [f"rm -rf {bdir}/model.so {bdir}/inputs {bdir}/out.bin* 2>/dev/null"],
+                       capture_output=True, timeout=30)
+
+
 def _run_on_board(res: BaselineResult, so: Path, b: _bundle.CaptureBundle, work: Path) -> None:
     """Deploy + run the TVM module on the K1 over direct RPC, under the board lock.
 
@@ -790,6 +906,13 @@ def _run_on_board(res: BaselineResult, so: Path, b: _bundle.CaptureBundle, work:
                           "(RVV .so built + audited + host-VM correctness recorded; on-silicon run "
                           "pending the runtime cross-build)")
         return
+    # PREFER the board-LOCAL runner: it loads the module + runs the relax VM on the board directly,
+    # bypassing tvm_rpc (whose session dies with ``kShutdown`` on large-``.so`` uploads — the RPC
+    # layer is the flaky part, not board RAM). Falls back to the RPC path only if the runner binary
+    # is not cross-built.
+    if board_runner_bin().is_file():
+        if _run_board_local(res, so, b, work):
+            return
     # The RPC execution driver runs in the m2m venv (has tvm). It manages the board server under the
     # board_lock and connects host->board directly. On this network the direct-RPC relax-VM path is
     # unstable (see docstring); the driver returns a status we surface verbatim.
