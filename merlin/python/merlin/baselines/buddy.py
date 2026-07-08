@@ -32,6 +32,7 @@ is disassembled (``rvv_audit``) and every compute-bearing scalar symbol is recor
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -311,7 +312,68 @@ def prepare_model_mlir(bundle: _bundle.CaptureBundle, work: Path) -> Path:
     work.mkdir(parents=True, exist_ok=True)
     int8 = bundle.variant == "int8"
     prepared = zm._prepare_model_mlir(bundle.mlir, work, int8_compute=int8)
+    # Repair the m2m aten.select export bug (malformed rank-reducing tensor.extract_slice) — see
+    # _repair_malformed_select_slices. This is a buddy-arm compat shim for a bug in the EXPORTED
+    # model.mlir (m2m repo), not in oscar-merlin or buddy; without it bitvla/smolvla fail
+    # bufferization ("mixed offsets rank to match mixed sizes rank").
+    txt = prepared.read_text()
+    fixed, n = _repair_malformed_select_slices(txt)
+    if n:
+        prepared.write_text(fixed)
+        print(f"[buddy] repaired {n} malformed aten.select extract_slice (m2m export bug)")
     return prepared
+
+
+# The m2m torch exporter emits `aten.select.int` as a rank-reducing `tensor.extract_slice` whose
+# `static_sizes` is left at rank 1 (the result rank) while `static_offsets`/`static_strides` stay at
+# the source rank — invalid IR (MLIR's bufferizer rejects "mixed offsets rank (R) vs sizes rank (1)").
+# We reconstruct the rank-R `static_sizes` so the slice is well-formed and its rank-reduction to the
+# (already-correct) result type is legal: exactly one kept dim holds the size, the rest are 1.
+# One malformed extract_slice op. Captures: (1) offsets, (2) sizes, (3) strides, (4) the tail from
+# after strides through the op's type signature (kept verbatim). The source dims are recovered from
+# the tail's first `(tensor<DIMSxELEM>)` operand type.
+_EXTRACT_SLICE_RE = re.compile(
+    r'static_offsets = array<i64: ([^>]*)>, static_sizes = array<i64: ([^>]*)>, '
+    r'static_strides = array<i64: ([^>]*)>(.*?: \(tensor<([0-9x]+)x[a-z0-9]+>\) -> tensor<[^>]*>)',
+    re.DOTALL)
+
+
+def _repair_malformed_select_slices(text: str) -> tuple[str, int]:
+    """Rewrite malformed rank-reducing ``tensor.extract_slice`` sizes to rank-R. Returns (text, count).
+
+    For a slice with offsets/strides of rank R and a rank-1 ``static_sizes`` value V, pick the KEPT
+    dim = the last source dim whose extent == V and where ``offset + V <= source_extent`` (so a
+    select'd dim, whose offset leaves < V elements, is never chosen); set that dim's size to V and all
+    others to 1. Deterministic when one offset is non-zero (bitvla: dim identified by the select
+    index); for all-zero offsets (smolvla) it takes the canonical last-matching dim. A wrong guess
+    can only LOWER the on-board cos (never a false pass — correctness stays gated vs golden)."""
+    import re as _re
+
+    count = [0]
+
+    def repl(m: "_re.Match") -> str:
+        offs = [int(x) for x in m.group(1).split(",")]
+        sizes = [x.strip() for x in m.group(2).split(",")]
+        strides = [x.strip() for x in m.group(3).split(",")]
+        tail = m.group(4)
+        src = [int(x) for x in m.group(5).split("x")]
+        r = len(offs)
+        if len(sizes) != 1 or len(offs) == len(sizes) or len(strides) != r or len(src) != r:
+            return m.group(0)  # well-formed or not the rank-1 malformation
+        v = int(sizes[0])
+        kept = None
+        for i in range(r):
+            if src[i] == v and offs[i] + v <= src[i]:
+                kept = i  # last matching dim
+        if kept is None:
+            return m.group(0)  # can't safely reconstruct — leave (fails loudly, not silently)
+        new_sizes = ", ".join(str(v if i == kept else 1) for i in range(r))
+        count[0] += 1
+        return (f"static_offsets = array<i64: {m.group(1)}>, static_sizes = array<i64: {new_sizes}>, "
+                f"static_strides = array<i64: {m.group(3)}>{tail}")
+
+    out = _EXTRACT_SLICE_RE.sub(repl, text)
+    return out, count[0]
 
 
 def lower_to_llvmir(mlir_path: Path, work: Path, *, timeout: int = 1200) -> Path:
