@@ -125,7 +125,7 @@ def m2m_python() -> Path | None:
 # with ``MERLIN_CAPTURE_VENVS_ROOT``.
 _CAPTURE_VENVS_ROOT = Path(os.environ.get("MERLIN_CAPTURE_VENVS_ROOT",
                                          "/scratch/agustin/projects"))
-_MODEL_CAPTURE_VENV = {"smolvla": "smolvla_capture", "bitvla": "bitvla_capture"}
+_MODEL_CAPTURE_VENV = {"smolvla": "smolvla_capture", "bitvla": "bitvla_capture", "pi05": "openpi"}
 
 
 def driver_python(model: str) -> Path | None:
@@ -308,6 +308,12 @@ try:
         _r = mdl(*inputs)
     torch_ref = (_r[0] if isinstance(_r, (tuple, list)) else _r).detach().float().cpu().numpy()
     np.save(os.path.join(work, "torch_ref.npy"), torch_ref)
+    # Save the ACTUAL loader inputs the model+torch_ref were built on. The bundle inputs.npz can use a
+    # DIFFERENT config than the loader (e.g. openvla loader exports pixel_values (1,6,64,64) while the
+    # recapture bundle is (1,6,224,224)) -> feeding bundle inputs to the compiled model is a shape
+    # mismatch. Host-VM + on-board runs feed THESE (self-consistent TVM-vs-torch gate).
+    _din = {("in%d" % i): np.asarray(t.detach().cpu().numpy()) for i, t in enumerate(inputs)}
+    np.savez(os.path.join(work, "driver_inputs.npz"), **_din)
 
     # 3. Import ONNX -> TVM Relax.
     import onnx as _onnx
@@ -407,7 +413,10 @@ try:
                               target=tvm.target.Target("llvm"))
         dev = tvm.cpu()
         vm = relax.VirtualMachine(host_ex, dev)
-        npz = np.load(os.path.join(bundle_root, "inputs.npz"))
+        # Feed the loader's OWN inputs (driver_inputs.npz) — they match the compiled model's config;
+        # the bundle inputs.npz can differ (see above). Fall back to bundle inputs if absent.
+        _dip = os.path.join(work, "driver_inputs.npz")
+        npz = np.load(_dip if os.path.exists(_dip) else os.path.join(bundle_root, "inputs.npz"))
         args = [tvm.nd.array(npz[k], dev) for k in sorted(npz.files, key=_natkey)]
         out = vm["main"](*args)
         got = out.numpy() if hasattr(out, "numpy") else np.asarray(out[0].numpy())
@@ -807,7 +816,10 @@ def _run_board_local(res: BaselineResult, so: Path, b: _bundle.CaptureBundle, wo
     bdir = _BOARD_LOCAL_DIR
 
     # prep inputs (graph-positional / natural order) as raw bins + a manifest the runner parses.
-    npz = np.load(b.inputs)
+    # Prefer the loader's OWN inputs (driver_inputs.npz, saved at compile) — they match the compiled
+    # model's config; the bundle inputs.npz can differ (e.g. openvla 64x64 vs 224x224).
+    _dip = work / "driver_inputs.npz"
+    npz = np.load(_dip if _dip.is_file() else b.inputs)
     keys = sorted(npz.files, key=lambda k: (int("".join(filter(str.isdigit, k)) or 0), k))
     indir = work / "board_inputs"
     indir.mkdir(parents=True, exist_ok=True)
@@ -893,12 +905,15 @@ def _run_on_board(res: BaselineResult, so: Path, b: _bundle.CaptureBundle, work:
     So this is fail-closed: a specific ``gap_reason`` on any RPC issue, never a fabricated timing.
     A weights-too-big model is a labeled fit gap.
     """
-    # Fit check: models whose weights exceed the K1's usable RAM never run on-board — honest gap.
-    if b.weights.is_file() and b.weights.stat().st_size > _K1_WEIGHT_FIT_BYTES:
-        gb = b.weights.stat().st_size / 1e9
+    # Fit check: what actually loads on-board is the EXPORTED ``.so`` (const-folded params baked in),
+    # NOT the capture safetensors — a truncated/reduced capture can export a tiny .so even when the
+    # original checkpoint is many GB (e.g. openvla: 4.2G safetensors -> 22M .so). Gate on the .so
+    # size (+ headroom for the VM/intermediates) so a small .so is never wrongly declared a fit gap.
+    so_gb = so.stat().st_size / 1e9 if so.is_file() else 0.0
+    if so_gb > 3.0:
         res.ran = False
-        res.gap_reason = (f"weights {gb:.1f}G exceed K1 usable RAM (~3.4G) — on-board run is a fit "
-                          f"gap (RVV .so built + audited + host-VM correctness recorded)")
+        res.gap_reason = (f"exported .so {so_gb:.1f}G exceeds K1 usable RAM (~3.4G) — on-board run is "
+                          f"a fit gap (RVV .so built + audited + host-VM correctness recorded)")
         return
     if not rv64_runtime_built():
         res.ran = False
