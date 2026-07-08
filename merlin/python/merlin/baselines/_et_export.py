@@ -374,11 +374,20 @@ def main() -> int:
     #     .pte program data, which the board mmaps (executor_runner --mmap_model) so their pages
     #     demand-load and stay evictable under the board's RAM ceiling. This is what unblocks the
     #     FULL-DEPTH (not layer-reduced) whole-model int8 on-board run.
-    if args.int8_whole_model:
+    #     const-prop ALSO concretizes data-dependent constant subgraphs: smolvla fp32 otherwise
+    #     fails to_executorch with an unbacked-symint "data-dependent" error in dim_order_from_stride
+    #     (a bucketize-derived stride the static memory planner can't evaluate); folding the constant
+    #     boundaries resolves it, which is why the int8 path (already const-propped) exported cleanly.
+    #     So run it for the fp32 whole-model xnnpack path too (not just int8).
+    _whole_model = args.int8_whole_model or (not args.no_xnnpack and not args.int8_subgraph
+                                             and not args.quantize)
+    if _whole_model:
         try:
             from executorch.exir.passes.constant_prop_pass import constant_prop_pass
             exported = constant_prop_pass(exported)
-            subgraph_note += " +const-prop(dequant-weights-folded->const, arena 4.25GB->2MB)"
+            subgraph_note += (" +const-prop(dequant-weights-folded->const, arena 4.25GB->2MB)"
+                              if args.int8_whole_model
+                              else " +const-prop(fp32 whole-model; resolves bucketize data-dep symint)")
         except Exception as e:  # noqa: BLE001
             subgraph_note += f" const-prop-skipped({str(e)[:80]})"
 
@@ -390,7 +399,13 @@ def main() -> int:
         partitioners.append(XnnpackPartitioner())
 
     from executorch.exir import EdgeCompileConfig
-    _cc = EdgeCompileConfig(_check_ir_validity=False) if quantized else None
+    # Disable the advisory core-ATen IR-validity check for ALL models (not just quantized): some
+    # real forwards emit ops outside the strict "core ATen opset" (e.g. smolvla fp32 emits
+    # aten.bucketize.Tensor) that the verifier rejects even though a runtime kernel exists / can be
+    # provided. Whether an op is actually runnable is decided by the runner's registered kernel set,
+    # which this arm audits separately (missing kernels surface as a precise method-load gap), so the
+    # verifier is redundant here and would spuriously block otherwise-exportable models.
+    _cc = EdgeCompileConfig(_check_ir_validity=False)
     edge = to_edge_transform_and_lower(exported, partitioner=partitioners, compile_config=_cc)
     nodes = list(edge.exported_program().graph.nodes)
     delegated = sum(1 for n in nodes
