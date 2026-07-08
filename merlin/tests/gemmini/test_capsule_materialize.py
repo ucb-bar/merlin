@@ -1,0 +1,49 @@
+"""The sandbox public-capsule view must stay derivable from the single source (no hand drift).
+
+The capsule-bench sandbox reads ``scripts/full_public_capsules/``. That directory is NOT a
+hand-maintained copy — it is materialized from ``merlin/contract/capsules/`` (public label, oracle
+tiers capped at L2) by ``merlin.targetgen.contract.materialize``. This test asserts the committed
+copy still equals a fresh materialization, so a hand-edit or a contract change that isn't
+re-materialized fails CI instead of silently drifting.
+"""
+from __future__ import annotations
+
+import yaml
+
+from merlin.common.paths import merlin_dir
+from merlin.targetgen.contract.materialize import materialize_public_capsules
+
+PUB = (merlin_dir() / "experiments" / "gemmini_capsule_bench_v0" / "scripts" / "full_public_capsules")
+_CAPSULE_FILES = ("capsule.yaml", "capsule.interface.mlir", "golden.yaml",
+                  "expected_instruction_coverage.yaml", "README.md")
+
+
+def _load(p):
+    return yaml.safe_load(p.read_text(encoding="utf-8"))
+
+
+def test_public_capsules_match_materializer(tmp_path):
+    fresh = materialize_public_capsules(tmp_path, tier_ceiling="L2")
+    committed = sorted(d.name for d in PUB.iterdir() if d.is_dir())
+    assert fresh == committed, (
+        f"public capsule SET drifted from the contract — missing: {set(fresh)-set(committed)}, "
+        f"stale: {set(committed)-set(fresh)}. Re-run: "
+        f"python -m merlin.targetgen.contract.materialize {PUB}")
+
+    for name in fresh:
+        for f in _CAPSULE_FILES:
+            a, b = tmp_path / name / f, PUB / name / f
+            assert b.is_file(), f"committed public capsule missing {name}/{f}"
+            if f in ("capsule.yaml", "golden.yaml", "expected_instruction_coverage.yaml"):
+                assert _load(a) == _load(b), (
+                    f"{name}/{f} drifted from the materialized view — re-materialize.")
+            else:
+                assert a.read_text() == b.read_text(), f"{name}/{f} drifted — re-materialize."
+
+
+def test_materializer_caps_tiers_below_ceiling(tmp_path):
+    materialize_public_capsules(tmp_path, tier_ceiling="L2")
+    for cap_yaml in tmp_path.rglob("capsule.yaml"):
+        tiers = _load(cap_yaml).get("required_oracle_tiers", [])
+        assert all(t in ("L0", "L1", "L2") for t in tiers), (
+            f"{cap_yaml.parent.name} requires an unreachable tier in the sandbox: {tiers}")
