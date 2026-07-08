@@ -45,8 +45,8 @@ expected:
     relu: true
     acc_scale: false
 required_oracle_tiers:
-  - L0
-  - L1
-  - L2
+- L0
+- L1
+- L2
 vcs: optional
 firesim: optional

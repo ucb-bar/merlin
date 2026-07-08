@@ -54,8 +54,8 @@ expected:
   modes:
     resident_reuse: true
 required_oracle_tiers:
-  - L0
-  - L1
-  - L2
+- L0
+- L1
+- L2
 vcs: optional
 firesim: optional
