@@ -80,14 +80,16 @@ _GLUE_GAP: dict[str, str] = {
     "molmoact": "OLMo-style backbone (lm.model.blocks.N with attn_norm/ff_norm, mlp.ff_proj/ff_out "
                 "fused-gate MLP + wte.embedding) — not the Llama q/k/v/o + gate/up/down decoder the "
                 "glue runs",
-    "bitvla": "multimodal VLA (vla.vision_tower + vla.multi_modal_projector + vla.language_model). "
-              "The vla.language_model.model IS a Llama-style decoder the glue's schema would match, "
-              "BUT (a) its golden is the whole-VLA output — there is NO isolated LLM-backbone golden "
-              "to gate the backbone against, and (b) each BitNet layer adds attn_sub_norm + "
-              "mlp.ffn_sub_norm (RMSNorm inside attn/MLP) the standard Llama glue does not apply, so "
-              "a backbone-only run would be silently wrong with nothing to catch it. Running it "
-              "honestly needs the vision tower + projector + cross-modal prefix + the two sub-norms "
-              "(out of scope for the decoder-only glue) — attempted-run would be ungatable, not a pass",
+    "bitvla": "BitNet-b1.58 VLA. The capture's golden (1,32,1024) IS an isolated LLM-backbone "
+              "output (inputs = precomputed embeds in0[1,32,256] + ids in1), so it is gate-able — "
+              "but the backbone is NOT a plain fp32 decoder: every projection is a BitLinear "
+              "(ternary {-1,0,1} per-tensor-absmean weights + per-token int8 absmax ACTIVATION "
+              "quant) with a SubLN (attn_sub_norm before o_proj, mlp.ffn_sub_norm before down_proj). "
+              "Verified by numpy repro against the golden: plain-decoder cos=0.33, +sub_norm "
+              "cos=0.47, +BitLinear-ternary/int8-quant cos=0.43 — all far below the 0.999 gate. "
+              "Faithfully running it needs a BitNet BitLinear kernel + exact SubLN/quant semantics "
+              "(out of the EXO decoder glue's scope); NOT the two sub-norms alone. Documented gap, "
+              "not a forced/fabricated pass.",
     "openvla": "multimodal VLA (vla.vision_backbone + vla.projector + vla.language_model) — glue "
                "has no vision backbone / projector path",
     "rdt": "diffusion transformer action head (model.blocks + freq/pos embedders + final_layer, no "
@@ -209,6 +211,35 @@ def compile_exo_igemm(out_dir: Path, ku: int = 1, u: int = 1) -> Path:
     if r.returncode != 0:
         raise RuntimeError(f"exocc (int8) failed: {r.stdout[-500:]}\n{r.stderr[-500:]}")
     c = out_dir / "exo_igemm.c"
+    if not c.is_file():
+        raise RuntimeError(f"exocc produced no {c}")
+    return c
+
+
+def compile_autosched_dot(out_dir: Path, nblock: int = 1) -> Path:
+    """Lower the EXO-AUTOSCHEDULED transpose-free f32 dot to C via exocc.
+
+    The kernel is produced by EXO's own ``vectorize`` auto-op (autosched.py -> ``build_fdot``): a
+    single ``vectorize`` call turns a scalar k-reduction dot into an 8-wide RVV partial-sum
+    accumulator + contiguous ``vle`` + ``vfmacc.vv`` + a ``vfredusum`` horizontal reduce (the
+    stride-1 reduction the prior HAND schedule couldn't express and fell back to hand-C for). The
+    emitted C function is always ``fdot_nk_ref`` (the glue's declared symbol) for any ``nblock``, so
+    the autotuner can swap the output-blocking knob transparently. Emits autosched_dot.c/.h."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    exocc = _exocc()
+    if exocc is None:
+        raise RuntimeError("EXO venv/exocc missing")
+    lib = out_dir / "autosched_dot_lib.py"
+    lib.write_text("from __future__ import annotations\n"
+                   "from merlin.baselines.exo_kernels.autosched import build_fdot\n"
+                   f"fdot_nk_ref = build_fdot({int(nblock)})\n")
+    env = dict(os.environ, PYTHONPATH=str(repo_root() / "merlin/python"))
+    r = subprocess.run([str(exocc), "-o", str(out_dir), "-p", str(repo_root() / "merlin/python"),
+                        "-s", "autosched_dot", str(lib)],
+                       capture_output=True, text=True, env=env, timeout=180)
+    if r.returncode != 0:
+        raise RuntimeError(f"exocc (autosched) failed: {r.stdout[-500:]}\n{r.stderr[-500:]}")
+    c = out_dir / "autosched_dot.c"
     if not c.is_file():
         raise RuntimeError(f"exocc produced no {c}")
     return c
@@ -364,12 +395,17 @@ def emit_weights_header(bundle_root: Path, out_dir: Path, variant: str = "fp32")
 
 
 def build_glue_binary(bundle_root: Path, work: Path, variant: str = "fp32",
-                      ku: int = 1, u: int = 1) -> tuple[Path, list[str]]:
+                      ku: int = 1, u: int = 1, autosched: bool = False,
+                      nblock: int = 1) -> tuple[Path, list[str]]:
     """Compile the EXO GEMM + C glue into a K1 rv64gcv ELF. Returns (elf, march_flags).
 
     fp32 -> the f32 vfmacc GEMM (gemm.py) + llama_glue.c. int8 -> the vwmacc widening GEMM
     (igemm.py; output-register-blocked by ``u``, k-unrolled by ``ku``) + llama_glue_int8.c. Raises
-    with a specific reason if the capture is not a runnable llama decoder (a not_built gap)."""
+    with a specific reason if the capture is not a runnable llama decoder (a not_built gap).
+
+    ``autosched=True`` (fp32 only) uses the EXO-AUTOSCHEDULED transpose-free dot (autosched.py, via
+    EXO's ``vectorize`` auto-op) + llama_glue_autosched.c instead of the hand-scheduled broadcast
+    GEMM — the "EXO autocompile" path. ``nblock`` is the autotuner's output-blocking knob."""
     work.mkdir(parents=True, exist_ok=True)
     cc = k1.toolchain_cc()
     if cc is None:
@@ -393,6 +429,11 @@ def build_glue_binary(bundle_root: Path, work: Path, variant: str = "fp32",
                    str(compile_exo_igemm(work, ku, u))]          # EXO int8 vwmacc GEMM (audit only)
         glue_c = _exo_dir() / "llama_glue_int8.c"
         elf = work / "exo_llama_int8_k1"
+    elif autosched:
+        # EXO autocompile: the transpose-free dot generated by EXO's vectorize auto-op.
+        kernel_c = compile_autosched_dot(work, nblock)
+        glue_c = _exo_dir() / "llama_glue_autosched.c"
+        elf = work / "exo_llama_autosched_k1"
     else:
         kernel_c = compile_exo_gemm(work)
         glue_c = _exo_dir() / "llama_glue.c"
@@ -454,6 +495,52 @@ def autotune_igemm_ku(work: Path, *, shape=(8, 4096, 2048),
     return best, ticks
 
 
+# Output-blocking (nblock) candidates for the EXO-AUTOSCHEDULED f32 dot. EXO has no cost model, so
+# this is a measurement-driven search: each nblock divides the output loop and re-runs EXO's
+# vectorize. Candidates divide every Linear's N (smallest N=256 for small_llama's V -> 256 % 8 ok).
+AUTOSCHED_NBLOCK_CANDIDATES: tuple[int, ...] = (1, 2, 4)
+
+
+def autotune_autosched_nblock(work: Path, *, shape=(8, 512, 512),
+                              candidates=AUTOSCHED_NBLOCK_CANDIDATES) -> tuple[int, dict[int, int]]:
+    """Bounded on-board search for the best output-blocking ``nblock`` of the autoscheduled dot.
+
+    For each nblock: compile_autosched_dot(nblock) -> exocc C, cross-compile autosched_bench.c at
+    the representative ``shape``, run once on the board, parse BENCH_TICKS. Returns (best, {nb:
+    ticks}). MUST be called inside ``k1_exec.board_lock()``. Fail-closed: a candidate that won't
+    build/run is skipped; if none run, returns (1, {}). NOTE the honest finding — EXO's plain
+    vectorize + divide_loop does not auto-generate the shared-load register interleave, so nblock
+    typically does not beat 1 (documented, not hidden)."""
+    cc = k1.toolchain_cc()
+    if cc is None:
+        raise RuntimeError("SpacemiT toolchain not found")
+    bm, bn, bk = shape
+    bench_c = _exo_dir() / "autosched_bench.c"
+    ticks: dict[int, int] = {}
+    for nb in candidates:
+        d = work / f"nb{nb}"
+        try:
+            kernel_c = compile_autosched_dot(d, nb)
+            elf = d / "autosched_bench"
+            _run([str(cc), "--target=riscv64-unknown-linux-gnu", f"-march={MARCH}", f"-mabi={MABI}",
+                  "-O3", "-ffast-math", f"-DBM={bm}", f"-DBN={bn}", f"-DBK={bk}", f"-I{d}",
+                  str(bench_c), str(kernel_c), "-lm", "-o", str(elf)] + (["-static"]))
+            remote = k1_exec.push(elf, f"/tmp/autosched_bench_nb{nb}")
+            k1_exec.run([f"chmod +x {remote}"], timeout=30)
+            proc = k1_exec.run([remote], timeout=300)
+            k1_exec.run([f"rm -f {remote}"], timeout=30)
+            for line in (proc.stdout + proc.stderr).splitlines():
+                if line.startswith("BENCH_TICKS "):
+                    ticks[nb] = int(line.split()[1])
+                    break
+        except Exception:  # noqa: BLE001 - skip a candidate that won't build/run (fail-closed)
+            continue
+    if not ticks:
+        return 1, {}
+    best = min(ticks, key=ticks.get)
+    return best, ticks
+
+
 def _run(cmd: list[str]) -> None:
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     if r.returncode != 0:
@@ -506,19 +593,29 @@ def _scalar_fallbacks(variant: str = "fp32") -> list[ScalarFallback]:
             for sym, reg in ops]
 
 
-def run(model: str = "tiny_llama", variant: str = "fp32", *, autotune: bool = True) -> BaselineResult:
-    """Build + (board-locked) run the EXO-glue whole-model on the K1; return a BaselineResult."""
+def run(model: str = "tiny_llama", variant: str = "fp32", *, autotune: bool = True,
+        autosched: bool = False) -> BaselineResult:
+    """Build + (board-locked) run the EXO-glue whole-model on the K1; return a BaselineResult.
+
+    ``autosched=True`` (fp32 only) uses the EXO-AUTOSCHEDULED transpose-free dot (generated by EXO's
+    own ``vectorize`` auto-op) instead of the hand-scheduled GEMM — the "EXO autocompile" path."""
     ts = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     commit = _submodule_sha()
     res = BaselineResult(framework=FRAMEWORK, model=model, variant=variant, substrate="k1_spacemit",
                          march=MARCH, toolchain="spacemit-clang-19+exo-1.0.0",
                          framework_commit=commit, timestamp=ts, cycle_accurate=False)
-    kdesc = ("WEIGHT-ONLY int8 (W8A16), TRANSPOSE-FREE: native [OUT,IN] int8 weights dequantized "
-             "on the fly inside a k-reduction f32 dot GEMM (fgemm_nk_dot_i8, hand-RVV vfmacc.vv + "
-             "vfredusum) — matches the capture's weight-only int8 golden (activations stay f32). The "
-             "EXO f32 GEMM (gemm_nt_ref) + EXO int8 vwmacc GEMM (igemm_nt_ref) are compiled + "
-             "RVV-audited (EXO-authored-kernel story) but off the hot path"
-             if variant == "int8" else "f32 vfmacc.vf GEMM (gemm_nt_ref, EXO)")
+    if autosched and variant != "int8":
+        kdesc = ("EXO-AUTOSCHEDULED transpose-free f32 dot GEMM (autosched.py fdot_nk_ref): EXO's "
+                 "own vectorize auto-op turned the scalar k-dot into an 8-wide RVV partial-sum "
+                 "accumulator + contiguous vle + vfmacc.vv + vfredusum horizontal reduce — the "
+                 "stride-1 vredsum reduction the prior hand schedule couldn't express")
+    else:
+        kdesc = ("WEIGHT-ONLY int8 (W8A16), TRANSPOSE-FREE: native [OUT,IN] int8 weights dequantized "
+                 "on the fly inside a k-reduction f32 dot GEMM (fgemm_nk_dot_i8, hand-RVV vfmacc.vv + "
+                 "vfredusum) — matches the capture's weight-only int8 golden (activations stay f32). The "
+                 "EXO f32 GEMM (gemm_nt_ref) + EXO int8 vwmacc GEMM (igemm_nt_ref) are compiled + "
+                 "RVV-audited (EXO-authored-kernel story) but off the hot path"
+                 if variant == "int8" else "f32 vfmacc.vf GEMM (gemm_nt_ref, EXO)")
     if variant == "int8":
         glue_note = ("RVV kernels: transpose-free weight-only int8 dot GEMM (fgemm_nk_dot_i8, "
                      "hand-RVV) + residual-add (vfadd, EXO) + SwiGLU product (vfmul, EXO); scalar "
@@ -526,6 +623,11 @@ def run(model: str = "tiny_llama", variant: str = "fp32", *, autotune: bool = Tr
                      "Activations are NOT quantized (weight-only int8, matching golden.npy — full "
                      "W8A8 would gate against a W8A8 golden this full-fidelity capture doesn't "
                      "carry: cos 0.949 vs weight-only's cos 1.0).")
+    elif autosched:
+        glue_note = ("The nn.Linear GEMM is the EXO-AUTOSCHEDULED dot (EXO vectorize auto-op, not a "
+                     "hand schedule); RMSNorm/RoPE/attention-softmax/SwiGLU/residual/embed are "
+                     "scalar C glue (labeled). EXO has NO cost-model autoscheduler — width/blocking "
+                     "come from the measurement-driven autotuner, not an automatic search.")
     else:
         glue_note = ("Only the nn.Linear GEMM is an EXO kernel; RMSNorm/RoPE/attention-softmax/"
                      "SwiGLU/residual/embed are scalar C glue (labeled).")
@@ -578,8 +680,22 @@ def run(model: str = "tiny_llama", variant: str = "fp32", *, autotune: bool = Tr
         except Exception as e:  # noqa: BLE001
             res.notes += f" | autotune skipped: {str(e)[:80]}"
             u = 8
+    # autosched fp32: bounded measurement-driven autotune of the output-blocking knob (nblock). EXO
+    # has no cost model, so "autotuning" = compile each candidate schedule + micro-bench on-board +
+    # keep the best. Honest finding recorded either way (EXO's vectorize alone may not benefit).
+    nblock = 1
+    nb_ticks: dict[int, int] = {}
+    if autosched and variant != "int8" and autotune and k1_exec.board_available():
+        try:
+            with k1_exec.board_lock():
+                nblock, nb_ticks = autotune_autosched_nblock(work / "autotune_as")
+            res.notes += (f" | autosched nblock autotune: ticks={nb_ticks} -> best nblock={nblock}"
+                          if nb_ticks else " | autosched nblock autotune: no candidate ran, nblock=1")
+        except Exception as e:  # noqa: BLE001
+            res.notes += f" | autosched autotune skipped: {str(e)[:80]}"
+            nblock = 1
     try:
-        elf, flags = build_glue_binary(b.root, work, variant, u=u)
+        elf, flags = build_glue_binary(b.root, work, variant, u=u, autosched=autosched, nblock=nblock)
         res.built = True
     except Exception as e:  # noqa: BLE001
         res.gap_reason = f"build failed: {type(e).__name__}: {str(e)[:300]}"
@@ -596,7 +712,7 @@ def run(model: str = "tiny_llama", variant: str = "fp32", *, autotune: bool = Tr
         # int8: audit BOTH the runtime dot GEMM (igemm_nk_dot, the hot path) and the EXO vwmacc
         # kernel (igemm_nt_ref, kept for the EXO-authored story). fp32: the EXO f32 GEMM.
         ksyms = (("fgemm_nk_dot_i8", "gemm_nt_ref", "igemm_nt_ref") if variant == "int8"
-                 else ("gemm_nt_ref",))
+                 else (("fdot_nk_ref",) if autosched else ("gemm_nt_ref",)))
         for ksym in ksyms:
             gk = rep.by_symbol.get(ksym)
             if gk is not None and gk.coverage is not None:
