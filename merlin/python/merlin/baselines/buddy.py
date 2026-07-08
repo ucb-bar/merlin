@@ -850,12 +850,21 @@ def link_k1_elf(model_dir: Path, obj: Path, work: Path, *, inputs_npz: Path | No
     rt = repo_root() / "merlin/runtime/c"
     abi = repo_root() / "merlin/runtime/abi"
     binary = work / "buddy_k1"
+    # The buddy_call.c shim makes a single `_mlir_ciface_forward(...)` call with N args (N = every
+    # forward operand). For high-arity models (pi05: 829) the SpacemiT clang-19 RISC-V backend crashes
+    # optimizing that mega-call ("Incomplete scavenging after 2nd pass" — the register scavenger can't
+    # spill the large arg frame at -O1/-O2). Compile the shim SEPARATELY at -O0 (it is pure pointer
+    # marshalling — zero perf cost, the compute is all in `obj`), and everything else at -O2.
+    call_o = work / "buddy_call.o"
+    _run([cc, "--target=riscv64-unknown-linux-gnu", f"-march={k1.K1_MARCH}", f"-mabi={k1.K1_MABI}",
+          "-O0", f"-I{rt}", f"-I{cgen}", "-c", str(cgen / "buddy_call.c"), "-o", str(call_o)],
+         timeout=timeout)
     # NOTE: we do NOT link merlin_model.c/model_call.c (their DPS merlin_run + fixed-8 descriptor is
     # exactly what breaks buddy's dynamic-strided ABI); the buddy harness builds descriptors itself.
-    srcs = [main_c, cgen / "buddy_call.c", abi / "mlir_runtime.c"]
+    srcs = [main_c, abi / "mlir_runtime.c"]
     base = [cc, "--target=riscv64-unknown-linux-gnu", f"-march={k1.K1_MARCH}",
             f"-mabi={k1.K1_MABI}", "-O2", f"-I{rt}", f"-I{cgen}",
-            *[str(s) for s in srcs], str(obj)]
+            *[str(s) for s in srcs], str(call_o), str(obj)]
     if not mmap_weights:
         base += [str(weights_o)]
     base += ["-lm", "-lpthread", "-o", str(binary)]
