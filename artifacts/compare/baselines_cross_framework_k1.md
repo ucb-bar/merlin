@@ -290,3 +290,29 @@ deduped **latest-executed-per-cell** (`aggregate.dedupe_latest`: an executed pas
   big-`.so` on-board VM-load hang (108 MB) → tiny_llama on-board is `not_run` (host cos=1.0 recorded).
 - **EXO**: at its limit for this workload (1.44 s, no dominant cost center). Further gains would need
   RVV rmsnorm/softmax (currently small) or EXO-schedulable stride-1 reduction support (the dot GEMM is hand-RVV).
+
+## Phase 5 — on-board resume on the recovered board (2026-07-06, matrix 10/79 pass)
+
+The K1 rebooted onto a new DHCP IP (`10.44.96.26`) with **no IPv4** (netplan DHCPs only `end0`/ethernet,
+not wlan0); recovered over UART by starting `dhcpcd -b wlan0`. A **2 GB swapfile** was added (no zram
+module on this kernel) as an OOM overflow valve. Then the built→ran cells were converted:
+
+- **Full-depth whole-model int8 tiny_llama RAN end-to-end** (the arena-wall payoff): 22 layers / 155
+  Linears, arena **2.41 MB** on-silicon, 84 s mmap-load of the 4.14 GB `.pte` + 78 s inference,
+  **cos=0.99736** (passes the 0.99 cos gate), rel=0.074 (`fail`-by-rel — honest depth-accumulated
+  weight-only-int8 round-off: 2L 0.033 → 8L 0.043 → 22L 0.074; tightening needs the int8-GEMM path
+  blocked by the PT2E bug). The 2 GB swap was the missing piece — no repeat of the no-swap thrash-crash.
+- **New whole-model int8 on-board PASSes**: ExecuTorch **bitvla** (30L, 154 ms, cos 0.99946) and
+  **xr0** (16 DiT layers, 1.25 s, cos 0.99997); TVM **small_llama** int8 re-confirmed (52.6 ms, cos 1.0).
+- **rdt / rdt2 (ExecuTorch) = genuine `fail`, NOT an excusable non-result.** The arm initially reported
+  these as "degenerate all-zero golden → cos undefined, not our fault"; that was **falsified by direct
+  inspection** — the bundle goldens are fully populated (rdt `‖golden‖`=52.9, 8192/8192 nonzero; rdt2
+  =11.4, 480/480 nonzero). The all-zeros were ExecuTorch's *own* int8 pipeline output; gated vs the real
+  golden it is a true cos≈0 fail (an ExecuTorch int8 bug on these two diffusion models). A self-consistent
+  zero-vs-zero is not a pass. (Lesson: always verify a "bad golden" claim against the actual `golden.npy`.)
+- **The VLA on-board wall is now uniform and precise: multi-GB const-folded module SIZE vs 3.4 GB board
+  RAM**, with correctness proven off-board. TVM xr0 (1.12 GB `.so`) + rdt2 (1.88 GB `.so`) reach **host
+  cos=1.0** but the relax VM can't load them resident; openvla (4.2 GB weights) is a clean RAM fit-gap;
+  Buddy rdt builds + 12.4% RVV but the on-board run returns rc=255. This is the one place the
+  "stream, don't hold resident" principle meets a real framework limit (relax VM / whole-model lowering
+  want the module resident) — a documented candidate for graph-splitting/streaming work, not effort.
