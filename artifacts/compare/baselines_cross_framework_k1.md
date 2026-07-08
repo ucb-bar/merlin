@@ -420,3 +420,53 @@ there would break executorch. openpi's own capture venv has the patched transfor
 but **lacks executorch**, and executorch's build is torch-2.11-specific. No single venv satisfies both,
 so `torch.export → .pte` cannot run without a dedicated venv carrying BOTH. Distinct from TVM
 (`onnx.export` OOM) and Buddy (built via linalg) — this is a Python-env wall, not an op/lowering wall.
+
+## Phase 8 — VLA on-board push + apples-to-apples performance (final)
+
+Pushing the four VLAs (bitvla, smolvla, openvla, pi05) across EXO/ExecuTorch/TVM (Buddy for pi05).
+
+**VLA on-board outcomes:**
+- **bitvla int8** — runs on-board on 3 arms (ExecuTorch PASS cos=0.9995 142 ms; TVM 0.9996 23.8 s; Buddy
+  0.9996 6.16 s). EXO = structural gap (BitNet BitLinear ternary + SubLN, cos 0.33–0.47 in the decoder glue).
+- **openvla int8** — TVM on-board cos=1.0, 7.1 s. NOTE: openvla is **random-init** (no pretrained ckpt),
+  so cos=1.0 is TVM-vs-torch *lowering-exactness* on the loader's inputs, not a semantic match. ExecuTorch
+  export fixed (`_check_ir_validity=False`) but the real 32-layer model = a **14.7 GB `.pte` > 14 GB SD** →
+  size-gated; the 2-layer proxy runs (16.4 ms).
+- **smolvla** — **executes on-board both ways, neither fast+correct**: int8 runs (93.6 s) but cos=0.081
+  (weight-only int8 wrecks the quant-fragile flow-matching head); fp32 runs *correctly and memory-fine*
+  (ExecuTorch const-prop arena keeps 3.3 GB free) but the single-core fp32 vision-diffusion forward is
+  **impractically slow — >55 min isolated and still not complete**. TVM int8 builds (bf16→f32 upcast + 5
+  ONNX frontend patches) but OOMs on-board (no arena planning). So smolvla is speed/quant-walled, not
+  build-walled.
+- **pi05** — **builds with RVV on TVM (101 MB `.so`, 9.9%) and Buddy (44 MB ELF, 9.3%)** — both build walls
+  broken (TVM's "export crash" was host OOM under concurrent memory pressure, not a bug; Buddy needed
+  llc -O1 + an -O0 sret shim + mmap weights). On-board it is **OOM-killed, dmesg-confirmed: 12.8 GB working
+  set vs 3.4 GB RAM + 2 GB swap** — the 3.6B flow-matching *activation* working set (not weights, so
+  weight-streaming can't rescue it) genuinely exceeds the board. ExecuTorch = dual-venv wall (openpi
+  transformers 4.53.2 + JAX vs executorch transformers 5.0rc1 + torch 2.11).
+
+**Apples-to-apples on-board performance** (same model + variant + board + comparable correctness; K1
+`rdtime` estimates, not cycle-accurate). Two cells qualify:
+
+_small_llama int8 (4-way, all cos≈1.0):_
+| framework | e2e | RVV% |
+|---|---|---|
+| **ExecuTorch/XNNPACK** | **4.3 ms** | 11.7% |
+| EXO (GEMM kernel + hand glue) | 8.1 ms | 1.1%* |
+| Buddy | 16.8 ms | 25.6% |
+| TVM | 52.6 ms | 15.7% |
+
+_bitvla int8 (3-way, all cos≈0.9996):_
+| framework | e2e | RVV% |
+|---|---|---|
+| **ExecuTorch/XNNPACK** | **142 ms** | 11.7% |
+| Buddy | 6.16 s | 17.0% |
+| TVM | 23.8 s | 12.9% |
+
+**Finding (stable across both):** ranking is ExecuTorch/XNNPACK ≪ EXO < Buddy < TVM (12× spread on the
+toy, **167×** on the real model). **RVV coverage % does NOT predict speed** — Buddy has the *highest* RVV
+in both yet is 4–43× slower, because XNNPACK ships hand-tuned RVV int8 microkernels while Buddy emits
+naively auto-vectorized loops and TVM uses untuned `+v`. Microkernel quality, not RVV%, sets throughput.
+(*EXO's 1% is whole-binary/libc-dominated; its GEMM kernel is ~17–28% RVV, and it's kernels-in-a-hand-
+runtime, not a model-ingesting compiler.) Not comparable: openvla (TVM-only on-board), tiny_llama
+(different depths/memory regimes per arm), the other diffusion VLAs (single-arm or cos-fail).
