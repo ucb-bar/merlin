@@ -317,7 +317,7 @@ module on this kernel) as an OOM overflow valve. Then the built→ran cells were
   "stream, don't hold resident" principle meets a real framework limit (relax VM / whole-model lowering
   want the module resident) — a documented candidate for graph-splitting/streaming work, not effort.
 
-## Phase 4 — ExecuTorch/XNNPACK compute-vs-runtime-overhead decomposition (ETDump)
+## Phase 6 — ExecuTorch/XNNPACK compute-vs-runtime-overhead decomposition (ETDump)
 
 For **smolvla + bitvla** via the XNNPACK delegate, a full profile with an ETDump-based split of
 whole-model e2e into (a) XNNPACK kernel/delegate **compute** vs (b) ExecuTorch **runtime overhead**
@@ -355,3 +355,32 @@ All 55 call sites use the **trivial** `physical_layout=[0,1,2,3]`, so this is pr
   (trivial `empty_permuted` layouts; bitvla passes), so the residual is smolvla-int8-specific numerical
   loss — weight-only int8 on its documented quant-fragile diffusion/flow head. An fp32-on-board run
   would separate int8 loss from any deeper lowering issue; recorded `fail` with that reasoning.
+
+## Phase 7 — cross-framework compute-vs-overhead (the answer: overhead is negligible everywhere)
+
+**bitvla int8** is the one model with a 3-framework profile (all correct at cos≈0.9996). Each split is from
+the framework's own low-overhead tracer (ExecuTorch ETDump, TVM `VirtualMachineProfiler`, Buddy rdtime
+brackets); the headline e2e is the tracer-OFF run in every case.
+
+| framework | e2e | where | cos | RVV% (whole) | **compute** | **runtime overhead** | delegated / kernel note |
+|---|---|---|---|---|---|---|---|
+| **ExecuTorch + XNNPACK** | **142 ms** | **on-board** | 0.99946 ✓ | 11.7% | ~98.5% | **1.5%** | 62% of compute-time in XNNPACK RVV int8 microkernels |
+| **TVM (relax VM)** | 834 ms | host* | 0.9996 | 12.9% | **98.4%** | **1.6%** | matmul 82.5% + BitNet `tir_round` 10.3% |
+| **Buddy (merlin C rt)** | 6.16 s | **on-board** | 0.9996 | **17.0%** | ~99.998% | **~0.002%** | monolithic `linalg`-lowered forward |
+
+*TVM bitvla is host-only (board `not_run`: `tvm_rpc` shuts down loading the 139 MB `.so` — a runtime
+instability, not RAM); the compute/overhead *structure* is board-stable, the absolute ms is host x86.
+
+**The finding your decomposition asked for:**
+1. **Framework runtime overhead is negligible in all three** — 1.5% / 1.6% / 0.002%. Dispatch, alloc,
+   and delegate-boundary crossings are not where the time goes. Runtime tuning is not the lever.
+2. **Performance is set entirely by compute — and RVV% is NOT the proxy for it.** Buddy has the *highest*
+   whole-binary RVV (17%) yet is **43× slower** than ExecuTorch (11.7% RVV). ExecuTorch wins because
+   XNNPACK routes 62% of compute-time into **hand-tuned RVV int8 microkernels**, while Buddy's
+   `linalg-to-loops` emits *naively* vectorized loops. **Kernel quality (tuned microkernel vs naive
+   auto-vectorized), not RVV coverage %, is what determines speed.** This is the central compute-placement
+   result: two levers move latency — (a) *how much* of the graph reaches a vectorized kernel (smolvla's
+   66%-scalar-`mm` failure), and (b) *how good* that kernel is (Buddy's high-RVV-but-slow loops).
+3. **smolvla** (compute-bound on non-delegated scalar `mm`, 66% of e2e) is the (a) failure mode; **Buddy
+   bitvla** (high RVV%, unoptimized kernels) is the (b) failure mode. ExecuTorch/XNNPACK bitvla hits both
+   right → 142 ms.
