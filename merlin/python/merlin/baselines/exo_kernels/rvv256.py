@@ -118,6 +118,34 @@ def rvv256_vfmul(dst: [f32][8] @ RVV256, lhs: [f32][8] @ RVV256, rhs: [f32][8] @
         dst[i] = lhs[i] * rhs[i]
 
 
+# vfmacc.vv + a horizontal-reduction: the two instructions EXO's `vectorize` auto-op emits when it
+# autoschedules a stride-1 dot-product reduction (acc = sum_k a[k]*b[k]) into a VECTOR partial-sum
+# accumulator (vfmacc.vv over contiguous slabs) + a final lane-reduce (vfredusum). Providing them as
+# EXO @instr lets the AUTOSCHEDULED reduction lower to real RVV — the stride-1 vredsum dot the prior
+# hand schedule fell back to hand-C for is now expressible through EXO's own scheduler.
+@instr("{dst_data} = __riscv_vfmacc_vv_f32m1({dst_data}, {lhs_data}, {rhs_data}, {vl});")
+def rvv256_vfmacc_vv(dst: [f32][8] @ RVV256, lhs: [f32][8] @ RVV256, rhs: [f32][8] @ RVV256, vl: size):
+    # dst[i] += lhs[i] * rhs[i]  (vector-vector widening-free MAC — the dot's partial-sum accumulate)
+    assert stride(dst, 0) == 1
+    assert stride(lhs, 0) == 1
+    assert stride(rhs, 0) == 1
+    assert vl >= 0
+    assert vl <= 8
+    for i in seq(0, vl):
+        dst[i] += lhs[i] * rhs[i]
+
+
+@instr("*{dst_data} += __riscv_vfmv_f_s_f32m1_f32("
+       "__riscv_vfredusum_vs_f32m1_f32m1({src_data}, __riscv_vfmv_v_f_f32m1(0.0f, {vl}), {vl}));")
+def rvv256_vredsum(dst: f32 @ DRAM, src: [f32][8] @ RVV256, vl: size):
+    # dst += sum_i src[i]  (horizontal lane-reduce of the 8-wide partial sum into the scalar acc)
+    assert stride(src, 0) == 1
+    assert vl >= 0
+    assert vl <= 8
+    for i in seq(0, vl):
+        dst += src[i]
+
+
 # --------------------------------------------------------------------------------------------- #
 #   int8 widening path (vwmacc): i16 x i16 -> i32 accumulate, VLEN=256
 #

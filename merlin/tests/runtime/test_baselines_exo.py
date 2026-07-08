@@ -213,6 +213,32 @@ def test_int8_glue_is_weight_only_and_uses_exo_f32_gemm():
     assert "rvv256_vwmacc_vx" in str(ig.igemm_nt_rvv)
 
 
+def test_autosched_vectorize_generates_the_reduction_kernel():
+    # EXO AUTOCOMPILE: EXO's OWN `vectorize` auto-op (not a hand schedule) must turn the scalar
+    # k-dot into a full RVV schedule — 8-wide partial-sum accumulator + contiguous vle + vfmacc.vv +
+    # the vfredusum horizontal reduce (the stride-1 reduction the hand schedule couldn't express).
+    from exo import compile_procs_to_strings
+    from merlin.baselines.exo_kernels import autosched as A
+    p = A.build_fdot(1)
+    src = str(p)
+    assert "rvv256_vfmacc_vv" in src and "rvv256_vredsum" in src   # autoscheduled to the vector MAC + reduce
+    assert "rvv256_vld" in src and "rvv256_zero" in src
+    c, _ = compile_procs_to_strings([p], "autosched_dot.h")
+    assert "__riscv_vfmacc_vv_f32m1" in c and "__riscv_vfredusum" in c  # emits real RVV
+    assert "void fdot_nk_ref" in c                                       # stable glue symbol
+
+
+def test_autosched_glue_uses_autoscheduled_kernel_and_is_transpose_free():
+    from merlin.common.paths import repo_root
+    glue = (repo_root() / "merlin/python/merlin/baselines/exo_kernels/llama_glue_autosched.c").read_text()
+    assert "fdot_nk_ref(" in glue          # calls the EXO-autoscheduled dot
+    assert "transpose" not in glue.lower() or "no transpose" in glue.lower()  # transpose-free
+    # the nblock autotune knob exists and is measurement-driven (EXO has no cost model).
+    from merlin.baselines import exo
+    assert hasattr(exo, "autotune_autosched_nblock")
+    assert exo.AUTOSCHED_NBLOCK_CANDIDATES[0] == 1
+
+
 def test_notes_disclose_glue_and_not_whole_model_compiler():
     # The disclosure that this is EXO-kernels-in-a-glue-runtime is mandatory and lives in notes.
     r = BaselineResult(framework="exo", model="tiny_llama")
