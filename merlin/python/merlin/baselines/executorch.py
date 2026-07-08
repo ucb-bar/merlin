@@ -380,11 +380,17 @@ def _run_on_board(res: BaselineResult, runner: Path, exp: "ExportResult",
             raise k1_exec.BoardUnavailable(
                 f"board rootfs has {free/1e9:.2f} GB free but the model needs {total/1e9:.2f} GB "
                 f"(shared board is disk-constrained; not filling it)")
-        remote_runner = k1_exec.push(runner, f"{k1_exec.K1_REMOTE_DIR}/executor_runner")
-        remote_pte = k1_exec.push(exp.pte, f"{k1_exec.K1_REMOTE_DIR}/model.pte")
-        remote_ptds = [k1_exec.push(p, f"{k1_exec.K1_REMOTE_DIR}/{p.name}")
+        # A whole-model .pte can be multi-GB; the default 300 s scp timeout truncates it (which then
+        # fails on the board). Scale the timeout to the payload (~5 MB/s worst case over this link).
+        def _push(p: Path, remote: str) -> str:
+            secs = max(300, int(p.stat().st_size / (2 * 1024 * 1024)) + 120)
+            return k1_exec.push(p, remote, timeout=secs)
+
+        remote_runner = _push(runner, f"{k1_exec.K1_REMOTE_DIR}/executor_runner")
+        remote_pte = _push(exp.pte, f"{k1_exec.K1_REMOTE_DIR}/model.pte")
+        remote_ptds = [_push(p, f"{k1_exec.K1_REMOTE_DIR}/{p.name}")
                        for p in exp.ptd_files if p.is_file()]
-        remote_inputs = [k1_exec.push(p, f"{k1_exec.K1_REMOTE_DIR}/{p.name}")
+        remote_inputs = [_push(p, f"{k1_exec.K1_REMOTE_DIR}/{p.name}")
                          for p in exp.input_files if p.is_file()]
         remote_out = "/tmp/et_out"   # tmpfs (RAM, 1.9G) — output is small (few MB), keeps flash free
         local_out = exp.pte.parent / "et_out-0.bin"
