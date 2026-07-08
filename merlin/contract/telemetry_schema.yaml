@@ -1,9 +1,8 @@
 # Telemetry / recorded-run contract (experiment ABI v0.1)
-# Human-readable companion to schemas/telemetry.schema.json. Every run the runner records MUST
-# carry enough to (a) regenerate the headline table from manifests alone and (b) attribute every
-# cell to a toolchain + oracle.
+# The standalone recorded-run spec (there is no separate JSON validator). Every run the runner
+# records MUST carry enough to (a) regenerate the headline table from manifests alone and (b)
+# attribute every cell to a toolchain + oracle.
 version: "0.1"
-schema: schemas/telemetry.schema.json
 
 recorded_per_run:
   run_dir: "runs/<suite>/<run_id>/"
