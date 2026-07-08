@@ -126,3 +126,30 @@ def test_onnx_binary_primvalue_broadcast_to_array(op_name):
     ref = {"Add": np.add, "Sub": np.subtract, "Mul": np.multiply, "Div": np.divide}[op_name](
         np.array(3), np.array([1.0, 2.0, 3.0, 4.0], dtype="float32"))
     np.testing.assert_allclose(out.data.numpy(), ref, rtol=1e-6)
+
+
+@pytest.mark.parametrize("neg_index", [-1, -2])
+def test_onnx_gather_negative_index(neg_index):
+    """ONNX Gather with a NEGATIVE index (count from the back). relax.op.take does not wrap negative
+    indices and reads out of bounds -> garbage; the frontend must normalize them. Guards the BitVLA
+    attention-mask Gather(axis=2, -1) that dropped cos to 0.42. Skips without a built TVM tree."""
+    if _import_built_tvm() is None:
+        pytest.skip("built TVM tree not importable (no build/baselines/tvm)")
+    import tvm
+    from tvm import relax
+    from tvm.relax.frontend.onnx import from_onnx
+    from onnx import helper, TensorProto
+
+    data = np.random.randn(1, 1, 32, 32).astype("float32")
+    idx = helper.make_tensor("idx", TensorProto.INT64, [], [neg_index])
+    node = helper.make_node("Gather", ["data", "idx"], ["y"], axis=2)
+    exp = np.take(data, neg_index, axis=2)  # numpy handles negatives = ORT semantics
+    graph = helper.make_graph([node], "g",
+                              [helper.make_tensor_value_info("data", TensorProto.FLOAT, list(data.shape))],
+                              [helper.make_tensor_value_info("y", TensorProto.FLOAT, list(exp.shape))],
+                              initializer=[idx])
+    model = helper.make_model(graph, producer_name="g")
+    ex = relax.build(from_onnx(model, keep_params_in_input=False), target=tvm.target.Target("llvm"))
+    vm = relax.VirtualMachine(ex, tvm.cpu())
+    got = vm["main"](tvm.nd.array(data)).numpy()
+    np.testing.assert_allclose(got, exp, rtol=1e-5, atol=1e-5)
