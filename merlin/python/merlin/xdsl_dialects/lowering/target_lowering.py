@@ -46,12 +46,14 @@ def load_lowering_table(dialect_plan: dict[str, Any] | None = None,
 
 
 def load_dialect_plan(target: str, repo_root: str | Path | None = None) -> dict[str, Any]:
-    """The committed in-tree dialect plan for a reference target."""
+    """The committed in-tree dialect plan for a reference target (via the target registry)."""
     import yaml
 
-    root = Path(repo_root) if repo_root else Path(__file__).resolve().parents[5]
-    path = root / f"merlin/targets/{target}/contracts/dialect_plan.yaml"
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+    if repo_root is not None:   # explicit-root override (tests) keeps the direct read
+        path = Path(repo_root) / f"merlin/targets/{target}/contracts/dialect_plan.yaml"
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+    from merlin.targetgen.target_registry import load_dialect_plan as _reg
+    return _reg(target)
 
 
 def load_toy_dialect_plan(repo_root: str | Path | None = None) -> dict[str, Any]:
