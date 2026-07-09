@@ -34,7 +34,7 @@ import yaml
 from . import rtl_check_compiler as CC
 from . import rtl_checks as RC
 from .rtl.facts import rtl_facts_path
-from merlin.common.corpora import capsule_corpus_roots
+from .corpora import capsule_corpus_roots
 from merlin.common.paths import ext_path
 
 _REPO = Path(__file__).resolve().parents[4]

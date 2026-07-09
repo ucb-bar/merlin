@@ -35,7 +35,7 @@ _REPO = Path(__file__).resolve().parents[4]  # .../oscar-merlin
 _GEMMINI_CONTRACT = target_contract_path("gemmini")
 # capsule.yaml definitions come from the corpus locator (canonical contract corpus + the perf corpus);
 # every capsule dir is named after the capsule, matching the run dir name.
-from merlin.common.corpora import capsule_corpus_roots
+from .corpora import capsule_corpus_roots
 _CAPSULE_ROOTS = capsule_corpus_roots()
 
 
