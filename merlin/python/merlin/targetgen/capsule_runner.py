@@ -114,7 +114,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     """Run one capsule through the package; write artifacts; return a capsule_result dict."""
     from ..runtime.reference import reference_outputs
     from ..runtime.simulator import simulate
-    from ..eval.gemmini_suite import toolchain_shas
+    from .eval.gemmini_suite import toolchain_shas
 
     name = capsule["name"]
     run_id = run_id or f"{name}"
