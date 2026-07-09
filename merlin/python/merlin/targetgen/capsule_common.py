@@ -7,9 +7,13 @@ experiment harness, since the library runners are the consumers.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import yaml
+
+from aet.core.run_paths import RunPaths
+from aet.core.run_spec import RunSpec
 
 from .contract import schemas
 
@@ -51,3 +55,72 @@ def discover_capsules(root: str | Path, *, labels: set[str] | None = None,
         if labels is None or cap.get("label") in labels:
             caps.append(cap)
     return caps
+
+
+def make_run_paths(runs_root: str | Path, run_id: str, *, suite: str, target: str,
+                   dtype: str, benchmark: str) -> RunPaths:
+    """Build the per-run RunPaths (via RunSpec) and create its directory scaffold."""
+    spec = RunSpec(project="merlin", suite=suite, method=run_id, seed=0, run_id=run_id,
+                   project_root=Path(runs_root), tracking_mode="local", target=target,
+                   dtype=dtype, benchmark=benchmark)
+    paths = RunPaths.from_spec(spec, run_id)
+    for dd in (paths.run_path, paths.logs, paths.artifacts_dir, paths.generated, paths.contracts):
+        dd.mkdir(parents=True, exist_ok=True)
+    return paths
+
+
+def run_entrypoints(pkg, package_dir: str | Path, capsule: dict, paths, *,
+                    contract: str | Path | None, timeout: int, fourth_output_name: str):
+    """Shared ABI front half: build the package (if needed) and run the 4 contract entrypoints
+    (parse -> lower_interface_to_target -> emit_command_buffer -> lower_target_to_llvm), writing the
+    standard artifacts and validating the command buffer. Returns ``(pkg, cb, fourth_text)`` where
+    ``fourth_text`` is the lower_target_to_llvm stdout (written to ``fourth_output_name`` — the target
+    dialect chooses LLVM-dialect MLIR vs a SIMT kernel). Raises CertFailure on any plane failure.
+    The oracle tiers (L2+) are the caller's, since they diverge per target.
+    """
+    from .oot_runner import (CertFailure, build_package, integrity_scan, load_package,
+                             run_entrypoint)
+
+    if pkg is None:
+        pkg = load_package(package_dir, contract=contract)
+        integrity_scan(pkg)
+        build_package(pkg)
+    if not pkg.tool.exists():
+        raise CertFailure("build", _cat("ELABORATION_ERROR"), f"tool missing: {pkg.tool}")
+
+    iface_rel = capsule.get("interface_mlir", "capsule.interface.mlir")
+    iface_path = Path(capsule["__dir__"]) / iface_rel if "__dir__" in capsule else Path(iface_rel)
+    if not iface_path.is_file():
+        raise CertFailure("schema", _cat("STRUCTURAL_INVARIANT_VIOLATION"),
+                          f"capsule interface MLIR not found: {iface_path}")
+    inp = paths.generated / "input.interface.mlir"
+    inp.write_text(iface_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    p = run_entrypoint(pkg, "parse", inp, timeout=timeout)
+    if p.returncode != 0:
+        raise CertFailure("parse", _cat("TOOL_CRASH"), f"parse rc={p.returncode}: {p.stderr[-400:]}")
+
+    p = run_entrypoint(pkg, "lower_interface_to_target", inp, timeout=timeout)
+    if p.returncode != 0 or not p.stdout.strip():
+        raise CertFailure("interface_to_target", _cat("ELABORATION_ERROR"),
+                          f"lower_interface_to_target rc={p.returncode}: {p.stderr[-400:]}")
+    (paths.generated / "lowered.target.mlir").write_text(p.stdout, encoding="utf-8")
+
+    cb_path = paths.generated / "command_buffer.json"
+    p = run_entrypoint(pkg, "emit_command_buffer", inp, cb_path, timeout=timeout)
+    if p.returncode != 0 or not cb_path.exists():
+        raise CertFailure("target_to_command_buffer", _cat("STRUCTURAL_INVARIANT_VIOLATION"),
+                          f"emit_command_buffer rc={p.returncode}: {p.stderr[-400:]}")
+    try:
+        cb = json.loads(cb_path.read_text(encoding="utf-8"))
+        schemas.validate_command_buffer(cb, contract=contract)
+    except (json.JSONDecodeError, schemas.ContractViolation) as e:
+        raise CertFailure("command_buffer_schema", _cat("PROTOCOL_VIOLATION"),
+                          f"command_buffer.json invalid: {e}") from e
+
+    p = run_entrypoint(pkg, "lower_target_to_llvm", inp, timeout=timeout)
+    if p.returncode != 0 or not p.stdout.strip():
+        raise CertFailure("target_to_llvm", _cat("ELABORATION_ERROR"),
+                          f"lower_target_to_llvm rc={p.returncode}: {p.stderr[-400:]}")
+    (paths.generated / fourth_output_name).write_text(p.stdout, encoding="utf-8")
+    return pkg, cb, p.stdout
