@@ -61,6 +61,8 @@ def make_board_runner(host, key):
             for ri in runner_inputs:
                 try:
                     so = ri.artifact_path
+                    if not (so and os.path.exists(so)):
+                        futures.append(_Fut(None, f"artifact missing: {so}")); continue
                     # manifest from args_info (TensorInfo -> code bits ndim shape)
                     lines = []
                     for ai in ri.args_info:
@@ -91,3 +93,45 @@ def make_board_runner(host, key):
             return futures
 
     return BoardLocalRunner()
+
+
+# --- cross-linking LocalBuilder export (the board has no linker; candidates must be cross-linked to
+# a .so on the host with the SpacemiT clang so the board can just LoadFromFile) --------------------
+import tvm  # noqa: E402
+from tvm._ffi import register_func  # noqa: E402
+
+
+@register_func("merlin.board_export", override=True)
+def _board_export(mod) -> str:
+    """Export a built candidate module to a rv64gcv .so cross-linked with the SpacemiT clang."""
+    import os as _os, tempfile as _tf
+    from tvm.contrib import cc as _cc
+    cross = _os.environ.get("MERLIN_TVM_CROSS_CC", "")
+    # persistent path (NOT tempdir(), which auto-deletes when it goes out of scope before the
+    # board runner scp's it). The runner removes the .so after measuring.
+    _base = _os.environ.get("MERLIN_TVM_CAND_DIR", _tf.gettempdir())
+    _os.makedirs(_base, exist_ok=True)
+    # UNIQUE subdir per candidate: MetaSchedule's RemoveBuildArtifact callback rmtree's the
+    # artifact's PARENT dir after each measure, so candidates must not share a dir.
+    _d = _tf.mkdtemp(dir=_base)
+    so = _os.path.join(_d, "cand.so")
+    def _fcompile(output, objects, options=None):
+        opts = ["--target=riscv64-unknown-linux-gnu", "-march=rv64gcv", "-mabi=lp64d",
+                "-shared", "-fPIC", "-O2"] + (options or [])
+        _cc.create_shared(output, objects, options=opts, cc=cross)
+    if cross:
+        mod.export_library(so, fcompile=_fcompile)
+    else:
+        mod.export_library(so)
+    return so
+
+
+def _worker_init():
+    # register the export func in each LocalBuilder worker process
+    from merlin.baselines.tvm_board import board_tune as _bt  # noqa: F401
+
+
+def make_local_builder():
+    """LocalBuilder that cross-links each candidate to a rv64gcv .so (board has no linker)."""
+    from tvm.meta_schedule.builder import LocalBuilder
+    return LocalBuilder(f_export="merlin.board_export", initializer=_worker_init, timeout_sec=120.0)
