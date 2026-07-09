@@ -27,12 +27,12 @@ from typing import Any, Callable
 import yaml
 
 from aet.core.run_paths import RunPaths
-from aet.core.run_spec import RunSpec
 
 from . import capsule_golden as CG
 from .contract import schemas
 # shared, target-agnostic capsule I/O (also re-exported for callers using MR.discover_capsules/load_capsule)
-from .capsule_common import _cat, _flat, discover_capsules, load_capsule  # noqa: F401
+from .capsule_common import (_cat, _flat, discover_capsules, load_capsule,  # noqa: F401
+                             make_run_paths, run_entrypoints)
 from .muon_oracles import default_adapters
 from .oot_runner import (CertFailure, Package, build_package, integrity_scan,
                          load_package, run_entrypoint)
@@ -98,63 +98,18 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     adapters = oracle_adapters if oracle_adapters is not None else default_adapters()
     required = set(capsule.get("required_oracle_tiers", []))
 
-    spec = RunSpec(project="merlin", suite=SUITE, method=run_id, seed=0, run_id=run_id,
-                   project_root=Path(runs_root), tracking_mode="local", target=TARGET,
-                   dtype="f32", benchmark=name)
-    paths = RunPaths.from_spec(spec, run_id)
-    for dd in (paths.run_path, paths.logs, paths.artifacts_dir, paths.generated, paths.contracts):
-        dd.mkdir(parents=True, exist_ok=True)
+    paths = make_run_paths(runs_root, run_id, suite=SUITE, target=TARGET,
+                           dtype="f32", benchmark=name)
 
     tiers: dict[str, TierResult] = {}
     numeric = {"status": "skipped"}
     failure: dict | None = None
     status = "pass"
 
-    iface_rel = capsule.get("interface_mlir", "capsule.interface.mlir")
-    iface_path = Path(capsule["__dir__"]) / iface_rel if "__dir__" in capsule else Path(iface_rel)
-    inp = paths.generated / "input.interface.mlir"
-
     try:
-        if pkg is None:
-            pkg = load_package(package_dir, contract=contract)
-            integrity_scan(pkg)
-            build_package(pkg)
-        if not pkg.tool.exists():
-            raise CertFailure("build", _cat("ELABORATION_ERROR"), f"tool missing: {pkg.tool}")
-        if not iface_path.is_file():
-            raise CertFailure("schema", _cat("STRUCTURAL_INVARIANT_VIOLATION"),
-                              f"capsule interface MLIR not found: {iface_path}")
-        inp.write_text(iface_path.read_text(encoding="utf-8"), encoding="utf-8")
-
-        # --- entrypoints: parse / target / cb / simt-cpp ----------------------------------
-        p = run_entrypoint(pkg, "parse", inp, timeout=timeout)
-        if p.returncode != 0:
-            raise CertFailure("parse", _cat("TOOL_CRASH"), f"parse rc={p.returncode}: {p.stderr[-400:]}")
-
-        p = run_entrypoint(pkg, "lower_interface_to_target", inp, timeout=timeout)
-        if p.returncode != 0 or not p.stdout.strip():
-            raise CertFailure("interface_to_target", _cat("ELABORATION_ERROR"),
-                              f"lower_interface_to_target rc={p.returncode}: {p.stderr[-400:]}")
-        (paths.generated / "lowered.target.mlir").write_text(p.stdout, encoding="utf-8")
-
-        cb_path = paths.generated / "command_buffer.json"
-        p = run_entrypoint(pkg, "emit_command_buffer", inp, cb_path, timeout=timeout)
-        if p.returncode != 0 or not cb_path.exists():
-            raise CertFailure("target_to_command_buffer", _cat("STRUCTURAL_INVARIANT_VIOLATION"),
-                              f"emit_command_buffer rc={p.returncode}: {p.stderr[-400:]}")
-        try:
-            cb = json.loads(cb_path.read_text(encoding="utf-8"))
-            schemas.validate_command_buffer(cb, contract=contract)
-        except (json.JSONDecodeError, schemas.ContractViolation) as e:
-            raise CertFailure("command_buffer_schema", _cat("PROTOCOL_VIOLATION"),
-                              f"command_buffer.json invalid: {e}") from e
-
-        p = run_entrypoint(pkg, "lower_target_to_llvm", inp, timeout=timeout)
-        if p.returncode != 0 or not p.stdout.strip():
-            raise CertFailure("target_to_llvm", _cat("ELABORATION_ERROR"),
-                              f"lower_target_to_llvm rc={p.returncode}: {p.stderr[-400:]}")
-        kernel_src = p.stdout
-        (paths.generated / "kernel.cpp").write_text(kernel_src, encoding="utf-8")
+        # shared front half: build + the 4 contract entrypoints; muon's 4th emits a SIMT C++ kernel.
+        pkg, cb, kernel_src = run_entrypoints(pkg, package_dir, capsule, paths, contract=contract,
+                                              timeout=timeout, fourth_output_name="kernel.cpp")
 
         # --- golden + L0/L1 ----------------------------------------------------------------
         gold = CG.golden(capsule)
