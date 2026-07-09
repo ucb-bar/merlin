@@ -478,3 +478,66 @@ naively auto-vectorized loops and TVM uses untuned `+v`. Microkernel quality, no
 (*EXO's 1% is whole-binary/libc-dominated; its GEMM kernel is ~17–28% RVV, and it's kernels-in-a-hand-
 runtime, not a model-ingesting compiler.) Not comparable: openvla (TVM-only on-board), tiny_llama
 (different depths/memory regimes per arm), the other diffusion VLAs (single-arm or cos-fail).
+
+## Phase 9 — gap-closing pass: most "gaps" were stale bookkeeping, not defects (2026-07-09)
+
+A Tier-1 (cheap) + Tier-2 (PR-shaped bug) pass over the ExecuTorch and TVM arms. **Net upstream
+patches required: zero.** Re-running the cells cleared almost every recorded gap, because a
+`gap_reason` is a *snapshot of a past run*, not a live fact.
+
+### What was stale (and is now cleared)
+- **TVM "missing deps" ×4** (`tyro`, `lerobot`, `mmengine`, `openpi`) — all were already installed in
+  the correct venvs (m2m venv / `<model>_capture/.venv`). The gap strings predated the installs.
+- **TVM "unsupported op" ×5** (`convolution.default`, `add.Scalar`, `squeeze.dims`, `pow.Scalar`,
+  `full.default`) — these are raised by the **`exported_program` translator, which this arm no longer
+  uses**: it migrated to the ONNX frontend (`torch.onnx.export` → `relax.frontend.onnx.from_onnx`,
+  "far broader coverage"). **All 9 TVM fp32 models now build** (18/22 cells built, up from a handful),
+  8 with host-VM cos ≈ machine-exact. No apache/tvm converter patch was needed.
+- **ExecuTorch int8 "all-zeros bug" (`rdt`, `rdt2`, cos = 0.0)** — *not* an XNNPACK/RVV delegate bug and
+  *not* a `--mmap_model` bug. DiT / flow-matching models zero-init their **adaLN-Zero output head**, so a
+  random-init eager forward is **exactly zero** ⇒ the recomputed `compute_golden` was a zero tensor and
+  cos was 0/0. The mitigation (perturb exactly-zero params) already existed; verified rdt norm 0 → 53.24.
+
+| cell | before | after (re-run) |
+|---|---|---|
+| `rdt2/int8` | fail cos=0.0 | **pass** cos 0.999949, rel 0.0102, **855 ms** |
+| `rdt/int8` | fail cos=0.0 | **pass** cos 0.999901, rel 0.0141, 217.1 s |
+| `bitvla/fp32` | fail cos=0.013 | **pass** cos 0.9999999999987, rel 1.6e-06, 146 ms |
+
+`--mmap_model` is **vindicated**: identical cos with mmap ON and OFF (0.999949 both), and it loads
+**2.3× faster** (11.0 s vs 25.6 s resident) for the 1.87 GB rdt2 program. ExecuTorch: 7/16 pass (was 4).
+
+### Two methodology traps that produced the false bug hunt
+1. **Two different goldens.** The *capture* golden (`artifacts/recaptures/<m>/golden.npy`) is NOT the
+   `compute_golden` written to `build/baselines/executorch/runs/<m>_<v>/golden.npy`. Validating the
+   capture golden proves nothing about a cell gated on `compute_golden`.
+2. **Never compare artifacts across builds.** A "same `.pte`: correct on x86, zeros on board" conclusion
+   was drawn from a post-fix `.pte`/golden against a **two-day-old pre-fix** `et_out-0.bin`. Always
+   `stat -c %y` the `.pte`, `golden.npy` and `et_out-0.bin` before concluding.
+
+### Real problems that survived scrutiny (NOT stale)
+- **`tiny_llama/int8`** — honest fail: cos 0.99736 clears the 0.99 int8 gate, but **rel 0.0738 > 0.05**.
+  Its "int8" `.pte` is **4.14 GB** because the const-fold materializes **fp32** constants, so it
+  mmap-thrashes a 3.4 GB board → **94.7 s** vs **217 ms** fp32. This weight-only-int8 recipe buys no
+  compute win (dequant → f32 GEMM), no memory win, and costs accuracy.
+- **`smolvla`** — a **framework-independent numerical problem**: ExecuTorch int8 cos 0.081 against a
+  *healthy* golden, and TVM fp32 host-VM cos **0.9872** while every other TVM cell is 0.99999999+.
+- **`groot_n1d7`** — genuine upstream GR00T bug: `non-default argument 'diffusion_model_cfg' follows
+  default argument` (dataclass field ordering), hit at torch-import.
+- **`xr0/fp32` (TVM)** — builds, host cos ≈ 1.0; board run exceeds 1800 s ⇒ throughput wall.
+- **`openvla/fp32` (ET)** — the executed cell (`fail cos=0.009`, 16 ms) is a **reduced 2-layer**
+  random-init graph gated against an unreachable golden, and it is **not reproducible under current
+  policy**: the `K1_RAM_INFEASIBLE` guard now fail-closes openvla on-board ("no false fit"). Under the
+  corrected gate it is `built=True, ran=False (RAM-infeasible)`. No green cell was manufactured for it.
+
+### Harness fixes committed (`08a2b2e`; board-free suite 158 passed, 10 skipped)
+- **Random-init gating.** `bitvla` and `openvla` ship no reproducible weights (bundles carry no
+  `weights.safetensors`), so their captured golden is unreachable by a re-instantiated export — the fp32
+  cells were failing on **weight provenance, not lowering**. Those two (measured evidence only) now force
+  `compute_golden` and carry an explicit label: **cos = LOWERING-EXACTNESS, not a semantic match**
+  (`bundle.golden_unreproducible`, `bundle.lowering_exactness_note`). `rdt2` is deliberately **excluded**
+  (its recompute reproduces the capture exactly, norm 11.4439) as are `rdt` and the llama family — an
+  unjustified entry would silently *weaken* a real gate.
+- **Truthful board gap reason.** `tvm.run_model` wrote `"K1 board unavailable (MERLIN_K1_HOST unset)"`
+  even when the board was up and the caller passed `run_board=False`. It now reports which actually
+  happened. A fabricated reason in a `not_run` cell is exactly what this harness exists to prevent.
