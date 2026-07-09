@@ -262,11 +262,38 @@ def check_docs_index(errors):
         errors.append("docs/README.md hub stale — run python build_tools/scripts/gen_docs_index.py")
 
 
+# The library (merlin/python/merlin) reads INPUTS from benchmarks/ and contract/, never from
+# experiments/ (experiments consume the library, one-way). The ONE sanctioned indirection to a corpus
+# still under experiments/ is the corpus locator; everything else must not name experiments/ as a path.
+_BOUNDARY_ALLOW = {os.path.join("merlin", "python", "merlin", "common", "corpora.py")}
+
+
+def check_library_boundary(errors):
+    """No library module may reference ``experiments/`` as a path component (consumption-direction:
+    benchmarks/ = library reads it; experiments/ = only consumes the library). See common/corpora.py."""
+    import re
+    lib = os.path.join(ROOT, "merlin", "python", "merlin")
+    pat = re.compile(r"""['"]experiments['"]|experiments/""")
+    for dirpath, _dirs, files in os.walk(lib):
+        for fn in files:
+            if not fn.endswith(".py"):
+                continue
+            full = os.path.join(dirpath, fn)
+            rel = os.path.relpath(full, ROOT)
+            if rel in _BOUNDARY_ALLOW:
+                continue
+            for i, ln in enumerate(open(full, encoding="utf-8"), 1):
+                code = ln.split("#", 1)[0]
+                if '"experiments"' in code or "'experiments'" in code or "experiments/" in code:
+                    errors.append(f"library reads experiments/ (use merlin.common.corpora): {rel}:{i}")
+
+
 def main():
     errors: list[str] = []
     checks = [
         ("required directories", check_required_dirs),
         ("AGENT.md coverage", check_agent_md),
+        ("library boundary", check_library_boundary),
         ("root docs", check_root_docs),
         ("schemas", check_schemas),
         ("docs", check_docs),

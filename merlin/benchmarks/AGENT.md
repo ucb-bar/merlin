@@ -16,12 +16,25 @@ regenerated cheaply and are the source-of-record for DSE/kernel analysis. **Not 
 - `semantic_memory/` — curated matmul-reuse workload specs (pinned by `check_structure`
   `REQUIRED_BENCHMARKS`).
 
+- `cost_calib/` — cost-model calibration ablation kernels (`*_ablation.c`) compiled by
+  `merlin.cost_model.calibrate`.
+- Input-provenance / verification tooling that regenerates or independently re-derives the corpora
+  (e.g. `dse_guidance/{variant_capture,verify_implementation,dump_exported_fx}.py`) is allowed here —
+  it documents/checks the inputs, unlike experiment harnesses.
+
+## The rule (consumption direction)
+**`benchmarks/` = curated inputs the LIBRARY (`merlin/python/merlin/`) reads; `experiments/` = harnesses
+that only consume the library.** If a library module reads it, it belongs here (or `contract/`), not in
+`experiments/`. Enforced by `check_structure.py` "library boundary" (the library must not name
+`experiments/` as a path; the one sanctioned corpus indirection is `merlin.common.corpora`).
+
 ## What does NOT belong here
 - Generated results, reports, and plots → `artifacts/dse-guidance/`. Runs → `runs/`; compiled → `build/`.
 
 ## Used by
 `merlin.dse_guidance` (case_study, loader, quant_metadata, cost_calibration, accuracy_gate),
-`merlin.kernels.validate`.
+`merlin.kernels.validate`, `merlin.cost_model.calibrate`.
 
 ## Invariants
-Curated INPUTS only; tool products belong under `artifacts/`. Every subdirectory has an AGENT.md.
+Curated INPUTS (+ their provenance tooling) only; tool products belong under `artifacts/`. Every
+subdirectory has an AGENT.md.

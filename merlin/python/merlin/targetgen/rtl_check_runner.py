@@ -34,14 +34,14 @@ import yaml
 from . import rtl_check_compiler as CC
 from . import rtl_checks as RC
 from .rtl.facts import rtl_facts_path
+from merlin.common.corpora import capsule_corpus_roots
 from merlin.common.paths import ext_path
 
 _REPO = Path(__file__).resolve().parents[4]
 # RTL facts are target-specific; the resolver defaults to the gemmini pin but honors an explicit
 # path / $MERLIN_RTL_FACTS. General callers should pass target=/explicit= rather than assume gemmini.
 _FACTS = rtl_facts_path("gemmini")
-_CAPSULE_ROOTS = [_REPO / "merlin/contract" / "capsules",
-                  _REPO / "merlin" / "experiments" / "gemmini_perf_bench" / "kernels"]
+_CAPSULE_ROOTS = capsule_corpus_roots()   # canonical + perf corpus, resolved by the corpus locator
 _FILECHECK_CANDIDATES = [
     str(_REPO / "third_party/llvm-build/bin/FileCheck"),
     f"{ext_path("chipyard")}/.conda-env/riscv-tools/bin/FileCheck",

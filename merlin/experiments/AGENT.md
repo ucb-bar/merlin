@@ -17,6 +17,12 @@ In-repo experiments + benchmark harnesses. They **consume** merlin (add `merlin/
 - **Generated output** → `runs/<target>/<suite>/` (runs) or `artifacts/` (products). Never in-tree —
   the `check_artifact_layout` gate forbids `experiments/*/reports/` and `experiments/*/runs/`.
 
+## The rule (consumption direction)
+Experiments **only consume** the library; **nothing in `merlin/python/merlin/` may read an
+`experiments/` path** (one-way). If the library needs an input an experiment currently holds (a corpus,
+kernels), that input is a benchmark — move it to `benchmarks/` (or `contract/`) and have the harness
+reference it by location. Enforced by `check_structure.py` "library boundary".
+
 ## Invariants
 - Resolve the repo root by discovery (`git rev-parse --show-toplevel` / walk to `merlin/python`),
   never hardcoded `parents[N]` or absolute paths.
