@@ -122,7 +122,7 @@ def to_yaml_obj(records: list[StateRecord], workload: str) -> dict:
 
 def resident_state_csv(packages) -> str:
     """Cross-workload resident-state table from the accumulated case packages."""
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for p in packages:
         for r in p.get("state", []):

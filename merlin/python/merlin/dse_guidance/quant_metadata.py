@@ -92,7 +92,7 @@ def low_bit_visibility_rows(cs_dir) -> list[dict]:
     int8 candidates are ratified by the MEASURED W8A8 accuracy gate; fp8/int4 stay unavailable (never
     assumed). Native packed fp8/int4 for the rest needs model-specific quant exports (scoped, not faked)."""
     from merlin.common import paths as _paths
-    from merlin.dse_guidance.case_study import available_models
+    from merlin.dse_guidance.corpus import available_models
     bench = _paths.merlin_dir() / "benchmarks" / "dse_guidance"
     nat_dir, lvl_dir = bench / "recaptures_native", bench / "recaptures_levels"
     # measured W8A8 accuracy gate (which int8 variants pass/fail/were-not-measured)
@@ -133,7 +133,7 @@ def low_bit_visibility_rows(cs_dir) -> list[dict]:
 
 
 def low_bit_visibility_csv(cs_dir) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     return _csv(low_bit_visibility_rows(cs_dir), _LOWBIT_TIER_COLS)
 
 

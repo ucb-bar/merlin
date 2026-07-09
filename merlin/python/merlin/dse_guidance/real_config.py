@@ -206,7 +206,7 @@ def magnitude_rows() -> list[dict]:
 
 
 def magnitudes_csv() -> str:
-    from merlin.dse_guidance.case_study import _csv  # reuse the shared CSV writer
+    from merlin.dse_guidance.corpus import _csv  # reuse the shared CSV writer
     return _csv(magnitude_rows(), _MAGNITUDE_COLS)
 
 
@@ -271,5 +271,5 @@ def _prod(xs) -> int:
 
 
 def kv_sizing_csv(loop_dir=None) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     return _csv(kv_sizing_rows(loop_dir), _KV_COLS)

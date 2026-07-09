@@ -59,7 +59,7 @@ def family_axis_sets(packages) -> dict[str, set[str]]:
 
 
 def workload_family_csv(packages) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = [{"workload": r.workload, "family": r.family,
              "enabled_axes": "; ".join(r.enabled_axes)} for r in family_rows(packages)]
     return _csv(rows, ["workload", "family", "enabled_axes"])

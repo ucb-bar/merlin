@@ -52,7 +52,7 @@ def command_graph(topo, attribution) -> dict:
 
 
 def dispatch_granularity_csv(packages) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for p in packages:
         g = p.get("cmd")

@@ -465,7 +465,7 @@ def _lvl_status(cert: BoundaryCertificate, level: str) -> str:
 
 
 def hw_sw_boundary_matrix_csv(certs) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for c in certs:
         row = {"abstraction": c.abstraction}
@@ -503,7 +503,7 @@ def boundary_candidate_contracts_yaml(certs) -> dict:
 
 
 def responsibility_split_csv(rows) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     return _csv(rows, ["function"] + _RESP_COLUMNS + ["note"])
 
 

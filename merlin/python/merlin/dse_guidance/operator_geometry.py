@@ -134,7 +134,7 @@ _SHAPE_COLS = ["workload", "capture_id", "op_index", "region_id", "region_role",
 
 
 def operator_shape_csv(all_shapes: list[OperatorShape]) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = [{c: getattr(s, c) for c in _SHAPE_COLS} for s in all_shapes]
     return _csv(rows, _SHAPE_COLS)
 
@@ -145,7 +145,7 @@ def _histogram(shapes, attr: str) -> dict:
 
 
 def shape_summary_by_workload_csv(by_workload: dict[str, list[OperatorShape]]) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for w, shapes in by_workload.items():
         total_macs = sum(s.macs for s in shapes) or 1
@@ -160,7 +160,7 @@ def shape_summary_by_workload_csv(by_workload: dict[str, list[OperatorShape]]) -
 
 
 def shape_summary_by_region_csv(by_workload: dict[str, list[OperatorShape]]) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for w, shapes in by_workload.items():
         groups: dict[tuple, list] = {}
@@ -174,7 +174,7 @@ def shape_summary_by_region_csv(by_workload: dict[str, list[OperatorShape]]) -> 
 
 def operator_cluster_csv(all_shapes: list[OperatorShape]) -> str:
     """Cross-workload clusters: one row per (geometry) shape_class with which workloads exhibit it."""
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     groups: dict[str, list] = {}
     for s in all_shapes:
         groups.setdefault(s.shape_class, []).append(s)
