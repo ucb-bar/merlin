@@ -15,22 +15,6 @@ from typing import Any
 from .._common import HAS_XDSL
 from .interface_lowering import LoweringError
 
-# interface op -> target op, mirroring merlin/targets/<t>/contracts/dialect_plan.yaml.
-LOWERING_TABLES = {
-    "toy_npu": {
-        "interface.resident_pack": "toynpu.res_pack",
-        "interface.matmul": "toynpu.matmul",
-        "interface.commit": "toynpu.commit",
-        "interface.resident_evict": "toynpu.evict",
-    },
-    "saturn": {
-        "interface.resident_pack": "saturn.pack",
-        "interface.matmul": "saturn.matmul",
-        "interface.commit": "saturn.commit",
-        "interface.resident_evict": "saturn.release",
-    },
-}
-
 # The interface ops a tensor-resident target must lower (used to check coverage for both
 # built-in reference targets and isolated/generated target packages).
 EXPECTED_INTERFACE_OPS = ("interface.resident_pack", "interface.matmul",
@@ -39,9 +23,11 @@ EXPECTED_INTERFACE_OPS = ("interface.resident_pack", "interface.matmul",
 
 def load_lowering_table(dialect_plan: dict[str, Any] | None = None,
                         target: str = "toy_npu") -> dict[str, str]:
-    """{interface op name: target op name} from a dialect_plan dict (or built-in)."""
+    """{interface op name: target op name} from a dialect_plan dict, or the target's committed plan
+    (via the target registry — no hardcoded per-target table)."""
     if dialect_plan is None:
-        return dict(LOWERING_TABLES[target])
+        from merlin.targetgen.target_registry import load_dialect_plan
+        dialect_plan = load_dialect_plan(target)
     return {rule["from"]: rule["to"] for rule in dialect_plan.get("lowering", [])}
 
 
