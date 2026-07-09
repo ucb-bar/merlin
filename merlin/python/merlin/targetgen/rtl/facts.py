@@ -46,6 +46,13 @@ def target_contract_path(target: str = "gemmini", *, explicit: str | Path | None
     return target_base(target) / "contracts" / "target_contract.yaml"
 
 
+def dialect_plan_path(target: str, *, explicit: str | Path | None = None) -> Path:
+    """Resolve the target's dialect plan: explicit > ``<base>/contracts/dialect_plan.yaml``."""
+    if explicit:
+        return Path(explicit)
+    return target_base(target) / "contracts" / "dialect_plan.yaml"
+
+
 def load_facts(target: str = "gemmini", *, explicit: str | Path | None = None) -> dict[str, Any]:
     """Load and parse the resolved facts pin (raises if absent — fail-closed)."""
     return json.loads(rtl_facts_path(target, explicit=explicit).read_text(encoding="utf-8"))

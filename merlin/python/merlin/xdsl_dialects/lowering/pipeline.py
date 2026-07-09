@@ -23,9 +23,6 @@ from .runtime_lowering import lower_to_runtime
 from .schedule_decisions import lower_to_schedule
 from .target_lowering import lower_to_target
 
-# Default runtime backend per in-tree reference target.
-DEFAULT_BACKEND = {"toy_npu": "simulator", "saturn": "baremetal"}
-
 
 def load_curated_contract(target: str) -> dict:
     """The committed in-tree target contract for a reference target."""
@@ -85,7 +82,8 @@ def lower_repeated_rhs_matmul(
     else:
         tc = target_contract or load_curated_contract(target)
         name = tc["name"]
-    backend = backend or DEFAULT_BACKEND.get(name, "simulator")
+    from merlin.targetgen.target_registry import backend_for
+    backend = backend or backend_for(name)
     input_module = build_input_module(reuse=reuse, m=m, k=k, n=n)
     input_module.verify()
     contract_module = lower_to_contract(input_module, tc)
