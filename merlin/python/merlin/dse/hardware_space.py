@@ -1,10 +1,9 @@
 """Cost-model parameter points (architecture-independent), plus an npu_model bridge.
 
-``default_cost_model`` is the schema-valid default point used by the M1 experiment. The
-hardware *space* sweep (many points, hardware-only vs interface-aware Pareto) is deferred to
-M2 — ``build_hardware_space`` is intentionally still a stub. ``cost_model_from_npu`` derives a
-cost-model point from an npu_model ``HardwareConfig`` so the analytical model can be calibrated
-against the cycle-level simulator at a few points.
+``default_cost_model`` is the schema-valid default point. ``build_hardware_space`` enumerates the
+hardware design space (Cartesian product over ``DEFAULT_HW_GRID``) as cost-model points — consumed by
+``dse.report``. ``cost_model_from_npu`` derives a cost-model point from an npu_model ``HardwareConfig``
+so the analytical model can be calibrated against the cycle-level simulator at a few points.
 """
 from __future__ import annotations
 
