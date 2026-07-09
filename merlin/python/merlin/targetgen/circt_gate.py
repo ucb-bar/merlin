@@ -17,9 +17,9 @@ from typing import Callable
 
 from . import rocc_decode as RD
 from . import rtl_checks as RC
+from .rtl.facts import rtl_facts_path
 
-_FACTS = (Path(__file__).resolve().parents[4]
-          / "merlin/targets/gemmini/contracts/rtl_facts/facts.json")
+_FACTS = rtl_facts_path("gemmini")
 
 
 class CIRCTReject(Exception):

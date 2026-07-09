@@ -49,8 +49,8 @@ DEFAULT_RTL_FACTS: dict[str, Any] = {
 }
 
 # Path to the deterministic CIRCT-extracted facts (preferred over the curated defaults when present).
-_CIRCT_FACTS = (Path(__file__).resolve().parents[4]
-                / "merlin/targets/gemmini/contracts/rtl_facts/facts.json")
+from .rtl.facts import rtl_facts_path
+_CIRCT_FACTS = rtl_facts_path("gemmini")
 
 
 def load_default_facts() -> dict[str, Any]:

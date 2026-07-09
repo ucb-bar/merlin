@@ -19,8 +19,8 @@ import argparse
 import json
 from pathlib import Path
 
-_DEFAULT_FACTS = (Path(__file__).resolve().parents[5]
-                  / "merlin/targets/gemmini/contracts/rtl_facts/facts.json")
+from .facts import rtl_facts_path
+_DEFAULT_FACTS = rtl_facts_path("gemmini")
 
 
 def generate(facts: dict) -> str:

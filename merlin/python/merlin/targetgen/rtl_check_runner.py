@@ -33,13 +33,13 @@ import yaml
 
 from . import rtl_check_compiler as CC
 from . import rtl_checks as RC
+from .rtl.facts import rtl_facts_path
 from merlin.common.paths import ext_path
 
 _REPO = Path(__file__).resolve().parents[4]
-# RTL facts are target-specific; gemmini is the reference default. General callers should pass the
-# facts path (or set MERLIN_RTL_FACTS) rather than rely on the gemmini default.
-_FACTS = Path(os.environ.get("MERLIN_RTL_FACTS")
-              or _REPO / "merlin/targets/gemmini/contracts/rtl_facts/facts.json")
+# RTL facts are target-specific; the resolver defaults to the gemmini pin but honors an explicit
+# path / $MERLIN_RTL_FACTS. General callers should pass target=/explicit= rather than assume gemmini.
+_FACTS = rtl_facts_path("gemmini")
 _CAPSULE_ROOTS = [_REPO / "merlin/contract" / "capsules",
                   _REPO / "merlin" / "experiments" / "gemmini_perf_bench" / "kernels"]
 _FILECHECK_CANDIDATES = [

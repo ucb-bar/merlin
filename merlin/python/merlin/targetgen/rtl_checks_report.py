@@ -29,9 +29,10 @@ from typing import Any
 import yaml
 
 from . import rtl_checks
+from .rtl.facts import target_contract_path
 
 _REPO = Path(__file__).resolve().parents[4]  # .../oscar-merlin
-_GEMMINI_CONTRACT = _REPO / "merlin" / "targets" / "gemmini" / "contracts" / "target_contract.yaml"
+_GEMMINI_CONTRACT = target_contract_path("gemmini")
 # capsule.yaml definitions live in these roots (merlin/contract corpus + the perf-bench kernels);
 # every capsule dir is named after the capsule, matching the run dir name.
 _CAPSULE_ROOTS = [
