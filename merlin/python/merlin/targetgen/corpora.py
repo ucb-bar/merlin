@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .paths import merlin_dir
+from merlin.common.paths import merlin_dir
 
 
 def capsule_corpus_roots() -> list[Path]:

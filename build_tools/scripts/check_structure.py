@@ -265,7 +265,7 @@ def check_docs_index(errors):
 # The library (merlin/python/merlin) reads INPUTS from benchmarks/ and contract/, never from
 # experiments/ (experiments consume the library, one-way). The ONE sanctioned indirection to a corpus
 # still under experiments/ is the corpus locator; everything else must not name experiments/ as a path.
-_BOUNDARY_ALLOW = {os.path.join("merlin", "python", "merlin", "common", "corpora.py")}
+_BOUNDARY_ALLOW = {os.path.join("merlin", "python", "merlin", "targetgen", "corpora.py")}
 
 
 def check_schema_usage(errors):
@@ -288,7 +288,7 @@ def check_schema_usage(errors):
 
 def check_library_boundary(errors):
     """No library module may reference ``experiments/`` as a path component (consumption-direction:
-    benchmarks/ = library reads it; experiments/ = only consumes the library). See common/corpora.py."""
+    benchmarks/ = library reads it; experiments/ = only consumes the library). See targetgen/corpora.py."""
     import re
     lib = os.path.join(ROOT, "merlin", "python", "merlin")
     pat = re.compile(r"""['"]experiments['"]|experiments/""")

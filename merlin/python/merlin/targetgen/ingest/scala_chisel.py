@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ...common.io import find_by_suffix
+from ..io import find_by_suffix
 from .source_manifest import SourceManifest
 
 SCALA_SUFFIXES = ("scala",)

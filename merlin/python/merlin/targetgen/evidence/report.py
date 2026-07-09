@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ...common.io import first_lines
+from ..io import first_lines
 from ..ingest.docs import discover_docs
 from ..ingest.examples import discover_examples
 from ..ingest.scala_chisel import discover_scala
