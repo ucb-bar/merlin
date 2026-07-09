@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 """Agent-facing self-check for the Muon backend — REDACTED grade on cyclotron.
 
-Runs the agent's submission package through the parallel Muon capsule runner over the public corpus
-on **cyclotron** (the fast iterate+cert oracle, ~1 s/kernel), and prints pass/fail + failure plane +
-mismatch_count + cycles + %FP-peak. It NEVER prints expected/golden values — only whether you matched
-and how fast. Iterate on this until every capsule passes, then make your %FP-peak as high as you can.
+Thin wrapper over the shared, target-parametric `merlin.benchharness.selfcheck` driver: it supplies a
+Muon `BenchTargetSpec` (the muon capsule runner + %FP-peak headline) and reuses the one redacted-grade
+implementation shared with every other target. Runs the agent's submission over the public corpus on
+**cyclotron** (~1 s/kernel) and prints pass/fail + failure plane + mismatch_count + cycles + %FP-peak —
+never expected/golden values. Iterate until every capsule passes, then push %FP-peak up.
 
   python agent_selfcheck.py                      # grade submission/ over all public capsules
   python agent_selfcheck.py --capsule MG00_gemm_16x16x16
@@ -29,38 +30,23 @@ for _c in (_HERE, *_HERE.parents):
         break
 
 
+def _spec(corpus_root: str):
+    from merlin.benchharness.spec import BenchTargetSpec
+    from merlin.targetgen import muon_capsule_runner as MR
+    return BenchTargetSpec(
+        name="Muon", runner=MR, corpus_root=Path(corpus_root), labels={"public", "dev"},
+        contract=None,  # -> absolute default contract dir (robust to CWD)
+        perf_tier="L2", perf_fields=lambda t: {"pct_fp_peak": t.get("pct_fp_peak")},
+        peak_note="Muon SIMT FP peak (64 flop/cycle = 32 GFLOP/s @ 500 MHz)")
+
+
 def grade(submission: str, capsules_root: str, runs_root: str, timeout: int,
           only: str | None = None) -> dict:
-    """Return a REDACTED verdict: per-capsule pass/fail + plane + mismatch_count + cycles + %peak."""
-    from merlin.targetgen import muon_capsule_runner as MR
-    caps = MR.discover_capsules(capsules_root, labels={"public", "dev"})
-    if only:
-        caps = [c for c in caps if c["name"] == only]
-    per: list[dict] = []
-    npass = 0
-    pkg_fail = None
-    for cap in caps:
-        try:
-            res = MR.run_capsule(cap, submission, runs_root=runs_root, run_id=cap["name"],
-                                 timeout=timeout)
-        except Exception as e:                       # package didn't even load/build
-            pkg_fail = {"plane": "package", "detail": str(e)[:300]}
-            per.append({"capsule": cap["name"], "status": "error", "fail_plane": "package"})
-            continue
-        st = res["status"]
-        npass += int(st == "pass")
-        l2 = res["tiers"].get("L2", {})
-        fail = res.get("failure") or {}
-        per.append({
-            "capsule": cap["name"], "status": st,
-            "fail_plane": fail.get("plane"), "fail_category": fail.get("category"),
-            # mismatch_count is a COUNT (safe); expected/got values are never surfaced
-            "mismatch_count": res.get("numeric", {}).get("mismatch_count"),
-            "cycles": l2.get("cycles"), "pct_fp_peak": l2.get("pct_fp_peak"),
-        })
-    return {"all_pass": npass == len(caps) and len(caps) > 0,
-            "n_passed": npass, "n_capsules": len(caps),
-            "package_failure": pkg_fail, "per_capsule": per}
+    """Return a REDACTED verdict (per-capsule pass/fail + plane + mismatch_count + cycles + %peak).
+
+    Signature preserved for `run_muon_qa_loop.py` (imports this as SC and calls SC.grade)."""
+    from merlin.benchharness.selfcheck import redacted_grade
+    return redacted_grade(_spec(capsules_root), submission, runs_root, timeout, only=only)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -69,27 +55,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--capsule", default=None, help="grade only this capsule")
     # prefer the capsules staged into the agent's workspace (./capsules); else the repo corpus
     _default_caps = "capsules" if Path("capsules").is_dir() else str(
-        _REPO / "experiments/muon_perf_bench_v0/kernels")
+        _REPO / "merlin/experiments/muon_perf_bench_v0/kernels")
     ap.add_argument("--capsules-root", default=_default_caps)
     ap.add_argument("--timeout", type=int, default=300)
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
 
+    from merlin.benchharness.selfcheck import print_verdict
     runs = Path(tempfile.mkdtemp(prefix="muon_selfcheck_"))
     v = grade(a.submission, a.capsules_root, str(runs), a.timeout, only=a.capsule)
     if a.json:
         print(json.dumps(v, indent=2))
         return 0 if v["all_pass"] else 1
-    print(f"\nMuon self-check (cyclotron, redacted) — {v['n_passed']}/{v['n_capsules']} pass")
-    if v["package_failure"]:
-        print(f"  PACKAGE ERROR: {v['package_failure']['detail']}")
-    for r in v["per_capsule"]:
-        extra = ""
-        if r.get("cycles"):
-            extra = f"  {r['cycles']} cyc  {r['pct_fp_peak']}% peak"
-        plane = f"  [{r['fail_plane']}/{r.get('fail_category')}]" if r["status"] != "pass" else ""
-        mc = f"  mismatch={r['mismatch_count']}" if r.get("mismatch_count") else ""
-        print(f"  [{r['status']:10s}] {r['capsule']}{extra}{plane}{mc}")
+    print_verdict(_spec(a.capsules_root), v, perf_key="pct_fp_peak", perf_suffix="% peak")
     print("\nALL PASS — now push %FP-peak up." if v["all_pass"]
           else "\nNot all pass yet — fix the failing planes above.")
     return 0 if v["all_pass"] else 1
