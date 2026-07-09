@@ -7,6 +7,7 @@ symbols (with the same values) that the (yet-to-be-migrated) harness scripts imp
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 
 from merlin import benchharness as B
@@ -48,3 +49,54 @@ def test_pbcommon_shim_preserves_symbols():
     assert p.KERNELS == p.EXP / "kernels"
     assert p.DIM == 16 and p.PEAK_MACS_PER_CYCLE == 256
     assert p.align(17) == 32 and p.matmul_macs(2, 3, 4) == 24 and p.utilization_pct(256, 1) == 100.0
+
+
+# --- target-parametric bench driver (spec + selfcheck + perf), oracle-free via a stub runner -------
+class _StubRunner:
+    """Mimics capsule_runner/muon_capsule_runner's discover_capsules + run_capsule interface."""
+
+    def __init__(self, results):
+        self._results = results  # name -> result dict
+
+    def discover_capsules(self, root, *, labels=None, contract=None):
+        return [{"name": n} for n in sorted(self._results)]
+
+    def run_capsule(self, cap, package_dir, *, runs_root, run_id, contract=None, timeout=0):
+        return self._results[cap["name"]]
+
+
+def _spec(runner):
+    from merlin.benchharness.spec import BenchTargetSpec
+    return BenchTargetSpec(name="Stub", runner=runner, corpus_root=ROOT, perf_tier="L2",
+                           perf_fields=lambda t: {"pct_fp_peak": t.get("pct_fp_peak")})
+
+
+def test_redacted_grade_is_redacted_and_aggregates():
+    from merlin.benchharness.selfcheck import redacted_grade
+    runner = _StubRunner({
+        "k_ok": {"status": "pass", "tiers": {"L2": {"cycles": 100, "pct_fp_peak": 0.5}},
+                 "numeric": {"mismatch_count": 0}},
+        "k_bad": {"status": "fail", "tiers": {"L2": {}}, "numeric": {"mismatch_count": 7},
+                  "failure": {"plane": "numeric", "category": "value_mismatch"}},
+    })
+    v = redacted_grade(_spec(runner), "sub", runs_root="/tmp/x", timeout=1)
+    assert v["n_passed"] == 1 and v["n_capsules"] == 2 and v["all_pass"] is False
+    bad = next(r for r in v["per_capsule"] if r["capsule"] == "k_bad")
+    assert bad["fail_plane"] == "numeric" and bad["mismatch_count"] == 7
+    # redaction: only a COUNT + status/plane surface — no expected/got values anywhere in the verdict
+    assert "expected" not in json.dumps(v) and "golden" not in json.dumps(v)
+    # only= filters to a single capsule
+    assert redacted_grade(_spec(runner), "sub", runs_root="/tmp/x", timeout=1,
+                          only="k_ok")["n_capsules"] == 1
+
+
+def test_run_perf_writes_report(tmp_path):
+    from merlin.benchharness.perf import run_perf
+    runner = _StubRunner({
+        "k0": {"status": "pass", "tiers": {"L2": {"cycles": 200, "pct_fp_peak": 1.0}}},
+        "k1": {"status": "fail", "tiers": {"L2": {"cycles": None}}},
+    })
+    s = run_perf(_spec(runner), package="pkg", run_id="t", out_dir=tmp_path, timeout=1)
+    assert s["passed"] == 1 and s["total"] == 2
+    assert (tmp_path / "perf_results.json").is_file() and (tmp_path / "perf_table.md").is_file()
+    assert "1/2 pass" in (tmp_path / "perf_table.md").read_text()
