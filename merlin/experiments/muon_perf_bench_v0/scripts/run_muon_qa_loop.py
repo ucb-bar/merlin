@@ -33,11 +33,14 @@ for _c in (_HERE, *_HERE.parents):
         break
 sys.path.insert(0, str(_HERE))
 import agent_selfcheck as SC                      # noqa: E402  (grade())
+from merlin.targetgen import experiment_tokens as ET   # noqa: E402  (canonical transcript parser)
+from merlin.targetgen.rtl.facts import rtl_facts_path   # noqa: E402  (target-agnostic facts dir)
 
-EXP = _REPO / "experiments/muon_perf_bench_v0"
+EXP = _REPO / "merlin/experiments/muon_perf_bench_v0"
 KERNELS = EXP / "kernels"
 BUNDLE = EXP / "input_bundles/muon_rtlchecks_public_v0"
-FACTS = _REPO / "merlin/targets/muon/contracts/rtl_facts"
+# muon has no curated merlin/targets/muon; the resolver routes to artifacts/targets/muon.
+FACTS = rtl_facts_path("muon").parent
 TASK = EXP / "task" / "TASK_muon.md"
 REFERENCE = _REPO / "artifacts/targets/muon/reference_v0"
 
@@ -66,9 +69,14 @@ def assemble_workspace(ws: Path) -> None:
                 continue
             if f.suffix in (".yaml", ".mlir"):
                 shutil.copy(f, d / f.name)
-    # docs (the +CIRCT advisory + the how-to) and the self-check tool
-    shutil.copy(FACTS / "MUON_DIGEST.md", ws / "MUON_DIGEST.md")
-    shutil.copy(BUNDLE / "MUON_BACKEND_GUIDE.md", ws / "MUON_BACKEND_GUIDE.md")
+    # docs (the +CIRCT advisory + the how-to) and the self-check tool — advisories are optional;
+    # skip any that aren't present (e.g. MUON_DIGEST.md is produced by muon_introspect, may be absent)
+    for src, dst in ((FACTS / "MUON_DIGEST.md", "MUON_DIGEST.md"),
+                     (BUNDLE / "MUON_BACKEND_GUIDE.md", "MUON_BACKEND_GUIDE.md")):
+        if src.is_file():
+            shutil.copy(src, ws / dst)
+        else:
+            print(f"  note: advisory {src.name} absent ({src}) — skipping", file=sys.stderr)
     shutil.copy(EXP / "scripts" / "agent_selfcheck.py", ws / "agent_selfcheck.py")
 
 
@@ -118,22 +126,14 @@ def grade_round(ws: Path, run_dir: Path, rnd: int, timeout: int) -> dict:
 
 
 def _transcript_usage(tpath: Path) -> dict:
-    """Best-effort cost/token sum from a stream-json transcript (the final result event)."""
-    cost = tokens_in = tokens_out = 0
-    try:
-        for line in tpath.read_text(encoding="utf-8", errors="ignore").splitlines():
-            try:
-                ev = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if ev.get("type") == "result":
-                cost = ev.get("total_cost_usd", cost) or cost
-                u = ev.get("usage", {}) or {}
-                tokens_in = u.get("input_tokens", tokens_in) or tokens_in
-                tokens_out = u.get("output_tokens", tokens_out) or tokens_out
-    except OSError:
-        pass
-    return {"cost_usd": cost, "input_tokens": tokens_in, "output_tokens": tokens_out}
+    """Cost/token sum via the canonical `experiment_tokens.parse_transcript` (shared with the gemmini
+    QA loop), mapped to the keys finalize_report reads. Honest zeros if no usage metadata."""
+    s = ET.parse_transcript(tpath)
+    if not s.get("available"):
+        return {"cost_usd": 0, "input_tokens": 0, "output_tokens": 0}
+    return {"cost_usd": s.get("estimated_cost_usd", 0) or 0,
+            "input_tokens": s.get("tokens_input", 0) or 0,
+            "output_tokens": s.get("tokens_output", 0) or 0}
 
 
 def finalize_report(run_dir: Path, model: str, effort: str, rounds: list[dict],
