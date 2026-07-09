@@ -53,9 +53,17 @@ def _cell(r: BaselineResult | None) -> str:
     st = r.status()
     if st != "pass":
         return st
-    cyc = f"{r.e2e_cycles/1e6:.1f}M" if r.e2e_cycles else "?"
+    # Prefer wall-clock (uniform ms/s across arms → apples-to-apples), fall back to the rdtime
+    # cycle-estimate, so a passing cell always shows a real latency rather than "?".
+    if r.e2e_wall_ns:
+        ms = r.e2e_wall_ns / 1e6
+        lat = f"{ms:.0f}ms" if ms < 10000 else f"{ms/1000:.1f}s"
+    elif r.e2e_cycles:
+        lat = f"{r.e2e_cycles/1e6:.1f}Mc"
+    else:
+        lat = "?"
     cov = f"{100*r.rvv_coverage_overall:.0f}%RVV" if r.rvv_coverage_overall is not None else "?RVV"
-    return f"pass {cyc} {cov}"
+    return f"pass {lat} {cov}"
 
 
 def render_markdown(results: list[BaselineResult]) -> str:
