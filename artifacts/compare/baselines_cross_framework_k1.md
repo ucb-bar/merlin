@@ -6,10 +6,18 @@ them **end-to-end on the same SpacemiT K1 board with RVV**, on its own stack. Th
 unlike the earlier "4-way" (baseline/xnnpack/openblas/ours) which only swapped the GEMM microkernel
 *inside* merlin's own dispatch runtime.
 
-**Board.** SpacemiT K1-x (`root@10.44.97.186`), riscv64 glibc Linux, **VLEN=256** (vlenb=32), 8 cores,
-**~3.8 GB RAM**. Cross-compiled on host with the SpacemiT clang (`-march=rv64gcv -mabi=lp64d`);
-deployed + timed over SSH. Cycle counts are K1 `rdtime` **estimates** (24 MHz timer × CPU/timebase),
-**not** cycle-accurate — spike/FireSim remain the cycle authorities.
+**Board.** SpacemiT K1-x, riscv64 glibc Linux, **VLEN=256** (vlenb=32), 8 cores, **3.8 GB RAM total
+(~3.4 GB usable)**. IP is DHCP and changes across reboots (`10.44.97.186` → `10.44.96.26` after a
+reboot). Cross-compiled on host with the SpacemiT clang (`-march=rv64gcv -mabi=lp64d`); deployed + timed
+over SSH. Cycle counts are K1 `rdtime` **estimates** (24 MHz timer × CPU/timebase), **not**
+cycle-accurate — spike/FireSim remain the cycle authorities.
+
+> ⚠️ **READ ORDER — the sections below are chronological; later phases SUPERSEDE earlier ones.** The
+> Phase 1–3 "Status matrix"/"headline" text was written mid-effort and is now partly stale (e.g. "only
+> EXO and ExecuTorch complete a whole-model run" and ExecuTorch "whole-model int8 proven impossible" are
+> both **false** — full-22L int8 ran, and openvla/bitvla run on-board). **The authoritative current state
+> is Phases 4–8 at the bottom**; regenerate the machine matrix with `python -m merlin.baselines.aggregate`.
+> On-board runs now use TVM's **board-local runner** (no `tvm_rpc`); the board IP moved (see above).
 
 **Honesty contract** (`merlin.baselines`). `not_run_is_not_pass`: a model that doesn't build/run is an
 explicit `not_built`/`not_run` cell with a reason, never omitted or faked. RVV is *pushed* everywhere;
