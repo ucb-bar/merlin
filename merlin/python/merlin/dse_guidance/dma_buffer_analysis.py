@@ -113,7 +113,7 @@ def buffer_requirements(region_mem) -> list[BufferRequirement]:
 # --------------------------------------------------------------------------- emitters
 
 def dma_stream_csv(stream_by_workload: dict) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for wl, streams in stream_by_workload.items():
         for s in streams:
@@ -129,7 +129,7 @@ def dma_stream_csv(stream_by_workload: dict) -> str:
 
 
 def buffer_requirement_csv(buf_by_workload: dict) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for wl, bufs in buf_by_workload.items():
         for b in bufs:

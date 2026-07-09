@@ -79,7 +79,7 @@ def proof_matrix(packages) -> list[ProofRow]:
 
 
 def compiler_proof_csv(packages) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = [{
         "axis": r.axis, "system_abstraction": r.system_abstraction,
         "compiler_proof_needed": r.compiler_proof_needed, "status": r.status,

@@ -80,7 +80,7 @@ def to_yaml_obj(rows: list[RegionTraffic], workload: str) -> dict:
 
 
 def traffic_csv(packages) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for p in packages:
         for r in p.get("mem", []):
@@ -229,7 +229,7 @@ def memory_hierarchy_yaml(mem_by_workload: dict) -> dict:
 
 
 def data_movement_csv(mem_by_workload: dict) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for wl, mems in mem_by_workload.items():
         for rm in mems:
@@ -252,7 +252,7 @@ def data_movement_csv(mem_by_workload: dict) -> str:
 
 
 def reuse_lifetime_csv(reuse_by_workload: dict) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for wl, recs in reuse_by_workload.items():
         for r in recs:

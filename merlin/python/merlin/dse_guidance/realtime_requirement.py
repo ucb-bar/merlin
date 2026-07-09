@@ -41,7 +41,7 @@ _RT_COLS = ["workload", "family", "regime", "budget_ms", "window", "required_GMA
 
 
 def _ai_index(cs_dir):
-    from merlin.dse_guidance.case_study import _csv  # noqa: F401  (ensure pkg import side-effects)
+    from merlin.dse_guidance.corpus import _csv  # noqa: F401  (ensure pkg import side-effects)
     import csv as _c
     from pathlib import Path
     p = Path(cs_dir) / "arithmetic_intensity.csv"
@@ -105,5 +105,5 @@ def realtime_rows(cs_dir) -> list[dict]:
 
 
 def realtime_csv(cs_dir) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     return _csv(realtime_rows(cs_dir), _RT_COLS)

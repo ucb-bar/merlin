@@ -227,7 +227,7 @@ def pipeline_envelope_yaml(phase_by_workload: dict) -> dict:
 
 
 def pipeline_stage_csv(phase_by_workload: dict) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for wl, phases in phase_by_workload.items():
         for p in phases:
@@ -262,7 +262,7 @@ def pipeline_candidates_yaml(overlap_by_workload: dict) -> dict:
 
 
 def buffering_requirement_csv(overlap_by_workload: dict) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for wl, cands in overlap_by_workload.items():
         for c in cands:

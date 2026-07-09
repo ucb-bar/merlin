@@ -298,7 +298,7 @@ def _counts(g: ContractGraph) -> dict:
 
 
 def phase_rate_csv(graphs: list[ContractGraph]) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for g in graphs:
         for n in g.nodes:

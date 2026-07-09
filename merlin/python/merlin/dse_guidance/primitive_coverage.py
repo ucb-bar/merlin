@@ -258,13 +258,13 @@ _TILE_WASTE_COLS = ["workload", "op_index", "shape_class", "region_role", "primi
 
 
 def tile_waste_csv(cov: list[OpPrimitiveCoverage]) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = [{c: getattr(o, c) for c in _TILE_WASTE_COLS} for o in cov]
     return _csv(rows, _TILE_WASTE_COLS)
 
 
 def primitive_coverage_matrix_csv(per_wl: list[PrimitiveWorkloadAgg]) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     cols = ["primitive", "primitive_kind", "workload", "op_count", "applicable_ops", "macs_total",
             "macs_covered_5", "macs_covered_10", "macs_covered_25", "mac_weighted_utilization",
             "coverage_under_10pct"]
@@ -273,7 +273,7 @@ def primitive_coverage_matrix_csv(per_wl: list[PrimitiveWorkloadAgg]) -> str:
 
 
 def primitive_regret_csv(regret: list[PrimitiveRegret]) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     cols = ["primitive", "primitive_kind", "op_count", "macs_total", "mac_weighted_utilization",
             "coverage_under_5pct", "coverage_under_10pct", "coverage_under_25pct",
             "worst_workload_coverage_10", "best_workload_coverage_10", "average_workload_coverage_10",

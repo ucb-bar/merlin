@@ -74,5 +74,5 @@ def ai_rows(dtype: str = "bf16") -> list[dict]:
 
 
 def ai_csv(dtype: str = "bf16") -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     return _csv(ai_rows(dtype), _AI_COLS)

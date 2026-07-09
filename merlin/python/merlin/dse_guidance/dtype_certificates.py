@@ -108,7 +108,7 @@ def to_yaml_obj(certs: list[DtypeCertificate], workload: str) -> dict:
 
 
 def gated_csv(packages) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for p in packages:
         for c in p.get("certs", []):

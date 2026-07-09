@@ -263,7 +263,7 @@ def structural_hierarchy_hints(all_shapes, all_axes, dags) -> list[StructuralHin
 # --------------------------------------------------------------------------- emitters
 
 def cluster_to_hierarchy_csv(clusters: list[ClusterHierarchy]) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = [{"shape_class": c.shape_class, "op_count": c.op_count, "macs": c.macs,
              "mac_fraction": c.mac_fraction, "hierarchy_options": "; ".join(c.hierarchy_options),
              "workloads": "; ".join(c.workloads), "evidence_for": c.evidence_for,
@@ -273,7 +273,7 @@ def cluster_to_hierarchy_csv(clusters: list[ClusterHierarchy]) -> str:
 
 
 def resource_pressure_csv(pressure: list[ResourcePressure]) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = [{"resource_class": p.resource_class, "present": p.present, "op_count": p.op_count,
              "macs": p.macs, "mac_fraction": p.mac_fraction, "basis": p.basis,
              "workloads": "; ".join(p.workloads) or "—"} for p in pressure]

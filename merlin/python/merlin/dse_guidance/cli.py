@@ -80,7 +80,8 @@ def _design_envelope(args) -> int:
     from merlin.common.artifacts import Artifact, yaml_artifact
     from merlin.dse_guidance import (attribution as ATTR, design_envelope as DE,
                                      numerical_contract as NC, topology as TOP)
-    from merlin.dse_guidance.case_study import analyze, available_models, _recap_dir
+    from merlin.dse_guidance.case_study import analyze
+    from merlin.dse_guidance.corpus import available_models, _recap_dir
     from merlin.common.yaml import load_yaml
     design = load_yaml(args.design_candidate) if args.design_candidate else None
     out = Path(args.out) if args.out else (

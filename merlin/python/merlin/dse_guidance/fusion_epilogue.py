@@ -287,7 +287,7 @@ def certificates(patterns, accum) -> list[FusionCertificate]:
 # --------------------------------------------------------------------------- emitters
 
 def epilogue_pattern_csv(pat_by_workload: dict) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for wl, pats in pat_by_workload.items():
         for p in pats:
@@ -304,7 +304,7 @@ def epilogue_pattern_csv(pat_by_workload: dict) -> str:
 
 
 def accumulator_contract_csv(acc_by_workload: dict) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for wl, accs in acc_by_workload.items():
         for a in accs:
@@ -352,7 +352,7 @@ def epilogue_candidates_yaml(cert_by_workload: dict) -> dict:
 
 def lost_contracts_csv(acc_by_workload: dict) -> str:
     """The numerical contracts a flat dequantized capture erased, per workload (honest accounting)."""
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for wl, accs in acc_by_workload.items():
         storage = accs[0].storage_dtype if accs else "f32"

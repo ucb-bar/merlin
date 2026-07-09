@@ -145,7 +145,7 @@ def analyze_graph(graph) -> DagConcurrency:
 # --------------------------------------------------------------------------- emitters
 
 def critical_path_csv(dags: list[DagConcurrency]) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     cols = ["workload", "total_ops", "total_macs", "critical_path_ops", "critical_path_macs",
             "available_parallelism", "max_ready_width", "avg_ready_width", "n_levels",
             "independent_components", "serialization", "dep_evidence"]
@@ -155,7 +155,7 @@ def critical_path_csv(dags: list[DagConcurrency]) -> str:
 
 def concurrency_windows_csv(dags: list[DagConcurrency]) -> str:
     """Per-level ready-set width — the concurrency window at each dependency depth."""
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for d in dags:
         for lvl, w in enumerate(d.level_widths):

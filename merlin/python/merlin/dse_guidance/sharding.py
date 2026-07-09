@@ -82,7 +82,7 @@ def all_shard_axes(shapes) -> list[ShardAxis]:
 # --------------------------------------------------------------------------- emitters
 
 def sharding_csv(axes: list[ShardAxis]) -> str:
-    from merlin.dse_guidance.case_study import _csv
+    from merlin.dse_guidance.corpus import _csv
     rows = []
     for a in axes:
         rows.append({
