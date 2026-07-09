@@ -106,7 +106,7 @@ def region_from_mlir(mlir_path: str, region_id: str | None = None, H: int = 8) -
     if epilogue:
         tensors["bias"] = {"shape": [rhs_shape[-1]], "dtype": "i32", "mutable": False}
 
-    return {
+    region = {
         "name": f"mlir_{region_name}",
         "description": f"Extracted from {mlir_path} region {region_name} (H={H} injected).",
         "ops": ops,
@@ -116,3 +116,6 @@ def region_from_mlir(mlir_path: str, region_id: str | None = None, H: int = 8) -
         "provenance": {"source": "model2MLIR", "file": mlir_path, "m2m_op": m2m_op,
                        "host_loop_H": H},
     }
+    from merlin.common.schemas import validate_or_raise
+    validate_or_raise(region, "workload_region")   # schemas/ rule: code validates what lives here
+    return region

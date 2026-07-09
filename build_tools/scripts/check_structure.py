@@ -268,6 +268,24 @@ def check_docs_index(errors):
 _BOUNDARY_ALLOW = {os.path.join("merlin", "python", "merlin", "common", "corpora.py")}
 
 
+def check_schema_usage(errors):
+    """Every merlin/schemas/*.schema.yaml must be referenced by name in merlin/python/ — either
+    validated (validate/validate_or_raise/_SCHEMA/PLAN_SCHEMAS) or mirrored as a vocabulary spec
+    (a code constant / generated view / docstring that names it). Zero references ⇒ dead schema."""
+    import glob
+    lib = os.path.join(ROOT, "merlin", "python")
+    corpus = []
+    for dp, _d, files in os.walk(lib):
+        for fn in files:
+            if fn.endswith(".py"):
+                corpus.append(open(os.path.join(dp, fn), encoding="utf-8").read())
+    blob = "\n".join(corpus)
+    for path in sorted(glob.glob(os.path.join(ROOT, "merlin", "schemas", "*.schema.yaml"))):
+        name = os.path.basename(path)[: -len(".schema.yaml")]
+        if f'"{name}"' not in blob and f"'{name}'" not in blob and f"{name}.schema" not in blob:
+            errors.append(f"dead schema (no reference in merlin/python): merlin/schemas/{name}.schema.yaml")
+
+
 def check_library_boundary(errors):
     """No library module may reference ``experiments/`` as a path component (consumption-direction:
     benchmarks/ = library reads it; experiments/ = only consumes the library). See common/corpora.py."""
@@ -293,6 +311,7 @@ def main():
     checks = [
         ("required directories", check_required_dirs),
         ("AGENT.md coverage", check_agent_md),
+        ("schema usage", check_schema_usage),
         ("library boundary", check_library_boundary),
         ("root docs", check_root_docs),
         ("schemas", check_schemas),
