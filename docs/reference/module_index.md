@@ -48,7 +48,6 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.targetgen.evidence` | Evidence layer: deterministically discover source files and detect concepts. |
 | `merlin.targetgen.generate` | Generate the merlin-target-<name>/ repository skeleton and its artifacts. |
 | `merlin.targetgen.ingest` | Ingest layer: record TargetGen inputs as a SourceManifest. |
-| `merlin.targetgen.oot_starterkit` | OOT starter kit — hw-agnostic, answer-free framework plumbing for authoring an MLIR OOT backend. |
 | `merlin.targetgen.rtl` | merlin-rtl-introspect: extract structure-only facts from elaborated RTL (CIRCT/FIRRTL). |
 | `merlin.targetgen.synthesize` | Synthesize the five plan artifacts from collected evidence. |
 | `merlin.targetgen.validate` | Validation layer: check synthesized plans + the generated repo, render a report. |
