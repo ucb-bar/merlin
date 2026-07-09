@@ -12,7 +12,9 @@ from __future__ import annotations
 import os, sys, time, subprocess, tempfile
 from pathlib import Path
 
-REPO = Path("/scratch/agustin/projects/oscar-merlin")
+# repo root derived from this file's location (portable; correct even when copied to the board),
+# not a hardcoded host path. board_tune.py: merlin/python/merlin/baselines/tvm_board/ -> parents[5].
+REPO = Path(os.environ.get("MERLIN_REPO_ROOT") or Path(__file__).resolve().parents[5])
 RT_DIR = REPO / "build/baselines/tvm-rv64"
 TIMER = RT_DIR / "board_runner" / "board_kernel_timer"
 RT_SO = RT_DIR / "libtvm_runtime.so"
