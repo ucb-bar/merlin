@@ -28,10 +28,26 @@ zephyr/          Zephyr RTOS backend (scaffold)
 These map onto the `runtime` dialect concepts: command buffers, dispatches,
 queues, persistent handles, waits, profiling regions. See `docs/core_dialects.md`.
 
-## Schemas (Merlin-owned)
+## Runtime ABI (Merlin-owned spec)
 
-- `runtime_abi` — the versioned operation set every backend/adapter supports.
-- `command_buffer` — the target-independent command-buffer format.
+The runtime ABI is the versioned operation set every backend/adapter must implement. It is a
+**specification**, not a validated data artifact (there is no runtime_abi instance file to validate —
+adapters declare support against a version string `RUNTIME_ABI_VERSION` in their
+`runtime_adapter_plan`). The current operation set:
+
+- device discovery: `device_get`
+- buffers: `buffer_alloc`, `buffer_view_create`
+- command buffers: `command_buffer_create`, `command_buffer_append`, `submit`, `wait`
+- persistent handles: `handle_create`, `handle_destroy`
+- observability: `metrics_read`, `trace_emit`
+
+Backends Merlin ships: `simulator, host, baremetal, zephyr, firesim, external`. Error model:
+integer return codes, `0 == success`.
+
+## Schemas (Merlin-owned, validated)
+
+- `command_buffer` — the target-independent command-buffer format (its `abi_version` names a runtime
+  ABI version, above).
 - `metrics` — the common metric vocabulary all backends normalize into.
 - `trace` — the trace-event stream format.
 

@@ -19,7 +19,8 @@ consumers:
   - merlin/runtime/simulator
   - generated target repo runtime/adapter
 validation_notes: >-
-  abi_version must match a runtime_abi.schema.yaml version. Each command needs an opcode and
+  abi_version must match a runtime ABI version (RUNTIME_ABI_VERSION; the ABI op-set is documented in
+  docs/reference/runtime.md). Each command needs an opcode and
   operands; metrics_requested entries must be common metric names from metrics.schema.yaml.
 example: |
   abi_version: "0.1"

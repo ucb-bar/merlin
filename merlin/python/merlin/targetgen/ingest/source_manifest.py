@@ -28,8 +28,9 @@ class SourceManifest:
     notes: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a schema-shaped mapping (matches target_source_manifest schema)."""
-        return {
+        """Return a schema-shaped mapping (validated against target_source_manifest schema)."""
+        from merlin.common.schemas import validate_or_raise
+        d = {
             "target_name": self.target_name,
             "source_dirs": list(self.source_dirs),
             "source_files": list(self.source_files),
@@ -40,6 +41,8 @@ class SourceManifest:
             "commit": self.commit,
             "notes": self.notes,
         }
+        validate_or_raise(d, "target_source_manifest")  # schemas/ rule: code validates what lives here
+        return d
 
 
 def build_manifest(
