@@ -75,16 +75,63 @@ def _curated(target_name: str) -> dict[str, Any] | None:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-CURATED_TARGETS = {"saturn"}
+# The Merlin tensor-resident interface a target dialect lowers. role -> (canonical op name, matcher,
+# summary). A contract that advertises this shape gets a GENERATED, usable dialect_plan (not a stub).
+_ROLES: list[tuple[str, str, Any, str]] = [
+    ("resident_pack", "pack", lambda o: "pack" in o, "pack + make RHS resident"),
+    ("matmul", "matmul", lambda o: "matmul" in o, "matmul vs resident tensor -> accumulator"),
+    ("commit", "commit", lambda o: "commit" in o, "apply epilogue + commit accumulator"),
+    ("resident_evict", "evict", lambda o: "evict" in o or "release" in o, "free resident storage"),
+]
+
+
+def _is_tensor_resident(tc: dict[str, Any]) -> bool:
+    """A target that implements the Merlin tensor-resident interface (packs a resident weight,
+    accumulates, commits via a command buffer). Detected from the contract's own declarations."""
+    feats = set(tc.get("features") or [])
+    ops = set(tc.get("ops") or []) | set((tc.get("capabilities") or {}).get("ops") or [])
+    return ("command_buffer" in feats
+            and ("resident_packed_tensor" in feats or "accumulator_commit" in feats)
+            and "matmul" in ops)
+
+
+def _generate(target_contract: dict[str, Any]) -> dict[str, Any]:
+    """Generate a usable dialect_plan from a tensor-resident contract (its op/type names drive the
+    dialect; the interface->target lowering is the canonical mapping). Feeds the dialect factory."""
+    name = target_contract["name"]
+    dname = name.replace("_", "")
+    decl_ops = list(target_contract.get("ops") or [])
+    role_op = {role: (next((o for o in decl_ops if match(o)), canon))
+               for role, canon, match, _ in _ROLES}
+    types = target_contract.get("types") or ["resident_tensor", "accumulator"]
+    plan = {
+        "target": name,
+        "dialect_name": dname,
+        "ops": [{"name": role_op[r], "summary": summ, "source_interface": f"interface.{r}"}
+                for r, _c, _m, summ in _ROLES],
+        "types": [{"name": t} for t in types],
+        "lowering": [{"from": f"interface.{r}", "to": f"{dname}.{role_op[r]}"}
+                     for r, _c, _m, _s in _ROLES],
+        "tests": [{"lit": "pack_roundtrip"}, {"lit": "matmul_commit_epilogue"},
+                  {"lit": "evict_after_use"}],
+        "confidence": "medium",
+        "requires_human_review": False,
+        "generated_from_contract": True,
+    }
+    from ...common.schemas import validate_or_raise
+    validate_or_raise(plan, "dialect_plan")
+    return plan
 
 
 def synthesize_dialect_plan(evidence: Evidence, target_contract: dict[str, Any]) -> dict[str, Any]:
-    """Return a dialect_plan dict for the contract's target."""
+    """Return a dialect_plan dict for the contract's target: a committed curated plan wins; else a
+    tensor-resident contract is GENERATED into a usable plan; else a review-flagged skeleton."""
     name = target_contract.get("name")
     if name == "toy_npu":
         return _toy_npu()
-    if name in CURATED_TARGETS:
-        curated = _curated(name)
-        if curated is not None:
-            return curated
+    curated = _curated(name)                 # committed reference plan (saturn, gemmini, ...) wins
+    if curated is not None:
+        return curated
+    if _is_tensor_resident(target_contract):
+        return _generate(target_contract)    # usable generated plan (was: empty _conservative stub)
     return _conservative(evidence)
