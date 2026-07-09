@@ -24,7 +24,6 @@ The schemas are the cross-workstream coordination contract (see [Contracts](cont
 | `llvm_requirement` | LLVM Requirement | Whether a mined abstraction needs LLVM-project (backend/MC) support — the L8 record. Emitted by kernel mining per interface candidate, feeding TargetGen's ll… |
 | `metrics` | Metrics | The Merlin-owned common metrics schema. All backends and target adapters normalize their raw counters into these common names so results are comparable acros… |
 | `policy_rule` | Policy Rule | A compiler heuristic distilled from kernel evidence: when a condition holds, take these scheduling actions. Owned by kernel-mining; consumed by DSE and (late… |
-| `runtime_abi` | Runtime ABI | Declares the Merlin-owned runtime ABI: the versioned set of operations every backend/adapter must support (device discovery, buffer alloc/import, typed views… |
 | `runtime_adapter_plan` | Runtime Adapter Plan | Describes how a target implements the Merlin-owned runtime abstraction. Merlin owns the runtime ABI, command-buffer schema, event/handle/metrics model; the t… |
 | `runtime_candidate` | Runtime Candidate | A runtime-level abstraction surfaced from kernels whose bottleneck is launch/dispatch/state rather than schedule (e.g. command-buffer batching for many tiny… |
 | `rvv_package_manifest` | RVV Target-Package Manifest | Provenance + identity for one isolated RVV codegen package under artifacts/targets/rvv/<run_id>/. RVV is a transform-dialect SCHEDULE + cflags, not a residen… |

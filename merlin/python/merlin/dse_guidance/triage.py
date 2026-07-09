@@ -113,7 +113,8 @@ def triage(representation: Representation, baseline: BaselineCost,
                  target_total, target_gap, ar) for ar in results]
     rows.sort(key=_sort_key, reverse=True)
 
-    return {
+    from merlin.common.schemas import validate_or_raise
+    out = {
         "workload": baseline.workload,
         "representation": representation.name,
         "baseline_total_ms": baseline_total,
@@ -121,3 +122,5 @@ def triage(representation: Representation, baseline: BaselineCost,
         "target_gap_ms": target_gap,
         "axes": rows,
     }
+    validate_or_raise(out, "dse_axis_triage")   # schemas/ rule: if it lives here, code validates it
+    return out

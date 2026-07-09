@@ -45,10 +45,13 @@ class Evidence:
         return {c.concept for c in self.concepts}
 
     def to_index_dict(self) -> dict[str, Any]:
-        """Return the ``evidence_report``-schema mapping for ``evidence_index.yaml``."""
-        return {
+        """Return the ``evidence_report``-schema mapping for ``evidence_index.yaml`` (validated)."""
+        from merlin.common.schemas import validate_or_raise
+        d = {
             "target": self.target,
             "sources": self.sources,
             "files": [f.to_dict() for f in self.files],
             "detected_concepts": [c.to_dict() for c in self.concepts],
         }
+        validate_or_raise(d, "evidence_report")   # schemas/ rule: if it lives here, code validates it
+        return d

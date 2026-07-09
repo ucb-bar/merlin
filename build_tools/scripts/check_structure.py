@@ -59,7 +59,7 @@ REQUIRED_SCHEMAS = [
     "dse_result", "exploitability_report", "compilation_strategy", "search_space",
     # Runtime + TargetGen plans (Merlin-owned runtime model; targets adapt it).
     "runtime_adapter_plan", "zephyr_plan", "llvm_extension_plan", "evidence_report",
-    "target_source_manifest", "command_buffer", "runtime_abi", "metrics", "trace",
+    "target_source_manifest", "command_buffer", "metrics", "trace",
     # Kernel-mining L6/L8 outputs (feed TargetGen's dialect_plan / llvm_extension_plan).
     "runtime_candidate", "dialect_requirement", "llvm_requirement",
     # DSE-guidance + rvvgen subsystem schemas (were used but unlisted).
