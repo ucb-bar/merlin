@@ -41,15 +41,30 @@ import _ratelimit as RL  # five-hour rate-limit detection + reset epoch (shared)
 
 SCRIPTS = Path(__file__).resolve().parent  # this scripts/ dir (selfcheck_broker.py, selfcheck_shim.py)
 
+
+def _strip_build_state(root: Path) -> None:
+    """Delete all cmake/ninja build state under `root` so a graded copy builds from scratch in its OWN
+    path. Excluding a dir named 'build' is not enough — a stale CMakeCache / ninja state elsewhere pins the
+    original source dir and makes cmake error ('source does not match cache'). The abc9 baseline L3-0/20
+    'build' bug. Guarantees a clean, relocatable build for every grade."""
+    for pat in ("CMakeCache.txt", "CMakeFiles", "build.ninja", ".ninja_deps", ".ninja_log",
+                "cmake_install.cmake"):
+        for p in list(Path(root).rglob(pat)):
+            try:
+                shutil.rmtree(p) if p.is_dir() else p.unlink()
+            except Exception:
+                pass
+
 sys.path.insert(0, str(C.REPO / "merlin" / "python"))
 from merlin.targetgen import experiment_tokens as ET  # noqa: E402
 
 def _repo_root():
     from pathlib import Path as _P
-    p=_P(__file__).resolve()
-    while p!=p.parent and not (p/"merlin"/"python").is_dir(): p=p.parent
+    p = _P(__file__).resolve()
+    while p != p.parent and not (p / "merlin" / "python").is_dir():
+        p = p.parent
     return p
-_ROOT=_repo_root()
+_ROOT = _repo_root()
 
 ARM = "raw_baseline"  # default arm; overridable via --arm (the QA loop is arm-agnostic)
 # Loop+gate capsule set: the FULL 20 PUBLIC capsules (isa+layers+model_slices). The agent iterates to
@@ -380,8 +395,15 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
                 "- Implement the 4 entrypoints as real MLIR passes in a C++ OOT package (input dialect + "
                 "gemmini target dialect + conversions + the `gemmini-opt` tool). A Python tool is NOT "
                 "acceptable for this run. All integrity rules still apply.\n")
+        bdir = C.BUNDLES / RX.ARM_BUNDLE[arm]
+        # STARTER_PROMPT.md carries the ARM-SPECIFIC guidance (CIRCT generators for the +CIRCT arm,
+        # verified-IR/kit for merlin, C++ method for baseline). It MUST be delivered or the arm's whole
+        # approach is invisible to the agent (abc8: the CIRCT arm never ran a single generator because this
+        # was missing). Append it to TASK.md (the agent always reads TASK.md) for every arm.
+        starter = (bdir / "STARTER_PROMPT.md").read_text() if (bdir / "STARTER_PROMPT.md").exists() else ""
+        if starter:
+            body += "\n\n---\n\n# Starter plan / approach for THIS arm (read this)\n\n" + starter
         if arm == "merlin_assisted":
-            bdir = C.BUNDLES / RX.ARM_BUNDLE[arm]
             add = (bdir / "TASK_ADDENDUM.md").read_text() if (bdir / "TASK_ADDENDUM.md").exists() else ""
             ws_task.write_text(body + ("\n\n---\n\n" + add if add else ""))
             for doc in MERLIN_WS_DOCS:
@@ -516,6 +538,7 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int) -
     else:
         shutil.copytree(ws / "submission", cand,
                         ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+        _strip_build_state(cand)   # clean, relocatable build per grade (abc9 L3-build bug)
         out = run_dir / "qa_history" / f"verdict_round_{rnd:02d}.json"
         out.parent.mkdir(parents=True, exist_ok=True)
         argv = ["--submission", str(cand), "--capsules-root", str(PILOT_SUBSET),
@@ -619,7 +642,7 @@ def finalize_report(ws: Path, run_dir: Path, model: str, effort: str, sandbox: s
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--arm", choices=["raw_baseline", "merlin_assisted"], default=ARM,
+    ap.add_argument("--arm", choices=["raw_baseline", "merlin_assisted", "cpp_merlininfra"], default=ARM,
                     help="which arm/bundle to run (default raw_baseline; the QA loop is identical)")
     ap.add_argument("--run-id", required=True)
     ap.add_argument("--model", default="claude-opus-4-8")
@@ -655,6 +678,16 @@ def main(argv: list[str] | None = None) -> int:
     arm = a.arm
     global _EXPERIMENT
     _EXPERIMENT = a.experiment
+
+    # DRIVER-SIDE grade env: qa_grade/_verilator_grade run build_package (cmake) for C++ submissions in
+    # THIS process's env. The conda cmake transitively needs libidn.so.11 (host has only .12) -> ensure
+    # the .compat_lib shim + conda libs are on LD_LIBRARY_PATH, else the C++ build fails "libidn.so.11:
+    # cannot open shared object file" and every grade is 0/0 (the abc8 rb blocker). Python arms have no
+    # build step so this is a harmless no-op for them.
+    _CE = "/scratch2/agustin/chipyard/.conda-env"
+    _compat = str(C.REPO / ".compat_lib")
+    os.environ["LD_LIBRARY_PATH"] = (f"{_compat}:{_CE}/lib:{_CE}/riscv-tools/lib:"
+                                     + os.environ.get("LD_LIBRARY_PATH", ""))
     if a.bundle:                                  # abc2 realistic: point the arm at its realistic bundle
         RX.ARM_BUNDLE[arm] = a.bundle
 
@@ -676,7 +709,7 @@ def main(argv: list[str] | None = None) -> int:
         # subprocess UNDER ANY python the agent's manifest invokes (even bare system python3). The
         # grader spawns the entrypoint inheriting this env, so prepend the .venv site-packages.
         import sysconfig as _sc
-        _site = f"{_ROOT}/.venv/lib/python3.13/site-packages"
+        _site = strPath(f"{_ROOT}/.venv/lib/python3.13/site-packages")
         os.environ["PYTHONPATH"] = _site + (":" + os.environ["PYTHONPATH"] if os.environ.get("PYTHONPATH") else "")
         # sanity: confirm xdsl is importable in this env right now (fail LOUD if the framework is broken)
         import importlib.util as _u
@@ -878,6 +911,7 @@ def main(argv: list[str] | None = None) -> int:
             return {"attempt": attempt, "all_pass": False, "n_passed": 0, "n_capsules": 20, "per_capsule": []}
         shutil.copytree(ws / "submission", vcand,
                         ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+        _strip_build_state(vcand)   # clean, relocatable build for the L3 cert (abc9 L3-0/20 'build' bug)
         vruns = run_dir / "_qa_work" / f"vruns_{attempt}"
         adapters = {"L2": _CR._spike_verilator_adapter("spike"),
                     "L3": _CR._spike_verilator_adapter("verilator")}

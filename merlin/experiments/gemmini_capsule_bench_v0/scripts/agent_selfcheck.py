@@ -24,6 +24,21 @@ from __future__ import annotations
 import argparse, json, shutil, sys
 from pathlib import Path
 
+
+def _strip_build_state(root: Path) -> None:
+    """Delete ALL cmake/ninja build state under `root` so a graded copy configures from scratch in its own
+    absolute path. `ignore_patterns("build")` only drops a dir literally named 'build'; a stale CMakeCache /
+    ninja state in any other location pins the ORIGINAL temp source dir and makes cmake error
+    ('source does not match cache used to generate cache'). Stripping these guarantees a clean, relocatable
+    build (the abc9 baseline 'L3 0/20 build' bug)."""
+    for p in list(root.rglob("CMakeCache.txt")) + list(root.rglob("CMakeFiles")) \
+            + list(root.rglob("build.ninja")) + list(root.rglob(".ninja_deps")) \
+            + list(root.rglob(".ninja_log")) + list(root.rglob("cmake_install.cmake")):
+        try:
+            shutil.rmtree(p) if p.is_dir() else p.unlink()
+        except Exception:
+            pass
+
 # operator-side modules (this tool is NOT part of the graded submission; the submission must stay
 # integrity-clean and never import merlin — but this harness may, exactly like a vendor's test rig)
 _HERE = Path(__file__).resolve().parent
@@ -70,6 +85,20 @@ def main(argv=None):
     if not PUBLIC_CAPSULES.is_dir():
         print(json.dumps({"error": "public capsule set not found"})); return 2
 
+    # FAITHFUL FEEDBACK: grade an ISOLATED COPY of the submission (no bench_contract / repo files sitting
+    # next to it), exactly like the real driver grade (cand_00). Otherwise the self-check runs the agent's
+    # entrypoints from a workspace where bench_contract IS present, so an agent reading a package-relative
+    # repo path (e.g. merlin/contract/schemas/...) PASSES self-check but the standalone grade CRASHES — the
+    # self-check would lie. EXCLUDE build/ exactly like the driver grade (a copied CMakeCache has absolute
+    # paths to the original location and would break) -> a from-scratch build, same as the grade (fast: the
+    # LLVM/MLIR is prebuilt, the OOT project is small).
+    import tempfile as _tf2
+    _isodir = Path(_tf2.mkdtemp(prefix="selfcheck_iso_"))
+    shutil.copytree(sub, _isodir / "submission",
+                    ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+    sub = _isodir / "submission"
+    _strip_build_state(sub)   # every grade builds from scratch in its OWN path — see helper
+
     adapters, sim = _adapters(a.sim)
     barrier_tier = SIM_TIER[sim]
     # subset selection (operator-side capsule dirs)
@@ -91,11 +120,31 @@ def main(argv=None):
 
     # build + run + compare (parallel); CG.grade handles the agent's 4 entrypoints + the tier ladder
     try:
-        CG.grade(str(sub), capsules_root=str(caps_root), runs_root=str(runs_root),
-                 labels={"public", "dev"}, contract=str(_REPO / "merlin/contract"),
-                 oracle_adapters=adapters, timeout=a.timeout, max_workers=a.workers)
+        _score = CG.grade(str(sub), capsules_root=str(caps_root), runs_root=str(runs_root),
+                          labels={"public", "dev"}, contract=str(_REPO / "merlin/contract"),
+                          oracle_adapters=adapters, timeout=a.timeout, max_workers=a.workers)
     except Exception as e:
         print(json.dumps({"error": f"grade failed: {str(e)[:300]}"})); return 1
+
+    # SURFACE a build / integrity failure that prevented ANY capsule from running. Without this the agent
+    # only sees n_capsules=0 with no reason and (as happened) misreads it as a "stubbed grader". The build
+    # stderr is compiler/cmake output — it contains no golden tensors, so it is safe to show.
+    if isinstance(_score, dict) and _score.get("failure"):
+        f = _score["failure"]
+        out = {"sim": sim, "barrier_tier": barrier_tier, "n_passed": 0, "n_capsules": 0,
+               "all_pass": False, "per_capsule": [],
+               "build_failed": True, "failure_plane": f.get("plane"),
+               "failure_category": f.get("category"), "detail": f.get("detail"),
+               "note": "Your package did NOT build/scan, so ZERO capsules ran — this is NOT a stubbed "
+                       "grader. Fix the build first (see 'detail' for the cmake/compiler stderr). NOTE: "
+                       "the grade builds an ISOLATED COPY of your package WITHOUT the build/ tree, so your "
+                       "manifest 'build' must support a CLEAN configure (provide a 'configure' step, e.g. "
+                       "cmake -S <src> -B <build>, not only 'cmake --build'); build commands run from the "
+                       "package root, so relative paths and $MLIR_DIR/$LLVM_DIR/$CM env vars are honored."}
+        txt = json.dumps(out, indent=2); print(txt)
+        if a.out:
+            Path(a.out).write_text(txt)
+        return 1
 
     # FULL developer visibility: read each capsule_result.json directly (not the over-redacted helper)
     # and surface everything the agent's OWN run produced — its command buffer, decoded RoCC trace +
