@@ -25,10 +25,11 @@ import yaml
 
 def _repo_root():
     from pathlib import Path as _P
-    p=_P(__file__).resolve()
-    while p!=p.parent and not (p/"merlin"/"python").is_dir(): p=p.parent
+    p = _P(__file__).resolve()
+    while p != p.parent and not (p / "merlin" / "python").is_dir():
+        p = p.parent
     return p
-_ROOT=_repo_root()
+_ROOT = _repo_root()
 
 EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
 REPO = EXP.parent.parent
@@ -221,9 +222,12 @@ def test_oracles_endtoend():
     if not (ref / "manifest.yaml").is_file():
         _ok("reference backend agent_spec_v1 present", False, "missing"); return
     CE = "/scratch2/agustin/chipyard/.conda-env"
+    _compat = str(REPO / ".compat_lib")
     env = dict(_os.environ)
     env["PATH"] = f"{CE}/bin:{CE}/riscv-tools/bin:" + env.get("PATH", "")
-    env["LD_LIBRARY_PATH"] = f"{CE}/lib:{CE}/riscv-tools/lib:" + env.get("LD_LIBRARY_PATH", "")
+    # MIRROR the driver's grade env exactly (incl. .compat_lib for libidn) so the gate fails iff a real
+    # run would. (.compat_lib omission is exactly what made abc8's C++ build fail.)
+    env["LD_LIBRARY_PATH"] = f"{_compat}:{CE}/lib:{CE}/riscv-tools/lib:" + env.get("LD_LIBRARY_PATH", "")
 
     def _grade(sub, sim, to):
         r = subprocess.run([PY, str(SCRIPTS / "agent_selfcheck.py"), "--submission", str(sub),
@@ -235,6 +239,19 @@ def test_oracles_endtoend():
             return {"error": (r.stdout or r.stderr)[-200:]}
 
     try:
+        # FROM-CLEAN C++ build: copy the ref, wipe its build dir, grade -> forces cmake CONFIGURE (the step
+        # where libidn bites). A prebuilt backend skips configure and would mask the abc8 blocker.
+        clean = Path(_tf.mkdtemp(dir="/tmp", prefix="clean_cpp_")) / "sub"
+        import shutil as _sh
+        _sh.copytree(ref, clean, symlinks=True)
+        for bd in clean.rglob("build"):
+            if bd.is_dir():
+                _sh.rmtree(bd, ignore_errors=True)
+        cb = _grade(clean, "spike", 700)
+        _ok("C++ builds FROM CLEAN (cmake configure ok — catches libidn-class env bugs)",
+            cb.get("n_capsules") == 1 and "FAIL[build]" not in str(cb.get("error", "")) and
+            "libidn" not in str(cb), f"n={cb.get('n_passed')}/{cb.get('n_capsules')} {str(cb.get('error',''))[:60]}")
+
         sp = _grade(ref, "spike", 300)
         c = (sp.get("per_capsule") or [{}])[0]
         _ok("spike RUNS to a real L2=pass on the reference backend",

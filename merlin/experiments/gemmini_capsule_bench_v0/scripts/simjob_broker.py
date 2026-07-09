@@ -53,7 +53,9 @@ def _sim_env() -> dict:
     e = dict(os.environ)
     e["PATH"] = f"{CE}/bin:{CE}/riscv-tools/bin:" + e.get("PATH", "")
     e["RISCV"] = f"{CE}/riscv-tools"
-    e["LD_LIBRARY_PATH"] = f"{CE}/lib:{CE}/riscv-tools/lib:" + e.get("LD_LIBRARY_PATH", "")
+    # .compat_lib first: the conda cmake needs libidn.so.11 (host has only .12) during C++ build configure
+    compat = str(HERE.parents[3] / ".compat_lib")   # scripts -> capsule_bench_v0 -> experiments -> <repo>/.compat_lib
+    e["LD_LIBRARY_PATH"] = f"{compat}:{CE}/lib:{CE}/riscv-tools/lib:" + e.get("LD_LIBRARY_PATH", "")
     return e
 
 
