@@ -3,26 +3,35 @@
 This benchmark drives the SAME kernels (int8 matmul/conv shapes) through multiple Gemmini
 code-generation approaches (golden bareMetalC, generated MLIR OOT backends, the hand-written C++
 Gemmini dialect via IREE) and compares cycles / wall-time / utilization / correctness. It reuses the
-capsule_bench_v0 libraries (capsule emit, deterministic golden, ELF->sim->cycles path)."""
+capsule_bench_v0 libraries (capsule emit, deterministic golden, ELF->sim->cycles path).
+
+Repo-root discovery + run/report routing are shared via ``merlin.benchharness``; the perf-specific
+constants + math (DIM, PEAK, align/matmul_macs/utilization_pct) stay here.
+"""
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[4]
+# Self-contained bootstrap (git first, parents[] fallback), then put merlin/python on the path.
+_HERE = Path(__file__).resolve()
+_git = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=str(_HERE.parent),
+                      capture_output=True, text=True).stdout.strip()
+REPO = Path(_git) if _git else _HERE.parents[4]
+sys.path.insert(0, str(REPO / "merlin" / "python"))
+
+from merlin.benchharness import runs_root, reports_root  # noqa: E402
+
 EXP = REPO / "merlin" / "experiments" / "gemmini_perf_bench"
-KERNELS = EXP / "kernels"            # one capsule dir per kernel + kernel_corpus.yaml
-# Generated outputs live under the canonical three-root layout (see CLAUDE.md
-# "Generated-output convention"): runs under runs/, figures under artifacts/plots/.
-RUNS = REPO / "runs" / "gemmini" / "perf-bench"
-REPORTS = REPO / "artifacts" / "plots" / "gemmini" / "perf-bench"
-MODEL2MLIR = Path("/scratch/agustin/projects/model2MLIR/workloads")
+KERNELS = EXP / "kernels"                                  # one capsule dir per kernel + corpus.yaml
+RUNS = runs_root("gemmini", "perf-bench")                  # runs/gemmini/perf-bench
+REPORTS = reports_root("plots", "gemmini", "perf-bench")   # artifacts/plots/gemmini/perf-bench
+MODEL2MLIR = Path("/scratch/agustin/projects/model2MLIR/workloads")  # external corpus (see paths.ext_path)
 
 # Gemmini systolic array dimension (16x16 PE) -> peak 256 MACs/cycle. Used for utilization.
 DIM = 16
 PEAK_MACS_PER_CYCLE = DIM * DIM
-
-sys.path.insert(0, str(REPO / "merlin" / "python"))
 
 
 def align(n: int, m: int = DIM) -> int:
