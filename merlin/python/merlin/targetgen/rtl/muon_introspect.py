@@ -144,9 +144,10 @@ def build_facts() -> dict[str, Any]:
 
 
 def default_facts_path() -> Path:
-    # this file: <repo>/merlin/python/merlin/targetgen/rtl/muon_introspect.py; parents[4] = <repo>/merlin
-    return (Path(__file__).resolve().parents[4]
-            / "targets/muon/contracts/rtl_facts/muon_facts.json")
+    # muon has no hand-curated merlin/targets/muon; the resolver routes it to artifacts/targets/muon
+    # (or $MERLIN_RTL_FACTS). Muon uses a distinct filename (muon_facts.json) next to the pin.
+    from .facts import rtl_facts_path
+    return rtl_facts_path("muon").with_name("muon_facts.json")
 
 
 def main(argv: list[str] | None = None) -> int:

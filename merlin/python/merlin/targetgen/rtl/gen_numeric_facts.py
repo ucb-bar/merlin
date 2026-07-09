@@ -16,8 +16,8 @@ from __future__ import annotations
 import argparse, json
 from pathlib import Path
 
-_DEFAULT_FACTS = (Path(__file__).resolve().parents[5]
-                  / "merlin/targets/gemmini/contracts/rtl_facts/facts.json")
+from .facts import rtl_facts_path
+_DEFAULT_FACTS = rtl_facts_path("gemmini")
 
 _TMPL = '''"""GENERATED from RTL facts by gen_numeric_facts — numeric-SHAPE sanity (NOT a numeric oracle)."""
 from __future__ import annotations

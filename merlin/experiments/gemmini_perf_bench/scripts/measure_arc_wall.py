@@ -9,9 +9,12 @@ from __future__ import annotations
 import json, subprocess, time, os, sys
 from pathlib import Path
 import _pbcommon as PB
+from merlin.targetgen.rtl.facts import rtl_cache_dir, rtl_facts_path
 
 REPO = PB.REPO
-RF = REPO / "merlin/targets/gemmini/contracts/rtl_facts"
+# PIN = committed distilled artifacts; CACHE = purgeable arc scratch (never inside merlin/).
+PIN = rtl_facts_path("gemmini").parent
+CACHE = rtl_cache_dir("gemmini", ensure=True)
 PYBIN = str(REPO / ".venv/bin/python")
 GEN = "merlin.targetgen.rtl.gen_rocc_replay"
 H = str(REPO / "merlin/python/merlin/targetgen/rtl/replay_json_to_h.py")
@@ -28,24 +31,25 @@ def cap_yaml(name):
 
 
 def build(cap, trace):
-    subprocess.run([PYBIN, "-m", GEN, str(cap), str(trace), "--out", str(RF / "r.json")],
+    subprocess.run([PYBIN, "-m", GEN, str(cap), str(trace), "--out", str(CACHE / "r.json")],
                    cwd=REPO / "merlin/python", capture_output=True)
-    subprocess.run([PYBIN, H, str(RF / "r.json"), str(RF / "replay_active.h")], capture_output=True)
-    subprocess.run(["clang", "-O2", "-w", "-I", str(RF), str(RF / "gemmini_arc_replay.c"),
-                    str(RF / "gemmini.o"), "-o", str(RF / "rbin")], capture_output=True)
+    subprocess.run([PYBIN, H, str(CACHE / "r.json"), str(CACHE / "replay_active.h")], capture_output=True)
+    subprocess.run(["clang", "-O2", "-w", "-I", str(CACHE), "-I", str(PIN),
+                    str(PIN / "gemmini_arc_replay.c"), str(CACHE / "gemmini.o"),
+                    "-o", str(CACHE / "rbin")], capture_output=True)
 
 
 def time_rbin():
     best = 1e9
     for _ in range(REPS):
         t0 = time.perf_counter()
-        subprocess.run([str(RF / "rbin")], capture_output=True, timeout=300)
+        subprocess.run([str(CACHE / "rbin")], capture_output=True, timeout=300)
         best = min(best, time.perf_counter() - t0)
     return best
 
 
 def main():
-    arc = json.loads((RF / "arc_results.json").read_text())
+    arc = json.loads((PIN / "arc_results.json").read_text())
     by = {c["capsule"]: c for c in arc["capsules"]}
     for name, c in by.items():
         cy = cap_yaml(name); tr = RUNS / name / "generated/instruction_trace.json"
@@ -67,7 +71,7 @@ def main():
                                "note": "verilator = measured per-kernel sim wall (boot+kernel); firesim = measured per-run"}
     except Exception as e:
         arc["rtl_wall_ref"] = {"error": repr(e)}
-    (RF / "arc_results.json").write_text(json.dumps(arc, indent=2))
+    (PIN / "arc_results.json").write_text(json.dumps(arc, indent=2))
     am = [c["wall_s"] for c in by.values() if c.get("wall_s")]
     print(f"\narc wall: median {1e3*sorted(am)[len(am)//2]:.1f} ms over {len(am)} capsules; "
           f"verilator ref {arc['rtl_wall_ref'].get('verilator_wall_s_median')} s")

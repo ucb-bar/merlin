@@ -4,9 +4,13 @@ from __future__ import annotations
 import json, re, subprocess, sys, os
 from pathlib import Path
 import _pbcommon as PB
+from merlin.targetgen.rtl.facts import rtl_cache_dir, rtl_facts_path
 
 REPO = PB.REPO
-RF = REPO / "merlin/targets/gemmini/contracts/rtl_facts"
+# PIN = committed distilled artifacts (gemmini_arc_replay.c, gemmini_arc_ports.h, arc_results.json);
+# CACHE = purgeable arc scratch (gemmini.o input, r.json/replay_active.h/rbin outputs) — never in merlin/.
+PIN = rtl_facts_path("gemmini").parent
+CACHE = rtl_cache_dir("gemmini", ensure=True)
 PYBIN = str(REPO / ".venv/bin/python")
 GEN = "merlin.targetgen.rtl.gen_rocc_replay"
 H = str(REPO / "merlin/python/merlin/targetgen/rtl/replay_json_to_h.py")
@@ -22,13 +26,14 @@ def cap_yaml(name):
 
 
 def build_and_run(cap, trace, env=None):
-    subprocess.run([PYBIN, "-m", GEN, str(cap), str(trace), "--out", str(RF / "r.json")],
+    subprocess.run([PYBIN, "-m", GEN, str(cap), str(trace), "--out", str(CACHE / "r.json")],
                    cwd=REPO / "merlin/python", capture_output=True)
-    subprocess.run([PYBIN, H, str(RF / "r.json"), str(RF / "replay_active.h")], capture_output=True)
-    subprocess.run(["clang", "-O2", "-w", "-I", str(RF), str(RF / "gemmini_arc_replay.c"),
-                    str(RF / "gemmini.o"), "-o", str(RF / "rbin")], capture_output=True)
+    subprocess.run([PYBIN, H, str(CACHE / "r.json"), str(CACHE / "replay_active.h")], capture_output=True)
+    subprocess.run(["clang", "-O2", "-w", "-I", str(CACHE), "-I", str(PIN),
+                    str(PIN / "gemmini_arc_replay.c"), str(CACHE / "gemmini.o"),
+                    "-o", str(CACHE / "rbin")], capture_output=True)
     e = dict(os.environ, **(env or {}))
-    out = subprocess.run([str(RF / "rbin")], capture_output=True, text=True, timeout=300, env=e).stdout
+    out = subprocess.run([str(CACHE / "rbin")], capture_output=True, text=True, timeout=300, env=e).stdout
     return out
 
 
@@ -69,7 +74,7 @@ def main():
         print(f"  latency {L}: cycles={cyc}")
     n = len(res["capsules"]); ok = sum(1 for c in res["capsules"] if c["bitexact"])
     res["summary"] = {"n": n, "bitexact": ok}
-    (RF / "arc_results.json").write_text(json.dumps(res, indent=2))
+    (PIN / "arc_results.json").write_text(json.dumps(res, indent=2))
     print(f"\nwrote arc_results.json: {ok}/{n} bit-exact")
     return 0
 

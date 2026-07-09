@@ -33,10 +33,14 @@ from pathlib import Path
 from typing import Any
 
 from . import introspect as V1
+from .facts import rtl_cache_dir, rtl_facts_path
 
 _REPO = Path(__file__).resolve().parents[5]  # .../oscar-merlin
-_RTL_FACTS_DIR = _REPO / "merlin" / "targets" / "gemmini" / "contracts" / "rtl_facts"
-DEFAULT_HW = _RTL_FACTS_DIR / "gemmini_soc.hw.mlir"   # firtool --ir-hw output (cached)
+# Introspect scratch (the 21 MB firtool hw.mlir input + intermediates) lives in the PURGEABLE cache,
+# never inside merlin/. The committed facts.json is a promoted PIN of a run (see promote_facts).
+_CACHE_DIR = rtl_cache_dir("gemmini")
+DEFAULT_HW = _CACHE_DIR / "gemmini_soc.hw.mlir"      # firtool --ir-hw output (cached run product)
+FACTS_PIN = rtl_facts_path("gemmini")                # committed certified facts pin (checks read this)
 GEMMINI_ISA = Path(V1.DEFAULT_CHIPYARD) / "generators/gemmini/src/main/scala/gemmini/GemminiISA.scala"
 
 GENERATOR_VERSION = "rtl-introspect-v2-circt-hw"
@@ -166,9 +170,11 @@ def build_facts(hw_path: Path = DEFAULT_HW, isa_path: Path = GEMMINI_ISA,
     }
 
 
-def dump_facts(out_path: Path | str = _RTL_FACTS_DIR / "facts.json", **kw) -> dict[str, Any]:
-    """Build facts and cache to ``out_path``; cache-hit (no rebuild) when input SHAs are unchanged."""
-    out = Path(out_path)
+def dump_facts(out_path: Path | str | None = None, **kw) -> dict[str, Any]:
+    """Build facts and cache to ``out_path`` (default: the purgeable run/cache dir, NOT merlin/);
+    cache-hit (no rebuild) when input SHAs are unchanged. Promote the result into the committed pin
+    with :func:`promote_facts`."""
+    out = Path(out_path) if out_path is not None else _CACHE_DIR / "facts.json"
     rec = build_facts(**kw)
     if out.is_file():
         try:
@@ -180,6 +186,30 @@ def dump_facts(out_path: Path | str = _RTL_FACTS_DIR / "facts.json", **kw) -> di
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(rec, indent=2), encoding="utf-8")
     return rec
+
+
+# Small distilled artifacts promoted alongside facts.json (the derived RoCC replay header/source are
+# tiny and hand-consumed; the heavy hw.mlir/*.ll/*.o/arc bins stay in the purgeable cache).
+_PROMOTE_EXTRAS = ("gemmini.state.json", "arc_results.json", "gemmini_arc_ports.h", "gemmini_arc_replay.c")
+
+
+def promote_facts(target: str = "gemmini", *, src: Path | str | None = None) -> Path:
+    """Promote a certified run's ``facts.json`` (+ small derived extras, if present next to it) into
+    the committed target pin ``merlin/targets/<target>/contracts/rtl_facts/facts.json``. The run is
+    the source of truth; this pins the certified snapshot so the checks run without the toolchain."""
+    import shutil
+    src_facts = Path(src) if src is not None else _CACHE_DIR / "facts.json"
+    if not src_facts.is_file():
+        raise FileNotFoundError(f"no run facts.json to promote: {src_facts} (run dump_facts first)")
+    pin = rtl_facts_path(target)
+    pin.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src_facts, pin)
+    src_dir = src_facts.parent
+    for name in _PROMOTE_EXTRAS:
+        cand = src_dir / name
+        if cand.is_file():
+            shutil.copyfile(cand, pin.parent / name)
+    return pin
 
 
 # ------------------------------------------------------------------------- cross-check / validation
@@ -222,11 +252,17 @@ def validate(facts_rec: dict, contract: dict | None = None,
 def main(argv: list[str] | None = None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description="Deterministic RTL facts via CIRCT HW dialect (v2).")
-    ap.add_argument("--out", default=str(_RTL_FACTS_DIR / "facts.json"))
+    ap.add_argument("--out", default=str(_CACHE_DIR / "facts.json"),
+                    help="run/cache output (default: purgeable artifacts/cache/rtl_introspect/)")
     ap.add_argument("--hw", default=str(DEFAULT_HW))
+    ap.add_argument("--promote", action="store_true",
+                    help="after building, promote the certified facts.json into the committed target pin")
     ap.add_argument("--validate", action="store_true", help="cross-check vs contract + rocc_decode")
     a = ap.parse_args(argv)
     rec = dump_facts(a.out, hw_path=Path(a.hw))
+    if a.promote:
+        pin = promote_facts("gemmini", src=a.out)
+        print(f"promoted -> {pin}")
     facts = rec["facts"]
     acc = next((m for m in facts["memories"] if m["name"] == "accumulator"), {})
     funct = next((i for i in facts.get("interfaces", []) if i.get("name") == "funct_decode_table"), {})
