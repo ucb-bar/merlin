@@ -22,11 +22,19 @@ repos or MLIR plugins.
    targets get a promoted `contracts/rtl_facts/facts.json` pin (see
    `merlin.targetgen.rtl.circt_introspect --promote`); scratch stays in `artifacts/cache/`.
 2. Write `contracts/target_contract.yaml` (validate against
-   `merlin/schemas/target_contract.schema.yaml`).
-3. Run TargetGen to produce `contracts/dialect_plan.yaml` and a dialect scaffold
-   (the `merlin-targetgen` CLI, writing the codegen package to `artifacts/targets/<name>/`).
-4. Prototype the dialect in xDSL first (`merlin/python/merlin/xdsl_dialects/` /
-   `targetgen/backends/xdsl_backend.py`); promote to MLIR/C++ only when stable.
+   `merlin/schemas/target_contract.schema.yaml`). If it advertises the tensor-resident interface
+   (`features: [resident_packed_tensor|accumulator_commit, command_buffer]`, a `matmul` capability,
+   and `ops`/`types`), the rest of the dialect is **data-driven**.
+3. **Dialect is generated, not hand-written.** `synthesize_dialect_plan` derives
+   `contracts/dialect_plan.yaml` from the contract's `ops`/`types` (the interface→target lowering is
+   canonical), and `xdsl_dialects.targets.factory.build_dialect(name, plan=...)` synthesizes the IRDL
+   op/type classes from that plan — no per-target dialect module. The target registry
+   (`merlin.targetgen.target_registry`) resolves name → contract/plan/facts/backend. Run the
+   `merlin-targetgen` CLI to write the codegen package to `artifacts/targets/<name>/`.
+4. **What you still hand-write: the hardware backend.** The dialect + plan + lowering are generated,
+   but the runtime **backend** (`merlin/python/merlin/runtime/backends/<name>*.py` — the real
+   C/ISA codegen + execution) is not mechanizable and must be authored per target. This is the
+   remaining gap to a fully one-command target.
 5. Add conformance tests under `merlin/tests/conformance/` and per-target `tests/`.
 
 ## Reference

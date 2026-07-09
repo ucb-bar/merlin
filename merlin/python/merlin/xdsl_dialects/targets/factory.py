@@ -51,13 +51,16 @@ def _roles(plan: dict[str, Any]) -> dict[str, str]:
     return out
 
 
-def build_dialect(target: str, *, matmul_rhs_typed: bool = False,
-                  matmul_vl_policy: bool = False) -> BuiltDialect:
-    """Build the tensor-resident dialect for ``target`` from its committed dialect_plan."""
-    from merlin.targetgen.target_registry import load_dialect_plan
+def build_dialect(target: str, *, plan: dict[str, Any] | None = None,
+                  matmul_rhs_typed: bool = False, matmul_vl_policy: bool = False) -> BuiltDialect:
+    """Build the tensor-resident dialect for ``target``. ``plan`` overrides the committed
+    dialect_plan (e.g. a freshly TargetGen-generated plan that isn't on disk yet); otherwise the
+    target's committed plan is loaded via the registry."""
     from ..lowering.target_lowering import TargetSpec
 
-    plan = load_dialect_plan(target)
+    if plan is None:
+        from merlin.targetgen.target_registry import load_dialect_plan
+        plan = load_dialect_plan(target)
     dname = plan["dialect_name"]
     roles = _roles(plan)
     pack_n, mm_n = roles["resident_pack"], roles["matmul"]
