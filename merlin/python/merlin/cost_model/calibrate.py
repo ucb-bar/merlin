@@ -27,8 +27,9 @@ from merlin.cost_model.gemmini import EVENTS, GemminiCostModel
 
 HERE = Path(__file__).resolve().parent
 CALIB_SRC = HERE / "calib" / "gemmini_costmodel_calib.c"
-# HERE = merlin/python/merlin/cost_model -> parents[2] = top-level merlin/ dir
-STAGEF = HERE.parents[2] / "experiments" / "kernel_policy" / "stageF"
+# The cost-calibration ablation kernels are a LIBRARY-consumed benchmark input (this module compiles
+# them), so they live under merlin/benchmarks/, not experiments/. HERE=cost_model -> parents[2]=merlin/.
+STAGEF = HERE.parents[2] / "benchmarks" / "cost_calib"
 _CYC = re.compile(r"KIND\s+\d+\s+COUNT\s+\d+\s+CYCLES\s+(\d+)")
 _BARE_CYC = re.compile(r"REGION_CYCLES\s+(\d+)")
 

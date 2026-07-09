@@ -24,6 +24,9 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+# the ablation .c kernels are a library-consumed benchmark input (compiled by cost_model.calibrate too),
+# so they live under merlin/benchmarks/cost_calib/. HERE=stageF -> parents[2]=merlin/.
+CALIB_SRC = HERE.parents[2] / "benchmarks" / "cost_calib"
 FUNCT_NAMES = {0: "config", 1: "mvin2_B", 2: "mvin_A", 3: "mvout", 4: "compute_preloaded",
                5: "compute_accumulated", 6: "preload", 7: "flush", 14: "mvin3_bias"}
 _LOGLINE = re.compile(r"\(0x([0-9a-f]{8})\)")
@@ -74,7 +77,7 @@ def compile_variant(paths, spec, variant: str, n: int, out_dir: Path) -> Path:
            "-mcmodel=medany", "-fno-common", "-fno-builtin-printf",
            f"-DVARIANT_{variant.upper()}", f"-D{spec['sweep'][0]}={n}",
            f"-I{paths['rocc']}", f"-I{paths['rocc']}/include",
-           str(HERE / spec["harness"]), "-o", str(out), "-lm"]
+           str(CALIB_SRC / spec["harness"]), "-o", str(out), "-lm"]
     subprocess.run(cmd, check=True, capture_output=True)
     return out
 

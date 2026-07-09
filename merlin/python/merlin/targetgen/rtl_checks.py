@@ -21,7 +21,7 @@ and never per-shape magic numbers.
 
 This module is **advisory and un-wired**: it is imported by NOTHING in the frozen runner/grader/schema
 path, modifies no existing file, and changes no pass/fail verdict. It is scaffolding for the phased
-plan in ``merlin/experiments/gemmini_perf_bench/reports/rtl_checks_layer_design.md``.
+plan in ``artifacts/perf-bench/gemmini/rtl_checks_layer_design.md``.
 
 Run it against any existing decoded trace::
 

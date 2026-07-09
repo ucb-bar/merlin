@@ -10,7 +10,7 @@ to skip the expensive oracle on ``verdict == "reject"`` (the saving is realised 
 runner is never consulted about it).
 
 This is design Phase "advisory surfacing" + the opt-in pre-screen helper from
-``merlin/experiments/gemmini_perf_bench/reports/rtl_checks_layer_design.md``. The deeper phases (feed into the
+``artifacts/perf-bench/gemmini/rtl_checks_layer_design.md``. The deeper phases (feed into the
 agent loop, label runs checks-active, T1 spike-byproduct checks) remain follow-ups.
 
 CLI::
@@ -33,12 +33,10 @@ from .rtl.facts import target_contract_path
 
 _REPO = Path(__file__).resolve().parents[4]  # .../oscar-merlin
 _GEMMINI_CONTRACT = target_contract_path("gemmini")
-# capsule.yaml definitions live in these roots (merlin/contract corpus + the perf-bench kernels);
+# capsule.yaml definitions come from the corpus locator (canonical contract corpus + the perf corpus);
 # every capsule dir is named after the capsule, matching the run dir name.
-_CAPSULE_ROOTS = [
-    _REPO / "merlin/contract" / "capsules",
-    _REPO / "experiments" / "gemmini_perf_bench" / "kernels",
-]
+from merlin.common.corpora import capsule_corpus_roots
+_CAPSULE_ROOTS = capsule_corpus_roots()
 
 
 # --------------------------------------------------------------------------- RTL facts (real, cheap)
