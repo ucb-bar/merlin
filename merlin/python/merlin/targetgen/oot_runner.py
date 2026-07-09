@@ -104,28 +104,53 @@ def load_package(package_dir: str | Path, *, contract: str | Path | None = None)
 
 
 def build_package(pkg: Package, *, timeout: int = 1800) -> None:
-    """If the manifest declares a build block (C++ packages), run configure + build."""
+    """If the manifest declares a build block (C++ packages), run configure + build.
+
+    Runs each step FROM THE PACKAGE ROOT (cwd=pkg.directory) with the toolchain env exported, so a
+    natural manifest using RELATIVE paths (e.g. `bash build.sh`, `cmake --build mlir_oot/build`) or
+    toolchain env vars ($CM / $MLIR_DIR / $LLVM_DIR / $MERLIN_CLANG) builds correctly in the graded
+    copy — not only manifests that hard-code absolute {package}/{mlir_dir} placeholders. The grade copies
+    the package WITHOUT the build/ tree, so a CLEAN configure must be possible (a `configure` step, or a
+    self-configuring `command`). A step may be a list argv (preferred) or a shell string."""
     build = pkg.manifest.get("build")
     if not build:
         return
+    import os, shlex, shutil
     from .contract import toolchain as mlir_tc
+    mlir_dir = str(mlir_tc.mlir_cmake_dir())
+    llvm_dir = str(mlir_tc.mlir_install() / "lib" / "cmake" / "llvm")
     subst = {"{package}": str(pkg.directory.resolve()),
-             "{mlir_dir}": str(mlir_tc.mlir_cmake_dir()),
-             "{llvm_dir}": str(mlir_tc.mlir_install() / "lib" / "cmake" / "llvm")}
+             "{mlir_dir}": mlir_dir, "{llvm_dir}": llvm_dir}
+    # toolchain locations the manifest may reference by env var. These are TOOLCHAIN paths, not answers —
+    # the reference manifest gets the same values via {mlir_dir}/{llvm_dir} placeholders, so this is parity.
+    cmake = shutil.which("cmake") or "cmake"
+    env = dict(os.environ)
+    env.setdefault("MLIR_DIR", mlir_dir)
+    env.setdefault("LLVM_DIR", llvm_dir)
+    env.setdefault("CM", cmake)
+    env.setdefault("CMAKE", cmake)
+
+    def _resolve(a: str) -> str:
+        for k, v in subst.items():
+            a = a.replace(k, v)
+        return os.path.expandvars(a)   # expand $CM / $MLIR_DIR / ... from env
+
     for key in ("configure", "command"):
-        argv = build.get(key)
-        if not argv:
+        step = build.get(key)
+        if not step:
             continue
-        resolved = []
-        for a in argv:
-            for k, v in subst.items():
-                a = a.replace(k, v)
-            resolved.append(a)
-        argv = resolved
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        if isinstance(step, str):
+            argv = shlex.split(_resolve(step))
+        else:
+            argv = [_resolve(a) for a in step]
+        # run FROM the package dir so relative manifest paths resolve against the package root
+        proc = subprocess.run(argv, cwd=str(pkg.directory), env=env,
+                              capture_output=True, text=True, timeout=timeout)
         if proc.returncode != 0:
+            tail = (proc.stdout or "")[-800:] + (proc.stderr or "")[-2000:]
             raise CertFailure("build", FailureCategory.ELABORATION_ERROR,
-                              f"package build step {key} failed:\n{proc.stderr[-2000:]}")
+                              f"package build step {key} failed (rc={proc.returncode}):\n"
+                              f"$ {' '.join(argv)}\n{tail}")
 
 
 def integrity_scan(pkg: Package) -> None:
