@@ -651,7 +651,12 @@ def run_model(model: str, variant: str = "int8", *, work_root: Path | None = Non
         except Exception as e:  # noqa: BLE001
             res.gap_reason = res.gap_reason or f"K1 board run error: {str(e)[:200]}"
     else:
-        res.gap_reason = ("K1 board unavailable (MERLIN_K1_HOST unset) — RVV .so built and audited, "
+        # Distinguish "the caller did not ask for a board run" from "the board is unreachable" — both
+        # are not_run, but blaming an unset MERLIN_K1_HOST when the board is up and run_board=False was
+        # explicit writes a FALSE reason into the record. The gap string is the product here.
+        why = ("board run not requested (run_board=False)" if run_board is False
+               else "K1 board unavailable (MERLIN_K1_HOST unset / unreachable)")
+        res.gap_reason = (f"{why} — RVV .so built and audited, "
                           "host-VM correctness recorded; on-silicon timing pending")
 
     res.board_vlenb = k1_exec.board_vlenb()
