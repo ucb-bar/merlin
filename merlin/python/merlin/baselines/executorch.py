@@ -511,11 +511,20 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     # not spuriously marked fail (still honest: cos is the MEASURED int8-vs-fp32 cosine, not faked).
     if quantize:
         cos_thr, rel_thr = 0.99, 5e-2
+    # Random-init models ship no reproducible weights, so their CAPTURED golden is unreachable by a
+    # re-instantiated export: gating against it measures weight provenance, not the framework. Recompute
+    # the reference from THIS instance (as the int8 path already does) and LABEL the cell — the cos then
+    # means lowering-exactness, never a semantic match. Non-random-init models are untouched.
+    lowering_exact_only = _bundle.golden_unreproducible(model) and not compute_golden
+    if lowering_exact_only:
+        compute_golden = True
     res = BaselineResult(framework=FRAMEWORK, model=model, variant=variant,
                          substrate="k1_spacemit", cos_threshold=cos_thr, rel_threshold=rel_thr,
                          march=k1.K1_MARCH,
                          toolchain="spacemit-clang-19+executorch+xnnpack(rvv)",
                          framework_commit=et_commit(), timestamp=artifacts.utc_stamp())
+    if lowering_exact_only:
+        res.notes += _bundle.lowering_exactness_note(model)
 
     b = resolve_bundle(model, variant)
     if not b.golden.is_file():

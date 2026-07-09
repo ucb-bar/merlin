@@ -139,6 +139,39 @@ def full_env(model: str) -> dict[str, str]:
     return dict(FULL_FIDELITY_ENV.get(model, {}))
 
 
+# Models whose torch loader instantiates RANDOM weights (no pretrained checkpoint) AND whose capture
+# bundle ships no ``weights.safetensors``. Their captured golden came from a *different* seeded
+# instantiation, so a re-exported fp32 run can never reproduce it — even when the lowering is exact.
+#
+# MEASURED evidence (do not add a model here without it — an unjustified entry silently WEAKENS that
+# model's correctness gate):
+#   bitvla/fp32  cos=0.013323 vs captured golden, but 0.9999999999987 (rel 1.6e-06) vs compute_golden
+#   openvla/fp32 cos=0.009043 vs captured golden; TVM's host-VM lowering cos=1.0 on the same model
+#
+# Deliberately EXCLUDED despite being random-init-ish: ``rdt2`` — its recomputed golden reproduces the
+# capture exactly (norm 11.4439 both), so its captured golden IS reachable and must stay the gate.
+# ``rdt`` is excluded too (recompute 53.24 vs capture 52.88 — close but unresolved; measure first).
+# The llama family (tiny_llama/small_llama) loads real checkpoints and passes against captured goldens.
+#
+# For these models the correctness gate becomes LOWERING-EXACTNESS — "the framework reproduces eager
+# torch for THIS instantiation" — NOT a semantic match against a trained model. Every such cell must
+# say so; see ``lowering_exactness_note``. This mirrors the TVM arm (openvla cos=1.0) and the int8
+# path, which already recomputes its reference for the same reason.
+RANDOM_INIT_GOLDEN_UNREPRODUCIBLE: frozenset[str] = frozenset({"bitvla", "openvla"})
+
+
+def golden_unreproducible(model: str) -> bool:
+    """True if ``model``'s captured golden cannot be reproduced by re-instantiating its loader."""
+    return model in RANDOM_INIT_GOLDEN_UNREPRODUCIBLE
+
+
+def lowering_exactness_note(model: str) -> str:
+    """The honesty label a cell MUST carry when it is gated on lowering-exactness, not semantics."""
+    return (f" random-init({model}): gate=LOWERING-EXACTNESS (framework vs eager-torch on THIS seeded "
+            "instantiation), NOT a semantic match — the captured golden's weights are unrecoverable "
+            "(bundle ships no weights.safetensors), so cos measures lowering fidelity only.")
+
+
 def resolve(model: str, variant: str = "fp32") -> CaptureBundle:
     """Locate the capture bundle for a model+variant under artifacts/recaptures/.
 
