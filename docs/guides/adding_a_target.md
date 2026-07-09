@@ -15,8 +15,12 @@ repos or MLIR plugins.
 
 ## Steps
 
-1. Create `merlin/targets/<name>/` with `docs/`, `contracts/`, `examples/`, `generated/`, `tests/`
-   (each with an `AGENT.md`).
+1. Create `merlin/targets/<name>/` following the canonical per-target shape: `contracts/` and
+   `generated/` are **required** (each with an `AGENT.md`; `generated/` is gitignored output). Add
+   `docs/` / `examples/` only when you have real content — no empty stub dirs. The shared
+   `merlin_iface` dialect spec is NOT per-target (it lives in `merlin/contract/`). RTL-grounded
+   targets get a promoted `contracts/rtl_facts/facts.json` pin (see
+   `merlin.targetgen.rtl.circt_introspect --promote`); scratch stays in `artifacts/cache/`.
 2. Write `contracts/target_contract.yaml` (validate against
    `merlin/schemas/target_contract.schema.yaml`).
 3. Run TargetGen to produce `contracts/dialect_plan.yaml` and a dialect scaffold

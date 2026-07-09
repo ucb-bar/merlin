@@ -9,6 +9,9 @@ gemmini OOT-backend reference instance. The *accessor code* lives in
 ## What lives here
 - Contract specs: `*_contract.yaml`, `command_buffer_abi.yaml`, `scoring.yaml`, `integrity_policy.md`,
   `interface_grammar.md`, `VERSION`.
+- `merlin_iface.irdl.mlir` — the SHARED `merlin_iface` contract-dialect spec (the IRDL a C++ OOT tool
+  registers dynamically; mirrors `interface_grammar.md`). Regenerate with
+  `python -m merlin.targetgen.rtl.gen_iface_irdl`. It is target-agnostic — lives here, not per-target.
 - `schemas/` — fail-closed JSON-Schema validators (distinct from the loose YAML data-model in
   `merlin/schemas/`; only `command_buffer` overlaps, kept in sync by a test).
 - `examples/` — frozen golden inputs (g0–g2).

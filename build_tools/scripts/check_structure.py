@@ -36,10 +36,17 @@ REQUIRED_DIRS = [
     "merlin/runtime/c",
     "merlin/runtime/abi",
     "merlin/runtime/baremetal",
-    "merlin/targets/toy_npu/docs",
+    # Canonical per-target shape: contracts/ (the target definition) + generated/ (its output dir)
+    # are REQUIRED for every target; docs/ and examples/ are present when there's content (no empty
+    # stubs — see the WS4 de-pin cleanup). toy_npu is the fully-populated reference instance.
     "merlin/targets/toy_npu/contracts",
-    "merlin/targets/toy_npu/examples",
     "merlin/targets/toy_npu/generated",
+    "merlin/targets/toy_npu/docs",
+    "merlin/targets/toy_npu/examples",
+    "merlin/targets/gemmini/contracts",
+    "merlin/targets/gemmini/generated",
+    "merlin/targets/saturn/contracts",
+    "merlin/targets/saturn/generated",
     "merlin/schemas",
     "merlin/benchmarks/semantic_memory",
     "merlin/experiments/kernel_policy",
