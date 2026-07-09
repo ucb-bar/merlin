@@ -90,8 +90,12 @@ def render_markdown(results: list[BaselineResult]) -> str:
         f"**{n_pass}/{len(results)} pass** · {n_gap} not-built/not-run gaps · "
         f"{n_fallback} labeled scalar fallbacks across all cells.",
         "",
-        "_Legend: `pass <e2e-cycles> <RVV%>` | `fail` (ran, missed tolerance) | "
-        "`not_run`/`not_built` (explicit gap). Cycles are K1 rdtime estimates, not cycle-accurate._",
+        "_Legend: `pass <e2e latency> <RVV%>` (wall-clock ms/s, or `Mc` = M rdtime-cycle estimate) | "
+        "`fail` (ran, missed tolerance) | `not_run`/`not_built` (explicit gap)._",
+        "",
+        "_Per-cell caveats (see the report): RVV% is **whole-binary** and undersells kernel-vectorized arms "
+        "(e.g. EXO's compute kernel is 17–28% vs ~1% whole-ELF); some passes are on **random-init** models "
+        "(e.g. openvla) where cos is lowering-exactness, not a semantic match; latencies are single-core._",
     ]
     return "\n".join(lines)
 
