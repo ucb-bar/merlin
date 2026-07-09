@@ -29,3 +29,9 @@ contract are hand-curated with provenance pending confirmation against `Configs.
 
 We do **not** compile RTL into this dialect. RTL provides facts + an executable oracle; the
 target is generated from a constrained spec and accepted only after differential certification.
+
+`contracts/rtl_facts/facts.json` is the **promoted pin** of a `circt_introspect` run — the run over
+the RTL is the source of truth; the small pin lets the checks run without the CIRCT/firtool toolchain
+(CI, fresh checkouts). Heavy run scratch (`*.hw.mlir`, `*.ll`, arcilator bins) lives in the purgeable
+`artifacts/cache/rtl_introspect/gemmini/`, never here. Regenerate + re-pin:
+`python -m merlin.targetgen.rtl.circt_introspect --promote`.

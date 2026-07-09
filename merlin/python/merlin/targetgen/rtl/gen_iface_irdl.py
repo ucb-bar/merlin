@@ -30,7 +30,9 @@ _T2I = _LLVM / "bin" / "tblgen-to-irdl"
 _MLIROPT = _LLVM / "bin" / "mlir-opt"
 # the contract's reference ODS (mirrors merlin/contract/interface_grammar.md); used only to DERIVE the IRDL
 _REF_ODS_INC = _REPO / "artifacts/targets/gemmini/agent_spec_v1_mlir_oot/mlir_oot/include"
-_DEFAULT_OUT = _REPO / "merlin/targets/gemmini/contracts/irdl/merlin_iface.irdl.mlir"
+# merlin_iface is the SHARED contract dialect (not target-specific) — its pinned spec lives next to
+# interface_grammar.md in merlin/contract/, NOT under a per-target dir.
+_DEFAULT_OUT = _REPO / "merlin/contract/merlin_iface.irdl.mlir"
 _CAPSULES = _REPO / "merlin/contract" / "capsules"
 
 
