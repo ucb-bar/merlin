@@ -67,6 +67,8 @@ def build_region(H: int = 16, reuse_count: int | None = None, dtype: str = "i8",
         },
         "parameters": {"H": H, "K": K, "dtype": dtype, "epilogue": epilogue},
     }
+    from merlin.common.schemas import validate_or_raise
+    validate_or_raise(region, "workload_region")   # schemas/ rule: code validates what lives here
     return region
 
 
