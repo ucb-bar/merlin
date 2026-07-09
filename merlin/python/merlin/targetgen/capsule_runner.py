@@ -38,6 +38,8 @@ from . import rocc_decode as RD
 from . import trace_check as TCK
 from .contract import compile as oot_compile
 from .contract import schemas
+# shared, target-agnostic capsule I/O (also re-exported: callers use CR.discover_capsules/load_capsule)
+from .capsule_common import _cat, _flat, discover_capsules, load_capsule  # noqa: F401
 from .oot_runner import (CertFailure, Package, build_package, integrity_scan,
                          load_package, run_entrypoint)
 
@@ -91,14 +93,6 @@ def default_adapters() -> dict[str, Callable]:
             "L3": _spike_verilator_adapter("verilator")}
 
 
-def _flat(nested) -> list:
-    out: list = []
-    if nested and isinstance(nested[0], list):
-        for r in nested:
-            out.extend(r)
-    else:
-        out.extend(nested)
-    return out
 
 
 def _exact_match(a: dict, b: dict) -> bool:
@@ -341,33 +335,10 @@ def _write_run_manifest(paths: RunPaths, run_id: str, name: str, status: str,
         yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
 
 
-def _cat(name: str):
-    """Resolve a FailureCategory by name, tolerant to the enum's membership."""
-    from aet.core.failures import FailureCategory
-    try:
-        return getattr(FailureCategory, name)
-    except AttributeError:
-        return FailureCategory.RUNNER_CRASH
 
 
-def load_capsule(capsule_dir: str | Path, *, contract: str | Path | None = None) -> dict:
-    """Load + validate a capsule.yaml; stamp its directory for interface-MLIR resolution."""
-    d = Path(capsule_dir)
-    cap = yaml.safe_load((d / "capsule.yaml").read_text(encoding="utf-8"))
-    schemas.validate(cap, "capsule", contract=contract)
-    cap["__dir__"] = str(d)
-    return cap
 
 
-def discover_capsules(root: str | Path, *, labels: set[str] | None = None,
-                      contract: str | Path | None = None) -> list[dict]:
-    """Load every capsule under ``root`` (recursively), optionally filtered by label."""
-    caps = []
-    for cy in sorted(Path(root).rglob("capsule.yaml")):
-        cap = load_capsule(cy.parent, contract=contract)
-        if labels is None or cap.get("label") in labels:
-            caps.append(cap)
-    return caps
 
 
 def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str | Path,
