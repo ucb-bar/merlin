@@ -279,9 +279,27 @@ def main() -> int:
     from torch.export import export
 
     # 1. Load model; substitute the CAPTURED input so the export trace matches the captured golden.
+    #    Mirror the consistent-capture harness (model2MLIR/workloads/capture_consistent.py): seed the
+    #    instantiation so weight init is reproducible, THEN perturb any exactly-zero parameters with
+    #    small noise. DiT / flow-matching models (rdt, rdt2) zero-init their adaLN-Zero OUTPUT HEAD,
+    #    so a fresh random-init eager forward is EXACTLY ZERO — which made our recomputed golden a
+    #    zero tensor and the int8-vs-fp32 cosine degenerate (cos=0.0, rel=0.0: BOTH the golden and the
+    #    ExecuTorch output were all-zeros, not an XNNPACK/delegate bug). The capture harness perturbs
+    #    those zero params so the captured golden exercises the full numeric path (rdt2 golden
+    #    norm=11.4, rdt=52.9); the recompute here MUST do the identical thing or the reference is a
+    #    zero tensor for any zero-init-head model. Models with no exactly-zero params (llama/bitvla/
+    #    xr0/…) are untouched — the loop is a no-op — so this is non-regressive. The perturbation is
+    #    applied to the SAME instance the golden and the int8 swap both derive from, so the gate stays
+    #    a self-consistent int8-vs-fp32 comparison.
     loader = _load_loader(Path(args.loader))
+    torch.manual_seed(0)
+    np.random.seed(0)
     model, _example = loader.get_model_and_inputs()
     model = model.eval()
+    with torch.no_grad():
+        for _p in model.parameters():
+            if float(_p.detach().abs().max()) == 0.0:
+                _p.copy_(torch.randn_like(_p) * 0.02)
 
     npz = np.load(args.inputs_npz)
     keys = list(npz.keys())
