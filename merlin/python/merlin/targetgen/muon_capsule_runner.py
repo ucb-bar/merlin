@@ -31,6 +31,8 @@ from aet.core.run_spec import RunSpec
 
 from . import capsule_golden as CG
 from .contract import schemas
+# shared, target-agnostic capsule I/O (also re-exported for callers using MR.discover_capsules/load_capsule)
+from .capsule_common import _cat, _flat, discover_capsules, load_capsule  # noqa: F401
 from .muon_oracles import default_adapters
 from .oot_runner import (CertFailure, Package, build_package, integrity_scan,
                          load_package, run_entrypoint)
@@ -67,14 +69,6 @@ class TierResult:
                 "timing": self.timing}
 
 
-def _flat(nested) -> list:
-    out: list = []
-    if nested and isinstance(nested[0], list):
-        for r in nested:
-            out.extend(r)
-    else:
-        out.extend(nested)
-    return out
 
 
 def _match(a: dict, b: dict, atol: float = 1e-3) -> bool:
@@ -283,30 +277,10 @@ def _write_run_manifest(paths: RunPaths, run_id: str, name: str, status: str,
         yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
 
 
-def _cat(name: str):
-    from aet.core.failures import FailureCategory
-    try:
-        return getattr(FailureCategory, name)
-    except AttributeError:
-        return FailureCategory.RUNNER_CRASH
 
 
-def load_capsule(capsule_dir: str | Path, *, contract: str | Path | None = None) -> dict:
-    d = Path(capsule_dir)
-    cap = yaml.safe_load((d / "capsule.yaml").read_text(encoding="utf-8"))
-    schemas.validate(cap, "capsule", contract=contract)
-    cap["__dir__"] = str(d)
-    return cap
 
 
-def discover_capsules(root: str | Path, *, labels: set[str] | None = None,
-                      contract: str | Path | None = None) -> list[dict]:
-    caps = []
-    for cy in sorted(Path(root).rglob("capsule.yaml")):
-        cap = load_capsule(cy.parent, contract=contract)
-        if labels is None or cap.get("label") in labels:
-            caps.append(cap)
-    return caps
 
 
 def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str | Path,
