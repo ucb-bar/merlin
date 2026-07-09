@@ -204,7 +204,7 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
     from ..runtime.backends import gemmini as gem
     from ..runtime.reference import reference_outputs, outputs_match
     from ..runtime.simulator import simulate
-    from ..eval.gemmini_suite import toolchain_shas
+    from .eval.gemmini_suite import toolchain_shas
 
     interface_mlir = Path(interface_mlir)
     rung = interface_mlir.stem.split(".")[0]
