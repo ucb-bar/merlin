@@ -608,6 +608,48 @@ def _accumulator_resident_v3_pre_schedule(MR: int, NR: int, KC: int,
     """
     NB = NR_bmm if NR_bmm is not None else NR
     MM = MR_mm if MR_mm is not None else MR
+    if __import__("os").environ.get("MERLIN_PAD_M"):
+        # M-PADDING (default OFF): pad matmul M to multiple of MR=4 BEFORE tiling so small-M (openvla M=17)
+        # register-blocks CLEANLY at MR=4 (no masked transfer_write scalar fallback). Measure vs MR=1 vf.
+        return f"""\
+module attributes {{transform.with_named_sequence}} {{
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
+    %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %padded, %pad, %cp = transform.structured.pad %mm pad_to_multiple_of [4] {{padding_values = [0.000000e+00 : f32, 0.000000e+00 : f32, 0.000000e+00 : f32], padding_dimensions = [0]}} : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    %t1, %lmn:2 = transform.structured.tile_using_for %padded tile_sizes [4, {NR}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    %mm2 = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t2, %lk = transform.structured.tile_using_for %mm2 tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    transform.structured.vectorize %t2 vector_sizes [4, {NR}, 1] : !transform.any_op
+    %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.transfer_permutation_patterns
+      transform.apply_patterns.vector.reduction_to_contract
+    }} : !transform.any_op
+    transform.yield
+  }}
+}}
+"""
+    # EXPERIMENT (env MERLIN_VEC_EW, default OFF -> baseline byte-identical): after matmul/bmm are tiled
+    # + vectorized, the remaining linalg.generic ops are the NON-matmul ops (activations/softmax/norm/
+    # layout) — which otherwise fall through convert-linalg-to-loops to SCALAR (openvla's 1100ms). Match
+    # + scoped-vectorize them here. NOTE: this is the BLUNT version (matches ALL generics incl. reduction
+    # softmax/norm — may break cos or explode); the measurement tells us if scoped/tagged is needed.
+    # PER-RANK BOUNDED vectorize (env MERLIN_VEC_RANK, default OFF): the non-matmul parallel generics
+    # (tagged merlin.vec_rN by the pre-pass, N = loop rank) are vectorized with BOUNDED vector_sizes
+    # [1,..,1,8] — innermost dim by 8 lanes (VLEN256/f32), NOT the plain no-sizes vectorize that
+    # explodes (vector<17x576>=9792 lanes -> 8725ms). Per rank because openvla generics are rank 2/3/4.
+    _ew = ("""
+    %g2 = transform.structured.match attributes{merlin.vec_r2} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.structured.vectorize %g2 vector_sizes [1, 8] : !transform.any_op
+    %g3 = transform.structured.match attributes{merlin.vec_r3} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.structured.vectorize %g3 vector_sizes [1, 1, 8] : !transform.any_op
+    %g4 = transform.structured.match attributes{merlin.vec_r4} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.structured.vectorize %g4 vector_sizes [1, 1, 1, 8] : !transform.any_op"""
+           if __import__("os").environ.get("MERLIN_VEC_RANK") else (
+    """
+    %g = transform.structured.match ops{["linalg.generic"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.structured.vectorize %g : !transform.any_op"""
+           if __import__("os").environ.get("MERLIN_VEC_EW") else ""))
     return f"""\
 module attributes {{transform.with_named_sequence}} {{
   transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
@@ -620,7 +662,7 @@ module attributes {{transform.with_named_sequence}} {{
     %bt1, %blmn:3 = transform.structured.tile_using_for %bm tile_sizes [1, {MR}, {NB}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
     %bm2 = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %bt2, %blk = transform.structured.tile_using_for %bm2 tile_sizes [0, 0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-    transform.structured.vectorize %bt2 vector_sizes [1, {MR}, {NB}, 1] : !transform.any_op
+    transform.structured.vectorize %bt2 vector_sizes [1, {MR}, {NB}, 1] : !transform.any_op{_ew}
     %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.apply_patterns to %f {{
       transform.apply_patterns.vector.transfer_permutation_patterns

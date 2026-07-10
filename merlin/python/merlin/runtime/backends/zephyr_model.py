@@ -191,6 +191,25 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
     lower_quant_ext(module)
     lower_bf16_matmul_f32acc(module)
     fix_bool_sitofp(module)
+    # PER-RANK VECTORIZE TAGGING (env MERLIN_VEC_RANK, default OFF -> baseline byte-identical): tag each
+    # all-parallel (non-reduction) linalg.generic with `merlin.vec_r{rank}` so the transform schedule can
+    # BOUNDED-vectorize the scalar non-matmul ops by rank (the win lever for openvla — ~900ms of scalar
+    # parallel generics -> ~110ms vectorized). Reductions (softmax/norm) skipped (need stable form).
+    import os as _os
+    if _os.environ.get("MERLIN_VEC_RANK"):
+        from xdsl.dialects.builtin import UnitAttr
+        n_tag = 0
+        for op in module.walk():
+            if op.name != "linalg.generic":
+                continue
+            its = str(op.properties.get("iterator_types", ""))
+            if "reduction" in its or "parallel" not in its:
+                continue
+            rank = its.count("iterator_type")
+            if 1 <= rank <= 4:
+                op.attributes[f"merlin.vec_r{rank}"] = UnitAttr()
+                n_tag += 1
+        print(f"[MERLIN_VEC_RANK] tagged {n_tag} all-parallel generics for bounded vectorize")
     out = work / "model.prepared.mlir"
     out.write_text(to_text(module))
     return out

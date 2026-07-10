@@ -162,6 +162,13 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
         f"transform-preload-library{{transform-library-paths={sched_path}}}",
         "transform-interpreter{entry-point=__transform_main}",
         "canonicalize", "cse",
+        # POST-matmul elementwise fusion (env-gated, default OFF -> baseline byte-identical): after the
+        # schedule has tiled/vectorized the matmuls (so the `ops{["linalg.matmul"]}` match already ran),
+        # it is now SAFE to fuse the remaining elementwise generics — collapsing the non-matmul producer
+        # ->consumer chains so they don't each materialize an intermediate to DRAM (the dispatch-overhead
+        # bucket that loses openvla/rdt2 to XNNPACK). cos-gated before any claim.
+        *( ["func.func(linalg-fuse-elementwise-ops)", "canonicalize", "cse"]
+           if __import__("os").environ.get("MERLIN_FUSE_POST") else [] ),
         "func.func(linalg-generalize-named-ops)",   # remaining (non-vectorized) ops -> loops
         "one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map}",
         brop,
