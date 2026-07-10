@@ -13,7 +13,7 @@ dependencies = ["pyyaml"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pyyaml", "pydantic", "rich"]
-xdsl = ["xdsl"]
+xdsl = ["xdsl>=0.68"]
 # Kernel-mining extras: Exo compile-to-C ingest, a columnar feature table, evaluation plots.
 # AST structural mining (tree-sitter parses diverse kernel C without needing framework headers).
 kernels-ast = ["tree-sitter", "tree-sitter-c"]
