@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from pathlib import Path
 from typing import Any
 
@@ -50,13 +49,37 @@ FUNCT3 = 0x3
 
 
 # --------------------------------------------------------------- HW-dialect accumulator extraction
-_ACC_MOD_RE = re.compile(r"hw\.module\s+(?:private\s+)?@AccumulatorMem\b([^\n]*)\)")
-_WRITE_ADDR_RE = re.compile(r"io_write_bits_addr\s*:\s*i(\d+)")
-_WRITE_LANE_RE = re.compile(r"io_write_bits_data_(\d+)_0\s*:\s*i(\d+)")
-_WRITE_MASK_RE = re.compile(r"io_write_bits_mask_(\d+)\s*:\s*i1")
+def _int_width(typ: str) -> int | None:
+    """Bit width of an ``iN`` HW/MLIR integer type token (``i9`` -> 9), else None."""
+    typ = typ.strip()
+    return int(typ[1:]) if typ.startswith("i") and typ[1:].isdigit() else None
 
 
-_ACC_INST_RE = re.compile(r"hw\.instance\s+\S+\s+@AccumulatorMem\b")
+def _paren_span(line: str, open_idx: int) -> int:
+    """Index of the ``)`` that closes the ``(`` at ``open_idx`` (balanced), or -1."""
+    depth = 0
+    for j in range(open_idx, len(line)):
+        if line[j] == "(":
+            depth += 1
+        elif line[j] == ")":
+            depth -= 1
+            if depth == 0:
+                return j
+    return -1
+
+
+def _module_port_sig(hw_text: str, module: str) -> str | None:
+    """The port-list text of ``hw.module ... @<module>( ... )`` — the ports between the balanced
+    parens after the module name. None if the module is absent."""
+    marker = f"@{module}("
+    for line in hw_text.splitlines():
+        if "hw.module" not in line or marker not in line:
+            continue
+        open_idx = line.find(marker) + len(marker) - 1   # the '(' itself
+        close = _paren_span(line, open_idx)
+        if close != -1:
+            return line[open_idx + 1:close]
+    return None
 
 
 def extract_accumulator(hw_text: str) -> dict[str, Any] | None:
@@ -64,23 +87,38 @@ def extract_accumulator(hw_text: str) -> dict[str, Any] | None:
 
     Per bank: depth = 2**addr_width (the write address port); a row is ``lanes`` i32 words; the byte
     mask width confirms bytes/row. ``banks`` = the number of @AccumulatorMem instantiations (Gemmini's
-    acc is multi-bank: acc_capacity is split across acc_banks). Total bytes = banks * per-bank. All
-    derived from real RTL port widths + instance count, with the matched tokens as evidence."""
-    m = _ACC_MOD_RE.search(hw_text)
-    if not m:
+    acc is multi-bank: acc_capacity is split across acc_banks). Total bytes = banks * per-bank.
+
+    The signature is read *structurally* — the module's port list is enumerated and each ``name : type``
+    port is matched by exact identity and its integer type width parsed — not pattern-matched, so a
+    port rename or reorder cannot silently mis-derive a capacity."""
+    sig = _module_port_sig(hw_text, "AccumulatorMem")
+    if sig is None:
         return None
-    sig = m.group(1)
-    am = _WRITE_ADDR_RE.search(sig)
-    if not am:
+    addr_w = None
+    lane_bits_seen: list[int] = []
+    mask_bits = 0
+    for decl in (d.strip() for d in sig.split(",")):        # ports have no nested parens in their types
+        if " : " not in decl:
+            continue
+        lhs, typ = decl.rsplit(" : ", 1)
+        name = lhs.split()[-1].lstrip("%")                  # drop the `in`/`out` dir + `%`
+        if name == "io_write_bits_addr":
+            addr_w = _int_width(typ)
+        elif name.startswith("io_write_bits_data_") and name.endswith("_0"):
+            w = _int_width(typ)
+            if w is not None:
+                lane_bits_seen.append(w)
+        elif name.startswith("io_write_bits_mask_"):
+            mask_bits += 1
+    if addr_w is None:
         return None
-    addr_w = int(am.group(1))
     depth = 1 << addr_w
-    lanes = [(int(i), int(w)) for i, w in _WRITE_LANE_RE.findall(sig)]
-    lane_bits = lanes[0][1] if lanes else 32
-    n_lanes = len(lanes)
-    mask_bits = len(_WRITE_MASK_RE.findall(sig))
+    lane_bits = lane_bits_seen[0] if lane_bits_seen else 32
+    n_lanes = len(lane_bits_seen)
     row_bytes = mask_bits or (n_lanes * (lane_bits // 8))
-    banks = len(_ACC_INST_RE.findall(hw_text)) or 1
+    banks = sum(1 for ln in hw_text.splitlines()
+                if "hw.instance" in ln and "@AccumulatorMem" in ln) or 1
     per_bank = depth * row_bytes
     return {
         "name": "accumulator",
@@ -110,13 +148,26 @@ def extract_funct_table(isa_src: str) -> dict[str, Any]:
     lines = isa_src.splitlines()
     start = next((i for i, ln in enumerate(lines) if "// funct values" in ln), 0)
     table: dict[int, str] = {}
-    val_re = re.compile(r"\bval\s+([A-Z0-9_]+)\s*=\s*(\d+)\.U\s*(?:$|//)")
+    # Structural parse of ``val NAME = <n>.U`` (no bit-width annotation) — split the line, not a
+    # regex. Reject ``<n>.U(<w>.W)`` (bit-width-annotated) by requiring only whitespace/comment after
+    # ``.U``, matching the funct block (the annotated rs1-subfields begin at CONFIG_EX and are skipped).
     for ln in lines[start + 1:]:
         if "CONFIG_EX" in ln:                 # start of the rs1-subfield block -> stop
             break
-        mm = val_re.search(ln)
-        if mm:
-            table.setdefault(int(mm.group(2)), mm.group(1))
+        s = ln.strip()
+        if not s.startswith("val "):
+            continue
+        lhs, sep, rhs = s.partition("=")
+        if not sep or ".U" not in rhs:
+            continue
+        name = lhs[4:].strip()
+        num, after = rhs.strip().split(".U", 1)
+        num = num.strip()
+        if not (num.isdigit() and name and all(c.isupper() or c.isdigit() or c == "_" for c in name)):
+            continue
+        if after and not (after[:1].isspace() or after.startswith("//")):
+            continue                          # e.g. ``.U(3.W)`` -> not a funct code
+        table.setdefault(int(num), name)
     legal = sorted(table)
     return {
         "name": "funct_decode_table",

@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from pathlib import Path
 from typing import Any
 
@@ -47,31 +46,47 @@ def _read(p: Path) -> str:
 
 
 def _parse_config(text: str) -> dict[str, int]:
-    """num_lanes / num_warps / num_cores / num_regs from config_muon.toml [muon]."""
-    out: dict[str, int] = {}
-    for key in ("num_lanes", "num_warps", "num_cores", "num_regs"):
-        m = re.search(rf"^\s*{key}\s*=\s*(\d+)", text, re.MULTILINE)
-        if m:
-            out[key] = int(m.group(1))
-    return out
+    """num_lanes / num_warps / num_cores / num_regs from config_muon.toml [muon] (via tomllib)."""
+    import tomllib
+    try:
+        muon = tomllib.loads(text).get("muon", {})
+    except tomllib.TOMLDecodeError:
+        return {}
+    return {k: int(muon[k]) for k in ("num_lanes", "num_warps", "num_cores", "num_regs")
+            if isinstance(muon.get(k), int)}
 
 
 def _hierarchy_counts(gs: Path) -> dict[str, int]:
     """Count Muon module names present in the elaborated module hierarchy JSON (RTL evidence)."""
     txt = _read(gs / "top_module_hierarchy.json")
-    counts: dict[str, int] = {}
-    for name in ("MuonCore", "MuonTile", "RadianceCluster"):
-        counts[name] = len(re.findall(rf'"{name}"', txt))
-    return counts
+    # each name appears as a quoted JSON string token; count literal quoted occurrences (no regex).
+    return {name: txt.count(f'"{name}"') for name in ("MuonCore", "MuonTile", "RadianceCluster")}
 
 
 def _smem_evidence(gs: Path) -> str | None:
-    """The first shared-memory `smem mem : UInt<W>[E] [D]` line in the elaborated FIRRTL."""
+    """The first shared-memory ``smem mem : UInt<W>[E] [D]`` line in the elaborated FIRRTL, parsed
+    structurally (locate the marker, then read the ``<W>`` width and the two ``[N]`` dims) — no regex."""
     fir = _read(gs / f"chipyard.harness.TestHarness.{VCS_CONFIG}.fir")
-    m = re.search(r"smem mem : UInt<(\d+)>\[(\d+)\] \[(\d+)\]", fir)
-    if m:
-        return f"smem mem : UInt<{m.group(1)}>[{m.group(2)}] [{m.group(3)}]"
-    return None
+    marker = "smem mem : UInt<"
+    idx = fir.find(marker)
+    if idx == -1:
+        return None
+    rest = fir[idx + len(marker):]
+    width, sep, after = rest.partition(">")
+    if not sep or not width.strip().isdigit():
+        return None
+    dims: list[str] = []
+    pos = 0
+    while len(dims) < 2:
+        lb = after.find("[", pos)
+        rb = after.find("]", lb) if lb != -1 else -1
+        if lb == -1 or rb == -1:
+            break
+        dims.append(after[lb + 1:rb].strip())
+        pos = rb + 1
+    if len(dims) < 2 or not (dims[0].isdigit() and dims[1].isdigit()):
+        return None
+    return f"smem mem : UInt<{width.strip()}>[{dims[0]}] [{dims[1]}]"
 
 
 def build_facts() -> dict[str, Any]:
