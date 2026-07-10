@@ -175,8 +175,8 @@ def extract_matmuls(capture_dir: str) -> tuple[MatmulRecord, ...]:
     wl_fors = _while_loop_fors(module)               # while_loop scf.for region(s), if any
     out: list[MatmulRecord] = []
     for i, op in enumerate(o for o in module.walk() if o.name == "linalg.matmul"):
-        ls, ld = mlir_m2m._shape_dtype(str(op.operands[0].type))
-        rs, rd = mlir_m2m._shape_dtype(str(op.operands[1].type))
+        ls, ld = mlir_m2m._shape_dtype(op.operands[0].type)
+        rs, rd = mlir_m2m._shape_dtype(op.operands[1].type)
         # A linear-layer GEMM. The activation (LHS) may carry leading batch/sequence dims (3D/4D in
         # batched-attention DiTs such as xr0); the weight (RHS) is the 2D ``[K, N]`` matrix. Fold the
         # LHS leading dims into M -- ``M*K*N`` then equals the true MAC count -- and the 2D case (every
@@ -283,8 +283,8 @@ def extract_non_gemm_ops(capture_dir: str) -> tuple[NonGemmRecord, ...]:
         def _mnk():
             if len(op.operands) < 2:
                 return False
-            ls, ld = mlir_m2m._shape_dtype(str(op.operands[0].type))
-            rs, _rd = mlir_m2m._shape_dtype(str(op.operands[1].type))
+            ls, ld = mlir_m2m._shape_dtype(op.operands[0].type)
+            rs, _rd = mlir_m2m._shape_dtype(op.operands[1].type)
             cm = _contraction_mnk(ls, rs)
             if cm:
                 rec.batch, rec.M, rec.K, rec.N, rec.macs = cm

@@ -12,9 +12,7 @@ fp32 exports parse with stock xDSL, so the parity path targets those.
 """
 from __future__ import annotations
 
-import re
-
-_SHAPE_RE = re.compile(r"tensor<([0-9x?]+)x([a-z0-9]+)>")
+from merlin.common import mlir_query
 
 
 def available() -> bool:
@@ -29,44 +27,20 @@ def available() -> bool:
 def _parse_module(mlir_text: str):
     """Parse a model2MLIR linalg-on-tensors module for DSE analysis.
 
-    ONE grounded ingestion point: delegate to the inference frontend's parser
-    (:func:`merlin.frontends.linalg_mlir.parse_mlir_text`) rather than maintain a second xDSL parser.
-    That path is the one proven to actually run real captures (smolvla/pi05) — same dialect set
-    (Builtin/Func/Arith/Linalg/Tensor/Scf/Math/Cf, ``allow_unregistered``) plus the canonical
-    ``} -> (T1,T2)`` multi-result normalizer — so inference and DSE can't drift and a full merge later
-    is trivial. (Fallback below only if the frontend is somehow unavailable.)"""
-    try:
-        from merlin.frontends.linalg_mlir import parse_mlir_text
-        return parse_mlir_text(mlir_text)
-    except ImportError:
-        import re
-        from xdsl.context import Context
-        from xdsl.dialects import arith, builtin, cf, func, linalg, math, scf, tensor
-        from xdsl.parser import Parser
-        ctx = Context(allow_unregistered=True)
-        for d in (builtin.Builtin, func.Func, linalg.Linalg, tensor.Tensor, arith.Arith,
-                  math.Math, scf.Scf, cf.Cf):
-            try:
-                ctx.load_dialect(d)
-            except Exception:
-                pass
-        return Parser(ctx, re.sub(r"(\}\s*->\s*)\(([^()]+)\)", r"\1\2", mlir_text)).parse_module()
-
-
-def _shape_dtype(type_str: str):
-    """Parse 'tensor<17x192xf32>' -> ([17, 192], 'f32'). Returns (None, None) on miss."""
-    m = _SHAPE_RE.search(type_str)
-    if not m:
-        return None, None
-    dims = [int(x) for x in m.group(1).split("x") if x.isdigit()]
-    return dims, m.group(2)
+    ONE grounded ingestion point: delegate to :func:`merlin.common.mlir_query.parse` (which uses the
+    inference frontend's xDSL parser — Builtin/Func/Arith/Linalg/Tensor/Scf/Math/Cf,
+    ``allow_unregistered``, plus the ``} -> (T1,T2)`` normalizer), so inference and DSE never drift."""
+    return mlir_query.parse(mlir_text)
 
 
 def _attr(op, key: str) -> str | None:
-    v = op.attributes.get(key)
-    if v is None:
-        return None
-    return str(v).strip().strip('"')
+    return mlir_query.attr_str(op, key)
+
+
+def _shape_dtype(t) -> tuple[list[int], str]:
+    """``([shape], dtype)`` for a tensor **type object** (regex-free; delegates to mlir_query). Pass
+    ``op.operands[i].type`` directly — never a stringified type."""
+    return mlir_query.type_shape_dtype(t)
 
 
 def region_from_mlir(mlir_path: str, region_id: str | None = None, H: int = 8) -> dict:
@@ -84,9 +58,9 @@ def region_from_mlir(mlir_path: str, region_id: str | None = None, H: int = 8) -
         op = next((o for o in matmuls if _attr(o, "m2m.region_id") == region_id), None)
     op = op or matmuls[0]
 
-    lhs_shape, lhs_dt = _shape_dtype(str(op.operands[0].type))
-    rhs_shape, rhs_dt = _shape_dtype(str(op.operands[1].type))
-    out_shape, out_dt = _shape_dtype(str(op.results[0].type))
+    lhs_shape, lhs_dt = mlir_query.type_shape_dtype(op.operands[0].type)
+    rhs_shape, rhs_dt = mlir_query.type_shape_dtype(op.operands[1].type)
+    out_shape, out_dt = mlir_query.type_shape_dtype(op.results[0].type)
     if not (lhs_shape and rhs_shape):
         raise ValueError("could not read matmul operand shapes")
 

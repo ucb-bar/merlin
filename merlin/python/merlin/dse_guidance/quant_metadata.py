@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import csv
 import io
-import re
 from pathlib import Path
+
+from merlin.common import mlir_query
 
 _QM_COLS = ["workload", "n_dequant_ops", "storage_dtype", "scale_granularity", "dequant_placement",
             "compute_dtype", "accumulator_dtype", "native_scheme_gap"]
@@ -157,15 +158,18 @@ def quant_rows(cs_dir: Path) -> list[dict]:
         p = d / "model_qdq.mlir"
         if not p.is_file():
             continue
-        txt = p.read_text(errors="ignore")
-        deq = re.findall(r'quant_ext\.dequantize_per_(channel|tensor|group)?', txt)
-        n = len(re.findall(r'quant_ext\.dequantize', txt))
+        module = mlir_query.parse(p)
+        deq_ops = [op for op in module.walk()
+                   if mlir_query.op_name(op).startswith("quant_ext.dequantize")]
+        n = len(deq_ops)
         if not n:
             continue
-        dtypes = sorted(set(re.findall(r'input_dtype = "([a-z0-9]+)"', txt))) or ["i8"]
-        gran = ("per_channel" if any("channel" in x for x in deq)
-                else "per_tensor" if any("tensor" in x for x in deq)
-                else "per_group" if any("group" in x for x in deq) else "unspecified")
+        names = {mlir_query.op_name(op) for op in deq_ops}
+        dtypes = sorted({dt for op in deq_ops
+                         if (dt := mlir_query.attr_str(op, "input_dtype"))}) or ["i8"]
+        gran = ("per_channel" if any("channel" in x for x in names)
+                else "per_tensor" if any("tensor" in x for x in names)
+                else "per_group" if any("group" in x for x in names) else "unspecified")
         rows.append({"workload": d.name, "n_dequant_ops": n,
                      "storage_dtype": "|".join(dtypes), "scale_granularity": gran,
                      "dequant_placement": "before_matmul (weight dequantized then GEMM)",

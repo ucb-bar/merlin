@@ -68,13 +68,15 @@ def available_models() -> list[str]:
     """Workloads with a studyable capture. On the loop corpus, a model must have >=1 linalg.matmul
     (excludes the synthetic small_llama toy, whose functional-weight loop wrapper lowered its GEMMs
     to linalg.generic -> 0 matmuls; its flat capture is unaffected)."""
-    from merlin.dse_guidance import attribution as _ATTR
     out = []
     for w in RECAP_MODELS:
         d = _recap_dir(w)
-        if not (d / "model.mlir").is_file():
+        mlir = d / "model.mlir"
+        if not mlir.is_file():
             continue
-        if _CORPUS_SUBDIR == "recaptures_loop" and len(_ATTR.extract_matmuls(str(d))) == 0:
+        # Presence check only — a cheap regex-free substring scan, not a full xDSL parse per model
+        # (this runs at test-collection time over every candidate; deep attribution is per-workload).
+        if _CORPUS_SUBDIR == "recaptures_loop" and "linalg.matmul" not in mlir.read_text(errors="ignore"):
             continue
         out.append(w)
     return out

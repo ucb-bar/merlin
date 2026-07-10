@@ -16,13 +16,10 @@ accuracy number, or a gap_closure. Lowering precision is a candidate to *measure
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 
 from merlin.dse_guidance.design_envelope import E_DERIVED, E_IR, E_NA
 
-_QUANT_RE = re.compile(r'prov\.quantization = "([^"]+)"')
-_MATMUL_DTYPE_RE = re.compile(r'linalg\.matmul[^\n]*?ins\([^:]*:\s*tensor<[0-9x?]+x([a-z0-9]+)>')
 _LOWBIT = {"int8_weight_only": "int8", "float8_weight_only_e4m3": "fp8",
            "int4_weight_only": "int4"}
 
@@ -77,18 +74,39 @@ def _read_text(capture_dir: str) -> str:
 
 def extract_numerical_facts(capture_dir: str) -> dict:
     text = _read_text(capture_dir)
-    quant_m = _QUANT_RE.search(text)
-    quant = quant_m.group(1) if quant_m else "none"
-    dtypes = _MATMUL_DTYPE_RE.findall(text)
+    if not text:
+        return {"declared_quantization": "none", "n_matmuls": 0, "compute_dtype": "?",
+                "dequantize_ops": 0, "quantize_ops": 0, "requant_ops": 0}
+    from merlin.common import mlir_query
+
+    module = mlir_query.parse(text)
+    quant = "none"
+    matmul_dtypes: list[str] = []
+    dequantize = quantize = requant = 0
+    for op in module.walk():
+        if quant == "none":
+            q = mlir_query.attr_str(op, "prov.quantization")
+            if q is not None:
+                quant = q
+        if mlir_query.op_name(op) == "linalg.matmul":
+            _, dt = mlir_query.type_shape_dtype(op.operands[0].type)  # first ins operand
+            matmul_dtypes.append(dt)
+        pv = mlir_query.attr_str(op, "prov.op")
+        if pv == "dequantize":
+            dequantize += 1
+        elif pv == "quantize":
+            quantize += 1
+        elif pv in ("requant", "requantize"):
+            requant += 1
     # dominant matmul operand dtype
-    compute = max(set(dtypes), key=dtypes.count) if dtypes else "?"
+    compute = max(set(matmul_dtypes), key=matmul_dtypes.count) if matmul_dtypes else "?"
     return {
         "declared_quantization": quant,
-        "n_matmuls": text.count("linalg.matmul"),
+        "n_matmuls": len(matmul_dtypes),
         "compute_dtype": compute,
-        "dequantize_ops": len(re.findall(r'prov\.op = "dequantize"', text)),
-        "quantize_ops": len(re.findall(r'prov\.op = "quantize"', text)),
-        "requant_ops": len(re.findall(r'prov\.op = "(?:requant|requantize)"', text)),
+        "dequantize_ops": dequantize,
+        "quantize_ops": quantize,
+        "requant_ops": requant,
     }
 
 
