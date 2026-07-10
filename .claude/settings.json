@@ -21,6 +21,10 @@
           {
             "type": "command",
             "command": ".venv/bin/python build_tools/scripts/check_docs.py --stop-hook"
+          },
+          {
+            "type": "command",
+            "command": ".venv/bin/python build_tools/scripts/check_no_regex.py --stop-hook"
           }
         ]
       }
