@@ -20,10 +20,9 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 GENERATED_EXTS = {".png", ".svg", ".pdf", ".zip", ".jsonl"}
 FORBIDDEN_ROOTS = ("output/", "results/", "selfcheck_out/", "mined_knowledge/", "docs/presentation/")
@@ -31,7 +30,18 @@ FORBIDDEN_ROOTS = ("output/", "results/", "selfcheck_out/", "mined_knowledge/", 
 # output; case_study/ = dse-guidance generated analysis). They belong under artifacts/ or runs/.
 # (Curated INPUT corpora — benchmarks/*/recaptures*, region_maps, methods/, observability/,
 # input_bundles/ — are not matched and legitimately stay in-tree.)
-FORBIDDEN_RE = re.compile(r"(^|/)(experiments/[^/]+/(runs|reports)|benchmarks/[^/]+/case_study)/")
+def _is_forbidden_gen_dir(rel: str) -> bool:
+    """True if ``rel`` contains a generated-output dir that must not live in-tree: an
+    ``experiments/<name>/{runs,reports}/`` or ``benchmarks/<name>/case_study/`` component
+    (structural check on path parts — the ``<name>`` is exactly one segment)."""
+    parts = PurePosixPath(rel).parts
+    for i in range(len(parts) - 2):
+        top, leaf = parts[i], parts[i + 2]
+        if top == "experiments" and leaf in ("runs", "reports"):
+            return True
+        if top == "benchmarks" and leaf == "case_study":
+            return True
+    return False
 # genuinely-tracked source images, if any (verify with `git ls-files '*.png'` before adding).
 ALLOW_TRACKED_GEN: set[str] = set()
 # No blanket exemptions: every tracked path (incl. targetgen_evals) obeys the three-root rule.
@@ -60,7 +70,7 @@ def check(root: Path, staged: bool) -> list[str]:
         if any(rel.startswith(s) for s in SKIP_PREFIXES):
             continue
         p = Path(rel)
-        if any(rel.startswith(r) for r in FORBIDDEN_ROOTS) or FORBIDDEN_RE.search(rel):
+        if any(rel.startswith(r) for r in FORBIDDEN_ROOTS) or _is_forbidden_gen_dir(rel):
             violations.append(f"tracked file under a forbidden root: {rel}")
             continue
         if (p.suffix.lower() in GENERATED_EXTS and not rel.startswith("artifacts/")

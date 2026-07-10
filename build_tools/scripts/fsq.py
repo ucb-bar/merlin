@@ -8,21 +8,43 @@ queue DB and prints each job with the model bundle recovered from its `stage_fro
 
 Usage:  .venv/bin/python build_tools/scripts/fsq.py [--all] [--mine]
 """
-import argparse, json, re, sqlite3, time
+import argparse, json, sqlite3, time
+from pathlib import PurePosixPath
 
 DB = "/scratch2/agustin/firesim_queue/queue.db"
 ACTIVE = ("RUNNING", "QUEUED")
 
 
+def _find_key(obj, key: str):
+    """Depth-first search for the first value of ``key`` anywhere in a decoded JSON structure
+    (kind_args may nest stage_from inside a sub-object)."""
+    if isinstance(obj, dict):
+        if key in obj:
+            return obj[key]
+        for v in obj.values():
+            found = _find_key(v, key)
+            if found is not None:
+                return found
+    elif isinstance(obj, list):
+        for v in obj:
+            found = _find_key(v, key)
+            if found is not None:
+                return found
+    return None
+
+
 def model_of(kind_args: str) -> str:
-    m = re.search(r'"stage_from":\s*"([^"]+)"', kind_args or "")
-    if not m:
+    try:
+        p = _find_key(json.loads(kind_args or "{}"), "stage_from")
+    except json.JSONDecodeError:
+        p = None
+    if not p:
         return "-"
-    p = m.group(1)
-    mm = re.search(r"/fs[x]?/([^/]+)/", p)               # our sweep workroots
-    if mm:
-        return mm.group(1).replace("_consistent", "")
-    return p.split("/")[-1]
+    parts = PurePosixPath(p).parts
+    for i, seg in enumerate(parts[:-1]):                  # our sweep workroots: /fs|/fsx/<model>/
+        if seg in ("fs", "fsx"):
+            return parts[i + 1].replace("_consistent", "")
+    return parts[-1] if parts else "-"
 
 
 def main() -> int:

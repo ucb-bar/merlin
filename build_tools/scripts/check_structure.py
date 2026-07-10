@@ -289,9 +289,7 @@ def check_schema_usage(errors):
 def check_library_boundary(errors):
     """No library module may reference ``experiments/`` as a path component (consumption-direction:
     benchmarks/ = library reads it; experiments/ = only consumes the library). See targetgen/corpora.py."""
-    import re
     lib = os.path.join(ROOT, "merlin", "python", "merlin")
-    pat = re.compile(r"""['"]experiments['"]|experiments/""")
     for dirpath, _dirs, files in os.walk(lib):
         for fn in files:
             if not fn.endswith(".py"):
