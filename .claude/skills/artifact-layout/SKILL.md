@@ -4,26 +4,28 @@ description: >-
   Where to write generated output in oscar-merlin — run dirs, results, plots, figures,
   caches, presentations, mined knowledge, dse analysis, any artifact. Use whenever you
   save output, create a run directory, emit results/figures, or wonder where generated
-  files belong. Three roots only: runs/, artifacts/, build/.
+  files belong. One root only: out/ (out/runs, out/artifacts, out/build).
 ---
 
 # Artifact & run layout (MANDATORY convention)
 
-Generated output in this repo lives in **exactly three top-level roots**. Never write
-generated files anywhere else (no `output/`, `results/`, `selfcheck_out/`, `docs/presentation/`,
-or per-experiment `runs/`/`reports/` — those are retired). A PreToolUse hook
+Generated output in this repo lives under a **single top-level `out/` root**, with three subdirs
+(`out/runs/`, `out/artifacts/`, `out/build/`). Never write generated files anywhere else (no top-level
+`runs/`/`artifacts/`/`build/`, no `output/`, `results/`, `selfcheck_out/`, `docs/presentation/`, or
+per-experiment `runs/`/`reports/` — those are retired). A PreToolUse hook
 (`.claude/hooks/guard_artifact_writes.py`) blocks violations; `build_tools/scripts/check_artifact_layout.py`
-lints them.
+lints them. Resolve roots via `merlin.common.paths` — `out_dir()`/`runs_dir()`/`artifacts_dir()`/
+`build_dir()` (honoring `MERLIN_OUT_ROOT`); never hard-code the literal strings.
 
 | Root | Holds | How to create |
 |------|-------|---------------|
-| `runs/<target>/<suite>/<run-id>/` | aet experiment runs (logs/ metrics/ artifacts/ generated/ contracts/ + run_record.json) | `merlin.common.artifacts.start_run(...)` |
-| `artifacts/<topic>/<target>/v<ver>/<leaf>/` | versioned products (+ manifest.yaml, `latest` symlink) | `merlin.common.artifacts.new_product(...)` |
-| `artifacts/cache/<ns>/` | large regenerable caches (PURGEABLE) | `merlin.common.artifacts.cache_dir(ns)` |
-| `artifacts/recaptures/` | 130 GB model recaptures (PURGEABLE) | `merlin.common.artifacts.recaptures_dir()` |
-| `build/` | compiled / CMake / codegen scaffolds | build system |
+| `out/runs/<target>/<suite>/<run-id>/` | aet experiment runs (logs/ metrics/ artifacts/ generated/ contracts/ + run_record.json) | `merlin.common.artifacts.start_run(...)` |
+| `out/artifacts/<topic>/<target>/v<ver>/<leaf>/` | versioned products (+ manifest.yaml, `latest` symlink) | `merlin.common.artifacts.new_product(...)` |
+| `out/artifacts/cache/<ns>/` | large regenerable caches (PURGEABLE) | `merlin.common.artifacts.cache_dir(ns)` |
+| `out/artifacts/recaptures/` | 130 GB model recaptures (PURGEABLE) | `merlin.common.artifacts.recaptures_dir()` |
+| `out/build/` | compiled / CMake / codegen scaffolds, baseline toolchains | build system |
 
-**Concern-first.** `artifacts/` is organized by **tool/concern**, and EACH concern uses ITS OWN
+**Concern-first.** `out/artifacts/` is organized by **tool/concern**, and EACH concern uses ITS OWN
 natural axis — do not force a hardware target where it doesn't apply:
 
 | Concern | Axis | Tools |
@@ -41,7 +43,7 @@ natural axis — do not force a hardware target where it doesn't apply:
 | `targets/<target>/<package_id>/` | **target** backend | `merlin-rvv-mine/-autotune`, `merlin-targetgen` (codegen packages) |
 | `presentation/`, `cache/`, `selfcheck/` | topic / ns / target | misc |
 
-`runs/<target>/<suite>/<run-id>/` is for aet experiment runs (target-centric). `build/` for compiler output.
+`out/runs/<target>/<suite>/<run-id>/` is for aet experiment runs (target-centric). `out/build/` for compiler output.
 
 **Target at folder level (where target IS the axis).** Pass `target=` to `start_run`/`new_product`
 so the target becomes a folder component. Keep **inner file names identical across the axis** (always
@@ -66,11 +68,11 @@ h = start_run(suite="gemmini-perf-bench", method="perf0001", target="gemmini")
 h.store.record(h.run_dir / "perf_results.json", origin=...)   # ArtifactStore (content-addressed)
 finish_run(h, "completed", summary={"n_kernels": 12})
 
-prod = new_product("dse", version=1, target="bitvla")  # artifacts/dse/v1/dse_v1_<TS>_<sha7>/
+prod = new_product("dse", version=1, target="bitvla")  # out/artifacts/dse/v1/dse_v1_<TS>_<sha7>/
 out = prod.add_artifact("findings.csv"); out.write_text(...)
 prod.write_manifest()
 
-tmp = cache_dir("kernel_cache")                        # artifacts/cache/kernel_cache/
+tmp = cache_dir("kernel_cache")                        # out/artifacts/cache/kernel_cache/
 
 # hardware measurements: substrate -> model -> experiment (versioned + timestamped)
 m = new_measurement("k1_spacemit", "bitvla", "cross_framework")   # also: firesim_<bitstream>,
@@ -78,12 +80,12 @@ out = m.add_artifact("cross_framework_k1.jsonl"); out.write_text(...)  # baremet
 m.write_manifest()                                                #   zephyr_<design>, spike_<config>
 ```
 
-## Deprecation: `output/` is going away
+## Deprecation: `output/` is retired
 
-The legacy `output/` root is **deprecated**. It now holds ONLY the regenerable model recaptures
-(accessed via `recaptures_dir()`); everything else has moved to `artifacts/`. **Never write new
+The legacy `output/` root is **retired**. Model recaptures now live at `out/artifacts/recaptures/`
+(accessed via `recaptures_dir()`); everything else lives under `out/artifacts/`. **Never write new
 generated content to `output/`** — the guard hook blocks it. Recaptures are PURGEABLE (regenerate
-via the m2m exporter), so `output/` can be deleted once readers migrate to `recaptures_dir()`.
+via the m2m exporter).
 
 ## Escape hatch
 
