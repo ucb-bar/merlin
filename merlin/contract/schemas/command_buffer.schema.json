@@ -16,7 +16,7 @@
         "required": ["shape", "dtype"],
         "properties": {
           "shape": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1},
-          "dtype": {"type": "string", "enum": ["i8", "i16", "i32"]},
+          "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "f16", "f32", "bf16"]},
           "role": {"type": "string", "enum": ["input", "weight", "bias", "output"]}
         },
         "additionalProperties": false
@@ -39,7 +39,7 @@
             "properties": {
               "layout": {"type": "string"},
               "epilogue": {"type": "array", "items": {"type": "string", "enum": ["bias_add", "bias", "requant", "acc_scale", "relu"]}},
-              "output_dtype": {"type": "string", "enum": ["i8", "i16", "i32"]},
+              "output_dtype": {"type": "string", "enum": ["i8", "i16", "i32", "f16", "f32", "bf16"]},
               "acc_scale": {"type": "number"},
               "requant_shift": {"type": "integer"},
               "combine": {"type": "string"},

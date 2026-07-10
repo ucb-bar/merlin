@@ -5,7 +5,7 @@ The interface grammar is the *frozen, versioned* input format the experiment ABI
 out-of-tree target-backend package. It is a small, regular MLIR module using a custom
 ``merlin_iface`` dialect — regular enough that a few-line Python regex parser reads it AND a
 registered C++ MLIR dialect parses it natively (``mlir-opt``). The canonical spec is
-``bench_contract/interface_grammar.md``; this module is the reference Python implementation.
+``merlin/contract/interface_grammar.md``; this module is the reference Python implementation.
 
 Design constraints (see the plan / contract):
 - Decoupled from xDSL: emission is plain string templating; parsing is plain regex. No xDSL
@@ -144,7 +144,9 @@ def _commit_out_shape(cb: dict[str, Any], acc_name: str) -> tuple[int, int]:
 
 # --------------------------------------------------------------------------- parse
 
-_TENSOR_TY = re.compile(r"tensor<([0-9x]+)x(i\d+)>")
+# dtype accepts integer (i8/i32, Gemmini) AND floating (f16/f32/bf16, Muon SIMT) element types.
+# Widened additively for the Muon target; i8/i32 matching is unchanged.
+_TENSOR_TY = re.compile(r"tensor<([0-9x]+)x(i\d+|f\d+|bf\d+)>")
 _RE_TENSOR = re.compile(r'%(\S+)\s*=\s*merlin_iface\.tensor\s*\{([^}]*)\}\s*:\s*(tensor<[^>]+>)')
 _RE_PACK = re.compile(r'%(\S+)\s*=\s*merlin_iface\.resident_pack\s*%(\S+)\s*\{([^}]*)\}')
 _RE_MATMUL = re.compile(r'%(\S+)\s*=\s*merlin_iface\.matmul\s*%(\S+),\s*%(\S+)\s*:')
