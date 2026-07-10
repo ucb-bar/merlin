@@ -2288,6 +2288,26 @@ _ERASE_COLS = ["workload", "n_scf_loops", "n_linalg_matmul", "n_linalg_generic",
                "lowbit_int_types_present", "loops_preserved", "evidence"]
 
 
+def _count_word_bounded(text: str, *needles: str) -> int:
+    """Occurrences of each ``needle`` bounded by non-word chars on both sides — the regex-free
+    equivalent of ``\\b<needle>\\b`` (e.g. counts ``scf.for(`` but not ``scf.forall``)."""
+    total = 0
+    for needle in needles:
+        start = 0
+        while True:
+            i = text.find(needle, start)
+            if i == -1:
+                break
+            start = i + 1
+            before = text[i - 1] if i > 0 else ""
+            after = text[i + len(needle)] if i + len(needle) < len(text) else ""
+            bw = before.isalnum() or before == "_"
+            aw = after.isalnum() or after == "_"
+            if not bw and not aw:
+                total += 1
+    return total
+
+
 def capture_erasure_evidence(cs_dir: Path) -> dict:
     """Stage C: demonstrate (not just assert) what the flat capture erases, from the recapture IR:
     scf.for/while count (loops), linalg.matmul vs linalg.generic counts (named ops vs lowered),
@@ -2300,7 +2320,7 @@ def capture_erasure_evidence(cs_dir: Path) -> dict:
         # token/substring scan — a full xDSL parse per file would be 100-1000x costlier for a
         # presence/count heuristic. (Per-workload deep facts use merlin.common.mlir_query.)
         txt = (d / "model.mlir").read_text(errors="ignore")
-        n_loops = (txt.count("scf.for") - txt.count("scf.forall")) + txt.count("scf.while")
+        n_loops = _count_word_bounded(txt, "scf.for", "scf.while")   # == old \bscf\.(for|while)\b
         n_mm = txt.count("linalg.matmul")
         n_gen = txt.count("linalg.generic")
         lowbit = any(f"x{dt}>" in txt for dt in ("i4", "i8", "si8", "ui8", "si4"))
