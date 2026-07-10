@@ -40,6 +40,33 @@ def targets_dir() -> Path:
     return merlin_dir() / "targets"
 
 
+# --- Generated-output roots. All generated products live under a single top-level ``out/`` with
+#     three subdirs (runs/ artifacts/ build/). These helpers are the SINGLE source of truth for the
+#     root names — callers must never hard-code the literal strings. Honors ``MERLIN_OUT_ROOT`` for
+#     relocated/installed checkouts (mirrors ``MERLIN_REPO_ROOT``). ---
+def out_dir() -> Path:
+    """Return the generated-output root ``<repo>/out`` (honors ``MERLIN_OUT_ROOT``)."""
+    env = os.environ.get("MERLIN_OUT_ROOT")
+    if env:
+        return Path(env)
+    return repo_root() / "out"
+
+
+def runs_dir() -> Path:
+    """Return ``<repo>/out/runs`` (aet-managed experiment runs)."""
+    return out_dir() / "runs"
+
+
+def artifacts_dir() -> Path:
+    """Return ``<repo>/out/artifacts`` (versioned products, measurements, caches, recaptures)."""
+    return out_dir() / "artifacts"
+
+
+def build_dir() -> Path:
+    """Return ``<repo>/out/build`` (compiled trees, baseline toolchains, OOT codegen)."""
+    return out_dir() / "build"
+
+
 # --- External, machine-specific dependency locations (chipyard, toolchains, boards, sibling
 #     repos). Repo-INTERNAL paths never go here — the repo finds itself via repo_root(). These
 #     differ per machine, so they live in a gitignored ``.env`` at the repo root. Copy

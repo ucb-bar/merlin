@@ -67,13 +67,13 @@ from merlin.baselines import k1_exec, profile, rvv_audit
 from merlin.baselines.contract import BaselineResult, RegionProfile, ScalarFallback
 from merlin.common import artifacts
 from merlin.common.artifacts import cache_dir
-from merlin.common.paths import repo_root
+from merlin.common.paths import build_dir, repo_root
 from merlin.rvvgen import k1
 
 FRAMEWORK = "ggml"
 
 # --- llama.cpp build layout (build tree gitignored; built by this arm) --------------------------
-_BUILD_ROOT = repo_root() / "build" / "baselines" / "ggml"
+_BUILD_ROOT = build_dir() / "baselines" / "ggml"
 _LLAMA_SRC = repo_root() / "third_party" / "baselines" / "llama.cpp"
 _GGUF_DIR = _BUILD_ROOT / "gguf"
 

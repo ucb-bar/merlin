@@ -66,13 +66,13 @@ from merlin.baselines import bundle as _bundle
 from merlin.baselines import k1_exec, profile, rvv_audit
 from merlin.baselines.contract import BaselineResult, RegionProfile, ScalarFallback
 from merlin.common import artifacts
-from merlin.common.paths import repo_root
+from merlin.common.paths import build_dir, repo_root
 from merlin.rvvgen import k1
 
 FRAMEWORK = "tvm"
 
 # --- TVM build layout (gitignored; built by this arm) -------------------------------------------
-_BUILD_ROOT = repo_root() / "build" / "baselines" / "tvm"
+_BUILD_ROOT = build_dir() / "baselines" / "tvm"
 _TVM_SRC = repo_root() / "third_party" / "baselines" / "tvm"
 
 # The RVV target: LLVM riscv64 with the vector extension enabled. ``+zvl256b`` pins the vector
@@ -665,7 +665,7 @@ def run_model(model: str, variant: str = "int8", *, work_root: Path | None = Non
 
 
 # riscv64 TVM runtime + tvm_rpc, cross-built with SpacemiT clang (rv64gcv). See tvm-rv64/ build.
-_RV64_RUNTIME_DIR = repo_root() / "build" / "baselines" / "tvm-rv64"
+_RV64_RUNTIME_DIR = build_dir() / "baselines" / "tvm-rv64"
 _BOARD_RPC_DIR = "/root/tvm_rpc"
 # The board /root rootfs is small (~14 G, often full from other agents' weights); the RPC work dir
 # MUST be on tmpfs (/tmp, ~1.9 G free) or uploads fail with ENOSPC.

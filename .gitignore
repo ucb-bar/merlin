@@ -7,78 +7,68 @@ selfcheck_out/
 .qa_channel/
 .oracle_timing.json
 
-# --- Generated build outputs (structured, gitignored) ---
-# Keep the tracked skeleton files (AGENT.md / README.md / .gitkeep), ignore the rest.
-/build/**
-!/build/
-!/build/**/
-!/build/**/AGENT.md
-!/build/**/README.md
-!/build/**/.gitkeep
-
-# --- Three-root generated-output convention (see CLAUDE.md) ---
-# runs/ = aet experiment runs; artifacts/ = all other generated products.
-# Keep only the tracked skeletons (AGENT.md / README.md / .gitkeep); ignore all contents.
-/runs/**
-!/runs/
-!/runs/**/
-!/runs/**/AGENT.md
-!/runs/**/README.md
-!/runs/**/.gitkeep
-/artifacts/**
-!/artifacts/
-!/artifacts/**/
-!/artifacts/**/AGENT.md
-!/artifacts/**/README.md
-!/artifacts/**/.gitkeep
+# --- Single-root generated-output convention (see CLAUDE.md "Generated-output convention") ---
+# All generated output lives under a single top-level out/ with subdirs out/{runs,artifacts,build}:
+#   out/runs/      = aet experiment runs
+#   out/artifacts/ = all other generated products (measurements, caches, recaptures, plots, ...)
+#   out/build/     = compiled trees, baseline toolchains, OOT codegen
+# Ignore ALL contents, but KEEP the tracked skeletons (AGENT.md / README.md / .gitkeep) and the
+# curated, non-regenerable files re-included by the explicit negations below. Regenerable output
+# (build products, run outputs, caches, recaptures, traces) stays ignored — never pushed.
+/out/**
+!/out/
+!/out/**/
+!/out/**/AGENT.md
+!/out/**/README.md
+!/out/**/.gitkeep
 
 # --- Relocated hand-written reports (were docs/*, moved to their concern in the Phase-3 docs
 #     restructure). These are NOT tool-regenerable, so they stay tracked. Explicit per-file
 #     negations (never a broad *.md) so generated results in the same dirs remain ignored. ---
-!/artifacts/kernel-mining/rvv/rvv_mining_report.md
-!/artifacts/kernel-mining/rvv/rvv_kernel_mining_results.md
-!/artifacts/kernel-mining/rvv/beam_rvv_v2_report.md
-!/artifacts/compare/results.md
-!/artifacts/compare/baselines_cross_framework_k1.md
-!/artifacts/presentation/implementation_milestones.md
-!/artifacts/presentation/validation_plan.md
-!/artifacts/presentation/gemmini_requant_reconciliation.md
-!/artifacts/presentation/gemmini_rtl_oracle_status.md
-!/artifacts/presentation/gemmini_target_prototype.md
-!/artifacts/presentation/saturn_vec_findings.md
+!/out/artifacts/kernel-mining/rvv/rvv_mining_report.md
+!/out/artifacts/kernel-mining/rvv/rvv_kernel_mining_results.md
+!/out/artifacts/kernel-mining/rvv/beam_rvv_v2_report.md
+!/out/artifacts/compare/results.md
+!/out/artifacts/compare/baselines_cross_framework_k1.md
+!/out/artifacts/presentation/implementation_milestones.md
+!/out/artifacts/presentation/validation_plan.md
+!/out/artifacts/presentation/gemmini_requant_reconciliation.md
+!/out/artifacts/presentation/gemmini_rtl_oracle_status.md
+!/out/artifacts/presentation/gemmini_target_prototype.md
+!/out/artifacts/presentation/saturn_vec_findings.md
 
 # --- dse-guidance case_study GOLDEN: the committed reference the tests + --consume/--meta read.
 #     It's generated analysis (regenerable via `merlin-dse-guidance --case-study`) but tracked as
 #     the byte-stable golden. Track the data/source files; keep regenerable binaries untracked. ---
-!/artifacts/dse-guidance/case_study/**
-/artifacts/dse-guidance/case_study/**/*.png
-/artifacts/dse-guidance/case_study/**/*.svg
-/artifacts/dse-guidance/case_study/**/*.pdf
-/artifacts/dse-guidance/case_study/**/*.jpg
-/artifacts/dse-guidance/case_study/**/*.jpeg
-/artifacts/dse-guidance/case_study/**/*.html
-/artifacts/dse-guidance/case_study/**/*.log
+!/out/artifacts/dse-guidance/case_study/**
+/out/artifacts/dse-guidance/case_study/**/*.png
+/out/artifacts/dse-guidance/case_study/**/*.svg
+/out/artifacts/dse-guidance/case_study/**/*.pdf
+/out/artifacts/dse-guidance/case_study/**/*.jpg
+/out/artifacts/dse-guidance/case_study/**/*.jpeg
+/out/artifacts/dse-guidance/case_study/**/*.html
+/out/artifacts/dse-guidance/case_study/**/*.log
 
-# --- artifacts/targets/ : generated target packages (codegen products). Forks/OOT builds are
+# --- out/artifacts/targets/ : generated target packages (codegen products). Forks/OOT builds are
 #     regenerable and stay ignored; the hand-authored reference baselines + promoted champions
 #     are the only tracked packages (re-included via the negations below). ---
 # Override the skeleton idiom's global README/AGENT un-ignore inside targets/ so fork docs are NOT
 # picked up (they are regenerable); tracking is re-granted only by the explicit negations after.
-/artifacts/targets/**/README.md
-/artifacts/targets/**/AGENT.md
-!/artifacts/targets/AGENT.md
-!/artifacts/targets/rvv/hand_v0/**
-!/artifacts/targets/rvv/hand_v0_int8/**
-!/artifacts/targets/rvv/impr_tuned_*/**
+/out/artifacts/targets/**/README.md
+/out/artifacts/targets/**/AGENT.md
+!/out/artifacts/targets/AGENT.md
+!/out/artifacts/targets/rvv/hand_v0/**
+!/out/artifacts/targets/rvv/hand_v0_int8/**
+!/out/artifacts/targets/rvv/impr_tuned_*/**
 # hand-authored reference baselines for other targets that tests load (keep suite reproducible)
-!/artifacts/targets/gemmini/hand_v0/**
-!/artifacts/targets/saturn_vec/hand_v0/**
-!/artifacts/targets/muon/reference_v0/**
+!/out/artifacts/targets/gemmini/hand_v0/**
+!/out/artifacts/targets/saturn_vec/hand_v0/**
+!/out/artifacts/targets/muon/reference_v0/**
 # never track compiled OOT build trees or bytecode even under a negated baseline (these win: last match)
-/artifacts/targets/**/mlir_oot/build/
-/artifacts/targets/**/__pycache__/
+/out/artifacts/targets/**/mlir_oot/build/
+/out/artifacts/targets/**/__pycache__/
 
-# --- output/ is DELETED/retired: recaptures now live in artifacts/recaptures/. Keep this
+# --- output/ is DELETED/retired: recaptures now live in out/artifacts/recaptures/. Keep this
 #     ignore as a backstop so a stray re-created output/ is never committed. ---
 /output/
 
@@ -157,3 +147,6 @@ merlin/experiments/**/runs/
 /config.json
 /config.local.json
 !/.env.example
+
+# General ignore
+tmp

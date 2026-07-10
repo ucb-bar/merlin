@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Linter: enforce the three-root artifact convention (runs/ artifacts/ build/).
+"""Linter: enforce the single-root artifact convention (out/{runs,artifacts,build}).
 
 Fails (exit 1) if any of:
-  * a TRACKED file lives under an old/forbidden root (output/, results/, selfcheck_out/,
+  * a TRACKED file lives under a retired top-level generated root (runs/, artifacts/, build/ —
+    now consolidated under out/) or an old/forbidden root (output/, results/, selfcheck_out/,
     mined_knowledge/, docs/presentation/) or a GENERATED output dir inside merlin/
     (experiments/*/runs/, experiments/*/reports/, benchmarks/*/case_study/) — those belong
-    under artifacts/ (see the docs/experiment migrations);
-  * a TRACKED file has a generated extension (.png/.svg/.pdf/.zip/.jsonl) outside artifacts/
+    under out/artifacts/ (see the docs/experiment migrations);
+  * a TRACKED file has a generated extension (.png/.svg/.pdf/.zip/.jsonl) outside out/artifacts/
     (and not allowlisted);
-  * a versioned product dir artifacts/<topic>/v*/<leaf>/ is missing manifest.yaml;
-  * a `latest` symlink under artifacts/ is absolute or dangling.
+  * a versioned product dir out/artifacts/<topic>/v*/<leaf>/ is missing manifest.yaml;
+  * a `latest` symlink under out/artifacts/ is absolute or dangling.
 
 Usage:
   check_artifact_layout.py             # full working tree (tracked files)
@@ -25,7 +26,9 @@ import sys
 from pathlib import Path, PurePosixPath
 
 GENERATED_EXTS = {".png", ".svg", ".pdf", ".zip", ".jsonl"}
-FORBIDDEN_ROOTS = ("output/", "results/", "selfcheck_out/", "mined_knowledge/", "docs/presentation/")
+# Retired top-level generated roots (consolidated under out/) + legacy forbidden locations.
+FORBIDDEN_ROOTS = ("runs/", "artifacts/", "build/", "output/", "results/",
+                   "selfcheck_out/", "mined_knowledge/", "docs/presentation/")
 # Generated OUTPUT dirs that must NOT live inside the source tree (runs/ reports/ = experiment
 # output; case_study/ = dse-guidance generated analysis). They belong under artifacts/ or runs/.
 # (Curated INPUT corpora — benchmarks/*/recaptures*, region_maps, methods/, observability/,
@@ -73,10 +76,10 @@ def check(root: Path, staged: bool) -> list[str]:
         if any(rel.startswith(r) for r in FORBIDDEN_ROOTS) or _is_forbidden_gen_dir(rel):
             violations.append(f"tracked file under a forbidden root: {rel}")
             continue
-        if (p.suffix.lower() in GENERATED_EXTS and not rel.startswith("artifacts/")
+        if (p.suffix.lower() in GENERATED_EXTS and not rel.startswith("out/artifacts/")
                 and rel not in ALLOW_TRACKED_GEN):
-            violations.append(f"generated file '{rel}' tracked outside artifacts/")
-    art = root / "artifacts"
+            violations.append(f"generated file '{rel}' tracked outside out/artifacts/")
+    art = root / "out" / "artifacts"
     if art.is_dir():
         for v in art.glob("*/v*"):
             if not v.is_dir():

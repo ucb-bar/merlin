@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""PreToolUse guard: deny writing generated artifacts outside the three sanctioned roots.
+"""PreToolUse guard: deny writing generated artifacts outside the sanctioned root.
 
 Repo convention (see CLAUDE.md "Generated-output convention" + .claude/skills/artifact-layout):
-generated output lives ONLY under runs/ (aet runs), artifacts/ (products/caches/plots/...),
-or build/. This hook blocks Write/Edit/MultiEdit/NotebookEdit that would drop a generated-looking
-file into an old/forbidden location (output/, results/, selfcheck_out/, mined_knowledge/,
-docs/presentation/, *_dse_analysis, *_recap) or write a generated extension outside artifacts/.
+generated output lives ONLY under a single top-level out/ root, with subdirs out/runs/ (aet runs),
+out/artifacts/ (products/caches/plots/...), and out/build/. This hook blocks
+Write/Edit/MultiEdit/NotebookEdit that would drop a generated-looking file into an old/forbidden
+location (the retired top-level runs/ artifacts/ build/ output/ results/ selfcheck_out/
+mined_knowledge/ docs/presentation/ *_dse_analysis *_recap) or write a generated extension outside
+out/.
 
 Source edits (merlin/, build_tools/, experiments/*/scripts/, tests/, *.md docs, etc.) are always allowed.
 Escape hatch: env MERLIN_ALLOW_ARTIFACT_WRITE=1, or list a path prefix in
@@ -18,9 +20,10 @@ import os
 import sys
 from pathlib import Path
 
-SANCTIONED_ROOTS = ("runs/", "artifacts/", "build/", "tmp/")
+SANCTIONED_ROOTS = ("out/", "tmp/")
 SKELETON_NAMES = {"AGENT.md", "README.md", ".gitkeep"}
 GENERATED_EXTS = {".png", ".svg", ".pdf", ".zip", ".jsonl"}
+# Retired top-level generated roots (now consolidated under out/) + legacy forbidden locations.
 FORBIDDEN_SUBSTR = (
     "output/", "results/", "selfcheck_out/", "mined_knowledge/", "/presentation/",
     "_dse_analysis", "_recap",
@@ -95,10 +98,9 @@ def main() -> int:
     if ext in GENERATED_EXTS or any(s in slashed for s in FORBIDDEN_SUBSTR):
         sys.stderr.write(
             "BLOCKED by guard_artifact_writes: "
-            f"'{rel_posix}' is a generated artifact outside the sanctioned roots "
-            "(runs/, artifacts/, build/).\n"
-            "Write generated output via merlin.common.artifacts: start_run() -> runs/<suite>/...,\n"
-            "new_product()/cache_dir() -> artifacts/<topic>/...  (see .claude/skills/artifact-layout).\n"
+            f"'{rel_posix}' is a generated artifact outside the sanctioned root out/.\n"
+            "Write generated output via merlin.common.artifacts: start_run() -> out/runs/<suite>/...,\n"
+            "new_product()/cache_dir() -> out/artifacts/<topic>/...  (see .claude/skills/artifact-layout).\n"
             "Escape hatch: export MERLIN_ALLOW_ARTIFACT_WRITE=1 or add a prefix to "
             ".claude/hooks/artifact_allowlist.txt.\n"
         )

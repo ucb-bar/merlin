@@ -42,7 +42,7 @@ from merlin.baselines import bundle as _bundle
 from merlin.baselines import k1_exec, profile, rvv_audit
 from merlin.baselines.contract import BaselineResult, RegionProfile, ScalarFallback
 from merlin.common import artifacts
-from merlin.common.paths import repo_root
+from merlin.common.paths import build_dir, repo_root
 from merlin.rvvgen import k1
 
 FRAMEWORK = "buddy"
@@ -53,7 +53,7 @@ FRAMEWORK = "buddy"
 _BUDDY_MMAP_WEIGHTS_THRESHOLD = 256 * 1024 * 1024
 
 # --- buddy-mlir build layout (gitignored; built by this arm) ------------------------------------
-_BUILD_ROOT = repo_root() / "build" / "baselines" / "buddy"
+_BUILD_ROOT = build_dir() / "baselines" / "buddy"
 _BUDDY_SRC = repo_root() / "third_party" / "baselines" / "buddy-mlir"
 
 

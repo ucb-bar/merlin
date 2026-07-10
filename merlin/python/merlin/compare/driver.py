@@ -15,6 +15,7 @@ from pathlib import Path
 
 from . import attribution, empirical, figures, report, structural
 from .spec import Spec
+from ..common.paths import artifacts_dir
 
 
 def _repo_root() -> Path:
@@ -25,7 +26,7 @@ def run(spec: Spec, *, out_root: Path | None = None, run_board: bool = False,
         root: Path | None = None, ts: str | None = None) -> Path:
     """Execute a full compare run; return the artifact directory."""
     root = root or _repo_root()
-    out_root = Path(out_root) if out_root else (root / "artifacts" / "compare")
+    out_root = Path(out_root) if out_root else (artifacts_dir() / "compare")
     ts = ts or time.strftime("%Y%m%d_%H%M%S")
     out_dir = out_root / f"compare_{ts}"
     out_dir.mkdir(parents=True, exist_ok=True)

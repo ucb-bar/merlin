@@ -128,7 +128,7 @@ def main() -> None:
     import argparse
 
     from merlin.common.artifacts import new_product
-    from merlin.common.paths import repo_root
+    from merlin.common.paths import artifacts_dir
 
     ap = argparse.ArgumentParser(description="Cross-framework K1-RVV matrix (merlin vs baselines)")
     ap.add_argument("--measurements", default=None,
@@ -136,7 +136,7 @@ def main() -> None:
     args = ap.parse_args()
 
     root = Path(args.measurements) if args.measurements else \
-        repo_root() / "artifacts" / "measurements" / "k1_spacemit"
+        artifacts_dir() / "measurements" / "k1_spacemit"
     results = dedupe_latest(collect_dir(root))
     md, csv = render_markdown(results), render_csv(results)
 

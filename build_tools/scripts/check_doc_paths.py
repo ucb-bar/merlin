@@ -87,7 +87,7 @@ ALLOW_WORDS = ("deprecated", "retired", "gitignored", "recaptures", "regenerable
                "docs/design/")
 
 # Trees we don't scan (generated / vendored / design notes that legitimately name retired paths).
-SKIP_PARTS = {".git", ".venv", "venv", "build", "artifacts", "runs", "output",
+SKIP_PARTS = {".git", ".venv", "venv", "out", "build", "artifacts", "runs", "output",
               "third_party", "tmp", "__pycache__", "node_modules"}
 
 

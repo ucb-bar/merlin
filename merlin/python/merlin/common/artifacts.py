@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .paths import repo_root
+from .paths import artifacts_dir, out_dir, repo_root
 from .yaml import dump_yaml
 
 
@@ -47,14 +47,16 @@ def write_all(artifacts: list[Artifact], base: str | Path) -> list[Path]:
 
 
 # ===========================================================================
-# Three-root output convention (runs/ artifacts/ build/) — see CLAUDE.md
+# Single-root output convention: out/{runs,artifacts,build} — see CLAUDE.md
 # "Generated-output convention" and .claude/skills/artifact-layout.
 #
 # This is the SINGLE place that knows how to name and locate generated output.
 # Scripts must call start_run() / new_product() / cache_dir() instead of
 # hand-building paths under output/, results/, etc. (those roots are retired).
-# aet imports are LAZY (inside functions) so importing this module never pulls
-# aet — protecting the ~16 modules that use the Artifact class above.
+# Root names come from common.paths (out_dir/runs_dir/artifacts_dir/build_dir);
+# never hard-code the literal strings here or in callers. aet imports are LAZY
+# (inside functions) so importing this module never pulls aet — protecting the
+# ~16 modules that use the Artifact class above.
 # ===========================================================================
 
 
@@ -113,7 +115,7 @@ def start_run(
     extra: dict | None = None,
     make_subdirs: tuple[str, ...] = ("logs", "metrics", "artifacts_dir", "generated", "contracts"),
 ) -> RunHandle:
-    """Begin an aet-managed experiment run under ``runs/<target>/<suite>/<run-id>/``.
+    """Begin an aet-managed experiment run under ``out/runs/<target>/<suite>/<run-id>/``.
 
     The **target** is the top folder level so everything for a target groups together and the
     inner file names (run_record.json, metrics/summary_metrics.json, ...) are shared across
@@ -128,9 +130,11 @@ def start_run(
     from aet.core.run_spec import RunSpec
     from aet.tracking import EvalRunLogger
 
-    root = Path(project_root) if project_root else repo_root()
+    # aet lays runs out at <project_root>/runs/...; default to the out/ root so runs land under
+    # out/runs/. Git provenance always comes from the repo root (out/ may not exist yet on first run).
+    root = Path(project_root) if project_root else out_dir()
     ts = utc_stamp()
-    sha = git_sha7(root)
+    sha = git_sha7(repo_root())
     # Target at folder level: embed it as the leading suite segment (aet lays runs out at
     # runs/<suite>/<run-id>, and suites may be slash-nested — mirrors gemmini-conformance etc.).
     eff_suite = suite
@@ -229,13 +233,13 @@ def new_product(
 
     Layout (target at folder level so a target's products group together; inner file names
     are shared across targets for cross-target diffing):
-      * with target:  ``artifacts/<topic>/<target>/v<ver>/<topic>_<target>_v<ver>_<TS>_<sha7>/``
-      * no target:    ``artifacts/<topic>/v<ver>/<topic>_v<ver>_<TS>_<sha7>/``
+      * with target:  ``out/artifacts/<topic>/<target>/v<ver>/<topic>_<target>_v<ver>_<TS>_<sha7>/``
+      * no target:    ``out/artifacts/<topic>/v<ver>/<topic>_v<ver>_<TS>_<sha7>/``
     The ``latest`` symlink is RELATIVE (bwrap-safe) and repointed atomically.
     """
     ts = utc_stamp()
     sha = git_sha7()
-    base = repo_root() / "artifacts" / generator
+    base = artifacts_dir() / generator
     if target:
         base = base / target
     vdir = base / f"v{version}"
@@ -300,7 +304,7 @@ def new_measurement(
     update_latest: bool = True,
 ) -> MeasurementDir:
     """Create a hardware-measurement run dir under
-    ``artifacts/measurements/<substrate>/<model>/<experiment>_v<ver>_<TS>_<sha7>/``.
+    ``out/artifacts/measurements/<substrate>/<model>/<experiment>_v<ver>_<TS>_<sha7>/``.
 
     **substrate** = the execution environment that produced the numbers, named
     ``<kind>_<design>`` so identical kernels measured on different bitstreams/designs never
@@ -311,7 +315,7 @@ def new_measurement(
     """
     ts = utc_stamp()
     sha = git_sha7()
-    base = repo_root() / "artifacts" / "measurements" / substrate / model
+    base = artifacts_dir() / "measurements" / substrate / model
     base.mkdir(parents=True, exist_ok=True)
     leaf = f"{experiment}_v{version}_{ts}_{sha}"
     mdir = _unique_dir(base, leaf)
@@ -330,17 +334,17 @@ def new_measurement(
 
 
 def cache_dir(namespace: str, *, ensure: bool = True) -> Path:
-    """Large regenerable cache dir under ``artifacts/cache/<namespace>/`` (PURGEABLE)."""
-    d = repo_root() / "artifacts" / "cache" / namespace
+    """Large regenerable cache dir under ``out/artifacts/cache/<namespace>/`` (PURGEABLE)."""
+    d = artifacts_dir() / "cache" / namespace
     if ensure:
         d.mkdir(parents=True, exist_ok=True)
     return d
 
 
 def recaptures_dir() -> Path:
-    """Model-recapture root ``artifacts/recaptures/`` (PURGEABLE; ~150 GB, regenerable via m2m).
+    """Model-recapture root ``out/artifacts/recaptures/`` (PURGEABLE; ~150 GB, regenerable via m2m).
 
     Holds model captures (``<model>_<dtype>_<variant>/model.mlir`` + weights/io) and golden
     reference outputs, consumed by every target backend. The legacy ``output/`` tree is retired.
     """
-    return repo_root() / "artifacts" / "recaptures"
+    return artifacts_dir() / "recaptures"

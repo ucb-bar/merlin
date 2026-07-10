@@ -65,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
     dp = emit_design_pressure(workload, rpv["cutpoints"], rpv, feats)
     cc = emit_candidate_contracts(workload, contracts)
 
-    out = Path(args.out) if args.out else paths.repo_root() / "artifacts" / "design-pressure" / workload
+    out = Path(args.out) if args.out else paths.artifacts_dir() / "design-pressure" / workload
     Artifact("design_pressure.json", json.dumps(dp, indent=2, sort_keys=True)).write(out)
     Artifact("candidate_contracts.yaml", dump_yaml(cc)).write(out)
 
