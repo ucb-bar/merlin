@@ -106,7 +106,18 @@ def get_backend(name: str):
 
 
 # --- shared backend plumbing (the copy-pasted console protocol, collapsed) --------------------------
-import re as _re
+def _strip_warning_fragments(text: str) -> str:
+    """Drop each line's ``%Warning:``/``Warning:`` fragment onward (stray Verilator noise), keeping
+    any text before it — the structural equivalent of the old ``%?Warning:[^\\n]*`` substitution."""
+    out = []
+    for line in text.split("\n"):
+        idx = line.find("Warning:")
+        if idx != -1:
+            if idx > 0 and line[idx - 1] == "%":
+                idx -= 1
+            line = line[:idx]
+        out.append(line)
+    return "\n".join(out)
 
 
 def parse_console(text: str, *, error_cls: type[Exception] = RuntimeError,
@@ -121,7 +132,7 @@ def parse_console(text: str, *, error_cls: type[Exception] = RuntimeError,
     ``int`` for int8/systolic/CPU targets and ``float`` for fp SIMT targets. ``error_cls`` is the
     backend's own exception type (so messages/raises are unchanged from the hand-written versions)."""
     if strip_warnings:
-        text = _re.sub(r"%?Warning:[^\n]*", "", text)
+        text = _strip_warning_fragments(text)
     outputs: dict[str, list] = {}
     raw: dict[str, int] = {}
     done = False

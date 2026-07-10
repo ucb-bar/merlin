@@ -71,7 +71,7 @@ def main():
 
 
 def _expert_rect(source, *, M, N, K, reps):
-    import re, subprocess, tempfile
+    import subprocess, tempfile
     from merlin.kernels.ceiling_drivers import run_expert_gemm as expert
     from merlin.rvvgen import k1
     spec = expert._experts()[source]

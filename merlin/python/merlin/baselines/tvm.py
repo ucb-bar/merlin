@@ -413,10 +413,11 @@ try:
     # Feed inputs in the GRAPH's positional order. The npz keys are in0,in1,...,inN; a plain
     # sorted() is LEXICAL (in0,in1,in10,in11,in2,...) which mis-orders >=10-input models (rdt2/xr0)
     # and silently misfeeds the VM. Sort by the trailing integer instead (natural order).
-    import re as _re
     def _natkey(k):
-        m = _re.search(r"(\d+)$", k)
-        return (int(m.group(1)) if m else 0, k)
+        i = len(k)
+        while i > 0 and k[i - 1].isdigit():
+            i -= 1
+        return (int(k[i:]) if i < len(k) else 0, k)
     host_cos = host_rel = gold_cos = None
     host_note = ""
     try:
@@ -738,10 +739,11 @@ try:
     rmod = sess.load_module(os.path.basename(so))
     vm = relax.VirtualMachine(rmod, dev)
     npz = np.load(os.environ["MERLIN_RPC_INPUTS"])
-    import re as _re
     def _natkey(k):
-        m = _re.search(r"(\d+)$", k)
-        return (int(m.group(1)) if m else 0, k)
+        i = len(k)
+        while i > 0 and k[i - 1].isdigit():
+            i -= 1
+        return (int(k[i:]) if i < len(k) else 0, k)
     # natural (not lexical) order so >=10-input models feed in graph-positional order (see driver).
     args = [tvm.nd.array(npz[k], dev) for k in sorted(npz.files, key=_natkey)]
     # relax VM over RPC: set_input/invoke_stateful/get_outputs (marshals remote NDArrays correctly).
