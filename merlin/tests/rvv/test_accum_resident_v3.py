@@ -109,7 +109,7 @@ def _decode(features, M, N, K):
     from merlin.rvvgen.registry import load_rvv_package
 
     bundle = workloads.gen_matmul_f32(tempfile.mkdtemp(), M=M, N=N, K=K)
-    pkg = load_rvv_package(REPO / "artifacts/targets" / "rvv" / "hand_v0")
+    pkg = load_rvv_package(REPO / "out/artifacts/targets" / "rvv" / "hand_v0")
     pkg = replace(pkg, run_id="test_v3", compiler_features=list(features))
     work = Path(tempfile.mkdtemp(prefix="test_v3_"))
     apply_rvv_package(pkg, bundle, work, board="spike_riscv64", harts=1, arena_mb=64)
@@ -247,7 +247,7 @@ def _decode_model(model_name, features):
     from merlin.llvmlower.lower import lower_model_file
     from merlin.runtime.backends import zephyr_model as zm
 
-    mdir = REPO / "artifacts" / "recaptures" / model_name
+    mdir = REPO / "out/artifacts" / "recaptures" / model_name
     work = Path(tempfile.mkdtemp(prefix=f"test_v3_wm_{model_name}_"))
     prepared = zm._prepare_model_mlir(mdir / "model.mlir", work, int8_compute=False)
     feats = frozenset(features) or None
@@ -263,7 +263,7 @@ def _decode_model(model_name, features):
 
 
 @pytest.mark.skipif(not _toolchain(), reason="riscv toolchain missing")
-@pytest.mark.skipif(not (REPO / "artifacts" / "recaptures" / "bitvla_fp32_consistent" / "model.mlir").is_file(),
+@pytest.mark.skipif(not (REPO / "out/artifacts" / "recaptures" / "bitvla_fp32_consistent" / "model.mlir").is_file(),
                     reason="bitvla model bundle not present")
 @pytest.mark.parametrize("model", ["bitvla_fp32_consistent", "openvla_fp32_consistent"])
 def test_v3_whole_model_lowers_vectorized_not_scalar_fallback(model):
@@ -272,7 +272,7 @@ def test_v3_whole_model_lowers_vectorized_not_scalar_fallback(model):
     # (b) actually apply the v3 micro-kernel — vfmacc.vf present in the emitted asm (the baseline
     #     emits ZERO vfmacc of any form, so vfmacc.vf>0 proves the resident-accumulator kernel fired
     #     whole-model, not a scalar/vfmul fallback).
-    if not (REPO / "artifacts" / "recaptures" / model / "model.mlir").is_file():
+    if not (REPO / "out/artifacts" / "recaptures" / model / "model.mlir").is_file():
         pytest.skip(f"{model} bundle not present")
     base = _decode_model(model, [])
     assert base.count("vfmacc", "vmacc") == 0, "baseline must emit no vfmacc (un-fused matmul)"

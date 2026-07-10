@@ -19,8 +19,8 @@ from merlin.xdsl_dialects import _common
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
 
 REPO = repo_root()
-MODEL = REPO / "artifacts/recaptures/small_consistent"
-TINY = REPO / "artifacts/recaptures/tiny_consistent"
+MODEL = REPO / "out/artifacts/recaptures/small_consistent"
+TINY = REPO / "out/artifacts/recaptures/tiny_consistent"
 
 
 def _toolchain():
@@ -106,7 +106,7 @@ def test_whole_tiny_llama_via_dispatch_table_matches_torch(tmp_path):
     """TinyLlama-1.1B end to end via the dispatch table; argmax == torch on all tokens."""
     from merlin.runtime.dispatch_runtime import run_model
 
-    cache = REPO / "artifacts/cache/kernel_cache_tiny"
+    cache = REPO / "out/artifacts/cache/kernel_cache_tiny"
     res = run_model(TINY, tmp_path, cache_dir=cache)
     assert res["n_kernels"] == 1402
     out = np.asarray(res["output"], np.float32).reshape(8, -1)

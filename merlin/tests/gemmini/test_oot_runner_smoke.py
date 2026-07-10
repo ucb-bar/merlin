@@ -16,8 +16,8 @@ from merlin.targetgen.contract import schemas, toolchain as mlir_tc
 from merlin.targetgen.oot_runner import certify
 
 REPO = repo_root()
-NATIVE = REPO / "artifacts/targets" / "gemmini" / "merlin_native_v0"
-CPP = REPO / "artifacts/targets" / "gemmini" / "hand_smoke_oot"
+NATIVE = REPO / "out/artifacts/targets" / "gemmini" / "merlin_native_v0"
+CPP = REPO / "out/artifacts/targets" / "gemmini" / "hand_smoke_oot"
 EX = REPO / "merlin/contract" / "examples"
 
 _HAVE_SPIKE = gem.available("spike")

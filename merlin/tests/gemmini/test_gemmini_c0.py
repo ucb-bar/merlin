@@ -87,7 +87,7 @@ except Exception:  # pragma: no cover
 
 
 _REPO = repo_root()
-_GEMMINI_PKG = _REPO / "artifacts/targets/gemmini/hand_v0"
+_GEMMINI_PKG = _REPO / "out/artifacts/targets/gemmini/hand_v0"
 
 
 @pytest.mark.skipif(not _HAS_XDSL, reason="xDSL not installed")

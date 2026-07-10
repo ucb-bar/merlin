@@ -46,7 +46,7 @@ def test_new_product_manifest_and_relative_latest(tmp_path, monkeypatch):
     monkeypatch.setenv("MERLIN_REPO_ROOT", str(tmp_path))
     p = A.new_product("dse", version=1, target="bitvla", notes="t")
     rel = p.path.relative_to(tmp_path).parts
-    assert rel[:4] == ("artifacts", "dse", "bitvla", "v1")        # topic + target + version
+    assert rel[:5] == ("out", "artifacts", "dse", "bitvla", "v1")  # single out/ root; topic+target+version
     p.add_artifact("findings.csv").write_text("a,b\n1,2\n")
     mp = p.write_manifest()
     man = mp.read_text()
@@ -59,7 +59,7 @@ def test_new_product_manifest_and_relative_latest(tmp_path, monkeypatch):
 def test_cache_dir_under_artifacts_cache(tmp_path, monkeypatch):
     monkeypatch.setenv("MERLIN_REPO_ROOT", str(tmp_path))
     d = A.cache_dir("kc")
-    assert d.relative_to(tmp_path).parts == ("artifacts", "cache", "kc") and d.is_dir()
+    assert d.relative_to(tmp_path).parts == ("out", "artifacts", "cache", "kc") and d.is_dir()
 
 
 # ----------------------------------------------------------------- linter
@@ -115,15 +115,15 @@ def _hook(tool, path):
 
 @pytest.mark.parametrize("path", [
     "output/foo.png", "results/x_dse_analysis/r.csv", "selfcheck_out/log.jsonl",
-    "merlin/x.svg",
+    "merlin/x.svg", "artifacts/plots/foo.png",   # retired top-level roots now denied (out/ only)
 ])
 def test_hook_denies_generated_outside_roots(path):
     assert _hook("Write", path).returncode == 2
 
 
 @pytest.mark.parametrize("path", [
-    "artifacts/plots/foo.png", "runs/gemmini/s/r/perf_results.json",
-    "merlin/python/merlin/x.py", "output/AGENT.md", "build/x.o",
+    "out/artifacts/plots/foo.png", "out/runs/gemmini/s/r/perf_results.json",
+    "merlin/python/merlin/x.py", "output/AGENT.md", "out/build/x.o",
 ])
 def test_hook_allows_sanctioned_and_source(path):
     assert _hook("Write", path).returncode == 0

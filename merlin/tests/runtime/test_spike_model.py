@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 REPO = repo_root()
-MODEL = REPO / "artifacts/recaptures/small_consistent"
+MODEL = REPO / "out/artifacts/recaptures/small_consistent"
 
 
 def _toolchain():
