@@ -521,8 +521,11 @@ def test_loop_recovery_recovers_K_and_carried_state_from_ir():
     assert ov.kv_cache_bytes == 221184           # 2 * 2*1*4*27*128 * 4 bytes (f32)
     assert ov.repeated_region_op_count > 100      # the decode body is a real repeated region
 
-    # smolVLA / pi0.5 flow-matching: K=10, the action latent is the carried state (no growing KV)
+    # smolVLA / pi0.5 flow-matching: K=10, the action latent is the carried state (no growing KV).
+    # These captures are gitignored + regenerable, so skip any not present in this checkout.
     for w, k in (("smolvla", 10), ("pi05", 10)):
+        if not (_RECAP_LOOP / w / "model.mlir").is_file():
+            continue
         lr = recover_loop(_RECAP_LOOP / w / "model.mlir", w)
         assert lr.present and lr.K == k
         assert any(c.role == "latent" and c.shape == [1, 50, 32] for c in lr.carried_state)
@@ -2909,8 +2912,9 @@ def test_p18_operator_recovery_accounting():
     assert any(int(r["attention_macs"]) > 0 for r in om["rows"])  # attention recovered, not unavailable
 
 
-@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file(),
-                    reason="case_study package not present")
+@pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file()
+                    or not (_CS_DIR.parent / "recaptures").is_dir(),
+                    reason="case_study package or its (gitignored, regenerable) recaptures not present")
 def test_p18_capture_erasure_and_per_family():
     # capture-erasure evidence is demonstrated from the IR (loops absent except a known gather
     # artifact; no low-bit int types); per-family fractions are valid.
