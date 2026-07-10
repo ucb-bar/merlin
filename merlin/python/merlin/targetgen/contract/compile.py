@@ -52,13 +52,17 @@ def _movement_harness_c(cb: dict[str, Any]) -> str:
     prints = [f'  printf("OUT {dst} {m} {n}");',
               f"  for (long i = 0; i < {m}; i++) for (long j = 0; j < {n}; j++)"
               f" printf(\" %d\", (int)T_{dst}[i * {np_} + j]);", '  printf("\\n");']
+    # Print METRIC cycles BEFORE the (possibly huge) OUT tensor dump: large-output kernels flood the
+    # UART and the per-ELF capture truncates mid-dump, so a trailing METRIC line would be lost. Emitting
+    # the (tiny) cycle metric first guarantees it is always captured; the OUT dump follows for correctness.
     return ("#include <stdint.h>\n#include <stdio.h>\n#include \"include/gemmini_testutils.h\"\n"
             "extern void gemmini_kernel();\n" + "\n".join(decls) + "\nint main() {\n"
             "  uint64_t c0 = read_cycles();\n"
             f"  gemmini_kernel((void*)T_{src}, (void*)T_{dst});\n  gemmini_fence();\n"
-            "  uint64_t c1 = read_cycles();\n" + "\n".join(prints) + "\n"
+            "  uint64_t c1 = read_cycles();\n"
             '  printf("METRIC cycles %lu\\n", (unsigned long)(c1 - c0));\n'
             '  printf("METRIC cycle_window_gemmini_region 1\\n");\n'
+            + "\n".join(prints) + "\n"
             '  printf("DONE\\n");\n  return 0;\n}\n')
 
 
