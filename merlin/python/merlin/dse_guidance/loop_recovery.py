@@ -20,9 +20,10 @@ no speedup. Bytes are shape×dtype (weight VALUES are irrelevant to the contract
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from merlin.common import mlir_query
 
 _DTYPE_BYTES = {
     "f64": 8, "f32": 4, "f16": 2, "bf16": 2,
@@ -30,13 +31,21 @@ _DTYPE_BYTES = {
     "ui8": 1, "si64": 8, "si32": 4,
 }
 
-# %933 = arith.constant {prov.op = "while_loop", ...} 7 : index
-_WL_CONST = re.compile(
-    r'(%\S+)\s*=\s*arith\.constant\s*\{[^}]*prov\.op\s*=\s*"while_loop"[^}]*\}\s*(\d+)\s*:\s*index')
-# %936, ... = scf.for %iv = %lb to %ub step %st iter_args(...) -> (T1, T2, ...) {
-_SCF_FOR = re.compile(
-    r'scf\.for\s+(%\S+)\s*=\s*(%\S+)\s+to\s+(%\S+)\s+step\s+(%\S+)\s+iter_args\((.*?)\)\s*->\s*\((.*?)\)')
-_TENSOR = re.compile(r'tensor<([^>]*)>')
+
+def _while_loop_for(module):
+    """The ``scf.for`` (xDSL ForOp) lowered from ``torch.while_loop``: its upper-bound operand is an
+    ``arith.constant`` tagged ``prov.op = "while_loop"``. Returns ``(forop, K)`` or ``(None, None)``.
+    Read structurally from the parsed IR — the loop bounds/iter_args/body are real IR, not text."""
+    for op in mlir_query.walk(module, "scf.for"):
+        ub_owner = op.operands[1].owner
+        if (mlir_query.op_name(ub_owner) == "arith.constant"
+                and mlir_query.attr_str(ub_owner, "prov.op") == "while_loop"):
+            return op, ub_owner.value.value.data
+    return None, None
+
+
+def _for_body(forop):
+    return forop.body.blocks[0]
 
 
 @dataclass
@@ -78,20 +87,6 @@ class LoopRecovery:
         }
 
 
-def _parse_tensor_type(t: str) -> tuple[list[int], str]:
-    """'2x1x4x27x128xf32' -> ([2,1,4,27,128], 'f32'); 'i64' -> ([], 'i64')."""
-    parts = t.split("x")
-    dtype = parts[-1]
-    dims: list[int] = []
-    for p in parts[:-1]:
-        try:
-            dims.append(int(p))
-        except ValueError:
-            # dynamic dim '?' or symbolic — record as -1 (unknown)
-            dims.append(-1)
-    return dims, dtype
-
-
 def _bytes_of(dims: list[int], dtype: str) -> int | None:
     if any(d < 0 for d in dims):
         return None
@@ -115,9 +110,6 @@ def _classify(idx: int, dims: list[int], dtype: str) -> str:
     if not is_int and len(dims) == 3:
         return "latent"            # action latent [B, horizon, dim]
     return "other"
-
-
-_SSA = re.compile(r"%[0-9A-Za-z_]+")
 
 
 @dataclass
@@ -153,44 +145,36 @@ def residency_from_ir(model_mlir_path: str | Path, workload: str = "") -> Reside
     path = Path(model_mlir_path)
     if not path.exists():
         return ResidencyCert(workload=workload, present=False)
-    text = path.read_text()
-    wl_consts = {m.group(1): int(m.group(2)) for m in _WL_CONST.finditer(text)}
-    if not wl_consts:
+    forop, K = _while_loop_for(mlir_query.parse(path))
+    if forop is None:
         return ResidencyCert(workload=workload, present=False)
-    lines = text.splitlines()
-    for li, line in enumerate(lines):
-        m = _SCF_FOR.search(line)
-        if not m or not ({m.group(2), m.group(3), m.group(4)} & set(wl_consts)):
-            continue
-        iv, ub, iargs = m.group(1), m.group(3), m.group(5)
-        K = wl_consts.get(ub) or max(wl_consts.values())
-        # block-arg bound names = the LHS of each "%a = %init" in iter_args, plus the IV
-        bound = set(re.findall(r"(%[0-9A-Za-z_]+)\s*=\s*%[0-9A-Za-z_]+", iargs)) | {iv}
-        # isolate the body region by brace depth
-        depth = 0
-        body: list[str] = []
-        for bl in lines[li:]:
-            depth += bl.count("{") - bl.count("}")
-            body.append(bl)
-            if depth <= 0 and len(body) > 1:
-                break
-        defined: set[str] = set()
-        for bl in body:
-            lhs = re.match(r"\s*((?:%[0-9A-Za-z_]+\s*,\s*)*%[0-9A-Za-z_]+)\s*=", bl)
-            if lhs:
-                defined |= set(_SSA.findall(lhs.group(1)))
-        used = set(_SSA.findall("\n".join(body)))
-        invariant = used - defined - bound
-        return ResidencyCert(
-            workload=workload, present=True, K=K,
-            n_loop_invariant_operands=len(invariant),
-            n_loop_carried=len(bound) - 1,          # exclude the IV
-            n_body_defs=len(defined),
-            resident_proof=(f"{len(invariant)} operands referenced read-only in the scf.for body but "
-                            f"defined outside the region -> loop-invariant across K={K} iterations "
-                            "(resident-eligible); avoidable reload = resident_bytes x (K-1)"),
-        )
-    return ResidencyCert(workload=workload, present=False)
+    body = _for_body(forop)
+    block_args = set(body.args)                       # iv + iter_args (the loop-carried bound values)
+    # Walk the body region: defined = every SSA result produced INSIDE the region; used = every
+    # operand referenced. Loop-invariant = used but neither defined in-region nor a carried block arg
+    # (i.e. defined OUTSIDE -> reused read-only every iteration -> resident-eligible).
+    defined: set = set()
+    used: set = set()
+
+    def _walk(region):
+        for blk in region.blocks:
+            for op in blk.ops:
+                defined.update(op.results)
+                used.update(op.operands)
+                for r in op.regions:
+                    _walk(r)
+
+    _walk(forop.body)
+    invariant = used - defined - block_args
+    return ResidencyCert(
+        workload=workload, present=True, K=K,
+        n_loop_invariant_operands=len(invariant),
+        n_loop_carried=len(block_args) - 1,           # exclude the IV
+        n_body_defs=len(defined),
+        resident_proof=(f"{len(invariant)} operands referenced read-only in the scf.for body but "
+                        f"defined outside the region -> loop-invariant across K={K} iterations "
+                        "(resident-eligible); avoidable reload = resident_bytes x (K-1)"),
+    )
 
 
 def recover_loop(model_mlir_path: str | Path, workload: str = "") -> LoopRecovery:
@@ -198,48 +182,36 @@ def recover_loop(model_mlir_path: str | Path, workload: str = "") -> LoopRecover
     path = Path(model_mlir_path)
     if not path.exists():
         return LoopRecovery(workload=workload, present=False)
-    text = path.read_text()
-
-    # 1) the while_loop bound constants (ssa -> integer value)
-    wl_consts = {m.group(1): int(m.group(2)) for m in _WL_CONST.finditer(text)}
-    if not wl_consts:
+    forop, K = _while_loop_for(mlir_query.parse(path))
+    if forop is None:
         return LoopRecovery(workload=workload, present=False)
 
-    lines = text.splitlines()
-    # 2) the scf.for whose lb/ub/step are while_loop constants
-    for li, line in enumerate(lines):
-        m = _SCF_FOR.search(line)
-        if not m:
-            continue
-        _iv, lb, ub, st, _iargs, rtypes = m.groups()
-        if not ({lb, ub, st} & set(wl_consts)):
-            continue
-        # K = the upper-bound constant (lb=0, step=1 are <= K)
-        K = wl_consts.get(ub)
-        if K is None:
-            K = max(wl_consts.values())
+    # iter_args are the scf.for operands after (lb, ub, step) — their types are the loop-carried state.
+    iter_args = forop.operands[3:]
+    carried: list[CarriedState] = []
+    for i, val in enumerate(iter_args):
+        dims, dtype = mlir_query.type_shape_dtype(val.type)
+        carried.append(CarriedState(i, dims, dtype, _bytes_of(dims, dtype), _classify(i, dims, dtype)))
+    kv_bytes = sum((c.bytes or 0) for c in carried if c.role == "kv_cache") or None
 
-        carried: list[CarriedState] = []
-        for i, tt in enumerate(_TENSOR.findall(rtypes)):
-            dims, dtype = _parse_tensor_type(tt)
-            b = _bytes_of(dims, dtype)
-            carried.append(CarriedState(i, dims, dtype, b, _classify(i, dims, dtype)))
-        kv_bytes = sum((c.bytes or 0) for c in carried if c.role == "kv_cache") or None
+    # repeated-region op count: every result-defining op in the body region (recursively), the ops
+    # that re-execute each of the K iterations.
+    body_ops = 0
 
-        # 3) repeated region op count: SSA-defining lines between scf.for and its scf.yield
-        body_ops = 0
-        depth = 0
-        for bl in lines[li:]:
-            depth += bl.count("{") - bl.count("}")
-            if "scf.yield" in bl:
-                break
-            if " = " in bl and "scf.for" not in bl:
-                body_ops += 1
-        return LoopRecovery(
-            workload=workload, present=True, K=K, K_source="recovered_from_ir",
-            n_iter_args=len(carried), carried_state=carried,
-            repeated_region_op_count=body_ops, kv_cache_bytes=kv_bytes,
-            evidence=f"scf.for(0,{K},1) lowered from torch.while_loop "
-                     f"(bounds tagged prov.op=while_loop); {len(carried)} iter_args",
-        )
-    return LoopRecovery(workload=workload, present=False)
+    def _count(region):
+        nonlocal body_ops
+        for blk in region.blocks:
+            for op in blk.ops:
+                if op.results and mlir_query.op_name(op) not in ("scf.for", "scf.yield"):
+                    body_ops += 1
+                for r in op.regions:
+                    _count(r)
+
+    _count(forop.body)
+    return LoopRecovery(
+        workload=workload, present=True, K=K, K_source="recovered_from_ir",
+        n_iter_args=len(carried), carried_state=carried,
+        repeated_region_op_count=body_ops, kv_cache_bytes=kv_bytes,
+        evidence=f"scf.for(0,{K},1) lowered from torch.while_loop "
+                 f"(bounds tagged prov.op=while_loop); {len(carried)} iter_args",
+    )

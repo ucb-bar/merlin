@@ -24,11 +24,10 @@ merlin/python/merlin/targetgen/rtl/gen_arc_ports.py           # C-identifier san
 merlin/python/merlin/llvmlower/pipeline.py                    # f0x float-literal fixup: MLIR printer emits text LLVM's parser rejects (emitter bug)
 merlin/python/merlin/frontends/linalg_mlir.py                 # `} -> (...)` normalizer that ENABLES the xDSL parse (pro-structural)
 
-# ---------------------------------------------------------------- xDSL-0.65 print bugs (revisit on xDSL upgrade)
-merlin/python/merlin/llvmlower/passes_xdsl.py                 # xDSL mis-prints rank-reduced extract/insert_slice + quant_ext; text fallback by design
-merlin/python/merlin/llvmlower/truncate.py                    # NaN-bisection over MLIR text; xDSL round-trip unreliable for these ops
-merlin/python/merlin/baselines/buddy.py                       # rewrites buddy-opt static_offsets in IR text; xDSL path unreliable here
-merlin/python/merlin/dse_guidance/loop_recovery.py            # scf/iter_args reconstruction from MLIR text; blocked on xDSL op-print fidelity
+# ---------------------------------------------------------------- text IR repair (fix INVALID model2MLIR text BEFORE it can be parsed — not an xDSL bug)
+merlin/python/merlin/llvmlower/passes_xdsl.py                 # repairs invalid m2m IR text (rank-reduced extract/insert_slice, custom quant_ext) before xDSL can parse it
+merlin/python/merlin/llvmlower/truncate.py                    # NaN-bisection truncates @forward at a LINE index (pre-parse text op); line-addressing is inherently textual
+merlin/python/merlin/baselines/buddy.py                       # rewrites buddy-opt static_offsets in the emitted IR text (post-tool, pre-reparse)
 
 # ---------------------------------------------------------------- DEFERRED: legacy comparator (needs a validated beam-ranking migration, not a mechanical swap)
 merlin/python/merlin/kernels/compare.py                       # legacy RvvFingerprint; superseded by cca_compare.py, BUT beam.py ranks on its structural_match scalar (0.6*decisions + 0.4*histogram-cosine) and CCA has no histogram — deleting needs a CCA-based score + intentional test_rvv_beam re-baseline (can't validate rankings without the RVV toolchain here)
