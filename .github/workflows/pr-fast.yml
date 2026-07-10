@@ -1,0 +1,41 @@
+name: pr-fast
+
+# Fast PR gate: the deterministic repo gates + a fast test subset (blocking), plus advisory ruff.
+# Mirrors the local pre-commit hooks. Heavier buckets (rvv/gemmini/runtime) need hardware/sims and
+# run out-of-band, so they are not part of this fast gate.
+on:
+  push:
+  pull_request:
+
+jobs:
+  fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: install (editable + dev + xdsl)
+        run: uv sync --all-extras
+      - name: structure gate
+        run: uv run python build_tools/scripts/check_structure.py
+      - name: artifact-layout gate
+        run: uv run python build_tools/scripts/check_artifact_layout.py
+      - name: docs anti-drift gate
+        run: uv run python build_tools/scripts/check_docs.py
+      - name: tests (fast subset; hardware buckets self-skip via skipif)
+        run: uv run pytest merlin/tests/infra merlin/tests/ir merlin/tests/kernels merlin/tests/targetgen -q -m "not slow and not integration"
+
+  ruff:
+    # Advisory until the codebase is ruff-clean; does not block merges yet.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: ruff lint + format check
+        run: |
+          uvx ruff check .
+          uvx ruff format --check .
