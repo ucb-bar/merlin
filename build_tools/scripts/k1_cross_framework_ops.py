@@ -30,11 +30,12 @@ blocker — never a fabricated number. Board left clean (binaries rm'd after eac
 """
 from __future__ import annotations
 
-import argparse, json, re, subprocess, tempfile
+import argparse, json, subprocess, tempfile
 from dataclasses import replace
 from pathlib import Path
 
 from merlin.common.paths import repo_root
+from merlin.common.driver_output import int_after, int_field
 from merlin.rvvgen import k1
 from merlin.rvvgen.registry import load_rvv_package
 
@@ -81,13 +82,12 @@ def _parse(base: dict, console: str | None, detail: str, *, reps: int = 1) -> di
     if "VERIFY PASS" not in console:
         return {**base, "ticks": None, "status": "not_run",
                 "blocker": f"verify did not pass; console tail: {console.strip()[-300:]}"}
-    m = re.search(r"CYCLES\s+(\d+)", console)
-    if not m:
+    t = int_after(console, "CYCLES")
+    if t is None:
         return {**base, "ticks": None, "status": "not_run", "blocker": "no CYCLES/ticks line"}
-    t = int(m.group(1))
-    err = re.search(r"errors=(\d+)", console)
+    err = int_field(console, "errors")
     return {**base, "ticks": t, "status": "pass",
-            "correct": (int(err.group(1)) == 0) if err else True,
+            "correct": (err == 0) if err is not None else True,
             "wall_ns_est": int(t * 1e9 / k1.K1_TIMEBASE_HZ),
             "note": "K1 real-silicon rdtime ticks; inner-compute; bit-exact verified"}
 

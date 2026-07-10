@@ -16,7 +16,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -30,8 +29,7 @@ CALIB_SRC = HERE / "calib" / "gemmini_costmodel_calib.c"
 # The cost-calibration ablation kernels are a LIBRARY-consumed benchmark input (this module compiles
 # them), so they live under merlin/benchmarks/, not experiments/. HERE=cost_model -> parents[2]=merlin/.
 STAGEF = HERE.parents[2] / "benchmarks" / "cost_calib"
-_CYC = re.compile(r"KIND\s+\d+\s+COUNT\s+\d+\s+CYCLES\s+(\d+)")
-_BARE_CYC = re.compile(r"REGION_CYCLES\s+(\d+)")
+from merlin.common.driver_output import int_after as _int_after
 
 KIND = {"mvin": 0, "mvin2": 1, "compute": 2, "mvout": 3, "config": 4, "fence": 5, "matmul": 6}
 
@@ -63,14 +61,14 @@ def build(p: dict, src: Path, defs: list[str], out: Path) -> Path:
     return out
 
 
-def run_rtl(p: dict, binary: Path, pat: re.Pattern, timeout: int = 600) -> int:
+def run_rtl(p: dict, binary: Path, label: str, timeout: int = 600) -> int:
     proc = subprocess.run([str(p["sim"]), "+permissive", "+permissive-off", str(binary)],
                           cwd=str(p["simdir"]), capture_output=True, text=True, timeout=timeout)
     out = proc.stdout + proc.stderr
-    m = pat.search(out)
-    if not m:
-        raise RuntimeError(f"no cycle line from {binary.name}:\n{out[-400:]}")
-    return int(m.group(1))
+    cyc = _int_after(out, label)   # driver prints "... CYCLES <n>" / "REGION_CYCLES <n>"
+    if cyc is None:
+        raise RuntimeError(f"no {label} line from {binary.name}:\n{out[-400:]}")
+    return cyc
 
 
 def calib_events(kind: str, count: int) -> dict[str, float]:
@@ -99,7 +97,7 @@ def calibrate(p: dict, counts=(4, 16), tmp=Path("/tmp/cmcalib")) -> tuple[Gemmin
     for kind, kid in KIND.items():
         for c in counts:
             b = build(p, CALIB_SRC, [f"-DKIND={kid}", f"-DCOUNT={c}"], tmp / f"k{kid}_c{c}")
-            cyc = run_rtl(p, b, _CYC)
+            cyc = run_rtl(p, b, "CYCLES")
             ev = calib_events(kind, c)
             rows.append({"kind": kind, "count": c, "cycles": cyc, "events": ev})
             X.append([1.0] + [ev[e] for e in EVENTS])
@@ -167,7 +165,7 @@ def validate(model: GemminiCostModel, p: dict, tmp=Path("/tmp/cmcalib")) -> list
             predicted[variant] = model.predict(ev)
             b = build(p, src, [f"-DVARIANT_{variant.upper()}", f"-D{knob}={n}",
                                "-DCOSTMODEL_TIME=1"], tmp / f"{name}_{variant}")
-            measured[variant] = run_rtl(p, b, _BARE_CYC)
+            measured[variant] = run_rtl(p, b, "REGION_CYCLES")
         for variant in measured:
             m_, pr = measured[variant], predicted[variant]
             checks.append({"harness": name, "variant": variant, "measured": m_,

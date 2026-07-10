@@ -48,20 +48,9 @@ merlin/python/merlin/runtime/backends/openblas_board/__init__.py  # matmul match
 merlin/python/merlin/targetgen/rtl/extract_module.py          # CIRCT HW module-subtree slice by text -> circt-opt instance graph
 merlin/python/merlin/targetgen/rtl_check_runner.py            # op-form vs attr-form mode select over gemmini MLIR -> mlir-opt
 
-# ---------------------------------------------------------------- TODO(batch-5): external output structured modes
-merlin/python/merlin/runtime/backends/muon.py                 # cyclotron cycles -> read performance_logs summary.json
-merlin/python/merlin/baselines/rvv_audit.py                   # objdump asm + symbols -> decode/objdump + pyelftools
-merlin/python/merlin/rvvgen/runner.py                         # objdump mnemonic -> decode/objdump.tokenize
-merlin/python/merlin/baselines/profile.py                     # our MERLIN_E2E/REGION driver markers -> JSON markers
-merlin/python/merlin/cost_model/calibrate.py                  # our calib driver CYCLES markers -> JSON markers
-merlin/python/merlin/kernels/bench_ceiling.py                 # spike-console cycle scrape -> JSON markers from our C harness
-merlin/python/merlin/kernels/ceiling_drivers/multishape_compare.py  # driver CYCLES/INSTRET markers -> JSON markers
-merlin/python/merlin/kernels/ceiling_drivers/run_expert_gemm.py     # driver CYCLES/INSTRET markers -> JSON markers
-build_tools/scripts/k1_cross_framework.py                     # our driver CYCLES marker -> JSON marker
-build_tools/scripts/k1_cross_framework_ops.py                 # our driver CYCLES/errors markers -> JSON markers
-build_tools/scripts/k1_large_shape_packing.py                 # our driver CYCLES marker -> JSON marker
-build_tools/scripts/k1_intrinsic_microkernel.py               # objdump asm + our driver markers -> decode/ + JSON markers
-build_tools/scripts/k1_e2e_general_validate.py                # our PipelineError message -> structured .op exception attribute
+# ---------------------------------------------------------------- TODO(batch-5b): objdump/ELF decode (needs decode/ + capstone/pyelftools)
+merlin/python/merlin/baselines/rvv_audit.py                   # objdump asm + ELF symbol headers -> decode/objdump + pyelftools
+merlin/python/merlin/kernels/bench_ceiling.py                 # bespoke saturn vec-* spike console ("took N cycles", "Vector cycles: N instructions: M") — verify against live bench before converting
 
 # ---------------------------------------------------------------- TODO(batch-6): RTL facts from structure
 merlin/python/merlin/targetgen/rtl/circt_introspect.py        # FLAGSHIP: @AccumulatorMem port widths via text regex -> CIRCT structured read

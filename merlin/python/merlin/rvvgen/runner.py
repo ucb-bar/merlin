@@ -14,7 +14,6 @@ K-ladder:
 """
 from __future__ import annotations
 
-import re
 import traceback
 from collections import Counter
 from pathlib import Path
@@ -30,12 +29,9 @@ from . import k1 as k1mod
 from .apply import apply_rvv_package
 from .registry import RvvPackage, load_rvv_package
 
-# An RVV (vector) mnemonic in objdump -d output: starts with 'v', may carry a .vv/.vf/.vi suffix.
-_VEC_MNEMONIC = re.compile(r"^v[a-z0-9]+(?:\.[a-z0-9]+)*$")
-
-
 def _instruction_histogram(disasm: str) -> dict[str, int]:
     """Histogram of RVV mnemonics in an objdump -d dump (the emitted-instruction evidence)."""
+    from ..common.driver_output import is_vector_mnemonic
     hist: Counter[str] = Counter()
     for line in disasm.splitlines():
         # objdump -d: "   1036a:\t<hex enc>\t<mnemonic>\t<operands>"
@@ -43,7 +39,7 @@ def _instruction_histogram(disasm: str) -> dict[str, int]:
         if len(fields) < 3:
             continue
         mnem = fields[2].strip().split()[0] if fields[2].strip() else ""
-        if mnem and _VEC_MNEMONIC.match(mnem):
+        if mnem and is_vector_mnemonic(mnem):
             hist[mnem] += 1
     return dict(sorted(hist.items()))
 

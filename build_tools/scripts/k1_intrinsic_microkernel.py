@@ -22,10 +22,11 @@ the cycle/functional authority).
 """
 from __future__ import annotations
 
-import argparse, json, re, subprocess, tempfile
+import argparse, json, subprocess, tempfile
 from pathlib import Path
 
 from merlin.common.paths import repo_root
+from merlin.common.driver_output import int_after, int_field
 from merlin.rvvgen import k1
 
 HERE = Path(repo_root()) / "merlin/python/merlin/kernels/ceiling_drivers"
@@ -101,8 +102,9 @@ def _objdump_vsetvli(binp: Path) -> dict:
         p = subprocess.run([str(objdump), "-d", str(binp)], capture_output=True, text=True, timeout=120)
     except (subprocess.TimeoutExpired, OSError) as e:
         return {"vsetvli_found": None, "note": f"objdump failed: {e}"}
-    setvli = sorted(set(re.findall(r"vsetvli?\s+[^\n]*?e32\s*,\s*m4[^\n]*", p.stdout)))
-    vfmacc = len(re.findall(r"vfmacc\.vf", p.stdout))
+    setvli = sorted({ln.strip() for ln in p.stdout.splitlines()
+                     if "vsetvl" in ln and "e32" in ln and "m4" in ln})
+    vfmacc = p.stdout.count("vfmacc.vf")
     return {"vsetvli_e32m4_variants": setvli[:6], "vfmacc_vf_count": vfmacc}
 
 
@@ -129,14 +131,14 @@ def measure_intrinsic_k1(*, M: int, N: int, K: int, reps: int = 3) -> dict:
                 return {**base, "ticks": None, "status": "not_run",
                         "blocker": f"verify did not pass; console tail: {console.strip()[-300:]}",
                         "asm": asm}
-            m = re.search(r"CYCLES\s+(\d+)", console)
-            if not m:
+            cyc = int_after(console, "CYCLES")
+            if cyc is None:
                 return {**base, "ticks": None, "status": "not_run",
                         "blocker": "no CYCLES/ticks line", "asm": asm}
-            ticks_runs.append(int(m.group(1)))
-            mm = re.search(r"MR=(\d+)", console)
-            if mm:
-                mr = int(mm.group(1))
+            ticks_runs.append(cyc)
+            mr_val = int_field(console, "MR")
+            if mr_val is not None:
+                mr = mr_val
     return {**base, "ticks": min(ticks_runs), "ticks_runs": ticks_runs, "status": "pass",
             "reps": reps, "MR": mr, "asm": asm,
             "wall_ns_est": int(min(ticks_runs) * 1e9 / k1.K1_TIMEBASE_HZ),

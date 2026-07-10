@@ -30,12 +30,12 @@ Run:  ``.venv/bin/python -m merlin.kernels.ceiling_drivers.multishape_compare``
 """
 from __future__ import annotations
 
-import re
 import subprocess
 import tempfile
 from dataclasses import replace
 from pathlib import Path
 
+from ...common.driver_output import int_after as _int_after
 from ...common.paths import repo_root
 from .. import bench_ceiling
 from . import run_expert_gemm as expert
@@ -267,23 +267,23 @@ def _parse(base: dict, console: str | None, source: str, detail: str = "") -> di
     if "VERIFY PASS" not in console:
         return {**base, "cycles": None, "status": "not_run",
                 "blocker": f"verify did not pass; console tail: {console.strip()[-300:]}"}
-    mc = re.search(r"CYCLES\s+(\d+)", console)
-    mi = re.search(r"INSTRET\s+(\d+)", console)
-    if not mc:
+    cycles = _int_after(console, "CYCLES")
+    instret = _int_after(console, "INSTRET")
+    if cycles is None:
         return {**base, "cycles": None, "status": "not_run", "blocker": "no CYCLES line"}
     note = f"{source} f32 GEMM on spike; inner-compute timed; verified vs scalar ref"
-    row = {**base, "cycles": int(mc.group(1)), "status": "pass", "note": note}
-    if mi:
-        row["instructions"] = int(mi.group(1))
+    row = {**base, "cycles": cycles, "status": "pass", "note": note}
+    if instret is not None:
+        row["instructions"] = instret
     # ours driver reports the fill-only baseline + the fill-inclusive total so the matmul-only
     # `cycles` above is exactly comparable to the experts' kernel-only timing (caveat #1 fix).
-    mcf = re.search(r"CYCLES_FULL\s+(\d+)", console)
-    mfc = re.search(r"FILL_CYCLES\s+(\d+)", console)
-    if mcf:
-        row["cycles_full"] = int(mcf.group(1))
+    cycles_full = _int_after(console, "CYCLES_FULL")
+    fill_cycles = _int_after(console, "FILL_CYCLES")
+    if cycles_full is not None:
+        row["cycles_full"] = cycles_full
         row["note"] = note + "; CYCLES=matmul-only (fill-only baseline subtracted)"
-    if mfc:
-        row["fill_cycles"] = int(mfc.group(1))
+    if fill_cycles is not None:
+        row["fill_cycles"] = fill_cycles
     return row
 
 
