@@ -34,7 +34,6 @@ is set, attempt clang (pointed at the gcc sysroot) first and fall back to gcc.
 from __future__ import annotations
 
 import os
-import re
 import subprocess
 import tempfile
 from collections import Counter
@@ -49,8 +48,6 @@ RVV_CFLAGS: tuple[str, ...] = (
     "-O2", "-ffreestanding", "-fno-builtin",
 )
 
-# objdump mnemonic (column-3 token), e.g. "vsetvli" / "vfmacc.vv" / "vle32.v".
-_MNEMONIC = re.compile(r"^v[a-z0-9]+(?:\.[a-z0-9]+)*$")
 
 
 # --------------------------------------------------------------------------- toolchains
@@ -285,12 +282,13 @@ def build_dossier_with_asm(nk, *, timeout: int = 120):
 # -------------------------------------------------------------------------------- helper
 def top_mnemonics(objdump: str, n: int = 15) -> list[tuple[str, int]]:
     """The ``n`` most frequent RVV mnemonics in objdump text (handy for verification/CLI)."""
+    from ..common.driver_output import is_vector_mnemonic
     h: Counter[str] = Counter()
     for line in objdump.splitlines():
         cols = line.split("\t")
         if len(cols) < 3 or not cols[2].strip():
             continue
         m = cols[2].strip().split()[0]
-        if _MNEMONIC.match(m):
+        if is_vector_mnemonic(m):
             h[m] += 1
     return h.most_common(n)
