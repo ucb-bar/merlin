@@ -33,7 +33,7 @@
 #include "src/xnnpack/microparams.h"
 
 // the expert RVV microkernel, verbatim from the vendored XNNPACK checkout.
-#include "f32-gemm/gen/f32-gemm-1x4v-rvv.c"
+#include "f32-gemm/gen/f32-gemm-7x4v-rvv.c"
 
 // --- Per-dispatch matmul-bucket timing (default-OFF, gated by -DMERLIN_DISPATCH_TIMING) ----------
 // When the macro is undefined the symbols below are NOT emitted and the timed region is
@@ -151,9 +151,11 @@ merlin_memref_2d_f32 merlin_xnn_gemm_f32(
 #ifdef MERLIN_DISPATCH_TIMING
   const unsigned long long _mm_t0 = merlin_rd_time();
 #endif
-  for (size_t m = 0; m < M; m++) {
-    xnn_f32_gemm_ukernel_1x4v__rvv(
-        1, N, K * sizeof(float),
+  const size_t MR = 7;
+  for (size_t m = 0; m < M; m += MR) {
+    size_t mr = (M - m < MR) ? (M - m) : MR;
+    xnn_f32_gemm_ukernel_7x4v__rvv(
+        mr, N, K * sizeof(float),
         &A[m * K], a_stride,
         w,
         &C[m * N], cm_stride, cn_stride,
