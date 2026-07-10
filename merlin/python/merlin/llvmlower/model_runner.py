@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import ctypes
 import json
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,16 +20,11 @@ NP_DTYPES = {"F32": "float32", "BF16": "uint16", "I64": "int64", "I32": "int32",
 
 
 def parse_forward_signature(mlir_path: str | Path) -> list[tuple[list[int], str]]:
-    """[(shape, dtype_str)] for every @forward argument, from the MLIR text."""
-    text = Path(mlir_path).read_text(encoding="utf-8")
-    m = re.search(r"func\.func @forward\((.*?)\) ->", text, re.S)
-    args = re.findall(r"tensor<([^>]+)>", m.group(1))
-    out = []
-    for a in args:
-        parts = a.split("x")
-        dims = [int(p) for p in parts[:-1]]
-        out.append((dims, parts[-1]))
-    return out
+    """[(shape, dtype_str)] for every @forward argument, read from the parsed function type."""
+    from ..common.mlir_query import forward_signature
+
+    inputs, _ = forward_signature(mlir_path)
+    return inputs
 
 
 @dataclass

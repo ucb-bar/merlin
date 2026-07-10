@@ -150,8 +150,8 @@ def capture_facts(capture_dir: str) -> CaptureFacts:
     epilogue = False
     dtype = None
     for op in matmuls:
-        ls, ld = mlir_m2m._shape_dtype(str(op.operands[0].type))
-        rs, rd = mlir_m2m._shape_dtype(str(op.operands[1].type))
+        ls, ld = mlir_m2m._shape_dtype(op.operands[0].type)
+        rs, rd = mlir_m2m._shape_dtype(op.operands[1].type)
         if ls and rs and len(ls) == 2 and len(rs) == 2:
             M, K = ls
             N = rs[-1]

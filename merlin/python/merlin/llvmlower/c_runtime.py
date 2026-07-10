@@ -33,12 +33,11 @@ C_OF = {"f32": "float", "f64": "double", "i64": "long", "i32": "int", "i8": "sig
 
 
 def _out_shape(mlir_path: str | Path) -> tuple[list[int], str]:
-    import re
+    from ..common.mlir_query import forward_signature
 
-    text = Path(mlir_path).read_text(encoding="utf-8")
-    m = re.search(r"func\.func @forward\(.*?\)\s*->\s*\(?\s*tensor<([^>]+)>", text, re.S)
-    parts = m.group(1).split("x")
-    return [int(p) for p in parts[:-1]], parts[-1]
+    _, results = forward_signature(mlir_path)
+    shape, dtype = results[0]
+    return shape, dtype
 
 
 def _embed_array(arr: "np.ndarray", dt: str) -> str:

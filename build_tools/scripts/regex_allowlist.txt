@@ -41,16 +41,10 @@ merlin/python/merlin/kernels/features/loops.py                # C loop-nest/reg-
 merlin/python/merlin/kernels/features/roles.py                # RHS-reuse proxy over C source; overlaps tree-sitter
 merlin/python/merlin/kernels/features/dispatch.py             # Gemmini dispatch-call count in C; needs a tree-sitter call-expr walk
 
-# ---------------------------------------------------------------- TODO(batch-4): mlir_query.py + xDSL consumers
-merlin/python/merlin/llvmlower/model_runner.py                # @forward arg shapes from MLIR text -> xDSL
-merlin/python/merlin/llvmlower/c_runtime.py                   # @forward output shape from MLIR text -> xDSL
-merlin/python/merlin/design_pressure/ingest/mlir_m2m.py       # re-stringifies xDSL types then regexes -> read attribute directly
-merlin/python/merlin/dse_guidance/quant_metadata.py           # quant_ext attrs over generated MLIR -> xDSL op-walk
-merlin/python/merlin/dse_guidance/numerical_contract.py       # prov.* attrs + matmul dtype over MLIR -> xDSL op-walk
-merlin/python/merlin/dse_guidance/insight_mining.py           # scf/tensor-type counts over MLIR -> xDSL walk
-merlin/python/merlin/runtime/backends/ours_board/__init__.py  # matmul matcher + func.func anchor over MLIR -> xDSL / str.find
-merlin/python/merlin/runtime/backends/xnnpack_board/__init__.py  # matmul matcher + func.func anchor over MLIR -> xDSL / str.find
-merlin/python/merlin/runtime/backends/openblas_board/__init__.py  # matmul matcher + func.func anchor over MLIR -> xDSL / str.find
+# ---------------------------------------------------------------- TODO(batch-4b): xDSL/CIRCT consumers still pending
+merlin/python/merlin/runtime/backends/ours_board/__init__.py  # matmul matcher + func.func anchor over MLIR -> xDSL / str.find (runtime routing)
+merlin/python/merlin/runtime/backends/xnnpack_board/__init__.py  # matmul matcher + func.func anchor over MLIR -> xDSL / str.find (runtime routing)
+merlin/python/merlin/runtime/backends/openblas_board/__init__.py  # matmul matcher + func.func anchor over MLIR -> xDSL / str.find (runtime routing)
 merlin/python/merlin/targetgen/rtl/extract_module.py          # CIRCT HW module-subtree slice by text -> circt-opt instance graph
 merlin/python/merlin/targetgen/rtl_check_runner.py            # op-form vs attr-form mode select over gemmini MLIR -> mlir-opt
 

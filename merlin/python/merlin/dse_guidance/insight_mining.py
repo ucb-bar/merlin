@@ -2293,15 +2293,17 @@ def capture_erasure_evidence(cs_dir: Path) -> dict:
     scf.for/while count (loops), linalg.matmul vs linalg.generic counts (named ops vs lowered),
     and whether any packed low-bit integer tensor types survive. Reads the recaptures next to the
     case_study dir."""
-    import re
     recap = Path(cs_dir).parent / "recaptures"
     rows = []
     for d in sorted(p for p in recap.glob("*") if (p / "model.mlir").is_file()):
+        # Bulk triage over the whole flat corpus (dozens of large captures): a cheap, regex-free
+        # token/substring scan — a full xDSL parse per file would be 100-1000x costlier for a
+        # presence/count heuristic. (Per-workload deep facts use merlin.common.mlir_query.)
         txt = (d / "model.mlir").read_text(errors="ignore")
-        n_loops = len(re.findall(r"\bscf\.(for|while)\b", txt))
+        n_loops = (txt.count("scf.for") - txt.count("scf.forall")) + txt.count("scf.while")
         n_mm = txt.count("linalg.matmul")
         n_gen = txt.count("linalg.generic")
-        lowbit = bool(re.search(r"tensor<[^>]*x(i4|i8|si8|ui8|si4)>", txt))
+        lowbit = any(f"x{dt}>" in txt for dt in ("i4", "i8", "si8", "ui8", "si4"))
         rows.append({"workload": d.name, "n_scf_loops": n_loops, "n_linalg_matmul": n_mm,
                      "n_linalg_generic": n_gen, "lowbit_int_types_present": lowbit,
                      "loops_preserved": n_loops > 0,
