@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from merlin.common.paths import repo_root, targets_dir
+from merlin.common.paths import artifacts_dir, targets_dir
 
 
 def target_base(target: str = "gemmini") -> Path:
@@ -23,7 +23,7 @@ def target_base(target: str = "gemmini") -> Path:
     ref = targets_dir() / target
     if ref.is_dir():
         return ref
-    return repo_root() / "artifacts" / "targets" / target
+    return artifacts_dir() / "targets" / target
 
 
 def rtl_facts_path(target: str = "gemmini", *, explicit: str | Path | None = None) -> Path:
@@ -64,7 +64,7 @@ def rtl_cache_dir(target: str = "gemmini", *, ensure: bool = False) -> Path:
 
     Mirrors :func:`merlin.common.artifacts.cache_dir` (``artifacts/cache/<ns>/``, PURGEABLE) without
     forcing directory creation at import time; pass ``ensure=True`` when about to write."""
-    d = repo_root() / "artifacts" / "cache" / "rtl_introspect" / target
+    d = artifacts_dir() / "cache" / "rtl_introspect" / target
     if ensure:
         d.mkdir(parents=True, exist_ok=True)
     return d

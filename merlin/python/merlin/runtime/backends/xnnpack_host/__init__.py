@@ -57,9 +57,9 @@ _GEMM_FN: Any = None
 
 def _build_gemm_lib() -> Path:
     """Compile the host XNNPACK GEMM shim ``.so`` once into ``output/.xnnpack_host/``."""
-    from merlin.common.paths import repo_root
+    from merlin.common.paths import artifacts_dir
 
-    out_dir = Path(repo_root()) / "artifacts" / "cache" / "xnnpack_host"
+    out_dir = Path(artifacts_dir()) / "cache" / "xnnpack_host"
     out_dir.mkdir(parents=True, exist_ok=True)
     so = out_dir / "xnn_gemm_host.so"
     xnn_src = _xnnpack_repo() / "src"

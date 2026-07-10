@@ -97,7 +97,7 @@ def calibrate(points=None, max_cycles: int = 200000,
         "calibration_factor": round(sorted(ratios)[len(ratios) // 2], 3) if ratios else None,
         "note": "report-only agreement check; analytical model is not retro-fitted.",
     }
-    out = Path(out_dir) if out_dir else paths.repo_root() / "artifacts" / "dse" / "vla_action_chunk_decode"
+    out = Path(out_dir) if out_dir else paths.artifacts_dir() / "dse" / "vla_action_chunk_decode"
     out.mkdir(parents=True, exist_ok=True)
     write_yaml(out / "calibration.yaml", report, header="npu_model calibration (report-only)")
     return report

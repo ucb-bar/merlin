@@ -42,13 +42,13 @@ from merlin.baselines import bundle as _bundle
 from merlin.baselines import k1_exec, profile, rvv_audit
 from merlin.baselines.contract import BaselineResult, RegionProfile, ScalarFallback
 from merlin.common import artifacts
-from merlin.common.paths import repo_root
+from merlin.common.paths import build_dir, repo_root
 from merlin.rvvgen import k1
 
 FRAMEWORK = "executorch"
 
 # --- layout (build/ is gitignored; the ET source tree is the pinned submodule) ------------------
-_BUILD_ROOT = repo_root() / "build" / "baselines" / "executorch"
+_BUILD_ROOT = build_dir() / "baselines" / "executorch"
 _ET_SRC = repo_root() / "third_party" / "baselines" / "executorch"
 _TOOLCHAIN_CMAKE = Path(__file__).with_name("executorch_spacemit_toolchain.cmake")
 _ET_EXPORT_HELPER = Path(__file__).with_name("_et_export.py")

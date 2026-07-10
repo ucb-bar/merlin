@@ -11,14 +11,14 @@ Style vocabulary borrowed from the reference figures:
 All numbers transcribed verbatim from the committed result docs (sources in each section).
 """
 from pathlib import Path
-from merlin.common.paths import repo_root
+from merlin.common.paths import artifacts_dir
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch
 import numpy as np
 
-OUT = repo_root() / "artifacts" / "ceiling"
+OUT = artifacts_dir() / "ceiling"
 
 # ---- palette ----
 INK     = "#2b2b2b"

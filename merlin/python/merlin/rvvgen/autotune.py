@@ -25,7 +25,7 @@ import yaml
 from ..runtime.backends import zephyr_model as zm
 from . import k1 as k1mod
 from .registry import load_rvv_package
-from merlin.common.paths import repo_root
+from merlin.common.paths import artifacts_dir, build_dir
 
 _REPO = Path(__file__).resolve().parents[4]
 
@@ -87,15 +87,15 @@ def autotune(target: str, base_pkg_dir: str | Path, model_dir: str | Path, featu
     base_dir = Path(base_pkg_dir)
     model_dir = Path(model_dir)
     golden = np.load(model_dir / "golden.npy")
-    fork_root = Path(fork_root) if fork_root else _REPO / "artifacts/targets" / target
-    out_root = Path(out_root) if out_root else _REPO / "artifacts" / "kernel-mining" / target
+    fork_root = Path(fork_root) if fork_root else artifacts_dir() / "targets" / target
+    out_root = Path(out_root) if out_root else artifacts_dir() / "kernel-mining" / target
     ts = time.strftime("%Y%m%dT%H%M%S")
     cands = enumerate_candidates(features, max_combo=max_combo)
     results = []
     for i, feats in enumerate(cands):
         fork = _mint_fork(base_dir, fork_root, feats, ts, i)
         pkg = load_rvv_package(fork)
-        work = repo_root() / "build" / "tmp" / f"autotune_{target}_{i}_{ts}"
+        work = build_dir() / "tmp" / f"autotune_{target}_{i}_{ts}"
         shutil.rmtree(work, ignore_errors=True)
         b = _bench_k1(pkg, model_dir, work, golden, n_runs)
         b["features"] = sorted(feats)
@@ -139,8 +139,8 @@ def beam_search(target: str, base_pkg_dir: str | Path, model_dir: str | Path, fe
     """
     base_dir = Path(base_pkg_dir); model_dir = Path(model_dir)
     golden = np.load(model_dir / "golden.npy")
-    fork_root = Path(fork_root) if fork_root else _REPO / "artifacts/targets" / target
-    out_root = Path(out_root) if out_root else _REPO / "artifacts" / "kernel-mining" / target
+    fork_root = Path(fork_root) if fork_root else artifacts_dir() / "targets" / target
+    out_root = Path(out_root) if out_root else artifacts_dir() / "kernel-mining" / target
     ts = time.strftime("%Y%m%dT%H%M%S")
     evaluated: dict[frozenset, dict] = {}
     counter = [0]
@@ -150,7 +150,7 @@ def beam_search(target: str, base_pkg_dir: str | Path, model_dir: str | Path, fe
             return evaluated[feats]
         fork = _mint_fork(base_dir, fork_root, feats, ts, counter[0]); counter[0] += 1
         pkg = load_rvv_package(fork)
-        work = repo_root() / "build" / "tmp" / f"beam_{target}_{counter[0]}_{ts}"
+        work = build_dir() / "tmp" / f"beam_{target}_{counter[0]}_{ts}"
         shutil.rmtree(work, ignore_errors=True)
         r = _bench_k1(pkg, model_dir, work, golden, n_runs)
         r["features"] = sorted(feats); r["fork"] = fork.name
@@ -212,7 +212,7 @@ def beam_search(target: str, base_pkg_dir: str | Path, model_dir: str | Path, fe
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target", default="rvv")
-    ap.add_argument("--base", default="artifacts/targets/rvv/hand_v0")
+    ap.add_argument("--base", default="out/artifacts/targets/rvv/hand_v0")
     ap.add_argument("--workload", required=True)
     ap.add_argument("--features", required=True, help="comma list of registered impr features")
     ap.add_argument("--max-combo", type=int, default=2)

@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="also run the MAP-Elites strategy portfolio + search reports")
     args = ap.parse_args(argv)
 
-    out = Path(args.out) if args.out else paths.repo_root() / "artifacts" / "dse" / args.workload
+    out = Path(args.out) if args.out else paths.artifacts_dir() / "dse" / args.workload
 
     # Single-point dse_result artifacts (both features), written under out/<feature>/.
     rpv = compute_rpv(build_region(H=args.H, reuse_count=args.H, K=256))
