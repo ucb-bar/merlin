@@ -16,9 +16,10 @@ The prompt is a versioned artifact: merlin/prompts/rvv_mining_v{V}.md. The libra
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Any, Callable
+
+from ..common.agent_output import parse_json
 
 from .cluster import cluster_dossiers
 from .dossier import KernelDossier
@@ -51,15 +52,8 @@ def _read_code(d: KernelDossier) -> str:
 
 def parse_findings(text: str | None) -> dict[str, Any]:
     """Tolerant JSON parse of an agent reply (strips code fences / prose around the object)."""
-    if not text:
-        return {}
-    m = re.search(r"\{.*\}", text, re.S)
-    if not m:
-        return {}
-    try:
-        return json.loads(m.group(0))
-    except ValueError:
-        return {}
+    value = parse_json(text, default={})
+    return value if isinstance(value, dict) else {}
 
 
 def _default_llm(prompt: str) -> str | None:

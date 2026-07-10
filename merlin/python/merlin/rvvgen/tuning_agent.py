@@ -20,10 +20,10 @@ Honest contract:
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Any, Callable
 
+from ..common.agent_output import parse_json
 from ..kernels.rvv_knobs import ForkProposal
 
 from merlin.common.paths import merlin_dir
@@ -74,27 +74,17 @@ def _parse_proposals(text: str | None) -> list[dict]:
 
     Accepts a bare JSON array, or an object with a "proposals"/"forks" key, possibly wrapped in
     code fences / prose. Returns [] on any failure (never raises)."""
-    if not text:
-        return []
-    # Try a JSON array first, then an enclosing object.
-    for pat in (r"\[.*\]", r"\{.*\}"):
-        m = re.search(pat, text, re.S)
-        if not m:
-            continue
-        try:
-            obj = json.loads(m.group(0))
-        except ValueError:
-            continue
-        if isinstance(obj, list):
-            return [p for p in obj if isinstance(p, dict)]
-        if isinstance(obj, dict):
-            for key in ("proposals", "forks", "items"):
-                v = obj.get(key)
-                if isinstance(v, list):
-                    return [p for p in v if isinstance(p, dict)]
-            # a single proposal object
-            if "overrides" in obj:
-                return [obj]
+    obj = parse_json(text, default=None)
+    if isinstance(obj, list):
+        return [p for p in obj if isinstance(p, dict)]
+    if isinstance(obj, dict):
+        for key in ("proposals", "forks", "items"):
+            v = obj.get(key)
+            if isinstance(v, list):
+                return [p for p in v if isinstance(p, dict)]
+        # a single proposal object
+        if "overrides" in obj:
+            return [obj]
     return []
 
 

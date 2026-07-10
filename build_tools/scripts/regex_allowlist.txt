@@ -41,13 +41,6 @@ merlin/python/merlin/kernels/features/loops.py                # C loop-nest/reg-
 merlin/python/merlin/kernels/features/roles.py                # RHS-reuse proxy over C source; overlaps tree-sitter
 merlin/python/merlin/kernels/features/dispatch.py             # Gemmini dispatch-call count in C; needs a tree-sitter call-expr walk
 
-# ---------------------------------------------------------------- TODO(batch-3): constrain agent output
-merlin/python/merlin/dse_guidance/agent/claude_cli.py         # regex-extracts JSON from LLM free-text -> structured output helper
-merlin/python/merlin/dse_guidance/agent/critic.py             # whitespace normalize -> " ".join(split())
-merlin/python/merlin/targetgen/agent/claude_cli.py            # fenced-block extraction from LLM reply -> structured output helper
-merlin/python/merlin/rvvgen/tuning_agent.py                   # bare-JSON scrape of LLM reply -> structured output helper
-merlin/python/merlin/kernels/agent_mine.py                    # {..} JSON scrape of LLM reply -> structured output helper
-
 # ---------------------------------------------------------------- TODO(batch-4): mlir_query.py + xDSL consumers
 merlin/python/merlin/llvmlower/model_runner.py                # @forward arg shapes from MLIR text -> xDSL
 merlin/python/merlin/llvmlower/c_runtime.py                   # @forward output shape from MLIR text -> xDSL

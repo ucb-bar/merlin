@@ -8,11 +8,12 @@ deterministic gate (see kernel_slot) disposes.
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import uuid
 from pathlib import Path
 from typing import Any
+
+from ...common import agent_output
 
 
 class AgentError(RuntimeError):
@@ -45,10 +46,8 @@ def run_agent(prompt: str, *, model: str = "opus", timeout: int = 900,
 
 
 def extract_code_block(text: str, lang: str = "python") -> str:
-    """Pull the first fenced code block out of the agent's reply."""
-    m = re.search(rf"```{lang}\s*\n(.*?)```", text, re.S)
-    if not m:
-        m = re.search(r"```[a-zA-Z0-9]*\s*\n(.*?)```", text, re.S)
-    if not m:
-        raise AgentError("agent reply contained no fenced code block")
-    return m.group(1)
+    """Pull the first fenced code block out of the agent's reply (preferring the ``lang`` block)."""
+    try:
+        return agent_output.extract_code_block(text, lang)
+    except agent_output.StructuredOutputError as e:
+        raise AgentError(str(e)) from e
