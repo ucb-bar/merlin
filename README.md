@@ -1,70 +1,88 @@
-# merlin
+<p align="center">
+  <img src="docs/assets/merlin_transparent.png" width="360" alt="merlin logo">
+</p>
 
-A compiler-centered framework for studying **which hardware/software abstractions are worth
-exposing to the compiler**.
+<h1 align="center">merlin</h1>
 
-> Status: **active**. Working end-to-end pipelines — kernel-mining → compiler improvement (RVV),
-> design-space exploration + DSE guidance, target generation, the Gemmini capsule/perf benchmarks
-> (RTL-certified), whole-model bring-up on real substrates (SpacemiT K1, spike, FireSim, Zephyr),
-> and cross-framework baselines. Start at [`docs/`](docs/) — see [`docs/architecture.md`](docs/architecture.md)
-> and [`docs/repo_structure.md`](docs/repo_structure.md).
+<p align="center">
+  A compiler-centered framework for studying <b>which hardware/software abstractions are worth
+  exposing to the compiler</b> — from kernel mining and design-space exploration to target
+  generation and whole-model bring-up on real RISC-V silicon.
+</p>
 
-## Three workstreams
+> **Early development.** merlin is under active development; expect rough edges and APIs that may
+> change. Bugfixes and PRs are welcome — please discuss significant changes in the
+> [issue tracker](https://github.com/ucb-bar/merlin/issues) before starting work.
 
-merlin is organized so three Claude Code sessions can work in parallel, coordinating through
-**shared schemas** (`merlin/schemas/`), not prose:
+merlin has working end-to-end pipelines: kernel-mining → compiler improvement (RVV), design-space
+exploration + DSE guidance, target generation, the Gemmini capsule/perf benchmarks (RTL-certified),
+whole-model bring-up on real substrates (SpacemiT K1, spike, FireSim, Zephyr), and cross-framework
+baselines. Start at the docs hub **[`docs/`](docs/README.md)**.
 
-1. **TargetGen / dialect generation** — ISA/docs/RTL → target contract → dialect plan → dialect
-   scaffold. Owns `merlin/python/merlin/targetgen/`, `merlin/targets/`.
+## Quick start
+
+merlin uses [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv sync --all-extras            # create .venv; install merlin (editable) + xDSL + dev deps
+uv run pytest merlin/tests      # run the test suite
+```
+
+(Without uv: `pip install -e '.[dev,xdsl]'`.)
+
+The CLI surface is a set of console scripts (full reference: [`docs/reference/cli.md`](docs/reference/cli.md)):
+
+```text
+merlin-targetgen        ISA/docs/RTL -> target contract -> dialect plan / scaffold
+merlin-rvv-mine         mine expert kernels -> general compiler policies (RVV)
+merlin-rvv-autotune     autotune RVV codegen packages
+merlin-dse              design-space exploration
+merlin-dse-guidance     rank DSE axes by measured target-gap closure
+merlin-design-pressure  workload -> design-pressure report
+merlin-compare          cross-config / cross-framework comparison
+kernel-index | kernel-extract | kernel-audit | kernel-bench
+```
+
+## Choose your path
+
+- **Compile / run models** → [`docs/guides/getting_started.md`](docs/guides/getting_started.md)
+- **Bring up new hardware** → [`docs/guides/adding_a_target.md`](docs/guides/adding_a_target.md), [`docs/reference/architecture.md`](docs/reference/architecture.md)
+- **Mine kernels / improve the compiler** → [`docs/guides/kernel_mining.md`](docs/guides/kernel_mining.md)
+- **Design-space exploration** → [`docs/guides/dse.md`](docs/guides/dse.md)
+
+## How it's organized
+
+Three parallel workstreams coordinate through **shared schemas** (`merlin/schemas/`), not prose:
+
+1. **TargetGen / dialect generation** — ISA/docs/RTL → target contract → dialect plan → scaffold
+   (`merlin/python/merlin/targetgen/`, `merlin/targets/`).
 2. **Kernel abstraction mining** — external kernels → kernel records → abstraction candidates →
-   policy rules. Owns `merlin/python/merlin/kernels/`, `merlin/integrations/`.
-3. **Design-pressure & DSE** — workloads → design-pressure reports → candidate contracts →
-   variant comparison → exploitability. Owns `merlin/python/merlin/design_pressure/`,
-   `merlin/python/merlin/dse/`.
+   policy rules (`merlin/python/merlin/kernels/`, `merlin/python/merlin/rvvgen/`).
+3. **Design-pressure & DSE** — workloads → design-pressure reports → candidate contracts → variant
+   comparison (`merlin/python/merlin/design_pressure/`, `merlin/python/merlin/dse/`).
 
-See `docs/parallel_workstreams.md` for ownership and the shared-artifact flow.
+See [`docs/design/parallel_workstreams.md`](docs/design/parallel_workstreams.md).
 
-## Two compiler planes
+**Two compiler planes.** xDSL (Python) is the default prototyping plane
+(`merlin/python/merlin/xdsl_dialects/`); MLIR/C++ is the eventual stable plane
+(see [`docs/design/compiler_plane.md`](docs/design/compiler_plane.md)). Core dialects —
+`contract`, `schedule`, `interface`, `runtime` (see
+[`docs/reference/core_dialects.md`](docs/reference/core_dialects.md)); DSE search spaces and
+kernel-derived policies stay as schemas/YAML/JSON.
 
-- **xDSL (Python) — default prototyping plane.** Fast iteration on dialects, contracts, interface
-  IR, and DSE experiments (`merlin/python/merlin/xdsl_dialects/`).
-- **MLIR/C++ — eventual stable plane.** Durable dialects, lowering passes, target plugins
-  (`merlin/compiler/`). Scaffold only for now.
+## Repository at a glance
 
-## Core dialects
+| Path | What's there |
+|---|---|
+| `merlin/` | All project code (XLA-style internal tree): the `python/merlin/` package, `schemas/`, `tests/`, `targets/`, `experiments/` |
+| `docs/` | Durable docs — `reference/` (code-derived), `guides/` (how-to), `design/` (rationale); start at [`docs/README.md`](docs/README.md) |
+| `build_tools/` | Toolchains, scripts, structure/docs/artifact-layout gates, git hooks |
+| `third_party/` | Submodules: LLVM + cross-framework baselines (TVM, ExecuTorch, Buddy, EXO, llama.cpp, and the IREE-based Merlin baseline) |
+| `out/` | All generated output — `out/{runs,artifacts,build}` (gitignored except tracked scaffolding + curated reports) |
 
-`contract`, `schedule`, `interface`, `runtime`. DSE search spaces and
-kernel-derived policies stay as **schemas/YAML/JSON** — there is no `merlin.dse` or `merlin.kernel`
-dialect. See `docs/dialects.md`.
+Every directory carries an `AGENT.md` describing its purpose and constraints — read it before
+working there. Contributors: see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-## Layout
+## License
 
-```
-build_tools/  docs/  third_party/  tools/   merlin/   (build/ output/ tmp/ are gitignored)
-```
-
-Almost all code lives under the internal `merlin/` tree. See `docs/repo_structure.md`.
-
-## Getting started
-
-The project uses [uv](https://docs.astral.sh/uv/). The environment includes the dev tools and the
-xDSL prototyping plane:
-
-```bash
-uv sync --all-extras                       # create .venv, install merlin (editable) + xdsl + dev deps
-uv run python build_tools/scripts/check_structure.py   # verify the scaffold is intact
-uv run pytest                              # run the smoke tests
-```
-
-(Equivalent without uv: `pip install -e '.[dev,xdsl]'`.)
-
-External projects (XNNPACK, Autocomp, Exo, Triton, IREE, ...) are **adapters** under
-`merlin/integrations/`, never vendored. Pass their repos by env var, e.g.:
-
-```bash
-export MERLIN_XNNPACK_REPO=/path/to/XNNPACK
-export MERLIN_AUTOCOMP_REPO=/path/to/autocomp
-```
-
-Every directory has an `AGENT.md` describing its purpose and constraints — read it before
-working in that directory.
+Apache-2.0 — see [`LICENSE`](LICENSE). Logos and artwork are separately licensed (LICENSE appendix).
