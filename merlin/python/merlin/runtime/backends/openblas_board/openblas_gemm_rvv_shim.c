@@ -3,7 +3,7 @@
 // XNNPACK board shim (runtime/backends/xnnpack_board/xnn_gemm_rvv_shim.c): same unpacked
 // MLIR memref-descriptor ABI, same resident-weight pack cache for B, same "plain C = A.B,
 // no bias, no clamp" semantics, but driving OpenBLAS's RVV 8x8 microkernel
-// (sgemm_kernel_8x8_zvl128b.c, the exact kernel the ceiling driver
+// (sgemm_kernel_16x8_zvl256b.c, the exact kernel the ceiling driver
 // kernels/ceiling_drivers/openblas_sgemm_driver.c measures standalone) instead of the
 // XNNPACK ukernel.
 //
@@ -44,7 +44,7 @@
 #define CNAME openblas_sgemm_kernel
 
 // ---- the expert kernel, verbatim (pulls in common.h shim) -----------------
-#include "sgemm_kernel_8x8_zvl128b.c"
+#include "sgemm_kernel_16x8_zvl256b.c"
 
 // 2-D memref descriptor (matches MLIR's MemRefDescriptor for rank 2 / lp64d).
 typedef struct {
@@ -55,9 +55,10 @@ typedef struct {
   intptr_t strides[2];
 } merlin_memref_2d_f32;
 
-#define OB_MR 8
+#define OB_MR 16
 #define OB_NR 8
 static size_t round_up8(size_t x) { return (x + 7u) & ~(size_t)7u; }
+static size_t round_up16(size_t x) { return (x + 15u) & ~(size_t)15u; }
 
 // tcopy-pack B (KxN row-major) into the OpenBLAS 8-col-panel layout, zero-padded to Npad x Kpad:
 //   Bpack[(np*Kpad + k)*8 + nr] = B[k*N + (np*8+nr)]   (0 outside the real K x N)
@@ -143,7 +144,7 @@ merlin_memref_2d_f32 merlin_openblas_gemm_f32(
     return ret;
   }
 
-  const size_t Mpad = round_up8(M), Npad = round_up8(N), Kpad = round_up8(K);
+  const size_t Mpad = round_up16(M), Npad = round_up8(N), Kpad = round_up8(K);
 
   // Resident-weight pack (B = activation·weight's weight): packed ONCE per distinct weight,
   // excluded from the timed/warm path — fair vs ours / XNNPACK.
