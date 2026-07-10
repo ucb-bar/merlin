@@ -28,23 +28,55 @@ Usage:
 from __future__ import annotations
 
 import os
-import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 ALLOW_FILE = ROOT / "build_tools" / "scripts" / "doc_paths_allow.txt"
 
-# (regex, human message). Kept deliberately small + specific.
+
+def _is_wordchar(c: str) -> bool:
+    return c.isalnum() or c == "_"
+
+
+def _match_retired(line: str, needle: str, pre: str | None, post: str | None) -> str | None:
+    """Regex-free boundary matcher for a retired-path ``needle`` in ``line``, returning the matched
+    text (or None). ``pre``: ``"wb"`` = char before must be a non-word char (the old ``\\b``);
+    ``"pb"`` = char before must not be a word/``.``/``/`` char (the old ``(?<![\\w./])``). ``post``:
+    ``"wb"`` = char after must be a non-word char (trailing ``\\b``); ``"need_word"`` = char after
+    must be a word char and is included in the match (the old trailing ``\\w``)."""
+    start = 0
+    while True:
+        i = line.find(needle, start)
+        if i == -1:
+            return None
+        start = i + 1
+        end = i + len(needle)
+        before = line[i - 1] if i > 0 else ""
+        after = line[end] if end < len(line) else ""
+        if pre == "wb" and before and _is_wordchar(before):
+            continue
+        if pre == "pb" and before and (_is_wordchar(before) or before in "./"):
+            continue
+        if post == "wb" and after and _is_wordchar(after):
+            continue
+        if post == "need_word":
+            if not (after and _is_wordchar(after)):
+                continue
+            end += 1
+        return line[i:end]
+
+
+# (needle, pre-boundary, post-boundary, human message). Kept deliberately small + specific.
 RETIRED = [
-    (re.compile(r"merlin/compiler\b"), "retired tree merlin/compiler/ (see docs/design/compiler_plane.md)"),
-    (re.compile(r"merlin/integrations\b"), "retired tree merlin/integrations/ (see docs/design/integrations.md)"),
-    (re.compile(r"\bgenerated_targets/"), "retired generated_targets/ -> artifacts/targets/"),
-    (re.compile(r"\bmined_knowledge/"), "retired mined_knowledge/ -> artifacts/kernel-mining/"),
-    (re.compile(r"(?<![\w./])output/\w"), "deprecated output/ write target -> artifacts/ or runs/"),
-    (re.compile(r"(?<![\w./])results/\w"), "retired results/ write target -> artifacts/ or runs/"),
-    (re.compile(r"\bselfcheck_out/"), "retired selfcheck_out/ -> artifacts/selfcheck/"),
-    (re.compile(r"\bdocs/presentation/"), "retired docs/presentation/ -> artifacts/presentation/"),
+    ("merlin/compiler", None, "wb", "retired tree merlin/compiler/ (see docs/design/compiler_plane.md)"),
+    ("merlin/integrations", None, "wb", "retired tree merlin/integrations/ (see docs/design/integrations.md)"),
+    ("generated_targets/", "wb", None, "retired generated_targets/ -> artifacts/targets/"),
+    ("mined_knowledge/", "wb", None, "retired mined_knowledge/ -> artifacts/kernel-mining/"),
+    ("output/", "pb", "need_word", "deprecated output/ write target -> artifacts/ or runs/"),
+    ("results/", "pb", "need_word", "retired results/ write target -> artifacts/ or runs/"),
+    ("selfcheck_out/", "wb", None, "retired selfcheck_out/ -> artifacts/selfcheck/"),
+    ("docs/presentation/", "wb", None, "retired docs/presentation/ -> artifacts/presentation/"),
 ]
 
 # A line naming a retired path only to say it's retired is fine.
@@ -93,11 +125,11 @@ def scan() -> list[str]:
             low = line.lower()
             if any(w in low for w in ALLOW_WORDS):
                 continue
-            for rx, msg in RETIRED:
-                m = rx.search(line)
-                if not m:
+            for needle, pre, post, msg in RETIRED:
+                matched = _match_retired(line, needle, pre, post)
+                if matched is None:
                     continue
-                if any(a == f"{rel}:{m.group(0)}" or (a.startswith(rel + ":") and a.split(":", 1)[1] in line)
+                if any(a == f"{rel}:{matched}" or (a.startswith(rel + ":") and a.split(":", 1)[1] in line)
                        for a in allow):
                     continue
                 problems.append(f"{rel}:{i}: {msg}")

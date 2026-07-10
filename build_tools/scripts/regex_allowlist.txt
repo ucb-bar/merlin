@@ -52,6 +52,3 @@ merlin/python/merlin/kernels/bench_ceiling.py                 # bespoke saturn v
 
 # ---------------------------------------------------------------- TODO(batch-6b): remaining RTL facts from structure
 merlin/python/merlin/targetgen/rocc_decode.py                 # LLVM-dialect dataflow -> xDSL; inline-asm .insn stays (# regex-ok on those lines)
-
-# ---------------------------------------------------------------- TODO(cleanup): boundary-aware str scan
-build_tools/scripts/check_doc_paths.py                        # retired-path scanner; several patterns need word-boundary matching
