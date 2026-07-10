@@ -13,7 +13,7 @@ pi05 EXCLUDED (16G; its int8 capture is unquantized fp32 — task #61). groot (1
 the board's 1.9G /tmp; it runs last and a fit failure is recorded honestly, not hidden.
 
 Usage:
-  MERLIN_K1_HOST=root@10.44.97.186 .venv/bin/python build_tools/scripts/k1_int8_model_sweep.py \
+  MERLIN_K1_HOST=root@<board-ip> .venv/bin/python build_tools/scripts/k1_int8_model_sweep.py \
       --ledger /scratch/agustin/tmp/k1_int8.jsonl
 """
 import argparse, json, shutil, sys, time, traceback

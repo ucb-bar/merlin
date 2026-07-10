@@ -21,7 +21,7 @@ the XNNPACK path is the vectorized path only — it does NOT fall back to scalar
 the routing), so a failure is reported as a blocker, never a fabricated number. rdtime/wall are
 silicon wall proxies (cycle_accurate=false); spike/FireSim remain the cycle authorities.
 
-Run:  MERLIN_K1_HOST=root@10.44.97.186 .venv/bin/python scripts/k1_e2e_xnnpack.py -n 3
+Run:  MERLIN_K1_HOST=root@<board-ip> .venv/bin/python scripts/k1_e2e_xnnpack.py -n 3
 """
 from __future__ import annotations
 
