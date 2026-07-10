@@ -5,7 +5,7 @@ must produce the *same artifact class*, satisfy the *same interfaces*, and be *g
 same substrate*, so the comparison is apples-to-apples. This file is the single source of truth for
 what MUST be identical, what MAY legitimately differ, and exactly how runs are conducted.
 
-Repo root: `/path/to/oscar-merlin` (`$REPO`).
+Repo root: `/path/to/merlin` (`$REPO`).
 Experiment: `$REPO/experiments/gemmini_capsule_bench_v0` (`$EXP`).
 
 ---

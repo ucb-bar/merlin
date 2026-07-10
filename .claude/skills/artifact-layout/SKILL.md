@@ -1,7 +1,7 @@
 ---
 name: artifact-layout
 description: >-
-  Where to write generated output in oscar-merlin — run dirs, results, plots, figures,
+  Where to write generated output in merlin — run dirs, results, plots, figures,
   caches, presentations, mined knowledge, dse analysis, any artifact. Use whenever you
   save output, create a run directory, emit results/figures, or wonder where generated
   files belong. One root only: out/ (out/runs, out/artifacts, out/build).

@@ -34,7 +34,7 @@ CLANG_INSTALL = "/path/to/merlin-iree/build/host-merlin-release/install"
 CLANG_BIN = CLANG_INSTALL + "/bin"
 CLANG_RESOURCE = CLANG_INSTALL + "/lib/clang"          # clang -print-resource-dir -> lib/clang/23
 MERLIN_CLANG = CLANG_INSTALL + "/bin/clang-23"
-MEMORY_DIR = os.path.expanduser("~/.claude/projects/-scratch-agustin-projects-oscar-merlin/memory")
+MEMORY_DIR = os.path.expanduser("~/.claude/projects/-scratch-agustin-projects-merlin/memory")
 RESOLVE_DIR = "/run/systemd/resolve"   # /etc/resolv.conf -> here; without it DNS fails inside bwrap
 
 # nested-session env vars that must be UNSET for the agent's claude: inherited from THIS Claude Code

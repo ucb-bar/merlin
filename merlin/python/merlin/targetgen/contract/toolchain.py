@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-# repo root = .../oscar-merlin (this file: merlin/python/merlin/targetgen/contract/toolchain.py)
+# repo root = .../merlin (this file: merlin/python/merlin/targetgen/contract/toolchain.py)
 _REPO = Path(__file__).resolve().parents[5]
 DEFAULT_MLIR_INSTALL = _REPO / "third_party" / "llvm-install"
 

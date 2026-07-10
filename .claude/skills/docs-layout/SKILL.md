@@ -1,7 +1,7 @@
 ---
 name: docs-layout
 description: >-
-  Where documentation lives in oscar-merlin and how to keep it fresh — the docs/ tree, front-matter,
+  Where documentation lives in merlin and how to keep it fresh — the docs/ tree, front-matter,
   the generated hub, and where reports go. Use whenever you add, edit, move, or reorganize a doc,
   write a new *.md, add a CLI/schema/package, or wonder whether something belongs in docs/ or
   artifacts/. Durable docs only: reference/ guides/ design/, each with front-matter.

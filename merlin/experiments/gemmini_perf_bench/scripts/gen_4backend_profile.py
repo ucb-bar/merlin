@@ -17,7 +17,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-REPO = Path("/path/to/oscar-merlin")
+REPO = Path("/path/to/merlin")
 sys.path.insert(0, str(REPO / "scripts"))
 from merlin_plotstyle import (use_merlin_style, style_ax, title, suptitle, emph, block_shadow,
                               BG, INK, GOLD, BLUE, NAVY, SLATE, MAUVE, SAGE, SERIF, SANS)

@@ -1,4 +1,4 @@
-"""Buddy NATIVE torch importer helper — runs under the model2MLIR torch venv (NOT oscar-merlin's).
+"""Buddy NATIVE torch importer helper — runs under the model2MLIR torch venv (NOT merlin's).
 
 Phase-2 ingestion path: instead of consuming m2m's linalg ``model.mlir``, use buddy-mlir's OWN
 ``DynamoCompiler`` (``torch.export`` → buddy Graph → ``lower_to_top_level_ir`` → MLIR) so the arm
@@ -8,7 +8,7 @@ the whole-model scalar-lowering SIGSEGV and the ``aten.select`` rank-mismatch th
 This module is invoked as a SUBPROCESS by :func:`merlin.baselines.buddy.native_import` under the
 torch venv with ``PYTHONPATH`` pointing at buddy's built ``python_packages`` + the MLIR bindings —
 because ``buddy.compiler.frontend`` needs torch + ``torch._dynamo`` + the ``buddy_mlir`` bindings,
-none of which live in oscar-merlin's venv. It writes, into ``--out-dir``:
+none of which live in merlin's venv. It writes, into ``--out-dir``:
 
   * ``subgraph0.mlir`` — the buddy-lowered compute module (linalg/tosa on tensors)
   * ``forward.mlir``   — the main graph that calls the subgraph (buddy's ABI)

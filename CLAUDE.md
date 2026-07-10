@@ -1,7 +1,7 @@
 # Working-tree & branch rules for this checkout
 
 ## ⚠️ This is a SHARED working directory — one HEAD for ALL Claude Code sessions
-Every Claude Code session running in `/path/to/oscar-merlin` shares the **same** `.git`
+Every Claude Code session running in `/path/to/merlin` shares the **same** `.git`
 and the **same** checked-out HEAD. There is no per-session branch isolation. Therefore:
 
 - **DO NOT switch branches** (`git checkout <branch>` / `git switch <branch>`) to a *different* branch.

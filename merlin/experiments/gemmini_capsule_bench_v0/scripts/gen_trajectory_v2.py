@@ -25,7 +25,7 @@ import matplotlib.patheffects as pe
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
 
-REPO = Path("/path/to/oscar-merlin")
+REPO = Path("/path/to/merlin")
 sys.path.insert(0, str(REPO / "scripts"))
 from merlin_plotstyle import (use_merlin_style, style_ax, title, suptitle, emph,
                               BG, INK, GOLD, BLUE, NAVY, SLATE, MAUVE, SAGE)

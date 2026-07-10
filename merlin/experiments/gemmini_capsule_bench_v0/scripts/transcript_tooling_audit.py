@@ -25,7 +25,7 @@ BUCKETS = [
     ("fileops",      re.compile(r"^\s*(cd|ls|cat|find|grep|rg|head|tail|sed|awk|echo|mkdir|cp|mv|rm|chmod|diff|wc|tree|pwd|for\b|while\b)")),
 ]
 # out-of-bundle contaminant read patterns (absolute paths the agent should NOT consult). The agent should
-# ONLY look inside this repo (oscar-merlin) within its granted bundle scope; an absolute path into any
+# ONLY look inside this repo (merlin) within its granted bundle scope; an absolute path into any
 # OTHER project tree on the machine is out-of-scope and flagged (isolation not clean). System paths
 # (/usr,/lib,/bin,/etc,/tmp,/proc) and the in-repo .venv are legitimate and not matched here.
 CONTAMINANTS = {
@@ -39,7 +39,7 @@ CONTAMINANTS = {
         r"/scratch2/(?!agustin/chipyard/generators/gemmini\b)"
         r"(?!agustin/merlin/build/host-merlin-release/install/(?:bin|lib/clang)\b)[^ \"']+"),
     # any OTHER project under /path/to (anything that is not this repo)
-    "other_project_scratch": re.compile(r"/path/to/(?!oscar-merlin\b)[^ \"']+"),
+    "other_project_scratch": re.compile(r"/path/to/(?!merlin\b)[^ \"']+"),
 }
 # HARD CHEATS (realistic experiment): copying a pre-existing backend or reading golden outputs is
 # disqualifying. These are detected on top of the chmod-000 lockdown (defence-in-depth).

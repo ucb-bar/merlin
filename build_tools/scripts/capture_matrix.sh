@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Capture the full {model x datatype} consistent-bundle matrix for the RVV bring-up.
 # Each (model,fmt) is captured INSIDE that model's own venv (deps differ per upstream),
-# with the model's shrunk [env] from capture.toml, into oscar-merlin/output/<bundle>.
+# with the model's shrunk [env] from capture.toml, into merlin/output/<bundle>.
 # Skips bundles that already have a model.mlir. Prints one __DONE__ line per combo.
 set -u
 M2M=/path/to/model2MLIR

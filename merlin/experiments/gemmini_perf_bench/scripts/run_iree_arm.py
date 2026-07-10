@@ -36,7 +36,7 @@ import yaml
 
 import _pbcommon as PB
 
-MERLIN = Path("/path/to/merlin-iree")          # DEPRECATED IREE-based merlin (NOT oscar-merlin)
+MERLIN = Path("/path/to/merlin-iree")          # DEPRECATED IREE-based merlin (NOT merlin)
 BUILD = MERLIN / "build" / "firesim-merlin-release"
 FIXTURES = MERLIN / "tests" / "integration" / "gemmini_spike" / "fixtures"
 RUNNER_TARGET = "bench_gemmini_spike_matmul"

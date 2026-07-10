@@ -7,7 +7,7 @@ framework's VERIFIED IR instead; (2) hand-deriving the encoder (~300 LOC) was th
 structural bug — generate it from the RTL facts instead.
 
 ## A. Use the typed dialect + `validate()` gate (same as the merlin arm — do NOT regex)
-Import the starter kit with `/path/to/oscar-merlin/.venv/bin/python`:
+Import the starter kit with `/path/to/merlin/.venv/bin/python`:
 - `from merlin.targetgen.oot_starterkit.dialect import parse_to_verified_ir` — parse the input into a typed
   xDSL module that `verify()`s at parse (malformed graph raises immediately, like MLIR). **Never regex the
   input** — that throws away the verifier and is what cost abc4 its round-2 fixes.

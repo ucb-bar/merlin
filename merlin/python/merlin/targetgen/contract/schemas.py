@@ -12,7 +12,7 @@ from typing import Any
 
 import jsonschema
 
-# repo root = .../oscar-merlin (this file: merlin/python/merlin/targetgen/contract/schemas.py)
+# repo root = .../merlin (this file: merlin/python/merlin/targetgen/contract/schemas.py)
 _REPO = Path(__file__).resolve().parents[5]
 # The experiment ABI (contract + capsule corpus) — lives under merlin/ as core infra.
 # Paths are resolved repo-root-relative via contract_dir(); no compat symlink.

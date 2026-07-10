@@ -11,9 +11,9 @@ and what you must build.
   are **available to import at runtime** — importing them is expected and legitimate (it is the
   framework, not the answer).
 - **Run your tool with the Python that has the framework installed:**
-  `/path/to/oscar-merlin/.venv/bin/python` (has `xdsl` + `merlin`). Set your
+  `/path/to/merlin/.venv/bin/python` (has `xdsl` + `merlin`). Set your
   `manifest.yaml` `commands[*].argv` to invoke your tool with **that interpreter**, e.g.
-  `["/path/to/oscar-merlin/.venv/bin/python", "{tool}", "{input_mlir}", "{output_json}"]`.
+  `["/path/to/merlin/.venv/bin/python", "{tool}", "{input_mlir}", "{output_json}"]`.
   (The system `python3` does NOT have xdsl — using it will fail at runtime.)
 
 ## What you MUST build (the point of this arm)

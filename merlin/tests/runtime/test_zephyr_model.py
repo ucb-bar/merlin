@@ -1,6 +1,6 @@
 """Whole-model execution on Zephyr (SMP) — spike gate.
 
-Bridges oscar-merlin's bare-metal spike path to a real Zephyr image that also runs on
+Bridges merlin's bare-metal spike path to a real Zephyr image that also runs on
 the 2-tile FireSim board (``runtime.backends.zephyr_model``). The model ``.o`` (rv64gcv)
 + the data-driven C runtime are linked into a Zephyr app whose single worker thread is
 ``k_thread_cpu_pin``-ed to the RVV tile and calls ``merlin_run``; output is dumped over
