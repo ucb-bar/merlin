@@ -172,34 +172,11 @@ def run_elf(elf: str | Path, simulator: str = "verilator", timeout: int = 600) -
 
 
 def parse_output(text: str) -> tuple[dict[str, list], dict[str, int]]:
-    """Parse OUT/METRIC lines into (outputs, raw metrics). DONE must be reached."""
-    import re
-    # Defensive: strip any Verilator warning fragments that may have leaked into the console
-    # (the RLIMIT_STACK fix in run_elf should prevent these, but recover if one slips through).
-    text = re.sub(r"%?Warning:[^\n]*", "", text)
-    outputs: dict[str, list] = {}
-    raw: dict[str, int] = {}
-    done = False
-    for line in text.splitlines():
-        parts = line.split()
-        if not parts:
-            continue
-        if parts[0] == "OUT":
-            name, rows, cols = parts[1], int(parts[2]), int(parts[3])
-            vals = [int(v) for v in parts[4:]]
-            if len(vals) != rows * cols:
-                raise GemminiError(f"OUT {name}: expected {rows * cols} values, got {len(vals)}")
-            outputs[name] = [vals[r * cols:(r + 1) * cols] for r in range(rows)]
-        elif parts[0] == "METRIC":
-            try:
-                raw[parts[1]] = int(parts[2])
-            except (IndexError, ValueError):
-                pass
-        elif parts[0] == "DONE":
-            done = True
-    if not done:
-        raise GemminiError(f"run did not reach DONE; output was:\n{text[:2000]}")
-    return outputs, raw
+    """Parse the OUT/METRIC/DONE console into (outputs, raw metrics) — shared protocol parser, with
+    the gemmini-specific robustness: strip stray Verilator ``%Warning:`` fragments + tolerate a
+    malformed METRIC line instead of raising."""
+    from .base import parse_console
+    return parse_console(text, error_cls=GemminiError, strip_warnings=True, tolerant_metric=True)
 
 
 def _metrics(raw: dict[str, int], simulator: str) -> dict[str, Any]:

@@ -101,28 +101,9 @@ def run_elf(elf: str | Path, harts: int = 4, isa: str = DEFAULT_ISA,
 
 
 def parse_output(text: str) -> tuple[dict[str, list], dict[str, int]]:
-    """Parse OUT/METRIC lines into (outputs, raw metrics)."""
-    outputs: dict[str, list] = {}
-    raw: dict[str, int] = {}
-    done = False
-    for line in text.splitlines():
-        parts = line.split()
-        if not parts:
-            continue
-        if parts[0] == "OUT":
-            name, rows, cols = parts[1], int(parts[2]), int(parts[3])
-            vals = [int(v) for v in parts[4:]]
-            if len(vals) != rows * cols:
-                raise SpikeError(f"OUT {name}: expected {rows * cols} values, "
-                                 f"got {len(vals)}")
-            outputs[name] = [vals[r * cols:(r + 1) * cols] for r in range(rows)]
-        elif parts[0] == "METRIC":
-            raw[parts[1]] = int(parts[2])
-        elif parts[0] == "DONE":
-            done = True
-    if not done:
-        raise SpikeError(f"run did not reach DONE; output was:\n{text[:2000]}")
-    return outputs, raw
+    """Parse the OUT/METRIC/DONE console into (outputs, raw metrics) — shared protocol parser."""
+    from .base import parse_console
+    return parse_console(text, error_cls=SpikeError)
 
 
 def normalize_metrics(raw: dict[str, int]) -> dict[str, int]:

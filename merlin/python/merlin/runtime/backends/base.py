@@ -91,3 +91,48 @@ def backends_of_class(target_class: TargetClass) -> list[str]:
 def get_backend(name: str):
     """Lazily import + return the backend module for ``name`` (raises KeyError if unregistered)."""
     return importlib.import_module(_REGISTRY[name].module)
+
+
+# --- shared backend plumbing (the copy-pasted console protocol, collapsed) --------------------------
+import re as _re
+
+
+def parse_console(text: str, *, error_cls: type[Exception] = RuntimeError,
+                  strip_warnings: bool = False, tolerant_metric: bool = False,
+                  value_parser=int) -> tuple[dict[str, list], dict[str, int]]:
+    """Parse the shared ``OUT``/``METRIC``/``DONE`` backend console protocol into (outputs, raw_metrics).
+
+    Every backend prints results the same way — ``OUT <name> <rows> <cols> v...`` /
+    ``METRIC <name> <int>`` / ``DONE`` — so the parser is shared; the small per-backend variations are
+    flags: ``strip_warnings`` drops Verilator ``%Warning:`` fragments (gemmini/verilator),
+    ``tolerant_metric`` skips malformed METRIC lines instead of raising (gemmini), ``value_parser`` is
+    ``int`` for int8/systolic/CPU targets and ``float`` for fp SIMT targets. ``error_cls`` is the
+    backend's own exception type (so messages/raises are unchanged from the hand-written versions)."""
+    if strip_warnings:
+        text = _re.sub(r"%?Warning:[^\n]*", "", text)
+    outputs: dict[str, list] = {}
+    raw: dict[str, int] = {}
+    done = False
+    for line in text.splitlines():
+        parts = line.split()
+        if not parts:
+            continue
+        if parts[0] == "OUT":
+            name, rows, cols = parts[1], int(parts[2]), int(parts[3])
+            vals = [value_parser(v) for v in parts[4:]]
+            if len(vals) != rows * cols:
+                raise error_cls(f"OUT {name}: expected {rows * cols} values, got {len(vals)}")
+            outputs[name] = [vals[r * cols:(r + 1) * cols] for r in range(rows)]
+        elif parts[0] == "METRIC":
+            if tolerant_metric:
+                try:
+                    raw[parts[1]] = int(parts[2])
+                except (IndexError, ValueError):
+                    pass
+            else:
+                raw[parts[1]] = int(parts[2])
+        elif parts[0] == "DONE":
+            done = True
+    if not done:
+        raise error_cls(f"run did not reach DONE; output was:\n{text[:2000]}")
+    return outputs, raw
