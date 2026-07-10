@@ -23,13 +23,13 @@ _SKIP = {"build", "__pycache__", ".git"}
 
 
 def runs_root(target: str, suite: str) -> Path:
-    """Canonical run root for an experiment suite: runs/<target>/<suite>/."""
-    return repo_root() / "runs" / target / suite
+    """Canonical run root for an experiment suite: out/runs/<target>/<suite>/."""
+    return repo_root() / "out" / "runs" / target / suite
 
 
 def reports_root(*parts: str) -> Path:
-    """Canonical generated-product root under artifacts/: artifacts/<parts...>/."""
-    return repo_root().joinpath("artifacts", *parts)
+    """Canonical generated-product root under out/artifacts/: out/artifacts/<parts...>/."""
+    return repo_root().joinpath("out", "artifacts", *parts)
 
 
 def sh(args: list[str], cwd: Path | None = None, timeout: int = 120) -> str:

@@ -16,7 +16,7 @@ import pytest
 from merlin.runtime import outputs_match, reference_outputs, simulate
 
 REPO = repo_root()
-PKG = REPO / "artifacts/targets/saturn_vec/hand_v0"
+PKG = REPO / "out/artifacts/targets/saturn_vec/hand_v0"
 
 try:
     from merlin.xdsl_dialects import _common

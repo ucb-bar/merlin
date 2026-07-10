@@ -575,7 +575,7 @@ def test_native_lowbit_bitvla_datapath_recovered():
     """P21-S4: the bitvla native W1.58 ternary datapath (packed-int2 storage + absmean scale) is
     captured directly — the storage that the torchao-int8 qdq stand-in could not expose."""
     from merlin.dse_guidance import quant_metadata as QM
-    cs = repo_root() / "artifacts" / "dse-guidance" / "case_study"
+    cs = repo_root() / "out/artifacts" / "dse-guidance" / "case_study"
     rows = {r["workload"]: r for r in QM.native_quant_rows(cs)}
     assert "bitvla" in rows
     bv = rows["bitvla"]
@@ -814,7 +814,7 @@ def test_per_component_calibration_reports_unidentifiable():
         or "not identifiable" in CC.multifeature_report_md(mf)
 
 
-_OUTPUT = repo_root() / "artifacts" / "recaptures"
+_OUTPUT = repo_root() / "out/artifacts" / "recaptures"
 
 
 @pytest.mark.skipif(not (_OUTPUT / "small_llama_int8_consistent" / "model.mlir").exists(),
@@ -836,7 +836,7 @@ def test_measure_reproduces_dispatch_count_if_runtime_available():
 def test_numerical_contract_flags_lost_lowbit():
     from merlin.dse_guidance import numerical_contract as NC
     import os
-    cap = "artifacts/recaptures/rdt2_int8_consistent"
+    cap = "out/artifacts/recaptures/rdt2_int8_consistent"
     if not os.path.isfile(f"{cap}/model.mlir"):
         pytest.skip("no int8 zoo capture")
     c = NC.audit(cap, workload="rdt2_int8", has_epilogue=True)
@@ -2258,7 +2258,7 @@ def test_case_study_emits_p12_artifacts(tmp_path):
 
 # ============================================================ P13 evidence mining / insight extract
 
-_CS_DIR = repo_root() / "artifacts" / "dse-guidance" / "case_study"
+_CS_DIR = repo_root() / "out/artifacts" / "dse-guidance" / "case_study"
 
 
 def test_insight_evidence_tier_classification():

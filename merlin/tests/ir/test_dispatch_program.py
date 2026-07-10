@@ -84,14 +84,14 @@ def test_program_is_json_serializable():
     assert set(back["buffers"]) >= set(back["results"])
 
 
-@pytest.mark.skipif(not (REPO / "artifacts/recaptures/small_consistent/model.mlir").is_file(),
+@pytest.mark.skipif(not (REPO / "out/artifacts/recaptures/small_consistent/model.mlir").is_file(),
                     reason="small_llama capture not present")
 def test_program_on_real_small_llama():
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.xdsl_dialects.lowering.dispatch_program import (
         lower_model_to_dispatch_program, verify_program)
 
-    m = parse_mlir_file(REPO / "artifacts/recaptures/small_consistent/model.mlir")
+    m = parse_mlir_file(REPO / "out/artifacts/recaptures/small_consistent/model.mlir")
     _, prog = lower_model_to_dispatch_program(m)
     assert verify_program(prog) == []           # a well-formed DAG over real buffers
     matmuls = [n for n in prog.nodes

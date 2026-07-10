@@ -14,7 +14,7 @@ from merlin.runtime.backends import zephyr_model as zm
 from merlin.rvvgen import load_rvv_package
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-HAND_V0 = os.path.join(ROOT, "artifacts/targets", "rvv", "hand_v0")
+HAND_V0 = os.path.join(ROOT, "out/artifacts/targets", "rvv", "hand_v0")
 
 
 def test_hand_v0_schedule_is_verbatim_capture():

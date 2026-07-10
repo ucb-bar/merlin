@@ -27,14 +27,14 @@ def test_every_authored_pass_entry_resolves():
         assert callable(obj), p.entry
 
 
-@pytest.mark.skipif(not (REPO / "artifacts/recaptures/small_consistent/model.mlir").is_file(),
+@pytest.mark.skipif(not (REPO / "out/artifacts/recaptures/small_consistent/model.mlir").is_file(),
                     reason="small_llama capture not present")
 def test_dialect_plane_runs_on_a_real_model():
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.xdsl_dialects.lowering.dispatch_program import verify_program
     from merlin.xdsl_dialects.lowering.passes import run_dialect_plane
 
-    res = run_dialect_plane(parse_mlir_file(REPO / "artifacts/recaptures/small_consistent/model.mlir"))
+    res = run_dialect_plane(parse_mlir_file(REPO / "out/artifacts/recaptures/small_consistent/model.mlir"))
     assert res.stats["kernels"] == 183
     assert res.program.n_dispatches == 183
     assert verify_program(res.program) == []

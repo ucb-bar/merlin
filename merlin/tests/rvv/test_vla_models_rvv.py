@@ -72,10 +72,10 @@ def _toolchain():
 @pytest.mark.skipif(not _toolchain(), reason="m2m venv / clang-23 missing")
 @pytest.mark.parametrize("bundle,min_cos,max_rel", MODELS)
 def test_vla_model_matches_torch(bundle, min_cos, max_rel, tmp_path):
-    b = REPO / "artifacts" / "recaptures" / bundle
+    b = REPO / "out/artifacts" / "recaptures" / bundle
     if not (b / "model.mlir").is_file():
         pytest.skip(f"{bundle} not captured")
     from merlin.runtime.dispatch_runtime import run_model
 
-    res = run_model(b, tmp_path, cache_dir=REPO / "artifacts" / "cache" / f"kc_{bundle}")
+    res = run_model(b, tmp_path, cache_dir=REPO / "out/artifacts" / "cache" / f"kc_{bundle}")
     assert res["cos"] > min_cos and res["rel"] < max_rel, (bundle, res["cos"], res["rel"])
