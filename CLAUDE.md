@@ -19,16 +19,21 @@ and the **same** checked-out HEAD. There is no per-session branch isolation. The
 Rationale: this repo is worked on by multiple concurrent agents. The only safe invariant in a shared
 working tree is "everyone is always on the current HEAD; nobody flips it."
 
-# Generated-output convention — three roots only
+# Generated-output convention — one root (`out/`), three subdirs
 
-All generated/produced output lives in **exactly three top-level roots**. Nothing generated goes
-anywhere else (the old `output/`, `results/`, `selfcheck_out/`, `docs/presentation/`, and
-per-experiment `runs/`/`reports/` locations are retired and gitignored).
+All generated/produced output lives under a **single top-level `out/` root**, with exactly three
+subdirs (`out/runs/`, `out/artifacts/`, `out/build/`). Nothing generated goes anywhere else (the old
+top-level `runs/`/`artifacts/`/`build/`, plus `output/`, `results/`, `selfcheck_out/`,
+`docs/presentation/`, and per-experiment `runs/`/`reports/` locations are retired and gitignored).
 
-- **`runs/<target>/<suite>/<run-id>/`** — aet-managed experiment runs. Create via
-  `merlin.common.artifacts.start_run(..., target=...)` (never hand-build a run path). Query with
-  `aet runs`.
-- **`artifacts/`** — every other generated product, organized **concern-first** (each tool/concern
+Root names come from `merlin.common.paths` — `out_dir()` / `runs_dir()` / `artifacts_dir()` /
+`build_dir()` (honoring `MERLIN_OUT_ROOT`). Never hard-code the literal strings; call the helpers.
+
+- **`out/runs/<target>/<suite>/<run-id>/`** — aet-managed experiment runs. Create via
+  `merlin.common.artifacts.start_run(..., target=...)` (never hand-build a run path); it passes
+  `project_root=out_dir()` so aet lays runs under `out/runs/`. Query with `aet runs` — point it at
+  the `out/` root (it reads `<project_root>/runs`).
+- **`out/artifacts/`** — every other generated product, organized **concern-first** (each tool/concern
   owns a subtree and uses ITS OWN axis — target for compiler/mining/experiments, workload for the
   three DSE tools, model for recaptures/measurements, framework for kernel-index, cross-cutting for
   ceiling/compare). Concerns: `dse-guidance/`, `dse/`, `design-pressure/`, `kernel-mining/<target>/`,
@@ -38,21 +43,22 @@ per-experiment `runs/`/`reports/` locations are retired and gitignored).
   via `new_measurement(...)`), `recaptures/`, `perf-bench/<target>/`, `capsule-bench/<target>/`,
   `targets/<target>/`, `presentation/`, `cache/`, `selfcheck/`.
 
-  **`targets/<target>/<package_id>/`** is the codegen-package home (schedules/knobs/dialects minted by
-  `merlin-rvv-mine` / `merlin-rvv-autotune` / `merlin-targetgen`). It **replaces the retired top-level
-  `generated_targets/`** — all references point at `artifacts/targets/` directly (no compat symlink;
-  paths are repo-root-relative). Packages are **tool-generated**: only the hand-authored
+  **`out/artifacts/targets/<target>/<package_id>/`** is the codegen-package home (schedules/knobs/dialects
+  minted by `merlin-rvv-mine` / `merlin-rvv-autotune` / `merlin-targetgen`). It **replaces the retired
+  top-level `generated_targets/`** — all references point at `out/artifacts/targets/` directly (no compat
+  symlink; paths are repo-root-relative). Packages are **tool-generated**: only the hand-authored
   reference baselines + promoted champions are tracked (`rvv/hand_v0`, `rvv/hand_v0_int8`,
   `rvv/impr_tuned_*`, via `.gitignore` negations); forks and `mlir_oot/build/` trees stay ignored.
-  Full buildable OOT repos live under `build/generated/`, not here.
+  Full buildable OOT repos live under `out/build/generated/`, not here.
 
-  **`output/` is DEPRECATED** — it holds only the regenerable model recaptures (via
-  `recaptures_dir()`); never write new generated content there (the guard hook blocks it).
-  - versioned products at `artifacts/<concern>/<axis>/v<ver>/<concern>_<axis>_v<ver>_<TS>_<sha7>/`
+  **`output/` is DEPRECATED and retired** — model recaptures now live at `out/artifacts/recaptures/`
+  (via `recaptures_dir()`); never write new generated content to `output/` (the guard hook blocks it).
+  - versioned products at `out/artifacts/<concern>/<axis>/v<ver>/<concern>_<axis>_v<ver>_<TS>_<sha7>/`
     (+ `manifest.yaml`, relative `latest` symlink) via `new_product(..., target=...)`;
-  - regenerable caches under `artifacts/cache/<ns>/` via `cache_dir(...)` (PURGEABLE);
-  - the 130 GB model recaptures under `artifacts/recaptures/` (PURGEABLE) via `recaptures_dir()`.
-- **`build/`** — compiled / CMake / codegen scaffolds (unchanged).
+  - regenerable caches under `out/artifacts/cache/<ns>/` via `cache_dir(...)` (PURGEABLE);
+  - the 130 GB model recaptures under `out/artifacts/recaptures/` (PURGEABLE) via `recaptures_dir()`.
+- **`out/build/`** — compiled / CMake output, baseline toolchains, and buildable OOT codegen repos
+  (`out/build/generated/`).
 
 **Naming ("sortable + provenance")**: timestamp token `YYYYMMDDTHHMMSSZ` (UTC, no `:`); runs are
 timestamp-first (`<TS>_<method>_seed<NNN>_<sha7>`), products are topic-first
@@ -60,12 +66,12 @@ timestamp-first (`<TS>_<method>_seed<NNN>_<sha7>`), products are topic-first
 (git_sha, timestamp, version) is the source of truth.
 
 **Target at folder level**: pass `target=` so it becomes a folder component
-(`runs/<target>/<suite>/...`, `artifacts/<topic>/<target>/...`) and everything for a target groups
-together. Keep inner file names identical across targets (e.g. `perf_results.json`, `findings.csv`,
+(`out/runs/<target>/<suite>/...`, `out/artifacts/<topic>/<target>/...`) and everything for a target
+groups together. Keep inner file names identical across targets (e.g. `perf_results.json`, `findings.csv`,
 `manifest.yaml`) so target-vs-target diffs are trivial.
 
 **Enforcement** (do not bypass without cause): a PreToolUse hook
-(`.claude/hooks/guard_artifact_writes.py`) blocks generated writes outside the three roots;
+(`.claude/hooks/guard_artifact_writes.py`) blocks generated writes outside the `out/` root;
 `build_tools/scripts/check_artifact_layout.py` lints tracked-file violations (pre-commit / Stop hook).
 Helper API and examples: `.claude/skills/artifact-layout/SKILL.md` and `merlin/python/merlin/common/artifacts.py`.
 Escape hatch for a genuine one-off: `export MERLIN_ALLOW_ARTIFACT_WRITE=1` or add a prefix to

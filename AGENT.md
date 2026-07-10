@@ -8,7 +8,7 @@ Repository root for **merlin**, a compiler-centered framework for exploring whic
 
 - Top-level config: `README.md`, `pyproject.toml`, `CMakeLists.txt`, `.gitignore`.
 - `build_tools/`, `docs/`, `third_party/`, and the internal `merlin/` tree.
-- Generated `runs/`, `artifacts/`, `build/` (gitignored; see CLAUDE.md "Generated-output convention") and local `tmp/` scratch.
+- Generated output under a single `out/` root (`out/{runs,artifacts,build}`; gitignored except tracked skeletons + curated files — see CLAUDE.md "Generated-output convention") and local `tmp/` scratch.
 
 ## What does not belong here
 
@@ -24,7 +24,7 @@ The CLI surface is the console-scripts declared in `pyproject.toml [project.scri
 
 - Keep the root clean. New top-level directories require justification in the PR.
 - Default to placing new work under the internal `merlin/` tree.
-- `build/`, `output/`, and `tmp/` contents stay gitignored.
+- `out/`, `output/`, and `tmp/` contents stay gitignored (except tracked `out/` skeletons + curated files).
 
 ## Testing expectations
 
