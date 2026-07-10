@@ -17,8 +17,6 @@ from __future__ import annotations
 
 import json
 import math
-import re
-import subprocess
 from pathlib import Path
 from typing import Any
 from merlin.common.paths import ext_path
@@ -35,10 +33,37 @@ def find_artifacts(chipyard_root: str | Path = DEFAULT_CHIPYARD,
             "hierarchy": base / "top_module_hierarchy.json"}
 
 
-def _grep(fir: Path, pattern: str) -> list[str]:
-    proc = subprocess.run(["grep", "-aoE", pattern, str(fir)],
-                          capture_output=True, text=True)
-    return [ln for ln in proc.stdout.splitlines() if ln]
+def _fir_lines(fir: Path, *needles: str) -> list[str]:
+    """FIRRTL lines containing ALL of ``needles`` (regex-free substring scan; replaces the old
+    ``grep -aoE`` over the elaborated .fir)."""
+    try:
+        text = Path(fir).read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return []
+    return [ln for ln in text.splitlines() if all(nd in ln for nd in needles)]
+
+
+def _uint_dims(line: str) -> tuple[int, int, int] | None:
+    """Parse ``UInt<W>[E] [D]`` widths out of a FIRRTL smem line structurally (marker + delimiters),
+    returning ``(W, E, D)`` or None."""
+    idx = line.find("UInt<")
+    if idx == -1:
+        return None
+    width, sep, after = line[idx + len("UInt<"):].partition(">")
+    if not sep or not width.strip().isdigit():
+        return None
+    dims: list[str] = []
+    pos = 0
+    while len(dims) < 2:
+        lb = after.find("[", pos)
+        rb = after.find("]", lb) if lb != -1 else -1
+        if lb == -1 or rb == -1:
+            break
+        dims.append(after[lb + 1:rb].strip())
+        pos = rb + 1
+    if len(dims) < 2 or not (dims[0].isdigit() and dims[1].isdigit()):
+        return None
+    return int(width.strip()), int(dims[0]), int(dims[1])
 
 
 def _count_tiles_under_mesh(hierarchy: Path) -> int:
@@ -73,10 +98,10 @@ def extract_facts(fir: str | Path, hierarchy: str | Path) -> dict[str, Any]:
 
     # Scratchpad memory, scoped by FIRRTL source path (gemmini/.../Scratchpad.scala).
     # Line form: `smem mem : UInt<W>[E] [D] @[... Scratchpad.scala ...]`
-    sp = _grep(fir, r"smem mem : UInt<[0-9]+>\[[0-9]+\] \[[0-9]+\] @\[[^]]*Scratchpad\.scala[^]]*\]")
+    sp = [ln for ln in _fir_lines(fir, "smem mem : UInt<", "Scratchpad.scala")
+          if _uint_dims(ln) is not None]
     if sp:
-        m = re.search(r"UInt<(\d+)>\[(\d+)\] \[(\d+)\]", sp[0])
-        ebits, row_elems, depth = int(m[1]), int(m[2]), int(m[3])
+        ebits, row_elems, depth = _uint_dims(sp[0])
         banks = len(sp)
         facts["memories"].append({
             "name": "scratchpad", "banks": banks, "row_elems": row_elems,
@@ -85,7 +110,7 @@ def extract_facts(fir: str | Path, hierarchy: str | Path) -> dict[str, Any]:
             "evidence": f"{banks}x `smem mem : UInt<{ebits}>[{row_elems}] [{depth}]` @ Scratchpad.scala"})
 
     # Accumulator memory present (size left unextracted rather than guessed).
-    if _grep(fir, r"module AccumulatorMem(_[0-9]+)?"):
+    if _fir_lines(fir, "module AccumulatorMem"):
         facts["memories"].append({
             "name": "accumulator", "elem_bits": 32, "bytes": None,
             "evidence": "module AccumulatorMem; acc datapath SInt<32>",
@@ -98,9 +123,9 @@ def extract_facts(fir: str | Path, hierarchy: str | Path) -> dict[str, Any]:
 
     # Command interface (structure, by module presence).
     ifaces = []
-    if _grep(fir, r"module ReservationStation(_[0-9]+)?"):
+    if _fir_lines(fir, "module ReservationStation"):
         ifaces.append({"name": "rocc_cmd", "evidence": "module ReservationStation (RoCC decode/dispatch)"})
-    if _grep(fir, r"module FrontendTLB(_[0-9]+)?"):
+    if _fir_lines(fir, "module FrontendTLB"):
         ifaces.append({"name": "dma_tlb", "evidence": "module FrontendTLB"})
     facts["interfaces"] = ifaces
     return facts

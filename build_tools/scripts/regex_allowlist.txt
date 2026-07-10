@@ -53,7 +53,6 @@ merlin/python/merlin/baselines/rvv_audit.py                   # objdump asm + EL
 merlin/python/merlin/kernels/bench_ceiling.py                 # bespoke saturn vec-* spike console ("took N cycles", "Vector cycles: N instructions: M") — verify against live bench before converting
 
 # ---------------------------------------------------------------- TODO(batch-6b): remaining RTL facts from structure
-merlin/python/merlin/targetgen/rtl/introspect.py              # v1 FIRRTL grep facts -> structural FIRRTL line parse (circt-opt can't parse this firtool version)
 merlin/python/merlin/targetgen/rocc_decode.py                 # LLVM-dialect dataflow -> xDSL; inline-asm .insn stays (# regex-ok on those lines)
 
 # ---------------------------------------------------------------- TODO(cleanup): boundary-aware str scan
