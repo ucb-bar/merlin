@@ -138,7 +138,7 @@ def lower_quant_ext(module) -> int:
 
         block.insert_op_before(empty, op)
         block.insert_op_before(generic, op)
-        op.results[0].replace_by(generic.results[0])
+        op.results[0].replace_all_uses_with(generic.results[0])
         block.detach_op(op)
     return len(rewrites)
 
