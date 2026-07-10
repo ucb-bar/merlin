@@ -23,16 +23,16 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-# Board access (memory: spacemit-k1-board-access). IP is a DHCP lease — override via env.
-K1_SSH_KEY = os.environ.get("MERLIN_K1_SSH_KEY", "/scratch2/agustin/DIMA_SLICE")
-K1_HOST = os.environ.get("MERLIN_K1_HOST", "")  # e.g. root@10.44.97.186; empty => unset/unreachable
+# Board access — set both via env (no personal defaults committed). The board IP is a DHCP lease.
+K1_SSH_KEY = os.environ.get("MERLIN_K1_SSH_KEY", "")  # path to the SSH private key; empty => unset
+K1_HOST = os.environ.get("MERLIN_K1_HOST", "")  # e.g. root@<board-ip>; empty => unset/unreachable
 # SpacemiT cross-toolchain. The repo keeps only setup_toolchain.sh as reference under
 # build_tools/SpacemiT/ (the toolchain itself is huge); locate the real install via env, default
 # to the known /scratch2 path. ``toolchain_cc()` tolerates either the bin/ layout or the
 # extracted ``spacemit-toolchain-*`` subdir layout.
 _REPO = Path(__file__).resolve().parents[4]
-_DEFAULT_TOOLCHAIN = "/scratch2/agustin/merlin/build_tools/riscv-tools-spacemit"
-K1_TOOLCHAIN = Path(os.environ.get("MERLIN_K1_TOOLCHAIN", _DEFAULT_TOOLCHAIN))
+# Locate the (huge) SpacemiT cross-toolchain via env; no personal path committed as a default.
+K1_TOOLCHAIN = Path(os.environ.get("MERLIN_K1_TOOLCHAIN", str(_REPO / "build_tools" / "SpacemiT" / "riscv-tools-spacemit")))
 
 # K1 X60 target: rv64gcv glibc Linux. NOT medany/freestanding — it is hosted userspace.
 K1_MARCH = "rv64gcv"

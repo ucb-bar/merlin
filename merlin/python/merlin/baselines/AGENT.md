@@ -187,8 +187,8 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
 - **MetaSchedule on-device tuning — tracker deadlock BYPASSED via a direct-RPC runner; tuning runs
   and measures on-board but STALLS mid-run (honest gap).** The tracker path deadlocks (board→host
   firewalled; even with an `ssh -R 9190` reverse tunnel + a board systemd `tvm_rpc
-  --tracker=localhost:9190 --key=k1 --custom-addr=10.44.97.186` that registers correctly as
-  `server:k1 @ 10.44.97.186:9294`, `tracker.request('k1')` hangs at `free 0 pending 1` — the
+  --tracker=localhost:9190 --key=k1 --custom-addr=<board-ip>` that registers correctly as
+  `server:k1 @ <board-ip>:9294`, `tracker.request('k1')` hangs at `free 0 pending 1` — the
   tracker↔server session handshake over the tunnel never completes). **The working angle is to skip
   the tracker entirely:** pass `RPCRunner(f_create_session=<callable>)` a picklable session-creator
   that does `rpc.connect(board_ip, 9193)` DIRECTLY (the proven host→board channel). Key API details:

@@ -5,8 +5,7 @@ import os
 from pathlib import Path
 from merlin.common.paths import ext_path
 
-DEFAULT_M2M_DIR = "/scratch/agustin/projects/model2MLIR"
-DEFAULT_IREE_BIN = f"{ext_path("merlin_iree")}/build/host-merlin-release/install/bin"
+DEFAULT_M2M_DIR = "/path/to/model2MLIR"  # external model2MLIR checkout; set MERLIN_M2M_DIR
 # Standalone LLVM-23 install (mlir-opt/mlir-translate) used where the torch-mlir wheel's
 # in-process translate bridge is unreliable (its OpenMPIRBuilder segfaults on whole-model
 # omp IR, whereas this build's mlir-translate handles it cleanly).
@@ -24,10 +23,26 @@ def m2m_python() -> Path:
     return base / "bin" / "python"
 
 
+def _iree_bin() -> Path | None:
+    """bin/ of the IREE-based Merlin build (ships clang-23), if configured. Set MERLIN_IREE_BIN, or
+    MERLIN_EXT_MERLIN_IREE pointing at the third_party/baselines/merlin-iree submodule build.
+    Resolved lazily so importing this module never requires the IREE build to be present."""
+    env = os.environ.get("MERLIN_IREE_BIN")
+    if env:
+        return Path(env)
+    try:
+        return Path(ext_path("merlin_iree")) / "build" / "host-merlin-release" / "install" / "bin"
+    except Exception:
+        return None
+
+
 def clang() -> Path:
-    """clang able to target both x86-64 and riscv64 (the IREE install's clang-23)."""
+    """clang able to target both x86-64 and riscv64 (the IREE build's clang-23; else PATH)."""
     env = os.environ.get("MERLIN_CLANG")
-    return Path(env) if env else Path(DEFAULT_IREE_BIN) / "clang-23"
+    if env:
+        return Path(env)
+    b = _iree_bin()
+    return (b / "clang-23") if b else Path("clang-23")
 
 
 def mlir_translate() -> Path:
