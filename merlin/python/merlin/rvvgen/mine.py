@@ -23,6 +23,7 @@ from ..kernels import action_catalog as ac
 from ..kernels import cca as ccamod
 from ..kernels import cca_compare
 from ..kernels.decode import rvv as rvv_decode
+from ..common.paths import artifacts_dir
 
 _REPO = Path(__file__).resolve().parents[4]
 
@@ -42,8 +43,39 @@ _AXIS_POLICY = {
 }
 
 
+def _expert_register_block(mined_dir: Path | None, op: str) -> tuple | None:
+    """The experts' representative register block (MR, NR) read from the mined kernel index — the
+    #1 GEMM data-movement decision the experts make and we were blind to. We surface the MAX MR the
+    expert GEMM kernels ship for this op (XNNPACK ships MR=1..7 and SELECTS the high one; OpenBLAS
+    16x8 -> MR=16), since that is the reuse ceiling the experts reach and we must learn to match.
+    Returns None when no index / no register-blocked expert GEMM kernel is found."""
+    if mined_dir is None:
+        return None
+    import json
+    idx = mined_dir / "xnnpack_index.json"
+    if not idx.is_file():
+        return None
+    try:
+        recs = (json.loads(idx.read_text()) or {}).get("records", [])
+    except Exception:  # noqa: BLE001
+        return None
+    op_aliases = {"gemm", "matmul", "igemm"} if op in ("gemm", "matmul") else {op}
+    mrs = []
+    for r in recs:
+        if r.get("op") not in op_aliases or r.get("dtype") not in ("f32", "f16"):
+            continue
+        rb = (r.get("features", {}) or {}).get("rvv", {}).get("register_block", {}) or {}
+        mr = rb.get("mr")
+        if isinstance(mr, int) and mr > 0:
+            mrs.append(mr)
+    if not mrs:
+        return None
+    return (max(mrs), ("vsetvlmax", 4))   # NR = lmul-scaled vsetvlmax (the mined K1 LMUL=m4)
+
+
 def expert_cca_from_policies(policies: list[dict], op: str,
-                             backend: str = "rvv") -> tuple[ccamod.CCA, dict[str, list[str]]]:
+                             backend: str = "rvv",
+                             mined_dir: Path | None = None) -> tuple[ccamod.CCA, dict[str, list[str]]]:
     """Build the EXPERT CCA target from the promoted, evidence-backed mining policies + a per-axis
     evidence map (axis -> the kernels of the policy that asserts it), so each divergence/action
     cites the kernels that actually justify it (not a global aggregate)."""
@@ -53,6 +85,10 @@ def expert_cca_from_policies(policies: list[dict], op: str,
     vector = ccamod.VectorFacet()
     if "fma_broadcast_policy" in names:
         compute.contraction_form = "fused_fma"
+        # The fma_broadcast_policy's third action is `register_block_rhs` — the experts reuse each
+        # loaded RHS row across MR broadcast-FMA accumulators. Read the MR they actually ship from
+        # the kernel index so register-blocking becomes a real, learned divergence (not null).
+        compute.register_block = _expert_register_block(mined_dir, op)
     if "int8_widening_policy" in names:
         compute.widening = True
     if "requant_narrowing_policy" in names:
@@ -87,6 +123,31 @@ def _our_cca_from_run(runs_root: Path, run_glob: str, op: str) -> tuple[ccamod.C
     return ccamod.lift_asm(rvv_decode.decode(obj), op=op, source="ours_baseline"), obj.parent.parent.name
 
 
+def audit_achievement(action, obj_path: Path, op: str) -> dict:
+    """CLOSE THE LOOP: did the fork that applied ``action`` actually ACHIEVE its machine-readable
+    promise (``intended_facet``)? Lift the CCA from the fork's EMITTED asm, check the residual, and —
+    when the action did NOT deliver — propose the ESCALATED action (next-stronger class for the unmet
+    axis). This is what lets the mining loop detect "we routed `accumulator_resident` but emitted
+    resident=False" and escalate to the CODEGEN microkernel, instead of silently accepting a structural
+    miss. Returns {achieved, residual, escalations} (escalations is a list of CompilerAction)."""
+    from ..kernels import action_catalog as ac
+    from ..kernels.cca_compare import Divergence
+
+    achieved_cca = ccamod.lift_asm(rvv_decode.decode(Path(obj_path)), op=op, source="fork_emitted")
+    residual = ac.achieved_residual(action, achieved_cca)
+    if not residual:
+        return {"achieved": True, "residual": [], "escalations": []}
+    escalations = []
+    for axis in residual:
+        want = (action.intended_facet or {}).get(axis)
+        d = Divergence(axis=axis, expert=want, ours=ac._facet_value(achieved_cca, axis),
+                       backend=action.backend, evidence=list(action.evidence))
+        esc = ac.route_escalated(d, action.action_class)
+        if esc is not None:
+            escalations.append(esc)
+    return {"achieved": False, "residual": residual, "escalations": escalations}
+
+
 def _next_version(out_root: Path, target: str) -> int:
     existing = list(out_root.glob(f"mining_{target}_v*"))
     return len(existing) + 1
@@ -96,7 +157,7 @@ def mine_run(target: str, op: str, runs_root: Path, mined_dir: Path, out_root: P
              baseline_run_glob: str = "hand_v0_*") -> Path:
     """Mint a mining_<target>_vX_ts/ run from on-disk artifacts; return its path."""
     policies = yaml.safe_load((mined_dir / "policy_rules.yaml").read_text()) or []
-    expert, ev_by_axis = expert_cca_from_policies(policies, op, backend=target)
+    expert, ev_by_axis = expert_cca_from_policies(policies, op, backend=target, mined_dir=mined_dir)
     ours, baseline_run = _our_cca_from_run(runs_root, baseline_run_glob, op)
     divs = cca_compare.compare(expert, ours) if ours else []
     for d in divs:                       # attach the evidence of the policy that asserts this axis
@@ -136,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out-root", default=None, help="default artifacts/kernel-mining/<target>/")
     ap.add_argument("--baseline-glob", default="hand_v0_*")
     a = ap.parse_args(argv)
-    out_root = Path(a.out_root) if a.out_root else _REPO / "artifacts/kernel-mining" / a.target
+    out_root = Path(a.out_root) if a.out_root else artifacts_dir() / "kernel-mining" / a.target
     run_dir = mine_run(a.target, a.op, Path(a.runs_root), Path(a.mined), out_root,
                        baseline_run_glob=a.baseline_glob)
     man = yaml.safe_load((run_dir / "manifest.yaml").read_text())

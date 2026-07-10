@@ -635,3 +635,478 @@ artifact. And the iterative loop has twice corrected a *human* hypothesis with a
 | Evidence report / driver | `rvvgen/report.py`, `rvvgen/mine.py` |
 | Gemmini targetgen agent | `targetgen/agent/`, `targetgen/rocc_decode.py` |
 | Tests | `tests/test_decode_rvv.py`, `test_cca.py`, `test_action_catalog.py`, `test_impr_features.py`, `test_rvv_beam.py`, `test_tuning_agent.py`, `test_rvv_runner.py` |
+
+---
+---
+
+# Part II — Deep dives (the implementation, exactly)
+
+*Part I is the architecture. Part II is the precise mechanics: the full CCA spec and how it is
+generated, the beam search end-to-end (inputs / what's fixed / what varies / outputs / where the
+agent plugs in), a real improvement shown as a before/after diff, and the certify-and-measure loop.
+Everything here is quoted from or reduced from the actual source — file + symbol named in each case.*
+
+---
+
+## 11. The CCA, in full
+
+### 11.1 The exact spec (`kernels/cca.py`)
+
+A `CCA` is **one op-region**: a `backend` tag plus four facets, only the relevant ones populated,
+plus `provenance`. Verbatim dataclasses (`kernels/cca.py:24-78`):
+
+```python
+@dataclass
+class ComputeFacet:                              # TARGET-AGNOSTIC — every backend fills this
+    op:                  str | None = None
+    contraction_form:    str | None = None   # fused_fma | mul_add | outerproduct | dot | systolic
+    accumulator_dtype:   str | None = None   # f32 | i32 | f64 | ...
+    widening:            bool | None = None  # i8×i8→i32 widening MAC (vwmacc / array widen)
+    reduction_form:      str | None = None   # tree | vredsum | vfredusum | none
+    register_block:      tuple | None = None # (mr, nr) or tile dims
+    epilogue:            str | None = None   # requant_narrow | none
+    accumulator_resident: bool | None = None # acc stays in fastest storage across the WHOLE reduction?
+    nr_is_vsetvlmax:     bool | None = None  # inner width tracks runtime vsetvlmax (VL-adaptive)?
+
+@dataclass
+class VectorFacet:                               # RVV / SIMD
+    sew:         int   | None = None         # 8 | 16 | 32 | 64
+    lmul:        float | None = None         # 8,4,2,1,0.5,0.25,0.125 (mf2/mf4/mf8 → fractions)
+    vl_strategy: str   | None = None         # vsetvl_loop | vsetivli_fixed
+    tail:        str   | None = None         # ta | tu | none
+
+@dataclass
+class SpatialFacet:                              # Gemmini / systolic
+    pe_rows: int | None;  pe_cols: int | None;  dataflow: str | None   # ws | os
+    accumulator_resident: bool | None = None
+
+@dataclass
+class DataflowFacet:                             # NPU
+    engine_ops: list[str];  dma_pattern: str | None;  onchip_resident: str | None
+
+@dataclass
+class CCA:
+    op: str
+    backend: list[str]                           # ["rvv"] | ["gemmini"] | ["npu","rvv"] | …
+    compute:  ComputeFacet
+    vector:   VectorFacet   | None = None
+    spatial:  SpatialFacet  | None = None
+    dataflow: DataflowFacet | None = None
+    provenance: dict        = …                  # {"level": asm|source_ast|mlir|dse, "source", "confidence"}
+```
+
+`accumulator_resident` lives on the **shared** `ComputeFacet` on purpose: "does the output stay in
+the fastest storage across the whole reduction and commit once?" is the *same question* on every
+backend — RVV reads it from a vfmacc-chain / no-in-loop-spill analysis, `SpatialFacet` is the
+Gemmini-PE view of the identical concept, an NPU lifter reads it from on-chip-buffer residency. That
+is what makes the abstraction portable rather than RVV-shaped.
+
+### 11.2 Kernel-CCA vs compiler-CCA — same schema, different lifter
+
+There is **one** CCA type. "Expert-kernel CCA" and "our-compiler CCA" differ only in which **lifter**
+produced them and what `provenance.level`/`confidence` they carry. Four lifters exist
+(`kernels/cca.py`):
+
+| Lifter | Input | Level / confidence | Used for |
+|---|---|---|---|
+| `lift_asm(stream, op, source, backend)` | decoded `InsnStream` (RVV asm) | `asm` / **high** | **both** the expert kernel's `.o` *and* our compiler's `model.o` — the authoritative, comparable lift |
+| `lift_source(facts, …)` | `clang_ast.SourceFacts` (resolved C-intrinsic types) | `source_ast` / medium | expert kernels only — the **cross-check** that gates validity (§3.3) |
+| `lift_spatial(op_counts, …)` | Gemmini RoCC op counts (`targetgen/rocc_decode`) | `asm` / high | a spatial backend (fills `SpatialFacet`) |
+| `lift_dse(op_shape, …)` | `dse_guidance.OperatorShape` geometry | `dse` / low | op + register-block hints only (no micro-decisions) |
+
+The crucial point: **expert-CCA and ours-CCA are both produced by `lift_asm` from the same
+instruction stream**, so the comparison in §11.4 is apples-to-apples — XNNPACK (C-intrinsic front
+end), OpenBLAS (hand asm), and ours (MLIR front end) all reduce to the one substrate they share. The
+"compiler CCA" is *not* lifted from our MLIR in the hot path — MLIR-level lifting (`lift_mlir`,
+`level=mlir`) exists only as a faithfulness check ("did our IR lower to the asm we think it did"); the
+authoritative ours-CCA is `lift_asm(model.o)`.
+
+`lift_asm` reads **every field structurally** from the stream, never from a name
+(`kernels/cca.py`, `lift_asm`):
+
+```python
+vfmacc      = stream.count("vfmacc", "vmacc")          # fused MAC present?
+vfmul, vfadd= stream.count("vfmul","vmul"), stream.count("vfadd","vadd")
+widening    = stream.count("vwmacc") > 0
+sew, lmul   = _dominant_vtype(stream)                  # from tracked vtype, not a substring
+vl_strategy = "vsetvl_loop" if (stream.count("vsetvli")>0 and stream.has_loop()) else "vsetivli_fixed"
+contraction = ("fused_fma" if vfmacc>0 else "mul_add" if (vfmul>0 and vfadd>0) else None)
+acc_resident= _infer_accumulator_resident(stream)      # spill-store/reload inside the FMA loop?
+reg_block   = _infer_register_block(stream, sew, lmul) # MR=distinct acc vregs; NR=("vsetvlmax",lmul)
+```
+
+### 11.3 How a CCA is generated — the inputs and the exact process
+
+**Inputs** (all on-disk, no model/agent in this path): an ELF/`.o` object (expert kernel object, or
+our `model.o` from a certified build) and the LLVM tools at `third_party/llvm-install/bin`
+(`llvm-objdump`; for the source cross-check `clang-23` + the framework's `riscv_vector.h` path from
+its `framework_contract`).
+
+**Process** — deterministic, four steps (`kernels/decode/` → `kernels/cca.py`):
+
+```
+.o ──objdump.tokenize()──▶ list[RawInsn]            # positional field-split, no semantic regex
+   ──rvv.decode()────────▶ InsnStream               # vtype state machine stamps each insn's effective vtype
+   ──memory.analyze_memory(K-loop span)──▶ MemFacet  # loads/FMA, ladder ops, unit-stride (turn-3 facet)
+   ──cca.lift_asm()──────▶ CCA{compute,vector,provenance:{level:asm,confidence:high}}
+```
+
+The vtype state machine (`kernels/decode/rvv.py:decode`) is the core of "no regex": it walks the raw
+instructions, and on each `vsetvli/vsetivli/vsetvl` it parses the **explicit** `e<SEW>,m<LMUL>,ta/ma`
+operand tokens into a `VType`, then stamps every following vector instruction with that *effective*
+vtype:
+
+```python
+def decode(obj_path, triple="riscv64") -> InsnStream:
+    raws = tokenize(obj_path, triple=triple)
+    cur = VType()                                  # current architectural vtype
+    out = []
+    for r in raws:
+        if r.mnemonic in _VSET:                    # vsetvli | vsetivli | vsetvl
+            cur = _parse_vtype(r.operands)         # read e32/m4/ta/ma operands directly
+            out.append(VInsn(raw=r, is_vector=True, vtype=cur)); continue
+        is_vec = r.mnemonic.startswith("v")
+        out.append(VInsn(raw=r, is_vector=is_vec, vtype=cur if is_vec else None))
+    return InsnStream(out)
+```
+
+So "this `vfmacc.vf` runs at SEW=32, LMUL=4" is *read off the architectural state*, not guessed from
+the string `_e32m4`. The old regex extractor (`kernels/features/rvv_intrinsics.py`, 7 patterns over C
+text) survives only as a low-confidence fallback.
+
+**For our compiler**, the only difference is where the `.o` comes from: `certify_rvv` builds
+`model.o` via `apply_rvv_package`, disassembles it (K4), and the same `lift_asm` runs on it. Same
+function, same fields — that is what makes "expert vs ours" a valid diff.
+
+### 11.4 The validity gate, exactly (`cca_agree`)
+
+`cca_agree(asm_cca, source_cca)` compares the two lifts **per populated facet field** (a field that
+is `None` on either side is skipped) and quarantines any kernel that disagrees
+(`kernels/cca.py:cca_agree`):
+
+```python
+for facet in ("compute","vector","spatial","dataflow"):
+    for k, (va, vb) in _facet_fields(getattr(a,facet), getattr(b,facet)).items():
+        compared.append(f"{facet}.{k}")
+        if va != vb:
+            diffs.append(f"{facet}.{k}: {a.provenance['level']}={va!r} vs {b.provenance['level']}={vb!r}")
+return AgreementReport(agree=not diffs, disagreements=diffs, compared_fields=compared)
+```
+
+A disagreement on any populated field ⇒ `agree=False` ⇒ the divergence cannot promote to a compiler
+action. Tested **both ways** (`test_cca.py`): agreement on a curated kernel, and the gate *firing* on
+a deliberately mismatched pair.
+
+### 11.5 Divergence and action — the exact records
+
+`compare(expert, ours)` (`kernels/cca_compare.py`) emits one `Divergence` per populated **differing**
+field; `route(divergence)` (`kernels/action_catalog.py`) maps each to a typed `CompilerAction`:
+
+```python
+@dataclass
+class Divergence:
+    axis: str            # "compute.contraction_form"
+    expert: Any; ours: Any
+    backend: str
+    evidence: list[str]  # kernel ids justifying the expert value
+
+@dataclass
+class CompilerAction:
+    divergence_axis: str
+    action_class: str    # FLAG | HEURISTIC | PASS | KNOB  (+ PATTERN, CODEGEN)
+    target_seam: str     # "impr_features:fused_vfmacc_contraction" | "schedule:vector_sizes" | "cflag:…"
+    change: str; expected_effect: str
+    forkable_now: bool   # is the seam a registered feature TODAY?
+    backend: str; evidence: list[str]
+```
+
+The route table is **data, keyed by backend** (`_ROUTES["rvv"]`, ~10 routes) — adding a target adds
+rows, not code. Routes that aren't expressible as a feature yet carry `forkable_now=False` and become
+the explicit "next feature to build" list (never dropped). §3.4 shows the full worked YAML triplet.
+
+---
+
+## 12. The beam search, in full
+
+### 12.1 What a node is, and the two engines
+
+A beam **node** is one *candidate compiler configuration* applied to the frozen baseline, plus its
+certified scores. There are two engines, used for two questions:
+
+| Engine | File | A node is a… | Ranked by | Answers |
+|---|---|---|---|---|
+| **knob-merge beam** | `rvvgen/beam.py::run_beam` | knob dict (tile/vector/contraction-strategy/patterns) | lexicographic *toward the expert* (spike) | "which schedule knobs close the structural gap to the expert kernel" |
+| **feature-set beam** | `rvvgen/autotune.py::beam_search` | `frozenset` of `impr_features` names | measured **K1 wall-time** | "which combination of mined features is fastest on real silicon" |
+
+Both exist because the loop has two phases: the knob-merge beam drives the *structural* search
+(match the expert's fingerprint on spike, where instruction-count is the proxy); the feature-set beam
+drives the *performance* search (rank real silicon wall-time once features exist).
+
+### 12.2 Input files — what the beam reads
+
+- **Seed package** `artifacts/targets/rvv/hand_v0/` — the frozen baseline: `schedule.mlir`,
+  `knobs.yaml`, `manifest.yaml`. Every search starts here and **never edits it**.
+- **The feature registry** `llvmlower/impr_features.py` — the default-off features a node may enable.
+- **The route table** `kernels/rvv_knobs.py::_ROUTES` — divergence-key → lever(s) (the deterministic
+  proposer). Optional alternative: the LLM proposer `rvvgen/tuning_agent.py`.
+- **The expert fingerprint** — `curated_text` (the expert kernel source/fingerprint) for the
+  structural score, and the mined `expert_cca.yaml` from a `mining_rvv_v*` run for the divergences.
+- **The model workload** `model_dir` (a captured model slice + `golden.npy`) — fixed across the search.
+
+### 12.3 What stays fixed, what varies
+
+**Fixed (the whole safety story):** the baseline `RVV_TRANSFORM_SCHEDULE` and `build_rvv_pipeline`
+defaults (byte-identical guard, §4.3); `hand_v0`; the op-key `{op, dtype, shape_regime}`; the curated
+expert fingerprint; the workload + golden; the cosine gate threshold.
+
+**Varies (per node):** `op_match` (tile + vector size lists), `contraction_strategy`
+(`outerproduct|dot|matmulintrinsics|parallelarith`), `lowering_patterns`, `dtype_strategy`, and the
+`compiler_features` set. Each is expressed as an *override* layered on the parent's config — the
+baseline is never mutated, only forked.
+
+### 12.4 Scoring and pruning — exact code
+
+Lexicographic, correctness-dominant (`rvvgen/sweep.py::rank_results`):
+
+```python
+def key(n):
+    correct = 1 if n.get("gate_ok") else 0
+    sm      = n.get("structural_match") or 0.0     # 0.6·decision_match + 0.4·histogram_cosine
+    cyc     = n.get("cycles")
+    return (correct, sm, -(cyc if cyc is not None else inf))
+return sorted(scored, key=key, reverse=True)
+```
+
+Pruning (`rvvgen/beam.py`, per generation `d`): expand each parent into ≤`width` forks (default 3),
+certify all in parallel, then `survivors = [n for n in rank_results(gen) if n["gate_ok"]][:top_k]`
+(default `top_k=2`). **An incorrect node can never survive** (gate dominates), and the beam stops if a
+generation yields no correct survivors. `structural_match` pulls survivors *toward the expert's
+instruction fingerprint*, not toward a raw scalar — that is why the search converges on the expert's
+shape rather than on whatever happens to retire fewest spike instructions.
+
+### 12.5 How beams combine — the two merge mechanisms
+
+1. **Implicit knob merge** (`rvvgen/from_strategy.py::mint_fork`): a child *deep-copies the parent's
+   whole knob dict* and `knobs.update(overrides)` — so it inherits everything the parent had plus one
+   new lever. A depth-2 winner is literally `seed → (widen N) → (widen N + outerproduct)`; beneficial
+   knob **combinations** are discovered by depth traversal, no set algebra.
+
+2. **Explicit feature-set union** (`rvvgen/autotune.py::beam_search`): a survivor with features
+   `{A,B}` spawns `{A,B,C}, {A,B,D}, …` (one feature added per step), all re-benchmarked, top-`width`
+   kept:
+
+   ```python
+   for d in range(1, depth):
+       cands = {frozenset(p["features"]) | {f}
+                for p in survivors for f in features if f not in p["features"]}
+       rs = [evalc(c) for c in cands]
+       survivors = sorted([r for r in survivors+rs if r["correct"]],
+                          key=lambda r: r["min_wall"])[:width]
+   ```
+
+   This is exactly how the *neutral-alone, synergistic-together* pair was found: `fused_vfmacc` is
+   ~neutral until `accumulator_resident` is also in the set; greedy extension surfaces the
+   combination without enumerating all 2^N subsets. (It also surfaces the **composition guard**:
+   two full-schedule-replacement features can't coexist — `apply_schedule` raises `CompositionError`,
+   recorded as the node's `blocker`, see §12.7.)
+
+### 12.6 Where the agent plugs in (and how it's contained)
+
+The beam is deterministic by default; the proposer is the **one** pluggable seam:
+
+- **Default — deterministic gap-router** (`kernels/rvv_knobs.py::propose_forks`): divergence key →
+  fixed lever list. Same divergences ⇒ same proposals.
+- **Optional — LLM proposer** (`rvvgen/tuning_agent.py::propose_forks_llm`): renders a versioned
+  prompt from the divergences + knobs, calls `common.llm.complete` (its only tool), parses JSON
+  proposals — **then every override is clamped against `_KNOWN_OVERRIDE_KEYS`; unknown keys are
+  dropped and noted.** No LLM output reaches the compiler unvalidated, and both proposers emit the
+  identical `ForkProposal` type, so the beam can't tell which produced a candidate. Everything
+  downstream of the proposer (mint → build → certify → rank) is tooling.
+
+(The Gemmini `targetgen/agent/` — Claude Code headless generating bare-metal C — is a *separate*
+generative system, not part of the RVV beam; it shares only the "nothing trusted until it certifies"
+gate philosophy.)
+
+### 12.7 Outputs — the real artifacts
+
+A run writes a versioned dir `artifacts/kernel-mining/rvv/beam_rvv_v{V}_{ts}/` containing a `beam_summary.yaml`
+(per-model winner) and a `ranking_<model>.yaml` per model. **Real excerpt**
+(`beam_rvv_v2_20260619T132435/ranking_bitvla.yaml`) — note a survivor *and* a killed node with its
+honest blocker:
+
+```yaml
+model: bitvla_fp32_consistent
+ranked:
+  - tag: v3_plus_lmul
+    features: [accumulator_resident_microkernel_v3, lmul_widen_n]
+    speedup: 16.771
+    lowering: vectorized
+    cos: 0.9999945759773254
+    min_wall_s: 0.1506
+    status: pass
+    blocker: null
+  - tag: act_plus_matmul
+    features: [vectorized_transcendental_activation, fused_vfmacc_tiled]
+    speedup: null
+    lowering: null
+    cos: null
+    min_wall_s: null
+    status: not_run
+    blocker: 'composition_error: cannot compose multiple full-schedule-replacement features
+      [fused_vfmacc_tiled, vectorized_transcendental_activation]: each emits a complete
+      transform schedule and would clobber the others.'
+```
+
+The knob-merge beam additionally writes `beam_tree.yaml` (`generations[]` with per-gen survivors,
+`best`, `ranked`, and a `deferred_work_items[]` list for `forkable=False` branches — the explicit
+"next compiler feature to build"). These files are the input to fig6 (the beam tree) and the results
+dashboard. Each node's `package_dir` points at its `artifacts/targets/rvv/<run_id>/` fork
+(schedule.mlir + knobs.yaml + manifest with `lineage.parent_run_id`), so a node is fully reproducible.
+
+---
+
+## 13. Before and after — a real improvement as a diff
+
+The headline turn-1 feature is `fused_vfmacc_tiled` / `fused_vfmacc_scalable` (action class **PASS**,
+seam `impr_features:fused_vfmacc_*`). It replaces a degenerate `vfmul`+`vfadd` matmul with a fused
+`vfmacc`. Here is exactly what changes.
+
+### 13.1 The schedule diff (what the fork edits)
+
+The baseline (`pipeline.py:RVV_TRANSFORM_SCHEDULE`) tiles `[4, 8, 1]` — **K=1**, which never forms a
+real contraction — and lowers with a bare `lower_contraction`:
+
+```diff
+  %mm = transform.structured.match ops{["linalg.matmul"]} in %arg0 ...
+- %t, %l:3 = transform.structured.tile_using_for %mm tile_sizes [4, 8, 1] ...
+- transform.structured.vectorize %t vector_sizes [4, 8, 1] : !transform.any_op
++ %t, %l:3 = transform.structured.tile_using_for %mm tile_sizes [4, 16, 16] ...   # KC=16: a real K reduction tile
++ transform.structured.vectorize %t vector_sizes [4, 16, 16] : !transform.any_op  # SCOPED to %t (no vectorize_children → no extract explosion)
+  %f = transform.structured.match ops{["func.func"]} in %arg0 ...
++ transform.apply_patterns to %f {
++   transform.apply_patterns.vector.transfer_permutation_patterns
++   transform.apply_patterns.vector.reduction_to_contract        # rebuild a real vector.contract
++ } : !transform.any_op
+  transform.apply_patterns to %f {
+-   transform.apply_patterns.vector.lower_contraction            # no strategy → degenerate mul+add
++   transform.apply_patterns.vector.lower_contraction lowering_strategy = "outerproduct"
++ } : !transform.any_op
++ transform.apply_patterns to %f {
++   transform.apply_patterns.vector.lower_outerproduct           # outerproduct{add} → vector.fma
+  } : !transform.any_op
+```
+
+This is expressed as a registered, default-off `ImprFeature` whose `edit_schedule` *replaces* the
+schedule (`schedule_replace=True`); the baseline string is emitted unchanged when the feature is off.
+
+### 13.2 Why `[4,8,1]` is the bug (the recorded root cause)
+
+From the feature's own design comment (`impr_features.py`): `[4,8,1]` with **K=1** collapses the
+inner body to a bare `mulf`+`addf` — no contraction can form, so `outerproduct`, K-tiling, and
+fast-math were all *measured* no-ops on it. The fix tiles `KC=16` so a real reduction tile survives,
+and `reduction_to_contract` rebuilds the `vector.contract` from the scoped-vectorize
+`mulf`+`multi_reduction`. Two further constraints are baked in for whole-model safety: vectorize is
+**scoped to the tiled handle** (vectorizing the whole func explodes to ~4120 `vector.extract` on a
+toy model vs 84 scoped); and `KC=16` keeps tile vectors small (`vector<4x16>`, `vector<16x16>`) so the
+register allocator doesn't spill — the unbounded earlier draft spilled 4 KB vectors and faulted the
+spike at M≥64. The inner body is a **constant `MR·KC = 64` FMAs regardless of M/N/K**.
+
+### 13.3 The asm diff (the emitted-instruction evidence, K4)
+
+```diff
+  # inner K step, baseline (contraction_form = mul_add):
+- vfmul.vv  v8,  v0, v16        # t = a * b
+- vfadd.vv  v24, v24, v8        # acc += t        ← two ops, extra vreg, extra latency
+
+  # inner K step, fused_vfmacc_tiled (contraction_form = fused_fma):
++ vfmacc.vv v24, v0, v16        # acc += a * b    ← one fused MAC
+```
+
+`lift_asm` reports this as `compute.contraction_form: mul_add → fused_fma`; the K4 instruction
+histogram confirms `vfmacc` is present and `vfmul`+`vfadd` are gone. The v3 line takes it one step
+further — `accumulator_resident_microkernel_v3` scalarizes the A reads so the kernel emits `vfmacc.vf`
+(decode-confirmed: the innermost K-loop is **4 `vfmacc.vf`, 0 `vfmacc.vv`, 0 in-loop accumulator
+spills**), which is what beats the hand ceiling.
+
+### 13.4 Measured effect (with its rung)
+
+`fused_vfmacc_tiled`: **9.18× bitvla / 3.61× openvla** whole-model on the K1 board (wall-ns, the
+real-silicon ground truth). The combined `v3 + lmul_widen_n` winner reaches **16.77× bitvla**
+(`cos 0.99999`), beating both the XNNPACK kernel-swap (13.65×) and OpenBLAS. Every number is gated:
+no cosine pass ⇒ no speedup credited (§14.3).
+
+---
+
+## 14. The improvement loop, and how we test for improvements
+
+### 14.1 The loop, concretely
+
+```
+mining_rvv_v*  ──expert_cca, divergences──▶  action_catalog  ──forkable actions──▶  impr_features
+        ▲                                                                                  │
+        │ re-decode the residual                                                  proposer (gap-router │ LLM)
+        │ from fresh asm                                                                   │
+        │                                                                          mint_fork (knob merge)
+   certified Δ ◀── certify_rvv (K-ladder, cos-gate) ◀── apply_rvv_package → build_app → model.o ◀──┘
+```
+
+Each turn: lift the gap → route to a typed action → enable it as a default-off feature → mint a fork
+→ build → certify → measure → **re-decode the residual and repeat**. The loop has twice overruled a
+*human* hypothesis with a *measured* refutation (lane-width, then packing): turn-3's `MemFacet`
+measured that the `.vf` kernel already ties XNNPACK at 2.0 loads/FMA, 0 ladder ops — so the "packing"
+lever was retired as structurally inapplicable to small-M VLA matmuls rather than pursued.
+
+### 14.2 How a fork is applied (the seam)
+
+The fork's `compiler_features` thread through one entry point — `rvvgen/apply.py::apply_rvv_package`:
+
+```python
+return zm.build_app(model_dir, work, board=board, backend="rvv",
+                    rvv_schedule=pkg.schedule_text,
+                    cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
+                    features=frozenset(pkg.compiler_features) or None,   # ← threaded here
+                    ...)
+```
+
+…which calls `apply_schedule(schedule, features)` and `build_rvv_pipeline(sched, features=features)`.
+With `features=∅` both are identity (§4.3) — the baseline emits the exact shipping pipeline; a feature
+changes codegen **only** when a fork enables it. No global state is mutated; `pipeline.py` defaults are
+never touched.
+
+### 14.3 How we test — the K-ladder and the cosine gate
+
+`runner.certify_rvv` runs every candidate through a fail-closed ladder; the beam consumes its
+structured result:
+
+| Rung | Check | Gate? |
+|---|---|---|
+| K0 | load + integrity (cflags allowlist, manifest schema) | yes |
+| K1 | non-perturbation: seed schedule == `pipeline.RVV_TRANSFORM_SCHEDULE` | yes |
+| K2 | build via `apply_rvv_package` → `model.o` + `zephyr.elf` | yes |
+| **K3** | **spike correctness — multi-tier cosine gate** | **yes (the gate)** |
+| K4 | instruction histogram (evidence: vfmacc present? — not a hard gate) | no |
+| K5 | K1 silicon cycles (`rdtime`→cycles + `wall_ns`); `not_run` if board unreachable | no |
+| K6 | Δ vs baseline — **speedup credited only if K3 passed** | yes |
+
+The gate itself is multi-tier (`runtime/backends/zephyr_model.py::_gate`): a W8A8 tier (`cos > 0.999
+AND rel < 1e-2`), an fp32 tier (`cos > 0.99 AND top-1 argmax match`), and a legacy fp32 tier
+(`cos > 0.9999 AND rel < 1e-3`); `ok = any tier passes`. And K6 is fail-closed:
+
+```python
+speedup = (baseline_cycles / m["cycles"]) if gate_ok else None   # wrong ⇒ no number, ever
+```
+
+So a candidate that is fast but wrong reports `speedup = None`. This is the structural reason the
+headline numbers are defensible: nothing that fails the cosine gate can produce a speedup claim, and
+the measurement rung (`spike` / `K1` / `not_run`) is always attached. The byte-identical guard
+(`test_impr_features.py`) proves the baseline cannot move underneath any of this.
+
+### 14.4 The measurement ladder (and what each rung can and can't see)
+
+Same ladder as §2, restated as the test discipline: **spike** measures `minstret` (IPC=1 proxy, no
+memory hierarchy) — so it ranks *structure* (instruction count) but is blind to a loads/FMA win;
+**K1** measures `rdtime`→wall-ns on real silicon (cycles derived, so wall-ns is ground truth) — the
+rung the speedups are reported on; **FireSim/VCS** is cycle-accurate but queue-gated and never
+escalated. A result unreachable on a rung is `not_run`, never fabricated. This is why, e.g., the
+turn-2 `.vf` ladder-elimination shows as a modest whole-model bump on K1 (1.04–1.09×) even though it
+removes 8→0 broadcast ops/FMA: the win is in data movement, which only the silicon rung sees.
