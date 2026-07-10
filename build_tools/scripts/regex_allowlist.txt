@@ -1,0 +1,86 @@
+# Whole-file exemptions for check_no_regex.py — files still permitted to use the `re` module.
+#
+# Format: one repo-relative path per line; text after `#` is the rationale (required).
+# The list only ever SHRINKS: as a file is converted to a structured implementation, delete its
+# entry. Two kinds of entry:
+#   * PERMANENT — genuinely irreducible (filename/symbol conventions, external-tool stdout with no
+#     structured mode, opaque inline-asm strings, motif tables, emitter-impedance fixups). These
+#     stay, with a rationale. Prefer an inline `# regex-ok: <why>` on the exact line where only a
+#     line or two is irreducible; a whole-file entry here is for files that are mostly pattern work.
+#   * TODO(batch-N) — not yet migrated by the de-regex sweep; scheduled for the named batch.
+#
+# See docs / the plan for the tiering. `# regex-ok:` inline markers override this file per-line.
+
+# ---------------------------------------------------------------- PERMANENT (irreducible)
+merlin/python/merlin/kernels/markers.py                       # motif-evidence table ("heart of extraction"); by design
+merlin/python/merlin/kernels/ingest/openblas.py               # OpenBLAS kernel FILENAME convention (kernel_MxN_zvl*.c) — no structured source
+merlin/python/merlin/kernels/ingest/xnnpack.py                # XNNPACK in-file SYMBOL names (xnn_*_ukernel_*__rvv) — the API is the name
+merlin/python/merlin/kernels/ingest/autocomp.py               # Autocomp bespoke test() C-signature + kernel_<hash>.c filename
+merlin/python/merlin/kernels/ingest/triton.py                 # Triton .py source scrape; could move to `ast` (optional, low value)
+merlin/python/merlin/baselines/executorch.py                  # ExecuTorch executor_runner STDOUT — no --json mode
+merlin/python/merlin/targetgen/contract/interface_emit.py     # contract round-trip; xDSL dep forbidden by design + ingests external capsules
+merlin/python/merlin/targetgen/rtl/gen_iface_irdl.py          # normalizes a known tblgen-to-irdl output quirk
+merlin/python/merlin/targetgen/rtl/gen_arc_ports.py           # C-identifier sanitization of a name already read from JSON
+merlin/python/merlin/llvmlower/pipeline.py                    # f0x float-literal fixup: MLIR printer emits text LLVM's parser rejects (emitter bug)
+merlin/python/merlin/frontends/linalg_mlir.py                 # `} -> (...)` normalizer that ENABLES the xDSL parse (pro-structural)
+
+# ---------------------------------------------------------------- xDSL-0.65 print bugs (revisit on xDSL upgrade)
+merlin/python/merlin/llvmlower/passes_xdsl.py                 # xDSL mis-prints rank-reduced extract/insert_slice + quant_ext; text fallback by design
+merlin/python/merlin/llvmlower/truncate.py                    # NaN-bisection over MLIR text; xDSL round-trip unreliable for these ops
+merlin/python/merlin/baselines/buddy.py                       # rewrites buddy-opt static_offsets in IR text; xDSL path unreliable here
+merlin/python/merlin/dse_guidance/loop_recovery.py            # scf/iter_args reconstruction from MLIR text; blocked on xDSL op-print fidelity
+
+# ---------------------------------------------------------------- TODO(batch-1b): delete legacy comparator
+merlin/python/merlin/kernels/compare.py                       # superseded by cca_compare.py + decode/ + cca.py — delete after beam.py migration
+merlin/python/merlin/kernels/features/rvv_intrinsics.py       # superseded by decode/clang_ast.py — delete with compare.py
+merlin/python/merlin/kernels/build_asm.py                     # :53 top_mnemonics duplicates decode/objdump.tokenize
+
+# ---------------------------------------------------------------- TODO(features): route to tree-sitter/ast_struct
+merlin/python/merlin/kernels/features/ast_struct.py           # 2 leaf-token regexes inside an otherwise tree-sitter walk
+merlin/python/merlin/kernels/features/loops.py                # C loop-nest/reg-block motif; overlaps ast_struct tree-sitter counts
+merlin/python/merlin/kernels/features/roles.py                # RHS-reuse proxy over C source; overlaps tree-sitter
+merlin/python/merlin/kernels/features/dispatch.py             # Gemmini dispatch-call count in C; needs a tree-sitter call-expr walk
+
+# ---------------------------------------------------------------- TODO(batch-3): constrain agent output
+merlin/python/merlin/dse_guidance/agent/claude_cli.py         # regex-extracts JSON from LLM free-text -> structured output helper
+merlin/python/merlin/dse_guidance/agent/critic.py             # whitespace normalize -> " ".join(split())
+merlin/python/merlin/targetgen/agent/claude_cli.py            # fenced-block extraction from LLM reply -> structured output helper
+merlin/python/merlin/rvvgen/tuning_agent.py                   # bare-JSON scrape of LLM reply -> structured output helper
+merlin/python/merlin/kernels/agent_mine.py                    # {..} JSON scrape of LLM reply -> structured output helper
+
+# ---------------------------------------------------------------- TODO(batch-4): mlir_query.py + xDSL consumers
+merlin/python/merlin/llvmlower/model_runner.py                # @forward arg shapes from MLIR text -> xDSL
+merlin/python/merlin/llvmlower/c_runtime.py                   # @forward output shape from MLIR text -> xDSL
+merlin/python/merlin/design_pressure/ingest/mlir_m2m.py       # re-stringifies xDSL types then regexes -> read attribute directly
+merlin/python/merlin/dse_guidance/quant_metadata.py           # quant_ext attrs over generated MLIR -> xDSL op-walk
+merlin/python/merlin/dse_guidance/numerical_contract.py       # prov.* attrs + matmul dtype over MLIR -> xDSL op-walk
+merlin/python/merlin/dse_guidance/insight_mining.py           # scf/tensor-type counts over MLIR -> xDSL walk
+merlin/python/merlin/runtime/backends/ours_board/__init__.py  # matmul matcher + func.func anchor over MLIR -> xDSL / str.find
+merlin/python/merlin/runtime/backends/xnnpack_board/__init__.py  # matmul matcher + func.func anchor over MLIR -> xDSL / str.find
+merlin/python/merlin/runtime/backends/openblas_board/__init__.py  # matmul matcher + func.func anchor over MLIR -> xDSL / str.find
+merlin/python/merlin/targetgen/rtl/extract_module.py          # CIRCT HW module-subtree slice by text -> circt-opt instance graph
+merlin/python/merlin/targetgen/rtl_check_runner.py            # op-form vs attr-form mode select over gemmini MLIR -> mlir-opt
+
+# ---------------------------------------------------------------- TODO(batch-5): external output structured modes
+merlin/python/merlin/runtime/backends/muon.py                 # cyclotron cycles -> read performance_logs summary.json
+merlin/python/merlin/baselines/rvv_audit.py                   # objdump asm + symbols -> decode/objdump + pyelftools
+merlin/python/merlin/rvvgen/runner.py                         # objdump mnemonic -> decode/objdump.tokenize
+merlin/python/merlin/baselines/profile.py                     # our MERLIN_E2E/REGION driver markers -> JSON markers
+merlin/python/merlin/cost_model/calibrate.py                  # our calib driver CYCLES markers -> JSON markers
+merlin/python/merlin/kernels/bench_ceiling.py                 # spike-console cycle scrape -> JSON markers from our C harness
+merlin/python/merlin/kernels/ceiling_drivers/multishape_compare.py  # driver CYCLES/INSTRET markers -> JSON markers
+merlin/python/merlin/kernels/ceiling_drivers/run_expert_gemm.py     # driver CYCLES/INSTRET markers -> JSON markers
+build_tools/scripts/k1_cross_framework.py                     # our driver CYCLES marker -> JSON marker
+build_tools/scripts/k1_cross_framework_ops.py                 # our driver CYCLES/errors markers -> JSON markers
+build_tools/scripts/k1_large_shape_packing.py                 # our driver CYCLES marker -> JSON marker
+build_tools/scripts/k1_intrinsic_microkernel.py               # objdump asm + our driver markers -> decode/ + JSON markers
+build_tools/scripts/k1_e2e_general_validate.py                # our PipelineError message -> structured .op exception attribute
+
+# ---------------------------------------------------------------- TODO(batch-6): RTL facts from structure
+merlin/python/merlin/targetgen/rtl/circt_introspect.py        # FLAGSHIP: @AccumulatorMem port widths via text regex -> CIRCT structured read
+merlin/python/merlin/targetgen/rtl/introspect.py              # FIRRTL grep facts -> CIRCT FIRRTL-dialect read
+merlin/python/merlin/targetgen/rtl/muon_introspect.py         # config TOML -> tomllib; hierarchy JSON -> json walk; FIRRTL -> CIRCT read
+merlin/python/merlin/targetgen/rocc_decode.py                 # LLVM-dialect dataflow -> xDSL; inline-asm .insn stays (# regex-ok on those lines)
+
+# ---------------------------------------------------------------- TODO(cleanup): boundary-aware str scan
+build_tools/scripts/check_doc_paths.py                        # retired-path scanner; several patterns need word-boundary matching

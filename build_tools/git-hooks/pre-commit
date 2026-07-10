@@ -12,6 +12,9 @@ PY=.venv/bin/python
 echo "[pre-commit] artifact layout (staged)…"
 "$PY" build_tools/scripts/check_artifact_layout.py --staged
 
+echo "[pre-commit] no-regex (staged)…"
+"$PY" build_tools/scripts/check_no_regex.py --staged
+
 echo "[pre-commit] docs freshness…"
 "$PY" build_tools/scripts/check_docs.py
 
