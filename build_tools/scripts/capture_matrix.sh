@@ -4,7 +4,7 @@
 # with the model's shrunk [env] from capture.toml, into oscar-merlin/output/<bundle>.
 # Skips bundles that already have a model.mlir. Prints one __DONE__ line per combo.
 set -u
-M2M=/scratch/agustin/projects/model2MLIR
+M2M=/path/to/model2MLIR
 OUT="$REPO"/output
 WORKER="$M2M/workloads/capture_consistent.py"
 
@@ -12,14 +12,14 @@ declare -A VENV=(
   [tiny_llama]=$M2M/.venv
   [small_llama]=$M2M/.venv
   [rdt]=$M2M/.venv
-  [xr0]=/scratch/agustin/projects/xr0_capture/.venv
-  [rdt2]=/scratch/agustin/projects/RDT2/.venv
-  [groot_n1d7]=/scratch/agustin/projects/Isaac-GR00T/.venv
-  [bitvla]=/scratch/agustin/projects/bitvla_capture/.venv
-  [smolvla]=/scratch/agustin/projects/smolvla_capture/.venv
+  [xr0]=/path/to/xr0_capture/.venv
+  [rdt2]=/path/to/RDT2/.venv
+  [groot_n1d7]=/path/to/Isaac-GR00T/.venv
+  [bitvla]=/path/to/bitvla_capture/.venv
+  [smolvla]=/path/to/smolvla_capture/.venv
   [molmoact]=$M2M/workloads/molmoact/.venv
-  [openvla]=/scratch/agustin/projects/openvla_capture/.venv
-  [pi05]=/scratch/agustin/projects/openpi/.venv
+  [openvla]=/path/to/openvla_capture/.venv
+  [pi05]=/path/to/openpi/.venv
 )
 declare -A ENVV=(
   [tiny_llama]="M2M_LLAMA_LAYERS=2"

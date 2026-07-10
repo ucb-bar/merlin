@@ -16,8 +16,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-DEFAULT_CHIPYARD = "/scratch/agustin/projects/chipyard"
-DEFAULT_CONFIG = "/scratch/agustin/projects/autocomp/scripts/muon/config_muon.toml"
+DEFAULT_CHIPYARD = "/path/to/chipyard"
+DEFAULT_CONFIG = "/path/to/autocomp/scripts/muon/config_muon.toml"
 VCS_CONFIG = "RadianceMuonConfig"
 
 # Muon SIMT FP peak: cores * lanes * 2 flop/FMA (fp32) at 500 MHz. The denominator we report against

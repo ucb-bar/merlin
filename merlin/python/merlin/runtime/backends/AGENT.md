@@ -20,7 +20,7 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
 
 - Input: command-buffer dicts (command_buffer.schema.yaml), same as `merlin.runtime.simulate`.
 - Output: `{outputs, metrics, raw_metrics, correct, console}` with metrics normalized onto `COMMON_METRIC_NAMES` (extras under `target_specific`).
-- Env: `MERLIN_CHIPYARD` (default `/scratch2/agustin/chipyard`), `MERLIN_RISCV_GCC`, `MERLIN_SPIKE`, `MERLIN_SATURN_SIMV`.
+- Env: `MERLIN_CHIPYARD` (default `/path/to/chipyard`), `MERLIN_RISCV_GCC`, `MERLIN_SPIKE`, `MERLIN_SATURN_SIMV`.
 
 ## Invariants
 

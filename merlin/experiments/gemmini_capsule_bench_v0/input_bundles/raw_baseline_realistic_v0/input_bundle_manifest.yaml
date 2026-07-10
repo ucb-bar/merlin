@@ -18,7 +18,7 @@ allowed:
   - {path: "tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h", mode: ro, note: "public Gemmini params (DIM, dtypes)"}
   - {path: "experiments/gemmini_capsule_bench_v0/task/", mode: ro, note: "TASK.md + runner-interface docs + public Gemmini facts"}
   - {path: "third_party/llvm-install/", mode: ro, note: "LLVM/MLIR 23 toolchain (build the OOT package)"}
-  - {path: "/scratch2/agustin/chipyard/generators/gemmini", as: "gemmini", mode: ro, note: "VANILLA GEMMINI REPO: RTL (Chisel) + README/docs + ~114 example kernels (software/) — the realistic developer reference"}
+  - {path: "/path/to/chipyard/generators/gemmini", as: "gemmini", mode: ro, note: "VANILLA GEMMINI REPO: RTL (Chisel) + README/docs + ~114 example kernels (software/) — the realistic developer reference"}
   - {path: "experiments/gemmini_capsule_bench_v0/scripts/agent_selfcheck.py", as: "agent_selfcheck.py", mode: ro, note: "self-check tool: run spike/verilator/VCS on your package, redacted pass/fail"}
 denied:
   - {path: "merlin/", reason: "Merlin internals (targetgen/runtime/reference/simulator)"}

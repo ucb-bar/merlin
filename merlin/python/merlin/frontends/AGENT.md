@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-tensors MLIR as produced by **model2MLIR** (`/scratch/agustin/projects/model2MLIR`) — smolVLA and the other VLA workloads.
+Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-tensors MLIR as produced by **model2MLIR** (`/path/to/model2MLIR`) — smolVLA and the other VLA workloads.
 
 ## What belongs here
 

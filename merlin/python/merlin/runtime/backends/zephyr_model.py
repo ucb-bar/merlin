@@ -84,12 +84,12 @@ def _pick(env_var: str, default: str) -> Path:
 
 
 def _zephyr_base() -> Path:
-    return _pick("ZEPHYR_BASE", "/scratch2/agustin/zephyr-chipyard-sw/zephyr_ws/zephyr")
+    return _pick("ZEPHYR_BASE", "/path/to/zephyr-chipyard-sw/zephyr_ws/zephyr")
 
 
 def _zephyr_sw_root() -> Path:
     # the samples/ tree (for the chipyard board overlay we clone).
-    return _pick("MERLIN_ZEPHYR_SW", "/scratch2/agustin/zephyr-chipyard-sw")
+    return _pick("MERLIN_ZEPHYR_SW", "/path/to/zephyr-chipyard-sw")
 
 
 def _sdk_dir() -> Path:
@@ -98,7 +98,7 @@ def _sdk_dir() -> Path:
 
 def _conda_bin() -> Path:
     return Path(os.environ.get("MERLIN_CHIPYARD",
-                               "/scratch2/agustin/chipyard")) / ".conda-env" / "bin"
+                               "/path/to/chipyard")) / ".conda-env" / "bin"
 
 
 def _tool_env() -> dict:
@@ -616,13 +616,13 @@ def run_on_firesim(elf: str | Path, *, reference: np.ndarray | None = None,
     reference is given) gates ``cos``/``rel``. Requires the firesim env activated and the
     queue daemon up (see module doc / the FireSim section of the plan)."""
     import sys
-    mb = os.environ.get("MERLIN_MODELBLASTER", "/scratch2/agustin/ModelBlaster")
+    mb = os.environ.get("MERLIN_MODELBLASTER", "/path/to/ModelBlaster")
     for p in (f"{mb}/src", mb):
         if p not in sys.path:
             sys.path.insert(0, p)
     env = os.environ
-    fr = firesim_root or env.get("FIRESIM_ROOT", "/scratch2/agustin/chipyard/sims/firesim")
-    fe = firesim_env or env.get("FIRESIM_ENV", "/scratch2/agustin/chipyard/env.sh")
+    fr = firesim_root or env.get("FIRESIM_ROOT", "/path/to/chipyard/sims/firesim")
+    fe = firesim_env or env.get("FIRESIM_ENV", "/path/to/chipyard/env.sh")
     # Run under OUR FireSim workload name, not ModelBlaster's. firesim_runner reads
     # FIRESIM_WORKLOAD_NAME into a module constant AT IMPORT, so this must be set before
     # the (lazy) import below. The workload def lives at deploy/workloads/merlin-oscar.json.

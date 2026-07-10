@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch, Rectangle
 
-REPO = Path("/scratch/agustin/projects/oscar-merlin")
+REPO = Path("/path/to/oscar-merlin")
 sys.path.insert(0, str(REPO / "scripts"))
 from merlin_plotstyle import use_merlin_style, suptitle, BG, INK, GOLD, NAVY, SLATE, MAUVE, SAGE, SERIF, SANS
 

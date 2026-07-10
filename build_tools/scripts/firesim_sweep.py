@@ -82,7 +82,7 @@ def main() -> int:
     # Build scratch goes on /scratch (3 TB), NOT /tmp (the small shared root disk) — a
     # multi-GB external-weights image in /tmp pressures root, where /home caches already
     # sit at ~94%. /scratch is the project's filesystem with terabytes free.
-    ap.add_argument("--workroot", default="/scratch/agustin/tmp/merlin_fs")
+    ap.add_argument("--workroot", default="/path/to/tmp/merlin_fs")
     ap.add_argument("--timeout", type=int, default=5400)
     ap.add_argument("--force", action="store_true", help="re-run even if already passed")
     args = ap.parse_args()

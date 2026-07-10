@@ -34,7 +34,7 @@ import _pbcommon as PB
 from merlin.targetgen import baremetalc_corroborate as BMC  # noqa: E402  (build flags + run reuse)
 from merlin.targetgen import capsule_golden as CG  # noqa: E402
 
-IREE = Path("/scratch2/agustin/merlin/build/host-merlin-release/tools/iree-compile")
+IREE = Path("/path/to/merlin-iree/build/host-merlin-release/tools/iree-compile")
 # link-embedded=FALSE -> a standard system_elf relocatable .o (objdump-readable, objcopy-globalizable),
 # so we can globalize the dispatch fn and link it into our own bare-metal harness. (The embedded-elf
 # format is a self-contained IREE-loader module whose symbols are all local/unlinkable.)
@@ -49,8 +49,8 @@ GEMMINI_FLAGS = [
     "--iree-hal-indirect-command-buffers=false",
     "--iree-plugin=gemmini", "--iree-gemmini-enable", "--iree-gemmini-lower-back-to-iree=false",
 ]
-_OBJDUMP = "/scratch2/agustin/chipyard/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump"
-_OBJCOPY = "/scratch2/agustin/chipyard/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objcopy"
+_OBJDUMP = "/path/to/chipyard/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump"
+_OBJCOPY = "/path/to/chipyard/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objcopy"
 
 # tensor-domain linalg matmul fixture: ins(X[M,K], W[K,N]) -> Y[M,N] (i8xi8->i32)
 _FIXTURE = """\

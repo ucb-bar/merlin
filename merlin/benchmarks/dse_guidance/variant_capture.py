@@ -17,7 +17,7 @@ import os
 import subprocess
 from pathlib import Path
 
-M2M = Path("/scratch/agustin/projects/model2MLIR")
+M2M = Path("/path/to/model2MLIR")
 WL = M2M / "workloads"
 OUT = Path(__file__).resolve().parent / "recaptures_decode"
 

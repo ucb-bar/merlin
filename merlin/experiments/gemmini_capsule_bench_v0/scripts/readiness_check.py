@@ -221,7 +221,7 @@ def test_oracles_endtoend():
     ref = REPO / "artifacts/targets/gemmini/agent_spec_v1_mlir_oot"
     if not (ref / "manifest.yaml").is_file():
         _ok("reference backend agent_spec_v1 present", False, "missing"); return
-    CE = "/scratch2/agustin/chipyard/.conda-env"
+    CE = "/path/to/chipyard/.conda-env"
     _compat = str(REPO / ".compat_lib")
     env = dict(_os.environ)
     env["PATH"] = f"{CE}/bin:{CE}/riscv-tools/bin:" + env.get("PATH", "")

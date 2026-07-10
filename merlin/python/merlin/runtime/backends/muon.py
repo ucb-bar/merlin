@@ -21,8 +21,8 @@ clang fork (``clang-muon``, a Vortex/RISC-V32 target) against the radiance-kerne
 held to). cyclotron and VCS run the *exact same ELF*.
 
 Toolchain resolution via environment (all have working-tree defaults):
-``MERLIN_CHIPYARD`` (default ``/scratch/agustin/projects/chipyard``),
-``MERLIN_RADIANCE_KERNELS`` (default ``/scratch2/agustin/radiance-kernels``),
+``MERLIN_CHIPYARD`` (default ``/path/to/chipyard``),
+``MERLIN_RADIANCE_KERNELS`` (default ``/path/to/radiance-kernels``),
 ``MERLIN_MUON_CLANG`` / ``MERLIN_MUON_CYCLOTRON`` / ``MERLIN_MUON_CONFIG`` / ``MERLIN_MUON_VCS``.
 """
 from __future__ import annotations
@@ -37,9 +37,9 @@ from typing import Any
 from ..metrics import COMMON_METRIC_NAMES
 from ..reference import outputs_match, reference_outputs
 
-DEFAULT_CHIPYARD = "/scratch/agustin/projects/chipyard"
-DEFAULT_RADIANCE_KERNELS = "/scratch2/agustin/radiance-kernels"
-DEFAULT_CONFIG = "/scratch/agustin/projects/autocomp/scripts/muon/config_muon.toml"
+DEFAULT_CHIPYARD = "/path/to/chipyard"
+DEFAULT_RADIANCE_KERNELS = "/path/to/radiance-kernels"
+DEFAULT_CONFIG = "/path/to/autocomp/scripts/muon/config_muon.toml"
 VCS_CONFIG = "RadianceMuonConfig"
 
 # Muon SIMT FP peak (RadianceMuonConfig, config_muon.toml): 2 cores x 16 lanes x 2 flop/FMA = 64

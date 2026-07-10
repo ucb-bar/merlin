@@ -5,7 +5,7 @@ Not fancy: resolve toolchain/sim paths from env (with chipyard defaults), report
 oracle layers are present, and optionally run a known-good prebuilt bareMetalC binary on
 spike-gemmini and/or the Verilator RTL sim to confirm output + exit.
 
-Env (all optional; defaults target /scratch2/agustin/chipyard):
+Env (all optional; defaults target /path/to/chipyard):
   MERLIN_CHIPYARD            chipyard root
   MERLIN_GEMMINI_SPIKE       spike binary (with gemmini extension available)
   MERLIN_GEMMINI_VERILATOR   prebuilt Verilator sim binary
@@ -25,7 +25,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-DEFAULT_CHIPYARD = "/scratch2/agustin/chipyard"
+DEFAULT_CHIPYARD = "/path/to/chipyard"
 VERILATOR_CONFIG = "GemminiAndOPUShuttleConfig"
 KNOWN_GOOD = {  # prebuilt bareMetalC binaries (relative to gemmini-rocc-tests/build)
     "spike": "bareMetalC/matmul-baremetal",

@@ -194,7 +194,7 @@ def main(argv=None):
     # verilator timeout/availability was never actually verified. (Skip for --sandbox none legacy.)
     if a.sandbox == "bwrap":
         timing = SCRIPTS / ".oracle_timing.json"
-        sim = Path("/scratch2/agustin/chipyard/sims/verilator/simulator-chipyard.harness-GemminiAndOPUShuttleConfig")
+        sim = Path("/path/to/chipyard/sims/verilator/simulator-chipyard.harness-GemminiAndOPUShuttleConfig")
         if not timing.is_file():
             print("REFUSING TO LAUNCH: scripts/.oracle_timing.json missing — run readiness_check.py "
                   "(it RUNS spike+verilator on the reference backend) first.", file=sys.stderr)

@@ -10,7 +10,7 @@ vle8-loaded i8) — i.e. it actually vectorized, not scalar.
 
 Resumable JSONL ledger. Usage:
     .venv/bin/python build_tools/scripts/spike_int8_rvv_sweep.py [BUNDLE ...] \
-        --ledger /scratch/agustin/tmp/spike_int8_rvv.jsonl
+        --ledger /path/to/tmp/spike_int8_rvv.jsonl
 With no BUNDLE args, sweeps the default fitting->large order below.
 """
 import argparse, json, subprocess, sys, time, traceback
@@ -63,8 +63,8 @@ def already_done(ledger: Path, bundle: str) -> bool:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("bundles", nargs="*")
-    ap.add_argument("--ledger", default="/scratch/agustin/tmp/spike_int8_rvv.jsonl")
-    ap.add_argument("--workroot", default="/scratch/agustin/tmp/merlin_spike_rvv")
+    ap.add_argument("--ledger", default="/path/to/tmp/spike_int8_rvv.jsonl")
+    ap.add_argument("--workroot", default="/path/to/tmp/merlin_spike_rvv")
     ap.add_argument("--harts", type=int, default=2)
     ap.add_argument("--timeout", type=int, default=10800)
     ap.add_argument("--force", action="store_true")

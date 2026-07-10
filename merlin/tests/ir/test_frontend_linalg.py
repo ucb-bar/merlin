@@ -15,7 +15,7 @@ from merlin.xdsl_dialects import _common
 
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
 
-SMOLVLA_DIR = Path("/scratch/agustin/projects/model2MLIR/workloads/smolvla")
+SMOLVLA_DIR = Path("/path/to/model2MLIR/workloads/smolvla")
 SMOLVLA_MLIR = SMOLVLA_DIR / "smolvla.mlir"
 SMOLVLA_MANIFEST = SMOLVLA_DIR / "smolvla.safetensors.manifest.json"
 

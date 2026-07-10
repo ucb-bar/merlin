@@ -14,7 +14,7 @@ the board's 1.9G /tmp; it runs last and a fit failure is recorded honestly, not 
 
 Usage:
   MERLIN_K1_HOST=root@<board-ip> .venv/bin/python build_tools/scripts/k1_int8_model_sweep.py \
-      --ledger /scratch/agustin/tmp/k1_int8.jsonl
+      --ledger /path/to/tmp/k1_int8.jsonl
 """
 import argparse, json, shutil, sys, time, traceback
 from pathlib import Path
@@ -62,8 +62,8 @@ def objdump_int_rvv(model_o: Path) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("bundles", nargs="*")
-    ap.add_argument("--ledger", default="/scratch/agustin/tmp/k1_int8.jsonl")
-    ap.add_argument("--workroot", default="/scratch/agustin/tmp/k1_int8_work")
+    ap.add_argument("--ledger", default="/path/to/tmp/k1_int8.jsonl")
+    ap.add_argument("--workroot", default="/path/to/tmp/k1_int8_work")
     ap.add_argument("--host", default=None, help="root@<ip> (else env MERLIN_K1_HOST)")
     ap.add_argument("--timeout", type=int, default=2400)
     ap.add_argument("--force", action="store_true")

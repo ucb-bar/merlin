@@ -11,7 +11,7 @@ Usage:  .venv/bin/python build_tools/scripts/fsq.py [--all] [--mine]
 import argparse, json, sqlite3, time
 from pathlib import PurePosixPath
 
-DB = "/scratch2/agustin/firesim_queue/queue.db"
+DB = "/path/to/firesim_queue/queue.db"
 ACTIVE = ("RUNNING", "QUEUED")
 
 

@@ -5,7 +5,7 @@ must produce the *same artifact class*, satisfy the *same interfaces*, and be *g
 same substrate*, so the comparison is apples-to-apples. This file is the single source of truth for
 what MUST be identical, what MAY legitimately differ, and exactly how runs are conducted.
 
-Repo root: `/scratch/agustin/projects/oscar-merlin` (`$REPO`).
+Repo root: `/path/to/oscar-merlin` (`$REPO`).
 Experiment: `$REPO/experiments/gemmini_capsule_bench_v0` (`$EXP`).
 
 ---
@@ -213,9 +213,9 @@ capsules, same tier set) — only its input bundle differs.
 ## 8. Reproduce (both arms; merlin side swaps `--run-id`/bundle via the arm)
 ```
 cd $EXP/scripts
-export PATH=$REPO/third_party/llvm-install/bin:/scratch2/agustin/chipyard-autocomp/install/bin:$PATH
+export PATH=$REPO/third_party/llvm-install/bin:/path/to/chipyard-autocomp/install/bin:$PATH
 export MERLIN_MLIR_INSTALL=$REPO/third_party/llvm-install
-export MERLIN_CLANG=/scratch2/agustin/merlin/build/host-merlin-release/install/bin/clang-23
+export MERLIN_CLANG=/path/to/merlin-iree/build/host-merlin-release/install/bin/clang-23
 # raw_baseline (this session):
 python3 run_baseline_qa_loop.py --run-id rb_pilot_0002 --model claude-opus-4-8 --effort high \
         --max-rounds 8 --round-timeout 2700 --qa-timeout 1200 --sandbox none

@@ -2,7 +2,7 @@
 
 This is the **4th-arm methodology** (Merlin xDSL tooling + scaffold + CIRCT-compiled-from-RTL hints)
 from the Gemmini experiment, pointed at a **different target**: the **Muon SIMT core**
-(`RadianceMuonConfig`, in the separate `/scratch/agustin/projects/chipyard` checkout), with
+(`RadianceMuonConfig`, in the separate `/path/to/chipyard` checkout), with
 **cyclotron** as the simulator oracle instead of spike. **Gemmini is not involved** — this is a
 parallel path; the frozen Gemmini target-gen is byte-for-byte unchanged (only additive,
 target-agnostic widenings to the shared `merlin_iface` grammar + command-buffer/capsule schemas to
@@ -68,8 +68,8 @@ agentic Merlin+CIRCT backend's job is to close this gap toward the 32 GFLOP/s pe
 
 ## Toolchain (env overridable)
 
-`MERLIN_CHIPYARD` (=`/scratch/agustin/projects/chipyard`), `MERLIN_RADIANCE_KERNELS`
-(=`/scratch2/agustin/radiance-kernels`), `MERLIN_MUON_CLANG`, `MERLIN_MUON_CYCLOTRON`,
+`MERLIN_CHIPYARD` (=`/path/to/chipyard`), `MERLIN_RADIANCE_KERNELS`
+(=`/path/to/radiance-kernels`), `MERLIN_MUON_CLANG`, `MERLIN_MUON_CYCLOTRON`,
 `MERLIN_MUON_CONFIG`, `MERLIN_MUON_VCS`.
 
 ## Agentic rounds (merlin + CIRCT, single arm) — READY TO RUN

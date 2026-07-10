@@ -33,8 +33,8 @@ import sys
 sys.path.insert(0, str(PB.REPO / "merlin" / "python"))
 from merlin.targetgen import capsule_golden as CG  # noqa: E402
 
-CHIPYARD = "/scratch2/agustin/chipyard"
-QUEUE = "/scratch2/agustin/firesim_queue/bin/firesim-queue"
+CHIPYARD = "/path/to/chipyard"
+QUEUE = "/path/to/firesim_queue/bin/firesim-queue"
 WORKLOAD = "merlin-perfbench"
 BOOTBINARY = "merlin-perfbench.elf"
 RESULTS_ROOT = Path(CHIPYARD) / "sims/firesim/deploy/results-workload"

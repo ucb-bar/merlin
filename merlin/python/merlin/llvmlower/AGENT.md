@@ -38,4 +38,4 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
 
 ## Notes for future agents
 
-Tools: torch-mlir wheel python = full upstream pass registry + translate; clang-23 from `/scratch2/agustin/merlin/...` targets riscv64 with `+v`. The 27k-line full model goes through the venv pipeline as text — expect minutes, not seconds.
+Tools: torch-mlir wheel python = full upstream pass registry + translate; clang-23 from `/path/to/merlin-iree/...` targets riscv64 with `+v`. The 27k-line full model goes through the venv pipeline as text — expect minutes, not seconds.

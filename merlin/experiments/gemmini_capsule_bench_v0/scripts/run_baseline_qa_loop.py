@@ -684,7 +684,7 @@ def main(argv: list[str] | None = None) -> int:
     # the .compat_lib shim + conda libs are on LD_LIBRARY_PATH, else the C++ build fails "libidn.so.11:
     # cannot open shared object file" and every grade is 0/0 (the abc8 rb blocker). Python arms have no
     # build step so this is a harmless no-op for them.
-    _CE = "/scratch2/agustin/chipyard/.conda-env"
+    _CE = "/path/to/chipyard/.conda-env"
     _compat = str(C.REPO / ".compat_lib")
     os.environ["LD_LIBRARY_PATH"] = (f"{_compat}:{_CE}/lib:{_CE}/riscv-tools/lib:"
                                      + os.environ.get("LD_LIBRARY_PATH", ""))

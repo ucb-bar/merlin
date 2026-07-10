@@ -72,7 +72,7 @@ def main(argv=None):
             "hidden capsules": C.REPO / "merlin/contract/capsules/hidden",
             "oracle reference.py": C.REPO / "merlin/python/merlin/runtime/reference.py",
             "oracle simulator.py": C.REPO / "merlin/python/merlin/runtime/simulator.py",
-            "kernel suite (conv.c)": "/scratch2/agustin/chipyard/generators/gemmini/software/gemmini-rocc-tests/bareMetalC/conv.c",
+            "kernel suite (conv.c)": "/path/to/chipyard/generators/gemmini/software/gemmini-rocc-tests/bareMetalC/conv.c",
             "~/.claude memory": TC.MEMORY_DIR + "/MEMORY.md",
             "repo (other source)": C.REPO / "merlin/python/merlin/targetgen/capsule_grade.py",
         }

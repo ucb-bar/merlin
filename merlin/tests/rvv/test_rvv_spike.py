@@ -2,7 +2,7 @@
 multicore RVV CPU, and the parsed outputs equal the independent reference.
 
 Codegen-only tests run everywhere; compile/run tests auto-skip without the chipyard
-toolchain (set MERLIN_CHIPYARD, default /scratch2/agustin/chipyard).
+toolchain (set MERLIN_CHIPYARD, default /path/to/chipyard).
 """
 from __future__ import annotations
 

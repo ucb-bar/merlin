@@ -88,8 +88,8 @@ common `metrics` schema.
 
 ### Design references (CompGen / ModelBlaster)
 
-Studied as runtime-design inspiration (`/scratch2/agustin/CompGen`,
-`/scratch2/agustin/ModelBlaster`); lessons adopted or queued:
+Studied as runtime-design inspiration (`/path/to/CompGen`,
+`/path/to/ModelBlaster`); lessons adopted or queued:
 
 - **Adopted now**: declarative backend/toolchain resolution (env-var roots, one place —
   ModelBlaster's `pipeline/backends.py` registry pattern); static per-model buffers and

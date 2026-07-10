@@ -244,7 +244,7 @@ def main() -> int:
                     help="PT2E W8A8 quantize before lowering (exercises XNNPACK's int8 qs8/qd8 RVV "
                          "ukernels). ExecuTorch does its OWN quantization, so pair with "
                          "--compute-golden (gate = eager-vs-ExecuTorch for THIS config).")
-    ap.add_argument("--m2m-root", default="/scratch/agustin/projects/model2MLIR",
+    ap.add_argument("--m2m-root", default="/path/to/model2MLIR",
                     help="model2MLIR repo root (added to sys.path for its deps)")
     ap.add_argument("--int8-whole-model", action="store_true",
                     help="WHOLE-MODEL int8 via ExecuTorch's OFFICIAL llama recipe: source-transform "

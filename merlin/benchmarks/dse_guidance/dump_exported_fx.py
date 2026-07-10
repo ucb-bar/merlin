@@ -19,7 +19,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-M2M = Path("/scratch/agustin/projects/model2MLIR")
+M2M = Path("/path/to/model2MLIR")
 WL = M2M / "workloads"
 OUT = Path(__file__).resolve().parent / "case_study" / "manual_validation" / "exported_fx"
 

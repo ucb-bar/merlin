@@ -3,8 +3,8 @@
 # After this, launch your agent runtime with cwd = the sandbox and TASK.md as the prompt.
 set -euo pipefail
 REPO="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
-WS="${1:-/scratch/agustin/agent_bench/baseline_ws}"
-CHIPYARD="${MERLIN_CHIPYARD:-/scratch2/agustin/chipyard}"
+WS="${1:-/path/to/agent_bench/baseline_ws}"
+CHIPYARD="${MERLIN_CHIPYARD:-/path/to/chipyard}"
 GEM="$CHIPYARD/generators/gemmini/software/libgemmini"
 
 rm -rf "$WS"; mkdir -p "$WS/submission" "$WS/docs"

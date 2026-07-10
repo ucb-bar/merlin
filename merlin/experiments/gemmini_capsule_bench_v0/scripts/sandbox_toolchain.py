@@ -15,8 +15,8 @@ from pathlib import Path
 
 import _common as C
 
-CONDA_ENV = "/scratch2/agustin/chipyard/.conda-env"          # cmake/ninja/make + spike + riscv-gcc + libs
-CHIPYARD_VERILATOR = "/scratch2/agustin/chipyard/sims/verilator"  # built L3 RTL simulator
+CONDA_ENV = "/path/to/chipyard/.conda-env"          # cmake/ninja/make + spike + riscv-gcc + libs
+CHIPYARD_VERILATOR = "/path/to/chipyard/sims/verilator"  # built L3 RTL simulator
 UV_PYTHON = os.path.expanduser("~/.local/share/uv")          # the cpython the .venv symlinks point at
 VENV = str(C.REPO / ".venv")                                 # third-party deps (xdsl, numpy, jsonschema…)
 LLVM = str(C.REPO / "third_party" / "llvm-install")          # clang + mlir-opt/translate (also bundle-allowed)
@@ -30,7 +30,7 @@ COMPAT_LIB = str(C.REPO / ".compat_lib")
 # llvm-install. The C++ baseline REQUIRES it to build/link its OOT MLIR project (g++ links the clang-built
 # LLVM libs with undefined-reference errors). It lives in the IREE merlin install; bind ONLY the compiler
 # bin + its resource dir — NOT src/ or python_packages/ (which hold IREE source incl. gemmini lowerings).
-CLANG_INSTALL = "/scratch2/agustin/merlin/build/host-merlin-release/install"
+CLANG_INSTALL = "/path/to/merlin-iree/build/host-merlin-release/install"
 CLANG_BIN = CLANG_INSTALL + "/bin"
 CLANG_RESOURCE = CLANG_INSTALL + "/lib/clang"          # clang -print-resource-dir -> lib/clang/23
 MERLIN_CLANG = CLANG_INSTALL + "/bin/clang-23"
