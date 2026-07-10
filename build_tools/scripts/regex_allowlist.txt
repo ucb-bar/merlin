@@ -30,10 +30,9 @@ merlin/python/merlin/llvmlower/truncate.py                    # NaN-bisection ov
 merlin/python/merlin/baselines/buddy.py                       # rewrites buddy-opt static_offsets in IR text; xDSL path unreliable here
 merlin/python/merlin/dse_guidance/loop_recovery.py            # scf/iter_args reconstruction from MLIR text; blocked on xDSL op-print fidelity
 
-# ---------------------------------------------------------------- TODO(batch-1b): delete legacy comparator
-merlin/python/merlin/kernels/compare.py                       # superseded by cca_compare.py + decode/ + cca.py — delete after beam.py migration
-merlin/python/merlin/kernels/features/rvv_intrinsics.py       # superseded by decode/clang_ast.py — delete with compare.py
-merlin/python/merlin/kernels/build_asm.py                     # :53 top_mnemonics duplicates decode/objdump.tokenize
+# ---------------------------------------------------------------- DEFERRED: legacy comparator (needs a validated beam-ranking migration, not a mechanical swap)
+merlin/python/merlin/kernels/compare.py                       # legacy RvvFingerprint; superseded by cca_compare.py, BUT beam.py ranks on its structural_match scalar (0.6*decisions + 0.4*histogram-cosine) and CCA has no histogram — deleting needs a CCA-based score + intentional test_rvv_beam re-baseline (can't validate rankings without the RVV toolchain here)
+merlin/python/merlin/kernels/features/rvv_intrinsics.py       # superseded by decode/clang_ast.py — delete together with compare.py (its only consumer)
 
 # ---------------------------------------------------------------- TODO(features): route to tree-sitter/ast_struct
 merlin/python/merlin/kernels/features/ast_struct.py           # 2 leaf-token regexes inside an otherwise tree-sitter walk
