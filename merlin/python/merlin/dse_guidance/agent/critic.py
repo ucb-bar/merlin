@@ -14,7 +14,6 @@ Usage (the agent is optional; the gate is always testable with an injected runne
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from merlin.dse_guidance.agent import claude_cli
@@ -38,7 +37,7 @@ def _artifact_blob(run_dir: Path) -> str:
 
 def _norm(s: str) -> str:
     """Whitespace-normalize for substring matching (the agent may reflow quotes)."""
-    return re.sub(r"\s+", " ", (s or "")).strip()
+    return " ".join((s or "").split())
 
 
 def build_prompt(run_dir: Path) -> str:

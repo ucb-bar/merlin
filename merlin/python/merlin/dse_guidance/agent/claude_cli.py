@@ -10,11 +10,12 @@ the agent's text is never trusted for numbers — only for interpretation, and e
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import uuid
 from pathlib import Path
 from typing import Any, Callable
+
+from ...common.agent_output import StructuredOutputError, parse_json
 
 
 class AgentError(RuntimeError):
@@ -51,18 +52,10 @@ def run_agent(prompt: str, *, model: str = "opus", timeout: int = 600,
 
 def extract_json(text: str) -> Any:
     """Pull the first fenced ```json block (or a bare JSON array/object) out of an agent reply."""
-    m = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.S)
-    blob = m.group(1) if m else text
-    blob = blob.strip()
-    if not blob.startswith(("[", "{")):
-        b = re.search(r"(\[.*\]|\{.*\})", blob, re.S)
-        if not b:
-            raise AgentError("agent reply contained no JSON")
-        blob = b.group(1)
     try:
-        return json.loads(blob)
-    except json.JSONDecodeError as e:
-        raise AgentError(f"agent JSON did not parse: {e}") from e
+        return parse_json(text)
+    except StructuredOutputError as e:
+        raise AgentError(str(e)) from e
 
 
 Runner = Callable[[str], dict]
