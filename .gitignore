@@ -1,5 +1,6 @@
 # --- Stray/cruft guards (repo root stays clean; generated logs/keys never tracked) ---
 /*.log
+tmp
 *.key
 *.err
 /.compat_lib/
@@ -48,6 +49,8 @@ selfcheck_out/
 /out/artifacts/dse-guidance/case_study/**/*.jpeg
 /out/artifacts/dse-guidance/case_study/**/*.html
 /out/artifacts/dse-guidance/case_study/**/*.log
+# regenerable FX-graph dumps (produced by merlin/benchmarks/dse_guidance/dump_exported_fx.py)
+/out/artifacts/dse-guidance/case_study/**/exported_fx/*.txt
 
 # --- out/artifacts/targets/ : generated target packages (codegen products). Forks/OOT builds are
 #     regenerable and stay ignored; the hand-authored reference baselines + promoted champions
