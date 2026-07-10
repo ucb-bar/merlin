@@ -33,11 +33,15 @@ merlin/python/merlin/baselines/buddy.py                       # rewrites buddy-o
 merlin/python/merlin/kernels/compare.py                       # legacy RvvFingerprint; superseded by cca_compare.py, BUT beam.py ranks on its structural_match scalar (0.6*decisions + 0.4*histogram-cosine) and CCA has no histogram — deleting needs a CCA-based score + intentional test_rvv_beam re-baseline (can't validate rankings without the RVV toolchain here)
 merlin/python/merlin/kernels/features/rvv_intrinsics.py       # superseded by decode/clang_ast.py — delete together with compare.py (its only consumer)
 
-# ---------------------------------------------------------------- TODO(features): route to tree-sitter/ast_struct
+# ---------------------------------------------------------------- lexical source-feature extraction (same category as markers.py; regex IS the tool)
+# These count word-bounded tokens over heterogeneous kernel source (C/Triton-Py/Exo) to derive cheap
+# features. Regex is the right tool for lexical token matching; the structural alternative is a full
+# tree-sitter unification (ast_struct.py already parses C), which is a scoped feature-mining refactor
+# with feature-value-equivalence stakes, not a mechanical de-regex swap.
 merlin/python/merlin/kernels/features/ast_struct.py           # 2 leaf-token regexes inside an otherwise tree-sitter walk
-merlin/python/merlin/kernels/features/loops.py                # C loop-nest/reg-block motif; overlaps ast_struct tree-sitter counts
-merlin/python/merlin/kernels/features/roles.py                # RHS-reuse proxy over C source; overlaps tree-sitter
-merlin/python/merlin/kernels/features/dispatch.py             # Gemmini dispatch-call count in C; needs a tree-sitter call-expr walk
+merlin/python/merlin/kernels/features/loops.py                # for/do/vacc token counts over C source
+merlin/python/merlin/kernels/features/roles.py                # vacc/compute/mvin token counts (RHS-reuse proxy) over C source
+merlin/python/merlin/kernels/features/dispatch.py             # Gemmini dispatch-call token count over C source
 
 # ---------------------------------------------------------------- TODO(batch-4b): xDSL/CIRCT consumers still pending
 merlin/python/merlin/runtime/backends/ours_board/__init__.py  # matmul matcher + func.func anchor over MLIR -> xDSL / str.find (runtime routing)
