@@ -8,8 +8,15 @@ version = "0.0.1"
 description = "Compiler-centered framework for HW/SW abstraction exploration"
 requires-python = ">=3.10"
 readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [{ name = "UCB-BAR" }]
 # PyYAML is used at runtime by the contracts/schemas/targetgen layers.
 dependencies = ["pyyaml"]
+
+[project.urls]
+Homepage = "https://github.com/ucb-bar/merlin"
+Repository = "https://github.com/ucb-bar/merlin"
+Issues = "https://github.com/ucb-bar/merlin/issues"
 
 [project.optional-dependencies]
 dev = ["pytest", "pyyaml", "pydantic", "rich"]
@@ -44,9 +51,28 @@ where = ["merlin/python"]
 [tool.pytest.ini_options]
 testpaths = ["merlin/tests"]
 cache_dir = "out/build/cache/pytest"
+markers = [
+    "slow: long-running tests (heavy builds/sims); deselect with -m 'not slow'",
+    "integration: end-to-end tests spanning multiple subsystems or external tools",
+]
 
 [tool.mypy]
 cache_dir = "out/build/cache/mypy"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+exclude = ["third_party", "out", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["F821", "UP038"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["merlin"]
+
+[tool.ruff.format]
+docstring-code-format = true
 
 [tool.uv]
 # Default dev environment includes the dev tools and the xdsl prototyping plane.
