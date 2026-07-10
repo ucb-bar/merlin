@@ -23,13 +23,18 @@ from .cca_compare import Divergence
 @dataclass
 class CompilerAction:
     divergence_axis: str
-    action_class: str         # FLAG | HEURISTIC | PASS | KNOB
+    action_class: str         # FLAG | KNOB | HEURISTIC | PASS | CODEGEN (the escalation ladder)
     target_seam: str          # concrete place: "impr_features:<name>" | "schedule:<knob>" | "cflag:<f>" | "pass:<name>"
     change: str               # human-readable description of the change
     forkable_now: bool
     expected_effect: str
     backend: str
     evidence: list[str] = field(default_factory=list)
+    # MACHINE-READABLE promise: the CCA facet(s) this action claims to make ours achieve, so the loop
+    # can CHECK whether a fork that applied it actually delivered (intended-vs-achieved), e.g.
+    # {"compute.accumulator_resident": True} or {"compute.register_block": 7} (MR>= semantics). Used by
+    # `achieved_residual` + `route_escalated`. None = no machine-checkable promise (prose-only).
+    intended_facet: dict[str, Any] | None = None
 
 
 # A route: predicate over a Divergence -> a CompilerAction template (filled with evidence/backend).
@@ -42,6 +47,7 @@ class _Route:
     change: str
     forkable_now: bool
     expected_effect: str
+    intended_facet: dict[str, Any] | None = None
 
 
 def _is_higher(d: Divergence) -> bool:
@@ -68,7 +74,8 @@ _RVV_ROUTES: list[_Route] = [
         # forkable_now=True (a registered, certified feature now expresses it).
         forkable_now=True,
         expected_effect="vfmacc replaces vfmul+vfadd; MEASURED 7.9x faster on K1 silicon (64^3 f32 "
-                        "matmul, N=5, cos=1.0) vs the frozen baseline"),
+                        "matmul, N=5, cos=1.0) vs the frozen baseline",
+        intended_facet={"compute.contraction_form": "fused_fma"}),
     _Route(
         axis="compute.accumulator_resident",
         when=lambda d: bool(d.expert) and d.ours is False,
@@ -89,7 +96,8 @@ _RVV_ROUTES: list[_Route] = [
         forkable_now=False,
         expected_effect="accumulator never touches memory across the reduction; removes the "
                         "accumulator/result memref.copy traffic that is the measured ~15.7x "
-                        "scalable gap (compute kernel alone is already ~1.5x OpenBLAS)"),
+                        "scalable gap (compute kernel alone is already ~1.5x OpenBLAS)",
+        intended_facet={"compute.accumulator_resident": True}),
     _Route(
         axis="compute.accumulator_resident",
         # CODEGEN closer: when no impr PASS expresses residency, route to the dedicated RVV
@@ -104,7 +112,8 @@ _RVV_ROUTES: list[_Route] = [
                "pass would emit; demonstrated bit-exact + spill-free by intrinsic_microkernel.",
         forkable_now=False,
         expected_effect="register-resident accumulator with zero per-K memref roundtrip; measured "
-                        "1.7x faster than OpenBLAS pack-excluded on the spike proxy (hand ceiling)"),
+                        "1.7x faster than OpenBLAS pack-excluded on the spike proxy (hand ceiling)",
+        intended_facet={"compute.accumulator_resident": True}),
     _Route(
         axis="compute.nr_is_vsetvlmax",
         when=lambda d: bool(d.expert) and not d.ours,
@@ -144,6 +153,39 @@ _RVV_ROUTES: list[_Route] = [
         expected_effect="the M=1 token-decode matmul (smolVLA/rdt2 leading-M=1) vectorizes to vfmacc "
                         "instead of the masked-transfer_write scalar fallback; larger-M matmuls "
                         "unaffected (tile into single-row register tiles, still vfmacc, bit-exact)"),
+    _Route(
+        axis="compute.register_block",
+        # The #1 GEMM data-movement decision and the one the policy-built expert CCA used to hide
+        # (register_block=null). The experts ship register blocking up to MR=7 (XNNPACK 7x4v) / MR=16
+        # (OpenBLAS 16x8) and SELECT the high MR; our baseline is unblocked (MR=1, one accumulator,
+        # 2.0 loads/useful-FMA). Raising MR reuses one loaded B-row across MR broadcast-FMA
+        # accumulators (loads/FMA -> 1+1/MR) AND gives MR independent accumulator chains to hide the
+        # vfmacc latency. Now a LEARNED divergence (expert MR > ours MR), not a hand-known knob.
+        when=lambda d: bool(d.expert),
+        action_class="KNOB",
+        target_seam="schedule:register-block MR (impr_features:accumulator_resident_wholemodel_vf_mr4 "
+                    "/ the vfmacc_t_<MR>_<NR>_<KC> tuning grid)",
+        change="raise the matmul register-block MR toward the expert MR so one streamed B-row feeds "
+               "MR resident accumulators (the OpenBLAS/XNNPACK A-row-reuse lever), instead of the "
+               "unblocked MR=1 baseline. Compiler-emitted via the existing register-blocked vfmacc.vf "
+               "transform schedule — no hand kernel.",
+        forkable_now=True,
+        # MEASURED, with an HONEST split between the ideal lever and what the compiler realizes today:
+        #  - DIAGNOSTIC CEILING (ours_board hand microkernel, MR-configurable, k1_kernel_speedup_*.json):
+        #    the matmul bucket falls ~5x as MR 1->7 (bitvla 11.2x->2.2x, openvla 24x->4.8x, rdt2 45x->9x
+        #    vs XNNPACK 7x4v) -> register blocking IS the dominant compute lever.
+        #  - COMPILER-EMITTED (inlined transform schedule, the real product): the pipeline ALREADY emits
+        #    MR=4/NR=16 (accumulator_resident_microkernel_v3 = the bitVLA winner, 147ms). Pushing the
+        #    EXISTING grid knobs higher REGRESSES whole-model (MR=8 ->178ms, NR=32 ->165ms): the
+        #    transform-schedule codegen does NOT yet realize the diagnostic headroom. So this KNOB pays
+        #    off only up to MR=4 today; capturing the MR=7 ceiling needs a register-block CODEGEN
+        #    improvement (a PASS), not just the knob.
+        #  - Small-M / GEMV (rdt2 M=1, openvla M=16-20): padding-limited regardless -> route to the
+        #    dispatch-level small-M batching pass (group token-dim matmuls into one large-M GEMM) first.
+        expected_effect="register blocking is the dominant compute lever (diagnostic: matmul ~5x as "
+                        "MR 1->7); compiler emits MR=4 today (bitVLA sweet spot), but the existing grid "
+                        "knobs above MR=4 REGRESS whole-model -> the MR=7 ceiling needs better register-"
+                        "block codegen (PASS), and small-M/GEMV needs batching first. Knob pays to MR=4."),
     _Route(
         axis="vector.lmul",
         when=_is_higher,
@@ -207,17 +249,91 @@ _RVV_ROUTES: list[_Route] = [
 _ROUTES: dict[str, list[_Route]] = {"rvv": _RVV_ROUTES}
 
 
+# The action-class escalation ladder: cheapest/weakest -> strongest. When an action's intended facet
+# is NOT achieved by the emitted code, the loop escalates to the next-stronger class for the same axis.
+_CLASS_ORDER = {"FLAG": 0, "KNOB": 1, "HEURISTIC": 2, "PASS": 3, "CODEGEN": 4}
+
+
+def _action_from_route(r: _Route, divergence: Divergence) -> CompilerAction:
+    # The promise is the route's static intended_facet, EXCEPT numeric "match-the-expert" axes whose
+    # target is the expert's own value (register_block MR, lmul) — derive those from the divergence so
+    # the achieved check is "did we reach what THIS expert does", not a hardcoded constant.
+    intended = dict(r.intended_facet) if r.intended_facet else None
+    if intended is None:
+        if divergence.axis == "compute.register_block":
+            ev = divergence.expert
+            mr = ev[0] if isinstance(ev, (tuple, list)) and ev and isinstance(ev[0], int) else None
+            if isinstance(mr, int):
+                intended = {"compute.register_block": mr}
+        elif divergence.axis == "vector.lmul" and isinstance(divergence.expert, (int, float)):
+            intended = {"vector.lmul": float(divergence.expert)}
+    return CompilerAction(
+        divergence_axis=divergence.axis, action_class=r.action_class,
+        target_seam=r.target_seam, change=r.change, forkable_now=r.forkable_now,
+        expected_effect=r.expected_effect, backend=divergence.backend,
+        evidence=list(divergence.evidence), intended_facet=intended)
+
+
 def route(divergence: Divergence) -> CompilerAction | None:
     """Map one Divergence to a typed CompilerAction (or None if no route — surfaced as 'unrouted'
-    so it is never silently dropped)."""
-    for r in _ROUTES.get(divergence.backend, []):
-        if r.axis == divergence.axis and r.when(divergence):
-            return CompilerAction(
-                divergence_axis=divergence.axis, action_class=r.action_class,
-                target_seam=r.target_seam, change=r.change, forkable_now=r.forkable_now,
-                expected_effect=r.expected_effect, backend=divergence.backend,
-                evidence=list(divergence.evidence))
-    return None
+    so it is never silently dropped). When several routes match the axis (a class ladder), picks the
+    CHEAPEST (weakest) class first — escalation walks up from there via :func:`route_escalated`."""
+    cands = [r for r in _ROUTES.get(divergence.backend, [])
+             if r.axis == divergence.axis and r.when(divergence)]
+    if not cands:
+        return None
+    return _action_from_route(min(cands, key=lambda r: _CLASS_ORDER.get(r.action_class, 99)),
+                              divergence)
+
+
+def route_escalated(divergence: Divergence, prior_class: str) -> CompilerAction | None:
+    """The next-stronger action for ``divergence`` after ``prior_class`` was insufficient (its intended
+    facet was not achieved by the emitted code). Returns the cheapest route whose class is strictly
+    above ``prior_class``, or None when the ladder is exhausted (no stronger lever exists yet)."""
+    floor = _CLASS_ORDER.get(prior_class, -1)
+    # The measured residual already PROVES the gap on this axis, so escalation matches on axis + a
+    # stronger class + the expert having the property — NOT the original `when` predicate (which may
+    # gate on the BASELINE's value, e.g. ours-is-None, that no longer holds after a fork was applied).
+    cands = [r for r in _ROUTES.get(divergence.backend, [])
+             if r.axis == divergence.axis and bool(divergence.expert)
+             and _CLASS_ORDER.get(r.action_class, 99) > floor]
+    if not cands:
+        return None
+    return _action_from_route(min(cands, key=lambda r: _CLASS_ORDER.get(r.action_class, 99)),
+                              divergence)
+
+
+def _facet_value(cca, axis: str):
+    """Read ``facet.field`` off a CCA (e.g. 'compute.accumulator_resident'). register_block collapses
+    to its MR (None -> 1, the unblocked floor) so the >= check below is meaningful."""
+    facet_name, _, field_name = axis.partition(".")
+    facet = getattr(cca, facet_name, None) if cca else None
+    if facet is None:
+        return None
+    val = getattr(facet, field_name, None)
+    if field_name == "register_block":
+        if isinstance(val, (tuple, list)) and val and isinstance(val[0], int):
+            return val[0]
+        return 1
+    return val
+
+
+def achieved_residual(action: CompilerAction, achieved_cca) -> list[str]:
+    """Given an action's machine-readable promise (``intended_facet``) and the CCA lifted from the
+    fork's EMITTED asm, return the axes the action PROMISED but the emitted code did NOT achieve — the
+    residual that should escalate. Empty list == the action delivered (or made no checkable promise)."""
+    if not action.intended_facet:
+        return []
+    residual: list[str] = []
+    for axis, want in action.intended_facet.items():
+        got = _facet_value(achieved_cca, axis)
+        if axis.endswith("register_block"):           # MR: achieved must be >= promised
+            ok = isinstance(got, int) and isinstance(want, int) and got >= want
+        else:                                          # everything else: exact match
+            ok = got == want
+        if not ok:
+            residual.append(axis)
+    return residual
 
 
 def build_catalog(divergences: list[Divergence]) -> tuple[list[CompilerAction], list[Divergence]]:

@@ -299,7 +299,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
                     parallel: bool = False,
                     mmap_weights: bool | None = None,
                     kernel_backend: str | None = None,
-                    dispatch_timing: bool = False) -> Path:
+                    dispatch_timing: bool = False,
+                    ours_mr: int = 4, ours_pack_b: bool = False) -> Path:
     """Cross-compile a K1 Linux RVV binary from the workload + RVV package.
 
     Reuses the EXACT spike/Zephyr lowering (``zephyr_model._prepare_model_mlir`` ->
@@ -323,8 +324,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     # Per-dispatch matmul-bucket timing (default-OFF) is only meaningful with a routed
     # kernel_backend (the timed region lives in the GEMM shim). Guard FIRST so it fails loud
     # before any toolchain/model work, and never silently no-op's into an always-zero bucket.
-    if dispatch_timing and kernel_backend not in ("xnnpack", "openblas"):
-        raise K1Error("dispatch_timing=True requires kernel_backend in {xnnpack, openblas} "
+    if dispatch_timing and kernel_backend not in ("xnnpack", "openblas", "ours"):
+        raise K1Error("dispatch_timing=True requires kernel_backend in {xnnpack, openblas, ours} "
                       "(the matmul-bucket timer lives in the routed GEMM shim)")
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -389,6 +390,31 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
                                                      f"-march={K1_MARCH}", f"-mabi={K1_MABI}", "-O3",
                                                      "-ffast-math", "-DNDEBUG", *_dt],
                                                 n_sigs, work / "openblas")
+    # OURS kernel-backend (default-off, additive): the attribution-measurement analogue of the
+    # XNNPACK/OpenBLAS paths above. Routes the SAME routable f32 linalg.matmul ops to OUR OWN MR=4
+    # accumulator-resident RVV v3 ukernel (@merlin_ours_gemm_f32), through the IDENTICAL rdtime
+    # bracket — so the ours matmul bucket is MEASURED, not attributed. n_ours_routed records the
+    # count; the shim .o is built + linked below.
+    ours_obj = None
+    n_ours_routed = 0
+    if kernel_backend == "ours":
+        from ..runtime.backends import ours_board as our
+
+        if not our.is_available():
+            raise K1Error("kernel_backend='ours' but the ours RVV GEMM shim is unavailable "
+                          "(runtime/backends/ours_board/ours_gemm_rvv_shim.c)")
+        if pkg.is_int8:
+            raise K1Error("kernel_backend='ours' is an f32 GEMM path; int8 datapath not supported")
+        rewritten, n_ours_routed = our.rewrite_matmuls_to_ours(prepared.read_text())
+        prepared = work / "model.prepared.ours.mlir"
+        prepared.write_text(rewritten)
+        n_sigs = rewritten.count("func.func private @merlin_ours_gemm_f32_")
+        _ourdt = ["-DOURS_PACK_B"] if ours_pack_b else []
+        ours_obj = our.build_ours_object(cc, ["--target=riscv64-unknown-linux-gnu",
+                                              f"-march={K1_MARCH}", f"-mabi={K1_MABI}", "-O3",
+                                              "-ffast-math", "-DNDEBUG", f"-DOURS_MR={int(ours_mr)}",
+                                              *_ourdt, *_dt],
+                                         n_sigs, work / "ours")
     # hoist_static_allocs=False: keep big intermediate buffers on the HEAP (board RAM) instead of
     # promoting them to stack alloca — large models otherwise overflow even a multi-GB stack.
     from ..llvmlower.pipeline import PipelineError
@@ -457,12 +483,20 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     abi = _REPO / "merlin/runtime/abi"
     binary = work / "merlin_k1"
     srcs = [main_c, cgen / "model_call.c", rt / "merlin_model.c", abi / "mlir_runtime.c"]
+    # MEASUREMENT PROXY for the lean runtime's static arena (env MERLIN_BUMP_MALLOC, default OFF):
+    # link a bump allocator that overrides glibc malloc/free, isolating how much of the dispatch
+    # overhead is the ~4391 per-op malloc/free the lean arena eliminates. Baseline byte-identical when off.
+    import os as _os
+    if _os.environ.get("MERLIN_BUMP_MALLOC"):
+        srcs = srcs + [rt / "merlin_bump_linux.c"]
     base = [cc, f"--target=riscv64-unknown-linux-gnu", f"-march={K1_MARCH}", f"-mabi={K1_MABI}",
             "-O2", f"-I{rt}", f"-I{cgen}", *srcs, model_o]
     if xnn_obj is not None:                       # XNNPACK RVV GEMM ukernel shim
         base += [str(xnn_obj)]
     if openblas_obj is not None:                  # OpenBLAS RVV GEMM ukernel shim
         base += [str(openblas_obj)]
+    if ours_obj is not None:                       # ours v3 RVV GEMM ukernel shim (attribution)
+        base += [str(ours_obj)]
     if not mmap_weights:
         base += [str(weights_o)]
     if parallel:
@@ -483,6 +517,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
         (work / "N_XNN_ROUTED").write_text(str(n_xnn_routed))
     if kernel_backend == "openblas":
         (work / "N_OPENBLAS_ROUTED").write_text(str(n_openblas_routed))
+    if kernel_backend == "ours":
+        (work / "N_OURS_ROUTED").write_text(str(n_ours_routed))
     return binary
 
 
@@ -506,7 +542,8 @@ def board_vlenb() -> int | None:
 
 
 def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 600,
-              kernel_backend: str | None = None, dispatch_timing: bool = False) -> dict[str, Any]:
+              kernel_backend: str | None = None, dispatch_timing: bool = False,
+              ours_mr: int = 4, ours_pack_b: bool = False) -> dict[str, Any]:
     """Cross-compile the workload for K1, deploy over scp, run, and parse OUT/METRIC/DONE.
 
     Returns the ``zephyr_model._parse_console`` result dict augmented with ``vlen`` (the bit-width
@@ -530,7 +567,8 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
         bwork = Path(work) / tag
         binary = build_k1_binary(model_dir, bwork, pkg,
                                  force_scalar=(mode == "scalar"), parallel=(mode == "omp"),
-                                 kernel_backend=kernel_backend, dispatch_timing=dispatch_timing)
+                                 kernel_backend=kernel_backend, dispatch_timing=dispatch_timing,
+                                 ours_mr=ours_mr)
         remote = f"/tmp/{Path(model_dir).name}_{pkg.run_id}_{tag}_merlin_k1"
         _run(["scp", "-i", K1_SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
               str(binary), f"{K1_HOST}:{remote}"])
@@ -558,6 +596,9 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
             no = bwork / "N_OPENBLAS_ROUTED"
             if no.is_file():
                 r["n_openblas_routed"] = int(no.read_text().strip())
+            nu = bwork / "N_OURS_ROUTED"
+            if nu.is_file():
+                r["n_ours_routed"] = int(nu.read_text().strip())
             return r
         finally:
             try:
@@ -565,9 +606,9 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
             except Exception:  # noqa: BLE001
                 pass
 
-    if kernel_backend in ("xnnpack", "openblas"):
-        # XNNPACK/OpenBLAS are the vectorized f32 paths; NO scalar/omp fallback (those drop the
-        # routing and would silently misreport what ran). Any failure is an honest exception.
+    if kernel_backend in ("xnnpack", "openblas", "ours"):
+        # XNNPACK/OpenBLAS/ours are the vectorized f32 routed paths; NO scalar/omp fallback (those
+        # drop the routing and would silently misreport what ran). Any failure is an honest exception.
         res = _build_deploy_run("v", "v")
     else:
         try:

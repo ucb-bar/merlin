@@ -43,4 +43,20 @@ def compare(expert: CCA, ours: CCA, *, evidence: list[str] | None = None) -> lis
         for k, (ve, vo) in _populated_pairs(getattr(expert, facet), getattr(ours, facet)).items():
             out.append(Divergence(axis=f"{facet}.{k}", expert=ve, ours=vo,
                                   backend=backend, evidence=list(ev)))
+
+    # register_block (MR) is the #1 GEMM data-movement decision and the one we were structurally
+    # blind to: _populated_pairs only fires when BOTH sides report it, but an UNBLOCKED kernel lifts
+    # to register_block=None (== MR 1, no row reuse), so "expert blocks to MR=k, ours doesn't" never
+    # surfaced. Compare MR-aware (None -> MR 1) so the gap becomes a real, routable divergence.
+    def _mr(cca):
+        rb = getattr(cca.compute, "register_block", None) if cca and cca.compute else None
+        if isinstance(rb, (tuple, list)) and rb and isinstance(rb[0], int):
+            return rb[0]
+        return 1
+    emr, omr = _mr(expert), _mr(ours)
+    if emr > omr and not any(d.axis == "compute.register_block" for d in out):
+        out.append(Divergence(axis="compute.register_block",
+                              expert=expert.compute.register_block,
+                              ours=(ours.compute.register_block if (ours and ours.compute) else None),
+                              backend=backend, evidence=list(ev)))
     return out
