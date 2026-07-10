@@ -25,11 +25,12 @@ the blocker for anything that won't build / run / verify; never a fabricated tic
 """
 from __future__ import annotations
 
-import argparse, json, re, subprocess, tempfile
+import argparse, json, subprocess, tempfile
 from dataclasses import replace
 from pathlib import Path
 
 from merlin.common.paths import repo_root
+from merlin.common.driver_output import int_after
 from merlin.kernels.ceiling_drivers import run_expert_gemm as expert
 from merlin.rvvgen import k1
 from merlin.rvvgen.registry import load_rvv_package
@@ -85,10 +86,10 @@ def _min_ticks(binp: Path, tag: str, reps: int, timeout: int) -> tuple[list[int]
             return None, detail
         if "VERIFY PASS" not in console:
             return None, f"verify did not pass; tail: {console.strip()[-300:]}"
-        m = re.search(r"CYCLES\s+(\d+)", console)
-        if not m:
+        cyc = int_after(console, "CYCLES")
+        if cyc is None:
             return None, "no CYCLES line"
-        runs.append(int(m.group(1)))
+        runs.append(cyc)
     return runs, "ok"
 
 

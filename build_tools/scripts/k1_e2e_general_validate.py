@@ -21,7 +21,7 @@ blocker otherwise. Never fabricated.
 """
 from __future__ import annotations
 
-import argparse, json, re, tempfile, traceback
+import argparse, json, tempfile, traceback
 from dataclasses import replace
 from pathlib import Path
 
@@ -53,8 +53,12 @@ def lower_and_characterize(model_dir: Path, pkg) -> dict:
     except PipelineError as e:
         out["lowering_path"] = "scalar_fallback"
         msg = str(e)
-        m = re.search(r"'([a-z_]+\.[a-z_]+)' op", msg)
-        out["pipeline_error_op"] = m.group(1) if m else msg[-160:].replace("\n", " ")
+        # MLIR verifier messages read `'<dialect.op>' op ...` — pull the quoted op name before "' op"
+        # structurally (no regex): find the marker, then the opening quote just before it.
+        end = msg.find("' op")
+        start = msg.rfind("'", 0, end) if end != -1 else -1
+        op = msg[start + 1:end] if (end != -1 and start != -1) else ""
+        out["pipeline_error_op"] = op or msg[-160:].replace("\n", " ")
         # build_k1_binary falls back to the SCALAR (vectorize=False) lowering for this config.
         res = lower_model_file(prepared, w / "lower_s", targets=(), textual=True,
                                vectorize=False, hoist_static_allocs=False)

@@ -16,7 +16,6 @@ and to the existing ``kernels/ceiling_drivers`` measurements.
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 from merlin.baselines.contract import RegionProfile
@@ -27,9 +26,7 @@ try:
 except Exception:  # pragma: no cover - defensive if k1 import chain changes
     K1_CPU_HZ, K1_TIMEBASE_HZ = 1_600_000_000, 24_000_000
 
-_E2E_RE = re.compile(r"MERLIN_E2E\b(.*)")
-_REGION_RE = re.compile(r"MERLIN_REGION\b(.*)")
-_KV_RE = re.compile(r"(\w+)=([-\w.]+)")
+from merlin.common.driver_output import kv_pairs as _kv
 
 
 def ticks_to_cycles(ticks: int | None) -> int | None:
@@ -37,10 +34,6 @@ def ticks_to_cycles(ticks: int | None) -> int | None:
     if ticks is None:
         return None
     return int(round(ticks * (K1_CPU_HZ / K1_TIMEBASE_HZ)))
-
-
-def _kv(rest: str) -> dict[str, str]:
-    return {k: v for k, v in _KV_RE.findall(rest)}
 
 
 @dataclass
@@ -59,16 +52,14 @@ def parse_profile(stdout: str) -> tuple[WholeModelProfile, list[RegionProfile]]:
     e2e = WholeModelProfile()
     regions: list[RegionProfile] = []
     for line in stdout.splitlines():
-        m = _E2E_RE.search(line)
-        if m:
-            kv = _kv(m.group(1))
+        if "MERLIN_E2E" in line:
+            kv = _kv(line[line.index("MERLIN_E2E") + len("MERLIN_E2E"):])
             e2e.rdtime_ticks = int(kv["ticks"]) if "ticks" in kv else None
             e2e.wall_ns = int(kv["wall_ns"]) if "wall_ns" in kv else None
             e2e.cycles = ticks_to_cycles(e2e.rdtime_ticks)
             continue
-        m = _REGION_RE.search(line)
-        if m:
-            kv = _kv(m.group(1))
+        if "MERLIN_REGION" in line:
+            kv = _kv(line[line.index("MERLIN_REGION") + len("MERLIN_REGION"):])
             name = kv.get("name", "other")
             ticks = int(kv["ticks"]) if "ticks" in kv else None
             regions.append(RegionProfile(

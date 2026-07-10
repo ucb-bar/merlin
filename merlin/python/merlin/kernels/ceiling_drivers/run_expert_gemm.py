@@ -19,10 +19,11 @@ Run:  ``.venv/bin/python -m merlin.kernels.ceiling_drivers.run_expert_gemm``
 """
 from __future__ import annotations
 
-import re
 import subprocess
 import tempfile
 from pathlib import Path
+
+from ...common.driver_output import int_after as _int_after
 
 from ...common.paths import repo_root
 from .. import bench_ceiling
@@ -121,16 +122,16 @@ def measure_one(source: str, *, M: int = 64, N: int = 64, K: int = 64,
     if "VERIFY PASS" not in console:
         return {**base, "cycles": None, "status": "not_run",
                 "blocker": f"verify did not pass; console tail: {console.strip()[-300:]}"}
-    mc = re.search(r"CYCLES\s+(\d+)", console)
-    mi = re.search(r"INSTRET\s+(\d+)", console)
-    if not mc:
+    cycles = _int_after(console, "CYCLES")
+    instret = _int_after(console, "INSTRET")
+    if cycles is None:
         return {**base, "cycles": None, "status": "not_run",
                 "blocker": "no CYCLES line in console"}
-    row = {**base, "cycles": int(mc.group(1)), "status": "pass",
+    row = {**base, "cycles": cycles, "status": "pass",
            "note": f"{source} f32 GEMM on spike; inner-compute timed (pack outside); "
                    f"verified vs scalar ref"}
-    if mi:
-        row["instructions"] = int(mi.group(1))
+    if instret is not None:
+        row["instructions"] = instret
     return row
 
 

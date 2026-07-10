@@ -19,11 +19,12 @@ won't build/run on K1; never a fabricated number.
 """
 from __future__ import annotations
 
-import argparse, json, re, subprocess, tempfile
+import argparse, json, subprocess, tempfile
 from dataclasses import replace
 from pathlib import Path
 
 from merlin.common.paths import repo_root
+from merlin.common.driver_output import int_after
 from merlin.kernels.ceiling_drivers import run_expert_gemm as expert
 from merlin.kernels import bench_ceiling
 from merlin.rvvgen import k1
@@ -82,11 +83,11 @@ def _parse(base: dict, console: str | None, detail: str) -> dict:
     if "VERIFY PASS" not in console:
         return {**base, "ticks": None, "status": "not_run",
                 "blocker": f"verify did not pass; console tail: {console.strip()[-300:]}"}
-    m = re.search(r"CYCLES\s+(\d+)", console)  # driver prints CYCLES = read_csr(mcycle) delta = rdtime ticks
-    if not m:
+    ticks = int_after(console, "CYCLES")  # driver prints CYCLES = read_csr(mcycle) delta = rdtime ticks
+    if ticks is None:
         return {**base, "ticks": None, "status": "not_run", "blocker": "no CYCLES/ticks line"}
-    return {**base, "ticks": int(m.group(1)), "status": "pass",
-            "wall_ns_est": int(int(m.group(1)) * 1e9 / k1.K1_TIMEBASE_HZ),
+    return {**base, "ticks": ticks, "status": "pass",
+            "wall_ns_est": int(ticks * 1e9 / k1.K1_TIMEBASE_HZ),
             "note": "K1 real-silicon rdtime ticks; inner-compute; bit-exact verified"}
 
 

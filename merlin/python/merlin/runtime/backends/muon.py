@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -236,7 +235,15 @@ def compile_kernel(kernel_src: str, workdir: str | Path) -> Path:
 
 
 # --- run ------------------------------------------------------------------------------------------
-_CYCLES_RE = re.compile(r"finished after (\d+) cycles")
+def _cycles_from_console(console: str) -> int | None:
+    """Cycle count from the simulator's ``finished after <N> cycles`` line (cyclotron/VCS), parsed
+    structurally by locating the marker and reading the following integer token — no regex."""
+    marker = "finished after "
+    idx = console.find(marker)
+    if idx == -1:
+        return None
+    tail = console[idx + len(marker):].split(maxsplit=1)
+    return int(tail[0]) if tail and tail[0].isdigit() else None
 
 
 def _run_cyclotron(elf: Path, timeout: int) -> tuple[str, int | None, dict | None]:
@@ -262,8 +269,7 @@ def _run_cyclotron(elf: Path, timeout: int) -> tuple[str, int | None, dict | Non
     console = proc.stdout + ("\n" + proc.stderr if proc.stderr else "")
     if proc.returncode != 0:
         raise MuonError(f"cyclotron exited {proc.returncode}:\n{console[-2000:]}")
-    m = _CYCLES_RE.search(console)
-    cycles = int(m.group(1)) if m else None
+    cycles = _cycles_from_console(console)
     summary = None
     runs = sorted((work / "performance_logs").glob("run_*"), key=lambda p: p.name)
     if runs:
@@ -292,12 +298,12 @@ def _run_vcs(elf: Path, timeout: int) -> tuple[str, int | None]:
         raise MuonUnavailable(f"vcs RTL difftest timed out after {timeout}s "
                               f"(kernel-launch difftest is WIP)") from e
     console = proc.stdout + ("\n" + proc.stderr if proc.stderr else "")
-    m = _CYCLES_RE.search(console)
-    if proc.returncode != 0 or m is None:
+    cycles = _cycles_from_console(console)
+    if proc.returncode != 0 or cycles is None:
         raise MuonUnavailable(
             f"vcs RTL difftest did not complete (rc={proc.returncode}); kernel-launch difftest is "
             f"WIP. tail:\n{console[-400:]}")
-    return console, int(m.group(1))
+    return console, cycles
 
 
 def run_elf(elf: str | Path, simulator: str = "cyclotron",
