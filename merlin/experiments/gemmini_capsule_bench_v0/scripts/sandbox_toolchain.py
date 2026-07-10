@@ -21,6 +21,11 @@ UV_PYTHON = os.path.expanduser("~/.local/share/uv")          # the cpython the .
 VENV = str(C.REPO / ".venv")                                 # third-party deps (xdsl, numpy, jsonschema…)
 LLVM = str(C.REPO / "third_party" / "llvm-install")          # clang + mlir-opt/translate (also bundle-allowed)
 CURATED_HARNESS = str(C.REPO / "experiments/gemmini_capsule_bench_v0/contracts/harness_curated/gemmini-rocc-tests")
+# libidn compat shim: the conda cmake transitively loads libidn.so.11 (during project configure), but this
+# host only has libidn.so.12. `.compat_lib/libidn.so.11 -> libidn.so.12` bridges it. Under --sandbox none
+# (abc4) this was on the ambient LD_LIBRARY_PATH; our explicit env dropped it -> the C++ build failed
+# "libidn.so.11: cannot open shared object file". Must be on LD_LIBRARY_PATH wherever cmake configures.
+COMPAT_LIB = str(C.REPO / ".compat_lib")
 # clang-23 = the ABI's `MERLIN_CLANG` (rv64_compiler: ".ll -> rv64 object"), LLVM-23 ABI-matched to
 # llvm-install. The C++ baseline REQUIRES it to build/link its OOT MLIR project (g++ links the clang-built
 # LLVM libs with undefined-reference errors). It lives in the IREE merlin install; bind ONLY the compiler
@@ -46,7 +51,7 @@ def toolchain_binds() -> list[str]:
     bwrap_argv + claude_runtime_binds so these re-appear; nothing here is an answer surface."""
     b = []
     for p in (CONDA_ENV, CHIPYARD_VERILATOR, UV_PYTHON, VENV, LLVM, CURATED_HARNESS, RESOLVE_DIR,
-              CLANG_BIN, CLANG_RESOURCE):
+              CLANG_BIN, CLANG_RESOURCE, COMPAT_LIB):
         if Path(p).exists():
             b += ["--ro-bind", p, p]
     # clear nested-session vars so the agent's claude connects directly to the API (not the dead relay)
@@ -69,7 +74,7 @@ def sandbox_env(ws: Path) -> str:
         f'export RISCV={CONDA_ENV}/riscv-tools; '
         # NOTE: do NOT put {LLVM}/lib on LD_LIBRARY_PATH — it shadows the system libLLVM and breaks the
         # system C/C++ compilers. mlir-opt/llc find their libs via rpath; the C++ build links via cmake.
-        f'export LD_LIBRARY_PATH={CONDA_ENV}/lib:{CONDA_ENV}/riscv-tools/lib${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}; '
+        f'export LD_LIBRARY_PATH={COMPAT_LIB}:{CONDA_ENV}/lib:{CONDA_ENV}/riscv-tools/lib${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}; '
         f'export PYTHONPATH={ws}/merlin/python${{PYTHONPATH:+:$PYTHONPATH}}; '
         f'export MERLIN_GEMMINI_HARNESS_DIR={CURATED_HARNESS}; '
     )

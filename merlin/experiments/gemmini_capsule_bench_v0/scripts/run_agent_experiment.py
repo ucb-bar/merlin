@@ -39,7 +39,8 @@ import _common as C
 sys.path.insert(0, str(C.REPO / "merlin" / "python"))
 from merlin.targetgen import experiment_tokens as ET  # noqa: E402
 
-ARM_BUNDLE = {"raw_baseline": "raw_baseline_public_v0", "merlin_assisted": "merlin_assisted_public_v0"}
+ARM_BUNDLE = {"raw_baseline": "raw_baseline_public_v0", "merlin_assisted": "merlin_assisted_public_v0",
+              "cpp_merlininfra": "cpp_merlininfra_hwbringup_v0"}
 
 
 def _load_bundle(arm: str) -> dict:
