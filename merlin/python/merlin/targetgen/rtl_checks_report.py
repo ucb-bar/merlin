@@ -31,7 +31,7 @@ import yaml
 from . import rtl_checks
 from .rtl.facts import target_contract_path
 
-_REPO = Path(__file__).resolve().parents[4]  # .../oscar-merlin
+_REPO = Path(__file__).resolve().parents[4]  # .../merlin
 _GEMMINI_CONTRACT = target_contract_path("gemmini")
 # capsule.yaml definitions come from the corpus locator (canonical contract corpus + the perf corpus);
 # every capsule dir is named after the capsule, matching the run dir name.

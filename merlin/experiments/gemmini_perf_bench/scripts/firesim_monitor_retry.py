@@ -19,7 +19,7 @@ RUNS = HERE.parent / "runs"
 RUN = RUNS / RUN_ID
 RESULTS = RUN / "firesim_arm_results.json"
 LOG = RUN / "firesim_monitor.log"
-PY = "/path/to/oscar-merlin/.venv/bin/python"
+PY = "/path/to/merlin/.venv/bin/python"
 BUNDLE = str(HERE / "run_firesim_bundle.py")
 ARMS = ["agentic_raw_cpp", "agentic_scaffold_cpp", "agentic_python", "agentic_circt"]
 KERNELS = ["G01_multitile_sq_64x64x64", "G06_acc_scale_i8_64x64x64", "G07_relu_i8_64x64x64",
@@ -57,7 +57,7 @@ def missing_cells():
 
 def env():
     e = dict(os.environ)
-    cl = "/path/to/oscar-merlin/.compat_lib"
+    cl = "/path/to/merlin/.compat_lib"
     conda = "/path/to/chipyard/.conda-env"
     e["LD_LIBRARY_PATH"] = f"{cl}:{conda}/lib:{conda}/riscv-tools/lib:" + e.get("LD_LIBRARY_PATH", "")
     e["PATH"] = f"{conda}/bin:{conda}/riscv-tools/bin:" + e.get("PATH", "")

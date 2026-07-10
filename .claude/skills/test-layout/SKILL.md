@@ -1,7 +1,7 @@
 ---
 name: test-layout
 description: >-
-  Where to put tests in oscar-merlin and how to name them. Use whenever you add, move, or organize
+  Where to put tests in merlin and how to name them. Use whenever you add, move, or organize
   a test, write a new test_*.py, or wonder which folder a test belongs in. One suite at
   merlin/tests/, organized by subsystem bucket.
 ---

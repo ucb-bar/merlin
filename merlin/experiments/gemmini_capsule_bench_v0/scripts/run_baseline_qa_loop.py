@@ -211,7 +211,7 @@ def assemble_copy_workspace(bundle: dict, ws: Path) -> dict:
 # Paths whose CONTENT is an answer/grader the agent must not read (golden outputs, hidden capsules,
 # the Merlin reference/simulator, prior backends, grader-private goldens, grader internals). Matched
 # against READ commands only — a mere mention (e.g. an integrity self-scan grepping the submission
-# for "reference_outputs", or the repo path containing "oscar-merlin") is NOT a violation.
+# for "reference_outputs", or the repo path containing "merlin") is NOT a violation.
 # Flagged for BOTH arms:
 _ANSWER_TOKENS = (
     "golden.yaml", "capsules/hidden", "merlin/runtime/reference", "merlin/runtime/simulator",

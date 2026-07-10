@@ -2,7 +2,7 @@
 """Merge iree_arm_results.json into a run's perf_results.json as the `iree_dialect` approach.
 
 The IREE arm (approach d) runs separately (run_iree_arm.py) because it uses the deprecated-merlin IREE
-build tree + a per-shape rebuild, not the oscar-merlin contract harness. This stitches its per-kernel
+build tree + a per-shape rebuild, not the merlin contract harness. This stitches its per-kernel
 spike cycles into the same perf_results.json the other approaches populate, under
 approaches["iree_dialect"]["per_sim"]["spike"], so gen_perf_report.py renders it as the 4th column.
 IREE is spike-only (no verilator), so its verilator cell stays `·`.

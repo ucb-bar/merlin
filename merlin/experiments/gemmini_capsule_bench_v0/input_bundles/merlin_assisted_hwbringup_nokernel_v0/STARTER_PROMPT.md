@@ -33,7 +33,7 @@ the **compile-time verification that C++/MLIR has and that hand-rolled regex thr
 
 The ONLY substantial code you write is the target *lowering algorithm* + the RoCC encoding table. Parse,
 verify, cmdbuf serialization, im2col/tiling are provided. Run any tool with
-`/path/to/oscar-merlin/.venv/bin/python`.
+`/path/to/merlin/.venv/bin/python`.
 
 > **No-kernels condition:** this bundle has **no example kernels** — RTL + ISA header + README only. You
 > cannot crib instruction sequences from a sample; derive the lowering from the typed dialect (§A) + the

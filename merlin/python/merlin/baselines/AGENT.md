@@ -64,7 +64,7 @@ so the arm runs the IR buddy's own users get — DIFFERENT IR that may bypass th
   ``nanobind``+``pybind11`` in the torch venv) → ``ninja MLIRPythonModules``; configure buddy-mlir with
   ``-DBUDDY_MLIR_ENABLE_PYTHON_PACKAGES=ON -DBUDDY_ENABLE_TESTS=OFF -DFLATC_EXECUTABLE=<flatc>
   -DFLATBUFFERS_INCLUDE_DIR=<inc>`` → ``ninja BuddyMLIRPythonModules python-package-buddy``. The
-  DynamoCompiler runs under the **model2MLIR torch venv** (has torch/dynamo), NOT oscar-merlin's.
+  DynamoCompiler runs under the **model2MLIR torch venv** (has torch/dynamo), NOT merlin's.
 - **Import**: ``buddy.native_import(model, variant, out)`` spawns the helper under the torch venv with
   ``PYTHONPATH=<buddy python_packages>:<mlir python_packages>``, sets ``bundle.full_env(model)`` (full-
   fidelity loader), loads via the m2m loader's ``get_model_and_inputs``, runs ``DynamoCompiler.importer``

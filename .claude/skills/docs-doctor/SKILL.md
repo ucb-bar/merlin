@@ -1,7 +1,7 @@
 ---
 name: docs-doctor
 description: >-
-  Refresh documentation that has fallen behind the code in oscar-merlin. Use when asked to
+  Refresh documentation that has fallen behind the code in merlin. Use when asked to
   audit docs for drift, update stale docs, re-verify documentation, run the docs-doctor, or on
   a schedule. Consumes the deterministic drift worklist and updates docs + last_verified only
   after verifying against the actual code change.

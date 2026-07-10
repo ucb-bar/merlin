@@ -1,6 +1,6 @@
 """Whole-model execution on **Zephyr** (SMP) — spike today, FireSim on the 2-tile board.
 
-This is the bring-up bridge from oscar-merlin's bare-metal spike path
+This is the bring-up bridge from merlin's bare-metal spike path
 (:mod:`spike_model`) to a real RTOS image that runs on the FireSim
 ``GemminiAndOPUShuttleConfig`` SoC (tile 0 = scalar/Gemmini, tile 1 = Saturn-OPU
 ``rv64gcv`` vLen=128). It reuses the *entire* data-driven C runtime

@@ -125,7 +125,7 @@ def buddy_commit() -> str:
 # --- native torch importer (Phase 2: buddy's OWN DynamoCompiler, not m2m linalg) ----------------
 
 # buddy.compiler.frontend needs torch + torch._dynamo + the buddy_mlir python bindings, none of
-# which live in oscar-merlin's venv — so the native import runs as a SUBPROCESS under the model2MLIR
+# which live in merlin's venv — so the native import runs as a SUBPROCESS under the model2MLIR
 # torch venv with PYTHONPATH pointing at buddy's python_packages + the MLIR bindings.
 def _torch_venv_python() -> Path | None:
     """The model2MLIR torch venv python (has torch/dynamo + our installed nanobind bindings)."""
@@ -314,7 +314,7 @@ def prepare_model_mlir(bundle: _bundle.CaptureBundle, work: Path) -> Path:
     prepared = zm._prepare_model_mlir(bundle.mlir, work, int8_compute=int8)
     # Repair the m2m aten.select export bug (malformed rank-reducing tensor.extract_slice) — see
     # _repair_malformed_select_slices. This is a buddy-arm compat shim for a bug in the EXPORTED
-    # model.mlir (m2m repo), not in oscar-merlin or buddy; without it bitvla/smolvla fail
+    # model.mlir (m2m repo), not in merlin or buddy; without it bitvla/smolvla fail
     # bufferization ("mixed offsets rank to match mixed sizes rank").
     txt = prepared.read_text()
     fixed, n = _repair_malformed_select_slices(txt)

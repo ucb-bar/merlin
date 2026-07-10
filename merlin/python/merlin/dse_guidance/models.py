@@ -1,6 +1,6 @@
 """Registry of the real supported workloads (the model2MLIR VLA / LM zoo).
 
-These are the workloads oscar-merlin actually brings up (see ``docs/results.md``): the ten
+These are the workloads merlin actually brings up (see ``docs/results.md``): the ten
 captured models under ``output/<model>_<dtype>_consistent/model.mlir``. The exhaustive study
 runs DSE guidance over every one of them.
 
