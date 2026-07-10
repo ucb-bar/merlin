@@ -6,21 +6,28 @@ from merlin.runtime.backends.base import BackendKind, TargetClass
 
 
 def test_registry_taxonomy():
-    assert set(base.list_backends()) == {"spike", "saturn_vec", "gemmini", "muon",
-                                         "spike_model", "zephyr_model"}
+    assert set(base.list_backends()) == {
+        "spike", "saturn_vec", "gemmini", "muon", "spike_model", "zephyr_model",
+        "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
     # class taxonomy: address backends by CPU/GPU/NPU, not by silicon instance
     assert base.class_of("gemmini") is TargetClass.NPU
     assert base.class_of("muon") is TargetClass.GPU
     assert base.class_of("spike") is TargetClass.CPU
-    assert set(base.backends_of_class(TargetClass.CPU)) == {"spike", "saturn_vec",
-                                                            "spike_model", "zephyr_model"}
+    # NPU=gemmini, GPU=muon; everything else (RVV/host CPU kernels, whole-model, matmul-route) is CPU
     assert base.backends_of_class(TargetClass.NPU) == ["gemmini"]
     assert base.backends_of_class(TargetClass.GPU) == ["muon"]
+    assert set(base.backends_of_class(TargetClass.CPU)) == {
+        "spike", "saturn_vec", "spike_model", "zephyr_model",
+        "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
 
 
 def test_backend_kinds():
     assert base.info("gemmini").kind is BackendKind.KERNEL
     assert base.info("zephyr_model").kind is BackendKind.WHOLE_MODEL
+    assert base.info("xnnpack_board").kind is BackendKind.MATMUL_ROUTE
+    assert {b for b in base.list_backends()
+            if base.info(b).kind is BackendKind.MATMUL_ROUTE} == {
+        "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
 
 
 def test_get_backend_lazy_import():

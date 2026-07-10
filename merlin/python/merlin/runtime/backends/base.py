@@ -33,6 +33,8 @@ class TargetClass(str, Enum):
 class BackendKind(str, Enum):
     KERNEL = "kernel"          # compiles+runs one command buffer (spike, gemmini, muon, saturn_vec)
     WHOLE_MODEL = "whole_model"  # runs a whole captured model (spike_model, zephyr_model)
+    MATMUL_ROUTE = "matmul_route"  # routes matmuls to an external/hand GEMM for attribution
+                                   # (xnnpack/openblas/ours on a board; xnnpack on the host)
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,16 @@ _REGISTRY: dict[str, BackendInfo] = {
                                 "merlin.runtime.backends.spike_model"),
     "zephyr_model": BackendInfo("zephyr_model", TargetClass.CPU, BackendKind.WHOLE_MODEL,
                                 "merlin.runtime.backends.zephyr_model"),
+    # matmul-routing attribution backends (CPU-class): route routable matmuls to an external/hand
+    # GEMM — the RVV board variants (xnnpack/openblas/ours) + the x86 host xnnpack reference.
+    "xnnpack_board":  BackendInfo("xnnpack_board", TargetClass.CPU, BackendKind.MATMUL_ROUTE,
+                                  "merlin.runtime.backends.xnnpack_board"),
+    "openblas_board": BackendInfo("openblas_board", TargetClass.CPU, BackendKind.MATMUL_ROUTE,
+                                  "merlin.runtime.backends.openblas_board"),
+    "ours_board":     BackendInfo("ours_board", TargetClass.CPU, BackendKind.MATMUL_ROUTE,
+                                  "merlin.runtime.backends.ours_board"),
+    "xnnpack_host":   BackendInfo("xnnpack_host", TargetClass.CPU, BackendKind.MATMUL_ROUTE,
+                                  "merlin.runtime.backends.xnnpack_host"),
 }
 
 
