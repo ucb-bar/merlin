@@ -27,7 +27,7 @@ import _pbcommon as PB
 sys.path.insert(0, str(PB.REPO / "merlin" / "python"))
 from merlin.targetgen import capsule_golden as CG  # noqa: E402
 
-QUEUE = "/scratch2/agustin/firesim_queue/bin/firesim-queue"
+QUEUE = "/path/to/firesim_queue/bin/firesim-queue"
 BUNDLE_SH = str(Path(__file__).resolve().parent / "firesim_bundle.sh")
 _CYC_RE = re.compile(r"METRIC cycles (\d+)")
 _OUT_RE = re.compile(r"^OUT (\S+) (\d+) (\d+) (.*)$", re.M)
@@ -96,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Per-bundle config_runtime.yaml: copy the shared one but point workload_name at merlin-perfbench
     # (bare `firesim runworkload` otherwise reads the shared config, which targets a different workload).
-    shared_cfg = Path("/scratch2/agustin/chipyard/sims/firesim/deploy/config_runtime.yaml")
+    shared_cfg = Path("/path/to/chipyard/sims/firesim/deploy/config_runtime.yaml")
     cfg = outdir / "config_runtime.yaml"
     cfg_text = re.sub(r"workload_name:\s*\S+", "workload_name: merlin-perfbench.json",
                       shared_cfg.read_text())

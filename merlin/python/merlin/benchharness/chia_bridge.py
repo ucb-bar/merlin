@@ -60,7 +60,7 @@ def require_chia() -> None:
             f"pydantic and perturb concurrent sessions. Run this script with "
             f"{repo_root() / 'build' / 'chia-venv' / 'bin' / 'python'} (create it with: "
             "uv venv build/chia-venv --python 3.13 && "
-            "uv pip install --python build/chia-venv -e /scratch/agustin/projects/chia -e .)"
+            "uv pip install --python build/chia-venv -e /path/to/chia -e .)"
         )
 
 

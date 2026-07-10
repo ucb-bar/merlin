@@ -11,7 +11,7 @@ Each baseline framework starts from the SAME captured bundle under
 
 The original PyTorch loader (for frameworks that ingest torch, e.g. ExecuTorch export / TVM
 from_pytorch) lives OUTSIDE this repo at
-``$MERLIN_MODEL2MLIR/workloads/<model>/loader.py`` (default ``/scratch/agustin/projects/model2MLIR``).
+``$MERLIN_MODEL2MLIR/workloads/<model>/loader.py`` (default ``/path/to/model2MLIR``).
 """
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def tolerance(model: str) -> tuple[float, float]:
 
 def model2mlir_root() -> Path:
     """Root of the external model2MLIR repo (PyTorch loaders live here)."""
-    return Path(os.environ.get("MERLIN_MODEL2MLIR", "/scratch/agustin/projects/model2MLIR"))
+    return Path(os.environ.get("MERLIN_MODEL2MLIR", "/path/to/model2MLIR"))
 
 
 @dataclass

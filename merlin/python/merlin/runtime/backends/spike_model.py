@@ -11,7 +11,7 @@ generated from the MLIR signature (`llvmlower.c_runtime`), so any captured model
 the same way; only the arena size and spike `-m` scale with the model. The output is
 emitted as raw f32 bit patterns over HTIF, so the gate is exact up to FP reassociation.
 
-Toolchain via `MERLIN_CHIPYARD` (default /scratch2/agustin/chipyard); LLVM clang via the
+Toolchain via `MERLIN_CHIPYARD` (default /path/to/chipyard); LLVM clang via the
 llvmlower `toolchain`.
 """
 from __future__ import annotations

@@ -47,7 +47,7 @@ examples; hidden scoring is operator-only.
 
 ```
 # baseline (sandbox has ONLY public materials)
-bash experiments/agent_bench/setup_baseline_sandbox.sh   # stages /scratch/agustin/agent_bench/baseline_ws
+bash experiments/agent_bench/setup_baseline_sandbox.sh   # stages /path/to/agent_bench/baseline_ws
 # then launch your agent runtime with TASK_baseline.md as the prompt, cwd = the sandbox.
 
 # scoring (operator)

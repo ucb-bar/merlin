@@ -20,7 +20,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[3]
 PY = sys.executable
 REF = REPO / "artifacts/targets/gemmini/agent_spec_v1_mlir_oot"
-CE = "/scratch2/agustin/chipyard/.conda-env"
+CE = "/path/to/chipyard/.conda-env"
 results = []
 
 

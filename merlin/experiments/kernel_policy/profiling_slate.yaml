@@ -9,8 +9,8 @@ version: 1
 
 environment:
   # Resolved via env vars so the slate stays machine-portable. Discovered local defaults:
-  #   MERLIN_CHIPYARD=/scratch/agustin/projects/chipyard          (spike 1.1.1-dev + libgemmini)
-  #   alternate:       /scratch2/agustin/chipyard                 (has PREBUILT rocc-tests in
+  #   MERLIN_CHIPYARD=/path/to/chipyard          (spike 1.1.1-dev + libgemmini)
+  #   alternate:       /path/to/chipyard                 (has PREBUILT rocc-tests in
   #                    generators/gemmini/software/gemmini-rocc-tests/build/)
   spike: "$MERLIN_CHIPYARD/.conda-env/riscv-tools/bin/spike"
   gemmini_extension: "--extension=gemmini"   # libgemmini.so ships in the same conda env

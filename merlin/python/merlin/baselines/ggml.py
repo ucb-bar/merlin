@@ -313,7 +313,7 @@ def convert_to_gguf(model: str, *, outtype: str = "f16", timeout: int = 1200) ->
         return out
     out.parent.mkdir(parents=True, exist_ok=True)
     py = os.environ.get("MERLIN_GGUF_PYTHON",
-                        "/scratch/agustin/projects/model2MLIR/.venv/bin/python")
+                        "/path/to/model2MLIR/.venv/bin/python")
     if not Path(py).is_file():
         raise GgmlError(f"GGUF-conversion python not found: {py} (set MERLIN_GGUF_PYTHON)")
     conv = _LLAMA_SRC / "convert_hf_to_gguf.py"

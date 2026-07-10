@@ -11,13 +11,13 @@ set +e
 MANIFEST="$1"; OUTDIR="$2"; RUNTIMEOUT="${3:-300}"; CFG="$4"
 CFGARG=""; [ -n "$CFG" ] && CFGARG="-c $CFG"
 unset CONDA_PREFIX CONDA_DEFAULT_ENV CONDA_PROMPT_MODIFIER CONDA_PYTHON_EXE CONDA_SHLVL CONDA_EXE _CE_M _CE_CONDA
-export PATH=/scratch2/agustin/miniforge3/condabin:$PATH
-source /scratch2/agustin/chipyard/env.sh
-cd /scratch2/agustin/chipyard/sims/firesim || exit 2
+export PATH=/path/to/miniforge3/condabin:$PATH
+source /path/to/chipyard/env.sh
+cd /path/to/chipyard/sims/firesim || exit 2
 source ./sourceme-manager.sh --skip-ssh-setup
 cd deploy || exit 2
 
-SLOT=/scratch2/agustin/FIRESIM_RUNS_DIR/sim_slot_0
+SLOT=/path/to/FIRESIM_RUNS_DIR/sim_slot_0
 BOOT="$SLOT/merlin-perfbench0-merlin-perfbench.elf"   # TSI loader's view (prefixed)
 WLBIN="workloads/merlin-perfbench/merlin-perfbench.elf"
 mkdir -p "$OUTDIR" "$SLOT"

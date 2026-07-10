@@ -16,7 +16,7 @@ from __future__ import annotations
 import re, subprocess, sys
 from pathlib import Path
 
-OBJDUMP = "/scratch2/agustin/chipyard/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump"
+OBJDUMP = "/path/to/chipyard/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump"
 CUSTOM = {0x0b: "custom-0", 0x2b: "custom-1", 0x5b: "custom-2", 0x7b: "custom-3 (gemmini RoCC)"}
 
 

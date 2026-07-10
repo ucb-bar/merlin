@@ -36,19 +36,19 @@ import yaml
 
 import _pbcommon as PB
 
-MERLIN = Path("/scratch2/agustin/merlin")          # DEPRECATED IREE-based merlin (NOT oscar-merlin)
+MERLIN = Path("/path/to/merlin-iree")          # DEPRECATED IREE-based merlin (NOT oscar-merlin)
 BUILD = MERLIN / "build" / "firesim-merlin-release"
 FIXTURES = MERLIN / "tests" / "integration" / "gemmini_spike" / "fixtures"
 RUNNER_TARGET = "bench_gemmini_spike_matmul"
 ELF = (BUILD / "runtime/plugins/merlin-samples/SaturnOPU/simple_embedding_ukernel"
        / "bench_gemmini_spike_matmul")
-SPIKE = Path("/scratch2/agustin/chipyard/.conda-env/riscv-tools/bin/spike")
+SPIKE = Path("/path/to/chipyard/.conda-env/riscv-tools/bin/spike")
 SPIKE_ISA = "rv64gcv_zicntr_zihpm"                  # zicntr enables rdcycle for the cycle metric
 
 BUILD_ENV = {
     **os.environ,
     "RISCV_TOOLCHAIN_ROOT": str(MERLIN / "build_tools/riscv-tools-iree/toolchain/clang/linux/RISCV"),
-    "RISCV_NEWLIB_SYSROOT": "/scratch2/agustin/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf",
+    "RISCV_NEWLIB_SYSROOT": "/path/to/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf",
 }
 
 FIXTURE_TMPL = """\

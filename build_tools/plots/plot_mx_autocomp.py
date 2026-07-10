@@ -29,7 +29,7 @@ _ROOT = _repo_root()
 
 use_merlin_style()
 
-BUNDLE = "/scratch/agustin/projects/chipyard-mx/generators/gemmini/mx-autocomp/bundle"
+BUNDLE = "/path/to/chipyard-mx/generators/gemmini/mx-autocomp/bundle"
 OUT = str(_ROOT / "artifacts/presentation/mx_autocomp")
 os.makedirs(OUT, exist_ok=True)
 

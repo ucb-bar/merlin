@@ -8,7 +8,7 @@ events are counted from the commit log: Gemmini commands by decoding the custom-
 fences textually. Spike is functional — counts are events, never cycles.
 
 Usage:
-  MERLIN_CHIPYARD=/scratch2/agustin/chipyard \
+  MERLIN_CHIPYARD=/path/to/chipyard \
   python run_l2.py --insight resident_rhs|accumulator_commit|dispatch_batching|vl_tail|all
 """
 from __future__ import annotations
@@ -61,7 +61,7 @@ INSIGHTS = {
 
 
 def env_paths() -> dict[str, Path]:
-    cy = Path(os.environ.get("MERLIN_CHIPYARD", "/scratch2/agustin/chipyard"))
+    cy = Path(os.environ.get("MERLIN_CHIPYARD", "/path/to/chipyard"))
     tools = cy / ".conda-env" / "riscv-tools"
     return {
         "gcc": tools / "bin" / "riscv64-unknown-elf-gcc",

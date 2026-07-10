@@ -23,8 +23,8 @@ Built from `third_party/llvm-project` (the `runtimes/` superproject — the lega
 the clang-23 model object in the final merlin build.
 
 ```bash
-SM=/scratch2/agustin/merlin/build_tools/riscv-tools-spacemit/spacemit-toolchain-linux-glibc-x86_64-v1.1.2
-cmake -G Ninja -S third_party/llvm-project/runtimes -B /scratch/agustin/tmp/k1_libomp_build \
+SM=/path/to/merlin-iree/build_tools/riscv-tools-spacemit/spacemit-toolchain-linux-glibc-x86_64-v1.1.2
+cmake -G Ninja -S third_party/llvm-project/runtimes -B /path/to/tmp/k1_libomp_build \
   -DLLVM_ENABLE_RUNTIMES=openmp \
   -DCMAKE_C_COMPILER=$SM/bin/clang -DCMAKE_CXX_COMPILER=$SM/bin/clang++ \
   -DCMAKE_C_COMPILER_TARGET=riscv64-unknown-linux-gnu \
@@ -35,8 +35,8 @@ cmake -G Ninja -S third_party/llvm-project/runtimes -B /scratch/agustin/tmp/k1_l
   -DCMAKE_C_COMPILER_WORKS=1 -DCMAKE_CXX_COMPILER_WORKS=1 \
   -DLIBOMP_ENABLE_SHARED=OFF -DOPENMP_ENABLE_LIBOMPTARGET=OFF \
   -DLIBOMP_OMPT_SUPPORT=OFF -DLIBOMP_USE_HWLOC=OFF
-ninja -C /scratch/agustin/tmp/k1_libomp_build omp
-cp /scratch/agustin/tmp/k1_libomp_build/openmp/runtime/src/libomp.a .
+ninja -C /path/to/tmp/k1_libomp_build omp
+cp /path/to/tmp/k1_libomp_build/openmp/runtime/src/libomp.a .
 ```
 
 Final link (handled by `k1.build_k1_binary`): `... libomp.a -lstdc++ -ldl -lm -lpthread`.

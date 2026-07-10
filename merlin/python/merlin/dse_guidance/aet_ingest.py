@@ -3,7 +3,7 @@
 The DSE guidance must never substitute invented constants for measurements. Measured CPU
 coupling (host submit, command encode, sync wait) comes from one of two real sources:
 
-  * an ``aet`` run directory (``/scratch/agustin/projects/aet`` style layout), reading the
+  * an ``aet`` run directory (``/path/to/aet`` style layout), reading the
     canonical collected-metrics file ``metrics/summary_metrics.json`` (flat, dotted keys); or
   * an explicit ``cpu_coupling`` YAML in the schema of the same name (e.g. exported from aet).
 

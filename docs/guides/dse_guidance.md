@@ -133,7 +133,7 @@ that loss hides.
   `blocked_by: missing_calibration`. Fixture: `tests/fixtures/dse_guidance/rdt_recap_fqn/model.mlir`
   (+ `region_attribution.example.yaml`). Caveats: depth=2 (real 1B is 28) and random init — the
   *structure and provenance* are real, the magnitudes are a small-config instance.
-- **Level 2 (long-term, in `model2MLIR` at `/scratch/agustin/projects/model2MLIR`)** — preserve
+- **Level 2 (long-term, in `model2MLIR` at `/path/to/model2MLIR`)** — preserve
   `scf.for`/`scf.while` loops and region cadence in the capture IR itself, so roles need not be
   operator-supplied.
 
@@ -206,7 +206,7 @@ redesign), not measured PPA.
 ## Instrumentation (aet)
 
 Measured / trace-derived evidence comes from the `aet` harness
-(`/scratch/agustin/projects/aet`), never hand-coded constants. The adapter
+(`/path/to/aet`), never hand-coded constants. The adapter
 (`merlin.dse_guidance.aet_ingest`) reads an aet run's canonical metrics file
 `runs/<suite>/<run_id>/metrics/summary_metrics.json` (flat, dotted keys
 `cpu.<regime>.{host_submit_ns,command_encode_ns,sync_wait_ns}`), or an equivalent

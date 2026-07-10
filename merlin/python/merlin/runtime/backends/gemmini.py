@@ -12,7 +12,7 @@ bare-metal harness -> run on an oracle:
 backend is held to). Spike and Verilator run the *exact same ELF*.
 
 Toolchain resolution mirrors ``build_tools/scripts/probe_gemmini_oracle.py``:
-``MERLIN_CHIPYARD`` (default ``/scratch2/agustin/chipyard``), plus optional
+``MERLIN_CHIPYARD`` (default ``/path/to/chipyard``), plus optional
 ``MERLIN_RISCV_GCC`` / ``MERLIN_GEMMINI_SPIKE`` / ``MERLIN_GEMMINI_VERILATOR`` /
 ``MERLIN_GEMMINI_HARNESS_DIR`` overrides.
 """
@@ -29,7 +29,7 @@ from ..metrics import COMMON_METRIC_NAMES
 from ..reference import outputs_match, reference_outputs
 from .gemmini_codegen import generate_driver
 
-DEFAULT_CHIPYARD = "/scratch2/agustin/chipyard"
+DEFAULT_CHIPYARD = "/path/to/chipyard"
 VERILATOR_CONFIG = "GemminiAndOPUShuttleConfig"
 
 ORACLE = {

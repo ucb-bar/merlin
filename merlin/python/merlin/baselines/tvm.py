@@ -124,7 +124,7 @@ def m2m_python() -> Path | None:
 # python deps (onnx/decorator/attrs/...) so the same driver can run there. Override the base dir
 # with ``MERLIN_CAPTURE_VENVS_ROOT``.
 _CAPTURE_VENVS_ROOT = Path(os.environ.get("MERLIN_CAPTURE_VENVS_ROOT",
-                                         "/scratch/agustin/projects"))
+                                         "/path/to"))
 _MODEL_CAPTURE_VENV = {"smolvla": "smolvla_capture", "bitvla": "bitvla_capture", "pi05": "openpi"}
 
 

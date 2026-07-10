@@ -9,7 +9,7 @@ Correctness gate: the parsed outputs must equal
 :func:`merlin.runtime.reference.reference_outputs` — the same oracle the Python
 simulator backend is held to.
 
-Toolchain resolution: ``MERLIN_CHIPYARD`` (default ``/scratch2/agustin/chipyard``),
+Toolchain resolution: ``MERLIN_CHIPYARD`` (default ``/path/to/chipyard``),
 or explicit ``MERLIN_RISCV_GCC`` / ``MERLIN_SPIKE`` overrides.
 """
 from __future__ import annotations
@@ -25,7 +25,7 @@ from ..metrics import COMMON_METRIC_NAMES
 from ..reference import outputs_match, reference_outputs
 from .rvv_codegen import generate_driver
 
-DEFAULT_CHIPYARD = "/scratch2/agustin/chipyard"
+DEFAULT_CHIPYARD = "/path/to/chipyard"
 DEFAULT_ISA = "rv64gcv_zfh_zvfh"
 
 HARNESS_FILES = ("crt.S", "htif.c", "libc_min.c", "rvv_matmul_i8.S")

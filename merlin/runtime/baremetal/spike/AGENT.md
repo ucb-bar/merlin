@@ -30,4 +30,4 @@ Merlin-owned bare-metal harness for running command buffers on **spike** as a mu
 
 ## Notes for future agents
 
-Toolchain resolution lives in `backends/spike.py` (`MERLIN_CHIPYARD`, default `/scratch2/agustin/chipyard`). The trap handler encodes failures as exit code `0x1000 | (mcause << 1) | 1`.
+Toolchain resolution lives in `backends/spike.py` (`MERLIN_CHIPYARD`, default `/path/to/chipyard`). The trap handler encodes failures as exit code `0x1000 | (mcause << 1) | 1`.

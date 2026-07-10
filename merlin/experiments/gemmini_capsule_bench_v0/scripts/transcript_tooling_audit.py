@@ -38,8 +38,8 @@ CONTAMINANTS = {
     "scratch2_refcode":     re.compile(
         r"/scratch2/(?!agustin/chipyard/generators/gemmini\b)"
         r"(?!agustin/merlin/build/host-merlin-release/install/(?:bin|lib/clang)\b)[^ \"']+"),
-    # any OTHER project under /scratch/agustin/projects (anything that is not this repo)
-    "other_project_scratch": re.compile(r"/scratch/agustin/projects/(?!oscar-merlin\b)[^ \"']+"),
+    # any OTHER project under /path/to (anything that is not this repo)
+    "other_project_scratch": re.compile(r"/path/to/(?!oscar-merlin\b)[^ \"']+"),
 }
 # HARD CHEATS (realistic experiment): copying a pre-existing backend or reading golden outputs is
 # disqualifying. These are detected on top of the chmod-000 lockdown (defence-in-depth).

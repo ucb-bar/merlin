@@ -48,7 +48,7 @@ def test_weights_pack_against_real_manifest():
 
     from merlin.llvmlower.weights_pack import emit_c_table, pack
 
-    base = Path("/scratch/agustin/projects/model2MLIR/workloads/smolvla")
+    base = Path("/path/to/model2MLIR/workloads/smolvla")
     if not (base / "smolvla_int8.safetensors").is_file():
         pytest.skip("smolVLA int8 artifact not present")
     from merlin.llvmlower.weights_pack import missing_buffers

@@ -42,7 +42,7 @@ per-insight pairs, metrics, and mechanical act/park/skip criteria.
 **Toolchain (Spike + Gemmini functional model)** — already present on this host via Chipyard:
 
 ```bash
-export MERLIN_CHIPYARD=/scratch/agustin/projects/chipyard   # or /scratch2/agustin/chipyard
+export MERLIN_CHIPYARD=/path/to/chipyard   # or /path/to/chipyard
 SPIKE=$MERLIN_CHIPYARD/.conda-env/riscv-tools/bin/spike      # Spike 1.1.1-dev
 GCC=$MERLIN_CHIPYARD/.conda-env/riscv-tools/bin/riscv64-unknown-elf-gcc
 ROCC=$MERLIN_CHIPYARD/generators/gemmini/software/gemmini-rocc-tests
@@ -50,7 +50,7 @@ ROCC=$MERLIN_CHIPYARD/generators/gemmini/software/gemmini-rocc-tests
 # Gemmini spike model = libgemmini.so (built from generators/gemmini/software/libgemmini,
 # installed in the same conda env), loaded with:
 $SPIKE --extension=gemmini $ROCC/build/bareMetalC/tiled_matmul_ws-baremetal
-# (/scratch2/agustin/chipyard has PREBUILT rocc-tests binaries; verified working, dim=16)
+# (/path/to/chipyard has PREBUILT rocc-tests binaries; verified working, dim=16)
 ```
 
 Upstream sources if a fresh checkout is ever needed: Spike = `riscv-software-src/riscv-isa-sim`;

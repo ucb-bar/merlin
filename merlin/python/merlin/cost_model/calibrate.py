@@ -8,7 +8,7 @@ Flow:
      cycles from each variant's events, run the same harness under Verilator, report error
      AND confirm the cost model preserves each insight's act/park decision.
 
-Env: MERLIN_CHIPYARD (default /scratch2/agustin/chipyard). Verilator binary must be built
+Env: MERLIN_CHIPYARD (default /path/to/chipyard). Verilator binary must be built
 for a Gemmini config (GemminiAndOPUShuttleConfig). Slow: ~tens of seconds per RTL run.
 """
 from __future__ import annotations
@@ -35,7 +35,7 @@ KIND = {"mvin": 0, "mvin2": 1, "compute": 2, "mvout": 3, "config": 4, "fence": 5
 
 
 def paths() -> dict:
-    cy = Path(os.environ.get("MERLIN_CHIPYARD", "/scratch2/agustin/chipyard"))
+    cy = Path(os.environ.get("MERLIN_CHIPYARD", "/path/to/chipyard"))
     t = cy / ".conda-env" / "riscv-tools"
     r = cy / "generators" / "gemmini" / "software" / "gemmini-rocc-tests"
     sims = list((cy / "sims" / "verilator").glob("simulator-*Gemmini*"))

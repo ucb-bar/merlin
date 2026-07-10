@@ -27,7 +27,7 @@ EXP = REPO / "merlin" / "experiments" / "gemmini_perf_bench"
 KERNELS = EXP / "kernels"                                  # one capsule dir per kernel + corpus.yaml
 RUNS = runs_root("gemmini", "perf-bench")                  # runs/gemmini/perf-bench
 REPORTS = reports_root("plots", "gemmini", "perf-bench")   # artifacts/plots/gemmini/perf-bench
-MODEL2MLIR = Path("/scratch/agustin/projects/model2MLIR/workloads")  # external corpus (see paths.ext_path)
+MODEL2MLIR = Path("/path/to/model2MLIR/workloads")  # external corpus (see paths.ext_path)
 
 # Gemmini systolic array dimension (16x16 PE) -> peak 256 MACs/cycle. Used for utilization.
 DIM = 16

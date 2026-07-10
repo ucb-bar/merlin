@@ -5,7 +5,7 @@
 # plain ssh — no tracker, no RPC session (which flakes with kShutdown on large .so uploads).
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/../../../../.." && pwd)"
-TC="${MERLIN_SPACEMIT_TC:-/scratch2/agustin/merlin/build_tools/riscv-tools-spacemit/spacemit-toolchain-linux-glibc-x86_64-v1.1.2/bin}"
+TC="${MERLIN_SPACEMIT_TC:-/path/to/merlin-iree/build_tools/riscv-tools-spacemit/spacemit-toolchain-linux-glibc-x86_64-v1.1.2/bin}"
 TVM="$REPO/third_party/baselines/tvm"
 OUT="$REPO/build/baselines/tvm-rv64/board_runner"
 mkdir -p "$OUT"

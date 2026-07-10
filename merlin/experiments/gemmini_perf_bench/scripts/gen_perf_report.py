@@ -101,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
          "",
          "Approaches: **1** golden hand-tuned C lib (`tiled_matmul_auto`); **2** baseline-generated MLIR "
          "(agent_spec_v0); **3** merlin-generated MLIR (agent_spec_v1); **4** the deprecated-merlin "
-         "hand-written C++ Gemmini dialect via IREE (`/scratch2/agustin/merlin`); plus an extra "
+         "hand-written C++ Gemmini dialect via IREE (`/path/to/merlin-iree`); plus an extra "
          "oscar-merlin native RoCC emitter for reference.", ""]
 
     # ---- PERFORMANCE: cycle-accurate = verilator (L3) + FireSim (L5) ----
