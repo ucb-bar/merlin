@@ -16,4 +16,5 @@
 	branch = merlin/relax-onnx-fixes
 [submodule "third_party/baselines/executorch"]
 	path = third_party/baselines/executorch
-	url = https://github.com/pytorch/executorch
+	url = https://github.com/ucb-bar/executorch.git
+	branch = merlin/rv64gcv-mmap-runner
