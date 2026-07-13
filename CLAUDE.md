@@ -1,23 +1,12 @@
-# Working-tree & branch rules for this checkout
+# Repository conventions
 
-## ⚠️ This is a SHARED working directory — one HEAD for ALL Claude Code sessions
-Every Claude Code session running in `/path/to/merlin` shares the **same** `.git`
-and the **same** checked-out HEAD. There is no per-session branch isolation. Therefore:
+This file documents the conventions this repo enforces — the generated-output layout, the test
+layout, and the documentation model. Read it (and the directory-local `AGENT.md` files) before making
+changes; the same gates run in pre-commit and CI.
 
-- **DO NOT switch branches** (`git checkout <branch>` / `git switch <branch>`) to a *different* branch.
-  Switching flips HEAD for **every** concurrent session — it will silently move another session onto a
-  different branch mid-task. This has already caused work to land on an unexpected branch once.
-- **Commit to whatever branch is currently checked out.** Do not create new long-lived branches for
-  parallel work in this same checkout.
-- The two active branch names — `feature/kernel-policy-mining` and `feature/rtl-derived-checks` — are kept
-  pointing at the **same** commit (one linear history; one is not "ahead" of the other in content). Keep
-  committing on the current branch; if you must, fast-forward the *other* name to match afterward so they
-  never drift. Never `git reset`/force-push either in a way that drops commits.
-- If you genuinely need branch isolation, use a **git worktree** (separate directory) instead of switching
-  HEAD in this shared tree.
-
-Rationale: this repo is worked on by multiple concurrent agents. The only safe invariant in a shared
-working tree is "everyone is always on the current HEAD; nobody flips it."
+> Working-tree note: this repo is frequently developed by multiple coding agents against a single
+> working tree. Commit on the currently checked-out branch and avoid switching branches mid-task; use
+> a separate `git worktree` if you need isolation.
 
 # Generated-output convention — one root (`out/`), three subdirs
 
