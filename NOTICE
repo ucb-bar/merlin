@@ -1,0 +1,21 @@
+Merlin
+Copyright 2025-2026 UC Berkeley Architecture Research (UCB-BAR)
+
+This product includes software developed at UC Berkeley Architecture Research (UCB-BAR).
+Licensed under the Apache License, Version 2.0 (the "License"); see the LICENSE file.
+Portions are subject to the LLVM Exceptions and the Assets/Artwork terms in LICENSE.
+
+-------------------------------------------------------------------------------
+Third-party components
+-------------------------------------------------------------------------------
+
+Vendored in-tree:
+
+* gemmini-rocc-tests / rocc-software
+  (merlin/experiments/gemmini_capsule_bench_v0/contracts/harness_curated/gemmini-rocc-tests/)
+  Licensed under the Apache License, Version 2.0; see the LICENSE file within that directory.
+  (The bundled riscv-tests subset is BSD-licensed upstream.)
+
+Consumed via git submodules under third_party/ (NOT vendored; each retains its own license in its
+own repository): LLVM/MLIR, and the cross-framework baselines TVM, ExecuTorch, buddy-mlir, EXO,
+llama.cpp, and the Merlin-IREE baseline.

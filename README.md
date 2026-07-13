@@ -30,6 +30,14 @@ uv run pytest merlin/tests      # run the test suite
 
 (Without uv: `pip install -e '.[dev,xdsl]'`.)
 
+**Cloning & submodules.** The Python package needs no submodules. The heavy trees under
+`third_party/` are opt-in per task: `third_party/llvm-project` is the LLVM monorepo (multi-GB — the
+dominant clone cost) and the cross-framework baselines (`third_party/baselines/{tvm,executorch,
+buddy-mlir,exo,llama.cpp,merlin-iree}`) are only needed for baseline comparisons (`tvm`/`executorch`
+recurse into their own submodules). So a plain `git clone` (no `--recursive`) is enough to start;
+initialize submodules selectively as needed, e.g. `git submodule update --init --depth 1
+third_party/llvm-project`.
+
 The CLI surface is a set of console scripts (full reference: [`docs/reference/cli.md`](docs/reference/cli.md)):
 
 ```text

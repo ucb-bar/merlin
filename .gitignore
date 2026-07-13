@@ -8,6 +8,12 @@ selfcheck_out/
 .qa_channel/
 .oracle_timing.json
 
+# --- Claude Code local config / working memory (never ship; settings.local.json holds a
+#     per-machine permission allow-list; .claude/projects/ is agent scratch that embeds the
+#     local checkout path in its dir name). ---
+/.claude/settings.local.json
+/.claude/projects/
+
 # --- Single-root generated-output convention (see CLAUDE.md "Generated-output convention") ---
 # All generated output lives under a single top-level out/ with subdirs out/{runs,artifacts,build}:
 #   out/runs/      = aet experiment runs
