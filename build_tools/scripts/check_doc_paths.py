@@ -2,19 +2,23 @@
 """Lint docs + AGENT.md for references to RETIRED repo paths (living-docs anti-drift).
 
 Not a general path-exists checker (that would false-positive on globs, illustrative
-paths, and not-yet-generated ``artifacts/``/``runs/`` outputs). Instead a precise
+paths, and not-yet-generated ``out/artifacts/``/``out/runs/`` outputs). Instead a precise
 **deny-list** of paths that were deleted or deprecated in the repo reorg — a doc that
 still points at one is stale and will mislead agents.
+
+Generated output now lives under a single ``out/`` root (``out/runs/``, ``out/artifacts/``,
+``out/build/``); the bare top-level ``runs/``/``artifacts/``/``build/`` are NOT deny-listed
+(that would false-positive on the ``out/…`` paths).
 
 Retired tokens (see CLAUDE.md "Generated-output convention" + docs/design/):
   - ``merlin/compiler/``       -> future C++ plane, not built (docs/design/compiler_plane.md)
   - ``merlin/integrations/``   -> adapters live in-package (docs/design/integrations.md)
-  - ``generated_targets/``     -> folded into artifacts/targets/
-  - ``mined_knowledge/``       -> folded into artifacts/kernel-mining/
-  - ``output/<sub>/`` write targets -> deprecated; use artifacts/ or runs/
-  - ``results/<sub>/`` write targets -> retired; use artifacts/ or runs/
-  - ``selfcheck_out/``         -> folded into artifacts/selfcheck/
-  - ``docs/presentation/``     -> folded into artifacts/presentation/
+  - ``generated_targets/``     -> folded into out/artifacts/targets/
+  - ``mined_knowledge/``       -> folded into out/artifacts/kernel-mining/
+  - ``output/<sub>/`` write targets -> deprecated; use out/artifacts/ or out/runs/
+  - ``results/<sub>/`` write targets -> retired; use out/artifacts/ or out/runs/
+  - ``selfcheck_out/``         -> folded into out/artifacts/selfcheck/
+  - ``docs/presentation/``     -> folded into out/artifacts/presentation/
 
 A line is EXEMPT if it documents the retirement itself (contains one of the
 allow-words below) — that's how the design notes + repo_structure.md legitimately
@@ -71,12 +75,12 @@ def _match_retired(line: str, needle: str, pre: str | None, post: str | None) ->
 RETIRED = [
     ("merlin/compiler", None, "wb", "retired tree merlin/compiler/ (see docs/design/compiler_plane.md)"),
     ("merlin/integrations", None, "wb", "retired tree merlin/integrations/ (see docs/design/integrations.md)"),
-    ("generated_targets/", "wb", None, "retired generated_targets/ -> artifacts/targets/"),
-    ("mined_knowledge/", "wb", None, "retired mined_knowledge/ -> artifacts/kernel-mining/"),
-    ("output/", "pb", "need_word", "deprecated output/ write target -> artifacts/ or runs/"),
-    ("results/", "pb", "need_word", "retired results/ write target -> artifacts/ or runs/"),
-    ("selfcheck_out/", "wb", None, "retired selfcheck_out/ -> artifacts/selfcheck/"),
-    ("docs/presentation/", "wb", None, "retired docs/presentation/ -> artifacts/presentation/"),
+    ("generated_targets/", "wb", None, "retired generated_targets/ -> out/artifacts/targets/"),
+    ("mined_knowledge/", "wb", None, "retired mined_knowledge/ -> out/artifacts/kernel-mining/"),
+    ("output/", "pb", "need_word", "deprecated output/ write target -> out/artifacts/ or out/runs/"),
+    ("results/", "pb", "need_word", "retired results/ write target -> out/artifacts/ or out/runs/"),
+    ("selfcheck_out/", "wb", None, "retired selfcheck_out/ -> out/artifacts/selfcheck/"),
+    ("docs/presentation/", "wb", None, "retired docs/presentation/ -> out/artifacts/presentation/"),
 ]
 
 # A line naming a retired path only to say it's retired is fine.

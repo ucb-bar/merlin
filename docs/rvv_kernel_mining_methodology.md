@@ -1,3 +1,13 @@
+---
+title: RVV kernel-mining methodology
+kind: reference
+status: current
+owner: kernels
+last_verified: 2026-07-10
+related: [kernel_mining, dse]
+code_refs: [merlin/python/merlin/rvvgen, merlin/python/merlin/kernels]
+---
+
 # Kernel-Mining → Compiler-Improvement: Methodology
 
 *How we mine what expert kernels do, abstract it into target-agnostic structure, route it to
@@ -5,7 +15,8 @@ concrete compiler knobs, search the knob space with beam search, and certify eve
 frozen baseline — with the split between deterministic tooling and LLM/agent stages made explicit.*
 
 > Scope. This document is the **methodology and architecture** companion to the results writeups
-> (`docs/rvv_kernel_mining_results.md`, `artifacts/ceiling/RESULTS.md`). It describes *how the
+> (the generated evidence report the `merlin-rvv-report` CLI writes under
+> `out/artifacts/kernel-mining/rvv/`, and `out/artifacts/ceiling/RESULTS.md`). It describes *how the
 > system works and how the artifacts interact*, not the measured numbers. RVV is the testbed; every
 > abstraction is target-agnostic by construction (§9).
 
@@ -395,11 +406,11 @@ versioned directory with a manifest whose `lineage` records `parent_run_id: hand
 justified it):
 
 ```
-artifacts/targets/rvv/
+out/artifacts/targets/rvv/
   hand_v0/                       # immutable baseline; status=shipped; features=[]
   impr_auto_1_<ts>/              # fork; parent_run_id=hand_v0; features=[fused_vfmacc_contraction,…]
   rvv_tuned_v1_d1_<ts>/          # beam fork: v=generation, d=beam depth
-artifacts/kernel-mining/rvv/
+out/artifacts/kernel-mining/rvv/
   mining_rvv_v{V}_{ts}/          # CCAs, agreement report, divergences, action catalog
 ```
 
@@ -844,7 +855,7 @@ drives the *performance* search (rank real silicon wall-time once features exist
 
 ### 12.2 Input files — what the beam reads
 
-- **Seed package** `artifacts/targets/rvv/hand_v0/` — the frozen baseline: `schedule.mlir`,
+- **Seed package** `out/artifacts/targets/rvv/hand_v0/` — the frozen baseline: `schedule.mlir`,
   `knobs.yaml`, `manifest.yaml`. Every search starts here and **never edits it**.
 - **The feature registry** `llvmlower/impr_features.py` — the default-off features a node may enable.
 - **The route table** `kernels/rvv_knobs.py::_ROUTES` — divergence-key → lever(s) (the deterministic
@@ -929,7 +940,7 @@ gate philosophy.)
 
 ### 12.7 Outputs — the real artifacts
 
-A run writes a versioned dir `artifacts/kernel-mining/rvv/beam_rvv_v{V}_{ts}/` containing a `beam_summary.yaml`
+A run writes a versioned dir `out/artifacts/kernel-mining/rvv/beam_rvv_v{V}_{ts}/` containing a `beam_summary.yaml`
 (per-model winner) and a `ranking_<model>.yaml` per model. **Real excerpt**
 (`beam_rvv_v2_20260619T132435/ranking_bitvla.yaml`) — note a survivor *and* a killed node with its
 honest blocker:
@@ -960,7 +971,7 @@ ranked:
 The knob-merge beam additionally writes `beam_tree.yaml` (`generations[]` with per-gen survivors,
 `best`, `ranked`, and a `deferred_work_items[]` list for `forkable=False` branches — the explicit
 "next compiler feature to build"). These files are the input to fig6 (the beam tree) and the results
-dashboard. Each node's `package_dir` points at its `artifacts/targets/rvv/<run_id>/` fork
+dashboard. Each node's `package_dir` points at its `out/artifacts/targets/rvv/<run_id>/` fork
 (schedule.mlir + knobs.yaml + manifest with `lineage.parent_run_id`), so a node is fully reproducible.
 
 ---

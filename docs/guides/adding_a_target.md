@@ -3,7 +3,7 @@ title: Adding a target
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-07-07
+last_verified: 2026-07-10
 related: [targetgen, generated_target_repos]
 code_refs: [merlin/python/merlin/targetgen]
 ---
@@ -20,7 +20,7 @@ repos or MLIR plugins.
    `docs/` / `examples/` only when you have real content — no empty stub dirs. The shared
    `merlin_iface` dialect spec is NOT per-target (it lives in `merlin/contract/`). RTL-grounded
    targets get a promoted `contracts/rtl_facts/facts.json` pin (see
-   `merlin.targetgen.rtl.circt_introspect --promote`); scratch stays in `artifacts/cache/`.
+   `merlin.targetgen.rtl.circt_introspect --promote`); scratch stays in `out/artifacts/cache/`.
 2. Write `contracts/target_contract.yaml` (validate against
    `merlin/schemas/target_contract.schema.yaml`). If it advertises the tensor-resident interface
    (`features: [resident_packed_tensor|accumulator_commit, command_buffer]`, a `matmul` capability,
@@ -30,7 +30,7 @@ repos or MLIR plugins.
    canonical), and `xdsl_dialects.targets.factory.build_dialect(name, plan=...)` synthesizes the IRDL
    op/type classes from that plan — no per-target dialect module. The target registry
    (`merlin.targetgen.target_registry`) resolves name → contract/plan/facts/backend. Run the
-   `merlin-targetgen` CLI to write the codegen package to `artifacts/targets/<name>/`.
+   `merlin-targetgen` CLI to write the codegen package to `out/artifacts/targets/<name>/`.
 4. **What you still hand-write: the hardware backend.** The dialect + plan + lowering are generated,
    but the runtime **backend** (`merlin/python/merlin/runtime/backends/<name>*.py` — the real
    C/ISA codegen + execution) is not mechanizable and must be authored per target. This is the

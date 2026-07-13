@@ -3,7 +3,7 @@ title: DSE guidance
 kind: guide
 status: current
 owner: dse
-last_verified: 2026-07-07
+last_verified: 2026-07-10
 related: [dse, design_pressure]
 code_refs: [merlin/python/merlin/dse_guidance]
 ---
@@ -208,7 +208,7 @@ redesign), not measured PPA.
 Measured / trace-derived evidence comes from the `aet` harness
 (`/path/to/aet`), never hand-coded constants. The adapter
 (`merlin.dse_guidance.aet_ingest`) reads an aet run's canonical metrics file
-`runs/<suite>/<run_id>/metrics/summary_metrics.json` (flat, dotted keys
+`out/runs/<suite>/<run_id>/metrics/summary_metrics.json` (flat, dotted keys
 `cpu.<regime>.{host_submit_ns,command_encode_ns,sync_wait_ns}`), or an equivalent
 `cpu_coupling` YAML. When neither is supplied, the tool reports
 
@@ -236,10 +236,10 @@ must therefore be charged component-specifically:
 
 ## Calibration finding (read this before trusting magnitudes)
 
-Calibrating against the real FireSim FASED cycle sweep (6 models, `artifacts/compare/results.md`) gives a
+Calibrating against the real FireSim FASED cycle sweep (6 models, `out/artifacts/compare/results.md`) gives a
 fitted **≈ 99 cycles/MAC** (median over the 4 parseable, consistent models — tiny_llama, rdt2,
 openvla, small_llama), at **MAPE ≈ 32 %**. See
-`artifacts/dse-guidance/study_models/cost_calibration.md`. Two honest takeaways:
+`out/artifacts/dse-guidance/study_models/cost_calibration.md`. Two honest takeaways:
 
 - A single cycles/MAC constant is a *crude* whole-model predictor — usable as analytical ordering,
   not as a validated magnitude (32 % error, and small_llama is 88 % off because fixed overheads
@@ -284,7 +284,7 @@ executor), not the deployable C runtime — so no speedup is claimed.
 | Quantity | Status |
 |---|---|
 | Which axes flat hides (legality flip) | structural — robust, definitional given the K-loop |
-| FASED cycle totals (6 models) | **measured** (FireSim, `artifacts/compare/results.md`) |
+| FASED cycle totals (6 models) | **measured** (FireSim, `out/artifacts/compare/results.md`) |
 | cycles/MAC fit (≈99, MAPE 32%) | **calibrated** — crude whole-model anchor; xr0 a 1123× outlier |
 | Per-model cost components | analytical (placeholder constants, uncalibrated) |
 | Region roles (backbone/head) | **recovered from `prov.fqn`** for freshly-captured models; operator-mapped or `unknown` for pre-`prov.fqn` captures |
@@ -309,21 +309,21 @@ merlin-dse-guidance \
   --temporal-metadata merlin/python/tests/fixtures/dse_guidance/smolvla_action_head_temporal.yaml \
   --baseline-cost     merlin/python/tests/fixtures/dse_guidance/smolvla_action_head_cost.yaml \
   --aet-run           merlin/python/tests/fixtures/dse_guidance/aet_run \
-  --out artifacts/dse-guidance/smolvla_action_head/
+  --out out/artifacts/dse-guidance/smolvla_action_head/
 ```
 
 Exhaustive study across the design-pressure `semantic_memory` regions (synthesizes an
 analytical baseline + temporal view from each region's reuse):
 
 ```bash
-merlin-dse-guidance --study --out artifacts/dse-guidance/study/
+merlin-dse-guidance --study --out out/artifacts/dse-guidance/study/
 ```
 
 Cross-workload provenance case study over the **real `prov.fqn` recaptures** (the breadth
 result — rdt, openvla, small_llama, tiny_llama; not overfit to one):
 
 ```bash
-merlin-dse-guidance --case-study --out artifacts/dse-guidance/case_study/
+merlin-dse-guidance --case-study --out out/artifacts/dse-guidance/case_study/
 ```
 
 Reads `merlin/benchmarks/dse_guidance/recaptures/<workload>/model.mlir` (real architectures via
@@ -335,14 +335,14 @@ LM-decode split is recovered; every candidate stays `blocked_by: missing_calibra
 copy lives at `merlin/benchmarks/dse_guidance/case_study/`.
 
 Exhaustive study across the **real model zoo** — every captured workload under
-`artifacts/recaptures/<model>_<dtype>_consistent/model.mlir` (smolvla, openvla, pi05, rdt/rdt2, groot,
+`out/artifacts/recaptures/<model>_<dtype>_consistent/model.mlir` (smolvla, openvla, pi05, rdt/rdt2, groot,
 molmoact, bitvla, xr0, the llama LMs):
 
 ```bash
-merlin-dse-guidance --study --models --out artifacts/dse-guidance/study_models/
+merlin-dse-guidance --study --models --out out/artifacts/dse-guidance/study_models/
 ```
 
-This is the headline demonstration. `artifacts/compare/results.md` records that **whole-model captures use
+This is the headline demonstration. `out/artifacts/compare/results.md` records that **whole-model captures use
 each weight once — they emit 0 contract facts**: the capture is flat and hides the host-side
 decode/denoise loop. The model study reads each `model.mlir` for aggregate structural facts
 (matmul count, MACs, weight vs activation bytes — `analytical`), applies the architecture's
@@ -366,7 +366,7 @@ merlin-dse-guidance --temporal-metadata <topology.yaml> --structural-only --out 
 ### Output
 
 ```
-artifacts/dse-guidance/<workload>/
+out/artifacts/dse-guidance/<workload>/
   # structural front-end (always)
   vla_runtime_topology.yaml
   capture_fidelity_report.md / capture_fidelity.yaml
@@ -384,8 +384,8 @@ artifacts/dse-guidance/<workload>/
   calibration_anchor.csv   # only when a measurement was supplied
   negative_control_report.md   # for no-reuse (K=1) workloads
   figures/                 # optional (matplotlib): axis_triage / bottleneck / flat_vs_multirate
-artifacts/dse-guidance/study/         # --study (semantic_memory regions)
-artifacts/dse-guidance/study_models/  # --study --models (real model zoo)
+out/artifacts/dse-guidance/study/         # --study (semantic_memory regions)
+out/artifacts/dse-guidance/study_models/  # --study --models (real model zoo)
   study_summary.csv
   study_summary.md         # per-workload top axis + cross-workload axis ranking + representation flips
   <workload>/...

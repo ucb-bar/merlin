@@ -10,8 +10,9 @@ Do not edit by hand — run the generator (it's `--check`ed by `check_structure.
 - **Running something?** [Getting started](guides/getting_started.md) →
   the [CLI reference](reference/cli.md) → the relevant guide below.
 - **Writing generated output?** See `CLAUDE.md` "Generated-output convention" and the
-  `artifact-layout` skill (three roots only: `runs/`, `artifacts/`, `build/`).
-- **Point-in-time reports** (results, findings, status snapshots) do not live here — they live under `artifacts/`.
+  `artifact-layout` skill (one root only: `out/`, with three subdirs `out/runs/`, `out/artifacts/`,
+  `out/build/`).
+- **Point-in-time reports** (results, findings, status snapshots) do not live here — they live under `out/artifacts/`.
 
 Each entry shows **status** and **last-verified** date; `⚠` flags a doc whose `last_verified`
 predates the newest change to the code it documents (see `check_docs_freshness.py`).
@@ -31,23 +32,25 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - [Plotting house style](reference/plot_style.md) — `current`, verified 2026-07-07 · owner: plotting
 - [Repository structure](reference/repo_structure.md) — `current`, verified 2026-07-07 · owner: core — see also: [architecture](reference/architecture.md)
 - [Runtime](reference/runtime.md) — `current`, verified 2026-07-07 · owner: runtime — see also: [zephyr](guides/zephyr.md)
+- [RVV kernel-mining methodology](rvv_kernel_mining_methodology.md) — `current`, verified 2026-07-10 · owner: kernels — see also: [kernel_mining](guides/kernel_mining.md), [dse](guides/dse.md)
 - [Schema reference](reference/schemas.md) — `generated` · owner: tooling
 - [xDSL prototyping plane](reference/xdsl.md) — `current`, verified 2026-07-07 · owner: ir — see also: [dialects](reference/dialects.md), [core_dialects](reference/core_dialects.md)
 
 ## Guides
 
-- [Adding a target](guides/adding_a_target.md) — `current`, verified 2026-07-07 · owner: targetgen — see also: [targetgen](guides/targetgen.md), [generated_target_repos](reference/generated_target_repos.md)
+- [Adding a target](guides/adding_a_target.md) — `current`, verified 2026-07-10 · owner: targetgen — see also: [targetgen](guides/targetgen.md), [generated_target_repos](reference/generated_target_repos.md)
 - [Compilation strategies](guides/compilation_strategies.md) — `current`, verified 2026-07-07 · owner: dse — see also: [dse](guides/dse.md), [lowering_pipeline](reference/lowering_pipeline.md)
-- [Design pressure](guides/design_pressure.md) — `current`, verified 2026-07-07 · owner: design_pressure — see also: [dse](guides/dse.md)
-- [Design-space exploration](guides/dse.md) — `current`, verified 2026-07-07 · owner: dse — see also: [search](guides/search.md), [compilation_strategies](guides/compilation_strategies.md), [design_pressure](guides/design_pressure.md)
-- [DSE guidance](guides/dse_guidance.md) — `current`, verified 2026-07-07 · owner: dse — see also: [dse](guides/dse.md), [design_pressure](guides/design_pressure.md)
+- [Design pressure](guides/design_pressure.md) — `current`, verified 2026-07-10 · owner: design_pressure — see also: [dse](guides/dse.md)
+- [Design-space exploration](guides/dse.md) — `current`, verified 2026-07-10 · owner: dse — see also: [search](guides/search.md), [compilation_strategies](guides/compilation_strategies.md), [design_pressure](guides/design_pressure.md)
+- [DSE guidance](guides/dse_guidance.md) — `current`, verified 2026-07-10 · owner: dse — see also: [dse](guides/dse.md), [design_pressure](guides/design_pressure.md)
 - [Getting started](guides/getting_started.md) — `current`, verified 2026-07-07 · owner: core — see also: [architecture](reference/architecture.md), [repo_structure](reference/repo_structure.md), [dse](guides/dse.md), [kernel_mining](guides/kernel_mining.md), [targetgen](guides/targetgen.md)
 - [Integrations](guides/integrations.md) — `current`, verified 2026-07-07 · owner: kernels — see also: [kernel_mining](guides/kernel_mining.md)
-- [Kernel abstraction mining](guides/kernel_mining.md) — `current`, verified 2026-07-07 · owner: kernels — see also: [integrations](guides/integrations.md), [dse](guides/dse.md)
+- [Kernel abstraction mining](guides/kernel_mining.md) — `current`, verified 2026-07-10 · owner: kernels — see also: [integrations](guides/integrations.md), [dse](guides/dse.md), [rvv_kernel_mining_methodology](rvv_kernel_mining_methodology.md)
 - [LLVM integration](guides/llvm_integration.md) — `current`, verified 2026-07-07 · owner: runtime — see also: [lowering_pipeline](reference/lowering_pipeline.md)
-- [model2MLIR frontend](guides/model2mlir.md) — `current`, verified 2026-07-07 · owner: frontends — see also: [lowering_pipeline](reference/lowering_pipeline.md)
+- [model2MLIR frontend](guides/model2mlir.md) — `current`, verified 2026-07-10 · owner: frontends — see also: [lowering_pipeline](reference/lowering_pipeline.md), [reproducibility](guides/reproducibility.md)
+- [Reproducibility & core workflows](guides/reproducibility.md) — `current`, verified 2026-07-10 · owner: targetgen — see also: [getting_started](guides/getting_started.md), [adding_a_target](guides/adding_a_target.md), [kernel_mining](guides/kernel_mining.md), [dse](guides/dse.md), [model2mlir](guides/model2mlir.md)
 - [Search policy](guides/search.md) — `current`, verified 2026-07-07 · owner: dse — see also: [dse](guides/dse.md)
-- [Target generation](guides/targetgen.md) — `current`, verified 2026-07-07 · owner: targetgen — see also: [adding_a_target](guides/adding_a_target.md), [experiment_abi](reference/experiment_abi.md), [generated_target_repos](reference/generated_target_repos.md)
+- [Target generation](guides/targetgen.md) — `current`, verified 2026-07-10 · owner: targetgen — see also: [adding_a_target](guides/adding_a_target.md), [experiment_abi](reference/experiment_abi.md), [generated_target_repos](reference/generated_target_repos.md)
 - [Zephyr runtime backend](guides/zephyr.md) — `current`, verified 2026-07-07 · owner: runtime — see also: [runtime](reference/runtime.md)
 
 ## Design notes
@@ -64,12 +67,8 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - **dse** — [Compilation strategies](guides/compilation_strategies.md), [Design-space exploration](guides/dse.md), [DSE guidance](guides/dse_guidance.md), [Search policy](guides/search.md)
 - **frontends** — [model2MLIR frontend](guides/model2mlir.md)
 - **ir** — [Contracts](reference/contracts.md), [Core dialects](reference/core_dialects.md), [Dialects](reference/dialects.md), [Lowering pipeline](reference/lowering_pipeline.md), [xDSL prototyping plane](reference/xdsl.md)
-- **kernels** — [Design note: integration adapters](design/integrations.md), [Integrations](guides/integrations.md), [Kernel abstraction mining](guides/kernel_mining.md)
+- **kernels** — [Design note: integration adapters](design/integrations.md), [Integrations](guides/integrations.md), [Kernel abstraction mining](guides/kernel_mining.md), [RVV kernel-mining methodology](rvv_kernel_mining_methodology.md)
 - **plotting** — [Plotting house style](reference/plot_style.md)
 - **runtime** — [LLVM integration](guides/llvm_integration.md), [Runtime](reference/runtime.md), [Zephyr runtime backend](guides/zephyr.md)
-- **targetgen** — [Adding a target](guides/adding_a_target.md), [Experiment ABI](reference/experiment_abi.md), [Generated target repositories](reference/generated_target_repos.md), [Target generation](guides/targetgen.md)
+- **targetgen** — [Adding a target](guides/adding_a_target.md), [Experiment ABI](reference/experiment_abi.md), [Generated target repositories](reference/generated_target_repos.md), [Reproducibility & core workflows](guides/reproducibility.md), [Target generation](guides/targetgen.md)
 - **tooling** — [CLI reference](reference/cli.md), [Package module index](reference/module_index.md), [Schema reference](reference/schemas.md)
-
-## Uncategorized (needs front-matter or relocation to artifacts/)
-
-- [rvv_kernel_mining_methodology.md](rvv_kernel_mining_methodology.md)
