@@ -3,7 +3,7 @@ title: Design pressure
 kind: guide
 status: current
 owner: design_pressure
-last_verified: 2026-07-07
+last_verified: 2026-07-10
 related: [dse]
 code_refs: [merlin/python/merlin/design_pressure]
 ---
@@ -40,4 +40,4 @@ conversions, intermediate write bytes, dispatch count, work per dispatch
 
 ## Tool
 
-the `merlin-design-pressure` CLI (writes to `artifacts/design-pressure/<workload>/`).
+the `merlin-design-pressure` CLI (writes to `out/artifacts/design-pressure/<workload>/`).

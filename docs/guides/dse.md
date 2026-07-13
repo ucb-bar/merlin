@@ -3,7 +3,7 @@ title: Design-space exploration
 kind: guide
 status: current
 owner: dse
-last_verified: 2026-07-07
+last_verified: 2026-07-10
 related: [search, compilation_strategies, design_pressure]
 code_refs: [merlin/python/merlin/dse]
 ---
@@ -34,7 +34,7 @@ benefit a compiler can actually capture.
 ## Modules / tools
 
 `merlin/python/merlin/dse/`; `tools/dse/`, `tools/exploitability/`
-(write to `artifacts/dse/<workload>/`).
+(write to `out/artifacts/dse/<workload>/`).
 
 ## Must not
 

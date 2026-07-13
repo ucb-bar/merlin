@@ -4,10 +4,10 @@
         --target-name toy_npu \\
         --source-dir merlin/targets/toy_npu/docs \\
         --examples-dir merlin/targets/toy_npu/examples \\
-        --out build/generated/merlin-target-toy-npu \\
+        --out out/build/generated/merlin-target-toy-npu \\
         --emit xdsl,mlir,zephyr,llvm-plan,runtime
 
-    python -m merlin.targetgen.cli inspect --target build/generated/merlin-target-toy-npu
+    python -m merlin.targetgen.cli inspect --target out/build/generated/merlin-target-toy-npu
 
 Deterministic, no LLM calls.
 """

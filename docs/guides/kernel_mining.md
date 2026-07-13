@@ -3,8 +3,8 @@ title: Kernel abstraction mining
 kind: guide
 status: current
 owner: kernels
-last_verified: 2026-07-07
-related: [integrations, dse]
+last_verified: 2026-07-10
+related: [integrations, dse, rvv_kernel_mining_methodology]
 code_refs: [merlin/python/merlin/kernels]
 ---
 
@@ -69,16 +69,16 @@ Sources are external repos passed by path / `MERLIN_<SOURCE>_REPO` env var, neve
 ```bash
 kernel-index   --source {xnnpack|autocomp|exo|openblas|triton|triton_cpu} \
                --repo <path> [--target T] [--json] --out <index.json>
-kernel-extract --inputs "artifacts/kernel-index/*_index.json" \
+kernel-extract --inputs "out/artifacts/kernel-index/*_index.json" \
                --out abstraction_candidates.yaml --policies policy_rules.yaml \
                --report kernel_mining_report.md \
                [--plots] [--json] [--strict] [--min-kernels 10] [--parquet] [--llm-summary]
-kernel-audit   --inputs "artifacts/kernel-index/*_index.json" [--motif M] [--n 8] [--seed 0] \
+kernel-audit   --inputs "out/artifacts/kernel-index/*_index.json" [--motif M] [--n 8] [--seed 0] \
                [--llm-judge] [--json] --out audit_samples.md
 ```
 
 Installed via `[project.scripts]`. Extras: `.[kernels-exo]` (Exo ingest), `.[kernels-parquet]`
-(columnar table), `.[kernels-plots]` (matplotlib). Artifacts land in `artifacts/kernel-mining/`
+(columnar table), `.[kernels-plots]` (matplotlib). Artifacts land in `out/artifacts/kernel-mining/`
 (gitignored). All CLIs support `--json` (machine-readable summary on stdout, human text on
 stderr) so agents and CI can compose them.
 

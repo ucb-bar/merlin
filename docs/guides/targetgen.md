@@ -3,7 +3,7 @@ title: Target generation
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-07-07
+last_verified: 2026-07-10
 related: [adding_a_target, experiment_abi, generated_target_repos]
 code_refs: [merlin/python/merlin/targetgen]
 ---
@@ -49,14 +49,14 @@ and `docs/generated_target_repos.md`.
 python -m merlin.targetgen.cli build --target-name toy_npu \
   --source-dir merlin/targets/toy_npu/docs \
   --examples-dir merlin/targets/toy_npu/examples \
-  --out build/generated/merlin-target-toy-npu \
+  --out out/build/generated/merlin-target-toy-npu \
   --emit xdsl,mlir,zephyr,llvm-plan,runtime
-python -m merlin.targetgen.cli inspect --target build/generated/merlin-target-toy-npu
+python -m merlin.targetgen.cli inspect --target out/build/generated/merlin-target-toy-npu
 ```
 
 `--emit` is a comma list of `xdsl,mlir,zephyr,runtime,llvm-plan`, or `contract-only`. The
 console script `merlin-targetgen` is equivalent. Generated repos are written under the
-gitignored `build/generated/`.
+gitignored `out/build/generated/`.
 
 ## Must not
 
