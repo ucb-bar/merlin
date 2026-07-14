@@ -41,8 +41,18 @@ def _bitvla_dir() -> Path | None:
     return d if (d / "model.mlir").is_file() else None
 
 
+@pytest.mark.slow
+@pytest.mark.integration
 def test_dispatch_runtime_xnnpack_matches_default(tmp_path):
-    """Whole bitvla forward: XNNPACK kernel backend == default compiled path (byte-stable)."""
+    """Whole bitvla forward: XNNPACK kernel backend == default compiled path (byte-stable).
+
+    Heavy whole-model e2e: compiles bitvla twice through the dispatch runtime. Marked slow +
+    integration so the fast gate (``-m 'not slow'``) skips it; a full run is bounded by the global
+    pytest timeout. NOTE: with BOTH the XNNPACK lib and the LLVM/m2m toolchain present (+ the bitvla
+    capture), the second ``dr.run_model`` has been observed to BLOCK indefinitely in the whole-model
+    compile subprocess — a known deeper issue in the dispatch-runtime compile path (likely a pipe
+    drain / subprocess wait), tracked separately; the timeout keeps it from hanging the suite.
+    """
     md = _bitvla_dir()
     if md is None:
         pytest.skip("bitvla_fp32_consistent capture not present")
