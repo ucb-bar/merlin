@@ -83,6 +83,15 @@ try:
 except Exception:  # pragma: no cover
     _HAVE_LLVM = False
 
+# Disassembly-based tests also shell out to riscv64-unknown-elf-objdump (the chipyard toolchain, via
+# spike.gcc_path()). Guard on it too — otherwise, with clang present but chipyard unset, they don't
+# skip: they exec the /path/to/chipyard placeholder and raise FileNotFoundError.
+try:
+    from merlin.runtime.backends import spike as _spike
+    _HAVE_RISCV_OBJDUMP = _spike.gcc_path().with_name("riscv64-unknown-elf-objdump").is_file()
+except Exception:  # pragma: no cover
+    _HAVE_RISCV_OBJDUMP = False
+
 
 @pytest.mark.skipif(not _HAVE_LLVM, reason="merlin MLIR→LLVM toolchain (clang) unavailable")
 @pytest.mark.parametrize("rung", sorted(RUNGS))
@@ -94,7 +103,8 @@ def test_vector_mlir_host_cert(rung, tmp_path):
     assert res["oracle"]["kind"] == "merlin_mlir_host"
 
 
-@pytest.mark.skipif(not _HAVE_LLVM, reason="merlin MLIR→LLVM toolchain unavailable")
+@pytest.mark.skipif(not (_HAVE_LLVM and _HAVE_RISCV_OBJDUMP),
+                    reason="merlin MLIR→LLVM (clang) + riscv objdump toolchain unavailable")
 @pytest.mark.parametrize("rung,expect", [("VEC0", "vadd.vv"), ("VEC2", "vredsum")])
 def test_vector_native_rvv_emitted(rung, expect, tmp_path):
     """The elementwise/reduction transform schedule emits REAL RVV (incl. vectorized reduction)."""
@@ -105,7 +115,8 @@ def test_vector_native_rvv_emitted(rung, expect, tmp_path):
     assert expect in r["rvv_ops"], f"{rung}: expected {expect} in {r['rvv_ops']}"
 
 
-@pytest.mark.skipif(not _HAVE_LLVM, reason="merlin MLIR→LLVM toolchain unavailable")
+@pytest.mark.skipif(not (_HAVE_LLVM and _HAVE_RISCV_OBJDUMP),
+                    reason="merlin MLIR→LLVM (clang) + riscv objdump toolchain unavailable")
 def test_custom_instruction_via_mlir_inline_asm(tmp_path):
     """A custom accelerator instruction (Gemmini RoCC custom-3) declared in MLIR via
     merlin.inline_asm lowers to a raw .insn in the object — no LLVM fork, no C."""
