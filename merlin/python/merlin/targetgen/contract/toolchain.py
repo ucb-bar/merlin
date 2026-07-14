@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from merlin.common.paths import repo_root
 
 # repo root = .../merlin (this file: merlin/python/merlin/targetgen/contract/toolchain.py)
-_REPO = Path(__file__).resolve().parents[5]
+_REPO = repo_root()
 DEFAULT_MLIR_INSTALL = _REPO / "third_party" / "llvm-install"
 
 # LLVM/MLIR source pin (third_party/llvm-project); recorded into run manifests + the contract.

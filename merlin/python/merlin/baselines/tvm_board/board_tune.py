@@ -11,10 +11,10 @@ Env: MERLIN_K1_HOST, MERLIN_K1_SSH_KEY (board). Prints tuned-vs-untuned RVV%/lat
 from __future__ import annotations
 import os, sys, time, subprocess, tempfile
 from pathlib import Path
+from merlin.common.paths import repo_root
 
-# repo root derived from this file's location (portable; correct even when copied to the board),
-# not a hardcoded host path. board_tune.py: merlin/python/merlin/baselines/tvm_board/ -> parents[5].
-REPO = Path(os.environ.get("MERLIN_REPO_ROOT") or Path(__file__).resolve().parents[5])
+# repo root via the central resolver (honors MERLIN_REPO_ROOT; move-independent, no per-file depth).
+REPO = repo_root()
 RT_DIR = REPO / "build/baselines/tvm-rv64"
 TIMER = RT_DIR / "board_runner" / "board_kernel_timer"
 RT_SO = RT_DIR / "libtvm_runtime.so"

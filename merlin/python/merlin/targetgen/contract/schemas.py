@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from merlin.common.paths import repo_root
 from typing import Any
 
 import jsonschema
 
 # repo root = .../merlin (this file: merlin/python/merlin/targetgen/contract/schemas.py)
-_REPO = Path(__file__).resolve().parents[5]
+_REPO = repo_root()
 # The experiment ABI (contract + capsule corpus) — lives under merlin/ as core infra.
 # Paths are resolved repo-root-relative via contract_dir(); no compat symlink.
 DEFAULT_CONTRACT_DIR = _REPO / "merlin" / "contract"

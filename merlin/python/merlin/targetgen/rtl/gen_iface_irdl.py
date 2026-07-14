@@ -23,8 +23,9 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from merlin.common.paths import repo_root
 
-_REPO = Path(__file__).resolve().parents[5]
+_REPO = repo_root()
 _LLVM = _REPO / "third_party" / "llvm-install"
 _T2I = _LLVM / "bin" / "tblgen-to-irdl"
 _MLIROPT = _LLVM / "bin" / "mlir-opt"

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from merlin.common.paths import ext_path
+from merlin.common.paths import ext_path, repo_root
 
 
 def _env(key: str, default: str | None = None) -> str | None:
@@ -19,7 +19,7 @@ DEFAULT_M2M_DIR = "/path/to/model2MLIR"  # external model2MLIR checkout; set MER
 # Standalone LLVM-23 install (mlir-opt/mlir-translate) used where the torch-mlir wheel's
 # in-process translate bridge is unreliable (its OpenMPIRBuilder segfaults on whole-model
 # omp IR, whereas this build's mlir-translate handles it cleanly).
-DEFAULT_LLVM_INSTALL = Path(__file__).resolve().parents[4] / "third_party" / "llvm-install"
+DEFAULT_LLVM_INSTALL = repo_root() / "third_party" / "llvm-install"
 
 
 def m2m_dir() -> Path:

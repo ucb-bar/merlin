@@ -29,12 +29,13 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from merlin.common.paths import repo_root
 from typing import Any
 
 from . import introspect as V1
 from .facts import rtl_cache_dir, rtl_facts_path
 
-_REPO = Path(__file__).resolve().parents[5]  # .../merlin
+_REPO = repo_root()  # .../merlin
 # Introspect scratch (the 21 MB firtool hw.mlir input + intermediates) lives in the PURGEABLE cache,
 # never inside merlin/. The committed facts.json is a promoted PIN of a run (see promote_facts).
 _CACHE_DIR = rtl_cache_dir("gemmini")

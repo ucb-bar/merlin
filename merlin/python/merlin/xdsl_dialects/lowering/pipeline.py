@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from pathlib import Path
+from merlin.common.paths import repo_root
 
 from .._common import HAS_XDSL
 from .contract_facts import DEFAULT_TARGET_CONTRACT, lower_to_contract
@@ -28,7 +29,7 @@ def load_curated_contract(target: str) -> dict:
     """The committed in-tree target contract for a reference target."""
     import yaml
 
-    root = Path(__file__).resolve().parents[5]
+    root = repo_root()
     path = root / f"merlin/targets/{target}/contracts/target_contract.yaml"
     if not path.is_file():
         return dict(DEFAULT_TARGET_CONTRACT)

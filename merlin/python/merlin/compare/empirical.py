@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from merlin.common.paths import repo_root
 from typing import Any
 
 from .spec import Config, Workload
@@ -32,8 +33,7 @@ from .spec import Config, Workload
 
 # ---- repo-relative source locations (deterministic, recorded into the manifest) ----
 def _repo_root() -> Path:
-    # merlin/python/merlin/compare/empirical.py -> repo root is parents[4]
-    return Path(__file__).resolve().parents[4]
+    return repo_root()
 
 
 # Whole-model JSONs, in PREFERENCE order per workload. A vf-bearing file is preferred when a config

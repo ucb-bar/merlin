@@ -25,9 +25,9 @@ import yaml
 from ..runtime.backends import zephyr_model as zm
 from . import k1 as k1mod
 from .registry import load_rvv_package
-from merlin.common.paths import artifacts_dir, build_dir
+from merlin.common.paths import artifacts_dir, build_dir, repo_root
 
-_REPO = Path(__file__).resolve().parents[4]
+_REPO = repo_root()
 
 
 def enumerate_candidates(features: list[str], max_combo: int = 2) -> list[frozenset]:

@@ -14,11 +14,12 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from merlin.common.paths import repo_root
 
 import numpy as np
 import yaml
 
-REPO = Path(__file__).resolve().parents[5]
+REPO = repo_root()
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 from merlin.targetgen import capsule_golden as CG  # noqa: E402
 

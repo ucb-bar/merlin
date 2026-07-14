@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import time
 from pathlib import Path
+from merlin.common.paths import repo_root
 
 import yaml
 
@@ -25,7 +26,7 @@ from ..kernels import cca_compare
 from ..kernels.decode import rvv as rvv_decode
 from ..common.paths import artifacts_dir
 
-_REPO = Path(__file__).resolve().parents[4]
+_REPO = repo_root()
 
 
 # ---- abstraction -> expected codegen (expert CCA from mined policies) ----------------

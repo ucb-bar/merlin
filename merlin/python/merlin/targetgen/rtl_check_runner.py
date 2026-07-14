@@ -35,9 +35,9 @@ from . import rtl_check_compiler as CC
 from . import rtl_checks as RC
 from .rtl.facts import rtl_facts_path
 from .corpora import capsule_corpus_roots
-from merlin.common.paths import ext_path
+from merlin.common.paths import ext_path, repo_root
 
-_REPO = Path(__file__).resolve().parents[4]
+_REPO = repo_root()
 # RTL facts are target-specific; the resolver defaults to the gemmini pin but honors an explicit
 # path / $MERLIN_RTL_FACTS. General callers should pass target=/explicit= rather than assume gemmini.
 _FACTS = rtl_facts_path("gemmini")

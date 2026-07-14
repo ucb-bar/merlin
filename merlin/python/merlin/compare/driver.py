@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from merlin.common.paths import repo_root
 
 from . import attribution, empirical, figures, report, structural
 from .spec import Spec
@@ -19,7 +20,7 @@ from ..common.paths import artifacts_dir
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[4]
+    return repo_root()
 
 
 def run(spec: Spec, *, out_root: Path | None = None, run_board: bool = False,

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from merlin.common.paths import repo_root
 from typing import Any
 
 from merlin.kernels.cca import CCA, ComputeFacet, VectorFacet, lift_asm
@@ -24,7 +25,7 @@ from .spec import Config, Workload
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[4]
+    return repo_root()
 
 
 _DECODE_SOURCE = "out/artifacts/ceiling/kernel_breakdown_decode.json"

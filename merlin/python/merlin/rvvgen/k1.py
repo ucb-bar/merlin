@@ -21,6 +21,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from merlin.common.paths import repo_root
 from typing import Any
 
 # Board access — set both via env (no personal defaults committed). The board IP is a DHCP lease.
@@ -30,7 +31,7 @@ K1_HOST = os.environ.get("MERLIN_K1_HOST", "")  # e.g. root@<board-ip>; empty =>
 # build_tools/SpacemiT/ (the toolchain itself is huge); locate the real install via env, default
 # to the known /scratch2 path. ``toolchain_cc()` tolerates either the bin/ layout or the
 # extracted ``spacemit-toolchain-*`` subdir layout.
-_REPO = Path(__file__).resolve().parents[4]
+_REPO = repo_root()
 # Locate the (huge) SpacemiT cross-toolchain via env; no personal path committed as a default.
 K1_TOOLCHAIN = Path(os.environ.get("MERLIN_K1_TOOLCHAIN", str(_REPO / "build_tools" / "SpacemiT" / "riscv-tools-spacemit")))
 

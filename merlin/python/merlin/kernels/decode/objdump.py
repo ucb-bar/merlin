@@ -12,8 +12,9 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+from merlin.common.paths import repo_root
 
-_REPO = Path(__file__).resolve().parents[5]
+_REPO = repo_root()
 _LLVM_OBJDUMP = _REPO / "third_party" / "llvm-install" / "bin" / "llvm-objdump"
 
 
