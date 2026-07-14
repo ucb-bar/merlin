@@ -54,7 +54,7 @@ merlin-rvv-report    ...   # render the evidence report
 **Outputs.** Mining artifacts, forks, and the evidence report under
 `out/artifacts/kernel-mining/<target>/` (forks also under `out/artifacts/targets/<target>/`). The
 full mechanics — CCA lift, the validity gate, the beam engines, and the K-ladder cos-gate — are in
-the [RVV kernel-mining methodology](../rvv_kernel_mining_methodology.md); the framing is in
+the [RVV kernel-mining methodology](../reference/rvv_kernel_mining_methodology.md); the framing is in
 [Kernel abstraction mining](kernel_mining.md).
 
 ## 3. DSE analysis
