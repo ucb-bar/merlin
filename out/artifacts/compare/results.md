@@ -1,7 +1,7 @@
-# Model bring-up results — model2MLIR → oscar-merlin (RVV / FireSim)
+# Model bring-up results — model2MLIR → merlin (RVV / FireSim)
 
 Summary of the campaign that takes the ten model2MLIR reference models from a captured,
-target-agnostic `linalg-on-tensors` MLIR bundle through the oscar-merlin dispatch runtime and
+target-agnostic `linalg-on-tensors` MLIR bundle through the merlin dispatch runtime and
 onto RISC-V hardware. Three validation gates are used:
 
 1. **Interpreter (`host == torch`)** — `merlin.runtime.dispatch_runtime.run_model` outlines the
@@ -156,7 +156,7 @@ Three capture-path defects were found and fixed during bring-up:
 
 - model2MLIR suite: **90 passed** (includes the new bias-add and the matmul-accumulator
   zero-init + section-tagging fix that restored `test_sections`).
-- oscar-merlin bring-up is gated by `test_vla_models_rvv.py`, `test_smolvla_rvv.py`,
+- merlin bring-up is gated by `test_vla_models_rvv.py`, `test_smolvla_rvv.py`,
   `test_rvv_spike.py`, `test_spike_model.py`, `test_zephyr_model.py`, `test_dispatch_runtime.py`,
   and `test_precision.py` (heavier model cases behind `MERLIN_RUN_SLOW` / toolchain gates).
 

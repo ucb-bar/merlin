@@ -11,8 +11,8 @@ KV-cache is supplied as input tensors). Magnitudes are **structural only** (rand
 claims**. Default capture uses `XR0_DIT_LAYERS=2` (real model = 16).
 
 **Sources cited**
-- Source: `/scratch/agustin/projects/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py`
-- m2m wrapper: `/scratch/agustin/projects/model2MLIR/workloads/xr0/loader.py`, `capture.toml`
+- Source: `/path/to/Xiaomi-Robotics-0/xr0/mibot/models/VLA/XR0.py`
+- m2m wrapper: `/path/to/model2MLIR/workloads/xr0/loader.py`, `capture.toml`
 - Exported FX: `…/case_study/manual_validation/exported_fx/xr0.txt`
 - Flat MLIR: `…/dse_guidance/recaptures/xr0/model.mlir`
 - Merlin: `case_study/{operator_full_inventory.csv, work_coverage_table.csv, operator_shape_table.csv}`;

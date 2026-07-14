@@ -1,5 +1,5 @@
 {
-  "package": "/scratch/agustin/projects/oscar-merlin/runs/grade_subset_check/runs/gemmini-capsule-bench/A2_single_tile_matmul/generated",
+  "package": "/path/to/merlin/runs/grade_subset_check/runs/gemmini-capsule-bench/A2_single_tile_matmul/generated",
   "rows": [
     {
       "mutant": "original",

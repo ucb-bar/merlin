@@ -6,7 +6,7 @@ states it is "a small but COMPLETE LLaMA-style transformer for fast end-to-end R
 verification … Same op surface as a real LLaMA (RMSNorm, RoPE, causal attention + softmax,
 SwiGLU MLP, tied-free lm_head) at tiny dims … The Merlin pipeline that runs this is identical
 to the one that runs tiny_llama-1.1B / smolVLA; only the dims differ."
-(`/scratch/agustin/projects/model2MLIR/workloads/small_llama/loader.py:1-5`)
+(`/path/to/model2MLIR/workloads/small_llama/loader.py:1-5`)
 
 **Scope / disclaimers.** Source-grounded; every claim cites a file:line or artifact row.
 Magnitudes are **structural-only** — the model is random-init with a toy config
@@ -18,7 +18,7 @@ checkpoint or a realistic sequence length. **No performance / latency claims** �
 missing/erased status, never inferred.
 
 **Sources audited**
-- Source (INLINE): `/scratch/agustin/projects/model2MLIR/workloads/small_llama/loader.py`
+- Source (INLINE): `/path/to/model2MLIR/workloads/small_llama/loader.py`
   — `class SmallLlama`:71, `forward`:78; submodules `RMSNorm`:13, `rope`:21, `class Attn`:38
   (`forward`:40), `class MLP`:51 (`forward`:57), `class Block`:60 (`forward`:65);
   entry `get_model_and_inputs`:82.

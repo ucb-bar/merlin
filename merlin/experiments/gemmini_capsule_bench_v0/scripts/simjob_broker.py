@@ -31,7 +31,7 @@ SELFCHECK = HERE / "agent_selfcheck.py"
 PUBLIC_CAPSULES = HERE / "full_public_capsules"        # same set agent_selfcheck validates against
 PY = sys.executable
 CE = "/path/to/chipyard/.conda-env"           # toolchain env for the sims (driver-side)
-GLOBAL_VERIL_SLOTS = Path("/tmp/oscar_merlin_veril_slots")   # cross-arm verilator semaphore
+GLOBAL_VERIL_SLOTS = Path("/tmp/merlin_veril_slots")   # cross-arm verilator semaphore
 _CAP_RE = re.compile(r"^[A-Za-z0-9_]+$")
 # debug-flag whitelist: symbolic name -> (currently a no-op passthrough; real sim args wired later).
 DEBUG_WHITELIST = {"trace", "cycles", "verbose"}

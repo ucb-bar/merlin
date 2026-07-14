@@ -1,5 +1,5 @@
 {
-  "corpus": "/scratch/agustin/projects/oscar-merlin/bench_contract/capsules",
+  "corpus": "/path/to/merlin/bench_contract/capsules",
   "n_capsules": 25,
   "tiers": [
     "L2",

@@ -119,7 +119,7 @@ L3 verilator (RTL) →  rtl_out == golden  ·  A2 = 299 cycles  (THE sign-off, ~
 
 ---
 
-## Slide integration (maps to the deck, `OSCAR Merlin-9.pdf`)
+## Slide integration (maps to the deck, `Merlin-9.pdf`)
 - The bringup section is slides **14–20** ("Bringup of your target in MLIR" → "MLIR dialect target
   bringup" → "Support for different backends" → "Agentic MLIR dialect + passes" → "Experiments Setup"),
   plus backup **50** (Saturn OPU: intrinsic → TableGen → LLVM-intrinsic → MLIR pattern) and **54**

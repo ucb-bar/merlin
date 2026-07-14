@@ -28,7 +28,7 @@ import torch
 from torch import nn
 
 import sys
-sys.path.insert(0, "/scratch/agustin/projects/model2MLIR/workloads/openvla")
+sys.path.insert(0, "/path/to/model2MLIR/workloads/openvla")
 from loader import get_model_and_inputs  # noqa: E402
 
 from transformers.models.llama.modeling_llama import (  # noqa: E402
@@ -230,6 +230,6 @@ if __name__ == "__main__":
     print("func.call @while_loop :", mt.count("while_loop"))
     print("diagnostics:", res.diagnostics[:5])
     # dump a snippet
-    with open("/tmp/claude-2621/-scratch-agustin-projects-oscar-merlin/7d66f954-67c6-438f-8e72-ebd11bf2d229/scratchpad/openvla_decode.mlir", "w") as f:
+    with open("/tmp/claude-2621/-scratch-agustin-projects-merlin/7d66f954-67c6-438f-8e72-ebd11bf2d229/scratchpad/openvla_decode.mlir", "w") as f:
         f.write(mt)
     print("mlir len:", len(mt))

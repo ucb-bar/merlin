@@ -54,15 +54,15 @@ rounds:
   - tool: Read
     kind: path_read
     token: capsule_runner
-    input: /scratch/agustin/projects/oscar-merlin/merlin/python/merlin/targetgen/capsule_runner.py
+    input: /path/to/merlin/merlin/python/merlin/targetgen/capsule_runner.py
   - tool: Read
     kind: path_read
     token: capsule_runner
-    input: /scratch/agustin/projects/oscar-merlin/merlin/python/merlin/targetgen/capsule_runner.py
+    input: /path/to/merlin/merlin/python/merlin/targetgen/capsule_runner.py
   - tool: Bash
     kind: path_read
     token: merlin/runtime/backends
-    input: cd /scratch/agustin/projects/oscar-merlin && sed -n '/def _harness_c/,/return
+    input: cd /path/to/merlin && sed -n '/def _harness_c/,/return
       /p' merlin/python/merlin/runtime/backends/gemmini_codegen_mlir.py | head -90
 next_round: 3
 converged: true

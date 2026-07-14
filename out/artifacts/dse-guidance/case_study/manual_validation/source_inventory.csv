@@ -1,12 +1,12 @@
 workload,family,repo_path,model_class_file,inference_entry,config_K,config_H,control_rate_hz,K_source,checkpoint_status,flat_mlir,level_mlir
-bitvla,autoregressive_vla,/scratch/agustin/projects/BitVLA,openvla-oft/bitvla/model/bitvla_for_action_prediction.py:21,predict_action:312,7,7,5.0,MODEL_ARCH(assumed),random_init(BitLinear fake-quant->f32),yes,yes
-groot_n1d7,diffusion,/scratch/agustin/projects/Isaac-GR00T,gr00t/model/gr00t_n1d7/gr00t_n1d7.py:38,get_action_with_features:312,4,40,30.0,MODEL_ARCH(assumed); H in configs/model/gr00t_n1d7.py:75,random_init,yes,no
-molmoact,autoregressive_vla,/scratch/agustin/projects/molmoact,olmo/hf_model/molmoact/modeling_molmoact.py:1493,forward:1493,8,8,5.0,MODEL_ARCH(assumed),random_init,yes,no
+bitvla,autoregressive_vla,/path/to/BitVLA,openvla-oft/bitvla/model/bitvla_for_action_prediction.py:21,predict_action:312,7,7,5.0,MODEL_ARCH(assumed),random_init(BitLinear fake-quant->f32),yes,yes
+groot_n1d7,diffusion,/path/to/Isaac-GR00T,gr00t/model/gr00t_n1d7/gr00t_n1d7.py:38,get_action_with_features:312,4,40,30.0,MODEL_ARCH(assumed); H in configs/model/gr00t_n1d7.py:75,random_init,yes,no
+molmoact,autoregressive_vla,/path/to/molmoact,olmo/hf_model/molmoact/modeling_molmoact.py:1493,forward:1493,8,8,5.0,MODEL_ARCH(assumed),random_init,yes,no
 openvla,autoregressive_vla,HF:openvla/openvla-7b (dynamic module),modeling_prismatic.OpenVLAForActionPrediction,forward,7,7,5.0,MODEL_ARCH(assumed),random_init(tiny config),yes,yes
-pi05,flow_matching,/scratch/agustin/projects/openpi,src/openpi/models_pytorch/pi0_pytorch.py,denoise_step:422,10,50,50.0,MODEL_ARCH(assumed); H in pi0_config.py:26,random_init,yes,yes
-rdt,diffusion,/scratch/agustin/projects/RoboticsDiffusionTransformer,models/rdt/model.py:22,forward:126,5,64,30.0,MODEL_ARCH(assumed)+configs/base.yaml,not_real(empty_lang_embed.pt only),yes,yes
-rdt2,diffusion,/scratch/agustin/projects/RDT2,models/rdt/model.py:11,forward:134,5,24,30.0,MODEL_ARCH(assumed); H in configs/bimanual_video_data.yaml:10,random_init,yes,no
-small_llama,llm,/scratch/agustin/projects/model2MLIR (inline loader),workloads/small_llama/loader.py:71,forward:77,32,n/a,n/a,MODEL_ARCH(assumed),random_init(vocab256 d128 toy),yes,no
+pi05,flow_matching,/path/to/openpi,src/openpi/models_pytorch/pi0_pytorch.py,denoise_step:422,10,50,50.0,MODEL_ARCH(assumed); H in pi0_config.py:26,random_init,yes,yes
+rdt,diffusion,/path/to/RoboticsDiffusionTransformer,models/rdt/model.py:22,forward:126,5,64,30.0,MODEL_ARCH(assumed)+configs/base.yaml,not_real(empty_lang_embed.pt only),yes,yes
+rdt2,diffusion,/path/to/RDT2,models/rdt/model.py:11,forward:134,5,24,30.0,MODEL_ARCH(assumed); H in configs/bimanual_video_data.yaml:10,random_init,yes,no
+small_llama,llm,/path/to/model2MLIR (inline loader),workloads/small_llama/loader.py:71,forward:77,32,n/a,n/a,MODEL_ARCH(assumed),random_init(vocab256 d128 toy),yes,no
 smolvla,flow_matching,lerobot v0.5.1 (vla-arena/external/lerobot),lerobot/policies/smolvla/modeling_smolvla.py,denoise_step:871,10,50,30.0,MODEL_ARCH(assumed); H/K in configuration_smolvla.py:32,random_init,yes,no
 tiny_llama,llm,HF:TinyLlama/TinyLlama-1.1B-Chat-v1.0,transformers.AutoModelForCausalLM,forward,32,n/a,n/a,MODEL_ARCH(assumed),REAL_checkpoint,yes,no
-xr0,flow_matching,/scratch/agustin/projects/Xiaomi-Robotics-0,xr0/mibot/models/VLA/XR0.py,dit_forward:568,10,30,n/a,MODEL_ARCH(assumed); H hardcoded in loader (_ACTION_LEN=30),random_init,yes,no
+xr0,flow_matching,/path/to/Xiaomi-Robotics-0,xr0/mibot/models/VLA/XR0.py,dit_forward:568,10,30,n/a,MODEL_ARCH(assumed); H hardcoded in loader (_ACTION_LEN=30),random_init,yes,no

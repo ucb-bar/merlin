@@ -40,7 +40,7 @@ os.environ.pop("BITVLA_NATIVE_QUANT", None)
 
 import sys
 
-sys.path.insert(0, "/scratch/agustin/projects/model2MLIR/workloads/bitvla")
+sys.path.insert(0, "/path/to/model2MLIR/workloads/bitvla")
 
 import torch
 from torch import nn

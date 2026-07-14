@@ -7,12 +7,12 @@ weights may be random-init, not the real checkpoint.** Structure and provenance 
 magnitudes are capture-shape-dependent.
 
 ## Sources consulted (all paths absolute)
-- Loader: `/scratch/agustin/projects/model2MLIR/workloads/tiny_llama/loader.py`
-- Capture config: `/scratch/agustin/projects/model2MLIR/workloads/tiny_llama/capture.toml`
-- Exported FX: `/scratch/agustin/projects/oscar-merlin/merlin/benchmarks/dse_guidance/case_study/manual_validation/exported_fx/tiny_llama.txt`
-- Flat MLIR: `/scratch/agustin/projects/oscar-merlin/merlin/benchmarks/dse_guidance/recaptures/tiny_llama/model.mlir`
+- Loader: `/path/to/model2MLIR/workloads/tiny_llama/loader.py`
+- Capture config: `/path/to/model2MLIR/workloads/tiny_llama/capture.toml`
+- Exported FX: `/path/to/merlin/merlin/benchmarks/dse_guidance/case_study/manual_validation/exported_fx/tiny_llama.txt`
+- Flat MLIR: `/path/to/merlin/merlin/benchmarks/dse_guidance/recaptures/tiny_llama/model.mlir`
 - Merlin: `.../case_study/{operator_full_inventory.csv, operator_shape_table.csv, work_coverage_table.csv, tile_waste_table.csv, accumulator_contract_table.csv, resident_state_table.csv, reuse_lifetime_table.csv, shape_summary_by_workload.csv, primitive_regret_table.csv}`
-- Arch table: `/scratch/agustin/projects/oscar-merlin/merlin/python/merlin/dse_guidance/models.py:73`
+- Arch table: `/path/to/merlin/merlin/python/merlin/dse_guidance/models.py:73`
 
 ---
 

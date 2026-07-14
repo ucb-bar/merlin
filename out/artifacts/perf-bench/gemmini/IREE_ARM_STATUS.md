@@ -28,8 +28,8 @@ was simply the missing `zicntr` extension — not a deep IREE-on-spike bug.
 
 ## Build recipe (firesim cross-toolchain = clang, NOT chipyard gcc)
 ```
-export RISCV_TOOLCHAIN_ROOT=/scratch2/agustin/merlin/build_tools/riscv-tools-iree/toolchain/clang/linux/RISCV
-export RISCV_NEWLIB_SYSROOT=/scratch2/agustin/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf
+export RISCV_TOOLCHAIN_ROOT=/path/to/merlin-iree/build_tools/riscv-tools-iree/toolchain/clang/linux/RISCV
+export RISCV_NEWLIB_SYSROOT=/path/to/chipyard/.conda-env/riscv-tools/riscv64-unknown-elf
 cmake -S third_party/iree_bar -B build/firesim-merlin-release -DGEMMINI_SPIKE_MATMUL_SHAPE=<MxNxK>
 touch build/firesim-merlin-release/build.ninja   # ninja auto-regen strips env; pin the configure
 ninja -C build/firesim-merlin-release bench_gemmini_spike_matmul

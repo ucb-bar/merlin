@@ -3,7 +3,7 @@
 Extends the PROVEN P21 loop-preserving technique (smolVLA / openVLA / pi0.5) to
 the model2MLIR `small_llama` workload — a self-contained tiny LLaMA-style decoder
 (RMSNorm + RoPE + full-causal attention + SwiGLU MLP + lm_head), see
-`/scratch/agustin/projects/model2MLIR/workloads/small_llama/loader.py`.
+`/path/to/model2MLIR/workloads/small_llama/loader.py`.
 
 This mirrors `openvla_whileloop_decode_wrapper.py` (same decoder-LLM family):
 prefill once -> static, fixed-size KV cache -> K greedy-decode steps as a single
@@ -39,7 +39,7 @@ import sys
 import torch
 from torch import nn
 
-sys.path.insert(0, "/scratch/agustin/projects/model2MLIR/workloads/small_llama")
+sys.path.insert(0, "/path/to/model2MLIR/workloads/small_llama")
 from loader import get_model_and_inputs  # noqa: E402
 
 from torch._higher_order_ops.while_loop import while_loop  # noqa: E402

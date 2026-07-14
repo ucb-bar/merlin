@@ -38,8 +38,8 @@ import math
 import os
 import sys
 
-sys.path.insert(0, "/scratch/agustin/projects/RDT2")
-sys.path.insert(0, "/scratch/agustin/projects/model2MLIR/workloads/rdt2")
+sys.path.insert(0, "/path/to/RDT2")
+sys.path.insert(0, "/path/to/model2MLIR/workloads/rdt2")
 
 import torch
 import torch.nn as nn

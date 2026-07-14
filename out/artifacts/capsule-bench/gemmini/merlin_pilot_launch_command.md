@@ -7,11 +7,11 @@
 ## The command
 
 ```bash
-cd /scratch/agustin/projects/oscar-merlin/experiments/gemmini_capsule_bench_v0/scripts
-REPO=/scratch/agustin/projects/oscar-merlin
-export PATH=$REPO/third_party/llvm-install/bin:/scratch2/agustin/chipyard-autocomp/install/bin:$PATH
+cd /path/to/merlin/experiments/gemmini_capsule_bench_v0/scripts
+REPO=/path/to/merlin
+export PATH=$REPO/third_party/llvm-install/bin:/path/to/chipyard-autocomp/install/bin:$PATH
 export MERLIN_MLIR_INSTALL=$REPO/third_party/llvm-install
-export MERLIN_CLANG=/scratch2/agustin/merlin/build/host-merlin-release/install/bin/clang-23
+export MERLIN_CLANG=/path/to/merlin-iree/build/host-merlin-release/install/bin/clang-23
 
 python3 run_baseline_qa_loop.py \
     --arm merlin_assisted \

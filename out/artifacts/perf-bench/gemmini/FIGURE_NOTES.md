@@ -95,7 +95,7 @@ Data sources: `runs/perf_full_0001/{perf_results.json,firesim_arm_results.json}`
   **14** custom-3 ops = genuinely offloaded to the systolic array (not a scalar/RVV fallback that would
   still pass a numeric self-check). Both the bytecode build and the EmitC build pass identically (14 ops,
   byte-equivalent dispatch) — the EmitC switch changed only the host VM module, not the kernel.
-- **EmitC build** (`/scratch2/agustin/merlin`, additive target `bench_gemmini_spike_matmul_emitc`):
+- **EmitC build** (`/path/to/merlin-iree`, additive target `bench_gemmini_spike_matmul_emitc`):
   builds + links + asm-verified; .text 530KB→294KB (VM bytecode interpreter fully removed). **Verilator
   verdict (CONFIRMED):** a 40-min probe (2400s, 99% CPU) reached only the UART banner — no `invoking`/
   `DONE`. The wall is the SHARED IREE runtime init (HAL local-sync + embedded-elf loader + allocator +

@@ -6,7 +6,7 @@ across iterations. A flat `torch.export` unrolls/erases that loop, so the loop c
 state (KV / action latent), and the once-vs-×K split disappear. The diagrams below keep exactly those three
 things and nothing else (no per-layer detail).
 
-**Discipline:** every block, loop, and count is read from the **real source** under `/scratch/agustin/projects/*`
+**Discipline:** every block, loop, and count is read from the **real source** under `/path/to/*`
 (model repo + the `model2MLIR/workloads/<m>/loader.py` entry + the numerically-verified `*_whileloop_wrapper.py`).
 **No guesses** — where a value is not in the source it says *"not in source"*. Control-rate provenance is marked
 **ⓢ** = from the model's own source/config, **ⓡ** = dse_guidance registry design-target (literature value, *not*
@@ -428,4 +428,4 @@ stage runs **×K in a loop**, carrying a KV cache or an action latent across ite
 System-1-×K** split is the recurring structure. A flat graph capture unrolls the loop and throws all of that
 away (K, the carried state, the once-vs-×K split). **That is why flat capture is not enough.**
 
-_Coarse maps generated from real source under `/scratch/agustin/projects/*` (model repos + `model2MLIR/workloads/<m>/loader.py` + verified `*_whileloop_wrapper.py`); no guesses — unsourced values are marked “not in source.”_
+_Coarse maps generated from real source under `/path/to/*` (model repos + `model2MLIR/workloads/<m>/loader.py` + verified `*_whileloop_wrapper.py`); no guesses — unsourced values are marked “not in source.”_

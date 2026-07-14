@@ -1,6 +1,6 @@
 # The CIRCT / MLIR RTL-artifact journey
 
-*How OSCAR Merlin turns the **real Gemmini RTL** into machine-checkable compiler artifacts — every stage,
+*How Merlin turns the **real Gemmini RTL** into machine-checkable compiler artifacts — every stage,
 the file it produces, the exact code that produces it, and why.*
 
 This is the long-form, snippet-by-snippet companion to the one-slide figure

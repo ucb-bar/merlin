@@ -1,14 +1,14 @@
-# OSCAR Merlin — Competitive positioning
+# Merlin — Competitive positioning
 
 *What our infrastructure covers that others don't — and, just as importantly, what it does **not** yet
-cover.* Companion to the OSCAR Workshop deck (`OSCAR Merlin-9.pdf`): grounds the bringup flow (p16), the
+cover.* Companion to the OSCAR Workshop deck (`Merlin-9.pdf`): grounds the bringup flow (p16), the
 per-backend support matrix (p17), and the AI-for-compilers related-work slide (p15).
 
 ---
 
 ## 1. Purpose & honesty contract
 
-This document positions OSCAR Merlin against the projects it is most often compared with: **Triton
+This document positions Merlin against the projects it is most often compared with: **Triton
 (GPU + CPU), OpenXLA/XLA, IREE, ExecuTorch** (whole-model compilers) and **XNNPACK, OpenBLAS, EXO**
 (kernel libraries / exocompiler). Every comparison here was taken from the **actual source of those
 projects checked out on this machine**, not from reputation — the exact paths and `du -sh` sizes are
@@ -40,7 +40,7 @@ knowledge, not source-verified).
   **target class and workflow**, not on a benchmark we have not run against them. In particular ExecuTorch's
   *core runtime is also genuinely lean* (§3); do not claim "lighter runtime" as the differentiator.
 - ❌ crediting the on-disk **IREE checkout** with Zephyr / Gemmini / RISC-V support. That checkout
-  (`/scratch2/agustin/merlin/third_party/iree_bar`) is a **UCB-BAR / copparihollmann fork**, and its
+  (`/path/to/merlin-iree/third_party/iree_bar`) is a **UCB-BAR / copparihollmann fork**, and its
   `IREE_PLATFORM_ZEPHYR` plumbing + `merlin_gemmini_counter.h` are **our own commits** (`8c4ee4ad08`
   "Bare-metal / Zephyr platform support", `05e56f2bd1`) — **not stock IREE**. Stock upstream IREE has no
   Zephyr/Gemmini path; never present our fork work as a competitor feature (it would *under*-credit us).
@@ -104,7 +104,7 @@ once**, but it is No/Partial on GPU, maturity, and breadth.*
 Legend: ✅ yes · ⚠️ partial/conditional · ❌ no/not-in-source · 🔑 our differentiator.
 Sizes are real `du -sh` of the on-disk checkout (paths in §1 guardrail / below).
 
-| Capability | **OSCAR Merlin** | Triton (GPU) | Triton-CPU | IREE | XLA | ExecuTorch |
+| Capability | **Merlin** | Triton (GPU) | Triton-CPU | IREE | XLA | ExecuTorch |
 |---|---|---|---|---|---|---|
 | Checkout size (`du -sh`) | this repo | 726 M | 126 M | 5.3 G † | 144 M | 1.9 G |
 | MLIR-based | ✅ (xDSL dialects) | ✅ | ✅ | ✅ | ✅ (+ legacy HLO) | ❌ (PyTorch EXIR) |
@@ -141,7 +141,7 @@ Gemmini / RISC-V bits are **our commits**, not stock IREE (§1 guardrail).
 
 ## 4. Capability matrix — kernel libraries / exocompiler
 
-| Capability | **OSCAR Merlin** | XNNPACK | OpenBLAS | EXO |
+| Capability | **Merlin** | XNNPACK | OpenBLAS | EXO |
 |---|---|---|---|---|
 | Whole-model compile+run | 🔑 ✅ | ❌ (op primitives) | ❌ (BLAS only) | ❌ (per-kernel) |
 | Produces code by | MLIR lowering + codegen | hand-tuned intrinsics/asm | hand-written asm | user-scheduled → C codegen |
@@ -411,7 +411,7 @@ against (Triton/XLA/IREE/ExecuTorch + the kernel libs) ship **no AI in the flow 
 
 ## 11. The defensible thesis (one paragraph)
 
-OSCAR Merlin is a **lightweight, MLIR-class compiler whose default output is C on a lean runtime it owns**,
+Merlin is a **lightweight, MLIR-class compiler whose default output is C on a lean runtime it owns**,
 aimed at **embedded / RTOS / bare-metal and custom-accelerator targets** that the heavyweight MLIR stacks
 (Triton, XLA, IREE) do not treat as first-class, and that the kernel libraries (XNNPACK, OpenBLAS) only
 reach by hand-writing per-ISA kernels. Its distinctive workflow is **new-target bringup** — a contract +

@@ -8,16 +8,16 @@
 (real `depth=14`, per loader.py:18). Every claim is cited; not-visible items are marked missing.
 
 ## Sources cited
-- **Source model:** `/scratch/agustin/projects/RDT2/models/rdt/model.py` — `class RDT(nn.Module)`
+- **Source model:** `/path/to/RDT2/models/rdt/model.py` — `class RDT(nn.Module)`
   (model.py:11), `forward` (model.py:134). Blocks: `models/rdt/blocks.py` (`RDTBlock`, `FeedForward`
   SwiGLU at blocks.py:93, `FinalLayer` at blocks.py:~205, `TimestepEmbedder` at blocks.py:56).
   Attention: `models/rdt/attention.py` (`Attention` self-attn at :76–111, `CrossAttention` at
   :172–218, GQA `repeat_kv` at :11). `RMSNorm`: `models/rdt/norm.py:24`. Runner / denoise loop:
   `models/rdt_runner.py` (`conditional_sample` :164, Euler ODE; `num_inference_timesteps`
   :81 from `noise_scheduler` config).
-- **Config:** `/scratch/agustin/projects/RDT2/configs/bimanual_video_data.yaml` — `action_horizon: 24`
+- **Config:** `/path/to/RDT2/configs/bimanual_video_data.yaml` — `action_horizon: 24`
   (yaml:10), `action.shape: [20]` (yaml:99–100), bimanual UMI (two cameras + two arms).
-- **m2m loader / capture cfg:** `/scratch/agustin/projects/model2MLIR/workloads/rdt2/{loader.py,capture.toml}`
+- **m2m loader / capture cfg:** `/path/to/model2MLIR/workloads/rdt2/{loader.py,capture.toml}`
   (`M2M_RDT2_DEPTH=2`).
 - **Exported FX:** `merlin/benchmarks/dse_guidance/case_study/manual_validation/exported_fx/rdt2.txt`
   (657 lines, fully unrolled 2-block graph + final layer).

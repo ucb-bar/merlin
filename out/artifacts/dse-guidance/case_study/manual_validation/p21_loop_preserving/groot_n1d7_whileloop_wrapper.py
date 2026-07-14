@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import sys
 
-sys.path.insert(0, "/scratch/agustin/projects/model2MLIR/workloads/groot_n1d7")
+sys.path.insert(0, "/path/to/model2MLIR/workloads/groot_n1d7")
 
 import torch
 from torch import nn

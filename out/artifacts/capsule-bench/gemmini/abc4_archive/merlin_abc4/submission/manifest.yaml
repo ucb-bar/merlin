@@ -15,26 +15,26 @@ entrypoints:
 commands:
   parse:
     argv:
-      - /scratch/agustin/projects/oscar-merlin/.venv/bin/python
+      - /path/to/merlin/.venv/bin/python
       - "{tool}"
       - parse
       - "{input_mlir}"
   lower_interface_to_target:
     argv:
-      - /scratch/agustin/projects/oscar-merlin/.venv/bin/python
+      - /path/to/merlin/.venv/bin/python
       - "{tool}"
       - lower-iface
       - "{input_mlir}"
   emit_command_buffer:
     argv:
-      - /scratch/agustin/projects/oscar-merlin/.venv/bin/python
+      - /path/to/merlin/.venv/bin/python
       - "{tool}"
       - emit-cb
       - "{input_mlir}"
       - "{output_json}"
   lower_target_to_llvm:
     argv:
-      - /scratch/agustin/projects/oscar-merlin/.venv/bin/python
+      - /path/to/merlin/.venv/bin/python
       - "{tool}"
       - lower-llvm
       - "{input_mlir}"

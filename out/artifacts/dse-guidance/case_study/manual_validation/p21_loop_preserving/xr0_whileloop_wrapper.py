@@ -39,7 +39,7 @@ import sys
 import torch
 from torch import nn
 
-sys.path.insert(0, "/scratch/agustin/projects/model2MLIR/workloads/xr0")
+sys.path.insert(0, "/path/to/model2MLIR/workloads/xr0")
 
 import loader as xr0_loader  # noqa: E402
 from torch._higher_order_ops.while_loop import while_loop  # noqa: E402

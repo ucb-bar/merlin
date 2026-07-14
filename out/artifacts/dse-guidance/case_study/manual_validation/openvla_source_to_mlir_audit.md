@@ -8,7 +8,7 @@ structural-only and reflect the **tiny random config** the m2m loader builds
 
 ## Sources cited
 - **HF dynamic source (upstream model):** `~/.cache/huggingface/modules/transformers_modules/openvla/openvla_hyphen_7b/47a0ec7.../modeling_prismatic.py` (26 KB, fetched .py only — `OpenVLAForActionPrediction(PrismaticForConditionalGeneration)`). This is real, cached, and readable; not dep-blocked.
-- **m2m loader / capture cfg:** `/scratch/agustin/projects/model2MLIR/workloads/openvla/{loader.py,capture.toml}`.
+- **m2m loader / capture cfg:** `/path/to/model2MLIR/workloads/openvla/{loader.py,capture.toml}`.
 - **Exported FX:** `merlin/benchmarks/dse_guidance/case_study/manual_validation/exported_fx/openvla.txt` (686 lines).
 - **Flat MLIR:** `merlin/benchmarks/dse_guidance/recaptures/openvla/model.mlir` (1925 lines, `prov.level = "linalg-on-tensors"`).
 - **Level MLIR:** `recaptures_levels/openvla/model_{highlevel,qdq}.mlir`.

@@ -11,7 +11,7 @@ is a multi-obstacle toolchain bring-up. **No C harness was built.**
    older `sv.macro.ref` syntax (15,752 occurrences). The reverse also fails: the newer firtool refuses the
    old `.fir` ("printf-encoded verification ops no longer supported"). A naive textual rewrite of the macro
    refs hits SV-region legality walls. **Fix:** use the **version-matched chipyard arcilator**
-   (`/scratch2/agustin/chipyard/.conda-env/riscv-tools/bin/{arcilator,circt-opt,firtool}`, firtool-1.75.0).
+   (`/path/to/chipyard/.conda-env/riscv-tools/bin/{arcilator,circt-opt,firtool}`, firtool-1.75.0).
 2. **Parse: OK.** The matched `circt-opt` parses the cached `gemmini_soc.hw.mlir` cleanly (rc=0).
 3. **arcilator state-lowering blackbox (open).** `arcilator --emit-llvm` then fails:
    `clock gate module 'EICG_wrapper' has incompatible port types '!seq.clock, i1, i1 -> !seq.clock'`.
