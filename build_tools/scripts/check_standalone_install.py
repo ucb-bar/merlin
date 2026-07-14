@@ -7,10 +7,10 @@ Builds the wheel, installs it into a throwaway venv with **no repo on the path**
 outside the repo (data lived in sibling trees that ``parents[N]`` walks could not reach once
 installed). See ``docs/design/standalone_packaging.md``.
 
-Scope tracks the executed packaging phases: P0 (schemas + prompts) and P1 (the light benchmark
-specs — asserting the heavy ``recaptures*`` corpora are NOT bundled), via the ``merlin/_data`` bundle
-produced by setup.py's build_py hook. As later phases bundle more data classes (contract, reference
-target contracts), add a probe here.
+Scope tracks the executed packaging phases: P0 (schemas + prompts), P1 (the light benchmark specs,
+asserting the heavy ``recaptures*`` corpora are NOT bundled), and P2 (the contract + reference target
+contracts, asserting ``rtl_facts`` cert data is NOT bundled), via the ``merlin/_data`` bundle produced
+by setup.py's build_py hook.
 
 Runs the build with ``uv`` (the repo's toolchain). Skips cleanly (exit 0) when ``uv`` is absent so a
 minimal CI image without it doesn't hard-fail; wire the full run into the packaging CI job.
@@ -39,6 +39,13 @@ bd = p.bench_dir()
 assert (bd / "dse_guidance" / "accuracy_gate.yaml").is_file(), f"bundled benchmark spec missing: {bd}"
 assert (bd / "semantic_memory" / "no_reuse_matmul.yaml").is_file(), "bundled workload spec missing"
 assert not (bd / "dse_guidance" / "recaptures").exists(), "heavy recaptures leaked into the wheel"
+# contract + reference target contracts (P2); rtl_facts cert data deliberately NOT bundled.
+# Probe the DATA via data_path (the contract module pulls in jsonschema, an optional extra).
+cd = p.data_path("contract")
+assert (cd / "schemas" / "command_buffer.schema.json").is_file(), f"bundled contract missing: {cd}"
+td = p.targets_dir()
+assert (td / "gemmini" / "contracts" / "target_contract.yaml").is_file(), "bundled target contract missing"
+assert not (td / "gemmini" / "contracts" / "rtl_facts").exists(), "rtl_facts cert data leaked into the wheel"
 # entry points registered (import-clean at least at the console-script level)
 from importlib.metadata import entry_points
 scripts = {e.name for e in entry_points(group="console_scripts") if e.value.startswith("merlin.")}

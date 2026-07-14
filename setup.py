@@ -20,13 +20,25 @@ from setuptools.command.build_py import build_py
 _ROOT = Path(__file__).resolve().parent
 _PKG = _ROOT / "merlin" / "python" / "merlin"
 # canonical (top-level) -> bundled (inside the package)
-_BUNDLE = {kind: _PKG / "_data" / kind for kind in ("schemas", "prompts", "benchmarks")}
+_BUNDLE = {kind: _PKG / "_data" / kind
+           for kind in ("schemas", "prompts", "benchmarks", "contract", "targets")}
 
-# The benchmarks tree carries the heavy capture corpora (``recaptures*`` — model.mlir/safetensors,
-# tens of MB and regenerable). Bundle only the LIGHT specs; a wheel user reaches the captures via
-# MERLIN_BENCH_DIR pointing at a checkout. Also skip build cruft.
-def _ignore_heavy(_dir: str, names: list[str]) -> set[str]:
-    return {n for n in names if n.startswith("recaptures") or n == "__pycache__"}
+# Per-tree exclusions from the bundle:
+#  - benchmarks: the heavy capture corpora (``recaptures*`` — model.mlir/safetensors, tens of MB and
+#    regenerable); a wheel user reaches them via MERLIN_BENCH_DIR at a checkout.
+#  - targets: ``rtl_facts`` (per-target RTL-cert data — regenerable via the RTL flow, needs a
+#    checkout); the wheel ships the target *contracts* (dialect_plan/target_contract), not cert data.
+# Plus build cruft everywhere.
+_EXCLUDE = {"benchmarks": ("recaptures",), "targets": ("rtl_facts",)}
+
+
+def _ignore_for(kind: str):
+    prefixes = _EXCLUDE.get(kind, ())
+
+    def _ignore(_dir: str, names: list[str]) -> set[str]:
+        return {n for n in names if n == "__pycache__" or any(n.startswith(p) for p in prefixes)}
+
+    return _ignore
 
 
 def _sync_bundled_data() -> None:
@@ -36,8 +48,7 @@ def _sync_bundled_data() -> None:
             continue
         if dst.exists():
             shutil.rmtree(dst)
-        ignore = _ignore_heavy if kind == "benchmarks" else None
-        shutil.copytree(src, dst, ignore=ignore)
+        shutil.copytree(src, dst, ignore=_ignore_for(kind))
 
 
 class BuildPyWithData(build_py):

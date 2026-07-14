@@ -80,8 +80,13 @@ def bench_dir() -> Path:
 
 
 def targets_dir() -> Path:
-    """Return ``<repo>/merlin/targets``."""
-    return merlin_dir() / "targets"
+    """Return the reference-targets dir (``<repo>/merlin/targets`` in-repo, bundled ``_data/targets``
+    — reference target CONTRACTS only, no ``rtl_facts`` cert data — in a wheel). Honors
+    ``MERLIN_TARGETS_DIR``."""
+    env = os.environ.get("MERLIN_TARGETS_DIR")
+    if env:
+        return Path(env)
+    return data_path("targets")
 
 
 # --- Generated-output roots. All generated products live under a single top-level ``out/`` with

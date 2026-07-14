@@ -24,12 +24,16 @@ class ContractViolation(ValueError):
 
 
 def contract_dir(override: str | Path | None = None) -> Path:
-    """Resolve the contract dir: explicit override > $MERLIN_CONTRACT_DIR > default merlin/contract."""
+    """Resolve the contract dir: explicit override > $MERLIN_CONTRACT_DIR > in-repo merlin/contract
+    (or, in an installed wheel with no checkout, the bundled ``_data/contract``)."""
     if override:
         return Path(override)
     import os
     env = os.environ.get("MERLIN_CONTRACT_DIR")
-    return Path(env) if env else DEFAULT_CONTRACT_DIR
+    if env:
+        return Path(env)
+    from merlin.common.paths import data_path
+    return data_path("contract")
 
 
 def load_schema(name: str, *, contract: str | Path | None = None) -> dict[str, Any]:
