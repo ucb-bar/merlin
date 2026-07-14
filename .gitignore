@@ -40,6 +40,13 @@ selfcheck_out/
 /out/**/node_modules/**
 /out/**/.venv/**
 
+# The generated OOT target packages under out/build/generated/ (minted by merlin.targetgen; the
+# hand-authored source of truth is merlin/targets/<target>/) are fully regenerable. Don't track their
+# empty doc-only skeletons — on a fresh clone they'd be a directory tree of AGENT.md/README.md
+# placeholders describing content that isn't there. out/build/generated/{AGENT,README}.md already
+# document the dir's purpose. Re-ignore the whole per-target subtree.
+/out/build/generated/merlin-target-*/**
+
 # --- Relocated hand-written reports (were docs/*, moved to their concern in the Phase-3 docs
 #     restructure). These are NOT tool-regenerable, so they stay tracked. Explicit per-file
 #     negations (never a broad *.md) so generated results in the same dirs remain ignored. ---
