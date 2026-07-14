@@ -3,16 +3,20 @@ title: Design audit: standalone merlin wheel
 kind: design
 status: current
 owner: core
-last_verified: 2026-07-07
+last_verified: 2026-07-14
 related: [repo_structure]
-code_refs: [merlin/python, pyproject.toml]
+code_refs: [merlin/python, pyproject.toml, setup.py]
 ---
 
 # Design audit: making the `merlin` wheel standalone
 
-**Status: audit only — no refactor has been applied.** This enumerates *every* change needed for
-`pip install merlin` to work in a fresh environment **outside** the repo tree, with a phased,
-independently-shippable execution plan for later approval.
+**Status: P0 executed (2026-07-14) — the core SDK is install-clean; P1–P6 remain.** As of P0,
+`pip install merlin` outside a checkout can `import merlin`, validate against the bundled schemas,
+and load the agent prompts with zero `FileNotFoundError`, and `check_standalone_install.py` gates it
+(builds the wheel, installs into a fresh venv with no repo on the path + `MERLIN_REPO_ROOT` unset,
+asserts the data classes + entry points resolve). The rest of this doc enumerates the remaining
+phases (benchmarks/contract/target-contracts bundling, runtime-C, work-dir, resolver cleanup), each
+independently shippable.
 
 All file:line references below were verified against the tree at the time of writing (grep the same
 patterns to refresh). Paths are relative to `merlin/python/merlin/` unless noted.
@@ -162,9 +166,12 @@ Add `build_tools/scripts/check_standalone_install.py` (wired into CI once the re
 
 ## 7. Phased execution plan (each phase independently shippable + verifiable)
 
-- **P0 — package the pure data.** Create `_data/{schemas,prompts}`, add `include-package-data`,
-  add the `data_path` resolver (schemas/prompts only). ⇒ `import merlin`, schema validation, and
-  prompt loading work from a wheel. Lowest risk, highest payoff.
+- **P0 — package the pure data. ✅ DONE (2026-07-14).** `setup.py`'s `build_py` hook copies
+  `merlin/{schemas,prompts}` into a gitignored `merlin/python/merlin/_data/` at build; `pyproject`
+  `package-data` ships it; `common/paths.py::data_path()` resolves the in-repo canonical tree first
+  and the bundled `_data` when installed; `schemas_dir()`/`prompts_dir()` route through it (schema +
+  the 2 prompt sites migrated). Gated by `check_standalone_install.py`. ⇒ `import merlin`, schema
+  validation, and prompt loading work from a wheel.
 - **P1 — unify benchmarks.** One `bench_dir()` honoring `MERLIN_BENCH_DIR` across all dse_guidance /
   design_pressure sites; bundle the small benchmark **specs** (not recaptures).
 - **P2 — contract + reference targets.** Bundle `merlin/contract` + reference `targets/<t>/contracts`
