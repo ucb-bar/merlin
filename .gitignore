@@ -122,6 +122,9 @@ selfcheck_out/
 # --- Python ---
 __pycache__/
 *.py[cod]
+# Build-time bundled data: setup.py's build_py hook copies merlin/{schemas,prompts} here so the
+# wheel can ship them; the canonical top-level copies stay tracked. Regenerated on every build.
+/merlin/python/merlin/_data/
 *.egg-info/
 .eggs/
 build/lib/

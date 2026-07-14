@@ -11,7 +11,6 @@ dependency-light (stdlib + PyYAML) and side-effect free.
 """
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -22,15 +21,12 @@ import yaml
 def schemas_dir() -> Path:
     """Return the directory holding ``*.schema.yaml`` files.
 
-    Honors ``MERLIN_SCHEMAS_DIR`` for installed/relocated layouts; otherwise resolves
-    ``<repo>/merlin/schemas`` relative to this source file.
+    Delegates to :func:`merlin.common.paths.schemas_dir` — honors ``MERLIN_SCHEMAS_DIR``, resolves
+    the in-repo ``<repo>/merlin/schemas`` when a checkout is present, and falls back to the copy
+    bundled into an installed wheel (``merlin/_data/schemas``).
     """
-    env = os.environ.get("MERLIN_SCHEMAS_DIR")
-    if env:
-        return Path(env)
-    # this file: <repo>/merlin/python/merlin/common/schemas.py
-    #   parents[3] == <repo>/merlin
-    return Path(__file__).resolve().parents[3] / "schemas"
+    from merlin.common.paths import schemas_dir as _schemas_dir
+    return _schemas_dir()
 
 
 @lru_cache(maxsize=None)

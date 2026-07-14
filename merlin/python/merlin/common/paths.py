@@ -27,12 +27,44 @@ def merlin_dir() -> Path:
     return repo_root() / "merlin"
 
 
+def data_path(*parts: str) -> Path:
+    """Resolve bundled read-only package data (``schemas/``, ``prompts/``, …).
+
+    Prefers the in-repo canonical tree (``<repo>/merlin/<parts>``) when a checkout is present, so
+    dev workflows and the repo linters always read the live files. Falls back to the copy bundled
+    into an installed wheel (``merlin/_data/<parts>`` via ``importlib.resources``) so ``pip install
+    merlin`` works outside a checkout. Per-class env overrides (e.g. ``MERLIN_SCHEMAS_DIR``) are
+    applied by the class-specific wrappers below, not here.
+    """
+    rel = Path(*parts)
+    cand = merlin_dir() / rel
+    if cand.exists():
+        return cand
+    try:
+        import importlib.resources as _ir
+        base = _ir.files("merlin").joinpath("_data", *rel.parts)
+        # normally-installed (unzipped) wheel -> a real filesystem path
+        return Path(str(base))
+    except (ModuleNotFoundError, FileNotFoundError, TypeError, NotADirectoryError):
+        return cand  # nonexistent repo path -> callers raise a clear FileNotFoundError
+
+
 def schemas_dir() -> Path:
-    """Return ``<repo>/merlin/schemas`` (mirrors ``common.schemas.schemas_dir``)."""
+    """Return the schemas dir (``<repo>/merlin/schemas`` in-repo, bundled ``_data/schemas`` in a
+    wheel). Honors ``MERLIN_SCHEMAS_DIR``."""
     env = os.environ.get("MERLIN_SCHEMAS_DIR")
     if env:
         return Path(env)
-    return merlin_dir() / "schemas"
+    return data_path("schemas")
+
+
+def prompts_dir() -> Path:
+    """Return the agent-prompt dir (``<repo>/merlin/prompts`` in-repo, bundled ``_data/prompts`` in a
+    wheel). Honors ``MERLIN_PROMPTS_DIR``."""
+    env = os.environ.get("MERLIN_PROMPTS_DIR")
+    if env:
+        return Path(env)
+    return data_path("prompts")
 
 
 def targets_dir() -> Path:

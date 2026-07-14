@@ -24,9 +24,9 @@ from ..common.agent_output import parse_json
 from .cluster import cluster_dossiers
 from .dossier import KernelDossier
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import prompts_dir
 
-_PROMPT_DIR = merlin_dir() / "prompts"
+_PROMPT_DIR = prompts_dir()
 
 
 def prompt_path(version: int = 1) -> Path:

@@ -48,6 +48,13 @@ package-dir = { "" = "merlin/python" }
 [tool.setuptools.packages.find]
 where = ["merlin/python"]
 
+# Bundled read-only data (schemas + agent prompts) copied into merlin/_data at build time by the
+# build_py hook in setup.py, so `pip install merlin` resolves them via importlib.resources with no
+# checkout. The _data dir is gitignored (regenerated per build); in-repo, data_path() reads the
+# canonical merlin/{schemas,prompts} instead.
+[tool.setuptools.package-data]
+merlin = ["_data/**/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["merlin/tests"]
 markers = [
