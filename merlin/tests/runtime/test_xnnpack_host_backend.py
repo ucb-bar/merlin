@@ -15,10 +15,15 @@ import numpy as np
 import pytest
 
 from merlin.common.paths import repo_root
+from merlin.llvmlower import toolchain as _llvm_tc
 from merlin.runtime.backends import xnnpack_host
 
-pytestmark = pytest.mark.skipif(not xnnpack_host.is_available(),
-                                reason="XNNPACK host GEMM lib unavailable")
+# The dispatch runtime compiles each kernel via the LLVM/model2MLIR toolchain (m2m_python + clang),
+# so this test needs BOTH the XNNPACK lib AND that toolchain — same guard the other compile tests use
+# (toolchain.available()). Without the second check it hard-fails instead of skipping when model2MLIR
+# is absent (a fresh clone without the prerequisite).
+pytestmark = pytest.mark.skipif(not (xnnpack_host.is_available() and _llvm_tc.available()),
+                                reason="XNNPACK host GEMM lib or the LLVM/model2MLIR toolchain unavailable")
 
 
 @pytest.mark.parametrize("M,N,K", [(4, 4, 4), (7, 5, 9), (64, 64, 64),
