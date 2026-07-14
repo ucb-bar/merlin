@@ -18,3 +18,6 @@
 	path = third_party/baselines/executorch
 	url = https://github.com/ucb-bar/executorch.git
 	branch = merlin/rv64gcv-mmap-runner
+[submodule "third_party/baselines/merlin-iree"]
+	path = third_party/baselines/merlin-iree
+	url = https://github.com/ucb-bar/Merlin-IREE.git
