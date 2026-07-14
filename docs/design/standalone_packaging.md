@@ -10,13 +10,14 @@ code_refs: [merlin/python, pyproject.toml, setup.py]
 
 # Design audit: making the `merlin` wheel standalone
 
-**Status: P0 executed (2026-07-14) — the core SDK is install-clean; P1–P6 remain.** As of P0,
+**Status: P0–P2 executed (2026-07-14) — the core SDK is install-clean; P3–P6 remain.** As of P2,
 `pip install merlin` outside a checkout can `import merlin`, validate against the bundled schemas,
-and load the agent prompts with zero `FileNotFoundError`, and `check_standalone_install.py` gates it
-(builds the wheel, installs into a fresh venv with no repo on the path + `MERLIN_REPO_ROOT` unset,
-asserts the data classes + entry points resolve). The rest of this doc enumerates the remaining
-phases (benchmarks/contract/target-contracts bundling, runtime-C, work-dir, resolver cleanup), each
-independently shippable.
+load the agent prompts, resolve the light benchmark specs, and resolve the contract + reference
+target contracts — all with zero `FileNotFoundError`. `check_standalone_install.py` gates it (builds
+the wheel, installs into a fresh venv with no repo on the path + `MERLIN_REPO_ROOT` unset, asserts
+each bundled data class + the entry points resolve AND that the heavy/regenerable trees —
+`recaptures*`, `rtl_facts` — are NOT bundled). The remaining phases (runtime-C bundling, output
+work-dir, `parents[N]` cleanup) are hardening, each independently shippable.
 
 All file:line references below were verified against the tree at the time of writing (grep the same
 patterns to refresh). Paths are relative to `merlin/python/merlin/` unless noted.
@@ -172,12 +173,17 @@ Add `build_tools/scripts/check_standalone_install.py` (wired into CI once the re
   and the bundled `_data` when installed; `schemas_dir()`/`prompts_dir()` route through it (schema +
   the 2 prompt sites migrated). Gated by `check_standalone_install.py`. ⇒ `import merlin`, schema
   validation, and prompt loading work from a wheel.
-- **P1 — unify benchmarks.** One `bench_dir()` honoring `MERLIN_BENCH_DIR` across all dse_guidance /
-  design_pressure sites; bundle the small benchmark **specs** (not recaptures).
-- **P2 — contract + reference targets.** Bundle `merlin/contract` + reference `targets/<t>/contracts`
-  (specs only, not `rtl_facts`); migrate the 4+ sites.
+- **P1 — unify benchmarks. ✅ DONE (2026-07-14).** `common/paths.py::bench_dir()` honors
+  `MERLIN_BENCH_DIR` (the benchmarks *root*) across the 13 dse_guidance/design_pressure sites (+
+  `kernels/validate` unified); `setup.py` bundles the light specs into `_data/benchmarks`, EXCLUDING
+  the heavy `recaptures*` corpora. Gate asserts the specs bundle and recaptures do not.
+- **P2 — contract + reference targets. ✅ DONE (2026-07-14).** `setup.py` bundles `merlin/contract` +
+  `merlin/targets` into `_data`, EXCLUDING `targets/*/contracts/rtl_facts` (cert data); `targets_dir()`
+  (via `data_path`, honoring `MERLIN_TARGETS_DIR`) and `contract_dir()` route through the bundle. Gate
+  asserts the contract + target contracts bundle and `rtl_facts` does not.
 - **P3 — runtime C strategy.** `data_path` + `as_file` temp-copy for the compiled shims; put behind
-  the `[board]` extra.
+  the `[board]` extra. (Also: `contract` validation needs `jsonschema` — fold into a `[targetgen]`
+  extra when doing this.)
 - **P4 — output work-dir.** Introduce an explicit writable work root (e.g. `MERLIN_WORK_DIR`,
   defaulting to `repo_root()` in-repo) so installed runs don't write under `site-packages`.
 - **P5 — smoke-test gate.** Land `check_standalone_install.py`; add to `check_structure` / CI.
