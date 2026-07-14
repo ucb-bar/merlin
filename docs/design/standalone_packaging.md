@@ -10,14 +10,16 @@ code_refs: [merlin/python, pyproject.toml, setup.py]
 
 # Design audit: making the `merlin` wheel standalone
 
-**Status: P0–P2 executed (2026-07-14) — the core SDK is install-clean; P3–P6 remain.** As of P2,
-`pip install merlin` outside a checkout can `import merlin`, validate against the bundled schemas,
-load the agent prompts, resolve the light benchmark specs, and resolve the contract + reference
-target contracts — all with zero `FileNotFoundError`. `check_standalone_install.py` gates it (builds
-the wheel, installs into a fresh venv with no repo on the path + `MERLIN_REPO_ROOT` unset, asserts
-each bundled data class + the entry points resolve AND that the heavy/regenerable trees —
-`recaptures*`, `rtl_facts` — are NOT bundled). The remaining phases (runtime-C bundling, output
-work-dir, `parents[N]` cleanup) are hardening, each independently shippable.
+**Status: ALL phases P0–P6 executed (2026-07-14) — the wheel is install-clean.** `pip install merlin`
+outside a checkout can `import merlin`, validate against the bundled schemas, load the agent prompts,
+resolve the light benchmark specs, the contract + reference target contracts, and the runtime-C
+sources — all with zero `FileNotFoundError`; ephemeral scratch and generated output redirect via
+`MERLIN_WORK_DIR` / `MERLIN_OUT_ROOT` (no writes under `site-packages`); the ad-hoc `parents[N]`
+resolvers are retired into `repo_root()`. `check_standalone_install.py` gates it (builds the wheel,
+installs into a fresh venv with no repo on the path + `MERLIN_REPO_ROOT` unset, asserts each bundled
+data class + the entry points resolve AND that the heavy/regenerable trees — `recaptures*`,
+`rtl_facts`, code — are NOT bundled). The targetgen/board/simulator paths remain gated on the
+external toolchains they inherently need (`[targetgen]`/`[board]` extras + `MERLIN_*` tools).
 
 All file:line references below were verified against the tree at the time of writing (grep the same
 patterns to refresh). Paths are relative to `merlin/python/merlin/` unless noted.
@@ -181,15 +183,26 @@ Add `build_tools/scripts/check_standalone_install.py` (wired into CI once the re
   `merlin/targets` into `_data`, EXCLUDING `targets/*/contracts/rtl_facts` (cert data); `targets_dir()`
   (via `data_path`, honoring `MERLIN_TARGETS_DIR`) and `contract_dir()` route through the bundle. Gate
   asserts the contract + target contracts bundle and `rtl_facts` does not.
-- **P3 — runtime C strategy.** `data_path` + `as_file` temp-copy for the compiled shims; put behind
-  the `[board]` extra. (Also: `contract` validation needs `jsonschema` — fold into a `[targetgen]`
-  extra when doing this.)
-- **P4 — output work-dir.** Introduce an explicit writable work root (e.g. `MERLIN_WORK_DIR`,
-  defaulting to `repo_root()` in-repo) so installed runs don't write under `site-packages`.
-- **P5 — smoke-test gate.** Land `check_standalone_install.py`; add to `check_structure` / CI.
-- **P6 — retire `parents[N]` duplicates.** Collapse the remaining ad-hoc resolvers into `data_path`.
+- **P3 — runtime C strategy. ✅ DONE (2026-07-14).** `setup.py` bundles `merlin/runtime`
+  (`c/abi/baremetal`) into `_data`; new `runtime_dir()` resolves it; the 7 whole-model compile sites
+  migrated. Sources now RESOLVE from a wheel (the compile still needs the external toolchain — the
+  `[board]` extra / `MERLIN_*` tools — so the failure is 'toolchain unavailable', not 'no source').
+  `contract` validation's `jsonschema` is now the `[targetgen]` extra. Gate asserts the runtime
+  sources resolve. (`as_file` temp-copy unneeded: pip installs merlin unzipped, so `data_path` returns
+  a real filesystem path.)
+- **P4 — output work-dir. ✅ DONE (2026-07-14).** New `work_dir()` (`MERLIN_WORK_DIR`, default
+  `repo_root()`) for ephemeral scratch; the 5 `repo_root()/'tmp'/…` writers (npu calibration, kernel
+  build scratch, board baseline checkouts) route through it so installed runs don't write under
+  `site-packages`. (Durable products/runs already route through `out_dir()`/`MERLIN_OUT_ROOT`.)
+- **P5 — smoke-test gate. ✅ DONE.** `check_standalone_install.py` builds the wheel, installs into a
+  fresh venv with no repo on the path, and asserts every bundled data class + entry points resolve
+  and the heavy/regenerable trees are excluded.
+- **P6 — retire `parents[N]` duplicates. ✅ DONE (2026-07-14).** Collapsed 17 ad-hoc
+  `parents[4|5]`/`_repo_root()` repo-root re-derivations into `repo_root()` (each proven equal before
+  conversion); move-independent.
 
-P0–P1 deliver a genuinely useful core SDK; P2–P3 extend to targetgen/board flows; P4–P6 are hardening.
+All phases P0–P6 executed. Core SDK install-clean; targetgen/board flows resolve their data from a
+wheel and fail (only) on the external toolchains they inherently need.
 
 ## Notes
 
