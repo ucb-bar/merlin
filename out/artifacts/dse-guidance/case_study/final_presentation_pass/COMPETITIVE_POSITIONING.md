@@ -40,7 +40,7 @@ knowledge, not source-verified).
   **target class and workflow**, not on a benchmark we have not run against them. In particular ExecuTorch's
   *core runtime is also genuinely lean* (§3); do not claim "lighter runtime" as the differentiator.
 - ❌ crediting the on-disk **IREE checkout** with Zephyr / Gemmini / RISC-V support. That checkout
-  (`/path/to/merlin-iree/third_party/iree_bar`) is a **UCB-BAR / copparihollmann fork**, and its
+  (`/path/to/merlin-iree/third_party/iree_bar`) is a **UCB-BAR fork**, and its
   `IREE_PLATFORM_ZEPHYR` plumbing + `merlin_gemmini_counter.h` are **our own commits** (`8c4ee4ad08`
   "Bare-metal / Zephyr platform support", `05e56f2bd1`) — **not stock IREE**. Stock upstream IREE has no
   Zephyr/Gemmini path; never present our fork work as a competitor feature (it would *under*-credit us).
