@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import math
+import subprocess
 from pathlib import Path
 from typing import Any
 from merlin.common.paths import ext_path

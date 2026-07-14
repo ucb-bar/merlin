@@ -18,7 +18,7 @@ CACHE = rtl_cache_dir("gemmini", ensure=True)
 PYBIN = str(REPO / ".venv/bin/python")
 GEN = "merlin.targetgen.rtl.gen_rocc_replay"
 H = str(REPO / "merlin/python/merlin/targetgen/rtl/replay_json_to_h.py")
-RUNS = REPO / "runs/capsule_bench_v1/runs/gemmini-capsule-bench"
+RUNS = REPO / "out/runs/capsule_bench_v1/runs/gemmini-capsule-bench"
 CAPS = REPO / "merlin/contract/capsules"
 REPS = 5
 

@@ -28,7 +28,7 @@ _ROOT = _repo_root()
 ROOT = _ROOT
 MUON = ROOT / "tmp/kernels/radiance_only_kernels/index/muon-spend_total.json"
 MX   = ROOT / "tmp/kernels/mx_gemmini_only_kernels/cost/project-spend-total.json"
-OUT  = ROOT / "artifacts/presentation/combined"
+OUT  = ROOT / "out/artifacts/presentation/combined"
 OUT.mkdir(parents=True, exist_ok=True)
 
 # different ARNs / aliases -> one canonical display name

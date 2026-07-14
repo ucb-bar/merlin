@@ -27,7 +27,7 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[4]
 
 
-_DECODE_SOURCE = "artifacts/ceiling/kernel_breakdown_decode.json"
+_DECODE_SOURCE = "out/artifacts/ceiling/kernel_breakdown_decode.json"
 
 # spec config name -> kernel-breakdown-decode "kernel" field value.
 _DECODE_KERNEL = {

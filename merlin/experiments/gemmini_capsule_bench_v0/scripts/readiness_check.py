@@ -218,7 +218,7 @@ def test_oracles_endtoend():
     import tempfile as _tf
     import time as _time
     section("G. oracles RUN end-to-end (real verdict, not just present)")
-    ref = REPO / "artifacts/targets/gemmini/agent_spec_v1_mlir_oot"
+    ref = REPO / "out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot"
     if not (ref / "manifest.yaml").is_file():
         _ok("reference backend agent_spec_v1 present", False, "missing"); return
     CE = "/path/to/chipyard/.conda-env"

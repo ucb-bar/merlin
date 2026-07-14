@@ -88,7 +88,7 @@ def render_schedule(knobs: dict[str, Any]) -> str:
 
 def mint_fork(parent: "RvvPackage | str | Path", overrides: dict[str, Any], *,
               version: int, depth: int, timestamp: str, source_evidence: list[str],
-              lever: str, target: str = "rvv", out_root: str | Path = "artifacts/targets",
+              lever: str, target: str = "rvv", out_root: str | Path = "out/artifacts/targets",
               generated_by_agent: bool = False) -> Path:
     """Mint a versioned fork from ``parent`` with ``overrides`` applied to its knobs.
 

@@ -112,8 +112,8 @@ def main() -> int:
     ap.add_argument("--rungs", default="C0,Q0")
     ap.add_argument("--simulators", default="spike")
     ap.add_argument("--backends", default="mlir_inline_asm_rocc")
-    ap.add_argument("--runs-root", default="runs/gemmini_cert")
-    ap.add_argument("--ledger", default="runs/gemmini_cert/ledger.jsonl")
+    ap.add_argument("--runs-root", default="out/runs/gemmini_cert")
+    ap.add_argument("--ledger", default="out/runs/gemmini_cert/ledger.jsonl")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--summary-only", action="store_true",
                     help="render the table from existing manifests; run nothing")

@@ -130,13 +130,13 @@ CONFIGS = [
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="artifacts/recaptures/smolvla_fp32_consistent")
-    ap.add_argument("--baseline", default="artifacts/targets/rvv/hand_v0")
+    ap.add_argument("--model", default="out/artifacts/recaptures/smolvla_fp32_consistent")
+    ap.add_argument("--baseline", default="out/artifacts/targets/rvv/hand_v0")
     ap.add_argument("-n", type=int, default=3)
     ap.add_argument("--timeout", type=int, default=1200)
     ap.add_argument("--configs", default="optimized_ntail,opt_combined_clobbered",
                     help="comma list of config tags from CONFIGS to run")
-    ap.add_argument("--out", default="artifacts/measurements/k1_spacemit/k1_e2e_general_validate.json")
+    ap.add_argument("--out", default="out/artifacts/measurements/k1_spacemit/k1_e2e_general_validate.json")
     a = ap.parse_args()
 
     md = Path(a.model)

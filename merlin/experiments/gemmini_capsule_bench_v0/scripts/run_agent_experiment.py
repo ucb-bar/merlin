@@ -109,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dummy-agent", action="store_true",
                     help="copy a known-good submission instead of launching an LLM (pipeline test)")
     ap.add_argument("--dummy-submission",
-                    default="artifacts/targets/gemmini/agent_spec_v1_mlir_oot")
+                    default="out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot")
     ap.add_argument("--no-oracle-grade", action="store_true")
     ap.add_argument("--grade-capsules", default=str(C.REPO / "merlin/contract" / "capsules"))
     ap.add_argument("--skip-hidden", action="store_true")

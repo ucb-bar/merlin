@@ -197,7 +197,7 @@ def _print_validation(checks: list, val_mape: float) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", default=str(HERE / "gemmini_cost_coeffs.json"))
-    ap.add_argument("--report", default="artifacts/cache/cost_model/calibration.json")
+    ap.add_argument("--report", default="out/artifacts/cache/cost_model/calibration.json")
     ap.add_argument("--no-validate", action="store_true")
     ap.add_argument("--refit", default=None,
                     help="refit offline from a saved calibration.json (no RTL); reuses its "

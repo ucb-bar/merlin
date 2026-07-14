@@ -29,14 +29,14 @@ from merlin.targetgen import baremetalc_corroborate as BMC  # noqa: E402
 from merlin.targetgen.contract import schemas as S  # noqa: E402
 
 CANARIES = [
-    "artifacts/targets/gemmini/agent_spec_v1_mlir_oot/CANARY_FORBIDDEN.txt",
-    "artifacts/targets/gemmini/hand_smoke_oot/CANARY_FORBIDDEN.txt",
-    "artifacts/targets/gemmini/merlin_native_v0/CANARY_FORBIDDEN.txt",
+    "out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot/CANARY_FORBIDDEN.txt",
+    "out/artifacts/targets/gemmini/hand_smoke_oot/CANARY_FORBIDDEN.txt",
+    "out/artifacts/targets/gemmini/merlin_native_v0/CANARY_FORBIDDEN.txt",
     "merlin/contract/capsules/hidden/CANARY_HIDDEN.txt",
-    "artifacts/capsule-bench/gemmini/CANARY_RESULTS.txt",
+    "out/artifacts/capsule-bench/gemmini/CANARY_RESULTS.txt",
     "merlin/python/merlin/runtime/CANARY_FORBIDDEN.txt",
 ]
-G0 = "artifacts/targets/gemmini/agent_spec_v0_mlir_oot/certification/g0_matmul/lowered.llvm.mlir"
+G0 = "out/artifacts/targets/gemmini/agent_spec_v0_mlir_oot/certification/g0_matmul/lowered.llvm.mlir"
 
 
 def check_canary_isolation() -> dict:
@@ -73,7 +73,7 @@ def check_canary_isolation() -> dict:
     return out
 
 
-def _mk_pkg_with(text_file: dict, base="artifacts/targets/gemmini/agent_spec_v1_mlir_oot") -> Path:
+def _mk_pkg_with(text_file: dict, base="out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot") -> Path:
     """Copy the known-good package and inject a file (for integrity/contract negative fixtures)."""
     import shutil
     d = Path(tempfile.mkdtemp(dir="/tmp", prefix="negfix_"))

@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-CEIL = Path("artifacts/ceiling")
+CEIL = Path("out/artifacts/ceiling")
 CANON = CEIL / "cross_framework_ops_k1.jsonl"
 V2 = CEIL / "ours_vectorized_ops_k1.jsonl"
 MD = CEIL / "cross_framework_ops_k1.md"

@@ -41,7 +41,7 @@ def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict) -
 
 
 def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_key: dict, *,
-             runs_root: str | Path, out_root: str | Path = "artifacts/targets",
+             runs_root: str | Path, out_root: str | Path = "out/artifacts/targets",
              width: int = 3, depth: int = 2, top_k: int = 2, target: str = "rvv",
              timestamp: str = "run", targets: tuple[str, ...] = ("spike",),
              baseline_run_dir: str | Path | None = None,

@@ -33,7 +33,7 @@ from merlin.targetgen import rtl_checks as RC             # noqa: E402
 from merlin.targetgen import capsule_golden as CG         # noqa: E402
 from merlin.targetgen.contract import compile as COMPILE  # noqa: E402
 
-DEFAULT_PKG = (REPO / "runs/grade_subset_check/runs/gemmini-capsule-bench/"
+DEFAULT_PKG = (REPO / "out/runs/grade_subset_check/runs/gemmini-capsule-bench/"
                "A2_single_tile_matmul/generated")
 CAPSULE = REPO / "merlin/contract/capsules/isa/A2_single_tile_matmul/capsule.yaml"
 FACTS = json.loads((REPO / "merlin/targets/gemmini/contracts/rtl_facts/facts.json").read_text())

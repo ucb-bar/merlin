@@ -830,7 +830,7 @@ def fig_beam_gates():
 # ============================================================================
 def fig_beam_candidates():
     import yaml
-    runs = sorted(ROOT.glob("artifacts/kernel-mining/rvv/beam_rvv_v2_*"))
+    runs = sorted(ROOT.glob("out/artifacts/kernel-mining/rvv/beam_rvv_v2_*"))
     if not runs:
         print("beam_candidates: no beam_rvv_v2 run; skipping"); return
     run = runs[-1]

@@ -328,7 +328,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--capsule", help="path to a single capsule dir")
     ap.add_argument("--capsules-root", help="run every capsule under this root")
     ap.add_argument("--labels", default="public,dev", help="comma-separated label filter")
-    ap.add_argument("--runs-root", default="runs/capsule_bench")
+    ap.add_argument("--runs-root", default="out/runs/capsule_bench")
     ap.add_argument("--contract", default="merlin/contract")
     ap.add_argument("--timeout", type=int, default=600)
     a = ap.parse_args(argv)

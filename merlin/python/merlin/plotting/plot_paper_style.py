@@ -320,7 +320,7 @@ def fig_opt_effects():
 # ============================================================================
 def fig_beam_ranking():
     import glob, yaml
-    runs = sorted(glob.glob(str(OUT.parents[2] / "artifacts/kernel-mining/rvv/beam_rvv_v2_*")))
+    runs = sorted(glob.glob(str(OUT.parents[2] / "out/artifacts/kernel-mining/rvv/beam_rvv_v2_*")))
     if not runs:
         print("beam_ranking: no beam_rvv_v2 run; skipping"); return
     run = runs[-1]; V3 = "#b8742a"
@@ -384,7 +384,7 @@ def fig_beam_ranking():
 # ============================================================================
 def fig_beam_util_perf():
     import glob, yaml
-    runs = sorted(glob.glob(str(OUT.parents[2] / "artifacts/kernel-mining/rvv/beam_rvv_v2_*")))
+    runs = sorted(glob.glob(str(OUT.parents[2] / "out/artifacts/kernel-mining/rvv/beam_rvv_v2_*")))
     if not runs: print("beam_util: no run; skip"); return
     run = runs[-1]; V3 = "#b8742a"
     CEIL = {"bitvla": 13.19, "openvla": 4.97}  # XNNPACK (bitvla) / best achieved (openvla, no lib kernel)

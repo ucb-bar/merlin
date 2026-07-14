@@ -52,6 +52,48 @@ ALLOW_TRACKED_GEN: set[str] = {"docs/assets/merlin_transparent.png"}  # project 
 SKIP_PREFIXES: tuple[str, ...] = ()
 
 
+# --- stale generated-root path LITERALS in code -----------------------------------------------
+# The out/ consolidation moved generated output under out/{runs,artifacts,build}. Writers were
+# updated via merlin.common.paths, but relative-path *reader* literals ("artifacts/…", "runs/…")
+# resolve against repo_root() -> the RETIRED top-level root, which no longer exists. This lints for
+# such literals in code so the class can't silently reappear. Only quoted literals with a leading
+# quote are matched (so subscripts like x["artifacts"] are not) and only the retired prefixes.
+_STALE_LITERALS = ('"artifacts/', "'artifacts/", '"runs/', "'runs/",
+                   '"build/generated', "'build/generated")
+# Lines that legitimately name a retired-root-shaped literal (NOT a repo-root-relative read):
+#   - run-dir/CWD-relative uses inside experiment sandboxes (shell `runs/${…}`, `.glob("runs/*")`);
+#   - the artifact-layout deny-test, which asserts the retired roots are rejected.
+# Keyed by "<relpath>:<substring that must be on the flagged line>".
+_STALE_LITERAL_ALLOW = {
+    "merlin/tests/infra/test_artifact_layout.py:artifacts/plots/foo.png",   # deny-test fixture
+    "merlin/experiments/gemmini_capsule_bench_v0/scripts/gen_fullsuite_report.py:.glob(\"runs/",
+    "merlin/experiments/gemmini_capsule_bench_v0/scripts/abc_watchdog.sh:runs/${",
+}
+
+
+def _stale_path_literals(root: Path, tracked: list[str]) -> list[str]:
+    out: list[str] = []
+    for rel in tracked:
+        if not (rel.endswith(".py") or rel.endswith(".sh")):
+            continue
+        if rel.endswith(("check_artifact_layout.py", "check_doc_paths.py")) or rel.endswith("common/paths.py"):
+            continue
+        p = root / rel
+        try:
+            lines = p.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for i, line in enumerate(lines, 1):
+            for lit in _STALE_LITERALS:
+                if lit in line and ("out/" + lit[1:]) not in line:
+                    if any(a.startswith(rel + ":") and a.split(":", 1)[1] in line
+                           for a in _STALE_LITERAL_ALLOW):
+                        continue
+                    out.append(f"stale generated-root literal {lit[1:]!r} (use out/ prefix): {rel}:{i}")
+                    break
+    return out
+
+
 def _repo_root() -> Path:
     out = subprocess.run(["git", "rev-parse", "--show-toplevel"],
                          capture_output=True, text=True).stdout.strip()
@@ -69,7 +111,9 @@ def _tracked(root: Path, staged: bool) -> list[str]:
 
 def check(root: Path, staged: bool) -> list[str]:
     violations: list[str] = []
-    for rel in _tracked(root, staged):
+    tracked = _tracked(root, staged)
+    violations.extend(_stale_path_literals(root, tracked))
+    for rel in tracked:
         if any(rel.startswith(s) for s in SKIP_PREFIXES):
             continue
         p = Path(rel)

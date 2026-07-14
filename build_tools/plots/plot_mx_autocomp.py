@@ -30,7 +30,7 @@ _ROOT = _repo_root()
 use_merlin_style()
 
 BUNDLE = "/path/to/chipyard-mx/generators/gemmini/mx-autocomp/bundle"
-OUT = str(_ROOT / "artifacts/presentation/mx_autocomp")
+OUT = str(_ROOT / "out/artifacts/presentation/mx_autocomp")
 os.makedirs(OUT, exist_ok=True)
 
 # pipeline identity (consistent colour across every figure)

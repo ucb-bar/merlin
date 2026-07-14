@@ -229,10 +229,10 @@ def _write(run_dir: Path, rec: dict[str, Any]) -> Path:
 def main(argv: list[str] | None = None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description="Certify an RVV package on a workload (spike+K1).")
-    ap.add_argument("--package", required=True, help="artifacts/targets/rvv/<run_id>/ dir")
+    ap.add_argument("--package", required=True, help="out/artifacts/targets/rvv/<run_id>/ dir")
     ap.add_argument("--workload", required=True, help="workload bundle dir (model.mlir+inputs+golden)")
     ap.add_argument("--run-id", default=None, help="run id (default: <pkg>_<workload>)")
-    ap.add_argument("--runs-root", default="runs/rvv_experiment")
+    ap.add_argument("--runs-root", default="out/runs/rvv_experiment")
     ap.add_argument("--targets", default="spike,k1", help="comma list: spike,k1,firesim")
     ap.add_argument("--baseline-run-dir", default=None, help="baseline run dir for delta")
     ap.add_argument("--harts", type=int, default=2)

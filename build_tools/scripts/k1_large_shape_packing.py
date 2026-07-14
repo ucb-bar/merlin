@@ -190,7 +190,7 @@ def measure_ours_compiler(run_id: str, features: list[str], *, S: int, reps: int
             "kernel_file": f"merlin RVV codegen fork (features={features or 'baseline'})",
             "measure_method": "standalone_linux_compiler_fused"}
     bundle = workloads.gen_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", M=S, N=S, K=S)
-    hb = load_rvv_package(REPO / "artifacts/targets" / "rvv" / "hand_v0")
+    hb = load_rvv_package(REPO / "out/artifacts/targets" / "rvv" / "hand_v0")
     pkg = replace(hb, run_id=run_id, compiler_features=list(features))
     cc = _cc()
     with tempfile.TemporaryDirectory(prefix="k1_ours_") as tmp:
@@ -256,7 +256,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--shapes", default="32,64,128,256,512")
     ap.add_argument("--reps", type=int, default=3)
-    ap.add_argument("--out", default="artifacts/measurements/k1_spacemit/gemm/large_shape_packing_k1.jsonl")
+    ap.add_argument("--out", default="out/artifacts/measurements/k1_spacemit/gemm/large_shape_packing_k1.jsonl")
     ap.add_argument("--skip-ours-compiler", action="store_true",
                     help="skip ours-baseline/tiled compiler columns (they are ~10x slow + may OOM at 512)")
     a = ap.parse_args()

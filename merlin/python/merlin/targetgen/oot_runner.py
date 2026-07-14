@@ -417,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--input", required=True, help="path to an *.interface.mlir")
     ap.add_argument("--run-id", required=True)
     ap.add_argument("--simulator", default="spike", choices=["spike", "verilator"])
-    ap.add_argument("--runs-root", default="runs/gemmini_contract")
+    ap.add_argument("--runs-root", default="out/runs/gemmini_contract")
     ap.add_argument("--timeout", type=int, default=600)
     args = ap.parse_args(argv)
 
