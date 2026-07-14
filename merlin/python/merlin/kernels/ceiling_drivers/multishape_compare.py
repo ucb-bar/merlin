@@ -34,6 +34,7 @@ import subprocess
 import tempfile
 from dataclasses import replace
 from pathlib import Path
+from merlin.common.paths import runtime_dir
 
 from ...common.driver_output import int_after as _int_after
 from ...common.paths import artifacts_dir, repo_root
@@ -213,7 +214,7 @@ def _build_ours(out: Path, model_o: Path, cgen: Path, *, M: int, N: int, K: int,
     enc = bench_ceiling._encoding_include_dir()
     if enc is None:
         return "encoding.h not found (set MERLIN_CHIPYARD)"
-    runtime_c = repo_root() / "merlin" / "runtime" / "c" / "merlin_model.c"
+    runtime_c = runtime_dir() / "c" / "merlin_model.c"
     mlir_rt = repo_root() / "merlin" / "runtime" / "abi" / "mlir_runtime.c"   # memrefCopy + math shims
     incs = [HERE, cgen, runtime_c.parent]
     inc_flags: list[str] = []

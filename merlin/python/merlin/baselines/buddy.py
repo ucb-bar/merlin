@@ -42,7 +42,7 @@ from merlin.baselines import bundle as _bundle
 from merlin.baselines import k1_exec, profile, rvv_audit
 from merlin.baselines.contract import BaselineResult, RegionProfile, ScalarFallback
 from merlin.common import artifacts
-from merlin.common.paths import build_dir, repo_root
+from merlin.common.paths import build_dir, repo_root, runtime_dir
 from merlin.rvvgen import k1
 
 FRAMEWORK = "buddy"
@@ -603,7 +603,7 @@ def link_native_k1_elf(native_dir: Path, objs: list[Path], work: Path, input_val
     binary = work / "buddy_native_k1"
     # buddy's tosa lowering emits memref.copy -> a call to `memrefCopy`; merlin's mlir_runtime.c
     # provides it (normally MLIR's C runner utils would).
-    abi_rt = repo_root() / "merlin/runtime/abi" / "mlir_runtime.c"
+    abi_rt = runtime_dir() / "abi" / "mlir_runtime.c"
     base = [cc, "--target=riscv64-unknown-linux-gnu", f"-march={k1.K1_MARCH}",
             f"-mabi={k1.K1_MABI}", "-O2", "-fPIC", str(main_c), str(abi_rt),
             *[str(o) for o in objs], "-lm", "-lpthread", "-o", str(binary)]
@@ -847,8 +847,8 @@ def link_k1_elf(model_dir: Path, obj: Path, work: Path, *, inputs_npz: Path | No
     main_c = work / "main_linux.c"
     main_c.write_text(_m2m_harness_c(mmap_weights=mmap_weights))
 
-    rt = repo_root() / "merlin/runtime/c"
-    abi = repo_root() / "merlin/runtime/abi"
+    rt = runtime_dir() / "c"
+    abi = runtime_dir() / "abi"
     binary = work / "buddy_k1"
     # The buddy_call.c shim makes a single `_mlir_ciface_forward(...)` call with N args (N = every
     # forward operand). For high-arity models (pi05: 829) the SpacemiT clang-19 RISC-V backend crashes

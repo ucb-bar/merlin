@@ -19,6 +19,7 @@ from __future__ import annotations
 import struct
 import subprocess
 from pathlib import Path
+from merlin.common.paths import runtime_dir
 from typing import Any
 
 import numpy as np
@@ -37,11 +38,11 @@ class SpikeModelError(RuntimeError):
 
 
 def _harness_dir() -> Path:
-    return repo_root() / "merlin/runtime/baremetal/spike"
+    return runtime_dir() / "baremetal/spike"
 
 
 def _c_runtime_dir() -> Path:
-    return repo_root() / "merlin/runtime/c"
+    return runtime_dir() / "c"
 
 
 def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
@@ -103,7 +104,7 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
         "model_call.o": (cgen / "model_call.c", inc),
         "merlin_model.o": (rt / "merlin_model.c", inc),
         "model_main.o": (h / "model_main.c", inc + addr_defs),
-        "mlir_rt.o": (repo_root() / "merlin/runtime/abi/mlir_runtime.c", []),
+        "mlir_rt.o": (runtime_dir() / "abi/mlir_runtime.c", []),
         "crt.o": (h / "crt.S", []),
         "htif.o": (h / "htif.c", []),
         "libc_min.o": (h / "libc_min.c", []),

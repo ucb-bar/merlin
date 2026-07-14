@@ -31,6 +31,7 @@ import os
 import struct
 import subprocess
 from pathlib import Path
+from merlin.common.paths import runtime_dir
 from typing import Any
 
 import numpy as np
@@ -480,8 +481,8 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     (app / "boards").mkdir(parents=True, exist_ok=True)
     (app / "src" / "main.c").write_text(_main_c(rvv_hart, weights_base=weights_base))
     (app / "prj.conf").write_text(_prj_conf(arena_mb, cpus, backend))
-    rt = repo_root() / "merlin/runtime/c"
-    abi = repo_root() / "merlin/runtime/abi"
+    rt = runtime_dir() / "c"
+    abi = runtime_dir() / "abi"
     weights_section_ld = None
     if external:
         # snippet: divert the renamed blob section into the WEIGHTS DT memory-region.

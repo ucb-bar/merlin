@@ -89,6 +89,18 @@ def targets_dir() -> Path:
     return data_path("targets")
 
 
+def runtime_dir() -> Path:
+    """Return the C runtime substrate dir (``<repo>/merlin/runtime`` in-repo, bundled
+    ``_data/runtime`` in a wheel) — the ``c/``, ``abi/``, ``baremetal/`` sources the whole-model
+    compile paths read at use time. Honors ``MERLIN_RUNTIME_DIR``. Compiling them still needs an
+    external toolchain (the ``[board]`` extra / ``MERLIN_*`` tools); bundling only makes the sources
+    resolve so the failure is the actionable 'toolchain unavailable', not 'source not found'."""
+    env = os.environ.get("MERLIN_RUNTIME_DIR")
+    if env:
+        return Path(env)
+    return data_path("runtime")
+
+
 # --- Generated-output roots. All generated products live under a single top-level ``out/`` with
 #     three subdirs (runs/ artifacts/ build/). These helpers are the SINGLE source of truth for the
 #     root names — callers must never hard-code the literal strings. Honors ``MERLIN_OUT_ROOT`` for

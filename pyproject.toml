@@ -19,8 +19,15 @@ Repository = "https://github.com/ucb-bar/merlin"
 Issues = "https://github.com/ucb-bar/merlin/issues"
 
 [project.optional-dependencies]
-dev = ["pytest", "pyyaml", "pydantic", "rich"]
+dev = ["pytest", "pytest-timeout", "pyyaml", "pydantic", "rich"]
 xdsl = ["xdsl>=0.68"]
+# targetgen contract validation (fail-closed JSON-Schema checks in targetgen.contract).
+targetgen = ["jsonschema"]
+# Board / simulator / RTL-cert flows (spike, verilator, K1, chipyard, clang-23, model2MLIR, …) have
+# NO PyPI deps — they resolve external toolchains via MERLIN_* env vars (see .env.example). This extra
+# exists as the documented install target + carries the bundled runtime-C sources' consumers; the
+# actual tools must be installed out of band.
+board = []
 # Kernel-mining extras: Exo compile-to-C ingest, a columnar feature table, evaluation plots.
 # AST structural mining (tree-sitter parses diverse kernel C without needing framework headers).
 kernels-ast = ["tree-sitter", "tree-sitter-c"]

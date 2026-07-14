@@ -8,9 +8,9 @@ outside the repo (data lived in sibling trees that ``parents[N]`` walks could no
 installed). See ``docs/design/standalone_packaging.md``.
 
 Scope tracks the executed packaging phases: P0 (schemas + prompts), P1 (the light benchmark specs,
-asserting the heavy ``recaptures*`` corpora are NOT bundled), and P2 (the contract + reference target
-contracts, asserting ``rtl_facts`` cert data is NOT bundled), via the ``merlin/_data`` bundle produced
-by setup.py's build_py hook.
+asserting the heavy ``recaptures*`` corpora are NOT bundled), P2 (the contract + reference target
+contracts, asserting ``rtl_facts`` cert data is NOT bundled), and P3 (the runtime-C substrate sources),
+via the ``merlin/_data`` bundle produced by setup.py's build_py hook.
 
 Runs the build with ``uv`` (the repo's toolchain). Skips cleanly (exit 0) when ``uv`` is absent so a
 minimal CI image without it doesn't hard-fail; wire the full run into the packaging CI job.
@@ -46,6 +46,10 @@ assert (cd / "schemas" / "command_buffer.schema.json").is_file(), f"bundled cont
 td = p.targets_dir()
 assert (td / "gemmini" / "contracts" / "target_contract.yaml").is_file(), "bundled target contract missing"
 assert not (td / "gemmini" / "contracts" / "rtl_facts").exists(), "rtl_facts cert data leaked into the wheel"
+# runtime C substrate (P3): sources resolve so the compile paths fail on 'need toolchain', not 'no source'.
+rd = p.runtime_dir()
+assert (rd / "c" / "merlin_model.c").is_file(), f"bundled runtime C source missing: {rd}"
+assert (rd / "abi" / "mlir_runtime.c").is_file(), "bundled runtime ABI source missing"
 # entry points registered (import-clean at least at the console-script level)
 from importlib.metadata import entry_points
 scripts = {e.name for e in entry_points(group="console_scripts") if e.value.startswith("merlin.")}

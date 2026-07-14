@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from merlin.common.paths import runtime_dir
 
 from ..common.paths import repo_root
 from .toolchain import clang
@@ -18,7 +19,7 @@ RISCV_FLAGS = ["--target=riscv64-unknown-elf", "-march=rv64gcv", "-mabi=lp64d",
 
 def mlir_runtime_c() -> Path:
     """Merlin's MLIR C-runtime shim (memrefCopy, ...) linked into every target."""
-    return repo_root() / "merlin/runtime/abi/mlir_runtime.c"
+    return runtime_dir() / "abi/mlir_runtime.c"
 
 
 class CodegenError(RuntimeError):

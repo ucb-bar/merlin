@@ -21,7 +21,7 @@ _ROOT = Path(__file__).resolve().parent
 _PKG = _ROOT / "merlin" / "python" / "merlin"
 # canonical (top-level) -> bundled (inside the package)
 _BUNDLE = {kind: _PKG / "_data" / kind
-           for kind in ("schemas", "prompts", "benchmarks", "contract", "targets")}
+           for kind in ("schemas", "prompts", "benchmarks", "contract", "targets", "runtime")}
 
 # Per-tree exclusions from the bundle:
 #  - benchmarks: the heavy capture corpora (``recaptures*`` — model.mlir/safetensors, tens of MB and

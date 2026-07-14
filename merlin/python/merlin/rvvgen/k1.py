@@ -21,7 +21,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from merlin.common.paths import repo_root
+from merlin.common.paths import repo_root, runtime_dir
 from typing import Any
 
 # Board access — set both via env (no personal defaults committed). The board IP is a DHCP lease.
@@ -480,8 +480,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     # 6. link the final binary. Reuse the repo's portable C runtime + generated ciface. Prefer a
     #    static binary (no glibc-version coupling to the board); fall back to dynamic, which is
     #    fine since it runs on the board's own glibc.
-    rt = _REPO / "merlin/runtime/c"
-    abi = _REPO / "merlin/runtime/abi"
+    rt = runtime_dir() / "c"
+    abi = runtime_dir() / "abi"
     binary = work / "merlin_k1"
     srcs = [main_c, cgen / "model_call.c", rt / "merlin_model.c", abi / "mlir_runtime.c"]
     # MEASUREMENT PROXY for the lean runtime's static arena (env MERLIN_BUMP_MALLOC, default OFF):

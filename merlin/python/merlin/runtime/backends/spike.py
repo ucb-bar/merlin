@@ -18,6 +18,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+from merlin.common.paths import runtime_dir
 from typing import Any
 
 from ...common.paths import repo_root
@@ -54,7 +55,7 @@ def spike_path() -> Path:
 
 
 def harness_dir() -> Path:
-    return repo_root() / "merlin/runtime/baremetal/spike"
+    return runtime_dir() / "baremetal/spike"
 
 
 def available() -> bool:
