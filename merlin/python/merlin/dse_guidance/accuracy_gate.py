@@ -27,7 +27,7 @@ class AccuracyPoint:
 
 
 def load(path=None) -> list[AccuracyPoint]:
-    p = path or (paths.merlin_dir() / "benchmarks" / "dse_guidance" / "accuracy_gate.yaml")
+    p = path or (paths.bench_dir() / "dse_guidance" / "accuracy_gate.yaml")
     doc = load_yaml(p)
     src = doc.get("source", "?")
     return [AccuracyPoint(model=r["model"], dtype=r["dtype"],

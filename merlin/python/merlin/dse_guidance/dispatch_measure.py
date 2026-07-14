@@ -49,7 +49,7 @@ class DispatchMeasurement:
 
 
 def load_measured(path=None) -> list[DispatchMeasurement]:
-    p = path or (paths.merlin_dir() / "benchmarks" / "dse_guidance" / "measured_dispatch.yaml")
+    p = path or (paths.bench_dir() / "dse_guidance" / "measured_dispatch.yaml")
     doc = load_yaml(p)
     def _f(r, k):
         return float(r[k]) if r.get(k) is not None else None

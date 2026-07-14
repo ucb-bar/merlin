@@ -33,7 +33,7 @@ def _load_region(args) -> dict:
         return build_region(H=args.H, reuse_count=args.reuse, dtype=args.dtype,
                             epilogue=not args.no_epilogue, K=args.K)
     # Otherwise treat --workload as a benchmark name under semantic_memory.
-    bench = paths.merlin_dir() / "benchmarks" / "semantic_memory" / f"{args.workload}.yaml"
+    bench = paths.bench_dir() / "semantic_memory" / f"{args.workload}.yaml"
     if bench.is_file():
         return load_yaml(bench)
     raise SystemExit(f"unknown workload '{args.workload}' (no benchmark {bench})")

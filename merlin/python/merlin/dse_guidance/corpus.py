@@ -54,7 +54,7 @@ def _recap_dir_in(workload: str, subdir: str):
     # (pi05/smolvla/groot) live out-of-git under out/artifacts/recaptures/ (regenerable via m2m) to
     # keep git lean. Prefer the committed copy, fall back to the artifacts overflow, else the committed
     # path (absent -> available_models()/callers skip it via the model.mlir is_file() check).
-    committed = paths.merlin_dir() / "benchmarks" / "dse_guidance" / subdir / workload
+    committed = paths.bench_dir() / "dse_guidance" / subdir / workload
     if (committed / "model.mlir").is_file():
         return committed
     from merlin.common.artifacts import recaptures_dir

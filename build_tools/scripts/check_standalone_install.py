@@ -7,9 +7,10 @@ Builds the wheel, installs it into a throwaway venv with **no repo on the path**
 outside the repo (data lived in sibling trees that ``parents[N]`` walks could not reach once
 installed). See ``docs/design/standalone_packaging.md``.
 
-Scope tracks the executed packaging phases: today it checks P0 (schemas + prompts, via the
-``merlin/_data`` bundle produced by setup.py's build_py hook). As later phases bundle more data
-classes (benchmarks, contract, reference target contracts), add a probe here.
+Scope tracks the executed packaging phases: P0 (schemas + prompts) and P1 (the light benchmark
+specs — asserting the heavy ``recaptures*`` corpora are NOT bundled), via the ``merlin/_data`` bundle
+produced by setup.py's build_py hook. As later phases bundle more data classes (contract, reference
+target contracts), add a probe here.
 
 Runs the build with ``uv`` (the repo's toolchain). Skips cleanly (exit 0) when ``uv`` is absent so a
 minimal CI image without it doesn't hard-fail; wire the full run into the packaging CI job.
@@ -33,6 +34,11 @@ assert pd.is_dir(), f"prompts_dir missing in wheel: {pd}"
 from merlin.common.schemas import load_schema
 load_schema("kernel_record")                       # exercises the schema-resolve + parse path
 assert (pd / "rvv_mining_v1.md").is_file(), "bundled prompt missing"
+# benchmarks: the LIGHT specs bundle (P1); the heavy recaptures* deliberately do NOT.
+bd = p.bench_dir()
+assert (bd / "dse_guidance" / "accuracy_gate.yaml").is_file(), f"bundled benchmark spec missing: {bd}"
+assert (bd / "semantic_memory" / "no_reuse_matmul.yaml").is_file(), "bundled workload spec missing"
+assert not (bd / "dse_guidance" / "recaptures").exists(), "heavy recaptures leaked into the wheel"
 # entry points registered (import-clean at least at the console-script level)
 from importlib.metadata import entry_points
 scripts = {e.name for e in entry_points(group="console_scripts") if e.value.startswith("merlin.")}

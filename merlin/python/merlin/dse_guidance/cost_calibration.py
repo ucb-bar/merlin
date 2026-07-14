@@ -58,7 +58,7 @@ class CalibResult:
 
 
 def load_measured(path=None) -> dict:
-    p = path or (paths.merlin_dir() / "benchmarks" / "dse_guidance" / "measured_cycles.yaml")
+    p = path or (paths.bench_dir() / "dse_guidance" / "measured_cycles.yaml")
     return load_yaml(p)
 
 

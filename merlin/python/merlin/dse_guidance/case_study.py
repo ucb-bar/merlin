@@ -777,7 +777,7 @@ def capture_level_ablation_csv() -> str:
     """Op-vocabulary per (workload, capture level), read from the local recaptures_levels/ (which are
     gitignored + regenerable via `workloads/capture.py <wl> --level high-level` and `--formats int8`).
     Returns '' if no multi-level recaptures are present (then the committed summary is left as-is)."""
-    bench = paths.merlin_dir() / "benchmarks" / "dse_guidance"
+    bench = paths.bench_dir() / "dse_guidance"
     lvl = bench / "recaptures_levels"
     wls = sorted(p.name for p in lvl.glob("*")
                  if (p / "model_highlevel.mlir").is_file() or (p / "model_qdq.mlir").is_file()) \

@@ -41,7 +41,7 @@ class WorkloadSpec:
 
 def discover_semantic_memory() -> list[str]:
     """Names of all ``semantic_memory`` benchmark regions (sorted, deterministic)."""
-    d = paths.merlin_dir() / "benchmarks" / "semantic_memory"
+    d = paths.bench_dir() / "semantic_memory"
     return sorted(p.stem for p in d.glob("*.yaml"))
 
 
@@ -58,7 +58,7 @@ def discover_specs() -> list[WorkloadSpec]:
     """The design-pressure semantic_memory regions as synthesized study specs."""
     specs: list[WorkloadSpec] = []
     for name in discover_semantic_memory():
-        region = load_yaml(paths.merlin_dir() / "benchmarks" / "semantic_memory" / f"{name}.yaml")
+        region = load_yaml(paths.bench_dir() / "semantic_memory" / f"{name}.yaml")
         specs.append(spec_from_region(region.get("name", name), region))
     return specs
 
@@ -87,7 +87,7 @@ def spec_from_model(base_model: str, capture_dirs: list[str]) -> WorkloadSpec:
     # shape_signature -> role) lives at merlin/benchmarks/dse_guidance/region_maps/<model>.yaml;
     # without it, facts + repeated-shape clusters are still extracted and roles stay unknown.
     topo = TOP.from_temporal(temporal)
-    map_path = (paths.merlin_dir() / "benchmarks" / "dse_guidance" / "region_maps"
+    map_path = (paths.bench_dir() / "dse_guidance" / "region_maps"
                 / f"{base_model}.yaml")
     mapping = load_yaml(map_path) if map_path.is_file() else None
     attribution = ATTR.attribute(capture, topo, mapping_rules=mapping)

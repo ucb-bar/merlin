@@ -20,7 +20,13 @@ from setuptools.command.build_py import build_py
 _ROOT = Path(__file__).resolve().parent
 _PKG = _ROOT / "merlin" / "python" / "merlin"
 # canonical (top-level) -> bundled (inside the package)
-_BUNDLE = {"schemas": _PKG / "_data" / "schemas", "prompts": _PKG / "_data" / "prompts"}
+_BUNDLE = {kind: _PKG / "_data" / kind for kind in ("schemas", "prompts", "benchmarks")}
+
+# The benchmarks tree carries the heavy capture corpora (``recaptures*`` — model.mlir/safetensors,
+# tens of MB and regenerable). Bundle only the LIGHT specs; a wheel user reaches the captures via
+# MERLIN_BENCH_DIR pointing at a checkout. Also skip build cruft.
+def _ignore_heavy(_dir: str, names: list[str]) -> set[str]:
+    return {n for n in names if n.startswith("recaptures") or n == "__pycache__"}
 
 
 def _sync_bundled_data() -> None:
@@ -30,7 +36,8 @@ def _sync_bundled_data() -> None:
             continue
         if dst.exists():
             shutil.rmtree(dst)
-        shutil.copytree(src, dst)
+        ignore = _ignore_heavy if kind == "benchmarks" else None
+        shutil.copytree(src, dst, ignore=ignore)
 
 
 class BuildPyWithData(build_py):

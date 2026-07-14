@@ -85,7 +85,7 @@ def low_bit_visibility_rows(cs_dir) -> list[dict]:
     assumed). Native packed fp8/int4 for the rest needs model-specific quant exports (scoped, not faked)."""
     from merlin.common import paths as _paths
     from merlin.dse_guidance.corpus import available_models
-    bench = _paths.merlin_dir() / "benchmarks" / "dse_guidance"
+    bench = _paths.bench_dir() / "dse_guidance"
     nat_dir, lvl_dir = bench / "recaptures_native", bench / "recaptures_levels"
     # measured W8A8 accuracy gate (which int8 variants pass/fail/were-not-measured)
     try:
@@ -149,7 +149,7 @@ def quant_rows(cs_dir: Path) -> list[dict]:
         # recaptures_levels holds model_qdq.mlir (not model.mlir): committed under merlin/benchmarks/
         # with an out/artifacts/recaptures/ overflow (same layout as the other corpora), NOT a sibling
         # of cs_dir (which broke silently once case_study moved under out/artifacts/).
-        for base in (paths.merlin_dir() / "benchmarks" / "dse_guidance" / "recaptures_levels" / w,
+        for base in (paths.bench_dir() / "dse_guidance" / "recaptures_levels" / w,
                      recaptures_dir() / "dse_guidance" / "recaptures_levels" / w):
             p = base / "model_qdq.mlir"
             if p.is_file():

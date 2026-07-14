@@ -27,7 +27,7 @@ def load_region(workload: str | None = None, region_yaml: str | None = None,
         from merlin.design_pressure.workloads.vla_action_chunk_decode import build_region
         return build_region(H=H, reuse_count=H)
     if workload:
-        bench = paths.merlin_dir() / "benchmarks" / "semantic_memory" / f"{workload}.yaml"
+        bench = paths.bench_dir() / "semantic_memory" / f"{workload}.yaml"
         if bench.is_file():
             return load_yaml(bench)
     raise SystemExit(

@@ -9,7 +9,6 @@ generalization testing, the structural precursor to measured speedups in a later
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import yaml
@@ -20,10 +19,10 @@ _DTYPE_BYTES = {"i8": 1, "u8": 1, "i32": 4, "f16": 2, "bf16": 2, "f32": 4}
 
 
 def _bench_dir() -> Path:
-    env = os.environ.get("MERLIN_BENCH_DIR")
-    if env:
-        return Path(env)
-    return Path(__file__).resolve().parents[3] / "benchmarks" / "semantic_memory"
+    # MERLIN_BENCH_DIR is the benchmarks ROOT (unified with the dse_guidance sites); the workload
+    # specs live under semantic_memory/. bench_dir() resolves in-repo canonical or bundled _data.
+    from merlin.common.paths import bench_dir
+    return bench_dir() / "semantic_memory"
 
 
 def _load(name: str) -> dict:

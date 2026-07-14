@@ -67,6 +67,18 @@ def prompts_dir() -> Path:
     return data_path("prompts")
 
 
+def bench_dir() -> Path:
+    """Return the benchmarks corpus ROOT (``<repo>/merlin/benchmarks`` in-repo). Honors
+    ``MERLIN_BENCH_DIR`` (which is the benchmarks *root*, not a subdir). In an installed wheel this
+    resolves to the bundled ``_data/benchmarks`` — the LIGHT specs only (workload region YAMLs,
+    accuracy/cycle/dispatch tables, region maps); the heavy ``recaptures*`` capture corpora are NOT
+    bundled, so point ``MERLIN_BENCH_DIR`` at a checkout to reach them from a wheel."""
+    env = os.environ.get("MERLIN_BENCH_DIR")
+    if env:
+        return Path(env)
+    return data_path("benchmarks")
+
+
 def targets_dir() -> Path:
     """Return ``<repo>/merlin/targets``."""
     return merlin_dir() / "targets"
