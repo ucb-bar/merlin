@@ -37,6 +37,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 ALLOW_FILE = ROOT / "build_tools" / "scripts" / "regex_allowlist.txt"
 SCAN_ROOTS = ("merlin/python/merlin", "build_tools/scripts")
+# Path fragments that mark BUILD-GENERATED (gitignored) trees, not source — never scanned. `_data`
+# is the read-only data bundle setup.py copies into the package at wheel-build time.
+EXCLUDE_FRAGMENTS = ("/_data/",)
 INLINE_MARKER = "# regex-ok:"
 
 # re-module functions that constitute a regex call site.
@@ -124,6 +127,8 @@ def _iter_targets(staged: bool) -> list[Path]:
     for rel in rels:
         if not rel.endswith(".py"):
             continue
+        if any(frag in f"/{rel}" for frag in EXCLUDE_FRAGMENTS):
+            continue  # build-generated bundle, not source
         if any(rel.startswith(r + "/") or rel == r for r in SCAN_ROOTS):
             targets.append(Path(rel))
     return targets

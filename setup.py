@@ -30,13 +30,20 @@ _BUNDLE = {kind: _PKG / "_data" / kind
 #    checkout); the wheel ships the target *contracts* (dialect_plan/target_contract), not cert data.
 # Plus build cruft everywhere.
 _EXCLUDE = {"benchmarks": ("recaptures",), "targets": ("rtl_facts",)}
+# The bundle ships read-only DATA only — never code. The corpora carry dev/repro helper scripts
+# (e.g. benchmarks/dse_guidance/verify_implementation.py) the SDK never loads; keep them out of the
+# wheel (smaller, and no stray code under the importable package for the repo linters to scan).
+_CODE_SUFFIXES = (".py", ".pyc", ".pyo", ".sh")
 
 
 def _ignore_for(kind: str):
     prefixes = _EXCLUDE.get(kind, ())
 
     def _ignore(_dir: str, names: list[str]) -> set[str]:
-        return {n for n in names if n == "__pycache__" or any(n.startswith(p) for p in prefixes)}
+        return {n for n in names
+                if n == "__pycache__"
+                or n.endswith(_CODE_SUFFIXES)
+                or any(n.startswith(p) for p in prefixes)}
 
     return _ignore
 
