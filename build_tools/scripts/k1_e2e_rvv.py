@@ -80,11 +80,11 @@ def run_pkg(model_dir: Path, pkg, golden: np.ndarray, n: int, tag: str) -> dict:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="artifacts/recaptures/tiny_llama_fp8_consistent")
-    ap.add_argument("--baseline", default="artifacts/targets/rvv/hand_v0")
+    ap.add_argument("--model", default="out/artifacts/recaptures/tiny_llama_fp8_consistent")
+    ap.add_argument("--baseline", default="out/artifacts/targets/rvv/hand_v0")
     ap.add_argument("--optimized", required=True)
     ap.add_argument("-n", type=int, default=3)
-    ap.add_argument("--out", default="artifacts/measurements/k1_spacemit/k1_e2e_tiny_llama.json")
+    ap.add_argument("--out", default="out/artifacts/measurements/k1_spacemit/k1_e2e_tiny_llama.json")
     a = ap.parse_args()
 
     md = Path(a.model)

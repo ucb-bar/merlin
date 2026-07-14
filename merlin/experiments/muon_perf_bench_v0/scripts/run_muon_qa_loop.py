@@ -42,7 +42,7 @@ BUNDLE = EXP / "input_bundles/muon_rtlchecks_public_v0"
 # muon has no curated merlin/targets/muon; the resolver routes to artifacts/targets/muon.
 FACTS = rtl_facts_path("muon").parent
 TASK = EXP / "task" / "TASK_muon.md"
-REFERENCE = _REPO / "artifacts/targets/muon/reference_v0"
+REFERENCE = _REPO / "out/artifacts/targets/muon/reference_v0"
 
 # answer-bearing names never staged into the agent's workspace
 _DROP = {"golden.yaml", "expected_command_buffer_g0.json"}

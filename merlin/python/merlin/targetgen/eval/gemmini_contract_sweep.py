@@ -21,7 +21,7 @@ from merlin.targetgen.contract.interface_emit import emit_interface_mlir
 from merlin.targetgen.oot_runner import certify
 
 ALL_RUNGS = list(RUNGS) + list(QUANT_RUNGS)
-NATIVE_PKG = "artifacts/targets/gemmini/merlin_native_v0"
+NATIVE_PKG = "out/artifacts/targets/gemmini/merlin_native_v0"
 
 
 def emit_rung_interface(rung: str, out_dir: str | Path) -> Path:
@@ -63,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--rungs", default=",".join(ALL_RUNGS))
     ap.add_argument("--simulators", default="spike,verilator")
     ap.add_argument("--package", default=NATIVE_PKG)
-    ap.add_argument("--runs-root", default="runs/gemmini_cert_oot")
+    ap.add_argument("--runs-root", default="out/runs/gemmini_cert_oot")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--timeout", type=int, default=600)
     args = ap.parse_args(argv)

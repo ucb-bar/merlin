@@ -136,7 +136,7 @@ def main(argv=None):
                 d.unlink()
             _sh.copy(SCRIPTS_DIR / src, d)
         # real known-good submission so the broker grades a genuine L2 pass (not just a channel ping)
-        ref = C.REPO / "artifacts/targets/gemmini/agent_spec_v1_mlir_oot"
+        ref = C.REPO / "out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot"
         sub = ws / "submission"
         if sub.exists() or sub.is_symlink():
             sub.unlink() if sub.is_symlink() else _sh.rmtree(sub)

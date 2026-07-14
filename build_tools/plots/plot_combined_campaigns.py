@@ -34,7 +34,7 @@ def _repo_root():
 _ROOT = _repo_root()
 
 RAD = str(_ROOT / "tmp/kernels/radiance_only_kernels")
-OUT = str(_ROOT / "artifacts/presentation/combined")
+OUT = str(_ROOT / "out/artifacts/presentation/combined")
 os.makedirs(OUT, exist_ok=True)
 
 MX_TOTAL = json.load(open(f"{MX_BUNDLE}/cost/project-spend-total.json"))

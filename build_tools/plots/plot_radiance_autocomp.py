@@ -26,7 +26,7 @@ _ROOT = _repo_root()
 
 BUNDLE = (_ROOT / "tmp/kernels/radiance_only_kernels")
 IDX = BUNDLE / "index"
-OUT = (_ROOT / "artifacts/presentation/radiance_autocomp")
+OUT = (_ROOT / "out/artifacts/presentation/radiance_autocomp")
 OUT.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------- problem identity

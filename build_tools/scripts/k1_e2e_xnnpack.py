@@ -88,12 +88,12 @@ def run_cfg(model_dir: Path, pkg, golden: np.ndarray, n: int, tag: str,
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="artifacts/recaptures/bitvla_fp32_consistent")
-    ap.add_argument("--baseline", default="artifacts/targets/rvv/hand_v0")
+    ap.add_argument("--model", default="out/artifacts/recaptures/bitvla_fp32_consistent")
+    ap.add_argument("--baseline", default="out/artifacts/targets/rvv/hand_v0")
     ap.add_argument("-n", type=int, default=3)
     ap.add_argument("--configs", default="baseline,ours_tiled,ours_v3,xnnpack_kernels",
                     help="comma list of: baseline,ours_tiled,ours_v3,ours_wholemodel,xnnpack_kernels")
-    ap.add_argument("--out", default="artifacts/measurements/k1_spacemit/k1_e2e_xnnpack_bitvla.json")
+    ap.add_argument("--out", default="out/artifacts/measurements/k1_spacemit/k1_e2e_xnnpack_bitvla.json")
     a = ap.parse_args()
 
     md = Path(a.model)

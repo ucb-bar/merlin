@@ -59,11 +59,11 @@ def test_decode_tracks_effective_vtype(tmp_path, monkeypatch):
 
 @pytest.mark.skipif(
     not (repo_root()
-         / "runs/rvv_experiment/hand_v0_matmul_f32_64x64x64/generated/model.o").is_file(),
+         / "out/runs/rvv_experiment/hand_v0_matmul_f32_64x64x64/generated/model.o").is_file(),
     reason="built matmul object not present")
 def test_decode_real_object():
     obj = (repo_root()
-           / "runs/rvv_experiment/hand_v0_matmul_f32_64x64x64/generated/model.o")
+           / "out/runs/rvv_experiment/hand_v0_matmul_f32_64x64x64/generated/model.o")
     s = rvv.decode(obj)
     assert sum(1 for i in s.insns if i.is_vector) > 0
     vt = s.vtype_histogram()

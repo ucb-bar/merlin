@@ -149,7 +149,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--shapes", default="32,64,128")
     ap.add_argument("--reps", type=int, default=3)
-    ap.add_argument("--out", default="artifacts/measurements/k1_spacemit/gemm/intrinsic_microkernel_k1.jsonl")
+    ap.add_argument("--out", default="out/artifacts/measurements/k1_spacemit/gemm/intrinsic_microkernel_k1.jsonl")
     a = ap.parse_args()
     shapes = [int(s) for s in a.shapes.split(",")]
 

@@ -37,7 +37,7 @@ def _flops(cap: dict) -> int | None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Muon FP32 perf bench")
-    ap.add_argument("--package", default="artifacts/targets/muon/reference_v0")
+    ap.add_argument("--package", default="out/artifacts/targets/muon/reference_v0")
     ap.add_argument("--kernels-root", default="merlin/experiments/muon_perf_bench_v0/kernels")
     ap.add_argument("--run-id", default="ref_v0")
     ap.add_argument("--labels", default="public,dev")

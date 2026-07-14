@@ -23,10 +23,10 @@ OUT = REPO / "artifacts" / "capsule-bench" / "gemmini" / "capsule_bench_v0_freez
 ARTIFACTS = {
     "merlin/contract": "merlin/contract",
     "targetgen_modules": "merlin/python/merlin/targetgen",
-    "agent_spec_v1": "artifacts/targets/gemmini/agent_spec_v1_mlir_oot",
-    "results_gemmini": "artifacts/capsule-bench/gemmini",
-    "runs_public": "runs/capsule_bench_v1",
-    "runs_hidden": "runs/capsule_bench_v1_hidden",
+    "agent_spec_v1": "out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot",
+    "results_gemmini": "out/artifacts/capsule-bench/gemmini",
+    "runs_public": "out/runs/capsule_bench_v1",
+    "runs_hidden": "out/runs/capsule_bench_v1_hidden",
 }
 _SKIP_PARTS = {"build", "__pycache__", ".git"}
 
@@ -94,8 +94,8 @@ def main() -> int:
         spike_ok = veri_ok = False
         gcc = "unknown"
 
-    pub_pass, pub_total = _count_pass(REPO / "runs/capsule_bench_v1")
-    hid_pass, hid_total = _count_pass(REPO / "runs/capsule_bench_v1_hidden")
+    pub_pass, pub_total = _count_pass(REPO / "out/runs/capsule_bench_v1")
+    hid_pass, hid_total = _count_pass(REPO / "out/runs/capsule_bench_v1_hidden")
     n_caps = len(list((REPO / "merlin/contract/capsules").rglob("capsule.yaml")))
     status = _sh(["git", "status", "--short"])
     untracked = [ln[3:] for ln in status.splitlines() if ln.startswith("??")]

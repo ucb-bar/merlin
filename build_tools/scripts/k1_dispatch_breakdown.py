@@ -136,12 +136,12 @@ def run_cfg(model_dir: Path, pkg, golden: np.ndarray, n: int, tag: str,
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="artifacts/recaptures/openvla_fp32_consistent")
-    ap.add_argument("--baseline", default="artifacts/targets/rvv/hand_v0")
+    ap.add_argument("--model", default="out/artifacts/recaptures/openvla_fp32_consistent")
+    ap.add_argument("--baseline", default="out/artifacts/targets/rvv/hand_v0")
     ap.add_argument("-n", type=int, default=5)
     ap.add_argument("--configs", default="ours_wholemodel_vf,xnnpack_kernels,baseline",
                     help="ours_wholemodel_vf,ours_wholemodel,xnnpack_kernels,ours_kernels,baseline")
-    ap.add_argument("--out", default="artifacts/measurements/k1_spacemit/dispatch_breakdown.json")
+    ap.add_argument("--out", default="out/artifacts/measurements/k1_spacemit/dispatch_breakdown.json")
     ap.add_argument("--append", action="store_true",
                     help="merge into an existing --out (per-model dict) instead of overwriting")
     a = ap.parse_args()

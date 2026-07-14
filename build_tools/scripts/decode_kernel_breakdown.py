@@ -60,7 +60,7 @@ def _lower_ours_to_obj(features, M, N, K, work: Path):
     from merlin.runtime.backends import zephyr_model as zm
 
     bundle = workloads.gen_matmul_f32(work / "wl", M=M, N=N, K=K)
-    hb = load_rvv_package(REPO / "artifacts/targets" / "rvv" / "hand_v0")
+    hb = load_rvv_package(REPO / "out/artifacts/targets" / "rvv" / "hand_v0")
     pkg = replace(hb, run_id="decode", compiler_features=list(features))
     md = Path(bundle)
     prepared = zm._prepare_model_mlir(md / "model.mlir", work, int8_compute=pkg.is_int8)

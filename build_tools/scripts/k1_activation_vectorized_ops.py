@@ -64,7 +64,7 @@ def main():
     ap.add_argument("--ops", default="gelu,sigmoid")
     ap.add_argument("--sizes", default="1024,16384,262144")
     ap.add_argument("--reps", type=int, default=3)
-    ap.add_argument("--out", default="artifacts/measurements/k1_spacemit/gemm/ours_vectorized_ops_k1.jsonl")
+    ap.add_argument("--out", default="out/artifacts/measurements/k1_spacemit/gemm/ours_vectorized_ops_k1.jsonl")
     a = ap.parse_args()
     sizes = [int(s) for s in a.sizes.split(",")]
     rows = []

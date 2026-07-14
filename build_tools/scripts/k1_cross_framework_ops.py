@@ -347,7 +347,7 @@ def main():
     ap.add_argument("--act-sizes", default="1024,16384,262144")
     ap.add_argument("--int8-shapes", default="32,64,128")
     ap.add_argument("--reps", type=int, default=3)
-    ap.add_argument("--out", default="artifacts/measurements/k1_spacemit/gemm/cross_framework_ops_k1.jsonl")
+    ap.add_argument("--out", default="out/artifacts/measurements/k1_spacemit/gemm/cross_framework_ops_k1.jsonl")
     a = ap.parse_args()
     ops = a.ops.split(",")
     act_sizes = [int(s) for s in a.act_sizes.split(",")]

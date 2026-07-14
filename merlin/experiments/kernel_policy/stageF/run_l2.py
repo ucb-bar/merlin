@@ -166,7 +166,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--insight", default="all",
                     choices=[*INSIGHTS, "all"])
-    ap.add_argument("--out-dir", default="artifacts/kernel-mining/stageF")
+    ap.add_argument("--out-dir", default="out/artifacts/kernel-mining/stageF")
     args = ap.parse_args()
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
