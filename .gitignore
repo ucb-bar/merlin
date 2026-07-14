@@ -29,6 +29,17 @@ selfcheck_out/
 !/out/**/README.md
 !/out/**/.gitkeep
 
+# GUARD: those three negations are depth-UNBOUNDED, so a vendored AGENT.md/README.md sitting deep
+# inside a generated build tree (a cmake-out/third-party/ vendor dir, a baseline toolchain clone)
+# would be un-ignored too and could be swept into a commit by a plain `git add -A`. Re-ignore the
+# bulk trees wholesale — the curated skeleton never lives inside one.
+/out/build/baselines/**
+/out/**/cmake-out/**
+/out/**/third-party/**
+/out/**/third_party/**
+/out/**/node_modules/**
+/out/**/.venv/**
+
 # --- Relocated hand-written reports (were docs/*, moved to their concern in the Phase-3 docs
 #     restructure). These are NOT tool-regenerable, so they stay tracked. Explicit per-file
 #     negations (never a broad *.md) so generated results in the same dirs remain ignored. ---
