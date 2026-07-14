@@ -3,7 +3,7 @@ title: Target generation
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-07-10
+last_verified: 2026-07-14
 related: [adding_a_target, experiment_abi, generated_target_repos]
 code_refs: [merlin/python/merlin/targetgen]
 ---

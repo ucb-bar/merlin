@@ -3,7 +3,7 @@ title: xDSL prototyping plane
 kind: reference
 status: current
 owner: ir
-last_verified: 2026-07-07
+last_verified: 2026-07-14
 related: [dialects, core_dialects]
 code_refs: [merlin/python/merlin/xdsl_dialects]
 ---
@@ -15,8 +15,9 @@ It lets us iterate on dialects and lowerings in Python without a full LLVM/MLIR 
 
 ## Roles
 
-- **Fast dialect prototyping.** TargetGen's first backend is `xdsl_backend.py`; generate an xDSL
-  dialect + parser/printer/verifier + small tests before any C++ TableGen.
+- **Fast dialect prototyping.** TargetGen's dialect plane is xDSL: `xdsl_dialects/targets/factory.py::build_dialect`
+  synthesizes an xDSL dialect (IRDL ops/types → parser/printer/verifier) from the target's `dialect_plan`
+  before any C++ TableGen.
 - **Research IR** for `contract / schedule / interface / runtime / dse`
   (`merlin/python/merlin/xdsl_dialects/`).
 - **Standalone analysis/lowering playground** for design-pressure and DSE.

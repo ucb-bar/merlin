@@ -3,7 +3,7 @@ title: Dialects
 kind: reference
 status: current
 owner: ir
-last_verified: 2026-07-07
+last_verified: 2026-07-14
 related: [core_dialects, xdsl]
 code_refs: [merlin/python/merlin/xdsl_dialects]
 ---

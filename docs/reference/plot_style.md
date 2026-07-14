@@ -3,7 +3,7 @@ title: Plotting house style
 kind: reference
 status: current
 owner: plotting
-last_verified: 2026-07-07
+last_verified: 2026-07-14
 related: []
 code_refs: [merlin/python/merlin/plotting]
 ---
@@ -14,7 +14,7 @@ code_refs: [merlin/python/merlin/plotting]
 [`scripts/merlin_plotstyle.py`](../scripts/merlin_plotstyle.py) — import it, don't re-derive it.
 The reference implementation that exercises every rule is
 [`scripts/plot_presentation.py`](../scripts/plot_presentation.py) (rendered into
-`artifacts/presentation/`); look there for worked examples of grouped bars, stacked bars, annotated
+`out/artifacts/presentation/`); look there for worked examples of grouped bars, stacked bars, annotated
 line plots, flow-chart/tree diagrams, and info-cards.
 
 ---
@@ -123,4 +123,4 @@ The older paper figures live in `scripts/plot_paper_style.py` and `scripts/plot_
 with an inline (pre-house-style) palette. When you next touch one, port it: replace its local
 palette/rcParams with `from merlin_plotstyle import *; use_merlin_style()`, swap `ax.bar/barh` for
 `vbars/hbars`, drop baked-in caption paragraphs, and remove decorative hatches. The presentation
-figures in `artifacts/presentation/` are the visual target.
+figures in `out/artifacts/presentation/` are the visual target.

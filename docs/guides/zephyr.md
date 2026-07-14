@@ -3,7 +3,7 @@ title: Zephyr runtime backend
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-07-07
+last_verified: 2026-07-14
 related: [runtime]
 code_refs: [merlin/python/merlin/runtime/backends/zephyr_model.py]
 ---

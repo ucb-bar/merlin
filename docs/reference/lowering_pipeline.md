@@ -3,7 +3,7 @@ title: Lowering pipeline
 kind: reference
 status: current
 owner: ir
-last_verified: 2026-07-07
+last_verified: 2026-07-14
 related: [core_dialects, llvm_integration]
 code_refs: [merlin/python/merlin/xdsl_dialects/lowering, merlin/python/merlin/llvmlower]
 ---
@@ -153,7 +153,7 @@ Files: `llvmlower/pipeline.py` (+ `kernel_backend.py` for the per-kernel version
 - `[upstream]` `translate_module_to_llvmir` (torch-mlir wheel, LLVM 23).
 - `[merlin]` `_fix_float_literals` (the printer emits `f0x..`/bare inf the IR parser rejects).
 **Out:** `.ll`. **Debug:** `clang -fsyntax-only` the `.ll`.
-Files: `llvmlower/{translate,pipeline}.py`.
+Files: `llvmlower/pipeline.py` (`translate_module_to_llvmir`).
 
 ## Phase 8 — Native codegen & link  ✅
 **In:** `.ll` → object → linked image

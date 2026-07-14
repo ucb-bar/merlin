@@ -3,7 +3,7 @@ title: Kernel abstraction mining
 kind: guide
 status: current
 owner: kernels
-last_verified: 2026-07-10
+last_verified: 2026-07-14
 related: [integrations, dse, rvv_kernel_mining_methodology]
 code_refs: [merlin/python/merlin/kernels]
 ---

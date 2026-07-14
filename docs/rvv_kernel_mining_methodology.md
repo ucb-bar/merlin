@@ -3,7 +3,7 @@ title: RVV kernel-mining methodology
 kind: reference
 status: current
 owner: kernels
-last_verified: 2026-07-10
+last_verified: 2026-07-14
 related: [kernel_mining, dse]
 code_refs: [merlin/python/merlin/rvvgen, merlin/python/merlin/kernels]
 ---

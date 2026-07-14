@@ -3,7 +3,7 @@ title: Core dialects
 kind: reference
 status: current
 owner: ir
-last_verified: 2026-07-07
+last_verified: 2026-07-14
 related: [dialects, contracts, lowering_pipeline]
 code_refs: [merlin/python/merlin/xdsl_dialects]
 ---

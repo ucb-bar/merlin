@@ -3,7 +3,7 @@ title: Getting started
 kind: guide
 status: current
 owner: core
-last_verified: 2026-07-07
+last_verified: 2026-07-14
 related: [architecture, repo_structure, dse, kernel_mining, targetgen]
 code_refs: [pyproject.toml, build_tools/scripts, merlin/python/merlin/common/artifacts.py]
 ---
@@ -41,11 +41,11 @@ with `--help`. The main entry points, by workstream:
 
 ## 3. Where output goes
 
-**Never** hand-build an output path. Generated output lives in exactly three roots — `runs/`,
-`artifacts/`, `build/` — created via `merlin.common.artifacts` (`start_run`, `new_product`,
-`cache_dir`, `recaptures_dir`). A PreToolUse hook blocks writes elsewhere. See `CLAUDE.md`
-"Generated-output convention" and the `artifact-layout` skill. Point-in-time reports live under
-`artifacts/`, **not** in `docs/`.
+**Never** hand-build an output path. Generated output lives under a single `out/` root with exactly
+three subdirs — `out/runs/`, `out/artifacts/`, `out/build/` — created via `merlin.common.artifacts`
+(`start_run`, `new_product`, `cache_dir`, `recaptures_dir`). A PreToolUse hook blocks writes
+elsewhere. See `CLAUDE.md` "Generated-output convention" and the `artifact-layout` skill.
+Point-in-time reports live under `out/artifacts/`, **not** in `docs/`.
 
 ## 4. Conventions before you commit
 

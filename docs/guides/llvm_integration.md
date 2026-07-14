@@ -3,7 +3,7 @@ title: LLVM integration
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-07-07
+last_verified: 2026-07-14
 related: [lowering_pipeline]
 code_refs: [merlin/python/merlin/llvmlower]
 ---

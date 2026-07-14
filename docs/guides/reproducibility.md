@@ -3,7 +3,7 @@ title: Reproducibility & core workflows
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-07-10
+last_verified: 2026-07-14
 related: [getting_started, adding_a_target, kernel_mining, dse, model2mlir]
 code_refs: [merlin/python/merlin, build_tools/scripts]
 ---

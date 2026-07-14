@@ -3,7 +3,7 @@ title: Architecture
 kind: reference
 status: current
 owner: core
-last_verified: 2026-07-07
+last_verified: 2026-07-14
 related: [repo_structure, core_dialects, lowering_pipeline]
 code_refs: [merlin/python/merlin]
 ---

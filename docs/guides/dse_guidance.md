@@ -306,9 +306,9 @@ Single workload (headline VLA action head, with measured coupling from an aet ru
 
 ```bash
 merlin-dse-guidance \
-  --temporal-metadata merlin/python/tests/fixtures/dse_guidance/smolvla_action_head_temporal.yaml \
-  --baseline-cost     merlin/python/tests/fixtures/dse_guidance/smolvla_action_head_cost.yaml \
-  --aet-run           merlin/python/tests/fixtures/dse_guidance/aet_run \
+  --temporal-metadata merlin/tests/fixtures/dse_guidance/smolvla_action_head_temporal.yaml \
+  --baseline-cost     merlin/tests/fixtures/dse_guidance/smolvla_action_head_cost.yaml \
+  --aet-run           merlin/tests/fixtures/dse_guidance/aet_run \
   --out out/artifacts/dse-guidance/smolvla_action_head/
 ```
 

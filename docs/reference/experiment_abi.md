@@ -3,7 +3,7 @@ title: Experiment ABI
 kind: reference
 status: current
 owner: targetgen
-last_verified: 2026-07-07
+last_verified: 2026-07-14
 related: [targetgen, adding_a_target]
 code_refs: [merlin/python/merlin/targetgen/contract]
 ---
@@ -65,11 +65,11 @@ Integer workloads ⇒ exact `==` gates (no tolerance); the cert is three-way:
 
 ## Two package classes
 
-- **`artifacts/targets/gemmini/merlin_native_v0/`** (Python) — the **reference backend**. It
+- **`out/artifacts/targets/gemmini/merlin_native_v0/`** (Python) — the **reference backend**. It
   wraps Merlin's certified MLIR-faithful path; it is the *one* `integrity_exempt` package (it
   legitimately imports Merlin internals) and is the vehicle that migrates the existing battery
   through the contract. It is **not** a competitor entry.
-- **`artifacts/targets/gemmini/hand_smoke_oot/`** (C++ MLIR) — a genuine out-of-tree `gemmini-opt`
+- **`out/artifacts/targets/gemmini/hand_smoke_oot/`** (C++ MLIR) — a genuine out-of-tree `gemmini-opt`
   built against the pinned LLVM/MLIR 23 install (`third_party/llvm-install`, commit
   `a47bddccec30`) using the standalone OOT template. It registers a real `merlin_iface` ODS
   dialect (parses the grammar natively), reconstructs the command buffer by walking the IR, and
@@ -82,7 +82,7 @@ Running
 
 ```
 python -m merlin.targetgen.oot_runner --contract merlin/contract \
-  --package artifacts/targets/gemmini/hand_smoke_oot \
+  --package out/artifacts/targets/gemmini/hand_smoke_oot \
   --input merlin/contract/examples/g0_matmul.interface.mlir \
   --run-id contract_smoke_g0 --simulator verilator
 ```
@@ -91,7 +91,7 @@ produces a recorded run with the full artifact trail and `status: pass`,
 `oracle: rtl_verilator, derived_from_rtl: true, cycle_accurate: true, cycles: 308`:
 
 ```
-runs/<…>/contract_smoke_g0/
+out/runs/gemmini_contract/<…>/contract_smoke_g0/
   run_manifest.yaml           # status, oracle, toolchain SHAs, cycle_accurate
   artifact_manifest.json      # origin-tagged: interface_mlir(GENERATED),
                               #   target/cb/llvm/object(COMPILER_GENERATED), console(ORACLE_OUTPUT)
@@ -130,6 +130,6 @@ plane-routed `FailureCategory`. The seven `tests/fixtures/broken_packages/` fixt
 ## Tests
 
 - `merlin/tests/gemmini/test_bench_contract.py` — schemas, grammar round-trip, golden examples (K0).
-- `merlin/python/tests/test_oot_runner_smoke.py` — native g0/g1/g2 + C++ g0/g1 through the runner
+- `merlin/tests/gemmini/test_oot_runner_smoke.py` — native g0/g1/g2 + C++ g0/g1 through the runner
   (K1–K9); oracle gates skip-if-unavailable.
-- `merlin/python/tests/test_oot_runner_negative.py` — every broken fixture fails closed (K10).
+- `merlin/tests/gemmini/test_oot_runner_negative.py` — every broken fixture fails closed (K10).

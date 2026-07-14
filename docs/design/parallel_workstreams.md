@@ -3,7 +3,7 @@ title: Parallel workstreams
 kind: design
 status: current
 owner: core
-last_verified: 2026-07-07
+last_verified: 2026-07-14
 related: [architecture, kernel_mining, dse, targetgen]
 code_refs: [merlin/python/merlin]
 ---
