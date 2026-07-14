@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import sys
 
-sys.path.insert(0, "/scratch/agustin/projects/model2MLIR/workloads/pi05")
+sys.path.insert(0, "/path/to/model2MLIR/workloads/pi05")
 
 import math
 

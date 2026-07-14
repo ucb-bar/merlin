@@ -418,7 +418,7 @@ resident-weight pack excluded from both timings, all cos ≥ 0.9999 (SpacemiT K1
 
 ---
 
-## Slide integration plan (maps to the real deck, `OSCAR Merlin-9.pdf`)
+## Slide integration plan (maps to the real deck, `Merlin-9.pdf`)
 
 The kernel-mining section already exists as deck slides **26–35**; the new journey figures slot in
 around them, and one slide gets deleted:

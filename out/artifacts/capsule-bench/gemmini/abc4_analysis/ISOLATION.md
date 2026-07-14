@@ -24,7 +24,7 @@ runs / prior implementations / the oracle?*
 |---|---|---|
 | prior backends `generated_targets/gemmini/{agent_spec_v0,agent_spec_v1,merlin_native_v0,hand_smoke_oot}` | ✅ | ✅ `d---------` |
 | prior run submissions `runs/*/*/submission`, `_qa_work`, `qa_history` | ✅ (`runs/` denied) | ✅ (9 locked) |
-| other on-disk gemmini-opt backends `/scratch/agustin/agent_bench/**` | n/a (out of repo) | ✅ locked this session |
+| other on-disk gemmini-opt backends `/path/to/agent_bench/**` | n/a (out of repo) | ✅ locked this session |
 | the oracle `merlin/runtime/{reference,simulator}`, `reference_outputs` | ✅ (`merlin/` denied) | — (same-uid; covered by audit + integrity scan) |
 | capsule `golden.yaml`, hidden capsules, grader-private | ✅ | golden withheld at workspace build; hidden denied |
 | experimenter `~/.claude` memory | n/a | ✅ locked |

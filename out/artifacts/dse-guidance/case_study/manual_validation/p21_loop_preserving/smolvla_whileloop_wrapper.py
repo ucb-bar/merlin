@@ -30,7 +30,7 @@ import sys
 import torch
 from torch import nn
 
-sys.path.insert(0, "/scratch/agustin/projects/model2MLIR/workloads/smolvla")
+sys.path.insert(0, "/path/to/model2MLIR/workloads/smolvla")
 from loader import get_model_and_inputs  # noqa: E402
 
 from lerobot.policies.smolvla.modeling_smolvla import (  # noqa: E402
@@ -200,7 +200,7 @@ if __name__ == "__main__":
     print("torch.prim.Loop ops (1 op => +1 .condition):", raw.count("torch.prim.Loop"))
 
     import m2m
-    out_dir = "/tmp/claude-2621/-scratch-agustin-projects-oscar-merlin/7d66f954-67c6-438f-8e72-ebd11bf2d229/scratchpad"
+    out_dir = "/tmp/claude-2621/-scratch-agustin-projects-merlin/7d66f954-67c6-438f-8e72-ebd11bf2d229/scratchpad"
     for ot, be in (("torch", "auto"), ("linalg-on-tensors", "auto"),
                    ("linalg-on-tensors", "fx_importer")):
         print(f"\n=== m2m.convert(output_type={ot!r}, backend={be!r}) ===")

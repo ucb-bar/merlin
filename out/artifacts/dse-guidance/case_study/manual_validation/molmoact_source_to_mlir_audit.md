@@ -1,11 +1,11 @@
 # molmoact — source → FX → MLIR → Merlin forensic audit
 
 **Workload:** `molmoact` (AllenAI MolmoAct — Molmo-lineage vision-language-action model).
-**Source of record:** `/scratch/agustin/projects/molmoact/olmo/hf_model/molmoact/modeling_molmoact.py`.
+**Source of record:** `/path/to/molmoact/olmo/hf_model/molmoact/modeling_molmoact.py`.
 **Capture unit (what was actually exported):** the LLM decoder only, as a clean
 `input_ids → logits` causal-LM forward (`MolmoActForCausalLM` wrapped by `_LogitsOnly`);
 ViT, adapter, image-token splicing, and the generation loop are deliberately excluded
-(`/scratch/agustin/projects/model2MLIR/workloads/molmoact/loader.py` docstring + `get_model_and_inputs`).
+(`/path/to/model2MLIR/workloads/molmoact/loader.py` docstring + `get_model_and_inputs`).
 **Capture config:** `M2M_MOLMOACT_LAYERS=4` (full=48), `M2M_MOLMOACT_VOCAB=4096` (full=152064),
 `M2M_SEQ=8`, `use_cache=False`, `_attn_implementation="eager"`
 (`.../workloads/molmoact/capture.toml`, `loader.py:get_model_and_inputs`).

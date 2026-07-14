@@ -3,8 +3,8 @@
 Status: DESIGN + one un-wired first module (`rtl_checks.py`). No frozen contract / grader /
 schema semantics are touched. Nothing here gates anything yet.
 
-Repo: `/scratch/agustin/projects/oscar-merlin` (the ACTIVE project — never the deprecated IREE
-merlin at `/scratch2/agustin/merlin`).
+Repo: `/path/to/merlin` (the ACTIVE project — never the deprecated IREE
+merlin at `/path/to/merlin-iree`).
 
 ---
 

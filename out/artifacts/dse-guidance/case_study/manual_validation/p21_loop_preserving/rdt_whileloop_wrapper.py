@@ -79,10 +79,10 @@ from diffusers.schedulers.scheduling_dpmsolver_multistep import (  # noqa: E402
 )
 from torch._higher_order_ops.while_loop import while_loop  # noqa: E402
 
-_RDT_REPO = "/scratch/agustin/projects/RoboticsDiffusionTransformer"
+_RDT_REPO = "/path/to/RoboticsDiffusionTransformer"
 if _RDT_REPO not in sys.path:
     sys.path.insert(0, _RDT_REPO)
-sys.path.insert(0, "/scratch/agustin/projects/model2MLIR/workloads/rdt")
+sys.path.insert(0, "/path/to/model2MLIR/workloads/rdt")
 
 from loader import get_model_and_inputs  # noqa: E402
 

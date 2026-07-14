@@ -7,7 +7,7 @@ Proof that the Gemmini execution oracles exist and run a known-good binary. Re-r
 
 | Component | Path | Status |
 |---|---|---|
-| chipyard | `/scratch2/agustin/chipyard` | OK |
+| chipyard | `/path/to/chipyard` | OK |
 | spike | `…/.conda-env/riscv-tools/bin/spike` | OK |
 | libgemmini.so | `…/.conda-env/riscv-tools/lib/libgemmini.so` | OK |
 | Verilator sim | `…/sims/verilator/simulator-chipyard.harness-GemminiAndOPUShuttleConfig` | OK (prebuilt) |

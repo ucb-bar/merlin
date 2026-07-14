@@ -7,7 +7,7 @@ unlike the earlier "4-way" (baseline/xnnpack/openblas/ours) which only swapped t
 *inside* merlin's own dispatch runtime.
 
 **Board.** SpacemiT K1-x, riscv64 glibc Linux, **VLEN=256** (vlenb=32), 8 cores, **3.8 GB RAM total
-(~3.4 GB usable)**. IP is DHCP and changes across reboots (`10.44.97.186` → `10.44.96.26` after a
+(~3.4 GB usable)**. IP is DHCP and changes across reboots (`<board-ip>` → `<board-ip-after-reboot>` after a
 reboot). Cross-compiled on host with the SpacemiT clang (`-march=rv64gcv -mabi=lp64d`); deployed + timed
 over SSH. Cycle counts are K1 `rdtime` **estimates** (24 MHz timer × CPU/timebase), **not**
 cycle-accurate — spike/FireSim remain the cycle authorities.
@@ -268,7 +268,7 @@ deduped **latest-executed-per-cell** (`aggregate.dedupe_latest`: an executed pas
 - **Loader-dep wall (the dominant model-coverage gap).** 7 models fail at *torch-load* before any
   framework sees them: `tyro` (groot), `openpi` (pi05), `lerobot` (smolvla), `mmengine` (xr0), and
   custom classes (bitvla BitNet, molmoact, rdt2 numpy-type). These deps exist in each model's own venv
-  (per `dev-model-and-m2m-access`); the harness runs in oscar-merlin's `.venv`. Closing it (point the
+  (per `dev-model-and-m2m-access`); the harness runs in merlin's `.venv`. Closing it (point the
   export step at each model's venv) unblocks the same models across all arms — but correctness gating is
   only meaningful for smolvla + bitvla (pretrained); the other five are random-init, so run them for
   honest perf/RVV/coverage, not a cos gate.
@@ -301,7 +301,7 @@ deduped **latest-executed-per-cell** (`aggregate.dedupe_latest`: an executed pas
 
 ## Phase 5 — on-board resume on the recovered board (2026-07-06, matrix 10/79 pass)
 
-The K1 rebooted onto a new DHCP IP (`10.44.96.26`) with **no IPv4** (netplan DHCPs only `end0`/ethernet,
+The K1 rebooted onto a new DHCP IP (`<board-ip-after-reboot>`) with **no IPv4** (netplan DHCPs only `end0`/ethernet,
 not wlan0); recovered over UART by starting `dhcpcd -b wlan0`. A **2 GB swapfile** was added (no zram
 module on this kernel) as an OOM overflow valve. Then the built→ran cells were converted:
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""House-style competitive-positioning map for OSCAR Merlin (companion to COMPETITIVE_POSITIONING.md).
+"""House-style competitive-positioning map for Merlin (companion to COMPETITIVE_POSITIONING.md).
 
 A qualitative 2-axis map — target-class reach (datacenter -> embedded) x compile scope
 (single kernel -> whole model) — placing the 8 source-verified competitors + Merlin. Marker SHAPE
@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle, FancyBboxPatch
 from matplotlib.lines import Line2D
 
-REPO = Path("/scratch/agustin/projects/oscar-merlin")
+REPO = Path("/path/to/merlin")
 sys.path.insert(0, str(REPO / "scripts"))
 from merlin_plotstyle import (use_merlin_style, style_ax, title, suptitle,
                               BG, INK, GOLD, BLUE, NAVY, SLATE, MAUVE, SAGE, SERIF, SANS)
@@ -36,7 +36,7 @@ PTS = [
     ("IREE",        4.6, 8.5, GRAY,  True,  False, 360, (-10, 18),"center", "bottom"),
     ("EXO",         6.2, 2.1, MAUVE, False, True,  430, (0,  22), "center", "bottom"),
     ("ExecuTorch",  7.6, 8.1, SAGE,  False, False, 430, (4,  20), "center", "bottom"),
-    ("OSCAR Merlin",9.1, 9.1, NAVY,  True,  True,  760, (0, -30), "center", "top"),
+    ("Merlin",9.1, 9.1, NAVY,  True,  True,  760, (0, -30), "center", "top"),
 ]
 
 
@@ -60,7 +60,7 @@ def main():
                        facecolors="none", edgecolors=GOLD, linewidths=2.8, zorder=4)
         ax.scatter([x], [y], s=s, marker=("s" if mlir else "o"),
                    color=col, edgecolor=INK, linewidth=1.5, zorder=5)
-        hero = name.startswith("OSCAR")
+        hero = name.startswith("Merlin")
         ax.annotate(name, (x, y), xytext=(dx, dy), textcoords="offset points",
                     ha=ha, va=va, fontsize=12.5 if hero else 11,
                     fontweight="bold" if hero else "normal",
@@ -71,7 +71,7 @@ def main():
                   fontsize=12)
     ax.set_ylabel("compile scope     single kernel  →  whole-model compile + run", fontsize=12)
     ax.set_xticks([]); ax.set_yticks([])
-    title(ax, "Where OSCAR Merlin sits — and what its quadrant requires", fs=18, pad=14)
+    title(ax, "Where Merlin sits — and what its quadrant requires", fs=18, pad=14)
 
     # legend: marker grammar (top-left, out of the data)
     leg = [

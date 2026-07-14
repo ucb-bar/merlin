@@ -1,6 +1,6 @@
 # Full-suite audit (capsule_bench_v0) — all 25 capsules, RTL oracle
 
-Corpus: `/scratch/agustin/projects/oscar-merlin/bench_contract/capsules` · 25 capsules · tiers ['L2', 'L3'] · 8 parallel workers. Cycle counts are **L3 verilator (cycle-accurate RTL)**. Backends were built against the 4-capsule pilot only — failures on unimplemented classes (conv, attention) are expected and reported honestly, not hidden.
+Corpus: `/path/to/merlin/bench_contract/capsules` · 25 capsules · tiers ['L2', 'L3'] · 8 parallel workers. Cycle counts are **L3 verilator (cycle-accurate RTL)**. Backends were built against the 4-capsule pilot only — failures on unimplemented classes (conv, attention) are expected and reported honestly, not hidden.
 
 ## Headline
 

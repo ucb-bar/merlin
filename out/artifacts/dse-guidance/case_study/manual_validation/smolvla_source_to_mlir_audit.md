@@ -11,11 +11,11 @@ counts reflect *shape*, not a trained checkpoint. **No performance/latency claim
 models.py:62). "not visible" is marked as a missing/erased status, never inferred.
 
 **Sources audited**
-- Source: `lerobot` v0.5.1 @ `/scratch/agustin/projects/vla-arena/external/lerobot/src/lerobot/policies/smolvla/modeling_smolvla.py`
+- Source: `lerobot` v0.5.1 @ `/path/to/vla-arena/external/lerobot/src/lerobot/policies/smolvla/modeling_smolvla.py`
   (`denoise_step`:871, `sample_actions`:800, `embed_prefix`:625, `embed_suffix`:719,
   `make_att_2d_masks`:102); config `configuration_smolvla.py` (chunk_size=50:32, n_action_steps=50:33,
   num_steps=10:66, num_vlm_layers=16:99, vlm_model_name SmolVLM2-500M:87, expert_width_multiplier=0.75:101).
-- m2m wrapper: `/scratch/agustin/projects/model2MLIR/workloads/smolvla/{loader.py,capture.toml}`.
+- m2m wrapper: `/path/to/model2MLIR/workloads/smolvla/{loader.py,capture.toml}`.
 - Exported FX: `manual_validation/exported_fx/smolvla.txt` (op histogram at head).
 - Flat MLIR: `recaptures/smolvla/model.mlir` (`prov.level = "linalg-on-tensors"`, line 1).
 - Merlin: `case_study/{operator_full_inventory,work_coverage_table,operator_shape_table,data_movement_table,resident_state_table,reuse_lifetime_table}.csv`;

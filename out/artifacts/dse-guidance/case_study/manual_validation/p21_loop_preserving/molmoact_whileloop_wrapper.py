@@ -41,10 +41,10 @@ os.environ.setdefault("M2M_SEQ", "8")
 import torch
 from torch import nn
 
-sys.path.insert(0, "/scratch/agustin/projects/model2MLIR/workloads/molmoact")
+sys.path.insert(0, "/path/to/model2MLIR/workloads/molmoact")
 from loader import get_model_and_inputs  # noqa: E402
 
-_MOLMOACT_REPO = os.environ.get("MOLMOACT_REPO", "/scratch/agustin/projects/molmoact")
+_MOLMOACT_REPO = os.environ.get("MOLMOACT_REPO", "/path/to/molmoact")
 if _MOLMOACT_REPO not in sys.path:
     sys.path.insert(0, _MOLMOACT_REPO)
 from olmo.hf_model.molmoact.modeling_molmoact import (  # noqa: E402

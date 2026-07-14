@@ -41,7 +41,7 @@ import torch
 from torch import nn
 
 import sys
-sys.path.insert(0, "/scratch/agustin/projects/model2MLIR/workloads/tiny_llama")
+sys.path.insert(0, "/path/to/model2MLIR/workloads/tiny_llama")
 from loader import get_model_and_inputs  # noqa: E402
 
 from transformers.models.llama.modeling_llama import (  # noqa: E402

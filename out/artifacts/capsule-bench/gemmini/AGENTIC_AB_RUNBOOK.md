@@ -24,7 +24,7 @@ CLAUDE_CONFIG_DIR=~/.claude-acctB claude   # log in account B, then exit
 ## Launch
 ```
 cd experiments/gemmini_capsule_bench_v0/scripts
-PY=/scratch/agustin/projects/oscar-merlin/.venv/bin/python
+PY=/path/to/merlin/.venv/bin/python
 
 # 1) validate (no launch, no budget): prints exact commands + collision/account preflight
 $PY launch_ab_batch.py --tag n02 --dry-run

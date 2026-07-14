@@ -52,48 +52,48 @@ rounds:
   - tool: Read
     kind: path_read
     token: capsule_grade
-    input: /scratch/agustin/projects/oscar-merlin/merlin/python/merlin/targetgen/capsule_grade.py
+    input: /path/to/merlin/merlin/python/merlin/targetgen/capsule_grade.py
   - tool: Read
     kind: path_read
     token: capsule_runner
-    input: /scratch/agustin/projects/oscar-merlin/merlin/python/merlin/targetgen/capsule_runner.py
+    input: /path/to/merlin/merlin/python/merlin/targetgen/capsule_runner.py
   - tool: Read
     kind: path_read
     token: targetgen/contract
-    input: /scratch/agustin/projects/oscar-merlin/merlin/python/merlin/targetgen/contract/compile.py
+    input: /path/to/merlin/merlin/python/merlin/targetgen/contract/compile.py
   - tool: Read
     kind: path_read
     token: rocc_decode
-    input: /scratch/agustin/projects/oscar-merlin/merlin/python/merlin/targetgen/rocc_decode.py
+    input: /path/to/merlin/merlin/python/merlin/targetgen/rocc_decode.py
   - tool: Read
     kind: path_read
     token: trace_check.py
-    input: /scratch/agustin/projects/oscar-merlin/merlin/python/merlin/targetgen/trace_check.py
+    input: /path/to/merlin/merlin/python/merlin/targetgen/trace_check.py
   - tool: Bash
     kind: path_read
     token: oot_runner
-    input: cd /scratch/agustin/projects/oscar-merlin/merlin/python/merlin/targetgen
+    input: cd /path/to/merlin/merlin/python/merlin/targetgen
       && sed -n '1,60p' oot_runner.py | grep -n "def \|class \|MERLIN_MLIR\|build\|tool"
       ; echo "=== grep entrypoint/build funcs ==="
   - tool: Read
     kind: path_read
     token: oot_runner
-    input: /scratch/agustin/projects/oscar-merlin/merlin/python/merlin/targetgen/oot_runner.py
+    input: /path/to/merlin/merlin/python/merlin/targetgen/oot_runner.py
   - tool: Read
     kind: path_read
     token: merlin/runtime/backends
-    input: /scratch/agustin/projects/oscar-merlin/merlin/python/merlin/runtime/backends/gemmini_codegen_mlir.py
+    input: /path/to/merlin/merlin/python/merlin/runtime/backends/gemmini_codegen_mlir.py
   - tool: Bash
     kind: oracle_use
     token: from merlin.runtime
-    input: 'cd /scratch/agustin/projects/oscar-merlin
+    input: 'cd /path/to/merlin
 
       echo "=== MLIR install ==="; ls third_party/llvm-install/bin/ 2>/dev/null |
       grep -E "mlir-opt|mlir-translate|mlir-tblgen|^clang" ; ls third_party/llvm-install'
   - tool: Bash
     kind: oracle_use
     token: from merlin.runtime
-    input: 'cd /scratch/agustin/projects/oscar-merlin/merlin/python
+    input: 'cd /path/to/merlin/merlin/python
 
       which python3; echo "--- clang ---"; python3 -c "from merlin.llvmlower.toolchain
       import clang; print(clang())" 2>&1 | tail -3
@@ -102,7 +102,7 @@ rounds:
   - tool: Bash
     kind: oracle_use
     token: from merlin.runtime
-    input: cd /scratch/agustin/projects/oscar-merlin/third_party/llvm-install && ls
+    input: cd /path/to/merlin/third_party/llvm-install && ls
       lib/cmake/mlir/ | grep -iE "AddMLIR|TableGen|MLIRConfig" ; echo "--- clang version
       ---"; ./bin/mlir-tblgen --version 2>/dev/nul
 next_round: 2

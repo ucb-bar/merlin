@@ -12,7 +12,7 @@ llvm:
   commit: "a47bddccec30"
 build:
   configure:
-    - /scratch2/agustin/chipyard/.conda-env/bin/cmake
+    - /path/to/chipyard/.conda-env/bin/cmake
     - -G
     - Ninja
     - -S
@@ -25,7 +25,7 @@ build:
     - -DCMAKE_C_COMPILER=/usr/bin/gcc
     - -DCMAKE_CXX_COMPILER=/usr/bin/g++
   command:
-    - /scratch2/agustin/chipyard/.conda-env/bin/cmake
+    - /path/to/chipyard/.conda-env/bin/cmake
     - --build
     - "{package}/mlir_oot/build"
     - --target

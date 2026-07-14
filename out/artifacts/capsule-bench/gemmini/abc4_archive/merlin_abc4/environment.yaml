@@ -9,7 +9,7 @@ pilot:
 - A2
 - A4
 - B0
-workspace_path: /scratch/agustin/projects/oscar-merlin/experiments/gemmini_capsule_bench_v0/_qa_ws/merlin_abc4/workspace
+workspace_path: /path/to/merlin/experiments/gemmini_capsule_bench_v0/_qa_ws/merlin_abc4/workspace
 workspace_copy_report: null
 repo_sha: 15857ef9c56df0427e96aae92a213471773b9599
 bundle_id: merlin_assisted_hwbringup_v0

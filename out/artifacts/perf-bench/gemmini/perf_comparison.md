@@ -5,7 +5,7 @@ The SAME kernels driven through each Gemmini code-gen approach on one ELF→spik
 1. **Performance = verilator (L3), cycle-accurate RTL — the only valid timing.** spike is *functional*: it does not model the systolic array, so its "cycles" plateau (~120 from 4K→2M MACs) and give util > 100% — meaningless as performance. Verilator is feasible only for small kernels (≤ ~32K MACs); bigger kernels need FireSim (L5), pending.
 2. **Correctness & capability = spike (L2):** does each approach produce a correct result at all (exact-int == golden)? This is where COVERAGE differs (e.g. who can compile conv2d).
 
-Approaches: **1** golden hand-tuned C lib (`tiled_matmul_auto`); **2** baseline-generated MLIR (agent_spec_v0); **3** merlin-generated MLIR (agent_spec_v1); **4** the deprecated-merlin hand-written C++ Gemmini dialect via IREE (`/scratch2/agustin/merlin`); plus an extra oscar-merlin native RoCC emitter for reference.
+Approaches: **1** golden hand-tuned C lib (`tiled_matmul_auto`); **2** baseline-generated MLIR (agent_spec_v0); **3** merlin-generated MLIR (agent_spec_v1); **4** the deprecated-merlin hand-written C++ Gemmini dialect via IREE (`/path/to/merlin-iree`); plus an extra merlin native RoCC emitter for reference.
 
 ## 1. Performance — cycle-accurate RTL (verilator L3 + FireSim L5)
 
