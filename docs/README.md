@@ -30,7 +30,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - [merlin/ layout — what goes where](reference/merlin_layout.md) — `current`, verified 2026-07-07 · owner: core — see also: [repo_structure](reference/repo_structure.md), [architecture](reference/architecture.md)
 - [Package module index](reference/module_index.md) — `generated` · owner: tooling
 - [Plotting house style](reference/plot_style.md) — `current`, verified 2026-07-07 · owner: plotting
-- [Repository structure](reference/repo_structure.md) — `current`, verified 2026-07-07 · owner: core — see also: [architecture](reference/architecture.md)
+- [Repository structure](reference/repo_structure.md) — `current`, verified 2026-07-14 · owner: core — see also: [architecture](reference/architecture.md)
 - [Runtime](reference/runtime.md) — `current`, verified 2026-07-07 · owner: runtime — see also: [zephyr](guides/zephyr.md)
 - [RVV kernel-mining methodology](rvv_kernel_mining_methodology.md) — `current`, verified 2026-07-10 · owner: kernels — see also: [kernel_mining](guides/kernel_mining.md), [dse](guides/dse.md)
 - [Schema reference](reference/schemas.md) — `generated` · owner: tooling

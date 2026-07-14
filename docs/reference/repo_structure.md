@@ -3,7 +3,7 @@ title: Repository structure
 kind: reference
 status: current
 owner: core
-last_verified: 2026-07-07
+last_verified: 2026-07-14
 related: [architecture]
 code_refs: [.]
 ---
@@ -16,9 +16,11 @@ XLA-style: a small root, almost everything under the internal `merlin/` tree.
 build_tools/   build/dev tooling + measurement/analysis/sweep runners + repo linters (scripts/, cmake, docker)
 docs/          this documentation (incl. generated cli.md = CLI surface)
 third_party/   hard build/test deps only (no analysis repos)
-runs/          aet experiment runs (gitignored)   ── see CLAUDE.md "Generated-output convention"
-artifacts/     all other generated products (gitignored); artifacts/targets/ = codegen packages
+out/           the SINGLE generated-output root (gitignored)   ── see CLAUDE.md "Generated-output convention"
+  runs/        aet experiment runs
+  artifacts/   all other generated products; artifacts/targets/ = codegen packages
                (replaces retired generated_targets/; tracked baselines/champions via .gitignore negations)
+  build/       generated build outputs + buildable OOT codegen repos (build/generated/)
 merlin/
   python/      Python + xDSL compiler plane + workstream packages (the active compiler)
   runtime/     target-independent C runtime substrate (c/ + baremetal/ + abi/)
@@ -27,12 +29,12 @@ merlin/
   benchmarks/  shared workload descriptions
   experiments/ workstream experiments + benchmark harnesses (agent/capsule/perf-bench, targetgen_evals)
   tests/       integration/conformance/golden/data
-build/         gitignored generated build outputs (structured)
-output/        DEPRECATED — holds only the regenerable model recaptures (via recaptures_dir());
-               never write new generated content here (folded into artifacts/; the guard hook blocks it)
 tmp/           gitignored local scratch (cross-session notes in tmp/help/)
 ```
 
-The three generated-output roots are `runs/`, `artifacts/`, and `build/` (see CLAUDE.md
-"Generated-output convention"). Every directory contains an `AGENT.md`. `build/`, `output/`, and
-`tmp/` are gitignored; only their `AGENT.md` / `README.md` / `.gitkeep` are tracked.
+All generated output lives under the single `out/` root, with exactly three subdirs — `out/runs/`,
+`out/artifacts/`, and `out/build/` (see CLAUDE.md "Generated-output convention"). The old top-level
+`runs/`/`artifacts/`/`build/` and the retired `output/` (model recaptures now live at
+`out/artifacts/recaptures/` via `recaptures_dir()`) are gone; the guard hook blocks writes outside
+`out/`. Every directory contains an `AGENT.md`; under `out/` only `AGENT.md` / `README.md` /
+`.gitkeep` (plus curated `.gitignore` negations) are tracked.
