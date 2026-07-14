@@ -224,16 +224,25 @@ def kv_sizing_rows(loop_dir=None) -> list[dict]:
     it at deployment scale)."""
     rows = []
     lr_by_w = {}
-    if loop_dir is not None:
-        from pathlib import Path
-        from merlin.dse_guidance.loop_recovery import recover_loop
-        ld = Path(loop_dir)
-        for w in REAL_GEOMETRY:
-            mp = ld / w / "model.mlir"
-            if mp.is_file():
-                lr = recover_loop(mp, w)
-                if lr.present:
-                    lr_by_w[w] = lr
+    from pathlib import Path
+
+    from merlin.dse_guidance.loop_recovery import recover_loop
+
+    def _mp(w):
+        # Explicit root (tests/temp dirs) wins; otherwise resolve per-workload through the corpus
+        # accessor so the out/artifacts/recaptures/ overflow models (pi05/smolvla/groot) are included
+        # — a single committed root would silently drop them.
+        if loop_dir is not None:
+            return Path(loop_dir) / w / "model.mlir"
+        from merlin.dse_guidance.corpus import _recap_dir_in
+        return _recap_dir_in(w, "recaptures_loop") / "model.mlir"
+
+    for w in REAL_GEOMETRY:
+        mp = _mp(w)
+        if mp.is_file():
+            lr = recover_loop(mp, w)
+            if lr.present:
+                lr_by_w[w] = lr
     for w, g in sorted(REAL_GEOMETRY.items()):
         s = g.decode_stack()
         if s is None:

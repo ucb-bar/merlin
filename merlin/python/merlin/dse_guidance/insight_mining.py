@@ -1657,10 +1657,12 @@ def capture_fidelity(cs_dir: Path) -> dict:
     wc = {r["workload"]: r for r in _csv_rows(Path(cs_dir) / "work_coverage_table.csv")}
     # P21-S1: loop-preserving captures (recaptures_loop/<w>/model.mlir, if present) recover K, the
     # loop-carried state and the KV cache directly from scf.for -> flip K/KV from assumed/erased.
-    _loop_dir = Path(cs_dir).parent / "recaptures_loop"
+    # Resolved through the corpus accessor (committed under merlin/benchmarks/ + out/ overflow), NOT
+    # as a sibling of cs_dir (which broke silently once case_study moved under out/artifacts/).
+    from merlin.dse_guidance.corpus import _recap_dir_in
     lr_by_w = {}
     for w in wls:
-        mp = _loop_dir / w / "model.mlir"
+        mp = _recap_dir_in(w, "recaptures_loop") / "model.mlir"
         if mp.is_file():
             lr = recover_loop(mp, w)
             if lr.present:
@@ -2311,11 +2313,18 @@ def _count_word_bounded(text: str, *needles: str) -> int:
 def capture_erasure_evidence(cs_dir: Path) -> dict:
     """Stage C: demonstrate (not just assert) what the flat capture erases, from the recapture IR:
     scf.for/while count (loops), linalg.matmul vs linalg.generic counts (named ops vs lowered),
-    and whether any packed low-bit integer tensor types survive. Reads the recaptures next to the
-    case_study dir."""
-    recap = Path(cs_dir).parent / "recaptures"
+    and whether any packed low-bit integer tensor types survive.
+
+    Always reads the FLAT corpus (that is the capture whose erasure is being shown), resolved through
+    the corpus accessor — committed under merlin/benchmarks/ with the oversized ones in the
+    out/artifacts/recaptures/ overflow. (It used to be globbed as a sibling of cs_dir, which silently
+    yielded zero rows once case_study moved under out/artifacts/.)"""
+    from merlin.dse_guidance.corpus import RECAP_MODELS, _recap_dir_in
+
     rows = []
-    for d in sorted(p for p in recap.glob("*") if (p / "model.mlir").is_file()):
+    for d in [_recap_dir_in(w, "recaptures") for w in sorted(RECAP_MODELS)]:
+        if not (d / "model.mlir").is_file():
+            continue
         # Bulk triage over the whole flat corpus (dozens of large captures): a cheap, regex-free
         # token/substring scan — a full xDSL parse per file would be 100-1000x costlier for a
         # presence/count heuristic. (Per-workload deep facts use merlin.common.mlir_query.)

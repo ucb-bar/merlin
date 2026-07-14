@@ -20,10 +20,38 @@ no speedup. Bytes are shape×dtype (weight VALUES are irrelevant to the contract
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from merlin.common import mlir_query
+
+
+def _memoize_by_file(fn):
+    """Memoize a ``(model_mlir_path, workload="")`` analysis on (resolved path, mtime, size, workload).
+    recover_loop/residency_from_ir are pure over the file, but each case_study `mine()` calls them 4x
+    per model (loop_recovery/residency/loop_aware CSVs + capture_fidelity) and every test re-runs
+    mine() — so without this the same scf.for region is re-walked hundreds of times. mlir_query.parse
+    already caches the PARSE; this caches the ANALYSIS. Results are treated read-only (same contract as
+    the shared parse cache)."""
+    cache: dict = {}
+
+    @functools.wraps(fn)
+    def wrapper(model_mlir_path, workload: str = ""):
+        p = Path(model_mlir_path)
+        try:
+            st = p.stat()
+            key = (str(p.resolve()), st.st_mtime_ns, st.st_size, workload)
+        except OSError:
+            return fn(model_mlir_path, workload)   # missing file: let fn return the not-present cert
+        hit = cache.get(key)
+        if hit is None:
+            hit = fn(model_mlir_path, workload)
+            cache[key] = hit
+        return hit
+
+    wrapper.cache_clear = cache.clear   # test/debug hook
+    return wrapper
 
 _DTYPE_BYTES = {
     "f64": 8, "f32": 4, "f16": 2, "bf16": 2,
@@ -137,6 +165,7 @@ class ResidencyCert:
         }
 
 
+@_memoize_by_file
 def residency_from_ir(model_mlir_path: str | Path, workload: str = "") -> ResidencyCert:
     """Classify the scf.for body's value references into loop-invariant (defined OUTSIDE the
     region -> reused every iteration -> resident-eligible) vs loop-carried (iter_args -> genuinely
@@ -177,6 +206,7 @@ def residency_from_ir(model_mlir_path: str | Path, workload: str = "") -> Reside
     )
 
 
+@_memoize_by_file
 def recover_loop(model_mlir_path: str | Path, workload: str = "") -> LoopRecovery:
     """Parse the ``scf.for`` lowered from ``torch.while_loop`` out of ``model.mlir``."""
     path = Path(model_mlir_path)

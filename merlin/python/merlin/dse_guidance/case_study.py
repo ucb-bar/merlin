@@ -62,7 +62,7 @@ P_NA = "unavailable"
 # RECAP_MODELS + the corpus accessors (_recap_dir/available_models/_CORPUS_SUBDIR) and the shared _csv
 # writer live in the corpus leaf so the analysis modules can use them without importing this hub.
 from merlin.dse_guidance.corpus import (  # noqa: E402,F401  (re-exported for callers + internal use)
-    RECAP_MODELS, _CORPUS_SUBDIR, _csv, _recap_dir, available_models)
+    RECAP_MODELS, _CORPUS_SUBDIR, _csv, _recap_dir, _recap_dir_in, available_models)
 
 
 # _CORPUS_SUBDIR / _recap_dir / available_models moved to merlin.dse_guidance.corpus (imported above).
@@ -671,7 +671,7 @@ def _readme_md(packages) -> str:
         "- `numerical_contract_fidelity_report.md`, `dispatch_coupling_report.md`, "
         "`cost_calibration.md` — supporting evidence (calibration is a demoted existing-target anchor).\n\n"
         "## Regenerate\n```\nmerlin-dse-guidance --case-study \\\n"
-        "  --out artifacts/dse-guidance/case_study\n```\n\n"
+        "  --out out/artifacts/dse-guidance/case_study\n```\n\n"
         "Every number carries an evidence label (`recovered_from_ir` / `recovered_from_prov_fqn` / "
         "`assumed_reference` / `derived_requirement` / `design_assumption` / `measured` / "
         "`proxy_measured` / `unavailable`). No file claims a speedup for unbuilt hardware.\n")
@@ -805,19 +805,26 @@ _LOOP_RECOVERY_COLS = ["workload", "loop_preserved", "K", "K_source", "n_iter_ar
                        "flat_view", "recovered_view", "evidence"]
 
 
+def _loop_capture(w: str):
+    """Path to a workload's loop-preserving model.mlir, resolved through the corpus accessor:
+    committed under merlin/benchmarks/ with the oversized ones (groot/pi05/smolvla) in the
+    out/artifacts/recaptures/ overflow. (Globbing the committed dir alone silently dropped them.)"""
+    return _recap_dir_in(w, "recaptures_loop") / "model.mlir"
+
+
+def _loop_workloads() -> list[str]:
+    return sorted(w for w in RECAP_MODELS if _loop_capture(w).is_file())
+
+
 def loop_recovery_csv() -> str:
     """'' if no loop-preserving captures are present (committed summary left as-is)."""
     from merlin.dse_guidance.loop_recovery import recover_loop
-    bench = paths.merlin_dir() / "benchmarks" / "dse_guidance"
-    loop_dir = bench / "recaptures_loop"
-    if not loop_dir.is_dir():
-        return ""
-    wls = sorted(p.name for p in loop_dir.glob("*") if (p / "model.mlir").is_file())
+    wls = _loop_workloads()
     if not wls:
         return ""
     rows = []
     for w in wls:
-        lr = recover_loop(loop_dir / w / "model.mlir", w)
+        lr = recover_loop(_loop_capture(w), w)
         if not lr.present:
             continue
         roles = ",".join(c.role for c in lr.carried_state)
@@ -842,13 +849,9 @@ def residency_from_ir_csv() -> str:
     """P21 GAP-C: IR-proven residency split (loop-invariant resident-eligible vs loop-carried)
     for every loop-preserving capture. '' if none present."""
     from merlin.dse_guidance.loop_recovery import residency_from_ir
-    bench = paths.merlin_dir() / "benchmarks" / "dse_guidance"
-    loop_dir = bench / "recaptures_loop"
-    if not loop_dir.is_dir():
-        return ""
     rows = []
-    for w in sorted(p.name for p in loop_dir.glob("*") if (p / "model.mlir").is_file()):
-        rc = residency_from_ir(loop_dir / w / "model.mlir", w)
+    for w in _loop_workloads():
+        rc = residency_from_ir(_loop_capture(w), w)
         if rc.present:
             rows.append(rc.to_dict())
     return _csv(rows, _RESIDENCY_COLS) if rows else ""
@@ -868,14 +871,10 @@ def loop_aware_contract_csv() -> str:
     scf.for trip count and the weights are proven loop-invariant. Does NOT touch any flat artifact.
     '' when no loop-preserving captures are present."""
     from merlin.dse_guidance.loop_recovery import recover_loop, residency_from_ir
-    bench = paths.merlin_dir() / "benchmarks" / "dse_guidance"
-    loop_dir = bench / "recaptures_loop"
-    if not loop_dir.is_dir():
-        return ""
     rows = []
-    for w in sorted(p.name for p in loop_dir.glob("*") if (p / "model.mlir").is_file()):
-        lr = recover_loop(loop_dir / w / "model.mlir", w)
-        rc = residency_from_ir(loop_dir / w / "model.mlir", w)
+    for w in _loop_workloads():
+        lr = recover_loop(_loop_capture(w), w)
+        rc = residency_from_ir(_loop_capture(w), w)
         if not lr.present:
             continue
         flat = _recap_dir(w)
@@ -1029,9 +1028,10 @@ def run_case_study(out_dir) -> dict:
         Artifact("loop_aware_contract.csv", lacsv).write(out)
     # P21 S2/S3: deployment-real magnitudes (depth x n_layers, config-exact) + KV sizing
     from merlin.dse_guidance import real_config as RC
-    _loopdir = paths.merlin_dir() / "benchmarks" / "dse_guidance" / "recaptures_loop"
+    # kv_sizing_csv resolves the loop corpus per-workload through the accessor (committed + out/
+    # overflow); no explicit root needed.
     Artifact("real_config_magnitudes.csv", RC.magnitudes_csv()).write(out)
-    Artifact("kv_cache_sizing.csv", RC.kv_sizing_csv(_loopdir)).write(out)
+    Artifact("kv_cache_sizing.csv", RC.kv_sizing_csv()).write(out)
     # P24: hardware-INDEPENDENT roofline — arithmetic intensity (MACs/byte) resident vs non-resident
     # + ridge-point regime. No peak/bandwidth/latency assumed (those need a specific chip).
     from merlin.dse_guidance import arithmetic_intensity as AI
