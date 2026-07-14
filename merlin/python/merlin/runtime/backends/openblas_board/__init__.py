@@ -25,6 +25,7 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
+from merlin.common.paths import work_dir
 
 _HERE = Path(__file__).resolve().parent
 _SHIM_SRC = _HERE / "openblas_gemm_rvv_shim.c"
@@ -41,7 +42,7 @@ def _openblas_repo() -> Path:
         return Path(env)
     from merlin.common.paths import repo_root
 
-    return Path(repo_root()) / "tmp" / "kernels" / "OpenBLAS"
+    return Path(work_dir()) / "tmp" / "kernels" / "OpenBLAS"
 
 
 def _kernel_src() -> Path:

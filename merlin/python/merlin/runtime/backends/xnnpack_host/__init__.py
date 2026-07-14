@@ -25,6 +25,7 @@ import ctypes
 import subprocess
 import threading
 from pathlib import Path
+from merlin.common.paths import work_dir
 from typing import Any
 
 import numpy as np
@@ -43,7 +44,7 @@ def _xnnpack_repo() -> Path:
         return Path(env)
     from merlin.common.paths import repo_root
 
-    return Path(repo_root()) / "tmp" / "kernels" / "XNNPACK"
+    return Path(work_dir()) / "tmp" / "kernels" / "XNNPACK"
 
 
 class XnnpackUnavailable(RuntimeError):

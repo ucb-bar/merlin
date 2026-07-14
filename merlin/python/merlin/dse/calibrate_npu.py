@@ -32,7 +32,7 @@ DEFAULT_POINTS = [
 
 
 def npu_root() -> Path:
-    return paths.repo_root() / "tmp" / "dse" / "npu_model"
+    return paths.work_dir() / "tmp" / "dse" / "npu_model"
 
 
 def available() -> bool:

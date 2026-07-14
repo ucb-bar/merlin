@@ -105,6 +105,20 @@ def runtime_dir() -> Path:
 #     three subdirs (runs/ artifacts/ build/). These helpers are the SINGLE source of truth for the
 #     root names — callers must never hard-code the literal strings. Honors ``MERLIN_OUT_ROOT`` for
 #     relocated/installed checkouts (mirrors ``MERLIN_REPO_ROOT``). ---
+def work_dir() -> Path:
+    """Return the writable WORK root for ephemeral scratch (``tmp/`` build scratch, calibration
+    intermediates, external baseline checkouts) — ``<repo>`` in-repo, honoring ``MERLIN_WORK_DIR``.
+
+    Distinct from ``out_dir()``: ``out/`` holds durable/curated products + runs (redirected by
+    ``MERLIN_OUT_ROOT``); ``work_dir()`` holds throwaway scratch. An installed wheel with no checkout
+    resolves ``repo_root()`` under ``site-packages`` — set ``MERLIN_WORK_DIR`` so runs don't scribble
+    there."""
+    env = os.environ.get("MERLIN_WORK_DIR")
+    if env:
+        return Path(env)
+    return repo_root()
+
+
 def out_dir() -> Path:
     """Return the generated-output root ``<repo>/out`` (honors ``MERLIN_OUT_ROOT``)."""
     env = os.environ.get("MERLIN_OUT_ROOT")

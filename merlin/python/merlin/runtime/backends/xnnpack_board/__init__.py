@@ -25,6 +25,7 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
+from merlin.common.paths import work_dir
 
 _HERE = Path(__file__).resolve().parent
 _SHIM_SRC = _HERE / "xnn_gemm_rvv_shim.c"
@@ -42,7 +43,7 @@ def _xnnpack_repo() -> Path:
         return Path(env)
     from merlin.common.paths import repo_root
 
-    return Path(repo_root()) / "tmp" / "kernels" / "XNNPACK"
+    return Path(work_dir()) / "tmp" / "kernels" / "XNNPACK"
 
 
 class XnnpackBoardUnavailable(RuntimeError):

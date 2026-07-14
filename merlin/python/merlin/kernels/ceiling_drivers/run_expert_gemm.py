@@ -22,6 +22,7 @@ from __future__ import annotations
 import subprocess
 import tempfile
 from pathlib import Path
+from merlin.common.paths import work_dir
 
 from ...common.driver_output import int_after as _int_after
 
@@ -42,7 +43,7 @@ _LINK = ("-static", "-nostdlib", "-nostartfiles", "-lm", "-lgcc")
 
 
 def _tmp_kernels() -> Path:
-    return repo_root() / "tmp" / "kernels"
+    return work_dir() / "tmp" / "kernels"
 
 
 def _experts() -> dict:
