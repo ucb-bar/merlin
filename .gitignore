@@ -47,6 +47,17 @@ selfcheck_out/
 # document the dir's purpose. Re-ignore the whole per-target subtree.
 /out/build/generated/merlin-target-*/**
 
+# GUARD (regenerable concern subtrees): recaptures/ (per-model captures), measurements/ (per-run
+# substrate dumps), selfcheck/ and cache/ each grow one fully-regenerable/purgeable subtree per
+# model/run. Re-ignore everything BELOW each concern root so a generator that drops a nested
+# README.md/AGENT.md can't be un-ignored by the depth-unbounded !/out/**/{AGENT,README}.md negations
+# above and swept into a commit by `git add -A`. The `*/` skips the concern root, so the concern's
+# own top-level AGENT.md/.gitkeep stay tracked. Adding a new model/measurement needs no .gitignore edit.
+/out/artifacts/recaptures/*/**
+/out/artifacts/measurements/*/**
+/out/artifacts/selfcheck/*/**
+/out/artifacts/cache/*/**
+
 # --- Relocated hand-written reports (were docs/*, moved to their concern in the Phase-3 docs
 #     restructure). These are NOT tool-regenerable, so they stay tracked. Explicit per-file
 #     negations (never a broad *.md) so generated results in the same dirs remain ignored. ---

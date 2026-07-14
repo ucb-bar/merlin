@@ -1,8 +1,0 @@
-== auditing rb_abc4 on 25 capsules (workers=8, tiers=['L2', 'L3']) ==
-   rb_abc4: passed=25/25 public=20/20 hidden=5/5 tier=L3 wall=834.3s speedup=6.67
-== auditing merlin_abc4 on 25 capsules (workers=8, tiers=['L2', 'L3']) ==
-  !! merlin_abc4: no submission/manifest.yaml — skipping
-== auditing merlincirct_abc4 on 25 capsules (workers=8, tiers=['L2', 'L3']) ==
-  !! merlincirct_abc4: no submission/manifest.yaml — skipping
-
-wrote reports/full_suite_audit.{md,json} (25 capsules x 1 backends)
