@@ -35,18 +35,9 @@ def native_quant_rows(cs_dir) -> list[dict]:
     """Read recaptures_native/<wl>/model.mlir (P21-S4) and report the NATIVE low-bit datapath that
     the default torchao-int8 qdq capture could not: packed-int2 ternary storage + absmean scale.
     '' / [] when no native capture is present (committed summary stands)."""
-    nat = Path(cs_dir).parent / "recaptures_native"
-    if not nat.is_dir():
-        # fall back to the canonical bench location (so it works when cs_dir is a temp out-dir)
-        try:
-            from merlin.common import paths as _paths
-            nat = _paths.merlin_dir() / "benchmarks" / "dse_guidance" / "recaptures_native"
-        except Exception:
-            return []
-    if not nat.is_dir():
-        return []
+    from merlin.dse_guidance.corpus import RECAP_MODELS, _recap_dir_in
     rows = []
-    for d in sorted(nat.glob("*")):
+    for d in [_recap_dir_in(w, "recaptures_native") for w in sorted(RECAP_MODELS)]:
         p = d / "model.mlir"
         if not p.is_file():
             continue
@@ -150,13 +141,21 @@ def native_csv(cs_dir) -> str:
 
 
 def quant_rows(cs_dir: Path) -> list[dict]:
-    lvl = Path(cs_dir).parent / "recaptures_levels"
-    if not lvl.is_dir():
-        return []
+    from merlin.common import paths
+    from merlin.common.artifacts import recaptures_dir
+    from merlin.dse_guidance.corpus import RECAP_MODELS
     rows = []
-    for d in sorted(lvl.glob("*")):
-        p = d / "model_qdq.mlir"
-        if not p.is_file():
+    for w in sorted(RECAP_MODELS):
+        # recaptures_levels holds model_qdq.mlir (not model.mlir): committed under merlin/benchmarks/
+        # with an out/artifacts/recaptures/ overflow (same layout as the other corpora), NOT a sibling
+        # of cs_dir (which broke silently once case_study moved under out/artifacts/).
+        for base in (paths.merlin_dir() / "benchmarks" / "dse_guidance" / "recaptures_levels" / w,
+                     recaptures_dir() / "dse_guidance" / "recaptures_levels" / w):
+            p = base / "model_qdq.mlir"
+            if p.is_file():
+                d = base
+                break
+        else:
             continue
         module = mlir_query.parse(p)
         deq_ops = [op for op in module.walk()

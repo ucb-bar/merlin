@@ -18,8 +18,20 @@ from merlin.common.yaml import load_yaml
 from merlin.dse_guidance import (aet_ingest, attribution as ATTR, axes, baseline_cost as BC,
                                  calibration, candidates as CAND, fidelity as FID, pipeline,
                                  representation, study, synth, temporal as T, topology as TOP)
+from merlin.dse_guidance.corpus import _recap_dir_in
 
 FIX = merlin_dir() / "tests" / "fixtures" / "dse_guidance"
+
+
+def _loop_capture_present(w: str) -> bool:
+    """Loop-preserving model.mlir for w, via the corpus accessor (committed + out/ overflow) — NOT the
+    retired `case_study/../recaptures_loop` sibling location, which no longer exists post-out/."""
+    return (_recap_dir_in(w, "recaptures_loop") / "model.mlir").is_file()
+
+
+def _any_flat_capture_present() -> bool:
+    from merlin.dse_guidance.corpus import RECAP_MODELS
+    return any((_recap_dir_in(w, "recaptures") / "model.mlir").is_file() for w in RECAP_MODELS)
 
 
 def _smolvla():
@@ -2722,8 +2734,7 @@ def test_p16_capture_fidelity_and_emit(tmp_path):
     # still reports K from config/reference (or n/a). Restrict to the ANALYZED corpus (cf["workloads"])
     # — small_llama has a loop model.mlir but is excluded from the corpus (functional-weight wrapper ->
     # 0 linalg.matmul), so it is not a column in the matrix.
-    _loop_preserved = {w for w in cf["workloads"]
-                       if (_CS_DIR.parent / "recaptures_loop" / w / "model.mlir").is_file()}
+    _loop_preserved = {w for w in cf["workloads"] if _loop_capture_present(w)}
     for w in cf["workloads"]:
         if w in _loop_preserved:
             assert "recovered" in kloop[w] and "IR" in kloop[w], (w, kloop[w])
@@ -2913,7 +2924,7 @@ def test_p18_operator_recovery_accounting():
 
 
 @pytest.mark.skipif(not (_CS_DIR / "dse_contract.json").is_file()
-                    or not (_CS_DIR.parent / "recaptures").is_dir(),
+                    or not _any_flat_capture_present(),
                     reason="case_study package or its (gitignored, regenerable) recaptures not present")
 def test_p18_capture_erasure_and_per_family():
     # capture-erasure evidence is demonstrated from the IR (loops absent except a known gather

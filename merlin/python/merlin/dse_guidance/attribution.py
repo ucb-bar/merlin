@@ -31,6 +31,54 @@ from merlin.design_pressure import region as R
 from merlin.design_pressure.ingest import mlir_m2m
 from merlin.dse_guidance.topology import VlaRuntimeTopology
 
+# Parsing a capture's model.mlir is the single dominant cost of the dse case-study analysis: each
+# extract_* pass re-parsed the (large) IR from scratch, and every workload is analyzed by several
+# passes across many tests. mlir_m2m._parse_module is NOT the cached mlir_query.parse, so cache here
+# keyed by (path, mtime, size). Parsed modules are only WALKED (read-only) by the extractors, so a
+# shared instance is safe — same contract as mlir_query's parse cache.
+_CAPTURE_CACHE: dict = {}
+
+
+def _parse_capture(path: str):
+    from pathlib import Path
+    try:
+        st = Path(path).stat()
+        key = (str(Path(path).resolve()), st.st_mtime_ns, st.st_size)
+    except OSError:
+        return mlir_m2m._parse_module(open(path, encoding="utf-8").read())
+    hit = _CAPTURE_CACHE.get(key)
+    if hit is None:
+        hit = mlir_m2m._parse_module(open(path, encoding="utf-8").read())
+        _CAPTURE_CACHE[key] = hit
+    return hit
+
+
+def _memoize_capture(fn):
+    """Memoize an ``extract_*(capture_dir)`` extractor on (capture_dir, model.mlir mtime, size). The
+    extractors are pure over the capture and return read-only tuples; the case-study analysis calls
+    each per workload across many passes/tests, so without this the (cached) module is still re-walked
+    hundreds of times. cache_clear exposed for tests."""
+    import functools
+    from pathlib import Path
+    cache: dict = {}
+
+    @functools.wraps(fn)
+    def wrapper(capture_dir: str):
+        try:
+            st = Path(f"{capture_dir}/model.mlir").stat()
+            key = (str(Path(capture_dir).resolve()), st.st_mtime_ns, st.st_size)
+        except OSError:
+            return fn(capture_dir)
+        hit = cache.get(key)
+        if hit is None:
+            hit = fn(capture_dir)
+            cache[key] = hit
+        return hit
+
+    wrapper.cache_clear = cache.clear
+    return wrapper
+
+
 # Roles a region can be attributed to (mirrors topology / temporal roles).
 ROLE_BACKBONE = "backbone_once"
 ROLE_REPEATED_HEAD = "repeated_head"
@@ -165,11 +213,12 @@ def _in_loop_body(op, wl_fors: set) -> bool:
 
 
 @lru_cache(maxsize=None)
+@_memoize_capture
 def extract_matmuls(capture_dir: str) -> tuple[MatmulRecord, ...]:
     """Per-matmul records read from a capture's ``model.mlir`` (empty tuple if it won't parse)."""
     path = f"{capture_dir}/model.mlir"
     try:
-        module = mlir_m2m._parse_module(open(path, encoding="utf-8").read())
+        module = _parse_capture(path)
     except Exception:
         return ()
     wl_fors = _while_loop_fors(module)               # while_loop scf.for region(s), if any
@@ -256,6 +305,7 @@ def _contraction_mnk(ls, rs):
 
 
 @lru_cache(maxsize=None)
+@_memoize_capture
 def extract_non_gemm_ops(capture_dir: str) -> tuple[NonGemmRecord, ...]:
     """Recover the non-linear-GEMM operators the flat capture lowered to ``linalg.generic`` but did
     NOT erase: attention contractions (q.kT / attn.v -> real MACs from operand shapes), softmax,
@@ -269,7 +319,7 @@ def extract_non_gemm_ops(capture_dir: str) -> tuple[NonGemmRecord, ...]:
     named-matmul extractor is therefore NOT under-counting linear work."""
     path = f"{capture_dir}/model.mlir"
     try:
-        module = mlir_m2m._parse_module(open(path, encoding="utf-8").read())
+        module = _parse_capture(path)
     except Exception:
         return ()
     out: list[NonGemmRecord] = []
@@ -322,6 +372,7 @@ def extract_non_gemm_ops(capture_dir: str) -> tuple[NonGemmRecord, ...]:
 
 
 @lru_cache(maxsize=None)
+@_memoize_capture
 def matmul_dependencies(capture_dir: str) -> tuple[tuple[int, ...], ...]:
     """Real per-matmul data dependencies, recovered from the capture's SSA use-def graph.
 
@@ -335,7 +386,7 @@ def matmul_dependencies(capture_dir: str) -> tuple[tuple[int, ...], ...]:
     path = f"{capture_dir}/model.mlir"
     try:
         from xdsl.ir import Operation
-        module = mlir_m2m._parse_module(open(path, encoding="utf-8").read())
+        module = _parse_capture(path)
     except Exception:
         return ()
     matmuls = [o for o in module.walk() if o.name == "linalg.matmul"]

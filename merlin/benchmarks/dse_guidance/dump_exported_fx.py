@@ -10,7 +10,8 @@ The ATen op histogram is the key audit signal: it shows ops (attention `aten.bmm
 lowers them to linalg.generic — so we can see exactly what export preserves vs what lowering erases.
 
 Usage:  python dump_exported_fx.py [<workload> ...]    (default: all workloads with a loader.py)
-Output: case_study/manual_validation/exported_fx/<wl>.txt   (or <wl>.FAILED.txt on error)
+Output: out/artifacts/dse-guidance/case_study/manual_validation/exported_fx/<wl>.txt
+        (or <wl>.FAILED.txt on error)
 """
 from __future__ import annotations
 
@@ -19,9 +20,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-M2M = Path("/path/to/model2MLIR")
+from merlin.common import paths
+
+M2M = Path(os.environ.get("MERLIN_MODEL2MLIR", "/path/to/model2MLIR"))
 WL = M2M / "workloads"
-OUT = Path(__file__).resolve().parent / "case_study" / "manual_validation" / "exported_fx"
+OUT = paths.artifacts_dir() / "dse-guidance" / "case_study" / "manual_validation" / "exported_fx"
 
 # Runs INSIDE the model's venv: rebuild the exact loader inputs, re-export, dump histogram + graph.
 _INNER = r'''

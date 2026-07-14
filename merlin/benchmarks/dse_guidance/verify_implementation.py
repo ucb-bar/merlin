@@ -15,7 +15,7 @@ Cross-checked artifacts:
   dispatch_granularity_table.csv, accuracy_gated_dtype_candidates.csv, design_envelope.yaml.
 
 Run:  .venv/bin/python merlin/benchmarks/dse_guidance/verify_implementation.py
-Exit code 0 = all checks pass. Writes case_study/verification_report.md.
+Exit code 0 = all checks pass. Writes out/artifacts/dse-guidance/case_study/verification_report.md.
 """
 from __future__ import annotations
 
@@ -25,19 +25,32 @@ import math
 import re
 from pathlib import Path
 
+from merlin.common import paths
 from merlin.common.yaml import load_yaml
 from merlin.dse_guidance import accuracy_gate as AG
 from merlin.dse_guidance import attribution as ATTR
 from merlin.dse_guidance import shape_taxonomy as ST
-from merlin.dse_guidance.case_study import RECAP_MODELS, _CORPUS_SUBDIR, available_models
+from merlin.dse_guidance.case_study import (RECAP_MODELS, _CORPUS_SUBDIR, _recap_dir,
+                                            available_models)
 from merlin.dse_guidance.design_envelope import ELEMENT_BYTES
 
-HERE = Path(__file__).resolve().parent
-CS = HERE / "case_study"
+CS = paths.artifacts_dir() / "dse-guidance" / "case_study"
 # P23: verify against the SAME corpus the study analyzes (loop-preserving by default; the studyable
-# model set excludes the small_llama toy whose loop wrapper produced no linalg.matmul).
-RECAP = HERE / _CORPUS_SUBDIR
+# model set excludes the small_llama toy whose loop wrapper produced no linalg.matmul). Resolve each
+# capture through _recap_dir(): the oversized ones (groot/pi05/smolvla) are not committed and live in
+# the out/artifacts/recaptures/ overflow.
 _MODELS = set(available_models())
+
+
+def _cap_base(workload: str, subdir: str) -> Path:
+    """The auxiliary corpora (recaptures_loop / _native / _levels) live committed under
+    merlin/benchmarks/dse_guidance/<subdir>/ with an out/artifacts/recaptures/ overflow — never as a
+    sibling of the (now out/artifacts/) case_study dir. Prefer committed, fall back to overflow."""
+    from merlin.common.artifacts import recaptures_dir
+    committed = paths.merlin_dir() / "benchmarks" / "dse_guidance" / subdir / workload
+    if committed.is_dir():
+        return committed
+    return recaptures_dir() / "dse_guidance" / subdir / workload
 CS_SHAPE = CS / "operator_shape_table.csv"
 CS_TILE = CS / "tile_waste_table.csv"
 CS_COVMAT = CS / "primitive_coverage_matrix.csv"
@@ -86,7 +99,7 @@ def _head_facts_from_raw(workload: str) -> dict:
     """Recompute per-role facts straight from the IR primitive (independent of the YAML), mirroring
     attribution: on a loop capture the scf.for boundary is authoritative (in-loop -> repeated_head,
     out-of-loop -> backbone_once); on a flat capture the prov.fqn heuristic is used."""
-    recs = ATTR.extract_matmuls(str(RECAP / workload))
+    recs = ATTR.extract_matmuls(str(_recap_dir(workload)))
     is_loop = any(getattr(r, "in_loop_body", False) for r in recs)
     roles: dict[str, dict] = {}
     for r in recs:
@@ -105,7 +118,7 @@ def _head_facts_from_raw(workload: str) -> dict:
 
 def verify_workload(w: str) -> dict:
     K = int(RECAP_MODELS[w]["K"])
-    mlir = (RECAP / w / "model.mlir").read_text()
+    mlir = (_recap_dir(w) / "model.mlir").read_text()
     raw_mm = len(re.findall(r"\blinalg\.matmul\b", mlir))
 
     attr = load_yaml(CS / w / "region_attribution.yaml")["topology_recovery"]["regions"]
@@ -312,7 +325,7 @@ def _classify_geom_indep(M: int, N: int, K: int) -> str:
 
 
 def verify_p5_workload(w: str) -> dict:
-    recs = ATTR.extract_matmuls(str(RECAP / w))
+    recs = ATTR.extract_matmuls(str(_recap_dir(w)))
     by_idx = {r.index: r for r in recs}
     shape_rows = [r for r in _csv_rows(CS_SHAPE) if r["workload"] == w]
 
@@ -431,7 +444,7 @@ def _indep_matmul_deps(w: str) -> list[tuple[int, ...]]:
     """Independent re-trace of per-matmul data deps from the SSA use-def graph (re-implemented)."""
     from merlin.design_pressure.ingest import mlir_m2m
     from xdsl.ir import Operation
-    m = mlir_m2m._parse_module((RECAP / w / "model.mlir").read_text())
+    m = mlir_m2m._parse_module((_recap_dir(w) / "model.mlir").read_text())
     mms = [o for o in m.walk() if o.name == "linalg.matmul"]
     res = {id(r): i for i, mm in enumerate(mms) for r in mm.results}
     out = []
@@ -457,7 +470,7 @@ def _indep_matmul_deps(w: str) -> list[tuple[int, ...]]:
 def verify_p6_workload(w: str, graphs: dict) -> dict:
     g = graphs[w]
     nodes, edges = g["nodes"], g["edges"]
-    recs = ATTR.extract_matmuls(str(RECAP / w))
+    recs = ATTR.extract_matmuls(str(_recap_dir(w)))
 
     # P6-A: operator nodes match operator_shape_table.csv exactly (one per matmul, M/N/K/macs)
     ops = [n for n in nodes if n["kind"] == "operator"]
@@ -566,7 +579,7 @@ def verify_p7_workload(w: str, graphs: dict) -> dict:
     total_ops = int(crit["total_ops"])
 
     # P7-A: total work matches the operator nodes' MAC sum (independent of the parallelism module)
-    recs = ATTR.extract_matmuls(str(RECAP / w))
+    recs = ATTR.extract_matmuls(str(_recap_dir(w)))
     indep_total = sum(r.macs for r in recs)
     p7check(total_macs == indep_total and total_ops == len(recs),
             f"[{w}] DAG total work == sum of operator MACs ({indep_total:,}) over {len(recs)} ops")
@@ -844,7 +857,7 @@ def p10check(ok: bool, msg: str) -> None:
 
 
 def verify_p10_workload(w: str) -> dict:
-    recs = ATTR.extract_matmuls(str(RECAP / w))
+    recs = ATTR.extract_matmuls(str(_recap_dir(w)))
     by_idx = {r.index: r for r in recs}
     pats = [r for r in _csv_rows(CS_EPILOGUE) if r["workload"] == w]
 
@@ -1540,9 +1553,8 @@ def verify_p21(IM) -> None:
     import csv as _csv
     import io as _io
     from pathlib import Path as _P
-    loop_dir = CS.parent / "recaptures_loop"
-    if not loop_dir.is_dir() or not any((loop_dir / w / "model.mlir").is_file()
-                                        for w in ("smolvla", "openvla", "pi05")):
+    if not any((_cap_base(w, "recaptures_loop") / "model.mlir").is_file()
+               for w in ("smolvla", "openvla", "pi05")):
         p13check(True, "[P21] loop-preserving recovery: no loop-preserving captures present (skipped)")
         return
     from merlin.dse_guidance.loop_recovery import recover_loop
@@ -1551,7 +1563,7 @@ def verify_p21(IM) -> None:
               "pi05": (10, "latent", None)}
     re_ok = True
     for w, (k, role, kvb) in EXPECT.items():
-        mp = loop_dir / w / "model.mlir"
+        mp = _cap_base(w, "recaptures_loop") / "model.mlir"
         if not mp.is_file():
             continue
         lr = recover_loop(mp, w)
@@ -1559,10 +1571,11 @@ def verify_p21(IM) -> None:
         re_ok = re_ok and lr.present and lr.K == k and lr.K_source == "recovered_from_ir" \
             and role in roles and lr.kv_cache_bytes == kvb and lr.repeated_region_op_count > 50
     # 1b. corpus-wide: EVERY present loop-preserving capture re-derives a valid loop from the IR
-    present = sorted(d.name for d in loop_dir.glob("*") if (d / "model.mlir").is_file())
+    present = sorted(w for w in RECAP_MODELS
+                     if (_cap_base(w, "recaptures_loop") / "model.mlir").is_file())
     corpus_ok = True
     for w in present:
-        lr = recover_loop(loop_dir / w / "model.mlir", w)
+        lr = recover_loop(_cap_base(w, "recaptures_loop") / "model.mlir", w)
         corpus_ok = corpus_ok and lr.present and (lr.K or 0) > 0 \
             and lr.K_source == "recovered_from_ir" and lr.repeated_region_op_count > 50 \
             and any(c.role in ("latent", "kv_cache", "token_buffer") for c in lr.carried_state)
@@ -1572,7 +1585,7 @@ def verify_p21(IM) -> None:
     if af.is_file():
         ar = {r["workload"]: r for r in _csv.DictReader(_io.StringIO(af.read_text()))}
         art_ok = all(w in ar and ar[w]["K_source"] == "recovered_from_ir"
-                     and int(ar[w]["K"]) == (recover_loop(loop_dir / w / "model.mlir", w).K or -1)
+                     and int(ar[w]["K"]) == (recover_loop(_cap_base(w, "recaptures_loop") / "model.mlir", w).K or -1)
                      for w in present)
     re_ok = re_ok and corpus_ok
     # 3. the capture_fidelity matrix actually flipped K/KV/loop_carried to recovered-from-IR
@@ -1597,7 +1610,7 @@ def verify_p21(IM) -> None:
     if res_ok:
         rar = {r["workload"]: r for r in _csv.DictReader(_io.StringIO(rf.read_text()))}
         for w in present:
-            rc = residency_from_ir(loop_dir / w / "model.mlir", w)
+            rc = residency_from_ir(_cap_base(w, "recaptures_loop") / "model.mlir", w)
             res_ok = res_ok and rc.present and rc.n_loop_invariant_operands > 0 \
                 and rc.n_loop_carried >= 1 and w in rar \
                 and int(rar[w]["n_loop_invariant_operands"]) == rc.n_loop_invariant_operands
@@ -1611,9 +1624,9 @@ def verify_p21(IM) -> None:
     if la_ok:
         lar = {r["workload"]: r for r in _csv.DictReader(_io.StringIO(laf.read_text()))}
         for w in present:
-            lr = residency_from_ir(loop_dir / w / "model.mlir", w)
+            lr = residency_from_ir(_cap_base(w, "recaptures_loop") / "model.mlir", w)
             lrec = __import__("merlin.dse_guidance.loop_recovery", fromlist=["recover_loop"]).recover_loop(
-                loop_dir / w / "model.mlir", w)
+                _cap_base(w, "recaptures_loop") / "model.mlir", w)
             r = lar.get(w, {})
             wb = int(r.get("resident_weight_bytes", -1))
             la_ok = la_ok and r and int(r["K_ir"]) == lrec.K \
@@ -1632,7 +1645,7 @@ def verify_p21(IM) -> None:
     exp_total = per_layer * 32 + 2 * (32064 * 4096)        # untied embed + lm_head
     mag_ok = (g.total_params() == exp_total) and abs(g.total_params() / 1e9 - 6.74) < 0.1
     # 2. KV formula is IR-validated on the captured config then applied at deployment scale
-    kv = {r["workload"]: r for r in RC.kv_sizing_rows(loop_dir)}
+    kv = {r["workload"]: r for r in RC.kv_sizing_rows()}
     kv_ir_ok = "matches IR iter_arg" in kv.get("openvla", {}).get("ir_formula_check", "")
     kv_real_ok = RC.REAL_GEOMETRY["openvla"].kv_cache_bytes("bf16") == 2 * 32 * 128 * 263 * 32 * 2
     # 3. artifacts present + config-evidence labelled
@@ -1686,7 +1699,7 @@ def verify_p21(IM) -> None:
              f"(prefix+rep*K)/(prefix+rep) re-derived ({ai_ok}); no chip assumed in artifact ({hw_free})")
     # P21 S4: native low-bit (bitvla packed-int2 ternary) datapath captured + reported, when present
     from merlin.dse_guidance import quant_metadata as QM
-    nat_cap = (CS.parent / "recaptures_native" / "bitvla" / "model.mlir")
+    nat_cap = (_cap_base("bitvla", "recaptures_native") / "model.mlir")
     if nat_cap.is_file():
         nrows = {r["workload"]: r for r in QM.native_quant_rows(CS)}
         bv = nrows.get("bitvla", {})
@@ -1717,14 +1730,12 @@ def verify_p21(IM) -> None:
     if lbv.is_file():
         import csv as _csv_mod
         from merlin.dse_guidance import accuracy_gate as _AG
-        nat_d = CS.parent / "recaptures_native"
-        lvl_d = CS.parent / "recaptures_levels"
         _pts = _AG.load()
         got = {r["workload"]: r for r in _csv_mod.DictReader(lbv.read_text().splitlines())}
         tier_ok, acc_ok = True, True
         for w, r in got.items():
-            natf = nat_d / w / "model.mlir"
-            qdqf = lvl_d / w / "model_qdq.mlir"
+            natf = _cap_base(w, "recaptures_native") / "model.mlir"
+            qdqf = _cap_base(w, "recaptures_levels") / "model_qdq.mlir"
             if natf.is_file() and "quant_ext.unpack_int2" in natf.read_text(errors="ignore"):
                 exp = "native"
             elif qdqf.is_file():

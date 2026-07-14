@@ -44,7 +44,7 @@ Workloads (real `prov.fqn` recaptures): **rdt, openvla, tiny_llama, rdt2, groot_
 ## Regenerate
 ```
 merlin-dse-guidance --case-study \
-  --out merlin/benchmarks/dse_guidance/case_study
+  --out out/artifacts/dse-guidance/case_study
 ```
 
 Every number carries an evidence label (`recovered_from_ir` / `recovered_from_prov_fqn` / `assumed_reference` / `derived_requirement` / `design_assumption` / `measured` / `proxy_measured` / `unavailable`). No file claims a speedup for unbuilt hardware.

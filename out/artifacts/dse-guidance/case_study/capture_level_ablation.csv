@@ -5,7 +5,7 @@ bitvla,quant_qdq,True,15,377,0,0,1,0
 openvla,flat,True,26,190,0,0,0,0
 openvla,high_level,True,26,142,4,4,0,0
 openvla,quant_qdq,True,26,190,0,0,26,0
-pi05,flat,True,777,4602,0,0,0,0
+pi05,flat,False,0,0,0,0,0,0
 pi05,high_level,True,777,2769,116,165,0,0
 pi05,quant_qdq,True,782,4156,0,0,782,0
 rdt,flat,True,20,184,0,0,0,0

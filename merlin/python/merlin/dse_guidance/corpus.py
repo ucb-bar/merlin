@@ -49,19 +49,24 @@ RECAP_MODELS: dict[str, dict] = {
 }
 
 
-def _recap_dir(workload: str):
+def _recap_dir_in(workload: str, subdir: str):
     # Small reduced-config captures are committed under merlin/benchmarks/; oversized ones
-    # (pi05/smolvla/groot) live out-of-git under artifacts/recaptures/ (regenerable via m2m) to keep
-    # git lean. Prefer the committed copy, fall back to the artifacts overflow, else the committed
+    # (pi05/smolvla/groot) live out-of-git under out/artifacts/recaptures/ (regenerable via m2m) to
+    # keep git lean. Prefer the committed copy, fall back to the artifacts overflow, else the committed
     # path (absent -> available_models()/callers skip it via the model.mlir is_file() check).
-    committed = paths.merlin_dir() / "benchmarks" / "dse_guidance" / _CORPUS_SUBDIR / workload
+    committed = paths.merlin_dir() / "benchmarks" / "dse_guidance" / subdir / workload
     if (committed / "model.mlir").is_file():
         return committed
     from merlin.common.artifacts import recaptures_dir
-    overflow = recaptures_dir() / "dse_guidance" / _CORPUS_SUBDIR / workload
+    overflow = recaptures_dir() / "dse_guidance" / subdir / workload
     if (overflow / "model.mlir").is_file():
         return overflow
     return committed
+
+
+def _recap_dir(workload: str):
+    """Resolve a capture in the ACTIVE corpus (loop-preserving unless MERLIN_DSE_CORPUS=flat)."""
+    return _recap_dir_in(workload, _CORPUS_SUBDIR)
 
 
 def available_models() -> list[str]:

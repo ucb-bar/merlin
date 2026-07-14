@@ -17,9 +17,13 @@ import os
 import subprocess
 from pathlib import Path
 
-M2M = Path("/path/to/model2MLIR")
+from merlin.common.artifacts import recaptures_dir
+
+M2M = Path(os.environ.get("MERLIN_MODEL2MLIR", "/path/to/model2MLIR"))
 WL = M2M / "workloads"
-OUT = Path(__file__).resolve().parent / "recaptures_decode"
+# Captures are regenerable output -> out/artifacts/recaptures/ (see CLAUDE.md), alongside the
+# other dse_guidance corpora rather than next to the source under merlin/.
+OUT = recaptures_dir() / "dse_guidance" / "recaptures_decode"
 
 # (tag, workload, env_overrides)
 VARIANTS = [
