@@ -3,7 +3,7 @@
 
 PROVES (not infers) the iteration-3 conclusion that "ours is ~60/63% of XNNPACK whole-model
 because the gap is DISPATCH-LEVEL overhead, not the matmul kernel". The matmul kernel was shown
-to decode IDENTICALLY to XNNPACK's RVV ukernel (output/kernels/ceiling/packing_residual.md), so
+to decode IDENTICALLY to XNNPACK's RVV ukernel (out/artifacts/ceiling/packing_residual.md), so
 the only honest question left is empirical: how much of each config's whole-model wall is the
 GEMM kernel, and how much is everything-else (elementwise / norm / softmax / activation /
 layout-copies / quant + per-dispatch setup/pack/teardown)?
@@ -45,7 +45,7 @@ CAVEATS (stated honestly).
 cos-gated (>= 0.9999) before any wall is recorded. Honest not_run on board-unreachable.
 
 Run: MERLIN_K1_HOST=root@<ip> .venv/bin/python scripts/k1_dispatch_breakdown.py \
-        --model output/openvla_fp32_consistent -n 5
+        --model out/artifacts/recaptures/openvla_fp32_consistent -n 5
 """
 from __future__ import annotations
 

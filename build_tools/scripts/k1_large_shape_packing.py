@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Task 1 — LARGE-SHAPE, PACKING-INCLUDED cross-framework GEMM matrix on the REAL K1 board.
 
-The existing K1 matrix (output/kernels/ceiling/cross_framework_matrix_k1.md) is INNER-COMPUTE
+The existing K1 matrix (out/artifacts/ceiling/cross_framework_matrix_k1.md) is INNER-COMPUTE
 (operand pack hoisted OUT of the timed region) at small cubes 32/64/128, where the specialized
 ours-intrinsic kernel wins. The open question this script answers: at LARGE shapes with PACKING
 INSIDE the timed region (the realistic end-use cost), where do the experts (OpenBLAS / XNNPACK)

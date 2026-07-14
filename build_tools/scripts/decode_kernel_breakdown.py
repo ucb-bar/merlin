@@ -34,7 +34,7 @@ REPO = Path(repo_root())
 VLEN = 256  # the mined K1 target VLEN (board is VLEN=256); spike harness ISA is VLEN=128.
 
 # representative throughput-bound shapes (M,N,K). cube + real openvla/rdt2 matmul dims
-# (extracted from output/{openvla,rdt2}_fp32_consistent/model.mlir linalg.matmul ins/outs).
+# (extracted from out/artifacts/recaptures/{openvla,rdt2}_fp32_consistent/model.mlir linalg.matmul ins/outs).
 SHAPES = {
     "cube_64": (64, 64, 64),
     "openvla_proj_17x192x576": (17, 576, 192),    # 17x192 * 192x576  (attn out / mlp)

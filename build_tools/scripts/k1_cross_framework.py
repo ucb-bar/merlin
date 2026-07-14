@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """PART 2 — cross-framework fp32 GEMM ceiling matrix on the REAL K1 board.
 
-Reproduces output/kernels/ceiling/cross_framework_matrix.md (which was measured on the FUNCTIONAL
+Reproduces out/artifacts/ceiling/cross_framework_matrix.md (which was measured on the FUNCTIONAL
 spike, a cycle proxy) on the SpacemiT K1 silicon. Same five columns, same inner-compute scope
 (operand pack / descriptor build hoisted OUT of the timed region), bit-exact verified, but timed
 with the board's delegated `rdtime` (24 MHz) instead of spike's mcycle proxy.

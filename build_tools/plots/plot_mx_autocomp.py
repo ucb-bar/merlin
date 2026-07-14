@@ -1,7 +1,7 @@
 """MX-Gemmini autocomp campaign — presentation figures (Merlin house style).
 
 Reads the optimization corpus bundle (dataset/index.csv, journeys/, runs/*/cost_ledger.jsonl,
-cost/project-spend*) and renders six figures into output/presentation/mx_autocomp/.
+cost/project-spend*) and renders six figures into out/artifacts/presentation/mx_autocomp/.
 
 Run:  python scripts/plot_mx_autocomp.py
 """

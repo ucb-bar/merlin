@@ -11,7 +11,7 @@ Clean redesign of the paper figures with the requested house style:
 
 All numbers are data-driven from the committed JSON/YAML artifacts (sources noted per figure);
 the beam-tree and CCA figures are transcribed verbatim from the real run artifacts.
-Outputs to  output/presentation/.
+Outputs to  out/artifacts/presentation/.
 """
 from pathlib import Path
 from merlin.common.paths import repo_root
@@ -369,10 +369,10 @@ def fig_crossover():
 
 # ============================================================================
 #  FIGURE 6 — REPRESENTATIVE BEAM TREE  (the literal search tree)
-#  Transcribed verbatim from artifacts/kernel-mining/rvv/beam_rvv_v2_*/ranking_bitvla.yaml
+#  Transcribed verbatim from out/artifacts/kernel-mining/rvv/beam_rvv_v2_*/ranking_bitvla.yaml
 # ============================================================================
 def fig_beam_tree():
-    # Verbatim from artifacts/kernel-mining/rvv/beam_rvv_v2_20260619T132435/ranking_bitvla.yaml
+    # Verbatim from out/artifacts/kernel-mining/rvv/beam_rvv_v2_20260619T132435/ranking_bitvla.yaml
     # (all 12 nodes: baseline + 7 single features + 4 combinations). Names are the
     # scope-qualified ("Acc …") presentation labels; depth-2 = first + second feature.
     PAPER = "#F4ECE0"          # off-white — EVERY in-bubble string uses this
@@ -1092,7 +1092,7 @@ def fig_dual_dse():
 # ============================================================================
 #  FIGURES 20-23 — THE KERNEL-MINING "DRIVING EXAMPLE" JOURNEY.
 #  One real f32 64x64x64 GEMM walked end-to-end. All snippets/numbers transcribed
-#  from committed artifacts (output/rvv_workloads/, runs/rvv_bench/, artifacts/kernel-mining/rvv/).
+#  from committed artifacts (out/artifacts/rvv_workloads/, out/runs/rvv_bench/, out/artifacts/kernel-mining/rvv/).
 # ============================================================================
 def _code_card(ax, x, y, w, h, header, headcol, lines, sub=None, hfs=11.0, lfs=9.0,
                lh=0.30, z=4):
@@ -1148,7 +1148,7 @@ def fig_kernel_input():
     ax.add_patch(pill)
     ax.text(2.55 + 0.675, 5.55, "INPUT", ha="center", va="center", color="white",
             fontsize=9.5, fontweight="bold", zorder=7)
-    ax.text(10.0, 5.55, "output/rvv_workloads/matmul_f32_64x64x64/model.mlir", ha="right",
+    ax.text(10.0, 5.55, "out/artifacts/rvv_workloads/matmul_f32_64x64x64/model.mlir", ha="right",
             va="center", color=SLATE, fontsize=8.4, fontstyle="italic", fontfamily="monospace")
     ax.text(6.3, 0.30, "one op, one shape — we follow THIS kernel through the whole loop",
             ha="center", va="center", color=BLUE, fontsize=10.5, fontstyle="italic",

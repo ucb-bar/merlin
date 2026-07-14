@@ -13,7 +13,7 @@ NOT touch the K1 board -- board (RVV) cross-compile + rdtime timing is the defer
 step (it reuses the SAME XNNPACK ukernel family via scripts/k1_cross_framework.py's ceiling
 driver). No fabricated timing numbers here: this script only certifies host correctness.
 
-Run:  .venv/bin/python scripts/host_e2e_xnnpack.py --model output/bitvla_fp32_consistent
+Run:  .venv/bin/python scripts/host_e2e_xnnpack.py --model out/artifacts/recaptures/bitvla_fp32_consistent
 """
 from __future__ import annotations
 

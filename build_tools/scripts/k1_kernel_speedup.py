@@ -15,7 +15,7 @@ Both arms are the SAME baseline non-matmul lowering with only the matmul kernel 
 so this is apples-to-apples at the kernel level. cos-gated (>=0.9999) before any wall is recorded.
 
 Run: MERLIN_K1_HOST=root@<ip> .venv/bin/python scripts/k1_kernel_speedup.py \
-        --model output/bitvla_fp32_consistent --mrs 1,4,7 -n 3
+        --model out/artifacts/recaptures/bitvla_fp32_consistent --mrs 1,4,7 -n 3
 """
 from __future__ import annotations
 

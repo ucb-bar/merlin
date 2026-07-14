@@ -8,7 +8,7 @@ Usage:
     .venv/bin/python build_tools/scripts/firesim_sweep.py BUNDLE [BUNDLE ...]
     .venv/bin/python build_tools/scripts/firesim_sweep.py --ledger /tmp/fs_sweep.jsonl ...
 
-Each BUNDLE is a directory name under output/ (e.g. rdt2_int8_consistent). The build runs
+Each BUNDLE is a directory name under out/artifacts/recaptures/ (e.g. rdt2_int8_consistent). The build runs
 locally; the run is submitted to the queue via zephyr_model.run_on_firesim (FIRESIM_QUEUE=1).
 """
 import argparse, json, shutil, sys, time, traceback

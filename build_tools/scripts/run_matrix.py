@@ -2,7 +2,7 @@
 """Dispatch-run a set of consistent bundles (host==torch) and print the gate per bundle.
 
 Usage: run_matrix.py <bundle_dir> [<bundle_dir> ...]
-Each <bundle_dir> is under merlin/output/. Prints one RESULT line per bundle so a
+Each <bundle_dir> is under out/artifacts/recaptures/. Prints one RESULT line per bundle so a
 monitor can stream them; tolerant of per-bundle failures (reports them, keeps going).
 """
 import sys

@@ -7,10 +7,10 @@ Three metric families kept on separate axes because they are NOT comparable:
   (3) whole-model end-to-end on K1    — wall seconds vs the frozen baseline
 
 Data is transcribed verbatim from:
-  output/kernels/ceiling/cross_framework_matrix.md           (spike)
-  output/kernels/ceiling/cross_framework_matrix_k1.jsonl     (K1 inner small shapes)
-  output/kernels/ceiling/large_shape_packing_k1.md           (K1 sweep, inner + pack-included)
-  output/rvv_bench/k1_e2e_{bitvla,smolvla,rdt2_mtail}.md      (whole-model e2e)
+  out/artifacts/ceiling/cross_framework_matrix.md           (spike)
+  out/artifacts/ceiling/cross_framework_matrix_k1.jsonl     (K1 inner small shapes)
+  out/artifacts/ceiling/large_shape_packing_k1.md           (K1 sweep, inner + pack-included)
+  out/artifacts/rvv_bench/k1_e2e_{bitvla,smolvla,rdt2_mtail}.md      (whole-model e2e)
 
 ours-intrinsic is a HAND-WRITTEN ceiling reference (a target, not a compiler result); every other
 "ours-*" is emitted by the Merlin RVV pipeline (frozen baseline + a default-off feature).
@@ -99,7 +99,7 @@ ax.grid(True, axis="y", ls=":", alpha=0.35); ax.legend(fontsize=7.6, ncol=2)
 # and ours-v3 (compiler accumulator-resident microkernel, whole-model-safe). v3 is the bitvla
 # winner (16.83x) — beating BOTH ours-tiled (9.16x) and XNNPACK's hand GEMM (13.65x): the
 # compiler-emitted kernel reverses the earlier ~1.49x XNNPACK headroom. Best kernel is per-model
-# (v3 wins bitvla; tiled wins openvla 3.65x) — sources: output/rvv_bench/k1_e2e_*{,_postfix_*}.json.
+# (v3 wins bitvla; tiled wins openvla 3.65x) — sources: out/artifacts/rvv_bench/k1_e2e_*{,_postfix_*}.json.
 # DATA-DRIVEN (no hardcoded numbers) — reads the SAME fresh four-way / .vf JSONs as the headline,
 # so panel 3 can never drift out of sync. Per model: ours-best (compiler), XNNPACK, OpenBLAS.
 import json as _json
