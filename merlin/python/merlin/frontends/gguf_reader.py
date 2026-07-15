@@ -124,6 +124,24 @@ def arch_metadata(reader: Any, arch: str) -> dict[str, Any]:
     return out
 
 
+def weight_demands(model: "GgufModel"):
+    """One routing OpDemand per quantized weight tensor (op=matmul, in=weight=its format).
+
+    Norm/embedding vectors and unquantized (scalar-float) tensors are skipped — the demands describe
+    the low-precision matmul weights whose format a target must support. Tensors whose ggml type has
+    no canonical format are reported as demands with their raw ggml type so routing gaps them honestly.
+    """
+    from merlin.targetgen.routing import OpDemand
+
+    demands = []
+    for t in model.tensors:
+        if not t.is_quantized:
+            continue
+        fmt_name = t.fmt.name if t.fmt is not None else t.ggml_type
+        demands.append(OpDemand(op="matmul", in_fmt=fmt_name, weight_fmt=fmt_name, site=t.name))
+    return demands
+
+
 def read(path: str | Path) -> GgufModel:
     """Open a GGUF checkpoint and return its arch metadata + classified tensors."""
     gguf = _gguf()
