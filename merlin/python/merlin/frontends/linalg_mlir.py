@@ -41,16 +41,21 @@ def make_context():
     return ctx
 
 
-def parse_mlir_text(text: str):
-    """Parse linalg-on-tensors MLIR text into an xDSL module."""
+def parse_mlir_text(text: str, ctx=None):
+    """Parse linalg-on-tensors MLIR text into an xDSL module.
+
+    ``ctx`` lets a caller supply a context that loads extra dialects (e.g. the quant-aware
+    context in :mod:`merlin.frontends.quant_ext`); it defaults to the permissive
+    :func:`make_context`.
+    """
     from xdsl.parser import Parser
 
     text = PAREN_RESULTS.sub(r"\1\2", text)
-    return Parser(make_context(), text).parse_module()
+    return Parser(ctx or make_context(), text).parse_module()
 
 
-def parse_mlir_file(path: str | Path):
-    return parse_mlir_text(Path(path).read_text(encoding="utf-8"))
+def parse_mlir_file(path: str | Path, ctx=None):
+    return parse_mlir_text(Path(path).read_text(encoding="utf-8"), ctx=ctx)
 
 
 def load_manifest(path: str | Path) -> dict[int, dict[str, Any]]:
