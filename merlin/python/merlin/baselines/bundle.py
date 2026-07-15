@@ -40,11 +40,25 @@ TOLERANCES: dict[str, tuple[float, float]] = {
     "tiny_llama": (0.9999, 1e-3),
 }
 
-_VARIANTS = ("fp32", "int8", "fp8")
+# Precision variants a bundle can carry. The regular floats + int8 are RVV-runnable; fp6/fp4 are
+# sub-byte microscaling formats that ingest + lower but have no RVV datapath (routed to gemmini-mx);
+# `mixed` is a per-module mixed-precision capture (e.g. attention fp16 + MLP fp4).
+_VARIANTS = ("fp32", "fp16", "bf16", "int8", "fp8", "fp6", "fp4", "mixed")
+
+# Optional per-(model, variant) tolerance override. Low-bit variants (fp6/fp4) legitimately miss the
+# tight fp32 gate; put a MEASURED floor here per cell — never a guessed loose value (an unjustified
+# entry silently weakens the gate, see RANDOM_INIT_GOLDEN_UNREPRODUCIBLE). Empty until measured.
+_VARIANT_TOL: dict[tuple[str, str], tuple[float, float]] = {}
 
 
-def tolerance(model: str) -> tuple[float, float]:
-    """(min_cos, max_rel) gate for a model — same regime as our own RVV tests."""
+def tolerance(model: str, variant: str | None = None) -> tuple[float, float]:
+    """(min_cos, max_rel) gate for a model — same regime as our own RVV tests.
+
+    A measured per-(model, variant) override wins when present (low-bit variants need a looser,
+    justified floor); otherwise the per-model tolerance (then the default) applies.
+    """
+    if variant is not None and (model, variant) in _VARIANT_TOL:
+        return _VARIANT_TOL[(model, variant)]
     return TOLERANCES.get(model, _DEFAULT_TOL)
 
 
@@ -94,7 +108,7 @@ class CaptureBundle:
 
     @property
     def tolerance(self) -> tuple[float, float]:
-        return tolerance(self.model)
+        return tolerance(self.model, self.variant)
 
     def require(self) -> "CaptureBundle":
         """Raise if the essential inputs (mlir + golden) are missing — fail-closed."""

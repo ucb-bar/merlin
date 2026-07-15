@@ -147,8 +147,9 @@ def test_bundle_default_tolerance():
 
 
 def test_bundle_bad_variant():
+    # bf16/fp16/fp6/fp4/mixed are now first-class variants; use a genuinely unknown token.
     with pytest.raises(ValueError):
-        bundle.resolve("bitvla", "bf16")
+        bundle.resolve("bitvla", "not_a_variant")
 
 
 # --- compare-spec external kind ---------------------------------------------------------------
