@@ -20,6 +20,19 @@ runtime:
 dtypes:
   storage: i8
   accumulator: i32
+# Datatype -> compute-unit -> op capability (parsed by merlin.targetgen.compute_units; cross-checked
+# against the RTL datapaths by rtl.introspect.validate_against_contract). The C0 systolic mesh is
+# int8 x int8 -> i32. `requant` is an OPAQUE reference to Gemmini's own accumulator-scale lowering
+# (rounding-shift / FP-scale-multiply) — Merlin does not model that arithmetic here.
+compute_units:
+  - name: systolic_mesh
+    kind: systolic
+    dtypes: [int8]
+    ops: [matmul]
+    accumulate:
+      - {in: int8, weight: int8, acc: i32}
+    scaling: per_channel
+    requant: {ref: gemmini.accumulator_scale}
 capabilities:
   ops: [matmul, bias_add, requant, relu]   # C0 exercises matmul only; rest are future rungs
   layouts: [packed_rhs]

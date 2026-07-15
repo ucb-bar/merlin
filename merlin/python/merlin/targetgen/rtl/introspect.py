@@ -160,7 +160,33 @@ def validate_against_contract(facts: dict[str, Any], contract: dict[str, Any]) -
         problems.append(f"input dtype {dt.get('input')} != contract storage {cdt['storage']}")
     if cdt.get("accumulator") and dt.get("accumulator") != cdt["accumulator"]:
         problems.append(f"accumulator dtype {dt.get('accumulator')} != contract {cdt['accumulator']}")
+
+    # If the contract declares compute_units, the RTL datapaths must be covered by them: the input
+    # datapath dtype by some unit's declared formats, and the accumulator by some accumulate rule.
+    problems.extend(_check_compute_units(dt, contract))
     return problems
+
+
+def _check_compute_units(datapaths: dict[str, str], contract: dict[str, Any]) -> list[str]:
+    from merlin.targetgen import compute_units as _cu
+
+    units = _cu.compute_units(contract)
+    if not units:
+        return []
+    eff = [_cu.effective(u, units) for u in units]
+    tokens: set[str] = set()
+    accs: set[str] = set()
+    for u in eff:
+        tokens |= _cu.datatype_tokens(u)
+        accs |= {a.acc for a in u.accumulate}
+    out: list[str] = []
+    inp = datapaths.get("input")
+    if inp and inp not in tokens:
+        out.append(f"datapath input {inp} not covered by any compute_unit dtypes {sorted(tokens)}")
+    acc = datapaths.get("accumulator")
+    if acc and accs and acc not in accs:
+        out.append(f"datapath accumulator {acc} not in any compute_unit accumulate acc {sorted(accs)}")
+    return out
 
 
 def emit_facts_yaml(facts: dict[str, Any]) -> str:

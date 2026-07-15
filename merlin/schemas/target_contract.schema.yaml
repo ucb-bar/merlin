@@ -24,6 +24,19 @@ validation_notes: >-
   carries `features`, `ops`, `types`, and `runtime.backends`; real targets surface detected
   concepts under `capabilities.detected_concepts` and are flagged `requires_human_review: true`.
 
+  OPTIONAL `compute_units` (the datatype -> unit -> op capability model; parsed by
+  `merlin.targetgen.compute_units`): a list of units, each `{name, kind (systolic|simt|vector|
+  scalar), dtypes: [<quant_formats name>...], ops: [...], accumulate: [{in, weight, acc}] (the
+  act x weight -> accumulator matrix), scaling: <quant_formats name>|none, requant: {ref: <id>}|none,
+  contains: [<unit name>...]}`. `dtypes`/`scaling` REFERENCE the target-agnostic
+  merlin/schemas/quant_formats.registry.yaml by name (never redefine an encoding here). `acc` is a
+  raw MLIR accumulator token (i32/f32). `requant` is an OPAQUE reference to the target's own
+  out-of-tree lowering — Merlin does not interpret the requant arithmetic (it is target-specific:
+  gemmini rounding-shift vs gemmini-mx E8M0 block-exponent + LUT vs radiance none). `contains`
+  composes units (a gemmini-mx systolic unit can be embedded in a radiance cluster, or stand alone).
+  When present, `merlin.targetgen.rtl.introspect.validate_against_contract` cross-checks the units'
+  dtypes/accumulators against the RTL-derived `datapaths`.
+
 example: |
   name: toy_npu
   version: 0.1

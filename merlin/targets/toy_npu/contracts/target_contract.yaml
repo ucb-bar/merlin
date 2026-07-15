@@ -11,6 +11,17 @@ capabilities:
   layouts: [packed_rhs]
   resident_storage_bytes: 131072
   accumulator_entries: 4096
+# Datatype -> unit -> op capability model (see merlin.targetgen.compute_units + the target-contract
+# schema). ToyNPU is a single int8 systolic matmul unit; formats reference the quant_formats registry.
+compute_units:
+  - name: pe_array
+    kind: systolic
+    dtypes: [int8]
+    ops: [matmul, bias_add, requant, relu]
+    accumulate:
+      - {in: int8, weight: int8, acc: i32}
+    scaling: per_channel
+    requant: {ref: none}
 memory_model:
   resident: true
   accumulators: true
