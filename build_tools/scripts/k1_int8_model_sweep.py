@@ -16,7 +16,7 @@ Usage:
   MERLIN_K1_HOST=root@<board-ip> .venv/bin/python build_tools/scripts/k1_int8_model_sweep.py \
       --ledger /path/to/tmp/k1_int8.jsonl
 """
-import argparse, json, shutil, sys, time, traceback
+import argparse, json, shutil, subprocess, sys, time, traceback
 from pathlib import Path
 import numpy as np
 
@@ -48,11 +48,27 @@ def already(ledger: Path, bundle: str) -> bool:
     return False
 
 
+def _k1_disassemble(obj: Path) -> str:
+    """Disassemble a K1 (rv64gcv linux-gnu) object with the SpacemiT toolchain's objdump.
+
+    The K1 object is a linux-gnu ELF, so it needs the SpacemiT objdump — not the chipyard
+    baremetal ``riscv64-unknown-elf-objdump`` that custom_isa.disassemble resolves.
+    """
+    root = k1mod._toolchain_root()
+    if root is None:
+        raise FileNotFoundError("K1 toolchain not found (MERLIN_K1_TOOLCHAIN)")
+    for cand in ("bin/riscv64-unknown-linux-gnu-objdump", "bin/llvm-objdump"):
+        od = root / cand
+        if od.is_file():
+            return subprocess.run([str(od), "-d", str(obj)], capture_output=True, text=True).stdout
+    raise FileNotFoundError(f"no objdump in K1 toolchain {root}")
+
+
 def objdump_int_rvv(model_o: Path) -> dict:
     if not model_o.is_file():
         return {"present": False}
     try:
-        out = custom_isa.disassemble(model_o)
+        out = _k1_disassemble(model_o)
     except Exception as e:  # noqa: BLE001
         return {"present": True, "error": str(e)[:120]}
     counts = {op: out.count(op) for op in RVV_INT}
