@@ -1,0 +1,54 @@
+# NOTE: SECONDARY / DERIVED. The CANONICAL, attributable evidence is now the recorded
+# AET ledger: results/gemmini/certification_ledger.md (regenerable from run manifests via
+#   python -m merlin.eval.gemmini_dispatcher --summary-only --runs-root runs/gemmini_cert).
+# This hand-authored file is kept as a human-readable narrative summary only.
+#
+# Gemmini non-requant conformance battery — RTL-certified via the MLIR-FAITHFUL path.
+#
+# Every rung's Gemmini program is emitted as MLIR (llvm-dialect llvm.inline_asm `.insn` custom-3
+# RoCC ops), lowered to a rv64gcv object by merlin's own compiler (lower_to_llvm_ir + compile_ll)
+# — NOT a hand-written C kernel. A thin C harness only embeds data + calls the kernel + prints.
+# This retires the C-prototype/MLIR split-brain: the MLIR path now covers the same non-requant
+# battery the C codegen covered.
+#
+# Gate (per rung): three-way bit-exact integer equality
+#   RTL output == reference_outputs(cb) == simulate(cb)["outputs"].
+target: gemmini
+status: rtl_certified
+path: mlir_inline_asm_rocc          # merlin MLIR -> LLVM -> .insn RoCC, no C kernel
+
+oracle:
+  level: 2
+  kind: rtl_verilator
+  derived_from_rtl: true
+  config: GemminiAndOPUShuttleConfig
+  simulator_command: "simulator-chipyard.harness-GemminiAndOPUShuttleConfig <elf>"
+  memory_model: unknown             # Verilator sim memory timing not characterized (FireSim/FASED is realistic)
+  cycle_source: rdcycle
+  cycle_window: gemmini_region
+
+workload:
+  name: repeated_rhs_matmul
+  dtype: i8xi8_to_i32
+  output_dtype: i32
+  tensors_seed: deterministic       # merlin Tensor.deterministic (name+shape)
+
+rungs:
+  C0:  {desc: "matmul, empty epilogue",            shapes: {m: 16, k: 16, n: 16}, epilogue: [],       cycles: 308}
+  C1:  {desc: "matmul + relu",                     shapes: {m: 16, k: 16, n: 16}, epilogue: [relu],   cycles: 308}
+  C4:  {desc: "tiled matmul, K-accumulation",      shapes: {m: 32, k: 32, n: 32}, epilogue: [],       cycles: 1006}
+  C4e: {desc: "zero-padded edge tile (K,N not /16)", shapes: {m: 16, k: 24, n: 20}, epilogue: [],     cycles: 636}
+  C5:  {desc: "resident-weight reuse, 4 matmuls",  shapes: {m: 16, k: 16, n: 16, matmuls: 4}, epilogue: [], cycles: 657}
+
+comparisons:                        # all rungs
+  merlin_reference_outputs: pass
+  merlin_command_buffer_simulator: pass
+  rtl_outputs: pass
+
+requant: unsupported                # see requant_status.yaml + docs/gemmini_requant_reconciliation.md
+
+notes: >
+  Correctness certificates + measured cycle anchors on the prebuilt Verilator RTL, NOT a
+  calibrated/predictive cost model. spike (L1) bit-exact for all rungs is bootstrap only
+  (derived_from_rtl: false); Verilator (L2) is the certification oracle. Bootstrap cycles
+  (spike, functional) differ from RTL: 47/47/89/70/73 — spike is not cycle-accurate.

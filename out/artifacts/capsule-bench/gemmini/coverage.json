@@ -1,0 +1,48 @@
+{
+  "total": 25,
+  "by_kind": {
+    "isa": 12,
+    "layer": 6,
+    "model_slice": 7
+  },
+  "by_label": {
+    "public": 20,
+    "hidden": 5
+  },
+  "by_tier_reached": {
+    "L0": 25,
+    "L1": 25,
+    "L2": 25,
+    "L3": 25,
+    "L4": 0,
+    "L5": 0
+  },
+  "mode_coverage": {
+    "i8": 4,
+    "relu": 5,
+    "acc_scale": 4,
+    "k_accumulate": 5,
+    "resident_reuse": 1,
+    "conv2d": 3,
+    "movement": 2,
+    "padded_edge": 1
+  },
+  "instruction_class_coverage": {
+    "CONFIG_EX": 23,
+    "CONFIG_LD": 25,
+    "CONFIG_ST": 25,
+    "MVIN": 25,
+    "MVOUT": 25,
+    "PRELOAD": 23,
+    "COMPUTE_PRELOADED": 23,
+    "COMPUTE_ACCUMULATE": 0,
+    "FLUSH": 25,
+    "FENCE": 25,
+    "LOOP_WS": 0,
+    "LOOP_CONV": 0
+  },
+  "unavailable": {
+    "vcs": 0,
+    "firesim": 0
+  }
+}

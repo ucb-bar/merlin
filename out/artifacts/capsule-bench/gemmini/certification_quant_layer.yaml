@@ -1,0 +1,54 @@
+# NOTE: SECONDARY / DERIVED. The CANONICAL, attributable evidence is now the recorded
+# AET ledger: results/gemmini/certification_ledger.md (regenerable from run manifests via
+#   python -m merlin.eval.gemmini_dispatcher --summary-only --runs-root runs/gemmini_cert).
+# This hand-authored file is kept as a human-readable narrative summary only.
+#
+# Gemmini QUANTIZED-LAYER slice — RTL-certified via the MLIR-FAITHFUL path.
+#
+# The useful-quantized-layer slice: int8 activation x int8 weight -> i32 accumulate ->
+# Gemmini float acc_scale (round-to-nearest-even) -> optional relu -> i8 output, all on the
+# Gemmini i8 accumulator-readout path (accumulator address WITHOUT the full_C bit, config_st
+# carrying the float scale bits + activation). Kernel emitted as MLIR (llvm.inline_asm .insn
+# RoCC), lowered by merlin's compiler — no C kernel.
+#
+# Gate (per rung): three-way bit-exact integer equality
+#   RTL output == reference_outputs(cb) == simulate(cb)["outputs"].
+target: gemmini
+status: rtl_certified
+path: mlir_inline_asm_rocc
+requant_format: gemmini_acc_scale     # clamp_i8(round_near_even(acc_i32 * scale)); ACC_SCALE macro
+
+oracle:
+  level: 2
+  kind: rtl_verilator
+  derived_from_rtl: true
+  config: GemminiAndOPUShuttleConfig
+  memory_model: unknown
+  cycle_source: rdcycle
+  cycle_window: gemmini_region
+
+workload:
+  name: repeated_rhs_matmul
+  dtype: i8xi8_to_i32
+  readout: i8_small_width             # scaled + activated + clamped to i8
+  tensors_seed: deterministic
+
+rungs:
+  Q0:  {desc: "matmul -> acc_scale(1/16) -> i8",                shapes: {m: 16, k: 16, n: 16}, scale: 0.0625, act: none, cycles: 250}
+  Q1:  {desc: "matmul -> acc_scale(1/16) -> relu -> i8",        shapes: {m: 16, k: 16, n: 16}, scale: 0.0625, act: relu, cycles: 250}
+  Q2:  {desc: "matmul -> acc_scale(0.013 non-pow2) -> i8",      shapes: {m: 16, k: 16, n: 16}, scale: 0.013,  act: none, cycles: 274}
+  Q1t: {desc: "tiled 32x32x32 -> acc_scale(1/16) -> relu -> i8", shapes: {m: 32, k: 32, n: 32}, scale: 0.0625, act: relu, cycles: 940}
+
+comparisons:                          # all rungs
+  merlin_reference_outputs: pass
+  merlin_command_buffer_simulator: pass
+  rtl_outputs: pass
+
+notes: >
+  This certifies Gemmini's float acc_scale requant (round-to-nearest-even + i8 clamp) bit-exact
+  against merlin's Tensor.requant_acc_scale on the RTL oracle. Q2 (non-power-of-two scale 0.013)
+  is the meaningful test: the result depends on the float MULTIPLY + rounding, not just an
+  exponent shift, and is bit-exact on RTL. This moves the Gemmini claim from "synthetic integer
+  matmul tile" to "RTL-certified useful quantized-layer slice (int8 GEMM + requant + relu -> i8)".
+  merlin's native integer requant (round-half-up) is retained as a separate host-side path;
+  the two formats coexist (see requant_status.yaml).

@@ -1,0 +1,32 @@
+# Machine-readable requant status for the Gemmini target.
+# Companion to docs/gemmini_requant_reconciliation.md (full evidence).
+target: gemmini
+requant_status:
+  # RESOLVED (decision A, applied ADDITIVELY): merlin now supports Gemmini's float acc_scale
+  # requant alongside its native integer requant. Neither replaces the other.
+  decision: A_adopt_gemmini_float_acc_scale
+  supported_formats:
+    - id: gemmini_acc_scale
+      semantics: clamp_i8(round_to_nearest_even(acc_i32 * scale))   # gemmini_params.h ACC_SCALE
+      merlin_op: Tensor.requant_acc_scale(scale)                    # float32 multiply + round-near-even
+      epilogue: ["acc_scale"]   # + output_dtype: i8 ; commit attr acc_scale: <float>
+      readout: i8_small_width    # accumulator addr WITHOUT full_C bit -> scale+activation+clamp applied
+      certified: rtl_verilator   # see certification_quant_layer.yaml (Q0/Q1/Q2/Q1t)
+      notes: >
+        Bit-exact vs merlin reference on spike AND Gemmini Verilator RTL, INCLUDING a
+        non-power-of-two scale (Q2=0.013) that exercises the float multiply, not just an
+        exponent shift. relu composes (acc_act on the same i8 mvout).
+    - id: merlin_integer_requant
+      semantics: (x + (1<<(shift-1))) >> shift                      # round-half-UP arithmetic shift
+      merlin_op: Tensor.requant(shift)
+      epilogue: ["requant"]
+      readout: host_runtime_side  # NOT a Gemmini accelerator readout (different rounding); kept for host path
+      certified: host             # not delegated to Gemmini (would not bit-match its float scale)
+  divergence_evidence:            # why the two formats are genuinely different (the original finding)
+    acc_scale_1_16_first8:  [6, 6, 2, 2, 6, 6, 2, 2]   # gemmini i8 readout == merlin requant_acc_scale
+    full_i32_unscaled_first8: [96, 96, 32, 32, 96, 96, 32, 32]  # full_C readout ignores scale (NOT used for quant)
+# "All Gemmini requant formats": this build (default config) ALSO elaborates RELU6 + nonlinear
+# activations (LAYERNORM/IGELU/SOFTMAX, has_nonlinear_activations=true) and a rounding-right-shift
+# scale function. These are a deferred tier (nonlinear = polynomial/float approximations, not the
+# linear bit-exact slice). See docs/gemmini_requant_reconciliation.md "getgo vs generated".
+deferred_formats: [relu6, layernorm, igelu, softmax, rounding_right_shift]

@@ -73,6 +73,37 @@ selfcheck_out/
 !/out/artifacts/presentation/gemmini_target_prototype.md
 !/out/artifacts/presentation/saturn_vec_findings.md
 
+# --- capsule-bench / perf-bench / targetgen-evals: keep the curated RESULTS STORY together. Each
+#     concern's hand-written methodology + report .md and the aggregated result ledgers
+#     (certification_*.yaml, coverage.json, ablation_table.md, summary.md, ...) are tracked so a
+#     public reader sees a COHERENT whole, not a thin fragment; the raw per-run dumps stay ignored.
+#     Same idiom as case_study below: negate the concern's OWN top-level files, then re-ignore the
+#     regenerable subtypes (logs / renderables / report-generator .py / raw csv-json) and the per-run
+#     archive subtrees — those win as the later match. Adding a new report needs no .gitignore edit;
+#     dropping a raw dump in the same dir stays ignored by extension/subdir. ---
+!/out/artifacts/capsule-bench/gemmini/*
+!/out/artifacts/perf-bench/gemmini/*
+!/out/artifacts/targetgen-evals/gemmini/*
+# regenerable / raw within the concern roots (re-ignored: logs, renderable posters, generator
+# scripts, raw metric dumps):
+/out/artifacts/capsule-bench/gemmini/*.log
+/out/artifacts/capsule-bench/gemmini/*.py
+/out/artifacts/capsule-bench/gemmini/CANARY_RESULTS.txt
+# point-in-time freeze snapshot: leaks a machine-absolute toolchain path + names retired paths — not
+# part of the curated results story:
+/out/artifacts/capsule-bench/gemmini/capsule_bench_v0_freeze_manifest.yaml
+/out/artifacts/perf-bench/gemmini/*.log
+/out/artifacts/perf-bench/gemmini/*.html
+/out/artifacts/perf-bench/gemmini/prescreen_mutation_demo.json
+/out/artifacts/targetgen-evals/gemmini/metrics.csv
+# per-run archives, figures, recovered nested-session transcripts (raw / large) — never tracked:
+/out/artifacts/capsule-bench/gemmini/abc4_archive/**
+/out/artifacts/capsule-bench/gemmini/abc4_analysis/**
+# (reports/** is a later match than the !/out/**/{README,AGENT}.md skeleton negations above, so it
+# also re-ignores any stray README.md/AGENT.md dropped inside these raw archive subtrees.)
+/out/artifacts/capsule-bench/gemmini/reports/**
+/out/artifacts/perf-bench/gemmini/reports/**
+
 # --- dse-guidance case_study GOLDEN: the committed reference the tests + --consume/--meta read.
 #     It's generated analysis (regenerable via `merlin-dse-guidance --case-study`) but tracked as
 #     the byte-stable golden. Track the data/source files; keep regenerable binaries untracked. ---
