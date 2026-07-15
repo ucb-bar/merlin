@@ -58,6 +58,25 @@ def test_no_divergence_when_equal():
     assert cca_compare.compare(expert, expert) == []
 
 
+def test_seam_location_classifies_prefixes():
+    # the "which file do I edit" map: a pass: seam needs new code; the others edit existing seams.
+    assert ac.seam_location("pass:fuse-requant-narrowing-store")["needs_new_code"] is True
+    assert ac.seam_location("impr_features:fused_vfmacc_contraction")["needs_new_code"] is False
+    assert ac.seam_location("schedule:dtype_strategy")["needs_new_code"] is False
+    assert "impr_features.py" in ac.seam_location("impr_features:x")["seam_file"]
+
+
+def test_escalation_ladder_is_monotone_with_seam_files():
+    # accumulator_resident is the multi-rung axis: PASS (impr feature) then CODEGEN (new pass).
+    ladder = ac.escalation_ladder("compute.accumulator_resident")
+    classes = [step["action_class"] for step in ladder]
+    assert classes == ["PASS", "CODEGEN"]
+    order = [ac._CLASS_ORDER[c] for c in classes]
+    assert order == sorted(order)                    # weakest -> strongest
+    assert all(step["seam_file"] for step in ladder)  # every rung names a file to edit
+    assert ladder[-1]["needs_new_code"] is True       # the CODEGEN rung is the new-pass work-item
+
+
 def test_accumulator_residency_routes_to_deferred_pass():
     # expert keeps the accumulator resident, ours does not -> a PASS action at the impr feature
     # seam. forkable_now is HONEST: the transform-dialect feature does not yet fully close it (still

@@ -47,6 +47,7 @@ merlin-dse-guidance = "merlin.dse_guidance.cli:main"
 merlin-rvv-report = "merlin.rvvgen.report:main"
 merlin-rvv-mine = "merlin.rvvgen.mine:main"
 merlin-rvv-autotune = "merlin.rvvgen.autotune:main"
+merlin-cca-route = "merlin.rvvgen.route_report:main"
 merlin-compare = "merlin.compare.cli:main"
 
 [tool.setuptools]

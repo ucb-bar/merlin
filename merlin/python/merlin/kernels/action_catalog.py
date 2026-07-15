@@ -370,3 +370,43 @@ def build_catalog(divergences: list[Divergence]) -> tuple[list[CompilerAction], 
         a = route(d)
         (actions if a is not None else unrouted).append(a if a is not None else d)
     return actions, unrouted
+
+
+# ---- "which section of the compiler do I modify" surface -----------------------------
+# Each target_seam prefix names a CONCRETE file to edit. ``needs_new_code`` distinguishes editing an
+# existing seam (a knob/flag/registered feature — a fork can express it today) from writing a NEW pass
+# module (a ``pass:`` route not yet backed by an impr_features hook). This is the map the CLI prints so
+# an engineer knows exactly where FLAG/KNOB/HEURISTIC/PASS/CODEGEN each live.
+SEAM_FILES: dict[str, tuple[str, str, bool]] = {
+    "impr_features": ("merlin/python/merlin/llvmlower/impr_features.py",
+                      "registered PASS/HEURISTIC/PATTERN feature hook (default-off)", False),
+    "schedule": ("merlin/python/merlin/rvvgen/from_strategy.py (+ the package knobs.yaml / schedule.mlir)",
+                 "transform-schedule knob (forkable via schedule.mlir today)", False),
+    "cflag": ("merlin/python/merlin/runtime/backends/zephyr_model.py (RVV cflags)",
+              "compiler flag / march feature", False),
+    "pass": ("merlin/python/merlin/llvmlower/ (NEW pass module — write it, then register as an impr feature)",
+             "new MLIR pass / lowering", True),
+}
+
+
+def seam_location(target_seam: str) -> dict:
+    """Resolve a route's ``target_seam`` to the concrete file + kind + whether new code is needed."""
+    prefix = target_seam.split(":", 1)[0].strip()
+    file, kind, needs_new = SEAM_FILES.get(prefix, ("(unknown seam)", "unknown", True))
+    return {"prefix": prefix, "target_seam": target_seam, "seam_file": file,
+            "seam_kind": kind, "needs_new_code": needs_new}
+
+
+def escalation_ladder(axis: str, backend: str = "rvv") -> list[dict]:
+    """The full FLAG->KNOB->HEURISTIC->PASS->CODEGEN ladder for one axis: every route weakest->strongest,
+    each annotated with the concrete seam file to edit and whether it is forkable today. This is the
+    "which section to modify, and what's the next stronger lever if this one doesn't land it" answer."""
+    rs = sorted((r for r in _ROUTES.get(backend, []) if r.axis == axis),
+                key=lambda r: _CLASS_ORDER.get(r.action_class, 99))
+    out = []
+    for r in rs:
+        loc = seam_location(r.target_seam)
+        out.append({"action_class": r.action_class, "target_seam": r.target_seam,
+                    "forkable_now": r.forkable_now, "seam_file": loc["seam_file"],
+                    "seam_kind": loc["seam_kind"], "needs_new_code": loc["needs_new_code"]})
+    return out

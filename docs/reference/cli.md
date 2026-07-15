@@ -10,6 +10,7 @@ These console-scripts are installed by `pip install -e merlin/python`. Each is a
 | `kernel-bench` | `merlin.kernels.bench_ceiling:main` |
 | `kernel-extract` | `merlin.kernels.cli_extract:main` |
 | `kernel-index` | `merlin.kernels.cli_index:main` |
+| `merlin-cca-route` | `merlin.rvvgen.route_report:main` |
 | `merlin-compare` | `merlin.compare.cli:main` |
 | `merlin-design-pressure` | `merlin.design_pressure.cli:main` |
 | `merlin-dse` | `merlin.dse.cli:main` |
