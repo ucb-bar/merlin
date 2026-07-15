@@ -35,6 +35,17 @@ def test_divergences_route_to_typed_actions():
     assert vl.action_class == "PASS" and not vl.forkable_now            # deferred work-item
 
 
+def test_dtype_axes_route_to_dtype_strategy_knob():
+    # WS-C: the accumulate-width and element-width axes close via the existing dtype_strategy knob
+    # (the datapath lever), a distinct axis from `widening`. Both are forkable KNOB registrations.
+    for axis, expert, ours in (("compute.accumulator_dtype", "i32", "f32"), ("vector.sew", 8, 32)):
+        d = cca_compare.Divergence(axis=axis, expert=expert, ours=ours, backend="rvv", evidence=["x"])
+        a = ac.route(d)
+        assert a is not None, axis
+        assert a.action_class == "KNOB" and a.forkable_now, axis
+        assert "dtype_strategy" in a.target_seam, axis
+
+
 def test_evidence_carried_through():
     expert, ours = _pair()
     divs = cca_compare.compare(expert, ours, evidence=["xnnpack_rvv_gemm", "openblas_rvv_gemm"])

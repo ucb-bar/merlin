@@ -185,6 +185,21 @@ def _infer_register_block(stream, sew, lmul) -> tuple | None:
     return (mr, nr) if mr else None
 
 
+def _infer_accumulator_dtype(stream, sew) -> str | None:
+    """Accumulator element type read from the MAC form (ISA-grounded, not a fitted rule).
+
+    A WIDENING integer MAC (``vwmacc``) accumulates i8/i16 products in i32 by definition; a widening
+    FLOAT MAC (``vfwmacc``) accumulates in the 2xSEW float (f16 inputs -> f32). A NON-widening float
+    contraction accumulates in the element width itself (SEW). No contraction to judge -> None."""
+    if stream.count("vwmacc") > 0:
+        return "i32"
+    if stream.count("vfwmacc") > 0:
+        return "f32"
+    if stream.count("vfmacc", "vfmul") > 0 and sew in (16, 32, 64):
+        return {16: "f16", 32: "f32", 64: "f64"}[sew]
+    return None
+
+
 def lift_asm(stream, *, op: str, source: str, backend: str = "rvv") -> CCA:
     """Primary lifter: RVV/vector ``InsnStream`` (from ``decode.rvv``) -> CCA.
 
@@ -215,6 +230,7 @@ def lift_asm(stream, *, op: str, source: str, backend: str = "rvv") -> CCA:
         compute=ComputeFacet(
             op=op, contraction_form=contraction,
             widening=widening,
+            accumulator_dtype=_infer_accumulator_dtype(stream, sew),
             reduction_form=("vredsum_tree" if reduce_n > 0 else "none"),
             epilogue=("requant_narrow" if narrow > 0 else "none"),
             register_block=reg_block,

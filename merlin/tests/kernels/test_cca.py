@@ -97,6 +97,14 @@ def test_lift_reads_accumulator_resident_on_experts(monkeypatch):
         assert nr[0] == "vsetvlmax", fx
 
 
+def test_lift_reads_accumulator_dtype(monkeypatch):
+    # The accumulate width is captured (ISA-grounded): the f32 GEMM experts accumulate in f32. This is
+    # the dtype-datapath axis the compiler exposes via the dtype_strategy knob.
+    for fx in ("openblas_sgemm_rvv.objdump", "xnnpack_f32_gemm_rvv.objdump"):
+        c = _lift_fixture(monkeypatch, fx)
+        assert c.compute.accumulator_dtype == "f32", fx
+
+
 def test_lift_reads_xnnpack_nr_tracks_vsetvlmax(monkeypatch):
     # XNNPACK 1x4v is the VL-adaptive expert: a polymorphic vsetvli VL-loop, so NR tracks vsetvlmax.
     c = _lift_fixture(monkeypatch, "xnnpack_f32_gemm_rvv.objdump")

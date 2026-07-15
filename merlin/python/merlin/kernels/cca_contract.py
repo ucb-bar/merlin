@@ -103,10 +103,9 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
 KNOWN_OPEN: dict[str, dict[str, tuple[str, ...]]] = {
     "rvv": {
         # LEVER fields still awaiting a route in action_catalog._RVV_ROUTES (WS-C Phase 2 registrations):
+        # CLOSED so far: compute.accumulator_dtype + vector.sew (both -> KNOB dtype_strategy).
         "orphan_fields": (
-            "compute.accumulator_dtype",   # wire behind KNOB dtype_strategy
             "compute.reduction_form",      # new HEURISTIC lower_multi_reduction=tree
-            "vector.sew",                  # wire behind KNOB dtype_strategy
             "vector.tail",                 # new KNOB tail_policy (+ PASS for tu masked tail)
         ),
         # routed axes still awaiting a backing ComputeFacet field (WS-C Phase 2 adds the fields + lifters):

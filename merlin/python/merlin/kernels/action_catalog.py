@@ -209,6 +209,33 @@ _RVV_ROUTES: list[_Route] = [
         forkable_now=True,
         expected_effect="i32-accumulating widening MAC instead of dequantize-to-f32"),
     _Route(
+        axis="compute.accumulator_dtype",
+        # The accumulate width the expert holds the reduction in (i32 for i8xi8, f32 for bf16/f16
+        # inputs). Same compiler lever as widening: the dtype strategy picks the datapath and thus the
+        # accumulator type (int8_w8a8 -> i32 acc; bf16 -> f32 acc via lower_bf16_matmul_f32acc). A
+        # distinct CCA axis from `widening` (which only asks whether the MAC widens at all).
+        when=lambda d: bool(d.expert) and d.expert != d.ours,
+        action_class="KNOB", target_seam="schedule:dtype_strategy (accumulate-width datapath)",
+        change="select the dtype strategy whose datapath accumulates in the expert's accumulator type "
+               "(int8_w8a8 -> i32 via vwmacc; bf16/f16 -> f32 via the widening-float / f32-acc lowering) "
+               "instead of the baseline's accumulator width",
+        forkable_now=True,
+        expected_effect="the reduction accumulates in the intended width (no precision loss / no "
+                        "dequantize-to-f32 detour) — the accumulator-type half of the dtype datapath"),
+    _Route(
+        axis="vector.sew",
+        # The element width the expert vectorizes at. SEW is a projection of the element datatype, so
+        # its lever is the SAME mixed-precision dtype knob (a narrower SEW = the int8/f16 datapath, a
+        # wider SEW = the f32 datapath). Registration of the existing seam under a distinct axis, not a
+        # new pass.
+        when=lambda d: bool(d.expert) and d.expert != d.ours,
+        action_class="KNOB", target_seam="schedule:dtype_strategy (element-width datapath)",
+        change="vectorize at the expert's element width by selecting the matching dtype strategy "
+               "(e.g. e8 int8 / e16 f16 datapath instead of an e32 f32 lowering)",
+        forkable_now=True,
+        expected_effect="the emitted vector ops use the intended SEW (element datapath), the "
+                        "element-width half of the dtype datapath decision"),
+    _Route(
         axis="compute.activation_vectorization",
         # The mined divergence: the expert activation (GELU/sigmoid/SiLU/tanh) evaluates the
         # transcendental as a VECTORIZED polynomial (XNNPACK f32-vgelu rational-12-10 / f32-vsigmoid
