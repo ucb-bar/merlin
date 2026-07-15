@@ -490,8 +490,12 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     import os as _os
     if _os.environ.get("MERLIN_BUMP_MALLOC"):
         srcs = srcs + [rt / "merlin_bump_linux.c"]
+    # Opt level for the SpacemiT-clang C-source compile. Default -O2; overridable via MERLIN_K1_OPT
+    # because the SpacemiT clang-19 register scavenger can crash ("Incomplete scavenging") on the
+    # huge model_call.c weight-arg unroll for large models — -O1 dodges it.
+    k1_opt = _os.environ.get("MERLIN_K1_OPT", "-O2")
     base = [cc, f"--target=riscv64-unknown-linux-gnu", f"-march={K1_MARCH}", f"-mabi={K1_MABI}",
-            "-O2", f"-I{rt}", f"-I{cgen}", *srcs, model_o]
+            k1_opt, f"-I{rt}", f"-I{cgen}", *srcs, model_o]
     if xnn_obj is not None:                       # XNNPACK RVV GEMM ukernel shim
         base += [str(xnn_obj)]
     if openblas_obj is not None:                  # OpenBLAS RVV GEMM ukernel shim
