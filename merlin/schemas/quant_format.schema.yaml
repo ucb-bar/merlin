@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=none
+# merlin schema (lightweight; presence-checked by merlin.common.schemas.validate).
+title: Quantization Format
+purpose: >-
+  Describes a numeric / quantization FORMAT structurally and target-agnostically: its element
+  encoding (bit width, and exponent/mantissa split for floats), sub-byte packing, and scale
+  representation. This is the single source of truth the Merlin tooling (framework ingestion,
+  mixed-precision split, datatype -> compute-unit routing, verification) consults so it stays
+  format-agnostic: a format says WHAT the numbers are, never WHICH hardware runs them (that mapping
+  lives in a target contract's `compute_units`). New formats plug in as entries in
+  `quant_formats.registry.yaml` (or a `MERLIN_QUANT_FORMATS` overlay); adding one needs no code
+  change. Each entry in that registry is validated against this schema.
+required_top_level_fields:
+  - name
+  - kind
+  - element_bits
+producer: hand-authored entries in merlin/schemas/quant_formats.registry.yaml (or a MERLIN_QUANT_FORMATS overlay)
+consumers:
+  - merlin.common.quant_formats
+  - merlin.targetgen.routing
+  - merlin.frontends
+validation_notes: >-
+  `kind` is one of: float_ieee, int_affine, fp_ocp, packed_sub_byte, mx_block, nvfp4. Float-valued
+  kinds carry `exp_bits` + `mant_bits`, and for a self-describing float element the identity
+  1 (sign) + exp_bits + mant_bits == element_bits must hold (e.g. FP4 E2M1 = 1+2+1). Sub-byte and
+  packed kinds carry `pack.bits`; block/affine kinds carry `scale.{kind,block,dtype}`. Optional
+  cross-reference keys (`torchao_scheme`, `ggml_type`, `quant_ext_type`) map a source's name and the
+  model2MLIR quant_ext metadata type onto this canonical format. The full structured per-field
+  validation lives in `merlin.common.quant_formats._validate_entry`; this schema pins only the three
+  always-required keys (presence-checked by `merlin.common.schemas.validate`).
+example: |
+  name: fp4_e2m1
+  kind: fp_ocp
+  element_bits: 4
+  exp_bits: 2
+  mant_bits: 1
+  signed: true
+  pack: {bits: 4, dim: -1}
+  scale: {kind: none}
+  aliases: [e2m1]
+  quant_ext_type: packed_int_tensor
+  notes: OCP FP4 (E2M1). Sub-byte; two elements per storage byte.
