@@ -22,6 +22,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "merlin" / "python"))
+from merlin.baselines import bundle as _bundle         # noqa: E402
 from merlin.rvvgen import load_rvv_package           # noqa: E402
 from merlin.rvvgen import k1 as k1mod                  # noqa: E402
 from merlin.runtime.backends import zephyr_model as zm  # noqa: E402
@@ -82,11 +83,19 @@ def main() -> int:
     names = a.bundles or DEFAULT_ORDER
 
     for name in names:
-        bundle = name if name.endswith("_consistent") else f"{name}_int8_consistent"
+        # Resolve via the canonical bundle resolver: prefers the full-fidelity <model>_int8_full
+        # bundle and uses recaptures_dir() (out/artifacts/recaptures), post out/-consolidation.
+        model = name
+        for suf in ("_int8_full", "_int8_consistent", "_full", "_consistent"):
+            if model.endswith(suf):
+                model = model[: -len(suf)]
+                break
+        b = _bundle.resolve(model, "int8")
+        bundle = b.root.name
+        mdir = b.root
         if not a.force and already(ledger, bundle):
             print(f"SKIP {bundle} (done)", flush=True)
             continue
-        mdir = ROOT / "artifacts" / "recaptures" / bundle
         rec = {"bundle": bundle, "t": time.strftime("%Y-%m-%dT%H:%M:%S"), "target": "k1"}
         if not (mdir / "model.mlir").is_file():
             rec.update(ran=False, error="bundle missing")
