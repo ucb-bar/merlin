@@ -483,19 +483,36 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     rt = runtime_dir() / "c"
     abi = runtime_dir() / "abi"
     binary = work / "merlin_k1"
-    srcs = [main_c, cgen / "model_call.c", rt / "merlin_model.c", abi / "mlir_runtime.c"]
+    import os as _os
+    k1_opt = _os.environ.get("MERLIN_K1_OPT", "-O2")
+
+    # The whole-model ciface `model_call.c` is one huge function (200+ weight args) that crashes the
+    # SpacemiT clang-19 (v1.1.2) register scavenger ("Incomplete scavenging after 2nd pass") for large
+    # models — precision- and opt-level-independent (both -O2 and -O1 crash; small models are fine).
+    # Fix: compile JUST model_call.c with the repo's clang-23 (which handles it; it needs no stdlib
+    # headers), and compile the other small C sources + link with the SpacemiT clang-19 — which has its
+    # libc/crt + builtin headers (the clang-23 install lacks stddef.h). clang-19 links the clang-23
+    # object fine (ELF/ABI compatible; model.o above is likewise clang-23-produced).
+    model_call_c = cgen / "model_call.c"
+    sysroot = root / "sysroot"
+    other_c = [main_c, rt / "merlin_model.c", abi / "mlir_runtime.c"]
     # MEASUREMENT PROXY for the lean runtime's static arena (env MERLIN_BUMP_MALLOC, default OFF):
     # link a bump allocator that overrides glibc malloc/free, isolating how much of the dispatch
     # overhead is the ~4391 per-op malloc/free the lean arena eliminates. Baseline byte-identical when off.
-    import os as _os
     if _os.environ.get("MERLIN_BUMP_MALLOC"):
-        srcs = srcs + [rt / "merlin_bump_linux.c"]
-    # Opt level for the SpacemiT-clang C-source compile. Default -O2; overridable via MERLIN_K1_OPT
-    # because the SpacemiT clang-19 register scavenger can crash ("Incomplete scavenging") on the
-    # huge model_call.c weight-arg unroll for large models — -O1 dodges it.
-    k1_opt = _os.environ.get("MERLIN_K1_OPT", "-O2")
-    base = [cc, f"--target=riscv64-unknown-linux-gnu", f"-march={K1_MARCH}", f"-mabi={K1_MABI}",
-            k1_opt, f"-I{rt}", f"-I{cgen}", *srcs, model_o]
+        other_c = other_c + [rt / "merlin_bump_linux.c"]
+
+    if Path(clang23).exists() and sysroot.is_dir():
+        model_call_o = work / "model_call.o"
+        _run([str(clang23), "--target=riscv64-unknown-linux-gnu", f"-march={K1_MARCH}",
+              f"-mabi={K1_MABI}", k1_opt, "-Wno-override-module", f"--sysroot={sysroot}",
+              f"--gcc-toolchain={root}", f"-I{rt}", f"-I{cgen}", "-c", str(model_call_c),
+              "-o", str(model_call_o)])
+        c_inputs = [*other_c, model_call_o]
+    else:
+        c_inputs = [*other_c, model_call_c]   # small models: clang-19 compiles model_call.c fine
+    base = [cc, "--target=riscv64-unknown-linux-gnu", f"-march={K1_MARCH}", f"-mabi={K1_MABI}",
+            k1_opt, "-Wno-override-module", f"-I{rt}", f"-I{cgen}", *c_inputs, model_o]
     if xnn_obj is not None:                       # XNNPACK RVV GEMM ukernel shim
         base += [str(xnn_obj)]
     if openblas_obj is not None:                  # OpenBLAS RVV GEMM ukernel shim
