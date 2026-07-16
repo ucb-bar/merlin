@@ -382,6 +382,9 @@ SEAM_FILES: dict[str, tuple[str, str, bool]] = {
                       "registered PASS/HEURISTIC/PATTERN feature hook (default-off)", False),
     "schedule": ("merlin/python/merlin/rvvgen/from_strategy.py (+ the package knobs.yaml / schedule.mlir)",
                  "transform-schedule knob (forkable via schedule.mlir today)", False),
+    "quant": ("merlin/python/merlin/llvmlower/quant_passes.py",
+              "int8 quant-pass registry (register/toggle a QuantPass; reached via dtype_strategy=int8_w8a8"
+              " -> pkg.is_int8 -> int8_compute -> apply_quant)", False),
     "cflag": ("merlin/python/merlin/runtime/backends/zephyr_model.py (RVV cflags)",
               "compiler flag / march feature", False),
     "pass": ("merlin/python/merlin/llvmlower/ (NEW pass module — write it, then register as an impr feature)",

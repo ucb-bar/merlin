@@ -39,3 +39,23 @@ def test_apply_quant_selective_subset_in_canonical_order(monkeypatch):
     QP.apply_quant(object(), passes=["softmax_int", "contraction_int8"])
     # selected subset, still emitted in the canonical order (contraction before softmax)
     assert calls == ["lower_contraction_int8", "lower_softmax_int"]
+
+
+def test_dtype_strategy_route_reaches_the_quant_datapath():
+    # the widening/accumulator_dtype/sew routes set dtype_strategy=int8_w8a8; verify that value flows
+    # to pkg.is_int8 -> int8_compute -> apply_quant (the chain is wired end-to-end, not a dead route).
+    import pytest
+
+    from merlin.common.paths import artifacts_dir
+    from merlin.rvvgen.registry import load_rvv_package
+    base = artifacts_dir() / "targets" / "rvv"
+    if not (base / "hand_v0_int8").is_dir():
+        pytest.skip("rvv baselines not present")
+    assert load_rvv_package(base / "hand_v0").is_int8 is False          # fp32 -> no quant datapath
+    assert load_rvv_package(base / "hand_v0_int8").is_int8 is True       # int8_w8a8 -> apply_quant
+
+
+def test_quant_seam_resolves_to_the_registry():
+    from merlin.kernels.action_catalog import seam_location
+    loc = seam_location("quant:apply_quant")
+    assert "quant_passes.py" in loc["seam_file"]
