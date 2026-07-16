@@ -19,10 +19,24 @@ from ..common.yaml import write_yaml
 from ..kernels.compare import RvvFingerprint, compare_fingerprints
 from ..kernels.rvv_knobs import propose_forks
 from ..kernels.search_step import audit_fork
+from .fork_from_action import propose_forks_from_cca
 from .from_strategy import mint_fork
 from .registry import load_rvv_package
 from .runner import certify_rvv
 from .sweep import rank_results, run_sweep
+
+
+def _cca_divergences(run_dir: Path, expert_cca, op_key: dict) -> list:
+    """Lift OUR emitted CCA from a run's objdump.txt (no toolchain re-run) and diff it against the
+    expert CCA -> the CCA Divergences that drive the CCA-native proposer. [] if no objdump."""
+    objd = Path(run_dir) / "generated" / "objdump.txt"
+    if not objd.is_file():
+        return []
+    from ..kernels import cca, cca_compare
+    from ..kernels.decode import rvv
+    ours = cca.lift_asm(rvv.decode_text(objd.read_text()), op=str(op_key.get("op", "matmul")),
+                        source="ours")
+    return cca_compare.compare(expert_cca, ours)
 
 
 def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict) -> dict:
@@ -46,8 +60,8 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
              width: int = 3, depth: int = 2, top_k: int = 2, target: str = "rvv",
              timestamp: str = "run", targets: tuple[str, ...] = ("spike",),
              baseline_run_dir: str | Path | None = None,
-             certify_fn: Callable = certify_rvv, proposer: Callable = propose_forks,
-             loader: Callable = load_rvv_package, minter: Callable = mint_fork
+             certify_fn: Callable = certify_rvv, proposer: Callable | None = None,
+             expert_cca=None, loader: Callable = load_rvv_package, minter: Callable = mint_fork
              ) -> dict[str, Any]:
     """Run the beam. Returns {best, nodes, deferred, tree_path}. ``curated_text`` is the expert
     kernel C source for this op (the structural target); ``op_key`` = {op,dtype,shape_regime}.
@@ -60,6 +74,12 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     supplying its own four callables."""
     runs_root = Path(runs_root)
     curated = RvvFingerprint.from_curated(curated_text, op_key, "curated")
+    # CCA mode: when an expert CCA is supplied, drive the search from OUR-vs-EXPERT CCA divergences
+    # via the CCA-native proposer (whose proposals carry their CompilerAction, so the per-fork audit
+    # fires). Otherwise the legacy motif-string fingerprint router (backward compatible).
+    cca_mode = expert_cca is not None
+    if proposer is None:
+        proposer = propose_forks_from_cca if cca_mode else propose_forks
 
     def certify_and_score(pkg_dir: Path, run_id: str, parent_rid: str | None,
                           lever: str, evidence: list[str], d: int) -> dict:
@@ -84,7 +104,11 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     for d in range(1, depth + 1):
         jobs, meta = [], []
         for parent_pkg, parent_node in parents:
-            props = proposer(parent_node["divergences"], parent_pkg.knobs)
+            # feed the proposer the matching divergences: OUR-vs-EXPERT CCA divergences in CCA mode
+            # (lifted from the parent's emitted asm), else the fingerprint divergences.
+            divs = (_cca_divergences(runs_root / parent_node["run_id"], expert_cca, op_key)
+                    if cca_mode else parent_node["divergences"])
+            props = proposer(divs, parent_pkg.knobs)
             forkable = [p for p in props if p.forkable][:width]
             deferred.extend({"parent": parent_node["run_id"], "lever": p.lever,
                              "targets": p.targets, "note": p.note, "evidence": p.evidence}

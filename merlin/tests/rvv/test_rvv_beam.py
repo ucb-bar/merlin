@@ -14,6 +14,29 @@ _DIVS = ["lmul_class: expert='m4' vs ours='m2'",
          "vl_strategy: expert='vsetvl_loop' vs ours='vsetivli_fixed'"]
 
 
+def test_cca_divergences_lifts_ours_from_objdump_and_diffs_vs_expert(tmp_path):
+    # the beam's CCA-mode divergence flow: lift OUR emitted CCA from a run's objdump.txt, diff vs the
+    # expert CCA -> the CCA Divergences that drive the CCA-native proposer (whose forks get audited).
+    from pathlib import Path
+
+    from merlin.common.paths import merlin_dir
+    from merlin.kernels import cca
+    from merlin.rvvgen.beam import _cca_divergences
+
+    gen = tmp_path / "run1" / "generated"
+    gen.mkdir(parents=True)
+    # ours = the baseline (mul_add); expert = fused_fma -> a contraction_form divergence must surface
+    (gen / "objdump.txt").write_text(
+        (merlin_dir() / "tests" / "data" / "cca_asm" / "ours_baseline_matmul.objdump").read_text())
+    expert = cca.CCA(op="matmul", backend=["rvv"],
+                     compute=cca.ComputeFacet(op="matmul", contraction_form="fused_fma"))
+    divs = _cca_divergences(tmp_path / "run1", expert, {"op": "matmul"})
+    axes = {d.axis for d in divs}
+    assert "compute.contraction_form" in axes
+    # no objdump -> empty (never crashes)
+    assert _cca_divergences(tmp_path / "nope", expert, {"op": "matmul"}) == []
+
+
 def _mock_certify(*, package_dir, model_dir, runs_root, run_id, targets, baseline_run_dir):
     """Wider N tile/vector -> higher structural_match (so the beam should climb toward it)."""
     pkg = load_rvv_package(package_dir)
