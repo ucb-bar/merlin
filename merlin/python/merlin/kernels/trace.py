@@ -1,0 +1,195 @@
+"""LoweringTrace — the structured, LLM-digestible thread from *flattened graph → transformation steps →
+code → asm*, per kernel/region.
+
+This is the "missing middle" of the CCA pipeline: we already have a structured GRAPH view (model2MLIR
+MLIR + ``prov.*`` via ``frontends.linalg_mlir``) and a deep ASM view (``kernels.decode`` +
+``kernels.features``), but nothing recorded the *sequence of transformations* that carried a graph op down
+to the emitted asm. A ``LoweringTrace`` ties those three levels into one object so (a) the CCA can be
+DERIVED from the derivation path (not hand-picked) and (b) the compiler's own pipeline is describable in an
+LLM-digestible form to compare compiler-CCA vs expert-CCA.
+
+Everything here is DETERMINISTIC — assembled by reading the compiler's own pass catalog + pipeline + the
+decoded stream. No LLM composes a trace; an LLM may later read ``to_markdown()`` to reason about it.
+"""
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+from typing import Any
+
+# The coarse compiler-REGION each pipeline stage belongs to (the C3 taxonomy). Best-effort here; C3's
+# region registry refines the mapping and links each step to its concrete editable seam.
+_STAGE_REGION = {
+    "normalize": "global-passes",
+    "quant": "quantization",
+    "outline": "dispatch-gen",
+    "vectorize": "tiling-instsel-fusion",
+    "transform_schedule": "tiling-instsel-fusion",
+    "bufferize": "global-passes",
+    "runtime": "dispatch-scheduling",
+    "edge": "asm-emission",
+    "llvm": "asm-emission",
+    "contract": "heuristics",
+    "schedule": "tiling-instsel-fusion",
+    "interface": "runtime-hooks",
+    "target": "asm-emission",
+}
+
+
+@dataclass(frozen=True)
+class GraphRegion:
+    """A region of the flattened exported graph (from the model2MLIR MLIR + ``prov.*`` attributes)."""
+    region_id: str
+    op: str
+    family: str | None = None
+    module: str | None = None
+    shape: dict[str, int] | None = None
+    provenance: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class TransformStep:
+    """One transformation applied during lowering — a compiler pass or a transform-schedule step."""
+    name: str
+    plane: str              # "dialect" | "llvm" | "transform_schedule"
+    stage: str              # the pipeline phase (normalize/outline/vectorize/bufferize/llvm/...)
+    summary: str = ""
+    entry: str | None = None        # dotted path of the implementing callable = the edit point
+    region: str | None = None       # the C3 compiler-region this step belongs to
+    modifiable_by: str | None = None  # the seam/feature that can change it (filled by C3)
+
+
+@dataclass(frozen=True)
+class AsmRegion:
+    """A region of emitted asm (a decoded ``InsnStream`` span) that a CCA facet is lifted from."""
+    label: str
+    span: tuple[int, int] | None = None   # (lo, hi) loop address span, or None for straight-line
+    facts: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class LoweringTrace:
+    """graph → [transform steps] → asm for one kernel/region. Serializes to an LLM-digestible view."""
+    kernel: str
+    target: str
+    source: str                                  # "ours" | an expert kernel id
+    graph: GraphRegion | None = None
+    steps: list[TransformStep] = field(default_factory=list)
+    asm: AsmRegion | None = None
+    provenance: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return {
+            "kernel": self.kernel, "target": self.target, "source": self.source,
+            "graph": asdict(self.graph) if self.graph else None,
+            "steps": [asdict(s) for s in self.steps],
+            "asm": asdict(self.asm) if self.asm else None,
+            "provenance": self.provenance,
+        }
+
+    def to_markdown(self) -> str:
+        """A compact, LLM-digestible narrative of the lowering (what ran, on what, to what)."""
+        out = [f"# LoweringTrace: {self.kernel} ({self.source} @ {self.target})", ""]
+        if self.graph:
+            g = self.graph
+            shp = f" {g.shape}" if g.shape else ""
+            out += [f"**Graph region** `{g.region_id}` — op=`{g.op}` family=`{g.family}`{shp}", ""]
+        out += ["**Transformation steps** (graph → asm):", ""]
+        for i, s in enumerate(self.steps):
+            seam = f" — edit: `{s.modifiable_by or s.entry or '?'}`"
+            out.append(f"{i + 1}. [{s.plane}/{s.stage}] **{s.name}** ({s.region or '?'}){seam}")
+            if s.summary:
+                out.append(f"   - {s.summary}")
+        out.append("")
+        if self.asm:
+            a = self.asm
+            out += [f"**Asm region** `{a.label}` span={a.span}",
+                    *(f"   - {k}: {v}" for k, v in a.facts.items())]
+        return "\n".join(out)
+
+
+# ---- deterministic assembly of the compiler pipeline as ordered TransformSteps ------
+
+def _split_pass_list(pipeline_str: str) -> list[str]:
+    """Split a comma-joined MLIR pass-list into individual pass strings, respecting ``{...}`` option
+    groups (which are space-separated inside braces, never comma-separated) — structured, no regex."""
+    out, depth, cur = [], 0, []
+    for ch in pipeline_str:
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+        if ch == "," and depth == 0:
+            tok = "".join(cur).strip()
+            if tok:
+                out.append(tok)
+            cur = []
+        else:
+            cur.append(ch)
+    tok = "".join(cur).strip()
+    if tok:
+        out.append(tok)
+    return out
+
+
+def _pass_stage(name: str) -> str:
+    """Best-effort phase for a raw upstream pass name (structured prefix check)."""
+    n = name.split("{", 1)[0]
+    if "bufferize" in n or "buffer-" in n:
+        return "bufferize"
+    if "vectorize" in n or "transform-interpreter" in n or "vector" in n:
+        return "vectorize"
+    if "to-llvm" in n or "llvm" in n or "reconcile" in n:
+        return "llvm"
+    if n in ("canonicalize", "cse"):
+        return "normalize"
+    return "normalize"
+
+
+def _transform_schedule_steps(schedule_text: str) -> list[TransformStep]:
+    """Extract the transform-dialect schedule's ops as ordered steps (structural line scan for the
+    ``transform.structured.*`` / ``transform.apply_patterns.*`` tokens — not semantic regex)."""
+    steps: list[TransformStep] = []
+    for line in schedule_text.splitlines():
+        s = line.strip()
+        for prefix in ("transform.structured.", "transform.apply_patterns.vector.",
+                       "transform.apply_patterns.linalg."):
+            if s.startswith(prefix) or (prefix in s and "= transform.structured." in s):
+                op = s.split(prefix, 1)[1].split()[0].split("(")[0] if prefix in s else s
+                steps.append(TransformStep(
+                    name=op, plane="transform_schedule", stage="transform_schedule",
+                    summary=s[:120], region=_STAGE_REGION["transform_schedule"]))
+                break
+    return steps
+
+
+def _catalog_steps() -> list[TransformStep]:
+    """The Merlin-authored dialect passes from ``passes.CATALOG`` as TransformSteps (static metadata —
+    no xDSL runtime needed; CATALOG is a plain tuple of PassInfo)."""
+    from ..xdsl_dialects.lowering.passes import CATALOG
+    return [TransformStep(name=p.name, plane="dialect", stage=p.stage, summary=p.summary,
+                          entry=p.entry, region=_STAGE_REGION.get(p.stage)) for p in CATALOG]
+
+
+def _llvm_steps() -> list[TransformStep]:
+    """The LLVM-plane mechanical-descent passes from ``pipeline.build_rvv_pipeline`` as TransformSteps.
+    Calls build_rvv_pipeline with a placeholder schedule path (it only embeds the path in a
+    transform-interpreter pass string) and splits the comma-joined pass list, respecting {options}."""
+    from ..llvmlower import pipeline as P
+    raw = P.build_rvv_pipeline("<schedule.mlir>")
+    steps = []
+    for name in _split_pass_list(raw):
+        stage = _pass_stage(name)
+        steps.append(TransformStep(name=name.split("{", 1)[0], plane="llvm", stage=stage,
+                                   summary=name, region=_STAGE_REGION.get(stage)))
+    return steps
+
+
+def pipeline_steps(target: str = "rvv") -> list[TransformStep]:
+    """The compiler's transformation sequence as ordered TransformSteps: the Merlin-authored dialect
+    passes (``passes.CATALOG``) → the transform-dialect schedule (tiling/vectorize/lower) → the
+    LLVM-plane mechanical descent. Deterministic and dependency-light: reads the static pass catalog +
+    the pipeline/schedule strings; does not run the compiler. ``target`` currently instantiates RVV."""
+    if target != "rvv":
+        raise ValueError(f"pipeline_steps: only 'rvv' instantiated today, got {target!r}")
+    from ..llvmlower import pipeline as P
+    return _catalog_steps() + _transform_schedule_steps(P.RVV_TRANSFORM_SCHEDULE) + _llvm_steps()
