@@ -224,3 +224,84 @@ def asm_region_from_stream(stream, *, op: str, source: str = "asm", label: str =
         if facet is not None:
             facts.update({k: v for k, v in _asdict(facet).items() if v is not None})
     return AsmRegion(label=label, span=stream.innermost_loop(), facts=facts)
+
+
+# ---- expert-side trace (matched at the contract + asm level; graph deferred by design) ----
+
+# The declared-transformation sections of a framework contract, in lowering order, mapped to the step
+# stage + coarse compiler region. (Experts are matched at the asm/source + contract level we already
+# extract; per-framework internal-IR tracing is deferred — see the plan.)
+_CONTRACT_STEP_SPECS = (
+    ("layout", "operand-layout", "layout", "fusion-layout"),
+    ("operand_prepack", "operand-prepack", "prepack", "fusion-layout"),
+    ("accumulator", "accumulator-block", "accumulate", "register-residency"),
+    ("calling_convention", "epilogue", "epilogue", "fusion-layout"),
+)
+_CONTRACT_SUMMARY_KEYS = ("implication", "packed_layout", "epilogue", "width", "init", "signature")
+
+
+def _contract_summary(section: Any) -> str:
+    """A compact one-line summary of a contract section (prefer the most informative subfields)."""
+    if isinstance(section, dict):
+        for k in _CONTRACT_SUMMARY_KEYS:
+            if section.get(k):
+                return f"{k}: {section[k]}"[:200]
+        return "; ".join(f"{k}={v}" for k, v in section.items())[:200]
+    return str(section)[:200]
+
+
+def expert_steps_from_contract(framework: str) -> list[TransformStep]:
+    """The expert framework's DECLARED transformation sequence as TransformSteps, read deterministically
+    from the hand-authored ``framework_contracts/<framework>.yaml`` (reusing ``load_contract``). Honestly
+    labeled ``plane="framework"`` — these are the contract's declared caller-side transformations
+    (packing/accumulator/epilogue/layout), not a trace of the framework's internal IR."""
+    from .framework_contracts import load_contract
+    contract = load_contract(framework)
+    steps: list[TransformStep] = []
+    for key, name, stage, region in _CONTRACT_STEP_SPECS:
+        section = contract.get(key)
+        if not section:
+            continue
+        steps.append(TransformStep(
+            name=name, plane="framework", stage=stage, summary=_contract_summary(section),
+            entry=f"kernels/framework_contracts/{framework}.yaml:{key}", region=region))
+    return steps
+
+
+def build_expert_trace(framework: str, stream, *, op: str, kernel_id: str) -> LoweringTrace:
+    """A LoweringTrace for an expert kernel: declared-transformation steps (from the contract) threaded
+    to the asm region we decode. ``graph=None`` by design (we don't have the expert's flattened graph;
+    experts are matched at the contract + asm level)."""
+    return LoweringTrace(
+        kernel=kernel_id, target="rvv", source=framework, graph=None,
+        steps=expert_steps_from_contract(framework),
+        asm=asm_region_from_stream(stream, op=op, source=framework, label=kernel_id),
+        provenance={"level": "contract+asm", "framework": framework})
+
+
+def build_our_trace(stream, *, op: str, record=None, target: str = "rvv") -> LoweringTrace:
+    """A LoweringTrace for OUR compiler's output: the flattened-graph region (from a MatmulRecord, if
+    given) → our pipeline transformation steps → the emitted asm region. The full graph→steps→asm thread."""
+    return LoweringTrace(
+        kernel=op, target=target, source="ours",
+        graph=graph_region_from_record(record) if record is not None else None,
+        steps=pipeline_steps(target),
+        asm=asm_region_from_stream(stream, op=op, source="ours", label=op),
+        provenance={"level": "graph+pipeline+asm"})
+
+
+def emit_trace(trace: LoweringTrace, *, version: int = 1):
+    """Write a LoweringTrace as a versioned product under ``out/artifacts/lowering-trace/<target>/v<ver>/``
+    (yaml + LLM-digestible markdown + manifest). Returns the product dir. Convention-compliant provenance
+    (TS/version/git_sha) via ``new_product``; never writes outside ``out/``."""
+    import yaml
+
+    from ..common.artifacts import new_product
+    p = new_product("lowering-trace", version=version, target=trace.target,
+                    notes=f"{trace.source}:{trace.kernel}")
+    stem = f"trace_{trace.source}_{trace.kernel}".replace("/", "_")
+    p.add_artifact(f"{stem}.yaml").write_text(yaml.safe_dump(trace.to_dict(), sort_keys=False),
+                                              encoding="utf-8")
+    p.add_artifact(f"{stem}.md").write_text(trace.to_markdown(), encoding="utf-8")
+    p.write_manifest()
+    return p.path

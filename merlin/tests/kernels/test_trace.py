@@ -83,3 +83,49 @@ def test_graph_region_from_record():
     assert gr.region_id == "r7" and gr.op == "matmul" and gr.family == "contraction"
     assert gr.shape == {"M": 64, "N": 64, "K": 64}
     assert gr.module == "model.layers.0"
+
+
+def _fix(monkeypatch, name):
+    monkeypatch.setattr(objdump, "disassemble_text", lambda *a, **k: (_ASM_DIR / name).read_text())
+    return rvv.decode(f"{name}.o")
+
+
+def test_expert_steps_from_contract():
+    # the expert's DECLARED transformation sequence, in lowering order, from the framework contract
+    for fw in ("openblas", "xnnpack"):
+        steps = T.expert_steps_from_contract(fw)
+        assert [s.name for s in steps] == ["operand-layout", "operand-prepack",
+                                           "accumulator-block", "epilogue"]
+        assert all(s.plane == "framework" for s in steps)
+        assert any(s.region == "register-residency" for s in steps)   # the accumulator block
+
+
+def test_build_expert_trace_graph_none_by_design(monkeypatch):
+    tr = T.build_expert_trace("xnnpack", _fix(monkeypatch, "xnnpack_f32_gemm_rvv.objdump"),
+                              op="matmul", kernel_id="xnnpack_f32_gemm_rvv")
+    assert tr.source == "xnnpack" and tr.graph is None        # expert graph deferred by design
+    assert len(tr.steps) == 4
+    assert tr.asm.facts["contraction_form"] == "fused_fma"
+
+
+def test_build_our_trace_threads_graph_pipeline_asm(monkeypatch):
+    from merlin.frontends.linalg_mlir import MatmulRecord
+    rec = MatmulRecord(kind="linalg.matmul", m=64, k=64, n=64, lhs_shape=(64, 64), rhs_shape=(64, 64),
+                       dtype="f32", weight_arg_index=1, weight_name="w", prov={"prov.op": "matmul"})
+    tr = T.build_our_trace(_fix(monkeypatch, "ours_baseline_matmul.objdump"), op="matmul", record=rec)
+    assert tr.source == "ours" and tr.graph is not None       # full thread: graph present
+    assert {s.plane for s in tr.steps} == {"dialect", "transform_schedule", "llvm"}
+    assert tr.asm is not None
+
+
+def test_emit_trace_versioned(tmp_path, monkeypatch):
+    # redirect the out/ root to tmp so the test doesn't pollute the real out/artifacts
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path))
+    tr = T.build_expert_trace("openblas", _fix(monkeypatch, "openblas_sgemm_rvv.objdump"),
+                              op="matmul", kernel_id="openblas_sgemm_rvv")
+    out = T.emit_trace(tr, version=1)
+    assert (out / "manifest.yaml").is_file()
+    assert any(p.suffix == ".yaml" and p.name.startswith("trace_") for p in out.iterdir())
+    assert any(p.suffix == ".md" for p in out.iterdir())
+    # convention-compliant location: out/artifacts/lowering-trace/rvv/v1/...
+    assert "lowering-trace" in str(out) and "/rvv/v1/" in str(out).replace("\\", "/")
