@@ -42,6 +42,34 @@ def _load_divergences(path: str) -> list[Divergence]:
     return out
 
 
+def _regions_view() -> list[dict]:
+    """The full compiler-region registry: every region + its registrable edit-points (the 'where do I
+    change the compiler, and how do I add a new edit-point' map — so the agent never searches)."""
+    from merlin.kernels import regions as R
+    out = []
+    for key, r in R.REGIONS.items():
+        out.append({
+            "region": key, "title": r.title, "modules": list(r.modules), "cca_axes": list(r.cca_axes),
+            "edit_points": [{"kind": ep.kind, "seam": ep.seam, "file": ep.file,
+                             "how_to_add": ep.how_to_add, "forkable_now": ep.forkable_now,
+                             "registry": ep.registry} for ep in r.edit_points],
+        })
+    return out
+
+
+def _print_regions(views: list[dict]) -> None:
+    print("== compiler regions (registrable edit-points; GAP = no clean seam yet) ==")
+    for v in views:
+        print(f"\n{v['region']} — {v['title']}")
+        if v["cca_axes"]:
+            print(f"  CCA axes: {', '.join(v['cca_axes'])}")
+        for ep in v["edit_points"]:
+            tag = "" if ep["forkable_now"] else "  [GAP]"
+            reg = f" (register: {ep['registry']})" if ep["registry"] else ""
+            print(f"  [{ep['kind']:9s}]{tag} {ep['file']}{reg}")
+            print(f"        add: {ep['how_to_add']}")
+
+
 def _route_view(d: Divergence) -> dict:
     a = ac.route(d)
     view = {"axis": d.axis, "expert": d.expert, "ours": d.ours, "routed": a is not None}
@@ -74,8 +102,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--backend", default="rvv", help="target backend (default: rvv)")
     ap.add_argument("--axis", help="show the full escalation ladder for one axis (e.g. compute.epilogue)")
     ap.add_argument("--divergences", help="a divergences.yaml (list, or {divergences: [...]}) to route")
+    ap.add_argument("--regions", action="store_true",
+                    help="list the compiler-region registry (all editable regions + how to extend each)")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     args = ap.parse_args(argv)
+
+    if args.regions:
+        views = _regions_view()
+        if args.json:
+            print(json.dumps({"regions": views}, indent=2))
+        else:
+            _print_regions(views)
+        return 0
 
     if args.divergences:
         views = [_route_view(d) for d in _load_divergences(args.divergences)]

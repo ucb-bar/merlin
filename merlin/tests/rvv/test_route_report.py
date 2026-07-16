@@ -32,6 +32,25 @@ def test_json_output_is_machine_readable(capsys):
     assert "compute.epilogue" in axes
 
 
+def test_regions_mode_lists_all_regions(capsys):
+    rc = rr.main(["--regions"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    for region in ("quantization", "tiling-instsel-fusion", "asm-emission", "runtime-hooks"):
+        assert region in out
+    assert "[GAP]" in out                       # honest gaps surfaced, not hidden
+
+
+def test_regions_mode_json(capsys):
+    rc = rr.main(["--regions", "--json"])
+    assert rc == 0
+    doc = json.loads(capsys.readouterr().out)
+    keys = {r["region"] for r in doc["regions"]}
+    assert len(keys) == 8
+    # every region carries its edit-points with a concrete file
+    assert all(ep["file"] for r in doc["regions"] for ep in r["edit_points"])
+
+
 def test_routes_a_divergences_file(tmp_path, capsys):
     import yaml
     p = tmp_path / "divergences.yaml"
