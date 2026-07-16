@@ -193,3 +193,34 @@ def pipeline_steps(target: str = "rvv") -> list[TransformStep]:
         raise ValueError(f"pipeline_steps: only 'rvv' instantiated today, got {target!r}")
     from ..llvmlower import pipeline as P
     return _catalog_steps() + _transform_schedule_steps(P.RVV_TRANSFORM_SCHEDULE) + _llvm_steps()
+
+
+# ---- linkage: graph region <- prov ; asm region <- decoded InsnStream --------------
+
+def graph_region_from_record(rec) -> GraphRegion:
+    """A GraphRegion from a ``frontends.linalg_mlir.MatmulRecord`` (its ``prov.*`` + m/n/k/kind).
+    This is the flattened-graph end of the trace, read structurally from the model2MLIR provenance."""
+    prov = dict(rec.prov or {})
+    shape = {k: v for k, v in (("M", rec.m), ("N", rec.n), ("K", rec.k)) if v is not None}
+    return GraphRegion(
+        region_id=prov.get("prov.region_id") or prov.get("prov.module") or rec.kind,
+        op=prov.get("prov.op") or rec.kind,
+        family=prov.get("prov.family"),
+        module=prov.get("prov.module"),
+        shape=shape or None,
+        provenance=prov)
+
+
+def asm_region_from_stream(stream, *, op: str, source: str = "asm", label: str = "kernel") -> AsmRegion:
+    """An AsmRegion from a decoded ``decode.rvv.InsnStream``: the innermost (K-reduction) loop span +
+    the CCA-relevant facts, reusing ``cca.lift_asm`` so the trace's asm end and the CCA agree by
+    construction (deterministic — read from the stream, never guessed)."""
+    from dataclasses import asdict as _asdict
+
+    from .cca import lift_asm
+    c = lift_asm(stream, op=op, source=source)
+    facts: dict[str, Any] = {}
+    for facet in (c.compute, c.vector):
+        if facet is not None:
+            facts.update({k: v for k, v in _asdict(facet).items() if v is not None})
+    return AsmRegion(label=label, span=stream.innermost_loop(), facts=facts)
