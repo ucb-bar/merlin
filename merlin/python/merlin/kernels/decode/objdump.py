@@ -77,9 +77,9 @@ def _parse_line(line: str, section: str) -> RawInsn | None:
                    section=section)
 
 
-def tokenize(obj_path: str | Path, triple: str = "riscv64") -> list[RawInsn]:
-    """Object file -> ordered list of RawInsn (instructions only)."""
-    text = disassemble_text(obj_path, triple=triple)
+def _tokenize_lines(text: str) -> list[RawInsn]:
+    """Disassembly text -> ordered list of RawInsn (instructions only). The shared core of
+    ``tokenize`` (from an object file) and ``tokenize_text`` (from already-disassembled text)."""
     out: list[RawInsn] = []
     section = ""
     for line in text.splitlines():
@@ -96,3 +96,14 @@ def tokenize(obj_path: str | Path, triple: str = "riscv64") -> list[RawInsn]:
         if insn is not None:
             out.append(insn)
     return out
+
+
+def tokenize(obj_path: str | Path, triple: str = "riscv64") -> list[RawInsn]:
+    """Object file -> ordered list of RawInsn (instructions only)."""
+    return _tokenize_lines(disassemble_text(obj_path, triple=triple))
+
+
+def tokenize_text(text: str) -> list[RawInsn]:
+    """Already-disassembled objdump text -> ordered list of RawInsn (no toolchain needed). Parity with
+    the text-based fingerprint path; lets a CCA be lifted from a saved objdump.txt (e.g. a beam fork)."""
+    return _tokenize_lines(text)

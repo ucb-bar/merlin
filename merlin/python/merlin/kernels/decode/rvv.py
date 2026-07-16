@@ -129,9 +129,9 @@ def _is_backedge(insn: RawInsn) -> bool:
     return tgt is not None and tgt < insn.addr
 
 
-def decode(obj_path, triple: str = "riscv64") -> InsnStream:
-    """Object -> InsnStream with per-insn effective vtype (RVV/vector facet)."""
-    raws = tokenize(obj_path, triple=triple)
+def _stream_from_raws(raws) -> InsnStream:
+    """Build an InsnStream (per-insn effective vtype) from decoded RawInsns — shared by decode /
+    decode_text."""
     cur = VType()
     out: list[VInsn] = []
     for r in raws:
@@ -142,3 +142,15 @@ def decode(obj_path, triple: str = "riscv64") -> InsnStream:
         is_vec = r.mnemonic.startswith("v")          # RVV mnemonics are v-prefixed
         out.append(VInsn(raw=r, is_vector=is_vec, vtype=cur if is_vec else None))
     return InsnStream(insns=out)
+
+
+def decode(obj_path, triple: str = "riscv64") -> InsnStream:
+    """Object -> InsnStream with per-insn effective vtype (RVV/vector facet)."""
+    return _stream_from_raws(tokenize(obj_path, triple=triple))
+
+
+def decode_text(text: str) -> InsnStream:
+    """Already-disassembled objdump text -> InsnStream (no toolchain needed). Lets a CCA be lifted
+    from a saved objdump.txt (e.g. a beam fork's generated/objdump.txt) via cca.lift_asm(decode_text(...))."""
+    from .objdump import tokenize_text
+    return _stream_from_raws(tokenize_text(text))

@@ -148,6 +148,18 @@ def test_lift_reads_accumulator_dtype(monkeypatch):
         assert c.compute.accumulator_dtype == "f32", fx
 
 
+def test_decode_text_matches_object_path(monkeypatch):
+    # a CCA lifted from objdump TEXT (rvv.decode_text — what the beam has in objdump.txt) equals the
+    # object-file path (rvv.decode). Enables lifting a fork's CCA with no toolchain.
+    text = (_ASM_DIR / "openblas_sgemm_rvv.objdump").read_text()
+    from_text = cca.lift_asm(rvv.decode_text(text), op="matmul", source="openblas")
+    monkeypatch.setattr(objdump, "disassemble_text", lambda *a, **k: text)
+    from_obj = cca.lift_asm(rvv.decode("x.o"), op="matmul", source="openblas")
+    assert from_text.compute.contraction_form == from_obj.compute.contraction_form == "fused_fma"
+    assert from_text.compute.accumulator_resident == from_obj.compute.accumulator_resident
+    assert from_text.vector.tail == from_obj.vector.tail
+
+
 def _matmul_record(dtype: str):
     from merlin.frontends.linalg_mlir import MatmulRecord
     return MatmulRecord(kind="linalg.matmul", m=64, k=64, n=64, lhs_shape=(64, 64), rhs_shape=(64, 64),
