@@ -381,7 +381,16 @@ def _fix_float_literals(ll_text: str) -> str:
     """The MLIR LLVM-IR printer emits non-LLVM float literals (bare inf/-inf/nan,
     and `f0x..` f32 hex) that the textual parser rejects — canonicalize them."""
     ll_text = _F0X_RE.sub(_f0x_to_llvm, ll_text)
+    # half (fp16) uses the LLVM `0xH<4hex>` literal form, bfloat (bf16) uses `0xR<4hex>` — the MLIR
+    # printer emits bare inf/-inf/nan for these too (e.g. an fp16 causal-mask -inf), which the LLVM
+    # textual parser rejects. Order matters: replace the widest names first so `float`↛`bfloat` etc.
     return (ll_text
+            .replace("bfloat -inf", "bfloat 0xRFF80")
+            .replace("bfloat inf", "bfloat 0xR7F80")
+            .replace("bfloat nan", "bfloat 0xR7FC0")
+            .replace("half -inf", "half 0xHFC00")
+            .replace("half inf", "half 0xH7C00")
+            .replace("half nan", "half 0xH7E00")
             .replace("float -inf", "float 0xFFF0000000000000")
             .replace("float inf", "float 0x7FF0000000000000")
             .replace("float nan", "float 0x7FF8000000000000")
