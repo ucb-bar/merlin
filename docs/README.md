@@ -59,10 +59,11 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - [Design note: integration adapters](design/integrations.md) — `current`, verified 2026-07-07 · owner: kernels — see also: [integrations](guides/integrations.md)
 - [Design note: the future MLIR/C++ compiler plane](design/compiler_plane.md) — `current`, verified 2026-07-14 · owner: core — see also: [architecture](reference/architecture.md)
 - [Parallel workstreams](design/parallel_workstreams.md) — `current`, verified 2026-07-14 · owner: core — see also: [architecture](reference/architecture.md), [kernel_mining](guides/kernel_mining.md), [dse](guides/dse.md), [targetgen](guides/targetgen.md)
+- [Target publishing — the "target becomes its own repo" bridge (WS-E)](design/target_publishing.md) — `current`, verified 2026-07-15 · owner: core — see also: [repo_structure](reference/repo_structure.md), [integrations](guides/integrations.md)
 
 ## By area
 
-- **core** — [Architecture](reference/architecture.md), [Design audit: standalone merlin wheel](design/standalone_packaging.md), [Design note: the future MLIR/C++ compiler plane](design/compiler_plane.md), [Getting started](guides/getting_started.md), [merlin/ layout — what goes where](reference/merlin_layout.md), [Parallel workstreams](design/parallel_workstreams.md), [Repository structure](reference/repo_structure.md)
+- **core** — [Architecture](reference/architecture.md), [Design audit: standalone merlin wheel](design/standalone_packaging.md), [Design note: the future MLIR/C++ compiler plane](design/compiler_plane.md), [Getting started](guides/getting_started.md), [merlin/ layout — what goes where](reference/merlin_layout.md), [Parallel workstreams](design/parallel_workstreams.md), [Repository structure](reference/repo_structure.md), [Target publishing — the "target becomes its own repo" bridge (WS-E)](design/target_publishing.md)
 - **design_pressure** — [Design pressure](guides/design_pressure.md)
 - **dse** — [Compilation strategies](guides/compilation_strategies.md), [Design-space exploration](guides/dse.md), [DSE guidance](guides/dse_guidance.md), [Search policy](guides/search.md)
 - **frontends** — [model2MLIR frontend](guides/model2mlir.md)
