@@ -37,6 +37,17 @@ def test_real_vs_fake_no_speedup_credit_when_numerics_fail():
     assert "FAILED-numerics" in s.to_line()
 
 
+def test_audit_fork_lifts_cca_from_objdump_text_and_records():
+    # the beam-side entry: audit a certified fork from its emitted objdump text (no toolchain re-run)
+    from pathlib import Path
+
+    from merlin.common.paths import merlin_dir
+    text = (merlin_dir() / "tests" / "data" / "cca_asm" / "openblas_sgemm_rvv.objdump").read_text()
+    s = search_step.audit_fork(_action(), text, op="matmul", correctness_ok=True, speedup=7.9)
+    assert s.achieved is True and s.residual == []      # openblas emits fused_fma -> facet achieved
+    assert s.category == "instruction-selection" and s.speedup == 7.9
+
+
 def test_to_dict_is_instrumentable():
     s = search_step.make_step(_action(), _cca("fused_fma"), correctness_ok=True, speedup=2.0)
     d = s.to_dict()

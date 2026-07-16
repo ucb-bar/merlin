@@ -62,3 +62,15 @@ def make_step(action, achieved_cca, *, correctness_ok: bool, speedup: float | No
         correctness_ok=correctness_ok,
         speedup=speedup if correctness_ok else None,   # fail-closed: no speedup credit without correctness
         rationale=action.change)
+
+
+def audit_fork(action, objdump_text: str, *, op: str = "matmul",
+               correctness_ok: bool, speedup: float | None) -> SearchStep:
+    """Audit a certified fork: lift the fork's CCA from its emitted objdump TEXT (no toolchain re-run,
+    via ``decode_text``) and build the per-step record. This is what the beam calls per fork to answer
+    'did the fork's emitted asm achieve the action's intended facet?' + record real-vs-fake speedup."""
+    from .cca import lift_asm
+    from .decode import rvv
+
+    achieved_cca = lift_asm(rvv.decode_text(objdump_text), op=op, source="fork")
+    return make_step(action, achieved_cca, correctness_ok=correctness_ok, speedup=speedup)
