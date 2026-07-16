@@ -49,7 +49,8 @@ def _regions_view() -> list[dict]:
     out = []
     for key, r in R.REGIONS.items():
         out.append({
-            "region": key, "title": r.title, "modules": list(r.modules), "cca_axes": list(r.cca_axes),
+            "region": key, "phase": r.phase, "title": r.title, "modules": list(r.modules),
+            "cca_axes": list(r.cca_axes),
             "edit_points": [{"kind": ep.kind, "seam": ep.seam, "file": ep.file,
                              "how_to_add": ep.how_to_add, "forkable_now": ep.forkable_now,
                              "registry": ep.registry} for ep in r.edit_points],
@@ -58,16 +59,20 @@ def _regions_view() -> list[dict]:
 
 
 def _print_regions(views: list[dict]) -> None:
-    print("== compiler regions (registrable edit-points; GAP = no clean seam yet) ==")
-    for v in views:
-        print(f"\n{v['region']} — {v['title']}")
-        if v["cca_axes"]:
-            print(f"  CCA axes: {', '.join(v['cca_axes'])}")
-        for ep in v["edit_points"]:
-            tag = "" if ep["forkable_now"] else "  [GAP]"
-            reg = f" (register: {ep['registry']})" if ep["registry"] else ""
-            print(f"  [{ep['kind']:9s}]{tag} {ep['file']}{reg}")
-            print(f"        add: {ep['how_to_add']}")
+    from merlin.kernels import regions as R
+    print("== compiler regions by phase (registrable edit-points; GAP = no clean seam yet) ==")
+    for phase in R.phases():
+        pv = [v for v in views if v["phase"] == phase]
+        if not pv:
+            continue
+        print(f"\n### {phase}")
+        for v in pv:
+            axes = f"   [CCA: {', '.join(v['cca_axes'])}]" if v["cca_axes"] else ""
+            print(f"  {v['region']} — {v['title']}{axes}")
+            for ep in v["edit_points"]:
+                tag = "" if ep["forkable_now"] else " [GAP]"
+                reg = f" (register: {ep['registry']})" if ep["registry"] else ""
+                print(f"    [{ep['kind']:9s}]{tag} {ep['file']}{reg}")
 
 
 def _route_view(d: Divergence) -> dict:

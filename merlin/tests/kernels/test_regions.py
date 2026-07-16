@@ -9,10 +9,25 @@ def test_check_regions_clean():
     assert R.check_regions() == []
 
 
-def test_all_eight_regions_present():
-    assert set(R.REGIONS) == {
-        "quantization", "global-passes", "dispatch-gen", "tiling-instsel-fusion",
-        "heuristics", "dispatch-scheduling", "asm-emission", "runtime-hooks"}
+def test_two_level_taxonomy_phases_and_fine_regions():
+    # phase-grouped (compilation stages) AND a fine per-concern registry (the point)
+    assert R.phases() == ("frontend", "global", "dispatch", "kernel-codegen", "memory",
+                          "emission", "runtime", "cross-cutting", "target-gen")
+    # every region has a valid phase; the fine concerns the user named are DISTINCT regions
+    assert all(r.phase in R.phases() for r in R.REGIONS.values())
+    fine = {"data-tiling", "vectorization", "instruction-selection", "instruction-scheduling",
+            "inner-loop", "fusion", "accumulation"}
+    assert fine <= set(R.REGIONS)                         # no longer lumped into one region
+    # the newly-surfaced groups are first-class
+    assert {"graph-ingest", "numerics-precision", "bufferization-memplan", "layout-packing",
+            "target-lowering", "cost-model-capabilities", "target-dialect-gen"} <= set(R.REGIONS)
+    assert len(R.REGIONS) >= 20                            # the larger registry
+
+
+def test_kernel_codegen_phase_has_the_fine_concerns():
+    keys = {r.key for r in R.regions_by_phase("kernel-codegen")}
+    assert keys == {"data-tiling", "vectorization", "instruction-selection",
+                    "instruction-scheduling", "inner-loop", "fusion", "accumulation"}
 
 
 def test_every_lever_axis_maps_to_one_region():
@@ -32,7 +47,7 @@ def test_edit_point_files_exist():
 def test_honest_gaps_are_marked_not_hidden():
     # regions without a clean seam yet are flagged forkable_now=False, not silently omitted
     gaps = {k for k, ep in R.all_edit_points() if not ep.forkable_now}
-    assert {"quantization", "dispatch-gen", "dispatch-scheduling", "runtime-hooks"} <= gaps
+    assert {"quantization", "dispatch-gen", "hw-sync", "fusion"} <= gaps
 
 
 def test_quantization_axes_live_in_quantization_region():

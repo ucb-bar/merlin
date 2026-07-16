@@ -1,26 +1,36 @@
-"""The compiler-region registry — the 8 regions of the Merlin compiler as EXPLICIT, registrable
-edit-points, so an agent (or engineer) never has to search the compiler to know WHERE to change a
-thing and HOW to add a new knob/heuristic/pass there.
+"""The compiler-region registry — every distinct region of the Merlin compiler as an EXPLICIT,
+registrable edit-point, organized by compilation PHASE, so an agent (or engineer) never has to search
+the compiler to know WHERE to change a thing and HOW to add a new knob/heuristic/pass/dialect there.
 
-Each ``Region`` names the compiler modules that implement it, the ``EditPoint``s (a concrete file +
-the mechanism + a one-line "how to add another"), and the CCA facet axes it governs. The axis↔region
-map is also the region taxonomy the CCA⇄lever bijection (``cca_contract``) broadens onto: every RVV
-LEVER axis belongs to exactly one region (checked by ``check_regions``).
+Two levels, by design:
+- **phases** (compilation stages): frontend -> global -> dispatch -> kernel-codegen -> memory ->
+  emission -> runtime, plus cross-cutting and target-gen. The pipeline stages.
+- **regions** (the ~one-per-concern fine grain — the point): each names the real modules that
+  implement it, its ``EditPoint``s (concrete file + mechanism + one-line how-to-add + the register()
+  hook where one exists), and the CCA facet axes it governs. Every RVV CCA LEVER axis is governed by
+  EXACTLY one region (``check_regions``) — this is the taxonomy the CCA<->lever bijection broadens onto.
 
-This is metadata ABOUT the compiler, deliberately honest: where a region has no clean seam yet (e.g.
-quantization is a hardcoded pass sequence, dispatch scheduling has no policy knob), the EditPoint says
-so — those honest gaps are the concrete C3 work-items, not hidden.
+TARGET-AGNOSTIC: these are compiler-wide concerns (RVV is the first instantiation; gemmini/others plug
+in per-target edit-points). The ``target-gen`` phase is where the eventual agentic target-DIALECT
+generation hooks in — the same registry drives it.
+
+Honest by construction: where a region has no clean seam yet, its EditPoint says so (``forkable_now=
+False``) — those gaps are the concrete work-items, never hidden.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+
+# The compilation phases (stages), in pipeline order + the two non-linear buckets.
+PHASES = ("frontend", "global", "dispatch", "kernel-codegen", "memory", "emission", "runtime",
+          "cross-cutting", "target-gen")
 
 
 @dataclass(frozen=True)
 class EditPoint:
     """One registrable place to change the compiler within a region."""
-    kind: str                 # FLAG | KNOB | HEURISTIC | PASS | CODEGEN | REGISTRY | DATA
-    seam: str                 # the routable target_seam string (see action_catalog.SEAM_FILES)
+    kind: str                 # FLAG | KNOB | HEURISTIC | PASS | CODEGEN | REGISTRY | DATA | DIALECT
+    seam: str                 # a routable target_seam label
     file: str                 # repo-relative file to edit
     how_to_add: str           # one line: how to add ANOTHER edit-point of this kind here
     registry: str | None = None   # the register() fn to call, if this seam is a registry (else None)
@@ -30,135 +40,206 @@ class EditPoint:
 @dataclass(frozen=True)
 class Region:
     key: str
+    phase: str                # one of PHASES
     title: str
     summary: str
     modules: tuple[str, ...]       # repo-relative compiler modules that implement the region
     edit_points: tuple[EditPoint, ...]
-    cca_axes: tuple[str, ...] = ()  # the CCA facet axes this region governs
+    cca_axes: tuple[str, ...] = ()  # the CCA facet axes this region governs (1:1 across regions)
 
 
-# The 8 regions (grounded in the real modules; honest about where a seam is missing).
-REGIONS: dict[str, Region] = {
-    "quantization": Region(
-        key="quantization", title="Quantization / QDQ",
-        summary="QDQ-format handling; real quantized compute (i8xi8->i32 vwmacc) vs fake-quant "
-                "(dequant back to bf16/fp32).",
-        modules=("merlin/python/merlin/llvmlower/passes_quant_int.py",
-                 "merlin/python/merlin/frontends/quant_ext.py",
-                 "merlin/python/merlin/frontends/mixed_precision.py"),
-        edit_points=(
-            EditPoint("KNOB", "schedule:dtype_strategy",
-                      "merlin/python/merlin/rvvgen/from_strategy.py",
-                      "select the datapath dtype strategy (int8_w8a8 / bf16-f32acc)"),
-            EditPoint("PASS", "quant:passes_quant_int",
-                      "merlin/python/merlin/llvmlower/passes_quant_int.py",
-                      "GAP: the six lower_*_int passes are a hardcoded sequence gated by a bool; "
-                      "add a quant-pass registry (mirror impr_features) to toggle/order them",
-                      forkable_now=False),
-        ),
-        cca_axes=("compute.widening", "compute.accumulator_dtype", "vector.sew")),
-    "global-passes": Region(
-        key="global-passes", title="Global optimization passes (backend-agnostic)",
-        summary="The frozen baseline pass list + Merlin-authored xDSL passes; changed only via "
-                "default-off impr_features pipeline hooks.",
-        modules=("merlin/python/merlin/llvmlower/pipeline.py",
-                 "merlin/python/merlin/llvmlower/passes_xdsl.py"),
-        edit_points=(
-            EditPoint("PASS", "impr_features:<name>",
-                      "merlin/python/merlin/llvmlower/impr_features.py",
-                      "register(ImprFeature(name, edit_pipeline=...)) — a default-off pipeline edit",
-                      registry="merlin.llvmlower.impr_features.register"),
-        )),
-    "dispatch-gen": Region(
-        key="dispatch-gen", title="Dispatch generation / clustering",
-        summary="Outlining func @forward into per-dispatch kernels + the driver; dedup/clustering.",
-        modules=("merlin/python/merlin/xdsl_dialects/lowering/outline.py",
-                 "merlin/python/merlin/runtime/dispatch_runtime.py"),
-        edit_points=(
-            EditPoint("HEURISTIC", "outline:clustering",
-                      "merlin/python/merlin/xdsl_dialects/lowering/outline.py",
-                      "GAP: fusion-root grouping / clustering granularity is internal to the pass; "
-                      "no knob yet — expose a clustering-policy parameter",
-                      forkable_now=False),
-        )),
-    "tiling-instsel-fusion": Region(
-        key="tiling-instsel-fusion",
-        title="Tiling / instruction selection / scheduling / inner-loop / fusion / accumulation",
-        summary="The transform-dialect schedule + the default-off feature registry — the well-exposed "
-                "region (register blocking, vfmacc, accumulator residency, packing, tail clamps).",
-        modules=("merlin/python/merlin/llvmlower/pipeline.py",
-                 "merlin/python/merlin/llvmlower/impr_features.py",
-                 "merlin/python/merlin/rvvgen/from_strategy.py"),
-        edit_points=(
-            EditPoint("KNOB", "schedule:<knob>",
-                      "merlin/python/merlin/rvvgen/from_strategy.py",
-                      "add an op_match/lowering_patterns/contraction_strategy knob to render_schedule"),
-            EditPoint("PASS", "impr_features:<name>",
-                      "merlin/python/merlin/llvmlower/impr_features.py",
-                      "register(ImprFeature(name, edit_schedule=...)) — a default-off schedule edit",
-                      registry="merlin.llvmlower.impr_features.register"),
-        ),
-        cca_axes=("compute.contraction_form", "compute.register_block", "compute.nr_is_vsetvlmax",
-                  "compute.reduction_form", "compute.accumulator_resident", "compute.epilogue",
-                  "compute.mr_adapts_to_m", "compute.activation_vectorization",
-                  "vector.lmul", "vector.vl_strategy", "vector.tail")),
-    "heuristics": Region(
-        key="heuristics", title="Optimization heuristics (when to apply what)",
-        summary="The CCA->lever router + escalation ladder; DSE candidate selection.",
-        modules=("merlin/python/merlin/kernels/action_catalog.py",
-                 "merlin/python/merlin/dse_guidance/candidates.py"),
-        edit_points=(
-            EditPoint("HEURISTIC", "route:_RVV_ROUTES",
-                      "merlin/python/merlin/kernels/action_catalog.py",
-                      "add a _Route(axis, when, action_class, target_seam, intended_facet) row"),
-        )),
-    "dispatch-scheduling": Region(
-        key="dispatch-scheduling", title="Dispatch scheduling (cross-dispatch)",
-        summary="The runtime program (memory plan, parallel modes) + arena planner + multicore partition.",
-        modules=("merlin/python/merlin/runtime/program.py",
-                 "merlin/python/merlin/xdsl_dialects/lowering/arena_plan.py",
-                 "merlin/python/merlin/xdsl_dialects/lowering/schedule_dispatch.py"),
-        edit_points=(
-            EditPoint("DATA", "program:MerlinProgram",
-                      "merlin/python/merlin/runtime/program.py",
-                      "GAP: the arena planner / partitioner have no registrable policy hook yet",
-                      forkable_now=False),
-        )),
-    "asm-emission": Region(
-        key="asm-emission", title="ASM / instruction emission (target dialect -> codegen)",
-        summary="Backend selection registry + the custom-ISA inline-asm hatch + per-backend codegen.",
-        modules=("merlin/python/merlin/runtime/backends/base.py",
-                 "merlin/python/merlin/llvmlower/custom_isa.py",
-                 "merlin/python/merlin/runtime/backends/rvv_codegen.py"),
-        edit_points=(
-            EditPoint("REGISTRY", "backend:_REGISTRY",
-                      "merlin/python/merlin/runtime/backends/base.py",
-                      "register a target backend (name -> module -> TargetClass) — one entry",
-                      registry="merlin.runtime.backends.base"),
-            EditPoint("CODEGEN", "custom_isa:inline_asm",
-                      "merlin/python/merlin/llvmlower/custom_isa.py",
-                      "declare a custom instruction via merlin.inline_asm -> .insn (no LLVM fork)"),
-        )),
-    "runtime-hooks": Region(
-        key="runtime-hooks", title="Runtime hooks (layout / encoding / AOT / HW sync)",
-        summary="Extensible program/command-buffer formats (opcodes, capability flags, im2col recipes, "
-                "arena offsets); HW sync emitted per codegen backend.",
-        modules=("merlin/python/merlin/runtime/program.py",
-                 "merlin/python/merlin/runtime/commandbuffer.py"),
-        edit_points=(
-            EditPoint("DATA", "program:opcodes",
-                      "merlin/python/merlin/runtime/program.py",
-                      "add a namespaced opcode / capability flag to the program format"),
-            EditPoint("CODEGEN", "codegen:hw_sync",
-                      "merlin/python/merlin/runtime/backends/rvv_codegen.py",
-                      "GAP: barrier/sync is hand-written per codegen backend; no layout/sync registry",
-                      forkable_now=False),
-        )),
-}
+def _r(key, phase, title, summary, modules, edit_points, cca_axes=()):
+    return Region(key, phase, title, summary, tuple(modules), tuple(edit_points), tuple(cca_axes))
+
+
+def _ep(kind, seam, file, how, registry=None, forkable=True):
+    return EditPoint(kind, seam, file, how, registry, forkable)
+
+
+_IMPR = "merlin.llvmlower.impr_features.register"
+_PQI = "merlin/python/merlin/llvmlower/passes_quant_int.py"
+_PIPE = "merlin/python/merlin/llvmlower/pipeline.py"
+_IF = "merlin/python/merlin/llvmlower/impr_features.py"
+_FS = "merlin/python/merlin/rvvgen/from_strategy.py"
+
+REGIONS: dict[str, Region] = {r.key: r for r in [
+    # ---- frontend / ingest ------------------------------------------------------------
+    _r("graph-ingest", "frontend", "Graph ingestion & op coverage",
+       "Bring the flattened exported graph into our linalg IR; op coverage; the graph the CCA "
+       "exploration starts from.",
+       ("merlin/python/merlin/frontends/linalg_mlir.py", "merlin/python/merlin/frontends/facts.py",
+        "merlin/python/merlin/frontends/registry.py"),
+       [_ep("REGISTRY", "frontend:adapter", "merlin/python/merlin/frontends/registry.py",
+            "register a frontend adapter (model2MLIR/gguf/...) for a new graph source")]),
+    _r("numerics-precision", "frontend", "Decomposition & numerics / mixed-precision policy",
+       "Per-module format rules + op decomposition/normalization before compute lowering.",
+       ("merlin/python/merlin/frontends/mixed_precision.py",
+        "merlin/python/merlin/frontends/quant_ext.py"),
+       [_ep("DATA", "frontend:mixed_precision_policy",
+            "merlin/python/merlin/frontends/mixed_precision.py",
+            "add a MixedPrecisionPolicy rule (per-module dtype/format)")]),
+    # ---- global (backend-agnostic) ----------------------------------------------------
+    _r("quantization", "global", "Quantization / QDQ <-> real-quant",
+       "Real quantized compute (i8xi8->i32 vwmacc) vs fake-quant (dequant back to bf16/fp32).",
+       (_PQI, "merlin/python/merlin/frontends/quant_ext.py"),
+       [_ep("KNOB", "schedule:dtype_strategy", _FS,
+            "select the datapath dtype strategy (int8_w8a8 / bf16-f32acc)"),
+        _ep("PASS", "quant:passes_quant_int", _PQI,
+            "GAP: the six lower_*_int passes are a hardcoded sequence gated by a bool; add a "
+            "quant-pass registry (mirror impr_features) to toggle/order them + re-point the dtype "
+            "axes here", forkable=False)],
+       cca_axes=("compute.widening", "compute.accumulator_dtype", "vector.sew")),
+    _r("global-passes", "global", "Global optimization passes (backend-agnostic)",
+       "The frozen baseline pass list + Merlin-authored xDSL passes; changed via default-off "
+       "impr_features pipeline hooks.",
+       (_PIPE, "merlin/python/merlin/llvmlower/passes_xdsl.py"),
+       [_ep("PASS", "impr_features:<name>", _IF,
+            "register(ImprFeature(name, edit_pipeline=...)) — a default-off pipeline edit", _IMPR)]),
+    # ---- dispatch ---------------------------------------------------------------------
+    _r("dispatch-gen", "dispatch", "Dispatch generation / clustering",
+       "Outline func @forward into per-dispatch kernels + driver; fusion-root grouping.",
+       ("merlin/python/merlin/xdsl_dialects/lowering/outline.py",
+        "merlin/python/merlin/runtime/dispatch_runtime.py"),
+       [_ep("HEURISTIC", "outline:clustering",
+            "merlin/python/merlin/xdsl_dialects/lowering/outline.py",
+            "GAP: clustering granularity is internal to the pass; expose a clustering-policy param",
+            forkable=False)]),
+    _r("dispatch-scheduling", "dispatch", "Dispatch scheduling (cross-dispatch)",
+       "Cross-dispatch order + multicore partition + the runtime program's memory/parallel plan.",
+       ("merlin/python/merlin/runtime/program.py",
+        "merlin/python/merlin/xdsl_dialects/lowering/schedule_dispatch.py"),
+       [_ep("DATA", "program:schedule",
+            "merlin/python/merlin/xdsl_dialects/lowering/schedule_dispatch.py",
+            "GAP: partitioner has no registrable policy hook yet", forkable=False)]),
+    # ---- kernel codegen (the fine concerns) -------------------------------------------
+    _r("data-tiling", "kernel-codegen", "Data tiling",
+       "The transform-schedule tile decision (register block / output-tile width).",
+       (_PIPE, _FS, _IF),
+       [_ep("KNOB", "schedule:op_match", _FS, "add/adjust an op_match tile in render_schedule")],
+       cca_axes=("compute.register_block", "compute.nr_is_vsetvlmax")),
+    _r("vectorization", "kernel-codegen", "Vectorization",
+       "Scoped vectorize + vector width/LMUL/VL strategy/tail policy.",
+       (_PIPE, _IF),
+       [_ep("KNOB", "schedule:vector_sizes", _FS, "adjust vector_sizes (LMUL) in render_schedule"),
+        _ep("PASS", "impr_features:<name>", _IF, "register a vectorization feature (edit_schedule)",
+            _IMPR)],
+       cca_axes=("vector.lmul", "vector.vl_strategy", "vector.tail")),
+    _r("instruction-selection", "kernel-codegen", "Instruction selection",
+       "Which instruction form is emitted (fused vfmacc vs mul_add; custom ISA via .insn).",
+       (_IF, "merlin/python/merlin/llvmlower/custom_isa.py"),
+       [_ep("PASS", "impr_features:fused_vfmacc_contraction", _IF,
+            "register a lowering-pattern feature that selects an instruction form", _IMPR),
+        _ep("CODEGEN", "custom_isa:inline_asm", "merlin/python/merlin/llvmlower/custom_isa.py",
+            "declare a custom instruction via merlin.inline_asm -> .insn (no LLVM fork)")],
+       cca_axes=("compute.contraction_form",)),
+    _r("instruction-scheduling", "kernel-codegen", "Instruction scheduling",
+       "Instruction ordering / latency hiding — largely the LLVM backend via clang -O.",
+       ("merlin/python/merlin/llvmlower/codegen.py",),
+       [_ep("FLAG", "cflag:sched", "merlin/python/merlin/llvmlower/codegen.py",
+            "GAP: scheduling is LLVM's; only reachable via clang flags — no direct merlin seam",
+            forkable=False)]),
+    _r("inner-loop", "kernel-codegen", "Inner-loop computation",
+       "The micro-kernel body (e.g. vectorized transcendental activation polynomial).",
+       ("merlin/python/merlin/llvmlower/accum_microkernel.py", _IF),
+       [_ep("PASS", "impr_features:vectorized_transcendental_activation", _IF,
+            "register an inner-loop-body feature (edit_schedule / a microkernel emitter)", _IMPR)],
+       cca_axes=("compute.activation_vectorization",)),
+    _r("fusion", "kernel-codegen", "Fusion",
+       "Op fusion, incl. fusing the requant/narrow epilogue into the store.",
+       (_IF, _PIPE),
+       [_ep("PASS", "pass:fuse-requant-narrowing-store", _IF,
+            "GAP: register a fusion feature (edit_pipeline) — e.g. fuse requant+vnclip into the store",
+            forkable=False)],
+       cca_axes=("compute.epilogue",)),
+    _r("accumulation", "kernel-codegen", "Accumulation / accumulator residency",
+       "Keep the accumulator register-resident across the reduction; reduction form (tree/vredsum).",
+       (_IF, "merlin/python/merlin/llvmlower/accum_microkernel.py"),
+       [_ep("PASS", "impr_features:accumulator_resident_microkernel", _IF,
+            "register an accumulation feature; the spill-free closer needs a CODEGEN microkernel emitter",
+            _IMPR)],
+       cca_axes=("compute.accumulator_resident", "compute.reduction_form")),
+    # ---- memory / layout --------------------------------------------------------------
+    _r("bufferization-memplan", "memory", "Bufferization & memory planning",
+       "Tensor->memref bufferization, out-param buffers, the AOT static arena plan.",
+       (_PIPE, "merlin/python/merlin/xdsl_dialects/lowering/arena_plan.py"),
+       [_ep("PASS", "impr_features:<name>", _IF,
+            "register a bufferization-pipeline edit (e.g. eliminate-empty-tensors placement)", _IMPR)]),
+    _r("layout-packing", "memory", "Layout assignment / packing",
+       "Compile-time operand layout + panel packing (contiguous register-tile panels).",
+       (_IF, _FS),
+       [_ep("PASS", "impr_features:vfmacc_packed", _IF,
+            "register a packing feature (transform.structured.pack layout)", _IMPR)]),
+    # ---- emission ---------------------------------------------------------------------
+    _r("target-lowering", "emission", "Target lowering / legalization",
+       "Dialect -> LLVM mechanical descent (convert-*-to-llvm, reconcile-unrealized-casts).",
+       (_PIPE,),
+       [_ep("PASS", "impr_features:<name>", _IF,
+            "GAP: the convert-*-to-llvm set is fixed; a legalization edit needs an edit_pipeline hook",
+            _IMPR, forkable=False)]),
+    _r("asm-emission", "emission", "ASM / instruction emission (codegen)",
+       "Backend selection registry + per-backend codegen + cflags.",
+       ("merlin/python/merlin/runtime/backends/base.py",
+        "merlin/python/merlin/runtime/backends/rvv_codegen.py",
+        "merlin/python/merlin/llvmlower/codegen.py"),
+       [_ep("REGISTRY", "backend:_REGISTRY", "merlin/python/merlin/runtime/backends/base.py",
+            "register a target backend (name -> module -> TargetClass) — one entry",
+            "merlin.runtime.backends.base"),
+        _ep("FLAG", "cflag:march", "merlin/python/merlin/runtime/backends/zephyr_model.py",
+            "add/adjust an RVV cflag / march feature")]),
+    # ---- runtime ----------------------------------------------------------------------
+    _r("runtime-layout-encoding", "runtime", "Runtime layout & encodings",
+       "Extensible program/command-buffer formats (opcodes, capability flags, im2col recipes).",
+       ("merlin/python/merlin/runtime/program.py",
+        "merlin/python/merlin/runtime/commandbuffer.py"),
+       [_ep("DATA", "program:opcodes", "merlin/python/merlin/runtime/program.py",
+            "add a namespaced opcode / capability flag / layout-encoding to the program format")]),
+    _r("aot-opt", "runtime", "Ahead-of-time (once) optimizations",
+       "AOT-once products: the static arena memory plan, prepacked weights.",
+       ("merlin/python/merlin/xdsl_dialects/lowering/arena_plan.py",),
+       [_ep("DATA", "arena:plan", "merlin/python/merlin/xdsl_dialects/lowering/arena_plan.py",
+            "extend the AOT arena/prepack plan emitted once at compile time")]),
+    _r("hw-sync", "runtime", "HW synchronization",
+       "Barrier / hart-partition / event synchronization emitted for multicore execution.",
+       ("merlin/python/merlin/runtime/backends/rvv_codegen.py",),
+       [_ep("CODEGEN", "codegen:hw_sync", "merlin/python/merlin/runtime/backends/rvv_codegen.py",
+            "GAP: barrier/sync is hand-written per codegen backend; no sync-strategy registry yet",
+            forkable=False)]),
+    # ---- cross-cutting ----------------------------------------------------------------
+    _r("heuristics", "cross-cutting", "Optimization heuristics (when to apply what)",
+       "The CCA->lever router + escalation ladder; DSE candidate selection.",
+       ("merlin/python/merlin/kernels/action_catalog.py",
+        "merlin/python/merlin/dse_guidance/candidates.py"),
+       [_ep("HEURISTIC", "route:_RVV_ROUTES", "merlin/python/merlin/kernels/action_catalog.py",
+            "add a _Route(axis, when, action_class, target_seam, intended_facet) row")]),
+    _r("cost-model-capabilities", "cross-cutting", "Cost model & target capabilities",
+       "The cost model + the datatype->compute-unit target-capability manifests (also the INPUT to "
+       "agentic target-dialect generation).",
+       ("merlin/python/merlin/dse/cost_model.py",
+        "merlin/python/merlin/targetgen/capability_manifests.py"),
+       [_ep("DATA", "capability:manifest", "merlin/python/merlin/targetgen/capability_manifests.py",
+            "add/extend a target-capability manifest (datatype -> compute-unit)")]),
+    # ---- target-dialect generation (the agentic targetgen path) -----------------------
+    _r("target-dialect-gen", "target-gen", "Target dialect / contract / interface generation",
+       "Generate a new target's dialect + contract + interface + lowering scaffolding — where the "
+       "eventual agentic target-dialect generation (gemmini etc.) plugs into this same registry.",
+       ("merlin/python/merlin/targetgen/cli.py",
+        "merlin/python/merlin/xdsl_dialects/contract.py",
+        "merlin/python/merlin/xdsl_dialects/interface.py"),
+       [_ep("DIALECT", "targetgen:emit", "merlin/python/merlin/targetgen/cli.py",
+            "generate a target dialect/contract/interface via merlin-targetgen build --emit ...")]),
+]}
+
+
+def phases() -> tuple[str, ...]:
+    return PHASES
+
+
+def regions_by_phase(phase: str) -> list[Region]:
+    return [r for r in REGIONS.values() if r.phase == phase]
 
 
 def region_for_axis(axis: str) -> Region | None:
-    """The region governing a CCA facet axis (e.g. 'compute.register_block' -> tiling-instsel-fusion)."""
+    """The region governing a CCA facet axis (e.g. 'compute.register_block' -> data-tiling)."""
     for r in REGIONS.values():
         if axis in r.cca_axes:
             return r
@@ -172,21 +253,21 @@ def all_edit_points() -> list[tuple[str, EditPoint]]:
 
 def check_regions() -> list[str]:
     """Sanity/coverage invariant, returns problems (empty = OK):
-    - every region names ≥1 real module file + has ≥1 edit-point;
-    - every RVV CCA LEVER axis (from cca_contract) is governed by EXACTLY one region — this is the
-      region taxonomy the bijection contract broadens onto."""
+    - every region has a valid phase, ≥1 real module file, and ≥1 edit-point;
+    - every RVV CCA LEVER axis is governed by EXACTLY one region (the bijection's region taxonomy)."""
     from ..common.paths import repo_root
     from . import cca_contract
 
     problems: list[str] = []
     root = repo_root()
     for key, r in REGIONS.items():
+        if r.phase not in PHASES:
+            problems.append(f"region {key}: unknown phase {r.phase!r}")
         if not r.edit_points:
             problems.append(f"region {key}: no edit points")
         for m in r.modules:
             if not (root / m).is_file():
                 problems.append(f"region {key}: module missing on disk: {m}")
-    # axis coverage: each lever axis maps to exactly one region
     lever = cca_contract.leverable_axes("rvv")
     covered: dict[str, list[str]] = {}
     for r in REGIONS.values():

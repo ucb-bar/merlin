@@ -36,7 +36,10 @@ def test_regions_mode_lists_all_regions(capsys):
     rc = rr.main(["--regions"])
     assert rc == 0
     out = capsys.readouterr().out
-    for region in ("quantization", "tiling-instsel-fusion", "asm-emission", "runtime-hooks"):
+    # phase headers + the fine per-concern regions the user named distinctly
+    for phase in ("kernel-codegen", "target-gen", "cross-cutting"):
+        assert f"### {phase}" in out
+    for region in ("quantization", "data-tiling", "instruction-selection", "target-dialect-gen"):
         assert region in out
     assert "[GAP]" in out                       # honest gaps surfaced, not hidden
 
@@ -46,8 +49,8 @@ def test_regions_mode_json(capsys):
     assert rc == 0
     doc = json.loads(capsys.readouterr().out)
     keys = {r["region"] for r in doc["regions"]}
-    assert len(keys) == 8
-    # every region carries its edit-points with a concrete file
+    assert len(keys) >= 20                       # the full fine-grained registry
+    assert all(r["phase"] for r in doc["regions"])   # every region tagged with its compilation phase
     assert all(ep["file"] for r in doc["regions"] for ep in r["edit_points"])
 
 
