@@ -18,6 +18,7 @@ from typing import Any, Callable
 from ..common.yaml import write_yaml
 from ..kernels.compare import RvvFingerprint, compare_fingerprints
 from ..kernels.rvv_knobs import propose_forks
+from ..kernels.search_step import audit_fork
 from .from_strategy import mint_fork
 from .registry import load_rvv_package
 from .runner import certify_rvv
@@ -108,6 +109,15 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
             node = {"run_id": fork_dir.name, "package_dir": str(fork_dir),
                     "parent_run_id": parent_rid, "lever": p.lever, "evidence": p.evidence,
                     "targets_decision": p.targets, "depth": d, **sc}
+            # AUDIT: when the proposal carries its CompilerAction (CCA-native proposer) and the fork
+            # emitted an objdump, record the per-step SearchStep — did the fork's asm actually ACHIEVE
+            # the promised facet? (else escalate) + real-vs-fake speedup. The LLM-digestible step record.
+            action = getattr(p, "action", None)
+            objd = runs_root / fork_dir.name / "generated" / "objdump.txt"
+            if action is not None and objd.is_file():
+                step = audit_fork(action, objd.read_text(), op=str(op_key.get("op", "matmul")),
+                                  correctness_ok=sc["gate_ok"], speedup=None)
+                node["search_step"] = step.to_dict()
             gen_nodes.append(node)
             nodes.append(node)
         survivors = [n for n in rank_results(gen_nodes) if n["gate_ok"]][:top_k]
