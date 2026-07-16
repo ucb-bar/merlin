@@ -11,6 +11,14 @@ Honest forkable/deferred split (proven by the manual forks):
     vector.contract is ever formed). The router surfaces it; it is not yet a one-knob fork.
 
 `propose_forks(divergences, knobs)` returns a list of `ForkProposal` the beam expands.
+
+SINGLE-ROUTER NOTE: the CCA<->lever router `kernels.action_catalog` (the one the bijection contract
+enforces) is the source of truth for what the compiler exposes. `rvvgen.fork_from_action.
+propose_forks_from_cca` derives the beam proposer from it (consuming typed CCA `Divergence`s) and is the
+successor to this motif-string router. This module is retained for the existing motif-string beam path
+until the beam is cut over to CCA divergences (WS-D). NB: the `fma_form` "work-item" note below is
+historical — fused vfmacc is now a certified `impr_features:fused_vfmacc_contraction` PASS
+(see action_catalog), so that gap is CLOSED; the note is kept only to document the original routing.
 """
 from __future__ import annotations
 
