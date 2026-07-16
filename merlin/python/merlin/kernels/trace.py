@@ -16,22 +16,23 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-# The coarse compiler-REGION each pipeline stage belongs to (the C3 taxonomy). Best-effort here; C3's
-# region registry refines the mapping and links each step to its concrete editable seam.
-_STAGE_REGION = {
-    "normalize": "global-passes",
-    "quant": "quantization",
-    "outline": "dispatch-gen",
-    "vectorize": "tiling-instsel-fusion",
-    "transform_schedule": "tiling-instsel-fusion",
-    "bufferize": "global-passes",
-    "runtime": "dispatch-scheduling",
-    "edge": "asm-emission",
-    "llvm": "asm-emission",
-    "contract": "heuristics",
-    "schedule": "tiling-instsel-fusion",
-    "interface": "runtime-hooks",
-    "target": "asm-emission",
+# The compilation PHASE each pipeline stage belongs to (the stable top level of the C3 region taxonomy
+# in kernels.regions.PHASES). Phase is the clean join between the pipeline description and the region
+# registry; the fine per-concern region breakdown lives in kernels.regions (queried separately).
+_STAGE_PHASE = {
+    "normalize": "global",
+    "quant": "global",
+    "outline": "dispatch",
+    "vectorize": "kernel-codegen",
+    "transform_schedule": "kernel-codegen",
+    "bufferize": "memory",
+    "runtime": "dispatch",
+    "edge": "emission",
+    "llvm": "emission",
+    "contract": "cross-cutting",
+    "schedule": "kernel-codegen",
+    "interface": "runtime",
+    "target": "emission",
 }
 
 
@@ -51,11 +52,11 @@ class TransformStep:
     """One transformation applied during lowering — a compiler pass or a transform-schedule step."""
     name: str
     plane: str              # "dialect" | "llvm" | "transform_schedule"
-    stage: str              # the pipeline phase (normalize/outline/vectorize/bufferize/llvm/...)
+    stage: str              # the pipeline stage (normalize/outline/vectorize/bufferize/llvm/...)
     summary: str = ""
     entry: str | None = None        # dotted path of the implementing callable = the edit point
-    region: str | None = None       # the C3 compiler-region this step belongs to
-    modifiable_by: str | None = None  # the seam/feature that can change it (filled by C3)
+    phase: str | None = None        # the compilation phase (kernels.regions.PHASES) this step belongs to
+    modifiable_by: str | None = None  # the seam/feature that can change it
 
 
 @dataclass(frozen=True)
@@ -96,7 +97,7 @@ class LoweringTrace:
         out += ["**Transformation steps** (graph → asm):", ""]
         for i, s in enumerate(self.steps):
             seam = f" — edit: `{s.modifiable_by or s.entry or '?'}`"
-            out.append(f"{i + 1}. [{s.plane}/{s.stage}] **{s.name}** ({s.region or '?'}){seam}")
+            out.append(f"{i + 1}. [{s.plane}/{s.stage}] **{s.name}** ({s.phase or '?'}){seam}")
             if s.summary:
                 out.append(f"   - {s.summary}")
         out.append("")
@@ -157,7 +158,7 @@ def _transform_schedule_steps(schedule_text: str) -> list[TransformStep]:
                 op = s.split(prefix, 1)[1].split()[0].split("(")[0] if prefix in s else s
                 steps.append(TransformStep(
                     name=op, plane="transform_schedule", stage="transform_schedule",
-                    summary=s[:120], region=_STAGE_REGION["transform_schedule"]))
+                    summary=s[:120], phase=_STAGE_PHASE["transform_schedule"]))
                 break
     return steps
 
@@ -167,7 +168,7 @@ def _catalog_steps() -> list[TransformStep]:
     no xDSL runtime needed; CATALOG is a plain tuple of PassInfo)."""
     from ..xdsl_dialects.lowering.passes import CATALOG
     return [TransformStep(name=p.name, plane="dialect", stage=p.stage, summary=p.summary,
-                          entry=p.entry, region=_STAGE_REGION.get(p.stage)) for p in CATALOG]
+                          entry=p.entry, phase=_STAGE_PHASE.get(p.stage)) for p in CATALOG]
 
 
 def _llvm_steps() -> list[TransformStep]:
@@ -180,7 +181,7 @@ def _llvm_steps() -> list[TransformStep]:
     for name in _split_pass_list(raw):
         stage = _pass_stage(name)
         steps.append(TransformStep(name=name.split("{", 1)[0], plane="llvm", stage=stage,
-                                   summary=name, region=_STAGE_REGION.get(stage)))
+                                   summary=name, phase=_STAGE_PHASE.get(stage)))
     return steps
 
 
@@ -232,10 +233,10 @@ def asm_region_from_stream(stream, *, op: str, source: str = "asm", label: str =
 # stage + coarse compiler region. (Experts are matched at the asm/source + contract level we already
 # extract; per-framework internal-IR tracing is deferred — see the plan.)
 _CONTRACT_STEP_SPECS = (
-    ("layout", "operand-layout", "layout", "fusion-layout"),
-    ("operand_prepack", "operand-prepack", "prepack", "fusion-layout"),
-    ("accumulator", "accumulator-block", "accumulate", "register-residency"),
-    ("calling_convention", "epilogue", "epilogue", "fusion-layout"),
+    ("layout", "operand-layout", "layout", "memory"),
+    ("operand_prepack", "operand-prepack", "prepack", "memory"),
+    ("accumulator", "accumulator-block", "accumulate", "kernel-codegen"),
+    ("calling_convention", "epilogue", "epilogue", "kernel-codegen"),
 )
 _CONTRACT_SUMMARY_KEYS = ("implication", "packed_layout", "epilogue", "width", "init", "signature")
 
@@ -258,13 +259,13 @@ def expert_steps_from_contract(framework: str) -> list[TransformStep]:
     from .framework_contracts import load_contract
     contract = load_contract(framework)
     steps: list[TransformStep] = []
-    for key, name, stage, region in _CONTRACT_STEP_SPECS:
+    for key, name, stage, phase in _CONTRACT_STEP_SPECS:
         section = contract.get(key)
         if not section:
             continue
         steps.append(TransformStep(
             name=name, plane="framework", stage=stage, summary=_contract_summary(section),
-            entry=f"kernels/framework_contracts/{framework}.yaml:{key}", region=region))
+            entry=f"kernels/framework_contracts/{framework}.yaml:{key}", phase=phase))
     return steps
 
 

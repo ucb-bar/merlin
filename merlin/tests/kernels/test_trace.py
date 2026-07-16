@@ -18,8 +18,10 @@ def test_pipeline_steps_spans_all_three_planes():
     # dialect-plane authored passes, the transform-schedule tiling/vectorize, and lowering are all present
     assert "merlin-outline-dispatches" in names
     assert {"tile_using_for", "vectorize", "lower_contraction"} <= names
-    # every step is region-tagged (the coarse C3 taxonomy)
-    assert all(s.region for s in steps)
+    # every step is phase-tagged with a VALID compilation phase (ties the pipeline description to the
+    # C3 region taxonomy at the stable phase level — no stale/fine-region names)
+    from merlin.kernels.regions import PHASES
+    assert all(s.phase in PHASES for s in steps)
 
 
 def test_pipeline_steps_ordered_dialect_then_schedule_then_llvm():
@@ -97,7 +99,7 @@ def test_expert_steps_from_contract():
         assert [s.name for s in steps] == ["operand-layout", "operand-prepack",
                                            "accumulator-block", "epilogue"]
         assert all(s.plane == "framework" for s in steps)
-        assert any(s.region == "register-residency" for s in steps)   # the accumulator block
+        assert any(s.phase == "kernel-codegen" for s in steps)   # the accumulator block
 
 
 def test_build_expert_trace_graph_none_by_design(monkeypatch):
