@@ -185,6 +185,15 @@ def _infer_register_block(stream, sew, lmul) -> tuple | None:
     return (mr, nr) if mr else None
 
 
+def _dominant_tail(stream) -> str | None:
+    """The tail policy (ta|tu) of the kernel's dominant vector vtype, read from the decoded vsetvl
+    state (VType.tail) — not guessed. None when no vector insn carries a tail token."""
+    from collections import Counter
+    c = Counter(i.vtype.tail for i in stream.insns
+                if i.is_vector and i.vtype and i.vtype.tail)
+    return c.most_common(1)[0][0] if c else None
+
+
 def _infer_accumulator_dtype(stream, sew) -> str | None:
     """Accumulator element type read from the MAC form (ISA-grounded, not a fitted rule).
 
@@ -237,7 +246,7 @@ def lift_asm(stream, *, op: str, source: str, backend: str = "rvv") -> CCA:
             accumulator_resident=acc_resident,
             nr_is_vsetvlmax=nr_is_vsetvlmax,
         ),
-        vector=VectorFacet(sew=sew, lmul=lmul, vl_strategy=vl_strategy),
+        vector=VectorFacet(sew=sew, lmul=lmul, vl_strategy=vl_strategy, tail=_dominant_tail(stream)),
         provenance={"level": "asm", "source": source, "confidence": "high"},
     )
 

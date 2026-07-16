@@ -105,6 +105,14 @@ def test_lift_reads_accumulator_dtype(monkeypatch):
         assert c.compute.accumulator_dtype == "f32", fx
 
 
+def test_lift_reads_vector_tail(monkeypatch):
+    # The tail policy (ta|tu) is captured from the decoded vsetvl vtype state (not guessed). The GEMM
+    # fixtures run tail-agnostic (ta). Populating it feeds the eventual tail route + cca_agree.
+    for fx in ("openblas_sgemm_rvv.objdump", "xnnpack_f32_gemm_rvv.objdump"):
+        c = _lift_fixture(monkeypatch, fx)
+        assert c.vector.tail in ("ta", "tu"), fx
+
+
 def test_lift_reads_xnnpack_nr_tracks_vsetvlmax(monkeypatch):
     # XNNPACK 1x4v is the VL-adaptive expert: a polymorphic vsetvli VL-loop, so NR tracks vsetvlmax.
     c = _lift_fixture(monkeypatch, "xnnpack_f32_gemm_rvv.objdump")
