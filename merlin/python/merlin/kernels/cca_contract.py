@@ -101,20 +101,31 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
 
 
 # Gaps the roadmap has NOT closed yet, tracked explicitly so the enforcing test is a ratchet (GREEN now,
-# fails on NEW drift) rather than a committed RED test. Each entry names the axis and the reason/owner.
-# WS-C Phase 2 removes these one at a time; when both sets are empty the bijection is fully enforced.
+# fails on NEW drift) rather than a committed RED test. Each entry names the axis and WHY it is still
+# open. WS-C Phase 2 removes these as the work lands; when both sets are empty the bijection is fully
+# enforced. The three that remain are the genuinely-hard ones (no cheap/overfit close):
+#   - compute.reduction_form: the baseline vectorizes only matmul/batch_matmul, so a softmax-sum/norm
+#       reduction isn't vectorized at all -> closing it needs a NEW schedule feature that vectorizes the
+#       reduction op AND lowers multi_reduction -> vredsum, spike-certified (real codegen, not a knob).
+#   - vector.tail: CAPTURE done (lift_asm now records ta/tu); the route needs a NEW tail_policy schedule
+#       seam (ta) + the tu masked-tail path shared with vl_strategy — a new seam, not a registration.
+#   - compute.mr_adapts_to_m: whether the compiler clamps MR=min(MR,M) so a small-M matmul vectorizes is
+#       a property of the TILING HEURISTIC given the shape M — NOT soundly liftable from a single kernel's
+#       asm (lift_asm has no M/shape context; a matmul kernel's asm looks the same whether or not it would
+#       adapt on a hypothetical small-M input). Captured from the schedule/mining side; a backing-field
+#       asm lift is deferred rather than faked with an overfit heuristic.
 KNOWN_OPEN: dict[str, dict[str, tuple[str, ...]]] = {
     "rvv": {
-        # LEVER fields still awaiting a route in action_catalog._RVV_ROUTES (WS-C Phase 2 registrations):
+        # LEVER fields still awaiting a route (need a NEW schedule seam — see the per-axis notes above).
         # CLOSED so far: compute.accumulator_dtype + vector.sew (both -> KNOB dtype_strategy).
         "orphan_fields": (
-            "compute.reduction_form",      # new HEURISTIC lower_multi_reduction=tree
-            "vector.tail",                 # new KNOB tail_policy (+ PASS for tu masked tail)
+            "compute.reduction_form",
+            "vector.tail",
         ),
-        # routed axes still awaiting a backing ComputeFacet field (WS-C Phase 2 adds the fields + lifters):
+        # routed axes still awaiting a backing ComputeFacet field.
         # CLOSED so far: compute.activation_vectorization (field + lift_asm inferer added).
         "orphan_routes": (
-            "compute.mr_adapts_to_m",          # add ComputeFacet.mr_adapts_to_m + lift_asm inferer
+            "compute.mr_adapts_to_m",
         ),
     },
 }
