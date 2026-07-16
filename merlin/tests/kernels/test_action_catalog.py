@@ -58,6 +58,22 @@ def test_no_divergence_when_equal():
     assert cca_compare.compare(expert, expert) == []
 
 
+def test_shape_conditional_optimization():
+    # the SAME divergence gets a DIFFERENT optimization depending on the shape regime (small vs large)
+    from merlin.kernels.cca_compare import Divergence
+    rb = Divergence("compute.register_block", (7, None), (1, None), "rvv")
+    mr = Divergence("compute.mr_adapts_to_m", True, False, "rvv")
+    # large square: register-block MR=7 applies; the small-M clamp does NOT
+    assert ac.route_for_shape(rb, "matmul", 256, 256, 256) is not None
+    assert ac.route_for_shape(mr, "matmul", 256, 256, 256) is None
+    # small-M (M=1 decode): the MR-clamp applies; the big register-block does NOT
+    assert ac.route_for_shape(mr, "matmul", 1, 256, 256) is not None
+    assert ac.route_for_shape(rb, "matmul", 1, 256, 256) is None
+    # a shape-agnostic action (empty shape_regimes) applies in every regime
+    cf = ac.route(Divergence("compute.contraction_form", "fused_fma", "mul_add", "rvv"))
+    assert ac.applies_to_shape(cf, "skinny") and ac.applies_to_shape(cf, "square_large")
+
+
 def test_seam_location_classifies_prefixes():
     # the "which file do I edit" map: a pass: seam needs new code; the others edit existing seams.
     assert ac.seam_location("pass:fuse-requant-narrowing-store")["needs_new_code"] is True

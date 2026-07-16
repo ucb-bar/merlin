@@ -35,6 +35,10 @@ class CompilerAction:
     # {"compute.accumulator_resident": True} or {"compute.register_block": 7} (MR>= semantics). Used by
     # `achieved_residual` + `route_escalated`. None = no machine-checkable promise (prose-only).
     intended_facet: dict[str, Any] | None = None
+    # The shape REGIMES (bench_ceiling.shape_regime vocabulary: square_large/skinny/...) this action is
+    # most beneficial for — so a big matmul and a small-M decode matmul get DIFFERENT optimizations.
+    # Empty = shape-agnostic (applies to all regimes). Generalizes on regimes, never exact (M,N,K).
+    shape_regimes: tuple[str, ...] = ()
 
 
 # A route: predicate over a Divergence -> a CompilerAction template (filled with evidence/backend).
@@ -48,6 +52,7 @@ class _Route:
     forkable_now: bool
     expected_effect: str
     intended_facet: dict[str, Any] | None = None
+    shape_regimes: tuple[str, ...] = ()   # regimes this route targets (empty = all); see CompilerAction
 
 
 def _is_higher(d: Divergence) -> bool:
@@ -126,7 +131,8 @@ _RVV_ROUTES: list[_Route] = [
                "vectorize instead of falling back to scalar.",
         forkable_now=True,
         expected_effect="one kernel adapts NR to any VLEN; small-N contractions vectorize (N-tail) "
-                        "instead of hitting the masked-transfer_write fallback to scalar"),
+                        "instead of hitting the masked-transfer_write fallback to scalar",
+        shape_regimes=("skinny", "square_small")),   # small-N attention / skinny contractions
     _Route(
         axis="compute.mr_adapts_to_m",
         # The M-side analog of nr_is_vsetvlmax. A whole-model decode step is dominated by matmuls
@@ -152,7 +158,8 @@ _RVV_ROUTES: list[_Route] = [
         forkable_now=True,
         expected_effect="the M=1 token-decode matmul (smolVLA/rdt2 leading-M=1) vectorizes to vfmacc "
                         "instead of the masked-transfer_write scalar fallback; larger-M matmuls "
-                        "unaffected (tile into single-row register tiles, still vfmacc, bit-exact)"),
+                        "unaffected (tile into single-row register tiles, still vfmacc, bit-exact)",
+        shape_regimes=("vector", "square_small", "skinny")),   # small-/skinny-M decode matmuls
     _Route(
         axis="compute.register_block",
         # The #1 GEMM data-movement decision and the one the policy-built expert CCA used to hide
@@ -185,7 +192,8 @@ _RVV_ROUTES: list[_Route] = [
         expected_effect="register blocking is the dominant compute lever (diagnostic: matmul ~5x as "
                         "MR 1->7); compiler emits MR=4 today (bitVLA sweet spot), but the existing grid "
                         "knobs above MR=4 REGRESS whole-model -> the MR=7 ceiling needs better register-"
-                        "block codegen (PASS), and small-M/GEMV needs batching first. Knob pays to MR=4."),
+                        "block codegen (PASS), and small-M/GEMV needs batching first. Knob pays to MR=4.",
+        shape_regimes=("square_large", "square_medium", "rectangular")),   # big blocks pay off when large
     _Route(
         axis="vector.lmul",
         when=_is_higher,
@@ -298,7 +306,8 @@ def _action_from_route(r: _Route, divergence: Divergence) -> CompilerAction:
         divergence_axis=divergence.axis, action_class=r.action_class,
         target_seam=r.target_seam, change=r.change, forkable_now=r.forkable_now,
         expected_effect=r.expected_effect, backend=divergence.backend,
-        evidence=list(divergence.evidence), intended_facet=intended)
+        evidence=list(divergence.evidence), intended_facet=intended,
+        shape_regimes=r.shape_regimes)
 
 
 def route(divergence: Divergence) -> CompilerAction | None:
@@ -361,6 +370,29 @@ def achieved_residual(action: CompilerAction, achieved_cca) -> list[str]:
         if not ok:
             residual.append(axis)
     return residual
+
+
+def shape_regime_of(op: str, m: int, n: int, k: int) -> str:
+    """The shape regime (square_large/skinny/...) for an (op, M, N, K) — reuses the canonical
+    bench_ceiling classifier (regimes, never exact shapes)."""
+    from .bench_ceiling import shape_regime
+    return shape_regime(op, m, n, k)
+
+
+def applies_to_shape(action: CompilerAction, regime: str) -> bool:
+    """Whether a shape-conditional optimization applies to a shape regime. Shape-agnostic actions
+    (empty ``shape_regimes``) apply everywhere; shape-specific ones only to their regimes — so a big
+    matmul and a small-M decode matmul get DIFFERENT optimizations."""
+    return not action.shape_regimes or regime in action.shape_regimes
+
+
+def route_for_shape(divergence: Divergence, op: str, m: int, n: int, k: int) -> CompilerAction | None:
+    """Route a divergence, but ONLY if the chosen action applies to this shape's regime — the
+    shape-conditional selection. Returns None if the cheapest route is not for this regime."""
+    a = route(divergence)
+    if a is None:
+        return None
+    return a if applies_to_shape(a, shape_regime_of(op, m, n, k)) else None
 
 
 def build_catalog(divergences: list[Divergence]) -> tuple[list[CompilerAction], list[Divergence]]:
