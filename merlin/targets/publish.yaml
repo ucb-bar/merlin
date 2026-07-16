@@ -1,0 +1,15 @@
+# Target-publishing remotes (WS-E "target becomes its own repo" bridge).
+#
+# The publish bridge (merlin.targetgen.publish / `merlin-target-publish`) reads this file to
+# resolve the git remote for a target's public repo. Precedence, lowest first:
+#   1. this file (per-target default)
+#   2. env MERLIN_PUBLISH_REMOTE_<TARGET>  (via merlin.common.paths.env; honors .env)
+#   3. --remote CLI override
+# Never hardcode a remote in code — resolve_remote() consults these three sources only.
+#
+# NOTE: the two ucb-bar remotes below are the intended public homes, but the bridge is verified
+# against a LOCAL bare remote (file://...) and is NEVER pushed to GitHub by the harness/tests.
+layout_version: "1.0"
+targets:
+  rvv: git@github.com:ucb-bar/rvv-mlir.git
+  gemmini: git@github.com:ucb-bar/gemmini-mlir.git
