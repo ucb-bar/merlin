@@ -76,6 +76,9 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
                                               "accumulator stays in vregs across K -> PASS/CODEGEN ladder"),
     "compute.nr_is_vsetvlmax": FieldSpec("compute.nr_is_vsetvlmax", LEVER, ("rvv",),
                                          "VL-adaptive output width -> HEURISTIC NR=vsetvlmax"),
+    "compute.activation_vectorization": FieldSpec("compute.activation_vectorization", LEVER, ("rvv",),
+                                                  "vectorized poly vs scalar libm -> PASS "
+                                                  "vectorized_transcendental_activation"),
     # --- vector (RVV/SIMD) ---
     "vector.sew": FieldSpec("vector.sew", LEVER, ("rvv",),
                             "element width -> KNOB dtype_strategy (sew follows element dtype)"),
@@ -109,9 +112,9 @@ KNOWN_OPEN: dict[str, dict[str, tuple[str, ...]]] = {
             "vector.tail",                 # new KNOB tail_policy (+ PASS for tu masked tail)
         ),
         # routed axes still awaiting a backing ComputeFacet field (WS-C Phase 2 adds the fields + lifters):
+        # CLOSED so far: compute.activation_vectorization (field + lift_asm inferer added).
         "orphan_routes": (
             "compute.mr_adapts_to_m",          # add ComputeFacet.mr_adapts_to_m + lift_asm inferer
-            "compute.activation_vectorization",  # add ComputeFacet.activation_vectorization + inferer
         ),
     },
 }

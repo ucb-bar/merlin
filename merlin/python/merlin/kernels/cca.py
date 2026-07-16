@@ -42,6 +42,12 @@ class ComputeFacet:
     # Does the inner output width (NR) track the runtime vsetvlmax (VL-adaptive, scalable) rather
     # than a compile-time-fixed tile? True iff the kernel uses a vsetvli VL-loop (vl_strategy).
     nr_is_vsetvlmax: bool | None = None
+    # How a transcendental activation (GELU/sigmoid/SiLU/tanh) is evaluated: "vectorized_polynomial"
+    # (an inline minimax vfmacc chain, no libm call) vs "scalar_libm_call" (a per-element convert-math-
+    # to-libm call loop). None = the region is not an activation. Captured here so the CCA SEES this
+    # gap (it used to be injected out-of-band); the compiler exposes it via
+    # impr_features:vectorized_transcendental_activation.
+    activation_vectorization: str | None = None
 
 
 @dataclass
@@ -185,6 +191,41 @@ def _infer_register_block(stream, sew, lmul) -> tuple | None:
     return (mr, nr) if mr else None
 
 
+# A scalar activation calls out to a transcendental libm symbol; a vectorized one evaluates an inline
+# polynomial. _LIBM_* are the callee symbols (read from resolved call-target operands, not a mnemonic
+# guess); _ACTIVATION_OPS give the region context so a matmul is never misclassified as an activation.
+_LIBM_TRANSCENDENTAL = ("exp", "erf", "tanh", "sinh", "cosh", "log", "pow")
+_ACTIVATION_OPS = ("gelu", "silu", "sigmoid", "tanh", "erf", "exp", "softmax")
+_CALL_MNEMONICS = ("jal", "jalr", "call")
+
+
+def _has_transcendental_libm_call(stream) -> bool:
+    """True iff a call instruction targets a transcendental libm symbol (e.g. ``jal ra, <expf>``).
+    Reads the resolved call-target operand (the ``<sym>`` objdump renders) — structured, not regex."""
+    for i in stream.insns:
+        if not any(i.raw.mnemonic.startswith(c) for c in _CALL_MNEMONICS):
+            continue
+        blob = " ".join(i.raw.operands).lower()
+        if any(f"<{s}" in blob for s in _LIBM_TRANSCENDENTAL):
+            return True
+    return False
+
+
+def _infer_activation_vectorization(stream, op) -> str | None:
+    """A transcendental activation evaluated as a SCALAR libm call loop vs a VECTORIZED minimax
+    polynomial (vfmacc chain). None when the region is not an activation (no transcendental op/call),
+    so a matmul/plain kernel is never misclassified."""
+    trans_call = _has_transcendental_libm_call(stream)
+    is_activation = bool(op) and any(s in op.lower() for s in _ACTIVATION_OPS)
+    if not (trans_call or is_activation):
+        return None
+    if trans_call:
+        return "scalar_libm_call"
+    if stream.count("vfmacc", "vfmul", "vfadd") > 0:   # transcendental evaluated as a vector poly
+        return "vectorized_polynomial"
+    return None
+
+
 def _dominant_tail(stream) -> str | None:
     """The tail policy (ta|tu) of the kernel's dominant vector vtype, read from the decoded vsetvl
     state (VType.tail) — not guessed. None when no vector insn carries a tail token."""
@@ -245,6 +286,7 @@ def lift_asm(stream, *, op: str, source: str, backend: str = "rvv") -> CCA:
             register_block=reg_block,
             accumulator_resident=acc_resident,
             nr_is_vsetvlmax=nr_is_vsetvlmax,
+            activation_vectorization=_infer_activation_vectorization(stream, op),
         ),
         vector=VectorFacet(sew=sew, lmul=lmul, vl_strategy=vl_strategy, tail=_dominant_tail(stream)),
         provenance={"level": "asm", "source": source, "confidence": "high"},

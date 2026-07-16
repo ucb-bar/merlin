@@ -33,9 +33,52 @@ Disassembly of section .text:
 """
 
 
+# scalar activation: a per-element libm call loop (jal to <expf>), scalar float, no vfmacc.
+_SCALAR_LIBM_ACT = """\
+
+Disassembly of section .text:
+0 <gelu>:
+       0: 00     \tflw\tfa0, 0x0(a0)
+       4: 00     \tjal\tra, 0x100 <expf>
+       8: 00     \tfmul.s\tfa0, fa0, fa1
+       c: 00     \tfsw\tfa0, 0x0(a1)
+"""
+# vectorized activation: an inline minimax polynomial (vfmacc chain), no libm call.
+_VECTOR_POLY_ACT = """\
+
+Disassembly of section .text:
+0 <gelu>:
+       0: 00     \tvsetivli\tzero, 0x8, e32, m2, ta, ma
+       4: 00     \tvle32.v\tv8, (a0)
+       8: 00     \tvfmacc.vv\tv12, v8, v9
+       c: 00     \tvfmacc.vv\tv12, v12, v10
+"""
+
+
 def _cca(monkeypatch, snippet, source):
     monkeypatch.setattr(objdump, "disassemble_text", lambda *a, **k: snippet)
     return cca.lift_asm(rvv.decode("x.o"), op="matmul", source=source)
+
+
+def _cca_op(monkeypatch, snippet, op):
+    monkeypatch.setattr(objdump, "disassemble_text", lambda *a, **k: snippet)
+    return cca.lift_asm(rvv.decode("x.o"), op=op, source="act")
+
+
+def test_activation_vectorization_scalar_libm(monkeypatch):
+    c = _cca_op(monkeypatch, _SCALAR_LIBM_ACT, "gelu")
+    assert c.compute.activation_vectorization == "scalar_libm_call"   # calls <expf>
+
+
+def test_activation_vectorization_vectorized_poly(monkeypatch):
+    c = _cca_op(monkeypatch, _VECTOR_POLY_ACT, "gelu")
+    assert c.compute.activation_vectorization == "vectorized_polynomial"  # vfmacc poly, no libm call
+
+
+def test_activation_vectorization_none_for_matmul(monkeypatch):
+    # a plain matmul (not a transcendental activation) must NOT be classified as an activation.
+    c = _cca(monkeypatch, _FUSED, "expert")
+    assert c.compute.activation_vectorization is None
 
 
 def test_lift_asm_mul_add(monkeypatch):
