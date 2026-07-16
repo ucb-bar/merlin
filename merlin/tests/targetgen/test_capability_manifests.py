@@ -60,3 +60,39 @@ def test_write_and_route_target(tmp_path):
         assert res[0].unit == "mx_pe" and res[0].acc == "f32"
     finally:
         os.environ.pop("MERLIN_TARGET_PATH", None)
+
+
+def test_radiance_composes_gemmini_mx():
+    # radiance's SIMT cluster CONTAINS the gemmini-mx PE: effective dtypes = regular floats + MX.
+    units = cu.compute_units(cm.radiance_manifest())
+    simt = next(u for u in units if u.name == "simt_cluster")
+    eff = cu.effective(simt, units)
+    assert {"fp16", "bf16", "fp32"} <= set(eff.dtypes)          # SIMT regular floats
+    assert {"mxfp4", "mxfp6", "mxfp8"} <= set(eff.dtypes)       # via the contained gemmini-mx PE
+    # the contained unit is the exact gemmini-mx PE (standalone OR embedded)
+    assert cm.gemmini_mx_manifest()["compute_units"][0]["name"] == "mx_pe"
+
+
+def test_radiance_oot_package_discovers_and_routes(tmp_path, monkeypatch):
+    from merlin.targetgen import target_registry as tr
+
+    root = cm.write_oot_target("radiance", tmp_path / "radiance")
+    assert (root / "contracts" / "target_contract.yaml").is_file()
+    assert (root / "contracts" / "dialect_plan.yaml").is_file()
+    assert (root / "AGENT.md").is_file()
+
+    monkeypatch.setenv("MERLIN_TARGET_PATH", str(root))
+    info = tr.resolve("radiance")
+    assert info.kind == "external"
+    # plugin block points at the OOT dialect + lowering (Merlin reads, never executes)
+    assert info.plugin()["dialect_module"] == "radiance_mlir.dialect"
+    # routes both regular floats (SIMT) and low-bit MX (contained gemmini-mx PE)
+    assert rt.route_target([rt.OpDemand("matmul", "fp16", "fp16")], "radiance")[0].unit == "simt_cluster"
+    assert rt.route_target([rt.OpDemand("matmul", "mxfp6", "mxfp6")], "radiance")[0].unit == "simt_cluster"
+
+
+def test_dialect_plan_derived_from_units():
+    plan = cm.dialect_plan_from_manifest(cm.radiance_manifest())
+    assert plan["target"] == "radiance" and plan["dialect_name"] == "radiance"
+    assert {t["name"] for t in plan["types"]} == {"simt_cluster_tensor", "mx_pe_tensor"}
+    assert {o["name"] for o in plan["ops"]} >= {"matmul", "elementwise"}

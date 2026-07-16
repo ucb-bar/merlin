@@ -106,7 +106,57 @@ def gemmini_mx_manifest() -> dict[str, Any]:
     }
 
 
-MANIFESTS = {"rvv": rvv_manifest, "gemmini_mx": gemmini_mx_manifest}
+def radiance_manifest() -> dict[str, Any]:
+    """Radiance (Muon SIMT tensor core) — regular fp32/fp16/bf16, COMPOSING the gemmini-mx MX PE.
+
+    Demonstrates the composition the hardware allows: gemmini-mx is a compute unit that can stand
+    alone (see :func:`gemmini_mx_manifest`) OR be embedded inside a radiance cluster. Here the SIMT
+    cluster ``contains`` the ``mx_pe`` unit, so the target's effective capability is the union: regular
+    half/single floats on the SIMT lanes + the low-bit MX formats on the embedded PE. Carries a
+    ``plugin`` block for the out-of-tree discovery seam (the real dialect + lowering live in a
+    radiance-mlir repo; this artifact is the first materialization under out/artifacts/targets).
+    """
+    mx_pe = gemmini_mx_manifest()["compute_units"][0]   # reuse the exact gemmini-mx PE (composition)
+    return {
+        **_COMMON,
+        "name": "radiance",
+        "family": "simt_tensor",
+        "provenance": "chipyard generators/radiance (Muon SIMT): CVFPU FP32/FP16/BF16 + INT32 lanes "
+                      "(muon backend/fp/FPU.scala; muon_introspect fp_datapath); tensor-core matmul via "
+                      "nu.invoke. Embeds the gemmini-mx MX PE as a contained low-bit unit. Not RTL-certified.",
+        "features": ["simt", "cvfpu", "tensor_core", "microscaling"],
+        "capabilities": {"ops": ["matmul", "elementwise"], "simt": {"lanes_per_warp": 16}},
+        "memory_model": {"resident": True, "shared_memory": True},
+        "compiler_obligations": ["must_map_to_warps"],
+        "hardware_promises": ["ieee_float", "fp32_accumulate"],
+        "runtime_promises": ["metrics"],
+        "legality": [],
+        "runtime": {"default_backend": "simulator"},
+        "plugin": {
+            "dialect_module": "radiance_mlir.dialect",
+            "lowering_entrypoint": "radiance_mlir.lowering:lower",
+        },
+        "compute_units": [
+            {
+                "name": "simt_cluster",
+                "kind": "simt",
+                "dtypes": ["fp32", "fp16", "bf16"],
+                "ops": ["matmul", "elementwise"],
+                "accumulate": [
+                    {"in": "fp32", "weight": "fp32", "acc": "f32"},
+                    {"in": "fp16", "weight": "fp16", "acc": "f32"},
+                    {"in": "bf16", "weight": "bf16", "acc": "f32"},
+                ],
+                "scaling": "none",
+                "requant": {"ref": "none"},
+                "contains": ["mx_pe"],   # gemmini-mx embedded as a sub-unit
+            },
+            mx_pe,
+        ],
+    }
+
+
+MANIFESTS = {"rvv": rvv_manifest, "gemmini_mx": gemmini_mx_manifest, "radiance": radiance_manifest}
 
 
 def validate(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -128,5 +178,56 @@ def write(name: str, base: Path | None = None) -> Path:
 
 
 def write_all(base_root: Path | None = None) -> list[Path]:
-    """Write both slice manifests (rvv, gemmini_mx). ``base_root`` overrides the per-target base dir."""
+    """Write all manifests (rvv, gemmini_mx, radiance). ``base_root`` overrides the per-target base dir."""
     return [write(n, base=(base_root / n) if base_root is not None else None) for n in MANIFESTS]
+
+
+def dialect_plan_from_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Derive a schema-valid dialect_plan from a manifest's compute_units (ops + a type per unit).
+
+    The generated dialect exposes one ``!<target>.<unit>_tensor`` type per compute unit and the union
+    of the units' ops — the machine-readable dialect spec the out-of-tree repo formalizes into real
+    xDSL/MLIR. Types/ops are DERIVED from the capability model, not invented.
+    """
+    name = manifest["name"]
+    units = _cu.compute_units(manifest)
+    ops = sorted({op for u in units for op in u.ops})
+    types = [{"name": f"{u.name}_tensor"} for u in units]
+    return {
+        "target": name,
+        "dialect_name": name.replace("_", ""),
+        "ops": [{"name": op} for op in ops],
+        "types": types,
+        "lowering": [{"op": op, "to": f"{name.replace('_', '')}.{op}"} for op in ops],
+        "tests": [],
+    }
+
+
+def write_oot_target(name: str, root: Path) -> Path:
+    """Materialize a complete out-of-tree target package at ``root`` (discoverable via MERLIN_TARGET_PATH).
+
+    Writes ``contracts/target_contract.yaml`` (capability manifest + plugin block),
+    ``contracts/dialect_plan.yaml`` (derived from the compute units), and an ``AGENT.md`` describing the
+    compute units / datatypes — the first materialization of the out-of-tree target repo (e.g. the
+    radiance-mlir repo will host the real dialect + lowering the plugin block references).
+    """
+    manifest = validate(MANIFESTS[name]())
+    root = Path(root)
+    write_yaml(root / "contracts" / "target_contract.yaml", manifest,
+               header=f"GENERATED out-of-tree target manifest for {name} — plug in via MERLIN_TARGET_PATH.")
+    write_yaml(root / "contracts" / "dialect_plan.yaml", dialect_plan_from_manifest(manifest),
+               header=f"GENERATED dialect plan for {name} (derived from compute_units).")
+    units = _cu.compute_units(manifest)
+    lines = [f"# {name} — out-of-tree target package", "",
+             f"Generated by `merlin.targetgen.capability_manifests` (provenance: "
+             f"{manifest.get('provenance', 'n/a')}).", "",
+             "Plug in: `MERLIN_TARGET_PATH=<this dir>`; the dialect + lowering the `plugin` block names "
+             "live in the out-of-tree repo (e.g. radiance-mlir).", "",
+             "## Compute units (datatype -> unit -> op)"]
+    for u in units:
+        eff = _cu.effective(u, units)
+        lines.append(f"- **{u.name}** ({u.kind}): dtypes {sorted(eff.dtypes)}; ops {sorted(eff.ops)}; "
+                     f"scaling {u.scaling}; requant {u.requant}"
+                     + (f"; contains {list(u.contains)}" if u.contains else ""))
+    (root / "AGENT.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return root
