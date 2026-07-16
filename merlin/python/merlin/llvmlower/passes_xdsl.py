@@ -144,11 +144,12 @@ def lower_quant_ext(module) -> int:
 
 
 def lower_bf16_matmul_f32acc(module) -> int:
-    """Rewrite every bf16 ``linalg.matmul`` to accumulate in f32; returns the count.
+    """Rewrite every 16-bit-float (bf16 OR fp16) ``linalg.matmul`` to accumulate in f32; returns count.
 
-    A bf16 ``linalg.matmul`` accumulates in its bf16 output type, rounding every partial
-    sum to 8-bit mantissa — lossy over long contractions. Hardware/torch instead accumulate
-    in f32 and round only the final result. This rewrites
+    A half-precision (bf16/fp16) ``linalg.matmul`` accumulates in its 16-bit output type, rounding
+    every partial sum to the small mantissa — lossy over long contractions, and for fp16 (5-bit
+    exponent, max ~65504) the accumulator also OVERFLOWS to inf on real-LLM-sized reductions.
+    Hardware/torch instead accumulate in f32 and round only the final result. This rewrites
 
         C_bf16 = matmul(A_bf16, B_bf16)              # bf16 accumulate
 
@@ -163,17 +164,16 @@ def lower_bf16_matmul_f32acc(module) -> int:
     indexing maps + iterator types are reused; only the accumulation dtype is promoted.
     """
     from xdsl.dialects import arith, tensor
-    from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, BFloat16Type, FloatAttr,
-                                       TensorType, f32)
+    from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, BFloat16Type, Float16Type,
+                                       FloatAttr, TensorType, f32)
     from xdsl.dialects.linalg import ops as L
     from xdsl.ir import Block, Region
     from xdsl.ir.affine import AffineMap
 
-    bf16 = BFloat16Type()
     par, red = L.IteratorType.PARALLEL, L.IteratorType.REDUCTION
 
-    def is_bf16_tensor(t):
-        return isinstance(t, TensorType) and isinstance(t.element_type, BFloat16Type)
+    def is_half_tensor(t):
+        return isinstance(t, TensorType) and isinstance(t.element_type, (BFloat16Type, Float16Type))
 
     def is_mul_add_contraction(op):
         """A 2-input linalg.generic with a reduction whose body is mulf+addf+yield."""
@@ -187,10 +187,10 @@ def lower_bf16_matmul_f32acc(module) -> int:
 
     targets = []
     for op in module.walk():
-        if op.name == "linalg.matmul" and is_bf16_tensor(op.results[0].type):
+        if op.name == "linalg.matmul" and is_half_tensor(op.results[0].type):
             targets.append(("matmul", op))
-        elif is_mul_add_contraction(op) and is_bf16_tensor(op.results[0].type) \
-                and all(is_bf16_tensor(i.type) for i in op.inputs):
+        elif is_mul_add_contraction(op) and is_half_tensor(op.results[0].type) \
+                and all(is_half_tensor(i.type) for i in op.inputs):
             targets.append(("generic", op))
     if not targets:
         return 0
@@ -211,10 +211,12 @@ def lower_bf16_matmul_f32acc(module) -> int:
         maps = mm_maps if kind == "matmul" else op.indexing_maps
         iters = mm_iters if kind == "matmul" else op.iterator_types
 
+        # Preserve each operand's own 16-bit type (bf16 or f16); truncate back to the result's.
+        a_e, b_e, out_e = a.type.element_type, b.type.element_type, out_t.element_type
         empty_f = tensor.EmptyOp((), f32_t)
         zero = arith.ConstantOp(FloatAttr(0.0, f32))
         fill_f = L.FillOp(inputs=[zero.results[0]], outputs=[empty_f.results[0]], res=[f32_t])
-        body = Block(arg_types=[bf16, bf16, f32])
+        body = Block(arg_types=[a_e, b_e, f32])
         x, y, acc = body.args
         xf, yf = arith.ExtFOp(x, f32), arith.ExtFOp(y, f32)
         prod = arith.MulfOp(xf.result, yf.result)
@@ -224,12 +226,12 @@ def lower_bf16_matmul_f32acc(module) -> int:
                               body=Region(body), indexing_maps=maps, iterator_types=iters,
                               result_types=(f32_t,))
 
-        # truncf the f32 accumulator back to bf16 (identity map of the result rank)
+        # truncf the f32 accumulator back to the result's 16-bit type (identity map of its rank)
         rank = len(out_t.get_shape())
         idr = AffineMap.identity(rank)
         empty_b = tensor.EmptyOp((), out_t)
-        body2 = Block(arg_types=[f32, bf16])
-        trf = arith.TruncFOp(body2.args[0], bf16)
+        body2 = Block(arg_types=[f32, out_e])
+        trf = arith.TruncFOp(body2.args[0], out_e)
         body2.add_ops([trf, L.YieldOp(trf.result)])
         trunc = L.GenericOp(
             inputs=(acc_f32.results[0],), outputs=(empty_b.results[0],), body=Region(body2),
