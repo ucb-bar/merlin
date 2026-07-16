@@ -44,6 +44,8 @@ CAPABILITIES: dict[str, tuple[str, str, list[str]]] = {
                           ["MERLIN_GEMMINI_VERILATOR", "MERLIN_CHIPYARD"]),
     "gemmini_vcs": ("WS-B", "Gemmini VCS (L4)", ["MERLIN_GEMMINI_SIMV"]),
     "firesim": ("WS-B", "FireSim job queue (L5)", ["MERLIN_EXT_FIRESIM_QUEUE", "FIRESIM_ROOT"]),
+    "zephyr_spike": ("WS-A/C", "Zephyr SW build_app path (whole-model spike compile)",
+                     ["ZEPHYR_BASE", "MERLIN_ZEPHYR_SW", "ZEPHYR_SDK_INSTALL_DIR", "MERLIN_CHIPYARD"]),
     "circt_firtool": ("WS-B", "CIRCT firtool + FileCheck (L4 rtlchecks)",
                       ["MERLIN_CHIPYARD", "(firtool/FileCheck on PATH)"]),
     "chia": ("WS-B/D", "chia agentic-loop framework (build/chia-venv)", ["(uv venv build/chia-venv)"]),
@@ -80,6 +82,9 @@ def _probe(key: str) -> tuple[str, str]:
         if key == "firesim":
             ho = importlib.import_module("merlin.targetgen.heavy_oracles")
             return ("available" if ho.firesim_queue_alive() else "unavailable", "")
+        if key == "zephyr_spike":
+            zm = importlib.import_module("merlin.runtime.backends.zephyr_model")
+            return ("available" if zm.available() else "unavailable", "")
         if key == "circt_firtool":
             ft = shutil.which("firtool")
             fc = shutil.which("FileCheck")

@@ -25,9 +25,13 @@ REPO = repo_root()
 
 
 def _toolchain() -> bool:
+    # Compiles a whole model via zephyr_model.build_app (Zephyr/spike path) -> needs the Zephyr SW
+    # toolchain, not just the asm toolchain. Gate on BOTH so it SKIPS cleanly when Zephyr is absent
+    # rather than hard-failing inside build_app with ZephyrModelError (honest fail-closed).
     try:
         from merlin.kernels import build_asm
-        return build_asm.asm_toolchain_available()
+        from merlin.runtime.backends import zephyr_model
+        return build_asm.asm_toolchain_available() and zephyr_model.available()
     except Exception:
         return False
 

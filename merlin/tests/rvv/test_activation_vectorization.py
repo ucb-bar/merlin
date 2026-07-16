@@ -28,9 +28,14 @@ FEATURE = "vectorized_transcendental_activation"
 
 
 def _toolchain() -> bool:
+    # These tests compile a whole model through zephyr_model.build_app (the Zephyr/spike path), which
+    # needs the Zephyr SW toolchain (ZEPHYR_BASE / MERLIN_ZEPHYR_SW / SDK), not just the asm toolchain.
+    # Gate on BOTH so the test SKIPS cleanly when Zephyr is absent instead of hard-failing inside
+    # build_app with ZephyrModelError (honest fail-closed).
     try:
         from merlin.kernels import build_asm
-        return build_asm.asm_toolchain_available()
+        from merlin.runtime.backends import zephyr_model
+        return build_asm.asm_toolchain_available() and zephyr_model.available()
     except Exception:
         return False
 
