@@ -29,11 +29,15 @@ from typing import Any, Callable
 @dataclass
 class ForkProposal:
     overrides: dict[str, Any]          # knob overrides applied to the parent (empty for deferred)
-    lever: str                          # knob | lowering_pattern | llvm_requirement
+    lever: str                          # knob | lowering_pattern | llvm_requirement | feature | work_item
     targets: str                        # which divergence/decision this addresses
     evidence: list[str]                 # mined policy / kernel ids justifying it
     forkable: bool                      # True => beam can mint+certify; False => recorded work-item
     note: str = ""
+    # the typed CompilerAction this proposal came from (CCA-native proposer only; None for the legacy
+    # motif router). Carries intended_facet so the beam can AUDIT the minted fork (did the emitted asm
+    # achieve the promise?) via search_step.audit_fork. Left as Any to avoid importing action_catalog.
+    action: Any = None
 
 
 def _wider_n_overrides(knobs: dict, factor: int) -> dict:

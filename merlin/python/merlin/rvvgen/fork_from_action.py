@@ -49,7 +49,8 @@ def action_to_fork(action: CompilerAction, knobs: dict[str, Any]) -> ForkProposa
     if seam.startswith("impr_features:"):
         feat = seam.split(":", 1)[1].split()[0]
         return ForkProposal(overrides={"compiler_features": [feat]}, lever="feature",
-                            targets=axis, evidence=ev, forkable=action.forkable_now, note=action.change)
+                            targets=axis, evidence=ev, forkable=action.forkable_now, note=action.change,
+                            action=action)
 
     # 2) a forkable schedule KNOB/HEURISTIC -> a concrete, KNOWN knob override.
     if action.forkable_now and not seam.startswith("pass:"):
@@ -62,11 +63,11 @@ def action_to_fork(action: CompilerAction, knobs: dict[str, Any]) -> ForkProposa
             overrides = _set_mr_overrides(knobs, intended["compute.register_block"])
         if overrides is not None:
             return ForkProposal(overrides=overrides, lever="knob", targets=axis, evidence=ev,
-                                forkable=True, note=action.change)
+                                forkable=True, note=action.change, action=action)
 
     # 3) deferred PASS/CODEGEN, or a forkable axis with no auto-knob builder yet -> HONEST work-item.
     return ForkProposal(overrides={}, lever="work_item", targets=axis, evidence=ev,
-                        forkable=False, note=action.change)
+                        forkable=False, note=action.change, action=action)
 
 
 def propose_forks_from_cca(divergences: list[Divergence], knobs: dict[str, Any]) -> list[ForkProposal]:

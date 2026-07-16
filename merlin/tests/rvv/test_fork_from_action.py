@@ -17,6 +17,8 @@ def test_impr_feature_axis_maps_to_compiler_features_override():
     p = action_to_fork(route(_div("compute.contraction_form", "fused_fma", "mul_add")), _KNOBS)
     assert p.forkable is True and p.lever == "feature"
     assert p.overrides == {"compiler_features": ["fused_vfmacc_contraction"]}
+    # the proposal carries its CompilerAction (intended_facet) so the beam can AUDIT the minted fork
+    assert p.action is not None and p.action.intended_facet == {"compute.contraction_form": "fused_fma"}
 
 
 def test_int8_widening_maps_to_dtype_strategy_knob():
