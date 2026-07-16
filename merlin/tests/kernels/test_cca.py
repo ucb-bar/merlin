@@ -148,6 +148,31 @@ def test_lift_reads_accumulator_dtype(monkeypatch):
         assert c.compute.accumulator_dtype == "f32", fx
 
 
+def _matmul_record(dtype: str):
+    from merlin.frontends.linalg_mlir import MatmulRecord
+    return MatmulRecord(kind="linalg.matmul", m=64, k=64, n=64, lhs_shape=(64, 64), rhs_shape=(64, 64),
+                        dtype=dtype, weight_arg_index=1, weight_name="w", prov={"prov.op": "matmul"})
+
+
+def test_lift_graph_partial_from_dtype():
+    # the flat-graph analyzer derives only op + dtype datapath facets (partial, by design)
+    g = cca.lift_graph(_matmul_record("f32"))
+    assert g.compute.op == "matmul" and g.compute.accumulator_dtype == "f32"
+    assert g.compute.widening is None                          # f32 -> not a widening MAC
+    g8 = cca.lift_graph(_matmul_record("i8"))
+    assert g8.compute.accumulator_dtype == "i32" and g8.compute.widening is True
+
+
+def test_asm_and_graph_analyzers_agree(monkeypatch):
+    # the two DETERMINISTIC analyzers (asm decode + flat graph) must agree on the shared populated
+    # facets — cca_agree is the validity gate that quarantines a bad reconstruction on either side.
+    asm = _lift_fixture(monkeypatch, "openblas_sgemm_rvv.objdump")   # f32 GEMM -> acc f32
+    graph = cca.lift_graph(_matmul_record("f32"))
+    rep = cca.cca_agree(asm, graph)
+    assert rep.agree, rep.disagreements
+    assert "compute.accumulator_dtype" in rep.compared_fields    # the shared facet actually compared
+
+
 def test_lift_reads_vector_tail(monkeypatch):
     # The tail policy (ta|tu) is captured from the decoded vsetvl vtype state (not guessed). The GEMM
     # fixtures run tail-agnostic (ta). Populating it feeds the eventual tail route + cca_agree.

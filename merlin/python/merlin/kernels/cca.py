@@ -348,6 +348,23 @@ def particularities() -> dict:
     return yaml.safe_load(p.read_text()) if p.is_file() else {}
 
 
+def lift_graph(record, *, source: str = "graph", backend: str = "rvv") -> CCA:
+    """Flat-graph analyzer: compose a PARTIAL CCA from a model2MLIR ``MatmulRecord`` (the flattened
+    exported graph + ``prov.*``). Reads only what the graph determines — the op and the dtype-derived
+    datapath facets (widening / accumulator dtype) — NOT the micro-kernel decisions (those are asm-level,
+    from ``lift_asm``). Deterministic; the second analyzer whose CCA ``cca_agree`` cross-checks against
+    the asm-derived one, so a bad reconstruction on either side is quarantined."""
+    prov = dict(getattr(record, "prov", {}) or {})
+    op = prov.get("prov.op") or getattr(record, "kind", None) or "unknown"
+    dt = (getattr(record, "dtype", "") or "").lower()
+    is_int8 = "i8" in dt or "int8" in dt
+    acc = "i32" if is_int8 else ("f32" if ("f32" in dt or "float32" in dt) else None)
+    return CCA(
+        op=op, backend=[backend],
+        compute=ComputeFacet(op=op, accumulator_dtype=acc, widening=True if is_int8 else None),
+        provenance={"level": "graph", "source": source, "confidence": "medium"})
+
+
 def lift_dse(op_shape, *, source: str = "dse") -> CCA:
     """Partial lift from the DSE operator-geometry view (target-agnostic geometry + role).
 
