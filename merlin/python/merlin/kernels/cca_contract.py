@@ -211,13 +211,17 @@ def dump_contract(backend: str, path: str | Path, *, toolchain_version: dict[str
     for r in _routes(backend):
         routes_by_axis.setdefault(r.axis, []).append(r)
 
+    from . import regions as _regions  # lazy: regions imports this module (avoid an import cycle)
+
     rows = []
     for axis in sorted(leverable_axes(backend) | routed_axes(backend)):
         spec = FIELD_REGISTRY.get(axis)
         rs = routes_by_axis.get(axis, [])
+        region = _regions.region_for_axis(axis)
         rows.append({
             "axis": axis,
             "classification": spec.classification if spec else "UNBACKED_ROUTE",
+            "region": region.key if region else None,   # the compiler region governing this axis (C3 taxonomy)
             "routes": [{"action_class": r.action_class, "target_seam": r.target_seam,
                         "forkable_now": r.forkable_now} for r in rs],
             "note": spec.note if spec else "",

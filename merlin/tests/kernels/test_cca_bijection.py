@@ -55,6 +55,18 @@ def test_current_state_matches_documented_gaps():
     assert set(rep.orphan_routes) == set(known["orphan_routes"])
 
 
+def test_contract_records_region_per_lever_axis(tmp_path):
+    """C2/C3 tie-in: the bijection contract broadens onto the region taxonomy — every LEVER axis row
+    records the compiler region that governs it."""
+    import yaml
+
+    p = cc.dump_contract("rvv", tmp_path / "cca_bijection.yaml")
+    doc = yaml.safe_load(p.read_text())
+    by_axis = {row["axis"]: row for row in doc["axes"]}
+    for axis in cc.leverable_axes("rvv"):
+        assert by_axis[axis]["region"], f"{axis} has no governing region in the contract"
+
+
 def test_dump_contract_roundtrips(tmp_path):
     """dump_contract emits a valid YAML contract with one row per lever/routed axis."""
     import yaml
