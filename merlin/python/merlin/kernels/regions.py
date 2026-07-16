@@ -165,10 +165,12 @@ REGIONS: dict[str, Region] = {r.key: r for r in [
        [_ep("PASS", "impr_features:<name>", _IF,
             "register a bufferization-pipeline edit (e.g. eliminate-empty-tensors placement)", _IMPR)]),
     _r("layout-packing", "memory", "Layout assignment / packing",
-       "Compile-time operand layout + panel packing (contiguous register-tile panels).",
+       "Compile-time operand layout + panel packing (contiguous register-tile panels) — the packed "
+       "unit-stride B panel that is the #1 expert GEMM lever.",
        (_IF, _FS),
        [_ep("PASS", "impr_features:vfmacc_packed", _IF,
-            "register a packing feature (transform.structured.pack layout)", _IMPR)]),
+            "register a packing feature (transform.structured.pack layout)", _IMPR)],
+       cca_axes=("memory.access_pattern",)),
     # ---- emission ---------------------------------------------------------------------
     _r("target-lowering", "emission", "Target lowering / legalization",
        "Dialect -> LLVM mechanical descent (convert-*-to-llvm, reconcile-unrealized-casts).",

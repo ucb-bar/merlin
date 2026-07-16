@@ -22,6 +22,7 @@ _AXIS_CATEGORY = {
     "compute.nr_is_vsetvlmax": "tiling-dataflow",
     "compute.reduction_form": "tiling-dataflow",
     "compute.epilogue": "fusion-layout",
+    "memory.access_pattern": "fusion-layout",   # packed unit-stride layout — the data-movement lever
     "compute.accumulator_resident": "register-residency",
     "compute.accumulator_dtype": "register-residency",
     "compute.contraction_form": "instruction-selection",

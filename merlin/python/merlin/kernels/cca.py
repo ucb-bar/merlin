@@ -59,6 +59,22 @@ class VectorFacet:
 
 
 @dataclass
+class MemoryFacet:                             # data-movement / packing (the #1 expert GEMM lever)
+    # How the inner-loop operands are fetched — the packing/layout story the expert wins on (e.g.
+    # XNNPACK's goi-prepacked contiguous B panel streamed by pointer-advance vs our strided
+    # model-layout gather). "unit_stride" = packed contiguous panels (one vle per K, reused across the
+    # MR accumulators); "strided" = vlse model-layout; "indexed" = gather. Lifted from decode.memory.
+    access_pattern: str | None = None          # unit_stride | strided | indexed | none
+    # Is one loaded operand panel REUSED across the MR register-block accumulators (the loads/FMA
+    # amortization — expert ~1.1, unblocked baseline ~2.0)? True iff the K-loop broadcasts a single
+    # vector load across multiple fma accumulators (the .vf register-block idiom).
+    panel_reuse: bool | None = None
+    # Is the A operand broadcast via vfmacc.vf (no per-step A-vector rebuild ladder) vs rebuilt with
+    # vslideup/vrgather each step? True = .vf broadcast (a_broadcast_per_fma == 0).
+    a_broadcast_vf: bool | None = None
+
+
+@dataclass
 class SpatialFacet:                            # Gemmini / systolic (populated by a future lifter)
     pe_rows: int | None = None
     pe_cols: int | None = None
@@ -79,6 +95,7 @@ class CCA:
     backend: list[str]                         # ["rvv"], or ["npu","rvv"] for a composite region
     compute: ComputeFacet = field(default_factory=ComputeFacet)
     vector: VectorFacet | None = None
+    memory: MemoryFacet | None = None
     spatial: SpatialFacet | None = None
     dataflow: DataflowFacet | None = None
     provenance: dict[str, Any] = field(default_factory=dict)   # level, source, confidence
@@ -250,6 +267,25 @@ def _infer_accumulator_dtype(stream, sew) -> str | None:
     return None
 
 
+def _lift_memory(stream) -> "MemoryFacet | None":
+    """The data-movement/packing facet, lifted from the existing decode.memory MemFacet (loads/FMA,
+    unit-stride, A-broadcast) — the memory dimension the CCA used to be blind to. None if no FMA loop.
+    Lazy import of decode.memory (which references cca._fma_loop) to avoid an import cycle."""
+    from .decode.memory import analyze_memory
+    m = analyze_memory(stream)
+    if m is None:
+        return None
+    access = ("unit_stride" if m.unit_stride_only
+              else "indexed" if m.vec_indexed_loads > 0
+              else "strided" if m.vec_strided_loads > 0
+              else "none")
+    # panel reuse: loads/FMA well below the unblocked ~2.0 => one loaded panel is reused across the MR
+    # register-block accumulators (the amortization the expert wins on).
+    reuse = (m.loads_per_fma is not None and m.loads_per_fma < 1.5)
+    a_vf = (m.a_broadcast_per_fma == 0) if m.a_broadcast_per_fma is not None else None
+    return MemoryFacet(access_pattern=access, panel_reuse=reuse, a_broadcast_vf=a_vf)
+
+
 def lift_asm(stream, *, op: str, source: str, backend: str = "rvv") -> CCA:
     """Primary lifter: RVV/vector ``InsnStream`` (from ``decode.rvv``) -> CCA.
 
@@ -289,6 +325,7 @@ def lift_asm(stream, *, op: str, source: str, backend: str = "rvv") -> CCA:
             activation_vectorization=_infer_activation_vectorization(stream, op),
         ),
         vector=VectorFacet(sew=sew, lmul=lmul, vl_strategy=vl_strategy, tail=_dominant_tail(stream)),
+        memory=_lift_memory(stream),
         provenance={"level": "asm", "source": source, "confidence": "high"},
     )
 
@@ -406,7 +443,7 @@ def cca_agree(a: CCA, b: CCA) -> AgreementReport:
     whose levels disagree is quarantined from policy promotion until reconciled."""
     diffs: list[str] = []
     compared: list[str] = []
-    for facet in ("compute", "vector", "spatial", "dataflow"):
+    for facet in ("compute", "vector", "memory", "spatial", "dataflow"):
         fa, fb = getattr(a, facet), getattr(b, facet)
         for k, (va, vb) in _facet_fields(fa, fb).items():
             compared.append(f"{facet}.{k}")

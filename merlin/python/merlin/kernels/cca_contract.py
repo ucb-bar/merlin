@@ -30,12 +30,13 @@ from pathlib import Path
 from typing import Any
 
 from . import action_catalog
-from .cca import ComputeFacet, DataflowFacet, SpatialFacet, VectorFacet
+from .cca import ComputeFacet, DataflowFacet, MemoryFacet, SpatialFacet, VectorFacet
 
 # facet name (the axis prefix) -> the dataclass whose fields it exposes.
 FACET_CLASSES = {
     "compute": ComputeFacet,
     "vector": VectorFacet,
+    "memory": MemoryFacet,
     "spatial": SpatialFacet,
     "dataflow": DataflowFacet,
 }
@@ -43,12 +44,14 @@ FACET_CLASSES = {
 IDENTITY = "IDENTITY"          # names the region, not a thing we change (the op key)
 LEVER = "LEVER"                # a compute property that MUST map to an exposed compiler modification
 BACKEND_STUB = "BACKEND_STUB"  # a facet for a backend whose lifters/routes are not yet instantiated
+METRIC = "METRIC"              # a measured performance-diagnostic outcome (feeds gap_analysis), NOT a
+#                                standalone compiler lever — excluded from the LEVER<->route bijection.
 
 
 @dataclass(frozen=True)
 class FieldSpec:
     axis: str                       # "compute.contraction_form"
-    classification: str             # IDENTITY | LEVER | BACKEND_STUB
+    classification: str             # IDENTITY | LEVER | BACKEND_STUB | METRIC
     backends: tuple[str, ...]       # the backends for which this axis is meaningful
     note: str = ""
 
@@ -88,6 +91,16 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
                                     "vsetvl loop vs fixed vsetivli -> PASS vl-polymorphic-tail"),
     "vector.tail": FieldSpec("vector.tail", LEVER, ("rvv",),
                              "ta/tu tail policy -> KNOB tail_policy / PASS vl-polymorphic-tail (tu)"),
+    # --- memory (data-movement / packing — the #1 expert GEMM lever, lifted from decode.memory) ---
+    "memory.access_pattern": FieldSpec("memory.access_pattern", LEVER, ("rvv",),
+                                       "packed unit-stride panel vs strided model-layout gather -> "
+                                       "PASS operand packing (vfmacc_packed / a layout-assignment pass)"),
+    "memory.panel_reuse": FieldSpec("memory.panel_reuse", METRIC, ("rvv",),
+                                    "loads/FMA amortization — a diagnostic outcome of register-block + "
+                                    "packing, not a standalone lever"),
+    "memory.a_broadcast_vf": FieldSpec("memory.a_broadcast_vf", METRIC, ("rvv",),
+                                       "A streamed via vfmacc.vf (no rebuild ladder) — a diagnostic "
+                                       "outcome of instruction selection"),
     # --- spatial (gemmini) — stubs until the spatial lifter + gemmini routes land ---
     "spatial.pe_rows": FieldSpec("spatial.pe_rows", BACKEND_STUB, ("gemmini",)),
     "spatial.pe_cols": FieldSpec("spatial.pe_cols", BACKEND_STUB, ("gemmini",)),
@@ -121,6 +134,11 @@ KNOWN_OPEN: dict[str, dict[str, tuple[str, ...]]] = {
         "orphan_fields": (
             "compute.reduction_form",
             "vector.tail",
+            # the memory/packing lever: decode.memory now lifts it into the CCA, but it isn't yet routed
+            # to the packing seam (the vfmacc_packed feature exists; a CCA route + a layout-assignment
+            # pass are the WS-C work). This is the dimension the completeness critic flagged as likely
+            # responsible for the residual expert gap.
+            "memory.access_pattern",
         ),
         # routed axes still awaiting a backing ComputeFacet field.
         # CLOSED so far: compute.activation_vectorization (field + lift_asm inferer added).

@@ -148,6 +148,30 @@ def test_lift_reads_accumulator_dtype(monkeypatch):
         assert c.compute.accumulator_dtype == "f32", fx
 
 
+def test_lift_reads_memory_facet(monkeypatch):
+    # the CCA now CAPTURES the data-movement/packing dimension (was blind to it) — the expert GEMMs
+    # fetch operands as packed unit-stride panels (the #1 expert lever, lifted from decode.memory).
+    for fx in ("openblas_sgemm_rvv.objdump", "xnnpack_f32_gemm_rvv.objdump"):
+        c = _lift_fixture(monkeypatch, fx)
+        assert c.memory is not None, fx
+        assert c.memory.access_pattern == "unit_stride", fx
+
+
+def test_memory_divergence_surfaces_packed_vs_strided():
+    # the whole point: a kernel whose COMPUTE matches the expert but fetches operands STRIDED now
+    # surfaces a memory.access_pattern divergence — the dimension that used to be invisible (the
+    # '72% slower with no divergences' case). This is what the CCA had to capture.
+    expert = cca.CCA(op="matmul", backend=["rvv"],
+                     compute=cca.ComputeFacet(op="matmul", contraction_form="fused_fma"),
+                     memory=cca.MemoryFacet(access_pattern="unit_stride"))
+    ours = cca.CCA(op="matmul", backend=["rvv"],
+                   compute=cca.ComputeFacet(op="matmul", contraction_form="fused_fma"),
+                   memory=cca.MemoryFacet(access_pattern="strided"))
+    from merlin.kernels import cca_compare
+    axes = {d.axis for d in cca_compare.compare(expert, ours)}
+    assert axes == {"memory.access_pattern"}      # compute matches; ONLY the memory dimension differs
+
+
 def test_decode_text_matches_object_path(monkeypatch):
     # a CCA lifted from objdump TEXT (rvv.decode_text — what the beam has in objdump.txt) equals the
     # object-file path (rvv.decode). Enables lifting a fork's CCA with no toolchain.

@@ -39,7 +39,7 @@ def compare(expert: CCA, ours: CCA, *, evidence: list[str] | None = None) -> lis
     ev = evidence or [expert.provenance.get("source", "expert")]
     backend = (expert.backend or ours.backend or ["?"])[0]
     out: list[Divergence] = []
-    for facet in ("compute", "vector", "spatial", "dataflow"):
+    for facet in ("compute", "vector", "memory", "spatial", "dataflow"):
         for k, (ve, vo) in _populated_pairs(getattr(expert, facet), getattr(ours, facet)).items():
             out.append(Divergence(axis=f"{facet}.{k}", expert=ve, ours=vo,
                                   backend=backend, evidence=list(ev)))
