@@ -183,17 +183,11 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
     _propagate_quant_inner(module)
     if int8_compute:
         # Real W8A8 integer datapath (matmul/conv/attention -> i8xi8->i32 + requant; the
-        # transcendentals -> integer/RVV). lower_quant_ext stays AFTER as the f32 fallback
-        # for any dequant the int8 passes did not convert (nonzero-zp, embeddings).
-        from ...llvmlower.passes_quant_int import (lower_contraction_int8, lower_conv_int8,
-                                                   lower_softmax_int, lower_gelu_int,
-                                                   lower_silu_int, lower_rsqrt_int)
-        lower_contraction_int8(module)
-        lower_conv_int8(module)
-        lower_softmax_int(module)
-        lower_gelu_int(module)
-        lower_silu_int(module)
-        lower_rsqrt_int(module)
+        # transcendentals -> integer/RVV), via the quant-pass registry (byte-identical default set).
+        # lower_quant_ext stays AFTER as the f32 fallback for any dequant the int8 passes did not
+        # convert (nonzero-zp, embeddings).
+        from ...llvmlower.quant_passes import apply_quant
+        apply_quant(module)
     lower_quant_ext(module)
     lower_bf16_matmul_f32acc(module)
     fix_bool_sitofp(module)

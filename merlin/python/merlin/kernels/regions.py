@@ -84,10 +84,10 @@ REGIONS: dict[str, Region] = {r.key: r for r in [
        (_PQI, "merlin/python/merlin/frontends/quant_ext.py"),
        [_ep("KNOB", "schedule:dtype_strategy", _FS,
             "select the datapath dtype strategy (int8_w8a8 / bf16-f32acc)"),
-        _ep("PASS", "quant:passes_quant_int", _PQI,
-            "GAP: the six lower_*_int passes are a hardcoded sequence gated by a bool; add a "
-            "quant-pass registry (mirror impr_features) to toggle/order them + re-point the dtype "
-            "axes here", forkable=False)],
+        _ep("PASS", "quant:apply_quant", "merlin/python/merlin/llvmlower/quant_passes.py",
+            "register a QuantPass in quant_passes (toggle/reorder the int8 datapath) — the six "
+            "lower_*_int passes are now a registry, not a hardcoded sequence",
+            registry="merlin.llvmlower.quant_passes")],
        cca_axes=("compute.widening", "compute.accumulator_dtype", "vector.sew")),
     _r("global-passes", "global", "Global optimization passes (backend-agnostic)",
        "The frozen baseline pass list + Merlin-authored xDSL passes; changed via default-off "

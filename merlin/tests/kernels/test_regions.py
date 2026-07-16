@@ -47,7 +47,9 @@ def test_edit_point_files_exist():
 def test_honest_gaps_are_marked_not_hidden():
     # regions without a clean seam yet are flagged forkable_now=False, not silently omitted
     gaps = {k for k, ep in R.all_edit_points() if not ep.forkable_now}
-    assert {"quantization", "dispatch-gen", "hw-sync", "fusion"} <= gaps
+    assert {"dispatch-gen", "hw-sync", "fusion"} <= gaps
+    # quantization is NO LONGER a gap — it now has a real quant-pass registry edit-point
+    assert "quantization" not in gaps
 
 
 def test_quantization_axes_live_in_quantization_region():
