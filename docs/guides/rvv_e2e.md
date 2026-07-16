@@ -89,12 +89,19 @@ The spike backend compiles each command buffer to a bare-metal HTIF ELF and runs
 ```
 
 Verified (2026-07-16, `.env`-wired spike): `test_rvv_spike.py` = 6 passed; the saturn_vec rv64gcv cert
-= 3 passed. The whole-model RVV runs (spike proxy) are gated behind `MERLIN_RUN_SLOW=1`:
+= 3 passed. The whole-model RVV runs are gated behind `MERLIN_RUN_SLOW=1`:
 
 ```bash
 MERLIN_RUN_SLOW=1 .venv/bin/python -m pytest \
   merlin/tests/rvv/test_smolvla_rvv.py merlin/tests/rvv/test_vla_models_rvv.py -q
 ```
+
+Verified whole-model (2026-07-16): `test_smolvla_prefix_exact` — the smolvla vision+embed prefix lowered
+through model2MLIR → native RVV → the dispatch runtime — passes at **cos ≈ 1.0** vs the torch golden in
+~3m17s (a single whole-model compile+run). This is the end-to-end confirmation that the model-lowering
+path reproduces after the refactor. Whole-model runs are minutes each — budget the timeout accordingly
+(a per-invocation wrapper shorter than the compile will SIGTERM it; pytest's own 900s per-test timeout
+governs cleanly).
 
 ## 4. Verify on the real K1 board (optional, cycle truth)
 
