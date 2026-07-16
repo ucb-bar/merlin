@@ -131,8 +131,9 @@ def _interpreters() -> dict[str, str]:
     # chia-venv lives under the out/build root (the single generated-output convention), not repo/build.
     chia = build_dir() / "chia-venv" / "bin" / "python"
     out["out/build/chia-venv"] = str(chia) if chia.exists() else "MISSING (uv venv out/build/chia-venv)"
-    m2m_venv = os.environ.get("MERLIN_M2M_VENV") or (
-        f"{os.environ.get('MERLIN_M2M_DIR', '')}/.venv" if os.environ.get("MERLIN_M2M_DIR") else "")
+    from merlin.common.paths import env as _env
+    m2m_dir = _env("MERLIN_M2M_DIR", "")
+    m2m_venv = _env("MERLIN_M2M_VENV") or (f"{m2m_dir}/.venv" if m2m_dir else "")
     m2m_py = Path(m2m_venv) / "bin" / "python" if m2m_venv else None
     out["$MERLIN_M2M_VENV"] = str(m2m_py) if (m2m_py and m2m_py.exists()) else "unset/MISSING"
     return out

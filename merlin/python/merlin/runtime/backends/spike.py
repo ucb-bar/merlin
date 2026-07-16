@@ -21,6 +21,7 @@ from pathlib import Path
 from merlin.common.paths import runtime_dir
 from typing import Any
 
+from ...common import paths as _paths
 from ...common.paths import repo_root
 from ..metrics import COMMON_METRIC_NAMES
 from ..reference import outputs_match, reference_outputs
@@ -37,20 +38,22 @@ class SpikeError(RuntimeError):
 
 
 def chipyard_root() -> Path:
-    return Path(os.environ.get("MERLIN_CHIPYARD", DEFAULT_CHIPYARD))
+    # Honor .env (via paths.env), not only os.environ, so a checkout configured in .env resolves
+    # without the caller hand-exporting MERLIN_CHIPYARD — consistent with llvmlower.toolchain.
+    return Path(_paths.env("MERLIN_CHIPYARD", DEFAULT_CHIPYARD))
 
 
 def gcc_path() -> Path:
-    env = os.environ.get("MERLIN_RISCV_GCC")
-    if env:
-        return Path(env)
+    v = _paths.env("MERLIN_RISCV_GCC")
+    if v:
+        return Path(v)
     return chipyard_root() / ".conda-env/riscv-tools/bin/riscv64-unknown-elf-gcc"
 
 
 def spike_path() -> Path:
-    env = os.environ.get("MERLIN_SPIKE")
-    if env:
-        return Path(env)
+    v = _paths.env("MERLIN_SPIKE")
+    if v:
+        return Path(v)
     return chipyard_root() / ".conda-env/riscv-tools/bin/spike"
 
 

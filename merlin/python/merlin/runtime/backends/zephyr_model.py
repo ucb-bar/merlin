@@ -76,11 +76,16 @@ class ZephyrModelError(RuntimeError):
 
 def _pick(env_var: str, default: str) -> Path:
     """Prefer the env value, but only if it actually exists — the shell may carry a
-    stale ``ZEPHYR_BASE`` (e.g. a moved ``backup/`` path); fall back to the known-good
-    default rather than silently failing ``available()``."""
+    stale ``ZEPHYR_BASE`` (e.g. a moved ``backup/`` path); fall back to ``.env`` (a real config
+    source, so a checkout configured there resolves without hand-exporting), then to the known-good
+    default, rather than silently failing ``available()``."""
+    from ...common.paths import _dotenv
     v = os.environ.get(env_var)
     if v and Path(v).exists():
         return Path(v)
+    dv = _dotenv().get(env_var)
+    if dv and Path(dv).exists():
+        return Path(dv)
     return Path(default)
 
 
@@ -98,8 +103,8 @@ def _sdk_dir() -> Path:
 
 
 def _conda_bin() -> Path:
-    return Path(os.environ.get("MERLIN_CHIPYARD",
-                               "/path/to/chipyard")) / ".conda-env" / "bin"
+    from ...common.paths import env as _env
+    return Path(_env("MERLIN_CHIPYARD", "/path/to/chipyard")) / ".conda-env" / "bin"
 
 
 def _tool_env() -> dict:

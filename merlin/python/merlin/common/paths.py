@@ -164,6 +164,16 @@ def _dotenv() -> dict[str, str]:
     return out
 
 
+def env(key: str, default: str | None = None) -> str | None:
+    """Resolve a machine-specific environment var, honoring the gitignored ``.env`` as a real config
+    source (not only ``ext_path``). Precedence: the process environment WINS, then ``<repo>/.env``,
+    then ``default``. This mirrors how ``llvmlower.toolchain`` already resolves the m2m/clang vars — now
+    shared so the spike / Zephyr / board guards honor ``.env`` too, instead of only reading
+    ``os.environ`` (the reason those capabilities looked unavailable unless the caller exported the vars
+    by hand). Per-process and read-only: it NEVER mutates ``os.environ`` (safe on a shared host)."""
+    return os.environ.get(key) or _dotenv().get(key) or default
+
+
 def ext_path(name: str) -> Path:
     """Resolve an external, machine-specific dependency location by short key.
 
