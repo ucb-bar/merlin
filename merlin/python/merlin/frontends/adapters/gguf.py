@@ -71,9 +71,29 @@ def analyze(source: Any, *, target: str) -> GgufTargetReport:
     )
 
 
-def ingest(source: Any, *, model: str, variant: str, **_kw: Any) -> CaptureBundle:
-    raise NotImplementedError(
-        "GGUF -> runnable capture bundle needs the model2MLIR GGUF frontend (graph reconstruction "
-        "from GGUF metadata + quant_ext weight injection) — staged next. Until then, use analyze() "
-        f"for the capability probe. Source {source!r} recognised."
+def ingest(source: Any, *, model: str, variant: str = "gguf", seq_len: int = 8,
+           out: Any = None, **_kw: Any) -> CaptureBundle:
+    """Reconstruct a runnable Merlin capture bundle from a ``.gguf`` and return it.
+
+    Drives ``m2m.frontends.gguf.capture_gguf_bundle`` in the model2MLIR venv (which has torch /
+    transformers / gguf) as a subprocess — Merlin's own venv has none of those. The bundle lands under
+    ``recaptures_dir()/<model>_<variant>`` and is returned as a fail-closed :class:`CaptureBundle`.
+    """
+    import json
+    import subprocess
+    from pathlib import Path
+
+    from merlin.common.artifacts import recaptures_dir
+    from merlin.llvmlower import toolchain
+
+    py = toolchain.m2m_python()
+    if not Path(py).exists():
+        raise RuntimeError(f"model2MLIR venv python not found at {py} (set MERLIN_M2M_DIR / venv)")
+    dest = Path(out) if out is not None else recaptures_dir() / f"{model}_{variant}"
+    code = (
+        "import json; from m2m.frontends.gguf import capture_gguf_bundle; "
+        f"print('BUNDLE_OK ' + json.dumps("
+        f"capture_gguf_bundle({str(source)!r}, {str(dest)!r}, seq_len={int(seq_len)})))"
     )
+    subprocess.run([str(py), "-c", code], check=True)
+    return CaptureBundle(model=model, variant=variant, root=dest).require()
