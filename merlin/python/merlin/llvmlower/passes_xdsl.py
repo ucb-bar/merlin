@@ -78,8 +78,24 @@ def collapse_overrank_matmul(module) -> int:
     return len(targets)
 
 
+# quant_ext.dequantize granularities the generic (target-agnostic) dequant lowering handles. Each
+# differs only in how the scale/zero-point operands index into the output — the dequant body
+# (sitofp(w) - sitofp(zp)) * scale is identical. This keeps the lowering FORMAT-GENERAL (any affine
+# granularity), not per_channel-overfit, and target-agnostic (pure linalg+arith → f32, runs anywhere).
+_DEQUANT_KINDS = {
+    "quant_ext.dequantize_per_tensor": "per_tensor",
+    "quant_ext.dequantize_per_channel": "per_channel",
+    "quant_ext.dequantize_per_group": "per_group",
+}
+
+
 def lower_quant_ext(module) -> int:
-    """Rewrite all dequantize_per_channel ops; returns the number rewritten."""
+    """Rewrite all quant_ext.dequantize ops (per_tensor/per_channel/per_group); returns the count.
+
+    Generic dequant → f32 (or bf16) via a linalg.generic; the scale/zp indexing map is derived from
+    the granularity: scalar-broadcast (per_tensor), axis-projection (per_channel), or axis-floordiv by
+    group_size (per_group). No target-specific datapath — runs on any backend.
+    """
     from xdsl.dialects import arith, tensor
     from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, IntegerType,
                                        StringAttr, TensorType)
@@ -94,22 +110,31 @@ def lower_quant_ext(module) -> int:
     for op in module.walk():
         # quant_ext is not a registered dialect; ops parse as builtin.unregistered.
         name = getattr(op, "op_name", None)
-        if op.name == "builtin.unregistered" and name is not None \
-                and name.data == "quant_ext.dequantize_per_channel":
-            rewrites.append(op)
+        if op.name == "builtin.unregistered" and name is not None and name.data in _DEQUANT_KINDS:
+            rewrites.append((op, _DEQUANT_KINDS[name.data]))
 
-    for op in rewrites:
+    for op, kind in rewrites:
         w, scale, zp = op.operands
         out_t = op.results[0].type
         rank = len(out_t.get_shape())
-        axis = int(op.properties["axis"].value.data)
         block = op.parent_block()
 
         empty = tensor.EmptyOp((), out_t)
         identity = AffineMap.identity(rank)
-        axis_proj = AffineMap(rank, 0, (identity.results[axis],))
-        maps = ArrayAttr([AffineMapAttr(identity), AffineMapAttr(axis_proj),
-                          AffineMapAttr(axis_proj), AffineMapAttr(identity)])
+        if kind == "per_tensor":
+            # scalar scale/zp broadcast to every element: affine_map<(d...) -> ()>
+            sz_map = AffineMap(rank, 0, ())
+        elif kind == "per_channel":
+            axis = int(op.properties["axis"].value.data)
+            sz_map = AffineMap(rank, 0, (identity.results[axis],))
+        else:  # per_group: scale/zp indexed by the group of the quantized axis (dim floordiv group_size)
+            axis = int(op.properties["axis"].value.data) if "axis" in op.properties else rank - 1
+            gsz = int(op.properties["group_size"].value.data)
+            results = list(identity.results)
+            results[axis] = identity.results[axis] // gsz    # xDSL AffineExpr floordiv
+            sz_map = AffineMap(rank, 0, tuple(results))
+        maps = ArrayAttr([AffineMapAttr(identity), AffineMapAttr(sz_map),
+                          AffineMapAttr(sz_map), AffineMapAttr(identity)])
         iters = ArrayAttr([linalg_ops.IteratorTypeAttr(linalg_ops.IteratorType.PARALLEL)
                            for _ in range(rank)])
 
