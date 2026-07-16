@@ -8,7 +8,7 @@ consume. Lives on the analysis side (``kernels``) so the dialect (``xdsl_dialect
 """
 from __future__ import annotations
 
-from .cca import CCA, ComputeFacet, VectorFacet
+from .cca import CCA, ComputeFacet, MemoryFacet, VectorFacet
 
 # Per-field coercion FROM the uniform StringAttr text back to the dataclass type. Strings pass through.
 _BOOL = {"true": True, "false": False}
@@ -40,6 +40,12 @@ def _vector_props(v: VectorFacet) -> dict[str, str]:
     return {k: _s(val) for k, val in fields.items() if _s(val) is not None}
 
 
+def _memory_props(m) -> dict[str, str]:
+    fields = {"access_pattern": m.access_pattern, "panel_reuse": m.panel_reuse,
+              "a_broadcast_vf": m.a_broadcast_vf}
+    return {k: _s(val) for k, val in fields.items() if _s(val) is not None}
+
+
 def to_mlir(cca: CCA) -> str:
     """Emit a composed CCA as ``cca``-dialect MLIR text (a ``cca.kernel`` wrapping compute/vector ops)."""
     from xdsl.dialects.builtin import ModuleOp, StringAttr
@@ -54,6 +60,8 @@ def to_mlir(cca: CCA) -> str:
     inner = [D.ComputeOp(properties=_props(_compute_props(cca.compute)))]
     if cca.vector is not None:
         inner.append(D.VectorOp(properties=_props(_vector_props(cca.vector))))
+    if cca.memory is not None:
+        inner.append(D.MemoryOp(properties=_props(_memory_props(cca.memory))))
     kprops = {"op": cca.op, "backend": ",".join(cca.backend), "source": cca.provenance.get("source"),
               "level": cca.provenance.get("level")}
     kernel = D.KernelOp(properties=_props({k: v for k, v in kprops.items() if v}),
@@ -79,6 +87,7 @@ def from_mlir(mlir_text: str) -> CCA:
     kernel = next(o for o in module.body.block.ops if isinstance(o, D.KernelOp))
     compute_op = next((o for o in kernel.body.block.ops if isinstance(o, D.ComputeOp)), None)
     vector_op = next((o for o in kernel.body.block.ops if isinstance(o, D.VectorOp)), None)
+    memory_op = next((o for o in kernel.body.block.ops if isinstance(o, D.MemoryOp)), None)
 
     def _b(v):
         return _BOOL.get(v) if v is not None else None
@@ -107,10 +116,16 @@ def from_mlir(mlir_text: str) -> CCA:
                              vl_strategy=_get(vector_op, "vl_strategy"),
                              tail=_get(vector_op, "tail"))
 
+    memory = None
+    if memory_op is not None:
+        memory = MemoryFacet(access_pattern=_get(memory_op, "access_pattern"),
+                             panel_reuse=_b(_get(memory_op, "panel_reuse")),
+                             a_broadcast_vf=_b(_get(memory_op, "a_broadcast_vf")))
+
     backend = _get(kernel, "backend")
     return CCA(op=_get(kernel, "op") or (compute.op or "unknown"),
                backend=backend.split(",") if backend else [],
-               compute=compute, vector=vector,
+               compute=compute, vector=vector, memory=memory,
                provenance={k: v for k, v in
                            (("source", _get(kernel, "source")), ("level", _get(kernel, "level")))
                            if v is not None})

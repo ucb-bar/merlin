@@ -22,7 +22,7 @@ from __future__ import annotations
 from ._common import HAS_XDSL
 
 DIALECT_NAME = "cca"
-OPS = ["kernel", "compute", "vector"]
+OPS = ["kernel", "compute", "vector", "memory"]
 TYPES: list[str] = []
 
 # The facet fields each op carries (also the serializer's contract). Kept here so the dialect and the
@@ -31,6 +31,7 @@ COMPUTE_FIELDS = ("contraction_form", "accumulator_dtype", "widening", "reductio
                   "register_block_mr", "epilogue", "accumulator_resident", "nr_is_vsetvlmax",
                   "activation_vectorization")
 VECTOR_FIELDS = ("sew", "lmul", "vl_strategy", "tail")
+MEMORY_FIELDS = ("access_pattern", "panel_reuse", "a_broadcast_vf")
 
 if HAS_XDSL:
     from xdsl.dialects.builtin import StringAttr
@@ -62,6 +63,14 @@ if HAS_XDSL:
         tail = opt_prop_def(StringAttr)
 
     @irdl_op_definition
+    class MemoryOp(IRDLOperation):
+        """cca.memory — the data-movement / packing facet (the #1 expert GEMM lever)."""
+        name = "cca.memory"
+        access_pattern = opt_prop_def(StringAttr)
+        panel_reuse = opt_prop_def(StringAttr)
+        a_broadcast_vf = opt_prop_def(StringAttr)
+
+    @irdl_op_definition
     class KernelOp(IRDLOperation):
         """cca.kernel — a captured CCA: identity props + a region holding the facet ops."""
         name = "cca.kernel"
@@ -72,14 +81,14 @@ if HAS_XDSL:
         body = region_def()
         traits = traits_def(NoTerminator())
 
-    _OP_CLASSES = [KernelOp, ComputeOp, VectorOp]
+    _OP_CLASSES = [KernelOp, ComputeOp, VectorOp, MemoryOp]
     CCA_DIALECT = Dialect(DIALECT_NAME, _OP_CLASSES, [])
 
     def get_dialect() -> Dialect:
         return CCA_DIALECT
 
 else:  # pragma: no cover - xDSL absent
-    ComputeOp = VectorOp = KernelOp = None
+    ComputeOp = VectorOp = MemoryOp = KernelOp = None
 
     def get_dialect():
         return None

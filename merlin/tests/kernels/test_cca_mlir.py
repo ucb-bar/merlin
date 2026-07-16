@@ -51,6 +51,19 @@ def test_cca_mlir_roundtrip_preserves_scalar_facets(fixture):
     assert c.backend == c2.backend
 
 
+def test_memory_facet_roundtrips_in_mlir():
+    # the CCA-in-MLIR carries the data-movement facet too (the dimension we just added)
+    from merlin.kernels import cca, cca_mlir
+    c = cca.CCA(op="matmul", backend=["rvv"],
+                compute=cca.ComputeFacet(op="matmul"),
+                memory=cca.MemoryFacet(access_pattern="unit_stride", panel_reuse=True, a_broadcast_vf=True))
+    text = cca_mlir.to_mlir(c)
+    assert "cca.memory" in text
+    c2 = cca_mlir.from_mlir(text)
+    assert c2.memory.access_pattern == "unit_stride"
+    assert c2.memory.panel_reuse is True and c2.memory.a_broadcast_vf is True
+
+
 def test_roundtrip_hand_built_cca():
     from merlin.kernels import cca, cca_mlir
     c = cca.CCA(op="gelu", backend=["rvv"],
