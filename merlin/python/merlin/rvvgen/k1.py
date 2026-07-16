@@ -35,8 +35,13 @@ _REPO = repo_root()
 # Locate the (huge) SpacemiT cross-toolchain via env; no personal path committed as a default.
 K1_TOOLCHAIN = Path(os.environ.get("MERLIN_K1_TOOLCHAIN", str(_REPO / "build_tools" / "SpacemiT" / "riscv-tools-spacemit")))
 
-# K1 X60 target: rv64gcv glibc Linux. NOT medany/freestanding — it is hosted userspace.
-K1_MARCH = "rv64gcv"
+# K1 X60 target: glibc Linux userspace (NOT medany/freestanding). The board's ISA carries the
+# half-precision extensions zfh/zfhmin (scalar) + zvfh/zvfhmin (VECTOR fp16) — see /proc/cpuinfo — so
+# the march MUST include them or clang targets generic rv64gcv and mis/soft-compiles fp16 (and the
+# bf16<->f32 conversions), which the K1 has in hardware. This matches the march llama.cpp's own
+# SpacemiT toolchain file selects for the K1 (rv64gcv_zfh_zvfh...). Overridable via MERLIN_K1_MARCH.
+import os as _os_march
+K1_MARCH = _os_march.environ.get("MERLIN_K1_MARCH", "rv64gcv_zfh_zvfh")
 K1_MABI = "lp64d"
 VLEN = 256  # K1 X60 vector length, bits; the runtime reads vlenb at run time and records it.
 # This Bianbu kernel does NOT delegate the userspace `cycle` CSR — `rdcycle` traps as an illegal
