@@ -93,9 +93,13 @@ def _probe(key: str) -> tuple[str, str]:
             missing = [n for n, v in (("firtool", ft), ("FileCheck", fc)) if not v]
             return ("unavailable", f"missing on PATH: {', '.join(missing)}")
         if key == "chia":
-            cb = importlib.import_module("merlin.benchharness.chia_bridge")
-            return ("available" if cb.chia_available() else "unavailable",
-                    "build/chia-venv" if not cb.chia_available() else "")
+            # chia loops run under the ISOLATED out/build/chia-venv (never the main .venv), so probe the
+            # loop interpreter's existence, not chia_bridge.chia_available() (which checks importability
+            # from THIS main .venv, where chia is intentionally absent -> always False).
+            from merlin.common.paths import build_dir
+            chia_py = build_dir() / "chia-venv" / "bin" / "python"
+            return ("available" if chia_py.is_file() else "unavailable",
+                    str(chia_py) if chia_py.is_file() else "uv venv out/build/chia-venv")
         if key == "llm_api":
             has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
             try:
@@ -119,13 +123,14 @@ def _probe(key: str) -> tuple[str, str]:
 
 def _interpreters() -> dict[str, str]:
     """Report the three isolated interpreters the reproduction flow keeps separate."""
-    from merlin.common.paths import repo_root
+    from merlin.common.paths import build_dir, repo_root
     root = repo_root()
     out: dict[str, str] = {}
     venv = root / ".venv" / "bin" / "python"
     out[".venv (driver)"] = str(venv) if venv.exists() else "MISSING (uv sync --all-extras)"
-    chia = root / "build" / "chia-venv" / "bin" / "python"
-    out["build/chia-venv"] = str(chia) if chia.exists() else "MISSING (uv venv build/chia-venv)"
+    # chia-venv lives under the out/build root (the single generated-output convention), not repo/build.
+    chia = build_dir() / "chia-venv" / "bin" / "python"
+    out["out/build/chia-venv"] = str(chia) if chia.exists() else "MISSING (uv venv out/build/chia-venv)"
     m2m_venv = os.environ.get("MERLIN_M2M_VENV") or (
         f"{os.environ.get('MERLIN_M2M_DIR', '')}/.venv" if os.environ.get("MERLIN_M2M_DIR") else "")
     m2m_py = Path(m2m_venv) / "bin" / "python" if m2m_venv else None
