@@ -142,6 +142,54 @@ def test_k1_runnable_and_full_env():
     assert bundle.full_env("tiny_llama") == {}
 
 
+def test_region_goldens_reader_groups_by_fqn(tmp_path):
+    """S1: the per-region boundary substrate reads back grouped by region fqn -> {slot: ndarray},
+    mirroring the writer's flat ``<fqn>::<slot>`` npz convention. Absent file -> {} (optional)."""
+    import numpy as np
+
+    root = tmp_path / "m_fp32_full"
+    root.mkdir()
+    b = bundle.CaptureBundle(model="m", variant="fp32", root=root)
+    assert b.has_region_goldens() is False
+    assert b.load_region_goldens() == {}
+
+    np.savez(root / "region_goldens.npz", **{
+        "blocks.0.attn.q::in0": np.ones((4, 8), dtype=np.float32),
+        "blocks.0.attn.q::out": np.zeros((4, 6), dtype=np.float32),
+        "blocks.0.mlp.g::in0": np.ones((4, 6), dtype=np.float32),
+        "blocks.0.mlp.g::out": np.zeros((4, 12), dtype=np.float32),
+    })
+    g = b.load_region_goldens()
+    assert set(g) == {"blocks.0.attn.q", "blocks.0.mlp.g"}
+    assert set(g["blocks.0.attn.q"]) == {"in0", "out"}
+    assert g["blocks.0.attn.q"]["out"].shape == (4, 6)     # region output golden
+    assert g["blocks.0.mlp.g"]["in0"].shape == (4, 6)      # boundary input = upstream output shape
+
+
+def test_region_profile_carries_provenance_and_per_region_verdict(tmp_path):
+    """C7: RegionProfile carries the shared layer-provenance join key + a per-region equivalence
+    verdict that stays honest (no_gold -> None, never a silent pass)."""
+    r = BaselineResult(framework="executorch", model="tiny_llama", variant="fp32", built=True, ran=True,
+                       cos=1.0, cos_threshold=0.9999)
+    r.regions = [
+        RegionProfile(name="attention", region_id="matmul_3", fqn="model.layers.0.self_attn",
+                      role="repeated_head", wall_ns=1234, cos=0.99999, rel=1e-4, golden_ref="...self_attn::out"),
+        RegionProfile(name="norm", region_id="layer_norm_0", fqn="model.layers.0.input_layernorm"),
+    ]
+    # aligned, scored region: passes at the model's tolerance.
+    assert r.regions[0].region_passed(0.9999, 1e-3) is True
+    # a region with no golden reports None (no_gold), NOT a pass.
+    assert r.regions[1].region_passed(0.9999, 1e-3) is None
+    # a scored-but-wrong region fails.
+    bad = RegionProfile(name="attention", region_id="matmul_9", cos=0.5)
+    assert bad.region_passed(0.9999, 1e-3) is False
+    # round-trips through the JSON contract with the new fields intact (load already **r-expands).
+    p = r.write(tmp_path)
+    back = BaselineResult.load(p)
+    assert back.regions[0].region_id == "matmul_3" and back.regions[0].fqn == "model.layers.0.self_attn"
+    assert back.regions[0].role == "repeated_head" and back.regions[0].cos == 0.99999
+
+
 def test_bundle_default_tolerance():
     assert bundle.tolerance("some_unlisted_model") == (0.9999, 1e-3)
 

@@ -102,6 +102,37 @@ class CaptureBundle:
         return self.root / "extra.npz"
 
     @property
+    def region_goldens(self) -> Path:
+        """Per-region boundary tensors (``region_goldens.npz``): for each captured nn.Module region,
+        its boundary INPUT (= the upstream region's output) and OUTPUT golden. Keyed by the module
+        FQN (the same ``prov.fqn`` the compare + slicer join on). The SHARED substrate for per-region
+        equivalence (C7) and standalone-section IO (C8) — optional (older bundles lack it)."""
+        return self.root / "region_goldens.npz"
+
+    def has_region_goldens(self) -> bool:
+        return self.region_goldens.is_file()
+
+    def load_region_goldens(self) -> dict[str, dict[str, "object"]]:
+        """Load ``region_goldens.npz`` grouped by region fqn → {slot: ndarray}. Slots are ``in<k>``
+        (the region's boundary inputs) and ``out`` (its output golden). ``{}`` if the file is absent.
+
+        Mirrors the writer's flat ``<fqn>::<slot>`` key convention (model2MLIR
+        ``m2m.capture.bundle._REGION_KEY``) — kept as ONE source of truth by this docstring so the two
+        repos do not drift. Consumers map fqn → region_id/role downstream (``dse_guidance``)."""
+        if not self.has_region_goldens():
+            return {}
+        import numpy as np
+
+        grouped: dict[str, dict[str, object]] = {}
+        with np.load(self.region_goldens) as npz:
+            for key in npz.files:
+                fqn, _, slot = key.partition("::")
+                if not slot:
+                    continue
+                grouped.setdefault(fqn, {})[slot] = npz[key]
+        return grouped
+
+    @property
     def torch_loader(self) -> Path:
         """PyTorch loader in the external model2MLIR repo (may not exist for every model)."""
         return model2mlir_root() / "workloads" / self.model / "loader.py"

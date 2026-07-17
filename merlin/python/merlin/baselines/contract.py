@@ -30,7 +30,13 @@ REGIONS: tuple[str, ...] = ("gemm", "attention", "norm", "elementwise", "other")
 
 @dataclass
 class RegionProfile:
-    """One "kernel-style" region measurement within a whole-model run."""
+    """One "kernel-style" region measurement within a whole-model run.
+
+    The ``region_id`` / ``fqn`` / ``role`` fields carry the SHARED model-layer provenance key so a
+    Merlin region and an ExecuTorch region descending from the SAME model layer align region-by-region
+    (apples-to-apples), instead of collapsing into one whole-model number. ``cos`` / ``rel`` are the
+    optional PER-REGION numerical-equivalence scores (vs the region's boundary golden); left None when
+    a per-region golden was unavailable — reported honestly, never a silent pass (see ``region_passed``)."""
     name: str                          # one of REGIONS (free-form allowed, but prefer the taxonomy)
     rdtime_ticks: int | None = None    # raw K1 rdtime ticks bracketing the region
     cycles: int | None = None          # est core cycles (ticks * CPU_HZ/TIMEBASE_HZ); NOT cycle-accurate
@@ -38,6 +44,25 @@ class RegionProfile:
     rvv_coverage: float | None = None  # 0..1 fraction of the region's compute insns that are vector
     calls: int | None = None           # how many times the region ran (loop trip count)
     note: str = ""
+    # --- shared model-layer provenance (the cross-compiler alignment / join key) ---
+    region_id: str = ""                # prov.region_id (e.g. "matmul_3")
+    fqn: str = ""                      # prov.fqn (deepest nn.Module path)
+    role: str = ""                     # role_from_fqn(fqn): backbone_once / repeated_head / ...
+    # --- per-region numerical equivalence (vs region_goldens.npz), None = not scored ---
+    cos: float | None = None
+    rel: float | None = None
+    golden_ref: str = ""               # which region_goldens key this region was scored against
+
+    def region_passed(self, cos_threshold: float | None, rel_threshold: float | None) -> bool | None:
+        """Per-region equivalence verdict, mirroring the whole-model ``not_run_is_not_pass`` at region
+        scope. None when the region was not scored (no golden) — an HONEST 'no_gold', never a pass."""
+        if self.cos is None:
+            return None
+        if cos_threshold is not None and self.cos < cos_threshold:
+            return False
+        if rel_threshold is not None and self.rel is not None and self.rel > rel_threshold:
+            return False
+        return True
 
 
 @dataclass
