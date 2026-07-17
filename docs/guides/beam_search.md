@@ -108,6 +108,22 @@ fork is the correctness-gated one with the highest real K1 speedup over `hand_v0
     --remote file:///tmp/rvv-mlir.git --execute      # -> stable/<best-pkg> branch
 ```
 
+## A verified run
+
+A CCA beam over a 128³ fp32 matmul, expert CCA lifted from `xnnpack_f32_gemm_rvv.objdump`, forking
+the frozen `hand_v0`, produced (measured on the live K1, medians of 3 repeats each, all `cos=1.0`):
+
+| package | median K1 wall | speedup vs frozen baseline |
+|---|---|---|
+| `hand_v0` (frozen seed) | 104,123,459 ns | 1.000× |
+| champion (CCA `vector.lmul` knob) | 98,341,588 ns | **1.059× (5.88% faster)** |
+
+The seed and champion wall distributions do not overlap (seed min 104.0 ms > champion max 98.6 ms),
+so the speedup is real, not measurement noise. The winning fork closed the `vector.lmul` CCA
+divergence (widen the N tile to raise LMUL); the `compute.contraction_form` outer-product feature
+forks fail-closed on the compile timeout (an honest finding, not a silent skip), and the frozen
+baseline was asserted byte-unchanged pre/post (`beam_tree.yaml: baseline_frozen.verified_unchanged`).
+
 ## Honest boundaries
 
 - **Substrate asymmetry.** Whole-model / section comparisons are K1 **wall** both sides;
