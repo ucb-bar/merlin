@@ -188,6 +188,91 @@ def prune_dead_nodes(prog: DispatchProgram) -> DispatchProgram:
                            nodes=nodes, results=list(prog.results))
 
 
+def slice_program(prog: DispatchProgram, region_ids, *, entry_suffix: str = "") -> DispatchProgram:
+    """Slice a whole-model dispatch program down to a SECTION: the dispatch nodes whose
+    ``prov.region_id`` is in ``region_ids`` plus the interior view-glue between them.
+
+    This is the runtime side of "compile the whole model, profile only a section". The result is a
+    valid, standalone ``DispatchProgram``: cross-boundary inputs (buffers a kept node reads but no kept
+    node produces) are reclassified to ``kind="arg"`` — they are fed from the region-boundary tensors
+    (``region_goldens.npz``); the slice's ``results`` are the buffers that leave it (consumed outside
+    the slice, an original program result, or a terminal section output). ``plan_arena`` re-plans it
+    as-is → a smaller arena. Selecting several region_ids at once yields ONE combined sub-program;
+    call once per region for separate binaries. Generalizes :func:`prune_dead_nodes` (backward
+    reachability), keyed on region provenance instead of program results. Raises if nothing matches.
+    """
+    want = set(region_ids)
+    keep: set[int] = {i for i, n in enumerate(prog.nodes)
+                      if n.kind == "dispatch" and n.prov.get("prov.region_id") in want}
+    if not keep:
+        raise ValueError(f"slice_program: no dispatch nodes match region_ids {sorted(want)}")
+
+    # Interior view-glue: a view node is kept when EVERY consumer of its outputs is already kept (it is
+    # internal to the slice). Fixpoint so a chain of views collapses in. A view feeding outside the
+    # slice is NOT pulled in — its output becomes a boundary result/input instead.
+    consumers: dict[str, list[int]] = {}
+    for i, n in enumerate(prog.nodes):
+        for b in n.inputs:
+            consumers.setdefault(b, []).append(i)
+    changed = True
+    while changed:
+        changed = False
+        for i, n in enumerate(prog.nodes):
+            if i in keep or n.kind != "view":
+                continue
+            cons = [c for b in n.outputs for c in consumers.get(b, [])]
+            if cons and all(c in keep for c in cons):
+                keep.add(i)
+                changed = True
+
+    kept = [prog.nodes[i] for i in sorted(keep)]
+    produced = {b for n in kept for b in n.outputs}
+    outside_consumed = {b for i, n in enumerate(prog.nodes) if i not in keep for b in n.inputs}
+    consumed_anywhere = {b for n in prog.nodes for b in n.inputs}
+    prog_results = set(prog.results)
+
+    # Slice results: a kept output that leaves the slice (consumed outside / a program result) or is a
+    # terminal section output (produced, consumed nowhere) — so the section's product is always exposed.
+    results: list[str] = []
+    for n in kept:
+        for b in n.outputs:
+            leaves = b in outside_consumed or b in prog_results
+            terminal = n.kind == "dispatch" and b not in consumed_anywhere and b not in prog_results
+            if (leaves or terminal) and b not in results:
+                results.append(b)
+
+    # Rebuild the buffer table: internal buffers keep their kind; a needed-but-not-produced input
+    # becomes a boundary arg (a const travels with the slice).
+    buffers: dict[str, Buffer] = {}
+
+    def _clone(bid: str, *, kind: str | None = None, arg_index: int | None = None) -> None:
+        s = prog.buffers[bid]
+        buffers[bid] = Buffer(id=s.id, shape=list(s.shape), dtype=s.dtype,
+                              kind=kind or s.kind, arg_index=arg_index)
+
+    args: list[int] = []
+    for bid in dict.fromkeys(b for n in kept for b in n.inputs):
+        if bid in produced:
+            continue
+        if prog.buffers[bid].kind == "const":
+            _clone(bid)                                  # consts are emitted with the slice
+        else:
+            _clone(bid, kind="arg", arg_index=len(args))  # boundary input -> a fresh slice arg
+            args.append(buffers[bid].arg_index)
+    for bid in produced:
+        _clone(bid)
+    for bid in results:                                  # ensure every result buffer is present
+        if bid not in buffers:
+            _clone(bid)
+
+    sliced = DispatchProgram(entry=prog.entry + entry_suffix, args=args,
+                             buffers=buffers, nodes=kept, results=results)
+    problems = verify_program(sliced)
+    if problems:
+        raise ValueError(f"slice_program produced an invalid DAG: {problems}")
+    return sliced
+
+
 def lower_model_to_dispatch_program(module, forward: str | None = None,
                                     prune: bool = True
                                     ) -> tuple[OutlineResult, DispatchProgram]:
