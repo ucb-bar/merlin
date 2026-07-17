@@ -111,3 +111,24 @@ def test_rank_results_falls_back_to_structural_match_without_k1():
         {"run_id": "b", "gate_ok": True, "speedup": None, "structural_match": 0.9},
     ]
     assert [n["run_id"] for n in rank_results(nodes)][0] == "b"
+
+
+def test_escalation_routes_unmet_promise_to_next_stronger_class():
+    """BB2: when a fork leaves a residual (didn't achieve its promised facet), _escalations routes the
+    next-stronger class for the unmet axis — turning the beam into a knob→…→CODEGEN escalation engine."""
+    from merlin.rvvgen.beam import _escalations
+    from merlin.kernels.action_catalog import route
+    from merlin.kernels.cca_compare import Divergence
+    from merlin.kernels import cca
+
+    action = route(Divergence("compute.accumulator_resident", True, False, "rvv"))
+    assert action.action_class == "PASS"
+    # the fork's emitted asm still shows resident=False -> the PASS promise was unmet.
+    achieved = cca.CCA(op="matmul", backend=["rvv"],
+                       compute=cca.ComputeFacet(accumulator_resident=False))
+    esc = _escalations(action, achieved, {"op_match": [{"op": "matmul", "tile": [4, 8, 1], "vector": [4, 8, 1]}]})
+    classes = [getattr(e.action, "action_class", None) for e in esc]
+    assert "CODEGEN" in classes                       # escalated PASS -> CODEGEN (the microkernel emitter)
+    # no residual -> no escalation.
+    ok = cca.CCA(op="matmul", backend=["rvv"], compute=cca.ComputeFacet(accumulator_resident=True))
+    assert _escalations(action, ok, {}) == []

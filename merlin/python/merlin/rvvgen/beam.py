@@ -18,12 +18,32 @@ from typing import Any, Callable
 from ..common.yaml import write_yaml
 from ..kernels.compare import RvvFingerprint, compare_fingerprints
 from ..kernels.rvv_knobs import propose_forks
-from ..kernels.search_step import audit_fork
 from .fork_from_action import propose_forks_from_cca
 from .from_strategy import mint_fork
 from .registry import load_rvv_package
 from .runner import certify_rvv
 from .sweep import rank_results, run_sweep
+
+
+def _escalations(action, achieved_cca, knobs: dict) -> list:
+    """The next-stronger fork proposals for the axes a fork PROMISED but did NOT achieve. Mirrors
+    ``mine.audit_achievement``: for each residual axis, route the next class up the FLAG→KNOB→HEURISTIC
+    →PASS→CODEGEN ladder (`route_escalated`) and map it to a ForkProposal. This is what turns the beam
+    from a knob-tuner into an escalation engine — when a knob leaves the divergence open, reach for the
+    stronger implementation (heuristic/pass/codegen) instead of silently accepting the miss."""
+    from ..kernels import action_catalog as ac
+    from ..kernels.cca_compare import Divergence
+    from .fork_from_action import action_to_fork
+
+    props = []
+    for axis in ac.achieved_residual(action, achieved_cca):
+        want = (action.intended_facet or {}).get(axis)
+        d = Divergence(axis=axis, expert=want, ours=ac._facet_value(achieved_cca, axis),
+                       backend=action.backend, evidence=list(action.evidence))
+        esc = ac.route_escalated(d, action.action_class)
+        if esc is not None:
+            props.append(action_to_fork(esc, knobs))
+    return props
 
 
 def _cca_divergences(run_dir: Path, expert_cca, op_key: dict) -> list:
@@ -116,8 +136,22 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     seed_node["speedup"] = 1.0 if seed_k1_wall else None
 
     counter = 0
+    pending_escalations: list[tuple] = []    # (pkg, ForkProposal, parent_run_id) queued for the next gen
     for d in range(1, depth + 1):
         jobs, meta = [], []
+        # Drain the previous generation's escalations FIRST: a fork that left a residual escalates the
+        # unmet axis to the next-stronger class, minted on top of that fork.
+        for esc_pkg, esc_prop, esc_parent_rid in pending_escalations:
+            counter += 1
+            fork_dir = minter(esc_pkg, esc_prop.overrides, version=d, depth=d,
+                                 timestamp=f"{timestamp}_esc{counter}", source_evidence=esc_prop.evidence,
+                                 lever=esc_prop.lever, target=target, out_root=out_root,
+                                 generated_by_agent=False)
+            jobs.append({"package_dir": str(fork_dir), "model_dir": str(model_dir),
+                         "runs_root": str(runs_root), "run_id": fork_dir.name, "targets": targets,
+                         "baseline_run_dir": (str(baseline_run_dir) if baseline_run_dir else None)})
+            meta.append((fork_dir, esc_parent_rid, esc_prop))
+        pending_escalations = []
         for parent_pkg, parent_node in parents:
             # feed the proposer the matching divergences: OUR-vs-EXPERT CCA divergences in CCA mode
             # (lifted from the parent's emitted asm), else the fingerprint divergences.
@@ -157,9 +191,25 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
             action = getattr(p, "action", None)
             objd = runs_root / fork_dir.name / "generated" / "objdump.txt"
             if action is not None and objd.is_file():
-                step = audit_fork(action, objd.read_text(), op=str(op_key.get("op", "matmul")),
-                                  correctness_ok=sc["gate_ok"], speedup=node.get("speedup"))
+                from ..kernels.cca import lift_asm
+                from ..kernels.decode import rvv as _rvv
+                from ..kernels.search_step import make_step
+                achieved_cca = lift_asm(_rvv.decode_text(objd.read_text()),
+                                        op=str(op_key.get("op", "matmul")), source="fork")
+                step = make_step(action, achieved_cca, correctness_ok=sc["gate_ok"],
+                                 speedup=node.get("speedup"))
                 node["search_step"] = step.to_dict()
+                # ESCALATION: the fork left a residual (promise unmet) -> route the next-stronger class
+                # for each open axis + queue it for the next generation (built on THIS fork).
+                if step.residual:
+                    fork_pkg = loader(str(fork_dir))
+                    esc_props = _escalations(action, achieved_cca, fork_pkg.knobs)
+                    node["escalations"] = [
+                        {"axis": e.targets, "class": getattr(e.action, "action_class", None),
+                         "seam": getattr(e.action, "target_seam", None), "forkable": e.forkable}
+                        for e in esc_props]
+                    pending_escalations.extend(
+                        (fork_pkg, e, fork_dir.name) for e in esc_props if e.forkable)
             gen_nodes.append(node)
             nodes.append(node)
         survivors = [n for n in rank_results(gen_nodes) if n["gate_ok"]][:top_k]
