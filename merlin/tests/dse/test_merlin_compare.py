@@ -188,3 +188,24 @@ def test_align_regions_joins_on_provenance_and_flags_asymmetry():
     norm = rows["layer_norm_0"]
     assert norm.presence == "merlin_only"           # the heterogeneity a whole-model number hides
     assert "only" in norm.note
+
+
+def test_region_alignment_md_renders_matrix_and_flags_asymmetry():
+    from merlin.baselines.contract import RegionProfile
+    from merlin.compare.attribution import align_regions
+    from merlin.compare.report import region_alignment_md
+
+    ours = [
+        RegionProfile(name="attention", region_id="matmul_3", fqn="model.layers.0.self_attn",
+                      role="repeated_head", wall_ns=100_000, cos=1.0),
+        RegionProfile(name="norm", region_id="layer_norm_0", fqn="model.layers.0.input_layernorm",
+                      wall_ns=10_000),
+    ]
+    expert = [RegionProfile(name="attention", region_id="matmul_3", fqn="model.layers.0.self_attn",
+                            role="repeated_head", wall_ns=80_000, cos=0.9999)]
+    md = region_alignment_md(align_regions(ours, expert))
+    assert "region | role |" in md                                  # the matrix header
+    assert "model.layers.0.self_attn" in md and "1.25×" in md       # aligned attention row + ratio
+    assert "model.layers.0.input_layernorm" in md                   # the norm layer
+    assert "merlin_only" in md and "⚠️" in md                        # the one-sided-region flag
+    assert region_alignment_md([]).startswith("_No aligned regions")

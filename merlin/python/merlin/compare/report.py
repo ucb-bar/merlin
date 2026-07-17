@@ -98,6 +98,38 @@ def attribution_md(attrs: list[Attribution]) -> str:
     return "\n\n".join(blocks)
 
 
+def _ns(v) -> str:
+    return f"{v / 1e6:.3f}ms" if v else "—"
+
+
+def _cos(v) -> str:
+    return f"{v:.5f}" if v is not None else "no_gold"
+
+
+def region_alignment_md(alignments) -> str:
+    """Render a region×framework matrix from ``compare.attribution.align_regions``: one row per model
+    layer (matched by shared provenance), with the per-region wall + equivalence on each side, so a
+    layer ExecuTorch left scalar / Merlin fused away is VISIBLE as a one-sided row rather than being
+    averaged into a whole-model number."""
+    if not alignments:
+        return "_No aligned regions (per-region profiles not present on either side)._"
+    head = ("| region | role | Merlin wall | ExecuTorch wall | ours/ET | Merlin cos | ET cos | presence |\n"
+            "|---|---|---|---|---|---|---|---|")
+    rows = [head]
+    for a in alignments:
+        label = a.fqn or a.key
+        ratio = f"{a.wall_ratio:.2f}×" if a.wall_ratio is not None else "—"
+        flag = "" if a.presence == "both" else " ⚠️"
+        rows.append(f"| `{label}` ({a.label}) | {a.role or '—'} | {_ns(a.ours_wall_ns)} | "
+                    f"{_ns(a.expert_wall_ns)} | {ratio} | {_cos(a.ours_cos)} | {_cos(a.expert_cos)} | "
+                    f"{a.presence}{flag} |")
+    only = [a for a in alignments if a.presence != "both"]
+    if only:
+        rows += ["", f"> ⚠️ {len(only)} region(s) present on only one side — delegation/vectorization "
+                 "heterogeneity a whole-model number hides; compared where both exist, flagged otherwise."]
+    return "\n".join(rows)
+
+
 def write_report(out_dir: Path, *, spec, measurements, ccas, attrs, figures,
                  root: Path, gap_axes: set[str]) -> Path:
     out_dir = Path(out_dir)
