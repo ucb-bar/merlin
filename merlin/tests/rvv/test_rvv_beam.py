@@ -140,8 +140,12 @@ def test_instrumented_beam_emits_aet_parent_and_child_runs(tmp_path, monkeypatch
 
     res = run_instrumented_beam(
         seed_pkg=HAND_V0, model_dir=tmp_path / "wl", expert_objdump=expert_objd,
-        op="matmul", targets=("k1",), width=2, depth=1, top_k=1, certify_fn=mock_certify)
+        op="matmul", targets=("k1",), width=2, depth=1, top_k=1, certify_fn=mock_certify,
+        expert_wall_ns=500_000)   # the XNNPACK target wall (P5): forks report attainment vs it
 
+    # P5: the best fork reports attainment_vs_expert = xnn_wall / fork_wall (the real XNNPACK scoreboard)
+    best = res.get("best") or {}
+    assert isinstance(best.get("attainment_vs_expert"), float)
     parent_dir = Path(res["parent_run_dir"])
     assert (parent_dir / "beam_tree.yaml").is_file()          # full per-step record in the parent run
     assert (parent_dir / "run_record.json").is_file()

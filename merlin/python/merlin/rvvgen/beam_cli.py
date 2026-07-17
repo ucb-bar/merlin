@@ -42,7 +42,8 @@ def _node_summary(node: dict) -> dict:
         "depth": node.get("depth"),
         "parent_run_id": node.get("parent_run_id"),
         "gate_ok": bool(node.get("gate_ok")),
-        "speedup": node.get("speedup"),                 # REAL K1 speedup vs the frozen seed
+        "speedup": node.get("speedup"),                 # REAL K1 speedup vs the seed
+        "attainment_vs_expert": node.get("attainment_vs_expert"),  # vs XNNPACK (>=1 = matched/beat)
         "k1_wall_ns": node.get("k1_wall_ns"),
         "cycles": node.get("cycles"),
         "structural_match": node.get("structural_match"),
@@ -57,7 +58,7 @@ def run_instrumented_beam(
     op: str = "matmul", dtype: str = "f32", shape_regime: str = "square",
     targets: tuple[str, ...] = ("k1",), width: int = 3, depth: int = 2, top_k: int = 2,
     max_workers: int | None = None, curated_text: str | None = None,
-    certify_fn=None, sweep_fn=None,
+    certify_fn=None, sweep_fn=None, expert_wall_ns: float | None = None,
 ) -> dict[str, Any]:
     """Open an aet parent run, run the CCA beam, emit a child aet run per fork, return the outcome."""
     from ..common.artifacts import finish_run, start_run
@@ -86,7 +87,8 @@ def run_instrumented_beam(
                        runs_root=parent.run_dir / "forks", out_root=str(parent.run_dir / "targets"),
                        width=width, depth=depth, top_k=top_k, target="rvv",
                        timestamp="beam", targets=targets, expert_cca=expert_cca,
-                       max_workers=max_workers, certify_fn=certify_fn, sweep_fn=sweep_fn)
+                       max_workers=max_workers, certify_fn=certify_fn, sweep_fn=sweep_fn,
+                       expert_wall_ns=expert_wall_ns)
         # beam_tree.yaml (the full per-step record) into the parent run dir.
         tree_src = Path(res["tree_path"])
         if tree_src.is_file():
@@ -102,6 +104,7 @@ def run_instrumented_beam(
         best = res.get("best")
         parent_summary = {"best_run_id": (best or {}).get("run_id"),
                           "best_speedup": (best or {}).get("speedup"),
+                          "best_attainment_vs_expert": (best or {}).get("attainment_vs_expert"),
                           "best_lever": (best or {}).get("lever"),
                           "n_forks": len(res.get("nodes", [])) - 1,
                           "n_deferred": len(res.get("deferred", []))}
@@ -117,7 +120,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="merlin-rvv-beam",
                                  description="aet-instrumented, board-serialized CCA beam search (BB3).")
     ap.add_argument("--seed-pkg", default=None,
-                    help="frozen baseline package (default: out/artifacts/targets/rvv/hand_v0)")
+                    help="seed package to FORK from (default: the fast impr_tuned_wholemodel, NOT the "
+                         "naive hand_v0 control — the beam targets XNNPACK, so it starts from our best)")
+    ap.add_argument("--expert-wall-ns", type=float, default=None,
+                    help="XNNPACK measured wall (ns) for this workload — the REAL target; each fork "
+                         "reports attainment_vs_expert = xnn_wall/fork_wall (>=1 = matched/beat XNNPACK)")
     ap.add_argument("--model-dir", required=True, help="workload bundle (model.mlir + inputs + golden)")
     ap.add_argument("--expert-objdump", required=True, help="decoded expert objdump fixture (CCA target)")
     ap.add_argument("--op", default="matmul")
@@ -131,12 +138,18 @@ def main(argv: list[str] | None = None) -> int:
                     help="sweep concurrency (default: 1 for a k1 target, board-safe)")
     args = ap.parse_args(argv)
 
-    seed_pkg = args.seed_pkg or str(repo_root() / "out/artifacts/targets/rvv/hand_v0")
+    # Default seed = the fast tracked config (P4/P5), NOT the naive hand_v0 control. hand_v0 stays the
+    # frozen baseline bar; the beam forks from our best so it targets XNNPACK, not the strawman.
+    default_seed = repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel"
+    if not default_seed.is_dir():
+        default_seed = repo_root() / "out/artifacts/targets/rvv/hand_v0"
+    seed_pkg = args.seed_pkg or str(default_seed)
     targets = tuple(t.strip() for t in args.targets.split(",") if t.strip())
     res = run_instrumented_beam(
         seed_pkg=seed_pkg, model_dir=args.model_dir, expert_objdump=args.expert_objdump,
         op=args.op, dtype=args.dtype, shape_regime=args.shape_regime, targets=targets,
-        width=args.width, depth=args.depth, top_k=args.top_k, max_workers=args.max_workers)
+        width=args.width, depth=args.depth, top_k=args.top_k, max_workers=args.max_workers,
+        expert_wall_ns=args.expert_wall_ns)
     best = res.get("best") or {}
     print(f"parent_run={res.get('parent_run_dir')}")
     print(f"best: run_id={best.get('run_id')} lever={best.get('lever')} "

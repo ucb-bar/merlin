@@ -105,7 +105,8 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
              baseline_run_dir: str | Path | None = None,
              certify_fn: Callable = certify_rvv, proposer: Callable | None = None,
              expert_cca=None, loader: Callable = load_rvv_package, minter: Callable = mint_fork,
-             max_workers: int | None = None, sweep_fn: Callable = run_sweep
+             max_workers: int | None = None, sweep_fn: Callable = run_sweep,
+             expert_wall_ns: float | None = None
              ) -> dict[str, Any]:
     """Run the beam. Returns {best, nodes, deferred, tree_path}. ``curated_text`` is the expert
     kernel C source for this op (the structural target); ``op_key`` = {op,dtype,shape_regime}.
@@ -157,7 +158,15 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
         w = node.get("k1_wall_ns")
         return round(seed_k1_wall / w, 3) if seed_k1_wall and w else None
 
+    def _attainment_vs_expert(node: dict) -> float | None:
+        """The REAL scoreboard the user cares about: fork wall vs the EXPERT (XNNPACK) wall for this
+        workload. >= 1.0 means we matched/beat XNNPACK; 0.56 means 56% of XNNPACK (1.8x slower). This
+        is what re-targets the beam at XNNPACK instead of the naive baseline. None if no expert wall."""
+        w = node.get("k1_wall_ns")
+        return round(expert_wall_ns / w, 3) if expert_wall_ns and w else None
+
     seed_node["speedup"] = 1.0 if seed_k1_wall else None
+    seed_node["attainment_vs_expert"] = _attainment_vs_expert(seed_node)
 
     counter = 0
     pending_escalations: list[tuple] = []    # (pkg, ForkProposal, parent_run_id) queued for the next gen
@@ -212,6 +221,7 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
                     "parent_run_id": parent_rid, "lever": p.lever, "evidence": p.evidence,
                     "targets_decision": p.targets, "depth": d, **sc}
             node["speedup"] = _real_speedup(node)     # real K1 speedup vs the seed (None if no k1)
+            node["attainment_vs_expert"] = _attainment_vs_expert(node)   # vs XNNPACK (the real target)
             # AUDIT: when the proposal carries its CompilerAction (CCA-native proposer) and the fork
             # emitted an objdump, record the per-step SearchStep — did the fork's asm actually ACHIEVE
             # the promised facet? (else escalate) + real-vs-fake speedup. The LLM-digestible step record.
@@ -258,8 +268,9 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     tree = {"target": target, "seed": str(seed_pkg), "op_key": op_key,
             "baseline_frozen": {"digest": seed_digest_pre, "verified_unchanged": True},
             "width": width, "depth": depth, "top_k": top_k,
-            "best": {k: best.get(k) for k in ("run_id", "structural_match", "speedup", "cycles",
-                                              "lever")}
+            "expert_wall_ns": expert_wall_ns,
+            "best": {k: best.get(k) for k in ("run_id", "structural_match", "speedup",
+                                              "attainment_vs_expert", "cycles", "lever")}
                     if best else None,
             "nodes": nodes, "deferred_work_items": deferred}
     tree_path = runs_root / "beam_tree.yaml"
