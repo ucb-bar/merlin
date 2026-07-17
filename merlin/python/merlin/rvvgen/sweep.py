@@ -40,11 +40,17 @@ def run_sweep(jobs: list[dict[str, Any]], *, certify_fn: Callable = certify_rvv,
 
 
 def rank_results(scored: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Rank scored nodes best-first. Key: correctness first, then structural_match (toward the
-    expert), then fewer cycles (weak — spike is functional-only, so a tiebreak not a driver)."""
+    """Rank scored nodes best-first. Key: correctness first, then REAL K1 speedup (measured silicon,
+    the true driver when the beam ran the k1 target), then structural_match toward the expert (the
+    proxy when there is no real measurement), then fewer spike cycles (weak functional tiebreak).
+
+    A fork that broke numerics (gate_ok False) sorts last regardless of speed — the INLINED-VS-ROUTED
+    / real-vs-fake discipline: no speed credit without correctness."""
     def key(n: dict) -> tuple:
         correct = 1 if n.get("gate_ok") else 0
+        spd = n.get("speedup")            # real K1 speedup vs baseline (>1 faster); None if no k1 run
         sm = n.get("structural_match") or 0.0
         cyc = n.get("cycles")
-        return (correct, sm, -(cyc if cyc is not None else float("inf")))
+        return (correct, spd if spd is not None else -1.0, sm,
+                -(cyc if cyc is not None else float("inf")))
     return sorted(scored, key=key, reverse=True)

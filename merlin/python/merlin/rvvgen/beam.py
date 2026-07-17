@@ -44,6 +44,10 @@ def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict) -
     gate_ok = bool((result.get("correctness") or {}).get("gate_ok"))
     cycles = next((m.get("cycles") for m in result.get("measurement", [])
                    if m.get("target") == "spike"), None)
+    # real-silicon wall time (K1) when the beam ran the k1 target — the REAL speedup signal (vs the
+    # structural_match proxy / spike functional cycles). None when k1 was not a target.
+    k1_wall = next((m.get("wall_ns") for m in result.get("measurement", [])
+                    if m.get("target") == "k1"), None)
     sm, divs = 0.0, []
     objd = run_dir / "generated" / "objdump.txt"
     if objd.is_file():
@@ -52,7 +56,8 @@ def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict) -
         sm, divs = cmp["structural_match"], cmp["divergences"]
     else:  # mock / no-objdump path: trust result fields if present
         sm, divs = result.get("structural_match", 0.0), result.get("divergences", [])
-    return {"gate_ok": gate_ok, "structural_match": sm, "cycles": cycles, "divergences": divs}
+    return {"gate_ok": gate_ok, "structural_match": sm, "cycles": cycles,
+            "k1_wall_ns": k1_wall, "divergences": divs}
 
 
 def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_key: dict, *,
@@ -100,6 +105,16 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     nodes.append(seed_node)
     parents = [(seed, seed_node)] if seed_node["gate_ok"] else []
 
+    # The seed's real-silicon wall time is the baseline every fork's REAL speedup is measured against
+    # (when the beam ran the k1 target). fail-closed: no baseline wall -> no real speedup credit.
+    seed_k1_wall = seed_node.get("k1_wall_ns")
+
+    def _real_speedup(node: dict) -> float | None:
+        w = node.get("k1_wall_ns")
+        return round(seed_k1_wall / w, 3) if seed_k1_wall and w else None
+
+    seed_node["speedup"] = 1.0 if seed_k1_wall else None
+
     counter = 0
     for d in range(1, depth + 1):
         jobs, meta = [], []
@@ -133,14 +148,17 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
             node = {"run_id": fork_dir.name, "package_dir": str(fork_dir),
                     "parent_run_id": parent_rid, "lever": p.lever, "evidence": p.evidence,
                     "targets_decision": p.targets, "depth": d, **sc}
+            node["speedup"] = _real_speedup(node)     # real K1 speedup vs the seed (None if no k1)
             # AUDIT: when the proposal carries its CompilerAction (CCA-native proposer) and the fork
             # emitted an objdump, record the per-step SearchStep — did the fork's asm actually ACHIEVE
             # the promised facet? (else escalate) + real-vs-fake speedup. The LLM-digestible step record.
+            # The REAL K1 speedup is passed so the SearchStep's fail-closed real-vs-fake gate fires on
+            # measured silicon, not a proxy.
             action = getattr(p, "action", None)
             objd = runs_root / fork_dir.name / "generated" / "objdump.txt"
             if action is not None and objd.is_file():
                 step = audit_fork(action, objd.read_text(), op=str(op_key.get("op", "matmul")),
-                                  correctness_ok=sc["gate_ok"], speedup=None)
+                                  correctness_ok=sc["gate_ok"], speedup=node.get("speedup"))
                 node["search_step"] = step.to_dict()
             gen_nodes.append(node)
             nodes.append(node)
@@ -153,7 +171,8 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     best = ranked[0] if ranked else None
     tree = {"target": target, "seed": str(seed_pkg), "op_key": op_key,
             "width": width, "depth": depth, "top_k": top_k,
-            "best": {k: best[k] for k in ("run_id", "structural_match", "cycles", "lever")}
+            "best": {k: best.get(k) for k in ("run_id", "structural_match", "speedup", "cycles",
+                                              "lever")}
                     if best else None,
             "nodes": nodes, "deferred_work_items": deferred}
     tree_path = runs_root / "beam_tree.yaml"

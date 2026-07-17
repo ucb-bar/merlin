@@ -86,3 +86,28 @@ def test_beam_stops_when_no_correct_parent(tmp_path):
     # seed fails the gate -> no parents -> no forks minted
     assert out["best"] is None or not out["best"]["gate_ok"]
     assert not list((tmp_path / "gen" / "rvv").glob("rvv_tuned_*"))
+
+
+def test_rank_results_prefers_real_k1_speedup_and_fails_closed_on_incorrectness():
+    """Ranking driver: real K1 speedup (measured silicon) beats the structural_match proxy; a fork
+    that broke numerics never outranks a correct one no matter how 'fast'."""
+    from merlin.rvvgen.sweep import rank_results
+    nodes = [
+        {"run_id": "seed", "gate_ok": True, "speedup": 1.0, "structural_match": 0.9},
+        {"run_id": "fast_correct", "gate_ok": True, "speedup": 1.4, "structural_match": 0.5},
+        {"run_id": "high_sm_slow", "gate_ok": True, "speedup": 0.8, "structural_match": 0.99},
+        {"run_id": "fast_but_broken", "gate_ok": False, "speedup": 3.0, "structural_match": 0.99},
+    ]
+    ranked = [n["run_id"] for n in rank_results(nodes)]
+    assert ranked[0] == "fast_correct"          # real speedup drives (beats the higher structural_match)
+    assert ranked[-1] == "fast_but_broken"      # broke numerics -> last, no speed credit (real-vs-fake)
+
+
+def test_rank_results_falls_back_to_structural_match_without_k1():
+    """No k1 run (speedup=None everywhere) -> ranking falls back to the structural_match proxy."""
+    from merlin.rvvgen.sweep import rank_results
+    nodes = [
+        {"run_id": "a", "gate_ok": True, "speedup": None, "structural_match": 0.6},
+        {"run_id": "b", "gate_ok": True, "speedup": None, "structural_match": 0.9},
+    ]
+    assert [n["run_id"] for n in rank_results(nodes)][0] == "b"
