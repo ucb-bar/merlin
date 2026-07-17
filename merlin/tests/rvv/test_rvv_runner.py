@@ -54,8 +54,12 @@ def test_k0_integrity_failure_is_recorded_not_raised(tmp_path):
     assert (tmp_path / "runs" / "evil_run" / "results.yaml").is_file()
 
 
-def test_k1_unavailable_is_fail_closed():
-    # Without a configured board + toolchain, K1 must be unavailable (never a false pass).
+def test_k1_unavailable_is_fail_closed(monkeypatch):
+    # Fail-closed LOGIC: with no configured board host, K1 must be unavailable (never a false pass).
+    # Force the unconfigured state rather than assume the ambient env lacks a board — a repo-local
+    # .env may legitimately configure a live board, and the property under test is that an ABSENT
+    # host still resolves to unavailable.
+    monkeypatch.setattr(k1, "K1_HOST", "")
     assert k1.available() is False
 
 
