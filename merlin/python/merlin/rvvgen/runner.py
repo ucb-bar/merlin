@@ -182,6 +182,17 @@ def certify_rvv(package_dir: str | Path, model_dir: str | Path, *, runs_root: st
                                            "time_ticks": m.get("time_ticks"),
                                            "wall_ns": m.get("wall_ns"),
                                            "vlen": kr.get("vlen", k1mod.VLEN)})
+                # K1 correctness gate: when spike did NOT gate (absent / not a target), the K1 output
+                # vs golden IS a real-silicon correctness signal — gate on it (same zm._gate the spike
+                # path uses) so the beam can rank forks on measured K1 speedup WITHOUT spike. K6 speedup
+                # stays fail-closed on this gate; source is recorded so K1-gated ≠ spike-gated.
+                if not rec["correctness"].get("gate_ok") and refs and kr.get("prefix") is not None:
+                    kg = zm._gate(kr["prefix"], refs)
+                    rec["correctness"] = {
+                        "gate_ok": kg.get("ok"), "fp32_cos": kg.get("fp32_cos"),
+                        "fp32_rel": kg.get("fp32_rel"), "fp32_argmax": kg.get("fp32_argmax"),
+                        "w8a8_cos": kg.get("w8a8_cos"), "w8a8_rel": kg.get("w8a8_rel"),
+                        "source": "k1"}
                 ladder["K5"] = "pass"
             except Exception as e:
                 ladder["K5"] = "not_run"
