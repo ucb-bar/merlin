@@ -57,13 +57,15 @@ def run_instrumented_beam(
     op: str = "matmul", dtype: str = "f32", shape_regime: str = "square",
     targets: tuple[str, ...] = ("k1",), width: int = 3, depth: int = 2, top_k: int = 2,
     max_workers: int | None = None, curated_text: str | None = None,
-    certify_fn=None,
+    certify_fn=None, sweep_fn=None,
 ) -> dict[str, Any]:
     """Open an aet parent run, run the CCA beam, emit a child aet run per fork, return the outcome."""
     from ..common.artifacts import finish_run, start_run
     from .beam import run_beam
     from .runner import certify_rvv
+    from .sweep import run_sweep
     certify_fn = certify_fn or certify_rvv
+    sweep_fn = sweep_fn or run_sweep
 
     op_key = {"op": op, "dtype": dtype, "shape_regime": shape_regime}
     expert_cca = lift_expert_cca(expert_objdump, op)
@@ -84,7 +86,7 @@ def run_instrumented_beam(
                        runs_root=parent.run_dir / "forks", out_root=str(parent.run_dir / "targets"),
                        width=width, depth=depth, top_k=top_k, target="rvv",
                        timestamp="beam", targets=targets, expert_cca=expert_cca,
-                       max_workers=max_workers, certify_fn=certify_fn)
+                       max_workers=max_workers, certify_fn=certify_fn, sweep_fn=sweep_fn)
         # beam_tree.yaml (the full per-step record) into the parent run dir.
         tree_src = Path(res["tree_path"])
         if tree_src.is_file():

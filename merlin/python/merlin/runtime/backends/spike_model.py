@@ -16,6 +16,7 @@ llvmlower `toolchain`.
 """
 from __future__ import annotations
 
+import os
 import struct
 import subprocess
 from pathlib import Path
@@ -45,8 +46,20 @@ def _c_runtime_dir() -> Path:
     return runtime_dir() / "c"
 
 
+# Bounded wall clock for the spike build's clang/link steps. A pathological schedule (e.g. an
+# outer-product contraction at a large square regime) makes clang -O2 spin for many minutes on one
+# object; in a serial beam that hangs the whole sweep. Time it out so the fork fails-closed as a
+# build error the certify ladder records. Same MERLIN_COMPILE_TIMEOUT_S knob as the K1/host paths.
+_SPIKE_CMD_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "600") or "0")
+
+
 def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
-    proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kw)
+    kw.setdefault("timeout", _SPIKE_CMD_TIMEOUT_S or None)
+    try:
+        proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kw)
+    except subprocess.TimeoutExpired:
+        raise SpikeModelError(f"command timed out after {_SPIKE_CMD_TIMEOUT_S}s "
+                              f"(pathological compile): {' '.join(map(str, cmd))}")
     if proc.returncode != 0:
         raise SpikeModelError(f"command failed: {' '.join(map(str, cmd))}\n{proc.stderr}")
     return proc

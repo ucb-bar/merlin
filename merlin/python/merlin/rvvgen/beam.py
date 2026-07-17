@@ -105,7 +105,7 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
              baseline_run_dir: str | Path | None = None,
              certify_fn: Callable = certify_rvv, proposer: Callable | None = None,
              expert_cca=None, loader: Callable = load_rvv_package, minter: Callable = mint_fork,
-             max_workers: int | None = None
+             max_workers: int | None = None, sweep_fn: Callable = run_sweep
              ) -> dict[str, Any]:
     """Run the beam. Returns {best, nodes, deferred, tree_path}. ``curated_text`` is the expert
     kernel C source for this op (the structural target); ``op_key`` = {op,dtype,shape_regime}.
@@ -199,9 +199,12 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
                 meta.append((fork_dir, parent_node["run_id"], p))
         if not jobs:
             break
-        # max_workers=1 serializes the sweep — REQUIRED when targets include "k1" until the chia
-        # single-slot board gate (BB3) lands, since the single K1 board can't run concurrent forks.
-        results = run_sweep(jobs, certify_fn=certify_fn, max_workers=max_workers)
+        # sweep_fn certifies this generation's forks. Default: the in-process ThreadPool run_sweep
+        # (max_workers=1 serializes it — REQUIRED for a k1 target on the single board). A chia-driven
+        # sweep (BB3, chia-venv) is injected here to fan forks out as @ChiaFunction(resources={"k1":1})
+        # Ray tasks — the single-slot k1 resource being the board gate across a Ray cluster (the
+        # host-wide k1.board_lock flock is the stronger cross-process serialization either way).
+        results = sweep_fn(jobs, certify_fn=certify_fn, max_workers=max_workers)
         gen_nodes = []
         for (fork_dir, parent_rid, p), res in zip(meta, results):
             sc = _score(res, runs_root / fork_dir.name, curated, op_key)

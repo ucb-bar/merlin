@@ -127,8 +127,21 @@ def available() -> bool:
         return False
 
 
+# Bounded wall clock for the build's clang/ld steps (this is the seam apply_rvv_package's spike/K1
+# build routes through). A pathological schedule (e.g. an outer-product contraction at a large square
+# regime) makes clang -O2 spin for many minutes on one object; in a serial beam that hangs the whole
+# sweep. Time it out so the fork fails-closed as a build error the certify ladder records. Same
+# MERLIN_COMPILE_TIMEOUT_S knob as the host/spike/K1 paths. run_on_spike/FireSim carry their own timeout.
+_BUILD_CMD_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "600") or "0")
+
+
 def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
-    proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kw)
+    kw.setdefault("timeout", _BUILD_CMD_TIMEOUT_S or None)
+    try:
+        proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kw)
+    except subprocess.TimeoutExpired:
+        raise ZephyrModelError(f"command timed out after {_BUILD_CMD_TIMEOUT_S}s "
+                               f"(pathological compile): {' '.join(map(str, cmd))}")
     if proc.returncode != 0:
         raise ZephyrModelError(
             f"command failed: {' '.join(map(str, cmd))}\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
