@@ -32,6 +32,33 @@ builtin.module {
 """
 
 
+def test_carry_provenance_threads_prov_loc_and_transforms():
+    """S0: a pass that rewrites an op must carry prov.* + the MLIR Location onto the replacement and
+    APPEND to the ordered ``prov.transforms`` breadcrumb (the 'what was actually applied' record)."""
+    from xdsl.dialects.builtin import NameLoc, StringAttr, UnknownLoc
+    from xdsl.dialects.test import TestOp
+
+    from merlin.llvmlower.passes_xdsl import carry_provenance
+
+    src = TestOp()
+    src.attributes["prov.region_id"] = StringAttr("matmul_0")
+    src.attributes["prov.fqn"] = StringAttr("blocks.0.attn.q")
+    src.location = NameLoc(StringAttr("blocks.0.attn.q"), UnknownLoc())
+
+    first = TestOp()
+    carry_provenance(first, src, "bf16_f32acc")
+    assert first.attributes["prov.region_id"].data == "matmul_0"       # join key preserved
+    assert first.attributes["prov.fqn"].data == "blocks.0.attn.q"
+    assert isinstance(first.location, NameLoc)                          # in-IR location carried
+    assert first.attributes["prov.transforms"].data == "bf16_f32acc"
+
+    # A SECOND rewrite appends — the breadcrumb is an ordered chain, not a last-writer-wins scalar.
+    second = TestOp()
+    carry_provenance(second, first, "collapse_overrank_matmul")
+    assert second.attributes["prov.transforms"].data == "bf16_f32acc,collapse_overrank_matmul"
+    assert second.attributes["prov.region_id"].data == "matmul_0"
+
+
 def test_dequant_lowering_emits_pure_upstream():
     from merlin.llvmlower.passes_xdsl import preprocess_text
 

@@ -16,6 +16,34 @@ import re
 from ..frontends.linalg_mlir import make_context, parse_mlir_text  # noqa: F401
 
 
+def carry_provenance(new_op, src_op, applied: str) -> None:
+    """Carry model-layer provenance from a rewritten op onto its replacement + record WHAT ran.
+
+    Three threads, so a lowering that rewrites an op does not sever it from its source layer:
+      1. copy every ``prov.*`` attribute (region_id/fqn/op/... — the join key the compare + slicer use);
+      2. propagate the MLIR ``Location`` (the in-IR "which original file/line" carrier — a no-op until
+         model2MLIR emits locations, but then it survives passes for free);
+      3. APPEND ``applied`` to an ordered ``prov.transforms`` breadcrumb (comma-joined) so the trace can
+         see the transformation sequence a region actually went through ("what was actually applied").
+    """
+    from xdsl.dialects.builtin import StringAttr
+
+    chain: list[str] = []
+    for key, val in src_op.attributes.items():
+        if key.startswith("prov."):
+            new_op.attributes[key] = val
+            if key == "prov.transforms" and isinstance(val, StringAttr):
+                chain = [t for t in val.data.split(",") if t]
+    chain.append(applied)
+    new_op.attributes["prov.transforms"] = StringAttr(",".join(chain))
+    loc = getattr(src_op, "location", None)
+    if loc is not None:
+        try:
+            new_op.location = loc
+        except Exception:  # noqa: BLE001 - location is best-effort in-IR provenance, never load-bearing
+            pass
+
+
 def collapse_overrank_matmul(module) -> int:
     """Fix `linalg.matmul` ops with a >2-D LHS + 2-D RHS (model2MLIR emits `aten.linear` on a
     3-D activation as a 2-D-map matmul over 3-D operands, which is invalid linalg). Rebuild
@@ -68,9 +96,7 @@ def collapse_overrank_matmul(module) -> int:
             indexing_maps=ArrayAttr([AffineMapAttr(lhs_map), AffineMapAttr(rhs_map),
                                      AffineMapAttr(out_map)]),
             iterator_types=iters, result_types=(out_t,))
-        for key, val in op.attributes.items():
-            if key.startswith("prov."):
-                gen.attributes[key] = val
+        carry_provenance(gen, op, "collapse_overrank_matmul")
         for new_op in (empty, zero, fill, gen):
             block.insert_op_before(new_op, op)
         op.results[0].replace_all_uses_with(gen.results[0])
@@ -156,10 +182,7 @@ def lower_quant_ext(module) -> int:
             iterator_types=iters,
             result_types=(out_t,),
         )
-        # Preserve provenance for downstream tooling.
-        for key, val in op.attributes.items():
-            if key.startswith("prov."):
-                generic.attributes[key] = val
+        carry_provenance(generic, op, "quant_ext_dequant")
 
         block.insert_op_before(empty, op)
         block.insert_op_before(generic, op)
@@ -264,9 +287,7 @@ def lower_bf16_matmul_f32acc(module) -> int:
             iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * rank),
             result_types=(out_t,))
 
-        for key, val in op.attributes.items():
-            if key.startswith("prov."):
-                acc_f32.attributes[key] = val
+        carry_provenance(acc_f32, op, "bf16_f32acc")
         for new_op in (empty_f, zero, fill_f, acc_f32, empty_b, trunc):
             block.insert_op_before(new_op, op)
         op.results[0].replace_all_uses_with(trunc.results[0])
@@ -302,9 +323,7 @@ def fix_bool_sitofp(module) -> int:
         if not (isinstance(st, IntegerType) and st.width.data == 1):
             continue
         new = arith.UIToFPOp(src, op.results[0].type)
-        for key, val in op.attributes.items():
-            if key.startswith("prov."):
-                new.attributes[key] = val
+        carry_provenance(new, op, "bool_sitofp_uitofp")
         op.parent_block().insert_op_before(new, op)
         op.results[0].replace_all_uses_with(new.results[0])
         op.parent_block().detach_op(op)

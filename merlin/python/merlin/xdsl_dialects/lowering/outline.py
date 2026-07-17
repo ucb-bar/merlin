@@ -98,6 +98,28 @@ def _prov(op) -> dict[str, str]:
     return out
 
 
+# The token that separates the region-id provenance suffix from the ``$kernel_<idx>`` core in a
+# dispatch symbol (``forward$kernel_3__rmatmul_0``). Kept here so the emitter and any reader share
+# ONE definition (structured split, never a regex — repo lint gate).
+REGION_SYMBOL_SEP = "__r"
+
+
+def _sanitize_symbol(text: str) -> str:
+    """Coerce a region_id to a C-symbol-safe token (alnum + underscore). region_ids are already
+    ``<opkind>_<n>`` today; this just hardens against an unexpected char without a regex."""
+    return "".join(c if (c.isalnum() or c == "_") else "_" for c in text)
+
+
+def region_id_of_symbol(symbol: str) -> str | None:
+    """Recover the ``prov.region_id`` a dispatch symbol was tagged with (``None`` if untagged).
+
+    Inverse of the suffix the outliner appends. Used to attribute an emitted kernel / ELF symbol
+    back to its model region — the asm-side of the provenance join.
+    """
+    _, sep, rid = symbol.partition(REGION_SYMBOL_SEP)
+    return rid or None if sep else None
+
+
 def _cloneable(owner) -> bool:
     """A producer is cloned into the consuming kernel when it's a cheap pure op -- UNLESS it
     is a ``tensor.empty`` tagged ``prov.quant_inner`` (an elided torchao int_data/scale that
@@ -221,7 +243,16 @@ def outline_dispatches(module, forward: str | None = None) -> OutlineResult:
 
         # --- a compute dispatch: build its kernel ---
         idx = len(kernels)
-        symbol = f"{fname}$kernel_{idx}"
+        # Encode the model-layer provenance (prov.region_id) INTO the symbol so it is the one
+        # thread that survives to the emitted ELF (the asm-join key for the cross-compiler compare
+        # + the section slicer). Keep the ``$kernel_<idx>`` core intact — it is the load-bearing
+        # driver-vs-kernel marker (``"$kernel_" in sym_name``) and the kernel-dedup key is the BODY
+        # text, not the symbol, so the suffix neither breaks detection nor defeats dedup. Absent a
+        # region_id (pre-provenance capture) the symbol is byte-identical to before (back-compat).
+        prov = _prov(op)
+        rid = prov.get("prov.region_id")
+        suffix = f"__r{_sanitize_symbol(rid)}" if rid else ""
+        symbol = f"{fname}$kernel_{idx}{suffix}"
         kernel_ops = _producer_closure(op)
         params = _free_values(kernel_ops)
         result_types = [r.type for r in op.results]
@@ -248,7 +279,7 @@ def outline_dispatches(module, forward: str | None = None) -> OutlineResult:
 
         dispatches.append(DispatchInfo(
             index=idx, symbol=symbol, root_op=op.name, n_operands=len(params),
-            result_types=[str(t) for t in result_types], prov=_prov(op)))
+            result_types=[str(t) for t in result_types], prov=prov))
 
     new_fn = FuncOp(fname, FunctionType.from_lists(
         arg_types, list(fn.function_type.outputs.data)), Region([driver]))

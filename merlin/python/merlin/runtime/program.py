@@ -36,6 +36,12 @@ class KernelEntry:
     symbol: str                          # compiled C symbol the replay invokes
     roots: list[str] = field(default_factory=list)   # fused root op names (provenance)
     capability: str = "scalar"           # required target capability (scalar|rvv|gemmini|simt|...)
+    # Model-layer provenance carried from the dispatch node's ``prov.*`` (see the outliner). The
+    # SAME key the cross-compiler compare (ExecuTorch↔Merlin) and the section slicer join on. ``role``
+    # is intentionally NOT stored here — it is derived from ``fqn`` downstream (``dse_guidance``) to
+    # keep ``runtime`` free of an analysis-layer import (``dse_guidance`` already imports ``runtime``).
+    region_id: str = ""                  # prov.region_id (e.g. "matmul_3")
+    fqn: str = ""                        # prov.fqn (deepest nn.Module path, e.g. "blocks.0.attn.q")
 
 
 @dataclass
@@ -91,9 +97,15 @@ def build_program(dispatch: DispatchProgram, *, capability: str = "rvv",
     for node in dispatch.nodes:
         opcodes.add(node.op if node.kind == "view" else f"dispatch:{node.op}")
         if node.kind == "dispatch" and node.op not in kernels:
-            roots = [v for k, v in node.prov.items() if k in ("root", "op", "name")]
-            kernels[node.op] = KernelEntry(id=node.op, symbol=node.op, roots=roots,
-                                           capability=capability)
+            # The dispatch node's prov keys are the model2MLIR ``prov.*`` spellings (``prov.op`` /
+            # ``prov.fqn`` / ``prov.region_id``), NOT bare ``root``/``op``/``name`` — the old filter
+            # matched none of them, so ``roots`` was silently always ``[]`` and the layer identity was
+            # dropped when building the kernel table. Read the real keys and carry region_id/fqn through.
+            prov = node.prov or {}
+            roots = [prov[k] for k in ("prov.op", "prov.name") if k in prov]
+            kernels[node.op] = KernelEntry(
+                id=node.op, symbol=node.op, roots=roots, capability=capability,
+                region_id=prov.get("prov.region_id", ""), fqn=prov.get("prov.fqn", ""))
     return MerlinProgram(
         abi_version=abi_version, entry=dispatch.entry, dispatch=dispatch, memory_plan=mem,
         kernels=kernels, capabilities=[capability], opcodes=sorted(opcodes))
