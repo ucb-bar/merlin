@@ -182,7 +182,7 @@ def lower_quant_ext(module) -> int:
             iterator_types=iters,
             result_types=(out_t,),
         )
-        carry_provenance(generic, op, "quant_ext_dequant")
+        carry_provenance(generic, op, "dequant_per_channel")
 
         block.insert_op_before(empty, op)
         block.insert_op_before(generic, op)
