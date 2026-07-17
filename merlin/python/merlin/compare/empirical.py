@@ -186,12 +186,46 @@ def prime_board_cache(spec, root: Path, *, n: int = 3) -> dict[str, str]:
     return status
 
 
+# external framework (executorch / tvm / buddy / exo / ggml) e2e results live in the independent
+# cross-framework BaselineResult tree, NOT the four-way JSON. Ingest them via the aggregate collector
+# so an `executorch` config is a first-class ARM in the SAME matrix as the inside-Merlin arms.
+_BASELINE_TREE = "out/artifacts/measurements/k1_spacemit"
+
+
+def _ingest_external(cfg: Config, wl: Workload, target: str, metric: str, root: Path) -> Measurement:
+    from ..baselines import aggregate as _agg
+    tree = root / _BASELINE_TREE
+    if not tree.is_dir():
+        return Measurement(config=cfg.name, workload=wl.name, target=target, metric=metric,
+                           status="not_measured")
+    rows = _agg.dedupe_latest(_agg.collect_dir(tree))
+    mine = [r for r in rows if r.framework == cfg.name and r.model == wl.name and r.e2e_wall_ns]
+    # not_run_is_not_pass: only a PASSING result counts as a real number. A fail (e.g. ET openvla's
+    # degenerate 16 ms) is NOT reported as measured — it's a not_measured cell with the reason kept.
+    passing = [r for r in mine if r.status() == "pass"]
+    passing.sort(key=lambda r: (r.variant == "fp32"), reverse=True)   # prefer fp32 (matches four-way)
+    r = passing[0] if passing else None
+    if r is None:
+        fail = next((x for x in mine), None)
+        return Measurement(config=cfg.name, workload=wl.name, target=target, metric=metric,
+                           status="not_measured",
+                           detail={"reason": f"no passing {cfg.name} result"
+                                   + (f" (latest {fail.variant}={fail.status()})" if fail else "")})
+    return Measurement(config=cfg.name, workload=wl.name, target=target, metric=metric,
+                       status="measured", value=float(r.e2e_wall_ns),
+                       cos=getattr(r, "cos", None), source=f"{_BASELINE_TREE} (baselines.aggregate)",
+                       detail={"framework": r.framework, "variant": r.variant, "status": r.status()})
+
+
 def measure(cfg: Config, wl: Workload, target: str, metric: str = "wall", *,
             run: bool = False, root: Path | None = None) -> Measurement:
     """The measurement seam. Ingests cached numbers; when ``run=True`` the board cache is refreshed
     first by :func:`prime_board_cache` (called once in :func:`measure_all`), so this per-cell path
-    always ingests the freshly-written JSON."""
+    always ingests the freshly-written JSON. External-framework arms (executorch/tvm/...) ingest from
+    the independent cross-framework BaselineResult tree so they sit in the SAME matrix as ours/xnn."""
     root = root or _repo_root()
+    if cfg.kind == "external":
+        return _ingest_external(cfg, wl, target, metric, root)
     if wl.kind == "gemm":
         return _ingest_gemm(cfg, wl, target, metric, root)
     return _ingest_model(cfg, wl, target, metric, root)
