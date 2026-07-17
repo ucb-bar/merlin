@@ -260,8 +260,11 @@ def test_resolve_bundle_int8_prefers_full_fidelity():
 
 def test_cross_compile_enforces_rvv_march():
     # The K1 march must enable +v; the arm imports it and enforce_rvv_march would reject otherwise.
+    # The board ISA also carries the half-precision extensions (zfh/zvfh — see /proc/cpuinfo), so the
+    # default march includes them; enforce_rvv_march passes it through unchanged (it only gates on +v).
     from merlin.rvvgen import k1
-    assert rvv_audit.enforce_rvv_march(k1.K1_MARCH) == "rv64gcv"
+    assert rvv_audit.enforce_rvv_march(k1.K1_MARCH) == "rv64gcv_zfh_zvfh"
+    assert "v" in k1.K1_MARCH
 
 
 # --- not_run_is_not_pass: a board-down / venv-missing result is an explicit gap ---------------
