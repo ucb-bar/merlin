@@ -7,8 +7,55 @@ gap path) so the gate stays green everywhere.
 """
 from __future__ import annotations
 
+import importlib.util
+
+from merlin.common.paths import merlin_dir
+
 from merlin.baselines import executorch as et
 from merlin.baselines import rvv_audit
+
+
+def _load_et_export():
+    """Load the ET-venv AOT helper by path (it is dependency-light; the pure fqn-extraction logic
+    imports fine under merlin's venv even though the export path itself runs under the ET venv)."""
+    p = merlin_dir() / "python" / "merlin" / "baselines" / "_et_export.py"
+    spec = importlib.util.spec_from_file_location("_et_export_under_test", p)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class _FakeNode:
+    def __init__(self, op, name, target, meta):
+        self.op, self.name, self.target, self.meta = op, name, target, meta
+
+
+class _FakeGraphModule:
+    def __init__(self, nodes):
+        self.graph = type("g", (), {"nodes": nodes})()
+
+
+# --- ET-side provenance: node -> originating model-layer fqn (the cross-compiler join key) -----
+
+def test_extract_fqn_map_picks_deepest_module_and_skips_non_compute():
+    m = _load_et_export()
+    nodes = [
+        _FakeNode("call_function", "lin_q", "aten.linear.default",
+                  {"nn_module_stack": {"a": ("model.layers.0", "M"),
+                                       "b": ("model.layers.0.self_attn", "Attn")}}),
+        _FakeNode("call_function", "act", "aten.silu.default",
+                  {"nn_module_stack": {"a": ("model.layers.0", "M"),
+                                       "b": ("model.layers.0.mlp", "MLP")}}),
+        _FakeNode("placeholder", "x", "x", {}),                 # not a compute op -> skipped
+        _FakeNode("call_function", "untagged", "aten.view.default", {}),  # no nn_module_stack -> skipped
+    ]
+    fmap = m.extract_fqn_map(_FakeGraphModule(nodes))
+    assert fmap["lin_q"]["fqn"] == "model.layers.0.self_attn"   # deepest module, not the wrapper
+    assert fmap["act"]["fqn"] == "model.layers.0.mlp"
+    assert "x" not in fmap and "untagged" not in fmap
+    # the fqns are the SAME key space role_from_fqn / recognize_regions consume.
+    from merlin.dse_guidance.attribution import role_from_fqn
+    assert role_from_fqn(fmap["lin_q"]["fqn"]) == "repeated_head"
 
 
 # --- symbol -> region mapping -----------------------------------------------------------------

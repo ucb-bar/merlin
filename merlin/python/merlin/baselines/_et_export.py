@@ -33,6 +33,32 @@ import sys
 from pathlib import Path
 
 
+def _module_fqn(node) -> str | None:
+    """The deepest nn.Module FQN a node came from (from ``node.meta['nn_module_stack']``) — the SAME
+    key model2MLIR reads for ``prov.fqn``, so a Merlin region and this ET node align on one fqn."""
+    nms = node.meta.get("nn_module_stack")
+    if not nms:
+        return None
+    paths = [v[0] for v in nms.values() if isinstance(v, (tuple, list)) and v and v[0]]
+    return max(paths, key=lambda p: str(p).count(".")) if paths else None
+
+
+def extract_fqn_map(exported) -> dict[str, dict]:
+    """Map each compute op of the EXPORTED (pre-delegation) graph to its originating model layer.
+
+    Read pre-lowering: after the XNNPACK partitioner delegates the linears they become opaque
+    call_delegate nodes, so the per-layer identity only survives here. Keyed by node name; each entry
+    carries the fqn + the aten op. This is the ET analogue of Merlin's prov.fqn — the cross-compiler
+    join key. Role is derived downstream in the merlin venv (role_from_fqn), not here."""
+    out: dict[str, dict] = {}
+    for n in exported.graph.nodes:
+        if n.op == "call_function":
+            fqn = _module_fqn(n)
+            if fqn:
+                out[n.name] = {"fqn": fqn, "aten": str(n.target).split(".")[-1]}
+    return out
+
+
 def _apply_loader_compat_shims() -> list[str]:
     """Faithful compat shims for loader/framework version drift (NOT numeric changes).
 
@@ -438,6 +464,22 @@ def main() -> int:
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
+
+    # --- provenance: node -> originating model-layer fqn (the cross-compiler join key) + etrecord ---
+    # The fqn map lets the whole-model compare align ET regions to Merlin regions by shared layer; the
+    # etrecord lets the devtools Inspector correlate on-board etdump events (debug_handle) back to it.
+    fqn_map = extract_fqn_map(exported)
+    (out.parent / "et_fqn_map.json").write_text(json.dumps(fqn_map, indent=2))
+    etrecord_path = ""
+    try:
+        from executorch.devtools import generate_etrecord
+        etrecord_path = str(out.parent / "etrecord.bin")
+        generate_etrecord(etrecord_path, edge, et_program, exported_program=exported)
+    except Exception as e:  # noqa: BLE001 - etrecord is for per-region timing; absence is not fatal
+        etrecord_path = ""
+        print(f"[warn] generate_etrecord failed ({type(e).__name__}: {str(e)[:120]}); "
+              "per-region ET timing will be unavailable", file=sys.stderr)
+
     with open(out, "wb") as fh:
         et_program.write_to_file(fh)
     # .ptd tensor-data files (weights). write_tensor_data_to_file writes <key>.ptd into outdir.
@@ -475,6 +517,9 @@ def main() -> int:
         "total_call_nodes": total_calls,
         "golden_shape": list(golden_np.shape),
         "golden_dtype": str(golden_np.dtype),
+        "fqn_map": str(out.parent / "et_fqn_map.json"),
+        "n_provenanced_nodes": len(fqn_map),
+        "etrecord": etrecord_path,
     }
     print("ET_EXPORT_JSON " + json.dumps(summary))
     return 0
