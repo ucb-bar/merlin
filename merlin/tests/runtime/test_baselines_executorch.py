@@ -91,6 +91,34 @@ def test_et_inspect_recovers_layer_fqn_and_buckets_delegated():
     assert m._deepest_fqn(delegated) is None
 
 
+def test_et_region_json_to_profiles_feeds_the_compare(tmp_path):
+    """The full C7 data path: _et_inspect's per-region etdump JSON -> RegionProfiles -> align_regions
+    -> the region×framework matrix. Uses the exact shape recovered from the real K1 run."""
+    import json as _json
+
+    from merlin.baselines.contract import RegionProfile
+    from merlin.compare.attribution import align_regions
+    from merlin.compare.report import region_alignment_md
+
+    et_json = tmp_path / "et_regions.json"
+    et_json.write_text(_json.dumps([
+        {"fqn": "layers.0.mlp", "wall_ns": 157707, "n_events": 8, "delegated": False},
+        {"fqn": "layers.0.self_attn", "wall_ns": 82043, "n_events": 4, "delegated": False},
+        {"fqn": "other", "wall_ns": 679048, "n_events": 3, "delegated": False},
+    ]))
+    et_profiles = et.region_profiles_from_et_json(et_json)
+    by = {p.fqn: p for p in et_profiles}
+    assert by["layers.0.self_attn"].role == "repeated_head"       # role derived on the merlin side
+    assert by["layers.0.self_attn"].wall_ns == 82043
+    assert any(p.name == "other" and p.fqn == "" for p in et_profiles)
+
+    # align an ExecuTorch region against a Merlin region on the shared fqn -> the apples-to-apples row.
+    merlin = [RegionProfile(name="attention", fqn="layers.0.self_attn", role="repeated_head",
+                            wall_ns=60000, cos=1.0)]
+    md = region_alignment_md(align_regions(merlin, et_profiles))
+    assert "layers.0.self_attn" in md and "0.73×" in md          # 60000/82043 ≈ 0.73 (Merlin faster here)
+
+
 # --- symbol -> region mapping -----------------------------------------------------------------
 
 def test_region_of_symbol():

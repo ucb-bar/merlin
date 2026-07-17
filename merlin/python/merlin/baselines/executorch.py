@@ -52,6 +52,27 @@ _BUILD_ROOT = build_dir() / "baselines" / "executorch"
 _ET_SRC = repo_root() / "third_party" / "baselines" / "executorch"
 _TOOLCHAIN_CMAKE = Path(__file__).with_name("executorch_spacemit_toolchain.cmake")
 _ET_EXPORT_HELPER = Path(__file__).with_name("_et_export.py")
+_ET_INSPECT_HELPER = Path(__file__).with_name("_et_inspect.py")
+
+
+def region_profiles_from_et_json(et_regions_json: str | Path) -> list[RegionProfile]:
+    """Turn ``_et_inspect``'s ``et_regions.json`` (per-op etdump timing aggregated by nn.Module fqn)
+    into per-region :class:`RegionProfile`s the region×framework compare consumes. The fqn is the
+    SHARED join key with the Merlin side; ``role`` is derived here via ``role_from_fqn``. A delegated /
+    unattributable op lands in the ``other`` bucket honestly (the XNNPACK-delegation asymmetry)."""
+    from merlin.dse_guidance.attribution import role_from_fqn
+
+    rows = json.loads(Path(et_regions_json).read_text())
+    out: list[RegionProfile] = []
+    for r in rows:
+        fqn = r.get("fqn", "") or ""
+        out.append(RegionProfile(
+            name=fqn.rsplit(".", 1)[-1] if fqn and fqn != "other" else "other",
+            region_id="", fqn="" if fqn == "other" else fqn,
+            role=role_from_fqn(fqn) or "", wall_ns=int(r.get("wall_ns") or 0),
+            note=f"executorch etdump ({r.get('n_events')} events"
+                 + (", delegated/opaque" if r.get("delegated") else "") + ")"))
+    return out
 
 
 def et_venv_python() -> Path:
