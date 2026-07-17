@@ -40,11 +40,16 @@ _STAGE_PHASE = {
 class GraphRegion:
     """A region of the flattened exported graph (from the model2MLIR MLIR + ``prov.*`` attributes)."""
     region_id: str
-    op: str
+    op: str                              # the FINE op (aten-level: matmul / addmm / softmax / ...)
     family: str | None = None
     module: str | None = None
     shape: dict[str, int] | None = None
     provenance: dict[str, str] = field(default_factory=dict)
+    # The REGION-level identity this op belongs to, recognized structurally by
+    # ``dse_guidance.attribution.recognize_regions`` (attention / linear / mlp / conv / norm / softmax).
+    # Distinct from ``op``: a `matmul` op inside an attention block has op="matmul", recognized_op=
+    # "attention". None when the region was not recognized (e.g. a bare MatmulRecord with no capture).
+    recognized_op: str | None = None
 
 
 @dataclass(frozen=True)
@@ -198,9 +203,11 @@ def pipeline_steps(target: str = "rvv") -> list[TransformStep]:
 
 # ---- linkage: graph region <- prov ; asm region <- decoded InsnStream --------------
 
-def graph_region_from_record(rec) -> GraphRegion:
+def graph_region_from_record(rec, recognized_op: str | None = None) -> GraphRegion:
     """A GraphRegion from a ``frontends.linalg_mlir.MatmulRecord`` (its ``prov.*`` + m/n/k/kind).
-    This is the flattened-graph end of the trace, read structurally from the model2MLIR provenance."""
+    This is the flattened-graph end of the trace, read structurally from the model2MLIR provenance.
+    ``recognized_op`` (optional) is the region-level identity from ``recognize_regions`` — the caller
+    passes it when a capture is available, so the trace records WHAT the region is, not just the op."""
     prov = dict(rec.prov or {})
     shape = {k: v for k, v in (("M", rec.m), ("N", rec.n), ("K", rec.k)) if v is not None}
     return GraphRegion(
@@ -209,7 +216,19 @@ def graph_region_from_record(rec) -> GraphRegion:
         family=prov.get("prov.family"),
         module=prov.get("prov.module"),
         shape=shape or None,
-        provenance=prov)
+        provenance=prov,
+        recognized_op=recognized_op)
+
+
+def op_agree(graph_region: GraphRegion, asm_cca) -> "object":
+    """Cross-check the graph's FINE op against the op the asm CCA was lifted as, reusing the CCA
+    validity gate (``cca.cca_agree``). Disagreement means the asm region was decoded under an op
+    inconsistent with the graph — the trace is then quarantined (the op flowed unverified before).
+    Returns a ``cca.AgreementReport``."""
+    from .cca import CCA, ComputeFacet, cca_agree
+    g = CCA(op=graph_region.op, backend=list(getattr(asm_cca, "backend", []) or []),
+            compute=ComputeFacet(op=graph_region.op), provenance={"level": "graph"})
+    return cca_agree(g, asm_cca)
 
 
 def asm_region_from_stream(stream, *, op: str, source: str = "asm", label: str = "kernel") -> AsmRegion:
@@ -280,15 +299,30 @@ def build_expert_trace(framework: str, stream, *, op: str, kernel_id: str) -> Lo
         provenance={"level": "contract+asm", "framework": framework})
 
 
-def build_our_trace(stream, *, op: str, record=None, target: str = "rvv") -> LoweringTrace:
+def build_our_trace(stream, *, op: str | None = None, record=None, recognized_op: str | None = None,
+                    target: str = "rvv") -> LoweringTrace:
     """A LoweringTrace for OUR compiler's output: the flattened-graph region (from a MatmulRecord, if
-    given) → our pipeline transformation steps → the emitted asm region. The full graph→steps→asm thread."""
+    given) → our pipeline transformation steps → the emitted asm region. The full graph→steps→asm thread.
+
+    Op identity is threaded from the graph as the single source of truth: when a ``record`` is given the
+    asm is decoded under the graph's op (``op`` still overrides for the record-less path), and
+    ``op_agree`` cross-checks the two — a mismatch is recorded and quarantines the trace. ``recognized_op``
+    (the region-level identity from ``recognize_regions``) is carried as context on the GraphRegion."""
+    graph = graph_region_from_record(record, recognized_op=recognized_op) if record is not None else None
+    # Single source of truth for the fine op: prefer the graph's, fall back to the explicit arg.
+    asm_op = op or (graph.op if graph is not None else None) or "unknown"
+    asm = asm_region_from_stream(stream, op=asm_op, source="ours", label=asm_op)
+    prov: dict[str, Any] = {"level": "graph+pipeline+asm"}
+    if graph is not None:
+        from .cca import lift_asm
+        report = op_agree(graph, lift_asm(stream, op=asm_op, source="ours"))
+        prov["op_agreement"] = {"agree": report.agree, "disagreements": report.disagreements}
+        prov["quarantined"] = not report.agree
+        if graph.recognized_op:
+            prov["recognized_op"] = graph.recognized_op
     return LoweringTrace(
-        kernel=op, target=target, source="ours",
-        graph=graph_region_from_record(record) if record is not None else None,
-        steps=pipeline_steps(target),
-        asm=asm_region_from_stream(stream, op=op, source="ours", label=op),
-        provenance={"level": "graph+pipeline+asm"})
+        kernel=asm_op, target=target, source="ours", graph=graph,
+        steps=pipeline_steps(target), asm=asm, provenance=prov)
 
 
 def emit_trace(trace: LoweringTrace, *, version: int = 1):

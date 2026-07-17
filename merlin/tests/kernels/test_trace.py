@@ -118,6 +118,32 @@ def test_build_our_trace_threads_graph_pipeline_asm(monkeypatch):
     assert tr.source == "ours" and tr.graph is not None       # full thread: graph present
     assert {s.plane for s in tr.steps} == {"dialect", "transform_schedule", "llvm"}
     assert tr.asm is not None
+    # op flows from the graph and is cross-checked (matmul == matmul) -> not quarantined.
+    assert tr.provenance["op_agreement"]["agree"] is True
+    assert tr.provenance["quarantined"] is False
+
+
+def test_build_our_trace_carries_recognized_region(monkeypatch):
+    # the region-level identity (from recognize_regions) rides on the trace as context.
+    from merlin.frontends.linalg_mlir import MatmulRecord
+    rec = MatmulRecord(kind="linalg.matmul", m=64, k=64, n=64, lhs_shape=(64, 64), rhs_shape=(64, 64),
+                       dtype="f32", weight_arg_index=1, weight_name="w", prov={"prov.op": "matmul"})
+    tr = T.build_our_trace(_fix(monkeypatch, "ours_baseline_matmul.objdump"), record=rec,
+                           recognized_op="attention")
+    assert tr.graph.recognized_op == "attention"              # a matmul recognized as part of attention
+    assert tr.provenance["recognized_op"] == "attention"
+    assert tr.graph.op == "matmul"                            # the fine op is still the matmul
+
+
+def test_op_agree_quarantines_on_op_mismatch(monkeypatch):
+    # graph says matmul, asm is decoded under a different op -> op_agree disagrees -> trace quarantined.
+    from merlin.frontends.linalg_mlir import MatmulRecord
+    rec = MatmulRecord(kind="linalg.matmul", m=64, k=64, n=64, lhs_shape=(64, 64), rhs_shape=(64, 64),
+                       dtype="f32", weight_arg_index=1, weight_name="w", prov={"prov.op": "matmul"})
+    tr = T.build_our_trace(_fix(monkeypatch, "ours_baseline_matmul.objdump"), op="gelu", record=rec)
+    assert tr.provenance["op_agreement"]["agree"] is False
+    assert tr.provenance["quarantined"] is True
+    assert any("compute.op" in d for d in tr.provenance["op_agreement"]["disagreements"])
 
 
 def test_emit_trace_versioned(tmp_path, monkeypatch):

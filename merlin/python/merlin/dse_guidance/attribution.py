@@ -371,6 +371,154 @@ def extract_non_gemm_ops(capture_dir: str) -> tuple[NonGemmRecord, ...]:
     return tuple(out)
 
 
+# --- region recognition: "what IS this?" (attention / linear / mlp / conv / norm / softmax) --------
+# The per-op extractors above label INDIVIDUAL ops (a matmul, a softmax generic). Recognition folds
+# those single-op tags into a REGION-LEVEL identity by (1) grouping ops at the nn.Module boundary the
+# fqn encodes and (2) reading the op-topology of each group. It is STRUCTURAL: a group is ATTENTION
+# only if it actually contains a softmax/sdpa member (not merely because its fqn says "attn"), so the
+# label is corroborated by the computation, not asserted from a name. Flash-attention is deliberately
+# NOT a label here — no capture's graph encodes tiling/online-softmax (verified); flash is an
+# ASM-level realization the LoweringTrace's op-agreement reconciles, not a graph-topology property.
+REGION_ATTENTION = "attention"
+REGION_LINEAR = "linear"
+REGION_MLP = "mlp"
+REGION_CONV = "conv"
+REGION_NORM = "norm"
+REGION_SOFTMAX = "softmax"
+REGION_OTHER = "other"
+
+# The nn.Module-type token that bounds a region within an fqn. Substring tests (structured, no regex);
+# ordered so the FIRST matching token (scanning root→leaf) is the region boundary.
+_REGION_TOKENS: tuple[tuple[str, str], ...] = (
+    ("attn", "attn"), ("attention", "attn"),          # self_attn / cross_attn / attn1 / ...attn
+    ("mlp", "mlp"), ("ffn", "mlp"), ("feed_forward", "mlp"), ("feedforward", "mlp"),
+    ("conv", "conv"), ("patch_embed", "conv"), ("patchembed", "conv"),
+    ("norm", "norm"),                                 # layernorm / rmsnorm / norm1 / input_layernorm
+)
+_CONTRACTION_CLASSES = (OPC_ATTENTION, OPC_BATCHED_MATMUL, OPC_LINEAR_GENERIC)
+
+
+def _region_token_type(token: str) -> str | None:
+    t = token.lower()
+    for needle, kind in _REGION_TOKENS:
+        if needle in t:
+            return kind
+    return None
+
+
+def _region_group_key(fqn: str | None) -> tuple[str | None, str | None]:
+    """(group_key, token_type) — the fqn truncated at (and including) the FIRST region-type token, so
+    every op under an attention/mlp/norm/conv module folds into ONE region. No region token → the full
+    fqn is its own group (token_type None), e.g. a bare lm-head projection."""
+    if not fqn:
+        return None, None
+    parts = fqn.split(".")
+    for i, tok in enumerate(parts):
+        tt = _region_token_type(tok)
+        if tt is not None:
+            return ".".join(parts[:i + 1]), tt
+    return fqn, None
+
+
+@dataclass
+class RecognizedRegion:
+    """A recognized model region: what it IS, the ops that make it, and the join/selection keys."""
+    region_label: str                  # REGION_* (attention/linear/mlp/conv/norm/softmax/other)
+    fqn_group: str | None              # the nn.Module path the region occupies (the grouping key)
+    role: str | None                   # role_from_fqn(fqn_group) (backbone_once / repeated_head / ...)
+    op_labels: tuple[str, ...]         # the fine op classes present (the structural evidence)
+    region_ids: tuple[str, ...]        # prov.region_ids of member ops — the C7/C8 join + selection keys
+    contraction_count: int
+    has_softmax: bool
+
+
+@lru_cache(maxsize=None)
+@_memoize_capture
+def recognize_regions(capture_dir: str) -> tuple[RecognizedRegion, ...]:
+    """Recognize the model's regions from a capture: group ops at the nn.Module boundary and classify
+    each group by op-topology. Deterministic, structural, no LLM. Empty tuple if the capture won't parse.
+
+    Label rules (topology-first, fqn-corroborated):
+      * ATTENTION — has a softmax/sdpa member AND (an attention fqn OR ≥2 contractions). Requiring the
+        softmax/sdpa guarantees no ATTENTION is minted from a name alone.
+      * CONV — a conv member (or conv fqn).
+      * MLP — an mlp fqn with ≥1 contraction, or ≥2 contractions with an activation.
+      * NORM / SOFTMAX — a norm / lone-softmax group with no contraction.
+      * LINEAR — a single contraction (a bare projection).
+      * OTHER — no compute (pure layout/elementwise glue).
+    """
+    matmuls = extract_matmuls(capture_dir)
+    non_gemm = extract_non_gemm_ops(capture_dir)
+    if not matmuls and not non_gemm:
+        return ()
+
+    # Accumulate per-group evidence.
+    groups: dict[str | None, dict] = {}
+
+    def _slot(fqn):
+        key, tt = _region_group_key(fqn)
+        g = groups.get(key)
+        if g is None:
+            g = {"token": tt, "labels": [], "region_ids": [], "contractions": 0,
+                 "softmax": False, "sdpa": False, "conv": False, "norm": False, "act": False}
+            groups[key] = g
+        return g
+
+    for r in matmuls:
+        g = _slot(r.fqn)
+        g["labels"].append(r.op or "matmul")
+        g["contractions"] += 1
+        if r.region_id:
+            g["region_ids"].append(r.region_id)
+
+    for r in non_gemm:
+        g = _slot(r.fqn)
+        g["labels"].append(r.op_class)
+        if r.region_id:
+            g["region_ids"].append(r.region_id)
+        if r.op_class in _CONTRACTION_CLASSES:
+            g["contractions"] += 1
+        if r.op_class == OPC_SOFTMAX:
+            g["softmax"] = True
+        if r.prov_op == "sdpa" or r.op_class == OPC_ATTENTION:
+            g["sdpa"] = True
+        if r.op_class == OPC_CONV:
+            g["conv"] = True
+        if r.op_class == OPC_NORM:
+            g["norm"] = True
+        if r.op_class == OPC_ACTIVATION:
+            g["act"] = True
+
+    out: list[RecognizedRegion] = []
+    for key, g in groups.items():
+        attn_like = g["softmax"] or g["sdpa"]
+        nc = g["contractions"]
+        tt = g["token"]
+        if attn_like and (tt == "attn" or nc >= 2):
+            label = REGION_ATTENTION
+        elif g["conv"] or tt == "conv":
+            label = REGION_CONV
+        elif tt == "mlp" and nc >= 1:
+            label = REGION_MLP
+        elif nc >= 2 and g["act"]:
+            label = REGION_MLP
+        elif nc == 1:
+            label = REGION_LINEAR
+        elif nc >= 2:
+            label = REGION_MLP                      # multi-linear block, no activation tag
+        elif g["softmax"]:
+            label = REGION_SOFTMAX
+        elif tt == "norm" or g["norm"]:
+            label = REGION_NORM
+        else:
+            label = REGION_OTHER
+        out.append(RecognizedRegion(
+            region_label=label, fqn_group=key, role=role_from_fqn(key),
+            op_labels=tuple(dict.fromkeys(g["labels"])), region_ids=tuple(sorted(set(g["region_ids"]))),
+            contraction_count=nc, has_softmax=g["softmax"]))
+    return tuple(out)
+
+
 @lru_cache(maxsize=None)
 @_memoize_capture
 def matmul_dependencies(capture_dir: str) -> tuple[tuple[int, ...], ...]:
