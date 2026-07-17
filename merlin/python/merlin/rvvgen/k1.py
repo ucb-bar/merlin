@@ -21,27 +21,28 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from merlin.common.paths import repo_root, runtime_dir
+from merlin.common.paths import env, repo_root, runtime_dir
 from typing import Any
 
 # Board access — set both via env (no personal defaults committed). The board IP is a DHCP lease.
-K1_SSH_KEY = os.environ.get("MERLIN_K1_SSH_KEY", "")  # path to the SSH private key; empty => unset
-K1_HOST = os.environ.get("MERLIN_K1_HOST", "")  # e.g. root@<board-ip>; empty => unset/unreachable
+# Read through paths.env (os.environ -> .env -> default) so a repo-local .env configures the board +
+# toolchain without exporting into the shell (the same .env-everywhere contract as spike/zephyr).
+K1_SSH_KEY = env("MERLIN_K1_SSH_KEY", "")  # path to the SSH private key; empty => unset
+K1_HOST = env("MERLIN_K1_HOST", "")  # e.g. root@<board-ip>; empty => unset/unreachable
 # SpacemiT cross-toolchain. The repo keeps only setup_toolchain.sh as reference under
 # build_tools/SpacemiT/ (the toolchain itself is huge); locate the real install via env, default
 # to the known /scratch2 path. ``toolchain_cc()` tolerates either the bin/ layout or the
 # extracted ``spacemit-toolchain-*`` subdir layout.
 _REPO = repo_root()
 # Locate the (huge) SpacemiT cross-toolchain via env; no personal path committed as a default.
-K1_TOOLCHAIN = Path(os.environ.get("MERLIN_K1_TOOLCHAIN", str(_REPO / "build_tools" / "SpacemiT" / "riscv-tools-spacemit")))
+K1_TOOLCHAIN = Path(env("MERLIN_K1_TOOLCHAIN", str(_REPO / "build_tools" / "SpacemiT" / "riscv-tools-spacemit")))
 
 # K1 X60 target: glibc Linux userspace (NOT medany/freestanding). The board's ISA carries the
 # half-precision extensions zfh/zfhmin (scalar) + zvfh/zvfhmin (VECTOR fp16) — see /proc/cpuinfo — so
 # the march MUST include them or clang targets generic rv64gcv and mis/soft-compiles fp16 (and the
 # bf16<->f32 conversions), which the K1 has in hardware. This matches the march llama.cpp's own
 # SpacemiT toolchain file selects for the K1 (rv64gcv_zfh_zvfh...). Overridable via MERLIN_K1_MARCH.
-import os as _os_march
-K1_MARCH = _os_march.environ.get("MERLIN_K1_MARCH", "rv64gcv_zfh_zvfh")
+K1_MARCH = env("MERLIN_K1_MARCH", "rv64gcv_zfh_zvfh")
 K1_MABI = "lp64d"
 VLEN = 256  # K1 X60 vector length, bits; the runtime reads vlenb at run time and records it.
 # This Bianbu kernel does NOT delegate the userspace `cycle` CSR — `rdcycle` traps as an illegal
@@ -63,12 +64,12 @@ K1_STACK_BYTES = 2 * 1024 * 1024 * 1024
 # loops across the board's 8 cores (set OMP_NUM_THREADS at run time). Optional: only the
 # `parallel=True` build path references it.
 K1_OPENMP_DIR = _REPO / "build_tools" / "k1_openmp"
-K1_OMP_THREADS = int(os.environ.get("MERLIN_K1_OMP_THREADS", "8"))  # board has 8 cores (2x4)
+K1_OMP_THREADS = int(env("MERLIN_K1_OMP_THREADS", "8"))  # board has 8 cores (2x4)
 # Big mmap'd weight blobs MUST live on real storage, NOT /tmp: the board's /tmp is tmpfs
 # (RAM-backed, only 1.9G) so a multi-GB weights file there both fails to fit and consumes the
 # RAM we are trying to save. The rootfs (/dev/mmcblk2p6, ~12G free) is real flash — mmap from
 # there demand-pages off disk. Binary (small) stays in /tmp; weights go here.
-K1_REMOTE_DIR = os.environ.get("MERLIN_K1_REMOTE_DIR", "/root/merlin_k1")
+K1_REMOTE_DIR = env("MERLIN_K1_REMOTE_DIR", "/root/merlin_k1")
 
 
 def _toolchain_root() -> Path | None:
