@@ -24,6 +24,14 @@ from ..kernels.action_catalog import CompilerAction, route
 from ..kernels.cca_compare import Divergence
 from ..kernels.rvv_knobs import ForkProposal, _wider_n_overrides
 
+# HEURISTIC axes whose (schedule:) seam is IMPLEMENTED by a registered impr_features feature — the
+# router marks them forkable_now=True but the proposer had no builder, silently demoting them to
+# work-items. Map each to its feature so the beam actually mints the fork (BB1a: "propose more").
+_AXIS_FEATURE = {
+    "compute.mr_adapts_to_m": "accumulator_resident_mtail",   # M-tail clamp: M=1 decode matmul -> vfmacc
+    "compute.nr_is_vsetvlmax": "fused_vfmacc_scalable",       # scalable NR=vsetvlmax (small-N attention)
+}
+
 
 def _set_mr_overrides(knobs: dict, mr: int) -> dict:
     """Set the matmul register-block MR (the leading M tile dim) toward the expert's MR. M is the
@@ -61,6 +69,13 @@ def action_to_fork(action: CompilerAction, knobs: dict[str, Any]) -> ForkProposa
             overrides = _wider_n_overrides(knobs, 2)
         elif axis == "compute.register_block" and isinstance(intended.get("compute.register_block"), int):
             overrides = _set_mr_overrides(knobs, intended["compute.register_block"])
+        elif axis in _AXIS_FEATURE:
+            # a HEURISTIC schedule-seam implemented by a registered feature (mtail / scalable NR).
+            overrides = {"compiler_features": [_AXIS_FEATURE[axis]]}
+        elif "dtype_strategy" in seam:
+            # the accumulate-width / element-width datapath axes (accumulator_dtype, vector.sew) reach
+            # the same int8 datapath knob as widening (i32-accum + i8-sew via vwmacc).
+            overrides = {"dtype_strategy": "int8_w8a8"}
         if overrides is not None:
             return ForkProposal(overrides=overrides, lever="knob", targets=axis, evidence=ev,
                                 forkable=True, note=action.change, action=action)

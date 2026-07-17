@@ -54,3 +54,18 @@ def test_propose_forks_from_cca_is_beam_compatible():
     props = propose_forks_from_cca(divs, _KNOBS)
     assert len(props) == 2
     assert [p.forkable for p in props] == [True, False]   # one knob fork + one honest work-item
+
+
+def test_bb1a_previously_demoted_axes_now_fork():
+    """BB1(a): four forkable_now=True axes the proposer used to silently demote to work-items now mint
+    real forks — the HEURISTIC schedule-seams map to their registered features, the datapath axes to
+    the int8 knob. This is the immediate 'propose more' win (catalog + features already existed)."""
+    # HEURISTIC axes implemented by a registered impr_features feature.
+    nr = action_to_fork(route(_div("compute.nr_is_vsetvlmax", True, False)), _KNOBS)
+    assert nr.forkable is True and nr.overrides == {"compiler_features": ["fused_vfmacc_scalable"]}
+    mr = action_to_fork(route(_div("compute.mr_adapts_to_m", True, False)), _KNOBS)
+    assert mr.forkable is True and mr.overrides == {"compiler_features": ["accumulator_resident_mtail"]}
+    # accumulate-width / element-width datapath axes reach the int8 datapath knob.
+    for axis, exp, ours in (("compute.accumulator_dtype", "i32", "f32"), ("vector.sew", 8, 32)):
+        p = action_to_fork(route(_div(axis, exp, ours)), _KNOBS)
+        assert p.forkable is True and p.overrides == {"dtype_strategy": "int8_w8a8"}, axis
