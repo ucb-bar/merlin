@@ -69,3 +69,14 @@ def test_bb1a_previously_demoted_axes_now_fork():
     for axis, exp, ours in (("compute.accumulator_dtype", "i32", "f32"), ("vector.sew", 8, 32)):
         p = action_to_fork(route(_div(axis, exp, ours)), _KNOBS)
         assert p.forkable is True and p.overrides == {"dtype_strategy": "int8_w8a8"}, axis
+
+
+def test_bb1b_operand_packing_orphan_is_now_a_forkable_lever():
+    """BB1(b): memory.access_pattern (the #1 expert data-movement gap-driver) was captured by
+    decode.memory but orphaned (no route). It now routes to the vfmacc_packed feature and forks."""
+    p = action_to_fork(route(_div("memory.access_pattern", "unit_stride", "strided")), _KNOBS)
+    assert p.forkable is True and p.overrides == {"compiler_features": ["vfmacc_packed"]}
+    # and it is no longer an orphan in the bijection ledger.
+    from merlin.kernels.cca_contract import check_bijection, KNOWN_OPEN
+    assert "memory.access_pattern" not in check_bijection("rvv").orphan_fields
+    assert "memory.access_pattern" not in KNOWN_OPEN["rvv"]["orphan_fields"]

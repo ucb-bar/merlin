@@ -279,6 +279,21 @@ _RVV_ROUTES: list[_Route] = [
         change="fuse the requantize + narrowing (vnclip/vfncvt) into the store epilogue",
         forkable_now=False,
         expected_effect="single narrowing store; no separate requant pass over the tile"),
+    _Route(
+        # THE #1 expert data-movement lever (BB1b): decode.memory lifts memory.access_pattern into the
+        # CCA but it was orphaned (no route). Route it to the existing vfmacc_packed feature so the beam
+        # can propose operand pre-packing — the dimension gap_analysis flags as the residual expert gap.
+        axis="memory.access_pattern",
+        when=lambda d: d.expert in ("unit_stride", "packed") and d.ours not in ("unit_stride", "packed", None),
+        action_class="PASS",
+        target_seam="impr_features:vfmacc_packed (operand pre-packing + layout assignment)",
+        change="pre-pack the streamed operand into a unit-stride panel (goi-prepacked, like XNNPACK's "
+               "prepacked RHS / OpenBLAS ncopy-tcopy) so the inner loop does unit-stride vector loads "
+               "instead of strided/gathered access — the #1 expert data-movement lever.",
+        forkable_now=True,
+        expected_effect="the contraction's operand loads become unit-stride (packed panel), cutting the "
+                        "loads-per-FMA + strided-access stalls the residual expert gap is attributed to",
+        intended_facet={"memory.access_pattern": "unit_stride"}),
 ]
 
 _ROUTES: dict[str, list[_Route]] = {"rvv": _RVV_ROUTES}

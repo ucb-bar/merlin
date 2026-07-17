@@ -130,15 +130,11 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
 KNOWN_OPEN: dict[str, dict[str, tuple[str, ...]]] = {
     "rvv": {
         # LEVER fields still awaiting a route (need a NEW schedule seam — see the per-axis notes above).
-        # CLOSED so far: compute.accumulator_dtype + vector.sew (both -> KNOB dtype_strategy).
+        # CLOSED so far: compute.accumulator_dtype + vector.sew (both -> KNOB dtype_strategy);
+        # memory.access_pattern (BB1b -> PASS impr_features:vfmacc_packed operand pre-packing).
         "orphan_fields": (
             "compute.reduction_form",
             "vector.tail",
-            # the memory/packing lever: decode.memory now lifts it into the CCA, but it isn't yet routed
-            # to the packing seam (the vfmacc_packed feature exists; a CCA route + a layout-assignment
-            # pass are the WS-C work). This is the dimension the completeness critic flagged as likely
-            # responsible for the residual expert gap.
-            "memory.access_pattern",
         ),
         # routed axes still awaiting a backing ComputeFacet field.
         # CLOSED so far: compute.activation_vectorization (field + lift_asm inferer added).
