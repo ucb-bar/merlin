@@ -202,7 +202,8 @@ def _toolchain_root() -> Path | None:
     return k1._toolchain_root()
 
 
-def cross_compile_runner(work: Path, *, xnnpack: bool = True, timeout: int = 5400) -> Path:
+def cross_compile_runner(work: Path, *, xnnpack: bool = True, etdump: bool = False,
+                         timeout: int = 5400) -> Path:
     """Cross-compile ExecuTorch's ``executor_runner`` for rv64gcv with the SpacemiT clang.
 
     Uses the pinned source tree's ``riscv64-linux`` cmake preset but overrides its toolchain file
@@ -211,13 +212,18 @@ def cross_compile_runner(work: Path, *, xnnpack: bool = True, timeout: int = 540
     Enforces the vector march (``rvv_audit.enforce_rvv_march``) before configuring — no scalar-only
     binary slips through. The build is cached under ``build/baselines/executorch/cmake-out``; a
     stale/failed configure is wiped and retried once.
+
+    ``etdump=True`` flips ``EXECUTORCH_BUILD_RISCV_ETDUMP`` ON (→ devtools + event tracer in the
+    preset), so the runner accepts ``--etdump_path`` and emits per-op timing events the devtools
+    Inspector correlates back to layer fqns (the per-region ExecuTorch timing). It is a DISTINCT
+    build (cached under a separate dir) from the plain runner so the two do not clobber each other.
     """
     rvv_audit.enforce_rvv_march(k1.K1_MARCH)
     root = _toolchain_root()
     if root is None:
         raise ExecuTorchError("SpacemiT toolchain not found (set MERLIN_K1_TOOLCHAIN)")
 
-    build_dir = work / "cmake-out"
+    build_dir = work / ("cmake-out-etdump" if etdump else "cmake-out")
     env = dict(os.environ)
     env["MERLIN_K1_TOOLCHAIN_ROOT"] = str(root)
 
@@ -233,6 +239,8 @@ def cross_compile_runner(work: Path, *, xnnpack: bool = True, timeout: int = 540
     ]
     if xnnpack:
         cfg.append("-DEXECUTORCH_BUILD_XNNPACK=ON")
+    if etdump:
+        cfg.append("-DEXECUTORCH_BUILD_RISCV_ETDUMP=ON")
 
     def _configure_and_build() -> None:
         subprocess.run([str(c) for c in cfg], capture_output=True, text=True,

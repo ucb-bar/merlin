@@ -58,6 +58,39 @@ def test_extract_fqn_map_picks_deepest_module_and_skips_non_compute():
     assert role_from_fqn(fmap["lin_q"]["fqn"]) == "repeated_head"
 
 
+def _load_et_inspect():
+    p = merlin_dir() / "python" / "merlin" / "baselines" / "_et_inspect.py"
+    spec = importlib.util.spec_from_file_location("_et_inspect_under_test", p)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class _FakeEvent:
+    def __init__(self, name, module_hierarchy, perf_ms=None, delegated=False):
+        self.name = name
+        self.module_hierarchy = module_hierarchy
+        self.is_delegated_op = delegated
+        self.perf_data = type("pd", (), {"p50": perf_ms})() if perf_ms is not None else None
+
+
+def test_et_inspect_recovers_layer_fqn_and_buckets_delegated():
+    """The per-region etdump post-processor keys a portable op to its L__self__ module path (the same
+    fqn Merlin uses), and buckets a delegated (opaque XNNPACK) op as 'other'."""
+    m = _load_et_inspect()
+    # a portable addmm: the module path rides in module_hierarchy behind the L__self__ marker,
+    # alongside class-name noise that must be filtered out.
+    portable = _FakeEvent(
+        "native_call_addmm.out",
+        {"torch.nn.modules.linear.Linear": {}, "aten_addmm_default_1_.L__self__layers.0.mlp": {}},
+        perf_ms=0.08)
+    assert m._deepest_fqn(portable) == "layers.0.mlp"
+    assert m._clean_module_path("aten_addmm_default_.L__self__layers.0.self_attn") == "layers.0.self_attn"
+    # a delegated op has no L__self__ path -> None -> 'other' bucket (the honest asymmetry).
+    delegated = _FakeEvent("DELEGATE_CALL", {"XNNPACKBackend": {}}, perf_ms=1.0, delegated=True)
+    assert m._deepest_fqn(delegated) is None
+
+
 # --- symbol -> region mapping -----------------------------------------------------------------
 
 def test_region_of_symbol():
