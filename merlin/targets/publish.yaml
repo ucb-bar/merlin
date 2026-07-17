@@ -13,3 +13,13 @@ layout_version: "1.0"
 targets:
   rvv: git@github.com:ucb-bar/rvv-mlir.git
   gemmini: git@github.com:ucb-bar/gemmini-mlir.git
+
+# Branch-per-version publishing (BB0 / C5). The FROZEN unoptimized baseline publishes to a shared
+# `baseline` branch (published FIRST so before->after is externally visible); every certified
+# champion publishes to its own `stable/<package_id>` branch. resolve_branch() precedence, highest
+# first: --branch > env MERLIN_PUBLISH_BRANCH_<TARGET> > this `branches.<target>.<package_id>` map >
+# the default policy (baseline | stable/<pkg>). Add an entry here only to override the default for a
+# specific package; the default policy covers the common case with no config.
+branches:
+  rvv: {}
+  gemmini: {}

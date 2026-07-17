@@ -12,6 +12,7 @@ the curated expert fingerprint) gated by correctness; spike cycles are a weak ti
 """
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any, Callable
 
@@ -23,6 +24,23 @@ from .from_strategy import mint_fork
 from .registry import load_rvv_package
 from .runner import certify_rvv
 from .sweep import rank_results, run_sweep
+
+
+# the frozen-baseline content files (the CONTROL). baseline_runs/ is a per-run measurement cache, NOT
+# part of the frozen definition, so it is excluded from the freeze digest.
+_SEED_FROZEN_FILES = ("schedule.mlir", "knobs.yaml", "manifest.yaml")
+
+
+def _seed_digest(pkg_dir: str | Path) -> str:
+    """A content digest over the frozen-baseline definition files. The beam forks FROM the baseline
+    into fresh dirs and never mutates it; this digest is asserted byte-unchanged pre/post run (BB0),
+    turning 'the control stayed frozen' from a convention into a checked invariant."""
+    h = hashlib.sha256()
+    for name in _SEED_FROZEN_FILES:
+        p = Path(pkg_dir) / name
+        h.update(name.encode())
+        h.update(p.read_bytes() if p.is_file() else b"\0<absent>")
+    return h.hexdigest()
 
 
 def _escalations(action, achieved_cca, knobs: dict) -> list:
@@ -118,6 +136,11 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
 
     nodes: list[dict] = []
     deferred: list[dict] = []           # recorded lever-2/3 work-items the beam can't auto-apply
+
+    # BB0 freeze-assert: snapshot the frozen baseline BEFORE any fork is minted. The beam forks into
+    # fresh dirs (from_strategy.mint_fork writes a NEW package; the seed is read-only), so this digest
+    # MUST match at the end — a mismatch means something mutated the control and the run is void.
+    seed_digest_pre = _seed_digest(seed_pkg)
 
     # generation 0: the seed (e.g. hand_v0)
     seed = loader(seed_pkg)
@@ -220,9 +243,17 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
         if not parents:
             break
 
+    # BB0 freeze-assert: the frozen baseline must be byte-identical to its pre-run snapshot.
+    seed_digest_post = _seed_digest(seed_pkg)
+    if seed_digest_post != seed_digest_pre:
+        raise RuntimeError(
+            f"frozen baseline {seed_pkg} was MUTATED during the beam run "
+            f"(pre={seed_digest_pre[:12]} != post={seed_digest_post[:12]}); the control is void")
+
     ranked = rank_results([n for n in nodes if n["gate_ok"]]) or nodes
     best = ranked[0] if ranked else None
     tree = {"target": target, "seed": str(seed_pkg), "op_key": op_key,
+            "baseline_frozen": {"digest": seed_digest_pre, "verified_unchanged": True},
             "width": width, "depth": depth, "top_k": top_k,
             "best": {k: best.get(k) for k in ("run_id", "structural_match", "speedup", "cycles",
                                               "lever")}

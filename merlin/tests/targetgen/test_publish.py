@@ -116,6 +116,28 @@ def test_select_champion_ranks_and_honors_package_id(out_root):
     assert sel2.package_id == "cand_b"
 
 
+def test_resolve_branch_policy_and_precedence(out_root, monkeypatch):
+    troot = out_root / "artifacts" / "targets"
+    _make_rvv_package(troot, "hand_v0")          # a frozen baseline id
+    _make_rvv_package(troot, "impr_tuned_a")     # a champion id
+    base = pub.select_champion("rvv", package_id="hand_v0")
+    champ = pub.select_champion("rvv", package_id="impr_tuned_a")
+    # default policy: frozen baseline -> shared `baseline`; champion -> `stable/<pkg>`
+    assert pub.resolve_branch(base) == "baseline"
+    assert pub.resolve_branch(champ) == "stable/impr_tuned_a"
+    # a manifest publication.role: baseline opts a renamed control into the baseline branch
+    from merlin.common.yaml import load_yaml, write_yaml
+    man = load_yaml(troot / "rvv" / "impr_tuned_a" / "manifest.yaml")
+    man["publication"] = {"role": "baseline"}
+    write_yaml(troot / "rvv" / "impr_tuned_a" / "manifest.yaml", man)
+    assert pub.resolve_branch(pub.select_champion("rvv", package_id="impr_tuned_a")) == "baseline"
+    # override wins over everything
+    assert pub.resolve_branch(base, override="custom/x") == "custom/x"
+    # env beats the default policy
+    monkeypatch.setenv("MERLIN_PUBLISH_BRANCH_RVV", "from-env")
+    assert pub.resolve_branch(champ) == "from-env"
+
+
 def test_resolve_remote_precedence(out_root, monkeypatch):
     # override wins
     assert pub.resolve_remote("rvv", override="file:///x") == "file:///x"
@@ -156,23 +178,25 @@ def test_publish_commits_tags_and_is_idempotent(out_root, monkeypatch):
 
     res = pub.publish("rvv", dry_run=False)
     assert res.committed and not res.noop and res.commit_sha
-    # commit present on the remote
-    log = subprocess.run(["git", "-C", bare, "log", "--oneline"], capture_output=True, text=True)
+    # BB0: the frozen hand_v0 baseline publishes to the shared `baseline` branch (not the default HEAD)
+    assert res.branch == "baseline"
+    # commit present on the remote BRANCH (bare HEAD is unset — publishing targets refs/heads/<branch>)
+    log = subprocess.run(["git", "-C", bare, "log", res.branch, "--oneline"], capture_output=True, text=True)
     assert res.commit_sha[:7] in log.stdout
     # tag present
     tags = subprocess.run(["git", "-C", bare, "tag"], capture_output=True, text=True).stdout.split()
     assert res.tag in tags
     # fingerprint trailer embedded in the commit message
-    body = subprocess.run(["git", "-C", bare, "log", "-1", "--format=%B"],
+    body = subprocess.run(["git", "-C", bare, "log", "-1", "--format=%B", res.branch],
                           capture_output=True, text=True).stdout
     assert f"Merlin-Publish-Fingerprint: {res.fingerprint}" in body
     # a publish event was recorded as a versioned product
     assert res.product_dir is not None and (res.product_dir / "manifest.yaml").is_file()
 
-    # (d) idempotent re-publish -> no-op
+    # (d) idempotent re-publish -> no-op (per-branch fingerprint match)
     res2 = pub.publish("rvv", dry_run=False)
     assert res2.noop and not res2.committed
-    count = subprocess.run(["git", "-C", bare, "rev-list", "--count", "HEAD"],
+    count = subprocess.run(["git", "-C", bare, "rev-list", "--count", res.branch],
                            capture_output=True, text=True).stdout.strip()
     assert count == "1"
 
@@ -262,7 +286,8 @@ def test_fresh_clone_builds_tool(out_root, monkeypatch, target, maker):
     assert res.committed
 
     clone = out_root / "build" / f"_clone_{target}"
-    subprocess.run(["git", "clone", "-q", f"file://{bare}", str(clone)], check=True)
+    # BB0: publishing targets refs/heads/<branch>, so a fresh clone must ask for that branch.
+    subprocess.run(["git", "clone", "-q", "-b", res.branch, f"file://{bare}", str(clone)], check=True)
     # the clone's manifest.yaml == the committed .merlin/manifest.yaml (provenance copy)
     assert (clone / ".merlin" / "manifest.yaml").read_text() == (clone / "manifest.yaml").read_text()
 

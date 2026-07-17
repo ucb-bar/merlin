@@ -73,6 +73,13 @@ _VECTOR_SCHEDULE_FAMILIES = frozenset({"vector_schedule"})
 _STATUS_RANK = {"rtl_certified": 0, "spike_verified": 1}
 _DEFAULT_STATUS_RANK = 2
 
+# The FROZEN, hand-authored, UNoptimized controls (BB0 / C5). These publish to a single shared
+# `baseline` branch so the before->after is externally visible; every certified champion publishes
+# to its own `stable/<package_id>` branch. A package can also opt into the baseline branch via a
+# manifest `publication.role: baseline` flag (so a renamed control still resolves correctly).
+_BASELINE_PACKAGE_IDS = frozenset({"hand_v0", "hand_v0_int8"})
+BASELINE_BRANCH = "baseline"
+
 
 class PublishError(RuntimeError):
     """A publish/promote step could not proceed (selection, gate, config, or git)."""
@@ -232,6 +239,40 @@ def resolve_remote(target: str, *, config: str | Path | None = None,
         raise PublishError(f"no remote configured for {target!r} in {cfg_path} "
                            f"(and no --remote / MERLIN_PUBLISH_REMOTE_{target.upper()})")
     return str(remote)
+
+
+def _is_baseline(sel: "ChampionSelection") -> bool:
+    """The frozen unoptimized control (by known package_id or a manifest opt-in flag)."""
+    if sel.package_id in _BASELINE_PACKAGE_IDS:
+        return True
+    pub = sel.manifest.get("publication")
+    return isinstance(pub, dict) and pub.get("role") == "baseline"
+
+
+def resolve_branch(sel: "ChampionSelection", *, override: str | None = None,
+                   config: str | Path | None = None) -> str:
+    """Resolve the publish BRANCH for a package (BB0 branch-per-version). Precedence, highest first:
+    ``override`` (``--branch``) > env ``MERLIN_PUBLISH_BRANCH_<TARGET>`` > ``publish.yaml``
+    ``branches.<target>.<package_id>`` > the default policy.
+
+    Default policy (C5): the FROZEN unoptimized baseline publishes to the shared ``baseline`` branch
+    (one control, published FIRST so before->after is externally visible); every certified champion
+    publishes to its own ``stable/<package_id>`` branch. This replaces the single-champion-to-HEAD
+    model with one-champion-per-branch."""
+    if override:
+        return override
+    env_val = paths.env(f"MERLIN_PUBLISH_BRANCH_{sel.target.upper()}")
+    if env_val:
+        return env_val
+    cfg_path = Path(config) if config else paths.targets_dir() / "publish.yaml"
+    if cfg_path.is_file():
+        data = load_yaml(cfg_path) or {}
+        per_target = (data.get("branches") or {}).get(sel.target)
+        if isinstance(per_target, dict):
+            mapped = per_target.get(sel.package_id)
+            if mapped:
+                return str(mapped)
+    return BASELINE_BRANCH if _is_baseline(sel) else f"stable/{sel.package_id}"
 
 
 # ---------------------------------------------------------------------------- tree assembly
@@ -675,20 +716,40 @@ def _sync_tree(clone_dir: Path, repo_dir: Path) -> None:
             shutil.copyfile(entry, target)
 
 
+def _checkout_branch(clone_dir: Path, branch: str) -> bool:
+    """Check out ``branch`` in the clone. If it exists on the remote, track it (so its tip is the
+    per-branch idempotency reference); otherwise start it as an orphan (a fresh, unrelated history —
+    each published branch is a standalone repo view, not a commit off the default branch). Returns
+    True iff the branch pre-existed on the remote."""
+    remote_branches = _git(["-C", str(clone_dir), "branch", "-r"], check=False).stdout.split()
+    if f"origin/{branch}" in remote_branches:
+        _git(["-C", str(clone_dir), "checkout", "-B", branch, "--track", f"origin/{branch}"])
+        return True
+    _git(["-C", str(clone_dir), "checkout", "--orphan", branch])
+    # an orphan checkout keeps the old tree staged; clear it so _sync_tree writes a clean state.
+    _git(["-C", str(clone_dir), "rm", "-rf", "--quiet", "."], check=False)
+    return False
+
+
 def _git_publish(remote: str, repo_dir: Path, sel: ChampionSelection, manifest: dict[str, Any],
-                 fingerprint: str, cert_run: str, stage_root: Path) -> tuple[str, str, bool]:
-    """Clone the remote, replace the tree with the assembled repo, commit + tag, push. Idempotent:
-    a matching HEAD fingerprint or existing tag is a no-op. Returns (commit_sha, tag, noop)."""
+                 fingerprint: str, cert_run: str, stage_root: Path,
+                 branch: str) -> tuple[str, str, bool]:
+    """Clone the remote, check out ``branch``, replace the tree with the assembled repo, commit +
+    tag, push to ``refs/heads/<branch>``. Idempotent PER BRANCH: a matching branch-tip fingerprint
+    or an existing tag is a no-op. Returns (commit_sha, tag, noop)."""
     clone_dir = stage_root / "clone"
     if clone_dir.exists():
         shutil.rmtree(clone_dir)
     _git(["clone", remote, str(clone_dir)])
+    branch_existed = _checkout_branch(clone_dir, branch)
 
     version = int(manifest.get("version", sel.version) or 0)
     tag = f"v{version}-{sel.package_id}"
 
     existing_tags = set(_git(["-C", str(clone_dir), "tag", "--list"]).stdout.split())
-    if tag in existing_tags or _head_fingerprint(clone_dir) == fingerprint:
+    # per-branch idempotency: the fingerprint is read from THIS branch's tip (not the default HEAD),
+    # so publishing the baseline branch never masks a stale champion-branch tip and vice-versa.
+    if branch_existed and (tag in existing_tags or _head_fingerprint(clone_dir) == fingerprint):
         head = _git(["-C", str(clone_dir), "rev-parse", "HEAD"], check=False)
         return (head.stdout.strip() or "unknown", tag, True)
 
@@ -718,7 +779,7 @@ def _git_publish(remote: str, repo_dir: Path, sel: ChampionSelection, manifest: 
           f"{sel.target} champion {sel.package_id}\nMerlin-Publish-Fingerprint: {fingerprint}\n"])
     commit_sha = _git(["-C", str(clone_dir), "rev-parse", "HEAD"]).stdout.strip()
 
-    _git(["-C", str(clone_dir), "push", "origin", "HEAD"])
+    _git(["-C", str(clone_dir), "push", "origin", f"HEAD:refs/heads/{branch}"])
     _git(["-C", str(clone_dir), "push", "origin", "--tags"])
     # NOTE: `gh release` is intentionally skipped for file:// bare remotes (the verification path).
     return commit_sha, tag, False
@@ -740,6 +801,7 @@ class PublishResult:
     fingerprint: str
     tag: str
     repo_dir: Path
+    branch: str = ""
     committed: bool = False
     noop: bool = False
     commit_sha: str | None = None
@@ -749,15 +811,19 @@ class PublishResult:
 
 def publish(target: str, *, dry_run: bool = True, remote: str | None = None, gate: bool = True,
             verify_build: bool = True, package_id: str | None = None,
-            artifacts_root: str | Path | None = None, config: str | Path | None = None) -> PublishResult:
+            artifacts_root: str | Path | None = None, config: str | Path | None = None,
+            branch: str | None = None) -> PublishResult:
     """Publish the champion of ``target`` as its own repo. Dry-run by default (no git/network).
 
     The gate refuses an uncertified champion unless ``gate=False`` (a loud warning is emitted).
-    A real publish clones the resolved remote, replaces its tree with the assembled repo, commits
-    (message = provenance), tags ``v<version>-<package_id>``, and pushes — idempotently. Each real
-    publish event is recorded via :func:`merlin.common.artifacts.new_product`."""
+    A real publish clones the resolved remote, checks out the resolved BRANCH (the frozen baseline ->
+    ``baseline``; a champion -> ``stable/<package_id>``; overridable), replaces its tree with the
+    assembled repo, commits (message = provenance), tags ``v<version>-<package_id>``, and pushes to
+    ``refs/heads/<branch>`` — idempotently PER BRANCH. Each real publish event is recorded via
+    :func:`merlin.common.artifacts.new_product`."""
     sel = select_champion(target, artifacts_root=artifacts_root, package_id=package_id)
     resolved_remote = resolve_remote(target, config=config, override=remote)
+    resolved_branch = resolve_branch(sel, override=branch, config=config)
     gate_ok, gate_detail = _check_gate(sel)
     if gate and not gate_ok:
         raise PublishError(f"publish gate refused for {target}/{sel.package_id}: {gate_detail}")
@@ -781,11 +847,13 @@ def publish(target: str, *, dry_run: bool = True, remote: str | None = None, gat
         target=target, package_id=sel.package_id, remote=resolved_remote, dry_run=dry_run,
         gate_ok=gate_ok, gate_detail=gate_detail, fingerprint=fingerprint, tag=tag, repo_dir=repo_dir,
     )
+    result.branch = resolved_branch
     result.actions = [
         f"select champion {sel.package_id} (family={sel.family}, status={sel.status})",
         f"assemble {sel.layout_kind} repo tree at {repo_dir}",
         f"gate: {'OK' if gate_ok else 'FAILED'} ({gate_detail})",
         f"remote: {resolved_remote}",
+        f"branch: {resolved_branch}",
         f"tag: {tag}",
         f"fingerprint: {fingerprint}",
     ]
@@ -795,7 +863,8 @@ def publish(target: str, *, dry_run: bool = True, remote: str | None = None, gat
         return result
 
     commit_sha, published_tag, noop = _git_publish(
-        resolved_remote, repo_dir, sel, manifest, fingerprint, cert_run, stage_root)
+        resolved_remote, repo_dir, sel, manifest, fingerprint, cert_run, stage_root,
+        resolved_branch)
     result.committed = not noop
     result.noop = noop
     result.commit_sha = commit_sha
@@ -808,6 +877,7 @@ def publish(target: str, *, dry_run: bool = True, remote: str | None = None, gat
                        notes=f"publish {sel.package_id} -> {resolved_remote} ({'noop' if noop else 'committed'})")
     event = {
         "target": target, "package_id": sel.package_id, "remote": resolved_remote,
+        "branch": resolved_branch,
         "commit_sha": commit_sha, "tag": published_tag, "noop": noop,
         "fingerprint": fingerprint, "merlin_git_sha": merlin_sha, "cert_run": cert_run,
         "gate_ok": gate_ok, "gate_detail": gate_detail, "actions": result.actions,
@@ -824,7 +894,7 @@ def publish(target: str, *, dry_run: bool = True, remote: str | None = None, gat
 
 def _print_result(res: PublishResult) -> None:
     print(f"target={res.target} package={res.package_id}")
-    print(f"remote={res.remote}")
+    print(f"remote={res.remote} branch={res.branch}")
     print(f"dry_run={res.dry_run} committed={res.committed} noop={res.noop}")
     if res.commit_sha:
         print(f"commit={res.commit_sha} tag={res.tag}")
@@ -844,6 +914,7 @@ def main(argv: list[str] | None = None) -> int:
     p_pub.add_argument("--target", required=True)
     p_pub.add_argument("--champion", help="explicit package_id (else the selection rules apply)")
     p_pub.add_argument("--remote", help="override the resolved remote")
+    p_pub.add_argument("--branch", help="override the resolved branch (default: baseline | stable/<pkg>)")
     p_pub.add_argument("--config", help="override the publish.yaml config path")
     p_pub.add_argument("--artifacts-root", help="override the out/artifacts root (targets under it)")
     p_pub.add_argument("--dry-run", action="store_true", help="plan only (default)")
@@ -868,7 +939,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "publish":
             res = publish(args.target, dry_run=not args.execute, remote=args.remote,
                           gate=not args.no_gate, package_id=args.champion,
-                          artifacts_root=args.artifacts_root, config=args.config)
+                          artifacts_root=args.artifacts_root, config=args.config,
+                          branch=args.branch)
             _print_result(res)
             return 0
         if args.cmd == "promote":
@@ -880,10 +952,11 @@ def main(argv: list[str] | None = None) -> int:
             sel = select_champion(args.target, artifacts_root=args.artifacts_root,
                                   package_id=args.champion)
             remote = resolve_remote(args.target, config=args.config)
+            branch = resolve_branch(sel, config=args.config)
             ok, detail = _check_gate(sel)
             print(f"target={sel.target} champion={sel.package_id}")
             print(f"family={sel.family} layout={sel.layout_kind} status={sel.status}")
-            print(f"remote={remote}")
+            print(f"remote={remote} branch={branch}")
             print(f"gate={'OK' if ok else 'FAILED'} ({detail})")
             print(f"cert_run={_cert_run_id(sel)}")
             return 0
