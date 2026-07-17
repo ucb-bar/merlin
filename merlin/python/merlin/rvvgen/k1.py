@@ -17,9 +17,13 @@ build — the LLVM IR ``model.ll`` (``llvmlower.lower``) and the data-driven C r
 """
 from __future__ import annotations
 
+import fcntl
+import hashlib
 import os
 import shutil
 import subprocess
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from merlin.common.paths import env, repo_root, runtime_dir
 from typing import Any
@@ -70,6 +74,36 @@ K1_OMP_THREADS = int(env("MERLIN_K1_OMP_THREADS", "8"))  # board has 8 cores (2x
 # RAM we are trying to save. The rootfs (/dev/mmcblk2p6, ~12G free) is real flash — mmap from
 # there demand-pages off disk. Binary (small) stays in /tmp; weights go here.
 K1_REMOTE_DIR = env("MERLIN_K1_REMOTE_DIR", "/root/merlin_k1")
+
+
+def _board_lock_path() -> Path:
+    """A host-wide lockfile identifying THIS board. Keyed by K1_HOST so two different boards do not
+    block each other, but every process on this machine (concurrent beams, other Claude sessions)
+    contends on the same file when hitting the same board."""
+    tag = hashlib.sha1((K1_HOST or "unset").encode()).hexdigest()[:12]
+    return Path(tempfile.gettempdir()) / f"merlin_k1_board_{tag}.lock"
+
+
+@contextmanager
+def board_lock(timeout: int = 1800):
+    """Serialize physical-board access across ALL processes on this host (the single K1 has one set
+    of /tmp deploy paths + 8 cores; concurrent forks would corrupt each other's scp'd binaries and
+    contend for cores, poisoning the cycle measurement). A file ``flock`` is the cross-process lock
+    that a ThreadPool max_workers=1 (single-beam only) and a chia ``resources={"k1":1}`` gate (single
+    Ray cluster only) both miss. ``MERLIN_K1_NO_BOARD_LOCK=1`` disables it (single-user runs)."""
+    if os.environ.get("MERLIN_K1_NO_BOARD_LOCK") == "1":
+        yield
+        return
+    lockf = _board_lock_path()
+    fh = open(lockf, "w")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)  # blocks until the board is free
+        yield
+    finally:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            fh.close()
 
 
 def _toolchain_root() -> Path | None:
@@ -281,8 +315,21 @@ int main(int argc, char **argv) {{
 
 # ---- build / deploy / run -----------------------------------------------------------
 
+# A bounded wall clock for the K1 cross-compile/link/scp steps. A pathological schedule (e.g. the
+# outer-product contraction feature at a large square regime) makes clang-23 spin for many minutes on
+# one object file, hanging a serial beam; time it out so the fork fails-closed as a K1 build error the
+# certify ladder records. Board-run (_ssh) already carries its own timeout. Override/disable (0) with
+# MERLIN_COMPILE_TIMEOUT_S — the same knob the host/spike codegen path honors.
+_K1_CMD_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "300") or "0")
+
+
 def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
-    proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kw)
+    kw.setdefault("timeout", _K1_CMD_TIMEOUT_S or None)
+    try:
+        proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kw)
+    except subprocess.TimeoutExpired:
+        raise K1Error(f"command timed out after {_K1_CMD_TIMEOUT_S}s (pathological compile): "
+                      f"{' '.join(map(str, cmd))}")
     if proc.returncode != 0:
         raise K1Error(
             f"command failed: {' '.join(map(str, cmd))}\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
@@ -593,10 +640,16 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
         # mode: "v" vectorized (fixed-width RVV); "omp" scalar int8 + OpenMP across 8 cores;
         # "scalar" single-core scalar int8 (last-resort correctness).
         bwork = Path(work) / tag
+        # the cross-compile is CPU-local (no board) — do it OUTSIDE the board lock so concurrent
+        # forks still build in parallel; only the deploy+run below serializes on the physical board.
         binary = build_k1_binary(model_dir, bwork, pkg,
                                  force_scalar=(mode == "scalar"), parallel=(mode == "omp"),
                                  kernel_backend=kernel_backend, dispatch_timing=dispatch_timing,
                                  ours_mr=ours_mr)
+        with board_lock():
+            return _deploy_run(mode, tag, bwork, binary)
+
+    def _deploy_run(mode: str, tag: str, bwork: Path, binary) -> dict:
         remote = f"/tmp/{Path(model_dir).name}_{pkg.run_id}_{tag}_merlin_k1"
         _run(["scp", "-i", K1_SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
               str(binary), f"{K1_HOST}:{remote}"])

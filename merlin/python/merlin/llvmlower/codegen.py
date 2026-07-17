@@ -1,12 +1,19 @@
 """LLVM IR -> object files (host x86 and bare-metal rv64gcv) and host .so."""
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from merlin.common.paths import runtime_dir
 
 from ..common.paths import repo_root
 from .toolchain import clang
+
+# A bounded per-compile wall clock. A pathological schedule (e.g. an outer-product contraction at a
+# large square regime) can make clang -O2 blow up and spin for many minutes on one object file; in a
+# serial beam that hangs the whole sweep. Time it out so the fork fails-closed as a build error the
+# certify ladder records, instead of stalling. Override with MERLIN_COMPILE_TIMEOUT_S (0 disables).
+_COMPILE_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "300") or "0")
 
 # Host (x86) kernel flags. The compiled kernels are plain clang-vectorized loops (no BLAS),
 # so the GEMM-heavy graphs of large models (pi05, openvla) are runtime-bound on them. -O3
@@ -27,7 +34,12 @@ class CodegenError(RuntimeError):
 
 
 def _run(cmd: list[str]) -> None:
-    proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True)
+    try:
+        proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True,
+                              timeout=(_COMPILE_TIMEOUT_S or None))
+    except subprocess.TimeoutExpired:
+        raise CodegenError(f"clang timed out after {_COMPILE_TIMEOUT_S}s (pathological compile): "
+                           f"{' '.join(map(str, cmd))}")
     if proc.returncode != 0:
         raise CodegenError(f"clang failed: {' '.join(map(str, cmd))}\n{proc.stderr}")
 

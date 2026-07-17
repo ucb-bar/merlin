@@ -113,6 +113,51 @@ def test_rank_results_falls_back_to_structural_match_without_k1():
     assert [n["run_id"] for n in rank_results(nodes)][0] == "b"
 
 
+def test_instrumented_beam_emits_aet_parent_and_child_runs(tmp_path, monkeypatch):
+    """BB3: run_instrumented_beam opens an aet PARENT run holding beam_tree.yaml and emits one CHILD
+    aet run per fork with a metrics/summary_metrics.json (aet compare reads these). Uses a mock
+    certify that writes an objdump (so CCA divergences surface -> forks) + a K1 wall that improves
+    with a wider N tile, so a fork earns a real speedup."""
+    import json
+    from pathlib import Path
+
+    from merlin.common.paths import merlin_dir
+    from merlin.rvvgen.beam_cli import run_instrumented_beam
+
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
+    ours_objd = (merlin_dir() / "tests" / "data" / "cca_asm" / "ours_baseline_matmul.objdump").read_text()
+    expert_objd = merlin_dir() / "tests" / "data" / "cca_asm" / "xnnpack_f32_gemm_rvv.objdump"
+
+    def mock_certify(*, package_dir, model_dir, runs_root, run_id, targets, baseline_run_dir):
+        gen = Path(runs_root) / run_id / "generated"
+        gen.mkdir(parents=True, exist_ok=True)
+        (gen / "objdump.txt").write_text(ours_objd)          # -> ours CCA lifts -> divergences
+        pkg = load_rvv_package(package_dir)
+        n = pkg.op_match[0]["vector"][-2] if pkg.op_match else 8
+        return {"correctness": {"gate_ok": True},
+                "measurement": [{"target": "k1", "cycle_accurate": False,
+                                 "cycles": 4_000_000 // n, "wall_ns": 900_000 // n}]}
+
+    res = run_instrumented_beam(
+        seed_pkg=HAND_V0, model_dir=tmp_path / "wl", expert_objdump=expert_objd,
+        op="matmul", targets=("k1",), width=2, depth=1, top_k=1, certify_fn=mock_certify)
+
+    parent_dir = Path(res["parent_run_dir"])
+    assert (parent_dir / "beam_tree.yaml").is_file()          # full per-step record in the parent run
+    assert (parent_dir / "run_record.json").is_file()
+    # a wider-N fork was minted and earned a REAL K1 speedup over the frozen seed
+    assert len(res["nodes"]) > 1, "no forks minted (CCA divergences did not surface)"
+    assert (res.get("best") or {}).get("speedup", 0) > 1.0
+
+    # one CHILD aet run per fork, each with a metrics/summary_metrics.json carrying the headline metrics
+    runs_root = tmp_path / "out" / "runs" / "rvv" / "beam"
+    summaries = list(runs_root.rglob("metrics/summary_metrics.json"))
+    assert summaries, "no child summary_metrics.json emitted"
+    payloads = [json.loads(p.read_text()) for p in summaries]
+    fork_payloads = [p for p in payloads if p.get("role") != "beam_parent" and "speedup" in p]
+    assert any(p.get("speedup") and p["speedup"] > 1.0 and p["gate_ok"] for p in fork_payloads)
+
+
 def test_escalation_routes_unmet_promise_to_next_stronger_class():
     """BB2: when a fork leaves a residual (didn't achieve its promised facet), _escalations routes the
     next-stronger class for the unmet axis — turning the beam into a knob→…→CODEGEN escalation engine."""
