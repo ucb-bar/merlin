@@ -86,20 +86,20 @@ def run_cfg(model_dir: Path, pkg, golden: np.ndarray, n: int, tag: str,
             "blocker": blocker, "runs": runs}
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="out/artifacts/recaptures/bitvla_fp32_consistent")
-    ap.add_argument("--baseline", default="out/artifacts/targets/rvv/hand_v0")
-    ap.add_argument("-n", type=int, default=3)
-    ap.add_argument("--configs", default="baseline,ours_tiled,ours_v3,xnnpack_kernels",
-                    help="comma list of: baseline,ours_tiled,ours_v3,ours_wholemodel,xnnpack_kernels")
-    ap.add_argument("--out", default="out/artifacts/measurements/k1_spacemit/k1_e2e_xnnpack_bitvla.json")
-    a = ap.parse_args()
+def run_workload(model_dir: str | Path, baseline_pkg: str = "out/artifacts/targets/rvv/hand_v0",
+                 n: int = 3,
+                 configs: str = "baseline,ours_tiled,ours_v3,ours_wholemodel,ours_wholemodel_vf,"
+                                "xnnpack_kernels,openblas_kernels",
+                 out: str | Path | None = None) -> dict:
+    """Run the four-way (baseline / ours-* / xnnpack / openblas kernel-swap) on ONE model on the K1,
+    N reps/config in a single pass, and return the summary dict (schema = compare/empirical ingests).
 
-    md = Path(a.model)
+    This is the reusable core of ``main()`` — the ``merlin-compare --run`` live seam
+    (``compare.empirical``) imports it to refresh the ``k1_4way_<model>.json`` cache it reads."""
+    md = Path(model_dir)
     golden = np.load(md / "golden.npy")
-    base = load_rvv_package(a.baseline)
-    want = set(a.configs.split(","))
+    base = load_rvv_package(baseline_pkg)
+    want = set(configs.split(","))
     ours = replace(base, run_id="ours_vfmacc_tiled", compiler_features=["fused_vfmacc_tiled"])
     ours_v3 = replace(base, run_id="ours_v3", compiler_features=["accumulator_resident_microkernel_v3"])
     # ours-wholemodel = the beam's best kernel on openvla/rdt2 (whole-model-safe tail clamps).
@@ -117,7 +117,7 @@ def main() -> None:
                     "ok": False, "n_xnn_routed": 0, "spread": None, "blocker": "not in --configs",
                     "compiler_features": list(pkg.compiler_features or []), "runs": []}
         print(f"=== {tag} ===")
-        return run_cfg(md, pkg, golden, a.n, tag, backend)
+        return run_cfg(md, pkg, golden, n, tag, backend)
 
     rb = maybe("baseline", base, None)
     ro = maybe("ours_tiled", ours, None)
@@ -137,7 +137,7 @@ def main() -> None:
                         default=None)
     ours_best = ours_cands.get(ours_best_tag) if ours_best_tag else None
     summary = {
-        "model": str(md), "n": a.n, "board": "k1_spacemit", "vlen": k1.VLEN, "same_pass": True,
+        "model": str(md), "n": n, "board": "k1_spacemit", "vlen": k1.VLEN, "same_pass": True,
         "timer": "CLOCK_MONOTONIC wall_ns; cycle_accurate=false",
         "note": ("Same-pass head-to-head vs the SAME baseline in ONE pass. xnnpack-kernels routes f32 "
                  "linalg.matmul to xnn_f32_gemm_ukernel_1x4v__rvv with RESIDENT-WEIGHT pack (excluded "
@@ -158,16 +158,27 @@ def main() -> None:
         "xnnpack_kernel": "xnn_f32_gemm_ukernel_1x4v__rvv",
         "openblas_kernel": "sgemm_kernel_8x8_zvl128b",
     }
-    outp = Path(a.out)
-    outp.parent.mkdir(parents=True, exist_ok=True)
-    outp.write_text(json.dumps(summary, indent=2))
+    if out is not None:
+        outp = Path(out)
+        outp.parent.mkdir(parents=True, exist_ok=True)
+        outp.write_text(json.dumps(summary, indent=2))
+        _write_md(outp.with_suffix(".md"), summary)   # markdown table next to the json
+        print(f"\nwrote -> {outp}\nwrote -> {outp.with_suffix('.md')}")
+    return summary
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--model", default="out/artifacts/recaptures/bitvla_fp32_consistent")
+    ap.add_argument("--baseline", default="out/artifacts/targets/rvv/hand_v0")
+    ap.add_argument("-n", type=int, default=3)
+    ap.add_argument("--configs", default="baseline,ours_tiled,ours_v3,xnnpack_kernels",
+                    help="comma list of: baseline,ours_tiled,ours_v3,ours_wholemodel,xnnpack_kernels")
+    ap.add_argument("--out", default="out/artifacts/measurements/k1_spacemit/k1_e2e_xnnpack_bitvla.json")
+    a = ap.parse_args()
+    summary = run_workload(a.model, a.baseline, a.n, a.configs, out=a.out)
     print("\n=== SUMMARY ===")
     print(json.dumps(summary, indent=2))
-
-    # Markdown table next to the json.
-    md_out = outp.with_suffix(".md")
-    _write_md(md_out, summary)
-    print(f"\nwrote -> {outp}\nwrote -> {md_out}")
 
 
 def _fmt(v, prec=4):

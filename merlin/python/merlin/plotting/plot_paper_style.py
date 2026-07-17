@@ -20,6 +20,13 @@ import numpy as np
 
 OUT = artifacts_dir() / "ceiling"
 
+
+def _bench_dir() -> Path:
+    """Current home of the k1_4way / k1_vf / dispatch_breakdown JSONs (the retired top-level
+    ``out/rvv_bench`` moved under out/artifacts per the generated-output convention). This is the
+    SAME path ``compare.empirical`` ingests + ``compare.empirical.prime_board_cache`` writes."""
+    return artifacts_dir() / "kernel-mining" / "rvv" / "bench"
+
 # ---- palette ----
 INK     = "#2b2b2b"
 SALMON  = "#cf8b7d"   # prior / baseline  (their π0.5 colour)
@@ -65,8 +72,8 @@ def fig_e2e():
     FEAT = {"ours_v3": "accum-resident v3", "ours_wholemodel_vf": "wholemodel .vf",
             "ours_wholemodel": "wholemodel", "ours_tiled": "tiled vfmacc"}
     def load(m):
-        vf = OUT.parents[1] / "rvv_bench" / f"k1_vf_{m}.json"
-        fw = OUT.parents[1] / "rvv_bench" / f"k1_4way_{m}.json"
+        vf = _bench_dir() / f"k1_vf_{m}.json"
+        fw = _bench_dir() / f"k1_4way_{m}.json"
         src = vf if vf.is_file() else fw
         return json.load(open(src)) if src.is_file() else None
     def wall(s, key):
@@ -201,7 +208,7 @@ def fig_progression():
     ax = fig.add_subplot(gs[0]); card(ax, "Beam progression — bitvla whole-model on K1")
     # XNNPACK reference + v3 endpoint read from the fresh four-way JSON (no stale literals).
     import json as _j
-    _b = _j.load(open(OUT.parents[1] / "rvv_bench" / "k1_4way_bitvla.json"))
+    _b = _j.load(open(_bench_dir() / "k1_4way_bitvla.json"))
     _base = _b["baseline"]["min_wall_ns"]; _xnn = _base / _b["xnnpack_kernels"]["min_wall_ns"]
     _v3 = _base / _b["ours_v3"]["min_wall_ns"]
     steps = [("baseline\nhand_v0", 1.00, SALMON),
@@ -443,8 +450,8 @@ def fig_fourway():
     for m in models:
         # Prefer the .vf re-measure (has ours_wholemodel_vf = the final best-ours) where it exists;
         # else the four-way (bitvla, whose best-ours is v3, lives only in k1_4way).
-        vf = OUT.parents[1] / "rvv_bench" / f"k1_vf_{m}.json"
-        p = OUT.parents[1] / "rvv_bench" / f"k1_4way_{m}.json"
+        vf = _bench_dir() / f"k1_vf_{m}.json"
+        p = _bench_dir() / f"k1_4way_{m}.json"
         src = vf if vf.is_file() else p
         if src.is_file():
             data[m] = json.load(open(src))
@@ -515,10 +522,26 @@ def fig_fourway():
 
     fig.suptitle("Whole-model four-way on real K1 silicon — baseline · ours-best · XNNPACK · OpenBLAS (same-pass, cos-gated)",
                  fontsize=12.5, fontweight="bold", y=1.0)
+    # DATA-DRIVEN verdict (never a hardcoded conclusion that can drift stale vs the fresh JSONs).
+    won, trail_pcts = [], []
+    for m in models:
+        o = spdup(data[m], ours_key(data[m]))
+        exps = [e[0] for e in (spdup(data[m], "xnnpack_kernels"),
+                               spdup(data[m], "openblas_kernels")) if e]
+        if not (o and exps):
+            continue
+        if o[0] >= max(exps):
+            won.append(m)
+        else:
+            trail_pcts.append(round(100 * o[0] / max(exps)))
+    verdict = (f"ours BEATS both experts on {', '.join(won)}" if won else
+               "ours trails the experts on every model here")
+    trail = (f"; reaches {min(trail_pcts)}–{max(trail_pcts)}% of the best expert on the rest"
+             if trail_pcts else "")
     fig.text(0.5, -0.03,
              "Figure G:  Same-pass four-way (one campaign vs the same baseline; experts use resident-weight pack). "
              "LEFT shows all four incl. the baseline starting point (log).  RIGHT drops baseline to zoom into the "
-             "competitive contest: ours is within ~1.6–1.8× of the experts and BEATS them on bitvla.",
+             f"competitive contest: {verdict}{trail}.",
              ha="center", fontsize=9.0, color=INK)
     fig.tight_layout(rect=[0,0,1,0.96])
     for ext in ("png", "svg"):
@@ -617,7 +640,7 @@ def fig_gap_attribution():
 def fig_dispatch_breakdown():
     import json
     MATMUL = "#6f93b0"; DISP = "#cf8b7d"  # matmul = steel (shared); dispatch = salmon (the gap)
-    d = json.load(open(OUT.parents[1] / "rvv_bench" / "dispatch_breakdown.json"))
+    d = json.load(open(_bench_dir() / "dispatch_breakdown.json"))
     panels = [("openvla", "openvla_fp32_consistent"), ("rdt2", "rdt2_fp32_consistent")]
     panels = [(nm, k) for nm, k in panels if k in d]
     fig, axes = plt.subplots(1, len(panels), figsize=(13.5, 4.8)); fig.patch.set_facecolor("white")

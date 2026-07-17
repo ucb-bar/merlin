@@ -143,24 +143,66 @@ def _ingest_gemm(cfg: Config, wl: Workload, target: str, metric: str,
                        status="not_measured")
 
 
+# workload name -> its recapture bundle (the model2MLIR capture the four-way driver builds from).
+def _model_dir(name: str, root: Path) -> Path | None:
+    exact = {"bitvla": "bitvla_fp32_consistent", "openvla": "openvla_fp32_consistent",
+             "rdt2": "rdt2_fp32_consistent", "tiny_llama": "tiny_llama_bf16"}
+    rec = root / "out/artifacts/recaptures"
+    if name in exact and (rec / exact[name]).is_dir():
+        return rec / exact[name]
+    hits = sorted(rec.glob(f"{name}*")) if rec.is_dir() else []
+    return hits[0] if hits else None
+
+
+def _four_way_out(name: str, root: Path) -> Path:
+    """The k1_4way JSON path _ingest_model reads first (see _MODEL_SOURCES)."""
+    return root / "out/artifacts/kernel-mining/rvv/bench" / f"k1_4way_{name}.json"
+
+
+def prime_board_cache(spec, root: Path, *, n: int = 3) -> dict[str, str]:
+    """LIVE seam: run the four-way board driver ONCE per model workload (all arms in one pass) and
+    write the k1_4way_<model>.json cache that ``_ingest_model`` reads. Board-gated + board_lock via
+    the driver's own run_on_k1. Returns {workload: status}. gemm-shape workloads are primed by the
+    per-op driver (a declared follow-on; not yet wired here)."""
+    import sys as _sys
+
+    from merlin.rvvgen import k1 as _k1
+    if not _k1.available():
+        raise RuntimeError("merlin-compare --run: K1 board unavailable (set MERLIN_K1_HOST / "
+                           "MERLIN_K1_SSH_KEY / MERLIN_K1_TOOLCHAIN in .env). Remove --run to ingest cache.")
+    _sys.path.insert(0, str(root / "build_tools" / "scripts"))
+    import k1_e2e_xnnpack as _e2e   # the refactored driver exposing run_workload()
+
+    status: dict[str, str] = {}
+    models = [wl for wl in spec.workloads if wl.kind == "model"]
+    for wl in models:
+        md = _model_dir(wl.name, root)
+        if md is None:
+            status[wl.name] = "no_recapture"
+            continue
+        out = _four_way_out(wl.name, root)
+        _e2e.run_workload(md, n=n, out=str(out))   # writes the schema _ingest_model reads
+        status[wl.name] = f"measured -> {out}"
+    return status
+
+
 def measure(cfg: Config, wl: Workload, target: str, metric: str = "wall", *,
             run: bool = False, root: Path | None = None) -> Measurement:
-    """The measurement seam. v1 ingests cached numbers; ``run=True`` is the (unimplemented in v1)
-    hook where a board run would be launched. Do NOT touch the board in v1."""
+    """The measurement seam. Ingests cached numbers; when ``run=True`` the board cache is refreshed
+    first by :func:`prime_board_cache` (called once in :func:`measure_all`), so this per-cell path
+    always ingests the freshly-written JSON."""
     root = root or _repo_root()
-    if run:
-        # SEAM: this is where k1_e2e_xnnpack.run_cfg / k1_cross_framework.measure_* would be called
-        # to take fresh board measurements. Left as a loud stub so v1 never silently runs the board.
-        raise NotImplementedError(
-            "merlin-compare v1 ingests cached measurements only; --run (live board measurement) "
-            "is a declared seam and is not implemented. Remove --run to ingest.")
     if wl.kind == "gemm":
         return _ingest_gemm(cfg, wl, target, metric, root)
     return _ingest_model(cfg, wl, target, metric, root)
 
 
 def measure_all(spec, *, run: bool = False, root: Path | None = None) -> dict:
-    """Return {(config_name, workload_name): Measurement} for the full spec grid."""
+    """Return {(config_name, workload_name): Measurement} for the full spec grid. When ``run=True``,
+    refresh the board cache once (all model workloads, all arms) BEFORE ingesting."""
+    root = root or _repo_root()
+    if run:
+        prime_board_cache(spec, root)
     out: dict[tuple[str, str], Measurement] = {}
     for cfg in spec.configs:
         for wl in spec.workloads:

@@ -156,9 +156,20 @@ def test_full_run_artifact_and_deterministic_manifest(tmp_path: Path):
     assert "not_measured" not in md.split("## 2.")[0] or "openvla" in md  # table renders
 
 
-def test_run_board_flag_is_loud_stub():
-    with pytest.raises(NotImplementedError):
-        measure(Config.parse("xnnpack"), Workload.parse("openvla"), "k1", run=True)
+def test_run_board_is_live_and_board_gated(monkeypatch):
+    # --run is now LIVE: measure() ingests (never raises a stub); measure_all(run=True) refreshes the
+    # board cache first and is fail-closed board-gated — no board -> a loud RuntimeError, never a
+    # silent/fabricated run. (k1.K1_HOST is import-frozen, so force unavailability at k1.available.)
+    from merlin.compare.empirical import measure_all
+    from merlin.compare.spec import Spec
+    from merlin.rvvgen import k1
+    monkeypatch.setattr(k1, "available", lambda: False)
+    # per-cell measure() just ingests now (no NotImplementedError stub)
+    m = measure(Config.parse("xnnpack"), Workload.parse("openvla"), "k1", run=True)
+    assert m.status in ("measured", "not_measured")
+    spec = Spec.parse({"configs": ["baseline", "xnnpack"], "workloads": ["openvla"]})
+    with pytest.raises(RuntimeError, match="board"):
+        measure_all(spec, run=True)
 
 
 # ---------------------------------------------------------------- region alignment (C7)
