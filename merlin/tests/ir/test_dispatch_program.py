@@ -182,6 +182,42 @@ def test_slice_combined_regions_and_bad_id():
         slice_program(prog, {"nonexistent_region"})
 
 
+# --- C8: re-emit a section as its own standalone MLIR @forward (the board-binary route) --------
+
+def test_emit_section_module_is_standalone_forward():
+    from merlin.xdsl_dialects._common import text as _text
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.xdsl_dialects.lowering.outline import outline_dispatches
+    from merlin.xdsl_dialects.lowering.section_mlir import emit_section_module
+
+    outlined = outline_dispatches(parse_mlir_text(PROV_CHAIN))
+    # the mid-graph region: boundary input = the upstream kernel output + the model weight.
+    mod, boundary, outputs = emit_section_module(outlined.module, {"matmul_1"})
+    txt = _text(mod)
+    assert mod.verify() is None                              # a valid module
+    assert txt.count("func.call") == 1                       # exactly the one section kernel
+    assert "forward$kernel_1__rmatmul_1" in txt
+    assert "forward$kernel_0__rmatmul_0" not in txt          # the other region is NOT included
+    assert len(boundary) == 2 and len(outputs) == 1          # 2 boundary inputs -> 1 section output
+    # the section func is a self-contained @forward taking the boundary tensors as arguments.
+    assert "func.func @forward(" in txt
+
+
+def test_emit_section_combined_and_bad_id():
+    import pytest as _pt
+
+    from merlin.xdsl_dialects._common import text as _text
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.xdsl_dialects.lowering.outline import OutlineError, outline_dispatches
+    from merlin.xdsl_dialects.lowering.section_mlir import emit_section_module
+
+    outlined = outline_dispatches(parse_mlir_text(PROV_CHAIN))
+    both, _, _ = emit_section_module(outlined.module, {"matmul_0", "matmul_1"})
+    assert _text(both).count("func.call") == 2               # combined section = both kernels
+    with _pt.raises(OutlineError):
+        emit_section_module(outlined.module, {"nope"})
+
+
 @pytest.mark.skipif(not (REPO / "out/artifacts/recaptures/small_consistent/model.mlir").is_file(),
                     reason="small_llama capture not present")
 def test_program_on_real_small_llama():
