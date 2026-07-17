@@ -1,0 +1,22 @@
+# Isolated RVV fork package (rvvgen.fork)
+authoring:
+  author: P4 promote-fast-config
+  generated_by_agent: false
+  mode: deterministic_generated_from_spec
+family: vector_schedule
+lineage:
+  author: P4 promote-fast-config
+  depth: 0
+  lever: feature
+  note: whole-model accumulator-resident (tail-safe MR/NR clamps in one schedule) — the fast config that beats/ties XNNPACK on bitvla e2e; promoted from an ephemeral compiler_features build to a tracked package so the beam can fork from it.
+  parent_run_id: hand_v0
+  source_evidence:
+  - k1_e2e_xnnpack four-way (fast wholemodel config)
+  version: 0
+outputs:
+  knobs: knobs.yaml
+  schedule: schedule.mlir
+run_id: impr_tuned_wholemodel
+schedule_format: transform_dialect_mlir
+status: spike_verified
+target: rvv

@@ -1,0 +1,22 @@
+# Isolated RVV fork package (rvvgen.fork)
+authoring:
+  author: P4 promote-fast-config
+  generated_by_agent: false
+  mode: deterministic_generated_from_spec
+family: vector_schedule
+lineage:
+  author: P4 promote-fast-config
+  depth: 0
+  lever: feature
+  note: whole-model accumulator-resident + .vf A-scalarize (kills the .vv broadcast ladder) — the openvla/rdt2 gap-closer; tracked so the beam forks from the fast seed, not naive hand_v0.
+  parent_run_id: hand_v0
+  source_evidence:
+  - k1_e2e_xnnpack four-way (fast wholemodel config)
+  version: 0
+outputs:
+  knobs: knobs.yaml
+  schedule: schedule.mlir
+run_id: impr_tuned_wholemodel_vf
+schedule_format: transform_dialect_mlir
+status: spike_verified
+target: rvv
