@@ -138,3 +138,57 @@ def gap_driver_axes(attrs: list[Attribution]) -> set[str]:
         if not a.measured.get("ours_faster"):
             axes.update(d.axis for d in a.divergences)
     return axes
+
+
+# --- whole-model, region-by-region cross-compiler alignment (C7) ------------------------------
+# Both Merlin and ExecuTorch(=XNNPACK) descend from the SAME captured model, so their regions carry
+# the SAME model-layer provenance key (region_id / fqn). Joining on it lets us line up
+# attention.3-vs-attention.3 across the two compilers instead of collapsing to one whole-model number.
+
+@dataclass
+class RegionAlignment:
+    """One model layer compared across two compilers, matched by shared provenance."""
+    key: str                          # the join key (region_id, else fqn, else region name)
+    fqn: str
+    role: str
+    label: str                        # region label / bucket (from the profile name)
+    ours_wall_ns: int | None
+    expert_wall_ns: int | None
+    wall_ratio: float | None          # ours/expert; <1 means Merlin is faster on THIS region
+    ours_cos: float | None            # per-region equivalence (None = not scored, honest)
+    expert_cos: float | None
+    presence: str                     # "both" | "ours_only" | "expert_only"
+    note: str = ""
+
+
+def _region_key(r) -> str:
+    return getattr(r, "region_id", "") or getattr(r, "fqn", "") or getattr(r, "name", "")
+
+
+def align_regions(ours_regions, expert_regions, *, ours_name: str = "merlin",
+                  expert_name: str = "executorch") -> list[RegionAlignment]:
+    """Align two per-region profile lists (e.g. a Merlin ``BaselineResult.regions`` and an ExecuTorch
+    one) by their shared ``region_id``/``fqn`` provenance. Emits one row per model layer, with the
+    per-region wall ratio and per-region equivalence — and, crucially, flags a layer present on only
+    ONE side (the delegation heterogeneity a whole-model number hides: a region ET left scalar, or a
+    Merlin region ET fused away). Presence-asymmetry is surfaced, never averaged in."""
+    ours = {_region_key(r): r for r in ours_regions if _region_key(r)}
+    expert = {_region_key(r): r for r in expert_regions if _region_key(r)}
+    rows: list[RegionAlignment] = []
+    for k in dict.fromkeys([*ours, *expert]):
+        o, e = ours.get(k), expert.get(k)
+        base = o or e
+        ow = getattr(o, "wall_ns", None) if o else None
+        ew = getattr(e, "wall_ns", None) if e else None
+        ratio = (ow / ew) if (ow and ew) else None
+        presence = "both" if (o and e) else (f"{ours_name}_only" if o else f"{expert_name}_only")
+        note = "" if presence == "both" else (
+            f"region present only in {ours_name if o else expert_name} "
+            "(delegation/vectorization heterogeneity — not comparable as a single whole-model number)")
+        rows.append(RegionAlignment(
+            key=k, fqn=getattr(base, "fqn", ""), role=getattr(base, "role", ""),
+            label=getattr(base, "name", ""), ours_wall_ns=ow, expert_wall_ns=ew, wall_ratio=ratio,
+            ours_cos=getattr(o, "cos", None) if o else None,
+            expert_cos=getattr(e, "cos", None) if e else None,
+            presence=presence, note=note))
+    return rows

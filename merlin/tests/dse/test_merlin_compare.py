@@ -159,3 +159,32 @@ def test_full_run_artifact_and_deterministic_manifest(tmp_path: Path):
 def test_run_board_flag_is_loud_stub():
     with pytest.raises(NotImplementedError):
         measure(Config.parse("xnnpack"), Workload.parse("openvla"), "k1", run=True)
+
+
+# ---------------------------------------------------------------- region alignment (C7)
+def test_align_regions_joins_on_provenance_and_flags_asymmetry():
+    from merlin.baselines.contract import RegionProfile
+    from merlin.compare.attribution import align_regions
+
+    ours = [
+        RegionProfile(name="attention", region_id="matmul_3", fqn="model.layers.0.self_attn",
+                      role="repeated_head", wall_ns=100, cos=1.0),
+        # ET leaves norm scalar / does not surface it as a region -> present only on our side.
+        RegionProfile(name="norm", region_id="layer_norm_0", fqn="model.layers.0.input_layernorm",
+                      wall_ns=10),
+    ]
+    expert = [
+        RegionProfile(name="attention", region_id="matmul_3", fqn="model.layers.0.self_attn",
+                      role="repeated_head", wall_ns=80, cos=0.9999),
+    ]
+    rows = {r.key: r for r in align_regions(ours, expert)}
+
+    attn = rows["matmul_3"]
+    assert attn.presence == "both"
+    assert attn.wall_ratio == 100 / 80              # apples-to-apples: Merlin slower on THIS layer
+    assert attn.ours_cos == 1.0 and attn.expert_cos == 0.9999
+    assert attn.role == "repeated_head"
+
+    norm = rows["layer_norm_0"]
+    assert norm.presence == "merlin_only"           # the heterogeneity a whole-model number hides
+    assert "only" in norm.note
