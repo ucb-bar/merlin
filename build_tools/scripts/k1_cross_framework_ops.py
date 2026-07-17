@@ -209,10 +209,14 @@ def run_activation(op: str, sizes: list[int], reps: int) -> list[dict]:
         ksrc = "f32-vgelu/gen/f32-vgelu-rvv-rational-12-10-div-u4v.c"
         kfn = "xnn_f32_vgelu_ukernel__rvv_rational_12_10_div_u4v"
         ref = "gelu"; gen = workloads.gen_gelu_f32
-    else:
+    elif op == "sigmoid":
         ksrc = "f32-vsigmoid/gen/f32-vsigmoid-rvv-rr2-p5-div-u4v.c"
         kfn = "xnn_f32_vsigmoid_ukernel__rvv_rr2_p5_div_u4v"
         ref = "sigmoid"; gen = workloads.gen_sigmoid_f32
+    else:
+        # fail-closed: never silently mislabel an unsupported activation as sigmoid. Add a proper
+        # (ksrc, kfn, ref, gen) triple + driver ref macro to extend (e.g. tanh, hardswish, elu).
+        raise ValueError(f"run_activation: unsupported op {op!r} (wired: gelu, sigmoid)")
     for Nsz in sizes:
         # XNNPACK
         base = {"op": op, "dtype": "f32", "size_n": Nsz, "source": "xnnpack",
@@ -234,6 +238,40 @@ def run_activation(op: str, sizes: list[int], reps: int) -> list[dict]:
             r = _build_run_ours(f"{op}_{sid}_{Nsz}", bundle, HERE / "ours_activation_driver.c",
                                 [f"-DXNN_REF_{ref}"], sid, [], int8=False, vectorize=vec,
                                 reps=reps, base=base)
+            print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
+            rows.append(r)
+    return rows
+
+
+def run_f32_gemm(shapes: list[int], reps: int) -> list[dict]:
+    """The HEADLINE op on K1: XNNPACK's f32 GEMM 7x4v RVV ukernel vs OUR codegen — both the naive
+    baseline AND our best whole-model feature (accumulator_resident_wholemodel_vf). Kernel-region
+    rdtime on real silicon (mode=inner_compute), pack-outside fairness. This is the per-op analogue
+    of the whole-model four-way, isolating the GEMM kernel gap the models are dominated by."""
+    from merlin.rvvgen import workloads
+    rows = []
+    for S in shapes:
+        base = {"op": "f32_gemm", "dtype": "f32", "M": S, "N": S, "K": S,
+                "source": "xnnpack", "target": "k1", "mode": "inner_compute", "timer": "rdtime",
+                "timebase_hz": k1.K1_TIMEBASE_HZ,
+                "kernel_file": "tmp/kernels/XNNPACK/src/f32-gemm/gen/f32-gemm-7x4v-rvv.c"}
+        print(f"--- xnnpack f32_gemm {S}^3 (7x4v) ---")
+        r = _build_run_xnn(f"f32gemm_xnn_{S}", HERE / "xnnpack_gemm_driver_7x4v.c",
+                           [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"], reps=reps, base=base)
+        print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
+        rows.append(r)
+        bundle = workloads.gen_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", M=S, N=S, K=S)
+        # ours: naive baseline (no features) AND our best whole-model codegen feature.
+        for feats, sid in (([], "ours_f32_baseline"),
+                           (["accumulator_resident_wholemodel_vf"], "ours_f32_wholemodel_vf")):
+            base = {"op": "f32_gemm", "dtype": "f32", "M": S, "N": S, "K": S, "source": sid,
+                    "target": "k1", "mode": "inner_compute", "timer": "rdtime",
+                    "timebase_hz": k1.K1_TIMEBASE_HZ, "compiler_features": feats,
+                    "kernel_file": f"merlin RVV codegen ({sid})"}
+            print(f"--- {sid} {S}^3 ---")
+            r = _build_run_ours(f"f32gemm_{sid}_{S}", bundle, HERE / "ours_gemm_driver.c",
+                                [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"],
+                                sid, feats, int8=False, vectorize=True, reps=reps, base=base)
             print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
             rows.append(r)
     return rows
@@ -343,17 +381,20 @@ def run_attention(reps: int) -> list[dict]:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ops", default="gelu,sigmoid,int8_gemm,dwconv,conv2d,attention")
+    ap.add_argument("--ops", default="f32_gemm,gelu,sigmoid,int8_gemm,dwconv,conv2d,attention")
     ap.add_argument("--act-sizes", default="1024,16384,262144")
+    ap.add_argument("--gemm-shapes", default="32,64,128,256")
     ap.add_argument("--int8-shapes", default="32,64,128")
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--out", default="out/artifacts/measurements/k1_spacemit/gemm/cross_framework_ops_k1.jsonl")
     a = ap.parse_args()
     ops = a.ops.split(",")
     act_sizes = [int(s) for s in a.act_sizes.split(",")]
+    gemm_shapes = [int(s) for s in a.gemm_shapes.split(",")]
     int8_shapes = [int(s) for s in a.int8_shapes.split(",")]
 
     rows: list[dict] = []
+    if "f32_gemm" in ops:  rows += run_f32_gemm(gemm_shapes, a.reps)
     if "gelu" in ops:      rows += run_activation("gelu", act_sizes, a.reps)
     if "sigmoid" in ops:   rows += run_activation("sigmoid", act_sizes, a.reps)
     if "int8_gemm" in ops: rows += run_int8_gemm(int8_shapes, a.reps)
