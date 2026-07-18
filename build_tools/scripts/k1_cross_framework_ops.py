@@ -290,21 +290,23 @@ def run_int8_gemm(shapes: list[int], reps: int) -> list[dict]:
                            [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"], reps=reps, base=base)
         print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
         rows.append(r)
-        # OURS: W8A8 vwmacc datapath (int8_compute=True) vs ours f32 baseline matmul (vectorized)
+        # OURS int8 W8A8: NAIVE (features=[] -> scalar, the ~200x catastrophe) vs the VECTORIZED
+        # feature accumulator_resident_wholemodel_vf (emits vwmacc — measured ~19.5x faster than
+        # naive, closing int8 from ~211x to ~11x vs XNNPACK). The vf config is the real int8 best;
+        # the naive row is kept to SHOW the gap the lever closes.
         bundle = workloads.gen_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", M=S, N=S, K=S)
-        for int8, sid in ((False, "ours_f32_baseline"), (True, "ours_int8_w8a8")):
-            base = {"op": "int8_gemm", "dtype": "i8xi8->i32" if int8 else "f32",
-                    "M": S, "N": S, "K": S, "source": sid, "target": "k1", "mode": "inner_compute",
-                    "timer": "rdtime", "timebase_hz": k1.K1_TIMEBASE_HZ, "int8_compute": int8,
-                    "kernel_file": f"merlin RVV codegen ({sid})"}
+        int8_configs = [([], "ours_int8_naive"),
+                        (["accumulator_resident_wholemodel_vf"], "ours_int8_vf")]
+        for feats, sid in int8_configs:
+            base = {"op": "int8_gemm", "dtype": "i8xi8->i32", "M": S, "N": S, "K": S, "source": sid,
+                    "target": "k1", "mode": "inner_compute", "timer": "rdtime",
+                    "timebase_hz": k1.K1_TIMEBASE_HZ, "int8_compute": True,
+                    "compiler_features": feats, "kernel_file": f"merlin RVV codegen ({sid})"}
             print(f"--- {sid} {S}^3 ---")
-            # int8 W8A8 is an APPROXIMATION of the f32 product -> verify on cosine>0.99
-            # (the repo's fp32 int8 tier), not a strict abs band. The f32 baseline uses the
-            # strict-band ours_gemm_driver.
-            driver = HERE / ("ours_int8_gemm_driver.c" if int8 else "ours_gemm_driver.c")
-            r = _build_run_ours(f"int8_{sid}_{S}", bundle, driver,
+            # int8 W8A8 is an APPROXIMATION of the f32 product -> cos>0.99 (the repo's fp32 int8 tier).
+            r = _build_run_ours(f"int8_{sid}_{S}", bundle, HERE / "ours_int8_gemm_driver.c",
                                 [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"],
-                                sid, [], int8=int8, vectorize=True, reps=reps, base=base)
+                                sid, feats, int8=True, vectorize=True, reps=reps, base=base)
             print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
             rows.append(r)
     return rows

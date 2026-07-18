@@ -1,0 +1,21 @@
+# Isolated RVV fork package (rvvgen.fork)
+authoring:
+  author: P5b int8 vectorized seed
+  generated_by_agent: false
+  mode: deterministic_generated_from_spec
+family: vector_schedule
+lineage:
+  author: P5b int8 vectorized seed
+  depth: 0
+  lever: feature+dtype
+  parent_run_id: hand_v0
+  source_evidence:
+  - 'int8 vwmacc: accumulator_resident_wholemodel_vf emits vwmacc; measured 21x faster than scalar naive on K1 (217x->10x vs XNNPACK)'
+  version: 0
+outputs:
+  knobs: knobs.yaml
+  schedule: schedule.mlir
+run_id: impr_tuned_wholemodel_vf_int8
+schedule_format: transform_dialect_mlir
+status: spike_verified
+target: rvv
