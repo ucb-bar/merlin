@@ -56,9 +56,10 @@ Hand-derived instruction counts should not be trusted when a counter is availabl
 No single configuration is best on both axes:
 
 - `NR=32` + `unroll_m` reaches **1.91x** XNNPACK's instruction count — near parity — but stalls
-  (11.2 ins/tick). Low instruction count together with low IPC at lmul4 is the signature of
-  register spilling: an lmul4 spill moves 128 B in a *single* instruction, so it is cheap to count
-  and expensive to execute.
+  (11.2 ins/tick). The initial reading was register spilling, since low instruction count with low
+  IPC at lmul4 fits that signature (an lmul4 spill moves 128 B in a *single* instruction: cheap to
+  count, expensive to execute). The disassembly **refutes** it — the 8 spills are all in the
+  prologue, outside the loops. The real cause is loss of B reuse; see below.
 - `NR=16` plain v3 has 6.8x the instruction count but ~2x XNNPACK's IPC, and wins on time.
 
 Combining the first's instruction count with the second's IPC is the open opportunity, and is worth
@@ -71,6 +72,34 @@ Replicating the expert's *shape* does not replicate its performance. Measured on
 `1x4v` shape (`MR=1, NR=32`) lands at 5.81x — worse than our own best `MR=4, NR=16` at 5.0x. Cache
 blocking is flat (KC 16/32/64 → 5.0x/4.9x/4.9x), as expected once you notice 128³ f32 is ~192 KB and
 already resident.
+
+## Where the instructions actually go
+
+Disassembling the two frontier configurations settles it. Our best-time inner loop is **already
+better shaped than the expert's**: one B load amortized across four accumulators,
+
+    vle32.v v24,(a0)          <- one B load
+    vfmacc.vf v8,fa5,v24      <- four FMAs against it
+    vfmacc.vf v20,fa4,v24
+    vfmacc.vf v16,fa3,v24
+    vfmacc.vf v12,fa5,v24
+
+which is 4 FMAs per 12 instructions = **3.0 ins/FMA, against XNNPACK's 3.82**.
+
+That loop executes 128 iterations x 256 tiles x 12 instructions = **393,216** instructions. The
+counter measured **1,710,650**. So the hot loop is only ~23% of retired instructions and **~77% is
+per-tile prologue/epilogue** -- 256 tiles of accumulator setup, writeback and address computation
+around 1,536 instructions of useful work each.
+
+This is the actionable target, and it is neither the inner loop nor the memory system: the fix is
+fewer, larger tiles (amortizing the per-tile cost) rather than a better micro-kernel body. It also
+explains why the whole shape sweep was flat -- every point in it re-tiles the same way, so it moves
+the 23%, never the 77%.
+
+It further explains why `unroll_m` is structurally wrong rather than merely inert: it emits **MR
+sequential K-loops** (17 backward branches vs 3), each with a *single* `vfmacc` and a B reload every
+step (`addi a1,a1,512`, a full row stride), amortizing nothing. Its spills are real but confined to
+the prologue, so spilling was not the reason it stalled -- losing B reuse was.
 
 ## Levers must be proven by emitted code
 
