@@ -36,9 +36,24 @@ def test_space_is_target_agnostic_and_unregistered_target_raises():
 def test_unexpressible_axes_raise_instead_of_being_ignored():
     """An axis the target cannot EMIT must stay an OPEN divergence — crediting it would be a fake win."""
     from merlin.rvvgen import from_strategy  # noqa: F401
-    with pytest.raises(UnsupportedAxis, match="unroll_m"):
-        resolve("rvv", MicrokernelSpec(MR=7, unroll_m=True))
+    # dynamic VL is not emitted yet (MLIR scalable->RVV lowering is incomplete); it must RAISE, and
+    # the message must point at the codegen route (custom_isa inline-asm/intrinsic), not silently pass.
     with pytest.raises(UnsupportedAxis, match="vsetvli|dynamic"):
         resolve("rvv", MicrokernelSpec(vl_strategy=VL_DYNAMIC))
-    # the supported axes still resolve
+    # composing unroll_m with pack is not emitted yet either (each replaces the schedule)
+    with pytest.raises(UnsupportedAxis, match="pack"):
+        resolve("rvv", MicrokernelSpec(MR=4, unroll_m=True, pack=True))
+    # the supported axes resolve
     assert resolve("rvv", MicrokernelSpec(MR=4, NR=16, KC=16, vl_strategy=VL_FIXED))
+
+
+def test_unroll_m_is_emitted_and_shape_agnostic():
+    """unroll_m holds M as MR INDEPENDENT accumulators, so ANY MR is expressible — including the
+    non-power-of-2 shapes the 2-D vector<MRxNR> formulation collapses on (measured 255-279x off)."""
+    from merlin.rvvgen import from_strategy  # noqa: F401
+    for MR in (4, 6, 7, 8):
+        feats = resolve("rvv", MicrokernelSpec(MR=MR, NR=16, KC=16, unroll_m=True))
+        assert feats == [f"accum_resident_v3u_{MR}_16_16"]
+    # the two formulations are DISTINCT points the beam can trade between
+    assert (resolve("rvv", MicrokernelSpec(MR=4, NR=16, KC=16, unroll_m=True))
+            != resolve("rvv", MicrokernelSpec(MR=4, NR=16, KC=16, unroll_m=False)))
