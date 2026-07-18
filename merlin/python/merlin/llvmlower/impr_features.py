@@ -1094,6 +1094,56 @@ def _accumulator_resident_v3_pipeline(passes: list[str]) -> list[str]:
     return out
 
 
+def _accumulator_resident_v3_unrolled_pre_schedule(MR: int, NR: int, KC: int) -> str:
+    """v3 pre-schedule with M held as MR INDEPENDENT accumulators (the `unroll_m` axis).
+
+    The plain v3 recipe tiles M by MR and vectorizes to a 2-D ``vector<MRxNR>``, so MR must be
+    vectorization-friendly — measured on K1: MR 3/5/6/7 collapse to 193-279x off XNNPACK while MR=4
+    is 5.0x. An expert micro-kernel instead keeps MR SEPARATE accumulator registers (M fully
+    unrolled), which is shape-agnostic and is why XNNPACK can pick MR=7.
+
+    Recipe: tile M by 1 (each row is its own ``vector<NR>`` accumulator) x N by NR, tile K by 1,
+    scoped-vectorize the [1, NR, 1] body, then UNROLL the M loop by MR -> MR independent accumulators
+    carried as separate iter_args. Pure code generation; no hand ukernel."""
+    return f"""\
+module attributes {{transform.with_named_sequence}} {{
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
+    %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t1, %lmn:2 = transform.structured.tile_using_for %mm tile_sizes [1, {NR}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    %mm2 = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t2, %lk = transform.structured.tile_using_for %mm2 tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    transform.structured.vectorize %t2 vector_sizes [1, {NR}, 1] : !transform.any_op
+    transform.loop.unroll %lmn#0 {{ factor = {MR} }} : !transform.any_op
+    %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.transfer_permutation_patterns
+      transform.apply_patterns.vector.reduction_to_contract
+    }} : !transform.any_op
+    transform.yield
+  }}
+}}
+"""
+
+
+def ensure_v3_unrolled_microkernel(MR: int, NR: int, KC: int) -> str:
+    """Register (on demand) the M-UNROLLED v3 tuning point — MR independent accumulators, any MR."""
+    name = f"accum_resident_v3u_{MR}_{NR}_{KC}"
+    if name in known():
+        return name
+    register(ImprFeature(
+        name=name,
+        action_class="PASS",
+        description=(f"Accumulator-resident micro-kernel with M UNROLLED into {MR} independent "
+                     f"accumulators (NR={NR}, KC={KC}) — shape-agnostic in MR, unlike the 2-D "
+                     f"vector<MRxNR> formulation. Compiler-emitted (no ukernel). Default-off."),
+        edit_pipeline=_accumulator_resident_v3_pipeline,
+        edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
+                       _accumulator_resident_v3_unrolled_pre_schedule(_MR, _NR, _KC)),
+        schedule_replace=True,
+    ))
+    return name
+
+
 def ensure_v3_microkernel(MR: int, NR: int, KC: int) -> str:
     """Register (on demand) and return the name of the v3 accumulator-resident micro-kernel tuning
     point for ANY (MR, NR, KC) — turning the fixed 4-point grid into a CONTINUOUS, beam-tunable space.

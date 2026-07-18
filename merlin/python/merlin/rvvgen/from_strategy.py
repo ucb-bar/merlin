@@ -83,11 +83,14 @@ def _rvv_microkernel_resolver(spec) -> list[str]:
                    llvm.call_intrinsic), i.e. still code generation, no llvm-project fork.
     """
     from ..kernels.microkernel import VL_DYNAMIC, UnsupportedAxis
-    from ..llvmlower.impr_features import ensure_v3_microkernel
+    from ..llvmlower.impr_features import ensure_v3_microkernel, ensure_v3_unrolled_microkernel
     if spec.unroll_m:
-        raise UnsupportedAxis(
-            "rvv: unroll_m (M as independent accumulators) is not emitted yet — the v3 recipe forms a "
-            "2-D vector<MRxNR>. Build it as a codegen capability; do not silently ignore the axis.")
+        # M held as MR INDEPENDENT accumulators (tile M by 1 + unroll the M loop by MR) instead of a
+        # 2-D vector<MRxNR> — shape-agnostic in MR, which is what lets an expert pick MR=7.
+        if spec.pack:
+            raise UnsupportedAxis("rvv: unroll_m + pack are not composed yet (each replaces the "
+                                  "schedule); emit one composed recipe before enabling both.")
+        return [ensure_v3_unrolled_microkernel(int(spec.MR), int(spec.NR), int(spec.KC))]
     if spec.vl_strategy == VL_DYNAMIC:
         raise UnsupportedAxis(
             "rvv: vl_strategy='dynamic' (VL-agnostic vsetvli loop) is not emitted yet — MLIR's "
