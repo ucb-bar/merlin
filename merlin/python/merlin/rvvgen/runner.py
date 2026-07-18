@@ -135,10 +135,19 @@ def certify_rvv(package_dir: str | Path, model_dir: str | Path, *, runs_root: st
         rec["instruction_histogram"] = hist
         any_rvv = bool(hist)
         rec["any_rvv"] = any_rvv
-        # The K4 GATE is genuine vectorization (RVV emitted, not a scalar fallback). The
-        # expected_instructions list is recorded as EVIDENCE for the S4 comparison / gap-router
-        # (e.g. the vfmacc-fusion gap: our schedule emits vfmul.vv+vfadd.vv, not fused vfmacc) —
-        # it does NOT fail the ladder, since different op classes legitimately emit different sets.
+        # 'never run scalar' (user directive): any_rvv is too weak — a kernel with vector LOADS but
+        # SCALAR compute (fmadd.s / mul) passes it while being effectively scalar (the ~200x int8 gap).
+        # Record the compute-bearing scalar-fallback symbols via rvv_audit so the framework gates on
+        # genuine vector COMPUTE, not merely 'some RVV present'. Kept as EVIDENCE at the whole-model
+        # ladder (legit scalar helper symbols exist); op_sweep applies the hard scalar-FAIL for the
+        # isolated-kernel case where the whole timed region IS the compute kernel.
+        try:
+            from ..baselines.rvv_audit import classify_disasm
+            _rep = classify_disasm(disasm, source="K4")
+            rec["scalar_compute_fallback"] = _rep.scalar_fallback_symbols()
+            rec["rvv_coverage"] = _rep.coverage_overall
+        except Exception:  # noqa: BLE001
+            rec["scalar_compute_fallback"] = None
         rec["expected_instructions_present"] = _expected_present(hist, pkg.expected_instructions)
         ladder["K4"] = "pass" if any_rvv else "fail"
     except Exception as e:
