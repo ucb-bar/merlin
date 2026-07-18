@@ -121,3 +121,59 @@ def run_op_sweep(cells: list[OpCell], *, width: int = 3, depth: int = 2, top_k: 
     with ThreadPoolExecutor(max_workers=max_workers or min(8, len(cells))) as ex:
         list(ex.map(lambda p: _run(*p), list(enumerate(cells))))
     return [r for r in results if r is not None]
+
+
+# ---- the default GEMM cell matrix + CLI ------------------------------------------------------------
+# XNNPACK's measured K1 kernel wall (rdtime ticks) per (dtype, shape) — the per-op scoreboard targets.
+_XNN_GEMM_WALL = {("f32", 128): 9424, ("f32", 256): 72222, ("int8", 64): 1552, ("int8", 128): 11593}
+
+
+def default_gemm_cells(shapes_f32=(128, 256), shapes_int8=(64, 128)) -> list[OpCell]:
+    """Build the f32 + int8 GEMM sweep cells: workload bundles, the fast tracked seed per dtype, the
+    XNNPACK f32-gemm expert CCA (structural target — register-residency/block are dtype-agnostic), and
+    XNNPACK's measured K1 wall as the scoreboard. This is the launchable matrix for the datatypes we
+    already have levers for; bf16/fp16 + more ops extend it (a cell + a lever, not hand-code)."""
+    from ..common.paths import repo_root
+    from .workloads import gen_matmul_f32
+    root = repo_root()
+    expert = root / "merlin/tests/data/cca_asm/xnnpack_f32_gemm_rvv.objdump"
+    wl_root = root / "out/artifacts/cache/op_sweep_workloads"
+    seed_f32 = root / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf"
+    seed_int8 = root / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8"
+    cells: list[OpCell] = []
+    for S in shapes_f32:
+        cells.append(OpCell(op="matmul", dtype="f32", shape_regime=f"square_{S}",
+                            workload_dir=gen_matmul_f32(wl_root, M=S, N=S, K=S), expert_objdump=expert,
+                            expert_wall_ns=_XNN_GEMM_WALL.get(("f32", S)), seed_pkg=str(seed_f32)))
+    for S in shapes_int8:
+        cells.append(OpCell(op="matmul", dtype="int8", shape_regime=f"square_{S}",
+                            workload_dir=gen_matmul_f32(wl_root, M=S, N=S, K=S), expert_objdump=expert,
+                            expert_wall_ns=_XNN_GEMM_WALL.get(("int8", S)), seed_pkg=str(seed_int8)))
+    return cells
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+    ap = argparse.ArgumentParser(prog="merlin-rvv-opt",
+                                 description="Automated op x datatype optimization sweep vs XNNPACK on K1.")
+    ap.add_argument("--width", type=int, default=3)
+    ap.add_argument("--depth", type=int, default=2)
+    ap.add_argument("--top-k", type=int, default=2)
+    ap.add_argument("--max-workers", type=int, default=1,
+                    help="cell concurrency (default 1: the K1 board is serialized either way)")
+    args = ap.parse_args(argv)
+
+    cells = default_gemm_cells()
+    print(f"=== merlin-rvv-opt: {len(cells)} cells (f32+int8 GEMM) vs XNNPACK on K1 ===")
+    results = run_op_sweep(cells, width=args.width, depth=args.depth, top_k=args.top_k,
+                           max_workers=args.max_workers)
+    print(f"\n{'cell':28s} {'attain_vs_xnn':>14s} {'scalar_ok':>10s} {'gate_ok':>8s}  note")
+    print("-" * 78)
+    for r in sorted(results, key=lambda r: r.cell_key):
+        att = f"{r.attainment_vs_expert:.3f}" if r.attainment_vs_expert else "—"
+        print(f"{r.cell_key:28s} {att:>14s} {str(r.scalar_ok):>10s} {str(r.gate_ok):>8s}  {r.note[:30]}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
