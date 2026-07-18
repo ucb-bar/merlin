@@ -18,6 +18,7 @@ These console-scripts are installed by `pip install -e merlin/python`. Each is a
 | `merlin-rvv-autotune` | `merlin.rvvgen.autotune:main` |
 | `merlin-rvv-beam` | `merlin.rvvgen.beam_cli:main` |
 | `merlin-rvv-mine` | `merlin.rvvgen.mine:main` |
+| `merlin-rvv-opt` | `merlin.rvvgen.op_sweep:main` |
 | `merlin-rvv-report` | `merlin.rvvgen.report:main` |
 | `merlin-target-publish` | `merlin.targetgen.publish:main` |
 | `merlin-targetgen` | `merlin.targetgen.cli:main` |
