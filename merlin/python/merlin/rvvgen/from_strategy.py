@@ -62,40 +62,27 @@ def _pattern_line(name: str, contraction_strategy: str | None) -> str:
     return f"      transform.apply_patterns.vector.{name}"
 
 
-def render_microkernel_schedule(mk: dict[str, Any]) -> str:
-    """Render the COMPOSED micro-kernel schedule from tunable knobs — pure code generation.
+def microkernel_feature(mk: dict[str, Any]) -> str:
+    """Resolve a ``microkernel`` knob block {MR, NR, KC} to the v3 accumulator-resident tuning point.
 
-    This is how the compiler expresses the same granularity a hand micro-kernel has, WITHOUT any
-    hand-written ukernel in the compiler (the intrinsic driver stays a ceiling REFERENCE only). The
-    expert shape is a point in a continuous knob space the beam searches:
+    This is how the compiler reaches expert-kernel granularity by CODE GENERATION alone — no hand
+    ukernel (the intrinsic driver stays a ceiling REFERENCE). The v3 recipe needs BOTH its
+    pre-bufferize schedule AND its pipeline stage (subset-hoist -> contract-lower -> A-scalarize ->
+    vfmacc.vf), so the knob resolves to a feature (registered on demand for ANY MR/NR/KC) rather than
+    rendering schedule text — that turns the fixed 4-point grid into a continuous, beam-tunable space.
 
-      MR   register-block rows      (A reuse: how many accumulator rows stay resident)
-      NR   register-block cols      (vector lanes per accumulator)
-      KC   K tile                   (reduction blocking)
-      KS   K streaming chunk        (live B panel size; keeps the outerproduct from spilling)
-      pack operand pre-packing      (unit-stride panels + B pre-transpose -> no runtime transpose)
-
-    Delegates to the ALREADY-parameterized generators in ``llvmlower.impr_features`` — previously
-    reachable only as a fixed 27-name feature grid whose entries are mutually-exclusive full-schedule
-    replacements (so MR/NR/pack could never compose). Exposing them as knobs makes the whole space
-    composable and beam-tunable, which is what closes the gap to the expert kernel by codegen alone.
-    """
-    from ..llvmlower.impr_features import vfmacc_packed_schedule, vfmacc_tiled_schedule
-    MR = int(mk.get("MR", 4)); NR = int(mk.get("NR", 16)); KC = int(mk.get("KC", 16))
-    if mk.get("pack"):
-        return vfmacc_packed_schedule(MR, NR, KC, int(mk.get("KS", 4)))
-    return vfmacc_tiled_schedule(MR, NR, KC)
+    Measured why v3 and not the older recipes: v3 @MR=4 is ~4.2x off XNNPACK, while the plain tiled /
+    packed generators are 18x / 46x off — so the register block must ride the v3 residency recipe."""
+    from ..llvmlower.impr_features import ensure_v3_microkernel
+    return ensure_v3_microkernel(int(mk.get("MR", 4)), int(mk.get("NR", 16)), int(mk.get("KC", 16)))
 
 
 def render_schedule(knobs: dict[str, Any]) -> str:
     """Render the transform-dialect schedule MLIR from knobs (verbatim-faithful for hand_v0).
 
-    A ``microkernel`` knob block renders the COMPOSED micro-kernel schedule (register block + K
-    streaming + optional operand packing) instead of the plain per-op tile/vectorize blocks — the
-    codegen-only path to expert-kernel granularity. Absent it, behaviour is byte-identical (hand_v0)."""
-    mk = knobs.get("microkernel")
-    if mk:
-        return render_microkernel_schedule(mk)
+    NOTE: a ``microkernel`` knob block does NOT render schedule text here — it resolves to a v3
+    feature (see :func:`microkernel_feature`) whose ``edit_schedule`` replaces the schedule and whose
+    ``edit_pipeline`` adds the residency/scalarize stage at build time."""
     blocks = "".join(
         _op_block(m["op"], m["tile"], m["vector"], i)
         for i, m in enumerate(knobs.get("op_match", []))

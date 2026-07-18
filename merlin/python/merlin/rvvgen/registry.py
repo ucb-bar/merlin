@@ -87,11 +87,24 @@ def load_rvv_package(package_dir: str | Path) -> RvvPackage:
         lowering_patterns=list(knobs.get("lowering_patterns", [])),
         lmul_policy=knobs.get("lmul_policy", "m1"),
         expected_instructions=list(knobs.get("expected_instructions", [])),
-        compiler_features=list(knobs.get("compiler_features",
-                                         manifest.get("compiler_features", []))),
+        compiler_features=_resolve_features(knobs, manifest),
         manifest=manifest,
         knobs=knobs,
     )
+
+
+def _resolve_features(knobs: dict, manifest: dict) -> list[str]:
+    """compiler_features from knobs/manifest, PLUS the v3 micro-kernel tuning point a ``microkernel``
+    knob block {MR, NR, KC} resolves to. That knob is how the beam tunes the register block
+    continuously via CODE GENERATION (no hand ukernel) — see from_strategy.microkernel_feature."""
+    feats = list(knobs.get("compiler_features", manifest.get("compiler_features", [])))
+    mk = knobs.get("microkernel")
+    if mk:
+        from .from_strategy import microkernel_feature
+        name = microkernel_feature(mk)
+        if name not in feats:
+            feats.append(name)
+    return feats
 
 
 def default_run(generated_root: str | Path, target: str = "rvv") -> Path:

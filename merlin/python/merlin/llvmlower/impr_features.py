@@ -1075,6 +1075,33 @@ def _accumulator_resident_v3_pipeline(passes: list[str]) -> list[str]:
     return out
 
 
+def ensure_v3_microkernel(MR: int, NR: int, KC: int) -> str:
+    """Register (on demand) and return the name of the v3 accumulator-resident micro-kernel tuning
+    point for ANY (MR, NR, KC) — turning the fixed 4-point grid into a CONTINUOUS, beam-tunable space.
+
+    This is how the compiler reaches expert-kernel granularity by CODE GENERATION alone: the v3 recipe
+    is fully compiler-emitted (tile [MR,NR] + K-by-1, scoped-vectorize -> vector.contract, PRE-bufferize
+    subset-hoisting makes the accumulator a register-resident scf.for iter_arg, contraction ->
+    outerproduct -> vector.fma, then A-scalarization -> vfmacc.vf). NO hand ukernel is involved — the
+    intrinsic driver remains a ceiling REFERENCE only. Registering a point is idempotent."""
+    name = ("accumulator_resident_microkernel_v3" if (MR, NR, KC) == (4, 16, 16)
+            else f"accum_resident_v3_{MR}_{NR}_{KC}")
+    if name in known():
+        return name
+    register(ImprFeature(
+        name=name,
+        action_class="PASS",
+        description=(f"Accumulator-resident vfmacc.vf micro-kernel tuning point (MR={MR}, NR={NR}, "
+                     f"KC={KC}), registered on demand so the beam can tune the register block "
+                     f"continuously. Compiler-emitted (no ukernel). Default-off."),
+        edit_pipeline=_accumulator_resident_v3_pipeline,
+        edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
+                       _accumulator_resident_v3_pre_schedule(_MR, _NR, _KC)),
+        schedule_replace=True,
+    ))
+    return name
+
+
 def _register_accumulator_resident_v3() -> list[str]:
     """Register `accumulator_resident_microkernel_v3` (default tile) + a small tuning grid. Reuses
     the v1 PRE-bufferize schedule (forms the contract); the v3 pipeline does the v2 PRE-bufferize
