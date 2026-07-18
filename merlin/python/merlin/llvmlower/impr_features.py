@@ -57,8 +57,27 @@ def register(feature: ImprFeature) -> ImprFeature:
     return feature
 
 
+def _try_lazy_register(name: str) -> bool:
+    """Auto-register a v3 micro-kernel tuning point from its NAME (accum_resident_v3_<MR>_<NR>_<KC>).
+
+    The register block is a continuous, beam-tunable knob space, but the lowering runs in a SUBPROCESS
+    that re-imports this module — so a point registered on demand in the parent is invisible there and
+    the feature fails to resolve (observed: every dynamically-registered MR failed at K2 while the
+    pre-registered grid worked). Deriving the point from the name makes resolution reproducible in ANY
+    process, which is what actually makes the space continuous."""
+    parts = name.split("_")
+    if len(parts) != 6 or not name.startswith("accum_resident_v3_"):
+        return False
+    try:
+        MR, NR, KC = (int(p) for p in parts[3:6])
+    except ValueError:
+        return False
+    ensure_v3_microkernel(MR, NR, KC)
+    return name in _REGISTRY
+
+
 def get(name: str) -> ImprFeature:
-    if name not in _REGISTRY:
+    if name not in _REGISTRY and not _try_lazy_register(name):
         raise KeyError(f"unknown impr feature {name!r}; registered: {sorted(_REGISTRY)}")
     return _REGISTRY[name]
 

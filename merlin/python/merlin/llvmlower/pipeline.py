@@ -254,6 +254,21 @@ def _accum_microkernel_v3_features() -> frozenset[str]:
     return frozenset(ACCUM_RESIDENT_V3_NAMES)
 
 
+def _needs_scalarize_runner(pipeline: str, feats: "frozenset[str]") -> bool:
+    """Does this lowering need the two-stage A-scalarization runner?
+
+    GROUND TRUTH is the marker's presence in the built pass pipeline — NOT membership in the static
+    ACCUM_RESIDENT_V3_NAMES grid. The register block is a continuous beam-tunable knob, so v3 tuning
+    points are registered on demand for arbitrary (MR,NR,KC); a static-name check silently missed them,
+    the plain runner was used, and SCALARIZE_MARKER leaked into the pipeline as if it were a pass
+    ("'__merlin_scalarize_a__' does not refer to a registered pass") — every non-grid MR failed at K2.
+    Keying on the marker makes this correct for any registration mechanism."""
+    from .accum_microkernel import SCALARIZE_MARKER
+    if SCALARIZE_MARKER in pipeline:
+        return True
+    return any(f in feats for f in _accum_microkernel_v3_features())
+
+
 def _activation_poly_runner() -> str:
     """The lowering runner with the transcendental->polynomial rewriter spliced in (default-off
     feature). Imported here (not at module top) so importing pipeline never pulls act_poly."""
@@ -344,7 +359,7 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     # feature absent the plain _RUNNER is used and the lowering is byte-identical to the baseline.
     if "vectorized_transcendental_activation" in feats:
         runner_src = _activation_poly_runner()
-    elif any(f in feats for f in _accum_microkernel_v3_features()):
+    elif _needs_scalarize_runner(pipeline, feats):
         from .accum_microkernel import run_source
         runner_src = run_source()
     else:
