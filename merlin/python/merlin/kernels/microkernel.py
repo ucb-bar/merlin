@@ -45,6 +45,11 @@ class MicrokernelSpec:
                      on K1: MR 3/5/6/7 collapse to 193-279x off, MR 4 is 5.0x).
     vl_strategy      VL_FIXED | VL_DYNAMIC (see above). VL_DYNAMIC may require the ISA escape hatch.
     pack             pre-pack operands into unit-stride panels (kills strided/transposed inner reads).
+    k_block          actually BLOCK the reduction by KC for cache reuse (vs only register-tiling it).
+                     Measured motivation: the emitted inner loop walks B by a full row stride per K
+                     step, touching a new cache line every iteration -- same instruction count as the
+                     expert kernel but ~5x slower, i.e. memory-stalled. Cache blocking is the standard
+                     fix, and KC was previously a DEAD parameter (the schedule ignored it entirely).
     """
 
     MR: int = 4
@@ -53,6 +58,7 @@ class MicrokernelSpec:
     unroll_m: bool = False
     vl_strategy: str = VL_FIXED
     pack: bool = False
+    k_block: bool = False
 
     def __post_init__(self) -> None:
         if self.vl_strategy not in VL_STRATEGIES:

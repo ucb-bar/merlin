@@ -1094,6 +1094,59 @@ def _accumulator_resident_v3_pipeline(passes: list[str]) -> list[str]:
     return out
 
 
+def _accumulator_resident_v3_kblocked_pre_schedule(MR: int, NR: int, KC: int) -> str:
+    """v3 pre-schedule with a REAL K-blocking tile (the ``KC`` lever, which the plain v3 recipe
+    silently ignores — it tiles K by 1 and never uses KC, so every KC produced the same schedule).
+
+    Why it matters (measured): the emitted inner loop advances B by the full row stride each K step
+    (``addi a0,a0,512`` for N=128 f32), touching a NEW cache line every iteration and re-walking them
+    for every (M,N) tile. Instruction count matches XNNPACK's kernel almost exactly, yet we run ~5x
+    slower — i.e. we are memory-stalled, not instruction-bound. Blocking K by KC keeps a B panel
+    resident across the M/N tiles so those lines are reused before eviction (classic GEMM cache
+    blocking), which is the standard fix for exactly this access pattern.
+
+    Structure: tile [MR, NR] (registers) -> tile K by KC (CACHE) -> tile K by 1 (register-resident
+    accumulation) -> scoped-vectorize [MR, NR, 1]. Pure code generation; no hand ukernel."""
+    return f"""\
+module attributes {{transform.with_named_sequence}} {{
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
+    %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t1, %lmn:2 = transform.structured.tile_using_for %mm tile_sizes [{MR}, {NR}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    %mmk = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %tkc, %lkc = transform.structured.tile_using_for %mmk tile_sizes [0, 0, {KC}] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    %mm2 = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t2, %lk = transform.structured.tile_using_for %mm2 tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    transform.structured.vectorize %t2 vector_sizes [{MR}, {NR}, 1] : !transform.any_op
+    %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.transfer_permutation_patterns
+      transform.apply_patterns.vector.reduction_to_contract
+    }} : !transform.any_op
+    transform.yield
+  }}
+}}
+"""
+
+
+def ensure_v3_kblocked_microkernel(MR: int, NR: int, KC: int) -> str:
+    """Register (on demand) the K-BLOCKED v3 tuning point — makes the KC lever real (cache blocking)."""
+    name = f"accum_resident_v3kb_{MR}_{NR}_{KC}"
+    if name in known():
+        return name
+    register(ImprFeature(
+        name=name,
+        action_class="PASS",
+        description=(f"Accumulator-resident micro-kernel with REAL K-blocking (MR={MR}, NR={NR}, "
+                     f"KC={KC}): K tiled by KC for cache reuse of the B panel, then by 1 for the "
+                     f"register-resident accumulation. Compiler-emitted (no ukernel). Default-off."),
+        edit_pipeline=_accumulator_resident_v3_pipeline,
+        edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
+                       _accumulator_resident_v3_kblocked_pre_schedule(_MR, _NR, _KC)),
+        schedule_replace=True,
+    ))
+    return name
+
+
 def _accumulator_resident_v3_unrolled_pre_schedule(MR: int, NR: int, KC: int) -> str:
     """v3 pre-schedule with M held as MR INDEPENDENT accumulators (the `unroll_m` axis).
 

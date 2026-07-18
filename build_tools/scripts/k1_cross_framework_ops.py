@@ -55,7 +55,13 @@ def _cc() -> Path:
     return cc
 
 
-def _deploy_run(binary: Path, tag: str, *, timeout: int = 300) -> tuple[str | None, str]:
+def _deploy_run(binary: Path, tag: str, *, timeout: int = 300,
+                pmu: bool = False) -> tuple[str | None, str]:
+    """scp the ELF to the board and run it. With ``pmu=True`` the run is wrapped in the
+    perf_event_open counter shim so the caller also gets cycles/instructions/IPC -- the axis that
+    separates "emits too many instructions" from "stalls on each instruction". PMU counts ride on
+    stderr, so the console (stdout) parse is unchanged and the wrapper is fail-open: if the board or
+    the shim is unavailable the run still happens, just without counters."""
     remote = f"/tmp/k1ops_{tag}"
     try:
         subprocess.run(["scp", "-i", k1.K1_SSH_KEY, "-o", "BatchMode=yes",
@@ -65,7 +71,12 @@ def _deploy_run(binary: Path, tag: str, *, timeout: int = 300) -> tuple[str | No
         return None, f"scp failed: {e.stderr[-200:] if e.stderr else e}"
     try:
         k1._ssh(f"chmod +x {remote}", timeout=30)
-        p = k1._ssh(remote, timeout=timeout)
+        cmd = remote
+        if pmu:
+            from merlin.rvvgen import pmu as pmu_mod
+            if pmu_mod.ensure_deployed():
+                cmd = pmu_mod.wrap(remote)
+        p = k1._ssh(cmd, timeout=timeout)
     finally:
         try:
             k1._ssh(f"rm -f {remote}", timeout=30)
@@ -73,6 +84,13 @@ def _deploy_run(binary: Path, tag: str, *, timeout: int = 300) -> tuple[str | No
             pass
     if p.returncode != 0:
         return None, f"run rc={p.returncode}; stderr: {p.stderr.strip()[-200:]}; stdout: {p.stdout.strip()[-200:]}"
+    # Counters (when requested) are appended to the console so the existing _parse path is untouched
+    # and the numbers land in the same record the wall-time measurement does.
+    if pmu:
+        from merlin.rvvgen import pmu as pmu_mod
+        counts = pmu_mod.parse(p.stderr or "")
+        if counts is not None:
+            return f"{p.stdout}\nMERLIN_PMU cycles={counts.cycles} instructions={counts.instructions}\n", "ok"
     return p.stdout, "ok"
 
 
@@ -86,14 +104,17 @@ def _parse(base: dict, console: str | None, detail: str, *, reps: int = 1) -> di
     if t is None:
         return {**base, "ticks": None, "status": "not_run", "blocker": "no CYCLES/ticks line"}
     err = int_field(console, "errors")
-    return {**base, "ticks": t, "status": "pass",
+    from merlin.rvvgen import pmu as pmu_mod
+    counts = pmu_mod.parse(console)
+    pmu_fields = counts.as_dict() if counts is not None else {}
+    return {**base, "ticks": t, "status": "pass", **pmu_fields,
             "correct": (err == 0) if err is not None else True,
             "wall_ns_est": int(t * 1e9 / k1.K1_TIMEBASE_HZ),
             "note": "K1 real-silicon rdtime ticks; inner-compute; bit-exact verified"}
 
 
 def _build_run_xnn(tag, driver: Path, defs: list[str], *, reps: int = 3,
-                   base: dict) -> dict:
+                   base: dict, pmu: bool = False) -> dict:
     """Compile one standalone XNNPACK driver with the K1 clang, scp+run reps times, keep min."""
     cc = _cc()
     inc_flags = []
@@ -112,7 +133,7 @@ def _build_run_xnn(tag, driver: Path, defs: list[str], *, reps: int = 3,
             return {**base, "ticks": None, "status": "not_run",
                     "blocker": f"build failed rc={p.returncode}: {p.stderr.strip()[-700:]}"}
         for rep in range(reps):
-            console, detail = _deploy_run(binp, f"{tag}_{rep}")
+            console, detail = _deploy_run(binp, f"{tag}_{rep}", pmu=pmu)
             r = _parse(base, console, detail)
             if r["status"] != "pass":
                 return r  # first failure is the honest blocker
@@ -156,7 +177,7 @@ def _lower_ours(bundle: Path, run_id: str, features: list[str], *, int8: bool,
 
 def _build_run_ours(tag, bundle: Path, driver: Path, defs: list[str], run_id: str,
                     features: list[str], *, int8: bool, vectorize: bool, reps: int,
-                    base: dict, timeout: int = 600) -> dict:
+                    base: dict, timeout: int = 600, pmu: bool = False) -> dict:
     """Lower OUR model.o for `bundle`, link the given OURS driver, scp+run reps, keep min."""
     cc = _cc()
     rt = REPO / "merlin/runtime/c"
@@ -190,7 +211,7 @@ def _build_run_ours(tag, bundle: Path, driver: Path, defs: list[str], run_id: st
                         "blocker": f"link failed rc={p.returncode}: {p.stderr.strip()[-700:]}"}
         best = None
         for rep in range(reps):
-            console, detail = _deploy_run(binp, f"{tag}_{rep}", timeout=timeout)
+            console, detail = _deploy_run(binp, f"{tag}_{rep}", timeout=timeout, pmu=pmu)
             r = _parse(base, console, detail)
             if r["status"] != "pass":
                 return r
@@ -257,7 +278,8 @@ def run_f32_gemm(shapes: list[int], reps: int) -> list[dict]:
                 "kernel_file": "tmp/kernels/XNNPACK/src/f32-gemm/gen/f32-gemm-7x4v-rvv.c"}
         print(f"--- xnnpack f32_gemm {S}^3 (7x4v) ---")
         r = _build_run_xnn(f"f32gemm_xnn_{S}", HERE / "xnnpack_gemm_driver_7x4v.c",
-                           [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"], reps=reps, base=base)
+                           [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"], reps=reps, base=base,
+                           pmu=True)
         print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
         rows.append(r)
         bundle = workloads.gen_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", M=S, N=S, K=S)
@@ -271,7 +293,8 @@ def run_f32_gemm(shapes: list[int], reps: int) -> list[dict]:
             print(f"--- {sid} {S}^3 ---")
             r = _build_run_ours(f"f32gemm_{sid}_{S}", bundle, HERE / "ours_gemm_driver.c",
                                 [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"],
-                                sid, feats, int8=False, vectorize=True, reps=reps, base=base)
+                                sid, feats, int8=False, vectorize=True, reps=reps, base=base,
+                                pmu=True)
             print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
             rows.append(r)
     return rows
@@ -287,7 +310,8 @@ def run_int8_gemm(shapes: list[int], reps: int) -> list[dict]:
                 "kernel_file": "tmp/kernels/XNNPACK/src/qd8-f32-qc8w-gemm/gen/qd8-f32-qc8w-gemm-1x4v-minmax-rvv.c"}
         print(f"--- xnnpack int8_gemm {S}^3 ---")
         r = _build_run_xnn(f"qd8_xnn_{S}", HERE / "xnnpack_qd8_gemm_driver.c",
-                           [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"], reps=reps, base=base)
+                           [f"-DGEMM_M={S}", f"-DGEMM_N={S}", f"-DGEMM_K={S}"], reps=reps, base=base,
+                           pmu=True)
         print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
         rows.append(r)
         # OURS int8 W8A8: NAIVE (features=[] -> scalar, the ~200x catastrophe) vs the VECTORIZED

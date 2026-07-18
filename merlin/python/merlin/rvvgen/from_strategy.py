@@ -83,7 +83,14 @@ def _rvv_microkernel_resolver(spec) -> list[str]:
                    llvm.call_intrinsic), i.e. still code generation, no llvm-project fork.
     """
     from ..kernels.microkernel import VL_DYNAMIC, UnsupportedAxis
-    from ..llvmlower.impr_features import ensure_v3_microkernel, ensure_v3_unrolled_microkernel
+    from ..llvmlower.impr_features import (ensure_v3_kblocked_microkernel, ensure_v3_microkernel,
+                                            ensure_v3_unrolled_microkernel)
+    if spec.k_block:
+        # REAL cache blocking of the reduction (the KC lever the plain v3 recipe silently ignored).
+        if spec.unroll_m or spec.pack:
+            raise UnsupportedAxis("rvv: k_block does not compose with unroll_m/pack yet (each "
+                                  "replaces the schedule); emit one composed recipe to combine them.")
+        return [ensure_v3_kblocked_microkernel(int(spec.MR), int(spec.NR), int(spec.KC))]
     if spec.unroll_m:
         # M held as MR INDEPENDENT accumulators (tile M by 1 + unroll the M loop by MR) instead of a
         # 2-D vector<MRxNR> — shape-agnostic in MR, which is what lets an expert pick MR=7.
