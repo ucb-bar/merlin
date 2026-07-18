@@ -62,8 +62,40 @@ def _pattern_line(name: str, contraction_strategy: str | None) -> str:
     return f"      transform.apply_patterns.vector.{name}"
 
 
+def render_microkernel_schedule(mk: dict[str, Any]) -> str:
+    """Render the COMPOSED micro-kernel schedule from tunable knobs — pure code generation.
+
+    This is how the compiler expresses the same granularity a hand micro-kernel has, WITHOUT any
+    hand-written ukernel in the compiler (the intrinsic driver stays a ceiling REFERENCE only). The
+    expert shape is a point in a continuous knob space the beam searches:
+
+      MR   register-block rows      (A reuse: how many accumulator rows stay resident)
+      NR   register-block cols      (vector lanes per accumulator)
+      KC   K tile                   (reduction blocking)
+      KS   K streaming chunk        (live B panel size; keeps the outerproduct from spilling)
+      pack operand pre-packing      (unit-stride panels + B pre-transpose -> no runtime transpose)
+
+    Delegates to the ALREADY-parameterized generators in ``llvmlower.impr_features`` — previously
+    reachable only as a fixed 27-name feature grid whose entries are mutually-exclusive full-schedule
+    replacements (so MR/NR/pack could never compose). Exposing them as knobs makes the whole space
+    composable and beam-tunable, which is what closes the gap to the expert kernel by codegen alone.
+    """
+    from ..llvmlower.impr_features import vfmacc_packed_schedule, vfmacc_tiled_schedule
+    MR = int(mk.get("MR", 4)); NR = int(mk.get("NR", 16)); KC = int(mk.get("KC", 16))
+    if mk.get("pack"):
+        return vfmacc_packed_schedule(MR, NR, KC, int(mk.get("KS", 4)))
+    return vfmacc_tiled_schedule(MR, NR, KC)
+
+
 def render_schedule(knobs: dict[str, Any]) -> str:
-    """Render the transform-dialect schedule MLIR from knobs (verbatim-faithful for hand_v0)."""
+    """Render the transform-dialect schedule MLIR from knobs (verbatim-faithful for hand_v0).
+
+    A ``microkernel`` knob block renders the COMPOSED micro-kernel schedule (register block + K
+    streaming + optional operand packing) instead of the plain per-op tile/vectorize blocks — the
+    codegen-only path to expert-kernel granularity. Absent it, behaviour is byte-identical (hand_v0)."""
+    mk = knobs.get("microkernel")
+    if mk:
+        return render_microkernel_schedule(mk)
     blocks = "".join(
         _op_block(m["op"], m["tile"], m["vector"], i)
         for i, m in enumerate(knobs.get("op_match", []))
