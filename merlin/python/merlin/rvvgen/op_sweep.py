@@ -51,16 +51,18 @@ class CellResult:
     note: str = ""
 
 
-def is_scalar_kernel(objdump_text: str, *, ignore: tuple[str, ...] = ()) -> bool:
-    """True iff the emitted kernel is SCALAR (no RVV in any compute-bearing symbol). Per the 'never run
-    scalar' directive, this is a certify FAILURE — reuse ``baselines.rvv_audit`` (the mechanical honesty
-    that classifies every instruction vector vs scalar)."""
+def is_scalar_kernel(objdump_text: str) -> bool:
+    """True iff the emitted kernel is running SCALAR — zero vector arithmetic in the whole objdump.
+    Per the 'never run scalar' directive this is a certify FAILURE. We flag only FULLY-scalar kernels
+    (coverage == 0): a whole-model objdump legitimately contains scalar helper symbols (ciface / arg
+    setup) alongside a vectorized compute kernel, so ``scalar_fallback_symbols`` (per-symbol) would
+    false-positive — coverage==0 means NO vector compute anywhere, the true scalar-fallback case."""
     from ..baselines.rvv_audit import classify_disasm
     rep = classify_disasm(objdump_text, source="op_sweep")
     cov = rep.coverage_overall
     if cov is None:
         return False            # no compute-bearing symbol found -> can't call it scalar (honest)
-    return cov == 0.0 or bool(rep.scalar_fallback_symbols(ignore=ignore))
+    return cov == 0.0
 
 
 def _default_seed(repo_root: Path) -> str:
@@ -124,8 +126,16 @@ def run_op_sweep(cells: list[OpCell], *, width: int = 3, depth: int = 2, top_k: 
 
 
 # ---- the default GEMM cell matrix + CLI ------------------------------------------------------------
-# XNNPACK's measured K1 kernel wall (rdtime ticks) per (dtype, shape) — the per-op scoreboard targets.
-_XNN_GEMM_WALL = {("f32", 128): 9424, ("f32", 256): 72222, ("int8", 64): 1552, ("int8", 128): 11593}
+# XNNPACK's measured K1 kernel wall in rdtime TICKS per (dtype, shape) — from k1_cross_framework_ops.
+# The beam reports k1_wall_ns (nanoseconds), so these ticks are converted to ns (via the K1 24 MHz
+# timebase) in default_gemm_cells so attainment_vs_expert = xnn_ns / fork_ns is apples-to-apples.
+_XNN_GEMM_TICKS = {("f32", 128): 9424, ("f32", 256): 72222, ("int8", 64): 1552, ("int8", 128): 11593}
+
+
+def _ticks_to_ns(ticks: int | None) -> float | None:
+    """K1 rdtime ticks -> nanoseconds (the unit the beam's k1_wall_ns uses)."""
+    from .k1 import K1_TIMEBASE_HZ
+    return None if ticks is None else round(ticks * 1e9 / K1_TIMEBASE_HZ)
 
 
 def default_gemm_cells(shapes_f32=(128, 256), shapes_int8=(64, 128)) -> list[OpCell]:
@@ -144,11 +154,11 @@ def default_gemm_cells(shapes_f32=(128, 256), shapes_int8=(64, 128)) -> list[OpC
     for S in shapes_f32:
         cells.append(OpCell(op="matmul", dtype="f32", shape_regime=f"square_{S}",
                             workload_dir=gen_matmul_f32(wl_root, M=S, N=S, K=S), expert_objdump=expert,
-                            expert_wall_ns=_XNN_GEMM_WALL.get(("f32", S)), seed_pkg=str(seed_f32)))
+                            expert_wall_ns=_ticks_to_ns(_XNN_GEMM_TICKS.get(("f32", S))), seed_pkg=str(seed_f32)))
     for S in shapes_int8:
         cells.append(OpCell(op="matmul", dtype="int8", shape_regime=f"square_{S}",
                             workload_dir=gen_matmul_f32(wl_root, M=S, N=S, K=S), expert_objdump=expert,
-                            expert_wall_ns=_XNN_GEMM_WALL.get(("int8", S)), seed_pkg=str(seed_int8)))
+                            expert_wall_ns=_ticks_to_ns(_XNN_GEMM_TICKS.get(("int8", S))), seed_pkg=str(seed_int8)))
     return cells
 
 
