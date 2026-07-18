@@ -62,27 +62,63 @@ def _pattern_line(name: str, contraction_strategy: str | None) -> str:
     return f"      transform.apply_patterns.vector.{name}"
 
 
-def microkernel_feature(mk: dict[str, Any]) -> str:
-    """Resolve a ``microkernel`` knob block {MR, NR, KC} to the v3 accumulator-resident tuning point.
+def _rvv_microkernel_resolver(spec) -> list[str]:
+    """RVV's realization of the TARGET-AGNOSTIC micro-kernel space (kernels.microkernel.MicrokernelSpec).
 
-    This is how the compiler reaches expert-kernel granularity by CODE GENERATION alone — no hand
-    ukernel (the intrinsic driver stays a ceiling REFERENCE). The v3 recipe needs BOTH its
-    pre-bufferize schedule AND its pipeline stage (subset-hoist -> contract-lower -> A-scalarize ->
-    vfmacc.vf), so the knob resolves to a feature (registered on demand for ANY MR/NR/KC) rather than
-    rendering schedule text — that turns the fixed 4-point grid into a continuous, beam-tunable space.
+    Registered as the ``rvv`` resolver so the same knob space works for any target (Gemmini, Saturn,
+    … register their own). Realizes by CODE GENERATION only — no hand ukernel; the intrinsic driver
+    stays a ceiling REFERENCE.
 
-    Measured why v3 and not the older recipes: v3 @MR=4 is ~4.2x off XNNPACK, while the plain tiled /
-    packed generators are 18x / 46x off — so the register block must ride the v3 residency recipe."""
+      MR/NR/KC  -> a v3 accumulator-resident tuning point (register-resident scf.for iter_arg
+                   accumulator + A-scalarized vfmacc.vf), registered on demand for ANY shape so the
+                   register block is continuously beam-tunable. Chosen over the older generators on
+                   measurement: v3 @MR=4 is ~4-5x off XNNPACK vs plain-tiled 18x / packed 46x.
+      pack      -> the operand-packing recipe (unit-stride panels + B pre-transpose).
+      unroll_m / vl_strategy=dynamic -> NOT yet expressible; raised honestly so the beam keeps them as
+                   OPEN divergences. Both are buildable in pure codegen and are the next capabilities:
+                   unroll_m = hold M rows as independent accumulators (what lets an expert use MR=7;
+                   our 2-D vector<MRxNR> formulation collapses at non-power-of-2 MR), and dynamic VL =
+                   a vsetvli loop, which — where MLIR's scalable->RVV lowering is incomplete — can be
+                   emitted through ``llvmlower.custom_isa`` (merlin.inline_asm -> llvm.inline_asm /
+                   llvm.call_intrinsic), i.e. still code generation, no llvm-project fork.
+    """
+    from ..kernels.microkernel import VL_DYNAMIC, UnsupportedAxis
     from ..llvmlower.impr_features import ensure_v3_microkernel
-    return ensure_v3_microkernel(int(mk.get("MR", 4)), int(mk.get("NR", 16)), int(mk.get("KC", 16)))
+    if spec.unroll_m:
+        raise UnsupportedAxis(
+            "rvv: unroll_m (M as independent accumulators) is not emitted yet — the v3 recipe forms a "
+            "2-D vector<MRxNR>. Build it as a codegen capability; do not silently ignore the axis.")
+    if spec.vl_strategy == VL_DYNAMIC:
+        raise UnsupportedAxis(
+            "rvv: vl_strategy='dynamic' (VL-agnostic vsetvli loop) is not emitted yet — MLIR's "
+            "scalable-vector -> RVV lowering is incomplete (ub.poison survives). Realize it via "
+            "llvmlower.custom_isa (merlin.inline_asm -> llvm.inline_asm) rather than ignoring it.")
+    if spec.pack:
+        from ..llvmlower.impr_features import known, register, ImprFeature, vfmacc_packed_schedule
+        nm = f"vfmacc_packed_{spec.MR}_{spec.NR}_{spec.KC}"
+        if nm not in known():
+            register(ImprFeature(
+                name=nm, action_class="PASS",
+                description=f"operand-packed micro-kernel (MR={spec.MR}, NR={spec.NR}, KC={spec.KC})",
+                edit_schedule=(lambda _t, _s=spec: vfmacc_packed_schedule(_s.MR, _s.NR, _s.KC)),
+                schedule_replace=True))
+        return [nm]
+    return [ensure_v3_microkernel(int(spec.MR), int(spec.NR), int(spec.KC))]
+
+
+def microkernel_features(mk: dict[str, Any], target: str = "rvv") -> list[str]:
+    """Resolve a ``microkernel`` knob block to ``target``'s realization (target-agnostic dispatch)."""
+    from ..kernels.microkernel import MicrokernelSpec, resolve
+    return list(resolve(target, MicrokernelSpec.from_knobs(mk)))
 
 
 def render_schedule(knobs: dict[str, Any]) -> str:
     """Render the transform-dialect schedule MLIR from knobs (verbatim-faithful for hand_v0).
 
-    NOTE: a ``microkernel`` knob block does NOT render schedule text here — it resolves to a v3
-    feature (see :func:`microkernel_feature`) whose ``edit_schedule`` replaces the schedule and whose
-    ``edit_pipeline`` adds the residency/scalarize stage at build time."""
+    NOTE: a ``microkernel`` knob block does NOT render schedule text here — it resolves through the
+    TARGET-AGNOSTIC space (see :func:`microkernel_features` / ``kernels.microkernel``) to this target's
+    realization, whose ``edit_schedule`` replaces the schedule and whose ``edit_pipeline`` adds the
+    residency/scalarize stage at build time."""
     blocks = "".join(
         _op_block(m["op"], m["tile"], m["vector"], i)
         for i, m in enumerate(knobs.get("op_match", []))
@@ -130,3 +166,14 @@ def mint_fork(parent: "RvvPackage | str | Path", overrides: dict[str, Any], *,
     }
     return write_fork(out_root, target, run_id, schedule_text=schedule_text,
                       knobs=knobs, lineage=lineage)
+
+
+# Register RVV's realization of the target-agnostic micro-kernel space at import. Other targets
+# (gemmini, saturn_vec, muon, …) register their own resolver the same way, so the SAME knob block
+# expresses expert-kernel granularity for any compilation target.
+def _register_rvv_microkernel_resolver() -> None:
+    from ..kernels.microkernel import register_resolver
+    register_resolver("rvv", _rvv_microkernel_resolver)
+
+
+_register_rvv_microkernel_resolver()

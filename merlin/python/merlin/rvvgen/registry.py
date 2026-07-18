@@ -100,10 +100,10 @@ def _resolve_features(knobs: dict, manifest: dict) -> list[str]:
     feats = list(knobs.get("compiler_features", manifest.get("compiler_features", [])))
     mk = knobs.get("microkernel")
     if mk:
-        from .from_strategy import microkernel_feature
-        name = microkernel_feature(mk)
-        if name not in feats:
-            feats.append(name)
+        from .from_strategy import microkernel_features
+        for name in microkernel_features(mk, target=str(manifest.get("target", "rvv"))):
+            if name not in feats:
+                feats.append(name)
     return feats
 
 
