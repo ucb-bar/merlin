@@ -1198,6 +1198,122 @@ def ensure_v3_unrolled_microkernel(MR: int, NR: int, KC: int) -> str:
     return name
 
 
+#: RVV lowering fact (not a board constant): LLVM's RISC-V backend defines ``vscale = VLEN / 64``,
+#: so an MLIR ``vector<[k]xT>`` holds ``k * VLEN/64`` elements and occupies ``k * VLEN/64 * sizeof(T)``
+#: bytes of vector register file, i.e. ``LMUL = k * sizeof(T) / 8``. Two consequences we rely on:
+#: the LMUL of a scalable type is FIXED by the type (never widened to cover a worst-case VLEN, which
+#: is exactly the defect the ``_zvl`` pin worked around), and the element count at the RVV MINIMUM
+#: VLEN of 128 bits is ``2 * k`` for EVERY element type. So ``k = NR // 2`` makes the ``NR`` knob mean
+#: "lanes at the minimum VLEN" under VL_DYNAMIC, with the real lane count scaling with the hardware.
+_VSCALE_LANES_PER_128B = 2
+
+
+def scalable_lanes(NR: int) -> int:
+    """The scalable multiplier ``k`` of ``vector<[k]xT>`` for a register block ``NR`` lanes wide at
+    the RVV MINIMUM VLEN (128 bits). Dtype-independent — see :data:`_VSCALE_LANES_PER_128B`."""
+    if NR % _VSCALE_LANES_PER_128B:
+        raise ValueError(
+            f"vl_strategy='dynamic' needs an even NR (NR counts lanes at the RVV minimum VLEN of "
+            f"128 bits, and a scalable vector<[k]xT> holds 2k of them); got NR={NR}.")
+    return NR // _VSCALE_LANES_PER_128B
+
+
+def _accumulator_resident_v3_scalable_pre_schedule(MR: int, NR: int, KC: int) -> str:
+    """v3 pre-schedule emitting a VL-AGNOSTIC (scalable) register block — the ``vl_strategy=dynamic``
+    axis. Same recipe as :func:`_accumulator_resident_v3_pre_schedule` with the N tile made SCALABLE.
+
+    Why this is the general fix. Our fixed-width codegen asks for ``vector<NRxf32>``, and the backend
+    must size that register group for the worst VLEN the ``march`` string admits (``rv64gcv`` promises
+    only the 128-bit minimum), so on a VLEN=256 part every value got DOUBLE the LMUL it needed and
+    ``vl`` sat at half ``VLMAX``. Pinning ``_zvl256b`` fixes it for ONE board and miscompiles on a
+    narrower one. A scalable ``vector<[k]xf32>`` has no such worst case: its LMUL is fixed by the type
+    and its lane count is whatever the hardware reports, which is what the expert kernels do by
+    calling ``__riscv_vsetvl_e32m4`` at run time. ``NR`` is reinterpreted as lanes at the MINIMUM
+    VLEN (see :func:`scalable_lanes`), so ``NR`` still names the register-block width — it just names
+    the LMUL rather than a lane count that only one board would honour.
+
+    Two things the naive scalable schedule gets wrong, plus one PRECONDITION it inherits (all
+    reproduced against LLVM/MLIR 23, see docs/design/vl_agnostic_codegen.md):
+
+      * The N loop trip count is no longer a compile-time multiple of the tile, so ``vectorize``
+        MASKS every transfer. Masked scalable transfers (a) block
+        ``loop-invariant-subset-hoisting``, which is what makes the accumulator a register-resident
+        ``scf.for`` iter_arg — without it the K loop round-trips C through memory, the exact defect
+        v3 exists to remove — and (b) lower through a ``vector.transpose`` on
+        ``vector<MRx1x[k]xf32>`` that has NO scalable lowering and survives to the LLVM edge
+        (``error: Dialect 'vector' not found for custom op 'vector.transpose'``). THIS transpose,
+        not the ``ub.poison`` the old note named, is the real residue of the "incomplete lowering".
+        FIX: PEEL the N loop (``transform.loop.peel``) so the main loop's tile is exactly
+        ``[k] * vscale`` wide, then vectorize it with ``assume_dynamic_dims_match_vec_sizes`` — the
+        peel is what MAKES that assumption true. No masks, no transpose; the subset hoist fires
+        exactly as in the fixed-width recipe.
+      * The peeled N remainder keeps its ``linalg.matmul`` and falls through
+        ``convert-linalg-to-loops`` to a scalar tail — correct for any N, zero-trip whenever the
+        hardware VL divides N.
+      * PRECONDITION ``MR | M`` (inherited, not introduced). ``assume_dynamic_dims_match_vec_sizes``
+        asserts EVERY dynamic tile dim equals its vector size, INCLUDING M. The static ``MR`` M-tile
+        has a partial last iteration when ``MR`` does not divide M, and the flag then makes the body
+        write ``MR`` rows into a shorter tile (measured on the K1 at 130^3: ``malloc(): corrupted
+        top size``; 128^3 and 100^3, where MR|M, are bit-exact). This is the SAME "MR must divide M"
+        constraint the fixed 2-D ``vector<MRxNR>`` v3 recipe already carries (see
+        expert_gap_attribution.md — small-M falls off a cliff). It is NOT fixed here by peeling M:
+        ``transform.loop.peel`` FAILS on a statically-divisible loop, so an M peel would break the
+        common MR|M case (M=128) to protect the MR∤M one. The M-tail is an orthogonal axis
+        (pad/peel, shared with the fixed recipe); until it lands, MR∤M is fail-closed (the harness
+        records not_run on the crash, never a false timing), not silently wrong.
+
+    ``KC`` is carried for naming parity with the other v3 points; like the plain v3 recipe it does
+    not tile the reduction (``k_block`` is the lever that does)."""
+    k = scalable_lanes(NR)
+    return f"""\
+module attributes {{transform.with_named_sequence}} {{
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
+    %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t1, %lm, %ln = transform.structured.tile_using_for %mm tile_sizes [{MR}, [{k}], 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    %lnf = transform.cast %ln : !transform.any_op to !transform.op<"scf.for">
+    %main, %tail = transform.loop.peel %lnf : (!transform.op<"scf.for">) -> (!transform.any_op, !transform.any_op)
+    %mms = transform.structured.match ops{{["linalg.matmul"]}} in %main : (!transform.any_op) -> !transform.any_op
+    %t2, %lk = transform.structured.tile_using_for %mms tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    transform.structured.vectorize %t2 vector_sizes [{MR}, [{k}], 1] {{assume_dynamic_dims_match_vec_sizes}} : !transform.any_op
+    %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.transfer_permutation_patterns
+      transform.apply_patterns.vector.reduction_to_contract
+    }} : !transform.any_op
+    transform.yield
+  }}
+}}
+"""
+
+
+def ensure_v3_scalable_microkernel(MR: int, NR: int, KC: int) -> str:
+    """Register (on demand) the VL-AGNOSTIC v3 tuning point — a scalable (``vsetvli``-sized) N block.
+
+    This is the realization of ``MicrokernelSpec.vl_strategy = VL_DYNAMIC``: the emitted inner loop
+    sizes itself to the vector length the hardware reports, so it needs no ``_zvl`` march pin and is
+    correct (and full-width) on ANY RVV part."""
+    k = scalable_lanes(NR)
+    name = f"accum_resident_v3vl_{MR}_{NR}_{KC}"
+    if name in known():
+        return name
+    register(ImprFeature(
+        name=name,
+        action_class="PASS",
+        description=(f"VL-AGNOSTIC accumulator-resident micro-kernel (MR={MR}, NR={NR} lanes at the "
+                     f"RVV minimum VLEN -> vector<[{k}]xT>, KC={KC}): the N register block is a "
+                     f"SCALABLE vector, so the emitted loop sizes to the hardware's runtime vector "
+                     f"length (vsetvli against VLMAX) instead of a compile-time width that the "
+                     f"backend must widen for the worst-case VLEN. Needs no _zvl march pin. N loop "
+                     f"is peeled so the main body is unmasked; the remainder is a scalar tail. "
+                     f"Compiler-emitted (no ukernel). Default-off."),
+        edit_pipeline=_accumulator_resident_v3_pipeline,
+        edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
+                       _accumulator_resident_v3_scalable_pre_schedule(_MR, _NR, _KC)),
+        schedule_replace=True,
+    ))
+    return name
+
+
 def ensure_v3_microkernel(MR: int, NR: int, KC: int) -> str:
     """Register (on demand) and return the name of the v3 accumulator-resident micro-kernel tuning
     point for ANY (MR, NR, KC) — turning the fixed 4-point grid into a CONTINUOUS, beam-tunable space.

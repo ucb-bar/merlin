@@ -73,7 +73,11 @@ def _inner_loop_facts(text: str) -> dict:
     LMUL those instructions actually run under."""
     from merlin.kernels.decode import rvv as _rvv
     stream = _rvv.decode_text(text)
-    span = stream.innermost_loop()
+    # Scope to the innermost loop that does VECTOR arithmetic, not simply the tightest loop. A
+    # recipe that peels (the VL-agnostic scalable one peels N) leaves a SCALAR remainder loop that
+    # is tighter than the vector K loop, and the plain innermost span then reports that tail's mix
+    # (0 vfmacc, 0 vle) as though the micro-kernel had not vectorized at all.
+    span = stream.innermost_vector_loop() or stream.innermost_loop()
     facts = {"vtype_histogram": stream.vtype_histogram()}
     if span is None:
         return {**facts, "inner_loop": None}
@@ -103,14 +107,23 @@ def _inner_loop_facts(text: str) -> dict:
 
 
 def _run_point(spec: MicrokernelSpec, S: int, reps: int, tag: str, keep: Path,
-               extra_features: list[str]) -> dict:
-    """Lower + build + run ONE micro-kernel point; keep its objdump. Fail-closed."""
+               extra_features: list[str], *, march: str | None = None) -> dict:
+    """Lower + build + run ONE micro-kernel point; keep its objdump. Fail-closed.
+
+    ``march`` overrides the codegen march string. VL_DYNAMIC points are compiled WITHOUT the ``_zvl``
+    pin (``march=k1.K1_MARCH``) on purpose: pinning would hide whether the emitted loop really sizes
+    itself to the hardware at run time (the whole point of the axis), and the cross-cutting finding
+    is that the pin may not even take effect at scale. VL_FIXED points keep the pinned default so the
+    VL-agnostic loop is measured against the strongest fixed-width baseline."""
     from merlin.rvvgen import workloads
     from merlin.rvvgen.from_strategy import microkernel_features
+    from merlin.kernels.microkernel import VL_DYNAMIC
 
+    if march is None:
+        march = k1.K1_MARCH if spec.vl_strategy == VL_DYNAMIC else k1.codegen_march()
     base = {"op": "f32_gemm", "dtype": "f32", "M": S, "N": S, "K": S, "target": "k1",
             "mode": "inner_compute", "timer": "rdtime", "timebase_hz": k1.K1_TIMEBASE_HZ,
-            "source": "ours_microkernel_sweep", "microkernel": asdict(spec)}
+            "source": "ours_microkernel_sweep", "microkernel": asdict(spec), "march": march}
     try:
         feats = list(extra_features) + microkernel_features(spec.to_knobs())
     except UnsupportedAxis as e:
@@ -120,7 +133,8 @@ def _run_point(spec: MicrokernelSpec, S: int, reps: int, tag: str, keep: Path,
     bundle = workloads.gen_matmul_f32(cache_dir("rvv_workloads"), M=S, N=S, K=S)
     work = keep / "work"
     work.mkdir(parents=True, exist_ok=True)
-    model_o, cgen, err = X._lower_ours(bundle, tag, feats, int8=False, vectorize=True, work=work)
+    model_o, cgen, err = X._lower_ours(bundle, tag, feats, int8=False, vectorize=True, work=work,
+                                       march=march)
     if err is not None:
         return {**base, "ticks": None, "status": "not_run", "blocker": err}
 
@@ -189,7 +203,12 @@ def _run_xnn(S: int, reps: int, tag: str) -> dict:
 
 
 def _parse_specs(text: str) -> list[MicrokernelSpec]:
-    """``MR:NR:KC[:flag,flag]`` per comma-free ';'-separated item; flags in {unroll_m, k_block, pack}."""
+    """``MR:NR:KC[:flag,flag]`` per comma-free ';'-separated item.
+
+    Boolean flags in {unroll_m, k_block, pack}; ``vl_dynamic`` is the VL-agnostic-loop shorthand for
+    ``vl_strategy='dynamic'`` (a scalable N block sized to the runtime VL). Under vl_dynamic, NR is
+    the block width in lanes at the RVV MINIMUM VLEN (128 bits): NR=16 -> vector<[8]xf32> == LMUL 4."""
+    from merlin.kernels.microkernel import VL_DYNAMIC
     out = []
     for item in text.split(";"):
         item = item.strip()
@@ -198,7 +217,14 @@ def _parse_specs(text: str) -> list[MicrokernelSpec]:
         parts = item.split(":")
         MR, NR, KC = int(parts[0]), int(parts[1]), int(parts[2])
         flags = parts[3].split(",") if len(parts) > 3 and parts[3] else []
-        kw = {f: True for f in flags if f}
+        kw: dict = {}
+        for f in flags:
+            if not f:
+                continue
+            if f == "vl_dynamic":
+                kw["vl_strategy"] = VL_DYNAMIC
+            else:
+                kw[f] = True
         out.append(MicrokernelSpec(MR=MR, NR=NR, KC=KC, **kw))
     return out
 
@@ -228,7 +254,10 @@ def main() -> int:
             print("   ", r["status"], r.get("ticks"), r.get("blocker", ""), flush=True)
             rows.append(r)
         for spec in specs:
+            from merlin.kernels.microkernel import VL_DYNAMIC
             flags = "".join(k[0] for k in ("unroll_m", "k_block", "pack") if getattr(spec, k))
+            if spec.vl_strategy == VL_DYNAMIC:
+                flags += "V"                       # VL-agnostic (scalable) N block
             tag = f"{a.tag_prefix}mk{spec.MR}x{spec.NR}x{spec.KC}{flags}_{S}"
             keep = root / tag
             keep.mkdir(parents=True, exist_ok=True)

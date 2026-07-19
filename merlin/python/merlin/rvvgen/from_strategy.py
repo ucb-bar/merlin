@@ -74,13 +74,17 @@ def _rvv_microkernel_resolver(spec) -> list[str]:
                    register block is continuously beam-tunable. Chosen over the older generators on
                    measurement: v3 @MR=4 is ~4-5x off XNNPACK vs plain-tiled 18x / packed 46x.
       pack      -> the operand-packing recipe (unit-stride panels + B pre-transpose).
-      unroll_m / vl_strategy=dynamic -> NOT yet expressible; raised honestly so the beam keeps them as
-                   OPEN divergences. Both are buildable in pure codegen and are the next capabilities:
-                   unroll_m = hold M rows as independent accumulators (what lets an expert use MR=7;
-                   our 2-D vector<MRxNR> formulation collapses at non-power-of-2 MR), and dynamic VL =
-                   a vsetvli loop, which — where MLIR's scalable->RVV lowering is incomplete — can be
-                   emitted through ``llvmlower.custom_isa`` (merlin.inline_asm -> llvm.inline_asm /
-                   llvm.call_intrinsic), i.e. still code generation, no llvm-project fork.
+      vl_strategy=dynamic -> the VL-AGNOSTIC (scalable) register block: the N tile becomes a
+                   ``vector<[k]xT>``, so the emitted loop sizes to the vector length the HARDWARE
+                   reports (``vsetvli`` against ``VLMAX``) rather than to a compile-time width the
+                   backend must widen for the worst-case VLEN. This is what makes the ``_zvl`` march
+                   pin unnecessary — and it emits through the ORDINARY MLIR scalable lowering; the
+                   ``llvmlower.custom_isa`` inline-asm hatch was NOT needed. Requires the peel +
+                   ``assume_dynamic_dims_match_vec_sizes`` pairing (see
+                   ``impr_features.ensure_v3_scalable_microkernel``).
+      unroll_m  -> hold M rows as independent accumulators. Expressible, but MEASURED structurally
+                   wrong on silicon (B reuse stays 1 per K step, 2x the instructions per lane-FMA at
+                   every MR) — see docs/design/expert_gap_attribution.md.
 
     Every realization also carries the recipe's lowering HYGIENE (see :func:`_with_hygiene`) — the
     passes the emitted code needs to be worth measuring at all, independent of dtype.
@@ -121,7 +125,26 @@ def _recipe(spec) -> list[str]:
     """The micro-kernel recipe proper (no hygiene) — one feature naming this point in the space."""
     from ..kernels.microkernel import VL_DYNAMIC, UnsupportedAxis
     from ..llvmlower.impr_features import (ensure_v3_kblocked_microkernel, ensure_v3_microkernel,
+                                            ensure_v3_scalable_microkernel,
                                             ensure_v3_unrolled_microkernel)
+    if spec.vl_strategy == VL_DYNAMIC:
+        # VL-AGNOSTIC: a scalable N register block, so the emitted loop sizes to the vector length
+        # the hardware reports (vsetvli against VLMAX) instead of a compile-time width the backend
+        # must widen for the worst-case VLEN. Realized through the ORDINARY MLIR scalable-vector
+        # lowering -- no inline-asm escape hatch was needed. It only works with the peel +
+        # assume_dynamic_dims_match_vec_sizes pairing; see ensure_v3_scalable_microkernel for what
+        # the naive scalable schedule gets wrong (masked scalable transfers block the accumulator
+        # hoist AND leave an unlowerable scalable vector.transpose).
+        #
+        # Checked FIRST, before the recipe-replacing axes below: each of those returns a schedule of
+        # its own, so ordering it after them would silently emit FIXED-width code for a spec that
+        # asked for dynamic VL -- the "credited a change that never happened" failure the
+        # UnsupportedAxis contract exists to prevent.
+        if spec.unroll_m or spec.pack or spec.k_block:
+            raise UnsupportedAxis("rvv: vl_strategy='dynamic' does not compose with "
+                                  "unroll_m/pack/k_block yet (each replaces the schedule); emit one "
+                                  "composed recipe to combine them.")
+        return [ensure_v3_scalable_microkernel(int(spec.MR), int(spec.NR), int(spec.KC))]
     if spec.k_block:
         # REAL cache blocking of the reduction (the KC lever the plain v3 recipe silently ignored).
         if spec.unroll_m or spec.pack:
@@ -135,11 +158,6 @@ def _recipe(spec) -> list[str]:
             raise UnsupportedAxis("rvv: unroll_m + pack are not composed yet (each replaces the "
                                   "schedule); emit one composed recipe before enabling both.")
         return [ensure_v3_unrolled_microkernel(int(spec.MR), int(spec.NR), int(spec.KC))]
-    if spec.vl_strategy == VL_DYNAMIC:
-        raise UnsupportedAxis(
-            "rvv: vl_strategy='dynamic' (VL-agnostic vsetvli loop) is not emitted yet — MLIR's "
-            "scalable-vector -> RVV lowering is incomplete (ub.poison survives). Realize it via "
-            "llvmlower.custom_isa (merlin.inline_asm -> llvm.inline_asm) rather than ignoring it.")
     if spec.pack:
         from ..llvmlower.impr_features import known, register, ImprFeature, vfmacc_packed_schedule
         nm = f"vfmacc_packed_{spec.MR}_{spec.NR}_{spec.KC}"

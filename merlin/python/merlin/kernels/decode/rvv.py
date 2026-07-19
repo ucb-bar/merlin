@@ -74,6 +74,31 @@ class InsnStream:
         spans = self.loop_spans()
         return min(spans, key=lambda s: s[1] - s[0]) if spans else None
 
+    def innermost_vector_loop(self) -> tuple[int, int] | None:
+        """The micro-kernel's vector loop: the FMA-bearing back-edge range, smallest-span if several.
+
+        :meth:`innermost_loop` answers "the tightest loop", which is the K-reduction loop only when
+        every loop in the kernel is vectorized. A recipe that PEELS (the VL-agnostic scalable one
+        peels N so the main body is unmasked) leaves a REMAINDER loop beside the micro-kernel; that
+        remainder is a shorter span, and the compiler may even auto-vectorize it into a
+        ``vfredosum`` dot-product — so the plain innermost span, and even "smallest loop with any
+        vector op", report the TAIL's mix rather than the micro-kernel's ``vfmacc``.
+
+        The micro-kernel is the loop that issues a fused multiply-add (``vfmacc``/``vfmadd``/the
+        integer ``vwmacc``); the remainder dot-product uses ``vfmul``+``vfredosum`` and has none. So
+        we scope to FMA-bearing loops and take the smallest of those; if none exists (e.g. an int or
+        non-FMA kernel) we fall back to any vector loop, preserving the old behaviour."""
+        def _has_fma(span):
+            return any(i.is_vector and i.raw.mnemonic.startswith(("vfmacc", "vfmadd", "vwmacc"))
+                       for i in self.insns_in(span))
+        def _has_vec(span):
+            return any(i.is_vector for i in self.insns_in(span))
+        fma = [s for s in self.loop_spans() if _has_fma(s)]
+        if fma:
+            return min(fma, key=lambda s: s[1] - s[0])
+        vec = [s for s in self.loop_spans() if _has_vec(s)]
+        return min(vec, key=lambda s: s[1] - s[0]) if vec else None
+
     def insns_in(self, span: tuple[int, int]) -> list["VInsn"]:
         lo, hi = span
         return [i for i in self.insns if lo <= i.raw.addr <= hi]
