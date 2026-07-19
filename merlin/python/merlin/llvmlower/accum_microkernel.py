@@ -266,6 +266,81 @@ def scalarize_a_reads(module, ctx):
         read.operation.erase()
         n += 1
     return n
+
+
+def sink_extf_through_extract(module, ctx):
+    """Sink a vector float widening below a SCALAR extract:
+    ``vector.extract (arith.extf %v : vec<Nxf16> to vec<Nxf32>)[i] : f32``
+    -> ``arith.extf (vector.extract %v[i] : f16 from vec<Nxf16>) : f16 to f32``.
+
+    This is what makes the mixed-precision (f16/bf16 operand, f32 accumulator) register-tile A
+    operand reach the RISC-V backend as a SCALAR half feeding the multiply, so it forms the WIDENING
+    ``vfwmacc.vf`` (e16 operands, e32 accumulator, one rounding) instead of first widening the whole
+    A column to f32 with ``vfwcvt.f.f.v`` and issuing an e32 ``vfmacc.vv``. The outerproduct
+    lowering emits ``extract(extf(A_col))`` per row; MLIR's own ``sink_ops`` pattern performs exactly
+    this sink but REFUSES it when the ``extf`` feeds more than one extract (it will not DUPLICATE the
+    extf) -- which is precisely the MR>1 register tile (MR extracts of one A column). Duplicating one
+    vector ``extf`` into MR scalar ``extf`` is beneficial here: each scalar ``extf`` is a free
+    ``fpext`` of a value already in an FP register and folds into the ``.vf`` scalar operand of
+    ``vfwmacc.vf``. Value-identical: ``fpext`` is exact and lane i of ``extf(v)`` == ``extf(lane i of
+    v)``. Returns the count of extracts rewritten. Only fires on the extf->scalar-extract shape, so
+    the f32 datapath (no operand extf) and every non-widening extract are untouched.
+    """
+    from torch_mlir import ir
+
+    def _defop(val):
+        try:
+            owner = val.owner
+        except Exception:  # noqa: BLE001
+            return None
+        return owner if hasattr(owner, "name") else None   # Operation (OpResult), not a Block
+
+    targets = []
+
+    def visit(o):
+        op = o.operation
+        if op.name != "vector.extract":
+            return
+        res = op.results[0]
+        # scalar float result only (a lane extract, not a sub-vector slice).
+        if str(res.type) not in ("f16", "bf16", "f32", "f64"):
+            return
+        # all-static position (register-tile indices are constants); a dynamic index would add
+        # operands beyond the source -- leave those alone.
+        if len(list(op.operands)) != 1:
+            return
+        defop = _defop(op.operands[0])
+        if defop is None or defop.name != "arith.extf":
+            return
+        targets.append(op)
+
+    _merlin_walk(module.operation, visit)
+    n = 0
+    seen_extf = []
+    for ex in targets:
+        extf = ex.operands[0].owner              # arith.extf op
+        narrow_src = extf.operands[0]            # the f16/bf16 vector
+        try:
+            narrow_elem = ir.VectorType(narrow_src.type).element_type
+        except Exception:  # noqa: BLE001
+            continue
+        pos_attr = ex.attributes["static_position"]
+        ip = ir.InsertionPoint(ex)
+        lane = ir.Operation.create(
+            "vector.extract", results=[narrow_elem], operands=[narrow_src],
+            attributes={"static_position": pos_attr}, ip=ip).results[0]
+        widened = ir.Operation.create(
+            "arith.extf", results=[ex.results[0].type], operands=[lane], ip=ip).results[0]
+        ex.results[0].replace_all_uses_with(widened)
+        if extf not in seen_extf:
+            seen_extf.append(extf)
+        ex.erase()
+        n += 1
+    # Drop each now-dead vector extf (its lanes are all sunk); leave any with remaining uses.
+    for extf in seen_extf:
+        if len(list(extf.results[0].uses)) == 0:
+            extf.erase()
+    return n
 '''
 
 
@@ -302,9 +377,10 @@ def run_source() -> str:
         "    PassManager.parse('builtin.module(' + stage1 + ')', ctx).run(module.operation)\n"
         "with ctx, ir.Location.unknown():\n"
         "    _n = scalarize_a_reads(module, ctx)\n"
+        "    _m = sink_extf_through_extract(module, ctx)\n"
         "if stage2:\n"
         "    _run_stages(ctx, module, stage2, _ERASE_SELF_COPY)\n"
         "with open(out_path, 'w') as f:\n"
         "    f.write(str(llvm.translate_module_to_llvmir(module.operation)))\n"
-        "print('OK scalarize_a rewrote', _n)\n"
+        "print('OK scalarize_a rewrote', _n, 'sink_extf', _m)\n"
     )

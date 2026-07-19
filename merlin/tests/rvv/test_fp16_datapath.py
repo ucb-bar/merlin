@@ -69,6 +69,49 @@ def test_scalarize_gate_is_element_type_parameterized_not_f32_only():
     assert 'str(owner.results[0].type) != elem' in src
 
 
+def test_fused_schedules_fold_arith_extension_into_the_contract():
+    """The mixed-precision (f16/bf16 operand, f32 accumulator) contraction reaches a FUSED MAC only
+    if the operand `arith.extf` is folded INTO the vector.contract -- otherwise the contract stays
+    same-type-f32 with the extf outside it, the outerproduct lowers to a `mulf`/`addf` the backend
+    cannot fuse, and the emitted fp16 kernel carries ZERO vfwmacc/vfmacc (measured). Every schedule
+    that rebuilds a contract via reduction_to_contract must therefore also run fold_arith_extension.
+    """
+    import inspect
+
+    import merlin.llvmlower.impr_features as I
+    src = inspect.getsource(I)
+    # fold_arith_extension appears once per reduction_to_contract-rebuild block (there are several).
+    n_contract = src.count("transform.apply_patterns.vector.transfer_permutation_patterns")
+    n_fold = src.count("transform.apply_patterns.vector.fold_arith_extension")
+    assert n_fold == n_contract and n_fold >= 1, (n_fold, n_contract)
+
+
+def test_sink_extf_rewrite_is_wired_and_reaches_the_widening_vf_form():
+    """`vfwmacc.vf` (widening MAC at e16) needs the A operand as a SCALAR half feeding the fma. The
+    outerproduct lowering pre-widens the A column to f32 as a VECTOR; MLIR's own sink_ops refuses to
+    duplicate that extf across the MR lane-extracts. The marker rewrite must therefore sink the extf
+    below the scalar extract itself, and the runner must call it after scalarize_a."""
+    from merlin.llvmlower.accum_microkernel import rewrite_source, run_source
+    assert "def sink_extf_through_extract(" in rewrite_source()
+    assert "sink_extf_through_extract(module, ctx)" in run_source()
+
+
+def test_c_runtime_embeds_f16_inputs_as_raw_bitpatterns_not_float_literals():
+    """A 16-bit float has no decimal C literal for an `unsigned short` storage array: writing
+    `unsigned short x = 0.125` truncates to 0, so the embedded operands must be the RAW f16 bit
+    patterns. This pins the fix and the failure mode it replaces (a board run on truncated inputs)."""
+    import numpy as np
+
+    from merlin.llvmlower.c_runtime import _embed_array
+    a = np.array([0.125732, -0.132080, 0.640625, 1.3037], dtype=np.float16)
+    emitted = [int(t) for t in _embed_array(a, "f16").split(",")]
+    round_trip = np.array(emitted, dtype=np.uint16).view(np.float16)
+    assert np.array_equal(round_trip, a), (round_trip, a)
+    # the retired behavior emitted decimal floats; every sub-1.0 value would have truncated to 0.
+    assert all(t == int(t) for t in emitted)               # integer literals only
+    assert emitted[0] != 0                                   # 0.1257 -> 0x2c07, not 0
+
+
 # ---------------------------------------------------------------------------------------
 # The correctness gate. fp16 cannot be bit-exact, so the gate is statistical -- but the
 # OBVIOUS statistical gate is not sufficient, which is the point of these two tests.

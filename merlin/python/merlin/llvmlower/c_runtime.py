@@ -40,7 +40,28 @@ def _out_shape(mlir_path: str | Path) -> tuple[list[int], str]:
     return shape, dtype
 
 
+def _bf16_bits(f32: "np.ndarray") -> "np.ndarray":
+    """Round float32 to bfloat16 (round-to-nearest-even) and return the raw uint16 bit patterns.
+
+    numpy has no native bf16, so do it by hand: bf16 is the top 16 bits of the f32 encoding; RNE
+    adds the round bias 0x7FFF + (lsb of the kept mantissa) before truncating. NaNs are preserved
+    (their exponent is all-ones and mantissa nonzero, which survives the shift)."""
+    u = f32.astype(np.float32).view(np.uint32)
+    lsb = (u >> 16) & np.uint32(1)
+    rounded = (u + np.uint32(0x7FFF) + lsb) >> np.uint32(16)
+    return rounded.astype(np.uint16)
+
+
 def _embed_array(arr: "np.ndarray", dt: str) -> str:
+    # 16-bit floats have NO decimal C literal for an ``unsigned short`` storage array: writing
+    # `unsigned short x = 0.125` truncates to 0. Emit the RAW 16-bit patterns instead — f16 via
+    # numpy's native half, bf16 via RNE from f32 — so the embedded operands are bit-exact.
+    if dt == "f16":
+        bits = arr.astype(np.float16).view(np.uint16).ravel()
+        return ",".join(str(int(v)) for v in bits)
+    if dt == "bf16":
+        bits = _bf16_bits(np.ascontiguousarray(arr)).ravel()
+        return ",".join(str(int(v)) for v in bits)
     flat = arr.astype(NP_OF.get(dt, np.float32)).ravel()
     return ",".join(str(int(v) if "i" in dt else float(v)) for v in flat)
 

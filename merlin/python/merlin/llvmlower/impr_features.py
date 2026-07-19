@@ -232,6 +232,8 @@ module attributes {transform.with_named_sequence} {
     transform.apply_patterns to %f {
       transform.apply_patterns.vector.transfer_permutation_patterns
       transform.apply_patterns.vector.reduction_to_contract
+      transform.apply_patterns.vector.fold_arith_extension
+      transform.apply_patterns.vector.reduction_to_contract
     } : !transform.any_op
     transform.apply_patterns to %f {
       transform.apply_patterns.vector.lower_contraction lowering_strategy = "outerproduct"
@@ -312,6 +314,8 @@ module attributes {{transform.with_named_sequence}} {{
     %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.apply_patterns to %f {{
       transform.apply_patterns.vector.transfer_permutation_patterns
+      transform.apply_patterns.vector.reduction_to_contract
+      transform.apply_patterns.vector.fold_arith_extension
       transform.apply_patterns.vector.reduction_to_contract
     }} : !transform.any_op
     transform.apply_patterns to %f {{
@@ -425,6 +429,8 @@ module attributes {{transform.with_named_sequence}} {{
     %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.apply_patterns to %f {{
       transform.apply_patterns.vector.transfer_permutation_patterns
+      transform.apply_patterns.vector.reduction_to_contract
+      transform.apply_patterns.vector.fold_arith_extension
       transform.apply_patterns.vector.reduction_to_contract
     }} : !transform.any_op
     transform.apply_patterns to %f {{
@@ -597,6 +603,8 @@ module attributes {{transform.with_named_sequence}} {{
     transform.apply_patterns to %f {{
       transform.apply_patterns.vector.transfer_permutation_patterns
       transform.apply_patterns.vector.reduction_to_contract
+      transform.apply_patterns.vector.fold_arith_extension
+      transform.apply_patterns.vector.reduction_to_contract
     }} : !transform.any_op
     transform.yield
   }}
@@ -644,6 +652,8 @@ module attributes {{transform.with_named_sequence}} {{
     transform.apply_patterns to %f {{
       transform.apply_patterns.vector.transfer_permutation_patterns
       transform.apply_patterns.vector.reduction_to_contract
+      transform.apply_patterns.vector.fold_arith_extension
+      transform.apply_patterns.vector.reduction_to_contract
     }} : !transform.any_op
     transform.yield
   }}
@@ -686,6 +696,8 @@ module attributes {{transform.with_named_sequence}} {{
     %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.apply_patterns to %f {{
       transform.apply_patterns.vector.transfer_permutation_patterns
+      transform.apply_patterns.vector.reduction_to_contract
+      transform.apply_patterns.vector.fold_arith_extension
       transform.apply_patterns.vector.reduction_to_contract
     }} : !transform.any_op
     transform.yield
@@ -1122,6 +1134,8 @@ module attributes {{transform.with_named_sequence}} {{
     transform.apply_patterns to %f {{
       transform.apply_patterns.vector.transfer_permutation_patterns
       transform.apply_patterns.vector.reduction_to_contract
+      transform.apply_patterns.vector.fold_arith_extension
+      transform.apply_patterns.vector.reduction_to_contract
     }} : !transform.any_op
     transform.yield
   }}
@@ -1171,6 +1185,8 @@ module attributes {{transform.with_named_sequence}} {{
     %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.apply_patterns to %f {{
       transform.apply_patterns.vector.transfer_permutation_patterns
+      transform.apply_patterns.vector.reduction_to_contract
+      transform.apply_patterns.vector.fold_arith_extension
       transform.apply_patterns.vector.reduction_to_contract
     }} : !transform.any_op
     transform.yield
