@@ -24,6 +24,35 @@ def objdump_bin() -> str:
     return shutil.which("llvm-objdump") or shutil.which("riscv64-unknown-elf-objdump") or "objdump"
 
 
+def nm_bin() -> str:
+    _nm = _LLVM_OBJDUMP.parent / "llvm-nm" if _LLVM_OBJDUMP.is_file() else None
+    if _nm is not None and _nm.is_file():
+        return str(_nm)
+    return shutil.which("llvm-nm") or shutil.which("riscv64-unknown-elf-nm") or "nm"
+
+
+def undefined_symbols(obj_path: str | Path) -> tuple[str, ...] | None:
+    """Undefined symbols of an object file (``nm -u``), or None if they cannot be read.
+
+    This is what lets the CCA envelope facet NAME a runtime escape instead of only counting calls:
+    `memrefCopy` is invisible in an unlinked disassembly (the call site is an unresolved `jalr`), so
+    without the symbol table the beam can see THAT the region calls something but not WHAT, and the
+    routed PASS never fires. Returns None (unknown), never () , on any failure -- an unreadable
+    symbol table must not be mistaken for "this kernel calls nothing"."""
+    try:
+        p = subprocess.run([nm_bin(), "-u", str(obj_path)], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if p.returncode != 0:
+        return None
+    out: list[str] = []
+    for line in p.stdout.splitlines():
+        parts = line.split()
+        if parts:                      # "  U memrefCopy"  ->  last field is the name
+            out.append(parts[-1])
+    return tuple(sorted(set(out)))
+
+
 @dataclass
 class RawInsn:
     addr: int                      # byte address within the section

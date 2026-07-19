@@ -336,10 +336,18 @@ def _lift_envelope(stream, *, undefined_symbols=None) -> "EnvelopeFacet":
     calls_in_loop = 0
     for sp in outer:
         calls_in_loop += stream.count_in(sp, *_CALL_MNEMONICS)
-    escapes = None
     if undefined_symbols is not None:
         undef = {str(x) for x in undefined_symbols}
         escapes = tuple(sorted(undef.intersection(RUNTIME_ESCAPE_SYMBOLS)))
+    elif stream.count(*_CALL_MNEMONICS) == 0:
+        # No symbol table, but the region contains NO call instruction at all -- so it provably
+        # escapes to no runtime helper. Sound to report () rather than "unknown", and it is what
+        # lets an expert kernel (hand-written asm, no object symbols) populate this axis at all.
+        # Without it both sides stay None, the divergence never fires, and the beam cannot see the
+        # very gap this facet exists to expose.
+        escapes = ()
+    else:
+        escapes = None                      # calls exist but we cannot name them: honestly unknown
     return EnvelopeFacet(calls_in_loop=calls_in_loop, runtime_calls=escapes)
 
 

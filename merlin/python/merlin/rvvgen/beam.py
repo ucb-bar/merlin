@@ -73,8 +73,17 @@ def _cca_divergences(run_dir: Path, expert_cca, op_key: dict) -> list:
     from ..kernels import cca, cca_compare
     from ..kernels.decode import rvv
     ours = cca.lift_asm(rvv.decode_text(objd.read_text()), op=str(op_key.get("op", "matmul")),
-                        source="ours")
+                        source="ours", undefined_symbols=_undef_syms(run_dir))
     return cca_compare.compare(expert_cca, ours)
+
+
+def _undef_syms(run_dir: "Path") -> "tuple[str, ...] | None":
+    """Undefined symbols of a run's emitted object, so the CCA envelope facet can NAME the runtime
+    helpers the kernel escapes to. Without this the beam sees only that a call exists, not that it
+    is `memrefCopy`, and the routed PASS that removes it never fires."""
+    from ..kernels.decode.objdump import undefined_symbols
+    obj = Path(run_dir) / "generated" / "model.o"
+    return undefined_symbols(obj) if obj.is_file() else None
 
 
 def _emitted_digest(run_dir: "Path") -> str | None:
@@ -262,7 +271,8 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
                 from ..kernels.decode import rvv as _rvv
                 from ..kernels.search_step import make_step
                 achieved_cca = lift_asm(_rvv.decode_text(objd.read_text()),
-                                        op=str(op_key.get("op", "matmul")), source="fork")
+                                        op=str(op_key.get("op", "matmul")), source="fork",
+                                        undefined_symbols=_undef_syms(runs_root / fork_dir.name))
                 step = make_step(action, achieved_cca, correctness_ok=sc["gate_ok"],
                                  speedup=node.get("speedup"))
                 node["search_step"] = step.to_dict()

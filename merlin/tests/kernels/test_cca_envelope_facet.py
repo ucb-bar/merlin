@@ -74,7 +74,10 @@ def test_envelope_divergences_route_to_compiler_actions():
     assert divs, "envelope divergences must survive to the router"
     by_axis = {d.axis: action_catalog.route(d) for d in divs}
     assert by_axis["envelope.runtime_calls"].action_class == "PASS"
-    assert by_axis["envelope.calls_in_loop"].forkable_now is True   # a move the beam can make today
+    assert by_axis["envelope.runtime_calls"].forkable_now is True    # the rung that closes the gap
+    # calls_in_loop is the symbol-free record of the same divergence, but no builder implements its
+    # seam -- so it must NOT claim to be forkable-now; the proposer demotes it to a work-item.
+    assert by_axis["envelope.calls_in_loop"].forkable_now is False
 
 
 def test_envelope_axes_are_routed_in_the_bijection():
@@ -84,9 +87,32 @@ def test_envelope_axes_are_routed_in_the_bijection():
     assert "envelope.calls_in_loop" not in report.orphan_fields
 
 
-def test_clean_kernel_reports_no_runtime_escape():
-    """Fail-closed the other way: no symbol table must not be read as 'no escapes'."""
-    unknown = _lift(OURS_ASM, "ours", None)
+def test_no_symbol_table_is_unknown_not_clean():
+    """Fail-closed: an unreadable symbol table must not be read as 'this kernel calls nothing'."""
+    unknown = _lift(OURS_ASM, "ours", None)            # OURS_ASM contains a call
     assert unknown.envelope.runtime_calls is None      # unknown, NOT ()
     known_clean = _lift(OURS_ASM, "ours", ["some_unrelated_symbol"])
     assert known_clean.envelope.runtime_calls == ()
+
+
+def test_zero_calls_is_soundly_clean_without_a_symbol_table():
+    """A region with NO call instruction provably escapes nowhere, so () is sound even with no
+    symbols. This is what lets the hand-written expert populate the axis at all -- without it BOTH
+    sides stay None, the divergence never fires, and the beam cannot see the gap."""
+    expert = _lift(EXPERT_ASM.read_text(), "xnnpack", None)
+    assert expert.envelope.calls_in_loop == 0
+    assert expert.envelope.runtime_calls == ()
+
+
+def test_beam_reaches_the_fix_from_the_objdump_alone():
+    """The whole point: discovery -> route -> FORK, with no human in the loop. Regression-guards the
+    wiring that was missing (the beam lifted without a symbol table, so runtime_calls stayed None on
+    both sides and the PASS that closes the gap was never proposed)."""
+    from merlin.rvvgen.fork_from_action import action_to_fork
+    expert = _lift(EXPERT_ASM.read_text(), "xnnpack", None)          # no symbols needed
+    ours = _lift(OURS_ASM, "ours", ["memrefCopy", "memcpy", "malloc"])
+    div = next(d for d in cca_compare.compare(expert, ours) if d.axis == "envelope.runtime_calls")
+    action = action_catalog.route(div)
+    fork = action_to_fork(action, {"op_match": []})
+    assert fork.forkable is True
+    assert fork.overrides == {"compiler_features": ["erase_self_copy"]}

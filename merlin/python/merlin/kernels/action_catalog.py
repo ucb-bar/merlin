@@ -149,10 +149,12 @@ _RVV_ROUTES: list[_Route] = [
         change="hoist a loop-invariant call out of the tile loop, or enlarge the tile so the "
                "per-tile cost is amortized over more outputs — the cheap mitigation to try before "
                "the PASS that removes the call outright.",
-        forkable_now=True,
-        expected_effect="reduces, but does not eliminate, per-tile overhead; the PASS route above "
-                        "is the real closer. Kept as the FIRST rung so the beam has a forkable-now "
-                        "move on this axis.",
+        forkable_now=False,
+        expected_effect="reduces, but does not eliminate, per-tile overhead. NOT forkable-now: no "
+                        "builder implements this seam, so the proposer honestly demotes it to a "
+                        "work-item. The envelope.runtime_calls PASS is the route that actually "
+                        "closes the gap; this rung stays as the symbol-free record of the same "
+                        "divergence.",
         intended_facet={"envelope.calls_in_loop": 0}),
     _Route(
         axis="compute.nr_is_vsetvlmax",
