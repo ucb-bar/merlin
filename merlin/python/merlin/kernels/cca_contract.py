@@ -141,6 +141,13 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
 #       asm (lift_asm has no M/shape context; a matmul kernel's asm looks the same whether or not it would
 #       adapt on a hypothetical small-M input). Captured from the schedule/mining side; a backing-field
 #       asm lift is deferred rather than faked with an overfit heuristic.
+#   - layout.transpose_materialized: the route (PASS impr_features:fuse_transpose_b) is real and
+#       forkable NOW, and its whole-model win is MEASURED (openvla -6.5% on K1, cos 0.9999999). But the
+#       divergence is a WHOLE-MODEL, cross-op GRAPH property — "a standalone linalg.transpose materializes
+#       the matmul's B operand" — visible in the linalg IR, NOT in a single contraction kernel's asm that
+#       lift_asm sees. The backing facet field needs a graph-level (IR) lifter, not the per-kernel asm
+#       lifter; that lift is the deferred work-item (a new LayoutFacet), so the route is recorded here as
+#       an orphan_route rather than faking a bare FieldSpec no facet populates.
 KNOWN_OPEN: dict[str, dict[str, tuple[str, ...]]] = {
     "rvv": {
         # LEVER fields still awaiting a route (need a NEW schedule seam — see the per-axis notes above).
@@ -154,6 +161,8 @@ KNOWN_OPEN: dict[str, dict[str, tuple[str, ...]]] = {
         # CLOSED so far: compute.activation_vectorization (field + lift_asm inferer added).
         "orphan_routes": (
             "compute.mr_adapts_to_m",
+            "layout.transpose_materialized",   # fuse_transpose_b: route + measured win real; graph-level
+                                               # (IR) backing-field lifter deferred (see note above).
         ),
     },
 }

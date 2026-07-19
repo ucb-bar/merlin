@@ -95,7 +95,8 @@ def _median(xs: list[int]) -> float | None:
 
 
 def run_profiled(model_dir: Path, pkg, golden: np.ndarray, n: int, work_root: Path,
-                 kernel_backend: str | None = None) -> dict:
+                 kernel_backend: str | None = None, cos_th: float = 0.9999,
+                 rel_th: float = 1e-2) -> dict:
     """Build+run the instrumented binary n times; gate cos; accumulate per-op ticks.
 
     The per-op ticks are SUMMED across the gated runs then averaged, so a single op faster than
@@ -117,9 +118,15 @@ def run_profiled(model_dir: Path, pkg, golden: np.ndarray, n: int, work_root: Pa
                                kernel_backend=kernel_backend)
             g = zm._gate(res["prefix"], {"fp32": golden})
             cos = g["fp32_cos"]
-            if cos is None or cos < 0.9999:
-                blocker = f"cos gate failed: {cos}"
-                print(f"  [on {i}] NOT_RUN cos={cos}")
+            rel = g.get("fp32_rel")
+            # Fail-closed per-ELEMENT gate: cos (aggregate) AND max per-element relative error. cos
+            # alone was measured to accept a kernel 1209% wrong per-element (rel~12), and a mis-fused
+            # transpose is a silent numerical bug — so require BOTH. rel_th (default 1e-2) sits well
+            # below that failure while passing legitimate baselines (openvla rel 1e-6; the bitvla fp32
+            # recapture rel 3e-3), so it only rejects a genuinely wrong emitted kernel.
+            if cos is None or cos < cos_th or (rel is not None and rel > rel_th):
+                blocker = f"gate failed: cos={cos} rel={rel}"
+                print(f"  [on {i}] NOT_RUN cos={cos} rel={rel}")
                 continue
             m = res["metrics"]
             walls.append(m["wall_ns"])
@@ -156,7 +163,8 @@ def run_profiled(model_dir: Path, pkg, golden: np.ndarray, n: int, work_root: Pa
 
 
 def run_unprofiled(model_dir: Path, pkg, golden: np.ndarray, n: int, work_root: Path,
-                   kernel_backend: str | None = None) -> dict:
+                   kernel_backend: str | None = None, cos_th: float = 0.9999,
+                   rel_th: float = 1e-2) -> dict:
     """Build+run the byte-identical UN-instrumented binary n times (the perturbation control)."""
     walls: list[int] = []
     gated = 0
@@ -168,13 +176,14 @@ def run_unprofiled(model_dir: Path, pkg, golden: np.ndarray, n: int, work_root: 
                                kernel_backend=kernel_backend)
             g = zm._gate(res["prefix"], {"fp32": golden})
             cos = g["fp32_cos"]
-            if cos is None or cos < 0.9999:
-                blocker = f"cos gate failed: {cos}"
-                print(f"  [off {i}] NOT_RUN cos={cos}")
+            rel = g.get("fp32_rel")
+            if cos is None or cos < cos_th or (rel is not None and rel > rel_th):
+                blocker = f"gate failed: cos={cos} rel={rel}"
+                print(f"  [off {i}] NOT_RUN cos={cos} rel={rel}")
                 continue
             walls.append(res["metrics"]["wall_ns"])
             gated += 1
-            print(f"  [off {i}] wall_ns={res['metrics']['wall_ns']} cos={cos:.7f}")
+            print(f"  [off {i}] wall_ns={res['metrics']['wall_ns']} cos={cos:.7f} rel={rel}")
         except Exception as e:  # noqa: BLE001
             blocker = f"{type(e).__name__}: {str(e)[:300]}"
             print(f"  [off {i}] BLOCKED — {blocker}")
@@ -259,35 +268,50 @@ def main() -> None:
     ap.add_argument("--baseline", default="out/artifacts/targets/rvv/hand_v0")
     ap.add_argument("-n", type=int, default=3)
     ap.add_argument("--cos", type=float, default=0.9999)
+    ap.add_argument("--rel", type=float, default=1e-2,
+                    help="fail-closed per-ELEMENT gate: max |pred-ref| / max|ref| must be below this "
+                         "(cos alone once accepted a kernel 1209%% wrong per-element). Default 1e-2 "
+                         "passes legit fp32/quant baselines and rejects a mis-fused/wrong kernel.")
     ap.add_argument("--noise", type=float, default=1.9, help="board noise floor %% for perturbation")
     ap.add_argument("--kernel-backend", default=None,
                     help="route matmuls to a fast expert kernel (xnnpack/openblas/ours) so the "
                          "per-op breakdown isolates the NON-matmul 94%% when the GEMM is fast")
+    ap.add_argument("--features", default=None,
+                    help="comma-separated default-off compiler features to enable on BOTH the "
+                         "profiled and control builds (e.g. fuse_transpose_b). Empty -> the frozen "
+                         "baseline lowering. Run once without and once with a feature to get the "
+                         "before/after whole-model profile for that feature.")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
 
     md = Path(a.model)
     golden = np.load(md / "golden.npy")
     base = load_rvv_package(a.baseline)
+    feats = [f.strip() for f in (a.features or "").split(",") if f.strip()]
     # distinct run_ids so the two builds get distinct /tmp deploy paths on the shared board
-    # (prof_ prefix per the shared-board tag convention; backend suffix keeps native vs routed apart).
+    # (tr_ prefix per the shared-board tag convention; backend + feature-tag suffix keeps native vs
+    # routed and baseline vs feature-on builds apart so before/after never collide on /tmp).
     bk = (a.kernel_backend or "native")
-    pkg_on = replace(base, run_id=f"prof_opon_{bk}")
-    pkg_off = replace(base, run_id=f"prof_opoff_{bk}")
+    ftag = "base" if not feats else "_".join(sorted(feats))[:40]
+    pkg_on = replace(base, run_id=f"tr_opon_{bk}_{ftag}", compiler_features=feats)
+    pkg_off = replace(base, run_id=f"tr_opoff_{bk}_{ftag}", compiler_features=feats)
 
-    work_root = Path("/tmp") / f"prof_opprofile_{md.name}_{bk}"
+    work_root = Path("/tmp") / f"tr_opprofile_{md.name}_{bk}_{ftag}"
     work_root.mkdir(parents=True, exist_ok=True)
 
     kb = a.kernel_backend
     print(f"=== {md.name}: profiled (instrumented, kernel_backend={kb}) x{a.n} ===")
-    prof = run_profiled(md, pkg_on, golden, a.n, work_root, kernel_backend=kb)
+    prof = run_profiled(md, pkg_on, golden, a.n, work_root, kernel_backend=kb,
+                        cos_th=a.cos, rel_th=a.rel)
     print(f"=== {md.name}: unprofiled control x{a.n} ===")
-    unprof = run_unprofiled(md, pkg_off, golden, a.n, work_root, kernel_backend=kb)
+    unprof = run_unprofiled(md, pkg_off, golden, a.n, work_root, kernel_backend=kb,
+                            cos_th=a.cos, rel_th=a.rel)
 
     summary: dict = {
         "model": str(md), "board": "k1_spacemit", "vlen": k1.VLEN, "kernel_backend": kb,
+        "compiler_features": feats,
         "timer": "rdtime per-op marks + CLOCK_MONOTONIC wall_ns; cycle_accurate=false",
-        "timebase_hz": TIMEBASE_HZ, "n": a.n, "cos_threshold": a.cos,
+        "timebase_hz": TIMEBASE_HZ, "n": a.n, "cos_threshold": a.cos, "rel_threshold": a.rel,
         "method": ("Per-op rdtime marks interleaved between the top-level ops of @forward "
                    "(default-off; un-instrumented build byte-identical). Ticks credited to the "
                    "previous op; keyed on prov.fqn||region_id (the cross-compiler join key). "
@@ -303,7 +327,7 @@ def main() -> None:
         print(f"!! profiled run did not gate: {prof.get('blocker')}")
 
     out = Path(a.out) if a.out else (artifacts_dir() / "measurements" / "k1_spacemit"
-                                     / md.name / "op_profile.json")
+                                     / md.name / f"op_profile_{ftag}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(summary, indent=2))
     print(f"\nwrote -> {out}")
