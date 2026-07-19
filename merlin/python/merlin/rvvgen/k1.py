@@ -49,6 +49,36 @@ K1_TOOLCHAIN = Path(env("MERLIN_K1_TOOLCHAIN", str(_REPO / "build_tools" / "Spac
 K1_MARCH = env("MERLIN_K1_MARCH", "rv64gcv_zfh_zvfh")
 K1_MABI = "lp64d"
 VLEN = 256  # K1 X60 vector length, bits; the runtime reads vlenb at run time and records it.
+
+
+def codegen_march(march: str | None = None, vlen: int | None = None) -> str:
+    """``march`` with the board's REAL vector length pinned (``_zvl<VLEN>b``).
+
+    Why this is not cosmetic. ``-march=rv64gcv`` only promises the RVV *minimum* VLEN of 128 bits
+    (``zvl128b``), so when our codegen emits a FIXED-width vector the LLVM backend must size the
+    register group for that worst case: a ``vector<16xf32>`` (512 bits) becomes ``e32,m4`` and a
+    ``vector<32xf32>`` becomes ``e32,m8`` — exactly DOUBLE the LMUL the K1 needs. Two costs follow,
+    and together they were the whole "vector width vs IPC" tradeoff (measured, f32 GEMM 128^3):
+
+      * REGISTER PRESSURE doubles. An ``m8`` value occupies 8 of the 32 architectural vector
+        registers, so an MR=4/NR=32 register block wants 32 registers for accumulators alone and the
+        allocator spills inside the K loop (objdump: 25 inner-loop instructions with 4 ``vl8r.v``/
+        ``vs8r.v``, vs 12 and none once VLEN is pinned). MR=8/NR=32 went 92 -> 46.
+      * HALF THE DATAPATH IS IDLE. ``vsetivli zero, 16, e32, m4`` on a VLEN=256 core sets ``vl=16``
+        against a ``VLMAX`` of 32 — the instruction reserves a 4-register group and uses half of it.
+
+    An expert kernel never hits this because it sizes to the vector length it *queries* at run time
+    (XNNPACK's ``__riscv_vsetvl_e32m4``), which is why its advantage looked like "lanes per issue".
+    Pinning the known target VLEN recovers the same lanes-per-issue by CODE GENERATION.
+
+    Kept separate from :data:`K1_MARCH` (which the cross-framework baseline arms compile against)
+    so pinning VLEN for our own codegen never silently re-flags a baseline mid-campaign.
+    """
+    m = march or K1_MARCH
+    v = int(vlen or VLEN)
+    return m if f"zvl{v}b" in m else f"{m}_zvl{v}b"
+
+
 # This Bianbu kernel does NOT delegate the userspace `cycle` CSR — `rdcycle` traps as an illegal
 # instruction. The `time` CSR IS delegated, so the harness times with `rdtime` (a fixed-frequency
 # platform counter, NOT core cycles) + wall-clock, and derives an estimated core-cycle count from

@@ -107,7 +107,13 @@ def _parse(base: dict, console: str | None, detail: str, *, reps: int = 1) -> di
     from merlin.rvvgen import pmu as pmu_mod
     counts = pmu_mod.parse(console)
     pmu_fields = counts.as_dict() if counts is not None else {}
+    # Retired instructions on the SAME bracket as the timing (the drivers print INSTRET via
+    # perf_event_open). This is the axis that separates "emits too many instructions" from "stalls
+    # on each instruction"; process-wide PMU totals cannot, since each driver's scalar verification
+    # reference has a different cost and so does not cancel.
+    instret = int_after(console, "INSTRET")
     return {**base, "ticks": t, "status": "pass", **pmu_fields,
+            **({"instret": instret} if instret is not None else {}),
             "correct": (err == 0) if err is not None else True,
             "wall_ns_est": int(t * 1e9 / k1.K1_TIMEBASE_HZ),
             "note": "K1 real-silicon rdtime ticks; inner-compute; bit-exact verified"}
@@ -163,9 +169,14 @@ def _lower_ours(bundle: Path, run_id: str, features: list[str], *, int8: bool,
         return None, None, f"lowering raised: {str(e)[:220]}"
     clang23 = toolchain.clang()
     model_o = work / "model.o"
+    # Pin the board's REAL VLEN (`_zvl256b`). Plain `-march=rv64gcv` promises only the 128-bit RVV
+    # minimum, so every fixed-width vector we emit gets DOUBLE the LMUL the K1 needs — which both
+    # doubles vector-register pressure (spills inside the K loop) and leaves half the datapath idle
+    # (`vl` at half `VLMAX`). See k1.codegen_march for the measured cost.
     try:
         subprocess.run([str(clang23), "--target=riscv64-unknown-linux-gnu",
-                        "-march=rv64gcv", "-mabi=lp64d", "-O2", "-Wno-override-module",
+                        f"-march={k1.codegen_march()}", f"-mabi={k1.K1_MABI}",
+                        "-O2", "-Wno-override-module",
                         "-c", str(res.ll_path), "-o", str(model_o)],
                        capture_output=True, text=True, timeout=300, check=True)
     except subprocess.CalledProcessError as e:
