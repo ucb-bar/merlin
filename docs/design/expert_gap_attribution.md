@@ -101,6 +101,40 @@ sequential K-loops** (17 backward branches vs 3), each with a *single* `vfmacc` 
 step (`addi a1,a1,512`, a full row stride), amortizing nothing. Its spills are real but confined to
 the prologue, so spilling was not the reason it stalled -- losing B reuse was.
 
+## The actual defect: a `memrefCopy` per tile
+
+Scaling retired instructions across N = 64 / 128 / 192 separates the two terms exactly. Fitting
+`instret = a*N^3 + b*N^2` gives **a = 0.197 ins/MAC** and **b = 79 ins per output element**, and
+predicts the N=192 point to within 0.4%.
+
+The `N^3` coefficient is the hot loop, and it is essentially optimal: the disassembly predicts 12
+instructions per 64 MACs = 0.1875, against 0.197 measured. The `N^2` term is pure overhead, and at
+N=128 it is 1.29M of the 1.71M total -- **the entire gap**. XNNPACK's 250,361 is almost all `N^3`
+term; it has no meaningful per-element cost.
+
+The mechanism is named in the object file: `model.o` leaves **`memrefCopy` undefined**, and the tile
+epilogue calls it once per tile after the accumulators have *already* been written by `vse32.v`:
+
+    vse32.v v8,(a1) ... vse32.v v12,(a4)   <- accumulators stored (the real writeback)
+    addi a2,a0,-64 ; mv sp,a2              <- then: dynamic alloca, x4 frames
+    sd s2,-64(a0) ; vse64.v v8,(a0)        <- memref descriptor built in memory
+    li a0,4 ; jalr ra                      <- generic strided-copy runtime call
+
+`memrefCopy` is MLIR's rank-generic strided copy: it walks elements with dynamic rank/stride
+handling. For a 4x16 tile that is ~5,000 instructions to move 64 values -- matching 79/element.
+`model.ll` carries 2 such call sites and 4 allocas.
+
+**This is a bufferization/lowering defect, not a scheduling one**, which is precisely why the entire
+shape space read flat: no choice of MR/NR/KC/`unroll_m` can remove a runtime call the epilogue emits
+regardless. It also corrects an earlier claim that the lowered kernel contained no
+`memrefCopy`/`memcpy`/`malloc` and that the runtime was therefore ruled out -- that check read the
+wrong artifact.
+
+Removing the `N^2` term would take N=128 from 1.71M to ~0.42M instructions -- about 1.7x XNNPACK's
+count. Since our measured IPC is roughly twice XNNPACK's on this path, that is the first change with
+a credible route to parity, and it is worth more than every remaining point in the shape space
+combined.
+
 ## Levers must be proven by emitted code
 
 Two declared levers were **inert**, and neither was caught by the existing gates:
