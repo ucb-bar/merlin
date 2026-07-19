@@ -64,16 +64,26 @@ int main(int argc, char* argv[]) {
 
   static volatile float fill_sink;
   unsigned long f0 = read_csr(mcycle);
+  unsigned long fi0 = read_csr(minstret);
   for (int i = 0; i < MERLIN_OUT_ELEMS; i++) OUT[i] = 0.0f;
+  unsigned long fi1 = read_csr(minstret);
   unsigned long f1 = read_csr(mcycle);
   fill_sink = OUT[0];
   unsigned long fill_cycles = f1 - f0;
+  unsigned long fill_instrs = fi1 - fi0;
 
   unsigned long c0 = read_csr(mcycle);
+  unsigned long i0 = read_csr(minstret);
   merlin_invoke(desc_ptrs);
+  unsigned long i1 = read_csr(minstret);
   unsigned long c1 = read_csr(mcycle);
   unsigned long cycles_full = c1 - c0;
   unsigned long cycles = (cycles_full > fill_cycles) ? (cycles_full - fill_cycles) : 0;
+  // Retired instructions on the SAME bracket as the timing. Without this the int8 arm is blind to
+  // the one distinction that cracked the f32 gap -- emitting too many instructions vs stalling on
+  // each -- and an int8 beam can only rank on wall time.
+  unsigned long instrs_full = i1 - i0;
+  unsigned long instrs = (instrs_full > fill_instrs) ? (instrs_full - fill_instrs) : 0;
 
   // ---- int8 verify: cosine + relative-L2 vs the f32 reference --------------
   double dot = 0, na = 0, nb = 0, diff2 = 0;
@@ -98,5 +108,7 @@ int main(int argc, char* argv[]) {
   printf("CYCLES %lu\n", cycles);
   printf("CYCLES_FULL %lu\n", cycles_full);
   printf("FILL_CYCLES %lu\n", fill_cycles);
+  printf("INSTRET %lu\n", instrs);
+  printf("INSTRET_FULL %lu\n", instrs_full);
   return 0;
 }
