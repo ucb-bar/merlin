@@ -77,6 +77,27 @@ def _cca_divergences(run_dir: Path, expert_cca, op_key: dict) -> list:
     return cca_compare.compare(expert_cca, ours)
 
 
+def _emitted_digest(run_dir: "Path") -> str | None:
+    """Digest of a fork's EMITTED code (the objdump instruction stream), or None if absent.
+
+    The inert-lever guard. A lever can look wired at every layer -- a distinct schedule, a clean
+    UnsupportedAxis, a plausible route -- and still produce byte-identical output, in which case
+    crediting its measurement is crediting noise. Two shipped levers were inert this way: ``KC``
+    (the schedule contained no K-blocking at all) and ``MR`` under ``unroll_m`` (the schedule text
+    differed by the unroll factor while retired instructions stayed flat across MR 2..7).
+
+    Digesting the MNEMONIC STREAM rather than the raw text so that addresses, register allocation
+    noise and symbol offsets do not mask a genuine no-op as a change.
+    """
+    objd = run_dir / "generated" / "objdump.txt"
+    if not objd.is_file():
+        return None
+    from ..kernels.decode import rvv as _rvv
+    stream = _rvv.decode_text(objd.read_text())
+    body = "\n".join(f"{i.raw.mnemonic} {','.join(i.raw.operands)}" for i in stream.insns)
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
+
+
 def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict) -> dict:
     """Attach gate_ok + structural_match + divergences to a certify result."""
     gate_ok = bool((result.get("correctness") or {}).get("gate_ok"))
@@ -222,6 +243,13 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
                     "targets_decision": p.targets, "depth": d, **sc}
             node["speedup"] = _real_speedup(node)     # real K1 speedup vs the seed (None if no k1)
             node["attainment_vs_expert"] = _attainment_vs_expert(node)   # vs XNNPACK (the real target)
+            # INERT-LEVER GUARD: did this fork's emitted code actually differ from its parent's? A
+            # lever that changes nothing must not be credited with whatever the board measured --
+            # that is measurement noise wearing a lever's name.
+            node["emitted_digest"] = _emitted_digest(runs_root / fork_dir.name)
+            _parent_digest = _emitted_digest(runs_root / parent_rid) if parent_rid else None
+            node["inert"] = bool(node["emitted_digest"] and _parent_digest
+                                 and node["emitted_digest"] == _parent_digest)
             # AUDIT: when the proposal carries its CompilerAction (CCA-native proposer) and the fork
             # emitted an objdump, record the per-step SearchStep — did the fork's asm actually ACHIEVE
             # the promised facet? (else escalate) + real-vs-fake speedup. The LLM-digestible step record.

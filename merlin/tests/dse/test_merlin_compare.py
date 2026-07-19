@@ -71,9 +71,15 @@ def test_ingest_gemm_shape_from_jsonl():
     assert ms[("xnnpack", "gemm:64")].source.endswith("cross_framework_matrix_k1.jsonl")
 
 
-def test_missing_cell_is_not_measured_not_invented():
-    # rdt2 has no _vf measurement in the cached JSONs.
-    m = measure(Config.parse("ours_wholemodel_vf"), Workload.parse("rdt2"), "k1")
+def test_missing_cell_is_not_measured_not_invented(tmp_path):
+    """A cell with no cached measurement must report not_measured, never a fabricated number.
+
+    Pointed at an EMPTY root rather than the real cache. This test used to name a cell that merely
+    happened to be unmeasured (rdt2 + _vf) and started failing the moment that measurement was
+    actually taken -- the premise went stale, not the behaviour. An empty root is absent by
+    construction, so it tests the fail-closed rule instead of the state of the artifact tree.
+    """
+    m = measure(Config.parse("ours_wholemodel_vf"), Workload.parse("rdt2"), "k1", root=tmp_path)
     assert m.status == "not_measured"
     assert m.value is None
 

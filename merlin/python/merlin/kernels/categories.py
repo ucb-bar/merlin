@@ -23,6 +23,9 @@ _AXIS_CATEGORY = {
     "compute.reduction_form": "tiling-dataflow",
     "compute.epilogue": "fusion-layout",
     "memory.access_pattern": "fusion-layout",   # packed unit-stride layout — the data-movement lever
+    # The envelope axes are data-movement too: a redundant tile-epilogue copy IS layout traffic.
+    "envelope.runtime_calls": "fusion-layout",
+    "envelope.calls_in_loop": "fusion-layout",
     "compute.accumulator_resident": "register-residency",
     "compute.accumulator_dtype": "register-residency",
     "compute.contraction_form": "instruction-selection",

@@ -34,12 +34,25 @@ def _populated_pairs(fa, fb) -> dict[str, tuple]:
     return out
 
 
+def _facet_names() -> tuple[str, ...]:
+    """Facet fields of :class:`CCA`, reflected rather than hardcoded.
+
+    This list used to be a literal, which meant a newly added facet was silently never compared --
+    the lift would populate it, the contract would demand a route for it, and `compare` would still
+    report no divergence, so the beam would never see it. Reflecting keeps a new facet wired by
+    construction. (Found the hard way: `region` was invisible here even after being lifted.)
+    """
+    from dataclasses import fields as _fields
+    skip = {"op", "backend", "provenance"}
+    return tuple(f.name for f in _fields(CCA) if f.name not in skip)
+
+
 def compare(expert: CCA, ours: CCA, *, evidence: list[str] | None = None) -> list[Divergence]:
     """expert-vs-ours CCA -> typed Divergences (the authoritative gap when both are asm-lifted)."""
     ev = evidence or [expert.provenance.get("source", "expert")]
     backend = (expert.backend or ours.backend or ["?"])[0]
     out: list[Divergence] = []
-    for facet in ("compute", "vector", "memory", "spatial", "dataflow"):
+    for facet in _facet_names():
         for k, (ve, vo) in _populated_pairs(getattr(expert, facet), getattr(ours, facet)).items():
             out.append(Divergence(axis=f"{facet}.{k}", expert=ve, ours=vo,
                                   backend=backend, evidence=list(ev)))

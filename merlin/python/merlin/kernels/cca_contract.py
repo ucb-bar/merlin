@@ -30,13 +30,15 @@ from pathlib import Path
 from typing import Any
 
 from . import action_catalog
-from .cca import ComputeFacet, DataflowFacet, MemoryFacet, SpatialFacet, VectorFacet
+from .cca import (ComputeFacet, DataflowFacet, MemoryFacet, EnvelopeFacet, SpatialFacet,
+                  VectorFacet)
 
 # facet name (the axis prefix) -> the dataclass whose fields it exposes.
 FACET_CLASSES = {
     "compute": ComputeFacet,
     "vector": VectorFacet,
     "memory": MemoryFacet,
+    "envelope": EnvelopeFacet,
     "spatial": SpatialFacet,
     "dataflow": DataflowFacet,
 }
@@ -101,6 +103,18 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
     "memory.a_broadcast_vf": FieldSpec("memory.a_broadcast_vf", METRIC, ("rvv",),
                                        "A streamed via vfmacc.vf (no rebuild ladder) — a diagnostic "
                                        "outcome of instruction selection"),
+    # --- region (the code AROUND the loop — where the measured expert gap actually lived) ---
+    "envelope.calls_in_loop": FieldSpec("envelope.calls_in_loop", LEVER, ("rvv",),
+                                      "a call inside a loop body is per-iteration overhead whatever "
+                                      "it calls -> PASS eliminate-epilogue-copy"),
+    "envelope.runtime_calls": FieldSpec("envelope.runtime_calls", LEVER, ("rvv",),
+                                      "runtime escape (memrefCopy et al) instead of emitted code -> "
+                                      "PASS/CODEGEN in-place accumulator writeback"),
+    "envelope.work_ins_per_mac": FieldSpec("envelope.work_ins_per_mac", METRIC, ("rvv",),
+                                         "N^3 coefficient — hot-loop efficiency, a diagnostic outcome"),
+    "envelope.overhead_ins_per_output": FieldSpec("envelope.overhead_ins_per_output", METRIC, ("rvv",),
+                                                "N^2 coefficient — per-tile overhead, a diagnostic "
+                                                "outcome that SIZES the region gap"),
     # --- spatial (gemmini) — stubs until the spatial lifter + gemmini routes land ---
     "spatial.pe_rows": FieldSpec("spatial.pe_rows", BACKEND_STUB, ("gemmini",)),
     "spatial.pe_cols": FieldSpec("spatial.pe_cols", BACKEND_STUB, ("gemmini",)),

@@ -75,6 +75,28 @@ class MemoryFacet:                             # data-movement / packing (the #1
 
 
 @dataclass
+class EnvelopeFacet:                             # the code AROUND the inner loop (prologue/epilogue)
+    """What the compiler emits around the compute loop, as opposed to inside it.
+
+    Every other facet describes the inner loop. That left a blind spot: two kernels can agree on
+    contraction form, vector config, register block and access pattern -- i.e. look IDENTICAL in CCA
+    -- while one of them wraps each tile in a runtime call and the other does not. Measured on K1,
+    that blind spot WAS the entire expert gap: our f32 GEMM hot loop is better per-FMA than
+    XNNPACK's (3.0 vs 3.82 ins/FMA), but a per-tile ``memrefCopy`` added ~79 instructions per output
+    element, which is ~77% of everything retired at N=128. No point in the tiling space could move
+    it, which is why a full MR/NR/KC/unroll sweep read flat.
+
+    Lifted structurally from the decoded stream (call sites scoped to loop bodies) plus, when
+    available, the object's undefined runtime symbols -- never guessed from a source substring.
+    """
+
+    calls_in_loop: int | None = None            # call sites inside a loop body (expert GEMM: 0)
+    runtime_calls: tuple[str, ...] | None = None  # runtime helpers the region calls, e.g. memrefCopy
+    work_ins_per_mac: float | None = None       # METRIC: the N^3 coefficient (hot-loop efficiency)
+    overhead_ins_per_output: float | None = None  # METRIC: the N^2 coefficient (per-tile overhead)
+
+
+@dataclass
 class SpatialFacet:                            # Gemmini / systolic (populated by a future lifter)
     pe_rows: int | None = None
     pe_cols: int | None = None
@@ -96,6 +118,7 @@ class CCA:
     compute: ComputeFacet = field(default_factory=ComputeFacet)
     vector: VectorFacet | None = None
     memory: MemoryFacet | None = None
+    envelope: EnvelopeFacet | None = None
     spatial: SpatialFacet | None = None
     dataflow: DataflowFacet | None = None
     provenance: dict[str, Any] = field(default_factory=dict)   # level, source, confidence
@@ -286,7 +309,42 @@ def _lift_memory(stream) -> "MemoryFacet | None":
     return MemoryFacet(access_pattern=access, panel_reuse=reuse, a_broadcast_vf=a_vf)
 
 
-def lift_asm(stream, *, op: str, source: str, backend: str = "rvv") -> CCA:
+#: Runtime helpers whose presence in a compute region is a codegen ESCAPE -- the compiler fell back
+#: to a generic library routine instead of emitting the operation. ``memrefCopy`` is MLIR's
+#: rank-generic strided copy: correct for any rank/stride, and ~5,000 instructions to move a 4x16
+#: tile. An expert kernel calls none of these.
+RUNTIME_ESCAPE_SYMBOLS = ("memrefCopy", "memcpy", "memmove", "memset", "malloc", "free")
+
+_CALL_MNEMONICS = ("jal", "jalr", "call")
+
+
+def _lift_envelope(stream, *, undefined_symbols=None) -> "EnvelopeFacet":
+    """Lift the code AROUND the loop: call sites scoped to loop bodies + runtime escapes.
+
+    ``calls_in_loop`` is the structural signal and needs no symbol table: a call inside a loop body
+    is per-iteration overhead whatever it calls. Counted over the OUTER loop spans (a tile epilogue
+    sits inside the M/N loops but outside the K loop), excluding the innermost, so a call in the
+    reduction body and a call in the tile epilogue both register.
+
+    ``runtime_calls`` names them when the object's undefined symbols are available (``llvm-nm -u``),
+    which is what turns "there is a call" into "it is memrefCopy" -- the difference between knowing
+    a gap exists and knowing which pass closes it.
+    """
+    spans = stream.loop_spans()
+    inner = stream.innermost_loop()
+    outer = [sp for sp in spans if sp != inner] or spans
+    calls_in_loop = 0
+    for sp in outer:
+        calls_in_loop += stream.count_in(sp, *_CALL_MNEMONICS)
+    escapes = None
+    if undefined_symbols is not None:
+        undef = {str(x) for x in undefined_symbols}
+        escapes = tuple(sorted(undef.intersection(RUNTIME_ESCAPE_SYMBOLS)))
+    return EnvelopeFacet(calls_in_loop=calls_in_loop, runtime_calls=escapes)
+
+
+def lift_asm(stream, *, op: str, source: str, backend: str = "rvv",
+             undefined_symbols: "Iterable[str] | None" = None) -> CCA:
     """Primary lifter: RVV/vector ``InsnStream`` (from ``decode.rvv``) -> CCA.
 
     Everything is read from the decoded instruction stream + tracked vtype — never guessed from a
@@ -326,6 +384,7 @@ def lift_asm(stream, *, op: str, source: str, backend: str = "rvv") -> CCA:
         ),
         vector=VectorFacet(sew=sew, lmul=lmul, vl_strategy=vl_strategy, tail=_dominant_tail(stream)),
         memory=_lift_memory(stream),
+        envelope=_lift_envelope(stream, undefined_symbols=undefined_symbols),
         provenance={"level": "asm", "source": source, "confidence": "high"},
     )
 

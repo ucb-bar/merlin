@@ -163,7 +163,8 @@ REGIONS: dict[str, Region] = {r.key: r for r in [
        "Tensor->memref bufferization, out-param buffers, the AOT static arena plan.",
        (_PIPE, "merlin/python/merlin/xdsl_dialects/lowering/arena_plan.py"),
        [_ep("PASS", "impr_features:<name>", _IF,
-            "register a bufferization-pipeline edit (e.g. eliminate-empty-tensors placement)", _IMPR)]),
+            "register a bufferization-pipeline edit (e.g. eliminate-empty-tensors placement)", _IMPR)],
+       cca_axes=("envelope.runtime_calls", "envelope.calls_in_loop")),
     _r("layout-packing", "memory", "Layout assignment / packing",
        "Compile-time operand layout + panel packing (contiguous register-tile panels) — the packed "
        "unit-stride B panel that is the #1 expert GEMM lever.",

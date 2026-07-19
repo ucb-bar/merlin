@@ -119,6 +119,40 @@ _RVV_ROUTES: list[_Route] = [
         expected_effect="register-resident accumulator with zero per-K memref roundtrip; measured "
                         "1.7x faster than OpenBLAS pack-excluded on the spike proxy (hand ceiling)",
         intended_facet={"compute.accumulator_resident": True}),
+    # --- envelope: the code AROUND the loop. Added after a K1 measurement showed the entire f32 GEMM
+    # gap lived here and NOWHERE in the tiling space: our hot loop is better per-FMA than XNNPACK's
+    # (3.0 vs 3.82 ins/FMA) while a per-tile memrefCopy cost ~79 instructions per OUTPUT ELEMENT,
+    # ~77% of everything retired at N=128. A full MR/NR/KC/unroll_m sweep could not move it, because
+    # no tiling choice removes a call the epilogue emits regardless.
+    _Route(
+        axis="envelope.runtime_calls",
+        # Fire when the expert calls no runtime helper and we call at least one: a codegen ESCAPE.
+        when=lambda d: not d.expert and bool(d.ours),
+        action_class="PASS",
+        target_seam="pass:in-place-accumulator-writeback (drop the tile-epilogue memref copy)",
+        change="write the vectorized tile result DIRECTLY into its slice of C instead of "
+               "materializing a temporary tile buffer and handing it to the rank-generic runtime "
+               "copy. The accumulators are already stored by vse32.v before the call, so the copy "
+               "is redundant traffic, not the writeback itself.",
+        forkable_now=False,
+        expected_effect="removes the N^2 term: 1.71M -> ~0.42M retired instructions at N=128 "
+                        "(~1.7x XNNPACK's count) against a measured IPC ~2x XNNPACK's on this path",
+        intended_facet={"envelope.runtime_calls": ()}),
+    _Route(
+        axis="envelope.calls_in_loop",
+        # The symbol-free form of the same divergence: a call in a loop body is per-iteration
+        # overhead whatever it calls, so this fires even without an object symbol table.
+        when=lambda d: bool(d.ours) and not d.expert,
+        action_class="HEURISTIC",
+        target_seam="schedule:hoist-loop-invariant-call / enlarge tile (amortize the call)",
+        change="hoist a loop-invariant call out of the tile loop, or enlarge the tile so the "
+               "per-tile cost is amortized over more outputs — the cheap mitigation to try before "
+               "the PASS that removes the call outright.",
+        forkable_now=True,
+        expected_effect="reduces, but does not eliminate, per-tile overhead; the PASS route above "
+                        "is the real closer. Kept as the FIRST rung so the beam has a forkable-now "
+                        "move on this axis.",
+        intended_facet={"envelope.calls_in_loop": 0}),
     _Route(
         axis="compute.nr_is_vsetvlmax",
         when=lambda d: bool(d.expert) and not d.ours,
