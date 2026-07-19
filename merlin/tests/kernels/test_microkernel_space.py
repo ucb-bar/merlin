@@ -37,15 +37,50 @@ def test_space_is_target_agnostic_and_unregistered_target_raises():
 def test_unexpressible_axes_raise_instead_of_being_ignored():
     """An axis the target cannot EMIT must stay an OPEN divergence — crediting it would be a fake win."""
     from merlin.rvvgen import from_strategy  # noqa: F401
-    # dynamic VL is not emitted yet (MLIR scalable->RVV lowering is incomplete); it must RAISE, and
-    # the message must point at the codegen route (custom_isa inline-asm/intrinsic), not silently pass.
-    with pytest.raises(UnsupportedAxis, match="vsetvli|dynamic"):
-        resolve("rvv", MicrokernelSpec(vl_strategy=VL_DYNAMIC))
-    # composing unroll_m with pack is not emitted yet either (each replaces the schedule)
+    # composing unroll_m with pack is not emitted yet (each replaces the schedule)
     with pytest.raises(UnsupportedAxis, match="pack"):
         resolve("rvv", MicrokernelSpec(MR=4, unroll_m=True, pack=True))
     # the supported axes resolve
     assert resolve("rvv", MicrokernelSpec(MR=4, NR=16, KC=16, vl_strategy=VL_FIXED))
+
+
+def test_vl_dynamic_is_emitted_through_the_scalable_route():
+    """vl_strategy='dynamic' USED to raise (MLIR scalable->RVV was thought incomplete). It now
+    resolves: the N register block is a scalable vector<[k]xT>, so the emitted loop sizes to the
+    runtime VL — no _zvl march pin, correct on any RVV part. It rides the ORDINARY MLIR scalable
+    lowering (the custom_isa inline-asm hatch was NOT needed)."""
+    from merlin.rvvgen import from_strategy  # noqa: F401
+    feats = resolve("rvv", MicrokernelSpec(MR=4, NR=16, KC=16, vl_strategy=VL_DYNAMIC))
+    assert feats == ["accum_resident_v3vl_4_16_16", "erase_self_copy"]
+    # a DISTINCT point from the fixed-width block the beam can trade against
+    assert feats != resolve("rvv", MicrokernelSpec(MR=4, NR=16, KC=16, vl_strategy=VL_FIXED))
+    # NR counts lanes at the RVV minimum VLEN (a scalable vector<[k]> holds 2k of them), so it must
+    # be even; an odd NR is rejected loudly rather than silently rounded.
+    with pytest.raises(ValueError, match="even NR"):
+        resolve("rvv", MicrokernelSpec(MR=4, NR=15, KC=16, vl_strategy=VL_DYNAMIC))
+    # dynamic VL does not compose with the recipe-replacing axes yet; it must RAISE, not silently
+    # emit fixed-width code for a spec that asked for a runtime VL.
+    for kw in ({"unroll_m": True}, {"pack": True}, {"k_block": True}):
+        with pytest.raises(UnsupportedAxis, match="dynamic"):
+            resolve("rvv", MicrokernelSpec(MR=4, NR=16, KC=16, vl_strategy=VL_DYNAMIC, **kw))
+
+
+def test_vl_dynamic_schedule_is_scalable_peeled_and_unmasked():
+    """The emitted transform schedule must carry what a WORKING scalable micro-kernel needs: a
+    scalable N tile (vector<[k]>), the N loop PEELED, and the vectorize marked
+    assume_dynamic_dims_match_vec_sizes (which the peel is what makes true). Without the peel the
+    scalable transfers are masked, which blocks the accumulator hoist and leaves an unlowerable
+    scalable vector.transpose. (M is tiled by MR with the MR|M precondition the fixed 2-D recipe
+    also carries; it is NOT peeled — transform.loop.peel fails on a statically-divisible loop.)"""
+    from merlin.llvmlower.impr_features import (_accumulator_resident_v3_scalable_pre_schedule as S,
+                                                 scalable_lanes)
+    sch = S(4, 16, 16)
+    assert f"[4, [{scalable_lanes(16)}], 0]" in sch          # scalable N tile alongside static MR
+    assert sch.count("transform.loop.peel") == 1             # N peeled (M carries the MR|M precond)
+    assert "assume_dynamic_dims_match_vec_sizes" in sch
+    # KC does not tile the reduction in this recipe -> two KC values emit byte-identical schedules
+    # (a free identical-config noise control on the board).
+    assert S(4, 16, 16) == S(4, 16, 64)
 
 
 def test_unroll_m_is_emitted_and_shape_agnostic():

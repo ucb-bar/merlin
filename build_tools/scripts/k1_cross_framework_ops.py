@@ -154,8 +154,13 @@ def _build_run_xnn(tag, driver: Path, defs: list[str], *, reps: int = 3,
 
 
 def _lower_ours(bundle: Path, run_id: str, features: list[str], *, int8: bool,
-                vectorize: bool, work: Path):
-    """Reuse the K1 build path's lowering -> model.o + cgen artifacts. Returns (model_o, cgen, err)."""
+                vectorize: bool, work: Path, march: str | None = None):
+    """Reuse the K1 build path's lowering -> model.o + cgen artifacts. Returns (model_o, cgen, err).
+
+    ``march`` overrides the codegen march string. Default (None) keeps the VLEN-pinned
+    ``k1.codegen_march()`` every existing caller relies on; pass ``k1.K1_MARCH`` to compile WITHOUT
+    the ``_zvl`` pin, which is the honest way to measure VL-agnostic (scalable) codegen — pinning
+    would hide whether the emitted loop really sizes itself at run time."""
     from merlin.llvmlower import c_runtime, toolchain
     from merlin.llvmlower.lower import lower_model_file
     from merlin.llvmlower.pipeline import PipelineError
@@ -178,7 +183,7 @@ def _lower_ours(bundle: Path, run_id: str, features: list[str], *, int8: bool,
     # (`vl` at half `VLMAX`). See k1.codegen_march for the measured cost.
     try:
         subprocess.run([str(clang23), "--target=riscv64-unknown-linux-gnu",
-                        f"-march={k1.codegen_march()}", f"-mabi={k1.K1_MABI}",
+                        f"-march={march or k1.codegen_march()}", f"-mabi={k1.K1_MABI}",
                         "-O2", "-Wno-override-module",
                         "-c", str(res.ll_path), "-o", str(model_o)],
                        capture_output=True, text=True, timeout=300, check=True)
