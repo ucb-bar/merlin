@@ -255,3 +255,34 @@ digest, while `KC=128` at `K=128` reproduces the un-blocked digest **byte for by
 reduction by its own full extent is a no-op, and the digest says so. The inner loop is untouched in
 every case (12 insns, 4 `vfmacc`, 1 `vle32`, 0 spills), which is the point: K-blocking can only move
 cache behavior, never the inner-loop instruction mix.
+
+Both verdicts then confirmed on silicon (128³, `NR=32`, one locked board session):
+
+| point | ticks | instret | loop insns | digest |
+|---|---|---|---|---|
+| 2-D, un-blocked | 13,842 | 275,066 | 12 | `7bde3077…` |
+| `k_block` KC=32 | 13,677 | 278,310 | 12 | `74b4b287…` |
+| `k_block` KC=64 | 13,639 | 276,992 | 12 | `c6e411f7…` |
+| **`k_block` KC=128** | **13,579** | **275,055** | 12 | **`7bde3077…`** |
+| `unroll_m` MR=2 | 33,388 | 473,127 | 6 | `7833b2e3…` |
+| `unroll_m` MR=4 | 33,794 | 478,242 | 6 | `a06a1564…` |
+| `unroll_m` MR=7 | 33,507 | 478,571 | 6 | `46e48729…` |
+
+### A byte-identical digest is a free noise control
+
+The `KC=128` row emits the **same code as the un-blocked row** — same digest, same instret. So the
+two rows are the same binary measured twice, and their 13,842 vs 13,579 spread is **pure measurement
+noise: 1.9%**, established without a single extra run.
+
+That retires the `k_block` result. Both blocked points (13,677, 13,639) sit *inside* that band, and
+are in fact *slower* than the identical-code control — so the 1.2-1.5% that looked like a consistent
+cache-blocking win is noise, exactly as the untouched inner loop predicted. Read in isolation, three
+descending numbers (13,842 → 13,677 → 13,639) are a tempting trend line.
+
+**Rule:** when a sweep contains a point whose emitted code is byte-identical to another, measure it
+anyway — it costs one run and calibrates the noise floor that every other delta in the sweep must
+clear. Where the parameterization does not hand you one for free (`KC=K` did), construct one.
+
+`unroll_m` on silicon closes its own case: ~33.4-33.8K ticks against the 2-D form's 13,842, i.e.
+**2.4x slower**, and flat across `MR` ∈ {2, 4, 7} to 1.2% in time and 1.2% in instret while the
+digests all differ. Changed code, unchanged economics.
