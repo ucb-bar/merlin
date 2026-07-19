@@ -6,11 +6,16 @@ cflags:
 compiler_features:
 - accumulator_resident_wholemodel_vf
 dtype_strategy: int8_w8a8
+# MEASURED from objdump of this package's own model.o (int8 128^3), not copied from the f32 sibling.
+# The previous list (vle32.v / vfmul.vv / vfadd.vv) came over verbatim from
+# impr_tuned_wholemodel_vf and checked the f32 datapath: vfadd.vv is not emitted at all here (so K4
+# reported expected_instructions_present=false), and none of the tokens named the INTEGER MAC that is
+# the entire point of a W8A8 package. These are the integer ops the emitted code actually contains.
 expected_instructions:
 - vsetivli
-- vle32.v
-- vfmul.vv
-- vfadd.vv
+- vle8.v
+- vwmacc
+- vsext
 lmul_policy: m1
 lowering_patterns:
 - lower_contraction
