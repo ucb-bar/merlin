@@ -32,7 +32,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - [Plotting house style](reference/plot_style.md) — `current`, verified 2026-07-14 · owner: plotting
 - [Repository structure](reference/repo_structure.md) — `current`, verified 2026-07-14 · owner: core — see also: [architecture](reference/architecture.md)
 - [Runtime](reference/runtime.md) — `current`, verified 2026-07-14 · owner: runtime — see also: [zephyr](guides/zephyr.md)
-- [RVV kernel-mining methodology](reference/rvv_kernel_mining_methodology.md) — `current`, verified 2026-07-14 · owner: kernels — see also: [kernel_mining](guides/kernel_mining.md), [dse](guides/dse.md)
+- [RVV kernel-mining methodology](reference/rvv_kernel_mining_methodology.md) — `current`, verified 2026-07-19 · owner: kernels — see also: [kernel_mining](guides/kernel_mining.md), [dse](guides/dse.md)
 - [Schema reference](reference/schemas.md) — `generated` · owner: tooling
 - [xDSL prototyping plane](reference/xdsl.md) — `current`, verified 2026-07-14 · owner: ir — see also: [dialects](reference/dialects.md), [core_dialects](reference/core_dialects.md)
 

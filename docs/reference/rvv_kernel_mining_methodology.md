@@ -3,7 +3,7 @@ title: RVV kernel-mining methodology
 kind: reference
 status: current
 owner: kernels
-last_verified: 2026-07-14
+last_verified: 2026-07-19
 related: [kernel_mining, dse]
 code_refs: [merlin/python/merlin/rvvgen, merlin/python/merlin/kernels]
 ---
@@ -372,6 +372,14 @@ The ones that carry the story:
   `accumulator_resident_microkernel_v3` (the `.vf` A-scalarization) — the turn-2 residency line.
 - `accumulator_resident_wholemodel_vf` (v3 + whole-model tail clamps MR_mm=1 / NR_bmm=8) and
   `…_vf_mr4` (the turn-3 MR=4 A-reuse register block).
+- `erase_self_copy` — the micro-kernel recipes' lowering HYGIENE: erases the per-tile
+  `memref.copy %x, %x` bufferization leaves behind, which otherwise survives as an opaque
+  `@memrefCopy` rank-generic runtime call. Not listed per package — `from_strategy.
+  _rvv_microkernel_resolver` appends it to EVERY realization of the `microkernel` knob block, so
+  every point in the space and every `dtype_strategy` inherits it at once. It is a property of the
+  recipe shape, not of the dtype: on `accumulator_resident_wholemodel_vf` there is no self-copy and
+  the feature is inert (same object bytes), while on the v3 recipe it removes the call for int8 and
+  f32 alike. `hand_v0` carries no `microkernel` block, so the frozen control is untouched.
 - `vectorized_transcendental_activation` — minimax-poly exp/erf/tanh + elementwise vectorize.
 - `lmul_widen_n` (KNOB), `intrinsic_microkernel` (CODEGEN ceiling marker, no edit).
 

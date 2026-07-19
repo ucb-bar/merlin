@@ -149,7 +149,13 @@ def default_gemm_cells(shapes_f32=(128, 256), shapes_int8=(64, 128)) -> list[OpC
     expert = root / "merlin/tests/data/cca_asm/xnnpack_f32_gemm_rvv.objdump"
     wl_root = root / "out/artifacts/cache/op_sweep_workloads"
     seed_f32 = root / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf"
-    seed_int8 = root / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8"
+    # int8 seeds from the SHARED micro-kernel path, not a hand-copied fork of the f32 feature list.
+    # impr_tuned_wholemodel_vf_int8 (the previous seed) carried `accumulator_resident_wholemodel_vf`
+    # copied from the f32 champion of an earlier turn and was never re-measured when the f32 path
+    # moved on; on this board it is 1.61-1.78x off across 64/128/256^3 (cos-gated, min of 3). These
+    # cells are kernel SHAPES (square 64/128), which is exactly the regime the v3 register block is
+    # measured in -- small-M whole models still need the wholemodel_vf clamps.
+    seed_int8 = root / "out/artifacts/targets/rvv/impr_tuned_microkernel_v3_int8"
     cells: list[OpCell] = []
     for S in shapes_f32:
         cells.append(OpCell(op="matmul", dtype="f32", shape_regime=f"square_{S}",

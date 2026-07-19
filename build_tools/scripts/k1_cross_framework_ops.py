@@ -107,13 +107,16 @@ def _parse(base: dict, console: str | None, detail: str, *, reps: int = 1) -> di
     from merlin.rvvgen import pmu as pmu_mod
     counts = pmu_mod.parse(console)
     pmu_fields = counts.as_dict() if counts is not None else {}
-    # Retired instructions on the SAME bracket as the timing (the drivers print INSTRET via
-    # perf_event_open). This is the axis that separates "emits too many instructions" from "stalls
-    # on each instruction"; process-wide PMU totals cannot, since each driver's scalar verification
-    # reference has a different cost and so does not cancel.
+    # Retired instructions on the SAME bracket as the rdtime timing (the drivers read minstret via
+    # perf_event_open). This is what separates "emits too many instructions" -- which a schedule can
+    # fix -- from "stalls on each", which it cannot. Process-wide PMU totals cannot make that split:
+    # each driver's scalar verification reference costs differently, so they do not cancel.
+    # Absent on drivers that do not print it.
     instret = int_after(console, "INSTRET")
+    if instret is not None:
+        pmu_fields = {**pmu_fields, "instret": instret,
+                      "instret_full": int_after(console, "INSTRET_FULL")}
     return {**base, "ticks": t, "status": "pass", **pmu_fields,
-            **({"instret": instret} if instret is not None else {}),
             "correct": (err == 0) if err is not None else True,
             "wall_ns_est": int(t * 1e9 / k1.K1_TIMEBASE_HZ),
             "note": "K1 real-silicon rdtime ticks; inner-compute; bit-exact verified"}
@@ -325,13 +328,27 @@ def run_int8_gemm(shapes: list[int], reps: int) -> list[dict]:
                            pmu=True)
         print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
         rows.append(r)
-        # OURS int8 W8A8: NAIVE (features=[] -> scalar, the ~200x catastrophe) vs the VECTORIZED
-        # feature accumulator_resident_wholemodel_vf (emits vwmacc — measured ~19.5x faster than
-        # naive, closing int8 from ~211x to ~11x vs XNNPACK). The vf config is the real int8 best;
-        # the naive row is kept to SHOW the gap the lever closes.
+        # OURS int8 W8A8, three points: NAIVE (features=[] -> scalar, the ~200x catastrophe), the
+        # long-standing vf config, and the SHARED micro-kernel path the f32 arm uses.
+        #
+        # `ours_int8_v3` is spelled as the target-agnostic `microkernel` knob block on purpose —
+        # int8 and f32 must name the recipe the SAME way and differ only in dtype_strategy, rather
+        # than int8 keeping a hand-listed fork of the feature list. The block resolves (registry.
+        # _resolve_features -> from_strategy._rvv_microkernel_resolver) to the v3 tuning point plus
+        # the recipe's `erase_self_copy` hygiene.
+        #
+        # MEASURED on this board, kernel region, cos-gated, min of 3 (vs XNNPACK qd8 1x4v):
+        #     shape    vf                v3 + erase        speedup
+        #      64^3    16,563 (8.03x)    10,301 (4.99x)    1.61x
+        #     128^3   119,042 (9.86x)    69,428 (5.75x)    1.71x
+        #     256^3   896,380 (8.20x)   503,434 (4.60x)    1.78x
+        # so vf is NOT the int8 best and had not been for some time; it was simply the only int8
+        # recipe wired here. The naive row is kept to SHOW the gap the vectorization lever closes.
+        from merlin.rvvgen.from_strategy import microkernel_features
         bundle = workloads.gen_matmul_f32(REPO / "artifacts" / "cache" / "rvv_workloads", M=S, N=S, K=S)
         int8_configs = [([], "ours_int8_naive"),
-                        (["accumulator_resident_wholemodel_vf"], "ours_int8_vf")]
+                        (["accumulator_resident_wholemodel_vf"], "ours_int8_vf"),
+                        (microkernel_features({"MR": 4, "NR": 16, "KC": 16}), "ours_int8_v3")]
         for feats, sid in int8_configs:
             base = {"op": "int8_gemm", "dtype": "i8xi8->i32", "M": S, "N": S, "K": S, "source": sid,
                     "target": "k1", "mode": "inner_compute", "timer": "rdtime",

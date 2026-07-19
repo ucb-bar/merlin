@@ -81,7 +81,44 @@ def _rvv_microkernel_resolver(spec) -> list[str]:
                    a vsetvli loop, which — where MLIR's scalable->RVV lowering is incomplete — can be
                    emitted through ``llvmlower.custom_isa`` (merlin.inline_asm -> llvm.inline_asm /
                    llvm.call_intrinsic), i.e. still code generation, no llvm-project fork.
+
+    Every realization also carries the recipe's lowering HYGIENE (see :func:`_with_hygiene`) — the
+    passes the emitted code needs to be worth measuring at all, independent of dtype.
     """
+    return _with_hygiene(_recipe(spec))
+
+
+def _with_hygiene(feats: list[str]) -> list[str]:
+    """Append the lowering hygiene every micro-kernel realization needs to be worth measuring.
+
+    Right now that is ``erase_self_copy``. Every recipe below tiles the output and bufferizes per
+    tile, and bufferization leaves a `memref.copy %x, %x` in each tile epilogue that survives as an
+    opaque rank-generic ``@memrefCopy`` runtime call (see llvmlower/selfcopy.py). It is not a schedule
+    decision and not a dtype decision -- it is a property of the recipe SHAPE -- so it belongs here,
+    where every dtype and every micro-kernel point inherits it at once, rather than being re-listed
+    per package. Erasing is unconditionally safe (same SSA value => same base/offsets/region), and it
+    is a no-op on lowerings that have no self-copy, so appending it can only help or do nothing.
+
+    MEASURED on the live K1, kernel region, correctness-gated (min of 3):
+        f32  128^3          1,710,650 -> 475,899 ins   41,195 -> 21,882 ticks   1.88x
+        int8  64^3            732,447 -> 425,039 ins   14,721 -> 10,301 ticks   1.43x
+        int8 128^3          4,230,288 -> 3,002,346 ins  85,760 -> 69,428 ticks  1.24x
+        int8 256^3         27,423,003 -> 22,519,524 ins 567,986 -> 503,434 ticks 1.13x
+
+    NOT appended to the whole-model ``accumulator_resident_wholemodel*`` features: those are named
+    directly in ``compiler_features``, not resolved through this space, and their lowering has no
+    self-copy to erase (measured on int8 128^3: 4,323,737 -> 4,325,025 ins, i.e. noise). The erase is
+    a property of the v3 recipe, NOT of int8.
+
+    ``hand_v0`` carries no ``microkernel`` knob block, so it never reaches this function and keeps its
+    byte-identical control lowering.
+    """
+    from ..llvmlower.selfcopy import FEATURE as _SELF_COPY
+    return feats if _SELF_COPY in feats else [*feats, _SELF_COPY]
+
+
+def _recipe(spec) -> list[str]:
+    """The micro-kernel recipe proper (no hygiene) — one feature naming this point in the space."""
     from ..kernels.microkernel import VL_DYNAMIC, UnsupportedAxis
     from ..llvmlower.impr_features import (ensure_v3_kblocked_microkernel, ensure_v3_microkernel,
                                             ensure_v3_unrolled_microkernel)
