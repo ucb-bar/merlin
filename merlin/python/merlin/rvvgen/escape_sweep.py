@@ -171,9 +171,14 @@ def default_cells(*, models: dict[str, list[str]] | None = None,
     escapes are but which ones the existing fix already reaches -- the int8 no-op is a RESULT, and it
     should be visible in the matrix rather than assumed.
     """
+    # Shapes matter: a cell can be clean for a degenerate reason. batch_matmul at N=8 -- exactly one
+    # [1,4,8,1] vector tile wide, so there is no N-tiling loop -- reports NO in-loop escape, while
+    # the same op at N=64 carries the per-tile memrefCopy like every other matmul. A single shape per
+    # op would have recorded "batch_matmul is clean", which is false. Keep these non-degenerate, and
+    # re-check a clean cell at a second shape before believing it.
     ops = [
         ("matmul", {"M": 128, "N": 128, "K": 128}),
-        ("batch_matmul", {"B": 4, "M": 32, "N": 8, "K": 32}),
+        ("batch_matmul", {"B": 2, "M": 64, "N": 64, "K": 64}),
         ("conv2d_as_matmul", {"M": 64, "N": 16, "K": 27}),
         ("softmax", {"M": 64, "N": 64}),
         ("gelu", {"N": 16384}),

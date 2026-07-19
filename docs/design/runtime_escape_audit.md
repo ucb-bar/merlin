@@ -60,9 +60,16 @@ not be. When the enclosing spans do not form a containment chain the depth numbe
 readable, no unknowns:
 
 **The escape is matmul-shaped, not universal.** Every elementwise and reduction cell — `gelu`,
-`sigmoid`, `silu`, `softmax` — is clean in both dtypes, as is `batch_matmul`. Only `matmul` and
-`conv2d_as_matmul` (a matmul in disguise) carry the per-tile `memrefCopy`. It comes from the tiled
-2-D matmul bufferization path specifically.
+`sigmoid`, `silu`, `softmax` — is clean in both dtypes, re-checked at a second and third shape each
+(one outlier: `gelu` at N=1024 int8 shows a single in-loop `memcpy`). The whole matmul family —
+`matmul`, `batch_matmul`, and `conv2d_as_matmul` — carries the per-tile `memrefCopy` in both dtypes.
+
+That last point corrects a result this sweep initially produced itself, and it is the reason shapes
+are now chosen deliberately. `batch_matmul` first came back **clean**, because the default cell used
+N=8: exactly one `[1,4,8,1]` vector tile wide, so there is no N-tiling loop and no per-tile copy. At
+N=64 the same op carries the escape like every other matmul. **A clean cell is worth re-checking at a
+second shape before it is believed** — a degenerate shape produces a real, reproducible, and entirely
+misleading negative.
 
 **A prior belief was wrong.** The int8 no-op had been recorded as "int8 lowers differently and has no
 self-copy". The int8 matmul *does* emit the in-loop `memrefCopy`, and `erase_self_copy` *does* remove
