@@ -50,6 +50,8 @@ from __future__ import annotations
 # Sentinel pass name spliced into the pipeline string by the feature's edit_pipeline to mark where
 # the A-scalarization rewrite runs (after contract->vector.fma lowering, before one-shot-bufferize).
 # It is NOT a real MLIR pass; the runner splits the pipeline here and never passes it to mlir-opt.
+from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
+
 SCALARIZE_MARKER = "__merlin_scalarize_a__"
 
 
@@ -258,6 +260,7 @@ def run_source() -> str:
         "from torch_mlir import ir\n"
         "from torch_mlir.passmanager import PassManager\n"
         "from torch_mlir.dialects import llvm\n"
+        + _SELFCOPY_PRELUDE
         + _REWRITER_SRC +
         f"\nMARKER = {SCALARIZE_MARKER!r}\n"
         "src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]\n"
@@ -276,7 +279,7 @@ def run_source() -> str:
         "with ctx, ir.Location.unknown():\n"
         "    _n = scalarize_a_reads(module, ctx)\n"
         "if stage2:\n"
-        "    PassManager.parse('builtin.module(' + stage2 + ')', ctx).run(module.operation)\n"
+        "    _run_stages(ctx, module, stage2, _ERASE_SELF_COPY)\n"
         "with open(out_path, 'w') as f:\n"
         "    f.write(str(llvm.translate_module_to_llvmir(module.operation)))\n"
         "print('OK scalarize_a rewrote', _n)\n"

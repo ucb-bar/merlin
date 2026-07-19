@@ -15,6 +15,7 @@ it, so it can be measured against the immutable baseline.
 """
 from __future__ import annotations
 
+from .selfcopy import FEATURE as _SELF_COPY_FEATURE
 import hashlib
 import tempfile
 from dataclasses import dataclass
@@ -1523,4 +1524,23 @@ register(ImprFeature(
                 "kernel-sized contraction workloads (vectorize_children explodes on whole models).",
     edit_schedule=_vfmacc_schedule_edit,
     schedule_replace=True,
+))
+
+
+# Erase the per-tile `memref.copy %x, %x` bufferization leaves behind. Pure lowering hygiene: it
+# changes no schedule, only removes a runtime call that moves a buffer onto itself. Default-off so
+# the frozen hand_v0 control stays byte-identical; the beam turns it on to close an
+# `envelope.runtime_calls` divergence (see kernels/action_catalog.py).
+#
+# MEASURED, K1 f32 GEMM 128^3, kernel region, bit-exact:
+#   instructions 1,710,650 -> 475,899 (3.59x)   ticks 41,195 -> 21,882 (1.88x)
+#   vs XNNPACK   3.57x -> 1.90x
+# The mechanism and why nothing upstream folds it: see llvmlower/selfcopy.py.
+register(ImprFeature(
+    name=_SELF_COPY_FEATURE,
+    action_class="PASS",
+    description="erase `memref.copy %x, %x` (a buffer copied onto itself) after bufferization/cse "
+                "and before finalize-memref-to-llvm, where it would otherwise survive as an opaque "
+                "@memrefCopy rank-generic runtime call costing ~79 retired instructions per OUTPUT "
+                "ELEMENT. Removes the tile-epilogue copy; emits no new code.",
 ))

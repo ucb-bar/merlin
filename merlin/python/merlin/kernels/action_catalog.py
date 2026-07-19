@@ -129,14 +129,15 @@ _RVV_ROUTES: list[_Route] = [
         # Fire when the expert calls no runtime helper and we call at least one: a codegen ESCAPE.
         when=lambda d: not d.expert and bool(d.ours),
         action_class="PASS",
-        target_seam="pass:in-place-accumulator-writeback (drop the tile-epilogue memref copy)",
-        change="write the vectorized tile result DIRECTLY into its slice of C instead of "
-               "materializing a temporary tile buffer and handing it to the rank-generic runtime "
-               "copy. The accumulators are already stored by vse32.v before the call, so the copy "
-               "is redundant traffic, not the writeback itself.",
-        forkable_now=False,
-        expected_effect="removes the N^2 term: 1.71M -> ~0.42M retired instructions at N=128 "
-                        "(~1.7x XNNPACK's count) against a measured IPC ~2x XNNPACK's on this path",
+        target_seam="impr_features:erase_self_copy",
+        change="erase the `memref.copy %x, %x` bufferization leaves in the tile epilogue. The tile "
+               "result is already in place from the vector.transfer_write; cse collapses the two "
+               "identical destination subviews into one SSA value, and the resulting self-copy is a "
+               "no-op that nothing upstream folds, so it survives as an opaque @memrefCopy call.",
+        forkable_now=True,
+        expected_effect="MEASURED on K1 (f32 GEMM 128^3, bit-exact): retired instructions "
+                        "1,710,650 -> 475,899 (3.59x) and ticks 41,195 -> 21,882 (1.88x), moving "
+                        "us from 3.57x to 1.90x of XNNPACK",
         intended_facet={"envelope.runtime_calls": ()}),
     _Route(
         axis="envelope.calls_in_loop",

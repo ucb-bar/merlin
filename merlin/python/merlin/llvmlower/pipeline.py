@@ -199,18 +199,20 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
     return ",".join(passes)
 
 
+from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
+
 _RUNNER = r'''
 import sys
 
 from torch_mlir import ir
 from torch_mlir.passmanager import PassManager
 from torch_mlir.dialects import llvm
-
+''' + _SELFCOPY_PRELUDE + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
 with open(src_path) as f:
     module = ir.Module.parse(f.read(), ctx)
-PassManager.parse("builtin.module(" + pipeline + ")", ctx).run(module.operation)
+_run_stages(ctx, module, pipeline, _ERASE_SELF_COPY)
 with open(out_path, "w") as f:
     f.write(str(llvm.translate_module_to_llvmir(module.operation)))
 print("OK")
@@ -365,8 +367,14 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     else:
         runner_src = _RUNNER
     runner.write_text(runner_src, encoding="utf-8")
+    # argv[4] gates the self-copy erase, so the frozen hand_v0 control keeps its byte-identical
+    # lowering unless the feature is explicitly enabled.
+    from .selfcopy import FEATURE as _SELFCOPY_FEATURE, with_canonicalize as _with_canon
+    _erase = "1" if _SELFCOPY_FEATURE in feats else "0"
+    if _erase == "1":
+        pipeline = _with_canon(pipeline)
     proc = subprocess.run(
-        [str(m2m_python()), str(runner), str(src), str(out), pipeline],
+        [str(m2m_python()), str(runner), str(src), str(out), pipeline, _erase],
         capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0 or not out.is_file():
         raise PipelineError(f"upstream lowering failed:\n{proc.stdout}\n{proc.stderr}")
