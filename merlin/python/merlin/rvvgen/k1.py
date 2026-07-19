@@ -565,7 +565,11 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     #    — glibc hosted, small code model, fully relocatable.
     clang23 = toolchain.clang()
     model_o = work / "model.o"
-    _run([clang23, "--target=riscv64-unknown-linux-gnu", f"-march={K1_MARCH}", f"-mabi={K1_MABI}",
+    # codegen_march(), not K1_MARCH: this is OUR emitted model.ll becoming the model object, so it
+    # pays the doubled-LMUL penalty when the march string leaves VLEN at the RVV minimum. The C glue
+    # and the baseline shim arms below deliberately keep K1_MARCH so their flags are not re-written
+    # mid-campaign. Whether this transfers to whole models is exactly what is being measured.
+    _run([clang23, "--target=riscv64-unknown-linux-gnu", f"-march={codegen_march()}", f"-mabi={K1_MABI}",
           "-O2", "-Wno-override-module", "-c", res.ll_path, "-o", model_o])
 
     # 3. data-driven runtime artifacts (arg table, ciface, weights.bin, embedded io).
