@@ -1,0 +1,30 @@
+# int8 champion RVV package — the shared micro-kernel path (rvvgen.from_strategy resolver).
+authoring:
+  author: int8 shared-path promotion
+  generated_by_agent: false
+  mode: deterministic_generated_from_spec
+family: vector_schedule
+lineage:
+  author: int8 shared-path promotion
+  depth: 0
+  lever: microkernel-knob
+  note: >-
+    int8 stopped being a parallel silo. The recipe is named by the target-agnostic `microkernel`
+    knob block instead of a hand-copied compiler_features list, so int8 inherits the f32 path's
+    register blocking (v3) AND the recipe's erase_self_copy lowering hygiene automatically. Measured
+    1.61-1.78x over the incumbent impr_tuned_wholemodel_vf_int8 across 64/128/256^3 on the live K1,
+    cos-gated. Kernel-shape scope: bare v3 trips the LLVM-23 small-M masked-transfer_write path, so
+    small-M whole models still need the wholemodel_vf clamps.
+  parent_run_id: hand_v0_int8
+  source_evidence:
+    - out/artifacts/perf-bench/rvv/int8_recipe_ab_int8.jsonl
+    - out/artifacts/perf-bench/rvv/int8_recipe_ab_shapes.jsonl
+    - build_tools/scripts/k1_int8_recipe_ab.py
+  version: 0
+outputs:
+  knobs: knobs.yaml
+  schedule: schedule.mlir
+run_id: impr_tuned_microkernel_v3_int8
+schedule_format: transform_dialect_mlir
+status: k1_measured
+target: rvv

@@ -1,0 +1,48 @@
+# int8 (W8A8) champion RVV package — the SHARED micro-kernel path, not an int8 fork.
+#
+# The recipe is named by the TARGET-AGNOSTIC `microkernel` knob block, which registry._resolve_features
+# hands to from_strategy._rvv_microkernel_resolver. That resolves to
+# ['accumulator_resident_microkernel_v3', 'erase_self_copy'] -- the same realization an f32 package
+# with the same block gets. So this file differs from its f32 sibling ONLY in dtype_strategy +
+# expected_instructions, which is what hand_v0_int8's header always claimed the design was.
+#
+# It replaces impr_tuned_wholemodel_vf_int8 as the int8 KERNEL-shape seed. That package hand-listed
+# `compiler_features: [accumulator_resident_wholemodel_vf]`, a private copy of the f32 champion's
+# feature list from an earlier turn, and nobody re-measured it when the f32 path moved on.
+#
+# MEASURED, live SpacemiT K1, int8 GEMM kernel region, rdtime, cos-gated, min of 3, vs XNNPACK
+# qd8-f32-qc8w-gemm-1x4v-minmax-rvv:
+#
+#   shape   XNNPACK   wholemodel_vf     this package      speedup over the incumbent
+#    64^3     2,063   16,563 (8.03x)    10,301 (4.99x)    1.61x
+#   128^3    12,073  119,042 (9.86x)    69,428 (5.75x)    1.71x
+#   256^3   109,353  896,380 (8.20x)   503,434 (4.60x)    1.78x
+#
+# Attribution from INSTRET on the same bracket (128^3): v3 is the IPC win (36 -> 49 ins/tick at
+# roughly flat instruction count), erase_self_copy is the instruction-count win on top
+# (4,230,288 -> 3,002,346). Emitted-code proof, not schedule text: `nm -u` on model.o references
+# memrefCopy without the erase and not with it, and the object shrinks 8,440 -> 7,112 bytes.
+#
+# SCOPE -- kernel shapes. Bare v3 tiles M by MR=4 and trips an LLVM-23 masked-transfer_write
+# PipelineError on the small-M matmuls some whole models carry (openvla M=17/20, rdt2 M=28); that is
+# exactly why accumulator_resident_wholemodel_vf and its MR_mm=1 clamp exist. Use this for
+# kernel-shape work (op_sweep cells, GEMM benches); do not assume it for a small-M whole model
+# without measuring that model.
+schedule_file: schedule.mlir
+op_match:
+  - {op: linalg.matmul,       tile: [4, 8, 1],    vector: [4, 8, 1]}
+  - {op: linalg.batch_matmul, tile: [1, 4, 8, 1], vector: [1, 4, 8, 1]}
+lowering_patterns:
+  - lower_contraction
+  - lower_masked_transfers
+  - lower_transpose
+  - lower_shape_cast
+lmul_policy: m1
+cflags: ["-march=rv64gcv", "-fno-vectorize", "-fno-slp-vectorize"]
+dtype_strategy: int8_w8a8
+# The recipe, named once, dtype-independently. NOT a hand-listed compiler_features fork.
+microkernel: {MR: 4, NR: 16, KC: 16}
+# MEASURED from objdump of this package's model.o (128^3 int8): genuine integer RVV, 4x vwmacc for
+# the MR=4 register block (the incumbent vf recipe emits 1). Not the f32 vfmul/vfadd list that
+# impr_tuned_wholemodel_vf_int8 carried by copy-paste from its f32 sibling.
+expected_instructions: [vsetivli, vle8.v, vwmacc, vsext]
