@@ -78,13 +78,23 @@ it from the emitted code. Whatever explains the 0.03% is not the escape being ab
 **Whole models carry many.** Baseline in-loop `memrefCopy` sites: small_llama 17, bitvla 19, openvla
 35, rdt2 26 — cleared to zero by `erase_self_copy` in every case.
 
-**One open suspect, deliberately not fixed.** The int8 path at **M < 8** emits `malloc`+`memset`
-inside a loop body; at M >= 8 it is clean, and f32 is clean at every M. Minimal reproducer: an int8
-matmul with M in {1,2,4}, N=K=64. This is the small-M regime of openvla/rdt2, and it is *not* reached
-by `erase_self_copy`. It is reported as a screened suspect, not a finding: the allocations are of
-constant size (so they look hoistable), but this is exactly the case whose depth is flagged
-unreliable, and **redundancy was not proven**. Erasing an allocation that does real work is a
-correctness bug, so nothing was changed.
+**The int8 path escapes in SMALL-SIZE regimes where f32 does not.** Two independent op families show
+the same shape of defect, neither reached by `erase_self_copy`:
+
+| suspect | regime | escape | f32 at the same shape | depth reliable |
+|---|---|---|---|---|
+| int8 `matmul` | M < 8 (clean at M >= 8) | `malloc` x4 + `memset` x2 in a loop | clean at every M | no |
+| int8 `gelu` | N <= 2048 (clean at N >= 4096) | `memcpy` x1 in a loop | clean at 512/1024/2048 | yes |
+
+Both have minimal reproducers (int8 matmul M in {1,2,4} with N=K=64; int8 gelu at N in
+{512,1024,2048}), and the small-M matmul case is exactly the regime openvla and rdt2 sit in. The
+generalization worth carrying forward is not either individual call but the pattern: **the int8
+lowering falls back to runtime helpers at small sizes where the f32 lowering emits code.**
+
+Both are reported as screened *suspects*, not findings. **Redundancy was not proven and nothing was
+changed.** The matmul allocations are of constant size, which makes them look hoistable, but that is
+also the case whose depth is flagged unreliable. Erasing an allocation or a copy that does real work
+is a correctness bug, and the bar for acting is an IR-level redundancy proof plus a measured delta.
 
 ## Method note: why the fit, not the wall clock
 
