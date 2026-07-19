@@ -126,12 +126,18 @@ def main() -> int:
     out = Path(a.out) if a.out else (artifacts_dir() / "measurements" / "k1_spacemit" /
                                      "int8_wholemodel_recipe_ab.jsonl")
     rows = []
-    # The board lock is taken PER MODEL, not for the whole campaign: a multi-model int8 sweep is
-    # hours of host clang plus board time, and other agents measure on this same board.
+    # NO board lock here on purpose. `k1.run_on_k1` already takes it, and takes it around the
+    # deploy+run ONLY -- it deliberately cross-compiles outside the lock so concurrent agents can
+    # build in parallel while just the physical board serializes. Wrapping the campaign in a second
+    # board_lock() is wrong twice over: it holds the single K1 through hours of host clang that does
+    # not touch the board, and because fcntl.flock is per open-file-description it DEADLOCKS the
+    # campaign against itself the moment run_on_k1 opens the same lockfile on its own fd. That
+    # deadlock is silent -- the process just sleeps in locks_lock_inode_wait looking like a slow
+    # build -- and it stayed hidden while an earlier campaign was timing out in clang before ever
+    # reaching the run phase.
     for m in a.models.split(","):
         if m:
-            with k1.board_lock():
-                rows += run_model(m.strip(), base, a.n, a.timeout, out, only)
+            rows += run_model(m.strip(), base, a.n, a.timeout, out, only)
     print(f"\nwrote {out}")
     for r in rows:
         print(f"  {r['model']:12s} {r['config']:14s} {r['status']:8s} "
