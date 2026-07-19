@@ -309,7 +309,50 @@ def gen_conv2d_as_matmul_f32(out_root: str | Path, M: int = 64, N: int = 16, K: 
     return _finish(bundle, mlir, manifest, order, {"in0": a, "in1": b}, (a @ b))
 
 
-_GENERATORS = {"matmul_f32": gen_matmul_f32, "softmax_f32": gen_softmax_f32,
+def gen_matmul_f16(out_root: str | Path, M: int = 128, N: int = 128, K: int = 128,
+                   seed: int = 0) -> Path:
+    """A single fp16 ``linalg.matmul`` (M,K)x(K,N)->(M,N). Both operands are inputs.
+
+    The emitted module accumulates in f16 as written; ``passes_xdsl.lower_bf16_matmul_f32acc``
+    (which matches ``Float16Type`` as well as ``BFloat16Type``, and runs unconditionally in
+    ``_prepare_model_mlir``) rewrites it to an f32-accumulating ``linalg.generic`` + ``truncf``.
+    That is the ``fp16_f32acc`` datapath: e16 operands, e32 accumulator -> ``vfwmacc.vf``.
+
+    Accumulating in f16 for real is NOT a viable alternative at these shapes: f16 has a 5-bit
+    exponent (max 65504), so a K=128 reduction of unit-normal products drifts badly and at larger
+    K overflows outright. The golden is therefore computed in f32 and rounded once, matching
+    torch's f16 matmul semantics and what the rewritten kernel computes.
+    """
+    bundle = Path(out_root) / f"matmul_f16_{M}x{N}x{K}"
+    sf = bundle / "weights.safetensors"
+    mlir = (
+        f'builtin.module attributes {{prov.weights_file = "{sf}", '
+        'prov.level = "linalg-on-tensors"} {\n'
+        f"  func.func @forward(%a: tensor<{M}x{K}xf16>, %b: tensor<{K}x{N}xf16>) "
+        f"-> tensor<{M}x{N}xf16> {{\n"
+        "    %cst = arith.constant 0.000000e+00 : f16\n"
+        f"    %0 = tensor.empty() : tensor<{M}x{N}xf16>\n"
+        f"    %1 = linalg.fill ins(%cst : f16) outs(%0 : tensor<{M}x{N}xf16>) "
+        f"-> tensor<{M}x{N}xf16>\n"
+        f"    %2 = linalg.matmul ins(%a, %b : tensor<{M}x{K}xf16>, tensor<{K}x{N}xf16>) "
+        f"outs(%1 : tensor<{M}x{N}xf16>) -> tensor<{M}x{N}xf16>\n"
+        f"    return %2 : tensor<{M}x{N}xf16>\n"
+        "  }\n}\n"
+    )
+    r = _rng(seed)
+    a = r.standard_normal((M, K)).astype(np.float16)
+    b = r.standard_normal((K, N)).astype(np.float16)
+    manifest = {"0": {"kind": "input", "name": "a"}, "1": {"kind": "input", "name": "b"}}
+    order = {"a": 0, "b": 1}
+    # f32 accumulate over the f16 operands, rounded once to f16 -- the reference the rewritten
+    # kernel targets. _finish stores golden as f32 (the common bundle format) but the VALUES
+    # are f16-representable, so the driver's f16 comparison is exact against this.
+    golden = (a.astype(np.float32) @ b.astype(np.float32)).astype(np.float16)
+    return _finish(bundle, mlir, manifest, order, {"in0": a, "in1": b}, golden)
+
+
+_GENERATORS = {"matmul_f32": gen_matmul_f32, "matmul_f16": gen_matmul_f16,
+               "softmax_f32": gen_softmax_f32,
                "batch_matmul_f32": gen_batch_matmul_f32,
                "conv2d_im2col_f32": gen_conv2d_as_matmul_f32,
                "gelu_f32": gen_gelu_f32, "sigmoid_f32": gen_sigmoid_f32,

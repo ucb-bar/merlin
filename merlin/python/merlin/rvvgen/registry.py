@@ -34,7 +34,7 @@ class RvvPackage:
     directory: Path
     schedule_text: str              # contents of schedule.mlir -> lower_to_llvm_ir(transform_schedule=)
     cflags: list[str]               # RVV-specific cflags -> build_app(cflags_override=cflags+_CFLAGS_COMMON)
-    dtype_strategy: str             # fp32 | int8_w8a8 | bf16_f32acc
+    dtype_strategy: str             # fp32 | int8_w8a8 | bf16_f32acc | fp16_f32acc
     op_match: list[dict[str, Any]] = field(default_factory=list)
     lowering_patterns: list[str] = field(default_factory=list)
     lmul_policy: str = "m1"
@@ -48,6 +48,23 @@ class RvvPackage:
     @property
     def is_int8(self) -> bool:
         return self.dtype_strategy == "int8_w8a8"
+
+    @property
+    def is_half_f32acc(self) -> bool:
+        """True for the 16-bit-float datapaths (``bf16_f32acc`` / ``fp16_f32acc``).
+
+        DECLARATIVE, not a gate. Unlike ``is_int8`` -- which switches ``_prepare_model_mlir``
+        onto a different pass set (``apply_quant``) -- the 16-bit-float rewrite
+        (``passes_xdsl.lower_bf16_matmul_f32acc``) runs UNCONDITIONALLY on every model, because
+        f16/bf16 matmuls need f32 accumulation for correctness regardless of what any package
+        declares. Gating it on this knob would silently break every fp16 model whose package
+        happens to say ``fp32``.
+
+        So this property exists for provenance, result records, and ``expected_instructions``
+        verification (e16 vtype + ``vfwmacc``) -- it tells you what datapath a package is
+        MEANT to exercise, and the runner checks the emitted code actually matches.
+        """
+        return self.dtype_strategy in ("bf16_f32acc", "fp16_f32acc")
 
 
 def _check_cflags(cflags: list[str]) -> list[str]:

@@ -212,11 +212,26 @@ def lower_bf16_matmul_f32acc(module) -> int:
     indexing maps + iterator types are reused; only the accumulation dtype is promoted.
     """
     from xdsl.dialects import arith, tensor
+    from xdsl.dialects.arith import FastMathFlag, FastMathFlagsAttr
     from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, BFloat16Type, Float16Type,
                                        FloatAttr, TensorType, f32)
     from xdsl.dialects.linalg import ops as L
     from xdsl.ir import Block, Region
     from xdsl.ir.affine import AffineMap
+
+    # FP-CONTRACTION LICENSE on the accumulate. The mul/add below are a multiply-accumulate; without
+    # `contract` LLVM must keep them as a separate fmul + fadd and CANNOT form an FMA, so the RVV
+    # backend emits vfwmul.vf + vfadd.vv instead of the single fused vfwmacc.vf -- measured: zero
+    # vfwmacc in the emitted fp16 kernel until this flag was set. The f32 path never needed it
+    # because linalg.matmul -> vector.contract -> vector.fma already lowers to llvm.fmuladd; a
+    # MIXED-precision contraction (16-bit operands, f32 accumulator) cannot use vector.contract
+    # (which is same-type only) and so arrives here as explicit mulf/addf.
+    #
+    # This is a strict-accuracy WIN, not a fast-math relaxation: contraction removes the
+    # intermediate rounding of the product, which is exactly the single-rounding semantics the
+    # hardware FMA and the f32 reference path already have. No other fast-math flag is set (no
+    # reassoc/nnan/ninf), so the reduction order is unchanged and NaN/Inf behavior is preserved.
+    _CONTRACT = FastMathFlagsAttr([FastMathFlag.ALLOW_CONTRACT])
 
     par, red = L.IteratorType.PARALLEL, L.IteratorType.REDUCTION
 
@@ -267,8 +282,8 @@ def lower_bf16_matmul_f32acc(module) -> int:
         body = Block(arg_types=[a_e, b_e, f32])
         x, y, acc = body.args
         xf, yf = arith.ExtFOp(x, f32), arith.ExtFOp(y, f32)
-        prod = arith.MulfOp(xf.result, yf.result)
-        summ = arith.AddfOp(acc, prod.result)
+        prod = arith.MulfOp(xf.result, yf.result, _CONTRACT)
+        summ = arith.AddfOp(acc, prod.result, _CONTRACT)
         body.add_ops([xf, yf, prod, summ, L.YieldOp(summ.result)])
         acc_f32 = L.GenericOp(inputs=(a, b), outputs=(fill_f.results[0],),
                               body=Region(body), indexing_maps=maps, iterator_types=iters,
@@ -287,7 +302,10 @@ def lower_bf16_matmul_f32acc(module) -> int:
             iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * rank),
             result_types=(out_t,))
 
-        carry_provenance(acc_f32, op, "bf16_f32acc")
+        # Tag by the ACTUAL operand width -- this pass covers bf16 and fp16, and a breadcrumb
+        # that says "bf16" on an fp16 kernel sends the next reader to the wrong datapath.
+        carry_provenance(acc_f32, op,
+                         "fp16_f32acc" if isinstance(a_e, Float16Type) else "bf16_f32acc")
         for new_op in (empty_f, zero, fill_f, acc_f32, empty_b, trunc):
             block.insert_op_before(new_op, op)
         op.results[0].replace_all_uses_with(trunc.results[0])

@@ -37,7 +37,7 @@ _KNOWN_OVERRIDE_KEYS = {"op_match", "contraction_strategy", "lowering_patterns",
 
 # Enumerated value vocabularies (used to clamp / reject scalar knobs).
 _CONTRACTION_STRATEGIES = {"outerproduct", "dot", "matmulintrinsics", "parallelarith"}
-_DTYPE_STRATEGIES = {"fp32", "int8_w8a8", "bf16_f32acc"}
+_DTYPE_STRATEGIES = {"fp32", "int8_w8a8", "bf16_f32acc", "fp16_f32acc"}
 # The vector-lowering patterns the schedule knows how to apply (transform.apply_patterns.vector.*).
 _LOWERING_PATTERNS = {
     "lower_contraction", "lower_masked_transfers", "lower_transpose", "lower_shape_cast",

@@ -82,14 +82,20 @@ def test_v3_runner_selected_for_v3_features():
 
 
 def test_scalarize_rewrite_is_numerically_neutral_by_construction():
-    # The rewrite replaces vector.extract[i,0]:f32 of a transfer_read with a scalar load of element
+    # The rewrite replaces vector.extract[i,0]:T of a transfer_read with a scalar load of element
     # [i,0] of the same source — identical value. Assert the rewriter only targets reads whose uses
-    # are ALL scalar f32 extracts (so it can never change a vector-valued use).
+    # are ALL scalar extracts OF THAT SAME ELEMENT TYPE (so it can never change a vector-valued use).
+    # The gate is element-type-parameterized (f32 for the fp32 micro-kernel, f16/bf16 for the
+    # 16-bit-float datapaths) rather than f32-literal, but the neutrality argument is unchanged:
+    # the extract's result type must equal the vector read's element type.
     from merlin.llvmlower.accum_microkernel import rewrite_source
     src = rewrite_source()
     assert "vector.transfer_read" in src
     assert 'dims[-1] != "1"' in src                 # only register-tile lhs reads (trailing unit dim)
-    assert 'str(owner.results[0].type) != "f32"' in src  # bail unless every use is a scalar f32 extract
+    assert 'str(owner.results[0].type) != elem' in src   # bail unless every use is a scalar extract
+    # ...and `elem` is exactly the element type parsed off the read's own vector type.
+    assert 'for cand in ("f32", "f16", "bf16")' in src
+    assert 'ts.endswith("x" + cand + ">")' in src
 
 
 # ---- compiler-emitted structural check (needs the riscv toolchain) ------------------

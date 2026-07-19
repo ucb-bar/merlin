@@ -462,10 +462,16 @@ def lift_graph(record, *, source: str = "graph", backend: str = "rvv") -> CCA:
     op = prov.get("prov.op") or getattr(record, "kind", None) or "unknown"
     dt = (getattr(record, "dtype", "") or "").lower()
     is_int8 = "i8" in dt or "int8" in dt
-    acc = "i32" if is_int8 else ("f32" if ("f32" in dt or "float32" in dt) else None)
+    # 16-bit floats accumulate in f32 (lower_bf16_matmul_f32acc) via a WIDENING MAC, exactly as
+    # int8 accumulates in i32 -- without this arm an f16/bf16 record inferred accumulator_dtype
+    # None, so the compute.accumulator_dtype axis could never route to the 16-bit datapath.
+    is_half = "f16" in dt or "float16" in dt or "bf16" in dt
+    acc = ("i32" if is_int8 else
+           "f32" if (is_half or "f32" in dt or "float32" in dt) else None)
     return CCA(
         op=op, backend=[backend],
-        compute=ComputeFacet(op=op, accumulator_dtype=acc, widening=True if is_int8 else None),
+        compute=ComputeFacet(op=op, accumulator_dtype=acc,
+                             widening=True if (is_int8 or is_half) else None),
         provenance={"level": "graph", "source": source, "confidence": "medium"})
 
 

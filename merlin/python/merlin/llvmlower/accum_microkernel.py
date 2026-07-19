@@ -68,12 +68,21 @@ def _merlin_walk(op, fn):
 
 
 def scalarize_a_reads(module, ctx):
-    """Replace each `vector.transfer_read -> vector<MRx1xf32>` whose only uses are
-    `vector.extract [i, 0] : f32` with per-row scalar `tensor.extract`/`memref.load`, so the A
+    """Replace each `vector.transfer_read -> vector<MRx1xT>` (T = f32 / f16 / bf16) whose only uses
+    are `vector.extract [i, 0] : T` with per-row scalar `tensor.extract`/`memref.load`, so the A
     operand of the register-blocked vfmacc reaches the backend as a scalar (flw -> vfmacc.vf) instead
     of a reconstructed vector lane (vmv/vslideup -> vfmacc.vv). Returns the count rewritten.
 
     Numerically identical: element [i,0] of the slice == lane [i,0] of the vector read of the slice.
+
+    ELEMENT TYPES: originally f32-only, which silently excluded the 16-bit-float datapaths --
+    an fp16 matmul reached this pass as `vector<MRx1xf16>` + `vector.extract : f16`, failed the
+    f32 gate, kept the vector-lane A operand, and so never formed a `.vf` MAC at all (measured:
+    ZERO vfmacc/vfwmacc in the emitted fp16 kernel, versus 8 vfmacc.vf for the same shape in
+    f32). The rewrite is element-type-agnostic by construction -- it only turns a vector read
+    plus scalar extract into a scalar load -- so admitting f16/bf16 puts them on the SAME
+    micro-kernel path rather than a parallel one. With a 16-bit A scalar and an f32 accumulator
+    the backend forms `vfwmacc.vf` (widening MAC), the fp16 analogue of f32's `vfmacc.vf`.
 
     WHOLE-MODEL SAFETY: the rewrite must only fire on the matmul register-tile A read it was designed
     for; on a real model the IR carries OTHER `vector<...x1xf32>` transfer_reads consumed only by
@@ -159,9 +168,22 @@ def scalarize_a_reads(module, ctx):
             return
         res = o.results[0]
         ts = str(res.type)
-        if not ts.startswith("vector<") or "xf32>" not in ts:
+        if not ts.startswith("vector<"):
             return
-        shape = ts[len("vector<"):ts.index("xf32>")]
+        # ELEMENT TYPE: f32 is the original fp32 micro-kernel; f16/bf16 are the 16-bit-float
+        # datapaths (dtype_strategy fp16_f32acc / bf16_f32acc), whose A operand is a 16-bit
+        # scalar feeding an f32 accumulator -> the backend forms `vfwmacc.vf` (widening MAC)
+        # exactly as it forms `vfmacc.vf` for f32. The rewrite itself is element-type-agnostic
+        # (it turns a vector read + scalar extract into a scalar load), so the ONLY thing that
+        # had to change is which element types we admit and what type we build the load with.
+        elem = None
+        for cand in ("f32", "f16", "bf16"):
+            if ts.endswith("x" + cand + ">"):
+                elem = cand
+                break
+        if elem is None:
+            return
+        shape = ts[len("vector<"):ts.rindex("x" + elem + ">")]
         dims = shape.split("x")
         # The register-tile lhs A read, in EITHER of the two equivalent forms the lowering can leave:
         #   (a) rank>=2 with a TRAILING unit dim, `vector<MR x 1>` (the MR>1 register tile); or
@@ -182,7 +204,7 @@ def scalarize_a_reads(module, ctx):
         exs = []
         for u in res.uses:
             owner = u.owner
-            if owner.name != "vector.extract" or str(owner.results[0].type) != "f32":
+            if owner.name != "vector.extract" or str(owner.results[0].type) != elem:
                 return  # a non-scalar use -> leave this read alone (keep it correct/general)
             poslen = len(list(owner.attributes["static_position"]))
             # The extract position addresses the TRAILING `poslen` source dims; the read may have
@@ -196,13 +218,15 @@ def scalarize_a_reads(module, ctx):
                 return  # a dropped leading dim with extent>1 -> lane[pos] != element[base..,pos]
             exs.append(owner)
         if exs:
-            targets.append((o, exs))
+            targets.append((o, exs, elem))
 
     _merlin_walk(module.operation, visit)
     idxty = ir.IndexType.get(ctx)
-    f32 = ir.F32Type.get(ctx)
+    _ELEM_TY = {"f32": ir.F32Type.get(ctx), "f16": ir.F16Type.get(ctx),
+                "bf16": ir.BF16Type.get(ctx)}
     n = 0
-    for read, exs in targets:
+    for read, exs, elem in targets:
+        scalar_ty = _ELEM_TY[elem]
         src_val = read.operands[0]
         base_idx = list(read.operands[1:])
         rank = _src_rank(str(src_val.type))
@@ -236,7 +260,7 @@ def scalarize_a_reads(module, ctx):
                         new_idx.append(ir.Operation.create(
                             "arith.addi", results=[idxty], operands=[b, c], ip=ip).results[0])
             scalar = ir.Operation.create(
-                opname, results=[f32], operands=[src_val, *new_idx], ip=ip).results[0]
+                opname, results=[scalar_ty], operands=[src_val, *new_idx], ip=ip).results[0]
             ex.operation.results[0].replace_all_uses_with(scalar)
             ex.operation.erase()
         read.operation.erase()
