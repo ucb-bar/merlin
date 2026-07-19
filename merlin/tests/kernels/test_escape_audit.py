@@ -63,6 +63,18 @@ def test_backedge_spans_are_intra_procedural_and_nest():
     assert depth(0x10010) == 2        # memrefCopy: inside both loops
 
 
+def test_containment_chain_distinguishes_a_real_nest_from_overlapping_spans():
+    from merlin.kernels.escape_audit import _is_containment_chain
+
+    assert _is_containment_chain([]) is True
+    assert _is_containment_chain([(0x10, 0x90)]) is True
+    # properly nested: inner strictly inside outer -> counting them IS a depth
+    assert _is_containment_chain([(0x10, 0x90), (0x20, 0x80), (0x30, 0x70)]) is True
+    # partially overlapping: starts AND ends both increase, which no real loop nest can do.
+    # This is the int8 small-M shape; the count is not a depth and must be flagged.
+    assert _is_containment_chain([(0x10, 0x80), (0x20, 0x90), (0x30, 0xA0)]) is False
+
+
 def test_unreadable_artifacts_report_unknown_not_clean(tmp_path):
     """A file that is not an object must come back UNKNOWN -- never as an escape-free kernel."""
     bogus = tmp_path / "not_an_object.o"

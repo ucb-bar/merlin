@@ -2,18 +2,25 @@
 
 Generalizes a point fix into an audit. One escape -- a per-tile ``memrefCopy`` that bufferization
 left behind as a self-copy -- was 77% of the f32 GEMM's retired instructions while being invisible to
-every existing diagnostic. It also did NOT transfer: the same feature moved the int8 path by 0.03%,
-because int8 lowers differently and has no self-copy. So "is there another one?" is a question per
-(op, dtype, model) cell, not a question with one answer, and it needs a matrix.
+every existing diagnostic, and enabling the fix on the int8 path moved it only 0.03%. So "is there
+another one?" is a question per (op, dtype, model) cell, not a question with one answer.
+
+Running the matrix immediately corrected the story that motivated it. The int8 no-op had been read as
+"int8 lowers differently and has no self-copy"; in fact the int8 matmul DOES emit the in-loop
+``memrefCopy`` and ``erase_self_copy`` DOES remove it from the emitted code. Whatever explains the
+0.03% is not the absence of the escape. That is the value of sweeping rather than generalizing from
+one measurement.
 
 Each cell BUILDS (host-only cross-compile; no board, no measurement) and lifts
 :func:`merlin.kernels.escape_audit.audit`. Cells are independent, so they fan out across threads.
 
 What the sweep reports per cell is the *screening* signal:
-  * ``in_loop``  -- escapes at loop depth > 0. Per-iteration overhead; cost scales with the problem.
-                   This is the only column that has ever indicated a real defect.
-  * ``prologue`` -- escapes at depth 0. Once per inference: allocation, argument marshalling,
-                   result copy-out. Real work; erasing these would be a correctness bug.
+  * ``in_loop``  -- escapes enclosed by a back-edge. Per-iteration overhead, so cost scales with the
+                   problem. This is the only column that has ever indicated a real defect.
+  * ``prologue`` -- escapes not enclosed by any loop. Once per inference: allocation, argument
+                   marshalling, result copy-out. Real work; erasing these would be a correctness bug.
+  * ``depths_reliable`` -- whether the depth NUMBERS can be believed (see ``_is_containment_chain``).
+                   ``in_loop`` still stands when this is False; only the count is untrustworthy.
 
 Screening only ranks candidates. An in-loop escape is a *suspect*, not a finding: confirming one
 means proving the call is redundant at the IR level and then measuring it. A cell whose artifacts
@@ -60,6 +67,7 @@ class EscapeResult:
     in_loop: dict[str, int] | None = None
     prologue: dict[str, int] | None = None
     max_depth: int | None = None
+    depths_reliable: bool | None = None
     sites: list[dict[str, Any]] = field(default_factory=list)
     scope: tuple[str, ...] | None = None
     note: str = ""
@@ -69,7 +77,8 @@ class EscapeResult:
             "cell": self.cell, "kind": self.kind, "dtype": self.dtype,
             "features": list(self.features), "status": self.status,
             "in_loop": self.in_loop, "prologue": self.prologue,
-            "max_depth": self.max_depth, "sites": self.sites,
+            "max_depth": self.max_depth, "depths_reliable": self.depths_reliable,
+            "sites": self.sites,
             "scope": list(self.scope) if self.scope else None, "note": self.note,
         }
 
@@ -118,8 +127,10 @@ def run_cell(cell: EscapeCell, *, timeout: int = 3600) -> EscapeResult:
             prologue={k: v for k, v in (rep.site_counts() or {}).items()
                       if v - (rep.in_loop_counts() or {}).get(k, 0) > 0},
             max_depth=rep.max_depth(), scope=rep.scope,
+            depths_reliable=rep.depths_reliable,
             sites=[{"helper": s.helper, "caller": s.caller, "addr": s.addr,
-                    "loop_depth": s.loop_depth} for s in rep.sites],
+                    "loop_depth": s.loop_depth, "depth_reliable": s.depth_reliable}
+                   for s in rep.sites],
         )
     except Exception as exc:                    # noqa: BLE001 -- a failed cell must be reported
         return replace(base, note=f"{type(exc).__name__}: {exc}",

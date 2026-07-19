@@ -47,6 +47,7 @@ class EscapeSite:
     caller: str               # enclosing compiler-emitted function, e.g. "forward"
     addr: int                 # call-site address in the linked ELF
     loop_depth: int           # number of back-edge spans enclosing this address (0 = straight-line)
+    depth_reliable: bool = True   # False when the enclosing spans do not form a containment chain
 
     @property
     def in_loop(self) -> bool:
@@ -113,6 +114,14 @@ class EscapeReport:
         if self.sites is None:
             return None
         return max((s.loop_depth for s in self.sites), default=0)
+
+    @property
+    def depths_reliable(self) -> bool | None:
+        """False when any in-loop site's enclosing spans do not nest, so its depth NUMBER is not
+        trustworthy. ``in_loop`` itself still stands -- a back-edge does enclose the call."""
+        if self.sites is None:
+            return None
+        return all(s.depth_reliable for s in self.sites if s.in_loop)
 
 
 def emitted_functions(obj_path: str | Path) -> tuple[str, ...] | None:
@@ -198,11 +207,30 @@ def audit(obj_path: str | Path, elf_path: str | Path) -> EscapeReport:
             callee = _callee(operands)
             if callee is None or callee not in RUNTIME_ESCAPE_SYMBOLS:
                 continue
+            enclosing = [(lo, hi) for lo, hi in spans if lo <= addr <= hi]
             sites.append(EscapeSite(helper=callee, caller=fn, addr=addr,
-                                    loop_depth=sum(1 for lo, hi in spans if lo <= addr <= hi)))
+                                    loop_depth=len(enclosing),
+                                    depth_reliable=_is_containment_chain(enclosing)))
     sites.sort(key=lambda s: s.addr)
     return EscapeReport(obj=str(obj_path), elf=str(elf_path), scope=scope,
                         undefined=undef, sites=tuple(sites), loops_seen=loops_seen)
+
+
+def _is_containment_chain(spans: list[tuple[int, int]]) -> bool:
+    """True when the spans nest properly (each contained in the next) -- the condition under which
+    counting enclosing spans is a sound loop DEPTH.
+
+    A real loop nest is nested or disjoint, never partially overlapping, so overlapping spans mean
+    the address-range approximation has broken down: after loop rotation and block reordering a
+    loop's body need not be address-contiguous, and a back-edge's [target, latch] range can then
+    cover code belonging to a sibling loop. Observed on the int8 small-M path, where a call had four
+    "enclosing" spans whose starts AND ends both increased -- an impossible nest. The call really is
+    inside a loop there, but the number 4 is not a depth, and reporting it as one would be inventing
+    precision the instrument does not have.
+    """
+    ordered = sorted(spans, key=lambda s: s[1] - s[0])
+    return all(ordered[i + 1][0] <= ordered[i][0] and ordered[i][1] <= ordered[i + 1][1]
+               for i in range(len(ordered) - 1))
 
 
 def _backedge_spans(insns: list[tuple[int, str, list[str]]]) -> list[tuple[int, int]]:
