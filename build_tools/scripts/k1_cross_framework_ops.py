@@ -107,6 +107,13 @@ def _parse(base: dict, console: str | None, detail: str, *, reps: int = 1) -> di
     from merlin.rvvgen import pmu as pmu_mod
     counts = pmu_mod.parse(console)
     pmu_fields = counts.as_dict() if counts is not None else {}
+    # Retired instructions on the SAME bracket as the rdtime timing (the drivers read minstret via
+    # perf_event_open). This is what separates "emits too many instructions" -- which a schedule can
+    # fix -- from "stalls on each", which it cannot. Absent on drivers that do not print it.
+    instret = int_after(console, "INSTRET")
+    if instret is not None:
+        pmu_fields = {**pmu_fields, "instret": instret,
+                      "instret_full": int_after(console, "INSTRET_FULL")}
     return {**base, "ticks": t, "status": "pass", **pmu_fields,
             "correct": (err == 0) if err is not None else True,
             "wall_ns_est": int(t * 1e9 / k1.K1_TIMEBASE_HZ),
