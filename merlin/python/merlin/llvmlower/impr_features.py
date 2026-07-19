@@ -16,6 +16,7 @@ it, so it can be measured against the immutable baseline.
 from __future__ import annotations
 
 from .selfcopy import FEATURE as _SELF_COPY_FEATURE
+from .transpose_fuse import FEATURE as _FUSE_TRANSPOSE_FEATURE
 import hashlib
 import tempfile
 from dataclasses import dataclass
@@ -1543,4 +1544,23 @@ register(ImprFeature(
                 "and before finalize-memref-to-llvm, where it would otherwise survive as an opaque "
                 "@memrefCopy rank-generic runtime call costing ~79 retired instructions per OUTPUT "
                 "ELEMENT. Removes the tile-epilogue copy; emits no new code.",
+))
+
+
+# Fold a `linalg.transpose` of a matmul's B operand INTO the matmul's access pattern (transpose-b
+# GEMM). WHOLE-MODEL, cross-op: the whole-model profiler measured `linalg.transpose` at 393 ms = 57%
+# of openvla -- more than every matmul combined -- and SCALAR (convert-linalg-to-loops). Every
+# openvla matmul is a transposed-B addmm fed by a standalone weight transpose. Folding it eliminates
+# the scalar transpose op AND its materialized buffer; the op stays `linalg.matmul` (transposed-B
+# indexing_map) so the frozen RVV schedule still vectorizes it. Default-off; baseline byte-identical.
+# The rewrite runs in the lowering runner (gated by argv[5]); see llvmlower/transpose_fuse.py.
+register(ImprFeature(
+    name=_FUSE_TRANSPOSE_FEATURE,
+    action_class="PASS",
+    description="fuse `matmul(A, transpose(B, [1,0]))` into a transpose-b `linalg.matmul` (repoint "
+                "the B operand to the un-transposed weight + permute its indexing_map (k,n)->(n,k), "
+                "then erase the dead transpose). Eliminates the standalone SCALAR weight transpose "
+                "(393 ms / 57% of openvla) and its DRAM buffer with no op materialized; the matmul "
+                "stays vectorized by the frozen schedule and reads B contiguously along k. "
+                "Whole-model cross-op fusion; default-off, baseline byte-identical.",
 ))
