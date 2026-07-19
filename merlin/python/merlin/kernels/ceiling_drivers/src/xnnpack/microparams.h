@@ -11,11 +11,18 @@ struct xnn_f32_default_params {
   char _;
 };
 
-// f32 GEMM/dwconv output clamp.
+// f32 GEMM/dwconv output clamp AND f32-vclamp.
 struct xnn_f32_minmax_params {
   struct {
     float min;
     float max;
+  } scalar;
+};
+
+// f32-rsum: post-reduction scale (rsum does *output += reduced * scale).
+struct xnn_f32_scale_params {
+  struct {
+    float scale;
   } scalar;
 };
 

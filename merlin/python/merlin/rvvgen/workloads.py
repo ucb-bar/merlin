@@ -351,6 +351,140 @@ def gen_matmul_f16(out_root: str | Path, M: int = 128, N: int = 128, K: int = 12
     return _finish(bundle, mlir, manifest, order, {"in0": a, "in1": b}, golden)
 
 
+def gen_binary_f32(out_root: str | Path, op: str = "mul", N: int = 65536, seed: int = 0) -> Path:
+    """A single f32 elementwise BINARY op over two N-vectors: out[i] = a[i] OP b[i], emitted as a
+    linalg.generic. `op` in {mul, add, sub, div, max, min}. This is the XNNPACK f32-vbinary family
+    (vmul/vadd/...), the elementwise op present in every model (residual adds, gating mul). Two
+    operands are inputs (no weights); bandwidth-bound -> sweep N."""
+    _ARITH = {"mul": "arith.mulf", "add": "arith.addf", "sub": "arith.subf",
+              "div": "arith.divf", "max": "arith.maximumf", "min": "arith.minimumf"}
+    _NP = {"mul": np.multiply, "add": np.add, "sub": np.subtract,
+           "div": np.divide, "max": np.maximum, "min": np.minimum}
+    if op not in _ARITH:
+        raise ValueError(f"gen_binary_f32: unsupported op {op!r} (wired: {sorted(_ARITH)})")
+    bundle = Path(out_root) / f"binary_{op}_f32_{N}"
+    sf = bundle / "weights.safetensors"
+    mlir = (
+        f'builtin.module attributes {{prov.weights_file = "{sf}", '
+        'prov.level = "linalg-on-tensors"} {\n'
+        f"  func.func @forward(%a: tensor<{N}xf32>, %b: tensor<{N}xf32>) -> tensor<{N}xf32> {{\n"
+        f"    %oi = tensor.empty() : tensor<{N}xf32>\n"
+        f"    %r = linalg.generic {{indexing_maps = [affine_map<(d0) -> (d0)>, "
+        "affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types = [\"parallel\"]} "
+        f"ins(%a, %b : tensor<{N}xf32>, tensor<{N}xf32>) outs(%oi : tensor<{N}xf32>) {{\n"
+        "    ^bb0(%ina: f32, %inb: f32, %o: f32):\n"
+        f"      %y = {_ARITH[op]} %ina, %inb : f32\n"
+        "      linalg.yield %y : f32\n"
+        f"    }} -> tensor<{N}xf32>\n"
+        f"    return %r : tensor<{N}xf32>\n"
+        "  }\n}\n"
+    )
+    r = _rng(seed)
+    a = r.standard_normal((N,)).astype(np.float32)
+    b = (r.standard_normal((N,)).astype(np.float32) + 2.0)  # +2 keeps div well-conditioned
+    manifest = {"0": {"kind": "input", "name": "a"}, "1": {"kind": "input", "name": "b"}}
+    order = {"a": 0, "b": 1}
+    return _finish(bundle, mlir, manifest, order, {"in0": a, "in1": b}, _NP[op](a, b))
+
+
+def gen_reduce_f32(out_root: str | Path, op: str = "sum", M: int = 64, N: int = 4096,
+                   seed: int = 0) -> Path:
+    """A single f32 REDUCTION over the last dim of an (M,N) input -> (M,) output, emitted as a
+    linalg.generic with a trailing reduction iterator. `op` in {sum, max, min}. This is the
+    XNNPACK f32-rsum / f32-rminmax family; the row-reduction is the softmax/norm building block
+    present in every model. M rows keep it off the degenerate one-strip shape."""
+    _INIT = {"sum": ("%czero", "0.000000e+00", "arith.addf"),
+             "max": ("%cneg", "0xFF800000", "arith.maximumf"),
+             "min": ("%cpos", "0x7F800000", "arith.minimumf")}
+    _NP = {"sum": lambda x: x.sum(axis=1), "max": lambda x: x.max(axis=1),
+           "min": lambda x: x.min(axis=1)}
+    if op not in _INIT:
+        raise ValueError(f"gen_reduce_f32: unsupported op {op!r} (wired: {sorted(_INIT)})")
+    initname, initval, arith = _INIT[op]
+    bundle = Path(out_root) / f"reduce_{op}_f32_{M}x{N}"
+    sf = bundle / "weights.safetensors"
+    mlir = (
+        f'builtin.module attributes {{prov.weights_file = "{sf}", '
+        'prov.level = "linalg-on-tensors"} {\n'
+        f"  func.func @forward(%x: tensor<{M}x{N}xf32>) -> tensor<{M}xf32> {{\n"
+        f"    {initname} = arith.constant {initval} : f32\n"
+        f"    %ii = tensor.empty() : tensor<{M}xf32>\n"
+        f"    %if = linalg.fill ins({initname} : f32) outs(%ii : tensor<{M}xf32>) "
+        f"-> tensor<{M}xf32>\n"
+        f"    %r = linalg.generic {{indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, "
+        "affine_map<(d0, d1) -> (d0)>], iterator_types = [\"parallel\", \"reduction\"]} "
+        f"ins(%x : tensor<{M}x{N}xf32>) outs(%if : tensor<{M}xf32>) {{\n"
+        "    ^bb0(%in: f32, %o: f32):\n"
+        f"      %a = {arith} %in, %o : f32\n"
+        "      linalg.yield %a : f32\n"
+        f"    }} -> tensor<{M}xf32>\n"
+        f"    return %r : tensor<{M}xf32>\n"
+        "  }\n}\n"
+    )
+    r = _rng(seed)
+    x = r.standard_normal((M, N)).astype(np.float32)
+    return _finish(bundle, mlir, {"0": {"kind": "input", "name": "x"}}, {"x": 0},
+                   {"in0": x}, _NP[op](x).astype(np.float32))
+
+
+def gen_relu_f32(out_root: str | Path, N: int = 65536, lo: float = 0.0, hi: float = 6.0,
+                 seed: int = 0) -> Path:
+    """A single f32 CLAMP over an N-vector: out[i] = min(max(x[i], lo), hi), emitted as a
+    linalg.generic. Maps to XNNPACK f32-vclamp (relu6 with lo=0, hi=6). Bandwidth-bound -> sweep N."""
+    bundle = Path(out_root) / f"relu_f32_{N}"
+    sf = bundle / "weights.safetensors"
+    mlir = (
+        f'builtin.module attributes {{prov.weights_file = "{sf}", '
+        'prov.level = "linalg-on-tensors"} {\n'
+        f"  func.func @forward(%x: tensor<{N}xf32>) -> tensor<{N}xf32> {{\n"
+        f"    %clo = arith.constant {lo:.6e} : f32\n"
+        f"    %chi = arith.constant {hi:.6e} : f32\n"
+        f"    %oi = tensor.empty() : tensor<{N}xf32>\n"
+        f"    %r = linalg.generic {{indexing_maps = [affine_map<(d0) -> (d0)>, "
+        "affine_map<(d0) -> (d0)>], iterator_types = [\"parallel\"]} "
+        f"ins(%x : tensor<{N}xf32>) outs(%oi : tensor<{N}xf32>) {{\n"
+        "    ^bb0(%in: f32, %o: f32):\n"
+        "      %a = arith.maximumf %in, %clo : f32\n"
+        "      %y = arith.minimumf %a, %chi : f32\n"
+        "      linalg.yield %y : f32\n"
+        f"    }} -> tensor<{N}xf32>\n"
+        f"    return %r : tensor<{N}xf32>\n"
+        "  }\n}\n"
+    )
+    r = _rng(seed)
+    x = (r.standard_normal((N,)).astype(np.float32) * 3.0)
+    golden = np.minimum(np.maximum(x, lo), hi).astype(np.float32)
+    return _finish(bundle, mlir, {"0": {"kind": "input", "name": "x"}}, {"x": 0},
+                   {"in0": x}, golden)
+
+
+def gen_transpose_f32(out_root: str | Path, R: int = 256, C: int = 256, seed: int = 0) -> Path:
+    """A single f32 2-D TRANSPOSE (R,C)->(C,R), emitted as a linalg.generic with a permuting
+    indexing map. This is the XNNPACK x32-transposec family -- pure data movement, the single
+    largest BYTE-traffic op family across the model census. Non-square by default so a stride bug
+    that a square shape would hide is exposed."""
+    bundle = Path(out_root) / f"transpose_f32_{R}x{C}"
+    sf = bundle / "weights.safetensors"
+    mlir = (
+        f'builtin.module attributes {{prov.weights_file = "{sf}", '
+        'prov.level = "linalg-on-tensors"} {\n'
+        f"  func.func @forward(%x: tensor<{R}x{C}xf32>) -> tensor<{C}x{R}xf32> {{\n"
+        f"    %oi = tensor.empty() : tensor<{C}x{R}xf32>\n"
+        f"    %r = linalg.generic {{indexing_maps = [affine_map<(d0, d1) -> (d1, d0)>, "
+        "affine_map<(d0, d1) -> (d0, d1)>], iterator_types = [\"parallel\", \"parallel\"]} "
+        f"ins(%x : tensor<{R}x{C}xf32>) outs(%oi : tensor<{C}x{R}xf32>) {{\n"
+        "    ^bb0(%in: f32, %o: f32):\n"
+        "      linalg.yield %in : f32\n"
+        f"    }} -> tensor<{C}x{R}xf32>\n"
+        f"    return %r : tensor<{C}x{R}xf32>\n"
+        "  }\n}\n"
+    )
+    r = _rng(seed)
+    x = r.standard_normal((R, C)).astype(np.float32)
+    return _finish(bundle, mlir, {"0": {"kind": "input", "name": "x"}}, {"x": 0},
+                   {"in0": x}, x.T.copy())
+
+
 _GENERATORS = {"matmul_f32": gen_matmul_f32, "matmul_f16": gen_matmul_f16,
                "softmax_f32": gen_softmax_f32,
                "batch_matmul_f32": gen_batch_matmul_f32,

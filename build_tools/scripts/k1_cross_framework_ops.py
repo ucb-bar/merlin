@@ -438,12 +438,175 @@ def run_attention(reps: int) -> list[dict]:
     return rows
 
 
+# ---------------------------------------------------------------------------
+# BROADENED coverage (beyond gemm/activation/conv): the op families the model census
+# (build_tools/scripts/model_op_census.py) ranks as actually executed by our models --
+# elementwise binary (residual add / gate mul), reduction (softmax/norm), clamp (relu),
+# and transpose (the largest BYTE-traffic family). Each cell: XNNPACK RVV ukernel vs OUR
+# codegen, same shape, correctness-gated, ticks + INSTRET.
+
+def run_vbinary(sizes: list[int], reps: int) -> list[dict]:
+    """XNNPACK f32-vbinary (vmul / vadd) vs OUR elementwise-mul/add codegen. Present in every
+    model (residual adds, gating muls); mapped in the catalog. Bandwidth-bound -> sweep N."""
+    from merlin.rvvgen import workloads
+    rows = []
+    kernels = [("mul", "f32-vbinary/gen/f32-vmul-rvv-u8v.c", "xnn_f32_vmul_ukernel__rvv_u8v"),
+               ("add", "f32-vbinary/gen/f32-vadd-rvv-u8v.c", "xnn_f32_vadd_ukernel__rvv_u8v")]
+    for op, ksrc, kfn in kernels:
+        for Nsz in sizes:
+            base = {"op": f"vbinary_{op}", "dtype": "f32", "size_n": Nsz, "source": "xnnpack",
+                    "target": "k1", "mode": "inner_compute", "timer": "rdtime",
+                    "timebase_hz": k1.K1_TIMEBASE_HZ, "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc}
+            print(f"--- xnnpack vbinary {op} N={Nsz} ---")
+            r = _build_run_xnn(f"brd_vbin_{op}_xnn_{Nsz}", HERE / "xnnpack_vbinary_driver.c",
+                               [f'-DXNN_KERNEL_SRC="{ksrc}"', f"-DXNN_KERNEL_FN={kfn}",
+                                f"-DXNN_BINOP_{op.upper()}", f"-DVLEN_N={Nsz}"],
+                               reps=reps, base=base, pmu=True)
+            print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
+            rows.append(r)
+            bundle = workloads.gen_binary_f32(REPO / "artifacts" / "cache" / "rvv_workloads",
+                                              op=op, N=Nsz)
+            for vec, sid in ((False, "ours_scalar"), (True, "ours_vectorized")):
+                base = {"op": f"vbinary_{op}", "dtype": "f32", "size_n": Nsz, "source": sid,
+                        "target": "k1", "mode": "inner_compute", "timer": "rdtime",
+                        "timebase_hz": k1.K1_TIMEBASE_HZ, "vectorize": vec,
+                        "kernel_file": f"merlin RVV codegen ({sid})"}
+                print(f"--- {sid} vbinary {op} N={Nsz} ---")
+                r = _build_run_ours(f"brd_vbin_{op}_{sid}_{Nsz}", bundle, HERE / "ours_kernel_driver.c",
+                                    ["-DOURS_REF_binary", f"-DBINOP_{op.upper()}"], sid, [],
+                                    int8=False, vectorize=vec, reps=reps, base=base, pmu=True)
+                print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
+                rows.append(r)
+    return rows
+
+
+def run_reduce(shapes: list[tuple[int, int]], reps: int) -> list[dict]:
+    """XNNPACK f32-rsum / f32-rmax (per-row, over the last dim) vs OUR reduce codegen. The
+    softmax/norm reduction present in every model; catalog partial (rsum/rminmax)."""
+    from merlin.rvvgen import workloads
+    rows = []
+    kernels = [("sum", "f32-rsum/gen/f32-rsum-rvv-u8v.c", "xnn_f32_rsum_ukernel__rvv_u8v"),
+               ("max", "f32-rminmax/gen/f32-rmax-rvv-u8v.c", "xnn_f32_rmax_ukernel__rvv_u8v")]
+    for op, ksrc, kfn in kernels:
+        for (M, N) in shapes:
+            base = {"op": f"reduce_{op}", "dtype": "f32", "M": M, "N": N, "source": "xnnpack",
+                    "target": "k1", "mode": "inner_compute", "timer": "rdtime",
+                    "timebase_hz": k1.K1_TIMEBASE_HZ, "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc}
+            print(f"--- xnnpack reduce {op} {M}x{N} ---")
+            r = _build_run_xnn(f"brd_red_{op}_xnn_{M}x{N}", HERE / "xnnpack_reduce_driver.c",
+                               [f'-DXNN_KERNEL_SRC="{ksrc}"', f"-DXNN_KERNEL_FN={kfn}",
+                                f"-DXNN_REDOP_{op.upper()}", f"-DRED_M={M}", f"-DRED_N={N}"],
+                               reps=reps, base=base, pmu=True)
+            print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
+            rows.append(r)
+            bundle = workloads.gen_reduce_f32(REPO / "artifacts" / "cache" / "rvv_workloads",
+                                              op=op, M=M, N=N)
+            base = {"op": f"reduce_{op}", "dtype": "f32", "M": M, "N": N, "source": "ours_vectorized",
+                    "target": "k1", "mode": "inner_compute", "timer": "rdtime",
+                    "timebase_hz": k1.K1_TIMEBASE_HZ, "vectorize": True,
+                    "kernel_file": "merlin RVV codegen (ours_vectorized)"}
+            print(f"--- ours reduce {op} {M}x{N} ---")
+            r = _build_run_ours(f"brd_red_{op}_ours_{M}x{N}", bundle, HERE / "ours_kernel_driver.c",
+                                ["-DOURS_REF_reduce", f"-DREDOP_{op.upper()}"], "ours_vectorized", [],
+                                int8=False, vectorize=True, reps=reps, base=base, pmu=True)
+            print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
+            rows.append(r)
+    return rows
+
+
+def run_clamp(sizes: list[int], reps: int) -> list[dict]:
+    """XNNPACK f32-vclamp (relu6) vs OUR clamp codegen. Mapped in the catalog (clamp/relu)."""
+    from merlin.rvvgen import workloads
+    rows = []
+    ksrc = "f32-vclamp/gen/f32-vclamp-rvv-u8v.c"
+    kfn = "xnn_f32_vclamp_ukernel__rvv_u8v"
+    for Nsz in sizes:
+        base = {"op": "clamp", "dtype": "f32", "size_n": Nsz, "source": "xnnpack", "target": "k1",
+                "mode": "inner_compute", "timer": "rdtime", "timebase_hz": k1.K1_TIMEBASE_HZ,
+                "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc}
+        print(f"--- xnnpack clamp N={Nsz} ---")
+        r = _build_run_xnn(f"brd_clamp_xnn_{Nsz}", HERE / "xnnpack_vclamp_driver.c",
+                           [f'-DXNN_KERNEL_SRC="{ksrc}"', f"-DXNN_KERNEL_FN={kfn}",
+                            "-DCLAMP_LO=0.0f", "-DCLAMP_HI=6.0f", f"-DVLEN_N={Nsz}"],
+                           reps=reps, base=base, pmu=True)
+        print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
+        rows.append(r)
+        bundle = workloads.gen_relu_f32(REPO / "artifacts" / "cache" / "rvv_workloads",
+                                        N=Nsz, lo=0.0, hi=6.0)
+        base = {"op": "clamp", "dtype": "f32", "size_n": Nsz, "source": "ours_vectorized",
+                "target": "k1", "mode": "inner_compute", "timer": "rdtime",
+                "timebase_hz": k1.K1_TIMEBASE_HZ, "vectorize": True,
+                "kernel_file": "merlin RVV codegen (ours_vectorized)"}
+        print(f"--- ours clamp N={Nsz} ---")
+        r = _build_run_ours(f"brd_clamp_ours_{Nsz}", bundle, HERE / "ours_kernel_driver.c",
+                            ["-DOURS_REF_clamp", "-DCLAMP_LO=0.0f", "-DCLAMP_HI=6.0f"],
+                            "ours_vectorized", [], int8=False, vectorize=True, reps=reps,
+                            base=base, pmu=True)
+        print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
+        rows.append(r)
+    return rows
+
+
+def run_transpose(shapes: list[tuple[int, int]], reps: int) -> list[dict]:
+    """XNNPACK x32-transposec vs OUR transpose codegen. Largest BYTE-traffic op family across the
+    census; catalog partial. Non-square shapes so a stride bug is not hidden by symmetry."""
+    from merlin.rvvgen import workloads
+    rows = []
+    ksrc = "x32-transposec/gen/x32-transposec-8xv4-rvv.c"
+    kfn = "xnn_x32_transposec_ukernel__8xv4_rvv"
+    for (R, C) in shapes:
+        base = {"op": "transpose", "dtype": "f32/x32", "R": R, "C": C, "source": "xnnpack",
+                "target": "k1", "mode": "inner_compute", "timer": "rdtime",
+                "timebase_hz": k1.K1_TIMEBASE_HZ, "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc}
+        print(f"--- xnnpack transpose {R}x{C} ---")
+        r = _build_run_xnn(f"brd_tr_xnn_{R}x{C}", HERE / "xnnpack_transposec_driver.c",
+                           [f'-DXNN_KERNEL_SRC="{ksrc}"', f"-DXNN_KERNEL_FN={kfn}",
+                            f"-DTR_R={R}", f"-DTR_C={C}"], reps=reps, base=base, pmu=True)
+        print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
+        rows.append(r)
+        bundle = workloads.gen_transpose_f32(REPO / "artifacts" / "cache" / "rvv_workloads", R=R, C=C)
+        base = {"op": "transpose", "dtype": "f32", "R": R, "C": C, "source": "ours_vectorized",
+                "target": "k1", "mode": "inner_compute", "timer": "rdtime",
+                "timebase_hz": k1.K1_TIMEBASE_HZ, "vectorize": True,
+                "kernel_file": "merlin RVV codegen (ours_vectorized)"}
+        print(f"--- ours transpose {R}x{C} ---")
+        r = _build_run_ours(f"brd_tr_ours_{R}x{C}", bundle, HERE / "ours_kernel_driver.c",
+                            ["-DOURS_REF_transpose"], "ours_vectorized", [], int8=False,
+                            vectorize=True, reps=reps, base=base, pmu=True)
+        print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
+        rows.append(r)
+    return rows
+
+
+def run_noise_control(reps: int) -> list[dict]:
+    """Race a BYTE-IDENTICAL XNNPACK vmul binary twice as two separate cells. The spread between
+    these two 'control' rows is the measurement noise floor (>=1.9% observed); any cross-source gap
+    below it is not a result. Same shape, same binary, two independent build+deploy+run cells."""
+    rows = []
+    ksrc, kfn, Nsz = "f32-vbinary/gen/f32-vmul-rvv-u8v.c", "xnn_f32_vmul_ukernel__rvv_u8v", 65536
+    for k in ("ctrlA", "ctrlB"):
+        base = {"op": "noise_control", "dtype": "f32", "size_n": Nsz, "source": f"xnnpack_{k}",
+                "target": "k1", "mode": "inner_compute", "timer": "rdtime",
+                "timebase_hz": k1.K1_TIMEBASE_HZ, "kernel_file": "tmp/kernels/XNNPACK/src/" + ksrc}
+        print(f"--- noise control {k} (vmul N={Nsz}) ---")
+        r = _build_run_xnn(f"brd_noise_{k}", HERE / "xnnpack_vbinary_driver.c",
+                           [f'-DXNN_KERNEL_SRC="{ksrc}"', f"-DXNN_KERNEL_FN={kfn}",
+                            "-DXNN_BINOP_MUL", f"-DVLEN_N={Nsz}"], reps=reps, base=base, pmu=True)
+        print("   ", r["status"], r.get("ticks"), r.get("blocker", ""))
+        rows.append(r)
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ops", default="f32_gemm,gelu,sigmoid,int8_gemm,dwconv,conv2d,attention")
     ap.add_argument("--act-sizes", default="1024,16384,262144")
     ap.add_argument("--gemm-shapes", default="32,64,128,256")
     ap.add_argument("--int8-shapes", default="32,64,128")
+    ap.add_argument("--binary-sizes", default="4096,65536")
+    ap.add_argument("--clamp-sizes", default="4096,65536")
+    ap.add_argument("--reduce-shapes", default="64x512,64x4096")
+    ap.add_argument("--transpose-shapes", default="128x64,256x256")
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--out", default="out/artifacts/measurements/k1_spacemit/gemm/cross_framework_ops_k1.jsonl")
     a = ap.parse_args()
@@ -451,6 +614,10 @@ def main():
     act_sizes = [int(s) for s in a.act_sizes.split(",")]
     gemm_shapes = [int(s) for s in a.gemm_shapes.split(",")]
     int8_shapes = [int(s) for s in a.int8_shapes.split(",")]
+    binary_sizes = [int(s) for s in a.binary_sizes.split(",")]
+    clamp_sizes = [int(s) for s in a.clamp_sizes.split(",")]
+    reduce_shapes = [tuple(int(x) for x in s.split("x")) for s in a.reduce_shapes.split(",")]
+    transpose_shapes = [tuple(int(x) for x in s.split("x")) for s in a.transpose_shapes.split(",")]
 
     rows: list[dict] = []
     if "f32_gemm" in ops:  rows += run_f32_gemm(gemm_shapes, a.reps)
@@ -460,6 +627,11 @@ def main():
     if "dwconv" in ops:    rows += run_dwconv(a.reps)
     if "conv2d" in ops:    rows += run_conv2d(a.reps)
     if "attention" in ops: rows += run_attention(a.reps)
+    if "vbinary" in ops:   rows += run_vbinary(binary_sizes, a.reps)
+    if "reduce" in ops:    rows += run_reduce(reduce_shapes, a.reps)
+    if "clamp" in ops:     rows += run_clamp(clamp_sizes, a.reps)
+    if "transpose" in ops: rows += run_transpose(transpose_shapes, a.reps)
+    if "noise" in ops:     rows += run_noise_control(a.reps)
 
     outp = Path(a.out); outp.parent.mkdir(parents=True, exist_ok=True)
     with outp.open("w") as fh:
