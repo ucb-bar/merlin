@@ -3,9 +3,9 @@ title: "Design note: attributing the expert-kernel gap (instructions vs stalls)"
 kind: design
 status: current
 owner: core
-last_verified: 2026-07-18
+last_verified: 2026-07-19
 related: [beam_search]
-code_refs: [merlin/python/merlin/rvvgen/pmu.py, merlin/python/merlin/kernels/microkernel.py, merlin/python/merlin/kernels/ceiling_drivers/k1_harness/util.h]
+code_refs: [merlin/python/merlin/rvvgen/pmu.py, merlin/python/merlin/rvvgen/k1.py, merlin/python/merlin/kernels/microkernel.py, merlin/python/merlin/kernels/ceiling_drivers/k1_harness/util.h, build_tools/scripts/k1_microkernel_ipc_sweep.py]
 ---
 
 # Attributing the expert-kernel gap
@@ -151,3 +151,71 @@ The second is the more dangerous class: every layer looks wired, a schedule diff
 **Rule:** a schedule-text diff is not evidence that a lever works. Confirm a lever with a measured
 delta in emitted code — retired instructions are the cheap ground truth — and treat flat results
 across a wide parameter sweep as an inert-lever suspicion rather than a tuning plateau.
+
+## The vector-width/IPC tradeoff was a mis-specified target, not a tradeoff
+
+Once the per-tile `memrefCopy` was erased, the shape space re-measured into what looked like a hard
+frontier: `NR=32` (wide vectors) bought a low instruction count but collapsed IPC, `NR=16` bought IPC
+but issued ~2x the instructions, and no point had both.
+
+There was no frontier. We were compiling the model object with `-march=rv64gcv`, which promises only
+the RVV **minimum** vector length of 128 bits (`zvl128b`). The K1 X60 has **VLEN=256**. Since our
+codegen emits *fixed-width* vectors, the backend had to size each register group for that worst
+case, so every vector value got exactly **double the LMUL the board needs** — read straight off the
+disassembly, `vector<16xf32>` became `e32,m4` and `vector<32xf32>` became `e32,m8`. Two costs follow:
+
+- **Register pressure doubles.** An `m8` value occupies 8 of the 32 architectural vector registers,
+  so an `MR=4, NR=32` accumulator block wants all 32 and the allocator spills *inside* the K loop.
+- **Half the datapath idles.** `vsetivli zero, 16, e32, m4` on a VLEN=256 core sets `vl=16` against a
+  `VLMAX` of 32: the instruction reserves a four-register group and uses half of it.
+
+Pinning the real VLEN (`merlin.rvvgen.k1.codegen_march` → `..._zvl256b`) is a one-flag change, and it
+is the whole tradeoff. Inner-loop instruction counts, from the objdump, before → after:
+
+| config | inner-loop insns | in-loop spill insns |
+|---|---|---|
+| `MR=4, NR=16` | 12 → 12 | 0 → 0 |
+| `MR=2, NR=32` | 8 → 8 | 0 → 0 |
+| `MR=4, NR=32` | 25 → **12** | 4 → **0** |
+| `MR=8, NR=32` | 92 → **46** | 14 → **4** |
+
+and on the board (128³, kernel region, min of 3, correctness-gated):
+
+| config | ticks before | ticks after | instret before | instret after |
+|---|---|---|---|---|
+| `MR=4, NR=16` | 21,869 | 16,592 | 475,898 | 475,887 |
+| `MR=2, NR=32` | 26,674 | 19,896 | 341,217 | 341,241 |
+| `MR=4, NR=32` | 54,963 | **13,932** | 617,227 | **275,055** |
+| `MR=8, NR=32` | 75,531 | 29,789 | 841,739 | 463,075 |
+
+`MR=4, NR=16` is the control that proves the mechanism: its instruction count is **unchanged to 11
+instructions** while time drops 1.32x. That config never spilled, so nothing about its *quantity* of
+work could change; all it gained was a full-width `vl`. The configs that were spilling gained on both
+axes at once.
+
+`MR=4, NR=32` — previously the worst of the four — becomes the best point in the space, and its inner
+loop is now the textbook one at full vector width, with no spill and no `vmv` shuffle:
+
+    vle32.v v8,(s1)           <- one 32-lane B load  (e32,m4 == 256 bits)
+    flw fa5,-0x400(a1) ...    <- four scalar A loads
+    vfmacc.vf v12,fa5,v8      <- four FMAs against that one B load
+    ...                       (12 instructions, 128 lane-FMAs)
+
+The expert never hit this because it does not emit fixed-width vectors at all: XNNPACK sizes to the
+vector length it *queries at run time* (`__riscv_vsetvl_e32m4`). That is why its advantage read as
+"lanes per issue" — it was, and the lanes were being thrown away by the `march` string, not by any
+property of wide vectors.
+
+### What this leaves
+
+At 256³ our retired-instruction count (1,916,395) is now **below XNNPACK's** (1,921,611), and the
+whole residual 1.36x is IPC — 19.0 vs 25.9 ins/tick. The leading suspect is B-operand reuse: our
+`MR=4` amortizes one B load over 4 FMAs, the expert's `MR=7` over 7. Reaching `MR=6..7` needs an
+M-tail story, because in the 2-D `vector<MRxNR>` formulation `MR` must divide `M` — `MR=6` at M=128
+falls off a cliff to 2.24M ticks (masked transfers → scalar), which is the same
+small-M/masked-transfer wall documented elsewhere, not a register-pressure effect.
+
+**Rule (companion to the one above):** an instruction-count/IPC "tradeoff" that no configuration
+escapes is a reason to check what the *backend was told about the target*, not only what the schedule
+asked for. Retired instructions and disassembly LMUL together localize it in one measurement;
+neither alone does.

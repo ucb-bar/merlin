@@ -57,7 +57,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 
 ## Design notes
 
-- ["Design note: attributing the expert-kernel gap (instructions vs stalls)"](design/expert_gap_attribution.md) — `current`, verified 2026-07-18 · owner: core — see also: [beam_search](guides/beam_search.md)
+- ["Design note: attributing the expert-kernel gap (instructions vs stalls)"](design/expert_gap_attribution.md) — `current`, verified 2026-07-19 · owner: core — see also: [beam_search](guides/beam_search.md)
 - [Design audit: standalone merlin wheel](design/standalone_packaging.md) — `current`, verified 2026-07-14 · owner: core — see also: [repo_structure](reference/repo_structure.md)
 - [Design note: integration adapters](design/integrations.md) — `current`, verified 2026-07-07 · owner: kernels — see also: [integrations](guides/integrations.md)
 - [Design note: the future MLIR/C++ compiler plane](design/compiler_plane.md) — `current`, verified 2026-07-14 · owner: core — see also: [architecture](reference/architecture.md)
