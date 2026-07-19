@@ -91,10 +91,9 @@ counter measured **1,710,650**. So the hot loop is only ~23% of retired instruct
 per-tile prologue/epilogue** -- 256 tiles of accumulator setup, writeback and address computation
 around 1,536 instructions of useful work each.
 
-This is the actionable target, and it is neither the inner loop nor the memory system: the fix is
-fewer, larger tiles (amortizing the per-tile cost) rather than a better micro-kernel body. It also
-explains why the whole shape sweep was flat -- every point in it re-tiles the same way, so it moves
-the 23%, never the 77%.
+This is the actionable target, and it is neither the inner loop nor the memory system. The next
+section identifies what that 77% actually is — a runtime call, not merely bulky setup — so the fix
+is to remove it, not to amortize it over fewer, larger tiles.
 
 It further explains why `unroll_m` is structurally wrong rather than merely inert: it emits **MR
 sequential K-loops** (17 backward branches vs 3), each with a *single* `vfmacc` and a B reload every
