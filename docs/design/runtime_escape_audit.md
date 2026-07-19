@@ -76,7 +76,9 @@ self-copy". The int8 matmul *does* emit the in-loop `memrefCopy`, and `erase_sel
 it from the emitted code. Whatever explains the 0.03% is not the escape being absent.
 
 **Whole models carry many.** Baseline in-loop `memrefCopy` sites: small_llama 17, bitvla 19, openvla
-35, rdt2 26 — cleared to zero by `erase_self_copy` in every case.
+35, rdt2 26 — cleared to zero by `erase_self_copy` in every case, in both dtypes. Across the 42-cell
+matrix (all readable, no unknowns, no failures) the only in-loop escapes that survive the feature are
+the two int8 suspects below.
 
 **The int8 path escapes in SMALL-SIZE regimes where f32 does not.** Two independent op families show
 the same shape of defect, neither reached by `erase_self_copy`:
@@ -107,6 +109,13 @@ per-tile overhead lands. On the original defect this gave a=0.197 ins/MAC and b=
 and predicted a held-out size to 0.4% — that separation is what turned "we are slow" into a located
 bug. `build_tools/scripts/k1_escape_cost.py` runs it, holding out the largest size as the check,
 gated on `VERIFY PASS`.
+
+**Status: the fit has not yet been run on silicon.** Its build path is exercised, but every board
+attempt during this work sat on the host-wide `flock` behind another agent's session. So the escape
+matrix above is a *structural* result — read from emitted objects and linked ELFs — and carries no
+board timing of its own. In particular the most actionable item, whether `erase_self_copy` buys real
+int8 GEMM time now that we know it removes the int8 escape, is **open**: the emitted-code change is
+established, the cost is not.
 
 ## Using it
 
