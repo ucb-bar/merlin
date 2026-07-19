@@ -48,7 +48,36 @@ K1_TOOLCHAIN = Path(env("MERLIN_K1_TOOLCHAIN", str(_REPO / "build_tools" / "Spac
 # SpacemiT toolchain file selects for the K1 (rv64gcv_zfh_zvfh...). Overridable via MERLIN_K1_MARCH.
 K1_MARCH = env("MERLIN_K1_MARCH", "rv64gcv_zfh_zvfh")
 K1_MABI = "lp64d"
-VLEN = 256  # K1 X60 vector length, bits; the runtime reads vlenb at run time and records it.
+#: Declared vector length of THIS target, in bits. Overridable so the value is a per-target
+#: DECLARATION rather than a compiled-in assumption -- pinning a VLEN the hardware does not have is a
+#: miscompile, not a missed optimization (see codegen_march / verify_vlen).
+#:
+#: NOTE ON GENERALITY: pinning a known VLEN is a STOPGAP that trades portability for lanes. The
+#: target-agnostic fix is VL-agnostic codegen -- `MicrokernelSpec.vl_strategy = VL_DYNAMIC`, a
+#: vsetvli loop that sizes to whatever VLEN the hardware reports at run time, which is exactly what
+#: the expert kernels do (XNNPACK calls __riscv_vsetvl_e32m4). Until that axis is emitted, this pin
+#: recovers the same lanes for targets whose VLEN we can state and verify.
+VLEN = int(env("MERLIN_K1_VLEN", "256"))  # K1 X60; the runtime reads vlenb and records it.
+
+
+class VlenMismatch(RuntimeError):
+    """The board reported a vector length different from the one codegen pinned."""
+
+
+def verify_vlen(reported_vlenb: int, vlen: int | None = None) -> None:
+    """Fail closed when the board's actual ``vlenb`` contradicts the VLEN we compiled against.
+
+    ``vlenb`` is VLEN in BYTES and the harness banner already prints it, so the true value is
+    observable on every run -- there is no reason to keep trusting a constant. Pinning a VLEN larger
+    than the hardware's is not a lost optimization but a MISCOMPILE (the backend sizes register
+    groups for lanes that do not exist), so a mismatch must stop the run rather than be measured."""
+    want = int(vlen or VLEN)
+    got = int(reported_vlenb) * 8
+    if got != want:
+        raise VlenMismatch(
+            f"board reports VLEN={got} bits (vlenb={reported_vlenb}) but codegen pinned {want}. "
+            f"Set MERLIN_K1_VLEN={got} for this board, or drop the pin. Pinning a VLEN the hardware "
+            f"lacks miscompiles; pinning a smaller one silently idles the datapath.")
 
 
 def codegen_march(march: str | None = None, vlen: int | None = None) -> str:
