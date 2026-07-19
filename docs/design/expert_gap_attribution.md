@@ -219,3 +219,39 @@ small-M/masked-transfer wall documented elsewhere, not a register-pressure effec
 escapes is a reason to check what the *backend was told about the target*, not only what the schedule
 asked for. Retired instructions and disassembly LMUL together localize it in one measurement;
 neither alone does.
+
+### `unroll_m` is wrong, not inert — and the VLEN fix does not rescue it
+
+Re-checked against the emitted code (no board needed — lowering and disassembly answer it), at the
+same `NR=32` where the 2-D formulation now emits its clean 12-instruction loop:
+
+| recipe | back-edges | inner-loop insns | `vfmacc` | `vle32` | ins / lane-FMA |
+|---|---|---|---|---|---|
+| 2-D `vector<4x32>` | 4 | 12 | 4 | 1 | 0.094 |
+| `unroll_m`, MR=2 | 8 | 6 | 1 | 1 | 0.188 |
+| `unroll_m`, MR=4 | 16 | 6 | 1 | 1 | 0.188 |
+| `unroll_m`, MR=7 | 36 | 6 | 1 | 1 | 0.188 |
+
+The back-edge count scales with `MR` while the loop body stays at **one** `vfmacc` against a freshly
+reloaded B: unrolling the M loop replicates the whole N+K nest `MR` times into `MR` *sequential* K
+loops, so B reuse is 1 no matter what `MR` says. Per lane-FMA it is exactly 2x the 2-D form, at every
+`MR`.
+
+This **refines** the earlier "inert lever" reading. The emitted digests *do* differ per `MR`
+(`7833b2e3…`, `a06a1564…`, `46e48729…`), so the lever is not a no-op — it changes the code without
+changing the economics, which the flat retired-instruction count across `MR` had made look like
+inertness. The two failure modes need different fixes, and only the disassembly separates them:
+
+- **inert** — emitted code identical; the knob never reached the backend (`KC` before `k_block`);
+- **structurally wrong** — emitted code changes with the knob, per-unit cost does not.
+
+`unroll_m` is therefore not the route to the expert's `MR=7`; a correct recipe has to keep the `MR`
+accumulators live inside a **single** K loop, which is what the 2-D form already does — its only
+limitation is that `MR` must divide `M`, so the real missing capability is M-tail handling
+(pad/peel), not M-unrolling.
+
+`k_block` re-checked as genuinely live, and correctly so: `KC` ∈ {32, 64} each produce a distinct
+digest, while `KC=128` at `K=128` reproduces the un-blocked digest **byte for byte** — blocking the
+reduction by its own full extent is a no-op, and the digest says so. The inner loop is untouched in
+every case (12 insns, 4 `vfmacc`, 1 `vle32`, 0 spills), which is the point: K-blocking can only move
+cache behavior, never the inner-loop instruction mix.
