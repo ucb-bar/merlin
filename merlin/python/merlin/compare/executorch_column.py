@@ -38,6 +38,32 @@ EXECUTORCH_LABEL = (
     "runtime executes the entire model; portable/scalar kernels run everything the partitioner can't "
     "delegate)")
 
+# --- per-dtype comparability: same storage dtype is NECESSARY but not SUFFICIENT for a fair compare.
+# Each cell carries this so the report states, per dtype, exactly what is matched and what is NOT.
+_DTYPE_COMPARABILITY = {
+    "fp32": ("fp32-vs-fp32: storage AND accumulate both f32 on both sides — a direct wall + cos "
+             "compare is like-for-like. External arms available: xnnpack_kernels (in-runtime GEMM "
+             "swap) AND executorch (whole-system)."),
+    "int8": ("int8-vs-int8 (W8A8): storage matched; quantization is applied in model2MLIR (NOT "
+             "Merlin) and BOTH sides consume the same int8 export + integer golden (gate tier T1, "
+             "golden_w8a8.npy). BUT there is NO in-runtime XNNPACK-kernel-swap arm for int8 (the "
+             "four-way is f32-only — k1.py rejects int8 for xnnpack/openblas backends), so the only "
+             "external int8 reference is ExecuTorch(+XNNPACK qd8) as a WHOLE SYSTEM, not a clean "
+             "single-kernel head-to-head."),
+    "fp16": ("fp16-vs-fp16: storage matched (f16) but ACCUMULATE-ASYMMETRIC — XNNPACK f16 GEMM "
+             "accumulates in f16, ours emits vfwmacc.vf (f32 accumulate). Same nominal dtype, "
+             "DIFFERENT compute precision: a raw cos/speed compare is caveated, not a like-for-like "
+             "numeric match. (No fp16 external result measured yet either.)"),
+}
+
+
+def dtype_comparability(dtype: str) -> str:
+    """What a same-dtype comparison for this dtype actually means — matched axes AND the caveats.
+    Same storage dtype is necessary but not sufficient (fp16 accumulate asymmetry; int8 has no
+    in-runtime kernel-swap arm). Unknown dtype fails loud rather than implying a clean match."""
+    return _DTYPE_COMPARABILITY.get(
+        dtype, f"UNKNOWN dtype {dtype!r}: no comparability contract — do NOT assume a like-for-like match")
+
 
 def _collect(root: Path) -> list:
     """Latest-per-cell BaselineResults under the measurements tree (empty if the tree is absent)."""
@@ -98,6 +124,7 @@ def executorch_cell(model: str, dtype: str, *, root: Path | None = None) -> dict
             "rvv_coverage_overall": r.rvv_coverage_overall,
             "gate_basis": basis,
             "label": EXECUTORCH_LABEL,
+            "dtype_comparability": dtype_comparability(dtype),
             "source": f"{_BASELINE_TREE} (baselines.aggregate)",
         }
     return {
@@ -106,5 +133,6 @@ def executorch_cell(model: str, dtype: str, *, root: Path | None = None) -> dict
         "variant": variant,
         "gate_basis": basis,
         "label": EXECUTORCH_LABEL,
+        "dtype_comparability": dtype_comparability(dtype),
         "reason": _not_measured_reason(model, variant, rows),
     }

@@ -41,7 +41,7 @@ sys.path.insert(0, "merlin/python")
 os.environ.setdefault("MERLIN_COMPILE_TIMEOUT_S", "900")
 from merlin.common.paths import artifacts_dir, repo_root  # noqa: E402
 from merlin.compare.executorch_column import (  # noqa: E402
-    EXECUTORCH_LABEL, XNNPACK_KERNELS_LABEL, executorch_cell)
+    EXECUTORCH_LABEL, XNNPACK_KERNELS_LABEL, dtype_comparability, executorch_cell)
 
 # expert objdump fixture per dtype (the CCA target); f16 carries the native-accumulate caveat.
 _EXPERT_OBJDUMP = {
@@ -120,7 +120,11 @@ def run_cell(dtype: str, model: str, *, width: int, depth: int, top_k: int) -> d
     # dtype-appropriate expert reference (fp32 XNNPACK-in-runtime, else ExecuTorch same-variant, else None).
     ref = _reference(model, dtype, root)
     comparability = {"xnnpack_kernels": XNNPACK_KERNELS_LABEL, "executorch": EXECUTORCH_LABEL,
-                     "reference_used": ref.get("kind")}
+                     "reference_used": ref.get("kind"),
+                     # same-dtype is matched at 4 layers (reference wall, ET column, expert CCA
+                     # fixture, correctness golden) — but same storage dtype != like-for-like: fp16
+                     # accumulate is asymmetric, int8 has no in-runtime kernel-swap arm. State it.
+                     "dtype_comparability": dtype_comparability(dtype)}
     if not bundle or not Path(bundle).is_dir():
         return {"cell": f"{dtype}:{model}", "status": "not_run", "blocker": f"no bundle {bundle}",
                 "executorch": et, "reference": ref, "comparability": comparability}

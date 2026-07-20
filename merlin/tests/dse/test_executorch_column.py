@@ -12,7 +12,7 @@ import importlib.util
 from merlin.baselines.contract import BaselineResult
 from merlin.common.paths import repo_root
 from merlin.compare.executorch_column import (EXECUTORCH_LABEL, XNNPACK_KERNELS_LABEL,
-                                              executorch_cell, gate_basis)
+                                              dtype_comparability, executorch_cell, gate_basis)
 
 
 def _write_result(root, model, variant, *, built, ran, cos=None, rel=None, wall_ns=None,
@@ -146,3 +146,20 @@ def test_experiment_comparability_labels_are_distinct():
     assert "OUR runtime" in XNNPACK_KERNELS_LABEL
     assert "TRUE external" in EXECUTORCH_LABEL
     assert XNNPACK_KERNELS_LABEL != EXECUTORCH_LABEL
+
+
+def test_dtype_comparability_states_the_per_dtype_caveats():
+    """Same storage dtype is necessary but NOT sufficient — the contract must SAY what differs."""
+    fp32, int8, fp16 = (dtype_comparability(d) for d in ("fp32", "int8", "fp16"))
+    # fp32 is the only like-for-like row (storage + accumulate both f32).
+    assert "like-for-like" in fp32 and "f32" in fp32
+    # int8: no in-runtime kernel-swap arm; external ref is ExecuTorch whole-system.
+    assert "NO in-runtime" in int8 and "ExecuTorch" in int8
+    # fp16: same storage, DIFFERENT accumulate — must be flagged, never presented as a clean match.
+    assert "ACCUMULATE-ASYMMETRIC" in fp16 and "vfwmacc" in fp16
+    assert "not a like-for-like" in fp16 and "caveated" in fp16   # explicitly negated, never clean
+    # an unknown dtype fails loud rather than implying a match.
+    assert "UNKNOWN" in dtype_comparability("fp8")
+    # every measured/not-measured cell carries the field.
+    for st in (executorch_cell("bitvla", "int8"), executorch_cell("bitvla", "fp16")):
+        assert "dtype_comparability" in st
