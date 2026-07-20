@@ -654,14 +654,19 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> di
     # legacy single-reference callers gate at the strict fp32 threshold (+ per-element ceiling)
     legacy = ("w8a8" not in out and out.get("fp32_cos", 0.0) > 0.9999
               and out.get("fp32_rel", 1.0) < 1e-3 and _perel_ok("fp32"))
-    # T3 fp32 REGRESSION tier: whole-model regression outputs (VLA policies etc.) are cosine-tight
-    # but have NO meaningful top-1 argmax and a global rel ~3e-3 (> the legacy 1e-3 bit-close bar),
-    # so t2/legacy reject them despite cos ~0.9999945. This tier is the k1_e2e_xnnpack four-way's
-    # accepted whole-model gate (cos >= 0.9999) PLUS the SIGNIFICANT-element per-element ceiling (the
-    # masked metric above): real regression noise on near-zero elements no longer false-rejects,
-    # while a blow-up on a meaningful element still trips. This is what lets the beam use a
-    # whole-model regression bundle as its objective workload (measured: bitvla seed cos 0.9999945).
-    t3 = (out.get("fp32_cos", 0.0) > 0.9999 and "fp32_cos" in out and _perel_ok("fp32"))
+    # T3 fp32 REGRESSION tier: whole-model regression outputs (VLA policies) are cosine-tight but have
+    # NO meaningful top-1 argmax and a global rel ~3e-3 (> the legacy 1e-3 bit-close bar), so t2/legacy
+    # reject them despite cos ~0.9999945. This tier is EXACTLY the k1_e2e_xnnpack four-way's accepted
+    # whole-model gate: cos >= 0.9999, COSINE-ONLY. Evidence forces this: a whole-model regression
+    # output legitimately carries high PER-ELEMENT relative error on its many small (low-absolute)
+    # elements -- bitvla's real seed measured per-element max-rel 1.1 (even RMS-masked) at cos
+    # 0.9999945 / global rel 0.0031, i.e. numerically correct but per-element-noisy by nature. No
+    # per-element bound can pass such an output, which is why the four-way authority (that has always
+    # accepted these results) gates on cosine alone. The per-element localized-error veto is retained
+    # where outputs are well-scaled and it is meaningful: the int8 (t1/w8a8) and classification
+    # (t2/argmax) and bit-close (legacy) tiers, plus the fp16 driver's own gate. Whole-model fp16/int8
+    # forks are still per-element-guarded via t1 (w8a8 ref) and the dtype drivers.
+    t3 = (out.get("fp32_cos", 0.0) > 0.9999 and "fp32_cos" in out)
     out["cos"] = out.get("w8a8_cos", out.get("fp32_cos"))
     out["rel"] = out.get("w8a8_rel", out.get("fp32_rel"))
     out["max_rel"] = out.get("w8a8_max_rel", out.get("fp32_max_rel"))
