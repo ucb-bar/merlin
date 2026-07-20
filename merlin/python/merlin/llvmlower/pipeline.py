@@ -200,6 +200,7 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
 
 
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
+from .transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
 
 _RUNNER = r'''
 import sys
@@ -207,11 +208,16 @@ import sys
 from torch_mlir import ir
 from torch_mlir.passmanager import PassManager
 from torch_mlir.dialects import llvm
-''' + _SELFCOPY_PRELUDE + r'''
+''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
 with open(src_path) as f:
     module = ir.Module.parse(f.read(), ctx)
+# fuse_transpose_b (default-off): fold `matmul(A, transpose(B))` into a transpose-b matmul BEFORE
+# the pass manager runs, so the (still-named) linalg.matmul carries the transposed-B indexing map
+# and the frozen RVV schedule tiles+vectorizes it while the scalar weight transpose disappears.
+if _FUSE_TRANSPOSE_B:
+    print("OK fuse_transpose_b", _fuse_transpose_b(module, ctx))
 _run_stages(ctx, module, pipeline, _ERASE_SELF_COPY)
 with open(out_path, "w") as f:
     f.write(str(llvm.translate_module_to_llvmir(module.operation)))
@@ -370,11 +376,16 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     # argv[4] gates the self-copy erase, so the frozen hand_v0 control keeps its byte-identical
     # lowering unless the feature is explicitly enabled.
     from .selfcopy import FEATURE as _SELFCOPY_FEATURE, with_canonicalize as _with_canon
+    from .transpose_fuse import FEATURE as _FUSE_TRANSPOSE_FEATURE
     _erase = "1" if _SELFCOPY_FEATURE in feats else "0"
     if _erase == "1":
         pipeline = _with_canon(pipeline)
+    # argv[5] gates fuse_transpose_b (default-off). Only the plain _RUNNER honors it; the act_poly /
+    # scalarize runners select on their own features and never enable it, so the baseline lowering
+    # stays byte-identical unless the fork explicitly turns the feature on.
+    _fuse_tb = "1" if _FUSE_TRANSPOSE_FEATURE in feats else "0"
     proc = subprocess.run(
-        [str(m2m_python()), str(runner), str(src), str(out), pipeline, _erase],
+        [str(m2m_python()), str(runner), str(src), str(out), pipeline, _erase, _fuse_tb],
         capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0 or not out.is_file():
         raise PipelineError(f"upstream lowering failed:\n{proc.stdout}\n{proc.stderr}")

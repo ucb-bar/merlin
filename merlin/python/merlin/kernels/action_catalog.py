@@ -156,6 +156,31 @@ _RVV_ROUTES: list[_Route] = [
                         "closes the gap; this rung stays as the symbol-free record of the same "
                         "divergence.",
         intended_facet={"envelope.calls_in_loop": 0}),
+    # --- layout: a WHOLE-MODEL, cross-op data-movement divergence. The whole-model per-op profiler
+    # measured linalg.transpose at 393 ms = 57% of openvla (more than every matmul combined), emitted
+    # SCALAR. Every openvla/bitvla matmul is a transposed-B GEMM fed by a STANDALONE weight transpose:
+    # a full transposed copy materialized in DRAM each forward, then read back. The experts (BLAS /
+    # XNNPACK) never materialize it — they read B transposed via the GEMM's own access pattern
+    # (transpose-b kernel). The divergence: expert has NO standalone transpose feeding the contraction
+    # ("folded"); we do ("materialized").
+    _Route(
+        axis="layout.transpose_materialized",
+        # Fire when the expert folds the transpose into the consumer's access ("folded"/None) and we
+        # materialize a standalone transpose op+buffer feeding a matmul B operand.
+        when=lambda d: d.expert in ("folded", None) and d.ours == "materialized",
+        action_class="PASS",
+        target_seam="impr_features:fuse_transpose_b",
+        change="fold a `linalg.transpose` of a matmul's B operand INTO the matmul: repoint B to the "
+               "un-transposed weight and permute its indexing_map (k,n)->(n,k), then erase the dead "
+               "transpose. The op stays `linalg.matmul` (transposed-B maps) so the frozen RVV schedule "
+               "still tiles+vectorizes it, while the scalar transpose op AND its DRAM buffer vanish — "
+               "exactly the transpose-b access-pattern the experts use.",
+        forkable_now=True,
+        expected_effect="MEASURED on K1 (openvla fp32, whole-model, cos 0.9999999 / per-element rel "
+                        "9.6e-7): transpose bucket 390 ms -> ~0, whole-model wall 5995.7 -> 5604.3 ms "
+                        "(-6.5%, well over the 1.9% noise floor); the matmul is unchanged (5602 -> "
+                        "5561 ms, within noise). Whole-model cross-op fusion, not a kernel micro-win.",
+        intended_facet={"layout.transpose_materialized": "folded"}),
     _Route(
         axis="compute.nr_is_vsetvlmax",
         when=lambda d: bool(d.expert) and not d.ours,
