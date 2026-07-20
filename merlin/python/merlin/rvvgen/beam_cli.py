@@ -60,7 +60,7 @@ def run_instrumented_beam(
     max_workers: int | None = None, curated_text: str | None = None,
     certify_fn=None, sweep_fn=None, expert_wall_ns: float | None = None,
     validate_model_dir: str | Path | None = None, validate_fn=None,
-    noise_margin: float | None = None,
+    noise_margin: float | None = None, proposer=None,
 ) -> dict[str, Any]:
     """Open an aet parent run, run the CCA beam, emit a child aet run per fork, return the outcome.
 
@@ -100,7 +100,7 @@ def run_instrumented_beam(
                        timestamp="beam", targets=targets, expert_cca=expert_cca,
                        max_workers=max_workers, certify_fn=certify_fn, sweep_fn=sweep_fn,
                        expert_wall_ns=expert_wall_ns, validate_fn=validate_fn,
-                       noise_margin=noise_margin)
+                       noise_margin=noise_margin, proposer=proposer)
         # beam_tree.yaml (the full per-step record) into the parent run dir.
         tree_src = Path(res["tree_path"])
         if tree_src.is_file():
@@ -150,6 +150,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="win margin over the parent's speedup (default 0.02 >= the measured >=1.9%% "
                          "K1 noise floor; env MERLIN_BEAM_NOISE_MARGIN). Sub-margin deltas rank as ties.")
     ap.add_argument("--expert-objdump", required=True, help="decoded expert objdump fixture (CCA target)")
+    ap.add_argument("--proposer", default="wholemodel", choices=("wholemodel", "cca"),
+                    help="wholemodel: propose byte-traffic-ranked whole-model levers (transpose "
+                         "fusion, per-matmul MR, reduction, ...) -- the right choice for a "
+                         "whole-model objective. cca: legacy kernel-vs-expert divergence router.")
     ap.add_argument("--op", default="matmul")
     ap.add_argument("--dtype", default="f32")
     ap.add_argument("--shape-regime", default="square")
@@ -166,12 +170,16 @@ def main(argv: list[str] | None = None) -> int:
     default_seed = repo_root() / "out/artifacts/targets/rvv/hand_v0"
     seed_pkg = args.seed_pkg or str(default_seed)
     targets = tuple(t.strip() for t in args.targets.split(",") if t.strip())
+    proposer = None
+    if args.proposer == "wholemodel":
+        from .wholemodel_proposer import propose_wholemodel_levers
+        proposer = propose_wholemodel_levers
     res = run_instrumented_beam(
         seed_pkg=seed_pkg, model_dir=args.model_dir, expert_objdump=args.expert_objdump,
         op=args.op, dtype=args.dtype, shape_regime=args.shape_regime, targets=targets,
         width=args.width, depth=args.depth, top_k=args.top_k, max_workers=args.max_workers,
         expert_wall_ns=args.expert_wall_ns, validate_model_dir=args.validate_model_dir,
-        noise_margin=args.noise_margin)
+        noise_margin=args.noise_margin, proposer=proposer)
     best = res.get("best") or {}
     print(f"parent_run={res.get('parent_run_dir')}")
     print(f"best: run_id={best.get('run_id')} lever={best.get('lever')} "
