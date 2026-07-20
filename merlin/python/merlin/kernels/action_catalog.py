@@ -206,31 +206,39 @@ _RVV_ROUTES: list[_Route] = [
         # accumulators (loads/FMA -> 1+1/MR) AND gives MR independent accumulator chains to hide the
         # vfmacc latency. Now a LEARNED divergence (expert MR > ours MR), not a hand-known knob.
         when=lambda d: bool(d.expert),
-        action_class="KNOB",
-        target_seam="schedule:register-block MR (impr_features:accumulator_resident_wholemodel_vf_mr4 "
-                    "/ the vfmacc_t_<MR>_<NR>_<KC> tuning grid)",
+        action_class="PASS",
+        target_seam="impr_features:accumulator_resident_wholemodel_vf_mrpad (per-op MR + M-pad tail)",
         change="raise the matmul register-block MR toward the expert MR so one streamed B-row feeds "
                "MR resident accumulators (the OpenBLAS/XNNPACK A-row-reuse lever), instead of the "
-               "unblocked MR=1 baseline. Compiler-emitted via the existing register-blocked vfmacc.vf "
-               "transform schedule — no hand kernel.",
+               "unblocked MR=1 baseline. Realized WHOLE-MODEL-SAFELY by the per-op MR feature: each "
+               "matmul's M is padded up to a multiple of MR before the register-blocked vfmacc.vf tile, "
+               "so a matmul with M%MR==0 gets the MR block and one with M<MR (M=1 decode) or M%MR!=0 "
+               "pads cleanly (no masked transfer_write PipelineError / scalar fallback) — no hand kernel.",
         forkable_now=True,
-        # MEASURED, with an HONEST split between the ideal lever and what the compiler realizes today:
+        # MEASURED. The #1 GEMM data-movement lever, now realized whole-model:
         #  - DIAGNOSTIC CEILING (ours_board hand microkernel, MR-configurable, k1_kernel_speedup_*.json):
         #    the matmul bucket falls ~5x as MR 1->7 (bitvla 11.2x->2.2x, openvla 24x->4.8x, rdt2 45x->9x
         #    vs XNNPACK 7x4v) -> register blocking IS the dominant compute lever.
-        #  - COMPILER-EMITTED (inlined transform schedule, the real product): the pipeline ALREADY emits
-        #    MR=4/NR=16 (accumulator_resident_microkernel_v3 = the bitVLA winner, 147ms). Pushing the
-        #    EXISTING grid knobs higher REGRESSES whole-model (MR=8 ->178ms, NR=32 ->165ms): the
-        #    transform-schedule codegen does NOT yet realize the diagnostic headroom. So this KNOB pays
-        #    off only up to MR=4 today; capturing the MR=7 ceiling needs a register-block CODEGEN
-        #    improvement (a PASS), not just the knob.
-        #  - Small-M / GEMV (rdt2 M=1, openvla M=16-20): padding-limited regardless -> route to the
-        #    dispatch-level small-M batching pass (group token-dim matmuls into one large-M GEMM) first.
+        #  - COMPILER-EMITTED, whole-model-safe (accumulator_resident_wholemodel_vf_mrpad): the earlier
+        #    vf_mr4 realized the MR=4 block but ONLY on M%4==0 matmuls; on the small-/odd-M matmuls that
+        #    dominate VLA decode (rdt2 M=1, openvla M=17) its bare MR=4 M-tile tripped the LLVM-23
+        #    masked-transfer_write PipelineError -> whole-model scalar fallback (it never lowered rdt2).
+        #    The mrpad feature PADS each matmul's M to a multiple of MR (transform.structured.pad, sliced
+        #    back bit-exact) so EVERY matmul register-blocks cleanly: decoded rdt2 whole-model emits MR=4
+        #    on the 28 M%4==0 matmuls and MR=1 on the 3 M=1 tails, 0 vfmacc.vv, in ONE schedule (per-op
+        #    MR). It is the whole-model realization of this lever; the MR=7 ceiling still needs a wider
+        #    register-block codegen, but MR=4 A-reuse (loads/FMA 2.0->1.25) now applies to the mixed-M
+        #    VLA models that vf_mr4 could not lower.
         expected_effect="register blocking is the dominant compute lever (diagnostic: matmul ~5x as "
-                        "MR 1->7); compiler emits MR=4 today (bitVLA sweet spot), but the existing grid "
-                        "knobs above MR=4 REGRESS whole-model -> the MR=7 ceiling needs better register-"
-                        "block codegen (PASS), and small-M/GEMV needs batching first. Knob pays to MR=4.",
-        shape_regimes=("square_large", "square_medium", "rectangular")),   # big blocks pay off when large
+                        "MR 1->7); the per-op MR + M-pad feature emits the MR=4 A-reuse block on every "
+                        "matmul WHOLE-MODEL-SAFELY (padding the M-tail so M=1/M%MR!=0 no longer scalar-"
+                        "fall-back), unlike bare vf_mr4 which could not lower the mixed-M VLA models. "
+                        "Realizes MR=4 (loads/FMA 2.0->1.25); the MR=7 ceiling still needs wider codegen.",
+        # Proposed for matmuls large enough in M that an MR>1 block pays; a pure-M=1 GEMV divergence
+        # routes to the M-clamp (mr_adapts_to_m) instead — padding M=1 up to MR wastes MR-1 rows. (The
+        # mrpad feature still safely handles any M=1 matmuls PRESENT in a model it lowers; this is only
+        # which optimization the beam PROPOSES for a shape.)
+        shape_regimes=("square_large", "square_medium", "rectangular")),
     _Route(
         axis="vector.lmul",
         when=_is_higher,

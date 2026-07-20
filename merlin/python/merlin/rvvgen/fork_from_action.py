@@ -33,19 +33,6 @@ _AXIS_FEATURE = {
 }
 
 
-def _set_mr_overrides(knobs: dict, mr: int) -> dict:
-    """Set the matmul register-block MR (the leading M tile dim) toward the expert's MR. M is the
-    leading contraction dim: tile [M,N,K] (matmul) / [B,M,N,K] (batch), i.e. tile[-3]."""
-    new = []
-    for m in knobs.get("op_match", []):
-        tile, vec = list(m["tile"]), list(m["vector"])
-        if len(tile) >= 3:
-            tile[-3] = mr
-            vec[-3] = mr
-        new.append({"op": m["op"], "tile": tile, "vector": vec})
-    return {"op_match": new}
-
-
 def action_to_fork(action: CompilerAction, knobs: dict[str, Any]) -> ForkProposal:
     """Map one typed CompilerAction to a ForkProposal, emitting only knob keys the schedule honors."""
     seam = action.target_seam
@@ -67,8 +54,6 @@ def action_to_fork(action: CompilerAction, knobs: dict[str, Any]) -> ForkProposa
             overrides = {"dtype_strategy": "int8_w8a8"}
         elif axis == "vector.lmul":
             overrides = _wider_n_overrides(knobs, 2)
-        elif axis == "compute.register_block" and isinstance(intended.get("compute.register_block"), int):
-            overrides = _set_mr_overrides(knobs, intended["compute.register_block"])
         elif axis in _AXIS_FEATURE:
             # a HEURISTIC schedule-seam implemented by a registered feature (mtail / scalable NR).
             overrides = {"compiler_features": [_AXIS_FEATURE[axis]]}

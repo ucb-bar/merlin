@@ -694,6 +694,80 @@ module attributes {{transform.with_named_sequence}} {{
 """
 
 
+def _accumulator_resident_v3_mrpad_pre_schedule(MR: int, NR: int, KC: int,
+                                                NR_bmm: int | None = None) -> str:
+    """PER-MATMUL MR register block with an M-PAD tail — the general fix for the M=1/M%MR!=0 case.
+
+    ``accumulator_resident_wholemodel_vf`` clamps the matmul M tile to MR_mm=1 (no A-operand reuse:
+    1 B-load + 1 A-load per FMA = 2.0 loads/useful-FMA). ``..._vf_mr4`` raises it to MR=4 (A-reuse,
+    1.25 loads/FMA) but is ONLY correct where M%4==0: on M not divisible by MR the partial M tile
+    needs a masked ``vector.transfer_write`` (``vector<MRxNR>`` into ``tensor<(M%MR)xNR>``) that
+    LLVM-23 rejects with a multi-op ``vector.mask`` PipelineError -> (measured) NR=8/non-resident/119
+    in-loop spills at M=17, and an outright PipelineError -> silent scalar fallback at M=1.
+
+    This schedule handles the tail the way the hand shim does (``round_up_mr``): it PADS the matmul M
+    dimension UP to the next multiple of MR BEFORE tiling (``transform.structured.pad`` on padding
+    dimension 0, padding value 0.0). Every matmul then register-blocks CLEANLY at MR — the M tile is
+    always FULL (no masked write, no PipelineError), so M=1 pads to MR, M=17 pads to 20, M=64 stays 64,
+    each getting the same MR resident-accumulator vfmacc.vf register block. ``transform.structured.pad``
+    threads a ``tensor.extract_slice`` back to the original M rows (the ``copy_back`` result), so the
+    real output is BIT-EXACT: the padded rows are ``0-row @ B = 0`` and are discarded; only the [0:M]
+    slice is written back. This is per-matmul (each op pads to ITS OWN next multiple of MR — a general
+    tail rule, not a per-model constant), and it composes with the v3 subset-hoist + A-scalarization
+    pipeline unchanged (it still stops at ``vector.contract``).
+
+    The batch_matmul (attention) path is IDENTICAL to ``accumulator_resident_wholemodel_vf`` — MR=4 M
+    tile + the ``NR_bmm`` N-tail clamp — so this feature only upgrades the ``linalg.matmul`` path from
+    the MR=1 clamp to a padded-MR register block; the proven whole-model attention path is untouched.
+    """
+    NB = NR_bmm if NR_bmm is not None else NR
+    z = "0.000000e+00 : f32"
+    # copy_back_op = "linalg.copy" (NOT the default bufferization.materialize_in_destination): the
+    # pipeline's canonicalize/cse merges the many identical `linalg.fill 0 -> tensor<MxNxf32>` matmul
+    # inits into ONE shared value, and materialize_in_destination copies each padded result back into
+    # that SHARED fill buffer -> one-shot-bufferize sees N writes aliasing one buffer -> "cannot avoid
+    # RaW conflict" -> whole-model PipelineError -> silent scalar fallback (this is EXACTLY what breaks
+    # the pre-existing vf_mr4 on rdt2). A `linalg.copy` copy-back (paired with eliminate-empty-tensors
+    # in the edit_pipeline) bufferizes each padded matmul into its own buffer, so the model lowers
+    # vectorized. Verified: shared-fill reproducer + rdt2/bitvla whole-model.
+    return f"""\
+module attributes {{transform.with_named_sequence}} {{
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
+    %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %padded, %pad, %cp = transform.structured.pad %mm pad_to_multiple_of [{MR}] {{padding_values = [{z}, {z}, {z}], padding_dimensions = [0], copy_back_op = "linalg.copy"}} : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    %t1, %lmn:2 = transform.structured.tile_using_for %padded tile_sizes [{MR}, {NR}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    %mm2 = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %t2, %lk = transform.structured.tile_using_for %mm2 tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    transform.structured.vectorize %t2 vector_sizes [{MR}, {NR}, 1] : !transform.any_op
+    %bm = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %bt1, %blmn:3 = transform.structured.tile_using_for %bm tile_sizes [1, {MR}, {NB}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+    %bm2 = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %bt2, %blk = transform.structured.tile_using_for %bm2 tile_sizes [0, 0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    transform.structured.vectorize %bt2 vector_sizes [1, {MR}, {NB}, 1] : !transform.any_op
+    %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.transfer_permutation_patterns
+      transform.apply_patterns.vector.reduction_to_contract
+    }} : !transform.any_op
+    transform.yield
+  }}
+}}
+"""
+
+
+def _accumulator_resident_v3_mrpad_pipeline(passes: list[str]) -> list[str]:
+    """The v3 (.vf subset-hoist + A-scalarize) pipeline PLUS ``eliminate-empty-tensors`` before
+    one-shot-bufferize — required by the M-pad copy-back.
+
+    The M-pad schedule copies each padded matmul result back with ``linalg.copy`` (not the default
+    ``materialize_in_destination``); the pair (linalg.copy copy-back + eliminate-empty-tensors) is what
+    lets one-shot-bufferize give each padded matmul its OWN buffer instead of aliasing the CSE-shared
+    zero-fill init across every matmul (the "cannot avoid RaW conflict" whole-model PipelineError).
+    Reuses ``_packed_eliminate_empties`` (same insertion the packed feature uses). Only runs when this
+    feature is enabled; baseline pipeline untouched."""
+    return _packed_eliminate_empties(_accumulator_resident_v3_pipeline(passes))
+
+
 # NOTE: distinct entry-point name (`@__transform_accum_post`) so that when BOTH the pre- and
 # post-bufferize schedules are preloaded into the same module symbol table, their named sequences do
 # not collide (`@__transform_main` is defined by the pre schedule).
@@ -1360,6 +1434,43 @@ def _register_accumulator_resident_v3() -> list[str]:
         schedule_replace=True,
     ))
     names.append("accumulator_resident_wholemodel_vf_mr4")
+
+    # PER-MATMUL MR + M-PAD TAIL — the whole-model-safe MR>1 register block (this iteration).
+    # `..._vf_mr4` proved the A-reuse register block (MR=4 -> loads/FMA 2.0->1.25) but is correct ONLY
+    # where M%MR==0: on the small-/odd-M matmuls that dominate VLA decode (rdt2 M=1, openvla M=17) its
+    # bare MR=4 M-tile trips the LLVM-23 masked-transfer_write PipelineError -> NR=8/non-resident/119
+    # spills (M=17) or an outright scalar fallback (M=1) — MEASURED via the decoder. So it is NOT
+    # whole-model-safe and would REGRESS the mixed-M models. This feature makes MR>1 whole-model-safe by
+    # handling the M-tail the way the hand shim does (`round_up_mr`): PAD each matmul's M up to the next
+    # multiple of MR before tiling, so EVERY matmul register-blocks cleanly at MR regardless of M (M=1
+    # pads to 4, M=17 to 20, M=64 stays 64). Bit-exact — the padded rows are 0-row@B=0 and are sliced
+    # off (transform.structured.pad's extract_slice copy_back), only the real [0:M] rows are written.
+    # Per-matmul (each op pads to its own next multiple of MR — a general tail rule), so a model that
+    # MIXES M%4==0 and M=1 matmuls (rdt2) gets the MR register block on ALL of them in ONE schedule.
+    # The batch_matmul path is identical to `..._vf` (MR=4 + NR_bmm=8), so only the matmul path changes
+    # from the MR=1 clamp to the padded MR register block. Default-off; baseline byte-identical.
+    register(ImprFeature(
+        name="accumulator_resident_wholemodel_vf_mrpad",
+        action_class="PASS",
+        description="Per-matmul MR>1 register block with an M-PAD tail — the whole-model-safe A-operand "
+                    "reuse lever. Same v3 vfmacc.vf subset-hoist + A-scalarization recipe as "
+                    "accumulator_resident_wholemodel_vf, but the matmul M tile is a padded MR=4 register "
+                    "block instead of the MR=1 clamp: transform.structured.pad rounds each matmul's M up "
+                    "to a multiple of MR (padding value 0) BEFORE tiling, so every matmul — INCLUDING "
+                    "the M=1/M=17/M=28 VLA-decode matmuls that make bare vf_mr4 trip the LLVM-23 "
+                    "masked-transfer_write PipelineError (M=1 scalar fallback, M=17 NR=8/119-spill) — "
+                    "register-blocks cleanly at MR: ONE unit-stride B-row load shared across MR "
+                    "vfmacc.vf into MR resident accumulators (loads/useful-FMA 2.0 -> 1.25). Bit-exact "
+                    "(padded rows are 0-row@B=0, sliced off by pad's copy_back extract_slice; only real "
+                    "[0:M] rows written). Per-matmul (each op pads to its own next MR multiple — general "
+                    "tail rule, not a per-model constant), so a MIXED-M model (rdt2 M in {1,28}) gets "
+                    "the MR block on every matmul in ONE schedule. batch_matmul path identical to _vf "
+                    "(MR=4 + NR_bmm=8). Default-off; baseline byte-identical.",
+        edit_pipeline=_accumulator_resident_v3_mrpad_pipeline,
+        edit_schedule=lambda _t: _accumulator_resident_v3_mrpad_pre_schedule(4, 16, 16, NR_bmm=8),
+        schedule_replace=True,
+    ))
+    names.append("accumulator_resident_wholemodel_vf_mrpad")
     return names
 
 

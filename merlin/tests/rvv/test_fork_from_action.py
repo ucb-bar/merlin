@@ -35,10 +35,15 @@ def test_lmul_maps_to_wider_n_knob():
     assert set(p.overrides) <= {"op_match", "contraction_strategy", "lowering_patterns", "dtype_strategy"}
 
 
-def test_register_block_sets_mr_from_intended_expert():
+def test_register_block_routes_to_per_op_mr_feature():
+    # compute.register_block (expert MR > ours) now routes to the REAL whole-model-safe realization:
+    # the per-op MR + M-pad-tail impr_features hook (accumulator_resident_wholemodel_vf_mrpad), which
+    # emits the MR>1 register block on every matmul (padding the M-tail so M=1/M%MR!=0 no longer
+    # scalar-fall-back) — not the op_match tile knob, whose high MR the transform codegen never realized
+    # (and which could not lower the mixed-M VLA models).
     p = action_to_fork(route(_div("compute.register_block", (7, None), (1, None))), _KNOBS)
-    assert p.forkable is True and p.lever == "knob"
-    assert p.overrides["op_match"][0]["tile"][0] == 7   # MR set to the expert's MR
+    assert p.forkable is True and p.lever == "feature"
+    assert p.overrides == {"compiler_features": ["accumulator_resident_wholemodel_vf_mrpad"]}
 
 
 def test_deferred_pass_is_honest_work_item_not_a_faked_knob():
