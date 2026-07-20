@@ -1,0 +1,85 @@
+
+/tmp/merlin_harvest_a5ytv3p6/xnnpack_sigmoid_rvv.o:	file format elf64-littleriscv
+
+Disassembly of section .text:
+
+0000000000000000 <xnn_f32_vsigmoid_ukernel__rvv_rr2_p5_div_u4v>:
+       0: 8109         	c.srli	a0, 0x2
+
+0000000000000002 <.Lpcrel_hi0>:
+       2: 00000697     	auipc	a3, 0x0
+       6: 0006a787     	flw	fa5, 0x0(a3)
+
+000000000000000a <.Lpcrel_hi1>:
+       a: 00000697     	auipc	a3, 0x0
+       e: 0006a707     	flw	fa4, 0x0(a3)
+
+0000000000000012 <.Lpcrel_hi2>:
+      12: 00000697     	auipc	a3, 0x0
+      16: 0006a687     	flw	fa3, 0x0(a3)
+
+000000000000001a <.Lpcrel_hi3>:
+      1a: 00000697     	auipc	a3, 0x0
+      1e: 0006a607     	flw	fa2, 0x0(a3)
+
+0000000000000022 <.Lpcrel_hi4>:
+      22: 00000697     	auipc	a3, 0x0
+      26: 0006a587     	flw	fa1, 0x0(a3)
+
+000000000000002a <.Lpcrel_hi5>:
+      2a: 00000697     	auipc	a3, 0x0
+      2e: 0006a507     	flw	fa0, 0x0(a3)
+
+0000000000000032 <.Lpcrel_hi6>:
+      32: 00000697     	auipc	a3, 0x0
+      36: 0006a007     	flw	ft0, 0x0(a3)
+
+000000000000003a <.Lpcrel_hi7>:
+      3a: 00000697     	auipc	a3, 0x0
+      3e: 0006a087     	flw	ft1, 0x0(a3)
+
+0000000000000042 <.Lpcrel_hi8>:
+      42: 00000697     	auipc	a3, 0x0
+      46: 0006a107     	flw	ft2, 0x0(a3)
+
+000000000000004a <.Lpcrel_hi9>:
+      4a: 00000697     	auipc	a3, 0x0
+      4e: 0006a187     	flw	ft3, 0x0(a3)
+      52: 3f8006b7     	lui	a3, 0x3f800
+      56: f0068253     	fmv.w.x	ft4, a3
+      5a: f00002d3     	fmv.w.x	ft5, zero
+      5e: 052576d7     	vsetvli	a3, a0, e32, m4, ta, mu
+      62: 0205e607     	vle32.v	v12, (a1)
+      66: 8d15         	c.sub	a0, a3
+      68: 068a         	c.slli	a3, 0x2
+      6a: 95b6         	c.add	a1, a3
+      6c: 2ac61457     	vfsgnjx.vv	v8, v12, v12
+      70: 9287d857     	vfmul.vf	v16, v8, fa5
+      74: 03075857     	vfadd.vf	v16, v16, fa4
+      78: 970bba57     	vsll.vi	v20, v16, 0x17
+      7c: 0b075857     	vfsub.vf	v16, v16, fa4
+      80: 9306dc57     	vfmul.vf	v24, v16, fa3
+      84: 03841c57     	vfadd.vv	v24, v24, v8
+      88: b3065c57     	vfmacc.vf	v24, fa2, v16
+      8c: 9385d857     	vfmul.vf	v16, v24, fa1
+      90: 03055857     	vfadd.vf	v16, v16, fa0
+      94: 93881857     	vfmul.vv	v16, v24, v16
+      98: 03005857     	vfadd.vf	v16, v16, ft0
+      9c: 93881857     	vfmul.vv	v16, v24, v16
+      a0: 0300d857     	vfadd.vf	v16, v16, ft1
+      a4: 93881857     	vfmul.vv	v16, v24, v16
+      a8: 03015857     	vfadd.vf	v16, v16, ft2
+      ac: 938a1c57     	vfmul.vv	v24, v24, v20
+      b0: 93881857     	vfmul.vv	v16, v24, v16
+      b4: 030a1857     	vfadd.vv	v16, v16, v20
+      b8: 03025a57     	vfadd.vf	v20, v16, ft4
+      bc: 830a1857     	vfdiv.vv	v16, v16, v20
+      c0: 7681d057     	vmfgt.vf	v0, v8, ft3
+      c4: 76c2d457     	vmfgt.vf	v8, v12, ft5
+      c8: 5d003657     	vmerge.vim	v12, v16, 0x0, v0
+      cc: 9e803057     	vmv1r.v	v0, v8
+      d0: 9cc25657     	vfrsub.vf	v12, v12, ft4, v0.t
+      d4: 02066627     	vse32.v	v12, (a2)
+      d8: 9636         	c.add	a2, a3
+      da: e101         	c.bnez	a0, 0xda <.Lpcrel_hi9+0x90>
+      dc: 8082         	c.jr	ra

@@ -1,0 +1,19 @@
+
+/tmp/merlin_harvest_uittl18n/xnnpack_vbinary_mul_rvv.o:	file format elf64-littleriscv
+
+Disassembly of section .text:
+
+0000000000000000 <xnn_f32_vmul_ukernel__rvv_u4v>:
+       0: 8109         	c.srli	a0, 0x2
+       2: 0d257757     	vsetvli	a4, a0, e32, m4, ta, ma
+       6: 8d19         	c.sub	a0, a4
+       8: 0205e407     	vle32.v	v8, (a1)
+       c: 02066607     	vle32.v	v12, (a2)
+      10: 070a         	c.slli	a4, 0x2
+      12: 95ba         	c.add	a1, a4
+      14: 963a         	c.add	a2, a4
+      16: 92861457     	vfmul.vv	v8, v8, v12
+      1a: 0206e427     	vse32.v	v8, (a3)
+      1e: 96ba         	c.add	a3, a4
+      20: e101         	c.bnez	a0, 0x20 <xnn_f32_vmul_ukernel__rvv_u4v+0x20>
+      22: 8082         	c.jr	ra

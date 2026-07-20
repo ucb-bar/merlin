@@ -33,6 +33,23 @@ correctly off an expert GEMM and off our own compiler output.
   comparison against this fixture inherits that caveat: `compute.accumulator_dtype=f16`,
   `widening=False` (unlike int8's f32-accumulate-via-i32 widening).
 
+- **Per-family teacher fixtures** (`xnnpack_gelu_rvv.objdump`, `xnnpack_sigmoid_rvv.objdump`,
+  `xnnpack_reduce_rvv.objdump`, `xnnpack_clamp_rvv.objdump`, `xnnpack_vbinary_add_rvv.objdump`,
+  `xnnpack_vbinary_mul_rvv.objdump`) — the non-GEMM XNNPACK RVV ukernels that teach the beam's PER-OP
+  teacher (`merlin.rvvgen.wholemodel_proposer.FAMILY_TEACHERS`). Harvested by
+  `build_tools/scripts/harvest_xnnpack_fixtures.py`: each family's `*rvv*.c` ukernel cross-compiled to
+  a `.o` with the SpacemiT K1 clang (`--target=riscv64-unknown-linux-gnu -march=rv64gcv_zfh_zvfh
+  -mabi=lp64d -O3 -DNDEBUG`, `-I ceiling_drivers` for the `src/xnnpack/*.h` shim + `-I XNNPACK/src`)
+  and disassembled with the repo `llvm-objdump` (`decode/objdump.disassemble_text`). What each teaches
+  `cca.lift_asm`: vgelu/vsigmoid are inline minimax polynomials -> `activation_vectorization=
+  vectorized_polynomial` (vs our scalar libm -> routes to `vectorized_transcendental_activation`);
+  f32-rsum -> `reduction_form=vredsum_tree` (vs our scalar accumulate -> `vectorize_reduction`); this
+  rsum fixture is ALSO the `softmax` teacher (its row-sum), lifted with op tag `reduce`. `clamp`/binary
+  are harvested for completeness (thin CCA diff; no fork is forced if `compare` emits nothing). Regenerate:
+  `.venv/bin/python build_tools/scripts/harvest_xnnpack_fixtures.py`. NO XNNPACK primitive exists for
+  attention (`sdpa`/`batch_matmul`), `layer_norm`, or gather (`embedding`) -> NO fixture, an honest
+  no-teacher record (never a faked divergence).
+
 Both new `qd8`/`f16` fixtures are UNLINKED single-ukernel objects, so their intra-function branch
 displacements are still unrelocated (each branch resolves to its own address). The decoder detects
 this (`InsnStream.spans_reliable()` is False) and `cca.lift_asm` reports `envelope.calls_in_loop`

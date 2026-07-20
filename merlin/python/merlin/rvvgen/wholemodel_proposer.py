@@ -1,42 +1,177 @@
-"""Whole-model beam proposer: propose the byte-traffic-ranked whole-model levers, not a kernel diff.
+"""Whole-model beam proposer — a HYBRID of a PER-OP TEACHER and census-ranked hardcodes.
 
 The default CCA proposer (``fork_from_action.propose_forks_from_cca``) diffs the parent's emitted
-kernel CCA against a single EXPERT KERNEL objdump. That works for GEMM-microkernel levers, but it is
-structurally blind to the levers that actually move whole-model time — a materialized
-``linalg.transpose`` (38% of byte-traffic, 57% of openvla time) and an unvectorized reduction
-(softmax/layernorm) are GRAPH properties, not properties of a GEMM kernel, so no kernel-vs-kernel diff
-can surface them. Measured on the board: a scoped beam with a GEMM expert objdump produced only
-spurious ``expert='na'`` divergences and zero useful forks.
+kernel CCA against a single EXPERT KERNEL objdump. That works for the facets a whole-model asm lift
+CAN see against a GEMM expert (contraction form, register block, reduction form, activation
+vectorization, envelope), but it is structurally blind to the levers that are GRAPH properties, not
+inner-loop properties — a materialized ``linalg.transpose`` (38% of byte-traffic, 57% of openvla
+time) and a per-matmul MR clamp are decisions no kernel-vs-kernel facet diff can surface, because the
+CCA has no ``layout`` facet and MR-under-M-tail is a shape decision.
 
-This proposer instead offers the KNOWN forkable whole-model levers, ranked by measured byte-traffic
-relevance (the census in ``out/artifacts/ceiling/model_op_census.json``: transpose 38% > matmul 26% >
-reduce/softmax > activations). It ignores the CCA divergence list (the beam still lifts + records it
-for audit) and lets the board wall + the two-phase validate decide which levers and which STACK win —
-which is the point: the beam discovers the composition, ranked by real e2e wall, rather than being
-told it.
+So this proposer is a UNION of two engines:
+
+1. **Per-op TEACHER** (``route_divergence_forks`` + the per-family section machinery): route the CCA
+   divergences the beam already lifts (parent-vs-expert) into forks via ``action_catalog.route`` /
+   ``fork_from_action.propose_forks_from_cca`` — the divergence->route->fork engine that already
+   exists. The richer form (``make_per_op_teacher_proposer``) pairs a per-FAMILY expert CCA (an
+   XNNPACK ukernel fixture, see ``FAMILY_TEACHERS`` and ``build_tools/scripts/harvest_xnnpack_fixtures.py``)
+   against OUR per-family section CCA (``ours_section_cca``: slice the model to that family's regions,
+   build, lift the emitted asm). Families with no XNNPACK primitive (``sdpa``/``layer_norm``/gather)
+   get an HONEST no-teacher record — never a faked divergence.
+
+2. **Census-ranked hardcodes** (``census_hardcode_forks`` / ``RANKED_LEVERS``): the whole-model levers
+   whose route exists but whose facet field the CCA does not carry, so ``compare`` cannot emit them —
+   ``layout.transpose_materialized`` (``fuse_transpose_b``) and the per-matmul MR block
+   (``accumulator_resident_wholemodel_vf_mrpad``), plus the additive envelope/reduction/activation
+   passes as a fallback when the teacher is idle. Ranked by measured byte-traffic
+   (``out/artifacts/ceiling/model_op_census.json``).
 
 Contract: ``(divergences, knobs) -> [ForkProposal]`` — a drop-in for ``beam.run_beam(proposer=...)``.
-Each proposal MERGES one new feature into the parent's ``compiler_features`` (so depth-N accumulates a
-stack), dropping a proposal that cannot compose (two full-schedule-replacement features clobber).
+``propose_wholemodel_levers`` is the in-contract default (consumes the beam's own divergences UNION
+the census hardcodes); ``make_per_op_teacher_proposer`` binds the richer per-family teacher and
+returns the same 2-arg closure. Each feature proposal MERGES one new feature into the parent's
+``compiler_features`` (depth-N accumulates a stack), dropping any that cannot compose (two
+full-schedule-replacement features clobber).
 """
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable
 
 from ..kernels.rvv_knobs import ForkProposal
 
-# Whole-model levers, most-impactful first by measured byte-traffic / e2e attribution. Each entry is
-# (feature_name, is_full_schedule_replacement). The schedule-replacement one is the matmul register
-# block (it supersedes the plain vf recipe); the rest are additive passes that compose on top.
+# Whole-model HARDCODE levers, most-impactful first by measured byte-traffic / e2e attribution. Each
+# entry is (feature_name, is_full_schedule_replacement). These are the levers a per-facet CCA diff
+# CANNOT emit — a GRAPH-layout decision (transpose) or a shape decision (per-matmul MR) with no CCA
+# facet field — plus the additive passes as a teacher-idle fallback. The teacher (engine 1) supplies
+# the rest from real divergences.
 RANKED_LEVERS: list[tuple[str, bool]] = [
     ("fuse_transpose_b", False),                          # transpose: 38% byte-traffic, measured -6.5% openvla
     ("accumulator_resident_wholemodel_vf_mrpad", True),   # matmul MR register block: 1.49x rdt2 matmul bucket
-    ("vectorize_reduction", False),                       # reduce/softmax: 2nd byte-traffic family, was unvectorized
+    ("vectorize_reduction", True),                        # reduce/softmax: 2nd byte-traffic family, was unvectorized
     ("erase_self_copy", False),                           # envelope: per-tile memrefCopy elimination
-    ("vectorized_transcendental_activation", False),      # gelu/sigmoid/silu: closes the 10-17x activation gap
+    ("vectorized_transcendental_activation", True),       # gelu/sigmoid/silu: closes the 10-17x activation gap
 ]
 
 
+# ---------------------------------------------------------------------------------------------------
+# Per-family TEACHER registry: census op-family -> the XNNPACK expert fixture + CCA op tag. `xnn_family`
+# / `status` are DERIVED from the two authoritative maps (kernel_coverage_matrix.FAMILY_MAP,
+# xnnpack_kernel_catalog._MAP) so this registry only carries what those maps do not: the harvested
+# fixture basename, the CCA op tag, and (for the harvester) the rvv ukernel source. A None `fixture`
+# means "no XNNPACK teacher for this family" — an HONEST no-teacher record, never a faked divergence.
+# ---------------------------------------------------------------------------------------------------
+@dataclass(frozen=True)
+class FamilyTeacher:
+    census_family: str
+    op: str                        # CCA op tag used when lifting (drives activation/reduction inference)
+    fixture: str | None            # basename under merlin/tests/data/cca_asm/ (None => no teacher)
+    ukernel_src: str | None = None # rel path under <XNNPACK>/src for the harvester (None => already harvested)
+    note: str = ""
+
+
+# The liftable teachers: a census family that HAS an XNNPACK primitive whose CCA diff against our
+# section is meaningful. GEMM fixtures pre-exist (run_expert_gemm); the rest are harvested by
+# build_tools/scripts/harvest_xnnpack_fixtures.py into the SAME cca_asm/ dir.
+FAMILY_TEACHERS: dict[str, FamilyTeacher] = {
+    # contractions -> the existing GEMM expert fixture (MR=1, NR=vsetvlmax, accumulator-resident).
+    "matmul": FamilyTeacher("matmul", "matmul", "xnnpack_f32_gemm_rvv.objdump",
+                            note="f32 GEMM ukernel 1x4v"),
+    "addmm":  FamilyTeacher("addmm", "matmul", "xnnpack_f32_gemm_rvv.objdump",
+                            note="linear+bias == GEMM"),
+    "linear": FamilyTeacher("linear", "matmul", "xnnpack_f32_gemm_rvv.objdump", note="== GEMM"),
+    # activations -> vectorized-polynomial ukernels. The flagship non-GEMM teacher: expert lifts
+    # activation_vectorization='vectorized_polynomial', ours (scalar libm) 'scalar_libm_call' ->
+    # routes to vectorized_transcendental_activation.
+    "gelu": FamilyTeacher("gelu", "gelu", "xnnpack_gelu_rvv.objdump",
+                          "f32-vgelu/gen/f32-vgelu-rvv-rational-12-10-div-u4v.c", "rational-12-10 vgelu"),
+    "sigmoid": FamilyTeacher("sigmoid", "sigmoid", "xnnpack_sigmoid_rvv.objdump",
+                             "f32-vsigmoid/gen/f32-vsigmoid-rvv-rr2-p5-div-u4v.c", "rr2-p5 vsigmoid"),
+    "silu": FamilyTeacher("silu", "silu", "xnnpack_sigmoid_rvv.objdump", None,
+                          "SiLU = x*sigmoid; f32-vsigmoid is the closest transcendental teacher"),
+    # reductions -> horizontal-reduce ukernels. Expert lifts reduction_form='vredsum_tree', ours
+    # (scalar accumulate) 'none' -> routes to vectorize_reduction.
+    "reduce": FamilyTeacher("reduce", "reduce", "xnnpack_reduce_rvv.objdump",
+                            "f32-rsum/gen/f32-rsum-rvv-u4v.c", "f32-rsum horizontal reduce"),
+    "reduce_mean": FamilyTeacher("reduce_mean", "reduce", "xnnpack_reduce_rvv.objdump", None,
+                                 "mean == rsum * 1/N"),
+    # softmax's vectorizable reduction is the row-SUM (exp-sum); taught by f32-rsum (reduction_form=
+    # vredsum_tree). op tag 'reduce' (not 'softmax') so the lifter reads the reduction facet, not a
+    # spurious activation classification. The row-MAX (f32-rmax) uses vfredmax, which the lifter does
+    # not classify as a reduction_form -> no divergence -> not a useful teacher, so it is not used.
+    "softmax": FamilyTeacher("softmax", "reduce", "xnnpack_reduce_rvv.objdump", None,
+                             "softmax sum-reduce taught by f32-rsum"),
+    # clamp / elementwise binary -> vectorized ukernels (the CCA diff here is thin; harvested for
+    # completeness — the beam wall decides, no fork is forced if compare emits nothing).
+    "minmax": FamilyTeacher("minmax", "minmax", "xnnpack_clamp_rvv.objdump",
+                            "f32-vclamp/gen/f32-vclamp-rvv-u4v.c", "clamp/relu"),
+    "add": FamilyTeacher("add", "add", "xnnpack_vbinary_add_rvv.objdump",
+                         "f32-vbinary/gen/f32-vadd-rvv-u4v.c", "elementwise add"),
+    "sub": FamilyTeacher("sub", "add", "xnnpack_vbinary_add_rvv.objdump", None, "vsub == vadd family"),
+    "mul": FamilyTeacher("mul", "mul", "xnnpack_vbinary_mul_rvv.objdump",
+                         "f32-vbinary/gen/f32-vmul-rvv-u4v.c", "elementwise mul"),
+}
+
+# NO-TEACHER families: census families with NO XNNPACK vector primitive (FAMILY_MAP element [0] is
+# None) — an honest structural gap. Recorded, never faked. batch_matmul/sdpa are attention (no XNN
+# batch/attention primitive); the rest are gather/norm/index ops.
+NO_TEACHER_FAMILIES: dict[str, str] = {
+    "batch_matmul": "no XNNPACK batch-matmul primitive (attention bmm) -> ours-vs-ours only",
+    "sdpa": "no XNNPACK/BLAS attention primitive -> no expert teacher",
+    "layer_norm": "composite (rsum+rsqrt+vbinary); no single XNNPACK kernel -> no expert teacher",
+    "embedding": "gather; no XNNPACK vector primitive -> no expert teacher",
+    "index_gather": "gather; no XNNPACK vector primitive -> no expert teacher",
+    "select": "predicated select; no XNNPACK primitive -> no expert teacher",
+}
+
+
+def _coverage_maps() -> tuple[dict, dict]:
+    """(FAMILY_MAP, _MAP) from the build_tools authoritative maps, lazily + defensively imported.
+
+    Library code importing a build_tools script is fragile (repo_root may not be on sys.path), so we
+    retry with repo_root inserted and fall back to ({}, {}) — the registry is self-sufficient without
+    them; they only ENRICH the reported xnn_family/status.
+    """
+    try:
+        from build_tools.scripts.kernel_coverage_matrix import FAMILY_MAP  # type: ignore
+        from build_tools.scripts.xnnpack_kernel_catalog import _MAP  # type: ignore
+        return FAMILY_MAP, _MAP
+    except Exception:
+        try:
+            import sys
+            from ..common.paths import repo_root
+            root = str(repo_root())
+            if root not in sys.path:
+                sys.path.insert(0, root)
+            from build_tools.scripts.kernel_coverage_matrix import FAMILY_MAP  # type: ignore
+            from build_tools.scripts.xnnpack_kernel_catalog import _MAP  # type: ignore
+            return FAMILY_MAP, _MAP
+        except Exception:
+            return {}, {}
+
+
+def family_coverage(family: str) -> tuple[str | None, str | None]:
+    """(xnn_family, status) for a census family from the authoritative maps — ('?', None) if absent.
+
+    xnn_family is FAMILY_MAP[family][0] (None => no XNNPACK primitive => no teacher); status is the
+    ``_MAP`` classification (mapped/partial/expert-only) of that xnn_family's leading token."""
+    fmap, catalog = _coverage_maps()
+    entry = fmap.get(family)
+    xnn = entry[0] if entry else None
+    status = None
+    if xnn:
+        head = xnn.split("/")[0].strip()
+        for pref, (_, st) in catalog.items():
+            if head.startswith(pref):
+                status = st
+                break
+    return xnn, status
+
+
+# ---------------------------------------------------------------------------------------------------
+# Composition helpers (the <=1 schedule-replacement rule).
+# ---------------------------------------------------------------------------------------------------
 def _composes(features: list[str]) -> bool:
     """True iff the feature set is co-enable-able (no two full-schedule-replacement features)."""
     from ..llvmlower import impr_features as I
@@ -44,37 +179,284 @@ def _composes(features: list[str]) -> bool:
         I.normalize(features)
     except Exception:  # CompositionError (two schedule_replace) or unknown feature
         return False
-    # normalize does not itself reject two schedule_replace on every path; check explicitly.
     reps = [f for f in features if getattr(I.get(f), "schedule_replace", False)]
     return len(reps) <= 1
 
 
-def propose_wholemodel_levers(divergences: Any, knobs: dict[str, Any]) -> list[ForkProposal]:
-    """Propose one fork per not-yet-enabled whole-model lever, merged onto the parent's features.
+def _feature_fork(feat: str, parent_feats: list[str], *, targets: str, evidence: list[str],
+                  note: str, action: Any = None) -> ForkProposal | None:
+    """Merge one feature onto the parent's feature stack, honoring the <=1 schedule-replace rule.
 
-    ``divergences`` is accepted (and ignored) to satisfy the beam's proposer contract; the beam still
-    lifts and records the parent's CCA for the per-fork audit. Ranking is by byte-traffic relevance;
-    the board wall picks the winners and their stack across beam depth."""
-    parent_feats = list(knobs.get("compiler_features", []) or [])
+    Returns a forkable ForkProposal, or None if the feature is already enabled or cannot compose even
+    after dropping the parent's conflicting schedule-replacement feature."""
+    if feat in parent_feats:
+        return None
+    merged = parent_feats + [feat]
+    if not _composes(merged):
+        # e.g. a schedule-replace feature on top of a parent that already carries one. Try replacing
+        # the conflicting schedule-replacement feature instead of stacking.
+        from ..llvmlower import impr_features as I
+        base = [f for f in parent_feats if not getattr(I.get(f), "schedule_replace", False)]
+        merged = base + [feat]
+        if not _composes(merged):
+            return None
+    return ForkProposal(overrides={"compiler_features": merged}, lever="feature", targets=targets,
+                        evidence=list(evidence), forkable=True, note=note, action=action)
+
+
+def _fork_key(fp: ForkProposal) -> tuple:
+    """Dedup key. Feature forks collide iff they enable the SAME feature set (teacher & hardcode for
+    one feature merge to the identical stack); other forks key on (lever, targets)."""
+    feats = fp.overrides.get("compiler_features")
+    if feats is not None:
+        return ("feature", tuple(sorted(feats)))
+    return (fp.lever, fp.targets)
+
+
+def _union(primary: list[ForkProposal], secondary: list[ForkProposal]) -> list[ForkProposal]:
+    """primary UNION secondary, primary winning on a key collision (teacher forks come first)."""
+    seen: set[tuple] = set()
+    out: list[ForkProposal] = []
+    for fp in list(primary) + list(secondary):
+        k = _fork_key(fp)
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(fp)
+    return out
+
+
+# ---------------------------------------------------------------------------------------------------
+# Engine 2: census-ranked hardcodes.
+# ---------------------------------------------------------------------------------------------------
+def census_hardcode_forks(parent_feats: list[str]) -> list[ForkProposal]:
+    """One fork per not-yet-enabled whole-model hardcode lever, merged onto the parent's features."""
     out: list[ForkProposal] = []
     for feat, _is_replace in RANKED_LEVERS:
-        if feat in parent_feats:
-            continue
-        merged = parent_feats + [feat]
-        if not _composes(merged):
-            # e.g. mrpad on top of a parent that already carries the vf schedule-replacement.
-            # Try replacing the conflicting schedule-replacement feature instead of stacking.
-            from ..llvmlower import impr_features as I
-            base = [f for f in parent_feats if not getattr(I.get(f), "schedule_replace", False)]
-            merged = base + [feat]
-            if not _composes(merged):
-                continue
-        out.append(ForkProposal(
-            overrides={"compiler_features": merged},
-            lever="feature",
-            targets=f"wholemodel:{feat}",
-            evidence=["census:byte-traffic", f"lever:{feat}"],
-            forkable=True,
-            note=f"enable whole-model lever {feat} (byte-traffic ranked)",
-        ))
+        fp = _feature_fork(feat, parent_feats, targets=f"wholemodel:{feat}",
+                           evidence=["census:byte-traffic", f"lever:{feat}"],
+                           note=f"enable whole-model lever {feat} (byte-traffic ranked)")
+        if fp is not None:
+            out.append(fp)
     return out
+
+
+# ---------------------------------------------------------------------------------------------------
+# Engine 1: the per-op teacher — route real CCA divergences into forks.
+# ---------------------------------------------------------------------------------------------------
+def route_divergence_forks(divergences: Any, knobs: dict[str, Any]) -> list[ForkProposal]:
+    """Route CCA divergences (expert-vs-ours) into forks via ``propose_forks_from_cca``, then re-merge
+    each feature fork onto the parent's stack (composition). Non-feature forks (knob / work_item) pass
+    through unchanged, preserving their forkable/deferred status and the CompilerAction for audit."""
+    from .fork_from_action import propose_forks_from_cca
+    parent_feats = list(knobs.get("compiler_features") or [])
+    out: list[ForkProposal] = []
+    for fp in propose_forks_from_cca(list(divergences or []), knobs):
+        feats = fp.overrides.get("compiler_features") if fp.lever == "feature" and fp.forkable else None
+        if feats:
+            for feat in feats:  # normally a single feature per routed action
+                merged = _feature_fork(feat, parent_feats, targets=fp.targets,
+                                       evidence=list(fp.evidence) + ["teacher:xnnpack-cca"],
+                                       note=fp.note, action=fp.action)
+                if merged is not None:
+                    out.append(merged)
+        else:
+            out.append(fp)   # knob / recorded work-item — keep as-is (honest)
+    return out
+
+
+def no_teacher_records(notes: list[tuple[str, str]]) -> list[ForkProposal]:
+    """Honest, non-forkable records for families with no XNNPACK teacher — recorded by the beam as
+    deferred, never minted or faked into a divergence."""
+    return [ForkProposal(overrides={}, lever="work_item", targets=f"noteacher:{fam}",
+                         evidence=[f"census-family:{fam}", "no-xnnpack-primitive"],
+                         forkable=False, note=reason)
+            for fam, reason in notes]
+
+
+# ---------------------------------------------------------------------------------------------------
+# The in-contract HYBRID proposer (drop-in for the CLI's --proposer wholemodel).
+# ---------------------------------------------------------------------------------------------------
+def propose_wholemodel_levers(divergences: Any, knobs: dict[str, Any]) -> list[ForkProposal]:
+    """HYBRID: route the beam's own CCA divergences (per-op teacher) UNION the census hardcodes.
+
+    This is the minimal in-contract fix: the beam already lifts parent-vs-expert divergences and
+    passes them here — the old proposer IGNORED them. Now they drive forks (engine 1); the census
+    hardcodes (engine 2) supply the graph-layout / shape levers no facet diff can emit. Teacher forks
+    win on a collision. Degrades to pure hardcodes when ``divergences`` is empty (today's behavior)."""
+    parent_feats = list(knobs.get("compiler_features") or [])
+    teacher = route_divergence_forks(divergences, knobs)
+    hardcodes = census_hardcode_forks(parent_feats)
+    return _union(teacher, hardcodes)
+
+
+# ---------------------------------------------------------------------------------------------------
+# The richer per-FAMILY teacher: expert-fixture CCA vs OUR per-family section CCA.
+# The section-lift path (ours_section_cca) needs a built section (board/compile work) — it is wired +
+# unit-tested here with an injected build_fn, and exercised for real on the board.
+# ---------------------------------------------------------------------------------------------------
+def cca_asm_dir() -> Path:
+    from ..common.paths import repo_root
+    return repo_root() / "merlin" / "tests" / "data" / "cca_asm"
+
+
+def expert_family_cca(family: str, *, fixture_dir: Path | None = None):
+    """Lift the per-family EXPERT CCA from its XNNPACK ukernel fixture, or None if the family has no
+    teacher / the fixture has not been harvested yet. No LLM authors it — tool-composed from asm."""
+    teacher = FAMILY_TEACHERS.get(family)
+    if teacher is None or teacher.fixture is None:
+        return None
+    path = (fixture_dir or cca_asm_dir()) / teacher.fixture
+    if not path.is_file():
+        return None
+    from .beam_cli import lift_expert_cca
+    return lift_expert_cca(path, teacher.op)
+
+
+def family_region_ids(model_dir: str | Path, family: str) -> list[str]:
+    """The ``prov.region_id``s of the top-level @forward ops whose family matches ``family`` (matching
+    either ``prov.op`` or ``prov.family``) — the section the teacher scopes OUR CCA to."""
+    from ..llvmlower.op_profile import find_forward_ops
+    text = Path(model_dir, "model.mlir").read_text()
+    _, _, ops = find_forward_ops(text)
+    rids: list[str] = []
+    for rec in ops:
+        rid = rec.get("region_id")
+        if rid and (rec.get("op") == family or rec.get("family") == family):
+            rids.append(rid)
+    return rids
+
+
+#: A build_fn takes a built section bundle dir and returns ``(objdump_text, undefined_symbols)`` for
+#: its emitted object — the board/compile seam the section-lift path depends on. The board agent
+#: supplies one that runs ``rvvgen.k1.build_k1_binary`` on the section and reads
+#: ``decode.objdump.disassemble_text`` / ``undefined_symbols`` off ``generated/model.o``. Tests inject
+#: a mock returning a canned objdump.
+SectionBuildFn = Callable[[Path], "tuple[str, tuple[str, ...] | None]"]
+
+
+def ours_section_cca(model_dir: str | Path, family: str, *, build_fn: SectionBuildFn,
+                     op: str | None = None, work_root: str | Path | None = None, seed: int = 0):
+    """Lift OUR per-family CCA by slicing the model to ``family``'s regions, building that section, and
+    lifting the emitted asm — the section-scoped analog of ``beam._cca_divergences``.
+
+    Returns None when the model has no op of that family (nothing to teach). ``build_fn`` is the board
+    seam (see :data:`SectionBuildFn`); everything else is host-side and deterministic."""
+    from .section_build import build_section_bundle
+    op = op or (FAMILY_TEACHERS.get(family).op if FAMILY_TEACHERS.get(family) else family)
+    rids = family_region_ids(model_dir, family)
+    if not rids:
+        return None
+    if work_root is None:
+        from ..common.artifacts import cache_dir
+        work_root = cache_dir("beam-sections")
+    work = Path(work_root) / f"section_{family}"
+    build_section_bundle(model_dir, rids, work, seed=seed)
+    objdump_text, undef = build_fn(work)
+    from ..kernels import cca
+    from ..kernels.decode import rvv
+    return cca.lift_asm(rvv.decode_text(objdump_text), op=op, source="ours",
+                        undefined_symbols=undef)
+
+
+def default_teacher_families() -> list[str]:
+    """The liftable teacher families (a fixture is registered), ordered by measured census byte-traffic
+    (falls back to registry order when the census json is absent, e.g. a fresh worktree)."""
+    liftable = [f for f, t in FAMILY_TEACHERS.items() if t.fixture is not None]
+    order = _census_byte_order()
+    if not order:
+        return liftable
+    # census-ranked first (highest bytes_share), then any liftable family the census did not rank.
+    ranked = [f for f in order if f in liftable]
+    return ranked + [f for f in liftable if f not in ranked]
+
+
+def _census_byte_order() -> list[str]:
+    """Census families ordered by descending ``mean_bytes_share`` (empty if the census json is absent)."""
+    import json
+    from ..common.paths import artifacts_dir
+    p = artifacts_dir() / "ceiling" / "model_op_census.json"
+    if not p.is_file():
+        return []
+    try:
+        rows = json.loads(p.read_text()).get("ranking", [])
+    except Exception:
+        return []
+    rows = [r for r in rows if r.get("family")]
+    rows.sort(key=lambda r: r.get("mean_bytes_share", 0.0), reverse=True)
+    return [r["family"] for r in rows]
+
+
+def per_family_teacher_divergences(model_dir: str | Path, families: list[str] | None = None, *,
+                                   build_fn: SectionBuildFn | None = None,
+                                   expert_fn: Callable[[str], Any] | None = None,
+                                   ours_fn: Callable[[str], Any] | None = None,
+                                   ) -> tuple[list, list[tuple[str, str]]]:
+    """Pair a per-family EXPERT CCA against OUR per-family section CCA and compare -> (all divergences,
+    no-teacher notes). ``expert_fn``/``ours_fn`` default to the fixture + section-lift paths; tests
+    inject mocks so no board/compile is needed. A family with an expert but no emitted section (or vice
+    versa) is honestly recorded as a no-teacher note, not a divergence."""
+    from ..kernels import cca_compare
+    expert_fn = expert_fn or expert_family_cca
+    if ours_fn is None:
+        if build_fn is None:
+            raise ValueError("per_family_teacher_divergences needs build_fn (or an explicit ours_fn)")
+        ours_fn = lambda fam: ours_section_cca(model_dir, fam, build_fn=build_fn)  # noqa: E731
+    families = families if families is not None else default_teacher_families()
+    divergences: list = []
+    notes: list[tuple[str, str]] = []
+    for fam in families:
+        expert = expert_fn(fam)
+        if expert is None:
+            notes.append((fam, NO_TEACHER_FAMILIES.get(fam, f"no XNNPACK teacher fixture for {fam!r}")))
+            continue
+        ours = ours_fn(fam)
+        if ours is None:
+            notes.append((fam, f"expert teacher exists for {fam!r} but the model emits no such section"))
+            continue
+        divergences.extend(cca_compare.compare(expert, ours, evidence=[f"xnnpack:{fam}"]))
+    # families that are structurally no-teacher and were not among `families`: still record them if
+    # the model actually runs them (honest surface of where we have no expert).
+    for fam, reason in NO_TEACHER_FAMILIES.items():
+        if fam not in families and not any(n[0] == fam for n in notes):
+            notes.append((fam, reason))
+    return divergences, notes
+
+
+def make_per_op_teacher_proposer(model_dir: str | Path | None = None,
+                                 families: list[str] | None = None, *,
+                                 build_fn: SectionBuildFn | None = None,
+                                 precomputed_divergences: list | None = None,
+                                 no_teacher_notes: list[tuple[str, str]] | None = None,
+                                 ) -> Callable[[Any, dict], list[ForkProposal]]:
+    """Bind the per-FAMILY teacher and return a ``(divergences, knobs) -> [ForkProposal]`` closure.
+
+    The closure routes the precomputed per-family teacher divergences (expert-fixture-vs-our-section,
+    computed once here) TOGETHER with the beam's own parent-vs-expert divergences, UNION the census
+    hardcodes, plus the honest no-teacher records. Preserves the beam's proposer contract and the
+    <=1-schedule-replacement composition rule.
+
+    Two ways to supply the teacher divergences:
+      * ``precomputed_divergences`` (+ ``no_teacher_notes``) — pass them directly (tests, or a caller
+        that already ran the section builds);
+      * ``model_dir`` + ``build_fn`` — compute them here via ``per_family_teacher_divergences`` (the
+        board path: build_fn runs the K1 section build)."""
+    if precomputed_divergences is None:
+        if model_dir is None or build_fn is None:
+            raise ValueError("make_per_op_teacher_proposer needs precomputed_divergences, or "
+                             "model_dir + build_fn to compute them")
+        precomputed_divergences, no_teacher_notes = per_family_teacher_divergences(
+            model_dir, families, build_fn=build_fn)
+    teacher_divs = list(precomputed_divergences or [])
+    notes = list(no_teacher_notes or [])
+
+    def proposer(divergences: Any, knobs: dict[str, Any]) -> list[ForkProposal]:
+        parent_feats = list(knobs.get("compiler_features") or [])
+        all_divs = teacher_divs + list(divergences or [])
+        teacher = route_divergence_forks(all_divs, knobs)
+        hardcodes = census_hardcode_forks(parent_feats)
+        forks = _union(teacher, hardcodes)
+        forks.extend(no_teacher_records(notes))
+        return forks
+
+    return proposer
