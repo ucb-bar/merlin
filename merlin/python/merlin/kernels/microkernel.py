@@ -84,6 +84,45 @@ class MicrokernelSpec:
         return replace(self, **kw)
 
 
+#: The micro-kernel axes a beam/proposer MAY explore, and the ones PRUNED because they were measured
+#: inert or structurally wrong. Every axis stays RESOLVABLE (``resolve`` still emits a schedule for it,
+#: so a package or a test may pin it), but a proposer must not spend beam budget PROPOSING a pruned
+#: axis as a candidate win — it burns a certify slot to (best case) reproduce the parent, (worst case)
+#: regress. Two levers were inert/wrong exactly this way (they looked wired at every layer while the
+#: emitted code was flat or slower — see rvvgen/beam._emitted_digest):
+#:   * ``KC``       — INERT. The v3 recipe tiles the reduction K by 1 regardless of KC (KC only names
+#:                    the outer register-block trip conceptually), so proposing different KC values on
+#:                    the default recipe changes no emitted instruction (measured flat across KC). The
+#:                    genuine reduction-blocking lever is ``k_block`` (a distinct axis), not KC-tuning.
+#:   * ``unroll_m`` — STRUCTURALLY WRONG. Holding M as MR independent accumulators emits MR sequential
+#:                    K-loops with B-reuse=1 (measured ~2.4x SLOWER than the 2-D vector<MRxNR> block),
+#:                    so raising MR under unroll_m spends budget on a known regression.
+#: Prove a lever by a measured emitted-code delta (PMU instret / decoded stream), never by schedule
+#: text — that is what caught both of these. See also docs/design/expert_gap_attribution.md.
+PRUNED_AXES: dict[str, str] = {
+    "KC": "inert: the v3 schedule tiles K by 1 regardless of KC (measured flat emitted code); use "
+          "the k_block axis for genuine reduction blocking",
+    "unroll_m": "structurally wrong: MR sequential K-loops, B-reuse=1, measured ~2.4x slower than "
+                "the 2-D vector<MRxNR> register block",
+}
+
+#: The full set of tunable micro-kernel axes (every MicrokernelSpec field that names a codegen
+#: decision — the ``op`` identity is not one). ``proposable_axes`` is this minus the pruned ones.
+_TUNABLE_AXES: tuple[str, ...] = ("MR", "NR", "KC", "unroll_m", "vl_strategy", "pack", "k_block")
+
+
+def proposable_axes() -> list[str]:
+    """The micro-kernel axes a beam/proposer SHOULD explore — the tunable axes minus the pruned
+    (inert/structurally-wrong) ones. A proposer over the micro-kernel space MUST consult this so it
+    does not burn certify budget on a lever that cannot produce a win."""
+    return [a for a in _TUNABLE_AXES if a not in PRUNED_AXES]
+
+
+def is_axis_proposable(axis: str) -> bool:
+    """True if ``axis`` is a micro-kernel axis worth PROPOSING (tunable and not pruned)."""
+    return axis in _TUNABLE_AXES and axis not in PRUNED_AXES
+
+
 #: target name -> resolver. A resolver maps a spec to that target's realization — for a
 #: schedule-driven target that is a list of compiler-feature names; other targets may return their
 #: own directive objects. The beam only passes it through, so the type is target-defined.

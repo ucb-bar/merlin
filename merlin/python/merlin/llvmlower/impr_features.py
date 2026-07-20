@@ -1811,3 +1811,117 @@ register(ImprFeature(
                 "stays vectorized by the frozen schedule and reads B contiguously along k. "
                 "Whole-model cross-op fusion; default-off, baseline byte-identical.",
 ))
+
+
+# ---- vectorize a standalone reduction -> vfredusum/vredsum (the compute.reduction_form lever) ------
+# The baseline RVV schedule vectorizes ONLY the contraction ops (linalg.matmul / batch_matmul); a
+# standalone reduction (softmax max/sum, LayerNorm/RMSNorm mean/var, a `linalg.reduce`) is left as a
+# `linalg.generic` with a `reduction` iterator and falls through `convert-linalg-to-loops` to a SCALAR
+# accumulate loop. That is the 2nd-biggest byte-traffic op family (softmax ~3.85% of the census) going
+# unvectorized -- and the `compute.reduction_form` CCA lever had NO route (a bijection orphan), so the
+# beam could not act on it. This feature is that route.
+#
+# It vectorizes the reduction generic (matched by its `reduction` iterator, at the ranks that occur in
+# practice -- pure reduce, softmax/norm row-reduce, batched 3-D) and lets the reduction lower to a
+# HARDWARE vector reduction. Two pipeline knobs make that land as `vfredusum`/`vredsum` rather than a
+# scalar tail or a lane-parallel add tree:
+#   * `lower-vector-multi-reduction{lowering-strategy=inner-reduction}` lowers the
+#     `vector.multi_reduction` (that `transform.structured.vectorize` produces) to a `vector.reduction`
+#     (the single-instruction horizontal reduce) instead of the default inner-PARALLEL add tree.
+#   * `convert-vector-to-llvm{reassociate-fp-reductions}` sets `reassoc` on the emitted
+#     `llvm.intr.vector.reduce.fadd`, so the RISC-V backend selects the UNORDERED `vfredusum.vs`
+#     (detectable as a real reduction by cca.lift_asm) instead of the ordered `vfredosum.vs`. Integer
+#     reductions emit `vredsum.vs` directly (integer add is associative).
+#
+# The contraction blocks of the baseline schedule are LEFT INTACT (this edit only INSERTS the reduction
+# match+vectorize before the func-level lowering-pattern block), so enabling the feature on a whole
+# model does NOT regress the matmuls to scalar -- MEASURED: the emitted matmul object is byte-identical
+# with and without this feature (65 vec ops, 4 vfmul, 4 vfadd, 0 vfmacc either way). Empty matches are
+# harmless (vectorize on an empty handle is a no-op), so a reduction rank the model does not contain
+# just does nothing.
+#
+# PROVEN on the EMITTED CODE (lower a gen_reduce_f32 / gen_softmax_f32 workload with the real
+# RVV_CFLAGS `-fno-vectorize -fno-slp-vectorize`, so clang's own auto-vectorizer is OFF and every
+# vector reduction is MLIR-emitted, then decode the objdump):
+#   reduce_f32 64x256 :  vfredusum.vs x64 (baseline: 0 vector ops)   cca.reduction_form=vredsum_tree
+#   softmax_f32 64x256:  vfredmax.vs x64 + vfredusum.vs x64          cca.reduction_form=vredsum_tree
+# APPROXIMATION (not bit-exact): `reassociate-fp-reductions` reorders the fp sum, the standard tree /
+# unordered reduction XNNPACK et al. also use -- gated on cos/rel error, never claimed bit-exact.
+# Default-off; empty features => pipeline + schedule byte-identical (guarded by test_impr_features).
+
+# The reduction match+vectorize block, inserted before the baseline schedule's func.func lowering-
+# pattern block. One match per reduction rank we support (pure-reduction, [parallel, reduction],
+# [parallel, parallel, reduction]); an arity absent from the module matches nothing and is skipped.
+_VECTORIZE_REDUCTION_BLOCK = """\
+    %redr1 = transform.structured.match ops{["linalg.generic"]} attributes{iterator_types = [#linalg.iterator_type<reduction>]} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.structured.vectorize %redr1 : !transform.any_op
+    %redr2 = transform.structured.match ops{["linalg.generic"]} attributes{iterator_types = [#linalg.iterator_type<parallel>, #linalg.iterator_type<reduction>]} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.structured.vectorize %redr2 : !transform.any_op
+    %redr3 = transform.structured.match ops{["linalg.generic"]} attributes{iterator_types = [#linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>, #linalg.iterator_type<reduction>]} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.structured.vectorize %redr3 : !transform.any_op
+"""
+
+# Anchor: the baseline schedule's func-level lowering-pattern match. Insert the reduction block just
+# before it so the lowering patterns (lower_masked_transfers/transpose/shape_cast) clean up afterward.
+_REDUCTION_ANCHOR = '    %f = transform.structured.match ops{["func.func"]}'
+
+# A standalone reduction-only schedule, used when the input schedule has no func.func anchor to build
+# on (so the feature is never a silent no-op — it always emits the reduction vectorization).
+_VECTORIZE_REDUCTION_STANDALONE = f"""\
+module attributes {{transform.with_named_sequence}} {{
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
+{_VECTORIZE_REDUCTION_BLOCK}\
+    %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %f {{
+      transform.apply_patterns.vector.lower_masked_transfers
+      transform.apply_patterns.vector.lower_shape_cast
+    }} : !transform.any_op
+    transform.yield
+  }}
+}}
+"""
+
+
+def vectorize_reduction_schedule(text: str) -> str:
+    """Insert the reduction match+vectorize block into the baseline schedule (before its func.func
+    lowering-pattern block), keeping the contraction handling intact. Falls back to a reduction-only
+    schedule if the anchor is absent (never a silent no-op)."""
+    if _REDUCTION_ANCHOR in text:
+        return text.replace(_REDUCTION_ANCHOR,
+                            _VECTORIZE_REDUCTION_BLOCK + _REDUCTION_ANCHOR, 1)
+    return _VECTORIZE_REDUCTION_STANDALONE
+
+
+def vectorize_reduction_pipeline(passes: list[str]) -> list[str]:
+    """Make the emitted reduction a single-instruction horizontal vector reduce (`vfredusum`/`vredsum`):
+    switch `lower-vector-multi-reduction` to the inner-reduction strategy (-> `vector.reduction`) and
+    enable `reassociate-fp-reductions` on `convert-vector-to-llvm` (-> unordered `vfredusum.vs`). Only
+    runs when this feature is enabled; the baseline pass list is untouched otherwise."""
+    out: list[str] = []
+    for p in passes:
+        if p == "func.func(lower-vector-multi-reduction)":
+            out.append("func.func(lower-vector-multi-reduction{lowering-strategy=inner-reduction})")
+        elif p == "convert-vector-to-llvm":
+            out.append("convert-vector-to-llvm{reassociate-fp-reductions}")
+        else:
+            out.append(p)
+    return out
+
+
+register(ImprFeature(
+    name="vectorize_reduction",
+    action_class="PASS",
+    description="Vectorize a standalone reduction (softmax/norm row-reduce, `linalg.reduce`) so it "
+                "lowers to a HARDWARE vector reduction (`vfredusum.vs` for fp / `vredsum.vs` for int) "
+                "instead of the scalar convert-linalg-to-loops accumulate the baseline emits. Matches "
+                "the reduction `linalg.generic` by its reduction iterator (ranks 1/2/3), vectorizes it "
+                "to `vector.multi_reduction`, lowers that via the inner-reduction strategy to "
+                "`vector.reduction`, and reassociates the fp reduce so the backend picks the unordered "
+                "vfredusum. The contraction schedule is left intact (matmul object byte-identical), so "
+                "it is whole-model-safe. The route for the compute.reduction_form CCA lever (previously "
+                "a bijection orphan). APPROXIMATION (fp reassociation, cos-gated). Default-off; baseline "
+                "byte-identical.",
+    edit_pipeline=vectorize_reduction_pipeline,
+    edit_schedule=vectorize_reduction_schedule,
+    schedule_replace=True,
+))

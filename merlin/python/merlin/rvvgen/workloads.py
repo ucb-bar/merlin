@@ -490,7 +490,12 @@ _GENERATORS = {"matmul_f32": gen_matmul_f32, "matmul_f16": gen_matmul_f16,
                "batch_matmul_f32": gen_batch_matmul_f32,
                "conv2d_im2col_f32": gen_conv2d_as_matmul_f32,
                "gelu_f32": gen_gelu_f32, "sigmoid_f32": gen_sigmoid_f32,
-               "silu_f32": gen_silu_f32}
+               "silu_f32": gen_silu_f32,
+               # elementwise / reduction / data-movement families (already defined above; now wired
+               # into the CLI so the sweep can generate them). reduce_f32 is the softmax/norm reduction
+               # building block the compute.reduction_form lever vectorizes to vfredusum/vredsum.
+               "binary_f32": gen_binary_f32, "reduce_f32": gen_reduce_f32,
+               "relu_f32": gen_relu_f32, "transpose_f32": gen_transpose_f32}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -502,13 +507,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("-N", type=int, default=64)
     ap.add_argument("-K", type=int, default=64)
     ap.add_argument("-B", type=int, default=4, help="batch dim (batch_matmul_f32)")
+    ap.add_argument("--elt-op", default=None,
+                    help="element/reduce op for binary_f32 (mul/add/sub/div/max/min) or "
+                         "reduce_f32 (sum/max/min); default per-generator")
     a = ap.parse_args(argv)
     fn = _GENERATORS[a.op]
     if a.op == "batch_matmul_f32":
         kw = {"B": a.B, "M": a.M, "N": a.N, "K": a.K}
-    elif a.op == "softmax_f32":
-        kw = {"M": a.M, "N": a.N}
-    elif a.op in ("gelu_f32", "sigmoid_f32", "silu_f32"):  # N-vector elementwise activations
+    elif a.op in ("softmax_f32", "transpose_f32"):  # 2-D (M,N) shapes; transpose maps M->R, N->C
+        kw = {"R": a.M, "C": a.N} if a.op == "transpose_f32" else {"M": a.M, "N": a.N}
+    elif a.op == "reduce_f32":              # (M,N)->(M,) reduction; --elt-op picks sum/max/min
+        kw = {"M": a.M, "N": a.N, **({"op": a.elt_op} if a.elt_op else {})}
+    elif a.op == "binary_f32":              # N-vector elementwise binary; --elt-op picks mul/add/...
+        kw = {"N": a.N, **({"op": a.elt_op} if a.elt_op else {})}
+    elif a.op in ("gelu_f32", "sigmoid_f32", "silu_f32", "relu_f32"):  # N-vector elementwise
         kw = {"N": a.N}
     else:                                   # matmul_f32 / conv2d_im2col_f32: M,N,K
         kw = {"M": a.M, "N": a.N, "K": a.K}

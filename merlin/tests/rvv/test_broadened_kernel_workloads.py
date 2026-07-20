@@ -98,3 +98,23 @@ def test_census_reduce_counts_reduction_axis(tmp_path):
     fams = census.census_bundle(b / "model.mlir")
     assert fams["generic"]["work"] == 8 * 64            # M*N visited, 1-op body
     assert fams["generic"]["linalg_ops"] == {"linalg.generic": 1}
+
+
+def test_new_generators_wired_into_cli_registry():
+    """The four families (binary/reduce/relu/transpose) were defined but not registered — now they are
+    in the CLI _GENERATORS dict so the sweep can generate them."""
+    for op in ("binary_f32", "reduce_f32", "relu_f32", "transpose_f32"):
+        assert op in workloads._GENERATORS, op
+
+
+@pytest.mark.parametrize("argv,expect", [
+    (["reduce_f32", "-M", "8", "-N", "64", "--elt-op", "sum"], "reduce_sum_f32_8x64"),
+    (["binary_f32", "-N", "128", "--elt-op", "add"], "binary_add_f32_128"),
+    (["relu_f32", "-N", "128"], "relu_f32_128"),
+    (["transpose_f32", "-M", "8", "-N", "16"], "transpose_f32_8x16"),
+])
+def test_cli_main_generates_each_new_family(tmp_path, argv, expect):
+    rc = workloads.main([*argv, "--out-root", str(tmp_path)])
+    assert rc == 0
+    assert (tmp_path / expect / "model.mlir").is_file()
+    assert (tmp_path / expect / "golden.npy").is_file()

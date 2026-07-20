@@ -84,7 +84,11 @@ def _rvv_microkernel_resolver(spec) -> list[str]:
                    ``impr_features.ensure_v3_scalable_microkernel``).
       unroll_m  -> hold M rows as independent accumulators. Expressible, but MEASURED structurally
                    wrong on silicon (B reuse stays 1 per K step, 2x the instructions per lane-FMA at
-                   every MR) — see docs/design/expert_gap_attribution.md.
+                   every MR) — see docs/design/expert_gap_attribution.md. PRUNED from beam proposal
+                   (kernels.microkernel.PRUNED_AXES); still resolvable here for tests/pins.
+      KC        -> INERT on this recipe: K is tiled by 1 regardless of KC, so tuning KC changes no
+                   emitted instruction (measured flat). PRUNED from proposal; the genuine
+                   reduction-blocking lever is ``k_block``.
 
     Every realization also carries the recipe's lowering HYGIENE (see :func:`_with_hygiene`) — the
     passes the emitted code needs to be worth measuring at all, independent of dtype.
@@ -146,14 +150,18 @@ def _recipe(spec) -> list[str]:
                                   "composed recipe to combine them.")
         return [ensure_v3_scalable_microkernel(int(spec.MR), int(spec.NR), int(spec.KC))]
     if spec.k_block:
-        # REAL cache blocking of the reduction (the KC lever the plain v3 recipe silently ignored).
+        # REAL cache blocking of the reduction (k_block is the genuine reduction-blocking lever;
+        # bare KC-tuning on the default recipe is INERT and PRUNED from proposal — see
+        # kernels.microkernel.PRUNED_AXES. This path stays RESOLVABLE so a package/test may pin it).
         if spec.unroll_m or spec.pack:
             raise UnsupportedAxis("rvv: k_block does not compose with unroll_m/pack yet (each "
                                   "replaces the schedule); emit one composed recipe to combine them.")
         return [ensure_v3_kblocked_microkernel(int(spec.MR), int(spec.NR), int(spec.KC))]
     if spec.unroll_m:
         # M held as MR INDEPENDENT accumulators (tile M by 1 + unroll the M loop by MR) instead of a
-        # 2-D vector<MRxNR> — shape-agnostic in MR, which is what lets an expert pick MR=7.
+        # 2-D vector<MRxNR> — shape-agnostic in MR, which is what lets an expert pick MR=7. MEASURED
+        # structurally wrong (MR sequential K-loops, B-reuse=1, ~2.4x slower), so `unroll_m` is PRUNED
+        # from proposal (kernels.microkernel.PRUNED_AXES). Kept RESOLVABLE for tests/pins only.
         if spec.pack:
             raise UnsupportedAxis("rvv: unroll_m + pack are not composed yet (each replaces the "
                                   "schedule); emit one composed recipe before enabling both.")

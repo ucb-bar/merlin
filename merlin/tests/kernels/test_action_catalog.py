@@ -135,6 +135,27 @@ def test_mtail_routes_to_forkable_heuristic():
     assert "accumulator_resident_mtail" in a.target_seam
 
 
+def test_reduction_form_routes_to_forkable_vectorize_reduction_pass():
+    # compute.reduction_form was a bijection ORPHAN (a lever with no route). It now routes to the
+    # vectorize_reduction PASS (vfredusum/vredsum), forkable now (a registered impr feature).
+    d = cca_compare.Divergence(axis="compute.reduction_form", expert="vredsum_tree", ours="none",
+                               backend="rvv")
+    a = ac.route(d)
+    assert a is not None and a.action_class == "PASS" and a.forkable_now is True
+    assert a.target_seam == "impr_features:vectorize_reduction"
+    assert a.intended_facet == {"compute.reduction_form": "vredsum_tree"}
+    # no route when we already vectorize the reduction (ours matches a real reduction form)
+    assert ac.route(cca_compare.Divergence(axis="compute.reduction_form", expert="vredsum_tree",
+                                           ours="vredsum_tree", backend="rvv")) is None
+
+
+def test_reduction_form_no_longer_a_bijection_orphan():
+    from merlin.kernels.cca_contract import check_bijection
+    r = check_bijection("rvv")
+    assert "compute.reduction_form" not in r.orphan_fields
+    assert r.unexpected().clean          # the ratchet stays green (only allowlisted gaps remain)
+
+
 def test_unrouted_reported_not_dropped():
     # an axis with no route is returned as unrouted, never silently dropped
     d = cca_compare.Divergence(axis="compute.made_up_axis", expert="x", ours="y", backend="rvv")
