@@ -383,8 +383,11 @@ int main(int argc, char **argv) {{
 # outer-product contraction feature at a large square regime) makes clang-23 spin for many minutes on
 # one object file, hanging a serial beam; time it out so the fork fails-closed as a K1 build error the
 # certify ladder records. Board-run (_ssh) already carries its own timeout. Override/disable (0) with
-# MERLIN_COMPILE_TIMEOUT_S — the same knob the host/spike codegen path honors.
-_K1_CMD_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "300") or "0")
+# MERLIN_COMPILE_TIMEOUT_S — the same knob the host/spike codegen path honors. Default unified at
+# 900s across all four compile wrappers (was 300): a per-object 300s ceiling tripped legitimate
+# whole-model builds (bitvla int8 fails even the baseline at 600s). For a whole-model beam launch
+# set MERLIN_COMPILE_TIMEOUT_S=3600; 0 (or empty) disables the ceiling.
+_K1_CMD_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "900") or "0")
 
 
 def _run(cmd: list, **kw) -> subprocess.CompletedProcess:

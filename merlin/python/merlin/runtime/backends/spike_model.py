@@ -49,8 +49,10 @@ def _c_runtime_dir() -> Path:
 # Bounded wall clock for the spike build's clang/link steps. A pathological schedule (e.g. an
 # outer-product contraction at a large square regime) makes clang -O2 spin for many minutes on one
 # object; in a serial beam that hangs the whole sweep. Time it out so the fork fails-closed as a
-# build error the certify ladder records. Same MERLIN_COMPILE_TIMEOUT_S knob as the K1/host paths.
-_SPIKE_CMD_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "600") or "0")
+# build error the certify ladder records. Same MERLIN_COMPILE_TIMEOUT_S knob as the K1/host paths;
+# default unified at 900s across all four compile wrappers (was 600). For a whole-model beam launch
+# set MERLIN_COMPILE_TIMEOUT_S=3600; 0 (or empty) disables the ceiling.
+_SPIKE_CMD_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "900") or "0")
 
 
 def _run(cmd: list, **kw) -> subprocess.CompletedProcess:

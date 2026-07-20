@@ -132,7 +132,9 @@ def available() -> bool:
 # regime) makes clang -O2 spin for many minutes on one object; in a serial beam that hangs the whole
 # sweep. Time it out so the fork fails-closed as a build error the certify ladder records. Same
 # MERLIN_COMPILE_TIMEOUT_S knob as the host/spike/K1 paths. run_on_spike/FireSim carry their own timeout.
-_BUILD_CMD_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "600") or "0")
+# Default unified at 900s across all four compile wrappers (was 600). For a whole-model beam launch set
+# MERLIN_COMPILE_TIMEOUT_S=3600; 0 (or empty) disables the ceiling.
+_BUILD_CMD_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "900") or "0")
 
 
 def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
@@ -584,36 +586,68 @@ def _parse_console(console: str, rc: int) -> dict[str, Any]:
             "metrics": metrics, "console": console}
 
 
-def _gate(prefix: np.ndarray, references) -> dict:
+# Per-element relative-error ceiling for the strict tiers. The aggregate cos and global-max-
+# normalized ``rel`` terms can BOTH stay near-perfect while a single output element is
+# catastrophically wrong: a measured fp16-accumulate GEMM passed the old gate at
+# cos=0.9999986 while being 1209% wrong (per-element rel ≈ 12.09) on one element, because the
+# blow-up was localized and drowned by the aggregates. Folding a per-element ceiling into each
+# conjunction closes that hole. Tunable via MERLIN_GATE_MAX_REL (default 0.05 rejects the
+# 1209% case while clearing real recaptures, whose genuine per-element spread runs ~3e-3 —
+# e.g. bitvla's fp32 baseline). 0 (or empty) DISABLES the per-element term entirely.
+_GATE_MAX_REL = float(os.environ.get("MERLIN_GATE_MAX_REL", "0.05") or "0")
+
+
+def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> dict:
     """Multi-tier accuracy gate for an int8 (W8A8) run. ``references`` is either a single
     fp32 reference array (legacy: one ``cos``/``rel``/``ok`` at the strict fp32 threshold) or
     a ``{tier: array}`` dict. Tiers (literature-backed for W8A8 transformers — I-BERT /
     SmoothQuant put W8A8 at cos 0.99–0.999 vs fp32):
-      * ``w8a8`` — vs a torch/host W8A8 reference: T1 cos > 0.999 AND rel < 1e-2 (the int8
-        datapath is faithful to the W8A8 math it intends to run);
-      * ``fp32`` — vs the fp32 golden: T2 cos > 0.99 AND top-1 argmax matches (the quantization
-        degradation is within the accepted band).
-    ``ok = T1 or T2``. Emits per-tier ``<tier>_cos``/``<tier>_rel``/``<tier>_argmax`` keys."""
+      * ``w8a8`` — vs a torch/host W8A8 reference: T1 cos > 0.999 AND rel < 1e-2 AND per-element
+        max-rel < ``max_rel`` (the int8 datapath is faithful to the W8A8 math AND no single
+        element blew up);
+      * ``fp32`` — vs the fp32 golden: T2 cos > 0.99 AND top-1 argmax matches AND per-element
+        max-rel < ``max_rel`` (quant degradation within band, no localized blow-up).
+    ``ok = T1 or T2``. The per-element term is ``perel = |pref - r| / (|r| + floor)`` with the
+    denominator floored at 0.1% of ``|r|.max()`` so genuine near-zero reference elements don't
+    manufacture spurious blow-ups, while a real localized error (large element, or a near-zero
+    element that jumped) still trips it. ``max_rel`` defaults to the ``MERLIN_GATE_MAX_REL``
+    module knob; a value <= 0 disables the per-element term (recovering the old aggregate-only
+    behavior). Emits per-tier ``<tier>_cos``/``<tier>_rel``/``<tier>_argmax``/``<tier>_max_rel``."""
     pref = np.asarray(prefix, dtype=np.float32).ravel()
     if not isinstance(references, dict):
         references = {"fp32": references}
+    thresh = _GATE_MAX_REL if max_rel is None else float(max_rel)
     out: dict[str, Any] = {}
     k = len(pref)
     for tier, ref in references.items():
         if ref is None:
             continue
         r = np.asarray(ref, dtype=np.float32).ravel()[:k]
-        rel = float(np.abs(pref - r).max()) / max(1e-9, float(np.abs(r).max()))
+        rmax = max(1e-9, float(np.abs(r).max()))
+        rel = float(np.abs(pref - r).max()) / rmax
         cos = float((pref @ r) / (np.linalg.norm(pref) * np.linalg.norm(r) + 1e-12))
+        # per-element relative error; floor the denominator at 0.1% of the array scale so tiny
+        # reference elements can't fabricate a blow-up, then take the worst element.
+        perel = float((np.abs(pref - r) / (np.abs(r) + 1e-3 * rmax)).max())
         out[f"{tier}_cos"] = cos
         out[f"{tier}_rel"] = rel
         out[f"{tier}_argmax"] = bool(int(np.argmax(pref)) == int(np.argmax(r)))
-    t1 = out.get("w8a8_cos", 0.0) > 0.999 and out.get("w8a8_rel", 1.0) < 1e-2
-    t2 = out.get("fp32_cos", 0.0) > 0.99 and out.get("fp32_argmax", False)
-    # legacy single-reference callers gate at the strict fp32 threshold
-    legacy = "w8a8" not in out and out.get("fp32_cos", 0.0) > 0.9999 and out.get("fp32_rel", 1.0) < 1e-3
+        out[f"{tier}_max_rel"] = perel
+
+    def _perel_ok(tier: str) -> bool:
+        # thresh <= 0 disables the term; missing tier => vacuously ok (that tier isn't in play).
+        return thresh <= 0 or out.get(f"{tier}_max_rel", 0.0) < thresh
+
+    t1 = (out.get("w8a8_cos", 0.0) > 0.999 and out.get("w8a8_rel", 1.0) < 1e-2
+          and _perel_ok("w8a8"))
+    t2 = (out.get("fp32_cos", 0.0) > 0.99 and out.get("fp32_argmax", False)
+          and _perel_ok("fp32"))
+    # legacy single-reference callers gate at the strict fp32 threshold (+ per-element ceiling)
+    legacy = ("w8a8" not in out and out.get("fp32_cos", 0.0) > 0.9999
+              and out.get("fp32_rel", 1.0) < 1e-3 and _perel_ok("fp32"))
     out["cos"] = out.get("w8a8_cos", out.get("fp32_cos"))
     out["rel"] = out.get("w8a8_rel", out.get("fp32_rel"))
+    out["max_rel"] = out.get("w8a8_max_rel", out.get("fp32_max_rel"))
     out["ok"] = bool(t1 or t2 or legacy)
     return out
 

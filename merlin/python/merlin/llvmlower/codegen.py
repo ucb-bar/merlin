@@ -13,7 +13,9 @@ from .toolchain import clang
 # large square regime) can make clang -O2 blow up and spin for many minutes on one object file; in a
 # serial beam that hangs the whole sweep. Time it out so the fork fails-closed as a build error the
 # certify ladder records, instead of stalling. Override with MERLIN_COMPILE_TIMEOUT_S (0 disables).
-_COMPILE_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "300") or "0")
+# Default unified at 900s across all four compile wrappers (was 300): a per-object 300s ceiling
+# tripped legitimate whole-model builds. For a whole-model beam launch set MERLIN_COMPILE_TIMEOUT_S=3600.
+_COMPILE_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "900") or "0")
 
 # Host (x86) kernel flags. The compiled kernels are plain clang-vectorized loops (no BLAS),
 # so the GEMM-heavy graphs of large models (pi05, openvla) are runtime-bound on them. -O3
