@@ -288,3 +288,82 @@ def test_v3_whole_model_lowers_vectorized_not_scalar_fallback(model):
     assert base.count("vfmacc", "vmacc") == 0, "baseline must emit no vfmacc (un-fused matmul)"
     on = _decode_model(model, [_V3])
     assert on.count("vfmacc.vf") > 0, "v3 whole-model must emit vfmacc.vf (resident-accumulator kernel)"
+
+
+# ---- per-matmul MR register block with an M-PAD tail (accumulator_resident_wholemodel_vf_mrpad) ----
+# The whole-model-safe MR>1 A-operand-reuse lever. `..._vf` clamps the matmul M tile to MR_mm=1 (no
+# A-reuse, 2.0 loads/FMA); `..._vf_mr4` raises it to MR=4 (1.25 loads/FMA) but ONLY where M%4==0 — on
+# the small-/odd-M matmuls that dominate VLA decode (rdt2 M=1, openvla M=17) its bare MR=4 M-tile trips
+# the LLVM-23 masked-transfer_write PipelineError -> whole-model scalar fallback (it cannot lower rdt2).
+# `..._vf_mrpad` pads each matmul's M up to a multiple of MR before the register-blocked vfmacc.vf tile
+# (transform.structured.pad, sliced back bit-exact), so EVERY matmul register-blocks cleanly regardless
+# of M — per-op MR (MR=4 where M%4==0, MR=1 for the M=1 tails) in ONE whole-model schedule.
+_MRPAD = "accumulator_resident_wholemodel_vf_mrpad"
+
+
+def test_mrpad_default_off_and_wiring():
+    # default-off: empty features => baseline byte-identical (pipeline + schedule).
+    assert P.build_rvv_pipeline("/tmp/s.mlir", features=frozenset()) == P.build_rvv_pipeline("/tmp/s.mlir")
+    assert F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset()) == P.RVV_TRANSFORM_SCHEDULE
+    # v3-class feature (selects the two-stage A-scalarization runner) ...
+    assert _MRPAD in P._accum_microkernel_v3_features()
+    sch = F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset([_MRPAD]))
+    # ... pads the matmul M to a multiple of MR (the M-tail handling) ...
+    assert "transform.structured.pad" in sch and "pad_to_multiple_of [4]" in sch
+    # ... with a linalg.copy copy-back (NOT the default materialize_in_destination, which aliases the
+    #     CSE-shared zero-fill across matmuls -> the whole-model RaW-conflict PipelineError) ...
+    assert 'copy_back_op = "linalg.copy"' in sch
+    assert "tile_sizes [4, 16, 0]" in sch          # matmul register tile MR=4
+    assert "tile_sizes [1, 4, 8, 0]" in sch        # batch_matmul NR_bmm=8 (attention N-tail), as in _vf
+    assert "bufferize_to_allocation" not in sch     # v3 TENSOR-level hoist (no C promotion)
+    # pipeline: subset-hoist + scalarize marker (the .vf path) AND eliminate-empty-tensors before
+    # one-shot-bufferize (paired with the linalg.copy copy-back to give each padded matmul its own buffer).
+    from merlin.llvmlower.accum_microkernel import SCALARIZE_MARKER
+    on = F.apply_pipeline(P.build_rvv_pipeline("/tmp/s.mlir").split(","), frozenset([_MRPAD]))
+    assert any("loop-invariant-subset-hoisting" in p for p in on)
+    assert SCALARIZE_MARKER in on
+    ie = [i for i, p in enumerate(on) if p == "eliminate-empty-tensors"]
+    ib = [i for i, p in enumerate(on) if p.startswith("one-shot-bufferize")]
+    assert ie and ib and min(ie) < min(ib), "eliminate-empty-tensors must precede one-shot-bufferize"
+
+
+def _kloop_vf_per_bload(s):
+    """Return the max (vfmacc.vf / vle) ratio over the K-compute loops (loops that DO vfmacc.vf).
+
+    The MR register block shares ONE unit-stride B-row load (vle) across MR vfmacc.vf; so this ratio
+    IS the realized MR. We scan the loops WITH vfmacc.vf rather than innermost_loop() because the
+    M-pad copy-back adds a small copy loop that can be the smallest-span loop."""
+    best = 0.0
+    for sp in s.loop_spans():
+        vf = s.count_in(sp, "vfmacc.vf")
+        vle = s.count_in(sp, "vle32", "vle16", "vle8")
+        if vf > 0 and vle > 0:
+            best = max(best, vf / vle)
+    return best
+
+
+@pytest.mark.skipif(not _toolchain(), reason="riscv toolchain missing")
+@pytest.mark.parametrize("M", [64, 20, 17, 1])  # divisible, divisible, odd tail, M=1 decode tail
+def test_mrpad_emits_mr4_register_block_on_every_M(M):
+    # The register-block proof: on EVERY M (including the M=17/M=1 tails where bare vf_mr4 degrades to
+    # scalar/spills), the K-loop shares ONE B-row vle across 4 vfmacc.vf (MR=4 A-reuse), 0 vfmacc.vv.
+    s = _decode([_MRPAD], M, 64, 64)
+    assert s.count("vfmacc.vf") > 0 and s.count("vfmacc.vv") == 0
+    assert _kloop_vf_per_bload(s) == 4.0, f"M={M}: K-loop must be a 4:1 vfmacc.vf:B-load register block"
+
+
+@pytest.mark.skipif(not _toolchain(), reason="riscv toolchain missing")
+@pytest.mark.skipif(not (REPO / "out/artifacts" / "recaptures" / "rdt2_fp32_consistent" / "model.mlir").is_file(),
+                    reason="rdt2 model bundle not present")
+@pytest.mark.parametrize("model", ["rdt2_fp32_consistent", "bitvla_fp32_consistent"])
+def test_mrpad_whole_model_lowers_vectorized_with_per_op_mr(model):
+    # The deliverable's whole-model safety + per-op MR assertion, on the MIXED-M model (rdt2 M in {1,28})
+    # AND the all-divisible model (bitvla). bare vf_mr4 CANNOT lower rdt2 (M=1 -> masked-write
+    # PipelineError -> scalar fallback); mrpad must (a) lower vectorized (vfmacc.vf>0, no fallback) and
+    # (b) emit the MR>1 block where M%MR==0 (rdt2 has 28 such matmul K-loops at vf/vle=4).
+    if not (REPO / "out/artifacts" / "recaptures" / model / "model.mlir").is_file():
+        pytest.skip(f"{model} bundle not present")
+    on = _decode_model(model, [_MRPAD])
+    assert on.count("vfmacc.vf") > 0, "mrpad whole-model must emit vfmacc.vf (no scalar fallback)"
+    assert on.count("vfmacc.vv") == 0, "no vfmacc.vv (the .vv broadcast-ladder form)"
+    assert _kloop_vf_per_bload(on) == 4.0, "whole-model must contain MR=4 register-block K-loops"
