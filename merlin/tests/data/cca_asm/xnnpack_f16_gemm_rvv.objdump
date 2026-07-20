@@ -1,0 +1,231 @@
+Disassembly of section .text:
+
+0000000000000000 <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith>:
+       0: 7119         	c.addi16sp	sp, -0x80
+       2: fc86         	c.sdsp	ra, 0x78(sp)
+       4: f8a2         	c.sdsp	s0, 0x70(sp)
+       6: f4a6         	c.sdsp	s1, 0x68(sp)
+       8: f0ca         	c.sdsp	s2, 0x60(sp)
+       a: ecce         	c.sdsp	s3, 0x58(sp)
+       c: e8d2         	c.sdsp	s4, 0x50(sp)
+       e: e4d6         	c.sdsp	s5, 0x48(sp)
+      10: e0da         	c.sdsp	s6, 0x40(sp)
+      12: fc5e         	c.sdsp	s7, 0x38(sp)
+      14: f862         	c.sdsp	s8, 0x30(sp)
+      16: f466         	c.sdsp	s9, 0x28(sp)
+      18: f06a         	c.sdsp	s10, 0x20(sp)
+      1a: ec6e         	c.sdsp	s11, 0x18(sp)
+      1c: 6c2a         	c.ldsp	s8, 0x88(sp)
+      1e: 4489         	c.li	s1, 0x2
+      20: 82b6         	c.mv	t0, a3
+      22: 8442         	c.mv	s0, a6
+      24: 8336         	c.mv	t1, a3
+      26: 8ab6         	c.mv	s5, a3
+      28: 8e42         	c.mv	t3, a6
+      2a: 8942         	c.mv	s2, a6
+      2c: 89c2         	c.mv	s3, a6
+      2e: 8bb6         	c.mv	s7, a3
+      30: 8f36         	c.mv	t5, a3
+      32: 8ec2         	c.mv	t4, a6
+      34: 8fb6         	c.mv	t6, a3
+      36: 8a42         	c.mv	s4, a6
+      38: 00956063     	bltu	a0, s1, 0x38 <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith+0x38>
+      3c: 00e28333     	add	t1, t0, a4
+      40: 01180433     	add	s0, a6, a7
+      44: 00950063     	beq	a0, s1, 0x44 <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith+0x44>
+      48: 00e30ab3     	add	s5, t1, a4
+      4c: 4491         	c.li	s1, 0x4
+      4e: 01140e33     	add	t3, s0, a7
+      52: 00956063     	bltu	a0, s1, 0x52 <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith+0x52>
+      56: 00ea8f33     	add	t5, s5, a4
+      5a: 011e0eb3     	add	t4, t3, a7
+      5e: 00950063     	beq	a0, s1, 0x5e <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith+0x5e>
+      62: 00ef0fb3     	add	t6, t5, a4
+      66: 4499         	c.li	s1, 0x6
+      68: 011e8a33     	add	s4, t4, a7
+      6c: 00956063     	bltu	a0, s1, 0x6c <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith+0x6c>
+      70: 00ef8b33     	add	s6, t6, a4
+      74: 011a03b3     	add	t2, s4, a7
+      78: 00950063     	beq	a0, s1, 0x78 <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith+0x78>
+      7c: 975a         	c.add	a4, s6
+      7e: 989e         	c.add	a7, t2
+      80: 8bd6         	c.mv	s7, s5
+      82: 8afa         	c.mv	s5, t5
+      84: 8f7e         	c.mv	t5, t6
+      86: 89f2         	c.mv	s3, t3
+      88: 8e76         	c.mv	t3, t4
+      8a: 8ed2         	c.mv	t4, s4
+      8c: 8922         	c.mv	s2, s0
+      8e: 869a         	c.mv	a3, t1
+      90: 841e         	c.mv	s0, t2
+      92: 835a         	c.mv	t1, s6
+      94: 8fba         	c.mv	t6, a4
+      96: 8a46         	c.mv	s4, a7
+      98: 6b0a         	c.ldsp	s6, 0x80(sp)
+      9a: 000c1787     	flh	fa5, 0x0(s8)
+      9e: 002c1707     	flh	fa4, 0x2(s8)
+      a2: 0ca07557     	vsetvli	a0, zero, e16, m4, ta, ma
+      a6: 40c00c33     	sub	s8, zero, a2
+      aa: 00151d13     	slli	s10, a0, 0x1
+      ae: e42a         	c.sdsp	a0, 0x8(sp)
+      b0: 872a         	c.mv	a4, a0
+      b2: e822         	c.sdsp	s0, 0x10(sp)
+      b4: 6522         	c.ldsp	a0, 0x8(sp)
+      b6: 00a5e063     	bltu	a1, a0, 0xb6 <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith+0xb6>
+      ba: 88ba         	c.mv	a7, a4
+      bc: 0ca77057     	vsetvli	zero, a4, e16, m4, ta, ma
+      c0: 0207d407     	vle16.v	v8, (a5)
+      c4: 4501         	c.li	a0, 0x0
+      c6: 5e040657     	vmv.v.v	v12, v8
+      ca: 97ea         	c.add	a5, s10
+      cc: 5e060857     	vmv.v.v	v16, v12
+      d0: 5e060a57     	vmv.v.v	v20, v12
+      d4: 5e060c57     	vmv.v.v	v24, v12
+      d8: 5e060e57     	vmv.v.v	v28, v12
+      dc: 5e060257     	vmv.v.v	v4, v12
+      e0: 00af00b3     	add	ra, t5, a0
+      e4: 00a304b3     	add	s1, t1, a0
+      e8: 00af8db3     	add	s11, t6, a0
+      ec: 00aa83b3     	add	t2, s5, a0
+      f0: 00ab8733     	add	a4, s7, a0
+      f4: 00a68cb3     	add	s9, a3, a0
+      f8: 00a28433     	add	s0, t0, a0
+      fc: 00041687     	flh	fa3, 0x0(s0)
+     100: 000c9607     	flh	fa2, 0x0(s9)
+     104: 00071587     	flh	fa1, 0x0(a4)
+     108: 00039507     	flh	fa0, 0x0(t2)
+     10c: 0207d007     	vle16.v	v0, (a5)
+     110: 00009007     	flh	ft0, 0x0(ra)
+     114: 00049087     	flh	ft1, 0x0(s1)
+     118: 000d9107     	flh	ft2, 0x0(s11)
+     11c: b206d457     	vfmacc.vf	v8, fa3, v0
+     120: b2065257     	vfmacc.vf	v4, fa2, v0
+     124: b205de57     	vfmacc.vf	v28, fa1, v0
+     128: b2055c57     	vfmacc.vf	v24, fa0, v0
+     12c: b2005a57     	vfmacc.vf	v20, ft0, v0
+     130: b200d857     	vfmacc.vf	v16, ft1, v0
+     134: b2015657     	vfmacc.vf	v12, ft2, v0
+     138: 0509         	c.addi	a0, 0x2
+     13a: 97ea         	c.add	a5, s10
+     13c: 00a61063     	bne	a2, a0, 0x13c <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith+0x13c>
+     140: 8746         	c.mv	a4, a7
+     142: 411585b3     	sub	a1, a1, a7
+     146: 1a87d457     	vfmax.vf	v8, v8, fa5
+     14a: 1a47d257     	vfmax.vf	v4, v4, fa5
+     14e: 1bc7de57     	vfmax.vf	v28, v28, fa5
+     152: 1b87dc57     	vfmax.vf	v24, v24, fa5
+     156: 1b47da57     	vfmax.vf	v20, v20, fa5
+     15a: 1b07d857     	vfmax.vf	v16, v16, fa5
+     15e: 1ac7d657     	vfmax.vf	v12, v12, fa5
+     162: 12875457     	vfmin.vf	v8, v8, fa4
+     166: 12475257     	vfmin.vf	v4, v4, fa4
+     16a: 13c75e57     	vfmin.vf	v28, v28, fa4
+     16e: 13875c57     	vfmin.vf	v24, v24, fa4
+     172: 13475a57     	vfmin.vf	v20, v20, fa4
+     176: 13075857     	vfmin.vf	v16, v16, fa4
+     17a: 12c75657     	vfmin.vf	v12, v12, fa4
+     17e: 02085427     	vse16.v	v8, (a6)
+     182: 985a         	c.add	a6, s6
+     184: 02095227     	vse16.v	v4, (s2)
+     188: 995a         	c.add	s2, s6
+     18a: 0209de27     	vse16.v	v28, (s3)
+     18e: 99da         	c.add	s3, s6
+     190: 020e5c27     	vse16.v	v24, (t3)
+     194: 9e5a         	c.add	t3, s6
+     196: 020eda27     	vse16.v	v20, (t4)
+     19a: 9eda         	c.add	t4, s6
+     19c: 6442         	c.ldsp	s0, 0x10(sp)
+     19e: 02045827     	vse16.v	v16, (s0)
+     1a2: 945a         	c.add	s0, s6
+     1a4: 020a5627     	vse16.v	v12, (s4)
+     1a8: 9a5a         	c.add	s4, s6
+     1aa: 92e2         	c.add	t0, s8
+     1ac: 92aa         	c.add	t0, a0
+     1ae: 96e2         	c.add	a3, s8
+     1b0: 96aa         	c.add	a3, a0
+     1b2: 9be2         	c.add	s7, s8
+     1b4: 9baa         	c.add	s7, a0
+     1b6: 9ae2         	c.add	s5, s8
+     1b8: 9aaa         	c.add	s5, a0
+     1ba: 9f62         	c.add	t5, s8
+     1bc: 9f2a         	c.add	t5, a0
+     1be: 9362         	c.add	t1, s8
+     1c0: 932a         	c.add	t1, a0
+     1c2: 9fe2         	c.add	t6, s8
+     1c4: 9faa         	c.add	t6, a0
+     1c6: 00059063     	bne	a1, zero, 0x1c6 <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith+0x1c6>
+     1ca: a001         	c.j	0x1ca <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith+0x1ca>
+     1cc: 0ca5f757     	vsetvli	a4, a1, e16, m4, ta, ma
+     1d0: a001         	c.j	0x1d0 <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith+0x1d0>
+     1d2: 70e6         	c.ldsp	ra, 0x78(sp)
+     1d4: 7446         	c.ldsp	s0, 0x70(sp)
+     1d6: 74a6         	c.ldsp	s1, 0x68(sp)
+     1d8: 7906         	c.ldsp	s2, 0x60(sp)
+     1da: 69e6         	c.ldsp	s3, 0x58(sp)
+     1dc: 6a46         	c.ldsp	s4, 0x50(sp)
+     1de: 6aa6         	c.ldsp	s5, 0x48(sp)
+     1e0: 6b06         	c.ldsp	s6, 0x40(sp)
+     1e2: 7be2         	c.ldsp	s7, 0x38(sp)
+     1e4: 7c42         	c.ldsp	s8, 0x30(sp)
+     1e6: 7ca2         	c.ldsp	s9, 0x28(sp)
+     1e8: 7d02         	c.ldsp	s10, 0x20(sp)
+     1ea: 6de2         	c.ldsp	s11, 0x18(sp)
+     1ec: 6109         	c.addi16sp	sp, 0x80
+     1ee: 8082         	c.jr	ra
+     1f0: 8a9a         	c.mv	s5, t1
+     1f2: 8e22         	c.mv	t3, s0
+     1f4: 869a         	c.mv	a3, t1
+     1f6: 8922         	c.mv	s2, s0
+     1f8: 89a2         	c.mv	s3, s0
+     1fa: 8b9a         	c.mv	s7, t1
+     1fc: 8f1a         	c.mv	t5, t1
+     1fe: 8ea2         	c.mv	t4, s0
+     200: 8f9a         	c.mv	t6, t1
+     202: 8a22         	c.mv	s4, s0
+     204: a001         	c.j	0x204 <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith+0x204>
+     206: 8922         	c.mv	s2, s0
+     208: 869a         	c.mv	a3, t1
+     20a: 8472         	c.mv	s0, t3
+     20c: 8356         	c.mv	t1, s5
+     20e: 89f2         	c.mv	s3, t3
+     210: 8bd6         	c.mv	s7, s5
+     212: 8f56         	c.mv	t5, s5
+     214: 8ef2         	c.mv	t4, t3
+     216: 8fd6         	c.mv	t6, s5
+     218: 8a72         	c.mv	s4, t3
+     21a: a001         	c.j	0x21a <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith+0x21a>
+     21c: 89f2         	c.mv	s3, t3
+     21e: 8bd6         	c.mv	s7, s5
+     220: 8922         	c.mv	s2, s0
+     222: 869a         	c.mv	a3, t1
+     224: 8476         	c.mv	s0, t4
+     226: 837a         	c.mv	t1, t5
+     228: 8afa         	c.mv	s5, t5
+     22a: 8e76         	c.mv	t3, t4
+     22c: 8ffa         	c.mv	t6, t5
+     22e: 8a76         	c.mv	s4, t4
+     230: a001         	c.j	0x230 <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith+0x230>
+     232: 89f2         	c.mv	s3, t3
+     234: 8bd6         	c.mv	s7, s5
+     236: 8922         	c.mv	s2, s0
+     238: 869a         	c.mv	a3, t1
+     23a: 8452         	c.mv	s0, s4
+     23c: 837e         	c.mv	t1, t6
+     23e: 8afa         	c.mv	s5, t5
+     240: 8e76         	c.mv	t3, t4
+     242: 8f7e         	c.mv	t5, t6
+     244: 8ed2         	c.mv	t4, s4
+     246: a001         	c.j	0x246 <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith+0x246>
+     248: 89f2         	c.mv	s3, t3
+     24a: 8bd6         	c.mv	s7, s5
+     24c: 8922         	c.mv	s2, s0
+     24e: 869a         	c.mv	a3, t1
+     250: 841e         	c.mv	s0, t2
+     252: 835a         	c.mv	t1, s6
+     254: 8afa         	c.mv	s5, t5
+     256: 8e76         	c.mv	t3, t4
+     258: 8f7e         	c.mv	t5, t6
+     25a: 8ed2         	c.mv	t4, s4
+     25c: 8fda         	c.mv	t6, s6
+     25e: 8a1e         	c.mv	s4, t2
+     260: a001         	c.j	0x260 <xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith+0x260>

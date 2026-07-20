@@ -1,0 +1,51 @@
+Disassembly of section .text:
+
+0000000000000000 <xnn_qd8_f32_qc8w_gemm_minmax_ukernel_1x4v__rvv>:
+       0: 6542         	c.ldsp	a0, 0x10(sp)
+       2: 6882         	c.ldsp	a7, 0x0(sp)
+       4: 6722         	c.ldsp	a4, 0x8(sp)
+       6: 0d207ed7     	vsetvli	t4, zero, e32, m4, ta, ma
+       a: 00052283     	lw	t0, 0x0(a0)
+       e: 00452787     	flw	fa5, 0x4(a0)
+      12: 00072707     	flw	fa4, 0x0(a4)
+      16: 00472687     	flw	fa3, 0x4(a4)
+      1a: 00460513     	addi	a0, a2, 0x4
+      1e: 02ae8333     	mul	t1, t4, a0
+      22: 002e9e13     	slli	t3, t4, 0x2
+      26: 83f6         	c.mv	t2, t4
+      28: 01d5e063     	bltu	a1, t4, 0x28 <xnn_qd8_f32_qc8w_gemm_minmax_ukernel_1x4v__rvv+0x28>
+      2c: 0d23f057     	vsetvli	zero, t2, e32, m4, ta, ma
+      30: 0207e407     	vle32.v	v8, (a5)
+      34: 9682e457     	vmul.vx	v8, v8, t0
+      38: 01c78733     	add	a4, a5, t3
+      3c: 00c68f33     	add	t5, a3, a2
+      40: 0c907057     	vsetvli	zero, zero, e16, m2, ta, ma
+      44: 02070607     	vle8.v	v12, (a4)
+      48: 00068f83     	lb	t6, 0x0(a3)
+      4c: 00168513     	addi	a0, a3, 0x1
+      50: 4ac3a757     	vsext.vf2	v14, v12
+      54: 9776         	c.add	a4, t4
+      56: f6efe457     	vwmacc.vx	v8, t6, v14
+      5a: 86aa         	c.mv	a3, a0
+      5c: 01e51063     	bne	a0, t5, 0x5c <xnn_qd8_f32_qc8w_gemm_minmax_ukernel_1x4v__rvv+0x5c>
+      60: 979a         	c.add	a5, t1
+      62: 0d207057     	vsetvli	zero, zero, e32, m4, ta, ma
+      66: 4a819457     	vfcvt.f.x.v	v8, v8
+      6a: 0207e607     	vle32.v	v12, (a5)
+      6e: 9287d457     	vfmul.vf	v8, v8, fa5
+      72: 97f2         	c.add	a5, t3
+      74: 0207e807     	vle32.v	v16, (a5)
+      78: 92861457     	vfmul.vv	v8, v8, v12
+      7c: 407585b3     	sub	a1, a1, t2
+      80: 97f2         	c.add	a5, t3
+      82: 02881457     	vfadd.vv	v8, v8, v16
+      86: 1a875457     	vfmax.vf	v8, v8, fa4
+      8a: 1286d457     	vfmin.vf	v8, v8, fa3
+      8e: 02086427     	vse32.v	v8, (a6)
+      92: 9846         	c.add	a6, a7
+      94: 40cf06b3     	sub	a3, t5, a2
+      98: e181         	c.bnez	a1, 0x98 <xnn_qd8_f32_qc8w_gemm_minmax_ukernel_1x4v__rvv+0x98>
+      9a: a001         	c.j	0x9a <xnn_qd8_f32_qc8w_gemm_minmax_ukernel_1x4v__rvv+0x9a>
+      9c: 0d25f3d7     	vsetvli	t2, a1, e32, m4, ta, ma
+      a0: a001         	c.j	0xa0 <xnn_qd8_f32_qc8w_gemm_minmax_ukernel_1x4v__rvv+0xa0>
+      a2: 8082         	c.jr	ra

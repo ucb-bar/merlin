@@ -329,13 +329,24 @@ def _lift_envelope(stream, *, undefined_symbols=None) -> "EnvelopeFacet":
     ``runtime_calls`` names them when the object's undefined symbols are available (``llvm-nm -u``),
     which is what turns "there is a call" into "it is memrefCopy" -- the difference between knowing
     a gap exists and knowing which pass closes it.
+
+    HONESTY: ``calls_in_loop`` is loop-scoped, so it is only as trustworthy as the decoded loop
+    structure. On an UNRELOCATED object (an unlinked ``model.o``: every branch displacement is a zero
+    placeholder, so each branch resolves to its own address and ``loop_spans()`` reads EMPTY) the
+    count silently collapses to 0 -- a per-tile ``memrefCopy`` would read as "no calls in any loop".
+    So when ``stream.spans_reliable()`` is False we report ``calls_in_loop=None`` (UNKNOWN), never a
+    misleading 0. ``runtime_calls`` is UNAFFECTED: it comes from the object's undefined symbols, not
+    from loop structure, and is the axis that stays trustworthy on a whole-model fork.
     """
-    spans = stream.loop_spans()
-    inner = stream.innermost_loop()
-    outer = [sp for sp in spans if sp != inner] or spans
-    calls_in_loop = 0
-    for sp in outer:
-        calls_in_loop += stream.count_in(sp, *_CALL_MNEMONICS)
+    if stream.spans_reliable():
+        spans = stream.loop_spans()
+        inner = stream.innermost_loop()
+        outer = [sp for sp in spans if sp != inner] or spans
+        calls_in_loop = 0
+        for sp in outer:
+            calls_in_loop += stream.count_in(sp, *_CALL_MNEMONICS)
+    else:
+        calls_in_loop = None                # loop structure unreadable -> honestly UNKNOWN, not 0
     if undefined_symbols is not None:
         undef = {str(x) for x in undefined_symbols}
         escapes = tuple(sorted(undef.intersection(RUNTIME_ESCAPE_SYMBOLS)))
