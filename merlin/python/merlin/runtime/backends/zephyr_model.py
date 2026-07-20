@@ -626,9 +626,17 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> di
         rmax = max(1e-9, float(np.abs(r).max()))
         rel = float(np.abs(pref - r).max()) / rmax
         cos = float((pref @ r) / (np.linalg.norm(pref) * np.linalg.norm(r) + 1e-12))
-        # per-element relative error; floor the denominator at 0.1% of the array scale so tiny
-        # reference elements can't fabricate a blow-up, then take the worst element.
-        perel = float((np.abs(pref - r) / (np.abs(r) + 1e-3 * rmax)).max())
+        # per-element relative error over SIGNIFICANT reference elements (|r_i| >= 1% of the RMS
+        # scale). Masking by the TYPICAL scale (RMS), not the max, is what makes this robust on both
+        # spiky classification logits AND whole-model regression outputs: a near-zero output element
+        # with a large relative but negligible ABSOLUTE error (invisible to cos — measured: bitvla
+        # raw max-rel 1.05 at cos 0.9999945) is below the RMS floor and does not trip the gate, while
+        # a real error on a meaningful element (the fp16-accumulate 1209% disaster; the blow-up
+        # constructions) sits above it and is caught. rmax-based flooring failed here because a spiky
+        # output makes 1e-3*rmax too small to suppress the near-zero element.
+        rms = max(1e-9, float(np.sqrt(np.mean(r.astype(np.float64) ** 2))))
+        _sig = np.abs(r) >= 1e-2 * rms
+        perel = float((np.abs(pref[_sig] - r[_sig]) / np.abs(r[_sig])).max()) if _sig.any() else 0.0
         out[f"{tier}_cos"] = cos
         out[f"{tier}_rel"] = rel
         out[f"{tier}_argmax"] = bool(int(np.argmax(pref)) == int(np.argmax(r)))
