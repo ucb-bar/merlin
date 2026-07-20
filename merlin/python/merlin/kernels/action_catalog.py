@@ -343,6 +343,36 @@ _RVV_ROUTES: list[_Route] = [
                         "closes most of the ~11-18x scalar-libm gap; approximation accuracy cos=1.0 "
                         "/ max-abs-err <~1e-6 vs the libm reference"),
     _Route(
+        # The #2 byte-traffic op family (softmax ~3.85% of the census) and the one CCA lever that had
+        # no route (a bijection orphan). The baseline vectorizes only the contraction ops, so a
+        # standalone reduction (softmax max/sum, LayerNorm/RMSNorm mean/var, a linalg.reduce) stays a
+        # SCALAR accumulate loop while the expert uses a hardware horizontal reduce. Route it to the
+        # vectorize_reduction PASS: match the reduction generic, vectorize it, lower the
+        # multi_reduction via inner-reduction -> vector.reduction, reassociate the fp reduce ->
+        # vfredusum.vs (int: vredsum.vs). PROVEN on emitted code (gen_reduce_f32/gen_softmax_f32
+        # decoded under the real -fno-vectorize cflags): vfredusum present, cca reduction_form set.
+        axis="compute.reduction_form",
+        # Fire when the expert vectorizes the reduction (any non-null reduction_form) and we do not
+        # (None / "none" / a scalar form). The reduction_form the lifter reports for a vfred*/vred*
+        # kernel is "vredsum_tree".
+        when=lambda d: bool(d.expert) and d.ours in (None, "none", "scalar"),
+        action_class="PASS",
+        target_seam="impr_features:vectorize_reduction",
+        change="vectorize the standalone reduction (softmax/norm row-reduce, linalg.reduce) and lower "
+               "vector.multi_reduction -> vector.reduction -> a hardware horizontal reduce "
+               "(vfredusum.vs for fp via reassociate-fp-reductions, vredsum.vs for int), instead of "
+               "the scalar convert-linalg-to-loops accumulate the baseline leaves. Contraction "
+               "schedule untouched (whole-model-safe).",
+        # EVIDENCE: emitted-code proof (not schedule text) — lowering gen_reduce_f32 (64x256) emits 64x
+        # vfredusum.vs where the baseline emits ZERO vector ops (RVV_CFLAGS -fno-vectorize, so it is
+        # MLIR-emitted, not clang autovec); gen_softmax_f32 emits vfredmax.vs + vfredusum.vs; both lift
+        # to cca.reduction_form="vredsum_tree". APPROXIMATION: fp reassociation (cos-gated, not bit-exact).
+        forkable_now=True,
+        expected_effect="the reduction runs as a hardware vector reduce (vfredusum/vredsum) instead of "
+                        "a scalar accumulate loop; vectorizes the softmax/norm reduction family the "
+                        "baseline left scalar. Approximation: fp reassociation (cos-gated).",
+        intended_facet={"compute.reduction_form": "vredsum_tree"}),
+    _Route(
         axis="compute.epilogue",
         when=lambda d: d.expert == "requant_narrow" and d.ours in ("none", None),
         action_class="PASS", target_seam="pass:fuse-requant-narrowing-store",

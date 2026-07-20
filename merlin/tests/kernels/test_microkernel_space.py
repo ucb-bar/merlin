@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from merlin.kernels.microkernel import (VL_DYNAMIC, VL_FIXED, MicrokernelSpec, UnsupportedAxis,
+from merlin.kernels.microkernel import (PRUNED_AXES, VL_DYNAMIC, VL_FIXED, MicrokernelSpec,
+                                        UnsupportedAxis, is_axis_proposable, proposable_axes,
                                         register_resolver, registered_targets, resolve)
 
 
@@ -115,6 +116,23 @@ def test_every_realization_carries_the_recipe_lowering_hygiene():
         assert feats[-1] == "erase_self_copy", feats
         assert len(feats) == len(set(feats))          # never duplicated
         assert feats[0] != "erase_self_copy"          # the recipe still names the point
+
+
+def test_KC_and_unroll_m_are_pruned_from_proposal_but_stay_resolvable():
+    """The two INERT/structurally-wrong levers (KC inert, MR-under-unroll_m ~2.4x slower) must NOT be
+    beam-explorable (a proposer would burn certify budget for no possible win), but they must stay
+    RESOLVABLE so a package or test can still pin them (no code-path deleted)."""
+    from merlin.rvvgen import from_strategy  # noqa: F401  (registers the rvv resolver)
+    # pruned from the proposal space ...
+    assert set(PRUNED_AXES) == {"KC", "unroll_m"}
+    assert not is_axis_proposable("KC") and not is_axis_proposable("unroll_m")
+    assert "KC" not in proposable_axes() and "unroll_m" not in proposable_axes()
+    # ... while the genuinely-useful axes remain proposable.
+    for a in ("MR", "NR", "vl_strategy", "pack", "k_block"):
+        assert is_axis_proposable(a) and a in proposable_axes()
+    # ... and every pruned axis is STILL resolvable (the code path is not deleted).
+    assert resolve("rvv", MicrokernelSpec(MR=4, NR=16, KC=64, k_block=True))   # KC via k_block
+    assert resolve("rvv", MicrokernelSpec(MR=7, NR=16, KC=16, unroll_m=True))  # unroll_m
 
 
 def test_hand_v0_never_reaches_the_hygiene_and_stays_byte_identical():

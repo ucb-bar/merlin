@@ -130,10 +130,13 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
 # Gaps the roadmap has NOT closed yet, tracked explicitly so the enforcing test is a ratchet (GREEN now,
 # fails on NEW drift) rather than a committed RED test. Each entry names the axis and WHY it is still
 # open. WS-C Phase 2 removes these as the work lands; when both sets are empty the bijection is fully
-# enforced. The three that remain are the genuinely-hard ones (no cheap/overfit close):
-#   - compute.reduction_form: the baseline vectorizes only matmul/batch_matmul, so a softmax-sum/norm
-#       reduction isn't vectorized at all -> closing it needs a NEW schedule feature that vectorizes the
-#       reduction op AND lowers multi_reduction -> vredsum, spike-certified (real codegen, not a knob).
+# enforced. The remaining ones are the genuinely-hard ones (no cheap/overfit close):
+#   - compute.reduction_form: CLOSED. The vectorize_reduction PASS (impr_features) vectorizes the
+#       standalone reduction (softmax/norm row-reduce, linalg.reduce) and lowers multi_reduction ->
+#       vector.reduction -> a hardware horizontal reduce; PROVEN on emitted code (gen_reduce_f32/
+#       gen_softmax_f32 decoded under -fno-vectorize: vfredusum.vs present, baseline emits none). The
+#       route (action_catalog: compute.reduction_form -> impr_features:vectorize_reduction) now backs
+#       the lever, so it is no longer an orphan_field.
 #   - vector.tail: CAPTURE done (lift_asm now records ta/tu); the route needs a NEW tail_policy schedule
 #       seam (ta) + the tu masked-tail path shared with vl_strategy — a new seam, not a registration.
 #   - compute.mr_adapts_to_m: whether the compiler clamps MR=min(MR,M) so a small-M matmul vectorizes is
@@ -154,7 +157,6 @@ KNOWN_OPEN: dict[str, dict[str, tuple[str, ...]]] = {
         # CLOSED so far: compute.accumulator_dtype + vector.sew (both -> KNOB dtype_strategy);
         # memory.access_pattern (BB1b -> PASS impr_features:vfmacc_packed operand pre-packing).
         "orphan_fields": (
-            "compute.reduction_form",
             "vector.tail",
         ),
         # routed axes still awaiting a backing ComputeFacet field.
