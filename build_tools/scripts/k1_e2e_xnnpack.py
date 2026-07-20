@@ -108,6 +108,11 @@ def run_workload(model_dir: str | Path, baseline_pkg: str = "out/artifacts/targe
     # ours-wholemodel-vf = wholemodel tail clamps + v3's .vf scalarize (kills the .vv broadcast ladder).
     ours_wm_vf = replace(base, run_id="ours_wholemodel_vf",
                          compiler_features=["accumulator_resident_wholemodel_vf"])
+    # ours-best = the CURRENT stacked whole-model config: vf + whole-graph transpose fusion (the
+    # measured whole-model lever) + self-copy erase. This is the canonical "our compiler today" arm;
+    # the older ours_* arms are kept for lineage. per-matmul MR is added here once A11 lands.
+    OURS_BEST_FEATURES = ["accumulator_resident_wholemodel_vf", "fuse_transpose_b", "erase_self_copy"]
+    ours_best_pkg = replace(base, run_id="ours_best", compiler_features=OURS_BEST_FEATURES)
     xnn_pkg = replace(base, run_id="xnnpack_kernels")
     ob_pkg = replace(base, run_id="openblas_kernels")
 
@@ -124,6 +129,7 @@ def run_workload(model_dir: str | Path, baseline_pkg: str = "out/artifacts/targe
     rv = maybe("ours_v3", ours_v3, None)
     rw = maybe("ours_wholemodel", ours_wm, None)
     rwv = maybe("ours_wholemodel_vf", ours_wm_vf, None)
+    rbest = maybe("ours_best", ours_best_pkg, None)
     rx = maybe("xnnpack_kernels", xnn_pkg, "xnnpack")
     rob = maybe("openblas_kernels", ob_pkg, "openblas")
 
@@ -131,7 +137,7 @@ def run_workload(model_dir: str | Path, baseline_pkg: str = "out/artifacts/targe
         return (a_ns / b_ns) if (a_ns and b_ns) else None
 
     # best ours config that actually ran (highest speedup vs baseline)
-    ours_cands = {"ours_tiled": ro, "ours_v3": rv, "ours_wholemodel": rw, "ours_wholemodel_vf": rwv}
+    ours_cands = {"ours_tiled": ro, "ours_v3": rv, "ours_wholemodel": rw, "ours_wholemodel_vf": rwv, "ours_best": rbest}
     ours_best_tag = max((t for t, r in ours_cands.items() if r.get("min_wall_ns")),
                         key=lambda t: spd(rb["min_wall_ns"], ours_cands[t]["min_wall_ns"]) or 0,
                         default=None)
@@ -144,11 +150,14 @@ def run_workload(model_dir: str | Path, baseline_pkg: str = "out/artifacts/targe
                  "from the timed path, matching ours' pack-free scope). cos gated before any wall."),
         "configs_run": sorted(want),
         "baseline": rb, "ours_tiled": ro, "ours_v3": rv, "ours_wholemodel": rw,
-        "ours_wholemodel_vf": rwv, "xnnpack_kernels": rx, "openblas_kernels": rob,
+        "ours_wholemodel_vf": rwv, "ours_best": rbest, "xnnpack_kernels": rx, "openblas_kernels": rob,
+        "ours_best_features": OURS_BEST_FEATURES,
         "speedup_ours_tiled": spd(rb["min_wall_ns"], ro["min_wall_ns"]),
         "speedup_ours_v3": spd(rb["min_wall_ns"], rv["min_wall_ns"]),
         "speedup_ours_wholemodel": spd(rb["min_wall_ns"], rw["min_wall_ns"]),
         "speedup_ours_wholemodel_vf": spd(rb["min_wall_ns"], rwv["min_wall_ns"]),
+        "speedup_ours_best": spd(rb["min_wall_ns"], rbest["min_wall_ns"]),
+        "ours_best_over_xnnpack": spd(rx["min_wall_ns"], rbest["min_wall_ns"]) if rbest.get("min_wall_ns") else None,
         "speedup_xnnpack": spd(rb["min_wall_ns"], rx["min_wall_ns"]),
         "speedup_openblas": spd(rb["min_wall_ns"], rob["min_wall_ns"]),
         "v3_over_xnnpack": spd(rx["min_wall_ns"], rv["min_wall_ns"]),
