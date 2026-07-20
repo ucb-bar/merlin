@@ -111,7 +111,8 @@ def run_workload(model_dir: str | Path, baseline_pkg: str = "out/artifacts/targe
     # ours-best = the CURRENT stacked whole-model config: vf + whole-graph transpose fusion (the
     # measured whole-model lever) + self-copy erase. This is the canonical "our compiler today" arm;
     # the older ours_* arms are kept for lineage. per-matmul MR is added here once A11 lands.
-    OURS_BEST_FEATURES = ["accumulator_resident_wholemodel_vf", "fuse_transpose_b", "erase_self_copy"]
+    OURS_BEST_FEATURES = ["accumulator_resident_wholemodel_vf", "fuse_transpose_b", "erase_self_copy",
+                          "accumulator_resident_wholemodel_vf_mrpad"]
     ours_best_pkg = replace(base, run_id="ours_best", compiler_features=OURS_BEST_FEATURES)
     xnn_pkg = replace(base, run_id="xnnpack_kernels")
     ob_pkg = replace(base, run_id="openblas_kernels")

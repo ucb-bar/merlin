@@ -761,6 +761,8 @@ module attributes {{transform.with_named_sequence}} {{
     transform.apply_patterns to %f {{
       transform.apply_patterns.vector.transfer_permutation_patterns
       transform.apply_patterns.vector.reduction_to_contract
+      transform.apply_patterns.vector.fold_arith_extension
+      transform.apply_patterns.vector.reduction_to_contract
     }} : !transform.any_op
     transform.yield
   }}
