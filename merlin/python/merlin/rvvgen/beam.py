@@ -13,8 +13,14 @@ the curated expert fingerprint) gated by correctness; spike cycles are a weak ti
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 from typing import Any, Callable
+
+# Board noise floor is >=1.9% (measured on the K1); a fork must beat its parent by more than this to
+# count as a real win rather than measurement noise. Overridable per-run (env or run_beam param).
+_DEFAULT_NOISE_MARGIN = 0.02
+_NOISE_MARGIN_ENV = "MERLIN_BEAM_NOISE_MARGIN"
 
 from ..common.yaml import write_yaml
 from ..kernels.compare import RvvFingerprint, compare_fingerprints
@@ -128,6 +134,42 @@ def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict) -
             "k1_wall_ns": k1_wall, "divergences": divs}
 
 
+def _resolve_margin(noise_margin: float | None) -> float:
+    """The noise-floor margin a fork must beat its parent by. Explicit param wins; else the env
+    override; else the measured board default (2% >= the >=1.9% K1 floor)."""
+    if noise_margin is not None:
+        return float(noise_margin)
+    return float(os.environ.get(_NOISE_MARGIN_ENV, _DEFAULT_NOISE_MARGIN))
+
+
+def _margin_improved(speedup: float | None, parent_speedup: float | None, margin: float) -> bool:
+    """True only when the fork's speedup exceeds its parent's by MORE than the noise margin — the
+    honest 'this is a real win, not board noise' test. Missing either speedup -> not a credited win."""
+    if speedup is None or parent_speedup is None:
+        return False
+    return speedup > parent_speedup * (1.0 + margin)
+
+
+def _ranked_speedup(speedup: float | None, parent_speedup: float | None,
+                    margin: float) -> float | None:
+    """The speedup rank_results should USE for this fork — the raw measurement gated by the noise
+    floor: a fork faster than its parent but within ``margin`` (the board noise floor) is pinned to
+    the parent's speed, so it ranks as a TIE rather than a noise-promoted win. A genuine win
+    (> parent * (1+margin)) keeps its measured speedup; a genuine regression (< parent) keeps its
+    (lower) measured speedup so it correctly sorts below the parent.
+
+    Inert forks (byte-identical emitted code) are handled separately — excluded from the survivor set
+    and demoted by the ``not_inert`` tiebreak in rank_results — and in a real run their measured
+    speedup is within noise of the parent anyway, so this same clamp pins them to the parent's speed."""
+    if speedup is None or parent_speedup is None:
+        return speedup
+    if speedup > parent_speedup * (1.0 + margin):
+        return speedup                     # genuine win -> credit the real measurement
+    if speedup >= parent_speedup:
+        return parent_speedup              # within the noise floor above parent -> tie (no win credit)
+    return speedup                         # genuine regression -> keep (sorts below the parent)
+
+
 def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_key: dict, *,
              runs_root: str | Path, out_root: str | Path = "out/artifacts/targets",
              width: int = 3, depth: int = 2, top_k: int = 2, target: str = "rvv",
@@ -136,7 +178,8 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
              certify_fn: Callable = certify_rvv, proposer: Callable | None = None,
              expert_cca=None, loader: Callable = load_rvv_package, minter: Callable = mint_fork,
              max_workers: int | None = None, sweep_fn: Callable = run_sweep,
-             expert_wall_ns: float | None = None
+             expert_wall_ns: float | None = None, validate_fn: Callable | None = None,
+             noise_margin: float | None = None
              ) -> dict[str, Any]:
     """Run the beam. Returns {best, nodes, deferred, tree_path}. ``curated_text`` is the expert
     kernel C source for this op (the structural target); ``op_key`` = {op,dtype,shape_regime}.
@@ -146,8 +189,21 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     ``.knobs``), ``minter(parent, overrides, ...) -> Path`` (render+write a fork package),
     ``proposer(divergences, knobs) -> [ForkProposal]`` (the lever/tuning policy), and
     ``certify_fn(**job) -> result`` (build+run+gate). A new target reuses this engine unchanged by
-    supplying its own four callables."""
+    supplying its own four callables.
+
+    Two-phase objective (P1): whole-model certification per fork is slow, so the EXPLORE generations
+    score forks with the cheap ``certify_fn`` (a fast proxy model), and only the surviving top-k are
+    RE-CERTIFIED with ``validate_fn`` (the full whole-model bundle) before they are promoted to
+    parents and before the final ``best`` is picked. ``validate_fn=None`` (default) keeps the
+    single-phase behavior — survivors are promoted on their explore scores. ``validate_fn`` has the
+    same signature/return contract as ``certify_fn`` (both are ``(**job) -> result`` seams).
+
+    Noise-floor gate (P3): a fork counts as a WIN only if its speedup beats its parent's by more than
+    ``noise_margin`` (default 2% >= the measured >=1.9% K1 floor; env ``MERLIN_BEAM_NOISE_MARGIN``);
+    sub-margin deltas rank as ties. INERT forks (emitted code byte-identical to the parent) are
+    excluded from the survivor set and can never be credited a win."""
     runs_root = Path(runs_root)
+    margin = _resolve_margin(noise_margin)
     curated = RvvFingerprint.from_curated(curated_text, op_key, "curated")
     # CCA mode: when an expert CCA is supplied, drive the search from OUR-vs-EXPERT CCA divergences
     # via the CCA-native proposer (whose proposals carry their CompilerAction, so the per-fork audit
@@ -167,6 +223,7 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
 
     nodes: list[dict] = []
     deferred: list[dict] = []           # recorded lever-2/3 work-items the beam can't auto-apply
+    node_by_rid: dict[str, dict] = {}   # run_id -> node, for parent-speedup lookup (the margin gate)
 
     # BB0 freeze-assert: snapshot the frozen baseline BEFORE any fork is minted. The beam forks into
     # fresh dirs (from_strategy.mint_fork writes a NEW package; the seed is read-only), so this digest
@@ -197,6 +254,37 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
 
     seed_node["speedup"] = 1.0 if seed_k1_wall else None
     seed_node["attainment_vs_expert"] = _attainment_vs_expert(seed_node)
+    seed_node["explore_speedup"] = seed_node["speedup"]   # the seed IS the explore-phase baseline
+    node_by_rid[seed_node["run_id"]] = seed_node
+
+    # P1 two-phase: validate_seed_wall is the validation-phase baseline (survivors' validated speedup
+    # is measured against a VALIDATED seed, never against the cheap explore-proxy seed wall).
+    validate_seed_wall: float | None = None
+
+    def _validated_speedup(node: dict) -> float | None:
+        w = node.get("k1_wall_ns")
+        return round(validate_seed_wall / w, 3) if validate_seed_wall and w else None
+
+    def _validate_node(node: dict) -> dict:
+        """Re-certify a node with the full ``validate_fn`` and OVERWRITE its explore-phase scores in
+        place (into a ``__validate`` sibling run dir so the explore run is left intact). Marks the
+        node ``validated`` so the final ``best`` is picked from the validated pool only."""
+        vrun_id = f"{node['run_id']}__validate"
+        res = validate_fn(package_dir=node["package_dir"], model_dir=str(model_dir),
+                          runs_root=str(runs_root), run_id=vrun_id, targets=targets,
+                          baseline_run_dir=(str(baseline_run_dir) if baseline_run_dir else None))
+        node.update(_score(res, runs_root / vrun_id, curated, op_key))
+        node["validated"] = True
+        return node
+
+    # Validate the seed once up front (when two-phase) to fix the validation baseline wall; the
+    # explore forks still measure against the proxy seed_k1_wall captured above (phase-consistent).
+    if validate_fn is not None and seed_node["gate_ok"]:
+        _validate_node(seed_node)
+        validate_seed_wall = seed_node.get("k1_wall_ns")
+        seed_node["speedup"] = 1.0 if validate_seed_wall else None
+        seed_node["attainment_vs_expert"] = _attainment_vs_expert(seed_node)
+        seed_node["ranked_speedup"] = seed_node["speedup"]
 
     counter = 0
     pending_escalations: list[tuple] = []    # (pkg, ForkProposal, parent_run_id) queued for the next gen
@@ -251,6 +339,7 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
                     "parent_run_id": parent_rid, "lever": p.lever, "evidence": p.evidence,
                     "targets_decision": p.targets, "depth": d, **sc}
             node["speedup"] = _real_speedup(node)     # real K1 speedup vs the seed (None if no k1)
+            node["explore_speedup"] = node["speedup"]  # frozen explore-phase speed (survives validation)
             node["attainment_vs_expert"] = _attainment_vs_expert(node)   # vs XNNPACK (the real target)
             # INERT-LEVER GUARD: did this fork's emitted code actually differ from its parent's? A
             # lever that changes nothing must not be credited with whatever the board measured --
@@ -259,6 +348,15 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
             _parent_digest = _emitted_digest(runs_root / parent_rid) if parent_rid else None
             node["inert"] = bool(node["emitted_digest"] and _parent_digest
                                  and node["emitted_digest"] == _parent_digest)
+            # NOISE-FLOOR MARGIN GATE: a fork is a WIN only if it beats its parent by more than the
+            # measured board noise floor; sub-margin deltas (and inert forks) are pinned to the
+            # parent's speed so rank_results treats them as ties, never noise-promoted wins.
+            _parent_node = node_by_rid.get(parent_rid)
+            _parent_spd = _parent_node.get("explore_speedup") if _parent_node else None
+            node["parent_speedup"] = _parent_spd
+            node["margin_improved"] = _margin_improved(node["speedup"], _parent_spd, margin)
+            node["ranked_speedup"] = _ranked_speedup(node["speedup"], _parent_spd, margin)
+            node_by_rid[node["run_id"]] = node
             # AUDIT: when the proposal carries its CompilerAction (CCA-native proposer) and the fork
             # emitted an objdump, record the per-step SearchStep — did the fork's asm actually ACHIEVE
             # the promised facet? (else escalate) + real-vs-fake speedup. The LLM-digestible step record.
@@ -289,7 +387,23 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
                         (fork_pkg, e, fork_dir.name) for e in esc_props if e.forkable)
             gen_nodes.append(node)
             nodes.append(node)
-        survivors = [n for n in rank_results(gen_nodes) if n["gate_ok"]][:top_k]
+        # P3: exclude INERT forks (byte-identical emitted code to the parent) from the survivor set --
+        # a no-op lever must never be promoted to a parent and propagate as if it were progress.
+        survivors = [n for n in rank_results(gen_nodes)
+                     if n["gate_ok"] and not n.get("inert")][:top_k]
+        # P1 two-phase: re-certify the survivor set with the full validate_fn and re-rank on the
+        # VALIDATED scores before promoting parents / picking best (explore was a cheap proxy).
+        if validate_fn is not None and survivors:
+            for n in survivors:
+                _validate_node(n)
+                n["speedup"] = _validated_speedup(n)
+                n["attainment_vs_expert"] = _attainment_vs_expert(n)
+                _pn = node_by_rid.get(n.get("parent_run_id"))
+                _pspd = _pn.get("speedup") if _pn else None   # parent's VALIDATED speed (seed is validated)
+                n["parent_speedup"] = _pspd
+                n["margin_improved"] = _margin_improved(n["speedup"], _pspd, margin)
+                n["ranked_speedup"] = _ranked_speedup(n["speedup"], _pspd, margin)
+            survivors = [n for n in rank_results(survivors) if n["gate_ok"]][:top_k]
         parents = [(loader(n["package_dir"]), n) for n in survivors]
         if not parents:
             break
@@ -301,12 +415,19 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
             f"frozen baseline {seed_pkg} was MUTATED during the beam run "
             f"(pre={seed_digest_pre[:12]} != post={seed_digest_post[:12]}); the control is void")
 
-    ranked = rank_results([n for n in nodes if n["gate_ok"]]) or nodes
+    # P1 two-phase: the final best is picked from the VALIDATED pool only (explore scores are a proxy
+    # and are not comparable to validated walls). Falls back to the full ranking when single-phase.
+    if validate_fn is not None:
+        validated = [n for n in nodes if n.get("validated") and n["gate_ok"]]
+        ranked = rank_results(validated) or rank_results([n for n in nodes if n["gate_ok"]]) or nodes
+    else:
+        ranked = rank_results([n for n in nodes if n["gate_ok"]]) or nodes
     best = ranked[0] if ranked else None
     tree = {"target": target, "seed": str(seed_pkg), "op_key": op_key,
             "baseline_frozen": {"digest": seed_digest_pre, "verified_unchanged": True},
             "width": width, "depth": depth, "top_k": top_k,
-            "expert_wall_ns": expert_wall_ns,
+            "expert_wall_ns": expert_wall_ns, "noise_margin": margin,
+            "two_phase": validate_fn is not None,
             "best": {k: best.get(k) for k in ("run_id", "structural_match", "speedup",
                                               "attainment_vs_expert", "cycles", "lever")}
                     if best else None,

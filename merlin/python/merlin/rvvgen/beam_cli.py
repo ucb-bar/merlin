@@ -59,14 +59,25 @@ def run_instrumented_beam(
     targets: tuple[str, ...] = ("k1",), width: int = 3, depth: int = 2, top_k: int = 2,
     max_workers: int | None = None, curated_text: str | None = None,
     certify_fn=None, sweep_fn=None, expert_wall_ns: float | None = None,
+    validate_model_dir: str | Path | None = None, validate_fn=None,
+    noise_margin: float | None = None,
 ) -> dict[str, Any]:
-    """Open an aet parent run, run the CCA beam, emit a child aet run per fork, return the outcome."""
+    """Open an aet parent run, run the CCA beam, emit a child aet run per fork, return the outcome.
+
+    Two-phase objective: ``model_dir`` is the cheap EXPLORE bundle; when ``validate_model_dir`` is
+    given, survivors are re-certified on that full/slow bundle (a ``validate_fn`` reusing the same
+    ``certify_fn`` with the validate bundle is synthesized) before promotion. An explicit
+    ``validate_fn`` wins if supplied (tests inject a mock)."""
     from ..common.artifacts import finish_run, start_run
     from .beam import run_beam
     from .runner import certify_rvv
     from .sweep import run_sweep
     certify_fn = certify_fn or certify_rvv
     sweep_fn = sweep_fn or run_sweep
+    # Synthesize the validation seam from the validate bundle: same certify_fn, full whole-model dir.
+    if validate_fn is None and validate_model_dir is not None:
+        def validate_fn(*, model_dir=None, **job):
+            return certify_fn(model_dir=str(validate_model_dir), **job)
 
     op_key = {"op": op, "dtype": dtype, "shape_regime": shape_regime}
     expert_cca = lift_expert_cca(expert_objdump, op)
@@ -88,7 +99,8 @@ def run_instrumented_beam(
                        width=width, depth=depth, top_k=top_k, target="rvv",
                        timestamp="beam", targets=targets, expert_cca=expert_cca,
                        max_workers=max_workers, certify_fn=certify_fn, sweep_fn=sweep_fn,
-                       expert_wall_ns=expert_wall_ns)
+                       expert_wall_ns=expert_wall_ns, validate_fn=validate_fn,
+                       noise_margin=noise_margin)
         # beam_tree.yaml (the full per-step record) into the parent run dir.
         tree_src = Path(res["tree_path"])
         if tree_src.is_file():
@@ -120,12 +132,23 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="merlin-rvv-beam",
                                  description="aet-instrumented, board-serialized CCA beam search (BB3).")
     ap.add_argument("--seed-pkg", default=None,
-                    help="seed package to FORK from (default: the fast impr_tuned_wholemodel, NOT the "
-                         "naive hand_v0 control — the beam targets XNNPACK, so it starts from our best)")
+                    help="seed package to FORK from (default: the frozen hand_v0 baseline, so a "
+                         "from-scratch run rediscovers the levers honestly rather than inheriting a "
+                         "pre-tuned config)")
     ap.add_argument("--expert-wall-ns", type=float, default=None,
                     help="XNNPACK measured wall (ns) for this workload — the REAL target; each fork "
                          "reports attainment_vs_expert = xnn_wall/fork_wall (>=1 = matched/beat XNNPACK)")
-    ap.add_argument("--model-dir", required=True, help="workload bundle (model.mlir + inputs + golden)")
+    ap.add_argument("--model-dir", required=True,
+                    help="EXPLORE-phase workload bundle (model.mlir + inputs + golden). Use a fast "
+                         "whole-model bundle here (e.g. out/artifacts/recaptures/bitvla_fp32_consistent) "
+                         "so the cheap explore generations stay quick.")
+    ap.add_argument("--validate-model-dir", default=None,
+                    help="optional VALIDATE-phase whole-model bundle. When set, each generation's "
+                         "survivor set is re-certified on this (full/slow) bundle and re-ranked before "
+                         "promotion — the two-phase objective. Omit for single-phase (explore only).")
+    ap.add_argument("--noise-margin", type=float, default=None,
+                    help="win margin over the parent's speedup (default 0.02 >= the measured >=1.9%% "
+                         "K1 noise floor; env MERLIN_BEAM_NOISE_MARGIN). Sub-margin deltas rank as ties.")
     ap.add_argument("--expert-objdump", required=True, help="decoded expert objdump fixture (CCA target)")
     ap.add_argument("--op", default="matmul")
     ap.add_argument("--dtype", default="f32")
@@ -138,18 +161,17 @@ def main(argv: list[str] | None = None) -> int:
                     help="sweep concurrency (default: 1 for a k1 target, board-safe)")
     args = ap.parse_args(argv)
 
-    # Default seed = the fast tracked config (P4/P5), NOT the naive hand_v0 control. hand_v0 stays the
-    # frozen baseline bar; the beam forks from our best so it targets XNNPACK, not the strawman.
-    default_seed = repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel"
-    if not default_seed.is_dir():
-        default_seed = repo_root() / "out/artifacts/targets/rvv/hand_v0"
+    # Default seed = the FROZEN hand_v0 baseline. A from-scratch beam run rediscovers the winning
+    # levers honestly from the naive control, instead of silently inheriting a pre-tuned config.
+    default_seed = repo_root() / "out/artifacts/targets/rvv/hand_v0"
     seed_pkg = args.seed_pkg or str(default_seed)
     targets = tuple(t.strip() for t in args.targets.split(",") if t.strip())
     res = run_instrumented_beam(
         seed_pkg=seed_pkg, model_dir=args.model_dir, expert_objdump=args.expert_objdump,
         op=args.op, dtype=args.dtype, shape_regime=args.shape_regime, targets=targets,
         width=args.width, depth=args.depth, top_k=args.top_k, max_workers=args.max_workers,
-        expert_wall_ns=args.expert_wall_ns)
+        expert_wall_ns=args.expert_wall_ns, validate_model_dir=args.validate_model_dir,
+        noise_margin=args.noise_margin)
     best = res.get("best") or {}
     print(f"parent_run={res.get('parent_run_dir')}")
     print(f"best: run_id={best.get('run_id')} lever={best.get('lever')} "
