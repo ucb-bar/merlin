@@ -165,6 +165,7 @@ def certify_rvv(package_dir: str | Path, model_dir: str | Path, *, runs_root: st
                 "gate_ok": gate.get("ok"),
                 "fp32_cos": gate.get("fp32_cos"), "fp32_rel": gate.get("fp32_rel"),
                 "fp32_argmax": gate.get("fp32_argmax"),
+                "fp32_max_rel": gate.get("fp32_max_rel"),
                 "w8a8_cos": gate.get("w8a8_cos"), "w8a8_rel": gate.get("w8a8_rel"),
             }
             cyc = run.get("metrics", {}).get("cycles")
@@ -200,6 +201,7 @@ def certify_rvv(package_dir: str | Path, model_dir: str | Path, *, runs_root: st
                     rec["correctness"] = {
                         "gate_ok": kg.get("ok"), "fp32_cos": kg.get("fp32_cos"),
                         "fp32_rel": kg.get("fp32_rel"), "fp32_argmax": kg.get("fp32_argmax"),
+                        "fp32_max_rel": kg.get("fp32_max_rel"),
                         "w8a8_cos": kg.get("w8a8_cos"), "w8a8_rel": kg.get("w8a8_rel"),
                         "source": "k1"}
                 ladder["K5"] = "pass"

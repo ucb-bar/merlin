@@ -634,9 +634,10 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> di
         out[f"{tier}_argmax"] = bool(int(np.argmax(pref)) == int(np.argmax(r)))
         out[f"{tier}_max_rel"] = perel
 
-    def _perel_ok(tier: str) -> bool:
-        # thresh <= 0 disables the term; missing tier => vacuously ok (that tier isn't in play).
-        return thresh <= 0 or out.get(f"{tier}_max_rel", 0.0) < thresh
+    def _perel_ok(tier: str, bound: float | None = None) -> bool:
+        # bound <= 0 disables the term; missing tier => vacuously ok (that tier isn't in play).
+        b = thresh if bound is None else bound
+        return b <= 0 or out.get(f"{tier}_max_rel", 0.0) < b
 
     t1 = (out.get("w8a8_cos", 0.0) > 0.999 and out.get("w8a8_rel", 1.0) < 1e-2
           and _perel_ok("w8a8"))
@@ -647,13 +648,12 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> di
               and out.get("fp32_rel", 1.0) < 1e-3 and _perel_ok("fp32"))
     # T3 fp32 REGRESSION tier: whole-model regression outputs (VLA policies etc.) are cosine-tight
     # but have NO meaningful top-1 argmax and a global rel ~3e-3 (> the legacy 1e-3 bit-close bar),
-    # so t2/legacy reject them despite cos ~0.9999995. This is exactly the k1_e2e_xnnpack four-way's
-    # accepted gate (cos >= 0.9999) PLUS the per-element ceiling as the localized-error safety — the
-    # same output the four-way already treats as correct. Without it the beam cannot use a
-    # whole-model regression bundle as its objective workload (measured: bitvla seed cos 0.9999945,
-    # gate_ok False -> zero forks).
-    t3 = (out.get("fp32_cos", 0.0) > 0.9999 and _perel_ok("fp32")
-          and "fp32_cos" in out)
+    # so t2/legacy reject them despite cos ~0.9999945. This tier is the k1_e2e_xnnpack four-way's
+    # accepted whole-model gate (cos >= 0.9999) PLUS the SIGNIFICANT-element per-element ceiling (the
+    # masked metric above): real regression noise on near-zero elements no longer false-rejects,
+    # while a blow-up on a meaningful element still trips. This is what lets the beam use a
+    # whole-model regression bundle as its objective workload (measured: bitvla seed cos 0.9999945).
+    t3 = (out.get("fp32_cos", 0.0) > 0.9999 and "fp32_cos" in out and _perel_ok("fp32"))
     out["cos"] = out.get("w8a8_cos", out.get("fp32_cos"))
     out["rel"] = out.get("w8a8_rel", out.get("fp32_rel"))
     out["max_rel"] = out.get("w8a8_max_rel", out.get("fp32_max_rel"))
