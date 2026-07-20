@@ -14,6 +14,31 @@ correctly off an expert GEMM and off our own compiler output.
   `run_expert_gemm._build` with the Saturn bare-metal flags. Register-blocked, accumulator-resident.
 - `xnnpack_f32_gemm_rvv.objdump` — `<xnn_f32_gemm_ukernel_1x4v__rvv>` from the XNNPACK expert driver
   (`ceiling_drivers/xnnpack_gemm_driver.c` + `f32-gemm-1x4v-rvv.c`). MR=1, NR = vsetvlmax (VL-loop).
+  Extracted from a LINKED bare-metal ELF, so branch displacements are RESOLVED: `spans_reliable()`
+  is True and `envelope.calls_in_loop` is a trustworthy 0.
+- `xnnpack_qd8_gemm_rvv.objdump` — `<xnn_qd8_f32_qc8w_gemm_minmax_ukernel_1x4v__rvv>` from the
+  vendored XNNPACK int8 GEMM ukernel `qd8-f32-qc8w-gemm-1x4v-minmax-rvv.c`. Cross-compiled to a
+  `.o` with the SpacemiT K1 clang (`--target=riscv64-unknown-linux-gnu -march=rv64gcv_zfh_zvfh
+  -mabi=lp64d -O3 -DNDEBUG`, `-I ceiling_drivers` for the header shim), disassembled with the repo's
+  `llvm-objdump` (`decode/objdump.py::disassemble_text`). W8A8 datapath: a WIDENING `vwmacc` MAC
+  accumulating int8×int8 products in i32 — `cca.lift_asm` reads `compute.widening=True`,
+  `accumulator_dtype=i32`.
+- `xnnpack_f16_gemm_rvv.objdump` — `<xnn_f16_gemm_minmax_ukernel_7x4v__rvvfp16arith>` from the
+  vendored XNNPACK f16 GEMM ukernel `f16-gemm-7x4v-minmax-rvvfp16arith.c`, same SpacemiT-clang
+  cross-compile (plus a tiny prelude typedef'ing `xnn_float16 = _Float16` and
+  `struct xnn_f16_minmax_params`, which the ceiling header shim does not carry).
+  **fp16 NUMERICS CAVEAT**: this ukernel accumulates NATIVELY in f16 (`vfmacc.vv` at e16, NOT a
+  widening `vfwmacc` to f32), so its result is numerically NON-comparable to our f32-accumulate
+  datapath — a K-length f16 reduction drifts where f32-accumulate does not. Any CCA/expert-wall
+  comparison against this fixture inherits that caveat: `compute.accumulator_dtype=f16`,
+  `widening=False` (unlike int8's f32-accumulate-via-i32 widening).
+
+Both new `qd8`/`f16` fixtures are UNLINKED single-ukernel objects, so their intra-function branch
+displacements are still unrelocated (each branch resolves to its own address). The decoder detects
+this (`InsnStream.spans_reliable()` is False) and `cca.lift_asm` reports `envelope.calls_in_loop`
+as `None` (honestly UNKNOWN) rather than a misleading 0 — the P5a honesty fix. Their dtype-datapath
+facets (widening / accumulator_dtype / sew / lmul) are read from the compute stream and remain
+trustworthy regardless of loop-structure relocation.
 - `ours_baseline_matmul.objdump` — `<forward>` of our FROZEN baseline RVV lowering for a 64^3 f32
   matmul (`apply_rvv_package(hand_v0)` -> `model.o`). vfmul+vfadd (no fma), no register block.
 - `ours_accum_resident_matmul.objdump` — `<forward>` of the `accumulator_resident_microkernel`

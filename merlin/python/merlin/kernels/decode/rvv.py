@@ -68,6 +68,29 @@ class InsnStream:
                 spans.append((tgt, i.raw.addr))
         return spans
 
+    def spans_reliable(self) -> bool:
+        """False when the branch displacements look UNRELOCATED, so ``loop_spans()`` /
+        ``innermost_loop()`` (and every loop-scoped count built on them) cannot be trusted.
+
+        In an unlinked object the branch displacement is still a zero placeholder awaiting
+        relocation, so llvm-objdump resolves each branch to ITS OWN address: no target is ever
+        ``< addr``, ``loop_spans()`` reads EMPTY, and any loop-scoped count silently collapses to 0
+        (MEASURED: a whole-model ``model.o`` reports 0 back-edge spans where the linked ELF reports
+        thousands). A branch that resolves to its own address is the smoking gun -- a real
+        branch-to-self is an infinite loop no compiler emits in compute code.
+
+        Straight-line code (no resolvable branch) stays reliable=True: there is simply no loop
+        structure to get wrong, so ``calls_in_loop`` is a sound 0. Mirrors the honesty contract of
+        ``escape_audit.EscapeSite.depth_reliable``: report UNKNOWN rather than a confident wrong 0.
+        """
+        for i in self.insns:
+            if not i.raw.mnemonic.startswith(_BRANCH):
+                continue
+            tgt = _branch_target(i.raw)
+            if tgt is not None and tgt == i.raw.addr:
+                return False
+        return True
+
     def innermost_loop(self) -> tuple[int, int] | None:
         """The innermost (smallest-span) back-edge range, or None if straight-line. The innermost
         loop of a tiled GEMM is the K-reduction loop — where accumulator residency is decided."""
