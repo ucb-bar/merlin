@@ -7,6 +7,7 @@ proof skips cleanly when no C++ toolchain is available.
 """
 from __future__ import annotations
 
+import dataclasses
 import shutil
 import subprocess
 from pathlib import Path
@@ -202,16 +203,22 @@ def test_stamp_refuses_unverified_without_force(out_root):
     assert stamp.status == "k1_verified"
 
 
-def test_honest_path_rvv_gate_still_refuses_k1_only(out_root):
-    """Documents WHY publish must run with gate=False: the rvv gate does NOT accept k1_verified."""
+def test_rvv_gate_accepts_k1_verified(out_root):
+    """The rvv gate now ACCEPTS a k1_verified champion: a live-board measurement is a stronger
+    certification than the spike simulator for a physical target, so publish runs through the REAL
+    gate (gate=True) with no --no-gate bypass and no false spike_verified claim."""
     run_dir = _beam_run(out_root)
     champ = pc.read_beam_champion(run_dir)
     pc.stamp_champion(champ)
     sel = pub.select_champion("rvv", artifacts_root=str(run_dir),
                               package_id="rvv_tuned_v2_d2_beam_11")
     gate_ok, detail = pub._check_gate(sel)
-    assert gate_ok is False           # k1_verified is not spike_verified/rtl_certified
-    assert "spike_verified" in detail
+    assert gate_ok is True            # k1_verified is accepted alongside spike_verified/rtl_certified
+    assert "k1_verified" in detail
+    # ...but an unverified/proposed status is still refused (the gate is not a rubber stamp)
+    sel_unverified = dataclasses.replace(sel, status="proposed")
+    refused, _ = pub._check_gate(sel_unverified)
+    assert refused is False
 
 
 # --------------------------------------------------------------------------- publish (dry + real)
@@ -224,7 +231,7 @@ def test_promote_and_publish_dry_run(out_root, monkeypatch):
     assert res.dry_run and not res.committed
     assert res.remote == remote
     assert res.branch == "stable/rvv_tuned_v2_d2_beam_11"
-    assert res.gate_ok is False       # honest: gate=False path (K1-only champion)
+    assert res.gate_ok is True        # real gate now accepts the stamped k1_verified champion
     # the assembled tree exists locally; the bare remote got nothing
     assert (res.repo_dir / "manifest.yaml").is_file()
 

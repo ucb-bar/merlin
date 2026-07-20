@@ -16,16 +16,14 @@ The beam measures a fork on the **live K1 board** (``k1_wall_ns``) with a correc
 (``gate_ok``). It does **not** run the spike functional simulator. So the honest recorded status is
 ``k1_verified`` -- we never write ``spike_verified`` for a fork that only the board measured.
 
-``publish._check_gate`` for the ``vector_schedule`` (rvv) family accepts ONLY
-``status in {spike_verified, rtl_certified}`` -- ``publication.certification: "pass"`` is honored
-only for the ``mlir_oot`` family, not for rvv. A K1-measured champion therefore CANNOT pass the rvv
-gate without either (a) falsely claiming ``spike_verified`` (refused here) or (b) publishing with
-``--no-gate`` / ``gate=False``. We take path (b): stamp the truthful ``status: k1_verified`` +
-``publication.certification: "pass"`` + ``certified_by: "k1_board"`` + ``certified_by_run: <beam
-run>`` + the measured metrics, and publish with ``gate=False`` (a loud, truthful K1-certification
-note). The clean long-term fix -- adding ``k1_verified`` to the rvv accepted set in
-``publish._check_gate`` -- is proposed in the task report, NOT done here (publish.py is not ours to
-edit). Everything here is additive and reuses :mod:`merlin.targetgen.publish` verbatim.
+``publish._check_gate`` for the ``vector_schedule`` (rvv) family now accepts
+``status in {spike_verified, rtl_certified, k1_verified}``. ``k1_verified`` means the fork was
+measured correct AND faster on the live K1 board — a STRONGER certification than the spike simulator
+for a physical target, not a weaker one — so this module stamps the truthful ``status: k1_verified``
++ ``publication.certification: "pass"`` + ``certified_by: "k1_board"`` + ``certified_by_run: <beam
+run>`` + the measured metrics, and publishes through the REAL gate (``gate=True``). No ``--no-gate``
+bypass and no false ``spike_verified`` claim for a fork the board (not spike) measured. Everything
+here is additive and reuses :mod:`merlin.targetgen.publish` verbatim.
 """
 from __future__ import annotations
 
@@ -302,10 +300,13 @@ def promote_and_publish(run_dir: str | Path, *, target: str = "rvv", execute: bo
                         require_margin: bool = True, force: bool = False):
     """End-to-end: read the beam champion, stamp it, and drive ``publish.publish`` for it.
 
-    Publishes with ``gate=False`` because publish's rvv gate strictly needs
-    ``spike_verified``/``rtl_certified`` and we refuse to falsely claim spike verified a fork the K1
-    board measured. The stamped ``publication.certification: pass`` + ``certified_by: k1_board`` is
-    the truthful record that rides along on the published tree. Returns (StampResult, PublishResult).
+    Publishes through the REAL gate (``gate=True``): ``publish._check_gate`` now accepts
+    ``k1_verified`` for the rvv (``vector_schedule``) family alongside ``spike_verified`` /
+    ``rtl_certified`` — a board measurement is a stronger certification than the spike simulator for a
+    physical target, not a weaker one. So the champion this module stamps ``k1_verified`` passes the
+    gate honestly, with no ``--no-gate`` bypass and no false ``spike_verified`` claim. The stamped
+    ``publication.certification: pass`` + ``certified_by: k1_board`` rides along as the truthful
+    record. Returns (StampResult, PublishResult).
     """
     champ = read_beam_champion(run_dir, target=target)
     stamp = stamp_champion(champ, status=status, require_board=require_board,
@@ -314,7 +315,7 @@ def promote_and_publish(run_dir: str | Path, *, target: str = "rvv", execute: bo
         champ.target,
         dry_run=not execute,
         remote=remote,
-        gate=False,                        # honest K1-cert path (see module docstring)
+        gate=True,                         # real gate now accepts k1_verified (see module docstring)
         verify_build=verify_build,
         package_id=stamp.package_id,
         artifacts_root=str(stamp.artifacts_root),

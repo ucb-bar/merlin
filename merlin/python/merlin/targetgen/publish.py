@@ -623,9 +623,13 @@ def _check_gate(sel: ChampionSelection) -> tuple[bool, str]:
     an ``oot_runner.certify`` pass, surfaced as ``rtl_certified`` status or a recorded
     ``publication.certification == 'pass'``."""
     if sel.layout_kind == "vector_schedule":
-        ok = sel.status in ("spike_verified", "rtl_certified")
+        # k1_verified = measured correct AND faster on the real SpacemiT K1 board (the beam's
+        # promote_champion stamp). For a physical RVV target that is a STRONGER certification than
+        # the spike simulator, not a weaker one — so accept it alongside spike/rtl. A beam champion
+        # then publishes without --no-gate, because its certification IS real silicon.
+        ok = sel.status in ("spike_verified", "rtl_certified", "k1_verified")
         return ok, (f"rvv gate: status={sel.status!r} "
-                    f"(need spike_verified or rtl_certified)")
+                    f"(need spike_verified, rtl_certified, or k1_verified)")
     ok = sel.status == "rtl_certified" or sel.cert_status == "pass"
     return ok, (f"mlir_oot gate: status={sel.status!r} certification={sel.cert_status!r} "
                 f"(need rtl_certified or oot_runner.certify pass)")

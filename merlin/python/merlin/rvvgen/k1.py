@@ -33,6 +33,12 @@ from typing import Any
 # toolchain without exporting into the shell (the same .env-everywhere contract as spike/zephyr).
 K1_SSH_KEY = env("MERLIN_K1_SSH_KEY", "")  # path to the SSH private key; empty => unset
 K1_HOST = env("MERLIN_K1_HOST", "")  # e.g. root@<board-ip>; empty => unset/unreachable
+# Optional non-standard SSH port. The board sits on the Berkeley-IoT WiFi (/22); the campus path from
+# the wired net filters inbound :22 to that segment (ICMP + high ports pass, port 22 is dropped), so
+# the board also runs sshd on a high port and this points ssh/scp at it. Empty => default port 22.
+K1_SSH_PORT = env("MERLIN_K1_SSH_PORT", "")
+_SSH_PORT_OPTS = ["-p", K1_SSH_PORT] if K1_SSH_PORT else []   # ssh uses -p
+_SCP_PORT_OPTS = ["-P", K1_SSH_PORT] if K1_SSH_PORT else []   # scp uses -P (capital)
 # SpacemiT cross-toolchain. The repo keeps only setup_toolchain.sh as reference under
 # build_tools/SpacemiT/ (the toolchain itself is huge); locate the real install via env, default
 # to the known /scratch2 path. ``toolchain_cc()` tolerates either the bin/ layout or the
@@ -204,7 +210,7 @@ def available() -> bool:
         return False
     try:
         r = subprocess.run(
-            ["ssh", "-i", K1_SSH_KEY, "-o", "BatchMode=yes",
+            ["ssh", "-i", K1_SSH_KEY, *_SSH_PORT_OPTS, "-o", "BatchMode=yes",
              "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=no", K1_HOST, "true"],
             capture_output=True, timeout=15)
         return r.returncode == 0
@@ -686,7 +692,7 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
 
 def _ssh(*args: str, timeout: int = 60) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["ssh", "-i", K1_SSH_KEY, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+        ["ssh", "-i", K1_SSH_KEY, *_SSH_PORT_OPTS, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
          "-o", "StrictHostKeyChecking=no", K1_HOST, *args],
         capture_output=True, text=True, timeout=timeout)
 
@@ -739,8 +745,8 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
 
     def _deploy_run(mode: str, tag: str, bwork: Path, binary) -> dict:
         remote = f"/tmp/{Path(model_dir).name}_{pkg.run_id}_{tag}_merlin_k1"
-        _run(["scp", "-i", K1_SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
-              str(binary), f"{K1_HOST}:{remote}"])
+        _run(["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
+              "-o", "StrictHostKeyChecking=no", str(binary), f"{K1_HOST}:{remote}"])
         # Big-model mmap path: build_k1_binary left a marker with the weights.bin to deploy
         # alongside; the binary mmaps it (resident RAM = working set, not the whole blob).
         marker = bwork / "USE_MMAP_WEIGHTS"
@@ -749,8 +755,9 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
             # weights to the rootfs (real flash), NOT /tmp (tmpfs/RAM) — see K1_REMOTE_DIR.
             _ssh(f"mkdir -p {K1_REMOTE_DIR}", timeout=30)
             remote_w = f"{K1_REMOTE_DIR}/{Path(remote).name}.weights.bin"
-            _run(["scp", "-i", K1_SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
-                  marker.read_text().strip(), f"{K1_HOST}:{remote_w}"])
+            _run(["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
+                  "-o", "StrictHostKeyChecking=no", marker.read_text().strip(),
+                  f"{K1_HOST}:{remote_w}"])
             wenv = f"MERLIN_WEIGHTS={remote_w} "
         # Fan the OpenMP loops across the board's cores (spread over the two clusters).
         env = (f"OMP_NUM_THREADS={K1_OMP_THREADS} OMP_PROC_BIND=spread "

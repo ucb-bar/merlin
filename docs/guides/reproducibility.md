@@ -118,10 +118,18 @@ MERLIN_COMPILE_TIMEOUT_S=3600 merlin-rvv-beam \
   --proposer wholemodel --targets k1 --width 5 --depth 2
 
 # (c) the full autonomous matrix + auto comparison (beam-discovered vs manual vs XNNPACK)
-MERLIN_COMPILE_TIMEOUT_S=3600 .venv/bin/python \
+#     the driver bounds the per-fork compile timeout to 900s by default (pathological-fork guard: a
+#     fork whose schedule makes clang spin fails-closed fast instead of blocking the board); export
+#     MERLIN_COMPILE_TIMEOUT_S to override.
+.venv/bin/python \
   build_tools/scripts/run_autonomous_beam_experiment.py \
-  --cells fp32:bitvla,fp32:openvla,fp32:rdt2 --width 5 --depth 2
+  --cells fp32:bitvla,fp32:openvla,fp32:rdt2,int8:bitvla,int8:openvla,int8:rdt2 --width 5 --depth 2
 ```
+
+> **K1 SSH note.** The board sits on the Berkeley-IoT WiFi; the campus path filters inbound `:22` to
+> that segment (ICMP + high ports pass, `:22` is dropped). The board's `ssh.socket` therefore also
+> listens on **2222**, and `.env` sets `MERLIN_K1_SSH_PORT=2222` (honored by `rvvgen/k1.py` across all
+> ssh/scp). If `k1.available()` is False but the board pings, it is not down — recheck the port.
 
 **Outputs.** Beam runs under `out/runs/rvv/beam/<op>/<TS>_cca_beam_.../` (`beam_tree.yaml` = the full
 per-fork record: discovered levers, real K1 speedup, `attainment_vs_expert`, gate). The experiment

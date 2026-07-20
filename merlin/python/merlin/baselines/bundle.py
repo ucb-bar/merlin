@@ -63,8 +63,17 @@ def tolerance(model: str, variant: str | None = None) -> tuple[float, float]:
 
 
 def model2mlir_root() -> Path:
-    """Root of the external model2MLIR repo (PyTorch loaders live here)."""
-    return Path(os.environ.get("MERLIN_MODEL2MLIR", "/path/to/model2MLIR"))
+    """Root of the external model2MLIR repo (PyTorch loaders live here).
+
+    Accepts EITHER ``MERLIN_MODEL2MLIR`` (this module's historical name) or ``MERLIN_M2M_DIR`` (the
+    name the repo ``.env`` / the spike/zephyr/m2m guards actually use, via ``paths.env``). They were
+    out of sync, so ExecuTorch export failed with a ``/path/to/model2MLIR`` placeholder even though
+    ``.env`` pointed at the real repo. Reading both — and honoring ``.env`` through ``paths.env`` —
+    closes that; direct ``os.environ`` still wins for an explicit override."""
+    from ..common.paths import env as _env
+    root = (os.environ.get("MERLIN_MODEL2MLIR") or os.environ.get("MERLIN_M2M_DIR")
+            or _env("MERLIN_MODEL2MLIR") or _env("MERLIN_M2M_DIR") or "/path/to/model2MLIR")
+    return Path(root)
 
 
 @dataclass

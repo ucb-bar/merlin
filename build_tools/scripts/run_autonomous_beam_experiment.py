@@ -17,18 +17,28 @@ Two distinct reference arms are reported, never conflated (see merlin.compare.ex
 The int8/fp16 reference bug is fixed: a non-fp32 fork wall is NEVER divided by the fp32 XNNPACK wall —
 the reference for a non-fp32 cell is the ExecuTorch wall of the SAME variant, else ``None``.
 
-Run (board-serialized, long): MERLIN_COMPILE_TIMEOUT_S=3600 .venv/bin/python
+Run (board-serialized, long): .venv/bin/python
   build_tools/scripts/run_autonomous_beam_experiment.py --cells fp32:bitvla,fp32:openvla,fp32:rdt2
+The per-fork compile timeout defaults to a bounded 900 s (pathological-fork guard, see below); export
+MERLIN_COMPILE_TIMEOUT_S to override.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, "merlin/python")
+
+# Pathological-fork guard. One int8 rdt2 fork made clang-23 spin >20 min; with a 3600 s ceiling the
+# board sat blocked the whole time. A bounded default fails such forks closed fast (→ honest not_run
+# for THAT fork, the beam continues) while still admitting legit whole-model builds — bitvla int8
+# needs >600 s, so 900 s is the floor that both kills the pathological spin and clears real work.
+# setdefault: an explicit MERLIN_COMPILE_TIMEOUT_S in the environment always wins.
+os.environ.setdefault("MERLIN_COMPILE_TIMEOUT_S", "900")
 from merlin.common.paths import artifacts_dir, repo_root  # noqa: E402
 from merlin.compare.executorch_column import (  # noqa: E402
     EXECUTORCH_LABEL, XNNPACK_KERNELS_LABEL, executorch_cell)
