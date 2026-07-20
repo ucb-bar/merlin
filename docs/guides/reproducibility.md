@@ -92,6 +92,47 @@ applied **in model2MLIR, not Merlin**; int8 (W8A8) is the only measured-working 
 int4 are a documented plan (`unavailable`). Full details — bundle layout, the honest torchAO status,
 and ingestion — in [model2MLIR frontend](model2mlir.md).
 
+## 5. Autonomous beam experiment (reproduce the e2e gains without hand-feeding)
+
+**Purpose.** Have the beam **rediscover** the whole-model optimizations from the frozen `hand_v0`
+seed — the run, the CCA extraction, and the improvements all autonomous — and compare what it found
+against the manual `ours_best` and the XNNPACK expert. Architecture + rationale:
+[CCA beam design](../design/beam_cca_architecture.md); mechanics: [beam search](beam_search.md).
+
+Prereqs (board-gated; run on a QUIET board — the K1 noise floor is ≥1.9%, ≥4.3% under contention):
+- the K1 reachable (`MERLIN_K1_HOST`, key), whole-model bundles under `out/artifacts/recaptures/`,
+  per-dtype expert fixtures in `merlin/tests/data/cca_asm/`;
+- the clean four-way baseline first, so `ours_best` (manual) and the XNNPACK expert walls exist:
+
+```bash
+# (a) clean four-way baseline — current-vs-XNNPACK + expert walls the beam compares to
+MERLIN_COMPILE_TIMEOUT_S=3600 .venv/bin/python build_tools/scripts/k1_e2e_xnnpack.py \
+  --model out/artifacts/recaptures/rdt2_fp32_consistent -n 3 \
+  --configs baseline,ours_wholemodel_vf,ours_best,xnnpack_kernels,openblas_kernels
+
+# (b) one beam cell, from frozen hand_v0, whole-model objective, whole-model proposer
+MERLIN_COMPILE_TIMEOUT_S=3600 merlin-rvv-beam \
+  --model-dir out/artifacts/recaptures/bitvla_fp32_consistent \
+  --expert-objdump merlin/tests/data/cca_asm/xnnpack_f32_gemm_rvv.objdump \
+  --expert-wall-ns <xnnpack whole-model wall ns> \
+  --proposer wholemodel --targets k1 --width 5 --depth 2
+
+# (c) the full autonomous matrix + auto comparison (beam-discovered vs manual vs XNNPACK)
+MERLIN_COMPILE_TIMEOUT_S=3600 .venv/bin/python \
+  build_tools/scripts/run_autonomous_beam_experiment.py \
+  --cells fp32:bitvla,fp32:openvla,fp32:rdt2 --width 5 --depth 2
+```
+
+**Outputs.** Beam runs under `out/runs/rvv/beam/<op>/<TS>_cca_beam_.../` (`beam_tree.yaml` = the full
+per-fork record: discovered levers, real K1 speedup, `attainment_vs_expert`, gate). The experiment
+summary is `out/artifacts/kernel-mining/rvv/bench/autonomous_beam_experiment.json`
+(beam-discovered features + speedup + attainment vs the manual `ours_best`, per cell). Frozen
+`hand_v0` is asserted byte-unchanged pre/post — the seed the beam forks from and measures against.
+
+**Honesty invariants.** Correctness gates before any wall (fail-closed → `not_run`); a speedup is
+credited only on real K1 silicon above the noise margin; an `inert` fork (emitted code == parent's)
+is never promoted; whole-model int8/fp16 have no XNNPACK e2e column (harness limitation, stated).
+
 ---
 
 For everything else, the generated hub [docs/README.md](../README.md) is the complete index (by

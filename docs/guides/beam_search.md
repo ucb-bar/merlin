@@ -3,11 +3,12 @@ title: RVV beam search — reproducible expert-driven compiler improvement, gate
 kind: guide
 status: current
 owner: rvvgen
-last_verified: 2026-07-17
+last_verified: 2026-07-20
 related: [kernel_mining, rvv_e2e, adding_a_target, dse_guidance]
 code_refs:
   - merlin/python/merlin/rvvgen/beam.py
   - merlin/python/merlin/rvvgen/beam_cli.py
+  - merlin/python/merlin/rvvgen/wholemodel_proposer.py
   - merlin/python/merlin/rvvgen/fork_from_action.py
   - merlin/python/merlin/rvvgen/runner.py
   - merlin/python/merlin/rvvgen/k1.py
@@ -27,6 +28,16 @@ SpacemiT K1 board than the frozen hand-written baseline.
 
 Every claim in the loop is fail-closed: correctness (cos/rel vs a golden) gates first, and a speedup
 is credited only when the gate passes and the measurement is real K1 silicon — never a proxy.
+
+> **Current architecture (whole-model).** The objective is now the WHOLE-MODEL wall, not an isolated
+> kernel (kernel-only ranking is anti-correlated with e2e — the `ours_v3` trap). `merlin-rvv-beam
+> --model-dir <whole-model-bundle> --proposer wholemodel` seeds from frozen `hand_v0`, proposes the
+> byte-traffic-ranked whole-model levers (transpose fusion, per-matmul MR, self-copy erase, reduction
+> vectorization, activation), measures each on the board, and stacks the winners across depth. The
+> full architecture — the two CCAs (expert vs compiler), the graph→IR→asm→cycles analysis, the
+> action-catalog ladder, the correctness tiers, and the autonomous experiment — is in
+> [CCA beam design](../design/beam_cca_architecture.md). Reproduction recipe: §5 of
+> [reproducibility](reproducibility.md).
 
 ## The pieces
 
