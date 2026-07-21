@@ -78,9 +78,11 @@ def materialize(
     date_str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
     run_id = f"{date_str}_{method}_seed{seed:03d}"
 
-    # Runs live under the canonical top-level runs/ root (never inside merlin/); root is the
-    # targetgen-evals dir (merlin/experiments/targetgen_evals), so root.parents[2] == repo root.
-    run_dir = root.parents[2] / "runs" / "targetgen-evals" / target / run_id
+    # Runs live under the single out/ root (out/runs/targetgen-evals/…), never inside merlin/ or a
+    # retired top-level runs/. root is the targetgen-evals dir (merlin/experiments/targetgen_evals),
+    # so root.parents[2] == repo root. (The harness treats Merlin as an external subject and does not
+    # import merlin.*, so it composes the out/runs path directly rather than via merlin.common.paths.)
+    run_dir = root.parents[2] / "out" / "runs" / "targetgen-evals" / target / run_id
 
     if run_dir.exists():
         if force:

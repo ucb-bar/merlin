@@ -48,7 +48,8 @@ def _is_forbidden_gen_dir(rel: str) -> bool:
 # genuinely-tracked source images, if any (verify with `git ls-files '*.png'` before adding).
 ALLOW_TRACKED_GEN: set[str] = {"docs/assets/merlin_transparent.png"}  # project logo (branding, not generated)
 # No blanket exemptions: every tracked path (incl. targetgen_evals) obeys the three-root rule.
-# targetgen_evals runs now live under the canonical top-level runs/targetgen-evals/ (gitignored).
+# targetgen_evals runs/reports now live under the single out/ root (out/runs/targetgen-evals/ and
+# out/artifacts/targetgen-evals/, both gitignored).
 SKIP_PREFIXES: tuple[str, ...] = ()
 
 

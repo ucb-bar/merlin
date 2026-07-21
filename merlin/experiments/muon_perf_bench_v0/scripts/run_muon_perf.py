@@ -18,6 +18,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(_REPO / "merlin" / "python"))
 
+from merlin.benchharness import runs_root
 from merlin.benchharness.perf import run_perf, perf_table
 from merlin.benchharness.spec import BenchTargetSpec
 from merlin.runtime.backends.muon import FP_PEAK_GFLOPS
@@ -43,7 +44,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--labels", default="public,dev")
     ap.add_argument("--contract", default="merlin/contract")
     ap.add_argument("--timeout", type=int, default=300)
-    ap.add_argument("--out", default=None, help="output dir (default runs/muon/perf-bench/<run-id>)")
+    ap.add_argument("--out", default=None,
+                    help="output dir (default out/runs/muon/perf-bench/<run-id>)")
     a = ap.parse_args(argv)
 
     # resolve a relative --contract against the repo root (robust to CWD)
@@ -54,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
         perf_fields=lambda t: {"gflops": t.get("gflops"), "pct_fp_peak": t.get("pct_fp_peak")},
         peak_note=f"the Muon SIMT FP peak ({FP_PEAK_GFLOPS:g} GFLOP/s, 64 flop/cycle @ 500 MHz)")
 
-    out_dir = Path(a.out) if a.out else (_REPO / "runs" / "muon" / "perf-bench" / a.run_id)
+    out_dir = Path(a.out) if a.out else (runs_root("muon", "perf-bench") / a.run_id)
     try:
         summary = run_perf(spec, package=str(_REPO / a.package), run_id=a.run_id, out_dir=out_dir,
                            timeout=a.timeout, flops_fn=_flops, extra_tier="L3")

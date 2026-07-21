@@ -20,8 +20,10 @@ clang fork (``clang-muon``, a Vortex/RISC-V32 target) against the radiance-kerne
 :func:`merlin.runtime.reference.reference_outputs` (the same oracle the Python simulator backend is
 held to). cyclotron and VCS run the *exact same ELF*.
 
-Toolchain resolution via environment (all have working-tree defaults):
-``MERLIN_CHIPYARD`` (default ``/path/to/chipyard``),
+Toolchain resolution honors the process env AND the repo ``.env`` (via ``merlin.common.paths.env``),
+mirroring the gemmini backend — ``os.environ.get`` alone missed keys that live in ``.env`` (the
+repo-wide contract), leaving the ``/path/to/...`` placeholders and making ``available()`` False even
+with a real toolchain. Keys: ``MERLIN_CHIPYARD`` (default ``/path/to/chipyard``),
 ``MERLIN_RADIANCE_KERNELS`` (default ``/path/to/radiance-kernels``),
 ``MERLIN_MUON_CLANG`` / ``MERLIN_MUON_CYCLOTRON`` / ``MERLIN_MUON_CONFIG`` / ``MERLIN_MUON_VCS``.
 """
@@ -34,6 +36,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from ...common.paths import env as _env
 from ..metrics import COMMON_METRIC_NAMES
 from ..reference import outputs_match, reference_outputs
 
@@ -64,11 +67,11 @@ class MuonUnavailable(RuntimeError):
 
 # --- toolchain resolution -------------------------------------------------------------------------
 def chipyard_root() -> Path:
-    return Path(os.environ.get("MERLIN_CHIPYARD", DEFAULT_CHIPYARD))
+    return Path(_env("MERLIN_CHIPYARD", DEFAULT_CHIPYARD))
 
 
 def radiance_kernels_root() -> Path:
-    return Path(os.environ.get("MERLIN_RADIANCE_KERNELS", DEFAULT_RADIANCE_KERNELS))
+    return Path(_env("MERLIN_RADIANCE_KERNELS", DEFAULT_RADIANCE_KERNELS))
 
 
 def llvm_muon_root() -> Path:
@@ -76,9 +79,9 @@ def llvm_muon_root() -> Path:
 
 
 def clang_path() -> Path:
-    env = os.environ.get("MERLIN_MUON_CLANG")
-    if env:
-        return Path(env)
+    val = _env("MERLIN_MUON_CLANG")
+    if val:
+        return Path(val)
     return llvm_muon_root() / "bin/clang++"
 
 
@@ -87,9 +90,9 @@ def lib_dir() -> Path:
 
 
 def cyclotron_path() -> Path:
-    env = os.environ.get("MERLIN_MUON_CYCLOTRON")
-    if env:
-        return Path(env)
+    val = _env("MERLIN_MUON_CYCLOTRON")
+    if val:
+        return Path(val)
     return chipyard_root() / "generators/radiance/cyclotron/target/release/cyclotron"
 
 
@@ -98,13 +101,13 @@ def cyclotron_root() -> Path:
 
 
 def config_path() -> Path:
-    return Path(os.environ.get("MERLIN_MUON_CONFIG", DEFAULT_CONFIG))
+    return Path(_env("MERLIN_MUON_CONFIG", DEFAULT_CONFIG))
 
 
 def vcs_path() -> Path:
-    env = os.environ.get("MERLIN_MUON_VCS")
-    if env:
-        return Path(env)
+    val = _env("MERLIN_MUON_VCS")
+    if val:
+        return Path(val)
     return chipyard_root() / "sims/vcs" / f"simv-chipyard.harness-{VCS_CONFIG}"
 
 

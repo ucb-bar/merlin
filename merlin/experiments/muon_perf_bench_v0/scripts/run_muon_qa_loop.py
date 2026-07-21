@@ -33,6 +33,7 @@ for _c in (_HERE, *_HERE.parents):
         break
 sys.path.insert(0, str(_HERE))
 import agent_selfcheck as SC                      # noqa: E402  (grade())
+from merlin.benchharness import runs_root          # noqa: E402  (canonical out/runs root)
 from merlin.targetgen import experiment_tokens as ET   # noqa: E402  (canonical transcript parser)
 from merlin.targetgen.rtl.facts import rtl_facts_path   # noqa: E402  (target-agnostic facts dir)
 
@@ -175,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-rounds", type=int, default=6)
     ap.add_argument("--round-timeout", type=int, default=3600)
     ap.add_argument("--grade-timeout", type=int, default=300)
-    ap.add_argument("--runs-root", default=str(_REPO / "runs" / "muon" / "perf-bench"))
+    ap.add_argument("--runs-root", default=str(runs_root("muon", "perf-bench")))
     ap.add_argument("--keep-ws", action="store_true")
     a = ap.parse_args(argv)
 
