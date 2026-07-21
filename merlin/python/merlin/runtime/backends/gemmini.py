@@ -43,7 +43,17 @@ class GemminiError(RuntimeError):
 
 
 def chipyard_root() -> Path:
-    return Path(os.environ.get("MERLIN_CHIPYARD", DEFAULT_CHIPYARD))
+    """Chipyard root, honoring ``.env`` (not just the process env). ``os.environ.get`` alone missed
+    ``MERLIN_CHIPYARD`` when it lives in the repo ``.env`` (the repo-wide contract), leaving the
+    ``/path/to/chipyard`` placeholder — which made ``available('spike'/'verilator')`` False even with
+    a real toolchain, so every oracle reported NOT_RUN_IS_NOT_PASS. Resolve through
+    ``merlin.common.paths`` (env/.env → ext_path) with the placeholder only as a last resort."""
+    from ...common.paths import env as _env, ext_path as _ext_path
+    root = os.environ.get("MERLIN_CHIPYARD") or _env("MERLIN_CHIPYARD")
+    if root:
+        return Path(root)
+    cy = _ext_path("chipyard")
+    return Path(cy) if cy else Path(DEFAULT_CHIPYARD)
 
 
 def gcc_path() -> Path:

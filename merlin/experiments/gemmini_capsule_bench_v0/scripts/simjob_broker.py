@@ -30,7 +30,15 @@ HERE = Path(__file__).resolve().parent
 SELFCHECK = HERE / "agent_selfcheck.py"
 PUBLIC_CAPSULES = HERE / "full_public_capsules"        # same set agent_selfcheck validates against
 PY = sys.executable
-CE = "/path/to/chipyard/.conda-env"           # toolchain env for the sims (driver-side)
+# Driver-side sim toolchain env — resolve via ext_path('chipyard') (honors .env), NOT a hard-coded
+# path. This is the host-side broker (runs sims OUTSIDE the sandbox), so it must find spike/riscv-gcc
+# in the conda env itself; the previous '/path/to/...' placeholder left spike off PATH -> L2 n=0/1.
+try:
+    from merlin.common.paths import ext_path as _ext_path
+    _CY = _ext_path("chipyard")
+    CE = str(_CY / ".conda-env") if _CY else "/path/to/chipyard/.conda-env"
+except Exception:  # noqa: BLE001 — keep the broker importable even if merlin isn't on the path
+    CE = "/path/to/chipyard/.conda-env"
 GLOBAL_VERIL_SLOTS = Path("/tmp/merlin_veril_slots")   # cross-arm verilator semaphore
 _CAP_RE = re.compile(r"^[A-Za-z0-9_]+$")
 # debug-flag whitelist: symbolic name -> (currently a no-op passthrough; real sim args wired later).

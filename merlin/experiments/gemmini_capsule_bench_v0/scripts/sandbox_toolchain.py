@@ -14,13 +14,18 @@ import os
 from pathlib import Path
 
 import _common as C
+from merlin.common.paths import ext_path, env
 
-CONDA_ENV = "/path/to/chipyard/.conda-env"          # cmake/ninja/make + spike + riscv-gcc + libs
-CHIPYARD_VERILATOR = "/path/to/chipyard/sims/verilator"  # built L3 RTL simulator
+# Chipyard build+sim toolchain — resolved via ext_path('chipyard') (honors .env MERLIN_EXT_CHIPYARD),
+# NOT a hard-coded path, so it survives moves. .conda-env carries cmake/ninja/make + spike + riscv-gcc
+# + libs (riscv-tools/bin); sims/verilator is the built L3 RTL simulator.
+_CHIPYARD = ext_path("chipyard")
+CONDA_ENV = str(_CHIPYARD / ".conda-env") if _CHIPYARD else "/path/to/chipyard/.conda-env"
+CHIPYARD_VERILATOR = str(_CHIPYARD / "sims" / "verilator") if _CHIPYARD else "/path/to/chipyard/sims/verilator"
 UV_PYTHON = os.path.expanduser("~/.local/share/uv")          # the cpython the .venv symlinks point at
 VENV = str(C.REPO / ".venv")                                 # third-party deps (xdsl, numpy, jsonschema…)
 LLVM = str(C.REPO / "third_party" / "llvm-install")          # clang + mlir-opt/translate (also bundle-allowed)
-CURATED_HARNESS = str(C.REPO / "experiments/gemmini_capsule_bench_v0/contracts/harness_curated/gemmini-rocc-tests")
+CURATED_HARNESS = str(C.EXP / "contracts/harness_curated/gemmini-rocc-tests")
 # libidn compat shim: the conda cmake transitively loads libidn.so.11 (during project configure), but this
 # host only has libidn.so.12. `.compat_lib/libidn.so.11 -> libidn.so.12` bridges it. Under --sandbox none
 # (abc4) this was on the ambient LD_LIBRARY_PATH; our explicit env dropped it -> the C++ build failed
@@ -30,11 +35,15 @@ COMPAT_LIB = str(C.REPO / ".compat_lib")
 # llvm-install. The C++ baseline REQUIRES it to build/link its OOT MLIR project (g++ links the clang-built
 # LLVM libs with undefined-reference errors). It lives in the IREE merlin install; bind ONLY the compiler
 # bin + its resource dir — NOT src/ or python_packages/ (which hold IREE source incl. gemmini lowerings).
-CLANG_INSTALL = "/path/to/merlin-iree/build/host-merlin-release/install"
+CLANG_INSTALL = env("MERLIN_CLANG_INSTALL",
+                    "/scratch2/agustin/merlin/build/host-merlin-release/install")
 CLANG_BIN = CLANG_INSTALL + "/bin"
 CLANG_RESOURCE = CLANG_INSTALL + "/lib/clang"          # clang -print-resource-dir -> lib/clang/23
 MERLIN_CLANG = CLANG_INSTALL + "/bin/clang-23"
-MEMORY_DIR = os.path.expanduser("~/.claude/projects/-scratch-agustin-projects-merlin/memory")
+# Derive the experimenter-memory dir from the CURRENT repo (Claude Code slugifies the project path by
+# replacing '/' with '-'). Hard-coding it left the OLD '-scratch-agustin-projects-merlin' path — which
+# no longer exists — so the CURRENT memory went UNMASKED (a cheat gap). Deriving it keeps the mask honest.
+MEMORY_DIR = os.path.expanduser(f"~/.claude/projects/{str(C.REPO).replace('/', '-')}/memory")
 RESOLVE_DIR = "/run/systemd/resolve"   # /etc/resolv.conf -> here; without it DNS fails inside bwrap
 
 # nested-session env vars that must be UNSET for the agent's claude: inherited from THIS Claude Code

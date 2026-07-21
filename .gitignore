@@ -222,3 +222,4 @@ merlin/experiments/**/runs/
 
 # General ignore
 tmp
+.compat_lib/
