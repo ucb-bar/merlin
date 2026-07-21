@@ -226,7 +226,13 @@ def _harness_c(cb: dict) -> str:
         if out_dtype == "i8":               # scaled/clamped i8 readout buffer (elem_t)
             decls.append(f"static elem_t T_{out}[{mp * np_}] row_align(1);")
         else:
-            decls.append(f"static acc_t T_{out}[{mp * np_}] row_align_acc(1);")
+            # Full-i32 accumulator readout is 4 bytes/elem — this is what the RoCC sequence
+            # emits for (config_st out-row-stride = np_*4, mvout tile offset *4). Declare the
+            # buffer as int32_t, NOT `acc_t`: the gemmini-rocc-tests gemmini_params.h typedefs
+            # acc_t=uint64_t (8 B) while the spike --extension=gemmini libgemmini was built with
+            # acc_t=int32_t (4 B, the value it actually DMAs). Reading an 8-byte type from the
+            # 4-byte readout halved every row (Y[i][j] read C[i][2j]) and zeroed the bottom half.
+            decls.append(f"static int32_t T_{out}[{mp * np_}] row_align_acc(1);")
 
     args = [weight] + lhss + [o for o, _, _ in outs]
     call = ", ".join(f"(void*)T_{a}" for a in args)
