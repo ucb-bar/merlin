@@ -84,6 +84,21 @@ def gate_basis(model: str) -> str:
     return "semantic (gated against the model's captured trained-weight golden)"
 
 
+def _result_caveats(model: str) -> str:
+    """Why a RECORDED ExecuTorch fail/number for this model may not mean what it looks like. A low cos
+    on a RAM-infeasible or random-init model is an artifact of the run conditions, NOT evidence of an
+    ExecuTorch kernel defect -- surfacing this stops a false 'ET is numerically wrong' read."""
+    notes = []
+    if model in _bundle.K1_RAM_INFEASIBLE:
+        notes.append("model is K1 RAM-infeasible whole-model (7B-class VLA vs the 3.8GB board), so any "
+                     "whole-model wall/cos is from a RAM-constrained or truncated run, not trustworthy")
+    if _bundle.golden_unreproducible(model):
+        notes.append("random-init model: a semantic cos vs the captured golden is meaningless (the gate "
+                     "should be lowering-exactness); a low cos here is a golden-provenance artifact, "
+                     "NOT an ET numerical defect")
+    return (" [CAVEAT: " + "; ".join(notes) + "]") if notes else ""
+
+
 def _not_measured_reason(model: str, variant: str, rows: list) -> str:
     """Honest reason a cell has no ExecuTorch number: an executed-but-failed run, a not_run, or absence."""
     if rows:
@@ -92,7 +107,7 @@ def _not_measured_reason(model: str, variant: str, rows: list) -> str:
         detail = f": {gap}" if gap else ""
         if r.status() == "fail" and r.cos is not None:
             detail += f" (cos={r.cos})"
-        return f"latest executorch {variant} = {r.status()}{detail}"
+        return f"latest executorch {variant} = {r.status()}{detail}{_result_caveats(model)}"
     if model in _bundle.K1_RAM_INFEASIBLE:
         return (f"no executorch {variant} result; {model} is K1 RAM-infeasible whole-model (7B-class "
                 "VLA exceeds the 3.8 GB board) -> honest not_run, never a false fit")
