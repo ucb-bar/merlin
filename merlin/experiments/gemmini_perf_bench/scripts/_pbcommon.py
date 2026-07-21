@@ -22,12 +22,14 @@ REPO = Path(_git) if _git else _HERE.parents[4]
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 
 from merlin.benchharness import runs_root, reports_root  # noqa: E402
+from merlin.common.paths import env as _env  # noqa: E402
 
 EXP = REPO / "merlin" / "experiments" / "gemmini_perf_bench"
 KERNELS = EXP / "kernels"                                  # one capsule dir per kernel + corpus.yaml
 RUNS = runs_root("gemmini", "perf-bench")                  # runs/gemmini/perf-bench
 REPORTS = reports_root("plots", "gemmini", "perf-bench")   # artifacts/plots/gemmini/perf-bench
-MODEL2MLIR = Path("/path/to/model2MLIR/workloads")  # external corpus (see paths.ext_path)
+# External model corpus — resolve via .env (MERLIN_M2M_DIR), NOT a "/path/to/..." placeholder.
+MODEL2MLIR = Path(_env("MERLIN_M2M_DIR", "/scratch/agustin/projects/model2MLIR")) / "workloads"
 
 # Gemmini systolic array dimension (16x16 PE) -> peak 256 MACs/cycle. Used for utilization.
 DIM = 16

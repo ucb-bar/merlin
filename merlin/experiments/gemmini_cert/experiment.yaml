@@ -9,5 +9,7 @@ rungs: [C0, C1, C4, C4e, C5]  # certifiable (bit-exact) rungs; see eval/gemmini_
 oracles:
   - {simulator: spike,     level: 1, derived_from_rtl: false, role: bootstrap}
   - {simulator: verilator, level: 2, derived_from_rtl: true,  role: certification}
-runs_root: runs/gemmini_cert
-ledger: runs/gemmini_cert/ledger.jsonl
+# Canonical out/ layout (repo-relative; run.py resolves against repo_root). Was the retired top-level
+# runs/gemmini_cert from before the out/ restructure.
+runs_root: out/runs/gemmini/cert
+ledger: out/runs/gemmini/cert/ledger.jsonl

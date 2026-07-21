@@ -17,13 +17,15 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-REPO = Path("/path/to/merlin")
-sys.path.insert(0, str(REPO / "scripts"))
-from merlin_plotstyle import (use_merlin_style, style_ax, title, suptitle, emph, block_shadow,
-                              BG, INK, GOLD, BLUE, NAVY, SLATE, MAUVE, SAGE, SERIF, SANS)
+import _pbcommon as PB  # canonical roots (repo_root + out/ runs/reports) — replaces the placeholder REPO
+REPO = PB.REPO
+# house style now lives in the package (merlin.plotting.merlin_plotstyle), NOT the retired top-level scripts/
+from merlin.plotting.merlin_plotstyle import (use_merlin_style, style_ax, title, suptitle, emph,
+                                              block_shadow, BG, INK, GOLD, BLUE, NAVY, SLATE, MAUVE,
+                                              SAGE, SERIF, SANS)
 
-PB_RUNS = REPO / "merlin" / "experiments" / "gemmini_perf_bench" / "runs"
-REPORTS = REPO / "merlin" / "experiments" / "gemmini_perf_bench" / "reports"
+PB_RUNS = PB.RUNS         # out/runs/gemmini/perf-bench
+REPORTS = PB.REPORTS      # out/artifacts/plots/gemmini/perf-bench
 AGENTIC_RUN = "perf_4backends_0001"     # the new FireSim run (4 agentic arms)
 CACHE_RUN   = "perf_full_0001"          # cached golden + iree_dialect cells
 

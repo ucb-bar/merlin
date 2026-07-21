@@ -14,8 +14,16 @@ from pathlib import Path
 import yaml
 
 from merlin.targetgen.eval.gemmini_dispatcher import run_sweep, summarize
+from merlin.common.paths import repo_root
 
 HERE = Path(__file__).resolve().parent
+
+
+def _resolve(p: str) -> str:
+    """Resolve a repo-relative config path (e.g. out/runs/gemmini/cert) against the repo root so the
+    sweep lands in the canonical out/ tree regardless of the caller's cwd."""
+    pp = Path(p)
+    return str(pp if pp.is_absolute() else repo_root() / pp)
 
 
 def main() -> int:
@@ -23,8 +31,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rungs", default=",".join(cfg["rungs"]))
     ap.add_argument("--simulators", default="spike")
-    ap.add_argument("--runs-root", default=cfg["runs_root"])
-    ap.add_argument("--ledger", default=cfg["ledger"])
+    ap.add_argument("--runs-root", default=_resolve(cfg["runs_root"]))
+    ap.add_argument("--ledger", default=_resolve(cfg["ledger"]))
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--timeout", type=int, default=900)
     args = ap.parse_args()

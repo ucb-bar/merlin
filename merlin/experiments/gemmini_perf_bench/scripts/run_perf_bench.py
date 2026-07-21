@@ -33,15 +33,43 @@ from merlin.targetgen import baremetalc_corroborate as BMC  # noqa: E402  (golde
 from merlin.targetgen import capsule_golden as CG  # noqa: E402
 from merlin.targetgen import capsule_runner as CR  # noqa: E402
 
+from merlin.benchharness import runs_root as _runs_root  # noqa: E402
+_CB_RUNS = _runs_root("gemmini", "capsule-bench")  # out/runs/gemmini/capsule-bench
+
+
+def _latest_submission(subdir: str, rtlchecks=None):
+    """The latest capsule-bench <arm> submission/ under out/runs (or None if the arm hasn't run yet).
+    Replaces the retired hard-coded in-experiment runs/<arm>/<abc11|abc9>/submission paths — the perf
+    profile now consumes whatever the CURRENT sweep produced. merlin_assisted holds BOTH the python and
+    the CIRCT arm, distinguished by run_dir/TRACK_RTLCHECKS (same marker agg_agentic_results reads)."""
+    base = _CB_RUNS / subdir
+    if not base.is_dir():
+        return None
+    best = None
+    for d in base.iterdir():
+        sub = d / "submission"
+        if not sub.is_dir():
+            continue
+        has = (d / "TRACK_RTLCHECKS").exists()
+        if rtlchecks is True and not has:
+            continue
+        if rtlchecks is False and has:
+            continue
+        mt = d.stat().st_mtime
+        if best is None or mt > best[0]:
+            best = (mt, sub)
+    return best[1] if best else None
+
+
 APPROACH_PKG = {
     "baseline": PB.REPO / "out/artifacts/targets" / "gemmini" / "agent_spec_v0_mlir_oot",
     "merlin_targetgen": PB.REPO / "out/artifacts/targets" / "gemmini" / "agent_spec_v1_mlir_oot",
     "merlin_native": PB.REPO / "out/artifacts/targets" / "gemmini" / "merlin_native_v0",
-    # --- the 4 agentic capsule-bench backends (abc11/abc9), profiled for perf ---
-    "agentic_raw_cpp":      PB.REPO / "merlin" / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "raw_baseline" / "rb_abc11" / "submission",
-    "agentic_scaffold_cpp": PB.REPO / "merlin" / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "cpp_merlininfra" / "rbinfra_abc11" / "submission",
-    "agentic_python":       PB.REPO / "merlin" / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "merlin_assisted" / "merlin_abc9" / "submission",
-    "agentic_circt":        PB.REPO / "merlin" / "experiments" / "gemmini_capsule_bench_v0" / "runs" / "merlin_assisted" / "merlincirct_abc9" / "submission",
+    # --- the 4 agentic capsule-bench backends, resolved LIVE from out/runs (latest per arm) ---
+    "agentic_raw_cpp":      _latest_submission("raw_baseline"),
+    "agentic_scaffold_cpp": _latest_submission("cpp_merlininfra"),
+    "agentic_python":       _latest_submission("merlin_assisted", rtlchecks=False),
+    "agentic_circt":        _latest_submission("merlin_assisted", rtlchecks=True),
 }
 CONTRACT = str(PB.REPO / "merlin/contract")
 
@@ -169,6 +197,11 @@ def run_mlir(approach: str, k: dict, kdir: Path, sims: list[str], runs_root: Pat
              timeout: int) -> dict:
     """Run a generated MLIR backend package through capsule_runner on this kernel's capsule."""
     pkg = APPROACH_PKG[approach]
+    if pkg is None:
+        # an agentic backend whose capsule-bench arm hasn't produced a submission yet -> honest skip,
+        # never a crash (the perf profile just omits it until the sweep has run).
+        return {"approach": approach, "ok_build": False, "per_sim": {},
+                "skipped": "no submission yet (run the capsule-bench arm first)"}
     res = {"approach": approach, "ok_build": True, "per_sim": {}}
     cap = CR.load_capsule(kdir, contract=CONTRACT)
     # required tiers per feasibility: always L0/L1/trace; L2 spike always; L3 verilator only if feasible
