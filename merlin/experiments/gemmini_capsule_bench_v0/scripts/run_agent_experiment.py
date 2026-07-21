@@ -205,7 +205,6 @@ def bwrap_argv(ws: Path, bundle: dict) -> list[str]:
              "--ro-bind", "/usr", "/usr", "--ro-bind", "/bin", "/bin", "--ro-bind", "/lib", "/lib",
              "--ro-bind", "/lib64", "/lib64", "--ro-bind", "/etc", "/etc",
              "--tmpfs", "/scratch", "--tmpfs", "/scratch2", "--tmpfs", "/tmp",
-             "--bind", str(ws), str(ws),
              "--proc", "/proc", "--dev", "/dev", "--chdir", str(ws)]
     home_claude = os.path.expanduser("~/.claude")
     if Path(home_claude).exists():
@@ -232,6 +231,11 @@ def bwrap_argv(ws: Path, bundle: dict) -> list[str]:
         p = C.REPO / d["path"]
         if _kind(p) == "dir":
             parts += ["--tmpfs", str(p)]
+    # Bind the writable workspace LAST so nothing clobbers it. The agent's cwd lives under the repo
+    # (C.EXP/_qa_ws/...), i.e. under /scratch — which is tmpfs-masked above, and a denied ANCESTOR dir
+    # tmpfs-masked in the loop above would wipe an early ws bind (bwrap applies mounts in arg order),
+    # leaving "bwrap: Can't chdir to <ws>". Applying the ws bind after every mask guarantees it wins.
+    parts += ["--bind", str(ws), str(ws)]
     return parts
 
 
