@@ -174,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--model", default="claude-opus-4-8")
     ap.add_argument("--effort", default="high")
     ap.add_argument("--max-rounds", type=int, default=6)
-    ap.add_argument("--round-timeout", type=int, default=3600)
+    ap.add_argument("--round-timeout", type=int, default=14400)  # 4h; a tight cap forces more rounds (net-detrimental)
     ap.add_argument("--grade-timeout", type=int, default=300)
     ap.add_argument("--runs-root", default=str(runs_root("muon", "perf-bench")))
     ap.add_argument("--keep-ws", action="store_true")

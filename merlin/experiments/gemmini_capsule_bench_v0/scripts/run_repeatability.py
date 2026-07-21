@@ -64,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--model", default="claude-opus-4-8")
     ap.add_argument("--effort", default="high")
     ap.add_argument("--max-rounds", type=int, default=8)
-    ap.add_argument("--round-timeout", type=int, default=2700)
+    ap.add_argument("--round-timeout", type=int, default=14400)  # 4h; a tight cap forces more rounds (net-detrimental)
     ap.add_argument("--qa-timeout", type=int, default=1200)
     ap.add_argument("--sandbox", default="none")
     ap.add_argument("--start-index", type=int, default=1)

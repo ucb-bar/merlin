@@ -648,7 +648,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--model", default="claude-opus-4-8")
     ap.add_argument("--effort", default="high")
     ap.add_argument("--max-rounds", type=int, default=6)
-    ap.add_argument("--round-timeout", type=int, default=3600, help="per-round agent wall cap (s)")
+    ap.add_argument("--round-timeout", type=int, default=14400,
+                    help="per-round agent wall cap (s). Default 4h (matches launch_ab_batch): a TIGHT "
+                         "cap is net-detrimental — it doesn't cut the work (fixed by difficulty), it "
+                         "just forces more rounds, each adding a full grading pass + context re-read + "
+                         "rate-limit-boundary exposure, and can cut a productive round mid-fix (rc=124). "
+                         "The original abc runs used 4h and converged in ~1 productive round.")
     ap.add_argument("--qa-timeout", type=int, default=900)
     # Default sandbox=none: bwrap crashes the Bun-based `claude` binary in this environment. Isolation
     # under "none" is enforced by a golden-masked COPIED workspace + a post-run transcript audit.
