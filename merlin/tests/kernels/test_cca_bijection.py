@@ -56,9 +56,11 @@ def test_current_state_matches_documented_gaps():
 
 
 def test_no_unexpected_bijection_drift_gemmini():
-    """The gemmini ratchet (Workstream A): beyond the documented KNOWN_OPEN["gemmini"] gaps there is no
-    orphan field or orphan route. Fixed mesh geometry (pe_rows/pe_cols) is IDENTITY, so the only lever
-    axes are the compiler CHOICES (dataflow, accumulator-residency), which are the checklist to close."""
+    """The gemmini ratchet (Workstream A): once the backend PLUGIN registers its routes into the
+    agnostic core, the spatial lever axes (dataflow, accumulator-residency) are backed and there is no
+    orphan field/route. Fixed mesh geometry (pe_rows/pe_cols) is IDENTITY, excluded from the bijection."""
+    from merlin.targetgen import gemmini_plugin
+    gemmini_plugin.register()
     unexpected = cc.check_bijection("gemmini").unexpected()
     assert unexpected.clean, (
         f"NEW gemmini bijection drift (not in cca_contract.KNOWN_OPEN['gemmini']):\n"

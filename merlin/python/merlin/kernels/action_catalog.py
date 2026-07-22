@@ -396,38 +396,21 @@ _RVV_ROUTES: list[_Route] = [
         intended_facet={"memory.access_pattern": "unit_stride"}),
 ]
 
-# Gemmini routes (Workstream A). Each maps a mined SpatialFacet divergence to the concrete Gemmini
-# codegen lever — a default-off gemmini_features hook. They are forkable_now=False until
-# GemminiCodegenOpts is threaded into emit_kernel_mlir (the codegen currently hardcodes WS + a per-K-tile
-# accumulator round-trip); the route still names exactly WHERE and HOW to make the change, which is the
-# "which section of the compiler do I modify" answer the arm-3 agent is handed.
-_GEMMINI_ROUTES: list[_Route] = [
-    _Route(
-        axis="spatial.dataflow",
-        when=lambda d: d.expert in ("os", "ws") and d.expert != d.ours,
-        action_class="HEURISTIC",
-        target_seam="gemmini_features:gemmini_dataflow_select",
-        change="select the systolic dataflow (WS/OS) via GemminiCodegenOpts.dataflow instead of the "
-               "codegen's fixed CFG_EX weight-stationary config (gemmini_codegen_mlir CFG_EX_RS1).",
-        forkable_now=False,
-        expected_effect="expected: OS keeps partial sums PE-resident, cutting mvin/mvout traffic for "
-                        "output-reuse-heavy tilings (not yet measured — awaiting the opts thread)",
-        intended_facet={"spatial.dataflow": "os"}),
-    _Route(
-        axis="spatial.accumulator_resident",
-        when=lambda d: bool(d.expert) and d.ours in (False, None),
-        action_class="PASS",
-        target_seam="gemmini_features:gemmini_accumulator_resident",
-        change="keep the MxN output accumulator-resident across the K reduction (accumulate in the "
-               "accumulator SRAM with ACC_ACCUM, read out once after the K-loop) via "
-               "GemminiCodegenOpts.accumulator_resident, instead of a per-K-tile round-trip.",
-        forkable_now=False,
-        expected_effect="expected: removes the per-K-tile accumulator round-trip traffic (not yet "
-                        "measured — awaiting the opts thread into emit_kernel_mlir)",
-        intended_facet={"spatial.accumulator_resident": True}),
-]
+# RVV is the in-tree reference backend (its content is this module). Every OTHER backend's routes are
+# backend-SPECIFIC content that a pluggable backend plugin registers into this agnostic router via
+# ``register_route`` — the plugin is generated / beam-searched and lives OUT of tree (see
+# targetgen/gemmini_plugin.py for the gemmini reference). The core never hardcodes a non-RVV backend.
+_ROUTES: dict[str, list[_Route]] = {"rvv": _RVV_ROUTES}
 
-_ROUTES: dict[str, list[_Route]] = {"rvv": _RVV_ROUTES, "gemmini": _GEMMINI_ROUTES}
+
+def register_route(backend: str, route: _Route) -> None:
+    """Plug one backend-specific route into the agnostic router (idempotent per (backend, axis, seam)).
+    Backend plugins (generated/OOT) call this at load time so the core stays backend-agnostic."""
+    routes = _ROUTES.setdefault(backend, [])
+    if any(r.axis == route.axis and r.target_seam == route.target_seam and
+           r.action_class == route.action_class for r in routes):
+        return
+    routes.append(route)
 
 
 # The action-class escalation ladder: cheapest/weakest -> strongest. When an action's intended facet
@@ -576,23 +559,11 @@ SEAM_FILES: dict[str, _SeamSpec] = {
              "new MLIR pass / lowering", True),
 }
 
-# Backend-scoped seams. Gemmini seams are OOT-package-relative: the agent edits its OWN generated
-# backend's pluggable middle-end (a ``<oot_package>`` placeholder, filled by seam_location(oot_package=)),
-# and the in-tree emitter is cited only as the reference implementation.
-_BACKEND_SEAM_FILES: dict[str, dict[str, _SeamSpec]] = {
-    "gemmini": {
-        "gemmini_features": (
-            "<oot_package>/passes/gemmini_features.py  [reference: "
-            "merlin/python/merlin/llvmlower/gemmini_features.py]",
-            "register a default-off Gemmini codegen feature (edits GemminiCodegenOpts) in the OOT "
-            "package's pluggable feature registry", False),
-        "gemmini_codegen": (
-            "<oot_package>/lowering/  (the generated OOT backend's RoCC tile-program lowering)  "
-            "[reference: merlin/python/merlin/runtime/backends/gemmini_codegen_mlir.py]",
-            "the OOT backend's tile-program emitter — thread GemminiCodegenOpts through it to make a "
-            "gemmini_features route forkable", True),
-    },
-}
+# Backend-scoped seams, populated at runtime by backend plugins via ``register_seam`` (the core holds
+# NO non-RVV backend content). A backend's plugin registers OOT-package-relative seams (a
+# ``<oot_package>`` placeholder, filled by seam_location(oot_package=)) so the agent is pointed at its
+# own generated middle-end, never our in-tree core. See targetgen/gemmini_plugin.py.
+_BACKEND_SEAM_FILES: dict[str, dict[str, _SeamSpec]] = {}
 
 
 def register_seam(prefix: str, seam_file: str, seam_kind: str, needs_new_code: bool,

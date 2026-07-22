@@ -177,10 +177,11 @@ KNOWN_OPEN: dict[str, dict[str, tuple[str, ...]]] = {
                                                # (IR) backing-field lifter deferred (see note above).
         ),
     },
-    # Gemmini (Workstream A): both spatial LEVER axes (dataflow, accumulator-residency) now route to a
-    # concrete gemmini_features seam, so the bijection is CLEAN with no allowlisted gaps. The remaining
-    # work is to make those routes forkable_now (thread GemminiCodegenOpts through emit_kernel_mlir) — a
-    # forkable-status gap surfaced by seam_location/escalation_ladder, NOT a bijection break.
+    # Gemmini (Workstream A): the two spatial LEVER axes (dataflow, accumulator-residency) are backed by
+    # routes the BACKEND PLUGIN (targetgen/gemmini_plugin.py) registers into the agnostic core — the core
+    # holds no gemmini content. With the plugin loaded the bijection is CLEAN (no allowlisted gaps); the
+    # remaining work is to make those routes forkable_now (thread GemminiCodegenOpts through the emitter),
+    # a forkable-status gap surfaced by seam_location/escalation_ladder, NOT a bijection break.
     "gemmini": {
         "orphan_fields": (),
         "orphan_routes": (),

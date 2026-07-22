@@ -12,6 +12,10 @@ import pytest
 from merlin.llvmlower import gemmini_features as gf
 from merlin.kernels import action_catalog as ac
 from merlin.kernels.cca_compare import Divergence
+from merlin.targetgen import gemmini_plugin
+
+# The core is backend-agnostic: gemmini routes/seams exist only after the backend plugin registers them.
+gemmini_plugin.register()
 
 
 def test_no_features_is_byte_identical_baseline():
