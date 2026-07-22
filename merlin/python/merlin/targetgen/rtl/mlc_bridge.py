@@ -127,6 +127,34 @@ def discover_legal_opcodes(target: str, *, opcode_width: int | None = None) -> d
                         f"({sig.fanout} comparisons) -> {len(legal)} legal opcodes"}
 
 
+def discovered_memory_map(target: str) -> dict | None:
+    """The target's operand-scratchpad / accumulator bank map, DISCOVERED from the RTL by mlc (row
+    widths, not hand paths). None if unavailable. Target-agnostic."""
+    if mlc_dir() is None:
+        return None
+    try:
+        with _mlc_on_path(), _mlc_cwd():
+            _ensure_interface_cache(target)
+            from mlc.discover.cache import discovered_memory_map as _mm
+            return dict(_mm(target))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def discovered_dim(target: str) -> int | None:
+    """The target's systolic mesh DIM, DISCOVERED from the RTL by mlc (not a hand literal). None if the
+    target has no mesh / is unavailable. Target-agnostic."""
+    if mlc_dir() is None:
+        return None
+    try:
+        with _mlc_on_path(), _mlc_cwd():
+            _ensure_interface_cache(target)
+            from mlc.discover.cache import discovered_dim as _dim
+            return int(_dim(target))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 @contextmanager
 def _mlc_cwd():
     """mlc resolves its ``runs/...`` arc artifacts by paths RELATIVE to its own root, so its cosim +
