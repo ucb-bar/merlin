@@ -792,6 +792,39 @@ def _git_publish(remote: str, repo_dir: Path, sel: ChampionSelection, manifest: 
 # ---------------------------------------------------------------------------- publish
 
 
+def _needs_push_confirmation(remote: str) -> bool:
+    """True for a NON-LOCAL remote (a real network push — git@…, https://…, ssh://…). Local/file
+    remotes (``file://…``, an absolute/relative path, an existing bare dir — the verification + test
+    path) never need confirmation, so those flows are unchanged."""
+    r = remote.strip()
+    if r.startswith("file://") or r.startswith(("/", "./", "../", "~")):
+        return False
+    try:
+        if Path(r).exists():
+            return False
+    except OSError:
+        pass
+    return r.startswith(("git@", "ssh://", "https://", "http://")) or ":" in r
+
+
+def _require_push_confirmation(remote: str, repo_dir: Path, branch: str, fingerprint: str,
+                               confirm_push: str | None) -> None:
+    """Human gate before a real GitHub/network push: refuse unless ``confirm_push`` equals THIS publish's
+    content fingerprint. Because the fingerprint is content-derived, a blind constant cannot pass — the
+    operator must have seen the assembled artifact. On refusal, print the assembled repo tree (what would
+    be pushed) so it can be inspected, then raise. Local/file remotes are exempt (see
+    :func:`_needs_push_confirmation`)."""
+    if not _needs_push_confirmation(remote) or confirm_push == fingerprint:
+        return
+    files = sorted(str(p.relative_to(repo_dir)) for p in repo_dir.rglob("*") if p.is_file())
+    tree = "\n".join(f"    {f}" for f in files) or "    (empty)"
+    raise PublishError(
+        f"push to non-local remote {remote} (branch {branch}) REFUSED without confirmation.\n"
+        f"  Assembled repo tree that WOULD be pushed (inspect at {repo_dir}):\n{tree}\n"
+        f"  Re-run with --confirm-push {fingerprint} (CLI) / confirm_push={fingerprint!r} (API) to push.\n"
+        f"  The token must equal this publish's content fingerprint, so it cannot be passed blindly.")
+
+
 @dataclass
 class PublishResult:
     """Outcome of a :func:`publish` invocation (dry-run or real)."""
@@ -816,7 +849,7 @@ class PublishResult:
 def publish(target: str, *, dry_run: bool = True, remote: str | None = None, gate: bool = True,
             verify_build: bool = True, package_id: str | None = None,
             artifacts_root: str | Path | None = None, config: str | Path | None = None,
-            branch: str | None = None) -> PublishResult:
+            branch: str | None = None, confirm_push: str | None = None) -> PublishResult:
     """Publish the champion of ``target`` as its own repo. Dry-run by default (no git/network).
 
     The gate refuses an uncertified champion unless ``gate=False`` (a loud warning is emitted).
@@ -865,6 +898,11 @@ def publish(target: str, *, dry_run: bool = True, remote: str | None = None, gat
     if dry_run:
         result.actions.insert(0, "DRY-RUN (no clone/commit/push)")
         return result
+
+    # human diff-confirm gate before any real network push (local/file remotes are exempt).
+    _require_push_confirmation(resolved_remote, repo_dir, resolved_branch, fingerprint, confirm_push)
+    result.actions.append(f"push confirmed for non-local remote (fingerprint {fingerprint})"
+                          if _needs_push_confirmation(resolved_remote) else "local remote (no confirm)")
 
     commit_sha, published_tag, noop = _git_publish(
         resolved_remote, repo_dir, sel, manifest, fingerprint, cert_run, stage_root,
@@ -924,6 +962,8 @@ def main(argv: list[str] | None = None) -> int:
     p_pub.add_argument("--dry-run", action="store_true", help="plan only (default)")
     p_pub.add_argument("--execute", action="store_true", help="actually clone/commit/push")
     p_pub.add_argument("--no-gate", action="store_true", help="publish even if uncertified (LOUD warning)")
+    p_pub.add_argument("--confirm-push", help="content fingerprint confirming a real push to a non-local "
+                       "remote (printed when refused); required for a GitHub/network push")
 
     p_prom = sub.add_parser("promote", help="mark a package the single champion for a target")
     p_prom.add_argument("--target", required=True)
@@ -944,7 +984,7 @@ def main(argv: list[str] | None = None) -> int:
             res = publish(args.target, dry_run=not args.execute, remote=args.remote,
                           gate=not args.no_gate, package_id=args.champion,
                           artifacts_root=args.artifacts_root, config=args.config,
-                          branch=args.branch)
+                          branch=args.branch, confirm_push=args.confirm_push)
             _print_result(res)
             return 0
         if args.cmd == "promote":

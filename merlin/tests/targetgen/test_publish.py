@@ -201,6 +201,47 @@ def test_publish_commits_tags_and_is_idempotent(out_root, monkeypatch):
     assert count == "1"
 
 
+# --------------------------------------------------------------------------- diff-confirm gate
+
+
+def test_needs_push_confirmation_classifies_remotes(tmp_path):
+    # non-local network remotes require confirmation
+    assert pub._needs_push_confirmation("git@github.com:ucb-bar/rvv-mlir.git")
+    assert pub._needs_push_confirmation("https://github.com/ucb-bar/rvv-mlir.git")
+    assert pub._needs_push_confirmation("ssh://git@host/repo.git")
+    # local / file remotes (the verification + test path) are exempt
+    assert not pub._needs_push_confirmation("file:///tmp/rvv-mlir.git")
+    assert not pub._needs_push_confirmation(str(tmp_path))
+    assert not pub._needs_push_confirmation("/srv/git/rvv-mlir.git")
+
+
+def test_require_push_confirmation_token_must_match_fingerprint(tmp_path):
+    repo = tmp_path / "repo"; repo.mkdir()
+    (repo / "manifest.yaml").write_text("x: 1\n")
+    fp = "abc123"
+    # non-local + wrong/absent token -> refuse (and the message lists the assembled tree)
+    with pytest.raises(pub.PublishError, match="REFUSED"):
+        pub._require_push_confirmation("git@github.com:o/r.git", repo, "stable/x", fp, None)
+    with pytest.raises(pub.PublishError):
+        pub._require_push_confirmation("git@github.com:o/r.git", repo, "stable/x", fp, "wrong")
+    # matching token -> passes; and a local remote never needs a token
+    pub._require_push_confirmation("git@github.com:o/r.git", repo, "stable/x", fp, fp)
+    pub._require_push_confirmation("file:///tmp/r.git", repo, "stable/x", fp, None)
+
+
+def test_real_push_to_github_refused_without_confirmation(out_root):
+    """End-to-end: a real (non-dry-run) publish to a github-style remote is refused BEFORE any git
+    clone/push, so no network is touched. dry-run to the same remote is unaffected (returns first)."""
+    troot = out_root / "artifacts" / "targets"
+    _make_rvv_package(troot)
+    remote = "git@github.com:ucb-bar/rvv-mlir.git"
+    with pytest.raises(pub.PublishError, match="REFUSED|confirm"):
+        pub.publish("rvv", dry_run=False, remote=remote)
+    # dry-run still plans fine (no confirmation needed, no network)
+    res = pub.publish("rvv", dry_run=True, remote=remote)
+    assert res.dry_run and res.remote == remote
+
+
 # --------------------------------------------------------------------------- (e) family parity
 
 
