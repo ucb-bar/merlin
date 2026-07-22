@@ -99,7 +99,27 @@ def _run_preflight() -> int:
         return 1
     print(f"  running {vnc.name} ...")
     r = subprocess.run([sys.executable, str(vnc)], cwd=str(C.REPO))
-    return r.returncode
+    if r.returncode:
+        return r.returncode
+    # Descriptor governs the shared hardware spec: refuse if any active arm bundle drifted from it (so
+    # every arm gets exactly the ISA/RTL the target_experiment.yaml declares — a fair, honest run).
+    try:
+        from merlin.targetgen.target_experiment import load_target_experiment, bundles_match_descriptor
+        desc = SCRIPTS.parent / "target_experiment.yaml"
+        if desc.is_file():
+            te = load_target_experiment(desc)
+            bundles = SCRIPTS.parent / "input_bundles"
+            manifests = [bundles / ARMS[arm][4] / "input_bundle_manifest.yaml" for arm in ARMS
+                         if (bundles / ARMS[arm][4] / "input_bundle_manifest.yaml").is_file()]
+            drift = bundles_match_descriptor(te, manifests)
+            if drift:
+                print(f"  ⚠ bundles drifted from {desc.name}'s shared spec: {drift}")
+                return 1
+            print(f"  descriptor consistency: OK ({len(manifests)} active arm bundles vs {desc.name})")
+    except Exception as e:  # noqa: BLE001 — a missing/invalid descriptor must not silently pass a run
+        print(f"  ⚠ descriptor consistency check errored: {e}")
+        return 1
+    return 0
 
 
 def _arm_env(arm: str, a, base_env: dict) -> dict:
