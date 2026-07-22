@@ -226,18 +226,18 @@ _GRADER_TOKENS = ("rocc_decode", "trace_check.py", "capsule_grade", "capsule_gol
 # reading these gives a callable route to the reference/simulator oracle. Both arms.
 _ORACLE_SUBPATH_TOKENS = ("runtime_adapter", "xdsl_dialects/lowering", "lowering/pipeline")
 # Merlin authoring tool dirs: ALLOWED for merlin_assisted, DENIED for raw_baseline -> flag reads of
-# them for raw ONLY (for merlin they are legitimate authoring inputs). Includes the compiler-modification
-# SPINE exposed to the assisted arm (Workstream A): the CCA (extract), cca_compare (diff), cca_contract
-# (bijection), action_catalog (route + seam map), microkernel (resolver), the Gemmini backend plugin +
-# CCA glue + default-off features, and the RoCC decoder the lifter uses. None import the oracle.
+# them for raw ONLY (for merlin they are legitimate authoring inputs). Includes the target-agnostic
+# compiler-modification SPINE exposed to the assisted arm: the CCA (extract), cca_compare (diff),
+# cca_contract (bijection), action_catalog (route + seam map), microkernel (resolver), and the generic
+# derivation-driven backend (targetgen/rtl_backend) that derives the routes/levers from RTL discovery.
+# None import the oracle.
 _MERLIN_TOOL_TOKENS = ("targetgen/contract", "targetgen/synthesize", "targetgen/generate",
                        "xdsl_dialects",
                        "kernels/cca", "kernels/action_catalog", "kernels/microkernel",
-                       "llvmlower/gemmini_features", "targetgen/gemmini_plugin")
-# NOTE: the RoCC-trace CCA lifter (targetgen/gemmini_cca) + its decoder (targetgen/rocc_decode) are
-# NOT exposed to the assisted agent — rocc_decode is a grader internal (see ALLOWED_MERLIN_TOOLS.md
-# FORBIDDEN). They stay operator-side; the agent gets the where/how spine (bijection/routes/seams/
-# features), not the trace-decoding/lifting.
+                       "targetgen/rtl_backend")
+# NOTE: the raw command-trace decoder (targetgen/rocc_decode) is NOT exposed — it is a grader internal
+# (see ALLOWED_MERLIN_TOOLS.md FORBIDDEN). rtl_backend's lifter consumes a PRE-DECODED trace, so it does
+# not import the decoder; the agent gets the where/how spine, not the raw trace-decoding.
 # Oracle USE in agent-authored code / inline python: an actual `from merlin.runtime import ...` or a
 # call to the oracle. Flagged in Bash `python -c` and in Write/Edit of .py files (both arms — neither
 # may self-grade against the true oracle; the redacted QA verdict is the only allowed feedback).

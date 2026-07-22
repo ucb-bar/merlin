@@ -116,20 +116,21 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
     "envelope.overhead_ins_per_output": FieldSpec("envelope.overhead_ins_per_output", METRIC, ("rvv",),
                                                 "N^2 coefficient — per-tile overhead, a diagnostic "
                                                 "outcome that SIZES the region gap"),
-    # --- spatial (gemmini) — the spatial lifter + gemmini routes are being instantiated (Workstream A).
-    # pe_rows/pe_cols are FIXED target geometry (the 16x16 systolic mesh the compiler must target but
-    # cannot change) -> IDENTITY, excluded from the lever<->route bijection. dataflow (WS/OS) and
-    # accumulator-residency ARE compiler choices -> LEVER; their routes land with gemmini_features
-    # (tracked in KNOWN_OPEN until then, so check_bijection("gemmini") is the "what to build next" list).
-    "spatial.pe_rows": FieldSpec("spatial.pe_rows", IDENTITY, ("gemmini",),
+    # --- spatial — the SYSTOLIC family (any target with a mesh, not one named target). Scoped by the
+    # family tag "spatial": a concrete target counts these as its levers iff it registered spatial routes
+    # (see `_target_families`). pe_rows/pe_cols are FIXED geometry (mesh DIM the compiler must target but
+    # cannot change) -> IDENTITY, excluded from the bijection. dataflow (WS/OS) and accumulator-residency
+    # ARE compiler choices -> LEVER; their routes are DERIVED per target by targetgen/rtl_backend from
+    # the discovered mesh/accumulator.
+    "spatial.pe_rows": FieldSpec("spatial.pe_rows", IDENTITY, ("spatial",),
                                  "fixed systolic-array rows (mesh DIM) — a target constant, not a lever"),
-    "spatial.pe_cols": FieldSpec("spatial.pe_cols", IDENTITY, ("gemmini",),
+    "spatial.pe_cols": FieldSpec("spatial.pe_cols", IDENTITY, ("spatial",),
                                  "fixed systolic-array cols (mesh DIM) — a target constant, not a lever"),
-    "spatial.dataflow": FieldSpec("spatial.dataflow", LEVER, ("gemmini",),
-                                  "WS vs OS dataflow selection -> gemmini dataflow-selection feature"),
-    "spatial.accumulator_resident": FieldSpec("spatial.accumulator_resident", LEVER, ("gemmini",),
+    "spatial.dataflow": FieldSpec("spatial.dataflow", LEVER, ("spatial",),
+                                  "WS vs OS dataflow selection (a discovered mesh implies this lever)"),
+    "spatial.accumulator_resident": FieldSpec("spatial.accumulator_resident", LEVER, ("spatial",),
                                               "output stays PE/accumulator-resident across the reduction "
-                                              "-> gemmini accumulator-resident tiling feature"),
+                                              "(a discovered accumulator memory implies this lever)"),
     # --- dataflow (npu) — stubs until the npu lifter + npu routes land ---
     "dataflow.engine_ops": FieldSpec("dataflow.engine_ops", BACKEND_STUB, ("npu",)),
     "dataflow.dma_pattern": FieldSpec("dataflow.dma_pattern", BACKEND_STUB, ("npu",)),
@@ -177,11 +178,12 @@ KNOWN_OPEN: dict[str, dict[str, tuple[str, ...]]] = {
                                                # (IR) backing-field lifter deferred (see note above).
         ),
     },
-    # Gemmini (Workstream A): the two spatial LEVER axes (dataflow, accumulator-residency) are backed by
-    # routes the BACKEND PLUGIN (targetgen/gemmini_plugin.py) registers into the agnostic core — the core
-    # holds no gemmini content. With the plugin loaded the bijection is CLEAN (no allowlisted gaps); the
-    # remaining work is to make those routes forkable_now (thread GemminiCodegenOpts through the emitter),
-    # a forkable-status gap surfaced by seam_location/escalation_ladder, NOT a bijection break.
+    # Per-target (example: gemmini): the two spatial LEVER axes (dataflow, accumulator-residency) are
+    # backed by routes the generic, derivation-driven backend (targetgen/rtl_backend.py) DERIVES from the
+    # discovered mesh/accumulator and registers into the agnostic core — no per-target content in the
+    # core. With the backend registered the bijection is CLEAN (no allowlisted gaps); the remaining work
+    # is to make those routes forkable_now (the target's OOT codegen threads the derived opts), a
+    # forkable-status gap surfaced by seam_location/escalation_ladder, NOT a bijection break.
     "gemmini": {
         "orphan_fields": (),
         "orphan_routes": (),
@@ -217,10 +219,21 @@ def schema_axes() -> set[str]:
             for fld in dataclasses.fields(cls)}
 
 
+def _target_families(backend: str) -> set[str]:
+    """The facet FAMILIES a concrete target participates in — derived from the axes it registers routes
+    for (a target that routes ``spatial.*`` axes is in the ``spatial`` family). This lets FIELD_REGISTRY
+    tag a facet by family (``"spatial"``, any systolic target) rather than by a target name, so the
+    classification stays target-agnostic while the bijection is still checked per concrete target."""
+    return {r.axis.split(".", 1)[0] for r in _routes(backend)}
+
+
 def leverable_axes(backend: str) -> set[str]:
-    """Axes classified LEVER for this backend — the properties that MUST map to a compiler seam."""
+    """Axes classified LEVER for this backend — matched either by CONCRETE target (e.g. ``"rvv"``) or by
+    the facet FAMILY the target participates in (e.g. ``"spatial"`` for any target that routes spatial
+    axes)."""
+    fams = _target_families(backend)
     return {s.axis for s in FIELD_REGISTRY.values()
-            if s.classification == LEVER and backend in s.backends}
+            if s.classification == LEVER and (backend in s.backends or bool(fams & set(s.backends)))}
 
 
 def _routes(backend: str) -> list:

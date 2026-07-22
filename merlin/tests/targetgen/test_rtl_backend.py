@@ -26,6 +26,33 @@ def test_profile_degrades_honestly_without_mlc(monkeypatch):
     assert prof.legal_opcodes is None and prof.dim is None and not prof.has_mesh
 
 
+_MESH_ACC = RB.TargetProfile("t", legal_opcodes=(0, 1), memory_map={"accum_mem": "acc"}, dim=16)
+
+
+def test_codegen_opts_apply_only_derived_levers():
+    assert RB.apply_codegen_opts({}, frozenset(), _MESH_ACC) == {}          # baseline unchanged
+    on = RB.apply_codegen_opts({}, frozenset({"spatial.dataflow"}), _MESH_ACC)
+    assert on["spatial.dataflow"] == "os"
+    with pytest.raises(KeyError):                                           # a non-derived lever is rejected
+        RB.apply_codegen_opts({}, frozenset({"spatial.dataflow"}),
+                              RB.TargetProfile("t", legal_opcodes=(0,), memory_map={}, dim=None))
+
+
+def test_resolver_clamps_to_discovered_dim():
+    class Spec:  # a stand-in MicrokernelSpec
+        MR, NR, KC, k_block = 64, 64, 8, True
+    r = RB._resolver(Spec(), _MESH_ACC)
+    assert r["tile_rows"] == 16 and r["tile_cols"] == 16 and r["k_tile"] == 8
+    assert r["opts"]["spatial.accumulator_resident"] is True                # k_block + accumulator -> resident
+
+
+def test_lift_cca_from_trace_is_generic():
+    trace = {"instructions": [{"class": "PRELOAD", "accumulate": True}, {"class": "COMPUTE_PRELOADED"}],
+             "summary": {"class_histogram": {"COMPUTE_PRELOADED": 1, "PRELOAD": 1}}}
+    cca = RB.lift_cca_from_trace(trace, _MESH_ACC)
+    assert cca.backend == ["t"] and cca.spatial.accumulator_resident is True and cca.spatial.pe_rows == 16
+
+
 @pytest.mark.skipif(not _MLC_OK or B.core_hw_mlir("gemmini") is None,
                     reason="mlc / prebuilt core HW dialect not available for the example target")
 def test_profile_derived_from_rtl_for_example_target():
@@ -35,3 +62,19 @@ def test_profile_derived_from_rtl_for_example_target():
     assert prof.legal_opcodes and 126 in prof.legal_opcodes and 25 not in prof.legal_opcodes
     assert prof.dim == 16 and prof.has_mesh and prof.has_accumulator
     assert set(RB.derived_levers(prof)) == {"spatial.dataflow", "spatial.accumulator_resident"}
+
+
+@pytest.mark.skipif(not _MLC_OK or B.core_hw_mlir("gemmini") is None,
+                    reason="mlc / prebuilt core HW dialect not available for the example target")
+def test_register_derives_routes_into_agnostic_core():
+    """register(target) derives the routes from discovery and registers them into the agnostic core: the
+    bijection closes and a spatial divergence routes to the target's OOT codegen seam."""
+    from merlin.kernels import cca_contract, action_catalog, microkernel
+    from merlin.kernels.cca_compare import Divergence
+    RB.register("gemmini")
+    assert cca_contract.check_bijection("gemmini").unexpected().clean
+    assert "gemmini" in microkernel.registered_targets()
+    a = action_catalog.route(Divergence(axis="spatial.dataflow", expert="os", ours="ws",
+                                        backend="gemmini", evidence=[]))
+    loc = action_catalog.seam_location(a.target_seam, backend="gemmini", oot_package="/pkg")
+    assert loc["seam_file"].startswith("/pkg/")   # OOT-relative, agent's own middle-end

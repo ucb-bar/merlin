@@ -56,22 +56,23 @@ def test_current_state_matches_documented_gaps():
 
 
 def test_no_unexpected_bijection_drift_gemmini():
-    """The gemmini ratchet (Workstream A): once the backend PLUGIN registers its routes into the
-    agnostic core, the spatial lever axes (dataflow, accumulator-residency) are backed and there is no
-    orphan field/route. Fixed mesh geometry (pe_rows/pe_cols) is IDENTITY, excluded from the bijection."""
-    from merlin.targetgen import gemmini_plugin
-    gemmini_plugin.register()
+    """The per-target ratchet: once the generic derivation-driven backend registers the DERIVED routes
+    into the agnostic core (for an example target), the spatial lever axes (dataflow, accumulator-
+    residency) are backed and there is no orphan. Fixed mesh geometry is IDENTITY, excluded. The routes
+    come from the discovered hardware, not per-target Python."""
+    from merlin.targetgen import rtl_backend
+    rtl_backend.register("gemmini")
     unexpected = cc.check_bijection("gemmini").unexpected()
     assert unexpected.clean, (
-        f"NEW gemmini bijection drift (not in cca_contract.KNOWN_OPEN['gemmini']):\n"
+        f"NEW bijection drift (not in cca_contract.KNOWN_OPEN['gemmini']):\n"
         f"  orphan_fields (LEVER field, no route): {unexpected.orphan_fields}\n"
         f"  orphan_routes (route, no backing field): {unexpected.orphan_routes}\n"
-        "Either add the missing gemmini route/field, or document it in KNOWN_OPEN['gemmini'].")
+        "Either the derived routes changed, or document it in KNOWN_OPEN['gemmini'].")
 
 
 def test_known_open_is_not_stale_gemmini():
-    """Reverse tripwire for gemmini: every allowlisted gap must STILL be a real gap, so as each
-    gemmini_features route lands the orphan must be removed from KNOWN_OPEN (the checklist only shrinks)."""
+    """Reverse tripwire: every allowlisted gap must STILL be a real gap, so as each derived route lands
+    the orphan must be removed from KNOWN_OPEN (the checklist only shrinks)."""
     rep = cc.check_bijection("gemmini")
     known = cc.KNOWN_OPEN.get("gemmini", {})
     stale_fields = sorted(set(known.get("orphan_fields", ())) - set(rep.orphan_fields))

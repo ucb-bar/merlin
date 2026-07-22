@@ -29,9 +29,8 @@ allowed:
   - {path: "merlin/python/merlin/kernels/cca_contract.py", mode: ro, note: "ALLOWED tool: CCA<->route bijection checklist"}
   - {path: "merlin/python/merlin/kernels/action_catalog.py", mode: ro, note: "ALLOWED tool: divergence->seam router + seam map"}
   - {path: "merlin/python/merlin/kernels/microkernel.py", mode: ro, note: "ALLOWED tool: micro-kernel spec + resolver"}
-  - {path: "merlin/python/merlin/llvmlower/gemmini_features.py", mode: ro, note: "ALLOWED tool: default-off Gemmini codegen feature registry"}
-  - {path: "merlin/python/merlin/targetgen/gemmini_plugin.py", mode: ro, note: "ALLOWED tool: Gemmini backend plugin"}
-  # NOTE: gemmini_cca.py (lifter) + rocc_decode.py (grader internal) are NOT granted — operator-side only.
+  - {path: "merlin/python/merlin/targetgen/rtl_backend.py", mode: ro, note: "ALLOWED tool: generic derivation-driven backend (derives levers/routes/codegen-opts from RTL discovery)"}
+  # NOTE: rocc_decode.py (raw command-trace decoder, a grader internal) is NOT granted — operator-side only.
 denied:
   - {path: "merlin/python/merlin/runtime/reference.py", reason: "the reference oracle (cheat surface)"}
   - {path: "merlin/python/merlin/runtime/simulator.py", reason: "the simulator oracle (cheat surface)"}

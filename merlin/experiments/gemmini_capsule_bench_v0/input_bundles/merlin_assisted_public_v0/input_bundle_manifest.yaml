@@ -30,10 +30,9 @@ allowed:
   - {path: "merlin/python/merlin/kernels/cca_contract.py", mode: ro, note: "ALLOWED tool: CCA<->route bijection — check_bijection('gemmini') is the what-to-build checklist"}
   - {path: "merlin/python/merlin/kernels/action_catalog.py", mode: ro, note: "ALLOWED tool: route a divergence to a compiler seam + the 'which file' seam map"}
   - {path: "merlin/python/merlin/kernels/microkernel.py", mode: ro, note: "ALLOWED tool: micro-kernel spec + resolver"}
-  - {path: "merlin/python/merlin/llvmlower/gemmini_features.py", mode: ro, note: "ALLOWED tool: default-off Gemmini codegen feature registry (GemminiCodegenOpts)"}
-  - {path: "merlin/python/merlin/targetgen/gemmini_plugin.py", mode: ro, note: "ALLOWED tool: Gemmini backend plugin (registers routes/seams/features into the agnostic core)"}
-  # NOTE: the RoCC-trace CCA lifter (gemmini_cca.py) + its decoder (rocc_decode.py) are NOT granted —
-  # rocc_decode is a grader internal (see ALLOWED_MERLIN_TOOLS.md FORBIDDEN). They stay operator-side.
+  - {path: "merlin/python/merlin/targetgen/rtl_backend.py", mode: ro, note: "ALLOWED tool: the generic, derivation-driven backend — derives the target's levers/routes/codegen-opts from RTL discovery (no per-target code)"}
+  # NOTE: the raw command-trace decoder (rocc_decode.py) is NOT granted — a grader internal (see
+  # ALLOWED_MERLIN_TOOLS.md FORBIDDEN). rtl_backend's lifter consumes a pre-decoded trace; stays operator-side.
 denied:
   - {path: "merlin/python/merlin/runtime/reference.py", reason: "the reference oracle (cheat surface)"}
   - {path: "merlin/python/merlin/runtime/simulator.py", reason: "the simulator oracle (cheat surface)"}

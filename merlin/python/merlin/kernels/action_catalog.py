@@ -397,9 +397,9 @@ _RVV_ROUTES: list[_Route] = [
 ]
 
 # RVV is the in-tree reference backend (its content is this module). Every OTHER backend's routes are
-# backend-SPECIFIC content that a pluggable backend plugin registers into this agnostic router via
-# ``register_route`` — the plugin is generated / beam-searched and lives OUT of tree (see
-# targetgen/gemmini_plugin.py for the gemmini reference). The core never hardcodes a non-RVV backend.
+# registered into this agnostic router via ``register_route`` by the generic, derivation-driven backend
+# (targetgen/rtl_backend.py), which DERIVES them from mlc RTL discovery for any target — no per-target
+# code. The core never hardcodes a non-RVV backend.
 _ROUTES: dict[str, list[_Route]] = {"rvv": _RVV_ROUTES}
 
 
@@ -562,7 +562,7 @@ SEAM_FILES: dict[str, _SeamSpec] = {
 # Backend-scoped seams, populated at runtime by backend plugins via ``register_seam`` (the core holds
 # NO non-RVV backend content). A backend's plugin registers OOT-package-relative seams (a
 # ``<oot_package>`` placeholder, filled by seam_location(oot_package=)) so the agent is pointed at its
-# own generated middle-end, never our in-tree core. See targetgen/gemmini_plugin.py.
+# own generated middle-end, never our in-tree core. See targetgen/rtl_backend.py.
 _BACKEND_SEAM_FILES: dict[str, dict[str, _SeamSpec]] = {}
 
 
