@@ -12,11 +12,14 @@ rtl:
 
 # The shared hardware spec given to ALL arms (a correct backend needs the target's defined ISA — this is
 # a constant input, not Merlin assistance). Repo-root-relative.
+# Path strings are given EXACTLY as the arm bundles grant them (the bundle-stager convention:
+# tmp/... is repo-root-relative, experiments/... resolves under merlin/). This lets the descriptor be
+# the single source of truth the bundle-consistency check compares against.
 hardware_spec:
   isa_headers:
     - tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h
     - tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h
-  hwbringup_set: merlin/experiments/gemmini_capsule_bench_v0/contracts/hwbringup_gemmini_v0
+  hwbringup_set: experiments/gemmini_capsule_bench_v0/contracts/hwbringup_gemmini_v0
 
 # The capsule corpus the arms author against and are graded on.
 capsule_corpus: merlin/contract/capsules/isa
