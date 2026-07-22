@@ -16,12 +16,22 @@ allowed:
   - {path: "merlin/contract/capsules/model_slices/", mode: ro}
   - {path: "tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h", mode: ro}
   - {path: "tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h", mode: ro}
+  - {path: "experiments/gemmini_capsule_bench_v0/contracts/hwbringup_gemmini_v0", as: "gemmini", mode: ro, note: "SHARED hardware-spec constant (ALL arms): RTL + ISA headers + README + one example. The ISA is a constant input, not Merlin assistance — a correct backend needs the target's defined ISA."}
   - {path: "experiments/gemmini_capsule_bench_v0/task/", mode: ro}
   - {path: "third_party/llvm-install/", mode: ro}
   - {path: "merlin/python/merlin/targetgen/synthesize/", mode: ro, note: "ALLOWED tool: target/dialect/runtime plan synthesis"}
   - {path: "merlin/python/merlin/targetgen/generate/", mode: ro, note: "ALLOWED tool: xDSL + MLIR scaffold generators (runtime_adapter.py denied below)"}
   - {path: "merlin/python/merlin/xdsl_dialects/", mode: ro, note: "ALLOWED tool: xDSL dialect patterns (lowering/ denied below)"}
   - {path: "merlin/python/merlin/targetgen/contract/interface_emit.py", mode: ro, note: "ALLOWED: interface grammar emit/parse"}
+  # Compiler-modification SPINE (Workstream A): same as merlin_assisted (arm 4 = arm 3 tools + RTL checks).
+  - {path: "merlin/python/merlin/kernels/cca.py", mode: ro, note: "ALLOWED tool: CCA schema + lifters"}
+  - {path: "merlin/python/merlin/kernels/cca_compare.py", mode: ro, note: "ALLOWED tool: CCA diff (divergences)"}
+  - {path: "merlin/python/merlin/kernels/cca_contract.py", mode: ro, note: "ALLOWED tool: CCA<->route bijection checklist"}
+  - {path: "merlin/python/merlin/kernels/action_catalog.py", mode: ro, note: "ALLOWED tool: divergence->seam router + seam map"}
+  - {path: "merlin/python/merlin/kernels/microkernel.py", mode: ro, note: "ALLOWED tool: micro-kernel spec + resolver"}
+  - {path: "merlin/python/merlin/llvmlower/gemmini_features.py", mode: ro, note: "ALLOWED tool: default-off Gemmini codegen feature registry"}
+  - {path: "merlin/python/merlin/targetgen/gemmini_plugin.py", mode: ro, note: "ALLOWED tool: Gemmini backend plugin"}
+  # NOTE: gemmini_cca.py (lifter) + rocc_decode.py (grader internal) are NOT granted — operator-side only.
 denied:
   - {path: "merlin/python/merlin/runtime/reference.py", reason: "the reference oracle (cheat surface)"}
   - {path: "merlin/python/merlin/runtime/simulator.py", reason: "the simulator oracle (cheat surface)"}

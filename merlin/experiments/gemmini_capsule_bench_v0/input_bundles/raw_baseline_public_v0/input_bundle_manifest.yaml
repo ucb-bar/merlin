@@ -16,6 +16,7 @@ allowed:
   - {path: "merlin/contract/capsules/model_slices/", mode: ro, note: "public/dev model-slice capsules"}
   - {path: "tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h", mode: ro, note: "public Gemmini ISA header (spike model)"}
   - {path: "tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h", mode: ro, note: "public Gemmini params (DIM, dtypes)"}
+  - {path: "experiments/gemmini_capsule_bench_v0/contracts/hwbringup_gemmini_v0", as: "gemmini", mode: ro, note: "SHARED hardware-spec constant (ALL arms): RTL + ISA headers + README + one example. The ISA is a constant input, not Merlin assistance — a correct backend needs the target's defined ISA."}
   - {path: "experiments/gemmini_capsule_bench_v0/task/", mode: ro, note: "TASK.md + runner-interface docs + public Gemmini facts"}
   - {path: "third_party/llvm-install/", mode: ro, note: "LLVM/MLIR 23 toolchain (build the OOT package)"}
 denied:

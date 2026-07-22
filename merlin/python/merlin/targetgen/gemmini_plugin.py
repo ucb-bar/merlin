@@ -34,10 +34,17 @@ def register(oot_package: str | None = None) -> None:
     from ..llvmlower import gemmini_features  # noqa: F401  (import triggers registration)
 
     # 1b. micro-kernel resolver — realize the agnostic MicrokernelSpec as Gemmini codegen knobs, so
-    #     microkernel.resolve("gemmini", spec) works (the beam's micro-kernel granularity is expressible).
-    from ..kernels import microkernel
-    from . import gemmini_cca
-    microkernel.register_resolver("gemmini", gemmini_cca.gemmini_microkernel_resolver)
+    #     microkernel.resolve("gemmini", spec) works. Best-effort: the resolver + trace lifter live in
+    #     gemmini_cca, which pulls in the RoCC decoder (an operator/grader-side tool NOT exposed to the
+    #     assisted agent — see the bundle FORBIDDEN list). If gemmini_cca is not importable (e.g. inside
+    #     the answer-masked agent sandbox), skip the resolver; the routes/seams/features below still
+    #     register, so the agent gets the full where/how surface without the grader-adjacent lifter.
+    try:
+        from ..kernels import microkernel
+        from . import gemmini_cca
+        microkernel.register_resolver("gemmini", gemmini_cca.gemmini_microkernel_resolver)
+    except Exception:  # noqa: BLE001 — resolver is optional; routes/seams/features are the core surface
+        pass
 
     # 2. seams — OOT-package-relative (the agent edits its GENERATED middle-end; the in-tree emitter is
     #    cited only as the reference implementation, never an edit target on our core).
