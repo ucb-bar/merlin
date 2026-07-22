@@ -1,0 +1,26 @@
+# Declarative per-target experiment SETUP — the RARE non-derivable exception (see the derive-first rule).
+#
+# Everything DERIVABLE about the hardware (the legal ISA / opcode set, the memory map, the mesh DIM,
+# the live functional model) is discovered from the RTL by mlc for `target` — it is NOT listed here.
+# This descriptor holds only the irreducible SETUP a run needs: which RTL repo, which hardware-spec
+# files to give every arm, which capsule corpus to grade against, and how to run the simulator. A new
+# accelerator plugs in by dropping its own descriptor (+ registering its RTL with mlc); no code changes.
+target: gemmini
+
+rtl:
+  via: mlc            # RTL facts are DERIVED from mlc discovery (MERLIN_MLC_DIR, the target above)
+
+# The shared hardware spec given to ALL arms (a correct backend needs the target's defined ISA — this is
+# a constant input, not Merlin assistance). Repo-root-relative.
+hardware_spec:
+  isa_headers:
+    - tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h
+    - tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h
+  hwbringup_set: merlin/experiments/gemmini_capsule_bench_v0/contracts/hwbringup_gemmini_v0
+
+# The capsule corpus the arms author against and are graded on.
+capsule_corpus: merlin/contract/capsules/isa
+
+# How the simulator runs (correctness L2 / RTL L3). spike + verilator come from the chipyard conda env.
+toolchain:
+  sim_via: chipyard
