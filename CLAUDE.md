@@ -96,3 +96,24 @@ related, code_refs`). **Point-in-time reports** (results/findings/status/present
 - **Semantic drift** (a doc whose `code_refs` moved past its `last_verified`) is surfaced by
   `check_docs_freshness.py --json` and fixed by the **`docs-doctor`** skill (reconcile, then bump the date).
 - Enable the pre-commit gate per clone: `python build_tools/scripts/install_git_hooks.py`.
+
+# Commit message convention
+
+Commit messages describe the **change to the code/files** and read as if a human developer wrote them.
+A reader of the history should understand *what changed and why* without any knowledge of how the work
+was produced. Enforced by the `commit-msg` hook (`build_tools/git-hooks/`, installed by
+`install_git_hooks.py`); the same gates run in CI.
+
+- **Format:** `type(scope): summary` — `type` ∈ `feat|fix|docs|chore|refactor|test|perf|build`;
+  `summary` in the imperative, **≤ 72 chars**. Optional body (wrapped) explains the *why* and the
+  behavior/file impact, not the process. Optional footer for issue refs.
+- **Describe the change, never the agent's process.** NO plan/task-step framing in the subject — no
+  `Phase 4`, `P2+P3`, `iteration-2`, `PART2`, `step 3`, `round 4`, `WIP`, `FINALIZE`, `checkpoint`,
+  `snapshot`. A commit is a unit of file change; name it by that (e.g. `fix(gemmini): int32_t harness
+  output buffer`), not by where it fell in a workstream.
+- **No decoration / no attribution noise.** No emoji, no `Co-Authored-By`, no "Generated with …", no
+  AI/tool attribution. (See also: never add co-authorship trailers.)
+- **One coherent change per commit**, with a message that stands on its own. Avoid run-on subjects that
+  pack a whole results narrative onto the first line — put nuance in the body.
+- Merge commits are the exception the hook skips; avoid auto-named throwaway branches
+  (`worktree-agent-<hash>`) leaking into `main`'s merge subjects — squash or rename before merging.

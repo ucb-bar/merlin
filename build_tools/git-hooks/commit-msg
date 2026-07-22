@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Repo-managed commit-msg hook — enforce the commit-message convention (see CLAUDE.md
+# "Commit message convention"). Enable per clone with:
+#   python build_tools/scripts/install_git_hooks.py
+# A commit message must describe the CHANGE TO THE FILES, not an agent's task/process steps, and must
+# read as if a human developer wrote it. Bypass in a genuine emergency with `git commit --no-verify`.
+set -euo pipefail
+
+MSG_FILE="$1"
+# strip comment lines (the template) before checking
+SUBJECT="$(grep -vE '^\s*#' "$MSG_FILE" | sed '/^\s*$/d' | head -1)"
+BODY="$(grep -vE '^\s*#' "$MSG_FILE")"
+
+# Merge commits are git-generated — don't gate their wording here (see the worktree-agent note in
+# CLAUDE.md; those are the harness's auto-named branches, handled by the workflow, not this hook).
+case "$SUBJECT" in
+  "Merge "*|"Revert "*) exit 0 ;;
+esac
+
+fail() { echo "commit-msg: REJECTED — $1" >&2; echo "  see CLAUDE.md 'Commit message convention'; --no-verify to bypass." >&2; exit 1; }
+
+# 1. No emoji / decorative pictographs / AI check-marks anywhere.
+if printf '%s' "$BODY" | LC_ALL=C.UTF-8 grep -Pq '[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}\x{2B00}-\x{2BFF}\x{2705}\x{2714}\x{274C}\x{2728}]'; then
+  fail "no emoji / decorative symbols in commit messages"
+fi
+
+# 2. No AI/co-author/tool trailers — messages read as human-authored.
+if printf '%s' "$BODY" | grep -qiE 'co-authored-by|generated with|🤖|\bclaude\b.*(wrote|generated|assistant)|anthropic.*assistant'; then
+  fail "no co-author / 'generated with' / AI-attribution trailers"
+fi
+
+# 3. No agent task/process framing in the SUBJECT — describe the code change, not the plan step.
+#    Blocks: P2+P3 / Phase 4 / phase-7 / iteration-2 / PART2 / step 3 / round 4 / leading WIP|FINALIZE.
+if printf '%s' "$SUBJECT" | grep -qE '(^|[^A-Za-z])P[0-9]+([^A-Za-z]|$)|[Pp]hase[ _-]?[0-9]|[Ii]teration[ _-]?[0-9]|PART[ _-]?[0-9]|\b[Ss]tep[ _-]?[0-9]|\b[Rr]ound[ _-]?[0-9]'; then
+  fail "subject references an agent process step (Phase/P#/iteration/PART/step/round) — describe the file/behavior change instead"
+fi
+if printf '%s' "$SUBJECT" | grep -qiE '^(wip|finalize|fixup|tmp|checkpoint|snapshot)\b'; then
+  fail "subject is a process marker (WIP/FINALIZE/fixup/tmp/checkpoint) — state what changed"
+fi
+
+# 4. Concise subject (git convention). Detail goes in the body, not a run-on subject line.
+LEN=${#SUBJECT}
+if [ "$LEN" -gt 72 ]; then
+  fail "subject is ${LEN} chars (>72) — tighten it; put detail in the body"
+fi
+
+exit 0

@@ -2,8 +2,9 @@
 """Enable the repo-managed git hooks (docs + artifact-layout anti-drift) for THIS clone.
 
 Git hooks are not tracked and cannot be auto-installed by a commit. This points
-`core.hooksPath` at the committed `build_tools/git-hooks/` directory, so every commit runs
-`build_tools/git-hooks/pre-commit` (which calls check_artifact_layout.py --staged + check_docs.py).
+`core.hooksPath` at the committed `build_tools/git-hooks/` directory, so every commit runs the
+repo-managed hooks: `pre-commit` (check_artifact_layout.py --staged + check_no_regex + check_docs.py)
+and `commit-msg` (enforces the commit-message convention — see CLAUDE.md).
 
 Per-clone / opt-in — it edits this checkout's .git/config only. Undo with:
   git config --unset core.hooksPath
@@ -23,13 +24,16 @@ HOOKS_DIR = ROOT / "build_tools" / "git-hooks"
 
 
 def main() -> int:
-    if not (HOOKS_DIR / "pre-commit").is_file():
-        sys.stderr.write(f"missing {HOOKS_DIR/'pre-commit'}\n")
+    hooks = ["pre-commit", "commit-msg"]
+    missing = [h for h in hooks if not (HOOKS_DIR / h).is_file()]
+    if missing:
+        sys.stderr.write(f"missing hook(s): {', '.join(str(HOOKS_DIR/h) for h in missing)}\n")
         return 1
-    os.chmod(HOOKS_DIR / "pre-commit", 0o755)
+    for h in hooks:
+        os.chmod(HOOKS_DIR / h, 0o755)
     rel = HOOKS_DIR.relative_to(ROOT).as_posix()
     subprocess.run(["git", "-C", str(ROOT), "config", "core.hooksPath", rel], check=True)
-    print(f"core.hooksPath -> {rel} (pre-commit enabled for this clone)")
+    print(f"core.hooksPath -> {rel} ({', '.join(hooks)} enabled for this clone)")
     print("undo with: git config --unset core.hooksPath")
     return 0
 
