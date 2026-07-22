@@ -25,10 +25,13 @@ from typing import Callable
 
 @dataclass(frozen=True)
 class GemminiCodegenOpts:
-    """The knobs the Gemmini codegen reads. Defaults reproduce the frozen baseline byte-for-byte:
-    weight-stationary dataflow, and the tile accumulator round-tripped through the accumulator SRAM
-    per K-tile (``accumulator_resident`` off)."""
-    dataflow: str = "ws"                 # "ws" (weight-stationary, baseline) | "os" (output-stationary)
+    """The knobs a Gemmini codegen reads. The defaults describe a NAIVE codegen (weight-stationary, no
+    cross-K accumulation). NOTE: our in-tree REFERENCE emitter (``gemmini_codegen_mlir.emit_kernel_mlir``)
+    already goes beyond these defaults — it is WS AND already accumulator-resident (``ACC_ACCUM`` across
+    K-tiles, a single MVOUT after the K-loop; see that file's tile loop). So these knobs are the
+    fix-path for an AGENT's OOT codegen that LACKS them, not a change to the reference (on which
+    ``gemmini_accumulator_resident`` is inert). ``apply_opts(x, frozenset())`` returns ``x`` unchanged."""
+    dataflow: str = "ws"                 # "ws" (weight-stationary) | "os" (output-stationary)
     accumulator_resident: bool = False   # keep the MxN output PE/acc-resident across the K reduction
 
 
