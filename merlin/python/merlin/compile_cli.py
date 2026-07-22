@@ -114,7 +114,9 @@ def compile_gemmini(workload: str, *, run: str, verify: bool, package: str | Non
     from .benchharness import runs_root
     from .common.paths import repo_root
 
-    pkg_dir = package or "out/artifacts/targets/gemmini/hand_v0"
+    # Default to an OOT backend package (has artifact_type: mlir_oot_target_backend, which
+    # oot_runner.certify requires); hand_v0 lacks it. Override with --package.
+    pkg_dir = package or "out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot"
     corpus = repo_root() / "merlin/contract/capsules/isa"
     out: dict = {"tool": "merlin-compile", "target": "gemmini", "workload": workload,
                  "package": pkg_dir, "run": run}
