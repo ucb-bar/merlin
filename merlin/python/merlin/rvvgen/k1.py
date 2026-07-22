@@ -542,6 +542,24 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
                                               "-ffast-math", "-DNDEBUG", f"-DOURS_MR={int(ours_mr)}",
                                               *_ourdt, *_dt],
                                          n_sigs, work / "ours")
+    # qd8 kernel-backend (default-off, additive): the DYNAMIC-INT8 analogue of the XNNPACK f32 path.
+    # Routes the SAME routable f32 linalg.matmul ops to XNNPACK's qd8-f32-qc8w RVV GEMM ukernel via a
+    # shim that per-row dynamic-quantizes the activation to int8 (+ the offline per-channel int8 weight),
+    # producing f32. FAIL-CLOSED: build_qd8_object raises until the shim is implemented + K1-validated
+    # (qd8 is lossy vs the f32 golden; its cos gate must be quantization-aware, calibrated on the board).
+    qd8_obj = None
+    n_qd8_routed = 0
+    if kernel_backend == "qd8":
+        from ..runtime.backends import xnnpack_board as xb
+
+        rewritten, n_qd8_routed = xb.rewrite_matmuls_to_qd8(prepared.read_text())
+        prepared = work / "model.prepared.qd8.mlir"
+        prepared.write_text(rewritten)
+        n_sigs = rewritten.count("func.func private @merlin_xnn_qd8_gemm_")
+        qd8_obj = xb.build_qd8_object(cc, ["--target=riscv64-unknown-linux-gnu",
+                                           f"-march={K1_MARCH}", f"-mabi={K1_MABI}", "-O3",
+                                           "-ffast-math", "-DNDEBUG", *_dt],
+                                      n_sigs, work / "qd8")
     # PER-OP WHOLE-MODEL PROFILE (default-off, additive). Interleave `@merlin_prof_mark(i32)`
     # calls between the top-level ops of @forward so the board can attribute wall time to the ops
     # the model actually executes — the 94-97% of model time the matmul-bucket timer above cannot
@@ -665,6 +683,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
         base += [str(openblas_obj)]
     if ours_obj is not None:                       # ours v3 RVV GEMM ukernel shim (attribution)
         base += [str(ours_obj)]
+    if qd8_obj is not None:                        # qd8 dynamic-int8 RVV GEMM ukernel shim
+        base += [str(qd8_obj)]
     if not mmap_weights:
         base += [str(weights_o)]
     if parallel:

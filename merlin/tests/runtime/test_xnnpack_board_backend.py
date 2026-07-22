@@ -90,3 +90,15 @@ def test_qd8_rewrite_default_off_and_non_f32_untouched():
           "-> tensor<8x8xi32> {\n    %0 = linalg.matmul ins(%a, %b : tensor<8x8xi8>, tensor<8x8xi8>) "
           "outs(%c : tensor<8x8xi32>) -> tensor<8x8xi32>\n    return %0 : tensor<8x8xi32>\n  }\n}\n")
     assert xb.rewrite_matmuls_to_qd8(t8)[1] == 0
+
+
+def test_qd8_build_is_fail_closed_until_shim_validated():
+    """The qd8 arm must NOT ship unverified quant numerics: build_qd8_object raises (fail-closed) until
+    the dynamic-int8 shim exists + is K1-validated. qd8_is_available reflects that."""
+    import pathlib
+    assert xb.qd8_is_available() is False        # shim not implemented/validated yet
+    try:
+        xb.build_qd8_object(None, [], 1, pathlib.Path("/tmp/qd8x"))
+        assert False, "build_qd8_object should fail closed without a validated shim"
+    except xb.XnnpackBoardUnavailable as e:
+        assert "not yet enabled" in str(e) and "K1" in str(e)

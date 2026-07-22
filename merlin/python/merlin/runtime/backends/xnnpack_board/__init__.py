@@ -181,3 +181,58 @@ def is_available() -> bool:
         return (xnn_src / "f32-gemm" / "gen" / "f32-gemm-1x4v-rvv.c").is_file() and _SHIM_SRC.is_file()
     except Exception:  # noqa: BLE001
         return False
+
+
+# The qd8 dynamic-int8 shim (per-row dynamic activation quant + qc8w weight pack + the qd8 RVV ukernel).
+# Its NUMERICS are board-validation-gated, so the file is created only once ported from the ceiling-
+# driver recipe AND its quantization-aware cos gate is validated on a real K1 — not shipped unverified.
+_QD8_SHIM_SRC = _HERE / "xnn_qd8_gemm_rvv_shim.c"
+
+
+def qd8_is_available() -> bool:
+    try:
+        xnn_src = _xnnpack_repo() / "src"
+        ukernels = list((xnn_src / "qd8-f32-qc8w-gemm" / "gen").glob("*rvv*.c"))
+        return bool(ukernels) and _QD8_SHIM_SRC.is_file()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def build_qd8_object(cc: Path, cflags: list[str], n_sigs: int, work: Path) -> Path:
+    """Compile the qd8 dynamic-int8 GEMM shim + per-signature alias wrappers into one ``.o``.
+
+    FAIL-CLOSED: qd8 is LOSSY vs the f32 golden, so the shim (dynamic activation quant + qc8w pack + the
+    qd8 ukernel) and its quantization-aware correctness gate must be validated on a REAL K1 run before
+    use. Until the shim (:data:`_QD8_SHIM_SRC`) is implemented + validated, this raises rather than
+    shipping unverified quant numerics. The recipe to port lives in
+    ``kernels/ceiling_drivers/xnnpack_qd8_gemm_driver.c``."""
+    if not _QD8_SHIM_SRC.is_file():
+        raise XnnpackBoardUnavailable(
+            "qd8 board arm not yet enabled: the dynamic-int8 shim (xnn_qd8_gemm_rvv_shim.c) is not "
+            "implemented + K1-validated. Port the recipe from "
+            "kernels/ceiling_drivers/xnnpack_qd8_gemm_driver.c and validate its quantization-aware "
+            "cos gate on a real K1 run before enabling this arm (the K1 board is required).")
+    xnn_src = _xnnpack_repo() / "src"
+    if not list((xnn_src / "qd8-f32-qc8w-gemm" / "gen").glob("*rvv*.c")):
+        raise XnnpackBoardUnavailable(
+            f"qd8 RVV ukernel not found under {xnn_src} (set MERLIN_XNNPACK_REPO)")
+    work.mkdir(parents=True, exist_ok=True)
+    aliases = []
+    for i in range(n_sigs):
+        aliases.append(
+            f"merlin_memref_2d_f32 merlin_xnn_qd8_gemm_{i}("
+            "float*a0,float*a1,intptr_t a2,intptr_t a3,intptr_t a4,intptr_t a5,intptr_t a6,"
+            "float*b0,float*b1,intptr_t b2,intptr_t b3,intptr_t b4,intptr_t b5,intptr_t b6,"
+            "float*c0,float*c1,intptr_t c2,intptr_t c3,intptr_t c4,intptr_t c5,intptr_t c6)"
+            "{return merlin_xnn_qd8_gemm(a0,a1,a2,a3,a4,a5,a6,b0,b1,b2,b3,b4,b5,b6,"
+            "c0,c1,c2,c3,c4,c5,c6);}")
+    obj = work / "xnn_qd8_gemm_rvv.o"
+    inc = ["-I", str(_SHIM_INC), "-I", str(xnn_src)]
+    combined = work / "xnn_qd8_gemm_rvv_combined.c"
+    combined.write_text(_QD8_SHIM_SRC.read_text() + "\n" + "\n".join(aliases) + "\n")
+    cmd = [str(cc), *cflags, *inc, "-c", str(combined), "-o", str(obj)]
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    if p.returncode != 0 or not obj.is_file():
+        raise XnnpackBoardUnavailable(
+            f"qd8 RVV shim compile failed:\ncmd: {' '.join(cmd)}\n{p.stderr[-1500:]}")
+    return obj
