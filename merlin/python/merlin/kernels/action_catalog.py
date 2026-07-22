@@ -551,11 +551,18 @@ def build_catalog(divergences: list[Divergence]) -> tuple[list[CompilerAction], 
 
 
 # ---- "which section of the compiler do I modify" surface -----------------------------
-# Each target_seam prefix names a CONCRETE file to edit. ``needs_new_code`` distinguishes editing an
+# Each target_seam prefix names a CONCRETE place to edit. ``needs_new_code`` distinguishes editing an
 # existing seam (a knob/flag/registered feature — a fork can express it today) from writing a NEW pass
-# module (a ``pass:`` route not yet backed by an impr_features hook). This is the map the CLI prints so
-# an engineer knows exactly where FLAG/KNOB/HEURISTIC/PASS/CODEGEN each live.
-SEAM_FILES: dict[str, tuple[str, str, bool]] = {
+# module. The map is PLUGGABLE and BACKEND-SCOPED so the middle-end can be modified ad-hoc: register a
+# new seam at runtime with :func:`register_seam`, and each backend resolves its OWN seams. For an OOT
+# target (gemmini), seams are expressed relative to the GENERATED OOT PACKAGE the agent authors (a
+# ``<oot_package>`` placeholder), with the in-tree file named only as a reference — so the "where do I
+# modify the compiler" answer points at the pluggable OOT middle-end, never couples the agent to our
+# in-tree core.
+_SeamSpec = tuple[str, str, bool]   # (file, kind, needs_new_code)
+
+# Shared / RVV seams (our in-tree compiler is the artifact for RVV).
+SEAM_FILES: dict[str, _SeamSpec] = {
     "impr_features": ("merlin/python/merlin/llvmlower/impr_features.py",
                       "registered PASS/HEURISTIC/PATTERN feature hook (default-off)", False),
     "schedule": ("merlin/python/merlin/rvvgen/from_strategy.py (+ the package knobs.yaml / schedule.mlir)",
@@ -567,32 +574,78 @@ SEAM_FILES: dict[str, tuple[str, str, bool]] = {
               "compiler flag / march feature", False),
     "pass": ("merlin/python/merlin/llvmlower/ (NEW pass module — write it, then register as an impr feature)",
              "new MLIR pass / lowering", True),
-    # Gemmini seams (Workstream A).
-    "gemmini_features": ("merlin/python/merlin/llvmlower/gemmini_features.py",
-                         "registered default-off Gemmini codegen feature (edits GemminiCodegenOpts)", False),
-    "gemmini_codegen": ("merlin/python/merlin/runtime/backends/gemmini_codegen_mlir.py",
-                        "the Gemmini RoCC tile-program emitter (thread GemminiCodegenOpts through "
-                        "emit_kernel_mlir to make a gemmini_features route forkable)", True),
+}
+
+# Backend-scoped seams. Gemmini seams are OOT-package-relative: the agent edits its OWN generated
+# backend's pluggable middle-end (a ``<oot_package>`` placeholder, filled by seam_location(oot_package=)),
+# and the in-tree emitter is cited only as the reference implementation.
+_BACKEND_SEAM_FILES: dict[str, dict[str, _SeamSpec]] = {
+    "gemmini": {
+        "gemmini_features": (
+            "<oot_package>/passes/gemmini_features.py  [reference: "
+            "merlin/python/merlin/llvmlower/gemmini_features.py]",
+            "register a default-off Gemmini codegen feature (edits GemminiCodegenOpts) in the OOT "
+            "package's pluggable feature registry", False),
+        "gemmini_codegen": (
+            "<oot_package>/lowering/  (the generated OOT backend's RoCC tile-program lowering)  "
+            "[reference: merlin/python/merlin/runtime/backends/gemmini_codegen_mlir.py]",
+            "the OOT backend's tile-program emitter — thread GemminiCodegenOpts through it to make a "
+            "gemmini_features route forkable", True),
+    },
 }
 
 
-def seam_location(target_seam: str) -> dict:
-    """Resolve a route's ``target_seam`` to the concrete file + kind + whether new code is needed."""
+def register_seam(prefix: str, seam_file: str, seam_kind: str, needs_new_code: bool,
+                  *, backend: str | None = None) -> None:
+    """Plug a new middle-end seam at runtime (ad-hoc, no core edit). ``backend=None`` registers a
+    shared/RVV seam; a backend name registers a backend-scoped seam (e.g. an OOT package's own seam)."""
+    spec = (seam_file, seam_kind, needs_new_code)
+    if backend is None:
+        SEAM_FILES[prefix] = spec
+    else:
+        _BACKEND_SEAM_FILES.setdefault(backend, {})[prefix] = spec
+
+
+def _resolve_seam(prefix: str, backend: str | None) -> _SeamSpec:
+    """Backend-scoped seam lookup: the backend's own map wins; then the shared map; then any backend
+    that defines the prefix (so a no-backend call still resolves a backend-specific seam)."""
+    if backend and prefix in _BACKEND_SEAM_FILES.get(backend, {}):
+        return _BACKEND_SEAM_FILES[backend][prefix]
+    if prefix in SEAM_FILES:
+        return SEAM_FILES[prefix]
+    for bmap in _BACKEND_SEAM_FILES.values():
+        if prefix in bmap:
+            return bmap[prefix]
+    return ("(unknown seam)", "unknown", True)
+
+
+def seam_location(target_seam: str, *, backend: str | None = None,
+                  oot_package: str | None = None) -> dict:
+    """Resolve a route's ``target_seam`` to the concrete file + kind + whether new code is needed.
+
+    ``backend`` selects backend-scoped seams; ``oot_package`` fills the ``<oot_package>`` placeholder in
+    an OOT seam with the agent's generated-package root (left as a placeholder if not given, and then
+    treated as needing new code since the target location is not yet materialized)."""
     prefix = target_seam.split(":", 1)[0].strip()
-    file, kind, needs_new = SEAM_FILES.get(prefix, ("(unknown seam)", "unknown", True))
+    file, kind, needs_new = _resolve_seam(prefix, backend)
+    if "<oot_package>" in file:
+        if oot_package:
+            file = file.replace("<oot_package>", str(oot_package).rstrip("/"))
+        else:
+            needs_new = True  # OOT target location not materialized yet
     return {"prefix": prefix, "target_seam": target_seam, "seam_file": file,
             "seam_kind": kind, "needs_new_code": needs_new}
 
 
-def escalation_ladder(axis: str, backend: str = "rvv") -> list[dict]:
+def escalation_ladder(axis: str, backend: str = "rvv", *, oot_package: str | None = None) -> list[dict]:
     """The full FLAG->KNOB->HEURISTIC->PASS->CODEGEN ladder for one axis: every route weakest->strongest,
-    each annotated with the concrete seam file to edit and whether it is forkable today. This is the
-    "which section to modify, and what's the next stronger lever if this one doesn't land it" answer."""
+    each annotated with the concrete (backend-scoped, OOT-relative) seam to edit and whether it is
+    forkable today. This is the "which section to modify, and what's the next stronger lever" answer."""
     rs = sorted((r for r in _ROUTES.get(backend, []) if r.axis == axis),
                 key=lambda r: _CLASS_ORDER.get(r.action_class, 99))
     out = []
     for r in rs:
-        loc = seam_location(r.target_seam)
+        loc = seam_location(r.target_seam, backend=backend, oot_package=oot_package)
         out.append({"action_class": r.action_class, "target_seam": r.target_seam,
                     "forkable_now": r.forkable_now, "seam_file": loc["seam_file"],
                     "seam_kind": loc["seam_kind"], "needs_new_code": loc["needs_new_code"]})

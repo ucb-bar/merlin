@@ -49,14 +49,41 @@ def test_edit_opts_does_not_mutate_input():
 
 
 def test_spatial_divergence_routes_to_gemmini_seam():
-    """A mined SpatialFacet divergence resolves to the concrete gemmini_features seam FILE."""
+    """A mined SpatialFacet divergence routes to the Gemmini seam, expressed OOT-relative."""
     d = Divergence(axis="spatial.dataflow", expert="os", ours="ws", backend="gemmini", evidence=[])
     a = ac.route(d)
     assert a is not None and a.action_class == "HEURISTIC"
-    loc = ac.seam_location(a.target_seam)
-    assert loc["seam_file"].endswith("llvmlower/gemmini_features.py")
+    # Without an OOT package the seam is a placeholder that names the in-tree reference (not an edit
+    # target on our core), and is flagged as needing new (OOT) code.
+    loc = ac.seam_location(a.target_seam, backend="gemmini")
+    assert "<oot_package>" in loc["seam_file"] and "gemmini_features.py" in loc["seam_file"]
+    assert loc["needs_new_code"] is True
     # accumulator-residency routes too, as a PASS.
     d2 = Divergence(axis="spatial.accumulator_resident", expert=True, ours=False, backend="gemmini",
                     evidence=[])
     a2 = ac.route(d2)
     assert a2 is not None and a2.action_class == "PASS"
+
+
+def test_gemmini_seam_is_oot_package_relative():
+    """With the agent's OOT package root, the seam resolves INTO that package — never our in-tree core."""
+    d = Divergence(axis="spatial.dataflow", expert="os", ours="ws", backend="gemmini", evidence=[])
+    loc = ac.seam_location(ac.route(d).target_seam, backend="gemmini",
+                           oot_package="/work/generated/merlin-target-gemmini")
+    assert loc["seam_file"].startswith("/work/generated/merlin-target-gemmini/")
+    assert "<oot_package>" not in loc["seam_file"]
+    # the escalation ladder threads the OOT root through too
+    ladder = ac.escalation_ladder("spatial.accumulator_resident", "gemmini",
+                                   oot_package="/work/generated/merlin-target-gemmini")
+    assert ladder and all("/work/generated/merlin-target-gemmini" in row["seam_file"] for row in ladder)
+
+
+def test_register_seam_plugs_a_new_middle_end_seam_at_runtime():
+    """The middle-end is pluggable: a new backend-scoped seam can be registered ad-hoc, no core edit."""
+    ac.register_seam("gemmini_tiling", "<oot_package>/passes/tiling.py", "OOT tiling pass", True,
+                     backend="gemmini")
+    try:
+        loc = ac.seam_location("gemmini_tiling:my_pass", backend="gemmini", oot_package="/pkg")
+        assert loc["seam_file"] == "/pkg/passes/tiling.py" and loc["seam_kind"] == "OOT tiling pass"
+    finally:
+        ac._BACKEND_SEAM_FILES["gemmini"].pop("gemmini_tiling", None)
