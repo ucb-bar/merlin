@@ -55,6 +55,29 @@ def test_current_state_matches_documented_gaps():
     assert set(rep.orphan_routes) == set(known["orphan_routes"])
 
 
+def test_no_unexpected_bijection_drift_gemmini():
+    """The gemmini ratchet (Workstream A): beyond the documented KNOWN_OPEN["gemmini"] gaps there is no
+    orphan field or orphan route. Fixed mesh geometry (pe_rows/pe_cols) is IDENTITY, so the only lever
+    axes are the compiler CHOICES (dataflow, accumulator-residency), which are the checklist to close."""
+    unexpected = cc.check_bijection("gemmini").unexpected()
+    assert unexpected.clean, (
+        f"NEW gemmini bijection drift (not in cca_contract.KNOWN_OPEN['gemmini']):\n"
+        f"  orphan_fields (LEVER field, no route): {unexpected.orphan_fields}\n"
+        f"  orphan_routes (route, no backing field): {unexpected.orphan_routes}\n"
+        "Either add the missing gemmini route/field, or document it in KNOWN_OPEN['gemmini'].")
+
+
+def test_known_open_is_not_stale_gemmini():
+    """Reverse tripwire for gemmini: every allowlisted gap must STILL be a real gap, so as each
+    gemmini_features route lands the orphan must be removed from KNOWN_OPEN (the checklist only shrinks)."""
+    rep = cc.check_bijection("gemmini")
+    known = cc.KNOWN_OPEN.get("gemmini", {})
+    stale_fields = sorted(set(known.get("orphan_fields", ())) - set(rep.orphan_fields))
+    stale_routes = sorted(set(known.get("orphan_routes", ())) - set(rep.orphan_routes))
+    assert not stale_fields, f"KNOWN_OPEN['gemmini'] orphan_fields already closed — remove: {stale_fields}"
+    assert not stale_routes, f"KNOWN_OPEN['gemmini'] orphan_routes already closed — remove: {stale_routes}"
+
+
 def test_contract_records_region_per_lever_axis(tmp_path):
     """C2/C3 tie-in: the bijection contract broadens onto the region taxonomy — every LEVER axis row
     records the compiler region that governs it."""

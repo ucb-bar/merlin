@@ -59,8 +59,9 @@ class FieldSpec:
 
 
 # One row per facet.field. Reviewed by hand — this is where "we decided this property matters and how".
-# RVV is the first fully-instantiated backend; spatial (gemmini) / dataflow (npu) fields are stubs until
-# their lifters + routes land, so they are BACKEND_STUB and excluded from the RVV bijection.
+# RVV is the first fully-instantiated backend; gemmini (spatial) is being instantiated (Workstream A):
+# its geometry is IDENTITY and its dataflow/accumulator-residency are LEVER (routes landing next). The
+# dataflow (npu) fields remain BACKEND_STUB until their lifter + routes land.
 FIELD_REGISTRY: dict[str, FieldSpec] = {
     # --- compute (target-agnostic) ---
     "compute.op": FieldSpec("compute.op", IDENTITY, ("rvv", "gemmini", "npu"),
@@ -115,11 +116,20 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
     "envelope.overhead_ins_per_output": FieldSpec("envelope.overhead_ins_per_output", METRIC, ("rvv",),
                                                 "N^2 coefficient — per-tile overhead, a diagnostic "
                                                 "outcome that SIZES the region gap"),
-    # --- spatial (gemmini) — stubs until the spatial lifter + gemmini routes land ---
-    "spatial.pe_rows": FieldSpec("spatial.pe_rows", BACKEND_STUB, ("gemmini",)),
-    "spatial.pe_cols": FieldSpec("spatial.pe_cols", BACKEND_STUB, ("gemmini",)),
-    "spatial.dataflow": FieldSpec("spatial.dataflow", BACKEND_STUB, ("gemmini",)),
-    "spatial.accumulator_resident": FieldSpec("spatial.accumulator_resident", BACKEND_STUB, ("gemmini",)),
+    # --- spatial (gemmini) — the spatial lifter + gemmini routes are being instantiated (Workstream A).
+    # pe_rows/pe_cols are FIXED target geometry (the 16x16 systolic mesh the compiler must target but
+    # cannot change) -> IDENTITY, excluded from the lever<->route bijection. dataflow (WS/OS) and
+    # accumulator-residency ARE compiler choices -> LEVER; their routes land with gemmini_features
+    # (tracked in KNOWN_OPEN until then, so check_bijection("gemmini") is the "what to build next" list).
+    "spatial.pe_rows": FieldSpec("spatial.pe_rows", IDENTITY, ("gemmini",),
+                                 "fixed systolic-array rows (mesh DIM) — a target constant, not a lever"),
+    "spatial.pe_cols": FieldSpec("spatial.pe_cols", IDENTITY, ("gemmini",),
+                                 "fixed systolic-array cols (mesh DIM) — a target constant, not a lever"),
+    "spatial.dataflow": FieldSpec("spatial.dataflow", LEVER, ("gemmini",),
+                                  "WS vs OS dataflow selection -> gemmini dataflow-selection feature"),
+    "spatial.accumulator_resident": FieldSpec("spatial.accumulator_resident", LEVER, ("gemmini",),
+                                              "output stays PE/accumulator-resident across the reduction "
+                                              "-> gemmini accumulator-resident tiling feature"),
     # --- dataflow (npu) — stubs until the npu lifter + npu routes land ---
     "dataflow.engine_ops": FieldSpec("dataflow.engine_ops", BACKEND_STUB, ("npu",)),
     "dataflow.dma_pattern": FieldSpec("dataflow.dma_pattern", BACKEND_STUB, ("npu",)),
@@ -166,6 +176,17 @@ KNOWN_OPEN: dict[str, dict[str, tuple[str, ...]]] = {
             "layout.transpose_materialized",   # fuse_transpose_b: route + measured win real; graph-level
                                                # (IR) backing-field lifter deferred (see note above).
         ),
+    },
+    # Gemmini (Workstream A): the spatial LEVER axes are classified, but their compiler routes land with
+    # the gemmini_features registry + _GEMMINI_ROUTES (the next increment). Until then they are orphan
+    # fields — this is exactly the "what to build next" checklist the arm-3 agent is handed, and it
+    # SHRINKS as each route lands (the reverse tripwire below fails if one is closed but left here).
+    "gemmini": {
+        "orphan_fields": (
+            "spatial.accumulator_resident",
+            "spatial.dataflow",
+        ),
+        "orphan_routes": (),
     },
 }
 
