@@ -12,6 +12,7 @@ These console-scripts are installed by `pip install -e merlin/python`. Each is a
 | `kernel-index` | `merlin.kernels.cli_index:main` |
 | `merlin-cca-route` | `merlin.rvvgen.route_report:main` |
 | `merlin-compare` | `merlin.compare.cli:main` |
+| `merlin-compile` | `merlin.compile_cli:main` |
 | `merlin-design-pressure` | `merlin.design_pressure.cli:main` |
 | `merlin-dse` | `merlin.dse.cli:main` |
 | `merlin-dse-guidance` | `merlin.dse_guidance.cli:main` |

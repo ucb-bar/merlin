@@ -51,6 +51,7 @@ merlin-rvv-autotune = "merlin.rvvgen.autotune:main"
 merlin-rvv-beam = "merlin.rvvgen.beam_cli:main"
 merlin-rvv-opt = "merlin.rvvgen.op_sweep:main"
 merlin-cca-route = "merlin.rvvgen.route_report:main"
+merlin-compile = "merlin.compile_cli:main"
 merlin-compare = "merlin.compare.cli:main"
 
 [tool.setuptools]
