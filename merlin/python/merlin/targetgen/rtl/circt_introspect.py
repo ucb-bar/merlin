@@ -235,43 +235,76 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()[:16] if path.is_file() else "missing"
 
 
+def _facts_from_discovery(target: str, facts: dict) -> list[str]:
+    """Override mesh + operand-scratchpad + accumulator facts with mlc RTL discovery (target-agnostic:
+    DIM from the discovered mesh, capacities summed from the discovered banks). Mutates ``facts`` in
+    place; returns the list of fact names that came from discovery (for provenance)."""
+    from . import mlc_bridge
+    sourced: list[str] = []
+    dim = mlc_bridge.discovered_dim(target)
+    if dim:
+        facts["arrays"] = [a for a in facts.get("arrays", []) if a.get("name") != "mesh"]
+        facts["arrays"].append({"name": "mesh", "rows": dim, "cols": dim, "source": "mlc_discovery"})
+        sourced.append("mesh")
+    caps = mlc_bridge.discovered_capacities(target)
+    if caps:
+        keep = [m for m in facts.get("memories", []) if m.get("name") not in ("scratchpad", "accumulator")]
+        if caps.get("operand_bytes"):
+            keep.append({"name": "scratchpad", "bytes": caps["operand_bytes"],
+                         "depth": caps.get("operand_depth"), "source": "mlc_discovery"})
+            sourced.append("scratchpad")
+        if caps.get("accumulator_bytes"):
+            keep.append({"name": "accumulator", "bytes": caps["accumulator_bytes"],
+                         "depth": caps.get("accumulator_depth"), "source": "mlc_discovery"})
+            sourced.append("accumulator")
+        facts["memories"] = keep
+    return sourced
+
+
 def build_facts(hw_path: Path = DEFAULT_HW, isa_path: Path = GEMMINI_ISA,
-                chipyard_root: str | Path = V1.DEFAULT_CHIPYARD) -> dict[str, Any]:
-    """Combine v1 grep facts (mesh + scratchpad) with v2 CIRCT/Chisel facts (accumulator + funct
-    table). Returns a provenance-stamped record (does not write; see :func:`dump_facts`)."""
-    arts = V1.find_artifacts(chipyard_root)
-    v1 = V1.extract_facts(arts["fir"], arts["hierarchy"])
+                chipyard_root: str | Path = V1.DEFAULT_CHIPYARD, target: str = "gemmini") -> dict[str, Any]:
+    """Assemble the RTL facts for ``target``. PREFERS mlc RTL discovery (target-agnostic: mesh DIM +
+    memory capacities + the decoder-derived ISA); the gemmini FIRRTL grep + HW-port parse is the legacy
+    FALLBACK, used only for facts discovery does not provide (and skipped entirely for a non-gemmini
+    target whose chipyard artifacts are absent). Provenance-stamped; does not write (see dump_facts)."""
+    fir_sha = isa_sha = "n/a"
+    try:  # legacy gemmini grep + HW-port fallback (optional — a generic target has no chipyard artifacts)
+        arts = V1.find_artifacts(chipyard_root)
+        v1 = V1.extract_facts(arts["fir"], arts["hierarchy"])
+        hw_text = hw_path.read_text(errors="replace") if hw_path.is_file() else ""
+        acc = extract_accumulator(hw_text) if hw_text else None
+        mems = [m for m in v1.get("memories", []) if m.get("name") != "accumulator"]
+        if acc:
+            mems.append(acc)
+        v1["memories"] = mems
+        fir_sha, isa_sha = _sha(arts["fir"]), _sha(isa_path)
+    except Exception:  # noqa: BLE001 — non-gemmini / no chipyard: rely entirely on mlc discovery
+        v1 = {}
 
-    hw_text = hw_path.read_text(errors="replace") if hw_path.is_file() else ""
-    acc = extract_accumulator(hw_text) if hw_text else None
-    # replace v1's size-less accumulator stub with the HW-extracted one
-    mems = [m for m in v1.get("memories", []) if m.get("name") != "accumulator"]
-    if acc:
-        mems.append(acc)
-    v1["memories"] = mems
+    # PREFER mlc discovery (target-agnostic) for mesh + memory capacities.
+    sourced = _facts_from_discovery(target, v1)
 
-    # Funct decode table: PREFER the decoder-derived legal set (the actual ISA the silicon implements,
-    # via mlc's comb.icmp-eq fan-out analysis) over the header parse (GemminiISA.scala), which is
-    # provably wrong (lists functs the decoder never matches, omits ones it does). Fall back to the
-    # header parse when mlc / a version-matched HW dialect is unavailable — recording which method was
-    # used and, when both are available, the header-vs-decoder discrepancy as evidence.
+    # Funct decode table: PREFER the decoder-derived legal set (the ISA the silicon implements) over the
+    # header parse; fall back to the header when mlc / a version-matched HW dialect is unavailable.
     header_funct = extract_funct_table(isa_path.read_text(errors="replace")) if isa_path.is_file() else None
-    decoder_funct = extract_funct_table_via_decoder("gemmini")  # target param; mlc resolves the HW dialect
+    decoder_funct = extract_funct_table_via_decoder(target)
     funct = _reconcile_funct(decoder_funct, header_funct)
     if funct:
         v1.setdefault("interfaces", []).append(funct)
+        sourced.append("funct" if funct.get("method", "").startswith("decoder") else "funct(header)")
 
     return {
         "schema_version": "2.0",
         "generator": {
             "name": "merlin.targetgen.rtl.circt_introspect",
             "version": GENERATOR_VERSION,
-            "method": "firtool --ir-hw CIRCT HW-dialect port widths (accumulator) + GemminiISA.scala "
-                      "funct block (decode table) + v1 grep (mesh/scratchpad)",
+            "method": f"mlc RTL discovery (target-agnostic: {', '.join(sourced) or 'none'}) + gemmini "
+                      "grep/HW-port fallback",
         },
         "inputs": {
+            "target": target,
             "hw_mlir": hw_path.name, "hw_sha": _sha(hw_path),
-            "fir_sha": _sha(arts["fir"]), "isa_sha": _sha(isa_path),
+            "fir_sha": fir_sha, "isa_sha": isa_sha,
             "extractor_sha": _sha(Path(__file__)),  # code change -> cache invalidates
         },
         "facts": v1,

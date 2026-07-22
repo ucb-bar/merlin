@@ -3,14 +3,15 @@
   "generator": {
     "name": "merlin.targetgen.rtl.circt_introspect",
     "version": "rtl-introspect-v2-circt-hw",
-    "method": "firtool --ir-hw CIRCT HW-dialect port widths (accumulator) + GemminiISA.scala funct block (decode table) + v1 grep (mesh/scratchpad)"
+    "method": "mlc RTL discovery (target-agnostic: mesh, scratchpad, accumulator, funct) + gemmini grep/HW-port fallback"
   },
   "inputs": {
+    "target": "gemmini",
     "hw_mlir": "gemmini_soc.hw.mlir",
     "hw_sha": "b07472562dbbb873",
     "fir_sha": "fbc95eabdc7fc740",
     "isa_sha": "812cba090cf85b2b",
-    "extractor_sha": "a849ec4343f6542d"
+    "extractor_sha": "611aa2bf194d143e"
   },
   "facts": {
     "target": "gemmini",
@@ -22,35 +23,23 @@
     "arrays": [
       {
         "name": "mesh",
-        "tiles": 256,
         "rows": 16,
         "cols": 16,
-        "square": true,
-        "evidence": "top_module_hierarchy.json: Tile instances under Mesh"
+        "source": "mlc_discovery"
       }
     ],
     "memories": [
       {
         "name": "scratchpad",
-        "banks": 4,
-        "row_elems": 16,
-        "depth": 4096,
-        "elem_bits": 8,
         "bytes": 262144,
-        "evidence": "4x `smem mem : UInt<8>[16] [4096]` @ Scratchpad.scala"
+        "depth": 4096,
+        "source": "mlc_discovery"
       },
       {
         "name": "accumulator",
-        "banks": 2,
-        "addr_width": 9,
-        "depth": 512,
-        "lanes": 16,
-        "lane_bits": 32,
-        "row_bytes": 64,
         "bytes": 65536,
-        "bytes_per_bank": 32768,
-        "elem_bits": 32,
-        "evidence": "2x @AccumulatorMem instance; per-bank io_write_bits_addr:i9 (depth=512); 16x io_write_bits_data_*_0:i32; 64 byte-mask bits -> 64 B/row; total=65536 B"
+        "depth": 512,
+        "source": "mlc_discovery"
       }
     ],
     "datapaths": [
@@ -136,7 +125,7 @@
         },
         "hw_source": "/scratch2/agustin/mvp-lhwir/modeling/runs/circt-arc/gemmini/outputs/Gemmini_core_hw.mlir",
         "method": "decoder_icmp_fanout(mlc)",
-        "evidence": "union of comb.icmp-eq 7-bit decode signals in module ReservationStation (29 comparisons) -> 26 legal functs; vs header: phantom=[25] missing=[126]",
+        "evidence": "union of comb.icmp-eq 7-bit decode signals in module ReservationStation (29 comparisons) -> 26 legal opcodes; vs header: phantom=[25] missing=[126]",
         "header_only_functs": [
           25
         ],

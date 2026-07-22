@@ -155,6 +155,59 @@ def discovered_dim(target: str) -> int | None:
         return None
 
 
+def discovered_memories(target: str) -> list[dict] | None:
+    """The target's SRAM banks (name/depth/row_bytes), DISCOVERED from the RTL by mlc. Target-agnostic."""
+    if mlc_dir() is None:
+        return None
+    try:
+        with _mlc_on_path(), _mlc_cwd():
+            _ensure_interface_cache(target)
+            from mlc.discover.cache import load_interface
+            return list(load_interface(target).get("memories", []))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def discovered_capacities(target: str) -> dict | None:
+    """Total operand-scratchpad + accumulator capacity (bytes) DERIVED from mlc discovery — sum the
+    sibling banks of the representative operand/accumulator memory named in the discovered ``memory_map``
+    (banks share the name with the bank index stripped). Target-agnostic: no hardcoded bank names.
+    Returns ``{operand_bytes, accumulator_bytes, operand_depth, accumulator_depth}`` (values None when
+    not derivable)."""
+    mm = discovered_memory_map(target)
+    mems = discovered_memories(target)
+    if not mm or not mems:
+        return None
+
+    def _bank_prefix(rep_name: str | None) -> str | None:
+        # sibling banks share the name with the bank-index segment ('<base>_<int>') truncated to
+        # '<base>_' — structural split, no regex (e.g. 'spad/spad_mems_0/mem_ext' -> 'spad/spad_mems_').
+        if not rep_name:
+            return None
+        segs = rep_name.split("/")
+        for i, s in enumerate(segs):
+            base, sep, num = s.rpartition("_")
+            if sep and num.isdigit():
+                return "/".join(segs[:i] + [base + "_"])
+        return None
+
+    def _group(rep_name: str | None):
+        prefix = _bank_prefix(rep_name)
+        if not prefix:
+            return None, None
+        banks = [x for x in mems if x.get("name", "").startswith(prefix)]
+        if not banks:
+            return None, None
+        total = sum(b["depth"] * b["row_bytes"] for b in banks)
+        depth = banks[0]["depth"] if len({b["depth"] for b in banks}) == 1 else None
+        return total, depth
+
+    op_bytes, op_depth = _group(mm.get("operand_mem"))
+    acc_bytes, acc_depth = _group(mm.get("accum_mem"))
+    return {"operand_bytes": op_bytes, "accumulator_bytes": acc_bytes,
+            "operand_depth": op_depth, "accumulator_depth": acc_depth}
+
+
 @contextmanager
 def _mlc_cwd():
     """mlc resolves its ``runs/...`` arc artifacts by paths RELATIVE to its own root, so its cosim +
