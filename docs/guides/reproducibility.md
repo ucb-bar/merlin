@@ -20,6 +20,32 @@ same inputs → same `out/…` products; run dirs + versioned products carry a `
 [Getting started](getting_started.md). Full flat doc index: the generated hub
 [docs/README.md](../README.md).
 
+## New here? Follow one ordered reading path
+
+Both paths share the same two-step start, then branch by what you want to do. Read in the order listed.
+
+**Everyone first:**
+1. [getting_started](getting_started.md) — fresh-machine environment: base install, every `.env` var
+   and where each external dependency comes from, then `check_repro_env.py` to see what's runnable here.
+2. This guide, **§0** below — `merlin-compile`, the one-command compile/build/run/verify front door.
+
+**Path A — run the target-dialect-generation experiments (Gemmini, all 4 arms):**
+3. [gemmini_experiment](gemmini_experiment.md) — the end-to-end runbook: four arms → prove-the-sandbox
+   gate → launch the sweep → certify (RTL conformance) → perf-bench → publish. **§6** below is the
+   condensed version.
+4. [targetgen](targetgen.md) then [adding_a_target](adding_a_target.md) — the tool the arms exercise.
+5. [target_publishing](../design/target_publishing.md) — how a certified champion lands versioned in
+   `gemmini-mlir` / `rvv-mlir` (**§8**).
+
+**Path B — improve the hand-optimized RVV kernels with beam search:**
+3. [beam_search](beam_search.md) — seed from frozen `hand_v0`, whole-model objective, K1 promotion gate.
+   **§2** (mine → beam) and **§5** (autonomous whole-model beam) below are the condensed CLI.
+4. [CCA beam design](../design/beam_cca_architecture.md) — the rationale (divergence → route → fork).
+5. [rvv_kernel_mining_methodology](../reference/rvv_kernel_mining_methodology.md) — the mechanics.
+6. [rvv_e2e](rvv_e2e.md) — build + run the champion on the K1 and gate vs golden (**§7**).
+
+Everything below fills in each step with the exact CLI + output location; the table maps the rest by intent.
+
 ## Guide map — by intent
 
 | I want to… | Guide(s) | Detailed workflow below |
