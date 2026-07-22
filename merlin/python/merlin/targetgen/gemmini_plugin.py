@@ -33,6 +33,12 @@ def register(oot_package: str | None = None) -> None:
     # 1. features — the default-off codegen modifications self-register on import (backend-specific).
     from ..llvmlower import gemmini_features  # noqa: F401  (import triggers registration)
 
+    # 1b. micro-kernel resolver — realize the agnostic MicrokernelSpec as Gemmini codegen knobs, so
+    #     microkernel.resolve("gemmini", spec) works (the beam's micro-kernel granularity is expressible).
+    from ..kernels import microkernel
+    from . import gemmini_cca
+    microkernel.register_resolver("gemmini", gemmini_cca.gemmini_microkernel_resolver)
+
     # 2. seams — OOT-package-relative (the agent edits its GENERATED middle-end; the in-tree emitter is
     #    cited only as the reference implementation, never an edit target on our core).
     register_seam(
