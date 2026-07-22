@@ -8,13 +8,19 @@ open-source repo). Rather than re-implement the op-graph parser + decoder analys
 binaries. Imports are function-local behind an availability guard (``chia_bridge`` style) so importing
 this module never hard-requires mlc, and a machine without mlc degrades honestly rather than crashing.
 
-Why this matters: our legacy ``circt_introspect.extract_funct_table`` parses the ISA *header*
-(``GemminiISA.scala`` ``val NAME = N.U``), which is provably wrong vs the silicon — it lists funct codes
-the decoder never matches and omits ones it does. The decoder-derived set here is the actual ISA the
-hardware implements, which is exactly what a functionally-correct compiler must target.
+Why this matters: an ISA *header* parse (hand table / ``val NAME = N.U``) is provably wrong vs the
+silicon — it lists command codes the decoder never matches and omits ones it does. The decoder-derived
+set here is the actual ISA the hardware implements, which is exactly what a functionally-correct compiler
+must target.
+
+TARGET-AGNOSTIC: every entry point here takes a ``target`` argument and holds no target name. mlc is
+target-parameterized (``artifact_paths(target)`` / ``discovered_memory_map(target)`` /
+``discover_opcode_set(graph)`` / per-target ``runs/circt-arc/<target>``), so the same code plugs any HW
+RTL repo mlc knows (gemmini, atlas, otbn, muon, nvdla, rocket, ...).
 """
 from __future__ import annotations
 
+import os
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -38,19 +44,6 @@ def circt_opt_bin() -> Path | None:
         return None
     b = d / "third_party" / "circt" / "build" / "bin" / "circt-opt"
     return b if b.exists() else None
-
-
-def gemmini_core_hw_mlir() -> Path | None:
-    """mlc's prebuilt, VERSION-MATCHED Gemmini CORE HW dialect (contains the RoCC decoder, module
-    ``ReservationStation``). This is the parseable input for decoder-derived ISA extraction: our own
-    cached firtool output has a circt-opt version skew (``sv.macro.ref`` arity), and the SoC-level
-    dialect additionally carries unparseable ``sv.verbatim`` blackbox blobs — the CORE dialect has
-    neither, so mlc's own firtool output is the right ground-truth input."""
-    d = mlc_dir()
-    if d is None:
-        return None
-    p = d / "runs" / "circt-arc" / "gemmini" / "outputs" / "Gemmini_core_hw.mlir"
-    return p if p.exists() else None
 
 
 @contextmanager
@@ -91,27 +84,106 @@ def require_mlc() -> None:
         raise RuntimeError(f"mlc unavailable: {why}")
 
 
-# RoCC funct7 is 7 bits — the width of the Gemmini command opcode field the decoder matches on.
-_FUNCT_WIDTH = 7
+# ------------------------------------------------------------------- target-agnostic RTL extraction
+# Everything below is parameterized by ``target`` and holds NO target name — mlc is target-parameterized
+# (artifact_paths/discovered_memory_map/discover_opcode_set/per-target runs/circt-arc/<target>), so the
+# same code plugs any HW RTL repo mlc knows (gemmini, atlas, otbn, muon, nvdla, rocket, ...).
+
+def core_hw_mlir(target: str) -> Path | None:
+    """The version-matched CORE HW dialect (the module carrying the command decoder) for ANY target,
+    from mlc's per-target arc outputs (``runs/circt-arc/<target>/outputs``). Prefers ``*_core_hw.mlir``
+    (the core parses cleanly; the SoC dialect carries unparseable sv.verbatim blobs)."""
+    d = mlc_dir()
+    if d is None:
+        return None
+    outs = d / "runs" / "circt-arc" / target / "outputs"
+    cands = sorted(outs.glob("*_core_hw.mlir")) or sorted(outs.glob("*_hw.mlir"))
+    return next((p for p in cands if p.exists() and ".generic." not in p.name), None)
 
 
-def discover_legal_functs(hw_mlir_path: str | Path, *, funct_width: int = _FUNCT_WIDTH) -> dict:
-    """Derive the legal RoCC funct set from the DECODER's ``comb.icmp eq`` fan-out in the HW dialect —
-    the actual silicon, not the ISA header. Returns ``{legal_funct, width, fanout, module, method,
-    evidence}`` (``legal_funct=None`` if no decode signal of that width is found)."""
+def discover_legal_opcodes(target: str, *, opcode_width: int | None = None) -> dict:
+    """Derive the legal command-opcode set the RTL DECODER matches, for ANY target — via mlc's
+    ``comb.icmp eq`` fan-out over the target's core HW dialect. The ISA the silicon implements, not a
+    hand table/header. Returns ``{legal_opcodes, width, fanout, module, hw_source, method, evidence}``
+    (``legal_opcodes=None`` if no decode signal is found / mlc or the HW dialect is unavailable)."""
     require_mlc()
+    hw = core_hw_mlir(target)
+    if hw is None:
+        return {"legal_opcodes": None, "width": opcode_width, "fanout": 0, "module": None,
+                "hw_source": None, "method": "decoder_icmp_fanout(mlc)",
+                "evidence": f"no core HW dialect for target {target!r} under mlc runs/circt-arc"}
     with _mlc_on_path():
         from mlc.discover import decode, irgraph
-        graph = irgraph.load_hw_graph(Path(hw_mlir_path), circt_opt=circt_opt_bin())
-        sig = decode.discover_opcode_set(graph, expected_width=funct_width)
+        graph = irgraph.load_hw_graph(hw, circt_opt=circt_opt_bin())
+        sig = decode.discover_opcode_set(graph, expected_width=opcode_width)
     if sig is None:
-        return {"legal_funct": None, "width": funct_width, "fanout": 0, "module": None,
-                "method": "decoder_icmp_fanout(mlc)",
-                "evidence": f"no width-{funct_width} decode signal in {Path(hw_mlir_path).name}"}
+        return {"legal_opcodes": None, "width": opcode_width, "fanout": 0, "module": None,
+                "hw_source": str(hw), "method": "decoder_icmp_fanout(mlc)",
+                "evidence": f"no decode signal in {hw.name}"}
     legal = sorted(int(v) for v in sig.values)
-    return {
-        "legal_funct": legal, "width": sig.width, "fanout": sig.fanout, "module": sig.module,
-        "method": "decoder_icmp_fanout(mlc)",
-        "evidence": f"union of comb.icmp-eq {sig.width}-bit decode signals in module {sig.module} "
-                    f"({sig.fanout} comparisons) -> {len(legal)} legal functs",
-    }
+    return {"legal_opcodes": legal, "width": sig.width, "fanout": sig.fanout, "module": sig.module,
+            "hw_source": str(hw), "method": "decoder_icmp_fanout(mlc)",
+            "evidence": f"union of comb.icmp-eq {sig.width}-bit decode signals in module {sig.module} "
+                        f"({sig.fanout} comparisons) -> {len(legal)} legal opcodes"}
+
+
+@contextmanager
+def _mlc_cwd():
+    """mlc resolves its ``runs/...`` arc artifacts by paths RELATIVE to its own root, so its cosim +
+    discovery entry points run with CWD = the mlc dir."""
+    d = mlc_dir()
+    prev = os.getcwd()
+    if d is not None:
+        os.chdir(d)
+    try:
+        yield
+    finally:
+        os.chdir(prev)
+
+
+def arc_available(target: str) -> bool:
+    """True iff mlc has a prebuilt arc model (.so/.o) + state manifest for ``target`` (any target)."""
+    if mlc_dir() is None:
+        return False
+    try:
+        with _mlc_on_path(), _mlc_cwd():
+            from mlc.runtime.backend import available
+            return bool(available(target))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _ensure_interface_cache(target: str) -> None:
+    from mlc.discover.cache import discovered_memory_map, dump_cache
+    try:
+        discovered_memory_map(target)
+    except Exception:  # noqa: BLE001 — build the fingerprint-gated discovery cache on demand
+        dump_cache(target)
+
+
+def arc_core(target: str):
+    """The target-AGNOSTIC ctypes arc model (mlc ``CosimCore``) for ``target``: poke/peek/step any signal
+    by NAME. Works for every target mlc compiled from RTL — the compile-from-RTL oracle primitive. The
+    high-level per-op driver (matmul-WS, SIMT, ...) is target-specific and provided by mlc; use
+    :func:`arc_run_command_buffer` for the agnostic high-level path."""
+    require_mlc()
+    if not arc_available(target):
+        raise RuntimeError(f"mlc arc model absent for target {target!r} (runs/circt-arc/{target})")
+    with _mlc_on_path(), _mlc_cwd():
+        _ensure_interface_cache(target)
+        from mlc.backends.cosim_core import CosimCore
+        from mlc.discover.fingerprint import artifact_paths
+        p = artifact_paths(target)
+        d = mlc_dir()
+        return CosimCore(str((d / p["so"]).resolve()), str((d / p["man"]).resolve()))
+
+
+def arc_run_command_buffer(cb: dict) -> dict:
+    """Answer a merlin command buffer on the RTL-derived arc model — target-AGNOSTIC (mlc infers the
+    target/config from the command buffer). Returns mlc's backend contract ``{outputs, metrics, correct,
+    oracle, ...}`` where ``metrics`` carries the RTL's internal counts (cycles, bytes_moved,
+    resident_hits, accumulator_commits, ...) — verilator-level state without verilator, for ANY target."""
+    require_mlc()
+    with _mlc_on_path(), _mlc_cwd():
+        from mlc.runtime.backend import run_command_buffer
+        return run_command_buffer(cb)

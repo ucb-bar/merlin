@@ -182,24 +182,21 @@ def extract_funct_table(isa_src: str) -> dict[str, Any]:
 
 
 # ------------------------------------------------------- decoder-derived funct set (the true ISA)
-def extract_funct_table_via_decoder(hw_path: Path) -> dict[str, Any] | None:
-    """The legal RoCC funct set derived from the HW-dialect DECODER (mlc's comb.icmp-eq fan-out) — the
-    actual ISA the silicon implements. Returns a funct-table dict (same shape as
-    :func:`extract_funct_table`, ``method='decoder_icmp_fanout'``), or None if mlc is unavailable or the
-    HW dialect cannot be parsed (e.g. a firtool/circt-opt version skew) — an honest fallback, never a
-    fake pass."""
+def extract_funct_table_via_decoder(target: str = "gemmini") -> dict[str, Any] | None:
+    """The legal command-opcode set derived from the HW-dialect DECODER (mlc's comb.icmp-eq fan-out) —
+    the actual ISA the silicon implements. Target-parameterized (mlc resolves the target's core HW
+    dialect). Returns a table dict (same shape as :func:`extract_funct_table`), or None if mlc is
+    unavailable or the HW dialect cannot be parsed — an honest fallback, never a fake pass."""
     try:
         from . import mlc_bridge
-        ok, why = mlc_bridge.mlc_available()
-        if not ok:
+        if not mlc_bridge.mlc_available()[0]:
             return None
-        # Prefer mlc's version-matched CORE HW dialect (parseable + carries the decoder); fall back to
-        # the passed hw_path only if mlc has no prebuilt core dialect.
-        core_hw = mlc_bridge.gemmini_core_hw_mlir()
-        res = mlc_bridge.discover_legal_functs(core_hw or hw_path)
+        # Agnostic extraction: mlc resolves the target's version-matched core HW dialect (the passed
+        # hw_path is only a legacy fallback for the accumulator/mesh path). ``target`` is a parameter.
+        res = mlc_bridge.discover_legal_opcodes(target)
     except Exception:  # noqa: BLE001 — a parse/version skew means "no decoder facts", fall back cleanly
         return None
-    legal = res.get("legal_funct")
+    legal = res.get("legal_opcodes")
     if not legal:
         return None
     return {
@@ -208,7 +205,7 @@ def extract_funct_table_via_decoder(hw_path: Path) -> dict[str, Any] | None:
         "funct3": FUNCT3,
         "legal_funct": legal,
         "names": {},  # the decoder yields numeric codes; names are cross-referenced from the header below
-        "hw_source": str(core_hw) if core_hw else str(hw_path),
+        "hw_source": res.get("hw_source"),
         "method": res.get("method", "decoder_icmp_fanout(mlc)"),
         "evidence": res.get("evidence", "mlc decoder comb.icmp-eq fan-out"),
     }
@@ -259,7 +256,7 @@ def build_facts(hw_path: Path = DEFAULT_HW, isa_path: Path = GEMMINI_ISA,
     # header parse when mlc / a version-matched HW dialect is unavailable — recording which method was
     # used and, when both are available, the header-vs-decoder discrepancy as evidence.
     header_funct = extract_funct_table(isa_path.read_text(errors="replace")) if isa_path.is_file() else None
-    decoder_funct = extract_funct_table_via_decoder(hw_path) if hw_path.is_file() else None
+    decoder_funct = extract_funct_table_via_decoder("gemmini")  # target param; mlc resolves the HW dialect
     funct = _reconcile_funct(decoder_funct, header_funct)
     if funct:
         v1.setdefault("interfaces", []).append(funct)

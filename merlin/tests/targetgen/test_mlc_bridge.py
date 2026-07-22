@@ -38,27 +38,24 @@ def test_reconcile_falls_back_to_header_when_no_decoder():
 
 
 # --------------------------------------------------------------------------- honest fallback
-def test_decoder_extraction_returns_none_on_unparseable_hw(tmp_path, monkeypatch):
-    """With NO version-matched core HW dialect available and an unparseable fallback input, the decoder
-    path returns None — a clean fallback to the header parse, never a crash or a fake pass."""
-    monkeypatch.setattr(B, "gemmini_core_hw_mlir", lambda: None)  # simulate: no prebuilt core dialect
-    bad = tmp_path / "bad.hw.mlir"
-    bad.write_text("this is not valid mlir\n")
-    assert C.extract_funct_table_via_decoder(bad) is None
+def test_decoder_extraction_returns_none_when_no_core_hw(monkeypatch):
+    """With NO version-matched core HW dialect available for the target, the decoder path returns None —
+    a clean fallback to the header parse, never a crash or a fake pass."""
+    monkeypatch.setattr(B, "core_hw_mlir", lambda target: None)  # simulate: no prebuilt core dialect
+    assert C.extract_funct_table_via_decoder("gemmini") is None
 
 
 # --------------------------------------------------------------------------- B2 end-to-end (mlc-gated)
-@pytest.mark.skipif(not _MLC_OK or B.gemmini_core_hw_mlir() is None,
-                    reason="mlc / prebuilt Gemmini core HW dialect not available")
-def test_decoder_derived_funct_fixes_the_header_set():
-    """The decisive B1/B2 result: the decoder-derived legal funct set (from mlc's version-matched core
-    HW dialect) drops the phantom header funct 25 and adds the real decoded funct 126 the header omits."""
-    funct = C.extract_funct_table_via_decoder(C.DEFAULT_HW)  # DEFAULT_HW is ignored — core dialect wins
+@pytest.mark.skipif(not _MLC_OK or B.core_hw_mlir("gemmini") is None,
+                    reason="mlc / prebuilt core HW dialect not available for the example target")
+def test_decoder_derived_opcode_set_fixes_the_header_set():
+    """The decisive B1/B2 result on the gemmini example target: the decoder-derived legal opcode set
+    (from mlc's version-matched core HW dialect) drops the phantom header code 25 and adds the real
+    decoded code 126 the header omits. Same agnostic path works for any target."""
+    funct = C.extract_funct_table_via_decoder("gemmini")
     assert funct is not None and funct["method"].startswith("decoder_icmp_fanout")
     legal = set(funct["legal_funct"])
-    assert 25 not in legal and 126 in legal          # phantom dropped, real decoded funct added
-    assert "ReservationStation" in funct["evidence"]
-    # the phantom/missing discrepancy is recorded when reconciled against the header parse
+    assert 25 not in legal and 126 in legal          # phantom dropped, real decoded code added
     header = C.extract_funct_table(C.GEMMINI_ISA.read_text(errors="replace"))
     reconciled = C._reconcile_funct(funct, header)
     assert reconciled["header_only_functs"] == [25] and reconciled["decoder_only_functs"] == [126]
@@ -75,3 +72,15 @@ def test_require_mlc_raises_when_unavailable(monkeypatch):
     monkeypatch.setattr(B, "mlc_dir", lambda: None)
     with pytest.raises(RuntimeError, match="mlc unavailable"):
         B.require_mlc()
+
+
+# --------------------------------------------------------------------------- arc oracle (B2, mlc-gated)
+@pytest.mark.skipif(not _MLC_OK or not B.arc_available("gemmini"),
+                    reason="mlc / prebuilt arc model not available for the example target")
+def test_arc_core_loads_rtl_model_for_target():
+    """The compile-from-RTL oracle primitive, TARGET-AGNOSTIC: arc_core(target) loads mlc's arcilator
+    model for any target (gemmini here as the example argument) and exposes its state by NAME — the
+    basis for internal-state probes spike cannot give, without verilator."""
+    core = B.arc_core("gemmini")
+    assert core.num_state_bytes > 0                 # a real RTL model loaded from mlc's arc .so
+    assert core.manifest_port_names()               # named input/output ports discovered from the RTL
