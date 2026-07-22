@@ -3,8 +3,8 @@ title: model2MLIR frontend
 kind: guide
 status: current
 owner: frontends
-last_verified: 2026-07-10
-related: [lowering_pipeline, reproducibility]
+last_verified: 2026-07-22
+related: [getting_started, lowering_pipeline, reproducibility, rvv_e2e]
 code_refs: [merlin/python/merlin/frontends]
 ---
 
@@ -15,6 +15,23 @@ code_refs: [merlin/python/merlin/frontends]
 externalized to safetensors, `prov.*` provenance on every op). Merlin treats it as a
 frontend: `merlin/python/merlin/frontends/` parses its artifacts and lifts matmul
 facts into the contract → schedule → interface → target → runtime pipeline.
+
+## Prerequisites
+
+**Shared base:** complete the base install + `.env` setup in [Getting started](getting_started.md)
+first (`uv sync --all-extras`, `cp .env.example .env`).
+
+**Workflow-specific prerequisites:**
+
+- **Required — a model2MLIR checkout**: clone
+  [`ucb-bar/model2MLIR`](https://github.com/ucb-bar/model2MLIR) and point `MERLIN_M2M_DIR` (and
+  `MODEL2MLIR_DIR`) at it; the compile path runs inside `MERLIN_M2M_VENV` (defaults to
+  `$MERLIN_M2M_DIR/.venv`). The setup script below creates both m2m's torch/torch-mlir venv and a
+  dedicated capture venv.
+- **Required for capturing (not for ingesting committed bundles)** — the model's own weights/repo,
+  reachable from the capture venv. A full smolVLA capture is RAM-heavy (~80 GB peak); the committed
+  bundle artifacts ingest without re-capture.
+- Confirm the `llvm_m2m_toolchain` capability with `check_repro_env.py`.
 
 ## Setup
 

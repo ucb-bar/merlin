@@ -3,14 +3,22 @@ title: Design-space exploration
 kind: guide
 status: current
 owner: dse
-last_verified: 2026-07-10
-related: [search, compilation_strategies, design_pressure]
+last_verified: 2026-07-22
+related: [getting_started, search, compilation_strategies, design_pressure, dse_guidance]
 code_refs: [merlin/python/merlin/dse]
 ---
 
 # Design-space exploration (Workstream 3, part B)
 
 Compare variants for a candidate feature using a **measurable** cost model.
+
+## Prerequisites
+
+**Shared base only.** Complete the base install in [Getting started](getting_started.md)
+(`uv sync --all-extras`); this workflow runs entirely on the committed workload fixtures + the
+analytical cost model and needs **no** external toolchain or board. `.[kernels-plots]` (matplotlib) is
+optional, for figures. Measured (rather than analytical) cost inputs come from an `aet` run — see
+[DSE guidance](dse_guidance.md).
 
 ## Variants
 

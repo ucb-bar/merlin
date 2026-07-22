@@ -3,12 +3,21 @@ title: Target generation
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-07-14
-related: [adding_a_target, experiment_abi, generated_target_repos]
+last_verified: 2026-07-22
+related: [getting_started, adding_a_target, experiment_abi, generated_target_repos]
 code_refs: [merlin/python/merlin/targetgen]
 ---
 
 # TargetGen (Workstream 1)
+
+## Prerequisites
+
+**Shared base + the `targetgen` extra.** Complete the base install in
+[Getting started](getting_started.md) (`uv sync --all-extras` installs it; otherwise
+`pip install -e '.[targetgen]'` for the `jsonschema` fail-closed contract checks). TargetGen is
+deterministic and has **no** LLM calls, no external toolchain, and no board dependency — it runs on the
+in-tree contracts/examples. RTL-grounded targets additionally use the `circt_firtool` capability
+(`firtool`/`FileCheck` on PATH); see [Adding a target](adding_a_target.md).
 
 Pipeline:
 

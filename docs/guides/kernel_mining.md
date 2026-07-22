@@ -3,8 +3,8 @@ title: Kernel abstraction mining
 kind: guide
 status: current
 owner: kernels
-last_verified: 2026-07-14
-related: [integrations, dse, rvv_kernel_mining_methodology]
+last_verified: 2026-07-22
+related: [getting_started, integrations, dse, beam_search, rvv_kernel_mining_methodology]
 code_refs: [merlin/python/merlin/kernels]
 ---
 
@@ -12,6 +12,22 @@ code_refs: [merlin/python/merlin/kernels]
 
 Extract optimization **decisions** (not constants) from existing kernels and turn the ones that
 recur across many kernels into compiler-consumable policies and abstraction candidates.
+
+## Prerequisites
+
+**Shared base:** complete the base install in [Getting started](getting_started.md)
+(`uv sync --all-extras` installs the `kernels-*` extras below).
+
+**Workflow-specific prerequisites:**
+
+- **Required — the external kernel-source repos** you want to mine, passed by `MERLIN_<SOURCE>_REPO`
+  (e.g. `MERLIN_XNNPACK_REPO`, `MERLIN_OPENBLAS_REPO`, `MERLIN_EXO_REPO`, `MERLIN_TRITON_REPO`,
+  `MERLIN_AUTOCOMP_REPO`) — never vendored. See [Integrations](integrations.md).
+- **Extras**: `.[kernels-ast]` (AST parsing), `.[kernels-exo]` (Exo compile-to-C ingest),
+  `.[kernels-parquet]` (columnar table), `.[kernels-plots]` (matplotlib).
+- **Optional — `ANTHROPIC_API_KEY`** (+ `MERLIN_LLM_MODEL`) for the bounded `--llm-summary` /
+  `--llm-judge` escalation; every artifact exists without a key (deterministic outputs are the source
+  of truth). Mining runs no kernels and needs no board or simulator.
 
 ```
 XNNPACK RVV / OpenBLAS RVV / Autocomp (Gemmini) / Exo (compiled C + schedule .py)

@@ -4,7 +4,7 @@ kind: guide
 status: current
 owner: targetgen
 last_verified: 2026-07-22
-related: [targetgen, adding_a_target, target_publishing, experiment_abi]
+related: [getting_started, reproducibility, targetgen, adding_a_target, target_publishing, experiment_abi]
 code_refs:
   - merlin/experiments/gemmini_capsule_bench_v0
   - merlin/experiments/gemmini_cert
@@ -41,13 +41,27 @@ target.) The same four submissions are re-profiled as perf-bench backends (§4).
 
 ## 0. Prerequisites (all resolve via `.env` — never hard-code)
 
-- **chia venv** (only if using the Chia fan-out): `build/chia-venv` —
-  `uv venv build/chia-venv --python 3.13 && uv pip install --python build/chia-venv -e /path/to/chia -e .`
-- **sim toolchain** via `ext_path('chipyard')` / `.env MERLIN_CHIPYARD` → `.conda-env/riscv-tools/bin`
-  (spike, riscv64-unknown-elf-gcc) + `sims/verilator`. Clang-23 via `MERLIN_CLANG_INSTALL`. The bwrap
-  toolchain binds (`scripts/sandbox_toolchain.py`) and the driver-side sim broker (`simjob_broker.py`)
-  both read these from `.env`. `bwrap` (bubblewrap) must be on `PATH`.
-- **`.compat_lib/libidn.so.11 → .so.12`** shim at the repo root (the conda cmake needs `.so.11`).
+**Shared base:** complete the base install + `.env` setup in [Getting started](getting_started.md)
+first, then `check_repro_env.py` to confirm the Gemmini capabilities (`gemmini_spike`,
+`gemmini_verilator`, `chia`, `llm_api`) are runnable here.
+
+**Workflow-specific prerequisites:**
+
+- **Required — `bwrap` (bubblewrap) on `PATH`**: the cheat-proof sandbox that filesystem-isolates the
+  agent (`scripts/sandbox_toolchain.py`).
+- **Required — sim toolchain** via `ext_path('chipyard')` / `.env MERLIN_CHIPYARD` →
+  `.conda-env/riscv-tools/bin` (spike, riscv64-unknown-elf-gcc) + `sims/verilator`. Clang-23 via
+  `MERLIN_CLANG_INSTALL`. The bwrap toolchain binds and the driver-side sim broker
+  (`simjob_broker.py`) both read these from `.env`. spike (L2) + verilator (L3) fully certify;
+  **VCS (L4) and FireSim (L5) are not fresh-machine reproducible** (Synopsys license / FPGA — see
+  [Getting started §5](getting_started.md)) and fail-closed to `not_run`.
+- **Required for a REAL agentic run — `ANTHROPIC_API_KEY`** (+ optional `MERLIN_LLM_MODEL`). Unset ⇒
+  the proposer uses its deterministic mock fallback: the sandbox/cert/perf gates still run, but no real
+  agentic authoring happens.
+- **Optional — chia venv** (only for the Chia fan-out): the isolated `out/build/chia-venv` (never the
+  main `.venv`) —
+  `uv venv out/build/chia-venv --python 3.13 && uv pip install --python out/build/chia-venv -e /path/to/chia -e .`
+- **Required — `.compat_lib/libidn.so.11 → .so.12`** shim at the repo root (the conda cmake needs `.so.11`).
 
 ## 1. Prove the sandbox BEFORE any spend (mandatory gate)
 

@@ -3,12 +3,25 @@ title: DSE guidance
 kind: guide
 status: current
 owner: dse
-last_verified: 2026-07-14
-related: [dse, design_pressure]
+last_verified: 2026-07-22
+related: [getting_started, dse, design_pressure]
 code_refs: [merlin/python/merlin/dse_guidance]
 ---
 
 # DSE Guidance — Workload-Contract Analysis
+
+## Prerequisites
+
+**Shared base:** complete the base install in [Getting started](getting_started.md)
+(`uv sync --all-extras`). The **structural** analysis (topology / fidelity / candidates) runs on the
+committed captures + fixtures with **no** external toolchain. Two optional inputs upgrade the evidence:
+
+- **Optional — a measured `aet` run** (`--aet-run`) grounds the CPU-coupling / dispatch leg; without it
+  the tool prints the honest `CPU coupling result unavailable` message and emits no calibration anchor.
+- **Optional — the sim toolchain** (`MERLIN_CHIPYARD` / `spike`): cycle-exact per-component calibration
+  needs isolated microbenchmarks on chipyard/spike or FireSim, which are **board/sim-gated and not
+  fresh-machine reproducible** (see [Getting started §5](getting_started.md)). Absent it, magnitudes
+  stay `analytical`/`uncalibrated` (clearly tagged) and the structural/legality results still stand.
 
 ## Framing
 

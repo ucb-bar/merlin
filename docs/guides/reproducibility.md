@@ -24,6 +24,7 @@ same inputs → same `out/…` products; run dirs + versioned products carry a `
 
 | I want to… | Guide(s) | Detailed workflow below |
 |---|---|---|
+| **compile (+build/run/verify) a workload with ONE command** | this guide | **§0** |
 | set up the environment / see the CLI surface | [getting_started](getting_started.md), [CLI](../reference/cli.md) | — |
 | generate a new target dialect from a contract | [targetgen](targetgen.md), [adding_a_target](adding_a_target.md) | §1 |
 | improve the compiler from expert kernels (mine → beam) | [kernel_mining](kernel_mining.md), [beam_search](beam_search.md), [rvv_kernel_mining_methodology](../reference/rvv_kernel_mining_methodology.md) | §2 |
@@ -37,6 +38,29 @@ same inputs → same `out/…` products; run dirs + versioned products carry a `
 | understand the compiler internals | [architecture](../reference/architecture.md), [lowering_pipeline](../reference/lowering_pipeline.md), [llvm_integration](llvm_integration.md), [compilation_strategies](compilation_strategies.md) | — |
 | find where code/tests/docs/output live | [repo_structure](../reference/repo_structure.md), [merlin_layout](../reference/merlin_layout.md) | — |
 | compare against external frameworks (TVM/ExecuTorch/…) | [integrations](integrations.md) | §7 |
+
+## 0. Compile a workload with one command (`merlin-compile`)
+
+**Purpose.** The single front door over the whole compile pipeline — name a workload + target and it
+handles the rest (resolve/auto-capture the bundle → lower → cross-compile → optionally run → gate vs
+golden). Use this when you just want "compile model X"; drop to the detailed workflows below only when
+you need to customize a stage.
+
+```bash
+# RVV — compile a whole captured model, build, run on the K1, verify vs golden (auto-captures if absent):
+merlin-compile --workload bitvla --dtype int8 --target rvv --run k1        # --run none = compile only
+# Gemmini — build the OOT backend package + run a capsule on spike, three-way gated:
+merlin-compile --target gemmini --workload A2_single_tile_matmul --run spike
+```
+
+`--target rvv` treats the workload as a captured MODEL (`lower_model_file → build_k1_binary →
+run_on_k1 → gate`); `--target gemmini` treats it as a capsule run through an OOT package
+(`oot_runner` build + certify) — the accelerator runs kernels, not whole VLA models. `--run`
+∈ `none|host|k1|spike|verilator` (default rvv→k1, gemmini→spike); `--no-capture` fails with the capture
+command instead of auto-capturing; `--json` for machine output. Fail-closed: a missing toolchain/board/
+sim reports a clear `status`, never a fake pass. Prereqs: [getting_started](getting_started.md) (the RVV
+run needs the K1 board or spike; the Gemmini run needs the sim toolchain). This CLI only orchestrates
+the same API the detailed workflows use — see §4 (capture), §6 (gemmini), §7 (run on hardware).
 
 ## 1. Generate a new target dialect
 

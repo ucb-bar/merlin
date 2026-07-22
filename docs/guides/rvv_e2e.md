@@ -3,7 +3,7 @@ title: RVV end-to-end — lower a model through model2MLIR and run it on the Mer
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-07-16
+last_verified: 2026-07-22
 related: [model2mlir, reproducibility, getting_started, kernel_mining]
 code_refs:
   - merlin/python/merlin/runtime/dispatch_runtime.py
@@ -28,20 +28,30 @@ This guide stitches the four stages into one runnable sequence. For the capture-
 honest quantization status see [model2MLIR frontend](model2mlir.md); for the workflow index see
 [Reproducibility](reproducibility.md).
 
-## 0. Environment
+## 0. Prerequisites
 
-All external toolchains are resolved from the gitignored `.env` (a process env var wins, then `.env`,
-then a default — via `merlin.common.paths.env`). Copy `.env.example` → `.env` and set the paths for the
-stages you want. Then confirm what will really run vs skip:
+**Shared base:** do the base install + `.env` setup in [Getting started](getting_started.md) first
+(`uv sync --all-extras`, `cp .env.example .env`). All external toolchains resolve from the gitignored
+`.env` (a process env var wins, then `.env`, then a default — via `merlin.common.paths.env`). Confirm
+what will really run vs skip:
 
 ```bash
 .venv/bin/python build_tools/scripts/check_repro_env.py
 ```
 
-The RVV path uses these capabilities (from the preflight): `xdsl`, `llvm_m2m_toolchain` (model2MLIR +
-clang-23), `spike_rv64gcv` / `saturn_vec` (the spike oracle), and `k1_board` (the real board — needs it
-reachable, not just env). Key `.env` keys: `MERLIN_M2M_DIR`, `MERLIN_M2M_VENV`, `MERLIN_CHIPYARD` (or
-`MERLIN_SPIKE`/`MERLIN_RISCV_GCC`), and for the board `MERLIN_K1_HOST` + `MERLIN_K1_SSH_KEY`.
+**Workflow-specific prerequisites for the RVV end-to-end path** (capability keys from the preflight):
+
+- **Required — `llvm_m2m_toolchain`**: model2MLIR + clang-23 (`MERLIN_M2M_DIR`, `MERLIN_M2M_VENV`,
+  `MERLIN_CLANG`); see [model2MLIR frontend](model2mlir.md) for its setup.
+- **Required — capture bundles**: at least one `out/artifacts/recaptures/<model>_<variant>_consistent/`
+  bundle (§1); committed bundles ingest without re-capture.
+- **Required — `spike_rv64gcv`** (the bit-exact verifier): `MERLIN_CHIPYARD` (or `MERLIN_SPIKE` /
+  `MERLIN_RISCV_GCC`). `saturn_vec` uses the same chipyard checkout.
+- **Optional — `k1_board`** (real on-silicon cycles, §4): `MERLIN_K1_HOST` + `MERLIN_K1_SSH_KEY`, and
+  the board reachable. The physical board is **not fresh-machine reproducible**; **spike rv64gcv is the
+  fallback** — it gives bit-exact RVV correctness (stages 2–3), and the board step records `not_run`
+  when absent rather than a fabricated pass. See [Getting started §5](getting_started.md) for the K1
+  port-2222 note and the honest board caveat.
 
 ## 1. Capture — model → MLIR bundle (model2MLIR)
 

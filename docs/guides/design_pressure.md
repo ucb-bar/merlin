@@ -3,12 +3,18 @@ title: Design pressure
 kind: guide
 status: current
 owner: design_pressure
-last_verified: 2026-07-10
-related: [dse]
+last_verified: 2026-07-22
+related: [getting_started, dse, dse_guidance]
 code_refs: [merlin/python/merlin/design_pressure]
 ---
 
 # Design pressure (Workstream 3, part A)
+
+## Prerequisites
+
+**Shared base only.** Complete the base install in [Getting started](getting_started.md)
+(`uv sync --all-extras`); this workflow runs on the committed `workload_region.yaml` inputs and needs
+**no** external toolchain, simulator, or board.
 
 Pipeline:
 

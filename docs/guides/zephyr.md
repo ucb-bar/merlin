@@ -3,8 +3,8 @@ title: Zephyr runtime backend
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-07-14
-related: [runtime]
+last_verified: 2026-07-22
+related: [getting_started, reproducibility, runtime]
 code_refs: [merlin/python/merlin/runtime/backends/zephyr_model.py]
 ---
 
@@ -18,6 +18,20 @@ runtime dialect
   -> Merlin generic runtime API  (merlin_submit / merlin_wait / merlin_get_metrics)
   -> target-specific Zephyr driver (MMIO / DMA / interrupts / counters)
 ```
+
+## Prerequisites
+
+**Shared base:** complete the base install + `.env` setup in [Getting started](getting_started.md)
+first, then `check_repro_env.py` to confirm the `zephyr_spike` capability is runnable here.
+
+**Workflow-specific prerequisites** (only for building/running the whole-model `build_app` path; the
+generic module-layout description below needs none):
+
+- **Required — Zephyr SW workspace + SDK 0.17.0**: `MERLIN_ZEPHYR_SW` (workspace root), `ZEPHYR_BASE`
+  (the zephyr tree), `ZEPHYR_SDK_INSTALL_DIR`.
+- **Required — spike** via `MERLIN_CHIPYARD` (or `MERLIN_SPIKE`) for the SMP RVV-on-Saturn run.
+- **Optional — FireSim** (2-tile SMP) is board/FPGA-gated and **not fresh-machine reproducible** (see
+  [Getting started §5](getting_started.md)); **spike substitutes** for the functional whole-model run.
 
 ## Generated module layout
 

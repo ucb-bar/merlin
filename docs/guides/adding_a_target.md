@@ -3,8 +3,8 @@ title: Adding a target
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-07-14
-related: [targetgen, generated_target_repos]
+last_verified: 2026-07-22
+related: [getting_started, targetgen, generated_target_repos]
 code_refs: [merlin/python/merlin/targetgen]
 ---
 
@@ -12,6 +12,14 @@ code_refs: [merlin/python/merlin/targetgen]
 
 Toy/reference targets live in-tree under `merlin/targets/`. Serious targets should become external
 repos or MLIR plugins.
+
+## Prerequisites
+
+**Shared base + the `targetgen` extra.** Complete the base install in
+[Getting started](getting_started.md) (`uv sync --all-extras`, or `pip install -e '.[targetgen]'`). The
+scaffold-generation steps below need **no** external toolchain. An RTL-grounded target additionally
+needs the `circt_firtool` capability (`firtool`/`FileCheck` on PATH) to promote
+`contracts/rtl_facts/facts.json`; confirm it with `check_repro_env.py`.
 
 ## Steps
 

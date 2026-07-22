@@ -3,8 +3,8 @@ title: RVV beam search — reproducible expert-driven compiler improvement, gate
 kind: guide
 status: current
 owner: rvvgen
-last_verified: 2026-07-20
-related: [kernel_mining, rvv_e2e, adding_a_target, dse_guidance]
+last_verified: 2026-07-22
+related: [getting_started, reproducibility, kernel_mining, rvv_e2e, adding_a_target, dse_guidance]
 code_refs:
   - merlin/python/merlin/rvvgen/beam.py
   - merlin/python/merlin/rvvgen/beam_cli.py
@@ -59,10 +59,25 @@ Every step below is fail-closed; a missing board / toolchain records `not_run`, 
 
 ### 0. Prerequisites
 
-- The frozen baseline exists at `out/artifacts/targets/rvv/hand_v0/`.
-- The K1 board + SpacemiT toolchain are reachable — set `MERLIN_K1_HOST`, `MERLIN_K1_SSH_KEY`,
-  `MERLIN_K1_TOOLCHAIN` in `.env` (see `rvvgen/k1.py`). Check with
-  `.venv/bin/python -c "from merlin.rvvgen import k1; print(k1.available())"`.
+**Shared base:** complete the base install + `.env` setup in [Getting started](getting_started.md)
+first, then `check_repro_env.py` to see what is runnable here.
+
+**Workflow-specific prerequisites for the beam:**
+
+- **Required — frozen baseline** at `out/artifacts/targets/rvv/hand_v0/` (tracked in-tree; the seed the
+  beam forks from and asserts byte-unchanged).
+- **Required — expert CCA fixtures**: decoded objdumps under `merlin/tests/data/cca_asm/` (e.g.
+  `xnnpack_f32_gemm_rvv.objdump`); whole-model cells also need capture bundles under
+  `out/artifacts/recaptures/` (see [model2MLIR frontend](model2mlir.md)) and per-dtype expert fixtures.
+- **Required — a measurement substrate.** The board path (`k1_board`) needs the K1 reachable —
+  `MERLIN_K1_HOST`, `MERLIN_K1_SSH_KEY`, `MERLIN_K1_TOOLCHAIN` (see `rvvgen/k1.py`); check with
+  `.venv/bin/python -c "from merlin.rvvgen import k1; print(k1.available())"`. **The physical K1 board
+  is not fresh-machine reproducible** (see [Getting started §5](getting_started.md), incl. the SSH
+  port-2222 note); **spike rv64gcv is the correctness/cycles fallback** — only the real-wall-clock
+  *speedup* claim requires the board, and a fork records `not_run` above the noise floor rather than a
+  fabricated win. Run on a **quiet board** (K1 noise floor ≥1.9%, ≥4.3% under contention).
+- **Optional — `chia`**: only for the Ray fan-out driver (`rvv_chia_beam.py`), which runs under the
+  isolated `out/build/chia-venv` (never the main `.venv`). The plain `merlin-rvv-beam` path needs no chia.
 
 ### 1. Freeze + publish the baseline branch (the control)
 
