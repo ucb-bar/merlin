@@ -73,15 +73,12 @@ def _is_routable(at: str, bt: str, ct: str, rt: str) -> bool:
     return True
 
 
-def rewrite_matmuls_to_xnn(mlir_text: str) -> tuple[str, int]:
-    """Replace every routable 2-D f32 ``linalg.matmul`` with ``call @merlin_xnn_gemm_f32``.
-
-    Returns ``(rewritten_text, n_routed)``. MLIR func types are monomorphic, so we emit one
-    numbered decl ``@merlin_xnn_gemm_f32_<i>`` per distinct (A,B,C,R) type signature. Each maps,
-    at link time, to a thin C alias of the single signature-agnostic shim entry
-    ``merlin_xnn_gemm_f32`` (which reads M/N/K from the memref descriptors) — see
-    :func:`build_xnn_object`.
-    """
+def _rewrite_matmuls(mlir_text: str, sym_base: str) -> tuple[str, int]:
+    """Replace every routable 2-D f32 ``linalg.matmul`` with ``call @<sym_base>_<i>``, one numbered
+    decl per distinct (A,B,C,R) signature (MLIR func types are monomorphic). Each links to a thin C
+    alias of the signature-agnostic shim entry ``<sym_base>``. Shared by the f32 (:func:`rewrite_matmuls_to_xnn`)
+    and dynamic-int8 (:func:`rewrite_matmuls_to_qd8`) board arms — they route the SAME f32 matmuls and
+    differ only in the shim the symbol links to (plain f32 GEMM vs a dynamically-quantized qd8 GEMM)."""
     sigs: dict[tuple, str] = {}     # (at,bt,ct,rt) -> decl sym name
     n = 0
 
@@ -93,7 +90,7 @@ def rewrite_matmuls_to_xnn(mlir_text: str) -> tuple[str, int]:
         key = (at, bt, ct, rt)
         sym = sigs.get(key)
         if sym is None:
-            sym = f"merlin_xnn_gemm_f32_{len(sigs)}"
+            sym = f"{sym_base}_{len(sigs)}"
             sigs[key] = sym
         n += 1
         return (f"{m['res']} = call @{sym}({m['a']}, {m['b']}, {m['c']}) : "
@@ -103,7 +100,6 @@ def rewrite_matmuls_to_xnn(mlir_text: str) -> tuple[str, int]:
     if n == 0:
         return mlir_text, 0
 
-    # Emit one private decl per distinct signature, just inside the top `module {`.
     decls = []
     for (at, bt, ct, rt), sym in sigs.items():
         decls.append(
@@ -112,14 +108,30 @@ def rewrite_matmuls_to_xnn(mlir_text: str) -> tuple[str, int]:
             f'%b: tensor<{bt}> {{bufferization.access = "read"}}, '
             f'%c: tensor<{ct}> {{bufferization.access = "write"}}) -> tensor<{rt}>')
     decl_block = "  " + "\n  ".join(decls) + "\n"
-    # Insert the decls just before the first top-level func.func (the forward), i.e. inside the
-    # module body — NOT after `module ... {`, which for `builtin.module attributes {...} {` would
-    # land inside the attribute dictionary.
+    # Insert the decls just before the first top-level func.func (the forward), inside the module body.
     mi = re.search(r"\n(\s*)func\.func @", body)
     if mi is None:                              # no func to anchor on (unexpected)
         return body, n
     pos = mi.start() + 1                        # after the newline, before the func
     return body[:pos] + decl_block + body[pos:], n
+
+
+def rewrite_matmuls_to_xnn(mlir_text: str) -> tuple[str, int]:
+    """Route every routable 2-D f32 ``linalg.matmul`` to the plain-f32 RVV GEMM shim
+    (``@merlin_xnn_gemm_f32``). Returns ``(rewritten_text, n_routed)``."""
+    return _rewrite_matmuls(mlir_text, "merlin_xnn_gemm_f32")
+
+
+def rewrite_matmuls_to_qd8(mlir_text: str) -> tuple[str, int]:
+    """Route every routable 2-D f32 ``linalg.matmul`` to the DYNAMICALLY-QUANTIZED int8 shim
+    (``@merlin_xnn_qd8_gemm``), which per-row dynamic-quantizes the activation to int8 + params and
+    drives ``xnn_qd8_f32_qc8w_gemm_minmax_ukernel_*__rvv`` with the offline per-channel int8 weight,
+    producing f32. Same routable set as the f32 arm; the quantization is inside the shim.
+
+    NOTE: qd8 is LOSSY vs the f32 golden — the correctness gate for this arm must be quantization-aware
+    (a wider tolerance / an int8 reference), calibrated from a real K1 run; do NOT gate it at the f32
+    ``cos >= 0.9999`` threshold (see the board-validation gate in k1_e2e_xnnpack)."""
+    return _rewrite_matmuls(mlir_text, "merlin_xnn_qd8_gemm")
 
 
 def build_xnn_object(cc: Path, cflags: list[str], n_sigs: int, work: Path) -> Path:

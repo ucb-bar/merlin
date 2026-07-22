@@ -61,3 +61,32 @@ def test_rewrite_skips_nonroutable_matmul():
     out, n = xb.rewrite_matmuls_to_xnn(t)
     assert n == 0
     assert "linalg.matmul" in out  # untouched
+
+
+def test_qd8_rewrite_routes_same_f32_matmuls_to_qd8_symbol():
+    """The dynamic-int8 (qd8) arm routes the SAME routable f32 matmuls as the f32 arm, but to the
+    quantizing shim symbol @merlin_xnn_qd8_gemm. Structural — the numerics/gate are board-validated."""
+    t = (
+        'module {\n'
+        '  func.func @forward(%a: tensor<32x256xf32>, %b: tensor<256x128xf32>, '
+        '%c: tensor<32x128xf32>) -> tensor<32x128xf32> {\n'
+        '    %1 = linalg.matmul ins(%a, %b : tensor<32x256xf32>, tensor<256x128xf32>) '
+        'outs(%c : tensor<32x128xf32>) -> tensor<32x128xf32>\n'
+        '    return %1 : tensor<32x128xf32>\n'
+        '  }\n}\n')
+    out, n = xb.rewrite_matmuls_to_qd8(t)
+    assert n == 1
+    assert "call @merlin_xnn_qd8_gemm_0" in out
+    assert "func.func private @merlin_xnn_qd8_gemm_0" in out
+    assert "linalg.matmul" not in out
+
+
+def test_qd8_rewrite_default_off_and_non_f32_untouched():
+    # no matmul -> byte-identical (default-off)
+    t = "module {\n  func.func @f(%a: tensor<2xf32>) -> tensor<2xf32> { return %a : tensor<2xf32> }\n}\n"
+    assert xb.rewrite_matmuls_to_qd8(t) == (t, 0)
+    # an i8 matmul is not the routable f32 set -> not routed
+    t8 = ("module {\n  func.func @f(%a: tensor<8x8xi8>, %b: tensor<8x8xi8>, %c: tensor<8x8xi32>) "
+          "-> tensor<8x8xi32> {\n    %0 = linalg.matmul ins(%a, %b : tensor<8x8xi8>, tensor<8x8xi8>) "
+          "outs(%c : tensor<8x8xi32>) -> tensor<8x8xi32>\n    return %0 : tensor<8x8xi32>\n  }\n}\n")
+    assert xb.rewrite_matmuls_to_qd8(t8)[1] == 0
