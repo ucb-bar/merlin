@@ -177,15 +177,12 @@ KNOWN_OPEN: dict[str, dict[str, tuple[str, ...]]] = {
                                                # (IR) backing-field lifter deferred (see note above).
         ),
     },
-    # Gemmini (Workstream A): the spatial LEVER axes are classified, but their compiler routes land with
-    # the gemmini_features registry + _GEMMINI_ROUTES (the next increment). Until then they are orphan
-    # fields — this is exactly the "what to build next" checklist the arm-3 agent is handed, and it
-    # SHRINKS as each route lands (the reverse tripwire below fails if one is closed but left here).
+    # Gemmini (Workstream A): both spatial LEVER axes (dataflow, accumulator-residency) now route to a
+    # concrete gemmini_features seam, so the bijection is CLEAN with no allowlisted gaps. The remaining
+    # work is to make those routes forkable_now (thread GemminiCodegenOpts through emit_kernel_mlir) — a
+    # forkable-status gap surfaced by seam_location/escalation_ladder, NOT a bijection break.
     "gemmini": {
-        "orphan_fields": (
-            "spatial.accumulator_resident",
-            "spatial.dataflow",
-        ),
+        "orphan_fields": (),
         "orphan_routes": (),
     },
 }

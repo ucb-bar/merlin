@@ -396,7 +396,38 @@ _RVV_ROUTES: list[_Route] = [
         intended_facet={"memory.access_pattern": "unit_stride"}),
 ]
 
-_ROUTES: dict[str, list[_Route]] = {"rvv": _RVV_ROUTES}
+# Gemmini routes (Workstream A). Each maps a mined SpatialFacet divergence to the concrete Gemmini
+# codegen lever — a default-off gemmini_features hook. They are forkable_now=False until
+# GemminiCodegenOpts is threaded into emit_kernel_mlir (the codegen currently hardcodes WS + a per-K-tile
+# accumulator round-trip); the route still names exactly WHERE and HOW to make the change, which is the
+# "which section of the compiler do I modify" answer the arm-3 agent is handed.
+_GEMMINI_ROUTES: list[_Route] = [
+    _Route(
+        axis="spatial.dataflow",
+        when=lambda d: d.expert in ("os", "ws") and d.expert != d.ours,
+        action_class="HEURISTIC",
+        target_seam="gemmini_features:gemmini_dataflow_select",
+        change="select the systolic dataflow (WS/OS) via GemminiCodegenOpts.dataflow instead of the "
+               "codegen's fixed CFG_EX weight-stationary config (gemmini_codegen_mlir CFG_EX_RS1).",
+        forkable_now=False,
+        expected_effect="expected: OS keeps partial sums PE-resident, cutting mvin/mvout traffic for "
+                        "output-reuse-heavy tilings (not yet measured — awaiting the opts thread)",
+        intended_facet={"spatial.dataflow": "os"}),
+    _Route(
+        axis="spatial.accumulator_resident",
+        when=lambda d: bool(d.expert) and d.ours in (False, None),
+        action_class="PASS",
+        target_seam="gemmini_features:gemmini_accumulator_resident",
+        change="keep the MxN output accumulator-resident across the K reduction (accumulate in the "
+               "accumulator SRAM with ACC_ACCUM, read out once after the K-loop) via "
+               "GemminiCodegenOpts.accumulator_resident, instead of a per-K-tile round-trip.",
+        forkable_now=False,
+        expected_effect="expected: removes the per-K-tile accumulator round-trip traffic (not yet "
+                        "measured — awaiting the opts thread into emit_kernel_mlir)",
+        intended_facet={"spatial.accumulator_resident": True}),
+]
+
+_ROUTES: dict[str, list[_Route]] = {"rvv": _RVV_ROUTES, "gemmini": _GEMMINI_ROUTES}
 
 
 # The action-class escalation ladder: cheapest/weakest -> strongest. When an action's intended facet
@@ -536,6 +567,12 @@ SEAM_FILES: dict[str, tuple[str, str, bool]] = {
               "compiler flag / march feature", False),
     "pass": ("merlin/python/merlin/llvmlower/ (NEW pass module — write it, then register as an impr feature)",
              "new MLIR pass / lowering", True),
+    # Gemmini seams (Workstream A).
+    "gemmini_features": ("merlin/python/merlin/llvmlower/gemmini_features.py",
+                         "registered default-off Gemmini codegen feature (edits GemminiCodegenOpts)", False),
+    "gemmini_codegen": ("merlin/python/merlin/runtime/backends/gemmini_codegen_mlir.py",
+                        "the Gemmini RoCC tile-program emitter (thread GemminiCodegenOpts through "
+                        "emit_kernel_mlir to make a gemmini_features route forkable)", True),
 }
 
 
