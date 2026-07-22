@@ -38,12 +38,30 @@ def test_reconcile_falls_back_to_header_when_no_decoder():
 
 
 # --------------------------------------------------------------------------- honest fallback
-def test_decoder_extraction_returns_none_on_unparseable_hw(tmp_path):
-    """A HW dialect with a firtool/circt-opt version skew (or missing mlc) yields None — a clean
-    fallback to the header parse, never a crash or a fake pass."""
+def test_decoder_extraction_returns_none_on_unparseable_hw(tmp_path, monkeypatch):
+    """With NO version-matched core HW dialect available and an unparseable fallback input, the decoder
+    path returns None — a clean fallback to the header parse, never a crash or a fake pass."""
+    monkeypatch.setattr(B, "gemmini_core_hw_mlir", lambda: None)  # simulate: no prebuilt core dialect
     bad = tmp_path / "bad.hw.mlir"
     bad.write_text("this is not valid mlir\n")
     assert C.extract_funct_table_via_decoder(bad) is None
+
+
+# --------------------------------------------------------------------------- B2 end-to-end (mlc-gated)
+@pytest.mark.skipif(not _MLC_OK or B.gemmini_core_hw_mlir() is None,
+                    reason="mlc / prebuilt Gemmini core HW dialect not available")
+def test_decoder_derived_funct_fixes_the_header_set():
+    """The decisive B1/B2 result: the decoder-derived legal funct set (from mlc's version-matched core
+    HW dialect) drops the phantom header funct 25 and adds the real decoded funct 126 the header omits."""
+    funct = C.extract_funct_table_via_decoder(C.DEFAULT_HW)  # DEFAULT_HW is ignored — core dialect wins
+    assert funct is not None and funct["method"].startswith("decoder_icmp_fanout")
+    legal = set(funct["legal_funct"])
+    assert 25 not in legal and 126 in legal          # phantom dropped, real decoded funct added
+    assert "ReservationStation" in funct["evidence"]
+    # the phantom/missing discrepancy is recorded when reconciled against the header parse
+    header = C.extract_funct_table(C.GEMMINI_ISA.read_text(errors="replace"))
+    reconciled = C._reconcile_funct(funct, header)
+    assert reconciled["header_only_functs"] == [25] and reconciled["decoder_only_functs"] == [126]
 
 
 # --------------------------------------------------------------------------- bridge guard (mlc-gated)

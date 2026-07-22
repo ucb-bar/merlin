@@ -9,7 +9,8 @@
     "hw_mlir": "gemmini_soc.hw.mlir",
     "hw_sha": "b07472562dbbb873",
     "fir_sha": "fbc95eabdc7fc740",
-    "isa_sha": "812cba090cf85b2b"
+    "isa_sha": "812cba090cf85b2b",
+    "extractor_sha": "a849ec4343f6542d"
   },
   "facts": {
     "target": "gemmini",
@@ -103,7 +104,7 @@
           22,
           23,
           24,
-          25
+          126
         ],
         "names": {
           "0": "CONFIG_CMD",
@@ -131,9 +132,17 @@
           "22": "CLKGATE_EN",
           "23": "STORE_SPAD_CMD",
           "24": "LOOP_WS_CONFIG_SPAD_AB",
-          "25": "LOOP_WS_CONFIG_SPAD_C"
+          "126": "?"
         },
-        "evidence": "GemminiISA.scala // funct values block: 26 codes [0..25] up to CONFIG_EX"
+        "hw_source": "/scratch2/agustin/mvp-lhwir/modeling/runs/circt-arc/gemmini/outputs/Gemmini_core_hw.mlir",
+        "method": "decoder_icmp_fanout(mlc)",
+        "evidence": "union of comb.icmp-eq 7-bit decode signals in module ReservationStation (29 comparisons) -> 26 legal functs; vs header: phantom=[25] missing=[126]",
+        "header_only_functs": [
+          25
+        ],
+        "decoder_only_functs": [
+          126
+        ]
       }
     ]
   }

@@ -40,6 +40,19 @@ def circt_opt_bin() -> Path | None:
     return b if b.exists() else None
 
 
+def gemmini_core_hw_mlir() -> Path | None:
+    """mlc's prebuilt, VERSION-MATCHED Gemmini CORE HW dialect (contains the RoCC decoder, module
+    ``ReservationStation``). This is the parseable input for decoder-derived ISA extraction: our own
+    cached firtool output has a circt-opt version skew (``sv.macro.ref`` arity), and the SoC-level
+    dialect additionally carries unparseable ``sv.verbatim`` blackbox blobs — the CORE dialect has
+    neither, so mlc's own firtool output is the right ground-truth input."""
+    d = mlc_dir()
+    if d is None:
+        return None
+    p = d / "runs" / "circt-arc" / "gemmini" / "outputs" / "Gemmini_core_hw.mlir"
+    return p if p.exists() else None
+
+
 @contextmanager
 def _mlc_on_path():
     d = mlc_dir()

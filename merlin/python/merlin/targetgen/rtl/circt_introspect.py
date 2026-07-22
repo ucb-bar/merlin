@@ -193,7 +193,10 @@ def extract_funct_table_via_decoder(hw_path: Path) -> dict[str, Any] | None:
         ok, why = mlc_bridge.mlc_available()
         if not ok:
             return None
-        res = mlc_bridge.discover_legal_functs(hw_path)
+        # Prefer mlc's version-matched CORE HW dialect (parseable + carries the decoder); fall back to
+        # the passed hw_path only if mlc has no prebuilt core dialect.
+        core_hw = mlc_bridge.gemmini_core_hw_mlir()
+        res = mlc_bridge.discover_legal_functs(core_hw or hw_path)
     except Exception:  # noqa: BLE001 — a parse/version skew means "no decoder facts", fall back cleanly
         return None
     legal = res.get("legal_funct")
@@ -205,6 +208,7 @@ def extract_funct_table_via_decoder(hw_path: Path) -> dict[str, Any] | None:
         "funct3": FUNCT3,
         "legal_funct": legal,
         "names": {},  # the decoder yields numeric codes; names are cross-referenced from the header below
+        "hw_source": str(core_hw) if core_hw else str(hw_path),
         "method": res.get("method", "decoder_icmp_fanout(mlc)"),
         "evidence": res.get("evidence", "mlc decoder comb.icmp-eq fan-out"),
     }
