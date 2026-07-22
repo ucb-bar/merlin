@@ -56,6 +56,10 @@ _BUNDLE = {  # (dtype, model) -> recapture bundle
     ("int8", "bitvla"): "out/artifacts/recaptures/bitvla_int8_consistent",
     ("int8", "openvla"): "out/artifacts/recaptures/openvla_int8_consistent",
     ("int8", "rdt2"): "out/artifacts/recaptures/rdt2_int8_consistent",
+    # fp16 consistent bundles (recaptured via capture_consistent, matching the fp32 layer depth).
+    # openvla fp16 is omitted: openvla is K1 RAM-infeasible whole-model (7B-class vs 3.8GB board).
+    ("fp16", "bitvla"): "out/artifacts/recaptures/bitvla_fp16_consistent",
+    ("fp16", "rdt2"): "out/artifacts/recaptures/rdt2_fp16_consistent",
 }
 
 
