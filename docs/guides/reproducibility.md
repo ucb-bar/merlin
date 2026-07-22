@@ -1,24 +1,42 @@
 ---
-title: Reproducibility & core workflows
+title: Reproducibility & core workflows — the master guide
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-07-14
-related: [getting_started, adding_a_target, kernel_mining, dse, model2mlir]
+last_verified: 2026-07-22
+related: [getting_started, adding_a_target, targetgen, kernel_mining, beam_search, dse, dse_guidance,
+          design_pressure, model2mlir, rvv_e2e, zephyr, gemmini_experiment, integrations, llvm_integration]
 code_refs: [merlin/python/merlin, build_tools/scripts]
 ---
 
-# Reproducibility & core workflows
+# Reproducibility & core workflows — the master guide
 
-A one-screen index of the four end-to-end workflows: what each is for, the exact CLI to run, and
-where its outputs land under the single generated-output root `out/` (`out/runs/`, `out/artifacts/`,
-`out/build/` — always via `merlin.common.artifacts`, never a hand-built path). For the full,
-auto-generated documentation index start at the hub, [docs/README.md](../README.md); for
-environment setup and the CLI surface see [Getting started](getting_started.md).
+**Start here.** This is the master reproduction guide: it maps every other guide by *what you want to
+do*, then gives the exact end-to-end CLI + output location for each core workflow. All generated output
+lives under the single root `out/` (`out/runs/`, `out/artifacts/`, `out/build/` — always via
+`merlin.common.artifacts`, never a hand-built path). Every workflow is deterministic and re-runnable:
+same inputs → same `out/…` products; run dirs + versioned products carry a `run_record.json` /
+`manifest.yaml` (git sha, timestamp, version) as the source of truth. Environment/CLI setup:
+[Getting started](getting_started.md). Full flat doc index: the generated hub
+[docs/README.md](../README.md).
 
-Every workflow is deterministic and re-runnable: same inputs → same `out/…` products. Run
-directories and versioned products carry a `run_record.json` / `manifest.yaml` (git sha, timestamp,
-version) as the source of truth; the folder name is convenience.
+## Guide map — by intent
+
+| I want to… | Guide(s) | Detailed workflow below |
+|---|---|---|
+| set up the environment / see the CLI surface | [getting_started](getting_started.md), [CLI](../reference/cli.md) | — |
+| generate a new target dialect from a contract | [targetgen](targetgen.md), [adding_a_target](adding_a_target.md) | §1 |
+| improve the compiler from expert kernels (mine → beam) | [kernel_mining](kernel_mining.md), [beam_search](beam_search.md), [rvv_kernel_mining_methodology](../reference/rvv_kernel_mining_methodology.md) | §2 |
+| run the autonomous whole-model beam (rediscover e2e gains) | [beam_search](beam_search.md), [CCA beam design](../design/beam_cca_architecture.md) | §5 |
+| do DSE / design-pressure analysis | [dse](dse.md), [dse_guidance](dse_guidance.md), [design_pressure](design_pressure.md) | §3 |
+| bring in a new model (capture bundle) | [model2mlir](model2mlir.md) | §4 |
+| run a model end-to-end on the K1 board | [rvv_e2e](rvv_e2e.md) | §7 |
+| run a model on Zephyr / FireSim / spike | [zephyr](zephyr.md) | §7 |
+| run the Gemmini target-gen experiment (arms→cert→perf→publish) | [gemmini_experiment](gemmini_experiment.md) | §6 |
+| publish a certified champion to `<target>-mlir` | [target_publishing](../design/target_publishing.md) | §6, §8 |
+| understand the compiler internals | [architecture](../reference/architecture.md), [lowering_pipeline](../reference/lowering_pipeline.md), [llvm_integration](llvm_integration.md), [compilation_strategies](compilation_strategies.md) | — |
+| find where code/tests/docs/output live | [repo_structure](../reference/repo_structure.md), [merlin_layout](../reference/merlin_layout.md) | — |
+| compare against external frameworks (TVM/ExecuTorch/…) | [integrations](integrations.md) | §7 |
 
 ## 1. Generate a new target dialect
 
@@ -140,6 +158,50 @@ summary is `out/artifacts/kernel-mining/rvv/bench/autonomous_beam_experiment.jso
 **Honesty invariants.** Correctness gates before any wall (fail-closed → `not_run`); a speedup is
 credited only on real K1 silicon above the noise margin; an `inert` fork (emitted code == parent's)
 is never promoted; whole-model int8/fp16 have no XNNPACK e2e column (harness limitation, stated).
+
+## 6. Gemmini target-dialect-generation experiment (agentic case study)
+
+**Purpose.** The case study for the target-gen tool: how well an agent authors a correct,
+RTL-conformant Gemmini MLIR OOT backend under increasing Merlin help, in a cheat-proof sandbox — then
+certify and publish it. Four arms (raw C++ → +Merlin infra → +xDSL tooling → +CIRCT checks), all graded
+to 20/20 public capsules.
+
+```bash
+S=merlin/experiments/gemmini_capsule_bench_v0/scripts
+.venv/bin/python $S/test_sandbox.py --arm merlin_rtlchecks   # MANDATORY pre-spend gate (21/21 GO)
+.venv/bin/python $S/verify_no_cheat.py                        # static cheat-clean gate
+.venv/bin/python $S/launch_ab_batch.py --tag <tag> --arms baseline,cpp_merlininfra,merlin,merlin_rtlchecks --mode sequential
+.venv/bin/python merlin/experiments/gemmini_cert/run.py --simulators spike,verilator   # RTL conformance C0-C5
+```
+Do NOT set a tight `--round-timeout` (default 4h; a short cap is net-detrimental). The rate-limit
+watchdog + `--resume` carry it across session limits. **Full detail** — arms, sandbox mechanics, cert,
+perf-bench, publish, honesty invariants — in [Gemmini experiment](gemmini_experiment.md).
+
+## 7. Run a model on real hardware / simulators + external baselines
+
+**Purpose.** Execute a captured model end-to-end and (optionally) compare against external frameworks.
+
+- **K1 board (RVV):** [rvv_e2e](rvv_e2e.md) — lower a bundle → SpacemiT-toolchain ELF → run on the K1.
+  ⚠️ The board's SSH is on port **2222** (`MERLIN_K1_SSH_PORT`), not `:22` (campus IoT filter); a board
+  that pings but hangs on `:22` is not down — recheck the port.
+- **Zephyr / FireSim / spike:** [zephyr](zephyr.md) — SMP RVV-on-Saturn, spike + 2-tile FireSim.
+- **External baselines (TVM / ExecuTorch / Buddy / EXO / ggml):** [integrations](integrations.md) — the
+  same capture bundle run through each framework on the K1, honestly profiled.
+
+## 8. Publish a certified champion (any target)
+
+**Purpose.** Ship a certified codegen package into the target's `<target>-mlir` repo, branch-per-version.
+
+```bash
+git init --bare /tmp/<target>-mlir.git    # verify against a LOCAL remote first (no GitHub)
+.venv/bin/python -m merlin.targetgen.publish publish --target <rvv|gemmini> \
+  --remote file:///tmp/<target>-mlir.git --execute
+```
+Remote from `merlin/targets/publish.yaml` (`ucb-bar/rvv-mlir`, `ucb-bar/gemmini-mlir`) or
+`MERLIN_PUBLISH_REMOTE_<TARGET>`. Gate: rvv = `spike_verified`/`rtl_certified`/`k1_verified`; gemmini
+(mlir_oot) = `rtl_certified` or an `oot_runner.certify` pass. Baseline → `baseline` branch; each champion
+→ `stable/<package_id>` + `v<ver>-<pkg>` tag; idempotent by fingerprint. **A real GitHub push (drop the
+`file://`) needs an explicit human go-ahead.** Design + branch model: [target_publishing](../design/target_publishing.md).
 
 ---
 
