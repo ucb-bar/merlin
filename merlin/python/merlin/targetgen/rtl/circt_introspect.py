@@ -181,6 +181,54 @@ def extract_funct_table(isa_src: str) -> dict[str, Any]:
     }
 
 
+# ------------------------------------------------------- decoder-derived funct set (the true ISA)
+def extract_funct_table_via_decoder(hw_path: Path) -> dict[str, Any] | None:
+    """The legal RoCC funct set derived from the HW-dialect DECODER (mlc's comb.icmp-eq fan-out) — the
+    actual ISA the silicon implements. Returns a funct-table dict (same shape as
+    :func:`extract_funct_table`, ``method='decoder_icmp_fanout'``), or None if mlc is unavailable or the
+    HW dialect cannot be parsed (e.g. a firtool/circt-opt version skew) — an honest fallback, never a
+    fake pass."""
+    try:
+        from . import mlc_bridge
+        ok, why = mlc_bridge.mlc_available()
+        if not ok:
+            return None
+        res = mlc_bridge.discover_legal_functs(hw_path)
+    except Exception:  # noqa: BLE001 — a parse/version skew means "no decoder facts", fall back cleanly
+        return None
+    legal = res.get("legal_funct")
+    if not legal:
+        return None
+    return {
+        "name": "funct_decode_table",
+        "custom_opcode": CUSTOM_OPCODE,
+        "funct3": FUNCT3,
+        "legal_funct": legal,
+        "names": {},  # the decoder yields numeric codes; names are cross-referenced from the header below
+        "method": res.get("method", "decoder_icmp_fanout(mlc)"),
+        "evidence": res.get("evidence", "mlc decoder comb.icmp-eq fan-out"),
+    }
+
+
+def _reconcile_funct(decoder: dict[str, Any] | None, header: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Choose the authoritative funct table. The decoder-derived set wins (it is the silicon); the
+    header parse is the fallback. When BOTH are present, record the discrepancy (functs the header
+    claims but the silicon never decodes, and vice-versa) + borrow the header's names for the codes the
+    silicon actually decodes — so the pin is both correct AND named."""
+    if decoder is None:
+        if header is not None:
+            header.setdefault("method", "scala_header_parse")
+        return header
+    if header is not None:
+        hs, ds = set(header.get("legal_funct", [])), set(decoder["legal_funct"])
+        hnames = header.get("names", {})
+        decoder["names"] = {str(k): hnames.get(str(k), "?") for k in decoder["legal_funct"]}
+        decoder["header_only_functs"] = sorted(hs - ds)   # header claims, silicon never decodes (phantom)
+        decoder["decoder_only_functs"] = sorted(ds - hs)  # silicon decodes, header omits (missing)
+        decoder["evidence"] += (f"; vs header: phantom={sorted(hs - ds)} missing={sorted(ds - hs)}")
+    return decoder
+
+
 # ---------------------------------------------------------------------------------- assemble + cache
 def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()[:16] if path.is_file() else "missing"
@@ -201,7 +249,14 @@ def build_facts(hw_path: Path = DEFAULT_HW, isa_path: Path = GEMMINI_ISA,
         mems.append(acc)
     v1["memories"] = mems
 
-    funct = extract_funct_table(isa_path.read_text(errors="replace")) if isa_path.is_file() else None
+    # Funct decode table: PREFER the decoder-derived legal set (the actual ISA the silicon implements,
+    # via mlc's comb.icmp-eq fan-out analysis) over the header parse (GemminiISA.scala), which is
+    # provably wrong (lists functs the decoder never matches, omits ones it does). Fall back to the
+    # header parse when mlc / a version-matched HW dialect is unavailable — recording which method was
+    # used and, when both are available, the header-vs-decoder discrepancy as evidence.
+    header_funct = extract_funct_table(isa_path.read_text(errors="replace")) if isa_path.is_file() else None
+    decoder_funct = extract_funct_table_via_decoder(hw_path) if hw_path.is_file() else None
+    funct = _reconcile_funct(decoder_funct, header_funct)
     if funct:
         v1.setdefault("interfaces", []).append(funct)
 
