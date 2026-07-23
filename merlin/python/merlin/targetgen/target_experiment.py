@@ -132,6 +132,7 @@ class CapabilityManifest:
     kind: str                      # primary compute-unit kind (systolic|simt|vector|scalar)
     endpoint_kind: str             # inline_asm_insn (default, fork-free) | upstream_target | external_backend
     suite: str
+    dtype: str                     # run-identity dtype token (e.g. i8xi8_i32, f32)
     fourth_output_name: str | None # None -> the runner derives it from endpoint_kind
     tier_sim: dict                 # tier -> sim name (empty -> family/arc default)
     rtl_tiers: tuple[str, ...]
@@ -165,6 +166,7 @@ def load_capability_manifest(target: str) -> CapabilityManifest:
     return CapabilityManifest(
         target=target, kind=kind, endpoint_kind=endpoint,
         suite=runner.get("suite") or f"{target}-capsule-bench",
+        dtype=runner.get("dtype") or "i8xi8_i32",
         fourth_output_name=runner.get("fourth_output_name"),
         tier_sim=dict(runner.get("tier_sim") or {}),
         rtl_tiers=tuple(runner.get("rtl_tiers") or prof.default_rtl_tiers),

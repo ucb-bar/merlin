@@ -11,6 +11,14 @@
 name: gemmini
 version: 0.1
 family: tensor_resident
+# Codegen endpoint + grading knobs the shared RunnerConfig reads (rtl_tiers + the rocc_insn trace gate
+# ride the systolic family default; declared here only where they differ from it). Fork-free .insn on
+# stock LLVM — no gemmini-forked toolchain.
+endpoint_kind: inline_asm_insn
+runner:
+  suite: gemmini-capsule-bench
+  dtype: i8xi8_i32
+  tier_sim: {L2: spike, L3: verilator, L4: vcs, L5: firesim}
 status: prototype
 features: [systolic_array, resident_packed_tensor, accumulator_commit, command_buffer, metrics]
 ops: [pack, matmul, commit, release]
