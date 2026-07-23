@@ -27,7 +27,44 @@ class TargetExperiment:
     capsule_corpus: Path               # the corpus the arms author against + are graded on (resolved)
     sim_via: str                       # how the simulator runs (e.g. "chipyard")
     rtl_via: str                       # how RTL facts are obtained (e.g. "mlc" — DERIVED, not declared)
+    # Prior backends / reference exemplars the agent must NOT read/copy (an experiment CHOICE, so
+    # declared, not derived). Names under ``artifacts/targets/<target>/``.
+    prior_backends: tuple[str, ...]
     path: Path                         # the descriptor file this came from
+
+    @property
+    def exp_name(self) -> str:
+        """The experiment directory name (e.g. ``gemmini_capsule_bench_v0``) — for the exp-scoped paths."""
+        return self.path.parent.name
+
+    # DERIVED target-specific paths (bundle-convention strings) — from ``target``, never hand-listed.
+    @property
+    def rtl_facts_pin(self) -> str:
+        return f"merlin/targets/{self.target}/contracts/rtl_facts/"
+
+    @property
+    def irdl_pin(self) -> str:
+        return f"merlin/targets/{self.target}/contracts/irdl/"
+
+    def corpus_rel(self) -> str:
+        """The capsule corpus as a repo-root-relative string (bundle convention)."""
+        return str(self.capsule_corpus.relative_to(repo_root())) + "/"
+
+    def corpus_siblings(self) -> list[str]:
+        """Sibling corpora that actually EXIST beside the primary corpus (e.g. layers/model_slices) —
+        globbed, not a hardcoded gemmini taxonomy. Repo-root-relative strings."""
+        parent = self.capsule_corpus.parent
+        out = []
+        for d in sorted(parent.iterdir()) if parent.is_dir() else []:
+            if (d.is_dir() and d != self.capsule_corpus and d.name != "hidden"
+                    and not d.name.startswith(("_", "."))):   # skip __pycache__/dotdirs, not corpora
+                out.append(str(d.relative_to(repo_root())) + "/")
+        return out
+
+    def hidden_corpus(self) -> str | None:
+        """The hidden-capsule deny path (sibling ``hidden/`` of the corpus), if present."""
+        h = self.capsule_corpus.parent / "hidden"
+        return str(h.relative_to(repo_root())) + "/" if h.is_dir() else None
 
 
 def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
@@ -46,6 +83,7 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         capsule_corpus=root / doc["capsule_corpus"] if doc.get("capsule_corpus") else None,
         sim_via=str((doc.get("toolchain") or {}).get("sim_via", "")),
         rtl_via=str((doc.get("rtl") or {}).get("via", "mlc")),
+        prior_backends=tuple((doc.get("answer_surfaces") or {}).get("prior_backends") or ()),
         path=p,
     )
 

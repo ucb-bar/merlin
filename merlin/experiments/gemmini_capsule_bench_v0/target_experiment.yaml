@@ -21,8 +21,15 @@ hardware_spec:
     - tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h
   hwbringup_set: experiments/gemmini_capsule_bench_v0/contracts/hwbringup_gemmini_v0
 
-# The capsule corpus the arms author against and are graded on.
+# The capsule corpus the arms author against and are graded on. Sibling corpora (layers/model_slices)
+# and the hidden set are discovered beside it (globbed), not hardcoded.
 capsule_corpus: merlin/contract/capsules/isa
+
+# Prior backends / reference exemplars the agent must NOT read or copy (denied answer surfaces). This is
+# an experiment CHOICE (which finished backends to hide), so it is declared here rather than derived.
+# Names resolve under artifacts/targets/<target>/.
+answer_surfaces:
+  prior_backends: [merlin_native_v0, hand_smoke_oot, agent_spec_v0_mlir_oot, agent_spec_v1_mlir_oot]
 
 # How the simulator runs (correctness L2 / RTL L3). spike + verilator come from the chipyard conda env.
 toolchain:
