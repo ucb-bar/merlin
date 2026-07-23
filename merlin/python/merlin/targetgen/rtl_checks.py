@@ -174,6 +174,31 @@ def _declared_output_shape(capsule: dict | None) -> tuple[int, int] | None:
     return (int(M), int(N))
 
 
+def _declared_mkn(capsule: dict | None) -> tuple[int, int, int] | None:
+    """(M, N, K) for a declared matmul: lhs (M,K) · weight (K,N). None if not derivable generally."""
+    shape = _declared_output_shape(capsule)
+    if shape is None:
+        return None
+    inputs = (capsule or {}).get("inputs") or []
+    lhs = next((t.get("shape") for t in inputs if t.get("role") == "input"), None)
+    if not (isinstance(lhs, list) and len(lhs) == 2):
+        return None
+    M, N = shape
+    return (M, N, int(lhs[1]))                        # K is the contraction dim (lhs columns)
+
+
+_DTYPE_BYTES = {"i8": 1, "int8": 1, "u8": 1, "i16": 2, "bf16": 2, "fp16": 2, "f16": 2,
+                "i32": 4, "fp32": 4, "f32": 4}
+
+
+def _elem_bytes(capsule: dict | None) -> int:
+    """Element byte width from the declared input dtype (default 1 = i8, the corpus default)."""
+    inputs = (capsule or {}).get("inputs") or []
+    dt = next((t.get("dtype") for t in inputs if t.get("role") == "input"), None) \
+        or ((capsule or {}).get("operation") or {}).get("attributes", {}).get("input_dtype")
+    return _DTYPE_BYTES.get(str(dt).lower(), 1) if dt else 1
+
+
 def _mesh(rtl_facts: dict) -> tuple[int, int]:
     m = rtl_facts.get("mesh") or DEFAULT_RTL_FACTS["mesh"]
     return int(m[0]), int(m[1])
@@ -264,6 +289,56 @@ def _check_tile_coverage(trace: dict, capsule: dict | None, rtl_facts: dict) -> 
     return Check("T0.tile_coverage", "T0", "warn", "pass",
                  f"MVOUT={n_mvout} == Mt*Nt={exp} for {M}x{N} over {mr}x{mc} mesh",
                  expected=exp, got=n_mvout)
+
+
+def _check_data_movement_reuse(trace: dict, capsule: dict | None, rtl_facts: dict) -> Check:
+    """ADVISORY (M3): does the emitted movement reflect on-chip operand REUSE, or is it re-streaming?
+
+    A numerically-correct kernel can still move far more data than necessary (re-loading a resident
+    operand instead of reusing it) — a data-movement inefficiency spike is blind to and that today needs
+    a perf sim. mlc's Model-3 static reuse math (predict_dma_volume + spills, no arc/cycles) gives, from
+    the declared shape + discovered DIM/capacity: the resident footprint (rows/tiles), whether it FITS
+    on-chip, and the loop-nest REFETCH factor. We report that budget and compare it to the observed MVIN
+    count. Severity=info: this NEVER moves the verdict (which rides the correctness checks) — it is
+    feedback. Fail-closed to skipped when mlc or the shape is unavailable."""
+    op = _declared_op(capsule)
+    if op not in ("matmul", "matmul_resident"):
+        return Check("T0.data_movement_reuse", "T0", "info", "skipped",
+                     "advisory reuse check applies to a single declared matmul only")
+    mkn = _declared_mkn(capsule)
+    if mkn is None:
+        return Check("T0.data_movement_reuse", "T0", "info", "skipped",
+                     "could not derive (M,N,K) generally — skipped")
+    M, N, K = mkn
+    mr, _mc = _mesh(rtl_facts)
+    spad_bytes = int(rtl_facts.get("scratchpad_bytes") or DEFAULT_RTL_FACTS["scratchpad_bytes"])
+    from .rtl import mlc_bridge  # lazy: keeps rtl_checks import-light and mlc optional
+    pred = mlc_bridge.matmul_reuse_prediction(
+        M, N, K, dim=mr, capacity_bytes=spad_bytes, elem_bytes=_elem_bytes(capsule))
+    if pred is None:
+        return Check("T0.data_movement_reuse", "T0", "info", "skipped",
+                     "mlc Model-3 reuse model unavailable (MERLIN_MLC_DIR) — advisory skipped")
+    n_mvin = _classes(trace).count("MVIN")
+    ideal_loads = pred["footprint_tiles"] * pred["refetch"]     # resident tiles, re-streamed on spill
+    ev = {"footprint_rows": pred["footprint_rows"], "capacity_rows": pred["capacity_rows"],
+          "fits": pred["fits"], "refetch": pred["refetch"], "ideal_tile_loads": ideal_loads,
+          "observed_mvin": n_mvin}
+    # Unambiguous under-reuse: the shape is FULLY resident (fits, refetch==1) yet the trace loads
+    # operands many times over. 3x slack absorbs the coarse MVIN-instruction↔tile-load mapping, so a
+    # flag means gross re-streaming, not a granularity artefact.
+    if pred["fits"] and pred["refetch"] == 1 and ideal_loads > 0 and n_mvin >= 3 * ideal_loads:
+        return Check("T0.data_movement_reuse", "T0", "info", "fail",
+                     f"excess operand movement: {n_mvin} MVIN vs ~{ideal_loads} resident tile-loads "
+                     f"(~{round(n_mvin/ideal_loads,1)}x) — shape is fully on-chip (refetch=1) so "
+                     f"operands are being re-streamed instead of reused",
+                     expected=f"~{ideal_loads}", got=n_mvin,
+                     ratio=round(n_mvin / ideal_loads, 3), evidence=ev,
+                     fix_hint="keep A/B tiles resident across the reuse loop; avoid re-MVIN per output tile")
+    note = ("spills capacity" if not pred["fits"] else "fully resident") + \
+        f" (footprint {pred['footprint_rows']} vs {pred['capacity_rows']} rows, refetch={pred['refetch']})"
+    return Check("T0.data_movement_reuse", "T0", "info", "pass",
+                 f"movement within reuse budget: {n_mvin} MVIN, ideal ~{ideal_loads} tile-loads; {note}",
+                 expected=f"~{ideal_loads}", got=n_mvin, evidence=ev)
 
 
 def _check_spad_capacity(trace: dict, rtl_facts: dict) -> Check:
@@ -412,6 +487,7 @@ def screen(trace: dict, capsule: dict | None = None,
     rep.checks.append(_check_decode_funct_legal(trace, facts))
     rep.checks.append(_check_movement_compute_balance(trace, capsule))
     rep.checks.append(_check_tile_coverage(trace, capsule, facts))
+    rep.checks.append(_check_data_movement_reuse(trace, capsule, facts))
     rep.checks.append(_check_spad_capacity(trace, facts))
     rep.checks.append(_check_preload_before_compute(trace))
     rep.checks.append(_check_config_before_use(trace))

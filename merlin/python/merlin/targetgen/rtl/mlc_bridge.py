@@ -84,6 +84,33 @@ def require_mlc() -> None:
         raise RuntimeError(f"mlc unavailable: {why}")
 
 
+def matmul_reuse_prediction(M: int, N: int, K: int, *, dim: int, capacity_bytes: int,
+                            elem_bytes: int = 1) -> dict | None:
+    """M3 STATIC data-movement prediction for an M×K·K×N matmul — no arc, no sim, no cycles.
+
+    Reuses mlc's pure-arithmetic Model-3 functions (``predict_dma_volume.matmul_refetch_factor`` +
+    ``spills.matmul_footprint_rows``) so the reuse/spill math is the mlc source of truth, not a
+    re-derivation here. Returns the resident operand footprint (rows), the on-chip capacity (rows), a
+    fits flag, and the loop-nest refetch factor (=1 when the operands are fully resident; >1 when they
+    spill and the outer loop re-streams). Returns None (fail-closed) when mlc is not importable — these
+    functions need only the mlc package on ``sys.path``, NOT circt, so we gate on the import alone."""
+    with _mlc_on_path():
+        try:
+            from mlc.passes.predict_dma_volume import matmul_refetch_factor, ReuseFacts
+            from mlc.passes.spills import matmul_footprint_rows
+        except Exception:  # noqa: BLE001 — mlc absent/unimportable ⇒ honest unavailable, never a guess
+            return None
+        # beat_bytes is irrelevant to the refetch/footprint math (it only scales byte→beat counts), so a
+        # benign 1 keeps us from fabricating a DMA beat width we have not discovered for this target.
+        facts = ReuseFacts(beat_bytes=1, dim=int(dim), capacity_bytes=int(capacity_bytes))
+        refetch = int(matmul_refetch_factor(M, K, N, facts, in_bytes=elem_bytes))
+        footprint_rows = int(matmul_footprint_rows(M, N, K, int(dim)))
+    capacity_rows = int(capacity_bytes) // (int(dim) * max(elem_bytes, 1))
+    return {"footprint_rows": footprint_rows, "capacity_rows": capacity_rows,
+            "fits": footprint_rows <= capacity_rows, "refetch": refetch,
+            "footprint_tiles": footprint_rows // int(dim)}
+
+
 # ------------------------------------------------------------------- target-agnostic RTL extraction
 # Everything below is parameterized by ``target`` and holds NO target name — mlc is target-parameterized
 # (artifact_paths/discovered_memory_map/discover_opcode_set/per-target runs/circt-arc/<target>), so the
