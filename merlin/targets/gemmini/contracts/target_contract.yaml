@@ -19,6 +19,28 @@ runner:
   suite: gemmini-capsule-bench
   dtype: i8xi8_i32
   tier_sim: {L2: spike, L3: verilator, L4: vcs, L5: firesim}
+# The ABI encoding surface RTL discovery cannot ground (opcode/funct3/legal-funct/DIM come from the
+# fact bundle; THESE do not). Declared once from the Gemmini ISA doc (human-reviewed) and consumed as
+# the SINGLE source of truth by the generated ISA module + the decoder — retiring the triplicated
+# hand-coded constants in GemminiToLLVM.cpp / gemmini_codegen_mlir.py / rocc_decode.py.
+encoding:
+  readout_bits:            # RoCC accumulator-readout / encoding bit conventions
+    f1: 0x3F800000         # 1.0f
+    c_acc: 0xA0000000      # full-i32 accumulator readout base
+    acc_i8: 0x80000000     # scaled-i8 readout base
+    acc_accum: 0x40000000  # accumulate-onto bit
+    full_c_bit: 0x20000000 # set in c_acc, clear in acc_i8 -> i32 vs i8 readout
+  semantic_class:          # RTL funct CODE -> the compiler's shared op class (the guardrail boundary:
+    0: CONFIG              # codes are RTL-derived; the MVIN/MVOUT/... vocabulary is human-owned + shared)
+    2: MVIN
+    3: MVOUT
+    4: COMPUTE_PRELOADED
+    5: COMPUTE_ACCUMULATE
+    6: PRELOAD
+    7: FLUSH
+    8: LOOP_WS
+    15: LOOP_CONV
+  config_subtype: {0: CONFIG_EX, 1: CONFIG_LD, 2: CONFIG_ST}   # CONFIG refined by rs1 & 0x3
 status: prototype
 features: [systolic_array, resident_packed_tensor, accumulator_commit, command_buffer, metrics]
 ops: [pack, matmul, commit, release]

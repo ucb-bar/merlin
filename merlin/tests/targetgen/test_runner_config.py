@@ -32,7 +32,7 @@ def _simt_manifest() -> CapabilityManifest:
         suite="muon-perf-bench", dtype="f32", fourth_output_name=None,
         tier_sim={"L2": "cyclotron", "L3": "vcs"}, rtl_tiers=("L3",),
         perf_fields=("flops", "gflops", "pct_fp_peak"), trace_gate=None,
-        encoding_required=False, contract={})
+        encoding_required=False, encoding={}, contract={})
 
 
 def test_simt_config_matches_muon_runner_constants():

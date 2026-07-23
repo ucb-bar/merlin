@@ -139,6 +139,7 @@ class CapabilityManifest:
     perf_fields: tuple[str, ...]
     trace_gate: str | None         # trace-gate plugin name (e.g. "rocc_insn") or None
     encoding_required: bool
+    encoding: dict                 # the ABI encoding surface RTL can't ground (readout_bits/semantic_class/...)
     contract: dict                 # the full target_contract.yaml (for consumers that need more)
 
 
@@ -173,4 +174,5 @@ def load_capability_manifest(target: str) -> CapabilityManifest:
         perf_fields=tuple(runner.get("perf_fields") or prof.perf_fields),
         trace_gate=runner.get("trace_gate", prof.trace_gate),
         encoding_required=prof.encoding_required,
+        encoding=dict(contract.get("encoding") or {}),
         contract=contract)
