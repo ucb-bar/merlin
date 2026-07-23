@@ -46,6 +46,19 @@ def test_generator_emits_encoding_only_never_ops_or_dialect():
         assert forbidden not in ns
 
 
+def test_generated_cpp_header_carries_the_same_single_source_constants():
+    from merlin.targetgen.rtl.gen_isa_module import generate_header
+    facts = json.loads(rtl_facts_path("gemmini").read_text())
+    enc = load_capability_manifest("gemmini").encoding
+    h = generate_header(facts, enc, "gemmini")
+    # the C++ header a backend #includes instead of hand-typing constexprs — same values as the Python
+    # module + the emitter, so the third (C++) leg of the former triplication shares the single source.
+    assert "namespace gemmini_isa" in h
+    assert f"constexpr unsigned CUSTOM_OPCODE = {hex(0x7b)};" in h
+    assert f"constexpr unsigned C_ACC = {hex(RD.C_ACC)};" in h
+    assert "constexpr int K_MVIN = 2;" in h and "constexpr int K_MVOUT = 3;" in h
+
+
 def test_without_encoding_the_module_still_carries_the_rtl_encoder():
     # facts-only generation (no manifest) still yields the RTL-derived funct table + legal set, just
     # without the manifest ABI bits — honest degradation, not a crash.

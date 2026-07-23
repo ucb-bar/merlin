@@ -138,10 +138,40 @@ def emit(funct_name: str, rs1: int = 0, rs2: int = 0) -> Instr:
     return "\n".join(lines)
 
 
+def generate_header(facts: dict, encoding: dict, target: str = "gemmini") -> str:
+    """Emit a C++ header of the SAME derived ISA constants (from facts + the manifest encoding block), so
+    a C++ backend #includes generated constants instead of hand-typing constexprs — closing the third
+    (C++) leg of the former triplication with the same single source the Python module uses."""
+    f = facts["facts"]
+    fd = next(i for i in f["interfaces"] if i.get("name") == "funct_decode_table")
+    mesh = next((a for a in f.get("arrays", []) if a.get("name") == "mesh"), {})
+    rb = (encoding or {}).get("readout_bits") or {}
+    code_of = {cls: code for code, cls in ((encoding or {}).get("semantic_class") or {}).items()}
+    ns = f"{target}_isa"
+    out = [f"// GENERATED from RTL facts + the {target} capability manifest by "
+           f"merlin.targetgen.rtl.gen_isa_module — do not hand-edit.",
+           "#pragma once", f"namespace {ns} {{",
+           f"  constexpr unsigned CUSTOM_OPCODE = {hex(fd['custom_opcode'])};",
+           f"  constexpr unsigned FUNCT3 = {hex(fd['funct3'])};",
+           f"  constexpr int DIM = {mesh.get('rows', 16)};"]
+    if encoding:
+        out.append(f"  constexpr unsigned ADDR_LEN = {encoding.get('addr_len', 32)};")
+        for sym, key in (("F1", "f1"), ("C_ACC", "c_acc"), ("ACC_I8", "acc_i8"),
+                         ("ACC_ACCUM", "acc_accum"), ("FULL_C_BIT", "full_c_bit")):
+            if rb.get(key) is not None:
+                out.append(f"  constexpr unsigned {sym} = {hex(rb[key])};")
+        for cls in ("CONFIG", "MVIN", "MVOUT", "COMPUTE_PRELOADED", "PRELOAD", "FLUSH"):
+            if cls in code_of:
+                out.append(f"  constexpr int K_{cls} = {code_of[cls]};")
+    out.append("}")
+    return "\n".join(out) + "\n"
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--facts", default=str(_DEFAULT_FACTS))
     ap.add_argument("--target", default="gemmini", help="target whose manifest supplies the ABI encoding block")
+    ap.add_argument("--header", action="store_true", help="emit a C++ constants header instead of the Python module")
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
     facts = json.loads(Path(a.facts).read_text())
@@ -151,7 +181,7 @@ def main(argv=None):
         encoding = load_capability_manifest(a.target).encoding
     except Exception:  # noqa: BLE001 — no manifest -> emit the RTL-derived encoder only
         pass
-    code = generate(facts, encoding)
+    code = generate_header(facts, encoding or {}, a.target) if a.header else generate(facts, encoding)
     if a.out:
         Path(a.out).write_text(code)
         print(f"wrote {a.out} ({len(code.splitlines())} lines) from {a.facts}")
