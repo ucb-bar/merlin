@@ -31,6 +31,11 @@ class TargetExperiment:
     capsule_corpus: Path               # the corpus the arms author against + are graded on (resolved)
     sim_via: str                       # how the simulator runs (e.g. "chipyard")
     rtl_via: str                       # how RTL facts are obtained (e.g. "mlc" — DERIVED, not declared)
+    # OPTIONAL: where the accelerator's RTL lives (a local path or a URL). When set, the descriptor
+    # itself points at the RTL so onboarding can validate the pointer + wire mlc discovery at it, rather
+    # than ASSUMING the RTL was separately registered with mlc. None (the default) keeps the legacy
+    # contract: the RTL is already registered with mlc under ``target``. Additive + backward-compatible.
+    rtl_repo: str | None
     # Prior backends / reference exemplars the agent must NOT read/copy (an experiment CHOICE, so
     # declared, not derived). Names under ``artifacts/targets/<target>/``.
     prior_backends: tuple[str, ...]
@@ -88,6 +93,7 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         capsule_corpus=root / doc["capsule_corpus"] if doc.get("capsule_corpus") else None,
         sim_via=str((doc.get("toolchain") or {}).get("sim_via", "")),
         rtl_via=str((doc.get("rtl") or {}).get("via", "mlc")),
+        rtl_repo=(lambda r: str(r) if r else None)((doc.get("rtl") or {}).get("repo")),
         prior_backends=tuple((doc.get("answer_surfaces") or {}).get("prior_backends") or ()),
         path=p,
     )

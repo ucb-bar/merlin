@@ -16,6 +16,7 @@ These console-scripts are installed by `pip install -e merlin/python`. Each is a
 | `merlin-design-pressure` | `merlin.design_pressure.cli:main` |
 | `merlin-dse` | `merlin.dse.cli:main` |
 | `merlin-dse-guidance` | `merlin.dse_guidance.cli:main` |
+| `merlin-onboard` | `merlin.targetgen.onboard:main` |
 | `merlin-rvv-autotune` | `merlin.rvvgen.autotune:main` |
 | `merlin-rvv-beam` | `merlin.rvvgen.beam_cli:main` |
 | `merlin-rvv-mine` | `merlin.rvvgen.mine:main` |
