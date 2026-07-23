@@ -1,257 +1,85 @@
-"""Parallel Muon capsule runner -- the Muon analog of :mod:`capsule_runner`, Gemmini untouched.
+"""Muon (SIMT) capsule runner — now a thin SHIM over the shared :mod:`capsule_runner`.
 
-This reuses the *generic, target-agnostic* helpers (oot_runner primitives, capsule_golden, schemas,
-the 4-entrypoint sequence, the L0/L1 + not_run_is_not_pass invariants) but plugs in the Muon oracle
-adapters (cyclotron / VCS) and the Muon tier->sim map. It imports nothing Gemmini-specific
-(rocc_decode / trace_check / the gemmini backend / the shared capsule_runner) so the frozen Gemmini
-path keeps working byte-for-byte.
+The Muon path used to be a hand fork of the Gemmini runner. It is now a config: the shared
+``capsule_runner.run_capsule`` serves every target, and this module only supplies Muon's
+:class:`RunnerConfig` (SIMT tier ladder, cyclotron/vcs sims, the ``kernel.cpp`` 4th artifact, no RoCC
+trace gate, fp-tolerance output matching, the SIMT perf headline) + the cyclotron/VCS oracle adapters.
 
-Tier ladder (Muon):
-    L0  independent numeric golden     capsule_golden vs reference(cb)
-    L1  reference(cb) == simulate(cb)   cb internal consistency
-    L2  cyclotron --timing             outputs == golden + perf cycles + %FP-peak  (primary)
-    L3  VCS RadianceMuonConfig RTL      cycle-exact difftest cert (honest-unavailable while WIP)
-
-Unlike the Gemmini runner, the package's ``lower_target_to_llvm`` entrypoint emits a **Muon SIMT C++
-kernel** (not LLVM-dialect MLIR); the oracle adapter compiles it with clang-muon and runs it.
+Its 4th entrypoint emits a **SIMT C++ kernel** the oracle compiles with clang-muon (endpoint
+``external_backend``); the RoCC trace gate is absent (``trace_gate=None``) because a SIMT target has no
+command-ISA analog. The public ``run_capsule``/``run_suite``/``main`` API is preserved for callers.
 """
 from __future__ import annotations
 
-import dataclasses
-import datetime as _dt
-import json
-import traceback as _traceback
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
-import yaml
-
-from aet.core.run_paths import RunPaths
-
-from . import capsule_golden as CG
-from .contract import schemas
-# shared, target-agnostic capsule I/O (also re-exported for callers using MR.discover_capsules/load_capsule)
-from .capsule_common import (_cat, _flat, discover_capsules, load_capsule,  # noqa: F401
-                             make_run_paths, run_entrypoints)
-from .muon_oracles import default_adapters
-from .oot_runner import (CertFailure, Package, build_package, integrity_scan,
-                         load_package, run_entrypoint)
-from ..runtime.backends.muon import MuonUnavailable, FP_PEAK_GFLOPS
+# re-exported for callers that used MR.discover_capsules / load_capsule / TierResult
+from .capsule_common import discover_capsules, load_capsule  # noqa: F401
+from .capsule_runner import TierResult, OracleUnavailable  # noqa: F401
+from .muon_oracles import default_adapters, flops_from_cb
+from .runner_config import RunnerConfig
+from ..runtime.backends.muon import MuonUnavailable, FP_PEAK_GFLOPS  # noqa: F401
 
 SUITE = "muon-perf-bench"
-CONTRACT_VERSION = "0.1"
 TARGET = "muon"
+CONTRACT_VERSION = "0.1"
 
-_TIER_SIM = {"L2": "cyclotron", "L3": "vcs"}
-_RTL_TIERS = {"L3"}
-
-
-@dataclasses.dataclass
-class TierResult:
-    tier: str
-    status: str                       # pass | fail | skipped | unavailable
-    mandatory: bool
-    reason: str | None = None
-    cycles: int | None = None
-    gflops: float | None = None
-    pct_fp_peak: float | None = None
-    derived_from_rtl: bool = False
-    cycle_accurate: bool = False
-    evidence: str | None = None
-    timing: dict | None = None
-
-    def to_dict(self) -> dict:
-        return {"status": self.status, "mandatory": self.mandatory,
-                "not_run_is_not_pass": True, "reason": self.reason,
-                "cycles": self.cycles, "gflops": self.gflops, "pct_fp_peak": self.pct_fp_peak,
-                "derived_from_rtl": self.derived_from_rtl,
-                "cycle_accurate": self.cycle_accurate, "evidence": self.evidence,
-                "timing": self.timing}
+# Muon's grading knobs — the only per-target data; everything else is the shared runner.
+_MUON_CONFIG = RunnerConfig(
+    target=TARGET, suite=SUITE, dtype="f32",
+    fourth_output_name="kernel.cpp",                       # SIMT C++ kernel (external_backend endpoint)
+    tier_sim={"L2": "cyclotron", "L3": "vcs"}, rtl_tiers=frozenset({"L3"}),
+    oracle_tiers=("L2", "L3"), perf_fields=("flops", "gflops", "pct_fp_peak"),
+    trace_gate=None,                                        # no RoCC trace gate on a SIMT target
+    force_match_policy={"compare": "float", "atol": 1e-3},  # fp tolerance (device prints fixed decimals)
+)
 
 
+def _muon_perf(cb: dict, res: dict) -> dict:
+    """Perf headline for a Muon tier: the cyclotron/vcs adapters already compute gflops/%FP-peak; pass
+    them through (flops_from_cb is available for adapters that don't)."""
+    return {"gflops": res.get("gflops"), "pct_fp_peak": res.get("pct_fp_peak")}
 
 
-def _match(a: dict, b: dict, atol: float = 1e-3) -> bool:
-    """Output equality with fp tolerance (the device prints fixed-precision decimals)."""
-    if set(a) != set(b):
-        return False
-    for k in a:
-        fa, fb = _flat(a[k]), _flat(b[k])
-        if len(fa) != len(fb):
-            return False
-        if any(abs(float(x) - float(y)) > atol for x, y in zip(fa, fb)):
-            return False
-    return True
+def _wrap_adapters(adapters: dict[str, Callable]) -> dict[str, Callable]:
+    """Translate MuonUnavailable -> OracleUnavailable so the shared runner's honest-unavailable path
+    (a single exception type) handles the SIMT oracles without a Muon-specific branch."""
+    def wrap(adapter: Callable) -> Callable:
+        def run(cb, artifact, workdir, timeout):
+            try:
+                return adapter(cb, artifact, workdir, timeout)
+            except MuonUnavailable as e:
+                raise OracleUnavailable(str(e)) from e
+        return run
+    return {tier: wrap(a) for tier, a in adapters.items()}
 
 
 def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path,
                 run_id: str | None = None, contract: str | Path | None = None,
                 oracle_adapters: dict[str, Callable] | None = None,
-                pkg: Package | None = None, timeout: int = 600) -> dict:
-    """Run one Muon capsule through the package; write artifacts; return a capsule_result dict."""
-    from ..runtime.reference import reference_outputs
-    from ..runtime.simulator import simulate
-    from .muon_oracles import flops_from_cb
-
-    name = capsule["name"]
-    run_id = run_id or f"{name}"
-    adapters = oracle_adapters if oracle_adapters is not None else default_adapters()
-    required = set(capsule.get("required_oracle_tiers", []))
-
-    paths = make_run_paths(runs_root, run_id, suite=SUITE, target=TARGET,
-                           dtype="f32", benchmark=name)
-
-    tiers: dict[str, TierResult] = {}
-    numeric = {"status": "skipped"}
-    failure: dict | None = None
-    status = "pass"
-
-    try:
-        # shared front half: build + the 4 contract entrypoints; muon's 4th emits a SIMT C++ kernel.
-        pkg, cb, kernel_src = run_entrypoints(pkg, package_dir, capsule, paths, contract=contract,
-                                              timeout=timeout, fourth_output_name="kernel.cpp")
-
-        # --- golden + L0/L1 ----------------------------------------------------------------
-        gold = CG.golden(capsule)
-        try:
-            ref = reference_outputs(cb)
-            sim = simulate(cb)["outputs"]
-        except (ValueError, KeyError, IndexError, TypeError) as ce:
-            raise CertFailure("command_buffer", _cat("STRUCTURAL_INVARIANT_VIOLATION"),
-                              f"command buffer could not be interpreted ({type(ce).__name__}: {ce})") from ce
-        nrep = CG.compare(gold, ref, capsule["numeric_policy"])
-        numeric = {"status": nrep["status"], "policy": nrep["policy"],
-                   "max_abs_diff": nrep["max_abs_error"], "max_rel_error": nrep["max_rel_error"],
-                   "mismatch_count": nrep["mismatch_count"], "first_mismatch": nrep["first_mismatch"]}
-        CG.write_numeric_report(paths.generated / "numeric_report.yaml", nrep)
-        tiers["L0"] = TierResult("L0", "pass" if nrep["status"] == "pass" else "fail",
-                                 mandatory=True, evidence="numeric_report.yaml",
-                                 reason=None if nrep["status"] == "pass" else "golden != reference(cb)")
-        if nrep["status"] != "pass":
-            raise CertFailure("numeric_golden", _cat("FUNCTIONAL_MISMATCH"),
-                              f"golden != reference(cb): {nrep['first_mismatch']}")
-
-        l1_ok = _match(ref, sim)
-        tiers["L1"] = TierResult("L1", "pass" if l1_ok else "fail", mandatory=True,
-                                 reason=None if l1_ok else "reference(cb) != simulate(cb)")
-        if not l1_ok:
-            raise CertFailure("command_buffer_reference", _cat("FUNCTIONAL_MISMATCH"),
-                              "reference(cb) != simulate(cb)")
-
-        # --- oracle tiers L2..L3 -----------------------------------------------------------
-        flops = flops_from_cb(cb)
-        for tier in ("L2", "L3"):
-            mand = tier in required
-            adapter = adapters.get(tier)
-            if adapter is None:
-                if mand:
-                    tiers[tier] = TierResult(tier, "unavailable", True,
-                                             reason=f"no adapter for {tier} ({_TIER_SIM[tier]})",
-                                             derived_from_rtl=tier in _RTL_TIERS)
-                continue
-            try:
-                res = adapter(cb, kernel_src, paths.generated, timeout)
-            except MuonUnavailable as e:
-                tiers[tier] = TierResult(tier, "unavailable", mand, reason=str(e),
-                                         derived_from_rtl=tier in _RTL_TIERS)
-                continue
-            except Exception as e:
-                tiers[tier] = TierResult(tier, "fail", mand,
-                                         reason=f"{_TIER_SIM[tier]} crash: {str(e)[-300:]}",
-                                         derived_from_rtl=tier in _RTL_TIERS)
-                if mand:
-                    raise CertFailure(_TIER_SIM[tier], _cat("TOOL_CRASH"),
-                                      f"{_TIER_SIM[tier]} invocation failed: {str(e)[-400:]}") from e
-                continue
-            okt = (_match(res["outputs"], gold) and _match(res["outputs"], ref)
-                   and _match(res["outputs"], sim))
-            sim_name = _TIER_SIM[tier]
-            tiers[tier] = TierResult(
-                tier, "pass" if okt else "fail", mand,
-                reason=None if okt else f"{sim_name} oracle != golden==reference==simulate",
-                cycles=res.get("cycles"), gflops=res.get("gflops"), pct_fp_peak=res.get("pct_fp_peak"),
-                derived_from_rtl=res.get("oracle", {}).get("derived_from_rtl", tier in _RTL_TIERS),
-                cycle_accurate=(tier in _RTL_TIERS and okt), evidence=f"{sim_name}_console.log",
-                timing=res.get("timing"))
-            if res.get("console") is not None:
-                (paths.artifacts_dir / f"{sim_name}_console.log").write_text(
-                    res["console"], encoding="utf-8")
-            if not okt:
-                raise CertFailure(sim_name, _cat("FUNCTIONAL_MISMATCH"),
-                                  f"{sim_name} oracle != golden==reference==simulate")
-
-    except CertFailure as cf:
-        status = "fail"
-        cat = cf.category.value if hasattr(cf.category, "value") else str(cf.category)
-        failure = {"plane": cf.plane, "category": cat, "detail": cf.detail}
-    except Exception as e:
-        status = "error"
-        failure = {"plane": "runner_internal", "category": "RUNNER_CRASH",
-                   "detail": f"{type(e).__name__}: {e}", "traceback": _traceback.format_exc()}
-
-    if status == "pass":
-        for tier in required:
-            tr = tiers.get(tier)
-            if tr is None or tr.status in ("unavailable", "skipped"):
-                status = "incomplete"
-                if failure is None:
-                    failure = {"plane": "oracle_unavailable", "category": "NOT_RUN_IS_NOT_PASS",
-                               "detail": f"mandatory tier {tier} did not run "
-                                         f"({tr.status if tr else 'absent'})"}
-                break
-
-    result = {
-        "capsule": name, "kind": capsule.get("kind"), "label": capsule.get("label"),
-        "status": status, "contract_version": CONTRACT_VERSION, "target": TARGET,
-        "fp_peak_gflops": FP_PEAK_GFLOPS,
-        "tiers": {t: r.to_dict() for t, r in tiers.items()},
-        "numeric": numeric, "failure": failure,
-    }
-    (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2),
-                                                        encoding="utf-8")
-    _write_run_manifest(paths, run_id, name, status, tiers, capsule)
-    return result
-
-
-def _write_run_manifest(paths: RunPaths, run_id: str, name: str, status: str,
-                        tiers: dict, capsule: dict) -> None:
-    manifest = {
-        "schema_version": "1.0", "project": "merlin", "suite": SUITE, "method": run_id,
-        "run_id": run_id, "target": TARGET, "benchmark": name, "status": status,
-        "created_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
-        "codegen_backend": "oot_package",
-        "metadata": {
-            "kind": capsule.get("kind"), "label": capsule.get("label"),
-            "required_oracle_tiers": capsule.get("required_oracle_tiers", []),
-            "tier_status": {t: r.status for t, r in tiers.items()},
-            "cycles": {t: r.cycles for t, r in tiers.items() if r.cycles is not None},
-            "pct_fp_peak": {t: r.pct_fp_peak for t, r in tiers.items() if r.pct_fp_peak is not None},
-        },
-    }
-    (paths.run_path / "run_manifest.yaml").write_text(
-        yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
-
-
-
-
-
-
+                pkg=None, timeout: int = 600) -> dict:
+    """Run one Muon capsule via the shared runner with the Muon config."""
+    from . import capsule_runner as CR
+    adapters = _wrap_adapters(oracle_adapters if oracle_adapters is not None else default_adapters())
+    return CR.run_capsule(capsule, package_dir, runs_root=runs_root, run_id=run_id, contract=contract,
+                          oracle_adapters=adapters, pkg=pkg, timeout=timeout,
+                          config=_MUON_CONFIG, perf_extractor=_muon_perf)
 
 
 def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str | Path,
               contract: str | Path | None = None,
               oracle_adapters: dict[str, Callable] | None = None, timeout: int = 600) -> list[dict]:
-    pkg = load_package(package_dir, contract=contract)
-    integrity_scan(pkg)
-    build_package(pkg)
-    return [run_capsule(cap, package_dir, runs_root=runs_root, run_id=cap["name"],
-                        contract=contract, oracle_adapters=oracle_adapters, pkg=pkg, timeout=timeout)
-            for cap in capsules]
+    from . import capsule_runner as CR
+    adapters = _wrap_adapters(oracle_adapters if oracle_adapters is not None else default_adapters())
+    return CR.run_suite(capsules, package_dir, runs_root=runs_root, contract=contract,
+                        oracle_adapters=adapters, timeout=timeout,
+                        config=_MUON_CONFIG, perf_extractor=_muon_perf)
 
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
-    ap = argparse.ArgumentParser(description="muon capsule/perf runner")
+    ap = argparse.ArgumentParser(description="muon capsule/perf runner (shim over capsule_runner)")
     ap.add_argument("--package", required=True)
     ap.add_argument("--capsule", help="path to a single capsule dir")
     ap.add_argument("--capsules-root", help="run every capsule under this root")

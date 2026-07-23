@@ -62,13 +62,21 @@ class TierResult:
     cycle_accurate: bool = False
     evidence: str | None = None
     timing: dict | None = None        # {build_s, sim_active_s, oracle_wait_s} — active vs waiting
+    gflops: float | None = None       # perf (SIMT); None -> omitted so systolic output is unchanged
+    pct_fp_peak: float | None = None
 
     def to_dict(self) -> dict:
-        return {"status": self.status, "mandatory": self.mandatory,
-                "not_run_is_not_pass": True, "reason": self.reason,
-                "cycles": self.cycles, "derived_from_rtl": self.derived_from_rtl,
-                "cycle_accurate": self.cycle_accurate, "evidence": self.evidence,
-                "timing": self.timing}
+        d = {"status": self.status, "mandatory": self.mandatory,
+             "not_run_is_not_pass": True, "reason": self.reason,
+             "cycles": self.cycles, "derived_from_rtl": self.derived_from_rtl,
+             "cycle_accurate": self.cycle_accurate, "evidence": self.evidence,
+             "timing": self.timing}
+        # perf fields ride the result ONLY when populated (SIMT) — keeps systolic output byte-identical.
+        if self.gflops is not None:
+            d["gflops"] = self.gflops
+        if self.pct_fp_peak is not None:
+            d["pct_fp_peak"] = self.pct_fp_peak
+        return d
 
 
 # An oracle adapter: (cb, llvm_text, workdir, timeout) -> {outputs, cycles, oracle, console}
@@ -129,30 +137,69 @@ def _exact_match(a: dict, b: dict) -> bool:
     return all(_flat(a[k]) == _flat(b[k]) for k in a)
 
 
+def _match_by_policy(a: dict, b: dict, policy: dict | None) -> bool:
+    """Output-equality per the capsule's numeric_policy — exact for integer policies (the systolic
+    default), tolerance for float. This replaces the per-runner hardcoded exact-vs-atol fork: an i8
+    capsule matches exactly (identical to _exact_match), an fp capsule matches within its declared
+    atol/rtol (default atol 1e-3, matching the muon path)."""
+    compare = (policy or {}).get("compare", "exact_int")
+    if compare in ("exact_int", "exact"):
+        return _exact_match(a, b)
+    if set(a) != set(b):
+        return False
+    atol = float((policy or {}).get("atol", 1e-3))
+    rtol = float((policy or {}).get("rtol", 0.0))
+    for k in a:
+        fa, fb = _flat(a[k]), _flat(b[k])
+        if len(fa) != len(fb):
+            return False
+        for x, y in zip(fa, fb):
+            if abs(float(x) - float(y)) > atol + rtol * abs(float(y)):
+                return False
+    return True
+
+
+def _default_config(target: str, suite: str, dtype: str):
+    """The implicit gemmini/systolic RunnerConfig — the exact constants run_capsule used before it took a
+    config, so a call with config=None is byte-identical to the pre-collapse behavior."""
+    from .runner_config import RunnerConfig
+    return RunnerConfig(target=target, suite=suite, dtype=dtype,
+                        fourth_output_name="lowered.llvm.mlir", tier_sim=dict(_TIER_SIM),
+                        rtl_tiers=frozenset(_RTL_TIERS), oracle_tiers=("L2", "L3", "L4", "L5"),
+                        perf_fields=(), trace_gate="rocc_insn")
+
+
 def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path,
                 run_id: str | None = None, contract: str | Path | None = None,
                 oracle_adapters: dict[str, Callable] | None = None,
                 pkg: Package | None = None, timeout: int = 600,
-                target: str = "gemmini", suite: str | None = None, dtype: str = "i8xi8_i32") -> dict:
+                target: str = "gemmini", suite: str | None = None, dtype: str = "i8xi8_i32",
+                config=None, perf_extractor: Callable | None = None) -> dict:
     """Run one capsule through the package; write artifacts; return a capsule_result dict.
 
-    ``target``/``suite``/``dtype`` parameterize the run identity (the single ``target=`` site); default
-    to gemmini for back-compat. ``oracle_adapters`` is the per-target oracle set (see
-    :func:`oracle_adapters`): the universal floor is the target-agnostic math oracle (L0/L1, always run
-    here); L2+ RTL tiers are ONLY graded if an adapter is present + available (arc or a bespoke sim),
-    else the tier is honestly ``unavailable`` — arc is never assumed."""
+    ``config`` (a :class:`runner_config.RunnerConfig`) supplies the per-target grading knobs — the
+    4th-artifact name, the sim-tier map + RTL tiers + loop order, the optional trace gate, and the perf
+    fields — so ONE runner serves every target. When absent, the implicit gemmini/systolic config is
+    built from ``target``/``suite``/``dtype`` (byte-identical to the pre-collapse behavior). Output
+    equality uses the capsule's ``numeric_policy`` (exact for integer, tolerance for float). ``perf_extractor``
+    (cb -> flops) feeds the SIMT gflops/pct_fp_peak. ``oracle_adapters`` is the per-target oracle set: the
+    L0/L1 math floor always runs; RTL tiers grade only if an adapter is present + available (arc or a
+    bespoke sim), else honestly ``unavailable`` — arc is never assumed."""
     from ..runtime.reference import reference_outputs
     from ..runtime.simulator import simulate
     from .eval.gemmini_suite import toolchain_shas
 
+    cfg = config or _default_config(target, suite or f"{target}-capsule-bench", dtype)
+    # L1/oracle output equality uses the capsule's numeric_policy (integer -> exact), unless the config
+    # forces one (a float/SIMT target grades its oracle output with tolerance regardless of the capsule).
+    policy = cfg.force_match_policy or capsule.get("numeric_policy")
     name = capsule["name"]
     run_id = run_id or f"{name}"
-    suite = suite or f"{target}-capsule-bench"
     adapters = oracle_adapters if oracle_adapters is not None else default_adapters()
     required = set(capsule.get("required_oracle_tiers", []))
 
-    paths = make_run_paths(runs_root, run_id, suite=suite, target=target,
-                           dtype=dtype, benchmark=name)
+    paths = make_run_paths(runs_root, run_id, suite=cfg.suite, target=cfg.target,
+                           dtype=cfg.dtype, benchmark=name)
 
     tiers: dict[str, TierResult] = {}
     trace_check_res = {"status": "skipped", "violations": []}
@@ -161,9 +208,9 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     status = "pass"
 
     try:
-        # shared front half: build + the 4 contract entrypoints (parse/target/cb/llvm), validated.
+        # shared front half: build + the 4 contract entrypoints (parse/target/cb/artifact), validated.
         pkg, cb, llvm_text = run_entrypoints(pkg, package_dir, capsule, paths, contract=contract,
-                                             timeout=timeout, fourth_output_name="lowered.llvm.mlir")
+                                             timeout=timeout, fourth_output_name=cfg.fourth_output_name)
 
         # --- golden + L0/L1 -----------------------------------------------------------------
         gold = CG.golden(capsule)
@@ -195,32 +242,36 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             raise CertFailure("numeric_golden", _cat("FUNCTIONAL_MISMATCH"),
                               f"golden != reference(cb): {nrep['first_mismatch']}")
 
-        l1_ok = _exact_match(ref, sim)
+        l1_ok = _match_by_policy(ref, sim, policy)
         tiers["L1"] = TierResult("L1", "pass" if l1_ok else "fail", mandatory=True,
                                  reason=None if l1_ok else "reference(cb) != simulate(cb)")
         if not l1_ok:
             raise CertFailure("command_buffer_reference", _cat("FUNCTIONAL_MISMATCH"),
                               "reference(cb) != simulate(cb)")
 
-        # --- trace gate ---------------------------------------------------------------------
-        trace = RD.decode_text(llvm_text, source=str(paths.generated / "lowered.llvm.mlir"))
-        schemas.validate(trace, "instruction_trace", contract=contract)
-        (paths.generated / "instruction_trace.json").write_text(
-            json.dumps(trace, indent=2), encoding="utf-8")
-        trace_check_res = TCK.check(trace, capsule.get("expected", {}), cb=cb)
-        if trace_check_res["status"] != "pass":
-            raise CertFailure("trace_check", _cat("PROTOCOL_VIOLATION"),
-                              f"trace_check failed: {trace_check_res['violations']}")
+        # --- trace gate (optional; only for targets whose ISA has a decoder+checker plugin) --------
+        # A command-ISA target (systolic, trace_gate="rocc_insn") decodes the emitted .insn stream to a
+        # RoCC trace and checks instruction coverage. A SIMT/other target (trace_gate=None) has no analog
+        # and skips it — the L0/L1 math floor + the oracle tiers carry the verdict either way.
+        if cfg.trace_gate == "rocc_insn":
+            trace = RD.decode_text(llvm_text, source=str(paths.generated / cfg.fourth_output_name))
+            schemas.validate(trace, "instruction_trace", contract=contract)
+            (paths.generated / "instruction_trace.json").write_text(
+                json.dumps(trace, indent=2), encoding="utf-8")
+            trace_check_res = TCK.check(trace, capsule.get("expected", {}), cb=cb)
+            if trace_check_res["status"] != "pass":
+                raise CertFailure("trace_check", _cat("PROTOCOL_VIOLATION"),
+                                  f"trace_check failed: {trace_check_res['violations']}")
 
-        # --- oracle tiers L2..L5 ------------------------------------------------------------
-        for tier in ("L2", "L3", "L4", "L5"):
+        # --- oracle tiers -------------------------------------------------------------------
+        for tier in cfg.oracle_tiers:
             mand = tier in required
             adapter = adapters.get(tier)
             if adapter is None:
                 if mand:
                     tiers[tier] = TierResult(tier, "unavailable", True,
-                                             reason=f"no adapter for {tier} ({_TIER_SIM[tier]})",
-                                             derived_from_rtl=tier in _RTL_TIERS)
+                                             reason=f"no adapter for {tier} ({cfg.tier_sim[tier]})",
+                                             derived_from_rtl=tier in cfg.rtl_tiers)
                 continue
             import time as _time
             _adapter_t0 = _time.perf_counter()
@@ -228,15 +279,15 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 res = adapter(cb, llvm_text, paths.generated, timeout)
             except OracleUnavailable as e:
                 tiers[tier] = TierResult(tier, "unavailable", mand, reason=str(e),
-                                         derived_from_rtl=tier in _RTL_TIERS)
+                                         derived_from_rtl=tier in cfg.rtl_tiers)
                 continue
             except Exception as e:  # adapter crash is a real failure for that tier
                 tiers[tier] = TierResult(tier, "fail", mand,
-                                         reason=f"{_TIER_SIM[tier]} crash: {str(e)[-300:]}",
-                                         derived_from_rtl=tier in _RTL_TIERS)
+                                         reason=f"{cfg.tier_sim[tier]} crash: {str(e)[-300:]}",
+                                         derived_from_rtl=tier in cfg.rtl_tiers)
                 if mand:
-                    raise CertFailure(_TIER_SIM[tier], _cat("TOOL_CRASH"),
-                                      f"{_TIER_SIM[tier]} invocation failed: {str(e)[-400:]}") from e
+                    raise CertFailure(cfg.tier_sim[tier], _cat("TOOL_CRASH"),
+                                      f"{cfg.tier_sim[tier]} invocation failed: {str(e)[-400:]}") from e
                 continue
             _adapter_wall = _time.perf_counter() - _adapter_t0
             # Split active (build + sim) vs waiting (queue/FPGA slot). Adapters that route through a
@@ -249,16 +300,24 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _acct = (_tm.get("build_s") or 0.0) + (_tm.get("sim_active_s") or 0.0)
                 _tm["oracle_wait_s"] = round(max(0.0, _adapter_wall - _acct), 3)
             _tm["adapter_wall_s"] = round(_adapter_wall, 3)
-            okt = _exact_match(res["outputs"], gold) and _exact_match(res["outputs"], ref) \
-                and _exact_match(res["outputs"], sim)
-            sim_name = _TIER_SIM[tier]
+            okt = _match_by_policy(res["outputs"], gold, policy) \
+                and _match_by_policy(res["outputs"], ref, policy) \
+                and _match_by_policy(res["outputs"], sim, policy)
+            sim_name = cfg.tier_sim[tier]
+            # SIMT perf headline (gflops / % of peak) when a perf extractor is supplied; None (systolic)
+            # leaves the fields off the TierResult so the output stays byte-identical.
+            _gflops = _pct_peak = None
+            if perf_extractor is not None:
+                _perf = perf_extractor(cb, res) or {}
+                _gflops = _perf.get("gflops")
+                _pct_peak = _perf.get("pct_fp_peak")
             tiers[tier] = TierResult(
                 tier, "pass" if okt else "fail", mand,
                 reason=None if okt else f"{sim_name} oracle != golden==reference==simulate",
                 cycles=res.get("cycles"), derived_from_rtl=res.get("oracle", {}).get(
-                    "derived_from_rtl", tier in _RTL_TIERS),
-                cycle_accurate=(tier in _RTL_TIERS and okt), evidence=f"{sim_name}_console.log",
-                timing=_tm)
+                    "derived_from_rtl", tier in cfg.rtl_tiers),
+                cycle_accurate=(tier in cfg.rtl_tiers and okt), evidence=f"{sim_name}_console.log",
+                timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak)
             if res.get("console") is not None:
                 (paths.artifacts_dir / f"{sim_name}_console.log").write_text(
                     res["console"], encoding="utf-8")
@@ -297,7 +356,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     }
     (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2),
                                                         encoding="utf-8")
-    _write_run_manifest(paths, run_id, name, status, tiers, capsule, target=target, suite=suite)
+    _write_run_manifest(paths, run_id, name, status, tiers, capsule, target=cfg.target, suite=cfg.suite)
     try:
         schemas.validate(result, "capsule_result", contract=contract)
     except schemas.ContractViolation as e:
@@ -336,7 +395,8 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
               contract: str | Path | None = None,
               oracle_adapters: dict[str, Callable] | None = None,
               timeout: int = 600, max_workers: int = 1,
-              target: str = "gemmini", suite: str | None = None, dtype: str = "i8xi8_i32") -> list[dict]:
+              target: str = "gemmini", suite: str | None = None, dtype: str = "i8xi8_i32",
+              config=None, perf_extractor: Callable | None = None) -> list[dict]:
     """Run many capsules through one package (building/integrity-scanning it once).
 
     ``max_workers > 1`` fans the (independent) per-capsule runs out across a ThreadPoolExecutor — each
@@ -351,7 +411,8 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     def _one(cap: dict) -> dict:
         return run_capsule(cap, package_dir, runs_root=runs_root, run_id=cap["name"],
                            contract=contract, oracle_adapters=oracle_adapters,
-                           pkg=pkg, timeout=timeout, target=target, suite=suite, dtype=dtype)
+                           pkg=pkg, timeout=timeout, target=target, suite=suite, dtype=dtype,
+                           config=config, perf_extractor=perf_extractor)
 
     if max_workers <= 1:
         return [_one(cap) for cap in capsules]

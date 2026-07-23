@@ -31,6 +31,10 @@ class RunnerConfig:
     oracle_tiers: tuple[str, ...]      # the tier loop order (sorted tier_sim keys)
     perf_fields: tuple[str, ...]       # perf metrics to extract ((): cycles only)
     trace_gate: str | None             # trace-gate plugin name (e.g. "rocc_insn") or None
+    # Optional override for the L1/oracle output-equality policy. None -> use the capsule's numeric_policy
+    # (integer capsules -> exact). A float target (SIMT) sets {compare: float, atol: ...} so its
+    # oracle-output comparison is tolerant regardless of the per-capsule policy.
+    force_match_policy: dict | None = None
 
 
 def runner_config_from_manifest(m) -> RunnerConfig:
@@ -49,4 +53,5 @@ def runner_config_from_manifest(m) -> RunnerConfig:
         oracle_tiers=tuple(sorted(tier_sim)),
         perf_fields=tuple(m.perf_fields),
         trace_gate=m.trace_gate,
+        force_match_policy=getattr(m, "force_match_policy", None),
     )
