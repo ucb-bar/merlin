@@ -356,11 +356,28 @@ def bwrap_cmd(inner: str, ws: Path, bundle: dict) -> str:
     return " ".join(parts) + f" bash -c '{TC.sandbox_env(ws)} {inner}'"
 
 
+def _corpus_probe_paths() -> tuple[Path, Path]:
+    """A (golden.yaml, capsule.interface.mlir) pair from the DECLARED capsule corpus for the masking
+    self-test — derived from the descriptor, not a hardcoded capsule id, so any target's corpus works.
+    Masking hides every golden.yaml, so any one is a valid leak probe. Falls back to the isa corpus."""
+    try:
+        from merlin.targetgen.target_experiment import load_target_experiment
+        corpus = load_target_experiment(C.EXP / "target_experiment.yaml").capsule_corpus
+        g = next(iter(sorted(corpus.rglob("golden.yaml"))), None)
+        s = next(iter(sorted(corpus.rglob("capsule.interface.mlir"))), None)
+        if g:
+            return g, (s or g.parent / "capsule.interface.mlir")
+    except Exception:  # noqa: BLE001 — no/invalid descriptor ⇒ fall back, never break the self-test
+        pass
+    base = C.REPO / "merlin/contract" / "capsules" / "isa" / "A4_acc_scale_i8"
+    return base / "golden.yaml", base / "capsule.interface.mlir"
+
+
 def mask_selftest(ws: Path, bundle: dict, sandbox: str) -> dict:
     """Confirm the agent's view withholds answers. bwrap: probe the masked golden. none: confirm the
     COPIED workspace has no golden.yaml and no hidden capsules anywhere under it."""
     if sandbox == "bwrap":
-        target = C.REPO / "merlin/contract" / "capsules" / "isa" / "A4_acc_scale_i8" / "golden.yaml"
+        target, _spec = _corpus_probe_paths()
         probe = f'if test -s {target}; then echo LEAK; else echo OK; fi'
         out = subprocess.run(["bash", "-c", bwrap_cmd(probe, ws, bundle)],
                              capture_output=True, text=True).stdout.strip()
@@ -379,10 +396,10 @@ def mask_selftest(ws: Path, bundle: dict, sandbox: str) -> dict:
             if p.is_symlink() and str(p.resolve()).startswith(real_caps):
                 bad_links.append(str(p))
     leak = bool(goldens or hidden or bad_links)
-    a4 = bc / "capsules" / "isa" / "A4_acc_scale_i8" / "capsule.interface.mlir"
+    _g, spec = _corpus_probe_paths()               # a real corpus spec (derived), for the presence flag
     return {"pilot_golden_visible_to_agent": "LEAK" if leak else "OK",
             "goldens_in_workspace": goldens[:10], "hidden_in_workspace": hidden[:10],
-            "symlinks_into_capsules": bad_links[:10], "spec_present": a4.exists()}
+            "symlinks_into_capsules": bad_links[:10], "spec_present": spec.exists()}
 
 
 def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
