@@ -20,22 +20,47 @@ from pathlib import Path
 from .gemmini_codegen import _ceil_dim, _pad_rowmajor, _parse, CodegenError
 from ..commandbuffer import materialize_inputs
 
-DIM = 16
-ADDR_LEN = 32
-F1 = 0x3F800000                       # float 1.0 bits
-GARBAGE = 0xFFFFFFFF
-C_ACC = ((3 << (ADDR_LEN - 2)) | (1 << (ADDR_LEN - 3))) & ~(1 << (ADDR_LEN - 2))  # 0xA0000000
-ACC_ACCUM = 1 << (ADDR_LEN - 2)       # 0x40000000 — accumulate-onto bit for K-tiles after the first
-K_CONFIG, K_MVIN, K_MVOUT, K_COMPUTE_PRELOADED, K_PRELOAD, K_FLUSH = 0, 2, 3, 4, 6, 7
+# ISA/ABI encoding constants — DERIVED from the single source of truth (gemmini's capability manifest +
+# the RTL fact bundle), not hand-copied. Byte-parity with the former literals is pinned by
+# test_codegen_constants_single_source; the emitted .insn is proven byte-identical by
+# test_codegen_emit_byte_identical. This retires the emitter's copy of the triplicated constants.
+def _load_isa() -> dict:
+    import json
+    from merlin.targetgen.target_experiment import load_capability_manifest
+    from merlin.targetgen.rtl.facts import rtl_facts_path
+    m = load_capability_manifest("gemmini")
+    enc, rb = m.encoding, m.encoding["readout_bits"]
+    dim = ((m.contract.get("capabilities") or {}).get("mesh") or {}).get("rows", 16)
+    code_of = {cls: code for code, cls in enc["semantic_class"].items()}
+    facts = json.loads(rtl_facts_path("gemmini").read_text())["facts"]
+    fd = next(i for i in facts["interfaces"] if i.get("name") == "funct_decode_table")
+    return {"DIM": dim, "ADDR_LEN": enc["addr_len"], "F1": rb["f1"], "C_ACC": rb["c_acc"],
+            "ACC_ACCUM": rb["acc_accum"], "ACC_I8": rb["acc_i8"], "K": code_of,
+            "CUSTOM_OPCODE": fd["custom_opcode"], "FUNCT3": fd["funct3"]}
+
+
+_isa = _load_isa()
+DIM = _isa["DIM"]
+ADDR_LEN = _isa["ADDR_LEN"]
+F1 = _isa["F1"]                       # float 1.0 bits
+GARBAGE = 0xFFFFFFFF                  # universal, not target-specific
+C_ACC = _isa["C_ACC"]                # 0xA0000000 full-i32 accumulator readout base
+ACC_ACCUM = _isa["ACC_ACCUM"]        # 0x40000000 accumulate-onto bit for K-tiles after the first
+ACC_I8 = _isa["ACC_I8"]              # 0x80000000 accumulator addr WITHOUT full_C: scaled i8 readout
+K_CONFIG = _isa["K"]["CONFIG"]
+K_MVIN = _isa["K"]["MVIN"]
+K_MVOUT = _isa["K"]["MVOUT"]
+K_COMPUTE_PRELOADED = _isa["K"]["COMPUTE_PRELOADED"]
+K_PRELOAD = _isa["K"]["PRELOAD"]
+K_FLUSH = _isa["K"]["FLUSH"]
+CUSTOM_OPCODE = _isa["CUSTOM_OPCODE"]   # RoCC custom-3 (0x7b)
+FUNCT3 = _isa["FUNCT3"]                 # 0x3
 
 # config_ex (WS, no activation, shift 0, identity scales, strides 1) and config_ld RS1 (block
 # stride defaults to DIM + pixel_repeats 1 — the RTL LoadController asserts block_stride>=rows).
 CFG_EX_RS1 = (F1 << 32) | (1 << 16) | (1 << 2)          # CONFIG_EX=0, dataflow WS=1
 CFG_EX_RS2 = (1 << 48)
 CFG_LD_RS1 = (F1 << 32) | (DIM << 16) | (1 << 8) | 1    # CONFIG_LD=1
-
-
-ACC_I8 = 1 << (ADDR_LEN - 1)            # 0x80000000 — accumulator addr WITHOUT full_C: scaled i8 readout
 
 
 def _pack(addr: int) -> int:
@@ -120,8 +145,8 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
         return s
 
     def rocc(funct: int, rs1: str, rs2: str) -> None:
-        body.append(f'    llvm.inline_asm has_side_effects ".insn r 0x7b, 0x3, {funct}, x0, '
-                    f'$0, $1", "r,r" {rs1}, {rs2} : (i64, i64) -> ()')
+        body.append(f'    llvm.inline_asm has_side_effects ".insn r {hex(CUSTOM_OPCODE)}, {hex(FUNCT3)}, '
+                    f'{funct}, x0, $0, $1", "r,r" {rs1}, {rs2} : (i64, i64) -> ()')
 
     pint = {}
     for i, name in enumerate(args):

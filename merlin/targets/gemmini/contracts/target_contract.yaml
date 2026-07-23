@@ -24,6 +24,7 @@ runner:
 # the SINGLE source of truth by the generated ISA module + the decoder — retiring the triplicated
 # hand-coded constants in GemminiToLLVM.cpp / gemmini_codegen_mlir.py / rocc_decode.py.
 encoding:
+  addr_len: 32             # RoCC accumulator/scratchpad address field width (bits)
   readout_bits:            # RoCC accumulator-readout / encoding bit conventions
     f1: 0x3F800000         # 1.0f
     c_acc: 0xA0000000      # full-i32 accumulator readout base
