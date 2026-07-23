@@ -20,9 +20,18 @@ sys.path.insert(0, str(REPO / "merlin" / "python"))
 
 from merlin.benchharness import sh, hash_tree, repo_sha, runs_root, reports_root  # noqa: E402
 
-EXP = REPO / "merlin" / "experiments" / "gemmini_capsule_bench_v0"
-RUNS = runs_root("gemmini", "capsule-bench")          # runs/gemmini/capsule-bench
-REPORTS = reports_root("capsule-bench", "gemmini")    # artifacts/capsule-bench/gemmini
+# EXP is DERIVED from where these scripts live (the experiment dir), and the TARGET from the experiment's
+# descriptor — so a per-target experiment dir (e.g. <target>_capsule_bench_v0) works with no edits here.
+EXP = _HERE.parents[1]                                 # the experiment dir the scripts live in
+_desc = EXP / "target_experiment.yaml"
+try:
+    import yaml as _yaml
+    TARGET = (_yaml.safe_load(_desc.read_text()) or {}).get("target") if _desc.is_file() else None
+except Exception:  # noqa: BLE001
+    TARGET = None
+TARGET = TARGET or EXP.name.split("_")[0]              # fallback: the dir-name stem before _capsule_bench
+RUNS = runs_root(TARGET, "capsule-bench")              # runs/<target>/capsule-bench
+REPORTS = reports_root("capsule-bench", TARGET)        # artifacts/capsule-bench/<target>
 BUNDLES = EXP / "input_bundles"
 
-__all__ = ["REPO", "EXP", "RUNS", "REPORTS", "BUNDLES", "sh", "hash_tree", "repo_sha"]
+__all__ = ["REPO", "EXP", "TARGET", "RUNS", "REPORTS", "BUNDLES", "sh", "hash_tree", "repo_sha"]
