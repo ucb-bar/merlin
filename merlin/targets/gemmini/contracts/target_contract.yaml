@@ -48,6 +48,12 @@ ops: [pack, matmul, commit, release]
 types: [resident_tensor, accumulator]
 runtime:
   backends: [simulator, spike_gemmini, verilator]
+  # The RTL sim harness that realizes this target — a DECLARED target fact, not a hardcoded backend
+  # constant, so it is onboardable from the contract and read from ONE place (not overfit in code). This
+  # is the SAME config the ISA facts are introspected from (targetgen.rtl.introspect), so sim and codegen
+  # stay coherent: its gemmini is the certified 16x16 int8 mesh above (the SoC also carries an OPU that the
+  # gemmini path never touches). Change here + re-derive facts + re-cert to move to a different harness.
+  rtl_sim_config: GemminiAndOPUShuttleConfig
 dtypes:
   storage: i8
   accumulator: i32

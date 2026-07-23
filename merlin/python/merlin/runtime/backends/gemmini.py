@@ -74,12 +74,29 @@ def libgemmini_dir() -> Path:
     return chipyard_root() / ".conda-env/riscv-tools/lib"
 
 
+def _rtl_sim_config() -> str:
+    """The verilator harness config that realizes gemmini — a DECLARED target fact (capability manifest
+    ``runtime.rtl_sim_config``), read via the target registry rather than a hardcoded backend constant.
+    Env override wins; then the manifest; then the module fallback (kept coherent with the facts config)."""
+    env = os.environ.get("MERLIN_GEMMINI_VERILATOR_CONFIG")
+    if env:
+        return env
+    try:
+        from ...targetgen.target_experiment import load_capability_manifest
+        cfg = (load_capability_manifest("gemmini").contract.get("runtime") or {}).get("rtl_sim_config")
+        if cfg:
+            return str(cfg)
+    except Exception:  # noqa: BLE001 — manifest unavailable ⇒ fall back, never crash the backend
+        pass
+    return VERILATOR_CONFIG
+
+
 def verilator_path() -> Path:
     env = os.environ.get("MERLIN_GEMMINI_VERILATOR")
     if env:
         return Path(env)
     return (chipyard_root() / "sims/verilator"
-            / f"simulator-chipyard.harness-{VERILATOR_CONFIG}")
+            / f"simulator-chipyard.harness-{_rtl_sim_config()}")
 
 
 def rocc_tests_dir() -> Path:
