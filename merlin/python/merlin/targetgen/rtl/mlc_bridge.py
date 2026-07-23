@@ -5,8 +5,12 @@ RTL *needle* extraction (finding specific ISA facts in the HW-dialect op graph).
 open-source repo). Rather than re-implement the op-graph parser + decoder analysis, we reuse mlc's
 ``discover.irgraph`` (``circt-opt --mlir-print-op-generic`` -> xDSL ``HwGraph``) and ``discover.decode``
 (the legal opcode set from the decoder's ``comb.icmp eq`` fan-out), plus mlc's own prebuilt CIRCT
-binaries. Imports are function-local behind an availability guard (``chia_bridge`` style) so importing
-this module never hard-requires mlc, and a machine without mlc degrades honestly rather than crashing.
+binaries. ``mlc`` is pip-installed editable into merlin's venv from ``MERLIN_MLC_DIR`` (see the dev
+setup docs), so its Python is a normal import. Imports are still function-local behind an availability
+guard (``chia_bridge`` style) so importing this module never hard-requires mlc, and a machine without
+the mlc package installed degrades honestly rather than crashing. Its NON-python assets (the prebuilt
+``circt-opt`` binary, the cached ``runs/circt-arc/<target>`` arc outputs, schemas) still resolve by
+directory path via ``MERLIN_MLC_DIR``.
 
 Why this matters: an ISA *header* parse (hand table / ``val NAME = N.U``) is provably wrong vs the
 silicon — it lists command codes the decoder never matches and omits ones it does. The decoder-derived
@@ -21,7 +25,6 @@ RTL repo mlc knows (gemmini, atlas, otbn, muon, nvdla, rocket, ...).
 from __future__ import annotations
 
 import os
-import sys
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -46,35 +49,18 @@ def circt_opt_bin() -> Path | None:
     return b if b.exists() else None
 
 
-@contextmanager
-def _mlc_on_path():
-    d = mlc_dir()
-    added = d is not None and str(d) not in sys.path
-    if added:
-        sys.path.insert(0, str(d))
-    try:
-        yield
-    finally:
-        if added:
-            try:
-                sys.path.remove(str(d))
-            except ValueError:
-                pass
-
-
 def mlc_available() -> tuple[bool, str]:
-    """(ok, reason). ok iff MERLIN_MLC_DIR resolves, circt-opt is built, and mlc imports."""
+    """(ok, reason). ok iff MERLIN_MLC_DIR resolves (assets), circt-opt is built, and mlc imports."""
     d = mlc_dir()
     if d is None:
         return False, "MERLIN_MLC_DIR unset/invalid (no mlc/ package) — set it in .env"
     if circt_opt_bin() is None:
         return False, f"circt-opt not built under {d}/third_party/circt/build/bin"
     try:
-        with _mlc_on_path():
-            import mlc.discover.irgraph  # noqa: F401
-            import mlc.discover.decode  # noqa: F401
+        import mlc.discover.irgraph  # noqa: F401
+        import mlc.discover.decode  # noqa: F401
     except Exception as e:  # noqa: BLE001 — surface the import failure honestly
-        return False, f"mlc import failed: {type(e).__name__}: {e}"
+        return False, f"mlc import failed: {type(e).__name__}: {e} — pip install -e $MERLIN_MLC_DIR"
     return True, "ok"
 
 
@@ -93,18 +79,17 @@ def matmul_reuse_prediction(M: int, N: int, K: int, *, dim: int, capacity_bytes:
     re-derivation here. Returns the resident operand footprint (rows), the on-chip capacity (rows), a
     fits flag, and the loop-nest refetch factor (=1 when the operands are fully resident; >1 when they
     spill and the outer loop re-streams). Returns None (fail-closed) when mlc is not importable — these
-    functions need only the mlc package on ``sys.path``, NOT circt, so we gate on the import alone."""
-    with _mlc_on_path():
-        try:
-            from mlc.passes.predict_dma_volume import matmul_refetch_factor, ReuseFacts
-            from mlc.passes.spills import matmul_footprint_rows
-        except Exception:  # noqa: BLE001 — mlc absent/unimportable ⇒ honest unavailable, never a guess
-            return None
-        # beat_bytes is irrelevant to the refetch/footprint math (it only scales byte→beat counts), so a
-        # benign 1 keeps us from fabricating a DMA beat width we have not discovered for this target.
-        facts = ReuseFacts(beat_bytes=1, dim=int(dim), capacity_bytes=int(capacity_bytes))
-        refetch = int(matmul_refetch_factor(M, K, N, facts, in_bytes=elem_bytes))
-        footprint_rows = int(matmul_footprint_rows(M, N, K, int(dim)))
+    functions need only the mlc package installed, NOT circt, so we gate on the import alone."""
+    try:
+        from mlc.passes.predict_dma_volume import matmul_refetch_factor, ReuseFacts
+        from mlc.passes.spills import matmul_footprint_rows
+    except Exception:  # noqa: BLE001 — mlc absent/unimportable ⇒ honest unavailable, never a guess
+        return None
+    # beat_bytes is irrelevant to the refetch/footprint math (it only scales byte→beat counts), so a
+    # benign 1 keeps us from fabricating a DMA beat width we have not discovered for this target.
+    facts = ReuseFacts(beat_bytes=1, dim=int(dim), capacity_bytes=int(capacity_bytes))
+    refetch = int(matmul_refetch_factor(M, K, N, facts, in_bytes=elem_bytes))
+    footprint_rows = int(matmul_footprint_rows(M, N, K, int(dim)))
     capacity_rows = int(capacity_bytes) // (int(dim) * max(elem_bytes, 1))
     return {"footprint_rows": footprint_rows, "capacity_rows": capacity_rows,
             "fits": footprint_rows <= capacity_rows, "refetch": refetch,
@@ -139,10 +124,9 @@ def discover_legal_opcodes(target: str, *, opcode_width: int | None = None) -> d
         return {"legal_opcodes": None, "width": opcode_width, "fanout": 0, "module": None,
                 "hw_source": None, "method": "decoder_icmp_fanout(mlc)",
                 "evidence": f"no core HW dialect for target {target!r} under mlc runs/circt-arc"}
-    with _mlc_on_path():
-        from mlc.discover import decode, irgraph
-        graph = irgraph.load_hw_graph(hw, circt_opt=circt_opt_bin())
-        sig = decode.discover_opcode_set(graph, expected_width=opcode_width)
+    from mlc.discover import decode, irgraph
+    graph = irgraph.load_hw_graph(hw, circt_opt=circt_opt_bin())
+    sig = decode.discover_opcode_set(graph, expected_width=opcode_width)
     if sig is None:
         return {"legal_opcodes": None, "width": opcode_width, "fanout": 0, "module": None,
                 "hw_source": str(hw), "method": "decoder_icmp_fanout(mlc)",
@@ -195,8 +179,7 @@ def derive_and_cache_roles(target: str, *, base=None) -> dict:
     arc model; raises RuntimeError otherwise (never fabricates roles). This is the ONLY writer of the
     cache :func:`semantic_roles` reads, keeping the derivation in one auditable place."""
     require_mlc()
-    with _mlc_on_path():
-        from mlc.discover import probe, target_interface  # noqa: F401 — presence-checked; probe drives arc
+    from mlc.discover import probe, target_interface  # noqa: F401 — presence-checked; probe drives arc
     raise RuntimeError(
         "derive_and_cache_roles must run in the mlc venv with a live arc model; invoke mlc's effect "
         "probe (mlc.discover.probe.sweep_field over the opcode field) there and classify effect "
@@ -209,7 +192,7 @@ def discovered_memory_map(target: str) -> dict | None:
     if mlc_dir() is None:
         return None
     try:
-        with _mlc_on_path(), _mlc_cwd():
+        with _mlc_cwd():
             _ensure_interface_cache(target)
             from mlc.discover.cache import discovered_memory_map as _mm
             return dict(_mm(target))
@@ -223,7 +206,7 @@ def discovered_dim(target: str) -> int | None:
     if mlc_dir() is None:
         return None
     try:
-        with _mlc_on_path(), _mlc_cwd():
+        with _mlc_cwd():
             _ensure_interface_cache(target)
             from mlc.discover.cache import discovered_dim as _dim
             return int(_dim(target))
@@ -236,7 +219,7 @@ def discovered_memories(target: str) -> list[dict] | None:
     if mlc_dir() is None:
         return None
     try:
-        with _mlc_on_path(), _mlc_cwd():
+        with _mlc_cwd():
             _ensure_interface_cache(target)
             from mlc.discover.cache import load_interface
             return list(load_interface(target).get("memories", []))
@@ -382,7 +365,7 @@ def arc_available(target: str) -> bool:
     if mlc_dir() is None:
         return False
     try:
-        with _mlc_on_path(), _mlc_cwd():
+        with _mlc_cwd():
             from mlc.runtime.backend import available
             return bool(available(target))
     except Exception:  # noqa: BLE001
@@ -405,7 +388,7 @@ def arc_core(target: str):
     require_mlc()
     if not arc_available(target):
         raise RuntimeError(f"mlc arc model absent for target {target!r} (runs/circt-arc/{target})")
-    with _mlc_on_path(), _mlc_cwd():
+    with _mlc_cwd():
         _ensure_interface_cache(target)
         from mlc.backends.cosim_core import CosimCore
         from mlc.discover.fingerprint import artifact_paths
@@ -420,6 +403,6 @@ def arc_run_command_buffer(cb: dict) -> dict:
     oracle, ...}`` where ``metrics`` carries the RTL's internal counts (cycles, bytes_moved,
     resident_hits, accumulator_commits, ...) — verilator-level state without verilator, for ANY target."""
     require_mlc()
-    with _mlc_on_path(), _mlc_cwd():
+    with _mlc_cwd():
         from mlc.runtime.backend import run_command_buffer
         return run_command_buffer(cb)

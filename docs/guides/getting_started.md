@@ -47,6 +47,12 @@ uv run python build_tools/scripts/check_structure.py    # verify the tree/docs i
 `.venv/bin/python` is the driver interpreter for everything in the docs (plain `python` is not on
 PATH). Without `uv`: `pip install -e '.[dev,xdsl,targetgen,kernels-ast,kernels-exo,kernels-parquet,kernels-plots]'`.
 
+The RTL-grounded targetgen flow additionally reuses the sibling **`mlc`** package (§5). It lives at a
+machine-specific path (`$MERLIN_MLC_DIR`), so it is not a `uv sync` dependency — install it editable
+into the same `.venv` once you have the checkout: `uv pip install -e "$MERLIN_MLC_DIR"` (else
+`.venv/bin/python -m pip install -e "$MERLIN_MLC_DIR"`). Without it, `import mlc` fails and the
+mlc-derived RTL facts degrade honestly (the rest of the SDK is unaffected).
+
 **Optional-dependency extras** (`[project.optional-dependencies]` in `pyproject.toml`; `--all-extras`
 installs them all):
 
@@ -123,7 +129,7 @@ not available on a fresh machine. "board-gated" items are called out in §5.
 | Beam search ([beam_search](beam_search.md)) | frozen `hand_v0` baseline (in-tree) + expert objdump fixtures + a K1 board **or** spike | `spike_rv64gcv` substitutes for the physical K1 (correctness/cycles, no wall-clock); `chia` only for Ray fan-out |
 | Gemmini experiment ([gemmini_experiment](gemmini_experiment.md)) | `bwrap` on PATH + the sim toolchain (`MERLIN_CHIPYARD` → spike/verilator) + `ANTHROPIC_API_KEY` for real agentic runs + `out/build/chia-venv` for fan-out | mock LLM fallback runs without a key (no real agentic run); VCS/FireSim rungs skip if absent |
 | Zephyr / FireSim / spike ([zephyr](zephyr.md)) | `ZEPHYR_BASE`, `MERLIN_ZEPHYR_SW`, `ZEPHYR_SDK_INSTALL_DIR`, `MERLIN_CHIPYARD` | spike substitutes for 2-tile FireSim |
-| Target generation ([targetgen](targetgen.md), [adding_a_target](adding_a_target.md)) | base install + extra `.[targetgen]` (jsonschema) | RTL-grounded targets additionally use `circt_firtool` |
+| Target generation ([targetgen](targetgen.md), [adding_a_target](adding_a_target.md)) | base install + extra `.[targetgen]` (jsonschema) | RTL-grounded targets additionally use `circt_firtool` and the sibling `mlc` package (editable-installed from `MERLIN_MLC_DIR`, §5) |
 | External baselines ([integrations](integrations.md)) | the relevant framework repo/build + its venv by `MERLIN_*` var (§5) | each arm skips independently when its var is unset |
 | Publish a champion (reproducibility §8) | base install; a local `git init --bare` remote | a real GitHub push is human-gated (never automatic) |
 
@@ -138,6 +144,15 @@ capture venv). Point `MERLIN_M2M_DIR` at the checkout; the lowering path runs in
 `MERLIN_M2M_VENV` (defaults to `$MERLIN_M2M_DIR/.venv`). See [model2MLIR frontend](model2mlir.md).
 Quantization happens **in m2m, not Merlin** — int8 (W8A8) is the only measured-working format; fp8 /
 int4 are a documented plan.
+
+**mlc — the model-ladder compiler (RTL frontend for targetgen).** The CIRCT+xDSL frontend Merlin
+reuses to derive ISA/geometry/capacity facts from accelerator RTL (`targetgen.rtl.mlc_bridge`). Point
+`MERLIN_MLC_DIR` at the checkout and **pip-install its Python editable into `.venv`**
+(`uv pip install -e "$MERLIN_MLC_DIR"`) — this replaces the old runtime `sys.path` shim, so `import
+mlc` is a normal import. `MERLIN_MLC_DIR` still locates mlc's **non-Python assets**: the prebuilt
+`circt-opt` binary (`third_party/circt/build/bin`), the cached `runs/circt-arc/<target>/outputs`
+(HW-dialect `*_hw.mlir` + `discovered_roles.json`), and schemas. Unset or not installed => the
+mlc-derived RTL facts report honest-unavailable rather than crashing.
 
 **LLVM / MLIR 23 + clang-23.** The whole-model path needs a standalone LLVM/MLIR-23 install
 (`mlir-translate`) and `clang-23`. Point `MERLIN_MLIR_INSTALL` / `MERLIN_MLIR_TRANSLATE` and
