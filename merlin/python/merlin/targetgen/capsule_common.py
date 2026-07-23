@@ -118,9 +118,11 @@ def run_entrypoints(pkg, package_dir: str | Path, capsule: dict, paths, *,
         raise CertFailure("command_buffer_schema", _cat("PROTOCOL_VIOLATION"),
                           f"command_buffer.json invalid: {e}") from e
 
-    p = run_entrypoint(pkg, "lower_target_to_llvm", inp, timeout=timeout)
+    # the 4th entrypoint: emit the target's codegen artifact (RoCC LLVM / SIMT kernel / ...). The
+    # resolver aliases the legacy name lower_target_to_llvm, so packages using either spelling work.
+    p = run_entrypoint(pkg, "emit_target_artifact", inp, timeout=timeout)
     if p.returncode != 0 or not p.stdout.strip():
-        raise CertFailure("target_to_llvm", _cat("ELABORATION_ERROR"),
-                          f"lower_target_to_llvm rc={p.returncode}: {p.stderr[-400:]}")
+        raise CertFailure("emit_target_artifact", _cat("ELABORATION_ERROR"),
+                          f"emit_target_artifact rc={p.returncode}: {p.stderr[-400:]}")
     (paths.generated / fourth_output_name).write_text(p.stdout, encoding="utf-8")
     return pkg, cb, p.stdout

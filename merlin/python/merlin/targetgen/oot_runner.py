@@ -169,8 +169,18 @@ def integrity_scan(pkg: Package) -> None:
                                   f"(a non-exempt package must not import the harness/reference)")
 
 
+# The 4th entrypoint was renamed lower_target_to_llvm -> emit_target_artifact (it emits the target's
+# codegen artifact, which for a SIMT/other target is not LLVM). Either name resolves to whichever the
+# package's manifest declares, so old and new packages both work.
+_ENTRYPOINT_ALIASES = {"emit_target_artifact": "lower_target_to_llvm",
+                       "lower_target_to_llvm": "emit_target_artifact"}
+
+
 def _resolve_argv(pkg: Package, name: str, input_mlir: Path, output_json: Path | None) -> list[str]:
-    template = pkg.manifest["commands"][name]["argv"]
+    commands = pkg.manifest["commands"]
+    if name not in commands and _ENTRYPOINT_ALIASES.get(name) in commands:
+        name = _ENTRYPOINT_ALIASES[name]      # back-compat: package declares the other spelling
+    template = commands[name]["argv"]
     out: list[str] = []
     for tok in template:
         tok = tok.replace("{tool}", str(pkg.tool))

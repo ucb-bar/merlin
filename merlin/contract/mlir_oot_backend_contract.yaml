@@ -28,16 +28,20 @@ entrypoints:
     output: "exit code (0 = ok)"
   lower_interface_to_target:
     purpose: "merlin_iface -> target dialect MLIR"
-    example_argv: ["{tool}", "--convert-iface-to-gemmini", "{input_mlir}"]
+    example_argv: ["{tool}", "--convert-iface-to-{target}", "{input_mlir}"]
     output: "target MLIR on stdout"
   emit_command_buffer:
     purpose: "interface -> command_buffer.json"
-    example_argv: ["{tool}", "--convert-iface-to-gemmini", "--emit-command-buffer={output_json}", "{input_mlir}"]
+    example_argv: ["{tool}", "--convert-iface-to-{target}", "--emit-command-buffer={output_json}", "{input_mlir}"]
     output: "writes {output_json} (schema-valid command buffer)"
+  # Canonical alias: emit_target_artifact (the runner accepts EITHER name). The 4th entrypoint emits the
+  # target's codegen ARTIFACT, whose kind is the target's endpoint_kind: inline_asm_insn -> an LLVM-dialect
+  # module of raw .insn on STOCK LLVM (command-ISA targets); external_backend -> a device kernel source
+  # (SIMT/GPU); upstream_target -> lowering to an upstream LLVM target. Not LLVM-specific.
   lower_target_to_llvm:
-    purpose: "target dialect -> LLVM/RoCC MLIR"
-    example_argv: ["{tool}", "--convert-iface-to-gemmini", "--convert-gemmini-to-llvm-rocc", "{input_mlir}"]
-    output: "LLVM-dialect MLIR on stdout (translatable to LLVM IR via mlir-translate)"
+    purpose: "target dialect -> the target's codegen artifact (per endpoint_kind; not necessarily LLVM)"
+    example_argv: ["{tool}", "--convert-iface-to-{target}", "--emit-target-artifact", "{input_mlir}"]
+    output: "the target artifact on stdout (its kind is decided by the target's endpoint_kind)"
 
 kernel_abi:
   # The lowered LLVM module MUST define this entry the runner-owned harness calls. The harness
