@@ -19,8 +19,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .facts import rtl_facts_path
-_DEFAULT_FACTS = rtl_facts_path("gemmini")
+from .facts import load_facts
 
 
 def generate(facts: dict) -> str:
@@ -84,10 +83,10 @@ def generate(facts: dict) -> str:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--facts", default=str(_DEFAULT_FACTS))
+    ap.add_argument("--facts", default=None, help="facts.json (default: regenerate gemmini from RTL)")
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
-    md = generate(json.loads(Path(a.facts).read_text()))
+    md = generate(json.loads(Path(a.facts).read_text()) if a.facts else load_facts("gemmini"))
     if a.out:
         Path(a.out).write_text(md)
         print(f"wrote {a.out} ({len(md.splitlines())} lines)")

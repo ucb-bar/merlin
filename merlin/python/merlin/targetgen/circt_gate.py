@@ -10,16 +10,13 @@ Non-invasive: this wraps an adapter `(cb, llvm_text, workdir, timeout) -> result
 capsule_runner/capsule_grade are untouched. Records skips + CIRCT wall into a sidecar list.
 """
 from __future__ import annotations
-import json
 import time
 from pathlib import Path
 from typing import Callable
 
 from . import rocc_decode as RD
 from . import rtl_checks as RC
-from .rtl.facts import rtl_facts_path
-
-_FACTS = rtl_facts_path("gemmini")
+from .rtl.facts import load_facts
 
 
 class CIRCTReject(Exception):
@@ -30,7 +27,7 @@ class CIRCTReject(Exception):
 
 def gated_adapter(inner: Callable, *, log: list | None = None, facts: dict | None = None) -> Callable:
     """Wrap a sim adapter with a CIRCT pre-screen. `log` (if given) collects per-call records."""
-    facts = facts or json.loads(_FACTS.read_text())
+    facts = facts or load_facts("gemmini")
     rc_facts = None
     try:
         from .rtl_check_compiler import _facts_to_rc as _f2rc

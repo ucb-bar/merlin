@@ -34,14 +34,13 @@ import yaml
 
 from . import rtl_check_compiler as CC
 from . import rtl_checks as RC
-from .rtl.facts import rtl_facts_path
+from .rtl.facts import load_facts
 from .corpora import capsule_corpus_roots
 from merlin.common.paths import ext_path, repo_root
 
 _REPO = repo_root()
-# RTL facts are target-specific; the resolver defaults to the gemmini pin but honors an explicit
-# path / $MERLIN_RTL_FACTS. General callers should pass target=/explicit= rather than assume gemmini.
-_FACTS = rtl_facts_path("gemmini")
+# RTL facts are the generated artifact (regenerated from the RTL on demand by load_facts); the
+# resolver defaults to gemmini but honors $MERLIN_RTL_FACTS. General callers should pass target=.
 _CAPSULE_ROOTS = capsule_corpus_roots()   # canonical + perf corpus, resolved by the corpus locator
 _FILECHECK_CANDIDATES = [
     str(_REPO / "third_party/llvm-build/bin/FileCheck"),
@@ -234,7 +233,7 @@ def _capsule_name_for(d: Path) -> str:
 
 def prescreen(run_capsule_dir: Path) -> dict | None:
     """Opt-in cost gate: compile+run the RTL checks; caller may skip the oracle on verdict=='reject'."""
-    facts = json.loads(_FACTS.read_text())
+    facts = load_facts("gemmini")
     return screen_run(Path(run_capsule_dir), facts, _capsule_index(), find_filecheck(), write=False)
 
 
@@ -256,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
     fc = find_filecheck()
     if not fc:
         print("WARNING: FileCheck binary not found; running Python screen only")
-    facts = json.loads(_FACTS.read_text())
+    facts = load_facts("gemmini")
     index = _capsule_index()
     rejects = warns = oks = n = 0
     for d in sorted(iter_run_dirs(Path(a.root))):

@@ -19,11 +19,11 @@ import pytest
 import yaml
 
 from merlin.targetgen import rtl_check_compiler as CC, rtl_check_runner as RR, rtl_checks as RC
-from merlin.targetgen.rtl.facts import rtl_facts_path
+from merlin.targetgen.rtl.facts import load_facts
 
 _FC = RR.find_filecheck()
 pytestmark = pytest.mark.skipif(_FC is None, reason="FileCheck binary not available")
-_FACTS = json.loads(rtl_facts_path("gemmini").read_text())
+_FACTS = load_facts("gemmini")
 
 
 def _matmul_capsule(min_tiles: int = 1):

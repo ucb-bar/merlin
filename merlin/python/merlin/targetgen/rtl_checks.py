@@ -48,17 +48,16 @@ DEFAULT_RTL_FACTS: dict[str, Any] = {
     "from": "target_contract.yaml (hand-curated, introspect-reproduced)",
 }
 
-# Path to the deterministic CIRCT-extracted facts (preferred over the curated defaults when present).
-from .rtl.facts import rtl_facts_path
-_CIRCT_FACTS = rtl_facts_path("gemmini")
+# The deterministic CIRCT-extracted facts (preferred over the curated defaults when derivable).
+from .rtl.facts import load_facts
 
 
 def load_default_facts() -> dict[str, Any]:
-    """Prefer the deterministic CIRCT-extracted facts (circt_introspect facts.json); fall back to the
-    curated DEFAULT_RTL_FACTS. Flattens to the {mesh, scratchpad_bytes, legal_funct} shape used here."""
+    """Prefer the deterministic CIRCT-extracted facts (regenerated from the RTL on demand); fall back
+    to the curated DEFAULT_RTL_FACTS. Flattens to the {mesh, scratchpad_bytes, legal_funct} shape here."""
     facts = dict(DEFAULT_RTL_FACTS)
     try:
-        rec = json.loads(_CIRCT_FACTS.read_text())
+        rec = load_facts("gemmini")
         f = rec.get("facts", rec)
         mesh = next((a for a in f.get("arrays", []) if a["name"] == "mesh"), None)
         if mesh:

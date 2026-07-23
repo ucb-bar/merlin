@@ -164,10 +164,10 @@ def main(argv: list[str] | None = None) -> int:
     import yaml
     ap = argparse.ArgumentParser(description="Compile RTL facts + capsule -> FileCheck assertion files.")
     ap.add_argument("capsule", help="path to capsule.yaml")
-    from .rtl.facts import rtl_facts_path
-    ap.add_argument("--facts", default=str(rtl_facts_path("gemmini")))
+    from .rtl.facts import load_facts
+    ap.add_argument("--facts", default=None, help="facts.json (default: regenerate gemmini from RTL)")
     a = ap.parse_args(argv)
-    facts = json.loads(Path(a.facts).read_text())
+    facts = json.loads(Path(a.facts).read_text()) if a.facts else load_facts("gemmini")
     capsule = yaml.safe_load(Path(a.capsule).read_text())
     cc = compile_checks(facts, capsule)
     print(f"# capsule={cc['capsule']}\n# --- dialect ---\n{cc['dialect']}\n# --- trace ---\n{cc['trace']}")

@@ -16,8 +16,7 @@ from __future__ import annotations
 import argparse, json
 from pathlib import Path
 
-from .facts import rtl_facts_path
-_DEFAULT_FACTS = rtl_facts_path("gemmini")
+from .facts import load_facts
 
 _TMPL = '''"""GENERATED from RTL facts by gen_numeric_facts — numeric-SHAPE sanity (NOT a numeric oracle)."""
 from __future__ import annotations
@@ -71,10 +70,11 @@ def generate(facts: dict) -> str:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--facts", default=str(_DEFAULT_FACTS))
+    ap.add_argument("--facts", default=None, help="facts.json (default: regenerate gemmini from RTL)")
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
-    code = generate(json.loads(Path(a.facts).read_text()))
+    facts = json.loads(Path(a.facts).read_text()) if a.facts else load_facts("gemmini")
+    code = generate(facts)
     if a.out:
         Path(a.out).write_text(code); print(f"wrote {a.out} ({len(code.splitlines())} lines)")
     else:

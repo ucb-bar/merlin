@@ -14,11 +14,11 @@ import pytest
 from merlin.targetgen import rtl_checks as RC
 from merlin.targetgen import rtl_check_runner as RR, rtl_check_compiler as CC
 from merlin.targetgen.rtl import mlc_bridge
-from merlin.targetgen.rtl.facts import rtl_facts_path
+from merlin.targetgen.rtl.facts import load_facts
 
 import json
 
-_FACTS = CC._facts_to_rc(json.loads(rtl_facts_path("gemmini").read_text()))
+_FACTS = CC._facts_to_rc(load_facts("gemmini"))
 
 
 def _matmul_capsule():

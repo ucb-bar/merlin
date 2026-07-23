@@ -137,6 +137,15 @@ selfcheck_out/
 /out/artifacts/targets/**/mlir_oot/build/
 /out/artifacts/targets/**/__pycache__/
 
+# --- RTL facts are a GENERATED artifact, never hand-tracked. Our CIRCT/mlc tooling EXTRACTS them
+#     from the target's RTL on demand (merlin.targetgen.rtl.facts.ensure_facts ->
+#     out/artifacts/cache/rtl_introspect/<target>/facts.json, purgeable). A target's only tracked
+#     definition is its reviewed input yaml (contracts/target_contract.yaml + the human-owned
+#     contracts/dialect_plan.yaml). The former per-target rtl_facts/ pin (facts.json + the arc/replay
+#     extras) is retired (untracked + ignored). The generated/ dir keeps its tracked AGENT.md/.gitkeep
+#     skeleton per the convention above. ---
+/merlin/targets/*/contracts/rtl_facts/
+
 # --- output/ is DELETED/retired: recaptures now live in out/artifacts/recaptures/. Keep this
 #     ignore as a backstop so a stray re-created output/ is never committed. ---
 /output/

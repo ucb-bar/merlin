@@ -20,8 +20,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .facts import rtl_facts_path
-_DEFAULT_FACTS = rtl_facts_path("gemmini")
+from .facts import load_facts
 
 _HEADER = '''"""GENERATED from RTL facts by merlin.targetgen.rtl.gen_isa_module — DO NOT hand-edit the tables.
 
@@ -169,12 +168,12 @@ def generate_header(facts: dict, encoding: dict, target: str = "gemmini") -> str
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--facts", default=str(_DEFAULT_FACTS))
+    ap.add_argument("--facts", default=None, help="facts.json (default: regenerate the target from RTL)")
     ap.add_argument("--target", default="gemmini", help="target whose manifest supplies the ABI encoding block")
     ap.add_argument("--header", action="store_true", help="emit a C++ constants header instead of the Python module")
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
-    facts = json.loads(Path(a.facts).read_text())
+    facts = json.loads(Path(a.facts).read_text()) if a.facts else load_facts(a.target)
     encoding = None
     try:
         from ..target_experiment import load_capability_manifest

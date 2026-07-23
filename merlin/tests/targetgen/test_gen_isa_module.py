@@ -11,13 +11,13 @@ from __future__ import annotations
 import json
 
 from merlin.targetgen.rtl.gen_isa_module import generate
-from merlin.targetgen.rtl.facts import rtl_facts_path
+from merlin.targetgen.rtl.facts import load_facts
 from merlin.targetgen.target_experiment import load_capability_manifest
 from merlin.targetgen import rocc_decode as RD
 
 
 def _generated_ns() -> dict:
-    facts = json.loads(rtl_facts_path("gemmini").read_text())
+    facts = load_facts("gemmini")
     enc = load_capability_manifest("gemmini").encoding
     ns: dict = {}
     exec(generate(facts, enc), ns)   # noqa: S102 — executing our own generated, deterministic module
@@ -48,7 +48,7 @@ def test_generator_emits_encoding_only_never_ops_or_dialect():
 
 def test_generated_cpp_header_carries_the_same_single_source_constants():
     from merlin.targetgen.rtl.gen_isa_module import generate_header
-    facts = json.loads(rtl_facts_path("gemmini").read_text())
+    facts = load_facts("gemmini")
     enc = load_capability_manifest("gemmini").encoding
     h = generate_header(facts, enc, "gemmini")
     # the C++ header a backend #includes instead of hand-typing constexprs — same values as the Python
@@ -62,7 +62,7 @@ def test_generated_cpp_header_carries_the_same_single_source_constants():
 def test_without_encoding_the_module_still_carries_the_rtl_encoder():
     # facts-only generation (no manifest) still yields the RTL-derived funct table + legal set, just
     # without the manifest ABI bits — honest degradation, not a crash.
-    facts = json.loads(rtl_facts_path("gemmini").read_text())
+    facts = load_facts("gemmini")
     ns: dict = {}
     exec(generate(facts, None), ns)  # noqa: S102
     assert "LEGAL_FUNCT" in ns and "FUNCT" in ns
