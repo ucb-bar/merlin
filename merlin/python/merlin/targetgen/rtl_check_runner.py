@@ -20,6 +20,7 @@ CLI::
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -54,6 +55,32 @@ def find_filecheck() -> str | None:
         if Path(c).is_file():
             return c
     return shutil.which("FileCheck")
+
+
+# Compiled checks are a pure function of (capsule name, RTL-facts sha) — memoize so a batch/beam over
+# one capsule compiles the FileCheck assertions once, not once per candidate run.
+_COMPILED_CACHE: dict[tuple[str, str], dict] = {}
+_FACTS_SHA: dict[int, str] = {}
+
+
+def _facts_sha(facts_rec: dict) -> str:
+    """Cheap, stable fingerprint of an RTL-facts record (cached by object identity within a run)."""
+    k = id(facts_rec)
+    s = _FACTS_SHA.get(k)
+    if s is None:
+        s = hashlib.sha1(json.dumps(facts_rec, sort_keys=True, default=str).encode()).hexdigest()[:12]
+        _FACTS_SHA[k] = s
+    return s
+
+
+def compiled_checks(facts_rec: dict, capsule: dict) -> dict:
+    """Memoized :func:`rtl_check_compiler.compile_checks`, keyed by (capsule name, facts sha)."""
+    key = (capsule.get("name") or "?", _facts_sha(facts_rec))
+    c = _COMPILED_CACHE.get(key)
+    if c is None:
+        c = CC.compile_checks(facts_rec, capsule)
+        _COMPILED_CACHE[key] = c
+    return c
 
 
 _OPFORM_RE = re.compile(r"=\s*gemmini\.\w+|gemmini\.(res_pack|matmul|commit|evict)\b")
@@ -102,13 +129,15 @@ def render_trace(trace: dict, facts_rec: dict) -> str:
     return "\n".join(L) + "\n"
 
 
-def run_filecheck(fc: str, check_text: str, input_text: str, prefix: str) -> tuple[bool, str]:
-    """Run FileCheck(check_text) over input_text with the given --check-prefix. (ok, diagnostics)."""
+def run_filecheck(fc: str, check_text: str, input_text: str,
+                  prefixes: str | list[str]) -> tuple[bool, str]:
+    """Run FileCheck(check_text) over input_text with one or more --check-prefixes. (ok, diagnostics)."""
+    prefs = prefixes if isinstance(prefixes, str) else ",".join(prefixes)
     with tempfile.NamedTemporaryFile("w", suffix=".checks", delete=False) as cf:
         cf.write(check_text)
         check_path = cf.name
     try:
-        p = subprocess.run([fc, f"--check-prefix={prefix}", "--allow-unused-prefixes", check_path],
+        p = subprocess.run([fc, f"--check-prefixes={prefs}", "--allow-unused-prefixes", check_path],
                            input=input_text, capture_output=True, text=True)
         return (p.returncode == 0, (p.stderr or p.stdout).strip())
     finally:
@@ -139,24 +168,41 @@ def screen_run(run_capsule_dir: Path, facts_rec: dict, index: dict[str, Path],
         return None
     trace = json.loads(trace_p.read_text())
     capsule = _load_capsule(_capsule_name_for(run_capsule_dir), index)
-    compiled = CC.compile_checks(facts_rec, capsule or {})
+    compiled = compiled_checks(facts_rec, capsule or {})
     res: dict[str, Any] = {"capsule": (capsule or {}).get("name") or run_capsule_dir.name,
                            "filecheck": {}, "screen": None}
 
     if fc:
-        if compiled["trace"]:
-            ok, diag = run_filecheck(fc, compiled["trace"], render_trace(trace, facts_rec), "TRACE")
-            res["filecheck"]["trace"] = {"ok": ok, "diag": diag}
-        if compiled["dialect"] and dialect_p.is_file():
-            mlir = dialect_p.read_text()
-            # The agent legitimately emits >1 MLIR surface form: op-form (`%x = gemmini.<op> ...`) and
-            # an attribute-encoded form (`gemmini.program = [...]`). The op-name patterns only apply to
-            # op-form; on other forms the check is SKIPPED (honest), not failed — the format-agnostic
-            # TRACE check over the decoded RoCC stream carries the structural verdict either way.
-            if _is_op_form(mlir):
-                ok, diag = run_filecheck(fc, compiled["dialect"], mlir, "DIALECT")
-                res["filecheck"]["dialect"] = {"ok": ok, "diag": diag}
+        trace_txt = render_trace(trace, facts_rec) if compiled["trace"] else None
+        # The agent legitimately emits >1 MLIR surface form: op-form (`%x = gemmini.<op> ...`) and an
+        # attribute-encoded form (`gemmini.program = [...]`). The op-name patterns only apply to op-form;
+        # on other forms the DIALECT check is SKIPPED (honest), not failed — the format-agnostic TRACE
+        # check over the decoded RoCC stream carries the structural verdict either way.
+        mlir = dialect_p.read_text() if (compiled["dialect"] and dialect_p.is_file()) else None
+        dialect_runnable = mlir is not None and _is_op_form(mlir)
+
+        if compiled["trace"] and dialect_runnable:
+            # FAST PATH: one FileCheck pass over the concatenated input (dialect MLIR ++ trace text). The
+            # two check vocabularies are DISJOINT (gemmini.* ops vs *_COUNT/ABI/INSTR trace tokens), so a
+            # combined --check-prefixes=DIALECT,TRACE run cannot cross-match. If it passes, both prefixes
+            # matched. Only on failure do we re-run the two separately to ATTRIBUTE it — DIALECT is
+            # advisory, TRACE bears the verdict — so the verdict site below is preserved bit-for-bit.
+            combined_checks = compiled["dialect"] + "\n" + compiled["trace"]
+            combined_input = f"{mlir}\n; ---rtlcheck-trace-region---\n{trace_txt}"
+            ok, _ = run_filecheck(fc, combined_checks, combined_input, ["DIALECT", "TRACE"])
+            if ok:
+                res["filecheck"]["trace"] = {"ok": True, "diag": ""}
+                res["filecheck"]["dialect"] = {"ok": True, "diag": ""}
             else:
+                okt, dt = run_filecheck(fc, compiled["trace"], trace_txt, "TRACE")
+                okd, dd = run_filecheck(fc, compiled["dialect"], mlir, "DIALECT")
+                res["filecheck"]["trace"] = {"ok": okt, "diag": dt}
+                res["filecheck"]["dialect"] = {"ok": okd, "diag": dd}
+        else:
+            if compiled["trace"]:
+                ok, diag = run_filecheck(fc, compiled["trace"], trace_txt, "TRACE")
+                res["filecheck"]["trace"] = {"ok": ok, "diag": diag}
+            if mlir is not None and not dialect_runnable:
                 res["filecheck"]["dialect"] = {"ok": None, "skipped": "non-op-form MLIR"}
     # Python numeric/lower-bound checks (capacity, multi-matmul tile bound) the RTL facts feed.
     rc_facts = CC._facts_to_rc(facts_rec)
