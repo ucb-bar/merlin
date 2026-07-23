@@ -86,6 +86,7 @@ ANSWER_SURFACES = [
 
 def _run_preflight() -> int:
     """Lock answer surfaces + run verify_no_cheat.py (the authoritative gate). Returns 0 iff safe."""
+    C.require_scaffolding()   # fail loudly if MERLIN_TARGET_EXPERIMENT points at a scaffolding-less dir
     locked = []
     for rel in ANSWER_SURFACES:
         p = C.REPO / rel
@@ -105,10 +106,10 @@ def _run_preflight() -> int:
     # every arm gets exactly the ISA/RTL the target_experiment.yaml declares — a fair, honest run).
     try:
         from merlin.targetgen.target_experiment import load_target_experiment, bundles_match_descriptor
-        desc = SCRIPTS.parent / "target_experiment.yaml"
+        desc = C.EXP / "target_experiment.yaml"          # C.EXP honors MERLIN_TARGET_EXPERIMENT
         if desc.is_file():
             te = load_target_experiment(desc)
-            bundles = SCRIPTS.parent / "input_bundles"
+            bundles = C.BUNDLES
             manifests = [bundles / ARMS[arm][4] / "input_bundle_manifest.yaml" for arm in ARMS
                          if (bundles / ARMS[arm][4] / "input_bundle_manifest.yaml").is_file()]
             drift = bundles_match_descriptor(te, manifests)
