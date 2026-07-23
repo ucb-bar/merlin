@@ -87,8 +87,36 @@ def _spike_verilator_adapter(sim: str) -> Callable:
     return run
 
 
+def mlc_arc_adapter(target: str) -> Callable:
+    """The DEFAULT cross-target RTL oracle: run the command buffer on ``target``'s mlc ARC model (the
+    RTL-derived functional model — bit-exact datapath outputs + cycle count from the arc state), for ANY
+    target mlc compiled from RTL — NO bespoke sim toolchain needed. This is what makes grading generalize
+    across targets. Raises OracleUnavailable if mlc / the arc model is absent for the target."""
+    def run(cb, llvm_text, workdir, timeout):
+        from .rtl import mlc_bridge
+        if not mlc_bridge.arc_available(target):
+            raise OracleUnavailable(f"mlc arc model unavailable for target {target!r}")
+        res = mlc_bridge.arc_run_command_buffer(cb)
+        return {"outputs": res.get("outputs"),
+                "cycles": (res.get("metrics") or {}).get("cycles"),
+                "oracle": res.get("oracle"), "console": ""}
+    return run
+
+
+def oracle_adapters(target: str = "gemmini", sim_via: str | None = None) -> dict[str, Callable]:
+    """The oracle adapters per tier for a target. The mlc ARC model is the DEFAULT RTL tier (works for
+    ANY mlc target, no bespoke sim); a target that DECLARES a bespoke sim (``sim_via``) additionally gets
+    its higher-fidelity sim tiers (chipyard -> spike L2 / verilator L3), preserving the gemmini path."""
+    adapters: dict[str, Callable] = {"L3": mlc_arc_adapter(target)}   # arc default (RTL-derived)
+    if sim_via == "chipyard":                                         # optional bespoke sim (gemmini)
+        adapters["L2"] = _spike_verilator_adapter("spike")
+        adapters["L3"] = _spike_verilator_adapter("verilator")
+    return adapters
+
+
 def default_adapters() -> dict[str, Callable]:
-    """L2/L3 reuse the contract oracle path; L4/L5 are injected by the VCS/FireSim modules."""
+    """Back-compat default (gemmini): L2/L3 via the chipyard contract oracle. New callers should use
+    :func:`oracle_adapters` with the target's ``sim_via`` (arc default + optional bespoke sim)."""
     return {"L2": _spike_verilator_adapter("spike"),
             "L3": _spike_verilator_adapter("verilator")}
 
