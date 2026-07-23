@@ -1,0 +1,180 @@
+"""Assemble the deny-by-default bwrap command + PROVE its isolation by replaying the mount table.
+
+``base_argv`` is the deny-by-default prefix: system dirs RO, all of ``/scratch*`` tmpfs-hidden, only the
+arm bundle's ``allowed`` paths bound back, its ``denied`` sub-paths re-masked (deny-wins), the workspace
+writable. On top go the claude runtime binds, the toolchain binds, and finally the derived answer masks.
+
+``apply_answer_masks`` masks EVERY derived answer surface that a legit bind would otherwise re-expose
+(goldens/hidden live under the bound ``merlin/contract`` tree; memory under the bound ``~/.claude``). It
+adds a mask ONLY for a surface that is currently exposed — so a surface already hidden by deny-by-default
+needs no overlay (and we never /dev/null-overlay a path whose parent tmpfs would make the mount fail).
+
+``coverage_gap`` is the hermetic guard: it replays the ordered mount table and returns the answer
+surfaces still reachable. Empty == the sandbox masks the full derived answer set. This runs WITHOUT
+launching bwrap, so it is the CI-safe isolation proof.
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+from merlin.common.paths import repo_root
+from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, answer_surfaces
+from merlin.targetgen.target_experiment import TargetExperiment
+
+_EXPOSE_OPS = ("--ro-bind", "--bind", "--dev-bind", "--ro-bind-try", "--bind-try")
+_HIDE_DEST_OPS = ("--tmpfs",)            # single-arg-dest hide ops
+_DEVNULL = "/dev/null"
+
+
+def base_argv(ws: Path, bundle: dict, *, repo: Path | None = None) -> list[str]:
+    """Deny-by-default bwrap argv prefix: system RO, /scratch* tmpfs-hidden, ONLY the bundle's allowed
+    paths bound RO, denied sub-paths re-masked, workspace writable+last. Target-agnostic — the ``bundle``
+    (or an empty ``{}``) is the only input beyond the workspace."""
+    repo = repo or repo_root()
+    parts = ["bwrap", "--die-with-parent", "--unshare-pid",
+             "--ro-bind", "/usr", "/usr", "--ro-bind", "/bin", "/bin", "--ro-bind", "/lib", "/lib",
+             "--ro-bind", "/lib64", "/lib64", "--ro-bind", "/etc", "/etc",
+             "--tmpfs", "/scratch", "--tmpfs", "/scratch2", "--tmpfs", "/tmp",
+             "--proc", "/proc", "--dev", "/dev", "--chdir", str(ws)]
+    home_claude = os.path.expanduser("~/.claude")
+    if Path(home_claude).exists():
+        parts += ["--bind", home_claude, home_claude]
+
+    def _kind(p: Path) -> str:
+        # permission-safe: a chmod-000 lock makes stat() raise — treat as present-dir so a locked answer
+        # surface is still masked, never crashes the binder.
+        try:
+            if p.is_dir():
+                return "dir"
+            if p.exists():
+                return "file"
+            return "missing"
+        except PermissionError:
+            return "dir"
+
+    for entry in bundle.get("allowed", []):
+        p = repo / entry["path"]
+        if _kind(p) != "missing":
+            parts += ["--ro-bind", str(p), str(p)]
+    # Deny wins: tmpfs-mask every denied DIR after the allowed binds, so a broad allow (e.g. all of
+    # merlin/contract/) cannot expose a denied sub-path (e.g. capsules/hidden/).
+    for d in bundle.get("denied", []):
+        p = repo / d["path"]
+        if _kind(p) == "dir":
+            parts += ["--tmpfs", str(p)]
+    # Bind the writable workspace LAST so no mask clobbers it.
+    parts += ["--bind", str(ws), str(ws)]
+    return parts
+
+
+def claude_runtime_binds() -> list[str]:
+    """RO-bind the ``claude`` CLI runtime (launcher in ~/.local/bin, native binary in ~/.local/share/
+    claude, nvm, ~/.config) + make ~/.claude.json writable. Without these the agent launch fails
+    'claude: command not found'. None of these are an answer surface."""
+    binds: list[str] = []
+    home = Path(os.path.expanduser("~"))
+    for p in (home / ".local" / "bin", home / ".local" / "share" / "claude",
+              home / ".nvm", home / ".config"):
+        if p.exists():
+            binds += ["--ro-bind", str(p), str(p)]
+    cj = home / ".claude.json"
+    if cj.exists():
+        binds += ["--bind", str(cj), str(cj)]
+    return binds
+
+
+# --------------------------------------------------------------------------- mount-table replay
+def _mounts(argv: list[str]) -> list[tuple[str, str]]:
+    """Parse the argv into ordered (state, dest) mount ops, where state is 'expose' or 'hide'. Only the
+    ops that affect path visibility are kept; everything else (flags, --chdir, --unsetenv…) is ignored."""
+    ops: list[tuple[str, str]] = []
+    i = 0
+    n = len(argv)
+    while i < n:
+        a = argv[i]
+        if a in _EXPOSE_OPS and i + 2 < n:
+            src, dest = argv[i + 1], argv[i + 2]
+            ops.append(("hide" if src == _DEVNULL else "expose", dest))
+            i += 3
+            continue
+        if a in _HIDE_DEST_OPS and i + 1 < n:
+            ops.append(("hide", argv[i + 1]))
+            i += 2
+            continue
+        if a in ("--dev", "--proc") and i + 1 < n:
+            ops.append(("hide", argv[i + 1]))    # devtmpfs/procfs — hides host content under dest
+            i += 2
+            continue
+        i += 1
+    return ops
+
+
+def _is_under(path: Path, base: str) -> bool:
+    b = Path(base)
+    return path == b or b in path.parents
+
+
+def is_exposed(argv: list[str], path: Path) -> bool:
+    """True iff ``path`` is reachable (readable host content) inside the sandbox described by ``argv``.
+    Replays the ordered mount table: the controlling mount is the one whose dest is ``path`` or an
+    ancestor of it, most-specific (longest dest) wins, ties broken by LATEST op (bwrap applies in order).
+    Exposed iff that controlling mount is an 'expose' AND the mapped host source still contains the path."""
+    ops = _mounts(argv)
+    best = None  # (dest_len, index, state, dest)
+    for idx, (state, dest) in enumerate(ops):
+        if _is_under(path, dest):
+            key = (len(dest), idx)
+            if best is None or key >= (best[0], best[1]):
+                best = (len(dest), idx, state, dest)
+    if best is None:
+        return False              # no mount covers it -> not present
+    _, _, state, dest = best
+    if state == "hide":
+        return False
+    # expose: dest is bound to the identical host path in this harness (src==dest), so the sub-path maps
+    # back to itself; it is exposed iff it still exists on the host.
+    try:
+        return path.exists()
+    except PermissionError:
+        return True               # a locked-but-present surface is still exposed content-wise
+    except OSError:
+        return False
+
+
+def coverage_gap(argv: list[str], surfaces: list[AnswerSurface]) -> list[AnswerSurface]:
+    """The answer surfaces STILL reachable under ``argv`` — the drift/cheat guard. Empty == full mask."""
+    return [s for s in surfaces if is_exposed(argv, s.path)]
+
+
+def apply_answer_masks(argv: list[str], surfaces: list[AnswerSurface]) -> list[str]:
+    """Append masks for every answer surface a bind would otherwise re-expose. A surface already hidden
+    by deny-by-default is skipped (no redundant overlay, and no mount whose parent tmpfs would fail).
+    File surfaces are /dev/null-overlaid; dir surfaces are tmpfs'd. Masks go LAST so they win."""
+    out = list(argv)
+    for s in surfaces:
+        if not is_exposed(out, s.path):
+            continue
+        if s.kind == "file":
+            out += ["--ro-bind", _DEVNULL, str(s.path)]
+        else:
+            out += ["--tmpfs", str(s.path)]
+    return out
+
+
+# --------------------------------------------------------------------------- full assembly
+def full_argv(te: TargetExperiment, ws: Path, bundle: dict | None = None) -> list[str]:
+    """The complete isolation argv for one target+arm: deny-by-default base + claude runtime + toolchain
+    binds + derived answer masks. ``bundle`` may be ``{}``/None for a descriptor-only (bundle-less)
+    target — the answer masks are then driven purely by the descriptor."""
+    from merlin.targetgen.sandbox import toolchain as TC   # local: avoid a heavy import at module load
+    bundle = bundle or {}
+    argv = base_argv(ws, bundle) + claude_runtime_binds() + TC.toolchain_binds(te)
+    return apply_answer_masks(argv, answer_surfaces(te))
+
+
+def wrap(te: TargetExperiment, ws: Path, inner: str, bundle: dict | None = None) -> str:
+    """A ready-to-run ``bash -c`` string: full argv + the sandbox env exports + the inner command."""
+    from merlin.targetgen.sandbox import toolchain as TC
+    argv = full_argv(te, ws, bundle)
+    return " ".join(argv) + f" bash -c '{TC.sandbox_env(te, ws)} {inner}'"

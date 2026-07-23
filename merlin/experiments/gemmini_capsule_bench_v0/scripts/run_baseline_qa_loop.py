@@ -100,17 +100,18 @@ READY_MARKER = "READY_FOR_BARRIER"  # realistic: agent drops submission/<this> t
 MERLIN_WS_DOCS = ("TASK_ADDENDUM.md", "ALLOWED_MERLIN_TOOLS.md", "MERLIN_PROVENANCE_TEMPLATE.md")
 
 
+def _te():
+    """This experiment's target descriptor (honors MERLIN_TARGET_EXPERIMENT via C.EXP)."""
+    from merlin.targetgen.target_experiment import load_target_experiment
+    return load_target_experiment(C.EXP / "target_experiment.yaml")
+
+
 def answer_files() -> list[Path]:
-    """Every answer-bearing file the agent must NOT see (public goldens + the example golden cb).
-    Hidden capsules live under a denied dir already tmpfs-masked by the bundle."""
-    caps = C.REPO / "merlin/contract" / "capsules"
-    files = []
-    for sub in ("isa", "layers", "model_slices"):
-        files += sorted((caps / sub).glob("*/golden.yaml"))
-    ex = C.REPO / "merlin/contract" / "examples" / "expected_command_buffer_g0.json"
-    if ex.exists():
-        files.append(ex)
-    return [f for f in files if f.exists()]
+    """Every answer-bearing GOLDEN file the agent must NOT see — DERIVED from the declared capsule corpus
+    (+ its sibling corpora) via the shared sandbox module, not a hard-coded isa/layers/model_slices list.
+    Hidden capsules / oracle / grader / memory are masked by the shared answer-mask pass (bwrap_cmd)."""
+    from merlin.targetgen.sandbox import golden_files
+    return golden_files(_te())
 
 
 def _denied_subpaths_under(rel: str, bundle: dict) -> list[str]:
@@ -208,23 +209,20 @@ def assemble_copy_workspace(bundle: dict, ws: Path) -> dict:
     return report
 
 
-# Paths whose CONTENT is an answer/grader the agent must not read (golden outputs, hidden capsules,
-# the Merlin reference/simulator, prior backends, grader-private goldens, grader internals). Matched
-# against READ commands only — a mere mention (e.g. an integrity self-scan grepping the submission
-# for "reference_outputs", or the repo path containing "merlin") is NOT a violation.
-# Flagged for BOTH arms:
-_ANSWER_TOKENS = (
-    "golden.yaml", "capsules/hidden", "merlin/runtime/reference", "merlin/runtime/simulator",
-    "merlin/runtime/backends", "merlin_native_v0", "hand_smoke_oot", "agent_spec_v0",
-    "agent_spec_v1", "grader_private", "expected_command_buffer")
-# GRADER INFRASTRUCTURE: reading the decoder/grader/golden-gen lets the agent conform to /
-# reverse-engineer the grader instead of deriving from public facts. Both arms (neither is allowed
-# these).
-_GRADER_TOKENS = ("rocc_decode", "trace_check.py", "capsule_grade", "capsule_golden",
-                  "capsule_runner", "oot_runner", "coverage_report")
-# Oracle-callable helpers DENIED inside the merlin arm's allowed tool dirs (the merlin-arm leak):
-# reading these gives a callable route to the reference/simulator oracle. Both arms.
-_ORACLE_SUBPATH_TOKENS = ("runtime_adapter", "xdsl_dialects/lowering", "lowering/pipeline")
+# The answer/grader/oracle path-fragment tokens the transcript audit flags as READS are DERIVED from the
+# SAME declared registry + descriptor as the filesystem mask (merlin.targetgen.sandbox.answer_surfaces),
+# so there is one source of truth (no parallel hand-list to drift):
+#   answer  = goldens + hidden set + the reference/simulator/backend oracle modules + the descriptor's
+#             prior_backends + grader-private (reading any is an answer/route leak, BOTH arms).
+#   grader  = the decoder/grader/golden-gen module stems (reverse-engineering the grader, BOTH arms).
+#   oracle_subpath = the oracle-callable helper subpaths inside otherwise-allowed tool dirs (the
+#             merlin-arm leak — a callable route to the reference/simulator oracle, BOTH arms).
+# Matched against READ commands only — a mere mention (an integrity self-scan, or the repo path
+# containing "merlin") is NOT a violation.
+_AUDIT_TOKENS = __import__("merlin.targetgen.sandbox", fromlist=["audit_tokens"]).audit_tokens(_te())
+_ANSWER_TOKENS = _AUDIT_TOKENS["answer"]
+_GRADER_TOKENS = _AUDIT_TOKENS["grader"]
+_ORACLE_SUBPATH_TOKENS = _AUDIT_TOKENS["oracle_subpath"]
 # Merlin authoring tool dirs: ALLOWED for merlin_assisted, DENIED for raw_baseline -> flag reads of
 # them for raw ONLY (for merlin they are legitimate authoring inputs). Includes the target-agnostic
 # compiler-modification SPINE exposed to the assisted arm: the CCA (extract), cca_compare (diff),
@@ -329,30 +327,22 @@ def audit_transcript(tpath: Path, arm: str = "raw_baseline") -> dict:
 
 
 def claude_runtime_binds() -> list[str]:
-    """RO-bind the `claude` CLI runtime into the sandbox. bwrap binds ~/.claude (config/auth) but
-    not the binary itself: the launcher lives in ~/.local/bin and the (self-contained native) binary
-    under ~/.local/share/claude. Without these the agent launch fails 'claude: command not found'."""
-    binds = []
-    home = Path(os.path.expanduser("~"))
-    for p in (home / ".local" / "bin", home / ".local" / "share" / "claude",
-              home / ".nvm", home / ".config"):
-        if p.exists():
-            binds += ["--ro-bind", str(p), str(p)]
-    # ~/.claude.json (project/session state, distinct from the ~/.claude/ dir) must be writable.
-    cj = home / ".claude.json"
-    if cj.exists():
-        binds += ["--bind", str(cj), str(cj)]
-    return binds
+    """RO-bind the `claude` CLI runtime into the sandbox (delegates to the shared sandbox module)."""
+    from merlin.targetgen.sandbox import bwrap as _BW
+    return _BW.claude_runtime_binds()
 
 
 def bwrap_cmd(inner: str, ws: Path, bundle: dict) -> str:
-    """bwrap argv (deny-by-default) + claude runtime binds + TOOLCHAIN binds (the legit build+sim tools
-    mined from past runs, bound back over the /scratch* masks) + per-file golden masking + toolchain env.
-    Proven by test_sandbox.py (18/18 per arm: tools work, answers masked, moat holds)."""
+    """bwrap argv (deny-by-default) + claude runtime binds + TOOLCHAIN binds (the legit build+sim tools,
+    bound back over the /scratch* masks) + the DERIVED answer-mask pass + toolchain env. The mask set now
+    comes from the shared descriptor-driven answer surface (goldens/hidden/prior/oracle/grader/memory) and
+    is coverage-proven by test_sandbox_isolation; masking is bundle-independent (a bind that re-exposes an
+    answer surface is re-masked here, not left to the bundle's denied list)."""
     import sandbox_toolchain as TC
+    from merlin.targetgen.sandbox import bwrap as _BW
+    from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces as _surfaces
     parts = RX.bwrap_argv(ws, bundle) + claude_runtime_binds() + TC.toolchain_binds()
-    for f in answer_files():
-        parts += ["--ro-bind", "/dev/null", str(f)]  # overlay empty file -> golden withheld
+    parts = _BW.apply_answer_masks(parts, _surfaces(_te()))
     return " ".join(parts) + f" bash -c '{TC.sandbox_env(ws)} {inner}'"
 
 

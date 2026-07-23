@@ -14,6 +14,8 @@ Usage: test_sandbox.py [--arm merlin_rtlchecks|merlin|baseline]
 """
 from __future__ import annotations
 import argparse
+import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -57,8 +59,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--arm", default="merlin_rtlchecks", choices=list(ARM_BUNDLE))
     a = ap.parse_args(argv)
-    bundle = RX._load_bundle(ARM_BUNDLE[a.arm].replace("_hwbringup_v0", "")) \
-        if False else _load_bundle_by_id(ARM_BUNDLE[a.arm])
+    bundle = _load_bundle_by_id(ARM_BUNDLE[a.arm])
     print(f"=== sandbox test — arm={a.arm} bundle={ARM_BUNDLE[a.arm]} ===")
 
     with tempfile.TemporaryDirectory(dir="/tmp") as td:
@@ -141,8 +142,11 @@ def main(argv=None):
         if sub.exists() or sub.is_symlink():
             sub.unlink() if sub.is_symlink() else _sh.rmtree(sub)
         sub.symlink_to(ref)
+        # start_new_session=True makes the broker its OWN process-group leader, so teardown can kill
+        # exactly the sims IT spawned (scoped) instead of a broad pkill on a shared host.
         broker = subprocess.Popen([sys.executable, str(SCRIPTS_DIR / "simjob_broker.py"), "--ws", str(ws)],
-                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                  start_new_session=True)
         try:
             # submit (async) from INSIDE the sandbox, then poll to a real verdict
             rc, out, err = _run(ws, bundle,
@@ -181,7 +185,13 @@ def main(argv=None):
                 broker.wait(timeout=10)
             except Exception:
                 broker.kill()
-            subprocess.run(["pkill", "-9", "-f", "simulator-chipyard"], capture_output=True)
+            # SCOPED teardown: kill ONLY the broker's own process group (the spike/verilator children IT
+            # spawned) — never a broad `pkill -f simulator-chipyard`, which on this shared host would also
+            # kill a concurrent session's verilator (the shared-host rule; caused false exit-144s).
+            try:
+                os.killpg(os.getpgid(broker.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
 
     n = sum(1 for _, ok in results if ok)
     print(f"\n{'='*56}\nSANDBOX TEST: {n}/{len(results)} passed")

@@ -198,45 +198,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def bwrap_argv(ws: Path, bundle: dict) -> list[str]:
-    """Deny-by-default bwrap argv prefix: system RO, /scratch* tmpfs-hidden, ONLY the bundle's
-    allowed paths bound RO, workspace writable. Denied /scratch* paths are masked by the tmpfs.
-    Reused by the launcher (real runs) and the pre-flight canary probe."""
-    parts = ["bwrap", "--die-with-parent", "--unshare-pid",
-             "--ro-bind", "/usr", "/usr", "--ro-bind", "/bin", "/bin", "--ro-bind", "/lib", "/lib",
-             "--ro-bind", "/lib64", "/lib64", "--ro-bind", "/etc", "/etc",
-             "--tmpfs", "/scratch", "--tmpfs", "/scratch2", "--tmpfs", "/tmp",
-             "--proc", "/proc", "--dev", "/dev", "--chdir", str(ws)]
-    home_claude = os.path.expanduser("~/.claude")
-    if Path(home_claude).exists():
-        parts += ["--bind", home_claude, home_claude]
-    def _kind(p: Path) -> str:
-        # permission-safe: a chmod-000 lock on a parent makes stat() raise — treat as present-dir so a
-        # locked answer surface is still masked, never crashes the binder.
-        try:
-            if p.is_dir():
-                return "dir"
-            if p.exists():
-                return "file"
-            return "missing"
-        except PermissionError:
-            return "dir"
-    for entry in bundle.get("allowed", []):
-        p = C.REPO / entry["path"]
-        if _kind(p) != "missing":
-            parts += ["--ro-bind", str(p), str(p)]
-    # Deny wins: tmpfs-mask every denied path AFTER the allowed binds, so a broad allow (e.g. all of
-    # merlin/contract/) cannot expose a denied sub-path (e.g. capsules/hidden/). A masked dir becomes
-    # an empty tmpfs; a masked file is hidden by masking its parent only if listed — so we mask dirs.
-    for d in bundle.get("denied", []):
-        p = C.REPO / d["path"]
-        if _kind(p) == "dir":
-            parts += ["--tmpfs", str(p)]
-    # Bind the writable workspace LAST so nothing clobbers it. The agent's cwd lives under the repo
-    # (C.EXP/_qa_ws/...), i.e. under /scratch — which is tmpfs-masked above, and a denied ANCESTOR dir
-    # tmpfs-masked in the loop above would wipe an early ws bind (bwrap applies mounts in arg order),
-    # leaving "bwrap: Can't chdir to <ws>". Applying the ws bind after every mask guarantees it wins.
-    parts += ["--bind", str(ws), str(ws)]
-    return parts
+    """Deny-by-default bwrap argv prefix (delegates to the shared, target-agnostic sandbox base): system
+    RO, /scratch* tmpfs-hidden, ONLY the bundle's allowed paths bound RO, denied sub-paths re-masked,
+    workspace writable+last. Reused by the launcher (real runs) and the pre-flight canary probe."""
+    from merlin.targetgen.sandbox import bwrap as _BW
+    return _BW.base_argv(ws, bundle, repo=C.REPO)
 
 
 def _bwrap_wrap(cmd: str, ws: Path, bundle: dict) -> str:
