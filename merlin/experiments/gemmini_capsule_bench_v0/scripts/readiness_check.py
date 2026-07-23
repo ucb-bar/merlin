@@ -23,7 +23,7 @@ from pathlib import Path
 
 import yaml
 
-from merlin.common.paths import merlin_dir, repo_root
+from merlin.common.paths import ext_path, merlin_dir, repo_root
 
 # Repo root + venv interpreter come from the canonical path helpers (never Path(__file__).parents[N],
 # and never EXP.parent.parent — that resolves the merlin/ subdir, not the repo root where .venv lives).
@@ -217,7 +217,8 @@ def test_oracles_endtoend():
     ref = REPO / "out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot"
     if not (ref / "manifest.yaml").is_file():
         _ok("reference backend agent_spec_v1 present", False, "missing"); return
-    CE = "/path/to/chipyard/.conda-env"
+    _cy = ext_path("chipyard")   # resolve the real chipyard (.env MERLIN_EXT_CHIPYARD), same as the sandbox
+    CE = str(_cy / ".conda-env") if _cy else "/path/to/chipyard/.conda-env"
     _compat = str(REPO / ".compat_lib")
     env = dict(_os.environ)
     env["PATH"] = f"{CE}/bin:{CE}/riscv-tools/bin:" + env.get("PATH", "")
