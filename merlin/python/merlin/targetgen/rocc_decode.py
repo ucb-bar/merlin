@@ -25,29 +25,33 @@ import struct
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# --- encoding constants (must match GemminiToLLVM.cpp) ----------------------------------------
-DIM = 16
-F1 = 0x3F800000          # 1.0f
+# --- encoding constants: DERIVED from the SINGLE source (gemmini's capability manifest — the mesh DIM
+# from capabilities, the readout bits + the RTL-code->class map + config subtype from the encoding block),
+# not hand-copied. Byte-parity with the former literals is pinned by test_encoding_manifest. This retires
+# one of the three triplicated copies (the decoder's). GARBAGE/MASK32 are universal, not target-specific.
 GARBAGE = 0xFFFFFFFF
-C_ACC = 0xA0000000       # full-i32 accumulator readout base
-ACC_I8 = 0x80000000      # scaled-i8 readout base
-ACC_ACCUM = 0x40000000   # accumulate-onto bit
-FULL_C_BIT = 0x20000000  # set in C_ACC, clear in ACC_I8 -> distinguishes i32 vs i8 readout
 MASK32 = 0xFFFFFFFF
 
-# funct -> base instruction class
-_FUNCT_CLASS = {
-    0: "CONFIG",          # refined to CONFIG_EX/LD/ST via rs1 & 0x3
-    2: "MVIN",
-    3: "MVOUT",
-    4: "COMPUTE_PRELOADED",
-    5: "COMPUTE_ACCUMULATE",
-    6: "PRELOAD",
-    7: "FLUSH",
-    8: "LOOP_WS",
-    15: "LOOP_CONV",
-}
-_CONFIG_SUBTYPE = {0: "CONFIG_EX", 1: "CONFIG_LD", 2: "CONFIG_ST"}
+
+def _load_isa() -> dict:
+    from .target_experiment import load_capability_manifest
+    m = load_capability_manifest("gemmini")
+    enc, rb = m.encoding, m.encoding["readout_bits"]
+    dim = ((m.contract.get("capabilities") or {}).get("mesh") or {}).get("rows", 16)
+    return {"DIM": dim, "F1": rb["f1"], "C_ACC": rb["c_acc"], "ACC_I8": rb["acc_i8"],
+            "ACC_ACCUM": rb["acc_accum"], "FULL_C_BIT": rb["full_c_bit"],
+            "FUNCT_CLASS": dict(enc["semantic_class"]), "CONFIG_SUBTYPE": dict(enc["config_subtype"])}
+
+
+_isa = _load_isa()
+DIM = _isa["DIM"]
+F1 = _isa["F1"]                      # 1.0f
+C_ACC = _isa["C_ACC"]               # full-i32 accumulator readout base
+ACC_I8 = _isa["ACC_I8"]             # scaled-i8 readout base
+ACC_ACCUM = _isa["ACC_ACCUM"]       # accumulate-onto bit
+FULL_C_BIT = _isa["FULL_C_BIT"]     # set in C_ACC, clear in ACC_I8 -> distinguishes i32 vs i8 readout
+_FUNCT_CLASS = _isa["FUNCT_CLASS"]  # funct -> base instruction class (CONFIG refined via rs1 & 0x3)
+_CONFIG_SUBTYPE = _isa["CONFIG_SUBTYPE"]
 
 # --- line regexes -----------------------------------------------------------------------------
 # SSA identifiers may be numeric (%0) OR named (%c0, %w, %a.1): the reference emitter happens to use
