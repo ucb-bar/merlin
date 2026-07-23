@@ -321,6 +321,48 @@ def target_fact_bundle(target: str) -> dict:
             "n_derived": sum(1 for f in fields.values() if f["derived"])}
 
 
+def render_fact_bundle(target: str, bundle: dict | None = None) -> str:
+    """Render :func:`target_fact_bundle` as an agent-facing ISA brief (Markdown). This is the information
+    handed to the agent so it can target the real ISA/geometry/capacities — every line is DERIVED and
+    stamped with its provenance, and an ungrounded field is stated as unavailable, never invented."""
+    b = bundle or target_fact_bundle(target)
+    f = b["fields"]
+    lo = f["legal_opcodes"]["value"]
+    lines = [f"# Target ISA facts: {b['target']}",
+             f"_Derived by {b['method']}. {b['n_derived']}/4 fields grounded; ungrounded = unavailable, "
+             f"not guessed._", ""]
+    if f["legal_opcodes"]["derived"]:
+        lines += [f"- **Legal opcodes** ({len(lo)}): `{lo}`",
+                  f"  - source: {f['legal_opcodes']['source']}"]
+    else:
+        lines.append("- **Legal opcodes**: unavailable (no decoder signal / no HW dialect for this target)")
+    lines.append(f"- **Mesh DIM**: {f['mesh_dim']['value'] if f['mesh_dim']['derived'] else 'unavailable'}")
+    caps = f["capacities"]["value"] if f["capacities"]["derived"] else None
+    if caps:
+        lines.append(f"- **On-chip capacity (bytes)**: operand={caps.get('operand_bytes')}, "
+                     f"accumulator={caps.get('accumulator_bytes')}")
+    else:
+        lines.append("- **On-chip capacity**: unavailable")
+    return "\n".join(lines) + "\n"
+
+
+def _main(argv: list[str] | None = None) -> int:
+    import argparse
+    import json as _json
+    ap = argparse.ArgumentParser(description="Emit a target's DERIVED ISA fact bundle (agent info + "
+                                             "FileCheck source). Prints Markdown; --json prints the raw bundle.")
+    ap.add_argument("target")
+    ap.add_argument("--json", action="store_true", help="print the raw provenance-tagged bundle as JSON")
+    a = ap.parse_args(argv)
+    b = target_fact_bundle(a.target)
+    print(_json.dumps(b, indent=2) if a.json else render_fact_bundle(a.target, b), end="")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())
+
+
 @contextmanager
 def _mlc_cwd():
     """mlc resolves its ``runs/...`` arc artifacts by paths RELATIVE to its own root, so its cosim +

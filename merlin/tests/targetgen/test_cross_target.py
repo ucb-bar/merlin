@@ -96,8 +96,13 @@ def test_target_fact_bundle_is_derived_and_honest():
     if not (B.mlc_available()[0] and B.arc_available("gemmini")):
         pytest.skip("mlc/gemmini not present in this checkout")
     gem = B.target_fact_bundle("gemmini")
-    assert gem["fields"]["legal_opcodes"]["derived"] and gem["fields"]["mesh_dim"]["value"] == 16
-    assert gem["fields"]["legal_opcodes"]["source"]                       # provenance recorded
+    # legal_opcodes reads the HW dialect directly (no cache) -> stable + provenance-stamped.
+    assert gem["fields"]["legal_opcodes"]["derived"] and gem["fields"]["legal_opcodes"]["source"]
+    assert len(gem["fields"]["legal_opcodes"]["value"]) >= 20
+    # every field carries provenance; a derived mesh_dim (cache-dependent) must be the real 16, never a guess.
+    assert all({"value", "source", "derived"} <= set(f) for f in gem["fields"].values())
+    md = gem["fields"]["mesh_dim"]
+    assert md["value"] == 16 if md["derived"] else md["value"] is None
     # a SIMT/prototype target with no HW dialect yields an all-unavailable bundle, not fabricated facts.
     rad = B.target_fact_bundle("radiance")
     assert rad["n_derived"] == 0
