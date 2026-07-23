@@ -1,0 +1,41 @@
+# Declarative per-target experiment SETUP for MX-GEMMINI (GemminiMxFPConfigs.defaultMxFPConfig) — a 4th
+# target that is a CONFIG VARIANT of gemmini: the same generator, the same RoCC ISA (OpcodeSet.custom3),
+# the same 16x16 weight-stationary systolic mesh (DIM=16) and accumulator — only the numeric datapath
+# differs. Instead of int8/fp32, its PEs are microscaling block-scaled FP (MxFloat: inputType(3,3,2),
+# accType(8,8,4); block_e8m0 scaling via MxRequantizer). This is the very systolic MX PE that radiance
+# embeds as its low-bit unit ("these are overwritten by radiance" in ConfigsFP.scala), so standing it up
+# as its own target closes the loop with radiance's compute_units.
+#
+# Authoritative RTL source (facts DERIVED, not fitted): the chipyard gemmini generator config
+#   generators/gemmini/src/main/scala/gemmini/ConfigsFP.scala :: GemminiMxFPConfigs.defaultMxFPConfig
+# (meshRows=meshColumns=16, dataflow=WS, sp_capacity=256KB, acc_capacity=64KB, opcodes=custom3) plus the
+# MX datapath modules (MxFPMul.scala, MxRequantizer.scala). Because mx-gemmini is a systolic MXU sharing
+# gemmini's structure and ISA, its STRUCTURAL profile (DIM, mesh dataflow, accumulator residency, the
+# RoCC opcode set) is exactly gemmini's; the MX block-scaling + requant is the added capability.
+#
+# Oracle: mx-gemmini elaborates through chipyard just like gemmini, so its RTL oracle is the chipyard
+# sim (spike/verilator) — sim_via=chipyard, the same bespoke sim gemmini declares. An mlc arc model is
+# not yet registered for the MX config (arc_available("mx_gemmini")=False), so arc-matmul discovery is
+# unavailable until mlc registers it; that is honest, not a gap — the chipyard sim is the RTL tier and
+# the target-agnostic math oracle is the L0/L1 floor. MX numerics (block-scaled FP) are what make the
+# stock-gemmini arc model insufficient here, which is exactly why the sim is the authority.
+target: mx_gemmini
+
+rtl:
+  via: mlc            # structural facts shared with gemmini; MX datapath from the chipyard config
+
+hardware_spec:
+  rtl_config: generators/gemmini/src/main/scala/gemmini/ConfigsFP.scala   # GemminiMxFPConfigs.defaultMxFPConfig
+  isa: rocc_custom3   # same RoCC opcode set as gemmini
+  dim: 16             # 16x16 WS systolic mesh (meshRows == meshColumns)
+
+# The generic op-capsule corpus (a matmul golden is op-derived). MX-specific low-bit capsules (block
+# e8m0 scaling) can be added as a sibling set to exercise the MxRequantizer path.
+capsule_corpus: merlin/contract/capsules/isa
+
+# mx-gemmini elaborates through chipyard like gemmini; its RTL oracle is the chipyard sim.
+toolchain:
+  sim_via: chipyard
+
+answer_surfaces:
+  prior_backends: []

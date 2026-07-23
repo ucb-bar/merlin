@@ -1,6 +1,6 @@
 """P4 — the headline cross-target proof: the 4-arm agentic ladder generalizes beyond gemmini.
 
-Two real, committed target descriptors drive this — nothing gemmini-specific and nothing pre-baked:
+Real, committed target descriptors drive this — nothing gemmini-specific and nothing pre-baked:
 
   * ATLAS    — an NPU with a systolic MXU. A ready mlc arc-matmul target: its ISA/DIM/memory-map are
                DERIVED from RTL via mlc discovery, and its RTL oracle is the mlc arc MXU model
@@ -13,6 +13,11 @@ Two real, committed target descriptors drive this — nothing gemmini-specific a
                decoder. So arc_available=False is by design (radiance is not an mlc arc-matmul target),
                not an absence of a model. This target guards against silently assuming every target is
                an arc-graded MXU while still being a genuine, validated 3rd target.
+  * MX_GEMMINI — GemminiMxFPConfigs.defaultMxFPConfig: a config variant of gemmini (same RoCC custom3
+               ISA, same 16x16 WS systolic mesh) whose PEs are microscaling block-scaled FP. It is the
+               systolic MX PE radiance embeds. Structural profile == gemmini's; graded via the chipyard
+               sim (no mlc arc model for the MX config yet). Guards that a same-generator variant plugs
+               in from its RTL config without gemmini-specific harness code.
 
 What must generalize (and is asserted below): the bundle GENERATION (the four rungs' agnostic tool
 blocks are byte-identical across targets — only the small target block differs) and the increasing-help
@@ -50,14 +55,14 @@ def _bundles(target):
     return generate_bundles(_te(target))
 
 
-@pytest.mark.parametrize("target", ["atlas", "radiance"])
+@pytest.mark.parametrize("target", ["atlas", "radiance", "mx_gemmini"])
 def test_four_arms_generated_for_any_target(target):
     b = _bundles(target)
     assert set(b) == {f"{r}_hwbringup_v0" for r in RUNGS}
     assert b["merlin_assisted_hwbringup_v0"]["task"] == f"{target}-mlir-oot-capsule"
 
 
-@pytest.mark.parametrize("target", ["atlas", "radiance"])
+@pytest.mark.parametrize("target", ["atlas", "radiance", "mx_gemmini"])
 def test_increasing_help_gradient(target):
     """arm1 ⊂ arm2 ⊂ arm4 additively; arm2→arm3 is the one modality swap (C++ scaffold → xDSL spine)."""
     b = _bundles(target)
@@ -119,3 +124,16 @@ def test_radiance_uses_the_simt_cyclotron_oracle_not_arc_mxu():
     contract = yaml.safe_load(
         (repo_root() / "out/artifacts/targets/radiance_oot/contracts/target_contract.yaml").read_text())
     assert "matmul" in contract["capabilities"]["ops"]
+
+
+def test_mx_gemmini_is_a_systolic_gemmini_variant_graded_by_chipyard():
+    """mx-gemmini is a config variant of gemmini (same RoCC ISA + 16x16 WS mesh), differing only in the
+    MX block-scaled numeric datapath. Its structural profile is gemmini's; its oracle is the chipyard
+    sim (an mlc arc model for the MX config is not yet registered — honest, not a gap)."""
+    te = _te("mx_gemmini")
+    assert te.sim_via == "chipyard"                       # elaborates through chipyard like gemmini
+    assert B.arc_available("mx_gemmini") is False         # no mlc arc model for the MX config yet
+    # The descriptor pins the RTL-derived structural facts (DIM=16, RoCC custom3) it shares with gemmini.
+    import yaml
+    spec = yaml.safe_load(_te("mx_gemmini").path.read_text())["hardware_spec"]
+    assert spec["dim"] == 16 and spec["isa"] == "rocc_custom3"
