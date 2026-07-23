@@ -284,6 +284,43 @@ def discovered_capacities(target: str) -> dict | None:
             "operand_depth": op_depth, "accumulator_depth": acc_depth}
 
 
+def target_fact_bundle(target: str) -> dict:
+    """The STATIC, provenance-tagged fact bundle DERIVED from a target's CIRCT HW dialect — no model run.
+
+    This is the groundable, non-labeling half of extraction, and it serves BOTH consumers: it is handed
+    to the agent as information (the legal ISA it must target, the mesh geometry, the on-chip capacities
+    it must respect) AND it is the source of the cheap FileCheck literals. Each field carries provenance
+    {value, source, derived}; a field mlc cannot ground is reported derived=False (value None), never
+    guessed — so a target with no HW dialect (SIMT/prototype) yields an honest all-unavailable bundle
+    rather than a fabricated one. The opcode->role LABELING is deliberately NOT here (see
+    semantic_roles / the cross-module analysis it needs); this bundle is exactly what is derivable today.
+    """
+    def _try(fn, *a):
+        try:
+            return fn(*a)
+        except Exception:  # noqa: BLE001 — a field that can't be grounded is honest-unavailable
+            return None
+
+    legal = _try(discover_legal_opcodes, target) or {}
+    dim = _try(discovered_dim, target)
+    mm = _try(discovered_memory_map, target)
+    caps = _try(discovered_capacities, target)
+    opcodes = legal.get("legal_opcodes")
+    fields = {
+        "legal_opcodes": {"value": opcodes, "derived": opcodes is not None,
+                          "source": legal.get("method"), "evidence": legal.get("evidence")},
+        "mesh_dim": {"value": dim, "derived": dim is not None,
+                     "source": "mlc.discover.geometry.discover_mesh_dim"},
+        "memory_map": {"value": mm, "derived": mm is not None,
+                       "source": "mlc discovered memory_map"},
+        "capacities": {"value": caps, "derived": bool(caps and caps.get("operand_bytes")),
+                       "source": "sibling-bank sum over discovered memory_map"},
+    }
+    return {"target": target, "method": "static CIRCT HW-dialect discovery (no model run)",
+            "fields": fields,
+            "n_derived": sum(1 for f in fields.values() if f["derived"])}
+
+
 @contextmanager
 def _mlc_cwd():
     """mlc resolves its ``runs/...`` arc artifacts by paths RELATIVE to its own root, so its cosim +

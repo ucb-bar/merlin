@@ -89,6 +89,21 @@ def test_tool_blocks_are_target_agnostic():
         assert tools(a[f"{rung}_hwbringup_v0"]) == tools(r[f"{rung}_hwbringup_v0"]), rung
 
 
+def test_target_fact_bundle_is_derived_and_honest():
+    """The static fact bundle (legal opcodes + DIM + memory map + capacities) is DERIVED per target with
+    per-field provenance, and honestly reports what it cannot ground — no guessed facts. It is the
+    non-labeling extraction handed to both the agent and the FileCheck compiler."""
+    if not (B.mlc_available()[0] and B.arc_available("gemmini")):
+        pytest.skip("mlc/gemmini not present in this checkout")
+    gem = B.target_fact_bundle("gemmini")
+    assert gem["fields"]["legal_opcodes"]["derived"] and gem["fields"]["mesh_dim"]["value"] == 16
+    assert gem["fields"]["legal_opcodes"]["source"]                       # provenance recorded
+    # a SIMT/prototype target with no HW dialect yields an all-unavailable bundle, not fabricated facts.
+    rad = B.target_fact_bundle("radiance")
+    assert rad["n_derived"] == 0
+    assert all(not f["derived"] and f["value"] in (None, [], 0) for f in rad["fields"].values())
+
+
 def test_atlas_is_a_ready_arc_matmul_target():
     """The plan's real 2nd target: ISA/DIM DERIVED from RTL, arc MXU model is the RTL oracle."""
     if not (B.mlc_available()[0] and B.arc_available("atlas")):
