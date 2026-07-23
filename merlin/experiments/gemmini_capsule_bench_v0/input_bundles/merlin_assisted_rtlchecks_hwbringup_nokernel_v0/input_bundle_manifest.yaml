@@ -27,6 +27,14 @@ allowed:
   - {path: "merlin/python/merlin/targetgen/oot_starterkit/", mode: ro, note: "ALLOWED tool: hw-agnostic OOT starter kit (parse_interface, CommandBufferBuilder, transforms.im2col/tile_to_dim, verify.validate, dialect.parse_to_verified_ir)"}
   - {path: "merlin/python/merlin/targetgen/rtl/", mode: ro, note: "ALLOWED (CIRCT arm only): RTL-facts generators gen_isa_module/gen_rtl_digest/gen_numeric_facts"}
   - {path: "merlin/targets/gemmini/contracts/rtl_facts/", mode: ro, note: "ALLOWED (CIRCT arm only): RTL-extracted facts.json (the moat)"}
+  # Compiler-modification SPINE (arm-3): the CCA extract/diff/route/seam machinery + the generic
+  # derivation-driven backend. Answer-free; none import the oracle or the grader.
+  - {path: "merlin/python/merlin/kernels/cca.py", mode: ro, note: "ALLOWED tool: CCA schema + lifters"}
+  - {path: "merlin/python/merlin/kernels/cca_compare.py", mode: ro, note: "ALLOWED tool: CCA diff (divergences)"}
+  - {path: "merlin/python/merlin/kernels/cca_contract.py", mode: ro, note: "ALLOWED tool: CCA<->route bijection (what-to-build checklist)"}
+  - {path: "merlin/python/merlin/kernels/action_catalog.py", mode: ro, note: "ALLOWED tool: divergence->seam router + seam map"}
+  - {path: "merlin/python/merlin/kernels/microkernel.py", mode: ro, note: "ALLOWED tool: micro-kernel spec + resolver"}
+  - {path: "merlin/python/merlin/targetgen/rtl_backend.py", mode: ro, note: "ALLOWED tool: generic derivation-driven backend (derives levers/routes/opts from RTL discovery)"}
 denied:
   - {path: "merlin/python/merlin/runtime/reference.py", reason: "the reference oracle (cheat surface)"}
   - {path: "merlin/python/merlin/runtime/simulator.py", reason: "the simulator oracle (cheat surface)"}

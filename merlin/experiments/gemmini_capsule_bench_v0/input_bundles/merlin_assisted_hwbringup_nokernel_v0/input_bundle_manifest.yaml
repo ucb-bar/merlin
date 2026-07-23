@@ -25,6 +25,14 @@ allowed:
   - {path: "merlin/python/merlin/xdsl_dialects/", mode: ro, note: "ALLOWED tool: xDSL dialect patterns (lowering/ denied below)"}
   - {path: "merlin/python/merlin/targetgen/contract/interface_emit.py", mode: ro, note: "ALLOWED: interface grammar emit/parse"}
   - {path: "merlin/python/merlin/targetgen/oot_starterkit/", mode: ro, note: "ALLOWED tool: hw-agnostic OOT starter kit (parse_interface, CommandBufferBuilder, transforms.im2col/tile_to_dim, verify.validate, dialect.parse_to_verified_ir)"}
+  # Compiler-modification SPINE (arm-3): the CCA extract/diff/route/seam machinery + the generic
+  # derivation-driven backend. Answer-free; none import the oracle or the grader.
+  - {path: "merlin/python/merlin/kernels/cca.py", mode: ro, note: "ALLOWED tool: CCA schema + lifters"}
+  - {path: "merlin/python/merlin/kernels/cca_compare.py", mode: ro, note: "ALLOWED tool: CCA diff (divergences)"}
+  - {path: "merlin/python/merlin/kernels/cca_contract.py", mode: ro, note: "ALLOWED tool: CCA<->route bijection (what-to-build checklist)"}
+  - {path: "merlin/python/merlin/kernels/action_catalog.py", mode: ro, note: "ALLOWED tool: divergence->seam router + seam map"}
+  - {path: "merlin/python/merlin/kernels/microkernel.py", mode: ro, note: "ALLOWED tool: micro-kernel spec + resolver"}
+  - {path: "merlin/python/merlin/targetgen/rtl_backend.py", mode: ro, note: "ALLOWED tool: generic derivation-driven backend (derives levers/routes/opts from RTL discovery)"}
 denied:
   - {path: "merlin/python/merlin/targetgen/rtl/", reason: "CIRCT RTL-facts generators — merlin+CIRCT arm ONLY (preserves the merlin-vs-CIRCT moat)"}
   - {path: "merlin/targets/gemmini/contracts/rtl_facts/", reason: "RTL-extracted facts.json — merlin+CIRCT arm ONLY (the moat)"}
