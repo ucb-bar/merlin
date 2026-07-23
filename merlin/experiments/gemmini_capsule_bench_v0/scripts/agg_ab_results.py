@@ -27,16 +27,12 @@ import yaml
 
 import agg_agentic_results as AAR  # reuse arm detection + per-run loader
 
-def _repo_root():
-    from pathlib import Path as _P
-    p = _P(__file__).resolve()
-    while p != p.parent and not (p / "merlin" / "python").is_dir():
-        p = p.parent
-    return p
-_ROOT = _repo_root()
+from merlin.common.paths import artifacts_dir, merlin_dir
 
-EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
-REPORTS = EXP.parents[2] / "artifacts" / "capsule-bench" / "gemmini"
+EXP = merlin_dir() / "experiments" / "gemmini_capsule_bench_v0"
+# Generated output lives under out/artifacts/ (top-level artifacts/ is retired) — concern-first
+# capsule-bench/<target>, matching launch_ab_batch's ANSWER_SURFACES.
+REPORTS = artifacts_dir() / "capsule-bench" / "gemmini"
 ARM_ORDER = ["baseline", "merlin", "merlin_rtlchecks"]
 ARM_LABEL = {"baseline": "baseline (C++)", "merlin": "merlin (xDSL)",
              "merlin_rtlchecks": "merlin+CIRCT"}
@@ -173,6 +169,7 @@ def main(argv=None):
     cells = collect(a.tag)
     agg = aggregate(cells)
     agg["tag_filter"] = a.tag
+    REPORTS.mkdir(parents=True, exist_ok=True)
     p = REPORTS / "ab_results.json"
     p.write_text(json.dumps(agg, indent=2))
     print(f"wrote {p}")

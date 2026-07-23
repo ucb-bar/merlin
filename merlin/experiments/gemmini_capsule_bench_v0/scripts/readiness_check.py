@@ -23,16 +23,12 @@ from pathlib import Path
 
 import yaml
 
-def _repo_root():
-    from pathlib import Path as _P
-    p = _P(__file__).resolve()
-    while p != p.parent and not (p / "merlin" / "python").is_dir():
-        p = p.parent
-    return p
-_ROOT = _repo_root()
+from merlin.common.paths import merlin_dir, repo_root
 
-EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
-REPO = EXP.parent.parent
+# Repo root + venv interpreter come from the canonical path helpers (never Path(__file__).parents[N],
+# and never EXP.parent.parent — that resolves the merlin/ subdir, not the repo root where .venv lives).
+REPO = repo_root()
+EXP = merlin_dir() / "experiments" / "gemmini_capsule_bench_v0"
 PY = str(REPO / ".venv/bin/python")
 SCRIPTS = EXP / "scripts"
 BUNDLES = EXP / "input_bundles"
