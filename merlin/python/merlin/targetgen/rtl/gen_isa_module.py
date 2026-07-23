@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 '''
 
 
-def generate(facts: dict) -> str:
+def generate(facts: dict, encoding: dict | None = None) -> str:
     f = facts["facts"]
     fd = next(i for i in f["interfaces"] if i.get("name") == "funct_decode_table")
     names = {int(k): v for k, v in fd["names"].items()}
@@ -73,6 +73,25 @@ def generate(facts: dict) -> str:
     lines.append(f"CONFIG_FUNCTS = frozenset({sorted(config_functs)})")
     lines.append(f"COMPUTE_FUNCTS = frozenset({sorted(compute_functs)})")
     lines.append(f"STORE_FUNCTS = frozenset({sorted(store_functs)})")
+
+    # ABI encoding surface from the capability manifest — the readout bits + the RTL-code -> compiler
+    # semantic class map — which RTL discovery cannot ground. Composed HERE so this generated module is
+    # the SINGLE source both the codegen emitter and the decoder consume (retiring the triplicated
+    # hand-coded constants). Absent -> the module still carries the RTL-derived encoder above.
+    if encoding:
+        lines.append("")
+        lines.append("# --- ABI encoding surface (manifest-declared, human-reviewed; not decoder facts) ---")
+        rb = encoding.get("readout_bits") or {}
+        for sym, key in (("F1", "f1"), ("C_ACC", "c_acc"), ("ACC_I8", "acc_i8"),
+                         ("ACC_ACCUM", "acc_accum"), ("FULL_C_BIT", "full_c_bit")):
+            if rb.get(key) is not None:
+                lines.append(f"{sym} = {hex(rb[key])}")
+        sc = encoding.get("semantic_class") or {}
+        lines.append("SEMANTIC_CLASS = {"
+                     + ", ".join(f"{int(k)}: {json.dumps(v)}" for k, v in sorted(sc.items())) + "}")
+        cs = encoding.get("config_subtype") or {}
+        lines.append("CONFIG_SUBTYPE = {"
+                     + ", ".join(f"{int(k)}: {json.dumps(v)}" for k, v in sorted(cs.items())) + "}")
     lines.append('''
 
 @dataclass
@@ -122,10 +141,17 @@ def emit(funct_name: str, rs1: int = 0, rs2: int = 0) -> Instr:
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--facts", default=str(_DEFAULT_FACTS))
+    ap.add_argument("--target", default="gemmini", help="target whose manifest supplies the ABI encoding block")
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
     facts = json.loads(Path(a.facts).read_text())
-    code = generate(facts)
+    encoding = None
+    try:
+        from ..target_experiment import load_capability_manifest
+        encoding = load_capability_manifest(a.target).encoding
+    except Exception:  # noqa: BLE001 — no manifest -> emit the RTL-derived encoder only
+        pass
+    code = generate(facts, encoding)
     if a.out:
         Path(a.out).write_text(code)
         print(f"wrote {a.out} ({len(code.splitlines())} lines) from {a.facts}")
