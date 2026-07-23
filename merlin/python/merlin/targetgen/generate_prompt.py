@@ -46,3 +46,75 @@ def prompt_slots(te, manifest) -> dict:
         "isa_headers": list(te.isa_headers),
         "hwbringup_set": te.hwbringup_set,
     }
+
+
+# ONE shared task template. The blocks below are identical for every target and every experiment; the
+# only target-specific content is the {slot} substitutions (from prompt_slots). The experiment axis
+# (mode/arm/condition) selects which optional blocks render — it is target-agnostic. Compiler-not-kernel
+# + the integrity rule are stated once, universally.
+_TEMPLATE = """# Task: generate a {target} MLIR out-of-tree target backend (capsule_bench — {scope_label})
+
+You are an autonomous agent. Produce a **non-exempt out-of-tree MLIR target backend package** for the
+{target} accelerator under `submission/`. Your package is graded — through its CLI entrypoints only,
+never imported — by compiling workload **capsules** (interface MLIR) and matching the target's reference
+behavior. This is a **compiler/backend** task: your COMPILER generates the target artifact by lowering
+the interface — you never author a compute kernel.
+
+## Scope
+Make **every** public/dev capsule under the declared corpus pass. Families are discovered, not restated:
+{corpus_families}
+Read each capsule's `capsule.yaml` + `capsule.interface.mlir` for its op/shapes/dtypes/epilogue, and the
+target-agnostic contracts (`command_buffer_abi.yaml`, `interface_grammar.md`, the command-buffer schema).
+Derive everything (rounding, tiling, dtypes, im2col, padding) from the contract + the target's own docs
+below — nothing is restated here. The numeric `golden.yaml` is withheld; iterate against the QA gate.
+Build ONE general backend for every family — do not special-case individual capsules.
+
+## Deliverable (write into `submission/`)
+```
+submission/
+  manifest.yaml   # artifact_type: mlir_oot_target_backend; target: {target}; language: cpp|python;
+                  # integrity_exempt: false; (cpp) a build block; the 4 command argv templates
+  mlir_oot/       # your OOT sources: input dialect + {target} target dialect + passes + {tool_stem}
+  REPORT.md       # what you built + honest scope/limitations + a final status line (see end)
+  docs/           # public_facts_used.md (every target fact you used + its source) + iteration_notes.md
+```
+
+## The 4 CLI entrypoints (your package is invoked ONLY via these)
+- `parse`: `{{tool}} --verify-diagnostics {{input_mlir}}` — parse + verify the `merlin_iface` interface MLIR
+- `lower_interface_to_target`: `{{tool}} --convert-iface-to-{target} {{input_mlir}}` — emit {target}-dialect MLIR
+- `emit_command_buffer`: `{{tool}} --emit-command-buffer={{output_json}} {{input_mlir}}` — schema-valid `command_buffer.json`
+- `emit_target_artifact`: `{{tool}} --convert-iface-to-{target} --emit-target-artifact {{input_mlir}}` — {endpoint_desc}; the emitted module defines `{kernel_symbol}`
+
+## Grading + your QA signal
+Per capsule the runner certifies exact `golden == reference(cb) == simulate(cb) == oracle` across the
+tier ladder, and checks required instruction coverage. You cannot run the oracle; after each round a QA
+gate writes a redacted `qa/verdict.json` (status / failure_plane / tiers / all_pass — NO golden values).
+Read it at each round start and fix by failure_plane. Iterate until `all_pass: true`.
+
+## Hard rules (integrity)
+- `integrity_exempt: false`; no `import merlin` / `merlin.runtime.reference` / `reference_outputs`.
+- **Compute must be compiler-GENERATED, never an authored/library kernel.** No hand C compute kernels, no
+  copying/calling the target's high-level device libraries as the answer — your passes generate the code.
+- Never hardcode/embed outputs (hidden capsules run after you freeze). One general backend.
+- Do not read withheld goldens, hidden capsules, prior backends, or Merlin internals.
+
+## Target ISA facts (derived — build your lowering on these)
+{isa_facts}
+## Final status line (end of `submission/REPORT.md`) — write exactly one of:
+1. "Backend passes all required public/dev capsules and is ready for hidden grading."
+2. "Backend does not yet pass all required public/dev capsules; remaining failures listed by capsule + plane."
+3. "Backend is not comparable because it violates the compiler/runtime/integrity boundary."
+"""
+
+
+def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseline") -> str:
+    """Render a target's full task prompt = the ONE shared template + the derived slots. ``experiment``
+    and ``arm`` are the target-AGNOSTIC axes (they select the scope label / optional blocks); the target
+    axis is entirely the {slot} substitutions, so for a fixed (experiment, arm) two targets' prompts
+    differ ONLY in those slots."""
+    s = prompt_slots(te, manifest)
+    scope = {"full": "FULL SUITE", "realistic": "REALISTIC", "pilot": "PILOT SUBSET"}.get(experiment, experiment)
+    families = "\n".join(f"- `{p}`" for p in s["corpus_families"]) or "- (the declared capsule corpus)"
+    return _TEMPLATE.format(target=s["target"], scope_label=scope, corpus_families=families,
+                            tool_stem=s["tool_stem"], kernel_symbol=s["kernel_symbol"],
+                            endpoint_desc=s["endpoint_desc"], isa_facts=s["isa_facts"])
