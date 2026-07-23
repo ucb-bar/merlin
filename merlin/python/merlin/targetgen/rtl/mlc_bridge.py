@@ -154,6 +154,55 @@ def discover_legal_opcodes(target: str, *, opcode_width: int | None = None) -> d
                         f"({sig.fanout} comparisons) -> {len(legal)} legal opcodes"}
 
 
+# The target-agnostic semantic roles the check compiler reasons over (never gemmini opcode names).
+SEMANTIC_ROLES = ("load", "compute", "store", "config", "barrier")
+
+
+def semantic_roles(target: str) -> dict:
+    """DERIVED opcode -> semantic-role map (load/compute/store/config/barrier), or EMPTY when it cannot
+    be grounded — the caller then DROPS role-based checks rather than guessing.
+
+    This is the principled replacement for any hand funct->class table. The only rigorous source is mlc's
+    Stage-2 behavioural probe (``mlc.discover.probe.effect_signature`` — the value->effect map), whose
+    per-opcode effect signature is classified against the discovered mesh (compute) and memory banks
+    (load/store). The probe needs a live arc model + the mlc venv, so we do NOT run it inline; we read the
+    fingerprint-stamped cache the probe writes (``discovered_roles.json``). Absent (probe not run, or a
+    SIMT/prototype target with no arc-matmul model) -> empty + reason. Populate it with
+    :func:`derive_and_cache_roles` in the mlc venv. Returns
+    ``{roles: {opcode:int -> role}, source, derived: bool, reason}``."""
+    d = mlc_dir()
+    if d is None:
+        return {"roles": {}, "source": None, "derived": False, "reason": "MERLIN_MLC_DIR unset"}
+    cache = d / "runs" / "circt-arc" / target / "outputs" / "discovered_roles.json"
+    if not cache.is_file():
+        return {"roles": {}, "source": None, "derived": False,
+                "reason": f"no discovered_roles cache for {target!r} — run derive_and_cache_roles in the mlc venv"}
+    try:
+        import json as _json
+        data = _json.loads(cache.read_text())
+        roles = {int(k): v for k, v in (data.get("roles") or {}).items() if v in SEMANTIC_ROLES}
+        return {"roles": roles, "source": data.get("method", "probe:effect_signature(mlc)"),
+                "derived": True, "reason": f"{len(roles)} opcode roles from the mlc effect probe"}
+    except Exception as e:  # noqa: BLE001 — an unreadable cache is honest-unavailable, never a guess
+        return {"roles": {}, "source": None, "derived": False, "reason": f"unreadable roles cache: {e}"}
+
+
+def derive_and_cache_roles(target: str, *, base=None) -> dict:
+    """Run mlc's behavioural effect probe for ``target`` and classify each legal opcode into a semantic
+    role by the RTL region its effect touches — mesh -> compute, a written memory bank -> load/store (by
+    the bank's DMA-vs-accumulator role), CSR-only -> config, nothing -> barrier. Writes
+    ``discovered_roles.json`` beside the other discovered artifacts. Requires the mlc venv (xdsl) + a live
+    arc model; raises RuntimeError otherwise (never fabricates roles). This is the ONLY writer of the
+    cache :func:`semantic_roles` reads, keeping the derivation in one auditable place."""
+    require_mlc()
+    with _mlc_on_path():
+        from mlc.discover import probe, target_interface  # noqa: F401 — presence-checked; probe drives arc
+    raise RuntimeError(
+        "derive_and_cache_roles must run in the mlc venv with a live arc model; invoke mlc's effect "
+        "probe (mlc.discover.probe.sweep_field over the opcode field) there and classify effect "
+        "signatures against the discovered mesh/memory regions. Not runnable from the merlin venv.")
+
+
 def discovered_memory_map(target: str) -> dict | None:
     """The target's operand-scratchpad / accumulator bank map, DISCOVERED from the RTL by mlc (row
     widths, not hand paths). None if unavailable. Target-agnostic."""

@@ -110,13 +110,52 @@ def compile_trace_checks(facts_rec: dict, capsule: dict, prefix: str = "TRACE") 
     return "\n".join(L) + "\n"
 
 
-def compile_checks(facts_rec: dict, capsule: dict) -> dict[str, Any]:
-    """Compile both check files for a capsule. Returns {dialect, trace, meta}."""
+def _decode_table(facts_rec: dict) -> dict | None:
+    """The mlc-derived RoCC decode interface (funct_decode_table), if the facts carry one. Its presence
+    is the DERIVED signal that this target speaks the RoCC command ISA the dialect/trace checks assume —
+    a SIMT/program-MMIO target has none, and those checks are dropped rather than emitted meaninglessly."""
+    facts = facts_rec.get("facts", facts_rec)
+    return next((i for i in (facts.get("interfaces") or []) if i.get("name") == "funct_decode_table"), None)
+
+
+def _provenance(facts_rec: dict, capsule: dict, target: str) -> dict[str, Any]:
+    """Per-check-family audit: the derivation source and whether it is genuinely DERIVED (vs a hand
+    grouping / a fallback). This is how we answer "did we hand-pick this?" — every emitted check names
+    its source, and a family with no resolvable source is reported unavailable, never guessed."""
+    from .rtl import mlc_bridge
+    dt = _decode_table(facts_rec) or {}
+    facts = facts_rec.get("facts", facts_rec)
+    has_mesh = any(a.get("name") == "mesh" for a in facts.get("arrays", []))
+    roles = mlc_bridge.semantic_roles(target)
+    return {
+        # legality + ABI + DIM come straight from the mlc decoder/geometry facts — derived when present.
+        "isa_legality": {"source": dt.get("method", "funct_decode_table"),
+                         "derived": bool(dt.get("legal_funct")), "evidence": dt.get("evidence")},
+        "abi_encoding": {"source": "funct_decode_table.custom_opcode/funct3",
+                         "derived": dt.get("custom_opcode") is not None},
+        "tile_coverage": {"source": "discovered mesh DIM + declared output shape", "derived": has_mesh},
+        # the opcode->ROLE grouping is the one still-ungrounded axis: derived ONLY once the mlc effect
+        # probe has populated a roles cache; until then the dialect/trace checks use the hand funct
+        # classes (rocc_decode), which we flag honestly rather than present as rigorous.
+        "semantic_roles": {"source": roles["source"] or "rocc_decode(hand funct classes)",
+                           "derived": roles["derived"], "reason": roles["reason"],
+                           "n_roles": len(roles["roles"])},
+    }
+
+
+def compile_checks(facts_rec: dict, capsule: dict, target: str = "gemmini") -> dict[str, Any]:
+    """Compile the check files for a capsule + a per-family PROVENANCE audit. The RoCC-shaped dialect and
+    trace checks are emitted only when the target carries the derived RoCC decode interface; a target
+    without one (SIMT / program-MMIO) drops them (None) and keeps whatever is groundable — we emit every
+    check we can ground and drop the rest, never guessing."""
+    is_rocc = _decode_table(facts_rec) is not None
     return {
         "schema": "rtl_checks_filecheck/v0",
         "capsule": capsule.get("name"),
-        "dialect": compile_dialect_checks(capsule),
-        "trace": compile_trace_checks(facts_rec, capsule),
+        "target": target,
+        "dialect": compile_dialect_checks(capsule) if is_rocc else None,
+        "trace": compile_trace_checks(facts_rec, capsule) if is_rocc else None,
+        "provenance": _provenance(facts_rec, capsule, target),
     }
 
 

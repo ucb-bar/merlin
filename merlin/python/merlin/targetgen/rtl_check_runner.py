@@ -73,12 +73,12 @@ def _facts_sha(facts_rec: dict) -> str:
     return s
 
 
-def compiled_checks(facts_rec: dict, capsule: dict) -> dict:
-    """Memoized :func:`rtl_check_compiler.compile_checks`, keyed by (capsule name, facts sha)."""
-    key = (capsule.get("name") or "?", _facts_sha(facts_rec))
+def compiled_checks(facts_rec: dict, capsule: dict, target: str = "gemmini") -> dict:
+    """Memoized :func:`rtl_check_compiler.compile_checks`, keyed by (capsule name, facts sha, target)."""
+    key = (capsule.get("name") or "?", _facts_sha(facts_rec), target)
     c = _COMPILED_CACHE.get(key)
     if c is None:
-        c = CC.compile_checks(facts_rec, capsule)
+        c = CC.compile_checks(facts_rec, capsule, target)
         _COMPILED_CACHE[key] = c
     return c
 

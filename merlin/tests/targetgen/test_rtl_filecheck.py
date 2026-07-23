@@ -139,7 +139,31 @@ def test_compiled_checks_are_memoized():
     a = RR.compiled_checks(_FACTS, cap)
     b = RR.compiled_checks(_FACTS, cap)
     assert a is b                                        # same object -> served from cache
-    assert (cap.get("name"), RR._facts_sha(_FACTS)) in RR._COMPILED_CACHE
+    assert (cap.get("name"), RR._facts_sha(_FACTS), "gemmini") in RR._COMPILED_CACHE
+
+
+def test_provenance_flags_derived_vs_handpicked():
+    """Every check family is tagged with its source + whether it is genuinely DERIVED. For gemmini the
+    legality/ABI/coverage families are grounded in mlc facts (derived), while the opcode->role grouping
+    is honestly flagged non-derived until the effect probe populates a roles cache — this is how we audit
+    'did we hand-pick this?'."""
+    cap = _matmul_capsule()
+    prov = CC.compile_checks(_FACTS, cap, target="gemmini")["provenance"]
+    assert prov["isa_legality"]["derived"] is True
+    assert prov["abi_encoding"]["derived"] is True
+    assert prov["tile_coverage"]["derived"] is True
+    assert prov["semantic_roles"]["derived"] is False        # no probe cache yet -> flagged, not hidden
+    assert "hand funct classes" in prov["semantic_roles"]["source"]
+
+
+def test_non_rocc_target_drops_rocc_shaped_checks():
+    """A target with no derived RoCC decode interface (SIMT / program-MMIO) drops the RoCC-shaped dialect
+    and trace checks rather than emitting meaningless ones — emit only what is groundable, never guess."""
+    simt = {"facts": {"interfaces": [{"name": "warp_dispatch"}], "arrays": [], "memories": []}}
+    cc = CC.compile_checks(simt, _matmul_capsule(), target="radiance")
+    assert cc["dialect"] is None and cc["trace"] is None
+    assert cc["provenance"]["isa_legality"]["derived"] is False
+    assert "no discovered_roles cache" in cc["provenance"]["semantic_roles"]["reason"]
 
 
 def test_dialect_dataflow_order_mlir_lit_fixture():
