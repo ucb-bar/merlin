@@ -1,0 +1,39 @@
+# Declarative per-target experiment SETUP for RADIANCE (the RadianceMuon / Muon SIMT config) — a real,
+# working 3rd target that stresses the ladder's generality: radiance is a SIMT tensor-core GPU (16
+# lanes/warp, CVFPU fp32/fp16/bf16) that ALSO embeds a gemmini-mx MX PE for low-bit (mxfp4/6/8/int8)
+# matmul. It is matmul-capable and has a validated model — it simply exercises a DIFFERENT oracle path
+# than gemmini/atlas.
+#
+# Authoritative source: the committed OOT target contract at
+#   out/artifacts/targets/radiance_oot/contracts/target_contract.yaml
+# (family=simt_tensor, ops=[matmul, elementwise], compute_units simt_cluster + mx_pe, cyclotron sim).
+# Plug it into Merlin via MERLIN_TARGET_PATH; its facts are extracted deterministically from the real
+# RadianceMuonConfig RTL by muon_introspect (elaborated FIRRTL + cyclotron config + ISA docs ->
+# muon_facts.json), the SIMT analog of the arc decoder-derived ISA.
+#
+# Oracle (what is genuinely per-target here): radiance's RTL oracle is the bespoke CYCLOTRON perf model
+# (muon_oracles.cyclotron_adapter, same adapter signature as the arc/gemmini path; MuonUnavailable is
+# the honest fail-closed signal), NOT the arc MXU command-buffer model. So arc_available("radiance") is
+# False by design — radiance is not an mlc arc-matmul target — and that is correct, not a gap. Validated
+# fidelity per the perf comparison: M1 functional bit-exact and M3 data-movement exact vs the RTL, with
+# M2 cycles present + 3-way cross-checked but carrying a large, honestly-bracketed SIMT-GEMM overcount
+# (~2x on gemm_simt: occupancy / latency-hiding is the documented frontier item, not fitted to look
+# tight). Status: prototype, not RTL-certified (requires_human_review).
+target: radiance
+
+rtl:
+  via: mlc            # facts via muon_introspect (RadianceMuonConfig RTL); arc-matmul discovery is N/A (SIMT)
+
+hardware_spec:
+  target_contract: out/artifacts/targets/radiance_oot/contracts/target_contract.yaml
+
+# The generic op-capsule corpus (a matmul golden is op-derived, target-neutral). SIMT-warp-shaped
+# capsules can be added as a radiance sibling set once the cyclotron front-half is a runner config.
+capsule_corpus: merlin/contract/capsules/isa
+
+# Radiance's RTL oracle is its bespoke cyclotron sim (the muon capsule path), NOT the arc MXU model.
+toolchain:
+  sim_via: cyclotron
+
+answer_surfaces:
+  prior_backends: []

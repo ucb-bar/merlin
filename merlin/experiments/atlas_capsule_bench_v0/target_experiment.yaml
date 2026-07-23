@@ -1,0 +1,23 @@
+# Declarative per-target experiment SETUP for ATLAS (an NPU with an MXU) — the 2nd target proving the
+# 4-arm ladder generalizes beyond gemmini. Everything DERIVABLE (the ISA/opcode set, the mesh DIM=32,
+# the memory map) is discovered from atlas's RTL by mlc (arc model libatlas_model.so + atlas_hw.mlir);
+# only the irreducible SETUP is declared here. A matmul capsule is target-neutral, so atlas reuses the
+# generic op-capsule corpus; its goldens are the target-agnostic math oracle and its RTL oracle is the
+# mlc arc MXU model (arc_available=True) — no bespoke sim toolchain needed.
+target: atlas
+
+rtl:
+  via: mlc            # ISA/memory/DIM DERIVED from atlas's RTL via mlc discovery
+
+# atlas exposes its ISA through mlc discovery (no separate header files), so hardware_spec is minimal.
+hardware_spec: {}
+
+# The generic op-capsule corpus (a matmul is the same op on any accelerator; goldens are op-derived).
+capsule_corpus: merlin/contract/capsules/isa
+
+# The mlc arc model is the RTL oracle (default); atlas has no separate bespoke sim wired.
+toolchain:
+  sim_via: ""         # arc-only (the mlc arc MXU model is the RTL tier)
+
+answer_surfaces:
+  prior_backends: []  # no prior atlas backends to hide yet
