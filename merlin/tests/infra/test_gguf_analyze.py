@@ -48,7 +48,7 @@ def test_analyze_reports_honest_gaps(tmp_path):
     _write(tmp_path / "m.gguf")
     # GGUF Q8_0 is a storage format neither target lists as a native compute dtype -> honest gap
     # (a dequant/convert step is required). The probe surfaces exactly that.
-    for target in ("rvv", "gemmini_mx"):
+    for target in ("rvv", "mx_gemmini"):
         rep = gguf_adapter.analyze(tmp_path / "m.gguf", target=target)
         assert rep.arch == "llama"
         assert rep.n_weights == 2

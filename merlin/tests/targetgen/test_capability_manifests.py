@@ -1,4 +1,4 @@
-"""Tests for the rvv + gemmini_mx capability manifests and cross-target routing."""
+"""Tests for the rvv + mx_gemmini capability manifests and cross-target routing."""
 from __future__ import annotations
 
 from merlin.targetgen import capability_manifests as cm
@@ -29,8 +29,8 @@ def test_rvv_accepts_regular_formats_rejects_low_bit():
         assert res[0].gap is not None, fmt
 
 
-def test_gemmini_mx_accepts_low_bit_and_mixed():
-    units = _units("gemmini_mx")
+def test_mx_gemmini_accepts_low_bit_and_mixed():
+    units = _units("mx_gemmini")
     ok = rt.route([
         rt.OpDemand("matmul", "mxfp4", "mxfp4"),
         rt.OpDemand("matmul", "mxfp6", "mxfp6"),
@@ -41,10 +41,10 @@ def test_gemmini_mx_accepts_low_bit_and_mixed():
 
 
 def test_cross_target_contrast():
-    # The same fp4 matmul: gap on RVV, routed on gemmini_mx — the whole point.
+    # The same fp4 matmul: gap on RVV, routed on mx_gemmini — the whole point.
     d = [rt.OpDemand("matmul", "mxfp4", "mxfp4")]
     assert rt.route(d, _units("rvv"))[0].gap is not None
-    assert rt.route(d, _units("gemmini_mx"))[0].unit == "mx_pe"
+    assert rt.route(d, _units("mx_gemmini"))[0].unit == "mx_pe"
 
 
 def test_write_and_route_target(tmp_path):
@@ -55,14 +55,14 @@ def test_write_and_route_target(tmp_path):
     cm.write_all(base_root=tmp_path)
     os.environ["MERLIN_TARGET_PATH"] = os.pathsep.join(str(tmp_path / n) for n in cm.MANIFESTS)
     try:
-        assert tr.resolve("gemmini_mx").kind == "external"
-        res = rt.route_target([rt.OpDemand("matmul", "mxfp6", "mxfp6")], "gemmini_mx")
+        assert tr.resolve("mx_gemmini").kind == "external"
+        res = rt.route_target([rt.OpDemand("matmul", "mxfp6", "mxfp6")], "mx_gemmini")
         assert res[0].unit == "mx_pe" and res[0].acc == "f32"
     finally:
         os.environ.pop("MERLIN_TARGET_PATH", None)
 
 
-def test_radiance_composes_gemmini_mx():
+def test_radiance_composes_mx_gemmini():
     # radiance's SIMT cluster CONTAINS the gemmini-mx PE: effective dtypes = regular floats + MX.
     units = cu.compute_units(cm.radiance_manifest())
     simt = next(u for u in units if u.name == "simt_cluster")
@@ -70,7 +70,7 @@ def test_radiance_composes_gemmini_mx():
     assert {"fp16", "bf16", "fp32"} <= set(eff.dtypes)          # SIMT regular floats
     assert {"mxfp4", "mxfp6", "mxfp8"} <= set(eff.dtypes)       # via the contained gemmini-mx PE
     # the contained unit is the exact gemmini-mx PE (standalone OR embedded)
-    assert cm.gemmini_mx_manifest()["compute_units"][0]["name"] == "mx_pe"
+    assert cm.mx_gemmini_manifest()["compute_units"][0]["name"] == "mx_pe"
 
 
 def test_radiance_oot_package_discovers_and_routes(tmp_path, monkeypatch):

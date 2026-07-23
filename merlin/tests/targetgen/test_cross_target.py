@@ -157,3 +157,33 @@ def test_mx_gemmini_is_a_systolic_gemmini_variant_graded_by_chipyard():
     import yaml
     spec = yaml.safe_load(_te("mx_gemmini").path.read_text())["hardware_spec"]
     assert spec["dim"] == 16 and spec["isa"] == "rocc_custom3"
+
+
+# The full roster the cross-target proof is built on. atlas/radiance/mx_gemmini are out-of-tree targets
+# discovered via MERLIN_TARGET_PATH; gemmini is the in-tree reference.
+ROSTER = ("gemmini", "radiance", "atlas", "mx_gemmini")
+
+
+def test_four_target_roster_loads_through_the_capability_spine(monkeypatch, tmp_path):
+    """Headline spine guarantee: EVERY roster target resolves a CapabilityManifest with a compute-unit
+    ``kind`` derived from its contract — no fabricated kind, no missing contract. This pins the 4/4 load
+    claim (atlas + mx_gemmini were previously missing/misnamed through the spine).
+
+    Hermetic: the OOT contracts are gitignored/regenerable, so we regenerate them from the generator
+    (the source of truth) into a tmp dir rather than depend on a dev working tree. gemmini is the in-tree
+    reference and resolves independent of MERLIN_TARGET_PATH."""
+    from merlin.targetgen.target_experiment import load_capability_manifest
+    from merlin.targetgen import families, capability_manifests as cm
+    for name in ("radiance", "atlas", "mx_gemmini"):
+        cm.write_oot_target(name, tmp_path / name)
+    monkeypatch.setenv("MERLIN_TARGET_PATH", str(tmp_path))
+    kinds = {}
+    for t in ROSTER:
+        m = load_capability_manifest(t)
+        assert m.target == t
+        assert m.kind in families.known_kinds()
+        assert m.endpoint_kind in families.ENDPOINT_KINDS
+        kinds[t] = m.kind
+    # the derived kinds the roster is built to prove: 3 systolic MXUs + 1 SIMT tensor core
+    assert kinds == {"gemmini": "systolic", "atlas": "systolic",
+                     "mx_gemmini": "systolic", "radiance": "simt"}

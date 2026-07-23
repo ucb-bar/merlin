@@ -1,4 +1,4 @@
-"""Capability manifests for the two vertical-slice targets: ``rvv`` and ``gemmini_mx``.
+"""Capability manifests for the two vertical-slice targets: ``rvv`` and ``mx_gemmini``.
 
 These are target **definitions** (a `target_contract.yaml` with `compute_units`) generated as `out/`
 artifacts and plugged into the routing tooling — the same shape a real out-of-tree target
@@ -7,7 +7,7 @@ different targets:
 
 - ``rvv`` (SpacemiT K1 vector unit): the regular formats fp32/fp16/bf16 + int8 — no fp4/fp6/native-fp8
   datapath, so those route to an honest gap.
-- ``gemmini_mx`` (microscaling systolic PE): mxfp4/mxfp6/mxfp8 + int8/bf16 with an E8M0 block-scale
+- ``mx_gemmini`` (microscaling systolic PE): mxfp4/mxfp6/mxfp8 + int8/bf16 with an E8M0 block-scale
   requant — accepts the low-bit formats RVV rejects.
 
 Both are provenance-tagged prototypes flagged ``requires_human_review`` — the numbers/modes trace to a
@@ -67,11 +67,11 @@ def rvv_manifest() -> dict[str, Any]:
     }
 
 
-def gemmini_mx_manifest() -> dict[str, Any]:
+def mx_gemmini_manifest() -> dict[str, Any]:
     """Gemmini-MX microscaling systolic PE — fp4/fp6/fp8 (MX, E8M0 block scale) + int8/bf16."""
     return {
         **_COMMON,
-        "name": "gemmini_mx",
+        "name": "mx_gemmini",
         "family": "tensor_resident",
         "provenance": "chipyard generators/gemmini (branch gemmini-mx) MxParameters.scala: "
                       "mxGemminiConfig=[mode0(fp4/fp4), mode4(fp6/fp6), mode8(fp8/fp8)]; block scale via "
@@ -100,7 +100,7 @@ def gemmini_mx_manifest() -> dict[str, Any]:
                 "scaling": "block_e8m0",
                 # gemmini-mx requant (MxRequantizer + E8M0 exponent add + QuantLut) is target-specific,
                 # out-of-tree — Merlin only references it.
-                "requant": {"ref": "gemmini_mx.mx_requantizer"},
+                "requant": {"ref": "mx_gemmini.mx_requantizer"},
             }
         ],
     }
@@ -110,13 +110,13 @@ def radiance_manifest() -> dict[str, Any]:
     """Radiance (Muon SIMT tensor core) — regular fp32/fp16/bf16, COMPOSING the gemmini-mx MX PE.
 
     Demonstrates the composition the hardware allows: gemmini-mx is a compute unit that can stand
-    alone (see :func:`gemmini_mx_manifest`) OR be embedded inside a radiance cluster. Here the SIMT
+    alone (see :func:`mx_gemmini_manifest`) OR be embedded inside a radiance cluster. Here the SIMT
     cluster ``contains`` the ``mx_pe`` unit, so the target's effective capability is the union: regular
     half/single floats on the SIMT lanes + the low-bit MX formats on the embedded PE. Carries a
     ``plugin`` block for the out-of-tree discovery seam (the real dialect + lowering live in a
     radiance-mlir repo; this artifact is the first materialization under out/artifacts/targets).
     """
-    mx_pe = gemmini_mx_manifest()["compute_units"][0]   # reuse the exact gemmini-mx PE (composition)
+    mx_pe = mx_gemmini_manifest()["compute_units"][0]   # reuse the exact gemmini-mx PE (composition)
     return {
         **_COMMON,
         "name": "radiance",
@@ -156,7 +156,55 @@ def radiance_manifest() -> dict[str, Any]:
     }
 
 
-MANIFESTS = {"rvv": rvv_manifest, "gemmini_mx": gemmini_mx_manifest, "radiance": radiance_manifest}
+def atlas_manifest() -> dict[str, Any]:
+    """ATLAS NPU systolic MXU — a 32x32 FP8 (E4M3) systolic array accumulating in BF16 (or FP32),
+    with an E8M0 block-scale requant. Facts DERIVED from the atlas-npu chipyard generator RTL config
+    (frozen MxuParams formats + PEArchitecture set) and confirmed by mlc arc discovery (dim=32).
+    """
+    return {
+        **_COMMON,
+        "name": "atlas",
+        "family": "tensor_resident",
+        "provenance": "atlas-npu chipyard generator (tmp/dse/atlas-npu) src/main/scala/atlas: "
+                      "MxuParams.scala FROZEN formats — inputFmt=E4M3 (fp8, activation+weight), "
+                      "accumFmt=outputFmt=BF16; 32x32 systolic mesh (MxuParams arrayRows=arrayCols=32, "
+                      "SystolicArrayParams/InnerProductTreeParams isOriginalConfig 32/32/32). "
+                      "PEArchitecture={HardFloatFMA (BF16 FMA), FP32Addition (BF16 mul, FP32 add), "
+                      "CustomFMA=default ((FP8xFP8)+BF16)}; E8M0 block scale via FPUtils.BF16ScaleToE4M3 "
+                      "+ ScalingFactorRegFile. mlc arc discovery confirms dim=32 and a 42-entry legal "
+                      "opcode set (arc_available=True). NOT RTL-certified; mesh/dtype facts from the "
+                      "generator config, not silicon.",
+        "features": ["systolic_array", "fp8_mxu", "microscaling", "bf16_accumulate"],
+        "capabilities": {"ops": ["matmul"], "mesh": {"rows": 32, "cols": 32}},
+        "memory_model": {"resident": True, "accumulators": True, "block_scale_memory": True},
+        "compiler_obligations": ["must_tile_to_mesh_shape", "must_supply_e8m0_block_scales"],
+        "hardware_promises": ["fp8_multiply", "bf16_accumulate"],
+        "runtime_promises": ["metrics"],
+        "legality": ["matmul tiles to the 32x32 mesh"],
+        "runtime": {"default_backend": "simulator"},
+        "compute_units": [
+            {
+                "name": "mxu",
+                "kind": "systolic",
+                # inputFmt is the frozen E4M3 activation+weight format; BF16 is the accum/output element
+                # format (and the HardFloat FMA internal precision) — both from MxuParams.scala.
+                "dtypes": ["fp8_e4m3", "bf16"],
+                "ops": ["matmul"],
+                "accumulate": [
+                    {"in": "fp8_e4m3", "weight": "fp8_e4m3", "acc": "bf16"},  # CustomFMA(default)/HardFloatFMA
+                    {"in": "fp8_e4m3", "weight": "fp8_e4m3", "acc": "f32"},   # FP32Addition PE variant
+                ],
+                "scaling": "block_e8m0",
+                # atlas requant (FPUtils BF16<->E4M3 + E8M0 shared block scale via ScalingFactorRegFile)
+                # is target-specific, out-of-tree — Merlin only references it.
+                "requant": {"ref": "atlas.e4m3_block_requant"},
+            }
+        ],
+    }
+
+
+MANIFESTS = {"rvv": rvv_manifest, "mx_gemmini": mx_gemmini_manifest,
+             "radiance": radiance_manifest, "atlas": atlas_manifest}
 
 
 def validate(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -178,7 +226,7 @@ def write(name: str, base: Path | None = None) -> Path:
 
 
 def write_all(base_root: Path | None = None) -> list[Path]:
-    """Write all manifests (rvv, gemmini_mx, radiance). ``base_root`` overrides the per-target base dir."""
+    """Write all manifests (rvv, mx_gemmini, radiance). ``base_root`` overrides the per-target base dir."""
     return [write(n, base=(base_root / n) if base_root is not None else None) for n in MANIFESTS]
 
 

@@ -19,7 +19,7 @@ def _rvv_units():
     })
 
 
-def _gemmini_mx_units():
+def _mx_gemmini_units():
     return cu.compute_units({
         "compute_units": [
             {"name": "mx_pe", "kind": "systolic", "dtypes": ["mxfp4", "mxfp6", "mxfp8", "int8", "fp16"],
@@ -47,8 +47,8 @@ def test_rvv_routes_supported_and_gaps_low_bit():
     assert [g.demand.site for g in rt.gaps(results)] == ["mlp0"]
 
 
-def test_gemmini_mx_routes_low_bit_and_mixed():
-    units = _gemmini_mx_units()
+def test_mx_gemmini_routes_low_bit_and_mixed():
+    units = _mx_gemmini_units()
     results = rt.route([
         rt.OpDemand("matmul", "mxfp4", "mxfp4"),
         rt.OpDemand("matmul", "mxfp6", "mxfp6"),
@@ -60,7 +60,7 @@ def test_gemmini_mx_routes_low_bit_and_mixed():
 
 def test_combo_not_in_accumulate_matrix_gaps():
     # int8 is a listed dtype but there is no int8xint8 accumulate rule -> illegal mode -> gap.
-    units = _gemmini_mx_units()
+    units = _mx_gemmini_units()
     results = rt.route([rt.OpDemand("matmul", "int8", "int8")], units)
     assert results[0].gap is not None
 

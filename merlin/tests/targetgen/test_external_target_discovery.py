@@ -63,17 +63,17 @@ def test_discover_and_resolve_external_target(tmp_path, monkeypatch):
 
 def test_search_dir_of_targets(tmp_path, monkeypatch):
     _make_oot_target(tmp_path / "targets" / "radiance", "radiance")
-    _make_oot_target(tmp_path / "targets" / "gemmini_mx", "gemmini_mx")
+    _make_oot_target(tmp_path / "targets" / "mx_gemmini", "mx_gemmini")
     monkeypatch.setenv("MERLIN_TARGET_PATH", str(tmp_path / "targets"))
     ext = tr.external_targets()
-    assert {"radiance", "gemmini_mx"} <= set(ext)
-    assert {"radiance", "gemmini_mx"} <= set(tr.all_targets())
+    assert {"radiance", "mx_gemmini"} <= set(ext)
+    assert {"radiance", "mx_gemmini"} <= set(tr.all_targets())
 
 
 def test_external_overrides_are_first(tmp_path, monkeypatch):
     # An external target named like nothing in-tree resolves external; reference names still resolve
     # reference when not shadowed.
-    _make_oot_target(tmp_path / "gemmini_mx", "gemmini_mx")
-    monkeypatch.setenv("MERLIN_TARGET_PATH", str(tmp_path / "gemmini_mx"))
-    assert tr.resolve("gemmini_mx").kind == "external"
+    _make_oot_target(tmp_path / "mx_gemmini", "mx_gemmini")
+    monkeypatch.setenv("MERLIN_TARGET_PATH", str(tmp_path / "mx_gemmini"))
+    assert tr.resolve("mx_gemmini").kind == "external"
     assert tr.resolve("gemmini").kind == "reference"
