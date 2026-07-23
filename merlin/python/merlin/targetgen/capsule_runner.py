@@ -132,19 +132,27 @@ def _exact_match(a: dict, b: dict) -> bool:
 def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path,
                 run_id: str | None = None, contract: str | Path | None = None,
                 oracle_adapters: dict[str, Callable] | None = None,
-                pkg: Package | None = None, timeout: int = 600) -> dict:
-    """Run one capsule through the package; write artifacts; return a capsule_result dict."""
+                pkg: Package | None = None, timeout: int = 600,
+                target: str = "gemmini", suite: str | None = None, dtype: str = "i8xi8_i32") -> dict:
+    """Run one capsule through the package; write artifacts; return a capsule_result dict.
+
+    ``target``/``suite``/``dtype`` parameterize the run identity (the single ``target=`` site); default
+    to gemmini for back-compat. ``oracle_adapters`` is the per-target oracle set (see
+    :func:`oracle_adapters`): the universal floor is the target-agnostic math oracle (L0/L1, always run
+    here); L2+ RTL tiers are ONLY graded if an adapter is present + available (arc or a bespoke sim),
+    else the tier is honestly ``unavailable`` — arc is never assumed."""
     from ..runtime.reference import reference_outputs
     from ..runtime.simulator import simulate
     from .eval.gemmini_suite import toolchain_shas
 
     name = capsule["name"]
     run_id = run_id or f"{name}"
+    suite = suite or f"{target}-capsule-bench"
     adapters = oracle_adapters if oracle_adapters is not None else default_adapters()
     required = set(capsule.get("required_oracle_tiers", []))
 
-    paths = make_run_paths(runs_root, run_id, suite=SUITE, target="gemmini",
-                           dtype="i8xi8_i32", benchmark=name)
+    paths = make_run_paths(runs_root, run_id, suite=suite, target=target,
+                           dtype=dtype, benchmark=name)
 
     tiers: dict[str, TierResult] = {}
     trace_check_res = {"status": "skipped", "violations": []}
@@ -289,7 +297,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     }
     (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2),
                                                         encoding="utf-8")
-    _write_run_manifest(paths, run_id, name, status, tiers, capsule)
+    _write_run_manifest(paths, run_id, name, status, tiers, capsule, target=target, suite=suite)
     try:
         schemas.validate(result, "capsule_result", contract=contract)
     except schemas.ContractViolation as e:
@@ -299,10 +307,12 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
 
 
 def _write_run_manifest(paths: RunPaths, run_id: str, name: str, status: str,
-                        tiers: dict, capsule: dict) -> None:
+                        tiers: dict, capsule: dict, *, target: str = "gemmini",
+                        suite: str | None = None) -> None:
     manifest = {
-        "schema_version": "1.0", "project": "merlin", "suite": SUITE, "method": run_id,
-        "run_id": run_id, "target": "gemmini", "benchmark": name, "status": status,
+        "schema_version": "1.0", "project": "merlin", "suite": suite or f"{target}-capsule-bench",
+        "method": run_id,
+        "run_id": run_id, "target": target, "benchmark": name, "status": status,
         "created_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
         "codegen_backend": "oot_package",
         "metadata": {
@@ -325,7 +335,8 @@ def _write_run_manifest(paths: RunPaths, run_id: str, name: str, status: str,
 def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str | Path,
               contract: str | Path | None = None,
               oracle_adapters: dict[str, Callable] | None = None,
-              timeout: int = 600, max_workers: int = 1) -> list[dict]:
+              timeout: int = 600, max_workers: int = 1,
+              target: str = "gemmini", suite: str | None = None, dtype: str = "i8xi8_i32") -> list[dict]:
     """Run many capsules through one package (building/integrity-scanning it once).
 
     ``max_workers > 1`` fans the (independent) per-capsule runs out across a ThreadPoolExecutor — each
@@ -340,7 +351,7 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     def _one(cap: dict) -> dict:
         return run_capsule(cap, package_dir, runs_root=runs_root, run_id=cap["name"],
                            contract=contract, oracle_adapters=oracle_adapters,
-                           pkg=pkg, timeout=timeout)
+                           pkg=pkg, timeout=timeout, target=target, suite=suite, dtype=dtype)
 
     if max_workers <= 1:
         return [_one(cap) for cap in capsules]
