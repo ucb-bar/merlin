@@ -86,6 +86,17 @@ def rocc_tests_dir() -> Path:
     env = os.environ.get("MERLIN_GEMMINI_HARNESS_DIR")
     if env:
         return Path(env)
+    # Default to the in-repo CURATED int8 harness (elem_t=int8_t, HAS_MVIN_SCALE defined) that we own,
+    # NOT chipyard's generators/gemmini/software/gemmini-rocc-tests. That chipyard header is externally
+    # regenerated: the shared tree was switched to an fp8/OPU config whose gemmini_params.h drops
+    # HAS_MVIN_SCALE -> the mvin scale field encodes 0 -> the int8 Gemmini multiplies every loaded input
+    # by 0 -> all-zero matmul in the C driver (the MLIR .insn path is immune; it hardcodes the float-1.0
+    # scale bits). The sandbox already binds this curated harness via MERLIN_GEMMINI_HARNESS_DIR; using it
+    # as the default makes the direct (non-sandboxed) path header-correct and chipyard-contamination-proof.
+    from ...common.paths import merlin_dir
+    curated = merlin_dir() / "experiments/gemmini_capsule_bench_v0/contracts/harness_curated/gemmini-rocc-tests"
+    if curated.is_dir():
+        return curated
     return chipyard_root() / "generators/gemmini/software/gemmini-rocc-tests"
 
 
