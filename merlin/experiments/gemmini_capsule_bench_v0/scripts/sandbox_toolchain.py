@@ -25,7 +25,24 @@ CHIPYARD_VERILATOR = str(_CHIPYARD / "sims" / "verilator") if _CHIPYARD else "/p
 UV_PYTHON = os.path.expanduser("~/.local/share/uv")          # the cpython the .venv symlinks point at
 VENV = str(C.REPO / ".venv")                                 # third-party deps (xdsl, numpy, jsonschema…)
 LLVM = str(C.REPO / "third_party" / "llvm-install")          # clang + mlir-opt/translate (also bundle-allowed)
-CURATED_HARNESS = str(C.EXP / "contracts/harness_curated/gemmini-rocc-tests")
+
+
+def _curated_harness() -> str:
+    """The curated baremetal C harness dir, from the experiment descriptor (per-target SETUP), resolved
+    under the experiment dir. Falls back to the pre-descriptor gemmini default where it exists, so an
+    existing gemmini run is byte-identical; returns "" for a target that declares none (arc/cyclotron)."""
+    try:
+        from merlin.targetgen.target_experiment import load_target_experiment
+        te = load_target_experiment(C.EXP / "target_experiment.yaml")
+        if te.curated_harness:
+            return str(C.EXP / te.curated_harness)
+    except Exception:  # noqa: BLE001 — no/invalid descriptor ⇒ fall back, never crash the sandbox
+        pass
+    default = C.EXP / "contracts/harness_curated/gemmini-rocc-tests"
+    return str(default) if default.is_dir() else ""
+
+
+CURATED_HARNESS = _curated_harness()
 # libidn compat shim: the conda cmake transitively loads libidn.so.11 (during project configure), but this
 # host only has libidn.so.12. `.compat_lib/libidn.so.11 -> libidn.so.12` bridges it. Under --sandbox none
 # (abc4) this was on the ambient LD_LIBRARY_PATH; our explicit env dropped it -> the C++ build failed
@@ -85,5 +102,8 @@ def sandbox_env(ws: Path) -> str:
         # system C/C++ compilers. mlir-opt/llc find their libs via rpath; the C++ build links via cmake.
         f'export LD_LIBRARY_PATH={COMPAT_LIB}:{CONDA_ENV}/lib:{CONDA_ENV}/riscv-tools/lib${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}; '
         f'export PYTHONPATH={ws}/merlin/python${{PYTHONPATH:+:$PYTHONPATH}}; '
-        f'export MERLIN_GEMMINI_HARNESS_DIR={CURATED_HARNESS}; '
+        # Curated baremetal harness: a target-neutral var + the gemmini-named one the gemmini backend and
+        # probe still read (back-compat). Skipped entirely for a target that declares no curated harness.
+        + (f'export MERLIN_HWBRINGUP_HARNESS_DIR={CURATED_HARNESS}; '
+           f'export MERLIN_GEMMINI_HARNESS_DIR={CURATED_HARNESS}; ' if CURATED_HARNESS else '')
     )

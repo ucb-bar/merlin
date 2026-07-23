@@ -24,6 +24,10 @@ class TargetExperiment:
     target: str
     isa_headers: tuple[str, ...]       # shared hardware-spec headers (bundle-convention path STRINGS)
     hwbringup_set: str | None          # shared RTL/ISA/README/example set (bundle-convention path STRING)
+    # OPTIONAL declarative setup: the curated baremetal C harness (linker/crt/headers, NO kernels) an
+    # agent's compiler needs — only chipyard-sim targets have one; arc/cyclotron targets omit it. A path
+    # relative to the experiment dir. Genuinely per-target setup, so declared (not derived).
+    curated_harness: str | None
     capsule_corpus: Path               # the corpus the arms author against + are graded on (resolved)
     sim_via: str                       # how the simulator runs (e.g. "chipyard")
     rtl_via: str                       # how RTL facts are obtained (e.g. "mlc" — DERIVED, not declared)
@@ -80,6 +84,7 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         target=str(doc["target"]),
         isa_headers=tuple(hw.get("isa_headers") or []),
         hwbringup_set=hw.get("hwbringup_set"),
+        curated_harness=hw.get("curated_harness"),
         capsule_corpus=root / doc["capsule_corpus"] if doc.get("capsule_corpus") else None,
         sim_via=str((doc.get("toolchain") or {}).get("sim_via", "")),
         rtl_via=str((doc.get("rtl") or {}).get("via", "mlc")),
