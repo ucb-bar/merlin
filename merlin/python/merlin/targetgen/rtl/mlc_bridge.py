@@ -171,19 +171,191 @@ def semantic_roles(target: str) -> dict:
         return {"roles": {}, "source": None, "derived": False, "reason": f"unreadable roles cache: {e}"}
 
 
-def derive_and_cache_roles(target: str, *, base=None) -> dict:
-    """Run mlc's behavioural effect probe for ``target`` and classify each legal opcode into a semantic
-    role by the RTL region its effect touches — mesh -> compute, a written memory bank -> load/store (by
-    the bank's DMA-vs-accumulator role), CSR-only -> config, nothing -> barrier. Writes
-    ``discovered_roles.json`` beside the other discovered artifacts. Requires the mlc venv (xdsl) + a live
-    arc model; raises RuntimeError otherwise (never fabricates roles). This is the ONLY writer of the
-    cache :func:`semantic_roles` reads, keeping the derivation in one auditable place."""
+# --- region -> coarse role classification -------------------------------------------------------
+# The behavioural probe below drives each legal RoCC funct into the arc model, drives it to (bounded)
+# retire across many cycles, diffs the flat state, and buckets the *changed* named states into MODULE
+# REGIONS. The multi-cycle drive is what defeats "control-queue domination": a single-cycle diff after a
+# RoCC fire is dominated by the reservation-station / command-queue write (the command just landing in
+# the ROB), NOT the datapath. Driving to retire lets the command propagate out of the control queue into
+# the mesh / DMA / scratchpad, whose region signature is what classifies the role. Idle free-running
+# state (cycle counters, im2col housekeeping) is measured once with no command and subtracted as noise.
+#
+# The region names below are STRUCTURAL heuristics for a RoCC systolic accelerator (gemmini-shaped): the
+# systolic-array datapath ("mesh"), the DMA store engine ("store_controller"), the scratchpad control +
+# TLB that a stalled DMA read lights up, and the loop-unroll / config CSR modules. The operand/accumulator
+# banks come from the DISCOVERED memory_map (target-parameterized). A fully target-agnostic classifier
+# would derive the mesh/DMA region names from the interaction/channel discovery too; that generalization
+# is the residual work — this is the prototype that proves the signal is there.
+
+def _region_of(name: str, *, operand_pfx: str | None, accum_pfx: str | None) -> str:
+    """Bucket a changed state NAME into a coarse module region (structural prefix match, no regex)."""
+    n = name
+    if operand_pfx and n.startswith(operand_pfx):
+        return "operand_bank"
+    if accum_pfx and n.startswith(accum_pfx):
+        return "accum_bank"
+    if n.startswith("reservation_station") or n.startswith("raw_cmd_q") or n.startswith("unrolled_cmd_q"):
+        return "controlq"
+    if "/cmd_q/" in n or "/tagq/" in n:
+        return "controlq"
+    if n.startswith("ex_controller/mesh"):
+        return "mesh"
+    if n.startswith("ex_controller"):
+        return "ex_ctrl"
+    if n.startswith("store_controller"):
+        return "store_ctrl"
+    if n.startswith("load_controller"):
+        return "load_ctrl"
+    if n.startswith("spad"):
+        return "spad_ctrl"
+    if n.startswith("tlb"):
+        return "tlb"
+    if n.startswith("mod_1"):
+        return "dma_mod1"
+    if n.startswith("mod"):
+        return "dma_mod0"
+    if n.startswith("counters") or n.startswith("pipeline_stall") or "_pipeline_stall_counter" in n:
+        return "counters"
+    if n.startswith("io_"):
+        return "io"
+    return "other"
+
+
+def _classify_role(regions: dict, busy: int, drive_cycles: int) -> str:
+    """Coarse role from a funct's region signature. Precedence matters: heavy mesh (systolic datapath)
+    is compute even when a macro (LOOP_CONV) also spawns a stalled DMA; store beats load (both stall on
+    the absent memory system) because only a store lights the store engine; a light mesh touch is the
+    weight-load PRELOAD (compute-adjacent)."""
+    g = lambda k: regions.get(k, 0)
+    stalled = busy >= int(drive_cycles * 0.9)
+    if g("mesh") > 50:
+        return "compute"                                   # heavy systolic-array datapath
+    if g("store_ctrl") > 0:
+        return "store"                                     # DMA store engine active
+    if stalled and (g("spad_ctrl") > 0 or g("tlb") > 0 or g("load_ctrl") > 0):
+        return "load"                                      # stalled scratchpad DMA read (fill)
+    if g("mesh") > 0:
+        return "compute"                                   # light mesh touch = weight-preload
+    if g("ex_ctrl") > 0 or g("dma_mod0") > 0 or g("dma_mod1") > 0 or g("spad_ctrl") > 0:
+        return "config"                                    # CSR / loop-config pokes, no datapath
+    return "barrier"                                        # negligible observable effect
+
+
+def derive_and_cache_roles(target: str, *, base=None, drive_cycles: int = 800) -> dict:
+    """Run a behavioural effect probe for ``target`` and classify each legal opcode into a coarse semantic
+    role by the RTL region its effect touches — mesh -> compute, DMA store engine -> store, a stalled
+    scratchpad DMA read -> load, CSR/loop-config pokes -> config, nothing -> barrier. Writes
+    ``discovered_roles.json`` beside the other discovered artifacts. Requires a live arc model (+ the mlc
+    package, editable-installed in this venv); raises RuntimeError otherwise (never fabricates roles).
+    This is the ONLY writer of the cache :func:`semantic_roles` reads, keeping the derivation in one
+    auditable place. Returns the written record.
+
+    Method (defeats control-queue domination): for each legal funct, zero the flat state, issue the RoCC
+    command, tick ``drive_cycles`` cycles so the command RETIRES out of the reservation station into the
+    datapath, snapshot+diff, subtract an idle-noise baseline, bucket the changed states into module
+    regions, and classify. Currently supports RoCC-funct targets (the funct rides ``io_cmd_bits_inst_*``);
+    a program/MMIO or TileLink target raises rather than guessing."""
     require_mlc()
-    from mlc.discover import probe, target_interface  # noqa: F401 — presence-checked; probe drives arc
-    raise RuntimeError(
-        "derive_and_cache_roles must run in the mlc venv with a live arc model; invoke mlc's effect "
-        "probe (mlc.discover.probe.sweep_field over the opcode field) there and classify effect "
-        "signatures against the discovered mesh/memory regions. Not runnable from the merlin venv.")
+    import json as _json
+    with _mlc_cwd():
+        from mlc.backends.cosim_core import CosimCore
+        from mlc.backends.protocols import RoCCAdapter, detect_protocols
+        from mlc.discover.probe import build_statemap, snapshot, zero_state, diff
+        from mlc.discover.fingerprint import artifact_paths, rtl_fingerprint
+        d = mlc_dir()
+        p = artifact_paths(target)
+        man = str((d / p["man"]).resolve())
+        so = str((d / p["so"]).resolve())
+        if not Path(man).exists():
+            raise RuntimeError(f"mlc arc manifest absent for target {target!r} ({man})")
+        # CosimCore._ensure_lib compiles the .so from the sibling *_model.o when the .so is missing, so a
+        # transient rebuild race (concurrent session) does not block us — we only need the manifest here.
+        core = CosimCore(so, man, clock_name="clock", reset_name="reset", reset_active_low=False)
+        if not any(b.kind == "rocc" for b in detect_protocols(core)):
+            raise RuntimeError(
+                f"{target!r}: behavioural role derivation currently supports RoCC-funct targets only "
+                f"(no io_cmd_bits_inst_funct on this model)")
+        statemap = build_statemap(man)
+
+        legal = discover_legal_opcodes(target).get("legal_opcodes")
+        if not legal:
+            raise RuntimeError(f"{target!r}: no legal opcode set discovered — cannot sweep the funct field")
+
+        mm = discovered_memory_map(target) or {}
+        operand_pfx = _first_segments(mm.get("operand_mem"))
+        accum_pfx = _first_segments(mm.get("accum_mem"))
+
+        def region_counts(changed):
+            out: dict[str, int] = {}
+            for nm in changed:
+                r = _region_of(nm, operand_pfx=operand_pfx, accum_pfx=accum_pfx)
+                out[r] = out.get(r, 0) + 1
+            return out
+
+        # idle-noise baseline: what free-runs with NO command issued.
+        zero_state(core)
+        before = snapshot(core)
+        for _ in range(drive_cycles):
+            core.tick()
+        idle = diff(before, snapshot(core), statemap)
+
+        adapter = RoCCAdapter(core)
+        roles: dict[str, str] = {}
+        evidence: dict[str, dict] = {}
+        for funct in legal:
+            zero_state(core)
+            before = snapshot(core)
+            try:
+                adapter.issue(funct, rs1=0x1000, rs2=0x40, xd=1, xs1=1, xs2=1, max_wait=3000)
+            except RuntimeError:
+                # command never accepted (not a legal issue in isolation) — record and move on
+                roles[str(funct)] = "barrier"
+                evidence[str(funct)] = {"role": "barrier", "accepted": False, "regions": {}, "busy": 0}
+                continue
+            busy = 0
+            for i in range(drive_cycles):
+                core.tick()
+                if core.has("io_busy") and core.peek("io_busy") == 1:
+                    busy = i + 1
+            changed = diff(before, snapshot(core), statemap) - idle
+            rc = region_counts(changed)
+            role = _classify_role(rc, busy, drive_cycles)
+            roles[str(funct)] = role
+            evidence[str(funct)] = {"role": role, "accepted": True, "busy": busy,
+                                    "n_changed": len(changed), "regions": rc}
+
+        record = {
+            "target": target,
+            "method": "probe:multicycle-effect-region(mlc-arc)",
+            "fingerprint": rtl_fingerprint(target).as_dict(),
+            "drive_cycles": drive_cycles,
+            "legal_opcodes": list(legal),
+            "roles": roles,
+            "evidence": evidence,
+            "note": ("Coarse roles behaviourally derived by driving each RoCC funct to retire on the arc "
+                     "model and bucketing the retired-state region signature. Multi-cycle drive + "
+                     "idle-noise subtraction defeats reservation-station/control-queue domination. Fine "
+                     "ISA names (COMPUTE_PRELOADED vs _ACCUMULATE, MVIN2/3, LOOP_* variants, readout_bits) "
+                     "are ABI, not behaviourally nameable — they stay hand-owned in target_contract.yaml."),
+        }
+        out = Path(man).parent / "discovered_roles.json"
+        out.write_text(_json.dumps(record, indent=2) + "\n")
+        record["_path"] = str(out)
+        return record
+
+
+def _first_segments(rep_name: str | None) -> str | None:
+    """The bank-family name prefix (drops the trailing '<int>/...' bank-index tail) so all sibling banks
+    of a discovered operand/accumulator memory share one region key — structural split, no regex
+    (e.g. 'spad/spad_mems_0/mem_ext' -> 'spad/spad_mems_')."""
+    if not rep_name:
+        return None
+    segs = rep_name.split("/")
+    for i, s in enumerate(segs):
+        base, sep, num = s.rpartition("_")
+        if sep and num.isdigit():
+            return "/".join(segs[:i] + [base + "_"])
+    return None
 
 
 def discovered_memory_map(target: str) -> dict | None:
