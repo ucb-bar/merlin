@@ -16,12 +16,15 @@ elsewhere: RVV's software requant in Merlin; gemmini-mx's MxRequantizer out-of-t
 """
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Any
 
+from merlin.common import quant_formats as _qf
 from merlin.common import schemas as _schemas
 from merlin.common.yaml import write_yaml
 from merlin.targetgen import compute_units as _cu
+from merlin.targetgen import families as _families
 from merlin.targetgen import target_registry as _tr
 
 _COMMON: dict[str, Any] = {
@@ -249,6 +252,183 @@ def dialect_plan_from_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
         "lowering": [{"op": op, "to": f"{name.replace('_', '')}.{op}"} for op in ops],
         "tests": [],
     }
+
+
+# --------------------------------------------------------------------------- generic deriver
+#
+# ``derive_manifest`` is the target-AGNOSTIC path the per-target ``*_manifest()`` builders above will
+# be retired into: a capability manifest = CIRCT facts (mesh / capacities / datapath dtypes / legal-funct
+# codes — already in ``facts.json``) + FAMILY defaults (runner/endpoint from the compute-unit kind) +
+# a small RESIDUAL side-input (the ABI ``encoding`` sub-block, ``requant.ref`` and human prose that RTL
+# cannot ground). Onboarding a target becomes: drop a descriptor, let mlc extract facts, hand it the
+# shrinking residual. The residual is exactly the shape of gemmini's stripped ``target_contract.yaml``.
+
+
+def _descriptor_get(descriptor: Any, key: str, default: Any = None) -> Any:
+    """Read ``key`` off a descriptor that may be a bare target-name string, a mapping, or an object
+    (e.g. :class:`merlin.targetgen.target_experiment.TargetExperiment`)."""
+    if descriptor is None:
+        return default
+    if isinstance(descriptor, str):
+        return descriptor if key == "target" else default
+    if isinstance(descriptor, dict):
+        return descriptor.get(key, default)
+    return getattr(descriptor, key, default)
+
+
+def _facts_body(facts: dict[str, Any]) -> dict[str, Any]:
+    """The facts payload. Accepts a full ``facts.json`` (``{schema_version, inputs, facts: {...}}``,
+    as :func:`merlin.targetgen.rtl.facts.load_facts` returns) OR a bare hand stub already at the
+    ``{arrays, memories, datapaths, interfaces}`` level (non-arc targets have no arc — their facts are
+    hand literals today)."""
+    if isinstance(facts, dict) and isinstance(facts.get("facts"), dict):
+        return facts["facts"]
+    return facts or {}
+
+
+def _fmt_name(token: str) -> str:
+    """Canonical quant-format name for a datapath element token (``i8`` -> ``int8`` via the registry
+    aliases); unknown tokens pass through unchanged (a raw accumulator token stays raw)."""
+    try:
+        return _qf.get(token).name
+    except Exception:  # noqa: BLE001 — not a storage format (e.g. an i32 accumulator token)
+        return token
+
+
+def _mesh_from_facts(body: dict[str, Any]) -> dict[str, int] | None:
+    """``capabilities.mesh`` {rows, cols} from the CIRCT-discovered ``mesh`` array, if present."""
+    for arr in body.get("arrays") or []:
+        if arr.get("name") == "mesh" and arr.get("rows") is not None and arr.get("cols") is not None:
+            return {"rows": arr["rows"], "cols": arr["cols"]}
+    return None
+
+
+def _capacities_from_facts(body: dict[str, Any]) -> dict[str, int]:
+    """``<memory>_bytes`` capacity facts (scratchpad/accumulator/...) from the CIRCT memory list."""
+    out: dict[str, int] = {}
+    for mem in body.get("memories") or []:
+        name, nbytes = mem.get("name"), mem.get("bytes")
+        if name and nbytes is not None:
+            out[f"{name}_bytes"] = nbytes
+    return out
+
+
+def _datapaths_from_facts(body: dict[str, Any]) -> tuple[str | None, list[dict[str, str]]]:
+    """The primary input storage dtype (quant-format name) + the ``(in, weight) -> acc`` accumulate
+    matrix, both grounded in the CIRCT datapath facts (input element dtype x accumulator dtype)."""
+    dps = body.get("datapaths") or []
+    inp = next((d for d in dps if d.get("name") == "input"), None)
+    acc = next((d for d in dps if d.get("name") == "accumulator"), None)
+    in_dtype = _fmt_name(inp["dtype"]) if inp and inp.get("dtype") else None
+    acc_tok = acc.get("dtype") if acc else None
+    accumulate = ([{"in": in_dtype, "weight": in_dtype, "acc": acc_tok}]
+                  if in_dtype and acc_tok else [])
+    return in_dtype, accumulate
+
+
+def _encoding_codes_from_facts(body: dict[str, Any]) -> dict[str, Any]:
+    """The RTL-grounded encoding CODES (``custom_opcode`` / ``funct3`` / ``legal_funct``) from the
+    ``funct_decode_table`` interface — the only encoding fields facts can ground (the ABI sub-block
+    lives in the residual)."""
+    for itf in body.get("interfaces") or []:
+        if itf.get("name") == "funct_decode_table":
+            return {k: itf[k] for k in ("custom_opcode", "funct3", "legal_funct") if k in itf}
+    return {}
+
+
+def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
+                    residual: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Derive a schema-valid capability manifest from a descriptor + CIRCT facts + a small residual.
+
+    Field provenance (the three-way split this proves):
+
+    - **CIRCT FACTS** (``facts``): ``capabilities.mesh`` (arrays), ``memory_model.<mem>_bytes``
+      (memories), each compute unit's ``dtypes`` + ``accumulate`` matrix (datapaths), and the encoding
+      CODES ``custom_opcode``/``funct3``/``legal_funct`` (funct_decode_table interface).
+    - **FAMILY defaults** (:func:`merlin.targetgen.families.family_profile`, keyed by the primary
+      compute-unit ``kind``): the codegen ``endpoint_kind`` and the ``runner.suite`` fallback. The
+      remaining generation defaults (rtl_tiers/perf_fields/trace_gate) are filled at read time by
+      :func:`merlin.targetgen.target_experiment.load_capability_manifest`, so they are not duplicated
+      into the emitted contract.
+    - **RESIDUAL** (``residual``, the intent+prose side-input, exactly the shape of gemmini's stripped
+      ``target_contract.yaml``): the compute-unit intent (name/kind/ops/scaling) + ``requant.ref``, the
+      encoding ABI sub-block (addr_len/readout_bits/semantic_class/config_subtype), and the human prose
+      (family/features/obligations/promises/oracle_ladder/provenance/notes/runner/runtime/...). Facts
+      OVERRIDE the residual where they overlap (grounded dtypes/codes win over declared ones).
+
+    ``facts`` accepts a full ``facts.json`` (arc/mlc-derived) or a bare hand stub (non-arc targets).
+    Returns a schema-valid manifest (raises via :func:`validate` otherwise)."""
+    from .target_experiment import _primary_kind  # lazy: avoid any import-order surprise
+
+    manifest: dict[str, Any] = copy.deepcopy(dict(residual or {}))
+    body = _facts_body(facts)
+
+    name = _descriptor_get(descriptor, "target") or manifest.get("name")
+    if not name:
+        raise ValueError("derive_manifest: no target name (descriptor.target / residual.name)")
+    manifest["name"] = name
+    manifest.setdefault("version", _COMMON["version"])
+
+    family = _descriptor_get(descriptor, "family") or manifest.get("family")
+    if family:
+        manifest["family"] = family
+
+    # --- compute units: residual INTENT (name/kind/ops/scaling/requant) + FACTS (dtypes/accumulate) ---
+    in_dtype, accumulate = _datapaths_from_facts(body)
+    units = manifest.get("compute_units")
+    if not units:
+        kind_hint = _descriptor_get(descriptor, "kind") or manifest.get("kind")
+        if not kind_hint:
+            raise ValueError(f"{name}: no compute_units in residual and no descriptor/residual kind "
+                             "to synthesize one")
+        units = [{"name": f"{kind_hint}_unit", "kind": kind_hint, "ops": ["matmul"]}]
+        manifest["compute_units"] = units
+    primary = units[0]
+    # Ground the primary unit's storage dtype from the datapath fact, AUGMENTING (never dropping) any
+    # human-reviewed formats the residual declared — a multi-format unit's reviewed matrix is richer
+    # than the single primary datapath facts can ground.
+    declared = list(primary.get("dtypes") or [])
+    if in_dtype and in_dtype not in declared:
+        declared.append(in_dtype)
+    if declared:
+        primary["dtypes"] = declared
+    if accumulate and not primary.get("accumulate"):
+        primary["accumulate"] = accumulate      # the (in,weight)->acc matrix is a datapath fact
+
+    # primary compute-unit kind -> family generation defaults (reuse the shared registry + resolver)
+    kind = _primary_kind(_cu.compute_units(manifest))
+    profile = _families.family_profile(kind)
+    manifest.setdefault("endpoint_kind", profile.endpoint_kind_default)
+
+    runner = dict(manifest.get("runner") or {})
+    runner.setdefault("suite", f"{name}-capsule-bench")
+    manifest["runner"] = runner
+    runtime = dict(manifest.get("runtime") or {})
+    runtime.setdefault("backends", ["simulator"])
+    manifest["runtime"] = runtime
+
+    # --- capabilities.mesh + memory capacities: pure CIRCT facts layered onto the residual ---
+    caps = dict(manifest.get("capabilities") or {})
+    mesh = _mesh_from_facts(body)
+    if mesh:
+        caps["mesh"] = mesh
+    manifest["capabilities"] = caps
+
+    memory_model = dict(manifest.get("memory_model") or {})
+    memory_model.update(_capacities_from_facts(body))
+    manifest["memory_model"] = memory_model
+
+    # --- encoding: residual ABI sub-block + facts CODES (codes win on overlap) ---
+    codes = _encoding_codes_from_facts(body)
+    residual_encoding = manifest.get("encoding")
+    if codes or residual_encoding:
+        manifest["encoding"] = {**dict(residual_encoding or {}), **codes}
+
+    # --- schema-required top-level fields the stripped residual may omit ---
+    for req in ("compiler_obligations", "hardware_promises", "runtime_promises", "legality"):
+        manifest.setdefault(req, [])
+
+    return validate(manifest)
 
 
 def write_oot_target(name: str, root: Path) -> Path:
