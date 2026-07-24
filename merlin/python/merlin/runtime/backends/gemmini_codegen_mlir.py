@@ -29,10 +29,12 @@ def _load_isa() -> dict:
     from merlin.targetgen.rtl.facts import load_facts
     m = load_capability_manifest("gemmini")
     enc, rb = m.encoding, m.encoding["readout_bits"]
-    dim = ((m.contract.get("capabilities") or {}).get("mesh") or {}).get("rows", 16)
     code_of = {cls: code for code, cls in enc["semantic_class"].items()}
     facts = load_facts("gemmini")["facts"]
     fd = next(i for i in facts["interfaces"] if i.get("name") == "funct_decode_table")
+    # DIM (systolic mesh dimension) is a CIRCT-extracted FACT, not a hand-declared manifest field.
+    mesh = next((a for a in facts.get("arrays", []) if a.get("name") == "mesh"), {})
+    dim = mesh.get("rows", 16)
     return {"DIM": dim, "ADDR_LEN": enc["addr_len"], "F1": rb["f1"], "C_ACC": rb["c_acc"],
             "ACC_ACCUM": rb["acc_accum"], "ACC_I8": rb["acc_i8"], "K": code_of,
             "CUSTOM_OPCODE": fd["custom_opcode"], "FUNCT3": fd["funct3"]}
