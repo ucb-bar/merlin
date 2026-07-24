@@ -1,28 +1,32 @@
-"""merlin-rtl circt-introspect (v2) — deterministic RTL fact extraction via the CIRCT HW dialect.
+"""merlin-rtl circt-introspect (v2) — deterministic, TARGET-AGNOSTIC RTL fact extraction.
 
-Where the grep-over-FIRRTL v1 (:mod:`introspect`) stops, this picks up: it parses the **CIRCT HW
-dialect** lowered by ``firtool --ir-hw`` from the elaborated Gemmini SoC, plus the Gemmini ISA Chisel
-source, to extract the facts the RTL-derived checks layer needs *from the hardware itself* — not from a
-hand-curated contract:
+Where the grep-over-FIRRTL v1 (:mod:`introspect`) stops, this picks up. It PREFERS mlc's
+target-agnostic RTL discovery (the version-matched core HW dialect: the decoder-derived legal-opcode
+set + the discovered mesh DIM + memory capacities) and falls back to a legacy chipyard/FIRRTL grep +
+HW-port parse only for a target that actually ships those artifacts (gemmini). Nothing here bakes one
+target's paths at import: every path is resolved *from the ``target`` argument* —
 
-  * accumulator memory depth / lane count / byte capacity / address width  (HW dialect ``@AccumulatorMem``
-    port widths — v1 left this ``None``);
-  * scratchpad + mesh                                                       (reused from v1 grep, which
-    already reproduces the contract);
-  * the legal RoCC **funct decode table** + custom opcode                   (``GemminiISA.scala`` funct
-    block — the ground truth the hand-curated ``rocc_decode._FUNCT_CLASS`` is a subset of).
+  * the HW dialect / accumulator capacity                    (per-target purgeable ``<t>_soc.hw.mlir``
+    cache — the ``@AccumulatorMem`` port widths, superseded by discovery when mlc is available);
+  * scratchpad + mesh + accumulator capacities               (mlc discovery, target-agnostic);
+  * the legal command **funct decode table** + custom opcode (mlc's decoder ``comb.icmp-eq`` fan-out;
+    the CODES are the fact). The funct NAMES are ISA vocabulary sourced generically: a chipyard
+    target's Chisel ISA source (``<T>ISA.scala``, resolved by the generator convention) when present,
+    else the target's DECLARED ISA headers (``target_experiment.yaml`` -> ``#define k_<NAME> <N>``),
+    else a generic ``funct_<code>`` label.
 
-Every fact carries ``evidence`` (the exact RTL/source token it came from). The result is cached to
-``facts.json`` keyed by the hashes of its inputs; re-extraction is a no-op cache hit on unchanged RTL.
-``validate(...)`` cross-checks the facts against the hand-curated ``target_contract.yaml`` and
-``rocc_decode`` — agreement is what lets the curated numbers be retired; a *disagreement is surfaced*
-(e.g. an unconfirmed contract capacity) rather than silently reconciled.
+Every fact carries ``evidence`` (the exact RTL/source token it came from). The result is cached to a
+per-target ``facts.json`` keyed by the hashes of its inputs; re-extraction is a no-op cache hit.
+``validate(...)`` cross-checks the facts against the target's hand-curated ``target_contract.yaml`` +
+``rocc_decode`` — a disagreement is *surfaced*, not silently reconciled.
 
-Deterministic, no LLM: the hardware is the source of truth.
+Deterministic, no LLM: the hardware is the source of truth. (Extraction still needs mlc to KNOW the
+target's RTL — a novel accelerator registers its RTL with mlc first; that is mlc's coverage, not a
+gemmini assumption baked here.)
 
 CLI::
 
-    python -m merlin.targetgen.rtl.circt_introspect [--out facts.json] [--hw <gemmini_soc.hw.mlir>]
+    python -m merlin.targetgen.rtl.circt_introspect [--target <t>] [--out facts.json] [--hw <t.hw.mlir>]
 """
 from __future__ import annotations
 
@@ -30,23 +34,40 @@ import hashlib
 import json
 from pathlib import Path
 from merlin.common.paths import repo_root
-from typing import Any
+from typing import Any, Iterable
 
 from . import introspect as V1
 from .facts import rtl_cache_dir
 
-_REPO = repo_root()  # .../merlin
-# Introspect scratch (the 21 MB firtool hw.mlir input + intermediates) AND the facts.json artifact live
-# in the PURGEABLE cache, never inside merlin/. facts.json is a GENERATED artifact regenerated from the
-# RTL on demand (facts.ensure_facts) — there is no committed pin.
-_CACHE_DIR = rtl_cache_dir("gemmini")
-DEFAULT_HW = _CACHE_DIR / "gemmini_soc.hw.mlir"      # firtool --ir-hw output (cached run product)
-GEMMINI_ISA = Path(V1.DEFAULT_CHIPYARD) / "generators/gemmini/src/main/scala/gemmini/GemminiISA.scala"
+_REPO = repo_root()  # the repo root (contains merlin/)
 
 GENERATOR_VERSION = "rtl-introspect-v2-circt-hw"
-# RoCC custom-3 opcode + the Gemmini funct3 group, confirmed against rocc_decode's ABI block.
+# RoCC custom-3 opcode + the funct3 group (the shared RoCC-ABI encoding, same for every RoCC target).
 CUSTOM_OPCODE = 0x7B
 FUNCT3 = 0x3
+
+
+# ---------------------------------------------------------------------- per-target path resolution
+def _soc_hw_path(target: str = "gemmini") -> Path:
+    """The per-target SoC HW-dialect cache (``firtool --ir-hw`` output) the accumulator port-parser
+    reads, under the PURGEABLE rtl cache — never inside merlin/, never a baked gemmini path. This is
+    the SoC dialect the ``@AccumulatorMem`` port-parse needs (mlc's core dialect drives the decoder)."""
+    return rtl_cache_dir(target) / f"{target}_soc.hw.mlir"
+
+
+def isa_scala_path(target: str = "gemmini", chipyard_root: str | Path | None = None) -> Path:
+    """The target's Chisel ISA source, by the chipyard generator convention
+    ``generators/<t>/src/main/scala/<t>/<T>ISA.scala`` — DERIVED from the target name, not a hardcoded
+    ``GemminiISA.scala`` (gemmini resolves the identical file it always did). Returns the path whether
+    or not it exists; callers gate on ``.is_file()``."""
+    root = Path(chipyard_root) if chipyard_root is not None else Path(V1.DEFAULT_CHIPYARD)
+    cap = target[:1].upper() + target[1:]
+    return root / "generators" / target / "src" / "main" / "scala" / target / f"{cap}ISA.scala"
+
+
+# Back-compat, target-NEUTRAL name (was a baked gemmini const): the gemmini SoC HW cache. It is NOT a
+# ``build_facts`` default any more — build_facts resolves the HW path from its ``target`` argument.
+DEFAULT_HW = _soc_hw_path("gemmini")
 
 
 # --------------------------------------------------------------- HW-dialect accumulator extraction
@@ -227,7 +248,72 @@ def _reconcile_funct(decoder: dict[str, Any] | None, header: dict[str, Any] | No
         decoder["header_only_functs"] = sorted(hs - ds)   # header claims, silicon never decodes (phantom)
         decoder["decoder_only_functs"] = sorted(ds - hs)  # silicon decodes, header omits (missing)
         decoder["evidence"] += (f"; vs header: phantom={sorted(hs - ds)} missing={sorted(ds - hs)}")
+    else:
+        # No name vocabulary at all (target declares no ISA source) -> generic ``funct_<code>`` labels.
+        # The CODES are the derived fact; the names are a convenience the target can supply later.
+        decoder["names"] = {str(k): f"funct_{k}" for k in decoder["legal_funct"]}
     return decoder
+
+
+# ------------------------------------------------------------- funct NAMES, sourced target-agnostically
+def _functs_from_headers(headers: Iterable[str | Path]) -> dict[int, str]:
+    """Map funct code -> name from a target's C ISA headers by the generic ``#define k_<NAME> <N>``
+    convention — a structured split (no regex), mirroring
+    :func:`merlin.targetgen.oot_starterkit.verify.legal_functs`. Earlier headers win a code."""
+    out: dict[int, str] = {}
+    for h in headers:
+        try:
+            txt = Path(h).read_text(errors="ignore")
+        except OSError:
+            continue
+        for line in txt.splitlines():
+            parts = line.split()   # ``#define  k_<NAME>  <N>`` — any whitespace
+            if len(parts) >= 3 and parts[0] == "#define" and parts[1].startswith("k_") and parts[2].isdigit():
+                name = parts[1][2:]
+                if name and all(c.isupper() or c.isdigit() or c == "_" for c in name):
+                    out.setdefault(int(parts[2]), name)
+    return out
+
+
+def _declared_isa_headers(target: str) -> list[Path]:
+    """The ISA header files the target's ``target_experiment.yaml`` declares (bundle-convention,
+    repo-root-relative strings), resolved to absolute paths. Empty when the target has no descriptor
+    or declares no headers (e.g. arc/cyclotron targets) — the caller then falls back to generic names."""
+    from ..target_experiment import load_target_experiment
+    exp = _REPO / "merlin" / "experiments"
+    if not exp.is_dir():
+        return []
+    for desc in sorted(exp.glob("*/target_experiment.yaml")):
+        try:
+            te = load_target_experiment(desc)
+        except Exception:  # noqa: BLE001 — a malformed descriptor is just "no header source for this target"
+            continue
+        if te.target == target:
+            return [_REPO / h for h in te.isa_headers]
+    return []
+
+
+def _funct_name_table(target: str, isa_path: Path | None) -> dict[str, Any] | None:
+    """The funct-name vocabulary for ``target``, sourced agnostically: the Chisel ISA source
+    (``<T>ISA.scala``) when the target ships one, else the target's DECLARED ISA headers (``#define
+    k_*``), else None (codes-only, generic ``funct_<code>`` names applied downstream). Returns a
+    funct-table dict (``legal_funct``/``names``), whose names the decoder-derived set borrows."""
+    if isa_path is not None and Path(isa_path).is_file():
+        return extract_funct_table(Path(isa_path).read_text(errors="replace"))
+    headers = _declared_isa_headers(target)
+    code_name = _functs_from_headers(headers)
+    if not code_name:
+        return None
+    legal = sorted(code_name)
+    return {
+        "name": "funct_decode_table",
+        "custom_opcode": CUSTOM_OPCODE,
+        "funct3": FUNCT3,
+        "legal_funct": legal,
+        "names": {str(k): code_name[k] for k in legal},
+        "evidence": f"ISA headers {[Path(h).name for h in headers]} '#define k_* <N>': "
+                    f"{len(legal)} names [{legal[0]}..{legal[-1]}]",
+    }
 
 
 # ---------------------------------------------------------------------------------- assemble + cache
@@ -261,32 +347,43 @@ def _facts_from_discovery(target: str, facts: dict) -> list[str]:
     return sourced
 
 
-def build_facts(hw_path: Path = DEFAULT_HW, isa_path: Path = GEMMINI_ISA,
-                chipyard_root: str | Path = V1.DEFAULT_CHIPYARD, target: str = "gemmini") -> dict[str, Any]:
+def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None = None,
+                chipyard_root: str | Path | None = None, target: str = "gemmini") -> dict[str, Any]:
     """Assemble the RTL facts for ``target``. PREFERS mlc RTL discovery (target-agnostic: mesh DIM +
-    memory capacities + the decoder-derived ISA); the gemmini FIRRTL grep + HW-port parse is the legacy
-    FALLBACK, used only for facts discovery does not provide (and skipped entirely for a non-gemmini
-    target whose chipyard artifacts are absent). Provenance-stamped; does not write (see dump_facts)."""
+    memory capacities + the decoder-derived ISA); the chipyard FIRRTL grep + HW-port parse is the
+    legacy FALLBACK, run only for a target that ships a Chisel ISA source (gemmini) and skipped
+    entirely otherwise (a non-chipyard target relies wholly on discovery — no gemmini path is touched).
+
+    Every input path is resolved FROM ``target`` when not explicitly overridden: the SoC HW cache
+    (``<t>_soc.hw.mlir``), the Chisel ISA source (``<T>ISA.scala`` by generator convention), the
+    declared ISA headers. Provenance-stamped; does not write (see :func:`dump_facts`)."""
+    chipyard_root = V1.DEFAULT_CHIPYARD if chipyard_root is None else chipyard_root
+    hw_path = _soc_hw_path(target) if hw_path is None else Path(hw_path)
+    isa_path = isa_scala_path(target, chipyard_root) if isa_path is None else Path(isa_path)
+
     fir_sha = isa_sha = "n/a"
-    try:  # legacy gemmini grep + HW-port fallback (optional — a generic target has no chipyard artifacts)
-        arts = V1.find_artifacts(chipyard_root)
-        v1 = V1.extract_facts(arts["fir"], arts["hierarchy"])
-        hw_text = hw_path.read_text(errors="replace") if hw_path.is_file() else ""
-        acc = extract_accumulator(hw_text) if hw_text else None
-        mems = [m for m in v1.get("memories", []) if m.get("name") != "accumulator"]
-        if acc:
-            mems.append(acc)
-        v1["memories"] = mems
-        fir_sha, isa_sha = _sha(arts["fir"]), _sha(isa_path)
-    except Exception:  # noqa: BLE001 — non-gemmini / no chipyard: rely entirely on mlc discovery
-        v1 = {}
+    v1: dict[str, Any] = {}
+    if isa_path.is_file():   # a chipyard target with a Chisel ISA source -> legacy FIRRTL grep + HW-port
+        try:
+            arts = V1.find_artifacts(chipyard_root)
+            v1 = V1.extract_facts(arts["fir"], arts["hierarchy"])
+            hw_text = hw_path.read_text(errors="replace") if hw_path.is_file() else ""
+            acc = extract_accumulator(hw_text) if hw_text else None
+            mems = [m for m in v1.get("memories", []) if m.get("name") != "accumulator"]
+            if acc:
+                mems.append(acc)
+            v1["memories"] = mems
+            fir_sha, isa_sha = _sha(arts["fir"]), _sha(isa_path)
+        except Exception:  # noqa: BLE001 — chipyard artifacts absent/broken: rely on mlc discovery
+            v1 = {}
 
     # PREFER mlc discovery (target-agnostic) for mesh + memory capacities.
     sourced = _facts_from_discovery(target, v1)
 
     # Funct decode table: PREFER the decoder-derived legal set (the ISA the silicon implements) over the
-    # header parse; fall back to the header when mlc / a version-matched HW dialect is unavailable.
-    header_funct = extract_funct_table(isa_path.read_text(errors="replace")) if isa_path.is_file() else None
+    # name parse; fall back to the names when mlc / a version-matched HW dialect is unavailable. NAMES
+    # are sourced target-agnostically (Chisel ISA source > declared ISA headers > generic funct_<code>).
+    header_funct = _funct_name_table(target, isa_path)
     decoder_funct = extract_funct_table_via_decoder(target)
     funct = _reconcile_funct(decoder_funct, header_funct)
     if funct:
@@ -298,8 +395,8 @@ def build_facts(hw_path: Path = DEFAULT_HW, isa_path: Path = GEMMINI_ISA,
         "generator": {
             "name": "merlin.targetgen.rtl.circt_introspect",
             "version": GENERATOR_VERSION,
-            "method": f"mlc RTL discovery (target-agnostic: {', '.join(sourced) or 'none'}) + gemmini "
-                      "grep/HW-port fallback",
+            "method": f"mlc RTL discovery (target-agnostic: {', '.join(sourced) or 'none'}) + chipyard "
+                      "FIRRTL grep/HW-port fallback",
         },
         "inputs": {
             "target": target,
@@ -315,7 +412,7 @@ def dump_facts(out_path: Path | str | None = None, **kw) -> dict[str, Any]:
     """Build facts and write the GENERATED artifact to ``out_path`` (default: the purgeable cache dir,
     NOT merlin/); cache-hit (no rebuild) when input SHAs are unchanged. This is the writer
     :func:`merlin.targetgen.rtl.facts.ensure_facts` calls to fill a cold cache."""
-    out = Path(out_path) if out_path is not None else _CACHE_DIR / "facts.json"
+    out = Path(out_path) if out_path is not None else rtl_cache_dir(kw.get("target", "gemmini")) / "facts.json"
     rec = build_facts(**kw)
     if out.is_file():
         try:
@@ -363,26 +460,34 @@ def validate(facts_rec: dict, contract: dict | None = None,
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
-    ap = argparse.ArgumentParser(description="Deterministic RTL facts via CIRCT HW dialect (v2).")
-    ap.add_argument("--out", default=str(_CACHE_DIR / "facts.json"),
-                    help="run/cache output (default: purgeable artifacts/cache/rtl_introspect/)")
-    ap.add_argument("--hw", default=str(DEFAULT_HW))
+    ap = argparse.ArgumentParser(description="Deterministic, target-agnostic RTL facts via CIRCT HW (v2).")
+    ap.add_argument("--target", default="gemmini",
+                    help="the accelerator target whose RTL facts to extract (default: gemmini)")
+    ap.add_argument("--out", default=None,
+                    help="output path (default: purgeable artifacts/cache/rtl_introspect/<target>/facts.json)")
+    ap.add_argument("--hw", default=None, help="override the SoC HW-dialect input (default: per-target cache)")
     ap.add_argument("--validate", action="store_true", help="cross-check vs contract + rocc_decode")
     a = ap.parse_args(argv)
-    rec = dump_facts(a.out, hw_path=Path(a.hw))
+    out = a.out or str(rtl_cache_dir(a.target) / "facts.json")
+    rec = dump_facts(out, target=a.target, hw_path=(Path(a.hw) if a.hw else None))
     facts = rec["facts"]
-    acc = next((m for m in facts["memories"] if m["name"] == "accumulator"), {})
+    acc = next((m for m in facts.get("memories", []) if m.get("name") == "accumulator"), {})
     funct = next((i for i in facts.get("interfaces", []) if i.get("name") == "funct_decode_table"), {})
-    print(f"wrote {a.out}")
+    print(f"wrote {out}")
     print(f"  accumulator: depth={acc.get('depth')} bytes={acc.get('bytes')} "
           f"addr_width={acc.get('addr_width')}")
     print(f"  funct legal: {funct.get('legal_funct')}")
     if a.validate:
         import yaml
-        from .. import rocc_decode  # noqa
-        contract = yaml.safe_load(
-            (_REPO / "merlin/targets/gemmini/contracts/target_contract.yaml").read_text())
-        res = validate(rec, contract, rocc_decode._FUNCT_CLASS)
+        from .facts import target_contract_path
+        contract = yaml.safe_load(target_contract_path(a.target).read_text())
+        rocc_class = None
+        try:
+            from .. import rocc_decode  # gemmini-shaped RoCC classifier; best-effort cross-check
+            rocc_class = rocc_decode._FUNCT_CLASS
+        except Exception:  # noqa: BLE001 — no classifier for this target: skip that cross-check
+            pass
+        res = validate(rec, contract, rocc_class)
         print("  AGREE:");  [print(f"    + {x}") for x in res["agree"]]
         print("  DIVERGE:"); [print(f"    ! {x}") for x in res["diverge"]] or print("    (none)")
     return 0

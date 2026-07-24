@@ -56,7 +56,7 @@ def test_decoder_derived_opcode_set_fixes_the_header_set():
     assert funct is not None and funct["method"].startswith("decoder_icmp_fanout")
     legal = set(funct["legal_funct"])
     assert 25 not in legal and 126 in legal          # phantom dropped, real decoded code added
-    header = C.extract_funct_table(C.GEMMINI_ISA.read_text(errors="replace"))
+    header = C.extract_funct_table(C.isa_scala_path("gemmini").read_text(errors="replace"))
     reconciled = C._reconcile_funct(funct, header)
     assert reconciled["header_only_functs"] == [25] and reconciled["decoder_only_functs"] == [126]
 
