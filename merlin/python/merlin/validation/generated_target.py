@@ -11,11 +11,12 @@ from pathlib import Path
 
 from .validate import validate_target_repo
 
-# Files/dirs every generated target repo must contain.
+# Files/dirs every generated target repo must contain. NOTE: contracts/dialect_plan.yaml is OPTIONAL
+# (see validation.load.OPTIONAL_PLANS) — the target dialect is an agent-owned design decision, so a
+# target isn't required to ship one; it is validated only when present.
 REQUIRED_TARGET_PATHS: list[str] = [
     "AGENT.md",
     "contracts/target_contract.yaml",
-    "contracts/dialect_plan.yaml",
     "contracts/runtime_adapter_plan.yaml",
     "contracts/zephyr_plan.yaml",
     "contracts/llvm_extension_plan.yaml",

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from ..common import schemas
-from .load import PLAN_FILES, load_plan
+from .load import OPTIONAL_PLANS, PLAN_FILES, load_plan
 
 
 def validate_plan(obj: Any, plan: str) -> list[str]:
@@ -24,15 +24,16 @@ def validate_plan(obj: Any, plan: str) -> list[str]:
 def validate_target_repo(target_repo: str | Path) -> list[str]:
     """Load and validate all five plans in a target repo.
 
-    Returns a flat list of diagnostics (empty == fully valid). A missing plan file is itself
-    a diagnostic.
+    Returns a flat list of diagnostics (empty == fully valid). A missing REQUIRED plan file is itself
+    a diagnostic; an absent OPTIONAL plan (e.g. dialect_plan) is not — it is validated only when present.
     """
     problems: list[str] = []
     for plan in PLAN_FILES:
         try:
             obj = load_plan(target_repo, plan)
         except FileNotFoundError as exc:
-            problems.append(f"{plan}: missing ({exc})")
+            if plan not in OPTIONAL_PLANS:
+                problems.append(f"{plan}: missing ({exc})")
             continue
         problems.extend(validate_plan(obj, plan))
     return problems

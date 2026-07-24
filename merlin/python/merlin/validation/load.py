@@ -26,6 +26,14 @@ PLAN_FILES: dict[str, tuple[str, str]] = {
     "llvm_extension_plan": ("llvm_extension_plan.yaml", "llvm_extension_plan"),
 }
 
+# Plans a target is NOT required to ship. The target DIALECT is a design decision the agent owns (it
+# writes its own out-of-tree MLIR backend, verified against the CIRCT oracle), so a dialect_plan.yaml is
+# optional: validated when present, but its absence is not a structural error.
+OPTIONAL_PLANS: frozenset[str] = frozenset({"dialect_plan"})
+
+# Plans every generated target repo must still ship.
+REQUIRED_PLANS: tuple[str, ...] = tuple(p for p in PLAN_FILES if p not in OPTIONAL_PLANS)
+
 
 def contracts_dir(target_repo: str | Path) -> Path:
     """Return the ``contracts/`` directory inside a generated target repo."""

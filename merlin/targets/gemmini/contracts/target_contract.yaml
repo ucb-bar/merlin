@@ -45,8 +45,9 @@ encoding:
   config_subtype: {0: CONFIG_EX, 1: CONFIG_LD, 2: CONFIG_ST}   # CONFIG refined by rs1 & 0x3
 status: prototype
 features: [systolic_array, resident_packed_tensor, accumulator_commit, command_buffer, metrics]
-ops: [pack, matmul, commit, release]
-types: [resident_tensor, accumulator]
+# No `ops`/`types` are declared: the TARGET DIALECT is a design decision the agent OWNS (it writes its
+# own out-of-tree MLIR backend, interface -> target dialect), verified against the CIRCT oracle. Nothing
+# here pre-defines that vocabulary.
 runtime:
   backends: [simulator, spike_gemmini, verilator]
   # The RTL sim harness that realizes this target — a DECLARED target fact, not a hardcoded backend
@@ -67,11 +68,11 @@ compute_units:
     ops: [matmul]
     scaling: per_channel
     requant: {ref: gemmini.accumulator_scale}
-capabilities:
-  ops: [matmul, bias_add, requant, relu]   # C0 exercises matmul only; rest are future rungs
-  layouts: [packed_rhs]
-  # mesh geometry + scratchpad/accumulator capacities are CIRCT-extracted facts (arrays/memories),
-  # read from the fact bundle by consumers — not hand-declared here.
+# capabilities is intentionally empty: op/layout support is not pre-declared here. Mesh geometry +
+# scratchpad/accumulator capacities are CIRCT-extracted facts (arrays/memories), read from the fact
+# bundle by consumers; the supported ops/layouts follow from the agent's own target dialect, verified
+# against the oracle. (Kept as a present key for schema compliance.)
+capabilities: {}
 memory_model:
   resident: true
   accumulators: true

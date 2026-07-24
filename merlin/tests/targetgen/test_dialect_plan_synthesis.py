@@ -20,8 +20,12 @@ def _contract(target: str) -> dict:
 
 
 def test_generator_reproduces_committed_reference_plans():
-    """_generate(contract) reproduces the committed saturn/gemmini dialect_name + lowering."""
-    for t in ("saturn", "gemmini"):
+    """_generate(contract) reproduces the committed reference dialect_name + lowering.
+
+    gemmini no longer ships a committed dialect_plan (the target dialect is an agent-owned design
+    decision, verified against the CIRCT oracle), so only saturn is checked here.
+    """
+    for t in ("saturn",):
         committed = yaml.safe_load(
             (merlin_dir() / "targets" / t / "contracts" / "dialect_plan.yaml").read_text())
         g = _generate(_contract(t))

@@ -1,7 +1,7 @@
 """Contract loading + validation: the five plans validate, malformed input diagnoses."""
 from __future__ import annotations
 
-from merlin.validation.load import PLAN_FILES, load_all_plans
+from merlin.validation.load import PLAN_FILES, REQUIRED_PLANS, load_all_plans
 from merlin.validation.validate import validate_plan, validate_target_repo
 from merlin.targetgen import pipeline
 from merlin.targetgen.validate import validate_plans
@@ -40,7 +40,7 @@ def test_non_mapping_is_reported():
 
 
 def test_missing_plan_file_is_reported(tmp_path):
-    # Empty dir: every plan file is missing.
+    # Empty dir: every REQUIRED plan file is missing (dialect_plan is optional, so it is not flagged).
     problems = validate_target_repo(tmp_path)
-    assert len(problems) >= len(PLAN_FILES)
+    assert len(problems) >= len(REQUIRED_PLANS)
     assert any("missing" in p for p in problems)
