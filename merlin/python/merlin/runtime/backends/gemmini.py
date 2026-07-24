@@ -30,7 +30,7 @@ from ..reference import outputs_match, reference_outputs
 from .gemmini_codegen import generate_driver
 
 DEFAULT_CHIPYARD = "/path/to/chipyard"
-VERILATOR_CONFIG = "GemminiAndOPUShuttleConfig"
+VERILATOR_CONFIG = "GemminiRocketConfig"
 
 ORACLE = {
     "spike": {"kind": "spike_gemmini_functional", "derived_from_rtl": False},

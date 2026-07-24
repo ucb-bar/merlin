@@ -24,7 +24,7 @@ from typing import Any
 from merlin.common.paths import ext_path
 
 DEFAULT_CHIPYARD = f"{ext_path("chipyard")}"
-CONFIG = "GemminiAndOPUShuttleConfig"
+CONFIG = "GemminiRocketConfig"
 
 
 def find_artifacts(chipyard_root: str | Path = DEFAULT_CHIPYARD,

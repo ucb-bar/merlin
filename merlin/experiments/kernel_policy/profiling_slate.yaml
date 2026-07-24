@@ -46,7 +46,7 @@ fidelity_levels:
       for the full grid then come from L2 Spike events in seconds. Frozen in
       cost_model/gemmini_cost_coeffs.json with its error band.
     calibrated:
-      sim: GemminiAndOPUShuttleConfig (Verilator, dim=16)
+      sim: GemminiRocketConfig (Verilator, dim=16)
       coeffs_cycles_per_cmd: {const: -32, config: 4.9, mvin_A: 29.1, mvin2_B: 29.9,
                               compute: 63.8, mvout: 30.6, fence: 33.4}
       fit_mape: 0.173            # degenerate config/fence microbenchmarks dominate this

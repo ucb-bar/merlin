@@ -261,7 +261,7 @@ def test_oracles_endtoend():
             f"{dt:.0f}s n={ve.get('n_passed')}/{ve.get('n_capsules')} L3={(cv.get('tiers') or {}).get('L3')}")
         if l3:
             (SCRIPTS / ".oracle_timing.json").write_text(_json.dumps(
-                {"verilator_per_capsule_s": round(dt, 1), "config": "GemminiAndOPUShuttleConfig",
+                {"verilator_per_capsule_s": round(dt, 1), "config": "GemminiRocketConfig",
                  "measured_by": "readiness_check"}))
             _ok("wrote .oracle_timing.json (T_obs for the driver timeout)", True, f"T_obs={dt:.0f}s")
         # NEGATIVE: an empty submission must produce 0 capsules / error -> the abc7 signature is caught

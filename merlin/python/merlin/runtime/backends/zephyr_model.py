@@ -3,7 +3,10 @@
 This is the bring-up bridge from merlin's bare-metal spike path
 (:mod:`spike_model`) to a real RTOS image that runs on the FireSim
 ``GemminiAndOPUShuttleConfig`` SoC (tile 0 = scalar/Gemmini, tile 1 = Saturn-OPU
-``rv64gcv`` vLen=128). It reuses the *entire* data-driven C runtime
+``rv64gcv`` vLen=128). NOTE: this whole-model Zephyr/FireSim SMP path deliberately
+uses the 2-tile gemmini+OPU SoC (it needs the Saturn vector tile); it is a distinct
+path from the Gemmini C0 RTL-certification oracle, which now runs the pure
+``GemminiRocketConfig`` (single-tile Rocket host, same 16x16 int8 Gemmini core). It reuses the *entire* data-driven C runtime
 (:mod:`merlin.llvmlower.c_runtime` + ``merlin/runtime/c/merlin_model.c`` +
 ``merlin/runtime/abi/mlir_runtime.c``) and the single ``model.o`` lowered from
 ``model.mlir``; only the harness changes: instead of ``crt.S``/``htif.c`` +

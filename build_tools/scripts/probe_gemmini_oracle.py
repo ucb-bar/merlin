@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 DEFAULT_CHIPYARD = "/path/to/chipyard"
-VERILATOR_CONFIG = "GemminiAndOPUShuttleConfig"
+VERILATOR_CONFIG = "GemminiRocketConfig"
 KNOWN_GOOD = {  # prebuilt bareMetalC binaries (relative to gemmini-rocc-tests/build)
     "spike": "bareMetalC/matmul-baremetal",
     "verilator": "bareMetalC/mvin_mvout_zeros-baremetal",  # small -> tractable on RTL

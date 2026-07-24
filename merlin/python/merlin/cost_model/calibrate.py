@@ -9,7 +9,7 @@ Flow:
      AND confirm the cost model preserves each insight's act/park decision.
 
 Env: MERLIN_CHIPYARD (default /path/to/chipyard). Verilator binary must be built
-for a Gemmini config (GemminiAndOPUShuttleConfig). Slow: ~tens of seconds per RTL run.
+for a Gemmini config (GemminiRocketConfig). Slow: ~tens of seconds per RTL run.
 """
 from __future__ import annotations
 

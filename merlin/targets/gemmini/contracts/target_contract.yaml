@@ -53,9 +53,11 @@ runtime:
   # The RTL sim harness that realizes this target — a DECLARED target fact, not a hardcoded backend
   # constant, so it is onboardable from the contract and read from ONE place (not overfit in code). This
   # is the SAME config the ISA facts are introspected from (targetgen.rtl.introspect), so sim and codegen
-  # stay coherent: its gemmini is the certified 16x16 int8 mesh above (the SoC also carries an OPU that the
-  # gemmini path never touches). Change here + re-derive facts + re-cert to move to a different harness.
-  rtl_sim_config: GemminiAndOPUShuttleConfig
+  # stay coherent: it is the pure chipyard GemminiConfigs.defaultConfig Gemmini on a Rocket host — the
+  # certified 16x16 int8 mesh above (byte-identical Gemmini core to the prior gemmini+OPU Shuttle config;
+  # dropping the OPU/Shuttle changes only host cycle counts, not the mesh or the ISA facts, and makes the
+  # Verilator path coherent with the FireSim path). Change here + re-derive facts + re-cert to move.
+  rtl_sim_config: GemminiRocketConfig
 # Datatype -> compute-unit -> op capability (parsed by merlin.targetgen.compute_units). The C0 systolic
 # mesh is int8 (i8 x i8 -> i32). The input/accumulator dtypes are themselves CIRCT-extracted facts
 # (datapaths), so the (in,weight)->acc `accumulate` matrix is NOT re-declared here. `requant` is an

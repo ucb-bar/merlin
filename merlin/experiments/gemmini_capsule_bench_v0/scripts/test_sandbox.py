@@ -98,7 +98,7 @@ def main(argv=None):
             ("make", "make --version | head -1"),
             ("spike", "spike --help 2>&1 | head -1"),
             ("riscv64-unknown-elf-gcc", "riscv64-unknown-elf-gcc --version | head -1"),
-            ("verilator L3 sim", f'test -x {TC.CHIPYARD_VERILATOR}/simulator-chipyard.harness-GemminiAndOPUShuttleConfig && echo present'),
+            ("verilator L3 sim", f'test -x {TC.CHIPYARD_VERILATOR}/simulator-chipyard.harness-GemminiRocketConfig && echo present'),
         ]
         for label, inner in checks:
             rc, out, err = _run(ws, bundle, inner, timeout=120)

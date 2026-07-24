@@ -80,5 +80,5 @@ Pipeline implemented in `merlin/python/merlin/kernels/`. Reusable logic lives th
 `command_buffer_batching` → **ACT** (85% of commands are config/fence at 39 tiles; batching
 removes 54%); `vl_agnostic_loop` → **PARK** (no instret win at VLEN=128; portability only);
 `double_buffering` parked pending cycle-level Verilator sim
-(`simulator-chipyard.harness-GemminiAndOPUShuttleConfig` built and ready);
+(`simulator-chipyard.harness-GemminiRocketConfig` built and ready);
 `weight_stationary_dataflow` reclassified as a target-contract fact.

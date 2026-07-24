@@ -20,7 +20,7 @@ real oracle and gate on three-way bit-exact equality
 ## Oracle ladder (see `contracts/target_contract.yaml`)
 - L0 merlin reference + command-buffer simulator — `derived_from_rtl: false`
 - L1 spike + gemmini extension (functional **bootstrap**) — `derived_from_rtl: false`
-- L2 Gemmini Verilator RTL (`GemminiAndOPUShuttleConfig`) — `derived_from_rtl: true` (**certification**)
+- L2 Gemmini Verilator RTL (`GemminiRocketConfig`) — `derived_from_rtl: true` (**certification**)
 - L3 FireSim (same RTL, realistic memory/scale) — later
 
 **Spike is bootstrap only; only Verilator/FireSim are RTL-certified.** Capacities in the
