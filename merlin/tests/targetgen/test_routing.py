@@ -66,8 +66,9 @@ def test_combo_not_in_accumulate_matrix_gaps():
 
 
 def test_route_target_reads_contract():
-    # gemmini's contract compute_units accept int8 matmul.
+    # gemmini's contract compute_units accept int8 matmul. It no longer re-declares the accumulate
+    # matrix (that is the CIRCT datapath facts), so the route carries no acc token — but it still routes.
     results = rt.route_target([rt.OpDemand("matmul", "int8", "int8")], "gemmini")
-    assert results[0].unit == "systolic_mesh" and results[0].acc == "i32"
+    assert results[0].unit == "systolic_mesh" and results[0].gap is None
     # ... but not fp4.
     assert rt.route_target([rt.OpDemand("matmul", "fp4_e2m1", "fp4_e2m1")], "gemmini")[0].gap is not None

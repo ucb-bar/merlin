@@ -25,19 +25,23 @@ import struct
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# --- encoding constants: DERIVED from the SINGLE source (gemmini's capability manifest — the mesh DIM
-# from capabilities, the readout bits + the RTL-code->class map + config subtype from the encoding block),
-# not hand-copied. Byte-parity with the former literals is pinned by test_encoding_manifest. This retires
-# one of the three triplicated copies (the decoder's). GARBAGE/MASK32 are universal, not target-specific.
+# --- encoding constants: DERIVED from the SINGLE source — the readout bits + RTL-code->class map +
+# config subtype from the manifest's encoding block, and the mesh DIM from the CIRCT-extracted facts
+# (arrays[mesh]); not hand-copied. Byte-parity with the former literals is pinned by test_encoding_manifest.
+# This retires one of the three triplicated copies (the decoder's). GARBAGE/MASK32 are universal.
 GARBAGE = 0xFFFFFFFF
 MASK32 = 0xFFFFFFFF
 
 
 def _load_isa() -> dict:
     from .target_experiment import load_capability_manifest
+    from .rtl.facts import load_facts
     m = load_capability_manifest("gemmini")
     enc, rb = m.encoding, m.encoding["readout_bits"]
-    dim = ((m.contract.get("capabilities") or {}).get("mesh") or {}).get("rows", 16)
+    # DIM (systolic mesh dimension) is a CIRCT-extracted FACT (arrays[mesh]), not a manifest field —
+    # same source the codegen emitter reads, so the decoder's DIM cannot drift from the encoder's.
+    mesh = next((a for a in load_facts("gemmini")["facts"].get("arrays", []) if a.get("name") == "mesh"), {})
+    dim = mesh.get("rows", 16)
     return {"DIM": dim, "F1": rb["f1"], "C_ACC": rb["c_acc"], "ACC_I8": rb["acc_i8"],
             "ACC_ACCUM": rb["acc_accum"], "FULL_C_BIT": rb["full_c_bit"],
             "FUNCT_CLASS": dict(enc["semantic_class"]), "CONFIG_SUBTYPE": dict(enc["config_subtype"])}

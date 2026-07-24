@@ -340,17 +340,12 @@ def validate(facts_rec: dict, contract: dict | None = None,
     agree, diverge = [], []
 
     if contract:
-        # reuse v1's mesh/scratchpad/dtype checks (they operate on the same facts shape)
+        # reuse v1's compute_units-coverage check (mesh/scratchpad/dtype/accumulator capacities are
+        # no longer hand-declared in the contract — they ARE these facts, so nothing to cross-check).
         for p in V1.validate_against_contract(facts, contract):
             diverge.append(f"contract: {p}")
         if not [d for d in diverge if "contract" in d]:
-            agree.append("contract: mesh + scratchpad + dtypes reproduced")
-        acc = next((m for m in facts["memories"] if m["name"] == "accumulator"), None)
-        want = (contract.get("capabilities", {}) or {}).get("accumulator_storage_bytes")
-        if acc and want is not None:
-            (agree if acc.get("bytes") == want else diverge).append(
-                f"accumulator bytes RTL={acc.get('bytes')} vs contract={want}"
-                + ("" if acc.get("bytes") == want else "  (RTL is authoritative; contract unconfirmed)"))
+            agree.append("contract: RTL datapaths covered by declared compute_units")
 
     if rocc_funct_class is not None:
         funct = next((i for i in facts.get("interfaces", []) if i.get("name") == "funct_decode_table"), None)

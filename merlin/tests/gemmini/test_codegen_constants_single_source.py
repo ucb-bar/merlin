@@ -35,7 +35,9 @@ def test_funct_codes_match_the_semantic_class_map():
     assert gm.K_FLUSH == code_of["FLUSH"]
 
 
-def test_dim_matches_the_contract_mesh():
-    m = load_capability_manifest("gemmini")
-    dim = (m.contract["capabilities"]["mesh"])["rows"]
-    assert gm.DIM == dim
+def test_dim_matches_the_extracted_mesh_fact():
+    # DIM is a CIRCT-extracted FACT (arrays[mesh]), not a manifest field — the emitter and the decoder
+    # both read it from the fact bundle, so it can never drift from the extracted mesh geometry.
+    from merlin.targetgen.rtl.facts import load_facts
+    mesh = next(a for a in load_facts("gemmini")["facts"]["arrays"] if a["name"] == "mesh")
+    assert gm.DIM == mesh["rows"]

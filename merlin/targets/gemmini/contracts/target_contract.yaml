@@ -6,8 +6,9 @@
 # committed via mvout. This is a PROTOTYPE contract for the C0 certification path
 # (i8 x i8 -> i32, matmul only); it is not yet RTL-certified.
 #
-# Capacities below are provenance-tagged to their generator source and must be confirmed
-# against the concrete config (GemminiAndOPUShuttleConfig) before any RTL-level claim.
+# Mesh geometry, scratchpad/accumulator capacities and datapath dtypes are NOT declared here: they are
+# CIRCT-extracted FACTS (merlin.targetgen.rtl — arrays/memories/datapaths) that consumers read from the
+# fact bundle directly. This contract carries only intent + the ABI encoding surface facts cannot ground.
 name: gemmini
 version: 0.1
 family: tensor_resident
@@ -54,34 +55,23 @@ runtime:
   # stay coherent: its gemmini is the certified 16x16 int8 mesh above (the SoC also carries an OPU that the
   # gemmini path never touches). Change here + re-derive facts + re-cert to move to a different harness.
   rtl_sim_config: GemminiAndOPUShuttleConfig
-dtypes:
-  storage: i8
-  accumulator: i32
-# Datatype -> compute-unit -> op capability (parsed by merlin.targetgen.compute_units; cross-checked
-# against the RTL datapaths by rtl.introspect.validate_against_contract). The C0 systolic mesh is
-# int8 x int8 -> i32. `requant` is an OPAQUE reference to Gemmini's own accumulator-scale lowering
-# (rounding-shift / FP-scale-multiply) — Merlin does not model that arithmetic here.
+# Datatype -> compute-unit -> op capability (parsed by merlin.targetgen.compute_units). The C0 systolic
+# mesh is int8 (i8 x i8 -> i32). The input/accumulator dtypes are themselves CIRCT-extracted facts
+# (datapaths), so the (in,weight)->acc `accumulate` matrix is NOT re-declared here. `requant` is an
+# OPAQUE reference to Gemmini's own accumulator-scale lowering (rounding-shift / FP-scale-multiply) —
+# Merlin does not model that arithmetic here.
 compute_units:
   - name: systolic_mesh
     kind: systolic
     dtypes: [int8]
     ops: [matmul]
-    accumulate:
-      - {in: int8, weight: int8, acc: i32}
     scaling: per_channel
     requant: {ref: gemmini.accumulator_scale}
 capabilities:
   ops: [matmul, bias_add, requant, relu]   # C0 exercises matmul only; rest are future rungs
   layouts: [packed_rhs]
-  mesh: {rows: 16, cols: 16}               # DIM x DIM systolic array
-  resident_storage_bytes: 262144           # scratchpad
-  accumulator_storage_bytes: 65536         # acc SRAM
-# Provenance for the capacity numbers above (hand-curated, pending confirmation). A future
-# merlin-rtl-introspect (CIRCT facts) pass replaces these and must reproduce them.
-provenance:
-  source: "generators/gemmini/src/main/scala/gemmini/Configs.scala (GemminiAndOPUShuttleConfig)"
-  confirmed: false
-  fields: [mesh.rows, mesh.cols, resident_storage_bytes, accumulator_storage_bytes]
+  # mesh geometry + scratchpad/accumulator capacities are CIRCT-extracted facts (arrays/memories),
+  # read from the fact bundle by consumers — not hand-declared here.
 memory_model:
   resident: true
   accumulators: true
@@ -112,8 +102,7 @@ certification:
 confidence: medium
 requires_human_review: true
 notes: >-
-  Hand-curated prototype contract for the Gemmini C0 RTL-certification path. Capacities are
-  provenance-tagged and pending confirmation against the concrete chipyard config. Spike-Gemmini
-  is a functional bootstrap model (derived_from_rtl: false); only Verilator/FireSim count as
-  RTL-certified. A future merlin-rtl-introspect pass will replace these hand-curated capacities
-  with extracted RTL facts and must reproduce them.
+  Hand-curated prototype contract for the Gemmini C0 RTL-certification path. Mesh geometry, scratchpad/
+  accumulator capacities and datapath dtypes are CIRCT-extracted facts (not declared here); consumers
+  read them from the fact bundle. Spike-Gemmini is a functional bootstrap model (derived_from_rtl:
+  false); only Verilator/FireSim count as RTL-certified.

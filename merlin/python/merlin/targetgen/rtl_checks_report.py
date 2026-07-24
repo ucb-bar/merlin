@@ -30,10 +30,8 @@ from typing import Any
 import yaml
 
 from . import rtl_checks
-from .rtl.facts import target_contract_path
 
 _REPO = repo_root()  # .../merlin
-_GEMMINI_CONTRACT = target_contract_path("gemmini")
 # capsule.yaml definitions come from the corpus locator (canonical contract corpus + the perf corpus);
 # every capsule dir is named after the capsule, matching the run dir name.
 from .corpora import capsule_corpus_roots
@@ -60,24 +58,11 @@ def _find_key(obj: Any, key: str) -> Any:
 
 def load_rtl_facts(contract_path: Path | None = None,
                    introspect_json: Path | None = None) -> dict:
-    """RTL facts from the authoritative target_contract.yaml (mesh + scratchpad), with an optional
-    ``rtl/introspect.dump_facts`` JSON override. Falls back to rtl_checks.DEFAULT_RTL_FACTS if the
-    contract is missing — the checks are still RTL-grounded, just from the curated default."""
-    facts = dict(rtl_checks.DEFAULT_RTL_FACTS)
-    cp = contract_path or _GEMMINI_CONTRACT
-    try:
-        doc = yaml.safe_load(cp.read_text(encoding="utf-8"))
-        mesh = _find_key(doc, "mesh")
-        if isinstance(mesh, dict) and "rows" in mesh and "cols" in mesh:
-            facts["mesh"] = [int(mesh["rows"]), int(mesh["cols"])]
-        elif isinstance(mesh, list) and len(mesh) == 2:
-            facts["mesh"] = [int(mesh[0]), int(mesh[1])]
-        spad = _find_key(doc, "resident_storage_bytes")
-        if isinstance(spad, int):
-            facts["scratchpad_bytes"] = int(spad)
-        facts["from"] = f"target_contract.yaml ({cp.relative_to(_REPO)})"
-    except FileNotFoundError:
-        pass
+    """RTL facts (mesh + scratchpad) from the CIRCT-extracted fact bundle, with an optional
+    ``rtl/introspect.dump_facts`` JSON override. The mesh/scratchpad capacities are no longer
+    hand-declared in target_contract.yaml — they ARE the facts — so we read them from the same
+    fact bundle the codegen/decoder do (falling back to rtl_checks.DEFAULT_RTL_FACTS)."""
+    facts = rtl_checks.load_default_facts()
     if introspect_json and Path(introspect_json).is_file():
         ov = json.loads(Path(introspect_json).read_text(encoding="utf-8"))
         m = _find_key(ov, "mesh")

@@ -19,10 +19,14 @@ def test_parse_gemmini_and_toy_contracts():
         mesh = units[0]
         assert mesh.kind == "systolic"
         assert "int8" in mesh.dtypes
-        assert mesh.accumulate[0].acc == "i32"
         assert mesh.scaling == "per_channel"
         # requant is carried opaquely, never interpreted.
         assert isinstance(mesh.requant, dict) and "ref" in mesh.requant
+    # gemmini no longer re-declares the (in,weight)->acc `accumulate` matrix — it IS the CIRCT
+    # datapath facts (input i8 / accumulator i32) — so its unit carries no accumulate rules; toy_npu
+    # (a plain reference contract) still declares its i8xi8->i32 rule.
+    assert cu.compute_units(_contract("gemmini"))[0].accumulate == ()
+    assert cu.compute_units(_contract("toy_npu"))[0].accumulate[0].acc == "i32"
 
 
 def test_unknown_format_or_kind_rejected():

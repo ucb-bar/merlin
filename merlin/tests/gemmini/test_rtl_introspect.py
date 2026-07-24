@@ -18,8 +18,11 @@ def _contract() -> dict:
 
 
 def test_validate_logic_unit():
-    """Validator logic, no chipyard needed: matching facts pass, mismatched facts are caught."""
+    """Validator logic, no chipyard needed. Mesh/scratchpad/dtype capacities are no longer hand-declared
+    in the contract (they ARE the facts), so the surviving cross-check is compute-unit coverage: a
+    discovered datapath dtype the declared compute_units cannot cover is flagged."""
     contract = _contract()
+    # gemmini's compute_unit declares int8 -> the i8 input datapath is covered: no problems.
     good = {
         "arrays": [{"name": "mesh", "rows": 16, "cols": 16}],
         "memories": [{"name": "scratchpad", "bytes": 262144}],
@@ -28,15 +31,15 @@ def test_validate_logic_unit():
     }
     assert introspect.validate_against_contract(good, contract) == []
 
+    # an input datapath dtype no compute_unit lists (bf16) is not covered -> flagged.
     bad = {
-        "arrays": [{"name": "mesh", "rows": 8, "cols": 8}],
-        "memories": [{"name": "scratchpad", "bytes": 999}],
-        "datapaths": [{"name": "input", "dtype": "i8"},
+        "arrays": [{"name": "mesh", "rows": 16, "cols": 16}],
+        "memories": [{"name": "scratchpad", "bytes": 262144}],
+        "datapaths": [{"name": "input", "dtype": "bf16"},
                       {"name": "accumulator", "dtype": "i32"}],
     }
     problems = introspect.validate_against_contract(bad, contract)
-    assert any("mesh" in p for p in problems)
-    assert any("scratchpad" in p for p in problems)
+    assert any("datapath input" in p and "not covered" in p for p in problems)
 
 
 def test_packages_declare_honest_authoring_mode():

@@ -46,6 +46,27 @@ def _trace_to_block_arg(val, block):
     return None
 
 
+def _resident_storage_bytes(tc: dict[str, Any]) -> int:
+    """Resident scratchpad capacity (bytes) for the capacity-fit proof. Reads the contract when it
+    declares it (toy_npu still does); otherwise — for a target whose capacities are CIRCT-extracted
+    facts, not hand-declared (gemmini) — reads the scratchpad ``bytes`` from the fact bundle. 0 (proof
+    skipped) when neither is available, matching the previous fail-open default."""
+    v = (tc.get("capabilities", {}) or {}).get("resident_storage_bytes")
+    if v is not None:
+        return int(v)
+    name = tc.get("name")
+    if name:
+        try:
+            from merlin.targetgen.rtl.facts import load_facts
+            f = load_facts(name)["facts"]
+            sp = next((m for m in f.get("memories", []) if m.get("name") == "scratchpad"), None)
+            if sp and sp.get("bytes"):
+                return int(sp["bytes"])
+        except Exception:  # noqa: BLE001 — facts unavailable ⇒ fall back to the fail-open default
+            pass
+    return 0
+
+
 def _tensor_nbytes(t) -> int:
     from xdsl.dialects.builtin import IntegerType, TensorType
 
@@ -95,7 +116,7 @@ def lower_to_contract(module, target_contract: dict[str, Any] | None = None):
         })
     block.insert_op_before(cap, first_op)
 
-    storage = int(tc.get("capabilities", {}).get("resident_storage_bytes", 0))
+    storage = _resident_storage_bytes(tc)
     for rhs, users in sorted(rhs_uses.items(), key=lambda kv: len(kv[1]), reverse=True):
         # Resident-pack benefit comes from CROSS-DISPATCH reuse: the same immutable weight
         # used by >= 2 matmuls (so packing once amortizes over many uses). A single matmul

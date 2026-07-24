@@ -7,8 +7,9 @@ agent's classify/spec slots. Each fact carries its source evidence. Memories are
 Gemmini by their FIRRTL source-path annotation; the tile array is scoped via the module
 hierarchy (Tiles under Mesh), which keeps the co-located OPU out of the counts.
 
-`validate_against_contract` checks the extracted facts REPRODUCE the hand-curated
-`merlin/targets/gemmini` capacities — that equality is what lets a future spec be trusted.
+`validate_against_contract` checks the contract's declared `compute_units` cover the discovered
+datapath dtypes (the mesh/scratchpad/dtype capacities are no longer hand-declared — they ARE these
+facts, read directly by consumers, so there is nothing left to cross-check for them).
 
 This is a pragmatic v1 over the FIRRTL artifacts (firtool already produced them). A full
 CIRCT MLIR-pass over the hw/seq dialects is the next step; the fact schema is the same.
@@ -133,38 +134,15 @@ def extract_facts(fir: str | Path, hierarchy: str | Path) -> dict[str, Any]:
 
 
 def validate_against_contract(facts: dict[str, Any], contract: dict[str, Any]) -> list[str]:
-    """Return problems (empty == the extracted facts reproduce the hand-curated capacities)."""
-    problems: list[str] = []
-    caps = contract.get("capabilities", {})
-
-    mesh = next((a for a in facts["arrays"] if a["name"] == "mesh"), None)
-    cmesh = caps.get("mesh", {})
-    if mesh and cmesh:
-        if mesh["rows"] != cmesh.get("rows") or mesh["cols"] != cmesh.get("cols"):
-            problems.append(f"mesh {mesh['rows']}x{mesh['cols']} != contract "
-                            f"{cmesh.get('rows')}x{cmesh.get('cols')}")
-    else:
-        problems.append("mesh fact or contract mesh missing")
-
-    sp = next((m for m in facts["memories"] if m["name"] == "scratchpad"), None)
-    want = caps.get("resident_storage_bytes")
-    if sp and want is not None:
-        if sp["bytes"] != want:
-            problems.append(f"scratchpad bytes {sp['bytes']} != contract resident_storage_bytes {want}")
-    else:
-        problems.append("scratchpad fact or contract resident_storage_bytes missing")
-
+    """Return problems where the extracted RTL datapaths are not covered by the contract's declared
+    compute_units. Mesh geometry, scratchpad capacity and datapath dtypes are no longer hand-declared
+    in the contract — they ARE these facts — so there is nothing to cross-check for them; the only
+    surviving check is that the contract's compute_units cover the discovered datapath dtype(s)."""
     dt = {d["name"]: d["dtype"] for d in facts["datapaths"]}
-    cdt = contract.get("dtypes", {})
-    if cdt.get("storage") and dt.get("input") != cdt["storage"]:
-        problems.append(f"input dtype {dt.get('input')} != contract storage {cdt['storage']}")
-    if cdt.get("accumulator") and dt.get("accumulator") != cdt["accumulator"]:
-        problems.append(f"accumulator dtype {dt.get('accumulator')} != contract {cdt['accumulator']}")
-
     # If the contract declares compute_units, the RTL datapaths must be covered by them: the input
-    # datapath dtype by some unit's declared formats, and the accumulator by some accumulate rule.
-    problems.extend(_check_compute_units(dt, contract))
-    return problems
+    # datapath dtype by some unit's declared formats, and the accumulator by some accumulate rule
+    # (when a unit still declares one).
+    return _check_compute_units(dt, contract)
 
 
 def _check_compute_units(datapaths: dict[str, str], contract: dict[str, Any]) -> list[str]:
