@@ -14,6 +14,7 @@ from merlin.targetgen import rtl_check_compiler as CC
 from merlin.targetgen import rtl_check_runner as RUN
 from merlin.targetgen import rtl_checks as RC
 from merlin.targetgen.rtl import circt_introspect as CI
+from merlin.targetgen.rtl.facts import load_facts
 
 
 # --------------------------------------------------------------------------------- synthetic fixtures
@@ -37,8 +38,10 @@ def _good_single_tile_trace():
                    ("FENCE", None)])
 
 
-FACTS = CI.build_facts() if CI.DEFAULT_HW.is_file() else {"facts": dict(RC.DEFAULT_RTL_FACTS,
-                                                                        arrays=[], memories=[], interfaces=[])}
+# Source facts from the regenerating accessor (the CIRCT-generated artifact) rather than a degenerate
+# empty-interfaces fallback: the legacy DEFAULT_HW cache is optional, but load_facts always yields a real
+# funct_decode_table (mlc extraction, or the header fallback), so the decode-table checks stay runnable.
+FACTS = CI.build_facts() if CI.DEFAULT_HW.is_file() else load_facts("gemmini")
 
 
 # ----------------------------------------------------------------------------- circt_introspect facts
