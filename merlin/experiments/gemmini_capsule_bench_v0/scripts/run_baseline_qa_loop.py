@@ -934,8 +934,11 @@ def main(argv: list[str] | None = None) -> int:
                         ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
         _strip_build_state(vcand)   # clean, relocatable build for the L3 cert (abc9 L3-0/20 'build' bug)
         vruns = run_dir / "_qa_work" / f"vruns_{attempt}"
-        adapters = {"L2": _CR._spike_verilator_adapter("spike"),
-                    "L3": _CR._spike_verilator_adapter("verilator")}
+        # Cycle-accurate checkpoint = the target's FULL oracle ladder, resolved from the descriptor's
+        # target+sim_via via the shared factory (gemmini/chipyard -> spike L2 + verilator L3; an arc/mlc
+        # target -> its RTL-derived arc tier), so a new target's L3 cert needs no edit here.
+        _te_ck = _te()
+        adapters = _CR.qa_checkpoint_adapters(_te_ck.target, _te_ck.sim_via)
         # CIRCT arm only: wrap each sim adapter with the CIRCT pre-screen gate so a structural reject
         # SKIPS the ~222 s/capsule sim (catch the bug in ~7 ms). Records skips to circt_gate_log.jsonl.
         # The plain merlin / baseline arms run the sims ungated (no CIRCT) — preserves the C-B distinction.

@@ -129,6 +129,28 @@ def default_adapters() -> dict[str, Callable]:
             "L3": _spike_verilator_adapter("verilator")}
 
 
+def qa_loop_adapters(target: str = "gemmini", sim_via: str | None = None) -> dict[str, Callable]:
+    """The FAST per-round QA-loop oracle set for ``target`` — resolved from :func:`oracle_adapters`, never
+    hardwired. It keeps ONLY the lowest (fastest) RTL oracle tier and reserves the slower cycle-accurate
+    tiers for the bounded checkpoint (:func:`qa_checkpoint_adapters`). This is a tier-order distinction, not
+    a per-target one: a chipyard target's fastest tier is spike (L2) so verilator (L3) is held back; an
+    arc/mlc target's single RTL-derived tier (L3) is already fast, so IT is the loop tier. No target-name
+    branch — a new accelerator's loop gate falls out of its declared ``sim_via`` with no edit here."""
+    full = oracle_adapters(target, sim_via)
+    if not full:
+        return {}
+    lowest = min(full)                       # tier keys sort lexically (L2 < L3 < L4 …): lowest == fastest
+    return {lowest: full[lowest]}
+
+
+def qa_checkpoint_adapters(target: str = "gemmini", sim_via: str | None = None) -> dict[str, Callable]:
+    """The cycle-accurate QA CHECKPOINT oracle set for ``target`` = its full oracle ladder from
+    :func:`oracle_adapters` (chipyard: spike L2 + verilator L3; arc/mlc: the RTL-derived arc model). This
+    is the higher-fidelity barrier run once the fast loop (:func:`qa_loop_adapters`) has converged — not
+    every round. Kept as a named seam so the loop driver never re-hardwires ``{L2: spike, L3: verilator}``."""
+    return oracle_adapters(target, sim_via)
+
+
 
 
 def _exact_match(a: dict, b: dict) -> bool:

@@ -162,7 +162,7 @@ def compare(expected: dict[str, list], observed: dict[str, list], policy: dict) 
     mode = policy.get("compare", "exact_int")
     rep: dict[str, Any] = {"policy": mode, "golden_source": "merlin_tensor_int",
                            "status": "pass", "mismatch_count": 0,
-                           "max_abs_error": 0, "max_rel_error": None,
+                           "max_abs_error": 0, "max_rel_error": 0.0,
                            "first_mismatch": None, "per_output": {}}
     total_mismatch = 0
     for name, exp in expected.items():
@@ -181,6 +181,7 @@ def compare(expected: dict[str, list], observed: dict[str, list], policy: dict) 
             continue
         mism = 0
         maxabs = 0
+        maxrel = 0.0
         first = None
         for idx, (a, b) in enumerate(zip(ef, of)):
             if mode == "exact_int":
@@ -193,13 +194,20 @@ def compare(expected: dict[str, list], observed: dict[str, list], policy: dict) 
             if bad:
                 mism += 1
                 maxabs = max(maxabs, d)
+                # max relative error over the DIVERGING elements. Undefined when the expected value is 0
+                # (division by zero) — max_abs_error covers that case; we simply don't fold it into maxrel.
+                den = abs(float(a))
+                if den > 0.0:
+                    maxrel = max(maxrel, d / den)
                 if first is None:
                     first = {"output": name, "index": idx, "expected": a, "observed": b}
         rep["per_output"][name] = {"status": "pass" if mism == 0 else "fail",
-                                   "mismatch_count": mism, "max_abs_error": maxabs}
+                                   "mismatch_count": mism, "max_abs_error": maxabs,
+                                   "max_rel_error": maxrel}
         if mism:
             rep["status"] = "fail"
             rep["max_abs_error"] = max(rep["max_abs_error"], maxabs)
+            rep["max_rel_error"] = max(rep["max_rel_error"], maxrel)
             if rep["first_mismatch"] is None:
                 rep["first_mismatch"] = first
         total_mismatch += mism

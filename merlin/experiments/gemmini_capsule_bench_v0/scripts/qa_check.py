@@ -81,12 +81,27 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
     return out
 
 
+def _loop_target_sim_via() -> tuple[str, str]:
+    """Resolve (target, sim_via) for the loop-gate oracle from THIS experiment's descriptor (honors the
+    MERLIN_TARGET_EXPERIMENT override baked into C.EXP). Falls back to C.TARGET + no bespoke sim if the
+    descriptor is absent, so a descriptor-less invocation still grades on the RTL-derived (arc) tier."""
+    desc = C.EXP / "target_experiment.yaml"
+    if desc.is_file():
+        from merlin.targetgen.target_experiment import load_target_experiment
+        te = load_target_experiment(desc)
+        return te.target, te.sim_via
+    return C.TARGET, ""
+
+
 def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
         no_oracle: bool, timeout: int) -> dict:
-    # Loop gate = L0+L1+trace+L2(spike) ONLY — NOT L3 verilator. Per-round verilator on 20 capsules
-    # across 3 parallel arms is infeasible (CPU storm); spike gives the functional pass/fail signal.
-    # The cycle-accurate L3 pass is the separate bounded verilator-checkpoint (run_baseline_qa_loop).
-    _loop_adapters = {} if no_oracle else {"L2": CR._spike_verilator_adapter("spike")}
+    # Loop gate = L0+L1+trace + the target's FASTEST RTL oracle tier ONLY — for gemmini (sim_via=chipyard)
+    # that is L2 (spike); the slower cycle-accurate tier (verilator L3) is the separate bounded checkpoint
+    # (run_baseline_qa_loop). Per-round verilator on 20 capsules across 3 parallel arms is infeasible (CPU
+    # storm). The adapters are resolved from the descriptor's target+sim_via via the shared factory, so a
+    # non-chipyard target (arc/cyclotron) grades on its own RTL-derived tier with NO gemmini-specific path.
+    _target, _sim_via = _loop_target_sim_via()
+    _loop_adapters = {} if no_oracle else CR.qa_loop_adapters(_target, _sim_via)
     score = CG.grade(submission, capsules_root=capsules_root, runs_root=str(runs_root),
                      labels=labels, contract=str(C.REPO / "merlin/contract"),
                      oracle_adapters=_loop_adapters, timeout=timeout)
