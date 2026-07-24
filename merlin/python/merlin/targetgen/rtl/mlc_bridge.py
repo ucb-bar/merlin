@@ -138,6 +138,96 @@ def discover_legal_opcodes(target: str, *, opcode_width: int | None = None) -> d
                         f"({sig.fanout} comparisons) -> {len(legal)} legal opcodes"}
 
 
+def discover_config_subtype_field(target: str, *, sub_width: int = 2, low_bit: int = 0) -> dict:
+    """Structurally DISCOVER the config-subtype sub-field decode: the values the RTL decoder fans out on
+    the low ``sub_width`` bits of the command's rs1 (the ``rs1 & 0x3`` convention that refines the CONFIG
+    funct into EX/LD/ST/BERT). Same machinery as :func:`discover_legal_opcodes` (``comb.icmp eq`` over a
+    ``hw.constant``), but for the SUB-field: we keep only comparisons whose non-constant operand is a
+    ``comb.extract`` of width ``sub_width`` at ``low_bit`` (the low rs1 bits), and take the union of the
+    masked-unsigned constants across modules — the set of subtype selector values the silicon decodes.
+
+    Also records, per decoded value, the command controller MODULE names that decode it (corroboration:
+    the execute controller decodes the EX selector, the store controller the ST selector). Returns
+    ``{values, width, by_value, modules, hw_source, method, evidence}`` (``values=None`` when mlc / the HW
+    dialect is unavailable — honest fallback, never a guess).
+
+    RESIDUAL (stated, not hidden): this reads every width-``sub_width`` low-bit extract, so the discovered
+    set is the UNION over all such sub-fields, not a single proven-to-be-``cmd.rs1`` signal — isolating the
+    exact rs1 net needs cross-module operand tracing. The compiler-emitted subtypes are cross-checked as a
+    SUBSET of this union (containment), which is what grounds them as real decoded values."""
+    require_mlc()
+    hw = core_hw_mlir(target)
+    if hw is None:
+        return {"values": None, "width": sub_width, "by_value": {}, "modules": [], "hw_source": None,
+                "method": "config_subtype_icmp_extract(mlc)",
+                "evidence": f"no core HW dialect for target {target!r}"}
+    from mlc.discover import irgraph
+    graph = irgraph.load_hw_graph(hw, circt_opt=circt_opt_bin())
+    _EQ = 0  # comb.ICmpPredicate eq
+    mask = (1 << sub_width) - 1
+    by_value: dict[int, set[str]] = {}
+    for module in graph.modules.values():
+        for icmp in graph.ops("comb.icmp", within=module):
+            if graph.icmp_predicate(icmp) != _EQ or len(icmp.operands) != 2:
+                continue
+            a, b = icmp.operands
+            da, db = graph.defining_op(a), graph.defining_op(b)
+            a_is_const = da is not None and da.op_name.data == "hw.constant"
+            b_is_const = db is not None and db.op_name.data == "hw.constant"
+            if a_is_const == b_is_const:
+                continue
+            const_op, sig = (da, b) if a_is_const else (db, a)
+            sig_def = graph.defining_op(sig)
+            if sig_def is None or sig_def.op_name.data != "comb.extract":
+                continue
+            er = graph.extract_range(sig_def)  # (lowBit, width)
+            if not er or er[0] != low_bit or er[1] != sub_width:
+                continue
+            cv = graph.const_value(const_op)
+            if cv is None:
+                continue
+            by_value.setdefault(cv & mask, set()).add(module.name)
+    values = sorted(by_value)
+    return {"values": values, "width": sub_width,
+            "by_value": {v: sorted(by_value[v]) for v in values},
+            "modules": sorted({m for ms in by_value.values() for m in ms}),
+            "hw_source": str(hw), "method": "config_subtype_icmp_extract(mlc)",
+            "evidence": f"union of comb.icmp-eq over width-{sub_width} rs1[{low_bit}:{low_bit+sub_width}] "
+                        f"extracts across {len({m for ms in by_value.values() for m in ms})} modules "
+                        f"-> decoded selector values {values}"}
+
+
+def crosscheck_config_subtype(target: str) -> list[str]:
+    """Cross-check the hand ABI ``config_subtype`` block against DERIVED sources: the CODES against the
+    structurally-discovered rs1[low:low+2] selector value set (:func:`discover_config_subtype_field`,
+    containment) and the NAMES against the ISA-header ``#define CONFIG_* <N>`` defines
+    (``circt_introspect.crosscheck_config_subtype_names``). Returns the list of DISAGREEMENTS (empty = the
+    hand block is fully reproduced by discovery + headers). A code the silicon never decodes on the sub-field,
+    or a name the header does not define at that code, is a real alarm. Skips the structural half honestly
+    when mlc / the HW dialect is unavailable (names still cross-check via the pure header parse)."""
+    from ..target_experiment import load_capability_manifest
+    from . import circt_introspect as CI
+    hand = (load_capability_manifest(target).encoding or {}).get("config_subtype") or {}
+    dis: list[str] = []
+    # NAMES: header-derived (pure parse; no mlc).
+    nm = CI.crosscheck_config_subtype_names(target, hand)
+    for code, name in nm["missing"]:
+        dis.append(f"config_subtype {code} ({name}): header defines no `#define {name} <N>`")
+    for code, name, hcode in nm["mismatch"]:
+        dis.append(f"config_subtype {code} ({name}): header defines {name}={hcode}, not {code}")
+    # CODES: structural containment in the discovered rs1[1:0] selector set (best-effort; needs mlc).
+    try:
+        field = discover_config_subtype_field(target)
+    except Exception as e:  # noqa: BLE001 — no HW dialect => skip the structural half, keep the name check
+        field = {"values": None, "evidence": f"{type(e).__name__}: {e}"}
+    vals = field.get("values")
+    if vals is not None:
+        for code in hand:
+            if int(code) not in set(vals):
+                dis.append(f"config_subtype code {int(code)} not in RTL-decoded rs1 selector set {vals}")
+    return dis
+
+
 # The target-agnostic semantic roles the check compiler reasons over (never gemmini opcode names).
 SEMANTIC_ROLES = ("load", "compute", "store", "config", "barrier")
 

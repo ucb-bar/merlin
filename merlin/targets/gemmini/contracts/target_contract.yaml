@@ -25,24 +25,28 @@ runner:
 # the SINGLE source of truth by the generated ISA module + the decoder — retiring the triplicated
 # hand-coded constants in GemminiToLLVM.cpp / gemmini_codegen_mlir.py / rocc_decode.py.
 encoding:
-  addr_len: 32             # RoCC accumulator/scratchpad address field width (bits)
-  readout_bits:            # RoCC accumulator-readout / encoding bit conventions
-    f1: 0x3F800000         # 1.0f
-    c_acc: 0xA0000000      # full-i32 accumulator readout base
-    acc_i8: 0x80000000     # scaled-i8 readout base
-    acc_accum: 0x40000000  # accumulate-onto bit
-    full_c_bit: 0x20000000 # set in c_acc, clear in acc_i8 -> i32 vs i8 readout
+  addr_len: 32             # RoCC accumulator/scratchpad address field width (bits). The lone irreducible
+                           # anchor; header-cross-checkable (gemmini_params.h `#define ADDR_LEN 32`).
+  # readout_bits are NOT declared here: they are DERIVED from addr_len + the 3-flag-bit accumulator-address
+  # convention + float32(1.0) by target_experiment.derived_readout_bits (grounded in gemmini.h's own
+  # `1<<(ADDR_LEN-1)` / `3<<(ADDR_LEN-2)` / `full_C<<(ADDR_LEN-3)` address arithmetic). Byte-identical to
+  # the former {f1,c_acc,acc_i8,acc_accum,full_c_bit} hex; cross-checked by test_encoding_manifest.
   semantic_class:          # RTL funct CODE -> the compiler's shared op class (the guardrail boundary:
-    0: CONFIG              # codes are RTL-derived; the MVIN/MVOUT/... vocabulary is human-owned + shared)
-    2: MVIN
-    3: MVOUT
-    4: COMPUTE_PRELOADED
-    5: COMPUTE_ACCUMULATE
-    6: PRELOAD
+    0: CONFIG              # codes are RTL-derived; the MVIN/MVOUT/... vocabulary is human-owned + shared).
+    2: MVIN                # HEADER-DERIVED: each name == gemmini.h `#define k_<NAME> <code>` (cross-checked
+    3: MVOUT               # by circt_introspect.crosscheck_semantic_class_names) — this block is the
+    4: COMPUTE_PRELOADED   # human-reviewed cache of those header names, kept for the codes the compiler
+    5: COMPUTE_ACCUMULATE  # actually emits. Only funct 15 shortens the header's LOOP_CONV_WS to the
+    6: PRELOAD             # compiler alias LOOP_CONV (the _WS dataflow suffix is implicit); all others exact.
     7: FLUSH
     8: LOOP_WS
     15: LOOP_CONV
-  config_subtype: {0: CONFIG_EX, 1: CONFIG_LD, 2: CONFIG_ST}   # CONFIG refined by rs1 & 0x3
+  # config_subtype: CONFIG (funct 0) refined by rs1 & 0x3. NAMES are HEADER-DERIVED (gemmini.h
+  # `#define CONFIG_EX 0` / `CONFIG_LD 1` / `CONFIG_ST 2`); the CODES are the rs1[1:0] sub-field the RTL
+  # decoder fans out on (comb.icmp-eq over a width-2 comb.extract — ExecuteController rs1[1:0]==0 -> EX,
+  # StoreController rs1[1:0]==2 -> ST). Cross-checked by mlc_bridge.crosscheck_config_subtype. Kept here as
+  # the reviewed cache of the 3 subtypes the compiler emits (the 4th decoded value, 3=CONFIG_BERT, is unused).
+  config_subtype: {0: CONFIG_EX, 1: CONFIG_LD, 2: CONFIG_ST}
 status: prototype
 features: [systolic_array, resident_packed_tensor, accumulator_commit, command_buffer, metrics]
 # No `ops`/`types` are declared: the TARGET DIALECT is a design decision the agent OWNS (it writes its

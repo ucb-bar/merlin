@@ -10,6 +10,7 @@ and registers its RTL with mlc; no per-target code.
 """
 from __future__ import annotations
 
+import struct
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -123,6 +124,36 @@ def bundles_match_descriptor(te: TargetExperiment, manifest_paths) -> list[str]:
     return drift
 
 
+# --------------------------------------------------------------- derived ABI readout-bit convention
+# The RoCC accumulator-readout bits are NOT magic hex: every one is a fixed function of ``addr_len`` plus
+# the accelerator's 3-flag-bit accumulator-address convention (the top three bits of the DIM-relative
+# scratchpad/accumulator address field) + the universal IEEE-754 float32(1.0) scale literal. The
+# convention is grounded in the target's own ISA header address arithmetic (gemmini.h:
+# ``D_sp_addr_start = 1 << (ADDR_LEN-1)``; ``C_sp_addr_start = (3 << (ADDR_LEN-2)) | (full_C << (ADDR_LEN-3))``;
+# accumulate cleared via ``&= ~(1 << (ADDR_LEN-2))``), so the five constants are re-derived here rather than
+# hand-declared. This retires the ``readout_bits`` hex block from the contract; the residue is only the
+# {addr_len anchor + the 3-flag-bit role assignment} convention, which now lives in code (documented), not
+# as opaque literals. Cross-checked byte-identical against the frozen hex by test_encoding_manifest.
+_F32_ONE_BITS = struct.unpack("<I", struct.pack("<f", 1.0))[0]  # 0x3F800000 — IEEE-754 float32(1.0)
+
+
+def derived_readout_bits(addr_len: int) -> dict[str, int]:
+    """The RoCC accumulator-readout bit constants DERIVED from ``addr_len`` + the 3-flag-bit accumulator-
+    address convention + float32(1.0). Byte-identical to the former hand-declared ``readout_bits`` hex:
+
+      * ``acc_i8``     = ``1 << (addr_len-1)`` — accumulator-select / scaled-i8 readout base (bit 31)
+      * ``acc_accum``  = ``1 << (addr_len-2)`` — accumulate-onto (vs overwrite) (bit 30)
+      * ``full_c_bit`` = ``1 << (addr_len-3)`` — full-i32 (vs scaled-i8) readout width (bit 29)
+      * ``c_acc``      = ``acc_i8 | full_c_bit`` — full-i32 accumulator readout base (0xA0000000)
+      * ``f1``         = float32(1.0) bits (0x3F800000) — the identity acc_scale
+    """
+    acc_i8 = 1 << (addr_len - 1)
+    acc_accum = 1 << (addr_len - 2)
+    full_c_bit = 1 << (addr_len - 3)
+    return {"f1": _F32_ONE_BITS, "c_acc": acc_i8 | full_c_bit,
+            "acc_i8": acc_i8, "acc_accum": acc_accum, "full_c_bit": full_c_bit}
+
+
 # --------------------------------------------------------------------------- capability manifest
 @dataclass(frozen=True)
 class CapabilityManifest:
@@ -170,6 +201,13 @@ def load_capability_manifest(target: str) -> CapabilityManifest:
     endpoint = contract.get("endpoint_kind") or prof.endpoint_kind_default
     if endpoint not in families.ENDPOINT_KINDS:
         raise ValueError(f"{target}: endpoint_kind {endpoint!r} not in {families.ENDPOINT_KINDS}")
+    encoding = dict(contract.get("encoding") or {})
+    # ``readout_bits`` is DERIVED, not declared: synthesize it from ``addr_len`` + the 3-flag-bit
+    # accumulator-address convention (see derived_readout_bits) when the contract omits it. A contract
+    # that still carries an explicit block is honored as-is (back-compat) — but the derivation makes the
+    # magic hex unnecessary, so the gemmini contract no longer declares it.
+    if "readout_bits" not in encoding and encoding.get("addr_len") is not None:
+        encoding["readout_bits"] = derived_readout_bits(int(encoding["addr_len"]))
     return CapabilityManifest(
         target=target, kind=kind, endpoint_kind=endpoint,
         suite=runner.get("suite") or f"{target}-capsule-bench",
@@ -180,5 +218,5 @@ def load_capability_manifest(target: str) -> CapabilityManifest:
         perf_fields=tuple(runner.get("perf_fields") or prof.perf_fields),
         trace_gate=runner.get("trace_gate", prof.trace_gate),
         encoding_required=prof.encoding_required,
-        encoding=dict(contract.get("encoding") or {}),
+        encoding=encoding,
         contract=contract)

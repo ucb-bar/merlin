@@ -275,6 +275,83 @@ def _functs_from_headers(headers: Iterable[str | Path]) -> dict[int, str]:
     return out
 
 
+def _defines_from_headers(headers: Iterable[str | Path], prefix: str) -> dict[str, int]:
+    """Map NAME -> value from a target's C ISA headers by the generic ``#define <prefix><NAME> <N>``
+    convention (structured split, no regex). Used for the ``k_`` funct defines and the un-prefixed
+    ``CONFIG_*`` subtype defines. Earlier headers win a name."""
+    out: dict[str, int] = {}
+    for h in headers:
+        try:
+            txt = Path(h).read_text(errors="ignore")
+        except OSError:
+            continue
+        for line in txt.splitlines():
+            parts = line.split()   # ``#define  <prefix><NAME>  <N>`` — any whitespace
+            if len(parts) >= 3 and parts[0] == "#define" and parts[1].startswith(prefix) and parts[2].isdigit():
+                name = parts[1][len(prefix):]
+                if name and all(c.isupper() or c.isdigit() or c == "_" for c in name):
+                    out.setdefault(name, int(parts[2]))
+    return out
+
+
+def crosscheck_semantic_class_names(target: str, semantic_class: dict | None = None) -> dict[str, list]:
+    """Prove the manifest ``semantic_class`` NAMES are HEADER-DERIVED: for each ``code -> name`` the manifest
+    declares, compare the name to the target's ISA-header ``#define k_<NAME> <code>`` at the SAME code.
+    Returns ``{exact, alias, missing, mismatch}``:
+
+      * ``exact``    — code present in the headers with the identical name (the derivation is byte-exact);
+      * ``alias``    — the manifest name is a PREFIX of the header name (a compiler alias that drops a
+                       dataflow suffix, e.g. ``LOOP_CONV`` for the header's ``LOOP_CONV_WS``) — reviewed, benign;
+      * ``missing``  — code the headers do not define (an ungrounded manifest name — a real alarm);
+      * ``mismatch`` — code present but the name neither matches nor prefixes the header (a real alarm).
+
+    The gate is ``missing == mismatch == []`` (every declared class is a real header funct, named by the
+    header modulo a reviewed prefix-alias). Skips entirely (empty lists) when the target declares no ISA
+    headers. No mlc needed — a pure header parse."""
+    from ..target_experiment import load_capability_manifest
+    if semantic_class is None:
+        semantic_class = (load_capability_manifest(target).encoding or {}).get("semantic_class") or {}
+    hdr_by_code = _functs_from_headers(_declared_isa_headers(target))  # already {code: name}
+    out: dict[str, list] = {"exact": [], "alias": [], "missing": [], "mismatch": []}
+    if not hdr_by_code:
+        return out
+    for code, name in semantic_class.items():
+        code, name = int(code), str(name)
+        hname = hdr_by_code.get(code)
+        if hname is None:
+            out["missing"].append((code, name))
+        elif hname == name:
+            out["exact"].append((code, name))
+        elif hname.startswith(name):
+            out["alias"].append((code, name, hname))
+        else:
+            out["mismatch"].append((code, name, hname))
+    return out
+
+
+def crosscheck_config_subtype_names(target: str, config_subtype: dict | None = None) -> dict[str, list]:
+    """Prove the manifest ``config_subtype`` NAMES are HEADER-DERIVED: compare each ``code -> name`` to the
+    ISA-header ``#define <NAME> <code>`` (the un-prefixed ``CONFIG_EX``/``CONFIG_LD``/``CONFIG_ST`` defines).
+    Returns ``{exact, missing, mismatch}``; the gate is ``missing == mismatch == []``. Pure header parse."""
+    from ..target_experiment import load_capability_manifest
+    if config_subtype is None:
+        config_subtype = (load_capability_manifest(target).encoding or {}).get("config_subtype") or {}
+    hdr = _defines_from_headers(_declared_isa_headers(target), "")  # un-prefixed ``#define NAME N``
+    out: dict[str, list] = {"exact": [], "missing": [], "mismatch": []}
+    if not hdr:
+        return out
+    for code, name in config_subtype.items():
+        code, name = int(code), str(name)
+        hcode = hdr.get(name)
+        if hcode is None:
+            out["missing"].append((code, name))
+        elif hcode == code:
+            out["exact"].append((code, name))
+        else:
+            out["mismatch"].append((code, name, hcode))
+    return out
+
+
 def _declared_isa_headers(target: str) -> list[Path]:
     """The ISA header files the target's ``target_experiment.yaml`` declares (bundle-convention,
     repo-root-relative strings), resolved to absolute paths. Empty when the target has no descriptor
