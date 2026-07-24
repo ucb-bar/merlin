@@ -100,11 +100,37 @@ Read it at each round start and fix by failure_plane. Iterate until `all_pass: t
 
 ## Target ISA facts (derived — build your lowering on these)
 {isa_facts}
-## Final status line (end of `submission/REPORT.md`) — write exactly one of:
+{seam_menu}## Final status line (end of `submission/REPORT.md`) — write exactly one of:
 1. "Backend passes all required public/dev capsules and is ready for hidden grading."
 2. "Backend does not yet pass all required public/dev capsules; remaining failures listed by capsule + plane."
 3. "Backend is not comparable because it violates the compiler/runtime/integrity boundary."
 """
+
+
+# OPTIONAL block (merlin_assisted arms only): the discoverable, machine-checkable menu of OOT
+# modification points. The CCA spine (granted only to the assisted arm) is more than a set of files to
+# read — two answer-free calls ENUMERATE the full, target-specific lever set, so the agent knows WHICH
+# seams exist and the next-stronger lever for each, not merely that the files are present. Fully
+# target-agnostic: both calls are parameterized by {target}; nothing is hardcoded to one accelerator.
+_SEAM_MENU = """## Menu of OOT modification points (merlin_assisted — the machine-checkable lever set)
+The granted CCA spine is not just files to read: two answer-free calls ENUMERATE the full,
+target-specific set of compiler seams you may modify for `{target}`, so you build the right lever set
+instead of guessing from the file tree (neither imports the oracle or the grader):
+- `cca_contract.check_bijection("{target}")` — the *what-to-build* checklist: which lever axes this
+  target's ISA/RTL admits vs. which the compiler already routes (`orphan_fields` = leverable axes still
+  to wire; `orphan_routes` = routes with no backing lever). Build every leverable axis; add no phantom.
+- `action_catalog.escalation_ladder(axis, "{target}")` — for one axis, the full
+  FLAG→KNOB→HEURISTIC→PASS→CODEGEN ladder weakest→strongest, each row naming the concrete OOT-relative
+  seam file to edit and whether it is forkable today (the "which section, and the next stronger lever"
+  answer). The seams point at YOUR generated OOT package, not our in-tree reference.
+
+"""
+
+
+def _is_assisted_arm(arm: str) -> bool:
+    """The seam menu is exposed only to arms that are actually granted the CCA spine (the assisted arms);
+    raw_baseline is not, so it must not be told to reach for tools it cannot use. Target-agnostic."""
+    return "merlin_assisted" in arm
 
 
 def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseline") -> str:
@@ -115,6 +141,8 @@ def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseli
     s = prompt_slots(te, manifest)
     scope = {"full": "FULL SUITE", "realistic": "REALISTIC", "pilot": "PILOT SUBSET"}.get(experiment, experiment)
     families = "\n".join(f"- `{p}`" for p in s["corpus_families"]) or "- (the declared capsule corpus)"
+    seam_menu = _SEAM_MENU.format(target=s["target"]) if _is_assisted_arm(arm) else ""
     return _TEMPLATE.format(target=s["target"], scope_label=scope, corpus_families=families,
                             tool_stem=s["tool_stem"], kernel_symbol=s["kernel_symbol"],
-                            endpoint_desc=s["endpoint_desc"], isa_facts=s["isa_facts"])
+                            endpoint_desc=s["endpoint_desc"], isa_facts=s["isa_facts"],
+                            seam_menu=seam_menu)
