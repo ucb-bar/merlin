@@ -19,11 +19,16 @@ import pytest
 import yaml
 
 from merlin.targetgen import rtl_check_compiler as CC, rtl_check_runner as RR, rtl_checks as RC
+from merlin.targetgen.rtl import mlc_bridge as MB
 from merlin.targetgen.rtl.facts import load_facts
 
 _FC = RR.find_filecheck()
 pytestmark = pytest.mark.skipif(_FC is None, reason="FileCheck binary not available")
 _FACTS = load_facts("gemmini")
+# The behavioural role probe needs a live arc model (+ the mlc venv). Where it is present, the derived
+# roles are an ALWAYS-ON cross-check of the hand ABI semantic_class; where it is absent (CI without the
+# arc), we skip those assertions rather than fail — the honest-empty path is exercised by the SIMT test.
+_ARC = MB.arc_available("gemmini")
 
 
 def _matmul_capsule(min_tiles: int = 1):
@@ -142,18 +147,32 @@ def test_compiled_checks_are_memoized():
     assert (cap.get("name"), RR._facts_sha(_FACTS), "gemmini") in RR._COMPILED_CACHE
 
 
+@pytest.mark.skipif(not _ARC, reason="gemmini arc/mlc unavailable — cannot derive behavioural roles")
 def test_provenance_flags_derived_vs_handpicked():
     """Every check family is tagged with its source + whether it is genuinely DERIVED. For gemmini the
-    legality/ABI/coverage families are grounded in mlc facts (derived), while the opcode->role grouping
-    is honestly flagged non-derived until the effect probe populates a roles cache — this is how we audit
-    'did we hand-pick this?'."""
+    legality/ABI/coverage families are grounded in mlc facts, and — now that ``semantic_roles`` regenerates
+    the behavioural effect-probe cache on demand from the live arc — the opcode->role family is DERIVED too,
+    and those derived roles VERIFY the hand ABI semantic_class (no disagreements). This is how we audit 'did
+    we hand-pick this?' — every family names its source and the role family is cross-checked, not declared."""
     cap = _matmul_capsule()
     prov = CC.compile_checks(_FACTS, cap, target="gemmini")["provenance"]
     assert prov["isa_legality"]["derived"] is True
     assert prov["abi_encoding"]["derived"] is True
     assert prov["tile_coverage"]["derived"] is True
-    assert prov["semantic_roles"]["derived"] is False        # no probe cache yet -> flagged, not hidden
-    assert "hand funct classes" in prov["semantic_roles"]["source"]
+    assert prov["semantic_roles"]["derived"] is True         # regenerated behavioural probe -> derived
+    assert prov["semantic_roles"]["n_roles"] >= 9
+    assert MB.crosscheck_semantic_class("gemmini") == []     # derived roles verify the hand ABI labels
+
+
+@pytest.mark.skipif(not _ARC, reason="gemmini arc/mlc unavailable — cannot derive behavioural roles")
+def test_derived_roles_crosscheck_hand_semantic_class():
+    """ALWAYS-ON gate: the behaviourally-derived coarse roles VERIFY gemmini's hand ABI semantic_class 9/9.
+    An empty disagreement list means every hand-declared funct label (MVIN/MVOUT/COMPUTE*/PRELOAD/CONFIG*/
+    LOOP_*/FLUSH) matches the role the RTL behaviour actually exhibits — a mislabel or RTL drift would
+    surface here instead of being silently trusted."""
+    assert MB.crosscheck_semantic_class("gemmini") == []
+    roles = MB.semantic_roles("gemmini")
+    assert roles["derived"] is True and len(roles["roles"]) >= 9
 
 
 def test_non_rocc_target_drops_rocc_shaped_checks():

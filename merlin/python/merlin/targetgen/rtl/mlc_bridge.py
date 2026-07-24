@@ -149,15 +149,31 @@ def semantic_roles(target: str) -> dict:
     This is the principled replacement for any hand funct->class table. The only rigorous source is mlc's
     Stage-2 behavioural probe (``mlc.discover.probe.effect_signature`` — the value->effect map), whose
     per-opcode effect signature is classified against the discovered mesh (compute) and memory banks
-    (load/store). The probe needs a live arc model + the mlc venv, so we do NOT run it inline; we read the
-    fingerprint-stamped cache the probe writes (``discovered_roles.json``). Absent (probe not run, or a
-    SIMT/prototype target with no arc-matmul model) -> empty + reason. Populate it with
-    :func:`derive_and_cache_roles` in the mlc venv. Returns
-    ``{roles: {opcode:int -> role}, source, derived: bool, reason}``."""
+    (load/store). Its fingerprint-stamped cache is ``discovered_roles.json``, the single artifact this
+    reads.
+
+    REGEN-ON-DEMAND (mirrors :func:`rtl.facts.ensure_facts`): when the cache is cold AND the target has a
+    live arc model (:func:`arc_available`), we run :func:`derive_and_cache_roles` once to populate it, then
+    read — so callers get derived roles without a separate manual step. LAZY (only when roles are actually
+    requested) + CACHED (a warm cache is never re-probed), so it never slows imports/collection. A target
+    with NO arc (SIMT/prototype like radiance, or mlc absent) keeps the honest empty ``{derived: False,
+    reason}`` — we never auto-regen where the probe is impossible, and a failed probe degrades honestly
+    rather than crashing the bundle. Returns ``{roles: {opcode:int -> role}, source, derived: bool,
+    reason}``."""
     d = mlc_dir()
     if d is None:
         return {"roles": {}, "source": None, "derived": False, "reason": "MERLIN_MLC_DIR unset"}
     cache = d / "runs" / "circt-arc" / target / "outputs" / "discovered_roles.json"
+    if not cache.is_file():
+        # Regenerate the roles cache on demand ONLY where the probe is possible (a live arc model). A
+        # SIMT/prototype target with no arc keeps the honest-empty path below — never auto-regen where
+        # impossible, never crash the bundle if the probe fails.
+        if arc_available(target):
+            try:
+                derive_and_cache_roles(target)
+            except Exception as e:  # noqa: BLE001 — a failed probe is honest-unavailable, never a crash/guess
+                return {"roles": {}, "source": None, "derived": False,
+                        "reason": f"role derivation failed for {target!r}: {type(e).__name__}: {e}"}
     if not cache.is_file():
         return {"roles": {}, "source": None, "derived": False,
                 "reason": f"no discovered_roles cache for {target!r} — run derive_and_cache_roles in the mlc venv"}
@@ -169,6 +185,59 @@ def semantic_roles(target: str) -> dict:
                 "derived": True, "reason": f"{len(roles)} opcode roles from the mlc effect probe"}
     except Exception as e:  # noqa: BLE001 — an unreadable cache is honest-unavailable, never a guess
         return {"roles": {}, "source": None, "derived": False, "reason": f"unreadable roles cache: {e}"}
+
+
+# --- hand semantic_class <-> derived-role cross-check --------------------------------------------
+# The behavioural probe derives a COARSE role (load/compute/store/config/barrier) per funct. The hand ABI
+# ``semantic_class`` in target_contract.yaml declares a FINER label (COMPUTE_PRELOADED vs _ACCUMULATE,
+# MVIN2/3, LOOP_* variants) that is ABI, not behaviourally nameable. To VERIFY the hand labels against RTL
+# behaviour we project each hand label onto the coarse role vocabulary and compare — a declared label whose
+# coarse projection disagrees with the behaviourally-derived role is a real alarm (mislabel or RTL drift).
+
+def _coarse_of_hand_class(label: str) -> str | None:
+    """Project a hand ABI ``semantic_class`` label onto the coarse behavioural-role vocabulary
+    (load/compute/store/config/barrier). Returns None for a label that has no coarse projection (skip —
+    nothing to cross-check). Prefix match, no regex:
+    ``MVIN*``->load, ``MVOUT*``->store, ``COMPUTE*``/``PRELOAD``/``LOOP_CONV``->compute,
+    ``CONFIG*``/``LOOP_WS``/``LOOP_*_CONFIG``->config, ``FLUSH``->barrier."""
+    if label.startswith("MVIN"):
+        return "load"
+    if label.startswith("MVOUT"):
+        return "store"
+    if label == "FLUSH":
+        return "barrier"
+    if label.startswith("COMPUTE") or label == "PRELOAD" or label == "LOOP_CONV":
+        return "compute"
+    if label.startswith("CONFIG") or label == "LOOP_WS" or label.endswith("_CONFIG"):
+        return "config"
+    return None
+
+
+def crosscheck_semantic_class(target: str) -> list[str]:
+    """ALWAYS-ON cross-check gate: VERIFY the hand ABI ``semantic_class`` labels against the behaviourally
+    DERIVED coarse roles. For every funct that has BOTH a derived role (from :func:`semantic_roles`, which
+    regenerates the probe cache on demand) AND a hand ``semantic_class`` label
+    (:func:`~merlin.targetgen.target_experiment.load_capability_manifest`), assert the derived coarse role
+    equals the coarse projection of the hand label (:func:`_coarse_of_hand_class`). Returns the list of
+    DISAGREEMENTS (empty = all agree). A disagreement is a real alarm — either the hand label mislabels the
+    funct or the RTL behaviour drifted from the declared ABI. Functs with no derived role (not swept / no
+    arc) or an unmappable label are skipped, not counted as agreements — so a no-arc/SIMT target yields an
+    empty list (nothing derived to cross-check) rather than a crash."""
+    roles = semantic_roles(target).get("roles") or {}
+    if not roles:
+        return []  # nothing behaviourally derived (no arc / SIMT / mlc absent) -> nothing to cross-check
+    from ..target_experiment import load_capability_manifest
+    hand = (load_capability_manifest(target).encoding or {}).get("semantic_class") or {}
+    disagreements: list[str] = []
+    for code, label in hand.items():
+        derived = roles.get(int(code))
+        expect = _coarse_of_hand_class(str(label))
+        if derived is None or expect is None:
+            continue
+        if derived != expect:
+            disagreements.append(
+                f"funct {int(code)} ({label}): derived role {derived!r} != coarse({label!r})={expect!r}")
+    return disagreements
 
 
 # --- region -> coarse role classification -------------------------------------------------------
