@@ -106,6 +106,13 @@ def _te():
     return load_target_experiment(C.EXP / "target_experiment.yaml")
 
 
+def _manifest():
+    """This target's capability manifest (endpoint kind + sim tiers) — the second input render_prompt
+    needs. Derived from the committed target_contract, so any target's runner works unchanged."""
+    from merlin.targetgen.target_experiment import load_capability_manifest
+    return load_capability_manifest(C.TARGET)
+
+
 def answer_files() -> list[Path]:
     """Every answer-bearing GOLDEN file the agent must NOT see — DERIVED from the declared capsule corpus
     (+ its sibling corpora) via the shared sandbox module, not a hard-coded isa/layers/model_slices list.
@@ -430,7 +437,13 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
             ws_task.write_text(body)
         shutil.copy(ws_task, run_dir / "TASK.md")
         return
-    pilot = (C.EXP / "task" / "TASK_full.md").read_text()
+    # The graded contract is now the GENERATED (target-agnostic) prompt: ONE shared skeleton + slots
+    # DERIVED from {descriptor + RTL fact bundle + endpoint}, so a per-target committed TASK_full.md is no
+    # longer the source of truth (its content is covered by the generated body — proven by the dry-run
+    # diff). The runtime-only operational blocks below (language mandate + the 20-public/L3 scope note) are
+    # still appended: they carry run-specific numbers the target-agnostic template deliberately omits.
+    from merlin.targetgen.generate_prompt import render_prompt
+    pilot = render_prompt(_te(), _manifest(), _EXPERIMENT, arm)
     # Optional language mandate (env PILOT_LANG=cpp|python). Default unset => agent chooses freely
     # (the prior measured runs all chose Python). When cpp is forced, REQUIRE a real out-of-tree
     # C++/TableGen gemmini-opt built via the manifest build block — NO integrity rule is relaxed.

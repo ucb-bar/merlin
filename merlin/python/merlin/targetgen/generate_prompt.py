@@ -25,21 +25,44 @@ _ENDPOINT_DESC = {
 }
 
 
+def _emit_framing(bundle: dict) -> str:
+    """A CONCRETE, derived one-liner describing what the 4th-entrypoint `.insn` stream must encode —
+    the discovered legal command-opcode set + mesh geometry, straight from the fact bundle (never a
+    gemmini literal; a target with no HW dialect degrades to the generic phrasing). This is what makes
+    the emit description name the discovered ISA concretely instead of only 'the discovered ISA facts'."""
+    f = bundle.get("fields", {})
+    lo = f.get("legal_opcodes", {})
+    dim = f.get("mesh_dim", {})
+    parts = []
+    if lo.get("derived") and lo.get("value"):
+        vals = lo["value"]
+        parts.append(f"a word stream encoding ONLY the {len(vals)} discovered legal command opcodes "
+                     f"(funct field {min(vals)}..{max(vals)}; enumerated in the ISA facts below)")
+    if dim.get("derived") and dim.get("value"):
+        parts.append(f"driving the discovered {dim['value']}x{dim['value']} systolic mesh")
+    if not parts:
+        return "a word stream encoding only the target's discovered legal command ISA (see the ISA facts below)"
+    return "; ".join(parts)
+
+
 def prompt_slots(te, manifest) -> dict:
     """The complete set of DERIVED, target-specific prompt slots for one target.
 
     ``te`` is a :class:`TargetExperiment` (descriptor); ``manifest`` is a :class:`CapabilityManifest`.
     Returns a flat ``{slot: value}`` dict — the only content that varies across targets for a fixed
     experiment/arm/condition."""
-    from .rtl.mlc_bridge import render_fact_bundle
+    from .rtl.mlc_bridge import render_fact_bundle, target_fact_bundle
     target = te.target
+    bundle = target_fact_bundle(target)               # discovered ONCE; feeds both the brief + the emit framing
     return {
         "target": target,
         "tool_stem": f"{target}-opt",                 # not "gemmini-opt"
         "kernel_symbol": f"{target}_kernel",          # not "gemmini_kernel"
         "endpoint_kind": manifest.endpoint_kind,
         "endpoint_desc": _ENDPOINT_DESC.get(manifest.endpoint_kind, _ENDPOINT_DESC["inline_asm_insn"]),
-        "isa_facts": render_fact_bundle(target),      # the provenance-tagged ISA brief (agent info)
+        "emit_framing": _emit_framing(bundle),        # concrete opcode/mesh framing, derived from the bundle
+        "isa_facts": render_fact_bundle(target, bundle),  # the provenance-tagged ISA brief (agent info)
+        "corpus_rel": te.corpus_rel(),                # the primary corpus (isa/), repo-root-relative
         "corpus_families": te.corpus_siblings(),      # globbed, not a hardcoded ISA/layers/model_slices list
         "sim_tiers": dict(manifest.tier_sim),         # from the manifest, not "spike/verilator" literals
         "prior_backend_deny": list(te.prior_backends),
@@ -83,13 +106,24 @@ submission/
 - `parse`: `{{tool}} --verify-diagnostics {{input_mlir}}` — parse + verify the `merlin_iface` interface MLIR
 - `lower_interface_to_target`: `{{tool}} --convert-iface-to-{target} {{input_mlir}}` — emit {target}-dialect MLIR
 - `emit_command_buffer`: `{{tool}} --emit-command-buffer={{output_json}} {{input_mlir}}` — schema-valid `command_buffer.json`
-- `emit_target_artifact`: `{{tool}} --convert-iface-to-{target} --emit-target-artifact {{input_mlir}}` — {endpoint_desc}; the emitted module defines `{kernel_symbol}`
+- `emit_target_artifact`: `{{tool}} --convert-iface-to-{target} --emit-target-artifact {{input_mlir}}` — {endpoint_desc}: {emit_framing}; the emitted module defines `{kernel_symbol}`
+
+Declare these four commands in `manifest.yaml` exactly as the runner expects — see the OOT backend
+contract (`mlir_oot_backend_contract.yaml`) and the manifest schema (`schemas/manifest.schema.json`).
 
 ## Grading + your QA signal
-Per capsule the runner certifies exact `golden == reference(cb) == simulate(cb) == oracle` across the
-tier ladder, and checks required instruction coverage. You cannot run the oracle; after each round a QA
-gate writes a redacted `qa/verdict.json` (status / failure_plane / tiers / all_pass — NO golden values).
-Read it at each round start and fix by failure_plane. Iterate until `all_pass: true`.
+Per capsule the runner certifies exact-integer `golden == reference(cb) == simulate(cb) == oracle` (no
+tolerance) across the sim tier ladder — derived from the manifest, not restated:
+{sim_tier_ladder}
+and checks the required instruction coverage per capsule (it decodes your emitted artifact into an
+instruction trace). You cannot run the oracle; after each round a QA gate writes a redacted
+`qa/verdict.json` per capsule — `status`, `failure_plane`, `trace_violations`, `numeric_status`,
+`mismatch_count`, `tiers` (L0–L3), and `all_pass` — with NO golden/expected values. Read it at each
+round start and fix by `failure_plane` + `trace_violations`. Iterate until `all_pass: true`.
+
+Useful self-checks you CAN run locally (no oracle needed): build your tool, run the 4 entrypoints on
+each `capsule.interface.mlir`, and confirm the emitted `command_buffer.json` validates against the
+command-buffer schema and your lowered artifact looks right.
 
 ## Hard rules (integrity)
 - `integrity_exempt: false`; no `import merlin` / `merlin.runtime.reference` / `reference_outputs`.
@@ -140,9 +174,17 @@ def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseli
     differ ONLY in those slots."""
     s = prompt_slots(te, manifest)
     scope = {"full": "FULL SUITE", "realistic": "REALISTIC", "pilot": "PILOT SUBSET"}.get(experiment, experiment)
-    families = "\n".join(f"- `{p}`" for p in s["corpus_families"]) or "- (the declared capsule corpus)"
+    # The full family set = the primary corpus + its discovered siblings (deduped, ordered), so no family
+    # (e.g. the primary `isa/`) is silently dropped from the agent's view. Each is a `- `…`` bullet.
+    fam_paths = list(dict.fromkeys([s["corpus_rel"], *s["corpus_families"]]))
+    families = "\n".join(f"- `{p}`" for p in fam_paths) or "- `(the declared capsule corpus)`"
+    # The sim tier ladder, one `- `…`` bullet per manifest tier (target-specific values; never literals).
+    # Every bullet — including the empty-manifest fallback — starts with "- `" so it is a derived per-target
+    # line (stripped when comparing the cross-target shared skeleton), never part of the shared body.
+    ladder = "\n".join(f"- `{tier}` → {sim}" for tier, sim in sorted(s["sim_tiers"].items())) \
+        or "- `(the target's declared sim tiers)`"
     seam_menu = _SEAM_MENU.format(target=s["target"]) if _is_assisted_arm(arm) else ""
     return _TEMPLATE.format(target=s["target"], scope_label=scope, corpus_families=families,
                             tool_stem=s["tool_stem"], kernel_symbol=s["kernel_symbol"],
-                            endpoint_desc=s["endpoint_desc"], isa_facts=s["isa_facts"],
-                            seam_menu=seam_menu)
+                            endpoint_desc=s["endpoint_desc"], emit_framing=s["emit_framing"],
+                            isa_facts=s["isa_facts"], sim_tier_ladder=ladder, seam_menu=seam_menu)
