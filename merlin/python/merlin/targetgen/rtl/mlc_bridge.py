@@ -853,9 +853,8 @@ def render_fact_bundle(target: str, bundle: dict | None = None) -> str:
 # funct decode and its geometry is a cluster x cell tile that discover_mesh_dim mis-derives — so it gets
 # its own structural extractor (merlin.targetgen.rtl.spatial_introspect), delegated to here.
 
-# TODO(T6): route generate_prompt.py by kind through fact_bundle_for/render_* too (it still calls
-# target_fact_bundle+render_fact_bundle directly at generate_prompt.py:54-64). Deferred as a 1-line
-# follow-up so a possible live prompt run is untouched here; the default gemmini path is unchanged.
+# generate_prompt.py routes through fact_bundle_for + render_fact_bundle_for (below) by KIND, so a
+# spatial/simt target's brief renders from its own extractor; gemmini (systolic) stays byte-identical.
 
 def spatial_fact_bundle(target: str) -> dict:
     """The STATIC, provenance-tagged SPATIAL tensor-tile fact bundle for ``target`` (an OPU) — no model
@@ -918,6 +917,24 @@ def fact_bundle_for(target: str) -> dict:
     if extractor == "simt_config":
         return _simt_fact_bundle(target)
     return target_fact_bundle(target)
+
+
+def render_fact_bundle_for(target: str, bundle: dict | None = None) -> str:
+    """KIND-routed sibling of :func:`fact_bundle_for` for RENDERING — the render half of the same seam.
+
+    Routes ``target``'s kind to the matching bundle renderer: ``opu`` (spatial) ->
+    :func:`render_spatial_fact_bundle`; everything else (systolic/vector/scalar ``circt_static``, and the
+    default when no kind resolves) -> :func:`render_fact_bundle`. SIMT has no dedicated renderer today, so
+    it degrades honestly through the systolic renderer (TODO: a muon brief renderer). BYTE-IDENTICAL to
+    :func:`render_fact_bundle` for gemmini and every current ``circt_static`` caller — the same reasoning
+    as ``fact_bundle_for``: gemmini resolves ``kind='systolic'`` -> ``fact_extractor='circt_static'`` ->
+    the ``return render_fact_bundle(...)`` fall-through, on the same ``bundle`` object."""
+    from ..families import family_profile, known_kinds
+    kind = _resolve_kind(target)
+    extractor = family_profile(kind).fact_extractor if kind in known_kinds() else "circt_static"
+    if extractor == "opu":
+        return render_spatial_fact_bundle(target, bundle)
+    return render_fact_bundle(target, bundle)
 
 
 def _simt_fact_bundle(target: str) -> dict:

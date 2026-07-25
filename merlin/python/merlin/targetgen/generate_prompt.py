@@ -31,6 +31,22 @@ def _emit_framing(bundle: dict) -> str:
     gemmini literal; a target with no HW dialect degrades to the generic phrasing). This is what makes
     the emit description name the discovered ISA concretely instead of only 'the discovered ISA facts'."""
     f = bundle.get("fields", {})
+    # SPATIAL tensor-tile (OPU): a command buffer over one-hot op ports driving an outer-product tile —
+    # NOT a RoCC .insn stream over a systolic mesh. Frame it from the discovered tile geometry + command
+    # set (gemmini has no tile_dim, so it never takes this branch and stays byte-identical).
+    td = f.get("tile_dim", {})
+    if td.get("derived") and isinstance(td.get("value"), dict):
+        tv = td["value"]
+        geo = (f"{tv.get('rows')}x{tv.get('cols')}" if tv.get("rows") and tv.get("cols")
+               else str(tv.get("dim") or "")).strip()
+        cats = (f.get("op_categories", {}) or {}).get("value") or []
+        dts = [d.get("name") for d in ((f.get("dtypes", {}) or {}).get("value") or []) if d.get("name")]
+        line = f"a command stream driving the discovered {geo} outer-product accumulator tile".rstrip()
+        if cats:
+            line += f" with the {{{', '.join(cats)}}} command set"
+        if dts:
+            line += f" over the {', '.join(dts)} datapaths"
+        return line
     lo = f.get("legal_opcodes", {})
     dim = f.get("mesh_dim", {})
     parts = []
@@ -51,9 +67,9 @@ def prompt_slots(te, manifest) -> dict:
     ``te`` is a :class:`TargetExperiment` (descriptor); ``manifest`` is a :class:`CapabilityManifest`.
     Returns a flat ``{slot: value}`` dict — the only content that varies across targets for a fixed
     experiment/arm/condition."""
-    from .rtl.mlc_bridge import render_fact_bundle, target_fact_bundle
+    from .rtl.mlc_bridge import render_fact_bundle_for, fact_bundle_for
     target = te.target
-    bundle = target_fact_bundle(target)               # discovered ONCE; feeds both the brief + the emit framing
+    bundle = fact_bundle_for(target)                  # KIND-routed; discovered ONCE; feeds brief + emit framing
     return {
         "target": target,
         "tool_stem": f"{target}-opt",                 # not "gemmini-opt"
@@ -61,7 +77,7 @@ def prompt_slots(te, manifest) -> dict:
         "endpoint_kind": manifest.endpoint_kind,
         "endpoint_desc": _ENDPOINT_DESC.get(manifest.endpoint_kind, _ENDPOINT_DESC["inline_asm_insn"]),
         "emit_framing": _emit_framing(bundle),        # concrete opcode/mesh framing, derived from the bundle
-        "isa_facts": render_fact_bundle(target, bundle),  # the provenance-tagged ISA brief (agent info)
+        "isa_facts": render_fact_bundle_for(target, bundle),  # KIND-routed provenance-tagged ISA brief (agent info)
         "corpus_rel": te.corpus_rel(),                # the primary corpus (isa/), repo-root-relative
         "corpus_families": te.corpus_siblings(),      # globbed, not a hardcoded ISA/layers/model_slices list
         "sim_tiers": dict(manifest.tier_sim),         # from the manifest, not "spike/verilator" literals
