@@ -45,7 +45,9 @@ def _redact_rtl(r: dict) -> dict:
 
 
 def _rtl_block(runs_root) -> list[dict]:
-    facts = json.loads(RUN._FACTS.read_text())
+    # RTL facts are the regenerated CIRCT artifact now (RUN._FACTS was retired in the facts-as-artifact
+    # refactor); load_facts regenerates/reads it on demand. Same full-record shape screen_run expects.
+    facts = RUN.load_facts("gemmini")
     index = RUN._capsule_index()
     fc = RUN.find_filecheck()
     bench = Path(runs_root) / "runs" / "gemmini-capsule-bench"
