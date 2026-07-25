@@ -16,6 +16,7 @@ ENDPOINT_ARTIFACT: dict[str, str] = {
     "inline_asm_insn": "lowered.llvm.mlir",
     "upstream_target": "lowered.llvm.mlir",
     "external_backend": "kernel.cpp",
+    "command_buffer": "command_buffer.json",
 }
 
 

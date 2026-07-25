@@ -167,7 +167,7 @@ class CapabilityManifest:
     never branch on a target name."""
     target: str
     kind: str                      # primary compute-unit kind (systolic|simt|vector|scalar)
-    endpoint_kind: str             # inline_asm_insn (default, fork-free) | upstream_target | external_backend
+    endpoint_kind: str             # inline_asm_insn (default) | upstream_target | external_backend | command_buffer
     suite: str
     dtype: str                     # run-identity dtype token (e.g. i8xi8_i32, f32)
     fourth_output_name: str | None # None -> the runner derives it from endpoint_kind

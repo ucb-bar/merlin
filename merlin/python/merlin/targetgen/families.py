@@ -18,7 +18,11 @@ from merlin.targetgen.compute_units import KINDS
 
 # Codegen endpoints, in elegance order (see memory: no-forked-toolchain-bringup). The default is the
 # fork-free path — the target's own dialect lowered to ``llvm.inline_asm``/``.insn`` on STOCK LLVM.
-ENDPOINT_KINDS: tuple[str, ...] = ("inline_asm_insn", "upstream_target", "external_backend")
+# ``command_buffer`` is the ISA-less endpoint: the accelerator has no command ISA at all (it is driven
+# by a command buffer over one-hot control ports, e.g. a spatial tensor tile), so the 4th artifact IS
+# the schema-valid command buffer the target's runtime consumes — no ``.insn`` assembly.
+ENDPOINT_KINDS: tuple[str, ...] = ("inline_asm_insn", "upstream_target", "external_backend",
+                                   "command_buffer")
 
 
 @dataclass(frozen=True)
@@ -47,11 +51,13 @@ _PROFILES: dict[str, FamilyProfile] = {
                               ("flops", "gflops", "pct_fp_peak"), "simt_config"),
     "vector":   FamilyProfile("vector", "upstream_target", False, None, (), (), "circt_static"),
     "scalar":   FamilyProfile("scalar", "upstream_target", False, None, (), (), "circt_static"),
-    # Spatial tensor tile (Saturn OuterProductUnit family): a command ISA driven grid of accumulator
-    # cells; fork-free ``.insn`` like the other MXU, but its facts come from the OPU state-manifest
-    # geometry (cluster x cell tile, MRF depth, int8/fp8 datapaths), NOT the RoCC decoder — so it has no
-    # rocc_insn trace gate and routes to the "opu" fact extractor. Perf is tensor-tile MAC throughput.
-    "spatial":  FamilyProfile("spatial", "inline_asm_insn", True, None, ("L3", "L4", "L5"),
+    # Spatial tensor tile (Saturn OuterProductUnit family): a grid of accumulator cells driven by a
+    # COMMAND BUFFER over one-hot op ports (macc/mvin/shift) — NOT a RoCC command ISA. So there is no
+    # op->``.insn`` encoding to derive (encoding_required=False) and no rocc_insn trace gate; the 4th
+    # artifact IS the schema-valid command buffer (command_buffer endpoint). Its facts come from the OPU
+    # state-manifest geometry (cluster x cell tile, MRF depth, int8/fp8 datapaths) via the "opu" fact
+    # extractor. Perf is tensor-tile MAC throughput. (See memory: opu-endpoint-is-command-buffer-not-rocc.)
+    "spatial":  FamilyProfile("spatial", "command_buffer", False, None, ("L3", "L4", "L5"),
                               ("macs", "mac_per_cycle", "pct_mac_peak"), "opu"),
 }
 

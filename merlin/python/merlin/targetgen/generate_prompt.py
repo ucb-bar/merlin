@@ -22,6 +22,9 @@ _ENDPOINT_DESC = {
                         "compiled by stock LLVM"),
     "external_backend": ("emit the target's device kernel source that the target's toolchain compiles "
                          "(only where a command-ISA `.insn` path is not available)"),
+    "command_buffer": ("emit the target's schema-valid command buffer directly — the artifact the "
+                       "target's runtime consumes; no `.insn` assembly (the target has no command ISA, "
+                       "e.g. a spatial tensor tile driven by one-hot op ports)"),
 }
 
 
