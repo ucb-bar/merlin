@@ -880,6 +880,109 @@ def render_spatial_fact_bundle(target: str, bundle: dict | None = None) -> str:
     return spatial_introspect.render_fact_bundle(target, bundle)
 
 
+# --- SPATIAL (OPU) op-category EFFECT confirmation ----------------------------------------------------
+# The OuterProductUnit has NO RoCC funct decode — its op categories are separate one-hot io_op_* ports
+# (macc / mvin / shift), so there is no op ENCODING to discover: spatial_introspect._op_categories reads
+# the category NAMES structurally off the port names. This pair CONFIRMS those structural names against the
+# measured datapath effect on the arc model (mlc.discover.opu_roles): macc ACCUMULATES (the MRF accumulator
+# cells grow monotonically across repeated identical issues), mvin OVERWRITES (idempotent load — the bank
+# changes once, the magnitude does not grow), shift RELOCATES readout through the clusters_*/pipe chain (the
+# accumulator aggregate magnitude is conserved, no new products). A "shift" that grows magnitude, or a
+# "macc" that only overwrites, is a real alarm (mislabel or RTL drift). HONEST RESIDUE: this CONFIRMS the
+# port names by effect, it does not DISCOVER categories (there is no encoding); the mvin bcast/col sub-
+# variants are only partially separable (by which cells the overwrite lands in) — their naming leans on the
+# port name.
+
+# category -> the measured-effect predicate that CONFIRMS its structural port name.
+_OPU_CATEGORY_CONFIRM = {
+    "macc": lambda f: bool(f.get("writes_accumulator")) and bool(f.get("accumulates")),
+    "mvin": lambda f: bool(f.get("writes_accumulator")) and not bool(f.get("accumulates")),
+    "shift": lambda f: bool(f.get("conserves_magnitude")) and not bool(f.get("writes_accumulator")),
+}
+
+
+def spatial_effect_roles(target: str) -> dict:
+    """DERIVED op-category -> measured-effect signature for a SPATIAL tile (OPU), or EMPTY when it cannot be
+    grounded. The spatial analogue of :func:`fine_roles`: reads the ``discovered_opu_roles.json`` cache
+    beside the OPU state manifest, regenerating on demand ONLY where the probe is possible (a live arc
+    model, :func:`arc_available`) and degrading honestly (empty ``{derived: False, reason}``) for a no-arc
+    target or a failed probe. Returns ``{features: {category: {writes_accumulator, accumulates,
+    magnitude_grows, changed_cells, conserves_magnitude, ...}}, source, derived, reason}``. Wrapped under
+    :func:`_mlc_cwd` (the probe resolves its arc artifacts by paths relative to the mlc root)."""
+    if mlc_dir() is None:
+        return {"features": {}, "source": None, "derived": False, "reason": "MERLIN_MLC_DIR unset"}
+    paths = opu_artifact_paths(target)
+    if not paths or paths.get("man") is None:
+        return {"features": {}, "source": None, "derived": False,
+                "reason": f"no OPU arc artifacts for {target!r} (not in the mlc OPU fingerprint map)"}
+    cache = Path(paths["man"]).parent / "discovered_opu_roles.json"
+    if not cache.is_file():
+        # Regenerate on demand ONLY where the probe is possible (a live arc model). A no-arc target keeps
+        # the honest-empty path below — never auto-regen where impossible, never crash the bundle.
+        if arc_available(target):
+            try:
+                with _mlc_cwd():
+                    from mlc.discover.opu_roles import derive_and_cache_opu_roles
+                    derive_and_cache_opu_roles(target)
+            except Exception as e:  # noqa: BLE001 — a failed probe is honest-unavailable, never a crash/guess
+                return {"features": {}, "source": None, "derived": False,
+                        "reason": f"OPU effect probe failed for {target!r}: {type(e).__name__}: {e}"}
+    if not cache.is_file():
+        return {"features": {}, "source": None, "derived": False,
+                "reason": f"no discovered_opu_roles cache for {target!r} — run derive_and_cache_opu_roles "
+                          "in the mlc venv"}
+    try:
+        import json as _json
+        data = _json.loads(cache.read_text())
+        if not data.get("available"):
+            return {"features": {}, "source": data.get("method"), "derived": False,
+                    "reason": data.get("reason") or f"OPU effect probe unavailable for {target!r}"}
+        feats = data.get("features") or {}
+        return {"features": feats, "source": data.get("method", "probe:opu-effect-confirm(mlc-arc)"),
+                "derived": True, "reason": f"{len(feats)} op-category effect signatures from the mlc OPU probe"}
+    except Exception as e:  # noqa: BLE001 — an unreadable cache is honest-unavailable, never a guess
+        return {"features": {}, "source": None, "derived": False,
+                "reason": f"unreadable opu roles cache: {e}"}
+
+
+def crosscheck_op_categories(target: str) -> list[str]:
+    """ALWAYS-ON cross-check gate for a SPATIAL tile: VERIFY each STRUCTURALLY-declared op category
+    (:func:`spatial_introspect._op_categories`, read off the ``io_op_<cat>_`` port names) against the
+    behaviourally MEASURED effect (:func:`spatial_effect_roles`). For every category the effect probe
+    measured, assert its measured signature CONFIRMS its structural name via :data:`_OPU_CATEGORY_CONFIRM`
+    (macc accumulates, mvin overwrites idempotently, shift conserves accumulator magnitude). Returns the
+    list of DISAGREEMENTS (empty = every structural category name reproduced by RTL behaviour). A
+    structurally-declared category the probe never measured, or one whose measured effect contradicts its
+    name, is a real alarm. When nothing was behaviourally derived (no arc / mlc absent / not an OPU) the
+    list is empty — nothing to cross-check — mirroring :func:`crosscheck_semantic_class_fine`."""
+    er = spatial_effect_roles(target)
+    feats = er.get("features") or {}
+    if not feats:
+        return []  # nothing behaviourally derived (no arc / mlc absent / not an OPU) -> nothing to check
+    paths = opu_artifact_paths(target)
+    if not paths or paths.get("man") is None:
+        return []
+    from . import spatial_introspect
+    _module, _states, names = spatial_introspect._load_state_names(Path(paths["man"]))
+    structural = spatial_introspect._op_categories(names)
+    disagreements: list[str] = []
+    for cat in structural:
+        f = feats.get(cat)
+        if f is None:
+            disagreements.append(f"op category {cat!r} declared structurally (io_op_{cat}_ ports) but the "
+                                 "effect probe measured no signature for it")
+            continue
+        confirm = _OPU_CATEGORY_CONFIRM.get(cat)
+        if confirm is None:
+            continue  # no confirmation predicate for this category name -> nothing to assert
+        if not confirm(f):
+            disagreements.append(
+                f"op category {cat!r}: measured effect does not confirm its name "
+                f"(writes_accumulator={f.get('writes_accumulator')}, accumulates={f.get('accumulates')}, "
+                f"conserves_magnitude={f.get('conserves_magnitude')})")
+    return disagreements
+
+
 # mlc arc targets merlin has no committed capability manifest for yet (their facts come from the arc
 # artifacts, not an in-tree contract): map target id -> compute-unit kind so fact_bundle_for can route
 # them by KIND without a per-target branch in the dispatch itself. Additive; never consulted for a

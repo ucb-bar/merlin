@@ -141,3 +141,44 @@ def test_fine_roles_behaviourally_reproduce_the_hand_semantic_class():
     assert fine["8"] == "LOOP_WS" and fine["15"] == "LOOP_CONV"
     # and the fine_roles() cache reader round-trips the derived map
     assert B.fine_roles("gemmini")["roles"][4] == "COMPUTE_PRELOADED"
+
+
+# ---------------------------------------------- SPATIAL (OPU) op-category effect confirmation (pure)
+# The OuterProductUnit has no op ENCODING — its categories are separate one-hot io_op_* ports, so the
+# confirmation is a pure function of the MEASURED effect signature: macc accumulates, mvin overwrites
+# (idempotent), shift conserves accumulator magnitude (relocates). No arc, no mlc needed for this half.
+
+def test_opu_category_confirm_predicates_separate_macc_mvin_shift():
+    macc = {"writes_accumulator": True, "accumulates": True, "conserves_magnitude": False}
+    mvin = {"writes_accumulator": True, "accumulates": False, "conserves_magnitude": False}
+    shift = {"writes_accumulator": False, "accumulates": False, "conserves_magnitude": True}
+    C = B._OPU_CATEGORY_CONFIRM
+    # each category's measured signature confirms ONLY its own structural name
+    assert C["macc"](macc) and not C["macc"](mvin) and not C["macc"](shift)
+    assert C["mvin"](mvin) and not C["mvin"](macc) and not C["mvin"](shift)
+    assert C["shift"](shift) and not C["shift"](macc) and not C["shift"](mvin)
+    # the alarms: a "shift" that grows magnitude, or a "macc" that only overwrites, is NOT confirmed
+    assert not C["shift"]({"writes_accumulator": True, "accumulates": True, "conserves_magnitude": False})
+    assert not C["macc"]({"writes_accumulator": True, "accumulates": False, "conserves_magnitude": False})
+
+
+# ---------------------------------------------- SPATIAL (OPU) effect confirmation END-TO-END (mlc-gated)
+_OPU_TGT = "saturn_opu_mxv256d128"
+
+
+@pytest.mark.skipif(not _MLC_OK or not B.arc_available(_OPU_TGT),
+                    reason="mlc / prebuilt OPU arc model not available")
+def test_opu_op_categories_confirmed_by_measured_effect():
+    """END-TO-END on the OPU arc: drive each one-hot op-category port and CONFIRM its structural name by
+    measured datapath effect. macc ACCUMULATES (the MRF cells grow monotonically across repeated issues),
+    mvin OVERWRITES (idempotent load — writes the bank once, magnitude does not grow), shift RELOCATES
+    accumulator readout through the clusters_*/pipe chain (accumulator magnitude conserved). The OPU has no
+    op encoding, so this CONFIRMS the port names by behaviour — the cross-check must find NO residue."""
+    er = B.spatial_effect_roles(_OPU_TGT)   # cold cache -> regen-on-demand on the live arc
+    assert er["derived"] is True
+    feats = er["features"]
+    assert feats["macc"]["writes_accumulator"] and feats["macc"]["accumulates"]        # accumulate
+    assert feats["mvin"]["writes_accumulator"] and not feats["mvin"]["accumulates"]    # idempotent overwrite
+    assert feats["shift"]["conserves_magnitude"] and not feats["shift"]["writes_accumulator"]  # relocate
+    # every structurally-declared category name is reproduced by RTL behaviour (no alarm)
+    assert B.crosscheck_op_categories(_OPU_TGT) == []
