@@ -137,3 +137,41 @@ def test_existing_manifests_path_unchanged():
     from merlin.targetgen.target_experiment import load_capability_manifest
     for target in ("atlas", "gemmini"):
         assert load_capability_manifest(target).kind == "systolic"
+
+
+def test_derive_manifest_maps_the_spatial_opu_fact_shape():
+    # A SPATIAL (OuterProductUnit) fact bundle carries a different shape than the systolic facts.json
+    # (fields.tile_dim/dtypes/mrf_depth, no arrays/datapaths/interfaces). Inlined so the test is hermetic
+    # (no arc / OPU artifacts). Proves the deriver reads the spatial shape: multi-format datapaths + tile
+    # geometry, with the spatial family's command_buffer endpoint and NO RoCC encoding block.
+    facts = {
+        "target": "saturn_opu_mxv256d128", "kind": "spatial",
+        "method": "static OPU state-manifest + HW-dialect discovery",
+        "fields": {
+            "tile_dim": {"value": {"rows": 16, "cols": 16, "cells": 256}, "derived": True},
+            "mrf_depth": {"value": 16, "derived": True},
+            "dtypes": {"value": [
+                {"name": "int8", "operand": "i8", "accumulator": "i32"},
+                {"name": "fp8_e4m3", "operand": "e4m3", "accumulator": "f32"},
+                {"name": "fp8_e5m2", "operand": "e5m2", "accumulator": "f32"},
+            ], "derived": True},
+        },
+        "n_derived": 3,
+    }
+    residual = {"compute_units": [{"name": "opu", "kind": "spatial", "ops": ["matmul"]}],
+                "concepts": ["outer_product"]}
+    m = cm.derive_manifest({"target": "saturn_opu_mxv256d128", "kind": "spatial"},
+                           facts, residual=residual)
+    cm.validate(m)
+    u = m["compute_units"][0]
+    # FACTS: the OPU is MULTI-format — a full dtype list + the per-dtype (in,weight)->acc matrix
+    assert u["dtypes"] == ["int8", "fp8_e4m3", "fp8_e5m2"]
+    assert {"in": "int8", "weight": "int8", "acc": "i32"} in u["accumulate"]
+    assert {"in": "fp8_e4m3", "weight": "fp8_e4m3", "acc": "f32"} in u["accumulate"]
+    # FACTS: tile geometry (cluster x cell) + MRF depth — NOT a systolic mesh
+    assert m["capabilities"]["tile"] == {"rows": 16, "cols": 16}
+    assert m["capabilities"]["mrf_depth"] == 16
+    assert "mesh" not in m["capabilities"]
+    # FAMILY: spatial -> command_buffer endpoint (no RoCC .insn), and no encoding block (no funct decode)
+    assert m["endpoint_kind"] == "command_buffer"
+    assert "encoding" not in m

@@ -336,6 +336,55 @@ def _encoding_codes_from_facts(body: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def _spatial_fields(body: dict[str, Any]) -> dict[str, Any] | None:
+    """The SPATIAL (OuterProductUnit) fact fields ``{name: {value, derived, ...}}`` when ``body`` is a
+    spatial fact bundle (:func:`merlin.targetgen.rtl.spatial_introspect.build_fact_bundle`) — detected by
+    its ``tile_dim`` field. A spatial tile's facts carry a DIFFERENT shape than the systolic ``facts.json``
+    (no ``arrays``/``memories``/``datapaths``/``interfaces``), so they get their own readers below."""
+    fields = body.get("fields")
+    if isinstance(fields, dict) and "tile_dim" in fields:
+        return fields
+    return None
+
+
+def _spatial_datapaths_from_fields(
+        fields: dict[str, Any]) -> tuple[str | None, list[str], list[dict[str, str]]]:
+    """(primary input dtype, ALL storage dtypes, ``(in,weight)->acc`` matrix) from the OPU ``dtypes``
+    datapath fact — the spatial analog of :func:`_datapaths_from_facts`. The OPU is MULTI-format (an int8
+    MAC datapath + fp8 e4m3/e5m2 FMA datapaths), so it grounds a full dtype list, not a single dtype."""
+    dts = ((fields.get("dtypes") or {}).get("value")) or []
+    storage: list[str] = []
+    accumulate: list[dict[str, str]] = []
+    primary: str | None = None
+    for d in dts:
+        nm = d.get("name")
+        if not nm:
+            continue
+        nm = _fmt_name(nm)
+        if nm not in storage:
+            storage.append(nm)
+        acc = d.get("accumulator")
+        if acc:
+            accumulate.append({"in": nm, "weight": nm, "acc": acc})
+        if primary is None:
+            primary = nm
+    return primary, storage, accumulate
+
+
+def _spatial_capabilities_from_fields(fields: dict[str, Any]) -> dict[str, Any]:
+    """``capabilities`` geometry from the OPU tile facts: the ``tile`` {rows, cols} accumulator grid +
+    ``mrf_depth`` (register-file bank count) — the spatial analog of :func:`_mesh_from_facts` (an OPU has
+    a cluster x cell tile, NOT a systolic mesh)."""
+    out: dict[str, Any] = {}
+    tv = (fields.get("tile_dim") or {}).get("value") or {}
+    if tv.get("rows") and tv.get("cols"):
+        out["tile"] = {"rows": tv["rows"], "cols": tv["cols"]}
+    mrf = (fields.get("mrf_depth") or {}).get("value")
+    if mrf is not None:
+        out["mrf_depth"] = mrf
+    return out
+
+
 def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
                     residual: dict[str, Any] | None = None) -> dict[str, Any]:
     """Derive a schema-valid capability manifest from a descriptor + CIRCT facts + a small residual.
@@ -374,7 +423,12 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
         manifest["family"] = family
 
     # --- compute units: residual INTENT (name/kind/ops/scaling/requant) + FACTS (dtypes/accumulate) ---
-    in_dtype, accumulate = _datapaths_from_facts(body)
+    spatial = _spatial_fields(body)   # OuterProductUnit fact bundle vs the systolic facts.json shape
+    if spatial is not None:
+        _in_dtype, _storage, accumulate = _spatial_datapaths_from_fields(spatial)
+    else:
+        _in_dtype, accumulate = _datapaths_from_facts(body)
+        _storage = [_in_dtype] if _in_dtype else []
     units = manifest.get("compute_units")
     if not units:
         kind_hint = _descriptor_get(descriptor, "kind") or manifest.get("kind")
@@ -387,9 +441,7 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
     # Ground the primary unit's storage dtype from the datapath fact, AUGMENTING (never dropping) any
     # human-reviewed formats the residual declared — a multi-format unit's reviewed matrix is richer
     # than the single primary datapath facts can ground.
-    declared = list(primary.get("dtypes") or [])
-    if in_dtype and in_dtype not in declared:
-        declared.append(in_dtype)
+    declared = list(dict.fromkeys([*(primary.get("dtypes") or []), *(d for d in _storage if d)]))
     if declared:
         primary["dtypes"] = declared
     if accumulate and not primary.get("accumulate"):
@@ -412,6 +464,8 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
     mesh = _mesh_from_facts(body)
     if mesh:
         caps["mesh"] = mesh
+    if spatial is not None:                       # OPU tile geometry (cluster x cell) + MRF bank depth
+        caps.update(_spatial_capabilities_from_fields(spatial))
     manifest["capabilities"] = caps
 
     memory_model = dict(manifest.get("memory_model") or {})
