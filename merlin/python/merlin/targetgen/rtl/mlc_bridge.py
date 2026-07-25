@@ -330,6 +330,174 @@ def crosscheck_semantic_class(target: str) -> list[str]:
     return disagreements
 
 
+# --- FINE behavioural role derivation + fine cross-check ----------------------------------------
+# The coarse probe collapses several ISA commands that share a coarse role but differ architecturally:
+# COMPUTE_PRELOADED vs COMPUTE_ACCUMULATE vs PRELOAD (all "compute"), MVIN vs MVIN2 vs MVIN3 (all "load"),
+# LOOP_WS vs LOOP_CONV (the two loop macros). The mlc FINE probe (mlc.discover.fine_roles) measures the
+# behaviour that separates them on the arc model: the accumulator-write value-magnitude + the PE
+# propagate-bit toggle (compute cluster), a per-config-id DMA stride sweep (load cluster), and which loop
+# FSM tags the spawned reservation-station commands (loop cluster). This makes the hand semantic_class
+# NAMES behaviourally derived + cross-checked, not merely header-named.
+
+# The fine ISA vocabulary the derivation can behaviourally NAME (a superset of the coarse SEMANTIC_ROLES).
+FINE_ROLES = ("MVIN", "MVIN2", "MVIN3", "MVOUT", "PRELOAD", "COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE",
+              "LOOP_WS", "LOOP_CONV", "CONFIG", "FLUSH")
+
+
+def _classify_fine_role(coarse: str | None, feats: dict) -> tuple[str | None, bool]:
+    """Map a funct's coarse role + MEASURED fine behaviour to a fine ISA name. Returns
+    ``(name, fine_derived)`` where ``fine_derived`` is True when the name comes from a behavioural feature
+    the coarse probe discards (config-id, accumulator-write, weight-flip, loop-FSM), and False when it is a
+    coarse-grounded fallback (store->MVOUT, barrier->FLUSH, base config->CONFIG) that is unique among the
+    declared functs but not itself finer than the coarse role. The name is a pure function of the MEASURED
+    behaviour, never of the funct number — so an RTL change that altered the behaviour would change the
+    derived name and trip the cross-check."""
+    # loop macros first: a compute/config funct that runs a loop FSM is a loop, whatever its coarse bucket.
+    if feats.get("drives_matmul_fsm"):
+        return "LOOP_WS", True                     # WS matmul loop-unroller
+    if feats.get("drives_conv_fsm"):
+        return "LOOP_CONV", True                   # CONV loop-unroller
+    if coarse == "load":
+        cid = feats.get("config_id")
+        name = {0: "MVIN", 1: "MVIN2", 2: "MVIN3"}.get(cid)
+        return (name, True) if name is not None else (None, False)
+    if coarse == "store":
+        return "MVOUT", False                      # coarse-grounded (the sole declared store)
+    if coarse == "barrier":
+        return "FLUSH", False                      # coarse-grounded fence (not separable from other barriers)
+    if coarse == "compute":
+        if feats.get("writes_accumulator"):
+            # weight-flip (propagate toggled on ~all PEs) => uses the freshly PRELOADED weights;
+            # no flip => REUSES the stationary weights (ACCUMULATE).
+            return ("COMPUTE_PRELOADED", True) if feats.get("weight_flip") else ("COMPUTE_ACCUMULATE", True)
+        if feats.get("loads_weights"):
+            return "PRELOAD", True                 # loads the stationary weights, commits no MAC
+        return None, False
+    if coarse == "config":
+        return "CONFIG", False                     # coarse-grounded base config command
+    return None, False
+
+
+def derive_fine_roles(target: str, *, drive_cycles: int = 800) -> dict:
+    """Behaviourally DERIVE the FINE ISA role of each legal funct on ``target``'s arc model and write
+    ``discovered_fine_roles.json`` beside the coarse ``discovered_roles.json``. Runs the mlc fine probe
+    (:func:`mlc.discover.fine_roles.probe_fine_features`), classifies each funct's measured feature vector
+    with :func:`_classify_fine_role`, and records the fine name + whether it is behaviourally fine-derived
+    (vs a coarse-grounded fallback) + the raw features (auditable). Requires a live arc model (+ the mlc
+    package); raises otherwise (never fabricates). This is the ONLY writer of the fine cache that
+    :func:`fine_roles` reads. Returns the written record."""
+    require_mlc()
+    import json as _json
+    coarse = semantic_roles(target)
+    roles = coarse.get("roles") or {}
+    if not roles:
+        raise RuntimeError(f"{target!r}: no coarse roles derived — cannot refine (reason: {coarse.get('reason')})")
+    legal = discover_legal_opcodes(target).get("legal_opcodes")
+    if not legal:
+        raise RuntimeError(f"{target!r}: no legal opcode set discovered — cannot probe fine roles")
+    with _mlc_cwd():
+        _ensure_interface_cache(target)  # (re)build the fingerprint-gated discovery cache if stale/cold
+        from mlc.discover.fine_roles import probe_fine_features
+        from mlc.discover.fingerprint import artifact_paths, rtl_fingerprint
+        probed = probe_fine_features(target, {str(k): v for k, v in roles.items()}, list(legal),
+                                     drive_cycles=drive_cycles)
+        if not probed.get("available"):
+            raise RuntimeError(f"{target!r}: fine probe unavailable — {probed.get('reason')}")
+        features = probed.get("features") or {}
+        fine: dict[str, str] = {}
+        fine_derived: dict[str, bool] = {}
+        for code in legal:
+            feats = features.get(str(code), {})
+            name, derived = _classify_fine_role(roles.get(int(code)), feats)
+            if name is not None:
+                fine[str(code)] = name
+                fine_derived[str(code)] = derived
+        record = {
+            "target": target,
+            "method": "probe:fine-behavioural-role(mlc-arc)",
+            "fingerprint": rtl_fingerprint(target).as_dict(),
+            "drive_cycles": drive_cycles,
+            "legal_opcodes": list(legal),
+            "coarse_roles": {str(k): v for k, v in roles.items()},
+            "fine_roles": fine,
+            "fine_derived": fine_derived,
+            "features": features,
+            "note": ("Fine ISA roles behaviourally derived on the arc model: the compute cluster split by "
+                     "accumulator-write value-magnitude + the PE propagate-bit (last_s) weight-flip "
+                     "(PRELOAD/COMPUTE_PRELOADED/COMPUTE_ACCUMULATE); the load cluster split by a per-"
+                     "config-id DMA row-stride sweep (MVIN/MVIN2/MVIN3); the loop macros split by which "
+                     "loop FSM (from_matmul_fsm vs from_conv_fsm) tags their spawned reservation-station "
+                     "commands (LOOP_WS/LOOP_CONV). CONFIG/MVOUT/FLUSH are coarse-grounded fallbacks "
+                     "(fine_derived=false): unique among the declared functs but not finer than the coarse "
+                     "role. Other barrier/config functs (e.g. flush-family 22/126, config sub-commands "
+                     "9-13/16-21/24) are left unnamed — the probe cannot cleanly name them."),
+        }
+        d = mlc_dir()
+        p = artifact_paths(target)
+        out = (d / p["man"]).resolve().parent / "discovered_fine_roles.json"
+        out.write_text(_json.dumps(record, indent=2) + "\n")
+        record["_path"] = str(out)
+        return record
+
+
+def fine_roles(target: str) -> dict:
+    """DERIVED opcode -> FINE ISA role map (COMPUTE_PRELOADED/COMPUTE_ACCUMULATE/PRELOAD/MVIN/MVIN2/MVIN3/
+    LOOP_WS/LOOP_CONV/MVOUT/CONFIG/FLUSH), or EMPTY when it cannot be grounded. Mirrors :func:`semantic_roles`:
+    reads the ``discovered_fine_roles.json`` cache, regenerating on demand ONLY where the probe is possible
+    (a live arc model) and degrading honestly (empty ``{derived: False, reason}``) for a no-arc/SIMT target
+    or a failed probe. Returns ``{roles: {opcode:int -> fine name}, fine_derived: {opcode:int -> bool},
+    source, derived: bool, reason}``."""
+    d = mlc_dir()
+    if d is None:
+        return {"roles": {}, "fine_derived": {}, "source": None, "derived": False, "reason": "MERLIN_MLC_DIR unset"}
+    cache = d / "runs" / "circt-arc" / target / "outputs" / "discovered_fine_roles.json"
+    if not cache.is_file():
+        if arc_available(target):
+            try:
+                derive_fine_roles(target)
+            except Exception as e:  # noqa: BLE001 — a failed probe is honest-unavailable, never a crash/guess
+                return {"roles": {}, "fine_derived": {}, "source": None, "derived": False,
+                        "reason": f"fine role derivation failed for {target!r}: {type(e).__name__}: {e}"}
+    if not cache.is_file():
+        return {"roles": {}, "fine_derived": {}, "source": None, "derived": False,
+                "reason": f"no discovered_fine_roles cache for {target!r} — run derive_fine_roles in the mlc venv"}
+    try:
+        import json as _json
+        data = _json.loads(cache.read_text())
+        roles = {int(k): v for k, v in (data.get("fine_roles") or {}).items() if v in FINE_ROLES}
+        fd = {int(k): bool(v) for k, v in (data.get("fine_derived") or {}).items()}
+        return {"roles": roles, "fine_derived": fd, "source": data.get("method", "probe:fine-behavioural-role(mlc-arc)"),
+                "derived": True, "reason": f"{len(roles)} fine opcode roles from the mlc fine probe"}
+    except Exception as e:  # noqa: BLE001 — an unreadable cache is honest-unavailable, never a guess
+        return {"roles": {}, "fine_derived": {}, "source": None, "derived": False, "reason": f"unreadable fine roles cache: {e}"}
+
+
+def crosscheck_semantic_class_fine(target: str) -> list[str]:
+    """ALWAYS-ON cross-check gate at the FINE level: VERIFY the hand ABI ``semantic_class`` NAMES against
+    the behaviourally DERIVED fine roles. For every funct that has BOTH a derived fine role (from
+    :func:`fine_roles`) AND a hand ``semantic_class`` label, assert the derived fine name EQUALS the hand
+    label. Returns the list of DISAGREEMENTS (empty = every declared name reproduced by RTL behaviour). A
+    disagreement is a real alarm: the hand name claims a behaviour the funct does not exhibit (mislabel or
+    RTL drift). Functs with no derived fine role (not probed / no arc / unnamed by the probe) are skipped,
+    so a no-arc/SIMT target yields an empty list rather than a crash. This is the fine-grained companion to
+    :func:`crosscheck_semantic_class` (which verifies only the coarse projection)."""
+    fr = fine_roles(target)
+    roles = fr.get("roles") or {}
+    if not roles:
+        return []  # nothing behaviourally derived (no arc / SIMT / mlc absent) -> nothing to cross-check
+    from ..target_experiment import load_capability_manifest
+    hand = (load_capability_manifest(target).encoding or {}).get("semantic_class") or {}
+    disagreements: list[str] = []
+    for code, label in hand.items():
+        derived = roles.get(int(code))
+        if derived is None:
+            continue  # this funct was not fine-named by the probe (report via fine_roles, not an alarm here)
+        if derived != str(label):
+            disagreements.append(
+                f"funct {int(code)} ({label}): derived fine role {derived!r} != hand semantic_class {str(label)!r}")
+    return disagreements
+
+
 # --- region -> coarse role classification -------------------------------------------------------
 # The behavioural probe below drives each legal RoCC funct into the arc model, drives it to (bounded)
 # retire across many cycles, diffs the flat state, and buckets the *changed* named states into MODULE

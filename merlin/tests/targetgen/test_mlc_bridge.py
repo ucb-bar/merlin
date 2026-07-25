@@ -84,3 +84,60 @@ def test_arc_core_loads_rtl_model_for_target():
     core = B.arc_core("gemmini")
     assert core.num_state_bytes > 0                 # a real RTL model loaded from mlc's arc .so
     assert core.manifest_port_names()               # named input/output ports discovered from the RTL
+
+
+# --------------------------------------------------------- FINE behavioural role classification (pure)
+# The feature-vector -> fine ISA name mapping is a pure function of MEASURED behaviour (no arc, no mlc):
+# an RTL change that altered a funct's behaviour would change the derived name and trip the cross-check.
+
+def test_classify_fine_role_compute_cluster_split_by_accumulator_and_weight_flip():
+    # writes the accumulator AND flips the weight double-buffer => uses the freshly preloaded weights
+    assert B._classify_fine_role("compute", {"writes_accumulator": True, "weight_flip": True}) \
+        == ("COMPUTE_PRELOADED", True)
+    # writes the accumulator, NO flip => reuses the stationary weights
+    assert B._classify_fine_role("compute", {"writes_accumulator": True, "weight_flip": False}) \
+        == ("COMPUTE_ACCUMULATE", True)
+    # loads weights, commits no MAC => PRELOAD
+    assert B._classify_fine_role("compute", {"writes_accumulator": False, "loads_weights": True}) \
+        == ("PRELOAD", True)
+
+
+def test_classify_fine_role_load_cluster_split_by_config_id():
+    assert B._classify_fine_role("load", {"config_id": 0}) == ("MVIN", True)
+    assert B._classify_fine_role("load", {"config_id": 1}) == ("MVIN2", True)
+    assert B._classify_fine_role("load", {"config_id": 2}) == ("MVIN3", True)
+    # no config-id resolved => honestly unnamed, not guessed
+    assert B._classify_fine_role("load", {"config_id": None}) == (None, False)
+
+
+def test_classify_fine_role_loop_macros_split_by_fsm_and_take_precedence():
+    # loop FSM tagging positively names the loop macros, over the coarse compute/config bucket
+    assert B._classify_fine_role("config", {"drives_matmul_fsm": True}) == ("LOOP_WS", True)
+    assert B._classify_fine_role("compute", {"drives_conv_fsm": True}) == ("LOOP_CONV", True)
+
+
+def test_classify_fine_role_coarse_grounded_fallbacks_are_flagged_not_fine_derived():
+    assert B._classify_fine_role("store", {}) == ("MVOUT", False)
+    assert B._classify_fine_role("barrier", {}) == ("FLUSH", False)
+    assert B._classify_fine_role("config", {}) == ("CONFIG", False)
+
+
+@pytest.mark.skipif(not _MLC_OK or not B.arc_available("gemmini"),
+                    reason="mlc / prebuilt arc model not available for the example target")
+def test_fine_roles_behaviourally_reproduce_the_hand_semantic_class():
+    """END-TO-END on the arc: derive the FINE roles, then assert every hand-declared semantic_class NAME is
+    reproduced by the RTL behaviour (fine cross-check empty). This is what makes the manifest names provably
+    RTL-behaviour-grounded — COMPUTE_PRELOADED vs _ACCUMULATE, MVIN vs MVIN2/3, LOOP_WS vs LOOP_CONV are all
+    distinguished by measured effect, not by the header alias."""
+    rec = B.derive_fine_roles("gemmini")
+    fine = rec["fine_roles"]
+    # the fine cross-check must find NO disagreement (each declared name == its derived fine behaviour)
+    assert B.crosscheck_semantic_class_fine("gemmini") == []
+    # the four collapsed distinctions are behaviourally fine-derived (not coarse fallbacks)
+    for code in ("2", "4", "5", "6", "8", "14", "15"):
+        assert rec["fine_derived"][code] is True
+    assert fine["4"] == "COMPUTE_PRELOADED" and fine["5"] == "COMPUTE_ACCUMULATE" and fine["6"] == "PRELOAD"
+    assert fine["2"] == "MVIN" and fine["1"] == "MVIN2" and fine["14"] == "MVIN3"
+    assert fine["8"] == "LOOP_WS" and fine["15"] == "LOOP_CONV"
+    # and the fine_roles() cache reader round-trips the derived map
+    assert B.fine_roles("gemmini")["roles"][4] == "COMPUTE_PRELOADED"
