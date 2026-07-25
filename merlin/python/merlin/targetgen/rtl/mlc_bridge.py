@@ -828,17 +828,25 @@ def render_fact_bundle(target: str, bundle: dict | None = None) -> str:
     stamped with its provenance, and an ungrounded field is stated as unavailable, never invented."""
     b = bundle or target_fact_bundle(target)
     f = b["fields"]
-    lo = f["legal_opcodes"]["value"]
+    # Robust to non-systolic bundle shapes: a simt bundle (mlc_bridge._simt_fact_bundle) has no
+    # legal_opcodes/mesh_dim/capacities keys, so a missing OR underived field renders as "unavailable"
+    # rather than raising. Gemmini (systolic) has all three present -> byte-identical brief.
+    # TODO(simt-render): a dedicated SIMT/vector renderer so a simt target's brief surfaces its
+    # registers/shared-memory/fp-datapath facts instead of this honest-degraded all-"unavailable" line.
+    lo_f = f.get("legal_opcodes") or {}
+    md_f = f.get("mesh_dim") or {}
+    cap_f = f.get("capacities") or {}
+    lo = lo_f.get("value")
     lines = [f"# Target ISA facts: {b['target']}",
              f"_Derived by {b['method']}. {b['n_derived']}/4 fields grounded; ungrounded = unavailable, "
              f"not guessed._", ""]
-    if f["legal_opcodes"]["derived"]:
+    if lo_f.get("derived") and lo is not None:
         lines += [f"- **Legal opcodes** ({len(lo)}): `{lo}`",
-                  f"  - source: {f['legal_opcodes']['source']}"]
+                  f"  - source: {lo_f.get('source')}"]
     else:
         lines.append("- **Legal opcodes**: unavailable (no decoder signal / no HW dialect for this target)")
-    lines.append(f"- **Mesh DIM**: {f['mesh_dim']['value'] if f['mesh_dim']['derived'] else 'unavailable'}")
-    caps = f["capacities"]["value"] if f["capacities"]["derived"] else None
+    lines.append(f"- **Mesh DIM**: {md_f['value'] if md_f.get('derived') else 'unavailable'}")
+    caps = cap_f.get("value") if cap_f.get("derived") else None
     if caps:
         lines.append(f"- **On-chip capacity (bytes)**: operand={caps.get('operand_bytes')}, "
                      f"accumulator={caps.get('accumulator_bytes')}")
