@@ -111,10 +111,31 @@ def mlc_arc_adapter(target: str) -> Callable:
     return run
 
 
+def _endpoint_of(target: str) -> tuple[str | None, str | None]:
+    """(endpoint_kind, model_ext) from the target's contract, best-effort (None,None if no contract).
+    Lets ``oracle_adapters`` self-route without threading manifest fields through every caller."""
+    try:
+        from .target_experiment import load_capability_manifest
+        m = load_capability_manifest(target)
+        model_ext = (m.contract.get("runner") or {}).get("model_ext") \
+            or (m.contract.get("toolchain") or {}).get("model")
+        return m.endpoint_kind, model_ext
+    except Exception:  # noqa: BLE001 — no contract / not resolvable -> fall back to the arc default
+        return None, None
+
+
 def oracle_adapters(target: str = "gemmini", sim_via: str | None = None) -> dict[str, Callable]:
     """The oracle adapters per tier for a target. The mlc ARC model is the DEFAULT RTL tier (works for
     ANY mlc target, no bespoke sim); a target that DECLARES a bespoke sim (``sim_via``) additionally gets
-    its higher-fidelity sim tiers (chipyard -> spike L2 / verilator L3), preserving the gemmini path."""
+    its higher-fidelity sim tiers (chipyard -> spike L2 / verilator L3), preserving the gemmini path.
+
+    A self-hosted-ISA target (``endpoint_kind == external_backend``, e.g. atlas) is graded by the generic
+    PROGRAM oracle (assemble the emitted kernel via the target's own assembler -> its mlc cosim) instead of
+    the command_buffer arc path — routed from the contract, no target-name branch."""
+    endpoint_kind, model_ext = _endpoint_of(target)
+    if endpoint_kind == "external_backend":
+        from .program_oracle import program_oracle_adapter
+        return {"L3": program_oracle_adapter(target, model_ext=model_ext or "npu_model")}
     adapters: dict[str, Callable] = {"L3": mlc_arc_adapter(target)}   # arc default (RTL-derived)
     if sim_via == "chipyard":                                         # optional bespoke sim (gemmini)
         adapters["L2"] = _spike_verilator_adapter("spike")
