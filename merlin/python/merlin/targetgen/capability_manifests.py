@@ -178,6 +178,15 @@ def atlas_manifest() -> dict[str, Any]:
                       "opcode set (arc_available=True). NOT RTL-certified; mesh/dtype facts from the "
                       "generator config, not silicon.",
         "features": ["systolic_array", "fp8_mxu", "microscaling", "bf16_accumulate"],
+        # atlas is a SELF-HOSTED ISA core (its own opcodes + PC + IMEM — mlc CIRCT discovery finds a
+        # 42-entry legal opcode set with NO RoCC funct_decode_table; the npu_model/specir ISA confirms
+        # vmatpush/vmatmul/vmatpop/vload/vstore). Its deliverable is an assembled program, NOT a RoCC
+        # ``.insn`` host stream (gemmini) nor an ISA-less command buffer (OPU) — so the endpoint is
+        # ``external_backend`` (emit a ``kernel.S`` an external assembler builds), overriding the systolic
+        # family's inline_asm_insn default. The program oracle (capsule_runner.program_oracle) assembles it
+        # via npu_model's OWN assembler (``model_ext``) and runs the target's mlc arc cosim.
+        "endpoint_kind": "external_backend",
+        "runner": {"model_ext": "npu_model", "fourth_output_name": "kernel.S"},
         "capabilities": {"ops": ["matmul"], "mesh": {"rows": 32, "cols": 32}},
         "memory_model": {"resident": True, "accumulators": True, "block_scale_memory": True},
         "compiler_obligations": ["must_tile_to_mesh_shape", "must_supply_e8m0_block_scales"],
