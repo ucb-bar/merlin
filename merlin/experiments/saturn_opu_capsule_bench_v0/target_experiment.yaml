@@ -1,0 +1,35 @@
+# Declarative per-target experiment SETUP for SATURN_OPU (the Saturn OuterProductUnit spatial tensor
+# tile) — a NON-SYSTOLIC, ISA-less accelerator: a cluster x cell grid of accumulator cells driven by a
+# COMMAND BUFFER over one-hot op ports (macc / mvin / shift), with int8 and fp8 e4m3/e5m2 datapaths. It
+# exercises the SPATIAL fact family (merlin.targetgen.rtl.spatial_introspect) and the command_buffer
+# codegen endpoint — the ladder's generality for an accelerator CLASS that has NO RoCC/.insn command ISA
+# at all (contrast the systolic MXUs and the SIMT core, which are both .insn+CSR).
+#
+# STATUS: render-only prototype (requires_human_review). The capability manifest and the agent task
+# brief render end-to-end from the real OPU RTL facts, but the target is NOT yet runnable — the OPU
+# command-buffer codegen backend, the arc-cosim oracle adapter (grader), and an OPU-shaped outer-product
+# capsule corpus are TODO. Onboarding proof: {RTL facts + a generated contract + this descriptor} -> a
+# correct spatial/command_buffer brief, with ZERO target-specific code in the core generators.
+#
+# The capability contract is GENERATED (regenerable), not hand-authored: spatial_introspect extracts the
+# tile geometry / MRF depth / int8+fp8 datapaths from the OuterProductUnit state manifest + hw.mlir, and
+# capability_manifests.derive_manifest grounds them onto the small residual (manifest_residual.yaml).
+target: saturn_opu_mxv256d128
+
+rtl:
+  via: mlc            # facts via spatial_introspect (OuterProductUnit state manifest); RoCC funct discovery is N/A
+
+hardware_spec:
+  target_contract: out/artifacts/targets/saturn_opu_oot/contracts/target_contract.yaml
+
+# The generic op-capsule corpus (a matmul golden is op-derived, target-neutral). An OPU outer-product
+# capsule set is a TODO sibling once the command-buffer codegen + arc oracle adapter are wired.
+capsule_corpus: merlin/contract/capsules/isa
+
+# The OPU's RTL oracle is the mlc arc OuterProductUnit cosim (OpuCosim), NOT spike/verilator or the
+# systolic arc MXU command-buffer model. sim_via names the INTENDED adapter (TODO: wire the OpuCosim grader).
+toolchain:
+  sim_via: opu_cosim
+
+answer_surfaces:
+  prior_backends: []

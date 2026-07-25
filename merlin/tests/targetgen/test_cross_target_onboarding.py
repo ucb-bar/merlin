@@ -12,10 +12,12 @@ import pytest
 from merlin.common.paths import repo_root
 from merlin.targetgen.target_experiment import load_target_experiment, load_capability_manifest
 from merlin.targetgen.runner_config import runner_config_from_manifest
-from merlin.targetgen.generate_prompt import prompt_slots
+from merlin.targetgen.generate_prompt import prompt_slots, render_prompt
 from merlin.targetgen.generate_bundles import generate_bundles
 
 _RAD_DESC = "merlin/experiments/radiance_capsule_bench_v0/target_experiment.yaml"
+_SATURN_DESC = "merlin/experiments/saturn_opu_capsule_bench_v0/target_experiment.yaml"
+_SATURN_RESID = "merlin/experiments/saturn_opu_capsule_bench_v0/manifest_residual.yaml"
 
 
 def _load_radiance(monkeypatch):
@@ -25,6 +27,39 @@ def _load_radiance(monkeypatch):
         return load_target_experiment(_RAD_DESC), load_capability_manifest("radiance")
     except Exception as e:  # noqa: BLE001
         pytest.skip(f"radiance OOT target not resolvable in this checkout: {e}")
+
+
+def test_saturn_opu_onboards_end_to_end_as_command_buffer_spatial_target(monkeypatch, tmp_path):
+    # A SPATIAL (OuterProductUnit) target — NON-systolic and ISA-LESS (command_buffer, not RoCC .insn) —
+    # onboards from {RTL facts + a GENERATED contract + a descriptor} with zero target-specific core code:
+    # the analog of the radiance proof for an accelerator class with no command ISA at all. Gated on the
+    # OPU arc artifacts (skip when absent); the contract is derived, never hand-authored.
+    import yaml
+    from merlin.targetgen import capability_manifests as cm
+    from merlin.common.yaml import write_yaml
+    try:
+        from merlin.targetgen.rtl import spatial_introspect as si
+        facts = si.build_fact_bundle("saturn_opu_mxv256d128")
+    except Exception as e:  # noqa: BLE001
+        pytest.skip(f"saturn_opu OPU facts not available in this checkout: {e}")
+    descriptor = yaml.safe_load(open(_SATURN_DESC))
+    residual = yaml.safe_load(open(_SATURN_RESID))
+    manifest = cm.derive_manifest(descriptor, facts, residual=residual)
+    # FACTS grounded onto the residual: multi-format datapaths + the command_buffer endpoint
+    assert manifest["endpoint_kind"] == "command_buffer"
+    assert manifest["compute_units"][0]["dtypes"] == ["int8", "fp8_e4m3", "fp8_e5m2"]
+    assert "encoding" not in manifest                       # no RoCC funct decode
+    # generate the OOT contract into a tmp target path + discover it (radiance-style MERLIN_TARGET_PATH)
+    write_yaml(tmp_path / "saturn_opu_oot" / "contracts" / "target_contract.yaml", manifest,
+               header="test-generated saturn_opu contract")
+    monkeypatch.setenv("MERLIN_TARGET_PATH", str(tmp_path))
+    te = load_target_experiment(_SATURN_DESC)
+    m = load_capability_manifest("saturn_opu_mxv256d128")
+    assert m.kind == "spatial" and m.endpoint_kind == "command_buffer" and m.encoding_required is False
+    p = render_prompt(te, m, "full", "raw_baseline").lower()
+    assert "command buffer" in p and "outer-product" in p          # spatial/command-buffer framing
+    assert "rocc" not in p and "gemmini" not in p                  # no systolic/RoCC leakage
+    assert "emitted module defines" not in p                       # not a false .insn-module claim
 
 
 def test_radiance_onboards_end_to_end_from_manifest(monkeypatch):
