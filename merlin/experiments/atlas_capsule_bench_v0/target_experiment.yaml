@@ -9,8 +9,17 @@ target: atlas
 rtl:
   via: mlc            # ISA/memory/DIM DERIVED from atlas's RTL via mlc discovery
 
-# atlas exposes its ISA through mlc discovery (no separate header files), so hardware_spec is minimal.
-hardware_spec: {}
+# The shared hardware spec given to ALL arms — a constant input (a correct backend needs the target's
+# defined ISA), NOT Merlin assistance. Repo-root-relative bundle-convention path strings: `experiments/...`
+# resolves under merlin/, so these point at the curated Atlas bring-up set below. This lets the descriptor
+# be the single source of truth the bundle-consistency check compares against. The cycle-accurate FACTS
+# (exact encodings, DIM, memory map) are still DERIVED from the RTL by mlc — the ISA reference here is
+# orientation material (the green card + the model's authoritative ISA definition), not a merlin ISA.
+hardware_spec:
+  isa_headers:
+    - experiments/atlas_capsule_bench_v0/contracts/hwbringup_atlas_v0/isa_include/atlas_isa_green_card.md
+    - experiments/atlas_capsule_bench_v0/contracts/hwbringup_atlas_v0/isa_include/isa_definition.py
+  hwbringup_set: experiments/atlas_capsule_bench_v0/contracts/hwbringup_atlas_v0
 
 # The generic op-capsule corpus (a matmul is the same op on any accelerator; goldens are op-derived).
 capsule_corpus: merlin/contract/capsules/isa
