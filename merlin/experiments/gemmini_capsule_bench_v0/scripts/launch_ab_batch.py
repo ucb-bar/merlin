@@ -45,6 +45,17 @@ ARMS = {
 }
 
 
+def _sim_via() -> str:
+    """The target's declared bespoke sim (toolchain.sim_via) from the active descriptor — "" (arc-only)
+    for atlas/npu_model/radiance/saturn, "chipyard" for gemmini. Drives the verilator-timing preflight."""
+    import yaml
+    desc = C.EXP / "target_experiment.yaml"       # C.EXP honors MERLIN_TARGET_EXPERIMENT
+    if desc.is_file():
+        d = yaml.safe_load(desc.read_text()) or {}
+        return ((d.get("toolchain") or {}).get("sim_via") or "").strip()
+    return ""
+
+
 def _run_id(arm: str, tag: str) -> str:
     return f"{ARMS[arm][2]}_{tag}"
 
@@ -213,7 +224,12 @@ def main(argv=None):
     # HARD pre-flight: verilator timing must be FRESH (readiness_check measured it on a known-good backend
     # AFTER the current sim binary was built). This is the abc7 safeguard — never launch a run whose
     # verilator timeout/availability was never actually verified. (Skip for --sandbox none legacy.)
-    if a.sandbox == "bwrap":
+    # It is target-conditional: the freshness gate guards a chipyard verilator sim, so a target whose RTL
+    # tier is the mlc arc model (sim_via != "chipyard": atlas/npu_model, radiance, saturn …) has no
+    # verilator binary to time against — the gate is N/A and would spuriously refuse an otherwise-ready run.
+    if a.sandbox == "bwrap" and _sim_via() != "chipyard":
+        print(f"[pre-flight] verilator-timing gate N/A (sim_via={_sim_via()!r}; RTL tier is the mlc arc model)")
+    elif a.sandbox == "bwrap":
         timing = SCRIPTS / ".oracle_timing.json"
         sim = Path("/path/to/chipyard/sims/verilator/simulator-chipyard.harness-GemminiRocketConfig")
         if not timing.is_file():

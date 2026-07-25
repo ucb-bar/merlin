@@ -158,8 +158,12 @@ def _load_capsule(name: str, index: dict[str, Path]) -> dict | None:
 
 
 def screen_run(run_capsule_dir: Path, facts_rec: dict, index: dict[str, Path],
-               fc: str | None, write: bool = False) -> dict | None:
-    """Run the full RTL-check suite (FileCheck dialect+trace + Python numeric screen) on one run dir."""
+               fc: str | None, write: bool = False, target: str = "gemmini") -> dict | None:
+    """Run the full RTL-check suite (FileCheck dialect+trace + Python numeric screen) on one run dir.
+
+    ``target`` selects the check family: a RoCC target (gemmini) gets the dialect+trace FileCheck; a
+    non-RoCC target (atlas/npu_model — no ``funct_decode_table``) drops those in ``compile_checks`` and
+    the verdict rides the target-agnostic Python numeric screen. Defaults to gemmini (byte-identical)."""
     gen = run_capsule_dir / "generated"
     trace_p = gen / "instruction_trace.json"
     dialect_p = gen / "lowered.target.mlir"
@@ -167,7 +171,7 @@ def screen_run(run_capsule_dir: Path, facts_rec: dict, index: dict[str, Path],
         return None
     trace = json.loads(trace_p.read_text())
     capsule = _load_capsule(_capsule_name_for(run_capsule_dir), index)
-    compiled = compiled_checks(facts_rec, capsule or {})
+    compiled = compiled_checks(facts_rec, capsule or {}, target)
     res: dict[str, Any] = {"capsule": (capsule or {}).get("name") or run_capsule_dir.name,
                            "filecheck": {}, "screen": None}
 

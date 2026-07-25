@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 
 import qa_check as _base  # the real, untouched QA gate
+import _common as C        # the active target (MERLIN_TARGET_EXPERIMENT-aware): gemmini / atlas / …
 
 import sys
 _PKG = Path(__file__).resolve().parents[4] / "merlin" / "python"
@@ -47,15 +48,20 @@ def _redact_rtl(r: dict) -> dict:
 def _rtl_block(runs_root) -> list[dict]:
     # RTL facts are the regenerated CIRCT artifact now (RUN._FACTS was retired in the facts-as-artifact
     # refactor); load_facts regenerates/reads it on demand. Same full-record shape screen_run expects.
-    facts = RUN.load_facts("gemmini")
+    # TARGET-parameterized (C.TARGET honors MERLIN_TARGET_EXPERIMENT): a RoCC target (gemmini) gets the
+    # dialect+trace FileCheck; a non-RoCC target (atlas — no funct_decode_table) drops those in
+    # compile_checks and the advisory rides the target-agnostic Python numeric screen. Never gemmini facts
+    # applied to another target's emitted MLIR.
+    target = C.TARGET
+    facts = RUN.load_facts(target)
     index = RUN._capsule_index()
     fc = RUN.find_filecheck()
-    bench = Path(runs_root) / "runs" / "gemmini-capsule-bench"
+    bench = Path(runs_root) / "runs" / f"{target}-capsule-bench"
     out = []
     if bench.is_dir():
         dirs = sorted({p.parent.parent for p in bench.glob("*/generated/instruction_trace.json")})
         for d in dirs:
-            r = RUN.screen_run(d, facts, index, fc, write=True)  # also writes rtl_checks.json sidecar
+            r = RUN.screen_run(d, facts, index, fc, write=True, target=target)  # writes rtl_checks.json
             if r:
                 out.append(_redact_rtl(r))
     return out
