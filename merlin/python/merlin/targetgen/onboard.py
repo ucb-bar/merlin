@@ -118,8 +118,12 @@ def _ground_rtl(te: TargetExperiment) -> list[str]:
     if not ok:
         notes.append(f"mlc unavailable ({why}) — proceeding from the descriptor; RTL-derived facts absent.")
     else:
-        bundle = _mlc.target_fact_bundle(te.target)
-        notes.append(f"mlc grounds {bundle['n_derived']}/4 static RTL facts for {te.target!r} "
+        # KIND-routed fact extraction: systolic/vector/scalar -> the CIRCT static bundle (unchanged for
+        # gemmini), simt -> muon, spatial -> the OuterProductUnit state-manifest introspect. The default
+        # (no kind resolved for a freshly-onboarding target) is the systolic static path — same as before.
+        bundle = _mlc.fact_bundle_for(te.target)
+        notes.append(f"mlc grounds {bundle['n_derived']}/{len(bundle['fields'])} static RTL facts for "
+                     f"{te.target!r} "
                      f"({'arc model present' if _mlc.arc_available(te.target) else 'no arc model — SIMT/prototype'}).")
     return notes
 

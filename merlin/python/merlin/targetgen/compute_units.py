@@ -27,7 +27,10 @@ from typing import Any
 from merlin.common import quant_formats as qf
 
 #: Coarse compute-unit kinds (aligned with runtime.backends.base.TargetClass at the silicon level).
-KINDS: frozenset[str] = frozenset({"systolic", "simt", "vector", "scalar"})
+#: ``spatial`` is the non-systolic spatial tensor tile (an OuterProductUnit-style grid of accumulator
+#: cells that reduces via rank-1 outer-product accumulate, not a stationary-weight systolic wavefront) —
+#: NPU-class silicon like ``systolic`` but a distinct datapath, so it carries its own fact family.
+KINDS: frozenset[str] = frozenset({"systolic", "simt", "vector", "scalar", "spatial"})
 
 
 @dataclass(frozen=True)

@@ -113,6 +113,25 @@ def core_hw_mlir(target: str) -> Path | None:
     return next((p for p in cands if p.exists() and ".generic." not in p.name), None)
 
 
+def opu_artifact_paths(target: str) -> dict | None:
+    """Resolved ``{hw, man, so}`` artifact paths for a SPATIAL/OPU target via mlc's per-target
+    fingerprint map — which knows the two-level ``runs/circt-arc/<family>/<config>/outputs`` layout the
+    OuterProductUnit uses (e.g. ``saturn_opu/mxv256d128``), UNLIKE the flat one-level layout
+    :func:`core_hw_mlir` assumes. Absolute paths under the mlc dir. None when mlc is not resolvable or
+    the target is not a known mlc arc target — an honest fallback, never a guessed path.
+
+    Only mlc's lightweight ``discover.fingerprint`` is imported (pure pathlib; no circt binary), so OPU
+    fact extraction works even when the full ``mlc_available`` gate (circt-opt built) is not met."""
+    d = mlc_dir()
+    if d is None:
+        return None
+    try:
+        from mlc.discover.fingerprint import artifact_paths
+        return {k: Path(v) for k, v in artifact_paths(target, base=d).items()}
+    except Exception:  # noqa: BLE001 — unknown target / mlc layout skew ⇒ honest unavailable
+        return None
+
+
 def discover_legal_opcodes(target: str, *, opcode_width: int | None = None) -> dict:
     """Derive the legal command-opcode set the RTL DECODER matches, for ANY target — via mlc's
     ``comb.icmp eq`` fan-out over the target's core HW dialect. The ISA the silicon implements, not a
@@ -826,6 +845,102 @@ def render_fact_bundle(target: str, bundle: dict | None = None) -> str:
     else:
         lines.append("- **On-chip capacity**: unavailable")
     return "\n".join(lines) + "\n"
+
+
+# -------------------------------------------------------------- SPATIAL tensor-tile (OPU) fact bundle
+# The spatial siblings of target_fact_bundle / render_fact_bundle. The systolic path (target_fact_bundle
+# above) reads the RoCC decoder + mesh DIM; a spatial tensor tile (Saturn OuterProductUnit) has NO RoCC
+# funct decode and its geometry is a cluster x cell tile that discover_mesh_dim mis-derives — so it gets
+# its own structural extractor (merlin.targetgen.rtl.spatial_introspect), delegated to here.
+
+# TODO(T6): route generate_prompt.py by kind through fact_bundle_for/render_* too (it still calls
+# target_fact_bundle+render_fact_bundle directly at generate_prompt.py:54-64). Deferred as a 1-line
+# follow-up so a possible live prompt run is untouched here; the default gemmini path is unchanged.
+
+def spatial_fact_bundle(target: str) -> dict:
+    """The STATIC, provenance-tagged SPATIAL tensor-tile fact bundle for ``target`` (an OPU) — no model
+    run, no arc probe. Delegates to :func:`spatial_introspect.build_fact_bundle`. Same ``{target, method,
+    fields, n_derived}`` shape as :func:`target_fact_bundle`, with fields tile_dim/mrf_depth/
+    element_widths/dtypes/fma_latency/op_categories/accum_kind."""
+    from . import spatial_introspect
+    return spatial_introspect.build_fact_bundle(target)
+
+
+def render_spatial_fact_bundle(target: str, bundle: dict | None = None) -> str:
+    """Render :func:`spatial_fact_bundle` as an agent-facing spatial-tile brief (Markdown). Sibling of
+    :func:`render_fact_bundle`."""
+    from . import spatial_introspect
+    return spatial_introspect.render_fact_bundle(target, bundle)
+
+
+# mlc arc targets merlin has no committed capability manifest for yet (their facts come from the arc
+# artifacts, not an in-tree contract): map target id -> compute-unit kind so fact_bundle_for can route
+# them by KIND without a per-target branch in the dispatch itself. Additive; never consulted for a
+# target that has a manifest (that wins).
+_ARC_TARGET_KINDS: dict[str, str] = {
+    "saturn_opu_mxv256d128": "spatial",
+    "saturn_opu_v128d64": "spatial",
+}
+
+
+def _resolve_kind(target: str) -> str | None:
+    """The compute-unit ``kind`` for ``target``: its capability manifest's kind when one is committed/
+    regenerated, else the known arc-target map, else None (caller defaults to the systolic static path).
+    Never fabricates a kind."""
+    try:
+        from ..target_experiment import load_capability_manifest
+        return load_capability_manifest(target).kind
+    except Exception:  # noqa: BLE001 — no manifest yet (fresh/arc-only target) ⇒ fall through
+        return _ARC_TARGET_KINDS.get(target)
+
+
+def fact_bundle_for(target: str) -> dict:
+    """KIND-routed RTL fact bundle dispatch — the seam that keeps fact extraction target-name-free.
+
+    Resolves ``target``'s compute-unit kind and routes to the fact-extraction family named by that kind's
+    :class:`~merlin.targetgen.families.FamilyProfile.fact_extractor`:
+
+      * ``circt_static`` (systolic/vector/scalar, and the default when no kind resolves) -> the existing
+        CIRCT HW-dialect static bundle :func:`target_fact_bundle` (BYTE-IDENTICAL to the pre-dispatch
+        path for gemmini and every current caller);
+      * ``simt_config`` (simt) -> the Muon config+FIRRTL introspect, adapted to the bundle shape;
+      * ``opu`` (spatial) -> the OuterProductUnit state-manifest introspect
+        :func:`spatial_fact_bundle`.
+
+    All branches return the uniform ``{target, method, fields, n_derived}`` shape, so consumers
+    (onboarding, prompt rendering) read ``n_derived`` uniformly. A kind that does not resolve degrades to
+    the systolic static path — exactly the pre-existing behavior."""
+    from ..families import family_profile, known_kinds
+    kind = _resolve_kind(target)
+    extractor = family_profile(kind).fact_extractor if kind in known_kinds() else "circt_static"
+    if extractor == "opu":
+        return spatial_fact_bundle(target)
+    if extractor == "simt_config":
+        return _simt_fact_bundle(target)
+    return target_fact_bundle(target)
+
+
+def _simt_fact_bundle(target: str) -> dict:
+    """Adapt the SIMT (Muon) RTL introspect to the uniform fact-bundle shape. Muon is the sole SIMT
+    introspect today (muon_introspect reads RadianceMuonConfig), so a non-muon simt target is reported
+    honestly rather than mis-attributed to muon's geometry."""
+    if target != "muon":
+        fields = {"simt": {"value": None, "derived": False, "source": None,
+                           "evidence": f"no SIMT RTL introspect for {target!r} (muon-specific today)"}}
+        return {"target": target, "method": "SIMT RTL introspect (muon-specific)",
+                "kind": "simt", "fields": fields, "n_derived": 0}
+    from . import muon_introspect
+    facts = muon_introspect.build_facts()
+    f = facts.get("facts", {})
+    present = facts.get("inputs", {}).get("rtl_present", False)
+    fields = {name: {"value": f.get(name), "derived": name in f,
+                     "source": facts.get("generator", {}).get("name"),
+                     "evidence": (f.get(name) or {}).get("evidence")}
+              for name in ("simt", "registers", "shared_memory", "fp_datapath", "isa")}
+    return {"target": target,
+            "method": facts.get("generator", {}).get("method", "muon RTL introspect"),
+            "kind": "simt", "rtl_present": present, "fields": fields,
+            "n_derived": sum(1 for v in fields.values() if v["derived"])}
 
 
 def _main(argv: list[str] | None = None) -> int:
