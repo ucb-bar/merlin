@@ -77,6 +77,10 @@ def prompt_slots(te, manifest) -> dict:
         "target": target,
         "tool_stem": f"{target}-opt",                 # not "gemmini-opt"
         "kernel_symbol": f"{target}_kernel",          # not "gemmini_kernel"
+        # The 4th artifact defines a kernel SYMBOL only when it is a code module (.insn / upstream / an
+        # external kernel); a command_buffer endpoint's artifact IS the command buffer (no module symbol).
+        "emit_symbol_note": ("" if manifest.endpoint_kind == "command_buffer"
+                             else f"; the emitted module defines `{target}_kernel`"),
         "endpoint_kind": manifest.endpoint_kind,
         "endpoint_desc": _ENDPOINT_DESC.get(manifest.endpoint_kind, _ENDPOINT_DESC["inline_asm_insn"]),
         "emit_framing": _emit_framing(bundle),        # concrete opcode/mesh framing, derived from the bundle
@@ -125,7 +129,7 @@ submission/
 - `parse`: `{{tool}} --verify-diagnostics {{input_mlir}}` — parse + verify the `merlin_iface` interface MLIR
 - `lower_interface_to_target`: `{{tool}} --convert-iface-to-{target} {{input_mlir}}` — emit {target}-dialect MLIR
 - `emit_command_buffer`: `{{tool}} --emit-command-buffer={{output_json}} {{input_mlir}}` — schema-valid `command_buffer.json`
-- `emit_target_artifact`: `{{tool}} --convert-iface-to-{target} --emit-target-artifact {{input_mlir}}` — {endpoint_desc}: {emit_framing}; the emitted module defines `{kernel_symbol}`
+- `emit_target_artifact`: `{{tool}} --convert-iface-to-{target} --emit-target-artifact {{input_mlir}}` — {endpoint_desc}: {emit_framing}{emit_symbol_note}
 
 Declare these four commands in `manifest.yaml` exactly as the runner expects — see the OOT backend
 contract (`mlir_oot_backend_contract.yaml`) and the manifest schema (`schemas/manifest.schema.json`).
@@ -206,4 +210,5 @@ def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseli
     return _TEMPLATE.format(target=s["target"], scope_label=scope, corpus_families=families,
                             tool_stem=s["tool_stem"], kernel_symbol=s["kernel_symbol"],
                             endpoint_desc=s["endpoint_desc"], emit_framing=s["emit_framing"],
+                            emit_symbol_note=s["emit_symbol_note"],
                             isa_facts=s["isa_facts"], sim_tier_ladder=ladder, seam_menu=seam_menu)
