@@ -35,6 +35,9 @@ sys.path.insert(0, str(ROOT / "merlin" / "python"))
 # The mlc sibling checkout pins atlas-npu as a submodule; that is the canonical dev location.
 _MLC_DEFAULT = Path("/scratch2/agustin/mvp-lhwir/modeling")
 _ATLAS_NPU_DEFAULT = _MLC_DEFAULT / "third_party" / "atlas-npu"
+# chipyard checkout with atlas wired in + a prebuilt whole-program Verilator sim (the L4 RTL tier).
+_CHIPYARD_ATLAS_DEFAULT = Path("/scratch/agustin/projects/chipyard-atlas")
+_VERILATOR_SIM_REL = "sims/verilator/simulator-chipyard.harness-AtlasRocketConfig"
 # Pinned shas we onboarded against (informational — a newer master is fine, we just record drift).
 _PIN_ATLAS_NPU = "569b7c3"
 _PIN_NPU_MODEL = "11598ec"
@@ -60,6 +63,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--atlas-npu", help="atlas-npu checkout (else $MERLIN_EXT_ATLAS_NPU / mlc sibling default)")
     ap.add_argument("--npu-model", help="npu-model checkout (else $MERLIN_EXT_NPU_MODEL / <atlas-npu>/npu-model)")
+    ap.add_argument("--chipyard-atlas", help="chipyard-atlas checkout w/ the prebuilt Verilator sim (L4 RTL)")
     ap.add_argument("--write-env", action="store_true", help="append MERLIN_EXT_* to this clone's .env")
     ap.add_argument("--sync-npu-model", action="store_true", help="run `uv sync` in the npu-model dir")
     a = ap.parse_args()
@@ -95,6 +99,13 @@ def main() -> int:
     print(f"npu_model pkg [L2 functional] : {'present' if pkg.is_dir() else 'MISSING'} ({pkg})")
     ok = ok and pkg.is_dir()
 
+    # L4 cycle-accurate RTL tier: the prebuilt chipyard whole-program Verilator sim (optional — the eval
+    # can grade on arcilator L3 without it; verilator is the 2nd RTL tier + cross-check).
+    from merlin.common.paths import env as _env
+    chip = Path(a.chipyard_atlas or _env("MERLIN_EXT_CHIPYARD_ATLAS") or _CHIPYARD_ATLAS_DEFAULT)
+    sim = chip / _VERILATOR_SIM_REL
+    print(f"chipyard Verilator [L4 RTL]   : {'built' if sim.is_file() else 'not built'} ({sim})")
+
     if a.write_env:
         envf = ROOT / ".env"
         lines = envf.read_text().splitlines() if envf.is_file() else []
@@ -104,6 +115,8 @@ def main() -> int:
             add.append(f"MERLIN_EXT_ATLAS_NPU={atlas_npu}")
         if "MERLIN_EXT_NPU_MODEL" not in have:
             add.append(f"MERLIN_EXT_NPU_MODEL={npu_model}")
+        if "MERLIN_EXT_CHIPYARD_ATLAS" not in have and chip.is_dir():
+            add.append(f"MERLIN_EXT_CHIPYARD_ATLAS={chip}")
         if add:
             with envf.open("a") as f:
                 f.write("\n# atlas-npu + npu_model (setup_atlas.py)\n" + "\n".join(add) + "\n")
