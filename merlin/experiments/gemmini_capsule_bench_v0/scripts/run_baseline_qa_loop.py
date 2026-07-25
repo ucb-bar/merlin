@@ -465,17 +465,23 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
         pilot += ("\n\n## Language mandate: Python (REQUIRED for this run)\n"
                   "- `manifest.yaml` MUST declare `language: python`; the tool is an executable "
                   "Python `gemmini-opt` exposing the 4 entrypoints. All integrity rules still apply.\n")
+    # Tier wording is TARGET-AGNOSTIC: name the target's own oracle tiers from the manifest, not the
+    # gemmini spike/verilator literals (atlas's loop tier is the arc program-oracle, its checkpoint the
+    # cycle-accurate RTL cosim/Verilator). `_loop`/`_ckpt` are the tier keys the runner resolves.
+    from merlin.targetgen import capsule_runner as CR
+    _loop = min(CR.qa_loop_adapters(_te().target, _te().sim_via) or {"L3": 1})
+    _ckpt = max(CR.qa_checkpoint_adapters(_te().target, _te().sim_via) or {"L3": 1})
     pilot += (
         "\n\n## Scope & grading (READ THIS)\n"
         "- You are graded on the **20 public capsules** (isa A0–A7, layers B0–B4, model_slices C0–C6). "
         "Iterate until ALL of them pass. There are also **5 hidden** capsules you cannot see; aim for a "
         "general, correct dialect so it generalizes to them too (the goal is all 25).\n"
-        "- Each round the QA gate runs **L0+L1+trace+L2 (spike)** and returns a redacted verdict "
-        "(pass/fail + failure plane, never goldens). Use it to fix failures.\n"
-        "- When your public capsules pass spike, the harness then runs the **cycle-accurate L3 "
-        "(verilator) checkpoint**. If any capsule fails only at L3, you get **up to "
-        f"{VERILATOR_ATTEMPTS} verilator attempts** (a fix round between each) to make it cycle-accurate-"
-        "correct. Treat L3 failures as real bugs to fix, not noise.\n")
+        f"- Each round the QA gate runs **L0+L1+trace + your fast RTL oracle tier ({_loop})** and returns "
+        "a redacted verdict (pass/fail + failure plane, never goldens). Use it to fix failures.\n"
+        f"- When your public capsules pass the loop tier, the harness runs the **cycle-accurate RTL "
+        f"checkpoint ({_ckpt})**. If any capsule fails only there, you get **up to {VERILATOR_ATTEMPTS} "
+        "checkpoint attempts** (a fix round between each) to make it cycle-accurate-correct. Treat RTL "
+        "checkpoint failures as real bugs to fix, not noise.\n")
     ws_task = ws / "TASK.md"
     if arm == "merlin_assisted":
         bdir = C.BUNDLES / RX.ARM_BUNDLE[arm]

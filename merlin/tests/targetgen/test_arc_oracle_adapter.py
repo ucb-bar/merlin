@@ -10,9 +10,20 @@ from merlin.targetgen.rtl import mlc_bridge as B
 
 
 def test_arc_is_the_default_tier_for_any_target():
-    ad = CR.oracle_adapters("atlas", sim_via=None)          # a target with NO bespoke sim
+    # arc is the default RTL tier for a target with NO bespoke sim AND a command_buffer/.insn endpoint
+    # (radiance = simt/.insn). A self-hosted-ISA (external_backend) target instead routes to the program
+    # oracle — see test_external_backend_target_uses_the_program_oracle.
+    ad = CR.oracle_adapters("radiance", sim_via=None)
     assert "L3" in ad                                       # arc supplies the RTL tier
     assert ad["L3"].__qualname__.startswith("mlc_arc_adapter")
+
+
+def test_external_backend_target_uses_the_program_oracle():
+    # atlas is a self-hosted ISA core (endpoint_kind=external_backend): its emitted kernel is assembled +
+    # run on the target's cosim by the generic program oracle, NOT the command_buffer arc path.
+    ad = CR.oracle_adapters("atlas", sim_via=None)
+    assert "L3" in ad
+    assert ad["L3"].__module__ == "merlin.targetgen.program_oracle"
 
 
 def test_bespoke_sim_overrides_when_declared():
