@@ -150,6 +150,26 @@ A package is a **vector schedule, not a dialect**:
 In-repo you do not need the clone at all: `merlin-compile` resolves the certified champion for the
 requested datatype automatically. Pass `--package <dir>` to pin a specific one.
 
+**The int8 champion today is `impr_tuned_wholemodel_vf_int8`** (branch
+`stable/impr_tuned_wholemodel_vf_int8`, status `k1_verified`), carrying the single feature
+`accumulator_resident_wholemodel_vf`. It was chosen by measurement, not by hand — a whole-model A/B
+on the K1, min-of-3, every arm accuracy-gated:
+
+| package | recipe | min wall | vs frozen control |
+|---|---|---|---|
+| **`impr_tuned_wholemodel_vf_int8`** | `accumulator_resident_wholemodel_vf` | **147.70 s** | **3.70×** |
+| `hand_v0_int8` | none — the frozen control | 546.73 s | 1.00× |
+| (v3 knob) | `microkernel_v3` + `erase_self_copy` | 1159.23 s | 0.47× |
+
+Note the third row. The v3 micro-kernel is the *faster* recipe on kernel-sized shapes and is
+**2.1× slower than doing nothing** on the whole model. That is why this is an A/B and not a
+preference, and why a package's `status` matters: only `k1_verified` means someone measured it end
+to end on real silicon.
+
+```bash
+.venv/bin/python build_tools/scripts/k1_int8_wholemodel_ab.py --models tiny_llama -n 3
+```
+
 ## 3. Check it on the host first (no board, no simulator, no cross-toolchain)
 
 ```bash
