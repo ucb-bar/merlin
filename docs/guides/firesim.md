@@ -45,8 +45,9 @@ Be exact about this before planning work on it.
 | The dual-Saturn bitstream exists, is registered in hwdb, and is the current `default_hw_config` | **verified** (config files read 2026-07-26) |
 | It closes timing at 25 MHz and the FPGA sustains ~25 MHz effective | **verified** — recipe `fpga_frequency: 25`, heartbeat slope 25.08 MHz |
 | 28.65% LUT utilisation (495k/1.73M), FF 6.7%, BRAM 8.9%, DSP 1.7%, WNS +0.034 ns | reported from the build; **not re-derived here** |
-| Whole models run end-to-end on FireSim through the **Zephyr** path, accuracy-gated | verified in earlier bring-up (scalar backend); see [zephyr](zephyr.md) |
-| The **RVV** backend on a real Saturn tile under Zephyr | **known-unsolved** — hangs with no fault; the scalar backend is the working FireSim path |
+| Whole models run end-to-end on FireSim through the **Zephyr** path, accuracy-gated | **verified**, RVV backend, `small_llama` int8: 1 hart `cos=0.9999999`, 362,862,321 cycles |
+| The **RVV** backend on a real Saturn tile under Zephyr | **verified** (2026-07-26) — see below; this was previously recorded as unsolved |
+| **Multicore** RVV (OpenMP over 2 pinned harts, both Saturn tiles) | **verified** — `cos=0.9999999`, 230,548,059 cycles, **bit-identical** to the 1-hart run, **1.574×** |
 | The **bare-metal** ELF path on FireSim (`build_tools/firesim/firesim_baremetal.ld`) | **not run on the FPGA** — derived from the validated spike layout |
 | Gemmini / capsule-bench L5 FireSim oracle | **not wired** — `heavy_oracles.firesim_adapter` builds the ELF and then reports `OracleUnavailable` rather than fabricate a result |
 | Multi-GB (>2 GB) images booting and loading on the FPGA | links, but **HW-unconfirmed** |
@@ -264,12 +265,21 @@ over-large `ram0` devicetree overlay: at the stock 256 MB a model boots, and the
 `&ram0` override when the model genuinely needs more than the default. Note also
 `zero_out_dram: false` — never rely on DRAM being zero.
 
-**RVV backend hangs with no fault printed.** Two distinct causes, both recorded in the Zephyr
-bring-up. `CONFIG_FPU_SHARING=y` mis-routes a V-illegal-instruction trap to the FP path, which
-retries forever, silently — merlin's generated `prj.conf` sets `=n`. With that fixed, a full-V
-object on a real Saturn tile under Zephyr's eager-V still hangs; that one is unsolved. The
-**scalar** backend is the working FireSim path. (Also `CONFIG_UART_HTIF_BUFFERED_OUTPUT=y` +
-`CONFIG_UART_HTIF_SYSCALL_PRINT=y`: direct-putchar HTIF races under SMP and wedges.)
+**A run hangs with no fault printed.** Several distinct causes, all now identified — none of them
+is "RVV does not work on FireSim", which is what the symptom used to be recorded as.
+
+- `CONFIG_FPU_SHARING=y` mis-routes a V-illegal-instruction trap to the FP path, which retries
+  forever, silently. merlin's generated `prj.conf` sets `=n`.
+- `CONFIG_UART_HTIF_BUFFERED_OUTPUT=y` + `CONFIG_UART_HTIF_SYSCALL_PRINT=y`: direct-putchar HTIF
+  races under SMP and wedges.
+- **Multicore only:** the OpenMP shim used to hang on *nested* parallel regions, and then to
+  corrupt the master's stack once that was fixed. Both are fixed (`bf5052db`); the signature to
+  recognise is a 22.4M-cycle model running past 11.4 **billion** cycles with nothing after the
+  pool banner. If you see that again, build with `MERLIN_OMP_DEBUG_SPLIT=1` — the shim now reports
+  which worker it is waiting on and what that worker last published, and gives up on a wall-clock
+  deadline instead of spinning forever.
+
+The RVV backend is the working FireSim path as of 2026-07-26, single- and multi-hart.
 
 **`KeyError: 'bit_builder_recipe'` at buildbitstream.** The recipe is missing
 `bit_builder_recipe` and/or `metasim_customruntimeconfig`. Copy a working recipe.
