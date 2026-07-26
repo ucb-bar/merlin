@@ -181,14 +181,35 @@ def _targets_root(artifacts_root: str | Path | None) -> Path:
     return base / "targets"
 
 
+def package_dtype(pkg_dir: Path) -> str:
+    """The package's ``dtype_strategy`` knob (``fp32`` when it declares none).
+
+    Needed because a target's packages are NOT interchangeable across datatypes: an int8
+    (W8A8) workload built with an fp32 package's schedule silently emits the wrong datapath.
+    Read from knobs.yaml, which is where the strategy lives (the manifest does not carry it).
+    """
+    try:
+        knobs = load_yaml(pkg_dir / "knobs.yaml")
+    except Exception:  # noqa: BLE001
+        return "fp32"
+    if not isinstance(knobs, dict):
+        return "fp32"
+    return str(knobs.get("dtype_strategy", "fp32"))
+
+
 def select_champion(target: str, *, artifacts_root: str | Path | None = None,
-                    package_id: str | None = None) -> ChampionSelection:
+                    package_id: str | None = None,
+                    dtype_strategy: str | None = None) -> ChampionSelection:
     """Pick the champion package for ``target`` under ``out/artifacts/targets/<target>/``.
 
     If ``package_id`` is given, that package is selected. Otherwise, if exactly one package is
     flagged ``publication.champion: true`` it wins; failing that, packages are ranked
     deterministically: ``rtl_certified`` > ``spike_verified`` > other, then fewer oracle cycles,
     then higher lineage version/depth, then newer timestamp, then package_id.
+
+    ``dtype_strategy`` (e.g. ``"int8_w8a8"``) restricts the candidates to packages carrying that
+    knob. Without it, an int8 caller can be handed the globally best package even when that
+    package is fp32 — which builds a silently wrong datapath rather than failing.
     """
     tdir = _targets_root(artifacts_root) / target
     if not tdir.is_dir():
@@ -207,6 +228,12 @@ def select_champion(target: str, *, artifacts_root: str | Path | None = None,
             if str(man.get("package_id", pkg_dir.name)) == package_id or pkg_dir.name == package_id:
                 return _build_selection(target, pkg_dir, man)
         raise PublishError(f"package_id {package_id!r} not found under {tdir}")
+
+    if dtype_strategy is not None:
+        packages = [(d, m) for d, m in packages if package_dtype(d) == dtype_strategy]
+        if not packages:
+            raise PublishError(
+                f"no {target!r} package with dtype_strategy={dtype_strategy!r} under {tdir}")
 
     champs = [(d, m) for d, m in packages
               if isinstance(m.get("publication"), dict) and m["publication"].get("champion") is True]
@@ -374,6 +401,132 @@ def _readme(sel: ChampionSelection, manifest: dict[str, Any]) -> str:
         "",
     ]
     return "\n".join(lines)
+
+
+def _index_readme(target: str, entries: list[dict[str, Any]]) -> str:
+    """README for the repo's DEFAULT branch — the landing page a fresh clone lands on.
+
+    Every champion publishes to its own ``stable/<package_id>`` branch (and the frozen control
+    to ``baseline``), which means the default branch is otherwise EMPTY: `git clone` gives a
+    repo with nothing in it and no hint that the content is on other branches. That is the
+    whole problem this fixes. The page is a directory, not a package: it names each published
+    branch, what it is for, and how to consume it.
+    """
+    lines = [
+        f"# {target}-mlir",
+        "",
+        f"Merlin's published codegen packages for the **{target}** target.",
+        "",
+        "This repository is **generated** by Merlin's `merlin-target-publish` bridge. It uses "
+        "**branch-per-version** publishing, so *this* branch is only a directory — the packages "
+        "themselves live on the branches below. Check one out to get a standalone, buildable "
+        "out-of-tree tree plus its provenance under `.merlin/`.",
+        "",
+        "## Published packages",
+        "",
+        "| branch | package | dtype | status | what it is |",
+        "|---|---|---|---|---|",
+    ]
+    for e in entries:
+        lines.append(
+            f"| `{e['branch']}` | `{e['package_id']}` | `{e['dtype']}` | `{e['status']}` | "
+            f"{e['role']} |")
+    lines += [
+        "",
+        "## Using a package",
+        "",
+        "```sh",
+        f"git clone -b <branch> <this-repo> {target}-mlir",
+        f"cd {target}-mlir",
+        "```",
+        "",
+    ]
+    if target == "rvv":
+        lines += [
+            "An `rvv` package is a **vector schedule**, not a dialect: the payload is a "
+            "transform-dialect schedule plus the codegen knobs that go with it.",
+            "",
+            "- `payload/schedule.mlir` — the transform-dialect schedule (tiling + vectorization "
+            "of the contractions)",
+            "- `payload/knobs.yaml` — `cflags`, `dtype_strategy`, `op_match` tile/vector sizes, "
+            "`lmul_policy`, and the `expected_instructions` the emitted code must contain",
+            "- `payload/baseline_runs/` — the recorded reference runs",
+            "",
+            "Merlin consumes it through `merlin.rvvgen.registry.load_rvv_package(<dir>)` and "
+            "applies it with `merlin.rvvgen.apply.apply_rvv_package(...)`; the schedule and "
+            "cflags are the only things that change, so the rest of the pipeline is untouched.",
+            "",
+            "The `baseline` branch is the FROZEN, hand-authored, unoptimized control. It exists "
+            "so a speedup claim can be reproduced against the same before/after this repo "
+            "published, not against a moving target.",
+            "",
+        ]
+    lines += [
+        "## Provenance",
+        "",
+        "Each commit on a package branch is one promotion, and its message embeds the champion "
+        "package id, the internal run id, the Merlin git sha and the certification summary. "
+        "History is the provenance trail; the branch tip is the current champion.",
+        "",
+        f"Generated from Merlin `{git_sha7()}`.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def index_entries(target: str, *, artifacts_root: str | Path | None = None
+                  ) -> list[dict[str, Any]]:
+    """Describe every package that WOULD be published for ``target``, for the landing page.
+
+    Derived from the same selection/branch rules the publish path uses, so the index cannot
+    drift from what is actually on the remote.
+    """
+    tdir = _targets_root(artifacts_root) / target
+    out: list[dict[str, Any]] = []
+    for man_path in sorted(tdir.glob("*/manifest.yaml")):
+        man = load_yaml(man_path)
+        if not isinstance(man, dict):
+            continue
+        sel = _build_selection(target, man_path.parent, man)
+        gate_ok, _ = _check_gate(sel)
+        if not gate_ok:
+            continue          # only certified packages are published, so only they are listed
+        is_base = _is_baseline(sel)
+        out.append({
+            "branch": resolve_branch(sel),
+            "package_id": sel.package_id,
+            "dtype": package_dtype(man_path.parent),
+            "status": sel.status or "unknown",
+            "role": ("frozen unoptimized control (the before/after reference)" if is_base
+                     else "certified champion"),
+        })
+    return sorted(out, key=lambda e: (e["dtype"], e["branch"]))
+
+
+def assemble_index_tree(target: str, dest: str | Path, *,
+                        artifacts_root: str | Path | None = None,
+                        only_branches: "set[str] | None" = None) -> dict[str, Any]:
+    """Assemble the default-branch landing page (README + LICENSE) into ``dest``.
+
+    Deliberately NOT a package tree: the default branch must not look like one champion, or a
+    consumer would build the wrong thing. Reuses the repo's LICENSE so the published repo
+    carries the same terms as Merlin.
+
+    ``only_branches`` restricts the listing to branches that ACTUALLY exist on the remote (the
+    publish path passes what the clone reports). Without it the page would advertise every
+    locally-certified package, including ones never pushed — a fresh clone would then be sent
+    to branches that do not exist, which is worse than the empty default branch this replaces.
+    """
+    dest = Path(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    entries = index_entries(target, artifacts_root=artifacts_root)
+    if only_branches is not None:
+        entries = [e for e in entries if e["branch"] in only_branches]
+    _write(dest / "README.md", _index_readme(target, entries))
+    lic = paths.repo_root() / "LICENSE"
+    if lic.is_file():
+        _write(dest / "LICENSE", lic.read_text(encoding="utf-8"))
+    return {"target": target, "entries": entries, "dest": str(dest)}
 
 
 def _rewrite_build_paths(build: dict[str, Any]) -> dict[str, Any]:
@@ -789,6 +942,75 @@ def _git_publish(remote: str, repo_dir: Path, sel: ChampionSelection, manifest: 
     return commit_sha, tag, False
 
 
+def publish_index(target: str, *, dry_run: bool = True, remote: str | None = None,
+                  config: str | Path | None = None,
+                  artifacts_root: str | Path | None = None,
+                  branch: str = "main", confirm_push: str | None = None) -> dict[str, Any]:
+    """Publish the landing page to the repo's DEFAULT branch.
+
+    Branch-per-version publishing leaves that branch empty, so `git clone` with no `-b` gives a
+    repo containing nothing — the state ucb-bar/rvv-mlir was actually in. This writes a
+    directory page listing the branches that exist ON THE REMOTE (read from the clone, so the
+    page cannot advertise a branch that is not there) and how to consume a package.
+
+    Same safety posture as :func:`publish`: dry-run by default, and a non-local remote needs an
+    explicit ``confirm_push`` fingerprint.
+    """
+    resolved = remote or resolve_remote(target, config=config)
+    stage_root = paths.build_dir() / "publish" / target / f"{utc_stamp()}_index"
+    repo_dir = stage_root / "repo"
+    actions = [f"remote: {resolved}", f"branch: {branch}"]
+
+    clone_dir = stage_root / "clone"
+    remote_branches: set[str] | None = None
+    if not dry_run:
+        if clone_dir.exists():
+            shutil.rmtree(clone_dir)
+        _git(["clone", resolved, str(clone_dir)])
+        remote_branches = {
+            b.strip().removeprefix("origin/")
+            for b in _git(["-C", str(clone_dir), "branch", "-r"], check=False).stdout.split()
+            if b.strip().startswith("origin/") and "->" not in b
+        }
+        actions.append(f"remote branches: {sorted(remote_branches)}")
+
+    info = assemble_index_tree(target, repo_dir, artifacts_root=artifacts_root,
+                               only_branches=remote_branches)
+    actions.append(f"assembled index listing {len(info['entries'])} package(s) at {repo_dir}")
+    res: dict[str, Any] = {"target": target, "remote": resolved, "branch": branch,
+                           "entries": info["entries"], "repo_dir": str(repo_dir),
+                           "dry_run": dry_run, "actions": actions, "noop": False}
+    if dry_run:
+        actions.append("dry-run: nothing cloned, committed or pushed")
+        return res
+
+    fingerprint = _fingerprint(f"{target}-index", _git_sha_full(),
+                               ",".join(e["branch"] for e in info["entries"]))
+    res["fingerprint"] = fingerprint
+    if _needs_push_confirmation(resolved) and confirm_push != fingerprint:
+        actions.append(f"REFUSED push to non-local remote; re-run with --confirm-push {fingerprint}")
+        res["noop"] = True
+        return res
+
+    _checkout_branch(clone_dir, branch)
+    if _head_fingerprint(clone_dir) == fingerprint:
+        actions.append("no-op: remote index already matches")
+        res["noop"] = True
+        return res
+    _sync_tree(clone_dir, repo_dir)
+    _git(["-C", str(clone_dir), "add", "--", "."])
+    _git(["-C", str(clone_dir),
+          "-c", "user.name=merlin-target-publish", "-c", "user.email=publish@merlin.local",
+          "commit", "-m", f"docs({target}): landing page for the published package branches",
+          "-m", (f"Lists the branches present on this remote and how to consume a package.\n"
+                 f"Merlin-Sha: {_git_sha_full()}\n\n"
+                 f"Merlin-Publish-Fingerprint: {fingerprint}\n")])
+    _git(["-C", str(clone_dir), "push", "origin", f"HEAD:refs/heads/{branch}"])
+    res["commit_sha"] = _git(["-C", str(clone_dir), "rev-parse", "HEAD"]).stdout.strip()
+    actions.append(f"pushed {res['commit_sha']} to {branch}")
+    return res
+
+
 # ---------------------------------------------------------------------------- publish
 
 
@@ -971,6 +1193,16 @@ def main(argv: list[str] | None = None) -> int:
     p_prom.add_argument("--artifacts-root")
     p_prom.add_argument("--no-gate", action="store_true")
 
+    p_idx = sub.add_parser("index", help="publish the landing page to the repo's default branch")
+    p_idx.add_argument("--target", required=True)
+    p_idx.add_argument("--remote", help="override the resolved remote")
+    p_idx.add_argument("--branch", default="main", help="default branch to write (default: main)")
+    p_idx.add_argument("--config", help="override the publish.yaml config path")
+    p_idx.add_argument("--artifacts-root")
+    p_idx.add_argument("--dry-run", action="store_true", help="plan only (default)")
+    p_idx.add_argument("--execute", action="store_true", help="actually clone/commit/push")
+    p_idx.add_argument("--confirm-push", help="fingerprint confirming a real push to a non-local remote")
+
     p_ins = sub.add_parser("inspect", help="show the selected champion + plan (no git)")
     p_ins.add_argument("--target", required=True)
     p_ins.add_argument("--champion")
@@ -985,6 +1217,12 @@ def main(argv: list[str] | None = None) -> int:
                           gate=not args.no_gate, package_id=args.champion,
                           artifacts_root=args.artifacts_root, config=args.config,
                           branch=args.branch, confirm_push=args.confirm_push)
+            _print_result(res)
+            return 0
+        if args.cmd == "index":
+            res = publish_index(args.target, dry_run=not args.execute, remote=args.remote,
+                                config=args.config, artifacts_root=args.artifacts_root,
+                                branch=args.branch, confirm_push=args.confirm_push)
             _print_result(res)
             return 0
         if args.cmd == "promote":
