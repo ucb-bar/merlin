@@ -866,6 +866,15 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> di
     out["rel"] = out.get("w8a8_rel", out.get("fp32_rel"))
     out["max_rel"] = out.get("w8a8_max_rel", out.get("fp32_max_rel"))
     out["ok"] = bool(t1 or t2 or legacy or t3)
+    # Which tiers were actually in play, and which one carried the verdict. Without this the
+    # fallback is INVISIBLE: grading a W8A8 run with no `golden_w8a8.npy` silently drops to the
+    # fp32 tier, and the ordinary weight-only-vs-W8A8 gap then reads as a codegen defect. That
+    # exact confusion cost a multi-hour hunt for a TinyLlama int8 "board bug" that did not exist
+    # (the board matched the host W8A8 reference at rel 0.0). Callers that know the run is int8
+    # should treat a missing `w8a8` tier as an incomplete measurement, not a failure.
+    out["tiers"] = sorted(t for t in ("w8a8", "fp32") if f"{t}_cos" in out)
+    out["tier_ok"] = ("w8a8" if t1 else "fp32" if t2 else
+                      "fp32_legacy" if legacy else "fp32_cos_only" if t3 else None)
     return out
 
 

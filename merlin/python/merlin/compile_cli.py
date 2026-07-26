@@ -122,6 +122,16 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
         w8 = bundle / "golden_w8a8.npy"
         if pkg.is_int8 and w8.is_file():
             refs["w8a8"] = np.load(w8)
+        elif pkg.is_int8:
+            # `golden.npy` in an int8 bundle is a WEIGHT-ONLY-int8 reference (int8 weights, fp32
+            # activations); this package computes W8A8. Grading one against the other measures
+            # activation-quantization error, not correctness, and reads as a large cos drop. Say
+            # so rather than letting the run be silently judged by the wrong yardstick.
+            out["reference_warning"] = (
+                f"{bundle.name} has no golden_w8a8.npy — an int8 (W8A8) run graded only against "
+                f"the weight-only golden.npy. A low fp32_cos here is expected quantization "
+                f"divergence, NOT evidence of a defect. Generate the W8A8 reference first.")
+            print(f"[merlin-compile] WARNING: {out['reference_warning']}", file=sys.stderr)
 
     # `host` runs the model through the x86 dispatch runtime (per-kernel JIT via the SAME
     # MLIR lowering, minus the RVV/cross-compile tail). It needs no board, simulator or
