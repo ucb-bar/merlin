@@ -241,11 +241,28 @@ Confirm the elaborated SoC is what you asked for — 4 harts, all with `v` and `
 grep -E "cpu@|riscv,isa" generated-src/chipyard.harness.TestHarness.MultiSaturnV256D128ShuttleConfig/*.dts
 ```
 
-**Scope — read this before pointing it at a model.** A whole 22-layer TinyLlama inference is ~10¹⁰
-cycles; at RTL-simulation speed that is not hours but weeks. Verilator here certifies the multicore
-RVV **mechanism** and small kernels, nothing more. Whole-model functional truth comes from spike
-(§3–§5) and whole-model timing from the K1 (§7). Redirect the sim's stdout through `stdbuf -o0` if
-you want to watch it live; it block-buffers otherwise.
+Measured on this sim — Zephyr SMP booting on 4 harts and running the level-synchronous multicore
+RVV dispatch executor (`samples/merlin_mt_rvv_dispatch`):
+
+```
+Merlin multicore RVV dispatch executor: 3 dispatches over 4 harts (chipyard_riscv64)
+level 0: 2 dispatch(es) done      level 1: 1 dispatch(es) done
+RESULT: PASS (1024/1024 elems correct)
+```
+
+That is the multicore-RVV mechanism certified against cycle-accurate RTL: several V-using threads
+on distinct Saturn tiles, a dependency barrier between levels, and bit-correct results.
+
+**Scope — read this before pointing it at a model.** Booting Zephyr and running those three
+dispatches took ~40 minutes of wall clock. A whole 22-layer TinyLlama inference is ~10¹⁰ cycles;
+at that rate it is not hours but weeks. Verilator here certifies the multicore RVV **mechanism**
+and small kernels, nothing more. Whole-model functional truth comes from spike (§3–§5) and
+whole-model timing from the K1 (§7).
+
+Two practical notes. Redirect the sim's stdout through `stdbuf -o0` to watch it live — it
+block-buffers to a file otherwise, and a run killed by a timeout loses everything it had
+buffered. And do **not** redirect its stdin from `/dev/null`: the harness reads stdin for UART
+and exits immediately on EOF.
 
 ## 7. Speedup — real silicon only
 
