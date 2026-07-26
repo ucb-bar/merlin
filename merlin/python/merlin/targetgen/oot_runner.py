@@ -102,6 +102,37 @@ def load_package(package_dir: str | Path, *, contract: str | Path | None = None)
     return Package(directory=d, manifest=manifest, tool=tool)
 
 
+def usable_cmake() -> str:
+    """The first cmake on PATH that actually RUNS, falling back to known-good locations.
+
+    Sourcing the chipyard/Vitis environment — which the FireSim path requires — prepends
+    Xilinx's bundled toolchain to PATH, and that ships a cmake 3.3.2 linked against a
+    `libidn.so.11` no current distro has. ``shutil.which`` finds it, every configure step then
+    dies with a loader error, and nothing in the message mentions Xilinx or PATH. So probe
+    ``--version`` rather than trusting the first hit, and prefer a system cmake if the winner
+    is broken. Returns "cmake" if nothing works, so the caller still fails with cmake's own
+    error rather than ours.
+    """
+    import os
+    import shutil
+
+    seen: list[str] = []
+    for cand in (shutil.which("cmake"), "/usr/bin/cmake", "/usr/local/bin/cmake"):
+        if not cand or cand in seen or not os.access(cand, os.X_OK):
+            continue
+        seen.append(cand)
+        try:
+            if subprocess.run([cand, "--version"], capture_output=True,
+                              timeout=30).returncode == 0:
+                return cand
+        except (OSError, subprocess.SubprocessError):
+            continue
+    return "cmake"
+
+
+_usable_cmake = usable_cmake
+
+
 def build_package(pkg: Package, *, timeout: int = 1800) -> None:
     """If the manifest declares a build block (C++ packages), run configure + build.
 
@@ -122,12 +153,17 @@ def build_package(pkg: Package, *, timeout: int = 1800) -> None:
              "{mlir_dir}": mlir_dir, "{llvm_dir}": llvm_dir}
     # toolchain locations the manifest may reference by env var. These are TOOLCHAIN paths, not answers —
     # the reference manifest gets the same values via {mlir_dir}/{llvm_dir} placeholders, so this is parity.
-    cmake = shutil.which("cmake") or "cmake"
+    cmake = _usable_cmake()
     env = dict(os.environ)
     env.setdefault("MLIR_DIR", mlir_dir)
     env.setdefault("LLVM_DIR", llvm_dir)
     env.setdefault("CM", cmake)
     env.setdefault("CMAKE", cmake)
+    # A manifest is free to spell the step as a bare `cmake` (the reference ones do), and a
+    # shell-string step can name it anywhere in a pipeline, so exporting $CM is not enough —
+    # put the working cmake's directory FIRST on the child's PATH.
+    if os.path.dirname(cmake) and cmake != shutil.which("cmake"):
+        env["PATH"] = os.path.dirname(cmake) + os.pathsep + env.get("PATH", "")
 
     def _resolve(a: str) -> str:
         for k, v in subst.items():

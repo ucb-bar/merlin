@@ -24,7 +24,13 @@ from merlin.targetgen import publish as pub
 
 
 def _cxx_toolchain_available() -> bool:
-    if not shutil.which("cmake"):
+    # Probe cmake by RUNNING it, not by finding it: sourcing the chipyard/Vitis environment puts
+    # a cmake 3.3.2 on PATH that is linked against a libidn.so.11 no current distro ships, so
+    # shutil.which succeeds and every configure step then dies with a loader error.
+    from merlin.targetgen.oot_runner import usable_cmake
+    if usable_cmake() == "cmake" and not shutil.which("cmake"):
+        return False
+    if subprocess.run([usable_cmake(), "--version"], capture_output=True).returncode != 0:
         return False
     return any(shutil.which(c) for c in ("c++", "g++", "clang++"))
 
