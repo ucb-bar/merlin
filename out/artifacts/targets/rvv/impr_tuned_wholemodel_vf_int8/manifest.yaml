@@ -1,4 +1,3 @@
-# Isolated RVV fork package (rvvgen.fork)
 authoring:
   author: P5b int8 vectorized seed
   generated_by_agent: false
@@ -15,7 +14,25 @@ lineage:
 outputs:
   knobs: knobs.yaml
   schedule: schedule.mlir
+package_id: impr_tuned_wholemodel_vf_int8
+publication:
+  certification: pass
+  certified_by: k1_board
+  certified_by_run: k1_int8_wholemodel_ab_tiny_llama
+  champion: true
+  fingerprint: 2255a08aa53d9c66850bb9d0412a8ae9988e2211389221dfcc6565886b7a3d22
+  measured:
+    attainment_vs_expert: null
+    beam_run_id: k1_int8_wholemodel_ab_tiny_llama
+    expert_wall_ns: null
+    k1_wall_ns: 147700714036
+    noise_margin: 0.026
+    speedup: 3.70157324609645
+    verified_by: promote_champion.verify_champion
+  promoted_at: 20260726T121824Z
+  promoted_by: merlin.rvvgen.promote_champion
 run_id: impr_tuned_wholemodel_vf_int8
 schedule_format: transform_dialect_mlir
-status: spike_verified
+status: k1_verified
 target: rvv
+version: 0
