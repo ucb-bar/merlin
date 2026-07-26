@@ -34,6 +34,27 @@ This guide is the whole path on a fresh machine. It assumes nothing except the b
 > model. **Real silicon** (the SpacemiT K1) is the only oracle that times a whole model on many
 > cores. The guide says which one is in play at every step, and never quotes a speedup from spike.
 
+## Status — read before you rely on this
+
+**Full TinyLlama int8 currently FAILS its accuracy gate on the K1 board.** This is an open
+defect, not a gate artefact, and it is under investigation. What is measured today:
+
+| path | result |
+|---|---|
+| `tiny_llama_int8_full`, **fp32** weight-only, host | **cos = 1.0** (rel 1.5e-5) — bundle, golden and dequant scales are all correct |
+| `tiny_llama_int8_full`, **int8**, host | cos = 0.976 — ordinary W8A8 degradation |
+| `tiny_llama_int8_full`, **int8**, K1 board | **cos = 0.484** — fails |
+| every isolated int8 contraction (weight×act, act×act, batched attention, 50× scale spread, 100× activation outliers) | spike is **bit-identical to host** — the compiled RVV int8 codegen is faithful |
+
+So the fault needs the whole model rather than any single operation, and it is **not** the
+recipe (two different recipes give bit-identical wrong output), **not** the bundle or golden,
+and **not** the isolated int8 kernels.
+
+Everything else in this guide is verified and unaffected: the spike correctness path, the
+multicore images (bit-exact 1 vs 2 vs 4 harts), sustained inference (drift 0.0), and the K1
+scaling curve. `small_llama` int8 passes end to end. Until the above is closed, treat
+whole-model TinyLlama **int8 on the board** as known-bad and use the fp32 path or spike.
+
 ## 0. Prerequisites
 
 Do the base install and `.env` setup in [Getting started](getting_started.md) first, then confirm
