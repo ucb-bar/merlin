@@ -107,3 +107,23 @@ def test_publish_index_refuses_unconfirmed_push_to_github():
     """A non-local remote needs the explicit fingerprint, same as `publish`."""
     assert P._needs_push_confirmation("git@github.com:ucb-bar/rvv-mlir.git")
     assert not P._needs_push_confirmation("file:///tmp/whatever.git")
+
+
+def test_baseline_branch_is_per_datatype():
+    """The frozen controls must not share one branch.
+
+    `_BASELINE_PACKAGE_IDS` holds one control per datatype. Mapping them all to `baseline` made
+    them overwrite each other on publish, so "the" control became whichever went last -- and a
+    speedup claimed against `baseline` could be measured against the wrong datatype's schedule.
+    fp32 keeps the bare historical name so existing published branches stay valid.
+    """
+    from merlin.targetgen import publish as P
+
+    fp32 = P.select_champion("rvv", package_id="hand_v0")
+    int8 = P.select_champion("rvv", package_id="hand_v0_int8")
+    assert P._is_baseline(fp32) and P._is_baseline(int8)
+
+    b32, b8 = P.resolve_branch(fp32), P.resolve_branch(int8)
+    assert b32 == P.BASELINE_BRANCH == "baseline"
+    assert b8 == "baseline-int8_w8a8"
+    assert b32 != b8

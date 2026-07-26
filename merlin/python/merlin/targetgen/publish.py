@@ -306,7 +306,16 @@ def resolve_branch(sel: "ChampionSelection", *, override: str | None = None,
             mapped = per_target.get(sel.package_id)
             if mapped:
                 return str(mapped)
-    return BASELINE_BRANCH if _is_baseline(sel) else f"stable/{sel.package_id}"
+    if not _is_baseline(sel):
+        return f"stable/{sel.package_id}"
+    # The baseline branch is per-DATATYPE. `_BASELINE_PACKAGE_IDS` holds one frozen control per
+    # datatype (hand_v0 for fp32, hand_v0_int8 for int8_w8a8), and mapping them all to the single
+    # `baseline` branch made them overwrite each other: whichever published last became "the"
+    # control, so a speedup claimed against `baseline` could silently be measured against the
+    # wrong datatype's schedule. fp32 keeps the historical bare name so already-published
+    # branches and any external reference to them stay valid.
+    dtype = package_dtype(sel.package_dir)
+    return BASELINE_BRANCH if dtype in ("", "fp32") else f"{BASELINE_BRANCH}-{dtype}"
 
 
 # ---------------------------------------------------------------------------- tree assembly
