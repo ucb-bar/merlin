@@ -222,7 +222,12 @@ def load_capability_manifest(target: str) -> CapabilityManifest:
         tier_sim=dict(runner.get("tier_sim") or {}),
         rtl_tiers=tuple(runner.get("rtl_tiers") or prof.default_rtl_tiers),
         perf_fields=tuple(runner.get("perf_fields") or prof.perf_fields),
-        trace_gate=runner.get("trace_gate", prof.trace_gate),
+        # The RoCC-.insn trace gate applies ONLY to an inline_asm_insn (RoCC) endpoint — it decodes a
+        # host `.insn` stream from lowered.llvm.mlir. A self-hosted-ISA (external_backend, emits kernel.S)
+        # or ISA-less (command_buffer) target has no such stream, so it defaults to no trace gate (unless
+        # the contract explicitly declares one). Keys on the endpoint, never a target name.
+        trace_gate=runner.get("trace_gate",
+                              prof.trace_gate if endpoint == "inline_asm_insn" else None),
         encoding_required=prof.encoding_required,
         encoding=encoding,
         contract=contract)
