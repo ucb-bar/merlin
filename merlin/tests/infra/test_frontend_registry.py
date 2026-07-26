@@ -22,10 +22,18 @@ def test_source_routing_picks_specific_adapter_over_catch_all():
     assert fr.for_source("tiny_llama").NAME == "m2m"
 
 
-def test_gguf_adapter_recognises_but_defers_ingestion():
+def test_gguf_adapter_recognises_and_rejects_a_missing_checkpoint():
+    """GGUF ingest is implemented now, so it must fail LOCALLY on a bad path.
+
+    This test used to assert `NotImplementedError` and went stale when ingest landed. What it
+    caught instead was worse than a stale assertion: ingest shelled out to model2MLIR, whose
+    transformers treated the unresolvable path as a Hub repo id and hit the network, so the
+    suite failed with a HuggingFace 404 inside a CalledProcessError — slow, offline-hostile,
+    and silent about the real mistake (a wrong path).
+    """
     gguf = fr.get_adapter("gguf")
     assert gguf.can_handle("x.gguf") and not gguf.can_handle("tiny_llama")
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(FileNotFoundError, match="GGUF checkpoint not found"):
         gguf.ingest("x.gguf", model="tiny_llama", variant="fp6")
 
 

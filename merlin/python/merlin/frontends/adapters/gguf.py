@@ -86,6 +86,16 @@ def ingest(source: Any, *, model: str, variant: str = "gguf", seq_len: int = 8,
     from merlin.common.artifacts import recaptures_dir
     from merlin.llvmlower import toolchain
 
+    # A GGUF source is always a checkpoint FILE (`can_handle` is a `.gguf` suffix test, and GGUF
+    # has no repo-id form). Check it here rather than in the subprocess: transformers treats an
+    # unresolvable path as a Hub repo id and goes to the network, so a simple typo surfaces as a
+    # HuggingFace 404 wrapped in a CalledProcessError, minutes later and only when online.
+    src = Path(str(source))
+    if not src.is_file():
+        raise FileNotFoundError(
+            f"GGUF checkpoint not found: {src}. ingest() takes a path to a .gguf file "
+            f"(GGUF has no Hub repo-id form) — check the path before re-running.")
+
     py = toolchain.m2m_python()
     if not Path(py).exists():
         raise RuntimeError(f"model2MLIR venv python not found at {py} (set MERLIN_M2M_DIR / venv)")
