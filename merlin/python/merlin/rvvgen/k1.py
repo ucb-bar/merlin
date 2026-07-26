@@ -424,6 +424,7 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
                     inputs_npz: str | Path | None = None,
                     force_scalar: bool | None = None,
                     parallel: bool = False,
+                    parallel_harts: int | None = None,
                     mmap_weights: bool | None = None,
                     kernel_backend: str | None = None,
                     dispatch_timing: bool = False, op_profile: bool = False,
@@ -582,7 +583,18 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     feats = frozenset(getattr(pkg, "compiler_features", []) or []) or None
     if force_scalar is None:
         force_scalar = bool(os.environ.get("MERLIN_K1_FORCE_SCALAR"))
-    if parallel:
+    if parallel_harts:
+        # VECTOR + MULTICORE: the package's RVV schedule with an outer OpenMP-parallel loop
+        # layered under it, so the board runs real RVV on several cores at once. This is the
+        # same lowering the multicore Zephyr image uses, which makes the K1 the honest
+        # PERFORMANCE oracle for it: spike cannot answer that question (it simulates a spinning
+        # hart at full speed), and RTL sim cannot run a whole model. Thread count is chosen at
+        # RUN time via OMP_NUM_THREADS, so one binary yields a whole scaling curve.
+        res = lower_model_file(prepared, work / "lower_vecomp", targets=(), textual=True,
+                               vectorize=True, transform_schedule=pkg.schedule_text,
+                               hoist_static_allocs=False, features=feats,
+                               parallel_harts=parallel_harts)
+    elif parallel:
         # Multicore path: scalar int8 datapath + OpenMP parallel loops (no fixed-width
         # vectorize). Used for the big models (rdt/smolvla) that crash the vectorized lowering
         # AND are too slow single-core — the parallel loops fan across the board's 8 cores.
@@ -687,7 +699,7 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
         base += [str(qd8_obj)]
     if not mmap_weights:
         base += [str(weights_o)]
-    if parallel:
+    if parallel or parallel_harts:
         # Resolve the cross-built __kmpc_* symbols against the static libomp; its LLVM runtime
         # needs the C++/dl deps (see the libomp build note). Order matters: libomp before its deps.
         libomp = K1_OPENMP_DIR / "libomp.a"
@@ -727,6 +739,48 @@ def board_vlenb() -> int | None:
     except Exception:  # noqa: BLE001
         pass
     return None
+
+
+def run_binary_on_k1(model_dir: str | Path, bwork: str | Path, pkg, binary: str | Path, *,
+                     env: dict[str, str] | None = None, timeout: int = 600) -> dict[str, Any]:
+    """Deploy and run an ALREADY-BUILT K1 binary, with an explicit environment.
+
+    Split out of :func:`run_on_k1`'s build+run ladder so a measurement can run the SAME binary
+    repeatedly under different settings — the multicore scaling curve varies only
+    ``OMP_NUM_THREADS``, and rebuilding per point would put a different object under each
+    measurement and make the curve unattributable.
+
+    Takes the board lock around deploy+run only (the cross-compile is CPU-local), matching
+    ``run_on_k1``: concurrent agents can build in parallel while the physical board serializes.
+    """
+    from ..runtime.backends import zephyr_model as zm
+
+    if not K1_HOST:
+        raise K1Error("MERLIN_K1_HOST unset — board unreachable")
+    bwork = Path(bwork)
+    remote = f"/tmp/{Path(model_dir).name}_{pkg.run_id}_envrun_merlin_k1"
+    with board_lock():
+        _run(["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
+              "-o", "StrictHostKeyChecking=no", str(binary), f"{K1_HOST}:{remote}"])
+        marker = bwork / "USE_MMAP_WEIGHTS"
+        wenv, remote_w = "", None
+        if marker.is_file():
+            _ssh(f"mkdir -p {K1_REMOTE_DIR}", timeout=30)
+            remote_w = f"{K1_REMOTE_DIR}/{Path(remote).name}.weights.bin"
+            _run(["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
+                  "-o", "StrictHostKeyChecking=no", marker.read_text().strip(),
+                  f"{K1_HOST}:{remote_w}"])
+            wenv = f"MERLIN_WEIGHTS={remote_w} "
+        envs = "".join(f"{k}={v} " for k, v in (env or {}).items())
+        try:
+            _ssh(f"chmod +x {remote}", timeout=30)
+            proc = _ssh(f"{wenv}{envs}{remote}", timeout=timeout)
+            return zm._parse_console(proc.stdout + proc.stderr, proc.returncode)
+        finally:
+            try:
+                _ssh(f"rm -f {remote}" + (f" {remote_w}" if remote_w else ""), timeout=30)
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 600,

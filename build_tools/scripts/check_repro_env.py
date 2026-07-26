@@ -46,6 +46,11 @@ CAPABILITIES: dict[str, tuple[str, str, list[str]]] = {
     "firesim": ("WS-B", "FireSim job queue (L5)", ["MERLIN_EXT_FIRESIM_QUEUE", "FIRESIM_ROOT"]),
     "zephyr_spike": ("WS-A/C", "Zephyr SW build_app path (whole-model spike compile)",
                      ["ZEPHYR_BASE", "MERLIN_ZEPHYR_SW", "ZEPHYR_SDK_INSTALL_DIR", "MERLIN_CHIPYARD"]),
+    "zephyr_multicore": ("WS-A/C", "multicore RVV Zephyr image (OpenMP shim over pinned harts)",
+                         ["ZEPHYR_BASE", "MERLIN_ZEPHYR_SW", "ZEPHYR_SDK_INSTALL_DIR",
+                          "MERLIN_CHIPYARD"]),
+    "saturn_multicore_verilator": ("WS-A/C", "multicore Saturn-vectors verilator RTL sim",
+                                   ["MERLIN_SATURN_VERILATOR", "MERLIN_CHIPYARD"]),
     "circt_firtool": ("WS-B", "CIRCT firtool + FileCheck (L4 rtlchecks)",
                       ["MERLIN_CHIPYARD", "(firtool/FileCheck on PATH)"]),
     "chia": ("WS-B/D", "chia agentic-loop framework (build/chia-venv)", ["(uv venv build/chia-venv)"]),
@@ -85,6 +90,24 @@ def _probe(key: str) -> tuple[str, str]:
         if key == "zephyr_spike":
             zm = importlib.import_module("merlin.runtime.backends.zephyr_model")
             return ("available" if zm.available() else "unavailable", "")
+        if key == "zephyr_multicore":
+            # Same toolchain as zephyr_spike plus the in-repo OpenMP shim the multicore image
+            # links; spike -pN provides V on every hart, so no extra simulator is needed.
+            zm = importlib.import_module("merlin.runtime.backends.zephyr_model")
+            paths_mod = importlib.import_module("merlin.common.paths")
+            shim = paths_mod.runtime_dir() / "c" / "libomp_zephyr.c"
+            if not shim.is_file():
+                return ("unavailable", f"missing OpenMP shim {shim}")
+            return ("available" if zm.available() else "unavailable", "")
+        if key == "saturn_multicore_verilator":
+            zm = importlib.import_module("merlin.runtime.backends.zephyr_model")
+            sim = zm.verilator_sim()
+            if sim is None:
+                return ("unavailable",
+                        f"no sim for {zm.DEFAULT_SATURN_SIM_CONFIG}; build it with "
+                        f"`make -C $MERLIN_CHIPYARD/sims/verilator "
+                        f"CONFIG={zm.DEFAULT_SATURN_SIM_CONFIG}`")
+            return ("available", str(sim))
         if key == "circt_firtool":
             ft = shutil.which("firtool")
             fc = shutil.which("FileCheck")
