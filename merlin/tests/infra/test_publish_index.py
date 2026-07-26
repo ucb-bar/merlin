@@ -127,3 +127,23 @@ def test_baseline_branch_is_per_datatype():
     assert b32 == P.BASELINE_BRANCH == "baseline"
     assert b8 == "baseline-int8_w8a8"
     assert b32 != b8
+
+
+def test_recertification_republishes_at_the_same_version(tmp_path, monkeypatch):
+    """A stronger certification on an unchanged payload must reach the published repo.
+
+    The no-op used to trigger on the release TAG existing. But the tag names a package
+    *version*, while the fingerprint covers package_id + merlin_sha + cert_run_id -- so
+    re-certifying an unchanged schedule (spike_verified -> k1_verified after a board campaign)
+    produced new provenance at the same version and was silently dropped. The published
+    .merlin/certification.yaml then understated the certification forever.
+    """
+    import inspect
+
+    from merlin.targetgen import publish as P
+
+    src = inspect.getsource(P._git_publish)
+    # no-op is decided by the fingerprint alone ...
+    assert "if branch_existed and _head_fingerprint(clone_dir) == fingerprint:" in src
+    # ... and an already-published tag is never re-pointed (consumers may have pinned it)
+    assert "if tag not in existing_tags:" in src

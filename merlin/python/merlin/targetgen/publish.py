@@ -908,8 +908,16 @@ def _git_publish(remote: str, repo_dir: Path, sel: ChampionSelection, manifest: 
                  fingerprint: str, cert_run: str, stage_root: Path,
                  branch: str) -> tuple[str, str, bool]:
     """Clone the remote, check out ``branch``, replace the tree with the assembled repo, commit +
-    tag, push to ``refs/heads/<branch>``. Idempotent PER BRANCH: a matching branch-tip fingerprint
-    or an existing tag is a no-op. Returns (commit_sha, tag, noop)."""
+    tag, push to ``refs/heads/<branch>``. Idempotent PER BRANCH on the **fingerprint**: a matching
+    branch-tip fingerprint is a no-op. Returns (commit_sha, tag, noop).
+
+    An existing TAG is deliberately not a veto. The tag names a package *version*, but the
+    fingerprint covers ``package_id + merlin_sha + cert_run_id`` — so re-certifying an unchanged
+    payload (``spike_verified`` -> ``k1_verified`` after a board campaign) produces new provenance
+    at the same version. Letting the tag veto that meant the published ``.merlin/certification.yaml``
+    kept the WEAKER status forever, silently understating the certification to every consumer. The
+    branch moves; the existing tag is left exactly where it is, because consumers may have pinned
+    it and rewriting a published tag is worse than not adding one."""
     clone_dir = stage_root / "clone"
     if clone_dir.exists():
         shutil.rmtree(clone_dir)
@@ -922,7 +930,7 @@ def _git_publish(remote: str, repo_dir: Path, sel: ChampionSelection, manifest: 
     existing_tags = set(_git(["-C", str(clone_dir), "tag", "--list"]).stdout.split())
     # per-branch idempotency: the fingerprint is read from THIS branch's tip (not the default HEAD),
     # so publishing the baseline branch never masks a stale champion-branch tip and vice-versa.
-    if branch_existed and (tag in existing_tags or _head_fingerprint(clone_dir) == fingerprint):
+    if branch_existed and _head_fingerprint(clone_dir) == fingerprint:
         head = _git(["-C", str(clone_dir), "rev-parse", "HEAD"], check=False)
         return (head.stdout.strip() or "unknown", tag, True)
 
@@ -945,11 +953,14 @@ def _git_publish(remote: str, repo_dir: Path, sel: ChampionSelection, manifest: 
     _git(["-C", str(clone_dir),
           "-c", "user.name=merlin-target-publish", "-c", "user.email=publish@merlin.local",
           "commit", "-m", subject, "-m", body])
-    # annotated tag (carries the fingerprint; also robust to git configs that force annotation)
-    _git(["-C", str(clone_dir),
-          "-c", "user.name=merlin-target-publish", "-c", "user.email=publish@merlin.local",
-          "tag", "-a", tag, "-m",
-          f"{sel.target} champion {sel.package_id}\nMerlin-Publish-Fingerprint: {fingerprint}\n"])
+    # annotated tag (carries the fingerprint; also robust to git configs that force annotation).
+    # Never re-point an existing tag: a consumer may have pinned it, and this commit is a
+    # re-certification of the SAME version, not a new release.
+    if tag not in existing_tags:
+        _git(["-C", str(clone_dir),
+              "-c", "user.name=merlin-target-publish", "-c", "user.email=publish@merlin.local",
+              "tag", "-a", tag, "-m",
+              f"{sel.target} champion {sel.package_id}\nMerlin-Publish-Fingerprint: {fingerprint}\n"])
     commit_sha = _git(["-C", str(clone_dir), "rev-parse", "HEAD"]).stdout.strip()
 
     _git(["-C", str(clone_dir), "push", "origin", f"HEAD:refs/heads/{branch}"])
