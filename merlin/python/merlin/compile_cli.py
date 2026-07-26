@@ -63,29 +63,101 @@ def _ensure_bundle(workload: str, dtype: str, *, auto_capture: bool) -> Path:
     raise SystemExit(f"[merlin-compile] auto-capture did not produce {bundle}.\n{r.stdout[-800:]}\n{r.stderr[-800:]}")
 
 
+#: knobs.yaml ``dtype_strategy`` for each ``--dtype``, used to pick a champion package of the
+#: RIGHT datatype. An fp32 schedule applied to an int8 workload builds a silently wrong
+#: datapath rather than failing, so this must never fall back across datatypes.
+_DTYPE_STRATEGY = {"int8": "int8_w8a8", "fp32": "fp32", "fp16": "fp16", "fp8": "fp8"}
+
+
+def default_package(dtype: str) -> str:
+    """The package `merlin-compile` uses when `--package` is not given.
+
+    Resolves the CERTIFIED CHAMPION for this datatype via ``targetgen.publish.select_champion``
+    rather than hard-coding a name. The previous default was ``hand_v0``/``hand_v0_int8`` — the
+    FROZEN, hand-authored, UNOPTIMIZED control that exists to be the before/after baseline. Every
+    default invocation therefore shipped the slowest package in the repo while the tuned ones sat
+    unused. Falls back to the hand baseline only when no package of this dtype is certified, and
+    says so.
+    """
+    from .targetgen.publish import PublishError, select_champion
+    strategy = _DTYPE_STRATEGY.get(dtype, "fp32")
+    try:
+        sel = select_champion("rvv", dtype_strategy=strategy)
+        return str(sel.package_dir)
+    except PublishError:
+        fallback = "hand_v0_int8" if dtype == "int8" else "hand_v0"
+        print(f"[merlin-compile] no certified {strategy} package; falling back to the frozen "
+              f"baseline {fallback} (this is the UNOPTIMIZED control)", flush=True)
+        from .common.artifacts import artifacts_dir
+        return str(artifacts_dir() / "targets" / "rvv" / fallback)
+
+
 def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: str | None,
-                auto_capture: bool, timeout: int) -> dict:
+                auto_capture: bool, timeout: int, harts: int = 1, iters: int = 1,
+                warmup: int = 0) -> dict:
     """RVV whole-model: resolve/capture → lower → build → (run) → (gate vs golden)."""
     import numpy as np
     from .rvvgen import k1
     from .rvvgen.registry import load_rvv_package
     from .runtime.backends import zephyr_model as zm
-    from .llvmlower.lower import lower_model_file
 
     bundle = _ensure_bundle(workload, dtype, auto_capture=auto_capture)
-    pkg_dir = package or str(Path("out/artifacts/targets/rvv") / ("hand_v0_int8" if dtype == "int8" else "hand_v0"))
+    pkg_dir = package or default_package(dtype)
     pkg = load_rvv_package(pkg_dir)
     work = Path(tempfile.mkdtemp(prefix=f"merlin_compile_{workload}_{dtype}_"))
     out: dict = {"tool": "merlin-compile", "target": "rvv", "workload": workload, "dtype": dtype,
-                 "bundle": str(bundle), "package": pkg_dir, "run": run}
+                 "bundle": str(bundle), "package": pkg_dir, "run": run,
+                 "harts": harts, "iters": iters}
+    refs: dict = {}
+    if verify:
+        refs["fp32"] = np.load(bundle / "golden.npy")
+        w8 = bundle / "golden_w8a8.npy"
+        if pkg.is_int8 and w8.is_file():
+            refs["w8a8"] = np.load(w8)
 
-    # compile+build (board-free): lower the prepared model + cross-compile the runtime binary.
-    prepared = zm._prepare_model_mlir(bundle / "model.mlir", work, int8_compute=pkg.is_int8)
-    lower_model_file(prepared, work / "lower", targets=(), textual=True, vectorize=True)
+    # The Zephyr/spike/verilator routes build a Zephyr image (and are the only ones that can be
+    # multicore or sustained); the K1 route builds a Linux binary for the board.
+    if run in ("spike", "zephyr", "verilator"):
+        board = "chipyard_riscv64" if run == "verilator" else "spike_riscv64"
+        if not zm.available():
+            out["status"] = "not_run"
+            out["reason"] = "Zephyr/spike toolchain unavailable (ZEPHYR_BASE / SDK / MERLIN_CHIPYARD)"
+            return out
+        b = zm.build_app(bundle, work, board=board, backend="rvv", rvv_hart=0,
+                         int8_compute=pkg.is_int8, rvv_schedule=pkg.schedule_text,
+                         cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
+                         features=frozenset(pkg.compiler_features) or None,
+                         n_harts=harts, iters=iters, warmup=warmup,
+                         cpus=max(2, harts))
+        out["binary"] = str(b["elf"]); out["status"] = "compiled"
+        if run == "verilator":
+            sim = zm.verilator_sim()
+            if sim is None:
+                out["status"] = "not_run"
+                out["reason"] = ("no multicore Saturn Verilator sim built (see "
+                                 "docs/guides/tinyllama_int8_rvv_zephyr.md)")
+                return out
+            res = zm.run_on_verilator(b["elf"], timeout=timeout,
+                                      references=refs or None)
+        else:
+            res = zm.run_on_spike(b["elf"], harts=max(2, harts), mem_bytes=b["ram_bytes"],
+                                  timeout=timeout)
+            if refs:
+                res.update(zm._gate(res["prefix"], refs))
+        out["status"] = "ran"
+        out["cycles"] = res.get("metrics", {}).get("cycles")
+        if res.get("sustained"):
+            out["sustained"] = res["sustained"]
+        if refs:
+            out["verify"] = {"gate_ok": bool(res.get("ok")), **{k: v for k, v in res.items()
+                                                                if k.endswith(("_cos", "_rel", "_max_rel"))}}
+            out["status"] = "verified" if res.get("ok") else "run_mismatch"
+        return out
+
+    # K1 / compile-only: build the board binary (build_k1_binary does the lowering itself).
     binary = k1.build_k1_binary(bundle, work, pkg, inputs_npz=bundle / "inputs.npz")
     out["binary"] = str(binary)
     out["status"] = "compiled"
-
     if run == "none":
         return out
     if run == "k1":
@@ -95,13 +167,12 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
         res = k1.run_on_k1(bundle, work, pkg, timeout=timeout)
         out["status"] = "ran"; out["cycles"] = res.get("cycles"); out["vlen"] = res.get("vlen")
         if verify:
-            golden = np.load(bundle / "golden.npy")
-            key = "int8" if pkg.is_int8 else "fp32"
-            g = zm._gate(res["prefix"], {key: golden})
-            out["verify"] = {"gate_ok": bool(g.get("ok", g.get(f"{key}_ok"))), **g}
+            g = zm._gate(res["prefix"], refs)
+            out["verify"] = {"gate_ok": bool(g.get("ok")), **g}
             out["status"] = "verified" if out["verify"]["gate_ok"] else "run_mismatch"
         return out
-    out["status"] = "not_run"; out["reason"] = f"run mode {run!r} not supported for rvv (use none|k1)"
+    out["status"] = "not_run"
+    out["reason"] = f"run mode {run!r} not supported for rvv (use none|k1|spike|zephyr|verilator)"
     return out
 
 
@@ -152,7 +223,15 @@ def main(argv: list[str] | None = None) -> int:
                          "gemmini: a capsule name (A2_single_tile_matmul, …)")
     ap.add_argument("--target", choices=["rvv", "gemmini"], default="rvv")
     ap.add_argument("--dtype", choices=list(_RVV_DTYPES), default="fp32", help="rvv only")
-    ap.add_argument("--run", choices=["none", "host", "k1", "spike", "verilator"], default=None,
+    ap.add_argument("--harts", type=int, default=1,
+                    help="rvv+zephyr: harts to fan the model across (>1 builds the multicore "
+                         "OpenMP image; needs a matching SoC/sim)")
+    ap.add_argument("--iters", type=int, default=1,
+                    help="rvv+zephyr: timed inference iterations (sustained mode)")
+    ap.add_argument("--warmup", type=int, default=0,
+                    help="rvv+zephyr: untimed warmup iterations before the timed ones")
+    ap.add_argument("--run", choices=["none", "host", "k1", "spike", "zephyr", "verilator"],
+                    default=None,
                     help="where to run after compiling (default: rvv→k1, gemmini→spike; 'none' = compile only)")
     ap.add_argument("--verify", dest="verify", action="store_true", default=True,
                     help="gate the run output vs the golden (default on)")
@@ -168,7 +247,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if a.target == "rvv":
             res = compile_rvv(a.workload, a.dtype, run=run, verify=a.verify, package=a.package,
-                              auto_capture=a.capture, timeout=a.timeout)
+                              auto_capture=a.capture, timeout=a.timeout,
+                              harts=a.harts, iters=a.iters, warmup=a.warmup)
         else:
             res = compile_gemmini(a.workload, run=run, verify=a.verify, package=a.package, timeout=a.timeout)
     except SystemExit:
