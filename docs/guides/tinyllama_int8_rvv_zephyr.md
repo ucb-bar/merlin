@@ -3,7 +3,7 @@ title: TinyLlama int8 on multicore RVV under Zephyr — end to end
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-07-25
+last_verified: 2026-07-26
 related: [getting_started, rvv_e2e, zephyr, model2mlir, reproducibility, compilation_strategies]
 code_refs:
   - merlin/python/merlin/compile_cli.py
@@ -407,15 +407,20 @@ is the one to quote for the SoC.
 
 ### Measured — whole-model TinyLlama int8 on the FPGA
 
-The full 22-layer TinyLlama-1.1B, W8A8, on two Saturn harts under Zephyr, on the same RTL:
+The full 22-layer TinyLlama-1.1B, W8A8, under Zephyr, on the same RTL — both hart counts, the
+champion package:
 
-```
-FIRESIM: ok=True  w8a8_cos=1.0  threads=2  cycles=50,071,010,673   (2730 s of FPGA time)
-```
+| harts | cycles | speedup | efficiency | vs 1 hart | gate |
+|---|---|---|---|---|---|
+| 1 | 88,376,055,306 | 1.00× | — | — | `w8a8_cos = 1.0` |
+| 2 | **50,071,010,673** | **1.765×** | **88.3%** | **bit-identical** (0 / 4096) | `w8a8_cos = 1.0` |
 
-`w8a8_cos = 1.0` against `golden_w8a8.npy` — the RTL reproduces the host W8A8 computation exactly,
-not merely within tolerance. 50.1e9 cycles is the **cycle-accurate whole-model cost on our own
-SoC**, which is the one number FireSim exists to produce.
+Three separate claims, and each needs its own evidence. `w8a8_cos = 1.0` says the RTL reproduces
+the host W8A8 computation exactly, not merely within tolerance. **Bit-identical** 1-hart vs 2-hart
+says the parallel split corrupts nothing — the check that catches the vector-state and
+thread-id-mapping failures in §6, neither of which crashes. And 1.765× at 88.3% efficiency is the
+**cycle-accurate whole-model speedup on our own SoC**, which is the number FireSim exists to
+produce and the one spike cannot give you at all.
 
 **Budget the FPGA time before you queue a whole model, and pick the recipe first.** FireSim
 advances the target at a measured **24.8 M cycles/s** on this bitstream — read it yourself from
@@ -450,7 +455,25 @@ object under each measurement. Every point is accuracy-gated; a thread count tha
 timing. It reports speedup, parallel efficiency, the Amdahl serial fraction the measurement
 implies, and the parallel-region count, so a poor curve can be *attributed* rather than guessed at.
 
-Measured, `small_llama` int8, K1 (8 cores, VLEN=256), median of 3:
+Measured, **`tiny_llama` int8** — the real 22-layer TinyLlama-1.1B, champion package — K1
+(8 cores, VLEN=256), median of 3, every point gated at `cos = 1.0`:
+
+| threads | median | spread | speedup | efficiency | implied serial fraction |
+|---|---|---|---|---|---|
+| 1 | 153.79 s | 0.15% | 1.00× | — | — |
+| 2 | 78.45 s | 1.8% | 1.96× | 98.0% | 0.020 |
+| 4 | 40.82 s | 1.4% | 3.77× | 94.2% | 0.021 |
+| 8 | **27.22 s** | 3.6% | **5.65×** | 70.6% | 0.059 |
+
+End to end that is **546.7 s → 27.2 s**, a 20× improvement: 3.70× from choosing the right codegen
+recipe (§2) and 5.65× from the cores. The implied serial fraction is a stable 0.02 at 2 and 4
+threads — the reductions the lowering deliberately leaves serial — and rises to 0.059 at 8, where
+the K1's two 4-core clusters start to show.
+
+For contrast, the same measurement on **`small_llama`** int8, which is a much smaller model:
+
+| threads | median | spread | speedup | efficiency |
+|---|---|---|---|---|
 
 | threads | median | spread | speedup | efficiency |
 |---|---|---|---|---|
@@ -459,16 +482,21 @@ Measured, `small_llama` int8, K1 (8 cores, VLEN=256), median of 3:
 | 4 | 66.5 ms | 0.5% | 3.34× | 83% |
 | 8 | 53.3 ms | 25.1% | 4.17× | 52% |
 
-How to read it. The implied serial fraction is **6.6%, the same at T=2 and T=4**, and it predicts
-the 4-core result exactly (1/(0.066 + 0.934/4) = 3.34). That fraction is the reductions the
-lowering deliberately leaves serial, so 4 cores is at the ceiling the design implies rather than
-leaving something on the floor. The ~358 fork/joins per inference are **not** the bottleneck — if
-they were, 2 cores could not reach 94% efficiency.
+**Model size is the variable, and the comparison is the point.** `small_llama` implies a 6.6%
+serial fraction and collapses to 52% efficiency at 8 cores with a 25% run-to-run spread;
+`tiny_llama` implies 2% and holds 70.6% at 8 cores with a 3.6% spread. Same lowering, same runtime,
+same board. The difference is work per parallel region: a bigger model gives each fork/join more
+to do, so the fixed synchronization cost is amortized instead of dominating.
 
-**Do not quote the 8-core number.** Its 25% run-to-run spread (against 0.3–2% elsewhere) and its
-shortfall against its own Amdahl prediction (5.47× predicted, 4.17× measured) point at memory
-bandwidth across the K1's two 4-core clusters. It needs more reps and a bandwidth probe before it
-means anything.
+Two consequences worth carrying. Do **not** extrapolate a scaling curve from a small model to a
+large one — it understates the large one badly here. And a poor curve is not automatically a
+runtime defect: on `small_llama` the ~358 fork/joins per inference are still not the bottleneck
+(2 cores reach 94%), the model is simply too small to fill 8 of them.
+
+The residual 8-core shortfall on both models — `tiny_llama` predicts 6.8× from its own 2/4-core
+serial fraction and measures 5.65× — is where the K1's two 4-core clusters and their shared memory
+bandwidth start to matter. That is a property of the chip, not of the lowering, and it would need a
+bandwidth probe to attribute properly.
 
 ## What each stage proves
 
@@ -478,7 +506,7 @@ means anything.
 | spike rv64gcv | Merlin reference | real RVV instructions, bit-exact | **speed** (idle harts cost full price) |
 | Zephyr N-hart on spike | the 1-hart image | the parallel split is not corrupting | **speed** |
 | Verilator multicore Saturn | RTL | the mechanism, cycle-accurate | a whole model (~10⁴ cycles/s) |
-| **FireSim multicore Saturn** | the same RTL on an FPGA | **whole-model cycles on our own SoC** | wall-clock on shipping silicon |
+| **FireSim multicore Saturn** | the same RTL on an FPGA | **whole-model cycles + multicore speedup on our own SoC** (measured 1.765x, bit-identical) | wall-clock on shipping silicon |
 | K1 board | on-device | real wall-clock and real speedup | anything about *our* SoC |
 
 The pattern to reproduce is stage-over-stage agreement, not a single absolute number.
