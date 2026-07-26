@@ -741,6 +741,24 @@ def board_vlenb() -> int | None:
     return None
 
 
+#: Above this, the deployed binary goes to the rootfs (flash) instead of /tmp. The board's /tmp
+#: is a 1.9 GB tmpfs -- i.e. RAM -- so a weights-embedded binary lands in the same memory the
+#: model needs to run in, and two of them do not fit at all. This is the SAME reason the mmap
+#: path already stages weights.bin under K1_REMOTE_DIR; a binary with the weights linked in IS
+#: the weights. Measured: a 1.3 GB TinyLlama int8 binary fills /tmp and scp fails with a bare
+#: "write remote ... Failure" that looks like a network error rather than ENOSPC.
+_TMPFS_BINARY_LIMIT = 256 * 1024 * 1024
+
+
+def _remote_binary_path(binary: str | Path, name: str) -> str:
+    """Where to stage the binary on the board: /tmp for small ones, flash for large."""
+    try:
+        big = Path(binary).stat().st_size > _TMPFS_BINARY_LIMIT
+    except OSError:
+        big = False
+    return f"{K1_REMOTE_DIR}/{name}" if big else f"/tmp/{name}"
+
+
 def run_binary_on_k1(model_dir: str | Path, bwork: str | Path, pkg, binary: str | Path, *,
                      env: dict[str, str] | None = None, timeout: int = 600) -> dict[str, Any]:
     """Deploy and run an ALREADY-BUILT K1 binary, with an explicit environment.
@@ -758,8 +776,10 @@ def run_binary_on_k1(model_dir: str | Path, bwork: str | Path, pkg, binary: str 
     if not K1_HOST:
         raise K1Error("MERLIN_K1_HOST unset — board unreachable")
     bwork = Path(bwork)
-    remote = f"/tmp/{Path(model_dir).name}_{pkg.run_id}_envrun_merlin_k1"
+    remote = _remote_binary_path(binary, f"{Path(model_dir).name}_{pkg.run_id}_envrun_merlin_k1")
     with board_lock():
+        if remote.startswith(K1_REMOTE_DIR):
+            _ssh(f"mkdir -p {K1_REMOTE_DIR}", timeout=30)
         _run(["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
               "-o", "StrictHostKeyChecking=no", str(binary), f"{K1_HOST}:{remote}"])
         marker = bwork / "USE_MMAP_WEIGHTS"
@@ -818,7 +838,10 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
             return _deploy_run(mode, tag, bwork, binary)
 
     def _deploy_run(mode: str, tag: str, bwork: Path, binary) -> dict:
-        remote = f"/tmp/{Path(model_dir).name}_{pkg.run_id}_{tag}_merlin_k1"
+        remote = _remote_binary_path(binary,
+                                     f"{Path(model_dir).name}_{pkg.run_id}_{tag}_merlin_k1")
+        if remote.startswith(K1_REMOTE_DIR):
+            _ssh(f"mkdir -p {K1_REMOTE_DIR}", timeout=30)
         _run(["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
               "-o", "StrictHostKeyChecking=no", str(binary), f"{K1_HOST}:{remote}"])
         # Big-model mmap path: build_k1_binary left a marker with the weights.bin to deploy
