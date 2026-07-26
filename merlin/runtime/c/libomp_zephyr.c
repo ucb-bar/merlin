@@ -64,8 +64,43 @@ typedef void (*kmpc_micro4_t)(int32_t *, int32_t *, void *, void *, void *, void
 struct omp_worker {
 	struct k_thread thread;
 	atomic_t done;          /* generation this worker has finished */
+	atomic_t entered;       /* generation this worker last STARTED (done lags it by one region) */
+	atomic_t alive;         /* set by the worker the first time it actually executes */
 	int32_t gtid;
 };
+
+/* How long merlin_omp_init waits for each worker to prove it is really executing, and how
+ * long a region waits for a worker that was alive at init.
+ *
+ * WHY THIS EXISTS. Spinning means a worker that never runs does not stall the master, it makes
+ * it burn forever. Measured on FireSim: a 2-hart image of a 22.4M-cycle model ran past 11.4
+ * BILLION cycles -- 500x -- printing nothing after the pool banner, because the master spun on
+ * a generation the worker never published. k_thread_cpu_pin() returning 0 and arch_num_cpus()
+ * reporting 2 say the KERNEL believes the hart exists; neither proves it is executing code.
+ * So liveness is now PROVEN by the worker itself before any region is dispatched, and a hart
+ * that does not answer is dropped from the pool with a loud message instead of hanging the run.
+ */
+#ifndef MERLIN_OMP_LIVENESS_SPINS
+#define MERLIN_OMP_LIVENESS_SPINS 200000000L
+#endif
+
+/* The region wait is bounded by WALL CLOCK, not a spin count, because the same image runs at
+ * three wildly different speeds (spike ~10 MIPS, FireSim 25 MHz, K1 silicon) and any spin
+ * budget that is generous on one is either instant-panic or effectively infinite on another.
+ * k_uptime_get() is driven by the timer ISR, which keeps running while the master spins. */
+#ifndef MERLIN_OMP_REGION_TIMEOUT_MS
+#define MERLIN_OMP_REGION_TIMEOUT_MS 600000
+#endif
+/* Spins between "still waiting" heartbeats. A silent hang is unactionable; a hang that keeps
+ * reporting which worker it is waiting for, and what that worker last published, is a bug
+ * report. Cheap: one uptime read per 4M spins. */
+#ifndef MERLIN_OMP_HEARTBEAT_SPINS
+#define MERLIN_OMP_HEARTBEAT_SPINS (1L << 22)
+#endif
+/* Minimum wall time between stall reports for the same wait. */
+#ifndef MERLIN_OMP_STALL_REPORT_MS
+#define MERLIN_OMP_STALL_REPORT_MS 5000
+#endif
 
 K_THREAD_STACK_ARRAY_DEFINE(merlin_omp_stacks, MERLIN_OMP_MAX_THREADS,
 			    MERLIN_OMP_WORKER_STACK);
@@ -100,14 +135,64 @@ static int omp_task_nthreads;
 static int8_t omp_gtid_of_hart[MERLIN_OMP_MAX_THREADS];
 static int omp_master_cpu = -1;
 
-static inline int omp_self_gtid(void)
+/* Per-hart TEAM state — the thread's id within the team currently executing on that hart, the
+ * size of that team, and the parallel-region nesting depth.
+ *
+ * WHY A TEAM AND NOT JUST THE POOL SLOT. merlin's lowering DOES emit nested parallel regions:
+ * of the 358 fork sites in a small_llama int8 module, four outlined regions
+ * (`forward..omp_par.{68,111,239,278}`) themselves call __kmpc_fork_call. Treating the inner
+ * fork like an outer one is fatal in two ways, both observed: the inner fork bumps the
+ * generation counter, so the master returns from its region and waits for a generation the
+ * workers raced past -- measured live, "waiting on worker 1 in region 68; it last published
+ * 132" -- and the inner worksharing loop would be split across a team that is not executing it.
+ *
+ * So nested regions are SERIALIZED, exactly as libomp does with OMP_NESTED=false: the inner
+ * region runs inline on the encountering thread as a team of one. Worksharing then needs the
+ * CURRENT team (size 1, tid 0), which is why these are per-hart and saved/restored around the
+ * nested call rather than read from the global omp_task_nthreads. */
+static int8_t omp_tid_of_hart[MERLIN_OMP_MAX_THREADS];
+static int8_t omp_team_of_hart[MERLIN_OMP_MAX_THREADS];
+static int8_t omp_depth_of_hart[MERLIN_OMP_MAX_THREADS];
+
+static inline int omp_self_cpu(void)
 {
 	int cpu = (int)arch_curr_cpu()->id;
 
-	if (cpu < 0 || cpu >= MERLIN_OMP_MAX_THREADS) {
-		return 0;
-	}
-	return (int)omp_gtid_of_hart[cpu];
+	return (cpu < 0 || cpu >= MERLIN_OMP_MAX_THREADS) ? 0 : cpu;
+}
+
+static inline int omp_self_gtid(void)
+{
+	return (int)omp_tid_of_hart[omp_self_cpu()];
+}
+
+/* Size of the team this hart is currently part of; never 0, so it is safe as a divisor. */
+static inline int omp_self_team(void)
+{
+	int n = (int)omp_team_of_hart[omp_self_cpu()];
+
+	return n > 0 ? n : 1;
+}
+
+/* Enter/leave a region on this hart, returning the saved state so it can be restored. */
+struct omp_team_save { int8_t tid, team, depth; };
+
+static inline struct omp_team_save omp_team_enter(int cpu, int tid, int team)
+{
+	struct omp_team_save sv = { omp_tid_of_hart[cpu], omp_team_of_hart[cpu],
+				    omp_depth_of_hart[cpu] };
+
+	omp_tid_of_hart[cpu] = (int8_t)tid;
+	omp_team_of_hart[cpu] = (int8_t)team;
+	omp_depth_of_hart[cpu] = (int8_t)(sv.depth + 1);
+	return sv;
+}
+
+static inline void omp_team_leave(int cpu, struct omp_team_save sv)
+{
+	omp_tid_of_hart[cpu] = sv.tid;
+	omp_team_of_hart[cpu] = sv.team;
+	omp_depth_of_hart[cpu] = sv.depth;
 }
 
 /* mstatus.VS/FS = Dirty. The proven zephyr-chipyard-sw samples set this in each V-using
@@ -136,35 +221,48 @@ static inline void omp_enable_vector(void)
 	__asm__ volatile("csrw mstatus, %0" ::"r"(mstatus));
 }
 
-static void omp_run_region(int32_t gtid)
+/* Invoke an outlined region. Takes fn/argc/args explicitly rather than reading the globals,
+ * because a SERIALIZED NESTED region must run from a caller-local argument array: the globals
+ * still describe the outer region that the other harts are executing right now, and
+ * overwriting them would corrupt it. */
+static void omp_call_micro(void *fn, int argc, void **a, int32_t gtid)
 {
 	int32_t tid = gtid;
 	int32_t bound = 0;
-	void **a = omp_task_args;
 
-	switch (omp_task_argc) {
+	switch (argc) {
 	case 0:
-		((kmpc_micro0_t)omp_task_fn)(&tid, &bound);
+		((kmpc_micro0_t)fn)(&tid, &bound);
 		break;
 	case 1:
-		((kmpc_micro1_t)omp_task_fn)(&tid, &bound, a[0]);
+		((kmpc_micro1_t)fn)(&tid, &bound, a[0]);
 		break;
 	case 2:
-		((kmpc_micro2_t)omp_task_fn)(&tid, &bound, a[0], a[1]);
+		((kmpc_micro2_t)fn)(&tid, &bound, a[0], a[1]);
 		break;
 	case 3:
-		((kmpc_micro3_t)omp_task_fn)(&tid, &bound, a[0], a[1], a[2]);
+		((kmpc_micro3_t)fn)(&tid, &bound, a[0], a[1], a[2]);
 		break;
 	case 4:
-		((kmpc_micro4_t)omp_task_fn)(&tid, &bound, a[0], a[1], a[2], a[3]);
+		((kmpc_micro4_t)fn)(&tid, &bound, a[0], a[1], a[2], a[3]);
 		break;
 	default:
 		/* Fail loudly: silently running the region with the wrong argument count would
 		 * corrupt results rather than crash. */
 		printk("FAIL merlin_omp: %d shared args > MERLIN_OMP_MAX_SHARED %d\n",
-		       omp_task_argc, MERLIN_OMP_MAX_SHARED);
+		       argc, MERLIN_OMP_MAX_SHARED);
 		k_panic();
 	}
+}
+
+/* Run the region the master published in the globals, as team member `gtid` of `team`. */
+static void omp_run_region(int32_t gtid, int team)
+{
+	int cpu = omp_self_cpu();
+	struct omp_team_save sv = omp_team_enter(cpu, (int)gtid, team);
+
+	omp_call_micro(omp_task_fn, omp_task_argc, omp_task_args, gtid);
+	omp_team_leave(cpu, sv);
 }
 
 static void omp_worker_entry(void *p0, void *p1, void *p2)
@@ -175,6 +273,9 @@ static void omp_worker_entry(void *p0, void *p1, void *p2)
 
 	ARG_UNUSED(p2);
 	omp_enable_vector();
+	/* Prove to merlin_omp_init that this hart is genuinely executing, not merely that the
+	 * kernel accepted the thread and the pin. */
+	atomic_set(&w->alive, 1);
 	for (;;) {
 		atomic_val_t g;
 
@@ -185,8 +286,9 @@ static void omp_worker_entry(void *p0, void *p1, void *p2)
 			omp_relax();
 		}
 		seen = g;
+		atomic_set(&w->entered, g);
 		if (slot < omp_task_nthreads) {
-			omp_run_region((int32_t)slot);
+			omp_run_region((int32_t)slot, omp_task_nthreads);
 		}
 		/* Publish AFTER the region: the master waits on this before reading results or
 		 * starting the next region. */
@@ -224,6 +326,11 @@ int merlin_omp_init(int n_threads)
 	omp_nthreads = n_threads;
 	for (int i = 0; i < MERLIN_OMP_MAX_THREADS; i++) {
 		omp_gtid_of_hart[i] = 0;
+		/* Outside any region every hart is a team of one, thread 0, depth 0 — so a
+		 * worksharing loop reached before the first fork runs whole, not sliced. */
+		omp_tid_of_hart[i] = 0;
+		omp_team_of_hart[i] = 1;
+		omp_depth_of_hart[i] = 0;
 	}
 	omp_gtid_of_hart[omp_master_cpu] = 0;   /* the master is OpenMP thread 0 */
 
@@ -251,6 +358,31 @@ int merlin_omp_init(int n_threads)
 			break;
 		}
 		k_thread_start(t);
+	}
+
+	/* Wait for each worker to PROVE it is executing, then keep only the contiguous prefix of
+	 * live workers (thread ids must stay 0..n-1 for the static split to partition correctly).
+	 * A hart that never answers is dropped and the pool shrinks -- the model still computes
+	 * the right answer, just on fewer cores, and says so. */
+	int live = 1;
+	for (int i = 1; i < omp_nthreads; i++) {
+		long spins = 0;
+		while (!atomic_get(&omp_workers[i].alive) && spins < MERLIN_OMP_LIVENESS_SPINS) {
+			omp_relax();
+			spins++;
+		}
+		if (!atomic_get(&omp_workers[i].alive)) {
+			printk("merlin_omp: WORKER %d (hart %d) NEVER RAN -- dropping it; the kernel "
+			       "accepted the thread and the pin, but the hart is not executing\n",
+			       i, omp_workers[i].gtid);
+			break;
+		}
+		live = i + 1;
+	}
+	if (live != omp_nthreads) {
+		printk("merlin_omp: pool reduced %d -> %d threads (results stay correct)\n",
+		       omp_nthreads, live);
+		omp_nthreads = live;
 	}
 	omp_started = 1;
 	printk("merlin_omp: %d threads (master hart %d) over %d CPUs\n",
@@ -291,6 +423,28 @@ void __kmpc_fork_call(ident_t *loc, int32_t argc, void *microtask, ...)
 		printk("FAIL merlin_omp: fork argc %d > %d\n", (int)argc, MERLIN_OMP_MAX_SHARED);
 		k_panic();
 	}
+
+	/* NESTED REGION -> run it inline as a team of one (libomp's OMP_NESTED=false default).
+	 * This must happen before the generation counter is touched: an inner fork that bumped
+	 * the generation would release the workers into a region their master is not joining,
+	 * and the master would then wait forever on a generation they had already raced past. */
+	if (omp_depth_of_hart[omp_self_cpu()] > 0) {
+		void *nargs[MERLIN_OMP_MAX_SHARED];
+		int cpu = omp_self_cpu();
+		struct omp_team_save sv;
+
+		va_start(ap, microtask);
+		for (int i = 0; i < argc; i++) {
+			nargs[i] = va_arg(ap, void *);
+		}
+		va_end(ap);
+		omp_requested = 0;
+		sv = omp_team_enter(cpu, 0, 1);
+		omp_call_micro(microtask, (int)argc, nargs, 0);
+		omp_team_leave(cpu, sv);
+		return;
+	}
+
 	va_start(ap, microtask);
 	for (int i = 0; i < argc; i++) {
 		omp_task_args[i] = va_arg(ap, void *);
@@ -315,10 +469,44 @@ void __kmpc_fork_call(ident_t *loc, int32_t argc, void *microtask, ...)
 	 * every worker has published this generation. */
 	atomic_val_t g = atomic_add(&omp_gen, 1) + 1;
 
-	omp_run_region(0);                       /* the master is thread 0 */
+	omp_run_region(0, n);                    /* the master is thread 0 */
 	for (int i = 1; i < n; i++) {
+		long spins = 0;
+		int64_t t0 = 0, next_report = MERLIN_OMP_STALL_REPORT_MS;
+
 		while (atomic_get(&omp_workers[i].done) != g) {
 			omp_relax();
+			if (++spins < MERLIN_OMP_HEARTBEAT_SPINS) {
+				continue;
+			}
+			spins = 0;
+			if (t0 == 0) {
+				t0 = k_uptime_get();
+				continue;
+			}
+
+			int64_t dt = k_uptime_get() - t0;
+
+			if (dt < next_report) {
+				continue;
+			}
+			/* A worker that was alive at init has stopped answering for long enough that
+			 * this is not just a big region. Say so, sparsely, then give up -- an unbounded
+			 * silent wait is indistinguishable from slow progress from the outside, which is
+			 * how a 22.4M-cycle model reached 11.4 BILLION cycles on FireSim before anyone
+			 * noticed. Sparsely matters: printk goes out over HTIF/UART one character at a
+			 * time, so a chatty stall report costs more than the region it is reporting on. */
+			next_report = dt + MERLIN_OMP_STALL_REPORT_MS;
+			printk("merlin_omp: waiting %lld ms on worker %d (hart %d) in region %ld; "
+			       "it last published %ld, entered %ld, alive=%ld\n",
+			       (long long)dt, i, omp_workers[i].gtid, (long)g,
+			       (long)atomic_get(&omp_workers[i].done),
+			       (long)atomic_get(&omp_workers[i].entered),
+			       (long)atomic_get(&omp_workers[i].alive));
+			if (dt > MERLIN_OMP_REGION_TIMEOUT_MS) {
+				printk("FAIL merlin_omp: worker %d stalled in region %ld\n", i, (long)g);
+				k_panic();
+			}
 		}
 	}
 	/* Returning from fork_call IS the implicit barrier at the end of the region. */
@@ -363,7 +551,9 @@ static void omp_static_init(int32_t gtid, int32_t schedtype, int32_t *plastiter,
 			    int64_t *plower, int64_t *pupper, int64_t *pstride,
 			    int64_t incr, int64_t chunk)
 {
-	int nth = omp_task_nthreads > 0 ? omp_task_nthreads : 1;
+	/* The CURRENT team, not omp_task_nthreads: inside a serialized nested region the team is
+	 * one thread and the loop must not be split, even though the outer region has n. */
+	int nth = omp_self_team();
 
 	ARG_UNUSED(chunk);
 	/* Only STATIC is emitted by merlin's lowering. A dynamic/guided schedule arriving here
@@ -374,6 +564,23 @@ static void omp_static_init(int32_t gtid, int32_t schedtype, int32_t *plastiter,
 		       (int)schedtype);
 		k_panic();
 	}
+#ifdef MERLIN_OMP_DEBUG_SPLIT
+	/* Opt-in (-DMERLIN_OMP_DEBUG_SPLIT=1, via MERLIN_OMP_DEBUG_SPLIT=1 in the build env).
+	 * A wrong split does not look like a wrong answer, it looks like an out-of-range vector
+	 * load on an unrelated hart, so being able to dump every partition without editing C is
+	 * what turns that class of bug from a crash into a table. */
+	{
+		static int nseen;
+		int64_t lo0 = *plower, up0 = *pupper;
+
+		(void)merlin_omp_static_split(gtid, (int32_t)nth, plower, pupper, pstride, incr,
+					      plastiter);
+		printk("SPLIT %d gtid=%d nth=%d in=[%lld,%lld] out=[%lld,%lld] incr=%lld\n",
+		       nseen++, (int)gtid, nth, (long long)lo0, (long long)up0,
+		       (long long)*plower, (long long)*pupper, (long long)incr);
+		return;
+	}
+#endif
 	(void)merlin_omp_static_split(gtid, (int32_t)nth, plower, pupper, pstride, incr,
 				      plastiter);
 }
@@ -434,7 +641,7 @@ void __kmpc_for_static_fini(ident_t *loc, int32_t gtid)
 
 int omp_get_num_threads(void)
 {
-	return omp_task_nthreads > 0 ? omp_task_nthreads : 1;
+	return omp_self_team();
 }
 
 int omp_get_thread_num(void)

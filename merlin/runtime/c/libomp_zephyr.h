@@ -36,11 +36,22 @@
 #define MERLIN_OMP_MAX_THREADS 8
 #endif
 
-/* Per-worker stack. The lowered model's large intermediates are alloca'd in forward() on
- * the MASTER thread (buffer-results-to-out-params{hoist-static-allocs}); a worker only runs
- * the outlined loop body, so this is modest by design. */
+/* Per-worker stack. It must be sized like the MASTER's model stack, not like a small helper
+ * thread's, because a worker executes the SAME outlined model code the master does.
+ *
+ * MEASURED, the hard way: at 256 KB a 2-thread small_llama int8 image faulted on the MASTER
+ * with a garbage pointer, 143 parallel regions in. The master's own stack pointer at the fault
+ * was 590 KB deep into its 8 MB stack — running the same kind of region the worker was — while
+ * merlin_omp_stacks sits DIRECTLY ABOVE merlin_worker_stack in the image. So a worker that
+ * overflowed its 256 KB grew straight down into the master's live frames and corrupted its
+ * callee-saved registers. Nothing catches this: there is no MPU on these SoC configs, so the
+ * overflow is silent and surfaces as an unrelated load fault on the other hart.
+ *
+ * The regions are not "just a loop body" — they spill scalable vectors with dynamic stack
+ * adjustment (csrr vlenb / vs1r.v / mv sp), so their frames are large and data-dependent.
+ * Keep this equal to main.c's MERLIN_WORKER_STACK. */
 #ifndef MERLIN_OMP_WORKER_STACK
-#define MERLIN_OMP_WORKER_STACK (256 * 1024)
+#define MERLIN_OMP_WORKER_STACK (8 * 1024 * 1024)
 #endif
 
 /* Start the pool with `n_threads` total (master + n_threads-1 pinned workers).
