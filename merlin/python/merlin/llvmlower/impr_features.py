@@ -66,16 +66,32 @@ def _try_lazy_register(name: str) -> bool:
     that re-imports this module — so a point registered on demand in the parent is invisible there and
     the feature fails to resolve (observed: every dynamically-registered MR failed at K2 while the
     pre-registered grid worked). Deriving the point from the name makes resolution reproducible in ANY
-    process, which is what actually makes the space continuous."""
+    process, which is what actually makes the space continuous.
+
+    The same holds for the two other on-demand v3 families, which were previously NOT derivable from
+    their name (their prefix is ``accum_resident_v3vl_`` / ``accum_resident_v3p_``, so the
+    ``accum_resident_v3_`` test rejected them): a package that names one of those points directly in
+    ``compiler_features`` -- rather than reaching it through a ``microkernel`` knob block, which
+    registers it as a side effect of resolving -- failed with an "unknown impr feature" KeyError.
+    Each family is registered from its own arity, so a name is either derivable or an honest error."""
     parts = name.split("_")
-    if len(parts) != 6 or not name.startswith("accum_resident_v3_"):
-        return False
-    try:
-        MR, NR, KC = (int(p) for p in parts[3:6])
-    except ValueError:
-        return False
-    ensure_v3_microkernel(MR, NR, KC)
-    return name in _REGISTRY
+    tails: dict[str, tuple[int, "Callable[..., str]"]] = {
+        "accum_resident_v3_": (3, ensure_v3_microkernel),          # MR, NR, KC
+        "accum_resident_v3vl_": (3, ensure_v3_scalable_microkernel),  # MR, NR, KC
+        "accum_resident_v3p_": (5, ensure_v3_perop_microkernel),   # MR_mm, NR_mm, MR_bmm, NR_bmm, KC
+    }
+    for prefix, (arity, make) in tails.items():
+        if not name.startswith(prefix):
+            continue
+        args = parts[len(prefix.rstrip("_").split("_")):]
+        if len(args) != arity:
+            return False
+        try:
+            make(*(int(a) for a in args))
+        except ValueError:
+            return False
+        return name in _REGISTRY
+    return False
 
 
 def get(name: str) -> ImprFeature:
@@ -1431,6 +1447,40 @@ def ensure_v3_microkernel(MR: int, NR: int, KC: int) -> str:
         edit_pipeline=_accumulator_resident_v3_pipeline,
         edit_schedule=(lambda _t, _MR=MR, _NR=NR, _KC=KC:
                        _accumulator_resident_v3_pre_schedule(_MR, _NR, _KC)),
+        schedule_replace=True,
+    ))
+    return name
+
+
+def ensure_v3_perop_microkernel(MR_mm: int, NR_mm: int, MR_bmm: int, NR_bmm: int,
+                                KC: int) -> str:
+    """Register (on demand) a v3 tuning point with an INDEPENDENT register block per op class.
+
+    ``_accumulator_resident_v3_pre_schedule`` already emits four separate tile factors — the matmul
+    arm uses ``[MR_mm, NR_mm]`` and the batch_matmul arm ``[1, MR_bmm, NR_bmm]`` — but until now the
+    only way to reach them was the hand-frozen ``accumulator_resident_wholemodel_vf`` point, whose
+    clamps (MR_mm=1, NR_bmm=8) are constants somebody picked once. They are a SHAPE decision: a
+    model's matmuls and its attention batch_matmuls have different extents, so the largest
+    non-masking block differs per class. This registrar makes that decision expressible, so a
+    shape-aware policy can DERIVE the four factors from the workload instead of pinning them.
+
+    ``accumulator_resident_wholemodel_vf`` == ``ensure_v3_perop_microkernel(1, 16, 4, 8, 16)``; that
+    point keeps its own name (and its measured history) rather than being aliased here."""
+    name = f"accum_resident_v3p_{MR_mm}_{NR_mm}_{MR_bmm}_{NR_bmm}_{KC}"
+    if name in known():
+        return name
+    register(ImprFeature(
+        name=name,
+        action_class="PASS",
+        description=(f"Accumulator-resident vfmacc.vf micro-kernel with a per-op-class register "
+                     f"block (linalg.matmul [{MR_mm}, {NR_mm}], linalg.batch_matmul "
+                     f"[1, {MR_bmm}, {NR_bmm}], KC={KC}), registered on demand so a shape-aware "
+                     f"policy can pick a blocking that masks no parallel dim. Compiler-emitted "
+                     f"(no ukernel). Default-off."),
+        edit_pipeline=_accumulator_resident_v3_pipeline,
+        edit_schedule=(lambda _t, _mm=MR_mm, _nm=NR_mm, _mb=MR_bmm, _nb=NR_bmm, _KC=KC:
+                       _accumulator_resident_v3_pre_schedule(_mb, _nm, _KC,
+                                                             NR_bmm=_nb, MR_mm=_mm)),
         schedule_replace=True,
     ))
     return name

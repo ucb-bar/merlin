@@ -179,10 +179,118 @@ def _recipe(spec) -> list[str]:
     return [ensure_v3_microkernel(int(spec.MR), int(spec.NR), int(spec.KC))]
 
 
-def microkernel_features(mk: dict[str, Any], target: str = "rvv") -> list[str]:
-    """Resolve a ``microkernel`` knob block to ``target``'s realization (target-agnostic dispatch)."""
-    from ..kernels.microkernel import MicrokernelSpec, resolve
-    return list(resolve(target, MicrokernelSpec.from_knobs(mk)))
+# ------------------------------------------------------------------------------------------------
+# SHAPE-AWARE selection — pick a register block that masks no parallel dim, from the knob space.
+# ------------------------------------------------------------------------------------------------
+
+#: Which trailing parallel dims each op class's register block tiles, and the schedule knob that
+#: sizes each. The v3 schedule tiles a matmul `[MR, NR]` over (M, N) and a batch_matmul
+#: `[1, MR, NR]` over (B, M, N) — in both cases the LAST TWO parallel dims. Naming it as data (not
+#: an if/elif on the op name) is what keeps a new contraction op a table entry rather than a branch.
+_RVV_BLOCKED_OPS: tuple[str, ...] = ("linalg.matmul", "linalg.batch_matmul")
+
+
+def _rvv_blocking_lowers(MR: int, NR: int, M: int, N: int) -> bool:
+    """Does the v3 register block ``[MR, NR]`` LOWER on a contraction with parallel extents (M, N)?
+
+    MEASURED, not assumed — 57 synthetic ``linalg.matmul`` cells through
+    ``llvmlower.lower.lower_model_file`` on the int8 (W8A8) pipeline, MR in {1,2,4,8}, NR in
+    {8,16,32}, M in {2,6,8,17}, N in {8,24,40,128,344}; plus 18 whole-model lowerings
+    (small_llama / openvla / bitvla) that the rule predicts with no exception. The three terms:
+
+      * ``M % MR`` — masking the M (row) parallel dim always fails. This is the constraint the
+        ``accumulator_resident_wholemodel_vf`` MR_mm=1 clamp exists to dodge (openvla M=17/20).
+      * ``N % NR`` — masking the N (column) parallel dim fails too, EXCEPT at ``MR == 1``, where the
+        C tile is effectively rank-1 (``vector<1xNR>``) and the masked ``transfer_write`` does
+        lower. This is the half the ``impr_tuned_microkernel_v3_int8`` manifest misses: it blames
+        "small-M matmuls", but small_llama has M=8 (a perfect multiple of MR=4) and trips the SAME
+        failure through N=344 % 16.
+      * ``NR <= N`` — the rank-1 escape above stops working once the tile EXCEEDS the extent
+        (measured: MR=1, NR=16, N=8 fails; N=24 lowers; MR=1, NR=32 fails at N=24 and lowers at
+        N=40). A fully-masked single iteration is not the same as a masked tail.
+
+    The reduction extent does not appear: masking K is harmless (M=8, N=128, K=344 lowers at the
+    champion block). On the fp32 pipeline the masked cells do not hard-fail — they degrade (spike
+    instret at M=17,N=128,K=128: 159,999 unmasked vs 5,435,000 masked), so this predicate is a
+    correctness gate on int8 and a ~34x performance gate on fp32."""
+    if int(M) % int(MR):
+        return False
+    if int(N) % int(NR) == 0:
+        return True
+    return int(MR) == 1 and int(NR) <= int(N)
+
+
+def _rvv_best_block(MR_cap: int, NR_cap: int,
+                    extents: "list[tuple[int, int]]") -> tuple[int, int]:
+    """Largest legal ``(MR, NR)`` for EVERY contraction in ``extents`` (list of (M, N) pairs).
+
+    Derived from the knob space, never from a shape table: the requested ``(MR_cap, NR_cap)`` is an
+    upper bound (a bigger register block is better up to the register file), and the candidates are
+    the divisors of the ``gcd`` of the observed extents plus the rank-1 escape ``MR = 1``. Ranked by
+    register-block AREA (``MR * NR`` — the arithmetic intensity the block buys, i.e. how many
+    accumulator lanes one A/B load feeds), tie-broken on the wider vector.
+
+    Measured cost of the two runner-up shapes at 128^3 f32 (spike instret, both legal there):
+    ``(4, 16)`` 1,065,000; ``(4, 8)`` 1,465,000; ``(1, 16)`` 1,465,000 — i.e. giving up either half
+    of the block costs ~38%, and the area ranking picks whichever half survives."""
+    from ..kernels.microkernel import largest_divisor_at_most
+    from math import gcd
+    from functools import reduce
+    if not extents:
+        return int(MR_cap), int(NR_cap)
+    gM = reduce(gcd, [m for m, _ in extents])
+    gN = reduce(gcd, [n for _, n in extents])
+    minN = min(n for _, n in extents)
+    cands = {(largest_divisor_at_most(gM, MR_cap), largest_divisor_at_most(gN, NR_cap)),
+             (1, largest_divisor_at_most(gN, NR_cap)),
+             (1, min(int(NR_cap), minN)),          # the rank-1 masked-N escape
+             (1, 1)}                               # always legal (never masks anything)
+    legal = [(mr, nr) for (mr, nr) in cands
+             if all(_rvv_blocking_lowers(mr, nr, m, n) for m, n in extents)]
+    if not legal:                                  # unreachable while (1, 1) is a candidate
+        return 1, 1
+    return max(legal, key=lambda b: (b[0] * b[1], b[1]))
+
+
+def _rvv_microkernel_shape_policy(spec, shapes) -> list[str]:
+    """RVV's SHAPE-AWARE realization: choose the register block per op class from the workload.
+
+    Same space, same knobs — the difference is that the requested ``MR``/``NR`` are read as an upper
+    BOUND rather than a pin, and each op class the schedule tiles separately (``linalg.matmul`` vs
+    ``linalg.batch_matmul``) gets its own answer. That is what makes this a general capability rather
+    than a per-model patch: no model name, no shape literal, and the SAME code derives
+    ``accumulator_resident_wholemodel_vf``'s hand-picked clamps for openvla (matmul (1, 16) because
+    gcd(M)=1) while leaving bitvla on the untouched champion block (4, 16) and moving small_llama to
+    (4, 8) because gcd(N)=8 — each of those three verified by whole-model lowering.
+
+    Falls back to the shape-BLIND recipe when the spec asks for an axis whose schedule this policy
+    does not author (``vl_strategy``/``pack``/``k_block``/``unroll_m`` each REPLACE the schedule and
+    have no per-op-class arm), so an unrealized axis stays an honest divergence, never a silent one.
+    """
+    from ..kernels.microkernel import VL_FIXED
+    if spec.vl_strategy != VL_FIXED or spec.unroll_m or spec.pack or spec.k_block:
+        return _rvv_microkernel_resolver(spec)
+    from ..llvmlower.impr_features import ensure_v3_perop_microkernel
+    blocks: dict[str, tuple[int, int]] = {}
+    for op in _RVV_BLOCKED_OPS:
+        ext = [(s.parallel[-2], s.parallel[-1]) for s in shapes
+               if s.op == op and len(s.parallel) >= 2]
+        blocks[op] = _rvv_best_block(int(spec.MR), int(spec.NR), ext)
+    mm, bmm = blocks["linalg.matmul"], blocks["linalg.batch_matmul"]
+    if mm == bmm == (int(spec.MR), int(spec.NR)):
+        return _rvv_microkernel_resolver(spec)     # nothing to adapt -> byte-identical realization
+    return _with_hygiene([ensure_v3_perop_microkernel(mm[0], mm[1], bmm[0], bmm[1],
+                                                      int(spec.KC))])
+
+
+def microkernel_features(mk: dict[str, Any], target: str = "rvv",
+                         shapes: "Any" = ()) -> list[str]:
+    """Resolve a ``microkernel`` knob block to ``target``'s realization (target-agnostic dispatch).
+
+    ``shapes`` (a sequence of ``kernels.microkernel.ContractionShape``) opts into the SHAPE-AWARE
+    resolution; with the default empty sequence the realization is byte-identical to before."""
+    from ..kernels.microkernel import MicrokernelSpec, resolve_for_shapes
+    return list(resolve_for_shapes(target, MicrokernelSpec.from_knobs(mk), shapes))
 
 
 def render_schedule(knobs: dict[str, Any]) -> str:
@@ -245,8 +353,9 @@ def mint_fork(parent: "RvvPackage | str | Path", overrides: dict[str, Any], *,
 # (gemmini, saturn_vec, muon, …) register their own resolver the same way, so the SAME knob block
 # expresses expert-kernel granularity for any compilation target.
 def _register_rvv_microkernel_resolver() -> None:
-    from ..kernels.microkernel import register_resolver
+    from ..kernels.microkernel import register_resolver, register_shape_policy
     register_resolver("rvv", _rvv_microkernel_resolver)
+    register_shape_policy("rvv", _rvv_microkernel_shape_policy)
 
 
 _register_rvv_microkernel_resolver()

@@ -110,15 +110,22 @@ def load_rvv_package(package_dir: str | Path) -> RvvPackage:
     )
 
 
-def _resolve_features(knobs: dict, manifest: dict) -> list[str]:
+def _resolve_features(knobs: dict, manifest: dict, shapes: "Any" = ()) -> list[str]:
     """compiler_features from knobs/manifest, PLUS the v3 micro-kernel tuning point a ``microkernel``
     knob block {MR, NR, KC} resolves to. That knob is how the beam tunes the register block
-    continuously via CODE GENERATION (no hand ukernel) — see from_strategy.microkernel_feature."""
+    continuously via CODE GENERATION (no hand ukernel) — see from_strategy.microkernel_feature.
+
+    ``shapes`` (a sequence of ``kernels.microkernel.ContractionShape``, normally observed from the
+    workload by ``kernels.shapes.contraction_shapes``) opts into the SHAPE-AWARE resolution: the
+    block in the knob block is then read as an upper BOUND and the target picks the largest blocking
+    that masks no parallel dim of any contraction it must cover. Empty (the default) keeps the
+    resolution byte-identical to the shape-blind one."""
     feats = list(knobs.get("compiler_features", manifest.get("compiler_features", [])))
     mk = knobs.get("microkernel")
     if mk:
         from .from_strategy import microkernel_features
-        for name in microkernel_features(mk, target=str(manifest.get("target", "rvv"))):
+        for name in microkernel_features(mk, target=str(manifest.get("target", "rvv")),
+                                         shapes=shapes):
             if name not in feats:
                 feats.append(name)
     return feats
