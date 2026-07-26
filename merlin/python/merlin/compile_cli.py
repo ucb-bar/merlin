@@ -109,6 +109,15 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     from .rvvgen.registry import load_rvv_package
     from .runtime.backends import zephyr_model as zm
 
+    # Sustained mode runs warmup + iters passes inside ONE invocation, so the run deadline has to
+    # cover all of them. Without this, `--iters 5 --warmup 2` on a model that takes 148 s per pass
+    # needs 1034 s and dies on the 900 s default with a bare TimeoutExpired that names ssh rather
+    # than the real cause. Scale the deadline by the pass count the caller actually asked for
+    # (never shrink it — an explicit --timeout larger than the scaled value still wins).
+    passes = max(1, int(iters)) + max(0, int(warmup))
+    if passes > 1:
+        timeout = max(timeout, timeout * passes)
+
     bundle = _ensure_bundle(workload, dtype, auto_capture=auto_capture)
     pkg_dir = package or default_package(dtype)
     pkg = load_rvv_package(pkg_dir)
@@ -203,9 +212,11 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
         if not k1.available():
             out["status"] = "not_run"; out["reason"] = "K1 board unreachable (see MERLIN_K1_HOST/port 2222)"
             return out
-        res = k1.run_on_k1(bundle, work, pkg, timeout=timeout)
+        res = k1.run_on_k1(bundle, work, pkg, timeout=timeout, iters=iters, warmup=warmup)
         out["binary"] = str(Path(work) / "v" / "merlin_k1")
         out["status"] = "ran"; out["cycles"] = res.get("cycles"); out["vlen"] = res.get("vlen")
+        if res.get("sustained"):
+            out["sustained"] = res["sustained"]
         if verify:
             g = zm._gate(res["prefix"], refs)
             out["verify"] = {"gate_ok": bool(g.get("ok")), **g}
@@ -267,9 +278,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="rvv+zephyr: harts to fan the model across (>1 builds the multicore "
                          "OpenMP image; needs a matching SoC/sim)")
     ap.add_argument("--iters", type=int, default=1,
-                    help="rvv+zephyr: timed inference iterations (sustained mode)")
+                    help="rvv: timed inference iterations (sustained mode; k1/zephyr/spike/verilator)")
     ap.add_argument("--warmup", type=int, default=0,
-                    help="rvv+zephyr: untimed warmup iterations before the timed ones")
+                    help="rvv: untimed warmup iterations before the timed ones")
     ap.add_argument("--run", choices=["none", "host", "k1", "spike", "zephyr", "verilator"],
                     default=None,
                     help="where to run after compiling (default: rvv→k1, gemmini→spike; 'none' = compile only)")
