@@ -287,3 +287,17 @@ The RVV backend is the working FireSim path as of 2026-07-26, single- and multi-
 **Someone else's results appear, or yours vanish.** `config_runtime.yaml` is shared, and so is
 the queue. Check `default_hw_config` is still what you set, and use `fsq.py` to see whose jobs
 are actually on the board.
+
+**The live `uartlog` goes to zero bytes mid-run.** Do not start a second
+`run_on_firesim(...)` while one is still running, even though the queue will happily accept the
+job. The queue serializes *execution*, but each caller's marker-waiter clears the shared
+`sim_slot_0/uartlog` when it starts watching — so submitting a second run truncates the console
+of the run currently on the FPGA, and worse, the second waiter is then watching a log that the
+*first* run is about to write its results into. That is a silent mis-attribution: run B reports
+run A's numbers.
+
+Submit one at a time and wait for each to return. A queued job is staged at dispatch, not at
+submit (`stage_from` in the job JSON is only copied when the daemon picks it up), so cancelling
+a still-QUEUED job with `firesim-queue cancel <id>` is safe and does not disturb the running one.
+The results themselves are per-job — `results-workload/<timestamp>-<workload>-q<id>/` — so a run
+that completes is still attributed correctly; it is the *live* log and the waiters that collide.
