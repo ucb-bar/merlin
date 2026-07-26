@@ -26,13 +26,15 @@ sustained loop for application development.
 This guide is the whole path on a fresh machine. It assumes nothing except the base install in
 [Getting started](getting_started.md); every stage states its oracle and what a `not_run` means.
 
-> **The one thing to know up front.** There are three places a number can come from here and they
+> **The one thing to know up front.** There are four places a number can come from here and they
 > are not interchangeable. **spike** proves correctness and cannot tell you anything about speed —
 > it simulates every hart at full speed, so an idle or spinning core costs exactly what a working
-> one does. **RTL simulation** (Verilator) is cycle-accurate but runs ~10⁴ cycles/second, which is
-> several orders of magnitude short of a whole inference; it certifies the *mechanism*, not the
-> model. **Real silicon** (the SpacemiT K1) is the only oracle that times a whole model on many
-> cores. The guide says which one is in play at every step, and never quotes a speedup from spike.
+> one does. **Verilator** is cycle-accurate but runs ~10⁴ cycles/second, several orders of
+> magnitude short of a whole inference; it certifies the *mechanism*, not the model.
+> **FireSim** runs the *same* RTL on an FPGA at ~25 MHz, which is the only way to get
+> cycle-accurate whole-model numbers out of **our own** SoC. **Real silicon** (the SpacemiT K1)
+> gives wall-clock on a shipping chip, but that chip is a fixed vendor design, not ours.
+> The guide says which one is in play at every step, and never quotes a speedup from spike.
 
 ## Status — read before you rely on this
 
@@ -210,18 +212,40 @@ Neither failure crashes; both produce a plausible wrong answer. So the gate is *
 split touches only parallel dims and reductions stay serial, so there is no reordering that could
 explain a difference. Any difference is corruption.
 
-The gate runs on the **K1 board**, not spike — same comparison, but seconds instead of tens of
-minutes, because spike has to simulate the spinning worker at full speed. (A spike leg exists
-behind `MERLIN_RUN_SLOW=1`; a 2-hart run of a model that takes <200 s at 1 hart ran past 25
-minutes there, which is not a gate anyone will actually run.)
+The gate runs a **whole model on spike** (~12 s per thread count) and, when a board is present, the
+same comparison on the **K1**. Measured, `small_llama` int8:
 
-Measured, `small_llama` int8, one binary with `OMP_NUM_THREADS` varied:
+| threads | spike cycles | vs 1 hart | differing elements |
+|---|---|---|---|
+| 1 | 369,140,000 | — | — |
+| 2 | 192,395,001 | 1.92× | **0** / 2048 |
+| 4 | 97,374,999 | 3.79× | **0** / 2048 |
 
-| threads vs 1 | differing elements |
-|---|---|
-| 2 | **0** / 2048 |
-| 4 | **0** / 2048 |
-| 8 | **0** / 2048 |
+(Those spike cycle counts show the *work split*, not speed — spike is IPC≈1. For real cycles see
+§6b; for wall-clock see §7.)
+
+### Two bugs this gate exists to catch — and once failed to
+
+Worth reading before trusting a multicore image, because both produced silence rather than an error
+and neither is visible in a single-kernel test:
+
+1. **Nested parallel regions.** merlin's lowering does emit them — 4 of the 358 fork sites in a
+   `small_llama` int8 module sit *inside* an outlined region. An inner fork that touches the shared
+   generation counter releases the workers into a region their master is not joining, and the
+   master then waits forever on a generation they already raced past. Nested regions are now run
+   inline as a team of one, which is what libomp does with `OMP_NESTED=false`.
+2. **Worker stack size.** An OpenMP worker runs the *same* outlined model code as the master,
+   spilling scalable vectors with dynamic stack adjustment — it is not "just a loop body". At the
+   original 256 KB a worker overflowed into the master's live frames (the pool array is laid out
+   directly above the master's stack, and there is no MPU on these SoC configs to catch it), and
+   the *master* then faulted on a corrupted register 143 regions later. Worker stacks now match
+   the master's 8 MB.
+
+Both bugs needed a **whole model** to appear at all, which is why the shim gate is no longer a
+single synthesized kernel. If a multicore run ever goes quiet again, rebuild with
+`MERLIN_OMP_DEBUG_SPLIT=1`: the shim dumps every worksharing partition, reports which worker it is
+waiting on and what that worker last published, and gives up on a wall-clock deadline instead of
+spinning forever.
 
 ## 6. Cycle-accurate multicore RTL (optional)
 
@@ -305,7 +329,7 @@ There is one physical FPGA, so **every run must go through the job queue**, neve
 `zephyr_model.run_on_firesim()` already defaults to `queue=True`. It resolves ModelBlaster's
 runner via `MERLIN_MODELBLASTER` and FireSim's paths from `MERLIN_CHIPYARD`, all through `.env`.
 
-Two failure modes worth recognising, because neither error names its real cause:
+Three failure modes worth recognising, because none of the errors names its real cause:
 
 - **`ModuleNotFoundError: No module named 'modelblaster'`** — `MERLIN_MODELBLASTER` is unset or
   wrong. It names neither the setting nor the path it wanted.
@@ -313,6 +337,24 @@ Two failure modes worth recognising, because neither error names its real cause:
   is not loaded. FireSim's helper searches for `xdma.ko`, but a modern kernel ships
   `xdma.ko.zst` (compressed), so the search finds nothing and `poll_mode=1` is mistaken for the
   module path. Check with `lsmod | grep xdma`.
+- **`cmake: error while loading shared libraries: libidn.so.11`** in some *later, unrelated*
+  step — `sourceme-manager.sh` puts Xilinx's bundled cmake 3.3.2 first on `PATH` and it is
+  linked against a library no current distro ships. Merlin's own build steps now probe cmake by
+  running it, but anything else you run in that shell will hit this.
+
+### Measured — multicore RVV on the FPGA
+
+`small_llama` int8, RVV backend, dual-Saturn v256/d128 bitstream at 25 MHz:
+
+| harts | cycles | speedup | vs 1 hart |
+|---|---|---|---|
+| 1 | 362,862,321 | 1.00× | — |
+| 2 | 230,548,059 | **1.574×** | **bit-identical** |
+
+Note the honesty gap against spike, which reports 1.92× for the same pair: spike charges every
+hart the same price per instruction and models no memory system, so it sees the *work* split but
+not what the split costs. 1.574× is the number that includes real DRAM and cache behaviour, and it
+is the one to quote for the SoC.
 
 ## 7. Speedup — real silicon only
 
@@ -356,7 +398,8 @@ means anything.
 | spike rv64gcv | Merlin reference | real RVV instructions, bit-exact | **speed** (idle harts cost full price) |
 | Zephyr N-hart on spike | the 1-hart image | the parallel split is not corrupting | **speed** |
 | Verilator multicore Saturn | RTL | the mechanism, cycle-accurate | a whole model (~10⁴ cycles/s) |
-| K1 board | on-device | real cycles and real speedup | bit-exactness vs a simulator |
+| **FireSim multicore Saturn** | the same RTL on an FPGA | **whole-model cycles on our own SoC** | wall-clock on shipping silicon |
+| K1 board | on-device | real wall-clock and real speedup | anything about *our* SoC |
 
 The pattern to reproduce is stage-over-stage agreement, not a single absolute number.
 
