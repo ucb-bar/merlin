@@ -405,6 +405,35 @@ hart the same price per instruction and models no memory system, so it sees the 
 not what the split costs. 1.574× is the number that includes real DRAM and cache behaviour, and it
 is the one to quote for the SoC.
 
+### Measured — whole-model TinyLlama int8 on the FPGA
+
+The full 22-layer TinyLlama-1.1B, W8A8, on two Saturn harts under Zephyr, on the same RTL:
+
+```
+FIRESIM: ok=True  w8a8_cos=1.0  threads=2  cycles=50,071,010,673   (2730 s of FPGA time)
+```
+
+`w8a8_cos = 1.0` against `golden_w8a8.npy` — the RTL reproduces the host W8A8 computation exactly,
+not merely within tolerance. 50.1e9 cycles is the **cycle-accurate whole-model cost on our own
+SoC**, which is the one number FireSim exists to produce.
+
+**Budget the FPGA time before you queue a whole model, and pick the recipe first.** FireSim
+advances the target at a measured **24.8 M cycles/s** on this bitstream — read it yourself from
+`sim_slot_0/heartbeat.csv`, whose two columns are target cycles and wall seconds. That file is the
+only honest progress signal, because the console stays silent from boot until the run prints its
+result, so a healthy multi-hour run and a wedged one look identical.
+
+| image | target cycles | FPGA wall time |
+|---|---|---|
+| `small_llama` int8, 2 harts | 2.3e8 | ~9 s |
+| `tiny_llama` int8, 2 harts, **`accumulator_resident_wholemodel_vf`** | **5.0e10** | **45 min** |
+| `tiny_llama` int8, 2 harts, `hand_v0_int8` (frozen control) | **> 2.2e11** | timed out at 2.5 h, still running |
+
+The last two rows are the same model on the same bitstream and differ **only** in the codegen
+recipe: over **4.4×**, the difference between a run that finishes over lunch and one that does not
+finish at all. Set `run_on_firesim(..., timeout=N)` from a cycle estimate rather than from habit,
+and build the image with the package you actually intend to ship (§2).
+
 ## 8. Wall-clock speedup on shipping silicon
 
 §7b already answers "is it faster **on our SoC**", cycle-accurately. This step answers the
