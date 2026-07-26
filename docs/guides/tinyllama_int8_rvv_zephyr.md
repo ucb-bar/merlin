@@ -136,6 +136,20 @@ A rising drift means the arena is not really being reused.
 
 Report the **median**, never a single run: the K1 noise floor alone is ≥1.9%.
 
+Measured, `small_llama` int8 on spike (`--iters 5 --warmup 1`), abridged:
+
+```json
+"status": "verified",
+"sustained": { "n": 5, "min": 369131311, "median": 369131311, "p95": 369131311,
+               "max": 369131311, "drift": 0.0 },
+"verify":    { "gate_ok": true, "w8a8_cos": 0.9999999, "w8a8_rel": 0.0, "w8a8_max_rel": 0.0 }
+```
+
+`drift: 0.0` with every iteration identical is what a correctly reused arena looks like — spike is
+deterministic, so any nonzero drift there would be real allocator churn rather than measurement
+noise. `w8a8_rel: 0.0` means the integer datapath reproduces the W8A8 golden exactly, not merely
+within tolerance.
+
 ## 5. Multicore
 
 ```bash
@@ -168,12 +182,25 @@ Two independent reasons, both learned the hard way:
 Neither failure crashes; both produce a plausible wrong answer. So the gate is **bit-exactness**:
 
 ```bash
-MERLIN_RUN_SLOW=1 .venv/bin/python -m pytest merlin/tests/runtime/test_zephyr_multicore.py -q
+.venv/bin/python -m pytest merlin/tests/runtime/test_zephyr_multicore.py -q
 ```
 
 1 hart and N harts must agree **bit for bit**. That is a legitimate bar here, not an overreach: the
 split touches only parallel dims and reductions stay serial, so there is no reordering that could
 explain a difference. Any difference is corruption.
+
+The gate runs on the **K1 board**, not spike — same comparison, but seconds instead of tens of
+minutes, because spike has to simulate the spinning worker at full speed. (A spike leg exists
+behind `MERLIN_RUN_SLOW=1`; a 2-hart run of a model that takes <200 s at 1 hart ran past 25
+minutes there, which is not a gate anyone will actually run.)
+
+Measured, `small_llama` int8, one binary with `OMP_NUM_THREADS` varied:
+
+| threads vs 1 | differing elements |
+|---|---|
+| 2 | **0** / 2048 |
+| 4 | **0** / 2048 |
+| 8 | **0** / 2048 |
 
 ## 6. Cycle-accurate multicore RTL (optional)
 

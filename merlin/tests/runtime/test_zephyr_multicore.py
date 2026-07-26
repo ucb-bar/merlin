@@ -90,6 +90,43 @@ def test_multicore_requires_the_rvv_backend(tmp_path):
         zm.build_app(_bundle(), tmp_path, backend="scalar", n_harts=4)
 
 
+@pytest.mark.parametrize("threads", [2, 4, 8])
+def test_multicore_is_bit_identical_on_the_k1_board(threads, tmp_path):
+    """THE multicore correctness gate, on real silicon.
+
+    Preferred over the spike variant below for two reasons. It is the hardware that ships, and
+    it is FAST: spike must simulate the spinning worker at full speed, so a 2-hart run of a
+    model that takes <200s at 1 hart ran past 25 MINUTES without finishing, which is not a gate
+    anyone will run. The board does the same comparison in milliseconds.
+
+    One binary, OMP_NUM_THREADS varied — so the only difference between the compared runs is
+    how many cores executed, not what was compiled.
+    """
+    from merlin.compile_cli import default_package
+    from merlin.rvvgen import k1
+    from merlin.rvvgen.registry import load_rvv_package
+
+    if not k1.available():
+        pytest.skip("K1 board unreachable")
+    b = _bundle()
+    pkg = load_rvv_package(default_package("int8"))
+    binary = k1.build_k1_binary(b, tmp_path, pkg, inputs_npz=b / "inputs.npz",
+                                parallel_harts=8)
+
+    def _run(t):
+        return k1.run_binary_on_k1(b, tmp_path, pkg, binary, timeout=1800,
+                                   env={"OMP_NUM_THREADS": str(t), "OMP_PROC_BIND": "spread"})
+
+    base = _run(1)["outputs"]
+    got = _run(threads)["outputs"]
+    assert got.shape == base.shape, f"shape changed with threads: {base.shape} -> {got.shape}"
+    ndiff = int((got != base).sum())
+    assert ndiff == 0, (
+        f"{threads} threads differ from 1 thread in {ndiff}/{base.size} elements — an "
+        f"overlapping work split or vector-state corruption, NOT rounding (the split touches "
+        f"only parallel dims; reductions stay serial, so there is no reordering)")
+
+
 @slow
 @pytest.mark.parametrize("n_harts", [2, 4])
 def test_multicore_output_is_bit_identical_to_single_hart(n_harts, tmp_path):
