@@ -36,26 +36,46 @@ This guide is the whole path on a fresh machine. It assumes nothing except the b
 > gives wall-clock on a shipping chip, but that chip is a fixed vendor design, not ours.
 > The guide says which one is in play at every step, and never quotes a speedup from spike.
 
-## Status — read before you rely on this
+## Grade int8 against an int8 reference
 
-**Full TinyLlama int8 currently FAILS its accuracy gate on the K1 board.** This is an open
-defect, not a gate artefact, and it is under investigation. What is measured today:
+The single most expensive mistake you can make here is grading a **W8A8** run against
+`golden.npy`. In an int8 bundle that file is a **weight-only-int8** reference — model2MLIR
+quantizes with torchAO `int8_weight_only`, so the weights are int8 and **the activations stay
+fp32**. Merlin's int8 path quantizes the activations too. The two are different computations,
+and comparing them measures activation-quantization error, not correctness.
 
-| path | result |
-|---|---|
-| `tiny_llama_int8_full`, **fp32** weight-only, host | **cos = 1.0** (rel 1.5e-5) — bundle, golden and dequant scales are all correct |
-| `tiny_llama_int8_full`, **int8**, host | cos = 0.976 — ordinary W8A8 degradation |
-| `tiny_llama_int8_full`, **int8**, K1 board | **cos = 0.484** — fails |
-| every isolated int8 contraction (weight×act, act×act, batched attention, 50× scale spread, 100× activation outliers) | spike is **bit-identical to host** — the compiled RVV int8 codegen is faithful |
+Measured on `tiny_llama_int8_full` (real 22-layer TinyLlama-1.1B):
 
-So the fault needs the whole model rather than any single operation, and it is **not** the
-recipe (two different recipes give bit-identical wrong output), **not** the bundle or golden,
-and **not** the isolated int8 kernels.
+| run | vs `golden.npy` (weight-only) | vs `golden_w8a8.npy` |
+|---|---|---|
+| host, `int8_compute=False` | **cos = 1.000000** — confirms the bundle, scales and golden are right | — |
+| host, `int8_compute=True` (W8A8) | cos = 0.976 | **cos = 0.9999999, max-rel 0.0** |
+| fused whole-model `@forward`, x86 | cos = 0.976 | **cos = 0.9999999, max-rel 0.0** |
+| **K1 board, RVV** | cos = 0.484 *(4096-element console prefix)* | **cos = 1.0, rel 0.0, max-rel 0.0** |
 
-Everything else in this guide is verified and unaffected: the spike correctness path, the
-multicore images (bit-exact 1 vs 2 vs 4 harts), sustained inference (drift 0.0), and the K1
-scaling curve. `small_llama` int8 passes end to end. Until the above is closed, treat
-whole-model TinyLlama **int8 on the board** as known-bad and use the fp32 path or spike.
+The board reproduces the host W8A8 computation with **zero** deviation. That `0.484` was read as
+an open codegen defect for some time; it is the weight-only reference plus the console dump cap
+(`dump_cap = 4096`) — the same mismatch scores 0.976 over the full 256032-element output and 0.484
+over its first 4096 elements.
+
+So: **generate `golden_w8a8.npy` before you grade an int8 run.** `merlin-compile` now warns when
+an int8 package is graded without one, and the gate reports `tiers` / `tier_ok` so you can see
+which reference actually decided the verdict.
+
+```bash
+.venv/bin/python - <<'PY'
+import numpy as np, tempfile
+from merlin.common.artifacts import recaptures_dir
+from merlin.runtime.dispatch_runtime import run_model
+b = recaptures_dir() / "tiny_llama_int8_full"
+r = run_model(b, tempfile.mkdtemp(), int8_compute=True)
+np.save(b / "golden_w8a8.npy", r["output"])
+PY
+```
+
+W8A8 *does* legitimately diverge from fp32 — cos 0.976 on the full tensor, and the flattened
+top-1 does not match fp32. That is quantization, and it is why the gate has a separate `w8a8`
+tier rather than one fp32-tight threshold.
 
 ## 0. Prerequisites
 
@@ -71,11 +91,11 @@ For this guide you want these capabilities `[OK]`:
 | capability | what it gives you | if missing |
 |---|---|---|
 | `llvm_m2m_toolchain` | model2MLIR + clang-23 (the lowering) | **required** — nothing below runs |
-| `spike_rv64gcv` | bit-exact RVV correctness | **required** for §3–§5 |
+| `spike_rv64gcv` | bit-exact RVV correctness | **required** for §3–§6 |
 | `zephyr_spike` | the Zephyr whole-model build (`ZEPHYR_BASE`, SDK 0.17.0, `MERLIN_CHIPYARD`) | **required** for §4 onward |
-| `zephyr_multicore` | the multicore image (adds the in-repo OpenMP shim) | required for §5 |
-| `saturn_multicore_verilator` | cycle-accurate multicore Saturn RTL | optional — §6 skips |
-| `k1_board` | real silicon cycles | optional — but §7 is the ONLY honest speedup source |
+| `zephyr_multicore` | the multicore image (adds the in-repo OpenMP shim) | required for §6 |
+| `saturn_multicore_verilator` | cycle-accurate multicore Saturn RTL | optional — §7 skips |
+| `k1_board` | real silicon cycles | optional — but §8 is the ONLY honest speedup source |
 
 The Zephyr workspace is [`ucb-bar/zephyr-chipyard-sw`](https://github.com/ucb-bar/zephyr-chipyard-sw)
 (branch `dev`); point `MERLIN_ZEPHYR_SW` at the checkout and `ZEPHYR_BASE` at its
@@ -98,14 +118,13 @@ need this step to check what you have. `_full` is the real 22-layer TinyLlama-1.
 pretrained weights; `_consistent` is an older **2-layer, randomly initialised** capture kept for
 regression — useful as a fast smoke test, useless as evidence about the real model.
 
-**The two goldens are not interchangeable, and confusing them looks exactly like a bug.**
-`golden.npy` is a **weight-only-int8** reference: model2MLIR quantizes with torchAO
-`int8_weight_only`, so the weights are int8 but the activations stay fp32. Merlin's int8 path
-computes **W8A8** — activations quantized too. Grading a W8A8 run against `golden.npy` therefore
-measures activation-quantization error, which on a real pretrained LLM is large and on a small
-random-init model is nearly zero. That is what `golden_w8a8.npy` is for, and it is why the gate
-below has two tiers. If a bundle lacks it, regenerate with
-`run_model(bundle, workdir, int8_compute=True)` and `np.save` the result.
+**The two goldens are not interchangeable** — see [Grade int8 against an int8
+reference](#grade-int8-against-an-int8-reference) above. If a bundle lacks `golden_w8a8.npy`:
+
+```bash
+.venv/bin/python build_tools/scripts/make_w8a8_golden.py --list        # coverage
+.venv/bin/python build_tools/scripts/make_w8a8_golden.py tiny_llama_int8_full
+```
 
 int8 is the only measured-working quantized format today — `fp8`/`int4` are a documented plan, not
 a claim. See [model2MLIR frontend](model2mlir.md).
@@ -131,7 +150,26 @@ A package is a **vector schedule, not a dialect**:
 In-repo you do not need the clone at all: `merlin-compile` resolves the certified champion for the
 requested datatype automatically. Pass `--package <dir>` to pin a specific one.
 
-## 3. Compile and verify on spike (correctness)
+## 3. Check it on the host first (no board, no simulator, no cross-toolchain)
+
+```bash
+merlin-compile --workload tiny_llama --dtype int8 --target rvv --run host --verify --json
+```
+
+This runs the model through the x86 dispatch runtime and grades it with the same multi-tier
+gate as every later stage. It needs nothing but the Python install, it finishes in minutes
+instead of the ~40 minutes a whole-model cross-compile takes, and it is the stage that tells
+you whether a problem is in the quantization math at all. Expect:
+
+```json
+"status": "verified", "verify": {"gate_ok": true, "w8a8_cos": 0.9999999, "w8a8_max_rel": 0.0}
+```
+
+Keep this number. If a later board or simulator run disagrees with it, the difference is in
+codegen or the harness — and if it *agrees*, no amount of board debugging will help, because
+both are computing the same thing.
+
+## 4. Compile and verify on spike (correctness)
 
 ```bash
 merlin-compile --workload tiny_llama --dtype int8 --target rvv --run spike --verify --json
@@ -152,7 +190,7 @@ The gate is multi-tier, because a W8A8 model legitimately fails an fp32-tight th
 while a single element is catastrophically wrong — a measured fp16-accumulate GEMM once passed at
 cos 0.9999986 while being 1209% wrong on one element.
 
-## 4. Sustained inference
+## 5. Sustained inference
 
 A single inference tells you almost nothing about a service: it cannot show a per-iteration cost
 that creeps (arena growth, allocator churn), and its cold caches make the one number you quote
@@ -184,7 +222,7 @@ deterministic, so any nonzero drift there would be real allocator churn rather t
 noise. `w8a8_rel: 0.0` means the integer datapath reproduces the W8A8 golden exactly, not merely
 within tolerance.
 
-## 5. Multicore
+## 6. Multicore
 
 ```bash
 merlin-compile --workload tiny_llama --dtype int8 --target rvv \
@@ -233,7 +271,7 @@ same comparison on the **K1**. Measured, `small_llama` int8:
 | 4 | 97,374,999 | 3.79× | **0** / 2048 |
 
 (Those spike cycle counts show the *work split*, not speed — spike is IPC≈1. For real cycles see
-§6b; for wall-clock see §7.)
+§7b; for wall-clock see §8.)
 
 ### Two bugs this gate exists to catch — and once failed to
 
@@ -258,7 +296,7 @@ single synthesized kernel. If a multicore run ever goes quiet again, rebuild wit
 waiting on and what that worker last published, and gives up on a wall-clock deadline instead of
 spinning forever.
 
-## 6. Cycle-accurate multicore RTL (optional)
+## 7. Cycle-accurate multicore RTL (optional)
 
 Every stock Saturn config in chipyard is single-core, and the only multi-tile SoC gives just one
 tile a vector unit. `generators/chipyard/src/main/scala/config/MerlinSaturnConfigs.scala` adds
@@ -298,15 +336,15 @@ evidence about any compiled model's accuracy.
 **Scope — read this before pointing it at a model.** Booting Zephyr and running those three
 dispatches took ~40 minutes of wall clock. A whole 22-layer TinyLlama inference is ~10¹⁰ cycles;
 at that rate it is not hours but weeks. Verilator here certifies the multicore RVV **mechanism**
-and small kernels, nothing more. Whole-model functional truth comes from spike (§3–§5) and
-whole-model timing from the K1 (§7).
+and small kernels, nothing more. Whole-model functional truth comes from spike (§3–§6) and
+whole-model timing from the K1 (§8).
 
 Two practical notes. Redirect the sim's stdout through `stdbuf -o0` to watch it live — it
 block-buffers to a file otherwise, and a run killed by a timeout loses everything it had
 buffered. And do **not** redirect its stdin from `/dev/null`: the harness reads stdin for UART
 and exits immediately on EOF.
 
-## 6b. FireSim — the same SoC on an FPGA (whole-model RTL)
+## 7b. FireSim — the same SoC on an FPGA (whole-model RTL)
 
 Verilator certifies the mechanism but cannot reach a model (~10⁴ cycles/s). The **same** Saturn
 SoC on an FPGA runs at tens of MHz, which is what makes whole-model multicore RVV measurable
@@ -367,9 +405,9 @@ hart the same price per instruction and models no memory system, so it sees the 
 not what the split costs. 1.574× is the number that includes real DRAM and cache behaviour, and it
 is the one to quote for the SoC.
 
-## 7. Wall-clock speedup on shipping silicon
+## 8. Wall-clock speedup on shipping silicon
 
-§6b already answers "is it faster **on our SoC**", cycle-accurately. This step answers the
+§7b already answers "is it faster **on our SoC**", cycle-accurately. This step answers the
 different question of wall-clock on a chip you can buy — and it is the only one that can, because
 the K1's memory system, clocks and core count are a real product rather than a bitstream.
 
@@ -431,4 +469,4 @@ gate firing, and it means either the hart→thread mapping or the vector-state h
 both silently corrupt results. Fall back to `--harts 1` (unaffected) and report it.
 
 **Multicore is slower on spike.** Expected, and not a regression: spike executes the spinning
-worker's instructions at full speed. Never take a speedup number from spike; use §7.
+worker's instructions at full speed. Never take a speedup number from spike; use §8.
