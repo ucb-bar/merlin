@@ -29,7 +29,8 @@ def lower_model(mlir_text: str, workdir: str | Path,
                 targets: tuple[str, ...] = ("host",), textual: bool = False,
                 vectorize: bool = False, transform_schedule: str | None = None,
                 hoist_static_allocs: bool = True, parallel: bool = False,
-                features: "frozenset[str] | None" = None) -> LowerResult:
+                features: "frozenset[str] | None" = None,
+                parallel_harts: int | None = None) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
     ``textual=True`` uses the pure-text preprocessing (no xDSL round-trip) —
@@ -38,6 +39,9 @@ def lower_model(mlir_text: str, workdir: str | Path,
 
     ``vectorize=True`` bakes native RVV (fixed-width vector ops) into the IR instead of
     relying on clang auto-vectorization — for the rv64gcv / Saturn-tile target.
+
+    ``parallel_harts=N`` layers an outer OpenMP-parallel loop under that RVV schedule, so
+    the object is BOTH vectorized and multicore (the multi-hart Saturn / Zephyr SMP path).
     """
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
@@ -52,7 +56,8 @@ def lower_model(mlir_text: str, workdir: str | Path,
     ll_text = lower_to_llvm_ir(upstream_text, workdir=work, vectorize=vectorize,
                                transform_schedule=transform_schedule,
                                hoist_static_allocs=hoist_static_allocs,
-                               parallel=parallel, features=features)
+                               parallel=parallel, features=features,
+                               parallel_harts=parallel_harts)
     ll_path = work / "model.ll"
     ll_path.write_text(ll_text, encoding="utf-8")
 
@@ -70,9 +75,11 @@ def lower_model_file(mlir_path: str | Path, workdir: str | Path,
                      transform_schedule: str | None = None,
                      hoist_static_allocs: bool = True,
                      parallel: bool = False,
-                     features: "frozenset[str] | None" = None) -> LowerResult:
+                     features: "frozenset[str] | None" = None,
+                     parallel_harts: int | None = None) -> LowerResult:
     return lower_model(Path(mlir_path).read_text(encoding="utf-8"), workdir, targets,
                        textual=textual, vectorize=vectorize,
                        transform_schedule=transform_schedule,
                        hoist_static_allocs=hoist_static_allocs,
-                       parallel=parallel, features=features)
+                       parallel=parallel, features=features,
+                       parallel_harts=parallel_harts)

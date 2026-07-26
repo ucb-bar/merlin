@@ -381,6 +381,6 @@ def run_source() -> str:
         "if stage2:\n"
         "    _run_stages(ctx, module, stage2, _ERASE_SELF_COPY)\n"
         "with open(out_path, 'w') as f:\n"
-        "    f.write(str(llvm.translate_module_to_llvmir(module.operation)))\n"
+        "    __MERLIN_EMIT__\n"
         "print('OK scalarize_a rewrote', _n, 'sink_extf', _m)\n"
     )

@@ -136,11 +136,82 @@ module attributes {transform.with_named_sequence} {
 """
 
 
+# --- Multicore: an OUTER parallel tiling stage layered under the RVV schedule ----------
+# The RVV schedule tiles the contraction with `tile_using_for`, which emits sequential
+# `scf.for` — and this LLVM-23 build has no scf.for->scf.parallel pass, so a serial tile
+# loop can never become an OpenMP worksharing loop. `scf.forall` IS the parallel carrier
+# (`scf-forall-to-parallel` -> `convert-scf-to-openmp`), so multicore has to be introduced
+# by an outer `tile_using_forall` BEFORE the package's schedule runs.
+#
+# This is done as a SEPARATE transform library with its OWN entry point rather than by
+# editing the package's schedule text: `transform-preload-library` merges several library
+# files (`transform-library-paths=a.mlir,b.mlir`) and the interpreter is then run once per
+# entry point. So every existing package schedule — and every impr_features edit, which
+# anchors on `__transform_main` — composes unchanged, and no package file is rewritten.
+# The package's `structured.match` still finds the contraction after it is wrapped, because
+# match walks nested regions.
+#
+# WHICH DIM: only PARALLEL dims may be split — tiling the K (reduction) dim would race on
+# the accumulator. Defaults are chosen so the split does not starve the inner micro-kernel:
+#   * matmul (M,N,K) -> N. Splitting M is the obvious choice but is wrong here: LLM shapes
+#     are small-M (TinyLlama prefill is M=8), and M/n_harts drops BELOW the MR=4 register
+#     block, so each hart runs a masked short tile. N is large (2048/5632) and stays a clean
+#     multiple of NR=8.
+#   * batch_matmul (B,M,N,K) -> B. Attention carries B=32 heads, far more parallelism than
+#     its N (8..64), and the schedule already tiles B by 1 so whole heads split cleanly.
+PARALLEL_ENTRY = "__transform_parallel_main"
+
+_PARALLEL_DIM_NUM_THREADS = {
+    # op -> {dim: num_threads list}. A 0 means "do not tile this dim".
+    "linalg.matmul": {"m": "[{n}]", "n": "[0, {n}]"},
+    "linalg.batch_matmul": {"b": "[{n}]", "m": "[0, {n}]", "n": "[0, 0, {n}]"},
+}
+
+
+def parallel_transform_schedule(n_harts: int, *, matmul_dim: str = "n",
+                                batch_matmul_dim: str = "b") -> str:
+    """Transform schedule that wraps each contraction in an `scf.forall` over ``n_harts``.
+
+    Runs BEFORE the package's own schedule (separate entry point, see above), so the inner
+    tiling/vectorization — and therefore the emitted `vfmacc`/`vwmacc` — is untouched.
+    ``matmul_dim`` / ``batch_matmul_dim`` name the parallel dim to split; K is never
+    tileable here (it is the reduction dim and splitting it would race).
+    """
+    if n_harts < 2:
+        raise ValueError(f"parallel schedule needs n_harts >= 2, got {n_harts}")
+    body = []
+    for op, dim in (("linalg.matmul", matmul_dim), ("linalg.batch_matmul", batch_matmul_dim)):
+        choices = _PARALLEL_DIM_NUM_THREADS[op]
+        if dim not in choices:
+            raise ValueError(f"{op}: parallel dim {dim!r} not in {sorted(choices)} "
+                             "(the reduction dim K is never tileable)")
+        tag = op.split(".")[-1]
+        body.append(
+            f'    %{tag} = transform.structured.match ops{{["{op}"]}} in %arg0 '
+            f': (!transform.any_op) -> !transform.any_op\n'
+            f'    %{tag}_loop, %{tag}_tiled = transform.structured.tile_using_forall '
+            f'%{tag} num_threads {choices[dim].format(n=n_harts)} '
+            f': (!transform.any_op) -> (!transform.any_op, !transform.any_op)')
+    return ("module attributes {transform.with_named_sequence} {\n"
+            f"  transform.named_sequence @{PARALLEL_ENTRY}"
+            "(%arg0: !transform.any_op {transform.readonly}) {\n"
+            + "\n".join(body) + "\n"
+            "    transform.yield\n"
+            "  }\n"
+            "}\n")
+
+
 def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = True,
-                       features: "frozenset[str]" = frozenset()) -> str:
+                       features: "frozenset[str]" = frozenset(),
+                       par_sched_path: "str | Path | None" = None) -> str:
     """Whole-module pipeline with the transform vectorization stage spliced in after
     named-op generalization (vectorize on tensors) and before bufferization, plus the
     vector-lowering passes needed to reach LLVM. ``sched_path`` is the preloaded schedule.
+
+    ``par_sched_path`` (default None -> byte-identical to the shipping serial pipeline)
+    enables the multicore variant: the parallel library is preloaded alongside the package
+    schedule, its entry point runs FIRST (wrapping each contraction in an ``scf.forall``),
+    and the loop-generation/LLVM stages gain the forall->parallel->OpenMP conversions.
 
     ``hoist_static_allocs=False`` drops the ``hoist-static-allocs`` option of
     buffer-results-to-out-params so static intermediate buffers stay HEAP (memref.alloc) instead
@@ -152,6 +223,13 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
             if hoist_static_allocs
             else "buffer-results-to-out-params{modify-public-functions}")
     late_hoist: list[str] = []
+    # Multicore: preload the parallel library ALONGSIDE the package schedule (the option is a
+    # list) and run its entry point first, so each contraction is already wrapped in an
+    # `scf.forall` when the package's `__transform_main` matches and vectorizes it.
+    par = par_sched_path is not None
+    preload = (f"transform-preload-library{{transform-library-paths={par_sched_path},{sched_path}}}"
+               if par else
+               f"transform-preload-library{{transform-library-paths={sched_path}}}")
     passes = [
         "canonicalize", "cse",
         # Recover named contraction ops (matmul/batch_matmul) from the capture's generics so
@@ -159,7 +237,9 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
         # before this — it folds matmuls into fused generics and the `ops{["linalg.matmul"]}`
         # match then finds nothing (silent 0-vectorization).
         "func.func(linalg-specialize-generic-ops)",
-        f"transform-preload-library{{transform-library-paths={sched_path}}}",
+        preload,
+        *([f"transform-interpreter{{entry-point={PARALLEL_ENTRY}}}", "canonicalize", "cse"]
+          if par else []),
         "transform-interpreter{entry-point=__transform_main}",
         "canonicalize", "cse",
         # POST-matmul elementwise fusion (env-gated, default OFF -> baseline byte-identical): after the
@@ -176,13 +256,24 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
         "func.func(lower-vector-multi-reduction)",
         "func.func(lower-vector-mask)",
         "convert-vector-to-scf",
-        "func.func(convert-linalg-to-loops)",   # fallback: any op the vectorizer skipped
+        # Multicore: the outer `scf.forall` becomes `scf.parallel`, and the non-vectorized
+        # fallback ops lower to parallel loops too (instead of serial `scf.for`) so the
+        # elementwise/norm tail scales with the harts as well. `convert-scf-to-openmp` then
+        # wraps every `scf.parallel` in `omp.parallel` + `omp.wsloop`. Reduction loops are
+        # NOT touched by convert-linalg-to-parallel-loops (they stay `scf.for`), so the
+        # accumulator is never raced.
+        *(["scf-forall-to-parallel",
+           "func.func(convert-linalg-to-parallel-loops)",
+           "convert-scf-to-openmp", "canonicalize"]
+          if par else
+          ["func.func(convert-linalg-to-loops)"]),   # fallback: any op the vectorizer skipped
         *late_hoist,                            # K1: hoist loop-body alloca temps out of loops
         "convert-scf-to-cf",
         "expand-strided-metadata",
         "lower-affine",
         "convert-vector-to-llvm",
         "convert-ub-to-llvm",
+        *(["convert-openmp-to-llvm"] if par else []),
         "convert-math-to-libm",
         "convert-math-to-llvm",
         "convert-index-to-llvm",
@@ -202,7 +293,18 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
 
-_RUNNER = r'''
+# How a runner emits its result. The in-process torch-mlir bridge
+# (`translate_module_to_llvmir`) is the default and produces .ll directly; it SEGFAULTS on
+# OpenMP IR (its OpenMPIRBuilder), so the multicore/parallel paths instead DUMP the
+# LLVM-dialect module and translate out-of-process with the standalone mlir-translate.
+# Every runner variant carries the `__MERLIN_EMIT__` token so the choice is orthogonal to
+# which feature-specific runner is selected — without this, enabling multicore silently
+# dropped the feature runners (the accum-v3 SCALARIZE_MARKER would leak into the pipeline
+# as an unregistered pass, and erase_self_copy/fuse_transpose_b would stop applying).
+EMIT_TRANSLATE = "f.write(str(llvm.translate_module_to_llvmir(module.operation)))"
+EMIT_DUMP = "f.write(str(module.operation))"
+
+_RUNNER_SRC = r'''
 import sys
 
 from torch_mlir import ir
@@ -220,9 +322,11 @@ if _FUSE_TRANSPOSE_B:
     print("OK fuse_transpose_b", _fuse_transpose_b(module, ctx))
 _run_stages(ctx, module, pipeline, _ERASE_SELF_COPY)
 with open(out_path, "w") as f:
-    f.write(str(llvm.translate_module_to_llvmir(module.operation)))
+    __MERLIN_EMIT__
 print("OK")
 '''
+
+_RUNNER = _RUNNER_SRC.replace("__MERLIN_EMIT__", EMIT_TRANSLATE)
 
 
 # Runner variant for the vectorized_transcendental_activation feature: BEFORE the pass manager runs,
@@ -249,7 +353,7 @@ with ctx, ir.Location.unknown():
     _n = apply_activation_polynomial(module, ctx)
 PassManager.parse("builtin.module(" + pipeline + ")", ctx).run(module.operation)
 with open(out_path, "w") as f:
-    f.write(str(llvm.translate_module_to_llvmir(module.operation)))
+    __MERLIN_EMIT__
 print("OK act_poly rewrote", _n)
 '''
 
@@ -277,32 +381,28 @@ def _needs_scalarize_runner(pipeline: str, feats: "frozenset[str]") -> bool:
     return any(f in feats for f in _accum_microkernel_v3_features())
 
 
-def _activation_poly_runner() -> str:
+def _activation_poly_runner(emit: str = EMIT_TRANSLATE) -> str:
     """The lowering runner with the transcendental->polynomial rewriter spliced in (default-off
     feature). Imported here (not at module top) so importing pipeline never pulls act_poly."""
     from .act_poly import rewrite_source
-    return _RUNNER_ACT_POLY_HEAD + rewrite_source() + _RUNNER_ACT_POLY_TAIL
+    return (_RUNNER_ACT_POLY_HEAD + rewrite_source()
+            + _RUNNER_ACT_POLY_TAIL.replace("__MERLIN_EMIT__", emit))
 
-# Parallel/OpenMP path: run the passes in the m2m venv (full LLVM-23 registry), but DUMP the
-# LLVM-dialect module instead of translating in-process — the torch-mlir wheel's
-# translate_module_to_llvmir segfaults on whole-model OpenMP IR (its OpenMPIRBuilder). The
-# standalone llvm-install mlir-translate (same LLVM 23) translates the omp IR cleanly, so the
-# translate step runs out-of-process below. The non-parallel paths keep the in-process bridge.
-_RUNNER_DUMP = r'''
-import sys
 
-from torch_mlir import ir
-from torch_mlir.passmanager import PassManager
+def _select_runner(pipeline: str, feats: "frozenset[str]", *, emit: str) -> str:
+    """Pick the lowering-runner source for these features and bind how it emits its result.
 
-src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
-ctx = ir.Context()
-with open(src_path) as f:
-    module = ir.Module.parse(f.read(), ctx)
-PassManager.parse("builtin.module(" + pipeline + ")", ctx).run(module.operation)
-with open(out_path, "w") as f:
-    f.write(str(module.operation))
-print("OK")
-'''
+    The runner variant is chosen by FEATURE (act_poly rewriter / accum-v3 two-stage
+    scalarization / plain); ``emit`` is orthogonal and chosen by TRANSPORT (in-process
+    translate vs dump-for-mlir-translate). Keeping the two independent is what lets the
+    multicore path carry the feature rewrites — see the EMIT_* comment.
+    """
+    if "vectorized_transcendental_activation" in feats:
+        return _activation_poly_runner(emit)
+    if _needs_scalarize_runner(pipeline, feats):
+        from .accum_microkernel import run_source
+        return run_source().replace("__MERLIN_EMIT__", emit)
+    return _RUNNER_SRC.replace("__MERLIN_EMIT__", emit)
 
 
 class PipelineError(RuntimeError):
@@ -313,7 +413,8 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
                      pipeline: str | None = None, timeout: int = 7200,
                      vectorize: bool = False, transform_schedule: str | None = None,
                      hoist_static_allocs: bool = True, parallel: bool = False,
-                     features: "frozenset[str] | None" = None) -> str:
+                     features: "frozenset[str] | None" = None,
+                     parallel_harts: int | None = None) -> str:
     """Lower upstream-MLIR text to LLVM IR text via the m2m venv. Returns .ll text.
 
     ``vectorize=True`` selects the native RVV path: writes the transform schedule into
@@ -321,18 +422,36 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     ops (real RVV under ``-march=rv64gcv``). ``transform_schedule`` overrides the default
     matmul/batch_matmul schedule (e.g. the elementwise/reduction schedule for the vector
     family) without disturbing it. An explicit ``pipeline`` overrides both defaults.
+
+    ``parallel_harts=N`` (>= 2) additionally makes the RVV path MULTICORE: an outer
+    ``scf.forall`` over N chunks is layered under the package schedule and lowered to
+    OpenMP, so the emitted object carries both real RVV vectors and ``__kmpc_*`` calls.
+    Unlike ``parallel=True`` (the scalar-only OpenMP path used for K1 big models) it
+    COMPOSES with ``vectorize`` — vector and threads, not one or the other. Default None
+    keeps the pipeline string byte-identical to the shipping serial codegen.
     """
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="merlin_lower_"))
     work.mkdir(parents=True, exist_ok=True)
     from .impr_features import apply_schedule, normalize
     feats = normalize(features)
+    if parallel_harts is not None and not vectorize:
+        raise PipelineError(
+            "parallel_harts requires vectorize=True (it layers an outer forall UNDER the "
+            "RVV transform schedule); for the scalar OpenMP path use parallel=True")
+    # OpenMP IR — whatever produced it — must take the out-of-process translate route below.
+    omp = parallel or parallel_harts is not None
     if pipeline is None:
         if vectorize:
             sched = work / "rvv_schedule.mlir"
             sched_text = apply_schedule(transform_schedule or RVV_TRANSFORM_SCHEDULE, feats)
             sched.write_text(sched_text, encoding="utf-8")
+            par_sched = None
+            if parallel_harts is not None:
+                par_sched = work / "rvv_parallel_schedule.mlir"
+                par_sched.write_text(parallel_transform_schedule(parallel_harts),
+                                     encoding="utf-8")
             pipeline = build_rvv_pipeline(sched, hoist_static_allocs=hoist_static_allocs,
-                                          features=feats)
+                                          features=feats, par_sched_path=par_sched)
         elif parallel:
             pipeline = _parallel_pipeline()   # multicore (OpenMP) scalar path — K1 big models
         else:
@@ -342,36 +461,14 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     runner = work / "run_lowering.py"
     src.write_text(mlir_text, encoding="utf-8")
 
-    if parallel:
-        # Two-step: run passes in the m2m venv (dump LLVM-dialect MLIR), then translate to
-        # LLVM IR with the standalone mlir-translate (the in-process bridge crashes on omp).
-        from .toolchain import mlir_translate
-        llvmdial = work / "model.llvmdialect.mlir"
-        runner.write_text(_RUNNER_DUMP, encoding="utf-8")
-        proc = subprocess.run(
-            [str(m2m_python()), str(runner), str(src), str(llvmdial), pipeline],
-            capture_output=True, text=True, timeout=timeout)
-        if proc.returncode != 0 or not llvmdial.is_file():
-            raise PipelineError(f"upstream lowering (parallel) failed:\n{proc.stdout}\n{proc.stderr}")
-        tproc = subprocess.run(
-            [str(mlir_translate()), "--mlir-to-llvmir", str(llvmdial), "-o", str(out)],
-            capture_output=True, text=True, timeout=timeout)
-        if tproc.returncode != 0 or not out.is_file():
-            raise PipelineError(f"mlir-translate (parallel) failed:\n{tproc.stdout}\n{tproc.stderr}")
-        return _fix_float_literals(out.read_text(encoding="utf-8"))
-
     # The vectorized_transcendental_activation feature splices a math.exp/erf/tanh -> arith
     # polynomial rewriter into the runner (run before the pass manager). The accumulator-resident
     # micro-kernel v3 feature splices a two-stage runner that runs the A-operand scalarization rewrite
     # BETWEEN two pass-manager stages (split at the SCALARIZE_MARKER pass name). Default-off; with the
     # feature absent the plain _RUNNER is used and the lowering is byte-identical to the baseline.
-    if "vectorized_transcendental_activation" in feats:
-        runner_src = _activation_poly_runner()
-    elif _needs_scalarize_runner(pipeline, feats):
-        from .accum_microkernel import run_source
-        runner_src = run_source()
-    else:
-        runner_src = _RUNNER
+    # The SAME selection is used on the OpenMP transport (only `emit` differs), so a multicore build
+    # of a v3/act_poly package still gets its rewrites.
+    runner_src = _select_runner(pipeline, feats, emit=EMIT_DUMP if omp else EMIT_TRANSLATE)
     runner.write_text(runner_src, encoding="utf-8")
     # argv[4] gates the self-copy erase, so the frozen hand_v0 control keeps its byte-identical
     # lowering unless the feature is explicitly enabled.
@@ -384,11 +481,22 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     # scalarize runners select on their own features and never enable it, so the baseline lowering
     # stays byte-identical unless the fork explicitly turns the feature on.
     _fuse_tb = "1" if _FUSE_TRANSPOSE_FEATURE in feats else "0"
+    # OpenMP transport: the runner DUMPS the LLVM-dialect module and the standalone
+    # mlir-translate produces the .ll out-of-process (the in-process torch-mlir bridge
+    # segfaults on omp IR). Otherwise the runner writes the .ll directly.
+    stage_out = (work / "model.llvmdialect.mlir") if omp else out
     proc = subprocess.run(
-        [str(m2m_python()), str(runner), str(src), str(out), pipeline, _erase, _fuse_tb],
+        [str(m2m_python()), str(runner), str(src), str(stage_out), pipeline, _erase, _fuse_tb],
         capture_output=True, text=True, timeout=timeout)
-    if proc.returncode != 0 or not out.is_file():
+    if proc.returncode != 0 or not stage_out.is_file():
         raise PipelineError(f"upstream lowering failed:\n{proc.stdout}\n{proc.stderr}")
+    if omp:
+        from .toolchain import mlir_translate
+        tproc = subprocess.run(
+            [str(mlir_translate()), "--mlir-to-llvmir", str(stage_out), "-o", str(out)],
+            capture_output=True, text=True, timeout=timeout)
+        if tproc.returncode != 0 or not out.is_file():
+            raise PipelineError(f"mlir-translate (parallel) failed:\n{tproc.stdout}\n{tproc.stderr}")
     return _fix_float_literals(out.read_text(encoding="utf-8"))
 
 
