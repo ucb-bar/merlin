@@ -18,6 +18,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/arch/cpu.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/sys/printk.h>
 
 /* ---- OpenMP ABI types ------------------------------------------------------------- */
@@ -42,10 +43,27 @@ typedef void (*kmpc_micro4_t)(int32_t *, int32_t *, void *, void *, void *, void
 
 /* ---- pool state --------------------------------------------------------------------- */
 
+/* Workers SPIN on a generation counter rather than blocking on a semaphore.
+ *
+ * This is forced by the Saturn fork's arch/riscv/core/v.c V save/restore bug, and it took a
+ * measurement to see why: pinning COOP workers 1:1 to harts removes PREEMPTION, but
+ * k_sem_take is a VOLUNTARY context switch — a blocked worker yields its hart to the idle
+ * thread and switches back on wake, which runs v.c's save/restore exactly as preemption
+ * would. With ~358 parallel regions per inference that is ~716 V context switches per hart,
+ * and the measured result was a load access fault from garbage callee-saved registers on the
+ * master. The SAME binary with the pool clamped to one thread (omp_threads=1) runs clean to
+ * DONE, and the same lowering is bit-correct on the host — so it is the switching, not the
+ * codegen.
+ *
+ * Spinning never leaves the thread, so v.c is never entered. It also happens to be the right
+ * structure regardless: at this fork/join granularity a semaphore round-trip would dominate
+ * the region itself, and the harts are dedicated (pinned 1:1, never oversubscribed) so there
+ * is nothing else for them to run. Interrupts stay enabled; ISRs do not touch V under
+ * CONFIG_RISCV_V_KERNEL_ONLY, and with no other ready thread on the hart they cause no switch.
+ */
 struct omp_worker {
 	struct k_thread thread;
-	struct k_sem start;
-	struct k_sem done;
+	atomic_t done;          /* generation this worker has finished */
 	int32_t gtid;
 };
 
@@ -54,6 +72,7 @@ K_THREAD_STACK_ARRAY_DEFINE(merlin_omp_stacks, MERLIN_OMP_MAX_THREADS,
 
 static struct omp_worker omp_workers[MERLIN_OMP_MAX_THREADS];
 static struct k_mutex omp_critical;
+static atomic_t omp_gen;              /* bumped once per parallel region by the master */
 
 static int omp_nthreads;              /* total incl. master; 0 until merlin_omp_init */
 static int omp_started;               /* pool threads created */
@@ -97,6 +116,16 @@ static inline int omp_self_gtid(void)
  * instruction would then trap. Harmless when the state is already dirty. */
 #define MSTATUS_FS 0x00006000UL
 #define MSTATUS_VS 0x00000600UL
+
+/* Spin-loop relax. Deliberately NOT Zephyr's arch_spin_relax(): on RISC-V that is defined
+ * only under CONFIG_FPU_SHARING (arch/riscv/core/ipi_clint.c), which this image sets to n
+ * because FPU_SHARING mis-routes V-illegal-instruction traps — so referencing it would fail
+ * to link. A compiler barrier is all that is needed; atomic_get() below is a real load each
+ * iteration, and the RISC-V pause hint (Zihintpause) is not guaranteed on this SoC. */
+static inline void omp_relax(void)
+{
+	__asm__ volatile("" ::: "memory");
+}
 
 static inline void omp_enable_vector(void)
 {
@@ -142,15 +171,26 @@ static void omp_worker_entry(void *p0, void *p1, void *p2)
 {
 	struct omp_worker *w = (struct omp_worker *)p0;
 	int slot = (int)(intptr_t)p1;
+	atomic_val_t seen = 0;
 
 	ARG_UNUSED(p2);
 	omp_enable_vector();
 	for (;;) {
-		k_sem_take(&w->start, K_FOREVER);
+		atomic_val_t g;
+
+		/* Spin (never block — see the struct comment). atomic_get is SEQ_CST, so the
+		 * task globals the master published before bumping the generation are visible
+		 * once the new generation is. */
+		while ((g = atomic_get(&omp_gen)) == seen) {
+			omp_relax();
+		}
+		seen = g;
 		if (slot < omp_task_nthreads) {
 			omp_run_region((int32_t)slot);
 		}
-		k_sem_give(&w->done);
+		/* Publish AFTER the region: the master waits on this before reading results or
+		 * starting the next region. */
+		atomic_set(&w->done, g);
 	}
 }
 
@@ -194,8 +234,7 @@ int merlin_omp_init(int n_threads)
 		 * is not on hart 0 (the FireSim vector-tile case pins it to hart 1). */
 		int cpu = (i <= omp_master_cpu) ? (i - 1) : i;
 
-		k_sem_init(&w->start, 0, 1);
-		k_sem_init(&w->done, 0, 1);
+		atomic_set(&w->done, 0);
 		w->gtid = cpu;
 		omp_gtid_of_hart[cpu] = (int8_t)i;
 
@@ -271,12 +310,16 @@ void __kmpc_fork_call(ident_t *loc, int32_t argc, void *microtask, ...)
 	omp_task_argc = (int)argc;
 	omp_task_nthreads = n;
 
-	for (int i = 1; i < n; i++) {
-		k_sem_give(&omp_workers[i].start);
-	}
+	/* Release the workers by bumping the generation (SEQ_CST: everything above is visible
+	 * to a worker that observes the new value), run the master's own slice, then spin until
+	 * every worker has published this generation. */
+	atomic_val_t g = atomic_add(&omp_gen, 1) + 1;
+
 	omp_run_region(0);                       /* the master is thread 0 */
 	for (int i = 1; i < n; i++) {
-		k_sem_take(&omp_workers[i].done, K_FOREVER);
+		while (atomic_get(&omp_workers[i].done) != g) {
+			omp_relax();
+		}
 	}
 	/* Returning from fork_call IS the implicit barrier at the end of the region. */
 }
