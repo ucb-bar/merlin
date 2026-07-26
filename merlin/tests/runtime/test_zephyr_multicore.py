@@ -1,0 +1,120 @@
+"""Multicore RVV whole-model on Zephyr SMP — the bit-exactness gate.
+
+The multicore image fans each contraction across pinned harts via the OpenMP shim
+(``merlin/runtime/c/libomp_zephyr.c``). Two things can go wrong SILENTLY there, and both
+produce a plausible-looking run rather than a crash:
+
+  * the hart -> OpenMP-thread-id mapping is wrong, so two harts claim the same output slice
+    (the emitted IR feeds ``__kmpc_global_thread_num()`` to the worksharing loop, not the
+    outlined region's tid argument), and
+  * the Saturn fork's ``arch/riscv/core/v.c`` corrupts vector state across a context switch —
+    the documented bug that made yolov8n hash two different wrong values in
+    ``samples/merlin_model_runner/prj.conf``.
+
+So the gate here is not "the multicore run is close to the golden" but **1 hart and N harts
+must produce BIT-IDENTICAL output**. The lowered dataflow is deterministic and the static
+schedule splits only parallel dims (reductions stay serial), so any difference at all is
+corruption, not rounding.
+
+Gated on the Zephyr+spike toolchain and ``MERLIN_RUN_SLOW`` (each parametrization lowers a
+model and builds a Zephyr image).
+"""
+from __future__ import annotations
+
+import os
+
+import numpy as np
+import pytest
+
+from merlin.common.artifacts import recaptures_dir
+from merlin.xdsl_dialects import _common
+
+pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
+
+BUNDLE = "small_llama_int8_consistent"
+
+
+def _zm():
+    from merlin.runtime.backends import zephyr_model
+    return zephyr_model
+
+
+def _bundle():
+    b = recaptures_dir() / BUNDLE
+    if not (b / "model.mlir").is_file():
+        pytest.skip(f"{BUNDLE} not captured")
+    return b
+
+
+def _refs(b):
+    refs = {"fp32": np.load(b / "golden.npy")}
+    w8 = b / "golden_w8a8.npy"
+    if w8.is_file():
+        refs["w8a8"] = np.load(w8)
+    return refs
+
+
+slow = pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"),
+                          reason="set MERLIN_RUN_SLOW=1 (builds Zephyr images + runs spike)")
+
+
+def test_single_hart_image_carries_no_openmp():
+    """n_harts=1 must stay byte-identical to the shipping single-worker image."""
+    zm = _zm()
+    src = zm._main_c(0, n_harts=1)
+    assert "libomp_zephyr.h" not in src
+    assert "merlin_omp_init" not in src
+    cmake = zm._cmakelists(*(4 * [__import__("pathlib").Path("/x")]), omp=False)
+    assert "libomp_zephyr.c" not in cmake
+
+
+def test_multicore_image_links_the_shim_and_sizes_the_soc():
+    zm = _zm()
+    src = zm._main_c(0, n_harts=4)
+    assert "merlin_omp_init(4)" in src
+    cmake = zm._cmakelists(*(4 * [__import__("pathlib").Path("/x")]), omp=True)
+    assert "libomp_zephyr.c" in cmake
+    # the DT overlay must enable exactly the harts the SoC has: the 2-tile sample overlay
+    # hard-disabled cpu@2..7 and silently capped every image at 2 harts.
+    ov = zm._chipyard_cpu_overlay(4)
+    assert 'cpu@4 { status = "disabled"; }' in ov
+    assert "cpu@3" not in ov and "cpu@1" not in ov
+
+
+def test_multicore_requires_the_rvv_backend(tmp_path):
+    """The forall is layered under the RVV schedule; scalar would build a serial image."""
+    zm = _zm()
+    if not zm.available():
+        pytest.skip("Zephyr/spike toolchain unavailable")
+    with pytest.raises(zm.ZephyrModelError, match="requires backend='rvv'"):
+        zm.build_app(_bundle(), tmp_path, backend="scalar", n_harts=4)
+
+
+@slow
+@pytest.mark.parametrize("n_harts", [2, 4])
+def test_multicore_output_is_bit_identical_to_single_hart(n_harts, tmp_path):
+    """THE gate: N harts must agree with 1 hart bit-for-bit, and both must pass the golden."""
+    zm = _zm()
+    if not zm.available():
+        pytest.skip("Zephyr/spike toolchain unavailable")
+    b = _bundle()
+    refs = _refs(b)
+
+    base = zm.build_and_run(b, tmp_path / "h1", board="spike_riscv64", backend="rvv",
+                            rvv_hart=0, harts=2, arena_mb=64, int8_compute=True,
+                            n_harts=1, references=refs, timeout=3600)
+    assert base.get("ok"), f"single-hart reference failed its own gate: cos={base.get('cos')}"
+
+    multi = zm.build_and_run(b, tmp_path / f"h{n_harts}", board="spike_riscv64", backend="rvv",
+                             rvv_hart=0, harts=n_harts, arena_mb=64, int8_compute=True,
+                             n_harts=n_harts, references=refs, timeout=3600)
+    assert multi["metrics"].get("omp_threads") == n_harts, \
+        f"pool clamped to {multi['metrics'].get('omp_threads')} instead of {n_harts}"
+
+    a, c = base["outputs"], multi["outputs"]
+    assert a.shape == c.shape, f"shape changed with harts: {a.shape} vs {c.shape}"
+    assert np.array_equal(a, c), (
+        f"{n_harts}-hart output differs from 1-hart by max "
+        f"{np.abs(a - c).max()} — vector-state corruption or an overlapping work split, "
+        f"NOT rounding (the split touches only parallel dims)")
+    assert multi.get("ok")
