@@ -49,8 +49,24 @@ def test_default_targets_gemmini_and_has_scaffolding():
     assert out["SCAFFOLD"] == "ok"                        # gemmini ships task/ + input_bundles/
 
 
-def test_override_switches_target_and_guard_trips_on_missing_scaffolding():
+def test_override_switches_target_to_another_descriptor():
     out = _run(str(_ATLAS))
     assert out["TARGET"] == "atlas"                       # drivers now target atlas's descriptor
     assert out["EXP"] == "atlas_capsule_bench_v0"
-    assert out["SCAFFOLD"] == "missing"                   # atlas ships only a descriptor ⇒ loud guard
+
+
+def test_guard_trips_on_a_descriptor_without_scaffolding(tmp_path):
+    """The guard must fire for a descriptor-only target.
+
+    This used to be asserted against atlas, on the premise that atlas "ships only a descriptor".
+    Atlas has since been scaffolded (task/ + input_bundles/), so the assertion started failing --
+    the guard was fine, the fixture had simply outgrown it. Synthesize a descriptor-only dir
+    instead, so the test keeps testing the guard rather than tracking whichever target happens to
+    be unscaffolded this week.
+    """
+    desc = tmp_path / "probe_capsule_bench_v0"
+    desc.mkdir()
+    (desc / "target_experiment.yaml").write_text("target: probe\n", encoding="utf-8")
+    out = _run(str(desc / "target_experiment.yaml"))
+    assert out["TARGET"] == "probe"
+    assert out["SCAFFOLD"] == "missing"                   # no task/ + input_bundles/ ⇒ loud guard
