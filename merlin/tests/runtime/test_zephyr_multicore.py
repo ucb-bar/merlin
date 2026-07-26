@@ -127,6 +127,44 @@ def test_multicore_is_bit_identical_on_the_k1_board(threads, tmp_path):
         f"only parallel dims; reductions stay serial, so there is no reordering)")
 
 
+@pytest.mark.parametrize("n_harts", [2, 4])
+def test_zephyr_openmp_shim_is_bit_identical_on_a_kernel(n_harts, tmp_path):
+    """The gate for the ZEPHYR SHIM itself (merlin/runtime/c/libomp_zephyr.c).
+
+    Distinct from the K1 test above, which exercises the LOWERING against the real cross-built
+    libomp — the board never runs this shim. Only Zephyr does, so only a Zephyr run can gate it.
+
+    Uses a KERNEL-sized synthesized bundle rather than a whole model, and that is the difference
+    between a gate that runs and one that does not: spike gives the shim's spinning worker the
+    same instruction bandwidth as the vector-heavy master, so a whole model costs 25+ minutes at
+    2 harts while this costs ~7 seconds. Same property tested either way.
+    """
+    zm = _zm()
+    if not zm.available():
+        pytest.skip("Zephyr/spike toolchain unavailable")
+    from merlin.rvvgen import workloads
+
+    # N=256 splits cleanly over 2 and 4 harts and stays a multiple of the NR=8 micro-kernel tile.
+    b = workloads.gen_matmul_f32(tmp_path / "bundle", M=64, N=256, K=64, seed=0)
+    golden = np.load(b / "golden.npy")
+
+    base = zm.build_and_run(b, tmp_path / "h1", board="spike_riscv64", backend="rvv",
+                            rvv_hart=0, harts=2, arena_mb=32, n_harts=1,
+                            reference=golden, timeout=1800)
+    assert base.get("ok"), f"single-hart reference failed its own gate: cos={base.get('cos')}"
+
+    multi = zm.build_and_run(b, tmp_path / f"h{n_harts}", board="spike_riscv64", backend="rvv",
+                             rvv_hart=0, harts=n_harts, arena_mb=32, n_harts=n_harts,
+                             reference=golden, timeout=1800)
+    assert multi["metrics"].get("omp_threads") == n_harts, (
+        f"pool clamped to {multi['metrics'].get('omp_threads')} instead of {n_harts}")
+    assert multi.get("ok")
+    a, c = base["outputs"], multi["outputs"]
+    assert np.array_equal(a, c), (
+        f"{n_harts}-hart output differs from 1-hart in {(a != c).sum()} elements — the shim's "
+        f"work split or its vector-state handling is wrong; both corrupt silently")
+
+
 @slow
 @pytest.mark.parametrize("n_harts", [2, 4])
 def test_multicore_output_is_bit_identical_to_single_hart(n_harts, tmp_path):

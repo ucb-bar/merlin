@@ -1156,7 +1156,23 @@ def publish(target: str, *, dry_run: bool = True, remote: str | None = None, gat
 # ---------------------------------------------------------------------------- CLI
 
 
-def _print_result(res: PublishResult) -> None:
+def _print_result(res: "PublishResult | dict[str, Any]") -> None:
+    # `index` returns a plain dict (it publishes a landing page, not a champion package), so it
+    # has no package_id/tag. Print the fields it does carry instead of crashing on the ones it
+    # does not -- the push had already succeeded when this raised, which is the worst kind of
+    # failure to report: a real error message about work that actually completed.
+    if isinstance(res, dict):
+        print(f"target={res.get('target')} branch={res.get('branch')}")
+        print(f"remote={res.get('remote')}")
+        print(f"dry_run={res.get('dry_run')} noop={res.get('noop')}")
+        if res.get("commit_sha"):
+            print(f"commit={res['commit_sha']}")
+        print(f"listed {len(res.get('entries') or [])} branch(es):")
+        for e in res.get("entries") or []:
+            print(f"  - {e['branch']}  ({e['package_id']}, {e['dtype']}, {e['status']})")
+        for a in res.get("actions") or []:
+            print(f"  - {a}")
+        return
     print(f"target={res.target} package={res.package_id}")
     print(f"remote={res.remote} branch={res.branch}")
     print(f"dry_run={res.dry_run} committed={res.committed} noop={res.noop}")
