@@ -61,13 +61,19 @@ class TargetExperiment:
         return str(self.capsule_corpus.relative_to(repo_root())) + "/"
 
     def corpus_siblings(self) -> list[str]:
-        """Sibling corpora that actually EXIST beside the primary corpus (e.g. layers/model_slices) —
-        globbed, not a hardcoded gemmini taxonomy. Repo-root-relative strings."""
+        """Sibling capsule CATEGORIES that actually EXIST beside the primary corpus (e.g. layers/
+        model_slices) — globbed, not a hardcoded gemmini taxonomy. Repo-root-relative strings.
+
+        A sibling category holds capsule dirs DIRECTLY (``d/*/capsule.yaml``). A subdir that instead holds
+        its OWN categories (``d/*/*/capsule.yaml``) is a different TARGET's corpus that merely nests under
+        the same parent (e.g. ``capsules/atlas/`` beside gemmini's ``capsules/isa``) — it is NOT a sibling
+        of this corpus and must be excluded, or a target's capsules leak into another target's set."""
         parent = self.capsule_corpus.parent
         out = []
         for d in sorted(parent.iterdir()) if parent.is_dir() else []:
             if (d.is_dir() and d != self.capsule_corpus and d.name != "hidden"
-                    and not d.name.startswith(("_", "."))):   # skip __pycache__/dotdirs, not corpora
+                    and not d.name.startswith(("_", "."))          # skip __pycache__/dotdirs, not corpora
+                    and next(d.glob("*/capsule.yaml"), None) is not None):  # a CATEGORY, not a nested corpus
                 out.append(str(d.relative_to(repo_root())) + "/")
         return out
 

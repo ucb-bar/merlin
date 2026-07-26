@@ -35,10 +35,17 @@ _DEFAULT_CEILING = "L2"  # bwrap sandbox: numerics + spike, no VCS/FireSim (L3+)
 
 
 def _public_capsule_dirs(contract: str | Path | None = None) -> list[Path]:
-    """Every capsule dir whose capsule.yaml is label: public, across isa/layers/model_slices."""
+    """Every capsule dir whose capsule.yaml is label: public, across isa/layers/model_slices.
+
+    This materializes THIS (gemmini) contract's public capsules — its capsules live at
+    ``capsules/<category>/<cap>/capsule.yaml`` (rel-depth 3). Another target's corpus that nests under the
+    same root (e.g. ``capsules/atlas/<category>/<cap>/capsule.yaml``, rel-depth 4) must NOT be materialized
+    into the gemmini sandbox, so restrict to the direct category/capsule depth."""
     root = contract_dir(contract) / "capsules"
     out = []
     for cap_yaml in sorted(root.rglob("capsule.yaml")):
+        if len(cap_yaml.relative_to(root).parts) != 3:   # skip nested per-target corpora (atlas/, …)
+            continue
         try:
             cap = yaml.safe_load(cap_yaml.read_text(encoding="utf-8")) or {}
         except yaml.YAMLError:

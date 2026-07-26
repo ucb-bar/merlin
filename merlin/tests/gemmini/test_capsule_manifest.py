@@ -20,7 +20,11 @@ def test_manifest_covers_every_capsule_exactly_once():
     hand = set(m.get("hand_authored", []))
     assert not (generated & hand), f"capsules listed as both generated and hand-authored: {generated & hand}"
     listed = generated | hand
-    on_disk = {str(p.parent.relative_to(CAP_ROOT)) for p in CAP_ROOT.rglob("capsule.yaml")}
+    # This MANIFEST describes THIS (gemmini) corpus — its capsules sit at <category>/<cap> (rel-depth 2).
+    # Another target's corpus nested under the same root (e.g. atlas/<category>/<cap>, depth 3) has its own
+    # provenance and must not be conflated here.
+    on_disk = {str(rel) for p in CAP_ROOT.rglob("capsule.yaml")
+               if len((rel := p.parent.relative_to(CAP_ROOT)).parts) == 2}
     assert listed == on_disk, (
         f"MANIFEST out of sync with the tree — missing: {on_disk - listed}; "
         f"stale: {listed - on_disk}. Re-run generate_corpus.py.")
