@@ -1,0 +1,47 @@
+# htif-nano.specs — newlib-nano + libgloss_htif link profile for RISC-V bare metal.
+#
+# OPTIONAL.  Merlin's own bare-metal harness (merlin/runtime/baremetal/spike/: crt.S, htif.c,
+# libc_min.c, merlin_malloc.c) is freestanding and needs NO libc and no specs file at all —
+# that is the path spike.py and the whole-model bare-metal runs use today.  This file is here
+# for the other case: when you link a bare-metal image against chipyard's newlib sysroot
+# (riscv64-unknown-elf-gcc) and want printf/exit to work over HTIF without writing your own.
+#
+# Equivalent hand-written invocation:
+#   riscv64-unknown-elf-gcc -mcmodel=medany -static -nostartfiles \
+#       -Wl,--start-group -lc_nano -lgloss_htif -Wl,--end-group -lgcc \
+#       -T build_tools/firesim/firesim_baremetal.ld
+#
+# Use:
+#   riscv64-unknown-elf-gcc -specs=build_tools/firesim/htif-nano.specs \
+#       -T build_tools/firesim/firesim_baremetal.ld ... -o image.elf
+#
+# DIFFERENCE FROM THE IREE-ERA ORIGINAL (/scratch2/agustin/merlin/build_tools/firesim/
+# htif-nano.spec): the original ended its *link: rule with `-dT htif.ld%s`, i.e. it pulled the
+# linker script out of GCC's own startfile search path, which only works when htif.ld has been
+# installed into the sysroot's lib/ next to the specs file.  Merlin keeps its linker scripts in
+# the repo, so this version does NOT name a linker script — pass `-T .../firesim_baremetal.ld`
+# (or `-T merlin/runtime/baremetal/spike/model_link.ld` for spike) yourself.  Everything else
+# (nano libc, libgloss_htif substituted for libgloss, no crt startfiles, medany) is unchanged.
+#
+# STATUS: adapted but NOT exercised by any merlin build today.  Treat as a starting point.
+
+%include <nano.specs>
+
+%rename cc1 htif_nano_cc1
+%rename link htif_nano_link
+%rename startfile htif_nano_startfile
+%rename endfile htif_nano_endfile
+
+*cc1:
+%(htif_nano_cc1) -mcmodel=medany
+
+*nano_libgloss:
+%{specs=nosys.specs:-lnosys} %{!specs=nosys.specs:-lgloss_htif}
+
+*link:
+%(htif_nano_link) %:replace-outfile(-lgloss -lgloss_htif) -static
+
+*startfile:
+
+
+*endfile:
