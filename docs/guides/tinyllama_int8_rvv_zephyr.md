@@ -89,12 +89,23 @@ model, the weights, and the goldens the gates use:
 
 ```bash
 ls out/artifacts/recaptures/tiny_llama_int8_full/
-# model.mlir  weights.safetensors(+manifest)  inputs.npz  golden.npy  extra.npz
+# model.mlir  weights.safetensors(+manifest)  inputs.npz  extra.npz
+# golden.npy  golden_w8a8.npy
 ```
 
 `merlin-compile` resolves (and, with `MERLIN_M2M_DIR` set, auto-captures) this for you, so you only
-need this step to check what you have. `_full` is the real 22-layer TinyLlama; `_consistent` is an
-older truncated capture kept for regression.
+need this step to check what you have. `_full` is the real 22-layer TinyLlama-1.1B-Chat with its
+pretrained weights; `_consistent` is an older **2-layer, randomly initialised** capture kept for
+regression — useful as a fast smoke test, useless as evidence about the real model.
+
+**The two goldens are not interchangeable, and confusing them looks exactly like a bug.**
+`golden.npy` is a **weight-only-int8** reference: model2MLIR quantizes with torchAO
+`int8_weight_only`, so the weights are int8 but the activations stay fp32. Merlin's int8 path
+computes **W8A8** — activations quantized too. Grading a W8A8 run against `golden.npy` therefore
+measures activation-quantization error, which on a real pretrained LLM is large and on a small
+random-init model is nearly zero. That is what `golden_w8a8.npy` is for, and it is why the gate
+below has two tiers. If a bundle lacks it, regenerate with
+`run_model(bundle, workdir, int8_compute=True)` and `np.save` the result.
 
 int8 is the only measured-working quantized format today — `fp8`/`int4` are a documented plan, not
 a claim. See [model2MLIR frontend](model2mlir.md).
@@ -356,9 +367,11 @@ hart the same price per instruction and models no memory system, so it sees the 
 not what the split costs. 1.574× is the number that includes real DRAM and cache behaviour, and it
 is the one to quote for the SoC.
 
-## 7. Speedup — real silicon only
+## 7. Wall-clock speedup on shipping silicon
 
-This is the only step that can honestly answer "is it faster".
+§6b already answers "is it faster **on our SoC**", cycle-accurately. This step answers the
+different question of wall-clock on a chip you can buy — and it is the only one that can, because
+the K1's memory system, clocks and core count are a real product rather than a bitstream.
 
 ```bash
 .venv/bin/python build_tools/scripts/k1_multicore_scaling.py \
