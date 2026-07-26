@@ -77,22 +77,32 @@ def run_model(model: str, base, n: int, timeout: int, out: Path,
                "tiers": list(refs), "board": "k1_spacemit", "vlen": k1.VLEN}
         walls, gate, blocker = [], None, None
         print(f"=== {model} / {tag} {rec['compiler_features']} ===", flush=True)
-        for i in range(n):
-            work = Path(tempfile.mkdtemp(prefix=f"k1i8ab_{tag}_{i}_"))
-            try:
-                res = k1.run_on_k1(mdir, work, pkg, timeout=timeout)
-                gate = zm._gate(res["prefix"], refs)
-                w = res.get("metrics", {}).get("wall_ns")
-                if w:
-                    walls.append(w)
-                print(f"  run {i}: wall_ns={w} gate_ok={gate.get('ok')} cos={gate.get('cos')}",
-                      flush=True)
-            except Exception as e:  # noqa: BLE001
-                blocker = f"{type(e).__name__}: {str(e).splitlines()[0][:300]}"
-                print(f"  run {i}: BLOCKED -- {blocker}", flush=True)
-                break
-            finally:
-                shutil.rmtree(work, ignore_errors=True)
+        # BUILD ONCE, RUN n TIMES. clang is deterministic, so rebuilding per repeat puts a
+        # byte-identical object under each measurement while tripling the campaign's cost --
+        # and a whole-model int8 compile here is ~25 min at ~10 GB RSS. The variance the repeats
+        # are FOR is board-side (thermal, scheduling, cache), which needs the same binary run
+        # again, not a new one.
+        work = Path(tempfile.mkdtemp(prefix=f"k1i8ab_{tag}_"))
+        try:
+            binary = k1.build_k1_binary(mdir, work, pkg, inputs_npz=mdir / "inputs.npz")
+            for i in range(n):
+                try:
+                    res = k1.run_binary_on_k1(mdir, work, pkg, binary, timeout=timeout)
+                    gate = zm._gate(res["prefix"], refs)
+                    w = res.get("metrics", {}).get("wall_ns")
+                    if w:
+                        walls.append(w)
+                    print(f"  run {i}: wall_ns={w} gate_ok={gate.get('ok')} cos={gate.get('cos')}",
+                          flush=True)
+                except Exception as e:  # noqa: BLE001
+                    blocker = f"{type(e).__name__}: {str(e).splitlines()[0][:300]}"
+                    print(f"  run {i}: BLOCKED -- {blocker}", flush=True)
+                    break
+        except Exception as e:  # noqa: BLE001
+            blocker = f"{type(e).__name__}: {str(e).splitlines()[0][:300]}"
+            print(f"  build BLOCKED -- {blocker}", flush=True)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
         ok = bool(gate and gate.get("ok")) and bool(walls)
         rec.update(gate_ok=bool(gate and gate.get("ok")),
                    cos=(gate or {}).get("cos"), rel=(gate or {}).get("rel"),
