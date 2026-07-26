@@ -32,8 +32,16 @@ _RVV_DTYPES = ("fp32", "int8", "fp16", "fp8")
 
 
 def _bundle_dir(workload: str, dtype: str):
-    from .common.artifacts import recaptures_dir
-    return recaptures_dir() / f"{workload}_{dtype}_consistent"
+    """The capture bundle `merlin-compile` uses, preferring the FULL-FIDELITY recapture.
+
+    Delegates to ``baselines.bundle.resolve``, which prefers ``<w>_<dtype>_full`` (the real/native
+    architecture) and falls back to ``<w>_<dtype>_consistent``. This used to hard-code the
+    ``_consistent`` suffix, which for tiny_llama is a 2-layer RANDOM-INIT stand-in rather than the
+    real 22-layer TinyLlama-1.1B — so `merlin-compile` silently compiled a toy while every baseline
+    arm (which already goes through ``resolve``) compiled the real model.
+    """
+    from .baselines.bundle import resolve
+    return resolve(workload, dtype).root
 
 
 def _ensure_bundle(workload: str, dtype: str, *, auto_capture: bool) -> Path:
