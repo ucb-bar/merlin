@@ -217,9 +217,20 @@ that creeps (arena growth, allocator churn), and its cold caches make the one nu
 either optimistic or pessimistic depending on which you pick.
 
 ```bash
+# on spike (deterministic, so drift there is real churn rather than noise)
 merlin-compile --workload tiny_llama --dtype int8 --target rvv \
                --run spike --iters 20 --warmup 3 --verify --json
+
+# on the board — the one you want while developing an application
+merlin-compile --workload tiny_llama --dtype int8 --target rvv \
+               --run k1 --iters 5 --warmup 2 --verify --json
 ```
+
+`--iters` / `--warmup` work on **every** run target, the K1 included. That matters because the
+board is the fastest real target (27 s per inference against 45 minutes on the FPGA), so it is
+where an iteration loop is actually usable. The run deadline scales with the pass count
+automatically — `--iters 5 --warmup 2` on a 148 s model needs 1034 s, and a fixed 900 s default
+would kill it with a timeout that names `ssh` rather than the real cause.
 
 The image runs `warmup + iters` invocations **against the same arena** and emits one
 `METRIC iter_cycles <i> <cycles>` line per timed iteration. The host reports `min` / `median` /
@@ -241,6 +252,23 @@ Measured, `small_llama` int8 on spike (`--iters 5 --warmup 1`), abridged:
 deterministic, so any nonzero drift there would be real allocator churn rather than measurement
 noise. `w8a8_rel: 0.0` means the integer datapath reproduces the W8A8 golden exactly, not merely
 within tolerance.
+
+And measured on the **board**, the real 22-layer TinyLlama (`--run k1 --iters 5 --warmup 2`):
+
+```json
+"status": "verified",
+"sustained": { "n": 5, "min": 233446602312, "median": 233737633536, "p95": 233964449796,
+               "max": 233964449796, "drift": 0.0019 },
+"verify":    { "gate_ok": true, "w8a8_cos": 1.0, "w8a8_rel": 0.0, "tier_ok": "w8a8" }
+```
+
+**drift 0.19%** across five back-to-back inferences on real silicon — the arena is genuinely
+reused, and the spread (min to p95 is 0.2%) is well inside the board's ≥1.9% noise floor, so this
+is a usable development loop rather than a number that moves under you.
+
+Note `tier_ok: "w8a8"`. That field says **which reference decided the verdict**, and it is worth
+checking every time: if it reads `fp32` on an int8 run, the W8A8 golden was missing and the gate
+quietly fell back to the weaker tier — the exact failure described at the top of this guide.
 
 ## 6. Multicore
 
