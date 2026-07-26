@@ -123,6 +123,23 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
         if pkg.is_int8 and w8.is_file():
             refs["w8a8"] = np.load(w8)
 
+    # `host` runs the model through the x86 dispatch runtime (per-kernel JIT via the SAME
+    # MLIR lowering, minus the RVV/cross-compile tail). It needs no board, simulator or
+    # cross-toolchain, so it is the first correctness stage on a fresh machine — and the
+    # discriminator when a board run disagrees: host-vs-board separates a quantization-math
+    # bug (both wrong) from a codegen/RVV bug (only the board wrong).
+    if run == "host":
+        from .runtime.dispatch_runtime import run_model
+
+        res = run_model(bundle, work, int8_compute=pkg.is_int8)
+        out["status"] = "ran"
+        out["n_kernels"] = res.get("n_kernels")
+        if refs:
+            g = zm._gate(res["output"], refs)
+            out["verify"] = {"gate_ok": bool(g.get("ok")), **g}
+            out["status"] = "verified" if g.get("ok") else "run_mismatch"
+        return out
+
     # The Zephyr/spike/verilator routes build a Zephyr image (and are the only ones that can be
     # multicore or sustained); the K1 route builds a Linux binary for the board.
     if run in ("spike", "zephyr", "verilator"):
@@ -162,9 +179,13 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
             out["status"] = "verified" if res.get("ok") else "run_mismatch"
         return out
 
-    # K1 / compile-only: build the board binary (build_k1_binary does the lowering itself).
-    binary = k1.build_k1_binary(bundle, work, pkg, inputs_npz=bundle / "inputs.npz")
-    out["binary"] = str(binary)
+    # K1 / compile-only. `run_on_k1` does its own build (into <work>/v), so building here too
+    # would compile the whole model TWICE — for TinyLlama int8 that is ~40 min of clang thrown
+    # away, enough to push the run past its own timeout. Build directly only when nothing else
+    # will.
+    if run != "k1":
+        binary = k1.build_k1_binary(bundle, work, pkg, inputs_npz=bundle / "inputs.npz")
+        out["binary"] = str(binary)
     out["status"] = "compiled"
     if run == "none":
         return out
@@ -173,6 +194,7 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
             out["status"] = "not_run"; out["reason"] = "K1 board unreachable (see MERLIN_K1_HOST/port 2222)"
             return out
         res = k1.run_on_k1(bundle, work, pkg, timeout=timeout)
+        out["binary"] = str(Path(work) / "v" / "merlin_k1")
         out["status"] = "ran"; out["cycles"] = res.get("cycles"); out["vlen"] = res.get("vlen")
         if verify:
             g = zm._gate(res["prefix"], refs)

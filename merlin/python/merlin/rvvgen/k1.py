@@ -805,7 +805,7 @@ def run_binary_on_k1(model_dir: str | Path, bwork: str | Path, pkg, binary: str 
 
 def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 600,
               kernel_backend: str | None = None, dispatch_timing: bool = False,
-              op_profile: bool = False,
+              op_profile: bool = False, force_scalar: bool = False,
               ours_mr: int = 4, ours_pack_b: bool = False) -> dict[str, Any]:
     """Cross-compile the workload for K1, deploy over scp, run, and parse OUT/METRIC/DONE.
 
@@ -892,7 +892,13 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
             except Exception:  # noqa: BLE001
                 pass
 
-    if kernel_backend in ("xnnpack", "openblas", "ours"):
+    if force_scalar:
+        # Single-core scalar int8: the SAME lowering minus vectorization. Its only use is as a
+        # differential oracle — when a vectorized board run disagrees with the host, running the
+        # scalar build on the same silicon says whether the fault is in the RVV codegen or in
+        # everything else (harness, toolchain, arg table, board). Slow; never a perf path.
+        res = _build_deploy_run("scalar", "scalar")
+    elif kernel_backend in ("xnnpack", "openblas", "ours"):
         # XNNPACK/OpenBLAS/ours are the vectorized f32 routed paths; NO scalar/omp fallback (those
         # drop the routing and would silently misreport what ran). Any failure is an honest exception.
         res = _build_deploy_run("v", "v")
