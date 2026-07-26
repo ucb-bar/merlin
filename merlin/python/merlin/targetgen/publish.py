@@ -70,8 +70,15 @@ LAYOUT_VERSION = "1.0"
 _VECTOR_SCHEDULE_FAMILIES = frozenset({"vector_schedule"})
 
 # status ranking for automatic champion selection (lower is better).
-_STATUS_RANK = {"rtl_certified": 0, "spike_verified": 1}
-_DEFAULT_STATUS_RANK = 2
+#
+# `k1_verified` must appear here. `_check_gate` already treats it as a certification at least as
+# strong as spike for a physical RVV target ("measured correct AND faster on the real SpacemiT
+# board"), but with no rank entry it fell to _DEFAULT_STATUS_RANK and sorted BELOW every
+# spike_verified package — so a board-verified champion passed the gate and was then never
+# selected, leaving the frozen hand baseline as the default. Ordering: RTL certification first
+# (cycle-accurate on our own SoC), then real silicon, then the functional simulator.
+_STATUS_RANK = {"rtl_certified": 0, "k1_verified": 1, "spike_verified": 2}
+_DEFAULT_STATUS_RANK = 3
 
 # The FROZEN, hand-authored, UNoptimized controls (BB0 / C5). These publish to a single shared
 # `baseline` branch so the before->after is externally visible; every certified champion publishes

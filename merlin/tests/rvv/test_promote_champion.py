@@ -299,3 +299,24 @@ def test_fresh_clone_builds_champion(out_root, monkeypatch):
     assert pkg.manifest["build"]["tool_output"] == "build/bin/rvv-opt"
     oot_runner.build_package(pkg)
     assert pkg.tool.exists()
+
+
+def test_k1_verified_outranks_spike_verified_in_champion_selection(out_root):
+    """A board-verified package must actually WIN selection, not merely pass the gate.
+
+    `_check_gate` accepts k1_verified as a certification at least as strong as spike, but the
+    ranking table had no entry for it, so it fell to the default rank and sorted below every
+    spike_verified package. The effect was silent: promote_champion would stamp a measured
+    winner, the gate would accept it, and select_champion would still hand back the frozen
+    hand baseline.
+    """
+    from merlin.targetgen import publish as P
+
+    assert P._STATUS_RANK["rtl_certified"] < P._STATUS_RANK["k1_verified"]
+    assert P._STATUS_RANK["k1_verified"] < P._STATUS_RANK["spike_verified"]
+    assert P._STATUS_RANK["spike_verified"] < P._DEFAULT_STATUS_RANK
+
+    spike = P._rank_key(Path("a_spike"), {"status": "spike_verified"})
+    k1v = P._rank_key(Path("b_k1"), {"status": "k1_verified"})
+    other = P._rank_key(Path("c_other"), {"status": "k1_measured"})
+    assert k1v < spike < other
