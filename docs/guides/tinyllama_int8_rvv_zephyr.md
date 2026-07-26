@@ -250,8 +250,15 @@ level 0: 2 dispatch(es) done      level 1: 1 dispatch(es) done
 RESULT: PASS (1024/1024 elems correct)
 ```
 
-That is the multicore-RVV mechanism certified against cycle-accurate RTL: several V-using threads
-on distinct Saturn tiles, a dependency barrier between levels, and bit-correct results.
+That is the multicore-RVV **mechanism** certified against cycle-accurate RTL: several V-using
+threads on distinct Saturn tiles, with a dependency barrier between levels, agreeing with a
+scalar reference.
+
+Be precise about what it does and does not establish. The sample is **fp32** (`vfmacc` at
+`e32/m8`) and its check is a 1e-2 RELATIVE tolerance, not bit-exactness — so it says nothing
+about int8 numerics, and "1024/1024 correct" means within 1%, not identical. It is evidence
+that threads on separate Saturn tiles execute V correctly and synchronize correctly; it is not
+evidence about any compiled model's accuracy.
 
 **Scope — read this before pointing it at a model.** Booting Zephyr and running those three
 dispatches took ~40 minutes of wall clock. A whole 22-layer TinyLlama inference is ~10¹⁰ cycles;
@@ -263,6 +270,49 @@ Two practical notes. Redirect the sim's stdout through `stdbuf -o0` to watch it 
 block-buffers to a file otherwise, and a run killed by a timeout loses everything it had
 buffered. And do **not** redirect its stdin from `/dev/null`: the harness reads stdin for UART
 and exits immediately on EOF.
+
+## 6b. FireSim — the same SoC on an FPGA (whole-model RTL)
+
+Verilator certifies the mechanism but cannot reach a model (~10⁴ cycles/s). The **same** Saturn
+SoC on an FPGA runs at tens of MHz, which is what makes whole-model multicore RVV measurable
+against real RTL rather than a simulator.
+
+Build the bitstream (hours of Vivado, unattended). `build_tools/chipyard/setup_multicore_saturn.py`
+installs the target configs and Alveo U250 recipes; then add the recipe to `builds_to_run` and:
+
+```bash
+cd $MERLIN_CHIPYARD/sims/firesim && source sourceme-manager.sh --skip-ssh-setup
+cd deploy && ./firesim buildbitstream
+```
+
+Measured for `alveo_u250_firesim_dual_saturn_v256d128` (2 tiles, a Saturn unit on **each**):
+**28.65% LUTs** of the U250 (495k/1.73M), FFs 6.7%, BRAM 8.9%, DSP 1.7%, and timing **closed at
+25 MHz (WNS +0.034 ns, TNS 0.000)**. The FireSim shell is 6.7% of that, so the 4-tile variant
+should also fit (~47% projected). When the build finishes, register the entry it prints into
+`sims/firesim/deploy/config_hwdb.yaml` and point `config_runtime.yaml`'s `default_hw_config` at
+it — note that file is SHARED, so restore it if others use the machine.
+
+### Running — always through the queue
+
+There is one physical FPGA, so **every run must go through the job queue**, never a direct
+`firesim` invocation:
+
+```bash
+/scratch2/agustin/firesim_queue/bin/firesim-queue status      # daemon must be ALIVE
+/scratch2/agustin/firesim_queue/bin/firesim-queue daemon      # start it if not (leave running)
+```
+
+`zephyr_model.run_on_firesim()` already defaults to `queue=True`. It resolves ModelBlaster's
+runner via `MERLIN_MODELBLASTER` and FireSim's paths from `MERLIN_CHIPYARD`, all through `.env`.
+
+Two failure modes worth recognising, because neither error names its real cause:
+
+- **`ModuleNotFoundError: No module named 'modelblaster'`** — `MERLIN_MODELBLASTER` is unset or
+  wrong. It names neither the setting nor the path it wanted.
+- **`insmod: ERROR: could not load module poll_mode=1`** at `INFRASETUP` — the XDMA kernel module
+  is not loaded. FireSim's helper searches for `xdma.ko`, but a modern kernel ships
+  `xdma.ko.zst` (compressed), so the search finds nothing and `poll_mode=1` is mistaken for the
+  module path. Check with `lsmod | grep xdma`.
 
 ## 7. Speedup — real silicon only
 
