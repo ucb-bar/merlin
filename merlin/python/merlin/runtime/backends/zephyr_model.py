@@ -865,13 +865,20 @@ def run_on_firesim(elf: str | Path, *, reference: np.ndarray | None = None,
     reference is given) gates ``cos``/``rel``. Requires the firesim env activated and the
     queue daemon up (see module doc / the FireSim section of the plan)."""
     import sys
-    mb = os.environ.get("MERLIN_MODELBLASTER", "/path/to/ModelBlaster")
+    # Resolve through paths.env (os.environ -> .env -> default), NOT os.environ alone: every
+    # other external dependency in the repo is configurable from the gitignored .env without
+    # exporting into the shell, and reading os.environ directly silently ignored a configured
+    # MERLIN_MODELBLASTER and failed with a bare ModuleNotFoundError for 'modelblaster'.
+    from ...common.paths import env as _env
+    mb = _env("MERLIN_MODELBLASTER", "/path/to/ModelBlaster")
     for p in (f"{mb}/src", mb):
         if p not in sys.path:
             sys.path.insert(0, p)
-    env = os.environ
-    fr = firesim_root or env.get("FIRESIM_ROOT", "/path/to/chipyard/sims/firesim")
-    fe = firesim_env or env.get("FIRESIM_ENV", "/path/to/chipyard/env.sh")
+    # FIRESIM_ROOT/FIRESIM_ENV default to the configured chipyard checkout rather than a
+    # placeholder, so a repo with MERLIN_CHIPYARD set needs no extra FireSim-specific config.
+    _cy = _env("MERLIN_CHIPYARD", "/path/to/chipyard")
+    fr = firesim_root or _env("FIRESIM_ROOT", f"{_cy}/sims/firesim")
+    fe = firesim_env or _env("FIRESIM_ENV", f"{_cy}/env.sh")
     # Run under OUR FireSim workload name, not ModelBlaster's. firesim_runner reads
     # FIRESIM_WORKLOAD_NAME into a module constant AT IMPORT, so this must be set before
     # the (lazy) import below. The workload def lives at deploy/workloads/merlin-oscar.json.
