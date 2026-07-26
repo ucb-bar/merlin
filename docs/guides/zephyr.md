@@ -4,11 +4,15 @@ kind: guide
 status: current
 owner: runtime
 last_verified: 2026-07-22
-related: [getting_started, reproducibility, runtime]
+related: [getting_started, reproducibility, runtime, tinyllama_int8_rvv_zephyr]
 code_refs: [merlin/python/merlin/runtime/backends/zephyr_model.py]
 ---
 
 # Zephyr runtime backend
+
+> For the whole-model **multicore** RVV path on Zephyr (the OpenMP shim over pinned harts,
+> sustained inference, and the multicore Saturn SoC) see
+> [TinyLlama int8 on multicore RVV under Zephyr](tinyllama_int8_rvv_zephyr.md).
 
 Zephyr is a **runtime backend** for Merlin, not part of the core compiler model. Merlin owns
 the generic runtime API; the target provides a Zephyr driver that implements it.

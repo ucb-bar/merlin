@@ -4,7 +4,8 @@ kind: guide
 status: current
 owner: runtime
 last_verified: 2026-07-22
-related: [model2mlir, reproducibility, getting_started, kernel_mining]
+related: [model2mlir, reproducibility, getting_started, kernel_mining,
+          tinyllama_int8_rvv_zephyr]
 code_refs:
   - merlin/python/merlin/runtime/dispatch_runtime.py
   - merlin/python/merlin/llvmlower/pipeline.py
@@ -23,6 +24,10 @@ flow, compile it with native **RISC-V Vector (RVV)** codegen, and run it end-to-
 runtime — first as a host oracle, then bit-exact on **spike rv64gcv**, then (optionally) on the real
 **SpacemiT K1** board. Every stage is fail-closed: if a toolchain is missing the step skips or records
 `not_run`, never a fabricated pass.
+
+For the int8 + MULTICORE + Zephyr continuation of this path (several harts, sustained inference, and
+where a speedup number may honestly come from) see
+[TinyLlama int8 on multicore RVV under Zephyr](tinyllama_int8_rvv_zephyr.md).
 
 This guide stitches the four stages into one runnable sequence. For the capture-bundle format and the
 honest quantization status see [model2MLIR frontend](model2mlir.md); for the workflow index see
