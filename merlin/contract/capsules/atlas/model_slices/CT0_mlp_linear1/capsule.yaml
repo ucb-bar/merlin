@@ -1,0 +1,46 @@
+name: CT0_mlp_linear1
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: MLP first projection (64-wide hidden)
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: fp8_e4m3
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 64
+  dtype: fp8_e4m3
+operation:
+  op: linear
+  attributes:
+    out: Y0
+    lhs: X
+    weight: W
+    epilogue: []
+    output_dtype: bf16
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - CONFIG_EX
+  - GMEM_LD
+  - FMA
+  - GMEM_ST
+  modes:
+    k_accumulate: true
+required_oracle_tiers:
+- L0
+- L1
+- L3
+vcs: optional
+firesim: optional

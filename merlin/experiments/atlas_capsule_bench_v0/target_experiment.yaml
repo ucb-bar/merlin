@@ -21,8 +21,13 @@ hardware_spec:
     - experiments/atlas_capsule_bench_v0/contracts/hwbringup_atlas_v0/isa_include/isa_definition.py
   hwbringup_set: experiments/atlas_capsule_bench_v0/contracts/hwbringup_atlas_v0
 
-# The generic op-capsule corpus (a matmul is the same op on any accelerator; goldens are op-derived).
-capsule_corpus: merlin/contract/capsules/isa
+# The ATLAS-CORRECT capsule corpus: fp8-e4m3 operands, bf16 accumulate/output, FLOAT (tolerance)
+# goldens produced by an INDEPENDENT oracle (the specir refmodel's fp8/bf16 datapath — the same
+# primitives `specc testbench --gen atlas-npu --op op.matmul_mxu0` uses), NOT the shared gemmini
+# INTEGER corpus (i8xi8->i32, exact_int) that a float MXU physically cannot match. Points at the `isa`
+# subdir; `layers`/`model_slices` siblings + `hidden` are auto-discovered from the parent (corpus_siblings).
+# Regenerate with: PYTHONPATH=<specir> .venv/bin/python merlin/contract/capsules/atlas/generate_atlas_corpus.py
+capsule_corpus: merlin/contract/capsules/atlas/isa
 
 # The mlc arc model is the RTL oracle (default); atlas has no separate bespoke sim wired.
 toolchain:

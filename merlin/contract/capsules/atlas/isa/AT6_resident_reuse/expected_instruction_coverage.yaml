@@ -1,0 +1,7 @@
+instruction_classes:
+- CONFIG_EX
+- GMEM_LD
+- FMA
+- GMEM_ST
+modes:
+  resident_reuse: true

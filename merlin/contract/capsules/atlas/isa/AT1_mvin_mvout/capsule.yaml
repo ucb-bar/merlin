@@ -1,0 +1,39 @@
+name: AT1_mvin_mvout
+kind: isa
+source_role: handauthored_compiler_test
+source_reference: load fp8 tile -> store as bf16 (dequant movement)
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: fp8_e4m3
+operation:
+  op: movement
+  attributes:
+    out: Y0
+    src: X
+    semantic: mvin_mvout
+    output_dtype: bf16
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - GMEM_LD
+  - GMEM_ST
+  forbidden_classes:
+  - FMA
+  modes:
+    movement: true
+required_oracle_tiers:
+- L0
+- L1
+- L3
+vcs: optional
+firesim: optional

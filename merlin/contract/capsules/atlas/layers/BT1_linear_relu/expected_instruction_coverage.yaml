@@ -1,0 +1,8 @@
+instruction_classes:
+- CONFIG_EX
+- GMEM_LD
+- FMA
+- GMEM_ST
+modes:
+  relu: true
+  k_accumulate: true

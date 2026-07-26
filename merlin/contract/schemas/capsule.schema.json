@@ -24,7 +24,7 @@
           "name": {"type": "string"},
           "role": {"type": "string", "enum": ["input", "weight", "bias", "output"]},
           "shape": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1},
-          "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "f16", "f32", "bf16"]},
+          "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "f16", "f32", "bf16", "fp8_e4m3"]},
           "layout": {"type": "string"}
         },
         "additionalProperties": false
@@ -44,7 +44,7 @@
       "required": ["compare", "dtype"],
       "properties": {
         "compare": {"type": "string", "enum": ["exact_int", "tolerance_float"]},
-        "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "f16", "f32", "bf16"]},
+        "dtype": {"type": "string", "enum": ["i8", "i16", "i32", "f16", "f32", "bf16", "fp8_e4m3"]},
         "acc_scale": {"type": "number"},
         "requant_shift": {"type": "integer"},
         "rtol": {"type": "number"},

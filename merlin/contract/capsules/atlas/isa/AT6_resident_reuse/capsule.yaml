@@ -1,0 +1,58 @@
+name: AT6_resident_reuse
+kind: isa
+source_role: handauthored_compiler_test
+source_reference: one resident weight, two activation tiles
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 32
+  dtype: fp8_e4m3
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: fp8_e4m3
+- name: A1
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: fp8_e4m3
+operation:
+  op: resident_reuse
+  attributes:
+    weight: W
+    matmuls:
+    - lhs: A0
+      out: Y0
+      epilogue: []
+      output_dtype: bf16
+    - lhs: A1
+      out: Y1
+      epilogue: []
+      output_dtype: bf16
+    output_dtype: bf16
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - CONFIG_EX
+  - GMEM_LD
+  - FMA
+  - GMEM_ST
+  modes:
+    resident_reuse: true
+required_oracle_tiers:
+- L0
+- L1
+- L3
+vcs: optional
+firesim: optional

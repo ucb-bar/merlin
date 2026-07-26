@@ -1,0 +1,49 @@
+name: HT1_scale_hidden
+kind: isa
+source_role: handauthored_compiler_test
+source_reference: hidden matmul + bf16 scale
+label: hidden
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: fp8_e4m3
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 32
+  dtype: fp8_e4m3
+operation:
+  op: matmul
+  attributes:
+    out: Y0
+    lhs: A0
+    weight: W
+    epilogue:
+    - acc_scale
+    output_dtype: bf16
+    acc_scale: 0.25
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+  acc_scale: 0.25
+expected:
+  instruction_classes:
+  - CONFIG_EX
+  - GMEM_LD
+  - FMA
+  - GMEM_ST
+  modes:
+    acc_scale: true
+required_oracle_tiers:
+- L0
+- L1
+- L3
+vcs: optional
+firesim: optional
