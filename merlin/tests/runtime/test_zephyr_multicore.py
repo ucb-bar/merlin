@@ -94,10 +94,10 @@ def test_multicore_requires_the_rvv_backend(tmp_path):
 def test_multicore_is_bit_identical_on_the_k1_board(threads, tmp_path):
     """THE multicore correctness gate, on real silicon.
 
-    Preferred over the spike variant below for two reasons. It is the hardware that ships, and
-    it is FAST: spike must simulate the spinning worker at full speed, so a 2-hart run of a
-    model that takes <200s at 1 hart ran past 25 MINUTES without finishing, which is not a gate
-    anyone will run. The board does the same comparison in milliseconds.
+    Complements the spike gates rather than replacing them: this one exercises the LOWERING
+    against the real cross-built libomp on shipping silicon, and the board does the comparison
+    in milliseconds. The board never runs ``libomp_zephyr.c``, so it cannot gate the shim —
+    only the Zephyr legs can.
 
     One binary, OMP_NUM_THREADS varied — so the only difference between the compared runs is
     how many cores executed, not what was compiled.
@@ -134,10 +134,14 @@ def test_zephyr_openmp_shim_is_bit_identical_on_a_kernel(n_harts, tmp_path):
     Distinct from the K1 test above, which exercises the LOWERING against the real cross-built
     libomp — the board never runs this shim. Only Zephyr does, so only a Zephyr run can gate it.
 
-    Uses a KERNEL-sized synthesized bundle rather than a whole model, and that is the difference
-    between a gate that runs and one that does not: spike gives the shim's spinning worker the
-    same instruction bandwidth as the vector-heavy master, so a whole model costs 25+ minutes at
-    2 harts while this costs ~7 seconds. Same property tested either way.
+    Uses a KERNEL-sized synthesized bundle: it is the fast smoke test for the split itself.
+
+    It is NOT sufficient on its own, and the reason is worth keeping. This gate was once the
+    only Zephyr-side one, justified by "a whole model costs 25+ minutes at 2 harts". That cost
+    was itself the bug — the shim hung on nested parallel regions and then drowned in stall
+    printks — and a kernel with a single contraction has no nested regions, so narrowing the
+    gate to fit the symptom is exactly why the defect survived. A whole model at 2 harts now
+    takes ~12 s, and ``test_multicore_output_is_bit_identical_to_single_hart`` below runs it.
     """
     zm = _zm()
     if not zm.available():
@@ -165,10 +169,16 @@ def test_zephyr_openmp_shim_is_bit_identical_on_a_kernel(n_harts, tmp_path):
         f"work split or its vector-state handling is wrong; both corrupt silently")
 
 
-@slow
 @pytest.mark.parametrize("n_harts", [2, 4])
 def test_multicore_output_is_bit_identical_to_single_hart(n_harts, tmp_path):
-    """THE gate: N harts must agree with 1 hart bit-for-bit, and both must pass the golden."""
+    """THE gate: N harts must agree with 1 hart bit-for-bit, and both must pass the golden.
+
+    WHOLE MODEL on purpose, and deliberately not ``@slow``. Both shim defects fixed in
+    bf5052db needed a whole model to appear at all — nested parallel regions exist only in a
+    multi-op module, and the worker-stack overflow needed 143 regions of pressure — so a gate
+    that only ever ran a single kernel could not have caught either. Measured after the fix:
+    ~12 s per parametrization on spike, which is cheap enough to run every time.
+    """
     zm = _zm()
     if not zm.available():
         pytest.skip("Zephyr/spike toolchain unavailable")
