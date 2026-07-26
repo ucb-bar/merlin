@@ -78,10 +78,67 @@ def _transpose2d(t: Tensor) -> Tensor:
 
 
 # --------------------------------------------------------------------------------------------
+# golden source resolution (recompute vs read an INDEPENDENT golden)
+# --------------------------------------------------------------------------------------------
+def _load_golden_yaml(capsule_dir: str | Path | None) -> dict | None:
+    """Read the capsule's ``golden.yaml`` (the independent oracle's masked answer key), if present."""
+    if not capsule_dir:
+        return None
+    import yaml
+    gy = Path(capsule_dir) / "golden.yaml"
+    if not gy.is_file():
+        return None
+    return yaml.safe_load(gy.read_text(encoding="utf-8"))
+
+
+def golden_source(capsule: dict, capsule_dir: str | Path | None = None) -> str:
+    """The golden's PROVENANCE: ``merlin_tensor_int`` when it is (re)computed on the integer
+    :class:`~merlin.runtime.tensor.Tensor` engine, or the INDEPENDENT source declared in the capsule's
+    ``golden.yaml`` (e.g. ``specir_refmodel_fp8_bf16`` for the atlas fp8-e4m3 -> bf16 path). Defaults to
+    ``merlin_tensor_int`` when no ``golden.yaml`` / source is present, so integer capsules keep recomputing."""
+    if capsule_dir is None:
+        capsule_dir = capsule.get("__dir__")
+    src = (_load_golden_yaml(capsule_dir) or {}).get("golden_source")
+    return src if (src and src != "merlin_tensor_int") else "merlin_tensor_int"
+
+
+def is_independent_float_golden(capsule: dict, capsule_dir: str | Path | None = None) -> bool:
+    """True iff the capsule is graded against an INDEPENDENT golden under a FLOAT compare policy — the
+    atlas fp8/bf16 case: the integer Tensor engine cannot recompute the float datapath, so the golden is
+    READ from ``golden.yaml`` and the integer reference/simulate tiers do not apply. False for every
+    integer capsule (gemmini / ``exact_int`` / ``golden_source: merlin_tensor_int``) and for a float
+    capsule that ships no independent ``golden.yaml`` (e.g. muon), which keep the recompute path."""
+    compare = (capsule.get("numeric_policy") or {}).get("compare", "exact_int")
+    float_policy = compare not in ("exact_int", "exact")
+    return float_policy and golden_source(capsule, capsule_dir) != "merlin_tensor_int"
+
+
+# --------------------------------------------------------------------------------------------
 # golden dispatch
 # --------------------------------------------------------------------------------------------
-def golden(capsule: dict) -> dict[str, list]:
-    """Compute the capsule's expected outputs (name -> nested list)."""
+def golden(capsule: dict, capsule_dir: str | Path | None = None) -> dict[str, list]:
+    """Return the capsule's expected outputs (name -> nested list).
+
+    For an INDEPENDENT float golden (float compare policy + ``golden.yaml`` ``golden_source`` !=
+    ``merlin_tensor_int``, e.g. atlas fp8-e4m3 -> bf16) the golden is READ from ``golden.yaml`` — the
+    integer Tensor engine cannot reproduce the float datapath, and ``golden.yaml`` is the answer key the
+    independent oracle already produced. For every other capsule (gemmini / ``exact_int``) the golden is
+    RECOMPUTED on the Tensor engine exactly as before (byte-identical integer path)."""
+    if capsule_dir is None:
+        capsule_dir = capsule.get("__dir__")
+    if is_independent_float_golden(capsule, capsule_dir):
+        outs = (_load_golden_yaml(capsule_dir) or {}).get("outputs")
+        if not outs:
+            raise ValueError(
+                f"independent float golden declared (golden_source="
+                f"{golden_source(capsule, capsule_dir)!r}) but golden.yaml has no 'outputs' "
+                f"({Path(capsule_dir) / 'golden.yaml' if capsule_dir else '<no dir>'})")
+        return outs
+    return _recompute_golden(capsule)
+
+
+def _recompute_golden(capsule: dict) -> dict[str, list]:
+    """Compute the capsule's expected outputs on the integer Tensor engine (the gemmini path)."""
     env = materialize_capsule_leaves(capsule)
     op = capsule["operation"]["op"]
     attrs = capsule["operation"].get("attributes", {})
@@ -157,10 +214,14 @@ def _flat(nested) -> list:
     return out
 
 
-def compare(expected: dict[str, list], observed: dict[str, list], policy: dict) -> dict:
-    """Exact-int (or tolerance-float) comparison; returns a numeric_report dict."""
+def compare(expected: dict[str, list], observed: dict[str, list], policy: dict,
+            *, golden_source: str = "merlin_tensor_int") -> dict:
+    """Exact-int (or tolerance-float) comparison; returns a numeric_report dict. ``golden_source`` is
+    stamped into the report so provenance is honest — ``merlin_tensor_int`` for a recomputed integer
+    golden, or the INDEPENDENT source (e.g. ``specir_refmodel_fp8_bf16``) when it was read from
+    ``golden.yaml`` rather than recomputed."""
     mode = policy.get("compare", "exact_int")
-    rep: dict[str, Any] = {"policy": mode, "golden_source": "merlin_tensor_int",
+    rep: dict[str, Any] = {"policy": mode, "golden_source": golden_source,
                            "status": "pass", "mismatch_count": 0,
                            "max_abs_error": 0, "max_rel_error": 0.0,
                            "first_mismatch": None, "per_output": {}}

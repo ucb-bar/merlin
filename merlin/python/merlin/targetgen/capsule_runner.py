@@ -64,6 +64,9 @@ class TierResult:
     timing: dict | None = None        # {build_s, sim_active_s, oracle_wait_s} — active vs waiting
     gflops: float | None = None       # perf (SIMT); None -> omitted so systolic output is unchanged
     pct_fp_peak: float | None = None
+    not_applicable: bool = False      # tier honestly N/A for this capsule's datatype (e.g. the integer
+                                      # L0/L1 floor on a float datapath) — a legitimate skip, not a
+                                      # not_run_is_not_pass violation (unlike an unavailable RTL oracle)
 
     def to_dict(self) -> dict:
         d = {"status": self.status, "mandatory": self.mandatory,
@@ -71,6 +74,8 @@ class TierResult:
              "cycles": self.cycles, "derived_from_rtl": self.derived_from_rtl,
              "cycle_accurate": self.cycle_accurate, "evidence": self.evidence,
              "timing": self.timing}
+        if self.not_applicable:
+            d["not_applicable"] = True
         # perf fields ride the result ONLY when populated (SIMT) — keeps systolic output byte-identical.
         if self.gflops is not None:
             d["gflops"] = self.gflops
@@ -256,41 +261,69 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                              timeout=timeout, fourth_output_name=cfg.fourth_output_name)
 
         # --- golden + L0/L1 -----------------------------------------------------------------
-        gold = CG.golden(capsule)
-        # Interpreting the AGENT's command buffer (reference/simulate) can fail if the cb is
-        # structurally invalid — e.g. a MATMUL operand with rank != 2 because conv2d was not lowered
-        # to a 2D im2col matmul. That is the agent's bug, NOT a harness crash: report it as a
-        # gradeable command_buffer failure with an actionable reason (so the agent gets feedback and
-        # both arms are scored identically) instead of letting it become a RUNNER_CRASH.
-        try:
-            ref = reference_outputs(cb)
-            sim = simulate(cb)["outputs"]
-        except (ValueError, KeyError, IndexError, TypeError) as ce:
-            raise CertFailure(
-                "command_buffer", _cat("STRUCTURAL_INVARIANT_VIOLATION"),
-                f"command buffer could not be interpreted by reference/simulate "
-                f"({type(ce).__name__}: {ce}); check operand ranks/shapes — a MATMUL operand likely "
-                f"has the wrong rank (expected 2D; conv2d must be lowered to a 2D im2col matmul)"
-            ) from ce
-        nrep = CG.compare(gold, ref, capsule["numeric_policy"])
-        numeric = {"status": nrep["status"], "policy": nrep["policy"],
-                   "max_abs_diff": nrep["max_abs_error"], "max_rel_error": nrep["max_rel_error"],
-                   "mismatch_count": nrep["mismatch_count"], "first_mismatch": nrep["first_mismatch"]}
-        CG.write_numeric_report(paths.generated / "numeric_report.yaml", nrep)
-        tiers["L0"] = TierResult("L0", "pass" if nrep["status"] == "pass" else "fail",
-                                 mandatory="L0" in required or True,
-                                 reason=None if nrep["status"] == "pass" else "golden != reference(cb)",
-                                 evidence="numeric_report.yaml")
-        if nrep["status"] != "pass":
-            raise CertFailure("numeric_golden", _cat("FUNCTIONAL_MISMATCH"),
-                              f"golden != reference(cb): {nrep['first_mismatch']}")
+        # The golden is the INDEPENDENT oracle's answer. For an integer capsule (gemmini / exact_int /
+        # golden_source merlin_tensor_int) it is RECOMPUTED on the Tensor engine (byte-identical). For a
+        # float capsule that ships an independent golden.yaml (atlas fp8-e4m3 -> bf16, golden_source
+        # specir_refmodel_fp8_bf16), the integer engine cannot reproduce the float datapath, so the golden
+        # is READ from golden.yaml — resolved by policy+source, never a target name.
+        capsule_dir = capsule.get("__dir__")
+        independent_float = CG.is_independent_float_golden(capsule, capsule_dir)
+        gsource = CG.golden_source(capsule, capsule_dir)
+        gold = CG.golden(capsule, capsule_dir)
 
-        l1_ok = _match_by_policy(ref, sim, policy)
-        tiers["L1"] = TierResult("L1", "pass" if l1_ok else "fail", mandatory=True,
-                                 reason=None if l1_ok else "reference(cb) != simulate(cb)")
-        if not l1_ok:
-            raise CertFailure("command_buffer_reference", _cat("FUNCTIONAL_MISMATCH"),
-                              "reference(cb) != simulate(cb)")
+        if independent_float:
+            # The integer reference/simulate engines cannot execute a float (fp8/bf16) datapath, so the
+            # integer L0-reference / L1-sim numeric floor is INAPPLICABLE — skipped honestly (not failed),
+            # exactly as a non-RoCC target drops the RoCC trace gate. The real numeric grade rides the RTL
+            # program-oracle output vs the independent golden.yaml (tolerance_float), scored in the oracle
+            # loop below. These skips are marked not_applicable so not_run_is_not_pass does NOT flip them to
+            # incomplete (only an unavailable/absent RTL oracle does).
+            ref = sim = None
+            numeric = {"status": "skipped", "policy": policy.get("compare"), "golden_source": gsource,
+                       "note": "integer reference/simulate N/A for float datapath; graded vs independent "
+                               "golden at RTL oracle"}
+            tiers["L0"] = TierResult(
+                "L0", "skipped", mandatory="L0" in required, not_applicable=True,
+                reason="integer reference not applicable to float datapath; graded vs independent "
+                       f"golden ({gsource}) at the RTL oracle")
+            tiers["L1"] = TierResult(
+                "L1", "skipped", mandatory="L1" in required, not_applicable=True,
+                reason="integer simulate not applicable to float datapath")
+        else:
+            # Interpreting the AGENT's command buffer (reference/simulate) can fail if the cb is
+            # structurally invalid — e.g. a MATMUL operand with rank != 2 because conv2d was not lowered
+            # to a 2D im2col matmul. That is the agent's bug, NOT a harness crash: report it as a
+            # gradeable command_buffer failure with an actionable reason (so the agent gets feedback and
+            # both arms are scored identically) instead of letting it become a RUNNER_CRASH.
+            try:
+                ref = reference_outputs(cb)
+                sim = simulate(cb)["outputs"]
+            except (ValueError, KeyError, IndexError, TypeError) as ce:
+                raise CertFailure(
+                    "command_buffer", _cat("STRUCTURAL_INVARIANT_VIOLATION"),
+                    f"command buffer could not be interpreted by reference/simulate "
+                    f"({type(ce).__name__}: {ce}); check operand ranks/shapes — a MATMUL operand likely "
+                    f"has the wrong rank (expected 2D; conv2d must be lowered to a 2D im2col matmul)"
+                ) from ce
+            nrep = CG.compare(gold, ref, capsule["numeric_policy"], golden_source=gsource)
+            numeric = {"status": nrep["status"], "policy": nrep["policy"],
+                       "max_abs_diff": nrep["max_abs_error"], "max_rel_error": nrep["max_rel_error"],
+                       "mismatch_count": nrep["mismatch_count"], "first_mismatch": nrep["first_mismatch"]}
+            CG.write_numeric_report(paths.generated / "numeric_report.yaml", nrep)
+            tiers["L0"] = TierResult("L0", "pass" if nrep["status"] == "pass" else "fail",
+                                     mandatory="L0" in required or True,
+                                     reason=None if nrep["status"] == "pass" else "golden != reference(cb)",
+                                     evidence="numeric_report.yaml")
+            if nrep["status"] != "pass":
+                raise CertFailure("numeric_golden", _cat("FUNCTIONAL_MISMATCH"),
+                                  f"golden != reference(cb): {nrep['first_mismatch']}")
+
+            l1_ok = _match_by_policy(ref, sim, policy)
+            tiers["L1"] = TierResult("L1", "pass" if l1_ok else "fail", mandatory=True,
+                                     reason=None if l1_ok else "reference(cb) != simulate(cb)")
+            if not l1_ok:
+                raise CertFailure("command_buffer_reference", _cat("FUNCTIONAL_MISMATCH"),
+                                  "reference(cb) != simulate(cb)")
 
         # --- trace gate (optional; only for targets whose ISA has a decoder+checker plugin) --------
         # A command-ISA target (systolic, trace_gate="rocc_insn") decodes the emitted .insn stream to a
@@ -343,9 +376,22 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _acct = (_tm.get("build_s") or 0.0) + (_tm.get("sim_active_s") or 0.0)
                 _tm["oracle_wait_s"] = round(max(0.0, _adapter_wall - _acct), 3)
             _tm["adapter_wall_s"] = round(_adapter_wall, 3)
-            okt = _match_by_policy(res["outputs"], gold, policy) \
-                and _match_by_policy(res["outputs"], ref, policy) \
-                and _match_by_policy(res["outputs"], sim, policy)
+            if independent_float:
+                # Float grade: the RTL program-oracle output vs the INDEPENDENT golden.yaml (tolerance_float).
+                # There is no integer reference/simulate to cross-check against — this comparison IS the
+                # numeric verdict, recorded as the honest numeric report + evidence.
+                onrep = CG.compare(gold, res["outputs"], policy, golden_source=gsource)
+                okt = onrep["status"] == "pass"
+                numeric = {"status": onrep["status"], "policy": onrep["policy"],
+                           "golden_source": gsource, "max_abs_diff": onrep["max_abs_error"],
+                           "max_rel_error": onrep["max_rel_error"],
+                           "mismatch_count": onrep["mismatch_count"],
+                           "first_mismatch": onrep["first_mismatch"]}
+                CG.write_numeric_report(paths.generated / "numeric_report.yaml", onrep)
+            else:
+                okt = _match_by_policy(res["outputs"], gold, policy) \
+                    and _match_by_policy(res["outputs"], ref, policy) \
+                    and _match_by_policy(res["outputs"], sim, policy)
             sim_name = cfg.tier_sim[tier]
             # SIMT perf headline (gflops / % of peak) when a perf extractor is supplied; None (systolic)
             # leaves the fields off the TierResult so the output stays byte-identical.
@@ -354,19 +400,25 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _perf = perf_extractor(cb, res) or {}
                 _gflops = _perf.get("gflops")
                 _pct_peak = _perf.get("pct_fp_peak")
+            _mismatch_reason = (f"{sim_name} oracle != independent golden ({gsource})" if independent_float
+                                else f"{sim_name} oracle != golden==reference==simulate")
+            # ``oracle`` may be a rich dict (gemmini spike/verilator: {derived_from_rtl, ...}) OR a plain
+            # provenance string (the arc / program cosim returns e.g. "atlas-arc-arcilator-cosim"); default
+            # to the tier's RTL classification when it doesn't declare derived_from_rtl.
+            _oracle_meta = res.get("oracle")
+            _derived_from_rtl = (_oracle_meta.get("derived_from_rtl", tier in cfg.rtl_tiers)
+                                 if isinstance(_oracle_meta, dict) else (tier in cfg.rtl_tiers))
             tiers[tier] = TierResult(
                 tier, "pass" if okt else "fail", mand,
-                reason=None if okt else f"{sim_name} oracle != golden==reference==simulate",
-                cycles=res.get("cycles"), derived_from_rtl=res.get("oracle", {}).get(
-                    "derived_from_rtl", tier in cfg.rtl_tiers),
+                reason=None if okt else _mismatch_reason,
+                cycles=res.get("cycles"), derived_from_rtl=_derived_from_rtl,
                 cycle_accurate=(tier in cfg.rtl_tiers and okt), evidence=f"{sim_name}_console.log",
                 timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak)
             if res.get("console") is not None:
                 (paths.artifacts_dir / f"{sim_name}_console.log").write_text(
                     res["console"], encoding="utf-8")
             if not okt:
-                raise CertFailure(sim_name, _cat("FUNCTIONAL_MISMATCH"),
-                                  f"{sim_name} oracle != golden==reference==simulate")
+                raise CertFailure(sim_name, _cat("FUNCTIONAL_MISMATCH"), _mismatch_reason)
 
     except CertFailure as cf:
         status = "fail"
@@ -378,10 +430,16 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                    "detail": f"{type(e).__name__}: {e}",
                    "traceback": _traceback.format_exc()}
 
-    # not_run_is_not_pass: a mandatory tier that did not pass closed (unavailable/skipped/absent)
+    # not_run_is_not_pass: a mandatory tier that did not pass closed (unavailable/skipped/absent) makes
+    # the capsule incomplete — never a silent pass. A tier that is honestly N/A for this capsule's
+    # datatype (``not_applicable``; the integer L0/L1 floor on a float datapath) is the ONE exception —
+    # a legitimate skip like a dropped RoCC gate, not a missing oracle. An unavailable/absent RTL oracle
+    # is never not_applicable, so it still fails closed here.
     if status == "pass":
         for tier in required:
             tr = tiers.get(tier)
+            if tr is not None and getattr(tr, "not_applicable", False):
+                continue
             if tr is None or tr.status in ("unavailable", "skipped"):
                 status = "incomplete"
                 if failure is None:
