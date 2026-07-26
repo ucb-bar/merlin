@@ -48,7 +48,7 @@ def test_rtl_repo_field_is_parsed_when_present(tmp_path):
 # --------------------------------------------------------------------------- Delta 2: onboard flow
 @pytest.mark.parametrize("target,kind,endpoint,mesh_key", [
     ("radiance", "simt", "inline_asm_insn", None),
-    ("atlas", "systolic", "inline_asm_insn", "rows"),
+    ("atlas", "systolic", "external_backend", "rows"),   # self-hosted ISA (kernel.S), not RoCC .insn
     ("mx_gemmini", "systolic", "inline_asm_insn", "rows"),
 ])
 def test_onboard_regenerates_manifest_and_routes(tmp_path, monkeypatch, target, kind, endpoint, mesh_key):
