@@ -47,3 +47,24 @@ def test_materializer_caps_tiers_below_ceiling(tmp_path):
         tiers = _load(cap_yaml).get("required_oracle_tiers", [])
         assert all(t in ("L0", "L1", "L2") for t in tiers), (
             f"{cap_yaml.parent.name} requires an unreachable tier in the sandbox: {tiers}")
+
+
+def test_public_capsules_for_is_target_aware_and_gemmini_parity():
+    """The graded public set is DERIVED per-target from the descriptor's capsule_corpus (the target-aware
+    replacement for the committed gemmini set the loop used to hardcode). gemmini must reproduce its exact
+    committed 20-capsule set; atlas must yield its OWN fp8/bf16 set (disjoint names) — proving no gemmini
+    leak into another target's grade."""
+    from merlin.common.paths import repo_root
+    from merlin.targetgen.contract.materialize import public_capsules_for
+    from merlin.targetgen.target_experiment import load_target_experiment
+    root = repo_root()
+
+    te_g = load_target_experiment(root / "merlin/experiments/gemmini_capsule_bench_v0/target_experiment.yaml")
+    gem = sorted(p.name for p in public_capsules_for(te_g).iterdir() if p.is_dir())
+    committed = sorted(d.name for d in PUB.iterdir() if d.is_dir())
+    assert gem == committed, f"gemmini derived set drifted from the committed set: {set(gem) ^ set(committed)}"
+
+    te_a = load_target_experiment(root / "merlin/experiments/atlas_capsule_bench_v0/target_experiment.yaml")
+    atlas = sorted(p.name for p in public_capsules_for(te_a).iterdir() if p.is_dir())
+    assert atlas and not (set(atlas) & set(committed)), (
+        f"atlas graded set must be disjoint from gemmini's (no leak); got overlap {set(atlas) & set(committed)}")

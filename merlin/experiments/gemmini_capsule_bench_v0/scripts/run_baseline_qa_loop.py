@@ -67,9 +67,13 @@ def _repo_root():
 _ROOT = _repo_root()
 
 ARM = "raw_baseline"  # default arm; overridable via --arm (the QA loop is arm-agnostic)
-# Loop+gate capsule set: the FULL 20 PUBLIC capsules (isa+layers+model_slices). The agent iterates to
-# pass all of them (aiming for all 25; the 5 hidden are held-out, graded only in the final audit).
-PILOT_SUBSET = C.EXP / "scripts" / "full_public_capsules"
+# Loop+gate capsule set: the target's PUBLIC capsules, DERIVED from the descriptor's capsule_corpus
+# (+ sibling corpora) and materialized per-target — NOT a committed gemmini set. So an atlas run grades
+# atlas fp8/bf16 capsules (arc L3, float-tolerance), a gemmini run its i8 set (spike L2, exact_int); no
+# target leak. `None` = "resolve lazily from the descriptor" (see _pilot_subset); run_fullsuite overrides
+# it with the full 25-capsule set for the final grade, so it stays a settable module attribute.
+PILOT_SUBSET = None
+_DERIVED_PILOT = None  # cache of the descriptor-derived set (populated on first _pilot_subset() call)
 VERILATOR_ATTEMPTS = 3  # cycle-accurate L3 checkpoint chances after spike-convergence (1 fix-round between)
 
 
@@ -104,6 +108,19 @@ def _te():
     """This experiment's target descriptor (honors MERLIN_TARGET_EXPERIMENT via C.EXP)."""
     from merlin.targetgen.target_experiment import load_target_experiment
     return load_target_experiment(C.EXP / "target_experiment.yaml")
+
+
+def _pilot_subset():
+    """The public-capsule set to grade against. An explicit override (``PILOT_SUBSET`` set by
+    run_fullsuite) wins; otherwise it is DERIVED from the descriptor's capsule_corpus and materialized
+    per-target (target-agnostic — gemmini→i8/L2, atlas→fp8/L3), cached for the run."""
+    global _DERIVED_PILOT
+    if PILOT_SUBSET is not None:
+        return PILOT_SUBSET
+    if _DERIVED_PILOT is None:
+        from merlin.targetgen.contract.materialize import public_capsules_for
+        _DERIVED_PILOT = public_capsules_for(_te())
+    return _DERIVED_PILOT
 
 
 def _manifest():
@@ -576,13 +593,13 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int) -
         _strip_build_state(cand)   # clean, relocatable build per grade (abc9 L3-build bug)
         out = run_dir / "qa_history" / f"verdict_round_{rnd:02d}.json"
         out.parent.mkdir(parents=True, exist_ok=True)
-        argv = ["--submission", str(cand), "--capsules-root", str(PILOT_SUBSET),
+        argv = ["--submission", str(cand), "--capsules-root", str(_pilot_subset()),
                 "--out", str(out), "--runs-root", str(run_dir / "_qa_work" / f"runs_{rnd:02d}"),
                 "--timeout", str(timeout)]
         if no_oracle:
             argv.append("--no-oracle")
         import qa_check
-        verdict = qa_check.run(str(cand), str(PILOT_SUBSET),
+        verdict = qa_check.run(str(cand), str(_pilot_subset()),
                                run_dir / "_qa_work" / f"runs_{rnd:02d}",
                                {"public", "dev"}, no_oracle, timeout)
         out.write_text(json.dumps(verdict, indent=2))
@@ -974,7 +991,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             _glog = None
         try:
-            _CG.grade(str(vcand), capsules_root=str(PILOT_SUBSET), runs_root=str(vruns),
+            _CG.grade(str(vcand), capsules_root=str(_pilot_subset()), runs_root=str(vruns),
                       labels={"public", "dev"}, contract=str(C.REPO / "merlin/contract"),
                       oracle_adapters=adapters, timeout=_verilator_per_capsule_timeout(), max_workers=8)
         except Exception as e:
@@ -1103,7 +1120,7 @@ def main(argv: list[str] | None = None) -> int:
         shutil.copytree(wsub, dst, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
         grade_cmd = [sys.executable, str(C.EXP / "scripts" / "grade_agent_run.py"),
                      "--run-dir", str(run_dir), "--arm", arm, "--model", a.model,
-                     "--capsules", str(PILOT_SUBSET)]
+                     "--capsules", str(_pilot_subset())]
         if a.no_oracle:
             grade_cmd.append("--no-oracle")
         if a.skip_hidden:

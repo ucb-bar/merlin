@@ -55,6 +55,25 @@ def _public_capsule_dirs(contract: str | Path | None = None) -> list[Path]:
     return out
 
 
+def _public_capsule_dirs_in(corpus_roots: list[Path]) -> list[Path]:
+    """Every ``label: public`` capsule dir found DIRECTLY under the given corpus roots (``<root>/<cap>/
+    capsule.yaml``). Target-AGNOSTIC: the caller passes the descriptor's own ``capsule_corpus`` + sibling
+    corpora, so any target's public set is materialized without a per-target root/depth assumption."""
+    out: list[Path] = []
+    for root in corpus_roots:
+        root = Path(root)
+        if not root.is_dir():
+            continue
+        for cap_yaml in sorted(root.glob("*/capsule.yaml")):
+            try:
+                cap = yaml.safe_load(cap_yaml.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError:
+                continue
+            if cap.get("label") == "public":
+                out.append(cap_yaml.parent)
+    return out
+
+
 def _cap_tiers(tier_ceiling: str) -> list[str]:
     if tier_ceiling not in _TIER_ORDER:
         raise ValueError(f"unknown tier ceiling {tier_ceiling!r} (expected one of {_TIER_ORDER})")
@@ -63,16 +82,23 @@ def _cap_tiers(tier_ceiling: str) -> list[str]:
 
 
 def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAULT_CEILING,
-                                contract: str | Path | None = None) -> list[str]:
+                                contract: str | Path | None = None,
+                                corpus_roots: list[Path] | None = None) -> list[str]:
     """Derive the sandbox public-capsule view into ``dest``. Returns the capsule names written.
 
     Copies the 5 capsule files verbatim, then rewrites ``capsule.yaml``'s ``required_oracle_tiers``
     to the subset reachable at/below ``tier_ceiling`` (preserving every other field exactly).
+
+    ``corpus_roots`` (target-AGNOSTIC): materialize the public capsules found directly under these roots
+    (the descriptor's ``capsule_corpus`` + sibling corpora). When omitted, falls back to the legacy
+    gemmini-contract discovery (``contract``) for backward compatibility.
     """
     keep = set(_cap_tiers(tier_ceiling))
     dest = Path(dest)
     written: list[str] = []
-    for src in _public_capsule_dirs(contract):
+    sources = (_public_capsule_dirs_in(corpus_roots) if corpus_roots is not None
+               else _public_capsule_dirs(contract))
+    for src in sources:
         name = src.name
         d = dest / name
         d.mkdir(parents=True, exist_ok=True)
@@ -90,6 +116,30 @@ def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAUL
                 shutil.copyfile(sp, d / f)
         written.append(name)
     return sorted(written)
+
+
+def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
+    """The public-capsule set to grade / self-check against for a target — DERIVED from its descriptor's
+    ``capsule_corpus`` (+ sibling corpora), materialized into a per-target cache and returned. This is the
+    target-agnostic replacement for the committed gemmini ``scripts/full_public_capsules`` set: gemmini
+    reproduces its 20-capsule L2 set exactly, atlas gets its fp8/bf16 set at L3, any target its own — with
+    NO per-target hardcode and no gemmini leak.
+
+    ``tier_ceiling`` caps ``required_oracle_tiers`` to what the caller can reach; default = the target's
+    loop-reachable tier (``max(qa_loop_adapters)``), so gemmini→L2 (spike) and atlas→L3 (arc)."""
+    from merlin.common.artifacts import cache_dir
+    from merlin.common.paths import repo_root
+    from merlin.targetgen import capsule_runner as _CR
+    root = repo_root()
+    roots = ([te.capsule_corpus] if te.capsule_corpus else [])
+    roots += [root / rel.rstrip("/") for rel in te.corpus_siblings()]
+    if tier_ceiling is None:
+        loop = _CR.qa_loop_adapters(te.target, te.sim_via) or {"L2": None}
+        tier_ceiling = max(loop, key=lambda t: _TIER_ORDER.index(t) if t in _TIER_ORDER else -1)
+    dest = cache_dir("capsule_bench_public") / te.target
+    shutil.rmtree(dest, ignore_errors=True)   # rematerialize fresh (cheap; tracks corpus edits)
+    materialize_public_capsules(dest, tier_ceiling=tier_ceiling, corpus_roots=roots)
+    return dest
 
 
 def main(argv: list[str] | None = None) -> int:

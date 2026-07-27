@@ -49,8 +49,20 @@ import qa_check as _qc                                   # redaction helper (no 
 from merlin.targetgen import capsule_grade as CG         # build+run+compare
 from merlin.targetgen import capsule_runner as CR        # tier adapters
 
-# the PUBLIC capsule set (with goldens — operator-side; output is redacted before the agent sees it)
-PUBLIC_CAPSULES = _HERE / "full_public_capsules"
+# the PUBLIC capsule set (with goldens — operator-side; output is redacted before the agent sees it),
+# DERIVED per-target from the descriptor's capsule_corpus (atlas fp8/L3, gemmini i8/L2) — no committed
+# gemmini leak. Falls back to the legacy committed set if the descriptor can't be resolved.
+def _public_capsules() -> Path:
+    try:
+        import _common as _C
+        from merlin.targetgen.contract.materialize import public_capsules_for
+        from merlin.targetgen.target_experiment import load_target_experiment
+        return public_capsules_for(load_target_experiment(_C.EXP / "target_experiment.yaml"))
+    except Exception:  # noqa: BLE001 — keep the self-check usable without a resolvable descriptor
+        return _HERE / "full_public_capsules"
+
+
+PUBLIC_CAPSULES = _public_capsules()
 SIM_TIER = {"spike": "L2", "verilator": "L3", "vcs": "L4"}
 
 

@@ -28,7 +28,21 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SELFCHECK = HERE / "agent_selfcheck.py"
-PUBLIC_CAPSULES = HERE / "full_public_capsules"        # same set agent_selfcheck validates against
+
+
+def _public_capsules() -> Path:
+    """Same per-target set agent_selfcheck validates against — DERIVED from the descriptor's
+    capsule_corpus (no committed gemmini leak); legacy committed set as fallback."""
+    try:
+        import _common as _C
+        from merlin.targetgen.contract.materialize import public_capsules_for
+        from merlin.targetgen.target_experiment import load_target_experiment
+        return public_capsules_for(load_target_experiment(_C.EXP / "target_experiment.yaml"))
+    except Exception:  # noqa: BLE001
+        return HERE / "full_public_capsules"
+
+
+PUBLIC_CAPSULES = _public_capsules()
 PY = sys.executable
 # Driver-side sim toolchain env — resolve via ext_path('chipyard') (honors .env), NOT a hard-coded
 # path. This is the host-side broker (runs sims OUTSIDE the sandbox), so it must find spike/riscv-gcc
