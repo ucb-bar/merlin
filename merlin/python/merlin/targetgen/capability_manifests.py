@@ -159,35 +159,32 @@ def radiance_manifest() -> dict[str, Any]:
     }
 
 
-def atlas_manifest() -> dict[str, Any]:
-    """ATLAS NPU systolic MXU — a 32x32 FP8 (E4M3) systolic array accumulating in BF16 (or FP32),
-    with an E8M0 block-scale requant. Facts DERIVED from the atlas-npu chipyard generator RTL config
-    (frozen MxuParams formats + PEArchitecture set) and confirmed by mlc arc discovery (dim=32).
-    """
+def _atlas_residual() -> dict[str, Any]:
+    """The IRREDUCIBLE declared side-input for atlas — only what the CIRCT facts cannot (yet) ground.
+
+    Grounded FROM FACTS by :func:`derive_manifest`, so DELIBERATELY ABSENT here: ``endpoint_kind`` (the
+    14-bit ScalarDecoder opcode set is too wide for RoCC funct7 -> ``external_backend``), ``capabilities.mesh``
+    (the 32x32 array), and the ``encoding`` codes (the 42-entry legal opcode set). What remains is the
+    compute-unit datapath INTENT (fp8/bf16 dtypes + accumulate matrix + E8M0 scaling + requant ref) — NOT
+    yet RTL-grounded, pending mlc datapath discovery (the storage/accumulator dtypes are absent from this
+    ``facts.json`` schema) — plus the human prose (family/features/obligations/promises/runner/runtime)."""
     return {
         **_COMMON,
         "name": "atlas",
         "family": "tensor_resident",
-        "provenance": "atlas-npu chipyard generator (tmp/dse/atlas-npu) src/main/scala/atlas: "
-                      "MxuParams.scala FROZEN formats — inputFmt=E4M3 (fp8, activation+weight), "
-                      "accumFmt=outputFmt=BF16; 32x32 systolic mesh (MxuParams arrayRows=arrayCols=32, "
-                      "SystolicArrayParams/InnerProductTreeParams isOriginalConfig 32/32/32). "
-                      "PEArchitecture={HardFloatFMA (BF16 FMA), FP32Addition (BF16 mul, FP32 add), "
-                      "CustomFMA=default ((FP8xFP8)+BF16)}; E8M0 block scale via FPUtils.BF16ScaleToE4M3 "
-                      "+ ScalingFactorRegFile. mlc arc discovery confirms dim=32 and a 42-entry legal "
-                      "opcode set (arc_available=True). NOT RTL-certified; mesh/dtype facts from the "
-                      "generator config, not silicon.",
+        "provenance": "endpoint_kind + capabilities.mesh + encoding codes are DERIVED from the pinned mlc "
+                      "CIRCT facts (a 42-entry ScalarDecoder decode of 14-bit opcodes — too wide for RoCC "
+                      "funct7 -> self-hosted ISA -> external_backend; a 32x32 discovered array -> mesh). The "
+                      "compute-unit datapath (inputFmt=E4M3 fp8 activation+weight; accumFmt=outputFmt=BF16, "
+                      "with an FP32Addition PE variant; E8M0 block scale via ScalingFactorRegFile) is DECLARED "
+                      "intent from the atlas-npu chipyard generator (MxuParams.scala) — NOT yet RTL-grounded "
+                      "(dtypes are absent from this facts.json schema; pending mlc datapath discovery). "
+                      "NOT RTL-certified.",
         "features": ["systolic_array", "fp8_mxu", "microscaling", "bf16_accumulate"],
-        # atlas is a SELF-HOSTED ISA core (its own opcodes + PC + IMEM — mlc CIRCT discovery finds a
-        # 42-entry legal opcode set with NO RoCC funct_decode_table; the npu_model/specir ISA confirms
-        # vmatpush/vmatmul/vmatpop/vload/vstore). Its deliverable is an assembled program, NOT a RoCC
-        # ``.insn`` host stream (gemmini) nor an ISA-less command buffer (OPU) — so the endpoint is
-        # ``external_backend`` (emit a ``kernel.S`` an external assembler builds), overriding the systolic
-        # family's inline_asm_insn default. The program oracle (capsule_runner.program_oracle) assembles it
-        # via npu_model's OWN assembler (``model_ext``) and runs the target's mlc arc cosim.
-        "endpoint_kind": "external_backend",
+        # The program oracle (targetgen.program_oracle) assembles the emitted kernel.S via npu_model's OWN
+        # assembler (``model_ext``) and runs the target's mlc arc cosim — declared intent, not an RTL fact.
         "runner": {"model_ext": "npu_model", "fourth_output_name": "kernel.S"},
-        "capabilities": {"ops": ["matmul"], "mesh": {"rows": 32, "cols": 32}},
+        "capabilities": {"ops": ["matmul"]},          # mesh comes from facts; ops is compute-unit intent
         "memory_model": {"resident": True, "accumulators": True, "block_scale_memory": True},
         "compiler_obligations": ["must_tile_to_mesh_shape", "must_supply_e8m0_block_scales"],
         "hardware_promises": ["fp8_multiply", "bf16_accumulate"],
@@ -198,8 +195,6 @@ def atlas_manifest() -> dict[str, Any]:
             {
                 "name": "mxu",
                 "kind": "systolic",
-                # inputFmt is the frozen E4M3 activation+weight format; BF16 is the accum/output element
-                # format (and the HardFloat FMA internal precision) — both from MxuParams.scala.
                 "dtypes": ["fp8_e4m3", "bf16"],
                 "ops": ["matmul"],
                 "accumulate": [
@@ -207,12 +202,33 @@ def atlas_manifest() -> dict[str, Any]:
                     {"in": "fp8_e4m3", "weight": "fp8_e4m3", "acc": "f32"},   # FP32Addition PE variant
                 ],
                 "scaling": "block_e8m0",
-                # atlas requant (FPUtils BF16<->E4M3 + E8M0 shared block scale via ScalingFactorRegFile)
-                # is target-specific, out-of-tree — Merlin only references it.
                 "requant": {"ref": "atlas.e4m3_block_requant"},
             }
         ],
     }
+
+
+def _load_atlas_facts() -> dict[str, Any]:
+    """The atlas CIRCT facts pinned in the reference target (``contracts/rtl_facts/facts.json``) — the
+    committed, reproducible provenance the mesh/endpoint/encoding are derived from. Falls back to the
+    purgeable mlc discovery cache when the pin is absent (a fresh clone before ``merlin-onboard``)."""
+    import json
+
+    from merlin.common.paths import repo_root
+    from .rtl import facts as _facts
+    pinned = repo_root() / "merlin" / "targets" / "atlas" / "contracts" / "rtl_facts" / "facts.json"
+    if pinned.is_file():
+        return json.loads(pinned.read_text(encoding="utf-8"))
+    return _facts.load_facts("atlas")
+
+
+def atlas_manifest() -> dict[str, Any]:
+    """ATLAS NPU systolic MXU manifest — DERIVED via :func:`derive_manifest` from the pinned mlc CIRCT
+    facts + the irreducible residual. ``endpoint_kind`` (``external_backend``), the 32x32 mesh, and the
+    encoding codes fall out of the facts (never hand-set per target); the residual carries only the
+    datapath intent + prose the facts cannot yet ground. This is the same generic path any target uses."""
+    descriptor = {"target": "atlas", "kind": "systolic", "family": "tensor_resident"}
+    return derive_manifest(descriptor, _load_atlas_facts(), residual=_atlas_residual())
 
 
 MANIFESTS = {"rvv": rvv_manifest, "mx_gemmini": mx_gemmini_manifest,
@@ -345,6 +361,31 @@ def _encoding_codes_from_facts(body: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+# RoCC's funct field is architecturally 7 bits — a legal opcode above 0x7f cannot be a RoCC funct7, so a
+# decode table with wider opcodes is a standalone instruction decode (a self-hosted ISA core with its own
+# opcodes/PC/IMEM), not a RoCC co-processor. This is the load-bearing, RTL-grounded distinction between a
+# host-driven ``.insn`` endpoint and a device-kernel (``external_backend``) endpoint — never hand-set.
+_ROCC_FUNCT7_MAX = 0x7f
+
+
+def _endpoint_from_facts(body: dict[str, Any]) -> str | None:
+    """Codegen ``endpoint_kind`` DERIVED from the CIRCT decode facts, never hand-set per target.
+
+    A ``funct_decode_table`` whose legal opcodes ALL fit RoCC's 7-bit funct field (``<= 0x7f``) is a RoCC
+    co-processor decoded from the host pipeline -> ``inline_asm_insn`` (emit host ``.insn``). One with any
+    wider opcode (a standalone instruction decode — e.g. atlas's 14-bit ``ScalarDecoder``, values to
+    ``0x26d7``) is a self-hosted ISA core -> ``external_backend`` (emit a device ``kernel.S`` the target's
+    own assembler builds). No decode table -> ``None`` (caller falls back to the family default, e.g. a
+    spatial command-buffer target has one-hot op ports, not an opcode decode)."""
+    for itf in body.get("interfaces") or []:
+        if itf.get("name") == "funct_decode_table":
+            legal = itf.get("legal_funct") or []
+            if not legal:
+                return None
+            return "inline_asm_insn" if max(legal) <= _ROCC_FUNCT7_MAX else "external_backend"
+    return None
+
+
 def _spatial_fields(body: dict[str, Any]) -> dict[str, Any] | None:
     """The SPATIAL (OuterProductUnit) fact fields ``{name: {value, derived, ...}}`` when ``body`` is a
     spatial fact bundle (:func:`merlin.targetgen.rtl.spatial_introspect.build_fact_bundle`) — detected by
@@ -459,7 +500,14 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
     # primary compute-unit kind -> family generation defaults (reuse the shared registry + resolver)
     kind = _primary_kind(_cu.compute_units(manifest))
     profile = _families.family_profile(kind)
-    manifest.setdefault("endpoint_kind", profile.endpoint_kind_default)
+    # endpoint_kind: FACTS win (the decode-width signal) over the residual over the family default. A
+    # self-hosted-ISA systolic core (atlas: 14-bit ScalarDecoder) derives external_backend; a RoCC
+    # systolic co-processor (gemmini: 7-bit funct7) derives inline_asm_insn — neither hand-set.
+    endpoint = _endpoint_from_facts(body)
+    if endpoint:
+        manifest["endpoint_kind"] = endpoint
+    else:
+        manifest.setdefault("endpoint_kind", profile.endpoint_kind_default)
 
     runner = dict(manifest.get("runner") or {})
     runner.setdefault("suite", f"{name}-capsule-bench")

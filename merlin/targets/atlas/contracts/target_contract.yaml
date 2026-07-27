@@ -1,0 +1,105 @@
+# GENERATED capability manifest for atlas (merlin.targetgen.capability_manifests). Provenance-tagged; requires_human_review. Regenerable.
+capabilities:
+  mesh:
+    cols: 32
+    rows: 32
+  ops:
+  - matmul
+compiler_obligations:
+- must_tile_to_mesh_shape
+- must_supply_e8m0_block_scales
+compute_units:
+- accumulate:
+  - acc: bf16
+    in: fp8_e4m3
+    weight: fp8_e4m3
+  - acc: f32
+    in: fp8_e4m3
+    weight: fp8_e4m3
+  dtypes:
+  - fp8_e4m3
+  - bf16
+  kind: systolic
+  name: mxu
+  ops:
+  - matmul
+  requant:
+    ref: atlas.e4m3_block_requant
+  scaling: block_e8m0
+encoding:
+  custom_opcode: 123
+  funct3: 3
+  legal_funct:
+  - 87
+  - 107
+  - 119
+  - 123
+  - 215
+  - 247
+  - 251
+  - 343
+  - 375
+  - 471
+  - 503
+  - 599
+  - 631
+  - 727
+  - 759
+  - 855
+  - 887
+  - 983
+  - 1015
+  - 1143
+  - 1271
+  - 1399
+  - 1527
+  - 1655
+  - 1783
+  - 4311
+  - 4695
+  - 4951
+  - 8279
+  - 8407
+  - 8535
+  - 8663
+  - 8791
+  - 8919
+  - 9047
+  - 9175
+  - 9303
+  - 9431
+  - 9559
+  - 9687
+  - 9815
+  - 9943
+endpoint_kind: external_backend
+family: tensor_resident
+features:
+- systolic_array
+- fp8_mxu
+- microscaling
+- bf16_accumulate
+hardware_promises:
+- fp8_multiply
+- bf16_accumulate
+legality:
+- matmul tiles to the 32x32 mesh
+memory_model:
+  accumulators: true
+  block_scale_memory: true
+  resident: true
+name: atlas
+provenance: endpoint_kind + capabilities.mesh + encoding codes are DERIVED from the pinned mlc CIRCT facts (a 42-entry ScalarDecoder decode of 14-bit opcodes — too wide for RoCC funct7 -> self-hosted ISA -> external_backend; a 32x32 discovered array -> mesh). The compute-unit datapath (inputFmt=E4M3 fp8 activation+weight; accumFmt=outputFmt=BF16, with an FP32Addition PE variant; E8M0 block scale via ScalingFactorRegFile) is DECLARED intent from the atlas-npu chipyard generator (MxuParams.scala) — NOT yet RTL-grounded (dtypes are absent from this facts.json schema; pending mlc datapath discovery). NOT RTL-certified.
+requires_human_review: true
+runner:
+  fourth_output_name: kernel.S
+  model_ext: npu_model
+  suite: atlas-capsule-bench
+runtime:
+  backends:
+  - simulator
+  default_backend: simulator
+runtime_promises:
+- metrics
+status: prototype
+version: '0.1'

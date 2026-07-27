@@ -45,6 +45,23 @@ def test_rtl_repo_field_is_parsed_when_present(tmp_path):
     assert load_target_experiment(desc).rtl_repo == "/opt/rtl/acme"
 
 
+def test_capsule_bench_targets_contract_lives_outside_the_answer_surface():
+    """A capsule-bench target's contract must NOT live inside ``out/artifacts/targets/<t>`` — that dir is
+    the champion/answer-surface tree the launcher ``chmod 000``-locks before any spend, and the launcher
+    reads the contract to build each arm's prompt. If the contract sits inside it (the failure mode when a
+    target is 'generated' rather than a first-class 'reference' target), every arm dies with a
+    PermissionError at round 0. Both capsule-bench targets must resolve as reference targets."""
+    from merlin.common.paths import artifacts_dir
+    from merlin.targetgen import target_registry
+    for t in ("gemmini", "atlas"):
+        info = target_registry.resolve(t)
+        assert info.kind == "reference", f"{t} resolved as {info.kind!r}, not a first-class reference target"
+        answer_surface = artifacts_dir() / "targets" / t
+        assert answer_surface not in info.contract_path.parents, (
+            f"{t} contract {info.contract_path} lives INSIDE its answer-surface {answer_surface} — "
+            "it would be chmod-000-locked out from under the launcher's prompt build")
+
+
 # --------------------------------------------------------------------------- Delta 2: onboard flow
 @pytest.mark.parametrize("target,kind,endpoint,mesh_key", [
     ("radiance", "simt", "inline_asm_insn", None),
