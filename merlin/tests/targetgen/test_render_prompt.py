@@ -50,12 +50,31 @@ def test_radiance_prompt_has_radiance_slots_and_no_gemmini_leakage(monkeypatch):
     assert "gemmini" not in p.lower() and "rocc" not in p.lower() and "0x7b" not in p
 
 
+_ATLAS = "merlin/experiments/atlas_capsule_bench_v0/target_experiment.yaml"
+
+
+def test_grading_model_is_derived_from_the_corpus_not_hardcoded_integer():
+    """The certification-model sentence must follow the corpus goldens: gemmini's integer corpus grades
+    exact-integer 3-way; atlas's independent-float (fp8/bf16) corpus grades within a tolerance against the
+    program-oracle and marks the integer self-consistency cross-checks not_applicable. Telling a float-MXU
+    agent the grading is 'exact-integer, no tolerance' would make it build the wrong backend."""
+    _, gs = _render("gemmini", _GEM)
+    assert "exact-integer" in gs["grading_model"] and "no tolerance" in gs["grading_model"]
+    try:
+        _, as_ = _render("atlas", _ATLAS)
+    except Exception as e:  # noqa: BLE001
+        pytest.skip(f"atlas not resolvable: {e}")
+    assert "tolerance" in as_["grading_model"] and "not_applicable" in as_["grading_model"]
+    assert "exact-integer" not in as_["grading_model"]
+
+
 def _canonicalize(p: str, s: dict) -> str:
     # replace target-specific slot VALUES with fixed tokens, and drop the derived per-target blocks
     # (the ISA-facts brief + the corpus-family bullets) — what remains is the shared skeleton.
     for val, tok in ((s["kernel_symbol"], "KSYM"), (s["tool_stem"], "TOOL"), (s["target"], "T")):
         p = p.replace(val, tok)
     p = p.replace(s["endpoint_desc"], "ENDPOINT")
+    p = p.replace(s["grading_model"], "GRADING")   # float-vs-integer grading model is a derived slot
     out, in_facts = [], False
     for ln in p.splitlines():
         if ln.startswith("## Target ISA facts"):

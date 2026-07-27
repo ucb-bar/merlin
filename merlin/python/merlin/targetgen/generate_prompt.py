@@ -64,6 +64,45 @@ def _emit_framing(bundle: dict) -> str:
     return "; ".join(parts)
 
 
+# The certification-model sentence, DERIVED from the corpus goldens — NOT hardcoded to gemmini's integer
+# 3-way. The grader (capsule_golden.is_independent_float_golden) decides per capsule whether a golden is an
+# INDEPENDENT float reference graded within a tolerance (a float datapath: fp8/bf16 MXU) or the exact-integer
+# self-consistency check. We classify the target's declared corpus with that SAME signal so the prompt tells
+# the agent the grading model the runner will actually apply — never a per-target English branch.
+_GRADE_INTEGER = ("Per capsule the runner certifies exact-integer `golden == reference(cb) == simulate(cb) "
+                  "== oracle` (no tolerance) across the sim tier ladder — derived from the manifest, not "
+                  "restated:")
+_GRADE_FLOAT = ("Per capsule the runner certifies the emitted artifact's program-oracle output against an "
+                "INDEPENDENT float `golden` within the capsule's declared tolerance (its `grade_policy` "
+                "atol/rtol) across the sim tier ladder; the integer `reference(cb) == simulate(cb)` "
+                "self-consistency cross-checks do NOT apply to a float datapath and report `not_applicable` "
+                "— derived from the corpus goldens, not restated:")
+
+
+def _corpus_uses_independent_float_goldens(te) -> bool:
+    """True iff any capsule under the declared corpus (+ its discovered siblings) carries an INDEPENDENT
+    float golden — the exact signal the grader keys on. Derived from the corpus, never a target name; IO
+    failures degrade to the integer model (the conservative default the shared skeleton has always used)."""
+    import yaml
+
+    from merlin.common.paths import repo_root
+    from .capsule_golden import is_independent_float_golden
+    root = repo_root()
+    corpora = ([te.capsule_corpus] if te.capsule_corpus else [])
+    corpora += [root / rel.rstrip("/") for rel in te.corpus_siblings()]
+    for corpus in corpora:
+        if not corpus or not corpus.is_dir():
+            continue
+        for capy in sorted(corpus.glob("*/capsule.yaml")):
+            try:
+                cap = yaml.safe_load(capy.read_text(encoding="utf-8")) or {}
+            except (OSError, yaml.YAMLError):
+                continue
+            if is_independent_float_golden(cap, capy.parent):
+                return True
+    return False
+
+
 def prompt_slots(te, manifest) -> dict:
     """The complete set of DERIVED, target-specific prompt slots for one target.
 
@@ -83,6 +122,9 @@ def prompt_slots(te, manifest) -> dict:
                              else f"; the emitted module defines `{target}_kernel`"),
         "endpoint_kind": manifest.endpoint_kind,
         "endpoint_desc": _ENDPOINT_DESC.get(manifest.endpoint_kind, _ENDPOINT_DESC["inline_asm_insn"]),
+        # The grading model the runner will actually apply — float-tolerance vs exact-integer — classified
+        # from the corpus goldens (never a per-target branch), so the agent is not told the wrong contract.
+        "grading_model": _GRADE_FLOAT if _corpus_uses_independent_float_goldens(te) else _GRADE_INTEGER,
         "emit_framing": _emit_framing(bundle),        # concrete opcode/mesh framing, derived from the bundle
         "isa_facts": render_fact_bundle_for(target, bundle),  # KIND-routed provenance-tagged ISA brief (agent info)
         "corpus_rel": te.corpus_rel(),                # the primary corpus (isa/), repo-root-relative
@@ -135,8 +177,7 @@ Declare these four commands in `manifest.yaml` exactly as the runner expects —
 contract (`mlir_oot_backend_contract.yaml`) and the manifest schema (`schemas/manifest.schema.json`).
 
 ## Grading + your QA signal
-Per capsule the runner certifies exact-integer `golden == reference(cb) == simulate(cb) == oracle` (no
-tolerance) across the sim tier ladder — derived from the manifest, not restated:
+{grading_model}
 {sim_tier_ladder}
 and checks the required instruction coverage per capsule (it decodes your emitted artifact into an
 instruction trace). You cannot run the oracle; after each round a QA gate writes a redacted
@@ -210,5 +251,5 @@ def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseli
     return _TEMPLATE.format(target=s["target"], scope_label=scope, corpus_families=families,
                             tool_stem=s["tool_stem"], kernel_symbol=s["kernel_symbol"],
                             endpoint_desc=s["endpoint_desc"], emit_framing=s["emit_framing"],
-                            emit_symbol_note=s["emit_symbol_note"],
+                            emit_symbol_note=s["emit_symbol_note"], grading_model=s["grading_model"],
                             isa_facts=s["isa_facts"], sim_tier_ladder=ladder, seam_menu=seam_menu)
