@@ -21,14 +21,35 @@ from typing import Any
 
 import yaml
 
-from merlin.common.paths import targets_dir
+from merlin.common.paths import build_dir, targets_dir
 from .rtl.facts import dialect_plan_path, rtl_facts_path, target_base, target_contract_path
 
-# Colon/os.pathsep-separated list of out-of-tree target package roots (or dirs containing them). An
-# OOT target repo (e.g. a generated radiance-mlir under out/artifacts/targets, later externalized)
-# ships its own contracts/target_contract.yaml (+ compute_units) + dialect + lowering entry-point;
-# Merlin discovers and plugs it in without any target-specific code committed here.
+# ─────────────────────────────────────────────────────────────────────────────────────────────────
+# Target-package RESOLUTION — how Merlin picks WHICH definition package to use for a target name.
+#
+# A target definition is a self-contained OUT-OF-TREE PACKAGE — a directory with
+# ``contracts/target_contract.yaml`` (the capability manifest + optional plugin block) + a
+# ``contracts/dialect_plan.yaml`` — exactly the layout ``capability_manifests.write_oot_target`` emits
+# and the published ``<target>-mlir`` repos ship. The SAME format is the interchange format: anyone can
+# clone such a repo anywhere and plug it in. Nothing target-specific is committed into merlin for this.
+#
+# ``resolve(name)`` walks an ORDERED search path and takes the FIRST package whose contract ``name``
+# matches. Precedence (highest first) — see docs/guides/target_resolution.md:
+#   1. ``MERLIN_TARGET_PATH`` entries  — EXPLICIT selection: a specific versioned/named package, or a
+#      user's separately-cloned ``<target>-mlir`` repo. ``os.pathsep``-separated, left-to-right; each
+#      entry is either a package root (has ``contracts/target_contract.yaml``) or a dir OF such roots.
+#   2. in-tree ``merlin/targets/<name>/``  — the curated REFERENCE package shipped in merlin (gemmini).
+#   3. ``out/build/generated/<name>/``  — the FRESHLY-GENERATED OOT home (``write_oot_target`` /
+#      onboarding drop packages here), so a just-generated target resolves with ZERO env.
+#   4. ``out/artifacts/targets/<name>/``  — legacy generated location (fallback).
+# To pin a specific version/location, put it first on ``MERLIN_TARGET_PATH``; it wins over every default.
 _ENV_TARGET_PATH = "MERLIN_TARGET_PATH"
+
+
+def generated_target_home() -> Path:
+    """Where freshly generated OOT target packages are dropped (``out/build/generated/``) and
+    auto-discovered — the zero-env default for a just-generated target."""
+    return build_dir() / "generated"
 
 # Default runtime backend per target (was pipeline.DEFAULT_BACKEND). Unknown -> "simulator".
 _DEFAULT_BACKEND = {
@@ -91,23 +112,39 @@ def _target_name(root: Path) -> str:
     return root.name
 
 
-def external_targets() -> dict[str, Path]:
-    """Discover out-of-tree targets from ``MERLIN_TARGET_PATH`` -> ``{name: package_root}``.
+def _roots_under(entry: Path) -> list[Path]:
+    """A search-path entry expands to the package root itself (if it has a contract) or, if it is a
+    directory OF packages, each immediate child that is a package root."""
+    if _is_target_root(entry):
+        return [entry]
+    if entry.is_dir():
+        return [c for c in sorted(entry.iterdir()) if _is_target_root(c)]
+    return []
 
-    Each path entry is either a target package root (contains ``contracts/target_contract.yaml``) or a
-    directory whose immediate children are such roots. Empty/unset env -> no external targets.
-    """
-    found: dict[str, Path] = {}
+
+def _env_target_roots() -> list[Path]:
+    """The ``MERLIN_TARGET_PATH`` search entries, in declared (left-to-right) order."""
     raw = os.environ.get(_ENV_TARGET_PATH, "")
-    for entry in raw.split(os.pathsep):
-        if not entry:
-            continue
-        p = Path(entry)
-        roots = [p] if _is_target_root(p) else ([c for c in sorted(p.iterdir()) if _is_target_root(c)]
-                                                if p.is_dir() else [])
-        for root in roots:
+    return [Path(e) for e in raw.split(os.pathsep) if e]
+
+
+def _discover(entries: list[Path]) -> dict[str, Path]:
+    """``{contract-name: package_root}`` for every package reachable from ``entries`` (later entries win
+    on a name clash — callers order entries so the desired precedence is achieved)."""
+    found: dict[str, Path] = {}
+    for entry in entries:
+        for root in _roots_under(entry):
             found[_target_name(root)] = root
     return found
+
+
+def external_targets() -> dict[str, Path]:
+    """Discover out-of-tree target packages -> ``{name: package_root}``, across the ``MERLIN_TARGET_PATH``
+    entries AND the freshly-generated home (``out/build/generated/``). Env entries take precedence over the
+    generated home (they are applied last, overwriting). In-tree reference targets are resolved separately
+    (see :func:`resolve`); this returns only OOT packages."""
+    # generated-home first (lower precedence), then env (higher) — later writes win in `_discover`.
+    return _discover([generated_target_home(), *_env_target_roots()])
 
 
 def _resolve_external(name: str, root: Path) -> TargetInfo:
@@ -123,23 +160,37 @@ def _resolve_external(name: str, root: Path) -> TargetInfo:
 
 
 def resolve(name: str) -> TargetInfo:
-    """Resolve a target's identity + paths.
+    """Resolve a target's identity + paths by walking the ordered search path (module docstring),
+    first-match-wins:
 
-    ``kind`` is 'external' if ``name`` is discovered under ``MERLIN_TARGET_PATH`` (an out-of-tree
-    package), else 'reference' if it has a curated ``merlin/targets/<name>/`` definition, else
-    'generated' (paths point under artifacts/targets). External discovery is checked first so a target
-    repo can be plugged in without a curated in-tree copy."""
-    external = external_targets()
-    if name in external:
-        return _resolve_external(name, external[name])
-    base = target_base(name)
-    kind = "reference" if (targets_dir() / name).is_dir() else "generated"
+    1. ``MERLIN_TARGET_PATH`` (explicit selection: a specific versioned/named package, or a user's
+       separately-cloned ``<target>-mlir`` repo) -> ``kind='external'``.
+    2. curated in-tree ``merlin/targets/<name>/`` -> ``kind='reference'``.
+    3. freshly-generated ``out/build/generated/<name>/`` -> ``kind='external'`` (zero-env default for a
+       just-generated target).
+    4. legacy ``out/artifacts/targets/<name>/`` -> ``kind='generated'`` (fallback).
+
+    So an explicit env pointer always wins; otherwise a curated reference beats an incidental generated
+    package; otherwise a freshly generated OOT package is picked up automatically."""
+    # 1. explicit env selection — highest precedence
+    env = _discover(_env_target_roots())
+    if name in env:
+        return _resolve_external(name, env[name])
+    # 2. curated in-tree reference
+    if (targets_dir() / name).is_dir():
+        return TargetInfo(
+            name=name, kind="reference", base=target_base(name),
+            contract_path=target_contract_path(name), dialect_plan_path=dialect_plan_path(name),
+            facts_path=rtl_facts_path(name), backend=backend_for(name))
+    # 3. freshly-generated OOT home
+    gen = _discover([generated_target_home()])
+    if name in gen:
+        return _resolve_external(name, gen[name])
+    # 4. legacy generated location
     return TargetInfo(
-        name=name, kind=kind, base=base,
-        contract_path=target_contract_path(name),
-        dialect_plan_path=dialect_plan_path(name),
-        facts_path=rtl_facts_path(name),
-        backend=backend_for(name))
+        name=name, kind="generated", base=target_base(name),
+        contract_path=target_contract_path(name), dialect_plan_path=dialect_plan_path(name),
+        facts_path=rtl_facts_path(name), backend=backend_for(name))
 
 
 def list_targets() -> list[str]:

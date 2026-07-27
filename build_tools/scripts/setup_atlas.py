@@ -66,6 +66,12 @@ def main() -> int:
     ap.add_argument("--chipyard-atlas", help="chipyard-atlas checkout w/ the prebuilt Verilator sim (L4 RTL)")
     ap.add_argument("--write-env", action="store_true", help="append MERLIN_EXT_* to this clone's .env")
     ap.add_argument("--sync-npu-model", action="store_true", help="run `uv sync` in the npu-model dir")
+    ap.add_argument("--target-package-dir", help="where to materialize the atlas OOT definition package "
+                    "(default: the generated home out/build/generated/atlas — auto-discovered by "
+                    "target_registry; point MERLIN_TARGET_PATH at a pinned/versioned copy to override). "
+                    "Pass --no-target-package to skip.")
+    ap.add_argument("--no-target-package", action="store_true",
+                    help="skip materializing the OOT target-definition package")
     a = ap.parse_args()
 
     ok = True
@@ -105,6 +111,20 @@ def main() -> int:
     chip = Path(a.chipyard_atlas or _env("MERLIN_EXT_CHIPYARD_ATLAS") or _CHIPYARD_ATLAS_DEFAULT)
     sim = chip / _VERILATOR_SIM_REL
     print(f"chipyard Verilator [L4 RTL]   : {'built' if sim.is_file() else 'not built'} ({sim})")
+
+    # Materialize the OOT target-definition PACKAGE (contract + dialect_plan, derived from the CIRCT
+    # facts) into the search path, so `target_registry.resolve("atlas")` finds it with ZERO env — the
+    # seamless default. This is the SAME package format a user can clone/pin elsewhere and select via
+    # MERLIN_TARGET_PATH. See docs/guides/target_resolution.md.
+    if ok and not a.no_target_package:
+        try:
+            from merlin.targetgen import capability_manifests as _cm
+            from merlin.targetgen import target_registry as _tr
+            dest = Path(a.target_package_dir) if a.target_package_dir else _tr.generated_target_home() / "atlas"
+            _cm.write_oot_target("atlas", dest)
+            print(f"target package [OOT def]      : {dest} (endpoint/mesh/encoding derived from CIRCT facts)")
+        except Exception as e:  # noqa: BLE001
+            sys.stderr.write(f"target-package materialization failed: {type(e).__name__}: {e}\n"); ok = False
 
     if a.write_env:
         envf = ROOT / ".env"

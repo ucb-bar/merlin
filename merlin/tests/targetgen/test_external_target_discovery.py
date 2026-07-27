@@ -36,11 +36,25 @@ def _make_oot_target(root, name):
     return root
 
 
-def test_no_env_means_no_external_targets(monkeypatch):
+def test_no_env_and_empty_generated_home_means_no_external_targets(tmp_path, monkeypatch):
+    # external_targets() discovers env roots UNION the generated home (out/build/generated). With no env
+    # AND an empty generated home (isolated via MERLIN_OUT_ROOT), there is nothing to discover.
     monkeypatch.delenv("MERLIN_TARGET_PATH", raising=False)
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path))     # empty generated home
     assert tr.external_targets() == {}
     # reference targets still resolve normally.
     assert tr.resolve("gemmini").kind == "reference"
+
+
+def test_generated_home_is_auto_discovered_without_env(tmp_path, monkeypatch):
+    # A package dropped into the generated home (out/build/generated/<pkg>) is picked up with ZERO env —
+    # the seamless default for a just-generated target. (resolve() reports kind='external'.)
+    monkeypatch.delenv("MERLIN_TARGET_PATH", raising=False)
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path))
+    home = tr.generated_target_home()
+    _make_oot_target(home / "radiance", "radiance")
+    assert "radiance" in tr.external_targets()
+    assert tr.resolve("radiance").kind == "external"
 
 
 def test_discover_and_resolve_external_target(tmp_path, monkeypatch):

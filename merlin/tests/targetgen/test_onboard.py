@@ -45,21 +45,33 @@ def test_rtl_repo_field_is_parsed_when_present(tmp_path):
     assert load_target_experiment(desc).rtl_repo == "/opt/rtl/acme"
 
 
-def test_capsule_bench_targets_contract_lives_outside_the_answer_surface():
-    """A capsule-bench target's contract must NOT live inside ``out/artifacts/targets/<t>`` — that dir is
-    the champion/answer-surface tree the launcher ``chmod 000``-locks before any spend, and the launcher
-    reads the contract to build each arm's prompt. If the contract sits inside it (the failure mode when a
-    target is 'generated' rather than a first-class 'reference' target), every arm dies with a
-    PermissionError at round 0. Both capsule-bench targets must resolve as reference targets."""
+def test_curated_reference_contract_resolves_outside_the_answer_surface():
+    """A capsule-bench target's contract must NOT resolve inside ``out/artifacts/targets/<t>`` — that dir
+    is the champion/answer-surface tree the launcher ``chmod 000``-locks before any spend, and the launcher
+    reads the contract to build each arm's prompt. If the contract sat inside it, every arm would die with
+    a PermissionError at round 0 (the historical bug). gemmini is the curated in-tree reference case."""
     from merlin.common.paths import artifacts_dir
     from merlin.targetgen import target_registry
-    for t in ("gemmini", "atlas"):
-        info = target_registry.resolve(t)
-        assert info.kind == "reference", f"{t} resolved as {info.kind!r}, not a first-class reference target"
-        answer_surface = artifacts_dir() / "targets" / t
-        assert answer_surface not in info.contract_path.parents, (
-            f"{t} contract {info.contract_path} lives INSIDE its answer-surface {answer_surface} — "
-            "it would be chmod-000-locked out from under the launcher's prompt build")
+    info = target_registry.resolve("gemmini")
+    assert info.kind == "reference"
+    assert artifacts_dir() / "targets" / "gemmini" not in info.contract_path.parents
+
+
+def test_generated_oot_target_resolves_via_search_path_outside_the_answer_surface(tmp_path, monkeypatch):
+    """The generalizable case: a target defined ONLY as a generated OOT package (no in-tree dir) is
+    discovered via the search path and resolves OUTSIDE its answer surface. Generate atlas's package into a
+    temp root, select it with MERLIN_TARGET_PATH, and confirm resolve() finds it (kind='external') with the
+    contract outside ``out/artifacts/targets/atlas`` — so the launcher can read it under the lock."""
+    from merlin.common.paths import artifacts_dir
+    from merlin.targetgen import capability_manifests, target_registry
+    pkg = tmp_path / "atlas-mlir-v0"
+    capability_manifests.write_oot_target("atlas", pkg)   # the interchange OOT-package format
+    monkeypatch.setenv("MERLIN_TARGET_PATH", str(pkg))
+    info = target_registry.resolve("atlas")
+    assert info.kind == "external"
+    assert info.contract_path == pkg / "contracts" / "target_contract.yaml"
+    assert artifacts_dir() / "targets" / "atlas" not in info.contract_path.parents
+    assert info.load_contract()["endpoint_kind"] == "external_backend"   # still derived from facts
 
 
 # --------------------------------------------------------------------------- Delta 2: onboard flow
