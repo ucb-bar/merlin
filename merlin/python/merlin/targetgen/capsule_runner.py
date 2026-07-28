@@ -135,8 +135,8 @@ def oracle_adapters(target: str = "gemmini", sim_via: str | None = None) -> dict
     its higher-fidelity sim tiers (chipyard -> spike L2 / verilator L3), preserving the gemmini path.
 
     A self-hosted-ISA target (``endpoint_kind == external_backend``, e.g. atlas) is graded by the generic
-    PROGRAM oracle (assemble the emitted kernel via the target's own assembler -> its mlc cosim) instead of
-    the command_buffer arc path — routed from the contract, no target-name branch."""
+    PROGRAM oracle (assemble the emitted `.word`/`.insn` kernel with STOCK LLVM -> its mlc cosim) instead
+    of the command_buffer arc path — routed from the contract, no target-name branch."""
     endpoint_kind, model_ext = _endpoint_of(target)
     if endpoint_kind == "external_backend":
         from .program_oracle import program_oracle_adapter

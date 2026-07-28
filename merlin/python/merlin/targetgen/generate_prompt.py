@@ -20,8 +20,9 @@ _ENDPOINT_DESC = {
                         "forked toolchain"),
     "upstream_target": ("lower your target dialect to an upstream LLVM target (e.g. RVV / SPIR-V), "
                         "compiled by stock LLVM"),
-    "external_backend": ("emit the target's device kernel source that the target's toolchain compiles "
-                         "(only where a command-ISA `.insn` path is not available)"),
+    "external_backend": ("emit a `kernel.S` of `.word`/`.insn` directives — the target's OWN encoded "
+                         "instructions (self-hosted ISA), assembled to IMEM words by STOCK LLVM "
+                         "(`llvm-mc`), then run on the target's cosim/RTL; no forked toolchain"),
     "command_buffer": ("emit the target's schema-valid command buffer directly — the artifact the "
                        "target's runtime consumes; no `.insn` assembly (the target has no command ISA, "
                        "e.g. a spatial tensor tile driven by one-hot op ports)"),
@@ -32,22 +33,27 @@ def _emit_framing(bundle: dict, endpoint: str = "inline_asm_insn") -> str:
     """A CONCRETE, derived one-liner describing what the 4th-entrypoint artifact must be — derived from
     the fact bundle + the codegen ENDPOINT (never a gemmini literal). A RoCC ``inline_asm_insn`` target
     emits a host `.insn` word stream encoding the discovered opcodes; a self-hosted-ISA ``external_backend``
-    target emits a flat stream of its OWN assembler MNEMONICS (the target's own assembler makes the IMEM
-    words), NOT raw word encodings and NOT an MLIR module; a spatial ``command_buffer`` target emits a
-    command stream over its op-port tile. A target with no HW dialect degrades to the generic phrasing."""
+    target emits a ``kernel.S`` of `.word`/`.insn` directives — the target's OWN encoded instructions —
+    that STOCK LLVM (`llvm-mc`) assembles into IMEM words, NOT an MLIR module and NOT the model's bespoke
+    mnemonics; a spatial ``command_buffer`` target emits a command stream over its op-port tile. A target
+    with no HW dialect degrades to the generic phrasing."""
     f = bundle.get("fields", {})
     dim = f.get("mesh_dim", {})
     _mesh = (f" driving the discovered {dim['value']}x{dim['value']} systolic mesh"
              if dim.get("derived") and dim.get("value") else "")
-    # SELF-HOSTED ISA (external_backend, e.g. atlas): the 4th artifact is a flat MNEMONIC assembly stream
-    # the target's OWN assembler consumes — NOT a host word/.insn stream and NOT MLIR. The agent has the
-    # mnemonics from the ISA definition in its bundle; emitting raw `.word` or an MLIR module fails the
-    # target's assembler (the W7 finding).
+    # SELF-HOSTED ISA (external_backend, e.g. atlas): the 4th artifact is a `kernel.S` of `.word`/`.insn`
+    # directives that STOCK LLVM (llvm-mc) assembles to IMEM words — the encoding lives in the emitted
+    # directives, grounded on the ISA definition + example kernel shipped in the bundle. NOT an MLIR
+    # module, NOT `llvm.inline_asm`, and NOT the model's bespoke assembler mnemonics (llvm-mc can't
+    # assemble `VMATMUL`-style mnemonics — only `.word`/`.insn`). Grounding the agent on the bundled ISA
+    # is what stops it inventing opcodes (the AW2 hallucination finding).
     if endpoint == "external_backend":
-        return ("a flat assembly stream of the target's OWN instruction MNEMONICS (one instruction per "
-                "line, using the mnemonics from the ISA definition in your bundle) that the target's own "
-                "assembler turns into IMEM words — emit assembler text ONLY: NOT an MLIR module, NOT "
-                "`llvm.inline_asm`, NOT raw `.word`/`.insn` word encodings" + _mesh)
+        return ("a `kernel.S` of `.word`/`.insn` directives encoding the target's OWN instructions "
+                "(compute each 32-bit encoding from the opcode/funct/field layout in the ISA definition "
+                "shipped in your bundle; the bundled example kernel shows the required instruction "
+                "sequence) that STOCK LLVM (`llvm-mc -triple=riscv64`) assembles into IMEM words — emit "
+                "assembler text ONLY: NOT an MLIR module, NOT `llvm.inline_asm`, NOT the model's mnemonic "
+                "assembler syntax (stock LLVM cannot assemble the target's custom mnemonics)" + _mesh)
     # SPATIAL tensor-tile (OPU): a command buffer over one-hot op ports driving an outer-product tile —
     # NOT a RoCC .insn stream over a systolic mesh. Frame it from the discovered tile geometry + command
     # set (gemmini has no tile_dim, so it never takes this branch and stays byte-identical).

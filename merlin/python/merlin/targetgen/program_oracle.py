@@ -5,8 +5,17 @@ own cosim, using the target's OWN assembler. The counterpart to the ``command_bu
 host stream and NOT an ISA-less command buffer.
 
 Design (HW-agnostic; nothing atlas-specific is hardcoded here):
-  * the ISA / assembler comes from the MODEL project (via :mod:`oracle_helpers.npu_emit`, run in the
-    model's own venv as a subprocess) — merlin holds no opcode table;
+  * the agent's emitted ``kernel.S`` is a stream of ``.word``/``.insn`` directives (the target's encoded
+    instructions, grounded on the target's shipped ISA definition) — assembled to IMEM words by the
+    PREBUILT stock LLVM (``llvm-mc`` + ``llvm-objcopy`` from the MLIR install), NOT by a per-target
+    bespoke assembler and NOT by a forked toolchain. merlin holds no opcode table; the encoding lives in
+    the emitted ``.word`` directives, and stock ``.insn`` gives the generic RISC-V-shaped formats. This
+    is the target-agnostic assembly path: any HW whose instructions fit ``.word``/``.insn`` assembles the
+    same way (see AW3);
+  * the input tensors' DRAM byte layout comes from the MODEL project (via :mod:`oracle_helpers.npu_emit`,
+    run in the model's own venv as a subprocess) — its torch owns the fp8/bf16 dtype encodings merlin's
+    venv lacks. A self-contained ``program`` (validation) still assembles in the model venv (it owns the
+    ``Program`` classes);
   * the cosim comes from mlc, resolved by target (``artifact_paths`` + the per-target program backend);
   * DRAM bases + output physical-layout come from the command buffer's tensors (declared by the emitting
     backend, i.e. the generation process), never from constants here.
@@ -42,27 +51,71 @@ def _model_venv_python(model_ext: str) -> Path:
     return py
 
 
-def emit_bundle(*, model_ext: str, program: str | None = None, kernel_s: Path | None = None,
-                inputs: list[dict] | None = None, fix_itype_rd: bool, workdir: Path,
-                timeout: int) -> dict[str, Any]:
-    """Assemble + lay out DRAM bytes in the MODEL's venv (subprocess). Returns the JSON bundle
-    {words, inputs:[{base,b64}], output, golden}. ``program`` (self-contained) XOR ``kernel_s``+``inputs``."""
+def _assemble_kernel_words(kernel_s: Path, workdir: Path) -> list[int]:
+    """Assemble an agent-emitted ``.word``/``.insn`` kernel into little-endian IMEM u32 words using the
+    PREBUILT stock LLVM (``llvm-mc`` + ``llvm-objcopy`` from the MLIR install; override via
+    ``MERLIN_MLIR_INSTALL``). Target-agnostic: the encoding lives in the emitted directives (grounded on
+    the target's shipped ISA definition), so merlin needs no per-target assembler and holds no opcode
+    table. ``llvm-mc`` accepts ``#``/``//`` comments + labels natively (labels emit no ``.text`` bytes).
+    Raises :class:`OracleUnavailable` if the toolchain is absent or the kernel does not assemble."""
+    from merlin.targetgen.contract.toolchain import mlir_bin
+    mc, objcopy = mlir_bin("llvm-mc"), mlir_bin("llvm-objcopy")
+    if not mc.is_file() or not objcopy.is_file():
+        raise OracleUnavailable(
+            f"prebuilt stock LLVM assembler absent ({mc} / {objcopy}); set MERLIN_MLIR_INSTALL")
+    obj, binf = workdir / "kernel.o", workdir / "kernel.bin"
+    a = subprocess.run([str(mc), "-triple=riscv64", "-filetype=obj", "-o", str(obj), str(kernel_s)],
+                       capture_output=True, text=True)
+    if a.returncode != 0:
+        raise OracleUnavailable(f"llvm-mc failed to assemble kernel.S: {a.stderr[-500:]}")
+    b = subprocess.run([str(objcopy), "-O", "binary", "--only-section=.text", str(obj), str(binf)],
+                       capture_output=True, text=True)
+    if b.returncode != 0:
+        raise OracleUnavailable(f"llvm-objcopy failed: {b.stderr[-400:]}")
+    import numpy as np
+    words = [int(w) for w in np.frombuffer(binf.read_bytes(), dtype="<u4")]
+    if not words:
+        raise OracleUnavailable("kernel.S assembled to zero .text words (empty/all-comment kernel)")
+    return words
+
+
+def _run_emit_helper(model_ext: str, extra_args: list[str], workdir: Path, timeout: int,
+                     out_name: str) -> dict[str, Any]:
+    """Run the model-venv helper (:mod:`oracle_helpers.npu_emit`) and read back its JSON bundle."""
     py = _model_venv_python(model_ext)
-    out = workdir / "npu_bundle.json"
-    cmd: list[str] = [str(py), str(_EMIT_HELPER), "--out", str(out)]
-    if fix_itype_rd:
-        cmd.append("--fix-itype-rd")
-    if program:
-        cmd += ["--program", program]
-    else:
-        if kernel_s is None:
-            raise ValueError("emit_bundle: need program or kernel_s")
-        cmd += ["--kernel-s", str(kernel_s), "--inputs", json.dumps(inputs or [])]
+    out = workdir / out_name
+    cmd = [str(py), str(_EMIT_HELPER), "--out", str(out), *extra_args]
     cwd = ext_path(model_ext)                          # ASM_FOLDER is cwd-relative in the model
     p = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
     if p.returncode != 0:
-        raise OracleUnavailable(f"model assembler failed rc={p.returncode}: {p.stderr[-400:]}")
+        raise OracleUnavailable(f"npu_emit helper failed rc={p.returncode}: {p.stderr[-400:]}")
     return json.loads(out.read_text())
+
+
+def emit_bundle(*, model_ext: str, program: str | None = None, kernel_s: Path | None = None,
+                inputs: list[dict] | None = None, fix_itype_rd: bool, workdir: Path,
+                timeout: int) -> dict[str, Any]:
+    """Produce the oracle bundle ``{words, inputs:[{base,b64}], output, golden}``. Two paths:
+
+    * ``program`` (self-contained validation): assemble a named npu_model ``Program`` + lay out its
+      memory regions/golden — done in the MODEL venv (it owns the ``Program`` classes + assembler).
+    * ``kernel_s`` + ``inputs`` (the capsule/agent path): assemble the agent's ``.word``/``.insn`` kernel
+      with PREBUILT stock LLVM merlin-side (target-agnostic — no model assembler), and lay out the input
+      tensors' DRAM bytes in the model venv (its torch owns the fp8/bf16 dtypes)."""
+    if program:
+        args = ["--program", program]
+        if fix_itype_rd:
+            args.append("--fix-itype-rd")
+        return _run_emit_helper(model_ext, args, workdir, timeout, "npu_bundle.json")
+    if kernel_s is None:
+        raise ValueError("emit_bundle: need program or kernel_s")
+    words = _assemble_kernel_words(kernel_s, workdir)
+    laid: list[dict] = []
+    if inputs:
+        b = _run_emit_helper(model_ext, ["--inputs", json.dumps(inputs)], workdir, timeout,
+                             "npu_inputs.json")
+        laid = b.get("inputs", [])
+    return {"words": words, "inputs": laid, "output": None, "golden": None}
 
 
 def _decode_output(raw: bytes, shape: list[int], dtype: str, physical: dict | None):

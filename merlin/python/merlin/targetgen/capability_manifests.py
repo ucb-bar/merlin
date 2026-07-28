@@ -181,8 +181,9 @@ def _atlas_residual() -> dict[str, Any]:
                       "(dtypes are absent from this facts.json schema; pending mlc datapath discovery). "
                       "NOT RTL-certified.",
         "features": ["systolic_array", "fp8_mxu", "microscaling", "bf16_accumulate"],
-        # The program oracle (targetgen.program_oracle) assembles the emitted kernel.S via npu_model's OWN
-        # assembler (``model_ext``) and runs the target's mlc arc cosim — declared intent, not an RTL fact.
+        # The program oracle (targetgen.program_oracle) assembles the emitted kernel.S (`.word`/`.insn`)
+        # with STOCK LLVM (llvm-mc), lays out DRAM bytes via the model venv (``model_ext``, for fp8/bf16),
+        # and runs the target's mlc arc cosim — declared intent, not an RTL fact.
         "runner": {"model_ext": "npu_model", "fourth_output_name": "kernel.S"},
         "capabilities": {"ops": ["matmul"]},          # mesh comes from facts; ops is compute-unit intent
         "memory_model": {"resident": True, "accumulators": True, "block_scale_memory": True},

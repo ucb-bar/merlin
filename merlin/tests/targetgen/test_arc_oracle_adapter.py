@@ -5,6 +5,8 @@ that declares a bespoke sim (chipyard) additionally gets spike/verilator. These 
 tests (the full cb-round-trip grade is exercised in the 2nd-target cross-target proof, P4)."""
 from __future__ import annotations
 
+import pytest
+
 from merlin.targetgen import capsule_runner as CR
 from merlin.targetgen.rtl import mlc_bridge as B
 
@@ -40,6 +42,38 @@ def test_arc_adapter_fails_closed_for_unknown_target():
         assert False, "arc adapter should raise OracleUnavailable for an unknown/absent target"
     except CR.OracleUnavailable as e:
         assert "arc model unavailable" in str(e)
+
+
+# --- AW3: the external_backend kernel is assembled by STOCK LLVM (.word/.insn), not a bespoke assembler -
+
+def test_stock_llvm_assembles_word_insn_kernel(tmp_path):
+    # the program oracle assembles the agent's emitted `.word`/`.insn` kernel with the prebuilt stock LLVM
+    # (llvm-mc + llvm-objcopy). This is the target-agnostic assembly path — merlin holds no opcode table;
+    # the encoding lives in the emitted directives. `#`/`//` comments + labels are accepted (no bytes).
+    from merlin.targetgen.contract import toolchain as mlir_tc
+    if not (mlir_tc.mlir_bin("llvm-mc").is_file() and mlir_tc.mlir_bin("llvm-objcopy").is_file()):
+        pytest.skip("prebuilt stock LLVM (llvm-mc/llvm-objcopy) unavailable")
+    from merlin.targetgen.program_oracle import _assemble_kernel_words
+    ks = tmp_path / "kernel.S"
+    ks.write_text(".text\nmain:  # label\n"
+                  "  .word 0x00000013   // encoded insn\n"
+                  "  .insn r 0x77, 0x0, 0x0a, x0, x1, x2\n"
+                  "  .word 0xdeadbeef\n")
+    words = _assemble_kernel_words(ks, tmp_path)
+    # little-endian u32 stream; labels/comments emit no .text bytes
+    assert words == [0x00000013, 0x14208077, 0xDEADBEEF]
+
+
+def test_stock_llvm_rejects_empty_kernel(tmp_path):
+    # an all-comment / empty kernel assembles to zero .text words -> fail closed (never a false green).
+    from merlin.targetgen.contract import toolchain as mlir_tc
+    if not mlir_tc.mlir_bin("llvm-mc").is_file():
+        pytest.skip("prebuilt stock LLVM unavailable")
+    from merlin.targetgen.program_oracle import _assemble_kernel_words, OracleUnavailable
+    ks = tmp_path / "empty.S"
+    ks.write_text("# only comments\n.text\n")
+    with pytest.raises(OracleUnavailable):
+        _assemble_kernel_words(ks, tmp_path)
 
 
 def test_arc_adapter_available_for_gemmini_when_mlc_present():
