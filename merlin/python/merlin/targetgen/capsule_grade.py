@@ -27,7 +27,7 @@ from .oot_runner import CertFailure, build_package, integrity_scan, load_package
 def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str | Path,
           labels: set[str] | None = None, contract: str | Path | None = None,
           oracle_adapters: dict | None = None, timeout: int = 900,
-          max_workers: int = 1) -> dict:
+          max_workers: int = 1, target: str = "gemmini") -> dict:
     """Run the capsule suite over a submitted package; return a score dict (also schema-checkable).
 
     ``max_workers > 1`` fans the per-capsule oracle runs out in parallel (verilator/VCS instances).
@@ -65,7 +65,7 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     _suite_t0 = _time.perf_counter()
     results = CR.run_suite(caps, pkg_dir, runs_root=runs_root, contract=contract,
                            oracle_adapters=oracle_adapters, timeout=timeout,
-                           max_workers=max_workers)
+                           max_workers=max_workers, target=target)
     _suite_wall = _time.perf_counter() - _suite_t0
 
     # collect decoded traces for coverage

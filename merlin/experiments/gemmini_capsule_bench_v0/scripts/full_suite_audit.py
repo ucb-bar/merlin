@@ -87,7 +87,7 @@ def audit_backend(run_id: str, *, workers: int, tiers: list[str], timeout: int) 
     t0 = time.perf_counter()
     score = CG.grade(sub, capsules_root=CORPUS, runs_root=runs_root,
                      labels={"public", "dev", "hidden"}, contract=CONTRACT,
-                     oracle_adapters=adapters, timeout=timeout, max_workers=workers)
+                     oracle_adapters=adapters, timeout=timeout, max_workers=workers, target=C.TARGET)
     score["_audit_wall_s"] = round(time.perf_counter() - t0, 1)
     score["_lang"] = yaml.safe_load((sub / "manifest.yaml").read_text()).get("language", "?")
     (runs_root / "score_full.json").write_text(json.dumps(score, indent=2))

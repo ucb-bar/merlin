@@ -104,7 +104,7 @@ def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
     _loop_adapters = {} if no_oracle else CR.qa_loop_adapters(_target, _sim_via)
     score = CG.grade(submission, capsules_root=capsules_root, runs_root=str(runs_root),
                      labels=labels, contract=str(C.REPO / "merlin/contract"),
-                     oracle_adapters=_loop_adapters, timeout=timeout)
+                     oracle_adapters=_loop_adapters, timeout=timeout, target=_target)
     redacted = _per_capsule_from_results(runs_root)
 
     per_capsule = []

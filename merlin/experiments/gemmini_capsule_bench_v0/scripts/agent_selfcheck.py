@@ -63,6 +63,19 @@ def _public_capsules() -> Path:
 
 
 PUBLIC_CAPSULES = _public_capsules()
+
+
+def _target() -> str:
+    """The target being self-checked, from the descriptor (so CG.grade builds ITS RunnerConfig — atlas
+    external_backend etc. — not the gemmini default). Falls back to gemmini if unresolvable."""
+    try:
+        import _common as _C
+        from merlin.targetgen.target_experiment import load_target_experiment
+        return load_target_experiment(_C.EXP / "target_experiment.yaml").target
+    except Exception:  # noqa: BLE001
+        return "gemmini"
+
+
 SIM_TIER = {"spike": "L2", "verilator": "L3", "vcs": "L4"}
 
 
@@ -134,7 +147,8 @@ def main(argv=None):
     try:
         _score = CG.grade(str(sub), capsules_root=str(caps_root), runs_root=str(runs_root),
                           labels={"public", "dev"}, contract=str(_REPO / "merlin/contract"),
-                          oracle_adapters=adapters, timeout=a.timeout, max_workers=a.workers)
+                          oracle_adapters=adapters, timeout=a.timeout, max_workers=a.workers,
+                          target=_target())
     except Exception as e:
         print(json.dumps({"error": f"grade failed: {str(e)[:300]}"})); return 1
 

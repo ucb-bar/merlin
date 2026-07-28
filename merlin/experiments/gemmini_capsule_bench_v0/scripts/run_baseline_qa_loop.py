@@ -993,7 +993,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             _CG.grade(str(vcand), capsules_root=str(_pilot_subset()), runs_root=str(vruns),
                       labels={"public", "dev"}, contract=str(C.REPO / "merlin/contract"),
-                      oracle_adapters=adapters, timeout=_verilator_per_capsule_timeout(), max_workers=8)
+                      oracle_adapters=adapters, timeout=_verilator_per_capsule_timeout(), max_workers=8,
+                      target=_te().target)
         except Exception as e:
             print(f"[verilator attempt {attempt}] grade error: {str(e)[:200]}")
         if _glog is not None:  # record CIRCT gate decisions (skips + per-call wall)

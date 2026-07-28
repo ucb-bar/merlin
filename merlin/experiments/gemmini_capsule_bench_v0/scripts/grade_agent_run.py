@@ -24,7 +24,7 @@ import freeze_run  # noqa: E402
 def _score(pkg, capsules, runs_root, labels, no_oracle):
     return CG.grade(pkg, capsules_root=capsules, runs_root=runs_root, labels=labels,
                     contract=str(C.REPO / "merlin/contract"),
-                    oracle_adapters={} if no_oracle else None, timeout=900)
+                    oracle_adapters={} if no_oracle else None, timeout=900, target=C.TARGET)
 
 
 def main(argv: list[str] | None = None) -> int:

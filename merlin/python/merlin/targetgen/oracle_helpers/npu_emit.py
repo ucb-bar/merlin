@@ -74,9 +74,21 @@ def main() -> int:
                                 "shape": list(gt.shape), "dtype": str(gt.dtype)}
     else:
         # capsule path: assemble the agent's emitted kernel.S via the model's own assembler
+        import io
         from npu_model.util.converter import input_to_program  # the model's assembler front-end
+        # The model's assembler rejects any non-mnemonic line, but a real emitter's kernel.S carries
+        # `//` comment headers/annotations. Strip `//` comments + blank lines here (merlin-side, not by
+        # patching the external model) so a well-formed commented artifact assembles; the mnemonics
+        # themselves still go through the model's OWN ISA (no opcode hardcoded here).
         with open(a.kernel_s) as f:
-            prog = input_to_program(f)
+            _lines = []
+            for _ln in f.read().splitlines():
+                _cut = _ln.find("//")
+                if _cut != -1:
+                    _ln = _ln[:_cut]
+                if _ln.strip():
+                    _lines.append(_ln)
+        prog = input_to_program(io.StringIO("\n".join(_lines) + "\n"))
         bundle["words"] = [int(w) & 0xFFFFFFFF for w in prog.assemble()]
         # inputs materialized merlin-side (deterministic capsule leaves); here we only lay out bytes
         import numpy as np

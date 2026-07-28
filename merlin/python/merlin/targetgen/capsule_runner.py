@@ -217,6 +217,20 @@ def _default_config(target: str, suite: str, dtype: str):
                         perf_fields=(), trace_gate="rocc_insn")
 
 
+def _config_for_target(target: str, suite: str | None, dtype: str):
+    """The per-target RunnerConfig, DERIVED from the target's capability manifest (endpoint /
+    trace_gate / 4th-output / tiers all come from the contract) — so a non-gemmini target is graded by
+    ITS config, never the gemmini default. An atlas (external_backend) run gets trace_gate=None +
+    kernel.S, so the RoCC trace gate is correctly skipped. Falls back to the implicit gemmini/systolic
+    constants only when no manifest resolves (raw/test targets)."""
+    try:
+        from .runner_config import runner_config_from_manifest
+        from .target_experiment import load_capability_manifest
+        return runner_config_from_manifest(load_capability_manifest(target))
+    except Exception:  # noqa: BLE001 — no resolvable manifest -> legacy default
+        return _default_config(target, suite or f"{target}-capsule-bench", dtype)
+
+
 def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path,
                 run_id: str | None = None, contract: str | Path | None = None,
                 oracle_adapters: dict[str, Callable] | None = None,
@@ -237,7 +251,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     from ..runtime.simulator import simulate
     from .eval.gemmini_suite import toolchain_shas
 
-    cfg = config or _default_config(target, suite or f"{target}-capsule-bench", dtype)
+    cfg = config or _config_for_target(target, suite, dtype)
     # L1/oracle output equality uses the capsule's numeric_policy (integer -> exact), unless the config
     # forces one (a float/SIMT target grades its oracle output with tolerance regardless of the capsule).
     policy = cfg.force_match_policy or capsule.get("numeric_policy")
@@ -340,13 +354,17 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                   f"trace_check failed: {trace_check_res['violations']}")
 
         # --- oracle tiers -------------------------------------------------------------------
-        for tier in cfg.oracle_tiers:
+        # Run every tier the config declares (tier_sim ladder) OR an injected adapter provides — so a
+        # target whose RTL tier is supplied by an adapter rather than a static tier_sim (atlas: arc L3,
+        # empty tier_sim) still runs, while gemmini's declared ladder is unchanged. The L0/L1 math floor
+        # is handled above (reference/simulate), NOT here. Sorted for a stable L2<..<L5 ladder order.
+        for tier in sorted(set(cfg.oracle_tiers) | set(adapters or {})):
             mand = tier in required
-            adapter = adapters.get(tier)
+            adapter = (adapters or {}).get(tier)
             if adapter is None:
                 if mand:
                     tiers[tier] = TierResult(tier, "unavailable", True,
-                                             reason=f"no adapter for {tier} ({cfg.tier_sim[tier]})",
+                                             reason=f"no adapter for {tier} ({cfg.tier_sim.get(tier, '?')})",
                                              derived_from_rtl=tier in cfg.rtl_tiers)
                 continue
             import time as _time
@@ -358,12 +376,13 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                          derived_from_rtl=tier in cfg.rtl_tiers)
                 continue
             except Exception as e:  # adapter crash is a real failure for that tier
+                _sim = cfg.tier_sim.get(tier, tier)
                 tiers[tier] = TierResult(tier, "fail", mand,
-                                         reason=f"{cfg.tier_sim[tier]} crash: {str(e)[-300:]}",
+                                         reason=f"{_sim} crash: {str(e)[-300:]}",
                                          derived_from_rtl=tier in cfg.rtl_tiers)
                 if mand:
-                    raise CertFailure(cfg.tier_sim[tier], _cat("TOOL_CRASH"),
-                                      f"{cfg.tier_sim[tier]} invocation failed: {str(e)[-400:]}") from e
+                    raise CertFailure(_sim, _cat("TOOL_CRASH"),
+                                      f"{_sim} invocation failed: {str(e)[-400:]}") from e
                 continue
             _adapter_wall = _time.perf_counter() - _adapter_t0
             # Split active (build + sim) vs waiting (queue/FPGA slot). Adapters that route through a
@@ -392,7 +411,10 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 okt = _match_by_policy(res["outputs"], gold, policy) \
                     and _match_by_policy(res["outputs"], ref, policy) \
                     and _match_by_policy(res["outputs"], sim, policy)
-            sim_name = cfg.tier_sim[tier]
+            # tier_sim is a display LABEL; a tier supplied by an adapter (atlas arc L3) may have no static
+            # label, so fall back to the adapter's oracle-provenance string, else the tier name.
+            sim_name = cfg.tier_sim.get(tier) or (
+                res.get("oracle") if isinstance(res.get("oracle"), str) else None) or tier
             # SIMT perf headline (gflops / % of peak) when a perf extractor is supplied; None (systolic)
             # leaves the fields off the TierResult so the output stays byte-identical.
             _gflops = _pct_peak = None
