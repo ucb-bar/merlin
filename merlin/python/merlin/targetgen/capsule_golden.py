@@ -91,6 +91,25 @@ def _load_golden_yaml(capsule_dir: str | Path | None) -> dict | None:
     return yaml.safe_load(gy.read_text(encoding="utf-8"))
 
 
+def canonical_input_raws(capsule: dict, capsule_dir: str | Path | None = None) -> dict[str, bytes]:
+    """The EXACT per-leaf input bytes the independent float golden was computed with, keyed by tensor
+    name — read from ``golden.yaml`` ``oracle_provenance.inputs[name].fp8_raw_hex`` (a flat row-major
+    list of per-element raw hex). This is the canonical device preload for a float target's program
+    oracle: it must run on the SAME operands the golden used (the atlas exact-fp8 palette), NOT the
+    integer-engine ``Tensor.deterministic`` 0..3 fill (whose bytes-as-fp8 collapse to subnormal/zero).
+    Empty for integer capsules (which record no raws and are reproduced on the Tensor engine)."""
+    gy = _load_golden_yaml(capsule_dir)
+    if not gy:
+        return {}
+    ins = ((gy.get("oracle_provenance", {}) or {}).get("inputs", {})) or {}
+    out: dict[str, bytes] = {}
+    for name, spec in ins.items():
+        raws = spec.get("fp8_raw_hex") or spec.get("raw_hex")
+        if raws:
+            out[name] = bytes(int(x, 16) & 0xFF for x in raws)
+    return out
+
+
 def golden_source(capsule: dict, capsule_dir: str | Path | None = None) -> str:
     """The golden's PROVENANCE: ``merlin_tensor_int`` when it is (re)computed on the integer
     :class:`~merlin.runtime.tensor.Tensor` engine, or the INDEPENDENT source declared in the capsule's

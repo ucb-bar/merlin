@@ -76,6 +76,40 @@ def test_stock_llvm_rejects_empty_kernel(tmp_path):
         _assemble_kernel_words(ks, tmp_path)
 
 
+# --- AW5: the program oracle preloads the capsule's CANONICAL operands (golden raws), not int 0..3 ----
+
+def test_program_oracle_preloads_canonical_cb_operands():
+    # the grader attaches each leaf's canonical bytes to the cb as `preload_b64`; the program oracle
+    # turns those into (base, bytes) DRAM preload keyed by the cb-declared base. Output tensors + tensors
+    # without preload_b64/base are ignored.
+    from merlin.targetgen.program_oracle import _preload_from_cb
+    import base64
+    a, w = bytes([0x38, 0x40, 0x44, 0x42]), bytes([0x44, 0x44])
+    cb = {"tensors": {
+        "A0": {"role": "input", "base": 0x0, "preload_b64": base64.b64encode(a).decode()},
+        "W":  {"role": "weight", "base": 0x400, "preload_b64": base64.b64encode(w).decode()},
+        "Y0": {"role": "output", "base": 0x800},                       # output: no preload
+        "S":  {"role": "input", "base": 0x900},                        # input w/o bytes: skipped
+    }}
+    pre = dict(_preload_from_cb(cb))
+    assert pre == {0x0: a, 0x400: w}
+
+
+def test_canonical_input_raws_reads_golden_fp8():
+    # canonical_input_raws pulls the exact fp8 operand bytes the independent golden used from golden.yaml
+    # (NOT Tensor.deterministic's int 0..3). Gated on the atlas corpus being present.
+    from pathlib import Path
+    from merlin.common.paths import repo_root
+    from merlin.targetgen import capsule_golden as CG
+    cdir = repo_root() / "merlin/contract/capsules/atlas/isa/AT3_k_accumulation"
+    if not (cdir / "golden.yaml").is_file():
+        pytest.skip("atlas corpus not present")
+    raws = CG.canonical_input_raws({}, cdir)
+    assert set(raws) >= {"A0", "W"} and len(raws["A0"]) == 32 * 64 and len(raws["W"]) == 64 * 32
+    # exact-fp8 palette, not the degenerate 0..3 int fill (which would be mostly 0x00..0x03)
+    assert any(b not in (0, 1, 2, 3) for b in raws["A0"])
+
+
 def test_arc_adapter_available_for_gemmini_when_mlc_present():
     # gemmini has a prebuilt arc model; if mlc is present, arc_available is True (gate the assertion).
     if B.mlc_available()[0] and B.arc_available("gemmini"):

@@ -285,6 +285,17 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         gsource = CG.golden_source(capsule, capsule_dir)
         gold = CG.golden(capsule, capsule_dir)
 
+        # A program-oracle (self-hosted-ISA) target must run its emitted kernel on the SAME operands the
+        # independent golden used. Attach the capsule's canonical leaf-input bytes (golden.yaml raws) to
+        # the cb's leaf tensors so the program oracle preloads them by cb-declared base (AW5). Keyed by
+        # name; a no-op for integer capsules (no recorded raws) and for adapters that ignore the field.
+        _raws = CG.canonical_input_raws(capsule, capsule_dir)
+        if _raws:
+            import base64 as _b64
+            for _tname, _tspec in (cb.get("tensors") or {}).items():
+                if _tspec.get("role") in ("input", "weight", "bias") and _tname in _raws:
+                    _tspec["preload_b64"] = _b64.b64encode(_raws[_tname]).decode()
+
         if independent_float:
             # The integer reference/simulate engines cannot execute a float (fp8/bf16) datapath, so the
             # integer L0-reference / L1-sim numeric floor is INAPPLICABLE — skipped honestly (not failed),

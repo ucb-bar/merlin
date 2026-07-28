@@ -118,6 +118,18 @@ def emit_bundle(*, model_ext: str, program: str | None = None, kernel_s: Path | 
     return {"words": words, "inputs": laid, "output": None, "golden": None}
 
 
+def _preload_from_cb(cb: dict) -> list[tuple[int, bytes]]:
+    """DRAM preload (base, bytes) for the leaf inputs the grader attached to the cb's tensors as
+    ``preload_b64`` — the capsule's canonical operands (see :func:`capsule_golden.canonical_input_raws`).
+    Base is the agent's cb-declared address (where its kernel reads the operand); the bytes are the
+    ground-truth operands the independent golden used. Target-agnostic: no operand values live here."""
+    pre: list[tuple[int, bytes]] = []
+    for t in (cb.get("tensors") or {}).values():
+        if t.get("role") in ("input", "weight", "bias") and t.get("preload_b64") and t.get("base") is not None:
+            pre.append((int(t["base"]), base64.b64decode(t["preload_b64"])))
+    return pre
+
+
 def _decode_output(raw: bytes, shape: list[int], dtype: str, physical: dict | None):
     import numpy as np
     if dtype in ("bf16", "torch.bfloat16"):
@@ -153,6 +165,12 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
                          fix_itype_rd=fix_itype_rd, workdir=workdir, timeout=timeout)
     words = bundle["words"]
     preload = [(int(x["base"]), base64.b64decode(x["b64"])) for x in bundle["inputs"]]
+    # Capsule path: preload arc DRAM with the capsule's CANONICAL leaf inputs, attached to the cb's
+    # leaf tensors by the grader (``preload_b64`` = the exact bytes the independent golden used — the
+    # float target's operand palette, not the integer 0..3 fill). Base comes from the agent's cb tensor
+    # (where its kernel reads the operand); the bytes are the ground-truth operands (see AW5).
+    if not preload and cb:
+        preload = _preload_from_cb(cb)
 
     modeling = mlc_bridge.mlc_dir()
     # mlc.backends.__init__ eagerly loads the gemmini cache cwd-relative — run inside mlc's cwd.
