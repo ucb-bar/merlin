@@ -65,33 +65,46 @@ def _public_capsules() -> Path:
 PUBLIC_CAPSULES = _public_capsules()
 
 
-def _target() -> str:
-    """The target being self-checked, from the descriptor (so CG.grade builds ITS RunnerConfig — atlas
-    external_backend etc. — not the gemmini default). Falls back to gemmini if unresolvable."""
+def _target_sim_via() -> tuple[str, str | None]:
+    """The (target, sim_via) being self-checked, from the descriptor (so CG.grade builds ITS RunnerConfig
+    — atlas external_backend etc. — not the gemmini default, and the oracle tiers resolve from the target's
+    contract). Falls back to gemmini/chipyard if unresolvable."""
     try:
         import _common as _C
         from merlin.targetgen.target_experiment import load_target_experiment
-        return load_target_experiment(_C.EXP / "target_experiment.yaml").target
+        te = load_target_experiment(_C.EXP / "target_experiment.yaml")
+        return te.target, te.sim_via
     except Exception:  # noqa: BLE001
-        return "gemmini"
+        return "gemmini", "chipyard"
+
+
+def _target() -> str:
+    return _target_sim_via()[0]
 
 
 SIM_TIER = {"spike": "L2", "verilator": "L3", "vcs": "L4"}
 
 
-def _adapters(sim: str) -> dict:
-    """spike/verilator via the contract oracle path; vcs via the injected L4 adapter if available."""
-    ad = {"L2": CR._spike_verilator_adapter("spike")}
-    if sim in ("verilator", "vcs"):
-        ad["L3"] = CR._spike_verilator_adapter("verilator")
-    if sim == "vcs":
-        try:
-            from merlin.targetgen import vcs_adapter as VA  # optional, config-gated
-            ad["L4"] = VA.adapter()
-        except Exception:
-            print("  (vcs adapter unavailable in this environment — falling back to verilator L3)", file=sys.stderr)
-            sim = "verilator"
-    return ad, sim
+def _adapters(sim: str, target: str, sim_via: str | None) -> tuple[dict, str]:
+    """Resolve the self-check oracle tiers from the TARGET's contract (target-agnostic, mirrors the driver
+    grade). A chipyard target (gemmini) exposes the spike/verilator/vcs ladder selectable via --sim; any
+    other target grades on its OWN contract-derived RTL tier (atlas external_backend -> the program oracle;
+    an arc target -> the RTL-derived arc cosim), where --sim is not applicable. Routing atlas here through
+    the hardcoded spike/verilator adapters ran the gemmini/RVV lowering path and crashed (AW4)."""
+    if sim_via == "chipyard":
+        ad = {"L2": CR._spike_verilator_adapter("spike")}
+        if sim in ("verilator", "vcs"):
+            ad["L3"] = CR._spike_verilator_adapter("verilator")
+        if sim == "vcs":
+            try:
+                from merlin.targetgen import vcs_adapter as VA  # optional, config-gated
+                ad["L4"] = VA.adapter()
+            except Exception:
+                print("  (vcs adapter unavailable in this environment — falling back to verilator L3)", file=sys.stderr)
+                sim = "verilator"
+        return ad, sim
+    # non-chipyard target: its contract-resolved tiers (arc / program oracle); --sim does not apply.
+    return CR.oracle_adapters(target, sim_via), sim
 
 
 def main(argv=None):
@@ -124,8 +137,11 @@ def main(argv=None):
     sub = _isodir / "submission"
     _strip_build_state(sub)   # every grade builds from scratch in its OWN path — see helper
 
-    adapters, sim = _adapters(a.sim)
-    barrier_tier = SIM_TIER[sim]
+    _tgt, _sim_via = _target_sim_via()
+    adapters, sim = _adapters(a.sim, _tgt, _sim_via)
+    # barrier = the deepest resolved RTL tier: chipyard maps from --sim; any other target uses its
+    # single contract-derived tier (atlas -> L3 program oracle), so read it from the adapters.
+    barrier_tier = SIM_TIER[sim] if _sim_via == "chipyard" else max(adapters) if adapters else "L3"
     # subset selection (operator-side capsule dirs)
     want = None if a.capsules == "all" else set(s.strip() for s in a.capsules.split(",") if s.strip())
     import tempfile
@@ -148,7 +164,7 @@ def main(argv=None):
         _score = CG.grade(str(sub), capsules_root=str(caps_root), runs_root=str(runs_root),
                           labels={"public", "dev"}, contract=str(_REPO / "merlin/contract"),
                           oracle_adapters=adapters, timeout=a.timeout, max_workers=a.workers,
-                          target=_target())
+                          target=_tgt)
     except Exception as e:
         print(json.dumps({"error": f"grade failed: {str(e)[:300]}"})); return 1
 

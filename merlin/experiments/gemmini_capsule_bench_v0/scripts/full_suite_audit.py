@@ -65,15 +65,33 @@ def _capsule_class(cap_dir: Path) -> str:
     return "matmul"
 
 
+def _sim_via() -> str | None:
+    """The target's declared bespoke sim (chipyard for gemmini), from the descriptor — so the audit
+    resolves atlas/arc targets' oracle tiers from their contract instead of the gemmini spike/verilator."""
+    try:
+        from merlin.targetgen.target_experiment import load_target_experiment
+        return load_target_experiment(C.EXP / "target_experiment.yaml").sim_via
+    except Exception:  # noqa: BLE001
+        return "chipyard"
+
+
 def _adapters_for(tiers: list[str]) -> dict:
-    ad = {}
-    if "L2" in tiers:
-        ad["L2"] = CR._spike_verilator_adapter("spike")
-    if "L3" in tiers:
-        ad["L3"] = CR._spike_verilator_adapter("verilator")
-    if "L4" in tiers and HO.vcs_available():
-        ad["L4"] = HO.vcs_adapter()
-    return ad
+    """Resolve the requested audit tiers target-awarely. A chipyard target (gemmini) maps tiers onto its
+    spike/verilator/vcs ladder; any other target uses its contract-derived tiers (atlas external_backend
+    -> the program oracle) filtered to those requested — routing atlas through the hardcoded
+    spike/verilator adapters ran the gemmini/RVV lowering path and crashed (AW4)."""
+    if _sim_via() == "chipyard":
+        ad = {}
+        if "L2" in tiers:
+            ad["L2"] = CR._spike_verilator_adapter("spike")
+        if "L3" in tiers:
+            ad["L3"] = CR._spike_verilator_adapter("verilator")
+        if "L4" in tiers and HO.vcs_available():
+            ad["L4"] = HO.vcs_adapter()
+        return ad
+    full = CR.oracle_adapters(C.TARGET, _sim_via())
+    sel = {t: a for t, a in full.items() if t in tiers}
+    return sel or full          # fall back to the target's real tier(s) if none of `tiers` apply
 
 
 def audit_backend(run_id: str, *, workers: int, tiers: list[str], timeout: int) -> dict | None:
