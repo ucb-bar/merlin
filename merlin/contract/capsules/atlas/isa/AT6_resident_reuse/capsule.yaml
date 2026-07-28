@@ -44,10 +44,10 @@ numeric_policy:
   rtol: 0.02
 expected:
   instruction_classes:
-  - CONFIG_EX
-  - GMEM_LD
-  - FMA
-  - GMEM_ST
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
   modes:
     resident_reuse: true
 required_oracle_tiers:

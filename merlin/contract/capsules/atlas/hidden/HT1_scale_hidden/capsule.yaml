@@ -35,10 +35,10 @@ numeric_policy:
   acc_scale: 0.25
 expected:
   instruction_classes:
-  - CONFIG_EX
-  - GMEM_LD
-  - FMA
-  - GMEM_ST
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
   modes:
     acc_scale: true
 required_oracle_tiers:

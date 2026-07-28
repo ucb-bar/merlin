@@ -48,3 +48,28 @@ def test_matmul_required_classes_are_derived_from_the_taxonomy():
     # a movement capsule needs the load/store copy but NO MXU compute
     mv = IT.required_classes_for_op(tax, movement=True)
     assert mv == ["TensorBaseOffset"] and not any(c.startswith("MXU") for c in mv)
+
+
+def test_committed_atlas_corpus_matches_the_live_derivation():
+    """The atlas capsules' expected.instruction_classes must EQUAL the live derivation — so the corpus is
+    derived-and-enforced (never silently re-hardcoded, and an ISA change surfaces as drift here)."""
+    import yaml
+    tax = _atlas_taxonomy()
+    cap = merlin_dir() / "contract/capsules/atlas"
+    if not cap.is_dir():
+        pytest.skip("atlas corpus absent")
+    caps = sorted(cap.glob("*/*/capsule.yaml"))
+    assert caps, "no atlas capsules found"
+    for cy in caps:
+        doc = yaml.safe_load(cy.read_text())
+        op = (doc.get("operation") or {}).get("op", "matmul")
+        attrs = (doc.get("operation") or {}).get("attributes", {}) or {}
+        modes = (doc.get("expected") or {}).get("modes", {}) or {}
+        movement = op in ("movement", "copy") or bool(modes.get("movement"))
+        out_dt = attrs.get("output_dtype") or (doc.get("numeric_policy") or {}).get("dtype", "bf16")
+        want = IT.required_classes_for_op(tax, op=op, output_dtype=out_dt,
+                                          epilogue=tuple(attrs.get("epilogue", []) or []), movement=movement)
+        got = (doc.get("expected") or {}).get("instruction_classes")
+        assert got == want, f"{cy.parent.name}: corpus classes {got} != derived {want}"
+        # the fabricated taxonomy must be gone
+        assert not ({"CONFIG_EX", "GMEM_LD", "FMA", "GMEM_ST"} & set(got or []))

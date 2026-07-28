@@ -1,7 +1,6 @@
 instruction_classes:
-- GMEM_LD
-- GMEM_ST
+- TensorBaseOffset
 forbidden_classes:
-- FMA
+- MXUMatMul
 modes:
   movement: true

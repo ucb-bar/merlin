@@ -134,6 +134,15 @@ def transpose(raw: list[int], shape) -> tuple[list[int], tuple[int, int]]:
 
 # --- capsule specs (fp8 in / bf16 out) ----------------------------------------------------------
 # DIM = 32 is the atlas MXU mesh; tiles are 32-multiples. Movement/plumbing capsules use a small tile.
+#
+# ``instr`` = the REAL atlas instruction classes each capsule must exercise — the target's own semantic
+# op patterns (matmul = operand load `TensorBaseOffset` + the MXU systolic datapath `MXUWeightPush` ->
+# `MXUMatMul` -> `MXUAccumulatorPop`; movement = load/store only; relu = + the vector unit
+# `TensorComputeUnary`). These are DERIVED from the target's shipped ISA definition, NOT hardcoded roles:
+# `merlin.targetgen.isa_taxonomy.required_classes_for_op(derive_isa_taxonomy(te), op=..., ...)` returns
+# exactly these, and test_isa_taxonomy enforces the corpus matches the live derivation (so an ISA change
+# is caught as drift). The earlier CONFIG_EX/GMEM_LD/FMA/GMEM_ST labels were a fabricated 4-role taxonomy
+# that steered the agent to a wrong minimal skeleton — see the atlas-isa-grounding finding.
 DIM = 32
 
 SPECS = [
@@ -142,53 +151,53 @@ SPECS = [
          source_role="handauthored_compiler_test",
          source_reference="MXU config plumbing via a single 32x32 fp8 matmul",
          op="matmul", A=("A0", (DIM, DIM)), W=("W", (DIM, DIM)), out="Y0",
-         instr=["CONFIG_EX", "GMEM_LD", "FMA", "GMEM_ST"], modes={}),
+         instr=["TensorBaseOffset", "MXUWeightPush", "MXUMatMul", "MXUAccumulatorPop"], modes={}),
     dict(cat="isa", name="AT1_mvin_mvout", kind="isa", label="public",
          source_role="handauthored_compiler_test",
          source_reference="load fp8 tile -> store as bf16 (dequant movement)",
          op="movement", A=("X", (16, 16)), out="Y0",
-         instr=["GMEM_LD", "GMEM_ST"], modes={"movement": True},
-         forbidden=["FMA"]),
+         instr=["TensorBaseOffset"], modes={"movement": True},
+         forbidden=["MXUMatMul"]),
     dict(cat="isa", name="AT2_single_tile_matmul", kind="isa", label="public",
          source_role="handauthored_compiler_test",
          source_reference="single 32x32 fp8 MXU tile -> bf16",
          op="matmul", A=("A0", (DIM, DIM)), W=("W", (DIM, DIM)), out="Y0",
-         instr=["CONFIG_EX", "GMEM_LD", "FMA", "GMEM_ST"], modes={}),
+         instr=["TensorBaseOffset", "MXUWeightPush", "MXUMatMul", "MXUAccumulatorPop"], modes={}),
     dict(cat="isa", name="AT3_k_accumulation", kind="isa", label="public",
          source_role="handauthored_compiler_test",
          source_reference="K=64 (multi-tile) bf16 accumulate",
          op="matmul", A=("A0", (DIM, 64)), W=("W", (64, DIM)), out="Y0",
-         instr=["CONFIG_EX", "GMEM_LD", "FMA", "GMEM_ST"], modes={"k_accumulate": True}),
+         instr=["TensorBaseOffset", "MXUWeightPush", "MXUMatMul", "MXUAccumulatorPop"], modes={"k_accumulate": True}),
     dict(cat="isa", name="AT4_bf16_scale", kind="isa", label="public",
          source_role="handauthored_compiler_test",
          source_reference="matmul + bf16 output scale (VPU requant precursor)",
          op="matmul", A=("A0", (DIM, DIM)), W=("W", (DIM, DIM)), out="Y0",
          epilogue=["acc_scale"], acc_scale=0.5,
-         instr=["CONFIG_EX", "GMEM_LD", "FMA", "GMEM_ST"], modes={"acc_scale": True}),
+         instr=["TensorBaseOffset", "MXUWeightPush", "MXUMatMul", "MXUAccumulatorPop"], modes={"acc_scale": True}),
     dict(cat="isa", name="AT5_relu_epilogue", kind="isa", label="public",
          source_role="handauthored_compiler_test",
          source_reference="matmul + relu epilogue (bf16)",
          op="matmul", A=("A0", (DIM, DIM)), W=("W", (DIM, DIM)), out="Y0",
-         epilogue=["relu"], instr=["CONFIG_EX", "GMEM_LD", "FMA", "GMEM_ST"],
+         epilogue=["relu"], instr=["TensorBaseOffset", "MXUWeightPush", "MXUMatMul", "MXUAccumulatorPop", "TensorComputeUnary"],
          modes={"relu": True}),
     dict(cat="isa", name="AT6_resident_reuse", kind="isa", label="public",
          source_role="handauthored_compiler_test",
          source_reference="one resident weight, two activation tiles",
          op="resident_reuse", W=("W", (DIM, DIM)),
          matmuls=[("A0", (DIM, DIM), "Y0"), ("A1", (DIM, DIM), "Y1")],
-         instr=["CONFIG_EX", "GMEM_LD", "FMA", "GMEM_ST"], modes={"resident_reuse": True}),
+         instr=["TensorBaseOffset", "MXUWeightPush", "MXUMatMul", "MXUAccumulatorPop"], modes={"resident_reuse": True}),
 
     # ---- layers ----
     dict(cat="layers", name="BT0_quantized_linear", kind="layer", label="public",
          source_role="pytorch_model_slice",
          source_reference="nn.Linear fp8 x fp8 -> bf16",
          op="linear", A=("X", (DIM, DIM)), W=("W", (DIM, DIM)), out="Y0",
-         instr=["CONFIG_EX", "GMEM_LD", "FMA", "GMEM_ST"], modes={"k_accumulate": True}),
+         instr=["TensorBaseOffset", "MXUWeightPush", "MXUMatMul", "MXUAccumulatorPop"], modes={"k_accumulate": True}),
     dict(cat="layers", name="BT1_linear_relu", kind="layer", label="public",
          source_role="pytorch_model_slice",
          source_reference="nn.Linear + ReLU, fp8 -> bf16",
          op="linear", A=("X", (DIM, DIM)), W=("W", (DIM, DIM)), out="Y0",
-         epilogue=["relu"], instr=["CONFIG_EX", "GMEM_LD", "FMA", "GMEM_ST"],
+         epilogue=["relu"], instr=["TensorBaseOffset", "MXUWeightPush", "MXUMatMul", "MXUAccumulatorPop", "TensorComputeUnary"],
          modes={"relu": True, "k_accumulate": True}),
 
     # ---- model slices ----
@@ -196,27 +205,27 @@ SPECS = [
          source_role="pytorch_model_slice",
          source_reference="MLP first projection (64-wide hidden)",
          op="linear", A=("X", (DIM, DIM)), W=("W", (DIM, 64)), out="Y0",
-         instr=["CONFIG_EX", "GMEM_LD", "FMA", "GMEM_ST"], modes={"k_accumulate": True}),
+         instr=["TensorBaseOffset", "MXUWeightPush", "MXUMatMul", "MXUAccumulatorPop"], modes={"k_accumulate": True}),
     dict(cat="model_slices", name="CT1_attention_qk", kind="model_slice", label="public",
          source_role="pytorch_model_slice",
          source_reference="attention Q @ K^T scores, fp8 -> bf16",
          op="attention_qk", Q=("Q", (DIM, DIM)), K=("K", (DIM, DIM)), out="Y0",
-         instr=["CONFIG_EX", "GMEM_LD", "FMA", "GMEM_ST"], modes={}),
+         instr=["TensorBaseOffset", "MXUWeightPush", "MXUMatMul", "MXUAccumulatorPop"], modes={}),
 
     # ---- hidden ----
     dict(cat="hidden", name="HT0_matmul_hidden", kind="isa", label="hidden",
          source_role="handauthored_compiler_test", source_reference="hidden single-tile matmul",
          op="matmul", A=("A0", (DIM, DIM)), W=("W", (DIM, DIM)), out="Y0",
-         instr=["CONFIG_EX", "GMEM_LD", "FMA", "GMEM_ST"], modes={}),
+         instr=["TensorBaseOffset", "MXUWeightPush", "MXUMatMul", "MXUAccumulatorPop"], modes={}),
     dict(cat="hidden", name="HT1_scale_hidden", kind="isa", label="hidden",
          source_role="handauthored_compiler_test", source_reference="hidden matmul + bf16 scale",
          op="matmul", A=("A0", (DIM, DIM)), W=("W", (DIM, DIM)), out="Y0",
          epilogue=["acc_scale"], acc_scale=0.25,
-         instr=["CONFIG_EX", "GMEM_LD", "FMA", "GMEM_ST"], modes={"acc_scale": True}),
+         instr=["TensorBaseOffset", "MXUWeightPush", "MXUMatMul", "MXUAccumulatorPop"], modes={"acc_scale": True}),
     dict(cat="hidden", name="HT2_k_accum_hidden", kind="isa", label="hidden",
          source_role="handauthored_compiler_test", source_reference="hidden K=64 accumulate",
          op="matmul", A=("A0", (DIM, 64)), W=("W", (64, DIM)), out="Y0",
-         instr=["CONFIG_EX", "GMEM_LD", "FMA", "GMEM_ST"], modes={"k_accumulate": True}),
+         instr=["TensorBaseOffset", "MXUWeightPush", "MXUMatMul", "MXUAccumulatorPop"], modes={"k_accumulate": True}),
 ]
 
 

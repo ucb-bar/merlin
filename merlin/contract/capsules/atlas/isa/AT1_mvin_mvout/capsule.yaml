@@ -25,10 +25,9 @@ numeric_policy:
   rtol: 0.02
 expected:
   instruction_classes:
-  - GMEM_LD
-  - GMEM_ST
+  - TensorBaseOffset
   forbidden_classes:
-  - FMA
+  - MXUMatMul
   modes:
     movement: true
 required_oracle_tiers:
