@@ -24,6 +24,7 @@ RTL repo mlc knows (gemmini, atlas, otbn, muon, nvdla, rocket, ...).
 """
 from __future__ import annotations
 
+import copy
 import os
 from contextlib import contextmanager
 from pathlib import Path
@@ -1019,7 +1020,31 @@ def fact_bundle_for(target: str) -> dict:
 
     All branches return the uniform ``{target, method, fields, n_derived}`` shape, so consumers
     (onboarding, prompt rendering) read ``n_derived`` uniformly. A kind that does not resolve degrades to
-    the systolic static path — exactly the pre-existing behavior."""
+    the systolic static path — exactly the pre-existing behavior.
+
+    MEMOIZED in-memory per target: the extraction (circt-opt on the target's ``hw.mlir`` / mlc discovery)
+    is deterministic for a given target within a process but costs ~seconds, so it ran redundantly on
+    every call (dominating test time — re-discovery per test). It now runs ONCE per target and later
+    calls return a deep COPY (mutation-safe: no caller can poison the cache). The cache lives only in
+    process memory — nothing is written to disk, so nothing is committed. Call
+    :func:`clear_fact_bundle_cache` if a process regenerates a target's RTL facts and must re-read."""
+    if target not in _FACT_BUNDLE_CACHE:
+        _FACT_BUNDLE_CACHE[target] = _fact_bundle_uncached(target)
+    return copy.deepcopy(_FACT_BUNDLE_CACHE[target])
+
+
+#: In-memory (process-lifetime) cache for :func:`fact_bundle_for`. Never persisted — purely a
+#: within-run memo so repeated extraction (tests, prompt rendering) doesn't re-run circt/mlc.
+_FACT_BUNDLE_CACHE: dict[str, dict] = {}
+
+
+def clear_fact_bundle_cache() -> None:
+    """Drop the in-memory fact-bundle memo (use after regenerating a target's RTL facts in-process)."""
+    _FACT_BUNDLE_CACHE.clear()
+
+
+def _fact_bundle_uncached(target: str) -> dict:
+    """The un-memoized extraction (see :func:`fact_bundle_for`)."""
     from ..families import family_profile, known_kinds
     kind = _resolve_kind(target)
     extractor = family_profile(kind).fact_extractor if kind in known_kinds() else "circt_static"
