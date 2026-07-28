@@ -27,6 +27,10 @@ from merlin.benchharness import sh, hash_tree, repo_sha, runs_root, reports_root
 # can target a different target without copies. Additive: unset ⇒ identical to before. Note the overridden
 # experiment dir must still carry the run scaffolding (task/ + input_bundles/); require_scaffolding() below
 # fails loudly with guidance when it does not, rather than breaking deep in a run.
+# The harness now lives in its own TARGET-NEUTRAL home (experiments/capsule_bench/harness), not inside a
+# target's experiment dir. HARNESS is that home; EXP is the SELECTED TARGET's data dir (descriptor + task
+# + input_bundles), chosen by MERLIN_TARGET_EXPERIMENT (any target) or defaulting to gemmini.
+HARNESS = _HERE.parent
 _override = os.environ.get("MERLIN_TARGET_EXPERIMENT", "").strip()
 if _override:
     _desc = Path(_override).expanduser()
@@ -34,8 +38,12 @@ if _override:
         raise SystemExit(f"MERLIN_TARGET_EXPERIMENT={_override!r} is not a readable descriptor file")
     EXP = _desc.resolve().parent
 else:
-    EXP = _HERE.parents[1]                             # the experiment dir the scripts live in
-    _desc = EXP / "target_experiment.yaml"
+    # default target = gemmini; prefer the new capsule_bench/targets home, fall back to the legacy dir.
+    _exps = REPO / "merlin" / "experiments"
+    _cands = (_exps / "capsule_bench" / "targets" / "gemmini" / "target_experiment.yaml",
+              _exps / "gemmini_capsule_bench_v0" / "target_experiment.yaml")
+    _desc = next((c for c in _cands if c.is_file()), _cands[-1])
+    EXP = _desc.parent
 try:
     import yaml as _yaml
     TARGET = (_yaml.safe_load(_desc.read_text()) or {}).get("target") if _desc.is_file() else None
@@ -61,5 +69,5 @@ def require_scaffolding() -> None:
             f"Only descriptor-driven steps (bundle generation, governance checks) work without them.")
 
 
-__all__ = ["REPO", "EXP", "TARGET", "RUNS", "REPORTS", "BUNDLES", "sh", "hash_tree", "repo_sha",
-           "require_scaffolding"]
+__all__ = ["REPO", "EXP", "HARNESS", "TARGET", "RUNS", "REPORTS", "BUNDLES", "sh", "hash_tree",
+           "repo_sha", "require_scaffolding"]
