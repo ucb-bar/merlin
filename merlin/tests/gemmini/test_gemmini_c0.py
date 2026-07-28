@@ -25,6 +25,10 @@ from pathlib import Path
 
 import pytest
 
+# HW certification (builds + runs spike/verilator RTL) — heavy; deselect with `-m "not slow"` for the
+# fast gate. Runs in the full suite (no filter) / nightly. See pyproject `markers` + docs.
+pytestmark = pytest.mark.slow
+
 from merlin.runtime import outputs_match, reference_outputs, simulate
 from merlin.runtime.commandbuffer import materialize_inputs
 

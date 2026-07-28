@@ -5,6 +5,10 @@ from __future__ import annotations
 
 import pytest
 
+# HW certification (builds + runs spike/verilator RTL) — heavy; deselect with `-m "not slow"` for the
+# fast gate. Runs in the full suite (no filter) / nightly.
+pytestmark = pytest.mark.slow
+
 from merlin.runtime import reference_outputs, simulate
 from merlin.runtime.backends import gemmini_codegen_mlir as gm
 from merlin.runtime.backends import gemmini as gem

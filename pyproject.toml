@@ -19,7 +19,7 @@ Repository = "https://github.com/ucb-bar/merlin"
 Issues = "https://github.com/ucb-bar/merlin/issues"
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-timeout", "pyyaml", "pydantic", "rich"]
+dev = ["pytest", "pytest-timeout", "pytest-xdist", "pyyaml", "pydantic", "rich"]
 xdsl = ["xdsl>=0.68"]
 # targetgen contract validation (fail-closed JSON-Schema checks in targetgen.contract).
 targetgen = ["jsonschema"]

@@ -11,6 +11,10 @@ from pathlib import Path
 import pytest
 import yaml
 
+# HW certification (builds + runs native/cpp verilator) — heavy; deselect with `-m "not slow"` for the
+# fast gate. Runs in the full suite (no filter) / nightly.
+pytestmark = pytest.mark.slow
+
 from merlin.runtime.backends import gemmini as gem
 from merlin.targetgen.contract import schemas, toolchain as mlir_tc
 from merlin.targetgen.oot_runner import certify
