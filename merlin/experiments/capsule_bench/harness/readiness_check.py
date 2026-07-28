@@ -28,7 +28,7 @@ from merlin.common.paths import ext_path, merlin_dir, repo_root
 # Repo root + venv interpreter come from the canonical path helpers (never Path(__file__).parents[N],
 # and never EXP.parent.parent — that resolves the merlin/ subdir, not the repo root where .venv lives).
 REPO = repo_root()
-EXP = merlin_dir() / "experiments" / "gemmini_capsule_bench_v0"
+EXP = merlin_dir() / "experiments" / "capsule_bench" / "targets" / "gemmini"
 PY = str(REPO / ".venv/bin/python")
 SCRIPTS = EXP / "scripts"
 BUNDLES = EXP / "input_bundles"

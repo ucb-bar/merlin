@@ -92,7 +92,7 @@ def main() -> int:
                      "caps": _capsule_results(rd)})
 
     # ---------------- fullsuite_comparison.md ----------------
-    L = ["# Full-suite comparison (gemmini_capsule_bench_v0)", "",
+    L = ["# Full-suite comparison (gemmini capsule-bench)", "",
          "Per-arm pass over **all** capsules (dynamic n/n, not a hardcoded pilot count). "
          "Time split (cumulative across quota-resumes): `active` = doing work (agent+oracle, from the "
          "driver), `quota_wait` = slept waiting on the 5h limit; within active, `agent`/`sim` = agent "
@@ -125,7 +125,7 @@ def main() -> int:
 
     # ---------------- cycles_by_capsule.md ----------------
     full_runs = [r for r in runs if r["caps"]]
-    M = ["# Cycles by capsule (gemmini_capsule_bench_v0)", "",
+    M = ["# Cycles by capsule (gemmini capsule-bench)", "",
          "Per-capsule status + **L2 spike** / **L3 verilator (cycle-accurate RTL)** cycle counts, from "
          "each run's `capsule_result.json`. L5 FireSim columns are added once the FPGA backfill runs.", ""]
     # cross-run L3-cycle matrix (capsule rows x run columns)

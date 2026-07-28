@@ -29,7 +29,7 @@ import agg_agentic_results as AAR  # reuse arm detection + per-run loader
 
 from merlin.common.paths import artifacts_dir, merlin_dir
 
-EXP = merlin_dir() / "experiments" / "gemmini_capsule_bench_v0"
+EXP = merlin_dir() / "experiments" / "capsule_bench" / "targets" / "gemmini"
 # Generated output lives under out/artifacts/ (top-level artifacts/ is retired) — concern-first
 # capsule-bench/<target>, matching launch_ab_batch's ANSWER_SURFACES.
 REPORTS = artifacts_dir() / "capsule-bench" / "gemmini"

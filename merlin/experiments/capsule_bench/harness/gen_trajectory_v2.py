@@ -30,7 +30,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 from merlin_plotstyle import (use_merlin_style, style_ax, title, suptitle, emph,
                               BG, INK, GOLD, BLUE, NAVY, SLATE, MAUVE, SAGE)
 
-CB = REPO / "merlin" / "experiments" / "gemmini_capsule_bench_v0"
+CB = REPO / "merlin" / "experiments" / "capsule_bench" / "targets" / "gemmini"
 OUT = CB / "reports" / "plots"
 ARMS = [
     ("raw_baseline/rb_abc11",            "raw C++ (from scratch)"),
