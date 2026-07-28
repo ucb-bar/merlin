@@ -28,12 +28,26 @@ _ENDPOINT_DESC = {
 }
 
 
-def _emit_framing(bundle: dict) -> str:
-    """A CONCRETE, derived one-liner describing what the 4th-entrypoint `.insn` stream must encode —
-    the discovered legal command-opcode set + mesh geometry, straight from the fact bundle (never a
-    gemmini literal; a target with no HW dialect degrades to the generic phrasing). This is what makes
-    the emit description name the discovered ISA concretely instead of only 'the discovered ISA facts'."""
+def _emit_framing(bundle: dict, endpoint: str = "inline_asm_insn") -> str:
+    """A CONCRETE, derived one-liner describing what the 4th-entrypoint artifact must be — derived from
+    the fact bundle + the codegen ENDPOINT (never a gemmini literal). A RoCC ``inline_asm_insn`` target
+    emits a host `.insn` word stream encoding the discovered opcodes; a self-hosted-ISA ``external_backend``
+    target emits a flat stream of its OWN assembler MNEMONICS (the target's own assembler makes the IMEM
+    words), NOT raw word encodings and NOT an MLIR module; a spatial ``command_buffer`` target emits a
+    command stream over its op-port tile. A target with no HW dialect degrades to the generic phrasing."""
     f = bundle.get("fields", {})
+    dim = f.get("mesh_dim", {})
+    _mesh = (f" driving the discovered {dim['value']}x{dim['value']} systolic mesh"
+             if dim.get("derived") and dim.get("value") else "")
+    # SELF-HOSTED ISA (external_backend, e.g. atlas): the 4th artifact is a flat MNEMONIC assembly stream
+    # the target's OWN assembler consumes — NOT a host word/.insn stream and NOT MLIR. The agent has the
+    # mnemonics from the ISA definition in its bundle; emitting raw `.word` or an MLIR module fails the
+    # target's assembler (the W7 finding).
+    if endpoint == "external_backend":
+        return ("a flat assembly stream of the target's OWN instruction MNEMONICS (one instruction per "
+                "line, using the mnemonics from the ISA definition in your bundle) that the target's own "
+                "assembler turns into IMEM words — emit assembler text ONLY: NOT an MLIR module, NOT "
+                "`llvm.inline_asm`, NOT raw `.word`/`.insn` word encodings" + _mesh)
     # SPATIAL tensor-tile (OPU): a command buffer over one-hot op ports driving an outer-product tile —
     # NOT a RoCC .insn stream over a systolic mesh. Frame it from the discovered tile geometry + command
     # set (gemmini has no tile_dim, so it never takes this branch and stays byte-identical).
@@ -125,7 +139,7 @@ def prompt_slots(te, manifest) -> dict:
         # The grading model the runner will actually apply — float-tolerance vs exact-integer — classified
         # from the corpus goldens (never a per-target branch), so the agent is not told the wrong contract.
         "grading_model": _GRADE_FLOAT if _corpus_uses_independent_float_goldens(te) else _GRADE_INTEGER,
-        "emit_framing": _emit_framing(bundle),        # concrete opcode/mesh framing, derived from the bundle
+        "emit_framing": _emit_framing(bundle, manifest.endpoint_kind),  # endpoint-aware, derived from the bundle
         "isa_facts": render_fact_bundle_for(target, bundle),  # KIND-routed provenance-tagged ISA brief (agent info)
         "corpus_rel": te.corpus_rel(),                # the primary corpus (isa/), repo-root-relative
         "corpus_families": te.corpus_siblings(),      # globbed, not a hardcoded ISA/layers/model_slices list
