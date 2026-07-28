@@ -29,6 +29,34 @@ _ENDPOINT_DESC = {
 }
 
 
+def _isa_spec_block(te) -> str:
+    """Name the SHIPPED, real ISA sources (green card + ISA definition + the worked example kernel) and
+    tell the agent to derive encodings from THEM — the fix for the observed failure where the agent,
+    given only the discovered legal-opcode list, invents a plausible-but-wrong opcode/encoding scheme
+    that assembles cleanly yet computes garbage on the RTL (scores 0). Target-agnostic: rendered only
+    when the descriptor ships hardware-spec files (``isa_headers`` / ``hwbringup_set``); empty otherwise
+    (a target with no shipped ISA header — e.g. a command-ISA target derived purely from facts — is
+    unaffected, so the block never fabricates a source)."""
+    headers = list(getattr(te, "isa_headers", []) or [])
+    hw = getattr(te, "hwbringup_set", None)
+    if not headers and not hw:
+        return ""
+    lines = [f"**Shipped {te.target} ISA — the source of truth for instruction encodings (derive, never invent):**",
+             f"The real {te.target} ISA is shipped read-only in your bundle. Derive EVERY instruction's",
+             "exact encoding from these files. Do NOT invent opcodes, mnemonics, instruction classes, or a",
+             "bit layout: a plausible-but-invented encoding assembles cleanly yet decodes to garbage on the",
+             "target and scores 0 (this is the single most common failure on a self-hosted ISA)."]
+    for h in headers:
+        lines.append(f"- `{h}`")
+    if hw:
+        lines += [f"- `{hw}/` (also mounted as `{te.target}/`) — RTL + ISA headers + README + a WORKED",
+                  "  example kernel under `example_kernel/`. Translate the example's real instructions into",
+                  "  your emitted encoding using the exact field layout the ISA definition specifies; the",
+                  "  legal-opcode values in the ISA facts below are DECODE GATES, not the instruction",
+                  "  semantics — take semantics + field packing from these files, never from the value list."]
+    return "\n".join(lines) + "\n\n"
+
+
 def _emit_framing(bundle: dict, endpoint: str = "inline_asm_insn") -> str:
     """A CONCRETE, derived one-liner describing what the 4th-entrypoint artifact must be — derived from
     the fact bundle + the codegen ENDPOINT (never a gemmini literal). A RoCC ``inline_asm_insn`` target
@@ -153,6 +181,7 @@ def prompt_slots(te, manifest) -> dict:
         "prior_backend_deny": list(te.prior_backends),
         "isa_headers": list(te.isa_headers),
         "hwbringup_set": te.hwbringup_set,
+        "isa_spec": _isa_spec_block(te),              # names the shipped real ISA files (derive, don't invent)
     }
 
 
@@ -217,7 +246,7 @@ command-buffer schema and your lowered artifact looks right.
 - Do not read withheld goldens, hidden capsules, prior backends, or Merlin internals.
 
 ## Target ISA facts (derived — build your lowering on these)
-{isa_facts}
+{isa_spec}{isa_facts}
 {seam_menu}## Final status line (end of `submission/REPORT.md`) — write exactly one of:
 1. "Backend passes all required public/dev capsules and is ready for hidden grading."
 2. "Backend does not yet pass all required public/dev capsules; remaining failures listed by capsule + plane."
@@ -272,4 +301,5 @@ def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseli
                             tool_stem=s["tool_stem"], kernel_symbol=s["kernel_symbol"],
                             endpoint_desc=s["endpoint_desc"], emit_framing=s["emit_framing"],
                             emit_symbol_note=s["emit_symbol_note"], grading_model=s["grading_model"],
-                            isa_facts=s["isa_facts"], sim_tier_ladder=ladder, seam_menu=seam_menu)
+                            isa_facts=s["isa_facts"], sim_tier_ladder=ladder, seam_menu=seam_menu,
+                            isa_spec=s["isa_spec"])
