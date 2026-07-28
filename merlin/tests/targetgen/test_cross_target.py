@@ -43,7 +43,7 @@ CPP_SCAFFOLD = {
 
 
 def _te(target):
-    d = repo_root() / "merlin" / "experiments" / f"{target}_capsule_bench_v0" / "target_experiment.yaml"
+    d = repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target / "target_experiment.yaml"
     return load_target_experiment(d)
 
 

@@ -36,8 +36,8 @@ from merlin.targetgen.target_experiment import load_target_experiment
 
 def _roster() -> list[Path]:
     """Every roster target's descriptor (globbed, not hard-listed)."""
-    exp = merlin_dir() / "experiments"
-    return sorted(exp.glob("*_capsule_bench_v0/target_experiment.yaml"))
+    exp = merlin_dir() / "experiments" / "capsule_bench" / "targets"
+    return sorted(exp.glob("*/target_experiment.yaml"))
 
 
 def _max_exposure_bundle(target: str) -> dict:
@@ -49,7 +49,7 @@ def _max_exposure_bundle(target: str) -> dict:
 
 
 def _ids(paths):
-    return [p.parent.name.replace("_capsule_bench_v0", "") for p in paths]
+    return [p.parent.name for p in paths]
 
 
 ROSTER = _roster()

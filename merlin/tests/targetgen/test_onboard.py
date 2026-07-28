@@ -21,7 +21,7 @@ from merlin.targetgen.target_experiment import load_target_experiment
 
 
 def _real_desc(target: str) -> str:
-    return str(repo_root() / "merlin" / "experiments" / f"{target}_capsule_bench_v0"
+    return str(repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target
                / "target_experiment.yaml")
 
 
