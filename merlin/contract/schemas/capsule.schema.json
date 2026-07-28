@@ -58,12 +58,8 @@
       "properties": {
         "instruction_classes": {
           "type": "array",
-          "items": {"type": "string", "enum": [
-            "CONFIG_EX", "CONFIG_LD", "CONFIG_ST", "MVIN", "MVOUT", "PRELOAD",
-            "COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE", "FLUSH", "FENCE", "LOOP_WS", "LOOP_CONV",
-            "GMEM_LD", "GMEM_ST", "SMEM_LD", "SMEM_ST", "FMA", "BARRIER", "FENCE_SMEM",
-            "TMC", "SPLIT", "JOIN", "WSPAWN"
-          ]}
+          "description": "Required instruction classes, DERIVED per-target from the target's own ISA (e.g. gemmini RoCC classes, or a self-hosted ISA's semantic op patterns like MXUMatMul/TensorBaseOffset). Not a fixed enum: the class vocabulary is the target's, so validity is enforced by the per-target derivation (isa_taxonomy) + its coverage checker, not a hardcoded list here.",
+          "items": {"type": "string"}
         },
         "forbidden_classes": {
           "type": "array",
