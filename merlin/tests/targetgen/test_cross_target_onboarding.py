@@ -15,9 +15,9 @@ from merlin.targetgen.runner_config import runner_config_from_manifest
 from merlin.targetgen.generate_prompt import prompt_slots, render_prompt
 from merlin.targetgen.generate_bundles import generate_bundles
 
-_RAD_DESC = "merlin/experiments/radiance_capsule_bench_v0/target_experiment.yaml"
-_SATURN_DESC = "merlin/experiments/saturn_opu_capsule_bench_v0/target_experiment.yaml"
-_SATURN_RESID = "merlin/experiments/saturn_opu_capsule_bench_v0/manifest_residual.yaml"
+_RAD_DESC = "merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml"
+_SATURN_DESC = "merlin/experiments/capsule_bench/targets/saturn_opu/target_experiment.yaml"
+_SATURN_RESID = "merlin/experiments/capsule_bench/targets/saturn_opu/manifest_residual.yaml"
 
 
 def _load_radiance(monkeypatch):

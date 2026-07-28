@@ -217,7 +217,7 @@ certify and publish it. Four arms (raw C++ → +Merlin infra → +xDSL tooling �
 to 20/20 public capsules.
 
 ```bash
-S=merlin/experiments/gemmini_capsule_bench_v0/scripts
+S=merlin/experiments/capsule_bench/targets/gemmini/scripts
 .venv/bin/python $S/test_sandbox.py --arm merlin_rtlchecks   # MANDATORY pre-spend gate (21/21 GO)
 .venv/bin/python $S/verify_no_cheat.py                        # static cheat-clean gate
 .venv/bin/python $S/launch_ab_batch.py --tag <tag> --arms baseline,cpp_merlininfra,merlin,merlin_rtlchecks --mode sequential

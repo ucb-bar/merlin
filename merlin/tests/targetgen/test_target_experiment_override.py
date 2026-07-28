@@ -16,8 +16,8 @@ import sys
 
 from merlin.common.paths import repo_root
 
-_SCRIPTS = repo_root() / "merlin/experiments/gemmini_capsule_bench_v0/scripts"
-_ATLAS = repo_root() / "merlin/experiments/atlas_capsule_bench_v0/target_experiment.yaml"
+_SCRIPTS = repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/scripts"
+_ATLAS = repo_root() / "merlin/experiments/capsule_bench/targets/atlas/target_experiment.yaml"
 
 _PROBE = f"""
 import sys
@@ -45,14 +45,14 @@ def _run(target_experiment: str) -> dict:
 def test_default_targets_gemmini_and_has_scaffolding():
     out = _run("")                                        # empty ⇒ treated as unset
     assert out["TARGET"] == "gemmini"
-    assert out["EXP"] == "gemmini_capsule_bench_v0"
+    assert out["EXP"] == "gemmini"
     assert out["SCAFFOLD"] == "ok"                        # gemmini ships task/ + input_bundles/
 
 
 def test_override_switches_target_to_another_descriptor():
     out = _run(str(_ATLAS))
     assert out["TARGET"] == "atlas"                       # drivers now target atlas's descriptor
-    assert out["EXP"] == "atlas_capsule_bench_v0"
+    assert out["EXP"] == "atlas"
 
 
 def test_guard_trips_on_a_descriptor_without_scaffolding(tmp_path):

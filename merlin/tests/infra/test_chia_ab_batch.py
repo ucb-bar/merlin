@@ -10,7 +10,7 @@ from merlin.common.paths import repo_root
 
 
 def test_fanout_plan_is_arm_times_repeat():
-    scripts = repo_root() / "merlin/experiments/gemmini_capsule_bench_v0/scripts"
+    scripts = repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/scripts"
     p = subprocess.run(
         [sys.executable, "chia_ab_batch.py", "--tag", "t", "--arms",
          "baseline,merlin,merlin_rtlchecks", "--repeats", "2", "--verilator-slots", "2", "--dry-run"],

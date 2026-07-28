@@ -20,10 +20,10 @@ from matplotlib.lines import Line2D
 import _pbcommon as PB
 import perf_style as S
 
-sys.path.insert(0, str(PB.REPO / "experiments/gemmini_capsule_bench_v0/scripts/plots"))
+sys.path.insert(0, str(PB.REPO / "experiments/capsule_bench/targets/gemmini/scripts/plots"))
 import _trajectory as T  # noqa: E402
 
-CB_RUNS = PB.REPO / "experiments/gemmini_capsule_bench_v0/runs"
+CB_RUNS = PB.REPO / "experiments/capsule_bench/targets/gemmini/runs"
 CB_REPORTS = PB.REPO / "artifacts" / "capsule-bench" / "gemmini"
 # arm -> (run-dir subdir, panel label). Both merlin arms live under merlin_assisted/ (split by bundle_id).
 ARM_META = {

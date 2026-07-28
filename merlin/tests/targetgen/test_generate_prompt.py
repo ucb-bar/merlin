@@ -6,7 +6,7 @@ from __future__ import annotations
 from merlin.targetgen.target_experiment import load_target_experiment, load_capability_manifest
 from merlin.targetgen.generate_prompt import prompt_slots
 
-_GEM_DESC = "merlin/experiments/gemmini_capsule_bench_v0/target_experiment.yaml"
+_GEM_DESC = "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
 
 
 def _gem_slots():

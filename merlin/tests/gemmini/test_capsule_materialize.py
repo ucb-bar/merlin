@@ -13,7 +13,7 @@ import yaml
 from merlin.common.paths import merlin_dir
 from merlin.targetgen.contract.materialize import materialize_public_capsules
 
-PUB = (merlin_dir() / "experiments" / "gemmini_capsule_bench_v0" / "scripts" / "full_public_capsules")
+PUB = (merlin_dir() / "experiments" / "capsule_bench" / "harness" / "full_public_capsules")
 _CAPSULE_FILES = ("capsule.yaml", "capsule.interface.mlir", "golden.yaml",
                   "expected_instruction_coverage.yaml", "README.md")
 
@@ -59,12 +59,12 @@ def test_public_capsules_for_is_target_aware_and_gemmini_parity():
     from merlin.targetgen.target_experiment import load_target_experiment
     root = repo_root()
 
-    te_g = load_target_experiment(root / "merlin/experiments/gemmini_capsule_bench_v0/target_experiment.yaml")
+    te_g = load_target_experiment(root / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
     gem = sorted(p.name for p in public_capsules_for(te_g).iterdir() if p.is_dir())
     committed = sorted(d.name for d in PUB.iterdir() if d.is_dir())
     assert gem == committed, f"gemmini derived set drifted from the committed set: {set(gem) ^ set(committed)}"
 
-    te_a = load_target_experiment(root / "merlin/experiments/atlas_capsule_bench_v0/target_experiment.yaml")
+    te_a = load_target_experiment(root / "merlin/experiments/capsule_bench/targets/atlas/target_experiment.yaml")
     atlas = sorted(p.name for p in public_capsules_for(te_a).iterdir() if p.is_dir())
     assert atlas and not (set(atlas) & set(committed)), (
         f"atlas graded set must be disjoint from gemmini's (no leak); got overlap {set(atlas) & set(committed)}")

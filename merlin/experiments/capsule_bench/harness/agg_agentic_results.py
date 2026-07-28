@@ -28,7 +28,7 @@ def _repo_root():
     return p
 _ROOT = _repo_root()
 
-EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
+EXP = Path(f"{_ROOT}/merlin/experiments/capsule_bench/targets/gemmini")
 REPORTS = EXP.parents[2] / "artifacts" / "capsule-bench" / "gemmini"
 RUN_DIRS = ["raw_baseline", "merlin_assisted"]   # both scanned; arm decided by bundle_id
 BUNDLE_ARM = {

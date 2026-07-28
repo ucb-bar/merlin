@@ -1,0 +1,12 @@
+merlin/contract/
+merlin/contract/capsules/isa/
+merlin/contract/capsules/layers/
+merlin/contract/capsules/model_slices/
+tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h
+tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h
+experiments/capsule_bench/targets/gemmini/task/
+third_party/llvm-install/
+merlin/python/merlin/targetgen/synthesize/
+merlin/python/merlin/targetgen/generate/
+merlin/python/merlin/xdsl_dialects/
+merlin/python/merlin/targetgen/contract/interface_emit.py

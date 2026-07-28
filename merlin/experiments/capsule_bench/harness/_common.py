@@ -1,9 +1,9 @@
-"""Shared helpers for the gemmini_capsule_bench_v0 isolation harness.
+"""Shared helpers for the target-neutral capsule-bench isolation harness.
 
 Thin shim over ``merlin.benchharness`` (the shared harness primitives). This module is imported by
 harness scripts BEFORE they add merlin/python to sys.path, so it bootstraps the repo root itself
 (git first, parents[] fallback), puts merlin/python on the path, then re-exports the shared helpers.
-Public symbols (REPO/EXP/RUNS/REPORTS/BUNDLES/sh/hash_tree/repo_sha) are preserved for callers.
+Public symbols (REPO/HARNESS/EXP/RUNS/REPORTS/BUNDLES/sh/hash_tree/repo_sha) are preserved for callers.
 """
 from __future__ import annotations
 
@@ -21,15 +21,11 @@ sys.path.insert(0, str(REPO / "merlin" / "python"))
 
 from merlin.benchharness import sh, hash_tree, repo_sha, runs_root, reports_root  # noqa: E402
 
-# EXP is normally the experiment dir these scripts live in, with TARGET read from its descriptor — so a
-# per-target experiment dir (e.g. <target>_capsule_bench_v0) works with no edits here. MERLIN_TARGET_EXPERIMENT
-# OVERRIDES EXP with another target's descriptor (a path to a target_experiment.yaml), so the SAME drivers
-# can target a different target without copies. Additive: unset ⇒ identical to before. Note the overridden
-# experiment dir must still carry the run scaffolding (task/ + input_bundles/); require_scaffolding() below
-# fails loudly with guidance when it does not, rather than breaking deep in a run.
-# The harness now lives in its own TARGET-NEUTRAL home (experiments/capsule_bench/harness), not inside a
-# target's experiment dir. HARNESS is that home; EXP is the SELECTED TARGET's data dir (descriptor + task
-# + input_bundles), chosen by MERLIN_TARGET_EXPERIMENT (any target) or defaulting to gemmini.
+# The harness lives in its own TARGET-NEUTRAL home (experiments/capsule_bench/harness); HARNESS is that
+# home. EXP is the SELECTED TARGET's data dir (descriptor + task + input_bundles), under
+# experiments/capsule_bench/targets/<target>/ — chosen by MERLIN_TARGET_EXPERIMENT (a path to any
+# target's target_experiment.yaml) or defaulting to gemmini. The overridden dir must carry the run
+# scaffolding (task/ + input_bundles/); require_scaffolding() below fails loudly if it does not.
 HARNESS = _HERE.parent
 _override = os.environ.get("MERLIN_TARGET_EXPERIMENT", "").strip()
 if _override:
@@ -38,11 +34,7 @@ if _override:
         raise SystemExit(f"MERLIN_TARGET_EXPERIMENT={_override!r} is not a readable descriptor file")
     EXP = _desc.resolve().parent
 else:
-    # default target = gemmini; prefer the new capsule_bench/targets home, fall back to the legacy dir.
-    _exps = REPO / "merlin" / "experiments"
-    _cands = (_exps / "capsule_bench" / "targets" / "gemmini" / "target_experiment.yaml",
-              _exps / "gemmini_capsule_bench_v0" / "target_experiment.yaml")
-    _desc = next((c for c in _cands if c.is_file()), _cands[-1])
+    _desc = REPO / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"  # default target
     EXP = _desc.parent
 try:
     import yaml as _yaml

@@ -9,8 +9,8 @@ import pytest
 from merlin.targetgen.target_experiment import load_target_experiment, load_capability_manifest
 from merlin.targetgen.generate_prompt import render_prompt, prompt_slots
 
-_GEM = "merlin/experiments/gemmini_capsule_bench_v0/target_experiment.yaml"
-_RAD = "merlin/experiments/radiance_capsule_bench_v0/target_experiment.yaml"
+_GEM = "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
+_RAD = "merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml"
 
 _SHARED_BLOCKS = [
     "non-exempt out-of-tree MLIR target backend",
@@ -50,7 +50,7 @@ def test_radiance_prompt_has_radiance_slots_and_no_gemmini_leakage(monkeypatch):
     assert "gemmini" not in p.lower() and "rocc" not in p.lower() and "0x7b" not in p
 
 
-_ATLAS = "merlin/experiments/atlas_capsule_bench_v0/target_experiment.yaml"
+_ATLAS = "merlin/experiments/capsule_bench/targets/atlas/target_experiment.yaml"
 
 
 def test_grading_model_is_derived_from_the_corpus_not_hardcoded_integer():

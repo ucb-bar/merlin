@@ -8,7 +8,7 @@
 set -u
 TAG="${1:?usage: abc_watchdog.sh <tag>}"
 REPO="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
-ROOT="$REPO/merlin/experiments/gemmini_capsule_bench_v0"
+ROOT="$REPO/merlin/experiments/capsule_bench/targets/gemmini"
 PY="$REPO"/.venv/bin/python
 CRED=/path/to/home/.claude/.credentials.json
 F="--model claude-opus-4-8 --effort high --max-rounds 12 --max-rate-limit-waits 8 --round-timeout 14400 --experiment realistic"

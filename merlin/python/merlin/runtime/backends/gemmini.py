@@ -111,7 +111,7 @@ def rocc_tests_dir() -> Path:
     # scale bits). The sandbox already binds this curated harness via MERLIN_GEMMINI_HARNESS_DIR; using it
     # as the default makes the direct (non-sandboxed) path header-correct and chipyard-contamination-proof.
     from ...common.paths import merlin_dir
-    curated = merlin_dir() / "experiments/gemmini_capsule_bench_v0/contracts/harness_curated/gemmini-rocc-tests"
+    curated = merlin_dir() / "experiments/capsule_bench/targets/gemmini/contracts/harness_curated/gemmini-rocc-tests"
     if curated.is_dir():
         return curated
     return chipyard_root() / "generators/gemmini/software/gemmini-rocc-tests"

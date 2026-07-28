@@ -34,7 +34,7 @@ def _load(name: str, rel: str):
 
 
 def test_common_shim_preserves_symbols():
-    c = _load("_cbench_common", "merlin/experiments/gemmini_capsule_bench_v0/scripts/_common.py")
+    c = _load("_cbench_common", "merlin/experiments/capsule_bench/targets/gemmini/scripts/_common.py")
     assert c.REPO == ROOT
     assert c.RUNS == ROOT / "out" / "runs" / "gemmini" / "capsule-bench"
     assert c.REPORTS == ROOT / "out/artifacts" / "capsule-bench" / "gemmini"

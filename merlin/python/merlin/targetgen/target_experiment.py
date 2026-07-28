@@ -44,8 +44,16 @@ class TargetExperiment:
 
     @property
     def exp_name(self) -> str:
-        """The experiment directory name (e.g. ``gemmini_capsule_bench_v0``) — for the exp-scoped paths."""
-        return self.path.parent.name
+        """The experiment dir path RELATIVE TO ``merlin/experiments`` (e.g.
+        ``capsule_bench/targets/gemmini``) — for the exp-scoped bundle paths. In the target-neutral layout
+        each target lives under ``capsule_bench/targets/<target>/``; this returns that full relative path
+        (not just the leaf) so ``experiments/{exp_name}/...`` reconstructs the real location. Falls back to
+        the bare dir name when the descriptor is not under an ``experiments/`` root."""
+        d = self.path.parent
+        for anc in d.parents:
+            if anc.name == "experiments":
+                return str(d.relative_to(anc))
+        return d.name
 
     # DERIVED target-specific paths (bundle-convention strings) — from ``target``, never hand-listed.
     @property

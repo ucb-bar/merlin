@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
+EXP = Path(f"{_ROOT}/merlin/experiments/capsule_bench/targets/gemmini")
 REPORTS = EXP.parents[2] / "artifacts" / "capsule-bench" / "gemmini"
 A = REPORTS / "abc4_analysis"
 sys.path.insert(0, str(EXP.parent / "gemmini_perf_bench" / "scripts"))

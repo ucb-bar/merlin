@@ -32,7 +32,7 @@ def _repo_root():
     return p
 _ROOT = _repo_root()
 
-EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
+EXP = Path(f"{_ROOT}/merlin/experiments/capsule_bench/targets/gemmini")
 REPO = EXP.parent.parent
 KIT_DIR = REPO / "merlin/python/merlin/targetgen/oot_starterkit"
 RTL_DIR = REPO / "merlin/python/merlin/targetgen/rtl"

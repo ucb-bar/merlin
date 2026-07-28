@@ -12,7 +12,7 @@ from merlin.common.paths import repo_root
 
 def _gemmini_te():
     return load_target_experiment(
-        repo_root() / "merlin/experiments/gemmini_capsule_bench_v0/target_experiment.yaml")
+        repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
 
 
 def test_spec_built_from_descriptor():

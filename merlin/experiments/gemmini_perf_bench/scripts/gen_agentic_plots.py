@@ -1,6 +1,6 @@
 """3-arm agentic A/B/C figures (baseline · merlin · merlin+CIRCT), pilot-honest, BOTH dimensions.
 
-Reads experiments/gemmini_capsule_bench_v0/reports/agentic_results.json (built by agg_agentic_results.py,
+Reads experiments/capsule_bench/targets/gemmini/reports/agentic_results.json (built by agg_agentic_results.py,
 keyed by bundle_id into 3 arms). Two dimensions:
   • authoring effort      — fig_agentic_effort, fig_agentic_convergence, fig_agentic_per_capsule_effort
   • dialect completeness  — fig_agentic_completeness (passed of 25, public+hidden), fig_agentic_coverage
@@ -15,7 +15,7 @@ import numpy as np
 import _pbcommon as PB
 import perf_style as S
 
-AG = json.loads((PB.REPO / "experiments/gemmini_capsule_bench_v0/reports/agentic_results.json").read_text())
+AG = json.loads((PB.REPO / "experiments/capsule_bench/targets/gemmini/reports/agentic_results.json").read_text())
 ARMS = AG.get("arm_order") or ["baseline", "merlin", "merlin_rtlchecks"]
 LABEL = {"baseline": "baseline", "merlin": "merlin", "merlin_rtlchecks": "merlin+CIRCT"}
 COLOR = {"baseline": "#D98C84", "merlin": "#E6B84C", "merlin_rtlchecks": "#6E93B0"}

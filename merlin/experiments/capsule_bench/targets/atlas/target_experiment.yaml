@@ -1,0 +1,37 @@
+# Declarative per-target experiment SETUP for ATLAS (an NPU with an MXU) — the 2nd target proving the
+# 4-arm ladder generalizes beyond gemmini. Everything DERIVABLE (the ISA/opcode set, the mesh DIM=32,
+# the memory map) is discovered from atlas's RTL by mlc (arc model libatlas_model.so + atlas_hw.mlir);
+# only the irreducible SETUP is declared here. A matmul capsule is target-neutral, so atlas reuses the
+# generic op-capsule corpus; its goldens are the target-agnostic math oracle and its RTL oracle is the
+# mlc arc MXU model (arc_available=True) — no bespoke sim toolchain needed.
+target: atlas
+
+rtl:
+  via: mlc            # ISA/memory/DIM DERIVED from atlas's RTL via mlc discovery
+
+# The shared hardware spec given to ALL arms — a constant input (a correct backend needs the target's
+# defined ISA), NOT Merlin assistance. Repo-root-relative bundle-convention path strings: `experiments/...`
+# resolves under merlin/, so these point at the curated Atlas bring-up set below. This lets the descriptor
+# be the single source of truth the bundle-consistency check compares against. The cycle-accurate FACTS
+# (exact encodings, DIM, memory map) are still DERIVED from the RTL by mlc — the ISA reference here is
+# orientation material (the green card + the model's authoritative ISA definition), not a merlin ISA.
+hardware_spec:
+  isa_headers:
+    - experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/isa_include/atlas_isa_green_card.md
+    - experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/isa_include/isa_definition.py
+  hwbringup_set: experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0
+
+# The ATLAS-CORRECT capsule corpus: fp8-e4m3 operands, bf16 accumulate/output, FLOAT (tolerance)
+# goldens produced by an INDEPENDENT oracle (the specir refmodel's fp8/bf16 datapath — the same
+# primitives `specc testbench --gen atlas-npu --op op.matmul_mxu0` uses), NOT the shared gemmini
+# INTEGER corpus (i8xi8->i32, exact_int) that a float MXU physically cannot match. Points at the `isa`
+# subdir; `layers`/`model_slices` siblings + `hidden` are auto-discovered from the parent (corpus_siblings).
+# Regenerate with: PYTHONPATH=<specir> .venv/bin/python merlin/contract/capsules/atlas/generate_atlas_corpus.py
+capsule_corpus: merlin/contract/capsules/atlas/isa
+
+# The mlc arc model is the RTL oracle (default); atlas has no separate bespoke sim wired.
+toolchain:
+  sim_via: ""         # arc-only (the mlc arc MXU model is the RTL tier)
+
+answer_surfaces:
+  prior_backends: []  # no prior atlas backends to hide yet

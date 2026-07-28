@@ -15,7 +15,7 @@ from __future__ import annotations
 import json, glob, sys, time
 from pathlib import Path
 
-EXP = Path(f"{_ROOT}/merlin/experiments/gemmini_capsule_bench_v0")
+EXP = Path(f"{_ROOT}/merlin/experiments/capsule_bench/targets/gemmini")
 REPORTS = EXP.parents[2] / "artifacts" / "capsule-bench" / "gemmini"
 OUT = REPORTS / "abc4_analysis"
 sys.path.insert(0, f"{_ROOT}/merlin/python")

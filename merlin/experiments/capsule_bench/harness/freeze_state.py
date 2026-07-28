@@ -5,7 +5,7 @@ Records repo SHA / dirty / untracked, toolchain versions, capsule + pass counts,
 availability, and a deterministic sha256 over each tracked artifact tree. Re-runnable: same tree
 content -> same hashes. Does not mutate anything except the output manifest.
 
-Usage: .venv/bin/python experiments/gemmini_capsule_bench_v0/scripts/freeze_state.py
+Usage: .venv/bin/python experiments/capsule_bench/targets/gemmini/scripts/freeze_state.py
 """
 from __future__ import annotations
 

@@ -6,7 +6,7 @@ owner: targetgen
 last_verified: 2026-07-22
 related: [getting_started, reproducibility, targetgen, adding_a_target, target_publishing, experiment_abi]
 code_refs:
-  - merlin/experiments/gemmini_capsule_bench_v0
+  - merlin/experiments/capsule_bench/targets/gemmini
   - merlin/experiments/gemmini_cert
   - merlin/experiments/gemmini_perf_bench
   - merlin/python/merlin/targetgen/capsule_runner.py
@@ -67,11 +67,11 @@ first, then `check_repro_env.py` to confirm the Gemmini capabilities (`gemmini_s
 
 ```bash
 # every legit tool works + every answer is masked, per arm. Exit 0 only if all green. No agent, no $.
-.venv/bin/python merlin/experiments/gemmini_capsule_bench_v0/scripts/test_sandbox.py --arm merlin_rtlchecks
-.venv/bin/python merlin/experiments/gemmini_capsule_bench_v0/scripts/test_sandbox.py --arm raw_baseline
-.venv/bin/python merlin/experiments/gemmini_capsule_bench_v0/scripts/test_sandbox.py --arm merlin
+.venv/bin/python merlin/experiments/capsule_bench/targets/gemmini/scripts/test_sandbox.py --arm merlin_rtlchecks
+.venv/bin/python merlin/experiments/capsule_bench/targets/gemmini/scripts/test_sandbox.py --arm raw_baseline
+.venv/bin/python merlin/experiments/capsule_bench/targets/gemmini/scripts/test_sandbox.py --arm merlin
 # static cheat-clean gate: no answer content in any shipped tool/prompt (grep over source)
-.venv/bin/python merlin/experiments/gemmini_capsule_bench_v0/scripts/verify_no_cheat.py
+.venv/bin/python merlin/experiments/capsule_bench/targets/gemmini/scripts/verify_no_cheat.py
 ```
 Both must be green (`🟢 sandbox GO`, `✅ VERIFY_NO_CHEAT: PASS`). The sandbox tmpfs-masks all of
 `/scratch*`, binds back only the legit toolchain + the workspace (bound LAST so no deny-mask clobbers
@@ -88,7 +88,7 @@ context re-read + rate-limit exposure). The rate-limit watchdog (`--max-rate-lim
 sleeps to the window reset and resumes the same round unattended.
 
 ```bash
-cd merlin/experiments/gemmini_capsule_bench_v0/scripts
+cd merlin/experiments/capsule_bench/targets/gemmini/scripts
 .venv/bin/python launch_ab_batch.py --tag <tag> \
   --arms baseline,cpp_merlininfra,merlin,merlin_rtlchecks \
   --mode sequential            # one arm-chain after another; --mode parallel if the 5h bucket has headroom

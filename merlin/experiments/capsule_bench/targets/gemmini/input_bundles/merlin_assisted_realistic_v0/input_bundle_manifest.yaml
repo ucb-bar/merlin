@@ -1,0 +1,57 @@
+# Merlin-assisted input bundle for the gemmini-mlir-oot-capsule task.
+# Same task + same public/dev capsules + same grading as raw_baseline, but the agent is additionally
+# allowed Merlin's authoring tools (targetgen scaffolds, xDSL, provenance). The FINAL submitted
+# package must still pass the non-exempt integrity scan (no merlin runtime imports, no reference reads,
+# no copied/called kernels) — the tooling is for authoring, not a runtime dependency.
+bundle_id: merlin_assisted_realistic_v0
+arm: merlin_assisted
+task: gemmini-mlir-oot-capsule
+description: >-
+  Merlin-assisted: produce the same mlir_oot_target_backend package, allowed to use Merlin targetgen
+  synthesis/scaffold, xDSL dialect helpers, and provenance tooling during authoring.
+allowed:
+  - {path: "merlin/contract/", mode: ro, note: "frozen ABI v0.1"}
+  - {path: "merlin/contract/capsules/isa/", mode: ro}
+  - {path: "merlin/contract/capsules/layers/", mode: ro}
+  - {path: "merlin/contract/capsules/model_slices/", mode: ro}
+  - {path: "tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h", mode: ro}
+  - {path: "tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h", mode: ro}
+  - {path: "experiments/capsule_bench/targets/gemmini/task/", mode: ro}
+  - {path: "third_party/llvm-install/", mode: ro}
+  - {path: "/path/to/chipyard/generators/gemmini", as: "gemmini", mode: ro, note: "VANILLA GEMMINI REPO: RTL (Chisel) + README/docs + ~114 example kernels (software/) — the realistic developer reference"}
+  - {path: "experiments/capsule_bench/targets/gemmini/scripts/agent_selfcheck.py", as: "agent_selfcheck.py", mode: ro, note: "self-check tool: run spike/verilator/VCS on your package, redacted pass/fail"}
+  - {path: "merlin/python/merlin/targetgen/synthesize/", mode: ro, note: "ALLOWED tool: target/dialect/runtime plan synthesis"}
+  - {path: "merlin/python/merlin/targetgen/generate/", mode: ro, note: "ALLOWED tool: xDSL + MLIR scaffold generators (runtime_adapter.py denied below)"}
+  - {path: "merlin/python/merlin/xdsl_dialects/", mode: ro, note: "ALLOWED tool: xDSL dialect patterns (lowering/ denied below)"}
+  - {path: "merlin/python/merlin/targetgen/contract/interface_emit.py", mode: ro, note: "ALLOWED: interface grammar emit/parse"}
+  # Compiler-modification SPINE (arm-3): the CCA extract/diff/route/seam machinery + the generic
+  # derivation-driven backend. Answer-free; none import the oracle or the grader.
+  - {path: "merlin/python/merlin/kernels/cca.py", mode: ro, note: "ALLOWED tool: CCA schema + lifters"}
+  - {path: "merlin/python/merlin/kernels/cca_compare.py", mode: ro, note: "ALLOWED tool: CCA diff (divergences)"}
+  - {path: "merlin/python/merlin/kernels/cca_contract.py", mode: ro, note: "ALLOWED tool: CCA<->route bijection (what-to-build checklist)"}
+  - {path: "merlin/python/merlin/kernels/action_catalog.py", mode: ro, note: "ALLOWED tool: divergence->seam router + seam map"}
+  - {path: "merlin/python/merlin/kernels/microkernel.py", mode: ro, note: "ALLOWED tool: micro-kernel spec + resolver"}
+  - {path: "merlin/python/merlin/targetgen/rtl_backend.py", mode: ro, note: "ALLOWED tool: generic derivation-driven backend (derives levers/routes/opts from RTL discovery)"}
+denied:
+  - {path: "merlin/python/merlin/runtime/reference.py", reason: "the reference oracle (cheat surface)"}
+  - {path: "merlin/python/merlin/runtime/simulator.py", reason: "the simulator oracle (cheat surface)"}
+  # Deny-wins sub-paths INSIDE allowed tool dirs: both provide a *callable* route to the
+  # reference/simulator oracle (richer than the redacted QA verdict), so they are excluded even
+  # though their parent dir is allowed. The launcher copies the allowed tool dirs MINUS these.
+  - {path: "merlin/python/merlin/targetgen/generate/runtime_adapter.py", reason: "emits a semantics.py that `from merlin.runtime import reference_outputs` — callable oracle route"}
+  - {path: "merlin/python/merlin/xdsl_dialects/lowering/", reason: "pipeline.execute() calls reference_outputs() and returns a correctness verdict — callable oracle route"}
+  - {path: "artifacts/targets/gemmini/merlin_native_v0/", reason: "exempt reference backend"}
+  - {path: "artifacts/targets/gemmini/agent_spec_v0_mlir_oot/", reason: "prior backend (would be copied)"}
+  - {path: "artifacts/targets/gemmini/agent_spec_v1_mlir_oot/", reason: "prior backend (would be copied)"}
+  - {path: "merlin/contract/capsules/hidden/", reason: "hidden capsules + goldens"}
+  - {path: "experiments/capsule_bench/targets/gemmini/input_bundles/grader_private_v0/", reason: "grader-private"}
+  - {path: "experiments/capsule_bench/targets/gemmini/runs/", reason: "prior submissions"}
+integrity_required: true
+note: >-
+  The allowed Merlin tools are AUTHORING aids; the runtime reference/simulator, the two oracle-callable
+  helpers (generate/runtime_adapter.py, xdsl_dialects/lowering/), and all prior backends are denied so
+  the agent cannot read/compute the answer or copy a finished package. Under --sandbox none the real
+  merlin package is still importable from disk, so the LOAD-BEARING boundary is (a) the strengthened
+  post-run transcript audit (flags dotted oracle imports + Write/Edit of oracle-using scripts) and
+  (b) the non-exempt integrity scan on the submitted package. This bundle deny-list additionally
+  removes the in-workspace pointers and is the real mask under any bwrap-capable environment.

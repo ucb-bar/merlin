@@ -12,7 +12,7 @@ from merlin.common.paths import repo_root
 
 def _te():
     return load_target_experiment(
-        repo_root() / "merlin/experiments/gemmini_capsule_bench_v0/target_experiment.yaml")
+        repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
 
 
 def _sets(m):
@@ -35,7 +35,7 @@ def test_reproduces_hand_authored_gemmini_bundles():
     of the generated (the generator may add a safe extra prior-backend deny; the answer-surface prefix
     is normalized since the generator fixes the hand-authored stale 'artifacts/' -> 'out/artifacts/')."""
     gen = generate_bundles(_te())
-    B = repo_root() / "merlin/experiments/gemmini_capsule_bench_v0/input_bundles"
+    B = repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/input_bundles"
     for bid, gm in gen.items():
         hand = yaml.safe_load((B / bid / "input_bundle_manifest.yaml").read_text())
         ga, gd = _sets(gm)

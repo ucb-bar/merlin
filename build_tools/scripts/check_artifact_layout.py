@@ -67,8 +67,8 @@ _STALE_LITERALS = ('"artifacts/', "'artifacts/", '"runs/', "'runs/",
 # Keyed by "<relpath>:<substring that must be on the flagged line>".
 _STALE_LITERAL_ALLOW = {
     "merlin/tests/infra/test_artifact_layout.py:artifacts/plots/foo.png",   # deny-test fixture
-    "merlin/experiments/gemmini_capsule_bench_v0/scripts/gen_fullsuite_report.py:.glob(\"runs/",
-    "merlin/experiments/gemmini_capsule_bench_v0/scripts/abc_watchdog.sh:runs/${",
+    "merlin/experiments/capsule_bench/harness/gen_fullsuite_report.py:.glob(\"runs/",
+    "merlin/experiments/capsule_bench/harness/abc_watchdog.sh:runs/${",
 }
 
 
