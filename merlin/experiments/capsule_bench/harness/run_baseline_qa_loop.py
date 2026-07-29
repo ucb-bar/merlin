@@ -792,8 +792,7 @@ def main(argv: list[str] | None = None) -> int:
         # "xDSL MUST work": make xdsl + the merlin framework importable for the package's runtime
         # subprocess UNDER ANY python the agent's manifest invokes (even bare system python3). The
         # grader spawns the entrypoint inheriting this env, so prepend the .venv site-packages.
-        import sysconfig as _sc
-        _site = strPath(f"{_ROOT}/.venv/lib/python3.13/site-packages")
+        _site = str(f"{_ROOT}/.venv/lib/python3.13/site-packages")
         os.environ["PYTHONPATH"] = _site + (":" + os.environ["PYTHONPATH"] if os.environ.get("PYTHONPATH") else "")
         # sanity: confirm xdsl is importable in this env right now (fail LOUD if the framework is broken)
         import importlib.util as _u
