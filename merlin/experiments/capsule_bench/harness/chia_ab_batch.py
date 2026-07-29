@@ -50,7 +50,15 @@ def plan_tasks(arms: list[str], repeats: int, tag: str, a, cond: str = "kernels"
 
 @ChiaFunction(resources={"verilator": 1}, num_cpus=1, max_retries=0)
 def run_arm(cmd: list[str], cwd: str, run_id: str) -> dict:
-    """Run one arm-repeat's driver command; holds one logical ``verilator`` unit for the duration."""
+    """Run one arm-repeat's driver command; holds one logical ``verilator`` unit for the duration.
+
+    The command is built by ``LB._arm_cmd`` with ``sys.executable`` — but on a Ray worker that is the
+    CHIA venv (ray/pydantic), which lacks xdsl + the merlin framework the drivers need. Re-point the
+    interpreter at the MAIN ``.venv`` (``driver_python()``, the same choice ``chia_repeatability`` makes)
+    so the driver + its agent subprocess never see chia's env. Keeps Claude Code + xDSL out of chia's tree."""
+    from merlin.benchharness.chia_bridge import driver_python
+    if cmd and cmd[0] != driver_python():
+        cmd = [driver_python()] + cmd[1:]
     proc = subprocess.run(cmd, cwd=cwd)
     return {"run_id": run_id, "returncode": proc.returncode}
 
