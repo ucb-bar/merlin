@@ -176,9 +176,15 @@ def compile_kernel_checks(capsule: dict, prefix: str = "KERNEL") -> str | None:
     op = RC._declared_op(capsule)
     if op is None:
         return None
-    L = [f"// RTL-derived kernel checks (op={op}) — every emitted opcode must be ISA-legal (generated)",
+    L = [f"// RTL-derived kernel checks (op={op}) — legality + required-class coverage (generated)",
          f"// {prefix}-DAG: ILLEGAL_OPCODE_COUNT 0{{{{$}}}}",   # every emitted opcode ∈ RTL/ISA legal set
          f"// {prefix}-DAG: EMPTY_KERNEL no"]                   # the kernel must actually emit instructions
+    # CLASS COVERAGE: every instruction class the capsule requires (DERIVED per-target in
+    # expected.instruction_classes) must actually be EMITTED — the render classifies each word via the
+    # ISA-def decode signatures, so a matmul that emitted VADD instead of the MXU matmul fails here
+    # (legality alone passes it). Literals are the capsule's own derived class names, not target data.
+    for cls in ((capsule.get("expected") or {}).get("instruction_classes") or []):
+        L.append(f"// {prefix}-DAG: CLASS_PRESENT {cls}{{{{$}}}}")
     return "\n".join(L) + "\n"
 
 

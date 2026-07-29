@@ -145,12 +145,20 @@ def _legal_opcodes(facts_rec: dict) -> tuple[set[int], int] | None:
     return vals, width
 
 
-def render_kernel_decode(kernel_text: str, facts_rec: dict) -> str:
+def render_kernel_decode(kernel_text: str, facts_rec: dict, taxonomy: dict | None = None) -> str:
     """Canonical text the KERNEL FileCheck lines are matched against — a decode of the emitted self-hosted
-    kernel's `.word`/`.insn` instruction stream. For each emitted instruction we extract the low-``width``
-    bit decode field and test membership in the RTL/ISA legal-opcode set; ``ILLEGAL_OPCODE_COUNT`` is the
-    count the hardware decoder would reject. This is the static RTL-legality signal (no Verilog run, and
-    beyond what spike/npu_model's functional output reveals). Everything is DERIVED from ``facts_rec``."""
+    kernel's `.word`/`.insn` instruction stream. Two layers, both fully DERIVED (no target literals):
+
+    * LEGALITY — each word's low-``width`` decode field vs the RTL-discovered legal-opcode set
+      (``ILLEGAL_OPCODE_COUNT`` = what the hardware decoder would reject).
+    * CLASS DECODE — when a taxonomy is given, each word is classified into its SEMANTIC class using the
+      per-op decode signatures (fixed_mask/fixed_value from the ISA def's own encoder). This exposes what a
+      matmul kernel actually emitted (e.g. VADD instead of the MXU matmul), which legality alone misses —
+      a ``CLASS_PRESENT <c>`` line per class actually emitted lets the checks assert the required classes.
+
+    This is the static RTL/ISA-structural signal (no Verilog run, beyond spike/npu_model's functional
+    output). Everything comes from ``facts_rec`` + the derived ``taxonomy``."""
+    from . import isa_taxonomy as IT
     words = [int(m, 16) if m.lower().startswith("0x") else int(m)
              for m in _WORD_RE.findall(kernel_text)]
     lo = _legal_opcodes(facts_rec)
@@ -158,17 +166,24 @@ def render_kernel_decode(kernel_text: str, facts_rec: dict) -> str:
     mask = (1 << width) - 1 if width else 0
     n_illegal = 0
     lines = []
+    present: list[str] = []
     for idx, w in enumerate(words):
         field = w & mask if mask else w
         ok = (field in legal) if legal else True
         if not ok:
             n_illegal += 1
-        lines.append(f"INSTR {idx} word=0x{w:08x} opcode={field} legal={'yes' if ok else 'no'}")
+        classes = IT.decode_word(w, taxonomy) if taxonomy else []
+        for c in classes:
+            if c not in present:
+                present.append(c)
+        cls_s = "|".join(classes) if classes else ("-" if taxonomy else "?")
+        lines.append(f"INSTR {idx} word=0x{w:08x} opcode={field} legal={'yes' if ok else 'no'} class={cls_s}")
     L = [f"# {CC.RENDER_SCHEMA}",
          f"EMPTY_KERNEL {'yes' if not words else 'no'}",
          f"INSTR_COUNT {len(words)}",
          f"LEGAL_OPCODE_SET_SIZE {len(legal)}",
          f"ILLEGAL_OPCODE_COUNT {n_illegal}"]
+    L += [f"CLASS_PRESENT {c}" for c in present]
     return "\n".join(L + lines) + "\n"
 
 
@@ -224,7 +239,9 @@ def screen_run(run_capsule_dir: Path, facts_rec: dict, index: dict[str, Path],
             return None
         res = {"capsule": (capsule or {}).get("name") or run_capsule_dir.name,
                "filecheck": {}, "screen": None}
-        decode_txt = render_kernel_decode(kernel_p.read_text(), facts_rec)
+        from . import isa_taxonomy as IT
+        tax = IT.taxonomy_for_target(target)             # DERIVED at run time; {} if unavailable
+        decode_txt = render_kernel_decode(kernel_p.read_text(), facts_rec, tax)
         if fc:
             ok, diag = run_filecheck(fc, compiled["kernel"], decode_txt, "KERNEL")
             res["filecheck"]["kernel"] = {"ok": ok, "diag": diag}

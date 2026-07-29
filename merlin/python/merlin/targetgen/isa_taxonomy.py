@@ -144,5 +144,36 @@ def required_classes_for_op(taxonomy: dict, *, op: str = "matmul", output_dtype:
     return req
 
 
+def taxonomy_for_target(target: str, *, timeout: int = 120) -> dict[str, Any]:
+    """Convenience: derive the ISA taxonomy for a target by NAME, resolving its descriptor from the
+    standard capsule-bench location. Returns {} if the target ships no descriptor / ISA definition
+    (callers then skip the taxonomy-powered checks). Cached via :func:`derive_isa_taxonomy`."""
+    from .target_experiment import load_target_experiment
+    p = merlin_dir() / "experiments" / "capsule_bench" / "targets" / target / "target_experiment.yaml"
+    if not p.is_file():
+        return {}
+    try:
+        return derive_isa_taxonomy(load_target_experiment(p), timeout=timeout)
+    except Exception:  # noqa: BLE001 — model venv / ISA def absent -> no taxonomy, caller falls back
+        return {}
+
+
+def decode_word(word: int, taxonomy: dict) -> list[str]:
+    """Classify one emitted instruction word into its semantic class(es) using the DERIVED per-op decode
+    signatures (fixed_mask/fixed_value from the ISA def's own encoder). Returns the matching classes
+    (usually exactly one; a list so an ambiguous/overlapping encoding surfaces rather than hides). Empty
+    if no op matches — i.e. the word decodes to nothing the ISA defines (an illegal/garbage instruction)."""
+    hits: list[str] = []
+    for ent in (taxonomy.get("by_mnemonic") or {}).values():
+        m, v = ent.get("fixed_mask"), ent.get("fixed_value")
+        if m is None or v is None:
+            continue
+        if (word & m) == v:
+            cls = ent.get("class")
+            if cls and cls not in hits:
+                hits.append(cls)
+    return hits
+
+
 def clear_cache() -> None:
     _CACHE.clear()

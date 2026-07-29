@@ -65,3 +65,35 @@ def test_kernel_legality_passes_legal_and_catches_illegal_opcode():
 def test_no_hardcoded_abi_fallback():
     # a facts record with no funct_decode_table yields no ABI (never the old 0x7b/0x3 gemmini default)
     assert CC._facts_abi({"interfaces": []}) is None
+
+
+def test_class_coverage_decodes_words_and_catches_missing_required_class():
+    """The field-decode class-coverage check classifies each emitted word via the ISA-def decode
+    signatures and asserts the capsule's required classes were actually emitted — so a matmul kernel that
+    emitted the wrong ops (no MXU matmul) fails, which opcode-legality alone passes. Fully derived."""
+    from merlin.targetgen import isa_taxonomy as IT
+    IT.clear_cache()
+    tax = IT.taxonomy_for_target("atlas")
+    if not tax or not any("fixed_mask" in e for e in (tax.get("by_mnemonic") or {}).values()):
+        pytest.skip("atlas taxonomy / decode signatures not derivable (model venv absent)")
+    # decode is unambiguous on the real op encodings (the ISA-def signatures are disjoint)
+    fa = _facts("atlas")
+    fc = RUN.find_filecheck()
+    if not fc:
+        pytest.skip("FileCheck absent")
+    # a matmul capsule requiring the MXU sequence, graded against a kernel that emitted only weight-pushes
+    cap = {"name": "m", "operation": {"op": "matmul"},
+           "expected": {"instruction_classes": ["TensorBaseOffset", "MXUWeightPush",
+                                                "MXUMatMul", "MXUAccumulatorPop"]}}
+    checks = CC.compile_checks(fa, cap, "atlas")["kernel"]
+    assert "CLASS_PRESENT MXUMatMul" in checks           # coverage assertions are compiled in
+    # find a word that decodes to MXUWeightPush and one that decodes to nothing-MXUMatMul
+    push_word = next((w for w in range(0, 1 << 16)
+                      if IT.decode_word(w, tax) == ["MXUWeightPush"]), None)
+    if push_word is None:
+        pytest.skip("no MXUWeightPush encoding found")
+    kernel = f"k:\n  .word {push_word}\n"                # only a weight-push; no load/matmul/pop
+    dec = RUN.render_kernel_decode(kernel, fa, tax)
+    assert "CLASS_PRESENT MXUWeightPush" in dec and "CLASS_PRESENT MXUMatMul" not in dec
+    ok, _ = RUN.run_filecheck(fc, checks, dec, "KERNEL")
+    assert ok is False                                   # missing MXUMatMul/TensorBaseOffset/pop → FAIL
