@@ -64,6 +64,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="how many arm-repeats may hold the logical 'verilator' resource at once (1 == sequential)")
     ap.add_argument("--model", default="claude-opus-4-8")
     ap.add_argument("--effort", default="high")
+    # provider toggle (experiments-only) — threaded verbatim into each arm's driver cmd by LB._arm_cmd
+    ap.add_argument("--provider", choices=["subscription", "bedrock"], default="subscription")
+    ap.add_argument("--aws-region", default="us-east-1")
+    ap.add_argument("--aws-profile", default="")
     ap.add_argument("--max-rounds", type=int, default=40)
     ap.add_argument("--max-rate-limit-waits", type=int, default=8)
     ap.add_argument("--round-timeout", type=int, default=14400)
@@ -89,8 +93,11 @@ def main(argv: list[str] | None = None) -> int:
         print("--verilator-slots must be >= 1", file=sys.stderr)
         return 2
     LB._run_preflight()   # lock answer surfaces + verify_no_cheat before any spend
-    with chia_run(suite="capsule-bench", method="chia_ab_batch", target="gemmini",
-                  params={"arms": arms, "repeats": a.repeats, "verilator_slots": a.verilator_slots},
+    # target is DERIVED from the active descriptor (MERLIN_TARGET_EXPERIMENT via _common), never hardcoded
+    # — so the chia run dir + telemetry land under the right target (atlas/gemmini/…), no per-target branch.
+    with chia_run(suite="capsule-bench", method="chia_ab_batch", target=LB.C.TARGET,
+                  extra={"arms": arms, "repeats": a.repeats, "verilator_slots": a.verilator_slots,
+                         "provider": a.provider},
                   ray_resources={"verilator": a.verilator_slots}) as run:
         refs = [run_arm.chia_remote(t["cmd"], str(LB.C.REPO), t["run_id"]) for t in tasks]
         results = chia_get(refs)
