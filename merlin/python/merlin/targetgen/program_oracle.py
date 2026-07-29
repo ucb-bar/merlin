@@ -188,11 +188,19 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
         raise OracleUnavailable(f"{target} program did not halt within {max_cycles} cycles")
 
     # resolve the output tensor spec from the cb (generation-declared) or the program's own golden.
+    # The output DRAM base is the harness-owned address (stamped onto the cb by capsule_dram.inject_bases,
+    # the same map the agent's kernel was told to store to) — read it defensively, exactly like the input
+    # bases at :128. A missing base is an actionable grading error (the layout could not be applied), NOT
+    # a bare KeyError that would surface as the opaque 'L3 crash: base'.
     out_spec = None
     if cb:
         outs = [t for t in (cb.get("tensors") or {}).values() if t.get("role") == "output"]
         if outs:
             t = outs[0]
+            if t.get("base") is None:
+                raise OracleUnavailable(
+                    f"{target}: output tensor has no DRAM base — the harness DRAM layout was not applied "
+                    f"(capsule_dram.inject_bases); cannot read the result back")
             out_spec = {"base": int(t["base"]), "shape": list(t["shape"]),
                         "dtype": t.get("dtype", "bf16"), "physical": t.get("physical")}
     if out_spec is None and bundle.get("output"):

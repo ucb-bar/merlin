@@ -151,6 +151,23 @@ def _corpus_uses_independent_float_goldens(te) -> bool:
     return False
 
 
+# DRAM address contract — rendered ONLY for a self-hosted-ISA (external_backend) target graded on the
+# program oracle, where the emitted kernel and the oracle must agree on where each tensor lives in DRAM.
+# Empty for RoCC/command_buffer targets (their operands ride the command buffer, no explicit addresses).
+_DRAM_CONTRACT = """
+## DRAM address map (self-hosted ISA — your kernel and the oracle must agree)
+The program oracle runs your assembled kernel on the target's cosim: it PRELOADS each input tensor into
+DRAM and reads the OUTPUT tensor back from DRAM. So in `command_buffer.json` you MUST declare **every
+tensor your kernel touches** — inputs, weights, AND the output — each as `{{shape, dtype, role}}`, and
+give each a `base` (its DRAM byte address). Your kernel must load each input from, and store the output
+to, EXACTLY those `base` addresses — the oracle preloads inputs and captures the output there. The output
+tensor MUST appear (its result is read from its `base`); omit it and the grade cannot see your answer. If
+you omit a `base` the harness assigns a canonical one, but then your kernel must target that same layout —
+declaring them yourself is the reliable path. Addresses are per-capsule; size them from each tensor's
+shape x dtype.
+"""
+
+
 def prompt_slots(te, manifest) -> dict:
     """The complete set of DERIVED, target-specific prompt slots for one target.
 
@@ -182,6 +199,9 @@ def prompt_slots(te, manifest) -> dict:
         "isa_headers": list(te.isa_headers),
         "hwbringup_set": te.hwbringup_set,
         "isa_spec": _isa_spec_block(te),              # names the shipped real ISA files (derive, don't invent)
+        # DRAM address contract (external_backend only): declare every tensor + base so the emitted kernel
+        # and the program oracle agree on operand/result addresses (the atlas 0/11 output-base bug).
+        "dram_contract": _DRAM_CONTRACT if manifest.endpoint_kind == "external_backend" else "",
     }
 
 
@@ -224,7 +244,7 @@ submission/
 
 Declare these four commands in `manifest.yaml` exactly as the runner expects — see the OOT backend
 contract (`mlir_oot_backend_contract.yaml`) and the manifest schema (`schemas/manifest.schema.json`).
-
+{dram_contract}
 ## Grading + your QA signal
 {grading_model}
 {sim_tier_ladder}
@@ -302,4 +322,4 @@ def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseli
                             endpoint_desc=s["endpoint_desc"], emit_framing=s["emit_framing"],
                             emit_symbol_note=s["emit_symbol_note"], grading_model=s["grading_model"],
                             isa_facts=s["isa_facts"], sim_tier_ladder=ladder, seam_menu=seam_menu,
-                            isa_spec=s["isa_spec"])
+                            isa_spec=s["isa_spec"], dram_contract=s["dram_contract"])

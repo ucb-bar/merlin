@@ -129,6 +129,20 @@ def _endpoint_of(target: str) -> tuple[str | None, str | None]:
         return None, None
 
 
+def _bespoke_sim_via(target: str) -> str:
+    """Recover a target's bespoke-sim signal FROM ITS CONTRACT (no target-name branch, no descriptor):
+    the manifest's ``runner.tier_sim`` declares the sim ladder, so a target that ships the chipyard
+    spike/verilator tiers reads back as ``"chipyard"`` and an arc-only target (empty/arc tier_sim) as ``""``.
+    Lets :func:`oracle_adapters` self-route when a caller omits ``sim_via`` (the descriptor's authoritative
+    ``toolchain.sim_via`` is passed explicitly by the harness; this is the contract-derived fallback)."""
+    try:
+        from .target_experiment import load_capability_manifest
+        sims = set((load_capability_manifest(target).tier_sim or {}).values())
+    except Exception:  # noqa: BLE001 — no contract -> no bespoke sim
+        return ""
+    return "chipyard" if ({"spike", "verilator"} & sims) else ""
+
+
 def oracle_adapters(target: str = "gemmini", sim_via: str | None = None) -> dict[str, Callable]:
     """The oracle adapters per tier for a target. The mlc ARC model is the DEFAULT RTL tier (works for
     ANY mlc target, no bespoke sim); a target that DECLARES a bespoke sim (``sim_via``) additionally gets
@@ -136,11 +150,17 @@ def oracle_adapters(target: str = "gemmini", sim_via: str | None = None) -> dict
 
     A self-hosted-ISA target (``endpoint_kind == external_backend``, e.g. atlas) is graded by the generic
     PROGRAM oracle (assemble the emitted `.word`/`.insn` kernel with STOCK LLVM -> its mlc cosim) instead
-    of the command_buffer arc path — routed from the contract, no target-name branch."""
+    of the command_buffer arc path — routed from the contract, no target-name branch.
+
+    ``sim_via=None`` (unspecified) is self-resolved from the target's contract via :func:`_bespoke_sim_via`
+    so a bare ``oracle_adapters(target)`` is fully contract-routed — never a silent gemmini default. An
+    explicit ``""`` (arc-only, e.g. atlas) is honored as-is and NOT re-resolved."""
     endpoint_kind, model_ext = _endpoint_of(target)
     if endpoint_kind == "external_backend":
         from .program_oracle import program_oracle_adapter
         return {"L3": program_oracle_adapter(target, model_ext=model_ext or "npu_model")}
+    if sim_via is None:                                              # unspecified -> derive from contract
+        sim_via = _bespoke_sim_via(target)
     adapters: dict[str, Callable] = {"L3": mlc_arc_adapter(target)}   # arc default (RTL-derived)
     if sim_via == "chipyard":                                         # optional bespoke sim (gemmini)
         adapters["L2"] = _spike_verilator_adapter("spike")
@@ -148,9 +168,19 @@ def oracle_adapters(target: str = "gemmini", sim_via: str | None = None) -> dict
     return adapters
 
 
+def _resolve_oracle_adapters(target: str) -> dict[str, Callable]:
+    """Contract-routed adapter set for ``target`` — the ``run_capsule`` default when a caller passes no
+    adapters. Calls the module :func:`oracle_adapters` (self-resolving sim_via) so an unrouted grade goes
+    to the target's OWN endpoint oracle (external_backend->program_oracle, chipyard->spike/verilator,
+    else arc), NEVER the gemmini-hardcoded :func:`default_adapters`. (Named to dodge the ``run_capsule``
+    parameter that shadows ``oracle_adapters`` in that function's local scope.)"""
+    return oracle_adapters(target)
+
+
 def default_adapters() -> dict[str, Callable]:
-    """Back-compat default (gemmini): L2/L3 via the chipyard contract oracle. New callers should use
-    :func:`oracle_adapters` with the target's ``sim_via`` (arc default + optional bespoke sim)."""
+    """Back-compat gemmini-only default (L2/L3 spike/verilator). DO NOT use as an unrouted fallback — a
+    non-gemmini target would be mis-graded. New callers use :func:`oracle_adapters` (self-routing) or
+    :func:`_resolve_oracle_adapters`. Retained only for the explicitly-gemmini perf-bench script."""
     return {"L2": _spike_verilator_adapter("spike"),
             "L3": _spike_verilator_adapter("verilator")}
 
@@ -257,7 +287,10 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     policy = cfg.force_match_policy or capsule.get("numeric_policy")
     name = capsule["name"]
     run_id = run_id or f"{name}"
-    adapters = oracle_adapters if oracle_adapters is not None else default_adapters()
+    # An unrouted grade (oracle_adapters=None) resolves to the TARGET'S OWN endpoint oracle from the
+    # contract — never the gemmini-hardcoded default_adapters (which silently mis-graded atlas as a
+    # torch-mlir lowering, run_lowering.py, and crashed). `{}` stays honest no-oracle (L0/L1/trace only).
+    adapters = oracle_adapters if oracle_adapters is not None else _resolve_oracle_adapters(target)
     required = set(capsule.get("required_oracle_tiers", []))
 
     paths = make_run_paths(runs_root, run_id, suite=cfg.suite, target=cfg.target,
@@ -295,6 +328,14 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             for _tname, _tspec in (cb.get("tensors") or {}).items():
                 if _tspec.get("role") in ("input", "weight", "bias") and _tname in _raws:
                     _tspec["preload_b64"] = _b64.b64encode(_raws[_tname]).decode()
+
+        # Stamp the HARNESS-owned canonical DRAM layout onto every cb tensor (inputs+output), matched by
+        # name. The agent's kernel was told these exact addresses (see the emit contract), so preload,
+        # kernel, and readback all agree on one address map — the harness never trusts the agent to have
+        # invented a base (the command_buffer schema forbids declaring one), and the output tensor now
+        # always has a base to read back from. Target-agnostic: pure shape x dtype (see capsule_dram).
+        from . import capsule_dram as _dram
+        _dram.inject_bases(cb, capsule)
 
         if independent_float:
             # The integer reference/simulate engines cannot execute a float (fp8/bf16) datapath, so the

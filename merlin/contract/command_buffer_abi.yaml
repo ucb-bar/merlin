@@ -7,8 +7,14 @@ top_level:
   required: [abi_version, target, commands]
   optional: [backend, tensors, params, metrics_requested, resources]
 tensors:
-  description: "name -> {shape:[..], dtype: i8|i16|i32, role: input|weight|bias|output}"
-  note: "leaf inputs only; outputs are produced by COMMIT and need not appear here"
+  description: "name -> {shape:[..], dtype: i8|i16|i32|f16|f32|bf16|fp8_e4m3|fp8_e5m2, role: input|weight|bias|output, base?: int}"
+  note: >
+    Declare EVERY tensor your kernel touches — inputs/weights AND the output. For an external_backend
+    (self-hosted-ISA) target graded on the program oracle, add `base` (the DRAM byte address your kernel
+    loads that input from / stores that output to): the oracle preloads inputs and reads the output back
+    at exactly these addresses, so they must match your kernel's loads/stores. `base` is optional (if you
+    omit it the harness assigns a canonical layout), but the OUTPUT tensor must be declared so its result
+    can be captured. For a command_buffer (ISA-less) target the leaf inputs alone still suffice.
 opcodes:
   RES_PACK:
     operands: {src: leaf_or_handle, dst: handle}

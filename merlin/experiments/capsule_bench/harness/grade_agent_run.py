@@ -18,13 +18,19 @@ import _common as C
 
 sys.path.insert(0, str(C.REPO / "merlin" / "python"))
 from merlin.targetgen import capsule_grade as CG  # noqa: E402
+from merlin.targetgen import capsule_runner as CR  # noqa: E402
 import freeze_run  # noqa: E402
 
 
 def _score(pkg, capsules, runs_root, labels, no_oracle):
+    # Resolve the TARGET'S OWN oracle ladder from its contract (external_backend->program_oracle,
+    # chipyard->spike/verilator, else arc) — never pass None here, which historically fell back to the
+    # gemmini spike/verilator MLIR-lowering oracle and mis-graded atlas (torch-mlir run_lowering.py crash).
+    # `{}` = honest no-oracle (L0/L1/trace only). sim_via is self-resolved from the contract.
+    adapters = {} if no_oracle else CR.oracle_adapters(C.TARGET)
     return CG.grade(pkg, capsules_root=capsules, runs_root=runs_root, labels=labels,
                     contract=str(C.REPO / "merlin/contract"),
-                    oracle_adapters={} if no_oracle else None, timeout=900, target=C.TARGET)
+                    oracle_adapters=adapters, timeout=900, target=C.TARGET)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -104,7 +110,8 @@ def main(argv: list[str] | None = None) -> int:
                     "tool_calls": ctt.get("tool_calls"),
                     "metrics_available": ctt.get("available")},
         "iterations": len(list((run_dir / "iterations").glob("iteration_*"))),
-        "oracle_mode": "no_oracle(L0/L1/trace)" if a.no_oracle else "spike+verilator(L0-L3)",
+        "oracle_mode": "no_oracle(L0/L1/trace)" if a.no_oracle
+                       else f"contract-routed({'+'.join(sorted(CR.oracle_adapters(C.TARGET)))})",
     }
     (run_dir / "run_manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False))
 
