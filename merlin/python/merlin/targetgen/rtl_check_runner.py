@@ -128,6 +128,50 @@ def render_trace(trace: dict, facts_rec: dict) -> str:
     return "\n".join(L) + "\n"
 
 
+_WORD_RE = re.compile(r"^\s*\.(?:word|insn)\b[^0-9a-fA-Fx]*((?:0x[0-9a-fA-F]+|[0-9]+))", re.M)
+
+
+def _legal_opcodes(facts_rec: dict) -> tuple[set[int], int] | None:
+    """(legal decode-value set, field width) DERIVED from the RTL/ISA decode facts, or None if the target
+    ships none. The width is inferred from the largest legal value (the extractor's icmp-eq field), so the
+    legality test compares the emitted instruction's low-``width`` bits — the field the hardware decoder
+    actually matches. No target literals: the set + width both come from the discovered facts."""
+    facts = facts_rec.get("facts", facts_rec)
+    dt = next((i for i in (facts.get("interfaces") or []) if i.get("name") == "funct_decode_table"), None)
+    vals = set((dt or {}).get("legal_funct") or [])
+    if not vals:
+        return None
+    width = max(vals).bit_length()
+    return vals, width
+
+
+def render_kernel_decode(kernel_text: str, facts_rec: dict) -> str:
+    """Canonical text the KERNEL FileCheck lines are matched against — a decode of the emitted self-hosted
+    kernel's `.word`/`.insn` instruction stream. For each emitted instruction we extract the low-``width``
+    bit decode field and test membership in the RTL/ISA legal-opcode set; ``ILLEGAL_OPCODE_COUNT`` is the
+    count the hardware decoder would reject. This is the static RTL-legality signal (no Verilog run, and
+    beyond what spike/npu_model's functional output reveals). Everything is DERIVED from ``facts_rec``."""
+    words = [int(m, 16) if m.lower().startswith("0x") else int(m)
+             for m in _WORD_RE.findall(kernel_text)]
+    lo = _legal_opcodes(facts_rec)
+    legal, width = (lo if lo else (set(), 0))
+    mask = (1 << width) - 1 if width else 0
+    n_illegal = 0
+    lines = []
+    for idx, w in enumerate(words):
+        field = w & mask if mask else w
+        ok = (field in legal) if legal else True
+        if not ok:
+            n_illegal += 1
+        lines.append(f"INSTR {idx} word=0x{w:08x} opcode={field} legal={'yes' if ok else 'no'}")
+    L = [f"# {CC.RENDER_SCHEMA}",
+         f"EMPTY_KERNEL {'yes' if not words else 'no'}",
+         f"INSTR_COUNT {len(words)}",
+         f"LEGAL_OPCODE_SET_SIZE {len(legal)}",
+         f"ILLEGAL_OPCODE_COUNT {n_illegal}"]
+    return "\n".join(L + lines) + "\n"
+
+
 def run_filecheck(fc: str, check_text: str, input_text: str,
                   prefixes: str | list[str]) -> tuple[bool, str]:
     """Run FileCheck(check_text) over input_text with one or more --check-prefixes. (ok, diagnostics)."""
@@ -167,11 +211,34 @@ def screen_run(run_capsule_dir: Path, facts_rec: dict, index: dict[str, Path],
     gen = run_capsule_dir / "generated"
     trace_p = gen / "instruction_trace.json"
     dialect_p = gen / "lowered.target.mlir"
+    kernel_p = gen / "kernel.S"
+    capsule = _load_capsule(_capsule_name_for(run_capsule_dir), index)
+    compiled = compiled_checks(facts_rec, capsule or {}, target)
+
+    # SELF-HOSTED-ISA (external_backend, e.g. atlas): no RoCC instruction_trace — the graded artifact is
+    # the emitted kernel.S. Run the kernel opcode-LEGALITY FileCheck (every emitted opcode ∈ the RTL/ISA
+    # legal set) over its rendered decode. This is the RTL-grounded, no-Verilog structural check for a
+    # self-hosted target, fully derived from facts_rec. Verdict rides this check.
+    if compiled.get("kernel") is not None:
+        if not kernel_p.is_file():
+            return None
+        res = {"capsule": (capsule or {}).get("name") or run_capsule_dir.name,
+               "filecheck": {}, "screen": None}
+        decode_txt = render_kernel_decode(kernel_p.read_text(), facts_rec)
+        if fc:
+            ok, diag = run_filecheck(fc, compiled["kernel"], decode_txt, "KERNEL")
+            res["filecheck"]["kernel"] = {"ok": ok, "diag": diag}
+            res["verdict"] = "reject" if ok is False else "ok"
+        else:
+            res["verdict"] = "ok"
+        res["kernel_decode"] = decode_txt
+        if write:
+            (run_capsule_dir / "rtl_checks.json").write_text(json.dumps(res, indent=2))
+        return res
+
     if not trace_p.is_file():
         return None
     trace = json.loads(trace_p.read_text())
-    capsule = _load_capsule(_capsule_name_for(run_capsule_dir), index)
-    compiled = compiled_checks(facts_rec, capsule or {}, target)
     res: dict[str, Any] = {"capsule": (capsule or {}).get("name") or run_capsule_dir.name,
                            "filecheck": {}, "screen": None}
 

@@ -48,10 +48,12 @@ def _redact_rtl(r: dict) -> dict:
 def _rtl_block(runs_root) -> list[dict]:
     # RTL facts are the regenerated CIRCT artifact now (RUN._FACTS was retired in the facts-as-artifact
     # refactor); load_facts regenerates/reads it on demand. Same full-record shape screen_run expects.
-    # TARGET-parameterized (C.TARGET honors MERLIN_TARGET_EXPERIMENT): a RoCC target (gemmini) gets the
-    # dialect+trace FileCheck; a non-RoCC target (atlas — no funct_decode_table) drops those in
-    # compile_checks and the advisory rides the target-agnostic Python numeric screen. Never gemmini facts
-    # applied to another target's emitted MLIR.
+    # TARGET-parameterized (C.TARGET honors MERLIN_TARGET_EXPERIMENT) + ENDPOINT-routed: a RoCC target
+    # (gemmini, endpoint inline_asm_insn) gets the dialect+trace FileCheck over its RoCC stream; a
+    # self-hosted-ISA target (atlas, endpoint external_backend) gets the kernel opcode-LEGALITY FileCheck
+    # over its emitted kernel.S. compile_checks picks by the DERIVED endpoint_kind, never by
+    # funct_decode_table presence (the mlc extractor synthesises one for a self-hosted decoder too). Never
+    # gemmini facts/ops applied to another target.
     target = C.TARGET
     facts = RUN.load_facts(target)
     index = RUN._capsule_index()
@@ -59,7 +61,12 @@ def _rtl_block(runs_root) -> list[dict]:
     bench = Path(runs_root) / "runs" / f"{target}-capsule-bench"
     out = []
     if bench.is_dir():
-        dirs = sorted({p.parent.parent for p in bench.glob("*/generated/instruction_trace.json")})
+        # Discover per-capsule run dirs by EITHER RTL-check input: a RoCC target emits
+        # generated/instruction_trace.json; a self-hosted-ISA (external_backend, e.g. atlas) emits
+        # generated/kernel.S (screen_run picks the right check by endpoint). Globbing only the RoCC trace
+        # silently skipped every external_backend run — so the kernel opcode-legality check never fired.
+        dirs = sorted({p.parent.parent for g in ("instruction_trace.json", "kernel.S")
+                       for p in bench.glob(f"*/generated/{g}")})
         for d in dirs:
             r = RUN.screen_run(d, facts, index, fc, write=True, target=target)  # writes rtl_checks.json
             if r:

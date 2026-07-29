@@ -33,11 +33,29 @@ RENDER_SCHEMA = "rtl-trace-render/v0"
 _COMPUTE_OPS = {"matmul", "resident_reuse", "conv2d", "conv", "matmul_resident"}
 
 
-def _facts_abi(facts: dict) -> tuple[str, str]:
+def _facts_abi(facts: dict) -> tuple[str, str] | None:
+    """The RoCC ABI (custom opcode, funct3) from the DERIVED decode facts, or None when the target's
+    facts carry no RoCC command interface — never a hardcoded gemmini default (a non-RoCC target then
+    simply omits the ABI assertion instead of being checked against 0x7b)."""
     for i in (facts.get("interfaces") or []):
-        if i.get("name") == "funct_decode_table":
+        if i.get("name") == "funct_decode_table" and i.get("custom_opcode") is not None:
             return (f"0x{i['custom_opcode']:x}", f"0x{i['funct3']:x}")
-    return ("0x7b", "0x3")
+    return None
+
+
+def _is_rocc_target(target: str, facts_rec: dict) -> bool:
+    """Is this a RoCC command-ISA target (the dialect/trace FileCheck applies) vs a self-hosted-ISA
+    (external_backend) / other target? DERIVED, never a target-name test: the authoritative signal is the
+    capability manifest's ``endpoint_kind`` (``inline_asm_insn`` == RoCC). We do NOT key on the presence of
+    a ``funct_decode_table`` — the mlc icmp-fanout extractor synthesises one for ANY decoder (atlas, a
+    self-hosted ISA, gets a table with custom_opcode 0x7b too), so that would false-positive. Falls back to
+    the ``rocc_cmd`` interface signal if no manifest resolves (gemmini ships one; atlas does not)."""
+    try:
+        from .target_experiment import load_capability_manifest
+        return load_capability_manifest(target).endpoint_kind == "inline_asm_insn"
+    except Exception:  # noqa: BLE001 — no manifest -> use the rocc_cmd interface presence as the signal
+        facts = facts_rec.get("facts", facts_rec)
+        return any(i.get("name") == "rocc_cmd" for i in (facts.get("interfaces") or []))
 
 
 def _facts_to_rc(facts_rec: dict) -> dict:
@@ -89,11 +107,12 @@ def compile_trace_checks(facts_rec: dict, capsule: dict, prefix: str = "TRACE") 
         return None
     rc_facts = _facts_to_rc(facts_rec)
     mr, mc = RC._mesh(rc_facts)
-    custom, funct3 = _facts_abi(facts_rec.get("facts", facts_rec))
-    L = [f"// RTL-derived trace checks (op={op}, mesh={mr}x{mc}) — generated, do not edit",
-         f"// {prefix}-DAG: ABI custom={custom} funct3={funct3}",
-         # {{$}} anchors end-of-line so "..._COUNT 1" does NOT substring-match "..._COUNT 16"
-         f"// {prefix}-DAG: ILLEGAL_FUNCT_COUNT 0{{{{$}}}}"]   # every emitted funct ∈ RTL legal set
+    abi = _facts_abi(facts_rec.get("facts", facts_rec))
+    L = [f"// RTL-derived trace checks (op={op}, mesh={mr}x{mc}) — generated, do not edit"]
+    if abi is not None:                                      # ABI only when the RTL facts carry it (derived)
+        L.append(f"// {prefix}-DAG: ABI custom={abi[0]} funct3={abi[1]}")
+    # {{$}} anchors end-of-line so "..._COUNT 1" does NOT substring-match "..._COUNT 16"
+    L.append(f"// {prefix}-DAG: ILLEGAL_FUNCT_COUNT 0{{{{$}}}}")   # every emitted funct ∈ RTL legal set
     shape = RC._declared_output_shape(capsule)
     if op in ("matmul", "matmul_resident") and shape is not None:
         M, N = shape
@@ -143,18 +162,42 @@ def _provenance(facts_rec: dict, capsule: dict, target: str) -> dict[str, Any]:
     }
 
 
+def compile_kernel_checks(capsule: dict, prefix: str = "KERNEL") -> str | None:
+    """FileCheck lines over a rendered decode of the emitted self-hosted-ISA kernel (external_backend,
+    e.g. atlas ``kernel.S`` → its `.word`/`.insn` instruction stream). The RTL-grounded insight — the kind
+    you would otherwise pay a Verilog run for and that spike/npu_model's functional output never gives —
+    is ISA LEGALITY: every emitted instruction's opcode must be one the target's decoder actually accepts
+    (the legal-opcode set discovered from the RTL / ISA definition). This catches a fabricated or
+    mis-encoded ISA (opcodes the hardware would reject) statically, before the cosim.
+
+    The check carries NO target literals: it asserts ``ILLEGAL_OPCODE_COUNT 0`` over the rendered decode;
+    the legal set + the decode itself are computed at run time in :func:`rtl_check_runner.render_kernel_decode`
+    from the DERIVED taxonomy. Returns None if the capsule declares no operation."""
+    op = RC._declared_op(capsule)
+    if op is None:
+        return None
+    L = [f"// RTL-derived kernel checks (op={op}) — every emitted opcode must be ISA-legal (generated)",
+         f"// {prefix}-DAG: ILLEGAL_OPCODE_COUNT 0{{{{$}}}}",   # every emitted opcode ∈ RTL/ISA legal set
+         f"// {prefix}-DAG: EMPTY_KERNEL no"]                   # the kernel must actually emit instructions
+    return "\n".join(L) + "\n"
+
+
 def compile_checks(facts_rec: dict, capsule: dict, target: str = "gemmini") -> dict[str, Any]:
-    """Compile the check files for a capsule + a per-family PROVENANCE audit. The RoCC-shaped dialect and
-    trace checks are emitted only when the target carries the derived RoCC decode interface; a target
-    without one (SIMT / program-MMIO) drops them (None) and keeps whatever is groundable — we emit every
-    check we can ground and drop the rest, never guessing."""
-    is_rocc = _decode_table(facts_rec) is not None
+    """Compile the check files for a capsule + a per-family PROVENANCE audit, ENDPOINT-aware and fully
+    derived. A RoCC command-ISA target (endpoint ``inline_asm_insn``, e.g. gemmini) gets the dialect+trace
+    FileCheck over its RoCC stream; a self-hosted-ISA target (``external_backend``, e.g. atlas) gets the
+    kernel opcode-legality FileCheck over its emitted `.word` stream. The RoCC vs self-hosted decision is
+    the DERIVED ``endpoint_kind`` (never funct_decode_table presence — the mlc icmp-fanout extractor
+    synthesises a table for a self-hosted decoder too, so that would mis-route). We emit every check we can
+    ground for the target's endpoint and drop the rest, never guessing."""
+    is_rocc = _is_rocc_target(target, facts_rec)
     return {
         "schema": "rtl_checks_filecheck/v0",
         "capsule": capsule.get("name"),
         "target": target,
         "dialect": compile_dialect_checks(capsule) if is_rocc else None,
         "trace": compile_trace_checks(facts_rec, capsule) if is_rocc else None,
+        "kernel": None if is_rocc else compile_kernel_checks(capsule),
         "provenance": _provenance(facts_rec, capsule, target),
     }
 
