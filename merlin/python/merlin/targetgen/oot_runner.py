@@ -159,6 +159,15 @@ def build_package(pkg: Package, *, timeout: int = 1800) -> None:
     env.setdefault("LLVM_DIR", llvm_dir)
     env.setdefault("CM", cmake)
     env.setdefault("CMAKE", cmake)
+    # The broker rebuilds the package fresh in an env that may lack libidn.so.11 (a conda-era SONAME no
+    # current distro ships), which some cmake/git/curl in the package's build.sh dlopens -> the build dies
+    # before it even configures. The agent sandbox already gets the .compat_lib libidn.so.11->.12 shim; the
+    # broker rebuild must too, or a C++ package that builds fine for the agent fails only at grading. Same
+    # single shim dir, so this is parity, not a new capability.
+    from .sandbox.toolchain import COMPAT_LIB
+    if os.path.isdir(COMPAT_LIB):
+        env["LD_LIBRARY_PATH"] = COMPAT_LIB + (os.pathsep + env["LD_LIBRARY_PATH"]
+                                               if env.get("LD_LIBRARY_PATH") else "")
     # A manifest is free to spell the step as a bare `cmake` (the reference ones do), and a
     # shell-string step can name it anywhere in a pipeline, so exporting $CM is not enough —
     # put the working cmake's directory FIRST on the child's PATH.
