@@ -81,6 +81,13 @@ def claude_runtime_binds() -> list[str]:
     cj = home / ".claude.json"
     if cj.exists():
         binds += ["--bind", str(cj), str(cj)]
+    # Bedrock provider (experiments-only): the sandboxed `claude` needs AWS creds to reach Bedrock.
+    # Bind ~/.aws RO ONLY when CLAUDE_CODE_USE_BEDROCK is set in this env, so a subscription run never
+    # exposes AWS creds. Not an answer surface. (Env-var creds ride os.environ, which bwrap inherits.)
+    if os.environ.get("CLAUDE_CODE_USE_BEDROCK") == "1":
+        aws = home / ".aws"
+        if aws.exists():
+            binds += ["--ro-bind", str(aws), str(aws)]
     return binds
 
 

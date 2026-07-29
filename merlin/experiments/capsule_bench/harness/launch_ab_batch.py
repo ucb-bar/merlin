@@ -83,6 +83,11 @@ def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
     if a.skip_hidden:
         cmd += ["--skip-hidden"]
     cmd += ["--sandbox", a.sandbox]
+    # Provider (experiments-only): default subscription is a no-op flag; bedrock threads AWS region/profile.
+    if getattr(a, "provider", "subscription") != "subscription":
+        cmd += ["--provider", a.provider, "--aws-region", a.aws_region]
+        if a.aws_profile:
+            cmd += ["--aws-profile", a.aws_profile]
     return cmd
 
 
@@ -149,6 +154,11 @@ def main(argv=None):
     ap.add_argument("--mode", choices=["parallel", "sequential"], default="parallel")
     ap.add_argument("--model", default="claude-opus-4-8")
     ap.add_argument("--effort", default="high")
+    # Provider for the agent CLI (experiments-only; interactive Claude Code keeps the subscription).
+    # For --provider bedrock, --model must be a Bedrock inference-profile id.
+    ap.add_argument("--provider", choices=["subscription", "bedrock"], default="subscription")
+    ap.add_argument("--aws-region", default="us-east-1", help="AWS region for --provider bedrock")
+    ap.add_argument("--aws-profile", default="", help="AWS profile (~/.aws) for --provider bedrock")
     ap.add_argument("--max-rounds", type=int, default=12)
     ap.add_argument("--max-rate-limit-waits", type=int, default=8)
     ap.add_argument("--round-timeout", type=int, default=14400, help="per-round agent wall cap (s); large = effectively no timeout")

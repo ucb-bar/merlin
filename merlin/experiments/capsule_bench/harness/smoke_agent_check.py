@@ -8,6 +8,7 @@ Usage: smoke_agent_check.py [--arm merlin_rtlchecks|merlin|baseline] [--model cl
 """
 from __future__ import annotations
 import argparse
+import os
 import subprocess
 import sys
 import tempfile
@@ -50,12 +51,43 @@ Finally print ONE line of valid JSON, nothing else after it:
 """
 
 
+def _bedrock_ping(model: str, region: str, profile: str, timeout: int) -> int:
+    """Confirm the agent's `claude` CLI can reach Bedrock (creds + model access) with one tiny call —
+    before committing a real run to Bedrock. Scopes the Bedrock env to THIS process only; the sandbox's
+    claude_runtime_binds binds ~/.aws because CLAUDE_CODE_USE_BEDROCK=1 is set here."""
+    env = dict(os.environ)
+    env["CLAUDE_CODE_USE_BEDROCK"] = "1"
+    env["AWS_REGION"] = region
+    env.setdefault("AWS_DEFAULT_REGION", region)
+    if profile:
+        env["AWS_PROFILE"] = profile
+    print(f"=== Bedrock ping — model={model} region={region} "
+          f"{'profile=' + profile if profile else 'env-var creds'} ===")
+    try:
+        r = subprocess.run(["claude", "--print", "--model", model, "Reply with exactly: BEDROCK_OK"],
+                           capture_output=True, text=True, timeout=timeout, env=env)
+    except subprocess.TimeoutExpired:
+        print("  TIMEOUT — no response from Bedrock"); return 1
+    ok = "BEDROCK_OK" in (r.stdout or "")
+    print(f"  reply: {(r.stdout or '').strip()[:120] or '(none)'}")
+    if not ok:
+        print("  stderr tail:", (r.stderr or "")[-300:])
+    print(f"\n  bedrock verdict: reachable={ok} (rc={r.returncode})")
+    return 0 if ok else 1
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--arm", default="merlin_rtlchecks", choices=list(ARM_BUNDLE))
     ap.add_argument("--model", default="claude-haiku-4-5")
     ap.add_argument("--timeout", type=int, default=300)
+    ap.add_argument("--provider", choices=["subscription", "bedrock"], default="subscription",
+                    help="bedrock: run a minimal Bedrock reachability ping instead of the full tool smoke")
+    ap.add_argument("--aws-region", default=os.environ.get("AWS_REGION", "us-east-1"))
+    ap.add_argument("--aws-profile", default=os.environ.get("AWS_PROFILE", ""))
     a = ap.parse_args(argv)
+    if a.provider == "bedrock":
+        return _bedrock_ping(a.model, a.aws_region, a.aws_profile, a.timeout)
     bundle = yaml.safe_load((C.BUNDLES / ARM_BUNDLE[a.arm] / "input_bundle_manifest.yaml").read_text())
     print(f"=== LIVE smoke agent — arm={a.arm} model={a.model} (sandbox=bwrap, real driver path) ===")
     with tempfile.TemporaryDirectory(dir="/tmp") as td:

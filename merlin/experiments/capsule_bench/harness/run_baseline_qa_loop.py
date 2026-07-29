@@ -699,6 +699,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--run-id", required=True)
     ap.add_argument("--model", default="claude-opus-4-8")
     ap.add_argument("--effort", default="high")
+    # PROVIDER for the agent's `claude` CLI — experiments-only, so the interactive Claude Code keeps the
+    # subscription. subscription (default) = the machine's ~/.claude creds; bedrock = Claude Code's own
+    # Bedrock mode (CLAUDE_CODE_USE_BEDROCK=1 + AWS creds + a Bedrock inference-profile model id).
+    ap.add_argument("--provider", choices=["subscription", "bedrock"], default="subscription",
+                    help="model provider for the agent CLI (experiments-only; subscription keeps ~/.claude)")
+    ap.add_argument("--aws-region", default=os.environ.get("AWS_REGION", "us-east-1"),
+                    help="AWS region for --provider bedrock")
+    ap.add_argument("--aws-profile", default=os.environ.get("AWS_PROFILE", ""),
+                    help="AWS profile (~/.aws) for --provider bedrock; else the env-var cred chain")
     ap.add_argument("--max-rounds", type=int, default=6)
     ap.add_argument("--round-timeout", type=int, default=14400,
                     help="per-round agent wall cap (s). Default 4h (matches launch_ab_batch): a TIGHT "
@@ -745,6 +754,24 @@ def main(argv: list[str] | None = None) -> int:
     _compat = str(C.REPO / ".compat_lib")
     os.environ["LD_LIBRARY_PATH"] = (f"{_compat}:{_CE}/lib:{_CE}/riscv-tools/lib:"
                                      + os.environ.get("LD_LIBRARY_PATH", ""))
+    # --- provider (experiments-only): route the agent's claude CLI to Bedrock or the subscription ---
+    # subprocess (rounds + finalize) inherits os.environ, so setting these here scopes the provider to
+    # THIS experiment process only — the user's interactive Claude Code (a different process, no Bedrock
+    # env) stays on the subscription. bedrock uses Claude Code's OWN Bedrock mode; --model must then be a
+    # Bedrock inference-profile id (e.g. us.anthropic.claude-...-v1:0). ~/.aws is bound into the sandbox
+    # by claude_runtime_binds when CLAUDE_CODE_USE_BEDROCK=1.
+    if a.provider == "bedrock":
+        os.environ["CLAUDE_CODE_USE_BEDROCK"] = "1"
+        os.environ["AWS_REGION"] = a.aws_region
+        os.environ.setdefault("AWS_DEFAULT_REGION", a.aws_region)
+        if a.aws_profile:
+            os.environ["AWS_PROFILE"] = a.aws_profile
+        print(f"[provider] agent CLI -> Bedrock (region={a.aws_region}"
+              f"{', profile=' + a.aws_profile if a.aws_profile else ', env-var creds'}); model={a.model}")
+    else:
+        # Belt-and-braces: never let a stray Bedrock env leak a 'subscription' run onto Bedrock.
+        os.environ.pop("CLAUDE_CODE_USE_BEDROCK", None)
+
     if a.bundle:                                  # abc2 realistic: point the arm at its realistic bundle
         RX.ARM_BUNDLE[arm] = a.bundle
 
