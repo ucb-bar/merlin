@@ -42,6 +42,12 @@ def test_saturn_opu_onboards_end_to_end_as_command_buffer_spatial_target(monkeyp
         facts = si.build_fact_bundle("saturn_opu_mxv256d128")
     except Exception as e:  # noqa: BLE001
         pytest.skip(f"saturn_opu OPU facts not available in this checkout: {e}")
+    # build_fact_bundle never raises — it returns an honest all-unavailable bundle (n_derived==0) when
+    # mlc / the OPU arc artifacts cannot be read. The end-to-end proof (tile geometry -> the prompt's
+    # outer-product framing, datapaths -> the dtype matrix) genuinely needs those grounded facts, so
+    # gate on them here rather than deriving from a hollow bundle (the docstring's "skip when absent").
+    if not facts.get("n_derived"):
+        pytest.skip(f"saturn_opu OPU facts not grounded in this checkout: {facts.get('reason')}")
     descriptor = yaml.safe_load(open(_SATURN_DESC))
     residual = yaml.safe_load(open(_SATURN_RESID))
     manifest = cm.derive_manifest(descriptor, facts, residual=residual)

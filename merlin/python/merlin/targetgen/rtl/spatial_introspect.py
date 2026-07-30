@@ -312,13 +312,17 @@ def render_fact_bundle(target: str, bundle: dict | None = None) -> str:
     if ew:
         lines.append(f"- **Element widths**: operand i{ew['operand_bits']} -> "
                      f"accumulator i{ew['accumulator_bits']}")
-    lines.append(f"- **Dtypes**: {', '.join(d['name'] for d in f['dtypes']['value'])}")
+    dts = f["dtypes"]["value"] if f["dtypes"]["derived"] else None
+    if dts:
+        lines.append(f"- **Dtypes**: {', '.join(d['name'] for d in dts)}")
+    else:
+        lines.append(f"- **Dtypes**: unavailable ({f['dtypes']['evidence']})")
     if f["fma_latency"]["derived"]:
         fv = f["fma_latency"]["value"]
         lines.append(f"- **FMA latency**: int8 MAC {fv['int8_mac_cycles']} cyc; "
                      f"fp8 FMA {fv['fp8_fma_cycles']} cyc")
-    lines.append(f"- **Op categories**: {f['op_categories']['value']}")
-    lines.append(f"- **Accumulator**: {f['accum_kind']['value']}")
+    lines.append(f"- **Op categories**: {f['op_categories']['value'] if f['op_categories']['derived'] else 'unavailable'}")
+    lines.append(f"- **Accumulator**: {f['accum_kind']['value'] if f['accum_kind']['derived'] else 'unavailable'}")
     return "\n".join(lines) + "\n"
 
 
