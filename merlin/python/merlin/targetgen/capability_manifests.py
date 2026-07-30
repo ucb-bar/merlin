@@ -1,18 +1,26 @@
-"""Capability manifests for the two vertical-slice targets: ``rvv`` and ``mx_gemmini``.
+"""Target-AGNOSTIC capability-manifest deriver + per-target residual discovery.
 
-These are target **definitions** (a `target_contract.yaml` with `compute_units`) generated as `out/`
-artifacts and plugged into the routing tooling — the same shape a real out-of-tree target
-(radiance-mlir) will ship. They exist to prove datatype -> compute-unit routing across two very
-different targets:
+A capability manifest is a target **definition** (a ``target_contract.yaml`` with ``compute_units``)
+generated as an ``out/`` artifact and plugged into the routing tooling — the same shape a real
+out-of-tree target repo ships. There are NO per-target manifest dicts baked into this core module:
+every manifest is reconstructed by :func:`derive_manifest` from three sources —
 
-- ``rvv`` (SpacemiT K1 vector unit): the regular formats fp32/fp16/bf16 + int8 — no fp4/fp6/native-fp8
-  datapath, so those route to an honest gap.
-- ``mx_gemmini`` (microscaling systolic PE): mxfp4/mxfp6/mxfp8 + int8/bf16 with an E8M0 block-scale
-  requant — accepts the low-bit formats RVV rejects.
+  * **CIRCT FACTS** (``facts.json``): mesh / memory capacities / datapath dtypes / legal-funct codes,
+  * **FAMILY defaults** (:func:`merlin.targetgen.families.family_profile`, keyed by compute-unit kind):
+    the codegen endpoint + runner fallback,
+  * a small **RESIDUAL** side-input (intent + prose RTL cannot ground) that lives WITH the target
+    package at ``<target_base>/contracts/residual.yaml`` — the discovered target dir, never a Python
+    literal here.
 
-Both are provenance-tagged prototypes flagged ``requires_human_review`` — the numbers/modes trace to a
-source but are NOT RTL-certified. The requant reference is opaque (target-specific lowering lives
-elsewhere: RVV's software requant in Merlin; gemmini-mx's MxRequantizer out-of-tree).
+Discovery (:func:`discovered_targets`) scans ``artifacts/targets/*/contracts/residual.yaml``, and
+``manifest_for(name)`` runs the single agnostic derive path over each. A new accelerator brings itself
+up by dropping a descriptor + a residual and letting mlc extract facts — with zero edits to core.
+
+The shipped residuals: ``rvv`` (K1 vector unit — regular floats + int8, no low-bit datapath),
+``mx_gemmini`` (microscaling systolic PE — mxfp4/6/8 + int8/bf16), ``radiance`` (SIMT tensor core that
+composes the gemmini-mx PE), and ``atlas`` (self-hosted-ISA NPU MXU whose mesh/encoding/endpoint are
+DERIVED from RTL facts — ``facts_source: rtl``). All are provenance-tagged prototypes flagged
+``requires_human_review`` — NOT RTL-certified.
 """
 from __future__ import annotations
 
@@ -20,12 +28,15 @@ import copy
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from merlin.common import quant_formats as _qf
 from merlin.common import schemas as _schemas
+from merlin.common.paths import artifacts_dir as _artifacts_dir
 from merlin.common.yaml import write_yaml
 from merlin.targetgen import compute_units as _cu
 from merlin.targetgen import families as _families
-from merlin.targetgen import target_registry as _tr
+from merlin.targetgen.rtl.facts import target_base as _target_base
 
 _COMMON: dict[str, Any] = {
     "version": "0.1",
@@ -34,202 +45,61 @@ _COMMON: dict[str, Any] = {
 }
 
 
-def rvv_manifest() -> dict[str, Any]:
-    """K1/RVV vector unit — regular floats + int8 (fp8 is decode-to-f32, not a native format)."""
-    return {
-        **_COMMON,
-        "name": "rvv",
-        "family": "cpu_vector",
-        "provenance": "SpacemiT K1 X60 rv64gcv (VLEN=256); RVV datapaths per merlin.rvvgen.k1 + "
-                      "llvmlower.passes_quant_int (int8 W8A8 vwmacc) + passes_xdsl.lower_bf16_matmul_f32acc.",
-        "features": ["vector_unit"],
-        "capabilities": {"ops": ["matmul", "elementwise"]},
-        "memory_model": {"resident": False},
-        "compiler_obligations": [],
-        "hardware_promises": ["ieee_float", "widening_integer_accumulate"],
-        "runtime_promises": ["metrics"],
-        "legality": [],
-        "runtime": {"default_backend": "baremetal"},
-        "compute_units": [
-            {
-                "name": "vector",
-                "kind": "vector",
-                "dtypes": ["fp32", "fp16", "bf16", "int8"],
-                "ops": ["matmul", "elementwise"],
-                "accumulate": [
-                    {"in": "fp32", "weight": "fp32", "acc": "f32"},
-                    {"in": "fp16", "weight": "fp16", "acc": "f32"},
-                    {"in": "bf16", "weight": "bf16", "acc": "f32"},
-                    {"in": "int8", "weight": "int8", "acc": "i32"},
-                ],
-                "scaling": "per_channel",
-                # RVV requant is OUR software lowering (scale-multiply), not a hardware unit.
-                "requant": {"ref": "merlin.llvmlower.passes_quant_int"},
-            }
-        ],
-    }
+# --------------------------------------------------------------------------- residual discovery
+#
+# The residual is the ONLY per-target input, and it is NOT a Python literal in core: it lives with the
+# target package at ``<target_base>/contracts/residual.yaml``. This module discovers those residuals
+# and runs the target-agnostic ``derive_manifest`` over each — so onboarding a target is "drop a
+# descriptor + a residual, let mlc extract facts", with no code change here.
 
 
-def mx_gemmini_manifest() -> dict[str, Any]:
-    """Gemmini-MX microscaling systolic PE — fp4/fp6/fp8 (MX, E8M0 block scale) + int8/bf16."""
-    return {
-        **_COMMON,
-        "name": "mx_gemmini",
-        "family": "tensor_resident",
-        "provenance": "chipyard generators/gemmini (branch gemmini-mx) MxParameters.scala: "
-                      "mxGemminiConfig=[mode0(fp4/fp4), mode4(fp6/fp6), mode8(fp8/fp8)]; block scale via "
-                      "ScaleFactorMem + MxExp (E8M0) + QuantLut. TypeSupport permits independent act/wei "
-                      "modes (not enumerated here — shipped config is symmetric).",
-        "features": ["systolic_array", "microscaling", "resident_packed_tensor", "accumulator_commit"],
-        "capabilities": {"ops": ["matmul"], "mesh": {"rows": 16, "cols": 16}},
-        "memory_model": {"resident": True, "accumulators": True, "block_scale_memory": True},
-        "compiler_obligations": ["must_tile_to_mesh_shape", "must_supply_e8m0_block_scales"],
-        "hardware_promises": ["microscaling_block_exponent", "widening_accumulate"],
-        "runtime_promises": ["command_buffer", "metrics"],
-        "legality": ["mx block-scale granularity == 32"],
-        "runtime": {"default_backend": "firesim"},
-        "compute_units": [
-            {
-                "name": "mx_pe",
-                "kind": "systolic",
-                "dtypes": ["mxfp4", "mxfp6", "mxfp8", "int8", "bf16"],
-                "ops": ["matmul"],
-                "accumulate": [
-                    {"in": "mxfp4", "weight": "mxfp4", "acc": "f32"},   # PE_MxMode mode0
-                    {"in": "mxfp6", "weight": "mxfp6", "acc": "f32"},   # mode4
-                    {"in": "mxfp8", "weight": "mxfp8", "acc": "f32"},   # mode8
-                    {"in": "int8", "weight": "int8", "acc": "i32"},
-                ],
-                "scaling": "block_e8m0",
-                # gemmini-mx requant (MxRequantizer + E8M0 exponent add + QuantLut) is target-specific,
-                # out-of-tree — Merlin only references it.
-                "requant": {"ref": "mx_gemmini.mx_requantizer"},
-            }
-        ],
-    }
+def _residual_path(name: str) -> Path:
+    """The residual side-input path for a target: ``<target_base>/contracts/residual.yaml``."""
+    return _target_base(name) / "contracts" / "residual.yaml"
 
 
-def radiance_manifest() -> dict[str, Any]:
-    """Radiance (Muon SIMT tensor core) — regular fp32/fp16/bf16, COMPOSING the gemmini-mx MX PE.
-
-    Demonstrates the composition the hardware allows: gemmini-mx is a compute unit that can stand
-    alone (see :func:`mx_gemmini_manifest`) OR be embedded inside a radiance cluster. Here the SIMT
-    cluster ``contains`` the ``mx_pe`` unit, so the target's effective capability is the union: regular
-    half/single floats on the SIMT lanes + the low-bit MX formats on the embedded PE. Carries a
-    ``plugin`` block for the out-of-tree discovery seam (the real dialect + lowering live in a
-    radiance-mlir repo; this artifact is the first materialization under out/artifacts/targets).
-    """
-    mx_pe = mx_gemmini_manifest()["compute_units"][0]   # reuse the exact gemmini-mx PE (composition)
-    return {
-        **_COMMON,
-        "name": "radiance",
-        "family": "simt_tensor",
-        "provenance": "chipyard generators/radiance (Muon SIMT): CVFPU FP32/FP16/BF16 + INT32 lanes "
-                      "(muon backend/fp/FPU.scala; muon_introspect fp_datapath); tensor-core matmul via "
-                      "nu.invoke. Embeds the gemmini-mx MX PE as a contained low-bit unit. Not RTL-certified.",
-        "features": ["simt", "cvfpu", "tensor_core", "microscaling"],
-        "capabilities": {"ops": ["matmul", "elementwise"], "simt": {"lanes_per_warp": 16}},
-        "memory_model": {"resident": True, "shared_memory": True},
-        "compiler_obligations": ["must_map_to_warps"],
-        "hardware_promises": ["ieee_float", "fp32_accumulate"],
-        "runtime_promises": ["metrics"],
-        "legality": [],
-        "runtime": {"default_backend": "simulator"},
-        "plugin": {
-            "dialect_module": "radiance_mlir.dialect",
-            "lowering_entrypoint": "radiance_mlir.lowering:lower",
-        },
-        "compute_units": [
-            {
-                "name": "simt_cluster",
-                "kind": "simt",
-                "dtypes": ["fp32", "fp16", "bf16"],
-                "ops": ["matmul", "elementwise"],
-                "accumulate": [
-                    {"in": "fp32", "weight": "fp32", "acc": "f32"},
-                    {"in": "fp16", "weight": "fp16", "acc": "f32"},
-                    {"in": "bf16", "weight": "bf16", "acc": "f32"},
-                ],
-                "scaling": "none",
-                "requant": {"ref": "none"},
-                "contains": ["mx_pe"],   # gemmini-mx embedded as a sub-unit
-            },
-            mx_pe,
-        ],
-    }
+def _load_residual(name: str) -> dict[str, Any]:
+    p = _residual_path(name)
+    if not p.is_file():
+        raise KeyError(f"no capability residual for {name!r} at {p} — drop a contracts/residual.yaml "
+                       "in the target package (merlin.targetgen.capability_manifests).")
+    doc = yaml.safe_load(p.read_text(encoding="utf-8"))
+    if not isinstance(doc, dict):
+        raise ValueError(f"{p}: residual is not a mapping")
+    return doc
 
 
-def _atlas_residual() -> dict[str, Any]:
-    """The IRREDUCIBLE declared side-input for atlas — only what the CIRCT facts cannot (yet) ground.
-
-    Grounded FROM FACTS by :func:`derive_manifest`, so DELIBERATELY ABSENT here: ``endpoint_kind`` (the
-    14-bit ScalarDecoder opcode set is too wide for RoCC funct7 -> ``external_backend``), ``capabilities.mesh``
-    (the 32x32 array), and the ``encoding`` codes (the 42-entry legal opcode set). What remains is the
-    compute-unit datapath INTENT (fp8/bf16 dtypes + accumulate matrix + E8M0 scaling + requant ref) — NOT
-    yet RTL-grounded, pending mlc datapath discovery (the storage/accumulator dtypes are absent from this
-    ``facts.json`` schema) — plus the human prose (family/features/obligations/promises/runner/runtime)."""
-    return {
-        **_COMMON,
-        "name": "atlas",
-        "family": "tensor_resident",
-        "provenance": "endpoint_kind + capabilities.mesh + encoding codes are DERIVED from the pinned mlc "
-                      "CIRCT facts (a 42-entry ScalarDecoder decode of 14-bit opcodes — too wide for RoCC "
-                      "funct7 -> self-hosted ISA -> external_backend; a 32x32 discovered array -> mesh). The "
-                      "compute-unit datapath (inputFmt=E4M3 fp8 activation+weight; accumFmt=outputFmt=BF16, "
-                      "with an FP32Addition PE variant; E8M0 block scale via ScalingFactorRegFile) is DECLARED "
-                      "intent from the atlas-npu chipyard generator (MxuParams.scala) — NOT yet RTL-grounded "
-                      "(dtypes are absent from this facts.json schema; pending mlc datapath discovery). "
-                      "NOT RTL-certified.",
-        "features": ["systolic_array", "fp8_mxu", "microscaling", "bf16_accumulate"],
-        # The program oracle (targetgen.program_oracle) assembles the emitted kernel.S (`.word`/`.insn`)
-        # with STOCK LLVM (llvm-mc), lays out DRAM bytes via the model venv (``model_ext``, for fp8/bf16),
-        # and runs the target's mlc arc cosim — declared intent, not an RTL fact.
-        "runner": {"model_ext": "npu_model", "fourth_output_name": "kernel.S"},
-        "capabilities": {"ops": ["matmul"]},          # mesh comes from facts; ops is compute-unit intent
-        "memory_model": {"resident": True, "accumulators": True, "block_scale_memory": True},
-        "compiler_obligations": ["must_tile_to_mesh_shape", "must_supply_e8m0_block_scales"],
-        "hardware_promises": ["fp8_multiply", "bf16_accumulate"],
-        "runtime_promises": ["metrics"],
-        "legality": ["matmul tiles to the 32x32 mesh"],
-        "runtime": {"default_backend": "simulator"},
-        "compute_units": [
-            {
-                "name": "mxu",
-                "kind": "systolic",
-                "dtypes": ["fp8_e4m3", "bf16"],
-                "ops": ["matmul"],
-                "accumulate": [
-                    {"in": "fp8_e4m3", "weight": "fp8_e4m3", "acc": "bf16"},  # CustomFMA(default)/HardFloatFMA
-                    {"in": "fp8_e4m3", "weight": "fp8_e4m3", "acc": "f32"},   # FP32Addition PE variant
-                ],
-                "scaling": "block_e8m0",
-                "requant": {"ref": "atlas.e4m3_block_requant"},
-            }
-        ],
-    }
+def discovered_targets() -> list[str]:
+    """Every target that ships a capability residual (``artifacts/targets/*/contracts/residual.yaml``)
+    — the DISCOVERED manifest set that replaces the retired hardcoded name list. A new target appears
+    the moment it drops a residual; core needs no edit."""
+    root = _artifacts_dir() / "targets"
+    if not root.is_dir():
+        return []
+    return sorted(p.parent.parent.name for p in root.glob("*/contracts/residual.yaml"))
 
 
-def _load_atlas_facts() -> dict[str, Any]:
-    """The atlas CIRCT facts (mlc discovery) the mesh/endpoint/encoding are derived from — read via the
-    standard resolver (the purgeable ``rtl_introspect`` cache; regenerated by mlc discovery when absent).
-    atlas is a generated/out-of-tree target, so there is no in-tree pin."""
-    from .rtl import facts as _facts
-    return _facts.load_facts("atlas")
+def manifest_for(name: str) -> dict[str, Any]:
+    """Build a target's capability manifest the AGNOSTIC way: load its residual side-input, load RTL
+    facts when the residual marks ``facts_source: rtl`` (else none — an all-residual prototype), and run
+    :func:`derive_manifest`. This is the single path for EVERY target (atlas proved it); there is no
+    per-target builder or literal manifest dict in core."""
+    residual = _load_residual(name)
+    facts_source = residual.pop("facts_source", "none")
+    facts: dict[str, Any] = {}
+    if facts_source == "rtl":
+        from .rtl import facts as _facts   # lazy: pulls circt_introspect only when RTL facts are needed
+        facts = _facts.load_facts(name)    # regenerates from the RTL if the cache is cold (mlc)
+    return derive_manifest({"target": name}, facts, residual=residual)
 
 
-def atlas_manifest() -> dict[str, Any]:
-    """ATLAS NPU systolic MXU manifest — DERIVED via :func:`derive_manifest` from the mlc CIRCT facts +
-    the irreducible residual. ``endpoint_kind`` (``external_backend``), the 32x32 mesh, and the encoding
-    codes fall out of the facts (never hand-set per target); the residual carries only the datapath intent
-    + prose the facts cannot yet ground. This is the same generic path any target uses; the result is
-    materialized as an out-of-tree package (``write_oot_target``), discovered via ``MERLIN_TARGET_PATH`` —
-    no in-tree ``merlin/targets/atlas`` directory."""
-    descriptor = {"target": "atlas", "kind": "systolic", "family": "tensor_resident"}
-    return derive_manifest(descriptor, _load_atlas_facts(), residual=_atlas_residual())
-
-
-MANIFESTS = {"rvv": rvv_manifest, "mx_gemmini": mx_gemmini_manifest,
-             "radiance": radiance_manifest, "atlas": atlas_manifest}
+def __getattr__(attr: str):
+    """``MANIFESTS`` is DISCOVERED, not a literal: ``{name -> zero-arg builder}`` for every target that
+    ships a residual. Exposed as a module attribute (PEP 562) for the existing ``for name in
+    cm.MANIFESTS`` / ``cm.MANIFESTS[name]()`` / ``name in cm.MANIFESTS`` call sites."""
+    if attr == "MANIFESTS":
+        return {name: (lambda n=name: manifest_for(n)) for name in discovered_targets()}
+    raise AttributeError(f"module {__name__!r} has no attribute {attr!r}")
 
 
 def validate(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -240,19 +110,21 @@ def validate(manifest: dict[str, Any]) -> dict[str, Any]:
 
 
 def write(name: str, base: Path | None = None) -> Path:
-    """Write a manifest to ``<base or resolve(name).base>/contracts/target_contract.yaml``."""
-    manifest = validate(MANIFESTS[name]())
-    root = base if base is not None else _tr.resolve(name).base
+    """Write a target's derived manifest to ``<base or target_base(name)>/contracts/target_contract.yaml``."""
+    manifest = manifest_for(name)   # derive_manifest already schema-validated it
+    root = base if base is not None else _target_base(name)
     path = root / "contracts" / "target_contract.yaml"
     write_yaml(path, manifest, header=f"GENERATED capability manifest for {name} "
                                        "(merlin.targetgen.capability_manifests). Provenance-tagged; "
-                                       "requires_human_review. Regenerable.")
+                                       "requires_human_review. Regenerable from contracts/residual.yaml.")
     return path
 
 
 def write_all(base_root: Path | None = None) -> list[Path]:
-    """Write every registered manifest (all ``MANIFESTS`` entries). ``base_root`` overrides the per-target base dir."""
-    return [write(n, base=(base_root / n) if base_root is not None else None) for n in MANIFESTS]
+    """Write every DISCOVERED target's manifest (:func:`discovered_targets`). ``base_root`` overrides the
+    per-target base dir (each target lands under ``base_root/<name>/``)."""
+    return [write(n, base=(base_root / n) if base_root is not None else None)
+            for n in discovered_targets()]
 
 
 def dialect_plan_from_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -547,7 +419,7 @@ def write_oot_target(name: str, root: Path) -> Path:
     compute units / datatypes — the first materialization of the out-of-tree target repo (e.g. the
     radiance-mlir repo will host the real dialect + lowering the plugin block references).
     """
-    manifest = validate(MANIFESTS[name]())
+    manifest = manifest_for(name)   # derive_manifest already schema-validated it
     root = Path(root)
     write_yaml(root / "contracts" / "target_contract.yaml", manifest,
                header=f"GENERATED out-of-tree target manifest for {name} — plug in via MERLIN_TARGET_PATH.")

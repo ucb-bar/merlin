@@ -2,48 +2,16 @@
 
 Required fields: target, dialect_name, ops, types, lowering, tests.
 
-toy_npu -> the concrete ToyNPU dialect (res_pack/matmul/commit/evict). Real targets -> a
-skeleton with no asserted ops (ops are a human-review decision), flagged for review.
+A target that ships a committed reference plan (``merlin/targets/<t>/contracts/dialect_plan.yaml`` — the
+neutral toy_npu example, saturn, …) uses it verbatim (file existence, not a name). A contract that
+advertises the Merlin tensor-resident interface is GENERATED into a usable plan from its own op/type
+names. Everything else -> a skeleton with no asserted ops (ops are a human-review decision), flagged.
 """
 from __future__ import annotations
 
 from typing import Any
 
 from ..evidence.store import Evidence
-
-
-def _toy_npu() -> dict[str, Any]:
-    return {
-        "target": "toy_npu",
-        "dialect_name": "toynpu",
-        "ops": [
-            {"name": "res_pack", "summary": "pack + make RHS resident",
-             "source_interface": "interface.resident_pack"},
-            {"name": "matmul", "summary": "matmul vs resident tensor -> accumulator",
-             "source_interface": "interface.matmul"},
-            {"name": "commit", "summary": "apply epilogue + commit accumulator",
-             "source_interface": "interface.commit"},
-            {"name": "evict", "summary": "free resident storage",
-             "source_interface": "interface.resident_evict"},
-        ],
-        "types": [
-            {"name": "resident_tensor"},
-            {"name": "accumulator"},
-        ],
-        "lowering": [
-            {"from": "interface.resident_pack", "to": "toynpu.res_pack"},
-            {"from": "interface.matmul", "to": "toynpu.matmul"},
-            {"from": "interface.commit", "to": "toynpu.commit"},
-            {"from": "interface.resident_evict", "to": "toynpu.evict"},
-        ],
-        "tests": [
-            {"lit": "res_pack_roundtrip"},
-            {"lit": "matmul_commit_epilogue"},
-            {"lit": "evict_after_use"},
-        ],
-        "confidence": "high",
-        "requires_human_review": False,
-    }
 
 
 def _conservative(evidence: Evidence) -> dict[str, Any]:
@@ -124,12 +92,11 @@ def _generate(target_contract: dict[str, Any]) -> dict[str, Any]:
 
 
 def synthesize_dialect_plan(evidence: Evidence, target_contract: dict[str, Any]) -> dict[str, Any]:
-    """Return a dialect_plan dict for the contract's target: a committed curated plan wins; else a
-    tensor-resident contract is GENERATED into a usable plan; else a review-flagged skeleton."""
+    """Return a dialect_plan dict for the contract's target: a committed curated plan wins (the neutral
+    toy_npu example + saturn ship one); else a tensor-resident contract is GENERATED into a usable plan;
+    else a review-flagged skeleton. Keyed on file existence + contract features, never a target name."""
     name = target_contract.get("name")
-    if name == "toy_npu":
-        return _toy_npu()
-    curated = _curated(name)                 # committed reference plan (saturn, gemmini, ...) wins
+    curated = _curated(name)                 # committed reference plan (toy_npu, saturn, ...) wins
     if curated is not None:
         return curated
     if _is_tensor_resident(target_contract):

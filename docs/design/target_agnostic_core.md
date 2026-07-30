@@ -34,11 +34,15 @@ through those seams.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done (committed on this branch).
 
-- [ ] **T1 — Retire hardcoded capability manifests into `derive_manifest`.**
-  `capability_manifests.py` (+ `test_capability_manifests.py`, `pipeline.py:126`). Convert
-  `rvv/mx_gemmini/radiance` builders to `derive_manifest(descriptor, facts, residual=…)` as
-  `atlas_manifest` already does; move residuals to the target package. Accept: no per-target manifest
-  dict in core; `MANIFESTS` iterates discovered targets; existing tests pass.
+- [x] **T1 — Retire hardcoded capability manifests into `derive_manifest`.**
+  `capability_manifests.py` (+ `test_capability_manifests.py`). DONE: the per-target `rvv/mx_gemmini/
+  radiance/atlas` manifest dicts are gone; every manifest is built by `manifest_for(name)` =
+  `derive_manifest({"target":name}, facts, residual)` where the residual is a hand-owned
+  `out/artifacts/targets/<name>/contracts/residual.yaml` side-input (tracked via a `.gitignore`
+  negation). `MANIFESTS` is discovered (module `__getattr__` over `discovered_targets()`, scanning
+  those residuals); `write`/`write_all`/`write_oot_target` iterate discovery. atlas reproduces its
+  prior contract byte-identically; the prototypes reproduce theirs field-for-field + the inert
+  family-derived defaults the loader used to fill (asserted by `test_capability_manifests`).
 - [ ] **T2 — Remove `target="gemmini"` defaults and `_DEFAULT_BACKEND`.** RTL/check/capsule stack +
   `target_registry.py:55-60`. Make `target` a required arg; add `runtime.default_backend` to reference
   contracts; read it like the external path (`target_registry.py:157-159`). Accept: no `="gemmini"`
@@ -46,8 +50,17 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done (committed on this 
 - [ ] **T3 — Route the capsule_bench harness through the descriptor (24 files).** Replace hardcoded
   gemmini paths / `GemminiRocketConfig` with `_common.TARGET`/descriptor. NOTE: several files have
   concurrent uncommitted edits — coordinate before touching.
-- [ ] **T4 — Derive the synthesize plans from family/contract, not `if name==`.**
+- [x] **T4 — Derive the synthesize plans from family/contract, not `if name==`.**
   `synthesize/{llvm_extension_plan,runtime_adapter_plan,dialect_plan,target_contract,zephyr_plan}.py`.
+  DONE: the `if name=="toy_npu"/"saturn"` branches + `CURATED_TARGETS={"saturn"}` + the per-name LLVM
+  `_DEFAULTS` table are gone. The LLVM-fork posture rides `families.contract_endpoint_kind`
+  (vector/scalar->maybe-fork; command_buffer/inline_asm_insn/external_backend->no fork); the runtime-
+  adapter / zephyr concrete plans ride the contract's command-buffer tensor-resident features; the
+  dialect plan rides the generic `_curated` (file existence) + tensor-resident generator. The neutral
+  `toy_npu` example (`families.DEFAULT_EXAMPLE_TARGET`, the one sanctioned example — see T11) is the
+  FAMILY DEFAULT, selected via that single constant, not a hardware-name branch. saturn's former
+  bespoke `_saturn()` runtime-adapter plan is retired (untested; it now routes through the family
+  default). Regression: `test_synthesize_family_derivation`.
 - [ ] **T5 — `{target}`-parameterize the generic ABI contracts.**
   `merlin/contract/{mlir_oot_backend_contract,oracle_runner_contract}.yaml` + consumers.
 - [ ] **T6 — De-hardcode build_tools gates.**
@@ -76,10 +89,11 @@ harness/hardware/reference paths and need coordination or hardware to certify.
 
 ## Progress (branch `chore/target-agnostic-core`)
 
-Completed + verified (suite collects 1649 tests clean; targeted buckets green):
-- T8 (`compile_cli`), T12 drift fixes.
+Completed + verified (targeted buckets green):
+- T1 (`capability_manifests` -> residual-driven `manifest_for` + discovered `MANIFESTS`),
+  T4 (`synthesize/*` family/contract-derived, no `if name==`), T8 (`compile_cli`), T12 drift fixes.
 
-Intentionally deferred (NOT started as code): T1–T7, T9–T11. Each changes an emitted contract, a
+Intentionally deferred (NOT started as code): T2–T3, T5–T7, T9–T11. Each changes an emitted contract, a
 hardware/sim-certified path (the gemmini path must re-certify byte-for-byte), the concurrently-edited
 capsule_bench harness, or the reference-target eviction — none certifiable from a pure-Python
 environment. They are fully specified above for execution behind the real test/hardware harness in

@@ -24,6 +24,13 @@ from merlin.targetgen.compute_units import KINDS
 ENDPOINT_KINDS: tuple[str, ...] = ("inline_asm_insn", "upstream_target", "external_backend",
                                    "command_buffer")
 
+# The single NEUTRAL example target the onboarding synthesizers calibrate against (see design
+# target_agnostic_core T11: keep exactly one toy_npu example). It is NOT hardware overfit — it seeds the
+# FAMILY-DEFAULT plans (contract / runtime adapter / zephyr / llvm) that a brand-new target inherits
+# before its own contract + RTL facts refine them. Synthesizers key on THIS constant + the contract's
+# family/features/endpoint, never on a specific hardware name (gemmini/saturn/…).
+DEFAULT_EXAMPLE_TARGET = "toy_npu"
+
 
 @dataclass(frozen=True)
 class FamilyProfile:
@@ -72,3 +79,16 @@ def family_profile(kind: str) -> FamilyProfile:
 
 def known_kinds() -> tuple[str, ...]:
     return tuple(sorted(_PROFILES))
+
+
+def contract_endpoint_kind(contract: dict) -> str | None:
+    """The codegen endpoint the contract's PRIMARY compute-unit family selects, or ``None`` when the
+    contract declares no ``compute_units`` (the neutral reference examples / skeleton contracts). Keyed
+    on the compute-unit ``kind`` via :func:`family_profile` — never on a target name. Onboarding
+    synthesizers use it to route the fork/adapter posture by family instead of ``if name==``."""
+    from .compute_units import compute_units
+    from .target_experiment import _primary_kind
+    units = compute_units(contract)
+    if not units:
+        return None
+    return family_profile(_primary_kind(units)).endpoint_kind_default

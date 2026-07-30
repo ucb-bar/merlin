@@ -133,6 +133,11 @@ selfcheck_out/
 !/out/artifacts/targets/gemmini/hand_v0/**
 !/out/artifacts/targets/saturn_vec/hand_v0/**
 !/out/artifacts/targets/muon/reference_v0/**
+# hand-owned capability RESIDUAL side-inputs (the intent+prose the RTL facts can't ground) that
+# capability_manifests.manifest_for derives each target's contract from — the source of truth for the
+# discovered manifest set (rvv/mx_gemmini/radiance/atlas). Tracked; the generated target_contract.yaml
+# beside them stays ignored.
+!/out/artifacts/targets/*/contracts/residual.yaml
 # never track compiled OOT build trees or bytecode even under a negated baseline (these win: last match)
 /out/artifacts/targets/**/mlir_oot/build/
 /out/artifacts/targets/**/__pycache__/

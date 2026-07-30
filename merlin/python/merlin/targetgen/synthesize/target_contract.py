@@ -1,12 +1,15 @@
 """Synthesize a target_contract (validates against target_contract.schema.yaml).
 
-toy_npu -> concrete, consistent with merlin/targets/toy_npu/contracts/target_contract.yaml.
-Real targets -> conservative skeleton seeded from detected concepts, flagged for review.
+The neutral ``toy_npu`` example (``families.DEFAULT_EXAMPLE_TARGET``) -> the concrete family-default
+seed contract. Any target that ships a curated committed contract (file existence, not a name set) ->
+that contract. Everything else -> a conservative skeleton seeded from detected concepts, flagged for
+review. No hardware-name branch anywhere.
 """
 from __future__ import annotations
 
 from typing import Any
 
+from .. import families as _families
 from ..evidence.store import Evidence
 
 # Required by target_contract.schema.yaml:
@@ -14,9 +17,11 @@ from ..evidence.store import Evidence
 #   hardware_promises, runtime_promises, legality
 
 
-def _toy_npu() -> dict[str, Any]:
+def _example_default() -> dict[str, Any]:
+    """The concrete family-default seed contract, materialized under the neutral ``toy_npu`` example
+    name. This is the shape a brand-new target inherits before its own contract refines it."""
     return {
-        "name": "toy_npu",
+        "name": _families.DEFAULT_EXAMPLE_TARGET,
         "version": 0.1,
         # Spec-mandated abstraction surface for toy_npu (features/ops/types/runtime).
         "features": [
@@ -103,16 +108,13 @@ def _curated(target_name: str) -> dict[str, Any] | None:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-# Targets with curated in-tree reference contracts (everything else is conservative).
-CURATED_TARGETS = {"saturn"}
-
-
 def synthesize_target_contract(evidence: Evidence, target_name: str) -> dict[str, Any]:
-    """Return a target_contract dict for ``target_name``."""
-    if target_name == "toy_npu":
-        return _toy_npu()
-    if target_name in CURATED_TARGETS:
-        curated = _curated(target_name)
-        if curated is not None:
-            return curated
+    """Return a target_contract dict for ``target_name``: the neutral example -> the family-default
+    seed; a target that ships a curated committed contract (file existence) -> that contract; else a
+    conservative skeleton seeded from detected concepts. No hardware-name branch."""
+    if target_name == _families.DEFAULT_EXAMPLE_TARGET:
+        return _example_default()
+    curated = _curated(target_name)          # committed reference contract (saturn, …); by file, not name
+    if curated is not None:
+        return curated
     return _conservative(evidence)

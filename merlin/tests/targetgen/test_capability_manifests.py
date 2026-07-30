@@ -1,14 +1,69 @@
-"""Tests for the rvv + mx_gemmini capability manifests and cross-target routing."""
+"""Tests for the target-agnostic capability-manifest deriver (rvv/mx_gemmini/radiance/atlas) + routing.
+
+There are NO per-target manifest dicts in core: each manifest is derived by ``manifest_for(name)`` from
+the target's ``contracts/residual.yaml`` side-input + family defaults (+ RTL facts for ``atlas``). These
+tests pin that the derive path reproduces the residual field-for-field and that ``MANIFESTS`` /
+``write_all`` iterate the DISCOVERED targets, not a hardcoded list.
+"""
 from __future__ import annotations
 
 from merlin.targetgen import capability_manifests as cm
 from merlin.targetgen import compute_units as cu
+from merlin.targetgen import families as fam
 from merlin.targetgen import routing as rt
+from merlin.targetgen.target_experiment import _primary_kind
 
 
 def test_manifests_are_schema_valid():
     for name in cm.MANIFESTS:
         cm.validate(cm.MANIFESTS[name]())   # raises on any problem
+
+
+def test_manifests_are_discovered_not_a_hardcoded_list():
+    # MANIFESTS is derived from the residuals shipped in the target packages, not a literal name map.
+    assert sorted(cm.MANIFESTS) == cm.discovered_targets()
+    assert {"rvv", "mx_gemmini", "radiance", "atlas"} <= set(cm.discovered_targets())
+
+
+def test_prototype_manifests_reproduce_residual_plus_inert_family_defaults():
+    """OV1 regression: rvv/mx_gemmini/radiance are all-residual prototypes (no RTL facts). The derived
+    manifest must reproduce the residual field-for-field and add ONLY the inert, family-derived fields
+    the loader used to default (endpoint_kind + runner.suite + runtime.backends) — proving the retired
+    hardcoded dicts are byte-reproduced from the residual side-input."""
+    for name in ("rvv", "mx_gemmini", "radiance"):
+        residual = cm._load_residual(name)
+        assert "facts_source" not in residual                # a prototype grounds nothing from RTL
+        m = cm.manifest_for(name)
+        # every residual field is reproduced verbatim (runtime only GAINS an inert 'backends' key)
+        for key, val in residual.items():
+            if key == "runtime":
+                assert m[key] == {**val, "backends": ["simulator"]}
+            else:
+                assert m[key] == val, f"{name}.{key} drifted from the residual"
+        # the only NEW top-level keys are the family-derived defaults, matching the compute-unit kind
+        assert set(m) - set(residual) == {"endpoint_kind", "runner"}
+        prof = fam.family_profile(_primary_kind(cu.compute_units(m)))
+        assert m["endpoint_kind"] == prof.endpoint_kind_default
+        assert m["runner"]["suite"] == f"{name}-capsule-bench"
+
+
+def test_atlas_manifest_reproduced_from_residual_and_facts():
+    """OV1 regression for the facts-grounded target: atlas ships ``facts_source: rtl`` in its residual,
+    so ``manifest_for`` layers the RTL facts (mesh/encoding/endpoint) onto the intent+prose residual —
+    the same derive path, no hand-authored contract, no per-target builder."""
+    m = cm.manifest_for("atlas")
+    residual = cm._load_residual("atlas")
+    assert residual.pop("facts_source") == "rtl"
+    # residual intent/prose is preserved verbatim (facts only AUGMENT mesh/encoding/capacities)
+    for key in ("name", "family", "features", "provenance", "compute_units"):
+        assert m[key] == residual[key], f"atlas.{key} drifted from the residual"
+    # runner intent (model_ext/fourth_output_name) is preserved; only the inert suite default is added
+    assert {k: m["runner"][k] for k in residual["runner"]} == residual["runner"]
+    assert m["runner"]["suite"] == "atlas-capsule-bench"
+    # facts-grounded fields the residual deliberately omits
+    assert m["endpoint_kind"] == "external_backend"              # 14-bit decode -> self-hosted ISA
+    assert m["capabilities"]["mesh"] == {"rows": 32, "cols": 32}  # from the facts mesh array
+    assert len(m["encoding"]["legal_funct"]) == 42               # from the decode table
 
 
 def _units(name):
@@ -64,13 +119,13 @@ def test_write_and_route_target(tmp_path):
 
 def test_radiance_composes_mx_gemmini():
     # radiance's SIMT cluster CONTAINS the gemmini-mx PE: effective dtypes = regular floats + MX.
-    units = cu.compute_units(cm.radiance_manifest())
+    units = cu.compute_units(cm.manifest_for("radiance"))
     simt = next(u for u in units if u.name == "simt_cluster")
     eff = cu.effective(simt, units)
     assert {"fp16", "bf16", "fp32"} <= set(eff.dtypes)          # SIMT regular floats
     assert {"mxfp4", "mxfp6", "mxfp8"} <= set(eff.dtypes)       # via the contained gemmini-mx PE
     # the contained unit is the exact gemmini-mx PE (standalone OR embedded)
-    assert cm.mx_gemmini_manifest()["compute_units"][0]["name"] == "mx_pe"
+    assert cm.manifest_for("mx_gemmini")["compute_units"][0]["name"] == "mx_pe"
 
 
 def test_radiance_oot_package_discovers_and_routes(tmp_path, monkeypatch):
@@ -92,7 +147,7 @@ def test_radiance_oot_package_discovers_and_routes(tmp_path, monkeypatch):
 
 
 def test_dialect_plan_derived_from_units():
-    plan = cm.dialect_plan_from_manifest(cm.radiance_manifest())
+    plan = cm.dialect_plan_from_manifest(cm.manifest_for("radiance"))
     assert plan["target"] == "radiance" and plan["dialect_name"] == "radiance"
     assert {t["name"] for t in plan["types"]} == {"simt_cluster_tensor", "mx_pe_tensor"}
     assert {o["name"] for o in plan["ops"]} >= {"matmul", "elementwise"}

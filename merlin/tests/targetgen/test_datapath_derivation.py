@@ -46,13 +46,13 @@ def test_gemmini_datapaths_derived_match_the_tracked_contract():
 
 
 def test_atlas_datapaths_derived_match_the_declared_manifest():
-    from merlin.targetgen.capability_manifests import atlas_manifest
+    from merlin.targetgen.capability_manifests import manifest_for
     kind, dt = _derive("atlas")
-    # the fp8-e4m3 / bf16 / E8M0 that atlas_manifest() declares are recovered structurally from the MXU RTL
+    # the fp8-e4m3 / bf16 / E8M0 the atlas manifest declares are recovered structurally from the MXU RTL
     assert kind == "mac_mesh"
     assert dt.get("operand") == "fp8_e4m3"
     assert dt.get("accumulator") == "bf16"
     assert dt.get("scale") == "E8M0"
     # the derived operand dtype is exactly the declared compute-unit dtype (declared == derived)
-    declared = atlas_manifest()["compute_units"][0]["dtypes"]
+    declared = manifest_for("atlas")["compute_units"][0]["dtypes"]
     assert "fp8_e4m3" in declared and dt["operand"] in declared
