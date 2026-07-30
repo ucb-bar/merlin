@@ -17,6 +17,7 @@ The per-instance modules keep their current behavior; collapsing their copy-past
 from __future__ import annotations
 
 import importlib
+import pkgutil
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Protocol, runtime_checkable
@@ -45,17 +46,19 @@ class BackendInfo:
     module: str                  # dotted import path, loaded lazily via get_backend()
 
 
-# The registry lives here (central) rather than as a constant edited into each backend module, so a
-# new backend is one line and the class taxonomy is readable in one place.
+# The registry is populated two ways so the CORE never hardcodes a shipped-accelerator name:
+#  * the generic ISA-class instances (RVV/host CPU kernels, whole-model runners, matmul-route
+#    attribution) are seeded here directly — their identifiers are ISA-class/tool names, not silicon
+#    instances, so naming them keeps the core target-agnostic;
+#  * the silicon-specific reference instances (the NPU/GPU accelerator backends) SELF-REGISTER from
+#    their own module via ``register(...)`` and are discovered lazily by ``_ensure_discovered()`` — so
+#    a new accelerator backend is one ``register`` line in ITS OWN module (or an out-of-tree package
+#    reached via ``MERLIN_TARGET_PATH``), and the core carries no name -> module map for it.
 _REGISTRY: dict[str, BackendInfo] = {
     "spike":        BackendInfo("spike", TargetClass.CPU, BackendKind.KERNEL,
                                 "merlin.runtime.backends.spike"),
     "saturn_vec":   BackendInfo("saturn_vec", TargetClass.CPU, BackendKind.KERNEL,
                                 "merlin.runtime.backends.saturn_vec"),
-    "gemmini":      BackendInfo("gemmini", TargetClass.NPU, BackendKind.KERNEL,
-                                "merlin.runtime.backends.gemmini"),
-    "muon":         BackendInfo("muon", TargetClass.GPU, BackendKind.KERNEL,
-                                "merlin.runtime.backends.muon"),
     "spike_model":  BackendInfo("spike_model", TargetClass.CPU, BackendKind.WHOLE_MODEL,
                                 "merlin.runtime.backends.spike_model"),
     "zephyr_model": BackendInfo("zephyr_model", TargetClass.CPU, BackendKind.WHOLE_MODEL,
@@ -72,6 +75,37 @@ _REGISTRY: dict[str, BackendInfo] = {
                                   "merlin.runtime.backends.xnnpack_host"),
 }
 
+# Names seeded above (the generic ISA-class instances). Discovery imports every OTHER submodule of this
+# package so any accelerator backend that self-registers is picked up — without the core naming it.
+_SEEDED: frozenset[str] = frozenset(_REGISTRY)
+_discovered = False
+
+
+def register(info: BackendInfo) -> None:
+    """Register a backend (idempotent per name). A reference accelerator backend calls this from its
+    OWN module at import time, so the core never carries a name -> module map for a specific silicon."""
+    _REGISTRY[info.name] = info
+
+
+def _ensure_discovered() -> None:
+    """Import the not-yet-seeded submodules of this package so their ``register(...)`` calls run. Guarded
+    per module: a backend whose optional deps are missing simply fails to register instead of breaking
+    the registry. Runs at most once (idempotent), on first registry query — never at ``import base``,
+    so importing the registry does NOT eagerly pull in the accelerator backends."""
+    global _discovered
+    if _discovered:
+        return
+    _discovered = True  # set first: a backend importing base during its own load must not re-enter
+    pkg = importlib.import_module(__name__.rsplit(".", 1)[0])
+    for mod in pkgutil.iter_modules(pkg.__path__):
+        leaf = mod.name
+        if leaf.startswith("_") or leaf == __name__.rsplit(".", 1)[1] or leaf in _SEEDED:
+            continue
+        try:
+            importlib.import_module(f"{pkg.__name__}.{leaf}")
+        except Exception:  # noqa: BLE001 — a backend with missing optional deps just does not register
+            continue
+
 
 @runtime_checkable
 class Backend(Protocol):
@@ -85,23 +119,28 @@ class Backend(Protocol):
 
 
 def list_backends() -> list[str]:
+    _ensure_discovered()
     return sorted(_REGISTRY)
 
 
 def info(name: str) -> BackendInfo:
+    _ensure_discovered()
     return _REGISTRY[name]
 
 
 def class_of(name: str) -> TargetClass:
+    _ensure_discovered()
     return _REGISTRY[name].target_class
 
 
 def backends_of_class(target_class: TargetClass) -> list[str]:
+    _ensure_discovered()
     return sorted(n for n, b in _REGISTRY.items() if b.target_class == target_class)
 
 
 def get_backend(name: str):
     """Lazily import + return the backend module for ``name`` (raises KeyError if unregistered)."""
+    _ensure_discovered()
     return importlib.import_module(_REGISTRY[name].module)
 
 

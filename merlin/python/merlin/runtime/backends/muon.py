@@ -39,6 +39,12 @@ from typing import Any
 from ...common.paths import env as _env
 from ..metrics import COMMON_METRIC_NAMES
 from ..reference import outputs_match, reference_outputs
+from .base import BackendInfo, BackendKind, TargetClass, register
+
+# Self-register this reference GPU/SIMT backend with the class registry (base._REGISTRY). Discovery in
+# base._ensure_discovered imports this module to run the call, so the core carries no name -> module
+# map for the accelerator; the identity lives with the backend that owns it.
+register(BackendInfo("muon", TargetClass.GPU, BackendKind.KERNEL, __name__))
 
 DEFAULT_CHIPYARD = "/path/to/chipyard"
 DEFAULT_RADIANCE_KERNELS = "/path/to/radiance-kernels"
