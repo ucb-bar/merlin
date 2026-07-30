@@ -34,7 +34,6 @@ build_tools/scripts/setup_atlas.py                           # atlas external-re
 build_tools/scripts/probe_gemmini_oracle.py                  # gemmini oracle probe script (reference target)
 
 # ---------------------------------------------------------------- reference-target REGISTRY / catalog (the in-tree target catalog OV11 replaces with MERLIN_TARGET_PATH discovery)
-merlin/python/merlin/runtime/backends/base.py                # backend registry naming the built-in gemmini/muon backends
 merlin/python/merlin/xdsl_dialects/lowering/runtime_lowering.py # saturn.* op->opcode map for the reference saturn dialect
 merlin/python/merlin/xdsl_dialects/lowering/target_lowering.py  # built-in saturn TargetSpec registration
 merlin/python/merlin/kernels/markers.py                      # ISA-family motif table (also regex-allowlisted); names reference families
