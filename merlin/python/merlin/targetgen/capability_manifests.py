@@ -251,7 +251,7 @@ def write(name: str, base: Path | None = None) -> Path:
 
 
 def write_all(base_root: Path | None = None) -> list[Path]:
-    """Write all manifests (rvv, mx_gemmini, radiance). ``base_root`` overrides the per-target base dir."""
+    """Write every registered manifest (all ``MANIFESTS`` entries). ``base_root`` overrides the per-target base dir."""
     return [write(n, base=(base_root / n) if base_root is not None else None) for n in MANIFESTS]
 
 
