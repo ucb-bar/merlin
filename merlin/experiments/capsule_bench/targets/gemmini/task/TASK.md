@@ -10,7 +10,9 @@ reference behavior. You will be measured from start to finish; you cannot ask qu
 ```
 submission/
   manifest.yaml          # artifact_type: mlir_oot_target_backend; target: gemmini; language: cpp;
-                         # integrity_exempt: false; a build block; and the 4 command argv templates
+                         # authoring: {mode: agent_generated_from_rtl_facts} (REQUIRED — provenance, an
+                         # object with a `mode` enum, NOT a bare string); integrity_exempt: false;
+                         # a build block; and the 4 command argv templates
   mlir_oot/              # your OOT MLIR sources (input dialect + gemmini target dialect + 3 passes
                          # + a `gemmini-opt` tool); builds to mlir_oot/build/bin/gemmini-opt
   REPORT.md              # what you built + honest scope/limitations

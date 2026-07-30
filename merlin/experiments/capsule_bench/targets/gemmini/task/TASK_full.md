@@ -31,7 +31,9 @@ the contract + the public Gemmini header — nothing is restated here. Each caps
 ```
 submission/
   manifest.yaml          # artifact_type: mlir_oot_target_backend; target: gemmini; language: cpp|python;
-                         # integrity_exempt: false; (cpp) a build block; the 4 command argv templates
+                         # authoring: {mode: agent_generated_from_rtl_facts} (REQUIRED — provenance, an
+                         # object with a `mode` enum, NOT a bare string); integrity_exempt: false;
+                         # (cpp) a build block; the 4 command argv templates
   mlir_oot/              # your OOT sources: input dialect + gemmini target dialect + passes + gemmini-opt
   REPORT.md              # what you built + honest scope/limitations + final status line (see end)
   docs/public_facts_used.md   # every Gemmini-specific fact you used, with its source
