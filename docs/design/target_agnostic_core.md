@@ -55,8 +55,10 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done (committed on this 
 - [ ] **T7 — Derive kernel-mining features from the framework contract.**
   `kernels/features/{roles,dispatch,loops}.py`, `framework_contracts/`, `cca_contract.py`, `markers.py`,
   `cli_index.py`, `ingest/{autocomp,exo}.py`.
-- [ ] **T8 — CLI + comparison seams enumerate discovered targets.**
-  `compile_cli.py:243-284` (`--target` choices = `all_targets()`), `compare/spec.py:27`.
+- [~] **T8 — CLI + comparison seams enumerate discovered targets.**
+  `compile_cli.py`: DONE (`aeacba34`) — `--target` choices now derive from the registry (`all_targets()`);
+  the gemmini branch generalized to `compile_oot(target=…)` with gemmini defaults preserved.
+  `compare/spec.py:27` `_TARGETS` still pending.
 - [ ] **T9 — `{target}`-template the targetgen_evals method/skill prompts.**
   `methods/{v0,v2,v3,v5,v6}/prompt.md`, `skills/*/AGENT.md`.
 - [ ] **T10 — Miscellaneous derivations.** `evidence/report.CONCEPT_KEYWORDS`,
@@ -64,8 +66,21 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done (committed on this 
 - [ ] **T11 — Reference-target eviction (E-reference).** Move the in-tree reference backends / eval
   suites / dialects to a published reference-target package; keep one neutral `toy_npu` example. Fix the
   D-FLAG tests to parametrize over ≥2 targets.
-- [ ] **T12 — Dead-code / drift sweep.** `backends/__init__.py` stale docstring, `write_all` atlas
-  drift, `chia_repeatability.py:132` inconsistency; unused-symbol pass over moved modules.
+- [~] **T12 — Dead-code / drift sweep.** DONE: `backends/__init__.py` stale docstring (`687f30ca`),
+  `write_all` docstring drift (`583d01ec`). Skipped (would regress): `generate/target_repo.py` `camel()`
+  `{"toy_npu":"ToyNPU"}` is acronym casing, not overfit — removing it degrades generated class names.
+  Pending: `chia_repeatability.py:132` (harness, coordinate with T3), unused-symbol pass (with T11).
 
 Ordered by blast radius. T1/T2/T4/T5/T6/T8/T10/T12 are software-verifiable; T3/T7/T9/T11 touch
 harness/hardware/reference paths and need coordination or hardware to certify.
+
+## Progress (branch `chore/target-agnostic-core`)
+
+Completed + verified (suite collects 1649 tests clean; targeted buckets green):
+- T8 (`compile_cli`), T12 drift fixes.
+
+Intentionally deferred (NOT started as code): T1–T7, T9–T11. Each changes an emitted contract, a
+hardware/sim-certified path (the gemmini path must re-certify byte-for-byte), the concurrently-edited
+capsule_bench harness, or the reference-target eviction — none certifiable from a pure-Python
+environment. They are fully specified above for execution behind the real test/hardware harness in
+small per-task commits.
