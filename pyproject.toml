@@ -34,6 +34,11 @@ kernels-ast = ["tree-sitter", "tree-sitter-c"]
 kernels-exo = ["exo-lang"]
 kernels-parquet = ["pyarrow"]
 kernels-plots = ["matplotlib"]
+# Agentic-experiment telemetry sink: the sibling `aet` eval-harness (token/cost/trajectory store,
+# `aet spend`/`aet plot`). Optional + imported lazily by merlin.targetgen.aet_bridge behind
+# MERLIN_AET_SINK=1, so default runs never require it. Resolved from the local sibling checkout via
+# [tool.uv.sources] below (not on PyPI), the same out-of-band model as the other in-tree tooling.
+telemetry = ["aet"]
 
 [project.scripts]
 kernel-index = "merlin.kernels.cli_index:main"
@@ -104,4 +109,8 @@ docstring-code-format = true
 # Default dev environment includes the dev tools and the xdsl prototyping plane.
 # Sync with:  uv sync --all-extras
 default-groups = []
+
+[tool.uv.sources]
+# `aet` (the telemetry extra) is a local sibling checkout, installed editable — not published.
+aet = { path = "../aet", editable = true }
 

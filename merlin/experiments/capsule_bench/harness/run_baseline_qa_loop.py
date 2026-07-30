@@ -1169,6 +1169,15 @@ def main(argv: list[str] | None = None) -> int:
          "n_rounds": len(rounds_summary), "wall_seconds": wall, "finalize": finalize,
          "timing": timing}, sort_keys=False))
 
+    # Additionally sink this run's agentic telemetry into the shared aet store (opt-in,
+    # MERLIN_AET_SINK=1) so it shows up in `aet spend` / `aet plot` across experiments. This is
+    # purely additive — the existing experiment_tokens cost yaml above stays authoritative.
+    from merlin.targetgen import aet_bridge as AB
+    if AB.aet_sink_enabled():
+        AB.emit_to_aet(run_dir=run_dir, run_id=a.run_id, method=arm, model=a.model,
+                       target=_te().target, suite="capsule-bench",
+                       transcript_paths=[combined])
+
     # capture the final submission and run the OFFICIAL public+hidden record
     wsub = ws / "submission"
     if wsub.exists():
