@@ -168,8 +168,21 @@ def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callab
     explicit ``""`` (arc-only, e.g. atlas) is honored as-is and NOT re-resolved."""
     endpoint_kind, model_ext = _endpoint_of(target)
     if endpoint_kind == "external_backend":
+        # Self-hosted-ISA program oracle. ``model_ext`` (the model project that lays out operands + owns
+        # the fp8/bf16 dtypes) is REQUIRED from the contract — no ``npu_model`` literal fallback; a target
+        # that declares none cannot be program-graded, so we fail closed with an actionable message rather
+        # than silently defaulting to one target's model. The DERIVED LADDER here is exactly what mlc
+        # provides for an assembled program: the cosim program-runner tier (L3), resolved by target via
+        # ``mlc.discover.cosim_backend`` inside program_oracle — a single cycle-exact tier. mlc's
+        # functional / cycle-approx models (arc_functional / collapsed / access_counter) operate on
+        # COMMAND BUFFERS, not assembled IMEM programs, so they are not applicable here (absent, not
+        # fabricated); the independent golden (the model's own refmodel) is the functional cross-check.
+        if not model_ext:
+            raise ValueError(
+                f"external_backend target {target!r}: contract declares no runner.model_ext — the program "
+                f"oracle needs the model project to lay out operands; set runner.model_ext in the contract")
         from .program_oracle import program_oracle_adapter
-        return {"L3": program_oracle_adapter(target, model_ext=model_ext or "npu_model")}
+        return {"L3": program_oracle_adapter(target, model_ext=model_ext)}
     if sim_via is None:                                              # unspecified -> derive from contract
         sim_via = _bespoke_sim_via(target)
     adapters: dict[str, Callable] = {"L3": mlc_arc_adapter(target)}   # arc default (RTL-derived)

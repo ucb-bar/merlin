@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import copy
 
+import pytest
+
 from merlin.common.paths import repo_root
 from merlin.targetgen import capsule_golden as CG
 from merlin.targetgen import capsule_runner as CR
@@ -175,3 +177,13 @@ def test_atlas_oracle_routes_to_program_oracle():
     ad = CR.oracle_adapters("atlas")
     assert set(ad) == {"L3"}
     assert ad["L3"].__module__ == "merlin.targetgen.program_oracle"
+
+
+def test_external_backend_requires_model_ext_no_target_default(monkeypatch):
+    """oracle_adapters no longer defaults an external_backend's model_ext to a target literal
+    ('npu_model'): a contract that declares none FAILS CLOSED with an actionable error, rather than
+    silently binding one target's model project. The cosim backend itself is DERIVED by target from mlc
+    (mlc.discover.cosim_backend), so no cosim-module literal lives in merlin either."""
+    monkeypatch.setattr(CR, "_endpoint_of", lambda t: ("external_backend", None))
+    with pytest.raises(ValueError, match="model_ext"):
+        CR.oracle_adapters("fake_external_target")

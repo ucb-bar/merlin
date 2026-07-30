@@ -50,7 +50,7 @@ merlin/python/merlin/targetgen/rocc_decode.py                # gemmini manifest/
 merlin/python/merlin/targetgen/rtl_checks.py                 # load_default_facts prefers gemmini reference facts
 merlin/python/merlin/targetgen/rtl/introspect.py             # legacy chipyard-grep gemmini fallback introspector
 merlin/python/merlin/targetgen/rtl/gen_iface_irdl.py         # gemmini reference ODS include path (dev tool)
-merlin/python/merlin/targetgen/capsule_runner.py             # gemmini-capsule-bench SUITE identity + npu_model model_ext fallback
+merlin/python/merlin/targetgen/capsule_runner.py             # gemmini-capsule-bench SUITE identity (npu_model model_ext fallback removed — model_ext now required from the contract)
 merlin/python/merlin/targetgen/capsule_grade.py              # gemmini-mlir-oot-capsule task label in the score dict
 merlin/python/merlin/targetgen/baremetalc_corroborate.py     # gemmini bareMetalC corroboration report path (reference tool)
 merlin/python/merlin/kernels/bench_ceiling.py                # saturn-only kernel-ceiling bench (only saturn corpus wired)

@@ -27,8 +27,12 @@ venv / cosim is absent (so ``not_run_is_not_pass`` fails closed, never a false g
 from __future__ import annotations
 
 import base64
+import importlib
+import importlib.util
 import json
 import subprocess
+import sys
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
 
@@ -37,6 +41,27 @@ from merlin.common.paths import ext_path
 
 class OracleUnavailable(RuntimeError):
     """Raised when the program oracle cannot run (model venv / cosim / arc artifacts absent)."""
+
+
+@contextmanager
+def _mlc_importable(mlc_dir):
+    """Make ``mlc`` importable for the duration of THIS call ONLY, by inserting ``mlc_dir`` on
+    ``sys.path`` iff ``mlc`` is not already importable (restored on exit). Deliberately NOT a global /
+    module-level insert: a permanent insert flips ``mlc_bridge.mlc_available()`` True process-wide and
+    un-skips the heavy mlc-gated tests (a known regression). Kept local to the oracle call so a machine
+    with mlc as an external checkout (not pip-installed) can still run the program cosim."""
+    added = None
+    if mlc_dir is not None and importlib.util.find_spec("mlc") is None:
+        added = str(mlc_dir)
+        sys.path.insert(0, added)
+    try:
+        yield
+    finally:
+        if added is not None:
+            try:
+                sys.path.remove(added)
+            except ValueError:
+                pass
 
 
 _EMIT_HELPER = Path(__file__).resolve().parent / "oracle_helpers" / "npu_emit.py"
@@ -173,16 +198,26 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
         preload = _preload_from_cb(cb)
 
     modeling = mlc_bridge.mlc_dir()
-    # mlc.backends.__init__ eagerly loads the gemmini cache cwd-relative — run inside mlc's cwd.
-    with mlc_bridge._mlc_cwd():
+    # mlc.backends.__init__ eagerly loads the gemmini cache cwd-relative — run inside mlc's cwd; keep mlc
+    # importable for just this call (context-managed, never a global sys.path insert — see _mlc_importable).
+    with mlc_bridge._mlc_cwd(), _mlc_importable(modeling):
         try:
-            from mlc.discover import fingerprint
-            from mlc.backends import cosim_atlas
             from mlc.backends.cosim_core import large_stack_call
+            from mlc.discover import fingerprint
+            # The cosim backend module is DERIVED from the target by mlc's own registry (atlas ->
+            # cosim_atlas, ...), so no target-cosim literal lives in merlin. A target with no registered
+            # program cosim (or a backend that isn't a self-hosted-ISA program runner) is honestly
+            # unavailable, never a fabricated fallback.
+            backend_name = fingerprint.cosim_backend(target)
+            backend = importlib.import_module(f"mlc.backends.{backend_name}")
         except Exception as e:  # noqa: BLE001
             raise OracleUnavailable(f"mlc program-cosim import failed: {type(e).__name__}: {e}")
+        if not hasattr(backend, "run_program"):
+            raise OracleUnavailable(
+                f"mlc backend mlc.backends.{backend_name} for target {target!r} exposes no run_program "
+                f"(not a self-hosted-ISA program cosim)")
         ap = fingerprint.artifact_paths(target, base=modeling)
-        res = large_stack_call(cosim_atlas.run_program, str(ap["so"]), str(ap["man"]),
+        res = large_stack_call(backend.run_program, str(ap["so"]), str(ap["man"]),
                                words, preload=preload, max_cycles=max_cycles)
     if not res.halted:
         raise OracleUnavailable(f"{target} program did not halt within {max_cycles} cycles")
