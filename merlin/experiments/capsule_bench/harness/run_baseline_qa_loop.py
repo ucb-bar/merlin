@@ -99,6 +99,7 @@ def _verilator_per_capsule_timeout() -> int:
     except Exception:
         return 1200
 _EXPERIMENT = "full"    # set in main(): 'full' (abc1) or 'realistic' (abc2, whole-repo + self-check)
+_ARM = ""               # set in main(): the arm being run (enforces the per-arm language mandate)
 READY_MARKER = "READY_FOR_BARRIER"  # realistic: agent drops submission/<this> to self-declare done
 # Merlin-arm-only docs staged into the workspace alongside the (shared) graded task.
 MERLIN_WS_DOCS = ("TASK_ADDENDUM.md", "ALLOWED_MERLIN_TOOLS.md", "MERLIN_PROVENANCE_TEMPLATE.md")
@@ -586,16 +587,35 @@ def _stop_selfcheck_broker(ws: Path, brokers) -> None:
             b.kill()
 
 
+def _language_ok(submission_dir: Path) -> tuple[bool, str]:
+    """Enforce the current arm's language mandate on the emitted submission (merlin arms => xDSL/Python,
+    not a hand C++ backend). Delegates to tooling_readiness.submission_language_ok; degrades to OK if the
+    check is unavailable so it never spuriously blocks a run."""
+    try:
+        import tooling_readiness
+        return tooling_readiness.submission_language_ok(submission_dir, _ARM)
+    except Exception:  # noqa: BLE001 — never let the compliance check itself break grading
+        return True, "language check unavailable"
+
+
 def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int) -> dict:
     """Copy the agent's submission to an operator-only scratch, grade it, return + persist the
     redacted verdict (into ws/qa/verdict.json for the next round, and archived per round)."""
     cand = run_dir / "_qa_work" / f"cand_{rnd:02d}" / "submission"
     if cand.exists():
         shutil.rmtree(cand.parent)
+    _lok, _lwhy = _language_ok(ws / "submission")
     if not (ws / "submission" / "manifest.yaml").exists():
         verdict = {"all_pass": False, "n_passed": 0, "n_capsules": 4,
                    "package_failure": {"plane": "schema", "detail": "no submission/manifest.yaml"},
                    "per_capsule": [], "note": "write submission/manifest.yaml first."}
+    elif not _lok:
+        # ENFORCE the arm language mandate: a merlin arm must build with the xDSL kit, not a C++ tool.
+        # A non-compliant submission gets a failing verdict with the fix reason (never silently graded).
+        verdict = {"all_pass": False, "n_passed": 0, "n_capsules": 4,
+                   "package_failure": {"plane": "language", "detail": _lwhy},
+                   "per_capsule": [], "note": f"language mandate: {_lwhy}. Use the xDSL/Python kit "
+                   "(oot_starterkit + xdsl_dialects), declare language: python, no C++/cmake build."}
     else:
         shutil.copytree(ws / "submission", cand,
                         ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
@@ -751,8 +771,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="CLAUDE_CONFIG_DIR for the agent's claude CLI (a different subscription account)")
     a = ap.parse_args(argv)
     arm = a.arm
-    global _EXPERIMENT
+    global _EXPERIMENT, _ARM
     _EXPERIMENT = a.experiment
+    _ARM = arm
 
     # DRIVER-SIDE grade env: qa_grade/_verilator_grade run build_package (cmake) for C++ submissions in
     # THIS process's env. The conda cmake transitively needs libidn.so.11 (host has only .12) -> ensure

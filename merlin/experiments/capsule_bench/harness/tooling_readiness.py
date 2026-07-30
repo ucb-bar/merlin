@@ -124,6 +124,34 @@ def readiness(target: str, arm: str = "merlin_assisted_rtlchecks") -> dict:
     return {"target": target, "arm": arm, "checks": checks, "ok": all(c["ok"] for c in checks)}
 
 
+def submission_language_ok(submission_dir, arm: str) -> tuple[bool, str]:
+    """ENFORCE the arm language contract on an EMITTED submission: a merlin arm (arm-3/arm-4) must build
+    its dialect with the xDSL/Python kit — NOT a hand C++/TableGen backend. Returns (ok, reason). Reads
+    the submission's manifest.yaml: for a merlin arm it fails if ``language: cpp`` or a build block that
+    compiles a C++ tool (cmake / mlir-tblgen / a *-opt binary) is present. The C++ arms are exempt (that
+    is their mandated method). Pure + target-agnostic — the grader/driver calls this to reject a
+    non-compliant round with an actionable reason instead of grading a forbidden backend."""
+    import yaml
+    from pathlib import Path
+    if "merlin_assisted" not in arm:               # only the merlin (xDSL) arms are constrained
+        return True, "not a merlin arm (no xDSL mandate)"
+    mpath = Path(submission_dir) / "mlir_oot" / "manifest.yaml"
+    if not mpath.is_file():
+        mpath = next(iter(sorted(Path(submission_dir).rglob("manifest.yaml"))), None)
+    if not mpath or not mpath.is_file():
+        return False, "no manifest.yaml in submission"
+    m = yaml.safe_load(mpath.read_text()) or {}
+    lang = str(m.get("language", "")).strip().lower()
+    if lang in ("cpp", "c++", "cxx"):
+        return False, f"merlin arm must use xDSL/Python, manifest declares language: {lang}"
+    build = m.get("build") or {}
+    blob = " ".join(str(v) for v in (build.values() if isinstance(build, dict) else [build])).lower()
+    for marker in ("cmake", "mlir-tblgen", "tblgen", "clang++", "g++"):
+        if marker in blob:
+            return False, f"merlin arm must use xDSL/Python, build block invokes {marker!r} (C++ toolchain)"
+    return True, f"xDSL/Python (language={lang or 'python'})"
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target", default=C.TARGET)
