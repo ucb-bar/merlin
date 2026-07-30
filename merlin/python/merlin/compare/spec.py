@@ -23,9 +23,26 @@ _KERNEL_BACKENDS = ("xnnpack", "openblas")
 _EXTERNAL_FRAMEWORKS = ("tvm", "executorch", "buddy", "exo", "ggml")
 _BASELINE = "baseline"
 
-# Targets we know about. Only k1 is implemented in v1; the rest are declared seams.
-_TARGETS = ("k1", "spike", "gemmini", "npu")
+# Platform execution SUBSTRATES that are not dialect targets under merlin/targets/ (a board or a
+# simulator seam, not a registered dialect) — kept first-class so existing callers keep working. The
+# dialect targets are DISCOVERED from the target registry and unioned in at parse time, so a newly
+# registered dialect (e.g. gemmini) becomes comparable with no edit here. Only k1 is implemented in
+# v1; every other known target is a declared seam.
+_PLATFORM_TARGETS = ("k1", "spike", "npu")
 _IMPLEMENTED_TARGETS = ("k1",)
+
+
+def _known_targets() -> tuple[str, ...]:
+    """The comparable target set: the platform substrates above unioned with the dialect targets the
+    registry discovers (curated in-tree targets + any ``MERLIN_TARGET_PATH`` packages). A registry
+    import/discovery failure degrades to the platform substrates alone (never fatal)."""
+    discovered: tuple[str, ...] = ()
+    try:
+        from merlin.targetgen.target_registry import all_targets
+        discovered = tuple(all_targets())
+    except Exception:
+        discovered = ()
+    return tuple(sorted(set(_PLATFORM_TARGETS) | set(discovered)))
 
 _METRICS = ("wall", "instret")
 
@@ -116,8 +133,9 @@ class Spec:
         if not wls:
             raise ValueError("spec must list at least one 'workloads' entry")
         target = raw.get("target", "k1")
-        if target not in _TARGETS:
-            raise ValueError(f"unknown target '{target}'; known: {_TARGETS}")
+        known = _known_targets()
+        if target not in known:
+            raise ValueError(f"unknown target '{target}'; known: {known}")
         if target not in _IMPLEMENTED_TARGETS:
             raise ValueError(
                 f"target '{target}' is a declared seam but not implemented in v1 "
