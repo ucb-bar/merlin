@@ -33,6 +33,7 @@ import yaml
 from merlin.common import quant_formats as _qf
 from merlin.common import schemas as _schemas
 from merlin.common.paths import artifacts_dir as _artifacts_dir
+from merlin.common.paths import targets_dir as _targets_dir
 from merlin.common.yaml import write_yaml
 from merlin.targetgen import compute_units as _cu
 from merlin.targetgen import families as _families
@@ -70,13 +71,23 @@ def _load_residual(name: str) -> dict[str, Any]:
 
 
 def discovered_targets() -> list[str]:
-    """Every target that ships a capability residual (``artifacts/targets/*/contracts/residual.yaml``)
-    — the DISCOVERED manifest set that replaces the retired hardcoded name list. A new target appears
-    the moment it drops a residual; core needs no edit."""
-    root = _artifacts_dir() / "targets"
-    if not root.is_dir():
-        return []
-    return sorted(p.parent.parent.name for p in root.glob("*/contracts/residual.yaml"))
+    """Every target that ships a capability residual (``<base>/*/contracts/residual.yaml``) — the
+    DISCOVERED manifest set that replaces the retired hardcoded name list. A new target appears the
+    moment it drops a residual; core needs no edit.
+
+    Both target-home roots are scanned, matching where :func:`_residual_path` /
+    :func:`merlin.targetgen.rtl.facts.target_base` look: the generated home
+    ``artifacts/targets/<t>/`` (the four all-residual/rtl prototypes live here) AND the curated
+    reference home ``merlin/targets/<t>/`` (a reference target such as gemmini ships its residual
+    beside its committed ``target_contract.yaml``). A name is reported once; the reference base — the
+    one ``target_base`` resolves to when it exists — wins on any overlap, so ``manifest_for`` loads the
+    same file this set advertises."""
+    names: dict[str, None] = {}
+    for root in (_artifacts_dir() / "targets", _targets_dir()):
+        if root.is_dir():
+            for p in root.glob("*/contracts/residual.yaml"):
+                names[p.parent.parent.name] = None
+    return sorted(names)
 
 
 def manifest_for(name: str) -> dict[str, Any]:

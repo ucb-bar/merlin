@@ -1,0 +1,128 @@
+# Residual side-input for the target-agnostic capability deriver
+# (merlin.targetgen.capability_manifests.manifest_for). This is the human intent + prose + ABI
+# encoding surface the RTL facts cannot ground; the mesh / memory capacities / datapath dtypes /
+# encoding CODES are layered on from facts.json when a residual declares `facts_source: rtl`.
+#
+# gemmini is an ALL-RESIDUAL prototype (no `facts_source`): the reference contract already omits the
+# facts-derived fields — mesh geometry, scratchpad/accumulator capacities and the (in,weight)->acc
+# datapath matrix are read by consumers straight from the fact bundle
+# (merlin/targets/gemmini/contracts/rtl_facts/facts.json), never re-declared here. So the deriver
+# reproduces this residual field-for-field (adding only the empty `legality` default), letting gemmini
+# be REGENERATED as an out-of-tree target package via
+# `merlin.targetgen.capability_manifests.write_oot_target("gemmini", <root>)` — the same deterministic
+# path every other target uses, discoverable via MERLIN_TARGET_PATH.
+#
+# This file is pinned to the curated reference `contracts/target_contract.yaml` (they must stay
+# consistent — test_gemmini_oot_generation asserts manifest_for("gemmini") == the curated contract
+# plus the empty `legality` default). Provenance-tagged; requires_human_review.
+name: gemmini
+version: 0.1
+family: tensor_resident
+# Codegen endpoint + grading knobs the shared RunnerConfig reads (rtl_tiers + the rocc_insn trace gate
+# ride the systolic family default; declared here only where they differ from it). Fork-free .insn on
+# stock LLVM — no gemmini-forked toolchain.
+endpoint_kind: inline_asm_insn
+runner:
+  suite: gemmini-capsule-bench
+  dtype: i8xi8_i32
+  tier_sim: {L2: spike, L3: verilator, L4: vcs, L5: firesim}
+  # The DECLARED bespoke-sim engine (chipyard elaborates the spike L2 / verilator L3 tiers). Read by
+  # capsule_runner._bespoke_sim_via so the sim engine comes from this contract, never a hardcoded
+  # {spike,verilator} -> chipyard inference. A target with no bespoke sim omits this (arc-only).
+  sim_via: chipyard
+# The ABI encoding surface RTL discovery cannot ground (opcode/funct3/legal-funct/DIM come from the
+# fact bundle; THESE do not). Declared once from the Gemmini ISA doc (human-reviewed) and consumed as
+# the SINGLE source of truth by the generated ISA module + the decoder — retiring the triplicated
+# hand-coded constants in GemminiToLLVM.cpp / gemmini_codegen_mlir.py / rocc_decode.py.
+encoding:
+  addr_len: 32             # RoCC accumulator/scratchpad address field width (bits). The lone irreducible
+                           # anchor; header-cross-checkable (gemmini_params.h `#define ADDR_LEN 32`).
+  # readout_bits are NOT declared here: they are DERIVED from addr_len + the 3-flag-bit accumulator-address
+  # convention + float32(1.0) by target_experiment.derived_readout_bits (grounded in gemmini.h's own
+  # `1<<(ADDR_LEN-1)` / `3<<(ADDR_LEN-2)` / `full_C<<(ADDR_LEN-3)` address arithmetic). Byte-identical to
+  # the former {f1,c_acc,acc_i8,acc_accum,full_c_bit} hex; cross-checked by test_encoding_manifest.
+  semantic_class:          # RTL funct CODE -> the compiler's shared op class (the guardrail boundary:
+    0: CONFIG              # codes are RTL-derived; the MVIN/MVOUT/... vocabulary is human-owned + shared).
+    2: MVIN                # HEADER-DERIVED: each name == gemmini.h `#define k_<NAME> <code>` (cross-checked
+    3: MVOUT               # by circt_introspect.crosscheck_semantic_class_names) — this block is the
+    4: COMPUTE_PRELOADED   # human-reviewed cache of those header names, kept for the codes the compiler
+    5: COMPUTE_ACCUMULATE  # actually emits. Only funct 15 shortens the header's LOOP_CONV_WS to the
+    6: PRELOAD             # compiler alias LOOP_CONV (the _WS dataflow suffix is implicit); all others exact.
+    7: FLUSH
+    8: LOOP_WS
+    15: LOOP_CONV
+  # config_subtype: CONFIG (funct 0) refined by rs1 & 0x3. NAMES are HEADER-DERIVED (gemmini.h
+  # `#define CONFIG_EX 0` / `CONFIG_LD 1` / `CONFIG_ST 2`); the CODES are the rs1[1:0] sub-field the RTL
+  # decoder fans out on (comb.icmp-eq over a width-2 comb.extract — ExecuteController rs1[1:0]==0 -> EX,
+  # StoreController rs1[1:0]==2 -> ST). Cross-checked by mlc_bridge.crosscheck_config_subtype. Kept here as
+  # the reviewed cache of the 3 subtypes the compiler emits (the 4th decoded value, 3=CONFIG_BERT, is unused).
+  config_subtype: {0: CONFIG_EX, 1: CONFIG_LD, 2: CONFIG_ST}
+status: prototype
+features: [systolic_array, resident_packed_tensor, accumulator_commit, command_buffer, metrics]
+# No `ops`/`types` are declared: the TARGET DIALECT is a design decision the agent OWNS (it writes its
+# own out-of-tree MLIR backend, interface -> target dialect), verified against the CIRCT oracle. Nothing
+# here pre-defines that vocabulary.
+runtime:
+  backends: [simulator, spike_gemmini, verilator]
+  # Default runtime backend the lowering pipeline stamps onto the runtime module when a caller passes
+  # none (DERIVED here, not from a name -> backend map in code; see target_registry.backend_for).
+  default_backend: baremetal
+  # The RTL sim harness that realizes this target — a DECLARED target fact, not a hardcoded backend
+  # constant, so it is onboardable from the contract and read from ONE place (not overfit in code). This
+  # is the SAME config the ISA facts are introspected from (targetgen.rtl.introspect), so sim and codegen
+  # stay coherent: it is the pure chipyard GemminiConfigs.defaultConfig Gemmini on a Rocket host — the
+  # certified 16x16 int8 mesh above (byte-identical Gemmini core to the prior gemmini+OPU Shuttle config;
+  # dropping the OPU/Shuttle changes only host cycle counts, not the mesh or the ISA facts, and makes the
+  # Verilator path coherent with the FireSim path). Change here + re-derive facts + re-cert to move.
+  rtl_sim_config: GemminiRocketConfig
+# Datatype -> compute-unit -> op capability (parsed by merlin.targetgen.compute_units). The C0 systolic
+# mesh is int8 (i8 x i8 -> i32). The input/accumulator dtypes are themselves CIRCT-extracted facts
+# (datapaths), so the (in,weight)->acc `accumulate` matrix is NOT re-declared here. `requant` is an
+# OPAQUE reference to Gemmini's own accumulator-scale lowering (rounding-shift / FP-scale-multiply) —
+# Merlin does not model that arithmetic here.
+compute_units:
+  - name: systolic_mesh
+    kind: systolic
+    dtypes: [int8]
+    ops: [matmul]
+    scaling: per_channel
+    requant: {ref: gemmini.accumulator_scale}
+# capabilities is intentionally empty: op/layout support is not pre-declared here. Mesh geometry +
+# scratchpad/accumulator capacities are CIRCT-extracted facts (arrays/memories), read from the fact
+# bundle by consumers; the supported ops/layouts follow from the agent's own target dialect, verified
+# against the oracle. (Kept as a present key for schema compliance.)
+capabilities: {}
+memory_model:
+  resident: true
+  accumulators: true
+prototype_scope:
+  workload: repeated_rhs_matmul
+  conformance_level: C0
+  epilogue: none
+  output_dtype: i32
+oracle_ladder:
+  level_0: {name: merlin_reference_and_command_buffer_sim, derived_from_rtl: false}
+  level_1: {name: spike_gemmini_functional, derived_from_rtl: false}
+  level_2: {name: gemmini_verilator_rtl, derived_from_rtl: true}
+  level_3: {name: firesim, derived_from_rtl: true}
+compiler_obligations:
+  - must_prove_rhs_immutable_for_residency
+  - must_tile_to_mesh_shape
+  - must_commit_accumulator_before_reuse
+  - must_respect_scratchpad_capacity
+hardware_promises:
+  - weight_stationary_resident_array
+  - widening_integer_accumulate
+  - cycle_counter
+runtime_promises:
+  - command_buffer
+  - metrics
+certification:
+  status: uncertified
+confidence: medium
+requires_human_review: true
+notes: >-
+  Hand-curated prototype contract for the Gemmini C0 RTL-certification path. Mesh geometry, scratchpad/
+  accumulator capacities and datapath dtypes are CIRCT-extracted facts (not declared here); consumers
+  read them from the fact bundle. Spike-Gemmini is a functional bootstrap model (derived_from_rtl:
+  false); only Verilator/FireSim count as RTL-certified.
