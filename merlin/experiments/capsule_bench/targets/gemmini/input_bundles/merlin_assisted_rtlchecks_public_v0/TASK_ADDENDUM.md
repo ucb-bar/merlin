@@ -14,6 +14,28 @@ your working directory for the exact allowed/forbidden surface):
 `lowering/`), and `targetgen/contract/interface_emit.py`. Use them if they help you author or debug the
 backend faster.
 
+## USE the arm-4 tooling — this is the whole point of this arm (actually RUN these, do not just read them)
+
+These tools are the ONLY thing that distinguishes this arm from the raw baseline; if you author by hand
+without them, the arm has no advantage. The `merlin` package is importable here **for authoring** (the
+final package must still be self-contained + oracle-free). As your FIRST actions each round, actually run:
+
+1. **CCA seam menu** — the machine-checked statement of which compiler sections you may modify and the
+   next stronger lever for an axis (adapt args from the code — you can read these modules):
+   - `python -c "from merlin.kernels.cca_contract import check_bijection; print(check_bijection('gemmini'))"`
+   - `python -c "from merlin.kernels.action_catalog import escalation_ladder; print(escalation_ladder('spatial.dataflow','gemmini'))"`
+2. **RTL-derived levers** for this target, extracted from the real RTL (not guesses):
+   - `python -c "from merlin.targetgen import rtl_backend as R; print(R.derived_levers(R.target_profile('gemmini')))"`
+3. **Ground the ISA in RTL facts** (mesh DIM, opcode/funct legality, dtypes, memories) instead of guessing:
+   - `python -c "from merlin.targetgen.rtl.facts import load_facts; import json; print(json.dumps(load_facts('gemmini')['facts'],indent=1)[:2000])"`
+4. **Scaffold generators** (`targetgen/synthesize/`, `targetgen/generate/`) — start from a generated
+   dialect/pass/tablegen scaffold and fill it in, rather than hand-writing MLIR from scratch.
+5. **Every round, READ the `rtl_checks` block** in your redacted `qa/verdict.json` and fix exactly what it
+   flags (illegal funct/opcode, wrong tile count, missing instruction class). It is RTL-grounded truth the
+   functional sim alone cannot give you — it is the reason this arm exists.
+
+Do 1–3 before you author each round: derive the levers + facts from the RTL, then author against them.
+
 ## Rules for this arm (in addition to the task's hard rules)
 
 - This is a **fresh, measured `merlin_assisted` pilot run.** Your wall-time, tokens, cost, tool-calls,
