@@ -461,27 +461,36 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
     # still appended: they carry run-specific numbers the target-agnostic template deliberately omits.
     from merlin.targetgen.generate_prompt import render_prompt
     pilot = render_prompt(_te(), _manifest(), _EXPERIMENT, arm)
-    # Optional language mandate (env PILOT_LANG=cpp|python). Default unset => agent chooses freely
-    # (the prior measured runs all chose Python). When cpp is forced, REQUIRE a real out-of-tree
-    # C++/TableGen gemmini-opt built via the manifest build block — NO integrity rule is relaxed.
-    _lang = os.environ.get("PILOT_LANG", "").strip().lower()
+    # Language mandate (env PILOT_LANG=cpp|python). The C++ arms (baseline/cpp_merlininfra) are forced to
+    # the status-quo C++ OOT MLIR; the merlin arms (arm-3 merlin_assisted + arm-4 merlin_assisted_rtlchecks,
+    # both carry "merlin_assisted") DEFAULT to the xDSL/Python path — the whole point of those arms is to
+    # build the dialect with the granted xDSL kit, NOT a hand C++/TableGen tool. Arm-driven so it holds
+    # however the run is launched (a merlin arm never "chooses C++"). tool stem is target-agnostic.
+    _stem = f"{_te().target}-opt"
+    _lang = os.environ.get("PILOT_LANG", "").strip().lower() or ("python" if "merlin_assisted" in arm else "")
     if _lang == "cpp":
         pilot += (
             "\n\n## Language mandate: C++ out-of-tree MLIR (REQUIRED for this run)\n"
             "- `manifest.yaml` MUST declare `language: cpp` and a `build` block "
             "(`configure`/`command`/`tool_output`) that builds a real out-of-tree MLIR tool "
-            "`mlir_oot/build/bin/gemmini-opt` against the provided LLVM/MLIR-23 "
+            f"`mlir_oot/build/bin/{_stem}` against the provided LLVM/MLIR-23 "
             "(`-DMLIR_DIR=$MLIR_DIR -DLLVM_DIR=$LLVM_DIR`); the runner builds it before grading.\n"
             "- Implement the 4 entrypoints as real MLIR passes in a C++ OOT package "
-            "(input dialect + gemmini target dialect + conversions + the `gemmini-opt` tool). "
+            f"(input dialect + target dialect + conversions + the `{_stem}` tool). "
             "A Python tool is NOT acceptable for this run.\n"
             "- Every integrity rule above still applies unchanged (no C compute kernels, no copied "
-            "bareMetalC, no high-level Gemmini C libs, no hardcoded outputs, emit BOTH cb AND "
-            "LLVM/RoCC). `integrity_exempt: false`.\n")
+            "reference kernels, no high-level device libs, no hardcoded outputs). `integrity_exempt: false`.\n")
     elif _lang == "python":
-        pilot += ("\n\n## Language mandate: Python (REQUIRED for this run)\n"
-                  "- `manifest.yaml` MUST declare `language: python`; the tool is an executable "
-                  "Python `gemmini-opt` exposing the 4 entrypoints. All integrity rules still apply.\n")
+        pilot += (
+            "\n\n## Language mandate: xDSL / Python (REQUIRED for this arm)\n"
+            "- Build the dialect + the 4 entrypoints with the granted **xDSL kit** "
+            "(`oot_starterkit/` — dialect.py / transforms.py / verify.py — + `xdsl_dialects/`): define the "
+            "target dialect as xDSL ops with verifiers, and the interface->target lowering as xDSL rewrite "
+            "passes. This is the approach this arm exists to exercise.\n"
+            f"- `manifest.yaml` MUST declare `language: python`; the tool is an executable Python `{_stem}` "
+            "exposing the 4 entrypoints. Do NOT author a C++/TableGen tool or a `build` block that compiles "
+            "one (no cmake/`mlir-tblgen`/`*-opt` C++ binary) — a hand C++ backend is NOT acceptable for this "
+            "arm. All integrity rules still apply (`integrity_exempt: false`).\n")
     # Tier wording is TARGET-AGNOSTIC: name the target's own oracle tiers from the manifest, not the
     # gemmini spike/verilator literals (atlas's loop tier is the arc program-oracle, its checkpoint the
     # cycle-accurate RTL cosim/Verilator). `_loop`/`_ckpt` are the tier keys the runner resolves.
