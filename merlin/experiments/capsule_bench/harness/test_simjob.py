@@ -5,7 +5,7 @@ verdict, the runner is CONSTRAINED (bad capsule / bad sim rejected), output is r
 the per-capsule capsule-filter actually limits the grade. Verilator is exercised as a submit+running check
 (the full L3 run is covered by the readiness gate, since it takes minutes).
 
-Usage: test_simjob.py     (uses the prebuilt known-good backend artifacts/targets/gemmini/agent_spec_v1_mlir_oot)
+Usage: test_simjob.py  (uses the prebuilt known-good backend out/artifacts/targets/<target>/agent_spec_v1_mlir_oot)
 """
 from __future__ import annotations
 import json
@@ -17,9 +17,11 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[3]
+sys.path.insert(0, str(HERE))
+import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
+REPO = C.REPO
 PY = sys.executable
-REF = REPO / "out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot"
+REF = REPO / "out/artifacts/targets" / C.TARGET / "agent_spec_v1_mlir_oot"
 CE = "/path/to/chipyard/.conda-env"
 results = []
 

@@ -5,26 +5,30 @@ Records repo SHA / dirty / untracked, toolchain versions, capsule + pass counts,
 availability, and a deterministic sha256 over each tracked artifact tree. Re-runnable: same tree
 content -> same hashes. Does not mutate anything except the output manifest.
 
-Usage: .venv/bin/python experiments/capsule_bench/targets/gemmini/scripts/freeze_state.py
+Usage: .venv/bin/python experiments/capsule_bench/targets/<target>/scripts/freeze_state.py
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import yaml
 
-REPO = Path(__file__).resolve().parents[4]
-OUT = REPO / "artifacts" / "capsule-bench" / "gemmini" / "capsule_bench_v0_freeze_manifest.yaml"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
+REPO = C.REPO
+TARGET = C.TARGET
+OUT = C.REPORTS / "capsule_bench_v0_freeze_manifest.yaml"
 
 # artifact trees to hash (relative to repo); build/ and __pycache__ excluded
 ARTIFACTS = {
     "merlin/contract": "merlin/contract",
     "targetgen_modules": "merlin/python/merlin/targetgen",
-    "agent_spec_v1": "out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot",
-    "results_gemmini": "out/artifacts/capsule-bench/gemmini",
+    "agent_spec_v1": f"out/artifacts/targets/{TARGET}/agent_spec_v1_mlir_oot",
+    f"results_{TARGET}": f"out/artifacts/capsule-bench/{TARGET}",
     "runs_public": "out/runs/capsule_bench_v1",
     "runs_hidden": "out/runs/capsule_bench_v1_hidden",
 }
@@ -78,15 +82,16 @@ def _tool_version(args: list[str]) -> str:
 
 
 def main() -> int:
-    import sys
-    sys.path.insert(0, str(REPO / "merlin" / "python"))
+    import importlib
     try:
         from merlin.targetgen.contract import toolchain as tc
         llvm = f"{tc.LLVM_VERSION}@{tc.LLVM_COMMIT}"
     except Exception:
         llvm = "unknown"
     try:
-        from merlin.runtime.backends import gemmini as gem
+        # the active target's runtime backend (spike/verilator availability + gcc path); degrades to
+        # unavailable for a target without a matching backend module — no gemmini literal.
+        gem = importlib.import_module(f"merlin.runtime.backends.{TARGET}")
         spike_ok = gem.available("spike")
         veri_ok = gem.available("verilator")
         gcc = str(gem.gcc_path())

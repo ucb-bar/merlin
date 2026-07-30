@@ -67,15 +67,16 @@ PUBLIC_CAPSULES = _public_capsules()
 
 def _target_sim_via() -> tuple[str, str | None]:
     """The (target, sim_via) being self-checked, from the descriptor (so CG.grade builds ITS RunnerConfig
-    — atlas external_backend etc. — not the gemmini default, and the oracle tiers resolve from the target's
-    contract). Falls back to gemmini/chipyard if unresolvable."""
+    — e.g. an external_backend target — not a hardcoded default, and the oracle tiers resolve from the
+    target's contract). Falls back to the active target (from _common) with an unknown sim_via if the
+    descriptor can't be parsed."""
+    import _common as _C
     try:
-        import _common as _C
         from merlin.targetgen.target_experiment import load_target_experiment
         te = load_target_experiment(_C.EXP / "target_experiment.yaml")
         return te.target, te.sim_via
     except Exception:  # noqa: BLE001
-        return "gemmini", "chipyard"
+        return _C.TARGET, None
 
 
 def _target() -> str:

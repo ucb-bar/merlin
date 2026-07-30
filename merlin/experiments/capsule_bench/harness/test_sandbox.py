@@ -68,12 +68,18 @@ def main(argv=None):
 
         # --- MASKING: answers must be invisible ---
         print("\n-- masking (answers must be invisible) --")
+        # a denied answer kernel from the target's example suite (chipyard <target>-rocc-tests) must be
+        # masked; resolve the real sim repo (falls back to a nonexistent stand-in), target from _common.
+        from merlin.common.paths import ext_path
+        _cy = ext_path("chipyard")
+        _suite_kernel = (str(_cy / f"generators/{C.TARGET}/software/{C.TARGET}-rocc-tests/bareMetalC/conv.c")
+                         if _cy else f"/nonexistent/{C.TARGET}-rocc-tests/bareMetalC/conv.c")
         masks = {
             "public golden": C.REPO / "merlin/contract/capsules/isa/A4_acc_scale_i8/golden.yaml",
             "hidden capsules": C.REPO / "merlin/contract/capsules/hidden",
             "oracle reference.py": C.REPO / "merlin/python/merlin/runtime/reference.py",
             "oracle simulator.py": C.REPO / "merlin/python/merlin/runtime/simulator.py",
-            "kernel suite (conv.c)": "/path/to/chipyard/generators/gemmini/software/gemmini-rocc-tests/bareMetalC/conv.c",
+            "kernel suite (conv.c)": _suite_kernel,
             "~/.claude memory": TC.MEMORY_DIR + "/MEMORY.md",
             "repo (other source)": C.REPO / "merlin/python/merlin/targetgen/capsule_grade.py",
         }
@@ -112,8 +118,8 @@ def main(argv=None):
             _ok("tool: import oot_starterkit (+xdsl)", merlin_ok, (out or err).splitlines()[-1][:70] if (out or err) else f"rc={rc}")
 
         # --- END-TO-END: the agent's real in-sandbox capability = compile + run on spike ---
-        # (golden grading is DRIVER-SIDE/redacted, outside the sandbox — the runner gemmini.py imports the
-        # oracle, so it is correctly absent here. In-sandbox the agent authors -> compiles -> runs spike.)
+        # (golden grading is DRIVER-SIDE/redacted, outside the sandbox — the target's runtime backend
+        # imports the oracle, so it is correctly absent here. In-sandbox the agent authors -> compiles -> runs spike.)
         print("\n-- end-to-end (compile with riscv-gcc + curated harness, run on spike) --")
         e2e = (f'cd /tmp && printf "int main(){{return 0;}}" > t.c && '
                f'riscv64-unknown-elf-gcc -I {TC.CURATED_HARNESS}/include -c t.c -o t.o && echo COMPILED && '
@@ -137,7 +143,7 @@ def main(argv=None):
                 d.unlink()
             _sh.copy(SCRIPTS_DIR / src, d)
         # real known-good submission so the broker grades a genuine L2 pass (not just a channel ping)
-        ref = C.REPO / "out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot"
+        ref = C.REPO / "out/artifacts/targets" / C.TARGET / "agent_spec_v1_mlir_oot"
         sub = ws / "submission"
         if sub.exists() or sub.is_symlink():
             sub.unlink() if sub.is_symlink() else _sh.rmtree(sub)

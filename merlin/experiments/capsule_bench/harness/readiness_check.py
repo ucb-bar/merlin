@@ -23,12 +23,17 @@ from pathlib import Path
 
 import yaml
 
-from merlin.common.paths import ext_path, merlin_dir, repo_root
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
+from merlin.common.paths import ext_path, repo_root  # noqa: E402
+from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
 
 # Repo root + venv interpreter come from the canonical path helpers (never Path(__file__).parents[N],
 # and never EXP.parent.parent — that resolves the merlin/ subdir, not the repo root where .venv lives).
 REPO = repo_root()
-EXP = merlin_dir() / "experiments" / "capsule_bench" / "targets" / "gemmini"
+EXP = C.EXP                                    # the active target's experiment dir (descriptor-driven)
+TARGET = C.TARGET
+_TE = load_target_experiment(EXP / "target_experiment.yaml")
 PY = str(REPO / ".venv/bin/python")
 SCRIPTS = EXP / "scripts"
 BUNDLES = EXP / "input_bundles"
@@ -63,10 +68,10 @@ def test_starter_kit():
 
     # cmdbuf builder: schema-valid when populated, rejects empty
     try:
-        b = CommandBufferBuilder("gemmini", backend="x", abi_version="0.1")
+        b = CommandBufferBuilder(TARGET, backend="x", abi_version="0.1")
         b.tensor("A", [16, 16], "i8"); b.command("MATMUL", {"dst": "A"})
         good = b.validate()
-        b2 = CommandBufferBuilder("gemmini"); empty = b2.validate()
+        b2 = CommandBufferBuilder(TARGET); empty = b2.validate()
         _ok("CommandBufferBuilder valid-when-populated, rejects-empty",
             not good and bool(empty), f"good_findings={good}, empty_findings={len(empty)}")
     except Exception as e:
@@ -88,8 +93,8 @@ def test_starter_kit():
                                       {"name": "UNKNOWN", "funct": "UNKNOWN"}]}
         clean_trace = {"instructions": [{"name": "CONFIG_EX", "funct": 0},
                                         {"name": "COMPUTE_PRELOADED", "funct": 4}]}
-        gh = REPO / "tmp/dialects/gemmini/software/gemmini-rocc-tests/include/gemmini.h"
-        ghp = str(gh) if gh.is_file() else None
+        gh = (REPO / _TE.isa_headers[0]) if _TE.isa_headers else None   # target's ISA header (descriptor)
+        ghp = str(gh) if gh and gh.is_file() else None
         caught = structural_checks(bad_trace)
         clean = structural_checks(clean_trace)
         _ok("verify.structural_checks catches bad, clears clean",
@@ -103,7 +108,7 @@ def test_generators():
     section("B. CIRCT RTL-facts generators (generate + import + flag)")
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
-        for mod, out in [("gen_isa_module", "gemmini_isa.py"),
+        for mod, out in [("gen_isa_module", f"{TARGET}_isa.py"),
                          ("gen_rtl_digest", "RTL_DIGEST.md"),
                          ("gen_numeric_facts", "numeric_facts.py")]:
             r = subprocess.run([PY, "-m", f"merlin.targetgen.rtl.{mod}", "--out", str(td / out)],
@@ -214,7 +219,7 @@ def test_oracles_endtoend():
     import tempfile as _tf
     import time as _time
     section("G. oracles RUN end-to-end (real verdict, not just present)")
-    ref = REPO / "out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot"
+    ref = REPO / "out/artifacts/targets" / TARGET / "agent_spec_v1_mlir_oot"
     if not (ref / "manifest.yaml").is_file():
         _ok("reference backend agent_spec_v1 present", False, "missing"); return
     _cy = ext_path("chipyard")   # resolve the real chipyard (.env MERLIN_EXT_CHIPYARD), same as the sandbox
