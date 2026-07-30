@@ -166,8 +166,9 @@ def test_endpoint_kind_is_derived_from_the_decode_opcode_width_not_hand_set():
 def test_atlas_manifest_derives_endpoint_and_mesh_from_facts_only_dtypes_residual():
     """The atlas manifest builder is the derive path (facts + residual), not a hand-authored contract:
     endpoint_kind + mesh + encoding codes come from the pinned CIRCT facts; only the datapath dtypes are
-    the (provenance-tagged, not-yet-grounded) residual."""
-    m = cm.validate(cm.atlas_manifest())
+    the (provenance-tagged, not-yet-grounded) residual. ``manifest_for`` loads atlas's residual (which
+    carries ``facts_source: rtl``) and grounds the facts — the same agnostic path every target uses."""
+    m = cm.validate(cm.manifest_for("atlas"))
     assert m["endpoint_kind"] == "external_backend"              # DERIVED from the 14-bit decode
     assert m["capabilities"]["mesh"] == {"rows": 32, "cols": 32}  # DERIVED from the facts array
     assert len(m["encoding"]["legal_funct"]) == 42               # DERIVED from the decode table
