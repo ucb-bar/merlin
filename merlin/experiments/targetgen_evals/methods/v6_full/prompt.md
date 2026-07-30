@@ -11,7 +11,7 @@ All four evidence sources are used in combination.
 2. Kernel mining (v5 approach) → `kernel_records.jsonl`, `abstraction_candidates.yaml`, `dialect_requirements.yaml`
 3. Evidence graph (v3 approach) → `evidence_graph.jsonl` (merged from RTL + kernel + doc sources)
 4. Schema planning (v2 approach) → `target_contract.yaml`, `dialect_plan.yaml`, `lowering_plan.yaml`
-5. Deterministic generator → `generated/gemmini-mlir/xdsl/`
+5. Deterministic generator → `generated/{target}-mlir/xdsl/`
 
 ## What this measures
 

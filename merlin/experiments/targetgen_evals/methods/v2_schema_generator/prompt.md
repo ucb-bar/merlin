@@ -20,10 +20,10 @@ emit correct xDSL code from the schema without creative licence.
 
 ## Inputs (read-only)
 
-- `datasets/gemmini/source_snapshot/` — frozen source
-- `datasets/gemmini/selected_docs/`
-- `datasets/gemmini/selected_kernels/`
-- `datasets/gemmini/golden/` — ground truth for comparison
+- `datasets/{target}/source_snapshot/` — frozen source
+- `datasets/{target}/selected_docs/`
+- `datasets/{target}/selected_kernels/`
+- `datasets/{target}/golden/` — ground truth for comparison
 - `harness/schemas/dialect_plan.schema.json` — the schema you must conform to
 - `harness/schemas/target_contract.schema.json`
 - `harness/schemas/lowering_plan.schema.json`
@@ -50,8 +50,8 @@ You must conform to the JSON Schema definitions in `harness/schemas/`.
 ## What happens after you finish
 
 A deterministic generator reads your `dialect_plan.yaml` and emits:
-- `generated/gemmini-mlir/xdsl/<dialect_name>.py`
-- `generated/gemmini-mlir/xdsl/lowering.py`
+- `generated/{target}-mlir/xdsl/<dialect_name>.py`
+- `generated/{target}-mlir/xdsl/lowering.py`
 
 The generator does not exercise creative discretion. If your schema is wrong, the generated
 code will be wrong. If your schema is good, the generated code will be good.

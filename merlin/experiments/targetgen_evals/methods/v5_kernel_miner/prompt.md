@@ -13,9 +13,9 @@ uses a feature, the dialect should not include it.
 
 ## Inputs (read-only)
 
-- `datasets/gemmini/selected_kernels/` — baremetal Gemmini kernel sources
-- `datasets/gemmini/selected_traces/` — Spike commit-log traces (optional)
-- `datasets/gemmini/golden/expected_kernel_patterns.yaml` — ground-truth patterns (do not read until after extraction)
+- `datasets/{target}/selected_kernels/` — baremetal {target} kernel sources
+- `datasets/{target}/selected_traces/` — Spike commit-log traces (optional)
+- `datasets/{target}/golden/expected_kernel_patterns.yaml` — ground-truth patterns (do not read until after extraction)
 
 ## Process
 
@@ -43,7 +43,7 @@ For each abstraction candidate, write a dialect requirement:
 ```yaml
 - candidate: resident_rhs
   evidence_kernels: [repeated_rhs_matmul, batched_conv]
-  required_op: gemmini.pack_resident
+  required_op: {target}.pack_resident
   required_attr: is_resident: bool
 ```
 
@@ -59,7 +59,7 @@ Every op in `dialect_plan.yaml` must cite at least one kernel from `kernel_recor
 
 ### Step 5: (Handed off to generator)
 
-A deterministic generator reads `dialect_plan.yaml` and emits `generated/gemmini-mlir/xdsl/`.
+A deterministic generator reads `dialect_plan.yaml` and emits `generated/{target}-mlir/xdsl/`.
 You do not write xDSL code.
 
 ## What this measures
