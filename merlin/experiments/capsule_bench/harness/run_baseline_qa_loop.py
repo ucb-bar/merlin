@@ -166,16 +166,21 @@ def assemble_copy_workspace(bundle: dict, ws: Path) -> dict:
     load-bearing boundary — this copy-minus removes the convenience pointer and declares intent.)"""
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "submission").mkdir(exist_ok=True)
-    drop_names = {"golden.yaml", "expected_command_buffer_g0.json"}
     drop_dirs = {"hidden"}  # capsules/hidden = answers, never staged
     report = {"copied": [], "symlinked": [], "copied_minus": [], "answer_files_dropped": 0,
               "tool_subpaths_excluded": []}
+
+    def _is_answer_name(n: str) -> bool:
+        # Any golden (golden.yaml/json/mlir, any nesting) or example expected-output, matched by pattern
+        # so nested / non-.yaml / non-_g0 answers do not escape the copy drop (parity with the sandbox mask
+        # in answer_surfaces.golden_files).
+        return n.startswith("golden.") or n.startswith("expected_command_buffer")
 
     def _ignore(dirpath, names):
         skip = set()
         for n in names:
             full = Path(dirpath) / n
-            if n in drop_names or n in drop_dirs or n == "__pycache__":
+            if n in drop_dirs or n == "__pycache__" or _is_answer_name(n):
                 skip.add(n)
                 if full.is_file():
                     report["answer_files_dropped"] += 1
@@ -392,11 +397,27 @@ def mask_selftest(ws: Path, bundle: dict, sandbox: str) -> dict:
     """Confirm the agent's view withholds answers. bwrap: probe the masked golden. none: confirm the
     COPIED workspace has no golden.yaml and no hidden capsules anywhere under it."""
     if sandbox == "bwrap":
-        target, _spec = _corpus_probe_paths()
-        probe = f'if test -s {target}; then echo LEAK; else echo OK; fi'
-        out = subprocess.run(["bash", "-c", bwrap_cmd(probe, ws, bundle)],
-                             capture_output=True, text=True).stdout.strip()
-        return {"pilot_golden_visible_to_agent": out, "n_answer_files_masked": len(answer_files())}
+        # Search the agent's VIEW (the bound corpus trees) for ANY readable golden/expected file —
+        # independent of golden_files(), so a golden the mask FAILED to enumerate is STILL caught (the past
+        # leak was exactly such a miss). Masked answers appear as empty /dev/null overlays (test -s false);
+        # a corpus root that is tmpfs-hidden yields nothing (no false leak).
+        roots = {str(C.REPO / "merlin/contract/capsules")}
+        try:
+            from merlin.targetgen.target_experiment import load_target_experiment
+            cc = load_target_experiment(C.EXP / "target_experiment.yaml").capsule_corpus
+            if cc:
+                roots.add(str(cc))
+        except Exception:  # noqa: BLE001 — no/invalid descriptor ⇒ probe the default tree only
+            pass
+        roots_sh = " ".join(sorted(roots))
+        script = (f'for f in $(find {roots_sh} \\( -name "golden.*" -o -name "expected_command_buffer*" \\) '
+                  f'2>/dev/null); do test -s "$f" && echo "LEAK:$f"; done; echo DONE')
+        out = subprocess.run(["bash", "-c", bwrap_cmd(script, ws, bundle)],
+                             capture_output=True, text=True).stdout
+        leaked = [ln[len("LEAK:"):] for ln in out.splitlines() if ln.startswith("LEAK:")]
+        return {"pilot_golden_visible_to_agent": "LEAK" if leaked else "OK",
+                "n_answer_files_masked": len(answer_files()),
+                "leaked_answer_files": leaked[:10]}
     # sandbox == none: assert no answer is reachable. (1) the bench_contract COPY (small) holds no
     # golden/hidden; (2) no workspace symlink resolves into the real merlin/contract/capsules tree
     # (which would re-expose goldens). Avoid walking the symlinked 307MB toolchain.

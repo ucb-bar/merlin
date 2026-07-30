@@ -74,24 +74,33 @@ def experimenter_memory_dir() -> Path:
 
 
 def golden_files(te: TargetExperiment) -> list[Path]:
-    """Every ``golden.yaml`` the agent must not read — globbed from the DECLARED corpus + its sibling
-    corpora (never a hard-coded ``isa/layers/model_slices`` list) + the example command buffer. This is
-    the parity-preserving replacement for the old hand-rolled ``answer_files()``."""
+    """Every golden/answer file the agent must not read. Globbed RECURSIVELY (any extension, any nesting
+    depth) from the DECLARED corpus + its sibling corpora AND the whole capsule tree — so a run never sees
+    a DEEPER-nested capsule's or ANOTHER target's golden (both escaped the old one-level ``*/golden.yaml``
+    glob) — plus every example expected-output. Generic: no hard-coded ``isa/layers/model_slices`` list and
+    no per-capsule literal. This is the parity-preserving replacement for the old hand-rolled
+    ``answer_files()``."""
     files: list[Path] = []
-    corpora = [te.capsule_corpus] if te.capsule_corpus else []
     root = repo_root()
+    corpora = [te.capsule_corpus] if te.capsule_corpus else []
     corpora += [root / rel.rstrip("/") for rel in te.corpus_siblings()]
+    # The full capsule tree, in addition to the declared corpus: masks nested + other-target goldens the
+    # declared one-level glob would miss (e.g. capsules/<target>/isa/<capsule>/golden.yaml). rglob only
+    # matches files literally named ``golden.*`` — capsule INPUTS (interface MLIR, spec) stay visible.
+    corpora.append(root / "merlin/contract/capsules")
     for corpus in corpora:
         if corpus and corpus.is_dir():
-            files += sorted(corpus.glob("*/golden.yaml"))
-    ex = root / "merlin/contract/examples/expected_command_buffer_g0.json"
-    if ex.exists():
-        files.append(ex)
+            files += sorted(corpus.rglob("golden.*"))
+    # Every example expected-output (``expected_command_buffer_g0/g1/g2…`` and any ``expected_*`` artifact),
+    # not just the single ``_g0`` literal that used to be masked.
+    ex_dir = root / "merlin/contract/examples"
+    if ex_dir.is_dir():
+        files += sorted(ex_dir.rglob("expected_*"))
     # de-dup while preserving order
     seen: set[Path] = set()
     out: list[Path] = []
     for f in files:
-        if f.exists() and f not in seen:
+        if f.is_file() and f not in seen:
             seen.add(f)
             out.append(f)
     return out
@@ -104,8 +113,9 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
     root = repo_root()
     out: list[AnswerSurface] = []
 
+    examples_dir = root / "merlin/contract/examples"
     for g in golden_files(te):
-        origin = "example" if g.name.endswith(".json") else "golden"
+        origin = "example" if examples_dir in g.parents else "golden"
         out.append(AnswerSurface(f"{origin}:{g.relative_to(root)}", g, "file", origin))
 
     hidden_rel = te.hidden_corpus()
