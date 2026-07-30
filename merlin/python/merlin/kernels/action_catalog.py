@@ -402,6 +402,38 @@ _RVV_ROUTES: list[_Route] = [
 # code. The core never hardcodes a non-RVV backend.
 _ROUTES: dict[str, list[_Route]] = {"rvv": _RVV_ROUTES}
 
+# Lazy backend derivers: callables (backend -> None) that DERIVE + register a non-RVV backend's routes on
+# first use (e.g. the RTL-derived spatial levers). The derivation-driven backend (targetgen/rtl_backend)
+# self-registers one at import; `ensure_backend` runs them so a seam-menu call for a fresh backend
+# populates itself. Kept here (not imported eagerly) so the core stays backend-agnostic + import-cycle-free.
+_DERIVERS: list[Callable[[str], None]] = []
+
+
+def register_deriver(fn: Callable[[str], None]) -> None:
+    """Register a lazy route-deriver (idempotent by identity). Called by the derivation-driven backend."""
+    if fn not in _DERIVERS:
+        _DERIVERS.append(fn)
+
+
+def ensure_backend(backend: str) -> None:
+    """Make sure ``backend``'s routes are derived+registered before they are read. No-op for the in-tree
+    RVV reference and for a backend already populated. Runs each deriver GUARDED — a backend with no RTL
+    access (e.g. the non-CIRCT arm) or no mlc simply yields no routes, never an exception, so the seam
+    menu degrades to empty instead of crashing. The moat is preserved: derivers key on RTL facts, which
+    only the CIRCT arm can read."""
+    if backend == "rvv" or _ROUTES.get(backend):
+        return
+    if not _DERIVERS:
+        try:                       # lazy, guarded: make the derivation-driven backend self-register
+            import merlin.targetgen.rtl_backend  # noqa: F401
+        except Exception:          # noqa: BLE001 — targetgen unavailable in this sandbox -> no derivers
+            return
+    for fn in list(_DERIVERS):
+        try:
+            fn(backend)
+        except Exception:          # noqa: BLE001 — a deriver with no RTL access is a no-op
+            continue
+
 
 def register_route(backend: str, route: _Route) -> None:
     """Plug one backend-specific route into the agnostic router (idempotent per (backend, axis, seam)).
@@ -443,6 +475,7 @@ def route(divergence: Divergence) -> CompilerAction | None:
     """Map one Divergence to a typed CompilerAction (or None if no route — surfaced as 'unrouted'
     so it is never silently dropped). When several routes match the axis (a class ladder), picks the
     CHEAPEST (weakest) class first — escalation walks up from there via :func:`route_escalated`."""
+    ensure_backend(divergence.backend)
     cands = [r for r in _ROUTES.get(divergence.backend, [])
              if r.axis == divergence.axis and r.when(divergence)]
     if not cands:
@@ -455,6 +488,7 @@ def route_escalated(divergence: Divergence, prior_class: str) -> CompilerAction 
     """The next-stronger action for ``divergence`` after ``prior_class`` was insufficient (its intended
     facet was not achieved by the emitted code). Returns the cheapest route whose class is strictly
     above ``prior_class``, or None when the ladder is exhausted (no stronger lever exists yet)."""
+    ensure_backend(divergence.backend)
     floor = _CLASS_ORDER.get(prior_class, -1)
     # The measured residual already PROVES the gap on this axis, so escalation matches on axis + a
     # stronger class + the expert having the property — NOT the original `when` predicate (which may
@@ -612,6 +646,7 @@ def escalation_ladder(axis: str, backend: str = "rvv", *, oot_package: str | Non
     """The full FLAG->KNOB->HEURISTIC->PASS->CODEGEN ladder for one axis: every route weakest->strongest,
     each annotated with the concrete (backend-scoped, OOT-relative) seam to edit and whether it is
     forkable today. This is the "which section to modify, and what's the next stronger lever" answer."""
+    ensure_backend(backend)
     rs = sorted((r for r in _ROUTES.get(backend, []) if r.axis == axis),
                 key=lambda r: _CLASS_ORDER.get(r.action_class, 99))
     out = []

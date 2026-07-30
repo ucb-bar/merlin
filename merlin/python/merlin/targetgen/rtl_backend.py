@@ -139,3 +139,14 @@ def lift_cca_from_trace(trace: dict, profile: TargetProfile, *, op: str = "matmu
               "acc_dtype": ("i32" if i32 else "i8") if has_compute else None}
     return cca.lift_spatial(counts, op=op, source=source, pe_rows=profile.dim, pe_cols=profile.dim,
                             backend=profile.target)
+
+
+# Self-register as the derivation-driven route deriver: a seam-menu call for any non-RVV backend
+# (cca_contract / action_catalog) then lazily DERIVES + registers that target's RTL levers via
+# action_catalog.ensure_backend -> register(target). Import-time + guarded so a core-only environment
+# (no targetgen import) is unaffected. register() is idempotent and no-ops without RTL access.
+try:
+    from ..kernels import action_catalog as _ac
+    _ac.register_deriver(register)
+except Exception:  # noqa: BLE001 — kernels package layout differs / partial env
+    pass

@@ -228,15 +228,27 @@ def _target_families(backend: str) -> set[str]:
 
 
 def leverable_axes(backend: str) -> set[str]:
-    """Axes classified LEVER for this backend — matched either by CONCRETE target (e.g. ``"rvv"``) or by
-    the facet FAMILY the target participates in (e.g. ``"spatial"`` for any target that routes spatial
-    axes)."""
+    """Axes classified LEVER for this backend. A DIRECT classification (``backend in s.backends``, e.g.
+    rvv's own registry list) is leverable unconditionally. A FAMILY-INDIRECT match (only via the facet
+    family the target participates in, e.g. a ``spatial`` axis for a systolic target) is leverable only
+    when the target's RTL actually ADMITS it — i.e. it registered a route for it — so a target does not
+    inherit family axes its hardware lacks (e.g. atlas has a mesh but no accumulator memory, so
+    ``spatial.accumulator_resident`` is NOT leverable for atlas and is not a phantom orphan)."""
     fams = _target_families(backend)
-    return {s.axis for s in FIELD_REGISTRY.values()
-            if s.classification == LEVER and (backend in s.backends or bool(fams & set(s.backends)))}
+    routed = routed_axes(backend)
+    out: set[str] = set()
+    for s in FIELD_REGISTRY.values():
+        if s.classification != LEVER:
+            continue
+        if backend in s.backends:                          # direct: always leverable
+            out.add(s.axis)
+        elif (fams & set(s.backends)) and s.axis in routed:  # family-indirect: only if the RTL admits it
+            out.add(s.axis)
+    return out
 
 
 def _routes(backend: str) -> list:
+    action_catalog.ensure_backend(backend)                 # derive+register this backend's routes on first use
     return action_catalog._ROUTES.get(backend, [])
 
 
