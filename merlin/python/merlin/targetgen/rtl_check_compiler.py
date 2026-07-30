@@ -224,8 +224,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Compile RTL facts + capsule -> FileCheck assertion files.")
     ap.add_argument("capsule", help="path to capsule.yaml")
     from .rtl.facts import load_facts
-    ap.add_argument("--target", default="gemmini",
-                    help="target whose RTL facts + check family to compile (CLI convenience default)")
+    ap.add_argument("--target", required=True,
+                    help="target whose RTL facts + check family to compile")
     ap.add_argument("--facts", default=None, help="facts.json (default: regenerate the target from RTL)")
     a = ap.parse_args(argv)
     facts = json.loads(Path(a.facts).read_text()) if a.facts else load_facts(a.target)
