@@ -90,7 +90,19 @@ def emit_to_aet(
         # Raw (non-cache) input tokens: gen_ai.usage.input_tokens is the *raw* prefill bucket; the
         # cache buckets are logged separately, so the rollup does not double-count.
         raw_input = sum(t.input_tokens for t in result.turn_usage)
+        # Cost fallback chain: authoritative CLI total_cost_usd → summed per-model costUSD → a
+        # per-turn list-price ESTIMATE. The estimate covers a KILLED / timed-out run whose
+        # transcript was truncated before the terminal `result` event, so both authoritative
+        # sources are 0/empty; without it such a run records cost=$0 and can silently blow a budget
+        # ceiling even though real per-turn usage exists. estimated_cost_usd() returns None for a
+        # cost-unavailable model — in that case we leave cost at 0 (never fabricate) but still
+        # record the real turn count below.
         cost = result.cost_usd or sum(mu.cost_usd for mu in result.model_usage)
+        cost_is_estimate = False
+        if not cost:
+            est = result.estimated_cost_usd()  # PriceTable.from_env(); per-turn × list price
+            if est is not None:
+                cost, cost_is_estimate = est, True
 
         logger = EvalRunLogger.start(
             project=project, suite=suite, target=target, method=method, seed=seed,
@@ -114,8 +126,9 @@ def emit_to_aet(
         if save_trajectory:
             _save_trajectory(run_dir, result, run_id=run_id, model=result.model or model, suite=suite)
 
+        cost_note = " (per-turn ESTIMATE; transcript truncated, no result event)" if cost_is_estimate else ""
         _warn(f"recorded run {run_id} → {run_dir}/logs "
-              f"(cost=${cost:.4f}, turns={result.num_turns}, tools={result.tool_call_count})")
+              f"(cost=${cost:.4f}{cost_note}, turns={result.num_turns}, tools={result.tool_call_count})")
         return True
     except Exception as e:
         _warn(f"failed to record run {run_id} into aet: {e}")
