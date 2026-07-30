@@ -6,7 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "merlin"
 version = "0.0.1"
 description = "Compiler-centered framework for HW/SW abstraction exploration"
-requires-python = ">=3.10"
+# >=3.11: the `telemetry` extra's sibling `aet` (via [tool.uv.sources]) requires >=3.11, and it enters
+# the universal resolution, so a >=3.10 floor made every `uv sync` fail. The runtime venv is 3.13.
+requires-python = ">=3.11"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [{ name = "UCB-BAR" }]
