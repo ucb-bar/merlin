@@ -2,6 +2,12 @@
 accumulator/dtype) that are NOT in a kernel's body or assembly, so they can't be mined from code
 alone. Hand-authored once per framework (~the XNNPACK-transpose knowledge), agent-refined, and
 loaded by the dossier so the agent reads the contract alongside the code facts.
+
+The ``feature_extraction/`` subdir holds a second, distinct kind of contract keyed by ISA *family*
+(rvv / gemmini / exo_schedule / triton / ...): the per-family data that used to be an
+``if fam == "gemmini"`` branch inside ``features/{roles,dispatch,loops}.py`` — how to measure RHS
+reuse, which accelerator dispatch opcodes to count, whether the tiling marker is an explicit
+directive. Loading it as data keeps those extractors framework-agnostic (see ``load_feature_contract``).
 """
 from __future__ import annotations
 
@@ -12,6 +18,7 @@ from typing import Any
 from ...common.yaml import load_yaml
 
 _DIR = Path(__file__).resolve().parent
+_FEATURE_DIR = _DIR / "feature_extraction"
 
 # kernel.source string -> contract file stem
 _SOURCE_TO_FRAMEWORK = {
@@ -39,3 +46,17 @@ def load_contract_file(path: Path) -> dict[str, Any]:
 
 def available_frameworks() -> list[str]:
     return sorted(p.stem for p in _DIR.glob("*.yaml"))
+
+
+@lru_cache(maxsize=None)
+def load_feature_contract(family: str) -> dict[str, Any]:
+    """Load the per-ISA-family FEATURE-EXTRACTION contract (``feature_extraction/<family>.yaml``).
+
+    This is the data that used to be an ``if fam == ...`` branch in ``features/{roles,dispatch,
+    loops}.py``: the RHS-reuse measurement method, the accelerator dispatch opcode set, and whether
+    the tiling marker is an explicit directive. Returns {} for a family with no file — the extractors
+    then apply their target-agnostic defaults."""
+    path = _FEATURE_DIR / f"{(family or '').lower()}.yaml"
+    if not path.is_file():
+        return {}
+    return load_contract_file(path)

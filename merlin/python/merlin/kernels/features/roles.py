@@ -8,39 +8,39 @@ to the very kernels it was mined from — not merely asserted.
 """
 from __future__ import annotations
 
-import re
-
+from merlin.kernels.framework_contracts import load_feature_contract
 from merlin.kernels.markers import target_family
 from merlin.kernels.types import NormalizedKernel
 
-_CONTRACTION = {"gemm", "matmul", "conv", "dwconv", "igemm"}
+from ._tokens import count_opcode_uses, distinct_registers
 
-_VACC_RE = re.compile(r"\bvacc(\d+)\b")
-_COMPUTE_RE = re.compile(r"compute_preloaded")
-_WLOAD_RE = re.compile(r"\bmvin[23]\b|gemmini_extended\d*_mvin[23]")
+_CONTRACTION = {"gemm", "matmul", "conv", "dwconv", "igemm"}
 
 
 def _measure_rhs_reuse(nk: NormalizedKernel, fired: dict) -> int:
     """Static proxy for how many times a packed RHS/weight is reused before reload.
 
-    RVV: register blocking — a loaded weight vector feeds MR accumulators, so reuse == the
-    number of distinct ``vacc`` registers (MR). Gemmini: compute ops per weight ``mvin``.
-    Honest proxy (no runtime trip counts); recorded as a static estimate.
-    """
-    fam = target_family(nk.target)
+    The measurement METHOD is data (per-ISA-family ``feature_extraction`` contract), not a code
+    branch: ``distinct_register`` (RVV register blocking — reuse == number of distinct accumulator
+    registers, i.e. MR), ``compute_per_wload`` (Gemmini — compute ops per weight load-in), or
+    ``packed_constant`` (a schedule asserts reuse; the default asserts 1). Honest static proxy — no
+    runtime trip counts."""
+    spec = load_feature_contract(target_family(nk.target)).get("rhs_reuse") or {}
+    method = spec.get("method", "packed_constant")
     text = nk.raw_text
-    if fam == "rvv":
-        mr = len(set(_VACC_RE.findall(text)))
-        return mr if mr else (1 if "packed_rhs" in fired else 0)
-    if fam == "gemmini":
-        n_compute = len(_COMPUTE_RE.findall(text))
-        n_wload = len(_WLOAD_RE.findall(text))
+    packed = "packed_rhs" in fired
+    if method == "distinct_register":
+        mr = distinct_registers(text, spec.get("register_prefix", "vacc"))
+        return mr if mr else (1 if packed else 0)
+    if method == "compute_per_wload":
+        compute_token = spec.get("compute_token", "")
+        n_compute = text.count(compute_token) if compute_token else 0
+        n_wload = count_opcode_uses(text, spec.get("wload_tokens", ()))
         if n_wload == 0:
             return 1 if n_compute else 0
         return max(1, round(n_compute / n_wload))
-    if fam == "exo_schedule":
-        return 2 if "packed_rhs" in fired else 0  # schedule stages weights => reuse asserted
-    return 1 if "packed_rhs" in fired else 0
+    # packed_constant (also the target-agnostic default): reuse asserted when packing fired.
+    return int(spec.get("value", 1)) if packed else 0
 
 
 def _op_sequence(nk: NormalizedKernel, feats_hint: dict) -> list[str]:

@@ -11,28 +11,29 @@ their marker fires. For C-vector families (RVV/AVX/NEON) the tiling marker is me
 """
 from __future__ import annotations
 
-import re
-
+from merlin.kernels.framework_contracts import load_feature_contract
 from merlin.kernels.markers import target_family
 from merlin.kernels.types import NormalizedKernel
 
-_FOR_RE = re.compile(r"\bfor\s*\(")
-_DO_RE = re.compile(r"\bdo\s*\{")
-_PYFOR_RE = re.compile(r"\bfor\s+\w+\s+in\s")
-_VACC_RE = re.compile(r"\bvacc(\d+)\b")
+from ._tokens import count_loops, distinct_registers
 
-# Families whose tiling marker is a specific directive, not just loop-presence.
-_DIRECTIVE_TILING = {"gemmini", "triton", "exo_schedule"}
+# Vector-accumulator register naming convention (a generic register-blocking heuristic, applied to
+# every family — not a per-target branch): >=2 distinct live accumulators means register blocking.
+_ACC_REGISTER_PREFIX = "vacc"
 
 
 def extract_loops(nk: NormalizedKernel, fired: dict[str, list[str]]) -> dict:
     text = nk.raw_text
-    fam = target_family(nk.target)
-    levels = len(_FOR_RE.findall(text)) + len(_DO_RE.findall(text)) + len(_PYFOR_RE.findall(text))
-    register_blocked = len(set(_VACC_RE.findall(text))) >= 2
+    # Whether the tiling marker is an explicit directive (vs mere loop-presence) is data, per ISA
+    # family — not an `if fam in {...}` branch.
+    tiling_is_directive = bool(
+        load_feature_contract(target_family(nk.target)).get("loops", {}).get("tiling_is_directive")
+    )
+    levels = count_loops(text)
+    register_blocked = distinct_registers(text, _ACC_REGISTER_PREFIX) >= 2
     if "tiling_blocking" not in fired:
         tiling = False
-    elif fam in _DIRECTIVE_TILING:
+    elif tiling_is_directive:
         tiling = True
     else:
         tiling = levels >= 2 or register_blocked

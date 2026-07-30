@@ -39,9 +39,8 @@ merlin/python/merlin/kernels/features/rvv_intrinsics.py       # superseded by de
 # tree-sitter unification (ast_struct.py already parses C), which is a scoped feature-mining refactor
 # with feature-value-equivalence stakes, not a mechanical de-regex swap.
 merlin/python/merlin/kernels/features/ast_struct.py           # 2 leaf-token regexes inside an otherwise tree-sitter walk
-merlin/python/merlin/kernels/features/loops.py                # for/do/vacc token counts over C source
-merlin/python/merlin/kernels/features/roles.py                # vacc/compute/mvin token counts (RHS-reuse proxy) over C source
-merlin/python/merlin/kernels/features/dispatch.py             # Gemmini dispatch-call token count over C source
+# loops.py / roles.py / dispatch.py migrated to structured token parsing (features/_tokens.py); their
+# per-family branch data now lives in framework_contracts/feature_extraction/<family>.yaml.
 
 # ---------------------------------------------------------------- TODO(batch-4b): xDSL/CIRCT consumers still pending
 merlin/python/merlin/runtime/backends/ours_board/__init__.py  # matmul matcher + func.func anchor over MLIR -> xDSL / str.find (runtime routing)
