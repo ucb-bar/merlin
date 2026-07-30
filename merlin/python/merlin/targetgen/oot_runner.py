@@ -35,12 +35,12 @@ from aet.tracking import EvalRunLogger
 from .contract import schemas
 from .contract import compile as oot_compile
 
-SUITE = "gemmini-contract"
-# This is the gemmini contract K-ladder certification runner (it imports the gemmini runtime backend and
-# grades the gemmini-contract suite). Its target identity is declared ONCE here — co-located with SUITE —
-# and referenced everywhere below, rather than sprinkled as bare "gemmini" literals through the run
-# record / logger calls.
-TARGET = "gemmini"
+SUITE = "gemmini-contract"  # target-ok: aet suite identity of the gemmini reference contract cert flow
+# The target under certification is DERIVED per run from the package's manifest ``target`` field (via
+# ``_package_target`` / the ``target=`` param of ``certify``), never hardcoded — the runner is
+# target-agnostic and threads that value through the run record / logger calls below. The SUITE label
+# above is the fixed aet identity of the gemmini reference contract suite and is intentionally kept.
+DEFAULT_TARGET = "unknown"  # fallback only when a package manifest declares no ``target`` field
 CONTRACT_VERSION = "0.1"
 
 # Forbidden substrings in a non-exempt package's tool sources (integrity scan; see
@@ -251,14 +251,35 @@ def run_entrypoint(pkg: Package, name: str, input_mlir: Path,
 # --------------------------------------------------------------------------- certification
 
 
+def _package_target(package_dir: str | Path, default: str = DEFAULT_TARGET) -> str:
+    """Peek a package's declared ``target`` from its manifest, fail-lenient.
+
+    The run identity (RunSpec / run record / logger) must be fixed BEFORE the package is
+    load-validated, so read the manifest ``target`` directly rather than through ``load_package``
+    (which raises on any contract violation). A package that can't even be peeked still gets a run
+    dir and a fail-closed record from ``load_package`` inside ``certify``.
+    """
+    man_path = Path(package_dir) / "manifest.yaml"
+    try:
+        manifest = yaml.safe_load(man_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return default
+    if isinstance(manifest, dict) and manifest.get("target"):
+        return str(manifest["target"])
+    return default
+
+
 def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: str | Path,
             run_id: str, simulator: str = "spike", contract: str | Path | None = None,
-            seed: int = 0, timeout: int = 600) -> dict[str, Any]:
+            seed: int = 0, timeout: int = 600, target: str | None = None) -> dict[str, Any]:
     """Run the K-ladder for one (package, interface input) and record an aet run dir.
 
     Returns the results dict (also written as results.yaml). Never raises for a package/gate
     failure — those are recorded as status: fail with a plane-routed FailureRecord; only an
     internal harness bug raises.
+
+    ``target`` labels the run; when omitted it is derived from the package manifest's ``target``
+    field, so the runner is target-agnostic rather than hardcoded to the reference target.
     """
     from ..runtime.backends import gemmini as gem
     from ..runtime.reference import reference_outputs, outputs_match
@@ -267,9 +288,11 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
 
     interface_mlir = Path(interface_mlir)
     rung = interface_mlir.stem.split(".")[0]
+    if target is None:
+        target = _package_target(package_dir)
 
     spec = RunSpec(project="merlin", suite=SUITE, method=f"{run_id}", seed=seed, run_id=run_id,
-                   project_root=Path(runs_root), tracking_mode="local", target=TARGET,
+                   project_root=Path(runs_root), tracking_mode="local", target=target,
                    dtype="i8xi8_i32", benchmark=rung)
     paths = RunPaths.from_spec(spec, run_id)
     for dd in (paths.run_path, paths.logs, paths.artifacts_dir, paths.generated, paths.contracts):
@@ -392,10 +415,10 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
                    "detail": f"{type(e).__name__}: {e}"}
 
     _record(paths, run_id, rung, simulator, status, cb, shas, oracle, entry, semantic,
-            artifacts_recorded, failure, seed)
+            artifacts_recorded, failure, seed, target)
 
     results = {
-        "status": status, "artifact_type": "mlir_oot_target_backend", "target": "gemmini",
+        "status": status, "artifact_type": "mlir_oot_target_backend", "target": target,
         "rung": rung, "run_id": run_id,
         "contract": {"version": CONTRACT_VERSION, "package_valid": failure is None or
                      (failure.get("plane") not in ("contract",))},
@@ -413,12 +436,12 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
 
 def _record(paths: RunPaths, run_id: str, rung: str, simulator: str, status: str,
             cb: dict | None, shas: dict, oracle: dict, entry: dict, semantic: dict,
-            artifacts_recorded: dict, failure: dict | None, seed: int) -> None:
+            artifacts_recorded: dict, failure: dict | None, seed: int, target: str) -> None:
     """Write the run_manifest + artifact records + FailureRecord (the attributable ledger)."""
     cycle_accurate = simulator == "verilator" and oracle.get("result") == "pass"
     manifest = {
         "schema_version": "1.0", "project": "merlin", "suite": SUITE, "method": run_id,
-        "seed": seed, "run_id": run_id, "target": TARGET, "benchmark": rung,
+        "seed": seed, "run_id": run_id, "target": target, "benchmark": rung,
         "created_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
         "status": status,
         "codegen_backend": "oot_package",
@@ -434,7 +457,7 @@ def _record(paths: RunPaths, run_id: str, rung: str, simulator: str, status: str
     (paths.run_path / "run_manifest.yaml").write_text(
         yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
 
-    logger = EvalRunLogger.start(project="merlin", suite=SUITE, target=TARGET,
+    logger = EvalRunLogger.start(project="merlin", suite=SUITE, target=target,
                                  method=run_id, seed=seed, run_id=run_id,
                                  run_path=paths.run_path, tracking_mode="local")
     logger.log_params({"rung": rung, "simulator": simulator,

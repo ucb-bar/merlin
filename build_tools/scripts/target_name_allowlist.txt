@@ -56,7 +56,6 @@ merlin/python/merlin/targetgen/rtl/gen_numeric_facts.py      # load_facts("gemmi
 merlin/python/merlin/targetgen/rtl/gen_rtl_digest.py         # load_facts("gemmini") fallback + help (dev CLI)
 merlin/python/merlin/targetgen/rtl_check_compiler.py         # --target default gemmini (dev CLI convenience)
 merlin/python/merlin/targetgen/rtl_check_runner.py           # --target default gemmini (dev CLI convenience)
-merlin/python/merlin/targetgen/oot_runner.py                 # gemmini-contract SUITE/TARGET identity for the reference cert runner
 merlin/python/merlin/targetgen/capsule_runner.py             # gemmini-capsule-bench SUITE identity + npu_model model_ext fallback
 merlin/python/merlin/targetgen/capsule_grade.py              # gemmini-mlir-oot-capsule task label in the score dict
 merlin/python/merlin/targetgen/baremetalc_corroborate.py     # gemmini bareMetalC corroboration report path (reference tool)
