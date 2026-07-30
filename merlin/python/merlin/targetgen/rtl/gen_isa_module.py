@@ -137,7 +137,7 @@ def emit(funct_name: str, rs1: int = 0, rs2: int = 0) -> Instr:
     return "\n".join(lines)
 
 
-def generate_header(facts: dict, encoding: dict, target: str = "gemmini") -> str:
+def generate_header(facts: dict, encoding: dict, target: str) -> str:
     """Emit a C++ header of the SAME derived ISA constants (from facts + the manifest encoding block), so
     a C++ backend #includes generated constants instead of hand-typing constexprs — closing the third
     (C++) leg of the former triplication with the same single source the Python module uses."""

@@ -41,7 +41,7 @@ def _good_single_tile_trace():
 # Source facts from the regenerating accessor (the CIRCT-generated artifact) rather than a degenerate
 # empty-interfaces fallback: the legacy DEFAULT_HW cache is optional, but load_facts always yields a real
 # funct_decode_table (mlc extraction, or the header fallback), so the decode-table checks stay runnable.
-FACTS = CI.build_facts() if CI.DEFAULT_HW.is_file() else load_facts("gemmini")
+FACTS = CI.build_facts(target="gemmini") if CI.DEFAULT_HW.is_file() else load_facts("gemmini")
 
 
 # ----------------------------------------------------------------------------- circt_introspect facts
@@ -49,7 +49,7 @@ FACTS = CI.build_facts() if CI.DEFAULT_HW.is_file() else load_facts("gemmini")
 def test_circt_facts_reproduce_contract_and_decode_table():
     import yaml
     from merlin.targetgen import rocc_decode
-    rec = CI.build_facts()
+    rec = CI.build_facts(target="gemmini")
     contract = yaml.safe_load((CI._REPO / "merlin/targets/gemmini/contracts/target_contract.yaml")
                               .read_text())
     res = CI.validate(rec, contract, rocc_decode._FUNCT_CLASS)
@@ -111,7 +111,7 @@ def test_screen_catches_use_before_config():
 def test_filecheck_trace_passes_good_and_catches_corruptions():
     fc = RUN.find_filecheck()
     cap = _matmul_capsule(16, 16, 16)
-    cc = CC.compile_checks(FACTS, cap)
+    cc = CC.compile_checks(FACTS, cap, "gemmini")
 
     def trace_ok(t):
         ok, _ = RUN.run_filecheck(fc, cc["trace"], RUN.render_trace(t, FACTS), "TRACE")
@@ -137,7 +137,7 @@ def test_filecheck_exact_count_not_substring():
     fc = RUN.find_filecheck()
     if fc is None:
         pytest.skip("FileCheck not found")
-    cc = CC.compile_checks(FACTS, _matmul_capsule(16, 16, 16))  # expects MVOUT_COUNT 1
+    cc = CC.compile_checks(FACTS, _matmul_capsule(16, 16, 16), "gemmini")  # expects MVOUT_COUNT 1
     # 16 MVOUTs -> rendered "MVOUT_COUNT 16"; must fail the "MVOUT_COUNT 1" check
     t = _trace([("PRELOAD", 6), ("COMPUTE_PRELOADED", 4)] + [("MVOUT", 3)] * 16)
     ok, _ = RUN.run_filecheck(fc, cc["trace"], RUN.render_trace(t, FACTS), "TRACE")

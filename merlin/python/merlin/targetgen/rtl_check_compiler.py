@@ -197,7 +197,7 @@ def compile_kernel_checks(capsule: dict, prefix: str = "KERNEL",
     return "\n".join(L) + "\n" + (order + "\n" if order else "")
 
 
-def compile_checks(facts_rec: dict, capsule: dict, target: str = "gemmini") -> dict[str, Any]:
+def compile_checks(facts_rec: dict, capsule: dict, target: str) -> dict[str, Any]:
     """Compile the check files for a capsule + a per-family PROVENANCE audit, ENDPOINT-aware and fully
     derived. A RoCC command-ISA target (endpoint ``inline_asm_insn``, e.g. gemmini) gets the trace
     FileCheck over its decoded RoCC stream; a self-hosted-ISA target (``external_backend``, e.g. atlas)
@@ -224,11 +224,13 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Compile RTL facts + capsule -> FileCheck assertion files.")
     ap.add_argument("capsule", help="path to capsule.yaml")
     from .rtl.facts import load_facts
-    ap.add_argument("--facts", default=None, help="facts.json (default: regenerate gemmini from RTL)")
+    ap.add_argument("--target", default="gemmini",
+                    help="target whose RTL facts + check family to compile (CLI convenience default)")
+    ap.add_argument("--facts", default=None, help="facts.json (default: regenerate the target from RTL)")
     a = ap.parse_args(argv)
-    facts = json.loads(Path(a.facts).read_text()) if a.facts else load_facts("gemmini")
+    facts = json.loads(Path(a.facts).read_text()) if a.facts else load_facts(a.target)
     capsule = yaml.safe_load(Path(a.capsule).read_text())
-    cc = compile_checks(facts, capsule)
+    cc = compile_checks(facts, capsule, a.target)
     print(f"# capsule={cc['capsule']}\n# --- trace ---\n{cc['trace']}\n# --- kernel ---\n{cc['kernel']}")
     return 0
 

@@ -22,6 +22,7 @@ def spec_from_experiment(te, runner: Any, *, perf_tier: str = "L2",
     tier result (default: cycles)."""
     return BenchTargetSpec(
         name=name or te.target.capitalize(),
+        target=te.target,
         runner=runner,
         corpus_root=te.capsule_corpus,
         labels=set(labels) if labels else None,

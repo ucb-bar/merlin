@@ -108,8 +108,8 @@ def test_compiled_checks_are_memoized():
     """compiled_checks is a pure function of (capsule name, facts sha) — repeated calls hit the cache."""
     cap = _matmul_capsule()
     RR._COMPILED_CACHE.clear()
-    a = RR.compiled_checks(_FACTS, cap)
-    b = RR.compiled_checks(_FACTS, cap)
+    a = RR.compiled_checks(_FACTS, cap, "gemmini")
+    b = RR.compiled_checks(_FACTS, cap, "gemmini")
     assert a is b                                        # same object -> served from cache
     assert (cap.get("name"), RR._facts_sha(_FACTS), "gemmini") in RR._COMPILED_CACHE
 

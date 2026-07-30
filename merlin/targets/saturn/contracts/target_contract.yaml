@@ -11,6 +11,9 @@ ops: [pack, matmul, commit, release]
 types: [packed_tensor, accumulator]
 runtime:
   backends: [simulator, baremetal, vcs, zephyr]
+  # Default runtime backend the lowering pipeline stamps when a caller passes none (DERIVED from this
+  # contract, not from a name -> backend map in code; see target_registry.backend_for).
+  default_backend: baremetal
 capabilities:
   ops: [matmul, bias_add, requant, relu]
   layouts: [packed_rhs]

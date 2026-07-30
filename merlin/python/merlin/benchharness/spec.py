@@ -32,6 +32,10 @@ class BenchTargetSpec:
     name: str
     runner: Any
     corpus_root: Path
+    # The RESOLVABLE target name (lowercase, as target_registry/manifest loaders expect) — distinct from
+    # ``name``, which is a display label. Threaded into ``runner.run_capsule(target=...)`` so the shared
+    # driver never relies on a runner-side default target. None only for stub/test runners that ignore it.
+    target: str | None = None
     labels: set[str] | None = None
     # None -> the runner's default contract dir (absolute DEFAULT_CONTRACT_DIR / $MERLIN_CONTRACT_DIR);
     # pass an ABSOLUTE path to override. Avoid CWD-relative strings (break when not run from repo root).

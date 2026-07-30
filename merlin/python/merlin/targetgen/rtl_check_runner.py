@@ -73,7 +73,7 @@ def _facts_sha(facts_rec: dict) -> str:
     return s
 
 
-def compiled_checks(facts_rec: dict, capsule: dict, target: str = "gemmini") -> dict:
+def compiled_checks(facts_rec: dict, capsule: dict, target: str) -> dict:
     """Memoized :func:`rtl_check_compiler.compile_checks`, keyed by (capsule name, facts sha, target)."""
     key = (capsule.get("name") or "?", _facts_sha(facts_rec), target)
     c = _COMPILED_CACHE.get(key)
@@ -243,7 +243,7 @@ def _load_capsule(name: str, index: dict[str, Path]) -> dict | None:
 
 
 def screen_run(run_capsule_dir: Path, facts_rec: dict, index: dict[str, Path],
-               fc: str | None, write: bool = False, target: str = "gemmini") -> dict | None:
+               fc: str | None, write: bool = False, *, target: str) -> dict | None:
     """Run the full RTL-check suite (FileCheck trace/kernel + Python numeric screen) on one run dir.
 
     ``target`` selects the check family by DERIVED endpoint: a RoCC command-ISA target (endpoint
@@ -322,10 +322,29 @@ def _capsule_name_for(d: Path) -> str:
     return d.name
 
 
-def prescreen(run_capsule_dir: Path) -> dict | None:
-    """Opt-in cost gate: compile+run the RTL checks; caller may skip the oracle on verdict=='reject'."""
-    facts = load_facts("gemmini")
-    return screen_run(Path(run_capsule_dir), facts, _capsule_index(), find_filecheck(), write=False)
+def _target_of_run(run_capsule_dir: Path) -> str:
+    """DERIVE the target a capsule run belongs to from its own ``run_manifest.yaml`` (the runner stamps
+    ``target`` there). No gemmini default: a run dir without a recorded target is a loud error, so a
+    caller that omits ``target`` still screens against the run's ACTUAL target, never an assumed one."""
+    mf = Path(run_capsule_dir) / "run_manifest.yaml"
+    doc = yaml.safe_load(mf.read_text()) if mf.is_file() else None
+    target = (doc or {}).get("target") if isinstance(doc, dict) else None
+    if not target:
+        raise ValueError(f"cannot derive target for {run_capsule_dir}: no 'target' in run_manifest.yaml; "
+                         "pass target= explicitly")
+    return str(target)
+
+
+def prescreen(run_capsule_dir: Path, target: str | None = None) -> dict | None:
+    """Opt-in cost gate: compile+run the RTL checks; caller may skip the oracle on verdict=='reject'.
+
+    ``target`` selects the facts + check family. When omitted it is DERIVED from the run's own
+    ``run_manifest.yaml`` (:func:`_target_of_run`) — never defaulted to gemmini — so a legacy caller that
+    passes only the run dir still screens against that run's actual target."""
+    target = target or _target_of_run(Path(run_capsule_dir))
+    facts = load_facts(target)
+    return screen_run(Path(run_capsule_dir), facts, _capsule_index(), find_filecheck(),
+                      write=False, target=target)
 
 
 def iter_run_dirs(root: Path):
@@ -339,6 +358,8 @@ def iter_run_dirs(root: Path):
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("root", help="a capsule run dir or a runs/ tree")
+    ap.add_argument("--target", default="gemmini",
+                    help="target whose RTL facts + check family to screen (CLI convenience default)")
     ap.add_argument("--write", action="store_true", help="write rtl_checks.json beside capsule_result.json")
     ap.add_argument("--quantify", action="store_true",
                     help="summarize how many runs the pre-screen would reject (oracle skips)")
@@ -346,11 +367,11 @@ def main(argv: list[str] | None = None) -> int:
     fc = find_filecheck()
     if not fc:
         print("WARNING: FileCheck binary not found; running Python screen only")
-    facts = load_facts("gemmini")
+    facts = load_facts(a.target)
     index = _capsule_index()
     rejects = warns = oks = n = 0
     for d in sorted(iter_run_dirs(Path(a.root))):
-        r = screen_run(d, facts, index, fc, write=a.write)
+        r = screen_run(d, facts, index, fc, write=a.write, target=a.target)
         if r is None:
             continue
         n += 1

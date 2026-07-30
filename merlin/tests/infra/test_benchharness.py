@@ -61,7 +61,7 @@ class _StubRunner:
     def discover_capsules(self, root, *, labels=None, contract=None):
         return [{"name": n} for n in sorted(self._results)]
 
-    def run_capsule(self, cap, package_dir, *, runs_root, run_id, contract=None, timeout=0):
+    def run_capsule(self, cap, package_dir, *, runs_root, run_id, contract=None, timeout=0, target=None):
         return self._results[cap["name"]]
 
 

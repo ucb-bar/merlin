@@ -27,7 +27,7 @@ from .oot_runner import CertFailure, build_package, integrity_scan, load_package
 def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str | Path,
           labels: set[str] | None = None, contract: str | Path | None = None,
           oracle_adapters: dict | None = None, timeout: int = 900,
-          max_workers: int = 1, target: str = "gemmini") -> dict:
+          max_workers: int = 1, target: str) -> dict:
     """Run the capsule suite over a submitted package; return a score dict (also schema-checkable).
 
     ``max_workers > 1`` fans the per-capsule oracle runs out in parallel (verilator/VCS instances).
@@ -159,6 +159,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--package", required=True)
     ap.add_argument("--capsules", default="merlin/contract/capsules")
     ap.add_argument("--runs-root", required=True)
+    ap.add_argument("--target", required=True, help="target being graded (its config/oracle are derived)")
     ap.add_argument("--contract", default="merlin/contract")
     ap.add_argument("--labels", default="public,dev")
     ap.add_argument("--hidden", action="store_true", help="grade ONLY hidden capsules (post-freeze)")
@@ -172,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     adapters = {} if a.no_oracle else None
     score = grade(a.package, capsules_root=a.capsules, runs_root=a.runs_root, labels=labels,
                   contract=a.contract, oracle_adapters=adapters, timeout=a.timeout,
-                  max_workers=a.workers)
+                  max_workers=a.workers, target=a.target)
     out = Path(a.score) if a.score else Path(a.runs_root) / "score_capsule.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(score, indent=2), encoding="utf-8")

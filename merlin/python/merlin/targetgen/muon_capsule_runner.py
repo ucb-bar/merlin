@@ -58,8 +58,11 @@ def _wrap_adapters(adapters: dict[str, Callable]) -> dict[str, Callable]:
 def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path,
                 run_id: str | None = None, contract: str | Path | None = None,
                 oracle_adapters: dict[str, Callable] | None = None,
-                pkg=None, timeout: int = 600) -> dict:
-    """Run one Muon capsule via the shared runner with the Muon config."""
+                pkg=None, timeout: int = 600, target: str | None = None) -> dict:
+    """Run one Muon capsule via the shared runner with the Muon config.
+
+    ``target`` is accepted for signature-parity with the shared bench driver but is advisory: the Muon
+    config (``_MUON_CONFIG.target``) is authoritative, so this runner never mis-targets."""
     from . import capsule_runner as CR
     adapters = _wrap_adapters(oracle_adapters if oracle_adapters is not None else default_adapters())
     return CR.run_capsule(capsule, package_dir, runs_root=runs_root, run_id=run_id, contract=contract,
@@ -69,7 +72,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
 
 def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str | Path,
               contract: str | Path | None = None,
-              oracle_adapters: dict[str, Callable] | None = None, timeout: int = 600) -> list[dict]:
+              oracle_adapters: dict[str, Callable] | None = None, timeout: int = 600,
+              target: str | None = None) -> list[dict]:
     from . import capsule_runner as CR
     adapters = _wrap_adapters(oracle_adapters if oracle_adapters is not None else default_adapters())
     return CR.run_suite(capsules, package_dir, runs_root=runs_root, contract=contract,

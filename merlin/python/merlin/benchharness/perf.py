@@ -30,7 +30,7 @@ def run_perf(spec: BenchTargetSpec, *, package: str, run_id: str, out_dir: Path,
     rows = []
     for cap in sorted(caps, key=lambda c: c["name"]):
         res = spec.runner.run_capsule(cap, package, runs_root=str(runs_root), run_id=cap["name"],
-                                      contract=spec.contract, timeout=timeout)
+                                      contract=spec.contract, timeout=timeout, target=spec.target)
         tier = res.get("tiers", {}).get(spec.perf_tier, {}) or {}
         row = {"kernel": cap["name"], "status": res.get("status"), "cycles": tier.get("cycles")}
         if flops_fn is not None:

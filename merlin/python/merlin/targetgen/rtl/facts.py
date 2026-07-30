@@ -27,7 +27,7 @@ from merlin.common.paths import artifacts_dir, targets_dir
 _REGENERATING: set[str] = set()
 
 
-def target_base(target: str = "gemmini") -> Path:
+def target_base(target: str) -> Path:
     """Per-target home: the curated ``merlin/targets/<t>`` if it exists, else the generated
     ``artifacts/targets/<t>`` (covers targets like muon that have no hand-curated reference dir)."""
     ref = targets_dir() / target
@@ -36,7 +36,7 @@ def target_base(target: str = "gemmini") -> Path:
     return artifacts_dir() / "targets" / target
 
 
-def rtl_facts_path(target: str = "gemmini", *, explicit: str | Path | None = None) -> Path:
+def rtl_facts_path(target: str, *, explicit: str | Path | None = None) -> Path:
     """Resolve the RTL facts artifact PATH (pure — no I/O, no regeneration): explicit >
     ``$MERLIN_RTL_FACTS`` > the purgeable cache ``out/artifacts/cache/rtl_introspect/<t>/facts.json``.
 
@@ -51,7 +51,7 @@ def rtl_facts_path(target: str = "gemmini", *, explicit: str | Path | None = Non
     return rtl_cache_dir(target) / "facts.json"
 
 
-def ensure_facts(target: str = "gemmini", *, explicit: str | Path | None = None) -> Path:
+def ensure_facts(target: str, *, explicit: str | Path | None = None) -> Path:
     """Resolve the facts artifact and GUARANTEE it exists, REGENERATING it from the RTL into the
     purgeable cache when the cache is cold.
 
@@ -101,7 +101,7 @@ def _warn_if_degraded(target: str) -> None:
             RuntimeWarning, stacklevel=3)
 
 
-def target_contract_path(target: str = "gemmini", *, explicit: str | Path | None = None) -> Path:
+def target_contract_path(target: str, *, explicit: str | Path | None = None) -> Path:
     """Resolve the target contract yaml: explicit > ``$MERLIN_TARGET_CONTRACT`` > ``<base>/contracts/target_contract.yaml``."""
     if explicit:
         return Path(explicit)
@@ -118,13 +118,13 @@ def dialect_plan_path(target: str, *, explicit: str | Path | None = None) -> Pat
     return target_base(target) / "contracts" / "dialect_plan.yaml"
 
 
-def load_facts(target: str = "gemmini", *, explicit: str | Path | None = None) -> dict[str, Any]:
+def load_facts(target: str, *, explicit: str | Path | None = None) -> dict[str, Any]:
     """Load and parse the facts artifact, regenerating the cache from the RTL if it is cold
     (see :func:`ensure_facts`). This is the accessor consumers should use to READ facts."""
     return json.loads(ensure_facts(target, explicit=explicit).read_text(encoding="utf-8"))
 
 
-def rtl_cache_dir(target: str = "gemmini", *, ensure: bool = False) -> Path:
+def rtl_cache_dir(target: str, *, ensure: bool = False) -> Path:
     """Purgeable introspect scratch (hw.mlir input, ``*.ll``/``*.o``, arcilator bins, per-run
     facts.json) under ``artifacts/cache/rtl_introspect/<target>/`` — never inside ``merlin/``.
 

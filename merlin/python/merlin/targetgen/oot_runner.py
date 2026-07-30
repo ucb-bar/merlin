@@ -36,6 +36,11 @@ from .contract import schemas
 from .contract import compile as oot_compile
 
 SUITE = "gemmini-contract"
+# This is the gemmini contract K-ladder certification runner (it imports the gemmini runtime backend and
+# grades the gemmini-contract suite). Its target identity is declared ONCE here — co-located with SUITE —
+# and referenced everywhere below, rather than sprinkled as bare "gemmini" literals through the run
+# record / logger calls.
+TARGET = "gemmini"
 CONTRACT_VERSION = "0.1"
 
 # Forbidden substrings in a non-exempt package's tool sources (integrity scan; see
@@ -264,7 +269,7 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
     rung = interface_mlir.stem.split(".")[0]
 
     spec = RunSpec(project="merlin", suite=SUITE, method=f"{run_id}", seed=seed, run_id=run_id,
-                   project_root=Path(runs_root), tracking_mode="local", target="gemmini",
+                   project_root=Path(runs_root), tracking_mode="local", target=TARGET,
                    dtype="i8xi8_i32", benchmark=rung)
     paths = RunPaths.from_spec(spec, run_id)
     for dd in (paths.run_path, paths.logs, paths.artifacts_dir, paths.generated, paths.contracts):
@@ -413,7 +418,7 @@ def _record(paths: RunPaths, run_id: str, rung: str, simulator: str, status: str
     cycle_accurate = simulator == "verilator" and oracle.get("result") == "pass"
     manifest = {
         "schema_version": "1.0", "project": "merlin", "suite": SUITE, "method": run_id,
-        "seed": seed, "run_id": run_id, "target": "gemmini", "benchmark": rung,
+        "seed": seed, "run_id": run_id, "target": TARGET, "benchmark": rung,
         "created_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
         "status": status,
         "codegen_backend": "oot_package",
@@ -429,7 +434,7 @@ def _record(paths: RunPaths, run_id: str, rung: str, simulator: str, status: str
     (paths.run_path / "run_manifest.yaml").write_text(
         yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
 
-    logger = EvalRunLogger.start(project="merlin", suite=SUITE, target="gemmini",
+    logger = EvalRunLogger.start(project="merlin", suite=SUITE, target=TARGET,
                                  method=run_id, seed=seed, run_id=run_id,
                                  run_path=paths.run_path, tracking_mode="local")
     logger.log_params({"rung": rung, "simulator": simulator,

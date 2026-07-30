@@ -40,7 +40,7 @@ def _ingest(source: str, repo: str, target: str | None, limit: int | None, out_p
     if source == "xnnpack":
         gen = ingest_xnnpack(repo, target=target or "rvv", limit=limit)
     elif source == "autocomp":
-        gen = ingest_autocomp(repo, target=target or "gemmini", limit=limit)
+        gen = ingest_autocomp(repo, target=target, limit=limit)
     elif source == "exo":
         exo_diag: dict = {}
         diagnostics["exo"] = exo_diag

@@ -130,20 +130,31 @@ def _endpoint_of(target: str) -> tuple[str | None, str | None]:
 
 
 def _bespoke_sim_via(target: str) -> str:
-    """Recover a target's bespoke-sim signal FROM ITS CONTRACT (no target-name branch, no descriptor):
-    the manifest's ``runner.tier_sim`` declares the sim ladder, so a target that ships the chipyard
-    spike/verilator tiers reads back as ``"chipyard"`` and an arc-only target (empty/arc tier_sim) as ``""``.
-    Lets :func:`oracle_adapters` self-route when a caller omits ``sim_via`` (the descriptor's authoritative
-    ``toolchain.sim_via`` is passed explicitly by the harness; this is the contract-derived fallback)."""
+    """Recover a target's DECLARED bespoke-sim engine from its contract's ``runner.sim_via`` block — the
+    sim engine is a declared target fact, NOT inferred from a hardcoded ``{spike,verilator} -> chipyard``
+    map. A target that ships the chipyard spike/verilator tiers declares ``sim_via: chipyard``; an arc-only
+    target declares none and reads back as ``""``. Lets :func:`oracle_adapters` self-route when a caller
+    omits ``sim_via`` (the descriptor's authoritative ``toolchain.sim_via`` is passed explicitly by the
+    harness; this is the contract-derived fallback)."""
     try:
         from .target_experiment import load_capability_manifest
-        sims = set((load_capability_manifest(target).tier_sim or {}).values())
+        runner = load_capability_manifest(target).contract.get("runner") or {}
     except Exception:  # noqa: BLE001 — no contract -> no bespoke sim
         return ""
-    return "chipyard" if ({"spike", "verilator"} & sims) else ""
+    return str(runner.get("sim_via") or "")
 
 
-def oracle_adapters(target: str = "gemmini", sim_via: str | None = None) -> dict[str, Callable]:
+def _sim_engine_adapters(sim_via: str) -> dict[str, Callable]:
+    """The concrete oracle adapters a DECLARED sim ENGINE provides (additive registry, mirroring
+    ``sandbox.toolchain.SIM_TOOLCHAINS``): ``chipyard`` elaborates spike (L2) + verilator (L3). An
+    unknown/absent engine contributes none (the arc RTL tier still carries the grade). A new bespoke sim
+    registers one branch here — the engine name is DERIVED from the target's contract, never assumed."""
+    if sim_via == "chipyard":
+        return {"L2": _spike_verilator_adapter("spike"), "L3": _spike_verilator_adapter("verilator")}
+    return {}
+
+
+def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callable]:
     """The oracle adapters per tier for a target. The mlc ARC model is the DEFAULT RTL tier (works for
     ANY mlc target, no bespoke sim); a target that DECLARES a bespoke sim (``sim_via``) additionally gets
     its higher-fidelity sim tiers (chipyard -> spike L2 / verilator L3), preserving the gemmini path.
@@ -162,9 +173,7 @@ def oracle_adapters(target: str = "gemmini", sim_via: str | None = None) -> dict
     if sim_via is None:                                              # unspecified -> derive from contract
         sim_via = _bespoke_sim_via(target)
     adapters: dict[str, Callable] = {"L3": mlc_arc_adapter(target)}   # arc default (RTL-derived)
-    if sim_via == "chipyard":                                         # optional bespoke sim (gemmini)
-        adapters["L2"] = _spike_verilator_adapter("spike")
-        adapters["L3"] = _spike_verilator_adapter("verilator")
+    adapters.update(_sim_engine_adapters(sim_via))                    # optional declared bespoke sim
     return adapters
 
 
@@ -185,7 +194,7 @@ def default_adapters() -> dict[str, Callable]:
             "L3": _spike_verilator_adapter("verilator")}
 
 
-def qa_loop_adapters(target: str = "gemmini", sim_via: str | None = None) -> dict[str, Callable]:
+def qa_loop_adapters(target: str, sim_via: str | None = None) -> dict[str, Callable]:
     """The FAST per-round QA-loop oracle set for ``target`` — resolved from :func:`oracle_adapters`, never
     hardwired. It keeps ONLY the lowest (fastest) RTL oracle tier and reserves the slower cycle-accurate
     tiers for the bounded checkpoint (:func:`qa_checkpoint_adapters`). This is a tier-order distinction, not
@@ -199,7 +208,7 @@ def qa_loop_adapters(target: str = "gemmini", sim_via: str | None = None) -> dic
     return {lowest: full[lowest]}
 
 
-def qa_checkpoint_adapters(target: str = "gemmini", sim_via: str | None = None) -> dict[str, Callable]:
+def qa_checkpoint_adapters(target: str, sim_via: str | None = None) -> dict[str, Callable]:
     """The cycle-accurate QA CHECKPOINT oracle set for ``target`` = its full oracle ladder from
     :func:`oracle_adapters` (chipyard: spike L2 + verilator L3; arc/mlc: the RTL-derived arc model). This
     is the higher-fidelity barrier run once the fast loop (:func:`qa_loop_adapters`) has converged — not
@@ -265,7 +274,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 run_id: str | None = None, contract: str | Path | None = None,
                 oracle_adapters: dict[str, Callable] | None = None,
                 pkg: Package | None = None, timeout: int = 600,
-                target: str = "gemmini", suite: str | None = None, dtype: str = "i8xi8_i32",
+                target: str | None = None, suite: str | None = None, dtype: str = "i8xi8_i32",
                 config=None, perf_extractor: Callable | None = None) -> dict:
     """Run one capsule through the package; write artifacts; return a capsule_result dict.
 
@@ -281,7 +290,14 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     from ..runtime.simulator import simulate
     from .eval.gemmini_suite import toolchain_shas
 
-    cfg = config or _config_for_target(target, suite, dtype)
+    # The effective target comes from the config (authoritative — cfg.target drives the run) when one is
+    # supplied, else the explicit ``target`` argument. If NEITHER is given we refuse to run rather than
+    # silently defaulting to gemmini (the OV2 rule: no core path silently operates on gemmini).
+    eff_target = config.target if config is not None else target
+    if eff_target is None:
+        raise ValueError("run_capsule requires a target (or a config carrying one); "
+                         "no default target is assumed")
+    cfg = config or _config_for_target(eff_target, suite, dtype)
     # L1/oracle output equality uses the capsule's numeric_policy (integer -> exact), unless the config
     # forces one (a float/SIMT target grades its oracle output with tolerance regardless of the capsule).
     policy = cfg.force_match_policy or capsule.get("numeric_policy")
@@ -290,7 +306,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     # An unrouted grade (oracle_adapters=None) resolves to the TARGET'S OWN endpoint oracle from the
     # contract — never the gemmini-hardcoded default_adapters (which silently mis-graded atlas as a
     # torch-mlir lowering, run_lowering.py, and crashed). `{}` stays honest no-oracle (L0/L1/trace only).
-    adapters = oracle_adapters if oracle_adapters is not None else _resolve_oracle_adapters(target)
+    adapters = oracle_adapters if oracle_adapters is not None else _resolve_oracle_adapters(eff_target)
     required = set(capsule.get("required_oracle_tiers", []))
 
     paths = make_run_paths(runs_root, run_id, suite=cfg.suite, target=cfg.target,
@@ -541,7 +557,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
 
 
 def _write_run_manifest(paths: RunPaths, run_id: str, name: str, status: str,
-                        tiers: dict, capsule: dict, *, target: str = "gemmini",
+                        tiers: dict, capsule: dict, *, target: str,
                         suite: str | None = None) -> None:
     manifest = {
         "schema_version": "1.0", "project": "merlin", "suite": suite or f"{target}-capsule-bench",
@@ -570,7 +586,7 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
               contract: str | Path | None = None,
               oracle_adapters: dict[str, Callable] | None = None,
               timeout: int = 600, max_workers: int = 1,
-              target: str = "gemmini", suite: str | None = None, dtype: str = "i8xi8_i32",
+              target: str | None = None, suite: str | None = None, dtype: str = "i8xi8_i32",
               config=None, perf_extractor: Callable | None = None) -> list[dict]:
     """Run many capsules through one package (building/integrity-scanning it once).
 
@@ -605,6 +621,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--labels", default="public,dev", help="comma-separated label filter")
     ap.add_argument("--runs-root", default="out/runs/capsule_bench")
     ap.add_argument("--contract", default="merlin/contract")
+    ap.add_argument("--target", required=True, help="target to grade (its config/oracle are derived)")
     ap.add_argument("--timeout", type=int, default=600)
     a = ap.parse_args(argv)
 
@@ -614,7 +631,7 @@ def main(argv: list[str] | None = None) -> int:
         labels = set(a.labels.split(",")) if a.labels else None
         caps = discover_capsules(a.capsules_root, labels=labels, contract=a.contract)
     results = run_suite(caps, a.package, runs_root=a.runs_root, contract=a.contract,
-                        timeout=a.timeout)
+                        timeout=a.timeout, target=a.target)
     npass = sum(1 for r in results if r["status"] == "pass")
     for r in results:
         print(f"  [{r['status']:10s}] {r['capsule']}")

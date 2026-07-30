@@ -28,7 +28,7 @@ def redacted_grade(spec: BenchTargetSpec, submission: str, runs_root: str, timeo
     for cap in caps:
         try:
             res = runner.run_capsule(cap, submission, runs_root=runs_root, run_id=cap["name"],
-                                     contract=spec.contract, timeout=timeout)
+                                     contract=spec.contract, timeout=timeout, target=spec.target)
         except Exception as e:                       # package didn't even load/build
             pkg_fail = {"plane": "package", "detail": str(e)[:300]}
             per.append({"capsule": cap["name"], "status": "error", "fail_plane": "package"})

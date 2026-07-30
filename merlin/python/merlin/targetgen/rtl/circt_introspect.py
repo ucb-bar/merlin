@@ -48,14 +48,14 @@ FUNCT3 = 0x3
 
 
 # ---------------------------------------------------------------------- per-target path resolution
-def _soc_hw_path(target: str = "gemmini") -> Path:
+def _soc_hw_path(target: str) -> Path:
     """The per-target SoC HW-dialect cache (``firtool --ir-hw`` output) the accumulator port-parser
     reads, under the PURGEABLE rtl cache — never inside merlin/, never a baked gemmini path. This is
     the SoC dialect the ``@AccumulatorMem`` port-parse needs (mlc's core dialect drives the decoder)."""
     return rtl_cache_dir(target) / f"{target}_soc.hw.mlir"
 
 
-def isa_scala_path(target: str = "gemmini", chipyard_root: str | Path | None = None) -> Path:
+def isa_scala_path(target: str, chipyard_root: str | Path | None = None) -> Path:
     """The target's Chisel ISA source, by the chipyard generator convention
     ``generators/<t>/src/main/scala/<t>/<T>ISA.scala`` — DERIVED from the target name, not a hardcoded
     ``GemminiISA.scala`` (gemmini resolves the identical file it always did). Returns the path whether
@@ -203,7 +203,7 @@ def extract_funct_table(isa_src: str) -> dict[str, Any]:
 
 
 # ------------------------------------------------------- decoder-derived funct set (the true ISA)
-def extract_funct_table_via_decoder(target: str = "gemmini") -> dict[str, Any] | None:
+def extract_funct_table_via_decoder(target: str) -> dict[str, Any] | None:
     """The legal command-opcode set derived from the HW-dialect DECODER (mlc's comb.icmp-eq fan-out) —
     the actual ISA the silicon implements. Target-parameterized (mlc resolves the target's core HW
     dialect). Returns a table dict (same shape as :func:`extract_funct_table`), or None if mlc is
@@ -425,7 +425,7 @@ def _facts_from_discovery(target: str, facts: dict) -> list[str]:
 
 
 def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None = None,
-                chipyard_root: str | Path | None = None, target: str = "gemmini") -> dict[str, Any]:
+                chipyard_root: str | Path | None = None, target: str | None = None) -> dict[str, Any]:
     """Assemble the RTL facts for ``target``. PREFERS mlc RTL discovery (target-agnostic: mesh DIM +
     memory capacities + the decoder-derived ISA); the chipyard FIRRTL grep + HW-port parse is the
     legacy FALLBACK, run only for a target that ships a Chisel ISA source (gemmini) and skipped
@@ -433,7 +433,12 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
 
     Every input path is resolved FROM ``target`` when not explicitly overridden: the SoC HW cache
     (``<t>_soc.hw.mlir``), the Chisel ISA source (``<T>ISA.scala`` by generator convention), the
-    declared ISA headers. Provenance-stamped; does not write (see :func:`dump_facts`)."""
+    declared ISA headers. Provenance-stamped; does not write (see :func:`dump_facts`).
+
+    ``target`` is required (last so the path overrides can stay positional); a missing target is a
+    loud error, never a silent gemmini fallback."""
+    if target is None:
+        raise ValueError("build_facts requires an explicit target (no default is assumed)")
     chipyard_root = V1.DEFAULT_CHIPYARD if chipyard_root is None else chipyard_root
     hw_path = _soc_hw_path(target) if hw_path is None else Path(hw_path)
     isa_path = isa_scala_path(target, chipyard_root) if isa_path is None else Path(isa_path)
@@ -489,8 +494,8 @@ def dump_facts(out_path: Path | str | None = None, **kw) -> dict[str, Any]:
     """Build facts and write the GENERATED artifact to ``out_path`` (default: the purgeable cache dir,
     NOT merlin/); cache-hit (no rebuild) when input SHAs are unchanged. This is the writer
     :func:`merlin.targetgen.rtl.facts.ensure_facts` calls to fill a cold cache."""
-    out = Path(out_path) if out_path is not None else rtl_cache_dir(kw.get("target", "gemmini")) / "facts.json"
     rec = build_facts(**kw)
+    out = Path(out_path) if out_path is not None else rtl_cache_dir(kw["target"]) / "facts.json"
     if out.is_file():
         try:
             old = json.loads(out.read_text())

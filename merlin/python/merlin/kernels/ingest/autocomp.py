@@ -81,7 +81,7 @@ def _manifest_index(manifest: Path) -> dict[str, dict]:
     return index
 
 
-def ingest_autocomp(repo: str, target: str = "gemmini", limit: int | None = None) -> Iterator[NormalizedKernel]:
+def ingest_autocomp(repo: str, target: str, limit: int | None = None) -> Iterator[NormalizedKernel]:
     """Yield NormalizedKernels for Autocomp kernels under ``repo/kernels/``.
 
     Globs the kernel directory directly (the manifest's ``dest_path`` values are stale

@@ -20,6 +20,10 @@ runner:
   suite: gemmini-capsule-bench
   dtype: i8xi8_i32
   tier_sim: {L2: spike, L3: verilator, L4: vcs, L5: firesim}
+  # The DECLARED bespoke-sim engine (chipyard elaborates the spike L2 / verilator L3 tiers). Read by
+  # capsule_runner._bespoke_sim_via so the sim engine comes from this contract, never a hardcoded
+  # {spike,verilator} -> chipyard inference. A target with no bespoke sim omits this (arc-only).
+  sim_via: chipyard
 # The ABI encoding surface RTL discovery cannot ground (opcode/funct3/legal-funct/DIM come from the
 # fact bundle; THESE do not). Declared once from the Gemmini ISA doc (human-reviewed) and consumed as
 # the SINGLE source of truth by the generated ISA module + the decoder — retiring the triplicated
@@ -54,6 +58,9 @@ features: [systolic_array, resident_packed_tensor, accumulator_commit, command_b
 # here pre-defines that vocabulary.
 runtime:
   backends: [simulator, spike_gemmini, verilator]
+  # Default runtime backend the lowering pipeline stamps onto the runtime module when a caller passes
+  # none (DERIVED here, not from a name -> backend map in code; see target_registry.backend_for).
+  default_backend: baremetal
   # The RTL sim harness that realizes this target — a DECLARED target fact, not a hardcoded backend
   # constant, so it is onboardable from the contract and read from ONE place (not overfit in code). This
   # is the SAME config the ISA facts are introspected from (targetgen.rtl.introspect), so sim and codegen

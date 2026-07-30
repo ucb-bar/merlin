@@ -74,8 +74,11 @@ def vcs_adapter() -> Callable:
 
 def run_vcs_parallel(capsules: list[dict], package_dir: str | Path, *, runs_root: str | Path,
                      contract: str | Path | None = None, max_workers: int = 4,
-                     timeout: int = 3600) -> list[dict]:
-    """Run the corpus through VCS with parallel simv instances (one per capsule)."""
+                     timeout: int = 3600, target: str) -> list[dict]:
+    """Run the corpus through VCS with parallel simv instances (one per capsule).
+
+    ``target`` is required and threaded into each per-capsule run so the grade uses that target's config
+    (no silent gemmini default)."""
     from . import capsule_runner as CR
     if not vcs_available():
         return [{"capsule": c["name"], "status": "incomplete",
@@ -88,7 +91,8 @@ def run_vcs_parallel(capsules: list[dict], package_dir: str | Path, *, runs_root
     def one(cap):
         c = dict(cap); c["required_oracle_tiers"] = ["L0", "L1", "L4"]
         return CR.run_capsule(c, package_dir, runs_root=runs_root, run_id=f"{cap['name']}_vcs",
-                              contract=contract, oracle_adapters=adapters, pkg=pkg, timeout=timeout)
+                              contract=contract, oracle_adapters=adapters, pkg=pkg, timeout=timeout,
+                              target=target)
 
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
         return list(ex.map(one, capsules))

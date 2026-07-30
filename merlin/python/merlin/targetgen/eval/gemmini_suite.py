@@ -32,6 +32,10 @@ from merlin.runtime.backends import gemmini
 from merlin.runtime.backends.gemmini_codegen import generate_driver
 
 SUITE = "gemmini-conformance"
+# This is the gemmini reference conformance suite (it drives the gemmini runtime backend + codegen). Its
+# target identity is declared ONCE here — co-located with SUITE — and referenced by the run record +
+# logger below, rather than repeated as bare "gemmini" literals.
+TARGET = "gemmini"
 
 
 def _git_sha(path: str) -> str:
@@ -71,7 +75,7 @@ def record_gemmini_run(rung: str, simulator: str, *, runs_root: str | Path,
     shas = toolchain_shas()
     spec = RunSpec(project="merlin", suite=SUITE, method=f"{rung}_{simulator}_{codegen_backend}",
                    seed=seed, run_id=run_id, project_root=Path(runs_root), tracking_mode="local",
-                   target="gemmini", dtype="i8xi8_i32", benchmark=rung,
+                   target=TARGET, dtype="i8xi8_i32", benchmark=rung,
                    repo_initial_commit=shas["merlin"])
     paths = RunPaths.from_spec(spec, run_id)
     for d in (paths.run_path, paths.logs, paths.artifacts_dir, paths.generated, paths.contracts):
@@ -97,7 +101,7 @@ def record_gemmini_run(rung: str, simulator: str, *, runs_root: str | Path,
     # Manifest (oracle provenance + SHAs in metadata) — the certification record.
     manifest = {
         "schema_version": "1.0", "project": "merlin", "suite": SUITE, "method": spec.method,
-        "seed": seed, "run_id": run_id, "target": "gemmini", "benchmark": rung,
+        "seed": seed, "run_id": run_id, "target": TARGET, "benchmark": rung,
         "created_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
         "status": "pass" if correct else "fail",
         "codegen_backend": codegen_backend,
@@ -114,7 +118,7 @@ def record_gemmini_run(rung: str, simulator: str, *, runs_root: str | Path,
     (paths.run_path / "run_manifest.yaml").write_text(
         yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
 
-    logger = EvalRunLogger.start(project="merlin", suite=SUITE, target="gemmini",
+    logger = EvalRunLogger.start(project="merlin", suite=SUITE, target=TARGET,
                                  method=spec.method, seed=seed, run_id=run_id,
                                  run_path=paths.run_path, tracking_mode="local")
     logger.log_params({"rung": rung, "simulator": simulator, "codegen_backend": codegen_backend,

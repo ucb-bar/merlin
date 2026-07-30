@@ -51,13 +51,8 @@ def generated_target_home() -> Path:
     auto-discovered — the zero-env default for a just-generated target."""
     return build_dir() / "generated"
 
-# Default runtime backend per target (was pipeline.DEFAULT_BACKEND). Unknown -> "simulator".
-_DEFAULT_BACKEND = {
-    "toy_npu": "simulator",
-    "saturn": "baremetal",
-    "gemmini": "baremetal",
-    "muon": "simulator",
-}
+# Generic runtime backend for a target whose contract declares no default (no name -> backend map).
+_GENERIC_BACKEND = "simulator"
 
 
 @dataclass(frozen=True)
@@ -92,9 +87,21 @@ class TargetInfo:
         return block
 
 
+def _backend_from_contract(contract_path: Path) -> str:
+    """A target's DECLARED default runtime backend, read from its contract's ``runtime.default_backend``
+    (a declared target fact, not a name -> backend map). Generic ``simulator`` when the file or the field
+    is absent — an unknown target degrades honestly rather than inheriting another target's backend."""
+    try:
+        doc = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return _GENERIC_BACKEND
+    val = (doc.get("runtime") or {}).get("default_backend")
+    return str(val) if val else _GENERIC_BACKEND
+
+
 def backend_for(name: str) -> str:
-    """Default runtime backend for a target."""
-    return _DEFAULT_BACKEND.get(name, "simulator")
+    """Default runtime backend for a target, DERIVED from its contract (never a hardcoded name map)."""
+    return _backend_from_contract(target_contract_path(name))
 
 
 def _is_target_root(p: Path) -> bool:
@@ -154,8 +161,7 @@ def _resolve_external(name: str, root: Path) -> TargetInfo:
         contract_path=contracts / "target_contract.yaml",
         dialect_plan_path=contracts / "dialect_plan.yaml",
         facts_path=contracts / "rtl_facts" / "facts.json",
-        backend=str((yaml.safe_load((contracts / "target_contract.yaml").read_text(encoding="utf-8"))
-                     or {}).get("runtime", {}).get("default_backend") or backend_for(name)),
+        backend=_backend_from_contract(contracts / "target_contract.yaml"),
         external_root=root)
 
 
