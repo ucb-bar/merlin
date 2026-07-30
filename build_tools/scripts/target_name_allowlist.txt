@@ -44,7 +44,7 @@ merlin/python/merlin/kernels/ingest/exo.py                   # exo platform->tar
 merlin/python/merlin/kernels/cca_contract.py                 # CCA applicable-backend vocabulary + orphan registry (reference set)
 
 # ---------------------------------------------------------------- reference-target FACTS / package fallback in dev CLIs (gemmini is the reference; the CLI still takes --target)
-merlin/python/merlin/compile_cli.py                          # gemmini default OOT package + choice injection (reference package)
+merlin/python/merlin/compile_cli.py                          # --target choice injection + help text (default OOT package now target-derived)
 merlin/python/merlin/targetgen/circt_gate.py                 # load_facts("gemmini") default fallback in the CIRCT gate
 merlin/python/merlin/targetgen/rocc_decode.py                # gemmini manifest/facts load (RoCC decode is gemmini-coupled)
 merlin/python/merlin/targetgen/rtl_checks.py                 # load_default_facts prefers gemmini reference facts

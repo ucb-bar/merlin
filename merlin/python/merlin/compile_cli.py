@@ -237,10 +237,14 @@ def compile_oot(workload: str, *, target: str, run: str, verify: bool, package: 
     from .targetgen import oot_runner, capsule_common
     from .benchharness import runs_root
     from .common.paths import repo_root
+    from .common.artifacts import artifacts_dir
 
-    # Default to the certified gemmini OOT package (has artifact_type: mlir_oot_target_backend, which
-    # oot_runner.certify requires); any other target must name its OOT package via --package.
-    default_pkg = "out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot" if target == "gemmini" else None
+    # Default to the resolved target's conventional OOT backend package
+    # (``out/artifacts/targets/<target>/agent_spec_v1_mlir_oot``, artifact_type mlir_oot_target_backend,
+    # which oot_runner.certify requires) when it exists on disk — so any target that ships one resolves
+    # its default. A target without that package (or with a bespoke layout) must name it via --package.
+    cand = artifacts_dir() / "targets" / target / "agent_spec_v1_mlir_oot"
+    default_pkg = str(cand) if (cand / "manifest.yaml").is_file() else None
     pkg_dir = package or default_pkg
     corpus = repo_root() / "merlin/contract/capsules/isa"
     out: dict = {"tool": "merlin-compile", "target": target, "workload": workload,
