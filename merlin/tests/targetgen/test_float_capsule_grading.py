@@ -152,6 +152,25 @@ def test_float_run_capsule_not_run_is_not_pass(tmp_path, monkeypatch):
     assert res["tiers"]["L0"]["not_applicable"] is True
 
 
+def test_no_oracle_smoke_is_not_gradeable_never_pass(tmp_path, monkeypatch):
+    """--no-oracle STRUCTURE-ONLY smoke: the SAME missing numeric tier that makes a GRADED run
+    `incomplete`/`oracle_unavailable` instead reads back as the DISTINCT `not_gradeable_no_oracle`
+    (a withheld numeric verdict) — never a numeric pass. This is the honest no-oracle plane; the
+    not_run_is_not_pass gate stays fully in force for graded runs (asserted separately)."""
+    _stub_front_half(monkeypatch)
+    cap = load_capsule(ATLAS_AT2, contract="merlin/contract")
+
+    res = CR.run_capsule(cap, "unused-package", runs_root=tmp_path, run_id="AT2_no_oracle",
+                         config=_atlas_config(), oracle_adapters={}, no_oracle=True)
+
+    assert res["status"] == "not_gradeable_no_oracle"
+    assert res["status"] != "pass"                              # HARD INVARIANT: never a numeric pass
+    assert res["failure"]["plane"] == "not_gradeable_no_oracle"
+    assert res["failure"]["category"] == "NOT_GRADEABLE_NO_ORACLE"
+    assert res["tiers"]["L3"]["status"] == "unavailable"
+    schemas.validate(res, "capsule_result", contract="merlin/contract")
+
+
 def test_atlas_oracle_routes_to_program_oracle():
     ad = CR.oracle_adapters("atlas")
     assert set(ad) == {"L3"}

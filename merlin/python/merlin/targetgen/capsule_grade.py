@@ -27,11 +27,16 @@ from .oot_runner import CertFailure, build_package, integrity_scan, load_package
 def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str | Path,
           labels: set[str] | None = None, contract: str | Path | None = None,
           oracle_adapters: dict | None = None, timeout: int = 900,
-          max_workers: int = 1, target: str) -> dict:
+          max_workers: int = 1, target: str, no_oracle: bool = False) -> dict:
     """Run the capsule suite over a submitted package; return a score dict (also schema-checkable).
 
     ``max_workers > 1`` fans the per-capsule oracle runs out in parallel (verilator/VCS instances).
-    """
+
+    ``no_oracle`` marks an EXPLICIT structure-only smoke (typically paired with ``oracle_adapters={}``):
+    a capsule that clears the structural tiers but whose mandatory numeric tier was deliberately not run
+    is recorded ``not_gradeable_no_oracle`` (a withheld numeric verdict), NOT the fixable
+    ``oracle_unavailable`` plane — so the report is honest and never claims a numeric pass. Graded runs
+    (``no_oracle=False``) keep the ``not_run_is_not_pass`` behavior byte-for-byte."""
     labels = labels or {"public", "dev"}
     pkg_dir = Path(package_dir)
 
@@ -65,7 +70,7 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     _suite_t0 = _time.perf_counter()
     results = CR.run_suite(caps, pkg_dir, runs_root=runs_root, contract=contract,
                            oracle_adapters=oracle_adapters, timeout=timeout,
-                           max_workers=max_workers, target=target)
+                           max_workers=max_workers, target=target, no_oracle=no_oracle)
     _suite_wall = _time.perf_counter() - _suite_t0
 
     # collect decoded traces for coverage
@@ -83,6 +88,15 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     score["n_capsules"] = len(results)
     score["n_passed"] = n_pass
     score["functional_pass"] = int(n_pass == len(results) and len(results) > 0)
+    # Structure-only smoke bookkeeping (honest, never a numeric pass): a capsule is structurally clean
+    # when it did not FAIL a structural tier — status `pass` OR `not_gradeable_no_oracle` (numeric verdict
+    # withheld under --no-oracle). `gradeable` says whether this run had a numeric oracle at all.
+    n_not_gradeable = sum(1 for r in results if r["status"] == "not_gradeable_no_oracle")
+    score["gradeable"] = not no_oracle
+    score["n_not_gradeable_no_oracle"] = n_not_gradeable
+    score["n_structural_pass"] = n_pass + n_not_gradeable
+    score["structural_pass"] = bool(len(results) > 0
+                                    and (n_pass + n_not_gradeable) == len(results))
     score["numeric_all_exact"] = all(r.get("numeric", {}).get("status") == "pass" for r in results)
     score["trace_all_pass"] = all(r.get("trace_check", {}).get("status") == "pass" for r in results)
 
@@ -173,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
     adapters = {} if a.no_oracle else None
     score = grade(a.package, capsules_root=a.capsules, runs_root=a.runs_root, labels=labels,
                   contract=a.contract, oracle_adapters=adapters, timeout=a.timeout,
-                  max_workers=a.workers, target=a.target)
+                  max_workers=a.workers, target=a.target, no_oracle=a.no_oracle)
     out = Path(a.score) if a.score else Path(a.runs_root) / "score_capsule.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(score, indent=2), encoding="utf-8")

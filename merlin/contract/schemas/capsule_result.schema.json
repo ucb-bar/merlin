@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "merlin/bench_contract/capsule_result.schema.json",
   "title": "Per-capsule result (capsule_bench_v0)",
-  "description": "The capsule_runner writes one capsule_result.json per capsule run. status=incomplete when a mandatory oracle tier was not_run (never silently pass).",
+  "description": "The capsule_runner writes one capsule_result.json per capsule run. status=incomplete when a mandatory oracle tier was not_run in a GRADED run (never silently pass); status=not_gradeable_no_oracle when the run is an explicit --no-oracle structure-only smoke and the mandatory numeric tier was deliberately not requested (a withheld numeric verdict, never a pass).",
   "type": "object",
   "required": ["capsule", "status", "contract_version", "tiers", "trace_check", "numeric"],
   "properties": {
     "capsule": {"type": "string"},
     "kind": {"type": "string", "enum": ["isa", "layer", "model_slice"]},
     "label": {"type": "string", "enum": ["public", "dev", "hidden"]},
-    "status": {"type": "string", "enum": ["pass", "fail", "incomplete", "error"]},
+    "status": {"type": "string", "enum": ["pass", "fail", "incomplete", "error", "not_gradeable_no_oracle"]},
     "contract_version": {"type": "string"},
     "tiers": {
       "type": "object",

@@ -326,7 +326,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 oracle_adapters: dict[str, Callable] | None = None,
                 pkg: Package | None = None, timeout: int = 600,
                 target: str | None = None, suite: str | None = None, dtype: str = "i8xi8_i32",
-                config=None, perf_extractor: Callable | None = None) -> dict:
+                config=None, perf_extractor: Callable | None = None,
+                no_oracle: bool = False) -> dict:
     """Run one capsule through the package; write artifacts; return a capsule_result dict.
 
     ``config`` (a :class:`runner_config.RunnerConfig`) supplies the per-target grading knobs — the
@@ -582,11 +583,27 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             if tr is not None and getattr(tr, "not_applicable", False):
                 continue
             if tr is None or tr.status in ("unavailable", "skipped"):
-                status = "incomplete"
-                if failure is None:
-                    failure = {"plane": "oracle_unavailable", "category": "NOT_RUN_IS_NOT_PASS",
-                               "detail": f"mandatory tier {tier} did not run "
-                                         f"({tr.status if tr else 'absent'})"}
+                if no_oracle:
+                    # Explicit --no-oracle STRUCTURE-ONLY smoke: NO numeric oracle was requested this run,
+                    # so a mandatory numeric tier that did not run is NOT a fixable failure — it is
+                    # honestly NOT GRADEABLE. Record a DISTINCT status/plane so the agent is not handed a
+                    # phantom `oracle_unavailable` "fix this" signal it can never satisfy. INTEGRITY: this
+                    # is NEVER reported as a pass — the numeric verdict is simply withheld. The
+                    # not_run_is_not_pass gate for GRADED (oracle-present) runs is the `else` branch below,
+                    # unchanged; keep no_oracle False for every real grade.
+                    status = "not_gradeable_no_oracle"
+                    if failure is None:
+                        failure = {"plane": "not_gradeable_no_oracle",
+                                   "category": "NOT_GRADEABLE_NO_ORACLE",
+                                   "detail": f"numeric oracle unavailable this run (--no-oracle): "
+                                             f"mandatory tier {tier} not graded — structural tiers "
+                                             f"(L0/L1/trace) only"}
+                else:
+                    status = "incomplete"
+                    if failure is None:
+                        failure = {"plane": "oracle_unavailable", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": f"mandatory tier {tier} did not run "
+                                             f"({tr.status if tr else 'absent'})"}
                 break
 
     result = {
@@ -638,7 +655,8 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
               oracle_adapters: dict[str, Callable] | None = None,
               timeout: int = 600, max_workers: int = 1,
               target: str | None = None, suite: str | None = None, dtype: str = "i8xi8_i32",
-              config=None, perf_extractor: Callable | None = None) -> list[dict]:
+              config=None, perf_extractor: Callable | None = None,
+              no_oracle: bool = False) -> list[dict]:
     """Run many capsules through one package (building/integrity-scanning it once).
 
     ``max_workers > 1`` fans the (independent) per-capsule runs out across a ThreadPoolExecutor — each
@@ -654,7 +672,7 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
         return run_capsule(cap, package_dir, runs_root=runs_root, run_id=cap["name"],
                            contract=contract, oracle_adapters=oracle_adapters,
                            pkg=pkg, timeout=timeout, target=target, suite=suite, dtype=dtype,
-                           config=config, perf_extractor=perf_extractor)
+                           config=config, perf_extractor=perf_extractor, no_oracle=no_oracle)
 
     if max_workers <= 1:
         return [_one(cap) for cap in capsules]

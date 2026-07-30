@@ -104,7 +104,8 @@ def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
     _loop_adapters = {} if no_oracle else CR.qa_loop_adapters(_target, _sim_via)
     score = CG.grade(submission, capsules_root=capsules_root, runs_root=str(runs_root),
                      labels=labels, contract=str(C.REPO / "merlin/contract"),
-                     oracle_adapters=_loop_adapters, timeout=timeout, target=_target)
+                     oracle_adapters=_loop_adapters, timeout=timeout, target=_target,
+                     no_oracle=no_oracle)
     redacted = _per_capsule_from_results(runs_root)
 
     per_capsule = []
@@ -128,19 +129,52 @@ def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
 
     n_caps = score.get("n_capsules", 0)
     n_pass = score.get("n_passed", 0)
-    verdict = {
-        "qa_gate": "capsule_bench_v0_pilot",
-        "labels_graded": score.get("labels_graded"),
-        "all_pass": bool(n_caps > 0 and n_pass == n_caps),
-        "n_passed": n_pass,
-        "n_capsules": n_caps,
-        "integrity_status": score.get("integrity_status"),
-        "highest_tier": score.get("highest_tier"),
-        "first_failure_planes": score.get("first_failure_planes", {}),
-        "per_capsule": per_capsule,
-        "note": ("This is a QA pass/fail signal only. It contains NO expected/golden values. "
-                 "Fix failures by capsule + failure_plane + trace_violations; never hardcode outputs."),
-    }
+    if no_oracle:
+        # HONEST structure-only smoke: the numeric oracle was NOT run, so a capsule that clears the
+        # structural tiers reads back as `not_gradeable_no_oracle`, never `pass` (no numeric pass is ever
+        # claimed). The STOP signal is therefore "every capsule is structurally clean" (L0/L1/trace), NOT
+        # the numeric `all_pass` — which can never be true here and would make the agent thrash to timeout
+        # chasing an unreachable numeric pass (the observed 0/11 failure). `n_passed` reports the
+        # structural-clean count so the console + round summary read coherently; the note makes the scope
+        # explicit and the per-capsule numeric_status stays withheld.
+        n_structural = score.get("n_structural_pass",
+                                 sum(1 for pc in per_capsule
+                                     if pc["status"] in ("pass", "not_gradeable_no_oracle")))
+        all_pass = bool(n_caps > 0 and score.get("structural_pass", n_structural == n_caps))
+        verdict = {
+            "qa_gate": "capsule_bench_v0_pilot",
+            "gradeable": False,
+            "labels_graded": score.get("labels_graded"),
+            "all_pass": all_pass,
+            "stop_condition": "structural_tiers_pass",
+            "n_passed": n_structural,
+            "n_structural_pass": n_structural,
+            "n_capsules": n_caps,
+            "integrity_status": score.get("integrity_status"),
+            "highest_tier": score.get("highest_tier"),
+            "first_failure_planes": score.get("first_failure_planes", {}),
+            "per_capsule": per_capsule,
+            "note": ("NOT GRADEABLE this run: the numeric/trace oracle is unavailable, so ONLY the L0/L1 "
+                     "structural tiers are graded (a structure-only smoke). Do NOT chase a numeric pass — "
+                     "capsules that clear the structural tiers show status `not_gradeable_no_oracle`, "
+                     "which is the target here, NOT a fixable failure. Fix only real structural failures "
+                     "(schema/language/L0/L1/trace planes); never hardcode outputs."),
+        }
+    else:
+        verdict = {
+            "qa_gate": "capsule_bench_v0_pilot",
+            "gradeable": True,
+            "labels_graded": score.get("labels_graded"),
+            "all_pass": bool(n_caps > 0 and n_pass == n_caps),
+            "n_passed": n_pass,
+            "n_capsules": n_caps,
+            "integrity_status": score.get("integrity_status"),
+            "highest_tier": score.get("highest_tier"),
+            "first_failure_planes": score.get("first_failure_planes", {}),
+            "per_capsule": per_capsule,
+            "note": ("This is a QA pass/fail signal only. It contains NO expected/golden values. "
+                     "Fix failures by capsule + failure_plane + trace_violations; never hardcode outputs."),
+        }
     # top-level integrity failure (K0/K1 fail-closed)
     if "failure" in score:
         verdict["package_failure"] = {"plane": score["failure"]["plane"],

@@ -30,7 +30,7 @@ def _score(pkg, capsules, runs_root, labels, no_oracle):
     adapters = {} if no_oracle else CR.oracle_adapters(C.TARGET)
     return CG.grade(pkg, capsules_root=capsules, runs_root=runs_root, labels=labels,
                     contract=str(C.REPO / "merlin/contract"),
-                    oracle_adapters=adapters, timeout=900, target=C.TARGET)
+                    oracle_adapters=adapters, timeout=900, target=C.TARGET, no_oracle=no_oracle)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -112,6 +112,12 @@ def main(argv: list[str] | None = None) -> int:
         "iterations": len(list((run_dir / "iterations").glob("iteration_*"))),
         "oracle_mode": "no_oracle(L0/L1/trace)" if a.no_oracle
                        else f"contract-routed({'+'.join(sorted(CR.oracle_adapters(C.TARGET)))})",
+        # HONEST gradeability: a --no-oracle run is a structure-only smoke — the numeric verdict is
+        # withheld (capsules read back not_gradeable_no_oracle, never a numeric pass), so the run is NOT
+        # gradeable. A graded run carries gradeable=true. Sourced from the grade score (gradeable flag).
+        "gradeable": bool(pub.get("gradeable", not a.no_oracle)),
+        "gradeable_reason": (None if not a.no_oracle else
+                             "numeric oracle unavailable — structural (L0/L1/trace) tiers only"),
     }
     (run_dir / "run_manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False))
 
@@ -123,7 +129,9 @@ def main(argv: list[str] | None = None) -> int:
           f"- process: wall={manifest['process']['wall_time_seconds']}s "
           f"tokens={manifest['process']['tokens_total']} cost=${manifest['process']['estimated_cost_usd']} "
           f"tool_calls={manifest['process']['tool_calls']} (available={manifest['process']['metrics_available']})",
-          f"- oracle_mode: {manifest['oracle_mode']}", ""]
+          f"- oracle_mode: {manifest['oracle_mode']}",
+          f"- gradeable: {manifest['gradeable']}"
+          + (f" ({manifest['gradeable_reason']})" if manifest.get('gradeable_reason') else ""), ""]
     (run_dir / "final_report.md").write_text("\n".join(fr) + "\n")
     print(f"graded {run_dir.name}: public functional_pass={pub.get('functional_pass')} "
           f"({manifest['public_dev']['passed']}), hidden={manifest['hidden']['passed']}, "
