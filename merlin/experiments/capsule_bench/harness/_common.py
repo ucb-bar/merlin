@@ -33,6 +33,10 @@ if _override:
     if not _desc.is_file():
         raise SystemExit(f"MERLIN_TARGET_EXPERIMENT={_override!r} is not a readable descriptor file")
     EXP = _desc.resolve().parent
+    # Normalize the env var to an ABSOLUTE path so child processes (host-side brokers, the sandboxed
+    # agent's tools) that inherit it resolve the descriptor regardless of their cwd. A relative override
+    # resolves here (main process runs from the repo root) but breaks a broker chdir'd elsewhere.
+    os.environ["MERLIN_TARGET_EXPERIMENT"] = str(_desc.resolve())
 else:
     _desc = REPO / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"  # default target
     EXP = _desc.parent
