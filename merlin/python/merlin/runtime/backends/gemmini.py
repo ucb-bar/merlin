@@ -27,7 +27,13 @@ from typing import Any
 
 from ..metrics import COMMON_METRIC_NAMES
 from ..reference import outputs_match, reference_outputs
+from .base import BackendInfo, BackendKind, TargetClass, register
 from .gemmini_codegen import generate_driver
+
+# Self-register this reference NPU backend with the class registry (base._REGISTRY). Discovery in
+# base._ensure_discovered imports this module to run the call, so the core carries no name -> module
+# map for the accelerator; the identity lives with the backend that owns it.
+register(BackendInfo("gemmini", TargetClass.NPU, BackendKind.KERNEL, __name__))
 
 DEFAULT_CHIPYARD = "/path/to/chipyard"
 VERILATOR_CONFIG = "GemminiRocketConfig"
