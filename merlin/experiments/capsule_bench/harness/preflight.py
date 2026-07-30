@@ -195,6 +195,21 @@ def baremetalc_table() -> list[dict]:
     return rows
 
 
+def check_oracle_available() -> dict:
+    """A real (gradeable) pilot needs the target's NUMERIC oracle actually runnable — else the run can
+    only ever emit ``oracle_unavailable`` and the agent thrashes to timeout (the atlas 0/11 at ~$43
+    lesson). Mirror the launcher's oracle preflight (``capsule_runner.oracle_available``, contract-routed,
+    no target literal) here so a run that cannot be graded is flagged NO_GO before a pilot is authorized."""
+    from merlin.targetgen import capsule_runner as CR
+    sim_via = ""
+    desc = C.EXP / "target_experiment.yaml"
+    if desc.is_file():
+        from merlin.targetgen.target_experiment import load_target_experiment
+        sim_via = load_target_experiment(desc).sim_via
+    ok, why = CR.oracle_available(TARGET, sim_via)
+    return {"available": ok, "reason": why, "sim_via": sim_via}
+
+
 def main() -> int:
     R = {}
     R["canary"] = check_canary_isolation()
@@ -202,6 +217,7 @@ def main() -> int:
     R["freeze"] = check_freeze_enforcement()
     R["bundle_hash"] = check_bundle_hash_repro()
     R["tokens"] = check_real_tokens()
+    R["oracle"] = check_oracle_available()
     R["baremetalc"] = baremetalc_table()
 
     # ---- evaluate checklist ----
@@ -214,6 +230,7 @@ def main() -> int:
     freeze_ok = R["freeze"]["tamper_detected"]
     bundle_ok = all(b["reproducible"] for b in R["bundle_hash"].values())
     tokens_ok = R["tokens"].get("available") is True
+    oracle_ok = R["oracle"].get("available") is True
     unsandboxed_demo = bool(R["canary"]["unsandboxed_leaks"])  # leaks WITHOUT bwrap → proves bwrap needed
 
     checklist = [
@@ -224,6 +241,7 @@ def main() -> int:
         ("freeze tamper detected (hash changes → hidden-phase recheck refuses)", freeze_ok),
         ("input-bundle tree hashes reproduce + bundle_lock.yaml written", bundle_ok),
         ("token/cost captured on a REAL claude stream-json (not synthetic)", tokens_ok),
+        (f"numeric oracle runnable for a gradeable run ({R['oracle'].get('reason')})", oracle_ok),
         ("bareMetalC corroboration table with golden hashes; conv externally-deferred noted", True),
         ("VCS/FireSim remain unavailable, never counted as pass", True),
     ]

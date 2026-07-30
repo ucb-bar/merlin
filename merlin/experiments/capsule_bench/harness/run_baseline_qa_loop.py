@@ -951,6 +951,34 @@ def main(argv: list[str] | None = None) -> int:
         return 5
     print(f"[setup] isolation ok; golden-mask: {mask}")
 
+    # --- oracle preflight: abort a GRADEABLE run BEFORE spending if its required oracle can't run ------
+    # A run graded WITHOUT its numeric oracle can only ever emit `oracle_unavailable` (the atlas 0/11 at
+    # ~$43 failure): the agent gets no actionable failure plane and thrashes to timeout. Compute up-front
+    # whether THIS target's required oracle is actually runnable — for an external_backend target the mlc
+    # arc cosim + the model venv, for arc/chipyard the arc model / sim binaries (all routed from the
+    # contract by capsule_runner.oracle_available, no target literal). If it cannot run AND the operator
+    # did NOT ask for an explicit `--no-oracle` structure-only smoke, STOP here having launched no agent
+    # and spent zero tokens (this is strictly before the first launch_agent in the round loop below).
+    from merlin.targetgen import capsule_runner as _CRpf
+    _te_pf = _te()
+    _ora_ok, _ora_why = _CRpf.oracle_available(_te_pf.target, _te_pf.sim_via)
+    (run_dir / "oracle_preflight.yaml").write_text(yaml.safe_dump({
+        "target": _te_pf.target, "sim_via": _te_pf.sim_via,
+        "oracle_available": _ora_ok, "reason": _ora_why,
+        "no_oracle": bool(a.no_oracle),
+        "verdict": "GO" if (_ora_ok or a.no_oracle) else "NO_GO",
+    }, sort_keys=False))
+    if not _ora_ok and not a.no_oracle:
+        print(f"NO_GO: {_ora_why} — refusing to launch a gradeable run with no numeric oracle "
+              f"(zero tokens spent). Re-run with --no-oracle for an explicit structure-only smoke, or "
+              f"set MERLIN_MLC_DIR + build the arc model / model venv.", file=sys.stderr)
+        return 4
+    if not _ora_ok:  # a.no_oracle is set — honest structure-only smoke (see qa_grade/no-oracle path)
+        print(f"[preflight] oracle unavailable ({_ora_why}); proceeding as an EXPLICIT --no-oracle "
+              f"structure-only smoke (NOT gradeable — structural tiers only).")
+    else:
+        print(f"[preflight] oracle GO: {_ora_why}")
+
     # realistic (abc2): the self-check tool the agent runs logs each invocation here (dev-trajectory /
     # soft-failure / tool-trigger record). T0 anchors wall-offset. Inherited by every claude subprocess.
     if _EXPERIMENT == "realistic":

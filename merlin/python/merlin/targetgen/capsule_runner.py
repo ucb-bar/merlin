@@ -177,6 +177,57 @@ def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callab
     return adapters
 
 
+def oracle_available(target: str, sim_via: str | None = None) -> tuple[bool, str]:
+    """Probe whether the target's REQUIRED grading oracle can actually run RIGHT NOW — BEFORE an agent
+    run spends anything. Target-agnostic, routed from the contract exactly like :func:`oracle_adapters`:
+
+      * ``external_backend`` (self-hosted-ISA program oracle, e.g. atlas) -> the mlc arc cosim AND the
+        model venv must BOTH be present (the emitted program is assembled/laid-out in the model venv and
+        run on the arc cosim);
+      * ``command_buffer`` / arc-default target -> the mlc arc model must be present;
+      * a DECLARED bespoke sim (``sim_via == "chipyard"``, e.g. gemmini) -> its fastest loop-tier sim
+        (spike) binary must be available (else the arc tier, if present, still carries the grade).
+
+    Returns ``(ok, reason)``. ``ok is False`` means grading would only ever emit ``oracle_unavailable``:
+    a real (gradeable) run must NOT be launched on it — the sanctioned way to proceed without an oracle
+    is an EXPLICIT structure-only smoke (``--no-oracle``). This is the preflight the launcher + the
+    GO/NO_GO validator share so a run that cannot be graded aborts before spending tokens."""
+    endpoint_kind, model_ext = _endpoint_of(target)
+    from .rtl import mlc_bridge
+    if endpoint_kind == "external_backend":
+        if not mlc_bridge.arc_available(target):
+            return False, (f"external_backend target {target!r}: mlc arc cosim unavailable "
+                           f"(set MERLIN_MLC_DIR and build the arc model)")
+        if not model_ext:
+            return False, (f"external_backend target {target!r}: contract declares no runner.model_ext — "
+                           f"cannot resolve the model-venv oracle")
+        from .program_oracle import OracleUnavailable as _PU
+        from .program_oracle import _model_venv_python
+        try:
+            _model_venv_python(model_ext)
+        except _PU as e:
+            return False, f"external_backend target {target!r}: {e}"
+        return True, (f"external_backend program oracle available (mlc arc cosim + model venv {model_ext!r})")
+    # command_buffer / arc-default target (+ an optional DECLARED bespoke sim)
+    if sim_via is None:
+        sim_via = _bespoke_sim_via(target)
+    arc_ok = mlc_bridge.arc_available(target)
+    if sim_via == "chipyard":
+        try:
+            from ..runtime.backends import gemmini as _gem
+            spike_ok = bool(_gem.available("spike"))
+        except Exception:  # noqa: BLE001 — an unimportable backend is honestly unavailable
+            spike_ok = False
+        if spike_ok:
+            return True, f"{target!r}: chipyard spike oracle available (loop tier)"
+        if arc_ok:
+            return True, f"{target!r}: chipyard sim absent but mlc arc oracle available (fallback)"
+        return False, f"{target!r}: neither the chipyard spike sim nor the mlc arc oracle is available"
+    if arc_ok:
+        return True, f"{target!r}: mlc arc oracle available"
+    return False, (f"{target!r}: mlc arc model unavailable (set MERLIN_MLC_DIR and build the arc model)")
+
+
 def _resolve_oracle_adapters(target: str) -> dict[str, Callable]:
     """Contract-routed adapter set for ``target`` — the ``run_capsule`` default when a caller passes no
     adapters. Calls the module :func:`oracle_adapters` (self-resolving sim_via) so an unrouted grade goes
