@@ -797,6 +797,14 @@ def main(argv: list[str] | None = None) -> int:
         os.environ.setdefault("AWS_DEFAULT_REGION", a.aws_region)
         if a.aws_profile:
             os.environ["AWS_PROFILE"] = a.aws_profile
+        # Bearer-token auth (AWS_BEARER_TOKEN_BEDROCK) lives in the gitignored .env; the read-only .env
+        # loader never mutates os.environ, so surface it here (a pre-set env var / --aws-profile still
+        # wins) — this is the cred the sandboxed claude inherits when no ~/.aws profile is used.
+        if not os.environ.get("AWS_BEARER_TOKEN_BEDROCK"):
+            from merlin.common.paths import env as _dotenv
+            _bearer = _dotenv("AWS_BEARER_TOKEN_BEDROCK")
+            if _bearer:
+                os.environ["AWS_BEARER_TOKEN_BEDROCK"] = _bearer
         print(f"[provider] agent CLI -> Bedrock (region={a.aws_region}"
               f"{', profile=' + a.aws_profile if a.aws_profile else ', env-var creds'}); model={a.model}")
     else:

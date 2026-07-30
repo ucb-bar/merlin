@@ -61,6 +61,12 @@ def _bedrock_ping(model: str, region: str, profile: str, timeout: int) -> int:
     env.setdefault("AWS_DEFAULT_REGION", region)
     if profile:
         env["AWS_PROFILE"] = profile
+    elif not env.get("AWS_BEARER_TOKEN_BEDROCK"):
+        # Bearer-token auth lives in the gitignored .env (read-only loader won't export it).
+        from merlin.common.paths import env as _dotenv
+        _bearer = _dotenv("AWS_BEARER_TOKEN_BEDROCK")
+        if _bearer:
+            env["AWS_BEARER_TOKEN_BEDROCK"] = _bearer
     print(f"=== Bedrock ping — model={model} region={region} "
           f"{'profile=' + profile if profile else 'env-var creds'} ===")
     try:
