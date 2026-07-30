@@ -10,13 +10,13 @@ oracle_ladder:
     always_runs: true
     gate: "reference_outputs(cb) == simulate(cb)['outputs'] (pure Python; no toolchain)"
   - level: 1
-    name: spike_gemmini_functional
+    name: "spike_{target}_functional"
     derived_from_rtl: false
     cycle_accurate: false
     skip_if_unavailable: true
     gate: "oracle_output == reference_outputs(cb) == simulate(cb) (bootstrap only, NOT certification)"
   - level: 2
-    name: gemmini_verilator_rtl
+    name: "{target}_verilator_rtl"
     derived_from_rtl: true
     cycle_accurate: true
     skip_if_unavailable: true
@@ -32,13 +32,13 @@ execution_artifact:
   description: "the RV64 ELF the runner builds from the package's lowered LLVM + a thin harness"
   harness_output_format:
     # The harness (and thus any package's runtime) MUST print results in this exact format,
-    # parsed by merlin.runtime.backends.gemmini.parse_output.
+    # parsed by merlin.runtime.backends.{target}.parse_output.
     lines:
       - "OUT <name> <rows> <cols> <v0> <v1> ... <v(rows*cols-1)>   # row-major integers"
       - "METRIC <name> <int>                                       # e.g. METRIC cycles 308"
       - "DONE                                                      # MUST be reached"
     notes:
       - "outputs mapped by <name> back to the command buffer's committed tensor names"
-      - "cycles are anchors, not a calibrated cost model; cycle_window = gemmini_region"
+      - "cycles are anchors, not a calibrated cost model; cycle_window = {target}_region"
 
 correctness: "integer, exact == across all three (reference, simulate, oracle); no FP tolerance"

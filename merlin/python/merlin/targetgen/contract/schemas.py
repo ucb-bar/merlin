@@ -69,3 +69,49 @@ def validate_command_buffer(cb: Any, *, contract: str | Path | None = None) -> N
 
 def validate_manifest(man: Any, *, contract: str | Path | None = None) -> None:
     validate(man, "manifest", contract=contract)
+
+
+# --- {target}-parameterized generic contracts --------------------------------------------------------
+# The two shared ABI contracts (mlir_oot_backend_contract.yaml, oracle_runner_contract.yaml) carry NO
+# target literal — they template the target-specific tokens with the ``{target}`` placeholder (the same
+# convention their ``--convert-iface-to-{target}`` argv already use). These readers resolve the active
+# target at load, mirroring ``generate_prompt`` (``tool_stem = f"{target}-opt"`` / ``kernel_symbol =
+# f"{target}_kernel"``): a fixed contract resolves to two targets' values by the same rule, with nothing
+# baked in for any one accelerator.
+
+
+def _resolve_target(obj: Any, target: str) -> Any:
+    """Recursively fill the ``{target}`` placeholder token in a loaded contract (structured, no regex)."""
+    if isinstance(obj, str):
+        return obj.replace("{target}", target)
+    if isinstance(obj, list):
+        return [_resolve_target(v, target) for v in obj]
+    if isinstance(obj, dict):
+        return {k: _resolve_target(v, target) for k, v in obj.items()}
+    return obj
+
+
+def render_backend_contract(target: str, *, contract: str | Path | None = None) -> dict[str, Any]:
+    """The OOT backend contract resolved for ``target`` — ``kernel_abi.symbol`` becomes ``f"{target}_
+    kernel"`` and the entrypoint argv templates resolve ``--convert-iface-to-{target}``, exactly the value
+    ``generate_prompt`` derives. gemmini resolves byte-identically to the former hand-authored literals."""
+    import yaml
+    text = (contract_dir(contract) / "mlir_oot_backend_contract.yaml").read_text(encoding="utf-8")
+    return _resolve_target(yaml.safe_load(text), target)
+
+
+def render_oracle_runner_contract(target: str, *, contract: str | Path | None = None) -> dict[str, Any]:
+    """The oracle-runner contract resolved for ``target`` — the oracle-ladder level names
+    (``spike_{target}_functional`` / ``{target}_verilator_rtl``) and the ``{target}_region`` cycle window
+    fill from the active target. gemmini resolves byte-identically to the former hand-authored names."""
+    import yaml
+    text = (contract_dir(contract) / "oracle_runner_contract.yaml").read_text(encoding="utf-8")
+    return _resolve_target(yaml.safe_load(text), target)
+
+
+def render_contract_text(name: str, target: str, *, contract: str | Path | None = None) -> str:
+    """The raw contract text (``name`` is the yaml basename) with every ``{target}`` placeholder filled —
+    including ones that live in YAML comments (e.g. the ``merlin.runtime.backends.{target}.parse_output``
+    reference), for the agent-facing rendering the structured readers above cannot reach."""
+    text = (contract_dir(contract) / name).read_text(encoding="utf-8")
+    return text.replace("{target}", target)

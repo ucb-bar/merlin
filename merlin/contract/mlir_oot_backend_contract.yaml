@@ -9,7 +9,7 @@ manifest:
   required: [artifact_type, target, language, authoring, integrity_exempt, entrypoints, commands]
 
 llvm_pin:
-  # C++ packages build a real out-of-tree gemmini-opt against this exact LLVM/MLIR.
+  # C++ packages build a real out-of-tree {target}-opt against this exact LLVM/MLIR.
   version: "23.0.0git"
   commit: "a47bddccec30"
   source: third_party/llvm-project
@@ -47,8 +47,8 @@ kernel_abi:
   # The lowered LLVM module MUST define this entry the runner-owned harness calls. The harness
   # embeds the deterministic leaf tensors (by name) and the output buffers, then prints
   # OUT/METRIC/DONE. The package only emits the kernel; the harness + link are the runner's.
-  symbol: gemmini_kernel
-  signature: "void gemmini_kernel(ptr weight, ptr lhs_0 .. ptr lhs_{R-1}, ptr out_0 .. ptr out_{R-1})"
+  symbol: "{target}_kernel"
+  signature: "void {target}_kernel(ptr weight, ptr lhs_0 .. ptr lhs_{R-1}, ptr out_0 .. ptr out_{R-1})"
   arg_order: "[the single resident weight] ++ [matmul lhs in command order] ++ [commit outputs in command order]"
   pointee_layout: "row-major, edge tiles zero-padded to a multiple of 16 (DIM); weight/out as packed per the i8/i32 readout"
 
