@@ -1,0 +1,6 @@
+# Feature-extraction contract for Triton (@triton.jit) GPU kernels.
+family: triton
+# loops.py: Triton names tiling directly (tl.program_id / BLOCK_SIZE grids), an explicit directive.
+loops:
+  tiling_is_directive: true
+# rhs_reuse: no family-specific proxy — the extractor's default (packed_constant, value 1) applies.

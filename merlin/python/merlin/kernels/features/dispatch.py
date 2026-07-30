@@ -7,24 +7,25 @@ are non-compute (setup/move) overhead.
 """
 from __future__ import annotations
 
-import re
-
+from merlin.kernels.framework_contracts import load_feature_contract
 from merlin.kernels.markers import target_family
 from merlin.kernels.types import NormalizedKernel
 
-_GEMMINI_DISPATCH = re.compile(
-    r"\b(mvin[23]?|mvout|preload|compute_preloaded|config_(?:ex|ld|st)|fence)\b"
-)
+from ._tokens import match_opcodes
 
 
 def extract_dispatch(nk: NormalizedKernel, fired: dict[str, list[str]]) -> dict:
-    fam = target_family(nk.target)
-    if fam not in {"gemmini"}:
+    # Which opcodes count as accelerator dispatches is data (the per-family feature contract), not a
+    # `fam == "gemmini"` branch. A family with no dispatch contract has no dispatch metric.
+    spec = load_feature_contract(target_family(nk.target)).get("dispatch")
+    if not spec:
         return {"dispatch_metrics": {"n_dispatches": 0, "small_dispatch_fraction": 0.0}}
-    calls = _GEMMINI_DISPATCH.findall(nk.raw_text)
+    config_prefix = spec.get("config_prefix", "")
+    compute_token = spec.get("compute_token", "")
+    calls = match_opcodes(nk.raw_text, spec.get("opcodes", ()))
     n = len(calls)
-    n_config = sum(1 for c in calls if c.startswith("config"))
-    n_compute = sum(1 for c in calls if c == "compute_preloaded")
+    n_config = sum(1 for c in calls if config_prefix and c.startswith(config_prefix))
+    n_compute = sum(1 for c in calls if c == compute_token)
     frac = round((n - n_compute) / n, 3) if n else 0.0
     return {"dispatch_metrics": {
         "n_dispatches": n,

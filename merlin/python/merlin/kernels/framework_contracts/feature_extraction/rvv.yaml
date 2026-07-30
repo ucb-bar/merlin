@@ -1,0 +1,11 @@
+# Feature-extraction contract for the RVV (RISC-V Vector) ISA family.
+family: rvv
+# roles.py: register blocking — a loaded weight vector feeds MR accumulators, so the static
+# reuse proxy is the number of distinct vector-accumulator registers (MR).
+rhs_reuse:
+  method: distinct_register
+  register_prefix: vacc
+# loops.py: for a C-vector family the tiling marker is just "a loop exists", so tiling is NOT
+# treated as an explicit directive (loops.py then requires >=2-deep nest or register blocking).
+loops:
+  tiling_is_directive: false

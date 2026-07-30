@@ -1,0 +1,18 @@
+# Feature-extraction contract for the Gemmini ISA family. This is the data that used to be an
+# `if fam == "gemmini"` branch in features/{roles,dispatch,loops}.py — moved here so the extractors
+# stay framework-agnostic and the Gemmini specifics are one contract entry, not code.
+family: gemmini
+# roles.py: static RHS/weight-reuse proxy = accelerator compute ops issued per weight load-in.
+rhs_reuse:
+  method: compute_per_wload
+  compute_token: compute_preloaded       # occurrences of the systolic compute op
+  wload_tokens: [mvin2, mvin3]           # weight mvin ops (also *_mvin2 / *_mvin3 wrapper macros)
+# dispatch.py: the accelerator dispatch opcodes counted for the small-dispatch metric.
+dispatch:
+  opcodes: [mvin, mvin2, mvin3, mvout, preload, compute_preloaded,
+            config_ex, config_ld, config_st, fence]
+  config_prefix: config                  # opcodes starting with this are config/setup dispatches
+  compute_token: compute_preloaded       # the one non-overhead (real compute) dispatch
+# loops.py: Gemmini's tiling marker is an explicit nested-scratchpad directive, not mere loop presence.
+loops:
+  tiling_is_directive: true

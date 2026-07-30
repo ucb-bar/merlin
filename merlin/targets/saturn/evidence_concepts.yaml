@@ -1,0 +1,12 @@
+# Concept vocabulary for TargetGen's evidence pass (per-target, was a core literal in
+# targetgen/evidence/report.py::CONCEPT_KEYWORDS). Keys are concept names; values are lowercase
+# substrings that, if seen in a discovered filename or a doc's first lines, count as evidence.
+concepts:
+  riscv_vector: [rvv, riscv vector, risc-v vector, vector unit]
+  vlen: [vlen, zvl]
+  elen: [elen]
+  rvv: [rvv, v extension, zve]
+  vector_length_policy: [vsetvl, "vl ", vector length]
+  tail_policy: [tail, vta]
+  lmul_policy: [lmul, vlmul]
+  llvm_extension_likely: [llvm, intrinsic, codegen]

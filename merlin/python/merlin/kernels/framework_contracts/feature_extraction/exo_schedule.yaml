@@ -1,0 +1,10 @@
+# Feature-extraction contract for Exo *schedule* .py sources (the decision record, not compiled C).
+family: exo_schedule
+# roles.py: an Exo schedule stages weights explicitly (set_memory/stage_mem), so reuse is asserted
+# as a small constant when the packed_rhs marker fired.
+rhs_reuse:
+  method: packed_constant
+  value: 2
+# loops.py: Exo names tiling directly as a scheduling directive (divide_loop / tile_outer_loops).
+loops:
+  tiling_is_directive: true
