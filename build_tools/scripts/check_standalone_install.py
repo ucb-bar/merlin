@@ -44,8 +44,11 @@ assert not (bd / "dse_guidance" / "recaptures").exists(), "heavy recaptures leak
 cd = p.data_path("contract")
 assert (cd / "schemas" / "command_buffer.schema.json").is_file(), f"bundled contract missing: {cd}"
 td = p.targets_dir()
-assert (td / "gemmini" / "contracts" / "target_contract.yaml").is_file(), "bundled target contract missing"
-assert not (td / "gemmini" / "contracts" / "rtl_facts").exists(), "rtl_facts cert data leaked into the wheel"
+_tgts = sorted(d for d in td.iterdir() if (d / "contracts" / "target_contract.yaml").is_file())
+assert _tgts, f"no bundled target contracts under {td}"
+for _t in _tgts:                                   # every DISCOVERED bundled target, not a named one
+    assert (_t / "contracts" / "target_contract.yaml").is_file(), f"bundled target contract missing: {_t.name}"
+    assert not (_t / "contracts" / "rtl_facts").exists(), f"rtl_facts cert data leaked into the wheel: {_t.name}"
 # runtime C substrate (P3): sources resolve so the compile paths fail on 'need toolchain', not 'no source'.
 rd = p.runtime_dir()
 assert (rd / "c" / "merlin_model.c").is_file(), f"bundled runtime C source missing: {rd}"

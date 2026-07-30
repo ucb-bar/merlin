@@ -20,6 +20,23 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+
+def _discovered_targets():
+    """Curated reference target names — the dirs under ``merlin/targets/`` carrying a
+    ``contracts/target_contract.yaml``. This is the stdlib equivalent of
+    ``merlin.targetgen.target_registry.list_targets()`` (the runtime source of truth), inlined so this
+    gate stays import-free and runs with no deps installed (as in the docs CI job). Targets are
+    DISCOVERED, never named here, so registering a new target extends the gate with zero edits.
+    """
+    tdir = os.path.join(ROOT, "merlin", "targets")
+    if not os.path.isdir(tdir):
+        return []
+    return sorted(
+        name for name in os.listdir(tdir)
+        if os.path.isfile(os.path.join(tdir, name, "contracts", "target_contract.yaml"))
+    )
+
+
 REQUIRED_DIRS = [
     "build_tools/scripts",
     "docs",
@@ -36,22 +53,19 @@ REQUIRED_DIRS = [
     "merlin/runtime/c",
     "merlin/runtime/abi",
     "merlin/runtime/baremetal",
-    # Canonical per-target shape: contracts/ (the target definition) + generated/ (its output dir)
-    # are REQUIRED for every target; docs/ and examples/ are present when there's content (no empty
-    # stubs — see the WS4 de-pin cleanup). toy_npu is the fully-populated reference instance.
-    "merlin/targets/toy_npu/contracts",
-    "merlin/targets/toy_npu/generated",
-    "merlin/targets/toy_npu/docs",
-    "merlin/targets/toy_npu/examples",
-    "merlin/targets/gemmini/contracts",
-    "merlin/targets/gemmini/generated",
-    "merlin/targets/saturn/contracts",
-    "merlin/targets/saturn/generated",
     "merlin/schemas",
     "merlin/benchmarks/semantic_memory",
     "merlin/experiments/kernel_policy",
     "merlin/tests/data",
 ]
+
+# Canonical per-target shape: contracts/ (the target definition) + generated/ (its output dir) are
+# REQUIRED for every DISCOVERED target; docs/ and examples/ are present only when there's content (no
+# empty stubs — see the WS4 de-pin cleanup). The set is derived from what is registered, so no target
+# name is hardcoded here.
+for _t in _discovered_targets():
+    REQUIRED_DIRS.append(f"merlin/targets/{_t}/contracts")
+    REQUIRED_DIRS.append(f"merlin/targets/{_t}/generated")
 
 REQUIRED_SCHEMAS = [
     "target_contract", "dialect_plan", "kernel_record", "abstraction_candidate",
@@ -156,7 +170,11 @@ def check_benchmarks(errors):
             errors.append(f"missing benchmark: merlin/benchmarks/semantic_memory/{b}.yaml")
 
 
-TEST_BUCKETS = {"kernels", "rvv", "dse", "gemmini", "targetgen", "ir", "runtime", "infra"}
+# Subsystem test buckets. The generic (cross-target) buckets are fixed; a target may additionally own
+# a bucket named after itself (e.g. the gemmini/ RoCC tests), so those are DISCOVERED from the target
+# registry rather than named here — registering a target that ships its own tests needs no edit.
+_GENERIC_TEST_BUCKETS = {"kernels", "rvv", "dse", "targetgen", "ir", "runtime", "infra"}
+TEST_BUCKETS = _GENERIC_TEST_BUCKETS | set(_discovered_targets())
 
 
 def check_test_layout(errors):
