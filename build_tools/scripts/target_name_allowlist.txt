@@ -48,7 +48,6 @@ merlin/python/merlin/compile_cli.py                          # --target choice i
 merlin/python/merlin/targetgen/circt_gate.py                 # load_facts("gemmini") default fallback in the CIRCT gate
 merlin/python/merlin/targetgen/rocc_decode.py                # gemmini manifest/facts load (RoCC decode is gemmini-coupled)
 merlin/python/merlin/targetgen/rtl_checks.py                 # load_default_facts prefers gemmini reference facts
-merlin/python/merlin/targetgen/rtl/circt_introspect.py       # DEFAULT_HW + --target default gemmini (RTL dev CLI)
 merlin/python/merlin/targetgen/rtl/introspect.py             # legacy chipyard-grep gemmini fallback introspector
 merlin/python/merlin/targetgen/rtl/gen_iface_irdl.py         # gemmini reference ODS include path (dev tool)
 merlin/python/merlin/targetgen/capsule_runner.py             # gemmini-capsule-bench SUITE identity + npu_model model_ext fallback

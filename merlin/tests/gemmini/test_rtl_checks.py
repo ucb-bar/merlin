@@ -39,13 +39,15 @@ def _good_single_tile_trace():
 
 
 # Source facts from the regenerating accessor (the CIRCT-generated artifact) rather than a degenerate
-# empty-interfaces fallback: the legacy DEFAULT_HW cache is optional, but load_facts always yields a real
-# funct_decode_table (mlc extraction, or the header fallback), so the decode-table checks stay runnable.
-FACTS = CI.build_facts(target="gemmini") if CI.DEFAULT_HW.is_file() else load_facts("gemmini")
+# empty-interfaces fallback: the legacy SoC HW-dialect cache is optional, but load_facts always yields a
+# real funct_decode_table (mlc extraction, or the header fallback), so the decode-table checks stay
+# runnable. The per-target cache path is resolved from the target name (no baked const to import).
+_HW_CACHE = CI._soc_hw_path("gemmini")
+FACTS = CI.build_facts(target="gemmini") if _HW_CACHE.is_file() else load_facts("gemmini")
 
 
 # ----------------------------------------------------------------------------- circt_introspect facts
-@pytest.mark.skipif(not CI.DEFAULT_HW.is_file(), reason="cached HW MLIR not present")
+@pytest.mark.skipif(not _HW_CACHE.is_file(), reason="cached HW MLIR not present")
 def test_circt_facts_reproduce_contract_and_decode_table():
     import yaml
     from merlin.targetgen import rocc_decode

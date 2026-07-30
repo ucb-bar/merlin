@@ -65,11 +65,6 @@ def isa_scala_path(target: str, chipyard_root: str | Path | None = None) -> Path
     return root / "generators" / target / "src" / "main" / "scala" / target / f"{cap}ISA.scala"
 
 
-# Back-compat, target-NEUTRAL name (was a baked gemmini const): the gemmini SoC HW cache. It is NOT a
-# ``build_facts`` default any more — build_facts resolves the HW path from its ``target`` argument.
-DEFAULT_HW = _soc_hw_path("gemmini")
-
-
 # --------------------------------------------------------------- HW-dialect accumulator extraction
 def _int_width(typ: str) -> int | None:
     """Bit width of an ``iN`` HW/MLIR integer type token (``i9`` -> 9), else None."""
@@ -543,8 +538,8 @@ def validate(facts_rec: dict, contract: dict | None = None,
 def main(argv: list[str] | None = None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description="Deterministic, target-agnostic RTL facts via CIRCT HW (v2).")
-    ap.add_argument("--target", default="gemmini",
-                    help="the accelerator target whose RTL facts to extract (default: gemmini)")
+    ap.add_argument("--target", required=True,
+                    help="the accelerator target whose RTL facts to extract")
     ap.add_argument("--out", default=None,
                     help="output path (default: purgeable artifacts/cache/rtl_introspect/<target>/facts.json)")
     ap.add_argument("--hw", default=None, help="override the SoC HW-dialect input (default: per-target cache)")
