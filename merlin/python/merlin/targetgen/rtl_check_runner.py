@@ -2,9 +2,11 @@
 
 Ties the deterministic RTL facts + the FileCheck compiler to a candidate capsule run:
 
-  1. render the decoded RoCC trace to a canonical text (counts + ABI + per-instruction lines),
+  1. render the endpoint's emitted stream to a canonical text — a RoCC target's decoded trace (counts +
+     ABI + per-instruction lines) or a self-hosted target's decoded kernel instruction stream,
   2. compile the FileCheck assertions for the capsule (:mod:`rtl_check_compiler`),
-  3. invoke the **FileCheck LLVM binary** over (i) the gemmini-dialect MLIR and (ii) the rendered trace,
+  3. invoke the **FileCheck LLVM binary** over that rendered decode of the target's ACTUAL emitted
+     commands/instructions (never the agent's dialect MLIR — its op mnemonics are un-derivable per run),
   4. additionally run the Python :func:`rtl_checks.screen` for numeric bounds FileCheck can't express
      (scratchpad/accumulator capacity, multi-matmul tile lower bound),
 
@@ -23,7 +25,6 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import shutil
 import subprocess
 import tempfile
@@ -80,15 +81,6 @@ def compiled_checks(facts_rec: dict, capsule: dict, target: str = "gemmini") -> 
         c = CC.compile_checks(facts_rec, capsule, target)
         _COMPILED_CACHE[key] = c
     return c
-
-
-_OPFORM_RE = re.compile(r"=\s*gemmini\.\w+|gemmini\.(res_pack|matmul|commit|evict)\b")
-
-
-def _is_op_form(mlir: str) -> bool:
-    """True when the gemmini dialect is emitted as real ops (`%x = gemmini.<op> ...`), vs the
-    attribute-encoded `gemmini.program = [...]` form the op-name FileCheck patterns don't apply to."""
-    return bool(_OPFORM_RE.search(mlir)) and "gemmini.program" not in mlir
 
 
 def _legal_funct(facts_rec: dict) -> set[int]:
@@ -252,14 +244,14 @@ def _load_capsule(name: str, index: dict[str, Path]) -> dict | None:
 
 def screen_run(run_capsule_dir: Path, facts_rec: dict, index: dict[str, Path],
                fc: str | None, write: bool = False, target: str = "gemmini") -> dict | None:
-    """Run the full RTL-check suite (FileCheck dialect+trace + Python numeric screen) on one run dir.
+    """Run the full RTL-check suite (FileCheck trace/kernel + Python numeric screen) on one run dir.
 
-    ``target`` selects the check family: a RoCC target (gemmini) gets the dialect+trace FileCheck; a
-    non-RoCC target (atlas/npu_model — no ``funct_decode_table``) drops those in ``compile_checks`` and
-    the verdict rides the target-agnostic Python numeric screen. Defaults to gemmini (byte-identical)."""
+    ``target`` selects the check family by DERIVED endpoint: a RoCC command-ISA target (endpoint
+    ``inline_asm_insn``) gets the TRACE FileCheck over its decoded RoCC stream; a self-hosted-ISA target
+    (``external_backend``) gets the KERNEL opcode-legality FileCheck over its emitted instruction stream.
+    Both check the target's actual emitted commands; the Python numeric screen adds capacity bounds."""
     gen = run_capsule_dir / "generated"
     trace_p = gen / "instruction_trace.json"
-    dialect_p = gen / "lowered.target.mlir"
     kernel_p = gen / "kernel.S"
     capsule = _load_capsule(_capsule_name_for(run_capsule_dir), index)
     compiled = compiled_checks(facts_rec, capsule or {}, target)
@@ -295,48 +287,23 @@ def screen_run(run_capsule_dir: Path, facts_rec: dict, index: dict[str, Path],
     res: dict[str, Any] = {"capsule": (capsule or {}).get("name") or run_capsule_dir.name,
                            "filecheck": {}, "screen": None}
 
-    if fc:
-        trace_txt = render_trace(trace, facts_rec) if compiled["trace"] else None
-        # The agent legitimately emits >1 MLIR surface form: op-form (`%x = gemmini.<op> ...`) and an
-        # attribute-encoded form (`gemmini.program = [...]`). The op-name patterns only apply to op-form;
-        # on other forms the DIALECT check is SKIPPED (honest), not failed — the format-agnostic TRACE
-        # check over the decoded RoCC stream carries the structural verdict either way.
-        mlir = dialect_p.read_text() if (compiled["dialect"] and dialect_p.is_file()) else None
-        dialect_runnable = mlir is not None and _is_op_form(mlir)
-
-        if compiled["trace"] and dialect_runnable:
-            # FAST PATH: one FileCheck pass over the concatenated input (dialect MLIR ++ trace text). The
-            # two check vocabularies are DISJOINT (gemmini.* ops vs *_COUNT/ABI/INSTR trace tokens), so a
-            # combined --check-prefixes=DIALECT,TRACE run cannot cross-match. If it passes, both prefixes
-            # matched. Only on failure do we re-run the two separately to ATTRIBUTE it — DIALECT is
-            # advisory, TRACE bears the verdict — so the verdict site below is preserved bit-for-bit.
-            combined_checks = compiled["dialect"] + "\n" + compiled["trace"]
-            combined_input = f"{mlir}\n; ---rtlcheck-trace-region---\n{trace_txt}"
-            ok, _ = run_filecheck(fc, combined_checks, combined_input, ["DIALECT", "TRACE"])
-            if ok:
-                res["filecheck"]["trace"] = {"ok": True, "diag": ""}
-                res["filecheck"]["dialect"] = {"ok": True, "diag": ""}
-            else:
-                okt, dt = run_filecheck(fc, compiled["trace"], trace_txt, "TRACE")
-                okd, dd = run_filecheck(fc, compiled["dialect"], mlir, "DIALECT")
-                res["filecheck"]["trace"] = {"ok": okt, "diag": dt}
-                res["filecheck"]["dialect"] = {"ok": okd, "diag": dd}
-        else:
-            if compiled["trace"]:
-                ok, diag = run_filecheck(fc, compiled["trace"], trace_txt, "TRACE")
-                res["filecheck"]["trace"] = {"ok": ok, "diag": diag}
-            if mlir is not None and not dialect_runnable:
-                res["filecheck"]["dialect"] = {"ok": None, "skipped": "non-op-form MLIR"}
+    if fc and compiled["trace"]:
+        # The structural verdict rides the format-agnostic TRACE FileCheck over the DECODED RoCC stream —
+        # the target's actual emitted commands. We do NOT FileCheck the agent's dialect MLIR: its op
+        # mnemonics are invented per generated OOT dialect (no derivation source), and corroboration
+        # against 383 real agent runs showed op-name patterns over lowered.target.mlir false-fail on
+        # several legal MLIR surface forms while the decoded trace never did. The trace is canonical.
+        trace_txt = render_trace(trace, facts_rec)
+        ok, diag = run_filecheck(fc, compiled["trace"], trace_txt, "TRACE")
+        res["filecheck"]["trace"] = {"ok": ok, "diag": diag}
     # Python numeric/lower-bound checks (capacity, multi-matmul tile bound) the RTL facts feed.
     rc_facts = CC._facts_to_rc(facts_rec)
     rep = RC.screen(trace, capsule, rc_facts)
     res["screen"] = rep.to_dict()
 
-    # VERDICT rides only the format-agnostic, RTL-grounded checks: the TRACE FileCheck (over the decoded
-    # RoCC stream) + the Python numeric screen. The DIALECT FileCheck is ADVISORY-only (still reported as
-    # feedback) — corroboration against 383 real agent runs showed the agent emits several legal MLIR
-    # surface forms, so op-name patterns over lowered.target.mlir false-fail on passing code. The decoded
-    # trace is canonical and format-independent, so it never had a false positive.
+    # VERDICT rides the format-agnostic, RTL-grounded checks: the TRACE FileCheck (over the decoded RoCC
+    # stream — the target's actual emitted commands) + the Python numeric screen. The decoded trace is
+    # canonical and format-independent, so it never false-positives on a legal MLIR surface form.
     fc_fail = (res["filecheck"].get("trace") or {}).get("ok") is False
     res["verdict"] = "reject" if (fc_fail or rep.verdict == "reject") else (
         "warn" if rep.verdict == "warn" else "ok")

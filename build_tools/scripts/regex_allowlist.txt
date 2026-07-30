@@ -48,7 +48,6 @@ merlin/python/merlin/runtime/backends/ours_board/__init__.py  # matmul matcher +
 merlin/python/merlin/runtime/backends/xnnpack_board/__init__.py  # matmul matcher + func.func anchor over MLIR -> xDSL / str.find (runtime routing)
 merlin/python/merlin/runtime/backends/openblas_board/__init__.py  # matmul matcher + func.func anchor over MLIR -> xDSL / str.find (runtime routing)
 merlin/python/merlin/targetgen/rtl/extract_module.py          # CIRCT HW module-subtree slice by text -> circt-opt instance graph
-merlin/python/merlin/targetgen/rtl_check_runner.py            # op-form vs attr-form mode select over gemmini MLIR -> mlir-opt
 
 # ---------------------------------------------------------------- TODO(batch-5b): objdump/ELF decode (needs decode/ + capstone/pyelftools)
 merlin/python/merlin/baselines/rvv_audit.py                   # objdump asm + ELF symbol headers -> decode/objdump + pyelftools

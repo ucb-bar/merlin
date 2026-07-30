@@ -7,14 +7,20 @@ arithmetic (tile count = ⌈M/DIM⌉·⌈N/DIM⌉, legal-opcode set, required op
 check-generation time, so concrete RTL-grounded literals are baked into the CHECK lines; FileCheck does
 the matching and its diagnostic (the offending IR line) is the feedback.
 
-Two check files are produced (run by :mod:`rtl_check_runner`):
+The check family is ENDPOINT-derived (never a target-name test): a RoCC command-ISA target
+(``endpoint_kind == inline_asm_insn``) is checked over its decoded RoCC trace; a self-hosted-ISA target
+(``external_backend``) over its emitted kernel instruction stream.
 
-* ``dialect`` — over the agent's high-level gemmini-dialect MLIR (``lowered.target.mlir``): structural
-  invariants (a matmul must ``res_pack``→``matmul``→``commit``; the commit's ``output_dtype`` must match
-  the declared dtype). Ordered ``CHECK`` enforces dataflow order.
 * ``trace`` — over a canonical text rendering of the decoded RoCC trace: ``MVOUT_COUNT`` exact tile
-  coverage, ``UNKNOWN_COUNT 0`` (every funct ∈ the RTL-derived legal set), ``COMPUTE_COUNT`` positive for
+  coverage, ``ILLEGAL_FUNCT_COUNT 0`` (every funct ∈ the RTL-derived legal set), ``COMPUTE_PRESENT`` for
   compute ops, and the ABI opcode/funct3 from the RTL facts.
+* ``kernel`` — over a rendered decode of a self-hosted target's emitted instruction stream: opcode
+  LEGALITY (``ILLEGAL_OPCODE_COUNT 0``) plus class coverage / mesh-tiling count / field-sanity / order,
+  all keyed by the capsule's DERIVED ``expected.instruction_classes`` (not target data).
+
+Both families assert over the target's actual EMITTED commands/instructions — the decoded ground truth —
+so no check depends on the agent's dialect op mnemonics (those are invented per generated OOT dialect and
+carry no derivation source; a text FileCheck over them would be both target-overfit and false-failing).
 
 NON-OVERFIT: every literal comes from RTL facts + declared shape + ISA rules — never a golden trace or a
 per-capsule expected count. For shapes where an exact tile count cannot be derived generally (multi-matmul
@@ -70,34 +76,6 @@ def _facts_to_rc(facts_rec: dict) -> dict:
     if sp.get("bytes"):
         out["scratchpad_bytes"] = sp["bytes"]
     return out
-
-
-def compile_dialect_checks(capsule: dict, prefix: str = "DIALECT") -> str | None:
-    """FileCheck lines over the gemmini-dialect MLIR (lowered.target.mlir)."""
-    op = RC._declared_op(capsule)
-    if op is None:
-        return None
-    out_dtype = ((capsule.get("operation") or {}).get("attributes") or {}).get("output_dtype")
-    # header is a plain comment (no "{prefix}:" so FileCheck ignores it); facts are order-independent
-    # presence assertions => -DAG. SSA already guarantees res_pack->matmul->commit dataflow order.
-    L = [f"// RTL-derived dialect checks (op={op}) — generated, do not edit"]
-    lines = [f"// {prefix}-DAG: gemmini.commit"]
-    if op in ("matmul", "matmul_resident"):
-        lines = [f"// {prefix}-DAG: gemmini.res_pack",
-                 f"// {prefix}-DAG: gemmini.matmul",
-                 f"// {prefix}-DAG: gemmini.commit"]
-    elif op == "resident_reuse":
-        n = sum(1 for t in (capsule.get("inputs") or []) if t.get("role") == "input")
-        lines = [f"// {prefix}-DAG: gemmini.res_pack",
-                 f"// {prefix}-COUNT-{max(n,1)}: gemmini.matmul",
-                 f"// {prefix}-DAG: gemmini.commit"]
-    elif op in ("conv2d", "conv"):
-        lines = [f"// {prefix}-DAG: gemmini.commit"]  # conv lowering varies; assert commit only
-    elif op == "movement":
-        lines = [f"// {prefix}-NOT: gemmini.matmul"]  # movement must not invent compute
-    if out_dtype and op != "movement":
-        lines.append(f'// {prefix}-DAG: output_dtype = "{out_dtype}"')
-    return "\n".join(L + lines) + "\n"
 
 
 def compile_trace_checks(facts_rec: dict, capsule: dict, prefix: str = "TRACE") -> str | None:
@@ -221,18 +199,19 @@ def compile_kernel_checks(capsule: dict, prefix: str = "KERNEL",
 
 def compile_checks(facts_rec: dict, capsule: dict, target: str = "gemmini") -> dict[str, Any]:
     """Compile the check files for a capsule + a per-family PROVENANCE audit, ENDPOINT-aware and fully
-    derived. A RoCC command-ISA target (endpoint ``inline_asm_insn``, e.g. gemmini) gets the dialect+trace
-    FileCheck over its RoCC stream; a self-hosted-ISA target (``external_backend``, e.g. atlas) gets the
-    kernel opcode-legality FileCheck over its emitted `.word` stream. The RoCC vs self-hosted decision is
-    the DERIVED ``endpoint_kind`` (never funct_decode_table presence — the mlc icmp-fanout extractor
-    synthesises a table for a self-hosted decoder too, so that would mis-route). We emit every check we can
-    ground for the target's endpoint and drop the rest, never guessing."""
+    derived. A RoCC command-ISA target (endpoint ``inline_asm_insn``, e.g. gemmini) gets the trace
+    FileCheck over its decoded RoCC stream; a self-hosted-ISA target (``external_backend``, e.g. atlas)
+    gets the kernel opcode-legality FileCheck over its emitted `.word` stream. The RoCC vs self-hosted
+    decision is the DERIVED ``endpoint_kind`` (never funct_decode_table presence — the mlc icmp-fanout
+    extractor synthesises a table for a self-hosted decoder too, so that would mis-route). Both families
+    check the target's actual emitted commands/instructions; neither depends on the agent's (per-run,
+    un-derivable) dialect op mnemonics. We emit every check we can ground for the target's endpoint and
+    drop the rest, never guessing."""
     is_rocc = _is_rocc_target(target, facts_rec)
     return {
         "schema": "rtl_checks_filecheck/v0",
         "capsule": capsule.get("name"),
         "target": target,
-        "dialect": compile_dialect_checks(capsule) if is_rocc else None,
         "trace": compile_trace_checks(facts_rec, capsule) if is_rocc else None,
         "kernel": None if is_rocc else compile_kernel_checks(capsule, facts_rec=facts_rec, target=target),
         "provenance": _provenance(facts_rec, capsule, target),
@@ -250,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
     facts = json.loads(Path(a.facts).read_text()) if a.facts else load_facts("gemmini")
     capsule = yaml.safe_load(Path(a.capsule).read_text())
     cc = compile_checks(facts, capsule)
-    print(f"# capsule={cc['capsule']}\n# --- dialect ---\n{cc['dialect']}\n# --- trace ---\n{cc['trace']}")
+    print(f"# capsule={cc['capsule']}\n# --- trace ---\n{cc['trace']}\n# --- kernel ---\n{cc['kernel']}")
     return 0
 
 

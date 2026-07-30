@@ -32,10 +32,10 @@ def test_compile_checks_routes_by_endpoint_not_decode_table():
     cap = {"name": "m", "operation": {"op": "matmul"}, "inputs": [{"role": "output", "shape": [16, 16]}]}
     g = CC.compile_checks(_facts("gemmini"), cap, "gemmini")
     a = CC.compile_checks(_facts("atlas"), cap, "atlas")
-    # gemmini: RoCC dialect+trace, no kernel check
-    assert g["dialect"] and g["trace"] and g["kernel"] is None
-    # atlas: kernel opcode-legality check ONLY — no gemmini dialect/trace leaking on
-    assert a["kernel"] and a["dialect"] is None and a["trace"] is None
+    # gemmini: RoCC trace check over the decoded stream, no kernel check; no dialect-MLIR family exists
+    assert g["trace"] and g["kernel"] is None and "dialect" not in g
+    # atlas: kernel opcode-legality check ONLY — no RoCC trace leaking on
+    assert a["kernel"] and a["trace"] is None and "dialect" not in a
     # and no gemmini literal anywhere in the atlas checks
     assert "gemmini" not in (a["kernel"] or "")
 

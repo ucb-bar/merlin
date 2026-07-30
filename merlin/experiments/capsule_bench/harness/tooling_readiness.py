@@ -74,10 +74,10 @@ def _rtl_check_checks(target: str) -> list[dict]:
     cap = yaml.safe_load(cap_p.read_text())
     facts = RUN.load_facts(target)
     checks = CCk.compile_checks(facts, cap, target)
-    endpoint_check = checks.get("kernel") or checks.get("trace") or checks.get("dialect")
+    endpoint_check = checks.get("kernel") or checks.get("trace")
     out.append(_ok("rtl checks compile (endpoint-appropriate)", bool(endpoint_check),
                    f"kernel={bool(checks.get('kernel'))} trace={bool(checks.get('trace'))} "
-                   f"dialect={bool(checks.get('dialect'))} (capsule={cap_p.parent.name})"))
+                   f"(capsule={cap_p.parent.name})"))
     return out
 
 
