@@ -83,10 +83,17 @@ def generate(facts: dict) -> str:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--facts", default=None, help="facts.json (default: regenerate gemmini from RTL)")
+    ap.add_argument("--facts", default=None, help="facts.json (default: regenerate the target's facts from RTL)")
+    ap.add_argument("--target", default=None, help="target whose RTL facts to regenerate when --facts is omitted")
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
-    md = generate(json.loads(Path(a.facts).read_text()) if a.facts else load_facts("gemmini"))
+    if a.facts:
+        facts = json.loads(Path(a.facts).read_text())
+    elif a.target:
+        facts = load_facts(a.target)
+    else:
+        ap.error("provide --facts <facts.json> or --target <name> to regenerate the facts from RTL")
+    md = generate(facts)
     if a.out:
         Path(a.out).write_text(md)
         print(f"wrote {a.out} ({len(md.splitlines())} lines)")
