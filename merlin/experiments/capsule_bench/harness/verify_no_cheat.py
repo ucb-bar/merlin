@@ -24,16 +24,11 @@ from pathlib import Path
 
 import yaml
 
-def _repo_root():
-    from pathlib import Path as _P
-    p = _P(__file__).resolve()
-    while p != p.parent and not (p / "merlin" / "python").is_dir():
-        p = p.parent
-    return p
-_ROOT = _repo_root()
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
 
-EXP = Path(f"{_ROOT}/merlin/experiments/capsule_bench/targets/gemmini")
-REPO = EXP.parent.parent
+EXP = C.EXP                    # the active target's experiment dir (descriptor-driven, no target literal)
+REPO = C.REPO
 KIT_DIR = REPO / "merlin/python/merlin/targetgen/oot_starterkit"
 RTL_DIR = REPO / "merlin/python/merlin/targetgen/rtl"
 BUNDLES = EXP / "input_bundles"
@@ -150,7 +145,7 @@ def check_grant_consistency() -> tuple[bool, list[str]]:
 
 # ---- check 5: audit regression on existing clean runs ---------------------------------------------
 def check_audit_regression() -> tuple[bool, list[str]]:
-    sys.path.insert(0, str(EXP / "scripts"))
+    sys.path.insert(0, str(Path(__file__).resolve().parent))   # the harness dir (sibling module)
     try:
         import transcript_tooling_audit as TTA
     except Exception as e:
