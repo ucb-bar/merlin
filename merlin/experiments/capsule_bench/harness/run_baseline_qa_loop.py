@@ -805,8 +805,16 @@ def main(argv: list[str] | None = None) -> int:
             _bearer = _dotenv("AWS_BEARER_TOKEN_BEDROCK")
             if _bearer:
                 os.environ["AWS_BEARER_TOKEN_BEDROCK"] = _bearer
+        # Proper Claude Code = an Opus PRIMARY (--model) plus adaptive routing of lightweight background
+        # work to a small/fast model. That background model must ALSO be a valid Bedrock inference profile
+        # under Bedrock, or that path has no model; the subscription default alias is not one. Default it
+        # to a haiku profile (override via ANTHROPIC_SMALL_FAST_MODEL in the environment) so Claude Code
+        # keeps deciding which model to use per task, exactly as it does on the subscription.
+        os.environ.setdefault("ANTHROPIC_SMALL_FAST_MODEL",
+                              "us.anthropic.claude-haiku-4-5-20251001-v1:0")
         print(f"[provider] agent CLI -> Bedrock (region={a.aws_region}"
-              f"{', profile=' + a.aws_profile if a.aws_profile else ', env-var creds'}); model={a.model}")
+              f"{', profile=' + a.aws_profile if a.aws_profile else ', env-var creds'}); "
+              f"primary={a.model}; small_fast={os.environ['ANTHROPIC_SMALL_FAST_MODEL']}")
     else:
         # Belt-and-braces: never let a stray Bedrock env leak a 'subscription' run onto Bedrock.
         os.environ.pop("CLAUDE_CODE_USE_BEDROCK", None)
