@@ -8,9 +8,13 @@ Given the path to the target's ISA-definition module (each instruction is a clas
 ``funct*`` fields and a semantic base pattern, e.g. ``MXUMatMul`` / ``TensorBaseOffset`` / ``MXUWeightPush``
 / ``DMARegUnary``), it emits a JSON taxonomy:
 
-    {"by_class": {"<semantic_pattern>": [{"mnemonic","opcode","funct3","funct7","funct2"}, ...], ...},
-     "by_mnemonic": {"<MNEMONIC>": {"class","opcode",...}, ...},
+    {"by_class": {"<semantic_pattern>": [{"mnemonic","opcode","role","funct3","funct7","funct2"}, ...], ...},
+     "by_mnemonic": {"<MNEMONIC>": {"class","role","opcode",...}, ...},
      "asm_mnemonics": {"<assembler-mnemonic>": "<class-name>", ...}}   # from the model's IsaSpec, if any
+
+``role`` is a SEMANTIC role derived structurally from the pattern's own typed operands (memory / matmul /
+weight_load / acc_readout[_scaled] / acc_seed / tensor_compute_unary / tensor_compute_binary / scalar) —
+so merlin's kernel structural checks select classes by role, never by a hardcoded pattern name.
 
 ``asm_mnemonics`` maps the ASSEMBLER syntax (e.g. ``VMATPUSH.W.MXU0``) to the op class
 (``VMATPUSH_WEIGHT_MXU0``) so an example kernel written in mnemonics can be mapped back to semantic classes.
@@ -71,6 +75,72 @@ def _pattern_module(mod) -> str:
     return "isa_patterns"
 
 
+# Generic hardware register-file categories a systolic/tensor accelerator exposes. We recognise the ISA
+# def's OWN declared register semantics (each operand type carries a ``reg_name``, e.g. "accumulator",
+# "weight buffer", "matrix register", "scalar register", "exponent register") by the standard concept
+# word in that name — NOT by a target-specific class name. A target whose ISA names its PE-array result
+# register "accumulator" and its stationary-weight store "weight" classifies correctly; the words are
+# universal systolic-array vocabulary, and merlin core never sees them (it consumes the derived role).
+_REG_CONCEPTS = (("accumulat", "accumulator"), ("weight", "weight"), ("exponent", "exponent"),
+                 ("matrix", "tensor"), ("tensor", "tensor"), ("scalar", "scalar"))
+
+
+def _reg_concept(reg_name: str | None) -> str | None:
+    rn = (reg_name or "").lower()
+    return next((concept for token, concept in _REG_CONCEPTS if token in rn), None)
+
+
+def _operand_kinds(sem_cls) -> list[str]:
+    """Ordered operand categories of a semantic pattern, from its OWN typed operand annotations (dest
+    first). A register operand contributes its ISA-declared concept (accumulator/weight/tensor/scalar/
+    exponent); an immediate contributes ``imm``. Everything is read off the ISA def's types — position
+    and format agnostic — so the role below falls out of the datapath the operands describe."""
+    modname = getattr(sem_cls, "__module__", "") or ""
+    gmod = sys.modules.get(modname)
+    kinds: list[str] = []
+    for _attr, ann in (getattr(sem_cls, "__annotations__", {}) or {}).items():
+        t = getattr(gmod, ann, None) if isinstance(ann, str) else ann
+        if t is None or not isinstance(t, type):
+            continue
+        concept = _reg_concept(getattr(t, "reg_name", None))
+        if concept:
+            kinds.append(concept)
+        elif issubclass(t, int):                     # a bounded immediate (offset / literal)
+            kinds.append("imm")
+    return kinds
+
+
+def _role_for_pattern(sem_cls) -> str:
+    """Derive a semantic ROLE for an instruction pattern from the datapath its operands describe — so the
+    kernel structural checks (tile-count over the compute op, field-sanity over the memory op, canonical
+    load->weight->matmul->readout order) select classes by ROLE, never by a hardcoded pattern name.
+
+    Rules, all structural: a base scalar register + immediate offset carrying a tensor operand is a
+    tensor MEMORY access; an op writing the accumulator from tensor+weight sources is the systolic
+    MATMUL; writing the weight store is a WEIGHT_LOAD; reading the accumulator back to a tensor register
+    is an ACC_READOUT (scaled when it also consumes an exponent register — the fp8 path); tensor->tensor
+    is a TENSOR_COMPUTE (the vector unary/binary epilogue). Anything else is scalar/control."""
+    kinds = _operand_kinds(sem_cls)
+    if not kinds:
+        return "scalar"
+    dest, srcs = kinds[0], kinds[1:]
+    has_tensor = any(k == "tensor" for k in kinds)
+    if "scalar" in kinds and "imm" in kinds and has_tensor:
+        return "memory"                               # tensor base+offset load/store (DRAM address)
+    if dest == "accumulator" and "weight" in srcs:
+        return "matmul"                               # systolic multiply into the accumulator
+    if dest == "weight":
+        return "weight_load"                          # push stationary weights
+    if dest == "accumulator":
+        return "acc_seed"                             # push a seed/bias into the accumulator
+    if "accumulator" in srcs and dest == "tensor":
+        return "acc_readout_scaled" if "exponent" in kinds else "acc_readout"
+    if dest == "tensor" and srcs and all(k == "tensor" for k in srcs):
+        # tensor->tensor: one source == unary (a relu-style epilogue), two+ == binary
+        return "tensor_compute_unary" if len(srcs) == 1 else "tensor_compute_binary"
+    return "scalar"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--isa-module", required=True, help="path to the target's ISA-definition .py")
@@ -87,10 +157,11 @@ def main() -> int:
         op = getattr(obj, "opcode", None)
         if not isinstance(op, int):                  # skip the imported format base classes (RType/IType…)
             continue
-        sem = next((b.__name__ for b in obj.__mro__ if getattr(b, "__module__", "") == patmod), None)
-        if sem is None:
+        sem_cls = next((b for b in obj.__mro__ if getattr(b, "__module__", "") == patmod), None)
+        if sem_cls is None:
             continue
-        entry = {"mnemonic": name, "opcode": op,
+        sem = sem_cls.__name__
+        entry = {"mnemonic": name, "opcode": op, "role": _role_for_pattern(sem_cls),
                  "funct3": getattr(obj, "funct3", None), "funct7": getattr(obj, "funct7", None),
                  "funct2": getattr(obj, "funct2", None)}
         # DECODE signature: the fixed opcode/funct bits derived from the op's own encoder (mask,value), so

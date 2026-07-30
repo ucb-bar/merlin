@@ -106,41 +106,54 @@ def classes_from_kernel(kernel_text: str, taxonomy: dict) -> list[str]:
     return out
 
 
-# Semantic-pattern role groups (names come from the target's OWN ISA definition, not invented) — used to
-# derive a capsule's required instruction classes by OPERATION, robustly (independent of example-kernel
-# mnemonic-spelling drift). A matmul exercises the MXU systolic datapath (weight push -> matmul -> acc
+# The instruction classes a capsule must exercise are selected by the DERIVED semantic ROLE each class
+# carries (isa_introspect attaches a structural role to every class from its operand datapath), never by
+# a hardcoded pattern name. A matmul exercises the systolic datapath (weight push -> matmul -> acc
 # readout) plus operand load; movement is a tensor load/store copy; a relu epilogue adds the vector unit.
-_LOAD_STORE = "TensorBaseOffset"
-_VEC_UNARY = "TensorComputeUnary"
+
+
+def _classes_by_role(taxonomy: dict) -> dict[str, list[str]]:
+    """{role: [semantic class names present with that role]} from the derived taxonomy — the target's own
+    structural roles, in discovery order. Empty for a taxonomy whose entries carry no role."""
+    out: dict[str, list[str]] = {}
+    for cls, ents in (taxonomy.get("by_class") or {}).items():
+        role = next((e.get("role") for e in ents if e.get("role")), None)
+        if role:
+            out.setdefault(role, [])
+            if cls not in out[role]:
+                out[role].append(cls)
+    return out
 
 
 def required_classes_for_op(taxonomy: dict, *, op: str = "matmul", output_dtype: str | None = None,
                             epilogue: tuple[str, ...] = (), movement: bool = False) -> list[str]:
-    """Derive the instruction classes a capsule of this op MUST exercise, selected from the target's
-    DERIVED semantic patterns (never a hardcoded list). Empty if the taxonomy lacks an MXU datapath
-    (a non-systolic target)."""
-    present = set(taxonomy.get("by_class", {}) or {})
+    """Derive the instruction classes a capsule of this op MUST exercise, selected by DERIVED semantic
+    ROLE from the target's own taxonomy (never a hardcoded list). Empty if the taxonomy has no systolic
+    (matmul) role — a non-systolic target."""
+    by_role = _classes_by_role(taxonomy)
     req: list[str] = []
 
-    def add(c: str) -> None:
-        if c in present and c not in req:
-            req.append(c)
+    def add_role(*roles: str) -> None:
+        """Add the first present class for the first role that resolves (roles tried in order)."""
+        for r in roles:
+            cs = by_role.get(r) or []
+            if cs and cs[0] not in req:
+                req.append(cs[0])
+                return
 
     if movement or op in ("movement", "copy"):
-        add(_LOAD_STORE)                                  # dequant load + store, no MXU
+        add_role("memory")                                # dequant load + store, no MXU
         return req
-    add(_LOAD_STORE)                                      # load operands
-    add("MXUWeightPush")                                  # push stationary weight
-    add("MXUMatMul")                                      # systolic multiply-accumulate
-    # readout pop: fp8 output uses the E1 (scaled) pop; bf16 output uses the plain pop — pick by dtype.
-    if output_dtype and "fp8" in output_dtype and "MXUAccumulatorPopE1" in present:
-        add("MXUAccumulatorPopE1")
-    elif "MXUAccumulatorPop" in present:
-        add("MXUAccumulatorPop")
-    elif "MXUAccumulatorPopE1" in present:
-        add("MXUAccumulatorPopE1")
+    add_role("memory")                                    # load operands
+    add_role("weight_load")                               # push stationary weight
+    add_role("matmul")                                    # systolic multiply-accumulate
+    # readout pop: fp8 output uses the scaled (exponent) pop; else the plain pop — pick by dtype+role.
+    if output_dtype and "fp8" in output_dtype:
+        add_role("acc_readout_scaled", "acc_readout")
+    else:
+        add_role("acc_readout", "acc_readout_scaled")
     if "relu" in epilogue:
-        add(_VEC_UNARY)                                   # VRELU_BF16 lives in the vector-unary pattern
+        add_role("tensor_compute_unary")                  # the vector-unary (VRELU) epilogue
     return req
 
 
@@ -172,20 +185,15 @@ def classify(word: int, taxonomy: dict) -> list[tuple[str, int]]:
     return out
 
 
-# Semantic-pattern roles used by the kernel structural checks — selected from the TARGET'S OWN derived
-# patterns (never invented); a target lacking a role returns None and that check is skipped, so this is
-# "derive from this target's patterns, else drop", not an atlas hardcode. Same pattern vocabulary as
-# required_classes_for_op below.
-_COMPUTE_PATTERNS = ("MXUMatMul", "MXUMatMulAccumulate")
-
-
 def role_classes(taxonomy: dict) -> dict[str, str | None]:
     """The tile-producing COMPUTE class and the MEMORY (load/store) class for structural checks, selected
-    from the classes actually present in the target's taxonomy. None when the target has no such pattern
-    (the corresponding tiling / field-sanity check is then skipped, honestly)."""
-    present = set(taxonomy.get("by_class") or {})
-    compute = next((c for c in _COMPUTE_PATTERNS if c in present), None)
-    return {"compute": compute, "memory": _LOAD_STORE if _LOAD_STORE in present else None}
+    by DERIVED semantic role from the target's own taxonomy (the ``matmul`` and ``memory`` roles). None
+    when the target has no such role (the corresponding tiling / field-sanity check is then skipped,
+    honestly) — so this is "derive from this target's roles, else drop", never a per-target hardcode."""
+    by_role = _classes_by_role(taxonomy)
+    compute = (by_role.get("matmul") or [None])[0]
+    memory = (by_role.get("memory") or [None])[0]
+    return {"compute": compute, "memory": memory}
 
 
 def decode_word(word: int, taxonomy: dict) -> list[str]:

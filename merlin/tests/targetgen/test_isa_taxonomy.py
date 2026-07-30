@@ -50,6 +50,44 @@ def test_matmul_required_classes_are_derived_from_the_taxonomy():
     assert mv == ["TensorBaseOffset"] and not any(c.startswith("MXU") for c in mv)
 
 
+def test_classes_carry_derived_roles_not_hardcoded_names():
+    """OV13#2: every class carries a semantic ROLE derived structurally from its operand datapath — the
+    MXU/tensor structural checks select BY ROLE, not by a hardcoded pattern name. Assert the real atlas
+    classes derive the expected roles and role_classes picks the matmul/memory classes by role."""
+    tax = _atlas_taxonomy()
+    role_of = {c: next((e.get("role") for e in ents if e.get("role")), None)
+               for c, ents in tax["by_class"].items()}
+    assert role_of.get("MXUMatMul") == "matmul"
+    assert role_of.get("TensorBaseOffset") == "memory"
+    assert role_of.get("MXUWeightPush") == "weight_load"
+    assert role_of.get("MXUAccumulatorPop") == "acc_readout"
+    assert role_of.get("MXUAccumulatorPopE1") == "acc_readout_scaled"
+    assert role_of.get("TensorComputeUnary") == "tensor_compute_unary"
+    rc = IT.role_classes(tax)
+    assert rc == {"compute": "MXUMatMul", "memory": "TensorBaseOffset"}
+
+
+def test_role_selection_is_name_independent():
+    """The selectors key on the derived ROLE only — a target whose ISA names its patterns ANYTHING still
+    resolves, proving there is no atlas-name overfit left. Synthetic taxonomy, invented class names."""
+    tax = {"by_class": {
+        "OpFoo":  [{"role": "memory"}],
+        "OpBar":  [{"role": "weight_load"}],
+        "OpBaz":  [{"role": "matmul"}],
+        "OpQux":  [{"role": "acc_readout"}],
+        "OpQuxS": [{"role": "acc_readout_scaled"}],
+        "OpRelu": [{"role": "tensor_compute_unary"}],
+    }}
+    assert IT.role_classes(tax) == {"compute": "OpBaz", "memory": "OpFoo"}
+    assert IT.required_classes_for_op(tax, op="matmul", output_dtype="bf16") == \
+        ["OpFoo", "OpBar", "OpBaz", "OpQux"]
+    assert IT.required_classes_for_op(tax, op="matmul", output_dtype="fp8_e4m3")[-1] == "OpQuxS"
+    assert IT.required_classes_for_op(tax, op="matmul", output_dtype="bf16", epilogue=("relu",))[-1] == "OpRelu"
+    assert IT.required_classes_for_op(tax, movement=True) == ["OpFoo"]
+    # a taxonomy with no matmul role -> a matmul op yields no systolic classes (honest, non-fabricated)
+    assert IT.role_classes({"by_class": {"OpX": [{"role": "scalar"}]}}) == {"compute": None, "memory": None}
+
+
 def test_committed_atlas_corpus_matches_the_live_derivation():
     """The atlas capsules' expected.instruction_classes must EQUAL the live derivation — so the corpus is
     derived-and-enforced (never silently re-hardcoded, and an ISA change surfaces as drift here)."""
