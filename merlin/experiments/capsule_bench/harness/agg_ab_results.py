@@ -25,14 +25,15 @@ from pathlib import Path
 
 import yaml
 
-import agg_agentic_results as AAR  # reuse arm detection + per-run loader
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
+import agg_agentic_results as AAR  # noqa: E402 — reuse arm detection + per-run loader
 
-from merlin.common.paths import artifacts_dir, merlin_dir
-
-EXP = merlin_dir() / "experiments" / "capsule_bench" / "targets" / "gemmini"
+EXP = C.EXP
 # Generated output lives under out/artifacts/ (top-level artifacts/ is retired) — concern-first
 # capsule-bench/<target>, matching launch_ab_batch's ANSWER_SURFACES.
-REPORTS = artifacts_dir() / "capsule-bench" / "gemmini"
+REPORTS = C.REPORTS
 ARM_ORDER = ["baseline", "merlin", "merlin_rtlchecks"]
 ARM_LABEL = {"baseline": "baseline (C++)", "merlin": "merlin (xDSL)",
              "merlin_rtlchecks": "merlin+CIRCT"}

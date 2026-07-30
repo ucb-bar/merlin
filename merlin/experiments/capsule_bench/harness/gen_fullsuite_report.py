@@ -6,7 +6,7 @@ conflicts; reads the same run records read-only.
 Sources per run dir runs/<arm>/<run_id>/:
   - run_manifest.yaml         arm/model/public_dev/hidden/process/oracle_mode/integrity
   - qa_loop_summary.yaml      n_rounds + agent_wall_total_seconds / sim_wait_total_seconds (full-suite)
-  - grading_{public,hidden}/runs/gemmini-capsule-bench/<capsule>/capsule_result.json  per-tier cycles
+  - grading_{public,hidden}/runs/<target>-capsule-bench/<capsule>/capsule_result.json  per-tier cycles
 
 Outputs (reports/):
   - fullsuite_comparison.md   one row per run: pass N/M, tier, integrity, tokens, cost, rounds,
@@ -92,7 +92,7 @@ def main() -> int:
                      "caps": _capsule_results(rd)})
 
     # ---------------- fullsuite_comparison.md ----------------
-    L = ["# Full-suite comparison (gemmini capsule-bench)", "",
+    L = [f"# Full-suite comparison ({C.TARGET} capsule-bench)", "",
          "Per-arm pass over **all** capsules (dynamic n/n, not a hardcoded pilot count). "
          "Time split (cumulative across quota-resumes): `active` = doing work (agent+oracle, from the "
          "driver), `quota_wait` = slept waiting on the 5h limit; within active, `agent`/`sim` = agent "
@@ -125,7 +125,7 @@ def main() -> int:
 
     # ---------------- cycles_by_capsule.md ----------------
     full_runs = [r for r in runs if r["caps"]]
-    M = ["# Cycles by capsule (gemmini capsule-bench)", "",
+    M = [f"# Cycles by capsule ({C.TARGET} capsule-bench)", "",
          "Per-capsule status + **L2 spike** / **L3 verilator (cycle-accurate RTL)** cycle counts, from "
          "each run's `capsule_result.json`. L5 FireSim columns are added once the FPGA backfill runs.", ""]
     # cross-run L3-cycle matrix (capsule rows x run columns)

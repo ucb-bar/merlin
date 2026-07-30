@@ -27,7 +27,7 @@ def main() -> int:
         # that had a round rejected by the five-hour limit never got a fair attempt => blocked.
         blocked[r["run_id"]] = (not is_pass) and rej > 0
 
-    idx = ["# Run index (gemmini capsule-bench)", "",
+    idx = [f"# Run index ({C.TARGET} capsule-bench)", "",
            f"{len(rows)} run(s).", "", "| run_id | arm | model | integrity | public | hidden | oracle |",
            "|---|---|---|---|---|---|---|"]
     for r in rows:
@@ -44,7 +44,7 @@ def main() -> int:
         except Exception:
             full_suite = {}
 
-    cmp = ["# Comparison table (gemmini capsule-bench)", "",
+    cmp = [f"# Comparison table ({C.TARGET} capsule-bench)", "",
            "Apples-to-apples across arms: same task, same capsules, same hidden set, same grader.",
            "`public` is the 4-capsule pilot (the agent's iterate-to-pass gate); **`full-suite` is all "
            "25 capsules** (every test — see reports/full_suite_audit.md). Cycles are diagnostic-only. "

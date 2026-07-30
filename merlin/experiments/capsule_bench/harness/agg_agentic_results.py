@@ -17,19 +17,15 @@ valid/invalid and N is recorded. -> reports/agentic_results.json
 """
 from __future__ import annotations
 import json
+import sys
 from pathlib import Path
 import yaml
 
-def _repo_root():
-    from pathlib import Path as _P
-    p = _P(__file__).resolve()
-    while p != p.parent and not (p / "merlin" / "python").is_dir():
-        p = p.parent
-    return p
-_ROOT = _repo_root()
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
 
-EXP = Path(f"{_ROOT}/merlin/experiments/capsule_bench/targets/gemmini")
-REPORTS = EXP.parents[2] / "artifacts" / "capsule-bench" / "gemmini"
+EXP = C.EXP
+REPORTS = C.REPORTS
 RUN_DIRS = ["raw_baseline", "merlin_assisted"]   # both scanned; arm decided by bundle_id
 BUNDLE_ARM = {
     "raw_baseline_public_v0": "baseline",
