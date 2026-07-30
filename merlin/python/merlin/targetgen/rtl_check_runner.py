@@ -358,8 +358,8 @@ def iter_run_dirs(root: Path):
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("root", help="a capsule run dir or a runs/ tree")
-    ap.add_argument("--target", default="gemmini",
-                    help="target whose RTL facts + check family to screen (CLI convenience default)")
+    ap.add_argument("--target", required=True,
+                    help="target whose RTL facts + check family to screen")
     ap.add_argument("--write", action="store_true", help="write rtl_checks.json beside capsule_result.json")
     ap.add_argument("--quantify", action="store_true",
                     help="summarize how many runs the pre-screen would reject (oracle skips)")
