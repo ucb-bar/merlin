@@ -128,7 +128,26 @@ def render_trace(trace: dict, facts_rec: dict) -> str:
     return "\n".join(L) + "\n"
 
 
-_WORD_RE = re.compile(r"^\s*\.(?:word|insn)\b[^0-9a-fA-Fx]*((?:0x[0-9a-fA-F]+|[0-9]+))", re.M)
+def _parse_words(kernel_text: str) -> list[int]:
+    """Parse the ``.word``/``.insn`` instruction values out of an assembled kernel — STRUCTURED, no regex.
+    Per line: drop ``#``/``//`` comments, tokenize on whitespace, and if the first token is a ``.word`` or
+    ``.insn`` directive take its first integer operand (``0x…`` or decimal). Non-directive lines (labels,
+    ``.text``/``.globl``, ``ret``) are skipped."""
+    words: list[int] = []
+    for raw in kernel_text.splitlines():
+        line = raw.split("#", 1)[0].split("//", 1)[0].strip()
+        if not line:
+            continue
+        toks = line.replace(",", " ").split()
+        if not toks or toks[0] not in (".word", ".insn"):
+            continue
+        for t in toks[1:]:
+            try:
+                words.append(int(t, 16) if t.lower().startswith("0x") else int(t))
+                break
+            except ValueError:
+                continue
+    return words
 
 
 def _legal_opcodes(facts_rec: dict) -> tuple[set[int], int] | None:
@@ -159,23 +178,36 @@ def render_kernel_decode(kernel_text: str, facts_rec: dict, taxonomy: dict | Non
     This is the static RTL/ISA-structural signal (no Verilog run, beyond spike/npu_model's functional
     output). Everything comes from ``facts_rec`` + the derived ``taxonomy``."""
     from . import isa_taxonomy as IT
-    words = [int(m, 16) if m.lower().startswith("0x") else int(m)
-             for m in _WORD_RE.findall(kernel_text)]
+    words = _parse_words(kernel_text)
     lo = _legal_opcodes(facts_rec)
     legal, width = (lo if lo else (set(), 0))
     mask = (1 << width) - 1 if width else 0
     n_illegal = 0
     lines = []
     present: list[str] = []
+    counts: dict[str, int] = {}
+    zeroops: dict[str, int] = {}                          # per-class count of all-zero-operand instructions
     for idx, w in enumerate(words):
-        field = w & mask if mask else w
-        ok = (field in legal) if legal else True
+        matches = IT.classify(w, taxonomy) if taxonomy else []
+        classes = [c for c, _m in matches]
+        # LEGALITY = "the decoder accepts this instruction". With the derived per-op decode signatures the
+        # authoritative test is that the word matches SOME op's opcode/funct bits (classify non-empty) —
+        # robust to operand values. Only when no taxonomy is available do we fall back to the coarse
+        # low-width membership in the discovered legal-value set.
+        if taxonomy:
+            ok = bool(matches)
+            field = w
+        else:
+            field = w & mask if mask else w
+            ok = (field in legal) if legal else True
         if not ok:
             n_illegal += 1
-        classes = IT.decode_word(w, taxonomy) if taxonomy else []
-        for c in classes:
+        for c, fmask in matches:
             if c not in present:
                 present.append(c)
+            counts[c] = counts.get(c, 0) + 1
+            if (w & (~fmask & 0xFFFFFFFF)) == 0:          # operand payload (bits outside the fixed opcode/funct)
+                zeroops[c] = zeroops.get(c, 0) + 1
         cls_s = "|".join(classes) if classes else ("-" if taxonomy else "?")
         lines.append(f"INSTR {idx} word=0x{w:08x} opcode={field} legal={'yes' if ok else 'no'} class={cls_s}")
     L = [f"# {CC.RENDER_SCHEMA}",
@@ -184,6 +216,8 @@ def render_kernel_decode(kernel_text: str, facts_rec: dict, taxonomy: dict | Non
          f"LEGAL_OPCODE_SET_SIZE {len(legal)}",
          f"ILLEGAL_OPCODE_COUNT {n_illegal}"]
     L += [f"CLASS_PRESENT {c}" for c in present]
+    L += [f"CLASS_COUNT {c} {counts[c]}" for c in present]              # for the mesh-tiling count check
+    L += [f"CLASS_ZEROOPS {c} {zeroops.get(c, 0)}" for c in present]    # for the field-sanity (base≠0) check
     return "\n".join(L + lines) + "\n"
 
 
@@ -243,7 +277,9 @@ def screen_run(run_capsule_dir: Path, facts_rec: dict, index: dict[str, Path],
         tax = IT.taxonomy_for_target(target)             # DERIVED at run time; {} if unavailable
         decode_txt = render_kernel_decode(kernel_p.read_text(), facts_rec, tax)
         if fc:
-            ok, diag = run_filecheck(fc, compiled["kernel"], decode_txt, "KERNEL")
+            # KERNEL = order-independent -DAG (legality, coverage, tiling, field-sanity); KERNELORDER =
+            # the ordered first-occurrence class sequence. Disjoint vocabularies, one FileCheck pass.
+            ok, diag = run_filecheck(fc, compiled["kernel"], decode_txt, ["KERNEL", "KORDER"])
             res["filecheck"]["kernel"] = {"ok": ok, "diag": diag}
             res["verdict"] = "reject" if ok is False else "ok"
         else:

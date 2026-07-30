@@ -162,7 +162,8 @@ def _provenance(facts_rec: dict, capsule: dict, target: str) -> dict[str, Any]:
     }
 
 
-def compile_kernel_checks(capsule: dict, prefix: str = "KERNEL") -> str | None:
+def compile_kernel_checks(capsule: dict, prefix: str = "KERNEL",
+                          facts_rec: dict | None = None, target: str | None = None) -> str | None:
     """FileCheck lines over a rendered decode of the emitted self-hosted-ISA kernel (external_backend,
     e.g. atlas ``kernel.S`` → its `.word`/`.insn` instruction stream). The RTL-grounded insight — the kind
     you would otherwise pay a Verilog run for and that spike/npu_model's functional output never gives —
@@ -176,16 +177,46 @@ def compile_kernel_checks(capsule: dict, prefix: str = "KERNEL") -> str | None:
     op = RC._declared_op(capsule)
     if op is None:
         return None
-    L = [f"// RTL-derived kernel checks (op={op}) — legality + required-class coverage (generated)",
+    required = list(((capsule.get("expected") or {}).get("instruction_classes") or []))
+    L = [f"// RTL-derived kernel checks (op={op}) — legality + coverage + tiling + order + field-sanity",
          f"// {prefix}-DAG: ILLEGAL_OPCODE_COUNT 0{{{{$}}}}",   # every emitted opcode ∈ RTL/ISA legal set
          f"// {prefix}-DAG: EMPTY_KERNEL no"]                   # the kernel must actually emit instructions
-    # CLASS COVERAGE: every instruction class the capsule requires (DERIVED per-target in
+    # (1) CLASS COVERAGE: every instruction class the capsule requires (DERIVED per-target in
     # expected.instruction_classes) must actually be EMITTED — the render classifies each word via the
     # ISA-def decode signatures, so a matmul that emitted VADD instead of the MXU matmul fails here
     # (legality alone passes it). Literals are the capsule's own derived class names, not target data.
-    for cls in ((capsule.get("expected") or {}).get("instruction_classes") or []):
+    for cls in required:
         L.append(f"// {prefix}-DAG: CLASS_PRESENT {cls}{{{{$}}}}")
-    return "\n".join(L) + "\n"
+
+    # (2) MESH-TILING count + (4) FIELD-SANITY — derived from the target's mesh geometry + role classes.
+    tax = {}
+    if target:
+        try:
+            from . import isa_taxonomy as IT
+            tax = IT.taxonomy_for_target(target)
+        except Exception:  # noqa: BLE001 — taxonomy unavailable -> skip these two, keep coverage/order
+            tax = {}
+    if tax:
+        from . import isa_taxonomy as IT
+        roles = IT.role_classes(tax)
+        compute, memory = roles.get("compute"), roles.get("memory")
+        # tiling: the compute (matmul) class must appear exactly ceil(M/DIM)*ceil(N/DIM) times — the tile
+        # count the discovered mesh geometry + the declared output shape imply. Skipped unless both resolve.
+        shape = RC._declared_output_shape(capsule)
+        mr, mc = RC._mesh(_facts_to_rc(facts_rec or {}))
+        if compute and compute in required and shape and mr and mc:
+            tiles = math.ceil(shape[0] / mr) * math.ceil(shape[1] / mc)
+            L.append(f"// {prefix}-DAG: CLASS_COUNT {compute} {tiles}{{{{$}}}}")
+        # field-sanity: a memory (load/store) instruction with an all-zero operand payload addresses DRAM 0
+        # — the "TensorBaseOffset encodes address 0" bug. Require zero such instructions.
+        if memory and memory in required:
+            L.append(f"// {prefix}-DAG: CLASS_ZEROOPS {memory} 0{{{{$}}}}")
+
+    # (3) ORDER: the required classes must first appear in their DERIVED canonical order (AW6 emits the
+    # sequence load -> weight-push -> matmul -> pop). An ordered CHECK (own prefix) over the per-INSTR
+    # class= lines enforces first-occurrence order without constraining the interleaving.
+    order = "\n".join(f"// KORDER: class={cls}" for cls in required)
+    return "\n".join(L) + "\n" + (order + "\n" if order else "")
 
 
 def compile_checks(facts_rec: dict, capsule: dict, target: str = "gemmini") -> dict[str, Any]:
@@ -203,7 +234,7 @@ def compile_checks(facts_rec: dict, capsule: dict, target: str = "gemmini") -> d
         "target": target,
         "dialect": compile_dialect_checks(capsule) if is_rocc else None,
         "trace": compile_trace_checks(facts_rec, capsule) if is_rocc else None,
-        "kernel": None if is_rocc else compile_kernel_checks(capsule),
+        "kernel": None if is_rocc else compile_kernel_checks(capsule, facts_rec=facts_rec, target=target),
         "provenance": _provenance(facts_rec, capsule, target),
     }
 

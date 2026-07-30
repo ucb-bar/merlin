@@ -97,3 +97,60 @@ def test_class_coverage_decodes_words_and_catches_missing_required_class():
     assert "CLASS_PRESENT MXUWeightPush" in dec and "CLASS_PRESENT MXUMatMul" not in dec
     ok, _ = RUN.run_filecheck(fc, checks, dec, "KERNEL")
     assert ok is False                                   # missing MXUMatMul/TensorBaseOffset/pop → FAIL
+
+
+def _canonical_word(tax, cls, nonzero_operands=False):
+    """A canonical valid encoding of some op in `cls` = its derived fixed_value, optionally with one
+    operand bit set (so its operand payload is non-zero for the field-sanity check)."""
+    from merlin.targetgen import isa_taxonomy as IT
+    for e in (tax.get("by_mnemonic") or {}).values():
+        if e.get("class") == cls and e.get("fixed_value") is not None:
+            w = int(e["fixed_value"])
+            if nonzero_operands:
+                opbits = (~int(e["fixed_mask"])) & 0xFFFFFFFF
+                w |= (opbits & (-opbits))                 # lowest operand bit
+            assert IT.decode_word(w, tax) == [cls]        # decodes back unambiguously
+            return w
+    return None
+
+
+def test_kernel_order_tiling_and_field_sanity_checks():
+    """The three structural checks — required-class ORDER, mesh-TILING count, memory-op field-sanity —
+    pass a correct kernel and fail order/tiling/base-zero violations. Derived + target-agnostic."""
+    from merlin.targetgen import isa_taxonomy as IT
+    IT.clear_cache()
+    tax = IT.taxonomy_for_target("atlas")
+    if not tax or not any("fixed_mask" in e for e in (tax.get("by_mnemonic") or {}).values()):
+        pytest.skip("atlas decode signatures not derivable (model venv absent)")
+    fa = _facts("atlas")
+    fc = RUN.find_filecheck()
+    if not fc:
+        pytest.skip("FileCheck absent")
+    import yaml
+    from merlin.common.paths import merlin_dir
+    capd = yaml.safe_load((merlin_dir()
+                           / "contract/capsules/atlas/isa/AT2_single_tile_matmul/capsule.yaml").read_text())
+    seq = ["TensorBaseOffset", "MXUWeightPush", "MXUMatMul", "MXUAccumulatorPop"]
+    W = {c: _canonical_word(tax, c, nonzero_operands=(c == "TensorBaseOffset")) for c in seq}
+    if any(w is None for w in W.values()):
+        pytest.skip("atlas taxonomy missing an expected MXU class")
+    checks = CC.compile_checks(fa, capd, "atlas")["kernel"]
+    assert "CLASS_COUNT MXUMatMul 1" in checks and "CLASS_ZEROOPS TensorBaseOffset 0" in checks
+    assert "KORDER: class=TensorBaseOffset" in checks
+
+    def run(word_seq):
+        k = "atlas_kernel:\n" + "".join(f"  .word 0x{W[c]:x}\n" for c in word_seq) + "  ret\n"
+        ok, _ = RUN.run_filecheck(fc, checks, RUN.render_kernel_decode(k, fa, tax), ["KERNEL", "KORDER"])
+        return ok
+
+    assert run(seq) is True                                          # correct load→push→matmul→pop
+    assert run(["MXUMatMul", "MXUWeightPush", "TensorBaseOffset", "MXUAccumulatorPop"]) is False  # bad order
+    assert run(["TensorBaseOffset", "MXUWeightPush", "MXUMatMul", "MXUMatMul",
+                "MXUAccumulatorPop"]) is False                       # 2 matmuls != 1 tile
+    # base-zero load (addresses DRAM 0) → field-sanity FAIL
+    zero_load = _canonical_word(tax, "TensorBaseOffset", nonzero_operands=False)
+    k = ("atlas_kernel:\n" + f"  .word 0x{zero_load:x}\n"
+         + "".join(f"  .word 0x{W[c]:x}\n" for c in ("MXUWeightPush", "MXUMatMul", "MXUAccumulatorPop"))
+         + "  ret\n")
+    okz, _ = RUN.run_filecheck(fc, checks, RUN.render_kernel_decode(k, fa, tax), ["KERNEL", "KORDER"])
+    assert okz is False

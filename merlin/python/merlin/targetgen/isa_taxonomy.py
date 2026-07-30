@@ -158,6 +158,36 @@ def taxonomy_for_target(target: str, *, timeout: int = 120) -> dict[str, Any]:
         return {}
 
 
+def classify(word: int, taxonomy: dict) -> list[tuple[str, int]]:
+    """Classify one emitted word → list of (class, fixed_mask) for each matching op decode-signature. The
+    fixed_mask lets a caller isolate the OPERAND payload (``word & ~fixed_mask``) for field-sanity checks
+    (e.g. a memory op whose address operand is all-zero). Usually one match; a list surfaces ambiguity."""
+    out: list[tuple[str, int]] = []
+    for ent in (taxonomy.get("by_mnemonic") or {}).values():
+        m, v, cls = ent.get("fixed_mask"), ent.get("fixed_value"), ent.get("class")
+        if m is None or v is None or not cls:
+            continue
+        if (word & m) == v and (cls, m) not in out:
+            out.append((cls, m))
+    return out
+
+
+# Semantic-pattern roles used by the kernel structural checks — selected from the TARGET'S OWN derived
+# patterns (never invented); a target lacking a role returns None and that check is skipped, so this is
+# "derive from this target's patterns, else drop", not an atlas hardcode. Same pattern vocabulary as
+# required_classes_for_op below.
+_COMPUTE_PATTERNS = ("MXUMatMul", "MXUMatMulAccumulate")
+
+
+def role_classes(taxonomy: dict) -> dict[str, str | None]:
+    """The tile-producing COMPUTE class and the MEMORY (load/store) class for structural checks, selected
+    from the classes actually present in the target's taxonomy. None when the target has no such pattern
+    (the corresponding tiling / field-sanity check is then skipped, honestly)."""
+    present = set(taxonomy.get("by_class") or {})
+    compute = next((c for c in _COMPUTE_PATTERNS if c in present), None)
+    return {"compute": compute, "memory": _LOAD_STORE if _LOAD_STORE in present else None}
+
+
 def decode_word(word: int, taxonomy: dict) -> list[str]:
     """Classify one emitted instruction word into its semantic class(es) using the DERIVED per-op decode
     signatures (fixed_mask/fixed_value from the ISA def's own encoder). Returns the matching classes
