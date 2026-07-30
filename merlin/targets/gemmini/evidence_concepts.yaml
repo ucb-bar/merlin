@@ -1,0 +1,17 @@
+# Concept vocabulary for TargetGen's evidence pass (per-target, was a core literal in
+# targetgen/evidence/report.py::CONCEPT_KEYWORDS). Keys are concept names; values are lowercase
+# substrings that, if seen in a discovered filename or a doc's first lines, count as evidence.
+concepts:
+  rocc: [rocc, custom instruction]
+  scratchpad: [scratchpad, spad]
+  accumulator: [accumulator, acc sram]
+  dma: [dma, mvin, mvout]
+  systolic_array: [systolic, mesh, pe array]
+  dataflow_config: [dataflow, weight_stationary, output_stationary, config_ex]
+  load_queue: [load queue, ldq, load_queue]
+  store_queue: [store queue, stq, store_queue]
+  execute_queue: [execute queue, exq, execute_queue]
+  rob: [rob, reorder]
+  baremetal: [baremetal, bare-metal, spike]
+  firesim: [firesim]
+  verilator: [verilator]

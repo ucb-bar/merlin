@@ -16,6 +16,11 @@ import os
 from pathlib import Path
 from typing import Any
 
+# The single target this SIMT introspect serves. It lives HERE (the target-specific introspect
+# module — the Muon analog of circt_introspect for Gemmini), not in the kind-routed core dispatch
+# (mlc_bridge), so the core stays target-name-free: the bridge routes by compute-unit KIND and asks
+# this module which target it is the introspect for.
+TARGET = "muon"
 DEFAULT_CHIPYARD = "/path/to/chipyard"
 DEFAULT_CONFIG = "/path/to/autocomp/scripts/muon/config_muon.toml"
 VCS_CONFIG = "RadianceMuonConfig"

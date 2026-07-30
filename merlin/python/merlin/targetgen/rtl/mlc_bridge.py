@@ -1074,15 +1074,18 @@ def render_fact_bundle_for(target: str, bundle: dict | None = None) -> str:
 
 
 def _simt_fact_bundle(target: str) -> dict:
-    """Adapt the SIMT (Muon) RTL introspect to the uniform fact-bundle shape. Muon is the sole SIMT
-    introspect today (muon_introspect reads RadianceMuonConfig), so a non-muon simt target is reported
-    honestly rather than mis-attributed to muon's geometry."""
-    if target != "muon":
-        fields = {"simt": {"value": None, "derived": False, "source": None,
-                           "evidence": f"no SIMT RTL introspect for {target!r} (muon-specific today)"}}
-        return {"target": target, "method": "SIMT RTL introspect (muon-specific)",
-                "kind": "simt", "fields": fields, "n_derived": 0}
+    """Adapt the SIMT RTL introspect to the uniform fact-bundle shape. The concrete introspect
+    (``muon_introspect``, reading RadianceMuonConfig) declares which target it serves, so a SIMT
+    target it does NOT serve is reported honestly rather than mis-attributed to muon's geometry.
+    The core gates on that declared identity, not a literal target name."""
     from . import muon_introspect
+    if target != muon_introspect.TARGET:
+        fields = {"simt": {"value": None, "derived": False, "source": None,
+                           "evidence": f"no SIMT RTL introspect serves {target!r} "
+                                       f"(only {muon_introspect.TARGET!r} today)"}}
+        return {"target": target,
+                "method": f"SIMT RTL introspect (serves {muon_introspect.TARGET!r} only)",
+                "kind": "simt", "fields": fields, "n_derived": 0}
     facts = muon_introspect.build_facts()
     f = facts.get("facts", {})
     present = facts.get("inputs", {}).get("rtl_present", False)

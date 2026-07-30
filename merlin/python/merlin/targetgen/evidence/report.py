@@ -1,66 +1,41 @@
 """Build and render the evidence report.
 
 ``build_evidence`` walks a SourceManifest, records discovered files, and detects concepts by
-matching a per-target keyword table against filenames and the first lines of docs. This is
+matching a per-target keyword vocabulary against filenames and the first lines of docs. This is
 deliberately shallow: it surfaces *candidates* for the human-reviewed synthesizers, not a
 parsed model of the hardware.
+
+The concept vocabulary is DATA, not a core literal: each target owns an
+``evidence_concepts.yaml`` in its discovered target dir (``rtl.facts.target_base`` — the curated
+``merlin/targets/<t>`` or the generated ``out/artifacts/targets/<t>``). A target with no such file
+contributes no concepts (honest: nothing authored ⇒ nothing detected), so the core stays
+target-name-free and a brand-new accelerator plugs in by dropping its vocabulary beside its sources.
 """
 from __future__ import annotations
 
 from pathlib import Path
+
+from merlin.common.yaml import load_yaml
 
 from ..io import first_lines
 from ..ingest.docs import discover_docs
 from ..ingest.examples import discover_examples
 from ..ingest.scala_chisel import discover_scala
 from ..ingest.source_manifest import SourceManifest
+from ..rtl.facts import target_base
 from .store import Concept, Evidence, FileRecord
 
-# Per-target concept vocabularies. Keys are concept names; values are lowercase substrings
-# that, if seen in a filename or a doc's first lines, count as supporting evidence.
-# toy_npu is concrete; the others mirror the conservative concept lists in the spec.
-CONCEPT_KEYWORDS: dict[str, dict[str, tuple[str, ...]]] = {
-    "toy_npu": {
-        "resident_packed_tensor": ("resident", "packed", "res_pack", "weight"),
-        "accumulator_commit": ("accumulator", "commit", "epilogue", "requant"),
-        "command_buffer": ("command", "command_buffer", "dispatch"),
-        "metrics": ("metric", "cycles", "profil"),
-    },
-    "gemmini": {
-        "rocc": ("rocc", "custom instruction"),
-        "scratchpad": ("scratchpad", "spad"),
-        "accumulator": ("accumulator", "acc sram"),
-        "dma": ("dma", "mvin", "mvout"),
-        "systolic_array": ("systolic", "mesh", "pe array"),
-        "dataflow_config": ("dataflow", "weight_stationary", "output_stationary", "config_ex"),
-        "load_queue": ("load queue", "ldq", "load_queue"),
-        "store_queue": ("store queue", "stq", "store_queue"),
-        "execute_queue": ("execute queue", "exq", "execute_queue"),
-        "rob": ("rob", "reorder"),
-        "baremetal": ("baremetal", "bare-metal", "spike"),
-        "firesim": ("firesim",),
-        "verilator": ("verilator",),
-    },
-    "saturn": {
-        "riscv_vector": ("rvv", "riscv vector", "risc-v vector", "vector unit"),
-        "vlen": ("vlen", "zvl"),
-        "elen": ("elen",),
-        "rvv": ("rvv", "v extension", "zve"),
-        "vector_length_policy": ("vsetvl", "vl ", "vector length"),
-        "tail_policy": ("tail", "vta"),
-        "lmul_policy": ("lmul", "vlmul"),
-        "llvm_extension_likely": ("llvm", "intrinsic", "codegen"),
-    },
-    "radiance": {
-        "simt": ("simt", "warp", "lane"),
-        "gpu": ("gpu", "muon"),
-        "command_processor": ("command processor", "orchestration"),
-        "workgroup": ("workgroup", "threadblock", "block"),
-        "barrier": ("barrier", "sync"),
-        "memory_space": ("local memory", "shared memory", "global memory", "memory space"),
-        "runtime_dispatch": ("dispatch", "kernel launch", "host-device"),
-    },
-}
+def _concept_vocabulary(target_name: str) -> dict[str, list[str]]:
+    """The per-target concept vocabulary, loaded from ``<target-dir>/evidence_concepts.yaml`` (data,
+    not a core literal). Returns ``{concept: [keyword, ...]}`` — lowercase substrings that count as
+    supporting evidence when seen in a filename or a doc's first lines. Empty if the target has no
+    vocabulary file (nothing authored ⇒ nothing detected)."""
+    path = target_base(target_name) / "evidence_concepts.yaml"
+    if not path.is_file():
+        return {}
+    doc = load_yaml(path) or {}
+    concepts = doc.get("concepts", {})
+    return {name: list(keywords) for name, keywords in concepts.items()}
 
 
 def _kind_for(path: Path) -> str:
@@ -111,7 +86,7 @@ def build_evidence(manifest: SourceManifest) -> Evidence:
             text += "\n".join(first_lines(path, 40)).lower()
         haystacks.append((rel, text))
 
-    table = CONCEPT_KEYWORDS.get(manifest.target_name, {})
+    table = _concept_vocabulary(manifest.target_name)
     concepts: list[Concept] = []
     for concept, keywords in table.items():
         cites = sorted(
