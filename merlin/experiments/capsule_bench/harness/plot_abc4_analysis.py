@@ -5,29 +5,26 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-EXP = Path(f"{_ROOT}/merlin/experiments/capsule_bench/targets/gemmini")
-REPORTS = EXP.parents[2] / "artifacts" / "capsule-bench" / "gemmini"
-A = REPORTS / "abc4_analysis"
-sys.path.insert(0, str(EXP.parent / "gemmini_perf_bench" / "scripts"))
-import perf_style as S
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
 
-def _repo_root():
-    from pathlib import Path as _P
-    p = _P(__file__).resolve()
-    while p != p.parent and not (p / "merlin" / "python").is_dir():
-        p = p.parent
-    return p
-_ROOT = _repo_root()
+EXP = C.EXP
+REPORTS = C.REPORTS
+A = REPORTS / "abc4_analysis"
+# perf_style is the shared plotting helper of the sibling perf-bench experiment (a fixed module
+# location, not target logic).
+sys.path.insert(0, str(C.REPO / "merlin" / "experiments" / "gemmini_perf_bench" / "scripts"))
+import perf_style as S  # noqa: E402
 S.use_style()
 COL = {"baseline-C++": S.COLOR["golden"], "merlin-xDSL": S.COLOR["merlin_targetgen"],
        "merlin+CIRCT": S.COLOR["iree_dialect"]}
 T = json.loads((A / "trajectory.json").read_text())
-C = json.loads((A / "circt_vs_verilator.json").read_text())
+CVV = json.loads((A / "circt_vs_verilator.json").read_text())
 
 
 def fig_circt():
     """The headline: CIRCT verdict vs sim outcome confusion + the false-clean=0 result."""
-    conf = C["confusion"]
+    conf = CVV["confusion"]
     fig, (ax, ax2) = plt.subplots(1, 2, figsize=(11, 4.6), gridspec_kw={"width_ratios": [1, 1.1]})
     # 2x2 confusion heatmap
     grid = np.array([[conf["true_neg"], conf["false_clean"]], [conf["false_alarm"], conf["true_pos"]]])
@@ -42,10 +39,10 @@ def fig_circt():
     ax.set_xticks([]); ax.set_yticks([]); ax.set_title("CIRCT static check vs sim outcome\n(119 arm×round×capsule points)", fontsize=11)
     # the decision bar
     ax2.axis("off")
-    safe = C["circt_safe_gate"]
+    safe = CVV["circt_safe_gate"]
     ax2.text(0.0, 0.92, "Can CIRCT replace the sim?", fontsize=13, fontweight="bold", transform=ax2.transAxes)
     lines = [
-        f"FALSE-CLEAN (CIRCT-ok but sim-FAIL):  {C['false_clean_count']}",
+        f"FALSE-CLEAN (CIRCT-ok but sim-FAIL):  {CVV['false_clean_count']}",
         f"failures CIRCT caught:  {conf['true_pos']}/{conf['true_pos']+conf['false_clean']}  (100%)",
         f"false alarms:  {conf['false_alarm']}",
         "",

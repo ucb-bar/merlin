@@ -15,20 +15,14 @@ from __future__ import annotations
 import json, glob, sys, time
 from pathlib import Path
 
-EXP = Path(f"{_ROOT}/merlin/experiments/capsule_bench/targets/gemmini")
-REPORTS = EXP.parents[2] / "artifacts" / "capsule-bench" / "gemmini"
-OUT = REPORTS / "abc4_analysis"
-sys.path.insert(0, f"{_ROOT}/merlin/python")
-from merlin.targetgen import rtl_check_runner as RCR
-import yaml
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
 
-def _repo_root():
-    from pathlib import Path as _P
-    p = _P(__file__).resolve()
-    while p != p.parent and not (p / "merlin" / "python").is_dir():
-        p = p.parent
-    return p
-_ROOT = _repo_root()
+EXP = C.EXP
+REPORTS = C.REPORTS
+OUT = REPORTS / "abc4_analysis"
+from merlin.targetgen import rtl_check_runner as RCR  # noqa: E402
+import yaml  # noqa: E402
 
 ARMS = {"rb_abc4": ("raw_baseline", "baseline-C++"),
         "merlin_abc4": ("merlin_assisted", "merlin-xDSL"),
@@ -58,7 +52,7 @@ def harvest(rid: str) -> dict:
     sims = {"spike": {"runs": 0, "build_s": 0.0, "sim_s": 0.0},
             "verilator/VCS": {"runs": 0, "build_s": 0.0, "sim_s": 0.0}}
     circt_dirs = []
-    for cr in (d / "_qa_work").glob("runs_*/runs/gemmini-capsule-bench/*/capsule_result.json"):
+    for cr in (d / "_qa_work").glob(f"runs_*/runs/{C.TARGET}-capsule-bench/*/capsule_result.json"):
         try:
             r = json.loads(cr.read_text())
         except Exception:

@@ -14,20 +14,13 @@ from __future__ import annotations
 import json, os, sys, glob
 from pathlib import Path
 
-EXP = Path(f"{_ROOT}/merlin/experiments/capsule_bench/targets/gemmini")
-REPORTS = EXP.parents[2] / "artifacts" / "capsule-bench" / "gemmini"
-sys.path.insert(0, str(EXP / "scripts"))
-sys.path.insert(0, f"{_ROOT}/merlin/python")
-from merlin.targetgen import rtl_check_runner as RCR  # the EXACT live screen
-import yaml
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
 
-def _repo_root():
-    from pathlib import Path as _P
-    p = _P(__file__).resolve()
-    while p != p.parent and not (p / "merlin" / "python").is_dir():
-        p = p.parent
-    return p
-_ROOT = _repo_root()
+EXP = C.EXP
+REPORTS = C.REPORTS
+from merlin.targetgen import rtl_check_runner as RCR  # noqa: E402 — the EXACT live screen
+import yaml  # noqa: E402
 
 OUT = REPORTS / "abc4_analysis"
 ARMS = {"rb_abc4": ("raw_baseline", "baseline-C++"),
@@ -49,7 +42,7 @@ def round_dirs(rid: str):
     sd = ARMS[rid][0]
     base = EXP / "runs" / sd / rid / "_qa_work"
     out = []
-    for cr in base.glob("runs_*/runs/gemmini-capsule-bench/*/capsule_result.json"):
+    for cr in base.glob(f"runs_*/runs/{C.TARGET}-capsule-bench/*/capsule_result.json"):
         rnd = int(str(cr).split("runs_")[1][:2])
         out.append((rnd, cr.parent))
     return sorted(out)
@@ -161,15 +154,15 @@ def main():
     for label, t in T.items():
         print(f"  {label}: ${t['cost_usd']} {t['tokens_total']/1e6:.1f}M {t['tool_calls']}tc "
               f"{t['n_self_checks']}self-checks(sims={t['self_check_sims']}) active={t['active_wall_min']}min conv={t['converged']}")
-    print("== C. CIRCT vs sim (the thesis) =="); C = circt_vs_sim()
-    (OUT / "circt_vs_verilator.json").write_text(json.dumps(C, indent=2))
-    print(f"  N points (arm×round×capsule): {C['n_points']}")
-    print(f"  confusion: {C['confusion']}")
-    print(f"  ★ FALSE-CLEAN (CIRCT-ok but sim-FAIL): {C['false_clean_count']}  -> "
-          f"CIRCT safe as correctness gate: {C['circt_safe_gate']}")
-    if C['false_clean_cases']:
+    print("== C. CIRCT vs sim (the thesis) =="); cs = circt_vs_sim()
+    (OUT / "circt_vs_verilator.json").write_text(json.dumps(cs, indent=2))
+    print(f"  N points (arm×round×capsule): {cs['n_points']}")
+    print(f"  confusion: {cs['confusion']}")
+    print(f"  ★ FALSE-CLEAN (CIRCT-ok but sim-FAIL): {cs['false_clean_count']}  -> "
+          f"CIRCT safe as correctness gate: {cs['circt_safe_gate']}")
+    if cs['false_clean_cases']:
         print("  false-clean cases:")
-        for fc in C['false_clean_cases']:
+        for fc in cs['false_clean_cases']:
             print(f"    {fc}")
     print(f"\nwrote {OUT}/")
     return 0
