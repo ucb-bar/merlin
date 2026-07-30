@@ -115,8 +115,15 @@ def emit_to_aet(
             cache_read_tokens=result.total_cache_read_tokens,
             model=result.model or model,
         )
-        if result.model_usage:
-            logger.log_model_usage(result.model_usage)
+        # Record the true within-run per-model split (an Opus orchestrator + delegated Sonnet
+        # sub-agents + Haiku background all show distinctly), for EVERY run — not just complete
+        # ones. per_model_usage() prefers the authoritative result-event ``modelUsage`` when present
+        # and falls back to the per-turn split for a truncated/killed run (where ``model_usage`` is
+        # empty), so ``per_model.*`` metrics are always written, never lost with the missing result
+        # event.
+        per_model = result.per_model_usage()
+        if per_model:
+            logger.log_model_usage(per_model)
         logger.log_cost(cost, model=result.model or model)
         logger.log_agent_turns(result.num_turns)
         if result.session_id:
