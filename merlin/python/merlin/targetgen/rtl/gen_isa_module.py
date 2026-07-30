@@ -169,7 +169,7 @@ def generate_header(facts: dict, encoding: dict, target: str) -> str:
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--facts", default=None, help="facts.json (default: regenerate the target from RTL)")
-    ap.add_argument("--target", default="gemmini", help="target whose manifest supplies the ABI encoding block")
+    ap.add_argument("--target", required=True, help="target whose manifest supplies the ABI encoding block")
     ap.add_argument("--header", action="store_true", help="emit a C++ constants header instead of the Python module")
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
