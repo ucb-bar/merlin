@@ -234,6 +234,10 @@ merlin/experiments/**/runs/
 /config.local.json
 !/.env.example
 
+# Per-experiment tooling-path env (real machine paths, all arms) — only the .example is tracked.
+**/experiment.env
+!**/experiment.env.example
+
 # General ignore
 tmp
 .compat_lib/

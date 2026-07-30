@@ -40,6 +40,38 @@ if _override:
 else:
     _desc = REPO / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"  # default target
     EXP = _desc.parent
+
+
+def _source_experiment_env(exp_dir: Path) -> list[str]:
+    """Auto-source the per-experiment tooling-PATH env file (``<exp_dir>/experiment.env``) into
+    ``os.environ`` for ALL arms, setting ONLY keys not already present (the process environment always
+    wins). Target-AGNOSTIC: keyed off the resolved experiment dir, so it works for any
+    ``targets/<target>/`` with no target literal. The file holds ONLY machine-specific tooling PATHS
+    (MERLIN_MLC_DIR, MERLIN_EXT_*) shared by every arm; it is gitignored (the tracked
+    ``experiment.env.example`` documents the var names). This is what makes ``MERLIN_MLC_DIR`` present for
+    a run without exporting it by hand — its absence is exactly what read as an unavailable arc oracle.
+    KEY=VALUE lines, ``#`` comments; structured parse (no regex). Returns the keys it set (for logging)."""
+    f = exp_dir / "experiment.env"
+    set_keys: list[str] = []
+    if not f.is_file():
+        return set_keys
+    for line in f.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        if k and k not in os.environ:      # process env WINS — never override an exported var
+            os.environ[k] = v
+            set_keys.append(k)
+    return set_keys
+
+
+# Load it now so every downstream import (mlc_bridge.mlc_dir, ext_path, the oracle preflight) sees the
+# shared tooling paths regardless of which harness entry point ran.
+SOURCED_EXPERIMENT_ENV = _source_experiment_env(EXP)
+
 try:
     import yaml as _yaml
     TARGET = (_yaml.safe_load(_desc.read_text()) or {}).get("target") if _desc.is_file() else None
@@ -66,4 +98,4 @@ def require_scaffolding() -> None:
 
 
 __all__ = ["REPO", "EXP", "HARNESS", "TARGET", "RUNS", "REPORTS", "BUNDLES", "sh", "hash_tree",
-           "repo_sha", "require_scaffolding"]
+           "repo_sha", "require_scaffolding", "SOURCED_EXPERIMENT_ENV"]
