@@ -1,0 +1,29 @@
+# Framework contract for Autocomp-generated kernels. Autocomp emits Gemmini C (RoCC tiled_matmul /
+# conv calls via the gemmini.h library), so its declared ISA target is gemmini — this `isa:` field is
+# the single source of truth the kernel-index CLI reads for autocomp's default target (no target-name
+# literal in core Python). Hand-authored; refine as the caller-side contract is verified.
+framework: autocomp
+isa: gemmini
+layout:
+  lhs: row_major
+  rhs: row_major
+  output: row_major
+operand_prepack:
+  operand: none
+  packed_layout: "none in the mined test(); Gemmini's mvin streams operands into the systolic array"
+  prepacked_by: null
+  implication: "the compiler reproduces the mvin/matmul/mvout sequence; no separate host-side pack"
+transpose_assumption: "operands consumed as declared in the test() signature (A[M][K], B[K][N])"
+accumulator:
+  init: zero
+  dtype: "i32 accumulator SRAM (i8 x i8 -> i32) for the int8 kernels; requant on mvout"
+  width: "Gemmini accumulator tile (DIM x DIM), tiled over the operands"
+dtype_quant:
+  i8_i32: "i8 x i8 -> i32 accumulate, scaled on mvout"
+  f32: plain
+calling_convention:
+  signature: "void test(<dtype> A[..][..], <dtype> B[..][..], <dtype> C[..][..]) — mined entry point"
+  build: "Autocomp writes flat hash-named C files + manifest.jsonl (score/experiment provenance)"
+notes: >-
+  The Autocomp `score` is provenance/tie-break only, never a correctness signal. This contract exists
+  primarily to declare the ISA target as data; the caller-side fields are the reference baseline.

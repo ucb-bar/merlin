@@ -16,14 +16,27 @@ from pathlib import Path
 import itertools
 
 from merlin.kernels.emit.kernel_record import emit_kernel_record
+from merlin.kernels.framework_contracts import load_contract
 from merlin.kernels.ingest.autocomp import ingest_autocomp
 from merlin.kernels.ingest.exo import ingest_exo, ingest_exo_schedules
 from merlin.kernels.ingest.openblas import ingest_openblas
 from merlin.kernels.ingest.triton import ingest_triton
 from merlin.kernels.ingest.xnnpack import ingest_xnnpack
 
-_DEFAULT_TARGET = {"xnnpack": "rvv", "autocomp": "gemmini", "exo": None,
-                   "triton": "triton", "triton_cpu": "triton", "openblas": "rvv"}
+# Per-source fallback ISA when the source has no framework contract. These are generic ISA-*class*
+# names (not shipped accelerator targets); ``exo`` stays None so its platform is auto-detected during
+# ingest. A shipped target default (e.g. autocomp -> gemmini) is never listed here — it is derived
+# from the source's ``framework_contracts/<source>.yaml: isa`` field by ``_default_target``.
+_FALLBACK_ISA = {"triton": "triton", "triton_cpu": "triton", "exo": None}
+
+
+def _default_target(source: str) -> str | None:
+    """Default ISA target for a source when ``--target`` is unset.
+
+    Derived from the source's framework contract (``framework_contracts/<source>.yaml: isa``) so no
+    shipped-target name literal lives in this module; sources without a contract use ``_FALLBACK_ISA``.
+    """
+    return load_contract(source).get("isa") or _FALLBACK_ISA.get(source)
 
 
 def _resolve_repo(source: str, repo: str | None) -> str:
@@ -79,7 +92,7 @@ def main(argv: list[str] | None = None) -> int:
 
     source = args.source
     repo = _resolve_repo(source, args.repo)
-    target = args.target if args.target is not None else _DEFAULT_TARGET.get(source)
+    target = args.target if args.target is not None else _default_target(source)
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
