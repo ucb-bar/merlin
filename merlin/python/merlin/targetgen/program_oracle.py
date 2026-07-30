@@ -175,6 +175,52 @@ def _decode_output(raw: bytes, shape: list[int], dtype: str, physical: dict | No
     return arr
 
 
+def _resolve_out_spec(target: str, cb: dict | None, bundle: dict) -> dict:
+    """The output tensor spec ``{base, shape, dtype, physical}`` — from the cb (generation-declared) or
+    the program's own golden. The output DRAM base is the harness-owned address (stamped by
+    ``capsule_dram.inject_bases``, the same map the agent's kernel was told to store to). A missing base is
+    an actionable grading error (the layout could not be applied), NOT a bare ``KeyError``. Shared by the
+    cosim and functional runners so both read the result from the same physical layout."""
+    out_spec = None
+    if cb:
+        outs = [t for t in (cb.get("tensors") or {}).values() if t.get("role") == "output"]
+        if outs:
+            t = outs[0]
+            if t.get("base") is None:
+                raise OracleUnavailable(
+                    f"{target}: output tensor has no DRAM base — the harness DRAM layout was not applied "
+                    f"(capsule_dram.inject_bases); cannot read the result back")
+            out_spec = {"base": int(t["base"]), "shape": list(t["shape"]),
+                        "dtype": t.get("dtype", "bf16"), "physical": t.get("physical")}
+    if out_spec is None and bundle.get("output"):
+        o = bundle["output"]
+        out_spec = {"base": int(o["base"]), "shape": list(o["shape"]),
+                    "dtype": o["dtype"], "physical": o.get("physical")}
+    if out_spec is None:
+        raise OracleUnavailable(f"{target}: no output tensor declared in cb or program golden")
+    return out_spec
+
+
+def _out_nbytes(out_spec: dict) -> int:
+    import numpy as np
+    return int(np.prod(out_spec["shape"])) * (2 if "16" in out_spec["dtype"] else
+                                              (4 if "32" in out_spec["dtype"] else 1))
+
+
+def _output_name(cb: dict | None) -> str:
+    return next((n for n, t in (cb.get("tensors") or {}).items()
+                 if t.get("role") == "output"), "Y0") if cb else "Y0"
+
+
+def _bundle_preload(bundle: dict, cb: dict | None) -> list[tuple[int, bytes]]:
+    """DRAM preload ``(base, bytes)`` from the emit bundle's laid-out inputs, falling back to the cb's
+    canonical leaf operands (``preload_b64``) exactly like the cosim path (see AW5)."""
+    preload = [(int(x["base"]), base64.b64decode(x["b64"])) for x in bundle["inputs"]]
+    if not preload and cb:
+        preload = _preload_from_cb(cb)
+    return preload
+
+
 def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
                        kernel_s: Path | None = None, program: str | None = None,
                        inputs: list[dict] | None = None, fix_itype_rd: bool = True,
@@ -189,13 +235,11 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
     bundle = emit_bundle(model_ext=model_ext, program=program, kernel_s=kernel_s, inputs=inputs,
                          fix_itype_rd=fix_itype_rd, workdir=workdir, timeout=timeout)
     words = bundle["words"]
-    preload = [(int(x["base"]), base64.b64decode(x["b64"])) for x in bundle["inputs"]]
     # Capsule path: preload arc DRAM with the capsule's CANONICAL leaf inputs, attached to the cb's
     # leaf tensors by the grader (``preload_b64`` = the exact bytes the independent golden used — the
     # float target's operand palette, not the integer 0..3 fill). Base comes from the agent's cb tensor
     # (where its kernel reads the operand); the bytes are the ground-truth operands (see AW5).
-    if not preload and cb:
-        preload = _preload_from_cb(cb)
+    preload = _bundle_preload(bundle, cb)
 
     modeling = mlc_bridge.mlc_dir()
     # mlc.backends.__init__ eagerly loads the gemmini cache cwd-relative — run inside mlc's cwd; keep mlc
@@ -223,36 +267,12 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
         raise OracleUnavailable(f"{target} program did not halt within {max_cycles} cycles")
 
     # resolve the output tensor spec from the cb (generation-declared) or the program's own golden.
-    # The output DRAM base is the harness-owned address (stamped onto the cb by capsule_dram.inject_bases,
-    # the same map the agent's kernel was told to store to) — read it defensively, exactly like the input
-    # bases at :128. A missing base is an actionable grading error (the layout could not be applied), NOT
-    # a bare KeyError that would surface as the opaque 'L3 crash: base'.
-    out_spec = None
-    if cb:
-        outs = [t for t in (cb.get("tensors") or {}).values() if t.get("role") == "output"]
-        if outs:
-            t = outs[0]
-            if t.get("base") is None:
-                raise OracleUnavailable(
-                    f"{target}: output tensor has no DRAM base — the harness DRAM layout was not applied "
-                    f"(capsule_dram.inject_bases); cannot read the result back")
-            out_spec = {"base": int(t["base"]), "shape": list(t["shape"]),
-                        "dtype": t.get("dtype", "bf16"), "physical": t.get("physical")}
-    if out_spec is None and bundle.get("output"):
-        o = bundle["output"]
-        out_spec = {"base": int(o["base"]), "shape": list(o["shape"]),
-                    "dtype": o["dtype"], "physical": o.get("physical")}
-    if out_spec is None:
-        raise OracleUnavailable(f"{target}: no output tensor declared in cb or program golden")
-
-    import numpy as np
-    nbytes = int(np.prod(out_spec["shape"])) * (2 if "16" in out_spec["dtype"] else
-                                                (4 if "32" in out_spec["dtype"] else 1))
+    out_spec = _resolve_out_spec(target, cb, bundle)
+    nbytes = _out_nbytes(out_spec)
     raw = bytes(res.slave.captured(out_spec["base"], nbytes))
     logical = _decode_output(raw, out_spec["shape"], out_spec["dtype"], out_spec["physical"])
 
-    oname = next((n for n, t in (cb.get("tensors") or {}).items()
-                  if t.get("role") == "output"), "Y0") if cb else "Y0"
+    oname = _output_name(cb)
     return {"outputs": {oname: logical.tolist()}, "cycles": int(res.cycles),
             "oracle": f"{target}-arc-arcilator-cosim"}
 
@@ -267,4 +287,96 @@ def program_oracle_adapter(target: str, *, model_ext: str) -> Callable:
             ks.write_text(fourth_text)
         return run_program_oracle(target, model_ext=model_ext, cb=cb, kernel_s=ks,
                                   workdir=wd, timeout=timeout)
+    return run
+
+
+# --------------------------------------------------------------------------------------------------
+# FAST FUNCTIONAL tier — the same assembled program run on the target model's high-level FUNCTIONAL
+# core (pure Python, no arc .so), for per-round QA feedback. The cycle-exact cosim (above) stays the
+# gold checkpoint. Only the RUNNER differs: emit_bundle (words+preload) and the output layout are shared.
+# --------------------------------------------------------------------------------------------------
+
+def _func_program_helper() -> Path:
+    """The mlc FUNCTIONAL program runner file, invoked BY PATH in the model venv (it imports only
+    ``npu_model``, never ``mlc.*``, so ``mlc.backends.__init__`` is not triggered). Raises
+    :class:`OracleUnavailable` if ``mlc_dir()`` is None or the file is absent."""
+    from merlin.targetgen.rtl import mlc_bridge
+    d = mlc_bridge.mlc_dir()
+    if d is None:
+        raise OracleUnavailable(
+            "mlc dir unavailable (set MERLIN_MLC_DIR) — no functional program runner")
+    f = Path(d) / "mlc" / "backends" / "func_program_atlas.py"
+    if not f.is_file():
+        raise OracleUnavailable(f"mlc functional program runner absent: {f}")
+    return f
+
+
+def _run_func_helper(model_ext: str, req: dict, workdir: Path, timeout: int) -> dict[str, Any]:
+    """Run the mlc functional program runner in the MODEL venv (same venv+cwd as ``_run_emit_helper``),
+    marshalling a JSON+base64 request/result across the venv gap (mirrors its ``__main__`` CLI)."""
+    py = _model_venv_python(model_ext)
+    func = _func_program_helper()
+    infile, outfile = workdir / "func_in.json", workdir / "func_out.json"
+    infile.write_text(json.dumps(req))
+    cmd = [str(py), str(func), "--in", str(infile), "--out", str(outfile)]
+    cwd = ext_path(model_ext)                           # ASM_FOLDER is cwd-relative in the model
+    p = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
+    if p.returncode != 0:
+        raise OracleUnavailable(
+            f"func_program_atlas helper failed rc={p.returncode}: {p.stderr[-400:]}")
+    return json.loads(outfile.read_text())
+
+
+def run_program_functional_oracle(target: str, *, model_ext: str, cb: dict | None = None,
+                                  kernel_s: Path | None = None, program: str | None = None,
+                                  inputs: list[dict] | None = None, fix_itype_rd: bool = True,
+                                  max_cycles: int = 20000, workdir, timeout: int = 600) -> dict[str, Any]:
+    """Assemble (model venv / stock LLVM) → run on the target's FAST FUNCTIONAL core → read back. Mirrors
+    :func:`run_program_oracle` (same ``emit_bundle`` words+preload, same output-layout resolution) but the
+    ONLY difference is the runner: the mlc functional program runner (``func_program_atlas.py``) invoked by
+    file path in the model venv, instead of the cycle-exact arc cosim. Returns the SAME result shape
+    ``{"outputs": {name: list}, "cycles": int, "oracle": f"{target}-npu-functional"}``. Raises
+    :class:`OracleUnavailable` if ``mlc_dir()`` / the func file / the model venv is absent (fail closed)."""
+    _func_program_helper()                              # fail closed early if the runner is absent
+
+    bundle = emit_bundle(model_ext=model_ext, program=program, kernel_s=kernel_s, inputs=inputs,
+                         fix_itype_rd=fix_itype_rd, workdir=workdir, timeout=timeout)
+    words = bundle["words"]
+    preload = _bundle_preload(bundle, cb)
+    out_spec = _resolve_out_spec(target, cb, bundle)
+    nbytes = _out_nbytes(out_spec)
+
+    req = {
+        "words": [int(w) & 0xFFFFFFFF for w in words],
+        "preload": [{"base": int(b), "b64": base64.b64encode(d).decode()} for b, d in preload],
+        "out_bases": [[int(out_spec["base"]), int(nbytes)]],
+        "max_cycles": int(max_cycles),
+    }
+    res = _run_func_helper(model_ext, req, Path(workdir), timeout)
+    if not res.get("halted"):
+        raise OracleUnavailable(
+            f"{target} program did not halt within {max_cycles} instructions (functional)")
+
+    outmap = res.get("outputs") or {}
+    key = str(int(out_spec["base"]))                    # the CLI keys outputs by str(base)
+    if key not in outmap:
+        raise OracleUnavailable(
+            f"{target}: functional runner returned no output at base {out_spec['base']}")
+    raw = base64.b64decode(outmap[key])
+    logical = _decode_output(raw, out_spec["shape"], out_spec["dtype"], out_spec["physical"])
+    return {"outputs": {_output_name(cb): logical.tolist()}, "cycles": int(res.get("cycles") or 0),
+            "oracle": f"{target}-npu-functional"}
+
+
+def program_functional_adapter(target: str, *, model_ext: str) -> Callable:
+    """The FAST functional oracle adapter (``run(cb, fourth_text, workdir, timeout)`` shape) for an
+    ``external_backend`` target — the per-round QA-loop correctness tier that mirrors
+    :func:`program_oracle_adapter` but runs the emitted kernel on the functional core, not the cosim."""
+    def run(cb, fourth_text, workdir, timeout):
+        wd = Path(workdir)
+        ks = wd / "kernel.S"
+        if fourth_text:
+            ks.write_text(fourth_text)
+        return run_program_functional_oracle(target, model_ext=model_ext, cb=cb, kernel_s=ks,
+                                             workdir=wd, timeout=timeout)
     return run

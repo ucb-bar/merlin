@@ -175,8 +175,11 @@ def test_no_oracle_smoke_is_not_gradeable_never_pass(tmp_path, monkeypatch):
 
 def test_atlas_oracle_routes_to_program_oracle():
     ad = CR.oracle_adapters("atlas")
-    assert set(ad) == {"L3"}
+    assert set(ad) == {"L2", "L3"}                              # fast functional loop + cycle-exact cosim
+    assert ad["L2"].__module__ == "merlin.targetgen.program_oracle"
     assert ad["L3"].__module__ == "merlin.targetgen.program_oracle"
+    assert "program_functional_adapter" in ad["L2"].__qualname__   # fast per-round tier
+    assert "program_oracle_adapter" in ad["L3"].__qualname__       # gold checkpoint tier
 
 
 def test_external_backend_requires_model_ext_no_target_default(monkeypatch):
