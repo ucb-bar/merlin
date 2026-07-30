@@ -6,8 +6,8 @@ and golden expected features. Produce a structured review report.
 
 ## Allowed inputs (read-only)
 - `<run_dir>/contracts/`
-- `<run_dir>/generated/gemmini-mlir/`
-- `datasets/gemmini/golden/`
+- `<run_dir>/generated/{target}-mlir/`
+- `datasets/{target}/golden/`
 - `harness/architecture_rules.py` (for rule definitions)
 
 ## Allowed outputs (write)

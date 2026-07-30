@@ -108,6 +108,12 @@ def materialize(
     (run_dir / "metrics").mkdir()
     (run_dir / "contracts").mkdir()
 
+    # Render the target-agnostic method/skill templates for this concrete target: the {target}
+    # placeholders in methods/<m>/prompt.md + skills/<s>/AGENT.md are filled from the invoked target id
+    # and written into the run dir, so the run carries the exact instruction set the agent follows.
+    from harness.render import materialize_rendered_prompts
+    materialize_rendered_prompts(root, run_dir, method, target)
+
     # Write run_manifest.yaml
     now_iso = datetime.now(tz=timezone.utc).isoformat()
     manifest = {
