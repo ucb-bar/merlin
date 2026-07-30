@@ -111,8 +111,10 @@ def parse_transcript_timeline(path: Path) -> list[dict]:
 def _round_capsule_snapshot(run_dir: Path, rnd: int) -> dict:
     """Per-capsule {status, l3_cycles, plane, class} for one round, from _qa_work/runs_NN."""
     snap: dict[str, dict] = {}
-    base = run_dir / "_qa_work" / f"runs_{rnd:02d}" / "runs" / "gemmini-capsule-bench"
-    if not base.exists():
+    # the aet suite dir is "<target>-capsule-bench"; discover it rather than naming a target.
+    runs_parent = run_dir / "_qa_work" / f"runs_{rnd:02d}" / "runs"
+    base = next((d for d in sorted(runs_parent.glob("*-capsule-bench")) if d.is_dir()), None)
+    if base is None or not base.exists():
         return snap
     for cr in sorted(base.glob("*/capsule_result.json")):
         try:

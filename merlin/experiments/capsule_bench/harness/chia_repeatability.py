@@ -18,7 +18,7 @@ Runs under the CHIA venv:
   build/chia-venv/bin/python chia_repeatability.py --n 3 --stub-seconds 2   # token-free layer test
   build/chia-venv/bin/python chia_repeatability.py --n 3 --verilator-slots 2
 
-Output lands in an aet-managed run dir (``runs/gemmini/capsule-bench/<run-id>/``) alongside the
+Output lands in an aet-managed run dir (``runs/<target>/capsule-bench/<run-id>/``) alongside the
 CHIA profiler JSONL, which ``chia viz-profile`` renders.
 """
 from __future__ import annotations
@@ -129,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     t0 = time.monotonic()
-    with chia_run(suite="capsule-bench", method=f"chia_repeat_{a.arm}", target="gemmini",
+    with chia_run(suite="capsule-bench", method=f"chia_repeat_{a.arm}", target=C.TARGET,
                   extra={"arm": a.arm, "model": a.model, "n": len(planned),
                          "verilator_slots": a.verilator_slots, "stub": bool(a.stub_seconds)},
                   ray_resources={"verilator": a.verilator_slots}) as run:

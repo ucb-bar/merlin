@@ -428,13 +428,14 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
         ws_task = ws / "TASK.md"
         body = (C.EXP / "task" / "TASK_realistic.md").read_text()
         if os.environ.get("PILOT_LANG", "").strip().lower() == "cpp":
+            _opt = f"{C.TARGET}-opt"          # the OOT MLIR tool name (derived from the active target)
             body += (
                 "\n\n## Language mandate: C++ out-of-tree MLIR (REQUIRED for this run)\n"
                 "- `manifest.yaml` MUST declare `language: cpp` and a `build` block that builds a real "
-                "out-of-tree MLIR tool `mlir_oot/build/bin/gemmini-opt` against the provided LLVM/MLIR-23 "
+                f"out-of-tree MLIR tool `mlir_oot/build/bin/{_opt}` against the provided LLVM/MLIR-23 "
                 "(`-DMLIR_DIR=$MLIR_DIR -DLLVM_DIR=$LLVM_DIR`); the runner builds it before grading.\n"
                 "- Implement the 4 entrypoints as real MLIR passes in a C++ OOT package (input dialect + "
-                "gemmini target dialect + conversions + the `gemmini-opt` tool). A Python tool is NOT "
+                f"{C.TARGET} target dialect + conversions + the `{_opt}` tool). A Python tool is NOT "
                 "acceptable for this run. All integrity rules still apply.\n")
         bdir = C.BUNDLES / RX.ARM_BUNDLE[arm]
         # STARTER_PROMPT.md carries the ARM-SPECIFIC guidance (CIRCT generators for the +CIRCT arm,

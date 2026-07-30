@@ -17,7 +17,7 @@ Sandbox:
 Usage:
   run_agent_experiment.py --arm raw_baseline --run-id rb_0001 --model opus [--sandbox bwrap]
   run_agent_experiment.py --arm raw_baseline --run-id dry_0001 --dummy-agent \
-      --dummy-submission artifacts/targets/gemmini/agent_spec_v1_mlir_oot --no-oracle-grade \
+      --dummy-submission out/artifacts/targets/<target>/agent_spec_v1_mlir_oot --no-oracle-grade \
       --grade-capsules /tmp/grade_subset
 """
 from __future__ import annotations
