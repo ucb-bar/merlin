@@ -15,6 +15,9 @@ echo "[pre-commit] artifact layout (staged)…"
 echo "[pre-commit] no-regex (staged)…"
 "$PY" build_tools/scripts/check_no_regex.py --staged
 
+echo "[pre-commit] no-target-name (staged)…"
+"$PY" build_tools/scripts/check_no_target_name.py --staged
+
 echo "[pre-commit] docs freshness…"
 "$PY" build_tools/scripts/check_docs.py
 
