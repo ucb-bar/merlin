@@ -227,22 +227,29 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     return out
 
 
-def compile_gemmini(workload: str, *, run: str, verify: bool, package: str | None, timeout: int) -> dict:
-    """Gemmini OOT: build the backend package and run a capsule through it, three-way gated.
+def compile_oot(workload: str, *, target: str, run: str, verify: bool, package: str | None,
+                timeout: int) -> dict:
+    """OOT target: build the backend package and run a capsule through it, three-way gated.
 
-    Here ``--workload`` names a capsule (e.g. A2_single_tile_matmul) and ``--package`` the OOT backend
-    (default: the certified hand_v0). The accelerator runs capsules/kernels, not whole VLA models."""
+    Serves any registered out-of-tree target (gemmini and beyond). ``--workload`` names a capsule
+    (e.g. A2_single_tile_matmul) and ``--package`` the OOT backend. Accelerators run capsules/kernels,
+    not whole VLA models."""
     from .targetgen import oot_runner, capsule_common
     from .benchharness import runs_root
     from .common.paths import repo_root
 
-    # Default to an OOT backend package (has artifact_type: mlir_oot_target_backend, which
-    # oot_runner.certify requires); hand_v0 lacks it. Override with --package.
-    pkg_dir = package or "out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot"
+    # Default to the certified gemmini OOT package (has artifact_type: mlir_oot_target_backend, which
+    # oot_runner.certify requires); any other target must name its OOT package via --package.
+    default_pkg = "out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot" if target == "gemmini" else None
+    pkg_dir = package or default_pkg
     corpus = repo_root() / "merlin/contract/capsules/isa"
-    out: dict = {"tool": "merlin-compile", "target": "gemmini", "workload": workload,
+    out: dict = {"tool": "merlin-compile", "target": target, "workload": workload,
                  "package": pkg_dir, "run": run}
-    rr = runs_root("gemmini", "compile")
+    if pkg_dir is None:
+        out["status"] = "not_run"
+        out["reason"] = f"--package required for target {target!r} (no default OOT package)"
+        return out
+    rr = runs_root(target, "compile")
 
     # compile-only: build the OOT package (board-free, needs the OOT/clang toolchain).
     pkg = oot_runner.load_package(pkg_dir)
@@ -272,7 +279,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--workload", required=True,
                     help="rvv: a captured model name (bitvla, openvla, rdt2, …); "
                          "gemmini: a capsule name (A2_single_tile_matmul, …)")
-    ap.add_argument("--target", choices=["rvv", "gemmini"], default="rvv")
+    # --target choices = rvv (whole-model) + every registered OOT target, auto-discovered via the
+    # target registry (in-tree references + MERLIN_TARGET_PATH). Registering a dialect package makes
+    # `--target=<name>` work with no code change here.
+    try:
+        from .targetgen.target_registry import all_targets
+        _oot_targets = sorted(set(all_targets()) | {"gemmini"})
+    except Exception:  # noqa: BLE001 — registry unreadable → fall back to the in-tree reference
+        _oot_targets = ["gemmini"]
+    ap.add_argument("--target", choices=["rvv", *_oot_targets], default="rvv",
+                    help="rvv (whole-model) or any registered OOT target (auto-discovered)")
     ap.add_argument("--dtype", choices=list(_RVV_DTYPES), default="fp32", help="rvv only")
     ap.add_argument("--harts", type=int, default=1,
                     help="rvv+zephyr: harts to fan the model across (>1 builds the multicore "
@@ -301,7 +317,8 @@ def main(argv: list[str] | None = None) -> int:
                               auto_capture=a.capture, timeout=a.timeout,
                               harts=a.harts, iters=a.iters, warmup=a.warmup)
         else:
-            res = compile_gemmini(a.workload, run=run, verify=a.verify, package=a.package, timeout=a.timeout)
+            res = compile_oot(a.workload, target=a.target, run=run, verify=a.verify,
+                              package=a.package, timeout=a.timeout)
     except SystemExit:
         raise
     except Exception as e:  # noqa: BLE001 — surface any pipeline error honestly, don't fake a pass
