@@ -39,7 +39,6 @@ merlin/python/merlin/xdsl_dialects/lowering/runtime_lowering.py # saturn.* op->o
 merlin/python/merlin/xdsl_dialects/lowering/target_lowering.py  # built-in saturn TargetSpec registration
 merlin/python/merlin/kernels/markers.py                      # ISA-family motif table (also regex-allowlisted); names reference families
 merlin/python/merlin/kernels/framework_contracts/__init__.py # saturn source->framework map (reference ingest source)
-merlin/python/merlin/kernels/ingest/exo.py                   # exo platform->target map (platforms.gemmini reference)
 merlin/python/merlin/kernels/cca_contract.py                 # CCA applicable-backend vocabulary + orphan registry (reference set)
 
 # ---------------------------------------------------------------- reference-target FACTS / package fallback in dev CLIs (gemmini is the reference; the CLI still takes --target)

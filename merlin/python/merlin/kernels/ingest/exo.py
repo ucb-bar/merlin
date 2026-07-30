@@ -19,24 +19,20 @@ import sys
 from pathlib import Path
 from typing import Iterator
 
+from merlin.kernels.framework_contracts import load_contract
 from merlin.kernels.types import NormalizedKernel
 
 log = logging.getLogger("merlin.kernels.ingest.exo")
 
-# Map an Exo platform import to an ISA family used as the kernel target.
-_PLATFORM_TARGET = (
-    ("platforms.gemmini", "gemmini"),
-    ("platforms.x86", "avx"),
-    ("platforms.avx", "avx"),
-    ("platforms.aarch64", "neon"),
-    ("platforms.neon", "neon"),
-    ("platforms.rvm", "rvv"),
-    ("rvv", "rvv"),
-)
+
+def _platform_targets() -> list[tuple[str, str]]:
+    """Exo platform-import -> ISA-family pairs, read from ``framework_contracts/exo.yaml`` so no
+    target-name literal lives here. Insertion order (document order) is the match precedence."""
+    return list((load_contract("exo").get("platform_targets") or {}).items())
 
 
 def _detect_target(source_text: str, default: str | None) -> str:
-    for needle, fam in _PLATFORM_TARGET:
+    for needle, fam in _platform_targets():
         if needle in source_text:
             return fam
     return default or "unknown"

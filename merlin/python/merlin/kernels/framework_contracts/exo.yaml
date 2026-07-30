@@ -1,0 +1,14 @@
+# Framework contract for Exo-ingested kernels. Exo ships scheduling specs per hardware "platform"
+# module; `platform_targets` maps the platform import a spec uses to the ISA family its mined kernel
+# targets. Held as DATA (not core Python) so no target-name literal lives in the ingest module — the
+# loader (ingest/exo.py:_detect_target) reads it. Order matters: the first import found in a spec's
+# source text wins, so keep the most specific platforms first.
+framework: exo
+platform_targets:
+  platforms.gemmini: gemmini
+  platforms.x86: avx
+  platforms.avx: avx
+  platforms.aarch64: neon
+  platforms.neon: neon
+  platforms.rvm: rvv
+  rvv: rvv
