@@ -22,8 +22,9 @@ import sys
 import time
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[4]
-sys.path.insert(0, str(REPO / "merlin" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
+REPO = C.REPO
 
 import yaml  # noqa: E402
 from merlin.targetgen import rocc_decode as RD            # noqa: E402
@@ -32,11 +33,14 @@ from merlin.targetgen import rtl_check_runner as RUN      # noqa: E402
 from merlin.targetgen import rtl_checks as RC             # noqa: E402
 from merlin.targetgen import capsule_golden as CG         # noqa: E402
 from merlin.targetgen.contract import compile as COMPILE  # noqa: E402
+from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
 
-DEFAULT_PKG = (REPO / "out/runs/grade_subset_check/runs/gemmini-capsule-bench/"
-               "A2_single_tile_matmul/generated")
+_TE = load_target_experiment(C.EXP / "target_experiment.yaml")
+DEFAULT_PKG = (REPO / "out/runs/grade_subset_check/runs" / f"{C.TARGET}-capsule-bench"
+               / "A2_single_tile_matmul" / "generated")
 CAPSULE = REPO / "merlin/contract/capsules/isa/A2_single_tile_matmul/capsule.yaml"
-FACTS = json.loads((REPO / "merlin/targets/gemmini/contracts/rtl_facts/facts.json").read_text())
+# rtl_facts_pin = merlin/targets/<target>/contracts/rtl_facts/ (derived from the descriptor's target).
+FACTS = json.loads((REPO / _TE.rtl_facts_pin / "facts.json").read_text())
 
 
 # ------------------------------------------------------------------------------------- mutators
@@ -156,7 +160,8 @@ def main(argv=None):
                        "false_positive_on_original": len(fp),
                        "numerical_miss_by_design": [r["mutant"] for r in rows
                                                     if r["verilator"] == "fail" and r["prescreen"] == "ok"]}}
-    rep = REPO / "experiments/gemmini_perf_bench/reports/prescreen_mutation_demo.json"
+    rep = C.REPORTS / "prescreen_mutation_demo.json"
+    rep.parent.mkdir(parents=True, exist_ok=True)
     rep.write_text(json.dumps(out, indent=2))
     print(f"\nsummary: {out['summary']}\nwrote {rep}")
     return 0

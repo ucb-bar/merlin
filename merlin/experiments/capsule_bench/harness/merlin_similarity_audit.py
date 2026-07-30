@@ -19,19 +19,17 @@ from __future__ import annotations
 import argparse
 import difflib
 import hashlib
-import re
 from pathlib import Path
 
 import _common as C
+from merlin.targetgen.target_experiment import load_target_experiment
 
-# Forbidden prior backends the merlin agent must not have copied (operator-visible only).
-PRIOR_BACKENDS = [
-    C.REPO / "out/artifacts/targets" / "gemmini" / "agent_spec_v0_mlir_oot",
-    C.REPO / "out/artifacts/targets" / "gemmini" / "agent_spec_v1_mlir_oot",
-    C.REPO / "out/artifacts/targets" / "gemmini" / "hand_smoke_oot",
-    C.REPO / "out/artifacts/targets" / "gemmini" / "merlin_native_v0",
-]
-PRIOR_REPORTS = C.REPO / "artifacts" / "capsule-bench" / "gemmini"
+# Forbidden prior backends the merlin agent must not have copied (operator-visible only). The set is the
+# active target's declared answer surfaces (descriptor `answer_surfaces.prior_backends`), resolved under
+# out/artifacts/targets/<target>/ — no committed gemmini list.
+_TE = load_target_experiment(C.EXP / "target_experiment.yaml")
+PRIOR_BACKENDS = [C.REPO / "out/artifacts/targets" / C.TARGET / b for b in _TE.prior_backends]
+PRIOR_REPORTS = C.REPORTS
 
 _SKIP = {"build", "__pycache__", ".git", "CANARY_FORBIDDEN.txt"}
 _SRC_EXT = {".py", ".td", ".cpp", ".h", ".hpp", ".cc", ".mlir", ".yaml", ".yml", ".json", ".txt",
@@ -52,7 +50,7 @@ def _norm(text: str) -> str:
         s = ln.strip()
         if not s:
             continue
-        s = re.sub(r"\s+", " ", s)
+        s = " ".join(s.split())          # collapse internal whitespace (structured, no regex)
         out.append(s)
     return "\n".join(out)
 
@@ -76,7 +74,7 @@ def _shared_long_lines(a: str, b: str, minlen: int = 24, k: int = 5) -> list[str
     sb = {ln.strip() for ln in b.splitlines() if len(ln.strip()) >= minlen}
     common = sorted(sa & sb, key=len, reverse=True)
     # drop boilerplate that is legitimately shared (the contract vocabulary)
-    boiler = ("artifact_type", "mlir_oot_target_backend", "integrity_exempt", "gemmini_kernel",
+    boiler = ("artifact_type", "mlir_oot_target_backend", "integrity_exempt", f"{C.TARGET}_kernel",
               ".insn r 0x7b", "merlin_iface", "command_buffer", "from __future__ import")
     distinctive = [c for c in common if not any(b_ in c for b_ in boiler)]
     return distinctive[:k]
