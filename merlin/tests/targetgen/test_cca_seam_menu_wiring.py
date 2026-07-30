@@ -62,3 +62,21 @@ def test_no_rtl_access_degrades_to_empty_not_crash(monkeypatch):
     assert AC.escalation_ladder("spatial.dataflow", probe) == []
     b = CC.check_bijection(probe)
     assert b.orphan_fields == [] and b.orphan_routes == []
+
+
+def test_tooling_readiness_both_targets_zero_generation():
+    """The zero-generation readiness gate: every tool an arm advertises must produce real output for a
+    target (no agent run). Verifies atlas AND gemmini are tooling-ready before any spend."""
+    import sys
+    from merlin.common.paths import merlin_dir
+    h = str(merlin_dir() / "experiments/capsule_bench/harness")
+    if h not in sys.path:
+        sys.path.insert(0, h)
+    import importlib
+    TR = importlib.import_module("tooling_readiness")
+    for tgt in ("atlas", "gemmini"):
+        if not _has_rtl(tgt):
+            pytest.skip(f"mlc/RTL facts unavailable for {tgt}")
+        rep = TR.readiness(tgt)
+        failed = [c["check"] for c in rep["checks"] if not c["ok"]]
+        assert rep["ok"], f"{tgt} not tooling-ready: {failed}"
