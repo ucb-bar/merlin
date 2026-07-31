@@ -111,7 +111,10 @@ def test_generators():
         for mod, out in [("gen_isa_module", f"{TARGET}_isa.py"),
                          ("gen_rtl_digest", "RTL_DIGEST.md"),
                          ("gen_numeric_facts", "numeric_facts.py")]:
-            r = subprocess.run([PY, "-m", f"merlin.targetgen.rtl.{mod}", "--out", str(td / out)],
+            # These RTL-facts generators require an explicit --target (the gemmini default was retired
+            # in the target-generalization work); pass the active target so they run for any target.
+            r = subprocess.run([PY, "-m", f"merlin.targetgen.rtl.{mod}",
+                                "--target", TARGET, "--out", str(td / out)],
                                cwd=str(REPO), capture_output=True, text=True)
             _ok(f"{mod} generates", r.returncode == 0 and (td / out).exists(),
                 (r.stderr.strip().splitlines() or [""])[-1][:80])
