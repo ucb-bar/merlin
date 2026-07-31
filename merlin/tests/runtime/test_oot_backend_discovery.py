@@ -25,7 +25,12 @@ import pytest
 
 from merlin.common.paths import merlin_dir
 
-_FIXTURE_PKG = merlin_dir() / "tests" / "fixtures" / "oot_backend_pkg" / "fixture_npu"
+_FIXTURE_ROOT = merlin_dir() / "tests" / "fixtures" / "oot_backend_pkg"
+_FIXTURE_PKG = _FIXTURE_ROOT / "fixture_npu"
+# A MULTI-MODULE backend package (plugin.backend is a directory, not a .py file): its __init__
+# pulls in a sibling via a relative import, so it only loads if the OOT loader loads the backend
+# as a package with its own __path__.
+_FIXTURE_PKG_PKG = _FIXTURE_ROOT / "fixture_npu_pkg"
 
 
 def _run(code: str, *, target_path: str | None) -> dict:
@@ -90,3 +95,57 @@ def test_fixture_resolves_via_target_path():
     # additive — the in-tree built-ins are untouched
     assert "spike" in res["backends"]
     assert "gemmini" in res["backends"]
+
+
+_PKG_PROBE = """
+import json, sys
+import merlin.runtime.backends.base as base
+result = {
+    "backends": base.list_backends(),
+    "oot_in_sys_modules": "merlin._oot_backends.fixture_npu_pkg" in sys.modules,
+    # the sibling module imported via the package's RELATIVE import must be a submodule of the
+    # synthetic package name — proof it loaded as a package, not a bare single file
+    "sibling_in_sys_modules":
+        "merlin._oot_backends.fixture_npu_pkg.capabilities" in sys.modules,
+}
+if "fixture_npu_pkg" in base.list_backends():
+    mod = base.get_backend("fixture_npu_pkg")
+    result["fixture_module_name"] = getattr(mod, "__name__", None)
+    result["fixture_has_path"] = hasattr(mod, "__path__")
+    result["fixture_class"] = base.class_of("fixture_npu_pkg").value
+print(json.dumps(result))
+"""
+
+
+def _require_pkg_fixture() -> None:
+    if not (_FIXTURE_PKG_PKG / "contracts" / "target_contract.yaml").is_file():
+        pytest.skip(f"multi-module fixture OOT target package missing at {_FIXTURE_PKG_PKG}")
+
+
+def test_package_backend_resolves_via_target_path():
+    """A backend whose ``plugin.backend`` is a DIRECTORY (a package spanning relative-import-coupled
+    modules) is loaded as a package: it self-registers, its ``get_backend`` module has a ``__path__``,
+    and the sibling it pulled in via ``from .capabilities import ...`` is present as a SUBMODULE of the
+    synthetic package name — which only happens if the loader gave the package its own search path.
+    This is the plumbing an evicted multi-file accelerator backend (backend.py + codegen.py) rides."""
+    _require_pkg_fixture()
+    res = _run(_PKG_PROBE, target_path=str(_FIXTURE_PKG_PKG))
+    assert "fixture_npu_pkg" in res["backends"], res["backends"]
+    assert res["fixture_module_name"] == "merlin._oot_backends.fixture_npu_pkg"
+    assert res["oot_in_sys_modules"] is True
+    assert res["fixture_has_path"] is True, "package backend must load with its own __path__"
+    # the relative import inside the package resolved to a real submodule of the synthetic package
+    assert res["sibling_in_sys_modules"] is True, "intra-package relative import did not resolve OOT"
+    assert res["fixture_class"] == "npu"
+    # additive — the in-tree built-ins are untouched
+    assert "spike" in res["backends"]
+
+
+def test_core_clean_without_target_path_pkg():
+    """With ``MERLIN_TARGET_PATH`` unset, the multi-module fixture backend is absent and never
+    imported — importing ``base`` must not eagerly pull in any OOT package backend either."""
+    _require_pkg_fixture()
+    res = _run(_PKG_PROBE, target_path=None)
+    assert "fixture_npu_pkg" not in res["backends"], res["backends"]
+    assert res["oot_in_sys_modules"] is False
+    assert res["sibling_in_sys_modules"] is False
