@@ -41,7 +41,7 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     pkg_dir = Path(package_dir)
 
     score: dict = {
-        "task": "gemmini-mlir-oot-capsule", "package": str(pkg_dir),
+        "task": f"{target}-mlir-oot-capsule", "package": str(pkg_dir),
         "integrity_exempt": None, "integrity_status": None,
         "labels_graded": sorted(labels),
         "functional_pass": 0, "n_capsules": 0, "n_passed": 0,
