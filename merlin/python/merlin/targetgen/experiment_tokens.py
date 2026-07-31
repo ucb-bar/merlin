@@ -23,6 +23,13 @@ _RATES = {  # (in_per_tok, out_per_tok)
     "opus": (15e-6, 75e-6), "claude-opus-4-8": (15e-6, 75e-6),
     "sonnet": (3e-6, 15e-6), "claude-sonnet-4-6": (3e-6, 15e-6),
     "haiku": (0.8e-6, 4e-6), "claude-haiku-4-5-20251001": (0.8e-6, 4e-6),
+    # Non-Anthropic Bedrock models (APPROXIMATE published rates; keyed on a substring of the
+    # inference-profile id so an unknown-to-claude model is not mis-priced at opus rates). Refine if
+    # exact Bedrock pricing is confirmed.
+    "glm": (0.6e-6, 2.2e-6), "qwen": (0.3e-6, 1.2e-6),
+    "nemotron": (0.6e-6, 2.4e-6), "nvidia": (0.6e-6, 2.4e-6),
+    "deepseek": (0.5e-6, 1.5e-6), "kimi": (0.6e-6, 2.5e-6),
+    "nova-lite": (0.06e-6, 0.24e-6), "nova-pro": (0.8e-6, 3.2e-6),
 }
 _CACHE_WRITE_MULT = 1.25
 _CACHE_READ_MULT = 0.10

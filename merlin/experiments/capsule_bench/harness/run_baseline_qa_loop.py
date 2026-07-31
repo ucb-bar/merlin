@@ -565,6 +565,12 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
     ws_task = ws / "TASK.md"
     if rnd == 0:
         _build_task(arm, ws, run_dir)
+    # A non-Anthropic model can't drive the claude CLI (Anthropic API only) — route it to the Bedrock
+    # Converse agent backend, which runs the same masked-sandbox agentic loop + a compatible transcript so
+    # grading/accounting/audit are unchanged. Anthropic models fall through to the claude CLI below.
+    import bedrock_agent as _BA
+    if _BA.is_converse_model(model):
+        return _BA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout)
     inner = (f'claude --print --model {model} --effort {effort} '
              f'--permission-mode bypassPermissions --add-dir {ws} '
              f'--output-format stream-json --verbose < {ws_task}')
