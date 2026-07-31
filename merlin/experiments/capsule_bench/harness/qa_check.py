@@ -54,10 +54,14 @@ def _redact_detail(detail: str | None) -> str | None:
 def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
     """Read each capsule_result.json from the operator-only work tree and redact it."""
     out: dict[str, dict] = {}
-    rr = runs_root / "runs" / CR.SUITE
+    # The runner writes under <target>-capsule-bench (target-derived), NOT the gemmini default baked into
+    # CR.SUITE — keying off CR.SUITE dropped every per-capsule failure detail for any non-gemmini target,
+    # so the agent saw plane counts but never the reason. Glob any suite subdir so the reason always
+    # surfaces (target-general).
+    rr = runs_root / "runs"
     if not rr.exists():
         return out
-    for cr in sorted(rr.glob("*/capsule_result.json")):
+    for cr in sorted(rr.glob("*/*/capsule_result.json")):
         try:
             r = json.loads(cr.read_text())
         except Exception:
