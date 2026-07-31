@@ -124,6 +124,13 @@ def _ensure_discovered() -> None:
 # accelerator backend evicted to a published ``<target>-mlir`` package plugs back in with ZERO core
 # changes and the core carries no name -> module map for it. Target-agnostic: the PACKAGE names its own
 # backend file; nothing here is keyed on a specific target.
+#
+# ``plugin.backend`` may point at EITHER a single ``.py`` file OR a directory (a package with an
+# ``__init__.py``). A directory is loaded as a package with its own ``__path__``, so a backend whose
+# implementation spans several relative-import-coupled modules (``from .codegen import ...``) works
+# unchanged out-of-tree — the module that would otherwise force a single-file backend to inline all its
+# helpers. Only the parent-relative imports of an evicted backend need rewriting to absolute
+# (``from ..metrics`` -> ``from merlin.runtime.metrics``); sibling imports inside the package stay relative.
 _oot_env_seen: str | None = None
 
 
@@ -150,26 +157,38 @@ def _oot_backend_modules() -> list[tuple[str, Path]]:
         if not rel or not root:
             continue
         path = Path(root) / rel
-        if path.is_file():
+        # A backend is a single .py file OR a package directory (dir with __init__.py).
+        if path.is_file() or (path.is_dir() and (path / "__init__.py").is_file()):
             out.append((name, path))
     return out
 
 
 def _load_oot_backend(name: str, path: Path) -> None:
-    """Import an OOT backend module by file path (under a stable synthetic module name) so its
-    module-level ``register(...)`` runs. Idempotent: a module already loaded is left as-is. The module's
+    """Import an OOT backend by file path (under a stable synthetic module name) so its module-level
+    ``register(...)`` runs. Idempotent: a module already loaded is left as-is. The backend's
     ``BackendInfo.module`` is its own ``__name__`` (this synthetic name), so ``get_backend`` re-resolves
-    it from ``sys.modules`` without the core knowing the package layout."""
+    it from ``sys.modules`` without the core knowing the package layout.
+
+    ``path`` is either a single ``.py`` file (loaded as a leaf module) or a package DIRECTORY (loaded
+    as ``merlin._oot_backends.<name>`` with ``submodule_search_locations`` set to the dir, so the
+    backend's own ``from .sibling import ...`` resolve). Either way the top-level name is the same, so
+    ``BackendInfo(module=__name__)`` in the file or the package ``__init__`` lands identically."""
     modname = f"merlin._oot_backends.{name}"
     if modname in sys.modules:
         return
-    spec = importlib.util.spec_from_file_location(modname, path)
+    if path.is_dir():
+        init = path / "__init__.py"
+        spec = importlib.util.spec_from_file_location(
+            modname, init, submodule_search_locations=[str(path)]
+        )
+    else:
+        spec = importlib.util.spec_from_file_location(modname, path)
     if spec is None or spec.loader is None:
         return
     module = importlib.util.module_from_spec(spec)
     sys.modules[modname] = module
     try:
-        spec.loader.exec_module(module)  # runs the module's register(...) self-registration
+        spec.loader.exec_module(module)  # runs the backend's register(...) self-registration
     except Exception:  # noqa: BLE001 — a backend with missing deps just does not register
         sys.modules.pop(modname, None)
 
