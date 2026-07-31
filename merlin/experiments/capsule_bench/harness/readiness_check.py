@@ -215,15 +215,60 @@ def test_bundles():
     _ok("every API the prompts name imports", api_ok, detail)
 
 
+def _oracle_sim_via() -> str:
+    """The target's declared bespoke sim (``toolchain.sim_via``) — ``"chipyard"`` for gemmini, ``""``
+    (arc-only / program oracle) for a self-hosted-ISA target like atlas. Routes section G, no literal."""
+    from merlin.targetgen.target_experiment import load_target_experiment
+    desc = EXP / "target_experiment.yaml"
+    return (load_target_experiment(desc).sim_via or "").strip() if desc.is_file() else ""
+
+
 def test_oracles_endtoend():
-    """G. The safeguard that abc7 lacked: actually RUN spike + verilator on the known-good reference
-    backend to a REAL verdict (not just `test -x`), measure verilator's per-capsule time -> .oracle_timing.json,
-    and NO-GO on the exact abc7 failure signature (0 capsules / timeout)."""
+    """G. Prove the target's REAL grading oracle can produce a verdict — the safeguard abc7 lacked.
+    Routed by the target's oracle kind (contract, no target literal):
+
+    * ``external_backend`` / arc-only (self-hosted-ISA PROGRAM oracle, e.g. atlas): the oracle is the mlc
+      arc cosim + the model-venv functional runner, and the target has NO chipyard reference backend to
+      grade (a certified backend is what a run PRODUCES, so grading a "reference backend" is impossible
+      pre-run). Instead verify the oracle is actually RUNNABLE now (``capsule_runner.oracle_available`` —
+      the exact preflight the launcher runs) and that ``oracle_adapters`` resolves BOTH graded tiers to
+      the program oracle — the precise wiring a graded round uses. That is the honest pre-launch proof;
+      the numeric bit-exact check runs against a known-good npu_model program at grade time.
+    * ``chipyard`` (gemmini): actually RUN spike + verilator on the committed reference backend to a real
+      verdict, measure verilator's per-capsule time, and NO-GO on the abc7 signature (0 capsules/timeout).
+    """
     import json as _json
     import os as _os
     import tempfile as _tf
     import time as _time
     section("G. oracles RUN end-to-end (real verdict, not just present)")
+    from merlin.targetgen import capsule_runner as CR
+    sim_via = _oracle_sim_via()
+    if sim_via != "chipyard":
+        # self-hosted-ISA program oracle (arc cosim + model venv); no chipyard reference backend exists.
+        # Probe oracle_available in a FRESH interpreter — exactly how the launcher runs its preflight.
+        # (The arc native model does not re-probe cleanly inside a process that has already exercised the
+        # other mlc-touching readiness sections; the launcher always checks in a clean process, so that
+        # subprocess result is the faithful pre-launch signal.)
+        probe = ("import json,sys;from merlin.targetgen import capsule_runner as CR;"
+                 f"ok,why=CR.oracle_available({TARGET!r},{sim_via!r});"
+                 "print(json.dumps({'ok':bool(ok),'why':why}))")
+        pr = subprocess.run([PY, "-c", probe], cwd=str(REPO), capture_output=True, text=True)
+        try:
+            res = _json.loads([ln for ln in pr.stdout.splitlines() if ln.strip()][-1])
+            ok, why = res["ok"], res["why"]
+        except Exception:  # noqa: BLE001
+            ok, why = False, (pr.stderr or pr.stdout or "probe produced no output")[-120:]
+        _ok(f"program oracle runnable now ({why})", ok, why[:80])
+        try:
+            ad = CR.oracle_adapters(TARGET, sim_via)
+            mods = {t: getattr(fn, "__module__", "") for t, fn in ad.items()}
+            routed = {"L2", "L3"} <= set(ad) and all("program_oracle" in m for m in mods.values())
+            _ok("oracle_adapters routes L2+L3 to the program oracle (the graded-round wiring)",
+                routed, str(mods))
+        except Exception as e:  # noqa: BLE001
+            _ok("oracle_adapters resolves the program-oracle ladder", False, f"{type(e).__name__}: {e}")
+        return
     ref = REPO / "out/artifacts/targets" / TARGET / "agent_spec_v1_mlir_oot"
     if not (ref / "manifest.yaml").is_file():
         _ok("reference backend agent_spec_v1 present", False, "missing"); return
