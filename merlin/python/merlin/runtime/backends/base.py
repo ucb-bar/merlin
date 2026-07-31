@@ -17,9 +17,13 @@ The per-instance modules keep their current behavior; collapsing their copy-past
 from __future__ import annotations
 
 import importlib
+import importlib.util
+import os
 import pkgutil
+import sys
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 
@@ -88,10 +92,16 @@ def register(info: BackendInfo) -> None:
 
 
 def _ensure_discovered() -> None:
-    """Import the not-yet-seeded submodules of this package so their ``register(...)`` calls run. Guarded
-    per module: a backend whose optional deps are missing simply fails to register instead of breaking
-    the registry. Runs at most once (idempotent), on first registry query — never at ``import base``,
-    so importing the registry does NOT eagerly pull in the accelerator backends."""
+    """Import the not-yet-seeded submodules of this package so their ``register(...)`` calls run, then
+    load any backend modules declared by out-of-tree target packages on ``MERLIN_TARGET_PATH`` (so an
+    evicted accelerator backend self-registers from ITS OWN package, not from core). Guarded per module:
+    a backend whose optional deps are missing simply fails to register instead of breaking the registry.
+
+    In-tree discovery runs at most once; OOT discovery re-checks whenever ``MERLIN_TARGET_PATH`` changes
+    (so a caller that sets the env then queries the registry sees the package's backend). Neither runs at
+    ``import base`` — only on the first registry query — so importing the registry does NOT eagerly pull
+    in the accelerator backends."""
+    _ensure_oot_discovered()  # per-env (cheap when MERLIN_TARGET_PATH is unchanged); before the one-shot
     global _discovered
     if _discovered:
         return
@@ -105,6 +115,77 @@ def _ensure_discovered() -> None:
             importlib.import_module(f"{pkg.__name__}.{leaf}")
         except Exception:  # noqa: BLE001 — a backend with missing optional deps just does not register
             continue
+
+
+# --- out-of-tree backend discovery (MERLIN_TARGET_PATH) ---------------------------------------------
+# A target definition is a self-contained OUT-OF-TREE PACKAGE (``merlin.targetgen.target_registry``);
+# its contract's ``plugin`` block may name a runtime backend module (``plugin.backend``, a path relative
+# to the package root). We import that module BY FILE PATH so its ``register(...)`` runs — so a reference
+# accelerator backend evicted to a published ``<target>-mlir`` package plugs back in with ZERO core
+# changes and the core carries no name -> module map for it. Target-agnostic: the PACKAGE names its own
+# backend file; nothing here is keyed on a specific target.
+_oot_env_seen: str | None = None
+
+
+def _oot_backend_modules() -> list[tuple[str, Path]]:
+    """``(target-name, backend-file)`` for every OOT target package reachable via ``MERLIN_TARGET_PATH``
+    (or the freshly-generated home) whose contract's ``plugin`` block declares a ``backend`` module path.
+    Empty when targetgen is unavailable or nothing declares a backend — the core degrades honestly."""
+    try:
+        from ...targetgen import target_registry
+    except Exception:  # noqa: BLE001 — targetgen optional; no OOT discovery without it
+        return []
+    try:
+        names = list(target_registry.external_targets())
+    except Exception:  # noqa: BLE001 — a malformed search path must not break the registry
+        return []
+    out: list[tuple[str, Path]] = []
+    for name in names:
+        try:
+            plugin = target_registry.resolve(name).plugin()
+        except Exception:  # noqa: BLE001 — skip a package whose contract will not parse
+            continue
+        rel = plugin.get("backend")
+        root = plugin.get("path")
+        if not rel or not root:
+            continue
+        path = Path(root) / rel
+        if path.is_file():
+            out.append((name, path))
+    return out
+
+
+def _load_oot_backend(name: str, path: Path) -> None:
+    """Import an OOT backend module by file path (under a stable synthetic module name) so its
+    module-level ``register(...)`` runs. Idempotent: a module already loaded is left as-is. The module's
+    ``BackendInfo.module`` is its own ``__name__`` (this synthetic name), so ``get_backend`` re-resolves
+    it from ``sys.modules`` without the core knowing the package layout."""
+    modname = f"merlin._oot_backends.{name}"
+    if modname in sys.modules:
+        return
+    spec = importlib.util.spec_from_file_location(modname, path)
+    if spec is None or spec.loader is None:
+        return
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[modname] = module
+    try:
+        spec.loader.exec_module(module)  # runs the module's register(...) self-registration
+    except Exception:  # noqa: BLE001 — a backend with missing deps just does not register
+        sys.modules.pop(modname, None)
+
+
+def _ensure_oot_discovered() -> None:
+    """Load OOT backend modules for the current ``MERLIN_TARGET_PATH``. Re-scans only when the env value
+    changes (cheap no-op otherwise); registration is idempotent, so repeated scans are harmless. Note:
+    a backend that has already self-registered stays registered even if the env is later cleared (Python
+    cannot un-import it) — a fresh process is the clean way to observe the env-unset state."""
+    global _oot_env_seen
+    key = os.environ.get("MERLIN_TARGET_PATH", "")
+    if key == _oot_env_seen:
+        return
+    _oot_env_seen = key
+    for name, path in _oot_backend_modules():
+        _load_oot_backend(name, path)
 
 
 @runtime_checkable
