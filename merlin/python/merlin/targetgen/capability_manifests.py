@@ -368,12 +368,23 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
         units = [{"name": f"{kind_hint}_unit", "kind": kind_hint, "ops": ["matmul"]}]
         manifest["compute_units"] = units
     primary = units[0]
-    # Ground the primary unit's storage dtype from the datapath fact, AUGMENTING (never dropping) any
-    # human-reviewed formats the residual declared — a multi-format unit's reviewed matrix is richer
-    # than the single primary datapath facts can ground.
-    declared = list(dict.fromkeys([*(primary.get("dtypes") or []), *(d for d in _storage if d)]))
-    if declared:
-        primary["dtypes"] = declared
+    # Ground each compute unit's INPUT dtypes from mlc's GENERAL datapath-dtype extractor — target-agnostic
+    # for ANY target (typed MAC-mesh/FPU + spatial OPU), it reproduces the OPU-specific facts value and also
+    # grounds systolic/FPU cores. It is PREFERRED over the OPU-only ``_spatial_datapaths_from_fields`` /
+    # systolic ``_datapaths_from_facts`` storage, which stays the FALLBACK for the primary unit when mlc is
+    # unavailable or the target is unsupported (``compute_unit_dtypes`` returns None) — so nothing regresses.
+    # The extractor is keyed by unit; its per-unit lists map positionally onto the residual's compute_units
+    # (a structural correspondence, not a literal name table — the primary unit takes the primary datapath).
+    from .rtl import mlc_bridge as _mlc_bridge   # lazy: mlc access is guarded/context-managed inside
+    _ext_lists = list((_mlc_bridge.compute_unit_dtypes(name) or {}).values())
+    for _i, _unit in enumerate(units):
+        # extractor dtypes (positional) win; the fact-bundle storage is the primary unit's fallback.
+        _src = _ext_lists[_i] if _i < len(_ext_lists) else (_storage if _i == 0 else [])
+        # AUGMENT (never drop) any human-reviewed formats the residual declared — a multi-format unit's
+        # reviewed matrix can be richer than a single grounded datapath.
+        _declared = list(dict.fromkeys([*(_unit.get("dtypes") or []), *(d for d in _src if d)]))
+        if _declared:
+            _unit["dtypes"] = _declared
     if accumulate and not primary.get("accumulate"):
         primary["accumulate"] = accumulate      # the (in,weight)->acc matrix is a datapath fact
 

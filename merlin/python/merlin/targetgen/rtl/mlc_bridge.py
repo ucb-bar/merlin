@@ -122,15 +122,44 @@ def opu_artifact_paths(target: str) -> dict | None:
     the target is not a known mlc arc target — an honest fallback, never a guessed path.
 
     Only mlc's lightweight ``discover.fingerprint`` is imported (pure pathlib; no circt binary), so OPU
-    fact extraction works even when the full ``mlc_available`` gate (circt-opt built) is not met."""
+    fact extraction works even when the full ``mlc_available`` gate (circt-opt built) is not met — and
+    mlc is imported by-path for this call only (context-managed) so it grounds even when mlc is a sibling
+    checkout rather than a pip-installed package."""
     d = mlc_dir()
     if d is None:
         return None
     try:
-        from mlc.discover.fingerprint import artifact_paths
-        return {k: Path(v) for k, v in artifact_paths(target, base=d).items()}
+        with _mlc_importable(d):
+            from mlc.discover.fingerprint import artifact_paths
+            return {k: Path(v) for k, v in artifact_paths(target, base=d).items()}
     except Exception:  # noqa: BLE001 — unknown target / mlc layout skew ⇒ honest unavailable
         return None
+
+
+def compute_unit_dtypes(target: str) -> dict | None:
+    """Per-compute-unit INPUT dtype map ``{unit_name: [dtype, ...]}`` for ANY target, DERIVED structurally
+    from the RTL facts by mlc's GENERAL datapath-dtype extractor
+    (:func:`mlc.discover.datapath_dtypes.compute_unit_dtypes_detail` — typed MAC-mesh/FPU + spatial OPU
+    families, no per-target ``if``). This is the general lift of the OPU-only dtype code that grounded
+    only saturn_opu; it reproduces that same value (``saturn_opu -> [int8, fp8_e4m3, fp8_e5m2]``) and also
+    grounds gemmini (``[int8]``) / atlas (``[fp8_e4m3]``) / an FPU core (``[fp16, f32, f64]``).
+
+    Returns ``None`` — an honest fallback the caller degrades to the existing behavior on — when mlc is
+    unresolvable OR the extractor reports the target's facts carry no derivable compute datapath
+    (``supported=False``); never a fabricated dtype. mlc is imported by-path for this call only
+    (context-managed; never a global sys.path insert that would flip ``mlc_available`` process-wide)."""
+    d = mlc_dir()
+    if d is None:
+        return None
+    try:
+        with _mlc_importable(d):
+            from mlc.discover.datapath_dtypes import compute_unit_dtypes_detail
+            detail = compute_unit_dtypes_detail(target, base=d)
+    except Exception:  # noqa: BLE001 — mlc absent / layout skew ⇒ honest unavailable, never a guess
+        return None
+    if not detail.get("supported"):
+        return None
+    return {u["unit"]: u["dtypes"] for u in detail.get("units", [])}
 
 
 def discover_legal_opcodes(target: str, *, opcode_width: int | None = None) -> dict:
@@ -1114,6 +1143,44 @@ def _main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(_main())
+
+
+@contextmanager
+def _mlc_importable(d=None):
+    """Make ``mlc`` importable for the duration of THIS call ONLY, by inserting its dir on ``sys.path``
+    iff ``mlc`` is not already importable (restored on exit). Deliberately NOT a global/module-level
+    insert: a permanent insert flips :func:`mlc_available` True process-wide and un-skips the heavy
+    mlc-gated tests (a known regression). This lets a machine with mlc as an external sibling checkout
+    (resolved via ``MERLIN_MLC_DIR``, not pip-installed) still import mlc's pure-Python discovery — the
+    same context-managed pattern as ``program_oracle._mlc_importable``.
+
+    Restoring ``sys.path`` alone is NOT enough: the modules imported inside the block stay cached in
+    ``sys.modules``, so ``import mlc`` (and thus :func:`mlc_available`) would keep succeeding process-wide
+    afterward, re-introducing the exact un-skip regression this context manager exists to avoid. So when
+    WE made mlc importable, we also drop the ``mlc`` modules loaded during the block on exit, leaving the
+    interpreter in its pre-call state (a truly scoped import)."""
+    import importlib.util
+    import sys
+    d = d if d is not None else mlc_dir()
+    added = None
+    before: frozenset[str] = frozenset()
+    if d is not None and importlib.util.find_spec("mlc") is None:
+        added = str(d)
+        sys.path.insert(0, added)
+        before = frozenset(sys.modules)
+    try:
+        yield
+    finally:
+        if added is not None:
+            try:
+                sys.path.remove(added)
+            except ValueError:
+                pass
+            # Drop mlc modules loaded during the block so ``import mlc`` does not keep resolving from the
+            # module cache after the path entry is gone (which would flip mlc_available() True process-wide).
+            for name in [n for n in sys.modules if n == "mlc" or n.startswith("mlc.")]:
+                if name not in before:
+                    del sys.modules[name]
 
 
 @contextmanager
