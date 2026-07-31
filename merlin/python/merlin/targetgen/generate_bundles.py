@@ -120,15 +120,62 @@ def _dump_manifest(manifest: dict[str, Any]) -> str:
     return header + yaml.safe_dump(manifest, sort_keys=False, default_flow_style=False, width=120)
 
 
+def _grant_txt(manifest: dict[str, Any], key: str) -> str:
+    """The bundle's allow/deny path list as a newline file (the ``allowed_files.txt`` / ``denied_files.txt``
+    the sandbox + graders read) — DERIVED verbatim from the manifest's ``allowed``/``denied`` path set."""
+    paths = [e["path"] for e in manifest.get(key, []) if isinstance(e, dict) and e.get("path")]
+    return "\n".join(paths) + ("\n" if paths else "")
+
+
+def _materialize_prompt_and_grants(te: TargetExperiment, bdir, bundle_id: str, variant: str,
+                                   manifest: dict[str, Any], cap, written: list) -> None:
+    """Emit the derivable, non-manifest bundle files IDEMPOTENTLY (never overwrite a file that already
+    exists, so hand-authored bundles — e.g. gemmini's committed prompts — are untouched):
+      * ``STARTER_PROMPT.md`` — the target-general task prompt (``generate_prompt.render_prompt``); passed
+        the bundle STEM as the arm so the assisted/CIRCT arms get their seam menu (``_is_assisted_arm``
+        keys on the ``merlin_assisted`` substring, which the stem — not the short arm key — carries).
+      * ``allowed_files.txt`` / ``denied_files.txt`` — the manifest's allow/deny path lists.
+    ``cap`` is the target's capability manifest (or ``None`` if it could not be loaded — then the prompt is
+    skipped with the grants still written)."""
+    from pathlib import Path
+    bdir = Path(bdir)
+    stem = bundle_id[: -(len(variant) + 1)] if bundle_id.endswith("_" + variant) else bundle_id
+    # hwbringup bundles are the REALISTIC experiment's info set; anything else renders at full scope.
+    experiment = "realistic" if variant.startswith("hwbringup") else "full"
+
+    def _w(name: str, text: str) -> None:
+        p = bdir / name
+        if not p.exists():
+            p.write_text(text)
+            written.append(p)
+
+    if cap is not None:
+        from .generate_prompt import render_prompt
+        _w("STARTER_PROMPT.md", render_prompt(te, cap, experiment, stem))
+    _w("allowed_files.txt", _grant_txt(manifest, "allowed"))
+    _w("denied_files.txt", _grant_txt(manifest, "denied"))
+
+
 def materialize_bundles(te: TargetExperiment, dest, *,
                         variants: tuple[str, ...] = ("hwbringup_v0",)) -> list["Path"]:
-    """Write every generated bundle's ``input_bundle_manifest.yaml`` under ``dest/<bundle_id>/``, for each
-    requested ``variant``. Target-agnostic: works for any descriptor. Returns the written manifest paths.
+    """Write every generated bundle under ``dest/<bundle_id>/`` for each requested ``variant``:
+    ``input_bundle_manifest.yaml`` (always, overwritten — the manifest is fully generated) plus the
+    derivable non-manifest files (``STARTER_PROMPT.md`` + ``allowed/denied_files.txt``) written only when
+    ABSENT so hand-authored bundles stay untouched. Target-agnostic. Returns the written paths.
 
     ``dest`` is typically ``experiments/<exp>/input_bundles`` — the same tracked location the launcher and
     ``require_scaffolding`` read (bundles are curated inputs, not ``out/`` generated output)."""
     from pathlib import Path
     dest = Path(dest)
+    # The capability manifest (needed to render STARTER_PROMPT.md) is target-level; load it once and
+    # degrade honestly if unavailable (e.g. mlc absent) — manifests + grant files are still written.
+    try:
+        from .target_experiment import load_capability_manifest
+        cap = load_capability_manifest(te.target)
+    except Exception as e:  # noqa: BLE001 — no capability manifest -> skip prompt, keep the rest
+        cap = None
+        print(f"  note: capability manifest for {te.target!r} unavailable ({type(e).__name__}: {e}); "
+              f"STARTER_PROMPT.md not rendered (manifests + grant files still written).")
     written: list[Path] = []
     for variant in variants:
         for bundle_id, manifest in generate_bundles(te, variant=variant).items():
@@ -137,6 +184,7 @@ def materialize_bundles(te: TargetExperiment, dest, *,
             out = bdir / "input_bundle_manifest.yaml"
             out.write_text(_dump_manifest(manifest))
             written.append(out)
+            _materialize_prompt_and_grants(te, bdir, bundle_id, variant, manifest, cap, written)
     return written
 
 

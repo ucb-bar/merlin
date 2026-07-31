@@ -223,7 +223,7 @@ Make **every** public/dev capsule under the declared corpus pass. Families are d
 Read each capsule's `capsule.yaml` + `capsule.interface.mlir` for its op/shapes/dtypes/epilogue, and the
 target-agnostic contracts (`command_buffer_abi.yaml`, `interface_grammar.md`, the command-buffer schema).
 Derive everything (rounding, tiling, dtypes, im2col, padding) from the contract + the target's own docs
-below — nothing is restated here. The numeric `golden.yaml` is withheld; iterate against the QA gate.
+below — nothing is restated here. The numeric reference golden is withheld; iterate against the QA gate.
 Build ONE general backend for every family — do not special-case individual capsules.
 
 ## Deliverable (write into `submission/`)
@@ -259,7 +259,7 @@ each `capsule.interface.mlir`, and confirm the emitted `command_buffer.json` val
 command-buffer schema and your lowered artifact looks right.
 
 ## Hard rules (integrity)
-- `integrity_exempt: false`; no `import merlin` / `merlin.runtime.reference` / `reference_outputs`.
+- `integrity_exempt: false`; no `import merlin`, no `merlin.runtime.reference` calls, no baked-in reference outputs.
 - **Compute must be compiler-GENERATED, never an authored/library kernel.** No hand C compute kernels, no
   copying/calling the target's high-level device libraries as the answer — your passes generate the code.
 - Never hardcode/embed outputs (hidden capsules run after you freeze). One general backend.

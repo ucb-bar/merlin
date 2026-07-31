@@ -9,12 +9,12 @@ allowed:
 - path: merlin/contract/
   mode: ro
   note: frozen ABI v0.1
-- path: merlin/contract/capsules/isa/
+- path: merlin/contract/capsules/atlas/isa/
   mode: ro
   note: capsule corpus
-- path: merlin/contract/capsules/layers/
+- path: merlin/contract/capsules/atlas/layers/
   mode: ro
-- path: merlin/contract/capsules/model_slices/
+- path: merlin/contract/capsules/atlas/model_slices/
   mode: ro
 - path: experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/isa_include/atlas_isa_green_card.md
   mode: ro
@@ -38,7 +38,7 @@ allowed:
 denied:
 - path: merlin/
   reason: Merlin internals (no tools for the raw arm)
-- path: merlin/contract/capsules/hidden/
+- path: merlin/contract/capsules/atlas/hidden/
   reason: hidden capsules + goldens
 - path: experiments/capsule_bench/targets/atlas/input_bundles/grader_private_v0/
   reason: grader-private
