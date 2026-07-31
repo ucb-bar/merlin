@@ -141,22 +141,46 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     messages = [{"role": "user", "content": [{"text": task + feedback +
                  "\n\nYour workspace is the current directory. Begin now."}]}]
 
-    cli = boto3.client("bedrock-runtime", region_name=os.environ.get("AWS_REGION", "us-east-1"))
+    from botocore.config import Config as _BotoConfig
+    # A large generation can exceed boto3's default 60s read timeout mid-stream (observed:
+    # ReadTimeoutError truncating a round). Give converse a generous read timeout + SDK-level retries so
+    # a transient network/throttle blip doesn't end an otherwise-productive round.
+    cli = boto3.client("bedrock-runtime", region_name=os.environ.get("AWS_REGION", "us-east-1"),
+                       config=_BotoConfig(read_timeout=300, connect_timeout=15,
+                                          retries={"max_attempts": 5, "mode": "adaptive"}))
     emit({"type": "system", "subtype": "init", "model": mid, "round": rnd})
     deadline = time.time() + timeout
     rc = 0
+
+    def _transient(exc: Exception) -> bool:
+        s = f"{type(exc).__name__} {exc}".lower()
+        return any(w in s for w in ("readtimeout", "connect", "timeout", "throttl",
+                                    "too many", "503", "500", "serviceunavailable"))
     try:
         for it in range(max_iters):
             if time.time() > deadline:
                 rc = 124
                 break
-            try:
-                resp = cli.converse(modelId=mid, system=system, messages=messages, toolConfig=_TOOLS,
-                                    inferenceConfig={"maxTokens": max_tokens, "temperature": 0})
-            except Exception as e:  # noqa: BLE001 — 429/throttle/etc. end the round honestly
-                emit({"type": "result", "subtype": "error", "is_error": True,
-                      "result": f"{type(e).__name__}: {str(e)[:300]}"})
-                rc = 1
+            resp = None
+            for attempt in range(4):  # extra loop-level retries on transient errors the SDK didn't absorb
+                if time.time() > deadline:
+                    rc = 124
+                    break
+                try:
+                    resp = cli.converse(modelId=mid, system=system, messages=messages, toolConfig=_TOOLS,
+                                        inferenceConfig={"maxTokens": max_tokens, "temperature": 0})
+                    break
+                except Exception as e:  # noqa: BLE001
+                    if _transient(e) and attempt < 3:
+                        emit({"type": "system", "subtype": "retry", "attempt": attempt + 1,
+                              "error": f"{type(e).__name__}: {str(e)[:160]}"})
+                        time.sleep(min(30, 5 * (attempt + 1)))
+                        continue
+                    emit({"type": "result", "subtype": "error", "is_error": True,
+                          "result": f"{type(e).__name__}: {str(e)[:300]}"})
+                    rc = 1
+                    break
+            if resp is None:  # deadline hit or non-recoverable error during the retry loop
                 break
             u = resp.get("usage", {})
             out_msg = resp["output"]["message"]
