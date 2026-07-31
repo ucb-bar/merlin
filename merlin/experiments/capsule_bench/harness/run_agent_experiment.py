@@ -53,10 +53,16 @@ def assemble_workspace(bundle: dict, ws: Path) -> list[str]:
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "submission").mkdir(exist_ok=True)
     for entry in bundle.get("allowed", []):
+        # Grants are repo-root-relative with the documented ``experiments/... resolves under merlin/``
+        # shorthand — resolve exactly as the sandbox binder does so both stay in lockstep.
         src = C.REPO / entry["path"]
         if not src.exists():
+            src = C.REPO / "merlin" / entry["path"]
+        if not src.exists():
             continue
-        dst = ws / Path(entry["path"]).name
+        # Honor an explicit ``as:`` alias (e.g. hwbringup set mounted as ``<target>/``) so the workspace
+        # entry matches the name the prompt tells the agent to read; else fall back to the basename.
+        dst = ws / (entry.get("as") or Path(entry["path"]).name)
         if dst.exists() or dst.is_symlink():
             dst = ws / entry["path"].replace("/", "_").rstrip("_")
         try:

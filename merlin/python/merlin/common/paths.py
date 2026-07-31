@@ -27,6 +27,26 @@ def merlin_dir() -> Path:
     return repo_root() / "merlin"
 
 
+def resolve_grant(rel: str) -> Path:
+    """Resolve a bundle-convention grant path string to an absolute host path.
+
+    Grant paths in target descriptors / bundle manifests are repo-root-relative by convention, with
+    one documented shorthand: a leading ``experiments/...`` (and other in-``merlin/`` trees) "resolves
+    under ``merlin/``" — i.e. the ``merlin/`` prefix may be elided. This resolver honors that: it prefers
+    ``<repo>/<rel>`` when that exists, else falls back to ``<repo>/merlin/<rel>`` when THAT exists, else
+    returns ``<repo>/<rel>`` (the caller's existence check then treats it as missing). Keeps the sandbox
+    binder (``bwrap``) and the workspace assembler in lockstep so a granted path is never silently
+    dropped by one but honored by the other.
+    """
+    root = repo_root() / rel
+    if root.exists():
+        return root
+    under_merlin = merlin_dir() / rel
+    if under_merlin.exists():
+        return under_merlin
+    return root
+
+
 def data_path(*parts: str) -> Path:
     """Resolve bundled read-only package data (``schemas/``, ``prompts/``, …).
 

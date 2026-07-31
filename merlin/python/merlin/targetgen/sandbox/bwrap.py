@@ -64,14 +64,24 @@ def base_argv(ws: Path, bundle: dict, *, repo: Path | None = None) -> list[str]:
         except PermissionError:
             return "dir"
 
+    def _resolve_grant(rel: str) -> Path:
+        # Bundle-convention grants are repo-root-relative, with a documented shorthand: an
+        # ``experiments/...`` grant "resolves under merlin/". Prefer <repo>/<rel>, fall back to
+        # <repo>/merlin/<rel>, so a path that only exists under merlin/ is bound (not silently dropped).
+        p = repo / rel
+        if _kind(p) != "missing":
+            return p
+        q = repo / "merlin" / rel
+        return q if _kind(q) != "missing" else p
+
     for entry in bundle.get("allowed", []):
-        p = repo / entry["path"]
+        p = _resolve_grant(entry["path"])
         if _kind(p) != "missing":
             parts += ["--ro-bind", str(p), str(p)]
     # Deny wins: tmpfs-mask every denied DIR after the allowed binds, so a broad allow (e.g. all of
     # merlin/contract/) cannot expose a denied sub-path (e.g. capsules/hidden/).
     for d in bundle.get("denied", []):
-        p = repo / d["path"]
+        p = _resolve_grant(d["path"])
         k = _kind(p)
         if k == "dir":
             parts += ["--tmpfs", str(p)]
