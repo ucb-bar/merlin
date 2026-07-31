@@ -23,22 +23,35 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from merlin.common.paths import repo_root
+from merlin.common.paths import artifacts_dir, repo_root
 
 _REPO = repo_root()
 _LLVM = _REPO / "third_party" / "llvm-install"
 _T2I = _LLVM / "bin" / "tblgen-to-irdl"
 _MLIROPT = _LLVM / "bin" / "mlir-opt"
-# the contract's reference ODS (mirrors merlin/contract/interface_grammar.md); used only to DERIVE the IRDL
-_REF_ODS_INC = _REPO / "out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot/mlir_oot/include"
 # merlin_iface is the SHARED contract dialect (not target-specific) — its pinned spec lives next to
 # interface_grammar.md in merlin/contract/, NOT under a per-target dir.
 _DEFAULT_OUT = _REPO / "merlin/contract/merlin_iface.irdl.mlir"
 _CAPSULES = _REPO / "merlin/contract" / "capsules"
 
 
-def generate(out: Path) -> Path:
+def _discover_ref_ods_inc() -> Path:
+    """Locate the reference ``merlin_iface`` ODS include dir. Because ``merlin_iface`` is the SHARED
+    contract dialect, ANY target's OOT package that ships ``MerlinIface/MerlinIfaceOps.td`` serves as
+    the reference to DERIVE the IRDL from — we take the first match under the generated targets tree
+    (deterministic, sorted). Override with ``--ref-ods``."""
+    base = artifacts_dir() / "targets"
+    for td in sorted(base.rglob("MerlinIface/MerlinIfaceOps.td")):
+        return td.parent.parent  # .../mlir_oot/include
+    raise FileNotFoundError(
+        f"no MerlinIface/MerlinIfaceOps.td found under {base}; build an OOT package first "
+        f"(merlin-targetgen) or pass --ref-ods <mlir_oot/include>.")
+
+
+def generate(out: Path, ref_ods_inc: Path | None = None) -> Path:
     """tblgen-to-irdl on the reference ODS + normalize -> canonical merlin_iface.irdl.mlir."""
+    ref_ods_inc = ref_ods_inc or _discover_ref_ods_inc()
+    _REF_ODS_INC = ref_ods_inc
     td = _REF_ODS_INC / "MerlinIface" / "MerlinIfaceOps.td"
     raw = subprocess.run(
         [str(_T2I), str(td), "-I", str(_REF_ODS_INC), "-I", str(_LLVM / "include"),
@@ -74,9 +87,12 @@ def verify(irdl: Path) -> tuple[int, int, list[str]]:
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(_DEFAULT_OUT))
+    ap.add_argument("--ref-ods", default=None,
+                    help="reference merlin_iface ODS include dir (mlir_oot/include); "
+                         "auto-discovered from any OOT package under out/artifacts/targets if omitted")
     ap.add_argument("--verify", action="store_true", help="parse every capsule via the generated IRDL")
     a = ap.parse_args(argv)
-    out = generate(Path(a.out))
+    out = generate(Path(a.out), Path(a.ref_ods) if a.ref_ods else None)
     nops = out.read_text().count("irdl.operation")
     print(f"wrote {out} ({out.read_text().count(chr(10))} lines, {nops} ops)")
     if a.verify:
