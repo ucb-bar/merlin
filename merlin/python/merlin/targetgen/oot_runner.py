@@ -241,10 +241,34 @@ def _resolve_argv(pkg: Package, name: str, input_mlir: Path, output_json: Path |
     return out
 
 
+def _needs_interpreter(pkg: Package, argv: list[str]) -> bool:
+    """True iff argv[0] is the package's own Python tool declared as a bare path without the execute
+    bit — a very common shape (``language: python`` + ``argv: ["{tool}", ...]`` written 0644). Exec'ing
+    such a path directly raises PermissionError; run it through the interpreter instead. Only fires when
+    argv[0] IS the tool (not an interpreter the package already prepended) and the tool is a real,
+    non-executable ``.py``/py-shebang file — so a compiled binary or a chmod+x script is untouched."""
+    if not argv or argv[0] != str(pkg.tool):
+        return False
+    tool = pkg.tool
+    try:
+        if not tool.is_file() or (tool.stat().st_mode & 0o111):
+            return False  # missing, or already executable — leave as-is
+    except OSError:
+        return False
+    if pkg.language.lower() == "python" or tool.suffix == ".py":
+        return True
+    try:
+        return tool.open("rb").readline(2) == b"#!" and b"python" in tool.open("rb").readline(128)
+    except OSError:
+        return False
+
+
 def run_entrypoint(pkg: Package, name: str, input_mlir: Path,
                    output_json: Path | None = None, *, timeout: int = 600) -> subprocess.CompletedProcess:
     """Invoke one entrypoint as a subprocess (never imports the package)."""
     argv = _resolve_argv(pkg, name, input_mlir, output_json)
+    if _needs_interpreter(pkg, argv):
+        argv = [sys.executable, *argv]
     return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
 
 
