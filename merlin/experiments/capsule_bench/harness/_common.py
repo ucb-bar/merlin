@@ -97,5 +97,22 @@ def require_scaffolding() -> None:
             f"Only descriptor-driven steps (bundle generation, governance checks) work without them.")
 
 
+def experiment_conditions() -> list[str]:
+    """The A/B experiment (hw-bringup) conditions this target actually ships, DERIVED from the
+    materialized bundle dirs rather than hardcoded — gemmini ships ``{hwbringup_v0,
+    hwbringup_nokernel_v0}``; a target with no no-kernel variant (e.g. atlas) ships ``{hwbringup_v0}``.
+    A bundle dir is ``<arm>_<cond>`` and the launcher's condition family is exactly the ``hwbringup*``
+    set (``launch_ab_batch._bundle_for`` keys on ``*_hwbringup_v0``); ``public_v0`` / ``realistic_v0``
+    are release/other variants the A/B run does not launch, so they are intentionally excluded from the
+    governance gates. Arm-name-independent (extracts the condition from ``hwbringup`` onward), so the
+    ``merlin_assisted`` / ``merlin_assisted_rtlchecks`` prefix overlap does not matter."""
+    conds: set[str] = set()
+    for d in BUNDLES.glob("*_hwbringup*"):
+        i = d.name.find("hwbringup")
+        if i > 0 and d.is_dir() and (d / "input_bundle_manifest.yaml").is_file():
+            conds.add(d.name[i:])
+    return sorted(conds) or ["hwbringup_v0"]
+
+
 __all__ = ["REPO", "EXP", "HARNESS", "TARGET", "RUNS", "REPORTS", "BUNDLES", "sh", "hash_tree",
-           "repo_sha", "require_scaffolding", "SOURCED_EXPERIMENT_ENV"]
+           "repo_sha", "require_scaffolding", "experiment_conditions", "SOURCED_EXPERIMENT_ENV"]

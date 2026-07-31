@@ -36,7 +36,10 @@ BUNDLES = EXP / "input_bundles"
 # arms that exist as bundles, and which tooling each should/shouldn't have
 MERLIN_ARMS = ["merlin_assisted", "merlin_assisted_rtlchecks"]
 CIRCT_ARM = "merlin_assisted_rtlchecks"
-CONDITIONS = ["hwbringup_v0", "hwbringup_nokernel_v0"]
+# hw-bringup conditions DERIVED from the target's materialized bundles (gemmini ships kernel+nokernel;
+# atlas ships kernel-only) — not a hardcoded gemmini set, so the moat/parity/grant checks run over
+# exactly the conditions this target actually launches.
+CONDITIONS = C.experiment_conditions()
 
 # ---- check 1: forbidden answer-content patterns in shipped source/prompts -------------------------
 ANSWER_PATTERNS = {

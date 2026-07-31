@@ -189,9 +189,11 @@ def test_verify_no_cheat():
 # ---- F. bundle integrity --------------------------------------------------------------------------
 def test_bundles():
     section("F. bundle integrity (6 bundles parse; prompt APIs import)")
+    # conditions DERIVED from the target's materialized bundles (gemmini kernel+nokernel; atlas
+    # kernel-only) — not a hardcoded gemmini set.
     expected = [f"{arm}_{cond}" for arm in
                 ("raw_baseline", "merlin_assisted", "merlin_assisted_rtlchecks")
-                for cond in ("hwbringup_v0", "hwbringup_nokernel_v0")]
+                for cond in C.experiment_conditions()]
     missing = [b for b in expected if not (BUNDLES / b / "STARTER_PROMPT.md").is_file()]
     _ok("all 6 bundles present with prompts", not missing, f"missing={missing}")
     for b in expected:
