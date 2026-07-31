@@ -52,12 +52,14 @@ DEFAULT_RTL_FACTS: dict[str, Any] = {
 from .rtl.facts import load_facts
 
 
-def load_default_facts() -> dict[str, Any]:
-    """Prefer the deterministic CIRCT-extracted facts (regenerated from the RTL on demand); fall back
-    to the curated DEFAULT_RTL_FACTS. Flattens to the {mesh, scratchpad_bytes, legal_funct} shape here."""
+def load_default_facts(target: str) -> dict[str, Any]:
+    """Prefer the deterministic CIRCT-extracted facts for ``target`` (regenerated from the RTL on
+    demand); fall back to the curated DEFAULT_RTL_FACTS. Flattens to the
+    {mesh, scratchpad_bytes, legal_funct} shape here. ``target`` is REQUIRED — the facts are the run's
+    resolved target's facts, never an assumed default."""
     facts = dict(DEFAULT_RTL_FACTS)
     try:
-        rec = load_facts("gemmini")
+        rec = load_facts(target)
         f = rec.get("facts", rec)
         mesh = next((a for a in f.get("arrays", []) if a["name"] == "mesh"), None)
         if mesh:
@@ -467,14 +469,15 @@ def _check_config_before_use(trace: dict) -> Check:
 
 # ----------------------------------------------------------------------------------- public API
 def screen(trace: dict, capsule: dict | None = None,
-           rtl_facts: dict | None = None) -> CheckReport:
+           rtl_facts: dict | None = None, *, target: str) -> CheckReport:
     """Run the Phase-0 T0 checks over a decoded trace; return an advisory :class:`CheckReport`.
 
     Pure function: no simulation, no frozen-runner imports, no verdict mutation. ``trace`` is a
     ``rocc_decode`` output dict; ``capsule`` is a loaded capsule.yaml dict (for declared
-    shapes/modes); ``rtl_facts`` defaults to the deterministic CIRCT-extracted facts.
+    shapes/modes); ``target`` is REQUIRED and selects the base RTL facts (the run's resolved target,
+    via :func:`load_default_facts`); ``rtl_facts`` optionally OVERRIDES specific fact keys on top.
     """
-    facts = load_default_facts()
+    facts = load_default_facts(target)
     if rtl_facts:
         facts.update(rtl_facts)
     rep = CheckReport(
@@ -499,6 +502,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="RTL-derived cheap checks over a decoded RoCC trace "
                                              "(advisory / un-wired)")
     ap.add_argument("trace", help="path to instruction_trace.json (rocc_decode output)")
+    ap.add_argument("--target", required=True,
+                    help="target whose RTL facts the checks are screened against")
     ap.add_argument("--capsule", default=None, help="path to capsule.yaml (declared shapes/modes)")
     ap.add_argument("--rtl-facts", default=None, help="optional JSON file overriding RTL facts")
     ap.add_argument("--out", default=None)
@@ -513,7 +518,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.rtl_facts:
         facts = json.loads(Path(a.rtl_facts).read_text(encoding="utf-8"))
 
-    rep = screen(trace, capsule, facts)
+    rep = screen(trace, capsule, facts, target=a.target)
     out = json.dumps(rep.to_dict(), indent=2)
     if a.out:
         Path(a.out).write_text(out, encoding="utf-8")

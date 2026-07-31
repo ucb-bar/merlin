@@ -1113,7 +1113,8 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 from merlin.targetgen import circt_gate as _GATE
                 _glog: list = []
-                adapters = {t: _GATE.gated_adapter(adp, log=_glog) for t, adp in adapters.items()}
+                adapters = {t: _GATE.gated_adapter(adp, log=_glog, target=_te_ck.target)
+                            for t, adp in adapters.items()}
                 (run_dir / "circt_gate_log.jsonl").write_text("")  # reset; appended after grade
                 print(f"[verilator attempt {attempt}] CIRCT sim-skip gate ACTIVE (reject ⇒ skip sim)")
             except Exception as e:

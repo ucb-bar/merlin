@@ -67,14 +67,14 @@ def test_circt_facts_reproduce_contract_and_decode_table():
 
 # ------------------------------------------------------------------------------- Python screen() checks
 def test_screen_passes_good_single_tile():
-    rep = RC.screen(_good_single_tile_trace(), _matmul_capsule())
+    rep = RC.screen(_good_single_tile_trace(), _matmul_capsule(), target="gemmini")
     assert rep.verdict == "ok", [c.to_dict() for c in rep.checks if c.status == "fail"]
 
 
 def test_screen_catches_illegal_funct():
     t = _good_single_tile_trace()
     t["instructions"].append({"index": 99, "class": "UNKNOWN", "funct": 99, "decoded": {}})
-    rep = RC.screen(t, _matmul_capsule())
+    rep = RC.screen(t, _matmul_capsule(), target="gemmini")
     fails = {c.id for c in rep.checks if c.status == "fail"}
     assert "T0.decode_funct_legal" in fails and rep.verdict == "reject"
 
@@ -82,7 +82,7 @@ def test_screen_catches_illegal_funct():
 def test_screen_catches_over_commit_tiles():
     t = _good_single_tile_trace()
     t["instructions"].append({"index": 50, "class": "MVOUT", "funct": 3, "decoded": {}})  # 2 != 1 tile
-    rep = RC.screen(t, _matmul_capsule(16, 16, 16))
+    rep = RC.screen(t, _matmul_capsule(16, 16, 16), target="gemmini")
     assert "T0.tile_coverage" in {c.id for c in rep.checks if c.status == "fail"}
 
 
@@ -90,21 +90,21 @@ def test_screen_catches_over_capacity_spad():
     t = _good_single_tile_trace()
     t["instructions"].append({"index": 51, "class": "MVIN", "funct": 2,
                               "decoded": {"spad_addr": 10_000_000}})  # >> scratchpad rows
-    rep = RC.screen(t, _matmul_capsule())
+    rep = RC.screen(t, _matmul_capsule(), target="gemmini")
     assert "T0.spad_capacity" in {c.id for c in rep.checks if c.status == "fail"}
 
 
 def test_screen_catches_compute_before_preload():
     t = _trace([("CONFIG_EX", 0), ("CONFIG_LD", 0), ("MVIN", 2), ("CONFIG_ST", 0),
                 ("COMPUTE_PRELOADED", 4), ("PRELOAD", 6), ("MVOUT", 3)])  # compute precedes preload
-    rep = RC.screen(t, _matmul_capsule())
+    rep = RC.screen(t, _matmul_capsule(), target="gemmini")
     assert "T0.preload_before_compute" in {c.id for c in rep.checks if c.status == "fail"}
 
 
 def test_screen_catches_use_before_config():
     t = _trace([("CONFIG_EX", 0), ("MVIN", 2), ("PRELOAD", 6),
                 ("COMPUTE_PRELOADED", 4), ("MVOUT", 3)])  # MVOUT with no preceding CONFIG_ST
-    rep = RC.screen(t, _matmul_capsule())
+    rep = RC.screen(t, _matmul_capsule(), target="gemmini")
     assert "T0.config_before_use" in {c.id for c in rep.checks if c.status == "fail"}
 
 

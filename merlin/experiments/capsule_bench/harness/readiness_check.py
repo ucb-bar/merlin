@@ -144,7 +144,7 @@ def test_circt_gate():
             ran["n"] += 1
             return {"status": "pass"}
 
-        gated = gated_adapter(inner, log=[])
+        gated = gated_adapter(inner, log=[], target=TARGET)
         # the wrapped adapter must expose the sim-adapter signature the loop calls it with. (Its
         # reject-skips-sim / clean-runs-sim behavior was unit-validated separately; here we assert the
         # wiring + signature so the loop won't TypeError at runtime.)

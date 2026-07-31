@@ -42,9 +42,7 @@ merlin/python/merlin/kernels/cca_contract.py                 # CCA applicable-ba
 
 # ---------------------------------------------------------------- reference-target FACTS / package fallback in dev CLIs (gemmini is the reference; the CLI still takes --target)
 merlin/python/merlin/compile_cli.py                          # --target choice injection + help text (default OOT package now target-derived)
-merlin/python/merlin/targetgen/circt_gate.py                 # load_facts("gemmini") fallback — LOAD-BEARING: gated_adapter is called without facts by run_baseline_qa_loop/readiness_check
 merlin/python/merlin/targetgen/rocc_decode.py                # gemmini manifest/facts load at import (RoCC decode is gemmini-coupled: custom-3 .insn bit layouts)
-merlin/python/merlin/targetgen/rtl_checks.py                 # load_default_facts fallback — LOAD-BEARING: screen() calls it unconditionally, reached via circt_gate from run_baseline_qa_loop
 merlin/python/merlin/targetgen/rtl/introspect.py             # legacy chipyard-grep gemmini fallback introspector
 merlin/python/merlin/targetgen/capsule_runner.py             # gemmini-capsule-bench SUITE identity (npu_model model_ext fallback removed — model_ext now required from the contract)
 merlin/python/merlin/targetgen/capsule_grade.py              # gemmini-mlir-oot-capsule task label in the score dict

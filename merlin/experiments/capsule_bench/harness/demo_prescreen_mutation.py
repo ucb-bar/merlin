@@ -97,7 +97,7 @@ def prescreen_verdict(mlir: str, capsule: dict, fc: str | None):
     tr_ok = True
     if fc and cc["trace"]:
         tr_ok, _ = RUN.run_filecheck(fc, cc["trace"], RUN.render_trace(trace, FACTS), "TRACE")
-    rep = RC.screen(trace, capsule, CC._facts_to_rc(FACTS))
+    rep = RC.screen(trace, capsule, CC._facts_to_rc(FACTS), target=C.TARGET)
     verdict = "reject" if (tr_ok is False or rep.verdict == "reject") else (
         "warn" if rep.verdict == "warn" else "ok")
     ms = (time.perf_counter() - t0) * 1e3

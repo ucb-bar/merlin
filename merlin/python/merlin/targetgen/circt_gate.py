@@ -25,9 +25,14 @@ class CIRCTReject(Exception):
     (CIRCT-reject ⟹ would-fail), reached without paying the sim."""
 
 
-def gated_adapter(inner: Callable, *, log: list | None = None, facts: dict | None = None) -> Callable:
-    """Wrap a sim adapter with a CIRCT pre-screen. `log` (if given) collects per-call records."""
-    facts = facts or load_facts("gemmini")
+def gated_adapter(inner: Callable, *, log: list | None = None, target: str,
+                  facts: dict | None = None) -> Callable:
+    """Wrap a sim adapter with a CIRCT pre-screen. `log` (if given) collects per-call records.
+
+    `target` is REQUIRED: the structural screen evaluates the emitted trace against the RUN's resolved
+    target facts (`load_facts(target)`), never an assumed default. Callers pass the target they are
+    grading (e.g. the target-experiment's resolved target)."""
+    facts = facts or load_facts(target)
     rc_facts = None
     try:
         from .rtl_check_compiler import _facts_to_rc as _f2rc
@@ -40,7 +45,7 @@ def gated_adapter(inner: Callable, *, log: list | None = None, facts: dict | Non
         verdict = "ok"
         try:
             trace = RD.decode_text(llvm_text, source="circt_gate")
-            rep = RC.screen(trace, None, rc_facts)
+            rep = RC.screen(trace, None, rc_facts, target=target)
             verdict = rep.verdict  # 'ok' | 'warn' | 'reject'
         except Exception:
             verdict = "ok"  # screen must never block a legitimate run on its own error (fail-open here)

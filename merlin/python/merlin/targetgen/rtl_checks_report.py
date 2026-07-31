@@ -30,6 +30,7 @@ from typing import Any
 import yaml
 
 from . import rtl_checks
+from .rtl_check_runner import _target_of_run   # DERIVE a run's target from its run_manifest (no default)
 
 _REPO = repo_root()  # .../merlin
 # capsule.yaml definitions come from the corpus locator (canonical contract corpus + the perf corpus);
@@ -56,13 +57,14 @@ def _find_key(obj: Any, key: str) -> Any:
     return None
 
 
-def load_rtl_facts(contract_path: Path | None = None,
+def load_rtl_facts(target: str, contract_path: Path | None = None,
                    introspect_json: Path | None = None) -> dict:
-    """RTL facts (mesh + scratchpad) from the CIRCT-extracted fact bundle, with an optional
-    ``rtl/introspect.dump_facts`` JSON override. The mesh/scratchpad capacities are no longer
+    """RTL facts (mesh + scratchpad) for ``target`` from the CIRCT-extracted fact bundle, with an
+    optional ``rtl/introspect.dump_facts`` JSON override. The mesh/scratchpad capacities are no longer
     hand-declared in target_contract.yaml — they ARE the facts — so we read them from the same
-    fact bundle the codegen/decoder do (falling back to rtl_checks.DEFAULT_RTL_FACTS)."""
-    facts = rtl_checks.load_default_facts()
+    fact bundle the codegen/decoder do (falling back to rtl_checks.DEFAULT_RTL_FACTS). ``target`` is
+    the run's resolved target, never an assumed default."""
+    facts = rtl_checks.load_default_facts(target)
     if introspect_json and Path(introspect_json).is_file():
         ov = json.loads(Path(introspect_json).read_text(encoding="utf-8"))
         m = _find_key(ov, "mesh")
@@ -111,9 +113,10 @@ def _capsule_name_for(run_capsule_dir: Path) -> str:
 
 
 def screen_run(run_capsule_dir: Path, rtl_facts: dict, index: dict[str, Path],
-               write: bool = True) -> rtl_checks.CheckReport | None:
+               write: bool = True, *, target: str) -> rtl_checks.CheckReport | None:
     """Screen a single capsule run dir (the one holding capsule_result.json + generated/).
 
+    ``target`` is the run's resolved target (selects the base RTL facts the checks screen against).
     Returns the CheckReport (and writes rtl_checks.json beside capsule_result.json when ``write``),
     or None if there is no decoded trace to screen."""
     trace_path = run_capsule_dir / "generated" / "instruction_trace.json"
@@ -121,7 +124,7 @@ def screen_run(run_capsule_dir: Path, rtl_facts: dict, index: dict[str, Path],
         return None
     trace = json.loads(trace_path.read_text(encoding="utf-8"))
     capsule = _load_capsule(_capsule_name_for(run_capsule_dir), index)
-    rep = rtl_checks.screen(trace, capsule, rtl_facts)
+    rep = rtl_checks.screen(trace, capsule, rtl_facts, target=target)
     if write:
         (run_capsule_dir / "rtl_checks.json").write_text(
             json.dumps(rep.to_dict(), indent=2), encoding="utf-8")
@@ -139,24 +142,29 @@ def iter_run_capsule_dirs(root: Path):
 
 
 def screen_tree(root: Path, write: bool = True) -> list[tuple[str, rtl_checks.CheckReport]]:
-    facts = load_rtl_facts()
     index = build_capsule_index()
     out: list[tuple[str, rtl_checks.CheckReport]] = []
     for d in sorted(iter_run_capsule_dirs(root)):
-        rep = screen_run(d, facts, index, write=write)
+        # DERIVE each run's own target from its run_manifest — never assume one target for the tree.
+        target = _target_of_run(d)
+        rep = screen_run(d, load_rtl_facts(target), index, write=write, target=target)
         if rep is not None:
             out.append((d.name, rep))
     return out
 
 
 # ----------------------------------------------------------------------------- opt-in cost prescreen
-def prescreen(run_capsule_dir: Path) -> rtl_checks.CheckReport | None:
+def prescreen(run_capsule_dir: Path, target: str | None = None) -> rtl_checks.CheckReport | None:
     """Opt-in helper for a mining/codegen driver deciding whether to pay for an oracle run.
 
-    Returns a CheckReport; the caller MAY skip L2..L5 when ``rep.verdict == 'reject'``. Does not
-    write anything and never consults the frozen runner — the cost saving is purely the caller's
-    choice not to invoke the oracle."""
-    return screen_run(run_capsule_dir, load_rtl_facts(), build_capsule_index(), write=False)
+    ``target`` selects the RTL facts; when omitted it is DERIVED from the run's own
+    ``run_manifest.yaml`` (:func:`rtl_check_runner._target_of_run`), never defaulted. Returns a
+    CheckReport; the caller MAY skip L2..L5 when ``rep.verdict == 'reject'``. Does not write anything
+    and never consults the frozen runner — the cost saving is purely the caller's choice not to
+    invoke the oracle."""
+    target = target or _target_of_run(Path(run_capsule_dir))
+    return screen_run(run_capsule_dir, load_rtl_facts(target), build_capsule_index(),
+                      write=False, target=target)
 
 
 # ------------------------------------------------------------------------------------------- CLI

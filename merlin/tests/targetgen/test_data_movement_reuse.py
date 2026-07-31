@@ -52,7 +52,7 @@ def test_reuse_within_budget_passes_and_verdict_ok():
                                               capacity_bytes=_FACTS["scratchpad_bytes"],
                                               elem_bytes=RC._elem_bytes(cap))
     ideal = pred["footprint_tiles"] * pred["refetch"]
-    rep = RC.screen(_clean_single_tile_trace(ideal), cap, _FACTS)
+    rep = RC.screen(_clean_single_tile_trace(ideal), cap, _FACTS, target="gemmini")
     assert _dm(rep).severity == "info" and _dm(rep).status == "pass"
     assert rep.verdict == "ok"                              # otherwise-clean trace, nothing gates
 
@@ -66,7 +66,7 @@ def test_gross_restream_flagged_but_never_gates_verdict():
                                               capacity_bytes=_FACTS["scratchpad_bytes"],
                                               elem_bytes=RC._elem_bytes(cap))
     ideal = max(pred["footprint_tiles"] * pred["refetch"], 1)
-    rep = RC.screen(_clean_single_tile_trace(6 * ideal), cap, _FACTS)   # 6x -> well past the 3x slack
+    rep = RC.screen(_clean_single_tile_trace(6 * ideal), cap, _FACTS, target="gemmini")   # 6x -> well past the 3x slack
     dm = _dm(rep)
     assert dm.severity == "info" and dm.status == "fail"    # flagged as feedback
     assert dm.ratio and dm.ratio >= 3
@@ -78,6 +78,6 @@ def test_fails_closed_to_skipped_without_mlc(monkeypatch):
     """When the mlc reuse model is unavailable the advisory is skipped honestly (never a fabricated pass)."""
     monkeypatch.setattr(mlc_bridge, "matmul_reuse_prediction", lambda *a, **k: None)
     cap = _matmul_capsule()
-    rep = RC.screen(_clean_single_tile_trace(2), cap, _FACTS)
+    rep = RC.screen(_clean_single_tile_trace(2), cap, _FACTS, target="gemmini")
     dm = _dm(rep)
     assert dm.status == "skipped" and "unavailable" in dm.message

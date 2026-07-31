@@ -298,7 +298,7 @@ def screen_run(run_capsule_dir: Path, facts_rec: dict, index: dict[str, Path],
         res["filecheck"]["trace"] = {"ok": ok, "diag": diag}
     # Python numeric/lower-bound checks (capacity, multi-matmul tile bound) the RTL facts feed.
     rc_facts = CC._facts_to_rc(facts_rec)
-    rep = RC.screen(trace, capsule, rc_facts)
+    rep = RC.screen(trace, capsule, rc_facts, target=target)
     res["screen"] = rep.to_dict()
 
     # VERDICT rides the format-agnostic, RTL-grounded checks: the TRACE FileCheck (over the decoded RoCC
