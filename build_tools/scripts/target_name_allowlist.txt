@@ -48,7 +48,6 @@ merlin/python/merlin/targetgen/capsule_runner.py             # gemmini-capsule-b
 merlin/python/merlin/targetgen/baremetalc_corroborate.py     # gemmini bareMetalC corroboration report path (reference tool)
 merlin/python/merlin/kernels/bench_ceiling.py                # saturn-only kernel-ceiling bench (only saturn corpus wired)
 merlin/python/merlin/kernels/build_asm.py                    # saturn-vectors build path (reference corpus)
-merlin/python/merlin/frontends/facts.py                      # drive_pipeline default target=saturn (reference default)
 
 # ---------------------------------------------------------------- target named only as EXAMPLE help/description text (no control flow)
 merlin/python/merlin/compare/cli.py                          # gemmini named only in --target help ("spike/gemmini/npu are seams"); default is k1

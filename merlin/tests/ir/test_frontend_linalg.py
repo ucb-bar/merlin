@@ -103,7 +103,7 @@ def test_dse_records_resident_variants():
 
     inv = fl.matmul_inventory(fl.parse_mlir_text(SYNTHETIC), {0: {"weight": "w"}})
     rec = inv[0]
-    out = ff.record_dse(rec, ff.drive_pipeline(rec, reuse=4).command_buffer,
+    out = ff.record_dse(rec, ff.drive_pipeline(rec, reuse=4, target="saturn").command_buffer,
                         workload="synthetic_gemm")
     out["module"].verify()
     assert out["regime"] == "exploitable"   # reuse=4 amortizes the pack
@@ -128,7 +128,7 @@ def test_no_reuse_stays_marginal():
 
     inv = fl.matmul_inventory(fl.parse_mlir_text(SYNTHETIC), {0: {"weight": "w"}})
     rec = inv[0]
-    out = ff.record_dse(rec, ff.drive_pipeline(rec, reuse=1).command_buffer)
+    out = ff.record_dse(rec, ff.drive_pipeline(rec, reuse=1, target="saturn").command_buffer)
     assert out["regime"] == "marginal"
 
 

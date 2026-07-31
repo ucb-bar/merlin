@@ -76,12 +76,14 @@ def select_gemm(inventory: list[MatmulRecord],
     return candidates[0]
 
 
-def drive_pipeline(record: MatmulRecord, reuse: int = 2, target: str = "saturn"):
+def drive_pipeline(record: MatmulRecord, *, target: str, reuse: int = 2):
     """Lower the record's real GEMM shape through the core-dialect pipeline.
 
     The integer pipeline executes the layer's i8 deployment GEMM (the shapes are
     identical across the fp32/int8 variants of the model); dtype provenance from the
-    capture is preserved on the returned result via ``record``.
+    capture is preserved on the returned result via ``record``. ``target`` is required —
+    the caller names the backend to lower onto (no default; a frontend does not pick a
+    target for you).
     """
     from ..xdsl_dialects.lowering import lower_repeated_rhs_matmul
 
