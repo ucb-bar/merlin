@@ -565,24 +565,26 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
     ws_task = ws / "TASK.md"
     if rnd == 0:
         _build_task(arm, ws, run_dir)
-    # A non-Anthropic model can't drive the claude CLI (Anthropic API only) — route it to the Bedrock
-    # Converse agent backend, which runs the same masked-sandbox agentic loop + a compatible transcript so
-    # grading/accounting/audit are unchanged. Anthropic models fall through to the claude CLI below.
-    import bedrock_agent as _BA
-    if _BA.is_converse_model(model):
-        return _BA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout)
-    inner = (f'claude --print --model {model} --effort {effort} '
-             f'--permission-mode bypassPermissions --add-dir {ws} '
-             f'--output-format stream-json --verbose < {ws_task}')
-    cmd = bwrap_cmd(inner, ws, bundle) if sandbox == "bwrap" else inner
-    tpath = run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
-    tpath.parent.mkdir(parents=True, exist_ok=True)
-    epath = run_dir / "rounds" / f"round_{rnd:02d}.stderr.log"
     # Under bwrap the oracle is masked, so the agent's self-check (agent_selfcheck.py) can't grade in-box.
     # Start the driver-side BROKER (oracle available, outside the sandbox) + stage the in-box shim, so the
-    # agent gets a REDACTED on-demand self-check without the oracle ever entering its sandbox.
+    # agent gets a REDACTED on-demand self-check (numeric diff, no goldens) without the oracle ever entering
+    # its sandbox. Started BEFORE the backend split so BOTH the claude CLI and the Bedrock Converse agent
+    # get the identical mid-round feedback loop.
     broker = _start_selfcheck_broker(ws) if sandbox == "bwrap" else None
     try:
+        # A non-Anthropic model can't drive the claude CLI (Anthropic API only) — route it to the Bedrock
+        # Converse agent backend, which runs the same masked-sandbox agentic loop (incl. the self_check
+        # tool wired to the shim above) + a compatible transcript. Anthropic models use the claude CLI.
+        import bedrock_agent as _BA
+        if _BA.is_converse_model(model):
+            return _BA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout)
+        inner = (f'claude --print --model {model} --effort {effort} '
+                 f'--permission-mode bypassPermissions --add-dir {ws} '
+                 f'--output-format stream-json --verbose < {ws_task}')
+        cmd = bwrap_cmd(inner, ws, bundle) if sandbox == "bwrap" else inner
+        tpath = run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
+        tpath.parent.mkdir(parents=True, exist_ok=True)
+        epath = run_dir / "rounds" / f"round_{rnd:02d}.stderr.log"
         with open(tpath, "w") as tf, open(epath, "w") as ef:
             proc = subprocess.run(["bash", "-c", cmd], cwd=str(ws), stdout=tf, stderr=ef,
                                   timeout=timeout)

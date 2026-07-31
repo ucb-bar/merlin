@@ -60,6 +60,14 @@ _TOOLS = {"tools": [
         "are masked.",
         "inputSchema": {"json": {"type": "object", "properties": {
             "path": {"type": "string"}}, "required": ["path"]}}}},
+    {"toolSpec": {"name": "self_check", "description":
+        "Grade your CURRENT submission/ against the REAL target oracle and get REDACTED feedback: per-tier "
+        "pass/fail, decoded trace, instruction counts, and NUMERIC DIFF STATS (how far off your output is) "
+        "— everything EXCEPT the withheld golden values. This is your only mid-round signal for whether the "
+        "numerics are correct; call it after each build and iterate until capsules pass. `capsules` = "
+        "comma-separated ids or 'all'.",
+        "inputSchema": {"json": {"type": "object", "properties": {
+            "capsules": {"type": "string"}}, "required": []}}}},
 ]}
 
 
@@ -108,9 +116,28 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         "You are an autonomous compiler engineer with a LIMITED number of tool turns. Build the target "
         "backend under submission/ (manifest.yaml + the entrypoint tool + supporting modules). Look at the "
         "contract briefly, then START WRITING with write_file — do not over-explore. Get "
-        "submission/manifest.yaml + the tool existing and PARSING as early as possible, then iterate to "
-        "correctness against the grader verdict. Do NOT attempt to read golden.yaml / expected_* files — "
-        "they are withheld and access is logged."}]
+        "submission/manifest.yaml + the tool existing and PARSING as early as possible. "
+        "CRITICAL: you get NO golden values, so use the self_check TOOL after every build — it grades your "
+        "current submission against the real oracle and returns per-capsule pass/fail plus the NUMERIC "
+        "DIFF (how far off each capsule is), goldens withheld. That is your primary correctness signal: "
+        "call self_check, read the diff, fix your encoding/lowering, rebuild, self_check again — iterate "
+        "until capsules pass. Between rounds you also receive the official grader verdict, which for THIS "
+        "arm carries an advisory `rtl_checks` block (FileCheck over your emitted MLIR + the decoded trace, "
+        "with RTL-derived bounds) — read it to catch structural/encoding mistakes the numeric diff can't "
+        "localize. For grounding, READ (do not try to regenerate) the shipped ISA spec — the green-card and "
+        "isa_definition — mounted read-only in your workspace at `" + te.target + "/isa_include/` (the "
+        "hwbringup set is mounted as `" + te.target + "/`, with the RTL under `" + te.target + "/rtl/` "
+        "and a worked example under `" + te.target + "/example_kernel/`); derive EVERY opcode, encoding, "
+        "field-layout and the command-buffer schema from them with read_file — never invent an encoding. "
+        "You may also import the granted in-tree tools from your OWN python (via write_file + run_bash), "
+        "which are on PYTHONPATH: the CCA seam menu (`from merlin.kernels import cca_contract, "
+        "action_catalog` — cca_contract.check_bijection('" + te.target + "') / "
+        "action_catalog.escalation_ladder) and the oot_starterkit (`from merlin.targetgen.oot_starterkit "
+        "import parse_interface, CommandBufferBuilder, transforms`) to build and self-verify command "
+        "buffers. Do NOT run the RTL-facts GENERATORS or FileCheck directly — the generators need "
+        "RTL/simulator access that is masked in your sandbox, and FileCheck runs grader-side (its results "
+        "come back to you in the verdict); use the shipped fact files instead. Do NOT attempt to read "
+        "golden.yaml / expected_* files — they are withheld and access is logged."}]
     messages = [{"role": "user", "content": [{"text": task + feedback +
                  "\n\nYour workspace is the current directory. Begin now."}]}]
 
@@ -161,6 +188,12 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
                 elif name == "read_file":
                     output = _bash_in_sandbox(te, ws, bundle, f'cat "{inp.get("path", "")}"',
                                               sandbox, cmd_timeout)
+                elif name == "self_check":
+                    caps = (inp.get("capsules") or "all").strip() or "all"
+                    output = _bash_in_sandbox(
+                        te, ws, bundle,
+                        f'python3 agent_selfcheck.py --submission submission --sim spike '
+                        f'--capsules "{caps}" --timeout 600', sandbox, max(cmd_timeout, 700))
                 else:
                     output = _bash_in_sandbox(te, ws, bundle, inp.get("command", ""), sandbox, cmd_timeout)
                 results.append({"toolResult": {"toolUseId": tu["toolUseId"],
