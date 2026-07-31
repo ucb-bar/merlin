@@ -40,6 +40,17 @@ def base_argv(ws: Path, bundle: dict, *, repo: Path | None = None) -> list[str]:
     home_claude = os.path.expanduser("~/.claude")
     if Path(home_claude).exists():
         parts += ["--bind", home_claude, home_claude]
+        # ⚠ ANSWER-SURFACE LEAK GUARD: ~/.claude is bound whole so the sandboxed `claude` CLI finds its
+        # credentials/settings, but ~/.claude/projects/<slug>/ holds the EXPERIMENTER's session
+        # transcripts (the full conversation — oracle facts, ISA details, goldens discussed) AND the
+        # persistent agent MEMORY. Those are answer surfaces (answer_surfaces() lists the memory dir), so
+        # tmpfs-mask the whole projects/ tree LAST: the agent gets an empty, writable projects dir for its
+        # own ephemeral session (the run captures its transcript from stdout, not from here) and can never
+        # read the experimenter's history/notes. Target-agnostic — the experimenter memory is the same
+        # regardless of target.
+        projects = os.path.join(home_claude, "projects")
+        if Path(projects).exists():
+            parts += ["--tmpfs", projects]
 
     def _kind(p: Path) -> str:
         # permission-safe: a chmod-000 lock makes stat() raise — treat as present-dir so a locked answer
@@ -61,8 +72,13 @@ def base_argv(ws: Path, bundle: dict, *, repo: Path | None = None) -> list[str]:
     # merlin/contract/) cannot expose a denied sub-path (e.g. capsules/hidden/).
     for d in bundle.get("denied", []):
         p = repo / d["path"]
-        if _kind(p) == "dir":
+        k = _kind(p)
+        if k == "dir":
             parts += ["--tmpfs", str(p)]
+        elif k == "file":
+            # a denied FILE under an allowed dir (e.g. an oracle-callable route the arm withholds) must be
+            # /dev/null-overlaid too — tmpfs only masks dirs, so a denied file would otherwise stay readable.
+            parts += ["--ro-bind", _DEVNULL, str(p)]
     # Bind the writable workspace LAST so no mask clobbers it.
     parts += ["--bind", str(ws), str(ws)]
     return parts
