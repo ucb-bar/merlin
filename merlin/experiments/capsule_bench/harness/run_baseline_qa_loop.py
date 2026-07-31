@@ -447,7 +447,17 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
         # whole-repo + self-check tool + self-paced READY marker; TASK_realistic is self-contained,
         # so skip the abc1 "20-public / verilator-checkpoint" addendum appended below.
         ws_task = ws / "TASK.md"
-        body = (C.EXP / "task" / "TASK_realistic.md").read_text()
+        # A target that ships a hand-authored realistic task uses it (gemmini); a descriptor-only target
+        # (e.g. atlas) has none, so fall back to the GENERATED target-agnostic prompt — exactly what the
+        # 'full' branch below already does. render_prompt is the COMPLETE per-arm task (incl. the seam menu
+        # for the assisted/CIRCT arms), so the bundle STARTER_PROMPT is not re-appended in that case.
+        _task_md = C.EXP / "task" / "TASK_realistic.md"
+        _generated_task = not _task_md.is_file()
+        if _generated_task:
+            from merlin.targetgen.generate_prompt import render_prompt
+            body = render_prompt(_te(), _manifest(), "realistic", arm)
+        else:
+            body = _task_md.read_text()
         if os.environ.get("PILOT_LANG", "").strip().lower() == "cpp":
             _opt = f"{C.TARGET}-opt"          # the OOT MLIR tool name (derived from the active target)
             body += (
@@ -463,7 +473,10 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
         # verified-IR/kit for merlin, C++ method for baseline). It MUST be delivered or the arm's whole
         # approach is invisible to the agent (abc8: the CIRCT arm never ran a single generator because this
         # was missing). Append it to TASK.md (the agent always reads TASK.md) for every arm.
-        starter = (bdir / "STARTER_PROMPT.md").read_text() if (bdir / "STARTER_PROMPT.md").exists() else ""
+        # When the task body was GENERATED (render_prompt above), it already carries the arm's full
+        # approach — appending the bundle STARTER_PROMPT (also render_prompt) would just duplicate it.
+        starter = "" if _generated_task else (
+            (bdir / "STARTER_PROMPT.md").read_text() if (bdir / "STARTER_PROMPT.md").exists() else "")
         if starter:
             body += "\n\n---\n\n# Starter plan / approach for THIS arm (read this)\n\n" + starter
         if arm == "merlin_assisted":
