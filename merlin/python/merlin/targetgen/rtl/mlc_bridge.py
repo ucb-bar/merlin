@@ -1186,15 +1186,31 @@ def _mlc_importable(d=None):
 @contextmanager
 def _mlc_cwd():
     """mlc resolves its ``runs/...`` arc artifacts by paths RELATIVE to its own root, so its cosim +
-    discovery entry points run with CWD = the mlc dir."""
+    discovery entry points run with CWD = the mlc dir. Also CONTEXT-INSERT the mlc dir on ``sys.path`` so
+    ``import mlc`` resolves even when the process's ``sys.path`` no longer carries the cwd (``''``) entry —
+    mlc is not pip-installed, so without this the import relied on cwd-relative resolution and broke inside
+    a process that rewrote ``sys.path`` (e.g. the capsule-bench driver's xdsl setup), silently failing the
+    arc oracle preflight. The insert is context-managed (removed on exit), NOT global: a permanent insert
+    flips ``mlc_available()`` process-wide and un-skips heavy tests."""
+    import sys
     d = mlc_dir()
     prev = os.getcwd()
+    ds = str(d) if d is not None else None
+    inserted = False
     if d is not None:
         os.chdir(d)
+        if ds not in sys.path:
+            sys.path.insert(0, ds)
+            inserted = True
     try:
         yield
     finally:
         os.chdir(prev)
+        if inserted:
+            try:
+                sys.path.remove(ds)
+            except ValueError:
+                pass
 
 
 def arc_available(target: str) -> bool:
