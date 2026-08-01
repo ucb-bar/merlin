@@ -81,6 +81,35 @@ def _cap_tiers(tier_ceiling: str) -> list[str]:
     return keep
 
 
+# The RTL-derived / numeric oracle tiers. L0/L1 are the integer reference/simulate floor (marked
+# not_applicable on a float datapath); a real numeric grade always rides one of these.
+_RTL_TIERS = frozenset({"L2", "L3", "L4", "L5"})
+
+
+def _cap_required(tiers: list[str], keep: set[str], tier_ceiling: str) -> list[str]:
+    """Cap a capsule's ``required_oracle_tiers`` to what THIS phase can reach — WITHOUT ever stripping the
+    numeric floor to nothing.
+
+    Capping to the phase ceiling drops tiers above it. For a float capsule that requires the cycle-accurate
+    cert (atlas: ``[L0, L1, L3]`` with the integer L0/L1 marked not_applicable), a naive intersection with
+    a loop ceiling of L2 yields ``[L0, L1]`` — both N/A — so the grade enforces ZERO numeric tiers and any
+    capsule that merely builds reads back as pass. That is the crash-pass regression: it appeared the moment
+    the fast L2 npu-functional tier lowered the loop ceiling from L3 to L2.
+
+    Rule: when capping removes every RTL/numeric tier the capsule required, the HIGHEST REACHABLE tier (the
+    ceiling itself, when it is an RTL tier) BECOMES the required tier for this phase. The fast loop still
+    enforces a real numeric oracle (atlas → L2 npu-functional is mandatory each round), while the
+    cycle-accurate cert (L3) stays required at the checkpoint (ceiling L3, kept as-is). Target-general — it
+    only fires when a required RTL tier was capped away; gemmini, whose loop tier L2 is already in its
+    required set, is untouched."""
+    kept = [t for t in tiers if t in keep]
+    if (any(t in _RTL_TIERS for t in tiers)
+            and not any(t in _RTL_TIERS for t in kept)
+            and tier_ceiling in _RTL_TIERS):
+        kept.append(tier_ceiling)
+    return kept
+
+
 def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAULT_CEILING,
                                 contract: str | Path | None = None,
                                 corpus_roots: list[Path] | None = None) -> list[str]:
@@ -110,7 +139,7 @@ def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAUL
                 cap = yaml.safe_load(sp.read_text(encoding="utf-8")) or {}
                 tiers = cap.get("required_oracle_tiers")
                 if isinstance(tiers, list):
-                    cap["required_oracle_tiers"] = [t for t in tiers if t in keep]
+                    cap["required_oracle_tiers"] = _cap_required(tiers, keep, tier_ceiling)
                 (d / f).write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
             else:
                 shutil.copyfile(sp, d / f)
