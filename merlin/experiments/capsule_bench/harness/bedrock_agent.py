@@ -89,11 +89,15 @@ _CACHE_POINT = {"cachePoint": {"type": "default"}}
 
 
 def _cache_unsupported(exc: Exception) -> bool:
-    """True iff a Converse error looks like the model rejecting cachePoint — so we self-correct to an
-    uncached request rather than maintaining a per-model support allowlist (Bedrock caching support
-    varies by model and changes over time)."""
+    """True iff a Converse error looks like the model/account rejecting cachePoint — so we self-correct to an
+    uncached request rather than maintaining a per-model support allowlist (Bedrock caching support varies by
+    model AND account, and changes over time). Must match the REAL AWS AccessDenied text: "You invoked an
+    unsupported model or your request did not allow prompt caching." Note the word is "caching", so we stem
+    to "cach" — matching on "cache" would silently MISS it (the 5th letter differs) and a non-Nova round
+    would then die on its first call instead of falling back."""
     s = f"{type(exc).__name__} {exc}".lower()
-    return "cachepoint" in s or ("cache" in s and ("support" in s or "invalid" in s or "not valid" in s))
+    return ("cachepoint" in s or "prompt cach" in s
+            or ("cach" in s and ("support" in s or "invalid" in s or "not valid" in s or "not allow" in s)))
 
 
 def _strip_cachepoints(messages: list) -> None:

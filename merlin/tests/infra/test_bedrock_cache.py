@@ -121,11 +121,29 @@ def test_static_and_rolling_cachepoints(bedrock_agent, tmp_path, monkeypatch):
     assert 150 in reads
 
 
+# The verbatim Bedrock AccessDenied text returned when a model/account rejects cachePoint (glm5, deepseek,
+# qwen-coder, kimi, nemotron on the experiments account). The word is "caching", NOT "cache" — a classifier
+# that matches on "cache" MISSES this and the round dies on its first call. Guards that regression.
+_REAL_REJECT = ("An error occurred (AccessDeniedException) when calling the Converse operation: You invoked "
+                "an unsupported model or your request did not allow prompt caching. See the documentation.")
+
+
+@pytest.mark.parametrize("msg", [
+    _REAL_REJECT,
+    "ValidationException: this model does not support cachePoint",
+    "ValidationException: prompt caching is not valid for this request",
+])
+def test_cache_unsupported_matches_real_reject_text(bedrock_agent, msg):
+    class AccessDeniedException(Exception):
+        pass
+    assert bedrock_agent._cache_unsupported(AccessDeniedException(msg)) is True
+
+
 def test_cache_unsupported_self_corrects_to_uncached(bedrock_agent, tmp_path, monkeypatch):
-    # First converse raises a cachePoint-rejection; run_round must strip cachePoints and retry uncached
-    # within the same round rather than erroring out.
+    # First converse raises the REAL cachePoint-rejection; run_round must strip cachePoints and retry
+    # uncached within the same round rather than erroring out.
     fc, rc, events = _run(bedrock_agent, tmp_path, monkeypatch, [
-        Exception("ValidationException: this model does not support cachePoint"),
+        Exception(_REAL_REJECT),
         _assistant([{"text": "done"}], "end_turn"),
     ])
     assert rc == 0
