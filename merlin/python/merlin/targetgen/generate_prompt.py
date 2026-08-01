@@ -161,8 +161,10 @@ DRAM and reads the OUTPUT tensor back from DRAM. So in `command_buffer.json` you
 tensor your kernel touches** — inputs, weights, AND the output — each as `{{shape, dtype, role}}`, and
 give each a `base` (its DRAM byte address). Your kernel must load each input from, and store the output
 to, EXACTLY those `base` addresses — the oracle preloads inputs and captures the output there. The output
-tensor MUST appear (its result is read from its `base`); omit it and the grade cannot see your answer. If
-you omit a `base` the harness assigns a canonical one, but then your kernel must target that same layout —
+tensor MUST appear (its result is read from its `base`); omit it and the grade cannot see your answer. All
+addresses must lie inside the DRAM region defined by your ISA memory map (the oracle relocates that region
+to the model's aperture, so an address below the DRAM base cannot be indexed). If you omit a `base` the
+harness assigns a canonical one inside that same DRAM region, but then your kernel must target that layout —
 declaring them yourself is the reliable path. Addresses are per-capsule; size them from each tensor's
 shape x dtype.
 """

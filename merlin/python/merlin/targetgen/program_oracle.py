@@ -346,11 +346,21 @@ def run_program_functional_oracle(target: str, *, model_ext: str, cb: dict | Non
     out_spec = _resolve_out_spec(target, cb, bundle)
     nbytes = _out_nbytes(out_spec)
 
+    # The emitted kernel + the cb tensor bases address DRAM at the target's real region base (its ISA
+    # memory map), but the functional model's DRAM aperture is 0-based. Derive that base from the target's
+    # facts (green-card memory map; 0 when none) and hand it to the runner, which relocates every DRAM
+    # index by it — so preload, the kernel's internal stores, and readback all land in the aperture. The
+    # cycle-exact cosim (L3) needs no such field: its TileLinkSlave masks the address into its window.
+    # A self-contained ``program`` carries its OWN (model-native, 0-based) layout, so it is never
+    # relocated — only the capsule/agent kernel path, which addresses the target's real DRAM region, is.
+    from .dram_facts import dram_base_for
+    reloc_base = 0 if program else int(dram_base_for(target))
     req = {
         "words": [int(w) & 0xFFFFFFFF for w in words],
         "preload": [{"base": int(b), "b64": base64.b64encode(d).decode()} for b, d in preload],
         "out_bases": [[int(out_spec["base"]), int(nbytes)]],
         "max_cycles": int(max_cycles),
+        "dram_base": reloc_base,
     }
     res = _run_func_helper(model_ext, req, Path(workdir), timeout)
     if not res.get("halted"):
