@@ -68,3 +68,33 @@ def test_no_answer_reference_is_clean(audit, tmp_path):
     r = audit(tp, arm="merlin_assisted")
     assert r["clean"] is True
     assert r["hits"] == []
+
+
+def test_grep_l_finding_own_tool_is_recon_not_leak(audit, tmp_path):
+    # `grep -l capsule_grade` (path-listing search) that surfaces only the agent's OWN granted shim is
+    # advisory reconnaissance — it returned a filename, not answer content. Must NOT break clean.
+    tp = _transcript(
+        tmp_path,
+        'find . -name "*.py" | xargs grep -l "capsule_grade" 2>/dev/null | head',
+        "/scratch/.../targets/atlas/scripts/agent_selfcheck.py")
+    r = audit(tp, arm="merlin_assisted")
+    assert r["clean"] is True
+    assert r["recon_probes"] == 1
+    assert [h["kind"] for h in r["hits"]] == ["recon_probe"]
+
+
+def test_search_that_surfaces_an_answer_path_is_a_violation(audit, tmp_path):
+    # A path-listing search that names an answer file AND returns it (a mask failure would expose the golden
+    # path) is NOT benign recon — the answer-token in the result keeps it a violation.
+    tp = _transcript(tmp_path, 'grep -l "config" isa/AT0_config_smoke/golden.yaml',
+                     "isa/AT0_config_smoke/golden.yaml")
+    r = audit(tp, arm="merlin_assisted")
+    assert r["clean"] is False
+
+
+def test_content_grep_that_returns_data_is_a_violation(audit, tmp_path):
+    # grep WITHOUT -l returns matching content lines; if a masked answer file ever returned data, that is a
+    # real leak (mask breach), not path-listing recon.
+    tp = _transcript(tmp_path, 'grep -h "." isa/AT0_config_smoke/golden.yaml', "expected: [1.0, 2.0]")
+    r = audit(tp, arm="merlin_assisted")
+    assert r["clean"] is False
