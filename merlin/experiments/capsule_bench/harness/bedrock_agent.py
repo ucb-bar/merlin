@@ -70,6 +70,27 @@ _TOOLS = {"tools": [
             "capsules": {"type": "string"}}, "required": []}}}},
 ]}
 
+# Bedrock prompt-caching marker. Placed at the end of the STABLE prefix (system prompt + tool schemas +
+# the first user message's task/ISA-facts), so the large static context is billed once and reused across
+# the ~120 tool-iterations of a round instead of re-shipped uncached every call (the glm5f cached=0 waste).
+_CACHE_POINT = {"cachePoint": {"type": "default"}}
+
+
+def _cache_unsupported(exc: Exception) -> bool:
+    """True iff a Converse error looks like the model rejecting cachePoint — so we self-correct to an
+    uncached request rather than maintaining a per-model support allowlist (Bedrock caching support
+    varies by model and changes over time)."""
+    s = f"{type(exc).__name__} {exc}".lower()
+    return "cachepoint" in s or ("cache" in s and ("support" in s or "invalid" in s or "not valid" in s))
+
+
+def _strip_cachepoints(messages: list) -> None:
+    """Remove every cachePoint block from message content (used when falling back to an uncached request)."""
+    for m in messages:
+        c = m.get("content")
+        if isinstance(c, list):
+            m["content"] = [b for b in c if not (isinstance(b, dict) and "cachePoint" in b)]
+
 
 def _bash_in_sandbox(te, ws: Path, bundle: dict, command: str, sandbox: str, timeout: int) -> str:
     from merlin.targetgen.sandbox import bwrap as _BW
@@ -154,7 +175,7 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         "come back to you in the verdict); use the shipped fact files instead. Do NOT attempt to read "
         "golden.yaml / expected_* files — they are withheld and access is logged."}]
     messages = [{"role": "user", "content": [{"text": task + feedback +
-                 "\n\nYour workspace is the current directory. Begin now."}]}]
+                 "\n\nYour workspace is the current directory. Begin now."}, _CACHE_POINT]}]
 
     from botocore.config import Config as _BotoConfig
     # A large generation can exceed boto3's default 60s read timeout mid-stream (observed:
@@ -166,6 +187,7 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     emit({"type": "system", "subtype": "init", "model": mid, "round": rnd})
     deadline = time.time() + timeout
     rc = 0
+    cache_enabled = True   # attempt Bedrock prompt caching; self-correct to uncached if the model rejects it
 
     def _transient(exc: Exception) -> bool:
         s = f"{type(exc).__name__} {exc}".lower()
@@ -182,10 +204,20 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
                     rc = 124
                     break
                 try:
-                    resp = cli.converse(modelId=mid, system=system, messages=messages, toolConfig=_TOOLS,
+                    _sys = system + [_CACHE_POINT] if cache_enabled else system
+                    _tc = {"tools": _TOOLS["tools"] + [_CACHE_POINT]} if cache_enabled else _TOOLS
+                    resp = cli.converse(modelId=mid, system=_sys, messages=messages, toolConfig=_tc,
                                         inferenceConfig={"maxTokens": max_tokens, "temperature": 0})
                     break
                 except Exception as e:  # noqa: BLE001
+                    if cache_enabled and _cache_unsupported(e):
+                        # Model rejects Bedrock prompt caching — drop the cachePoints and retry uncached
+                        # (self-correcting, so there is no per-model support allowlist to maintain).
+                        cache_enabled = False
+                        _strip_cachepoints(messages)
+                        emit({"type": "system", "subtype": "cache_disabled",
+                              "error": f"{type(e).__name__}: {str(e)[:160]}"})
+                        continue
                     if _transient(e) and attempt < 3:
                         emit({"type": "system", "subtype": "retry", "attempt": attempt + 1,
                               "error": f"{type(e).__name__}: {str(e)[:160]}"})
