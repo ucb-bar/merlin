@@ -70,6 +70,18 @@ _TOOLS = {"tools": [
             "capsules": {"type": "string"}}, "required": []}}}},
 ]}
 
+# The delegate tool (tier-within-agent). Only added to the tool list when a distinct, cheaper subagent
+# model is configured — it lets the strong primary offload well-scoped mechanical sub-tasks to the cheap
+# model (the faithful Claude-Code Task->subagent pattern; there is no per-turn auto-routing).
+_DELEGATE_TOOL = {"toolSpec": {"name": "delegate", "description":
+    "Delegate a well-scoped, self-contained sub-task to a cheaper/faster model to save your own turns "
+    "(a Task subagent). Give a precise `subtask` plus the minimal `context` it needs (paths, the encoding "
+    "facts, the exact file to write). The subagent shares your workspace with write_file/read_file/run_bash "
+    "but has NO self_check and cannot delegate further; it returns its result text. Use it for mechanical "
+    "work (boilerplate, scaffolding, reading+summarizing a fact file) and keep the hard reasoning yourself.",
+    "inputSchema": {"json": {"type": "object", "properties": {
+        "subtask": {"type": "string"}, "context": {"type": "string"}}, "required": ["subtask"]}}}}
+
 # Bedrock prompt-caching marker. Placed at the end of the STABLE prefix (system prompt + tool schemas +
 # the first user message's task/ISA-facts), so the large static context is billed once and reused across
 # the ~120 tool-iterations of a round instead of re-shipped uncached every call (the glm5f cached=0 waste).
@@ -112,14 +124,80 @@ def _write_file(ws: Path, rel: str, content: str) -> str:
     return f"wrote {len(content)} bytes to {rel}"
 
 
+def _run_subagent(cli, sub_mid: str, ws: Path, te, bundle: dict, sandbox: str, subtask: str,
+                  context: str, emit, rnd: int, tag: str, cmd_timeout: int, deadline: float,
+                  *, max_iters: int = 15, max_tokens: int = 6000) -> str:
+    """Run a bounded agentic sub-loop on the cheaper ``sub_mid`` model for a delegated sub-task. Shares the
+    workspace + in-sandbox tool execution (so answer masking still holds); NO self_check and NO nested
+    delegate. Emits assistant events tagged with ``sub_mid`` (and ``subagent: True``) so telemetry
+    attributes the tokens to the delegate tier. Returns the subagent's final result text."""
+    sub_tools = {"tools": [t for t in _TOOLS["tools"]
+                           if t["toolSpec"]["name"] in ("run_bash", "write_file", "read_file")]}
+    sys = [{"text": "You are a focused sub-agent. Do EXACTLY the delegated sub-task and nothing more, then "
+            "reply with a short result summary. You have write_file/read_file/run_bash in the shared "
+            "workspace (cwd = workspace root). Do NOT read golden/expected files (masked + logged)."}]
+    msgs = [{"role": "user", "content": [{"text": f"SUBTASK:\n{subtask}\n\nCONTEXT:\n{context}".strip()}]}]
+    final: list[str] = []
+    for it in range(max_iters):
+        if time.time() > deadline:
+            break
+        try:
+            resp = cli.converse(modelId=sub_mid, system=sys, messages=msgs, toolConfig=sub_tools,
+                                inferenceConfig={"maxTokens": max_tokens, "temperature": 0})
+        except Exception as e:  # noqa: BLE001 — a delegate failure is a tool result, not a round failure
+            return f"[delegate error: {type(e).__name__}: {str(e)[:200]}]"
+        u = resp.get("usage", {})
+        out_msg = resp["output"]["message"]
+        blocks = []
+        for c in out_msg.get("content", []):
+            if "text" in c:
+                blocks.append({"type": "text", "text": c["text"]}); final.append(c["text"])
+            elif "toolUse" in c:
+                tu = c["toolUse"]
+                blocks.append({"type": "tool_use", "name": tu["name"], "input": tu.get("input", {})})
+        emit({"type": "assistant", "subagent": True, "message": {
+            "id": f"bedrock_{rnd}_{tag}", "model": sub_mid,
+            "usage": {"input_tokens": u.get("inputTokens", 0),
+                      "output_tokens": u.get("outputTokens", 0),
+                      "cache_read_input_tokens": u.get("cacheReadInputTokens", 0),
+                      "cache_creation_input_tokens": u.get("cacheWriteInputTokens", 0)},
+            "content": blocks}})
+        msgs.append(out_msg)
+        tus = [c["toolUse"] for c in out_msg.get("content", []) if "toolUse" in c]
+        if resp.get("stopReason") != "tool_use" or not tus:
+            break
+        results = []
+        for tu in tus:
+            name, inp = tu["name"], tu.get("input", {})
+            if name == "write_file":
+                output = _write_file(ws, inp.get("path", ""), inp.get("content", ""))
+            elif name == "read_file":
+                output = _bash_in_sandbox(te, ws, bundle, f'cat "{inp.get("path", "")}"', sandbox, cmd_timeout)
+            else:
+                output = _bash_in_sandbox(te, ws, bundle, inp.get("command", ""), sandbox, cmd_timeout)
+            results.append({"toolResult": {"toolUseId": tu["toolUseId"],
+                                            "content": [{"text": output or "(no output)"}]}})
+        msgs.append({"role": "user", "content": results})
+    return ("\n".join(final))[:4000] or "(subagent produced no text)"
+
+
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
-              timeout: int, *, max_iters: int = 120, cmd_timeout: int = 120,
+              timeout: int, *, subagent_model: str = "", background_model: str = "",
+              max_iters: int = 120, cmd_timeout: int = 120,
               max_tokens: int = 8000) -> tuple[int, Path]:
     """Drive ONE capsule-bench round with a non-Anthropic model. Returns (rc, transcript_path) — the same
     contract as ``launch_agent``'s claude path. Writes a claude-compatible transcript so the driver grades
     + accounts it identically."""
     import boto3
+    import model_tiers as _MT
     mid = resolve(model)
+    # Tier-within-agent: a distinct, cheaper subagent enables the `delegate` tool (the Claude-Code Task
+    # pattern). Default the delegate to the non-Anthropic subagent tier when unset; disable it if it would
+    # equal the primary (delegating to yourself is pointless). background_model is accepted for API/telemetry
+    # symmetry but the Converse loop generates no background chores (titles/summaries) to route to it.
+    sub_mid = _MT.resolve(subagent_model) if subagent_model else _MT.resolve(_MT.NON_ANTHROPIC_TIER.subagent)
+    delegate_enabled = bool(sub_mid) and sub_mid != mid
+    round_tools = _TOOLS["tools"] + ([_DELEGATE_TOOL] if delegate_enabled else [])
     tpath = run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
     tpath.parent.mkdir(parents=True, exist_ok=True)
     tf = open(tpath, "w")
@@ -174,6 +252,11 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         "RTL/simulator access that is masked in your sandbox, and FileCheck runs grader-side (its results "
         "come back to you in the verdict); use the shipped fact files instead. Do NOT attempt to read "
         "golden.yaml / expected_* files — they are withheld and access is logged."}]
+    if delegate_enabled:
+        system[0]["text"] += (
+            " You ALSO have a `delegate` tool: offload well-scoped MECHANICAL sub-tasks (boilerplate, "
+            "scaffolding, reading + summarizing a fact file) to a cheaper sub-agent to conserve your own "
+            "limited turns — keep the hard reasoning (encoding/lowering decisions) for yourself.")
     messages = [{"role": "user", "content": [{"text": task + feedback +
                  "\n\nYour workspace is the current directory. Begin now."}, _CACHE_POINT]}]
 
@@ -205,7 +288,8 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
                     break
                 try:
                     _sys = system + [_CACHE_POINT] if cache_enabled else system
-                    _tc = {"tools": _TOOLS["tools"] + [_CACHE_POINT]} if cache_enabled else _TOOLS
+                    _tc = ({"tools": round_tools + [_CACHE_POINT]} if cache_enabled
+                           else {"tools": round_tools})
                     resp = cli.converse(modelId=mid, system=_sys, messages=messages, toolConfig=_tc,
                                         inferenceConfig={"maxTokens": max_tokens, "temperature": 0})
                     break
@@ -265,6 +349,10 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
                         te, ws, bundle,
                         f'python3 agent_selfcheck.py --submission submission --sim spike '
                         f'--capsules "{caps}" --timeout 600', sandbox, max(cmd_timeout, 700))
+                elif name == "delegate":
+                    output = _run_subagent(cli, sub_mid, ws, te, bundle, sandbox,
+                                           inp.get("subtask", ""), inp.get("context", ""), emit,
+                                           rnd, f"{it}_deleg", cmd_timeout, deadline)
                 else:
                     output = _bash_in_sandbox(te, ws, bundle, inp.get("command", ""), sandbox, cmd_timeout)
                 results.append({"toolResult": {"toolUseId": tu["toolUseId"],

@@ -101,6 +101,8 @@ def _verilator_per_capsule_timeout() -> int:
 _EXPERIMENT = "full"    # set in main(): 'full' (abc1) or 'realistic' (abc2, whole-repo + self-check)
 _ARM = ""               # set in main(): the arm being run (enforces the per-arm language mandate)
 _DRIVER = "auto"        # set in main(): agent driver (auto|converse|claudecode|opencode); auto routes by model
+_SUBAGENT_MODEL = ""    # set in main(): delegate/subagent model for tier-within-agent (converse driver)
+_BACKGROUND_MODEL = ""  # set in main(): background/mechanical model (converse driver; reserved)
 READY_MARKER = "READY_FOR_BARRIER"  # realistic: agent drops submission/<this> to self-declare done
 # Merlin-arm-only docs staged into the workspace alongside the (shared) graded task.
 MERLIN_WS_DOCS = ("TASK_ADDENDUM.md", "ALLOWED_MERLIN_TOOLS.md", "MERLIN_PROVENANCE_TEMPLATE.md")
@@ -590,7 +592,8 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
         drv = _driver_for(model)
         if drv == "converse":
             import bedrock_agent as _BA
-            return _BA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout)
+            return _BA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout,
+                                 subagent_model=_SUBAGENT_MODEL, background_model=_BACKGROUND_MODEL)
         if drv == "opencode":
             try:
                 import opencode_agent as _OA
@@ -851,10 +854,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="CLAUDE_CONFIG_DIR for the agent's claude CLI (a different subscription account)")
     a = ap.parse_args(argv)
     arm = a.arm
-    global _EXPERIMENT, _ARM, _DRIVER
+    global _EXPERIMENT, _ARM, _DRIVER, _SUBAGENT_MODEL, _BACKGROUND_MODEL
     _EXPERIMENT = a.experiment
     _ARM = arm
     _DRIVER = a.driver
+    _SUBAGENT_MODEL = a.subagent_model
+    _BACKGROUND_MODEL = a.background_model
 
     # DRIVER-SIDE grade env: qa_grade/_verilator_grade run build_package (cmake) for C++ submissions in
     # THIS process's env. The conda cmake transitively needs libidn.so.11 (host has only .12) -> ensure
