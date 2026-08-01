@@ -390,3 +390,84 @@ def program_functional_adapter(target: str, *, model_ext: str) -> Callable:
         return run_program_functional_oracle(target, model_ext=model_ext, cb=cb, kernel_s=ks,
                                              workdir=wd, timeout=timeout)
     return run
+
+
+# --------------------------------------------------------------------------------------------------
+# CYCLE-ACCURATE VERILATOR tier (L4) — the SAME assembled program run on a program-driven Verilator
+# sim of the target's RTL top (a bare-core TileLink harness), for RTL-CERTIFIED outputs. This is the
+# first truly RTL-grounded atlas oracle: the arc cosim (L3) is the RTL-DERIVED functional gold; this
+# runs the elaborated Verilog itself. Additive — arc (L3) stays the required tier. Only emit_bundle
+# (words+preload) + the output-layout resolution are shared; the runner is the external Verilator sim
+# resolved from the target's registered vsim dir (MERLIN_EXT_<TARGET>_VSIM), never a literal here.
+# --------------------------------------------------------------------------------------------------
+
+def _load_verilator_runner(vsim_dir: Path):
+    """Import the vsim dir's conventional ``verilator_run.py`` (``run_program`` symmetric with
+    ``cosim_atlas.run_program``) BY PATH — target-agnostic (merlin never names the sim binary). Raises
+    :class:`OracleUnavailable` if the wrapper is absent / exposes no ``run_program``."""
+    wrapper = Path(vsim_dir) / "verilator_run.py"
+    if not wrapper.is_file():
+        raise OracleUnavailable(f"verilator runner absent: {wrapper} (build the vsim + verilator_run.py)")
+    spec = importlib.util.spec_from_file_location("_merlin_verilator_run", wrapper)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    if not hasattr(mod, "run_program"):
+        raise OracleUnavailable(f"verilator runner {wrapper} exposes no run_program")
+    return mod
+
+
+def run_program_verilator_oracle(target: str, *, model_ext: str, vsim_dir, cb: dict | None = None,
+                                 kernel_s: Path | None = None, program: str | None = None,
+                                 inputs: list[dict] | None = None, fix_itype_rd: bool = True,
+                                 max_cycles: int = 20000, workdir, timeout: int = 600) -> dict[str, Any]:
+    """Assemble (model venv / stock LLVM) → run on the target's program-driven Verilator RTL sim → read
+    back. Mirrors :func:`run_program_oracle` (same ``emit_bundle`` words+preload, same output-layout
+    resolution) but the runner is the external Verilator ``run_program`` instead of the arc cosim. The
+    sim's TileLink DRAM slave masks addresses into its window exactly like the arc cosim's
+    ``TileLinkSlave`` (both mirror ``cosim_atlas``), so the real cb DRAM base is passed straight through
+    as the read region — no functional-tier ``dram_base`` relocation. Returns the SAME result shape
+    ``{"outputs": {name: list}, "cycles": int, "oracle": f"{target}-verilator-rtl"}``. Raises
+    :class:`OracleUnavailable` if the vsim / wrapper is absent, or the program does not halt."""
+    runner = _load_verilator_runner(vsim_dir)
+    bundle = emit_bundle(model_ext=model_ext, program=program, kernel_s=kernel_s, inputs=inputs,
+                         fix_itype_rd=fix_itype_rd, workdir=Path(workdir), timeout=timeout)
+    words = bundle["words"]
+    preload = _bundle_preload(bundle, cb)
+    out_spec = _resolve_out_spec(target, cb, bundle)
+    nbytes = _out_nbytes(out_spec)
+    res = runner.run_program(words, preload=preload,
+                             reads=[(int(out_spec["base"]), int(nbytes))],
+                             max_cycles=max_cycles, timeout=timeout)
+    if not res.get("halted"):
+        raise OracleUnavailable(f"{target} program did not halt within {max_cycles} cycles (verilator)")
+    outs = res.get("outputs") or []
+    if not outs:
+        raise OracleUnavailable(f"{target}: verilator oracle returned no output at base {out_spec['base']}")
+    raw = bytes(outs[0])
+    logical = _decode_output(raw, out_spec["shape"], out_spec["dtype"], out_spec["physical"])
+    return {"outputs": {_output_name(cb): logical.tolist()}, "cycles": int(res.get("cycles") or 0),
+            "oracle": f"{target}-verilator-rtl"}
+
+
+def program_verilator_adapter(target: str, *, model_ext: str) -> Callable | None:
+    """The L4 cycle-accurate Verilator oracle adapter (``run(cb, fourth_text, workdir, timeout)`` shape)
+    for an ``external_backend`` target — mirrors :func:`program_oracle_adapter` but runs the emitted
+    kernel on the target's program-driven Verilator RTL sim. Returns ``None`` (no L4) when the target
+    registers no vsim (``MERLIN_EXT_<TARGET>_VSIM`` unset) or its ``verilator_run.py`` is absent — so the
+    tier is honestly ADDITIVE and target-agnostic (any external_backend target that ships a vsim gets it,
+    with no target literal here)."""
+    try:
+        vsim_dir = ext_path(f"{target}_vsim")
+    except KeyError:
+        return None
+    if not (Path(vsim_dir) / "verilator_run.py").is_file():
+        return None
+
+    def run(cb, fourth_text, workdir, timeout):
+        wd = Path(workdir)
+        ks = wd / "kernel.S"
+        if fourth_text:
+            ks.write_text(fourth_text)
+        return run_program_verilator_oracle(target, model_ext=model_ext, vsim_dir=vsim_dir, cb=cb,
+                                            kernel_s=ks, workdir=wd, timeout=timeout)
+    return run

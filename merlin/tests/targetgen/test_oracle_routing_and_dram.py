@@ -23,9 +23,11 @@ def test_bare_oracle_adapters_self_routes_from_the_contract():
     # atlas (external_backend) -> the program-oracle LADDER: fast functional (L2, loop tier) + cycle-exact
     # cosim (L3, gold checkpoint), NOT verilator; gemmini -> spike/verilator.
     atlas = CR.oracle_adapters("atlas")
-    assert set(atlas) == {"L2", "L3"}
+    assert {"L2", "L3"} <= set(atlas) <= {"L2", "L3", "L4"}   # program-oracle ladder (+ additive L4 vsim)
     assert "program_functional_adapter" in getattr(atlas["L2"], "__qualname__", "")   # fast loop tier
     assert "program_oracle_adapter" in getattr(atlas["L3"], "__qualname__", "")        # cosim gold tier
+    if "L4" in atlas:                                          # RTL-certified verilator tier, if registered
+        assert "program_verilator_adapter" in getattr(atlas["L4"], "__qualname__", "")
     gem = CR.oracle_adapters("gemmini")
     assert set(gem) == {"L2", "L3"}                      # chipyard spike/verilator, recovered from tier_sim
 
@@ -33,7 +35,7 @@ def test_bare_oracle_adapters_self_routes_from_the_contract():
 def test_explicit_sim_via_is_honored_and_arc_only_not_reresolved():
     # an explicit "" (arc-only, e.g. atlas descriptor) must NOT be re-resolved to chipyard — it still
     # yields the external_backend program-oracle ladder (functional L2 + cosim L3), not a sim.
-    assert set(CR.oracle_adapters("atlas", "")) == {"L2", "L3"}
+    assert {"L2", "L3"} <= set(CR.oracle_adapters("atlas", "")) <= {"L2", "L3", "L4"}
     assert CR._bespoke_sim_via("gemmini") == "chipyard"
     assert CR._bespoke_sim_via("atlas") == ""
 

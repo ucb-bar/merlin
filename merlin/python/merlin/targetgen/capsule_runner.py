@@ -181,9 +181,18 @@ def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callab
             raise ValueError(
                 f"external_backend target {target!r}: contract declares no runner.model_ext — the program "
                 f"oracle needs the model project to lay out operands; set runner.model_ext in the contract")
-        from .program_oracle import program_functional_adapter, program_oracle_adapter
-        return {"L2": program_functional_adapter(target, model_ext=model_ext),
-                "L3": program_oracle_adapter(target, model_ext=model_ext)}
+        from .program_oracle import (program_functional_adapter, program_oracle_adapter,
+                                      program_verilator_adapter)
+        adapters = {"L2": program_functional_adapter(target, model_ext=model_ext),
+                    "L3": program_oracle_adapter(target, model_ext=model_ext)}
+        # L4 (ADDITIVE, env-routed): a program-driven Verilator sim of the target's RTL top — the first
+        # truly RTL-CERTIFIED tier (arc cosim L3 is the RTL-derived functional gold; this runs the
+        # elaborated Verilog). Present only if the target registers a vsim (MERLIN_EXT_<TARGET>_VSIM);
+        # otherwise None -> no L4. The REQUIRED/gold tier stays L3 — L4 is additive certification.
+        vl = program_verilator_adapter(target, model_ext=model_ext)
+        if vl is not None:
+            adapters["L4"] = vl
+        return adapters
     if sim_via is None:                                              # unspecified -> derive from contract
         sim_via = _bespoke_sim_via(target)
     adapters: dict[str, Callable] = {"L3": mlc_arc_adapter(target)}   # arc default (RTL-derived)
