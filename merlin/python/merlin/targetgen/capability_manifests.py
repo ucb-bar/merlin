@@ -461,3 +461,20 @@ def write_oot_target(name: str, root: Path) -> Path:
                      + (f"; contains {list(u.contains)}" if u.contains else ""))
     (root / "AGENT.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return root
+
+
+def materialize_generated_target(name: str, dest: Path | None = None) -> Path:
+    """Materialize a target's OOT package into the ZERO-ENV generated home and return its root.
+
+    The generated home is ``out/build/generated/<name>/`` (:func:`merlin.targetgen.target_registry.
+    generated_target_home`), the location :func:`target_registry.resolve` auto-discovers WITHOUT any
+    ``MERLIN_TARGET_PATH`` — the seamless default for a freshly generated target. ``dest`` overrides the
+    destination directory (e.g. a pinned/versioned copy).
+
+    This is the SINGLE, target-AGNOSTIC materialization entry-point: atlas's bring-up (setup_atlas.py),
+    gemmini, and any other target drop their package the same way — there is no per-target script or
+    literal here.
+    """
+    from .target_registry import generated_target_home   # lazy: avoid an import cycle at module load
+    root = Path(dest) if dest is not None else generated_target_home() / name
+    return write_oot_target(name, root)
