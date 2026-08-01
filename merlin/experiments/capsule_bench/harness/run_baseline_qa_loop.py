@@ -310,14 +310,60 @@ def _is_oracle_code(text: str) -> str | None:
     return None
 
 
+_EMPTY_RESULT_MARKERS = ("(bash completed with no output)", "(no output)", "(no content)")
+
+
+def _result_text_by_id(tpath: Path) -> dict:
+    """Map each tool_use_id -> the tool_result text the agent actually received. Lets the audit tell a
+    BLOCKED probe of a masked answer file (empty result — the mask binds it to /dev/null) apart from a real
+    LEAK (content returned, i.e. the mask failed). Only the claude-CLI transcript emits tool_result events;
+    a transcript without them (the Converse driver) yields an empty map, so those reads stay conservatively
+    flagged as violations."""
+    out = {}
+    for line in tpath.read_text(errors="ignore").splitlines():
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        if e.get("type") != "user":
+            continue
+        tur = e.get("tool_use_result")
+        stdout = tur.get("stdout") if isinstance(tur, dict) else None
+        for b in e.get("message", {}).get("content", []):
+            if isinstance(b, dict) and b.get("type") == "tool_result" and b.get("tool_use_id"):
+                if stdout is not None:
+                    txt = stdout
+                else:
+                    c = b.get("content")
+                    txt = c if isinstance(c, str) else json.dumps(c)
+                out[b["tool_use_id"]] = txt or ""
+    return out
+
+
+def _read_was_blocked(result_text) -> bool:
+    """True iff a withheld-path read returned NOTHING — the mask (/dev/null bind) blocked it, so no answer
+    content reached the agent. Non-empty content means the mask FAILED and bytes actually leaked. A missing
+    result (None) is treated conservatively as NOT blocked (a real read)."""
+    if result_text is None:
+        return False
+    s = result_text.strip().lower()
+    return s == "" or s in _EMPTY_RESULT_MARKERS
+
+
 def audit_transcript(tpath: Path, arm: str = "raw_baseline") -> dict:
     """Flag genuine READS of withheld answer/grader/oracle paths AND oracle USE in agent-authored
     code (defence-in-depth beyond the masked workspace). Self-scans of the submission and bare path
-    mentions are NOT flagged. Arm-aware: the merlin arm's allowed tools are not treated as cheats."""
+    mentions are NOT flagged. Arm-aware: the merlin arm's allowed tools are not treated as cheats.
+
+    A withheld-path read whose RESULT was empty (the mask returned /dev/null) is recorded as an advisory
+    ``blocked_probe`` — it does NOT break ``clean`` — since no answer content reached the agent. Only a read
+    that actually returned content (a mask breach) or oracle USE breaks ``clean``. This stops a thorough
+    model that merely *probes* a masked golden (and gets nothing) from being falsely marked answer-unclean."""
     hits = []
     if not tpath.exists():
         return {"clean": True, "hits": [], "note": "no transcript"}
     path_tokens = _path_tokens(arm)
+    results = _result_text_by_id(tpath)
     for line in tpath.read_text(errors="ignore").splitlines():
         try:
             e = json.loads(line)
@@ -334,12 +380,14 @@ def audit_transcript(tpath: Path, arm: str = "raw_baseline") -> dict:
                 fp = inp.get("file_path") or ""
                 tok = next((t for t in path_tokens if t in fp), None)
                 if tok:
-                    hits.append({"tool": name, "kind": "path_read", "token": tok, "input": fp[:200]})
+                    kind = "blocked_probe" if _read_was_blocked(results.get(b.get("id"))) else "path_read"
+                    hits.append({"tool": name, "kind": kind, "token": tok, "input": fp[:200]})
             elif name == "Bash":
                 cmd = inp.get("command") or ""
                 tok = _is_answer_read(cmd, path_tokens)
                 if tok:
-                    hits.append({"tool": name, "kind": "path_read", "token": tok, "input": cmd[:200]})
+                    kind = "blocked_probe" if _read_was_blocked(results.get(b.get("id"))) else "path_read"
+                    hits.append({"tool": name, "kind": kind, "token": tok, "input": cmd[:200]})
                 # inline python that imports/calls the oracle (e.g. `python -c "from merlin.runtime..."`)
                 if _PYC_RE.search(cmd):
                     otok = _is_oracle_code(cmd)
@@ -356,7 +404,11 @@ def audit_transcript(tpath: Path, arm: str = "raw_baseline") -> dict:
                 if otok:
                     hits.append({"tool": name, "kind": "oracle_use", "token": otok,
                                  "input": f"{fp}: {otok}"})
-    return {"clean": len(hits) == 0, "hits": hits}
+    # A blocked_probe (masked read that returned nothing) is advisory and does NOT break `clean`; only an
+    # actual content leak or oracle USE does. Keep every hit in `hits` (so the probe is still visible).
+    violations = [h for h in hits if h.get("kind") != "blocked_probe"]
+    return {"clean": len(violations) == 0, "hits": hits,
+            "blocked_probes": sum(1 for h in hits if h.get("kind") == "blocked_probe")}
 
 
 def claude_runtime_binds() -> list[str]:
