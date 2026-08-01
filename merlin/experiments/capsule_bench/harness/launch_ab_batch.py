@@ -78,6 +78,13 @@ def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
            "--max-rounds", str(a.max_rounds), "--max-rate-limit-waits", str(a.max_rate_limit_waits),
            "--round-timeout", str(a.round_timeout)]
     cmd += extra
+    # Agent driver + optional tier-within-agent models (default "" -> the per-driver default tier).
+    if getattr(a, "driver", "auto") != "auto":
+        cmd += ["--driver", a.driver]
+    if getattr(a, "subagent_model", ""):
+        cmd += ["--subagent-model", a.subagent_model]
+    if getattr(a, "background_model", ""):
+        cmd += ["--background-model", a.background_model]
     if a.experiment == "realistic":
         cmd += ["--experiment", "realistic", "--bundle", _bundle_for(arm, cond)]
     if a.skip_hidden:
@@ -154,6 +161,11 @@ def main(argv=None):
     ap.add_argument("--mode", choices=["parallel", "sequential"], default="parallel")
     ap.add_argument("--model", default="claude-opus-4-8")
     ap.add_argument("--effort", default="high")
+    # Agent driver + tier-within-agent models (Claude-Code-like). auto preserves route-by-model-id behavior.
+    ap.add_argument("--driver", choices=["auto", "converse", "claudecode", "opencode"], default="auto",
+                    help="agent driver for every arm (auto|converse|claudecode|opencode)")
+    ap.add_argument("--subagent-model", default="", help="delegate/subagent model (alias or Bedrock id)")
+    ap.add_argument("--background-model", default="", help="background/mechanical model (alias or Bedrock id)")
     # Provider for the agent CLI (experiments-only; interactive Claude Code keeps the subscription).
     # For --provider bedrock, --model must be a Bedrock inference-profile id.
     ap.add_argument("--provider", choices=["subscription", "bedrock"], default="subscription")

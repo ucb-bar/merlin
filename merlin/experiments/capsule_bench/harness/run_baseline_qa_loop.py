@@ -100,6 +100,7 @@ def _verilator_per_capsule_timeout() -> int:
         return 1200
 _EXPERIMENT = "full"    # set in main(): 'full' (abc1) or 'realistic' (abc2, whole-repo + self-check)
 _ARM = ""               # set in main(): the arm being run (enforces the per-arm language mandate)
+_DRIVER = "auto"        # set in main(): agent driver (auto|converse|claudecode|opencode); auto routes by model
 READY_MARKER = "READY_FOR_BARRIER"  # realistic: agent drops submission/<this> to self-declare done
 # Merlin-arm-only docs staged into the workspace alongside the (shared) graded task.
 MERLIN_WS_DOCS = ("TASK_ADDENDUM.md", "ALLOWED_MERLIN_TOOLS.md", "MERLIN_PROVENANCE_TEMPLATE.md")
@@ -558,6 +559,16 @@ def _build_task(arm: str, ws: Path, run_dir: Path) -> None:
     shutil.copy(ws_task, run_dir / "TASK.md")  # archive the exact task served, for the record
 
 
+def _driver_for(model: str) -> str:
+    """Resolve which agent driver handles ``model``. ``--driver`` (the ``_DRIVER`` global) is authoritative
+    when set to a concrete driver; ``auto`` (the default, behavior-preserving) routes by model id — the
+    Bedrock Converse loop for a non-Anthropic id, else the ``claude`` CLI."""
+    import bedrock_agent as _BA
+    if _DRIVER and _DRIVER != "auto":
+        return _DRIVER
+    return "converse" if _BA.is_converse_model(model) else "claudecode"
+
+
 def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
                  bundle: dict, rnd: int, timeout: int, arm: str = "raw_baseline") -> tuple[int, Path]:
     # TASK.md must live INSIDE the bound workspace: run_dir is under runs/ which bwrap tmpfs-masks,
@@ -572,12 +583,20 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
     # get the identical mid-round feedback loop.
     broker = _start_selfcheck_broker(ws) if sandbox == "bwrap" else None
     try:
-        # A non-Anthropic model can't drive the claude CLI (Anthropic API only) — route it to the Bedrock
-        # Converse agent backend, which runs the same masked-sandbox agentic loop (incl. the self_check
-        # tool wired to the shim above) + a compatible transcript. Anthropic models use the claude CLI.
-        import bedrock_agent as _BA
-        if _BA.is_converse_model(model):
+        # Route to the selected driver (explicit --driver, or auto-by-model-id). A non-Anthropic model can't
+        # drive the claude CLI (Anthropic API only) → the Bedrock Converse backend runs the same masked-
+        # sandbox agentic loop (incl. the self_check tool wired to the shim above) + a compatible transcript;
+        # 'opencode' drives the provider-agnostic OpenCode CLI; 'claudecode'/Anthropic uses the claude CLI.
+        drv = _driver_for(model)
+        if drv == "converse":
+            import bedrock_agent as _BA
             return _BA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout)
+        if drv == "opencode":
+            try:
+                import opencode_agent as _OA
+            except ImportError as e:  # Phase 3 not landed yet
+                raise SystemExit(f"--driver opencode is not available yet: {e}")
+            return _OA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout)
         inner = (f'claude --print --model {model} --effort {effort} '
                  f'--permission-mode bypassPermissions --add-dir {ws} '
                  f'--output-format stream-json --verbose < {ws_task}')
@@ -734,19 +753,26 @@ def finalize_report(ws: Path, run_dir: Path, model: str, effort: str, sandbox: s
         "2. Update `submission/docs/iteration_notes.md` with the final converged state.\n"
         "DO NOT modify manifest.yaml, mlir_oot/, or any code — the package is frozen-pending and must\n"
         "keep passing. Touch only REPORT.md and docs/.\n")
-    inner = (f'claude --print --model {model} --effort {effort} '
-             f'--permission-mode bypassPermissions --add-dir {ws} '
-             f'--output-format stream-json --verbose < {ws / "FINALIZE.md"}')
-    cmd = bwrap_cmd(inner, ws, bundle) if sandbox == "bwrap" else inner
     tpath = run_dir / "rounds" / "finalize.transcript.jsonl"
+    tpath.parent.mkdir(parents=True, exist_ok=True)
     epath = run_dir / "rounds" / "finalize.stderr.log"
     rc = 0
-    try:
-        with open(tpath, "w") as tf, open(epath, "w") as ef:
-            rc = subprocess.run(["bash", "-c", cmd], cwd=str(ws), stdout=tf, stderr=ef,
-                                timeout=timeout).returncode
-    except subprocess.TimeoutExpired:
-        rc = 124
+    if _driver_for(model) == "claudecode":
+        inner = (f'claude --print --model {model} --effort {effort} '
+                 f'--permission-mode bypassPermissions --add-dir {ws} '
+                 f'--output-format stream-json --verbose < {ws / "FINALIZE.md"}')
+        cmd = bwrap_cmd(inner, ws, bundle) if sandbox == "bwrap" else inner
+        try:
+            with open(tpath, "w") as tf, open(epath, "w") as ef:
+                rc = subprocess.run(["bash", "-c", cmd], cwd=str(ws), stdout=tf, stderr=ef,
+                                    timeout=timeout).returncode
+        except subprocess.TimeoutExpired:
+            rc = 124
+    else:
+        # Converse / OpenCode: the claude CLI can't drive these models, so skip the agent finalize turn —
+        # the driver stamps REPORT.md's status line below (_stamp_report_status). An empty transcript keeps
+        # audit_transcript happy (no tokens, no answer-access hits).
+        tpath.write_text("")
 
     # re-grade: if the finalize turn broke the (passing) package, restore the snapshot
     regrade = qa_grade(ws, run_dir, 90, False, timeout)
@@ -771,6 +797,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--run-id", required=True)
     ap.add_argument("--model", default="claude-opus-4-8")
     ap.add_argument("--effort", default="high")
+    # AGENT DRIVER (Claude-Code-like interfaces). auto (default) preserves today's behavior: route by model
+    # id — the Bedrock Converse loop for a non-Anthropic id, else the claude CLI.
+    ap.add_argument("--driver", choices=["auto", "converse", "claudecode", "opencode"], default="auto",
+                    help="agent driver: auto (route by model id), converse (Bedrock Converse loop), "
+                         "claudecode (claude CLI; Bedrock via --provider bedrock), opencode (OpenCode CLI)")
+    ap.add_argument("--subagent-model", default="",
+                    help="delegate/subagent model (alias or Bedrock id) for tier-within-agent; default per "
+                         "driver (Anthropic: sonnet; non-Anthropic: qwen-coder)")
+    ap.add_argument("--background-model", default="",
+                    help="background/mechanical model (alias or Bedrock id) for chores; default per driver "
+                         "(Anthropic: haiku; non-Anthropic: nova-lite)")
     # PROVIDER for the agent's `claude` CLI — experiments-only, so the interactive Claude Code keeps the
     # subscription. subscription (default) = the machine's ~/.claude creds; bedrock = Claude Code's own
     # Bedrock mode (CLAUDE_CODE_USE_BEDROCK=1 + AWS creds + a Bedrock inference-profile model id).
@@ -814,9 +851,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="CLAUDE_CONFIG_DIR for the agent's claude CLI (a different subscription account)")
     a = ap.parse_args(argv)
     arm = a.arm
-    global _EXPERIMENT, _ARM
+    global _EXPERIMENT, _ARM, _DRIVER
     _EXPERIMENT = a.experiment
     _ARM = arm
+    _DRIVER = a.driver
 
     # DRIVER-SIDE grade env: qa_grade/_verilator_grade run build_package (cmake) for C++ submissions in
     # THIS process's env. The conda cmake transitively needs libidn.so.11 (host has only .12) -> ensure
@@ -855,6 +893,15 @@ def main(argv: list[str] | None = None) -> int:
         # overridable via its env var. ⚠️ opus-4-8 / sonnet-5 / opus-5 are LISTED by list-inference-
         # profiles but NOT invocable on this account — the invocable set is opus-4-6-v1 / sonnet-4-6 /
         # haiku-4-5, so those are the defaults.
+        # Tier overrides: --subagent-model / --background-model win over the defaults below (set BEFORE the
+        # setdefaults, so those become no-ops when an override is supplied). Aliases resolve via model_tiers.
+        from model_tiers import resolve as _rmodel
+        if a.subagent_model:
+            os.environ["CLAUDE_CODE_SUBAGENT_MODEL"] = _rmodel(a.subagent_model)
+        if a.background_model:
+            _bg = _rmodel(a.background_model)
+            os.environ["ANTHROPIC_SMALL_FAST_MODEL"] = _bg
+            os.environ["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = _bg
         _haiku = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
         os.environ.setdefault("ANTHROPIC_DEFAULT_OPUS_MODEL", "us.anthropic.claude-opus-4-6-v1")
         os.environ.setdefault("ANTHROPIC_DEFAULT_SONNET_MODEL", "us.anthropic.claude-sonnet-4-6")
