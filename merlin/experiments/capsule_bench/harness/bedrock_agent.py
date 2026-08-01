@@ -104,6 +104,23 @@ def _strip_cachepoints(messages: list) -> None:
             m["content"] = [b for b in c if not (isinstance(b, dict) and "cachePoint" in b)]
 
 
+def _roll_cachepoint(messages: list) -> None:
+    """Move a single ROLLING cachePoint to the end of the growing conversation, so the accumulating
+    tool-result history is cached incrementally too — mirroring Claude Code's rolling cache breakpoint on
+    top of the static system/tools/first-message breakpoints. Without this we cache only the static header
+    and re-ship the (large, growing) tool-result body uncached every iteration. Keeps total breakpoints at
+    the Bedrock limit of 4 (system + tools + messages[0] + this rolling one) by first removing any prior
+    rolling marker from messages[1:], leaving messages[0]'s static breakpoint intact."""
+    for m in messages[1:]:
+        c = m.get("content")
+        if isinstance(c, list):
+            m["content"] = [b for b in c if not (isinstance(b, dict) and "cachePoint" in b)]
+    if len(messages) > 1:
+        last = messages[-1].get("content")
+        if isinstance(last, list):
+            last.append(dict(_CACHE_POINT))
+
+
 def _bash_in_sandbox(te, ws: Path, bundle: dict, command: str, sandbox: str, timeout: int) -> str:
     from merlin.targetgen.sandbox import bwrap as _BW
     cmd = _BW.wrap(te, ws, command, bundle) if sandbox == "bwrap" else f"cd {ws} && {command}"
@@ -136,15 +153,26 @@ def _run_subagent(cli, sub_mid: str, ws: Path, te, bundle: dict, sandbox: str, s
     sys = [{"text": "You are a focused sub-agent. Do EXACTLY the delegated sub-task and nothing more, then "
             "reply with a short result summary. You have write_file/read_file/run_bash in the shared "
             "workspace (cwd = workspace root). Do NOT read golden/expected files (masked + logged)."}]
-    msgs = [{"role": "user", "content": [{"text": f"SUBTASK:\n{subtask}\n\nCONTEXT:\n{context}".strip()}]}]
+    msgs = [{"role": "user", "content": [
+        {"text": f"SUBTASK:\n{subtask}\n\nCONTEXT:\n{context}".strip()}, _CACHE_POINT]}]
     final: list[str] = []
+    sub_cache = True   # cache the sub-agent's system+tools+first-message prefix too (parity with the main
+    #                    loop); self-correct to uncached if this cheaper model rejects cachePoint.
     for it in range(max_iters):
         if time.time() > deadline:
             break
+        if sub_cache:
+            _roll_cachepoint(msgs)
+        _sys = sys + [_CACHE_POINT] if sub_cache else sys
+        _tc = {"tools": sub_tools["tools"] + [_CACHE_POINT]} if sub_cache else sub_tools
         try:
-            resp = cli.converse(modelId=sub_mid, system=sys, messages=msgs, toolConfig=sub_tools,
+            resp = cli.converse(modelId=sub_mid, system=_sys, messages=msgs, toolConfig=_tc,
                                 inferenceConfig={"maxTokens": max_tokens, "temperature": 0})
         except Exception as e:  # noqa: BLE001 — a delegate failure is a tool result, not a round failure
+            if sub_cache and _cache_unsupported(e):
+                sub_cache = False
+                _strip_cachepoints(msgs)
+                continue
             return f"[delegate error: {type(e).__name__}: {str(e)[:200]}]"
         u = resp.get("usage", {})
         out_msg = resp["output"]["message"]
@@ -282,6 +310,8 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
                 rc = 124
                 break
             resp = None
+            if cache_enabled:
+                _roll_cachepoint(messages)   # cache the accumulating tool-result body, not just the header
             for attempt in range(4):  # extra loop-level retries on transient errors the SDK didn't absorb
                 if time.time() > deadline:
                     rc = 124
