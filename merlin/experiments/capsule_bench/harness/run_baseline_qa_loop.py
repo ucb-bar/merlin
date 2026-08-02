@@ -1190,6 +1190,17 @@ def main(argv: list[str] | None = None) -> int:
             rc, tpath = 124, run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
             print(f"[round {rnd}] agent TIMEOUT")
 
+        # Daily-quota wall: a provider DAILY token limit (429 'too many tokens per day') has no short
+        # window reset to sleep to, so retrying burns every remaining round producing empty results
+        # (the ccb2 waste). Abort the run early + honestly instead.
+        if RL.daily_limit_hit(tpath):
+            active_wall_s += time.time() - _rstart
+            print(f"[round {rnd}] DAILY TOKEN LIMIT hit (429 'too many tokens per day') — the provider's "
+                  f"daily quota is exhausted; aborting early (not converged) rather than burning the "
+                  f"remaining rounds. Relaunch after the daily quota resets.")
+            _checkpoint(rnd)
+            break
+
         # Rate-limit backoff: if the org five-hour budget REJECTED this round (zero work), don't
         # consume it — sleep until the window resets and retry the SAME round index.
         if RL.round_rejected(tpath):

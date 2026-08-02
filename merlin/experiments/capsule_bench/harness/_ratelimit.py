@@ -46,6 +46,28 @@ def round_rejected(transcript_path: str | Path) -> bool:
     return rej and tool_uses == 0
 
 
+def daily_limit_hit(transcript_path: str | Path) -> bool:
+    """True if this round hit a provider DAILY token quota — a 429 'too many tokens per day' API error
+    (e.g. Bedrock) with no tool work. Unlike the five-hour window this has no short ``resetsAt`` to sleep
+    to, so the loop should abort the run early rather than burn every remaining round against the wall."""
+    hit = False
+    tool_uses = 0
+    for e in _iter_events(transcript_path):
+        t = e.get("type")
+        if t in ("result", "assistant"):
+            txt = str(e.get("result", "")) if t == "result" else ""
+            for b in e.get("message", {}).get("content", []):
+                if b.get("type") == "text":
+                    txt += " " + str(b.get("text", ""))
+                elif b.get("type") == "tool_use":
+                    tool_uses += 1
+            low = txt.lower()
+            if ("per day" in low or "daily" in low) and \
+                    ("429" in low or "too many" in low or "quota" in low or "limit" in low):
+                hit = True
+    return hit and tool_uses == 0
+
+
 def rate_limit_reset_epoch(transcript_path: str | Path) -> int | None:
     """Return the `resetsAt` epoch (seconds) from a rejected five-hour event, or None."""
     latest = None
