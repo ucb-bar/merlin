@@ -18,15 +18,23 @@ from __future__ import annotations
 
 from .isa_model import IsaModel
 from . import isa_disasm as D
+from . import isa_taxonomy as IT
 
 Finding = dict
 
 
-def lint(model: IsaModel, words: list[int]) -> list[Finding]:
+def lint(model: IsaModel, words: list[int], *, op: str = "matmul", output_dtype: str | None = None,
+         epilogue: tuple[str, ...] = (), movement: bool = False) -> list[Finding]:
     """Lint an assembled word stream → a list of findings, each
     ``{rule, severity, detail[, index]}`` (severity ∈ error/warning/info). Empty findings = clean by these
     checks (not a full correctness proof — that is the oracle's job). An empty model yields a single INFO
-    (no ISA definition to lint against)."""
+    (no ISA definition to lint against).
+
+    ``op``/``output_dtype``/``epilogue``/``movement`` describe what the capsule asks the kernel to compute;
+    they drive the structural required-role check (a matmul kernel with no systolic multiply, or no memory
+    op to load operands / store the result, cannot be correct). That check is purely ROLE-derived from the
+    model — no target name, no class literal, no golden — and skips any role the target's ISA does not
+    define (derive-or-skip, never a false positive)."""
     if model.is_empty():
         return [{"rule": "no_isa_model", "severity": "info",
                  "detail": "this target ships no ISA definition; static ISA lint is unavailable"}]
@@ -59,6 +67,32 @@ def lint(model: IsaModel, words: list[int]) -> list[Finding]:
         findings.append({"rule": "halt_unknown", "severity": "info",
                          "detail": "termination could not be statically verified (the halt op set is not "
                                    "derived for this target); confirm the kernel reaches the ISA terminator"})
+
+    # 3) no recognized instructions — every word is illegal (or the kernel is empty). The program does
+    #    nothing the ISA can execute; the output region is never written.
+    if words and not real:
+        findings.append({"rule": "no_recognized_instructions", "severity": "error",
+                         "detail": "no emitted word decodes to a defined instruction — the kernel is empty "
+                                   "or entirely mis-encoded, so it cannot produce output"})
+
+    # 4) required-role coverage — a kernel that omits a semantic ROLE the capsule's op needs (e.g. a matmul
+    #    capsule with no systolic multiply, or no memory op to load operands / store the result) produces
+    #    wrong output before numerics matter. Checked by ROLE, so it is robust to a target having several
+    #    classes per role, and it skips any role the target's ISA does not define (a target that reaches the
+    #    op a different way is never falsely flagged).
+    present_roles = {r.get("role") for r in real if r.get("role")}
+    for slot in IT.required_role_slots(op=op, output_dtype=output_dtype, epilogue=epilogue,
+                                       movement=movement):
+        defined = [r for r in slot if model.roles.get(r)]          # roles this target actually ships
+        if not defined:
+            continue                                               # target has no such role → do not require it
+        if not any(r in present_roles for r in slot):
+            label = defined[0]
+            classes = ", ".join((model.roles.get(label) or [])[:3]) or label
+            findings.append({"rule": "missing_required_role", "severity": "warning",
+                             "detail": f"a '{op}' kernel needs a '{label}'-role instruction (this ISA "
+                                       f"defines {classes}) but the kernel emits none — its output cannot "
+                                       "be correct; add it before spending an oracle run"})
 
     return findings
 

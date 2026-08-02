@@ -76,7 +76,10 @@ def _handle(req: dict) -> dict:
         recs = isa_disasm.disassemble(model, words)
         if cmd == "disasm":
             return {"records": recs, "n": len(recs)}
-        findings = isa_lint.lint(model, words)
+        findings = isa_lint.lint(model, words, op=req.get("op", "matmul"),
+                                 output_dtype=req.get("output_dtype"),
+                                 epilogue=tuple(req.get("epilogue") or ()),
+                                 movement=bool(req.get("movement", False)))
         cov = isa_disasm.coverage(model, recs, op=req.get("op", "matmul"),
                                   output_dtype=req.get("output_dtype"),
                                   epilogue=tuple(req.get("epilogue") or ()),

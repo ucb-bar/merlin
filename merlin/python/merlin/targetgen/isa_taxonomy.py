@@ -134,35 +134,46 @@ def required_classes_for_op(taxonomy: dict, *, op: str = "matmul", output_dtype:
                                        epilogue=epilogue, movement=movement)
 
 
+def required_role_slots(*, op: str = "matmul", output_dtype: str | None = None,
+                        epilogue: tuple[str, ...] = (), movement: bool = False) -> list[tuple[str, ...]]:
+    """The ordered semantic-role SLOTS a kernel for ``op`` must exercise — each slot a tuple of acceptable
+    roles (the first that resolves wins). Pure op->role semantics expressed in the DERIVED role vocabulary:
+    no target data and no class names here, so it is fully target-agnostic. Shared by
+    :func:`required_classes_from_roles` (which maps each slot to a concrete class from the target's own role
+    map) and the static linter (which checks slot presence by ROLE — robust to a target having several
+    classes per role). A movement/copy op needs only a memory op; a matmul needs load, stationary-weight
+    push, the systolic multiply, and the accumulator read-out, plus any epilogue role."""
+    if movement or op in ("movement", "copy"):
+        return [("memory",)]                              # dequant load + store, no MXU
+    slots: list[tuple[str, ...]] = [
+        ("memory",),                                      # load operands
+        ("weight_load",),                                 # push stationary weight
+        ("matmul",),                                      # systolic multiply-accumulate
+    ]
+    # readout pop: fp8 output uses the scaled (exponent) pop; else the plain pop — pick by dtype+role.
+    if output_dtype and "fp8" in output_dtype:
+        slots.append(("acc_readout_scaled", "acc_readout"))
+    else:
+        slots.append(("acc_readout", "acc_readout_scaled"))
+    if "relu" in epilogue:
+        slots.append(("tensor_compute_unary",))           # the vector-unary (VRELU) epilogue
+    return slots
+
+
 def required_classes_from_roles(by_role: dict[str, list[str]], *, op: str = "matmul",
                                 output_dtype: str | None = None, epilogue: tuple[str, ...] = (),
                                 movement: bool = False) -> list[str]:
     """The role-selected required classes, taking the ``{role: [classes]}`` map directly — so a caller that
     already holds the derived roles (e.g. an :class:`~merlin.targetgen.isa_model.IsaModel`) reuses the exact
-    same selection logic without re-deriving the whole taxonomy."""
+    same selection logic without re-deriving the whole taxonomy. Each :func:`required_role_slots` slot maps
+    to the first present class of the first role that resolves."""
     req: list[str] = []
-
-    def add_role(*roles: str) -> None:
-        """Add the first present class for the first role that resolves (roles tried in order)."""
-        for r in roles:
+    for slot in required_role_slots(op=op, output_dtype=output_dtype, epilogue=epilogue, movement=movement):
+        for r in slot:
             cs = by_role.get(r) or []
             if cs and cs[0] not in req:
                 req.append(cs[0])
-                return
-
-    if movement or op in ("movement", "copy"):
-        add_role("memory")                                # dequant load + store, no MXU
-        return req
-    add_role("memory")                                    # load operands
-    add_role("weight_load")                               # push stationary weight
-    add_role("matmul")                                    # systolic multiply-accumulate
-    # readout pop: fp8 output uses the scaled (exponent) pop; else the plain pop — pick by dtype+role.
-    if output_dtype and "fp8" in output_dtype:
-        add_role("acc_readout_scaled", "acc_readout")
-    else:
-        add_role("acc_readout", "acc_readout_scaled")
-    if "relu" in epilogue:
-        add_role("tensor_compute_unary")                  # the vector-unary (VRELU) epilogue
+                break
     return req
 
 
