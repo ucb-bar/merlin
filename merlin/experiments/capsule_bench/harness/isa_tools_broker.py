@@ -86,7 +86,62 @@ def _handle(req: dict) -> dict:
                                   movement=bool(req.get("movement", False)))
         return {"findings": findings, "formatted": isa_lint.format_findings(findings), "coverage": cov}
 
-    return {"error": f"unknown cmd {cmd!r} (use asm|disasm|lint)"}
+    if cmd == "debug":
+        return _handle_debug(req)
+
+    return {"error": f"unknown cmd {cmd!r} (use asm|disasm|lint|debug)"}
+
+
+def _debug_ctx():
+    """(target, model_ext, public-capsule dir) for the debugger, from the run's descriptor. Cached-free
+    (called rarely); raises with an actionable message if the target is not a self-hosted-ISA backend."""
+    import _common as _C
+    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.targetgen.contract.materialize import public_capsules_for
+    from merlin.targetgen import capsule_runner as CR
+    te = load_target_experiment(_C.EXP / "target_experiment.yaml")
+    endpoint_kind, model_ext = CR._endpoint_of(te.target)
+    if endpoint_kind != "external_backend":
+        raise ValueError("debug is only for a self-hosted-ISA (external_backend) target — this target "
+                         "runs a command-buffer/host-stream backend, so use disasm/lint + self_check")
+    return te.target, model_ext, public_capsules_for(te)
+
+
+def _handle_debug(req: dict) -> dict:
+    """Run the agent's kernel.S on the functional model to instruction ``run_to`` and return committed
+    scalar state + REDACTED DRAM windows (the output region is refused; see program_oracle). Oracle-touching
+    but golden-free: the model runs the AGENT'S kernel, so DRAM holds only the given inputs + what the
+    kernel itself wrote."""
+    import tempfile
+    from merlin.targetgen import program_oracle as PO
+    try:
+        target, model_ext, caps_root = _debug_ctx()
+    except Exception as e:  # noqa: BLE001 — configuration/eligibility error, reported to the agent as-is
+        return {"error": f"debug unavailable: {e}"}
+    cname = (req.get("capsule") or "").strip()
+    cap_dir = caps_root / cname
+    if not cname or not (cap_dir / "capsule.yaml").exists():
+        avail = sorted(p.parent.name for p in caps_root.glob("*/capsule.yaml"))
+        return {"error": f"debug: unknown capsule {cname!r}; pick one of {avail}"}
+    try:
+        cb = PO.build_debug_cb(target, cap_dir)
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"debug: could not build the command buffer for {cname}: {str(e)[-300:]}"}
+    with tempfile.TemporaryDirectory() as td:
+        ks = Path(td) / "kernel.S"
+        ks.write_text(req.get("kernel_s", "") or "")
+        try:
+            out = PO.run_program_debug(target, model_ext=model_ext, cb=cb, kernel_s=ks,
+                                       dump_regions=req.get("regions") or [],
+                                       run_to=req.get("run_to"),
+                                       state_summary=bool(req.get("state_summary", False)),
+                                       workdir=Path(td), timeout=int(req.get("timeout", 300)))
+        except PO.OracleUnavailable as e:
+            return {"error": f"debug oracle unavailable (model venv / functional runner absent): {e}"}
+        except Exception as e:  # noqa: BLE001 — a run fault is the agent's kernel error, reported as-is
+            return {"error": f"debug run failed: {type(e).__name__}: {str(e)[-300:]}"}
+    out["capsule"] = cname
+    return out
 
 
 def main(argv=None):

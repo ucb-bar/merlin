@@ -404,6 +404,126 @@ def program_functional_adapter(target: str, *, model_ext: str) -> Callable:
 
 
 # --------------------------------------------------------------------------------------------------
+# LITE DEBUGGER — run the agent's kernel on the FUNCTIONAL core to instruction N, then read back the
+# committed scalar state (PC, scalar registers, halt reason) + caller-named DRAM windows. This is the
+# observability the agent lacks when its kernel assembles + halts but computes zeros: it can watch a
+# region fill (or NOT) as the DMA/compute sequence advances, instead of only seeing a wrong final output.
+#
+# NOT oracle-free (it runs the program on the model), but it leaks NO golden: the functional core runs the
+# AGENT'S kernel, so its DRAM holds only the canonical INPUTS (which the agent is given) + whatever the
+# agent's own kernel wrote — never the reference golden (computed on a separate path). The ONE region whose
+# post-run contents equal the golden IFF the kernel is correct is the declared OUTPUT region, so that
+# window is REFUSED (a correct kernel would otherwise let the agent read its own answer back and, across
+# capsules, scrape the answer key). Total dumped bytes are capped to prevent region-scraping.
+# --------------------------------------------------------------------------------------------------
+
+_DEBUG_MAX_DUMP_BYTES = 4096            # per-request cap on total dumped DRAM (anti-scrape)
+
+
+def build_debug_cb(target: str, capsule_dir) -> dict:
+    """A minimal command buffer (``tensors``: role/shape/dtype/base + input ``preload_b64``) for ONE
+    capsule, built straight from the capsule spec — WITHOUT building the agent's package. Enough to run the
+    agent's ``kernel.S`` on the functional model for debugging. Target-agnostic: bases from
+    :func:`capsule_dram.layout`, preload from :func:`capsule_golden.canonical_input_raws`. The output tensor
+    carries base/shape/dtype (used only to compute the redaction region) but NOT ``physical`` — the debugger
+    never decodes the output, so the agent-declared output layout is irrelevant here."""
+    from . import capsule_common, capsule_dram, capsule_golden
+    from .dram_facts import dram_base_for
+    cap = capsule_common.load_capsule(capsule_dir)
+    tensors: dict[str, dict] = {}
+    for t in (cap.get("inputs") or []):
+        if t.get("role") == "output":
+            continue                                        # the output tensor is added below (canonical)
+        tensors[t["name"]] = {"role": t.get("role", "input"), "shape": list(t.get("shape") or []),
+                              "dtype": t.get("dtype")}
+    ot = capsule_dram.output_tensor(cap)
+    if ot is None:
+        raise OracleUnavailable(f"{target}: capsule {capsule_dir} declares no resolvable output tensor")
+    tensors[ot["name"]] = {"role": "output", "shape": list(ot["shape"]), "dtype": ot["dtype"]}
+    cb = {"tensors": tensors}
+    capsule_dram.inject_bases(cb, cap, base=dram_base_for(target) + capsule_dram.DEFAULT_BASE)
+    raws = capsule_golden.canonical_input_raws(cap, capsule_dir)
+    for name, t in tensors.items():
+        if t["role"] in ("input", "weight", "bias") and name in raws:
+            t["preload_b64"] = base64.b64encode(raws[name]).decode()
+    return cb
+
+
+def _split_dump_regions(dump_regions, out_base: int, out_nbytes: int):
+    """(allowed, rejected) split of requested ``(base, nbytes)`` windows: reject any that overlap the output
+    region (withheld — see the section note) or overrun the per-request byte cap; keep the rest in order."""
+    allowed: list[tuple[int, int]] = []
+    rejected: list[dict] = []
+    o0, o1 = int(out_base), int(out_base) + int(out_nbytes)
+    total = 0
+    for r in (dump_regions or []):
+        b, n = int(r[0]), int(r[1])
+        if n <= 0:
+            rejected.append({"base": b, "nbytes": n, "reason": "non-positive length"})
+        elif b < o1 and o0 < b + n:
+            rejected.append({"base": b, "nbytes": n,
+                             "reason": "overlaps the OUTPUT region — withheld (it would hold your result / "
+                                       "the answer). Debug the INPUT and scratch regions instead."})
+        elif total + n > _DEBUG_MAX_DUMP_BYTES:
+            rejected.append({"base": b, "nbytes": n,
+                             "reason": f"exceeds the per-request dump cap ({_DEBUG_MAX_DUMP_BYTES} B)"})
+        else:
+            total += n
+            allowed.append((b, n))
+    return allowed, rejected
+
+
+def run_program_debug(target: str, *, model_ext: str, cb: dict, kernel_s: Path, dump_regions,
+                      run_to: int | None = None, state_summary: bool = False, max_cycles: int = 20000,
+                      workdir, timeout: int = 600) -> dict[str, Any]:
+    """Assemble the agent's ``kernel.S`` and run it on the target's FUNCTIONAL core to instruction ``run_to``
+    (or to halt when None), then return committed scalar state + REDACTED DRAM windows. Same assemble +
+    preload + ``dram_base`` relocation as :func:`run_program_functional_oracle`; the output region is never
+    read back (only used to reject overlapping dump windows). Raises :class:`OracleUnavailable` when the
+    model venv / functional runner is absent (fail closed)."""
+    _func_program_helper(target)                            # fail closed early if the runner is absent
+    bundle = emit_bundle(model_ext=model_ext, kernel_s=kernel_s, fix_itype_rd=True, workdir=workdir,
+                         timeout=timeout)
+    words = bundle["words"]
+    preload = _bundle_preload(bundle, cb)
+    out_spec = _resolve_out_spec(target, cb, bundle)
+    out_nbytes = _out_nbytes(out_spec)
+    from .dram_facts import dram_base_for
+    reloc_base = int(dram_base_for(target))
+    allowed, rejected = _split_dump_regions(dump_regions, int(out_spec["base"]), out_nbytes)
+    req = {
+        "words": [int(w) & 0xFFFFFFFF for w in words],
+        "preload": [{"base": int(b), "b64": base64.b64encode(d).decode()} for b, d in preload],
+        "out_bases": [],                                    # the debugger never reads the output region
+        "max_cycles": int(max_cycles),
+        "dram_base": reloc_base,
+        "run_to": None if run_to is None else int(run_to),
+        "dump_regions": [[int(b), int(n)] for b, n in allowed],
+        "state_summary": bool(state_summary),
+    }
+    res = _run_func_helper(target, model_ext, req, Path(workdir), timeout)
+    dmap = res.get("dram_dumps") or {}
+    regions = []
+    for b, n in allowed:
+        raw = base64.b64decode(dmap.get(str(int(b)), "")) if dmap.get(str(int(b))) else b""
+        regions.append({"base": int(b), "nbytes": int(n), "returned_bytes": len(raw),
+                        "hex": raw.hex(), "all_zero": (len(raw) > 0 and not any(raw))})
+    return {
+        "halted": bool(res.get("halted")),
+        "halt_reason": res.get("halt_reason"),
+        "instr_count": res.get("instr_count"),
+        "cycles": res.get("cycles"),
+        "pc": res.get("pc"),
+        "regs": res.get("regs"),
+        "program_words": len(words),
+        "regions": regions,
+        "rejected_regions": rejected,
+        "on_chip": res.get("state_summary"),      # value-free populated-map (vmem/mrf/acc), or None
+        "oracle": f"{target}-debug",
+    }
+
+
+# --------------------------------------------------------------------------------------------------
 # CYCLE-ACCURATE VERILATOR tier (L4) — the SAME assembled program run on a program-driven Verilator
 # sim of the target's RTL top (a bare-core TileLink harness), for RTL-CERTIFIED outputs. This is the
 # first truly RTL-grounded atlas oracle: the arc cosim (L3) is the RTL-DERIVED functional gold; this

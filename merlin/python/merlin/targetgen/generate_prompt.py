@@ -337,10 +337,10 @@ instead of guessing from the file tree (neither imports the oracle or the grader
 # chose and inspect the agent's OWN emitted words — so they are a fair authoring aid for the assisted arms,
 # never a leak. Fully target-agnostic: derived from the target's own shipped ISA definition, no accelerator
 # named here.
-_ISA_DEVTOOLS = """## ISA dev tools (assembler / disassembler / linter) — staged as `isa_tools.py`
-You have a derived toolset for this target's self-hosted ISA (oracle-free: it encodes the syntax YOU choose
-and inspects YOUR OWN emitted words; it never reveals a golden). Use it to avoid the two most common
-raw-ISA mistakes — invented encodings and a program that never halts:
+_ISA_DEVTOOLS = """## ISA dev tools (assembler / disassembler / linter / debugger) — staged as `isa_tools.py`
+You have a derived toolset for this target's self-hosted ISA (oracle-free for asm/disasm/lint: they encode
+the syntax YOU choose and inspect YOUR OWN emitted words; they never reveal a golden). Use it to avoid the
+two most common raw-ISA mistakes — invented encodings and a program that never halts:
 - `python isa_tools.py asm ops.txt` — assemble a mnemonic listing (`MNEMONIC field=value, ...`, one per
   line) into the correct `.word` lines for your `kernel.S`, packed into the exact bits this target's own
   encoder uses. It REFUSES rather than emit a wrong word, so you never hand-pack a 32-bit instruction.
@@ -351,6 +351,22 @@ raw-ISA mistakes — invented encodings and a program that never halts:
 Run these locally as often as you like; they need no oracle. **Run `lint` (and `disasm`) BEFORE every
 `self_check`** — they are instant and catch the encoding / halt / missing-compute-role mistakes that would
 otherwise waste a functional-sim run.
+
+When your kernel assembles and halts but the OUTPUT is wrong (e.g. all zeros), stop guessing and OBSERVE the
+data path with the lite debugger:
+- `python isa_tools.py debug submission/kernel.S --capsule <name> --run-to <N> --region BASE:NBYTES ...`
+  runs your kernel on the functional model up to instruction `N` (omit `--run-to` to run to halt), then
+  reports `pc`, the scalar registers, `halt_reason`, `instr_count`, and a hex dump of each DRAM `--region`
+  you name (`--region` repeats; `BASE` may be hex `0x..` or decimal, matching the addresses your kernel
+  uses). Watch a region fill — or stay zero — as your DMA/load/compute/store sequence advances: dump the
+  input tile right after your DMA.LOAD to confirm data actually landed, then the scratch/accumulator region
+  after the compute. `all_zero: true` right after a load means your load didn't write where you think.
+  Add `--state` for a VALUE-FREE populated-map of on-chip memory (staging SRAM / register-file / accumulator
+  banks) — one `populated: true/false` per bank, no values — so you can see exactly which stage's data
+  landed (did VLOAD reach SRAM? did the weight push populate a register bank? did the MXU write the
+  accumulator?) and pinpoint the stage that silently no-ops.
+  This is the fastest way to localize which stage silently no-ops. The OUTPUT region is withheld (that is
+  the answer) — debug the INPUT and scratch regions; correctness of the final output comes from `self_check`.
 
 """
 

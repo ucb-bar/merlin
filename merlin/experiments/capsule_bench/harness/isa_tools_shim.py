@@ -10,6 +10,11 @@ golden is ever involved — asm encodes the syntax YOU chose; disasm/lint inspec
   python isa_tools.py disasm submission/kernel.S
   # static-lint your kernel.S -> illegal opcodes, missing terminator, instruction-class coverage
   python isa_tools.py lint submission/kernel.S --op matmul
+  # LITE DEBUGGER: run your kernel.S on the functional model to instruction N, then dump machine state +
+  # named DRAM windows (watch a region fill or NOT as your DMA/compute advances). The OUTPUT region is
+  # withheld (that's the answer); debug your INPUT/scratch regions. --region base:nbytes is repeatable.
+  python isa_tools.py debug submission/kernel.S --capsule A1_mvin_mvout --run-to 40 \
+         --region 0x80001000:256 --region 0x80002000:256
 """
 from __future__ import annotations
 import argparse
@@ -21,18 +26,44 @@ from pathlib import Path
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Derived ISA dev tools (assembler/disassembler/linter).")
-    ap.add_argument("cmd", choices=["asm", "disasm", "lint"])
-    ap.add_argument("file", help="asm: a mnemonic listing; disasm/lint: your kernel.S")
+    ap = argparse.ArgumentParser(description="Derived ISA dev tools (assembler/disassembler/linter/debugger).")
+    ap.add_argument("cmd", choices=["asm", "disasm", "lint", "debug"])
+    ap.add_argument("file", help="asm: a mnemonic listing; disasm/lint/debug: your kernel.S")
     ap.add_argument("--op", default="matmul", help="lint coverage: the capsule op (default matmul)")
     ap.add_argument("--output-dtype", default=None)
     ap.add_argument("--movement", action="store_true", help="lint coverage: a data-movement capsule")
+    ap.add_argument("--capsule", default=None, help="debug: which public capsule to run your kernel on")
+    ap.add_argument("--run-to", type=int, default=None,
+                    help="debug: stop after this many instructions (omit = run to halt)")
+    ap.add_argument("--region", action="append", default=None, metavar="BASE:NBYTES",
+                    help="debug: a DRAM window to dump (repeatable); BASE may be hex (0x..) or decimal")
+    ap.add_argument("--state", action="store_true",
+                    help="debug: also report a value-free populated-map of on-chip SRAM/registers/"
+                         "accumulators (which stage's data landed) — no values, just populated/empty")
     ap.add_argument("--timeout", type=int, default=300)
     a = ap.parse_args(argv)
 
     text = Path(a.file).read_text() if Path(a.file).is_file() else a.file
-    req = {"cmd": a.cmd, "op": a.op, "output_dtype": a.output_dtype, "movement": a.movement}
-    req["text" if a.cmd == "asm" else "kernel_s"] = text
+    if a.cmd == "debug":
+        regions = []
+        for spec in (a.region or []):
+            if ":" not in spec:
+                print(json.dumps({"error": f"bad --region {spec!r}; use BASE:NBYTES (e.g. 0x80001000:256)"}))
+                return 2
+            b_s, n_s = spec.rsplit(":", 1)
+            try:
+                regions.append([int(b_s, 0), int(n_s, 0)])
+            except ValueError:
+                print(json.dumps({"error": f"bad --region {spec!r}; BASE/NBYTES must be integers"}))
+                return 2
+        if not a.capsule:
+            print(json.dumps({"error": "debug needs --capsule NAME (the capsule to run your kernel on)"}))
+            return 2
+        req = {"cmd": "debug", "capsule": a.capsule, "kernel_s": text,
+               "run_to": a.run_to, "regions": regions, "state_summary": a.state, "timeout": a.timeout}
+    else:
+        req = {"cmd": a.cmd, "op": a.op, "output_dtype": a.output_dtype, "movement": a.movement}
+        req["text" if a.cmd == "asm" else "kernel_s"] = text
 
     ws = Path(__file__).resolve().parent               # the shim lives at <ws>/isa_tools.py
     ch = ws / ".isa_channel"
@@ -40,7 +71,9 @@ def main(argv=None):
     rid = f"{os.getpid()}_{int(time.time() * 1000) % 1000000}"
     (ch / f"req_{rid}.json").write_text(json.dumps(req))
     resp, done = ch / f"resp_{rid}.json", ch / f"done_{rid}"
-    deadline = time.time() + a.timeout
+    # debug runs the model inside the broker (up to a.timeout there), so wait past that; asm/disasm/lint
+    # are instant, so the margin is harmless.
+    deadline = time.time() + a.timeout + (120 if a.cmd == "debug" else 0)
     while time.time() < deadline:
         if done.exists() and resp.exists():
             txt = resp.read_text()
