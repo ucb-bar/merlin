@@ -1,0 +1,340 @@
+datapath:
+  compare: exact_int
+  requant_output_dtype: i8
+  required_oracle_tiers:
+  - L0
+  - L1
+  - L2
+  - L3
+capsules:
+- name: A0_config_smoke
+  kind: isa
+  op: matmul
+  source_role: handauthored_compiler_test
+  source_reference: CONFIG_EX/LD/ST smoke via a single 16x16 matmul
+  label: public
+  comment: 'A0: CONFIG_EX/CONFIG_LD/CONFIG_ST smoke (trace must contain all three
+    config classes).'
+  M_tiles: 1
+  K_tiles: 1
+  N_tiles: 1
+  lhs: A0
+  weight: W
+  out: Y0
+  modes:
+    i8: false
+    relu: false
+    acc_scale: false
+  cat: isa
+- name: A2_single_tile_matmul
+  kind: isa
+  op: matmul
+  source_role: uplifted_from_bareMetalC
+  source_reference: bareMetalC/matmul_ws.c
+  label: public
+  comment: 'A2: single 16x16 i8 matmul -> i32 (CONFIG, MVIN, PRELOAD, COMPUTE_PRELOADED,
+    MVOUT).'
+  M_tiles: 1
+  K_tiles: 1
+  N_tiles: 1
+  lhs: A0
+  weight: W
+  out: Y0
+  modes:
+    i8: false
+    relu: false
+    acc_scale: false
+  cat: isa
+- name: A3_k_accumulation
+  kind: isa
+  op: matmul
+  source_role: uplifted_from_bareMetalC
+  source_reference: bareMetalC/tiled_matmul_ws.c
+  label: public
+  comment: 'A3: K=32 (> tile dim) forces K-accumulation (accumulate-onto PRELOAD across
+    K tiles).'
+  M_tiles: 1
+  K_tiles: 2
+  N_tiles: 1
+  lhs: A0
+  weight: W
+  out: Y0
+  modes:
+    k_accumulate: true
+  cat: isa
+- name: A4_acc_scale_i8
+  kind: isa
+  op: matmul
+  source_role: uplifted_from_bareMetalC
+  source_reference: bareMetalC/transpose_scale.c
+  label: public
+  comment: 'A4: int32 accumulator -> f32 acc_scale (0.0625) -> saturating i8 readout.'
+  M_tiles: 1
+  K_tiles: 1
+  N_tiles: 1
+  lhs: A0
+  weight: W
+  out: Y0
+  epilogue:
+  - acc_scale
+  acc_scale: 0.0625
+  modes:
+    i8: true
+    acc_scale: true
+  cat: isa
+- name: A5_relu_epilogue
+  kind: isa
+  op: matmul
+  source_role: handauthored_compiler_test
+  source_reference: relu activation
+  label: public
+  comment: 'A5: relu activation (activation bits set in CONFIG_ST; exact relu numerics).'
+  M_tiles: 1
+  K_tiles: 1
+  N_tiles: 1
+  lhs: A0
+  weight: W
+  out: Y0
+  epilogue:
+  - relu
+  modes:
+    relu: true
+  cat: isa
+- name: A6_resident_reuse
+  kind: isa
+  op: resident_reuse
+  source_role: handauthored_compiler_test
+  source_reference: resident weight reuse across two matmuls
+  label: public
+  comment: 'A6 resident reuse: one resident weight reused across two matmuls (16x16
+    tiles).'
+  weight: W
+  K_tiles: 1
+  N_tiles: 1
+  matmuls:
+  - lhs: A0
+    out: Y0
+    epilogue: []
+    M_tiles: 1
+  - lhs: A1
+    out: Y1
+    epilogue:
+    - relu
+    M_tiles: 1
+  cat: isa
+- name: A7_edge_padding
+  kind: isa
+  op: matmul
+  source_role: handauthored_compiler_test
+  source_reference: bareMetalC/padded.c
+  label: public
+  comment: 'A7: non-16-multiple dims (20x24x12); backend zero-pads to tiles, valid
+    window is exact.'
+  M: 20
+  K: 24
+  N: 12
+  lhs: A0
+  weight: W
+  out: Y0
+  modes:
+    padded_edge: true
+  cat: isa
+- name: B0_quantized_linear_i8
+  kind: layer
+  op: matmul
+  source_role: pytorch_model_slice
+  source_reference: nn.Linear + per-tensor requant
+  label: public
+  comment: 'B0: quantized linear (i8 x i8 -> i32 -> acc_scale -> i8).'
+  M_tiles: 1
+  K_tiles: 2
+  N_tiles: 1
+  lhs: X
+  weight: W
+  out: Y0
+  epilogue:
+  - acc_scale
+  acc_scale: 0.0625
+  semantic: quantized_linear
+  modes:
+    i8: true
+    acc_scale: true
+    k_accumulate: true
+  cat: layers
+- name: B1_linear_relu_i8
+  kind: layer
+  op: matmul
+  source_role: pytorch_model_slice
+  source_reference: nn.Linear + ReLU
+  label: public
+  comment: 'B1: linear + relu (i32 readout).'
+  M_tiles: 1
+  K_tiles: 2
+  N_tiles: 1
+  lhs: X
+  weight: W
+  out: Y0
+  epilogue:
+  - relu
+  semantic: linear_relu
+  modes:
+    relu: true
+  cat: layers
+- name: B2_linear_acc_scale_relu_i8
+  kind: layer
+  op: matmul
+  source_role: pytorch_model_slice
+  source_reference: nn.Linear + requant + ReLU
+  label: public
+  comment: 'B2: linear + acc_scale + relu -> i8.'
+  M_tiles: 1
+  K_tiles: 2
+  N_tiles: 1
+  lhs: X
+  weight: W
+  out: Y0
+  epilogue:
+  - acc_scale
+  - relu
+  acc_scale: 0.0625
+  semantic: linear_acc_scale_relu
+  modes:
+    i8: true
+    acc_scale: true
+    relu: true
+  cat: layers
+- name: C0_mlp_linear1
+  kind: model_slice
+  op: matmul
+  source_role: pytorch_model_slice
+  source_reference: mlp.fc1
+  label: public
+  comment: C0_mlp_linear1
+  M_tiles: 1
+  K_tiles: 4
+  N_tiles: 4
+  lhs: X
+  weight: W1
+  out: Y0
+  semantic: mlp_linear1
+  modes:
+    i8: false
+    relu: false
+    acc_scale: false
+  cat: model_slices
+- name: C1_mlp_activation_linear2
+  kind: model_slice
+  op: matmul
+  source_role: pytorch_model_slice
+  source_reference: mlp.relu+fc2
+  label: public
+  comment: C1_mlp_activation_linear2
+  M_tiles: 1
+  K_tiles: 4
+  N_tiles: 4
+  lhs: H
+  weight: W2
+  out: Y0
+  epilogue:
+  - relu
+  semantic: mlp_relu_linear2
+  modes:
+    i8: false
+    relu: true
+    acc_scale: false
+  cat: model_slices
+- name: C2_attention_q_projection
+  kind: model_slice
+  op: matmul
+  source_role: pytorch_model_slice
+  source_reference: attn.q_proj
+  label: public
+  comment: C2_attention_q_projection
+  M_tiles: 1
+  K_tiles: 4
+  N_tiles: 1
+  lhs: X
+  weight: Wq
+  out: Y0
+  semantic: attn_q_proj
+  modes:
+    i8: false
+    relu: false
+    acc_scale: false
+  cat: model_slices
+- name: C3_attention_k_projection
+  kind: model_slice
+  op: matmul
+  source_role: pytorch_model_slice
+  source_reference: attn.k_proj
+  label: public
+  comment: C3_attention_k_projection
+  M_tiles: 1
+  K_tiles: 4
+  N_tiles: 1
+  lhs: X
+  weight: Wk
+  out: Y0
+  semantic: attn_k_proj
+  modes:
+    i8: false
+    relu: false
+    acc_scale: false
+  cat: model_slices
+- name: C4_attention_v_projection
+  kind: model_slice
+  op: matmul
+  source_role: pytorch_model_slice
+  source_reference: attn.v_proj
+  label: public
+  comment: C4_attention_v_projection
+  M_tiles: 1
+  K_tiles: 4
+  N_tiles: 1
+  lhs: X
+  weight: Wv
+  out: Y0
+  semantic: attn_v_proj
+  modes:
+    i8: false
+    relu: false
+    acc_scale: false
+  cat: model_slices
+- name: C5_attention_qk_matmul
+  kind: model_slice
+  op: matmul
+  source_role: pytorch_model_slice
+  source_reference: attn.q@k^T (Kt = K transposed leaf)
+  label: public
+  comment: C5_attention_qk_matmul
+  M_tiles: 1
+  K_tiles: 1
+  N_tiles: 1
+  lhs: Q
+  weight: Kt
+  out: Y0
+  semantic: attn_qk
+  modes:
+    i8: false
+    relu: false
+    acc_scale: false
+  cat: model_slices
+- name: C6_attention_pv_matmul
+  kind: model_slice
+  op: matmul
+  source_role: pytorch_model_slice
+  source_reference: attn.p@v
+  label: public
+  comment: C6_attention_pv_matmul
+  M_tiles: 1
+  K_tiles: 1
+  N_tiles: 1
+  lhs: P
+  weight: V
+  out: Y0
+  semantic: attn_pv
+  modes:
+    i8: false
+    relu: false
+    acc_scale: false
+  cat: model_slices

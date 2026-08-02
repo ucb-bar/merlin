@@ -26,7 +26,7 @@ hardware_spec:
 # primitives `specc testbench --gen atlas-npu --op op.matmul_mxu0` uses), NOT the shared gemmini
 # INTEGER corpus (i8xi8->i32, exact_int) that a float MXU physically cannot match. Points at the `isa`
 # subdir; `layers`/`model_slices` siblings + `hidden` are auto-discovered from the parent (corpus_siblings).
-# Regenerate with: PYTHONPATH=<specir> .venv/bin/python merlin/contract/capsules/atlas/generate_atlas_corpus.py
+# Regenerate with: PYTHONPATH=<specir> .venv/bin/python merlin/contract/capsules/generate_corpus.py --target atlas
 capsule_corpus: merlin/contract/capsules/atlas/isa
 
 # The mlc arc model is the RTL oracle (default); atlas has no separate bespoke sim wired.

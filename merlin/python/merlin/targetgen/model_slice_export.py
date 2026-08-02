@@ -19,8 +19,9 @@ import yaml
 
 from merlin.targetgen import capsule_golden as CG
 
-_HEADER = ('module attributes {merlin_iface.version = "0.1", '
-           'merlin_iface.target = "gemmini", merlin_iface.abi_version = "0.1"} {')
+def _header(target: str) -> str:
+    return ('module attributes {merlin_iface.version = "0.1", '
+            f'merlin_iface.target = "{target}", merlin_iface.abi_version = "0.1"}} {{')
 
 
 def _dt(odt: str) -> str:
@@ -29,8 +30,12 @@ def _dt(odt: str) -> str:
 
 def emit_interface_mlir(*, lhs: str, weight: str, out: str, M: int, K: int, N: int,
                         epilogue: list[str], output_dtype: str,
-                        acc_scale: float | None = None, comment: str = "") -> str:
-    """Emit a single-matmul merlin_iface module (weight-stationary)."""
+                        acc_scale: float | None = None, comment: str = "",
+                        target: str = "gemmini", operand_dtype: str = "i8",
+                        acc_dtype: str = "i32") -> str:
+    """Emit a single-matmul merlin_iface module (weight-stationary). ``target``/``operand_dtype``/
+    ``acc_dtype`` default to the gemmini integer path (so existing callers are byte-identical); pass the
+    target's derived MLIR dtype spellings (e.g. ``f8E4M3FN``/``bf16`` for a float MXU) to emit its ISA."""
     epi = ", ".join(f'"{e}"' for e in epilogue)
     commit_attrs = f'name = "{out}", epilogue = [{epi}], output_dtype = "{output_dtype}"'
     if acc_scale is not None:
@@ -39,15 +44,17 @@ def emit_interface_mlir(*, lhs: str, weight: str, out: str, M: int, K: int, N: i
     if comment:
         lines.append(f"// {comment}")
     lines += [
-        _HEADER,
-        f'  %{weight} = merlin_iface.tensor {{name = "{weight}", role = "weight"}} : tensor<{K}x{N}xi8>',
-        f'  %{lhs} = merlin_iface.tensor {{name = "{lhs}", role = "input"}} : tensor<{M}x{K}xi8>',
+        _header(target),
+        f'  %{weight} = merlin_iface.tensor {{name = "{weight}", role = "weight"}} : '
+        f'tensor<{K}x{N}x{operand_dtype}>',
+        f'  %{lhs} = merlin_iface.tensor {{name = "{lhs}", role = "input"}} : '
+        f'tensor<{M}x{K}x{operand_dtype}>',
         f'  %{weight}_res = merlin_iface.resident_pack %{weight} {{layout = "packed_rhs"}} '
-        f': (tensor<{K}x{N}xi8>) -> !merlin_iface.resident',
+        f': (tensor<{K}x{N}x{operand_dtype}>) -> !merlin_iface.resident',
         f'  %acc0 = merlin_iface.matmul %{lhs}, %{weight}_res '
-        f': (tensor<{M}x{K}xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>',
+        f': (tensor<{M}x{K}x{operand_dtype}>, !merlin_iface.resident) -> !merlin_iface.acc<{acc_dtype}>',
         f'  %{out} = merlin_iface.commit %acc0 {{{commit_attrs}}} '
-        f': (!merlin_iface.acc<i32>) -> tensor<{M}x{N}x{_dt(output_dtype)}>',
+        f': (!merlin_iface.acc<{acc_dtype}>) -> tensor<{M}x{N}x{_dt(output_dtype)}>',
         f'  merlin_iface.evict %{weight}_res : (!merlin_iface.resident) -> ()',
         "}",
     ]

@@ -1,0 +1,51 @@
+datapath:
+  compare: tolerance_float
+  atol: 0.25
+  rtol: 0.02
+  required_oracle_tiers: [L0, L1, L3]
+capsules:
+- {cat: isa, name: AT0_config_smoke, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: MXU config plumbing via a single 32x32 fp8 matmul, label: public, modes: {}}
+- {cat: isa, name: AT1_mvin_mvout, kind: isa, op: movement, src: X, M: 16, N: 16, out: Y0,
+   source_role: handauthored_compiler_test, source_reference: 'load fp8 tile -> store as bf16 (dequant movement)',
+   label: public, forbidden: [MXUMatMul], modes: {movement: true}}
+- {cat: isa, name: AT2_single_tile_matmul, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: 'single 32x32 fp8 MXU tile -> bf16', label: public, modes: {}}
+- {cat: isa, name: AT3_k_accumulation, kind: isa, op: matmul, M_tiles: 1, K_tiles: 2, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: K=64 (multi-tile) bf16 accumulate, label: public, modes: {k_accumulate: true}}
+- {cat: isa, name: AT4_bf16_scale, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, epilogue: [acc_scale], acc_scale: 0.5,
+   source_role: handauthored_compiler_test, source_reference: matmul + bf16 output scale (VPU requant precursor),
+   label: public, modes: {acc_scale: true}}
+- {cat: isa, name: AT5_relu_epilogue, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, epilogue: [relu], source_role: handauthored_compiler_test,
+   source_reference: matmul + relu epilogue (bf16), label: public, modes: {relu: true}}
+- {cat: isa, name: AT6_resident_reuse, kind: isa, op: resident_reuse, weight: W, K_tiles: 1, N_tiles: 1,
+   matmuls: [{lhs: A0, out: Y0, M_tiles: 1}, {lhs: A1, out: Y1, M_tiles: 1}],
+   source_role: handauthored_compiler_test, source_reference: one resident weight, two activation tiles,
+   label: public, modes: {resident_reuse: true}}
+- {cat: layers, name: BT0_quantized_linear, kind: layer, op: linear, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: X, weight: W, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'nn.Linear fp8 x fp8 -> bf16', label: public, modes: {k_accumulate: true}}
+- {cat: layers, name: BT1_linear_relu, kind: layer, op: linear, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: X, weight: W, out: Y0, epilogue: [relu], source_role: pytorch_model_slice,
+   source_reference: 'nn.Linear + ReLU, fp8 -> bf16', label: public, modes: {relu: true, k_accumulate: true}}
+- {cat: model_slices, name: CT0_mlp_linear1, kind: model_slice, op: linear, M_tiles: 1, K_tiles: 1, N_tiles: 2,
+   lhs: X, weight: W, out: Y0, source_role: pytorch_model_slice,
+   source_reference: MLP first projection (64-wide hidden), label: public, modes: {k_accumulate: true}}
+- {cat: model_slices, name: CT1_attention_qk, kind: model_slice, op: attention_qk, M_tiles: 1, K_tiles: 1,
+   q: Q, k: K, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'attention Q @ K^T scores, fp8 -> bf16', label: public, modes: {}}
+- {cat: hidden, name: HT0_matmul_hidden, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: hidden single-tile matmul, label: hidden, modes: {}}
+- {cat: hidden, name: HT1_scale_hidden, kind: isa, op: matmul, M_tiles: 1, K_tiles: 1, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, epilogue: [acc_scale], acc_scale: 0.25,
+   source_role: handauthored_compiler_test, source_reference: hidden matmul + bf16 scale, label: hidden,
+   modes: {acc_scale: true}}
+- {cat: hidden, name: HT2_k_accum_hidden, kind: isa, op: matmul, M_tiles: 1, K_tiles: 2, N_tiles: 1,
+   lhs: A0, weight: W, out: Y0, source_role: handauthored_compiler_test,
+   source_reference: hidden K=64 accumulate, label: hidden, modes: {k_accumulate: true}}
