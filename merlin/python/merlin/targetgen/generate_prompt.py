@@ -170,6 +170,24 @@ shape x dtype.
 """
 
 
+# Program-termination contract (external_backend / self-hosted ISA only). Derived, never a literal
+# terminator mnemonic: it NAMES the requirement (every program must reach the ISA's halt instruction) and
+# points at the shipped ISA definition + example kernel for the actual encoding. This closes the observed
+# failure where the agent emitted a runnable-but-non-terminating kernel: the functional oracle ran it to
+# the cycle cap and every capsule failed "did not halt within N instructions" BEFORE any numeric check —
+# so a correct matmul that never halts still scored 0, round after round, and the agent never saw why.
+_TERMINATION_CONTRACT = """
+## Program termination (REQUIRED — a non-halting kernel fails before numerics)
+The functional oracle runs your assembled kernel to a fixed instruction/cycle cap and then STOPS. Your
+emitted program MUST reach the target's terminating instruction — the one the ISA definition marks as
+asserting the machine's halt/done signal — on every control path (the shipped example kernel ends with
+it). If it never halts, the capsule fails at the functional tier (`did not halt within N instructions`)
+and the numeric comparison never runs: a numerically-correct kernel that does not terminate still scores
+0. Derive the terminator's exact encoding from the ISA definition (do not invent it), and emit it as the
+final instruction of your kernel.
+"""
+
+
 def prompt_slots(te, manifest) -> dict:
     """The complete set of DERIVED, target-specific prompt slots for one target.
 
@@ -204,6 +222,10 @@ def prompt_slots(te, manifest) -> dict:
         # DRAM address contract (external_backend only): declare every tensor + base so the emitted kernel
         # and the program oracle agree on operand/result addresses (the atlas 0/11 output-base bug).
         "dram_contract": _DRAM_CONTRACT if manifest.endpoint_kind == "external_backend" else "",
+        # program-termination contract (external_backend only): the emitted kernel must reach the ISA's
+        # halt instruction or it fails functional before numerics (the atlas non-halting-kernel wall).
+        "termination_contract": (_TERMINATION_CONTRACT if manifest.endpoint_kind == "external_backend"
+                                 else ""),
     }
 
 
@@ -246,7 +268,7 @@ submission/
 
 Declare these four commands in `manifest.yaml` exactly as the runner expects — see the OOT backend
 contract (`mlir_oot_backend_contract.yaml`) and the manifest schema (`schemas/manifest.schema.json`).
-{dram_contract}
+{dram_contract}{termination_contract}
 ## Grading + your QA signal
 {grading_model}
 {sim_tier_ladder}
@@ -324,4 +346,5 @@ def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseli
                             endpoint_desc=s["endpoint_desc"], emit_framing=s["emit_framing"],
                             emit_symbol_note=s["emit_symbol_note"], grading_model=s["grading_model"],
                             isa_facts=s["isa_facts"], sim_tier_ladder=ladder, seam_menu=seam_menu,
-                            isa_spec=s["isa_spec"], dram_contract=s["dram_contract"])
+                            isa_spec=s["isa_spec"], dram_contract=s["dram_contract"],
+                            termination_contract=s["termination_contract"])

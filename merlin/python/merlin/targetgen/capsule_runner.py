@@ -344,6 +344,18 @@ def _config_for_target(target: str, suite: str | None, dtype: str):
         return _default_config(target, suite or f"{target}-capsule-bench", dtype)
 
 
+def suite_for(target: str, *, dtype: str = "i8xi8_i32") -> str:
+    """The suite path segment ``run_capsule`` writes results under for this target (``cfg.suite``).
+
+    Any reader that re-globs the on-disk ``capsule_result.json`` MUST resolve the suite through this,
+    NOT the module-level ``SUITE`` literal ('gemmini-capsule-bench'): ``run_capsule`` lays results at
+    ``<runs_root>/runs/<cfg.suite>/<capsule>/`` where ``cfg.suite`` is the TARGET's own suite
+    (e.g. 'atlas-capsule-bench'). Using the gemmini literal made the atlas self-check glob an empty
+    gemmini dir and report ``n_capsules: 0`` on every call — the agent's feedback loop went blind while
+    the in-memory grade was correct. Derived from the target's RunnerConfig, so it stays target-agnostic."""
+    return _config_for_target(target, None, dtype).suite
+
+
 def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path,
                 run_id: str | None = None, contract: str | Path | None = None,
                 oracle_adapters: dict[str, Callable] | None = None,
@@ -524,14 +536,27 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 tiers[tier] = TierResult(tier, "unavailable", mand, reason=str(e),
                                          derived_from_rtl=tier in cfg.rtl_tiers)
                 continue
-            except Exception as e:  # adapter crash is a real failure for that tier
+            except Exception as e:  # adapter raised — classify: a non-terminating program is the AGENT's
+                # bug (it ran to the cycle cap), a TIMEOUT fail, NOT a tool_crash. Mislabeling it
+                # 'tool_crash' read as an infra problem the agent couldn't fix — so it never emitted the
+                # ISA's halt instruction and every round failed identically (the atlas flat-0/11 wall).
                 _sim = cfg.tier_sim.get(tier, tier)
-                tiers[tier] = TierResult(tier, "fail", mand,
-                                         reason=f"{_sim} crash: {str(e)[-300:]}",
-                                         derived_from_rtl=tier in cfg.rtl_tiers)
+                _msg = str(e)
+                _did_not_halt = "did not halt" in _msg
+                tiers[tier] = TierResult(
+                    tier, "fail", mand,
+                    reason=(f"did not halt (ran to the cycle cap): {_msg[-240:]}" if _did_not_halt
+                            else f"{_sim} crash: {_msg[-300:]}"),
+                    derived_from_rtl=tier in cfg.rtl_tiers)
                 if mand:
+                    if _did_not_halt:
+                        raise CertFailure(_sim, _cat("TIMEOUT"),
+                                          f"{_msg}; the emitted kernel never reached the ISA's "
+                                          "halt/terminate instruction — emit it as the final instruction "
+                                          "on every control path (see the program-termination contract). "
+                                          "Numerics are never checked until the program halts.") from e
                     raise CertFailure(_sim, _cat("TOOL_CRASH"),
-                                      f"{_sim} invocation failed: {str(e)[-400:]}") from e
+                                      f"{_sim} invocation failed: {_msg[-400:]}") from e
                 continue
             _adapter_wall = _time.perf_counter() - _adapter_t0
             # Split active (build + sim) vs waiting (queue/FPGA slot). Adapters that route through a

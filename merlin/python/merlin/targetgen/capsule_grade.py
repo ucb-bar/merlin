@@ -73,9 +73,11 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
                            max_workers=max_workers, target=target, no_oracle=no_oracle)
     _suite_wall = _time.perf_counter() - _suite_t0
 
-    # collect decoded traces for coverage
+    # collect decoded traces for coverage — read from the TARGET's own suite dir (run_capsule writes
+    # under cfg.suite, e.g. atlas-capsule-bench), not the gemmini SUITE literal (which left the atlas
+    # coverage dict silently empty; same root cause as the self-check n_capsules:0 blind loop).
     traces: dict[str, dict] = {}
-    rr = Path(runs_root) / "runs" / CR.SUITE
+    rr = Path(runs_root) / "runs" / CR.suite_for(target)
     for cap in caps:
         tp = rr / cap["name"] / "generated" / "instruction_trace.json"
         if tp.exists():

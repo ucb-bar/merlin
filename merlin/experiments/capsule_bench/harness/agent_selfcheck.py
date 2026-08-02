@@ -108,6 +108,29 @@ def _adapters(sim: str, target: str, sim_via: str | None) -> tuple[dict, str]:
     return CR.oracle_adapters(target, sim_via), sim
 
 
+def _log_telemetry(out: dict, capsules_arg: str) -> None:
+    """Append ONE operator-side dev-trajectory line per self-check (set by the driver via $SELFCHECK_LOG).
+    Records EVERY verdict — including the degenerate build_failed / no_results ones — so a blind or
+    flat-lining loop is visible in the operator log, not only in the agent's transcript. Best-effort."""
+    import os, time as _t
+    log_path = os.environ.get("SELFCHECK_LOG")
+    if not log_path:
+        return
+    try:
+        t0 = float(os.environ.get("SELFCHECK_T0", "0") or 0)
+        rows = out.get("per_capsule") or []
+        line = {"wall_offset_s": round(_t.time() - t0, 1) if t0 else None,
+                "sim": out.get("sim"), "barrier_tier": out.get("barrier_tier"),
+                "capsules": capsules_arg, "n_passed": out.get("n_passed"),
+                "n_capsules": out.get("n_capsules"), "all_pass": out.get("all_pass"),
+                "build_failed": out.get("build_failed", False), "no_results": out.get("no_results", False),
+                "failing": [r["capsule"] for r in rows if not r.get("pass")]}
+        with open(log_path, "a") as lf:
+            lf.write(json.dumps(line) + "\n")
+    except Exception:
+        pass
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Agent self-check runner (redacted; spike/verilator/vcs).")
     ap.add_argument("--submission", default="submission", help="path to your package (with manifest.yaml)")
@@ -187,6 +210,7 @@ def main(argv=None):
         txt = json.dumps(out, indent=2); print(txt)
         if a.out:
             Path(a.out).write_text(txt)
+        _log_telemetry(out, a.capsules)
         return 1
 
     # FULL developer visibility: read each capsule_result.json directly (not the over-redacted helper)
@@ -196,7 +220,11 @@ def main(argv=None):
     # golden EXPECTED value (the answer key): we drop `first_mismatch.expected`. The agent's own
     # artifacts are copied to ./selfcheck_out/<capsule>/ so it can inspect/diff them like a real dev.
     out_dir = Path("selfcheck_out"); out_dir.mkdir(exist_ok=True)
-    cb_root = runs_root / "runs" / CR.SUITE
+    # Read results from the TARGET'S OWN suite dir. run_capsule writes under cfg.suite
+    # (e.g. atlas-capsule-bench); globbing the gemmini SUITE literal here made every non-gemmini
+    # self-check return n_capsules:0 with per_capsule:[] — the agent's feedback loop went blind while
+    # the driver's in-memory grade was correct (the atlas 0/11 blind-loop bug).
+    cb_root = runs_root / "runs" / CR.suite_for(_tgt)
     rows, npass = [], 0
     for cr in sorted(cb_root.glob("*/capsule_result.json")) if cb_root.exists() else []:
         try:
@@ -246,6 +274,23 @@ def main(argv=None):
             "sim_console_tail": console_tail,
         })
     n = len(rows)
+    # n==0 here means the grade returned WITHOUT a top-level build failure yet wrote no capsule_result
+    # under cb_root — a harness/path problem (not "all clear", not a stubbed grader). Say so loudly with
+    # the paths, so it can never again be silently misread as an empty-but-fine verdict.
+    if n == 0:
+        out = {"sim": sim, "barrier_tier": barrier_tier, "n_passed": 0, "n_capsules": 0,
+               "all_pass": False, "per_capsule": [], "no_results": True,
+               "caps_discovered": sum(1 for _ in PUBLIC_CAPSULES.glob("*/capsule.yaml")),
+               "results_root": str(cb_root),
+               "note": "HARNESS ISSUE: the build did not fail, but ZERO capsule results were found at "
+                       "results_root. This is NOT 'all clear' and NOT a stubbed grader — it means the "
+                       "grade wrote results somewhere this reader did not look. Report this; it is not "
+                       "something your dialect can fix."}
+        txt = json.dumps(out, indent=2); print(txt)
+        if a.out:
+            Path(a.out).write_text(txt)
+        _log_telemetry(out, a.capsules)
+        return 1
     out = {"sim": sim, "barrier_tier": barrier_tier, "n_passed": npass, "n_capsules": n,
            "all_pass": npass == n and n > 0, "per_capsule": rows,
            "note": f"Self-check on {sim} ({barrier_tier}). You see EVERYTHING your dialect produced — "
@@ -257,23 +302,7 @@ def main(argv=None):
     print(txt)
     if a.out:
         Path(a.out).write_text(txt)
-    # Append a telemetry line to the operator-side dev-trajectory log (set by the driver via
-    # $SELFCHECK_LOG). This is the soft-failure / tool-trigger / time-to-pass record — one line per
-    # invocation. Best-effort; never break the agent's self-check if logging fails.
-    import os, time as _t
-    log_path = os.environ.get("SELFCHECK_LOG")
-    if log_path:
-        try:
-            t0 = float(os.environ.get("SELFCHECK_T0", "0") or 0)
-            line = {"wall_offset_s": round(_t.time() - t0, 1) if t0 else None,
-                    "sim": sim, "barrier_tier": barrier_tier,
-                    "capsules": a.capsules, "n_passed": npass, "n_capsules": n,
-                    "all_pass": out["all_pass"],
-                    "failing": [r["capsule"] for r in rows if not r["pass"]]}
-            with open(log_path, "a") as lf:
-                lf.write(json.dumps(line) + "\n")
-        except Exception:
-            pass
+    _log_telemetry(out, a.capsules)   # one operator-side dev-trajectory line (all verdicts, incl. degenerate)
     return 0 if out["all_pass"] else 1
 
 
