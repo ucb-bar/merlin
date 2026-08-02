@@ -130,7 +130,16 @@ def required_classes_for_op(taxonomy: dict, *, op: str = "matmul", output_dtype:
     """Derive the instruction classes a capsule of this op MUST exercise, selected by DERIVED semantic
     ROLE from the target's own taxonomy (never a hardcoded list). Empty if the taxonomy has no systolic
     (matmul) role — a non-systolic target."""
-    by_role = _classes_by_role(taxonomy)
+    return required_classes_from_roles(_classes_by_role(taxonomy), op=op, output_dtype=output_dtype,
+                                       epilogue=epilogue, movement=movement)
+
+
+def required_classes_from_roles(by_role: dict[str, list[str]], *, op: str = "matmul",
+                                output_dtype: str | None = None, epilogue: tuple[str, ...] = (),
+                                movement: bool = False) -> list[str]:
+    """The role-selected required classes, taking the ``{role: [classes]}`` map directly — so a caller that
+    already holds the derived roles (e.g. an :class:`~merlin.targetgen.isa_model.IsaModel`) reuses the exact
+    same selection logic without re-deriving the whole taxonomy."""
     req: list[str] = []
 
     def add_role(*roles: str) -> None:
