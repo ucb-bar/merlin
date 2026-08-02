@@ -706,8 +706,18 @@ def _start_selfcheck_broker(ws: Path):
     (ch / "STOP").unlink(missing_ok=True)
     _stage_shim(ws, "selfcheck_shim.py", "agent_selfcheck.py")   # sync self-check (spike, fast)
     _stage_shim(ws, "simjob_shim.py", "simjob.py")               # async oracle (spike/verilator/vcs)
+    broker_specs = [("selfcheck_broker.py", "broker.log"), ("simjob_broker.py", "simjob_broker.log")]
+    # ISA dev tools (assembler/disassembler/linter) — assisted arms ONLY (arm-3 merlin_assisted + arm-4
+    # merlin_assisted_rtlchecks both carry "merlin_assisted"; raw_baseline does not). Oracle-free + reads no
+    # golden, but gated to those arms so raw_baseline still measures unaided raw-ISA authoring. Its own
+    # channel dir (.isa_channel) + STOP, staged like the self-check.
+    if "merlin_assisted" in _ARM:
+        (ws / ".isa_channel").mkdir(parents=True, exist_ok=True)
+        (ws / ".isa_channel" / "STOP").unlink(missing_ok=True)
+        _stage_shim(ws, "isa_tools_shim.py", "isa_tools.py")
+        broker_specs.append(("isa_tools_broker.py", "isa_tools_broker.log"))
     brokers = []
-    for name, log in (("selfcheck_broker.py", "broker.log"), ("simjob_broker.py", "simjob_broker.log")):
+    for name, log in broker_specs:
         brokers.append(subprocess.Popen(
             [sys.executable, str(SCRIPTS / name), "--ws", str(ws)],
             stdout=open(ch / log, "w"), stderr=subprocess.STDOUT))
@@ -718,6 +728,9 @@ def _stop_selfcheck_broker(ws: Path, brokers) -> None:
     if not brokers:
         return
     (ws / ".qa_channel" / "STOP").write_text("stop")
+    isa_ch = ws / ".isa_channel"
+    if isa_ch.is_dir():                                  # assisted-arm ISA-tools broker (if it was started)
+        (isa_ch / "STOP").write_text("stop")
     for b in (brokers if isinstance(brokers, list) else [brokers]):
         try:
             b.wait(timeout=15)

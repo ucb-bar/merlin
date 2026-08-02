@@ -291,7 +291,7 @@ command-buffer schema and your lowered artifact looks right.
 
 ## Target ISA facts (derived — build your lowering on these)
 {isa_spec}{isa_facts}
-{seam_menu}## Final status line (end of `submission/REPORT.md`) — write exactly one of:
+{isa_dev_tools}{seam_menu}## Final status line (end of `submission/REPORT.md`) — write exactly one of:
 1. "Backend passes all required public/dev capsules and is ready for hidden grading."
 2. "Backend does not yet pass all required public/dev capsules; remaining failures listed by capsule + plane."
 3. "Backend is not comparable because it violates the compiler/runtime/integrity boundary."
@@ -314,6 +314,27 @@ instead of guessing from the file tree (neither imports the oracle or the grader
   FLAG→KNOB→HEURISTIC→PASS→CODEGEN ladder weakest→strongest, each row naming the concrete OOT-relative
   seam file to edit and whether it is forkable today (the "which section, and the next stronger lever"
   answer). The seams point at YOUR generated OOT package, not our in-tree reference.
+
+"""
+
+
+# OPTIONAL block (assisted arms + external_backend only): the derived ISA dev tools staged in the sandbox
+# (assembler / disassembler / linter). Oracle-free and reveal no golden — they encode the syntax the agent
+# chose and inspect the agent's OWN emitted words — so they are a fair authoring aid for the assisted arms,
+# never a leak. Fully target-agnostic: derived from the target's own shipped ISA definition, no accelerator
+# named here.
+_ISA_DEVTOOLS = """## ISA dev tools (assembler / disassembler / linter) — staged as `isa_tools.py`
+You have a derived toolset for this target's self-hosted ISA (oracle-free: it encodes the syntax YOU choose
+and inspects YOUR OWN emitted words; it never reveals a golden). Use it to avoid the two most common
+raw-ISA mistakes — invented encodings and a program that never halts:
+- `python isa_tools.py asm ops.txt` — assemble a mnemonic listing (`MNEMONIC field=value, ...`, one per
+  line) into the correct `.word` lines for your `kernel.S`, packed into the exact bits this target's own
+  encoder uses. It REFUSES rather than emit a wrong word, so you never hand-pack a 32-bit instruction.
+- `python isa_tools.py disasm submission/kernel.S` — decode your assembled kernel back to
+  `{mnemonic, operands}`; a word that decodes to nothing is an invented/garbled encoding.
+- `python isa_tools.py lint submission/kernel.S --op <op>` — flag illegal opcodes, a missing terminator
+  (a kernel that never halts fails every capsule before numerics), and instruction-class coverage vs the op.
+Run these locally as often as you like; they need no oracle.
 
 """
 
@@ -341,10 +362,14 @@ def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseli
     ladder = "\n".join(f"- `{tier}` → {sim}" for tier, sim in sorted(s["sim_tiers"].items())) \
         or "- `(the target's declared sim tiers)`"
     seam_menu = _SEAM_MENU.format(target=s["target"]) if _is_assisted_arm(arm) else ""
+    # ISA dev tools: assisted arms AND a self-hosted-ISA (external_backend) target only — a raw_baseline or a
+    # RoCC/command target never sees the block (empty slot renders nothing).
+    isa_dev_tools = _ISA_DEVTOOLS if (_is_assisted_arm(arm)
+                                      and s["endpoint_kind"] == "external_backend") else ""
     return _TEMPLATE.format(target=s["target"], scope_label=scope, corpus_families=families,
                             tool_stem=s["tool_stem"], kernel_symbol=s["kernel_symbol"],
                             endpoint_desc=s["endpoint_desc"], emit_framing=s["emit_framing"],
                             emit_symbol_note=s["emit_symbol_note"], grading_model=s["grading_model"],
                             isa_facts=s["isa_facts"], sim_tier_ladder=ladder, seam_menu=seam_menu,
                             isa_spec=s["isa_spec"], dram_contract=s["dram_contract"],
-                            termination_contract=s["termination_contract"])
+                            termination_contract=s["termination_contract"], isa_dev_tools=isa_dev_tools)
