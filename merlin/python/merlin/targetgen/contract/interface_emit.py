@@ -41,9 +41,22 @@ def _tensor_type(spec: dict[str, Any]) -> str:
     return f"tensor<{shape}x{spec.get('dtype', 'i8')}>"
 
 
+# float output dtype -> the float accumulate dtype its datapath commits in (a float MXU accumulates in
+# bf16/f32, an integer array widens to i32). Keyed on the dtype, never on a target name.
+_FLOAT_ACC = {"bf16": "bf16", "bfloat16": "bf16", "f16": "bf16", "float16": "bf16",
+              "f32": "f32", "float32": "f32"}
+
+
 def _acc_dtype(cb: dict[str, Any]) -> str:
-    # the accumulator dtype is target-agnostic here; gemmini uses i32. Read from any commit's
-    # source matmul if a tensor declares it, else default i32 (the only accumulator dtype today).
+    """The accumulator dtype for this command buffer, DERIVED from its commits' declared ``output_dtype``:
+    a float output accumulates in a float (bf16/f32), an integer output widens to i32
+    (``widening_integer_accumulate``). No target-name literal — a float MXU (e.g. bf16 output) correctly
+    gets ``acc<bf16>`` instead of the old hardcoded ``acc<i32>``."""
+    for cmd in cb.get("commands", []):
+        if cmd.get("opcode") == "COMMIT":
+            odt = cmd.get("attributes", {}).get("output_dtype", "")
+            if odt in _FLOAT_ACC:
+                return _FLOAT_ACC[odt]
     return "i32"
 
 
