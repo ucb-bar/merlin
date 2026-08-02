@@ -291,6 +291,11 @@ Useful self-checks you CAN run locally (no oracle needed): build your tool, run 
 each `capsule.interface.mlir`, and confirm the emitted `command_buffer.json` validates against the
 command-buffer schema and your lowered artifact looks right.
 
+**Iterate FAST — smallest scope, cheapest checks first.** When you `self_check`, check ONLY the capsule you
+just changed (it accepts a single capsule or subset and returns in seconds) — do NOT re-grade all capsules
+on every edit; run the full set once before you declare done. The slow cycle-accurate RTL check runs only
+AFTER you converge on the fast functional tier, so tight, narrow loops cost you nothing.
+
 ## Hard rules (integrity)
 - `integrity_exempt: false`; no `import merlin`, no `merlin.runtime.reference` calls, no baked-in reference outputs.
 - **Compute must be compiler-GENERATED, never an authored/library kernel.** No hand C compute kernels, no
@@ -343,7 +348,9 @@ raw-ISA mistakes — invented encodings and a program that never halts:
   `{mnemonic, operands}`; a word that decodes to nothing is an invented/garbled encoding.
 - `python isa_tools.py lint submission/kernel.S --op <op>` — flag illegal opcodes, a missing terminator
   (a kernel that never halts fails every capsule before numerics), and instruction-class coverage vs the op.
-Run these locally as often as you like; they need no oracle.
+Run these locally as often as you like; they need no oracle. **Run `lint` (and `disasm`) BEFORE every
+`self_check`** — they are instant and catch the encoding / halt / missing-compute-role mistakes that would
+otherwise waste a functional-sim run.
 
 """
 
