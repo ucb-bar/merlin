@@ -1,7 +1,7 @@
 name: AT6_resident_reuse
 kind: isa
 source_role: handauthored_compiler_test
-source_reference: one resident weight, two activation tiles
+source_reference: one resident weight
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
@@ -36,7 +36,7 @@ operation:
       out: Y1
       epilogue: []
       output_dtype: bf16
-    output_dtype: bf16
+    semantic: resident_reuse
 numeric_policy:
   compare: tolerance_float
   dtype: bf16

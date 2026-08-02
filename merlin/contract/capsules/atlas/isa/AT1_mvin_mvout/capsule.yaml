@@ -26,10 +26,10 @@ numeric_policy:
 expected:
   instruction_classes:
   - TensorBaseOffset
-  forbidden_classes:
-  - MXUMatMul
   modes:
     movement: true
+  forbidden_classes:
+  - MXUMatMul
 required_oracle_tiers:
 - L0
 - L1

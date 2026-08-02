@@ -5,14 +5,14 @@ source_reference: single 32x32 fp8 MXU tile -> bf16
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
-- name: A0
-  role: input
+- name: W
+  role: weight
   shape:
   - 32
   - 32
   dtype: fp8_e4m3
-- name: W
-  role: weight
+- name: A0
+  role: input
   shape:
   - 32
   - 32
@@ -20,9 +20,9 @@ inputs:
 operation:
   op: matmul
   attributes:
-    out: Y0
     lhs: A0
     weight: W
+    out: Y0
     epilogue: []
     output_dtype: bf16
 numeric_policy:
@@ -36,6 +36,7 @@ expected:
   - MXUWeightPush
   - MXUMatMul
   - MXUAccumulatorPop
+  modes: {}
 required_oracle_tiers:
 - L0
 - L1

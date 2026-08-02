@@ -5,24 +5,24 @@ source_reference: K=64 (multi-tile) bf16 accumulate
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
-- name: A0
-  role: input
-  shape:
-  - 32
-  - 64
-  dtype: fp8_e4m3
 - name: W
   role: weight
   shape:
   - 64
   - 32
   dtype: fp8_e4m3
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 64
+  dtype: fp8_e4m3
 operation:
   op: matmul
   attributes:
-    out: Y0
     lhs: A0
     weight: W
+    out: Y0
     epilogue: []
     output_dtype: bf16
 numeric_policy:

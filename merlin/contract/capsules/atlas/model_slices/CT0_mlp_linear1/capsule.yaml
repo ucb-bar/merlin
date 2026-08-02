@@ -5,24 +5,24 @@ source_reference: MLP first projection (64-wide hidden)
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
-- name: X
-  role: input
-  shape:
-  - 32
-  - 32
-  dtype: fp8_e4m3
 - name: W
   role: weight
   shape:
   - 32
   - 64
   dtype: fp8_e4m3
+- name: X
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: fp8_e4m3
 operation:
   op: linear
   attributes:
-    out: Y0
     lhs: X
     weight: W
+    out: Y0
     epilogue: []
     output_dtype: bf16
 numeric_policy:
