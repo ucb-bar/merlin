@@ -1211,6 +1211,14 @@ def main(argv: list[str] | None = None) -> int:
             continue  # retry same rnd, do NOT append to rounds_summary
 
         verdict = qa_grade(ws, run_dir, rnd, a.no_oracle, a.qa_timeout)
+        # Cross-round MEMORY: write the harness-built round brief (progress log across all graded rounds +
+        # the agent's own notes + a stale-notes nudge) so the NEXT fresh session carries its progress
+        # instead of re-deriving it. Best-effort — never let a brief build failure end a run.
+        try:
+            import round_brief
+            round_brief.write(run_dir, ws, rnd)
+        except Exception as _e:  # noqa: BLE001
+            print(f"[round {rnd}] round_brief skipped: {type(_e).__name__}: {_e}")
         rsum = ET.parse_transcript(tpath)
         audit = audit_transcript(tpath, arm)
         rounds_summary.append({"round": rnd, "agent_rc": rc,

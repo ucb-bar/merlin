@@ -269,6 +269,15 @@ submission/
 Declare these four commands in `manifest.yaml` exactly as the runner expects — see the OOT backend
 contract (`mlir_oot_backend_contract.yaml`) and the manifest schema (`schemas/manifest.schema.json`).
 {dram_contract}{termination_contract}
+## Cross-round memory (each round is a FRESH session)
+You have NO memory of prior rounds except what is on disk. Between rounds the harness writes
+`qa/round_brief.md` — your progress log across all graded rounds (per-round pass count, failure planes,
+lowest mismatch) plus your own notes and a nudge if you stopped journaling. **At the START of every round,
+read `qa/round_brief.md` and `docs/iteration_notes.md` before touching code**: build on what you already
+worked out, and do NOT undo a change that improved an earlier round. **After every change, append to
+`docs/iteration_notes.md`** what you changed, what the verdict showed, and your next hypothesis — that file
+and the brief are your only durable memory across rounds.
+
 ## Grading + your QA signal
 {grading_model}
 {sim_tier_ladder}

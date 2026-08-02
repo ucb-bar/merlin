@@ -238,9 +238,14 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         tf.write(json.dumps(obj) + "\n"); tf.flush()
 
     task = (ws / "TASK.md").read_text() if (ws / "TASK.md").is_file() else ""
+    # Cross-round memory: prefer the harness-built round brief (progress log across all graded rounds +
+    # the agent's own iteration_notes.md + a stale-notes nudge); fall back to the raw redacted verdict.
+    brief_p = ws / "qa" / "round_brief.md"
     verdict_p = ws / "qa" / "verdict.json"
     feedback = ""
-    if verdict_p.is_file():
+    if brief_p.is_file():
+        feedback = "\n\n" + brief_p.read_text()[:8000] + "\n"
+    elif verdict_p.is_file():
         feedback = ("\n\n## Previous round's official grader verdict (iterate to fix these)\n```json\n"
                     + verdict_p.read_text()[:4000] + "\n```\n")
     system = [{"text":
