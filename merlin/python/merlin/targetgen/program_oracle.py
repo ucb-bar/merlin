@@ -296,26 +296,37 @@ def program_oracle_adapter(target: str, *, model_ext: str) -> Callable:
 # gold checkpoint. Only the RUNNER differs: emit_bundle (words+preload) and the output layout are shared.
 # --------------------------------------------------------------------------------------------------
 
-def _func_program_helper() -> Path:
-    """The mlc FUNCTIONAL program runner file, invoked BY PATH in the model venv (it imports only
-    ``npu_model``, never ``mlc.*``, so ``mlc.backends.__init__`` is not triggered). Raises
-    :class:`OracleUnavailable` if ``mlc_dir()`` is None or the file is absent."""
+def _func_program_helper(target: str) -> Path:
+    """The mlc FUNCTIONAL program runner file for ``target``, invoked BY PATH in the model venv (the runner
+    imports only the target's own model package, never ``mlc.*``, so ``mlc.backends.__init__`` is not
+    triggered in the subprocess). The filename is DERIVED from the target's registered cosim backend (mlc's
+    ``cosim_<stem>`` -> ``func_program_<stem>``), mirroring how the cosim backend itself is derived — so NO
+    target-name literal lives in merlin. Raises :class:`OracleUnavailable` if ``mlc_dir()`` is None, the
+    target has no registered program backend, or the file is absent (fail closed)."""
     from merlin.targetgen.rtl import mlc_bridge
     d = mlc_bridge.mlc_dir()
     if d is None:
         raise OracleUnavailable(
             "mlc dir unavailable (set MERLIN_MLC_DIR) — no functional program runner")
-    f = Path(d) / "mlc" / "backends" / "func_program_atlas.py"
+    try:
+        with mlc_bridge._mlc_cwd(), _mlc_importable(str(d)):
+            from mlc.discover import fingerprint
+            cosim = str(fingerprint.cosim_backend(target))     # e.g. "cosim_<stem>"
+    except Exception as e:  # noqa: BLE001 — no registered program backend -> honestly unavailable
+        raise OracleUnavailable(
+            f"no functional program runner derivable for {target!r}: {type(e).__name__}: {e}")
+    stem = cosim[len("cosim_"):] if cosim.startswith("cosim_") else cosim
+    f = Path(d) / "mlc" / "backends" / f"func_program_{stem}.py"
     if not f.is_file():
         raise OracleUnavailable(f"mlc functional program runner absent: {f}")
     return f
 
 
-def _run_func_helper(model_ext: str, req: dict, workdir: Path, timeout: int) -> dict[str, Any]:
+def _run_func_helper(target: str, model_ext: str, req: dict, workdir: Path, timeout: int) -> dict[str, Any]:
     """Run the mlc functional program runner in the MODEL venv (same venv+cwd as ``_run_emit_helper``),
     marshalling a JSON+base64 request/result across the venv gap (mirrors its ``__main__`` CLI)."""
     py = _model_venv_python(model_ext)
-    func = _func_program_helper()
+    func = _func_program_helper(target)
     infile, outfile = workdir / "func_in.json", workdir / "func_out.json"
     infile.write_text(json.dumps(req))
     cmd = [str(py), str(func), "--in", str(infile), "--out", str(outfile)]
@@ -323,7 +334,7 @@ def _run_func_helper(model_ext: str, req: dict, workdir: Path, timeout: int) -> 
     p = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
     if p.returncode != 0:
         raise OracleUnavailable(
-            f"func_program_atlas helper failed rc={p.returncode}: {p.stderr[-400:]}")
+            f"functional program runner failed rc={p.returncode}: {p.stderr[-400:]}")
     return json.loads(outfile.read_text())
 
 
@@ -333,11 +344,11 @@ def run_program_functional_oracle(target: str, *, model_ext: str, cb: dict | Non
                                   max_cycles: int = 20000, workdir, timeout: int = 600) -> dict[str, Any]:
     """Assemble (model venv / stock LLVM) → run on the target's FAST FUNCTIONAL core → read back. Mirrors
     :func:`run_program_oracle` (same ``emit_bundle`` words+preload, same output-layout resolution) but the
-    ONLY difference is the runner: the mlc functional program runner (``func_program_atlas.py``) invoked by
-    file path in the model venv, instead of the cycle-exact arc cosim. Returns the SAME result shape
-    ``{"outputs": {name: list}, "cycles": int, "oracle": f"{target}-npu-functional"}``. Raises
+    ONLY difference is the runner: the target's mlc functional program runner (derived, invoked by file
+    path in the model venv), instead of the cycle-exact arc cosim. Returns the SAME result shape
+    ``{"outputs": {name: list}, "cycles": int, "oracle": f"{target}-functional"}``. Raises
     :class:`OracleUnavailable` if ``mlc_dir()`` / the func file / the model venv is absent (fail closed)."""
-    _func_program_helper()                              # fail closed early if the runner is absent
+    _func_program_helper(target)                        # fail closed early if the runner is absent
 
     bundle = emit_bundle(model_ext=model_ext, program=program, kernel_s=kernel_s, inputs=inputs,
                          fix_itype_rd=fix_itype_rd, workdir=workdir, timeout=timeout)
@@ -362,7 +373,7 @@ def run_program_functional_oracle(target: str, *, model_ext: str, cb: dict | Non
         "max_cycles": int(max_cycles),
         "dram_base": reloc_base,
     }
-    res = _run_func_helper(model_ext, req, Path(workdir), timeout)
+    res = _run_func_helper(target, model_ext, req, Path(workdir), timeout)
     if not res.get("halted"):
         raise OracleUnavailable(
             f"{target} program did not halt within {max_cycles} instructions (functional)")
@@ -375,7 +386,7 @@ def run_program_functional_oracle(target: str, *, model_ext: str, cb: dict | Non
     raw = base64.b64decode(outmap[key])
     logical = _decode_output(raw, out_spec["shape"], out_spec["dtype"], out_spec["physical"])
     return {"outputs": {_output_name(cb): logical.tolist()}, "cycles": int(res.get("cycles") or 0),
-            "oracle": f"{target}-npu-functional"}
+            "oracle": f"{target}-functional"}
 
 
 def program_functional_adapter(target: str, *, model_ext: str) -> Callable:
