@@ -1,0 +1,11 @@
+# Capsule-bench ANSWER KEYS — never tracked (this repo is public: github.com/ucb-bar/merlin).
+# These are the graded answers; committing them defeats the benchmark. They are REGENERABLE from the
+# tracked generators (generate_corpus.py + <target>/generate_*_corpus.py) with the oracle model, so
+# untracking loses nothing. The public CONTRACT stays tracked: capsule.interface.mlir + capsule.yaml
+# (the op/shape/dtype the agent compiles against) and MANIFEST.yaml.
+golden.yaml
+expected_instruction_coverage.yaml
+
+# The held-out HIDDEN capsule set is never public — even the interfaces reveal held-out shapes, so the
+# entire hidden/ subtree (any target, at any depth) stays untracked and local-only.
+hidden/
