@@ -1,9 +1,0 @@
-instruction_classes:
-- TensorBaseOffset
-- MXUWeightPush
-- MXUMatMul
-- MXUAccumulatorPop
-- TensorComputeUnary
-modes:
-  relu: true
-  k_accumulate: true

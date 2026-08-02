@@ -1,6 +1,0 @@
-instruction_classes:
-- TensorBaseOffset
-forbidden_classes:
-- MXUMatMul
-modes:
-  movement: true

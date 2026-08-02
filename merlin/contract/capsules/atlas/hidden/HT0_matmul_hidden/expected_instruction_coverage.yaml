@@ -1,5 +1,0 @@
-instruction_classes:
-- TensorBaseOffset
-- MXUWeightPush
-- MXUMatMul
-- MXUAccumulatorPop
