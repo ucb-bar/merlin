@@ -286,9 +286,13 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         "golden.yaml / expected_* files — they are withheld and access is logged."}]
     if delegate_enabled:
         system[0]["text"] += (
-            " You ALSO have a `delegate` tool: offload well-scoped MECHANICAL sub-tasks (boilerplate, "
-            "scaffolding, reading + summarizing a fact file) to a cheaper sub-agent to conserve your own "
-            "limited turns — keep the hard reasoning (encoding/lowering decisions) for yourself.")
+            " You ALSO have a `delegate` tool wired to a cheaper/faster sub-agent. DEFAULT TO DELEGATING "
+            "well-scoped MECHANICAL work rather than spending your own limited turns on it: writing "
+            "boilerplate/scaffolding, emitting a bulk `.word` listing from encodings you already know, or "
+            "reading + summarizing a long fact/RTL file. Rule of thumb: before you hand-write more than "
+            "~20 lines of mechanical output or read a large file end-to-end, delegate it with a precise "
+            "`subtask` plus the minimal `context` (paths + the exact encoding facts it needs). Keep ONLY "
+            "the hard reasoning — encoding/lowering choices and the halt/terminator sequence — for yourself.")
     messages = [{"role": "user", "content": [{"text": task + feedback +
                  "\n\nYour workspace is the current directory. Begin now."}, _CACHE_POINT]}]
 
@@ -299,7 +303,8 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     cli = boto3.client("bedrock-runtime", region_name=os.environ.get("AWS_REGION", "us-east-1"),
                        config=_BotoConfig(read_timeout=300, connect_timeout=15,
                                           retries={"max_attempts": 5, "mode": "adaptive"}))
-    emit({"type": "system", "subtype": "init", "model": mid, "round": rnd})
+    emit({"type": "system", "subtype": "init", "model": mid, "round": rnd,
+          "delegate_enabled": delegate_enabled, "subagent_model": sub_mid if delegate_enabled else None})
     deadline = time.time() + timeout
     rc = 0
     cache_enabled = True   # attempt Bedrock prompt caching; self-correct to uncached if the model rejects it
