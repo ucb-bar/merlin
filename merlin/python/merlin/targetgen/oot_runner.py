@@ -237,6 +237,15 @@ def _resolve_argv(pkg: Package, name: str, input_mlir: Path, output_json: Path |
         tok = tok.replace("{input_mlir}", str(input_mlir))
         if output_json is not None:
             tok = tok.replace("{output_json}", str(output_json))
+        # Robustness: a package may reference its OWN tool by a bare/relative path (e.g. ``atlas-opt``,
+        # ``./atlas-opt``, ``submission/<tool>``) instead of the ``{tool}`` placeholder. Steps run with
+        # cwd=pkg.directory, so a "submission/"-prefixed or otherwise-misrooted reference does not resolve
+        # and the run fails on a manifest path-format nit rather than the compiler logic. If a token names
+        # the SAME file as the declared tool (basename match) but does not exist as written from the package
+        # root, rewrite it to the absolute tool path. Never touches {input_mlir}/{output_json} (different
+        # basenames) or a real, correctly-rooted sibling reference (those exist, so are left as-is).
+        if tok != str(pkg.tool) and Path(tok).name == pkg.tool.name and not (pkg.directory / tok).exists():
+            tok = str(pkg.tool)
         out.append(tok)
     return out
 
