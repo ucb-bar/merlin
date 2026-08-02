@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Model-venv helper: DERIVE a self-hosted target's instruction taxonomy from its shipped ISA definition
 (the repo's ISA doc), so the corpus/trace expectations are DISCOVERED, never hardcoded. Runs INSIDE the
-target model's own venv (the ISA definition imports the model package, e.g. ``npu_model``), the same
+target model's own venv (the ISA definition imports the target's own model package), the same
 cross-venv pattern as :mod:`npu_emit`.
 
 Given the path to the target's ISA-definition module (each instruction is a class carrying ``opcode`` +
@@ -43,24 +43,65 @@ _OPERAND_ATTRS = ("rd", "rs1", "rs2", "imm", "vd", "vs1", "vs2", "es1", "shamt",
                   "imm16", "imm12", "imm20", "uimm", "vt", "vm", "aq", "rl", "csr")
 
 
-def _fixed_signature(cls) -> tuple[int, int] | None:
-    """Derive an op's FIXED opcode/funct bit signature (mask, value) from the ISA def's OWN encoder — no
-    field-position assumptions, works for any instruction format. Encode the op with all-zero operands
-    (``to_bytecode`` on a bare instance) to get the fixed bits, then flip each candidate operand field and
-    XOR: bits that move are operand bits, the complement is the fixed opcode/funct mask. A word decodes to
-    this op iff ``word & mask == value``. Returns None if the op cannot be encoded."""
+def _base_word(cls) -> int | None:
+    """The op encoded with all operands zero — the fixed opcode/funct bits. None if not encodable."""
     try:
-        base = int(object.__new__(cls).to_bytecode()) & 0xFFFFFFFF
+        return int(object.__new__(cls).to_bytecode()) & 0xFFFFFFFF
     except Exception:  # noqa: BLE001 — not encodable without construction; skip
         return None
-    variable = 0
+
+
+def _operand_fields(cls, base: int) -> dict[str, list[int | None]]:
+    """Per-operand-bit → word-bit map for every operand attribute the format actually uses, derived from
+    the ISA def's OWN encoder — no field-position assumptions, works for any instruction format (contiguous,
+    shifted, or permuted fields alike). For each candidate attr we PER-BIT probe: set operand bit ``i`` only
+    and XOR the encoded word with the all-zero base; the single word bit that moves is where operand bit
+    ``i`` lands (``None`` if that operand bit is dropped, ``-1`` if it moves more than one word bit — a
+    non-linear field the encoder must refuse rather than mis-pack). Returns ``{attr: bits}`` only for attrs
+    that move at least one bit (i.e. are used by this format). This is the substrate the merlin-side
+    assembler/disassembler pack/unpack against — the model's encoder stays the source of truth."""
+    fields: dict[str, list[int | None]] = {}
     for attr in _OPERAND_ATTRS:
-        inst = object.__new__(cls)
+        # cheap use-check first: a wide all-ones pattern; if nothing moves, the format ignores this attr.
+        probe = object.__new__(cls)
         try:
-            setattr(inst, attr, 0x3F)          # a small all-ones pattern; _mask truncates to field width
-            variable |= (int(inst.to_bytecode()) & 0xFFFFFFFF) ^ base
-        except Exception:  # noqa: BLE001 — attr not used by this format / not settable
+            setattr(probe, attr, 0x7FFFFFFF)
+            if ((int(probe.to_bytecode()) & 0xFFFFFFFF) ^ base) == 0:
+                continue
+        except Exception:  # noqa: BLE001 — attr not settable on this format
             continue
+        bits: list[int | None] = []
+        for i in range(32):
+            inst = object.__new__(cls)
+            try:
+                setattr(inst, attr, 1 << i)
+                moved = (int(inst.to_bytecode()) & 0xFFFFFFFF) ^ base
+            except Exception:  # noqa: BLE001 — value out of this field's range
+                bits.append(None)
+                continue
+            if moved == 0:
+                bits.append(None)
+            elif (moved & (moved - 1)) == 0:          # exactly one word bit moved -> linear placement
+                bits.append(moved.bit_length() - 1)
+            else:
+                bits.append(-1)                        # multi-bit move -> non-linear, flag for refusal
+        while bits and bits[-1] is None:               # trim trailing unused operand bits
+            bits.pop()
+        if any(b is not None for b in bits):
+            fields[attr] = bits
+    return fields
+
+
+def _fixed_signature_from_fields(base: int, fields: dict[str, list[int | None]]) -> tuple[int, int]:
+    """FIXED opcode/funct signature (mask, value): the variable bits are exactly the operand-field bits
+    (union over the per-bit map), the complement is fixed. A word decodes to this op iff ``word & mask ==
+    value``. Derived from the accurate per-bit field map (supersedes the old 0x3F probe, which under-detected
+    fields wider than 6 bits)."""
+    variable = 0
+    for bits in fields.values():
+        for b in bits:
+            if isinstance(b, int) and b >= 0:
+                variable |= (1 << b)
     mask = (~variable) & 0xFFFFFFFF
     return mask, base & mask
 
@@ -141,6 +182,32 @@ def _role_for_pattern(sem_cls) -> str:
     return "scalar"
 
 
+def _discover_asm_operations(mod) -> dict:
+    """The model's assembler-mnemonic -> op-class map, discovered WITHOUT any model-name literal. The ISA
+    spec is an object exposing an ``operations`` dict ({mnemonic: op class}); it is normally imported by the
+    ISA-definition module, so we scan (a) the loaded module's own namespace and (b) the namespaces of the
+    modules the module imported (already in ``sys.modules``, restricted to the ISA module's own top-level
+    package so we never touch unrelated packages). First object with a non-empty ``operations`` dict wins."""
+    def _ops_of(ns) -> dict | None:
+        for obj in ns:
+            ops = getattr(obj, "operations", None)
+            if isinstance(ops, dict) and ops:
+                return ops
+        return None
+
+    hit = _ops_of(vars(mod).values())
+    if hit is not None:
+        return hit
+    top = (getattr(mod, "__package__", "") or "").split(".")[0]
+    if top:
+        for name, m in list(sys.modules.items()):
+            if m is not None and (name == top or name.startswith(top + ".")):
+                hit = _ops_of(vars(m).values())
+                if hit is not None:
+                    return hit
+    return {}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--isa-module", required=True, help="path to the target's ISA-definition .py")
@@ -164,23 +231,31 @@ def main() -> int:
         entry = {"mnemonic": name, "opcode": op, "role": _role_for_pattern(sem_cls),
                  "funct3": getattr(obj, "funct3", None), "funct7": getattr(obj, "funct7", None),
                  "funct2": getattr(obj, "funct2", None)}
-        # DECODE signature: the fixed opcode/funct bits derived from the op's own encoder (mask,value), so
-        # an emitted instruction word can be classified back to its semantic class — the field-decode that
-        # powers the kernel class-coverage / tiling checks. Position-free + format-agnostic.
-        sigv = _fixed_signature(obj)
-        if sigv is not None:
-            entry["fixed_mask"], entry["fixed_value"] = sigv
+        # DECODE + ENCODE signature, both derived from the op's OWN encoder (position-free, format-agnostic):
+        #  * fixed_mask/fixed_value — the fixed opcode/funct bits, so an emitted word classifies back to its
+        #    semantic class (powers class-coverage / tiling / the disassembler);
+        #  * fields — per operand-bit -> word-bit map, so the merlin-side assembler can PACK an operand into
+        #    the exact bits the model's encoder uses (and the disassembler can unpack it) without any
+        #    hand-authored field table. Non-linear operand bits are marked -1 so the assembler refuses them
+        #    rather than emit a silently-wrong word.
+        base = _base_word(obj)
+        if base is not None:
+            fields = _operand_fields(obj, base)
+            entry["fixed_mask"], entry["fixed_value"] = _fixed_signature_from_fields(base, fields)
+            if fields:
+                entry["fields"] = fields
         by_class.setdefault(sem, []).append(entry)
         by_mnem[name] = {"class": sem, **entry}
 
-    # the assembler-mnemonic -> class map (the model's own IsaSpec), best-effort — lets an example kernel
-    # written in assembler syntax be mapped back to semantic classes.
+    # the assembler-mnemonic -> class map (the model's own ISA spec), best-effort — lets an example kernel
+    # written in assembler syntax be mapped back to semantic classes. DISCOVERED from the loaded ISA module
+    # / its package (an object exposing ``operations``: {mnemonic -> op class}), never a model-name import,
+    # so no target is hardcoded and any model that ships such a spec is picked up.
     asm: dict[str, str] = {}
     try:
-        from npu_model.isa import IsaSpec  # type: ignore
-        for mn, cls in getattr(IsaSpec, "operations", {}).items():
+        for mn, cls in _discover_asm_operations(mod).items():
             asm[str(mn)] = getattr(cls, "__name__", str(cls))
-    except Exception:  # noqa: BLE001 — IsaSpec is model-specific; taxonomy still valid without it
+    except Exception:  # noqa: BLE001 — no spec found; taxonomy still valid without it
         pass
 
     with open(a.out, "w") as f:
