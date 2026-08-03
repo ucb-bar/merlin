@@ -73,13 +73,18 @@ def link_elf(cb: dict[str, Any], obj: Path, workdir: Path) -> Path:
     harness = _movement_harness_c(cb) if _is_movement_cb(cb) else _harness_c(cb)
     (workdir / "harness.c").write_text(harness, encoding="utf-8")
     rt, common = gem.rocc_tests_dir(), gem._common_dir()
+    # Linker load address DERIVED from the RTL memory map (platform DRAM base), reusing the curated
+    # script's proven section layout but replacing its BAKED origin — so the base is a HW fact, not a
+    # hardcoded literal in a vendored file.
+    from ..runtime_build import derived_link_script
+    link_ld = derived_link_script(gem.platform_dram_base(), common / "test.ld", Path(workdir))
     elf = workdir / "package_kernel.elf"
     cmd = [str(gem.gcc_path()), "-DPREALLOCATE=1", "-DMULTITHREAD=1", "-mcmodel=medany",
            "-std=gnu99", "-O2", "-ffast-math", "-fno-common", "-fno-builtin-printf",
            "-fno-tree-loop-distribute-patterns", "-march=rv64gc", "-Wa,-march=rv64gc",
            "-lm", "-lgcc", "-I", str(rt / "riscv-tests"), "-I", str(rt / "riscv-tests/env"),
            "-I", str(rt), "-I", str(common), "-DID_STRING=", "-DPRINT_TILE=0",
-           "-nostdlib", "-nostartfiles", "-static", "-T", str(common / "test.ld"), "-DBAREMETAL=1",
+           "-nostdlib", "-nostartfiles", "-static", "-T", str(link_ld), "-DBAREMETAL=1",
            str(workdir / "harness.c"), str(obj), "-o", str(elf),
            *(str(p) for p in sorted(common.glob("*.c"))),
            *(str(p) for p in sorted(common.glob("*.S")))]

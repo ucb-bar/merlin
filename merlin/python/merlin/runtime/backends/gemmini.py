@@ -80,6 +80,14 @@ def libgemmini_dir() -> Path:
     return chipyard_root() / ".conda-env/riscv-tools/lib"
 
 
+def platform_dram_base() -> int:
+    """The bare-metal linker load address, DERIVED from this target's chipyard RTL build memory map
+    (``runtime_build.platform_dram_base`` reads the ``memory@`` region of the sim config's ``memmap.json``)
+    rather than baked in the linker script. Falls back to the platform default if the build is absent."""
+    from ...targetgen import runtime_build as _rb
+    return _rb.platform_dram_base("gemmini", "chipyard")
+
+
 def _rtl_sim_config() -> str:
     """The verilator harness config that realizes gemmini — a DECLARED target fact (capability manifest
     ``runtime.rtl_sim_config``), read via the target registry rather than a hardcoded backend constant.
