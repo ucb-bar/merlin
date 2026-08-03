@@ -43,13 +43,38 @@ SUITE = "gemmini-contract"  # target-ok: aet suite identity of the gemmini refer
 DEFAULT_TARGET = "unknown"  # fallback only when a package manifest declares no ``target`` field
 CONTRACT_VERSION = "0.1"
 
-# Forbidden substrings in a non-exempt package's tool sources (integrity scan; see
-# merlin/contract/integrity_policy.md).
+# Reference/oracle-ACCESS markers forbidden in a non-exempt package's tool sources (integrity scan; see
+# merlin/contract/integrity_policy.md). These are specific dotted paths — matched as substrings across
+# ALL languages because they name the actual reference/oracle surface, not a common word.
 _FORBIDDEN = (
     "merlin.runtime.reference", "merlin.runtime.simulator", "reference_outputs",
-    "import merlin", "from merlin",
 )
+# A Python package importing the harness itself is caught STRUCTURALLY (AST), not by a substring: the old
+# ``"from merlin" in text`` check false-flagged prose — a docstring "Lowering from merlin_iface …" or a
+# comment — as an import. Only a real ``import merlin`` / ``from merlin[.…] import`` statement counts.
 _SRC_SUFFIXES = (".py", ".cpp", ".cc", ".h", ".hpp", ".td", ".sh")
+
+
+def _py_imports_merlin(text: str) -> str | None:
+    """Return the offending module name iff ``text`` (Python source) actually imports the ``merlin``
+    harness package, else None. AST-based: docstrings, comments, and unrelated names like
+    ``merlin_iface`` never match. Unparseable source returns None — a syntax error is the build gate's
+    job, not integrity's."""
+    import ast
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                if a.name == "merlin" or a.name.startswith("merlin."):
+                    return a.name
+        elif isinstance(node, ast.ImportFrom):
+            mod = node.module or ""
+            if (mod == "merlin" or mod.startswith("merlin.")) and node.level == 0:
+                return mod
+    return None
 
 
 class CertFailure(Exception):
@@ -212,10 +237,16 @@ def integrity_scan(pkg: Package) -> None:
         if "build" in src.parts:        # skip generated build trees
             continue
         text = src.read_text(encoding="utf-8", errors="ignore")
-        for needle in _FORBIDDEN:
+        for needle in _FORBIDDEN:                       # reference/oracle-access dotted paths (any lang)
             if needle in text:
                 raise CertFailure("integrity", FailureCategory.FORBIDDEN_PATTERN,
                                   f"integrity violation in {src.name}: contains {needle!r} "
+                                  f"(a non-exempt package must not read the reference/oracle)")
+        if src.suffix == ".py":                         # real merlin-harness import (AST, not substring)
+            mod = _py_imports_merlin(text)
+            if mod is not None:
+                raise CertFailure("integrity", FailureCategory.FORBIDDEN_PATTERN,
+                                  f"integrity violation in {src.name}: imports {mod!r} "
                                   f"(a non-exempt package must not import the harness/reference)")
 
 
