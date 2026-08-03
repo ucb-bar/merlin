@@ -200,6 +200,29 @@ final instruction of your kernel.
 """
 
 
+def _termination_contract(te, manifest) -> str:
+    """The program-termination contract for a self-hosted-ISA target, with the terminator's DERIVED encoding
+    appended when it can be behaviorally derived from the target's own ISA definition (the op whose sole
+    semantic effect is asserting the machine finish flag). Public ISA structure — the agent already has the
+    ISA definition — so naming the exact `.word` is an aid, not a leak, and it is derived per-target (no
+    literal terminator here). Falls back to the generic contract if the terminator is not derivable."""
+    if manifest.endpoint_kind != "external_backend":
+        return ""
+    try:
+        from .isa_model import isa_model_for
+        m = isa_model_for(te)
+        words = sorted({v for _, v in m.halt_signatures})
+        if m.halt_mnemonics and words:
+            names = " / ".join(m.halt_mnemonics)
+            wl = ", ".join(f"`.word {w:#010x}`" for w in words)
+            return (_TERMINATION_CONTRACT + f"\nFor this target the terminator is **{names}**, which the "
+                    f"ISA's own encoder emits as {wl} (operands zero) — verify with the ISA dev tools' "
+                    f"`disasm`/`lint`, and make it the final instruction on every path.\n")
+    except Exception:  # noqa: BLE001 — terminator not derivable (no model venv / no such op) -> generic text
+        pass
+    return _TERMINATION_CONTRACT
+
+
 def prompt_slots(te, manifest) -> dict:
     """The complete set of DERIVED, target-specific prompt slots for one target.
 
@@ -236,8 +259,7 @@ def prompt_slots(te, manifest) -> dict:
         "dram_contract": _DRAM_CONTRACT if manifest.endpoint_kind == "external_backend" else "",
         # program-termination contract (external_backend only): the emitted kernel must reach the ISA's
         # halt instruction or it fails functional before numerics (the atlas non-halting-kernel wall).
-        "termination_contract": (_TERMINATION_CONTRACT if manifest.endpoint_kind == "external_backend"
-                                 else ""),
+        "termination_contract": _termination_contract(te, manifest),
     }
 
 

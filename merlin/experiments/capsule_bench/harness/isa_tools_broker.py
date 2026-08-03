@@ -124,7 +124,11 @@ def _handle(req: dict) -> dict:
         try:
             words = _assemble(req.get("kernel_s", ""))
         except Exception as e:  # noqa: BLE001 — assembly failure is the agent's kernel error, reported as-is
-            return {"error": f"kernel.S did not assemble: {str(e)[-300:]}"}
+            return {"error": f"kernel.S did not assemble: {str(e)[-300:]}",
+                    "hint": "stock llvm-mc assembles ONLY raw `.word`/`.insn` directives — it cannot "
+                            "assemble this target's custom mnemonics (VMATMUL-style). Emit each instruction "
+                            "as a `.word 0x..`; use `asm` (a `CLASS field=value` listing) to get the exact "
+                            "words from the target's own encoder."}
         recs = isa_disasm.disassemble(model, words)
         if cmd == "disasm":
             return {"records": recs, "n": len(recs)}
