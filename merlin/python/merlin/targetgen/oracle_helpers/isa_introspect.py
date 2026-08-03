@@ -43,11 +43,44 @@ _OPERAND_ATTRS = ("rd", "rs1", "rs2", "imm", "vd", "vs1", "vs2", "es1", "shamt",
                   "imm16", "imm12", "imm20", "uimm", "vt", "vm", "aq", "rl", "csr")
 
 
+def _operand_names(cls) -> list[str]:
+    """The op's operand field names, from the ISA def's OWN typed annotations across the class MRO (the
+    pattern base declares them) plus the candidate superset. Used to build an encodable zero instance without
+    running the op's ``__init__`` — position/format agnostic, no field-name assumption beyond the superset."""
+    names: list[str] = []
+    for base in getattr(cls, "__mro__", (cls,)):
+        for attr in getattr(base, "__annotations__", {}) or {}:
+            if not attr.startswith("_") and attr not in names:
+                names.append(attr)
+    for attr in _OPERAND_ATTRS:
+        if attr not in names:
+            names.append(attr)
+    return names
+
+
+def _zeroed_instance(cls):
+    """An instance of ``cls`` with every operand field that has NO class default set to 0, so the op's own
+    ``to_bytecode`` can encode it (RISC-V-style ops declare operands with no default and set them only in
+    ``__init__``, which ``object.__new__`` skips). Class-defaulted attributes are LEFT ALONE — that preserves
+    a fixed discriminator carried as a default (e.g. an ebreak whose imm default distinguishes it from ecall);
+    zeroing it would corrupt the op's identity. Returns the raw instance (may still be non-encodable, caller
+    guards)."""
+    inst = object.__new__(cls)
+    for attr in _operand_names(cls):
+        if not hasattr(inst, attr):                    # missing (no class default) -> fill with 0
+            try:
+                setattr(inst, attr, 0)
+            except Exception:  # noqa: BLE001 — not settable on this format; leave it
+                pass
+    return inst
+
+
 def _base_word(cls) -> int | None:
-    """The op encoded with all operands zero — the fixed opcode/funct bits. None if not encodable."""
+    """The op encoded with all FREE operands zero (class-default discriminators kept) — the fixed opcode/funct
+    bits. None if the op cannot be encoded even so."""
     try:
-        return int(object.__new__(cls).to_bytecode()) & 0xFFFFFFFF
-    except Exception:  # noqa: BLE001 — not encodable without construction; skip
+        return int(_zeroed_instance(cls).to_bytecode()) & 0xFFFFFFFF
+    except Exception:  # noqa: BLE001 — not encodable; skip (no signature, honestly)
         return None
 
 
@@ -59,11 +92,20 @@ def _operand_fields(cls, base: int) -> dict[str, list[int | None]]:
     ``i`` lands (``None`` if that operand bit is dropped, ``-1`` if it moves more than one word bit — a
     non-linear field the encoder must refuse rather than mis-pack). Returns ``{attr: bits}`` only for attrs
     that move at least one bit (i.e. are used by this format). This is the substrate the merlin-side
-    assembler/disassembler pack/unpack against — the model's encoder stays the source of truth."""
+    assembler/disassembler pack/unpack against — the model's encoder stays the source of truth.
+
+    Also returns ``touched`` — the union of EVERY word bit that ANY operand bit moves, including aliased bits
+    (one operand bit that lands in more than one word bit, e.g. an encoder that mirrors an immediate into a
+    second slot). The per-bit ``fields`` map keeps only LINEAR placements (``-1`` for aliased, so the packing
+    assembler refuses them rather than mis-encode), but the DECODE mask must treat every touched bit as
+    variable — otherwise a legal instruction whose aliased bits are non-zero is falsely rejected."""
     fields: dict[str, list[int | None]] = {}
+    touched = 0
     for attr in _OPERAND_ATTRS:
         # cheap use-check first: a wide all-ones pattern; if nothing moves, the format ignores this attr.
-        probe = object.__new__(cls)
+        # Probe on a ZEROED instance (all other free operands set) so the op is encodable even when it needs
+        # several operands — a bare instance would raise on the unset ones and hide every real field.
+        probe = _zeroed_instance(cls)
         try:
             setattr(probe, attr, 0x7FFFFFFF)
             if ((int(probe.to_bytecode()) & 0xFFFFFFFF) ^ base) == 0:
@@ -72,31 +114,39 @@ def _operand_fields(cls, base: int) -> dict[str, list[int | None]]:
             continue
         bits: list[int | None] = []
         for i in range(32):
-            inst = object.__new__(cls)
+            inst = _zeroed_instance(cls)
             try:
                 setattr(inst, attr, 1 << i)
                 moved = (int(inst.to_bytecode()) & 0xFFFFFFFF) ^ base
             except Exception:  # noqa: BLE001 — value out of this field's range
                 bits.append(None)
                 continue
+            touched |= moved                           # every word bit this operand can vary (decode mask)
             if moved == 0:
                 bits.append(None)
             elif (moved & (moved - 1)) == 0:          # exactly one word bit moved -> linear placement
                 bits.append(moved.bit_length() - 1)
             else:
-                bits.append(-1)                        # multi-bit move -> non-linear, flag for refusal
+                bits.append(-1)                        # multi-bit move -> aliased, refuse in the packer
         while bits and bits[-1] is None:               # trim trailing unused operand bits
             bits.pop()
         if any(b is not None for b in bits):
             fields[attr] = bits
-    return fields
+    return fields, touched
+
+
+def _fixed_signature_from_touched(base: int, touched: int) -> tuple[int, int]:
+    """FIXED opcode/funct signature (mask, value): the variable bits are EVERY word bit any operand can move
+    (``touched``, aliased bits included), the complement is fixed. A word decodes to this op iff
+    ``word & mask == value``. Using the full touched set (not just linear field bits) is what keeps the decode
+    from falsely rejecting a legal instruction whose encoder mirrors an operand into extra bits."""
+    mask = (~touched) & 0xFFFFFFFF
+    return mask, base & mask
 
 
 def _fixed_signature_from_fields(base: int, fields: dict[str, list[int | None]]) -> tuple[int, int]:
-    """FIXED opcode/funct signature (mask, value): the variable bits are exactly the operand-field bits
-    (union over the per-bit map), the complement is fixed. A word decodes to this op iff ``word & mask ==
-    value``. Derived from the accurate per-bit field map (supersedes the old 0x3F probe, which under-detected
-    fields wider than 6 bits)."""
+    """Back-compat: derive the fixed signature from the linear-only per-bit field map (used where the aliased
+    touched-set is unavailable). Prefer :func:`_fixed_signature_from_touched`."""
     variable = 0
     for bits in fields.values():
         for b in bits:
@@ -182,6 +232,96 @@ def _role_for_pattern(sem_cls) -> str:
     return "scalar"
 
 
+# The instruction the machine model treats as a PROGRAM TERMINATOR is derived BEHAVIORALLY, from the op's
+# own semantic effect — never by a mnemonic literal ("halt"/"ecall") or an opcode. We run each op's semantic
+# method against a recording stand-in for the machine state and keep the ops whose ENTIRE effect is to raise
+# one boolean state flag to True (and touch nothing else): that is exactly what a terminator does (assert the
+# machine's "finished" signal), and it structurally excludes a barrier/fence (whose effect is empty) and every
+# compute/memory op (which reads unset operands and/or calls state read/write methods). The specific flag name
+# is discovered from the model (recorded), not assumed. Universal machine-model vocabulary, no target fact.
+_SEM_METHODS = ("exec", "execute", "semantic", "apply", "effect", "step", "__call__")
+
+
+class _StateRec:
+    """A recording stand-in for the machine state passed to an op's semantic method: it captures every
+    attribute SET and every method CALL the op performs, so a terminator (whose only effect is raising a
+    boolean flag) is distinguishable from a barrier (no effect) or a datapath op (calls read/write methods /
+    indexes registers). Attribute reads return a callable+indexable stub so a pure-flag op does not crash;
+    a datapath op that does arithmetic on an unset operand still raises (caught upstream)."""
+
+    def __init__(self):
+        object.__setattr__(self, "sets", {})
+        object.__setattr__(self, "calls", [])
+
+    def __setattr__(self, k, v):
+        self.sets[k] = v
+
+    def __getattr__(self, k):
+        rec = self
+
+        class _Stub:
+            def __call__(self, *a, **kw):
+                rec.calls.append(k)
+                return _Stub()
+
+            def __getitem__(self, i):
+                rec.calls.append(k)
+                return _Stub()
+
+        return _Stub()
+
+
+def _sem_method(cls):
+    """The op's semantic-effect method (the one the interpreter runs to mutate machine state), by name from a
+    small candidate set — discovered, not assumed. Returns the bound-callable name or None."""
+    for name in _SEM_METHODS:
+        fn = getattr(cls, name, None)
+        if callable(fn) and name not in ("to_bytecode",):
+            # only accept a method actually defined on an op (own or a pattern base), not object.__call__
+            if name != "__call__" or "__call__" in getattr(cls, "__dict__", {}):
+                return name
+    return None
+
+
+def _terminator_flag(cls) -> str | None:
+    """Behaviorally probe one op: run its semantic method against a recording state and return the boolean
+    flag it raises IFF that is its entire effect (one attribute set to True, no method calls, no other sets) —
+    the derived signature of a program terminator. None otherwise. Never constructs the real (heavy) machine
+    state and never names the flag in advance."""
+    name = _sem_method(cls)
+    if name is None:
+        return None
+    rec = _StateRec()
+    try:
+        getattr(cls, name)(object.__new__(cls), rec)
+    except Exception:  # noqa: BLE001 — a datapath op reads unset operands and raises; not a terminator
+        return None
+    if rec.calls:
+        return None                                   # touched a register/memory method -> not a pure halt
+    true_bools = [k for k, v in rec.sets.items() if isinstance(v, bool) and v is True]
+    if len(rec.sets) == 1 and len(true_bools) == 1:   # sole effect: raise one boolean flag
+        return true_bools[0]
+    return None
+
+
+def _halt_ops(mod, by_mnem: dict) -> tuple[list[str], str | None]:
+    """The DERIVED terminator op set: op names whose semantic effect is solely to assert the machine's finish
+    flag, plus the (consensus) flag name for provenance. Empty when no op has that effect (the linter then
+    reports an honest INFO rather than a false 'no halt'). Behavioral — no mnemonic/opcode literal."""
+    flag_votes: dict[str, list[str]] = {}
+    for name in by_mnem:
+        cls = getattr(mod, name, None)
+        if cls is None:
+            continue
+        flag = _terminator_flag(cls)
+        if flag:
+            flag_votes.setdefault(flag, []).append(name)
+    if not flag_votes:
+        return [], None
+    flag = max(flag_votes, key=lambda f: len(flag_votes[f]))   # the flag the most terminator ops raise
+    return sorted(flag_votes[flag]), flag
+
+
 def _discover_asm_operations(mod) -> dict:
     """The model's assembler-mnemonic -> op-class map, discovered WITHOUT any model-name literal. The ISA
     spec is an object exposing an ``operations`` dict ({mnemonic: op class}); it is normally imported by the
@@ -240,8 +380,8 @@ def main() -> int:
         #    rather than emit a silently-wrong word.
         base = _base_word(obj)
         if base is not None:
-            fields = _operand_fields(obj, base)
-            entry["fixed_mask"], entry["fixed_value"] = _fixed_signature_from_fields(base, fields)
+            fields, touched = _operand_fields(obj, base)
+            entry["fixed_mask"], entry["fixed_value"] = _fixed_signature_from_touched(base, touched)
             if fields:
                 entry["fields"] = fields
         by_class.setdefault(sem, []).append(entry)
@@ -258,8 +398,22 @@ def main() -> int:
     except Exception:  # noqa: BLE001 — no spec found; taxonomy still valid without it
         pass
 
+    # the DERIVED program-terminator set (behavioral: ops whose sole effect is asserting the machine finish
+    # flag) + their decode signatures, so the static linter can detect "the kernel reaches a terminator"
+    # without a mnemonic/opcode literal. Terminators sharing a coarse semantic class (e.g. a fence and a halt
+    # both "nullary") are separated here by their own fixed opcode/funct signature, not by the class name.
+    halt_mnemonics, halt_flag = _halt_ops(mod, by_mnem)
+    halt_signatures = []
+    for hm in halt_mnemonics:
+        ent = by_mnem.get(hm, {})
+        m, v = ent.get("fixed_mask"), ent.get("fixed_value")
+        if isinstance(m, int) and isinstance(v, int):
+            halt_signatures.append([m, v])
+
     with open(a.out, "w") as f:
-        json.dump({"by_class": by_class, "by_mnemonic": by_mnem, "asm_mnemonics": asm}, f)
+        json.dump({"by_class": by_class, "by_mnemonic": by_mnem, "asm_mnemonics": asm,
+                   "halt_mnemonics": halt_mnemonics, "halt_flag": halt_flag,
+                   "halt_signatures": halt_signatures}, f)
     return 0
 
 

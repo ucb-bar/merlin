@@ -18,6 +18,12 @@ def _sig(opcode: int, fields: dict) -> tuple[int, int]:
     return mask, opcode & mask
 
 
+def _halt_sigs(by_mnem: dict, halt: tuple) -> tuple:
+    """The (fixed_mask, fixed_value) signatures for the named terminator ops — how the derivation feeds the
+    linter (detection is by signature, not by the op's coarse class name)."""
+    return tuple((by_mnem[h]["fixed_mask"], by_mnem[h]["fixed_value"]) for h in halt if h in by_mnem)
+
+
 def _model(halt=()) -> IsaModel:
     mm_f = {"rd": [7, 8, 9, 10, 11], "rs1": [15, 16, 17, 18, 19]}
     hl_f: dict = {}                                          # terminator takes no operands
@@ -30,7 +36,7 @@ def _model(halt=()) -> IsaModel:
                  "fields": hl_f},
     }
     return IsaModel(target="fake", by_mnemonic=by_mnem, roles={"matmul": ["MatMul"]},
-                    halt_mnemonics=halt)
+                    halt_mnemonics=halt, halt_signatures=_halt_sigs(by_mnem, halt))
 
 
 def _rules(findings):
@@ -56,6 +62,33 @@ def test_halt_not_last_is_a_warning():
     m = _model(halt=("Halt",))
     words = A.assemble_text(m, "Halt\nMatMul rd=1, rs1=1\n")  # terminator present but not last
     assert "halt_not_last" in _rules(L.lint(m, words))
+
+
+def test_barrier_sharing_halt_class_is_not_termination():
+    """A barrier and the terminator can share one coarse semantic class (e.g. both 'scalar'/'nullary'), so
+    detection MUST be by decode signature, not class name. A kernel of Load + a fence-like op (same class as
+    Halt, different opcode) but NO real terminator must still be flagged no_halt. (The atlas FENCE-vs-ECALL
+    case that made the old mnemonic-string check wrong.)"""
+    mm_f = {"rd": [7, 8, 9, 10, 11], "rs1": [15, 16, 17, 18, 19]}
+    mm_mask, mm_val = _sig(0x2B, mm_f)
+    hl_mask, hl_val = _sig(0x73, {})                         # terminator: opcode 0x73
+    fn_mask, fn_val = _sig(0x0F, {})                         # fence: SAME class, DIFFERENT opcode 0x0F
+    by = {
+        "MatMul": {"class": "MatMul", "role": "matmul", "fixed_mask": mm_mask, "fixed_value": mm_val,
+                   "fields": mm_f},
+        "Halt": {"class": "Nullary", "role": "scalar", "fixed_mask": hl_mask, "fixed_value": hl_val,
+                 "fields": {}},
+        "Fence": {"class": "Nullary", "role": "scalar", "fixed_mask": fn_mask, "fixed_value": fn_val,
+                  "fields": {}},
+    }
+    # only 'Halt' is the derived terminator; 'Fence' shares the class but is NOT in halt_signatures
+    m = IsaModel(target="fake3", by_mnemonic=by, roles={"matmul": ["MatMul"]},
+                 halt_mnemonics=("Halt",), halt_signatures=((hl_mask, hl_val),))
+    words = A.assemble_text(m, "MatMul rd=1, rs1=1\nFence\n")  # ends in a fence, not a terminator
+    assert any(x["rule"] == "no_halt" and x["severity"] == "error" for x in L.lint(m, words))
+    # and a real terminator IS accepted
+    ok = A.assemble_text(m, "MatMul rd=1, rs1=1\nHalt\n")
+    assert "no_halt" not in _rules(L.lint(m, ok))
 
 
 def test_halt_unknown_is_info_not_a_false_error():
@@ -98,7 +131,7 @@ def _model2(halt=("Halt",)) -> IsaModel:
                  "fields": {}},
     }
     return IsaModel(target="fake2", by_mnemonic=by, roles={"memory": ["Load"], "matmul": ["MatMul"]},
-                    halt_mnemonics=halt)
+                    halt_mnemonics=halt, halt_signatures=_halt_sigs(by, halt))
 
 
 def test_missing_compute_role_is_flagged_for_matmul():

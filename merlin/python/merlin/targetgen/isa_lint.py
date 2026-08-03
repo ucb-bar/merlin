@@ -50,23 +50,28 @@ def lint(model: IsaModel, words: list[int], *, op: str = "matmul", output_dtype:
                                        "an invented or mis-packed encoding (use the derived assembler)"})
 
     # 2) program termination — a kernel that never reaches a terminating instruction runs to the cycle cap
-    #    and fails the functional tier before numerics. Checked against the DERIVED halt op set when known.
+    #    and fails the functional tier before numerics. Matched by the terminator ops' DERIVED decode
+    #    SIGNATURE (fixed opcode/funct bits), not by a decoded class name: a terminator and a barrier can
+    #    share one coarse semantic class (e.g. both "nullary"), so a class-name match would falsely accept a
+    #    fence; the signature separates them by their own opcode.
     real = [r for r in recs if not r.get("illegal")]
-    if model.halt_mnemonics:
-        halt = set(model.halt_mnemonics)
-        if not any(r.get("mnemonic") in halt for r in real):
+    if model.halt_signatures:
+        def _is_halt(w: int) -> bool:
+            return any((w & m) == v for m, v in model.halt_signatures)
+        names = ", ".join(model.halt_mnemonics) or "the ISA terminator"
+        if not any(_is_halt(w) for w in words):
             findings.append({"rule": "no_halt", "severity": "error",
-                             "detail": f"no terminating instruction ({', '.join(sorted(halt))}) present — "
-                                       "the program will not halt and every capsule fails before numerics; "
-                                       "emit the terminator as the final instruction"})
-        elif real and real[-1].get("mnemonic") not in halt:
+                             "detail": f"no terminating instruction ({names}) present — the program will not "
+                                       "halt and every capsule fails before numerics; emit the terminator as "
+                                       "the final instruction"})
+        elif words and not _is_halt(words[-1]):
             findings.append({"rule": "halt_not_last", "severity": "warning",
-                             "detail": "a terminating instruction is present but is not the last instruction; "
-                                       "ensure every control path ends at the terminator"})
+                             "detail": f"a terminating instruction ({names}) is present but is not the last "
+                                       "instruction; ensure every control path ends at the terminator"})
     else:
         findings.append({"rule": "halt_unknown", "severity": "info",
-                         "detail": "termination could not be statically verified (the halt op set is not "
-                                   "derived for this target); confirm the kernel reaches the ISA terminator"})
+                         "detail": "termination could not be statically verified (no terminator op is derived "
+                                   "for this target); confirm the kernel reaches the ISA terminator"})
 
     # 3) no recognized instructions — every word is illegal (or the kernel is empty). The program does
     #    nothing the ISA can execute; the output region is never written.

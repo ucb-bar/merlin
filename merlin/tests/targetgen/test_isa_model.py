@@ -45,7 +45,7 @@ def _unpack(fields: dict, attr: str, word: int) -> int:
 def test_operand_fields_recovers_bit_placement():
     base = II._base_word(_FakeMatMul)
     assert base == 0x2B                                   # all operands zero -> just the opcode
-    fields = II._operand_fields(_FakeMatMul, base)
+    fields, _touched = II._operand_fields(_FakeMatMul, base)
     # exactly the three operands the format uses, each mapped to its real word bits
     assert set(fields) == {"rd", "rs1", "rs2"}
     assert fields["rd"] == [7, 8, 9, 10, 11]
@@ -55,7 +55,7 @@ def test_operand_fields_recovers_bit_placement():
 
 def test_fixed_signature_matches_valid_words_and_rejects_others():
     base = II._base_word(_FakeMatMul)
-    fields = II._operand_fields(_FakeMatMul, base)
+    fields, _touched = II._operand_fields(_FakeMatMul, base)
     mask, value = II._fixed_signature_from_fields(base, fields)
     # a word encoded by the format's OWN encoder decodes to this op...
     inst = _FakeMatMul(); inst.rd, inst.rs1, inst.rs2 = 5, 3, 7
@@ -67,7 +67,7 @@ def test_fixed_signature_matches_valid_words_and_rejects_others():
 
 def test_derived_fieldmap_round_trips_against_the_real_encoder():
     base = II._base_word(_FakeMatMul)
-    fields = II._operand_fields(_FakeMatMul, base)
+    fields, _touched = II._operand_fields(_FakeMatMul, base)
     inst = _FakeMatMul(); inst.rd, inst.rs1, inst.rs2 = 5, 3, 7
     truth = inst.to_bytecode()
     # PACK via the derived map alone reproduces the model's own encoding (minus the fixed bits)...
@@ -79,12 +79,49 @@ def test_derived_fieldmap_round_trips_against_the_real_encoder():
     assert _unpack(fields, "rs2", truth) == 7
 
 
+# A synthetic format whose encoder ALIASES one operand into two word slots — it mirrors imm's low 5 bits
+# into a second field (like the atlas IType encoder that packs imm into both the rd slot and the imm slot).
+# The decode signature must treat BOTH slots as variable, or a legal instruction with a non-zero imm is
+# falsely rejected. The per-bit field map must still refuse to linearly pack the aliased operand.
+class _AliasedImm:
+    opcode = 0x13
+    rs1 = 0
+    imm = 0
+
+    def to_bytecode(self) -> int:
+        return ((self.opcode & 0x7F)
+                | ((self.imm & 0x1F) << 7)          # imm low 5 bits mirrored into the "rd" slot (alias)
+                | ((self.rs1 & 0x1F) << 15)
+                | ((self.imm & 0xFFF) << 20))         # imm full 12 bits in its own slot
+
+
+def test_aliased_operand_decode_accepts_all_producible_words():
+    base = II._base_word(_AliasedImm)
+    fields, touched = II._operand_fields(_AliasedImm, base)
+    mask, value = II._fixed_signature_from_touched(base, touched)
+    # every word the encoder can PRODUCE must decode to this op (the atlas false-illegal-ADDI regression)
+    for imm, rs1 in ((0, 0), (1, 0), (5, 3), (0xFFF, 0x1F), (0x800, 7)):
+        inst = _AliasedImm(); inst.imm, inst.rs1 = imm, rs1
+        w = inst.to_bytecode()
+        assert (w & mask) == value, f"producible word {w:#010x} (imm={imm}) falsely rejected"
+    # a different opcode still does not match
+    assert ((base ^ 0x04) & mask) != value
+
+
+def test_aliased_field_is_refused_by_the_linear_packer():
+    # imm's low bits land in two word bits at once -> marked -1 so the merlin-side assembler REFUSES to pack
+    # it (rather than emit a silently-wrong word); packing is the model encoder's job for such a format.
+    base = II._base_word(_AliasedImm)
+    fields, _touched = II._operand_fields(_AliasedImm, base)
+    assert -1 in (fields.get("imm") or []), "aliased imm bit should be flagged non-linear (-1)"
+
+
 # --------------------------------------------------------------------------------------------
 # IsaModel container (hand-built entry, no derivation needed)
 # --------------------------------------------------------------------------------------------
 def _fake_model() -> IsaModel:
     base = II._base_word(_FakeMatMul)
-    fields = II._operand_fields(_FakeMatMul, base)
+    fields, _touched = II._operand_fields(_FakeMatMul, base)
     mask, value = II._fixed_signature_from_fields(base, fields)
     by_mnem = {"FakeMatMul": {"class": "FakeMatMul", "role": "matmul", "opcode": 0x2B,
                               "fixed_mask": mask, "fixed_value": value, "fields": fields}}

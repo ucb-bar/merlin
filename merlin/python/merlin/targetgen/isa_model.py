@@ -24,7 +24,9 @@ class IsaModel:
     entry ``{class, role, opcode, funct*, fixed_mask, fixed_value, fields}``; ``asm_mnemonics`` maps the
     assembler syntax the target's ISA spec exposes to that class name; ``roles`` groups classes by their
     derived structural role; ``dram_base`` is the target's DRAM aperture floor; ``halt_mnemonics`` is the
-    derived terminator op set (filled by the halt-derivation helper — empty until then, honestly)."""
+    behaviorally-derived terminator op set (ops whose sole semantic effect is asserting the machine's finish
+    flag) and ``halt_signatures`` their decode (fixed_mask, fixed_value) signatures for detection — both empty
+    for a target whose ISA defines no such op (the linter then reports an honest INFO)."""
 
     target: str
     by_mnemonic: dict[str, dict] = field(default_factory=dict)
@@ -32,6 +34,7 @@ class IsaModel:
     roles: dict[str, list[str]] = field(default_factory=dict)
     dram_base: int = 0
     halt_mnemonics: tuple[str, ...] = ()
+    halt_signatures: tuple[tuple[int, int], ...] = ()
 
     # -- lookups ---------------------------------------------------------------------------------
     def is_empty(self) -> bool:
@@ -107,5 +110,12 @@ def isa_model_for(te_or_target: Any, *, model_ext: str | None = None, timeout: i
     except Exception:  # noqa: BLE001 — no derivable memory map -> floor 0 (linter then skips the check)
         dram_base = 0
 
+    # the DERIVED program-terminator set (behavioral, from isa_introspect) — op names for the linter's hint
+    # text and their decode signatures for detection. Empty for a target whose ISA def has no such op (the
+    # linter then reports an honest INFO instead of a false 'no halt').
+    halt_mnem = tuple(tax.get("halt_mnemonics") or ())
+    halt_sigs = tuple((int(m), int(v)) for m, v in (tax.get("halt_signatures") or [])
+                      if isinstance(m, int) and isinstance(v, int))
+
     return IsaModel(target=target, by_mnemonic=by_mnem, asm_mnemonics=asm, roles=roles,
-                    dram_base=dram_base, halt_mnemonics=())
+                    dram_base=dram_base, halt_mnemonics=halt_mnem, halt_signatures=halt_sigs)
