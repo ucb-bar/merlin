@@ -584,12 +584,17 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 # numeric verdict, recorded as the honest numeric report + evidence.
                 onrep = CG.compare(gold, res["outputs"], policy, golden_source=gsource)
                 okt = onrep["status"] == "pass"
-                numeric = {"status": onrep["status"], "policy": onrep["policy"],
-                           "golden_source": gsource, "max_abs_diff": onrep["max_abs_error"],
-                           "max_rel_error": onrep["max_rel_error"],
-                           "mismatch_count": onrep["mismatch_count"],
-                           "first_mismatch": onrep["first_mismatch"]}
-                CG.write_numeric_report(paths.generated / "numeric_report.yaml", onrep)
+                # The numeric verdict must ride the MANDATORY/gold tier, not an additive one: otherwise an
+                # additive tier later in the ladder (e.g. an approximate or unbuilt model) would overwrite
+                # the authoritative numeric. Record from a mandatory tier, or from the first tier to run if
+                # none has set it yet.
+                if mand or numeric.get("status") == "skipped":
+                    numeric = {"status": onrep["status"], "policy": onrep["policy"],
+                               "golden_source": gsource, "max_abs_diff": onrep["max_abs_error"],
+                               "max_rel_error": onrep["max_rel_error"],
+                               "mismatch_count": onrep["mismatch_count"],
+                               "first_mismatch": onrep["first_mismatch"]}
+                    CG.write_numeric_report(paths.generated / "numeric_report.yaml", onrep)
             else:
                 okt = _match_by_policy(res["outputs"], gold, policy) \
                     and _match_by_policy(res["outputs"], ref, policy) \
@@ -622,7 +627,12 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             if res.get("console") is not None:
                 (paths.artifacts_dir / f"{sim_name}_console.log").write_text(
                     res["console"], encoding="utf-8")
-            if not okt:
+            # Only a MANDATORY/gold tier mismatch fails the capsule. An ADDITIVE lower-fidelity tier
+            # (one not in required_oracle_tiers — e.g. a fast functional model with known approximation
+            # gaps) records its fail in the tiers dict but must NOT abort: aborting here would pre-empt the
+            # required RTL oracle that follows in the sorted ladder — the same "a cheaper check short-
+            # circuits the authoritative oracle" class we fixed on the trace side, here on the oracle side.
+            if not okt and mand:
                 raise CertFailure(sim_name, _cat("FUNCTIONAL_MISMATCH"), _mismatch_reason)
 
     except CertFailure as cf:
@@ -668,6 +678,23 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                    "detail": f"mandatory tier {tier} did not run "
                                              f"({tr.status if tr else 'absent'})"}
                 break
+
+    # Fail-open guard (complements the loop above, which never fires for an EMPTY/all-N/A required set):
+    # a capsule that declares no runnable oracle requirement must NOT grade 'pass' on the L0/L1 command-
+    # buffer interpretation alone — that is our own engine, not an independent oracle. A real grade
+    # (not --no-oracle) requires at least one runnable, non-N/A required tier to have certified it.
+    if status == "pass" and not no_oracle:
+        ran_required = [t for t in required
+                        if tiers.get(t) is not None
+                        and not getattr(tiers[t], "not_applicable", False)
+                        and tiers[t].status == "pass"]
+        if not ran_required:
+            status = "incomplete"
+            if failure is None:
+                failure = {"plane": "oracle_unavailable", "category": "NOT_RUN_IS_NOT_PASS",
+                           "detail": f"no runnable required oracle tier certified this capsule "
+                                     f"(required={sorted(required)}) — refusing to pass on the L0/L1 "
+                                     f"command-buffer interpretation alone"}
 
     result = {
         "capsule": name, "kind": capsule.get("kind"), "label": capsule.get("label"),
