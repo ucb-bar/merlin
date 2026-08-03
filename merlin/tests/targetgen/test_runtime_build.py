@@ -36,3 +36,18 @@ def test_platform_dram_base_falls_back_for_unknown_build_tool():
     # an unknown/absent RTL build tool yields the documented platform default, never a crash or a guess
     assert RB.platform_dram_base("any_target", None) == RB.DEFAULT_PLATFORM_DRAM_BASE
     assert RB.platform_dram_base("any_target", "some_other_sim") == RB.DEFAULT_PLATFORM_DRAM_BASE
+
+
+def test_compiler_smoke_na_for_non_compile_sim():
+    # a non-compile-based oracle has no compile toolchain to check — n/a, never a false NO_GO
+    ok, _ = RB.compiler_smoke(None)
+    assert ok is True
+    ok, _ = RB.compiler_smoke("some_program_oracle")
+    assert ok is True
+
+
+def test_compiler_smoke_no_go_when_compiler_missing(monkeypatch):
+    # a missing/broken oracle compiler is a pre-spend NO_GO (the retired-clang lesson), not a silent pass
+    monkeypatch.setenv("MERLIN_CLANG", "/no/such/clang-23")
+    ok, why = RB.compiler_smoke("chipyard")
+    assert ok is False and "not" in why.lower()

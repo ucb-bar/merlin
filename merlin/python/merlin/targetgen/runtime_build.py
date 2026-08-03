@@ -15,6 +15,8 @@ chosen — so this holds no target-name literal and extends to another build too
 from __future__ import annotations
 
 import json
+import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -69,6 +71,38 @@ def platform_dram_base(target: str, sim_via: str | None) -> int:
     build/memmap is unavailable. No per-target address is baked here."""
     derived = _chipyard_dram_base(target) if sim_via == "chipyard" else None
     return derived if derived is not None else DEFAULT_PLATFORM_DRAM_BASE
+
+
+def compiler_smoke(sim_via: str | None) -> tuple[bool, str]:
+    """Pre-spend check that the RTL-oracle COMPILE toolchain actually WORKS — not merely that its binaries
+    exist. It compiles a trivial LLVM-IR module to a riscv object with the oracle's own clang, so a missing
+    or broken compiler is caught as a NO_GO before a paid run tool-crashes on every capsule (the retired-
+    clang lesson: ``available()`` passed because the binaries were present, then the compile step failed).
+    Only for a compile-based sim (``sim_via`` that lowers to an object); other oracles return n/a."""
+    if sim_via != "chipyard":
+        return True, "n/a (no compile-based oracle for this sim)"
+    try:
+        from merlin.llvmlower import toolchain as _tc
+        clang = _tc.clang()
+    except Exception as e:  # noqa: BLE001
+        return False, f"clang toolchain unresolved: {e}"
+    cp = Path(str(clang))
+    if cp.is_absolute() and not cp.exists():
+        return False, f"oracle clang not found at {clang} — the compile toolchain is not provisioned"
+    with tempfile.TemporaryDirectory() as td:
+        ll = Path(td) / "smoke.ll"
+        obj = Path(td) / "smoke.o"
+        ll.write_text("define i32 @f() {\nentry:\n  ret i32 0\n}\n", encoding="utf-8")
+        try:
+            r = subprocess.run([str(clang), "--target=riscv64-unknown-elf", "-march=rv64gc",
+                                "-c", str(ll), "-o", str(obj)], capture_output=True, text=True, timeout=60)
+        except FileNotFoundError:
+            return False, f"oracle clang missing/not executable: {clang}"
+        except Exception as e:  # noqa: BLE001
+            return False, f"compile smoke could not run: {str(e)[-160:]}"
+        if r.returncode != 0 or not obj.is_file():
+            return False, f"oracle clang failed to compile a riscv object: {(r.stderr or '')[-200:]}"
+    return True, f"oracle clang compiles riscv objects ({cp.name})"
 
 
 def _rebase_ld(text: str, base: int) -> str | None:

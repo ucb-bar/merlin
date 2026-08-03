@@ -207,7 +207,17 @@ def check_oracle_available() -> dict:
         from merlin.targetgen.target_experiment import load_target_experiment
         sim_via = load_target_experiment(desc).sim_via
     ok, why = CR.oracle_available(TARGET, sim_via)
-    return {"available": ok, "reason": why, "sim_via": sim_via}
+    # The sim binaries being present is not enough: verify the oracle's COMPILE toolchain actually works
+    # (compile a trivial IR to a riscv object). A missing/broken compiler otherwise passes here and then
+    # tool-crashes on EVERY capsule after money is spent (the retired-clang lesson). Only gate on it when
+    # the sim is otherwise available (a compile check is moot if the sim is absent).
+    from merlin.targetgen import runtime_build as RB
+    csmoke_ok, csmoke_why = RB.compiler_smoke(sim_via) if ok else (True, "n/a (sim unavailable)")
+    reason = why if ok else why
+    if ok and not csmoke_ok:
+        reason = f"sim present but compile toolchain broken: {csmoke_why}"
+    return {"available": ok and csmoke_ok, "reason": reason, "sim_via": sim_via,
+            "compiler_smoke": {"ok": csmoke_ok, "reason": csmoke_why}}
 
 
 def main() -> int:
