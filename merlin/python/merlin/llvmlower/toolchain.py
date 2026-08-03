@@ -47,11 +47,21 @@ def _iree_bin() -> Path | None:
 
 
 def clang() -> Path:
-    """clang able to target both x86-64 and riscv64 (the IREE build's clang-23; else PATH)."""
+    """clang able to target both x86-64 and riscv64. The repo's OWN toolchain always wins — resolution,
+    first that exists: ``MERLIN_CLANG`` (explicit override) → the repo's OWN
+    ``third_party/llvm-install`` ``clang-23`` (built with clang + the RISCV target; self-contained and
+    authoritative) → the IREE build's ``clang-23`` (legacy fallback only, when that external build
+    happens to be present) → ``clang-23`` on PATH. Preferring the repo's own install keeps the toolchain
+    self-contained and independent of the retired IREE build."""
     env = _env("MERLIN_CLANG")
     if env:
         return Path(env)
+    local = DEFAULT_LLVM_INSTALL / "bin" / "clang-23"
+    if local.exists():
+        return local
     b = _iree_bin()
+    if b and (b / "clang-23").exists():
+        return b / "clang-23"
     return (b / "clang-23") if b else Path("clang-23")
 
 
