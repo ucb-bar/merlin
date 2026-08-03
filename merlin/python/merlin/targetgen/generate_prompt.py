@@ -15,9 +15,14 @@ from __future__ import annotations
 # How the 4th-entrypoint artifact is described to the agent, per codegen endpoint. Fork-free .insn on
 # stock LLVM is the default (see memory no-forked-toolchain-bringup); never prescribes a forked toolchain.
 _ENDPOINT_DESC = {
-    "inline_asm_insn": ("lower your target dialect to an LLVM-dialect module of raw `.insn` (the target's "
-                        "command ISA, from the discovered ISA facts) — assembled by STOCK clang/LLVM, no "
-                        "forked toolchain"),
+    "inline_asm_insn": ("lower your target dialect to an **LLVM-dialect MLIR** module (a `.mlir`, NOT "
+                        "textual LLVM-IR) whose command-ISA instructions are `llvm.inline_asm` ops wrapping "
+                        "raw `.insn` directives — e.g. "
+                        "`llvm.inline_asm has_side_effects \".insn r <opcode>, <func3>, <func7>, $0, $1\", "
+                        "\"r,r\" %a, %b : (i64, i64) -> ()` — with opcode/func3/func7 from the discovered ISA "
+                        "facts; assembled by STOCK clang/LLVM, no forked toolchain. Do NOT emit textual "
+                        "LLVM-IR (`call void asm sideeffect \"...\"`): the runner decodes `llvm.inline_asm` "
+                        "MLIR ops, so a `.ll`-style body reads back as an empty instruction trace"),
     "upstream_target": ("lower your target dialect to an upstream LLVM target (e.g. RVV / SPIR-V), "
                         "compiled by stock LLVM"),
     "external_backend": ("emit a `kernel.S` of `.word`/`.insn` directives — the target's OWN encoded "

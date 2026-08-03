@@ -84,12 +84,17 @@ def funct_class_for(target: str) -> dict:
 
 # An SSA identifier body: MLIR allows numeric (%0) or named (%c0, %a.1, %w-1) ids.
 _SSA_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.$-")
-# Both inline-asm op spellings: pretty ``llvm.inline_asm`` and generic-op ``"llvm.intr.inlineasm"()``.
-_ASM_MARKERS = ("inline_asm", "inlineasm")
 
 
 def _is_asm(line: str) -> bool:
-    return any(mark in line for mark in _ASM_MARKERS)
+    """A line carries an inline-asm instruction iff one of its quoted strings is an instruction
+    TEMPLATE (``.insn …`` or ``fence``). Detecting by the template — not the wrapper keyword — is
+    spelling-AGNOSTIC: it fires for MLIR (``llvm.inline_asm`` / ``"llvm.intr.inlineasm"()``) AND
+    textual LLVM-IR (``call … asm sideeffect ".insn …"``) AND any future wrapper. A valid emission can
+    never be silently dropped for using an unrecognized wrapper (the recurring narrowness bug); the
+    worst case is a fail-closed UNKNOWN."""
+    inside, _ = _quoted(line)
+    return any(s.strip().startswith(".insn") or s.strip() == "fence" for s in inside)
 
 
 def _read_ssa(s: str, i: int) -> tuple[str, int]:
