@@ -383,6 +383,28 @@ data path with the lite debugger:
 """
 
 
+# The RoCC / inline_asm_insn analogue of _ISA_DEVTOOLS: same staged `isa_tools.py`, but the canonical
+# artifact is `llvm.inline_asm` MLIR (not a `.word` kernel), so the tools speak MLIR. Oracle-free, no golden.
+_ROCC_DEVTOOLS = """## ISA dev tools (assembler / disassembler / linter) — staged as `isa_tools.py`
+You have a derived RoCC toolset (oracle-free; it encodes the syntax YOU choose and inspects YOUR OWN
+emitted MLIR — never a golden). Use it so you never hand-write a wrong `.insn` op:
+- `python isa_tools.py asm ops.txt` — assemble a listing (one `CLASS rs1 rs2` per line, e.g.
+  `CONFIG_EX 0 0`, `MVIN 0x80000000 16`, `PRELOAD 256 0`, `COMPUTE_PRELOADED 0 0`, `MVOUT 0xA0000000 16`,
+  `FLUSH 0 0`, `FENCE`) into the CANONICAL `llvm.inline_asm` MLIR — each operand a
+  `%c = llvm.mlir.constant(<v> : i64)` SSA value — packed with this target's derived opcode/func3/func7.
+  It REFUSES rather than emit a wrong instruction (unknown class, or a CONFIG whose rs1 subtype bits don't
+  match). Paste its output into your emitted `.mlir` — NEVER hand-write inline-integer-literal operands like
+  `"r,r" (65540, 16)`: that is invalid MLIR that neither assembles NOR decodes (it reads back as UNKNOWN and
+  the class scores missing).
+- `python isa_tools.py disasm submission/<your>.mlir` — decode your emitted MLIR back to instruction
+  classes; anything that comes back UNKNOWN is a non-canonical/garbled instruction.
+- `python isa_tools.py lint submission/<your>.mlir` — flag UNKNOWN instructions + show the decoded class
+  histogram. Run it BEFORE every `self_check` (it is instant and catches the exact encoding mistake that
+  makes an otherwise-correct kernel fail the trace gate).
+
+"""
+
+
 def _is_assisted_arm(arm: str) -> bool:
     """The seam menu is exposed only to arms that are actually granted the CCA spine (the assisted arms);
     raw_baseline is not, so it must not be told to reach for tools it cannot use. Target-agnostic."""
@@ -406,10 +428,15 @@ def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseli
     ladder = "\n".join(f"- `{tier}` → {sim}" for tier, sim in sorted(s["sim_tiers"].items())) \
         or "- `(the target's declared sim tiers)`"
     seam_menu = _SEAM_MENU.format(target=s["target"]) if _is_assisted_arm(arm) else ""
-    # ISA dev tools: assisted arms AND a self-hosted-ISA (external_backend) target only — a raw_baseline or a
-    # RoCC/command target never sees the block (empty slot renders nothing).
-    isa_dev_tools = _ISA_DEVTOOLS if (_is_assisted_arm(arm)
-                                      and s["endpoint_kind"] == "external_backend") else ""
+    # ISA dev tools: assisted arms only. A self-hosted-ISA (external_backend) target gets the .word/kernel.S
+    # toolset; a RoCC/MLIR (inline_asm_insn) target gets the llvm.inline_asm variant; any other endpoint gets
+    # nothing (empty slot renders nothing).
+    isa_dev_tools = ""
+    if _is_assisted_arm(arm):
+        if s["endpoint_kind"] == "external_backend":
+            isa_dev_tools = _ISA_DEVTOOLS
+        elif s["endpoint_kind"] == "inline_asm_insn":
+            isa_dev_tools = _ROCC_DEVTOOLS
     return _TEMPLATE.format(target=s["target"], scope_label=scope, corpus_families=families,
                             tool_stem=s["tool_stem"], kernel_symbol=s["kernel_symbol"],
                             endpoint_desc=s["endpoint_desc"], emit_framing=s["emit_framing"],

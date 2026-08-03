@@ -53,7 +53,59 @@ def _assemble(kernel_s_text: str) -> list[int]:
         return _assemble_kernel_words(ks, Path(td))
 
 
+_ENDPOINT = None  # (endpoint_kind, target), derived once
+
+
+def _endpoint_and_target() -> tuple[str | None, str | None]:
+    global _ENDPOINT
+    if _ENDPOINT is None:
+        import _common as _C
+        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.targetgen import capsule_runner as CR
+        te = load_target_experiment(_C.EXP / "target_experiment.yaml")
+        _ENDPOINT = (CR._endpoint_of(te.target)[0], te.target)
+    return _ENDPOINT
+
+
+def _rocc_handle(req: dict, target: str) -> dict:
+    """RoCC / ``inline_asm_insn`` target (e.g. gemmini): the derived ISA facts live in
+    ``rocc_decode.isa_constants`` (not the atlas IsaModel), and the canonical artifact is
+    ``llvm.inline_asm`` MLIR, not a ``.word`` kernel — so route to rocc_asm/rocc_decode."""
+    from merlin.targetgen import rocc_asm, rocc_decode
+    cmd = req.get("cmd")
+    if cmd == "asm":
+        try:
+            mlir = rocc_asm.assemble_text(target, req.get("text", ""))
+        except rocc_asm.AsmError as e:
+            return {"error": str(e)}
+        return {"mlir": mlir, "n": mlir.count("llvm.inline_asm")}
+    if cmd in ("disasm", "lint"):
+        text = req.get("mlir") or req.get("kernel_s") or req.get("text", "")
+        trace = rocc_decode.decode_text(text, source="isa_tools", target=target)
+        classes = [i["class"] for i in trace["instructions"]]
+        if cmd == "disasm":
+            return {"instructions": trace["instructions"], "classes": classes, "n": len(classes)}
+        n_unknown = classes.count("UNKNOWN")
+        findings = []
+        if n_unknown:
+            findings.append(f"{n_unknown} instruction(s) decode to UNKNOWN — most likely inline-literal "
+                            f"operands or a non-canonical .insn form. Emit each instruction via `asm` so "
+                            f"operands are SSA values (llvm.mlir.constant), which assemble AND decode.")
+        if not classes:
+            findings.append("no instructions decoded — the artifact has no llvm.inline_asm `.insn` ops "
+                            "(did you emit textual LLVM-IR or high-level ops instead of MLIR inline_asm?).")
+        return {"findings": findings, "class_histogram": trace["summary"]["class_histogram"],
+                "n_unknown": n_unknown, "n": len(classes)}
+    if cmd == "debug":
+        return {"error": "debug is only for a self-hosted-ISA (external_backend) target; for a RoCC/MLIR "
+                         "target use disasm/lint + the numeric self_check"}
+    return {"error": f"unknown cmd {cmd!r} (use asm|disasm|lint)"}
+
+
 def _handle(req: dict) -> dict:
+    endpoint, target = _endpoint_and_target()
+    if endpoint == "inline_asm_insn":
+        return _rocc_handle(req, target)
     from merlin.targetgen import isa_asm, isa_disasm, isa_lint
     model = _model()
     if model.is_empty():
