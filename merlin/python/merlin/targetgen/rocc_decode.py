@@ -74,66 +74,85 @@ def funct_class_for(target: str) -> dict:
     """``func7 -> instruction-class`` map for ``target`` (best-effort cross-check consumers)."""
     return isa_constants(target)["FUNCT_CLASS"]
 
-# --- structured line parsing (no regex) -------------------------------------------------------
-# This decoder is a fair MEASUREMENT of whatever the backend emitted, so it must SEE every inline-asm
-# spelling and fail closed (UNKNOWN) on anything it can't fully decode — never silently drop a line.
-# Regex line-matching repeatedly broke that contract by being too narrow (numeric-only SSA ids;
-# "r,r"-only constraints; the pretty ``llvm.inline_asm`` op spelling only — each silently dropped
-# valid-but-different backend output). We tokenize with plain string ops instead: robust to naming,
-# operand-count, whitespace, and op-spelling variation, with no hidden pattern to out-narrow the input.
-
-# An SSA identifier body: MLIR allows numeric (%0) or named (%c0, %a.1, %w-1) ids.
-_SSA_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.$-")
-
-
-def _is_asm(line: str) -> bool:
-    """A line carries an inline-asm instruction iff one of its quoted strings is an instruction
-    TEMPLATE (``.insn …`` or ``fence``). Detecting by the template — not the wrapper keyword — is
-    spelling-AGNOSTIC: it fires for MLIR (``llvm.inline_asm`` / ``"llvm.intr.inlineasm"()``) AND
-    textual LLVM-IR (``call … asm sideeffect ".insn …"``) AND any future wrapper. A valid emission can
-    never be silently dropped for using an unrecognized wrapper (the recurring narrowness bug); the
-    worst case is a fail-closed UNKNOWN."""
-    inside, _ = _quoted(line)
-    return any(s.strip().startswith(".insn") or s.strip() == "fence" for s in inside)
+# --- structural IR decode (parse the IR, do not string-match text) ----------------------------
+# This decoder is a fair MEASUREMENT of whatever the backend emitted, so it must SEE every legal
+# SPELLING of an instruction and fail closed (UNKNOWN) on anything it cannot fully decode — never
+# silently drop one. Text line-matching repeatedly broke that contract by being too narrow (numeric-
+# only SSA ids; "r,r"-only constraints; and — the case this replaces — reading operands only from the
+# PRETTY ``llvm.inline_asm … "asm","cons" %a, %b`` spelling, so a conformant backend that emitted the
+# equally-legal GENERIC ``"llvm.inline_asm"(%a, %b) {asm_string=…}`` form had its operands go unseen
+# and every CONFIG mis-classified UNKNOWN). The two spellings are the SAME MLIR op and lower
+# identically, so we stop reading text and walk the PARSED xDSL IR: operands come from the op's SSA
+# operand list, their values from the defining ops — spelling-agnostic by construction, per the repo's
+# "parse structurally, use the xDSL/MLIR IR" rule. Text that does not parse as a module fails closed.
 
 
-def _read_ssa(s: str, i: int) -> tuple[str, int]:
-    """``s[i]`` is '%'; return (identifier, index-after-it)."""
-    j = i + 1
-    while j < len(s) and s[j] in _SSA_CHARS:
-        j += 1
-    return s[i + 1:j], j
-
-
-def _ssa_names(s: str) -> list[str]:
-    """All ``%<ident>`` names in ``s``, left to right."""
-    out: list[str] = []
-    i = 0
-    while i < len(s):
-        if s[i] == "%":
-            name, i = _read_ssa(s, i)
-            out.append(name)
-        else:
-            i += 1
-    return out
-
-
-def _lhs_ssa(line: str) -> str | None:
-    """The result name of ``%v = ...``, else None."""
-    head, sep, _ = line.partition("=")
-    if not sep:
+def _parse_module(text: str):
+    """Parse ``text`` as an MLIR module with xDSL (builtin+func+llvm loaded; unregistered ops allowed so
+    any unmodeled op still round-trips in generic form). Returns the ModuleOp, or None if the text is not
+    a parseable module — the caller then fails closed (a visible UNKNOWN), never guessing at the input."""
+    from xdsl.context import Context
+    from xdsl.dialects.builtin import Builtin
+    from xdsl.dialects.func import Func
+    from xdsl.dialects.llvm import LLVM
+    from xdsl.parser import Parser
+    ctx = Context(allow_unregistered=True)
+    for d in (Builtin, Func, LLVM):
+        ctx.load_dialect(d)
+    try:
+        return Parser(ctx, text).parse_module()
+    except Exception:  # noqa: BLE001 — any parse fault is a fail-closed "undecodable", surfaced upstream
         return None
-    head = head.strip()
-    return _read_ssa(head, 0)[0] if head.startswith("%") else None
 
 
-def _quoted(line: str) -> tuple[list[str], str]:
-    """Split on double-quotes: (strings-inside-quotes, text-after-the-last-quote). The asm ops here
-    carry no escaped quotes, so a plain split is exact."""
-    parts = line.split('"')
-    inside = parts[1::2]
-    after = parts[-1] if len(parts) % 2 == 1 else ""
-    return inside, after
+def _const_value(op) -> int | None:
+    """The integer value of an ``llvm.mlir.constant`` defining op, else None."""
+    v = getattr(op, "properties", {}).get("value")
+    data = getattr(getattr(v, "value", None), "data", None)
+    try:
+        return int(data) if data is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve(val, _depth: int = 0) -> _Val:
+    """Resolve an SSA value to a ``_Val`` by walking its defining op STRUCTURALLY: a block/function
+    argument (``argbase``), an ``llvm.mlir.constant`` (``const``), a transparent ``llvm.ptrtoint`` (pass
+    through to the pointer it converts), or an ``llvm.add`` of base+constant (``argbase`` with an offset)
+    / two constants (folded ``const``). Anything else fails closed to ``unknown`` — never a guessed
+    value. This replaces the old SSA line-table plumbing with def-use walking on the parsed IR. A depth
+    bound keeps a pathological/adversarial def chain from ever hanging the grader (fail-closed to
+    ``unknown`` past the bound — valid scalar-address chains are shallow)."""
+    from xdsl.ir import BlockArgument
+    if _depth > 64:
+        return _Val("unknown")
+    if isinstance(val, BlockArgument):
+        return _Val("argbase", arg_index=val.index, offset=0)
+    op = val.owner
+    name = getattr(op, "name", "")
+    if name == "llvm.mlir.constant":
+        iv = _const_value(op)
+        return _Val("const", value=iv) if iv is not None else _Val("unknown")
+    if name == "llvm.ptrtoint" and len(op.operands) >= 1:
+        return _resolve(op.operands[0], _depth + 1)
+    if name == "llvm.add" and len(op.operands) == 2:
+        a, b = _resolve(op.operands[0], _depth + 1), _resolve(op.operands[1], _depth + 1)
+        base = a if a.kind == "argbase" else (b if b.kind == "argbase" else None)
+        const = a if a.kind == "const" else (b if b.kind == "const" else None)
+        if base is not None and const is not None:
+            return _Val("argbase", arg_index=base.arg_index,
+                        offset=(base.offset or 0) + (const.value or 0))
+        if a.kind == "const" and b.kind == "const":
+            return _Val("const", value=(a.value or 0) + (b.value or 0))
+        return _Val("unknown")
+    return _Val("unknown")
+
+
+def _asm_template(op) -> str:
+    """The instruction TEMPLATE an ``llvm.inline_asm`` op carries (``.insn …`` / ``fence``), read from its
+    ``asm_string`` property — the same place in the parsed op regardless of surface spelling."""
+    s = getattr(op, "properties", {}).get("asm_string")
+    return (getattr(s, "data", "") or "").strip()
 
 
 def _parse_insn(template: str, custom_opcode: int | None) -> tuple[int, bool] | None:
@@ -278,78 +297,141 @@ def _decode_one(funct: int, rs1: _Val | None, rs2: _Val | None, isa: dict) -> tu
     return ("UNKNOWN" if base == "UNKNOWN" else base), dec
 
 
-def _asm_template(inside: list[str]) -> str:
-    """The instruction template among an inline-asm op's quoted strings (the generic op form quotes
-    the op NAME too, so it is not always the first) — the one that is ``.insn ...`` or ``fence``."""
-    for s in inside:
-        st = s.strip()
-        if st.startswith(".insn") or st == "fence":
-            return st
-    return ""
-
-
-def decode_text(text: str, source: str | None = None, *, target: str) -> dict:
-    """Decode lowered LLVM-MLIR text into a structured instruction trace dict, using ``target``'s
-    RTL-derived ISA facts (custom opcode + func7->class map). The target is required — the decoder
-    holds no default and bakes in nothing target-specific."""
+def decode_module(module, *, target: str, source: str | None = None) -> dict:
+    """Decode a parsed MLIR module's RoCC instruction stream into a structured trace, using ``target``'s
+    RTL-derived ISA facts. Walks the IR in program order; each ``llvm.inline_asm`` op is classified by its
+    ``.insn`` template (func7 -> class) with operands resolved structurally from the SSA graph. Fail-
+    closed: an inline-asm whose template is neither a custom-opcode ``.insn`` nor ``fence`` is recorded
+    UNKNOWN, never dropped."""
     isa = isa_constants(target)
-    custom_opcode = isa["CUSTOM_OPCODE"]
-    ssa: dict[str, _Val] = {}
-    trace = Trace(source=source, custom_opcode=custom_opcode, funct3=isa["FUNCT3"])
+    trace = Trace(source=source, custom_opcode=isa["CUSTOM_OPCODE"], funct3=isa["FUNCT3"])
     idx = 0
-
-    for line in text.splitlines():
-        # Inline-asm first: it carries the RoCC instructions. SEE every spelling, fail closed on
-        # anything not fully decodable — never drop a present asm line.
-        if _is_asm(line):
-            inside, after = _quoted(line)
-            template = _asm_template(inside)
-            parsed = _parse_insn(template, custom_opcode) if template.startswith(".insn") else None
+    for op in module.walk():
+        if getattr(op, "name", "") != "llvm.inline_asm":
+            continue
+        template = _asm_template(op)
+        if template == "fence":
+            trace.instructions.append({"index": idx, "class": "FENCE", "funct": None, "decoded": {}})
+        elif template.startswith(".insn"):
+            parsed = _parse_insn(template, isa["CUSTOM_OPCODE"])
             if parsed is not None:
                 funct, _rd_is_x0 = parsed
-                ops = _ssa_names(after)  # trailing source operands, in order (rs1, rs2)
-                rs1 = ssa.get(ops[0]) if len(ops) >= 1 else None
-                rs2 = ssa.get(ops[1]) if len(ops) >= 2 else None
+                ops = list(op.operands)  # SSA source operands, in order (rs1, rs2) — spelling-agnostic
+                rs1 = _resolve(ops[0]) if len(ops) >= 1 else None
+                rs2 = _resolve(ops[1]) if len(ops) >= 2 else None
                 klass, dec = _decode_one(funct, rs1, rs2, isa)
                 trace.instructions.append({
                     "index": idx, "class": klass, "funct": funct,
                     "rs1": _operand(rs1), "rs2": _operand(rs2), "decoded": dec,
                 })
-            elif template == "fence":
-                trace.instructions.append({"index": idx, "class": "FENCE", "funct": None,
-                                           "decoded": {}})
             else:
-                # An inline-asm we do not recognize: fail-closed (record, do not drop).
+                # a .insn on a non-custom opcode: fail-closed (record, do not drop).
                 trace.instructions.append({"index": idx, "class": "UNKNOWN", "funct": None,
-                                           "raw": line.strip(), "decoded": {}})
+                                           "raw": template, "decoded": {}})
+        else:
+            # an inline-asm we do not recognize (not .insn, not fence): fail-closed.
+            trace.instructions.append({"index": idx, "class": "UNKNOWN", "funct": None,
+                                       "raw": template, "decoded": {}})
+        idx += 1
+    return trace.to_dict()
+
+
+# --- tolerant text-scan fallback --------------------------------------------------------------
+# We cannot anticipate every form a backend emits — a bare fragment, an alternative op spelling
+# (``"llvm.intr.inlineasm"()`` / textual ``call … asm``), a not-yet-modeled dialect. So when the input
+# does not parse as an MLIR module, we do NOT black it out: we scan it line by line, detect inline-asm by
+# its instruction TEMPLATE (spelling-agnostic), record each one, resolve operands best-effort from the
+# surrounding scalar SSA, and mark UNKNOWN (never drop) whatever cannot be classified. Structural decode
+# is preferred (correct operands); this guarantees a present stream is always SEEN, never mis-measured as
+# empty. Operands are read from the WHOLE asm line's non-quoted text (both the ``(%a,%b){…}`` and trailing
+# ``… %a, %b`` operand positions) — the narrowness that once read only post-quote operands is gone.
+_SSA_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.$-")
+
+
+def _read_ssa(s: str, i: int) -> tuple[str, int]:
+    j = i + 1
+    while j < len(s) and s[j] in _SSA_CHARS:
+        j += 1
+    return s[i + 1:j], j
+
+
+def _ssa_names(s: str) -> list[str]:
+    """All ``%<ident>`` names in ``s``, left to right."""
+    out: list[str] = []
+    i = 0
+    while i < len(s):
+        if s[i] == "%":
+            name, i = _read_ssa(s, i)
+            out.append(name)
+        else:
+            i += 1
+    return out
+
+
+def _quote_split(line: str) -> tuple[list[str], str]:
+    """(strings-inside-quotes, all-text-OUTSIDE-quotes). The asm ops here carry no escaped quotes, so a
+    plain split is exact. The outside text holds the operand SSA refs in EITHER position; the inside holds
+    the instruction template. Reading operands from the whole outside (not only post-last-quote) is what
+    makes the scan spelling-agnostic."""
+    parts = line.split('"')
+    return parts[1::2], "".join(parts[0::2])
+
+
+def _decode_by_text_scan(text: str, *, target: str, source: str | None = None) -> dict:
+    """Fallback decode for input that is not a parseable module. Same output shape as
+    :func:`decode_module`; see the section comment above for the tolerance contract."""
+    isa = isa_constants(target)
+    ssa: dict[str, _Val] = {}
+    trace = Trace(source=source, custom_opcode=isa["CUSTOM_OPCODE"], funct3=isa["FUNCT3"])
+    idx = 0
+    for line in text.splitlines():
+        inside, outside = _quote_split(line)
+        template = next((s.strip() for s in inside
+                         if s.strip().startswith(".insn") or s.strip() == "fence"), "")
+        if template:
+            if template == "fence":
+                trace.instructions.append({"index": idx, "class": "FENCE", "funct": None, "decoded": {}})
+            else:
+                parsed = _parse_insn(template, isa["CUSTOM_OPCODE"])
+                if parsed is not None:
+                    funct, _rd_is_x0 = parsed
+                    # operands = %refs in the non-quoted text, excluding an ``%res =`` result name
+                    operand_text = outside.split("=", 1)[1] if (
+                        "=" in outside and outside.split("=", 1)[0].strip().startswith("%")) else outside
+                    names = _ssa_names(operand_text)
+                    rs1 = ssa.get(names[0]) if len(names) >= 1 else None
+                    rs2 = ssa.get(names[1]) if len(names) >= 2 else None
+                    klass, dec = _decode_one(funct, rs1, rs2, isa)
+                    trace.instructions.append({
+                        "index": idx, "class": klass, "funct": funct,
+                        "rs1": _operand(rs1), "rs2": _operand(rs2), "decoded": dec,
+                    })
+                else:
+                    trace.instructions.append({"index": idx, "class": "UNKNOWN", "funct": None,
+                                               "raw": line.strip(), "decoded": {}})
             idx += 1
             continue
-
-        # Scalar SSA plumbing that feeds operand resolution.
-        lhs = _lhs_ssa(line)
+        # scalar SSA plumbing that feeds operand resolution (constant / ptrtoint-of-arg / add)
+        head, sep, _ = line.partition("=")
+        lhs = _read_ssa(head.strip(), 0)[0] if sep and head.strip().startswith("%") else None
         if "llvm.mlir.constant(" in line:
-            _, _, rest = line.partition("llvm.mlir.constant(")
-            num = rest.split(":", 1)[0].strip()
+            num = line.partition("llvm.mlir.constant(")[2].split(":", 1)[0].strip()
             try:
                 if lhs is not None:
-                    ssa[lhs] = _Val("const", value=int(num))
+                    ssa[lhs] = _Val("const", value=int(num, 0))   # 0-base: accept hex/dec/neg literals
             except ValueError:
                 pass
-            continue
-        if "llvm.ptrtoint" in line:
-            _, _, rest = line.partition("%arg")
+        elif "llvm.ptrtoint" in line and "%arg" in line:
             digits = ""
-            for ch in rest:
+            for ch in line.partition("%arg")[2]:
                 if ch.isdigit():
                     digits += ch
                 else:
                     break
             if lhs is not None and digits:
                 ssa[lhs] = _Val("argbase", arg_index=int(digits), offset=0)
-            continue
-        if "llvm.add" in line:
-            _, _, rest = line.partition("llvm.add")
-            names = _ssa_names(rest)
+        elif "llvm.add" in line:
+            names = _ssa_names(line.partition("llvm.add")[2])
             if lhs is not None and len(names) >= 2:
                 va, vb = ssa.get(names[0]), ssa.get(names[1])
                 base = next((v for v in (va, vb) if v and v.kind == "argbase"), None)
@@ -358,12 +440,22 @@ def decode_text(text: str, source: str | None = None, *, target: str) -> dict:
                     ssa[lhs] = _Val("argbase", arg_index=base.arg_index,
                                     offset=(base.offset or 0) + (const.value or 0))
                 elif va and vb and va.kind == "const" and vb.kind == "const":
-                    ssa[lhs] = _Val("const", value=va.value + vb.value)
-                else:
-                    ssa[lhs] = _Val("unknown")
-            continue
-
+                    ssa[lhs] = _Val("const", value=(va.value or 0) + (vb.value or 0))
     return trace.to_dict()
+
+
+def decode_text(text: str, source: str | None = None, *, target: str) -> dict:
+    """Decode LLVM-MLIR ``text`` into a structured instruction trace dict, using ``target``'s RTL-derived
+    ISA facts (custom opcode + func7->class map). The target is required — the decoder holds no default and
+    bakes in nothing target-specific. PARSED structurally when the text is a module (see
+    :func:`decode_module`) so operands are read from the IR regardless of the ``llvm.inline_asm`` spelling;
+    otherwise a tolerant line scan (:func:`_decode_by_text_scan`) still SEES every present instruction and
+    marks UNKNOWN (never drops) what it cannot classify — we do not assume we know every form a backend
+    emits."""
+    module = _parse_module(text)
+    if module is not None:
+        return decode_module(module, target=target, source=source)
+    return _decode_by_text_scan(text, target=target, source=source)
 
 
 def decode_file(path: str | Path, *, target: str) -> dict:

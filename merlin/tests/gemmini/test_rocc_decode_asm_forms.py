@@ -70,3 +70,34 @@ def test_fence_recognized_in_both_spellings():
                '"llvm.intr.inlineasm"() {asm = "fence", constraints = ""} () : () -> ()'):
         trace = RD.decode_text("  " + op + "\n", target="gemmini")
         assert [i["class"] for i in trace["instructions"]] == ["FENCE"], op
+
+
+# The REAL regression the structural decode fixes: a conformant backend (GLM-5 in the gemmini arm-4 run)
+# emitted the GENERIC ``"llvm.inline_asm"(%a, %b) {asm_string = …}`` spelling — operands BEFORE the attr
+# dict — where the old text scanner read operands only AFTER the last quote, so it saw no operands and
+# mis-classified every CONFIG as UNKNOWN. Both spellings are the SAME op; they must decode identically.
+def _module(body: str) -> str:
+    return ("module {\n  llvm.func @gemmini_kernel(%W: !llvm.ptr, %A: !llvm.ptr) {\n"
+            + body + "    llvm.return\n  }\n}\n")
+
+
+_CFG_PRETTY = (
+    '    %c = llvm.mlir.constant(4575657221408489476 : i64) : i64\n'   # rs1 low2 = 0 -> CONFIG_EX
+    '    %d = llvm.mlir.constant(281474976710656 : i64) : i64\n'
+    '    llvm.inline_asm has_side_effects ".insn r 0x7b, 0x3, 0x00, x0, $0, $1", "r,r" %c, %d'
+    ' : (i64, i64) -> ()\n'
+)
+_CFG_GENERIC = (
+    '    %c = llvm.mlir.constant(4575657221408489476 : i64) : i64\n'
+    '    %d = llvm.mlir.constant(281474976710656 : i64) : i64\n'
+    '    "llvm.inline_asm"(%c, %d) {asm_string = ".insn r 0x7b, 0x3, 0x00, x0, $0, $1",'
+    ' constraints = "r,r", has_side_effects} : (i64, i64) -> ()\n'
+)
+
+
+def test_generic_and_pretty_inline_asm_decode_identically():
+    pretty = RD.decode_text(_module(_CFG_PRETTY), target="gemmini")["instructions"]
+    generic = RD.decode_text(_module(_CFG_GENERIC), target="gemmini")["instructions"]
+    assert [i["class"] for i in pretty] == ["CONFIG_EX"], pretty
+    assert [i["class"] for i in generic] == ["CONFIG_EX"], generic      # NOT UNKNOWN — operands are seen
+    assert [i["decoded"] for i in pretty] == [i["decoded"] for i in generic]
