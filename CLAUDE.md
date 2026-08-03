@@ -8,6 +8,42 @@ changes; the same gates run in pre-commit and CI.
 > working tree. Commit on the currently checked-out branch and avoid switching branches mid-task; use
 > a separate `git worktree` if you need isolation.
 
+# Target-agnostic convention — derive, never hardcode (the cardinal rule)
+
+The whole point of this repo is to plug in *any* hardware target (RTL repo) and have the compiler,
+grader, and tooling work. So **library code must never bake in facts about a specific target.** A fact
+about a target is *extracted* from that target's own sources (RTL via mlc/CIRCT, the capability
+manifest, the ISA definition, the descriptor) at run time — it is never a literal in the code. Three
+hard prohibitions, each gate-enforced (pre-commit + CI); do not add allowlist entries to route around
+them without a written, reviewed rationale:
+
+1. **No target-name literals in library code.** No `"gemmini"` / `"atlas"` / `"radiance"` (or any
+   target string) in `merlin/python/merlin/**` or `build_tools/scripts/**`. The target is a *parameter*
+   threaded from the descriptor/manifest; functions take `target=`, they do not assume one. A target
+   name may appear only at a genuine edge where that target is legitimately the subject (a per-target
+   data dir, a target-specific test, a caller that is *about* that one target) — never in a shared code
+   path. Enforced by `build_tools/scripts/check_no_target_name.py` (scan roots
+   `merlin/python/merlin` + `build_tools/scripts`).
+2. **No regex.** Do not `import re` in core library code. Regex line-matching is brittle by
+   construction — a too-narrow pattern silently drops valid-but-differently-spelled input (this has bitten
+   the RoCC trace decoder repeatedly: numeric-only SSA ids, `"r,r"`-only constraints, one op spelling —
+   each silently mis-measured a conformant backend). Parse **structurally** instead: real parsers,
+   `str.split`/`partition`, explicit tokenizers, the xDSL/MLIR IR. Enforced by
+   `build_tools/scripts/check_no_regex.py` (ratcheted allowlist; do not grow it).
+3. **No assumed opcodes / encodings / ISA constants.** Never hardcode an opcode (`0x7b`), a funct/func3
+   value, a mesh dimension, a memory base, an address layout, a register field, or a "the instruction
+   always starts with …" assumption. Every such value is *derived* from the target's RTL facts
+   (`rtl/facts.load_facts(target)` — e.g. `funct_decode_table.custom_opcode`) or its capability manifest,
+   and *compared as data* (parse the field to an int and compare to the derived fact — never string-match
+   a literal). Fields that vary per-instruction (e.g. the RoCC xd/xs1/xs2 `func3`) must NOT be treated as
+   identity constraints. When a value cannot be derived, **fail closed** (record `UNKNOWN`, surface it) —
+   never silently drop the input or substitute a baked default.
+
+Rule of thumb: if adding a second target would require editing shared code (not just adding a
+descriptor + data dir), the code is overfit — lift the fact into derivation. See memories
+`derive-dont-overfit-hw-agnostic`, `abi-is-derivable-not-irreducible`, `no-regex-sweep`, and the OV/*
+de-overfitting task series.
+
 # Generated-output convention — one root (`out/`), three subdirs
 
 All generated/produced output lives under a **single top-level `out/` root**, with exactly three
