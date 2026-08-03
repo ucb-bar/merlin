@@ -35,6 +35,25 @@ def test_drives_accelerator_false_when_no_custom_opcode_instruction():
     assert not TCK.drives_accelerator(_trace())  # empty
 
 
+def test_dram_provenance_is_address_model_parameterized():
+    # A memory-move op whose DRAM operand is a baked const vs one derived from a function arg.
+    baked = _trace({"class": "MVIN", "funct": 2, "decoded": {"dram": {"kind": "const", "raw": 0}}})
+    argd = _trace({"class": "MVIN", "funct": 2,
+                   "decoded": {"dram": {"kind": "argbase", "arg_index": 1, "offset": 0}}})
+    # pointer_args: a baked DRAM address is flagged (won't match the runtime buffer); an arg-derived one is fine
+    assert len(TCK.dram_address_findings(baked, "pointer_args")) == 1
+    assert TCK.dram_address_findings(argd, "pointer_args") == []
+    # fixed_preload: a baked const IS the declared base — not flagged (the check would overfit otherwise)
+    assert TCK.dram_address_findings(baked, "fixed_preload") == []
+    # a non-memory op (no 'dram' operand) is never flagged
+    assert TCK.dram_address_findings(_trace({"class": "COMPUTE_PRELOADED", "funct": 4, "decoded": {}}),
+                                     "pointer_args") == []
+    # threaded through check(): advisory only (does not gate — drives_accelerator is the sole gate)
+    res = TCK.check(baked, expected={}, address_model="pointer_args")
+    assert any("BAKED DRAM address" in v for v in res["violations"])
+    assert TCK.drives_accelerator(baked)
+
+
 def test_unknown_is_reported_but_is_not_the_gate():
     # An UNKNOWN produces an advisory violation in check(), but it still DRIVES the accelerator (funct set),
     # so the anti-cheese gate the runner uses passes — UNKNOWN never fails a conformant backend by itself.

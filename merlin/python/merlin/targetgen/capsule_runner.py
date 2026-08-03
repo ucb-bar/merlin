@@ -523,7 +523,12 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # below (which EXECUTE the actual emitted stream), and the hidden golden precludes faking an
             # answer — so an instruction our decoder cannot yet classify must never fail a conformant
             # backend (the old gate short-circuited before the RTL oracle even ran).
-            trace_check_res = TCK.check(trace, capsule.get("expected", {}), cb=cb)
+            # The RoCC/inline-asm bare-metal harness passes each operand buffer as a POINTER argument, so
+            # its address model is pointer_args: DRAM addresses must derive from the kernel's args, not be
+            # baked. (A fixed-preload oracle — e.g. the program oracle — would pass "fixed_preload"; the
+            # model is the harness's, derivable per oracle, not a target literal.)
+            trace_check_res = TCK.check(trace, capsule.get("expected", {}), cb=cb,
+                                        address_model="pointer_args")
             # Anti-cheese floor (must drive the accelerator) is the ONE trace-derived gate — but ONLY where
             # the RTL oracle will NOT run to prove it. When a required oracle tier executes the emitted
             # stream on real hardware, THAT is the spelling-independent anti-cheese (a host-computed fake

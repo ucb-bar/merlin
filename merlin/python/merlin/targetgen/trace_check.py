@@ -45,7 +45,38 @@ def drives_accelerator(trace: dict) -> bool:
     return any(i.get("funct") is not None for i in trace.get("instructions", []))
 
 
-def check(trace: dict, expected: dict, cb: dict | None = None) -> dict:
+def dram_address_findings(trace: dict, address_model: str) -> list[str]:
+    """Advisory DRAM-address provenance findings, parameterized by the HARNESS'S address model so it is
+    correct for any target (never a per-target literal):
+
+    * ``pointer_args`` — the harness passes each operand buffer as a POINTER argument (e.g. a RoCC
+      bare-metal harness), so a memory-movement instruction's DRAM address MUST derive from a kernel
+      argument (the decoder resolves it to ``argbase``); a baked literal (``const``) will not match the
+      runtime buffer the harness allocated. Flagged.
+    * ``fixed_preload`` — the harness PRELOADS each operand at a declared canonical base, so the correct
+      DRAM address IS that constant; a baked ``const`` is expected, not an error. (Not flagged here; a
+      value-vs-declared-base check belongs to that oracle's own path.)
+
+    ``dram`` is the decoder's DERIVED memory-address operand (present exactly on the instructions the
+    target's semantic roles mark as memory movement), and ``kind`` is the decoder's existing operand
+    provenance — so this reads only the agent's OWN emitted operands (no golden), and generalizes by the
+    address model, not by hardcoding an instruction class or a target."""
+    if address_model != "pointer_args":
+        return []
+    out: list[str] = []
+    for i in trace.get("instructions", []):
+        dram = (i.get("decoded") or {}).get("dram")
+        if isinstance(dram, dict) and dram.get("kind") == "const":
+            out.append(
+                f"instruction #{i.get('index')} ({i.get('class')}) uses a BAKED DRAM address "
+                f"({dram.get('raw')}): the harness passes each operand as a POINTER argument, so derive "
+                f"the DRAM address from the matching kernel argument (ptrtoint of the arg) — a baked "
+                f"literal cannot match the buffer the runtime allocated.")
+    return out
+
+
+def check(trace: dict, expected: dict, cb: dict | None = None,
+          address_model: str | None = None) -> dict:
     """Validate ``trace`` against capsule ``expected`` (+ optional command buffer).
 
     The returned ``violations`` are ADVISORY diagnostics — instruction-class coverage, ordering, and
@@ -151,6 +182,10 @@ def check(trace: dict, expected: dict, cb: dict | None = None) -> dict:
             _check_tiles(classes, cb, violations)
         except Exception as e:  # never let cross-check crash the verifier
             violations.append(f"tile cross-check error (non-fatal): {e}")
+
+    # advisory DRAM-address provenance (parameterized by the harness address model; no-op if unknown)
+    if address_model:
+        violations += dram_address_findings(trace, address_model)
 
     return {"status": "pass" if not violations else "fail", "violations": violations}
 

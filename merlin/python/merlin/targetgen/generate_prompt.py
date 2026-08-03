@@ -163,9 +163,9 @@ def _corpus_uses_independent_float_goldens(te) -> bool:
     return False
 
 
-# DRAM address contract — rendered ONLY for a self-hosted-ISA (external_backend) target graded on the
-# program oracle, where the emitted kernel and the oracle must agree on where each tensor lives in DRAM.
-# Empty for RoCC/command_buffer targets (their operands ride the command buffer, no explicit addresses).
+# DRAM address contract — selected by the HARNESS'S address model (see _dram_contract). This is the
+# FIXED-PRELOAD model: a self-hosted-ISA (external_backend) target graded on the program oracle, which
+# preloads each tensor at a DECLARED base, so the emitted kernel must target those exact addresses.
 _DRAM_CONTRACT = """
 ## DRAM address map (self-hosted ISA — your kernel and the oracle must agree)
 The program oracle runs your assembled kernel on the target's cosim: it PRELOADS each input tensor into
@@ -180,6 +180,43 @@ harness assigns a canonical one inside that same DRAM region, but then your kern
 declaring them yourself is the reliable path. Addresses are per-capsule; size them from each tensor's
 shape x dtype.
 """
+
+
+# The POINTER-ARGS model — for a target whose bare-metal harness passes each operand buffer as a POINTER
+# argument to the emitted kernel (the sim allocates the buffers at run time; there is no fixed preload
+# address). Target-agnostic: it states the calling convention (the interface tensors become the kernel's
+# pointer args) and the universal invariant (off-chip addresses are runtime-owned, so they come from the
+# args, never a baked literal) — no address value, no target/opcode literal. This was the MISSING contract
+# that let a backend bake DRAM address 0 (unindexable) and trap on every capsule before any numeric check.
+_POINTER_ARGS_CONTRACT = """
+## DRAM addressing — your kernel receives the operands as POINTER ARGUMENTS
+Your emitted kernel function is the lowering of the capsule's interface function: it receives **each
+interface tensor as a pointer argument**, in the interface's order (each tensor's role — input / weight /
+output — is declared in the interface MLIR you lower). The bare-metal harness ALLOCATES those buffers at
+run time and passes their addresses in — there is NO fixed, known-ahead-of-time DRAM address. So for every
+memory-movement instruction (the ISA facts mark which classes move data between DRAM and the accelerator),
+compute its DRAM address FROM the matching pointer argument: `%a = llvm.ptrtoint <that arg> : !llvm.ptr to
+i64`, then use `%a` (optionally plus a constant tile/element offset) as the address operand. NEVER bake a
+literal DRAM address (0, or any constant): a baked address cannot match the buffer the harness allocated,
+so the kernel accesses the wrong memory and faults on every capsule. On-chip scratchpad / accumulator
+addresses ARE fixed constants — only the off-chip DRAM addresses must come from the arguments. The ISA dev
+tools flag a baked DRAM address, so you can catch this before the oracle runs.
+"""
+
+
+def _dram_contract(manifest) -> str:
+    """Select the DRAM-address contract by the harness's ADDRESS MODEL, derived from the endpoint kind —
+    never a per-target literal. ``external_backend`` grades on the program oracle, which PRELOADS each
+    tensor at a declared base (fixed_preload) → the kernel targets those addresses. An inline-asm/RoCC
+    target's bare-metal harness PASSES each operand as a pointer arg (pointer_args) → the kernel derives
+    addresses from its args. A command-buffer endpoint carries operands in the buffer (no explicit
+    kernel-side addresses) → no contract."""
+    ek = getattr(manifest, "endpoint_kind", None)
+    if ek == "external_backend":
+        return _DRAM_CONTRACT           # fixed_preload
+    if ek == "inline_asm_insn":
+        return _POINTER_ARGS_CONTRACT   # pointer_args
+    return ""
 
 
 # Program-termination contract (external_backend / self-hosted ISA only). Derived, never a literal
@@ -256,7 +293,7 @@ def prompt_slots(te, manifest) -> dict:
         "isa_spec": _isa_spec_block(te),              # names the shipped real ISA files (derive, don't invent)
         # DRAM address contract (external_backend only): declare every tensor + base so the emitted kernel
         # and the program oracle agree on operand/result addresses (the atlas 0/11 output-base bug).
-        "dram_contract": _DRAM_CONTRACT if manifest.endpoint_kind == "external_backend" else "",
+        "dram_contract": _dram_contract(manifest),
         # program-termination contract (external_backend only): the emitted kernel must reach the ISA's
         # halt instruction or it fails functional before numerics (the atlas non-halting-kernel wall).
         "termination_contract": _termination_contract(te, manifest),
