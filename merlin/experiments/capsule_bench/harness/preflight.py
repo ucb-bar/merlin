@@ -114,7 +114,7 @@ def check_negative_fixtures() -> dict:
                                    "fails_closed": g2["functional_pass"] == 0})
 
     # --- component: trace_check negatives (the gate the grader calls) ---
-    real = RD.decode_file(C.REPO / G0)  # a valid g0 matmul trace
+    real = RD.decode_file(C.REPO / G0, target=TARGET)  # a valid g0 matmul trace
     common = ["FLUSH", "CONFIG_EX", "CONFIG_LD", "MVIN", "CONFIG_ST", "PRELOAD", "COMPUTE_PRELOADED", "MVOUT"]
     empty = {"source": "x", "abi": {"custom_opcode": "0x7b", "funct3": "0x3"},
              "instructions": [{"index": 0, "class": "FENCE"}, {"index": 1, "class": "FENCE"}]}

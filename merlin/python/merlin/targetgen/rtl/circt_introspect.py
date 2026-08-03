@@ -560,8 +560,8 @@ def main(argv: list[str] | None = None) -> int:
         contract = yaml.safe_load(target_contract_path(a.target).read_text())
         rocc_class = None
         try:
-            from .. import rocc_decode  # gemmini-shaped RoCC classifier; best-effort cross-check
-            rocc_class = rocc_decode._FUNCT_CLASS
+            from .. import rocc_decode  # RoCC classifier for this target; best-effort cross-check
+            rocc_class = rocc_decode.funct_class_for(a.target)
         except Exception:  # noqa: BLE001 — no classifier for this target: skip that cross-check
             pass
         res = validate(rec, contract, rocc_class)

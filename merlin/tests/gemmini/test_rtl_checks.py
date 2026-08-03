@@ -54,7 +54,7 @@ def test_circt_facts_reproduce_contract_and_decode_table():
     rec = CI.build_facts(target="gemmini")
     contract = yaml.safe_load((CI._REPO / "merlin/targets/gemmini/contracts/target_contract.yaml")
                               .read_text())
-    res = CI.validate(rec, contract, rocc_decode._FUNCT_CLASS)
+    res = CI.validate(rec, contract, rocc_decode.funct_class_for("gemmini"))
     assert not res["diverge"], f"RTL facts diverge from curated sources: {res['diverge']}"
     # accumulator depth/bytes were extracted from the HW dialect (the v1 grep gap)
     acc = next(m for m in rec["facts"]["memories"] if m["name"] == "accumulator")
@@ -62,7 +62,7 @@ def test_circt_facts_reproduce_contract_and_decode_table():
     # legal funct set is the GemminiISA block and is a superset of what rocc_decode classifies
     legal = set(next(i for i in rec["facts"]["interfaces"]
                      if i["name"] == "funct_decode_table")["legal_funct"])
-    assert set(rocc_decode._FUNCT_CLASS) <= legal
+    assert set(rocc_decode.funct_class_for("gemmini")) <= legal
 
 
 # ------------------------------------------------------------------------------- Python screen() checks

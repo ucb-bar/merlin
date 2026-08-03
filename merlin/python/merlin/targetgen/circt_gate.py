@@ -44,7 +44,7 @@ def gated_adapter(inner: Callable, *, log: list | None = None, target: str,
         t0 = time.time()
         verdict = "ok"
         try:
-            trace = RD.decode_text(llvm_text, source="circt_gate")
+            trace = RD.decode_text(llvm_text, source="circt_gate", target=target)
             rep = RC.screen(trace, None, rc_facts, target=target)
             verdict = rep.verdict  # 'ok' | 'warn' | 'reject'
         except Exception:

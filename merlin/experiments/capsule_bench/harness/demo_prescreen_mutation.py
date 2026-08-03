@@ -92,7 +92,7 @@ MUTATORS = [
 # ------------------------------------------------------------------------------------- evaluators
 def prescreen_verdict(mlir: str, capsule: dict, fc: str | None):
     t0 = time.perf_counter()
-    trace = RD.decode_text(mlir, source="mutant")
+    trace = RD.decode_text(mlir, source="mutant", target=C.TARGET)
     cc = CC.compile_checks(FACTS, capsule)
     tr_ok = True
     if fc and cc["trace"]:

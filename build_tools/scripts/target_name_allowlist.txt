@@ -42,7 +42,6 @@ merlin/python/merlin/kernels/cca_contract.py                 # CCA applicable-ba
 
 # ---------------------------------------------------------------- reference-target FACTS / package fallback in dev CLIs (gemmini is the reference; the CLI still takes --target)
 merlin/python/merlin/compile_cli.py                          # --target choice injection + help text (default OOT package now target-derived)
-merlin/python/merlin/targetgen/rocc_decode.py                # gemmini manifest/facts load at import (RoCC decode is gemmini-coupled: custom-3 .insn bit layouts)
 merlin/python/merlin/targetgen/rtl/introspect.py             # legacy chipyard-grep gemmini fallback introspector
 merlin/python/merlin/targetgen/capsule_runner.py             # gemmini-capsule-bench SUITE identity (npu_model model_ext fallback removed — model_ext now required from the contract)
 merlin/python/merlin/targetgen/baremetalc_corroborate.py     # gemmini bareMetalC corroboration report path (reference tool)

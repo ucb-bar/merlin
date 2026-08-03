@@ -505,7 +505,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # RoCC trace and checks instruction coverage. A SIMT/other target (trace_gate=None) has no analog
         # and skips it — the L0/L1 math floor + the oracle tiers carry the verdict either way.
         if cfg.trace_gate == "rocc_insn":
-            trace = RD.decode_text(llvm_text, source=str(paths.generated / cfg.fourth_output_name))
+            trace = RD.decode_text(llvm_text, source=str(paths.generated / cfg.fourth_output_name),
+                                   target=eff_target)
             schemas.validate(trace, "instruction_trace", contract=contract)
             (paths.generated / "instruction_trace.json").write_text(
                 json.dumps(trace, indent=2), encoding="utf-8")

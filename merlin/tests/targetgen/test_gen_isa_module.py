@@ -26,16 +26,17 @@ def _generated_ns() -> dict:
 
 def test_generated_module_reproduces_the_decoder_constants():
     ns = _generated_ns()
+    isa = RD.isa_constants("gemmini")  # the decoder's derived reference for this target
     # RTL-derived (from facts)
-    assert ns["CUSTOM_OPCODE"] == RD.CUSTOM_OPCODE if hasattr(RD, "CUSTOM_OPCODE") else ns["CUSTOM_OPCODE"] == 0x7b
-    assert ns["DIM"] == RD.DIM
+    assert ns["CUSTOM_OPCODE"] == isa["CUSTOM_OPCODE"]
+    assert ns["DIM"] == isa["DIM"]
     assert len(ns["LEGAL_FUNCT"]) >= 20
     # manifest-declared ABI bits
-    assert ns["F1"] == RD.F1 and ns["C_ACC"] == RD.C_ACC and ns["ACC_I8"] == RD.ACC_I8
-    assert ns["ACC_ACCUM"] == RD.ACC_ACCUM and ns["FULL_C_BIT"] == RD.FULL_C_BIT
+    assert ns["F1"] == isa["F1"] and ns["C_ACC"] == isa["C_ACC"] and ns["ACC_I8"] == isa["ACC_I8"]
+    assert ns["ACC_ACCUM"] == isa["ACC_ACCUM"] and ns["FULL_C_BIT"] == isa["FULL_C_BIT"]
     # the RTL-code -> compiler-class map and config subtype
-    assert ns["SEMANTIC_CLASS"] == RD._FUNCT_CLASS
-    assert ns["CONFIG_SUBTYPE"] == RD._CONFIG_SUBTYPE
+    assert ns["SEMANTIC_CLASS"] == isa["FUNCT_CLASS"]
+    assert ns["CONFIG_SUBTYPE"] == isa["CONFIG_SUBTYPE"]
 
 
 def test_generator_emits_encoding_only_never_ops_or_dialect():
@@ -55,7 +56,7 @@ def test_generated_cpp_header_carries_the_same_single_source_constants():
     # module + the emitter, so the third (C++) leg of the former triplication shares the single source.
     assert "namespace gemmini_isa" in h
     assert f"constexpr unsigned CUSTOM_OPCODE = {hex(0x7b)};" in h
-    assert f"constexpr unsigned C_ACC = {hex(RD.C_ACC)};" in h
+    assert f"constexpr unsigned C_ACC = {hex(RD.isa_constants('gemmini')['C_ACC'])};" in h
     assert "constexpr int K_MVIN = 2;" in h and "constexpr int K_MVOUT = 3;" in h
 
 

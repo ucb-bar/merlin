@@ -16,22 +16,22 @@ from merlin.targetgen.rtl import mlc_bridge as MB
 def test_readout_bits_match_the_decoder_constants():
     enc = load_capability_manifest("gemmini").encoding
     rb = enc["readout_bits"]
-    assert rb["f1"] == RD.F1
-    assert rb["c_acc"] == RD.C_ACC
-    assert rb["acc_i8"] == RD.ACC_I8
-    assert rb["acc_accum"] == RD.ACC_ACCUM
-    assert rb["full_c_bit"] == RD.FULL_C_BIT
+    assert rb["f1"] == RD.isa_constants("gemmini")["F1"]
+    assert rb["c_acc"] == RD.isa_constants("gemmini")["C_ACC"]
+    assert rb["acc_i8"] == RD.isa_constants("gemmini")["ACC_I8"]
+    assert rb["acc_accum"] == RD.isa_constants("gemmini")["ACC_ACCUM"]
+    assert rb["full_c_bit"] == RD.isa_constants("gemmini")["FULL_C_BIT"]
 
 
 def test_semantic_class_map_matches_funct_class():
     enc = load_capability_manifest("gemmini").encoding
     # the manifest's RTL-code -> compiler-class map IS the decoder's _FUNCT_CLASS (the shared vocabulary)
-    assert enc["semantic_class"] == RD._FUNCT_CLASS
+    assert enc["semantic_class"] == RD.isa_constants("gemmini")["FUNCT_CLASS"]
 
 
 def test_config_subtype_matches():
     enc = load_capability_manifest("gemmini").encoding
-    assert enc["config_subtype"] == RD._CONFIG_SUBTYPE
+    assert enc["config_subtype"] == RD.isa_constants("gemmini")["CONFIG_SUBTYPE"]
 
 
 def test_dim_and_opcode_stay_in_the_fact_bundle_not_the_encoding_block():
