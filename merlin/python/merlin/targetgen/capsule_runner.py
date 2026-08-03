@@ -528,6 +528,14 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # target whose RTL tier is supplied by an adapter rather than a static tier_sim (atlas: arc L3,
         # empty tier_sim) still runs, while gemmini's declared ladder is unchanged. The L0/L1 math floor
         # is handled above (reference/simulate), NOT here. Sorted for a stable L2<..<L5 ladder order.
+        # program_oracle (the external_backend adapters) raises its OWN OracleUnavailable, a RuntimeError
+        # that is a DIFFERENT class from this module's OracleUnavailable(Exception) — unrelated by mro. If
+        # we catch only the local one, an honest "oracle unavailable" from the program oracle (missing
+        # assembler / model venv / cosim import) falls through to the generic handler and is mislabeled a
+        # TOOL_CRASH, so the unavailable->incomplete / not_gradeable_no_oracle path never fires for atlas.
+        # Catch BOTH so unavailability is honest for every endpoint.
+        from .program_oracle import OracleUnavailable as _POUnavailable
+        _ORACLE_UNAVAILABLE = (OracleUnavailable, _POUnavailable)
         for tier in sorted(set(cfg.oracle_tiers) | set(adapters or {})):
             mand = tier in required
             adapter = (adapters or {}).get(tier)
@@ -541,7 +549,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             _adapter_t0 = _time.perf_counter()
             try:
                 res = adapter(cb, llvm_text, paths.generated, timeout)
-            except OracleUnavailable as e:
+            except _ORACLE_UNAVAILABLE as e:
                 tiers[tier] = TierResult(tier, "unavailable", mand, reason=str(e),
                                          derived_from_rtl=tier in cfg.rtl_tiers)
                 continue
