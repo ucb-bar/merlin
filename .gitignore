@@ -241,3 +241,14 @@ merlin/experiments/**/runs/
 # General ignore
 tmp
 .compat_lib/
+
+# ── Benchmark ANSWER KEYS — never tracked anywhere (public repo: github.com/ucb-bar/merlin) ──
+# Graded answers (golden outputs + required instruction coverage) and the held-out HIDDEN sets. These
+# are the answers an agent is graded against; committing them defeats the benchmark AND enables
+# cheating. Regenerable from the tracked generators + oracle; the public CONTRACT (capsule.interface.mlir
+# + capsule.yaml + MANIFEST.yaml, outside hidden/) stays tracked. Global — covers capsule_bench,
+# gemmini_perf_bench, agent_bench, and any future benchmark dir.
+**/golden.yaml
+**/golden_*.yaml
+**/expected_instruction_coverage.yaml
+**/hidden/
