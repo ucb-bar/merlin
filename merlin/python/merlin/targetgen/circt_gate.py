@@ -1,13 +1,17 @@
-"""CIRCT sim-skip gate — wrap a sim oracle adapter so a CIRCT-reject skips the expensive sim.
+"""CIRCT structural screen — wrap a sim oracle adapter to record a fast structural verdict, ADVISORY only.
 
-Realizes the abc4 finding (CIRCT screen ~7 ms vs verilator ~222 s/capsule; 0 false-clean on 119 pts): for
-each capsule, decode the agent's emitted RoCC trace and run the SAME CIRCT structural screen the advisory
-block uses; if it REJECTS, skip the wrapped spike/verilator/VCS run and fail the tier with the CIRCT
-reason (catch the structural bug in ms, not minutes). If CIRCT is clean, run the sim normally (the sim
-still certifies numerics — CIRCT is structural-only).
+For each capsule, decode the agent's emitted RoCC trace and run the same CIRCT structural screen the
+advisory block uses, recording its verdict + wall alongside the sim. It is **advisory: it never skips the
+sim and never fails the tier.** The sim (RTL) is the authoritative correctness oracle; a structural
+`reject` can be a false-positive on a conformant-but-different kernel (no leading FENCE, an UNKNOWN our
+decoder cannot yet classify, a legal-but-unusual instruction order), so gating on it would wrongly fail a
+correct backend — and, because only the rtlchecks arm is wrapped, would bias the cross-arm A/B comparison.
+Earlier this gate SKIPPED the sim on `reject`; that made a cheap structural check pre-empt the authoritative
+oracle (the same class fixed on the trace + oracle-tier sides). A validated sim-skip (skipping only on
+checks proven to predict RTL rejection) can be reintroduced once those checks are confirmed against L3.
 
 Non-invasive: this wraps an adapter `(cb, llvm_text, workdir, timeout) -> result`; the frozen
-capsule_runner/capsule_grade are untouched. Records skips + CIRCT wall into a sidecar list.
+capsule_runner/capsule_grade are untouched. Records the screen verdict + CIRCT/sim wall into a sidecar list.
 """
 from __future__ import annotations
 import time
@@ -20,9 +24,8 @@ from .rtl.facts import load_facts
 
 
 class CIRCTReject(Exception):
-    """Raised in place of running the sim when the CIRCT structural screen rejects the trace.
-    capsule_runner treats an adapter exception as a tier failure — which is the intended outcome
-    (CIRCT-reject ⟹ would-fail), reached without paying the sim."""
+    """Retained for import compatibility; NO LONGER RAISED. The screen is advisory (see module
+    docstring) — it never skips the sim, so it never raises this. Kept so existing imports resolve."""
 
 
 def gated_adapter(inner: Callable, *, log: list | None = None, target: str,
@@ -50,15 +53,12 @@ def gated_adapter(inner: Callable, *, log: list | None = None, target: str,
         except Exception:
             verdict = "ok"  # screen must never block a legitimate run on its own error (fail-open here)
         circt_s = time.time() - t0
-        rec = {"verdict": verdict, "circt_s": round(circt_s, 4)}
-        if verdict == "reject":
-            rec["sim_skipped"] = True
-            if log is not None:
-                log.append(rec)
-            raise CIRCTReject(f"CIRCT structural screen rejected the trace (sim skipped, "
-                              f"{circt_s*1000:.0f} ms); fix the structural findings before the sim.")
-        rec["sim_skipped"] = False
-        res = inner(cb, llvm_text, workdir, timeout)   # CIRCT clean -> run the real sim (certifies numerics)
+        # ADVISORY: record the screen verdict but ALWAYS run the sim. The sim (RTL) is the authoritative
+        # correctness oracle; a structural 'reject' can be a false-positive on a conformant-but-different
+        # kernel, so skipping the sim here would both mis-fail a correct backend AND bias this arm vs the
+        # ungated arms. Never raise, never skip.
+        rec = {"verdict": verdict, "circt_s": round(circt_s, 4), "sim_skipped": False}
+        res = inner(cb, llvm_text, workdir, timeout)   # the sim certifies numerics + structure on real RTL
         rec["sim_s"] = round(time.time() - t0 - circt_s, 2)
         if log is not None:
             log.append(rec)

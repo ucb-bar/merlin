@@ -1284,9 +1284,11 @@ def main(argv: list[str] | None = None) -> int:
         # target -> its RTL-derived arc tier), so a new target's L3 cert needs no edit here.
         _te_ck = _te()
         adapters = _CR.qa_checkpoint_adapters(_te_ck.target, _te_ck.sim_via)
-        # CIRCT arm only: wrap each sim adapter with the CIRCT pre-screen gate so a structural reject
-        # SKIPS the ~222 s/capsule sim (catch the bug in ~7 ms). Records skips to circt_gate_log.jsonl.
-        # The plain merlin / baseline arms run the sims ungated (no CIRCT) — preserves the C-B distinction.
+        # CIRCT arm only: wrap each sim adapter with the CIRCT structural screen. It is ADVISORY — it
+        # records the screen verdict + wall to circt_gate_log.jsonl but NEVER skips the sim or fails the
+        # tier (a structural reject can be a false-positive on a conformant-but-different kernel, and
+        # skipping would both mis-fail it and bias this arm vs the ungated plain/baseline arms). Both arms
+        # now run identical sims; the wrap only adds telemetry for the rtlchecks arm.
         if RX.ARM_BUNDLE.get(arm, "").find("rtlchecks") >= 0:
             try:
                 from merlin.targetgen import circt_gate as _GATE
@@ -1294,7 +1296,7 @@ def main(argv: list[str] | None = None) -> int:
                 adapters = {t: _GATE.gated_adapter(adp, log=_glog, target=_te_ck.target)
                             for t, adp in adapters.items()}
                 (run_dir / "circt_gate_log.jsonl").write_text("")  # reset; appended after grade
-                print(f"[verilator attempt {attempt}] CIRCT sim-skip gate ACTIVE (reject ⇒ skip sim)")
+                print(f"[verilator attempt {attempt}] CIRCT screen ADVISORY (records verdict; sim always runs)")
             except Exception as e:
                 print(f"[verilator attempt {attempt}] CIRCT gate unavailable ({e}); running ungated")
                 _glog = None
