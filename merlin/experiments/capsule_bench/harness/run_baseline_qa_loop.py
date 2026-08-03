@@ -1443,6 +1443,15 @@ def main(argv: list[str] | None = None) -> int:
         grade_cmd = [sys.executable, str(C.EXP / "scripts" / "grade_agent_run.py"),
                      "--run-dir", str(run_dir), "--arm", arm, "--model", a.model,
                      "--capsules", str(_pilot_subset())]
+        # Hidden grading must NOT use the public-only materialized subset (_pilot_subset) — it holds no
+        # hidden capsules, so rglob finds zero and hidden grades a vacuous 0/0. Point the hidden phase at
+        # this target's OWN hidden dir, DERIVED from the descriptor's capsule_corpus (its sibling
+        # `hidden/`), so it is target-aware and never picks up another target's hidden set nested under a
+        # shared parent (e.g. grading gemmini must not sweep capsules/atlas/hidden).
+        _cc = Path(_te().capsule_corpus)
+        _hidden_dir = (_cc if _cc.is_absolute() else (C.REPO / _cc)).parent / "hidden"
+        if _hidden_dir.is_dir():
+            grade_cmd += ["--hidden-capsules", str(_hidden_dir)]
         if a.no_oracle:
             grade_cmd.append("--no-oracle")
         if a.skip_hidden:

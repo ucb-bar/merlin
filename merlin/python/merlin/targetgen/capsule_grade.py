@@ -94,13 +94,22 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     # when it did not FAIL a structural tier — status `pass` OR `not_gradeable_no_oracle` (numeric verdict
     # withheld under --no-oracle). `gradeable` says whether this run had a numeric oracle at all.
     n_not_gradeable = sum(1 for r in results if r["status"] == "not_gradeable_no_oracle")
-    score["gradeable"] = not no_oracle
+    # Fail-closed on an empty suite: if NO capsule matched the requested labels at this root, nothing was
+    # graded. `all([])` is vacuously True, so numeric_all_exact / trace_all_pass would read as a phantom
+    # pass and `gradeable` as True — the exact vacuous-pass trap that made a mis-rooted hidden phase
+    # (n_capsules:0) look green. Report the boolean flags as null and gradeable False, never a pass.
+    _empty = len(results) == 0
+    score["gradeable"] = (not no_oracle) and not _empty
     score["n_not_gradeable_no_oracle"] = n_not_gradeable
     score["n_structural_pass"] = n_pass + n_not_gradeable
-    score["structural_pass"] = bool(len(results) > 0
-                                    and (n_pass + n_not_gradeable) == len(results))
-    score["numeric_all_exact"] = all(r.get("numeric", {}).get("status") == "pass" for r in results)
-    score["trace_all_pass"] = all(r.get("trace_check", {}).get("status") == "pass" for r in results)
+    score["structural_pass"] = bool(not _empty and (n_pass + n_not_gradeable) == len(results))
+    score["numeric_all_exact"] = None if _empty else all(
+        r.get("numeric", {}).get("status") == "pass" for r in results)
+    score["trace_all_pass"] = None if _empty else all(
+        r.get("trace_check", {}).get("status") == "pass" for r in results)
+    if _empty:
+        score["note"] = ("no capsules matched the requested labels at this root — nothing graded; "
+                         "flags are null (not a pass). Check the capsules root / labels.")
 
     pub = [r for r in results if r.get("label") in ("public", "dev")]
     hid = [r for r in results if r.get("label") == "hidden"]

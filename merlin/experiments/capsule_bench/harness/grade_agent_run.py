@@ -39,6 +39,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--arm", required=True)
     ap.add_argument("--model", default="unknown")
     ap.add_argument("--capsules", default=str(C.REPO / "merlin/contract" / "capsules"))
+    ap.add_argument("--hidden-capsules", default=None,
+                    help="capsules root for the HIDDEN phase (defaults to --capsules). The launcher "
+                         "passes the target's own hidden dir so the public-only materialized subset "
+                         "does not yield an empty hidden grade.")
     ap.add_argument("--no-oracle", action="store_true")
     ap.add_argument("--skip-hidden", action="store_true")
     a = ap.parse_args(argv)
@@ -75,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"FREEZE VIOLATION: submission changed after freeze "
                              f"({frozen['submission_sha256'][:12]} -> {recheck[:12]}); refusing hidden grade")
         (run_dir / "grading_hidden").mkdir(parents=True, exist_ok=True)
-        hid = _score(str(pkg), a.capsules,
+        hid = _score(str(pkg), (a.hidden_capsules or a.capsules),
                      str(run_dir / "grading_hidden"), {"hidden"}, a.no_oracle)
         (run_dir / "grading_hidden" / "score_capsule.json").write_text(json.dumps(hid, indent=2))
 
