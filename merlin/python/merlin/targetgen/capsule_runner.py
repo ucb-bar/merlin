@@ -466,10 +466,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 reason="integer simulate not applicable to float datapath")
         else:
             # Interpreting the AGENT's command buffer (reference/simulate) can fail if the cb is
-            # structurally invalid — e.g. a MATMUL operand with rank != 2 because conv2d was not lowered
-            # to a 2D im2col matmul. That is the agent's bug, NOT a harness crash: report it as a
-            # gradeable command_buffer failure with an actionable reason (so the agent gets feedback and
-            # both arms are scored identically) instead of letting it become a RUNNER_CRASH.
+            # structurally invalid for the reference interpreter's op/shape model. That is the agent's
+            # bug, NOT a harness crash: report it as a gradeable command_buffer failure (so the agent gets
+            # feedback and both arms are scored identically) instead of a RUNNER_CRASH. The reason reports
+            # the ACTUAL exception rather than asserting one hardcoded cause — the interpreter models a
+            # fixed op vocabulary, so an unmodeled op/operand-shape/name is one of several possible causes.
             try:
                 ref = reference_outputs(cb)
                 sim = simulate(cb)["outputs"]
@@ -477,8 +478,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 raise CertFailure(
                     "command_buffer", _cat("STRUCTURAL_INVARIANT_VIOLATION"),
                     f"command buffer could not be interpreted by reference/simulate "
-                    f"({type(ce).__name__}: {ce}); check operand ranks/shapes — a MATMUL operand likely "
-                    f"has the wrong rank (expected 2D; conv2d must be lowered to a 2D im2col matmul)"
+                    f"({type(ce).__name__}: {ce}); check operand ranks/shapes and that each command's op "
+                    f"is one the reference interpreter models (e.g. a windowed op lowered to a 2D matmul)"
                 ) from ce
             nrep = CG.compare(gold, ref, capsule["numeric_policy"], golden_source=gsource)
             numeric = {"status": nrep["status"], "policy": nrep["policy"],
@@ -507,17 +508,28 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         if cfg.trace_gate == "rocc_insn":
             trace = RD.decode_text(llvm_text, source=str(paths.generated / cfg.fourth_output_name),
                                    target=eff_target)
-            schemas.validate(trace, "instruction_trace", contract=contract)
+            # Validating OUR OWN decoder's output must never crash the capsule before the oracle runs: a
+            # schema hiccup (e.g. the manifest maps a funct to a class the enum lacks) is our tooling's
+            # limitation, not the backend's defect — record it and continue, not a pre-oracle RUNNER_CRASH.
+            try:
+                schemas.validate(trace, "instruction_trace", contract=contract)
+            except schemas.ContractViolation as _sv:
+                import sys as _sys
+                _sys.stderr.write(f"WARNING: instruction_trace self-validation failed (advisory): {_sv}\n")
             (paths.generated / "instruction_trace.json").write_text(
                 json.dumps(trace, indent=2), encoding="utf-8")
             # trace_check is ADVISORY: instruction-class coverage / ordering / UNKNOWN are diagnostics
             # for the author, NOT the verdict. Correctness is decided by the numeric + L2/L3 RTL oracle
             # below (which EXECUTE the actual emitted stream), and the hidden golden precludes faking an
             # answer — so an instruction our decoder cannot yet classify must never fail a conformant
-            # backend (the old gate short-circuited before the RTL oracle even ran). The one
-            # oracle-independent floor is anti-cheese: the kernel must actually drive the accelerator.
+            # backend (the old gate short-circuited before the RTL oracle even ran).
             trace_check_res = TCK.check(trace, capsule.get("expected", {}), cb=cb)
-            if not TCK.drives_accelerator(trace):
+            # Anti-cheese floor (must drive the accelerator) is the ONE trace-derived gate — but ONLY where
+            # the RTL oracle will NOT run to prove it. When a required oracle tier executes the emitted
+            # stream on real hardware, THAT is the spelling-independent anti-cheese (a host-computed fake
+            # produces wrong output on RTL); the decoder-shaped floor only recognizes the `.insn r` form, so
+            # gating on it here would false-fail a conformant `.word`-encoded kernel before the oracle.
+            if (no_oracle or not required) and not TCK.drives_accelerator(trace):
                 raise CertFailure("trace_check", _cat("PROTOCOL_VIOLATION"),
                                   "no accelerator instructions emitted — the kernel did not drive the "
                                   "target's ISA (compute must happen on the device; correctness cannot "
