@@ -53,6 +53,18 @@ def test_present_asm_never_yields_empty_trace():
         assert RD.decode_text(text, target="gemmini")["instructions"], f"empty trace for present asm:\n{text}"
 
 
+def test_decoded_trace_conforms_to_instruction_trace_schema():
+    # The trace the runner writes MUST validate against the instruction_trace schema, else every graded
+    # capsule crashes runner_internal. Regression for: abi codes emitted as raw ints (123/3) instead of
+    # the schema-required hex STRINGS ("0x7b"/"0x3").
+    from merlin.targetgen.contract import schemas as S
+    trace = RD.decode_text(_CANON_MVIN, source="lowered.llvm.mlir", target="gemmini")
+    abi = trace["abi"]
+    assert isinstance(abi["custom_opcode"], str) and abi["custom_opcode"].startswith("0x"), abi
+    assert isinstance(abi["funct3"], str), abi
+    S.validate(trace, "instruction_trace")  # must not raise
+
+
 def test_fence_recognized_in_both_spellings():
     for op in ('llvm.inline_asm has_side_effects "fence", "" : () -> ()',
                '"llvm.intr.inlineasm"() {asm = "fence", constraints = ""} () : () -> ()'):

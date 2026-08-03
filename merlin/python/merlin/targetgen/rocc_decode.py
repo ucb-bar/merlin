@@ -192,9 +192,13 @@ class Trace:
         hist: dict[str, int] = {}
         for ins in self.instructions:
             hist[ins["class"]] = hist.get(ins["class"], 0) + 1
+        # abi codes are reported as hex STRINGS ("0x7b"/"0x3") per the instruction_trace schema — format
+        # the derived ints, don't emit raw ints (a schema ContractViolation) or a baked literal.
+        def _hex(v: int | None) -> str | None:
+            return f"{v:#x}" if v is not None else None
         return {
             "source": self.source,
-            "abi": {"custom_opcode": self.custom_opcode, "funct3": self.funct3},
+            "abi": {"custom_opcode": _hex(self.custom_opcode), "funct3": _hex(self.funct3)},
             "instructions": self.instructions,
             "summary": {"class_histogram": hist},
         }
