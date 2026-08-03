@@ -572,9 +572,17 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _sim = cfg.tier_sim.get(tier, tier)
                 _msg = str(e)
                 _did_not_halt = "did not halt" in _msg
+                # A program that RAN on the sim but FAULTED at runtime (the bare-metal fail/trap banner
+                # fired: "*** FAILED ***") is the AGENT's kernel bug — an illegal instruction or an
+                # out-of-range memory access (e.g. an MVIN/MVOUT DRAM address of 0, or a baked address that
+                # ignores the passed pointers / declared DRAM layout) — NOT an infra tool_crash. Classify it
+                # as a functional fault with actionable feedback; mislabeling it tool_crash reads as an
+                # unfixable infra problem and wastes every round (the atlas flat-0/11 pattern).
+                _trapped = ("*** FAILED ***" in _msg) and not _did_not_halt
                 tiers[tier] = TierResult(
                     tier, "fail", mand,
                     reason=(f"did not halt (ran to the cycle cap): {_msg[-240:]}" if _did_not_halt
+                            else f"kernel faulted at runtime: {_msg[-260:]}" if _trapped
                             else f"{_sim} crash: {_msg[-300:]}"),
                     derived_from_rtl=tier in cfg.rtl_tiers)
                 if mand:
@@ -584,6 +592,14 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                           "halt/terminate instruction — emit it as the final instruction "
                                           "on every control path (see the program-termination contract). "
                                           "Numerics are never checked until the program halts.") from e
+                    if _trapped:
+                        raise CertFailure(_sim, _cat("FUNCTIONAL_MISMATCH"),
+                                          "the emitted kernel RAN but FAULTED on "
+                                          f"{_sim} (a trap — an illegal instruction or an out-of-range "
+                                          "memory access — before producing output). Check that every "
+                                          "memory-movement instruction uses a valid, in-range DRAM address "
+                                          "(derive it from the passed pointer args / the declared DRAM "
+                                          f"layout, never a baked 0 or a guessed address): {_msg[-300:]}") from e
                     raise CertFailure(_sim, _cat("TOOL_CRASH"),
                                       f"{_sim} invocation failed: {_msg[-400:]}") from e
                 continue
