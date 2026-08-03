@@ -32,8 +32,27 @@ def _first_index(classes: list[str], target: set[str] | str) -> int | None:
     return None
 
 
+def drives_accelerator(trace: dict) -> bool:
+    """The one oracle-INDEPENDENT anti-cheese floor: did the kernel actually drive the accelerator?
+
+    A custom-opcode instruction is one the target's RTL decoder claimed — recorded with a non-null
+    ``funct`` (a plain memory ``fence`` and any non-custom asm carry ``funct=None``). This counts even
+    instructions we could not sub-classify (``UNKNOWN`` with a ``funct``): the point is only that the
+    kernel emitted the accelerator's ISA rather than computing on the host and moving a result. It is
+    fully derived (no class-name literals) and stays true for any target — the *only* thing ``trace_check``
+    gates on; every other finding is advisory (correctness is the numeric + RTL oracle, and the hidden
+    golden precludes faking an answer)."""
+    return any(i.get("funct") is not None for i in trace.get("instructions", []))
+
+
 def check(trace: dict, expected: dict, cb: dict | None = None) -> dict:
-    """Validate ``trace`` against capsule ``expected`` (+ optional command buffer)."""
+    """Validate ``trace`` against capsule ``expected`` (+ optional command buffer).
+
+    The returned ``violations`` are ADVISORY diagnostics — instruction-class coverage, ordering, and
+    declared-mode checks that help the author, but do NOT decide pass/fail. The verdict is the oracle
+    (numerics + L2/L3 RTL, which execute the actual emitted stream); an instruction we cannot classify
+    (``UNKNOWN``) is our decoder's limit, not the backend's defect, so it is reported, never gated on.
+    The sole gating signal derived here is :func:`drives_accelerator` (anti-cheese)."""
     violations: list[str] = []
     ins = trace.get("instructions", [])
     classes = _classes(trace)
