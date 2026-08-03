@@ -17,12 +17,19 @@ from __future__ import annotations
 _ENDPOINT_DESC = {
     "inline_asm_insn": ("lower your target dialect to an **LLVM-dialect MLIR** module (a `.mlir`, NOT "
                         "textual LLVM-IR) whose command-ISA instructions are `llvm.inline_asm` ops wrapping "
-                        "raw `.insn` directives — e.g. "
-                        "`llvm.inline_asm has_side_effects \".insn r <opcode>, <func3>, <func7>, $0, $1\", "
-                        "\"r,r\" %a, %b : (i64, i64) -> ()` — with opcode/func3/func7 from the discovered ISA "
-                        "facts; assembled by STOCK clang/LLVM, no forked toolchain. Do NOT emit textual "
-                        "LLVM-IR (`call void asm sideeffect \"...\"`): the runner decodes `llvm.inline_asm` "
-                        "MLIR ops, so a `.ll`-style body reads back as an empty instruction trace"),
+                        "raw `.insn` directives — with opcode/func3/func7 from the discovered ISA facts, "
+                        "assembled by STOCK clang/LLVM, no forked toolchain. EVERY operand must be an SSA "
+                        "value defined earlier — an immediate as `%c = llvm.mlir.constant(<imm> : i64) : "
+                        "i64`, a pointer via `llvm.ptrtoint` of an arg — then passed by name. Canonical:\n"
+                        "    %c = llvm.mlir.constant(1441801 : i64) : i64\n"
+                        "    %d = llvm.mlir.constant(16 : i64) : i64\n"
+                        "    llvm.inline_asm has_side_effects \".insn r <op>, <f3>, <f7>, x0, $0, $1\", "
+                        "\"r,r\" %c, %d : (i64, i64) -> ()\n"
+                        "NEVER an inline integer literal operand like `... \"r,r\" (65540, 16)` — that is "
+                        "invalid MLIR: it neither assembles NOR decodes, so CONFIG etc. read back as UNKNOWN "
+                        "and the instruction class is scored missing. And do NOT emit textual LLVM-IR "
+                        "(`call void asm sideeffect \"...\"`): the runner decodes `llvm.inline_asm` MLIR ops, "
+                        "so a `.ll`-style body reads back as an empty instruction trace"),
     "upstream_target": ("lower your target dialect to an upstream LLVM target (e.g. RVV / SPIR-V), "
                         "compiled by stock LLVM"),
     "external_backend": ("emit a `kernel.S` of `.word`/`.insn` directives — the target's OWN encoded "
