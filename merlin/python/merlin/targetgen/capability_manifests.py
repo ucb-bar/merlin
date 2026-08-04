@@ -108,6 +108,12 @@ def manifest_for(name: str) -> dict[str, Any]:
     if facts_source == "rtl":
         from .rtl import facts as _facts   # lazy: pulls circt_introspect only when RTL facts are needed
         facts = _facts.load_facts(facts_target)  # regenerates from the RTL if the cache is cold (mlc)
+    elif facts_source == "simt":
+        # A SIMT self-hosted core: its facts come from the SIMT RTL introspect (a standalone instruction
+        # encoding, not a host RoCC decode table), adapted to the facts body shape so the SAME deriver
+        # grounds endpoint_kind from them. Empty {} when no introspect serves the target (family default).
+        from .rtl import mlc_bridge as _mb
+        facts = _mb.simt_facts(facts_target)
     return derive_manifest({"target": name}, facts, residual=residual)
 
 
@@ -270,6 +276,14 @@ def _endpoint_from_facts(body: dict[str, Any]) -> str | None:
             if not legal:
                 return None
             return "inline_asm_insn" if max(legal) <= _ROCC_FUNCT7_MAX else "external_backend"
+    # A self-hosted-ISA core carries its OWN instruction encoding (``encoding_bits``) + instruction
+    # classes, NOT a host-decoded RoCC funct — so it emits a device kernel the target's own toolchain
+    # builds -> ``external_backend``. This is the SIMT analog of "opcodes too wide for RoCC funct7": the
+    # signal is a standalone instruction encoding, surfaced as a ``self_hosted_isa`` interface (e.g. a
+    # 64-bit Muon/Vortex SIMT encoding), never a target-name test.
+    for itf in body.get("interfaces") or []:
+        if itf.get("name") == "self_hosted_isa" and itf.get("encoding_bits"):
+            return "external_backend"
     return None
 
 

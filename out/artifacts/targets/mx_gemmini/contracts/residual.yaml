@@ -1,8 +1,13 @@
 # GENERATED-EDITABLE residual side-input for the target-agnostic capability deriver (merlin.targetgen.capability_manifests.manifest_for). Provenance-tagged; requires_human_review. This is the human intent/prose the RTL facts cannot ground; the mesh / memory capacities / datapath dtypes / encoding codes are layered on from facts.json when 'facts_source: rtl'. Regenerable but hand-owned.
+# facts_source: rtl + facts_target: gemmini — mx-gemmini is a config variant of gemmini (same generator,
+# same RoCC custom3 decoder, same 16x16 WS mesh); its STRUCTURAL facts (funct_decode_table -> endpoint,
+# mesh geometry) are gemmini's, so we ground them from gemmini's RTL facts. Only the MX datapath (dtypes,
+# block scale, requant) differs and stays in the compute_units below / mx_ref goldens — never inherited
+# from gemmini's int8 datapath. This derives endpoint_kind (inline_asm_insn) + mesh 16x16 instead of
+# defaulting/hardcoding them.
+facts_source: rtl
+facts_target: gemmini
 capabilities:
-  mesh:
-    cols: 16
-    rows: 16
   ops:
   - matmul
 compiler_obligations:

@@ -66,6 +66,39 @@ def test_atlas_manifest_reproduced_from_residual_and_facts():
     assert len(m["encoding"]["legal_funct"]) == 42               # from the decode table
 
 
+def test_endpoint_from_facts_covers_rocc_and_self_hosted_isa():
+    """endpoint_kind derivation (pure/hermetic): a RoCC ``funct_decode_table`` grounds inline_asm_insn
+    (all funct <= 0x7f) vs external_backend (wider); a ``self_hosted_isa`` interface (own instruction
+    encoding, no RoCC funct) grounds external_backend — the SIMT analog. No signal -> None (family
+    default). No target-name test anywhere."""
+    ef = cm._endpoint_from_facts
+    assert ef({"interfaces": [{"name": "funct_decode_table", "legal_funct": [0, 3, 126]}]}) == "inline_asm_insn"
+    assert ef({"interfaces": [{"name": "funct_decode_table", "legal_funct": [0, 9943]}]}) == "external_backend"
+    assert ef({"interfaces": [{"name": "self_hosted_isa", "encoding_bits": 64,
+                               "instruction_classes": ["FMA", "TMC"]}]}) == "external_backend"
+    # a self_hosted_isa carrying no instruction encoding is not a groundable signal -> None
+    assert ef({"interfaces": [{"name": "self_hosted_isa", "instruction_classes": []}]}) is None
+    assert ef({"interfaces": []}) is None
+
+
+def test_radiance_and_mx_gemmini_endpoints_are_derived_not_defaulted():
+    """Both endpoints are DERIVED, not the family default (simt AND systolic both default to
+    inline_asm_insn): radiance -> external_backend from the SIMT self-hosted ISA (facts_source: simt);
+    mx_gemmini -> inline_asm_insn from gemmini's RoCC decode table (facts_source: rtl + facts_target:
+    gemmini), which also grounds mesh 16x16 while the MX dtypes stay put (not gemmini int8)."""
+    import pytest
+    try:
+        rad = cm.manifest_for("radiance")
+        mxg = cm.manifest_for("mx_gemmini")
+    except Exception as e:  # noqa: BLE001 — SIMT introspect / mlc facts unavailable in this env
+        pytest.skip(f"manifest derivation unavailable: {type(e).__name__}: {e}")
+    assert rad["endpoint_kind"] == "external_backend"            # SIMT self-hosted, NOT the simt default
+    assert mxg["endpoint_kind"] == "inline_asm_insn"             # RoCC decode, derived
+    assert mxg["capabilities"]["mesh"] == {"rows": 16, "cols": 16}   # from gemmini's facts mesh array
+    mxpe = next(u for u in mxg["compute_units"] if u["name"] == "mx_pe")
+    assert {"mxfp4", "mxfp6", "mxfp8"} <= set(mxpe["dtypes"])    # MX dtypes preserved, not int8-only
+
+
 def _units(name):
     return cu.compute_units(cm.MANIFESTS[name]())
 

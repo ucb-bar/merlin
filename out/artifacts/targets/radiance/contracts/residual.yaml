@@ -4,6 +4,11 @@
 # arc: SIMT cores + CVFPU + MX-Gemmini tile). merlin_bridge._arc_target reads this so arc_available /
 # cosim_muon resolve to that key; every merlin-facing identity (corpus, suite, results) stays 'radiance'.
 arc_target: muon
+# facts_source: simt — radiance is a self-hosted SIMT core. Its endpoint is DERIVED from the SIMT RTL
+# introspect's self-hosted instruction encoding (a 64-bit Muon/Vortex ISA with its own instruction
+# classes, not a host RoCC decode table) -> external_backend, instead of defaulting to the simt family's
+# inline_asm_insn. The introspect is reached via arc_target (its RTL is the RadianceCluster config).
+facts_source: simt
 capabilities:
   ops:
   - matmul

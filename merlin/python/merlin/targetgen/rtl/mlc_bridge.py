@@ -1137,7 +1137,11 @@ def _simt_fact_bundle(target: str) -> dict:
     target it does NOT serve is reported honestly rather than mis-attributed to muon's geometry.
     The core gates on that declared identity, not a literal target name."""
     from . import muon_introspect
-    if target != muon_introspect.TARGET:
+    # Serve by the ARC-target alias, not the merlin name: a composite SIMT target (e.g. radiance) whose
+    # RTL IS the introspect's config (RadianceCluster) resolves to the introspect's declared identity via
+    # _arc_target, so its SIMT facts are delegated to the one SIMT introspect that models that RTL. A
+    # target the introspect does not model is reported honestly, never mis-attributed.
+    if _arc_target(target) != muon_introspect.TARGET:
         fields = {"simt": {"value": None, "derived": False, "source": None,
                            "evidence": f"no SIMT RTL introspect serves {target!r} "
                                        f"(only {muon_introspect.TARGET!r} today)"}}
@@ -1155,6 +1159,26 @@ def _simt_fact_bundle(target: str) -> dict:
             "method": facts.get("generator", {}).get("method", "muon RTL introspect"),
             "kind": "simt", "rtl_present": present, "fields": fields,
             "n_derived": sum(1 for v in fields.values() if v["derived"])}
+
+
+def simt_facts(target: str) -> dict:
+    """SIMT self-hosted-ISA facts adapted to the ``facts.json`` body shape, so the generic manifest
+    deriver (:func:`merlin.targetgen.capability_manifests.derive_manifest`) grounds ``endpoint_kind``
+    from them like any other RTL facts. Delegates to the SIMT RTL introspect (``muon_introspect``, via
+    the arc-target alias); the core's OWN instruction encoding is surfaced as a ``self_hosted_isa``
+    interface (its ``encoding_bits`` + ``instruction_classes``) — the SIMT analog of a decode table.
+    Returns ``{}`` when no SIMT introspect serves the target (honest — the deriver then falls back to the
+    family default, never a fabricated endpoint)."""
+    bundle = _simt_fact_bundle(target)
+    isa = ((bundle.get("fields") or {}).get("isa") or {}).get("value") or {}
+    if not isa.get("encoding_bits"):
+        return {}
+    itf = {"name": "self_hosted_isa",
+           "encoding_bits": isa.get("encoding_bits"),
+           "instruction_classes": list(isa.get("instruction_classes") or []),
+           "source": bundle.get("method")}
+    return {"schema_version": "simt-facts/v0",
+            "facts": {"interfaces": [itf], "source": bundle.get("method"), "target": target}}
 
 
 def _main(argv: list[str] | None = None) -> int:
