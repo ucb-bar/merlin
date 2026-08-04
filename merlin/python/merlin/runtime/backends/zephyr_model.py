@@ -170,14 +170,27 @@ DRAM_END = 0x80000000 + 16 * 1024**3    # FireSim WithExtMemSize = 16 GB at 0x80
 EXT_MAX_WEIGHTS = DRAM_END - EXT_WEIGHTS_BASE - (256 * 1024 * 1024)   # ~14.75 GB
 
 
-def _ram_for_weights(weights_bytes: int) -> int:
+def _ram_for_weights(weights_bytes: int, activation_bytes: int | None = None) -> int:
     """RAM-region size to hold the weights blob (linked into .data) plus an activation
     arena (the leftover, claimed by ARENA_SIZE=-1). Headroom scales with the model
     (30% of weights + 128 MB) rather than a fat fixed floor, so small models stay at the
     256 MB default — important on FireSim, where the whole-model image only boots reliably
     at the stock `ram0` size and an over-large region wedges the boot (no uartlog). Models
-    that genuinely need more grow the region; rounded up to 16 MB."""
-    total = weights_bytes + (weights_bytes * 3) // 10 + 128 * 1024 * 1024
+    that genuinely need more grow the region; rounded up to 16 MB.
+
+    ``activation_bytes`` (from :func:`mlir_query.activation_peak_bytes`) replaces the ASSUMPTION
+    that 128 MB of headroom covers the model's working set. It does not always: whisper_tiny's
+    encoder attention peaks at 210 MB live, and the weights-scaled formula alone gives it a 288 MB
+    region of which the image takes 125 MB — a 163 MB arena for a 210 MB working set, i.e. a
+    provisioning failure on a board with enough physical DRAM (measured 336 MB total demand vs a
+    512 MB SoC). The headroom is therefore ``max(weights-scaled, measured peak + 128 MB)``: strictly
+    >= the old value for every model, so nothing that boots today gets a smaller region, and the
+    measured peak is only ever a lower bound (bufferization copies + allocator fragmentation are
+    not in it), which is why the 128 MB slack is kept on top rather than replaced."""
+    headroom = (weights_bytes * 3) // 10 + 128 * 1024 * 1024
+    if activation_bytes:
+        headroom = max(headroom, int(activation_bytes) + 128 * 1024 * 1024)
+    total = weights_bytes + headroom
     align = 16 * 1024 * 1024
     total = ((total + align - 1) // align) * align
     return max(DEFAULT_RAM_BYTES, total)
@@ -582,8 +595,10 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
         # Size ram0 to the in-image weights blob + activation-arena headroom (default 256 MB
         # is too small for multi-hundred-MB int8/fp8 blobs). ARENA_SIZE=-1 claims the
         # leftover. Spike gets a matching -m; FireSim DRAM is fixed by the bitstream.
+        from ...common.mlir_query import activation_peak_bytes
         ram_bytes = (ram_bytes_override if ram_bytes_override is not None
-                     else _ram_for_weights(weights_size))
+                     else _ram_for_weights(weights_size,
+                                           activation_peak_bytes(model_dir / "model.mlir")))
 
     archive = work / "libmerlinmodel.a"
     archive.unlink(missing_ok=True)
