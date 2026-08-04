@@ -63,7 +63,7 @@ _TOOLS = {"tools": [
     {"toolSpec": {"name": "self_check", "description":
         "Grade your CURRENT submission/ against the REAL target oracle and get REDACTED feedback: per-tier "
         "pass/fail, decoded trace, instruction counts, and NUMERIC DIFF STATS (how far off your output is) "
-        "— everything EXCEPT the withheld golden values. This is your only mid-round signal for whether the "
+        "— everything EXCEPT the withheld reference output values (there is no answer key). This is your only mid-round signal for whether the "
         "numerics are correct; call it after each build and iterate until capsules pass. `capsules` = "
         "comma-separated ids or 'all'.",
         "inputSchema": {"json": {"type": "object", "properties": {
@@ -261,9 +261,13 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         "package (e.g. `mlir_oot/atlas_opt.py`) and each command's argv should reference it as `{tool}` — "
         "do NOT put `python3` into the tool field or bake the interpreter/path into argv, or the build "
         "fails with `tool missing`. The harness runs a Python tool through the interpreter for you. "
-        "CRITICAL: you get NO golden values, so use the self_check TOOL after every build — it grades your "
-        "current submission against the real oracle and returns per-capsule pass/fail plus the NUMERIC "
-        "DIFF (how far off each capsule is), goldens withheld. That is your primary correctness signal: "
+        "CRITICAL: there is NO answer key — you are bringing up new hardware. Read `verification_spec.md` "
+        "in your workspace for the acceptance contract (target ops, dtypes, numeric policy, coverage), and "
+        "validate the way an engineer does: compute each operation's expected result yourself from the "
+        "declared inputs, then use the self_check TOOL after every build — it runs your submission on the "
+        "real RTL oracle and returns per-capsule pass/fail plus the NUMERIC DIFF of YOUR output against the "
+        "operation's definition (how far off each capsule is); the reference output values are withheld so "
+        "you debug from your own intent. That is your primary correctness signal: "
         "call self_check, read the diff, fix your encoding/lowering, rebuild, self_check again — iterate "
         "until capsules pass. Between rounds you also receive the official grader verdict, which for THIS "
         "arm carries an advisory `rtl_checks` block (FileCheck over your emitted MLIR + the decoded trace, "

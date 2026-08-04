@@ -495,8 +495,9 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # incomplete (only an unavailable/absent RTL oracle does).
             ref = sim = None
             numeric = {"status": "skipped", "policy": policy.get("compare"), "golden_source": gsource,
-                       "note": "integer reference/simulate N/A for float datapath; graded vs independent "
-                               "golden at RTL oracle"}
+                       "note": "integer reference/simulate N/A for a float datapath; correctness is graded "
+                               "by running your artifact on the RTL oracle and checking it computes the "
+                               "declared operation within tolerance"}
             tiers["L0"] = TierResult(
                 "L0", "skipped", mandatory="L0" in required, not_applicable=True,
                 reason="integer reference not applicable to float datapath; graded vs independent "
@@ -528,11 +529,13 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             CG.write_numeric_report(paths.generated / "numeric_report.yaml", nrep)
             tiers["L0"] = TierResult("L0", "pass" if nrep["status"] == "pass" else "fail",
                                      mandatory="L0" in required or True,
-                                     reason=None if nrep["status"] == "pass" else "golden != reference(cb)",
+                                     reason=(None if nrep["status"] == "pass"
+                                             else "your command buffer does not compute the declared operation"),
                                      evidence="numeric_report.yaml")
             if nrep["status"] != "pass":
                 raise CertFailure("numeric_golden", _cat("FUNCTIONAL_MISMATCH"),
-                                  f"golden != reference(cb): {nrep['first_mismatch']}")
+                                  "your command buffer does not compute the declared operation "
+                                  f"(first divergence at index {(nrep['first_mismatch'] or {}).get('index')})")
 
             l1_ok = _match_by_policy(ref, sim, policy)
             tiers["L1"] = TierResult("L1", "pass" if l1_ok else "fail", mandatory=True,
@@ -692,8 +695,14 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _perf = perf_extractor(cb, res) or {}
                 _gflops = _perf.get("gflops")
                 _pct_peak = _perf.get("pct_fp_peak")
-            _mismatch_reason = (f"{sim_name} oracle != independent golden ({gsource})" if independent_float
-                                else f"{sim_name} oracle != golden==reference==simulate")
+            # Engineer framing (no "golden"): the emitted artifact, run on the RTL, does not compute the
+            # declared operation. There is no answer key handed to the agent — the reference is the op's
+            # own definition, which the agent can reproduce from the declared inputs. The appended
+            # _encoding_divergence_hint adds that the cheap tiers agreed, so the defect is in the encoding.
+            _mismatch_reason = (
+                f"on {sim_name}, your emitted artifact does not compute the declared operation within tolerance"
+                if independent_float
+                else f"on {sim_name}, your emitted artifact does not compute the declared operation")
             # ``oracle`` may be a rich dict (gemmini spike/verilator: {derived_from_rtl, ...}) OR a plain
             # provenance string (the arc / program cosim returns e.g. "atlas-arc-arcilator-cosim"); default
             # to the tier's RTL classification when it doesn't declare derived_from_rtl.

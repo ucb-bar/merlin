@@ -294,9 +294,11 @@ def main(argv=None):
     out = {"sim": sim, "barrier_tier": barrier_tier, "n_passed": npass, "n_capsules": n,
            "all_pass": npass == n and n > 0, "per_capsule": rows,
            "note": f"Self-check on {sim} ({barrier_tier}). You see EVERYTHING your dialect produced — "
-                   "command buffer, decoded trace + instruction counts, full numeric diff stats, sim "
-                   "console, and your artifacts copied to ./selfcheck_out/. The ONLY thing withheld is the "
-                   "golden EXPECTED output values (the answer key). 'done' = all public pass on "
+                   "command buffer, decoded trace + instruction counts, sim console, and your artifacts "
+                   "copied to ./selfcheck_out/. The diff stats (mismatch_count, magnitudes) are YOUR "
+                   "output measured against the operation's own definition, which you can reproduce from "
+                   "the declared inputs — there is no answer key; the reference output values are withheld "
+                   "so you debug from your own intent, as in real bring-up. 'done' = all public pass on "
                    "verilator/VCS; cycles are not a criterion. (Movement ops legitimately have 0 matmuls.)"}
     txt = json.dumps(out, indent=2)
     print(txt)

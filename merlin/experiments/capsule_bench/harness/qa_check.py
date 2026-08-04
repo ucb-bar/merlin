@@ -181,7 +181,7 @@ def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
             "highest_tier": score.get("highest_tier"),
             "first_failure_planes": score.get("first_failure_planes", {}),
             "per_capsule": per_capsule,
-            "note": ("This is a QA pass/fail signal only. It contains NO expected/golden values. "
+            "note": ("This is a QA pass/fail signal only. It contains NO reference output values — there is no answer key. "
                      "Fix failures by capsule + failure_plane + trace_violations; never hardcode outputs."),
         }
     # top-level integrity failure (K0/K1 fail-closed)
