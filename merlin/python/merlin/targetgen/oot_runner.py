@@ -275,7 +275,8 @@ def _resolve_argv(pkg: Package, name: str, input_mlir: Path, output_json: Path |
         # the SAME file as the declared tool (basename match) but does not exist as written from the package
         # root, rewrite it to the absolute tool path. Never touches {input_mlir}/{output_json} (different
         # basenames) or a real, correctly-rooted sibling reference (those exist, so are left as-is).
-        if tok != str(pkg.tool) and Path(tok).name == pkg.tool.name and not (pkg.directory / tok).exists():
+        if tok != str(pkg.tool) and Path(tok).name == Path(str(pkg.tool)).name \
+                and not (pkg.directory / tok).exists():
             tok = str(pkg.tool)
         out.append(tok)
     return out
