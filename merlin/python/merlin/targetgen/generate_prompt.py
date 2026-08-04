@@ -328,7 +328,7 @@ submission/
                   # integrity_exempt: false; (cpp) a build block; the 4 command argv templates
   mlir_oot/       # your OOT sources: input dialect + {target} target dialect + passes + {tool_stem}
   REPORT.md       # what you built + honest scope/limitations + a final status line (see end)
-  docs/           # public_facts_used.md (every target fact you used + its source) + iteration_notes.md
+  docs/           # PLAN.md (first-round design plan) + public_facts_used.md (facts used + source) + iteration_notes.md
 ```
 
 ## The 4 CLI entrypoints (your package is invoked ONLY via these)
@@ -340,6 +340,21 @@ submission/
 Declare these four commands in `manifest.yaml` exactly as the runner expects — see the OOT backend
 contract (`mlir_oot_backend_contract.yaml`) and the manifest schema (`schemas/manifest.schema.json`).
 {dram_contract}{termination_contract}
+## Plan before you build (FIRST round only)
+If `qa/verdict.json` does not exist yet, this is the first round: **before writing any code, write
+`docs/PLAN.md`** surveying the whole task, then build to that plan. Do NOT re-plan from scratch on later
+rounds — follow and refine PLAN.md. Keep each item to a line or two:
+- **Corpus**: the families/capsules you must pass and the distinct op/shape/dtype/epilogue cases in them.
+- **Input ingestion**: how your `parse` entrypoint consumes the interface MLIR — parse it **structurally**
+  (a real IR / grammar parser), do NOT hand-roll a lexer or text-parser; a bespoke input parser is the most
+  common self-inflicted first-round failure.
+- **Dialect + lowering**: the target-dialect ops you define and the interface->target rewrite passes.
+- **Encoding**: how each instruction class is packed from the derived ISA facts (opcodes/fields), and how
+  you check that encoding before grading.
+- **Addressing + termination**: where operand addresses come from and how the program signals completion.
+- **Verification loop**: the cheapest self-check per change, escalating to the full set only to converge.
+It is your design contract with yourself — short and honest; update it only when your strategy changes.
+
 ## Cross-round memory (each round is a FRESH session)
 You have NO memory of prior rounds except what is on disk. Between rounds the harness writes
 `qa/round_brief.md` — your progress log across all graded rounds (per-round pass count, failure planes,
