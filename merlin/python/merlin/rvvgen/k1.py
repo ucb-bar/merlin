@@ -657,8 +657,14 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     # pays the doubled-LMUL penalty when the march string leaves VLEN at the RVV minimum. The C glue
     # and the baseline shim arms below deliberately keep K1_MARCH so their flags are not re-written
     # mid-campaign. Whether this transfers to whole models is exactly what is being measured.
+    # MERLIN_K1_MODEL_OPT (default -O2 -> byte-identical) lowers the OPT LEVEL of the model object
+    # only. It exists for one job: when the same LLVM IR is correct on x86 and wrong on every riscv64
+    # target, the next cut is whether the RISC-V backend's OPTIMIZED codegen is what breaks it, and
+    # that needs -O0/-O1 builds of the model while everything else (harness, runtime, flags) is held
+    # fixed. Diagnostic only -- never set it for a measurement, since it changes the emitted kernel.
+    model_opt = os.environ.get("MERLIN_K1_MODEL_OPT", "-O2").split()
     _run([clang23, "--target=riscv64-unknown-linux-gnu", f"-march={codegen_march()}", f"-mabi={K1_MABI}",
-          "-O2", "-Wno-override-module", "-c", res.ll_path, "-o", model_o])
+          *model_opt, "-Wno-override-module", "-c", res.ll_path, "-o", model_o])
 
     # 3. data-driven runtime artifacts (arg table, ciface, weights.bin, embedded io).
     cgen = work / "cgen"

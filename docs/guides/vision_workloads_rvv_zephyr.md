@@ -3,7 +3,7 @@ title: Vision, audio and control workloads on Kodiak — multicore RVV under Zep
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-08-03
+last_verified: 2026-08-04
 related: [tinyllama_int8_rvv_zephyr, model2mlir, rvv_e2e, zephyr, compilation_strategies]
 code_refs:
   - merlin/python/merlin/compile_cli.py
@@ -196,7 +196,39 @@ Host (`--run host`, all four, int8 and fp32): **verified**, `tier_ok = "w8a8"`, 
 All four lower with **zero opaque ops** (`spectformer` 1240 linalg ops, `whisper_tiny` 1296,
 `lstmnetvit` 653, `deepjscc` 380).
 
-### The open defect
+### The defect, localized: f32 contractions with large K are wrong on RISC-V
+
+**Root cause found.** An emitted **f32** `linalg.matmul` with large K is numerically wrong on riscv64
+while the identical LLVM IR is exact on x86. Minimal reproducer, via
+`merlin.rvvgen.workloads.gen_matmul_f32` compiled two ways from one bundle:
+
+| build | vs numpy |
+|---|---|
+| x86 (same IR, same generated C runtime, `merlin_host_main.c`) | `maxabs 3e-05` — pure rounding |
+| riscv64 (K1 board, and spike) | **`maxabs 0.4`** on values ~12 (**~3 %**), `cos 0.99996` |
+
+K is the variable: **K=144/147/160 are all wrong** (M ∈ {16,64} and N ∈ {256,4096} make no
+difference), while K=64 is fine — which is why the pre-existing kernel gate at 64×256×64 passes.
+**Integer (i32-accumulating) contractions are exact at every K.**
+
+It is invariant, bit-identically, across `-O0`/`-O1`/`-O2`, `-ffp-contract=off`, `-mfma` on the x86
+control, VLEN 128 (bare-metal Zephyr) vs 256 (Linux/glibc on K1), and **vectorization on vs off**.
+ASan+UBSan on the x86 build report zero errors; the IR has no `llvm.fmuladd` and no target
+triple/datalayout. So it is not rounding, not FMA, not UB, not the RVV kernel, and not the runtime
+environment — it is the riscv64 compilation of that kernel.
+
+**That fully explains the workload split.** `deepjscc` and `lstmnetvit` reach their convs as **f32**
+matmuls with K=147–288, because the im2col path multiplies a *dequantized* weight and the int8 rewrite
+never quantized them. `spectformer` is bit-exact because its heavy contractions are on the **i32** path
+and its only f32 ones are the DFT twiddle matmuls at **K=14**. Small f32 errors then flip int8
+requantization buckets — a discontinuous decision — so a 3 % kernel error becomes `cos 0.9176`.
+
+**The fix is on our side, not the backend's:** get those conv matmuls onto the integer datapath by
+teaching the int8 contraction rewrite to see through the `collapse_shape`/`expand_shape` of a
+dequantized weight that im2col introduces. Until then, trust the integer datapath on RISC-V and treat
+any large-K f32 contraction there as suspect — this also implicates the fp32 arm generally.
+
+### How that was found (the earlier ruled-out list)
 
 `deepjscc` and `lstmnetvit` diverge **only on RISC-V**. Ruled out by measurement, not argument:
 
@@ -216,7 +248,10 @@ All four lower with **zero opaque ops** (`spectformer` 1240 linalg ops, `whisper
 | output reordering / layout | spike's values do not occur in the reference at all, and one exceeds its max | ruled out — real arithmetic difference |
 
 Since scalar and vectorized RISC-V agree bit-for-bit, this is **not** a vectorizer or RVV defect —
-it is something shared by both RISC-V builds and absent on x86.
+it is something shared by both RISC-V builds and absent on x86. The **K1 board** run is what closed
+it off: real silicon, Linux/glibc, VLEN=256, and it reproduced `deepjscc`'s `w8a8_cos` to all 16
+digits (0.9175732135772705), eliminating bare-metal, Zephyr's arg plumbing, libc, VLEN and spike in
+one measurement.
 
 **A note on method, because it cost time.** Truncating the model to return an intermediate and
 comparing host-vs-spike is *not* a sound bisect here: truncation changes buffer allocation, so a
