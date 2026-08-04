@@ -348,6 +348,25 @@ def _discover_asm_operations(mod) -> dict:
     return {}
 
 
+# Attribute names an ISA op class may use to declare its own ASSEMBLER syntax (the token an example kernel
+# writes, e.g. ``vmatmul.mxu0``). ``mnemonic`` is the documented convention (``isa_patterns.py``: "mnemonic
+# (str): The name of the instruction"); the others are best-effort synonyms so any spec that names its
+# syntax is picked up. Structural — no target/mnemonic literal.
+_ASM_MNEMONIC_ATTRS = ("mnemonic", "asm", "asm_name", "asm_string", "syntax")
+
+
+def _asm_mnemonic_of(cls) -> str | None:
+    """The op class's OWN declared assembler mnemonic (its ``mnemonic``/``asm``/… ClassVar), or None when it
+    declares none. This lets an example kernel written in the target's real assembler syntax map back to the
+    semantic class even when no container ``operations`` dict is reachable — derived from the class itself,
+    fail-closed (``NotImplemented``/non-str/empty -> None)."""
+    for attr in _ASM_MNEMONIC_ATTRS:
+        v = getattr(cls, attr, None)
+        if isinstance(v, str) and v and v is not NotImplemented:
+            return v
+    return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--isa-module", required=True, help="path to the target's ISA-definition .py")
@@ -358,6 +377,7 @@ def main() -> int:
     patmod = _pattern_module(mod)
     by_class: dict[str, list] = {}
     by_mnem: dict[str, dict] = {}
+    asm_from_classes: dict[str, str] = {}          # asm-syntax token -> class name, from each op's own ClassVar
     for name, obj in vars(mod).items():
         if name.startswith("_") or not inspect.isclass(obj) or not hasattr(obj, "opcode"):
             continue
@@ -386,12 +406,19 @@ def main() -> int:
                 entry["fields"] = fields
         by_class.setdefault(sem, []).append(entry)
         by_mnem[name] = {"class": sem, **entry}
+        am = _asm_mnemonic_of(obj)                   # the op's OWN assembler syntax (e.g. vmatmul.mxu0)
+        if am:
+            asm_from_classes[am] = name
 
     # the assembler-mnemonic -> class map (the model's own ISA spec), best-effort — lets an example kernel
     # written in assembler syntax be mapped back to semantic classes. DISCOVERED from the loaded ISA module
     # / its package (an object exposing ``operations``: {mnemonic -> op class}), never a model-name import,
     # so no target is hardcoded and any model that ships such a spec is picked up.
-    asm: dict[str, str] = {}
+    # Start from each op class's own declared assembler mnemonic (always available when the spec follows the
+    # ``mnemonic`` ClassVar convention), then let a container ``operations`` dict — if reachable — override /
+    # extend it. This makes the map work even when the ``IsaSpec`` container object isn't in a scanned
+    # namespace (the standalone-``isa_definition.py`` load), which previously left ``asm_mnemonics`` empty.
+    asm: dict[str, str] = dict(asm_from_classes)
     try:
         for mn, cls in _discover_asm_operations(mod).items():
             asm[str(mn)] = getattr(cls, "__name__", str(cls))

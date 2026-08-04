@@ -88,6 +88,53 @@ def test_role_selection_is_name_independent():
     assert IT.role_classes({"by_class": {"OpX": [{"role": "scalar"}]}}) == {"compute": None, "memory": None}
 
 
+def test_asm_mnemonic_of_reads_the_op_class_classvar():
+    """The per-op assembler-mnemonic fallback reads a class's OWN declared syntax (``mnemonic``/``asm``/…),
+    fail-closed on NotImplemented/non-str/absent — so a spec that names its ops but exposes no container
+    ``operations`` dict still yields an asm map. Pure/hermetic (no model venv)."""
+    from merlin.targetgen.oracle_helpers.isa_introspect import _asm_mnemonic_of
+
+    class WithMnemonic:
+        mnemonic = "vmatmul.mxu0"
+
+    class WithAsm:
+        asm = "dma.config"
+
+    class Unnamed:
+        mnemonic = NotImplemented          # the ClassVar sentinel — not yet named
+
+    class NonStr:
+        mnemonic = 123
+
+    class Bare:
+        pass
+
+    assert _asm_mnemonic_of(WithMnemonic) == "vmatmul.mxu0"
+    assert _asm_mnemonic_of(WithAsm) == "dma.config"
+    assert _asm_mnemonic_of(Unnamed) is None
+    assert _asm_mnemonic_of(NonStr) is None
+    assert _asm_mnemonic_of(Bare) is None
+
+
+def test_atlas_asm_mnemonics_and_reference_kernel_classes_derive():
+    """Regression: the derived taxonomy populates ``asm_mnemonics`` from each op class's own mnemonic (even
+    though the standalone ``isa_definition.py`` load exposes no reachable ``operations`` container), so an
+    example kernel written in the target's real assembler syntax maps back to semantic classes. Previously
+    ``asm_mnemonics`` was empty and ``classes_from_kernel`` returned []. Gated on the model venv."""
+    tax = _atlas_taxonomy()
+    asm = tax.get("asm_mnemonics") or {}
+    assert asm, "asm_mnemonics empty — the per-op mnemonic fallback did not populate the map"
+    # a class-name key resolves back to its own class (derived, not hardcoded)
+    assert asm.get("vmatmul.mxu0") == "VMATMUL_MXU0"
+    # every shipped reference kernel now yields a non-empty, matmul-bearing class sequence
+    kernels = IT._example_kernels(load_target_experiment(_ATLAS))
+    assert kernels, "no shipped atlas example kernels"
+    for k in kernels:
+        classes = IT.classes_from_kernel(k.read_text(), tax)
+        assert classes, f"{k.name}: classes_from_kernel returned [] (asm map not applied)"
+        assert "MXUMatMul" in classes, f"{k.name}: matmul class missing from {classes}"
+
+
 def test_committed_atlas_corpus_matches_the_live_derivation():
     """The atlas capsules' expected.instruction_classes must EQUAL the live derivation — so the corpus is
     derived-and-enforced (never silently re-hardcoded, and an ISA change surfaces as drift here)."""
