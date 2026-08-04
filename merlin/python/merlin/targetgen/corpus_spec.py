@@ -26,6 +26,16 @@ _DTYPE = {
     "i32": ("i32", "i32", 4, True),
     "fp8_e4m3": ("fp8_e4m3", "f8E4M3FN", 1, False),
     "fp8_e5m2": ("fp8_e5m2", "f8E5M2", 1, False),
+    # MX microscaling operand widths (block-scaled). ``mxfp*`` are the manifest tokens; ``fp*_e*m*`` the
+    # canonical layout spellings — same code<->value map, so both resolve to the OCP MX MLIR type names.
+    "mxfp8": ("mxfp8", "f8E4M3FN", 1, False),
+    "mxfp6": ("mxfp6", "f6E3M2FN", 1, False),
+    "mxfp4": ("mxfp4", "f4E2M1FN", 1, False),
+    "fp6_e3m2": ("fp6_e3m2", "f6E3M2FN", 1, False),
+    "fp4_e2m1": ("fp4_e2m1", "f4E2M1FN", 1, False),
+    "e8m0": ("e8m0", "f8E8M0FNU", 1, False),
+    "fp16": ("fp16", "f16", 2, False),
+    "f16": ("fp16", "f16", 2, False),
     "bf16": ("bf16", "bf16", 2, False),
     "f32": ("f32", "f32", 4, False),
 }
@@ -50,6 +60,7 @@ class CorpusBinding:
     compare: str                # "exact_int" | "tolerance_float"
     atol: float | None = None
     rtol: float | None = None
+    scaling: str | None = None  # compute-unit SCALE_KIND (block_e8m0 -> the MX numeric regime) or None
     requant_output_dtype: str | None = None   # narrow output an acc_scale epilogue requants to (e.g. i8)
     # instruction-class source: a callable (op, output_dtype, epilogue, movement) -> [class,...]
     classes_for: Callable[..., list[str]] = field(default=lambda **_: [])
@@ -126,9 +137,13 @@ def derive_binding(te, datapath: dict) -> CorpusBinding:
     m = load_capability_manifest(te.target)
     c = m.contract
     cu = (c.get("compute_units") or [{}])[0]
-    operand = (cu.get("dtypes") or ["int8"])[0]
-    accum = _accum_dtype(c, operand)
+    # The profile may pin the DEFAULT operand/accumulate dtypes (a target with several compute units — e.g.
+    # radiance's simt_cluster + contained mx_pe — needs the profile to say which regime a capsule set drives);
+    # both fall back to the primary compute unit's declared datapath, never a target literal.
+    operand = datapath.get("operand_dtype") or (cu.get("dtypes") or ["int8"])[0]
+    accum = datapath.get("accum_dtype") or _accum_dtype(c, operand)
     integer = dtype_info(accum)[3]
+    scaling = datapath.get("scaling") or cu.get("scaling")
     tiers = datapath.get("required_oracle_tiers") \
         or sorted((CR.oracle_adapters(te.target, te.sim_via) or {}).keys())
     return CorpusBinding(
@@ -141,6 +156,7 @@ def derive_binding(te, datapath: dict) -> CorpusBinding:
         compare=datapath.get("compare", "exact_int" if integer else "tolerance_float"),
         atol=datapath.get("atol"),
         rtol=datapath.get("rtol"),
+        scaling=(scaling if scaling and scaling != "none" else None),
         requant_output_dtype=datapath.get("requant_output_dtype"),
         classes_for=_classes_source(te, c),
     )
@@ -338,11 +354,44 @@ def build_attention_qk(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     return cap, "\n".join(L) + "\n"
 
 
+def build_rmsnorm(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """A row RMSNorm capsule (op == rmsnorm): X[M,K] * rsqrt(mean(X^2)+eps) * gamma[1,K] -> [M,K]. A SIMT
+    (elementwise/reduction) op — its golden is ordinary IEEE float, computed by the driver."""
+    D = binding.tile_dim
+    M = entry.get("M", entry.get("M_tiles", 1) * D)
+    K = entry.get("K", entry.get("K_tiles", 1) * D)
+    x, gamma, out = entry.get("src", "X"), entry.get("gamma", "G"), entry.get("out", "Y0")
+    eps = entry.get("eps", 1.0 / 65536.0)
+    idt = binding.cap_dtype(binding.operand_dtype)
+    odt = binding.cap_dtype(binding.accum_dtype)
+    midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(binding.accum_dtype)
+    attrs = {"src": x, "gamma": gamma, "out": out, "eps": eps, "semantic": "rmsnorm", "output_dtype": odt}
+    cap = {
+        "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
+        "source_reference": entry["source_reference"], "label": entry.get("label", "public"),
+        "interface_mlir": "capsule.interface.mlir",
+        "inputs": [{"name": x, "role": "input", "shape": [M, K], "dtype": idt},
+                   {"name": gamma, "role": "weight", "shape": [1, K], "dtype": idt}],
+        "operation": {"op": "rmsnorm", "attributes": attrs},
+        "numeric_policy": _numeric_policy(binding, binding.accum_dtype, None),
+        "expected": {"instruction_classes": [], "modes": {"rmsnorm": True}},
+        "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
+    }
+    L = _iface_prelude(binding.target, entry.get("comment", ""))
+    L += [
+         f'  %{x} = merlin_iface.tensor {{name = "{x}", role = "input"}} : tensor<{M}x{K}x{midt}>',
+         f'  %{gamma} = merlin_iface.tensor {{name = "{gamma}", role = "weight"}} : tensor<1x{K}x{midt}>',
+         f'  %{out} = merlin_iface.rmsnorm %{x}, %{gamma} {{name = "{out}", eps = {eps:.9e} : f64, '
+         f'output_dtype = "{odt}"}} : (tensor<{M}x{K}x{midt}>, tensor<1x{K}x{midt}>) -> tensor<{M}x{K}x{modt}>',
+         "}"]
+    return cap, "\n".join(L) + "\n"
+
+
 # op -> builder, for the driver to dispatch on the entry's declared op.
 BUILDERS: dict[str, Callable[[dict, CorpusBinding], tuple[dict, str]]] = {
     "matmul": build_matmul, "linear": build_matmul,
     "resident_reuse": build_resident_reuse, "movement": build_movement,
-    "attention_qk": build_attention_qk,
+    "attention_qk": build_attention_qk, "rmsnorm": build_rmsnorm,
 }
 
 

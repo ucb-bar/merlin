@@ -1,0 +1,48 @@
+# Radiance corpus profile — SIMT (Muon) tensor GEMM + PR#1 op shapes, composed with the contained MX PE.
+#
+# Radiance is a SIMT tensor-core cluster (CVFPU fp32/fp16/bf16 lanes) that ALSO embeds a gemmini-mx MX PE
+# (simt_cluster CONTAINS mx_pe). The corpus exercises both paths:
+#   * SIMT float GEMM in fp32 / fp16 / bf16 — ordinary IEEE math (fp32 accumulate), the golden is a plain
+#     IEEE reference, independent of any accelerator model;
+#   * a couple of PR#1 op shapes — a row RMSNorm and a Q@K^T attention tile (TinyLlama/Gemma-2 family ops);
+#   * one MX tensor tile (mxfp8, E8M0 block scale) driving the contained mx_pe, whose golden comes from mlc's
+#     mx_ref (hardware semantics) exactly like the standalone mx_gemmini target — closing the loop between
+#     radiance's compute_units and the MX PE numerics.
+# NOT the gemmini int8 corpus (numerically meaningless for SIMT-fp / MX): that reuse is what this replaces.
+datapath:
+  operand_dtype: f32            # default (simt_cluster dtypes[0]); each capsule overrides per format
+  accum_dtype: f32
+  compare: tolerance_float
+  atol: 0.03125
+  rtol: 0.015625
+  required_oracle_tiers: [L0, L1, L3]
+
+capsules:
+- {cat: isa, name: R0_gemm_fp32, kind: isa, op: matmul, operand_dtype: f32,
+   M: 16, K: 16, N: 16, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: 'SIMT fp32 GEMM tile (CVFPU fp32 lanes, fp32 accumulate)', label: public, modes: {}}
+- {cat: isa, name: R1_gemm_fp16, kind: isa, op: matmul, operand_dtype: fp16,
+   M: 16, K: 32, N: 16, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: 'SIMT fp16 GEMM, K=32 (fp16 operands, fp32 accumulate)', label: public,
+   modes: {k_accumulate: true}}
+- {cat: isa, name: R2_gemm_bf16, kind: isa, op: matmul, operand_dtype: bf16,
+   M: 16, K: 16, N: 16, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: 'SIMT bf16 GEMM tile (bf16 operands, fp32 accumulate)', label: public, modes: {}}
+- {cat: model_slices, name: R3_attention_qk_fp16, kind: model_slice, op: attention_qk, operand_dtype: fp16,
+   M_tiles: 1, K_tiles: 2, q: Q, k: K, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: 'attention Q @ K^T scores, fp16 -> fp32 (TinyLlama/Gemma-2 attn tile)',
+   label: public, modes: {}}
+- {cat: model_slices, name: R4_rmsnorm_fp32, kind: model_slice, op: rmsnorm, operand_dtype: f32,
+   M: 16, K: 16, src: X, gamma: G, out: Y0, eps: 1.0e-05,
+   source_role: pytorch_model_slice,
+   source_reference: 'row RMSNorm (PR#1 SIMT op): x * rsqrt(mean(x^2)+eps) * gamma', label: public,
+   modes: {rmsnorm: true}}
+- {cat: isa, name: R5_mx_tile_mxfp8, kind: isa, op: matmul, operand_dtype: mxfp8,
+   M: 16, K: 32, N: 16, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: 'contained MX PE tile (mxfp8 e4m3, E8M0 block scale, bf16 accumulate) via simt_cluster.mx_pe',
+   label: public, modes: {}}

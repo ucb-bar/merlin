@@ -33,9 +33,11 @@ hardware_spec:
     - experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0/isa_include/isa_definition.py
   hwbringup_set: experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0
 
-# The generic op-capsule corpus (a matmul golden is op-derived, target-neutral). SIMT-warp-shaped
-# capsules can be added as a radiance sibling set once the cyclotron front-half is a runner config.
-capsule_corpus: merlin/contract/capsules/isa
+# Radiance's OWN corpus root (mirrors atlas's per-target subtree) — SIMT fp32/fp16/bf16 GEMM + a norm +
+# an attention tile (PR#1 op shapes) composed with the contained MX tensor path (simt_cluster contains
+# mx_pe), generated from profiles/radiance.yaml. SIMT goldens are ordinary IEEE float; the MX capsule's
+# golden comes from mlc's mx_ref. NOT the gemmini int8 corpus (numerically meaningless for SIMT-fp / MX).
+capsule_corpus: merlin/contract/capsules/radiance/isa
 
 # Radiance's RTL oracle is its bespoke cyclotron sim (the muon capsule path), NOT the arc MXU model.
 toolchain:

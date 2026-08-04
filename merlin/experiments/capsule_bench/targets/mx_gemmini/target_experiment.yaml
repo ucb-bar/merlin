@@ -35,9 +35,11 @@ hardware_spec:
     - experiments/capsule_bench/targets/mx_gemmini/contracts/hwbringup_mx_v0/isa_include/isa_definition.py
   hwbringup_set: experiments/capsule_bench/targets/mx_gemmini/contracts/hwbringup_mx_v0
 
-# The generic op-capsule corpus (a matmul golden is op-derived). MX-specific low-bit capsules (block
-# e8m0 scaling) can be added as a sibling set to exercise the MxRequantizer path.
-capsule_corpus: merlin/contract/capsules/isa
+# MX-Gemmini's OWN corpus root (mirrors atlas's per-target subtree) — per-format microscaling GEMM
+# (mxfp8/mxfp6/mxfp4 operands, E8M0 block scales, bf16 accumulate) generated from profiles/mx_gemmini.yaml
+# with hardware-semantics goldens from mlc's mx_ref. NOT the gemmini int8 corpus (numerically meaningless
+# for the MX PE) — that reuse was the wrong bit this closes.
+capsule_corpus: merlin/contract/capsules/mx_gemmini/isa
 
 # mx-gemmini elaborates through chipyard like gemmini; its RTL oracle is the chipyard sim.
 toolchain:

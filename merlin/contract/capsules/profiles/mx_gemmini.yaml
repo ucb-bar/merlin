@@ -1,0 +1,57 @@
+# MX-Gemmini corpus profile — per-format MICROSCALING block-scaled GEMM (GemminiMxFPConfigs).
+#
+# The MX PE is a 16x16 weight-stationary systolic array whose operands are microscaling FP (mxfp8 e4m3 /
+# mxfp6 e3m2 / mxfp4 e2m1), block-scaled by one E8M0 exponent per 32-element K group, accumulated in bf16.
+# Each capsule is a PURE block-scaled matmul (no relu/acc_scale epilogue — the E8M0 requant is the datapath's
+# own scaling; the golden reflects exactly what the mesh computes). Goldens come from mlc's mx_ref
+# (HARDWARE semantics: 16-deep per-column accumulate schedule + per-32-K-group E8M0 scale + bf16 accumulate),
+# transcribed bit-exactly from radiance-kernels lib/golden/{mx_fp_math.h,mx_golden.cpp} — NOT specir (which is
+# the atlas fp8 refmodel). Operands + the E8M0 scale streams are rigor-gated (distinct rows/cols, asymmetric).
+#
+# Shapes obey the mesh constraints the reference enforces: M,N multiples of the PE tile (16 for fp8; 32 for
+# the sub-byte fp6/fp4 tile), K a multiple of the block-scale group (32). All three fp widths are exercised.
+datapath:
+  operand_dtype: mxfp8          # default; each capsule overrides per format
+  accum_dtype: bf16
+  scaling: block_e8m0
+  compare: tolerance_float
+  atol: 0.03125
+  rtol: 0.03125
+  required_oracle_tiers: [L0, L1, L2, L3]
+
+capsules:
+- {cat: isa, name: M0_mxfp8_single_tile, kind: isa, op: matmul, operand_dtype: mxfp8,
+   M: 16, K: 32, N: 16, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: 'single MX PE tile, mxfp8 e4m3 operands, E8M0 block scale, bf16 accumulate',
+   label: public, modes: {}}
+- {cat: isa, name: M1_mxfp8_k_accum, kind: isa, op: matmul, operand_dtype: mxfp8,
+   M: 16, K: 64, N: 16, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: 'mxfp8 K=64 -> 2 block-scale groups (per-group E8M0), bf16 K-accumulate',
+   label: public, modes: {k_accumulate: true}}
+- {cat: isa, name: M2_mxfp8_rect, kind: isa, op: matmul, operand_dtype: mxfp8,
+   M: 32, K: 32, N: 16, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: 'mxfp8 rectangular M=32,N=16 (multi-M-tile, asymmetric shape)',
+   label: public, modes: {}}
+- {cat: layers, name: MB0_mxfp8_linear, kind: layer, op: linear, operand_dtype: mxfp8,
+   M: 16, K: 32, N: 32, lhs: X, weight: W, out: Y0,
+   source_role: pytorch_model_slice,
+   source_reference: 'nn.Linear mxfp8 x mxfp8 -> bf16 (block-scaled)', label: public,
+   semantic: quantized_linear, modes: {k_accumulate: true}}
+- {cat: isa, name: M3_mxfp4_single_tile, kind: isa, op: matmul, operand_dtype: mxfp4,
+   M: 32, K: 32, N: 32, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: 'single sub-byte fp4 e2m1 PE tile (32x32), nibble-packed, E8M0 block scale',
+   label: public, modes: {}}
+- {cat: isa, name: M4_mxfp4_k_accum, kind: isa, op: matmul, operand_dtype: mxfp4,
+   M: 32, K: 64, N: 32, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: 'mxfp4 K=64 -> 2 block-scale groups, bf16 K-accumulate', label: public,
+   modes: {k_accumulate: true}}
+- {cat: isa, name: M5_mxfp6_single_tile, kind: isa, op: matmul, operand_dtype: mxfp6,
+   M: 32, K: 32, N: 32, lhs: A0, weight: W, out: Y0,
+   source_role: handauthored_compiler_test,
+   source_reference: 'single sub-byte fp6 e3m2 PE tile (32x32), LUT-indexed nibbles, E8M0 block scale',
+   label: public, modes: {}}

@@ -9,7 +9,13 @@ from __future__ import annotations
 
 import pytest
 
-from merlin.targetgen.corpus_operands import derive_palette, operand_values, rigor_findings
+from merlin.targetgen.corpus_operands import (
+    derive_palette,
+    e8m0_scale_codes,
+    operand_values,
+    rigor_findings,
+    scale_rigor_findings,
+)
 
 _SHAPES = [(32, 32), (32, 64), (64, 32), (16, 16)]
 _FORMATS = ["fp8_e4m3", "fp8_e5m2"]
@@ -51,3 +57,37 @@ def test_rigor_findings_flags_degeneracy():
     assert any("row" in f for f in rigor_findings(row_id, (4, 4)))
     sym = [1, 2, 3, 2, 5, 6, 3, 6, 9]                     # 3x3 symmetric (== its transpose)
     assert any("symmetric" in f for f in rigor_findings([float(x) for x in sym], (3, 3)))
+
+
+# --- MX low-bit / SIMT formats: the small-alphabet + LUT-capped construction stays rigorous --------------
+@pytest.mark.parametrize("fmt,shape,max_alpha", [
+    ("fp4_e2m1", (32, 32), None),      # 14-value alphabet
+    ("fp4_e2m1", (32, 64), None),
+    ("fp6_e3m2", (32, 32), 16),        # LUT-capped to 16 values (the fp6 datapath limit)
+    ("fp6_e3m2", (64, 32), 16),
+    ("fp16", (32, 32), None),
+    ("bf16", (32, 64), None),
+])
+def test_mx_and_simt_operands_are_rigorous(fmt, shape, max_alpha):
+    vals = operand_values(shape, fmt, salt=99, max_alphabet=max_alpha, mag_cap=4.0)
+    assert len(vals) == shape[0] * shape[1]
+    assert rigor_findings(vals, shape) == []              # distinct rows+cols, asymmetric, non-degenerate
+
+
+def test_fp6_lut_cap_keeps_alphabet_at_16():
+    # the fp6 LUT holds only 16 codes -> the whole operand draws from <=16 distinct values, yet is rigorous
+    vals = operand_values((32, 32), "fp6_e3m2", salt=1, max_alphabet=16, mag_cap=4.0)
+    assert len({round(v, 7) for v in vals}) <= 16
+    assert rigor_findings(vals, (32, 32)) == []
+
+
+def test_e8m0_scale_stream_is_rigorous_and_bounded():
+    for shape in [(1, 16), (1, 32), (2, 16)]:
+        codes = e8m0_scale_codes(shape, salt=7)
+        assert scale_rigor_findings(codes) == []          # non-constant, adjacent lanes differ
+        flat = [c for row in codes for c in row]
+        assert all(124 <= c <= 130 for c in flat)         # +/-3 around bias 127 -> no bf16 overflow
+
+
+def test_scale_rigor_flags_constant_stream():
+    assert scale_rigor_findings([[127] * 16])             # all-equal (inert) scale stream is flagged

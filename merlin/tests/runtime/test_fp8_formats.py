@@ -8,7 +8,14 @@ from __future__ import annotations
 
 import numpy as np
 
-from merlin.runtime.fp8_formats import canonical_fp8, fp8_to_f32, representable_values
+from merlin.runtime.fp8_formats import (
+    canonical_float,
+    canonical_fp8,
+    e8m0_decode,
+    float_format_params,
+    fp8_to_f32,
+    representable_values,
+)
 
 
 def test_e4m3_matches_the_existing_whole_model_decoder():
@@ -39,3 +46,50 @@ def test_unknown_format_fails_closed():
     import pytest
     with pytest.raises(KeyError):
         canonical_fp8("bf16")                         # not an fp8 format -> raise, never silently assume
+    with pytest.raises(KeyError):
+        canonical_float("garbage")                    # unknown float format -> raise, never assume a default
+
+
+# --- MX microscaling formats (fp6 e3m2, fp4 e2m1) + the E8M0 block scale ---------------------------------
+def test_mx_format_params_are_derived_bias():
+    # bias == (1 << (exp_bits-1)) - 1 for every MX width (the derived IEEE value, no baked table).
+    assert float_format_params("fp6_e3m2")[:3] == (3, 2, 3)
+    assert float_format_params("fp4_e2m1")[:3] == (2, 1, 1)
+    assert float_format_params("fp8_e4m3")[:3] == (4, 3, 7)
+
+
+def test_mx_manifest_aliases_map_to_layout():
+    # the mxfp* manifest tokens resolve to their float layout (same code<->value map)
+    assert canonical_float("mxfp8") == "fp8_e4m3"
+    assert canonical_float("mxfp6") == "fp6_e3m2"
+    assert canonical_float("mxfp4") == "fp4_e2m1"
+
+
+def test_fp4_e2m1_representable_set():
+    r = representable_values("fp4_e2m1")
+    assert max(r) == 6.0 and min(r) == -6.0            # e2m1 max normal = (1+1/2)*2^2 = 6
+    assert 0.5 in r and 1.5 in r and 3.0 in r          # subnormal 0.5, normals 1.5 / 3.0
+    assert all(v == v and abs(v) != float("inf") for v in r)   # MX is finite-only (no inf/NaN)
+    assert len(r) == 15                                # 7 magnitudes * 2 signs + zero
+
+
+def test_fp6_e3m2_representable_set_and_distinct_from_fp4():
+    r6 = representable_values("fp6_e3m2")
+    assert max(r6) == 28.0                             # e3m2 max normal = (1+3/4)*2^4 = 28
+    assert set(r6) != set(representable_values("fp4_e2m1"))   # genuinely different formats
+    assert all(v == v and abs(v) != float("inf") for v in r6)
+
+
+def test_fp4_and_fp6_normals_present():
+    r4 = representable_values("fp4_e2m1", finite_only=True)
+    assert 1.0 in r4 and 2.0 in r4 and 4.0 in r4       # e2m1 normals at exp 1..3
+    r6 = representable_values("fp6_e3m2")
+    assert 0.25 in r6 and 1.0 in r6                     # e3m2 (1)*2^-2 subnormal-adjacent + 1.0
+
+
+def test_e8m0_block_scale_is_power_of_two_with_nan():
+    import math
+    assert e8m0_decode(127) == 1.0                     # bias 127 -> 2^0
+    assert e8m0_decode(128) == 2.0 and e8m0_decode(126) == 0.5
+    assert e8m0_decode(120) == 2.0 ** -7
+    assert math.isnan(e8m0_decode(0xFF))               # 0xFF is the E8M0 NaN code
