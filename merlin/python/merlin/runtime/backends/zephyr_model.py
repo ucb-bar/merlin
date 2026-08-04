@@ -317,7 +317,7 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
 
 def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = False,
                          features: "frozenset[str] | None" = None,
-                         blocking: bool = True) -> tuple[Path, frozenset[str]]:
+                         blocking: bool = True, harts: int = 1) -> tuple[Path, frozenset[str]]:
     """``(prepared_mlir, concrete_features)`` — everything that must happen to a captured module
     before ``lower_model_file``, shared by every whole-model backend.
 
@@ -744,15 +744,19 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     brd = _board_desc(board, **({"vlen": vlen} if vlen is not None else {}))
     if vlen is None and brd.vlen is not None:
         vlen = brd.vlen                       # build for the board's real vector length by default
-    prepared, features = prepare_for_lowering(model_dir / "model.mlir", work,
-                                             int8_compute=int8_compute, features=features,
-                                             blocking=(backend == "rvv"))
+    # Parse + lower under IR_LOCK: xDSL's parser is not thread-safe, and a delivery builds several
+    # images in one process. See common.ir_lock -- the symptom is a bogus ParseError on valid IR.
+    from ...common.ir_lock import IR_LOCK
+    with IR_LOCK:
+        prepared, features = prepare_for_lowering(model_dir / "model.mlir", work,
+                                                 int8_compute=int8_compute, features=features,
+                                                 blocking=(backend == "rvv"), harts=n_harts)
     # For the rvv backend, bake native RVV (fixed-width vector ops on the matmuls) into the
     # IR rather than leaving it to clang's auto-vectorizer — see llvmlower.pipeline.
-    res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
-                           vectorize=(backend == "rvv"), transform_schedule=rvv_schedule,
-                           features=features,
-                           parallel_harts=(n_harts if n_harts > 1 else None))
+        res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
+                               vectorize=(backend == "rvv"), transform_schedule=rvv_schedule,
+                               features=features,
+                               parallel_harts=(n_harts if n_harts > 1 else None))
     _run([clang, "--target=riscv64-unknown-elf", *cflags, "-c", res.ll_path,
           "-o", work / "model.o"])
 

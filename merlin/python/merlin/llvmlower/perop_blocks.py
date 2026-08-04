@@ -72,7 +72,8 @@ def shape_key(op: str, parallel: "tuple[int, ...]", reduction: "tuple[int, ...]"
 DEFAULT_MR = 1
 
 
-def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int) -> dict[str, tuple[int, int]]:
+def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int,
+                harts: int = 1) -> dict[str, tuple[int, int]]:
     """``{shape_key: (MR, NR)}`` — the widest block legal for EACH contraction on its own.
 
     Uses the measured predicate (``_rvv_best_block`` over a single extent pair), so a per-op block is
@@ -84,7 +85,17 @@ def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int) -> dict[str, t
 
     ``mr_cap`` defaults to :data:`DEFAULT_MR` = 1 for the measured reason documented there; raising it
     is a performance experiment, not a correctness one.
+
+    ``harts`` is the hart count the image will be lowered for, and it changes the ANSWER without
+    changing the KEY. The multicore stage wraps each ``linalg.matmul`` in an ``scf.forall`` over N
+    before the package schedule runs, so the block must cover ``ceil(N / harts)`` and the remainder
+    tile, not the whole N — while the tag is applied to the still-unsplit op, so the key stays the
+    unsplit geometry. Choosing from the unsplit extents is how ``--harts 3`` on a 2-wide N produced
+    a masked parallel dim and died with ``'vector.mask' op expects only one operation to mask``, on a
+    model that built fine at 1 hart. The split is derived by the same helper the class-wide policy
+    uses, so the two cannot drift.
     """
+    from ..rvvgen.apply import _harts_split_shapes
     from ..rvvgen.from_strategy import _rvv_best_block
 
     out: dict[str, tuple[int, int]] = {}
@@ -93,7 +104,14 @@ def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int) -> dict[str, t
         red = tuple(int(d) for d in (getattr(s, "reduction", ()) or ()))
         if len(par) < 2:
             continue
-        mr, nr = _rvv_best_block(mr_cap, nr_cap, [(par[-2], par[-1])])
+        # Every per-hart tile this op will be split into must accept the block, so hand them all to
+        # the predicate at once and let it pick one that is legal for the worst of them.
+        pairs = []
+        for tile in _harts_split_shapes([s], harts):
+            tpar = tuple(int(d) for d in tile.parallel)
+            if len(tpar) >= 2:
+                pairs.append((tpar[-2], tpar[-1]))
+        mr, nr = _rvv_best_block(mr_cap, nr_cap, pairs or [(par[-2], par[-1])])
         if nr <= 1:
             continue
         out[shape_key(s.op, par, red)] = (int(mr), int(nr))

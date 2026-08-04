@@ -122,3 +122,39 @@ def test_real_bundles_are_fully_claimed_per_op(bundle, expect_claimed):
     shapes = contraction_shapes(p)
     cov = pb.coverage(shapes, pb.block_table(shapes, nr_cap=16))
     assert cov["claimed_mac_fraction"] >= expect_claimed, cov
+
+
+def test_a_per_op_block_covers_the_per_hart_tile_not_the_whole_extent():
+    """The multicore stage wraps each matmul in an scf.forall over N BEFORE the package schedule
+    runs, so a block chosen from the unsplit extent can exceed the tile a hart actually gets. That
+    is not a slowdown, it is a build failure: `'vector.mask' op expects only one operation to mask`,
+    measured on lstmnetvit at --harts 3 (an N=2 and an N=3 contraction) while 1 hart built fine."""
+    from merlin.llvmlower import perop_blocks as pb
+
+    class S:
+        def __init__(self, op, par, red):
+            self.op, self.parallel, self.reduction = op, par, red
+
+    narrow = S("linalg.matmul", (1, 3), (128,))       # N=3: one lane per hart at 3 harts
+    wide = S("linalg.matmul", (64, 96), (288,))       # N=96: 32 per hart, still blockable
+
+    assert pb.block_table([narrow], nr_cap=16, harts=1)                  # blockable alone
+    assert not pb.block_table([narrow], nr_cap=16, harts=3), \
+        "a 3-wide N split over 3 harts leaves one lane; the op must be declined, not masked"
+    assert pb.block_table([wide], nr_cap=16, harts=3), "a wide N must stay on the vector path"
+
+    # The KEY must stay the unsplit geometry: the tag is applied to the op before the forall split,
+    # so a key computed from the tile would never match anything.
+    key = next(iter(pb.block_table([wide], nr_cap=16, harts=3)))
+    assert key == pb.shape_key("linalg.matmul", (64, 96), (288,))
+
+
+def test_batch_matmul_blocks_are_unaffected_by_the_hart_count():
+    """batch_matmul splits over BATCH, which is not part of the (M, N) block."""
+    from merlin.llvmlower import perop_blocks as pb
+
+    class S:
+        op, parallel, reduction = "linalg.batch_matmul", (2, 96, 32), (6,)
+
+    assert (pb.block_table([S()], nr_cap=16, harts=1)
+            == pb.block_table([S()], nr_cap=16, harts=3))

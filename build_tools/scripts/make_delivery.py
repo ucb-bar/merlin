@@ -335,8 +335,11 @@ def main(argv=None) -> int:
             try:
                 done[item] = fut.result()
             except Exception as exc:                                        # noqa: BLE001
-                problems.append(f"{item[0]} h{item[2]}: {type(exc).__name__}: "
-                                f"{str(exc).splitlines()[0][:200]}")
+                msg = f"{item[0]} h{item[2]}: {type(exc).__name__}: {str(exc).splitlines()[0][:200]}"
+                problems.append(msg)
+                # Say it NOW: a failure held until the final summary reads as an image still building,
+                # and the rest of the set can take tens of minutes.
+                print(f"  FAILED {msg}", file=sys.stderr, flush=True)
 
     for model in models:
         outputs = {}

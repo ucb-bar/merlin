@@ -133,11 +133,6 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     arena_bytes = arena_mb * 1024 * 1024
     prepared_path = model_dir / "model.mlir"
     vectorize = False
-    if int8_compute or features or rvv_schedule:
-        from . import zephyr_model as _zm
-        prepared_path, features = _zm.prepare_for_lowering(
-            prepared_path, work, int8_compute=int8_compute, features=features)
-        vectorize = True
     # TWO flag sets, because two compilers: the model object is built by CLANG (an RVV package's
     # cflags are clang flags -- `-fno-vectorize` is not a GCC option and the harness units would fail
     # to compile with them), while crt.S/htif.c/the generated call are built by the GCC that owns this
@@ -149,10 +144,18 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
         clang_cflags = march_with_vlen(clang_cflags, vlen)
         gcc_cflags = march_with_vlen(gcc_cflags, vlen)
 
-    # 1. lower MLIR -> LLVM IR -> rv64gcv object
-    res = lower_model_file(prepared_path, work / "lower", targets=(), textual=True,
-                           vectorize=vectorize, transform_schedule=rvv_schedule,
-                           features=features)   # produce only the .ll
+    # 1. lower MLIR -> LLVM IR -> rv64gcv object. Parse + lower under IR_LOCK: xDSL's parser is not
+    #    thread-safe and a delivery builds several images in one process (see common.ir_lock).
+    from ...common.ir_lock import IR_LOCK
+    with IR_LOCK:
+        if int8_compute or features or rvv_schedule:
+            from . import zephyr_model as _zm
+            prepared_path, features = _zm.prepare_for_lowering(
+                prepared_path, work, int8_compute=int8_compute, features=features)
+            vectorize = True
+        res = lower_model_file(prepared_path, work / "lower", targets=(), textual=True,
+                               vectorize=vectorize, transform_schedule=rvv_schedule,
+                               features=features)   # produce only the .ll
     _run([clang, "--target=riscv64-unknown-elf", *clang_cflags, "-c", res.ll_path,
           "-o", work / "model.o"])
 
