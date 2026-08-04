@@ -141,6 +141,26 @@ def main(argv: list[str] | None = None) -> int:
                 run_dir / "input_bundle_manifest.yaml")
     shutil.copy(a.task, run_dir / "TASK.md")
     denied_names = assemble_workspace(bundle, ws)
+    # Verification-spec contract: the QA acceptance spec the agent builds to (target ops, dtypes, numeric
+    # acceptance policy, datapath coverage) — DERIVED from the answer-free capsule declarations, never a
+    # golden. Written into the workspace so it sits alongside the RTL/docs; TASK.md points at it. Advisory:
+    # never block a run if it cannot render.
+    try:
+        from merlin.targetgen.verification_spec import write_spec as _write_vspec
+        from merlin.targetgen.target_experiment import load_target_experiment as _lte
+        _desc = C.EXP / "target_experiment.yaml"
+        if _desc.is_file():
+            _write_vspec(_lte(_desc), ws)
+            with open(run_dir / "TASK.md", "a", encoding="utf-8") as _tf:
+                _tf.write(
+                    "\n\n## Verification spec (your acceptance contract)\n"
+                    "Read `verification_spec.md` in your workspace — the verification team's spec of the "
+                    "operations, datatypes, numeric acceptance policy, and datapath coverage you must "
+                    "satisfy to pass. There is no answer key: validate by computing each operation's "
+                    "expected result yourself from the declared inputs, running your artifact on the RTL, "
+                    "and debugging with the disassembler / trace / hardware-state tools.\n")
+    except Exception as _e:  # noqa: BLE001 — the spec is a convenience contract; never block a run on it
+        print(f"[verification_spec] skipped: {type(_e).__name__}: {_e}", file=sys.stderr)
     viol = assert_isolation(ws, bundle)
     (run_dir / "environment.yaml").write_text(yaml.safe_dump({
         "run_id": a.run_id, "arm": a.arm, "model": a.model, "effort": a.effort,
