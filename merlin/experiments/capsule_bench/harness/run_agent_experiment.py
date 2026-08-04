@@ -48,8 +48,39 @@ def _load_bundle(arm: str) -> dict:
     return yaml.safe_load(b.read_text())
 
 
+def _is_answer_file(p: Path) -> bool:
+    """Is this file an ANSWER surface (a precomputed output the bring-up agent must not have)? Keyed on the
+    corpus's derived naming convention — the golden output payload + the expected command-buffer — never a
+    per-capsule literal. Kept in lockstep with the canonical ``answer_surfaces`` masking the bwrap sandbox
+    applies; this is the defense-in-depth for the non-sandbox (``--sandbox none``) assemble path."""
+    n = p.name
+    return (n in ("golden.yaml", "golden.npy") or ".golden." in n
+            or n.startswith("expected_command_buffer"))
+
+
+def _link_filtered(src: Path, dst: Path) -> None:
+    """Materialize ``src`` at ``dst`` for the agent workspace, EXCLUDING any answer surface. A dir with no
+    answer file below it is symlinked whole (cheap); a dir that contains one is mirrored as a tree of
+    per-file symlinks with the answer files omitted; a plain file is symlinked (unless it is itself an
+    answer file, then skipped). So the assembled workspace is answer-free by construction even without the
+    sandbox mask."""
+    if src.is_dir():
+        if not any(_is_answer_file(f) for f in src.rglob("*") if f.is_file()):
+            dst.symlink_to(src)
+            return
+        dst.mkdir(parents=True, exist_ok=True)
+        for child in sorted(src.iterdir()):
+            if child.is_file() and _is_answer_file(child):
+                continue
+            _link_filtered(child, dst / child.name)
+    elif not _is_answer_file(src):
+        dst.symlink_to(src)
+
+
 def assemble_workspace(bundle: dict, ws: Path) -> list[str]:
-    """Symlink each allowed path into the workspace (RO intent); return the denied basenames to verify."""
+    """Symlink each allowed path into the workspace (RO intent); return the denied basenames to verify.
+    Answer surfaces (goldens / expected command buffers) are filtered out of the materialized tree — the
+    workspace the agent sees is answer-free by construction (defense-in-depth to the bwrap answer mask)."""
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "submission").mkdir(exist_ok=True)
     for entry in bundle.get("allowed", []):
@@ -66,7 +97,7 @@ def assemble_workspace(bundle: dict, ws: Path) -> list[str]:
         if dst.exists() or dst.is_symlink():
             dst = ws / entry["path"].replace("/", "_").rstrip("_")
         try:
-            dst.symlink_to(src)
+            _link_filtered(src, dst)          # answer surfaces omitted from the materialized tree
         except FileExistsError:
             pass
     return [Path(d["path"]).name for d in bundle.get("denied", [])]
