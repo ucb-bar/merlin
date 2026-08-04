@@ -442,11 +442,15 @@ _RVV_ROUTES: list[_Route] = [
                "what makes it selectable by the beam. NOT the blunt whole-func vectorize_children, "
                "which explodes into vector.extracts on a whole model.",
         forkable_now=True,
-        expected_effect="the elementwise/layout tail stops running scalar on one core. It is the "
-                        "DOMINANT structural loss measured on every workload: 86-89% of linalg ops are "
-                        "non-contractions (spectformer 0.40 MAC/cycle, deepjscc 0.22, lstmnetvit 0.067 "
-                        "against ~8 for a VLEN=128 int8 vwmacc datapath). Must be proven by an emitted-"
-                        "code delta (PMU instret), never by a schedule-text diff.",
+        expected_effect="the elementwise/layout tail stops running scalar on one core — it is the "
+                        "DOMINANT structural loss on every workload (86-89% of linalg ops are "
+                        "non-contractions; spectformer 0.40 MAC/cycle, deepjscc 0.22, lstmnetvit 0.067 "
+                        "against ~8 for a VLEN=128 int8 vwmacc datapath). MEASURED so far: the "
+                        "registered feature does emit 4.9x more vector instructions with bit-identical "
+                        "output, but runs 1.28x SLOWER on deepjscc at every lane width (8/16/32), so the "
+                        "current realization does NOT pay. The action stays routed because the loop must "
+                        "be able to try and REJECT it; a fork that enables it has to clear the baseline "
+                        "on cycles, not on vector count.",
         intended_facet=None),
 ]
 

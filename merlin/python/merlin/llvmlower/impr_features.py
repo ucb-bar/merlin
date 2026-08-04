@@ -1556,6 +1556,124 @@ def unclaimed_op_classes(feature: str) -> list[str]:
     return [cls for i, cls in enumerate(_V3P_CLASS_ORDER) if parts[2 * i] == "x"]
 
 
+#: The non-contraction tail: every op the contraction-only schedule never matches (elementwise,
+#: layout, im2col gather, pad) falls through convert-linalg-to-loops to SCALAR code on one core. It is
+#: 86-89% of the linalg ops of every workload measured, which is why whole-model MAC/cycle sits at a
+#: few percent of the datapath's peak while the matmul kernel itself looks fine.
+VEC_NONCONTRACTION_NAME = "vectorize_non_contraction_generics"
+#: Default lane count for the bare feature name. The lane width is a KNOB SPACE, not a
+#: constant: `ensure_vec_noncontraction(lanes)` registers a point per width so a search can
+#: pick it. Measured on deepjscc: 8 lanes emits 4.9x more vector instructions and runs 1.28x
+#: SLOWER (per-8-element loop overhead beats the vector win), so the width matters and the
+#: default must not be assumed good.
+VEC_NONCONTRACTION_LANES = 8
+
+#: Bounded per-rank vectorize of the tagged all-parallel generics. BOUNDED on purpose: a plain
+#: no-sizes `vectorize` on a whole model explodes (vector<17x576> = 9792 lanes, measured 8725 ms), and
+#: `vectorize_children` on the func scalarizes every generic into tens of thousands of vector.extracts
+#: that this LLVM build does not lower. Innermost 8 lanes, one arm per loop rank, matched by the
+#: `merlin.vec_r{rank}` attribute the prepare pass sets.
+#: Each arm TILES to the vector width before vectorizing, exactly as the contraction arms do.
+#: ``structured.vectorize`` does NOT tile: its sizes have to cover the iteration space, so vectorizing
+#: an untiled 1x64 relu with [1, 8] fails the whole pipeline with "Attempted to vectorize, but failed"
+#: (measured on deepjscc). Tiling first also means the vector shape is exactly the tile, so nothing is
+#: masked -- the tagging predicate only admits extents that are whole multiples of the lane count.
+def _vec_rank_arms(lanes: int) -> str:
+    """The per-rank tile+vectorize arms at ``lanes`` innermost lanes."""
+    return f"""\
+    %g2 = transform.structured.match attributes{{merlin.vec_r2}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %gt2, %gl2:2 = transform.structured.tile_using_for %g2 tile_sizes [1, {lanes}] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    transform.structured.vectorize %gt2 vector_sizes [1, {lanes}] : !transform.any_op
+    %g3 = transform.structured.match attributes{{merlin.vec_r3}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %gt3, %gl3:3 = transform.structured.tile_using_for %g3 tile_sizes [1, 1, {lanes}] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+    transform.structured.vectorize %gt3 vector_sizes [1, 1, {lanes}] : !transform.any_op
+    %g4 = transform.structured.match attributes{{merlin.vec_r4}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %gt4, %gl4:4 = transform.structured.tile_using_for %g4 tile_sizes [1, 1, 1, {lanes}] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+    transform.structured.vectorize %gt4 vector_sizes [1, 1, 1, {lanes}] : !transform.any_op
+    %vecf = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %vecf {{
+      transform.apply_patterns.vector.cast_away_vector_leading_one_dim
+      transform.apply_patterns.vector.drop_unit_dims_with_shape_cast
+      transform.apply_patterns.vector.lower_shape_cast
+    }} : !transform.any_op
+"""
+
+
+
+def _splice_vec_rank_arms(text: str, lanes: int = VEC_NONCONTRACTION_LANES) -> str:
+    """Insert the per-rank vectorize arms just before the schedule's func-level pattern block.
+
+    ADDITIVE (not schedule_replace), so it layers on whatever micro-kernel recipe is in play: the
+    contraction arms above it are untouched and only the previously-unmatched generics gain arms.
+    A schedule that already carries them, or has no func anchor, is returned unchanged.
+    """
+    anchor = '    %f = transform.structured.match ops{["func.func"]}'
+    if "merlin.vec_r" in text or anchor not in text:
+        return text
+    return text.replace(anchor, _vec_rank_arms(lanes) + anchor, 1)
+
+
+register(ImprFeature(
+    name=VEC_NONCONTRACTION_NAME,
+    action_class="PASS",
+    description=(
+        "Bounded per-rank vectorize of the NON-CONTRACTION all-parallel linalg.generics "
+        "(elementwise / layout / im2col gather / pad) that the contraction-only schedule leaves for "
+        "convert-linalg-to-loops to emit as scalar loops. Measured share of the loss: 86-89% of the "
+        "linalg ops of every captured workload, against whole-model MAC/cycle of 0.40 (spectformer), "
+        "0.22 (deepjscc), 0.067 (lstmnetvit) versus ~8 for a VLEN=128 int8 vwmacc datapath. Needs the "
+        "prepare pass's merlin.vec_r{rank} tags, which build_app enables when this feature is on. "
+        "MEASURED on deepjscc int8 (spike): emits 394 -> 1945 vector instructions (4.9x, so the "
+        "lever is NOT inert), output BIT-IDENTICAL, and 484,690,000 -> 621,555,001 cycles, i.e. "
+        "1.28x SLOWER. Flat at 0.78x across 8/16/32 lanes, and memrefCopy/malloc counts barely "
+        "move, so the cost is the tile-and-vectorize-on-tensors realization (per-tile destructive "
+        "update) rather than the vector width. Keep default-off until a realization that fuses "
+        "the elementwise into the contraction epilogue (or uses a vsetvlmax-width loop) beats the "
+        "scalar baseline. Recorded so nobody enables it expecting a win."),
+    edit_schedule=_splice_vec_rank_arms,
+))
+
+
+def vec_noncontraction_lanes(features) -> int | None:
+    """Innermost lane count the enabled non-contraction-vectorize feature asks for, else None.
+
+    The TAGGING predicate (which admits an op only when its innermost extent is a whole multiple of the
+    lane count, so nothing is masked) and the SCHEDULE arms must agree on this number; deriving it from
+    the feature name is what keeps them from drifting apart.
+    """
+    for f in features or ():
+        if f == VEC_NONCONTRACTION_NAME:
+            return VEC_NONCONTRACTION_LANES
+        if f.startswith(f"{VEC_NONCONTRACTION_NAME}_l"):
+            tail = f.rsplit("_l", 1)[1]
+            if tail.isdigit():
+                return int(tail)
+    return None
+
+
+def ensure_vec_noncontraction(lanes: int) -> str:
+    """Register (on demand) the non-contraction vectorize point at ``lanes`` innermost lanes.
+
+    The lane width is the knob the measurement says matters: at 8 lanes on deepjscc the lever emits
+    4.9x more vector instructions, keeps the output BIT-IDENTICAL, and still runs 1.28x slower, because
+    a [1, 8] tile pays loop overhead per 8 elements. Exposing the width as a registered point per value
+    is what lets a search find one that pays instead of a human guessing.
+    """
+    if lanes == VEC_NONCONTRACTION_LANES:
+        return VEC_NONCONTRACTION_NAME
+    name = f"{VEC_NONCONTRACTION_NAME}_l{lanes}"
+    if name in known():
+        return name
+    register(ImprFeature(
+        name=name, action_class="PASS",
+        description=(f"Bounded per-rank vectorize of the non-contraction all-parallel generics at "
+                     f"{lanes} innermost lanes (see {VEC_NONCONTRACTION_NAME}). Default-off; the width "
+                     f"must be chosen by measurement, not assumed."),
+        edit_schedule=lambda t, _l=lanes: _splice_vec_rank_arms(t, _l),
+    ))
+    return name
+
+
 def _register_accumulator_resident_v3() -> list[str]:
     """Register `accumulator_resident_microkernel_v3` (default tile) + a small tuning grid. Reuses
     the v1 PRE-bufferize schedule (forms the contract); the v3 pipeline does the v2 PRE-bufferize

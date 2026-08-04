@@ -153,6 +153,10 @@ def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
     return proc
 
 
+#: Innermost lane count the per-rank bounded vectorize uses; the tagging predicate and the
+#: schedule arms in ``impr_features._VEC_RANK_ARMS`` must agree on it.
+_VEC_RANK_LANES = 8
+
 DEFAULT_RAM_BYTES = 256 * 1024 * 1024   # spike/chipyard `ram0` default (0x10000000)
 
 # Above this, a weights blob linked into the image's .data overflows the medany ±2GB
@@ -196,7 +200,9 @@ def _ram_for_weights(weights_bytes: int, activation_bytes: int | None = None) ->
     return max(DEFAULT_RAM_BYTES, total)
 
 
-def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = False) -> Path:
+def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = False,
+                        tag_vec_ranks: bool = False,
+                        vec_lanes: int = _VEC_RANK_LANES) -> Path:
     """Apply the dispatch_runtime normalization passes to ``model.mlir`` and write the
     prepared module to ``work/model.prepared.mlir``. These make quantized / bf16 /
     over-rank-matmul / bool-cast models lowerable to a single object — the same fixes the
@@ -222,14 +228,18 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
     lower_quant_ext(module)
     lower_bf16_matmul_f32acc(module)
     fix_bool_sitofp(module)
-    # PER-RANK VECTORIZE TAGGING (env MERLIN_VEC_RANK, default OFF -> baseline byte-identical): tag each
-    # all-parallel (non-reduction) linalg.generic with `merlin.vec_r{rank}` so the transform schedule can
+    # PER-RANK VECTORIZE TAGGING (default OFF -> baseline byte-identical): tag each all-parallel
+    # (non-reduction) linalg.generic with `merlin.vec_r{rank}` so the transform schedule can
     # BOUNDED-vectorize the scalar non-matmul ops by rank (the win lever for openvla — ~900ms of scalar
     # parallel generics -> ~110ms vectorized). Reductions (softmax/norm) skipped (need stable form).
+    #
+    # Driven by ``tag_vec_ranks`` — which build_app sets from the FEATURE
+    # ``impr_features.VEC_NONCONTRACTION_NAME`` — so the lever is selectable by the tuning loop instead
+    # of only by an env var it cannot set. MERLIN_VEC_RANK still forces it on for a manual A/B.
     import os as _os
-    if _os.environ.get("MERLIN_VEC_RANK"):
+    if tag_vec_ranks or _os.environ.get("MERLIN_VEC_RANK"):
         from xdsl.dialects.builtin import UnitAttr
-        n_tag = 0
+        n_tag = skip_gather = skip_extent = skip_math = 0
         for op in module.walk():
             if op.name != "linalg.generic":
                 continue
@@ -237,10 +247,42 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
             if "reduction" in its or "parallel" not in its:
                 continue
             rank = its.count("iterator_type")
-            if 1 <= rank <= 4:
-                op.attributes[f"merlin.vec_r{rank}"] = UnitAttr()
-                n_tag += 1
-        print(f"[MERLIN_VEC_RANK] tagged {n_tag} all-parallel generics for bounded vectorize")
+            if not 2 <= rank <= 4:
+                continue
+            # A DATA-DEPENDENT GATHER (a tensor.extract / memref.load in the body — the im2col and
+            # pad-index generics) has no affine access to vectorize: `structured.vectorize` fails the
+            # whole pipeline with "Attempted to vectorize, but failed" rather than declining the op.
+            # Measured on deepjscc: tagging these is what made the lever unusable.
+            body = op.regions[0].blocks[0] if op.regions and op.regions[0].blocks else None
+            if body is not None and any(inner.name in ("tensor.extract", "memref.load")
+                                        for inner in body.ops):
+                skip_gather += 1
+                continue
+            # A TRANSCENDENTAL in the body (math.exp/erf/tanh, i.e. a sigmoid/GELU/SiLU activation) has
+            # no vector form here: convert-math-to-libm scalarizes it back into per-lane extracts + libm
+            # calls, and that pass runs AFTER vector->LLVM, so those extracts reach translation with
+            # nothing left to lower them ("missing LLVMTranslationDialectInterface ... vector.extract",
+            # measured on deepjscc's sigmoid). Those ops are the OTHER lever's job --
+            # `vectorized_transcendental_activation` rewrites them to arith polynomials BEFORE
+            # vectorization -- so the two features compose instead of fighting.
+            if body is not None and any(inner.name.startswith("math.") for inner in body.ops):
+                skip_math += 1
+                continue
+            # The innermost extent must be a whole multiple of the vector width. A partial tail means a
+            # MASKED parallel dim, which does not lower at all on the integer path (see
+            # rvvgen.from_strategy._rvv_blocking_lowers) -- the same predicate the register block obeys.
+            try:
+                shape = list(op.results[0].type.get_shape())
+            except Exception:                                      # noqa: BLE001
+                shape = []
+            if not shape or shape[-1] % vec_lanes:
+                skip_extent += 1
+                continue
+            op.attributes[f"merlin.vec_r{rank}"] = UnitAttr()
+            n_tag += 1
+        print(f"[vec_rank] tagged {n_tag} all-parallel generics for bounded vectorize "
+              f"(skipped {skip_gather} gathers, {skip_math} with a transcendental body, "
+              f"{skip_extent} on a non-multiple innermost extent)")
     out = work / "model.prepared.mlir"
     out.write_text(to_text(module))
     return out
@@ -559,7 +601,11 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     # 1. model.mlir -> normalize (SAME prep passes the dispatch_runtime applies, so
     #    quantized / bf16 / over-rank / bool-cast models lower correctly — without these
     #    the whole-model path only handles already-clean LLMs) -> LLVM IR -> object.
-    prepared = _prepare_model_mlir(model_dir / "model.mlir", work, int8_compute=int8_compute)
+    from ...llvmlower.impr_features import vec_noncontraction_lanes as _vec_lanes
+    _lanes = _vec_lanes(features or frozenset())
+    prepared = _prepare_model_mlir(model_dir / "model.mlir", work, int8_compute=int8_compute,
+                                   tag_vec_ranks=_lanes is not None,
+                                   vec_lanes=_lanes or _VEC_RANK_LANES)
     # For the rvv backend, bake native RVV (fixed-width vector ops on the matmuls) into the
     # IR rather than leaving it to clang's auto-vectorizer — see llvmlower.pipeline.
     res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
