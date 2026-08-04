@@ -36,13 +36,38 @@ def test_overrides_win_so_a_delivery_can_state_what_it_built_for():
 
 def test_the_config_follows_the_board():
     """cpus, the vector save-area width and FPU_SHARING all come from the descriptor."""
-    b = boards.board("chipyard_kodiak")
+    b = boards.board("spike_riscv64")
     conf = zm._prj_conf(b.harts, "rvv", b)
-    assert "CONFIG_MP_MAX_NUM_CPUS=3" in conf
+    assert f"CONFIG_MP_MAX_NUM_CPUS={b.harts}" in conf
     assert f"CONFIG_RISCV_VECTOR_MAX_LEN={b.vector_max_len}" in conf
     # y mis-routes V-illegal-instruction traps into the FP path and retries forever: a silent hang.
     assert "CONFIG_FPU_SHARING=n" in conf
-    assert "CONFIG_RISCV_ISA_EXT_V_LAZY=n" in conf, "Kodiak's defconfig leaves this at y; we do not"
+
+
+def test_kodiaks_config_reflects_what_its_zephyr_can_actually_build():
+    """Two settings Kodiak forces, both learned by failing to link, both recorded in the descriptor.
+
+    FPU_SHARING must be y: its Zephyr's isr.S calls z_riscv_vstate_save/_restore whenever V is on with
+    eager switching, and those live in fpu.c/fpu.S which only compile under FPU_SHARING -- with n the
+    image does not link. And Zephyr-level V must be OFF: that tree has no RISCV_V_KERNEL_ONLY, so
+    enabling V puts `v` in the GLOBAL march and SDK 0.17.0 has no matching libgcc multilib (the link
+    falls back to a 32-bit one: "ELFCLASS32 incompatible with ELFCLASS64"). Vectors still work because
+    reset.S enables mstatus.VS under CONFIG_FPU, and our model.o carries `v` itself.
+    """
+    b = boards.board("chipyard_kodiak")
+    assert b.fpu_sharing is True and b.zephyr_vector_ext is False
+    conf = zm._prj_conf(b.harts, "rvv", b)
+    assert "CONFIG_MP_MAX_NUM_CPUS=3" in conf
+    assert "CONFIG_FPU_SHARING=y" in conf
+    assert "CONFIG_RISCV_ISA_EXT_V=y" not in conf
+    assert "CONFIG_FPU=y" in conf, "mstatus.VS comes from CONFIG_FPU on this tree"
+
+
+def test_a_vector_capable_tree_still_gets_the_full_vector_config():
+    b = boards.board("chipyard_riscv64")
+    conf = zm._prj_conf(b.harts, "rvv", b)
+    assert "CONFIG_RISCV_ISA_EXT_V=y" in conf
+    assert f"CONFIG_RISCV_VECTOR_MAX_LEN={b.vector_max_len}" in conf
 
 
 def test_htif_console_options_are_set_only_for_an_htif_board():

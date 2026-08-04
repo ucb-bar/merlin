@@ -487,6 +487,28 @@ def _chipyard_cpu_overlay(n_harts: int, max_dt_cpus: int = 8) -> str:
             "/ {\n\tcpus {\n" + disabled + "\t};\n};\n")
 
 
+def _kconfig_has(symbol: str) -> bool:
+    """Does THIS Zephyr tree define ``CONFIG_<symbol>``?
+
+    Zephyr versions differ in their vector Kconfig, and setting a symbol a tree does not have is a hard
+    build failure ("attempt to assign the value 'y' to the undefined symbol ..." -> "Aborting due to
+    Kconfig warnings"), not a warning. Measured: `RISCV_V_KERNEL_ONLY` exists on the zephyr-chipyard-sw
+    `dev` Zephyr and is ABSENT in the one the `kodiak` branch pins, so a config written for one tree
+    cannot build for the other. Probing the tree is the difference between targeting a board and
+    assuming its Zephyr matches ours.
+    """
+    base = _zephyr_base() / "arch" / "riscv"
+    needle = f"config {symbol}"
+    try:
+        for f in list(base.rglob("Kconfig*")) + [_zephyr_base() / "arch" / "Kconfig"]:
+            if f.is_file() and any(line.strip() == needle for line in
+                                   f.read_text(errors="replace").splitlines()):
+                return True
+    except Exception:                                            # noqa: BLE001
+        return False
+    return False
+
+
 def _prj_conf(cpus: int, backend: str, brd=None) -> str:
     """Generated app config. ``brd`` is a :class:`runtime.boards.Board`; None keeps the
     historical chipyard/HTIF defaults so existing callers are byte-identical."""
@@ -550,12 +572,20 @@ CONFIG_HEAP_MEM_POOL_SIZE=65536
     # costs memory if it over-covers. LAZY=n is deliberate: the other chipyard silicon boards disable
     # lazy vector switching explicitly, and Kodiak's defconfig is the one that leaves it at its
     # default y — we do not inherit that.
-    return common + f"""
-CONFIG_RISCV_ISA_EXT_V=y
-CONFIG_RISCV_VECTOR_MAX_LEN={vector_max_len}
-CONFIG_RISCV_V_KERNEL_ONLY=y
-CONFIG_RISCV_ISA_EXT_V_LAZY=n
-"""
+    if not brd.zephyr_vector_ext:
+        # Zephyr's kernel stays scalar (see Board.zephyr_vector_ext); the model object still carries V
+        # from its own -march, and mstatus.VS is enabled at boot by reset.S under CONFIG_FPU.
+        return common + ("\n# CONFIG_RISCV_ISA_EXT_V intentionally NOT set: this Zephyr has no\n"
+                         "# RISCV_V_KERNEL_ONLY, so setting it would put `v` in the global -march and\n"
+                         "# no matching libgcc multilib exists. mstatus.VS comes from CONFIG_FPU.\n")
+    vec = [f"\nCONFIG_RISCV_ISA_EXT_V=y",
+           f"CONFIG_RISCV_VECTOR_MAX_LEN={vector_max_len}"]
+    # Emit only what this Zephyr tree actually defines -- an unknown symbol aborts the build.
+    if _kconfig_has("RISCV_V_KERNEL_ONLY"):
+        vec.append("CONFIG_RISCV_V_KERNEL_ONLY=y")
+    if _kconfig_has("RISCV_ISA_EXT_V_LAZY"):
+        vec.append("CONFIG_RISCV_ISA_EXT_V_LAZY=n")
+    return common + "\n".join(vec) + "\n"
 
 
 def _cmakelists(model_archive: Path, rt: Path, abi: Path, cgen: Path,

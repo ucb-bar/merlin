@@ -41,6 +41,16 @@ class Board:
     dram_base: int = 0x80000000
     ram_label: str = "ram0"       # DT label the `&<label> { reg = ... }` overlay targets
     fpu_sharing: bool = False
+    #: Set CONFIG_RISCV_ISA_EXT_V in the Zephyr config? Not "does the board have vectors" — our
+    #: model.o always carries `v` from its own -march. This is only about whether ZEPHYR's kernel is
+    #: compiled with V, and on some trees it cannot be: without RISCV_V_KERNEL_ONLY (absent from the
+    #: Zephyr the Kodiak branch pins) setting it puts `v` in the GLOBAL march, and SDK 0.17.0 has no
+    #: rv64imafdcv/lp64d libgcc multilib -- the link falls back to a 32-bit one and dies with
+    #: "ELFCLASS32 incompatible with ELFCLASS64". Turning it off is safe because `mstatus.VS` is
+    #: enabled at boot by reset.S under CONFIG_FPU (which these boards set), not under
+    #: RISCV_ISA_EXT_V; what is lost is Zephyr saving vector state across a context switch, which
+    #: this image does not need (one pinned cooperative worker per hart, no preemption mid-kernel).
+    zephyr_vector_ext: bool = True
     notes: str = ""
 
     @property
@@ -71,9 +81,20 @@ BOARDS: dict[str, Board] = {
     "chipyard_kodiak": Board(
         name="chipyard_kodiak", dram_bytes=512 * 1024 * 1024, harts=3, vlen=None,
         console=CONSOLE_HTIF,
+        # FPU_SHARING=y here is REQUIRED, not preferred, and it is why the board's own defconfig sets
+        # it. The Zephyr this board pins calls `z_riscv_vstate_save`/`_restore` from isr.S whenever
+        # RISCV_ISA_EXT_V=y and ISA_EXT_V_LAZY=n, and those symbols live in fpu.c/fpu.S, which are only
+        # compiled under FPU_SHARING. With our usual FPU_SHARING=n the image does not LINK
+        # ("undefined reference to z_riscv_vstate_save"). The newer Zephyr on the `dev` branch
+        # restructured that guard and added RISCV_V_KERNEL_ONLY, which is why merlin's default config
+        # works there and not here. Trade-off accepted knowingly: y gives eager vector save/restore
+        # (what we want for correctness across any preemption) but is the setting that mis-routed
+        # V-illegal-instruction traps on a FireSim Saturn tile. This image runs ONE pinned cooperative
+        # worker per hart, so it should never preempt mid-kernel.
+        fpu_sharing=True, zephyr_vector_ext=False,
         notes="Kodiak tapeout. DTS says ram0=256MB and MP_MAX_NUM_CPUS=2; the chip has 512MB and 3 "
-              "working cores. Board defconfig sets FPU_SHARING=y (overridden) and leaves "
-              "RISCV_ISA_EXT_V_LAZY at its default y, unlike the other chipyard silicon boards."),
+              "working cores. Its Zephyr lacks RISCV_V_KERNEL_ONLY and requires FPU_SHARING=y "
+              "alongside V with eager switching."),
 }
 
 
