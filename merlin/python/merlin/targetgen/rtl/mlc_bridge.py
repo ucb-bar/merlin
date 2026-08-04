@@ -102,6 +102,32 @@ def matmul_reuse_prediction(M: int, N: int, K: int, *, dim: int, capacity_bytes:
 # (artifact_paths/discovered_memory_map/discover_opcode_set/per-target runs/circt-arc/<target>), so the
 # same code plugs any HW RTL repo mlc knows (gemmini, atlas, otbn, muon, nvdla, rocket, ...).
 
+_ARC_TARGET_CACHE: dict[str, str] = {}
+
+
+def _arc_target(target: str) -> str:
+    """The mlc arc/fingerprint key for a merlin ``target``. A composite/aliased target — e.g. a SIMT SoC
+    whose bit-exact arc model mlc registers under the embedding cluster's name, not the merlin-facing
+    name — declares ``arc_target`` in its ``contracts/residual.yaml``; every other target maps to itself.
+    DERIVED from the residual (no target-name literal here), fail-closed to the target itself when there
+    is no residual / no alias. Only the mlc arc lookups (``_ARTIFACTS``/``_COSIM_BACKEND``/
+    ``runs/circt-arc/<key>``) go through this — the merlin-facing identity (corpus, contract, suite,
+    results) stays the original ``target`` everywhere else. The residual is a plain YAML side-input, so
+    this never triggers manifest derivation (which would re-enter the mlc boundary through this resolver)."""
+    if target in _ARC_TARGET_CACHE:
+        return _ARC_TARGET_CACHE[target]
+    alias = target
+    try:
+        from ..capability_manifests import _load_residual
+        declared = (_load_residual(target) or {}).get("arc_target")
+        if isinstance(declared, str) and declared:
+            alias = declared
+    except Exception:  # noqa: BLE001 — no residual / no alias ⇒ identity
+        alias = target
+    _ARC_TARGET_CACHE[target] = alias
+    return alias
+
+
 def core_hw_mlir(target: str) -> Path | None:
     """The version-matched CORE HW dialect (the module carrying the command decoder) for ANY target,
     from mlc's per-target arc outputs (``runs/circt-arc/<target>/outputs``). Prefers ``*_core_hw.mlir``
@@ -109,7 +135,7 @@ def core_hw_mlir(target: str) -> Path | None:
     d = mlc_dir()
     if d is None:
         return None
-    outs = d / "runs" / "circt-arc" / target / "outputs"
+    outs = d / "runs" / "circt-arc" / _arc_target(target) / "outputs"
     cands = sorted(outs.glob("*_core_hw.mlir")) or sorted(outs.glob("*_hw.mlir"))
     return next((p for p in cands if p.exists() and ".generic." not in p.name), None)
 
@@ -131,7 +157,7 @@ def opu_artifact_paths(target: str) -> dict | None:
     try:
         with _mlc_importable(d):
             from mlc.discover.fingerprint import artifact_paths
-            return {k: Path(v) for k, v in artifact_paths(target, base=d).items()}
+            return {k: Path(v) for k, v in artifact_paths(_arc_target(target), base=d).items()}
     except Exception:  # noqa: BLE001 — unknown target / mlc layout skew ⇒ honest unavailable
         return None
 
@@ -741,9 +767,10 @@ def discovered_memory_map(target: str) -> dict | None:
         return None
     try:
         with _mlc_cwd():
-            _ensure_interface_cache(target)
+            at = _arc_target(target)
+            _ensure_interface_cache(at)
             from mlc.discover.cache import discovered_memory_map as _mm
-            return dict(_mm(target))
+            return dict(_mm(at))
     except Exception:  # noqa: BLE001
         return None
 
@@ -755,9 +782,10 @@ def discovered_dim(target: str) -> int | None:
         return None
     try:
         with _mlc_cwd():
-            _ensure_interface_cache(target)
+            at = _arc_target(target)
+            _ensure_interface_cache(at)
             from mlc.discover.cache import discovered_dim as _dim
-            return int(_dim(target))
+            return int(_dim(at))
     except Exception:  # noqa: BLE001
         return None
 
@@ -768,9 +796,10 @@ def discovered_memories(target: str) -> list[dict] | None:
         return None
     try:
         with _mlc_cwd():
-            _ensure_interface_cache(target)
+            at = _arc_target(target)
+            _ensure_interface_cache(at)
             from mlc.discover.cache import load_interface
-            return list(load_interface(target).get("memories", []))
+            return list(load_interface(at).get("memories", []))
     except Exception:  # noqa: BLE001
         return None
 
@@ -1220,7 +1249,7 @@ def arc_available(target: str) -> bool:
     try:
         with _mlc_cwd():
             from mlc.runtime.backend import available
-            return bool(available(target))
+            return bool(available(_arc_target(target)))
     except Exception:  # noqa: BLE001
         return False
 
@@ -1240,12 +1269,13 @@ def arc_core(target: str):
     :func:`arc_run_command_buffer` for the agnostic high-level path."""
     require_mlc()
     if not arc_available(target):
-        raise RuntimeError(f"mlc arc model absent for target {target!r} (runs/circt-arc/{target})")
+        raise RuntimeError(f"mlc arc model absent for target {target!r} (runs/circt-arc/{_arc_target(target)})")
+    at = _arc_target(target)
     with _mlc_cwd():
-        _ensure_interface_cache(target)
+        _ensure_interface_cache(at)
         from mlc.backends.cosim_core import CosimCore
         from mlc.discover.fingerprint import artifact_paths
-        p = artifact_paths(target)
+        p = artifact_paths(at)
         d = mlc_dir()
         return CosimCore(str((d / p["so"]).resolve()), str((d / p["man"]).resolve()))
 

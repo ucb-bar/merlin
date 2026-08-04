@@ -1,4 +1,9 @@
 # GENERATED-EDITABLE residual side-input for the target-agnostic capability deriver (merlin.targetgen.capability_manifests.manifest_for). Provenance-tagged; requires_human_review. This is the human intent/prose the RTL facts cannot ground; the mesh / memory capacities / datapath dtypes / encoding codes are layered on from facts.json when 'facts_source: rtl'. Regenerable but hand-owned.
+# arc_target: the mlc arc/fingerprint key for radiance's bit-exact model. radiance is a composite SoC
+# whose Muon SIMT cluster + embedded MX PE mlc registers under the cluster name 'muon' (RadianceCluster
+# arc: SIMT cores + CVFPU + MX-Gemmini tile). merlin_bridge._arc_target reads this so arc_available /
+# cosim_muon resolve to that key; every merlin-facing identity (corpus, suite, results) stays 'radiance'.
+arc_target: muon
 capabilities:
   ops:
   - matmul

@@ -182,3 +182,42 @@ def test_opu_op_categories_confirmed_by_measured_effect():
     assert feats["shift"]["conserves_magnitude"] and not feats["shift"]["writes_accumulator"]  # relocate
     # every structurally-declared category name is reproduced by RTL behaviour (no alarm)
     assert B.crosscheck_op_categories(_OPU_TGT) == []
+
+
+# --------------------------------------------------------------------------- arc-target name-bridge
+def test_arc_target_reads_alias_from_residual(monkeypatch):
+    """A composite target maps to its mlc arc key via the residual's ``arc_target``; a target with a
+    residual but no alias, or no residual at all, maps to itself. No target-name literal in the resolver
+    — the alias is data read from the residual, fail-closed to identity."""
+    from merlin.targetgen import capability_manifests as CM
+    fake = {"soc_alias": {"arc_target": "inner_cluster"}, "plain_res": {"family": "x"}}
+
+    def _fake_residual(name):
+        if name in fake:
+            return dict(fake[name])
+        raise KeyError(name)
+
+    monkeypatch.setattr(CM, "_load_residual", _fake_residual)
+    B._ARC_TARGET_CACHE.clear()
+    try:
+        assert B._arc_target("soc_alias") == "inner_cluster"      # alias honored
+        assert B._arc_target("plain_res") == "plain_res"          # residual, no alias -> identity
+        assert B._arc_target("no_such_target") == "no_such_target"  # no residual -> identity (fail-closed)
+    finally:
+        B._ARC_TARGET_CACHE.clear()
+
+
+def test_arc_target_radiance_aliases_but_rocc_targets_do_not():
+    """The shipped radiance residual declares an arc_target so its arc lookups resolve to the mlc cluster
+    key (radiance's bit-exact model is registered under the embedding cluster's name); a RoCC/systolic
+    target that ships no alias stays itself."""
+    B._ARC_TARGET_CACHE.clear()
+    try:
+        rad = B._arc_target("radiance")
+    except Exception:  # noqa: BLE001
+        pytest.skip("radiance residual absent")
+    finally:
+        B._ARC_TARGET_CACHE.clear()
+    assert rad and rad != "radiance"            # aliased to the mlc arc cluster key
+    assert B._arc_target("gemmini") == "gemmini"   # no alias -> identity
+    B._ARC_TARGET_CACHE.clear()

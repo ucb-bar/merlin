@@ -97,10 +97,17 @@ def manifest_for(name: str) -> dict[str, Any]:
     per-target builder or literal manifest dict in core."""
     residual = _load_residual(name)
     facts_source = residual.pop("facts_source", "none")
+    # arc_target / facts_target are mlc-key side-inputs (consumed by mlc_bridge._arc_target and the facts
+    # loader), NOT manifest body — pop them so they never leak a foreign target name into the derived
+    # manifest. facts_target: which target's RTL facts ground the structural body (a config variant that
+    # shares another target's decoder/mesh reuses those facts; datapath dtypes still come from THIS
+    # target's residual/mlc).
+    residual.pop("arc_target", None)
+    facts_target = residual.pop("facts_target", None) or name
     facts: dict[str, Any] = {}
     if facts_source == "rtl":
         from .rtl import facts as _facts   # lazy: pulls circt_introspect only when RTL facts are needed
-        facts = _facts.load_facts(name)    # regenerates from the RTL if the cache is cold (mlc)
+        facts = _facts.load_facts(facts_target)  # regenerates from the RTL if the cache is cold (mlc)
     return derive_manifest({"target": name}, facts, residual=residual)
 
 

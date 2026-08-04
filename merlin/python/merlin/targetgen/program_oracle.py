@@ -252,7 +252,8 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
             # cosim_atlas, ...), so no target-cosim literal lives in merlin. A target with no registered
             # program cosim (or a backend that isn't a self-hosted-ISA program runner) is honestly
             # unavailable, never a fabricated fallback.
-            backend_name = fingerprint.cosim_backend(target)
+            arc_name = mlc_bridge._arc_target(target)   # composite target -> its mlc arc key (else identity)
+            backend_name = fingerprint.cosim_backend(arc_name)
             backend = importlib.import_module(f"mlc.backends.{backend_name}")
         except Exception as e:  # noqa: BLE001
             raise OracleUnavailable(f"mlc program-cosim import failed: {type(e).__name__}: {e}")
@@ -260,7 +261,7 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
             raise OracleUnavailable(
                 f"mlc backend mlc.backends.{backend_name} for target {target!r} exposes no run_program "
                 f"(not a self-hosted-ISA program cosim)")
-        ap = fingerprint.artifact_paths(target, base=modeling)
+        ap = fingerprint.artifact_paths(arc_name, base=modeling)
         res = large_stack_call(backend.run_program, str(ap["so"]), str(ap["man"]),
                                words, preload=preload, max_cycles=max_cycles)
     if not res.halted:
@@ -311,7 +312,7 @@ def _func_program_helper(target: str) -> Path:
     try:
         with mlc_bridge._mlc_cwd(), _mlc_importable(str(d)):
             from mlc.discover import fingerprint
-            cosim = str(fingerprint.cosim_backend(target))     # e.g. "cosim_<stem>"
+            cosim = str(fingerprint.cosim_backend(mlc_bridge._arc_target(target)))  # e.g. "cosim_<stem>"
     except Exception as e:  # noqa: BLE001 — no registered program backend -> honestly unavailable
         raise OracleUnavailable(
             f"no functional program runner derivable for {target!r}: {type(e).__name__}: {e}")
