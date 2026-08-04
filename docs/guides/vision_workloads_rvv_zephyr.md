@@ -179,16 +179,29 @@ All four lower with **zero opaque ops** (`spectformer` 1240 linalg ops, `whisper
 |---|---|---|
 | quantization math / wrong golden | `--run host` (same int8 passes) | ruled out — `w8a8_rel = 0.0` |
 | the vectorized IR itself | same prepared IR + schedule + features, **x86 backend** | ruled out — `cos = 1.000000000`, 0 bad elements |
+| **the RVV kernel** | rebuild with vectorization **off** | ruled out — scalar RISC-V is **bit-identical** to vectorized RISC-V, same wrong values |
+| the register block / its LMUL | synthetic int8 im2col-shaped matmul on spike at NR ∈ {16, 8, 4, 2} | ruled out — bit-exact at every block (415K/550K/755K/985K cycles) |
+| float transcendentals (`exp`, `tanh`) | synthetic single-op bundles on spike | ruled out — within 1 ULP of numpy (max 3.8e-06) |
 | the shape-adaptation policy | `deepjscc` keeps the frozen block; `spectformer` *adapts* and is bit-exact | ruled out |
 | the externalized-buffer path | `lstmnetvit` has **0** externalized buffers and still diverges; `deepjscc`'s 27 arg-table rows match the manifest offsets exactly | ruled out |
+| embedded inputs | decoded the generated C arrays back and compared to `inputs.npz` | ruled out — exact, correct order |
+| uninitialized memory | no `insert_slice` into a `tensor.empty`, no generic reading an uninitialized destination, all contraction accumulators splat/fill-initialized | ruled out |
 | stack overflow from `hoist-static-allocs` | all 40 allocas in the image are memref *descriptors*; intermediates are heap | ruled out |
+| `memrefCopy` | the same `mlir_runtime.c` is linked into both the host `.so` and the image | ruled out — identical source both sides |
 | output reordering / layout | spike's values do not occur in the reference at all, and one exceeds its max | ruled out — real arithmetic difference |
 
-What remains is RISC-V backend codegen. The live discriminator is an N-block sweep on one bundle
-(`deepjscc`'s matmul extents are all multiples of 16, so NR ∈ {4, 8, 16} are all legal — a clean
-single variable): the **passing** `spectformer` runs NR=8, `deepjscc` NR=16 (which emits
-`vsetvli e32,m4` — LMUL 4), `lstmnetvit` NR=2. Do not quote either model's numbers as an accuracy
-result until this closes.
+Since scalar and vectorized RISC-V agree bit-for-bit, this is **not** a vectorizer or RVV defect —
+it is something shared by both RISC-V builds and absent on x86.
+
+**A note on method, because it cost time.** Truncating the model to return an intermediate and
+comparing host-vs-spike is *not* a sound bisect here: truncation changes buffer allocation, so a
+divergence at the cut can be its own artifact. That is what happened — a cut just after the conv's
+`linalg.transpose` returned an alternating ±0.0 buffer, but removing those transposes from the
+frontend entirely (they are no-ops at batch 1, see below) left the full-model output **bit-identical**.
+Trust only whole-model comparisons, or an intermediate dump that does not change the program.
+
+Do not quote either model's numbers as an accuracy result until this closes. `spectformer` is the one
+to run on hardware today.
 
 ## What the compiler learned (target-agnostic)
 
@@ -238,6 +251,30 @@ and records them in `features_shape_adapted.unclaimed_op_classes`.
 This is a **per-op-class** decision, so a class mixing a tiny and a large extent is clamped by its
 smallest member. Per-**op** blocking (tag each contraction with its own legal block, match by
 attribute in the schedule) would recover whisper's encoder attention and is the identified follow-up.
+
+### A block pinned in schedule TEXT cannot adapt — so it is at least reported
+
+The re-resolution above only reaches a block pinned in a compiler *feature*. A package may instead
+bake its block into its schedule's `tile_sizes` and carry no feature at all, and the fp32 default
+package does exactly that: it tiles matmul `[4, 8, 1]`. `deepjscc` has matmul extents with M=1 and
+M=3, so MR=4 masks the M dim — and its **fp32 spike run timed out at 7200 s** where the int8 run of
+the same model takes 486 M cycles (~2 min). Nothing in the output said why; it just looked slow.
+
+`apply.blocking_risks` now reads the block back out of the schedule (by following handles — a
+`match ops{["X"]}` binds a handle, a later `tile_using_for <handle> tile_sizes [...]` gives that
+class's tile) and reports every op class whose extents it would mask. `merlin-compile` prints it and
+records it under `blocking_risks`. It stays silent for a package the resolver already adapts, and
+raises no false alarm for the fp32 package on `tiny_llama` (M=8 divides MR=4).
+
+This *reports* rather than fixes: rewriting another package's schedule text would change codegen for
+published fp32 measurements. The fix is to give that package a feature the resolver can reach.
+
+### The conv path emits a reshape, not a transpose, at batch 1
+
+im2col produces `(F, N·Oh·Ow)` → `(F, N, Oh, Ow)` → NCHW. That permutation only swaps the batch dim
+with the channel dim, so at **N=1 it moves no element** and a reshape is exactly equivalent — a view
+instead of a full gather. Every workload captured today is batch 1, so this removes real work
+(`deepjscc`: 20 → 8 `linalg.transpose`, 380 → 368 linalg ops). N>1 keeps the transpose.
 
 ### RAM is provisioned from the measured working set
 
