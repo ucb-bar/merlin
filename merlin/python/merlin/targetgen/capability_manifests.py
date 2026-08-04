@@ -442,6 +442,14 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
     mesh = _mesh_from_facts(body)
     if mesh:
         caps["mesh"] = mesh
+    # SIMT execution geometry (lanes/warp, warps, cores) DERIVED from the SIMT facts overrides the residual
+    # literal — the same facts-win-over-residual rule as mesh (a SIMT core's lane count is grounded by the
+    # introspect, not hand-declared).
+    simt_geo = body.get("simt") or {}
+    if isinstance(simt_geo.get("lanes_per_warp"), int):
+        caps["simt"] = {**(caps.get("simt") or {}),
+                        **{k: simt_geo[k] for k in ("lanes_per_warp", "warps_per_core", "cores")
+                           if isinstance(simt_geo.get(k), int)}}
     if spatial is not None:                       # OPU tile geometry (cluster x cell) + MRF bank depth
         caps.update(_spatial_capabilities_from_fields(spatial))
     manifest["capabilities"] = caps

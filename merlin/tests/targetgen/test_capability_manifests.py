@@ -99,6 +99,10 @@ def test_radiance_and_mx_gemmini_endpoints_are_derived_not_defaulted():
     assert mxg["capabilities"]["mesh"] == {"rows": 16, "cols": 16}   # from gemmini's facts mesh array
     mxpe = next(u for u in mxg["compute_units"] if u["name"] == "mx_pe")
     assert {"mxfp4", "mxfp6", "mxfp8"} <= set(mxpe["dtypes"])    # MX dtypes preserved, not int8-only
+    # radiance SIMT geometry is DERIVED from the introspect (facts_source: simt), not a residual literal
+    assert rad["capabilities"]["simt"]["lanes_per_warp"] == 16
+    assert "lanes_per_warp" not in str(cm._load_residual("radiance").get("capabilities", {}).get("simt", {}))
+    assert rad["memory_model"].get("shared_memory_bytes") == 131072   # SMEM capacity derived (not base)
 
 
 def _units(name):

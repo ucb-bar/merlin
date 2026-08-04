@@ -337,7 +337,7 @@ def semantic_roles(target: str) -> dict:
         # Regenerate the roles cache on demand ONLY where the probe is possible (a live arc model). A
         # SIMT/prototype target with no arc keeps the honest-empty path below — never auto-regen where
         # impossible, never crash the bundle if the probe fails.
-        if arc_available(target):
+        if _arc_model_present(target):
             try:
                 derive_and_cache_roles(target)
             except Exception as e:  # noqa: BLE001 — a failed probe is honest-unavailable, never a crash/guess
@@ -531,7 +531,7 @@ def fine_roles(target: str) -> dict:
         return {"roles": {}, "fine_derived": {}, "source": None, "derived": False, "reason": "MERLIN_MLC_DIR unset"}
     cache = d / "runs" / "circt-arc" / target / "outputs" / "discovered_fine_roles.json"
     if not cache.is_file():
-        if arc_available(target):
+        if _arc_model_present(target):
             try:
                 derive_fine_roles(target)
             except Exception as e:  # noqa: BLE001 — a failed probe is honest-unavailable, never a crash/guess
@@ -979,7 +979,7 @@ def spatial_effect_roles(target: str) -> dict:
     if not cache.is_file():
         # Regenerate on demand ONLY where the probe is possible (a live arc model). A no-arc target keeps
         # the honest-empty path below — never auto-regen where impossible, never crash the bundle.
-        if arc_available(target):
+        if _arc_model_present(target):
             try:
                 with _mlc_cwd():
                     from mlc.discover.opu_roles import derive_and_cache_opu_roles
@@ -1171,15 +1171,26 @@ def simt_facts(target: str) -> dict:
     Returns ``{}`` when no SIMT introspect serves the target (honest — the deriver then falls back to the
     family default, never a fabricated endpoint)."""
     bundle = _simt_fact_bundle(target)
-    isa = ((bundle.get("fields") or {}).get("isa") or {}).get("value") or {}
+    fields = bundle.get("fields") or {}
+    isa = (fields.get("isa") or {}).get("value") or {}
     if not isa.get("encoding_bits"):
         return {}
     itf = {"name": "self_hosted_isa",
            "encoding_bits": isa.get("encoding_bits"),
            "instruction_classes": list(isa.get("instruction_classes") or []),
            "source": bundle.get("method")}
-    return {"schema_version": "simt-facts/v0",
-            "facts": {"interfaces": [itf], "source": bundle.get("method"), "target": target}}
+    body: dict = {"interfaces": [itf], "source": bundle.get("method"), "target": target}
+    # SIMT execution geometry (lanes/warp, warps, cores) + shared-memory CAPACITY, DERIVED by the introspect
+    # (config + RTL) — surfaced so the manifest deriver grounds capabilities.simt / the SMEM capacity instead
+    # of a residual literal. No memory-map BASE here (not recoverable from the op graph — stays residue).
+    simt = (fields.get("simt") or {}).get("value") or {}
+    if isinstance(simt.get("lanes_per_warp"), int):
+        body["simt"] = {k: simt[k] for k in ("lanes_per_warp", "warps_per_core", "cores")
+                        if isinstance(simt.get(k), int)}
+    smem = (fields.get("shared_memory") or {}).get("value") or {}
+    if isinstance(smem.get("bytes_per_cluster"), int):
+        body["memories"] = [{"name": "shared_memory", "bytes": smem["bytes_per_cluster"]}]
+    return {"schema_version": "simt-facts/v0", "facts": body}
 
 
 def _main(argv: list[str] | None = None) -> int:
@@ -1275,6 +1286,22 @@ def arc_available(target: str) -> bool:
         with _mlc_cwd():
             from mlc.runtime.backend import available
             return bool(available(_arc_target(target)))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _arc_model_present(target: str) -> bool:
+    """Un-aliased structural check: does mlc register an arc model under THIS EXACT target name? Structural
+    consumers (the RoCC role / mesh probes) gate on this, NOT the oracle-aliased :func:`arc_available` — a
+    composite SIMT target (radiance) must not borrow the embedding cluster's arc for structural role
+    derivation (that would fabricate systolic roles it does not have); its oracle still reaches muon via
+    the alias, but its structural profile stays honestly empty."""
+    if mlc_dir() is None:
+        return False
+    try:
+        with _mlc_cwd():
+            from mlc.runtime.backend import available
+            return bool(available(target))
     except Exception:  # noqa: BLE001
         return False
 

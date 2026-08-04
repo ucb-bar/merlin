@@ -13,8 +13,8 @@ capabilities:
   ops:
   - matmul
   - elementwise
-  simt:
-    lanes_per_warp: 16
+  # capabilities.simt (lanes_per_warp / warps_per_core / cores) is DERIVED from the SIMT facts
+  # (facts_source: simt -> muon_introspect config+RTL) and layered on here — no hand literal.
 compiler_obligations:
 - must_map_to_warps
 compute_units:
