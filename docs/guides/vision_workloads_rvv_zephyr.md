@@ -160,16 +160,37 @@ missing, and the gate reports which tier carried the verdict.
 | `spectformer` | 4,198,885,000 | 1.0 | 0.0 | **verified** — bit-exact |
 | `deepjscc` | 485,985,000 | 0.9176 | 0.889 | run_mismatch — open RISC-V-side defect |
 | `lstmnetvit` | 857,315,000 | 0.9943 | 0.259 | run_mismatch — same |
-| `whisper_tiny` | — | — | — | builds and lowers; spike run exceeds the default timeout |
+| `whisper_tiny` | — | — | — | builds and lowers; **exceeds 4 h on spike** — see below |
 
 Multicore, on spike — the split must be **bit-exact**, which is the only thing a multicore run here is
 allowed to prove. spike simulates every hart at full speed, so its cycle ratios are not speedups; real
 numbers have to come from the chip.
 
-| workload | 1 hart | N harts | ratio | output |
+| workload | 1 hart | 3 harts (Kodiak) | ratio | output |
 |---|---:|---:|---:|---|
-| `spectformer` int8 | 4,198,885,000 | **2,557,820,000** (3 harts, Kodiak-matched) | 1.64× | **bit-exact**, `w8a8_rel = 0.0`, gate passed at both |
-| `lstmnetvit` int8 | 857,315,000 | 381,565,000 (4 harts) | 2.25× | identical to 16 digits across hart counts |
+| `spectformer` int8 | 4,198,885,000 | **2,557,820,000** | 1.64× | **bit-exact**, `w8a8_rel = 0.0`, gate passed at both |
+| `deepjscc` int8 | 484,690,000 | 328,115,000 | 1.48× | verify metrics identical to all digits |
+| `lstmnetvit` int8 | 857,315,000 | 555,335,000 (via the block fallback) | 1.54× | identical to its 1-hart run |
+| `lstmnetvit` int8 | 857,315,000 | 381,565,000 **at 4 harts** | 2.25× | identical to 16 digits |
+
+`deepjscc` and `lstmnetvit` carry the open accuracy divergence below, so their *values* are wrong —
+but wrong-and-identical across hart counts still proves the parallel decomposition touched nothing,
+which is the property a multicore run is here to establish.
+
+### A split changes the extents the block must cover
+
+The multicore stage wraps each contraction in an `scf.forall` over the harts **before** the package's
+schedule runs, so the register block must cover the tile *one hart* gets — `ceil(N / harts)` and the
+smaller remainder — not the model's N. `lstmnetvit` built at 1 and 4 harts but failed at 3 with
+`'vector.mask' op expects only one operation to mask`: its N=2 matmul splits to a 1-wide tile that an
+NR=2 block cannot cover, while N/4 of an even N stays even.
+
+Narrowing the block up front is the obvious fix and the wrong one — measured on `spectformer` at 3
+harts, the un-narrowed block lowers fine at **2,557,820,000** cycles while the per-hart-tile block
+takes **5,208,565,000**, i.e. **2.04× slower**, both bit-exact. The legality predicate is conservative
+on the dynamic tile a `forall` produces. So `merlin-compile` prefers the fast block and re-derives
+against the per-hart tile only when the build actually rejects it, reporting the retry under
+`harts_split_block_retry`. One wasted build on the rare model that needs it; nothing on the rest.
 
 Host (`--run host`, all four, int8 and fp32): **verified**, `tier_ok = "w8a8"`, `w8a8_rel = 0.0`.
 All four lower with **zero opaque ops** (`spectformer` 1240 linalg ops, `whisper_tiny` 1296,
@@ -254,7 +275,13 @@ and records them in `features_shape_adapted.unclaimed_op_classes`.
 
 This is a **per-op-class** decision, so a class mixing a tiny and a large extent is clamped by its
 smallest member. Per-**op** blocking (tag each contraction with its own legal block, match by
-attribute in the schedule) would recover whisper's encoder attention and is the identified follow-up.
+attribute in the schedule — the machinery exists, `transform.structured.match attributes{...}` is
+already used elsewhere) would recover whisper's encoder attention and is the identified follow-up.
+
+**And it is what makes `whisper_tiny` unmeasurable on spike today.** With its `batch_matmul` class
+unclaimed, the 6×1500×1500 encoder attention runs scalar — tens of billions of cycles, so the run
+exceeds a 4 h timeout even with the RAM region correctly sized at 464 MB. That is spike being the
+wrong substrate for it, not a hang: whisper needs per-op blocking, or FireSim/the chip.
 
 ### A block pinned in schedule TEXT cannot adapt — so it is at least reported
 
