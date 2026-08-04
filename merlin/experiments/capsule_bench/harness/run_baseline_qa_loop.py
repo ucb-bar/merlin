@@ -907,12 +907,15 @@ def main(argv: list[str] | None = None) -> int:
                     help="AWS region for --provider bedrock")
     ap.add_argument("--aws-profile", default=os.environ.get("AWS_PROFILE", ""),
                     help="AWS profile (~/.aws) for --provider bedrock; else the env-var cred chain")
-    ap.add_argument("--max-rounds", type=int, default=6)
-    ap.add_argument("--plateau-rounds", type=int, default=3,
-                    help="stop early (not converged) after this many consecutive rounds with NO progress "
-                         "— neither the pass count nor the total numeric mismatch improved. Bounds the "
-                         "token spend of a stuck agent that keeps re-sending its (uncached) context each "
-                         "round with nothing to show. 0 disables the plateau stop.")
+    ap.add_argument("--max-rounds", type=int, default=12)
+    ap.add_argument("--plateau-rounds", type=int, default=0,
+                    help="OPT-IN (0 = disabled, the default — never cut a productive run). When set to N, "
+                         "stop early (not converged) after N consecutive rounds with NO progress: neither "
+                         "the pass count NOR the total numeric mismatch improved. The mismatch-aware metric "
+                         "means a run making ANY numeric progress is never stopped (verified: it would not "
+                         "have fired on the productive glm5 15/20 run, whose flat-pass stretches kept "
+                         "reducing mismatch). Enable it only for a run you know is pathologically stuck "
+                         "(re-sending its uncached context each round with zero movement), e.g. N=3-4.")
     ap.add_argument("--round-timeout", type=int, default=14400,
                     help="per-round agent wall cap (s). Default 4h (matches launch_ab_batch): a TIGHT "
                          "cap is net-detrimental — it doesn't cut the work (fixed by difficulty), it "
