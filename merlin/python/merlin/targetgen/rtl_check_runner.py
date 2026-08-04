@@ -84,11 +84,15 @@ def compiled_checks(facts_rec: dict, capsule: dict, target: str) -> dict:
 
 
 def _legal_funct(facts_rec: dict) -> set[int]:
+    """The RTL-derived legal RoCC funct set, or empty when the facts carry no decode table. Fail-closed:
+    an EMPTY set means "legality not derivable" (the caller renders ILLEGAL_FUNCT_COUNT as unknown and the
+    compiler omits the ILLEGAL_FUNCT_COUNT assertion) — never a baked gemmini funct block substituted for a
+    target whose decoder we could not read."""
     facts = facts_rec.get("facts", facts_rec)
     for i in (facts.get("interfaces") or []):
         if i.get("name") == "funct_decode_table":
             return set(i.get("legal_funct") or [])
-    return set(range(0, 26))  # RTL-derived default
+    return set()
 
 
 def render_trace(trace: dict, facts_rec: dict) -> str:
@@ -101,17 +105,21 @@ def render_trace(trace: dict, facts_rec: dict) -> str:
     n_mvout = hist.get("MVOUT", 0)
     n_compute = sum(hist.get(c, 0) for c in _COMPUTE_CLASSES)
     legal = _legal_funct(facts_rec)
-    n_illegal = sum(1 for i in instrs
-                    if isinstance(i.get("funct"), int) and i["funct"] not in legal)
+    # legality is only computable when the RTL facts carry the legal set; else render '-' (unknown) so a
+    # missing decode table is NOT silently treated as "every funct illegal" (and the compiler omits the
+    # matching ILLEGAL_FUNCT_COUNT assertion) — fail-closed, not a gemmini default.
+    illegal_str = (str(sum(1 for i in instrs
+                           if isinstance(i.get("funct"), int) and i["funct"] not in legal))
+                   if legal else "-")
     abi = trace.get("abi") or {}
-    custom = abi.get("custom_opcode", "0x7b")
-    funct3 = abi.get("funct3", "0x3")
+    custom = abi.get("custom_opcode", "-")
+    funct3 = abi.get("funct3", "-")
     L = [f"# {CC.RENDER_SCHEMA}",
          f"ABI custom={custom} funct3={funct3}",
          f"MVIN_COUNT {n_mvin}",
          f"MVOUT_COUNT {n_mvout}",
          f"COMPUTE_COUNT {n_compute}",
-         f"ILLEGAL_FUNCT_COUNT {n_illegal}",
+         f"ILLEGAL_FUNCT_COUNT {illegal_str}",
          f"COMPUTE_PRESENT {'yes' if n_compute else 'no'}",
          f"MVIN_PRESENT {'yes' if n_mvin else 'no'}"]
     for i in instrs:
@@ -202,11 +210,15 @@ def render_kernel_decode(kernel_text: str, facts_rec: dict, taxonomy: dict | Non
                 zeroops[c] = zeroops.get(c, 0) + 1
         cls_s = "|".join(classes) if classes else ("-" if taxonomy else "?")
         lines.append(f"INSTR {idx} word=0x{w:08x} opcode={field} legal={'yes' if ok else 'no'} class={cls_s}")
+    # legality is determinable only with a taxonomy (per-op decode signatures) OR a discovered legal set;
+    # with neither, render '-' (unknown) instead of 0 so a target we could not ground is NOT vacuously
+    # passed — the compiler correspondingly omits the ILLEGAL_OPCODE_COUNT assertion (fail-closed).
+    determinable = bool(taxonomy) or bool(legal)
     L = [f"# {CC.RENDER_SCHEMA}",
          f"EMPTY_KERNEL {'yes' if not words else 'no'}",
          f"INSTR_COUNT {len(words)}",
          f"LEGAL_OPCODE_SET_SIZE {len(legal)}",
-         f"ILLEGAL_OPCODE_COUNT {n_illegal}"]
+         f"ILLEGAL_OPCODE_COUNT {n_illegal if determinable else '-'}"]
     L += [f"CLASS_PRESENT {c}" for c in present]
     L += [f"CLASS_COUNT {c} {counts[c]}" for c in present]              # for the mesh-tiling count check
     L += [f"CLASS_ZEROOPS {c} {zeroops.get(c, 0)}" for c in present]    # for the field-sanity (base≠0) check

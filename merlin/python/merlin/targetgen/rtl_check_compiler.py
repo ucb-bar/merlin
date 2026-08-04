@@ -101,18 +101,28 @@ def compile_trace_checks(facts_rec: dict, capsule: dict, prefix: str = "TRACE") 
     if op is None:
         return None
     rc_facts = _facts_to_rc(facts_rec)
-    mr, mc = RC._mesh(rc_facts)
+    mesh = rc_facts.get("mesh")                             # DERIVED mesh only (None -> not grounded)
     abi = _facts_abi(facts_rec.get("facts", facts_rec))
-    L = [f"// RTL-derived trace checks (op={op}, mesh={mr}x{mc}) — generated, do not edit"]
+    mesh_str = f"{mesh[0]}x{mesh[1]}" if mesh else "unknown"
+    L = [f"// RTL-derived trace checks (op={op}, mesh={mesh_str}) — generated, do not edit"]
     if abi is not None:                                      # ABI only when the RTL facts carry it (derived)
         L.append(f"// {prefix}-DAG: ABI custom={abi[0]} funct3={abi[1]}")
-    # {{$}} anchors end-of-line so "..._COUNT 1" does NOT substring-match "..._COUNT 16"
-    L.append(f"// {prefix}-DAG: ILLEGAL_FUNCT_COUNT 0{{{{$}}}}")   # every emitted funct ∈ RTL legal set
+    # {{$}} anchors end-of-line so "..._COUNT 1" does NOT substring-match "..._COUNT 16".
+    # ILLEGAL_FUNCT_COUNT 0 only when the RTL facts ground a legal-funct set — else legality is not
+    # derivable and the check is OMITTED (the runner renders '-'), fail-closed rather than asserting
+    # against a baked default set.
+    dt = _decode_table(facts_rec) or {}
+    if dt.get("legal_funct"):
+        L.append(f"// {prefix}-DAG: ILLEGAL_FUNCT_COUNT 0{{{{$}}}}")   # every emitted funct ∈ RTL legal set
     shape = RC._declared_output_shape(capsule)
     if op in ("matmul", "matmul_resident") and shape is not None:
-        M, N = shape
-        tiles = math.ceil(M / mr) * math.ceil(N / mc)
-        L.append(f"// {prefix}-DAG: MVOUT_COUNT {tiles}{{{{$}}}}")  # exact tile coverage (RTL DIM + shape)
+        # exact tile count needs the DERIVED mesh DIM — fail-closed: emit COMPUTE_PRESENT always, but the
+        # exact MVOUT_COUNT only when the mesh is grounded (else a mesh-less RTL would be checked against a
+        # silent DIM=16 default and false-fail/false-pass).
+        if mesh:
+            M, N = shape
+            tiles = math.ceil(M / mesh[0]) * math.ceil(N / mesh[1])
+            L.append(f"// {prefix}-DAG: MVOUT_COUNT {tiles}{{{{$}}}}")  # exact tile coverage (RTL DIM + shape)
         L.append(f"// {prefix}-DAG: COMPUTE_PRESENT yes")
     elif op == "resident_reuse":
         # multi-matmul lower bound is not FileCheck-exact; leave the count to rtl_checks.screen().
@@ -173,17 +183,9 @@ def compile_kernel_checks(capsule: dict, prefix: str = "KERNEL",
     if op is None:
         return None
     required = list(((capsule.get("expected") or {}).get("instruction_classes") or []))
-    L = [f"// RTL-derived kernel checks (op={op}) — legality + coverage + tiling + order + field-sanity",
-         f"// {prefix}-DAG: ILLEGAL_OPCODE_COUNT 0{{{{$}}}}",   # every emitted opcode ∈ RTL/ISA legal set
-         f"// {prefix}-DAG: EMPTY_KERNEL no"]                   # the kernel must actually emit instructions
-    # (1) CLASS COVERAGE: every instruction class the capsule requires (DERIVED per-target in
-    # expected.instruction_classes) must actually be EMITTED — the render classifies each word via the
-    # ISA-def decode signatures, so a matmul that emitted VADD instead of the MXU matmul fails here
-    # (legality alone passes it). Literals are the capsule's own derived class names, not target data.
-    for cls in required:
-        L.append(f"// {prefix}-DAG: CLASS_PRESENT {cls}{{{{$}}}}")
-
-    # (2) MESH-TILING count + (4) FIELD-SANITY — derived from the target's mesh geometry + role classes.
+    # legality (ILLEGAL_OPCODE_COUNT 0) is assertable only when the runner can DETERMINE legality — a
+    # taxonomy (per-op decode signatures) OR a discovered legal-opcode set resolves. With neither, the
+    # render emits '-' and asserting "0" would be a vacuous pass, so we OMIT it (fail-closed).
     tax = {}
     if target:
         try:
@@ -191,6 +193,18 @@ def compile_kernel_checks(capsule: dict, prefix: str = "KERNEL",
             tax = IT.taxonomy_for_target(target)
         except Exception:  # noqa: BLE001 — taxonomy unavailable -> skip these two, keep coverage/order
             tax = {}
+    legality_determinable = bool(tax) or bool((_decode_table(facts_rec or {}) or {}).get("legal_funct"))
+    L = [f"// RTL-derived kernel checks (op={op}) — legality + coverage + tiling + order + field-sanity",
+         f"// {prefix}-DAG: EMPTY_KERNEL no"]                   # the kernel must actually emit instructions
+    if legality_determinable:
+        L.insert(1, f"// {prefix}-DAG: ILLEGAL_OPCODE_COUNT 0{{{{$}}}}")   # every emitted opcode ∈ legal set
+    # (1) CLASS COVERAGE: every instruction class the capsule requires (DERIVED per-target in
+    # expected.instruction_classes) must actually be EMITTED — the render classifies each word via the
+    # ISA-def decode signatures, so a matmul that emitted VADD instead of the MXU matmul fails here
+    # (legality alone passes it). Literals are the capsule's own derived class names, not target data.
+    for cls in required:
+        L.append(f"// {prefix}-DAG: CLASS_PRESENT {cls}{{{{$}}}}")
+
     if tax:
         from . import isa_taxonomy as IT
         roles = IT.role_classes(tax)
@@ -198,9 +212,9 @@ def compile_kernel_checks(capsule: dict, prefix: str = "KERNEL",
         # tiling: the compute (matmul) class must appear exactly ceil(M/DIM)*ceil(N/DIM) times — the tile
         # count the discovered mesh geometry + the declared output shape imply. Skipped unless both resolve.
         shape = RC._declared_output_shape(capsule)
-        mr, mc = RC._mesh(_facts_to_rc(facts_rec or {}))
-        if compute and compute in required and shape and mr and mc:
-            tiles = math.ceil(shape[0] / mr) * math.ceil(shape[1] / mc)
+        mesh = _facts_to_rc(facts_rec or {}).get("mesh")   # DERIVED mesh only — fail-closed, no DIM=16 default
+        if compute and compute in required and shape and mesh:
+            tiles = math.ceil(shape[0] / mesh[0]) * math.ceil(shape[1] / mesh[1])
             L.append(f"// {prefix}-DAG: CLASS_COUNT {compute} {tiles}{{{{$}}}}")
         # field-sanity: a memory (load/store) instruction with an all-zero operand payload addresses DRAM 0
         # — the "TensorBaseOffset encodes address 0" bug. Require zero such instructions.
