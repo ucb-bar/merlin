@@ -196,37 +196,31 @@ Host (`--run host`, all four, int8 and fp32): **verified**, `tier_ok = "w8a8"`, 
 All four lower with **zero opaque ops** (`spectformer` 1240 linalg ops, `whisper_tiny` 1296,
 `lstmnetvit` 653, `deepjscc` 380).
 
-### The defect, localized: f32 contractions with large K are wrong on RISC-V
+### The defect: still open, and one claimed root cause was RETRACTED
 
-**Root cause found.** An emitted **f32** `linalg.matmul` with large K is numerically wrong on riscv64
-while the identical LLVM IR is exact on x86. Minimal reproducer, via
-`merlin.rvvgen.workloads.gen_matmul_f32` compiled two ways from one bundle:
+An earlier revision of this guide claimed the cause was "an f32 `linalg.matmul` with large K is
+numerically wrong on riscv64". **That was wrong and is retracted.** The harness behind it compared an
+x86 build that had NOT been through the int8 prepare against a K1 build that had — because
+`build_k1_binary` applies `int8_compute` from the package, while the x86 side lowered the bundle
+directly. So it measured **W8A8 quantization error, not a backend defect**, and ~3 % with
+`cos 0.99996` is exactly what quantizing an fp32 matmul to W8A8 costs. `spectformer` disproves the
+claim on its own: it has 191 executed f32 contractions at K=1024 and is bit-exact on RISC-V.
 
-| build | vs numpy |
+The same flaw invalidates the op-by-op bisect built on that harness: the "first diverging op" it found
+was simply the first *contraction* (everything before it — pads, gathers — is unaffected by
+quantization, everything after it differs). Any host-vs-target bisect must apply
+`zephyr_model._prepare_model_mlir(..., int8_compute=True)` to **both** sides.
+
+What still stands, because it used the prepared IR on both sides:
+
+| build (identical prepared int8 IR + generated C runtime) | result |
 |---|---|
-| x86 (same IR, same generated C runtime, `merlin_host_main.c`) | `maxabs 3e-05` — pure rounding |
-| riscv64 (K1 board, and spike) | **`maxabs 0.4`** on values ~12 (**~3 %**), `cos 0.99996` |
+| x86 (`merlin_host_main.c`) | `cos = 1.000000000`, `rel = 0` vs the W8A8 golden — **exact** |
+| riscv64 — spike, bare-metal Zephyr, VLEN 128 | `w8a8_cos = 0.9175732135772705` |
+| riscv64 — K1 board, Linux/glibc, VLEN 256 | `0.9175732135772705` — identical to 16 digits |
 
-K is the variable: **K=144/147/160 are all wrong** (M ∈ {16,64} and N ∈ {256,4096} make no
-difference), while K=64 is fine — which is why the pre-existing kernel gate at 64×256×64 passes.
-**Integer (i32-accumulating) contractions are exact at every K.**
-
-It is invariant, bit-identically, across `-O0`/`-O1`/`-O2`, `-ffp-contract=off`, `-mfma` on the x86
-control, VLEN 128 (bare-metal Zephyr) vs 256 (Linux/glibc on K1), and **vectorization on vs off**.
-ASan+UBSan on the x86 build report zero errors; the IR has no `llvm.fmuladd` and no target
-triple/datalayout. So it is not rounding, not FMA, not UB, not the RVV kernel, and not the runtime
-environment — it is the riscv64 compilation of that kernel.
-
-**That fully explains the workload split.** `deepjscc` and `lstmnetvit` reach their convs as **f32**
-matmuls with K=147–288, because the im2col path multiplies a *dequantized* weight and the int8 rewrite
-never quantized them. `spectformer` is bit-exact because its heavy contractions are on the **i32** path
-and its only f32 ones are the DFT twiddle matmuls at **K=14**. Small f32 errors then flip int8
-requantization buckets — a discontinuous decision — so a 3 % kernel error becomes `cos 0.9176`.
-
-**The fix is on our side, not the backend's:** get those conv matmuls onto the integer datapath by
-teaching the int8 contraction rewrite to see through the `collapse_shape`/`expand_shape` of a
-dequantized weight that im2col introduces. Until then, trust the integer datapath on RISC-V and treat
-any large-K f32 contraction there as suspect — this also implicates the fp32 arm generally.
+So the divergence is real and specific to the RISC-V compilation, and the eliminations below hold
+(they were whole-model comparisons, not truncations). What is NOT yet known is which op carries it.
 
 ### How that was found (the earlier ruled-out list)
 
