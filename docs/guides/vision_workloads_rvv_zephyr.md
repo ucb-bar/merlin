@@ -162,10 +162,14 @@ missing, and the gate reports which tier carried the verdict.
 | `lstmnetvit` | 857,315,000 | 0.9943 | 0.259 | run_mismatch — same |
 | `whisper_tiny` | — | — | — | builds and lowers; spike run exceeds the default timeout |
 
-Multicore (`lstmnetvit`, int8, spike): **857,315,000 cycles at 1 hart → 381,565,000 at 4 harts
-(2.25×)**, with every gate metric identical to 16 digits across the two — i.e. the parallel split is
-bit-exact, which is the only thing a multicore run is allowed to prove about correctness. spike
-cannot tell you anything about speed; the 3-hart cycle numbers have to come from the chip.
+Multicore, on spike — the split must be **bit-exact**, which is the only thing a multicore run here is
+allowed to prove. spike simulates every hart at full speed, so its cycle ratios are not speedups; real
+numbers have to come from the chip.
+
+| workload | 1 hart | N harts | ratio | output |
+|---|---:|---:|---:|---|
+| `spectformer` int8 | 4,198,885,000 | **2,557,820,000** (3 harts, Kodiak-matched) | 1.64× | **bit-exact**, `w8a8_rel = 0.0`, gate passed at both |
+| `lstmnetvit` int8 | 857,315,000 | 381,565,000 (4 harts) | 2.25× | identical to 16 digits across hart counts |
 
 Host (`--run host`, all four, int8 and fp32): **verified**, `tier_ok = "w8a8"`, `w8a8_rel = 0.0`.
 All four lower with **zero opaque ops** (`spectformer` 1240 linalg ops, `whisper_tiny` 1296,
