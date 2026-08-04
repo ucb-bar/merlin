@@ -1674,6 +1674,46 @@ def ensure_vec_noncontraction(lanes: int) -> str:
     return name
 
 
+#: Per-op register blocking: each contraction is tiled at the block legal for ITS OWN extents, instead
+#: of one block per op CLASS. The class-wide decision is one too coarse -- whisper_tiny's single N=1
+#: decode step forces its whole batch_matmul class (34% of the model's MACs) off the vector path. See
+#: llvmlower/perop_blocks.py for why the tag has to be applied after specialization.
+PEROP_BLOCK_NAME = "perop_register_block"
+
+
+def ensure_perop_block(table, kc: int) -> str:
+    """Register (on demand) the per-op-blocked schedule for THIS model's block table.
+
+    The schedule text is a function of the table (one tile+vectorize arm per distinct block), so the
+    feature is registered per distinct table -- named by a hash of it, the same on-demand pattern
+    ``ensure_v3_perop_microkernel`` uses for the register-block knob space.
+    """
+    import hashlib
+
+    from . import perop_blocks as _pb
+
+    blocks = _pb.distinct_blocks(table)
+    key = hashlib.sha1(repr(sorted(table.items())).encode()).hexdigest()[:12]
+    name = f"{PEROP_BLOCK_NAME}_{len(blocks)}b_{kc}_{key}"
+    if name in known():
+        return name
+    text = _pb.schedule_text(table, kc)
+    register(ImprFeature(
+        name=name,
+        action_class="PASS",
+        description=(f"Per-op register blocking: {len(blocks)} distinct blocks over "
+                     f"{len(table)} contraction geometries, KC={kc}. Each contraction is tiled at the "
+                     f"widest block legal for its own extents, matched by the merlin.blk_<MR>x<NR> tag "
+                     f"the prepare step applies after specialization. Replaces the per-op-CLASS block, "
+                     f"whose smallest member otherwise clamps the whole class (measured: whisper_tiny "
+                     f"claims 65.9% of its MACs per class vs 100% per op)."),
+        edit_pipeline=_accumulator_resident_v3_pipeline,
+        edit_schedule=lambda _t, _text=text: _text,
+        schedule_replace=True,
+    ))
+    return name
+
+
 def _register_accumulator_resident_v3() -> list[str]:
     """Register `accumulator_resident_microkernel_v3` (default tile) + a small tuning grid. Reuses
     the v1 PRE-bufferize schedule (forms the contract); the v3 pipeline does the v2 PRE-bufferize

@@ -177,6 +177,13 @@ def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
 #: schedule arms in ``impr_features._VEC_RANK_ARMS`` must agree on it.
 _VEC_RANK_LANES = 8
 
+#: Caps for per-op register blocking. NR is the widest N tile a block may use (the champion's
+#: cap); KC is carried through to the v3 recipe, which tiles K by 1 and does not use it. MR is
+#: NOT capped here -- perop_blocks.DEFAULT_MR pins it at 1 for a measured instruction-selection
+#: reason (the vfmacc.vf scalar-A form).
+_PEROP_NR_CAP = 16
+_PEROP_KC = 16
+
 DEFAULT_RAM_BYTES = 256 * 1024 * 1024   # spike/chipyard `ram0` default (0x10000000)
 
 # Above this, a weights blob linked into the image's .data overflows the medany ±2GB
@@ -627,6 +634,25 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     prepared = _prepare_model_mlir(model_dir / "model.mlir", work, int8_compute=int8_compute,
                                    tag_vec_ranks=_lanes is not None,
                                    vec_lanes=_lanes or _VEC_RANK_LANES)
+    # PER-OP REGISTER BLOCKING (opt-in via the PEROP_BLOCK_NAME sentinel in `features`): derive each
+    # contraction's own block from the PREPARED IR — the geometry the pipeline will actually see — then
+    # specialize + tag the ops and swap the sentinel for the concrete, table-specific feature. Doing it
+    # here rather than in the caller is what keeps the schedule's arms and the IR's tags in sync: they
+    # are generated from ONE table. Without the tagging step no arm matches anything and every
+    # contraction silently falls to convert-linalg-to-loops (measured: deepjscc 484M -> 1242M cycles at
+    # bit-identical output — a 2.56x regression that looks like a bad block but is an untagged build).
+    features = frozenset(features or frozenset())
+    if backend == "rvv":
+        from ...llvmlower import perop_blocks as _pb
+        from ...llvmlower.impr_features import PEROP_BLOCK_NAME, ensure_perop_block
+        if PEROP_BLOCK_NAME in features:
+            from ...kernels.shapes import contraction_shapes as _cshapes
+            table = _pb.block_table(_cshapes(prepared), nr_cap=_PEROP_NR_CAP)
+            if table:
+                prepared = _pb.tag_prepared_mlir(prepared, table, work=work)
+                features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, _PEROP_KC)}
+            else:
+                features = features - {PEROP_BLOCK_NAME}
     # For the rvv backend, bake native RVV (fixed-width vector ops on the matmuls) into the
     # IR rather than leaving it to clang's auto-vectorizer — see llvmlower.pipeline.
     res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
