@@ -11,13 +11,23 @@ from merlin.targetgen import capsule_runner as CR
 from merlin.targetgen.rtl import mlc_bridge as B
 
 
-def test_arc_is_the_default_tier_for_any_target():
-    # arc is the default RTL tier for a target with NO bespoke sim AND a command_buffer/.insn endpoint
-    # (radiance = simt/.insn). A self-hosted-ISA (external_backend) target instead routes to the program
-    # oracle — see test_external_backend_target_uses_the_program_oracle.
+def test_arc_is_the_default_tier_for_a_command_buffer_target(monkeypatch):
+    # arc is the default RTL tier for a command_buffer target with NO bespoke sim — proven on a synthetic
+    # target (no descriptor sim_via, no external_backend). radiance is NOT this case: it is a self-hosted
+    # SIMT target graded on its emitted kernel ELF by cyclotron, so the arc COMMAND-BUFFER adapter (wrong
+    # artifact) must not be its default — see test_simt_cyclotron_target_routes_to_cyclotron_not_arc.
+    monkeypatch.setattr(CR, "_endpoint_of", lambda t: ("inline_asm_insn", None))
+    monkeypatch.setattr(CR, "_bespoke_sim_via", lambda t: "")
+    ad = CR.oracle_adapters("synth_arc_only", sim_via=None)
+    assert "L3" in ad and ad["L3"].__qualname__.startswith("mlc_arc_adapter")
+
+
+def test_simt_cyclotron_target_routes_to_cyclotron_not_arc():
+    # radiance is a self-hosted SIMT core (sim_via=cyclotron): its emitted kernel ELF is graded by the
+    # bespoke cyclotron/VCS oracle, NOT the arc command-buffer adapter (which grades the wrong artifact).
     ad = CR.oracle_adapters("radiance", sim_via=None)
-    assert "L3" in ad                                       # arc supplies the RTL tier
-    assert ad["L3"].__qualname__.startswith("mlc_arc_adapter")
+    assert set(ad) >= {"L2"} and all(v.__module__ == "merlin.targetgen.muon_oracles" for v in ad.values())
+    assert not any(v.__qualname__.startswith("mlc_arc_adapter") for v in ad.values())
 
 
 def test_external_backend_target_uses_the_program_oracle():
@@ -138,11 +148,12 @@ def test_qa_checkpoint_is_full_ladder_for_chipyard():
     assert [c.cell_contents for c in ckpt["L3"].__closure__] == ["verilator"]
 
 
-def test_qa_adapters_are_arc_for_a_non_chipyard_target():
-    # a target with a different sim_via resolves ITS adapters (the RTL-derived arc tier) with no gemmini
-    # path — the loop and checkpoint both use the arc oracle at L3, and NO spike/verilator appears.
+def test_qa_adapters_are_cyclotron_for_a_simt_target():
+    # a SIMT target (sim_via=cyclotron) resolves the bespoke cyclotron/VCS oracle — NOT the arc
+    # command-buffer path and NO gemmini spike/verilator. Loop = the fast cyclotron tier; checkpoint adds
+    # the VCS tier. Both are the muon_oracles adapters.
     loop = CR.qa_loop_adapters("radiance", "cyclotron")
     ckpt = CR.qa_checkpoint_adapters("radiance", "cyclotron")
-    assert set(loop) == {"L3"} and _factory(loop["L3"]) == "mlc_arc_adapter"
-    assert set(ckpt) == {"L3"} and _factory(ckpt["L3"]) == "mlc_arc_adapter"
-    assert loop["L3"].__closure__[0].cell_contents == "radiance"
+    assert loop and all(v.__module__ == "merlin.targetgen.muon_oracles" for v in loop.values())
+    assert ckpt and all(v.__module__ == "merlin.targetgen.muon_oracles" for v in ckpt.values())
+    assert not any(_factory(v) == "mlc_arc_adapter" for v in {**loop, **ckpt}.values())

@@ -208,8 +208,15 @@ def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callab
         return adapters
     if sim_via is None:                                              # unspecified -> derive from contract
         sim_via = _bespoke_sim_via(target)
+    if sim_via == "cyclotron":
+        # A self-hosted SIMT target graded on its emitted kernel ELF by the bespoke cyclotron/VCS oracle
+        # (muon_oracles) — NOT the arc command-buffer path, which grades the wrong artifact for a SIMT
+        # kernel. Replaces the arc seed entirely; the muon adapters fail closed (MuonUnavailable) when the
+        # MERLIN_MUON_* toolchain env is unset, so an unwired target degrades honestly, never mis-grades.
+        from . import muon_oracles as _MO
+        return _MO.default_adapters()
     adapters: dict[str, Callable] = {"L3": mlc_arc_adapter(target)}   # arc default (RTL-derived)
-    adapters.update(_sim_engine_adapters(sim_via))                    # optional declared bespoke sim
+    adapters.update(_sim_engine_adapters(sim_via))                    # optional declared bespoke sim (chipyard)
     return adapters
 
 
