@@ -28,6 +28,12 @@ _AXIS_CATEGORY = {
     "envelope.calls_in_loop": "fusion-layout",
     "compute.accumulator_resident": "register-residency",
     "compute.accumulator_dtype": "register-residency",
+    # coverage (whole-model): "is this work even ON the vector path" is a tiling/dataflow question for
+    # the contraction classes (the block decides whether a class is claimed at all) and an
+    # instruction-selection question for the non-contraction tail (scalar loop vs vector instructions).
+    "coverage.claimed_mac_fraction": "tiling-dataflow",
+    "coverage.unclaimed_op_classes": "tiling-dataflow",
+    "coverage.non_contraction_op_fraction": "instruction-selection",
     "compute.contraction_form": "instruction-selection",
     "compute.widening": "instruction-selection",
     "compute.activation_vectorization": "instruction-selection",

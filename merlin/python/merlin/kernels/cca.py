@@ -112,6 +112,37 @@ class DataflowFacet:                           # NPU (populated by a future lift
 
 
 @dataclass
+class CoverageFacet:
+    """WHOLE-MODEL coverage: how much of the work the schedule actually claims.
+
+    Every other facet describes ONE kernel, lifted from its asm. That makes the largest measured
+    losses structurally invisible to the CCA, because they are properties of the GRAPH rather than of
+    a kernel: an entire contraction op class left for ``convert-linalg-to-loops`` (whisper_tiny's
+    1500-wide encoder attention, dropped to scalar by one N=1 decode step in the same class), and the
+    non-contraction ops — im2col gathers, pads, norms, elementwise — which the schedule never matches
+    and which therefore run scalar on one core.
+
+    A kernel-scoped CCA can compare our matmul to an expert's matmul and find nothing wrong while the
+    model runs at a few percent of peak. Measured: spectformer 0.40 MAC/cycle, deepjscc 0.22,
+    lstmnetvit 0.067, against ~8 MAC/cycle for a VLEN=128 int8 vwmacc datapath. None of that is
+    expressible in ``compute``/``vector``/``memory``, so no divergence was ever raised and no action
+    ever routed — the loop could not discover the optimization because it could not see the loss.
+
+    Lifted from the IR + the schedule (no asm), so it works before anything is built.
+    """
+
+    #: MACs in contractions the schedule CLAIMS / total MACs in the model. 1.0 = every contraction is
+    #: on the tiled+vectorized path; 0.6 = 40% of the arithmetic is in an unclaimed class.
+    claimed_mac_fraction: float | None = None
+    #: contraction op classes present in the model that the schedule does NOT match, so their
+    #: contractions fall through to convert-linalg-to-loops (scalar). Empty = every class is claimed.
+    unclaimed_op_classes: tuple[str, ...] = ()
+    #: share of the model's ops that are NOT contractions — the elementwise/layout/reduction tail that
+    #: the contraction-only schedule leaves scalar. High + low MAC/cycle = the tail dominates.
+    non_contraction_op_fraction: float | None = None
+
+
+@dataclass
 class CCA:
     op: str
     backend: list[str]                         # ["rvv"], or ["npu","rvv"] for a composite region
@@ -121,6 +152,9 @@ class CCA:
     envelope: EnvelopeFacet | None = None
     spatial: SpatialFacet | None = None
     dataflow: DataflowFacet | None = None
+    #: whole-model coverage. Present only on a MODEL-level CCA (lifted from IR + schedule); None on a
+    #: per-kernel CCA, where "what fraction of the model is claimed" is not a meaningful question.
+    coverage: CoverageFacet | None = None
     provenance: dict[str, Any] = field(default_factory=dict)   # level, source, confidence
 
     def to_dict(self) -> dict:
@@ -484,6 +518,58 @@ def lift_graph(record, *, source: str = "graph", backend: str = "rvv") -> CCA:
         compute=ComputeFacet(op=op, accumulator_dtype=acc,
                              widening=True if (is_int8 or is_half) else None),
         provenance={"level": "graph", "source": source, "confidence": "medium"})
+
+
+def lift_coverage(model_mlir, claimed_ops, *, op: str = "model", source: str = "coverage",
+                  backend: str = "rvv") -> CCA:
+    """Whole-model CCA: how much of the model's work the schedule's ``claimed_ops`` actually covers.
+
+    ``claimed_ops`` is the set of contraction op classes the schedule matches (a package's
+    ``op_match``, minus any class a shape policy declined). Everything else — a contraction in an
+    unclaimed class, and every non-contraction op — lowers through ``convert-linalg-to-loops`` to
+    scalar code on one core.
+
+    This is an IR lifter on purpose: it needs no asm and no build, so the loop can see the loss while
+    choosing a schedule rather than after measuring a disappointing wall-clock. It is also the only
+    place the CCA can see it at all — see :class:`CoverageFacet`.
+
+    MACs are weighted by ``prod(parallel) * prod(reduction)`` per contraction, so a class holding one
+    huge attention matmul is not outvoted by a dozen tiny ones.
+
+    Contractions are classified through :func:`kernels.shapes.contraction_shapes`, NOT by op name: the
+    capture emits attention as a ``linalg.generic`` and the pipeline names it with
+    ``linalg-specialize-generic-ops`` before the schedule runs, so counting op names would report every
+    such contraction as an unclaimed ``linalg.generic`` and invent a loss that is not there.
+    """
+    from ..common.mlir_query import op_name, parse
+    from .shapes import contraction_shapes
+
+    claimed = {str(c) for c in claimed_ops}
+    module = parse(model_mlir)
+    fn = next((o for o in module.walk() if o.name == "func.func"), None)
+    if fn is None or not fn.body.blocks:
+        return CCA(op=op, backend=[backend], coverage=CoverageFacet(),
+                   provenance={"level": "coverage", "source": source, "confidence": "low"})
+    total_macs = claimed_macs = 0
+    present: set[str] = set()
+    shapes = contraction_shapes(module)
+    for s in shapes:
+        present.add(s.op)
+        macs = 1
+        for d in tuple(s.parallel) + tuple(getattr(s, "reduction", ()) or ()):
+            macs *= int(d)
+        total_macs += macs
+        if s.op in claimed:
+            claimed_macs += macs
+    n_ops = sum(1 for o in fn.body.blocks[0].ops if op_name(o).startswith("linalg."))
+    n_contraction = len(shapes)
+    return CCA(
+        op=op, backend=[backend],
+        coverage=CoverageFacet(
+            claimed_mac_fraction=(claimed_macs / total_macs) if total_macs else None,
+            unclaimed_op_classes=tuple(sorted(present - claimed)),
+            non_contraction_op_fraction=((n_ops - n_contraction) / n_ops) if n_ops else None),
+        provenance={"level": "coverage", "source": source, "confidence": "high"})
 
 
 def lift_dse(op_shape, *, source: str = "dse") -> CCA:

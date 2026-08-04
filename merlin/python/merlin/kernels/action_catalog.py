@@ -394,6 +394,60 @@ _RVV_ROUTES: list[_Route] = [
         expected_effect="the contraction's operand loads become unit-stride (packed panel), cutting the "
                         "loads-per-FMA + strided-access stalls the residual expert gap is attributed to",
         intended_facet={"memory.access_pattern": "unit_stride"}),
+    # ---- coverage (WHOLE-MODEL): the losses a per-kernel CCA structurally cannot see -------------
+    # Every route above compares OUR kernel to an EXPERT kernel. That can find nothing wrong while the
+    # model runs at a few percent of peak, because the biggest measured losses are graph-level: an
+    # entire contraction class left for convert-linalg-to-loops, and the ~88% of linalg ops that are
+    # not contractions at all. Without these routes the mining loop could not PROPOSE the fix, because
+    # nothing in the abstraction reported the loss -- the optimization was undiscoverable by
+    # construction, not merely unfound.
+    _Route(
+        axis="coverage.unclaimed_op_classes",
+        # ours leaves a contraction class unclaimed; an expert claims every class it computes.
+        when=lambda d: bool(d.ours) and not d.expert,
+        action_class="PASS",
+        target_seam="impr_features:per_op_register_block (tag each contraction, match by attribute)",
+        change="choose the register block PER CONTRACTION instead of per op class: a pre-pass tags each "
+               "contraction with the largest block legal for ITS OWN extents and the schedule emits one "
+               "tile+vectorize arm per distinct block, matched by attribute (the "
+               "transform.structured.match attributes{...} form the elementwise arms already use). "
+               "Today one degenerate extent in a class forces the whole class off the vector path.",
+        forkable_now=False,
+        expected_effect="every contraction is vectorized at its own legal width instead of the class "
+                        "being clamped by its smallest member — measured loss on whisper_tiny: its N=1 "
+                        "decode step drops the 1500-wide encoder attention to scalar, 34% of all MACs",
+        intended_facet={"coverage.unclaimed_op_classes": ()}),
+    _Route(
+        axis="coverage.claimed_mac_fraction",
+        when=lambda d: isinstance(d.ours, (int, float)) and d.ours < 1.0,
+        action_class="KNOB",
+        target_seam="schedule:per-op-class register block (rvvgen.apply.shape_adapted_features)",
+        change="re-derive the register block per op class against the workload's real extents (and, for "
+               "a multicore build, against the per-hart tile) so a class is claimed at a legal width "
+               "rather than declined outright",
+        forkable_now=True,
+        expected_effect="the claimed share of the model's MACs rises toward 1.0 without changing the "
+                        "emitted kernel for classes that already fit",
+        intended_facet={"coverage.claimed_mac_fraction": 1.0}),
+    _Route(
+        axis="coverage.non_contraction_op_fraction",
+        # the expert's kernel family vectorizes its elementwise/layout work; ours leaves it scalar.
+        when=lambda d: isinstance(d.ours, (int, float)) and d.ours > 0.5,
+        action_class="PASS",
+        target_seam="impr_features:vectorize_non_contraction_generics (MERLIN_VEC_RANK)",
+        change="scoped-vectorize the NON-contraction linalg.generics (elementwise, layout, im2col "
+               "gather, pad) at a bounded per-rank vector width, instead of letting "
+               "convert-linalg-to-loops emit scalar loops for them. The bounded per-rank form exists "
+               "as a default-off experiment (MERLIN_VEC_RANK); promoting it to a registered feature is "
+               "what makes it selectable by the beam. NOT the blunt whole-func vectorize_children, "
+               "which explodes into vector.extracts on a whole model.",
+        forkable_now=True,
+        expected_effect="the elementwise/layout tail stops running scalar on one core. It is the "
+                        "DOMINANT structural loss measured on every workload: 86-89% of linalg ops are "
+                        "non-contractions (spectformer 0.40 MAC/cycle, deepjscc 0.22, lstmnetvit 0.067 "
+                        "against ~8 for a VLEN=128 int8 vwmacc datapath). Must be proven by an emitted-"
+                        "code delta (PMU instret), never by a schedule-text diff.",
+        intended_facet=None),
 ]
 
 # RVV is the in-tree reference backend (its content is this module). Every OTHER backend's routes are

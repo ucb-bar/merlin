@@ -30,7 +30,8 @@ from pathlib import Path
 from typing import Any
 
 from . import action_catalog
-from .cca import (ComputeFacet, DataflowFacet, MemoryFacet, EnvelopeFacet, SpatialFacet,
+from .cca import (ComputeFacet, CoverageFacet, DataflowFacet, MemoryFacet, EnvelopeFacet,
+                  SpatialFacet,
                   VectorFacet)
 
 # facet name (the axis prefix) -> the dataclass whose fields it exposes.
@@ -41,6 +42,7 @@ FACET_CLASSES = {
     "envelope": EnvelopeFacet,
     "spatial": SpatialFacet,
     "dataflow": DataflowFacet,
+    "coverage": CoverageFacet,
 }
 
 IDENTITY = "IDENTITY"          # names the region, not a thing we change (the op key)
@@ -131,6 +133,23 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
     "spatial.accumulator_resident": FieldSpec("spatial.accumulator_resident", LEVER, ("spatial",),
                                               "output stays PE/accumulator-resident across the reduction "
                                               "(a discovered accumulator memory implies this lever)"),
+    # --- coverage (whole-model, target-agnostic) ---
+    # These are GRAPH-level, which is the point: every other facet is lifted from ONE kernel's asm, so a
+    # loss that lives in the graph -- an entire contraction class left unclaimed, or the ~88% of linalg
+    # ops that are not contractions at all -- was structurally invisible to the CCA and therefore could
+    # never be routed to an action. Measured: whisper_tiny claims only 65.9% of its MACs, and every
+    # model (tiny_llama included) leaves ~86-89% of its linalg ops off the vectorized path.
+    "coverage.claimed_mac_fraction": FieldSpec(
+        "coverage.claimed_mac_fraction", LEVER, ("rvv",),
+        "share of the model's MACs in contraction classes the schedule claims -> KNOB per-op-class "
+        "block so a degenerate extent stops declaring a whole class scalar"),
+    "coverage.unclaimed_op_classes": FieldSpec(
+        "coverage.unclaimed_op_classes", LEVER, ("rvv",),
+        "contraction classes left to convert-linalg-to-loops -> PASS per-op register block"),
+    "coverage.non_contraction_op_fraction": FieldSpec(
+        "coverage.non_contraction_op_fraction", LEVER, ("rvv",),
+        "share of ops the contraction-only schedule never matches -> PASS vectorize the "
+        "non-contraction generics (elementwise/layout/gather tail)"),
     # --- dataflow (npu) — stubs until the npu lifter + npu routes land ---
     "dataflow.engine_ops": FieldSpec("dataflow.engine_ops", BACKEND_STUB, ("npu",)),
     "dataflow.dma_pattern": FieldSpec("dataflow.dma_pattern", BACKEND_STUB, ("npu",)),
