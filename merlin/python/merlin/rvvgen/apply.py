@@ -25,13 +25,63 @@ def shape_adapted_features(pkg: "RvvPackage", model_dir: str | Path) -> list[str
     the pinned block as an upper BOUND and derives the largest legal one per op class.
 
     Returns the package's features unchanged when the model has no readable contractions, so an
-    unobservable workload degrades to the shape-blind behavior rather than failing."""
+    unobservable workload degrades to the shape-blind behavior rather than failing.
+
+    A package may pin its block one of TWO ways, and both are adapted here. A ``microkernel`` knob
+    block goes through the target-agnostic space. A HAND-FROZEN named point (the champion's
+    ``accumulator_resident_wholemodel_vf``) carries its block as constants inside the feature, so
+    it is translated to the equivalent caps first -- otherwise the one package anyone actually
+    compiles with is the one package that cannot adapt, and a workload whose extents the frozen
+    tails do not fit fails to lower with a masked-parallel-dim PipelineError."""
     from ..kernels.shapes import contraction_shapes
     from .registry import _resolve_features
     shapes = contraction_shapes(Path(model_dir) / "model.mlir")
     if not shapes:
         return list(pkg.compiler_features)
-    return _resolve_features(pkg.knobs, pkg.manifest, shapes=shapes)
+    feats = _resolve_features(pkg.knobs, pkg.manifest, shapes=shapes)
+    return _adapt_frozen_points(feats, shapes, target=str(pkg.manifest.get("target", "rvv")))
+
+
+def _adapt_frozen_points(feats: list[str], shapes, *, target: str) -> list[str]:
+    """Re-derive a hand-frozen register block ONLY for the op classes where it cannot lower.
+
+    Deliberately minimal. Adapting a class whose frozen block already lowers would change the
+    emitted code for workloads that work today -- including the model the block was tuned on,
+    whose measurements other people's results depend on. So each contraction op class is checked
+    against the measured predicate independently, the frozen block is kept wherever it holds, and
+    only a class that would mask a parallel dim (and therefore fail to lower, not merely run slow)
+    is replaced by the largest block legal for its own extents.
+
+    Emits a per-op-class feature when anything changed, and returns the list unchanged otherwise,
+    so a workload the frozen point already fits compiles byte-identically.
+    """
+    from ..llvmlower.frozen_blocks import frozen_block_caps, frozen_block_per_class
+    from .from_strategy import _rvv_best_block, _rvv_blocking_lowers
+
+    out: list[str] = []
+    for name in feats:
+        caps, frozen = frozen_block_caps(name), frozen_block_per_class(name)
+        if caps is None or frozen is None:
+            out.append(name)
+            continue
+        chosen: dict[str, tuple[int, int]] = {}
+        changed = False
+        for op, block in frozen.items():
+            ext = [(s.parallel[-2], s.parallel[-1]) for s in shapes
+                   if s.op == op and len(s.parallel) >= 2]
+            if not ext or all(_rvv_blocking_lowers(block[0], block[1], m, n) for m, n in ext):
+                chosen[op] = block
+                continue
+            chosen[op] = _rvv_best_block(int(caps["MR"]), int(caps["NR"]), ext)
+            changed = True
+        if not changed:
+            out.append(name)
+            continue
+        from ..llvmlower.impr_features import ensure_v3_perop_microkernel
+        mm, bmm = chosen["linalg.matmul"], chosen["linalg.batch_matmul"]
+        out.append(ensure_v3_perop_microkernel(mm[0], mm[1], bmm[0], bmm[1], int(caps["KC"])))
+    seen: set[str] = set()
+    return [f for f in out if not (f in seen or seen.add(f))]
 
 
 def apply_rvv_package(pkg: "RvvPackage | str | Path", model_dir: str | Path, work: str | Path,

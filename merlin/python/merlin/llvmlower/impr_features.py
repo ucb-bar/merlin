@@ -629,6 +629,19 @@ module attributes {{transform.with_named_sequence}} {{
 """
 
 
+#: The hand-frozen whole-model register block, named ONCE so the registration below and the
+#: shape-aware resolver read the same numbers. ``WHOLEMODEL_VF_CAPS`` is ``(MR, NR, KC)``; the two
+#: per-class clamps are the tails somebody picked to survive the VLA shapes (matmul M tile 1,
+#: batch_matmul N tile 8). They are a SHAPE decision, not a constant of the target, which is why
+#: ``rvvgen.apply.shape_adapted_features`` can re-derive them from a workload's own extents --
+#: reading the triple as an upper BOUND. On tiny_llama that derivation returns exactly (4, 16) /
+#: (4, 8), i.e. this frozen point, so the model this block was tuned on is unaffected.
+WHOLEMODEL_VF_NAME = "accumulator_resident_wholemodel_vf"
+WHOLEMODEL_VF_CAPS: tuple[int, int, int] = (4, 16, 16)
+WHOLEMODEL_VF_MR_MM = 1
+WHOLEMODEL_VF_NR_BMM = 8
+
+
 def _accumulator_resident_v3_pre_schedule(MR: int, NR: int, KC: int,
                                           NR_bmm: int | None = None,
                                           MR_mm: int | None = None) -> str:
@@ -1548,7 +1561,7 @@ def _register_accumulator_resident_v3() -> list[str]:
     # proven separately (wholemodel = small-M survival at NR=32; v3 = vfmacc.vf at the hand ceiling);
     # this composes them in ONE schedule. Default-off; baseline byte-identical.
     register(ImprFeature(
-        name="accumulator_resident_wholemodel_vf",
+        name=WHOLEMODEL_VF_NAME,
         action_class="PASS",
         description="Whole-model-safe vfmacc.vf accumulator-resident micro-kernel: the v3 "
                     "PRE-bufferize subset-hoist + A-scalarization recipe (emits vfmacc.vf, ~3 "
@@ -1564,11 +1577,11 @@ def _register_accumulator_resident_v3() -> list[str]:
                     "(output/kernels/ceiling/kernel_breakdown.md). Bit-exact (scalar A[i,0] == lane "
                     "[i,0]). Default-off; baseline byte-identical.",
         edit_pipeline=_accumulator_resident_v3_pipeline,
-        edit_schedule=lambda _t: _accumulator_resident_v3_pre_schedule(4, 16, 16,
-                                                                       NR_bmm=8, MR_mm=1),
+        edit_schedule=lambda _t: _accumulator_resident_v3_pre_schedule(
+            *WHOLEMODEL_VF_CAPS, NR_bmm=WHOLEMODEL_VF_NR_BMM, MR_mm=WHOLEMODEL_VF_MR_MM),
         schedule_replace=True,
     ))
-    names.append("accumulator_resident_wholemodel_vf")
+    names.append(WHOLEMODEL_VF_NAME)
 
     # ITERATION-3 (packing/memory residual): MR>1 register-block variant of the vf kernel for
     # A-OPERAND REUSE — the OpenBLAS lever. The memory-traffic decode (output/kernels/ceiling/

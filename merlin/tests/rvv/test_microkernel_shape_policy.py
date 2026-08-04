@@ -191,3 +191,78 @@ def test_shape_observer_reads_named_and_generic_contractions():
 def test_shape_observer_degrades_to_empty_on_unreadable_input():
     """A failed observation must mean "I observed nothing" (-> shape-blind fallback), never a raise."""
     assert contraction_shapes("this is not mlir {{{") == []
+
+
+# ---------------------------------------------------------------------------
+# Frozen-block adaptation. A package's register block is a claim about extents, so a workload with
+# a small or awkward parallel dim cannot build with a block chosen on transformer shapes. These pin
+# the two halves of that: adaptation must fire where the block fails, and must NOT fire where it
+# holds (which is what keeps existing measurements comparable).
+# ---------------------------------------------------------------------------
+
+
+def test_frozen_block_caps_match_the_registered_point():
+    """The caps table must describe the feature the registration actually emits."""
+    from merlin.llvmlower import impr_features as impr
+    from merlin.llvmlower.frozen_blocks import frozen_block_caps, frozen_block_per_class
+
+    caps = frozen_block_caps(impr.WHOLEMODEL_VF_NAME)
+    blocks = frozen_block_per_class(impr.WHOLEMODEL_VF_NAME)
+    assert caps == {"MR": impr.WHOLEMODEL_VF_CAPS[0], "NR": impr.WHOLEMODEL_VF_CAPS[1],
+                    "KC": impr.WHOLEMODEL_VF_CAPS[2]}
+    # The schedule tiles matmul [MR_mm, NR] and batch_matmul [1, MR, NR_bmm].
+    assert blocks["linalg.matmul"] == (impr.WHOLEMODEL_VF_MR_MM, impr.WHOLEMODEL_VF_CAPS[1])
+    assert blocks["linalg.batch_matmul"] == (impr.WHOLEMODEL_VF_CAPS[0],
+                                            impr.WHOLEMODEL_VF_NR_BMM)
+    assert frozen_block_caps("not_a_frozen_point") is None
+
+
+def test_adaptation_is_a_noop_when_the_frozen_block_lowers():
+    """Extents the frozen block already fits must keep the frozen feature name.
+
+    This is the property that protects existing results: substituting an equivalent-but-differently-
+    named point would change the emitted kernel for models whose numbers are already published.
+    """
+    from merlin.llvmlower import impr_features as impr
+    from merlin.rvvgen.apply import _adapt_frozen_points
+
+    # matmul M%1==0 and N%16==0; batch_matmul M%4==0 and N%8==0 -> both frozen blocks lower.
+    shapes = [
+        _Shape("linalg.matmul", (8, 256)),
+        _Shape("linalg.matmul", (8, 2048)),
+        _Shape("linalg.batch_matmul", (4, 8, 64)),
+    ]
+    feats = _adapt_frozen_points([impr.WHOLEMODEL_VF_NAME], shapes, target="rvv")
+    assert feats == [impr.WHOLEMODEL_VF_NAME]
+
+
+def test_adaptation_fires_only_for_the_failing_op_class():
+    """A class whose frozen block cannot lower is re-derived; the other class keeps its block."""
+    from merlin.llvmlower import impr_features as impr
+    from merlin.rvvgen.apply import _adapt_frozen_points
+
+    # matmul N=8 with the frozen NR=16: MR==1 but NR > N, so the fully-masked single iteration
+    # does not lower (the measured rank-1 escape needs NR <= N). batch_matmul is left fitting.
+    shapes = [
+        _Shape("linalg.matmul", (1, 8)),
+        _Shape("linalg.matmul", (1, 1024)),
+        _Shape("linalg.batch_matmul", (4, 8, 64)),
+    ]
+    feats = _adapt_frozen_points([impr.WHOLEMODEL_VF_NAME], shapes, target="rvv")
+    assert feats != [impr.WHOLEMODEL_VF_NAME]
+    assert len(feats) == 1
+    name = feats[0]
+    # accum_resident_v3p_<MR_mm>_<NR_mm>_<MR_bmm>_<NR_bmm>_<KC>
+    mr_mm, nr_mm, mr_bmm, nr_bmm, kc = (int(p) for p in name.rsplit("_", 5)[1:])
+    assert (mr_mm, nr_mm) == (1, 8), f"matmul block not re-derived to fit N=8: {name}"
+    assert (mr_bmm, nr_bmm) == (impr.WHOLEMODEL_VF_CAPS[0], impr.WHOLEMODEL_VF_NR_BMM), (
+        f"batch_matmul block changed even though the frozen one lowers: {name}")
+    assert kc == impr.WHOLEMODEL_VF_CAPS[2]
+
+
+class _Shape:
+    """Minimal stand-in for kernels.microkernel.ContractionShape (op + parallel extents)."""
+
+    def __init__(self, op, parallel):
+        self.op = op
+        self.parallel = parallel

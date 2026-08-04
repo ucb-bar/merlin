@@ -123,6 +123,15 @@ def generate(model_dir: str | Path, out_dir: str | Path,
             continue
         # non-weight arg: resolve its data and embed it.
         name = meta.get("name", "")
+        if meta["kind"] == "buffer" and meta.get("weight") in hdr:
+            # An EXTERNALIZED buffer (BatchNorm running stats, for instance) is in the weights blob
+            # like a parameter and is named under "weight", not "name" -- so it belongs in the blob
+            # arg table, not embedded as a C array. Only a buffer that stayed a graph argument
+            # comes from extra.npz, keyed by its FX arg name. Handling just the latter made every
+            # externalized buffer a KeyError on an empty name.
+            begin, _ = hdr[meta["weight"]]["data_offsets"]
+            rows.append(("MERLIN_WEIGHT", begin, len(shape), shape, elem, dt))
+            continue
         if meta["kind"] == "buffer":
             arr = buffer_array(name)
         elif name.startswith("c_lifted_tensor_"):

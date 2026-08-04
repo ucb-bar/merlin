@@ -129,7 +129,19 @@ def resolve_forward_args(model_dir: str | Path) -> list[np.ndarray]:
             continue
         name = meta.get("name", "") or ""
         if meta["kind"] == "buffer":
-            arr = buffer_array(name)
+            # A registered buffer reaches us one of two ways, and only one of them was handled.
+            # When the capture EXTERNALIZED it, the manifest names it under "weight" and the
+            # bytes are in the safetensors blob like any parameter (BatchNorm running stats, for
+            # instance). When it stayed a graph argument, the manifest carries the FX arg "name"
+            # and the value is in extra.npz. Prefer the blob when it has the tensor; otherwise
+            # fall back to extra.npz -- so neither capture shape is a missing-buffer error.
+            wname = meta.get("weight")
+            if wname and wname in hdr:
+                begin, end = hdr[wname]["data_offsets"]
+                arr = np.ascontiguousarray(
+                    np.frombuffer(blob[begin:end], dtype=_np_dtype(dt)).reshape(shape))
+            else:
+                arr = buffer_array(name)
         elif "lifted_tensor" in name:          # lifted get_attr constant (name varies by model)
             arr = np.ascontiguousarray(extra[lifted_names[li]]); li += 1
         elif name in input_order and f"in{input_order[name]}" in inputs.files:

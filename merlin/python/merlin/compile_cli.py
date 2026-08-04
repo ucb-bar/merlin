@@ -53,28 +53,69 @@ def _ensure_bundle(workload: str, dtype: str, *, auto_capture: bool) -> Path:
         raise SystemExit(f"[merlin-compile] no bundle {bundle} (and --no-capture). Capture it with:\n"
                          f"  <model venv>/bin/python $MERLIN_M2M_DIR/workloads/capture_consistent.py "
                          f"{workload} {dtype} {bundle}")
-    # Auto-capture: model2MLIR's consistent-capture worker, run inside the model's own venv. The venv +
-    # per-model env live in model2MLIR; we resolve MERLIN_M2M_DIR from .env and shell to capture.py
-    # (which manages the per-model venv). Honest: a fresh machine without the model's upstream venv
-    # cannot capture — we surface that clearly rather than fake a bundle.
+    # Auto-capture goes through model2MLIR's CONSISTENT-capture worker, which is the only one that
+    # writes a bundle: `capture.py` emits `.mlir` + `.safetensors` into `workloads/<model>/` and
+    # never produces `<bundle>/model.mlir`, so calling it here always ended in the "did not
+    # produce" error below no matter how well the capture went. `capture_consistent.py` takes the
+    # destination explicitly and emits the inputs/golden/extra the runtime needs.
+    #
+    # It also runs in the MODEL's venv (from `workloads/<model>/capture.toml`), not merlin's:
+    # a model's upstream stack is pinned per model and is generally not importable from here.
+    # Honest: a fresh machine without that venv cannot capture — we say so rather than fake a
+    # bundle.
     import subprocess
     from .common.paths import env as _env
     m2m = _env("MERLIN_M2M_DIR") or _env("MERLIN_MODEL2MLIR")
-    if not m2m or not (Path(m2m) / "workloads" / "capture.py").is_file():
+    worker = (Path(m2m) / "workloads" / "capture_consistent.py") if m2m else None
+    if not worker or not worker.is_file():
         raise SystemExit(f"[merlin-compile] bundle {bundle} missing and MERLIN_M2M_DIR unset/invalid — "
                          f"cannot auto-capture. Set MERLIN_M2M_DIR in .env or pre-capture the bundle.")
-    print(f"[merlin-compile] bundle absent → auto-capturing {workload} ({dtype}) via model2MLIR…", flush=True)
-    r = subprocess.run([sys.executable, str(Path(m2m) / "workloads" / "capture.py"),
-                        workload, "--formats", dtype], capture_output=True, text=True)
+    py = _capture_python(Path(m2m), workload)
+    print(f"[merlin-compile] bundle absent → auto-capturing {workload} ({dtype}) via "
+          f"{worker.name} in {py}…", flush=True)
+    r = subprocess.run([str(py), str(worker), workload, dtype, str(bundle)],
+                       capture_output=True, text=True, cwd=str(m2m))
     if (bundle / "model.mlir").is_file():
         return bundle
     raise SystemExit(f"[merlin-compile] auto-capture did not produce {bundle}.\n{r.stdout[-800:]}\n{r.stderr[-800:]}")
 
 
+def _capture_python(m2m_dir: Path, workload: str) -> Path:
+    """The interpreter to capture ``workload`` with: its own venv when its capture.toml names one.
+
+    A workload's upstream stack is pinned per model (model2MLIR's `capture.toml [venv]`), so the
+    capture must not run under merlin's interpreter just because that is what is executing.
+    Falls back to model2MLIR's own venv, then to this interpreter, and never fails here — the
+    caller surfaces a capture failure with the worker's output attached.
+    """
+    toml = m2m_dir / "workloads" / workload / "capture.toml"
+    if toml.is_file():
+        try:
+            import tomllib
+            cfg = tomllib.loads(toml.read_text())
+        except Exception:                                          # noqa: BLE001
+            cfg = {}
+        venv = cfg.get("venv")
+        if venv:
+            cand = Path(venv)
+            if not cand.is_absolute():
+                cand = m2m_dir / "workloads" / workload / venv
+            if (cand / "bin" / "python").is_file():
+                return cand / "bin" / "python"
+    fallback = m2m_dir / ".venv" / "bin" / "python"
+    return fallback if fallback.is_file() else Path(sys.executable)
+
+
 #: knobs.yaml ``dtype_strategy`` for each ``--dtype``, used to pick a champion package of the
 #: RIGHT datatype. An fp32 schedule applied to an int8 workload builds a silently wrong
 #: datapath rather than failing, so this must never fall back across datatypes.
-_DTYPE_STRATEGY = {"int8": "int8_w8a8", "fp32": "fp32", "fp16": "fp16", "fp8": "fp8"}
+#:
+#: These strings must match what packages actually declare (``rvvgen.tuning_agent``'s strategy
+#: set: fp32, int8_w8a8, bf16_f32acc, fp16_f32acc). "fp16"/"fp8" matched nothing, so
+#: ``select_champion`` raised and the fallback below handed back ``hand_v0`` — an **fp32**
+#: package — which is exactly the cross-datatype substitution the paragraph above forbids.
+_DTYPE_STRATEGY = {"int8": "int8_w8a8", "fp32": "fp32", "fp16": "fp16_f32acc",
+                   "bf16": "bf16_f32acc", "fp8": "fp8"}
 
 
 def default_package(dtype: str) -> str:
@@ -88,16 +129,58 @@ def default_package(dtype: str) -> str:
     says so.
     """
     from .targetgen.publish import PublishError, select_champion
-    strategy = _DTYPE_STRATEGY.get(dtype, "fp32")
+    strategy = _DTYPE_STRATEGY.get(dtype)
+    if strategy is None:
+        raise SystemExit(f"[merlin-compile] no dtype_strategy known for --dtype {dtype}; add one "
+                         f"to _DTYPE_STRATEGY together with a package that declares it")
     try:
         sel = select_champion("rvv", dtype_strategy=strategy)
         return str(sel.package_dir)
     except PublishError:
-        fallback = "hand_v0_int8" if dtype == "int8" else "hand_v0"
+        # Fall back only WITHIN the datatype. The frozen hand baselines exist for fp32 and int8
+        # only, so any other dtype has no same-datatype control to fall back to — and handing
+        # back an fp32 schedule there would build a silently wrong datapath (see _DTYPE_STRATEGY).
+        # Fail with the fix instead: mint and certify a package for this strategy.
+        fallback = {"int8": "hand_v0_int8", "fp32": "hand_v0"}.get(dtype)
+        if fallback is None:
+            raise SystemExit(
+                f"[merlin-compile] no package declares dtype_strategy={strategy!r} (for --dtype "
+                f"{dtype}), and there is no {dtype} baseline to fall back to. Refusing to "
+                f"substitute a package of a different datatype. Either pass --package explicitly "
+                f"or mint one: see docs/guides/targetgen.md.") from None
         print(f"[merlin-compile] no certified {strategy} package; falling back to the frozen "
               f"baseline {fallback} (this is the UNOPTIMIZED control)", flush=True)
         from .common.artifacts import artifacts_dir
         return str(artifacts_dir() / "targets" / "rvv" / fallback)
+
+
+def _workload_features(pkg, bundle, out: dict) -> list[str]:
+    """The package's compiler features, with a register block that cannot lower re-derived.
+
+    A package's register block is a claim about extents, not a property of the target: a block that
+    masks a parallel dim of a contraction it must cover does not lower at all on the integer path
+    (LLVM-23 rejects the multi-op ``vector.mask`` that a masked ``transfer_write`` needs) and
+    degrades ~34x on fp32. The certified block was chosen on transformer shapes; a model with a
+    small or awkward parallel extent -- an FFT's frequency bins, a single-token decode step, a
+    3-DoF output head -- fails to build with it.
+
+    Re-derived PER OP CLASS and only where the frozen block provably fails, so a workload that
+    already fits compiles byte-identically and existing measurements stand. The substitution is
+    reported in the result dict and on stderr, never silently: it changes the emitted kernel.
+    """
+    frozen = list(pkg.compiler_features)
+    try:
+        from .rvvgen.apply import shape_adapted_features
+        feats = shape_adapted_features(pkg, bundle)
+    except Exception as exc:                                        # noqa: BLE001
+        print(f"[merlin-compile] shape adaptation unavailable ({type(exc).__name__}: {exc}); "
+              f"using the package block as pinned", file=sys.stderr)
+        return frozen
+    if sorted(feats) != sorted(frozen):
+        out["features_shape_adapted"] = {"pinned": frozen, "used": feats}
+        print(f"[merlin-compile] the package register block does not lower for this workload's "
+              f"contraction extents; re-derived per op class: {frozen} -> {feats}", flush=True)
+    return feats
 
 
 def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: str | None,
@@ -167,10 +250,11 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
             out["status"] = "not_run"
             out["reason"] = "Zephyr/spike toolchain unavailable (ZEPHYR_BASE / SDK / MERLIN_CHIPYARD)"
             return out
+        feats = _workload_features(pkg, bundle, out)
         b = zm.build_app(bundle, work, board=board, backend="rvv", rvv_hart=0,
                          int8_compute=pkg.is_int8, rvv_schedule=pkg.schedule_text,
                          cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
-                         features=frozenset(pkg.compiler_features) or None,
+                         features=frozenset(feats) or None,
                          n_harts=harts, iters=iters, warmup=warmup,
                          cpus=max(2, harts))
         out["binary"] = str(b["elf"]); out["status"] = "compiled"

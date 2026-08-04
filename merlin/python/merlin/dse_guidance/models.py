@@ -36,7 +36,9 @@ class ModelArch:
     """Architecture facts for one base model (reference values; loop count tagged assumed)."""
     name: str
     family: str                      # "flow_matching" | "diffusion" | "autoregressive_vla" | "llm"
+                                     #   | "feed_forward" (one pass per input, no host-side loop)
     loop_kind: str                   # "denoise_steps" | "action_token_decode" | "token_decode"
+                                     #   | "single_pass"
     loop_count: int                  # K: host-side repetitions the single-pass capture hides
     control_rate_hz: float | None    # real-time control budget (VLA action heads), else None
     action_horizon: int | None       # H: actions per chunk, else None
@@ -75,6 +77,29 @@ MODEL_ARCH: dict[str, ModelArch] = {
     "tiny_llama": ModelArch("tiny_llama", "llm", "token_decode", 7, None, None,
                             loop_count_source="recovered_from_ir"),
     "small": ModelArch("small", "llm", "token_decode", 32, None, None),
+    # Feed-forward vision / audio / control workloads. loop_count is 1 BY CONSTRUCTION, not as a
+    # reference value: one input produces one output, so the single-pass capture hides no
+    # host-side repetition (unlike the diffusion and decode families above, whose flat capture
+    # hides a loop and therefore makes weight residency illegal until the loop is re-exposed).
+    "spectformer": ModelArch("spectformer", "feed_forward", "single_pass", 1, None, None,
+                             loop_count_source="by_construction",
+                             note="SpectFormer-Ti classifier; blocks 0-3 spectral gating "
+                                  "(rfft2/irfft2 on the 14x14 token grid), 4-11 attention."),
+    "lstmnetvit": ModelArch("lstmnetvit", "feed_forward", "single_pass", 1, None, None,
+                            loop_count_source="by_construction",
+                            note="vitfly ViT+LSTM depth-image controller. The real controller "
+                                 "threads the LSTM state across steps; the capture is one step "
+                                 "from a zero state, so K=1 describes the CAPTURE, not the loop."),
+    "deepjscc": ModelArch("deepjscc", "feed_forward", "single_pass", 1, None, None,
+                          loop_count_source="by_construction",
+                          note="DiffJSCC's JSCC encoder+decoder codec only — NOT the "
+                               "Stable-Diffusion refinement stage that produces its published "
+                               "reconstruction quality."),
+    "whisper_tiny": ModelArch("whisper_tiny", "llm", "token_decode", 1, None, None,
+                              loop_count_source="by_construction",
+                              note="Whisper-tiny encoder + ONE cross-attending decoder step. "
+                                   "Transcription length is data-dependent, so no reference K "
+                                   "is claimed; the capture is the per-step graph."),
 }
 
 
