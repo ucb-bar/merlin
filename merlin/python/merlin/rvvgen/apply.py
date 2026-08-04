@@ -14,7 +14,48 @@ from ..runtime.backends import zephyr_model as zm
 from .registry import RvvPackage, load_rvv_package
 
 
-def shape_adapted_features(pkg: "RvvPackage", model_dir: str | Path) -> list[str]:
+class _SplitShape:
+    """A contraction shape whose parallel extents are what ONE HART actually sees."""
+
+    __slots__ = ("op", "parallel", "reduction")
+
+    def __init__(self, op: str, parallel, reduction=()):
+        self.op = op
+        self.parallel = tuple(parallel)
+        self.reduction = tuple(reduction)
+
+
+def _harts_split_shapes(shapes, harts: int) -> list:
+    """``shapes`` re-expressed as the per-hart tiles a multicore build actually blocks.
+
+    The multicore stage wraps each contraction in an ``scf.forall`` BEFORE the package's schedule
+    runs (see ``pipeline.parallel_transform_schedule``), splitting ``linalg.matmul`` over N with
+    ``tile_using_forall ... num_threads``. So the register block has to cover ``ceil(N / harts)`` and
+    the smaller remainder tile — NOT the whole N. Choosing the block from the unsplit extents is how
+    ``--harts 3`` on a 2-wide N ended up masking a parallel dim and failing to lower, while the same
+    model built fine at 1 and 4 harts (N/4 of an even N stays even).
+
+    ``batch_matmul`` splits over its BATCH dim, which is not part of the (M, N) block, so its shapes
+    pass through unchanged.
+    """
+    if harts < 2:
+        return list(shapes)
+    out = []
+    for s in shapes:
+        par = list(s.parallel)
+        if s.op != "linalg.matmul" or len(par) < 2:
+            out.append(s)
+            continue
+        n = int(par[-1])
+        tile = -(-n // harts)                      # ceil: the largest tile any hart gets
+        rem = n - tile * (harts - 1)               # the last hart's tile (may be <= 0 = idle)
+        for extent in {tile, rem} if rem > 0 else {tile}:
+            out.append(_SplitShape(s.op, [*par[:-1], extent], getattr(s, "reduction", ())))
+    return out
+
+
+def shape_adapted_features(pkg: "RvvPackage", model_dir: str | Path,
+                           *, harts: int = 1) -> list[str]:
     """``pkg``'s compiler features re-resolved against the CONTRACTIONS ``model_dir`` actually has.
 
     This is the seam where a package and a workload first meet, so it is where a register block
@@ -32,12 +73,17 @@ def shape_adapted_features(pkg: "RvvPackage", model_dir: str | Path) -> list[str
     ``accumulator_resident_wholemodel_vf``) carries its block as constants inside the feature, so
     it is translated to the equivalent caps first -- otherwise the one package anyone actually
     compiles with is the one package that cannot adapt, and a workload whose extents the frozen
-    tails do not fit fails to lower with a masked-parallel-dim PipelineError."""
+    tails do not fit fails to lower with a masked-parallel-dim PipelineError.
+
+    ``harts`` is the hart count the image will be built for. It matters because the multicore stage
+    splits each matmul over N BEFORE this schedule runs, so what the block must cover is the per-hart
+    tile, not the model's N — see :func:`_harts_split_shapes`."""
     from ..kernels.shapes import contraction_shapes
     from .registry import _resolve_features
     shapes = contraction_shapes(Path(model_dir) / "model.mlir")
     if not shapes:
         return list(pkg.compiler_features)
+    shapes = _harts_split_shapes(shapes, int(harts))
     feats = _resolve_features(pkg.knobs, pkg.manifest, shapes=shapes)
     return _adapt_frozen_points(feats, shapes, target=str(pkg.manifest.get("target", "rvv")))
 

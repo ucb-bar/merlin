@@ -389,3 +389,32 @@ class _Shape:
     def __init__(self, op, parallel):
         self.op = op
         self.parallel = parallel
+
+
+def test_the_per_hart_tile_is_what_a_multicore_block_must_cover():
+    """``harts`` re-expresses each matmul's N as the tile ONE hart gets, not the model's N.
+
+    The multicore stage wraps every contraction in an ``scf.forall`` over the harts BEFORE the
+    package's schedule runs, so the register block sees ``ceil(N / harts)`` (and the smaller
+    remainder tile). Resolving against the unsplit N is how a block that lowers at 1 and 4 harts
+    failed at 3.
+    """
+    from merlin.rvvgen.apply import _harts_split_shapes
+
+    shapes = [_Shape("linalg.matmul", (32, 2)), _Shape("linalg.batch_matmul", (6, 8, 64))]
+    assert [s.parallel for s in _harts_split_shapes(shapes, 1)] == [(32, 2), (6, 8, 64)]
+    split = _harts_split_shapes(shapes, 3)
+    mm = sorted(s.parallel[-1] for s in split if s.op == "linalg.matmul")
+    assert mm == [1], f"N=2 over 3 harts is a 1-wide tile, got {mm}"
+    # batch_matmul splits over its BATCH dim, which is not part of the (M, N) block
+    assert [s.parallel for s in split if s.op == "linalg.batch_matmul"] == [(6, 8, 64)]
+
+
+def test_a_remainder_tile_is_checked_too_not_just_the_ceiling():
+    """The last hart's tile is smaller than the others; a block legal only for the big tile is wrong."""
+    from merlin.rvvgen.apply import _harts_split_shapes
+
+    # N=10 over 4 harts -> ceil = 3 for three harts, remainder 1 for the fourth.
+    tiles = sorted({s.parallel[-1] for s in
+                    _harts_split_shapes([_Shape("linalg.matmul", (8, 10))], 4)})
+    assert tiles == [1, 3], tiles

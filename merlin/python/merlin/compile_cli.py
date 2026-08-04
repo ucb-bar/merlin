@@ -154,7 +154,7 @@ def default_package(dtype: str) -> str:
         return str(artifacts_dir() / "targets" / "rvv" / fallback)
 
 
-def _workload_features(pkg, bundle, out: dict) -> list[str]:
+def _workload_features(pkg, bundle, out: dict, harts: int = 1) -> list[str]:
     """The package's compiler features, with a register block that cannot lower re-derived.
 
     A package's register block is a claim about extents, not a property of the target: a block that
@@ -176,7 +176,7 @@ def _workload_features(pkg, bundle, out: dict) -> list[str]:
         for risk in blocking_risks(pkg, bundle):
             out.setdefault("blocking_risks", []).append(risk)
             print(f"[merlin-compile] WARNING: {risk}", file=sys.stderr, flush=True)
-        feats = shape_adapted_features(pkg, bundle)
+        feats = shape_adapted_features(pkg, bundle, harts=harts)
     except Exception as exc:                                        # noqa: BLE001
         print(f"[merlin-compile] shape adaptation unavailable ({type(exc).__name__}: {exc}); "
               f"using the package block as pinned", file=sys.stderr)
@@ -266,12 +266,35 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
             out["reason"] = "Zephyr/spike toolchain unavailable (ZEPHYR_BASE / SDK / MERLIN_CHIPYARD)"
             return out
         feats = _workload_features(pkg, bundle, out)
-        b = zm.build_app(bundle, work, board=board, backend="rvv", rvv_hart=0,
-                         int8_compute=pkg.is_int8, rvv_schedule=pkg.schedule_text,
-                         cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
-                         features=frozenset(feats) or None,
-                         n_harts=harts, iters=iters, warmup=warmup,
-                         cpus=max(2, harts))
+
+        def _build(fs):
+            return zm.build_app(bundle, work, board=board, backend="rvv", rvv_hart=0,
+                                int8_compute=pkg.is_int8, rvv_schedule=pkg.schedule_text,
+                                cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
+                                features=frozenset(fs) or None,
+                                n_harts=harts, iters=iters, warmup=warmup,
+                                cpus=max(2, harts))
+
+        try:
+            b = _build(feats)
+        except Exception as exc:                                    # noqa: BLE001
+            # A multicore build splits each matmul over N BEFORE the package schedule runs, so the
+            # block has to cover the PER-HART tile, not the model's N. Narrowing the block for that
+            # up front would be wrong: measured on spectformer at 3 harts, the un-narrowed block
+            # lowers fine and is 2.04x FASTER (2.56e9 vs 5.21e9 cycles), because the legality
+            # predicate is conservative on the dynamic tile a forall produces. So prefer the fast
+            # block and fall back only when the build actually rejects it -- one wasted build on the
+            # rare model that needs it (lstmnetvit at 3 harts, whose N=2 splits to a 1-wide tile),
+            # instead of a permanent 2x on every model that does not.
+            if harts < 2 or "vector.mask" not in str(exc):
+                raise
+            narrowed = _workload_features(pkg, bundle, out, harts=harts)
+            print(f"[merlin-compile] the register block does not lower once each matmul is split "
+                  f"across {harts} harts; re-deriving against the per-hart tile: "
+                  f"{feats} -> {narrowed}", file=sys.stderr, flush=True)
+            out["harts_split_block_retry"] = {"tried": list(feats), "used": list(narrowed)}
+            b = _build(narrowed)
+            feats = narrowed
         out["binary"] = str(b["elf"]); out["status"] = "compiled"
         if run == "verilator":
             sim = zm.verilator_sim()

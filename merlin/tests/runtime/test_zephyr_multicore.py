@@ -26,7 +26,7 @@ import os
 import numpy as np
 import pytest
 
-from merlin.common.artifacts import recaptures_dir
+from merlin.common.artifacts import artifacts_dir, recaptures_dir
 from merlin.xdsl_dialects import _common
 
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
@@ -203,3 +203,68 @@ def test_multicore_output_is_bit_identical_to_single_hart(n_harts, tmp_path):
         f"{np.abs(a - c).max()} — vector-state corruption or an overlapping work split, "
         f"NOT rounding (the split touches only parallel dims)")
     assert multi.get("ok")
+
+
+# The conv / FFT / recurrent workloads (spectformer, whisper_tiny, lstmnetvit, deepjscc) reach the
+# contractions by a different route than an LLM does -- conv arrives as im2col + matmul, an FFT as
+# real DFT matmuls -- and their parallel extents are the ones that forced the register block to be
+# re-resolved per op class. So the split has to be gated on one of THEM, not only on small_llama:
+# a schedule that lowers for a transformer's shapes says nothing about an N=8 frequency-bin matmul.
+# 3 harts is deliberate -- it is the Kodiak tapeout's working core count, and 3 divides almost
+# nothing, which is exactly when a split that assumed divisibility would drop or double work.
+NEW_WORKLOAD_SPLIT_CASES = [
+    ("deepjscc_int8_full", 3),        # smallest: conv encoder/decoder, no batch_matmul at all
+    ("spectformer_int8_full", 3),     # spectral: matmul N=8 (DFT bins) -> an ADAPTED register block
+]
+
+
+@slow
+@pytest.mark.parametrize("bundle_name,n_harts", NEW_WORKLOAD_SPLIT_CASES)
+def test_new_workload_multicore_output_is_bit_identical(bundle_name, n_harts, tmp_path):
+    """N harts must agree with 1 hart bit-for-bit on a conv/spectral workload.
+
+    Runs through the SHAPE-ADAPTED features, i.e. the same resolution ``merlin-compile`` performs, so
+    this also gates that path end to end: spectformer does not even build with the package's pinned
+    block (its N=8 matmul needs an adapted one), so a regression in the resolver shows up here as a
+    build failure rather than as a wrong number much later.
+
+    Bit-exactness is asserted unconditionally; the golden gate only when the 1-hart run already
+    passes it. deepjscc currently carries an open host-vs-board accuracy divergence, and the split
+    must be proven correct independently of it -- a wrong-but-identical output still proves the
+    parallel decomposition touched nothing, which is the property under test here.
+    """
+    from merlin.rvvgen.apply import shape_adapted_features
+    from merlin.rvvgen.registry import load_rvv_package
+
+    zm = _zm()
+    if not zm.available():
+        pytest.skip("Zephyr/spike toolchain unavailable")
+    b = recaptures_dir() / bundle_name
+    if not (b / "model.mlir").is_file():
+        pytest.skip(f"{bundle_name} not captured")
+    pkg_dir = artifacts_dir() / "targets" / "rvv" / "impr_tuned_wholemodel_vf_int8"
+    if not pkg_dir.is_dir():
+        pytest.skip("int8 champion package not present")
+    pkg = load_rvv_package(pkg_dir)
+    feats = frozenset(shape_adapted_features(pkg, b))
+    refs = _refs(b)
+    common = dict(board="spike_riscv64", backend="rvv", rvv_hart=0, arena_mb=64,
+                  int8_compute=True, references=refs, timeout=7200,
+                  rvv_schedule=pkg.schedule_text,
+                  cflags_override=pkg.cflags + zm._CFLAGS_COMMON, features=feats)
+
+    base = zm.build_and_run(b, tmp_path / "h1", harts=2, n_harts=1, **common)
+    multi = zm.build_and_run(b, tmp_path / f"h{n_harts}", harts=n_harts, n_harts=n_harts, **common)
+
+    assert multi["metrics"].get("omp_threads") == n_harts, \
+        f"pool clamped to {multi['metrics'].get('omp_threads')} instead of {n_harts}"
+    a, c = base["outputs"], multi["outputs"]
+    assert a.shape == c.shape, f"shape changed with harts: {a.shape} vs {c.shape}"
+    assert np.array_equal(a, c), (
+        f"{bundle_name}: {n_harts}-hart output differs from 1-hart by max "
+        f"{np.abs(a - c).max()} — an overlapping or lost work split, NOT rounding "
+        f"(the split touches only parallel dims)")
+    if base.get("ok"):
+        assert multi.get("ok"), (
+            f"{bundle_name}: 1 hart passed the golden gate but {n_harts} harts did not, "
+            f"despite identical output — the gate itself is unstable")
