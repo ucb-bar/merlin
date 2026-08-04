@@ -49,19 +49,36 @@ def _facts_abi(facts: dict) -> tuple[str, str] | None:
     return None
 
 
-def _is_rocc_target(target: str, facts_rec: dict) -> bool:
-    """Is this a RoCC command-ISA target (the dialect/trace FileCheck applies) vs a self-hosted-ISA
-    (external_backend) / other target? DERIVED, never a target-name test: the authoritative signal is the
-    capability manifest's ``endpoint_kind`` (``inline_asm_insn`` == RoCC). We do NOT key on the presence of
-    a ``funct_decode_table`` — the mlc icmp-fanout extractor synthesises one for ANY decoder (atlas, a
-    self-hosted ISA, gets a table with custom_opcode 0x7b too), so that would false-positive. Falls back to
-    the ``rocc_cmd`` interface signal if no manifest resolves (gemmini ships one; atlas does not)."""
+def _endpoint_kind_for(target: str, facts_rec: dict) -> str | None:
+    """The target's DERIVED codegen endpoint_kind, resolved the SAME way the capability layer derives it,
+    so the FileCheck family routing matches the grader. Order: the residual+facts deriver
+    (``manifest_for`` — works for every target that ships a residual, including the ones with no committed
+    ``target_contract.yaml``), then the committed contract (``load_capability_manifest``), then straight
+    from this run's facts record (``_endpoint_from_facts`` over the funct7 width / self-hosted-ISA signal).
+    None only when nothing grounds it (caller then treats it as non-RoCC, honestly)."""
+    from .capability_manifests import _endpoint_from_facts, _facts_body, manifest_for
+    try:
+        ek = manifest_for(target).get("endpoint_kind")
+        if ek:
+            return ek
+    except Exception:  # noqa: BLE001 — no residual/derivation for this target
+        pass
     try:
         from .target_experiment import load_capability_manifest
-        return load_capability_manifest(target).endpoint_kind == "inline_asm_insn"
-    except Exception:  # noqa: BLE001 — no manifest -> use the rocc_cmd interface presence as the signal
-        facts = facts_rec.get("facts", facts_rec)
-        return any(i.get("name") == "rocc_cmd" for i in (facts.get("interfaces") or []))
+        return load_capability_manifest(target).endpoint_kind
+    except Exception:  # noqa: BLE001 — no committed contract either
+        return _endpoint_from_facts(_facts_body(facts_rec))
+
+
+def _is_rocc_target(target: str, facts_rec: dict) -> bool:
+    """Is this a RoCC command-ISA target (the TRACE FileCheck applies) vs a self-hosted-ISA
+    (external_backend, the KERNEL FileCheck) / other target? DERIVED, never a target-name test: routes on
+    the DERIVED ``endpoint_kind`` (``inline_asm_insn`` == RoCC). We do NOT key on the presence of a
+    ``funct_decode_table`` — the mlc icmp-fanout extractor synthesises one for ANY decoder (a self-hosted
+    ISA gets a table too), so that would false-positive; the endpoint deriver instead reads the funct7
+    WIDTH (<= 0x7f -> RoCC) / the self-hosted-ISA signal. When nothing grounds an endpoint, it is not
+    RoCC (the KERNEL family / honest non-routing)."""
+    return _endpoint_kind_for(target, facts_rec) == "inline_asm_insn"
 
 
 def _facts_to_rc(facts_rec: dict) -> dict:

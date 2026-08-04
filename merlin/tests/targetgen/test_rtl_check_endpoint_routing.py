@@ -28,6 +28,19 @@ def test_gemmini_is_rocc_routed_and_atlas_is_not():
     assert CC._is_rocc_target("atlas", fa) is False           # endpoint external_backend, NOT decode-table
 
 
+def test_mx_gemmini_routes_trace_and_radiance_routes_kernel():
+    """The two newest targets route by their DERIVED endpoint even with NO committed target_contract.yaml
+    (the resolver falls through to manifest_for's residual+facts derivation): mx_gemmini is RoCC
+    (inline_asm_insn -> TRACE), radiance is a self-hosted SIMT core (external_backend -> KERNEL). Locks
+    the fix for the dead ``rocc_cmd`` fallback that used to mis-route mx_gemmini to the KERNEL family."""
+    ek_mx = CC._endpoint_kind_for("mx_gemmini", {})
+    ek_rad = CC._endpoint_kind_for("radiance", {})
+    if not ek_mx or not ek_rad:
+        pytest.skip("endpoint not derivable (mlc / SIMT introspect absent)")
+    assert ek_mx == "inline_asm_insn" and CC._is_rocc_target("mx_gemmini", {}) is True
+    assert ek_rad == "external_backend" and CC._is_rocc_target("radiance", {}) is False
+
+
 def test_compile_checks_routes_by_endpoint_not_decode_table():
     cap = {"name": "m", "operation": {"op": "matmul"}, "inputs": [{"role": "output", "shape": [16, 16]}]}
     g = CC.compile_checks(_facts("gemmini"), cap, "gemmini")
