@@ -33,6 +33,7 @@ import json
 import shutil
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"))
@@ -256,6 +257,9 @@ def main(argv=None) -> int:
     ap.add_argument("--vlen", type=int, default=None, help="the board's REAL vector length")
     ap.add_argument("--dtype", default="int8")
     ap.add_argument("--timeout", type=int, default=14400)
+    ap.add_argument("--jobs", type=int, default=None,
+                    help="images to build/simulate at once (default: min(images, 6)); each is one "
+                         "single-threaded spike")
     ap.add_argument("--out", default=None, help="destination dir (default: an out/artifacts product)")
     a = ap.parse_args(argv)
 
@@ -284,6 +288,7 @@ def main(argv=None) -> int:
           f"vlen={brd.vlen or 'unknown(assume 128)'} -> {dest}", flush=True)
 
     binaries, audits, problems = [], {}, []
+    todo = []                                     # (model, bundle, harts) -- one image each
     for model in models:
         bundle = repo_root() / f"out/artifacts/recaptures/{model}_{a.dtype}_full"
         if not (bundle / "model.mlir").is_file():
@@ -292,26 +297,55 @@ def main(argv=None) -> int:
         for tier, fn in (("fp32", "golden.npy"), ("w8a8", "golden_w8a8.npy")):
             if (bundle / fn).is_file():
                 shutil.copy2(bundle / fn, dest / f"{model}.{fn}")
+        for harts in hart_list:
+            if brd.flow == boards.FLOW_BAREMETAL and harts != 1:
+                # gemmelos dispatches hart 1 through its own thread-lib, not OpenMP; a multi-hart
+                # bare-metal image is a separate integration, so say so rather than shipping something
+                # untested.
+                problems.append(f"{model} h{harts}: baremetal multicore not implemented "
+                                f"(hart 1 waits in wfi; their thread-lib dispatches it)")
+                continue
+            todo.append((model, bundle, harts))
+
+    def _one(item):
+        model, bundle, harts = item
+        work = Path(tempfile.mkdtemp(prefix=f"delivery_{model}_h{harts}_"))
+        print(f"  [{model} h{harts}] building + simulating in {work}", flush=True)
+        if brd.flow == boards.FLOW_BAREMETAL:
+            out = build_baremetal(bundle, brd, work=work, timeout=a.timeout)
+        else:
+            out = build_one(bundle, brd, harts, vlen=brd.vlen, work=work, timeout=a.timeout)
+        cyc = out[0]["metrics"].get("cycles")
+        print(f"  [{model} h{harts}] done: {cyc:,} cycles, gate={out[0].get('tier_ok')}", flush=True)
+        return out
+
+    # CONCURRENTLY, because the wall clock here is spike, not us: each image is one single-threaded
+    # functional simulation of a whole int8 inference (spectformer alone is 2.78 G cycles at roughly
+    # 2.4 M cycles/s, i.e. ~20 minutes), and a delivery is several of them. Serially that is hours for
+    # a package whose slowest single item is under an hour. Each job is its own temp dir, its own build
+    # tree and its own subprocesses, so the only shared state is the result assembly below -- done
+    # after the pool drains, in a deterministic order rather than completion order.
+    jobs = a.jobs or min(len(todo), 6)
+    print(f"[make_delivery] {len(todo)} image(s), {jobs} at a time", flush=True)
+    done: dict[tuple, object] = {}
+    with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+        futures = {pool.submit(_one, it): it for it in todo}
+        for fut in as_completed(futures):
+            item = futures[fut]
+            try:
+                done[item] = fut.result()
+            except Exception as exc:                                        # noqa: BLE001
+                problems.append(f"{item[0]} h{item[2]}: {type(exc).__name__}: "
+                                f"{str(exc).splitlines()[0][:200]}")
+
+    for model in models:
         outputs = {}
         for harts in hart_list:
-            work = Path(tempfile.mkdtemp(prefix=f"delivery_{model}_h{harts}_"))
-            try:
-                if brd.flow == boards.FLOW_BAREMETAL:
-                    if harts != 1:
-                        # gemmelos dispatches hart 1 through its own thread-lib, not OpenMP; a
-                        # multi-hart bare-metal image is a separate integration, so say so rather than
-                        # shipping something untested.
-                        problems.append(f"{model} h{harts}: baremetal multicore not implemented "
-                                        f"(hart 1 waits in wfi; their thread-lib dispatches it)")
-                        continue
-                    res, board_build = build_baremetal(bundle, brd, work=work, timeout=a.timeout)
-                else:
-                    res, board_build = build_one(bundle, brd, harts, vlen=brd.vlen, work=work,
-                                                 timeout=a.timeout)
-            except Exception as exc:                                        # noqa: BLE001
-                problems.append(f"{model} h{harts}: {type(exc).__name__}: "
-                                f"{str(exc).splitlines()[0][:200]}")
+            got = done.get((model, repo_root() / f"out/artifacts/recaptures/{model}_{a.dtype}_full",
+                            harts))
+            if got is None:
                 continue
+            res, board_build = got
             elf_name = f"{model}_{a.dtype}_h{harts}_{brd.name}.elf"
             shutil.copy2(board_build["elf"], dest / elf_name)
             rep = elf_audit.audit(dest / elf_name, brd,
@@ -378,6 +412,10 @@ def _git_sha() -> str:
 
 def _readme(brd, manifest: dict) -> str:
     loader = LOADER_DOC.get(brd.name, LOADER_DOC["default"])
+    baremetal = brd.flow == boards.FLOW_BAREMETAL
+    image = ("bare-metal ELF (our own crt/linker script — your SDK has no RTOS)" if baremetal
+             else "Zephyr image")
+    hart_counts = sorted({b["harts"] for b in manifest["binaries"]})
     rows = "\n".join(
         f"| `{b['elf']}` | {b['model']} | {b['harts']} | "
         f"{b['ram_bytes'] // 2**20} MB | {b['upload_estimate_s']}s | "
@@ -386,11 +424,27 @@ def _readme(brd, manifest: dict) -> str:
     statuses = "\n".join(f"- **{m}** — {STATUS.get(m, 'no status recorded')}"
                          for m in sorted({b["model"] for b in manifest["binaries"]}))
     vlen = brd.vlen or 128
+    pair_section = ("""\
+## Please run BOTH hart counts
+
+The pair exists so you can check them against each other: **the outputs must be bit-identical.** They
+are the same computation split differently, so any difference at all is vector/SMP state on the SoC, not
+rounding — and that is a far more useful signal for you than either run alone. We verified this holds on
+spike at your vector length before shipping.""" if len(hart_counts) > 1 else """\
+## Only one hart, deliberately
+
+Every binary here runs on one hart. We did not ship a multi-hart bare-metal image because dispatching
+your second hart goes through your own thread-lib rather than the OpenMP runtime our multicore lowering
+targets, and shipping that untested would waste your bench time. If you want it, that integration is
+ours to do next — say so and we will build against your dispatch.""")
+    identity_line = ("- Confirmed 1-hart and %d-hart outputs are bit-identical." % max(hart_counts)
+                     if len(hart_counts) > 1 else
+                     "- Single-hart images only (see above), so there is no hart-split to check.")
     return f"""\
 # Merlin int8 RVV binaries for `{brd.name}`
 
 Compiled by the Merlin flow (model2MLIR capture -> int8 W8A8 lowering -> certified RVV schedule ->
-Zephyr image). **Each binary is self-contained**: inputs and weights are baked in, so there is no
+{image}). **Each binary is self-contained**: inputs and weights are baked in, so there is no
 filesystem, no host I/O, no arguments, and nothing to install on the board.
 
 We have no access to this board — you running these is the first time they touch the real chip.
@@ -399,10 +453,11 @@ We have no access to this board — you running these is the first time they tou
 
 | fact | value | where it came from |
 |---|---|---|
-| DRAM | {brd.dram_bytes // 2**20} MB at `{hex(brd.dram_base)}` | your chip (the DTS in the board files declares less) |
-| harts | {brd.harts} | your chip |
-| vector length | {vlen} bits{'' if brd.vlen else ' (assumed — the V minimum, since nothing declares it)'} | {'stated' if brd.vlen else 'NOT declared anywhere in the board files'} |
-| console | {brd.console} | board DT |
+| DRAM | {brd.dram_bytes // 2**20} MB at `{hex(brd.dram_base)}` | your chip — {'the linker scripts in your repo declare less' if baremetal else 'the DTS in your repo declares less'} |
+| harts on the chip | {brd.harts} | your chip |
+| harts these binaries use | {', '.join(str(h) for h in hart_counts)} | {'single-hart only — see below' if len(hart_counts) == 1 else 'one binary per count'} |
+| vector length | {vlen} bits{'' if brd.vlen else ' (assumed — the V minimum, since nothing declares it)'} | {'stated in your repo' if brd.vlen else 'NOT declared anywhere in the board files'} |
+| console | {brd.console} | {'your `chip_config.h` / SIMS platform' if baremetal else 'board DT'} |
 
 **If any of those is wrong, tell us** — a mismatch is the most likely cause of a silent hang, and each
 one is a one-line rebuild on our side. In particular we would like to know `vlenb` on the real chip.
@@ -435,12 +490,7 @@ python grade.py <your_console_log.txt> --model spectformer
 It prints `PASS`/`FAIL` with the cosine and per-element error against the same references we use, and
 warns if the log's `build_hash` is not one of ours.
 
-## Please run BOTH hart counts
-
-The pair exists so you can check them against each other: **the outputs must be bit-identical.** They
-are the same computation split differently, so any difference at all is vector/SMP state on the SoC, not
-rounding — and that is a far more useful signal for you than either run alone. We verified this holds on
-spike at your vector length before shipping.
+{pair_section}
 
 ## Status of each model — please read before reporting a number
 
@@ -451,9 +501,9 @@ spike at your vector length before shipping.
 - Built for `{brd.name}` with the board's own facts, and audited the ELF against them: every LOAD
   segment inside your DRAM, entry point in range, `.htif` present so your loader can find
   `tohost`/`fromhost`, and real vector instructions in the image (see `elf_audit.json`).
-- Ran the identical image on spike at **{vlen}-bit** vectors and your hart count, and gated the output
-  against the W8A8 reference.
-- Confirmed 1-hart and {brd.harts}-hart outputs are bit-identical.
+- Ran the identical image on spike at **{vlen}-bit** vectors, and gated the output against the W8A8
+  reference.
+{identity_line}
 
 What that does *not* cover: your clock, your DRAM timing, your vector unit's actual VLEN, and anything
 about wall-clock performance. spike is functional — it proves correctness, never speed.
