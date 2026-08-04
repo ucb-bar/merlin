@@ -137,7 +137,12 @@ def test_opu_facts_from_real_state_manifest():
     assert b["fields"]["mrf_depth"]["value"] == 16
     assert b["fields"]["element_widths"]["value"] == {"operand_bits": 8, "accumulator_bits": 32}
     names = [d["name"] for d in b["fields"]["dtypes"]["value"]]
-    assert names == ["int8", "fp8_e4m3", "fp8_e5m2"]
+    # int8 base MAC + an fp8 datapath. saturn's RTL names NO 8-bit float format (only e8_s24 = the fp32
+    # accumulate), so the fp8 sub-format identity is UNKNOWN -> reported width-only as float8, never a
+    # fabricated fp8_e4m3/fp8_e5m2 pair conjured from io_op_altfmt_ port presence.
+    assert names == ["int8", "float8"]
+    fp8_entry = b["fields"]["dtypes"]["value"][1]
+    assert fp8_entry["identity_derived"] is False and fp8_entry["modes"] == 2
     assert b["fields"]["fma_latency"]["value"] == {"int8_mac_cycles": 0, "fp8_fma_cycles": 1}
     assert b["fields"]["op_categories"]["value"] == ["macc", "mvin", "shift"]
     assert b["fields"]["accum_kind"]["value"] == {"int8": "i32", "fp8": "f32"}

@@ -380,11 +380,20 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
     for _i, _unit in enumerate(units):
         # extractor dtypes (positional) win; the fact-bundle storage is the primary unit's fallback.
         _src = _ext_lists[_i] if _i < len(_ext_lists) else (_storage if _i == 0 else [])
+        # The extractor may report a width-only ``float<N>`` for a float datapath whose sub-format identity
+        # the RTL does not NAME (fail-closed — never a fabricated fp8_e4m3/fp8_e5m2 guessed from width +
+        # port presence). That marker is honest but is NOT an actionable quant format, so keep the manifest's
+        # dtype list to registry-known formats and SURFACE the dropped markers (never silently) under
+        # ``unnamed_float_datapaths`` so the identity gap is visible instead of hidden.
+        _src_known = [d for d in _src if d and _qf.has(d)]
+        _src_unnamed = [d for d in _src if d and not _qf.has(d)]
         # AUGMENT (never drop) any human-reviewed formats the residual declared — a multi-format unit's
         # reviewed matrix can be richer than a single grounded datapath.
-        _declared = list(dict.fromkeys([*(_unit.get("dtypes") or []), *(d for d in _src if d)]))
+        _declared = list(dict.fromkeys([*(_unit.get("dtypes") or []), *_src_known]))
         if _declared:
             _unit["dtypes"] = _declared
+        if _src_unnamed:
+            _unit["unnamed_float_datapaths"] = list(dict.fromkeys(_src_unnamed))
     if accumulate and not primary.get("accumulate"):
         primary["accumulate"] = accumulate      # the (in,weight)->acc matrix is a datapath fact
 

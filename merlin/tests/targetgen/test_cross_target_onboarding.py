@@ -53,7 +53,11 @@ def test_saturn_opu_onboards_end_to_end_as_command_buffer_spatial_target(monkeyp
     manifest = cm.derive_manifest(descriptor, facts, residual=residual)
     # FACTS grounded onto the residual: multi-format datapaths + the command_buffer endpoint
     assert manifest["endpoint_kind"] == "command_buffer"
-    assert manifest["compute_units"][0]["dtypes"] == ["int8", "fp8_e4m3", "fp8_e5m2"]
+    # saturn's RTL names no 8-bit float format, so the fp8 sub-format identity is UNKNOWN. The actionable
+    # dtype list keeps only registry-known formats (int8); the unnamed float datapath is SURFACED (never a
+    # fabricated fp8_e4m3/fp8_e5m2 pair conjured from io_op_altfmt_ presence, never silently dropped).
+    assert manifest["compute_units"][0]["dtypes"] == ["int8"]
+    assert manifest["compute_units"][0]["unnamed_float_datapaths"] == ["float8"]
     assert "encoding" not in manifest                       # no RoCC funct decode
     # generate the OOT contract into a tmp target path + discover it (radiance-style MERLIN_TARGET_PATH)
     write_yaml(tmp_path / "saturn_opu_oot" / "contracts" / "target_contract.yaml", manifest,

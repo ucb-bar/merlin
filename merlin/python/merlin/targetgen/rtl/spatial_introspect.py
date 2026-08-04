@@ -162,6 +162,51 @@ def _fp8_fma(hw_text: str) -> dict[str, int] | None:
             "sig_bits": int(sig) if sig else None}
 
 
+# ----------------------------------------------------------------------------- fp8 format identity (derive-or-UNKNOWN)
+# (exp_bits, significand_bits_including_hidden) -> canonical name. This is MATH (IEEE/OCP format
+# definitions), not a per-target table — the only way to tell two same-width floats apart is the exponent
+# width, so a name is emitted ONLY when the RTL's own float tokens carry that fact.
+_FLOAT_BY_ES = {(4, 4): "fp8_e4m3", (5, 3): "fp8_e5m2", (5, 11): "fp16",
+                (8, 8): "bf16", (8, 24): "f32", (11, 53): "f64"}
+
+
+def _lead_int(s: str) -> int | None:
+    """The leading run of digits of ``s`` as an int (``"24("`` -> 24), or None — structural, no regex."""
+    i = 0
+    while i < len(s) and s[i].isdigit():
+        i += 1
+    return int(s[:i]) if i else None
+
+
+def _fp8_format_names(hw_text: str, width: int) -> list[str]:
+    """DERIVE the float format name(s) whose total width == ``width`` from the RTL's OWN float tokens — a
+    hardfloat ``e<E>_s<S>`` module name or a design ``E<d>M<d>`` token — parsed structurally (split /
+    partition, no regex). Returns ``[]`` when the RTL names no format at that width: the identity is then
+    UNKNOWN and must NOT be fabricated (a ``io_op_altfmt_`` select proves a second mode exists, never
+    WHICH format it is)."""
+    names: list[str] = []
+
+    def add(pair: tuple[int, int]) -> None:
+        nm = _FLOAT_BY_ES.get(pair)
+        if nm and nm not in names:
+            names.append(nm)
+
+    for raw in hw_text.split():
+        tok = raw.lstrip("@%")
+        parts = tok.split("_")
+        for a, b in zip(parts, parts[1:]):                       # hardfloat e<E>_s<S>
+            if a[:1] == "e" and b[:1] == "s":
+                e, s = _lead_int(a[1:]), _lead_int(b[1:])
+                if e is not None and s is not None and e + s == width:
+                    add((e, s))
+        if tok[:1] == "E" and "M" in tok:                        # design E<d>M<d>
+            ep, _, mp = tok.partition("M")
+            e, m = _lead_int(ep[1:]), _lead_int(mp)
+            if e is not None and m is not None and e + m + 1 == width:
+                add((e, m + 1))
+    return names
+
+
 # ----------------------------------------------------------------------------- assemble the fact bundle
 def _unavailable(target: str, reason: str) -> dict[str, Any]:
     """An honest all-unavailable bundle (mlc / the OPU artifacts absent) — never a fabricated tile."""
@@ -227,18 +272,42 @@ def build_fact_bundle(target: str) -> dict[str, Any]:
 
     # -- datapaths / dtypes ------------------------------------------------------------------------
     has_fp8 = any(n.startswith("io_op_fp8_") for n in names)
+    has_altfmt = any(n.startswith("io_op_altfmt_") for n in names)
     dtypes: list[dict[str, Any]] = [{
         "name": "int8", "operand": "i8", "accumulator": f"i{accum_bits}" if accum_bits else "i32",
         "path": "combinational i8*i8 -> i32 MAC (io_op_fp8=0)"}]
+    fp8_id_derived = True
     if has_fp8:
-        for fmt, altfmt in (("fp8_e4m3", 0), ("fp8_e5m2", 1)):
+        fw = operand_bits or 8
+        fp8_names = _fp8_format_names(hw_text, fw)          # RTL-named formats at the operand width, or []
+        if fp8_names:
+            use = fp8_names if has_altfmt else fp8_names[:1]  # altfmt makes >1 named format reachable
+            for altfmt, fmt in enumerate(use):
+                dtypes.append({
+                    "name": fmt, "operand": fmt.split("_", 1)[1] if "_" in fmt else fmt,
+                    "accumulator": "f32", "altfmt": altfmt,
+                    "path": "fp8 -> fp32 widen; MulAddRecFNPipe fp32 FMA (io_op_fp8=1, "
+                            f"io_op_altfmt={altfmt})"})
+        else:
+            # fail closed: an fp8 datapath exists, io_op_altfmt_ says how many sub-format modes, but the
+            # RTL names no format at this width -> report the width-only identity, never a guessed pair.
+            fp8_id_derived = False
             dtypes.append({
-                "name": fmt, "operand": fmt.split("_", 1)[1], "accumulator": "f32",
-                "altfmt": altfmt,
-                "path": "fp8 -> fp32 widen; MulAddRecFNPipe fp32 FMA (io_op_fp8=1, "
-                        f"io_op_altfmt={altfmt})"})
-    dtypes_ev = ("io_op_fp8_/io_op_altfmt_ ports present -> int8 + fp8 e4m3/e5m2 (fp32 accumulate)"
-                 if has_fp8 else "no io_op_fp8_ ports -> int8-only tile")
+                "name": f"float{fw}", "operand": f"f{fw}", "accumulator": "f32",
+                "modes": 2 if has_altfmt else 1, "altfmt_selectable": has_altfmt, "identity_derived": False,
+                "path": f"fp8 -> fp32 widen; MulAddRecFNPipe fp32 FMA; io_op_altfmt selects "
+                        f"{'2 sub-formats' if has_altfmt else '1 sub-format'} whose identity is NOT named "
+                        f"in the RTL facts (UNKNOWN; not fabricating fp8_e4m3/fp8_e5m2)"})
+    if not has_fp8:
+        dtypes_ev = "no io_op_fp8_ ports -> int8-only tile"
+    elif fp8_id_derived:
+        fp8_list = [d["name"] for d in dtypes if d["name"] != "int8"]
+        dtypes_ev = f"io_op_fp8_/io_op_altfmt_ ports present -> int8 + {fp8_list} (fp32 accumulate, RTL-named)"
+    else:
+        w = operand_bits or 8
+        dtypes_ev = (f"io_op_fp8_ present -> int8 + a {w}-bit fp8 datapath with "
+                     f"{'2 io_op_altfmt-selected sub-formats' if has_altfmt else '1 sub-format'}, fp32 "
+                     f"accumulate; fp8 format identity NOT named in the RTL -> float{w} (UNKNOWN, not fabricated)")
 
     # -- FMA latency -------------------------------------------------------------------------------
     fma_val = {"int8_mac_cycles": 0,

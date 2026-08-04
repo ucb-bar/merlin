@@ -178,11 +178,14 @@ def test_atlas_manifest_derives_endpoint_and_mesh_from_facts_only_dtypes_residua
 
 def test_derive_manifest_maps_the_spatial_opu_fact_shape():
     # A SPATIAL (OuterProductUnit) fact bundle carries a different shape than the systolic facts.json
-    # (fields.tile_dim/dtypes/mrf_depth, no arrays/datapaths/interfaces). Inlined so the test is hermetic
-    # (no arc / OPU artifacts). Proves the deriver reads the spatial shape: multi-format datapaths + tile
-    # geometry, with the spatial family's command_buffer endpoint and NO RoCC encoding block.
+    # (fields.tile_dim/dtypes/mrf_depth, no arrays/datapaths/interfaces). Inlined AND under a synthetic
+    # target name so the test is genuinely hermetic — mlc's datapath-dtype extractor returns None for an
+    # unknown target, so the deriver reads THESE fed facts (not a real target's mlc artifacts). Simulates a
+    # spatial OPU whose RTL NAMES its fp8 formats: proves the deriver maps the multi-format spatial shape
+    # (all named datapaths + tile geometry), with the command_buffer endpoint and NO RoCC encoding block.
+    _T = "opu_synth_multiformat"
     facts = {
-        "target": "saturn_opu_mxv256d128", "kind": "spatial",
+        "target": _T, "kind": "spatial",
         "method": "static OPU state-manifest + HW-dialect discovery",
         "fields": {
             "tile_dim": {"value": {"rows": 16, "cols": 16, "cells": 256}, "derived": True},
@@ -197,8 +200,7 @@ def test_derive_manifest_maps_the_spatial_opu_fact_shape():
     }
     residual = {"compute_units": [{"name": "opu", "kind": "spatial", "ops": ["matmul"]}],
                 "concepts": ["outer_product"]}
-    m = cm.derive_manifest({"target": "saturn_opu_mxv256d128", "kind": "spatial"},
-                           facts, residual=residual)
+    m = cm.derive_manifest({"target": _T, "kind": "spatial"}, facts, residual=residual)
     cm.validate(m)
     u = m["compute_units"][0]
     # FACTS: the OPU is MULTI-format — a full dtype list + the per-dtype (in,weight)->acc matrix
