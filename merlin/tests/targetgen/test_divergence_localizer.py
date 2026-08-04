@@ -49,17 +49,50 @@ def test_correct_stride_is_not_flagged():
 
 def test_mvout_tile_offset_undersized_is_localized():
     # 36x8 i32 output tiled by rows; consecutive tiles must step 16*8*4=512 B, artifact stepped 128 (i8).
+    # The output-store tiles carry the accumulator-readout direction (readout/acc_addr), as the real decode does.
     cb = {"tensors": {"Y0": {"shape": [36, 8], "dtype": "i32", "role": "output"}}}
     trace = _trace([
         {"index": 3, "class": "CONFIG_ST", "decoded": {"out_stride_bytes": 32}},   # 8*4 correct
-        {"index": 10, "class": "MVOUT", "decoded": {"dram": {"arg_index": 2, "offset": 0},
+        {"index": 10, "class": "MVOUT", "decoded": {"readout": "i32", "acc_addr": 0,
+                                                    "dram": {"arg_index": 2, "offset": 0},
                                                     "rows": 16, "cols": 8}},
-        {"index": 11, "class": "MVOUT", "decoded": {"dram": {"arg_index": 2, "offset": 128},
+        {"index": 11, "class": "MVOUT", "decoded": {"readout": "i32", "acc_addr": 0,
+                                                    "dram": {"arg_index": 2, "offset": 128},
                                                     "rows": 16, "cols": 8}},
     ])
     f = DL.localize(cb, {}, trace)
     assert f is not None and f["class"] == "MVOUT" and f["op_index"] == 11
     assert f["your_value"] == 128 and f["intended_value"] == 512
+
+
+def test_input_load_tiles_do_not_false_fire():
+    """An INPUT load (a DRAM->scratchpad move: it carries dram+rows+cols but a spad_addr, not the
+    accumulator-readout direction) must NOT be mistaken for an output store — even though its tile step
+    would be 'undersized' for the OUTPUT element width. This locks the input/output distinction that a
+    pure field-presence match would break."""
+    cb = {"tensors": {"Y0": {"shape": [36, 8], "dtype": "i32", "role": "output"}}}
+    trace = _trace([
+        {"index": 10, "class": "MVIN", "decoded": {"spad_addr": 0,
+                                                   "dram": {"arg_index": 0, "offset": 0},
+                                                   "rows": 16, "cols": 8}},
+        {"index": 11, "class": "MVIN", "decoded": {"spad_addr": 64,
+                                                   "dram": {"arg_index": 0, "offset": 128},
+                                                   "rows": 16, "cols": 8}},
+    ])
+    assert DL.localize(cb, {}, trace) is None
+
+
+def test_selection_is_class_name_agnostic():
+    """Op selection keys on the DERIVED decoded fields (out_stride_bytes / dram+rows+cols+readout), NOT a
+    class-name literal — so a target whose decode names its output-store ops differently still localizes,
+    and the hint reports that target's OWN class name."""
+    cb = _cb(64, "i32")                            # 64-wide i32 -> 256 B stride; artifact emitted 64
+    trace = _trace([
+        {"index": 5, "class": "ST_CFG", "decoded": {"out_stride_bytes": 64}},   # differently-named class
+    ])
+    f = DL.localize(cb, {}, trace)
+    assert f is not None and f["class"] == "ST_CFG" and f["field"] == "out_stride_bytes"
+    assert f["your_value"] == 64 and f["intended_value"] == 256
 
 
 def test_fail_closed_when_stride_undecodable():

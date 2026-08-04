@@ -61,19 +61,23 @@ def _decoded(ins: dict) -> dict:
 
 
 def _config_st_stride_finding(instructions: list[dict], outs: list[dict]) -> dict | None:
-    """A CONFIG_ST whose decoded ``out_stride_bytes`` (the output ROW stride in DRAM, in bytes — a field
-    :mod:`rocc_decode` derived from the manifest's CONFIG_ST encoding) matches NO declared output's row
-    stride (``cols * elem_bytes``). The classic symptom: the stride was computed with the wrong element
-    byte width (an i8 cell for an i32 output), so rows land 4x too close / too far and the hardware output
-    is scrambled while the command buffer (which never carries a byte stride) still reads correct."""
+    """Any decoded op that carries an ``out_stride_bytes`` field (the output ROW stride in DRAM, in bytes
+    — the normalized field :mod:`rocc_decode` derives from a target's store-config encoding) whose value
+    matches NO declared output's row stride (``cols * elem_bytes``). The classic symptom: the stride was
+    computed with the wrong element byte width (an i8 cell for an i32 output), so rows land 4x too close /
+    too far and the hardware output is scrambled while the command buffer (which never carries a byte
+    stride) still reads correct.
+
+    Selection keys on the PRESENCE of the derived ``out_stride_bytes`` field, NOT a class-name literal —
+    so it fires for whatever op a target's own decode names as its output-store config, and fails closed
+    (no op carries the field) for a target/ISA that has no such field. The hint reports the op's ACTUAL
+    decoded class."""
     valid = {o["cols"] * o["elem_bytes"] for o in outs}
     if not valid:
         return None
     for ins in instructions:
-        if ins.get("class") != "CONFIG_ST":
-            continue
         stride = _decoded(ins).get("out_stride_bytes")
-        if stride is None:                       # not derivable on this RTL -> fail closed (skip)
+        if stride is None:                       # op has no output-row-stride field -> fail closed (skip)
             continue
         if stride not in valid:
             near = min(outs, key=lambda o: abs(o["cols"] * o["elem_bytes"] - stride))
@@ -84,33 +88,44 @@ def _config_st_stride_finding(instructions: list[dict], outs: list[dict]) -> dic
             if implied is not None and implied != near["elem_bytes"]:
                 basis += (f"; your stride implies a {implied}-byte element, not {near['elem_bytes']}-byte "
                           f"{near['dtype']}")
-            return {"op_index": ins.get("index"), "class": "CONFIG_ST", "field": "out_stride_bytes",
+            return {"op_index": ins.get("index"), "class": ins.get("class") or "store-config",
+                    "field": "out_stride_bytes",
                     "your_value": stride, "intended_value": intended, "basis": basis}
     return None
 
 
 def _mvout_offset_finding(instructions: list[dict], outs: list[dict]) -> dict | None:
-    """Consecutive MVOUT tiles writing the SAME DRAM buffer whose byte-offset STEP is undersized for the
-    output element width — i.e. ``step / (tile_rows * tile_cols)`` comes out to fewer bytes/element than
-    the output dtype, so the M/N output tiles OVERLAP in DRAM. Only flags the undersized direction (a
+    """Consecutive output-store tiles writing the SAME DRAM buffer whose byte-offset STEP is undersized
+    for the output element width — i.e. ``step / (tile_rows * tile_cols)`` comes out to fewer bytes/element
+    than the output dtype, so the M/N output tiles OVERLAP in DRAM. Only flags the undersized direction (a
     larger step is a legitimate non-contiguous row-major layout); needs a single output element width, and
-    a step the tile geometry divides — otherwise fails closed (no flag)."""
+    a step the tile geometry divides — otherwise fails closed (no flag).
+
+    Selects the store ops by the PRESENCE of a decoded DRAM tile write (a ``dram`` operand + ``rows``/
+    ``cols``), NOT a class-name literal — so it fires for whatever op a target's decode names as its
+    tiled output move, and fails closed for ops/targets without that shape. The hint reports the op's
+    ACTUAL decoded class."""
     ebs = {o["elem_bytes"] for o in outs}
     if len(ebs) != 1:                            # ambiguous output width -> fail closed
         return None
     elem = next(iter(ebs))
     by_arg: dict[Any, list[dict]] = {}
     for ins in instructions:
-        if ins.get("class") != "MVOUT":
-            continue
         d = _decoded(ins)
         arg = (d.get("dram") or {}).get("arg_index")
         off = (d.get("dram") or {}).get("offset")
         rows, cols = d.get("rows"), d.get("cols")
-        if arg is None or off is None or not rows or not cols:
+        # OUTPUT store only: a DRAM tile write whose DIRECTION is accumulator-readout (result -> DRAM),
+        # not an input load (DRAM -> scratchpad). Both carry a dram+rows+cols tile, so we distinguish by
+        # the derived direction fields (a readout/accumulator address vs a scratchpad address) — never a
+        # class-name literal. An op without that readout direction is skipped (fail closed).
+        is_output_store = (d.get("readout") is not None or d.get("acc_addr") is not None) \
+            and d.get("spad_addr") is None
+        if arg is None or off is None or not rows or not cols or not is_output_store:
             continue
         by_arg.setdefault(arg, []).append({"index": ins.get("index"), "off": int(off),
-                                            "rows": int(rows), "cols": int(cols)})
+                                            "rows": int(rows), "cols": int(cols),
+                                            "class": ins.get("class") or "output-store"})
     for arg, tiles in by_arg.items():
         if len(tiles) < 2:
             continue
@@ -122,9 +137,10 @@ def _mvout_offset_finding(instructions: list[dict], outs: list[dict]) -> dict | 
                 continue                          # geometry doesn't divide the step -> fail closed
             implied = step // cells
             if 0 < implied < elem:
-                return {"op_index": cur["index"], "class": "MVOUT", "field": "dram.offset (tile step)",
+                return {"op_index": cur["index"], "class": cur["class"],
+                        "field": "dram.offset (tile step)",
                         "your_value": step, "intended_value": cells * elem,
-                        "basis": (f"consecutive MVOUT tiles into DRAM arg {arg} step {step} B for a "
+                        "basis": (f"consecutive output-store tiles into DRAM arg {arg} step {step} B for a "
                                   f"{prev['rows']}x{prev['cols']} tile -> {implied} B/element, but the "
                                   f"output is {elem} B/element; the output tiles overlap in DRAM")}
     return None
