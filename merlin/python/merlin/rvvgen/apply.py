@@ -42,6 +42,78 @@ def shape_adapted_features(pkg: "RvvPackage", model_dir: str | Path) -> list[str
     return _adapt_frozen_points(feats, shapes, target=str(pkg.manifest.get("target", "rvv")))
 
 
+def _schedule_pinned_blocks(schedule_text: str) -> dict[str, tuple[int, int]]:
+    """``{op class: (M tile, N tile)}`` a transform SCHEDULE TEXT pins, read structurally.
+
+    Some packages carry no compiler feature at all — their register block lives in the schedule's
+    ``tile_sizes`` literals. Those are invisible to :func:`shape_adapted_features` (there is no
+    feature to re-resolve), so a block that masks a parallel dim of THIS workload cannot be detected
+    the same way. Reading the sizes back out is what lets the caller at least SAY so.
+
+    Parsed by following handles, not by pattern-matching a fixed spelling: a ``match ops{["X"]}``
+    binds a handle, and a later ``tile_using_for <handle> tile_sizes [...]`` gives that class's tile.
+    Unparseable text yields ``{}`` (the caller then stays silent rather than guessing).
+    """
+    handles: dict[str, str] = {}
+    blocks: dict[str, tuple[int, int]] = {}
+    for line in schedule_text.splitlines():
+        s = line.strip()
+        if "transform.structured.match" in s and 'ops{["' in s and "=" in s:
+            handle = s.split("=", 1)[0].strip().split()[-1]
+            cls = s.split('ops{["', 1)[1].split('"', 1)[0]
+            handles[handle] = cls
+        elif "tile_using_for" in s and "tile_sizes" in s:
+            after = s.split("tile_using_for", 1)[1]
+            handle = after.strip().split()[0]
+            cls = handles.get(handle)
+            if cls is None:
+                continue
+            nums = after.split("tile_sizes", 1)[1].split("[", 1)[1].split("]", 1)[0]
+            try:
+                sizes = [int(t.strip()) for t in nums.split(",")]
+            except ValueError:
+                continue
+            # matmul tiles [M, N, K]; batch_matmul tiles [B, M, N, K] -> take the two parallel tiles
+            pos = 1 if len(sizes) >= 4 else 0
+            if len(sizes) > pos + 1 and cls not in blocks:
+                mt, nt = sizes[pos], sizes[pos + 1]
+                if mt > 0 and nt > 0:
+                    blocks[cls] = (mt, nt)
+    return blocks
+
+
+def blocking_risks(pkg: "RvvPackage", model_dir: str | Path) -> list[str]:
+    """Op classes whose extents this package's SCHEDULE-PINNED block would mask, as messages.
+
+    A masked parallel dim is not a style question: it fails to lower outright on the integer path and
+    degrades ~34x on fp32 (see ``from_strategy._rvv_blocking_lowers``). When the block comes from a
+    feature we re-derive it; when it is baked into the schedule text we cannot, so the least we owe
+    the caller is to name the risk instead of letting a 34x slowdown look like the model being slow.
+    Empty when the package has an adaptable feature, when nothing is masked, or when the schedule is
+    unreadable.
+    """
+    from ..kernels.shapes import contraction_shapes
+    from ..llvmlower.frozen_blocks import is_frozen_block
+    from .from_strategy import _rvv_blocking_lowers
+
+    if any(is_frozen_block(f) for f in pkg.compiler_features):
+        return []                       # the resolver handles this one
+    blocks = _schedule_pinned_blocks(pkg.schedule_text)
+    if not blocks:
+        return []
+    shapes = contraction_shapes(Path(model_dir) / "model.mlir")
+    out: list[str] = []
+    for op, (mt, nt) in blocks.items():
+        bad = [(m, n) for s in shapes if s.op == op and len(s.parallel) >= 2
+               for m, n in [(s.parallel[-2], s.parallel[-1])]
+               if not _rvv_blocking_lowers(mt, nt, m, n)]
+        if bad:
+            uniq = sorted(set(bad))[:4]
+            out.append(f"{op} block [{mt}, {nt}] masks a parallel dim of {len(bad)} contraction(s) "
+                       f"(e.g. extents {uniq}) — that fails to lower on int8 and costs ~34x on fp32")
+    return out
+
+
 def _adapt_frozen_points(feats: list[str], shapes, *, target: str) -> list[str]:
     """Re-derive a hand-frozen register block ONLY for the op classes where it cannot lower.
 

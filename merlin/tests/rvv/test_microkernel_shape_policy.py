@@ -316,6 +316,73 @@ def test_skipping_a_class_leaves_the_other_arm_byte_identical():
     assert "linalg.matmul" not in no_mm.replace("linalg.batch_matmul", "")
 
 
+def test_schedule_pinned_blocks_are_read_by_following_handles():
+    """The block is recovered from a schedule's own tile_sizes, not from a fixed spelling.
+
+    Packages that carry no compiler feature keep their register block in the schedule text, where the
+    shape resolver cannot re-derive it. Reading it back is what lets a caller warn instead of silently
+    running ~34x slow.
+    """
+    from merlin.rvvgen.apply import _schedule_pinned_blocks
+
+    sched = """
+    module {
+      transform.named_sequence @__transform_main(%arg0: !transform.any_op) {
+        %mm = transform.structured.match ops{["linalg.matmul"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+        %t, %l:3 = transform.structured.tile_using_for %mm tile_sizes [4, 8, 1] : (!transform.any_op) -> (!transform.any_op)
+        %bm = transform.structured.match ops{["linalg.batch_matmul"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+        %bt, %bl:4 = transform.structured.tile_using_for %bm tile_sizes [1, 2, 16, 1] : (!transform.any_op) -> (!transform.any_op)
+        transform.yield
+      }
+    }
+    """
+    blocks = _schedule_pinned_blocks(sched)
+    assert blocks["linalg.matmul"] == (4, 8)
+    # batch_matmul tiles [B, M, N, K] -> the two PARALLEL tiles, not the leading batch tile
+    assert blocks["linalg.batch_matmul"] == (2, 16)
+    assert _schedule_pinned_blocks("not a schedule") == {}
+
+
+def test_a_schedule_pinned_block_that_masks_is_reported_not_swallowed():
+    """M=1/M=3 against an MR=4 schedule block must produce a message naming the op class."""
+    from merlin.rvvgen.apply import blocking_risks
+
+    class _Pkg:
+        compiler_features: tuple = ()
+        schedule_text = ('%mm = transform.structured.match ops{["linalg.matmul"]} in %arg0 '
+                         ': (!transform.any_op) -> !transform.any_op\n'
+                         '%t, %l:3 = transform.structured.tile_using_for %mm tile_sizes [4, 8, 1] '
+                         ': (!transform.any_op) -> (!transform.any_op)\n')
+
+    import merlin.rvvgen.apply as apply_mod
+
+    shapes = [_Shape("linalg.matmul", (1, 64)), _Shape("linalg.matmul", (3, 4096)),
+              _Shape("linalg.matmul", (64, 256))]
+    orig = apply_mod.__dict__.get("contraction_shapes")
+    import merlin.kernels.shapes as shapes_mod
+    saved = shapes_mod.contraction_shapes
+    shapes_mod.contraction_shapes = lambda _p: shapes
+    try:
+        msgs = blocking_risks(_Pkg(), "/nonexistent")
+    finally:
+        shapes_mod.contraction_shapes = saved
+        assert orig is None or apply_mod.contraction_shapes is orig
+    assert len(msgs) == 1 and "linalg.matmul" in msgs[0]
+    assert "[4, 8]" in msgs[0]
+
+
+def test_a_frozen_feature_package_reports_no_schedule_risk():
+    """The resolver already adapts a frozen point, so warning about it would be noise."""
+    from merlin.llvmlower import impr_features as impr
+    from merlin.rvvgen.apply import blocking_risks
+
+    class _Pkg:
+        compiler_features = (impr.WHOLEMODEL_VF_NAME,)
+        schedule_text = ""
+
+    assert blocking_risks(_Pkg(), "/nonexistent") == []
+
+
 class _Shape:
     """Minimal stand-in for kernels.microkernel.ContractionShape (op + parallel extents)."""
 

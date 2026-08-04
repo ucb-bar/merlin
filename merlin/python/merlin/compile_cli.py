@@ -170,7 +170,12 @@ def _workload_features(pkg, bundle, out: dict) -> list[str]:
     """
     frozen = list(pkg.compiler_features)
     try:
-        from .rvvgen.apply import shape_adapted_features
+        from .rvvgen.apply import blocking_risks, shape_adapted_features
+        # A package whose block lives in its SCHEDULE TEXT (no feature) cannot be re-resolved. Say so
+        # rather than letting the resulting ~34x fp32 degradation read as "this model is slow".
+        for risk in blocking_risks(pkg, bundle):
+            out.setdefault("blocking_risks", []).append(risk)
+            print(f"[merlin-compile] WARNING: {risk}", file=sys.stderr, flush=True)
         feats = shape_adapted_features(pkg, bundle)
     except Exception as exc:                                        # noqa: BLE001
         print(f"[merlin-compile] shape adaptation unavailable ({type(exc).__name__}: {exc}); "
