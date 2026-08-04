@@ -72,9 +72,11 @@ def test_layout_is_deterministic_and_non_overlapping():
         spans.append((lay1[t["name"]], D.tensor_nbytes(t["shape"], t["dtype"])))
     for a, n in spans:
         assert a % D.DEFAULT_ALIGN == 0
-    # each input's [base, base+nbytes) is disjoint from the next input's base
-    a0, w = lay1["A0"], lay1["W"]
-    assert w >= a0 + D.tensor_nbytes([32, 32], "fp8_e4m3")
+    # every pair of input tensors occupies a disjoint [base, base+nbytes) — the real invariant is non-overlap,
+    # independent of the allocator's placement ORDER (asserting A0-before-W over-specified a stable ordering).
+    intervals = sorted((a, a + n) for a, n in spans)
+    for (s0, e0), (s1, _e1) in zip(intervals, intervals[1:]):
+        assert e0 <= s1, f"input tensors overlap in DRAM: [{s0},{e0}) intersects [{s1},{_e1})"
 
 
 def test_inject_fills_missing_base_but_never_clobbers_agent_declared():
