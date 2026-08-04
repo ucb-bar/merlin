@@ -64,7 +64,7 @@ def _adapt_frozen_points(feats: list[str], shapes, *, target: str) -> list[str]:
         if caps is None or frozen is None:
             out.append(name)
             continue
-        chosen: dict[str, tuple[int, int]] = {}
+        chosen: dict[str, tuple[int, int] | None] = {}
         changed = False
         for op, block in frozen.items():
             ext = [(s.parallel[-2], s.parallel[-1]) for s in shapes
@@ -72,14 +72,24 @@ def _adapt_frozen_points(feats: list[str], shapes, *, target: str) -> list[str]:
             if not ext or all(_rvv_blocking_lowers(block[0], block[1], m, n) for m, n in ext):
                 chosen[op] = block
                 continue
-            chosen[op] = _rvv_best_block(int(caps["MR"]), int(caps["NR"]), ext)
+            best = _rvv_best_block(int(caps["MR"]), int(caps["NR"]), ext)
+            # A 1-lane N block is not a vectorization: it buys no lanes, and vectorizing that tile
+            # emits a parallel-dim-free `vector.contract` (vector<1xT> dot into a scalar) that no
+            # lowering strategy matches, so the build dies late. Leave the class un-tiled instead —
+            # its contractions go through convert-linalg-to-loops (scalar), which is correct, and the
+            # OTHER class keeps its vectors. Reported by the caller, never silent.
+            chosen[op] = None if best[1] <= 1 else best
             changed = True
         if not changed:
             out.append(name)
             continue
         from ..llvmlower.impr_features import ensure_v3_perop_microkernel
         mm, bmm = chosen["linalg.matmul"], chosen["linalg.batch_matmul"]
-        out.append(ensure_v3_perop_microkernel(mm[0], mm[1], bmm[0], bmm[1], int(caps["KC"])))
+        if mm is None and bmm is None:      # nothing vectorizable -> keep the pinned point as-is
+            out.append(name)
+            continue
+        out.append(ensure_v3_perop_microkernel(
+            *(mm or (None, None)), *(bmm or (None, None)), int(caps["KC"])))
     seen: set[str] = set()
     return [f for f in out if not (f in seen or seen.add(f))]
 

@@ -260,6 +260,62 @@ def test_adaptation_fires_only_for_the_failing_op_class():
     assert kc == impr.WHOLEMODEL_VF_CAPS[2]
 
 
+def test_a_class_with_no_multi_lane_block_is_left_unclaimed():
+    """An extent of N=1 admits only a 1-lane block, which is not a vectorization at all.
+
+    Vectorizing that tile emits a parallel-dim-free ``vector.contract`` (a ``vector<1xT>`` dot into a
+    scalar) that no ``lower_contraction`` strategy matches, so the build fails at LLVM translation
+    after a full compile. Measured on whisper_tiny, whose decode-step attention has N=1 alongside a
+    1500-wide encoder attention in the SAME op class. The policy must decline the class (leaving it
+    for convert-linalg-to-loops) and keep the other class vectorized.
+    """
+    from merlin.llvmlower import impr_features as impr
+    from merlin.rvvgen.apply import _adapt_frozen_points
+
+    shapes = [
+        _Shape("linalg.matmul", (1, 384)),
+        _Shape("linalg.matmul", (1500, 1536)),
+        _Shape("linalg.batch_matmul", (6, 1, 1)),          # the decode step: N=1
+        _Shape("linalg.batch_matmul", (6, 1500, 1500)),
+    ]
+    feats = _adapt_frozen_points([impr.WHOLEMODEL_VF_NAME], shapes, target="rvv")
+    assert len(feats) == 1
+    name = feats[0]
+    assert name.endswith(f"_x_x_{impr.WHOLEMODEL_VF_CAPS[2]}"), (
+        f"batch_matmul should be unclaimed, not blocked at 1 lane: {name}")
+    # the matmul class still gets real lanes
+    assert name.startswith("accum_resident_v3p_1_16_"), name
+    sched = impr.apply_schedule("", frozenset([name]))
+    assert "linalg.matmul" in sched
+    assert "linalg.batch_matmul" not in sched, (
+        "the unclaimed class must not appear in the schedule (it goes to convert-linalg-to-loops)")
+
+
+def test_claiming_no_class_at_all_is_rejected():
+    """Both blocks None would vectorize nothing — that is the scalar backend, not a micro-kernel."""
+    import pytest
+
+    from merlin.llvmlower.impr_features import ensure_v3_perop_microkernel
+
+    with pytest.raises(ValueError):
+        ensure_v3_perop_microkernel(None, None, None, None, 16)
+
+
+def test_skipping_a_class_leaves_the_other_arm_byte_identical():
+    """The skip must remove only the skipped class's arms, not perturb the surviving ones."""
+    from merlin.llvmlower.impr_features import _accumulator_resident_v3_pre_schedule as sched
+
+    full = sched(4, 16, 16, NR_bmm=8, MR_mm=1)
+    no_bmm = sched(4, 16, 16, NR_bmm=8, MR_mm=1, skip_bmm=True)
+    no_mm = sched(4, 16, 16, NR_bmm=8, MR_mm=1, skip_mm=True)
+    # every line of the reduced schedules appears verbatim in the full one
+    for reduced in (no_bmm, no_mm):
+        for line in reduced.splitlines():
+            assert line in full, f"skipping a class changed an unrelated line: {line!r}"
+    assert "linalg.batch_matmul" not in no_bmm and "linalg.matmul" in no_bmm
+    assert "linalg.matmul" not in no_mm.replace("linalg.batch_matmul", "")
+
+
 class _Shape:
     """Minimal stand-in for kernels.microkernel.ContractionShape (op + parallel extents)."""
 

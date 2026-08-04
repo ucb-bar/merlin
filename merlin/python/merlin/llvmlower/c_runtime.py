@@ -112,6 +112,7 @@ def generate(model_dir: str | Path, out_dir: str | Path,
     # arg table: weights -> (offset in blob); inputs/buffers/lifted -> embedded arrays.
     rows = []          # (kind, offset, rank, dims, elem_size, dtype)
     io_decls = []      # embedded C arrays
+    embedded: set[int] = set()   # arg positions that GOT an embedded array (see the ptr table below)
     n_in = 0           # positional input counter (loaders with a single tuple)
     li = 0             # lifted-constant counter
     for i, (shape, dt) in enumerate(sig):
@@ -141,6 +142,7 @@ def generate(model_dir: str | Path, out_dir: str | Path,
         else:
             arr = np.ascontiguousarray(inputs[f"in{n_in}"]); n_in += 1
         io_decls.append(f"static {C_OF[dt]} merlin_in_{i}[] = {{{_embed_array(arr, dt)}}};")
+        embedded.add(i)
         rows.append(("MERLIN_INPUT", i, len(shape), shape, elem, dt))
     # output row (last)
     rows.append(("MERLIN_OUTPUT", 0, len(out_shape), out_shape,
@@ -157,20 +159,19 @@ def generate(model_dir: str | Path, out_dir: str | Path,
     for kind, off, rank, dims, elem, dt in rows:
         dimstr = ",".join(str(d) for d in dims) or "0"
         h.append(f"  {{{kind}, {off}L, {rank}, {{{dimstr}}}, {elem}}},")
-    h += ["};",
-          "/* pointers to embedded runtime inputs, indexed by arg position (NULL if not input) */"]
-    # input pointer table
-    ptrs = []
-    for i, (shape, dt) in enumerate(sig):
-        ptrs.append(f"merlin_in_{i}" if man[str(i)]["kind"] != "param" else "0")
-    ptrs.append("0")  # output
+    h += ["};"]
     h.append("#endif")
 
     io = ["/* Generated. Embedded runtime inputs. */",
           "#ifndef MERLIN_MODEL_IO_H", "#define MERLIN_MODEL_IO_H"]
     io += io_decls
+    # Pointer table, indexed by arg position: the address of the embedded array, or NULL for an arg
+    # the runtime reads from the weights blob. Keyed off ``embedded`` -- what the loop ABOVE
+    # actually emitted -- and not off a re-derived "is it a param" test, which drifts the moment a
+    # second kind of arg lives in the blob (an externalized buffer does) and then names a C array
+    # that was never declared.
     io.append("static void *MERLIN_INPUT_PTR[MERLIN_N_ARGS] = {" + ",".join(
-        f"(void*)merlin_in_{i}" if man[str(i)]["kind"] != "param" else "0"
+        f"(void*)merlin_in_{i}" if i in embedded else "0"
         for i in range(len(sig))) + ",0};")
     io.append("#endif")
 

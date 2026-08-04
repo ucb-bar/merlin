@@ -644,7 +644,9 @@ WHOLEMODEL_VF_NR_BMM = 8
 
 def _accumulator_resident_v3_pre_schedule(MR: int, NR: int, KC: int,
                                           NR_bmm: int | None = None,
-                                          MR_mm: int | None = None) -> str:
+                                          MR_mm: int | None = None,
+                                          skip_mm: bool = False,
+                                          skip_bmm: bool = False) -> str:
     """PRE-bufferize schedule for the v3 (vfmacc.vf) micro-kernel — SAME as the v1/v2 pre-schedule
     but WITHOUT ``bufferize_to_allocation``.
 
@@ -663,6 +665,13 @@ def _accumulator_resident_v3_pre_schedule(MR: int, NR: int, KC: int,
     (one B row + MR A scalars per K step -> the resident-accumulator micro-kernel shape); rebuild
     ``vector.contract``; STOP (the v3 pipeline does subset-hoist + contract-lower + A-scalarize). The
     M-tail (``MR_mm``) / N-tail (``NR_bmm``) clamps carry over unchanged for whole-model safety.
+
+    ``skip_mm`` / ``skip_bmm`` OMIT that op class's arms entirely, leaving those contractions for
+    ``convert-linalg-to-loops`` (scalar). Needed because a claim can be impossible: when every block
+    legal for a class's extents is 1-lane wide (an N=1 extent forces NR=1), tiling buys no vector
+    lanes AND produces a parallel-dim-free ``vector.contract`` that no lowering strategy matches. Not
+    claiming the class is then strictly better than claiming it badly — the model builds and runs, and
+    the caller reports the class as un-vectorized rather than failing the build.
     """
     NB = NR_bmm if NR_bmm is not None else NR
     MM = MR_mm if MR_mm is not None else MR
@@ -710,19 +719,21 @@ module attributes {{transform.with_named_sequence}} {{
     %g = transform.structured.match ops{["linalg.generic"]} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.structured.vectorize %g : !transform.any_op"""
            if __import__("os").environ.get("MERLIN_VEC_EW") else ""))
-    return f"""\
-module attributes {{transform.with_named_sequence}} {{
-  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
+    _mm_arm = "" if skip_mm else f"""
     %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %t1, %lmn:2 = transform.structured.tile_using_for %mm tile_sizes [{MM}, {NR}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
     %mm2 = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %t2, %lk = transform.structured.tile_using_for %mm2 tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-    transform.structured.vectorize %t2 vector_sizes [{MM}, {NR}, 1] : !transform.any_op
+    transform.structured.vectorize %t2 vector_sizes [{MM}, {NR}, 1] : !transform.any_op"""
+    _bmm_arm = "" if skip_bmm else f"""
     %bm = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %bt1, %blmn:3 = transform.structured.tile_using_for %bm tile_sizes [1, {MR}, {NB}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
     %bm2 = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %bt2, %blk = transform.structured.tile_using_for %bm2 tile_sizes [0, 0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-    transform.structured.vectorize %bt2 vector_sizes [1, {MR}, {NB}, 1] : !transform.any_op{_ew}
+    transform.structured.vectorize %bt2 vector_sizes [1, {MR}, {NB}, 1] : !transform.any_op"""
+    return f"""\
+module attributes {{transform.with_named_sequence}} {{
+  transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{{_mm_arm}{_bmm_arm}{_ew}
     %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.apply_patterns to %f {{
       transform.apply_patterns.vector.transfer_permutation_patterns
@@ -1048,6 +1059,15 @@ ACCUM_RESIDENT_NAMES: list[str] = _register_accumulator_resident()
 # documented #1 gap) and a large fraction of the instret gap, but does not fully reach the hand
 # ceiling — the remaining delta is the `.vf` A-operand form, recorded honestly. Default-off;
 # baseline byte-identical.
+#
+# These patterns REQUIRE the contract to have at least one parallel dim (outerproduct needs a rank-1
+# result to accumulate into). A register block of NR=1 does not give it one: vectorizing a [.., 1, 1]
+# tile yields `vector.contract {iterator_types = ["reduction"]} vector<1xi8>, vector<1xi8> into i32`
+# — a one-element dot product with no parallel dim, which NO lowering_strategy matches (measured: 24
+# such ops survived on whisper_tiny, and an un-lowered vector.contract has no LLVM translation, so
+# the build dies late with "missing LLVMTranslationDialectInterface"). That is a selection bug, not a
+# lowering gap: a 1-lane vector is not a vectorization. `rvvgen.apply` therefore never selects NR=1 —
+# it leaves that op class un-tiled for `convert-linalg-to-loops` instead.
 _ACCUM_RESIDENT_V2_LOWER_SCHEDULE = """\
 module attributes {transform.with_named_sequence} {
   transform.named_sequence @__transform_accum_v2_lower(%arg0: !transform.any_op {transform.readonly}) {
@@ -1465,7 +1485,8 @@ def ensure_v3_microkernel(MR: int, NR: int, KC: int) -> str:
     return name
 
 
-def ensure_v3_perop_microkernel(MR_mm: int, NR_mm: int, MR_bmm: int, NR_bmm: int,
+def ensure_v3_perop_microkernel(MR_mm: int | None, NR_mm: int | None,
+                                MR_bmm: int | None, NR_bmm: int | None,
                                 KC: int) -> str:
     """Register (on demand) a v3 tuning point with an INDEPENDENT register block per op class.
 
@@ -1478,25 +1499,61 @@ def ensure_v3_perop_microkernel(MR_mm: int, NR_mm: int, MR_bmm: int, NR_bmm: int
     shape-aware policy can DERIVE the four factors from the workload instead of pinning them.
 
     ``accumulator_resident_wholemodel_vf`` == ``ensure_v3_perop_microkernel(1, 16, 4, 8, 16)``; that
-    point keeps its own name (and its measured history) rather than being aliased here."""
-    name = f"accum_resident_v3p_{MR_mm}_{NR_mm}_{MR_bmm}_{NR_bmm}_{KC}"
+    point keeps its own name (and its measured history) rather than being aliased here.
+
+    A class's block may be ``None``, meaning DO NOT CLAIM this op class — its contractions are left
+    to ``convert-linalg-to-loops``. That is the honest answer when no block wider than one lane is
+    legal for the class's extents (see ``_accumulator_resident_v3_pre_schedule``); the alternative is
+    a build that fails outright. Both classes ``None`` would vectorize nothing, so it is rejected."""
+    skip_mm = MR_mm is None or NR_mm is None
+    skip_bmm = MR_bmm is None or NR_bmm is None
+    if skip_mm and skip_bmm:
+        raise ValueError("ensure_v3_perop_microkernel: at least one op class must be claimed "
+                         "(both blocks None vectorizes nothing — use the scalar backend instead)")
+    tag_mm = "x_x" if skip_mm else f"{MR_mm}_{NR_mm}"
+    tag_bmm = "x_x" if skip_bmm else f"{MR_bmm}_{NR_bmm}"
+    name = f"accum_resident_v3p_{tag_mm}_{tag_bmm}_{KC}"
     if name in known():
         return name
+    _mm_desc = "linalg.matmul UNCLAIMED (scalar)" if skip_mm else f"linalg.matmul [{MR_mm}, {NR_mm}]"
+    _bmm_desc = ("linalg.batch_matmul UNCLAIMED (scalar)" if skip_bmm
+                 else f"linalg.batch_matmul [1, {MR_bmm}, {NR_bmm}]")
     register(ImprFeature(
         name=name,
         action_class="PASS",
         description=(f"Accumulator-resident vfmacc.vf micro-kernel with a per-op-class register "
-                     f"block (linalg.matmul [{MR_mm}, {NR_mm}], linalg.batch_matmul "
-                     f"[1, {MR_bmm}, {NR_bmm}], KC={KC}), registered on demand so a shape-aware "
-                     f"policy can pick a blocking that masks no parallel dim. Compiler-emitted "
-                     f"(no ukernel). Default-off."),
+                     f"block ({_mm_desc}, {_bmm_desc}, KC={KC}), registered on demand so a "
+                     f"shape-aware policy can pick a blocking that masks no parallel dim. "
+                     f"Compiler-emitted (no ukernel). Default-off."),
         edit_pipeline=_accumulator_resident_v3_pipeline,
-        edit_schedule=(lambda _t, _mm=MR_mm, _nm=NR_mm, _mb=MR_bmm, _nb=NR_bmm, _KC=KC:
-                       _accumulator_resident_v3_pre_schedule(_mb, _nm, _KC,
-                                                             NR_bmm=_nb, MR_mm=_mm)),
+        edit_schedule=(lambda _t, _mm=MR_mm, _nm=NR_mm, _mb=MR_bmm, _nb=NR_bmm, _KC=KC,
+                       _sm=skip_mm, _sb=skip_bmm:
+                       _accumulator_resident_v3_pre_schedule(_mb or 1, _nm or 1, _KC,
+                                                             NR_bmm=_nb or 1, MR_mm=_mm or 1,
+                                                             skip_mm=_sm, skip_bmm=_sb)),
         schedule_replace=True,
     ))
     return name
+
+
+#: Op-class order encoded in a ``accum_resident_v3p_*`` name (two factors each, then KC).
+_V3P_PREFIX = "accum_resident_v3p_"
+_V3P_CLASS_ORDER = ("linalg.matmul", "linalg.batch_matmul")
+
+
+def unclaimed_op_classes(feature: str) -> list[str]:
+    """Contraction op classes a ``accum_resident_v3p_*`` point does NOT tile/vectorize.
+
+    Lives next to :func:`ensure_v3_perop_microkernel` so the ``x_x`` spelling has ONE definition:
+    a caller that wants to report "this class runs scalar" must not re-derive the name format.
+    Returns [] for any other feature (including the hand-frozen points, which claim both classes).
+    """
+    if not feature.startswith(_V3P_PREFIX):
+        return []
+    parts = feature[len(_V3P_PREFIX):].split("_")
+    if len(parts) != 2 * len(_V3P_CLASS_ORDER) + 1:
+        return []
+    return [cls for i, cls in enumerate(_V3P_CLASS_ORDER) if parts[2 * i] == "x"]
 
 
 def _register_accumulator_resident_v3() -> list[str]:

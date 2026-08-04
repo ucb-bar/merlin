@@ -177,9 +177,19 @@ def _workload_features(pkg, bundle, out: dict) -> list[str]:
               f"using the package block as pinned", file=sys.stderr)
         return frozen
     if sorted(feats) != sorted(frozen):
-        out["features_shape_adapted"] = {"pinned": frozen, "used": feats}
+        # A re-derived point may leave an op class UNCLAIMED: no block wider than one lane is legal
+        # for its extents, so its contractions go through convert-linalg-to-loops (scalar). Correct,
+        # but a perf fact a reader must not have to decode from a feature name -- so say it.
+        from .llvmlower.impr_features import unclaimed_op_classes
+        unclaimed = sorted({cls for f in feats for cls in unclaimed_op_classes(f)})
+        out["features_shape_adapted"] = {"pinned": frozen, "used": feats,
+                                         **({"unclaimed_op_classes": unclaimed} if unclaimed else {})}
         print(f"[merlin-compile] the package register block does not lower for this workload's "
               f"contraction extents; re-derived per op class: {frozen} -> {feats}", flush=True)
+        if unclaimed:
+            print(f"[merlin-compile] NOT VECTORIZED (no multi-lane block is legal for their "
+                  f"extents, so they run scalar): {', '.join(unclaimed)}", file=sys.stderr,
+                  flush=True)
     return feats
 
 
