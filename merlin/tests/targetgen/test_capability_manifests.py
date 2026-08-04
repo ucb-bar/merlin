@@ -26,11 +26,13 @@ def test_manifests_are_discovered_not_a_hardcoded_list():
 
 
 def test_prototype_manifests_reproduce_residual_plus_inert_family_defaults():
-    """OV1 regression: rvv/mx_gemmini/radiance are all-residual prototypes (no RTL facts). The derived
-    manifest must reproduce the residual field-for-field and add ONLY the inert, family-derived fields
-    the loader used to default (endpoint_kind + runner.suite + runtime.backends) — proving the retired
-    hardcoded dicts are byte-reproduced from the residual side-input."""
-    for name in ("rvv", "mx_gemmini", "radiance"):
+    """OV1 regression: an all-residual prototype (no RTL facts) has its derived manifest reproduce the
+    residual field-for-field, adding ONLY the inert, family-derived fields the loader used to default
+    (endpoint_kind + runner.suite + runtime.backends) — proving the retired hardcoded dicts are
+    byte-reproduced from the residual side-input. rvv is the remaining pure prototype; mx_gemmini and
+    radiance have since graduated to facts-grounded (facts_source rtl/simt derives their endpoint + mesh
+    — see test_radiance_and_mx_gemmini_endpoints_are_derived_not_defaulted)."""
+    for name in ("rvv",):
         residual = cm._load_residual(name)
         assert "facts_source" not in residual                # a prototype grounds nothing from RTL
         m = cm.manifest_for(name)

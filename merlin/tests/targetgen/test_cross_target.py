@@ -121,17 +121,20 @@ def test_atlas_is_a_ready_arc_matmul_target():
 
 
 def test_radiance_uses_the_simt_cyclotron_oracle_not_arc_mxu():
-    """Radiance is a real matmul-capable SIMT target, but graded via cyclotron, not the arc MXU model.
+    """Radiance is a real matmul-capable SIMT target whose PERF oracle is cyclotron, with the muon
+    RadianceCluster arc as its bit-exact functional tier (reached via the residual's arc_target alias).
 
-    The arc-MXU path is correctly unavailable (radiance is SIMT, not a systolic MXU) — that is by
-    design, NOT a missing model: radiance ships a committed OOT contract (matmul-capable) and a
-    dedicated cyclotron oracle adapter with the same signature as the arc/gemmini path.
+    The bit-exact model IS registered, so ``arc_available`` is True — but radiance is SIMT, not a
+    systolic MXU, so the systolic-MXU DISCOVERY leg still yields nothing on its own profile: no RoCC
+    opcodes, no mesh DIM, no fabricated spatial levers. The embedding cluster's systolic geometry is
+    NOT impersonated onto radiance (the arc_target alias is oracle-scoped, not applied to structural
+    discovery). radiance ships a committed OOT contract (matmul-capable) + a cyclotron adapter.
     """
-    # arc-MXU is N/A by design; the arc discovery leg yields nothing for a SIMT target.
-    assert B.arc_available("radiance") is False
+    # bit-exact muon-arc tier is available; the systolic-MXU discovery leg yields nothing (SIMT target).
+    assert B.arc_available("radiance") is True
     prof = RB.target_profile("radiance")
-    assert not prof.legal_opcodes and prof.dim is None    # facts come from muon_introspect, not arc
-    assert not RB.derived_levers(prof)                    # nothing fabricated on the arc leg
+    assert not prof.legal_opcodes and prof.dim is None    # SIMT: no RoCC systolic facts on its profile
+    assert not RB.derived_levers(prof)                    # nothing fabricated on the arc systolic leg
 
     # But radiance has a real oracle: the committed cyclotron adapter (fail-closed via MuonUnavailable).
     from merlin.targetgen import muon_oracles

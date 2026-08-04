@@ -110,10 +110,14 @@ def _arc_target(target: str) -> str:
     whose bit-exact arc model mlc registers under the embedding cluster's name, not the merlin-facing
     name — declares ``arc_target`` in its ``contracts/residual.yaml``; every other target maps to itself.
     DERIVED from the residual (no target-name literal here), fail-closed to the target itself when there
-    is no residual / no alias. Only the mlc arc lookups (``_ARTIFACTS``/``_COSIM_BACKEND``/
-    ``runs/circt-arc/<key>``) go through this — the merlin-facing identity (corpus, contract, suite,
-    results) stays the original ``target`` everywhere else. The residual is a plain YAML side-input, so
-    this never triggers manifest derivation (which would re-enter the mlc boundary through this resolver)."""
+    is no residual / no alias. Applied ONLY on the ORACLE path — ``arc_available`` / ``arc_core`` (the
+    bit-exact model) and the program-oracle cosim lookups, plus the SIMT fact delegation in
+    :func:`_simt_fact_bundle`. It is deliberately NOT applied to the structural-fact discovery
+    (``core_hw_mlir`` / ``discovered_dim`` / ``discovered_memory_map`` / ``discovered_memories``): a SIMT
+    SoC must not inherit the embedding cluster's systolic geometry as if it were its own RoCC mesh (that
+    would fabricate spatial levers). The merlin-facing identity (corpus, contract, suite, results) stays
+    the original ``target`` everywhere. The residual is a plain YAML side-input, so this never triggers
+    manifest derivation (which would re-enter the mlc boundary through this resolver)."""
     if target in _ARC_TARGET_CACHE:
         return _ARC_TARGET_CACHE[target]
     alias = target
@@ -135,7 +139,7 @@ def core_hw_mlir(target: str) -> Path | None:
     d = mlc_dir()
     if d is None:
         return None
-    outs = d / "runs" / "circt-arc" / _arc_target(target) / "outputs"
+    outs = d / "runs" / "circt-arc" / target / "outputs"
     cands = sorted(outs.glob("*_core_hw.mlir")) or sorted(outs.glob("*_hw.mlir"))
     return next((p for p in cands if p.exists() and ".generic." not in p.name), None)
 
@@ -157,7 +161,7 @@ def opu_artifact_paths(target: str) -> dict | None:
     try:
         with _mlc_importable(d):
             from mlc.discover.fingerprint import artifact_paths
-            return {k: Path(v) for k, v in artifact_paths(_arc_target(target), base=d).items()}
+            return {k: Path(v) for k, v in artifact_paths(target, base=d).items()}
     except Exception:  # noqa: BLE001 — unknown target / mlc layout skew ⇒ honest unavailable
         return None
 
@@ -767,10 +771,9 @@ def discovered_memory_map(target: str) -> dict | None:
         return None
     try:
         with _mlc_cwd():
-            at = _arc_target(target)
-            _ensure_interface_cache(at)
+            _ensure_interface_cache(target)
             from mlc.discover.cache import discovered_memory_map as _mm
-            return dict(_mm(at))
+            return dict(_mm(target))
     except Exception:  # noqa: BLE001
         return None
 
@@ -782,10 +785,9 @@ def discovered_dim(target: str) -> int | None:
         return None
     try:
         with _mlc_cwd():
-            at = _arc_target(target)
-            _ensure_interface_cache(at)
+            _ensure_interface_cache(target)
             from mlc.discover.cache import discovered_dim as _dim
-            return int(_dim(at))
+            return int(_dim(target))
     except Exception:  # noqa: BLE001
         return None
 
@@ -796,10 +798,9 @@ def discovered_memories(target: str) -> list[dict] | None:
         return None
     try:
         with _mlc_cwd():
-            at = _arc_target(target)
-            _ensure_interface_cache(at)
+            _ensure_interface_cache(target)
             from mlc.discover.cache import load_interface
-            return list(load_interface(at).get("memories", []))
+            return list(load_interface(target).get("memories", []))
     except Exception:  # noqa: BLE001
         return None
 
