@@ -68,7 +68,15 @@ def _det_fp8(D, name, shape, salt, fmt_token, d_fp8):
     from merlin.targetgen import corpus_operands as CO
     salt_int = sum((i + 1) * ord(c) for i, c in enumerate(f"{salt}|{name}")) or 1
     vals = CO.operand_values(tuple(shape), fmt_token, salt_int)
-    return [D.encode_float(v, d_fp8) for v in vals], vals
+    raw = [D.encode_float(v, d_fp8) for v in vals]
+    # Self-enforcing rigor: fail generation loudly if the ENCODED bytes are not distinct-per-row/col +
+    # asymmetric (e.g. a future palette/fill change, or an encode that collapsed distinct values). A weak
+    # operand silently hides addressing/stride/transpose bugs — never let a regeneration ship one.
+    if len(shape) == 2:
+        problems = CO.rigor_findings([float(b) for b in raw], tuple(shape))
+        if problems:
+            raise AssertionError(f"non-rigorous operand {name}{tuple(shape)}: {problems}")
+    return raw, vals
 
 
 def _float_golden(entry, binding):
