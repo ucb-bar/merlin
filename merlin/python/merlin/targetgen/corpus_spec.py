@@ -25,6 +25,7 @@ _DTYPE = {
     "int32": ("i32", "i32", 4, True),
     "i32": ("i32", "i32", 4, True),
     "fp8_e4m3": ("fp8_e4m3", "f8E4M3FN", 1, False),
+    "fp8_e5m2": ("fp8_e5m2", "f8E5M2", 1, False),
     "bf16": ("bf16", "bf16", 2, False),
     "f32": ("f32", "f32", 4, False),
 }

@@ -48,30 +48,39 @@ def _specir():
     return D, fp_reduce
 
 
-# balanced-sign, exactly-fp8 palette; ODD length so the per-element index does not alias to the tile
-# width (an aliasing fill made every row identical and collapsed attention to a constant).
-_PALETTE = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, -0.5, -1.0, -1.5, -2.0, -2.5]
+# specir fp8 format handle per canonical operand dtype token (fail closed if the refmodel lacks it).
+_SPECIR_FP8_ATTR = {"fp8_e4m3": "FP8_E4M3", "fp8_e5m2": "FP8_E5M2"}
 
 
-def _det_fp8(D, name, shape, salt):
-    n = 1
-    for d in shape:
-        n *= d
-    seed = sum((i + 1) * ord(c) for i, c in enumerate(f"{salt}|{name}")) or 1
-    vals = [_PALETTE[((seed * 2654435761 + (k + 1) * 1000003 + k * k * 131) & 0x7FFFFFFFFFFF) % len(_PALETTE)]
-            for k in range(n)]
-    return [D.encode_float(v, D.FP8_E4M3) for v in vals], vals
+def _specir_fp8(D, fmt_token: str):
+    attr = _SPECIR_FP8_ATTR.get(fmt_token)
+    if attr is None or not hasattr(D, attr):
+        raise ValueError(f"specir refmodel has no fp8 format for operand dtype {fmt_token!r} "
+                         f"(known: {sorted(_SPECIR_FP8_ATTR)})")
+    return getattr(D, attr)
+
+
+def _det_fp8(D, name, shape, salt, fmt_token, d_fp8):
+    """Structured, format-DERIVED operand bytes: distinct rows AND columns + asymmetric (so a wrong row
+    stride / base offset / transposed load changes the output), spanning the fp8 format's representable
+    range. Replaces the old 11-magnitude flat-hash fill (~6 distinct values, ~11/32 distinct rows) that hid
+    those bug classes. See merlin.targetgen.corpus_operands."""
+    from merlin.targetgen import corpus_operands as CO
+    salt_int = sum((i + 1) * ord(c) for i, c in enumerate(f"{salt}|{name}")) or 1
+    vals = CO.operand_values(tuple(shape), fmt_token, salt_int)
+    return [D.encode_float(v, d_fp8) for v in vals], vals
 
 
 def _float_golden(entry, binding):
     """A capsule's fp8->bf16 golden + input provenance from the specir refmodel (independent of the RTL)."""
     D, fp_reduce = _specir()
-    FP8, BF16 = D.FP8_E4M3, D.BF16
+    fmt_token = binding.operand_dtype                    # e.g. "fp8_e4m3" — DERIVED, not assumed
+    FP8, BF16 = _specir_fp8(D, fmt_token), D.BF16
     salt, dim = entry["name"], binding.tile_dim
     prov, outputs = {}, {}
 
     def reg(name, shape):
-        raw, vals = _det_fp8(D, name, shape, salt)
+        raw, vals = _det_fp8(D, name, shape, salt, fmt_token, FP8)
         prov[name] = {"shape": list(shape), "fp8_raw_hex": [f"0x{r:02x}" for r in raw], "decoded": vals}
         return raw
 
