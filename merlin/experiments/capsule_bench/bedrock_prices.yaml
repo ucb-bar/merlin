@@ -1,0 +1,19 @@
+# Single source of truth for Bedrock model prices used by the capsule-bench experiments.
+#
+# Consumed by aet's PriceTable via the AET_PRICE_TABLE env var (set in the repo .env), and by merlin's
+# experiment_tokens.py, so the per-run cost ESTIMATE agrees everywhere — no second, divergent table.
+# Rates are USD per MILLION tokens: [input, output, cache_read, cache_creation].
+#
+# aet ships verified rates for Anthropic + Nova and deliberately leaves non-Anthropic Bedrock models
+# UNPRICED (cost-unavailable, honest) until a deployment supplies a rate here. These are our best-known
+# list-price ESTIMATES for the models the experiments route to — UPDATE THEM when the exact Bedrock
+# published rate is confirmed (this one file is the only place to change).
+#
+# Keys match case-insensitively as a substring of the inference-profile id (e.g. "zai.glm-5").
+
+# GLM-5 (Z.ai) on Bedrock — ESTIMATE (confirm against Bedrock pricing / the account bill).
+zai.glm-5: [0.60, 2.20, 0.06, 0.75]
+glm:       [0.60, 2.20, 0.06, 0.75]   # substring fallback for any glm-* profile id
+
+# (Nova micro/lite/pro are already verified in aet's built-in table; Anthropic models likewise. Add any
+# other Bedrock model the experiments use here so cost is estimated from ONE place, never fabricated.)

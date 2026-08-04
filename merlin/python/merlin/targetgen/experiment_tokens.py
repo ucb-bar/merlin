@@ -15,6 +15,7 @@ model); cache-write 1.25x, cache-read 0.10x surcharges live only in the dollar p
 from __future__ import annotations
 
 import json
+import os
 from collections import defaultdict
 from pathlib import Path
 
@@ -35,9 +36,47 @@ _CACHE_WRITE_MULT = 1.25
 _CACHE_READ_MULT = 0.10
 
 
+def _load_price_overrides() -> dict[str, tuple[float, float]]:
+    """Overlay rates from ``AET_PRICE_TABLE`` (the shared bedrock_prices file aet's PriceTable also reads),
+    so this estimate and aet's agree on every model — ONE source of truth, not two divergent tables. The
+    file gives USD per MILLION tokens ([input, output, ...] or a dict); converted to per-token here.
+    Absent/malformed → no overlay (built-in ``_RATES`` only), never a crash."""
+    try:  # process env wins, then the repo .env (same source the rest of the toolchain reads)
+        from merlin.common.paths import _dotenv
+        path = (os.environ.get("AET_PRICE_TABLE") or _dotenv().get("AET_PRICE_TABLE") or "").strip()
+    except Exception:  # noqa: BLE001
+        path = os.environ.get("AET_PRICE_TABLE", "").strip()
+    if not path or not Path(path).is_file():
+        return {}
+    try:
+        import yaml
+        raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001 — malformed price file must never break token accounting
+        return {}
+    out: dict[str, tuple[float, float]] = {}
+    for k, v in (raw.items() if isinstance(raw, dict) else []):
+        try:
+            i, o = (float(v["input"]), float(v["output"])) if isinstance(v, dict) \
+                else (float(v[0]), float(v[1]))
+            out[str(k).lower()] = (i / 1e6, o / 1e6)
+        except Exception:  # noqa: BLE001 — skip a malformed entry, keep the rest
+            continue
+    return out
+
+
+_OVERRIDES: dict[str, tuple[float, float]] | None = None
+
+
 def _rate(model: str) -> tuple[float, float]:
+    global _OVERRIDES
+    if _OVERRIDES is None:
+        _OVERRIDES = _load_price_overrides()
+    m = (model or "")
+    for k, v in _OVERRIDES.items():          # shared override (AET_PRICE_TABLE) wins
+        if k in m.lower():
+            return v
     for k, v in _RATES.items():
-        if k in (model or ""):
+        if k in m:
             return v
     return _RATES["opus"]  # conservative default
 
