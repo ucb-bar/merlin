@@ -134,14 +134,27 @@ def _bespoke_sim_via(target: str) -> str:
     sim engine is a declared target fact, NOT inferred from a hardcoded ``{spike,verilator} -> chipyard``
     map. A target that ships the chipyard spike/verilator tiers declares ``sim_via: chipyard``; an arc-only
     target declares none and reads back as ``""``. Lets :func:`oracle_adapters` self-route when a caller
-    omits ``sim_via`` (the descriptor's authoritative ``toolchain.sim_via`` is passed explicitly by the
-    harness; this is the contract-derived fallback)."""
+    omits ``sim_via``. The harness passes the descriptor's authoritative ``toolchain.sim_via`` explicitly;
+    when it doesn't (a standalone preflight/validator), we fall back to the contract's ``runner.sim_via``
+    and then to the descriptor's ``toolchain.sim_via`` — so a SIMT target's ``cyclotron`` engine resolves
+    even without a contract, instead of mis-defaulting to the arc path (which would false-green the
+    preflight)."""
     try:
         from .target_experiment import load_capability_manifest
-        runner = load_capability_manifest(target).contract.get("runner") or {}
-    except Exception:  # noqa: BLE001 — no contract -> no bespoke sim
-        return ""
-    return str(runner.get("sim_via") or "")
+        via = str(((load_capability_manifest(target).contract.get("runner") or {})).get("sim_via") or "")
+        if via:
+            return via
+    except Exception:  # noqa: BLE001 — no contract; fall through to the descriptor
+        pass
+    try:
+        from .target_experiment import load_target_experiment
+        from merlin.common.paths import merlin_dir
+        p = merlin_dir() / "experiments" / "capsule_bench" / "targets" / target / "target_experiment.yaml"
+        if p.is_file():
+            return str(getattr(load_target_experiment(p), "sim_via", "") or "")
+    except Exception:  # noqa: BLE001 — no descriptor -> no bespoke sim (arc-default)
+        pass
+    return ""
 
 
 def _sim_engine_adapters(sim_via: str) -> dict[str, Callable]:
@@ -246,6 +259,20 @@ def oracle_available(target: str, sim_via: str | None = None) -> tuple[bool, str
         if arc_ok:
             return True, f"{target!r}: chipyard sim absent but mlc arc oracle available (fallback)"
         return False, f"{target!r}: neither the chipyard spike sim nor the mlc arc oracle is available"
+    if sim_via == "cyclotron":
+        # A SIMT target graded on its emitted kernel ELF by the bespoke cyclotron oracle. The generic mlc
+        # arc adapter grades the COMMAND BUFFER (the wrong artifact for a self-hosted SIMT kernel), so
+        # arc_available must NOT report GO here — that was a false-green. Require the cyclotron oracle;
+        # fail closed otherwise (never fall back to the mis-targeting arc command-buffer path).
+        try:
+            from ..runtime.backends import muon as _muon
+            if _muon.available("cyclotron"):
+                return True, f"{target!r}: cyclotron SIMT oracle available"
+        except Exception:  # noqa: BLE001 — an unimportable backend is honestly unavailable
+            pass
+        return False, (f"{target!r}: cyclotron SIMT oracle unavailable (set the MERLIN_MUON_* env); the mlc "
+                       "arc command-buffer adapter grades the wrong artifact for a SIMT target and is not "
+                       "a valid fallback")
     if arc_ok:
         return True, f"{target!r}: mlc arc oracle available"
     return False, (f"{target!r}: mlc arc model unavailable (set MERLIN_MLC_DIR and build the arc model)")
