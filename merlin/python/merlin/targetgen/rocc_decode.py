@@ -239,7 +239,14 @@ def _decode_one(funct: int, rs1: _Val | None, rs2: _Val | None, isa: dict) -> tu
     if base == "CONFIG":
         sub = isa["CONFIG_SUBTYPE"].get((r1 & 0x3) if r1 is not None else -1, "CONFIG_UNKNOWN")
         if sub == "CONFIG_LD":
-            dec = {"subtype": "LD", "stride": r2}
+            # The mvin scale float is packed in rs1[63:32] (same high-word layout CONFIG_ST uses for the
+            # store/acc scale below). Expose it so a degenerate load scale (e.g. 0.0, which multiplies every
+            # loaded element to zero) is visible in the trace instead of only manifesting as all-zeros on the
+            # hardware oracle. Identity is 1.0; absent/unresolved rs1 -> None (fail-open, never a wrong value).
+            ld_scale_bits = ((r1 >> 32) & MASK32) if r1 is not None else None
+            dec = {"subtype": "LD", "stride": r2,
+                   "scale": _f32_from_bits(ld_scale_bits) if ld_scale_bits is not None else None,
+                   "scale_bits": ld_scale_bits}
         elif sub == "CONFIG_ST":
             acc_act = ((r1 >> 2) & 0x3) if r1 is not None else None
             scale_bits = ((r2 >> 32) & MASK32) if r2 is not None else None

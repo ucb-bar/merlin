@@ -14,10 +14,16 @@ mismatch is data; it raises only on a malformed trace argument.
 """
 from __future__ import annotations
 
+import math
 from typing import Any
 
 _COMPUTE = {"COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE"}
 _CONFIG = {"CONFIG_EX", "CONFIG_LD", "CONFIG_ST"}
+
+# Decoded fields that are datapath SCALE/MULTIPLIER floats (the decoder names them; not a target literal).
+# A scale of exactly 0.0 zeroes every product it touches, and a non-finite scale garbles it — neither is ever
+# a correct kernel, on ANY target whose ISA carries a scale field. Identity/other finite values are fine.
+_SCALE_FIELDS = ("scale", "acc_scale")
 
 
 def _classes(trace: dict) -> list[str]:
@@ -72,6 +78,31 @@ def dram_address_findings(trace: dict, address_model: str) -> list[str]:
                 f"({dram.get('raw')}): the harness passes each operand as a POINTER argument, so derive "
                 f"the DRAM address from the matching kernel argument (ptrtoint of the arg) — a baked "
                 f"literal cannot match the buffer the runtime allocated.")
+    return out
+
+
+def degenerate_scale_findings(trace: dict) -> list[str]:
+    """Advisory: flag any decoded datapath SCALE field that is a degenerate multiplier — exactly ``0.0``
+    (zeroes every product) or non-finite (NaN/inf, garbles it). No correct kernel uses such a scale, so this
+    is a universal, oracle-free signal true for any target whose ISA carries a scale field — reading only the
+    agent's OWN emitted config (no golden). It exists because such a scale is invisible to the cheap tiers:
+    the high-level command buffer has no mvin/config-scale field, so ``reference``/``simulate`` compute the
+    right answer while the real hardware multiplies by zero and returns all-zeros (the np12r wall). Identity
+    (1.0) and any other finite value are fine and never flagged."""
+    out: list[str] = []
+    for i in trace.get("instructions", []):
+        dec = i.get("decoded") or {}
+        for fld in _SCALE_FIELDS:
+            v = dec.get(fld)
+            if not isinstance(v, (int, float)) or isinstance(v, bool):
+                continue
+            if v == 0.0 or not math.isfinite(v):
+                what = "zero" if v == 0.0 else "non-finite"
+                out.append(
+                    f"instruction #{i.get('index')} ({i.get('class')}) encodes a {what} {fld} ({v}): a "
+                    f"{what} scale multiplies the datapath to {'zero' if v == 0.0 else 'garbage'} on real "
+                    f"hardware while the command-buffer tiers (which carry no such field) still pass — encode "
+                    f"the intended scale (identity is 1.0 = 0x3F800000 in the config float bits).")
     return out
 
 
@@ -186,6 +217,9 @@ def check(trace: dict, expected: dict, cb: dict | None = None,
     # advisory DRAM-address provenance (parameterized by the harness address model; no-op if unknown)
     if address_model:
         violations += dram_address_findings(trace, address_model)
+
+    # advisory degenerate-scale (0.0 / non-finite multiplier) — invisible to the command-buffer tiers
+    violations += degenerate_scale_findings(trace)
 
     return {"status": "pass" if not violations else "fail", "violations": violations}
 

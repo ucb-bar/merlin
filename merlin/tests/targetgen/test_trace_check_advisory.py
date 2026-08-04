@@ -63,3 +63,20 @@ def test_unknown_is_reported_but_is_not_the_gate():
     res = TCK.check(tr, expected={})
     assert any("UNKNOWN" in v for v in res["violations"])   # reported...
     assert TCK.drives_accelerator(tr)                        # ...but the gate (anti-cheese) still passes
+
+
+def test_degenerate_scale_flagged_identity_silent():
+    # A datapath scale of 0.0 (the np12r bug: mvin loads x0) or non-finite is a universal degeneracy —
+    # flagged; identity 1.0 or an unresolved (None) scale is not. Advisory: it lands in violations, no gate.
+    zero = _trace({"class": "CONFIG_LD", "funct": 0, "index": 2,
+                   "decoded": {"subtype": "LD", "scale": 0.0}})
+    assert TCK.degenerate_scale_findings(zero), "a zero datapath scale must be flagged"
+    ident = _trace({"class": "CONFIG_LD", "funct": 0, "index": 2,
+                    "decoded": {"subtype": "LD", "scale": 1.0}})
+    assert TCK.degenerate_scale_findings(ident) == []
+    nan = _trace({"class": "CONFIG_ST", "funct": 0, "decoded": {"acc_scale": float("nan")}})
+    assert TCK.degenerate_scale_findings(nan)                              # non-finite acc_scale too
+    none = _trace({"class": "CONFIG_LD", "funct": 0, "decoded": {"subtype": "LD", "scale": None}})
+    assert TCK.degenerate_scale_findings(none) == []                      # unresolved -> fail-open, not flagged
+    res = TCK.check(zero, expected={})                                    # surfaces via advisory violations
+    assert any("scale" in v for v in res["violations"])

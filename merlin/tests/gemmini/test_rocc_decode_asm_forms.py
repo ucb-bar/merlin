@@ -101,3 +101,23 @@ def test_generic_and_pretty_inline_asm_decode_identically():
     assert [i["class"] for i in pretty] == ["CONFIG_EX"], pretty
     assert [i["class"] for i in generic] == ["CONFIG_EX"], generic      # NOT UNKNOWN — operands are seen
     assert [i["decoded"] for i in pretty] == [i["decoded"] for i in generic]
+
+
+# A CONFIG_LD whose rs1 packs the mvin scale float in the high 32 bits (0x3F800000 = 1.0), stride 16.
+_CFG_LD_SCALE1 = (
+    '    %c = llvm.mlir.constant(4575657221409472769 : i64) : i64\n'   # 0x3F80000000100101 -> LD, scale 1.0
+    '    %d = llvm.mlir.constant(16 : i64) : i64\n'
+    '    llvm.inline_asm has_side_effects ".insn r 0x7b, 0x3, 0x00, x0, $0, $1", "r,r" %c, %d'
+    ' : (i64, i64) -> ()\n'
+)
+
+
+def test_config_ld_exposes_mvin_scale_high_word():
+    # The np12r wall was invisible because CONFIG_LD dropped its scale; it must now decode from rs1[63:32].
+    ld = RD.decode_text(_module(_CFG_LD_SCALE1), target="gemmini")["instructions"]
+    assert [i["class"] for i in ld] == ["CONFIG_LD"], ld
+    assert ld[0]["decoded"]["scale"] == 1.0                       # identity scale, now exposed
+    # zero the high word (the exact bug) -> mvin scale 0.0 (loads x0), now visible in the decoded trace
+    zeroed = _CFG_LD_SCALE1.replace("4575657221409472769", "1048833")  # 0x0000000000100101
+    ld0 = RD.decode_text(_module(zeroed), target="gemmini")["instructions"]
+    assert ld0[0]["decoded"]["scale"] == 0.0

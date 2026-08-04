@@ -356,6 +356,28 @@ def suite_for(target: str, *, dtype: str = "i8xi8_i32") -> str:
     return _config_for_target(target, None, dtype).suite
 
 
+def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: bool) -> str:
+    """A mandatory hardware/oracle tier failed while the cheap tiers already passed (numeric fails raise
+    earlier), so the defect is in the emitted hardware artifact, NOT the command buffer. Return a
+    target-agnostic localization hint so the failure is never an opaque 'oracle != golden' — plus the first
+    concrete artifact finding if the decoder produced any (gemmini). For a float/oracle-only target (atlas,
+    no cheap trace decode) the generic hint still fires. This is what makes the np12r class localizable on
+    EVERY endpoint: it names WHERE to look (the artifact encoding), not just THAT hardware disagreed."""
+    findings = (trace_check_res or {}).get("violations") or []
+    if independent_float:
+        hint = (" Disassemble/lint your emitted artifact and verify EVERY op actually fires with valid "
+                "config/addresses — a config or compute op that silently no-ops produces wrong output only "
+                "on hardware, never in a cheap check.")
+    else:
+        hint = (" The command-buffer tiers (numeric + trace) PASSED, so the divergence is in your "
+                "emit_target_artifact hardware encoding — fields the command buffer cannot carry (config "
+                "SCALES, accumulate, dataflow, DRAM addresses). Disassemble/lint your artifact and check for "
+                "a degenerate config scale (0.0).")
+    if findings:
+        hint += f" Your own artifact check flagged: {findings[0]}"
+    return hint
+
+
 def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path,
                 run_id: str | None = None, contract: str | Path | None = None,
                 oracle_adapters: dict[str, Callable] | None = None,
@@ -674,7 +696,9 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # required RTL oracle that follows in the sorted ladder — the same "a cheaper check short-
             # circuits the authoritative oracle" class we fixed on the trace side, here on the oracle side.
             if not okt and mand:
-                raise CertFailure(sim_name, _cat("FUNCTIONAL_MISMATCH"), _mismatch_reason)
+                raise CertFailure(sim_name, _cat("FUNCTIONAL_MISMATCH"),
+                                  _mismatch_reason + _encoding_divergence_hint(trace_check_res,
+                                                                               independent_float))
 
     except CertFailure as cf:
         status = "fail"
